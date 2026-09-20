@@ -9,18 +9,32 @@ import type {
   PermissionResolvedEvent,
 } from '@ema-agent/permission';
 import type { ToolExecutionEvent } from '@ema-agent/tools';
-import type { ExecutionProfile, NarrativePolicy } from '@ema-agent/session';
+import type {
+  ExecutionProfile,
+  Message as SessionMessage,
+  NarrativePolicy,
+} from '@ema-agent/session';
 import type { TurnFailureCode } from './errors.js';
 import type {
   RequestDegradationNotice,
   TurnStats,
+  TurnTriggerType,
 } from './types.js';
 
 export type TurnEvent =
   | {
+      /**
+       * UserMessage 已经成功写入 Session History. message 是持久化后的真实记录,
+       * 其中已包含 Message ID, Session ID, Turn ID 和写入时间, 事件外层不重复这些字段.
+       */
+      readonly type: 'user_message_stored';
+      readonly message: SessionMessage;
+    }
+  | {
       type: 'turn_started';
       sessionId: string;
       turnId: string;
+      triggerType: TurnTriggerType;
       executionProfile: ExecutionProfile;
       narrativePolicy: NarrativePolicy;
     }

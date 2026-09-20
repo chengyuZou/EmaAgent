@@ -3,11 +3,11 @@ import { buildCharacterPrompt } from '@ema-agent/characters';
 import {
   compactSession,
   listCommandDescriptors,
-  type CommandCompactDeps,
-  type CommandCompactResult,
+  type ManualCompactDeps,
+  type ManualCompactResult,
   type CommandDescriptor,
 } from '@ema-agent/commands';
-import { createCompact } from '@ema-agent/compact';
+import { createCompact, type CompactEvent } from '@ema-agent/compact';
 import { createLlmCall } from '@ema-agent/llm';
 import { buildMemoryGuidance } from '@ema-agent/memory';
 import type { CharactersComposition } from './characters.js';
@@ -18,7 +18,7 @@ import type { ToolsComposition } from './tools.js';
 import type { TurnComposition } from './turn.js';
 
 export interface CommandsComposition {
-  readonly compactSession: (sessionId: string) => Promise<CommandCompactResult>;
+  readonly compactSession: (sessionId: string) => Promise<ManualCompactResult>;
   readonly listCommandDescriptors: () => readonly CommandDescriptor[];
 }
 
@@ -29,9 +29,10 @@ export function openCommands(deps: {
   tools: ToolsComposition;
   characters: CharactersComposition;
   turn: TurnComposition;
+  publishCompactEvent: (event: CompactEvent) => void;
 }): CommandsComposition {
   const { database, settings, providers, tools, characters, turn } = deps;
-  const compactDeps: CommandCompactDeps = {
+  const compactDeps: ManualCompactDeps = {
     sessions: database.session,
     turns: database.turns,
     activeSessions: database.activeSessions,
@@ -59,6 +60,7 @@ export function openCommands(deps: {
     createCompact,
     createLlmCall,
     usageRecorder: database.usageRecorder,
+    emit: deps.publishCompactEvent,
   };
   return {
     compactSession: sessionId => compactSession(compactDeps, sessionId),

@@ -111,10 +111,12 @@ function makeEnv(options: {
   tools: AnyTestTool[];
   askPermission?: ToolExecutionEnvironment['askPermission'];
   state?: ToolExecutionState;
+  agentRunId?: string;
 }): ToolExecutionEnvironment {
   return {
     sessionId: SESSION_ID,
     turnId: TURN_ID,
+    ...(options.agentRunId ? { agentRunId: options.agentRunId } : {}),
     abortSignal: new AbortController().signal,
     toolPool: new ToolPool(options.tools as never),
     permissionContext: PERMISSION_CONTEXT,
@@ -138,6 +140,32 @@ function makeCall(env: ToolExecutionEnvironment, name: string, args: unknown): {
 }
 
 describe('ToolCallExecution', () => {
+  it('ToolInvocation 只包含本次调用身份, AgentRun 归属仍写入执行记录', async () => {
+    const invocations: unknown[] = [];
+    const tool = echoTool({
+      execute: async (_input: EchoInput, _context: Record<string, never>, invocation) => {
+        invocations.push(invocation);
+        return { ok: true };
+      },
+    });
+    const { state, store } = makeState();
+    const { execution } = makeCall(
+      makeEnv({ tools: [tool], state, agentRunId: 'parent-agent-call' }),
+      'Echo',
+      { value: 1 },
+    );
+
+    await execution.run();
+
+    expect(invocations).toEqual([expect.objectContaining({
+      sessionId: SESSION_ID,
+      turnId: TURN_ID,
+      toolCallId: 'call-1',
+    })]);
+    expect(invocations[0]).not.toHaveProperty('agentRunId');
+    expect(store.findByCallId('call-1')?.agentRunId).toBe('parent-agent-call');
+  });
+
   it('模型幻觉不存在的工具名 → tool/unavailable,不产生状态迁移', async () => {
     const { state, store } = makeState();
     const { execution } = makeCall(makeEnv({ tools: [], state }), 'Ghost', {});

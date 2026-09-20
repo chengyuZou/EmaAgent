@@ -1,6 +1,6 @@
-// Turn 生命周期、进程内运行态（取消信号/运行锁/删除守卫）与导航查询。
-// 面向 storage repo 工作；Session 级活跃执行坑位由 session 包的 ActiveSessionRegistry
-// 提供。AbortSignal 只活在内存，崩溃恢复以 SQLite 的 turns.status 为事实源。
+// Turn 生命周期、进程内运行状态(取消信号/运行锁/删除守卫)与导航查询.
+// Session 当前运行的根 Turn 或手动 Compact 由 ActiveSessionRegistry 统一记录.
+// AbortSignal 只活在内存, 崩溃恢复以 SQLite 的 turns.status 为事实源.
 
 import crypto from 'node:crypto';
 import {
@@ -27,8 +27,8 @@ export interface TurnStoreDeps {
   /** 最后一轮重发成功回滚后，清理该 Turn 派生的音频和临时文件。 */
   onTurnRemoved?: (sessionId: string, turnId: string) => void;
   /**
-   * Session 级活跃执行坑位（手动 compact 与根 Turn 共享互斥）；由装配层构造并
-   * 与 commands 包共享同一实例。TurnStore 只以 kind='turn' 占用。
+   * 记录 Session 当前正在运行的根 Turn 或手动 Compact, 两者不能同时开始.
+   * 由 Server Composition 构造并与 Commands 共享同一实例; TurnStore 只注册 kind='turn'.
    */
   activeSessions: ActiveSessionRegistry;
 }
@@ -91,7 +91,7 @@ export class TurnStore {
     });
     this.sessionsRepo.touchActivity(input.sessionId, now);
 
-    const signal = this.registry.register(input.sessionId, turnId, 'turn');
+    const signal = this.registry.register(input.sessionId, { kind: 'turn', turnId });
     return { turn: this.requireTurn(turnId), signal };
   }
 
@@ -105,7 +105,12 @@ export class TurnStore {
     this.turnsRepo.setCharacterDirectoryName(turnId, characterDirectoryName);
   }
 
-  completeTurn(turnId: string, usage: CompleteTurnInput = {}, withinTransaction?: () => void): void {    this.requireTurn(turnId);
+  completeTurn(
+    turnId: string,
+    usage: CompleteTurnInput = {},
+    withinTransaction?: () => void,
+  ): void {
+    this.requireTurn(turnId);
     // 终态与派生登记（如 Memory 提取入队）同一事务：崩溃不允许出现
     // "Turn 已完成但提取 Job 缺失"的裂缝。
     this.db.sqlite.transaction(() => {
@@ -120,7 +125,7 @@ export class TurnStore {
     })();
     // 终态落库即释放运行锁：await completion/终态事件的消费方可以立即开新 Turn，
     // 不等执行器 finally（它清的是同一把锁，幂等）。
-    this.registry.clear(this.requireTurn(turnId).sessionId, turnId);
+    this.registry.clear(this.requireTurn(turnId).sessionId, { kind: 'turn', turnId });
   }
 
   /** 提交 failed 终态；失败前已产生的迭代与 token 用量仍是真实事实，随终态一起写入。 */
@@ -136,22 +141,22 @@ export class TurnStore {
       errorMessage: failure.errorMessage,
       ...failure.usage,
     });
-    this.registry.clear(this.requireTurn(turnId).sessionId, turnId);
+    this.registry.clear(this.requireTurn(turnId).sessionId, { kind: 'turn', turnId });
   }
 
   /** 触发取消信号并提交 Turn 的 aborted 终态。 */
   abortTurn(sessionId: string, turnId: string): void {
     this.assertTurnOwnership(sessionId, turnId);
-    const activeTurnId = this.registry.getActiveExecution(sessionId)?.executionId;
-    if (activeTurnId !== turnId) {
+    const active = this.registry.getActiveSession(sessionId);
+    if (active?.kind !== 'turn' || active.turnId !== turnId) {
       throw new Error(`turn_not_active: ${turnId}`);
     }
-    this.registry.abort(sessionId, turnId);
+    this.registry.abort(sessionId, active);
     this.turnsRepo.complete(turnId, {
       status:      'aborted',
       completedAt: Date.now(),
     });
-    this.registry.clear(sessionId, turnId);
+    this.registry.clear(sessionId, active);
   }
 
   /**
@@ -160,12 +165,12 @@ export class TurnStore {
    * aborted/cancelled，避免协调层与执行器双写终态。用户主动取消走 abortTurn。
    */
   requestAbort(sessionId: string, turnId: string): void {
-    this.registry.abort(sessionId, turnId);
+    this.registry.abort(sessionId, { kind: 'turn', turnId });
   }
 
   /** 只释放指定 Turn 的运行锁，迟到 finally 不得清掉同 Session 的后继 Turn。 */
   clearRunning(sessionId: string, turnId: string): void {
-    this.registry.clear(sessionId, turnId);
+    this.registry.clear(sessionId, { kind: 'turn', turnId });
   }
 
   /** 启动时将崩溃遗留的 running Turn 收口为 aborted。 */
@@ -182,18 +187,8 @@ export class TurnStore {
   }
 
   getActiveTurn(sessionId: string): Turn | undefined {
-    const turnId = this.registry.getActiveExecution(sessionId)?.executionId;
-    return turnId ? this.getTurn(turnId) : undefined;
-  }
-
-  /** 后台派生缓存只在所有前台 Turn 都结束后执行维护。 */
-  hasActiveTurns(): boolean {
-    return this.registry.activeSessionCount() > 0;
-  }
-
-  /** Server 通过活动数量变化及时抢占低优先级维护，不需要轮询 Session。 */
-  subscribeActiveTurns(listener: (activeCount: number) => void): () => void {
-    return this.registry.subscribe(listener);
+    const active = this.registry.getActiveSession(sessionId);
+    return active?.kind === 'turn' ? this.getTurn(active.turnId) : undefined;
   }
 
   // ── Session 删除守卫 ────────────────────────────────────────────────────────
@@ -209,8 +204,8 @@ export class TurnStore {
       throw new Error(`session_deleting: ${id}`);
     }
     this.deletingSessions.add(id);
-    const activeTurnId = this.registry.getActiveExecution(id)?.executionId;
-    if (activeTurnId) this.registry.abort(id, activeTurnId);
+    const active = this.registry.getActiveSession(id);
+    if (active) this.registry.abort(id, active);
   }
 
   /** 跨模块准备失败时恢复 Session 的可运行状态。 */
@@ -268,10 +263,8 @@ export class TurnStore {
   // ── 回滚 ────────────────────────────────────────────────────────────────────
 
   /**
-   * 仅回滚一个 Session 的最后一轮，供最后一条用户消息重新编辑并发送。
-   *
-   * 这不是任意历史删除：运行中的 Turn、非最新 Turn，以及已被持久 Task
-   * 引用的 Turn 都会拒绝。文件、网络请求等外部副作用不会被伪装成已撤销。
+   * 删除一个 Session 的最后一整个 Turn。当前 UI 禁止消息回退；此入口仅保留给后端，
+   * TODO: 若未来恢复消息编辑，先设计 Message 级截断语义，不能把整 Turn 删除伪装成消息回退。
    */
   rewindLastTurn(sessionId: string, turnId: string): { turnId: string } {
     this.assertTurnOwnership(sessionId, turnId);

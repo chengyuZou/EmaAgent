@@ -52,7 +52,7 @@ const inputSchema = z.object({
     .max(4)
     .describe('Questions to ask (1–4).'),
 }).superRefine((value, ctx) => {
-  // Claude 同款唯一性: 问题文本不可重复;同题内选项 label 不可重复。
+  // 问题文本不可重复;同题内选项 label 不可重复。
   const seen = new Set<string>();
   value.questions.forEach((q, qi) => {
     if (seen.has(q.question)) {

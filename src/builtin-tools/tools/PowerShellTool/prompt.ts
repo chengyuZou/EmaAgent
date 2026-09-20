@@ -1,5 +1,4 @@
 // PowerShellTool 的模型说明书:静态 description(契约冻结),版本差异用保守双写覆盖。
-// 结构对照 Claude PowerShellTool/prompt.ts;无 run_in_background(V1 只有前台+超时)。
 
 const DEFAULT_TIMEOUT_MS = 120_000;
 const MAX_TIMEOUT_MS = 600_000;

@@ -1,5 +1,5 @@
 // 定义历史压缩过程公开的业务事件。Session 域事件：不携带 Turn 身份——
-// 自动压缩由 Turn 包一层投影为 TurnEvent，手动压缩由 Command 自己的出口返回。
+// 自动/子代理压缩由 Turn 包一层投影，手动压缩直接投递到 Session WebSocket。
 interface CompactEventBase {
   readonly compactId: string;
   readonly sessionId: string;

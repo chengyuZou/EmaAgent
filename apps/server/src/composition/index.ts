@@ -3,7 +3,7 @@
 import { characterStageVocabulary } from '@ema-agent/characters';
 import type { BackgroundProcessNotifiableStatus } from '@ema-agent/tools';
 import { AppEvents } from '../application/appEvents.js';
-import { AgentSocketConnections } from '../routes/ws/agent.js';
+import { SessionSocketConnections } from '../routes/ws/session.js';
 import { TurnFanout } from '../application/turnFanout.js';
 import { openBackup, type BackupComposition } from './backup.js';
 import { openCharacters, type CharactersComposition } from './characters.js';
@@ -31,7 +31,7 @@ export interface Composition {
   readonly commands: CommandsComposition;
   readonly memory: MemoryComposition;
   readonly backup: BackupComposition;
-  readonly agentConnections: AgentSocketConnections;
+  readonly sessionConnections: SessionSocketConnections;
   readonly appEvents: AppEvents;
   readonly turnFanout: TurnFanout;
   /** 先停执行对象和后台工作, 最后关闭数据库. */
@@ -46,7 +46,10 @@ export function buildComposition(input: {
   const database = openDatabases(input.activeDataDir, event => appEvents.emit(event));
   const settings = openSettings(database.profileDb);
   const providers = openProviders(database.profileDb);
-  const agentConnections = new AgentSocketConnections();
+  const sessionConnections = new SessionSocketConnections();
+  const stopPublishingActiveSessions = database.activeSessions.subscribe((sessionId, active) => {
+    sessionConnections.publish(sessionId, { type: 'active_session_changed', active });
+  });
   // Tools 在 Composition 返回前没有调用入口, 因此装配期间不可能产生真实完成通知.
   // 先放空出口打断构造顺序, openTurns 完成后再接到唯一 Session 队列.
   let notifyBackgroundCompletion = (
@@ -134,8 +137,19 @@ export function buildComposition(input: {
     usageRecorder: database.usageRecorder,
   });
   const turnFanout = new TurnFanout({
-    publishTurnEvent: (sessionId, turnId, event) => {
-      agentConnections.publish(sessionId, { type: 'turn_event', turnId, event });
+    publishTurnEvent: (sessionId, turnId, event, ttsEnabled) => {
+      if (event.type === 'user_message_stored') {
+        sessionConnections.publish(sessionId, event);
+      } else if (event.type === 'turn_started') {
+        sessionConnections.publish(sessionId, {
+          type: 'turn_event',
+          turnId,
+          event,
+          ttsEnabled,
+        });
+      } else {
+        sessionConnections.publish(sessionId, { type: 'turn_event', turnId, event });
+      }
     },
     emitAppEvent: event => appEvents.emit(event),
     startTurnSpeech: speech.startTurnSpeech,
@@ -152,9 +166,9 @@ export function buildComposition(input: {
     emitAppEvent: event => appEvents.emit(event),
     onTurnCompletedInTransaction: turnId => memory.enqueueTurnExtraction(turnId),
     publishAgentRun: (sessionId, event) => {
-      agentConnections.publish(sessionId, { type: 'agent_run_event', event });
+      sessionConnections.publish(sessionId, { type: 'agent_run_event', event });
     },
-    publishQueuedInput: (sessionId, event) => agentConnections.publish(sessionId, event),
+    publishQueuedInput: (sessionId, event) => sessionConnections.publish(sessionId, event),
     fanout: turnFanout,
   });
   notifyBackgroundCompletion = (sessionId, backgroundProcessId, status) => {
@@ -167,6 +181,7 @@ export function buildComposition(input: {
     tools,
     characters,
     turn,
+    publishCompactEvent: event => sessionConnections.publish(event.sessionId, event),
   });
   const backup = openBackup(database.dataDb, input.activeDataDir, providers.providerModels);
   return {
@@ -182,14 +197,15 @@ export function buildComposition(input: {
     commands,
     memory,
     backup,
-    agentConnections,
+    sessionConnections,
     appEvents,
     turnFanout,
     async close() {
-      // 先封住自动续接, 再中止并等待根 Turn/手动压缩释放 Session 坑位.
+      // 先封住自动续接, 再中止并等待根 Turn/手动 Compact 清除各自的 Session 运行记录.
       // 否则数据库关闭后, 在执行 Turn 的 finally 仍可能继续落终态或启动下一根 Turn.
       turn.continuations.shutdown();
       await database.activeSessions.abortAll();
+      stopPublishingActiveSessions();
       await turn.agentRuns.shutdown('Application is shutting down');
       await tools.backgroundProcesses.shutdown();
       memory.shutdown();

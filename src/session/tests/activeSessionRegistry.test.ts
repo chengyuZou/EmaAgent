@@ -1,13 +1,13 @@
-// 测试 ActiveSessionRegistry：kind 标签、身份匹配取消与 Session 删除的坑位释放等待。
+// 测试 ActiveSessionRegistry: 真实工作身份、身份匹配取消与 Session 删除等待.
 import { describe, expect, it } from 'vitest';
 import { ActiveSessionRegistry } from '../activeSessionRegistry.js';
 
 describe('ActiveSessionRegistry', () => {
-  it('register 记录 kind，getActiveExecution 返回身份与 kind', () => {
+  it('register 记录 Turn 或 Compact 的真实身份', () => {
     const registry = new ActiveSessionRegistry();
-    registry.register('s1', 'exec-1', 'compact');
-    expect(registry.getActiveExecution('s1')).toEqual({
-      executionId: 'exec-1',
+    registry.register('s1', { kind: 'compact', compactId: 'compact-1' });
+    expect(registry.getActiveSession('s1')).toEqual({
+      compactId: 'compact-1',
       kind: 'compact',
     });
   });
@@ -16,7 +16,8 @@ describe('ActiveSessionRegistry', () => {
     const registry = new ActiveSessionRegistry();
     await registry.waitUntilIdle('s0');
 
-    registry.register('s1', 'exec-1', 'turn');
+    const turn = { kind: 'turn', turnId: 'turn-1' } as const;
+    registry.register('s1', turn);
     let resolved = false;
     const pending = registry.waitUntilIdle('s1').then(() => {
       resolved = true;
@@ -24,11 +25,11 @@ describe('ActiveSessionRegistry', () => {
     await Promise.resolve();
     expect(resolved).toBe(false);
 
-    registry.clear('s1', 'exec-1');
+    registry.clear('s1', turn);
     await pending;
     expect(resolved).toBe(true);
 
-    registry.register('s2', 'exec-2', 'compact');
+    registry.register('s2', { kind: 'compact', compactId: 'compact-2' });
     const discarded = registry.waitUntilIdle('s2');
     registry.discardSession('s2');
     await discarded;
@@ -36,20 +37,23 @@ describe('ActiveSessionRegistry', () => {
 
   it('clear 只清身份匹配的条目，迟到清理不影响 waitUntilIdle', async () => {
     const registry = new ActiveSessionRegistry();
-    registry.register('s1', 'exec-1', 'compact');
-    expect(registry.clear('s1', 'other')).toBe(false);
+    const compact = { kind: 'compact', compactId: 'compact-1' } as const;
+    registry.register('s1', compact);
+    expect(registry.clear('s1', { kind: 'compact', compactId: 'other' })).toBe(false);
 
     const pending = registry.waitUntilIdle('s1');
-    registry.clear('s1', 'exec-1');
+    registry.clear('s1', compact);
     await pending;
   });
 
   it('abortAll 并发通知全部 Turn 与 Compact，并等待执行所有者清理', async () => {
     const registry = new ActiveSessionRegistry();
-    const turnSignal = registry.register('s1', 'turn-1', 'turn');
-    const compactSignal = registry.register('s2', 'compact-1', 'compact');
-    turnSignal.addEventListener('abort', () => registry.clear('s1', 'turn-1'));
-    compactSignal.addEventListener('abort', () => registry.clear('s2', 'compact-1'));
+    const turn = { kind: 'turn', turnId: 'turn-1' } as const;
+    const compact = { kind: 'compact', compactId: 'compact-1' } as const;
+    const turnSignal = registry.register('s1', turn);
+    const compactSignal = registry.register('s2', compact);
+    turnSignal.addEventListener('abort', () => registry.clear('s1', turn));
+    compactSignal.addEventListener('abort', () => registry.clear('s2', compact));
 
     await registry.abortAll();
 
@@ -71,12 +75,12 @@ describe('ActiveSessionRegistry', () => {
       order.push('second');
     });
 
-    expect(() => registry.register('s1', 'turn-1', 'turn')).toThrow('session_busy');
+    expect(() => registry.register('s1', { kind: 'turn', turnId: 'turn-1' })).toThrow('session_busy');
     await Promise.resolve();
     expect(order).toEqual(['first-start']);
     releaseFirst();
     await Promise.all([first, second]);
     expect(order).toEqual(['first-start', 'first-end', 'second']);
-    expect(registry.register('s1', 'turn-2', 'turn').aborted).toBe(false);
+    expect(registry.register('s1', { kind: 'turn', turnId: 'turn-2' }).aborted).toBe(false);
   });
 });

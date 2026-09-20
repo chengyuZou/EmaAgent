@@ -3,8 +3,8 @@
 /**
  * 单次读取给模型的正文字节预算。
  * 超出部分标 truncated + nextOffset 翻页——分页续读比直接拒绝更省 token
- * (拒绝 = 错误 + 再次完整调用; 翻页 = 确定的增量)。Claude 的实验同结论:
- * 超限 throw 会让平均 token 上涨(见 claude-code FileReadTool/limits.ts 注)。
+ * (拒绝 = 错误 + 再次完整调用; 翻页 = 确定的增量)
+ * 超限 throw 会让平均 token 上涨
  */
 export const SELECTED_BYTES_LIMIT = 50 * 1024;
 
@@ -17,7 +17,7 @@ export const MAX_READ_LINES = 2000;
 /** 超过此体积的文本只允许分页读取(流式), 整读直接拒绝。 */
 export const TEXT_WHOLE_READ_LIMIT = 10 * 1024 * 1024;
 
-/** 图片原文件上限: 取各 Provider 图片限制的保守下限(Anthropic ~5MB)。 */
+/** 图片原文件上限: 取各 Provider 图片限制的保守下限 */
 export const IMAGE_FILE_SIZE_LIMIT = 5 * 1024 * 1024;
 
 /** Notebook(.ipynb)原文件上限: JSON 文本可含大量输出(base64 图片), 但仍是文本;

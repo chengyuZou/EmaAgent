@@ -1,4 +1,4 @@
-// 纯 fs 的祖先 .git 走查:不启动 git 进程即可快速判断目录是否位于仓库内,与 codex 的检测顺序一致。
+// 纯 fs 的祖先 .git 走查:不启动 git 进程即可快速判断目录是否位于仓库内
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 

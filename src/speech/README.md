@@ -15,7 +15,9 @@ Turn output_text_delta
              `- merged/<turnId>.mp3  Turn 完整音频
 ```
 
-`session_audio_changed { sessionId }` 只在合并音频写入 `speech_outputs` 后由应用装配发送；临时分段和实时音频帧不触发跨窗口统计刷新。
+`session_audio_changed { sessionId, turnId }` 只在合并音频写入 `speech_outputs`
+后发送. Chat 用 `turnId` 只重读这一轮的音频可用状态, 临时分段和实时音频帧不触发
+跨窗口统计刷新.
 
 ## 定死的边界
 

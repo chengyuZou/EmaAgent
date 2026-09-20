@@ -63,13 +63,27 @@ describe('TurnMessageWriter', () => {
     });
     await writer.apply({
       type: 'tool_result',
-      result: { type: 'tool_result', toolCallId: 'c1', content: '文件内容', isError: false },
+      result: {
+        type: 'tool_result',
+        toolCallId: 'c1',
+        content: '文件内容',
+        data: { path: '/a', text: '文件内容' },
+        isError: false,
+        durationMs: 42,
+      },
     } as AgentLoopEvent);
 
     const toolResults = fake.appends.filter(a => a.kind === 'tool_results');
     expect(toolResults).toHaveLength(1);
     expect(toolResults[0]!.blocks).toEqual([
-      { type: 'tool_result', toolCallId: 'c1', content: '文件内容', isError: false },
+      {
+        type: 'tool_result',
+        toolCallId: 'c1',
+        content: '文件内容',
+        data: { path: '/a', text: '文件内容' },
+        isError: false,
+        durationMs: 42,
+      },
     ]);
 
     await writer.finish('completed');

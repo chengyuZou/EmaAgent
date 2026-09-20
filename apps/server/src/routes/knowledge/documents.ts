@@ -1,7 +1,7 @@
 // 文档资产查询与删除：分页列表、详情/预览/分块；路径段携带目标库 id。
 import { Hono } from 'hono';
 import { z } from 'zod';
-import type { KbManager } from '@ema-agent/knowledge';
+import type { KbManager, KnowledgeEvent } from '@ema-agent/knowledge';
 import { knowledgeError } from './errors.js';
 import { queryValidator } from '../validate.js';
 
@@ -14,6 +14,7 @@ export interface KnowledgeDocumentsRouteDeps {
     | 'getChunks'
     | 'deleteAsset'
   >;
+  readonly emit: (event: KnowledgeEvent) => void;
 }
 
 const listQuery = z.object({
@@ -60,5 +61,6 @@ export const knowledgeDocumentsRoute = (deps: KnowledgeDocumentsRouteDeps) =>
     .delete('/:id/documents/:docId', async context => {
       const deleted = await deps.kb.deleteAsset(context.req.param('id'), context.req.param('docId'));
       if (!deleted) return context.json({ error: 'asset_not_found' }, 404);
+      deps.emit({ type: 'kb_document_deleted', kbId: context.req.param('id'), assetId: context.req.param('docId') });
       return context.json({ ok: true });
     });

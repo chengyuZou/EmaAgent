@@ -49,7 +49,7 @@ function echoTool() {
     isReadOnly: () => true,
     isConcurrencySafe: () => true,
     checkPermissions: async () => ({ behavior: 'allow' as const }),
-    execute: async () => 'echo-ok',
+    execute: async () => ({ kind: 'echo_result' as const, value: 'echo-ok' }),
   });
 }
 
@@ -112,12 +112,6 @@ function makeStart(sessionId: string): StartTurn {
     executionProfile: 'work',
     narrativePolicy: 'off',
     input: [{ type: 'text', text: '你好' }],
-    modelSelection: {
-      providerId: 'p',
-      modelId: 'm',
-      thinkingEnabled: false,
-      thinkingEffort: 'medium',
-    },
   };
 }
 
@@ -126,7 +120,7 @@ describe('TurnExecutor 集成', () => {
     const db = new Database({ memory: true, kind: 'data' });
     db.migrate();
     const sessions = new SessionStore({ db });
-    const session = sessions.createSession({ cwd: os.tmpdir() });
+    const session = sessions.createSession({ cwd: os.tmpdir(), providerId: 'p', modelId: 'm' });
     const registry = new ToolRegistry();
     const llm = scriptedLlm([
       [
@@ -160,6 +154,13 @@ describe('TurnExecutor 集成', () => {
     const events: TurnStreamEvent[] = [];
     for await (const event of handle.events) events.push(event);
     expect(events.map(event => event.type)).toContain('turn_started');
+    expect(events.find(event => event.type === 'turn_started')).toMatchObject({
+      type: 'turn_started',
+      triggerType: 'userMessage',
+    });
+    expect(events.filter(event => event.type === 'user_message_stored')).toEqual([
+      { type: 'user_message_stored', message: messages[1] },
+    ]);
     expect(events.map(event => event.type)).toContain('output_text_delta');
     expect(events.map(event => event.type)).toContain('turn_completed');
     const contextEvents = events.filter(event => event.type === 'context_usage_updated');
@@ -188,7 +189,7 @@ describe('TurnExecutor 集成', () => {
     const db = new Database({ memory: true, kind: 'data' });
     db.migrate();
     const sessions = new SessionStore({ db });
-    const session = sessions.createSession({ cwd: os.tmpdir() });
+    const session = sessions.createSession({ cwd: os.tmpdir(), providerId: 'p', modelId: 'm' });
     const registry = new ToolRegistry();
     const requests: unknown[] = [];
     const llm: CallLlm = request => {
@@ -232,7 +233,7 @@ describe('TurnExecutor 集成', () => {
     const db = new Database({ memory: true, kind: 'data' });
     db.migrate();
     const sessions = new SessionStore({ db });
-    const session = sessions.createSession({ cwd: os.tmpdir() });
+    const session = sessions.createSession({ cwd: os.tmpdir(), providerId: 'p', modelId: 'm' });
     const registry = new ToolRegistry();
     const llm = scriptedLlm([
       [
@@ -268,7 +269,7 @@ describe('TurnExecutor 集成', () => {
     const db = new Database({ memory: true, kind: 'data' });
     db.migrate();
     const sessions = new SessionStore({ db });
-    const session = sessions.createSession({ cwd: os.tmpdir() });
+    const session = sessions.createSession({ cwd: os.tmpdir(), providerId: 'p', modelId: 'm' });
     const registry = new ToolRegistry();
     const llm = scriptedLlm([
       [
@@ -303,7 +304,7 @@ describe('TurnExecutor 集成', () => {
     const db = new Database({ memory: true, kind: 'data' });
     db.migrate();
     const sessions = new SessionStore({ db });
-    const session = sessions.createSession({ cwd: os.tmpdir() });
+    const session = sessions.createSession({ cwd: os.tmpdir(), providerId: 'p', modelId: 'm' });
     const registry = new ToolRegistry();
     const requests: unknown[] = [];
     const llm: CallLlm = request => {
@@ -362,7 +363,7 @@ describe('TurnExecutor 集成', () => {
     const db = new Database({ memory: true, kind: 'data' });
     db.migrate();
     const sessions = new SessionStore({ db });
-    const session = sessions.createSession({ cwd: os.tmpdir() });
+    const session = sessions.createSession({ cwd: os.tmpdir(), providerId: 'p', modelId: 'm' });
     const registry = new ToolRegistry();
     registry.register(echoTool());
     const llm = scriptedLlm([
@@ -375,7 +376,41 @@ describe('TurnExecutor 集成', () => {
         { type: 'done', stopReason: 'end_turn' },
       ],
     ]);
-    const deps = makeDeps({ db, llm, sessionId: session.id, registry });
+    const guidedInputs = [
+      {
+        id: 'guided-b',
+        sessionId: session.id,
+        input: [{ type: 'text' as const, text: '先引导 B' }],
+        createdAt: 1,
+        delivery: 'next_iteration' as const,
+      },
+      {
+        id: 'guided-a',
+        sessionId: session.id,
+        input: [{ type: 'text' as const, text: '再引导 A' }],
+        createdAt: 2,
+        delivery: 'next_iteration' as const,
+      },
+    ];
+    let guidedIndex = 0;
+    const acknowledge = vi.fn();
+    const deps = {
+      ...makeDeps({ db, llm, sessionId: session.id, registry }),
+      continuations: {
+        acknowledge,
+        claimNextIteration: (_sessionId: string, turnId: string) => {
+          const userInput = guidedInputs[guidedIndex++];
+          if (!userInput) return undefined;
+          return {
+            type: 'user_input' as const,
+            turnId,
+            userInput,
+          };
+        },
+        release: () => undefined,
+        turnCompleted: () => undefined,
+      } as never,
+    };
     const executor = new TurnExecutor(deps);
 
     const handle = executor.start(makeStart(session.id));
@@ -389,10 +424,103 @@ describe('TurnExecutor 集成', () => {
       'user:normal',
       'assistant:normal',
       'user:tool_results',
+      'user:normal',
+      'user:normal',
       'assistant:normal',
     ]);
     expect(JSON.stringify(messages[2]!.blocks)).toContain('Echo');
     expect(JSON.stringify(messages[3]!.blocks)).toContain('echo-ok');
+    const events: TurnStreamEvent[] = [];
+    for await (const event of handle.events) events.push(event);
+    expect(events.filter(event => event.type === 'tool_result')).toEqual([{
+      type: 'tool_result',
+      sessionId: session.id,
+      callId: 'c1',
+      name: 'Echo',
+      output: { kind: 'echo_result', value: 'echo-ok' },
+      durationMs: expect.any(Number),
+    }]);
+    expect(events
+      .filter(event => event.type === 'user_message_stored')
+      .map(event => event.message.blocks))
+      .toEqual(['你好', '先引导 B', '再引导 A']);
+    // 初始用户输入确认一次，两条 guided 各自在落库后确认一次.
+    expect(acknowledge).toHaveBeenCalledTimes(3);
+    db.close();
+  });
+
+  it('第二条 guided 准备失败时只释放第二条, 第一条不重复交付', async () => {
+    const db = new Database({ memory: true, kind: 'data' });
+    db.migrate();
+    const sessions = new SessionStore({ db });
+    const session = sessions.createSession({ cwd: os.tmpdir(), providerId: 'p', modelId: 'm' });
+    const registry = new ToolRegistry();
+    registry.register(echoTool());
+    const llm = scriptedLlm([[
+      { type: 'tool_use_complete', blockIndex: 0, callId: 'c1', name: 'Echo', args: {} },
+      { type: 'done', stopReason: 'tool_use' },
+    ]]);
+    const guidedInputs = [
+      {
+        id: 'guided-first',
+        sessionId: session.id,
+        input: [{ type: 'text' as const, text: '已经成功的第一条' }],
+        createdAt: 1,
+        delivery: 'next_iteration' as const,
+      },
+      {
+        id: 'guided-second',
+        sessionId: session.id,
+        input: [{
+          type: 'attachment' as const,
+          block: { type: 'file_reference' as const, path: 'missing.txt' },
+        }],
+        createdAt: 2,
+        delivery: 'next_iteration' as const,
+      },
+    ];
+    const operations: string[] = [];
+    let nextInput = 0;
+    let claimedInputId: string | undefined;
+    const deps = {
+      ...makeDeps({ db, llm, sessionId: session.id, registry }),
+      attachments: {
+        attach: async () => { throw new Error('附件不可用'); },
+        getMany: () => new Map(),
+      } as unknown as AttachmentStore,
+      continuations: {
+        acknowledge: () => {
+          if (!claimedInputId) return;
+          operations.push(`ack:${claimedInputId}`);
+          claimedInputId = undefined;
+        },
+        claimNextIteration: (_sessionId: string, turnId: string) => {
+          const userInput = guidedInputs[nextInput++];
+          if (!userInput) return undefined;
+          claimedInputId = userInput.id;
+          return { type: 'user_input' as const, turnId, userInput };
+        },
+        release: () => {
+          if (!claimedInputId) return;
+          operations.push(`release:${claimedInputId}`);
+          claimedInputId = undefined;
+        },
+        turnCompleted: () => undefined,
+      } as never,
+    };
+
+    const handle = new TurnExecutor(deps).start(makeStart(session.id));
+    const outcome = await handle.completion;
+
+    expect(outcome.status).toBe('failed');
+    expect(operations).toEqual([
+      'ack:guided-first',
+      'release:guided-second',
+    ]);
+    expect(sessions.loadMessagesForTurn(handle.turnId)
+      .filter(message => message.role === 'user' && message.kind === 'normal')
+      .map(message => message.blocks))
+      .toEqual(['你好', '已经成功的第一条']);
     db.close();
   });
 });

@@ -10,6 +10,7 @@ import type {
 import { estimateLlmInputTokens, estimateMessagesTokens } from '@ema-agent/token';
 import type { CompactEvent } from '../events.js';
 import { createCompact } from '../compactMessages.js';
+import { buildCompactPrompt } from '../compactPrompt.js';
 import { microCompact } from '../microCompact.js';
 import type { CompactRequest } from '../types.js';
 
@@ -84,6 +85,49 @@ function readHistory(count = 8, repeat = 200): Message[] {
   }
   return messages;
 }
+
+describe('buildCompactPrompt', () => {
+  it('Chat 与 Work 使用同一套交接结构，只改变摘要侧重点', () => {
+    const chat = buildCompactPrompt({ executionProfile: 'chat' });
+    const work = buildCompactPrompt({ executionProfile: 'work' });
+    const sharedHeadings = [
+      '## Current Objective and State',
+      '## Active Instructions and Corrections',
+      '## Confirmed Decisions',
+      '## Relevant Context and Evidence',
+      '## Completed Work',
+      '## Open Work and Unknowns',
+      '## Interaction Context',
+      '## Continuation Point',
+    ];
+
+    for (const heading of sharedHeadings) {
+      expect(chat).toContain(heading);
+      expect(work).toContain(heading);
+    }
+    expect(chat).toContain('chat profile');
+    expect(work).toContain('work profile');
+    expect(chat).toContain('profile changes emphasis only');
+    expect(work).toContain('profile changes emphasis only');
+  });
+
+  it('角色人设只帮助理解历史，不复制进摘要', () => {
+    const prompt = buildCompactPrompt({ executionProfile: 'chat' });
+
+    expect(prompt).toContain('Use the current character persona to understand');
+    expect(prompt).toContain('do not copy or rewrite the persona');
+    expect(prompt).toContain('next turn receives those authoritative System messages again');
+  });
+
+  it('保留最新有效约束并区分证据、提议与猜测', () => {
+    const prompt = buildCompactPrompt({ executionProfile: 'work' });
+
+    expect(prompt).toContain('Newer user instructions override older ones');
+    expect(prompt).toContain('Do not promote an assistant proposal');
+    expect(prompt).toContain('Distinguish tool-verified evidence');
+    expect(prompt).not.toContain('verbatim quotes of every user message');
+  });
+});
 
 describe('createCompact', () => {
   it('低于阈值时原样返回历史且不调用模型', async () => {
@@ -252,7 +296,7 @@ describe('createCompact', () => {
     const sent = complete.mock.calls[0]?.[0]?.messages;
     expect(sent?.[0]).toMatchObject({ role: 'system', content: '产品系统提示' });
     expect(String(sent?.[1]?.content)).toContain('huge');
-    expect(String(sent?.at(-1)?.content)).toContain('compact agent');
+    expect(String(sent?.at(-1)?.content)).toContain('compacting the older portion');
   });
 
   it('摘要请求透传根 Turn 冻结的 tools 与 thinking 配置', async () => {

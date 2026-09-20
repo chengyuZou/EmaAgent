@@ -35,7 +35,7 @@ export interface DatabaseComposition {
 
   readonly session: SessionStore;
   readonly turns: TurnStore;
-  /** Session 级活跃执行坑位：根 Turn 与手动 compact 共享互斥（commands 装配同源注入）。 */
+  /** 根 Turn 与手动 Compact 共享的 Session 运行记录; Commands、Route 和 TurnStore 均使用这一实例. */
   readonly activeSessions: ActiveSessionRegistry;
   readonly attachments: AttachmentStore;
   /** 粘贴端点直接调用;attachmentStore 内部共享同一实例。 */

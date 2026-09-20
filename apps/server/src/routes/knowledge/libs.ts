@@ -4,15 +4,17 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { KnowledgeInvalidRequestError, type KbManager } from '@ema-agent/knowledge';
 import type { ProviderModels } from '@ema-agent/providers';
+import type { KnowledgeEvent } from '@ema-agent/knowledge';
 import { knowledgeError } from './errors.js';
 import { jsonBody } from '../validate.js';
 
 export interface KnowledgeLibsRouteDeps {
   readonly kb: Pick<
     KbManager,
-    'listKbSummaries' | 'getKb' | 'createKb' | 'renameKb' | 'setActiveKb' | 'unregisterKb' | 'setEmbed' | 'setRerank'
+    'listKbSummaries' | 'getKb' | 'getActiveKb' | 'createKb' | 'renameKb' | 'setActiveKb' | 'unregisterKb' | 'setEmbed' | 'setRerank'
   >;
   readonly providerModels: Pick<ProviderModels, 'get'>;
+  readonly emit: (event: KnowledgeEvent) => void;
 }
 
 const createBody = z.object({
@@ -44,7 +46,9 @@ export const knowledgeLibsRoute = (deps: KnowledgeLibsRouteDeps) =>
     .post('/libs', jsonBody(createBody), async context => {
       const { name, path } = context.req.valid('json');
       try {
-        return context.json(await deps.kb.createKb(name, path), 201);
+        const created = await deps.kb.createKb(name, path);
+        deps.emit({ type: 'kb_library_list_changed' });
+        return context.json(created, 201);
       } catch (error) {
         const mapped = knowledgeError(context, error);
         if (mapped) return mapped;
@@ -56,11 +60,16 @@ export const knowledgeLibsRoute = (deps: KnowledgeLibsRouteDeps) =>
         return context.json({ error: 'kb_not_found' }, 404);
       }
       deps.kb.renameKb(context.req.param('id'), context.req.valid('json').name);
+      deps.emit({ type: 'kb_library_list_changed' });
       return context.json({ ok: true });
     })
     .post('/libs/:id/activate', context => {
+      const previousActiveId = deps.kb.getActiveKb()?.id;
       if (!deps.kb.setActiveKb(context.req.param('id'))) {
         return context.json({ error: 'kb_not_found' }, 404);
+      }
+      if (previousActiveId !== context.req.param('id')) {
+        deps.emit({ type: 'kb_active_changed', kbId: context.req.param('id') });
       }
       return context.json({ ok: true });
     })
@@ -91,7 +100,12 @@ export const knowledgeLibsRoute = (deps: KnowledgeLibsRouteDeps) =>
       if (!deps.kb.getKb(context.req.param('id'))) {
         return context.json({ error: 'kb_not_found' }, 404);
       }
+      const previousActiveId = deps.kb.getActiveKb()?.id;
       await deps.kb.unregisterKb(context.req.param('id'));
+      deps.emit({ type: 'kb_library_list_changed' });
+      if (previousActiveId === context.req.param('id')) {
+        deps.emit({ type: 'kb_active_changed', kbId: deps.kb.getActiveKb()?.id ?? null });
+      }
       return context.json({ ok: true });
     });
 

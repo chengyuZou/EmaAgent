@@ -506,7 +506,6 @@ export class ToolCallExecution {
     return Object.freeze({
       sessionId: this.environment.sessionId,
       turnId: this.environment.turnId,
-      agentRunId: this.environment.agentRunId,
       toolCallId: this.id,
       signal,
     });

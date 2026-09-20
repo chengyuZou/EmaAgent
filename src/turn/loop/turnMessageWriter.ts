@@ -184,7 +184,9 @@ function toToolResultBlock(result: ToolResult) {
     type: 'tool_result' as const,
     toolCallId: result.toolCallId,
     content: result.content,
+    ...(result.data !== undefined ? { data: result.data } : {}),
     ...(result.isError !== undefined ? { isError: result.isError } : {}),
+    ...(result.durationMs !== undefined ? { durationMs: result.durationMs } : {}),
     ...(result.errorCode !== undefined ? { errorCode: result.errorCode } : {}),
   };
 }

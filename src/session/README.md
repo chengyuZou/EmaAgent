@@ -4,7 +4,7 @@
 
 ## 领域事实
 
-- **Session**：标题、非空 `cwd`、projectId、createdAt/updatedAt/lastActivityAt、archivedAt、pinned、fork 溯源双列、executionProfile、narrativePolicy、当前模型（providerId/modelId）、lastViewedAt。`cwd` 是命令和相对路径的起点，新建时选定，此后只由用户显式修改。Storage 的 `sidebar_order` 只表达所在侧栏分区内的顺序，不进入 Session API；拖放与新 Turn 开始会更新它。
+- **Session**：标题、非空 `cwd`、projectId、createdAt/updatedAt/lastActivityAt、archivedAt、pinned、fork 溯源双列、executionProfile、narrativePolicy、当前模型（providerId/modelId）与推理强度（reasoningEffort）、lastViewedAt。模型身份成对保存, `'off'` 表示关闭推理；普通消息不携带本轮覆盖值。`cwd` 是命令和相对路径的起点，新建时选定，此后只由用户显式修改。Storage 的 `sidebar_order` 只表达所在侧栏分区内的顺序，不进入 Session API；拖放与新 Turn 开始会更新它。
 - **SessionListItem** = Session + 列表投影三字段（hasActiveTurn / lastTurnStatus / hasUnread）。三字段只由列表/搜索 SQL 的 CTE 算出；单查路径返回裸 Session，不允许伪造投影。
 - **Project**：id、name、pinned、createdAt、updatedAt、folders[]、sessions[]。可以没有源文件夹；有文件夹时其中一个为主。侧栏 Project 的 sessions[] 只包含当前在项目区显示的成员，置顶 Session 单独进入置顶桶。Storage 的 `sidebar_order` 独立保存 Project 在置顶/普通项目区的顺序。
 - **Message**：sessionId、可空 turnId（null = /compact summary 等 Session 级消息）、role、kind（normal / reminder / tool_results / summary）、blocks、interrupted、createdAt。用户块允许 `attachment_ref` 与 `skill_ref`，只保存稳定引用，不复制附件正文或 SKILL.md。

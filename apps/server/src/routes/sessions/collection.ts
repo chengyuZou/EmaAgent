@@ -11,6 +11,11 @@ const createSessionBody = z.object({
   executionProfile: z.enum(['chat', 'work']).optional(),
   narrativePolicy: z.enum(['auto', 'always', 'off']).optional(),
   permissionMode: z.enum(['default', 'acceptEdits', 'bypassPermissions']).optional(),
+  providerId: z.string().min(1).optional(),
+  modelId: z.string().min(1).optional(),
+  reasoningEffort: z.enum(['off', 'low', 'medium', 'high', 'max']).optional(),
+}).refine(body => (body.providerId === undefined) === (body.modelId === undefined), {
+  message: 'providerId 与 modelId 必须同时提供',
 });
 
 const searchQuery = z.object({

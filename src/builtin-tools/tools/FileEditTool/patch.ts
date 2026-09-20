@@ -1,4 +1,3 @@
-// FileEditTool 的结构化补丁生成: hunk 形状与 Claude 的 hunkSchema 对齐,UI 直接消费。
 import { structuredPatch } from 'diff';
 
 export interface PatchHunk {

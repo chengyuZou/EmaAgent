@@ -74,7 +74,7 @@ async function compactMessages(args: {
     return unchanged();
   }
 
-  const compactId = randomUUID();
+  const compactId = request.compactId ?? randomUUID();
   // Micro：大 ToolResult 占位替换（请求级开关；手动 /compact 关闭——替换从不落库，
   // 命令路径只要纯粹的 Macro 摘要）。
   const working = request.micro === false

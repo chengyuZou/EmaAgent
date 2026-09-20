@@ -1,11 +1,10 @@
 /**
- * ToolInvocation 在准备阶段后创建，并贯穿校验、权限、执行、进度和审计。
- * 根 Agent 与子 Agent 共用父 Turn；只有子 Agent 调用额外携带 agentRunId。
+ * ToolInvocation 在准备阶段后创建，并贯穿校验、权限和执行。
+ * Tool 属于哪个 AgentRun 由执行环境写入 tool_executions, 具体 Tool 不读取这项归属。
  */
 export interface ToolInvocation {
   readonly sessionId: string;
   readonly turnId: string;
-  readonly agentRunId?: string;
   readonly toolCallId: string;
   readonly signal: AbortSignal;
 }

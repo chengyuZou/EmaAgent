@@ -90,6 +90,9 @@ export class SessionStore {
   // ── Session ─────────────────────────────────────────────────────────────────
 
   createSession(input: CreateSessionInput = {}): Session {
+    if ((input.providerId === undefined) !== (input.modelId === undefined)) {
+      throw new Error('session_model_pair_required');
+    }
     const id  = crypto.randomUUID();
     const now = this.nextTs();
     const title = (input.title?.trim() || DEFAULT_SESSION_TITLE);
@@ -118,6 +121,9 @@ export class SessionStore {
         executionProfile: input.executionProfile,
         narrativePolicy: input.narrativePolicy,
         permissionMode: input.permissionMode,
+        providerId: input.providerId,
+        modelId: input.modelId,
+        reasoningEffort: input.reasoningEffort,
         createdAt: now,
         updatedAt: now,
         lastActivityAt: now,
@@ -225,6 +231,9 @@ export class SessionStore {
     id: string,
     patch: PatchSessionInput,
   ): void {
+    if ((patch.providerId === undefined) !== (patch.modelId === undefined)) {
+      throw new Error('session_model_pair_required');
+    }
     const cleaned: Parameters<SessionsRepo['patch']>[1] = {};
 
     if (patch.title !== undefined) {
@@ -239,9 +248,9 @@ export class SessionStore {
     if (patch.executionProfile !== undefined) cleaned.executionProfile = patch.executionProfile;
     if (patch.narrativePolicy !== undefined) cleaned.narrativePolicy = patch.narrativePolicy;
     if (patch.permissionMode !== undefined) cleaned.permissionMode = patch.permissionMode;
-    if (patch.model !== undefined) {
-      cleaned.model = patch.model;
-    }
+    if (patch.providerId !== undefined) cleaned.providerId = patch.providerId;
+    if (patch.modelId !== undefined) cleaned.modelId = patch.modelId;
+    if (patch.reasoningEffort !== undefined) cleaned.reasoningEffort = patch.reasoningEffort;
 
     if (Object.keys(cleaned).length === 0) return;
 
@@ -568,20 +577,28 @@ export class SessionStore {
     return interaction;
   }
 
-  /** UI 正文分页：返回旧到新的一页，游标只允许原样回传。 */
+  /** UI 正文分页: 始终返回旧到新的消息, 方向由 before/after 决定. */
   listMessages(sessionId: string, input: ListMessagesInput = {}): MessagePage {
     const limit = messageReadLimit(input.limit, MESSAGE_PAGE_DEFAULT_LIMIT, 'message_page_limit');
     this.requireSession(sessionId);
-    // UI 正文分页固定从新往旧取再 reverse 成旧到新展示;排序方向不受存储页查看器影响。
+    if (input.before !== undefined && input.after !== undefined) {
+      throw new Error('message_cursor_direction_conflict');
+    }
+    const readsNewer = input.after !== undefined;
+    const cursor = input.before ?? input.after;
     const page = this.messagesRepo.listPage(
       sessionId,
-      input.before ? decodeMessageCursor(input.before) : undefined,
+      cursor !== undefined ? decodeMessageCursor(cursor) : undefined,
       limit,
-      'desc',
+      readsNewer ? 'asc' : 'desc',
     );
     return {
-      messages: [...page.rows].reverse().map(toMessage),
-      ...(page.nextCursor ? { olderCursor: encodeMessageCursor(page.nextCursor) } : {}),
+      messages: (readsNewer ? page.rows : [...page.rows].reverse()).map(toMessage),
+      ...(page.nextCursor
+        ? readsNewer
+          ? { newerCursor: encodeMessageCursor(page.nextCursor) }
+          : { olderCursor: encodeMessageCursor(page.nextCursor) }
+        : {}),
     };
   }
 
@@ -602,10 +619,16 @@ export class SessionStore {
       after,
     );
     if (!window) throw new Error(`message_not_found: ${input.anchorMessageId}`);
+    const first = window.rows[0]!;
+    const last = window.rows.at(-1)!;
     return {
       messages: window.rows.map(toMessage),
-      hasOlder: window.hasOlder,
-      hasNewer: window.hasNewer,
+      ...(window.hasOlder
+        ? { olderCursor: encodeMessageCursor({ createdAt: first.created_at, id: first.id }) }
+        : {}),
+      ...(window.hasNewer
+        ? { newerCursor: encodeMessageCursor({ createdAt: last.created_at, id: last.id }) }
+        : {}),
     };
   }
 

@@ -10,6 +10,7 @@ export type ExecutionProfileRow = 'chat' | 'work';
 /** sessions/turns 行上的剧情策略枚举（SQL CHECK 原样）。 */
 export type NarrativePolicyRow = 'auto' | 'always' | 'off';
 export type PermissionModeRow = 'default' | 'acceptEdits' | 'bypassPermissions';
+export type ReasoningEffortRow = 'off' | 'low' | 'medium' | 'high' | 'max';
 
 export interface SessionRow {
   id: string;
@@ -32,10 +33,11 @@ export interface SessionRow {
   execution_profile: ExecutionProfileRow;
   narrative_policy: NarrativePolicyRow;
   permission_mode: PermissionModeRow;
-  /** 该 Session 当前使用的供应商配置；null 表示使用系统默认选择。 */
+  /** null 表示尚未选模型, 不能开始 Turn. */
   provider_id: string | null;
-  /** 该 Session 当前使用的模型；null 表示使用系统默认选择。 */
+  /** 与 provider_id 成对保存; null 时不能开始 Turn. */
   model_id: string | null;
+  reasoning_effort: ReasoningEffortRow;
   last_viewed_at:   number | null;
 }
 
@@ -64,10 +66,9 @@ export interface SessionInsert {
   executionProfile?: ExecutionProfileRow;
   narrativePolicy?: NarrativePolicyRow;
   permissionMode?: PermissionModeRow;
-  model?: {
-    providerId: string;
-    modelId: string;
-  } | null;
+  providerId?: string;
+  modelId?: string;
+  reasoningEffort?: ReasoningEffortRow;
   createdAt: number;
   updatedAt: number;
   lastActivityAt?: number;
@@ -83,10 +84,10 @@ export class SessionsRepo {
            (id, title, cwd, project_id,
             forked_from_session_id, forked_from_turn_id,
             execution_profile, narrative_policy, permission_mode,
-            provider_id, model_id,
+            provider_id, model_id, reasoning_effort,
             created_at, updated_at, last_activity_at, sidebar_order)
          VALUES (
-           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
            (SELECT COALESCE(MAX(sidebar_order), 0) + 1
               FROM sessions
              WHERE archived_at IS NULL
@@ -102,8 +103,9 @@ export class SessionsRepo {
         s.executionProfile ?? 'chat',
         s.narrativePolicy ?? 'auto',
         s.permissionMode ?? 'default',
-        s.model?.providerId ?? null,
-        s.model?.modelId ?? null,
+        s.providerId ?? null,
+        s.modelId ?? null,
+        s.reasoningEffort ?? 'off',
         s.createdAt, s.updatedAt,
         s.lastActivityAt ?? s.createdAt,
         s.projectId ?? null);
@@ -382,10 +384,10 @@ export class SessionsRepo {
            (id, title, cwd, project_id,
             forked_from_session_id, forked_from_turn_id,
             execution_profile, narrative_policy, permission_mode,
-            provider_id, model_id,
+            provider_id, model_id, reasoning_effort,
             created_at, updated_at, last_activity_at, sidebar_order)
          VALUES (
-           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
            (SELECT COALESCE(MAX(sidebar_order), 0) + 1
               FROM sessions
              WHERE archived_at IS NULL
@@ -396,7 +398,7 @@ export class SessionsRepo {
         src.project_id,
         srcId, untilTurnId ?? null,
         src.execution_profile, src.narrative_policy, src.permission_mode,
-        src.provider_id, src.model_id,
+        src.provider_id, src.model_id, src.reasoning_effort,
         createdAt, createdAt, createdAt, src.project_id);
 
       // 2. 构建 old->new turn id 映射。Turn 被复制以使 fork 出的 session
@@ -554,10 +556,9 @@ export class SessionsRepo {
       executionProfile?: ExecutionProfileRow;
       narrativePolicy?: NarrativePolicyRow;
       permissionMode?: PermissionModeRow;
-      model?: {
-        providerId: string;
-        modelId: string;
-      } | null;
+      providerId?: string;
+      modelId?: string;
+      reasoningEffort?: ReasoningEffortRow;
     },
     now: number,
   ): void {
@@ -589,12 +590,13 @@ export class SessionsRepo {
       setClauses.push('permission_mode = ?');
       values.push(patch.permissionMode);
     }
-    if (patch.model !== undefined) {
+    if (patch.providerId !== undefined && patch.modelId !== undefined) {
       setClauses.push('provider_id = ?', 'model_id = ?');
-      values.push(
-        patch.model?.providerId ?? null,
-        patch.model?.modelId ?? null,
-      );
+      values.push(patch.providerId, patch.modelId);
+    }
+    if (patch.reasoningEffort !== undefined) {
+      setClauses.push('reasoning_effort = ?');
+      values.push(patch.reasoningEffort);
     }
 
     if (setClauses.length === 0) return;

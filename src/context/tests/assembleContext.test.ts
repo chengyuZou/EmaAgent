@@ -1,4 +1,4 @@
-// 验证 Context 的固定顺序、缓存切口和分类总量；压缩由 Compact 单独测试。
+// 验证 Context 的固定顺序、缓存切口和模型调用总输入估算；压缩由 Compact 单独测试。
 import { describe, expect, it } from 'vitest';
 import { ToolPool } from '@ema-agent/tools';
 import { assembleContext } from '../assembleContext.js';
@@ -36,18 +36,7 @@ describe('assembleContext', () => {
     // 块标记以外：历史/当前 Turn 边界与全文末尾各有一个装配断点。
     expect(result.messages[2]).toMatchObject({ cacheBreakpoint: true });
     expect(result.messages.at(-1)).toMatchObject({ cacheBreakpoint: true });
-    const categories = result.usage.categories;
-    expect(
-      categories.systemPromptTokens
-      + categories.tools.totalTokens
-      + categories.skillTokens
-      + categories.memoryTokens
-      + categories.characterPromptTokens
-      + categories.messageTokens,
-    ).toBe(result.usage.estimatedInputTokens);
-    expect(categories.systemPromptTokens).toBeGreaterThan(0);
-    expect(categories.characterPromptTokens).toBeGreaterThan(0);
-    expect(categories.messageTokens).toBeGreaterThan(0);
+    expect(result.usage.estimatedInputTokens).toBeGreaterThan(0);
   });
 
   it('清除历史遗留的请求级缓存断点，并在历史/当前 Turn 边界重打', () => {

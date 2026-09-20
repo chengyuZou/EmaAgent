@@ -1,4 +1,4 @@
-// 应用 unified diff(对照 codex git-utils apply.rs)。
+// 应用 unified diff
 // 用系统 git apply,写临时 patch 文件;支持 preflight(--check)与 revert(-R)。
 import { promises as fs } from 'node:fs';
 import os from 'node:os';

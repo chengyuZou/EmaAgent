@@ -7,6 +7,7 @@ export interface TurnFanoutDeps {
     sessionId: string,
     turnId: string,
     event: TurnStreamEvent,
+    ttsEnabled: boolean,
   ) => void;
   readonly emitAppEvent: (
     event: Extract<
@@ -37,11 +38,12 @@ export class TurnFanout {
           return null;
         })
       : Promise.resolve(null);
-    void this.pump(handle, speechPromise, speechAbort);
+    void this.pump(handle, options.ttsEnabled, speechPromise, speechAbort);
   }
 
   private async pump(
     handle: TurnHandle,
+    ttsEnabled: boolean,
     speechPromise: Promise<TurnSpeechHandle | null>,
     speechAbort: AbortController,
   ): Promise<void> {
@@ -58,7 +60,7 @@ export class TurnFanout {
             .then(speech => speech?.finish())
             .catch(error => console.warn(`[speech] Turn ${turnId} 收口失败:`, error));
         }
-        this.deps.publishTurnEvent(sessionId, turnId, event);
+        this.deps.publishTurnEvent(sessionId, turnId, event, ttsEnabled);
         if (event.type === 'turn_failed' || event.type === 'turn_aborted') {
           speechAbort.abort('turn ended without completion');
           void speechPromise.then(speech => speech?.abort());

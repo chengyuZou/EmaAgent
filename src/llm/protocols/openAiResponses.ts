@@ -68,7 +68,12 @@ async function* streamOpenAiResponses(
     params.tool_choice = toResponsesToolChoice(request.toolChoice) as
       OpenAI.Responses.ResponseCreateParamsStreaming['tool_choice'];
   }
-  if (request.thinking?.enabled !== false) {
+  if (request.thinking?.enabled === false) {
+    // API 接受 none; 当前安装的 OpenAI SDK 类型尚未列出该值.
+    params.reasoning = { effort: 'none' } as unknown as NonNullable<
+      OpenAI.Responses.ResponseCreateParamsStreaming['reasoning']
+    >;
+  } else if (request.thinking?.enabled === true) {
     // 声明加密推理内容，使 reasoning item 可原样回传以续接 KV（stateless/零保留场景）。
     params.include = ['reasoning.encrypted_content'];
     if (request.thinking?.effort) {

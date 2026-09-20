@@ -20,7 +20,7 @@ const prepared = assembleContext({
 
 - `messages`：真正交给 LLM 的中立消息；
 - `tools`：从当前根 Turn 的同一个 `ToolPool` 投影出的 `LlmTool[]`；
-- `usage`：这份最终请求的分类 Token 估算。
+- `usage`：这份最终请求的总输入 Token 估算, 供预算判断和运行中的 Context 圆环使用。
 
 它不返回 `history` 或 Compact 结果。调用方原本就持有历史，Context 不制造第二份状态。
 
@@ -39,7 +39,7 @@ PromptBlock 数组顺序就是发送顺序；静态产品块自身标记缓存�
 
 ## Reminder 不在本包
 
-Turn reminder 表示"本 Turn 开始时的事实"：它在根 Turn 开始时由 Turn 生成一次并作为 `kind='reminder'` 的 Session Message 持久化，随后经有序 History 进入本包。本包只组装，不知道哪条是 reminder；Usage 分类把它计入 `messages`。
+Turn reminder 表示"本 Turn 开始时的事实"：它在根 Turn 开始时由 Turn 生成一次并作为 `kind='reminder'` 的 Session Message 持久化，随后经有序 History 进入本包。本包只组装, 不知道哪条是 reminder；总输入估算会计入它。
 
 ## Session Message 投影
 

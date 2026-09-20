@@ -9,24 +9,21 @@ import type {
   TurnHandle,
   TurnInputPart,
   TurnKnowledgeSelection,
-  TurnModelSelection,
 } from './types.js';
 import type { TurnStore } from './turnStore.js';
 
 /**
- * Session 后续自动启动的 Turn 沿用最近一次入队时的输入区选择.
- * 选择跟 Session 保存, 而不是跟单条队列项保存. 多条输入合并为一根 Turn 时以最新选择为准;
- * 只有后台通知、没有排队输入时, 也能继续使用该 Session 最近一次明确选择.
+ * 自动续接只保留本次输入范围和朗读选择. 模型与推理强度每次从 Session 读取,
+ * 否则设置窗口或输入区改过模型后, 内存里的旧选择会覆盖已保存的 Session.
  */
 export interface SessionTurnSelection {
   readonly executionProfile: StartTurn['executionProfile'];
   readonly narrativePolicy: StartTurn['narrativePolicy'];
-  readonly modelSelection?: TurnModelSelection;
   readonly knowledge?: TurnKnowledgeSelection;
   readonly ttsEnabled: boolean;
 }
 
-/** WebSocket enqueue_input 交给队列的完整业务输入. 内容此时只进入进程内存, 尚未写入 Message. */
+/** WebSocket queue_user_message 交给队列的完整业务输入. 内容此时只进入进程内存, 尚未写入 Message. */
 export interface EnqueueSessionInput {
   readonly sessionId: string;
   readonly input: readonly TurnInputPart[];
@@ -47,24 +44,29 @@ export interface QueuedSessionInput {
 
 /**
  * Session WebSocket 的队列同步协议. queued_inputs 用于连接后的当前列表,
- * added/updated/removed 是后续增量; consumed 只在对应 Message 已成功落库后发送.
+ * added/removed/guided 是后续全部增量.
  */
 export type SessionContinuationEvent =
   | { readonly type: 'queued_inputs'; readonly items: readonly QueuedSessionInput[] }
   | { readonly type: 'queued_input_added'; readonly item: QueuedSessionInput }
-  | { readonly type: 'queued_input_updated'; readonly item: QueuedSessionInput }
   | { readonly type: 'queued_input_removed'; readonly id: string }
-  | { readonly type: 'queued_inputs_consumed'; readonly ids: readonly string[]; readonly turnId: string };
+  | { readonly type: 'queued_input_guided'; readonly item: QueuedSessionInput };
 
 /**
  * Turn 从队列临时领取的内容. 领取不等于消费: 调用方写完 Message 后必须 acknowledge,
  * 准备或写库失败则必须 release, 这样输入和后台通知才不会静默丢失.
  */
-export interface ClaimedSessionContinuation {
-  readonly turnId: string;
-  readonly userInputs: readonly QueuedSessionInput[];
-  readonly completionNoticeText?: string;
-}
+export type ClaimedSessionContinuation =
+  | {
+      readonly type: 'user_input';
+      readonly turnId: string;
+      readonly userInput: QueuedSessionInput;
+    }
+  | {
+      readonly type: 'completion_notices';
+      readonly turnId: string;
+      readonly completionNoticeText: string;
+    };
 
 /** 队列内部条目. claimedByTurnId 存在时禁止删除、改为引导或被另一根 Turn 重复领取. */
 interface PendingInput extends Omit<QueuedSessionInput, 'delivery'> {
@@ -74,6 +76,7 @@ interface PendingInput extends Omit<QueuedSessionInput, 'delivery'> {
 
 /**
  * 后台完成通知只携带执行身份和终态, 不复制完整输出.
+ * 分为子代理和后台Process两类, 但都只在当前进程内投递一次.
  * key 统一两类执行的去重身份; 完整结果分别留在 AgentRun SQL 和后台进程日志中.
  */
 type CompletionNotice =
@@ -92,12 +95,18 @@ type CompletionNotice =
       claimedByTurnId?: string;
     };
 
-/** 一次领取的反向索引. acknowledge 和 release 通过它成批处理该 Turn 已占用的内容. */
-interface ContinuationClaim {
-  readonly sessionId: string;
-  readonly userInputIds: readonly string[];
-  readonly completionNoticeKeys: readonly string[];
-}
+/** 一次领取的反向索引. 用户输入和后台通知互斥, 一次确认只对应一条持久化 Message. */
+type ContinuationClaim =
+  | {
+      readonly type: 'user_input';
+      readonly sessionId: string;
+      readonly userInputId: string;
+    }
+  | {
+      readonly type: 'completion_notices';
+      readonly sessionId: string;
+      readonly completionNoticeKeys: readonly string[];
+    };
 
 /**
  * 队列依赖由 Server Composition 装配. Session/Turn Store 提供权威存在性和忙碌状态;
@@ -116,7 +125,7 @@ export interface SessionContinuationQueueDeps {
  * 由各自的 SQL/日志保存, 模型需要详情时按通知中的 id 调 SubagentAwait 或 ProcessOutput.
  */
 export class SessionContinuationQueue {
-  /** 每个 Session 尚未确认消费的用户输入, 保留入队顺序. */
+  /** 每个 Session 尚未确认消费的用户输入. guided 内部按引导成功顺序, 普通项保持入队顺序. */
   private readonly inputs = new Map<string, PendingInput[]>();
   /** 每个 Session 最近一次输入区选择, 供后续自动 Turn 使用. */
   private readonly selections = new Map<string, SessionTurnSelection>();
@@ -124,7 +133,7 @@ export class SessionContinuationQueue {
   private readonly completionNotices = new Map<string, CompletionNotice[]>();
   /** 已被 Turn 暂时占用的输入和通知, 是 acknowledge/release 的依据. */
   private readonly claims = new Map<string, ContinuationClaim>();
-  /** 防止同一 Session 被多个排水微任务重复启动 Turn. */
+  /** 防止同一 Session 被多个微任务重复启动 Turn. */
   private readonly draining = new Set<string>();
   private stopped = false;
 
@@ -132,7 +141,7 @@ export class SessionContinuationQueue {
 
   /**
    * 入队时冻结输入与选择, 避免前端草稿或调用方对象随后变化影响已经排队的内容.
-   * 若 Session 当前空闲, requestDrain 会在同一调用栈结束后把同期输入自然合批为一根 Turn.
+   * 若 Session 当前空闲, requestDrain 会在同一调用栈结束后启动这一条输入的 Turn.
    */
   enqueue(input: EnqueueSessionInput): QueuedSessionInput {
     this.deps.sessions.getSession(input.sessionId);
@@ -160,7 +169,11 @@ export class SessionContinuationQueue {
   /** 用户只能删除尚未被 Turn 领取的卡片, 避免 UI 删除与 Message 写库同时改动同一项. */
   remove(sessionId: string, id: string): boolean {
     const items = this.inputs.get(sessionId);
-    const index = items?.findIndex(item => item.id === id && item.claimedByTurnId === undefined) ?? -1;
+    const index = items?.findIndex(item => (
+      item.id === id
+      && item.delivery === 'after_turn'
+      && item.claimedByTurnId === undefined
+    )) ?? -1;
     if (!items || index < 0) return false;
     items.splice(index, 1);
     if (items.length === 0) this.inputs.delete(sessionId);
@@ -170,18 +183,25 @@ export class SessionContinuationQueue {
 
   /** 把尚未领取的普通排队输入改为下一次安全迭代边界交付, 不直接打断正在生成的 LLM. */
   guide(sessionId: string, id: string): boolean {
-    const item = this.inputs.get(sessionId)?.find(candidate => (
-      candidate.id === id && candidate.claimedByTurnId === undefined
-    ));
+    const items = this.inputs.get(sessionId);
+    const index = items?.findIndex(item => (
+      item.id === id
+      && item.delivery === 'after_turn'
+      && item.claimedByTurnId === undefined
+    )) ?? -1;
+    if (!items || index < 0) return false;
+    const [item] = items.splice(index, 1);
     if (!item) return false;
     item.delivery = 'next_iteration';
-    this.deps.publish(sessionId, { type: 'queued_input_updated', item: publicItem(item) });
+    // guided 项重新追加后, 对 guided 的过滤顺序就是后端确认的引导成功顺序.
+    items.push(item);
+    this.deps.publish(sessionId, { type: 'queued_input_guided', item: publicItem(item) });
     return true;
   }
 
   /**
-   * AgentLoop 只在 Assistant 和整批 ToolResult 都已关账后调用这里. 普通排队输入
-   * 留给下一根 Turn, 只有立即引导和此刻已完成的后台通知可进入当前循环.
+   * AgentLoop 只在 Assistant 和整批 ToolResult 都已完成后再调用这里. 普通排队输入
+   * 留给下一个 Turn, 只有立即引导和此刻已完成的后台通知可进入当前循环.
    */
   claimNextIteration(sessionId: string, turnId: string): ClaimedSessionContinuation | undefined {
     return this.claim(sessionId, turnId, true);
@@ -191,39 +211,47 @@ export class SessionContinuationQueue {
   acknowledge(turnId: string): void {
     const claim = this.claims.get(turnId);
     if (!claim) return;
-    const inputIds = new Set(claim.userInputIds);
-    const remainingInputs = (this.inputs.get(claim.sessionId) ?? [])
-      .filter(item => !inputIds.has(item.id));
-    if (remainingInputs.length > 0) this.inputs.set(claim.sessionId, remainingInputs);
-    else this.inputs.delete(claim.sessionId);
+    this.claims.delete(turnId);
+    if (claim.type === 'user_input') {
+      const claimedInput = (this.inputs.get(claim.sessionId) ?? []).find(item => (
+        item.id === claim.userInputId && item.claimedByTurnId === turnId
+      ));
+      const remainingInputs = (this.inputs.get(claim.sessionId) ?? []).filter(item => (
+        item.id !== claim.userInputId || item.claimedByTurnId !== turnId
+      ));
+      if (remainingInputs.length > 0) this.inputs.set(claim.sessionId, remainingInputs);
+      else this.inputs.delete(claim.sessionId);
+      if (claimedInput?.delivery === 'after_turn') {
+        this.deps.publish(claim.sessionId, { type: 'queued_input_removed', id: claimedInput.id });
+      }
+      return;
+    }
 
     const noticeKeys = new Set(claim.completionNoticeKeys);
     const remainingNotices = (this.completionNotices.get(claim.sessionId) ?? [])
       .filter(notice => !noticeKeys.has(notice.key));
     if (remainingNotices.length > 0) this.completionNotices.set(claim.sessionId, remainingNotices);
     else this.completionNotices.delete(claim.sessionId);
-
-    this.claims.delete(turnId);
-    if (claim.userInputIds.length > 0) {
-      this.deps.publish(claim.sessionId, {
-        type: 'queued_inputs_consumed', ids: claim.userInputIds, turnId,
-      });
-    }
   }
 
   /** Turn 准备、附件处理或 Message 写库失败时撤销领取, 原内容继续留在队列等待下次交付. */
   release(turnId: string): void {
     const claim = this.claims.get(turnId);
     if (!claim) return;
-    const inputIds = new Set(claim.userInputIds);
-    for (const item of this.inputs.get(claim.sessionId) ?? []) {
-      if (inputIds.has(item.id) && item.claimedByTurnId === turnId) item.claimedByTurnId = undefined;
+    this.claims.delete(turnId);
+    if (claim.type === 'user_input') {
+      for (const item of this.inputs.get(claim.sessionId) ?? []) {
+        if (item.id === claim.userInputId && item.claimedByTurnId === turnId) {
+          item.claimedByTurnId = undefined;
+        }
+      }
+      return;
     }
+
     const noticeKeys = new Set(claim.completionNoticeKeys);
     for (const notice of this.completionNotices.get(claim.sessionId) ?? []) {
       if (noticeKeys.has(notice.key) && notice.claimedByTurnId === turnId) notice.claimedByTurnId = undefined;
     }
-    this.claims.delete(turnId);
   }
 
   /** AgentRunExecutor 已先持久化终态, 此处只把轻量通知加入所属 Session. */
@@ -304,8 +332,7 @@ export class SessionContinuationQueue {
 
   private requestDrain(sessionId: string): void {
     if (this.stopped || this.draining.has(sessionId) || this.deps.turns.getActiveTurn(sessionId)) return;
-    // 同一调用栈里可能连续加入多条输入或多个后台通知. 推到微任务后统一领取,
-    // 既能自然合批, 也避免 startTurn 在生产者的终态回调栈内重入.
+    // 推到微任务后再启动, 避免 startTurn 在生产者的终态回调栈内重入.
     queueMicrotask(() => this.drain(sessionId));
   }
 
@@ -320,19 +347,20 @@ export class SessionContinuationQueue {
       if (!claim) return;
       const session = this.deps.sessions.getSession(sessionId);
       const selection = this.selections.get(sessionId);
-      // 有用户输入时保持 userMessage 语义; 纯后台通知使用 sessionContinuation,
+      // 有用户输入时保持 userMessage 语义; 新 Turn 每次只领取一个 Queue item,
+      // 其余输入继续按 guided 优先、普通 after_turn 随后的顺序等待后续安全点或 Turn.
+      // 纯后台通知使用 sessionContinuation,
       // 避免标题生成等只属于用户主动发言的业务被自动续接误触发.
       const handle = this.deps.startTurn({
         turnId,
         sessionId,
-        triggerType: claim.userInputs.length > 0 ? 'userMessage' : 'sessionContinuation',
+        triggerType: claim.type === 'user_input' ? 'userMessage' : 'sessionContinuation',
         executionProfile: selection?.executionProfile ?? session.executionProfile,
         narrativePolicy: selection?.narrativePolicy ?? session.narrativePolicy,
-        input: mergeQueuedUserInput(claim.userInputs),
-        ...(claim.completionNoticeText
+        input: claim.type === 'user_input' ? claim.userInput.input : [],
+        ...(claim.type === 'completion_notices'
           ? { completionNoticeText: claim.completionNoticeText }
           : {}),
-        ...(selection?.modelSelection ? { modelSelection: selection.modelSelection } : {}),
         ...(selection?.knowledge ? { knowledge: selection.knowledge } : {}),
       });
       this.deps.attachTurn(handle, selection?.ttsEnabled ?? false);
@@ -344,37 +372,57 @@ export class SessionContinuationQueue {
     }
   }
 
+  /**
+   * nextIterationOnly 为 true 时, 用户输入只能领取 delivery='next_iteration' 的立即引导项.
+   * 为 false 时, 先领取最早的立即引导项, 没有时再领取最早的 after_turn 项.
+   * 后台完成通知使用下方的独立顺序, 不受该参数过滤.
+   */
   private claim(
     sessionId: string,
     turnId: string,
     nextIterationOnly: boolean,
   ): ClaimedSessionContinuation | undefined {
     if (this.claims.has(turnId)) return undefined;
-    // 当前 AgentLoop 只取显式引导项; 新 Turn 排水则按顺序领取全部未占用输入.
-    const userInputs = (this.inputs.get(sessionId) ?? []).filter(item => (
-      item.claimedByTurnId === undefined
-      && (!nextIterationOnly || item.delivery === 'next_iteration')
-    ));
+    const availableInputs = (this.inputs.get(sessionId) ?? [])
+      .filter(item => item.claimedByTurnId === undefined);
+    const guidedInputs = availableInputs.filter(item => item.delivery === 'next_iteration');
+    const afterTurnInputs = availableInputs.filter(item => item.delivery === 'after_turn');
+    // 每次只领取一条用户输入. AgentLoop 在同一安全点逐条确认 guided；新 Turn 仍然
+    // guided 优先，否则领取最早的普通排队项.
+    const userInput = nextIterationOnly
+      ? guidedInputs[0]
+      : guidedInputs[0] ?? afterTurnInputs[0];
     // 后台终态只在当前进程内投递一次. 断电后的完整结果仍可由模型按 id 主动读取,
     // 但应用启动不会因此擅自创建新 Turn 或调用模型.
     const notices = (this.completionNotices.get(sessionId) ?? [])
       .filter(notice => notice.claimedByTurnId === undefined);
-    if (userInputs.length === 0 && notices.length === 0) return undefined;
+    // 迭代安全点保持原有顺序：先交付后台终态，再交付用户引导。新 Turn 则由用户输入
+    // 优先取得执行身份，后台通知在 Turn 启动后的首个安全点继续领取.
+    if (notices.length > 0 && (nextIterationOnly || !userInput)) {
+      for (const notice of notices) notice.claimedByTurnId = turnId;
+      this.claims.set(turnId, {
+        type: 'completion_notices',
+        sessionId,
+        completionNoticeKeys: notices.map(notice => notice.key),
+      });
+      return {
+        type: 'completion_notices',
+        turnId,
+        completionNoticeText: formatCompletionNoticeText(notices),
+      };
+    }
+    if (!userInput) return undefined;
 
-    // 标记和反向索引必须在内容离开本方法前同时建立. 后续只有 acknowledge 或 release
-    // 能结束这次领取, 其他入口都会把这些项目视为不可操作.
-    for (const item of userInputs) item.claimedByTurnId = turnId;
-    for (const notice of notices) notice.claimedByTurnId = turnId;
+    userInput.claimedByTurnId = turnId;
     this.claims.set(turnId, {
+      type: 'user_input',
       sessionId,
-      userInputIds: userInputs.map(item => item.id),
-      completionNoticeKeys: notices.map(notice => notice.key),
+      userInputId: userInput.id,
     });
-    const completionNoticeText = formatCompletionNoticeText(notices);
     return {
+      type: 'user_input',
       turnId,
-      userInputs: userInputs.map(publicItem),
-      ...(completionNoticeText ? { completionNoticeText } : {}),
+      userInput: publicItem(userInput),
     };
   }
 }
@@ -383,16 +431,6 @@ export class SessionContinuationQueue {
 function publicItem(item: PendingInput): QueuedSessionInput {
   const { claimedByTurnId: _claimedByTurnId, ...visible } = item;
   return visible;
-}
-
-/** 同期排队输入保持原顺序合并, 两条输入之间补空行, 不改动每条输入内部的多模态顺序. */
-function mergeQueuedUserInput(userInputs: readonly QueuedSessionInput[]): readonly TurnInputPart[] {
-  const parts: TurnInputPart[] = [];
-  for (const item of userInputs) {
-    if (parts.length > 0) parts.push({ type: 'text', text: '\n\n' });
-    parts.push(...item.input);
-  }
-  return parts;
 }
 
 /** 把多条后台终态整理成一条内部 continuation Message, 模型再按 ID 主动读取完整结果. */

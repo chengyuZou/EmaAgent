@@ -117,42 +117,53 @@ describe('SessionStore — session', () => {
     expect(store.getSession(s.id).title).toBe('Updated');
   });
 
-  it('保存和清除该 Session 当前使用的模型', () => {
+  it('创建时保存模型与推理强度, PATCH 模型身份必须成对且可单独调整强度', () => {
     const { store } = makeStore();
-    const session = store.createSession();
-
-    store.patchSession(session.id, {
-      model: {
-        providerId: 'provider-config-1',
-        modelId: 'model-1',
-      },
-    });
-    expect(store.getSession(session.id)).toMatchObject({
+    const session = store.createSession({
       providerId: 'provider-config-1',
       modelId: 'model-1',
+      reasoningEffort: 'high',
+    });
+    expect(session).toMatchObject({
+      providerId: 'provider-config-1',
+      modelId: 'model-1',
+      reasoningEffort: 'high',
     });
 
-    store.patchSession(session.id, { model: null });
-    expect(store.getSession(session.id)).toMatchObject({
-      providerId: null,
-      modelId: null,
+    store.patchSession(session.id, {
+      providerId: 'provider-config-2',
+      modelId: 'model-2',
+      reasoningEffort: 'off',
     });
+    expect(store.getSession(session.id)).toMatchObject({
+      providerId: 'provider-config-2',
+      modelId: 'model-2',
+      reasoningEffort: 'off',
+    });
+
+    store.patchSession(session.id, { reasoningEffort: 'medium' });
+    expect(store.getSession(session.id)).toMatchObject({
+      providerId: 'provider-config-2',
+      modelId: 'model-2',
+      reasoningEffort: 'medium',
+    });
+    expect(() => store.patchSession(session.id, { providerId: 'broken' })).toThrow('session_model_pair_required');
   });
 
-  it('Session fork 继承当前模型选择', () => {
+  it('Session fork 继承当前模型和推理强度', () => {
     const { store } = makeStore();
     const session = store.createSession();
     store.patchSession(session.id, {
-      model: {
-        providerId: 'provider-config-1',
-        modelId: 'model-1',
-      },
+      providerId: 'provider-config-1',
+      modelId: 'model-1',
+      reasoningEffort: 'high',
     });
 
     const fork = store.forkSession(session.id);
     expect(store.getSession(fork.sessionId)).toMatchObject({
       providerId: 'provider-config-1',
       modelId: 'model-1',
+      reasoningEffort: 'high',
     });
   });
 });
@@ -436,9 +447,24 @@ describe('SessionStore — message', () => {
       before: 1,
       after: 1,
     });
+    const older = store.listMessages(s.id, { before: window.olderCursor, limit: 2 });
+    const newer = store.listMessages(s.id, { after: window.newerCursor, limit: 2 });
 
     expect(window.messages.map(message => message.blocks)).toEqual(['two', 'three', 'four']);
-    expect(window).toMatchObject({ hasOlder: true, hasNewer: true });
+    expect(window.olderCursor).toBeTypeOf('string');
+    expect(window.newerCursor).toBeTypeOf('string');
+    expect(older.messages.map(message => message.blocks)).toEqual(['one']);
+    expect(newer.messages.map(message => message.blocks)).toEqual(['five']);
+  });
+
+  it('listMessages 拒绝同时向两个方向读取', () => {
+    const { store } = makeStore();
+    const session = store.createSession();
+
+    expect(() => store.listMessages(session.id, {
+      before: 'before',
+      after: 'after',
+    })).toThrow('message_cursor_direction_conflict');
   });
 
   it('markMessageInterrupted sets interrupted flag', () => {

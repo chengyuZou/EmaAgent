@@ -1,5 +1,5 @@
 // 统一封装 git CLI 调用:不经过 shell、超时即杀、输出有界,并屏蔽仓库自定义 hook 与索引锁。
-// 安全约束与 codex git-utils 一致:只读查询绝不能触发仓库配置的 hook,也不抢 .git/index.lock。
+// 只读查询绝不能触发仓库配置的 hook,也不抢 .git/index.lock。
 import { execFile } from 'node:child_process';
 import { GitError } from './errors.js';
 import { GIT_MAX_OUTPUT_BYTES, GIT_READ_TIMEOUT_MS } from './limits.js';
@@ -33,7 +33,7 @@ export function runGit(
       'git',
       [
         '-c', `core.hooksPath=${DISABLED_HOOKS_PATH}`,
-        // 仓库可配置任意 fsmonitor 可执行 helper,内部查询一律禁用,不移植 codex 的探测逻辑。
+        // 仓库可配置任意 fsmonitor 可执行 helper,内部查询一律禁用
         '-c', 'core.fsmonitor=false',
         ...(options.extraConfig?.flatMap((cfg) => ['-c', cfg]) ?? []),
         ...args,

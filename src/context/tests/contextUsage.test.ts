@@ -1,5 +1,6 @@
-// 验证 Provider Usage 只替换总输入，不重复叠加缓存子集或伪造分类精度。
+// 验证 Context 圆环只使用总输入: 本地估算、Provider 实报和后续消息追加.
 import { describe, expect, it } from 'vitest';
+import { estimateLlmInputTokens } from '@ema-agent/token';
 import {
   appendEstimatedContextMessages,
   estimateContextUsage,
@@ -12,18 +13,6 @@ const estimate: ContextUsageEstimate = {
   contextWindow: 200_000,
   estimatedInputTokens: 12_000,
   accuracy: 'heuristic',
-  categories: {
-    systemPromptTokens: 1_000,
-    tools: {
-      totalTokens: 2_000,
-      systemToolTokens: 800,
-      mcpToolTokens: 1_200,
-    },
-    skillTokens: 1_000,
-    memoryTokens: 1_000,
-    characterPromptTokens: 1_000,
-    messageTokens: 6_000,
-  },
 };
 
 describe('Context Usage 投影', () => {
@@ -32,7 +21,6 @@ describe('Context Usage 投影', () => {
       contextWindow: 200_000,
       inputTokens: 12_000,
       source: 'estimate',
-      categories: estimate.categories,
     });
   });
 
@@ -46,58 +34,30 @@ describe('Context Usage 投影', () => {
       contextWindow: 200_000,
       inputTokens: 10_000,
       source: 'provider',
-      categories: estimate.categories,
       cacheReadInputTokens: 8_000,
       cacheWriteInputTokens: 1_000,
     });
   });
 
-  it('按六个一级业务来源分类，MCP 指引计入 MCP Tools', () => {
+  it('Prompt、Tool、历史和当前 Turn 一起估算, 不再重复计算业务分类', () => {
+    const promptMessages = [{ role: 'system' as const, content: '系统规则' }];
+    const history = [{ role: 'user' as const, content: '旧消息' }];
+    const currentTurn = [{ role: 'user' as const, content: '当前输入' }];
+    const tools = [{ name: 'Read', description: '读取', inputSchema: {} }];
     const result = estimateContextUsage({
       contextWindow: 200_000,
-      promptSections: [
-        { name: 'product-rules', message: { role: 'system', content: '系统规则' } },
-        { name: 'skill-catalog', message: { role: 'system', content: '技能目录' } },
-        { name: 'memory-guidance', message: { role: 'system', content: '记忆指引' } },
-        { name: 'character', message: { role: 'system', content: '角色设定' } },
-        { name: 'mcp-instructions', message: { role: 'system', content: 'MCP 指引' } },
-      ],
-      tools: [
-        {
-          origin: { kind: 'builtin' },
-          definition: { name: 'Read', description: '读取', inputSchema: {} },
-        },
-        {
-          origin: { kind: 'mcp', serverName: 'files', serverToolName: 'read' },
-          definition: { name: 'McpRead', description: 'MCP 读取', inputSchema: {} },
-        },
-      ],
-      history: [{ role: 'user', content: '旧消息' }],
-      currentTurn: [{ role: 'user', content: '本轮 reminder 与输入' }],
+      promptMessages,
+      tools,
+      history,
+      currentTurn,
     });
-
-    const categories = result.categories;
-    expect(categories.systemPromptTokens).toBeGreaterThan(0);
-    expect(categories.skillTokens).toBeGreaterThan(0);
-    expect(categories.memoryTokens).toBeGreaterThan(0);
-    expect(categories.characterPromptTokens).toBeGreaterThan(0);
-    expect(categories.messageTokens).toBeGreaterThan(0);
-    expect(categories.tools.systemToolTokens).toBeGreaterThan(0);
-    expect(categories.tools.mcpToolTokens).toBeGreaterThan(categories.tools.systemToolTokens);
-    expect(categories.tools.totalTokens).toBe(
-      categories.tools.systemToolTokens + categories.tools.mcpToolTokens,
-    );
-    expect(result.estimatedInputTokens).toBe(
-      categories.systemPromptTokens
-      + categories.tools.totalTokens
-      + categories.skillTokens
-      + categories.memoryTokens
-      + categories.characterPromptTokens
-      + categories.messageTokens,
-    );
+    expect(result.estimatedInputTokens).toBe(estimateLlmInputTokens(
+      [...promptMessages, ...history, ...currentTurn],
+      { tools: [{ name: 'Read', description: '读取', parameters: {} }] },
+    ).totalTokens);
   });
 
-  it('Provider 校正后新增的模型历史只增加 Messages', () => {
+  it('Provider 校正后新增的模型历史使圆环重新标为估算', () => {
     const corrected = providerContextUsage(estimate, {
       inputTokens: 10_000,
       outputTokens: 500,
@@ -105,12 +65,7 @@ describe('Context Usage 投影', () => {
     const next = appendEstimatedContextMessages(corrected, [
       { role: 'assistant', content: '新增回答' },
     ]);
-
     expect(next.source).toBe('estimate');
     expect(next.inputTokens).toBeGreaterThan(10_000);
-    expect(next.categories.messageTokens).toBeGreaterThan(
-      corrected.categories.messageTokens,
-    );
-    expect(next.categories.tools).toEqual(corrected.categories.tools);
   });
 });

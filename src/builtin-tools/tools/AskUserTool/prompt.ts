@@ -1,5 +1,4 @@
-// AskUserTool 的模型说明书, 单点维护。主体对照 Claude AskUserQuestionTool,
-// 按我方事实修正(Plan 未接线, 不引用 ExitPlanMode)。
+// AskUserTool 的模型说明书, 单点维护
 
 export const ASK_USER_DESCRIPTION = `Ask the user one or more structured questions and wait for their responses.
 

@@ -1,93 +1,86 @@
-// 同 Session 一个活跃执行：根 Turn（kind='turn'）与手动 compact（kind='compact'）
-// 共享同一坑位，占用者以 kind 区分——compact 的 abort 入口只认 kind='compact'，
-// 拒绝误取消正在运行的根 Turn。归 session 包：它守的是 Session 级执行互斥，
-// 不是 Turn 的内部状态。
+// 同一个 Session 只允许一个根 Turn 或一次手动 Compact 运行. 这里保存它的
+// 真实身份和取消信号, 让取消、终态清理与 WebSocket 初始状态指向同一份工作.
 
 import { ActiveSessionAlreadyRegisteredError, SessionBusyError } from './errors.js';
 
-export type ActiveSessionExecutionKind = 'turn' | 'compact';
+export type ActiveSession =
+  | { readonly kind: 'turn'; readonly turnId: string }
+  | { readonly kind: 'compact'; readonly compactId: string };
 
-export interface ActiveSessionExecution {
-  readonly executionId: string;
-  readonly kind: ActiveSessionExecutionKind;
-}
-
-interface ActiveExecution extends ActiveSessionExecution {
-  abortController: AbortController;
+interface ActiveSessionEntry {
+  readonly active: ActiveSession;
+  readonly controller: AbortController;
 }
 
 export class ActiveSessionRegistry {
-  private readonly executions = new Map<string, ActiveExecution>();
-  /** 等待指定 Session 坑位释放的编排方（Session 删除）。 */
-  private readonly idleWaiters = new Map<string, Set<() => void>>();
+  private readonly activeBySession = new Map<string, ActiveSessionEntry>();
   /**
-   * 订阅方是 Server 的后台维护调度：低优先级维护只在无前台执行时运行，
-   * 订阅让最后一个执行结束时后台立刻被唤醒，而不是轮询空转。
+   * Session 删除和 Server 关闭发出取消信号后, 会把等待该 Session 收尾的
+   * Promise resolve 回调放在这里. clear() 或 discardSession() 清除运行记录时统一唤醒.
    */
-  private readonly listeners = new Set<(activeCount: number) => void>();
+  private readonly idleWaiters = new Map<string, Set<() => void>>();
+  private readonly listeners = new Set<(
+    sessionId: string,
+    active: ActiveSession | null,
+  ) => void>();
   private registrationClosures = 0;
   private registrationClosureTail: Promise<void> = Promise.resolve();
 
-  register(
-    sessionId: string,
-    executionId: string,
-    kind: ActiveSessionExecutionKind,
-  ): AbortSignal {
+  register(sessionId: string, active: ActiveSession): AbortSignal {
     if (this.registrationClosures > 0) {
       throw new SessionBusyError(sessionId);
     }
-    if (this.executions.has(sessionId)) {
+    if (this.activeBySession.has(sessionId)) {
       throw new ActiveSessionAlreadyRegisteredError(sessionId);
     }
 
-    const abortController = new AbortController();
-    this.executions.set(sessionId, { executionId, kind, abortController });
-    this.notifyListeners();
-    return abortController.signal;
+    const controller = new AbortController();
+    this.activeBySession.set(sessionId, { active, controller });
+    this.notifyListeners(sessionId, active);
+    return controller.signal;
   }
 
-  /** 只取消身份匹配的活跃执行；迟到请求不会影响后继执行。 */
-  abort(sessionId: string, executionId: string): boolean {
-    const active = this.executions.get(sessionId);
-    if (!active || active.executionId !== executionId) return false;
-    active.abortController.abort();
+  /** 只取消身份匹配的工作. 迟到的取消请求不能停止同 Session 后来开始的新工作. */
+  abort(sessionId: string, requested: ActiveSession): boolean {
+    const entry = this.activeBySession.get(sessionId);
+    if (!entry || !sameActiveSession(entry.active, requested)) return false;
+    entry.controller.abort();
     return true;
   }
 
   isRunning(sessionId: string): boolean {
-    return this.executions.has(sessionId);
+    return this.activeBySession.has(sessionId);
   }
 
-  getActiveExecution(sessionId: string): ActiveSessionExecution | undefined {
-    const active = this.executions.get(sessionId);
-    return active ? { executionId: active.executionId, kind: active.kind } : undefined;
+  getActiveSession(sessionId: string): ActiveSession | undefined {
+    return this.activeBySession.get(sessionId)?.active;
   }
 
-  /** 只清除身份匹配的活跃执行；返回 false 表示条目已更换或不存在。 */
-  clear(sessionId: string, executionId: string): boolean {
-    const active = this.executions.get(sessionId);
-    if (!active || active.executionId !== executionId) return false;
-    this.executions.delete(sessionId);
-    this.notifyListeners();
+  /** 只清除身份匹配的工作. 迟到的 finally 不能清掉同 Session 后来开始的新工作. */
+  clear(sessionId: string, completed: ActiveSession): boolean {
+    const entry = this.activeBySession.get(sessionId);
+    if (!entry || !sameActiveSession(entry.active, completed)) return false;
+    this.activeBySession.delete(sessionId);
+    this.notifyListeners(sessionId, null);
     this.notifyIdle(sessionId);
     return true;
   }
 
-  /** Session 永久删除时丢弃运行态；普通执行终态不得使用该入口。 */
+  /** Session 永久删除时丢弃运行态, 普通执行终态不得使用该入口. */
   discardSession(sessionId: string): boolean {
-    if (!this.executions.delete(sessionId)) return false;
-    this.notifyListeners();
+    if (!this.activeBySession.delete(sessionId)) return false;
+    this.notifyListeners(sessionId, null);
     this.notifyIdle(sessionId);
     return true;
   }
 
   /**
-   * 等待指定 Session 的坑位释放；唯一消费者是 Session 删除编排——它向坑内执行
-   * （Turn 或手动 compact）发过停止信号后，必须等执行所有者自己收尾退出，
-   * 否则删除会与在执行的摘要落库/持久化竞争。
+   * 等待该 Session 当前的根 Turn 或手动 Compact 通过 clear() 或 discardSession() 自己完成收尾并清除运行记录.
+   * Session 删除会先发出取消信号, 再在这里等它们停止落库并通过 clear() 或 discardSession() 清理 waitUntilIdle 存入的 Promise resolve 回调.
+   * Server 关闭也用同一等待方式, 避免在工作仍可能写入 Turn 终态或 Compact 摘要时删除 Session 数据或关闭数据库.
    */
   waitUntilIdle(sessionId: string): Promise<void> {
-    if (!this.executions.has(sessionId)) return Promise.resolve();
+    if (!this.activeBySession.has(sessionId)) return Promise.resolve();
     return new Promise(resolve => {
       const waiters = this.idleWaiters.get(sessionId) ?? new Set<() => void>();
       waiters.add(resolve);
@@ -96,18 +89,18 @@ export class ActiveSessionRegistry {
   }
 
   activeSessionCount(): number {
-    return this.executions.size;
+    return this.activeBySession.size;
   }
 
-  /** 切换全局角色前停止全部根 Turn 与手动 Compact，并等待各执行所有者完成收尾。 */
+/** 切换全局角色前停止全部根 Turn 与手动 Compact, 并等待各执行所有者完成收尾. */
   async abortAll(): Promise<void> {
-    const active = [...this.executions.entries()];
-    for (const [, execution] of active) execution.abortController.abort();
+    const active = [...this.activeBySession.entries()];
+    for (const [, entry] of active) entry.controller.abort();
     await Promise.all(active.map(([sessionId]) => this.waitUntilIdle(sessionId)));
   }
 
   /**
-   * 角色切换、删除和当前角色修改在这个窗口内完成检查与提交。调用本方法会同步
+   * 角色切换 删除和当前角色修改在这个窗口内完成检查与提交 调用本方法会同步
    * 关闭新 Turn/Compact 注册；并发调用按进入顺序串行，最后一个调用结束后再开放。
    */
   runWithRegistrationsClosed<T>(action: () => T | Promise<T>): Promise<T> {
@@ -119,29 +112,21 @@ export class ActiveSessionRegistry {
     });
   }
 
-  /**
-   * 订阅活跃执行数量，并立即收到当前快照。唯一的订阅方是 Server 后台
-   * 维护调度；notifyListeners/notifyListener 是它的扇出与单播辅助。
-   */
-  subscribe(listener: (activeCount: number) => void): () => void {
+  /** Server 用这个变化通知刷新已连接的 Chat. 新连接仍通过 getActiveSession 读取当前值. */
+  subscribe(listener: (sessionId: string, active: ActiveSession | null) => void): () => void {
     this.listeners.add(listener);
-    this.notifyListener(listener);
     return () => {
       this.listeners.delete(listener);
     };
   }
 
-  private notifyListeners(): void {
+  private notifyListeners(sessionId: string, active: ActiveSession | null): void {
     for (const listener of [...this.listeners]) {
-      this.notifyListener(listener);
-    }
-  }
-
-  private notifyListener(listener: (activeCount: number) => void): void {
-    try {
-      listener(this.executions.size);
-    } catch {
-      // 后台负载观察者不是执行生命周期的一部分，失败不能回滚注册或释放。
+      try {
+        listener(sessionId, active);
+      } catch {
+        // UI 通知失败不能回滚已经生效的 Session 工作状态.
+      }
     }
   }
 
@@ -151,4 +136,11 @@ export class ActiveSessionRegistry {
     this.idleWaiters.delete(sessionId);
     for (const resolve of waiters) resolve();
   }
+}
+
+function sameActiveSession(left: ActiveSession, right: ActiveSession): boolean {
+  if (left.kind === 'turn') {
+    return right.kind === 'turn' && left.turnId === right.turnId;
+  }
+  return right.kind === 'compact' && left.compactId === right.compactId;
 }

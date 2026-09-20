@@ -38,8 +38,6 @@ const inputSchema = z.object({
 
 type FileWriteInput = z.infer<typeof inputSchema>;
 
-// ── 输出类型(与 Claude FileWrite Output 同构;差集:无 gitDiff) ─────────────────
-
 export interface FileWriteResult {
   type: 'created' | 'updated';
   filePath: string;

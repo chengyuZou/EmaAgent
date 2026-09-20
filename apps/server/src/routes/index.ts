@@ -25,7 +25,7 @@ import { characterCollectionRoute } from './characters/collection.js';
 import { characterPresentationRoute } from './characters/presentation.js';
 import { characterResourcesRoute } from './characters/resources.js';
 import { commandsCatalogRoute } from './commands/catalog.js';
-import { agentWebSocketRoute } from './ws/agent.js';
+import { sessionWebSocketRoute } from './ws/session.js';
 import { speechWebSocketRoute } from './ws/speech.js';
 import { knowledgeDocumentsRoute } from './knowledge/documents.js';
 import { knowledgeIngestRoute } from './knowledge/ingest.js';
@@ -65,7 +65,7 @@ export const createRoutes = (composition: Composition, secret: string) => {
   const {
     database, settings, providers, tools, knowledge,
     characters, speech, turn, commands, memory, backup,
-    agentConnections, appEvents, turnFanout,
+    sessionConnections, appEvents, turnFanout,
   } = composition;
   const characterChangeDeps = {
     characters: characters.store,
@@ -93,8 +93,8 @@ export const createRoutes = (composition: Composition, secret: string) => {
       usageRecords: database.usageRecords,
     }))
 
-    .route('/api/ws/agent', agentWebSocketRoute({
-      connections: agentConnections,
+    .route('/api/ws/session', sessionWebSocketRoute({
+      connections: sessionConnections,
       executor: turn.turnExecutor,
       agentRuns: turn.agentRuns,
       continuations: turn.continuations,
@@ -102,6 +102,7 @@ export const createRoutes = (composition: Composition, secret: string) => {
       activeSessions: database.activeSessions,
       interactions: turn.interactionQueue,
       compactSession: commands.compactSession,
+      attachTurn: (handle, ttsEnabled) => turnFanout.attach(handle, { ttsEnabled }),
     }))
     .route('/api/ws/speech', speechWebSocketRoute(speech))
     .route('/api/turns', turnControlRoute({
@@ -124,6 +125,9 @@ export const createRoutes = (composition: Composition, secret: string) => {
     .route('/api/sessions', sessionHistoryRoute({
       session: database.session,
       turns: database.turns,
+      usageRecords: database.usageRecords,
+      audioArchive: speech.audioArchive,
+      providerModels: providers.providerModels,
       onSessionOpened: sessionId => {
         // 附件残留清扫(贴了没发/无行残渣)与 vision 描述缓存驱逐,fire-and-forget。
         void database.attachments
@@ -168,11 +172,15 @@ export const createRoutes = (composition: Composition, secret: string) => {
       backgroundProcesses: tools.backgroundProcesses,
     }))
 
-    .route('/api/kb', knowledgeLibsRoute({ kb: knowledge.kb, providerModels: providers.providerModels }))
+    .route('/api/kb', knowledgeLibsRoute({
+      kb: knowledge.kb,
+      providerModels: providers.providerModels,
+      emit: event => appEvents.emit(event),
+    }))
     .route('/api/kb', knowledgeIngestRoute({ kb: knowledge.kb }))
     .route('/api/kb', knowledgeReembedRoute({ kb: knowledge.kb }))
     .route('/api/kb', knowledgeSearchRoute({ kb: knowledge.kb }))
-    .route('/api/kb', knowledgeDocumentsRoute({ kb: knowledge.kb }))
+    .route('/api/kb', knowledgeDocumentsRoute({ kb: knowledge.kb, emit: event => appEvents.emit(event) }))
 
     .route('/api/mcp', mcpServersRoute({ mcp: tools.mcp }))
     .route('/api/mcp', mcpEnvironmentRoute({

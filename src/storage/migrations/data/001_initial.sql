@@ -144,6 +144,8 @@ CREATE TABLE sessions (
   updated_at           INTEGER NOT NULL,
   provider_id   TEXT,
   model_id             TEXT,
+  reasoning_effort     TEXT NOT NULL DEFAULT 'off'
+                       CHECK(reasoning_effort IN ('off', 'low', 'medium', 'high', 'max')),
   execution_profile    TEXT NOT NULL DEFAULT 'chat'
                        CHECK(execution_profile IN ('chat', 'work')),
   narrative_policy     TEXT NOT NULL DEFAULT 'auto'

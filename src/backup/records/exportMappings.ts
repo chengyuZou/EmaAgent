@@ -43,6 +43,7 @@ export const toSessionRecord = (row: SessionRow): SessionRecord => ({
   updatedAt: row.updated_at,
   providerId: row.provider_id,
   modelId: row.model_id,
+  reasoningEffort: row.reasoning_effort,
   executionProfile: row.execution_profile,
   narrativePolicy: row.narrative_policy,
   permissionMode: row.permission_mode,

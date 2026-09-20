@@ -62,6 +62,7 @@ export function toSession(row: SessionRow): Session {
     permissionMode: row.permission_mode,
     providerId: row.provider_id,
     modelId: row.model_id,
+    reasoningEffort: row.reasoning_effort,
     lastViewedAt: row.last_viewed_at,
   };
 }

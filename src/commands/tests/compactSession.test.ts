@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   compactManualMinRatioSetting,
   createCompact,
+  type CompactEvent,
   type CompactRequest,
   type CompactResult,
 } from '@ema-agent/compact';
@@ -20,7 +21,7 @@ import type { UsageRecord, UsageRecorder } from '@ema-agent/usage';
 import {
   compactSession,
   listCommandDescriptors,
-  type CommandCompactDeps,
+  type ManualCompactDeps,
 } from '../index.js';
 
 const PROVIDER_ID = 'test-provider';
@@ -44,11 +45,12 @@ function fakeSettingsStore(overrides: Record<string, unknown> = {}): SettingsSto
 }
 
 interface Fixture {
-  deps: CommandCompactDeps;
+  deps: ManualCompactDeps;
   sessions: SessionStore;
   turns: TurnStore;
   activeSessions: ActiveSessionRegistry;
   usageRecords: UsageRecord[];
+  compactEvents: CompactEvent[];
   sessionId: string;
 }
 
@@ -63,6 +65,7 @@ function makeFixture(options: {
   const activeSessions = new ActiveSessionRegistry();
   const turns = new TurnStore({ db, activeSessions });
   const usageRecords: UsageRecord[] = [];
+  const compactEvents: CompactEvent[] = [];
   const usageRecorder: UsageRecorder = {
     record: record => {
       usageRecords.push(record);
@@ -71,10 +74,10 @@ function makeFixture(options: {
 
   const sessionId = sessions.createSession().id;
   if (options.withModel !== false) {
-    sessions.patchSession(sessionId, { model: { providerId: PROVIDER_ID, modelId: MODEL_ID } });
+    sessions.patchSession(sessionId, { providerId: PROVIDER_ID, modelId: MODEL_ID });
   }
 
-  const deps: CommandCompactDeps = {
+  const deps: ManualCompactDeps = {
     sessions,
     turns,
     activeSessions,
@@ -96,8 +99,9 @@ function makeFixture(options: {
     createCompact,
     createLlmCall: () => options.callLlm ?? summaryLlm(),
     usageRecorder,
+    emit: event => compactEvents.push(event),
   };
-  return { deps, sessions, turns, activeSessions, usageRecords, sessionId };
+  return { deps, sessions, turns, activeSessions, usageRecords, compactEvents, sessionId };
 }
 
 /** 写入超过触发线的长历史（6 条 × 2 万字符，约 3 万 token > 窗口本身，同时触发窗口截断）。 */
@@ -180,7 +184,7 @@ describe('compactSession', () => {
   });
 
   it('成功压缩：窗口截断显式计数、摘要落库、尾部续读、记录用量', async () => {
-    const { deps, sessions, usageRecords, sessionId } = makeFixture();
+    const { deps, sessions, usageRecords, compactEvents, sessionId } = makeFixture();
     const ids = seedLongHistory(sessions, sessionId);
 
     const result = await compactSession(deps, sessionId);
@@ -211,6 +215,11 @@ describe('compactSession', () => {
     expect(record.sessionId).toBe(sessionId);
     expect(record.id).toMatch(/^compact:/);
     expect(record.inputTokens).toBe(8_000);
+    expect(compactEvents.map(event => event.type)).toEqual([
+      'compact_started',
+      'compact_history_truncated',
+      'compact_completed',
+    ]);
   });
 
   it('项目 Work Session 压缩时使用项目身份装载技能目录', async () => {
@@ -223,7 +232,8 @@ describe('compactSession', () => {
     const projectSessionId = fixture.sessions.createSession({ projectId: project.id }).id;
     fixture.sessions.patchSession(projectSessionId, {
       executionProfile: 'work',
-      model: { providerId: PROVIDER_ID, modelId: MODEL_ID },
+      providerId: PROVIDER_ID,
+      modelId: MODEL_ID,
     });
     seedLongHistory(fixture.sessions, projectSessionId);
     const requested: Array<[string, string | null]> = [];
@@ -297,19 +307,23 @@ describe('compactSession', () => {
         );
       });
     })();
-    const { deps, sessions, activeSessions, sessionId } = makeFixture({ callLlm: hangingLlm });
+    const { deps, sessions, activeSessions, compactEvents, sessionId } = makeFixture({ callLlm: hangingLlm });
     const ids = seedLongHistory(sessions, sessionId);
 
     const pending = compactSession(deps, sessionId);
     await new Promise(resolve => setImmediate(resolve));
-    const active = activeSessions.getActiveExecution(sessionId);
+    const active = activeSessions.getActiveSession(sessionId);
     expect(active?.kind).toBe('compact');
-    activeSessions.abort(sessionId, active!.executionId);
+    activeSessions.abort(sessionId, active!);
 
     const result = await pending;
     expect(result.status).toBe('cancelled');
     expect(activeSessions.isRunning(sessionId)).toBe(false);
     expect(sessions.loadHistory(sessionId).map(message => message.id)).toEqual(ids);
+    expect(compactEvents.map(event => event.type)).toEqual([
+      'compact_started',
+      'compact_cancelled',
+    ]);
   });
 });
 

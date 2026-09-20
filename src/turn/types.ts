@@ -1,5 +1,4 @@
 // Turn 领域对象与公开入口契约；共享词汇 ExecutionProfile/NarrativePolicy/TurnStatus 来自 @ema-agent/session。
-import type { LlmThinkingEffort } from '@ema-agent/llm';
 import type {
   ExecutionProfile,
   NarrativePolicy,
@@ -125,14 +124,6 @@ export type TurnInputPart =
       readonly path: string;
     };
 
-/** 本 Turn 对 Session 默认模型的完整覆盖；模型身份与推理配置必须同生同灭。 */
-export interface TurnModelSelection {
-  readonly providerId: string;
-  readonly modelId: string;
-  readonly thinkingEnabled: boolean;
-  readonly thinkingEffort: LlmThinkingEffort;
-}
-
 /** 本 Turn 在当前激活知识库内的文档范围；不提供 knowledge 表示使用整个激活库。 */
 export interface TurnKnowledgeSelection {
   readonly assetIds: readonly string[];
@@ -162,8 +153,6 @@ export interface StartTurn {
   readonly input: readonly TurnInputPart[];
   /** 已完成后台工作的轻量通知. 完整结果由模型按其中的执行 id 主动读取. */
   readonly completionNoticeText?: string;
-  /** 省略时使用 Session 当前模型选择。 */
-  readonly modelSelection?: TurnModelSelection;
   readonly knowledge?: TurnKnowledgeSelection;
 }
 

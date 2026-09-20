@@ -15,7 +15,6 @@ export {
 } from './contextUsage.js';
 export type {
   ContextUsage,
-  ContextUsageCategories,
   ContextUsageEstimate,
 } from './contextUsage.js';
 export { ContextAssemblyError } from './errors.js';

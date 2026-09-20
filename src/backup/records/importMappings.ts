@@ -43,10 +43,13 @@ export function restoreSessionRecord(record: SessionRecord): SessionRow {
     forked_from_turn_id: record.forkedFromTurnId,
     last_viewed_at: record.lastViewedAt,
     last_activity_at: record.lastActivityAt,
+    // 单条 Session 备份不保存它在来源机侧栏中的位置.
+    sidebar_order: 0,
     created_at: record.createdAt,
     updated_at: record.updatedAt,
     provider_id: record.providerId,
     model_id: record.modelId,
+    reasoning_effort: record.reasoningEffort,
     execution_profile: record.executionProfile,
     narrative_policy: record.narrativePolicy,
     permission_mode: record.permissionMode,

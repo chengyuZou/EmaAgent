@@ -1,5 +1,5 @@
 // 工作区 diff:tracked 走 git diff,untracked 逐文件 --no-index 伪 diff。
-// 安全约束与 codex /diff 一致:禁 textconv/ext-diff 可执行 helper,filter driver 置空,
+// 禁 textconv/ext-diff 可执行 helper,filter driver 置空,
 // submodule 只看短状态;--no-index 有差异时退出码 1 属正常。
 import path from 'node:path';
 import { GitError, mapGitError } from './errors.js';

@@ -1,5 +1,5 @@
-// 手动 /compact：与根 Turn 同坑互斥的确定性历史改写，不创建 Turn。
-// 链：坑位(kind='compact') → 读历史 → buildHistoryMessages 投影 → 触发线下限闸 →
+// 手动 /compact: 与根 Turn 共享同一份 Session 运行记录, 两者互斥, 且不创建 Turn.
+// 链: 注册 ActiveSession(kind='compact') → 读历史 → buildHistoryMessages 投影 → 触发线下限闸 →
 // 与下一根 Turn 同事实的 systemMessages → compact(force=true) →
 // 游标映射 appendHistorySummary（唯一提交点；abort/失败即历史原样）。
 // 命令路径的压缩终态一定是 macro：低于触发线在调用前拒绝，macro 失败按错误上抛，
@@ -13,6 +13,7 @@ import type { VisionDescriptionCache, VisionDescriptionProducer } from '@ema-age
 import {
   compactManualMinRatioSetting,
   readCompactSettings,
+  type CompactEvent,
   type CompactRequest,
   type CompactResult,
 } from '@ema-agent/compact';
@@ -44,7 +45,7 @@ import {
 import { recordLlmCallUsage, type UsageRecorder } from '@ema-agent/usage';
 import { CommandsError } from '../errors.js';
 
-export type CommandCompactResult =
+export type ManualCompactResult =
   | {
       readonly status: 'completed';
       /** 本次实际用于压缩的模型窗口；前端据此更新压缩后的 Context Meter。 */
@@ -59,7 +60,7 @@ export type CommandCompactResult =
     }
   | { readonly status: 'cancelled' };
 
-export interface CommandCompactDeps {
+export interface ManualCompactDeps {
   readonly sessions: Pick<SessionStore,
     'getSession' | 'listProjectFolders' | 'loadHistory' | 'appendHistorySummary'>;
   /** Assistant 历史的 generatedBy 解析（createGenerationTargetResolver 的事实源）。 */
@@ -90,12 +91,14 @@ export interface CommandCompactDeps {
   readonly createLlmCall: (connection: LlmConnection, modelId: string) => CallLlm;
   /** 摘要调用记账；缺省不记账（观测不阻断主链）。 */
   readonly usageRecorder?: UsageRecorder;
+  /** 手动压缩生命周期由 Compact 管线生产，这里只提供当前 Session 的传输出口。 */
+  readonly emit: (event: CompactEvent) => void;
 }
 
 export async function compactSession(
-  deps: CommandCompactDeps,
+  deps: ManualCompactDeps,
   sessionId: string,
-): Promise<CommandCompactResult> {
+): Promise<ManualCompactResult> {
   if (deps.activeSessions.isRunning(sessionId)) {
     throw new SessionBusyError(sessionId);
   }
@@ -117,8 +120,9 @@ export async function compactSession(
     );
   }
 
-  const executionId = randomUUID();
-  const signal = deps.activeSessions.register(sessionId, executionId, 'compact');
+  const compactId = randomUUID();
+  const active = { kind: 'compact', compactId } as const;
+  const signal = deps.activeSessions.register(sessionId, active);
   try {
     const persisted = deps.sessions.loadHistory(sessionId);
     if (persisted.length === 0) {
@@ -179,6 +183,7 @@ export async function compactSession(
     const compact = deps.createCompact(callLlm);
 
     const result = await compact({
+      compactId,
       sessionId,
       executionProfile: session.executionProfile,
       history,
@@ -191,7 +196,13 @@ export async function compactSession(
       contextWindow: providerModel.contextWindow,
       modelMaxOutput: providerModel.maxOutput,
       signal,
+      emit: deps.emit,
       settings: compactSettings,
+      ...(providerModel.reasoning === true
+        ? { thinking: session.reasoningEffort === 'off'
+            ? { enabled: false as const }
+            : { enabled: true as const, effort: session.reasoningEffort } }
+        : {}),
       // 游标映射与根 Turn 同一闭包语义：计数（含窗口截断丢弃偏移）→ 输入历史身份
       // → 覆盖截止游标，被丢弃消息随游标一并退出可见历史。
       saveMacroSummary: (summary, summarizedMessageCount) => {
@@ -206,7 +217,6 @@ export async function compactSession(
 
     if (result.kind === 'macro') {
       // 摘要调用的 usage 随完成结果带出（收完的 completion 快照）；abort/失败没有
-      // completion 自然不记——与 Claude/Codex "只在流完结时入账"同规。
       recordLlmCallUsage(deps.usageRecorder, {
         providerId,
         modelId,
@@ -214,8 +224,8 @@ export async function compactSession(
         startedAt: Date.now() - result.durationMs,
         durationMs: result.durationMs,
         usage: result.usage,
-        // 手动压缩不铸 turnId/llmCallId；callId 用坑位执行身份，便于对账。
-        usageContext: { callId: `compact:${executionId}`, sessionId },
+        // 手动压缩不铸 turnId/llmCallId. 用事件里同一个 compactId 关联这次调用.
+        usageContext: { callId: `compact:${compactId}`, sessionId },
       });
       return {
         status: 'completed',
@@ -242,7 +252,7 @@ export async function compactSession(
     if (signal.aborted) return { status: 'cancelled' };
     throw error;
   } finally {
-    deps.activeSessions.clear(sessionId, executionId);
+    deps.activeSessions.clear(sessionId, active);
   }
 }
 
@@ -252,7 +262,7 @@ export async function compactSession(
  * toolNames 恒空（手动路径不装配 ToolPool，见文件头注释）。
  */
 async function buildCompactSystemMessages(
-  deps: CommandCompactDeps,
+  deps: ManualCompactDeps,
   session: Session,
   providerId: string,
   modelId: string,

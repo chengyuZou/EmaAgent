@@ -25,9 +25,9 @@ interface TurnHandle {
 ```
 
 - `start()` 同步创建并立刻返回句柄：TurnStore 建行（创建即 running、同 Session 唯一活动、`session_busy` 快速失败）→ 事件通道 → 异步泵送准备与主循环。
-- `StartTurn.input` 是唯一有序输入：`text / attachment / skill` 按数组位置持久化、投影给模型并用于历史展示。模型覆盖收进 `modelSelection`；`knowledge.assetIds` 只约束当前激活知识库内的文档范围。Command/Skill 解析在调用方完成，Turn 不解析 `/` 语法，也不接受 prepare 回调。
+- `StartTurn.input` 是唯一有序输入：`text / attachment / skill` 按数组位置持久化、投影给模型并用于历史展示。模型与推理强度从 Session 读取并在准备阶段冻结, 消息不再携带第二份模型选择；`knowledge.assetIds` 只约束当前激活知识库内的文档范围。Command/Skill 解析在调用方完成，Turn 不解析 `/` 语法，也不接受 prepare 回调。
 - `TurnOutcome` 只有 completed/failed/aborted 三态，与终态事件同一份数据。
-- 用户追加输入由 `SessionContinuationQueue` 接收。普通输入等当前 Turn 完整结束后合批启动下一根 Turn；标为立即引导的输入只允许在完整 ToolResult 批次之后进入当前 Turn 的下一次迭代。
+- 用户追加输入由 `SessionContinuationQueue` 接收。一条 Queue item 永远对应一条 UserMessage：普通输入等当前 Turn 完整结束后按顺序逐条启动新 Turn；立即引导按 `guide()` 成功顺序，在完整 ToolResult 批次之后逐条落库并进入当前 Turn 的下一次迭代。后台完成通知与用户输入使用互斥 claim；通知可合成一条 continuation Message，但不会与 UserMessage 共用一次领取或确认。
 
 ## 主链
 
@@ -37,7 +37,7 @@ start
   → prepareTurn（preparation/，一次性冻结）
   │    ├─ 读取并冻结本 Turn 的 agent/compact/attachment/permission 设置
   │    ├─ Session 事实（cwd/projectId/模型偏好）与当前 Project folders
-  │    ├─ 模型解析：请求覆盖 > Session 偏好；ProviderModels 事实 + resolveConnection + createLlm
+  │    ├─ 模型解析：Session 模型与推理强度；ProviderModels 事实 + resolveConnection + createLlm
   │    ├─ 附件登记（AttachmentStore.addAll）→ 用户消息只保存 attachment_ref
   │    ├─ Skill：work 态 freezeSkillPool + 选中引用冻结；正文由 Skill Tool 按需读取
   │    ├─ 权限三桶 loadPermissionRuleBuckets
@@ -72,6 +72,7 @@ start
 - 首个 delta 创建 assistant 消息，后续 delta 用 `updateMessageBlocks` 续写同一消息。
 - 终态非 completed 时未完成 assistant 标 `interrupted`；`max_tokens` 从头重试也先把被替代的半截消息标记为 `interrupted`。未等到 tool_result 的 tool_use 由 Turn 合成取消结果补配对；deriveLlmHistory 不重放中断 Assistant 或不完整 Tool 配对。
 - 先落库，再发事件：SSE 不是持久化触发器。
+- 立即引导在同一安全点逐条执行“领取 → 准备 → UserMessage 落库 → 发事件 → acknowledge”。后一条失败只 release 当前条目，已经确认的前序消息不会重新入队。
 
 ## 权限与交互
 
@@ -89,7 +90,7 @@ start
 
 `turn/events.ts` 只拥有根 Turn 的生命周期及其 Tool/Permission/Compact/Narrative 事件. 后台 AgentRun 可能活过父 Turn, 因此由 Server 按 Session 直接发往 Agent WebSocket, 不再塞进 `TurnStreamEvent`.
 
-Context 球只消费根 Agent 发出的 `context_usage_updated`：请求装配先发分类估算，同一 `llmCallId` 收到 Provider Usage 后只校正总输入和缓存子集；模型输出或 Tool Result 真正进入后续工作历史时，再追加本地 Messages 估算。`agent_usage_updated` 是根 AgentLoop 的累计消耗，子 Agent 的同名事件保留在对应 `agent_run_event` 内，二者都不更新 Context 球。
+Context 球在根 Turn 运行时消费 `context_usage_updated`：请求装配先发总输入估算, 同一 `llmCallId` 收到 Provider Usage 后校正总输入和缓存子集；模型输出或 Tool Result 真正进入后续工作历史时, 再追加本地 Messages 估算。没有活动根调用时, Chat 从 Session 有效历史读取一次冷估算。成功保存 Macro 摘要后旧值失效并重读摘要及未覆盖尾部。`agent_usage_updated` 是根 AgentLoop 的累计消耗, 子 Agent 的同名事件保留在对应 `agent_run_event` 内, 二者都不更新 Context 球。
 
 Reminder 表示"本 Turn 开始时的事实"：TurnExecutor 每根 Turn 调一次 `readTurnReminder`（`TurnReminderScope`：sessionId/turnId/executionProfile/narrativePolicy/userText/emit）取回完整启动期输入（含 currentDate），`renderTurnReminder` 渲染后经 `appendMessage(kind='reminder')` 持久化，再由 loadHistory 读回放进当前 Turn 工作消息——同一份字节，不随 LLM Call 重建，也不进可压缩区间。Narrative 三态：always 在取输入时查询一次写入 reminder；auto 只装配 NarrativeSearchTool；off 两者皆无。
 

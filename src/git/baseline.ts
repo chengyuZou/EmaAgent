@@ -1,6 +1,5 @@
-// 内部目录的可重置 diff 机制(对照 codex git-utils baseline.rs)。
+// 内部目录的可重置 diff 机制
 // 用系统 git 实现"单 commit 基线":ensure → init + 首次提交;reset → add + amend 折叠为单 commit。
-// 与 codex 语义一致:diff = HEAD 树 vs 当前目录内容(含 untracked 新增)。
 // untracked 伪 diff 复用 diff.ts 的成熟实现(listUntrackedFiles / diffUntrackedFile),不重复造轮子。
 import { GitError } from './errors.js';
 import { runGit } from './gitProcess.js';
@@ -69,7 +68,6 @@ export async function ensureBaseline(root: string): Promise<void> {
 /**
  * 把 root 重置为新的单 commit 基线(当前目录内容成为新的"上次")。
  * 首次:init + add + commit;之后:add + commit --amend 折叠历史为单 commit。
- * 与 codex reset 语义一致,但不删 .git、不积累提交历史。
  */
 export async function resetBaseline(root: string): Promise<void> {
   if (!(await hasUsableBaseline(root))) {
@@ -220,7 +218,7 @@ function porcelainStatus(x: string, y: string): BaselineChangeStatus | null {
   return null;
 }
 
-/** 按 UTF-8 字符边界截断,不切半字符(codex previous_char_boundary 同款)。 */
+/** 按 UTF-8 字符边界截断,不切半字符 */
 function truncateAtCharBoundary(text: string, maxBytes: number): string {
   if (Buffer.byteLength(text, 'utf8') <= maxBytes) return text;
   let slice = text;

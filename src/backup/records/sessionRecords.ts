@@ -34,6 +34,7 @@ export const sessionRecordSchema = z.object({
   updatedAt: integer,
   providerId: nullableId,
   modelId: nullableId,
+  reasoningEffort: z.enum(['off', 'low', 'medium', 'high', 'max']),
   executionProfile: z.enum(['chat', 'work']),
   narrativePolicy: z.enum(['auto', 'always', 'off']),
   permissionMode: z.enum(['default', 'acceptEdits', 'bypassPermissions']),

@@ -298,7 +298,11 @@ export function prepareTurnTools(
       ...(deps.toolExecutionState
         ? { toolExecutionState: deps.toolExecutionState }
         : {}),
-      pushEv: event => input.emit(event),
+      // 根 Tool 的终态要等 AgentLoop 把 ToolResult Message 落库后再广播。
+      // 进度与权限仍实时转发，tool_result 由 TurnExecutor.translate 唯一产出。
+      pushEv: event => {
+        if (event.type !== 'tool_result') input.emit(event);
+      },
       wake,
     });
     currentExecutor = executor;

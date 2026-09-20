@@ -218,7 +218,11 @@ export function openSpeech(
             segmentCount: audio.segmentCount,
             createdAt: Date.now(),
           });
-          emitArchiveChanged({ type: 'session_audio_changed', sessionId: setup.sessionId });
+          emitArchiveChanged({
+            type: 'session_audio_changed',
+            sessionId: setup.sessionId,
+            turnId: setup.turnId,
+          });
         }
         channels.delete(setup.turnId);
         channel.close();

@@ -1,6 +1,4 @@
 // PowerShell 可执行文件探测:优先 pwsh(7+),回退 Windows 随箱的 powershell.exe(5.1)。
-// 对照 Claude src/utils/shell/powershellDetection.ts;which 改用 node:child_process 实现。
-// 模块加载即预热(registerBuiltinTools 时),首个 Turn 装配前探测早已结算。
 import { execFile } from 'node:child_process';
 import { realpath, stat } from 'node:fs/promises';
 

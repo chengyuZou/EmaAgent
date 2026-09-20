@@ -140,12 +140,12 @@ export async function prepareTurn(
     : [];
   const workspaceRoots = projectFolders.length > 0 ? projectFolders : [cwd];
 
-  const providerId = request.modelSelection?.providerId ?? session.providerId;
-  const modelId = request.modelSelection?.modelId ?? session.modelId;
+  const providerId = session.providerId;
+  const modelId = session.modelId;
   if (!providerId || !modelId) {
     throw new TurnPreparationError(
       'provider/not_configured',
-      '未配置模型：请求与 Session 偏好均未指定 providerId/modelId',
+      '当前 Session 未指定 providerId/modelId',
     );
   }
   const modelFacts = deps.providerModels.get(providerId, 'llm', modelId);
@@ -252,8 +252,10 @@ export async function prepareTurn(
     contextWindow: modelFacts.contextWindow,
     maxOutput: modelFacts.maxOutput,
     supportsImageInput,
-    ...(request.modelSelection?.thinkingEnabled
-      ? { thinking: { enabled: true as const, effort: request.modelSelection.thinkingEffort } }
+    ...(modelFacts.reasoning === true
+      ? { thinking: session.reasoningEffort === 'off'
+          ? { enabled: false as const }
+          : { enabled: true as const, effort: session.reasoningEffort } }
       : {}),
     systemPrompt,
     userMessageBlocks,

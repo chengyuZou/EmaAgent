@@ -52,7 +52,10 @@ import {
 } from './preparation/turnReminder.js';
 import type { TurnToolsAssembly } from './preparation/prepareTurnTools.js';
 import type { TurnStore } from './turnStore.js';
-import type { SessionContinuationQueue } from './sessionContinuationQueue.js';
+import type {
+  ClaimedSessionContinuation,
+  SessionContinuationQueue,
+} from './sessionContinuationQueue.js';
 import type {
   StartTurn,
   TurnHandle,
@@ -240,6 +243,7 @@ export class TurnExecutor {
         type: 'turn_started',
         sessionId,
         turnId,
+        triggerType: turn.triggerType,
         executionProfile: turn.executionProfile,
         narrativePolicy: turn.narrativePolicy,
       });
@@ -326,12 +330,13 @@ export class TurnExecutor {
         });
       }
       if (prepared.userMessageBlocks.length > 0) {
-        this.deps.sessions.appendMessage({
+        const userMessage = this.deps.sessions.appendMessage({
           turnId,
           sessionId,
           role: 'user',
           blocks: prepared.userMessageBlocks,
         });
+        emit({ type: 'user_message_stored', message: userMessage });
       }
       // 队列项和后台结果只有在对应 Message 全部落库后才确认交付.
       this.deps.continuations.acknowledge(turnId);
@@ -340,6 +345,54 @@ export class TurnExecutor {
         this.deps.startSessionTitleGeneration?.(sessionId, userText);
       }
 
+      const turnSkillPool = prepared.skillPool;
+      const persistClaim = async (
+        claim: ClaimedSessionContinuation,
+      ): Promise<SessionMessage> => {
+        if (claim.type === 'completion_notices') {
+          // completionNoticeText 不会在前端显示 因此无需 emit 事件
+          return this.deps.sessions.appendMessage({
+            turnId,
+            sessionId,
+            role: 'user',
+            kind: 'continuation',
+            blocks: claim.completionNoticeText,
+          });
+        }
+
+        const blocks = await prepareTurnInputParts(
+          this.deps.attachments,
+          sessionId,
+          turnId,
+          claim.userInput.input,
+          turnSkillPool,
+        );
+
+        const userMessage = this.deps.sessions.appendMessage({
+          turnId,
+          sessionId,
+          role: 'user',
+          blocks,
+        });
+        emit({ type: 'user_message_stored', message: userMessage });
+        return userMessage;
+      };
+
+      const persistNextIterationMessages = async (): Promise<SessionMessage[]> => {
+        const appended: SessionMessage[] = [];
+        while (true) {
+          const claim = this.deps.continuations.claimNextIteration(sessionId, turnId);
+          if (!claim) return appended;
+          try {
+            appended.push(await persistClaim(claim));
+            // 一个 claim 只生成一条 Message；确认后才能领取下一个 claim.
+            this.deps.continuations.acknowledge(turnId);
+          } catch (error) {
+            this.deps.continuations.release(turnId);
+            throw error;
+          }
+        }
+      };
       // 历史区间 = reminder 之前的旧消息；reminder 从持久化读回（与落库同一份字节），
       // 用户输入以解析后的全量 parts 进入当前 Turn（附件真实内容只在这一形态）。
       // 两者都在不可压缩区间：Compact 只能改写 reminder 之前的旧历史。
@@ -358,7 +411,6 @@ export class TurnExecutor {
         ...(this.deps.describeImage ? { describeImage: this.deps.describeImage } : {}),
         signal,
       };
-      const turnSkillPool = prepared.skillPool;
       const historyWithIds = await buildHistoryMessages(
         persisted.slice(0, reminderIndex),
         resolveGenerationTarget,
@@ -426,45 +478,13 @@ export class TurnExecutor {
         callLlm: prepared.callLlm,
         createToolExecutor: tools.createExecutor,
         takeNextIterationMessages: async () => {
-          const claim = this.deps.continuations.claimNextIteration(sessionId, turnId);
-          if (!claim) return [];
-          try {
-            const appended: SessionMessage[] = [];
-            if (claim.completionNoticeText) {
-              appended.push(this.deps.sessions.appendMessage({
-                turnId,
-                sessionId,
-                role: 'user',
-                kind: 'continuation',
-                blocks: claim.completionNoticeText,
-              }));
-            }
-            for (const queued of claim.userInputs) {
-              const blocks = await prepareTurnInputParts(
-                this.deps.attachments,
-                sessionId,
-                turnId,
-                queued.input,
-                turnSkillPool,
-              );
-              appended.push(this.deps.sessions.appendMessage({
-                turnId,
-                sessionId,
-                role: 'user',
-                blocks,
-              }));
-            }
-            const projected = await buildHistoryMessages(
-              appended,
-              resolveGenerationTarget,
-              attachmentOptions,
-            );
-            this.deps.continuations.acknowledge(turnId);
-            return projected.map(entry => entry.message);
-          } catch (error) {
-            this.deps.continuations.release(turnId);
-            throw error;
-          }
+          const appended = await persistNextIterationMessages();
+          const projected = await buildHistoryMessages(
+            appended,
+            resolveGenerationTarget,
+            attachmentOptions,
+          );
+          return projected.map(entry => entry.message);
         },
         signal,
         maxIterations: prepared.maxIterations,
@@ -751,7 +771,7 @@ export class TurnExecutor {
           name: toolNames.get(result.toolCallId) ?? 'unknown',
           ...(result.isError
             ? { error: { code: result.errorCode ?? 'tool/error', message: String(result.content) } }
-            : { output: result.content }),
+            : { output: result.data ?? result.content }),
           durationMs: result.durationMs ?? 0,
         });
         return;

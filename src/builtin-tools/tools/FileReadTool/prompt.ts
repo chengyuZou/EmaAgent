@@ -6,7 +6,6 @@ import {
   SELECTED_BYTES_LIMIT,
 } from './limits.js';
 
-/** 去重回放时给模型的引导语: 引用早前内容, 不要重读(Claude 同款)。 */
 export const FILE_UNCHANGED_STUB =
   'File unchanged since last read. The content from the earlier Read tool_result '
   + 'in this conversation is still current — refer to that instead of re-reading.';

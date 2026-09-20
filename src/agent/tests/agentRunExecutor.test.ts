@@ -143,6 +143,23 @@ describe('AgentRunExecutor', () => {
     ));
   });
 
+  it('停止 SubagentAwait 只结束等待, 后台 AgentRun 继续完成', async () => {
+    const gate = deferred();
+    const fixture = createExecutor(makeStore());
+    fixture.executor.start(makeInput('run-await', gate.promise, new AbortController().signal));
+    fixture.executor.moveToBackground('run-await', 'session-1');
+
+    const waiting = new AbortController();
+    const result = fixture.executor.awaitResult('run-await', 'session-1', waiting.signal);
+    waiting.abort(new Error('用户停止等待'));
+
+    await expect(result).resolves.toBeNull();
+    gate.resolve();
+    await vi.waitFor(() => expect(fixture.onBackgroundCompleted).toHaveBeenCalledWith(
+      'session-1', 'run-await', 'completed',
+    ));
+  });
+
   it('已持久化终态可以按 id 重复读取', async () => {
     const stored: AgentRun = {
       id: 'run-3',

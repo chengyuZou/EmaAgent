@@ -21,7 +21,6 @@ export type {
 } from './types.js';
 
 
-// ── 基线机制:内部目录的可重置 diff(单 commit 基线,对照 codex git-utils baseline.rs) ──
 export {
   hasUsableBaseline,
   ensureBaseline,
@@ -36,6 +35,6 @@ export type {
   BaselineOptions,
 } from './baseline.js';
 
-// ── patch 应用:unified diff → git apply(对照 codex git-utils apply.rs) ──
+// ── patch 应用:unified diff → git apply ──
 export { applyPatch, extractPathsFromDiff } from './apply.js';
 export type { ApplyRequest, ApplyResult } from './apply.js';

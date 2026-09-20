@@ -8,10 +8,7 @@ export {
   SessionBusyError,
 } from './errors.js';
 export { ActiveSessionRegistry } from './activeSessionRegistry.js';
-export type {
-  ActiveSessionExecution,
-  ActiveSessionExecutionKind,
-} from './activeSessionRegistry.js';
+export type { ActiveSession } from './activeSessionRegistry.js';
 export { parseMessageBlocksJson } from './message.js';
 export type {
   Session,
@@ -31,6 +28,7 @@ export type {
   SearchSessionsOutput,
   ExecutionProfile,
   NarrativePolicy,
+  ReasoningEffort,
   TurnStatus,
   SessionSidebarDestination,
   MoveSessionInSidebarInput,

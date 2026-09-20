@@ -2,6 +2,20 @@
 
 export type KnowledgeEvent =
   | {
+      /** 库创建、改名或删除已完成; 其他窗口重新读取库列表. */
+      readonly type: 'kb_library_list_changed';
+    }
+  | {
+      /** 激活库已切换; Chat 丢弃所有尚未发送的旧库文档选择, 再重读库列表. */
+      readonly type: 'kb_active_changed';
+      readonly kbId: string | null;
+    }
+  | {
+      readonly type: 'kb_document_deleted';
+      readonly kbId: string;
+      readonly assetId: string;
+    }
+  | {
       readonly type: 'kb_ingest_progress';
       readonly kbId: string;
       readonly taskId: string;

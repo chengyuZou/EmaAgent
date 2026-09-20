@@ -8,14 +8,15 @@ import { cn } from '../utils/cn.js';
 // 条目类型:item / separator / submenu(递归) / checkbox。
 
 export type MenuItem =
-  | { kind: 'item';      label: string; icon?: string; danger?: boolean; disabled?: boolean; shortcut?: string; description?: string; onSelect(): void }
+  | { kind: 'item';      id?: string; label: string; icon?: string; danger?: boolean; disabled?: boolean; shortcut?: string; description?: string; onSelect(): void }
   | { kind: 'separator' }
-  | { kind: 'submenu';   label: string; icon?: string; items: MenuItem[] }
-  | { kind: 'checkbox';  label: string; icon?: string; checked: boolean; onCheckedChange(v: boolean): void };
+  | { kind: 'submenu';   id?: string; label: string; icon?: string; items: MenuItem[] | (() => MenuItem[]) }
+  | { kind: 'checkbox';  id?: string; label: string; icon?: string; checked: boolean; onCheckedChange(v: boolean): void };
 
 export interface DropdownMenuProps {
   trigger:   ReactNode;
-  items:     MenuItem[];
+  /** 传函数时只在菜单真正展开后生成条目, 避免每次输入文字都重建模型等列表. */
+  items:     MenuItem[] | (() => MenuItem[]);
   side?:     'top' | 'right' | 'bottom' | 'left';
   align?:    'start' | 'center' | 'end';
   widthClass?: string;
@@ -41,11 +42,27 @@ export function DropdownMenu(props: DropdownMenuProps): React.JSX.Element {
             'ema-anim-scale',
           )}
         >
-          {items.map((it, i) => <RenderItem key={i} item={it} checkIcon={checkIcon} submenuIcon={submenuIcon} />)}
+          <MenuItems items={items} checkIcon={checkIcon} submenuIcon={submenuIcon} />
         </RadixDropdown.Content>
       </RadixDropdown.Portal>
     </RadixDropdown.Root>
   );
+}
+
+function MenuItems({ items, checkIcon, submenuIcon }: {
+  items: MenuItem[] | (() => MenuItem[]);
+  checkIcon?: string;
+  submenuIcon?: string;
+}): React.JSX.Element {
+  const resolved = typeof items === 'function' ? items() : items;
+  return <>{resolved.map((item, index) => (
+    <RenderItem
+      key={item.kind === 'separator' ? `separator:${index}` : item.id ?? `${item.kind}:${item.label}`}
+      item={item}
+      checkIcon={checkIcon}
+      submenuIcon={submenuIcon}
+    />
+  ))}</>;
 }
 
 function RenderItem({ item, checkIcon, submenuIcon }: { item: MenuItem; checkIcon?: string; submenuIcon?: string }): React.JSX.Element {
@@ -105,7 +122,7 @@ function RenderItem({ item, checkIcon, submenuIcon }: { item: MenuItem; checkIco
                 'ema-anim-scale',
               )}
             >
-              {item.items.map((sub, i) => <RenderItem key={i} item={sub} checkIcon={checkIcon} submenuIcon={submenuIcon} />)}
+              <MenuItems items={item.items} checkIcon={checkIcon} submenuIcon={submenuIcon} />
             </RadixDropdown.SubContent>
           </RadixDropdown.Portal>
         </RadixDropdown.Sub>

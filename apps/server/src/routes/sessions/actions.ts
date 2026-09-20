@@ -12,11 +12,11 @@ const patchSessionBody = z.object({
   executionProfile: z.enum(['chat', 'work']).optional(),
   narrativePolicy: z.enum(['auto', 'always', 'off']).optional(),
   permissionMode: z.enum(['default', 'acceptEdits', 'bypassPermissions']).optional(),
-  /** 该 Session 后续 Turn 的模型偏好；null 恢复默认解析。 */
-  model: z.object({
-    providerId: z.string().min(1),
-    modelId: z.string().min(1),
-  }).nullable().optional(),
+  providerId: z.string().min(1).optional(),
+  modelId: z.string().min(1).optional(),
+  reasoningEffort: z.enum(['off', 'low', 'medium', 'high', 'max']).optional(),
+}).refine(body => (body.providerId === undefined) === (body.modelId === undefined), {
+  message: 'providerId 与 modelId 必须同时提供',
 });
 
 const forkBody = z.object({
@@ -75,7 +75,7 @@ export const sessionActionsRoute = (deps: SessionActionsRouteDeps) =>
         throw error;
       }
     })
-    // 只服务"编辑最后一条用户消息"；不开放任意历史删除。
+    // TODO: 当前 Desktop 禁止消息回退。此接口删除整 Turn，未来不能直接复用为单条 Message 编辑。
     .post('/:sessionId/turns/:turnId/rewind', async context => {
       try {
         await deps.abortAgentRunsForTurn(context.req.param('turnId'));

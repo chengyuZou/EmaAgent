@@ -49,13 +49,11 @@ const inputSchema = z.object({
 
 type FileEditInput = z.infer<typeof inputSchema>;
 
-// ── 输出类型(与 Claude FileEditOutput 同构;差集:无 userModified/gitDiff) ──────
-
 export interface FileEditResult {
   filePath: string;
-  /** 实际被替换的子串(引号归一化后的文件原文)。 */
+  /** 实际被替换的子串 */
   oldString: string;
-  /** 实际写入的子串(引号风格保持后)。 */
+  /** 实际写入的子串 */
   newString: string;
   /** 编辑前全文,审计与重算的基准。 */
   originalFile: string;

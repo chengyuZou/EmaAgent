@@ -81,8 +81,12 @@ async function* streamOpenAiChat(
   let thinkingBlockIndex: number | undefined;
   let textBlockIndex: number | undefined;
 
+  const iterator = response[Symbol.asyncIterator]();
   try {
-    for await (const chunk of response) {
+    while (true) {
+      const next = await nextChunk(iterator, request.signal);
+      if (next.done) break;
+      const chunk = next.value;
       const choice = chunk.choices[0];
       const delta = choice?.delta;
       const extendedDelta = delta as Record<string, unknown> | undefined;
@@ -161,6 +165,7 @@ async function* streamOpenAiChat(
       }
     }
   } catch (error) {
+    if (request.signal?.aborted) void iterator.return?.();
     throwIfAbortError(error, request.signal);
     throw normalizeLlmProviderError(error);
   }
@@ -168,6 +173,32 @@ async function* streamOpenAiChat(
   throwIfAborted(request.signal);
   if (!receivedFinishReason) throw new LlmStreamProtocolError('openai-llm');
   yield { type: 'done', stopReason };
+}
+
+function nextChunk<T>(
+  iterator: AsyncIterator<T>,
+  signal: AbortSignal | undefined,
+): Promise<IteratorResult<T>> {
+  throwIfAborted(signal);
+  if (!signal) return iterator.next();
+
+  return new Promise<IteratorResult<T>>((resolve, reject) => {
+    const onAbort = (): void => {
+      signal.removeEventListener('abort', onAbort);
+      reject(signal.reason);
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+    iterator.next().then(
+      result => {
+        signal.removeEventListener('abort', onAbort);
+        resolve(result);
+      },
+      error => {
+        signal.removeEventListener('abort', onAbort);
+        reject(error);
+      },
+    );
+  });
 }
 
 function toOpenAiMessages(

@@ -1,6 +1,3 @@
-// FileEditTool 的模型说明书, 单点维护。
-// 条目对照 Claude FileEditTool prompt.ts, 只按我方事实修正(整读要求/引号归一/mtime 守卫)。
-
 export const FILE_EDIT_DESCRIPTION = `Performs exact string replacements in files.
 
 Usage:

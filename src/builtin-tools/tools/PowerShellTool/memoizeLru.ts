@@ -1,5 +1,4 @@
 // 基于 lru-cache 的函数记忆化:LRU 淘汰防止无界增长;peek 只观察不提升热度。
-// 对照 Claude src/utils/memoize.ts 的 memoizeWithLRU,只保留我们需要的 LRU 变体。
 import { LRUCache } from 'lru-cache';
 
 export interface LruMemoized<Args extends unknown[], Result> {

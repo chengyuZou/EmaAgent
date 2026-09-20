@@ -6,6 +6,8 @@ import type { CompactEvent } from './events.js';
 // 设置接口(CompactSettings)与默认快照(DEFAULT_COMPACT_SETTINGS)统一在 settings.ts。
 
 export interface CompactRequest {
+  /** 手动 Compact 在占用 Session 前生成此 ID, 让取消、事件与用量记录使用同一身份. */
+  readonly compactId?: string;
   readonly sessionId: string;
   readonly executionProfile: ExecutionProfile;
   /** 仅包含允许被改写的历史；System Prompt、当前 Turn 与临时召回不在这里。 */

@@ -2,6 +2,7 @@ import type { MessageKind, MessageRole } from '@ema-agent/storage';
 import type { MessageBlocks } from './message.js';
 import type { ToolResult } from '@ema-agent/tools';
 import type { PermissionMode } from '@ema-agent/permission';
+import type { LlmThinkingEffort } from '@ema-agent/llm';
 
 /**
  * 一次 Turn 的执行能力范围；输入渠道和连接协议不属于 Profile。
@@ -14,6 +15,9 @@ export type ExecutionProfile = 'chat' | 'work';
  * 会话级偏好；Turn 保存当次实际值，保证历史可解释。
  */
 export type NarrativePolicy = 'auto' | 'always' | 'off';
+
+/** Session 的推理选择. off 明确要求协议关闭推理, 不表示沿用模型默认值. */
+export type ReasoningEffort = 'off' | LlmThinkingEffort;
 
 /**
  * Turn 的持久化生命周期状态：创建即 running，没有持久化的 pending；
@@ -62,10 +66,11 @@ export interface Session {
   executionProfile: ExecutionProfile;
   narrativePolicy: NarrativePolicy;
   permissionMode: PermissionMode;
-  /** 用户希望该 Session 使用的供应商配置；null 表示使用系统默认选择。 */
+  /** 已保存的模型供应商; null 表示新会话尚未选模型, 此时不能开始 Turn. */
   providerId: string | null;
-  /** 用户希望该 Session 使用的模型；null 表示使用系统默认选择。 */
+  /** 与 providerId 成对保存的模型 ID; null 时不能开始 Turn. */
   modelId: string | null;
+  reasoningEffort: ReasoningEffort;
   lastViewedAt: number | null;
 }
 
@@ -115,6 +120,9 @@ export interface CreateSessionInput {
   executionProfile?: ExecutionProfile;
   narrativePolicy?: NarrativePolicy;
   permissionMode?: PermissionMode;
+  providerId?: string;
+  modelId?: string;
+  reasoningEffort?: ReasoningEffort;
 }
 
 /** 用户可在 Session 存续期间修改的偏好；undefined 表示保持原值。 */
@@ -125,10 +133,10 @@ export interface PatchSessionInput {
   executionProfile?: ExecutionProfile;
   narrativePolicy?: NarrativePolicy;
   permissionMode?: PermissionMode;
-  model?: {
-    providerId: string;
-    modelId: string;
-  } | null;
+  /** 换模型时与 modelId 同传; 只改推理强度时两者都省略. */
+  providerId?: string;
+  modelId?: string;
+  reasoningEffort?: ReasoningEffort;
 }
 
 export interface AppendMessageInput {
@@ -141,14 +149,17 @@ export interface AppendMessageInput {
 }
 
 export interface ListMessagesInput {
-  /** 上一页返回的不透明游标，只能原样回传。 */
+  /** 向更早方向读取时原样回传的游标. */
   before?: string;
+  /** 向更新方向读取时原样回传的游标, 不能与 before 同时传入. */
+  after?: string;
   limit?: number;
 }
 
 export interface MessagePage {
   messages: Message[];
   olderCursor?: string;
+  newerCursor?: string;
 }
 
 export interface ListMessagesAroundInput {
@@ -159,8 +170,10 @@ export interface ListMessagesAroundInput {
 
 export interface MessageWindow {
   messages: Message[];
-  hasOlder: boolean;
-  hasNewer: boolean;
+  /** 窗口左侧还有消息时返回, 后续通过 listMessages({ before }) 继续读取. */
+  olderCursor?: string;
+  /** 窗口右侧还有消息时返回, 后续通过 listMessages({ after }) 继续读取. */
+  newerCursor?: string;
 }
 
 export interface SearchSessionsInput {

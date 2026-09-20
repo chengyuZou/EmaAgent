@@ -1,4 +1,4 @@
-// 测试 prepareTurn 的模型解析顺序、有序附件、Skill 引用与 Profile 分流。
+// 测试 prepareTurn 从 Session 冻结模型和推理选择、有序附件、Skill 引用与 Profile 分流。
 import { describe, expect, it } from 'vitest';
 import type { AgentRunMessagesStore, AgentRunStore } from '@ema-agent/agent';
 import type { AttachmentStore } from '@ema-agent/attachments';
@@ -43,6 +43,7 @@ function fakeSession(overrides: Record<string, unknown> = {}) {
     projectId: 'p1',
     providerId: 'sess-p',
     modelId: 'sess-m',
+    reasoningEffort: 'off',
     executionProfile: 'work',
     narrativePolicy: 'off',
     ...overrides,
@@ -155,7 +156,7 @@ describe('prepareTurn', () => {
       .toContain('主目录约定');
   });
 
-  it('请求与 Session 都未指定模型时准备失败（provider/not_configured）', async () => {
+  it('Session 未指定模型时准备失败（provider/not_configured）', async () => {
     const deps = makeDeps({
       sessions: {
         getSession: () => fakeSession({ providerId: null, modelId: null }),
@@ -165,7 +166,7 @@ describe('prepareTurn', () => {
     await expect(prepareTurn(deps, makeRuntime(makeStart()))).rejects.toThrow(TurnPreparationError);
   });
 
-  it('请求覆盖优先于 Session 偏好，模型未启用时报错', async () => {
+  it('从 Session 冻结模型与推理强度，模型未启用时报错', async () => {
     const seen: string[] = [];
     const deps = makeDeps({
       providers: {
@@ -174,22 +175,19 @@ describe('prepareTurn', () => {
           return { protocol: 'openai-chat', baseUrl: 'http://localhost' };
         },
       } as unknown as Providers,
+      sessions: {
+        getSession: () => fakeSession({ providerId: 'req-p', modelId: 'req-m', reasoningEffort: 'high' }),
+        listProjectFolders: () => [],
+      } as never,
       providerModels: {
         get: (providerId: string, capability: string, modelId: string) =>
           providerId === 'req-p' && modelId === 'req-m'
-            ? { capability: 'llm', contextWindow: 128_000, inputImage: false }
+            ? { capability: 'llm', contextWindow: 128_000, inputImage: false, reasoning: true }
             : undefined,
       } as unknown as ProviderModels,
     });
 
-    const prepared = await prepareTurn(deps, makeRuntime(makeStart({
-      modelSelection: {
-        providerId: 'req-p',
-        modelId: 'req-m',
-        thinkingEnabled: true,
-        thinkingEffort: 'high',
-      },
-    })));
+    const prepared = await prepareTurn(deps, makeRuntime(makeStart()));
     expect(prepared.providerId).toBe('req-p');
     expect(prepared.contextWindow).toBe(128_000);
     expect(prepared.supportsImageInput).toBe(false);
@@ -198,7 +196,14 @@ describe('prepareTurn', () => {
     expect(prepared.thinking).toEqual({ enabled: true, effort: 'high' });
     expect(seen).toEqual(['req-p']);
 
-    await expect(prepareTurn(deps, makeRuntime(makeStart()))).rejects.toThrow(/未在该 Provider 下启用/);
+    const disabled = makeDeps({
+      sessions: {
+        getSession: () => fakeSession({ providerId: 'disabled-p', modelId: 'disabled-m' }),
+        listProjectFolders: () => [],
+      } as never,
+      providerModels: deps.providerModels,
+    });
+    await expect(prepareTurn(disabled, makeRuntime(makeStart()))).rejects.toThrow(/未在该 Provider 下启用/);
   });
 
   it('Chat 与 Work 都冻结 SkillPool，Chat 也接受已选 Skill', async () => {
