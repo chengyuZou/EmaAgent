@@ -44,6 +44,7 @@ export function Dialog(props: DialogProps): React.JSX.Element {
           )}
         />
         <RadixDialog.Content
+          {...(!description ? { 'aria-describedby': undefined } : {})}
           className={cn(
             'fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2',
             'w-[92vw]', widthClass,

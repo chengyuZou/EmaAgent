@@ -26,11 +26,11 @@ export type SessionHistoryMessage = SessionMessagePage['messages'][number];
 export type TurnIndexPage = RpcJson<RpcClient['api']['sessions'][':sessionId']['turn-index']['$get']>;
 export type SessionMessageWindow = RpcJson<RpcClient['api']['sessions'][':sessionId']['messages']['around']['$get']>;
 export type SessionTurnMessages = RpcJson<RpcClient['api']['sessions'][':sessionId']['turns'][':turnId']['messages']['$get']>;
+export type SessionContextEstimate = RpcJson<RpcClient['api']['sessions'][':sessionId']['context-estimate']['$get']>;
 export type SessionAttachmentsResult = RpcJson<RpcClient['api']['sessions'][':sessionId']['attachments']['$get']>;
 export type SessionPastedTextResult = RpcJson<RpcClient['api']['sessions'][':sessionId']['attachments']['pasted']['$post']>;
 export type SessionImageUploadResult = RpcJson<RpcClient['api']['sessions'][':sessionId']['attachments']['images']['$post']>;
 export type ForkResult = RpcJson<RpcClient['api']['sessions'][':sessionId']['fork']['$post']>;
-export type RewindResult = RpcJson<RpcClient['api']['sessions'][':sessionId']['turns'][':turnId']['rewind']['$post']>;
 export type SessionImportResult = RpcJson<RpcClient['api']['sessions']['import']['$post']>;
 
 // ── API ──────────────────────────────────────────────────────────────────────
@@ -61,6 +61,13 @@ export const sessionsApi = {
     return readRpcJson(rpcClient.api.sessions[':sessionId'].$get({ param: { sessionId: id } }));
   },
 
+  /** 当前有效历史的估算, 不读取 usage_records 中可能属于摘要或子代理的调用. */
+  estimateContext(id: string): Promise<SessionContextEstimate> {
+    return readRpcJson(rpcClient.api.sessions[':sessionId']['context-estimate'].$get({
+      param: { sessionId: id },
+    }));
+  },
+
   /** PUT /api/sessions/:sessionId — 局部更新并返回最新记录。 */
   patch(id: string, patch: SessionPatchInput): Promise<Session> {
     return readRpcJson(
@@ -71,12 +78,13 @@ export const sessionsApi = {
   /** GET /api/sessions/:sessionId/messages — Message 正文游标页。 */
   listMessages(
     id: string,
-    opts?: { before?: string; limit?: number },
+    opts?: { before?: string; after?: string; limit?: number },
   ): Promise<SessionMessagePage> {
     return readRpcJson(rpcClient.api.sessions[':sessionId'].messages.$get({
       param: { sessionId: id },
       query: {
         ...(opts?.before ? { before: opts.before } : {}),
+        ...(opts?.after ? { after: opts.after } : {}),
         ...(opts?.limit !== undefined ? { limit: String(opts.limit) } : {}),
       },
     }));
@@ -157,15 +165,6 @@ export const sessionsApi = {
       json: untilTurnId ? { untilTurnId } : {},
       param: { sessionId: id },
     }));
-  },
-
-  /** POST /api/sessions/:sessionId/turns/:turnId/rewind — 回滚最后一轮。 */
-  rewindLastTurn(id: string, turnId: string): Promise<RewindResult> {
-    return readRpcJson(
-      rpcClient.api.sessions[':sessionId'].turns[':turnId'].rewind.$post({
-        param: { sessionId: id, turnId },
-      }),
-    );
   },
 
   /** POST /api/sessions/:sessionId/viewed — 标记已读（204）。 */

@@ -1,5 +1,5 @@
-// Turns API：只保留持久执行审计与最终合并音频；运行态命令走 api/websocket。
-import type { EnqueueInputPayload } from '@ema-agent/server/routes/ws/agent.js';
+// Turns API 只保留持久执行审计与最终合并音频. 运行态请求走 Session WebSocket.
+import type { UserMessagePayload } from '@ema-agent/server/routes/ws/session.js';
 import {
   rpcClient,
   readRpcJson,
@@ -10,7 +10,7 @@ import {
 
 // ── 类型（全部从路由契约推导） ────────────────────────────────────────────────
 
-export type TurnCreateInput = EnqueueInputPayload & {
+export type TurnCreateInput = UserMessagePayload & {
   readonly sessionId?: string;
   readonly projectId?: string;
 };
