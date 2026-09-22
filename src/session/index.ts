@@ -4,11 +4,11 @@ export { DEFAULT_SESSION_TITLE } from './store.js';
 export type { SessionStoreDeps } from './store.js';
 export { SessionOwnershipError } from './errors.js';
 export {
-  ActiveSessionAlreadyRegisteredError,
+  SessionRunningAlreadyRegisteredError,
   SessionBusyError,
 } from './errors.js';
-export { ActiveSessionRegistry } from './activeSessionRegistry.js';
-export type { ActiveSession } from './activeSessionRegistry.js';
+export { SessionRunningRegistry } from './sessionRunningRegistry.js';
+export type { SessionRunning } from './sessionRunningRegistry.js';
 export { parseMessageBlocksJson } from './message.js';
 export type {
   Session,
@@ -26,7 +26,7 @@ export type {
   SearchSessionsInput,
   SessionSearchHit,
   SearchSessionsOutput,
-  ExecutionProfile,
+  SessionMode,
   NarrativePolicy,
   ReasoningEffort,
   TurnStatus,

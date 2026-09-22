@@ -2,7 +2,7 @@
 // /compact Command 共用，事实不变时逐字节一致（KV 前缀共享的前提）。
 // 拆开两个函数是因为 Turn 在工具层装配前就需要 Pool，而 toolNames 在工具层之后才有。
 import { getSystemPrompt, type PromptBlock } from '@ema-agent/prompts';
-import type { ExecutionProfile } from '@ema-agent/session';
+import type { SessionMode } from '@ema-agent/session';
 import type { SettingsStore } from '@ema-agent/settings';
 import {
   disabledProjectSourcesSetting,
@@ -48,7 +48,7 @@ export interface SessionSystemPromptDeps {
 }
 
 export interface SessionSystemPromptInput {
-  readonly executionProfile: ExecutionProfile;
+  readonly sessionMode: SessionMode;
   readonly cwd: string;
   readonly projectFolderPaths: readonly string[];
   readonly providerId: string;
@@ -63,10 +63,10 @@ export async function buildSessionSystemPrompt(
   deps: SessionSystemPromptDeps,
   input: SessionSystemPromptInput,
 ): Promise<readonly PromptBlock[]> {
-  const { executionProfile, cwd } = input;
+  const { sessionMode, cwd } = input;
   return getSystemPrompt({
     characterPrompt: deps.characterPrompt,
-    executionProfile,
+    sessionMode,
     toolNames: input.toolNames,
     environment: {
       platform: process.platform,

@@ -8,7 +8,7 @@ Compact 只负责在模型输入预算不足时改写 Provider 中立的历史 `
 const compact = createCompact(callLlm, defaultSettings);
 const result = await compact({
   sessionId,
-  executionProfile,
+  sessionMode,
   history,
   estimatedInputTokens,
   contextWindow,

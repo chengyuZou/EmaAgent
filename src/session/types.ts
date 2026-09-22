@@ -5,10 +5,10 @@ import type { PermissionMode } from '@ema-agent/permission';
 import type { LlmThinkingEffort } from '@ema-agent/llm';
 
 /**
- * 一次 Turn 的执行能力范围；输入渠道和连接协议不属于 Profile。
- * 会话级默认偏好：Turn 启动时复制并冻结为历史事实。
+ * Session 选用 Chat 或 Work 的方式; 输入渠道和连接协议不属于这个选择。
+ * Turn 启动时记录当时的模式, 后来切换 Session 模式不会改写旧 Turn。
  */
-export type ExecutionProfile = 'chat' | 'work';
+export type SessionMode = 'chat' | 'work';
 
 /**
  * Narrative 只控制剧情检索策略，不改变角色身份或创建第三套 Engine。
@@ -63,9 +63,11 @@ export interface Session {
   /** fork 溯源：来源 Session 与截断点 Turn（完整复制时为 null）。 */
   forkedFromSessionId: string | null;
   forkedFromTurnId: string | null;
-  executionProfile: ExecutionProfile;
+  sessionMode: SessionMode;
   narrativePolicy: NarrativePolicy;
   permissionMode: PermissionMode;
+  /** 此 Session 启动新 Turn 时是否生成并播放语音; 不影响已开始的 Turn. */
+  ttsEnabled: boolean;
   /** 已保存的模型供应商; null 表示新会话尚未选模型, 此时不能开始 Turn. */
   providerId: string | null;
   /** 与 providerId 成对保存的模型 ID; null 时不能开始 Turn. */
@@ -95,8 +97,8 @@ export interface Message {
   role: MessageRole;
   kind: MessageKind;
   /**
-   * 已解析的内容块：System 是普通文本，User 可包含媒体或 Tool Result，
-   * Assistant 保留 text、thinking 与 tool_use 的原始顺序。
+   * 已解析的内容块: User 可包含媒体或 Tool Result,
+   * Assistant 保留 text、thinking 与 tool_use 的原始顺序.
    */
   blocks: MessageBlocks;
   interrupted: boolean;
@@ -117,9 +119,10 @@ export interface CreateSessionInput {
   cwd?: string;
   /** 项目新对话的初始 cwd 取创建时的主文件夹；无主文件夹取固定默认目录。 */
   projectId?: string;
-  executionProfile?: ExecutionProfile;
+  sessionMode?: SessionMode;
   narrativePolicy?: NarrativePolicy;
   permissionMode?: PermissionMode;
+  ttsEnabled?: boolean;
   providerId?: string;
   modelId?: string;
   reasoningEffort?: ReasoningEffort;
@@ -130,9 +133,10 @@ export interface PatchSessionInput {
   title?: string;
   pinned?: boolean;
   cwd?: string;
-  executionProfile?: ExecutionProfile;
+  sessionMode?: SessionMode;
   narrativePolicy?: NarrativePolicy;
   permissionMode?: PermissionMode;
+  ttsEnabled?: boolean;
   /** 换模型时与 modelId 同传; 只改推理强度时两者都省略. */
   providerId?: string;
   modelId?: string;

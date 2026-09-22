@@ -1,6 +1,6 @@
-// Turn 领域对象与公开入口契约；共享词汇 ExecutionProfile/NarrativePolicy/TurnStatus 来自 @ema-agent/session。
+// Turn 领域对象与公开入口契约；共享词汇 SessionMode/NarrativePolicy/TurnStatus 来自 @ema-agent/session。
 import type {
-  ExecutionProfile,
+  SessionMode,
   NarrativePolicy,
   TurnStatus,
 } from '@ema-agent/session';
@@ -21,7 +21,7 @@ export interface Turn {
   readonly status: TurnStatus;
   readonly triggerType: TurnTriggerType;
   /** Turn 启动时从 Session 复制的冻结事实。 */
-  readonly executionProfile: ExecutionProfile;
+  readonly sessionMode: SessionMode;
   /** Turn 启动时从 Session 复制的冻结事实。 */
   readonly narrativePolicy: NarrativePolicy;
   /** 操作开始冻结的模型选择；prepare 解析成功前为 null。 */
@@ -32,8 +32,6 @@ export interface Turn {
   /** 本 Turn 激活角色的磁盘目录名快照（Memory relationship 提取的事实源）；prepare 完成回填，此前为 null。 */
   readonly characterDirectoryName: string | null;
   readonly iterations: number;
-  readonly usageInputTokens: number;
-  readonly usageOutputTokens: number;
   /** 创建即启动的唯一时序事实：排序、分页、时长与 fork 截断都用它。 */
   readonly createdAt: number;
   readonly completedAt: number | null;
@@ -48,14 +46,8 @@ export interface StartTurnInput {
   readonly triggerType: TurnTriggerType;
   readonly providerId?: string | null;
   readonly modelId?: string | null;
-  readonly executionProfile: ExecutionProfile;
+  readonly sessionMode: SessionMode;
   readonly narrativePolicy: NarrativePolicy;
-}
-
-export interface CompleteTurnInput {
-  readonly usageInputTokens?: number;
-  readonly usageOutputTokens?: number;
-  readonly iterations?: number;
 }
 
 // ── Turn 导航查询的输入输出（TurnStore 的读取面） ─────────────────────────────
@@ -74,7 +66,7 @@ export interface TurnIndexItem {
   completedAt: number | null;
   status: TurnStatus;
   triggerType: TurnTriggerType;
-  executionProfile: ExecutionProfile;
+  sessionMode: SessionMode;
   /** 首条 User Message 的正文预览；用户输入的唯一事实源是 Message。 */
   preview: string;
 }
@@ -82,19 +74,6 @@ export interface TurnIndexItem {
 export interface TurnIndexPage {
   items: TurnIndexItem[];
   nextCursor?: string;
-}
-
-// ── 本轮统计（被 turn_completed SSE 事件引用） ────────────────────────────────
-//
-// 命名注意：这是"turn 终态摘要"不是 provider 的 usage 对象——token（账单）与
-// durationMs（秒表）出身不同但消费场景 100% 重合，故同居一个类型。
-// 曾名 UsageSummary，因名字暗示"纯 token 计量"导致 subagent_completed 事件
-// 在外面重复携带过一次 durationMs——名不正则字段歪。
-
-export interface TurnStats {
-  inputTokens:  number;
-  outputTokens: number;
-  durationMs:   number;
 }
 
 // ── 请求在调用 Provider 前执行的可观测兼容降级（词汇，非事件） ────────────────
@@ -148,7 +127,7 @@ export interface StartTurn {
   readonly turnId?: string;
   readonly sessionId: string;
   readonly triggerType: TurnTriggerType;
-  readonly executionProfile: ExecutionProfile;
+  readonly sessionMode: SessionMode;
   readonly narrativePolicy: NarrativePolicy;
   readonly input: readonly TurnInputPart[];
   /** 已完成后台工作的轻量通知. 完整结果由模型按其中的执行 id 主动读取. */
@@ -162,7 +141,6 @@ export type TurnOutcome =
       readonly status: 'completed';
       readonly sessionId: string;
       readonly turnId: string;
-      readonly stats: TurnStats;
     }
   | {
       readonly status: 'failed';

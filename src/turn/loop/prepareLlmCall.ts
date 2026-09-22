@@ -83,7 +83,7 @@ export function createPrepareLlmCall(deps: PrepareLlmCallDeps): PrepareAgentIter
     let compactDurationMs = 0;
     const result = await deps.compact({
       sessionId: deps.sessionId,
-      executionProfile: prepared.executionProfile,
+      sessionMode: prepared.sessionMode,
       history,
       systemMessages,
       // 摘要请求复用根 Turn 冻结的 Tool 定义与 thinking 配置，保持与主请求一致的缓存前缀。
@@ -110,6 +110,7 @@ export function createPrepareLlmCall(deps: PrepareLlmCallDeps): PrepareAgentIter
               const throughMessageId = baselineIds[summarizedMessageCount - 1]!;
               const summaryMessage = macroPersistence.sessions.appendHistorySummary({
                 sessionId: deps.sessionId,
+                turnId: deps.turnId,
                 summary,
                 summarizedThroughMessageId: throughMessageId,
               });

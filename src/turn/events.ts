@@ -10,14 +10,13 @@ import type {
 } from '@ema-agent/permission';
 import type { ToolExecutionEvent } from '@ema-agent/tools';
 import type {
-  ExecutionProfile,
+  SessionMode,
   Message as SessionMessage,
   NarrativePolicy,
 } from '@ema-agent/session';
 import type { TurnFailureCode } from './errors.js';
 import type {
   RequestDegradationNotice,
-  TurnStats,
   TurnTriggerType,
 } from './types.js';
 
@@ -35,7 +34,7 @@ export type TurnEvent =
       sessionId: string;
       turnId: string;
       triggerType: TurnTriggerType;
-      executionProfile: ExecutionProfile;
+      sessionMode: SessionMode;
       narrativePolicy: NarrativePolicy;
     }
   | {
@@ -55,7 +54,6 @@ export type TurnEvent =
       type: 'turn_completed';
       sessionId: string;
       turnId: string;
-      stats: TurnStats;
     }
   | {
       type: 'turn_failed';

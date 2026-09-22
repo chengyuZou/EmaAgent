@@ -16,7 +16,7 @@ const BASELINE_IDS = ['sm-old-1', 'sm-old-2'];
 
 function makePrepared(overrides: Partial<PreparedTurn> = {}): PreparedTurn {
   return {
-    executionProfile: 'work',
+    sessionMode: 'work',
     cwd: '/w',
     contextWindow: 100_000,
     maxOutput: 8_000,
@@ -115,6 +115,7 @@ describe('prepareLlmCall', () => {
     // summarizedMessageCount=2 → 游标映射到基线第 2 条的 Session Message id。
     expect(appendHistorySummary).toHaveBeenCalledWith({
       sessionId: 's1',
+      turnId: 't1',
       summary: '前文压缩摘要',
       summarizedThroughMessageId: 'sm-old-2',
     });
@@ -164,6 +165,7 @@ describe('prepareLlmCall', () => {
     // 第二次 macro 覆盖基线第 1 条 = 第一次落库的 summary 消息本身。
     expect(appendHistorySummary).toHaveBeenNthCalledWith(2, {
       sessionId: 's1',
+      turnId: 't1',
       summary: '摘要二',
       summarizedThroughMessageId: 'summary-1',
     });

@@ -17,7 +17,7 @@ describe('AgentRun 持久化状态机', () => {
     `).run();
     database.db.prepare(`
       INSERT INTO turns (
-        id, session_id, trigger_type, execution_profile, narrative_policy,
+        id, session_id, trigger_type, session_mode, narrative_policy,
         status, created_at
       ) VALUES ('turn-a', 'session-a', 'userMessage', 'work', 'auto', 'running', 2)
     `).run();

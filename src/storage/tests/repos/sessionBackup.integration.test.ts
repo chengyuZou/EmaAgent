@@ -25,7 +25,7 @@ describe('SessionBackupReader', () => {
       id: 'session-backup',
       title: 'backup',
       cwd: 'D:/work',
-      executionProfile: 'work',
+      sessionMode: 'work',
       narrativePolicy: 'auto',
       createdAt: 1,
       updatedAt: 1,
@@ -35,7 +35,7 @@ describe('SessionBackupReader', () => {
         id: `turn-${String(index).padStart(2, '0')}`,
         sessionId: 'session-backup',
         triggerType: 'userMessage',
-        executionProfile: 'work',
+        sessionMode: 'work',
         narrativePolicy: 'auto',
         createdAt: index,
       });
@@ -70,14 +70,14 @@ describe('SessionBackupReader', () => {
       id: 'session-cursor',
       title: 'cursor',
       cwd: 'D:/work',
-      executionProfile: 'work',
+      sessionMode: 'work',
       narrativePolicy: 'auto',
       createdAt: 1,
       updatedAt: 1,
     });
     database.db.prepare(`
       INSERT INTO turns
-        (id, session_id, trigger_type, execution_profile, narrative_policy, status, created_at)
+        (id, session_id, trigger_type, session_mode, narrative_policy, status, created_at)
       VALUES (?, ?, 'userMessage', 'work', 'auto', 'completed', ?)
     `).run('turn-1', 'session-cursor', 10);
 

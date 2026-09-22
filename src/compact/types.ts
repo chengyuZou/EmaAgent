@@ -1,5 +1,5 @@
 import type { LlmThinking, LlmTokenUsage, LlmTool, Message } from '@ema-agent/llm';
-import type { ExecutionProfile } from '@ema-agent/session';
+import type { SessionMode } from '@ema-agent/session';
 import type { CompactSettings } from './settings.js';
 import type { CompactEvent } from './events.js';
 
@@ -9,7 +9,7 @@ export interface CompactRequest {
   /** 手动 Compact 在占用 Session 前生成此 ID, 让取消、事件与用量记录使用同一身份. */
   readonly compactId?: string;
   readonly sessionId: string;
-  readonly executionProfile: ExecutionProfile;
+  readonly sessionMode: SessionMode;
   /** 仅包含允许被改写的历史；System Prompt、当前 Turn 与临时召回不在这里。 */
   readonly history: readonly Message[];
   /**

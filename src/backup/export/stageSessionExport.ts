@@ -77,7 +77,7 @@ export function stageSessionExport(
 
     const manifest: SessionBackupManifest = {
       format: 'ema-session',
-      version: 1,
+      version: 2,
       sessionId,
       omittedFiles,
     };

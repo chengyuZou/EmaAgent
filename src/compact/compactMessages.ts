@@ -103,7 +103,7 @@ async function compactMessages(args: {
   try {
     macro = await runMacroCompact({
       callLlm: args.callLlm,
-      executionProfile: request.executionProfile,
+      sessionMode: request.sessionMode,
       systemMessages: request.systemMessages,
       tools: request.tools,
       ...(request.thinking ? { thinking: request.thinking } : {}),

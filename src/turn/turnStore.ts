@@ -1,5 +1,5 @@
 // Turn 生命周期、进程内运行状态(取消信号/运行锁/删除守卫)与导航查询.
-// Session 当前运行的根 Turn 或手动 Compact 由 ActiveSessionRegistry 统一记录.
+// Session 当前运行的根 Turn 或手动 Compact 由 SessionRunningRegistry 统一记录.
 // AbortSignal 只活在内存, 崩溃恢复以 SQLite 的 turns.status 为事实源.
 
 import crypto from 'node:crypto';
@@ -12,9 +12,8 @@ import {
   type TurnIdPageCursor,
   type TurnRow,
 } from '@ema-agent/storage';
-import { ActiveSessionRegistry, SessionBusyError } from '@ema-agent/session';
+import { SessionBusyError, SessionRunningRegistry } from '@ema-agent/session';
 import type {
-  CompleteTurnInput,
   ListTurnIndexInput,
   StartTurnInput,
   Turn,
@@ -30,7 +29,7 @@ export interface TurnStoreDeps {
    * 记录 Session 当前正在运行的根 Turn 或手动 Compact, 两者不能同时开始.
    * 由 Server Composition 构造并与 Commands 共享同一实例; TurnStore 只注册 kind='turn'.
    */
-  activeSessions: ActiveSessionRegistry;
+  sessionRunning: SessionRunningRegistry;
 }
 
 /** 管理 Turn 聚合；同一 Session 同一时刻只允许一个根 Turn 运行。 */
@@ -42,17 +41,17 @@ export class TurnStore {
   private readonly onTurnRemoved?: (sessionId: string, turnId: string) => void;
   private readonly deletingSessions = new Set<string>();
   /** 进程内活跃执行表；运行态只用于快速判断和取消，崩溃恢复以 SQLite 终态为准。 */
-  private readonly registry: ActiveSessionRegistry;
+  private readonly registry: SessionRunningRegistry;
   /** 单调时间戳避免同毫秒写入破坏游标边界。 */
   private lastTs = 0;
 
-  constructor({ db, onTurnRemoved, activeSessions }: TurnStoreDeps) {
+  constructor({ db, onTurnRemoved, sessionRunning }: TurnStoreDeps) {
     this.sessionsRepo = new SessionsRepo(db.sqlite);
     this.turnsRepo    = new TurnsRepo(db.sqlite);
     this.messagesRepo = new MessagesRepo(db.sqlite);
     this.db           = db;
     this.onTurnRemoved = onTurnRemoved;
-    this.registry     = activeSessions;
+    this.registry     = sessionRunning;
   }
 
   /** 返回严格递增的进程内时间戳。 */
@@ -85,7 +84,7 @@ export class TurnStore {
       id:           turnId,
       sessionId:    input.sessionId,
       triggerType:  input.triggerType,
-      executionProfile: input.executionProfile,
+      sessionMode: input.sessionMode,
       narrativePolicy:  input.narrativePolicy,
       createdAt:    now,
     });
@@ -107,7 +106,6 @@ export class TurnStore {
 
   completeTurn(
     turnId: string,
-    usage: CompleteTurnInput = {},
     withinTransaction?: () => void,
   ): void {
     this.requireTurn(turnId);
@@ -117,9 +115,6 @@ export class TurnStore {
       this.turnsRepo.complete(turnId, {
         status:             'completed',
         completedAt:        Date.now(),
-        usageInputTokens:   usage.usageInputTokens,
-        usageOutputTokens:  usage.usageOutputTokens,
-        iterations:         usage.iterations,
       });
       withinTransaction?.();
     })();
@@ -128,10 +123,10 @@ export class TurnStore {
     this.registry.clear(this.requireTurn(turnId).sessionId, { kind: 'turn', turnId });
   }
 
-  /** 提交 failed 终态；失败前已产生的迭代与 token 用量仍是真实事实，随终态一起写入。 */
+  /** 提交 failed 终态；失败前已持久化的迭代与调用级用量保持不变。 */
   failTurn(
     turnId: string,
-    failure: { errorCode: string; errorMessage?: string; usage?: CompleteTurnInput },
+    failure: { errorCode: string; errorMessage?: string },
   ): void {
     this.requireTurn(turnId);
     this.turnsRepo.complete(turnId, {
@@ -139,7 +134,6 @@ export class TurnStore {
       completedAt:  Date.now(),
       errorCode:    failure.errorCode,
       errorMessage: failure.errorMessage,
-      ...failure.usage,
     });
     this.registry.clear(this.requireTurn(turnId).sessionId, { kind: 'turn', turnId });
   }
@@ -147,16 +141,16 @@ export class TurnStore {
   /** 触发取消信号并提交 Turn 的 aborted 终态。 */
   abortTurn(sessionId: string, turnId: string): void {
     this.assertTurnOwnership(sessionId, turnId);
-    const active = this.registry.getActiveSession(sessionId);
-    if (active?.kind !== 'turn' || active.turnId !== turnId) {
+    const running = this.registry.getRunning(sessionId);
+    if (running?.kind !== 'turn' || running.turnId !== turnId) {
       throw new Error(`turn_not_active: ${turnId}`);
     }
-    this.registry.abort(sessionId, active);
+    this.registry.abort(sessionId, running);
     this.turnsRepo.complete(turnId, {
       status:      'aborted',
       completedAt: Date.now(),
     });
-    this.registry.clear(sessionId, active);
+    this.registry.clear(sessionId, running);
   }
 
   /**
@@ -173,6 +167,11 @@ export class TurnStore {
     this.registry.clear(sessionId, { kind: 'turn', turnId });
   }
 
+  /** 根 AgentLoop 每开始一轮就落库，失败或取消也保留已经发生的迭代数。 */
+  setIterations(turnId: string, iterations: number): void {
+    this.turnsRepo.setIterations(turnId, iterations);
+  }
+
   /** 启动时将崩溃遗留的 running Turn 收口为 aborted。 */
   recoverStuckTurns(): { healed: number } {
     const healed = this.turnsRepo.abortAllStale(Date.now());
@@ -186,9 +185,9 @@ export class TurnStore {
     return row ? toTurn(row) : undefined;
   }
 
-  getActiveTurn(sessionId: string): Turn | undefined {
-    const active = this.registry.getActiveSession(sessionId);
-    return active?.kind === 'turn' ? this.getTurn(active.turnId) : undefined;
+  getRunningTurn(sessionId: string): Turn | undefined {
+    const running = this.registry.getRunning(sessionId);
+    return running?.kind === 'turn' ? this.getTurn(running.turnId) : undefined;
   }
 
   // ── Session 删除守卫 ────────────────────────────────────────────────────────
@@ -204,8 +203,8 @@ export class TurnStore {
       throw new Error(`session_deleting: ${id}`);
     }
     this.deletingSessions.add(id);
-    const active = this.registry.getActiveSession(id);
-    if (active) this.registry.abort(id, active);
+    const running = this.registry.getRunning(id);
+    if (running) this.registry.abort(id, running);
   }
 
   /** 跨模块准备失败时恢复 Session 的可运行状态。 */
@@ -244,7 +243,7 @@ export class TurnStore {
         completedAt: row.completed_at,
         status: row.status,
         triggerType: row.trigger_type,
-        executionProfile: row.execution_profile,
+        sessionMode: row.session_mode,
         preview: formatTurnPreview(row.preview),
       })),
       nextCursor: page.nextCursor ? encodeTurnIndexCursor(page.nextCursor) : undefined,
@@ -325,15 +324,13 @@ function toTurn(row: TurnRow): Turn {
     sessionId: row.session_id,
     status: row.status,
     triggerType: row.trigger_type,
-    executionProfile: row.execution_profile,
+    sessionMode: row.session_mode,
     narrativePolicy: row.narrative_policy,
     providerId: row.provider_id,
     modelId: row.model_id,
     protocol: row.protocol,
     characterDirectoryName: row.character_directory_name,
     iterations: row.iterations,
-    usageInputTokens: row.usage_input_tokens,
-    usageOutputTokens: row.usage_output_tokens,
     createdAt: row.created_at,
     completedAt: row.completed_at,
     errorCode: row.error_code,

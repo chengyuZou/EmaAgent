@@ -4,7 +4,7 @@
 
 ## 领域事实
 
-- **Session**：标题、非空 `cwd`、projectId、createdAt/updatedAt/lastActivityAt、archivedAt、pinned、fork 溯源双列、executionProfile、narrativePolicy、当前模型（providerId/modelId）与推理强度（reasoningEffort）、lastViewedAt。模型身份成对保存, `'off'` 表示关闭推理；普通消息不携带本轮覆盖值。`cwd` 是命令和相对路径的起点，新建时选定，此后只由用户显式修改。Storage 的 `sidebar_order` 只表达所在侧栏分区内的顺序，不进入 Session API；拖放与新 Turn 开始会更新它。
+- **Session**：标题、非空 `cwd`、projectId、createdAt/updatedAt/lastActivityAt、archivedAt、pinned、fork 溯源双列、sessionMode、narrativePolicy、ttsEnabled、当前模型（providerId/modelId）与推理强度（reasoningEffort）、lastViewedAt。模型身份成对保存, `'off'` 表示关闭推理；普通消息不携带本轮覆盖值。`ttsEnabled` 是每个 Session 自己的语音选择, 创建时从新对话草稿写入, 后续由 Session patch 修改; 直接发送和排队续接都在 Turn 启动时读取它, 不从消息请求或队列选项读取。`cwd` 是命令和相对路径的起点，新建时选定，此后只由用户显式修改。Storage 的 `sidebar_order` 只表达所在侧栏分区内的顺序，不进入 Session API；拖放与新 Turn 开始会更新它。
 - **SessionListItem** = Session + 列表投影三字段（hasActiveTurn / lastTurnStatus / hasUnread）。三字段只由列表/搜索 SQL 的 CTE 算出；单查路径返回裸 Session，不允许伪造投影。
 - **Project**：id、name、pinned、createdAt、updatedAt、folders[]、sessions[]。可以没有源文件夹；有文件夹时其中一个为主。侧栏 Project 的 sessions[] 只包含当前在项目区显示的成员，置顶 Session 单独进入置顶桶。Storage 的 `sidebar_order` 独立保存 Project 在置顶/普通项目区的顺序。
 - **Message**：sessionId、可空 turnId（null = /compact summary 等 Session 级消息）、role、kind（normal / reminder / tool_results / summary）、blocks、interrupted、createdAt。用户块允许 `attachment_ref` 与 `skill_ref`，只保存稳定引用，不复制附件正文或 SKILL.md。
@@ -17,12 +17,12 @@
 - **侧栏**：`listSessionsForSidebar()` 五桶（置顶 Session / 置顶项目 / 其余项目 / 最近 / 已归档；Session 同时满足 pinned 与 project 时进置顶桶）；`moveSessionInSidebar` 一次提交归属、置顶与插入位置，拖入置顶会清空 projectId；`moveProjectInSidebar` 一次提交项目分区和插入位置；新 Turn 开始时 Session 回到当前分区顶部；`searchSessions` 不搜归档；
 - **Project**：createProject(name, folderPaths, primaryFolderPath?) 在一次事务中创建项目及全部源文件夹；listProjectFolders(projectId) 给 Skills、Permission 读取项目全部源文件夹；rename / delete / pin / 文件夹增删 / 设主 / 拖入拖出。设主、移除文件夹、拖入项目均不改旧 Session 的 cwd；设主只影响以后新建的 Session。
 - **Fork**：forkSession 复制 Turn/Message/Attachment 并重映射 ID，不带 Task、AgentRun 或任何在跑的外部副作用；
-- **Message**：appendMessage（turnId 归属校验）/ appendHistorySummary（Session 级压缩摘要，必须带覆盖截止游标）/ loadHistory（最新 summary + 其覆盖游标之后的消息，LLM 可见历史）/ listMessages（UI 正文复合游标页，旧到新）/ listMessagesAround（按 Message 锚点读取有界窗口）/ loadMessagesForTurn（Turn 终态持久收口）/ findToolInteraction（启动恢复）/ markMessageInterrupted / assertMessageOwnership；
+- **Message**：appendMessage（turnId 归属校验）/ appendHistorySummary（自动压缩带当前 turnId，手动压缩为 null，且必须带覆盖截止游标）/ loadHistory（最新 summary + 其覆盖游标之后的消息，LLM 可见历史）/ listMessages（UI 正文复合游标页，旧到新）/ listMessagesAround（按 Message 锚点读取有界窗口）/ loadMessagesForTurn（Turn 终态持久收口）/ findToolInteraction（启动恢复）/ markMessageInterrupted / assertMessageOwnership；
 - **删除**：deleteSession 只删本聚合的数据库行并触发 onSessionRemoved 文件清理；活动 Turn 的取消与运行态收口归 TurnStore，由删除用例（Server 编排）先行调用。
 
 其余出口：
 
-- `ActiveSessionRegistry`：同 Session 一个活跃执行——根 Turn（kind='turn'）与手动 compact（kind='compact'）共享同一坑位，占用者以 kind 区分；`waitUntilIdle` 供 Session 删除等执行所有者收尾退出。`SessionBusyError` 是业务拒绝（路由 409），`ActiveSessionAlreadyRegisteredError` 是进程内不变量。
+- `SessionRunningRegistry`：同一 Session 只记录一个当前根工作，身份为根 Turn（kind='turn'）或手动 Compact（kind='compact'）；`waitUntilIdle` 供 Session 删除和 Server 关闭等待实际执行者收尾。`SessionBusyError` 是业务拒绝，`SessionRunningAlreadyRegisteredError` 是进程内重复注册错误。
 - `generateSessionTitle(query, complete)`：让模型生成 7–15 字标题，失败或为空时截断原文前 100 字兜底；返回空串表示没有可用输入。持久化不在此发生，调用方拿返回值走 `SessionStore.updateTitle`。
 - `parseMessageBlocksJson`：blocks_json 的唯一解析点。
 - `collectAttachmentReferenceIds`：一次批量收集消息里全部附件引用 id，供历史重放前批量预取附件。

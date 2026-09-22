@@ -1,4 +1,4 @@
-// 测试 prepareTurn 从 Session 冻结模型和推理选择、有序附件、Skill 引用与 Profile 分流。
+// 测试 prepareTurn 从 Session 冻结模型和推理选择、有序附件、Skill 引用与 Chat/Work 模式分流。
 import { describe, expect, it } from 'vitest';
 import type { AgentRunMessagesStore, AgentRunStore } from '@ema-agent/agent';
 import type { AttachmentStore } from '@ema-agent/attachments';
@@ -21,15 +21,13 @@ const TURN: Turn = {
   sessionId: 's1',
   status: 'running',
   triggerType: 'userMessage',
-  executionProfile: 'work',
+  sessionMode: 'work',
   narrativePolicy: 'off',
   providerId: null,
   modelId: null,
   protocol: null,
   characterDirectoryName: null,
   iterations: 0,
-  usageInputTokens: 0,
-  usageOutputTokens: 0,
   createdAt: 1,
   completedAt: null,
   errorCode: null,
@@ -44,7 +42,7 @@ function fakeSession(overrides: Record<string, unknown> = {}) {
     providerId: 'sess-p',
     modelId: 'sess-m',
     reasoningEffort: 'off',
-    executionProfile: 'work',
+    sessionMode: 'work',
     narrativePolicy: 'off',
     ...overrides,
   };
@@ -96,7 +94,7 @@ function makeStart(overrides: Partial<StartTurn> = {}): StartTurn {
   return {
     sessionId: 's1',
     triggerType: 'userMessage',
-    executionProfile: 'work',
+    sessionMode: 'work',
     narrativePolicy: 'off',
     input: [{ type: 'text', text: '你好' }],
     ...overrides,
@@ -217,7 +215,7 @@ describe('prepareTurn', () => {
     const deps = makeDeps({ skillEntries: () => [descriptor] });
 
     const chat = await prepareTurn(deps, makeRuntime(makeStart({
-      executionProfile: 'chat',
+      sessionMode: 'chat',
       input: [{ type: 'skill_reference', name: 'demo', path: descriptor.path }],
     })));
     expect(chat.skillPool?.getByPath(descriptor.path)).toBeDefined();

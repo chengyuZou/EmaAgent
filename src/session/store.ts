@@ -118,9 +118,10 @@ export class SessionStore {
         title,
         cwd,
         projectId: input.projectId,
-        executionProfile: input.executionProfile,
+        sessionMode: input.sessionMode,
         narrativePolicy: input.narrativePolicy,
         permissionMode: input.permissionMode,
+        ttsEnabled: input.ttsEnabled,
         providerId: input.providerId,
         modelId: input.modelId,
         reasoningEffort: input.reasoningEffort,
@@ -245,9 +246,10 @@ export class SessionStore {
       assertSessionCwd(patch.cwd);
       cleaned.cwd = patch.cwd;
     }
-    if (patch.executionProfile !== undefined) cleaned.executionProfile = patch.executionProfile;
+    if (patch.sessionMode !== undefined) cleaned.sessionMode = patch.sessionMode;
     if (patch.narrativePolicy !== undefined) cleaned.narrativePolicy = patch.narrativePolicy;
     if (patch.permissionMode !== undefined) cleaned.permissionMode = patch.permissionMode;
+    if (patch.ttsEnabled !== undefined) cleaned.ttsEnabled = patch.ttsEnabled;
     if (patch.providerId !== undefined) cleaned.providerId = patch.providerId;
     if (patch.modelId !== undefined) cleaned.modelId = patch.modelId;
     if (patch.reasoningEffort !== undefined) cleaned.reasoningEffort = patch.reasoningEffort;
@@ -483,12 +485,13 @@ export class SessionStore {
   }
 
   /**
-   * 写入 Session 级压缩摘要（turnId=null、kind='summary'）。
-   * summarizedThroughMessageId 是覆盖截止游标：摘要包含该消息在内的全部既有有效历史，
-   * loadHistory 按该消息位置切边界。游标必须属于本 Session，拒绝悬挂引用。
+   * 写入压缩摘要. 根 Turn 内自动压缩必须带当前 turnId, 这样 Turn terminal 后按轮读取
+   * Message 时能把摘要一并交给 History; 手动压缩传 null, 因为它不属于任何 LiveTurn.
+   * summarizedThroughMessageId 是覆盖截止游标, 必须属于同一个 Session.
    */
   appendHistorySummary(input: {
     sessionId: string;
+    turnId: string | null;
     summary: string;
     summarizedThroughMessageId: string;
   }): Message {
@@ -498,10 +501,20 @@ export class SessionStore {
         `summary_through_message_not_in_session: ${input.summarizedThroughMessageId}`,
       );
     }
+    if (input.turnId) {
+      const turn = this.turnsRepo.findById(input.turnId);
+      if (!turn) throw new Error(`turn_not_found: ${input.turnId}`);
+      if (turn.session_id !== input.sessionId) {
+        throw new SessionOwnershipError(
+          `turn ${input.turnId} belongs to session ${turn.session_id}, not ${input.sessionId}`,
+        );
+      }
+    }
     const id = crypto.randomUUID();
     this.messagesRepo.insert({
       id,
       sessionId: input.sessionId,
+      turnId: input.turnId ?? undefined,
       role: 'user',
       kind: 'summary',
       blocksJson: JSON.stringify(input.summary),

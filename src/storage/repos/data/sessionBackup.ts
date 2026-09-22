@@ -179,31 +179,31 @@ export class SessionBackupRestorer {
         id, title, cwd, project_id, pinned, archived_at,
         forked_from_session_id, forked_from_turn_id,
         last_viewed_at, last_activity_at, created_at, updated_at,
-        provider_id, model_id, reasoning_effort, execution_profile, narrative_policy, permission_mode,
+        provider_id, model_id, reasoning_effort, session_mode, narrative_policy, permission_mode, tts_enabled,
         sidebar_order
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       session.id, session.title, session.cwd, projectId, session.pinned,
       session.archived_at, forkedFromSessionId, forkedFromTurnId,
       session.last_viewed_at, session.last_activity_at, session.created_at, session.updated_at,
-      session.provider_id, session.model_id, session.reasoning_effort, session.execution_profile,
-      session.narrative_policy, session.permission_mode, session.sidebar_order,
+      session.provider_id, session.model_id, session.reasoning_effort, session.session_mode,
+      session.narrative_policy, session.permission_mode, session.tts_enabled, session.sidebar_order,
     );
 
     const insertTurn = this.db.prepare(`
       INSERT INTO turns (
-        id, session_id, status, trigger_type, execution_profile, narrative_policy,
+        id, session_id, status, trigger_type, session_mode, narrative_policy,
         provider_id, model_id, protocol, character_directory_name,
-        iterations, usage_input_tokens, usage_output_tokens,
+        iterations,
         created_at, completed_at, error_code, error_message
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     for (const row of rows.turns) {
       insertTurn.run(
         row.id, session.id, row.status, row.trigger_type,
-        row.execution_profile, row.narrative_policy, row.provider_id, row.model_id,
-        row.protocol, row.character_directory_name, row.iterations, row.usage_input_tokens,
-        row.usage_output_tokens, row.created_at, row.completed_at,
+        row.session_mode, row.narrative_policy, row.provider_id, row.model_id,
+        row.protocol, row.character_directory_name, row.iterations,
+        row.created_at, row.completed_at,
         row.error_code, row.error_message,
       );
     }

@@ -75,7 +75,7 @@ function makeInput(options: {
   return {
     sessionId: SESSION_ID,
     turnId: TURN_ID,
-    executionProfile: 'work' as const,
+    sessionMode: 'work' as const,
     narrativePolicy: 'off' as const,
     cwd: '/w',
     workspaceRoots: ['/w'],
@@ -126,7 +126,7 @@ describe('prepareTurnTools', () => {
       settings: fakeSettings(),
     });
 
-    const chat = prepareTurnTools(deps, makeInput({ events: [], overrides: { executionProfile: 'chat' } }));
+    const chat = prepareTurnTools(deps, makeInput({ events: [], overrides: { sessionMode: 'chat' } }));
     expect(chat.toolPool.get('Read')).toBeDefined();
     expect(chat.toolPool.get('Skill')).toBeDefined();
     expect(chat.toolPool.get('Bash')).toBeUndefined();

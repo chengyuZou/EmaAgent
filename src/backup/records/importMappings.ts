@@ -50,9 +50,10 @@ export function restoreSessionRecord(record: SessionRecord): SessionRow {
     provider_id: record.providerId,
     model_id: record.modelId,
     reasoning_effort: record.reasoningEffort,
-    execution_profile: record.executionProfile,
+    session_mode: record.sessionMode,
     narrative_policy: record.narrativePolicy,
     permission_mode: record.permissionMode,
+    tts_enabled: record.ttsEnabled ? 1 : 0,
   };
 }
 
@@ -63,15 +64,13 @@ export function restoreTurnRecord(record: TurnRecord, importedAt: number): TurnR
     session_id: record.sessionId,
     status: unfinished ? 'aborted' : record.status,
     trigger_type: record.triggerType,
-    execution_profile: record.executionProfile,
+    session_mode: record.sessionMode,
     narrative_policy: record.narrativePolicy,
     provider_id: record.providerId,
     model_id: record.modelId,
     protocol: record.protocol ?? null,
     character_directory_name: record.characterDirectoryName,
     iterations: record.iterations,
-    usage_input_tokens: record.usageInputTokens,
-    usage_output_tokens: record.usageOutputTokens,
     created_at: record.createdAt,
     completed_at: unfinished ? record.completedAt ?? importedAt : record.completedAt,
     error_code: unfinished ? 'backup/import_interrupted' : record.errorCode,
@@ -152,15 +151,17 @@ export function restoreToolExecutionRecord(
   importedAt: number,
 ): SessionBackupToolExecutionRow {
   const unfinished = ['prepared', 'authorized', 'running'].includes(record.status);
+  let status: SessionBackupToolExecutionRow['status'] = record.status;
+  if (unfinished) {
+    status = record.status === 'running' ? 'outcome_unknown' : 'cancelled';
+  }
   return {
     call_id: record.callId,
     session_id: record.sessionId,
     turn_id: record.turnId,
     agent_run_id: record.agentRunId,
     tool_name: record.toolName,
-    status: unfinished
-      ? record.status === 'running' ? 'outcome_unknown' : 'cancelled'
-      : record.status,
+    status,
     started_at: record.startedAt,
     completed_at: unfinished ? record.completedAt ?? importedAt : record.completedAt,
     version: unfinished ? record.version + 1 : record.version,

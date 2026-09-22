@@ -67,6 +67,9 @@ describe('SessionsRepo integration', () => {
     insertMessage({ id: 'message-1', sessionId: 'source', turnId: 'turn-1', text: 'one', createdAt: 105 });
     insertMessage({ id: 'message-2', sessionId: 'source', turnId: 'turn-2', text: 'two', createdAt: 205 });
     insertMessage({ id: 'message-3', sessionId: 'source', turnId: 'turn-3', text: 'three', createdAt: 305 });
+    insertUsage({ id: 'usage-1', sessionId: 'source', turnId: 'turn-1', inputTokens: 10 });
+    insertUsage({ id: 'usage-3', sessionId: 'source', turnId: 'turn-3', inputTokens: 30 });
+    insertUsage({ id: 'manual-compact', sessionId: 'source', turnId: null, inputTokens: 5 });
 
     expect(repo.forkInto(asSessionId('source'), asSessionId('fork'), 'Fork', 1_000, asTurnId('turn-2'))).toBe(2);
 
@@ -85,6 +88,14 @@ describe('SessionsRepo integration', () => {
       .all('fork') as Array<{ turn_id: string | null }>;
     expect(copiedMessages).toHaveLength(2);
     expect(copiedMessages.every((message) => turns.some((turn) => turn.id === message.turn_id))).toBe(true);
+
+    const copiedUsage = database.db.prepare(`
+      SELECT turn_id, input_tokens
+      FROM usage_records
+      WHERE session_id = ?
+    `).all('fork') as Array<{ turn_id: string | null; input_tokens: number | null }>;
+    expect(copiedUsage).toEqual([expect.objectContaining({ input_tokens: 10 })]);
+    expect(turns.some(turn => turn.id === copiedUsage[0]!.turn_id)).toBe(true);
   });
 
   it('完整 fork 时 forked_from_turn_id 为 null', () => {
@@ -172,7 +183,7 @@ describe('SessionsRepo integration', () => {
   }): void {
     database.db.prepare(`
       INSERT INTO turns
-        (id, session_id, trigger_type, execution_profile, narrative_policy,
+        (id, session_id, trigger_type, session_mode, narrative_policy,
          status, created_at, completed_at)
       VALUES (?, ?, 'userMessage', 'chat', 'off', ?, ?, ?)
     `).run(
@@ -206,6 +217,20 @@ describe('SessionsRepo integration', () => {
       fixture.createdAt,
       fixture.through ?? null,
     );
+  }
+
+  function insertUsage(fixture: {
+    id: string;
+    sessionId: string;
+    turnId: string | null;
+    inputTokens: number;
+  }): void {
+    database.db.prepare(`
+      INSERT INTO usage_records (
+        id, session_id, turn_id, provider_id, model_id, capability, status,
+        input_tokens, output_tokens, duration_ms, created_at
+      ) VALUES (?, ?, ?, 'provider', 'model', 'llm', 'completed', ?, 1, 1, 1)
+    `).run(fixture.id, fixture.sessionId, fixture.turnId, fixture.inputTokens);
   }
 });
 

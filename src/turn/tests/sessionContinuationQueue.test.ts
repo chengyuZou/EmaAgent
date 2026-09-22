@@ -13,38 +13,39 @@ function makeHandle(input: StartTurn): TurnHandle {
   };
 }
 
-function createFixture(active = false) {
-  let sessionActive = active;
+function createFixture(running = false) {
+  let sessionRunning = running;
   const starts: StartTurn[] = [];
+  const attachTurn = vi.fn();
   const events: Array<{ sessionId: string; event: Parameters<ConstructorParameters<typeof SessionContinuationQueue>[0]['publish']>[1] }> = [];
   const queue = new SessionContinuationQueue({
     sessions: {
       sessionExists: sessionId => sessionId === 'session-a',
-      getSession: () => ({ executionProfile: 'chat', narrativePolicy: 'off' }) as never,
+      getSession: () => ({ sessionMode: 'chat', narrativePolicy: 'off', ttsEnabled: true }) as never,
     },
     turns: {
-      getActiveTurn: () => sessionActive ? ({ id: 'active-turn' } as never) : undefined,
+      getRunningTurn: () => sessionRunning ? ({ id: 'running-turn' } as never) : undefined,
     },
     startTurn: input => {
       starts.push(input);
-      sessionActive = true;
+      sessionRunning = true;
       return makeHandle(input);
     },
-    attachTurn: vi.fn(),
+    attachTurn,
     publish: (sessionId, event) => events.push({ sessionId, event }),
   });
   return {
     queue,
     starts,
+    attachTurn,
     events,
-    setActive(value: boolean) { sessionActive = value; },
+    setRunning(value: boolean) { sessionRunning = value; },
   };
 }
 
 const workSelection = {
-  executionProfile: 'work' as const,
+  sessionMode: 'work' as const,
   narrativePolicy: 'always' as const,
-  ttsEnabled: true,
 };
 
 describe('SessionContinuationQueue', () => {
@@ -53,7 +54,7 @@ describe('SessionContinuationQueue', () => {
     const first = fixture.queue.enqueue({
       sessionId: 'session-a',
       input: [{ type: 'text', text: '第一条' }],
-      selection: { executionProfile: 'chat', narrativePolicy: 'off', ttsEnabled: false },
+      selection: { sessionMode: 'chat', narrativePolicy: 'off' },
     });
     fixture.queue.enqueue({
       sessionId: 'session-a',
@@ -66,13 +67,14 @@ describe('SessionContinuationQueue', () => {
     expect(fixture.starts).toHaveLength(1);
     expect(fixture.starts[0]).toMatchObject({
       triggerType: 'userMessage',
-      executionProfile: 'work',
+      sessionMode: 'work',
       narrativePolicy: 'always',
     });
     expect(fixture.starts[0]!.input).toEqual([{ type: 'text', text: '第一条' }]);
+    expect(fixture.attachTurn).toHaveBeenCalledWith(expect.anything(), true);
 
     fixture.queue.acknowledge(fixture.starts[0]!.turnId!);
-    fixture.setActive(false);
+    fixture.setRunning(false);
     fixture.queue.turnCompleted('session-a');
     await Promise.resolve();
 
@@ -98,7 +100,7 @@ describe('SessionContinuationQueue', () => {
     fixture.queue.acknowledge('active-turn');
     expect(fixture.queue.list('session-a').map(item => item.id)).toEqual([normal.id]);
 
-    fixture.setActive(false);
+    fixture.setRunning(false);
     fixture.queue.turnCompleted('session-a');
     await Promise.resolve();
     expect(fixture.starts).toHaveLength(1);
@@ -151,7 +153,7 @@ describe('SessionContinuationQueue', () => {
     });
     fixture.queue.guide('session-a', guided.id);
 
-    fixture.setActive(false);
+    fixture.setRunning(false);
     fixture.queue.turnCompleted('session-a');
     await Promise.resolve();
 

@@ -42,7 +42,7 @@ import {
   type ToolUseContext,
 } from '@ema-agent/tools';
 import { StreamingToolExecutor } from '@ema-agent/tools';
-import type { ExecutionProfile, NarrativePolicy } from '@ema-agent/session';
+import type { SessionMode, NarrativePolicy } from '@ema-agent/session';
 import type { TurnKnowledgeSelection } from '../types.js';
 import type { SessionInteractionQueue } from '../interactionQueue.js';
 import type { TurnStreamEvent } from '../events.js';
@@ -84,7 +84,7 @@ export interface TurnToolsDeps {
 export interface PrepareTurnToolsInput {
   readonly sessionId: string;
   readonly turnId: string;
-  readonly executionProfile: ExecutionProfile;
+  readonly sessionMode: SessionMode;
   readonly narrativePolicy: NarrativePolicy;
   readonly cwd: string;
   readonly workspaceRoots: readonly string[];
@@ -279,7 +279,7 @@ export function prepareTurnTools(
   });
 
   const assembled = assembleToolPool(deps.registry, toolContext);
-  const toolPool = input.executionProfile === 'chat'
+  const toolPool = input.sessionMode === 'chat'
     ? assembled.filter(tool => CHAT_TOOL_IDS.has(tool.id))
     : assembled;
 

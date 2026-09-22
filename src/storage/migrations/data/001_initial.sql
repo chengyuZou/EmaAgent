@@ -119,7 +119,7 @@ CREATE TABLE messages (
   id          TEXT PRIMARY KEY,
   session_id  TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   turn_id     TEXT REFERENCES turns(id) ON DELETE SET NULL,
-  role        TEXT NOT NULL CHECK(role IN ('system','user','assistant')),
+  role        TEXT NOT NULL CHECK(role IN ('user','assistant')),
   kind        TEXT NOT NULL DEFAULT 'normal'
               CHECK(kind IN ('normal','tool_results','summary','reminder','continuation')),
   blocks_json TEXT NOT NULL,
@@ -146,12 +146,13 @@ CREATE TABLE sessions (
   model_id             TEXT,
   reasoning_effort     TEXT NOT NULL DEFAULT 'off'
                        CHECK(reasoning_effort IN ('off', 'low', 'medium', 'high', 'max')),
-  execution_profile    TEXT NOT NULL DEFAULT 'chat'
-                       CHECK(execution_profile IN ('chat', 'work')),
+  session_mode         TEXT NOT NULL DEFAULT 'chat'
+                       CHECK(session_mode IN ('chat', 'work')),
   narrative_policy     TEXT NOT NULL DEFAULT 'auto'
                        CHECK(narrative_policy IN ('auto', 'always', 'off')),
   permission_mode      TEXT NOT NULL DEFAULT 'default'
-                       CHECK(permission_mode IN ('default', 'acceptEdits', 'bypassPermissions'))
+                       CHECK(permission_mode IN ('default', 'acceptEdits', 'bypassPermissions')),
+  tts_enabled          INTEGER NOT NULL DEFAULT 0 CHECK(tts_enabled IN (0, 1))
 );
 
 CREATE TABLE task_context_state (
@@ -280,8 +281,8 @@ CREATE TABLE turns (
   status               TEXT NOT NULL CHECK(status IN ('running','completed','failed','aborted')),
   trigger_type         TEXT NOT NULL DEFAULT 'userMessage'
                        CHECK(trigger_type IN ('userMessage','sessionContinuation')),
-  execution_profile    TEXT NOT NULL DEFAULT 'chat'
-                       CHECK(execution_profile IN ('chat','work')),
+  session_mode         TEXT NOT NULL DEFAULT 'chat'
+                       CHECK(session_mode IN ('chat','work')),
   narrative_policy     TEXT NOT NULL DEFAULT 'auto'
                        CHECK(narrative_policy IN ('auto','always','off')),
   provider_id   TEXT,

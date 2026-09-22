@@ -19,7 +19,7 @@ function insertTurnFixture(db: Database, sessionId: string): string {
     id: turnId,
     sessionId,
     triggerType: 'userMessage',
-    executionProfile: 'chat',
+    sessionMode: 'chat',
     narrativePolicy: 'off',
     createdAt: turnSeq,
   });
@@ -37,6 +37,7 @@ describe('SessionStore — session', () => {
     expect(s.title).toBe('新对话');
     expect(s.archivedAt).toBeNull();
     expect(s.permissionMode).toBe('default');
+    expect(s.ttsEnabled).toBe(false);
     expect(s.cwd).toBe(path.join(os.homedir(), '.ema-agent', 'workspace'));
   });
 
@@ -60,20 +61,32 @@ describe('SessionStore — session', () => {
     expect(store.getSession(fork.sessionId).permissionMode).toBe('bypassPermissions');
   });
 
+  it('TTS 选择属于 Session, 修改后 Fork 继承', () => {
+    const { store } = makeStore();
+    const session = store.createSession({ ttsEnabled: true });
+    expect(session.ttsEnabled).toBe(true);
+
+    store.patchSession(session.id, { ttsEnabled: false });
+    expect(store.getSession(session.id).ttsEnabled).toBe(false);
+
+    const fork = store.forkSession(session.id);
+    expect(store.getSession(fork.sessionId).ttsEnabled).toBe(false);
+  });
+
   it('创建 Project Session 时在同一次操作中写入项目与主工作区', () => {
     const { store } = makeStore();
     const project = store.createProject('Demo', ['D:/main'], 'D:/main');
 
     const session = store.createSession({
       projectId: project.id,
-      executionProfile: 'work',
+      sessionMode: 'work',
       narrativePolicy: 'off',
     });
 
     expect(session).toMatchObject({
       projectId: project.id,
       cwd: 'D:/main',
-      executionProfile: 'work',
+      sessionMode: 'work',
       narrativePolicy: 'off',
     });
     const chosen = store.createSession({ projectId: project.id, cwd: os.tmpdir() });
@@ -377,6 +390,7 @@ describe('SessionStore — message', () => {
     store.appendMessage({ sessionId: s.id, turnId, role: 'user', kind: 'reminder', blocks: 'current-reminder' });
     store.appendHistorySummary({
       sessionId: s.id,
+      turnId: null,
       summary: 'summary',
       summarizedThroughMessageId: through.id,
     });
@@ -396,9 +410,41 @@ describe('SessionStore — message', () => {
 
     expect(() => store.appendHistorySummary({
       sessionId: b.id,
+      turnId: null,
       summary: 's',
       summarizedThroughMessageId: foreign.id,
     })).toThrow(/summary_through_message_not_in_session/);
+  });
+
+  it('自动压缩摘要带当前 turnId, 终态按轮读取时与剩余消息一起返回', () => {
+    const { store, db } = makeStore();
+    const session = store.createSession();
+    const previousTurnId = insertTurnFixture(db, session.id);
+    const turnId = insertTurnFixture(db, session.id);
+    const through = store.appendMessage({
+      sessionId: session.id,
+      turnId: previousTurnId,
+      role: 'user',
+      blocks: 'covered',
+    });
+
+    store.appendHistorySummary({
+      sessionId: session.id,
+      turnId,
+      summary: 'automatic-summary',
+      summarizedThroughMessageId: through.id,
+    });
+    store.appendMessage({
+      sessionId: session.id,
+      turnId,
+      role: 'assistant',
+      blocks: [{ type: 'text', text: 'tail' }],
+    });
+
+    expect(store.loadMessagesForTurn(turnId).map(message => message.blocks)).toEqual([
+      'automatic-summary',
+      [{ type: 'text', text: 'tail' }],
+    ]);
   });
 
   it('listMessages 返回旧到新的 Message 页', () => {

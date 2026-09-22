@@ -229,7 +229,7 @@ function insertAgentRun(database: Database, id: string): void {
   `).run();
   database.sqlite.prepare(`
     INSERT INTO turns (
-      id, session_id, trigger_type, execution_profile, narrative_policy,
+      id, session_id, trigger_type, session_mode, narrative_policy,
       status, created_at
     ) VALUES ('turn-a', 'session-a', 'userMessage', 'work', 'auto', 'running', 1)
   `).run();

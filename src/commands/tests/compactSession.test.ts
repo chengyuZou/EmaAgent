@@ -1,4 +1,4 @@
-// 测试 compactSession 全链：坑位互斥、前置拒绝、窗口截断、摘要落库游标、abort 原样、用量记账与目录投影。
+// 测试 compactSession 全链：Session 运行互斥、前置拒绝、窗口截断、摘要落库游标、abort 原样、用量记账与目录投影。
 import { describe, expect, it, vi } from 'vitest';
 import {
   compactManualMinRatioSetting,
@@ -10,7 +10,7 @@ import {
 import type { CallLlm, LlmStreamEvent } from '@ema-agent/llm';
 import type { ProviderModels, Providers } from '@ema-agent/providers';
 import {
-  ActiveSessionRegistry,
+  SessionRunningRegistry,
   SessionBusyError,
   SessionStore,
 } from '@ema-agent/session';
@@ -48,7 +48,7 @@ interface Fixture {
   deps: ManualCompactDeps;
   sessions: SessionStore;
   turns: TurnStore;
-  activeSessions: ActiveSessionRegistry;
+  sessionRunning: SessionRunningRegistry;
   usageRecords: UsageRecord[];
   compactEvents: CompactEvent[];
   sessionId: string;
@@ -62,8 +62,8 @@ function makeFixture(options: {
   const db = new Database({ memory: true, kind: 'data' });
   db.migrate();
   const sessions = new SessionStore({ db });
-  const activeSessions = new ActiveSessionRegistry();
-  const turns = new TurnStore({ db, activeSessions });
+  const sessionRunning = new SessionRunningRegistry();
+  const turns = new TurnStore({ db, sessionRunning });
   const usageRecords: UsageRecord[] = [];
   const compactEvents: CompactEvent[] = [];
   const usageRecorder: UsageRecorder = {
@@ -80,7 +80,7 @@ function makeFixture(options: {
   const deps: ManualCompactDeps = {
     sessions,
     turns,
-    activeSessions,
+    sessionRunning,
     providers: {
       resolveConnection: () => ({ protocol: 'openai-llm', baseUrl: 'http://localhost' }),
     } as unknown as Providers,
@@ -101,7 +101,7 @@ function makeFixture(options: {
     usageRecorder,
     emit: event => compactEvents.push(event),
   };
-  return { deps, sessions, turns, activeSessions, usageRecords, compactEvents, sessionId };
+  return { deps, sessions, turns, sessionRunning, usageRecords, compactEvents, sessionId };
 }
 
 /** 写入超过触发线的长历史（6 条 × 2 万字符，约 3 万 token > 窗口本身，同时触发窗口截断）。 */
@@ -125,7 +125,7 @@ describe('compactSession', () => {
     turns.startTurn({
       sessionId,
       triggerType: 'userMessage',
-      executionProfile: 'chat',
+      sessionMode: 'chat',
       narrativePolicy: 'off',
     });
     await expect(compactSession(deps, sessionId)).rejects.toBeInstanceOf(SessionBusyError);
@@ -201,6 +201,7 @@ describe('compactSession', () => {
     const history = sessions.loadHistory(sessionId);
     const summary = history[0]!;
     expect(summary.kind).toBe('summary');
+    expect(summary.turnId).toBeNull();
     expect(summary.blocks).toContain('压缩后的工作摘要');
     // 游标之后的尾部是原始历史的后缀（覆盖游标把被丢弃与被摘要消息一并切出可见历史）。
     const tailIds = history.slice(1).map(message => message.id);
@@ -231,7 +232,7 @@ describe('compactSession', () => {
     );
     const projectSessionId = fixture.sessions.createSession({ projectId: project.id }).id;
     fixture.sessions.patchSession(projectSessionId, {
-      executionProfile: 'work',
+      sessionMode: 'work',
       providerId: PROVIDER_ID,
       modelId: MODEL_ID,
     });
@@ -307,18 +308,18 @@ describe('compactSession', () => {
         );
       });
     })();
-    const { deps, sessions, activeSessions, compactEvents, sessionId } = makeFixture({ callLlm: hangingLlm });
+    const { deps, sessions, sessionRunning, compactEvents, sessionId } = makeFixture({ callLlm: hangingLlm });
     const ids = seedLongHistory(sessions, sessionId);
 
     const pending = compactSession(deps, sessionId);
     await new Promise(resolve => setImmediate(resolve));
-    const active = activeSessions.getActiveSession(sessionId);
-    expect(active?.kind).toBe('compact');
-    activeSessions.abort(sessionId, active!);
+    const running = sessionRunning.getRunning(sessionId);
+    expect(running?.kind).toBe('compact');
+    sessionRunning.abort(sessionId, running!);
 
     const result = await pending;
     expect(result.status).toBe('cancelled');
-    expect(activeSessions.isRunning(sessionId)).toBe(false);
+    expect(sessionRunning.isRunning(sessionId)).toBe(false);
     expect(sessions.loadHistory(sessionId).map(message => message.id)).toEqual(ids);
     expect(compactEvents.map(event => event.type)).toEqual([
       'compact_started',

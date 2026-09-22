@@ -2,7 +2,7 @@
 
 `src/turn` 拥有一次完整交互：建立 Turn 身份、冻结本轮一切可变事实、运行唯一一个根 AgentLoop、按事件顺序持续落库，并提交唯一终态。
 
-公开入口只有 `turn.ts` 的 `TurnExecutor`；领域词汇本包自持（`types.ts` 的 Turn/TurnStats/TurnFailureCode 等），共享词汇 ExecutionProfile/NarrativePolicy/TurnStatus 来自 `@ema-agent/session`。
+公开入口只有 `turn.ts` 的 `TurnExecutor`；领域词汇本包自持（`types.ts` 的 Turn/TurnFailureCode 等），共享词汇 SessionMode/NarrativePolicy/TurnStatus 来自 `@ema-agent/session`。
 
 ## 唯一公开入口
 
@@ -55,12 +55,12 @@ start
        ├─ prepareLlmCall（loop/，每次模型调用前）
        │    ├─ 基线切分：history（唯一可压缩区间）+ currentTurn
        │    ├─ assembleContext → 未超直接返回
-       │    └─ 超限 compact：micro 直接重装配；macro 落 kind='summary' 消息（turnId=null，
-       │       摘要即覆盖游标）再重装配；返回可能被改写的整体工作历史
+       │    └─ 超限 compact：micro 直接重装配；macro 落 kind='summary' 消息（带当前 turnId，
+       │       摘要同时记录覆盖游标）再重装配；返回可能被改写的整体工作历史
        ├─ TurnMessageWriter 流式落库
        └─ 事件翻译 → TurnStreamEvent 通道
   → finishSafely：writer 收口（interrupted + 孤儿 tool_use 合成）→ 交互队列清理
-    → 工具与子 Agent shutdown → 活跃执行坑位释放（ActiveSessionRegistry，归 session 包）
+    → 工具与子 Agent shutdown → 当前运行记录释放（SessionRunningRegistry，归 session 包）
   → TurnStore 一次终态：completed / failed / aborted
   → clearRunning 后通知 SessionContinuationQueue，决定是否启动下一根排队 Turn
 ```
@@ -92,7 +92,7 @@ start
 
 Context 球在根 Turn 运行时消费 `context_usage_updated`：请求装配先发总输入估算, 同一 `llmCallId` 收到 Provider Usage 后校正总输入和缓存子集；模型输出或 Tool Result 真正进入后续工作历史时, 再追加本地 Messages 估算。没有活动根调用时, Chat 从 Session 有效历史读取一次冷估算。成功保存 Macro 摘要后旧值失效并重读摘要及未覆盖尾部。`agent_usage_updated` 是根 AgentLoop 的累计消耗, 子 Agent 的同名事件保留在对应 `agent_run_event` 内, 二者都不更新 Context 球。
 
-Reminder 表示"本 Turn 开始时的事实"：TurnExecutor 每根 Turn 调一次 `readTurnReminder`（`TurnReminderScope`：sessionId/turnId/executionProfile/narrativePolicy/userText/emit）取回完整启动期输入（含 currentDate），`renderTurnReminder` 渲染后经 `appendMessage(kind='reminder')` 持久化，再由 loadHistory 读回放进当前 Turn 工作消息——同一份字节，不随 LLM Call 重建，也不进可压缩区间。Narrative 三态：always 在取输入时查询一次写入 reminder；auto 只装配 NarrativeSearchTool；off 两者皆无。
+Reminder 表示"本 Turn 开始时的事实"：TurnExecutor 每根 Turn 调一次 `readTurnReminder`（`TurnReminderScope`：sessionId/turnId/sessionMode/narrativePolicy/userText/emit）取回完整启动期输入（含 currentDate），`renderTurnReminder` 渲染后经 `appendMessage(kind='reminder')` 持久化，再由 loadHistory 读回放进当前 Turn 工作消息——同一份字节，不随 LLM Call 重建，也不进可压缩区间。Narrative 三态：always 在取输入时查询一次写入 reminder；auto 只装配 NarrativeSearchTool；off 两者皆无。
 
 ## 目录
 
@@ -104,7 +104,7 @@ src/turn/
 ├─ errors.ts                TurnOwnership/TurnPreparation + failureCodeOf/failureMessageOf
 ├─ turn.ts                  TurnExecutor：唯一公开入口 + 主循环驱动
 ├─ turnStore.ts             Turn 行 CRUD + 唯一终态 + 运行态/删除守卫 + 导航查询
-│                           （Session 活跃执行坑位 = session 包 ActiveSessionRegistry）
+│                           （Session 当前根工作 = session 包 SessionRunningRegistry）
 ├─ eventChannel.ts          TurnEvent 单消费者有界通道
 ├─ interactionQueue.ts      SessionInteractionQueue（Permission/AskUser 共用的 Session FIFO）
 ├─ sessionContinuationQueue.ts 用户追加输入、立即引导和后台完成通知的 Session 队列

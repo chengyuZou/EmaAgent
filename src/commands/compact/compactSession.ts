@@ -1,5 +1,5 @@
 // 手动 /compact: 与根 Turn 共享同一份 Session 运行记录, 两者互斥, 且不创建 Turn.
-// 链: 注册 ActiveSession(kind='compact') → 读历史 → buildHistoryMessages 投影 → 触发线下限闸 →
+// 链: 注册 SessionRunning(kind='compact') → 读历史 → buildHistoryMessages 投影 → 触发线下限闸 →
 // 与下一根 Turn 同事实的 systemMessages → compact(force=true) →
 // 游标映射 appendHistorySummary（唯一提交点；abort/失败即历史原样）。
 // 命令路径的压缩终态一定是 macro：低于触发线在调用前拒绝，macro 失败按错误上抛，
@@ -7,7 +7,7 @@
 //
 // tools 为空——根 Turn 的 ToolPool 装配需要 Turn 身份（SubagentSpawner/scratchpad/
 // narrative 事件归因），在 Turn 外伪造身份被禁止，因此历史边界缓存断点在手动路径
-// 架构性不可达；能共享的是静态产品段与动态尾到 execution-profile 为止的前缀。
+// 架构性不可达；能共享的是静态产品段与动态尾到 session-mode 为止的前缀。
 import { randomUUID } from 'node:crypto';
 import type { VisionDescriptionCache, VisionDescriptionProducer } from '@ema-agent/attachments';
 import {
@@ -29,7 +29,7 @@ import {
 import type { ProviderModels, Providers } from '@ema-agent/providers';
 import {
   SessionBusyError,
-  type ActiveSessionRegistry,
+  type SessionRunningRegistry,
   type Session,
   type SessionStore,
 } from '@ema-agent/session';
@@ -65,7 +65,7 @@ export interface ManualCompactDeps {
     'getSession' | 'listProjectFolders' | 'loadHistory' | 'appendHistorySummary'>;
   /** Assistant 历史的 generatedBy 解析（createGenerationTargetResolver 的事实源）。 */
   readonly turns: Pick<TurnStore, 'getTurn'>;
-  readonly activeSessions: ActiveSessionRegistry;
+  readonly sessionRunning: SessionRunningRegistry;
   readonly providers: Providers;
   readonly providerModels: ProviderModels;
   readonly settings: SettingsStore;
@@ -99,7 +99,7 @@ export async function compactSession(
   deps: ManualCompactDeps,
   sessionId: string,
 ): Promise<ManualCompactResult> {
-  if (deps.activeSessions.isRunning(sessionId)) {
+  if (deps.sessionRunning.isRunning(sessionId)) {
     throw new SessionBusyError(sessionId);
   }
   const session = deps.sessions.getSession(sessionId);
@@ -121,8 +121,8 @@ export async function compactSession(
   }
 
   const compactId = randomUUID();
-  const active = { kind: 'compact', compactId } as const;
-  const signal = deps.activeSessions.register(sessionId, active);
+  const running = { kind: 'compact', compactId } as const;
+  const signal = deps.sessionRunning.register(sessionId, running);
   try {
     const persisted = deps.sessions.loadHistory(sessionId);
     if (persisted.length === 0) {
@@ -185,7 +185,7 @@ export async function compactSession(
     const result = await compact({
       compactId,
       sessionId,
-      executionProfile: session.executionProfile,
+      sessionMode: session.sessionMode,
       history,
       systemMessages,
       tools: [],
@@ -208,6 +208,7 @@ export async function compactSession(
       saveMacroSummary: (summary, summarizedMessageCount) => {
         deps.sessions.appendHistorySummary({
           sessionId,
+          turnId: null,
           summary,
           summarizedThroughMessageId:
             historyWithIds[summarizedMessageCount - 1]!.sessionMessageId,
@@ -252,7 +253,7 @@ export async function compactSession(
     if (signal.aborted) return { status: 'cancelled' };
     throw error;
   } finally {
-    deps.activeSessions.clear(sessionId, active);
+    deps.sessionRunning.clear(sessionId, running);
   }
 }
 
@@ -285,7 +286,7 @@ async function buildCompactSystemMessages(
       ...(deps.memoryGuidance ? { memoryGuidance: deps.memoryGuidance } : {}),
     },
     {
-      executionProfile: session.executionProfile,
+      sessionMode: session.sessionMode,
       cwd,
       projectFolderPaths,
       providerId,

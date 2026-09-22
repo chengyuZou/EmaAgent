@@ -14,7 +14,7 @@ export const omittedSessionFileSchema = z.object({
 
 export const sessionBackupManifestSchema = z.object({
   format: z.literal('ema-session'),
-  version: z.literal(1),
+  version: z.literal(2),
   sessionId: id,
   omittedFiles: z.array(omittedSessionFileSchema),
 }).strict();
@@ -35,9 +35,10 @@ export const sessionRecordSchema = z.object({
   providerId: nullableId,
   modelId: nullableId,
   reasoningEffort: z.enum(['off', 'low', 'medium', 'high', 'max']),
-  executionProfile: z.enum(['chat', 'work']),
+  sessionMode: z.enum(['chat', 'work']),
   narrativePolicy: z.enum(['auto', 'always', 'off']),
   permissionMode: z.enum(['default', 'acceptEdits', 'bypassPermissions']),
+  ttsEnabled: z.boolean(),
 }).strict().refine(
   value => (value.providerId === null) === (value.modelId === null),
   { message: 'Session 模型选择必须同时包含 Provider 和 Model' },
@@ -48,7 +49,7 @@ export const turnRecordSchema = z.object({
   sessionId: id,
   status: z.enum(['running', 'completed', 'failed', 'aborted']),
   triggerType: z.enum(['userMessage', 'sessionContinuation']),
-  executionProfile: z.enum(['chat', 'work']),
+  sessionMode: z.enum(['chat', 'work']),
   narrativePolicy: z.enum(['auto', 'always', 'off']),
   providerId: nullableId,
   modelId: nullableId,
@@ -56,8 +57,6 @@ export const turnRecordSchema = z.object({
   protocol: nullableId,
   characterDirectoryName: z.string().nullable(),
   iterations: nonNegativeInteger,
-  usageInputTokens: nonNegativeInteger,
-  usageOutputTokens: nonNegativeInteger,
   createdAt: integer,
   completedAt: integer.nullable(),
   errorCode: z.string().nullable(),
@@ -72,7 +71,7 @@ export const messageRecordSchema = z.object({
   id,
   sessionId: id,
   turnId: nullableId,
-  role: z.enum(['system', 'user', 'assistant']),
+  role: z.enum(['user', 'assistant']),
   kind: z.enum(['normal', 'tool_results', 'summary', 'reminder', 'continuation']),
   blocksJson: z.string(),
   interrupted: z.boolean(),

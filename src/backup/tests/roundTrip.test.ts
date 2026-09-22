@@ -10,6 +10,7 @@ import {
   Database,
   SessionBackupReader,
   SessionBackupRestorer,
+  UsageRecordsRepo,
 } from '@ema-agent/storage';
 import { createSessionExport } from '../export/sessionExport.js';
 import { importSessionArchive } from '../import/sessionImport.js';
@@ -34,7 +35,7 @@ function seedSource(dataDir: string): Database {
     VALUES (?, '往返', 'D:/work', 0, 1, 1, 1)
   `).run(SESSION_ID);
   db.sqlite.prepare(`
-    INSERT INTO turns (id, session_id, trigger_type, execution_profile, narrative_policy,
+    INSERT INTO turns (id, session_id, trigger_type, session_mode, narrative_policy,
       status, created_at)
     VALUES ('t1', ?, 'userMessage', 'chat', 'off', 'completed', 1)
   `).run(SESSION_ID);
@@ -65,6 +66,24 @@ function seedSource(dataDir: string): Database {
   });
   new AttachmentImagesRepo(db.sqlite).claimForTurn(SESSION_ID, 't1', [imagePath]);
   new AttachmentPastedTextsRepo(db.sqlite).claimForTurn(SESSION_ID, 't1', [pastedPath]);
+  new UsageRecordsRepo(db.sqlite).record({
+    id: 'llm-call-1',
+    sessionId: SESSION_ID,
+    turnId: 't1',
+    providerId: 'provider',
+    modelId: 'model',
+    capability: 'llm',
+    status: 'completed',
+    inputTokens: 100,
+    outputTokens: 20,
+    cacheReadInputTokens: null,
+    cacheWriteInputTokens: null,
+    quantity: null,
+    unit: null,
+    durationMs: 50,
+    errorCode: null,
+    createdAt: 2,
+  });
   return db;
 }
 
@@ -133,6 +152,13 @@ describe('Session 备份往返', () => {
     expect(imageBlock.path).toBe(newImagePath);
     expect(pastedBlock.path).toBe(newPastedPath);
     expect(fileBlock.path).toBe('D:/docs/map.pdf');
+    expect(new UsageRecordsRepo(targetDb.sqlite).forTurn('t1')).toEqual([
+      expect.objectContaining({
+        id: 'llm-call-1',
+        input_tokens: 100,
+        output_tokens: 20,
+      }),
+    ]);
 
     targetDb.close();
   });

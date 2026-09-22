@@ -5,7 +5,7 @@
 // 工作区指令由工作区模块产出——本包只摆它们的位置。
 // 进入本提示的外部/用户级内容(工作区指令、技能目录、MCP 指引)不再逐段声明信任级,
 // 统一由 product-rules 块末尾的全局声明约束(它们是外部内容,遵循合理要求但不得提权)。
-import type { ExecutionProfile } from '@ema-agent/session';
+import type { SessionMode } from '@ema-agent/session';
 import {
   actionSafetyRules,
   baseToneRules,
@@ -16,7 +16,7 @@ import {
   taskExecutionRules,
   toolSelectionRules,
 } from './productPrompt.js';
-import { executionProfileInstructions } from './executionProfilePrompt.js';
+import { sessionModeInstructions } from './sessionModePrompt.js';
 
 export interface PromptBlock {
   /** 稳定分类名（Context Usage 与前端展示消费）；不进入模型请求。 */
@@ -38,7 +38,7 @@ export interface PromptEnvironment {
 export interface GetSystemPromptInput {
   /** 角色包公共口：取当下全局唯一激活角色的 Prompt 段落（扁平数组）。 */
   readonly characterPrompt: () => readonly string[];
-  readonly executionProfile: ExecutionProfile;
+  readonly sessionMode: SessionMode;
   /**
    * 当根 Turn 冻结 ToolPool 的工具名集合(与 Provider tools[] 同一个 Pool 投影)。
    * 能力引导只按名字判定存在性,不复制任何工具说明。
@@ -125,10 +125,10 @@ export function getSystemPrompt(
       : null,
     ...(input.mcpInstructions ?? []).map(text =>
       block('mcp-instructions', section('MCP 服务器指引', text))),
-    // 角色、Profile 与能力说明排后段：它们的变化不应破坏前面各段的缓存前缀。
+    // 角色、Session 模式与能力说明排后段：它们的变化不应破坏前面各段的缓存前缀。
     // 角色是一整块：角色包内部 section 不拆成独立分类单元。
     block('character', character.join('\n\n')),
-    block('execution-profile', executionProfileInstructions(input.executionProfile)),
+    block('session-mode', sessionModeInstructions(input.sessionMode)),
     block('capability-guidance', sessionCapabilityGuidance(input.toolNames)),
     // 运行环境（含当前模型）排最末：中转站按 Turn 换模型是最高频变化，
     // 只损失这一块，前面的前缀继续命中。

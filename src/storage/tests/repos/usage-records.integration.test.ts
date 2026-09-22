@@ -16,7 +16,7 @@ describe('UsageRecordsRepo', () => {
     `).run();
     database.db.prepare(`
       INSERT INTO turns
-        (id, session_id, trigger_type, execution_profile, narrative_policy, status, created_at)
+        (id, session_id, trigger_type, session_mode, narrative_policy, status, created_at)
       VALUES ('turn-a', 'session-a', 'userMessage', 'work', 'off', 'completed', 1)
     `).run();
     database.db.prepare(`
@@ -36,7 +36,7 @@ describe('UsageRecordsRepo', () => {
   });
 
   it('同一 Turn 的多次调用不会互相覆盖', () => {
-    expect(database.db.pragma('user_version', { simple: true })).toBe(1);
+    expect(database.db.pragma('user_version', { simple: true })).toBe(2);
     repo.record(record('call-b', 10));
     repo.record(record('call-a', 10));
     expect(repo.forTurn('turn-a').map((row) => row.id)).toEqual(['call-a', 'call-b']);

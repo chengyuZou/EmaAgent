@@ -44,9 +44,10 @@ export const toSessionRecord = (row: SessionRow): SessionRecord => ({
   providerId: row.provider_id,
   modelId: row.model_id,
   reasoningEffort: row.reasoning_effort,
-  executionProfile: row.execution_profile,
+  sessionMode: row.session_mode,
   narrativePolicy: row.narrative_policy,
   permissionMode: row.permission_mode,
+  ttsEnabled: row.tts_enabled === 1,
 });
 
 export const toTurnRecord = (row: TurnRow): TurnRecord => ({
@@ -54,15 +55,13 @@ export const toTurnRecord = (row: TurnRow): TurnRecord => ({
   sessionId: row.session_id,
   status: row.status,
   triggerType: row.trigger_type,
-  executionProfile: row.execution_profile,
+  sessionMode: row.session_mode,
   narrativePolicy: row.narrative_policy,
   providerId: row.provider_id,
   modelId: row.model_id,
   protocol: row.protocol,
   characterDirectoryName: row.character_directory_name,
   iterations: row.iterations,
-  usageInputTokens: row.usage_input_tokens,
-  usageOutputTokens: row.usage_output_tokens,
   createdAt: row.created_at,
   completedAt: row.completed_at,
   errorCode: row.error_code,

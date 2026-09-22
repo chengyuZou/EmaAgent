@@ -31,7 +31,7 @@ describe('Turn 历史读取', () => {
         id,
         sessionId,
         triggerType: 'userMessage',
-        executionProfile: 'chat',
+        sessionMode: 'chat',
         narrativePolicy: 'off',
         createdAt: 10,
       });
@@ -113,7 +113,7 @@ describe('Turn 历史读取', () => {
       id: 'turn-a',
       sessionId,
       triggerType: 'userMessage',
-      executionProfile: 'chat',
+      sessionMode: 'chat',
       narrativePolicy: 'off',
       createdAt: 1,
     });
@@ -147,7 +147,7 @@ describe('Turn 历史读取', () => {
       id: 'turn-b',
       sessionId,
       triggerType: 'sessionContinuation',
-      executionProfile: 'chat',
+      sessionMode: 'chat',
       narrativePolicy: 'off',
       createdAt: 3,
     });
@@ -164,7 +164,7 @@ describe('Turn 历史读取', () => {
       id: 'turn-a',
       sessionId,
       triggerType: 'userMessage',
-      executionProfile: 'chat',
+      sessionMode: 'chat',
       narrativePolicy: 'off',
       createdAt: 1,
     });
@@ -178,25 +178,6 @@ describe('Turn 历史读取', () => {
     expect(() => database.sqlite.prepare(`
       UPDATE turns SET model_id = NULL WHERE id = 'turn-a'
     `).run()).toThrow(/both provider and model/);
-  });
-
-  it('copyTurn 复制模型选择与调用协议', () => {
-    const { turns, sessionId } = createFixture();
-    turns.insert({
-      id: 'turn-a',
-      sessionId,
-      triggerType: 'userMessage',
-      executionProfile: 'chat',
-      narrativePolicy: 'off',
-      createdAt: 1,
-    });
-    turns.setModel('turn-a', 'provider-config-1', 'model-1', 'openai-chat');
-    turns.copyTurn(turns.findById('turn-a')!, sessionId, 'turn-copy');
-    expect(turns.findById('turn-copy')).toMatchObject({
-      provider_id: 'provider-config-1',
-      model_id: 'model-1',
-      protocol: 'openai-chat',
-    });
   });
 
   it('Turn 索引分页使用 Session 最新 Turn 索引', () => {

@@ -36,7 +36,7 @@ beforeEach(() => {
     VALUES (?, 's', 'D:/work', 0, 1, 1, 1)
   `).run(sessionId);
   database.sqlite.prepare(`
-    INSERT INTO turns (id, session_id, trigger_type, execution_profile, narrative_policy,
+    INSERT INTO turns (id, session_id, trigger_type, session_mode, narrative_policy,
       status, created_at)
     VALUES (?, ?, 'userMessage', 'chat', 'off', 'completed', 1)
   `).run(turnId, sessionId);

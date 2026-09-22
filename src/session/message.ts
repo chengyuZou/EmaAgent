@@ -66,9 +66,6 @@ export function parseMessageBlocksJson(
     return INVALID_MESSAGE_PLACEHOLDER;
   }
 
-  if (role === 'system') {
-    return typeof value === 'string' ? value : INVALID_MESSAGE_PLACEHOLDER;
-  }
   if (role === 'assistant') {
     return isAssistantBlocks(value) ? value : INVALID_MESSAGE_PLACEHOLDER;
   }

@@ -28,6 +28,9 @@ type OpenAiChatParams =
     reasoning_effort?: 'low' | 'medium' | 'high' | 'max';
   };
 
+const STREAM_IDLE_TIMEOUT_MS = 60_000;
+const USAGE_TAIL_TIMEOUT_MS = 2_000;
+
 export function createOpenAiChatProtocol(
   connection: LlmConnection, modelId: string,
 ): (request: LlmRequest) => AsyncIterable<LlmStreamEvent> {
@@ -58,14 +61,27 @@ async function* streamOpenAiChat(
   };
   applyThinking(params, request.thinking);
 
+  const streamAbort = new AbortController();
+  const streamSignal = request.signal
+    ? AbortSignal.any([request.signal, streamAbort.signal])
+    : streamAbort.signal;
+  let idleTimer: ReturnType<typeof setTimeout> | undefined;
+  const armIdleTimer = (delayMs: number): void => {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => streamAbort.abort('openai_stream_idle'), delayMs);
+  };
+
   let response: AsyncIterable<OpenAI.ChatCompletionChunk>;
   try {
+    armIdleTimer(STREAM_IDLE_TIMEOUT_MS);
     response = await client.chat.completions.create(
       params as OpenAI.ChatCompletionCreateParamsStreaming,
-      { signal: request.signal },
+      { signal: streamSignal },
     );
   } catch (error) {
-    throwIfAbortError(error, request.signal);
+    clearTimeout(idleTimer);
+    if (request.signal?.aborted) throwIfAbortError(error, request.signal);
+    if (streamAbort.signal.aborted) throw new LlmStreamProtocolError('openai-llm');
     throw normalizeLlmProviderError(error);
   }
 
@@ -81,12 +97,9 @@ async function* streamOpenAiChat(
   let thinkingBlockIndex: number | undefined;
   let textBlockIndex: number | undefined;
 
-  const iterator = response[Symbol.asyncIterator]();
   try {
-    while (true) {
-      const next = await nextChunk(iterator, request.signal);
-      if (next.done) break;
-      const chunk = next.value;
+    for await (const chunk of response) {
+      armIdleTimer(receivedFinishReason ? USAGE_TAIL_TIMEOUT_MS : STREAM_IDLE_TIMEOUT_MS);
       const choice = chunk.choices[0];
       const delta = choice?.delta;
       const extendedDelta = delta as Record<string, unknown> | undefined;
@@ -128,6 +141,7 @@ async function* streamOpenAiChat(
 
       if (choice?.finish_reason) {
         receivedFinishReason = true;
+        armIdleTimer(USAGE_TAIL_TIMEOUT_MS);
         stopReason = mapStopReason(choice.finish_reason);
         for (const buffer of toolBuffers.values()) {
           let args: unknown;
@@ -162,43 +176,23 @@ async function* streamOpenAiChat(
             cacheReadInputTokens: chunk.usage.prompt_tokens_details?.cached_tokens,
           }),
         };
+        if (receivedFinishReason) break;
       }
     }
   } catch (error) {
-    if (request.signal?.aborted) void iterator.return?.();
-    throwIfAbortError(error, request.signal);
-    throw normalizeLlmProviderError(error);
+    if (request.signal?.aborted) throwIfAbortError(error, request.signal);
+    if (streamAbort.signal.aborted) {
+      if (!receivedFinishReason) throw new LlmStreamProtocolError('openai-llm');
+    } else {
+      throw normalizeLlmProviderError(error);
+    }
+  } finally {
+    clearTimeout(idleTimer);
   }
 
   throwIfAborted(request.signal);
   if (!receivedFinishReason) throw new LlmStreamProtocolError('openai-llm');
   yield { type: 'done', stopReason };
-}
-
-function nextChunk<T>(
-  iterator: AsyncIterator<T>,
-  signal: AbortSignal | undefined,
-): Promise<IteratorResult<T>> {
-  throwIfAborted(signal);
-  if (!signal) return iterator.next();
-
-  return new Promise<IteratorResult<T>>((resolve, reject) => {
-    const onAbort = (): void => {
-      signal.removeEventListener('abort', onAbort);
-      reject(signal.reason);
-    };
-    signal.addEventListener('abort', onAbort, { once: true });
-    iterator.next().then(
-      result => {
-        signal.removeEventListener('abort', onAbort);
-        resolve(result);
-      },
-      error => {
-        signal.removeEventListener('abort', onAbort);
-        reject(error);
-      },
-    );
-  });
 }
 
 function toOpenAiMessages(
@@ -226,9 +220,7 @@ function toOpenAiMessages(
           result.push({
             role: 'tool',
             tool_call_id: toolResult.toolCallId,
-            content: typeof toolResult.content === 'string'
-              ? toolResult.content
-              : toolResult.content.map((part) => part.type === 'text' ? part.text : '').join('\n'),
+            content: toOpenAiToolResultContent(toolResult),
           });
           continue;
         }
@@ -258,6 +250,14 @@ function toOpenAiMessages(
     });
   }
   return result;
+}
+
+function toOpenAiToolResultContent(toolResult: ToolResultBlock): string {
+  if (typeof toolResult.content === 'string') return toolResult.content;
+  return toolResult.content
+    .filter(part => part.type === 'text')
+    .map(part => part.text)
+    .join('\n');
 }
 
 function toOpenAiContentPart(part: ContentPart): OpenAI.ChatCompletionContentPart {

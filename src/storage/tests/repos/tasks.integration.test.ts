@@ -21,7 +21,7 @@ describe('Task 持久化边界', () => {
     `).run(sessionId);
     database.db.prepare(`
       INSERT INTO turns (
-        id, session_id, trigger_type, execution_profile, narrative_policy,
+        id, session_id, trigger_type, session_mode, narrative_policy,
         status, created_at
       ) VALUES (?, ?, 'userMessage', 'work', 'auto', 'running', 2)
     `).run(turnId, sessionId);
@@ -70,7 +70,7 @@ describe('Task 持久化边界', () => {
     for (let index = 0; index < 10; index += 1) {
       database.db.prepare(`
         INSERT INTO turns (
-          id, session_id, trigger_type, execution_profile, narrative_policy,
+          id, session_id, trigger_type, session_mode, narrative_policy,
           status, created_at
         ) VALUES (?, ?, 'userMessage', 'work', 'auto', 'completed', ?)
       `).run(`turn-reminder-${index}`, sessionId, 5 + index);

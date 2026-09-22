@@ -74,7 +74,7 @@ export type {
   SessionRowEnriched,
   SessionSearchRow,
   SessionInsert,
-  ExecutionProfileRow,
+  SessionModeRow,
   NarrativePolicyRow,
   PermissionModeRow,
 } from './repos/data/sessions.js';

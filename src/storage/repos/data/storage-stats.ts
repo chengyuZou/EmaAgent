@@ -63,9 +63,10 @@ export class DataDirStatsRepo {
         FROM speech_outputs
     `).get() as { c: number; d: number };
     const tokens = this.db.prepare(`
-      SELECT COALESCE(SUM(usage_input_tokens), 0)  AS i,
-             COALESCE(SUM(usage_output_tokens), 0) AS o
-        FROM turns
+      SELECT COALESCE(SUM(input_tokens), 0)  AS i,
+             COALESCE(SUM(output_tokens), 0) AS o
+        FROM usage_records
+       WHERE capability = 'llm'
     `).get() as { i: number; o: number };
 
     return {
@@ -112,8 +113,10 @@ export class SessionStatsRepo {
     const rows = this.db.prepare(`
       SELECT s.id, s.title, s.last_activity_at,
              (SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id) AS message_count,
-             COALESCE((SELECT SUM(t.usage_input_tokens)  FROM turns t WHERE t.session_id = s.id), 0) AS input_tokens,
-             COALESCE((SELECT SUM(t.usage_output_tokens) FROM turns t WHERE t.session_id = s.id), 0) AS output_tokens
+             COALESCE((SELECT SUM(u.input_tokens) FROM usage_records u
+                       WHERE u.session_id = s.id AND u.capability = 'llm'), 0) AS input_tokens,
+             COALESCE((SELECT SUM(u.output_tokens) FROM usage_records u
+                       WHERE u.session_id = s.id AND u.capability = 'llm'), 0) AS output_tokens
         FROM sessions s
         ORDER BY s.last_activity_at DESC, s.id DESC
     `).all() as Array<{
@@ -135,8 +138,10 @@ export class SessionStatsRepo {
     const rows = this.db.prepare(`
       SELECT s.id AS session_id,
              (SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id) AS message_count,
-             COALESCE((SELECT SUM(t.usage_input_tokens)  FROM turns t WHERE t.session_id = s.id), 0) AS input_tokens,
-             COALESCE((SELECT SUM(t.usage_output_tokens) FROM turns t WHERE t.session_id = s.id), 0) AS output_tokens
+             COALESCE((SELECT SUM(u.input_tokens) FROM usage_records u
+                       WHERE u.session_id = s.id AND u.capability = 'llm'), 0) AS input_tokens,
+             COALESCE((SELECT SUM(u.output_tokens) FROM usage_records u
+                       WHERE u.session_id = s.id AND u.capability = 'llm'), 0) AS output_tokens
         FROM sessions s
     `).all() as Array<{ session_id: string; message_count: number; input_tokens: number; output_tokens: number }>;
     return new Map(rows.map(row => [row.session_id, {
@@ -156,23 +161,25 @@ export class SessionStatsRepo {
            FROM ${table} WHERE session_id = ?`,
       ).get(sessionId) as CountBytesRow;
 
-    // turns 的六项指标一次索引扫描取全(旧版拆六个子查询, 同区间重复解码六轮)。
+    // Turn 生命周期指标与物理模型消费分属两本账，各扫描自己的 Session 区间。
     const turns = this.db.prepare(`
       SELECT COUNT(*) AS turn_count,
-             COALESCE(SUM(usage_input_tokens), 0)  AS total_input_tokens,
-             COALESCE(SUM(usage_output_tokens), 0) AS total_output_tokens,
-             COALESCE(SUM(execution_profile = 'chat'), 0) AS chat_turns,
-             COALESCE(SUM(execution_profile = 'work'), 0) AS work_turns,
+             COALESCE(SUM(session_mode = 'chat'), 0) AS chat_turns,
+             COALESCE(SUM(session_mode = 'work'), 0) AS work_turns,
              COALESCE(SUM(narrative_policy = 'always'), 0) AS narrative_always_turns
         FROM turns WHERE session_id = ?
     `).get(sessionId) as {
       turn_count: number;
-      total_input_tokens: number;
-      total_output_tokens: number;
       chat_turns: number;
       work_turns: number;
       narrative_always_turns: number;
     };
+    const tokens = this.db.prepare(`
+      SELECT COALESCE(SUM(input_tokens), 0) AS input_tokens,
+             COALESCE(SUM(output_tokens), 0) AS output_tokens
+      FROM usage_records
+      WHERE session_id = ? AND capability = 'llm'
+    `).get(sessionId) as { input_tokens: number; output_tokens: number };
     const speechOutputs = this.db.prepare(`
       SELECT COUNT(*) AS c,
              COALESCE(SUM(byte_size), 0) AS b,
@@ -189,8 +196,8 @@ export class SessionStatsRepo {
       agentRunCount: count('agent_runs'),
       toolExecutionCount: count('tool_executions'),
       backgroundProcessCount: count('background_processes'),
-      totalInputTokens: turns.total_input_tokens,
-      totalOutputTokens: turns.total_output_tokens,
+      totalInputTokens: tokens.input_tokens,
+      totalOutputTokens: tokens.output_tokens,
       chatTurns: turns.chat_turns,
       workTurns: turns.work_turns,
       narrativeAlwaysTurns: turns.narrative_always_turns,

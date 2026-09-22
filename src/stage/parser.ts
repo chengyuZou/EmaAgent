@@ -55,12 +55,19 @@ export class StreamingCharacterTagScanner {
 
 function findPartialTagStart(text: string): number {
   const lower = text.toLocaleLowerCase('en-US');
-  for (let index = text.lastIndexOf('<'); index >= 0; index = text.lastIndexOf('<', index - 1)) {
+  let searchFrom = text.length - 1;
+  while (searchFrom >= 0) {
+    const index = text.lastIndexOf('<', searchFrom);
+    if (index === -1) return -1;
+
     const tail = lower.slice(index);
     if (tail.length > MAX_BUFFERED_TAG_LENGTH) return -1;
     if (TAG_OPENINGS.some(opening => opening.startsWith(tail) || tail.startsWith(opening))) {
       return index;
     }
+
+    // lastIndexOf 的负 position 会被夹到 0；单独推进搜索上界，保证索引 0 只检查一次。
+    searchFrom = index - 1;
   }
   return -1;
 }

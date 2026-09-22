@@ -15,7 +15,7 @@ import type {
   Message,
 } from '@ema-agent/llm';
 import { createLlmCompletion } from '@ema-agent/llm';
-import type { ExecutionProfile } from '@ema-agent/session';
+import type { SessionMode } from '@ema-agent/session';
 import { estimateLlmInputTokens, estimateMessagesTokens } from '@ema-agent/token';
 import { compactTokenLimit, fitCompactHistory } from './budget.js';
 import { buildCompactPrompt, extractCompactSummary } from './compactPrompt.js';
@@ -29,7 +29,7 @@ const MIN_SUMMARY_BUDGET_TOKENS = 256;
 
 export interface MacroCompactArgs {
   readonly callLlm: CallLlm;
-  readonly executionProfile: ExecutionProfile;
+  readonly sessionMode: SessionMode;
   /** 与主对话逐字节一致的系统消息段（含缓存断点标记）；摘要请求的前缀共享来源。 */
   readonly systemMessages: readonly Message[];
   /** 根 Turn 冻结的 Tool 定义（同内容同顺序）；指令已声明工具只是上下文，不得调用。 */
@@ -123,7 +123,7 @@ export async function runMacroCompact(
   // 指令固定在尾部（前缀命中区之外）；被预算裁掉的最旧部分在此如实告知摘要模型。
   const instruction = (omittedCount: number): Message => ({
     role: 'user',
-    content: buildCompactPrompt({ executionProfile: args.executionProfile })
+    content: buildCompactPrompt({ sessionMode: args.sessionMode })
       + (omittedCount > 0
         ? `\n\n（最早 ${omittedCount} 条消息因摘要模型输入预算未纳入，直接从现有首条开始摘要）`
         : ''),
@@ -197,7 +197,7 @@ export async function runMacroCompact(
       const fitted = fitCompactHistory({
         summary,
         tail,
-        executionProfile: args.executionProfile,
+        sessionMode: args.sessionMode,
         tokenLimit,
         tokensOutsideHistory,
       });

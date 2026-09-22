@@ -57,4 +57,38 @@ describe('StageEngine', () => {
     expect(b.events.map(e => e.type)).toEqual(['emotion_changed']);
     expect(b.cleaned).toBe('后续');
   });
+
+  it('非角色标签从索引 0 开始时按正文通过且扫描会终止', () => {
+    const engine = makeEngine();
+    engine.beginTurn('s1');
+
+    const specialTokenPrefix = engine.processChunk('<|', 't1', 's1');
+    expect(specialTokenPrefix).toEqual({ cleaned: '<|', events: [] });
+
+    const obsoleteMarkers = engine.processChunk(
+      '<|emotion|>happy<|/emotion|>《emotion》',
+      't1',
+      's1',
+    );
+    expect(obsoleteMarkers).toEqual({
+      cleaned: '<|emotion|>happy<|/emotion|>《emotion》',
+      events: [],
+    });
+  });
+
+  it('无关尖括号不会妨碍后面的合法 motion 标签跨 delta 识别', () => {
+    const engine = makeEngine();
+    engine.beginTurn('s1');
+
+    const first = engine.processChunk('<分析>正文<mot', 't1', 's1');
+    expect(first).toEqual({ cleaned: '<分析>正文', events: [] });
+
+    const second = engine.processChunk('ion>wave</motion>完成', 't1', 's1');
+    expect(second).toEqual({
+      cleaned: '完成',
+      events: [
+        { type: 'motion_changed', sessionId: 's1', turnId: 't1', motion: 'wave' },
+      ],
+    });
+  });
 });

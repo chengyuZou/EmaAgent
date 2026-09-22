@@ -40,8 +40,6 @@ export async function buildHistoryMessages(
   const pairedToolIds = collectPairedToolIds(history);
 
   for (const message of history) {
-    if (message.role === 'system') continue;
-
     if (message.role === 'user') {
       if (typeof message.blocks === 'string') {
         if (message.blocks.trim()) {

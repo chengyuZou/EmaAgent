@@ -1,7 +1,7 @@
 // 管理 Turn 的创建、状态流转、模型冻结、稳定分页和锚点窗口查询。
 // Row 枚举由 storage 自持（SQL CHECK 的映射）；领域词汇归 @ema-agent/turn-terms 叶子，业务包在边界显式映射。
 import type { SqliteDb } from '../../database/database.js';
-import type { ExecutionProfileRow, NarrativePolicyRow } from './sessions.js';
+import type { SessionModeRow, NarrativePolicyRow } from './sessions.js';
 
 /** turns.status 的 SQL CHECK 原样。 */
 export type TurnStatusRow = 'running' | 'completed' | 'failed' | 'aborted';
@@ -13,7 +13,7 @@ export interface TurnRow {
   session_id: string;
   status: TurnStatusRow;
   trigger_type: TurnTriggerTypeRow;
-  execution_profile: ExecutionProfileRow;
+  session_mode: SessionModeRow;
   narrative_policy: NarrativePolicyRow;
   /** 操作开始冻结的模型选择；prepare 阶段解析成功前为 null。 */
   provider_id: string | null;
@@ -23,8 +23,6 @@ export interface TurnRow {
   /** 本 Turn 激活角色的磁盘目录名快照；prepare 完成回填，此前为 null。 */
   character_directory_name: string | null;
   iterations: number;
-  usage_input_tokens: number;
-  usage_output_tokens: number;
   created_at: number;
   completed_at: number | null;
   error_code: string | null;
@@ -35,7 +33,7 @@ export interface TurnInsert {
   id: string;
   sessionId: string;
   triggerType: TurnTriggerTypeRow;
-  executionProfile: ExecutionProfileRow;
+  sessionMode: SessionModeRow;
   narrativePolicy: NarrativePolicyRow;
   createdAt: number;
 }
@@ -45,9 +43,6 @@ export interface TurnCompletion {
   completedAt: number;
   errorCode?: string;
   errorMessage?: string;
-  iterations?: number;
-  usageInputTokens?: number;
-  usageOutputTokens?: number;
 }
 
 export interface TurnIdPageCursor {
@@ -64,7 +59,7 @@ export interface TurnIndexRow {
   id: string;
   anchor_message_id: string;
   trigger_type: TurnTriggerTypeRow;
-  execution_profile: ExecutionProfileRow;
+  session_mode: SessionModeRow;
   status: TurnStatusRow;
   /** 首条 User Message 的正文预览；用户输入的唯一事实源是 Message。 */
   preview: string;
@@ -88,14 +83,14 @@ export class TurnsRepo {
       .prepare(
         `INSERT INTO turns
            (id, session_id, status, trigger_type,
-            execution_profile, narrative_policy, created_at)
+            session_mode, narrative_policy, created_at)
          VALUES (?, ?, 'running', ?, ?, ?, ?)`,
       )
       .run(
         t.id,
         t.sessionId,
         t.triggerType,
-        t.executionProfile,
+        t.sessionMode,
         t.narrativePolicy,
         t.createdAt,
       );
@@ -115,37 +110,16 @@ export class TurnsRepo {
       .run(characterDirectoryName, id);
   }
 
-  /**
-   * 把一个已完成 turn 行复制到新 session(新 id)。用于 fork
-   * 使 fork 出的 session 保留触发来源、Profile、模型冻结、
-   * status、usage 与时序。
-   */
-  copyTurn(src: TurnRow, newSessionId: string, newId: string): void {
-    this.db
-      .prepare(
-        `INSERT INTO turns
-           (id, session_id, status, trigger_type,
-            execution_profile, narrative_policy, provider_id, model_id, protocol,
-            character_directory_name,
-            iterations, usage_input_tokens, usage_output_tokens,
-            created_at, completed_at, error_code, error_message)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        newId, newSessionId, src.status, src.trigger_type,
-        src.execution_profile, src.narrative_policy, src.provider_id, src.model_id, src.protocol,
-        src.character_directory_name,
-        src.iterations, src.usage_input_tokens, src.usage_output_tokens,
-        src.created_at, src.completed_at, src.error_code, src.error_message,
-      );
+  /** 根 AgentLoop 开始新迭代时立即保存，失败和取消也保留已经发生的次数。 */
+  setIterations(id: string, iterations: number): void {
+    this.db.prepare('UPDATE turns SET iterations = ? WHERE id = ?').run(iterations, id);
   }
-  
+
   complete(id: string, c: TurnCompletion): void {
     this.db
       .prepare(
         `UPDATE turns SET
-           status = ?, completed_at = ?, error_code = ?, error_message = ?,
-           iterations = ?, usage_input_tokens = ?, usage_output_tokens = ?
+           status = ?, completed_at = ?, error_code = ?, error_message = ?
          WHERE id = ?`,
       )
       .run(
@@ -153,9 +127,6 @@ export class TurnsRepo {
         c.completedAt,
         c.errorCode ?? null,
         c.errorMessage ?? null,
-        c.iterations ?? 0,
-        c.usageInputTokens ?? 0,
-        c.usageOutputTokens ?? 0,
         id,
       );
   }
@@ -184,7 +155,7 @@ export class TurnsRepo {
     const rows = cursor
       ? this.db.prepare(`
           SELECT t.id, anchor.id AS anchor_message_id,
-                 t.trigger_type, t.execution_profile, t.status,
+                 t.trigger_type, t.session_mode, t.status,
                  COALESCE((
                    SELECT substr(ema_message_search_text(m.blocks_json), 1, 512)
                    FROM messages m
@@ -206,7 +177,7 @@ export class TurnsRepo {
         `).all(sessionId, cursor.createdAt, cursor.createdAt, cursor.id, pageSize + 1)
       : this.db.prepare(`
           SELECT t.id, anchor.id AS anchor_message_id,
-                 t.trigger_type, t.execution_profile, t.status,
+                 t.trigger_type, t.session_mode, t.status,
                  COALESCE((
                    SELECT substr(ema_message_search_text(m.blocks_json), 1, 512)
                    FROM messages m

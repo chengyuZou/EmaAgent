@@ -7,7 +7,7 @@ import type { AttachmentStore } from '@ema-agent/attachments';
 import type { CallLlm, LlmStreamEvent } from '@ema-agent/llm';
 import type { ProviderModels, Providers } from '@ema-agent/providers';
 import { Database } from '@ema-agent/storage';
-import { ActiveSessionRegistry, SessionStore } from '@ema-agent/session';
+import { SessionRunningRegistry, SessionStore } from '@ema-agent/session';
 import type { SettingsStore } from '@ema-agent/settings';
 import { StageEngine } from '@ema-agent/stage';
 import type { UsageRecord } from '@ema-agent/usage';
@@ -62,7 +62,7 @@ function makeDeps(options: {
 }): TurnExecutorDeps {
   const { db, llm, sessionId, registry, titleStarter } = options;
   return {
-    turns: new TurnStore({ db, activeSessions: new ActiveSessionRegistry() }),
+    turns: new TurnStore({ db, sessionRunning: new SessionRunningRegistry() }),
     sessions: new SessionStore({ db }),
     providers: {
       resolveConnection: () => ({ protocol: 'openai-chat', baseUrl: 'http://localhost' }),
@@ -109,7 +109,7 @@ function makeStart(sessionId: string): StartTurn {
   return {
     sessionId,
     triggerType: 'userMessage',
-    executionProfile: 'work',
+    sessionMode: 'work',
     narrativePolicy: 'off',
     input: [{ type: 'text', text: '你好' }],
   };
@@ -182,6 +182,7 @@ describe('TurnExecutor 集成', () => {
       outputTokens: 12,
       cacheReadInputTokens: 80,
     });
+    expect(deps.turns.getTurn(handle.turnId)?.iterations).toBe(1);
     db.close();
   });
 
@@ -444,6 +445,7 @@ describe('TurnExecutor 集成', () => {
       .filter(event => event.type === 'user_message_stored')
       .map(event => event.message.blocks))
       .toEqual(['你好', '先引导 B', '再引导 A']);
+    expect(deps.turns.getTurn(handle.turnId)?.iterations).toBe(2);
     // 初始用户输入确认一次，两条 guided 各自在落库后确认一次.
     expect(acknowledge).toHaveBeenCalledTimes(3);
     db.close();

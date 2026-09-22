@@ -1,7 +1,7 @@
 // 测试 Turn 生命周期、单 Session 运行锁、取消信号、删除守卫、导航查询与最后一轮回滚。
 import { describe, expect, it } from 'vitest';
 import { Database, MessagesRepo, SessionsRepo } from '@ema-agent/storage';
-import { ActiveSessionRegistry } from '@ema-agent/session';
+import { SessionRunningRegistry } from '@ema-agent/session';
 import { TurnStore } from '../turnStore.js';
 
 let seq = 100;
@@ -9,7 +9,7 @@ let seq = 100;
 function makeStore() {
   const db = new Database({ memory: true, kind: 'data' });
   db.migrate();
-  return { store: new TurnStore({ db, activeSessions: new ActiveSessionRegistry() }), db };
+  return { store: new TurnStore({ db, sessionRunning: new SessionRunningRegistry() }), db };
 }
 
 function insertSession(db: Database, id: string): string {
@@ -27,7 +27,7 @@ function startTurn(store: TurnStore, sessionId: string) {
   return store.startTurn({
     sessionId,
     triggerType: 'userMessage',
-    executionProfile: 'chat',
+    sessionMode: 'chat',
     narrativePolicy: 'off',
   });
 }
@@ -93,11 +93,12 @@ describe('TurnStore — 生命周期与运行锁', () => {
     const sessionId = insertSession(db, 's1');
 
     const { turn } = startTurn(store, sessionId);
-    store.completeTurn(turn.id, { usageInputTokens: 10, usageOutputTokens: 20 });
+    store.setIterations(turn.id, 2);
+    store.completeTurn(turn.id);
 
     const completed = store.getTurn(turn.id)!;
     expect(completed.status).toBe('completed');
-    expect(completed.usageInputTokens).toBe(10);
+    expect(completed.iterations).toBe(2);
     expect(() => startTurn(store, sessionId)).not.toThrow();
   });
 
@@ -147,14 +148,14 @@ describe('TurnStore — 生命周期与运行锁', () => {
     const { turn: second } = startTurn(store, sessionId);
     store.clearRunning(sessionId, first.id);
 
-    expect(store.getActiveTurn(sessionId)!.id).toBe(second.id);
+    expect(store.getRunningTurn(sessionId)!.id).toBe(second.id);
     expect(() => startTurn(store, sessionId)).toThrow('session_busy');
   });
 
-  it('getActiveTurn 在无运行 Turn 时返回 undefined', () => {
+  it('getRunningTurn 在无运行 Turn 时返回 undefined', () => {
     const { store, db } = makeStore();
     const sessionId = insertSession(db, 's1');
-    expect(store.getActiveTurn(sessionId)).toBeUndefined();
+    expect(store.getRunningTurn(sessionId)).toBeUndefined();
   });
 
   it('recoverStuckTurns 把遗留 running Turn 收口为 aborted', () => {

@@ -17,10 +17,9 @@ import type { TurnStore } from './turnStore.js';
  * 否则设置窗口或输入区改过模型后, 内存里的旧选择会覆盖已保存的 Session.
  */
 export interface SessionTurnSelection {
-  readonly executionProfile: StartTurn['executionProfile'];
+  readonly sessionMode: StartTurn['sessionMode'];
   readonly narrativePolicy: StartTurn['narrativePolicy'];
   readonly knowledge?: TurnKnowledgeSelection;
-  readonly ttsEnabled: boolean;
 }
 
 /** WebSocket queue_user_message 交给队列的完整业务输入. 内容此时只进入进程内存, 尚未写入 Message. */
@@ -43,11 +42,10 @@ export interface QueuedSessionInput {
 }
 
 /**
- * Session WebSocket 的队列同步协议. queued_inputs 用于连接后的当前列表,
- * added/removed/guided 是后续全部增量.
+ * Session WebSocket 的队列增量协议. 连接时的当前列表随 session_state 发送,
+ * added/removed/guided 只表示已连接期间的变化.
  */
 export type SessionContinuationEvent =
-  | { readonly type: 'queued_inputs'; readonly items: readonly QueuedSessionInput[] }
   | { readonly type: 'queued_input_added'; readonly item: QueuedSessionInput }
   | { readonly type: 'queued_input_removed'; readonly id: string }
   | { readonly type: 'queued_input_guided'; readonly item: QueuedSessionInput };
@@ -114,7 +112,7 @@ type ContinuationClaim =
  */
 export interface SessionContinuationQueueDeps {
   readonly sessions: Pick<SessionStore, 'getSession' | 'sessionExists'>;
-  readonly turns: Pick<TurnStore, 'getActiveTurn'>;
+  readonly turns: Pick<TurnStore, 'getRunningTurn'>;
   readonly startTurn: (input: StartTurn) => TurnHandle;
   readonly attachTurn: (handle: TurnHandle, ttsEnabled: boolean) => void;
   readonly publish: (sessionId: string, event: SessionContinuationEvent) => void;
@@ -331,13 +329,13 @@ export class SessionContinuationQueue {
   }
 
   private requestDrain(sessionId: string): void {
-    if (this.stopped || this.draining.has(sessionId) || this.deps.turns.getActiveTurn(sessionId)) return;
+    if (this.stopped || this.draining.has(sessionId) || this.deps.turns.getRunningTurn(sessionId)) return;
     // 推到微任务后再启动, 避免 startTurn 在生产者的终态回调栈内重入.
     queueMicrotask(() => this.drain(sessionId));
   }
 
   private drain(sessionId: string): void {
-    if (this.stopped || this.draining.has(sessionId) || this.deps.turns.getActiveTurn(sessionId)) return;
+    if (this.stopped || this.draining.has(sessionId) || this.deps.turns.getRunningTurn(sessionId)) return;
     if (!this.deps.sessions.sessionExists(sessionId)) return;
     this.draining.add(sessionId);
     const turnId = randomUUID();
@@ -355,7 +353,7 @@ export class SessionContinuationQueue {
         turnId,
         sessionId,
         triggerType: claim.type === 'user_input' ? 'userMessage' : 'sessionContinuation',
-        executionProfile: selection?.executionProfile ?? session.executionProfile,
+        sessionMode: selection?.sessionMode ?? session.sessionMode,
         narrativePolicy: selection?.narrativePolicy ?? session.narrativePolicy,
         input: claim.type === 'user_input' ? claim.userInput.input : [],
         ...(claim.type === 'completion_notices'
@@ -363,7 +361,8 @@ export class SessionContinuationQueue {
           : {}),
         ...(selection?.knowledge ? { knowledge: selection.knowledge } : {}),
       });
-      this.deps.attachTurn(handle, selection?.ttsEnabled ?? false);
+      // 排队项不保留旧 TTS 选择; 到真正启动 Turn 时才读取 Session 当前偏好.
+      this.deps.attachTurn(handle, session.ttsEnabled);
     } catch (error) {
       this.release(turnId);
       console.warn('[continuation] Session 续接启动失败:', error);

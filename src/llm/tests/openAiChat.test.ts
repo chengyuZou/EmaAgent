@@ -1,5 +1,6 @@
-// 验证 OpenAI Chat 流在 Provider 已输出正文但迟迟不结束时仍能立即响应 Turn 取消。
-import { describe, expect, it, vi } from 'vitest';
+// 验证 OpenAI Chat 的用户取消、静默断流和 finish_reason 后 Usage 尾帧收口。
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type OpenAI from 'openai';
 import { createOpenAiChatProtocol } from '../protocols/openAiChat.js';
 
 const openAiMocks = vi.hoisted(() => ({
@@ -12,28 +13,69 @@ vi.mock('openai', () => ({
   })),
 }));
 
-describe('OpenAI Chat protocol cancellation', () => {
-  it('流输出正文后卡在下一帧时，AbortSignal 会终止消费', async () => {
-    let readCount = 0;
-    openAiMocks.create.mockResolvedValue({
-      [Symbol.asyncIterator]() {
-        return {
-          next() {
-            readCount += 1;
-            if (readCount === 1) {
-              return Promise.resolve({
-                done: false,
-                value: { choices: [{ delta: { content: '已输出正文' }, finish_reason: null }] },
-              });
+afterEach(() => {
+  vi.useRealTimers();
+  openAiMocks.create.mockReset();
+});
+
+function abortableStream(
+  chunks: readonly OpenAI.ChatCompletionChunk[],
+  signal: AbortSignal,
+): AsyncIterable<OpenAI.ChatCompletionChunk> {
+  let index = 0;
+  return {
+    [Symbol.asyncIterator]() {
+      return {
+        next(): Promise<IteratorResult<OpenAI.ChatCompletionChunk>> {
+          const nextChunk = chunks[index++];
+          if (nextChunk) return Promise.resolve({ done: false, value: nextChunk });
+          return new Promise((_, reject) => {
+            const rejectAbort = (): void => {
+              const error = new Error('stream aborted');
+              error.name = 'AbortError';
+              reject(error);
+            };
+            if (signal.aborted) {
+              rejectAbort();
+              return;
             }
-            return new Promise(() => undefined);
-          },
-        };
-      },
-    });
+            signal.addEventListener('abort', rejectAbort, { once: true });
+          });
+        },
+      };
+    },
+  };
+}
+
+function chunk(input: {
+  content?: string;
+  finishReason?: 'stop' | 'tool_calls';
+  usage?: { prompt_tokens: number; completion_tokens: number };
+}): OpenAI.ChatCompletionChunk {
+  return {
+    id: 'chunk',
+    created: 1,
+    model: 'model',
+    object: 'chat.completion.chunk',
+    choices: input.finishReason || input.content
+      ? [{ index: 0, delta: { content: input.content }, finish_reason: input.finishReason ?? null }]
+      : [],
+    usage: input.usage
+      ? { ...input.usage, total_tokens: input.usage.prompt_tokens + input.usage.completion_tokens }
+      : undefined,
+  };
+}
+
+function createCall() {
+  return createOpenAiChatProtocol({ providerId: 'test', apiKey: 'key' }, 'model');
+}
+
+describe('OpenAI Chat 流收口', () => {
+  it('流输出正文后卡在下一帧时，用户 AbortSignal 会立即终止消费', async () => {
+    openAiMocks.create.mockImplementation(async (_params, options: { signal: AbortSignal }) =>
+      abortableStream([chunk({ content: '已输出正文' })], options.signal));
     const controller = new AbortController();
-    const call = createOpenAiChatProtocol({ providerId: 'test', apiKey: 'key' }, 'model');
-    const stream = call({
+    const stream = createCall()({
       messages: [{ role: 'user', content: 'hello' }],
       signal: controller.signal,
     })[Symbol.asyncIterator]();
@@ -45,9 +87,86 @@ describe('OpenAI Chat protocol cancellation', () => {
     const pending = stream.next();
     controller.abort();
 
-    await expect(Promise.race([
-      pending,
-      new Promise((_, reject) => setTimeout(() => reject(new Error('abort_timeout')), 50)),
-    ])).rejects.toMatchObject({ name: 'AbortError' });
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
+  it('没有任何新帧时按流空闲超时报告不完整流', async () => {
+    vi.useFakeTimers();
+    openAiMocks.create.mockImplementation(async (_params, options: { signal: AbortSignal }) =>
+      abortableStream([], options.signal));
+    const pending = createCall()({
+      messages: [{ role: 'user', content: 'hello' }],
+    })[Symbol.asyncIterator]().next();
+    const rejected = expect(pending).rejects.toMatchObject({
+      name: 'LlmStreamProtocolError',
+      code: 'provider/incomplete_stream',
+    });
+
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    await rejected;
+  });
+
+  it('收到 finish_reason 后 Usage 尾帧缺失不会永久等待', async () => {
+    vi.useFakeTimers();
+    openAiMocks.create.mockImplementation(async (_params, options: { signal: AbortSignal }) =>
+      abortableStream([chunk({ finishReason: 'stop' })], options.signal));
+    const pending = createCall()({
+      messages: [{ role: 'user', content: 'hello' }],
+    })[Symbol.asyncIterator]().next();
+
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    await expect(pending).resolves.toEqual({
+      done: false,
+      value: { type: 'done', stopReason: 'end_turn' },
+    });
+  });
+
+  it('finish_reason 后到达的 Usage 尾帧仍会被记录再结束', async () => {
+    openAiMocks.create.mockImplementation(async (_params, options: { signal: AbortSignal }) =>
+      abortableStream([
+        chunk({ finishReason: 'stop' }),
+        chunk({ usage: { prompt_tokens: 100, completion_tokens: 20 } }),
+      ], options.signal));
+    const events = [];
+
+    for await (const event of createCall()({ messages: [{ role: 'user', content: 'hello' }] })) {
+      events.push(event);
+    }
+
+    expect(events).toEqual([
+      expect.objectContaining({ type: 'usage', inputTokens: 100, outputTokens: 20 }),
+      { type: 'done', stopReason: 'end_turn' },
+    ]);
+  });
+
+  it('tool_calls 终态只完成一次已经缓冲的 Tool Call', async () => {
+    const toolChunk = chunk({ finishReason: 'tool_calls' });
+    toolChunk.choices[0]!.delta.tool_calls = [{
+      index: 0,
+      id: 'call-1',
+      type: 'function',
+      function: { name: 'Read', arguments: '{"path":"a.ts"}' },
+    }];
+    openAiMocks.create.mockImplementation(async (_params, options: { signal: AbortSignal }) =>
+      abortableStream([
+        toolChunk,
+        chunk({ usage: { prompt_tokens: 20, completion_tokens: 5 } }),
+      ], options.signal));
+    const events = [];
+
+    for await (const event of createCall()({ messages: [{ role: 'user', content: 'read' }] })) {
+      events.push(event);
+    }
+
+    expect(events.filter(event => event.type === 'tool_use_complete')).toEqual([{
+      type: 'tool_use_complete',
+      blockIndex: 0,
+      callId: 'call-1',
+      name: 'Read',
+      args: { path: 'a.ts' },
+    }]);
+    expect(events.at(-1)).toEqual({ type: 'done', stopReason: 'tool_use' });
   });
 });

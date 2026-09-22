@@ -19,13 +19,13 @@ PromptEnvironment
   动态边界哨兵（PROMPT_DYNAMIC_BOUNDARY）也已删除：静态/动态分界由
   `cacheBreakpoint` 标记在最后一个产品静态块上表达，不再有混入数组的哨兵元素。
 - 断点之前只放全产品稳定内容(产品环境、执行、安全、工具与沟通规则);之后放随会话/角色/
-  Turn 变化的内容(数据级内容、角色、Profile、能力引导)。会话级可变内容不得越过断点,
+  Turn 变化的内容(数据级内容、角色、SessionMode、能力引导)。会话级可变内容不得越过断点,
   避免无意破坏 KV Cache 前缀。
 - `name` 是 Context Usage 分类与前端展示的稳定键，绝不发送给模型；`content` 与数组
   顺序才是模型可见事实。
 - 组装是纯字符串拼接,每根 Turn 开始时执行一次,本根 Turn 内不变;读盘等昂贵输入
   由调用方缓存并注入,本包不内置 memo。
-- **文案归属**:本包只写产品级文案(`productPrompt.ts`/`executionProfilePrompt.ts`);
+- **文案归属**:本包只写产品级文案(`productPrompt.ts`/`sessionModePrompt.ts`);
   角色人设归 characters 包、Skill 目录归 skills 包、MCP 指引归 mcp 包、工作区指令归
   工作区模块。本包只摆它们的位置,不替任何业务写文案。
 - **产品名不是角色名**:`EmaAgent` 只表示产品和运行环境。当前姓名、身份、人设与
@@ -47,9 +47,9 @@ PromptEnvironment
   Doing tasks、Actions、Using tools、Communication 与 Tone 为逐项来源。只删除 Ema
   不存在的 ToolSearch/DiscoverSkills、Hook、Plan、Worktree、斜杠命令、产品反馈渠道
   和 Claude/Anthropic 宣传内容；其余适用规则不得再次压缩为几条摘要。
-- `executionProfilePrompt.ts` 是执行契约，不是语气开关。Chat 定义对话理解、事实核验、
+- `sessionModePrompt.ts` 是执行契约，不是语气开关。Chat 定义对话理解、事实核验、
   可执行动作和连续性；Work 定义任务接管、调查、实现、并行、验证、进度和最终交付。
-  两种 Profile 都使用同一个 Agent 与当轮 ToolPool，任何 Profile 都不凭空增加或删除能力。
+  两种模式都使用同一个 Agent 与当轮 ToolPool，任何模式都不凭空增加或删除能力。
 
 ## 输入注入契约(接线方)
 
@@ -78,7 +78,7 @@ memoryGuidance              │ 数据级(框架文案声明"非指令")
 skillCatalog                │
 mcpInstructions…            ┘
 character                   角色单块(切换才变;角色包内部 section 合并不拆)
-executionProfile            chat/work(每根 Turn 可变)
+sessionMode            chat/work(每根 Turn 可变)
 sessionCapabilityGuidance   当轮 ToolPool 派生的完整跨工具规则
 runtimeEnvironment          平台/工作区/模型——最末:换模型是最高频变化,只损失这块
 ```

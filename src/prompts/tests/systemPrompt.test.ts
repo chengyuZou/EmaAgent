@@ -11,7 +11,7 @@ const CHARACTER: readonly string[] = [
 function input(overrides: Partial<Parameters<typeof getSystemPrompt>[0]> = {}) {
   return {
     characterPrompt: () => CHARACTER,
-    executionProfile: 'work' as const,
+    sessionMode: 'work' as const,
     toolNames: [
       BuiltinTools.FileRead.name,
       BuiltinTools.FileEdit.name,
@@ -30,7 +30,7 @@ function input(overrides: Partial<Parameters<typeof getSystemPrompt>[0]> = {}) {
 }
 
 describe('getSystemPrompt', () => {
-  it('块顺序：产品静态单块 → 数据级 → 角色单块 → Profile → 能力 → 运行环境（最末）', () => {
+  it('块顺序：产品静态单块 → 数据级 → 角色单块 → Session 模式 → 能力 → 运行环境（最末）', () => {
     const blocks = getSystemPrompt(input({
       workspaceInstructions: '# 项目约定',
       memorySection: '使用 MemorySearch 按轨检索',
@@ -45,7 +45,7 @@ describe('getSystemPrompt', () => {
       'skill-catalog',
       'mcp-instructions',
       'character',
-      'execution-profile',
+      'session-mode',
       'capability-guidance',
       'runtime-environment',
     ]);
@@ -120,8 +120,8 @@ describe('getSystemPrompt', () => {
     expect(productRules.content).toContain('你从一开始就是该角色');
   });
 
-  it('chat profile 产出 chat 文案;外部内容信任级统一由产品静态块声明', () => {
-    const blocks = getSystemPrompt(input({ executionProfile: 'chat', skillCatalog: '- x' }));
+  it('Chat 模式产出对话文案;外部内容信任级统一由产品静态块声明', () => {
+    const blocks = getSystemPrompt(input({ sessionMode: 'chat', skillCatalog: '- x' }));
     expect(blocks.some(block => block.content.includes('当前执行方式：Chat'))).toBe(true);
     const catalog = blocks.find(block => block.name === 'skill-catalog')!;
     expect(catalog.content).toContain('可用技能');
@@ -202,7 +202,7 @@ describe('getSystemPrompt', () => {
     expect(work).toContain('验证规模应匹配风险');
     expect(work).toContain('任务没有完成时不能使用完成口吻');
 
-    const chat = getSystemPrompt(input({ executionProfile: 'chat' }))
+    const chat = getSystemPrompt(input({ sessionMode: 'chat' }))
       .map(block => block.content).join('\n');
     expect(chat).toContain('不是“禁止行动”的纯文本模式');
     expect(chat).toContain('Chat 可以执行用户明确要求且本轮允许的操作');

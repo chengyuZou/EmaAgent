@@ -1,7 +1,7 @@
 // 把摘要、必须恢复的运行状态和近期历史收敛到总输入硬预算内。
 
 import type { Message } from '@ema-agent/llm';
-import type { ExecutionProfile } from '@ema-agent/session';
+import type { SessionMode } from '@ema-agent/session';
 import { estimateMessagesTokens } from '@ema-agent/token';
 import type { CompactSettings } from './settings.js';
 
@@ -29,7 +29,7 @@ interface FittedCompactHistory {
 export function fitCompactHistory(args: {
   readonly summary: string;
   readonly tail: readonly Message[];
-  readonly executionProfile: ExecutionProfile;
+  readonly sessionMode: SessionMode;
   readonly tokenLimit: number;
   readonly tokensOutsideHistory: number;
 }): FittedCompactHistory | null {
@@ -46,7 +46,7 @@ export function fitCompactHistory(args: {
   const full = buildHistory(
     args.summary,
     args.tail,
-    args.executionProfile,
+    args.sessionMode,
   );
   const fullTokens = estimateTotal(full);
   if (fullTokens <= args.tokenLimit) {
@@ -67,7 +67,7 @@ export function fitCompactHistory(args: {
     const history = buildHistory(
       summary,
       args.tail,
-      args.executionProfile,
+      args.sessionMode,
     );
     const afterTokens = estimateTotal(history);
     if (afterTokens <= args.tokenLimit) {
@@ -83,12 +83,12 @@ export function fitCompactHistory(args: {
 function buildHistory(
   summary: string,
   tail: readonly Message[],
-  executionProfile: ExecutionProfile,
+  sessionMode: SessionMode,
 ): Message[] {
   return [
     {
       role: 'user',
-      content: `<context-summary profile="${executionProfile}">\n${summary}\n</context-summary>`,
+      content: `<context-summary mode="${sessionMode}">\n${summary}\n</context-summary>`,
     },
     ...tail,
   ];

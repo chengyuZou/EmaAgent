@@ -1,5 +1,5 @@
 // 定义 Compact 交接结构；Chat 与 Work 只改变侧重点，不改变必须保留的事实类型。
-import type { ExecutionProfile } from '@ema-agent/session';
+import type { SessionMode } from '@ema-agent/session';
 
 const SUMMARY_STRUCTURE = `
 ## Current Objective and State
@@ -35,18 +35,18 @@ const SUMMARY_STRUCTURE = `
   user's latest intent. Do not invent optional work.
 `;
 
-const PROFILE_FOCUS: Readonly<Record<ExecutionProfile, string>> = {
-  chat: `This Session currently uses the chat profile. Give extra attention to the
+const MODE_FOCUS: Readonly<Record<SessionMode, string>> = {
+  chat: `This Session currently uses chat mode. Give extra attention to the
 open conversational thread, explicit emotional context, and promises, while still
 preserving any technical state or actionable request needed to continue.`,
-  work: `This Session currently uses the work profile. Give extra attention to the
+  work: `This Session currently uses work mode. Give extra attention to the
 active objective, exact files and commands, tool evidence, errors, decisions, and
 remaining verification, while still preserving interaction context that affects
 how the next response should proceed.`,
 };
 
 export function buildCompactPrompt(args: {
-  executionProfile: ExecutionProfile;
+  sessionMode: SessionMode;
 }): string {
   return `You are compacting the older portion of an active Session. Produce a
 faithful handoff that lets the next assistant continue without rereading the
@@ -66,8 +66,8 @@ for the compacting assistant. Preserve the effective user intent and clearly
 separate user-confirmed decisions, user reports, assistant proposals, tool-verified
 facts, and unresolved guesses.
 
-${PROFILE_FOCUS[args.executionProfile]}
-The profile changes emphasis only. It must not remove any category of information
+${MODE_FOCUS[args.sessionMode]}
+The mode changes emphasis only. It must not remove any category of information
 required to continue the Session.
 
 Use exactly these headings inside the summary:

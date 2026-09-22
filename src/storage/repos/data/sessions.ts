@@ -5,8 +5,8 @@ import type { TurnStatusRow } from './turns.js';
 import { buildFtsQuery } from '../../search/zh-tokenizer.js';
 import { escapeLikePattern } from '../../search/like-utils.js';
 
-/** sessions/turns 行上的执行范围枚举（SQL CHECK 原样）。 */
-export type ExecutionProfileRow = 'chat' | 'work';
+/** sessions/turns 行上的 Chat/Work 模式（SQL CHECK 原样）。 */
+export type SessionModeRow = 'chat' | 'work';
 /** sessions/turns 行上的剧情策略枚举（SQL CHECK 原样）。 */
 export type NarrativePolicyRow = 'auto' | 'always' | 'off';
 export type PermissionModeRow = 'default' | 'acceptEdits' | 'bypassPermissions';
@@ -30,9 +30,10 @@ export interface SessionRow {
   /** fork 溯源：来源 Session 与截断点 Turn（完整复制时截断点为 null）。 */
   forked_from_session_id: string | null;
   forked_from_turn_id:    string | null;
-  execution_profile: ExecutionProfileRow;
+  session_mode: SessionModeRow;
   narrative_policy: NarrativePolicyRow;
   permission_mode: PermissionModeRow;
+  tts_enabled: number;
   /** null 表示尚未选模型, 不能开始 Turn. */
   provider_id: string | null;
   /** 与 provider_id 成对保存; null 时不能开始 Turn. */
@@ -63,9 +64,10 @@ export interface SessionInsert {
   projectId?: string | null;
   forkedFromSessionId?: string;
   forkedFromTurnId?: string | null;
-  executionProfile?: ExecutionProfileRow;
+  sessionMode?: SessionModeRow;
   narrativePolicy?: NarrativePolicyRow;
   permissionMode?: PermissionModeRow;
+  ttsEnabled?: boolean;
   providerId?: string;
   modelId?: string;
   reasoningEffort?: ReasoningEffortRow;
@@ -83,11 +85,11 @@ export class SessionsRepo {
         `INSERT INTO sessions
            (id, title, cwd, project_id,
             forked_from_session_id, forked_from_turn_id,
-            execution_profile, narrative_policy, permission_mode,
+            session_mode, narrative_policy, permission_mode, tts_enabled,
             provider_id, model_id, reasoning_effort,
             created_at, updated_at, last_activity_at, sidebar_order)
          VALUES (
-           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
            (SELECT COALESCE(MAX(sidebar_order), 0) + 1
               FROM sessions
              WHERE archived_at IS NULL
@@ -100,9 +102,10 @@ export class SessionsRepo {
         s.projectId ?? null,
         s.forkedFromSessionId ?? null,
         s.forkedFromTurnId ?? null,
-        s.executionProfile ?? 'chat',
+        s.sessionMode ?? 'chat',
         s.narrativePolicy ?? 'auto',
         s.permissionMode ?? 'default',
+        s.ttsEnabled ? 1 : 0,
         s.providerId ?? null,
         s.modelId ?? null,
         s.reasoningEffort ?? 'off',
@@ -383,11 +386,11 @@ export class SessionsRepo {
         `INSERT INTO sessions
            (id, title, cwd, project_id,
             forked_from_session_id, forked_from_turn_id,
-            execution_profile, narrative_policy, permission_mode,
+            session_mode, narrative_policy, permission_mode, tts_enabled,
             provider_id, model_id, reasoning_effort,
             created_at, updated_at, last_activity_at, sidebar_order)
          VALUES (
-           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
            (SELECT COALESCE(MAX(sidebar_order), 0) + 1
               FROM sessions
              WHERE archived_at IS NULL
@@ -397,12 +400,12 @@ export class SessionsRepo {
       ).run(newId, title, src.cwd,
         src.project_id,
         srcId, untilTurnId ?? null,
-        src.execution_profile, src.narrative_policy, src.permission_mode,
+        src.session_mode, src.narrative_policy, src.permission_mode, src.tts_enabled,
         src.provider_id, src.model_id, src.reasoning_effort,
         createdAt, createdAt, createdAt, src.project_id);
 
-      // 2. 构建 old->new turn id 映射。Turn 被复制以使 fork 出的 session
-      //    保留触发来源、Profile、模型冻结、usage 与时序。
+      // 2. 构建 old->new turn id 映射。Turn 被复制以使 fork 出的 Session
+      //    保留触发来源、模式、模型冻结与时序。
       this.db.prepare('CREATE TEMP TABLE _turn_id_map (old_id TEXT PRIMARY KEY, new_id TEXT NOT NULL)').run();
 
       const cutoffTurn = untilTurnId
@@ -437,16 +440,34 @@ export class SessionsRepo {
       this.db.prepare(
         `INSERT INTO turns
            (id, session_id, status, trigger_type,
-            execution_profile, narrative_policy, provider_id, model_id, protocol,
-            iterations, usage_input_tokens, usage_output_tokens,
+            session_mode, narrative_policy, provider_id, model_id, protocol,
+            iterations,
             created_at, completed_at, error_code, error_message)
          SELECT m.new_id, ?, t.status, t.trigger_type,
-                t.execution_profile, t.narrative_policy, t.provider_id, t.model_id, t.protocol,
-                t.iterations, t.usage_input_tokens, t.usage_output_tokens,
-                t.created_at, t.completed_at, t.error_code, t.error_message
+                 t.session_mode, t.narrative_policy, t.provider_id, t.model_id, t.protocol,
+                 t.iterations,
+                 t.created_at, t.completed_at, t.error_code, t.error_message
          FROM turns t JOIN _turn_id_map m ON m.old_id = t.id
          ORDER BY t.created_at ASC`,
       ).run(newId);
+
+      // 历史 Turn 的用量明细随 Turn 身份一起复制，Session 级手动 Compact 不属于
+      // 任何 Turn，不进入 fork 后 Session 的历史消费。
+      this.db.prepare(`
+        INSERT INTO usage_records (
+          id, session_id, turn_id, provider_id, model_id, capability, status,
+          input_tokens, output_tokens, cache_read_input_tokens, cache_write_input_tokens,
+          quantity, unit, duration_ms, error_code, created_at
+        )
+        SELECT lower(hex(randomblob(16))), ?, turn_map.new_id,
+               usage.provider_id, usage.model_id, usage.capability, usage.status,
+               usage.input_tokens, usage.output_tokens,
+               usage.cache_read_input_tokens, usage.cache_write_input_tokens,
+               usage.quantity, usage.unit, usage.duration_ms, usage.error_code, usage.created_at
+        FROM usage_records usage
+        JOIN _turn_id_map turn_map ON turn_map.old_id = usage.turn_id
+        ORDER BY usage.created_at ASC, usage.id ASC
+      `).run(newId);
 
       // 4. 复制 message。带 turn_id 的消息严格跟随已选 Turn 集合，不能只按
       //    created_at 截断，否则相同时间戳的后续 Turn 会混入 fork。
@@ -553,9 +574,10 @@ export class SessionsRepo {
       title?:          string;
       pinned?:         boolean;
       cwd?:  string;
-      executionProfile?: ExecutionProfileRow;
+      sessionMode?: SessionModeRow;
       narrativePolicy?: NarrativePolicyRow;
       permissionMode?: PermissionModeRow;
+      ttsEnabled?: boolean;
       providerId?: string;
       modelId?: string;
       reasoningEffort?: ReasoningEffortRow;
@@ -578,9 +600,9 @@ export class SessionsRepo {
       setClauses.push('cwd = ?');
       values.push(patch.cwd);
     }
-    if (patch.executionProfile !== undefined) {
-      setClauses.push('execution_profile = ?');
-      values.push(patch.executionProfile);
+    if (patch.sessionMode !== undefined) {
+      setClauses.push('session_mode = ?');
+      values.push(patch.sessionMode);
     }
     if (patch.narrativePolicy !== undefined) {
       setClauses.push('narrative_policy = ?');
@@ -589,6 +611,10 @@ export class SessionsRepo {
     if (patch.permissionMode !== undefined) {
       setClauses.push('permission_mode = ?');
       values.push(patch.permissionMode);
+    }
+    if (patch.ttsEnabled !== undefined) {
+      setClauses.push('tts_enabled = ?');
+      values.push(patch.ttsEnabled ? 1 : 0);
     }
     if (patch.providerId !== undefined && patch.modelId !== undefined) {
       setClauses.push('provider_id = ?', 'model_id = ?');

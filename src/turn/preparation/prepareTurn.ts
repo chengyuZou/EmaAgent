@@ -39,7 +39,7 @@ import type {
   SkillDescriptor,
   SkillPool,
 } from '@ema-agent/skills';
-import type { ExecutionProfile } from '@ema-agent/session';
+import type { SessionMode } from '@ema-agent/session';
 import type { RequestDegradationNotice } from '../types.js';
 import { TurnPreparationError } from '../errors.js';
 import type { TurnStreamEvent } from '../events.js';
@@ -56,7 +56,7 @@ import {
 
 /** 一个根 Turn 的冻结事实；运行期只读取这一份，不再回读 Settings/Registry/Session。 */
 export interface PreparedTurn {
-  readonly executionProfile: ExecutionProfile;
+  readonly sessionMode: SessionMode;
   readonly cwd: string;
   readonly projectId: string | null;
   readonly scratchpadDir?: string;
@@ -187,7 +187,7 @@ export async function prepareTurn(
     skillPool,
   );
 
-  const scratchpadDir = request.executionProfile === 'work'
+  const scratchpadDir = request.sessionMode === 'work'
     ? deps.scratchpadDirForTurn?.(request.sessionId, turnId)
     : undefined;
 
@@ -200,7 +200,7 @@ export async function prepareTurn(
   const tools = prepareTurnTools(deps, {
     sessionId: request.sessionId,
     turnId,
-    executionProfile: request.executionProfile,
+    sessionMode: request.sessionMode,
     narrativePolicy: request.narrativePolicy,
     cwd,
     workspaceRoots,
@@ -230,7 +230,7 @@ export async function prepareTurn(
       ...(deps.memoryGuidance ? { memoryGuidance: deps.memoryGuidance } : {}),
     },
     {
-      executionProfile: request.executionProfile,
+      sessionMode: request.sessionMode,
       cwd,
       projectFolderPaths: projectFolders,
       providerId,
@@ -241,7 +241,7 @@ export async function prepareTurn(
   );
 
   return Object.freeze({
-    executionProfile: request.executionProfile,
+    sessionMode: request.sessionMode,
     cwd,
     projectId,
     ...(scratchpadDir ? { scratchpadDir } : {}),
@@ -264,7 +264,7 @@ export async function prepareTurn(
     compactSettings,
     tools,
     degradations: Object.freeze(degradations),
-    maxIterations: request.executionProfile === 'chat'
+    maxIterations: request.sessionMode === 'chat'
       ? agentSettings.chatMaxIterations
       : agentSettings.workMaxIterations,
   });

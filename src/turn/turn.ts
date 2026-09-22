@@ -69,7 +69,7 @@ import type {
 export interface TurnReminderScope {
   readonly sessionId: string;
   readonly turnId: string;
-  readonly executionProfile: Turn['executionProfile'];
+  readonly sessionMode: Turn['sessionMode'];
   /** auto = NarrativeSearchTool 可见；always = Turn 开头查询一次并写入 reminder；off = 两者皆无。 */
   readonly narrativePolicy: Turn['narrativePolicy'];
   /** 本 Turn 冻结的召回闭包（prepareTurnTools 构建）；always 路径据此查询，off 或无能力为 undefined。 */
@@ -152,7 +152,7 @@ export class TurnExecutor {
       turnId: input.turnId,
       sessionId: input.sessionId,
       triggerType: input.triggerType,
-      executionProfile: input.executionProfile,
+      sessionMode: input.sessionMode,
       narrativePolicy: input.narrativePolicy,
     });
     const channel = new TurnEventChannel<TurnStreamEvent>(() => {
@@ -191,8 +191,8 @@ export class TurnExecutor {
 
   /** 只取消当前仍活动的指定根 Turn；历史句柄不能误杀后继 Turn。 */
   abort(sessionId: string, turnId: string): boolean {
-    const active = this.deps.turns.getActiveTurn(sessionId);
-    if (active?.id !== turnId) return false;
+    const running = this.deps.turns.getRunningTurn(sessionId);
+    if (running?.id !== turnId) return false;
     this.deps.turns.requestAbort(sessionId, turnId);
     return true;
   }
@@ -244,7 +244,7 @@ export class TurnExecutor {
         sessionId,
         turnId,
         triggerType: turn.triggerType,
-        executionProfile: turn.executionProfile,
+        sessionMode: turn.sessionMode,
         narrativePolicy: turn.narrativePolicy,
       });
 
@@ -298,7 +298,7 @@ export class TurnExecutor {
       const reminderInput = await this.deps.readTurnReminder({
         sessionId,
         turnId,
-        executionProfile: turn.executionProfile,
+        sessionMode: turn.sessionMode,
         narrativePolicy: turn.narrativePolicy,
         ...(tools.narrativeSearch ? { narrativeSearch: tools.narrativeSearch } : {}),
         userText,
@@ -548,7 +548,7 @@ export class TurnExecutor {
         if (downstream.type === 'loop_stopped') stopped = downstream;
       }
 
-      // 扫描器未闭合尾部按正文释放：与 cleaned 同待遇（落库 + 发射），不吞模型输出。
+      // 扫描器未闭合尾部按正文释放
       if (stage) {
         const { cleaned } = stage.flush(sessionId);
         if (cleaned.length > 0) {
@@ -564,7 +564,6 @@ export class TurnExecutor {
 
       if (!stopped) throw new Error('AgentLoop 未产生终止事件');
 
-      const startedAt = turn.createdAt;
       if (stopped.state.stopReason === 'aborted') {
         terminal = 'aborted';
         this.deps.turns.abortTurn(sessionId, turnId);
@@ -580,29 +579,19 @@ export class TurnExecutor {
 
       if (stopped.state.stopReason === 'completed') {
         terminal = 'completed';
-        const stats = {
-          iterations: stopped.state.iterations,
-          usageInputTokens: stopped.state.usage.inputTokens,
-          usageOutputTokens: stopped.state.usage.outputTokens,
-        };
-        this.deps.turns.completeTurn(turnId, stats, () => {
+        this.deps.turns.completeTurn(turnId, () => {
           this.deps.onTurnCompletedInTransaction?.(turnId);
         });
         const outcome: TurnOutcome = {
           status: 'completed',
           sessionId,
           turnId,
-          stats: {
-            inputTokens: stats.usageInputTokens,
-            outputTokens: stats.usageOutputTokens,
-            durationMs: Date.now() - startedAt,
-          },
         };
         await this.finishSafely(
           channel, writer, terminal, tools, turnId,
           () => resolveCompletion(outcome),
           rejectCompletion,
-          () => emit({ type: 'turn_completed', sessionId, turnId, stats: outcome.stats }),
+          () => emit({ type: 'turn_completed', sessionId, turnId }),
         );
         return;
       }
@@ -657,7 +646,7 @@ export class TurnExecutor {
       this.runningTools.delete(turnId);
       this.runningCompletions.delete(turnId);
       this.deps.turns.clearRunning(sessionId, turnId);
-      // 下一根排队 Turn 只能在 active 标记清除后启动. completion Promise 在此前已兑现,
+      // 下一根排队 Turn 只能在当前运行记录清除后启动. completion Promise 在此前已兑现,
       // 因而不能由它负责唤醒, 否则队列会把本 Session 误判为仍在执行.
       if (terminal === 'completed') this.deps.continuations.turnCompleted(sessionId);
       if (prepared?.scratchpadDir) {
@@ -741,6 +730,7 @@ export class TurnExecutor {
   ): void {
     switch (event.type) {
       case 'iteration_started':
+        this.deps.turns.setIterations(turnId, event.iteration);
         emit({ type: 'agent_iteration', sessionId, turnId, n: event.iteration });
         return;
       case 'text_delta':

@@ -1,6 +1,6 @@
 // 定义 Chat 与 Work 两种执行语义，不承担工具授权、Narrative 资格或运行时检索。
 
-import type { ExecutionProfile } from '@ema-agent/session';
+import type { SessionMode } from '@ema-agent/session';
 
 const CHAT_PROMPT = `# 当前执行方式：Chat
 
@@ -29,7 +29,7 @@ Chat 是完整 Agent 在对话场景下的执行方式，不是“禁止行动�
 - Chat 可以执行用户明确要求且本轮允许的操作。不要因为当前是 Chat 就把“帮我打开、读取、搜索、修改或发送”一律降级为教程；也不要在用户只是讨论时擅自改变外部状态。
 - 只读查询仍应按需要进行，写入、发送、删除和其他有副作用的动作继续遵守权限与安全规则。工具失败时如实说明，不用角色语气掩盖失败。
 - 使用检索结果回答时，区分来源明确支持的事实、你对多条证据的综合判断以及仍然不确定的部分。不要把推断写成来源原话，也不要用单个弱来源替代必要核实。
-- 如果请求已经明显成为多步骤、需要持续状态或严格验证的工作，仍应尽力用当前能力完成。只有当前 Profile 或 ToolPool 确实阻止完成时，才向用户说明 Work 更适合的具体原因，不要自动替用户切换模式。
+- 如果请求已经明显成为多步骤、需要持续状态或严格验证的工作，仍应尽力用当前能力完成。只有当前模式或 ToolPool 确实阻止完成时，才向用户说明 Work 更适合的具体原因，不要自动替用户切换模式。
 
 ## 行动与失败
 - 小型、明确且可逆的动作可以完成后简要回报。会改变多个文件、需要长期跟踪、产生外部副作用或必须严格验收的动作，应在执行前简短确认理解，并按 Work 级别的安全与验证规则处理。
@@ -129,6 +129,6 @@ Work 是以完成用户目标为中心的 Agent 执行方式，适用于软件�
 - 如果用户只需要结论，压缩交付说明；如果用户要求迁移记录、命令或教学过程，则如实列出关键步骤、检查方法和失败处理，不省略会影响复现的信息。
 - 任务没有完成时不能使用完成口吻。明确说明阻塞点、已经做到哪里以及恢复所需的唯一外部条件。`;
 
-export function executionProfileInstructions(profile: ExecutionProfile): string {
-  return profile === 'chat' ? CHAT_PROMPT : WORK_PROMPT;
+export function sessionModeInstructions(mode: SessionMode): string {
+  return mode === 'chat' ? CHAT_PROMPT : WORK_PROMPT;
 }

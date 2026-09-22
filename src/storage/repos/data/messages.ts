@@ -1,7 +1,7 @@
 // 持久化 Session 消息，并提供 Turn 归属读取与压缩边界查询。
 import type { SqliteDb } from '../../database/database.js';
 
-export type MessageRole = 'system' | 'user' | 'assistant';
+export type MessageRole = 'user' | 'assistant';
 
 /** messages.kind 的数据库稳定枚举。 */
 export type MessageKind =

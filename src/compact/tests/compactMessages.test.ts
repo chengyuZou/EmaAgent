@@ -43,7 +43,7 @@ function request(history: readonly Message[], overrides: Partial<CompactRequest>
   return {
     sessionId,
 
-    executionProfile: 'work' as const,
+    sessionMode: 'work' as const,
     history,
     systemMessages: [{ role: 'system', content: '产品系统提示' }],
     tools: [],
@@ -88,8 +88,8 @@ function readHistory(count = 8, repeat = 200): Message[] {
 
 describe('buildCompactPrompt', () => {
   it('Chat 与 Work 使用同一套交接结构，只改变摘要侧重点', () => {
-    const chat = buildCompactPrompt({ executionProfile: 'chat' });
-    const work = buildCompactPrompt({ executionProfile: 'work' });
+    const chat = buildCompactPrompt({ sessionMode: 'chat' });
+    const work = buildCompactPrompt({ sessionMode: 'work' });
     const sharedHeadings = [
       '## Current Objective and State',
       '## Active Instructions and Corrections',
@@ -105,14 +105,14 @@ describe('buildCompactPrompt', () => {
       expect(chat).toContain(heading);
       expect(work).toContain(heading);
     }
-    expect(chat).toContain('chat profile');
-    expect(work).toContain('work profile');
-    expect(chat).toContain('profile changes emphasis only');
-    expect(work).toContain('profile changes emphasis only');
+    expect(chat).toContain('chat mode');
+    expect(work).toContain('work mode');
+    expect(chat).toContain('mode changes emphasis only');
+    expect(work).toContain('mode changes emphasis only');
   });
 
   it('角色人设只帮助理解历史，不复制进摘要', () => {
-    const prompt = buildCompactPrompt({ executionProfile: 'chat' });
+    const prompt = buildCompactPrompt({ sessionMode: 'chat' });
 
     expect(prompt).toContain('Use the current character persona to understand');
     expect(prompt).toContain('do not copy or rewrite the persona');
@@ -120,7 +120,7 @@ describe('buildCompactPrompt', () => {
   });
 
   it('保留最新有效约束并区分证据、提议与猜测', () => {
-    const prompt = buildCompactPrompt({ executionProfile: 'work' });
+    const prompt = buildCompactPrompt({ sessionMode: 'work' });
 
     expect(prompt).toContain('Newer user instructions override older ones');
     expect(prompt).toContain('Do not promote an assistant proposal');

@@ -190,7 +190,7 @@ function rewriteAttachmentPaths(
 function readManifest(filePath: string) {
   try {
     const value = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-    if (value?.format === 'ema-session' && value.version !== 1) {
+    if (value?.format === 'ema-session' && value.version !== 2) {
       throw new SessionImportError('unsupported_version', `不支持的 Session 备份版本: ${String(value.version)}`);
     }
     return sessionBackupManifestSchema.parse(value);

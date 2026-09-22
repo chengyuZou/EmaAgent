@@ -16,7 +16,7 @@ describe('MemoryRepo', () => {
     for (const [id, at] of [['turn-a', 1], ['turn-b', 2]] as const) {
       database.db.prepare(`
         INSERT INTO turns(
-          id, session_id, trigger_type, execution_profile,
+          id, session_id, trigger_type, session_mode,
           narrative_policy, status, created_at
         ) VALUES (?, 'session-a', 'userMessage', 'chat', 'off', 'completed', ?)
       `).run(id, at);
