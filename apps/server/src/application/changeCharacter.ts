@@ -1,6 +1,6 @@
 // 角色切换、删除与会改变正式演出对象的设置写入，在无活跃 Session 时才能提交。
 import { CharacterNotFoundError, type CharacterStore } from '@ema-agent/characters';
-import type { ActiveSessionRegistry } from '@ema-agent/session';
+import type { SessionRunningRegistry } from '@ema-agent/session';
 
 export class CharacterWorkRunningError extends Error {
   readonly code = 'character_work_running';
@@ -22,7 +22,7 @@ export class CharacterLastDeleteError extends Error {
 
 export interface CharacterChangeDeps {
   readonly characters: Pick<CharacterStore, 'current' | 'list' | 'activate' | 'deleteCharacter'>;
-  readonly activeSessions: Pick<ActiveSessionRegistry, 'activeSessionCount' | 'runWithRegistrationsClosed'>;
+  readonly sessionRunning: Pick<SessionRunningRegistry, 'runningSessionCount' | 'runWithRegistrationsClosed'>;
 }
 
 export function runWhenSessionsIdle<T>(
@@ -30,8 +30,8 @@ export function runWhenSessionsIdle<T>(
   action: () => T | Promise<T>,
 ): Promise<T> {
   // 检查和写入必须处于同一个注册关闭期，避免两者之间启动新 Turn 或 Compact。
-  return deps.activeSessions.runWithRegistrationsClosed(() => {
-    if (deps.activeSessions.activeSessionCount() > 0) {
+  return deps.sessionRunning.runWithRegistrationsClosed(() => {
+    if (deps.sessionRunning.runningSessionCount() > 0) {
       throw new CharacterWorkRunningError();
     }
     return action();
@@ -42,9 +42,9 @@ export async function activateCharacter(
   deps: CharacterChangeDeps,
   characterName: string,
 ): Promise<void> {
-  await deps.activeSessions.runWithRegistrationsClosed(() => {
+  await deps.sessionRunning.runWithRegistrationsClosed(() => {
     if (deps.characters.current().name === characterName) return;
-    if (deps.activeSessions.activeSessionCount() > 0) {
+    if (deps.sessionRunning.runningSessionCount() > 0) {
       throw new CharacterWorkRunningError();
     }
     deps.characters.activate(characterName);

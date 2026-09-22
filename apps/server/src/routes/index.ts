@@ -69,7 +69,7 @@ export const createRoutes = (composition: Composition, secret: string) => {
   } = composition;
   const characterChangeDeps = {
     characters: characters.store,
-    activeSessions: database.activeSessions,
+    sessionRunning: database.sessionRunning,
   };
 
   // CORS 必须先处理不携带业务密钥的 OPTIONS 预检，真正请求再进入认证和预算。
@@ -99,7 +99,8 @@ export const createRoutes = (composition: Composition, secret: string) => {
       agentRuns: turn.agentRuns,
       continuations: turn.continuations,
       sessions: database.session,
-      activeSessions: database.activeSessions,
+      turns: database.turns,
+      sessionRunning: database.sessionRunning,
       interactions: turn.interactionQueue,
       compactSession: commands.compactSession,
       attachTurn: (handle, ttsEnabled) => turnFanout.attach(handle, { ttsEnabled }),
@@ -134,7 +135,7 @@ export const createRoutes = (composition: Composition, secret: string) => {
           .sweep(sessionId, ATTACHMENT_RESIDUE_MAX_AGE_MS)
           .catch(error => console.warn('[attachments] 残留清扫失败:', error));
         void turn.visionCache.sweepIfIdle({
-          isIdle: () => database.activeSessions.activeSessionCount() === 0,
+          isIdle: () => database.sessionRunning.runningSessionCount() === 0,
           maxBytesForSweep: () => readAttachmentCacheSettings(settings.settings).maxBytes,
         }).catch(error => console.warn('[attachments] vision 缓存清扫失败:', error));
       },

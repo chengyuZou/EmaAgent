@@ -177,7 +177,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
   // ── Reminder 输入（每根 Turn 生产一次；含 currentDate，读取完成即冻结进持久化 reminder） ──
   const readTurnReminder = async (scope: TurnReminderScope): Promise<RenderTurnReminderInput> => {
     const cwd = database.session.getSession(scope.sessionId).cwd ?? '';
-    const git = scope.executionProfile === 'work' && cwd
+    const git = scope.sessionMode === 'work' && cwd
       ? await gitSummary(cwd).catch(() => undefined)
       : undefined;
     const summaryTokens = MEMORY_SUMMARY_TOKENS;

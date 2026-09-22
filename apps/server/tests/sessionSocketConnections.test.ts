@@ -17,7 +17,7 @@ describe('SessionSocketConnections', () => {
     connections.attach('session-a', { send: message => second.push(message) });
     connections.attach('session-b', { send: message => otherSession.push(message) });
 
-    const message = { type: 'active_session_changed', active: null } as const;
+    const message = { type: 'session_running_changed', running: null } as const;
     connections.publish('session-a', message);
 
     expect(first).toEqual([message]);
@@ -32,16 +32,26 @@ describe('SessionSocketConnections', () => {
 });
 
 describe('sessionClientMessageSchema', () => {
-  it('rejects cancellation without the current Turn or Compact identity', () => {
+  it('requires the real Turn or Compact identity for each cancellation request', () => {
     expect(sessionClientMessageSchema.safeParse({
-      type: 'cancel_active_session',
+      type: 'cancel_turn',
       requestId: 'request-1',
     }).success).toBe(false);
+    expect(sessionClientMessageSchema.safeParse({
+      type: 'cancel_turn',
+      requestId: 'request-2',
+      turnId: 'turn-1',
+    }).success).toBe(true);
+    expect(sessionClientMessageSchema.safeParse({
+      type: 'cancel_compact',
+      requestId: 'request-3',
+      compactId: 'compact-1',
+    }).success).toBe(true);
   });
 
   it('separates direct UserMessage and Queue commands and removes the old mixed entry', () => {
     const payload = {
-      executionProfile: 'chat',
+      sessionMode: 'chat',
       narrativePolicy: 'auto',
       input: [{ type: 'text', text: 'hello' }],
     };

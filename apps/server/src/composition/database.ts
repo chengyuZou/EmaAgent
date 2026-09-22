@@ -13,7 +13,7 @@ import {
 } from '@ema-agent/storage';
 import { AgentRunMessagesStore, AgentRunStore, type AgentRunChangedEvent } from '@ema-agent/agent';
 import { AttachmentStore, ImageStore, PastedTextStore, type AttachmentEvent } from '@ema-agent/attachments';
-import { ActiveSessionRegistry, SessionStore, type SessionEvent } from '@ema-agent/session';
+import { SessionRunningRegistry, SessionStore, type SessionEvent } from '@ema-agent/session';
 import { TaskStore, type TaskEvent } from '@ema-agent/tasks';
 import { TurnStore } from '@ema-agent/turn';
 import type { UsageEvent, UsageRecorder } from '@ema-agent/usage';
@@ -36,7 +36,7 @@ export interface DatabaseComposition {
   readonly session: SessionStore;
   readonly turns: TurnStore;
   /** 根 Turn 与手动 Compact 共享的 Session 运行记录; Commands、Route 和 TurnStore 均使用这一实例. */
-  readonly activeSessions: ActiveSessionRegistry;
+  readonly sessionRunning: SessionRunningRegistry;
   readonly attachments: AttachmentStore;
   /** 粘贴端点直接调用;attachmentStore 内部共享同一实例。 */
   readonly imageStore: ImageStore;
@@ -107,7 +107,7 @@ export function openDatabases(
   if (orphanDirs > 0) {
     console.warn(`[attachments] 清理 ${orphanDirs} 个无 Session 行的残留目录`);
   }
-  const activeSessions = new ActiveSessionRegistry();
+  const sessionRunning = new SessionRunningRegistry();
   const turns = new TurnStore({
     db: dataDb,
     onTurnRemoved: (sessionId, turnId) => {
@@ -118,7 +118,7 @@ export function openDatabases(
         emitChanged({ type: 'session_list_changed' });
       }
     },
-    activeSessions,
+    sessionRunning,
   });
 
   const attachmentImages = new AttachmentImagesRepo(dataDb.sqlite);
@@ -132,7 +132,7 @@ export function openDatabases(
     activeDataDir,
     session,
     turns,
-    activeSessions,
+    sessionRunning,
     attachments: new AttachmentStore({ imageStore, pasteStore }),
     imageStore,
     pasteStore,

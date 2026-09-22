@@ -35,7 +35,7 @@ export function openCommands(deps: {
   const compactDeps: ManualCompactDeps = {
     sessions: database.session,
     turns: database.turns,
-    activeSessions: database.activeSessions,
+    sessionRunning: database.sessionRunning,
     providers: providers.providers,
     providerModels: providers.providerModels,
     settings: settings.settings,

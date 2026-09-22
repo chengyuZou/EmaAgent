@@ -3,30 +3,50 @@ import { Hono } from 'hono';
 import type { AppEvents } from '../../application/appEvents.js';
 
 export const systemEventsRoute = (events: AppEvents) =>
-  new Hono().get('/events', () => {
+  new Hono().get('/events', context => {
     let heartbeat: ReturnType<typeof setInterval> | undefined;
     let unsubscribe: (() => void) | undefined;
+    let closeStream: (() => void) | undefined;
     return new Response(new ReadableStream<Uint8Array>({
       start(controller) {
         const encoder = new TextEncoder();
+        let closed = false;
+        const send = (frame: string): void => {
+          if (closed) return;
+          try {
+            controller.enqueue(encoder.encode(frame));
+          } catch {
+            close();
+          }
+        };
+        const close = (): void => {
+          if (closed) return;
+          closed = true;
+          unsubscribe?.();
+          if (heartbeat) clearInterval(heartbeat);
+          context.req.raw.signal.removeEventListener('abort', close);
+          try {
+            controller.close();
+          } catch {
+            // Response body 已由消费者取消。
+          }
+        };
+        closeStream = close;
         unsubscribe = events.subscribe(event => {
-          try {
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
-          } catch {
-            // 连接关闭后由 cancel 清理订阅。
-          }
+          send(`data: ${JSON.stringify(event)}\n\n`);
         });
+        context.req.raw.signal.addEventListener('abort', close, { once: true });
         heartbeat = setInterval(() => {
-          try {
-            controller.enqueue(encoder.encode('event: heartbeat\ndata: {}\n\n'));
-          } catch {
-            // 连接关闭后由 cancel 清理定时器。
-          }
+          send('event: heartbeat\ndata: {}\n\n');
         }, 15_000);
+        if (context.req.raw.signal.aborted) {
+          close();
+          return;
+        }
+        send('event: heartbeat\ndata: {}\n\n');
       },
       cancel() {
-        unsubscribe?.();
-        if (heartbeat) clearInterval(heartbeat);
+        closeStream?.();
       },
     }), {
       headers: {

@@ -50,17 +50,10 @@ function toTurnStats(
   audioArchive: Pick<AudioArchive, 'findMergedFor'>,
 ) {
   const llmCalls = usageRecords.forTurn(turn.id).filter(record => record.capability === 'llm');
-  const recordedTokens = llmCalls.some(record => (
-    record.input_tokens !== null || record.output_tokens !== null
-  ));
   return {
     turnId: turn.id,
-    inputTokens: recordedTokens
-      ? llmCalls.reduce((sum, record) => sum + (record.input_tokens ?? 0), 0)
-      : turn.usageInputTokens,
-    outputTokens: recordedTokens
-      ? llmCalls.reduce((sum, record) => sum + (record.output_tokens ?? 0), 0)
-      : turn.usageOutputTokens,
+    inputTokens: llmCalls.reduce((sum, record) => sum + (record.input_tokens ?? 0), 0),
+    outputTokens: llmCalls.reduce((sum, record) => sum + (record.output_tokens ?? 0), 0),
     durationMs: turn.completedAt === null ? null : turn.completedAt - turn.createdAt,
     audioAvailable: audioArchive.findMergedFor(turn.sessionId, turn.id) !== null,
   };

@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { ActiveSessionRegistry, SessionStore } from '@ema-agent/session';
+import { SessionRunningRegistry, SessionStore } from '@ema-agent/session';
 import { Database, UsageRecordsRepo } from '@ema-agent/storage';
 import { TurnStore } from '../../../src/turn/turnStore.js';
 import { sessionCollectionRoute } from '../src/routes/sessions/collection.js';
@@ -26,7 +26,7 @@ beforeEach(() => {
   database = new Database({ memory: true, kind: 'data' });
   database.migrate();
   sessions = new SessionStore({ db: database });
-  turns = new TurnStore({ db: database, activeSessions: new ActiveSessionRegistry() });
+  turns = new TurnStore({ db: database, sessionRunning: new SessionRunningRegistry() });
   usageRecords = new UsageRecordsRepo(database.sqlite);
   app = new Hono()
     .route('/api/sessions', sessionCollectionRoute({ session: sessions }))
@@ -84,6 +84,7 @@ describe('Session collection and History routes', () => {
     sessions.appendMessage({ sessionId: session.id, turnId: null, role: 'user', blocks: 'tail-before-summary' });
     sessions.appendHistorySummary({
       sessionId: session.id,
+      turnId: null,
       summary: 'summary',
       summarizedThroughMessageId: through.id,
     });
@@ -105,7 +106,7 @@ describe('Session collection and History routes', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         projectId: project.id,
-        executionProfile: 'work',
+        sessionMode: 'work',
         narrativePolicy: 'off',
         permissionMode: 'acceptEdits',
       }),
@@ -115,7 +116,7 @@ describe('Session collection and History routes', () => {
     expect(await response.json()).toMatchObject({
       projectId: project.id,
       cwd: 'D:/demo',
-      executionProfile: 'work',
+      sessionMode: 'work',
       narrativePolicy: 'off',
       permissionMode: 'acceptEdits',
     });
@@ -185,7 +186,7 @@ describe('Session collection and History routes', () => {
     const started = turns.startTurn({
       sessionId: session.id,
       triggerType: 'userMessage',
-      executionProfile: 'chat',
+      sessionMode: 'chat',
       narrativePolicy: 'off',
     });
     const first = sessions.appendMessage({
@@ -200,10 +201,61 @@ describe('Session collection and History routes', () => {
       role: 'assistant',
       blocks: [{ type: 'text', text: '第二条' }],
     });
-    turns.completeTurn(started.turn.id, {
-      usageInputTokens: 120,
-      usageOutputTokens: 34,
+    usageRecords.record({
+      id: 'llm-call-root',
+      sessionId: session.id,
+      turnId: started.turn.id,
+      providerId: 'provider',
+      modelId: 'model',
+      capability: 'llm',
+      status: 'completed',
+      inputTokens: 120,
+      outputTokens: 34,
+      cacheReadInputTokens: null,
+      cacheWriteInputTokens: null,
+      quantity: null,
+      unit: null,
+      durationMs: 10,
+      errorCode: null,
+      createdAt: 1,
     });
+    usageRecords.record({
+      id: 'llm-call-child-agent',
+      sessionId: session.id,
+      turnId: started.turn.id,
+      providerId: 'provider',
+      modelId: 'model',
+      capability: 'llm',
+      status: 'completed',
+      inputTokens: 30,
+      outputTokens: 5,
+      cacheReadInputTokens: null,
+      cacheWriteInputTokens: null,
+      quantity: null,
+      unit: null,
+      durationMs: 4,
+      errorCode: null,
+      createdAt: 2,
+    });
+    usageRecords.record({
+      id: 'compact:turn-compact',
+      sessionId: session.id,
+      turnId: started.turn.id,
+      providerId: 'provider',
+      modelId: 'model',
+      capability: 'llm',
+      status: 'completed',
+      inputTokens: 10,
+      outputTokens: 2,
+      cacheReadInputTokens: null,
+      cacheWriteInputTokens: null,
+      quantity: null,
+      unit: null,
+      durationMs: 3,
+      errorCode: null,
+      createdAt: 3,
+    });
+    turns.completeTurn(started.turn.id);
     turns.clearRunning(session.id, started.turn.id);
 
     const page = await app.request(`/api/sessions/${session.id}/messages?limit=1`);
@@ -221,8 +273,8 @@ describe('Session collection and History routes', () => {
     expect(pageBody.olderCursor).toBeTypeOf('string');
     expect(pageBody.turnStats).toEqual([{
       turnId: started.turn.id,
-      inputTokens: 120,
-      outputTokens: 34,
+      inputTokens: 160,
+      outputTokens: 41,
       durationMs: expect.any(Number),
       audioAvailable: false,
     }]);
@@ -245,8 +297,8 @@ describe('Session collection and History routes', () => {
       messages: [{ id: first.id }],
       turnStats: [{
         turnId: started.turn.id,
-        inputTokens: 120,
-        outputTokens: 34,
+        inputTokens: 160,
+        outputTokens: 41,
       }],
     });
     expect(aroundBody.olderCursor).toBeUndefined();
@@ -275,8 +327,8 @@ describe('Session collection and History routes', () => {
       messages: expect.any(Array),
       turnStats: [{
         turnId: started.turn.id,
-        inputTokens: 120,
-        outputTokens: 34,
+        inputTokens: 160,
+        outputTokens: 41,
       }],
     });
     expect((await app.request(`/api/sessions/${session.id}/messages/window`)).status).toBe(404);
@@ -287,7 +339,7 @@ describe('Session collection and History routes', () => {
     const started = turns.startTurn({
       sessionId: session.id,
       triggerType: 'userMessage',
-      executionProfile: 'work',
+      sessionMode: 'work',
       narrativePolicy: 'off',
     });
     sessions.appendMessage({

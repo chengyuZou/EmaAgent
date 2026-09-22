@@ -47,8 +47,8 @@ export function buildComposition(input: {
   const settings = openSettings(database.profileDb);
   const providers = openProviders(database.profileDb);
   const sessionConnections = new SessionSocketConnections();
-  const stopPublishingActiveSessions = database.activeSessions.subscribe((sessionId, active) => {
-    sessionConnections.publish(sessionId, { type: 'active_session_changed', active });
+  const stopPublishingSessionRunning = database.sessionRunning.subscribe((sessionId, running) => {
+    sessionConnections.publish(sessionId, { type: 'session_running_changed', running });
   });
   // Tools 在 Composition 返回前没有调用入口, 因此装配期间不可能产生真实完成通知.
   // 先放空出口打断构造顺序, openTurns 完成后再接到唯一 Session 队列.
@@ -204,8 +204,8 @@ export function buildComposition(input: {
       // 先封住自动续接, 再中止并等待根 Turn/手动 Compact 清除各自的 Session 运行记录.
       // 否则数据库关闭后, 在执行 Turn 的 finally 仍可能继续落终态或启动下一根 Turn.
       turn.continuations.shutdown();
-      await database.activeSessions.abortAll();
-      stopPublishingActiveSessions();
+      await database.sessionRunning.abortAll();
+      stopPublishingSessionRunning();
       await turn.agentRuns.shutdown('Application is shutting down');
       await tools.backgroundProcesses.shutdown();
       memory.shutdown();

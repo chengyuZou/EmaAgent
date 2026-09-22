@@ -9,7 +9,7 @@ import {
   type CharacterChangeDeps,
 } from '../src/application/changeCharacter.js';
 
-function fixture(activeSessionCount: number): CharacterChangeDeps {
+function fixture(runningSessionCount: number): CharacterChangeDeps {
   return {
     characters: {
       current: vi.fn(() => ({ name: '当前角色' })),
@@ -20,8 +20,8 @@ function fixture(activeSessionCount: number): CharacterChangeDeps {
       activate: vi.fn(),
       deleteCharacter: vi.fn(async () => 'deleted'),
     },
-    activeSessions: {
-      activeSessionCount: vi.fn(() => activeSessionCount),
+    sessionRunning: {
+      runningSessionCount: vi.fn(() => runningSessionCount),
       runWithRegistrationsClosed: vi.fn(async action => action()),
     },
   } as CharacterChangeDeps;
@@ -72,7 +72,7 @@ describe('Character change orchestration', () => {
     const action = vi.fn(() => 'saved');
 
     await expect(runWhenSessionsIdle(deps, action)).resolves.toBe('saved');
-    expect(deps.activeSessions.runWithRegistrationsClosed).toHaveBeenCalledOnce();
+    expect(deps.sessionRunning.runWithRegistrationsClosed).toHaveBeenCalledOnce();
     expect(action).toHaveBeenCalledOnce();
   });
 });

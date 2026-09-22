@@ -2,21 +2,26 @@
 import { CommandsError, type ManualCompactResult } from '@ema-agent/commands';
 import type { CompactEvent } from '@ema-agent/compact';
 import type { AgentRunEvent, AgentRunExecutor } from '@ema-agent/agent';
+import type { PermissionResponse } from '@ema-agent/permission';
 import {
   SessionBusyError,
-  type ActiveSession,
-  type ActiveSessionRegistry,
+  type NarrativePolicy,
+  type SessionMode,
+  type SessionRunning,
+  type SessionRunningRegistry,
   type Message as SessionMessage,
   type SessionStore,
 } from '@ema-agent/session';
 import {
   hasTurnInput,
   type PendingInteraction,
+  type QueuedSessionInput,
   type SessionContinuationEvent,
   type SessionContinuationQueue,
   type SessionInteractionQueue,
   type TurnExecutor,
   type TurnHandle,
+  type TurnStore,
   type TurnStreamEvent,
 } from '@ema-agent/turn';
 import { upgradeWebSocket } from '@hono/node-server';
@@ -38,13 +43,12 @@ const inputPartSchema = z.discriminatedUnion('type', [
 ]);
 
 const userMessagePayloadSchema = z.object({
-  executionProfile: z.enum(['chat', 'work']),
+  sessionMode: z.enum(['chat', 'work']),
   narrativePolicy: z.enum(['auto', 'always', 'off']),
   input: z.array(inputPartSchema).min(1).max(REQUEST_VALUE_LIMITS.maxTurnContentParts),
   knowledge: z.object({
     assetIds: z.array(z.string().min(1)).min(1).max(REQUEST_VALUE_LIMITS.maxTurnKbAssetScopes),
   }).optional(),
-  ttsEnabled: z.boolean().optional(),
 }).superRefine((payload, context) => {
   if (payload.input.filter(part => part.type === 'attachment').length > REQUEST_VALUE_LIMITS.maxTurnAttachments) {
     context.addIssue({ code: 'custom', path: ['input'], message: '附件数量超过单次 Turn 上限' });
@@ -55,11 +59,6 @@ const userMessagePayloadSchema = z.object({
 });
 
 const requestIdSchema = z.string().min(1);
-const activeSessionSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('turn'), turnId: z.string().min(1) }),
-  z.object({ kind: z.literal('compact'), compactId: z.string().min(1) }),
-]);
-
 export const sessionClientMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('send_user_message'), requestId: requestIdSchema, payload: userMessagePayloadSchema }),
   z.object({ type: z.literal('queue_user_message'), requestId: requestIdSchema, payload: userMessagePayloadSchema }),
@@ -82,7 +81,8 @@ export const sessionClientMessageSchema = z.discriminatedUnion('type', [
     answers: z.record(z.string(), z.string()),
   }),
   z.object({ type: z.literal('cancel_ask_user'), requestId: requestIdSchema, turnId: z.string().min(1), toolCallId: z.string().min(1) }),
-  z.object({ type: z.literal('cancel_active_session'), requestId: requestIdSchema, active: activeSessionSchema }),
+  z.object({ type: z.literal('cancel_turn'), requestId: requestIdSchema, turnId: z.string().min(1) }),
+  z.object({ type: z.literal('cancel_compact'), requestId: requestIdSchema, compactId: z.string().min(1) }),
   z.object({ type: z.literal('cancel_tool'), requestId: requestIdSchema, turnId: z.string().min(1), toolCallId: z.string().min(1) }),
   z.object({ type: z.literal('cancel_agent_run'), requestId: requestIdSchema, agentRunId: z.string().min(1) }),
   z.object({ type: z.literal('ping') }),
@@ -126,15 +126,29 @@ type SessionTurnMessage =
  */
 export type SessionBusinessMessage =
   | {
-      /** 连接建立时发送当前工作, 之后在根 Turn 或手动 Compact 注册和清除时继续发送. */
-      readonly type: 'active_session_changed';
-      /** Desktop 用它决定发送按钮、停止按钮和手动 Compact 是否可用; null 表示 Session 当前空闲. */
-      readonly active: ActiveSession | null;
+      /** 每次 Socket 打开只发送一次, Desktop 用它替换该 Session 的连接当前值. */
+      readonly type: 'session_state';
+      readonly running:
+        | null
+        | {
+            readonly kind: 'turn';
+            readonly turnId: string;
+            readonly createdAt: number;
+            readonly sessionMode: SessionMode;
+            readonly narrativePolicy: NarrativePolicy;
+            readonly messages: readonly SessionMessage[];
+          }
+        | {
+            readonly kind: 'compact';
+            readonly compactId: string;
+          };
+      readonly pendingInteractions: readonly PendingInteraction[];
+      readonly queuedInputs: readonly QueuedSessionInput[];
     }
   | {
-      /** 连接建立时发送尚未回答的权限和用户输入请求, Desktop 据此恢复交互卡片. */
-      readonly type: 'pending_interactions';
-      readonly pending: readonly PendingInteraction[];
+      /** 已连接期间根 Turn 或手动 Compact 的注册和清除变化. */
+      readonly type: 'session_running_changed';
+      readonly running: SessionRunning | null;
     }
   | {
       /** 真实 UserMessage 已写入 History, Desktop 按保存顺序替换引导产生的临时气泡或直接追加. */
@@ -157,7 +171,7 @@ export type SessionBusinessMessage =
 export type SessionServerMessage =
   | SessionBusinessMessage
   | {
-      /** 回答 start_manual_compact; afterTokens 只用于结果提示, Context 球另按有效历史重估. */
+      /** 回答 start_compaction; afterTokens 只用于结果提示, Context 球另按有效历史重估. */
       readonly type: 'manual_compact_result';
       readonly requestId: ClientRequestId;
       readonly result: ManualCompactResult;
@@ -220,8 +234,9 @@ export interface SessionWebSocketRouteDeps {
   readonly executor: TurnExecutor;
   readonly agentRuns: AgentRunExecutor;
   readonly continuations: SessionContinuationQueue;
-  readonly sessions: Pick<SessionStore, 'sessionExists'>;
-  readonly activeSessions: ActiveSessionRegistry;
+  readonly sessions: Pick<SessionStore, 'sessionExists' | 'getSession' | 'loadMessagesForTurn'>;
+  readonly turns: Pick<TurnStore, 'getTurn'>;
+  readonly sessionRunning: SessionRunningRegistry;
   readonly interactions: SessionInteractionQueue;
   readonly compactSession: (sessionId: string) => Promise<ManualCompactResult>;
   readonly attachTurn: (handle: TurnHandle, ttsEnabled: boolean) => void;
@@ -239,9 +254,13 @@ export const sessionWebSocketRoute = (deps: SessionWebSocketRouteDeps) =>
         }
         const client = socketClient(socket);
         detach = deps.connections.attach(sessionId, client);
-        client.send({ type: 'active_session_changed', active: deps.activeSessions.getActiveSession(sessionId) ?? null });
-        client.send({ type: 'pending_interactions', pending: deps.interactions.listPending(sessionId) });
-        client.send({ type: 'queued_inputs', items: deps.continuations.list(sessionId) });
+        client.send({
+          type: 'session_state',
+          running: readSessionRunningState(deps, sessionId),
+          pendingInteractions: deps.interactions.listPending(sessionId),
+          queuedInputs: deps.continuations.list(sessionId)
+            .filter(item => item.delivery === 'after_turn'),
+        });
         // TODO: 真实使用若证明断线期间的增量不可接受，再设计按 Turn 游标的有界重放和缺口通知。
       },
       async onMessage(event, socket) {
@@ -276,31 +295,32 @@ async function handleClientMessage(
     switch (message.type) {
       case 'send_user_message': {
         if (!hasTurnInput(message.payload.input)) throw new SessionRequestError('empty_input', 'Turn 输入为空');
+        // 发送消息只提交内容; 新 Turn 的语音选择从该 Session 的已保存设置读取.
+        const ttsEnabled = deps.sessions.getSession(sessionId).ttsEnabled;
         const handle = deps.executor.start({
           sessionId,
           triggerType: 'userMessage',
-          executionProfile: message.payload.executionProfile,
+          sessionMode: message.payload.sessionMode,
           narrativePolicy: message.payload.narrativePolicy,
           input: message.payload.input,
           ...(message.payload.knowledge ? { knowledge: message.payload.knowledge } : {}),
         });
-        deps.attachTurn(handle, message.payload.ttsEnabled ?? false);
+        deps.attachTurn(handle, ttsEnabled);
         socket.send({ type: 'request_succeeded', requestId: message.requestId });
         return;
       }
       case 'queue_user_message': {
         if (!hasTurnInput(message.payload.input)) throw new SessionRequestError('empty_input', 'Turn 输入为空');
-        if (deps.activeSessions.getActiveSession(sessionId)?.kind !== 'turn') {
+        if (deps.sessionRunning.getRunning(sessionId)?.kind !== 'turn') {
           throw new SessionRequestError('session_idle', '当前 Session 没有运行中的 Turn');
         }
         deps.continuations.enqueue({
           sessionId,
           input: message.payload.input,
           selection: {
-            executionProfile: message.payload.executionProfile,
+            sessionMode: message.payload.sessionMode,
             narrativePolicy: message.payload.narrativePolicy,
             ...(message.payload.knowledge ? { knowledge: message.payload.knowledge } : {}),
-            ttsEnabled: message.payload.ttsEnabled ?? false,
           },
         });
         socket.send({ type: 'request_succeeded', requestId: message.requestId });
@@ -317,15 +337,22 @@ async function handleClientMessage(
         socket.send({ type: 'manual_compact_result', requestId: message.requestId, result });
         return;
       }
-      case 'respond_permission':
+      case 'respond_permission': {
+        let response: PermissionResponse;
+        if (message.action === 'deny') {
+          response = message.reason
+            ? { action: 'deny', reason: message.reason }
+            : { action: 'deny' };
+        } else {
+          response = { action: message.action };
+        }
         sendRequestResult(socket, message.requestId, deps.interactions.respondPermission(
           message.toolCallId,
-          message.action === 'deny'
-            ? { action: 'deny', ...(message.reason ? { reason: message.reason } : {}) }
-            : { action: message.action },
+          response,
           message.turnId,
         ));
         return;
+      }
       case 'respond_ask_user':
         sendRequestResult(
           socket,
@@ -348,8 +375,17 @@ async function handleClientMessage(
           ),
         );
         return;
-      case 'cancel_active_session':
-        sendRequestResult(socket, message.requestId, deps.activeSessions.abort(sessionId, message.active));
+      case 'cancel_turn':
+        sendRequestResult(socket, message.requestId, deps.sessionRunning.abort(
+          sessionId,
+          { kind: 'turn', turnId: message.turnId },
+        ));
+        return;
+      case 'cancel_compact':
+        sendRequestResult(socket, message.requestId, deps.sessionRunning.abort(
+          sessionId,
+          { kind: 'compact', compactId: message.compactId },
+        ));
         return;
       case 'cancel_tool':
         sendRequestResult(socket, message.requestId, deps.executor.abortTool(message.turnId, message.toolCallId));
@@ -362,6 +398,25 @@ async function handleClientMessage(
     const failure = commandFailure(error);
     socket.send({ type: 'request_rejected', requestId: message.requestId, ...failure });
   }
+}
+
+function readSessionRunningState(
+  deps: SessionWebSocketRouteDeps,
+  sessionId: string,
+): Extract<SessionBusinessMessage, { readonly type: 'session_state' }>['running'] {
+  const running = deps.sessionRunning.getRunning(sessionId);
+  if (!running || running.kind === 'compact') return running ?? null;
+
+  const turn = deps.turns.getTurn(running.turnId);
+  if (!turn) throw new Error(`running_turn_not_found: ${running.turnId}`);
+  return {
+    kind: 'turn',
+    turnId: running.turnId,
+    createdAt: turn.createdAt,
+    sessionMode: turn.sessionMode,
+    narrativePolicy: turn.narrativePolicy,
+    messages: deps.sessions.loadMessagesForTurn(running.turnId),
+  };
 }
 
 function sendRequestResult(socket: SessionSocket, requestId: ClientRequestId, accepted: boolean): void {
