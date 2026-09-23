@@ -1,11 +1,4 @@
-// 摘要压缩的完整实现：窗口截断（一刀切）→ 近期保留选取（含硬预算扩张）→
-// 候选收缩 → 摘要调用 → 预算拟合。所有 Cut（含配对安全）都是本文件内部职责，
-// 不离开这里；调用方给完整工作历史，不关心内部怎么切。
-//
-// 切割与淘汰记账：85% 触发线（compactTokenLimit）一刀切丢弃最旧前缀；摘要模型
-// 输入预算装不下时候选继续从头部收缩（含 Provider 判超重试的追加收缩）。两段
-// 淘汰合并为 droppedMessageCount/droppedTokens 如实上报——游标覆盖到 retainStart
-// 是对的，但用户必须看到全部未进入摘要的量，指令里的"最早 N 条未纳入"只对模型说。
+// 按时间顺序总结全部旧消息, 保留近期原文, 不直接丢弃未总结的前缀.
 import type {
   AssistantBlock,
   CallLlm,
@@ -17,32 +10,24 @@ import type {
 import { createLlmCompletion } from '@ema-agent/llm';
 import type { SessionMode } from '@ema-agent/session';
 import { estimateLlmInputTokens, estimateMessagesTokens } from '@ema-agent/token';
-import { compactTokenLimit, fitCompactHistory } from './budget.js';
+import { compactTokenLimit, createSummaryMessage, fitCompactMessages } from './budget.js';
 import { buildCompactPrompt, extractCompactSummary } from './compactPrompt.js';
 import type { CompactSettings } from './settings.js';
 
 const MAX_ATTEMPTS = 3;
-/** Provider 判超（本地估算误差）后每次重试的预算缩放。 */
 const RETRY_BUDGET_SCALE = 0.8;
-/** 拟合前的摘要最小占位：tail + 外部成本 + 它 ≥ 触发线时就该把保留线右移。 */
 const MIN_SUMMARY_BUDGET_TOKENS = 256;
 
 export interface MacroCompactArgs {
   readonly callLlm: CallLlm;
   readonly sessionMode: SessionMode;
-  /** 与主对话逐字节一致的系统消息段（含缓存断点标记）；摘要请求的前缀共享来源。 */
   readonly systemMessages: readonly Message[];
-  /** 根 Turn 冻结的 Tool 定义（同内容同顺序）；指令已声明工具只是上下文，不得调用。 */
   readonly tools: readonly LlmTool[];
-  /** 与主请求一致的中立 thinking 配置；缺省表示未开启。 */
   readonly thinking?: LlmThinking;
-  /** 完整工作历史（Micro 之后）；窗口截断与近期保留都在本函数内部完成。 */
-  readonly toCompact: readonly Message[];
-  /** 完整候选请求的本地估算（≥ toCompact 本身，差额即历史外成本）。 */
+  readonly messages: readonly Message[];
   readonly estimatedInputTokens: number;
   readonly settings: Readonly<CompactSettings>;
   readonly modelContextWindow: number;
-  /** 当前模型的输出硬上限（ProviderModel 事实，null/缺省 = 未知）。 */
   readonly modelMaxOutput?: number | null;
   readonly signal?: AbortSignal;
 }
@@ -50,47 +35,32 @@ export interface MacroCompactArgs {
 export type MacroCompactResult =
   | {
       readonly succeeded: true;
-      /** 预算拟合后的最终摘要，持久化必须使用这一份。 */
       readonly summary: string;
-      /** 摘要消息 + 原文保留尾，下一次装配直接使用。 */
-      readonly history: Message[];
+      readonly messages: Message[];
       readonly afterTokens: number;
-      /** 摘要调用的最终 usage（收完的 completion 快照）；调用方据此记账。 */
+      /** 多段摘要包含每次物理调用的用量之和. */
       readonly usage: LlmTokenUsage;
-      /** 被摘要替换 + 被淘汰的输入消息数（相对 toCompact 下标），供游标映射。 */
+      /** 输入数组从头起被摘要覆盖的消息数. */
       readonly summarizedMessageCount: number;
-      /** 实际被淘汰（未进入摘要）的总消息条数与估算 token（一刀切 + 候选收缩）。 */
-      readonly droppedMessageCount: number;
-      readonly droppedTokens: number;
     }
   | {
       readonly succeeded: false;
       readonly detail: string;
     };
 
-export async function runMacroCompact(
-  args: MacroCompactArgs,
-): Promise<MacroCompactResult> {
-  const { settings } = args;
-  const tokenLimit = compactTokenLimit(args.modelContextWindow, settings);
-  const tokensOutsideHistory = Math.max(
-    0,
-    args.estimatedInputTokens - estimateMessagesTokens([...args.toCompact]),
-  );
+export async function runMacroCompact(args: MacroCompactArgs): Promise<MacroCompactResult> {
+  const tokenLimit = compactTokenLimit(args.modelContextWindow, args.settings);
+  // 完整请求的估算扣掉工作消息后, 剩余成本在替换历史前后都不变.
+  const fixedRequestTokens = args.estimatedInputTokens - estimateMessagesTokens([...args.messages]);
+  const suffix = buildSuffixTokens(args.messages);
+  const pairs = collectToolPairs(args.messages);
+  const summaryEnvelopeTokens = estimateMessagesTokens([
+    createSummaryMessage('', args.sessionMode),
+  ]);
 
-  // 后缀 Token 累计建一次，后续所有边界查询 O(1)；配对安全边界表同一次建成。
-  const suffix = buildSuffixTokens(args.toCompact);
-  const pairs = collectToolPairs(args.toCompact);
-
-  // 单趟双边界：85% 触发线一刀切（truncateStart），16%（retainRatio）近期保留（retainStart）。
-  const truncateStart = adjustToPairBoundary(
-    pairs,
-    findTailStart(suffix, 0, args.toCompact.length, tokenLimit),
-  );
-  // 硬预算优先于比例：保留尾+外部成本+摘要最小预算放不下触发线时，保留线右移
-  // （更多内容交给摘要，例如单条超大消息也会进入 Macro 而不是误判为历史不足）。
+  // retainStart 左边全部进入摘要, 右边保留原文. 比例只给初始切点,
+  // Tool 配对和最终请求预算可以把切点继续移到右边, 但不会丢弃左边的消息.
   const retainStart = expandRetainStartForBudget({
-    messages: args.toCompact,
     suffix,
     pairs,
     start: adjustToPairBoundary(
@@ -98,39 +68,28 @@ export async function runMacroCompact(
       findTailStart(
         suffix,
         0,
-        args.toCompact.length,
-        Math.floor(args.modelContextWindow * settings.retainRatio),
+        args.messages.length,
+        Math.floor(args.modelContextWindow * args.settings.retainRatio),
       ),
     ),
-    tokensOutsideHistory,
+    fixedRequestTokens,
+    summaryEnvelopeTokens,
     tokenLimit,
   });
-  if (retainStart === null) {
-    return {
-      succeeded: false,
-      detail: '近期原文已占满预算，没有可摘要的旧前缀',
-    };
-  }
-  const head = args.toCompact.slice(truncateStart, retainStart);
-  const tail = args.toCompact.slice(retainStart);
-  if (head.length === 0) {
-    return {
-      succeeded: false,
-      detail: '近期原文已占满预算，没有可摘要的旧前缀',
-    };
+  if (retainStart === null || retainStart === 0) {
+    return { succeeded: false, detail: '近期原文已占满预算, 没有可摘要的旧消息' };
   }
 
-  // 指令固定在尾部（前缀命中区之外）；被预算裁掉的最旧部分在此如实告知摘要模型。
-  const instruction = (omittedCount: number): Message => ({
+  const tail = args.messages.slice(retainStart);
+  // 最终请求需要给摘要消息留出正文空间, 分段摘要的输出上限也不能超过它.
+  const finalSummaryBudget = tokenLimit
+    - fixedRequestTokens
+    - suffix[retainStart]!
+    - summaryEnvelopeTokens;
+  const instruction: Message = {
     role: 'user',
-    content: buildCompactPrompt({ sessionMode: args.sessionMode })
-      + (omittedCount > 0
-        ? `\n\n（最早 ${omittedCount} 条消息因摘要模型输入预算未纳入，直接从现有首条开始摘要）`
-        : ''),
-  });
-
-  // 摘要请求与主请求同口径发送完整 tools（指令已声明工具只是上下文）：tools token
-  // 是固定开销，必须进入同一输入预算，否则小窗口模型会因 tools 漏算而假失败。
+    content: buildCompactPrompt({ sessionMode: args.sessionMode }),
+  };
   const toolsTokens = args.tools.length > 0
     ? estimateLlmInputTokens([], {
         tools: args.tools.map(tool => ({
@@ -140,103 +99,137 @@ export async function runMacroCompact(
         })),
       }).totalTokens
     : 0;
-  // 摘要模型装得下的历史预算：与窗口截断同一条 85% 线，扣除系统段、指令与 tools。
-  const historyBudget = Math.max(
-    1,
-    tokenLimit
-      - estimateMessagesTokens([...args.systemMessages, instruction(0)])
-      - toolsTokens,
-  );
 
-  let budgetScale = 1;
-  let lastFailure = '摘要模型未返回结果';
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
-    args.signal?.throwIfAborted();
-    // 候选按摘要模型输入预算从头部继续收缩（配对安全）；成功那次的收缩量计入淘汰。
-    const candidateStart = adjustToPairBoundary(
-      pairs,
-      findTailStart(
-        suffix,
-        truncateStart,
-        retainStart,
-        Math.floor(historyBudget * budgetScale),
-      ),
-    );
-    const candidate = args.toCompact.slice(candidateStart, retainStart);
-    const messages = [
-      ...args.systemMessages,
-      ...candidate,
-      instruction(candidateStart - truncateStart),
-    ];
-    const remainingOutputTokens = Math.max(
-      1,
-      args.modelContextWindow - estimateMessagesTokens(messages) - toolsTokens,
-    );
+  // cursor 指向下一条尚未总结的消息. 每段请求都带上上一段摘要,
+  // 因此分段间靠摘要传递事实, 不把已经处理的原文重复发送给模型.
+  let cursor = 0;
+  let summary: string | undefined;
+  let usage: LlmTokenUsage = { inputTokens: 0, outputTokens: 0 };
 
-    try {
-      const completion = await createLlmCompletion(args.callLlm({
-        messages,
-        tools: args.tools,
-        ...(args.thinking ? { thinking: args.thinking } : {}),
-        maxOutputTokens: Math.max(
-          1,
-          Math.min(
-            settings.outputTokens,
-            args.modelMaxOutput ?? Number.POSITIVE_INFINITY,
-            remainingOutputTokens,
-          ),
-        ),
-        temperature: 0.2,
-        signal: args.signal,
-      }));
-      const summary = extractCompactSummary(collectText(completion.blocks));
-      if (!summary) {
-        return { succeeded: false, detail: '摘要模型返回了空内容' };
-      }
-      // 摘要 + 原文保留尾适配硬预算；放不下时二分裁剪摘要正文，仍放不下则如实失败。
-      const fitted = fitCompactHistory({
-        summary,
-        tail,
-        sessionMode: args.sessionMode,
-        tokenLimit,
-        tokensOutsideHistory,
-      });
-      if (!fitted) {
+  while (cursor < retainStart) {
+    let budgetScale = 1;
+    let lastFailure = '摘要模型未返回结果';
+    let completed = false;
+
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+      args.signal?.throwIfAborted();
+      const previousSummary = summary === undefined
+        ? []
+        : [createSummaryMessage(summary, args.sessionMode)];
+      const fixedInput = [
+        ...args.systemMessages,
+        ...previousSummary,
+        instruction,
+      ];
+      const chunkBudget = Math.floor(
+        (tokenLimit - estimateMessagesTokens(fixedInput) - toolsTokens) * budgetScale,
+      );
+      // 只缩小当前分段的 end. cursor 直到本段成功才前进, 重试不会跳过消息.
+      const end = findChunkEnd(suffix, pairs, cursor, retainStart, chunkBudget);
+      if (end <= cursor) {
         return {
           succeeded: false,
-          detail: `摘要与近期历史无法放入 ${tokenLimit} Token 的历史预算`,
+          detail: lastFailure === '摘要模型未返回结果'
+            ? '单条消息或完整工具调用超过摘要请求预算'
+            : `缩小摘要分段后仍无法容纳完整消息: ${lastFailure}`,
         };
       }
-      return {
-        succeeded: true,
-        summary: fitted.summary,
-        history: fitted.history,
-        afterTokens: fitted.afterTokens,
-        usage: completion.usage,
-        summarizedMessageCount: retainStart,
-        // 两段淘汰合并：一刀切（truncateStart）+ 成功那次的候选收缩偏移。
-        droppedMessageCount: candidateStart,
-        droppedTokens: suffix[0]! - suffix[candidateStart]!,
-      };
-    } catch (error) {
-      if (isAbort(error, args.signal)) throw error;
-      lastFailure = error instanceof Error ? error.message : String(error);
-      if (!isPromptTooLong(lastFailure)) {
-        return { succeeded: false, detail: lastFailure };
+
+      const requestMessages = [
+        ...args.systemMessages,
+        ...previousSummary,
+        ...args.messages.slice(cursor, end),
+        instruction,
+      ];
+      const remainingOutputTokens = args.modelContextWindow
+        - estimateMessagesTokens(requestMessages)
+        - toolsTokens;
+      // 同时受模型硬上限, 请求剩余窗口和最终摘要可容纳空间约束.
+      const maxOutputTokens = Math.floor(Math.min(
+        args.settings.outputTokens,
+        args.modelMaxOutput ?? Number.POSITIVE_INFINITY,
+        remainingOutputTokens,
+        finalSummaryBudget,
+      ));
+      if (maxOutputTokens < 1) {
+        return { succeeded: false, detail: '摘要请求没有足够的输出预算' };
       }
-      budgetScale *= RETRY_BUDGET_SCALE;
+
+      try {
+        const completion = await createLlmCompletion(args.callLlm({
+          messages: requestMessages,
+          tools: args.tools,
+          ...(args.thinking ? { thinking: args.thinking } : {}),
+          maxOutputTokens,
+          temperature: 0.2,
+          signal: args.signal,
+        }));
+        usage = addUsage(usage, completion.usage);
+        if (completion.stopReason === 'max_tokens') {
+          lastFailure = '摘要输出达到模型上限';
+          budgetScale *= RETRY_BUDGET_SCALE;
+          continue;
+        }
+        if (completion.stopReason === 'tool_use') {
+          return { succeeded: false, detail: '摘要模型尝试调用工具' };
+        }
+        const nextSummary = extractCompactSummary(collectText(completion.blocks));
+        if (!nextSummary) {
+          return { succeeded: false, detail: '摘要模型返回了空内容' };
+        }
+        summary = nextSummary;
+        cursor = end;
+        completed = true;
+        break;
+      } catch (error) {
+        if (isAbort(error, args.signal)) throw error;
+        lastFailure = error instanceof Error ? error.message : String(error);
+        if (!isPromptTooLong(lastFailure)) {
+          return { succeeded: false, detail: lastFailure };
+        }
+        // Provider 判超时缩短当前分段, 下一段仍从原 cursor 接着读, 不丢前缀.
+        budgetScale *= RETRY_BUDGET_SCALE;
+      }
+    }
+
+    if (!completed) {
+      return {
+        succeeded: false,
+        detail: `摘要请求连续 ${MAX_ATTEMPTS} 次无法完成: ${lastFailure}`,
+      };
     }
   }
 
+  // 全部旧消息成功进入摘要后才组装最终历史. 任何分段失败都不会产出半成品.
+  const fitted = fitCompactMessages({
+    summary: summary!,
+    tail,
+    sessionMode: args.sessionMode,
+    tokenLimit,
+    fixedRequestTokens,
+  });
+  if (!fitted) {
+    return {
+      succeeded: false,
+      detail: `摘要与近期原文无法放入 ${tokenLimit} Token 的请求预算`,
+    };
+  }
+
   return {
-    succeeded: false,
-    detail: `摘要请求连续 ${MAX_ATTEMPTS} 次超过当前模型输入上限：${lastFailure}`,
+    succeeded: true,
+    summary: fitted.summary,
+    messages: fitted.messages,
+    afterTokens: fitted.afterTokens,
+    usage,
+    summarizedMessageCount: retainStart,
   };
 }
 
-// ── 切割与配对安全（内部实现） ────────────────────────────────────────────────
-
-/** 后缀 Token 累计：suffix[i] = messages[i:] 的估算总量。建一次，边界查询 O(1)。 */
+/**
+ * suffix[i] 是从消息 i 到末尾的估算量, 因此 [a, b) 的量为 suffix[a] - suffix[b].
+ * @example 三条消息依次估算为 [10, 20, 40] Token 时, suffix = [70, 60, 40, 0].
+ * 消息 [1, 3) 的估算量是 suffix[1] - suffix[3] = 60.
+ */
 function buildSuffixTokens(messages: readonly Message[]): number[] {
   const suffix = new Array<number>(messages.length + 1).fill(0);
   for (let index = messages.length - 1; index >= 0; index -= 1) {
@@ -246,8 +239,10 @@ function buildSuffixTokens(messages: readonly Message[]): number[] {
 }
 
 /**
- * [from, to) 区间内满足"尾部 ≤ budget"的最左下标；区间内最新一条永远保留
- * （它独自超预算时返回 to - 1）。suffix 非递增，正向首个命中即最大尾部。
+ * suffix[index] - suffix[to] 随 index 右移递减.
+ * 二分找第一个不超过预算的起点, 即预算内最长的近期原文.
+ * @example suffix = [70, 60, 40, 0], to = 3, budget = 45 时返回 2.
+ * 从消息 2 开始的尾部是 40 Token, 再向左加消息 1 就变成 60 Token.
  */
 function findTailStart(
   suffix: readonly number[],
@@ -255,43 +250,81 @@ function findTailStart(
   to: number,
   budget: number,
 ): number {
-  for (let index = from; index < to; index += 1) {
-    if (suffix[index]! - suffix[to]! <= budget) return index;
+  let left = from;
+  let right = to;
+  while (left < right) {
+    const middle = Math.floor((left + right) / 2);
+    if (suffix[middle]! - suffix[to]! <= budget) {
+      right = middle;
+    } else {
+      left = middle + 1;
+    }
   }
-  return Math.max(from, to - 1);
+  // 没有任何尾部满足预算时, 保留最后一条交给后续硬预算处理.
+  return left === to ? Math.max(from, to - 1) : left;
 }
 
 /**
- * 硬预算优先于比例：保留尾 + 外部成本 + 摘要最小预算放不下触发线时，把保留线
- * 右移（更多内容交给摘要）直到能放下；连空 tail 都放不下返回 null（无解，
- * 是历史外成本本身超线，不是历史的错）。
+ * suffix[cursor] - suffix[end] 随 end 右移递增, 二分找预算内最远的 end.
+ * end 若落在 tool_use 和 tool_result 之间就左移到 use 前, 不拆开工具调用.
+ * @example suffix = [70, 60, 40, 0], cursor = 0, budget = 30 时先找到 end = 2.
+ * 若消息 1 有 tool_use, 消息 2 才有对应结果, 切点 2 会退回消息 1 之前.
+ */
+function findChunkEnd(
+  suffix: readonly number[],
+  pairs: ToolPairs,
+  cursor: number,
+  limit: number,
+  budget: number,
+): number {
+  if (budget <= 0) return cursor;
+  let left = cursor;
+  let right = limit;
+  while (left < right) {
+    const middle = Math.floor((left + right + 1) / 2);
+    if (suffix[cursor]! - suffix[middle]! <= budget) {
+      left = middle;
+    } else {
+      right = middle - 1;
+    }
+  }
+  return adjustToPairBoundary(pairs, left);
+}
+
+/**
+ * 比例选出的 tail 若占掉摘要空间, 沿安全切点右移 retainStart.
+ * 即把更多旧消息交给摘要, 直到固定成本 + tail + 摘要外壳 + 最小正文预算能放入请求.
  */
 function expandRetainStartForBudget(args: {
-  readonly messages: readonly Message[];
   readonly suffix: readonly number[];
   readonly pairs: ToolPairs;
   readonly start: number;
-  readonly tokensOutsideHistory: number;
+  readonly fixedRequestTokens: number;
+  readonly summaryEnvelopeTokens: number;
   readonly tokenLimit: number;
 }): number | null {
-  const nextSafe = buildNextSafeBoundary(args.pairs, args.messages.length);
-  let cut = Math.min(Math.max(0, args.start), args.messages.length);
+  const nextSafe = buildNextSafeBoundary(args.pairs, args.suffix.length - 1);
+  let cut = Math.min(Math.max(0, args.start), args.suffix.length - 1);
+  // 强制压缩短历史时比例切点可能为 0, 至少选一段完整消息进入摘要.
+  if (cut === 0 && args.suffix.length > 1) {
+    cut = nextSafe[1]!;
+  }
   for (;;) {
-    const tailTokens = args.tokensOutsideHistory + args.suffix[cut]!;
-    if (tailTokens + MIN_SUMMARY_BUDGET_TOKENS < args.tokenLimit) return cut;
-    if (cut >= args.messages.length) return null;
+    const tailTokens = args.fixedRequestTokens + args.suffix[cut]!;
+    if (tailTokens + args.summaryEnvelopeTokens + MIN_SUMMARY_BUDGET_TOKENS < args.tokenLimit) {
+      return cut;
+    }
+    if (cut >= args.suffix.length - 1) return null;
     cut = nextSafe[cut + 1]!;
   }
 }
 
 interface ToolPairs {
-  /** tool_use id → 消息下标。 */
   readonly useIndex: ReadonlyMap<string, number>;
-  /** tool_result 的 (toolCallId, 消息下标)，按下标降序。 */
   readonly resultsDescending: readonly { toolCallId: string; messageIndex: number }[];
 }
 
-/** compact 的输入来自 deriveLlmHistory，上游只放行完整配对；这里只消费配对关系不再校验。 */
+// 一条 Message 可能含多个工具块, 配对索引用整条 Message 的位置表示.
 function collectToolPairs(messages: readonly Message[]): ToolPairs {
   const useIndex = new Map<string, number>();
   const results: { toolCallId: string; messageIndex: number }[] = [];
@@ -299,41 +332,46 @@ function collectToolPairs(messages: readonly Message[]): ToolPairs {
     const message = messages[messageIndex]!;
     if (!Array.isArray(message.content)) continue;
     for (const block of message.content) {
-      const type = (block as { type?: string }).type;
-      if (message.role === 'assistant' && type === 'tool_use') {
-        const id = (block as { id?: string }).id;
-        if (id) useIndex.set(id, messageIndex);
+      if (message.role === 'assistant' && block.type === 'tool_use') {
+        useIndex.set(block.id, messageIndex);
       }
-      if (message.role === 'user' && type === 'tool_result') {
-        const toolCallId = (block as { toolCallId?: string }).toolCallId;
-        if (toolCallId) results.push({ toolCallId, messageIndex });
+      if (message.role === 'user' && block.type === 'tool_result') {
+        results.push({ toolCallId: block.toolCallId, messageIndex });
       }
     }
   }
-  results.sort((a, b) => b.messageIndex - a.messageIndex);
+  results.sort((left, right) => right.messageIndex - left.messageIndex);
   return { useIndex, resultsDescending: results };
 }
 
 /**
- * 边界只往左拉：凡 result 在边界内（i ≥ boundary）而其 use 在边界外（j < boundary），
- * 边界移到 j。result 降序处理，每条一次，O(pairs)。use 缺失说明配对在上游已损坏，
- * 按无约束处理（不归这里裁决）。
+ * 切点 b 位于消息 b 之前. 若 useIndex < b <= resultIndex, 这个切点不安全.
+ * 从右到左检查 result, 把不安全切点退到对应 use 之前.
  */
 function adjustToPairBoundary(pairs: ToolPairs, boundary: number): number {
   let adjusted = boundary;
   for (const result of pairs.resultsDescending) {
     const useAt = pairs.useIndex.get(result.toolCallId);
     if (useAt === undefined) continue;
-    if (result.messageIndex >= adjusted && useAt < adjusted) {
-      adjusted = useAt;
-    }
+    if (result.messageIndex >= adjusted && useAt < adjusted) adjusted = useAt;
   }
   return adjusted;
 }
 
 /**
- * 预计算"≥ b 的第一个配对安全边界"表：边界 b 不安全 ⟺ 存在配对 (use j, result i)
- * 使 j < b ≤ i（切点把结果留在 tail 却丢了调用）。建表 O(n + pairs)，查询 O(1)。
+ * 预计算从任意边界 b 往右遇到的第一个安全切点.
+ * @example 一条 assistant 消息 0 同时调用 Read#r 和 Grep#g;
+ * user 消息 1 返回 r, user 消息 2 返回 g. 切点 b 在消息 b 之前.
+ *
+ * b:              0  1  2  3
+ * Read 跨越:      -  x  -  -
+ * Grep 跨越:      -  x  x  -
+ * diff:           0 +2 -1 -1
+ * 前缀和 depth:   0  2  1  0
+ * nextSafe:       0  3  3  3
+ *
+ * 每对在 useIndex + 1 加一, resultIndex + 1 减一. depth > 0 的切点
+ * 会把某个 tool_use 和 tool_result 分开; nextSafe 让预算扩张直接跳到 3.
  */
 function buildNextSafeBoundary(pairs: ToolPairs, length: number): number[] {
   const diff = new Array<number>(length + 2).fill(0);
@@ -343,23 +381,36 @@ function buildNextSafeBoundary(pairs: ToolPairs, length: number): number[] {
     diff[useAt + 1]! += 1;
     diff[result.messageIndex + 1]! -= 1;
   }
-  const unsafe = new Array<boolean>(length + 2).fill(false);
+  const nextSafe = new Array<number>(length + 2).fill(length);
   let depth = 0;
+  const unsafe = new Array<boolean>(length + 1).fill(false);
   for (let boundary = 0; boundary <= length; boundary += 1) {
     depth += diff[boundary]!;
     unsafe[boundary] = depth > 0;
   }
-  const nextSafe = new Array<number>(length + 2).fill(length);
   for (let boundary = length - 1; boundary >= 0; boundary -= 1) {
     nextSafe[boundary] = unsafe[boundary] ? nextSafe[boundary + 1]! : boundary;
   }
   return nextSafe;
 }
 
+function addUsage(total: LlmTokenUsage, call: LlmTokenUsage): LlmTokenUsage {
+  return {
+    inputTokens: total.inputTokens + call.inputTokens,
+    outputTokens: total.outputTokens + call.outputTokens,
+    ...(total.cacheReadInputTokens !== undefined || call.cacheReadInputTokens !== undefined
+      ? { cacheReadInputTokens: (total.cacheReadInputTokens ?? 0) + (call.cacheReadInputTokens ?? 0) }
+      : {}),
+    ...(total.cacheWriteInputTokens !== undefined || call.cacheWriteInputTokens !== undefined
+      ? { cacheWriteInputTokens: (total.cacheWriteInputTokens ?? 0) + (call.cacheWriteInputTokens ?? 0) }
+      : {}),
+  };
+}
+
 function collectText(blocks: readonly AssistantBlock[]): string {
   return blocks
     .filter((block): block is AssistantBlock & { type: 'text' } => block.type === 'text')
-    .map((block) => block.text)
+    .map(block => block.text)
     .join('');
 }
 

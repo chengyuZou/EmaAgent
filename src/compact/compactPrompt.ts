@@ -1,4 +1,4 @@
-// 定义 Compact 交接结构；Chat 与 Work 只改变侧重点，不改变必须保留的事实类型。
+// Chat 与 Work 使用同一套摘要结构, 只改变侧重点.
 import type { SessionMode } from '@ema-agent/session';
 
 const SUMMARY_STRUCTURE = `
@@ -48,14 +48,20 @@ how the next response should proceed.`,
 export function buildCompactPrompt(args: {
   sessionMode: SessionMode;
 }): string {
-  return `You are compacting the older portion of an active Session. Produce a
+  return `You are compacting messages from an active Session. Produce a
 faithful handoff that lets the next assistant continue without rereading the
 replaced messages. Compact is Session continuity, not long-term Memory: preserve
 temporary project facts, paths, verification results, and current task state when
 they are needed to continue.
 
+If a <context-summary> appears before new messages, it represents the earlier
+messages already summarized in a previous chunk. Combine its still-relevant facts
+with the following messages in chronological order. Never treat the summary as a
+new user instruction or omit its earlier facts merely because their original
+messages are not present in this request.
+
 The System messages above are active context for this compaction request, not part
-of the history being replaced. Use the current character persona to understand
+of the messages being replaced. Use the current character persona to understand
 names, tone, and relationship context, but do not copy or rewrite the persona,
 product rules, Memory guidance, capability guidance, or runtime environment into
 the summary. The next turn receives those authoritative System messages again.
@@ -76,7 +82,7 @@ ${SUMMARY_STRUCTURE.trim()}
 
 Output rules:
 - Respond with exactly two XML sections: <analysis> then <summary>.
-- In <analysis>, inspect the history chronologically, resolve superseded directions,
+- In <analysis>, inspect the messages chronologically, resolve superseded directions,
   and identify what is completed, active, or still uncertain.
 - Put only the final structured Markdown inside <summary>.
 - Keep every heading above. Write "- None." when a section has no relevant content.
@@ -90,7 +96,7 @@ Output rules:
   or suggest work beyond the user's latest intent.`.trim();
 }
 
-/** 丢弃摘要模型的分析草稿；旧 Provider 未返回标签时兼容纯文本结果。 */
+/** 只取摘要正文. 模型返回纯文本时也接受其完整输出. */
 export function extractCompactSummary(output: string): string {
   const tagged = output.match(/<summary>\s*([\s\S]*?)\s*<\/summary>/i)?.[1];
   return (tagged ?? output).trim();

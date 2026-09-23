@@ -1,26 +1,21 @@
-// 定义下一根 Turn 使用的自动压缩预算与失败熔断设置。
-// 设置接口与字段统一在此文件:类型、默认、定义、组、聚合读取全部在 settings.ts,
-// types.ts 只保留业务请求/结果类型(CompactRequest 等)。
-// 拆细为一字段一 key;触发线按窗口比例表达(比例制),不随窗口大小漂移。
-
 import type { SettingsStore, SettingGroup } from '@ema-agent/settings';
 import { defineSetting } from '@ema-agent/settings';
 import { z } from 'zod';
 
-/** 根 Turn 冻结的自动压缩预算、保留窗口与失败熔断设置。 */
+/**
+ * @param bufferRatio 估算达到窗口的 (1 - bufferRatio) % 即压缩;
+ * @param outputTokens 调用 API 压缩的最大输出 token
+ * @param keepRecentToolResults 压缩时保留最近的 ToolResult 条数
+ * @param maximumConsecutiveFailures 连续失败次数上限, 超过则不再尝试调用 API 生成摘要
+ * @param retainRatio 近期原文保留比例 保留约 (retainRatio * contextWindow) Token硬预算不足时 Compact 会继续扩大摘要范围
+ */
 export interface CompactSettings {
-  /** 触发线余量比例：估算达到窗口的 (1 - bufferRatio) 即压缩；默认 0.15 即 85%。 */
   readonly bufferRatio: number;
-  /** Macro 摘要调用的输出 token 预算；实际发送按剩余空间裁剪。 */
   readonly outputTokens: number;
   readonly keepRecentToolResults: number;
   readonly maximumConsecutiveFailures: number;
-  /** 近期原文保留比例（相对 contextWindow）；硬预算不足时 Compact 会继续扩大摘要范围。 */
   readonly retainRatio: number;
 }
-
-// manualMinRatio 是手动命令的准入策略（commands 在入口经 compactManualMinRatioSetting
-// 直读），不属于随每次请求传递的压缩算法设置，故不在本快照内。
 
 export const COMPACT_GROUP = 'context.compact';
 
@@ -72,7 +67,6 @@ export const compactManualMinRatioSetting = defineSetting({
   group: COMPACT_GROUP,
 });
 
-/** context.compact 组内全部字段定义(供 SettingsStore 注册组)。 */
 export const COMPACT_SETTINGS = [
   compactBufferRatioSetting,
   compactOutputTokensSetting,
@@ -82,7 +76,6 @@ export const COMPACT_SETTINGS = [
   compactManualMinRatioSetting,
 ] as const;
 
-/** context.compact 设置组。 */
 export const compactGroup: SettingGroup = {
   id: COMPACT_GROUP,
   definitions: COMPACT_SETTINGS,
@@ -96,7 +89,6 @@ export const compactGroup: SettingGroup = {
   }),
 };
 
-/** 整组默认快照(供消费方默认参数与测试),单一事实源是各 setting 的 defaultValue。 */
 export const DEFAULT_COMPACT_SETTINGS: CompactSettings = {
   bufferRatio: compactBufferRatioSetting.defaultValue,
   outputTokens: compactOutputTokensSetting.defaultValue,
@@ -105,7 +97,6 @@ export const DEFAULT_COMPACT_SETTINGS: CompactSettings = {
   retainRatio: compactRetainRatioSetting.defaultValue,
 };
 
-/** 聚合读取整块压缩预算快照(坏值/缺失自动回落默认)。 */
 export function readCompactSettings(store: SettingsStore): CompactSettings {
   return {
     bufferRatio: store.get(compactBufferRatioSetting),

@@ -1,83 +1,40 @@
-# @ema-agent/context
+# Context
 
-Context 只负责把已经准备好的事实组装成一次 LLM Call 的 Provider 中立输入。它不读取数据库、不查询 Memory/Narrative、不生成或插入 reminder、不调用模型，也不决定是否压缩。
+Context 把已保存的 Session 消息变成模型消息，再把模型消息、System Prompt 和工具拼成一次调用的输入。它不读数据库，也不决定何时压缩。
 
-## 唯一入口
+## 从 Session 消息得到模型消息
+
+`projectSessionMessages(sessionMessages, resolveGenerationSource, attachmentOptions)` 按传入顺序处理消息，返回 `ProjectedSessionMessage[]`。每项都有投影后的 `message` 和原来的 `sessionMessageId`。有些消息或内容块会被丢掉，因此不能用数组下标反查原消息；需要对应 SQL 消息时用 `sessionMessageId`。
+
+- 空内容和中断的 Assistant 消息不进入模型输入。`tool_use` 与 `tool_result` 必须按 ID 完整配对，且调用在结果之前，才会被保留。
+- Assistant 的推理块会保留；若能查到这条消息当时使用的模型，也会附上生成来源。换模型后能否重放推理块，由 LLM 的协议代码判断。
+- 图片在模型支持时读取原文件；不支持时可使用传入的 Vision 描述能力，没有描述能力就转成文字提示。文件引用、粘贴文本和 Skill 引用也会转成模型能读的内容。附件处理可能读文件或等待 Vision，所以这个函数是异步的。
+
+这个函数只处理调用方交给它的消息；它不查 Session，也不为 fork 子代理补假的工具结果。
+
+## 准备一次模型调用
 
 ```ts
 const prepared = assembleContext({
   systemPrompt,
   toolPool,
-  history,
-  currentTurn,
+  messages,
   contextWindow,
 });
 ```
 
-`assembleContext()` 是同步纯函数。同一份输入必然得到同一份结果，Turn 可以在 Compact 前后安全地各调用一次。
+这里的 `messages` 是已经整理好的模型消息，不包含 system 消息。`assembleContext` 会按顺序放入 System Prompt 和这些消息，再按 `ToolPool` 的顺序生成工具定义。它清掉输入消息上一次调用留下的缓存断点，保留 Prompt 块自带的断点，并给本次请求最后一条非空消息打断点。
 
-`PreparedContext` 只有三项：
+返回的 `PreparedContext` 包含：
 
-- `messages`：真正交给 LLM 的中立消息；
-- `tools`：从当前根 Turn 的同一个 `ToolPool` 投影出的 `LlmTool[]`；
-- `usage`：这份最终请求的总输入 Token 估算, 供预算判断和运行中的 Context 圆环使用。
+- `messages`：本次要交给 LLM 的完整消息；
+- `tools`：本次模型可见的工具定义；
+- `usage`：按上述完整消息和工具估算的输入 Token 数，以及模型的上下文窗口。
 
-它不返回 `history` 或 Compact 结果。调用方原本就持有历史，Context 不制造第二份状态。
+System Prompt 为空，或传入的模型消息中夹有 system 消息时，装配会报错。`buildPromptMessages` 也可单独把 Prompt 块转成 system 消息，手动 `/compact` 会用它。
 
-## 固定顺序
+## Token 数怎样更新
 
-```text
-System Prompt 稳定段（尾部 cacheBreakpoint）
-System Prompt 动态段
-History
-Current Turn（首条是本 Turn 持久化 reminder 的回放；最后一条有效消息带 cacheBreakpoint）
+`estimateContextUsage` 只对一次调用的完整消息和工具估算一次。调用前可用 `estimatedContextUsage` 表示估算值；模型返回用量后，`providerContextUsage` 改用模型报告的输入 Token 数。若随后又追加了模型可见消息，`appendEstimatedContextMessages` 把新增部分计入，并将来源重新标为估算。
 
-tools = 当前 ToolPool 的原顺序投影
-```
-
-PromptBlock 数组顺序就是发送顺序；静态产品块自身标记缓存断点。Context 不重新排序 ToolPool，也不保存额外的提示词版本状态。
-
-## Reminder 不在本包
-
-Turn reminder 表示"本 Turn 开始时的事实"：它在根 Turn 开始时由 Turn 生成一次并作为 `kind='reminder'` 的 Session Message 持久化，随后经有序 History 进入本包。本包只组装, 不知道哪条是 reminder；总输入估算会计入它。
-
-## Session Message 投影
-
-`deriveLlmHistory()` 是持久化 Session Message 到 LLM Message 的唯一转换入口。它异步返回 `LlmHistoryMessage[]`（`sessionMessageId + message`），因为附件解析可能读取文件或等待 Vision：
-
-- 丢弃旧 system；
-- thinking 作为协议原生推理状态保留，并为每条 Assistant 历史 attach 所属 Turn 的生成来源 `generatedBy`（providerId + modelId + protocol）；重放/删除由目标协议 Adapter 依据 `generatedBy` 与本次调用目标裁决，本包不判断协议兼容性；
-- 只保留完整配对的 `tool_use/tool_result`；
-- 中断的 Assistant Message 不进入模型历史；
-- 附件引用交给 Turn 注入的 `ResolveHistoryAttachment` 解析；Context 不读取 AttachmentStore，也不调用 Vision；
-- 历史 Skill 引用变成调用 Skill Tool 的明确指引，SKILL.md 正文不进入 Session Message。
-
-`generatedBy` 只对模型生成的 Assistant 历史有意义；user/tool_result/reminder/summary 不伪造。协议实现编码厂商消息时消费并剥除，绝不序列化进请求。
-
-投影会丢消息（空块、未配对 Tool 块），产出比输入短；`sessionMessageId` 只用于 Macro 摘要成功后映射 `summarizedThroughMessageId`，不进入 Compact 或 LLM 请求，也不允许按下标对齐输入。
-
-## 与 Compact 的关系
-
-Context 与 Compact 互不导入。TurnExecution 的接线顺序是：
-
-```text
-candidate = assembleContext(originalHistory)
-compactResult = compact(candidate.usage.estimatedInputTokens, originalHistory)
-
-unchanged → candidate 直接发送
-micro     → assembleContext(compactResult.history) 后发送
-macro     → 先持久化摘要，再 assembleContext(compactResult.history) 后发送
-```
-
-压缩前的候选只用于预算判断；对外 Context Usage 必须来自真正发送给 Provider 的最终装配结果。
-
-## 不属于 Context
-
-- 压缩阈值、摘要和熔断：Compact；
-- Summary SQL 持久化：TurnExecution + Session/Storage；
-- Reminder 的生成与持久化：Turn；
-- `attachment_ref` 的图片/文本投影与 Vision 描述缓存：Attachments，由 Turn 注入解析函数；
-- Tool Result 截断、落盘和清理：Tools Results；
-- Provider 协议与 `cache_control`：LLM Adapter；
-- `context_usage_updated` 事件身份与发射：Turn；
-- Turn 累计 Usage：Turn。
+Context 不调用模型、不写 Summary、不生成 Reminder，也不选择压缩方式。这些由 Turn 和 Compact 按各自的执行顺序处理；厂商协议格式由 LLM 代码处理。

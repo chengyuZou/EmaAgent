@@ -1,16 +1,11 @@
-// 把摘要、必须恢复的运行状态和近期历史收敛到总输入硬预算内。
-
 import type { Message } from '@ema-agent/llm';
 import type { SessionMode } from '@ema-agent/session';
 import { estimateMessagesTokens } from '@ema-agent/token';
 import type { CompactSettings } from './settings.js';
 
-const TRUNCATED_MARKER = '\n\n[摘要已按当前模型上下文预算截断]';
-
 /**
- * 压缩触发线：估算达到窗口的 (1 - bufferRatio) 即压缩（默认 85%），自动压缩与
- * force 路径共用它。手动 /compact 的准入下限是另一条独立设置
- * （compactManualMinRatioSetting，由 commands 入口直读），不要混用。
+ * 自动压缩和 force 路径共用同一条输入预算线.
+ * 手动 /compact 的准入下限由命令入口单独判断.
  */
 export function compactTokenLimit(
   contextWindow: number,
@@ -19,77 +14,28 @@ export function compactTokenLimit(
   return Math.max(1, Math.floor(contextWindow * (1 - settings.bufferRatio)));
 }
 
-interface FittedCompactHistory {
-  readonly history: Message[];
-  /** history 中实际使用的摘要，可能比模型原始输出更短。 */
+interface FittedCompactMessages {
+  readonly messages: Message[];
   readonly summary: string;
   readonly afterTokens: number;
 }
 
-export function fitCompactHistory(args: {
+export function fitCompactMessages(args: {
   readonly summary: string;
   readonly tail: readonly Message[];
   readonly sessionMode: SessionMode;
   readonly tokenLimit: number;
-  readonly tokensOutsideHistory: number;
-}): FittedCompactHistory | null {
-  const tokensOutsideHistory = Math.max(0, args.tokensOutsideHistory);
-  const estimateTotal = (history: readonly Message[]): number =>
-    tokensOutsideHistory + estimateMessagesTokens([...history]);
-  if (
-    args.tokenLimit <= tokensOutsideHistory ||
-    estimateTotal(args.tail) >= args.tokenLimit
-  ) {
-    return null;
-  }
-
-  const full = buildHistory(
-    args.summary,
-    args.tail,
-    args.sessionMode,
-  );
-  const fullTokens = estimateTotal(full);
-  if (fullTokens <= args.tokenLimit) {
-    return {
-      history: full,
-      summary: args.summary,
-      afterTokens: fullTokens,
-    };
-  }
-
-  const codePoints = [...args.summary];
-  let low = 0;
-  let high = codePoints.length;
-  let best: FittedCompactHistory | null = null;
-  while (low <= high) {
-    const middle = Math.floor((low + high) / 2);
-    const summary = `${codePoints.slice(0, middle).join('').trimEnd()}${TRUNCATED_MARKER}`;
-    const history = buildHistory(
-      summary,
-      args.tail,
-      args.sessionMode,
-    );
-    const afterTokens = estimateTotal(history);
-    if (afterTokens <= args.tokenLimit) {
-      best = { history, summary, afterTokens };
-      low = middle + 1;
-    } else {
-      high = middle - 1;
-    }
-  }
-  return best;
+  readonly fixedRequestTokens: number;
+}): FittedCompactMessages | null {
+  const messages = [createSummaryMessage(args.summary, args.sessionMode), ...args.tail];
+  const afterTokens = args.fixedRequestTokens + estimateMessagesTokens(messages);
+  if (afterTokens > args.tokenLimit) return null;
+  return { messages, summary: args.summary, afterTokens };
 }
 
-function buildHistory(
-  summary: string,
-  tail: readonly Message[],
-  sessionMode: SessionMode,
-): Message[] {
-  return [
-    {
-      role: 'user',
-      content: `<context-summary mode="${sessionMode}">\n${summary}\n</context-summary>`,
-    },
-    ...tail,
-  ];
+export function createSummaryMessage(summary: string, sessionMode: SessionMode): Message {
+  return {
+    role: 'user',
+    content: `<context-summary mode="${sessionMode}">\n${summary}\n</context-summary>`,
+  };
 }

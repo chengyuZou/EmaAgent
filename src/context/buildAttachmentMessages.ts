@@ -9,11 +9,15 @@ import type { VisionDescriptionCache, VisionDescriptionProducer } from '@ema-age
 import type { UserBlock } from '@ema-agent/llm';
 import type { AttachmentBlock, ImageReferenceBlock } from '@ema-agent/session';
 
+/**
+ * @param supportsImageInput 主模型是否支持图片输入
+ * @param visionCache 主模型不支持图片时的描述缓存;与 describeImage 同时注入才会现做生产。
+ * @param describeImage Vision 生产者:拿图片 path 读字节调 Vision 模型,由 Turn 层接线注入。
+ * @param signal 中断信号
+ */
 export interface BuildAttachmentMessagesOptions {
   readonly supportsImageInput: boolean;
-  /** 主模型不支持图片时的描述缓存;与 describeImage 同时注入才会现做生产。 */
   readonly visionCache?: Pick<VisionDescriptionCache, 'getOrCreate'>;
-  /** Vision 生产者:拿图片 path 读字节调 Vision 模型,由 Turn 层接线注入。 */
   readonly describeImage?: VisionDescriptionProducer;
   readonly signal: AbortSignal;
 }
@@ -93,7 +97,6 @@ async function buildImageMessages(
   }];
 }
 
-/** Turn 取消原样向上抛, 不伪装成降级。 */
 function rethrowAbort(error: unknown, signal: AbortSignal): void {
   if (signal.aborted || (error instanceof Error && error.name === 'AbortError')) {
     throw error;

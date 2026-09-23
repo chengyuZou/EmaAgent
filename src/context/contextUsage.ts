@@ -16,15 +16,16 @@ export interface ContextUsage {
   readonly cacheWriteInputTokens?: number;
 }
 
+/**
+ * @param messages 估算的消息数组, 包含 system 消息
+ */
 export function estimateContextUsage(input: {
   readonly contextWindow: number;
-  readonly promptMessages: readonly Message[];
   readonly tools: readonly LlmTool[];
-  readonly history: readonly Message[];
-  readonly currentTurn: readonly Message[];
+  readonly messages: readonly Message[];
 }): ContextUsageEstimate {
   const estimate = estimateLlmInputTokens(
-    [...input.promptMessages, ...input.history, ...input.currentTurn],
+    input.messages,
     { tools: input.tools.map(tool => ({
       name: tool.name,
       description: tool.description,
