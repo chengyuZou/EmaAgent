@@ -157,7 +157,7 @@ function segmentRuns(blocks: DocumentBlock[]): Run[] {
 
 function makeAtomicChunk(blk: DocumentBlock, id: string, assetId: string): DocumentChunk {
   const text = blk.markdown ?? blk.text;
-  return { id, assetId, text, ...(blk.markdown ? { markdown: blk.markdown } : {}),
+  return { id, assetId, text,
     blockKinds: [blk.kind], tokenCount: estimateTextTokens(text), page: blk.page, sectionPath: blk.sectionPath };
 }
 

@@ -35,6 +35,8 @@ export type {
   McpStdioConfig,
   McpHttpConfig,
   McpServerRecord,
+  McpServerSummary,
+  McpServerDetail,
   McpInstallProvenance,
   McpConnection,
   McpConnectionStatus,

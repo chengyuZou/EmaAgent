@@ -12,7 +12,7 @@
 ## 公开入口
 
 - `McpServerStore`: 已安装记录读写与 Tool 缓存。
-- `McpRegistry`: `save`, `setEnabled`, `connectInBackground`, `disconnect`, `remove`, `probe`, `callTool`。
+- `McpRegistry`: `listServers`, `getServer`, `save`, `setEnabled`, `connectInBackground`, `disconnect`, `remove`, `probe`, `callTool`。
 - `McpMarketService`: `load`, `refresh`, `detail`, `install`。
 - `OfficialRegistryAdapter`: Official MCP Registry 的真实 API 适配。
 
@@ -33,6 +33,12 @@
 - stdio 进程意外退出不会自动重启。
 - 测试连接不落库，也不改变正式连接。
 - stdio 启动没有第二套 MCP 批准。用户保存并启用配置就是管理面授权；LLM 调用 MCP Tool 仍统一经过中央 Tool Permission。
+
+## 已安装列表与详情
+
+- `listServers()` 返回 `McpServerSummary[]`：配置、启用状态、连接状态与 `toolCount`。SQL 在库内计算缓存数组长度，但不把 Tool Schema 文本带入 Node 或 HTTP 响应。
+- `getServer(name)` 返回单个 `McpServerDetail`：在摘要之外增加 `tools`。已连接时选择实时工具，未连接或连接失败时选择最近成功缓存，不同时暴露两套来源。
+- Desktop 全局 Store 只保存摘要；展开某行或打开详情时才请求对应 Server 的完整工具信息。
 
 ## 市场语义
 

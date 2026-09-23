@@ -6,11 +6,11 @@ import {
   type McpInstallProvenance,
   type McpProbeResult,
   type McpServerConfig,
-  type McpServerItem,
+  type McpServerSummary,
 } from '../api/mcp.js';
 
 interface McpStoreState {
-  servers: McpServerItem[];
+  servers: McpServerSummary[];
   loading: boolean;
   error: string | null;
   load(): Promise<void>;

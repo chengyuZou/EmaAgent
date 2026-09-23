@@ -2,8 +2,8 @@ import type { InferRequestType } from 'hono/client';
 import { rpcClient, readRpcJson, type RpcClient, type RpcJson } from './client.js';
 
 export type McpServerListResult = RpcJson<RpcClient['api']['mcp']['servers']['$get']>;
-export type McpServerItem = McpServerListResult['items'][number];
-export type McpConnection = McpServerItem['connection'];
+export type McpServerSummary = McpServerListResult['items'][number];
+export type McpServerDetail = RpcJson<RpcClient['api']['mcp']['servers'][':name']['$get']>;
 export type McpRegisterInput = InferRequestType<RpcClient['api']['mcp']['servers']['$post']>['json'];
 export type McpServerConfig = McpRegisterInput['config'];
 export type McpInstallProvenance = NonNullable<McpRegisterInput['provenance']>;
@@ -20,6 +20,9 @@ export type McpEnvironmentResult = RpcJson<RpcClient['api']['mcp']['environment'
 export const mcpApi = {
   list(): Promise<McpServerListResult> {
     return readRpcJson(rpcClient.api.mcp.servers.$get());
+  },
+  get(name: string): Promise<McpServerDetail> {
+    return readRpcJson(rpcClient.api.mcp.servers[':name'].$get({ param: { name } }));
   },
   save(body: McpRegisterInput) {
     return readRpcJson(rpcClient.api.mcp.servers.$post({ json: body }));

@@ -104,6 +104,22 @@ export interface McpConnection {
   error?:     string;
 }
 
+/** Settings 列表只展示配置、连接状态和 Tool 数量，不携带 Tool Schema。 */
+export interface McpServerSummary {
+  name:              string;
+  provenance:        McpInstallProvenance;
+  config:            McpServerConfig;
+  enabled:           boolean;
+  connectionStatus:  McpConnectionStatus;
+  connectionError?:  string;
+  toolCount:          number;
+}
+
+/** 单 Server 展开结果；tools 已按在线连接优先、离线缓存兜底选定唯一来源。 */
+export interface McpServerDetail extends McpServerSummary {
+  tools: McpToolInfo[];
+}
+
 export interface McpProbeResult {
   ok: boolean;
   tools: McpToolInfo[];

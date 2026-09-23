@@ -18,7 +18,16 @@ function memoryRepo() {
       }
     },
     deleteById: (id: string) => { rows.delete(id); },
-    listAll: () => [...rows.values()],
+    listSettings: () => [...rows.values()].map((row) => ({
+      name: row.name,
+      install_source: row.install_source,
+      market_entry_id: row.market_entry_id,
+      config_json: row.config_json,
+      enabled: row.enabled,
+      cached_tool_count: typeof row.tools_cache === 'string'
+        ? (JSON.parse(row.tools_cache) as unknown[]).length
+        : 0,
+    })),
     listEnabled: () => [...rows.values()].filter((r) => r.enabled === 1),
   };
 }
@@ -73,7 +82,7 @@ describe('McpServerStore 凭据边界', () => {
     store.register('s', { type: 'http', url: 'https://a.example/mcp', headers: { 'X-Key': 'one' } });
     store.register('s', { type: 'http', url: 'https://b.example/mcp', headers: { 'X-Key': 'two' } });
 
-    expect(store.listAll()).toHaveLength(1);
+    expect(store.listSettings()).toHaveLength(1);
     expect(store.findByName('s')!.config).toMatchObject({
       url: 'https://b.example/mcp',
       headers: { 'X-Key': 'two' },

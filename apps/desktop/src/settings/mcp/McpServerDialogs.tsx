@@ -4,7 +4,7 @@ import {
   Badge, Button, Callout, Dialog, Divider, Field, Input, Select, Textarea, ToolSpecItem,
 } from '@ema-agent/ui';
 import { useMcpStore } from '../../stores/mcp.js';
-import type { McpServerItem, McpProbeResult, McpImportResult } from '../../api/mcp.js';
+import type { McpServerSummary, McpProbeResult, McpImportResult } from '../../api/mcp.js';
 import { showToast } from '../../lib/toast.js';
 import { McpArgumentEditor } from './McpArgumentEditor.js';
 import { KeyValueEditor, type McpKeyValuePair } from './KeyValueEditor.js';
@@ -243,7 +243,7 @@ export function McpServerFormDialog({
 }: {
   open: boolean;
   /** 编辑目标;null 表示新建。父级以 key 区分实例,切换时整体重挂重置表单。 */
-  editing: McpServerItem | null;
+  editing: McpServerSummary | null;
   onOpenChange(open: boolean): void;
 }): JSX.Element {
   const [form, setForm] = useState(() =>

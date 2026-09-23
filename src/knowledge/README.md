@@ -44,7 +44,8 @@ document_assets    一个导入文件一行
                                      空间不同维的向量永不混检
 
 document_chunks    检索的最小单位，asset_id FK 级联
-  text / token_count                 块正文（目标 ~256 token）
+  text / token_count                 唯一块正文（目标 ~256 token）；表格/代码等原子 Block
+                                     在分块时选择 markdown 表达写入 text，不再并存第二份正文
   parent_id / parent_text            父窗：命中小块，召回返回 ~1024 token 父段
   embedding (BLOB)                   维度 = 所属资产冻结的 embedding_dim
 

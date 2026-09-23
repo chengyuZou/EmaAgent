@@ -61,6 +61,59 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe('McpRegistry 连接生命周期', () => {
+  it('列表只返回工具数量，单项详情才返回工具 schema', async () => {
+    const cachedTool = {
+      serverToolName: 'cached-search',
+      qualifiedName: 'mcp__local__cached_search',
+      originalServerName: 'local',
+      description: 'Cached search',
+      inputSchema: { type: 'object', properties: { query: { type: 'string' } } },
+      reportedReadOnly: false,
+      reportedDestructive: false,
+    };
+    const record = { ...server(), cachedTools: [cachedTool] };
+    const store = {
+      findByName: vi.fn(() => record),
+      listSettings: vi.fn(() => [{
+        name: record.name,
+        provenance: record.provenance,
+        config: record.config,
+        enabled: record.enabled,
+        cachedToolCount: 1,
+      }]),
+      cacheTools: vi.fn(),
+    } as unknown as McpServerStore;
+    const registry = new McpRegistry(store, new ToolRegistry());
+
+    expect(registry.listServers()).toEqual([{
+      name: 'local',
+      provenance: { sourceKind: 'manual' },
+      config: record.config,
+      enabled: true,
+      connectionStatus: 'disconnected',
+      toolCount: 1,
+    }]);
+    expect(registry.listServers()[0]).not.toHaveProperty('tools');
+    expect(registry.getServer('local')).toMatchObject({
+      connectionStatus: 'disconnected',
+      toolCount: 1,
+      tools: [cachedTool],
+    });
+
+    const opened = openedConnection();
+    connection.openConnection.mockResolvedValueOnce(opened);
+    await registry.connect('local');
+
+    expect(registry.listServers()[0]).toMatchObject({
+      connectionStatus: 'connected',
+      toolCount: 1,
+    });
+    expect(registry.getServer('local')?.tools[0]).toMatchObject({
+      serverToolName: 'search',
+      description: 'Search',
+    });
+  });
+
   it('Transport 意外关闭后标记 failed，并在下一次调用时惰性重连', async () => {
     const first = openedConnection();
     const second = openedConnection();

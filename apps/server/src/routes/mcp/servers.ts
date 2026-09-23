@@ -12,7 +12,7 @@ import { jsonBody } from '../validate.js';
 
 export interface McpServersRouteDeps {
   readonly mcp: Pick<McpRegistry,
-    'listRecords' | 'getAllConnections' | 'save' | 'findByName' | 'getConnection'
+    'listServers' | 'getServer' | 'save'
     | 'setEnabled' | 'connectInBackground' | 'disconnect' | 'remove' | 'probe'>;
 }
 
@@ -29,14 +29,7 @@ const importBody = z.object({ json: z.unknown() });
 
 export const mcpServersRoute = (deps: McpServersRouteDeps) => new Hono()
   .get('/servers', context => {
-    const connections = new Map(
-      deps.mcp.getAllConnections().map(connection => [connection.serverName, connection] as const),
-    );
-    return context.json({ items: deps.mcp.listRecords().map(record => ({
-      ...record,
-      connection: connections.get(record.name)
-        ?? { serverName: record.name, status: 'disconnected' as const, tools: [] },
-    })) });
+    return context.json({ items: deps.mcp.listServers() });
   })
   .post('/servers', jsonBody(saveBody), async context => {
     const body = context.req.valid('json');
@@ -68,10 +61,10 @@ export const mcpServersRoute = (deps: McpServersRouteDeps) => new Hono()
     return context.json({ items }, 201);
   })
   .get('/servers/:name', context => {
-    const record = deps.mcp.findByName(context.req.param('name'));
-    if (!record) return context.json({ error: 'server_not_found' }, 404);
-    return context.json({ ...record, connection: deps.mcp.getConnection(record.name)
-      ?? { serverName: record.name, status: 'disconnected' as const, tools: [] } });
+    const server = deps.mcp.getServer(context.req.param('name'));
+    return server
+      ? context.json(server)
+      : context.json({ error: 'server_not_found' }, 404);
   })
   .put('/servers/:name/enable', context => {
     deps.mcp.setEnabled(context.req.param('name'), true);

@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
-  Badge, Button, Card, Dialog, DropdownMenu, Switch, ToolSpecItem, Tooltip,
+  Badge, Button, Card, Dialog, DropdownMenu, Spinner, Switch, ToolSpecItem, Tooltip,
 } from '@ema-agent/ui';
 import { useMcpStore } from '../../stores/mcp.js';
-import type { McpServerItem } from '../../api/mcp.js';
+import { mcpApi, type McpServerDetail, type McpServerSummary } from '../../api/mcp.js';
 import { showToast } from '../../lib/toast.js';
 import type { McpConnectionStatus } from '@ema-agent/mcp';
 
@@ -22,17 +22,39 @@ export function toolParamNames(schema: Record<string, unknown> | undefined): str
 export function ServerRow({
   server, onToggleEnabled, onRemove, onEdit,
 }: {
-  server:           McpServerItem;
+  server:           McpServerSummary;
   onToggleEnabled:  () => void;
   onRemove:         () => void;
   onEdit:           () => void;
 }): JSX.Element {
-  const st = STATUS_BADGE[server.connection.status as McpConnectionStatus] ?? STATUS_BADGE.disconnected;
-  const live = server.connection.status === 'connected';
-  const tools = live ? server.connection.tools : (server.cachedTools ?? []);
-  const toolCount = tools.length;
+  const st = STATUS_BADGE[server.connectionStatus];
   const [expanded, setExpanded]     = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [detail, setDetail] = useState<McpServerDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const needsDetail = expanded || detailOpen;
+
+  useEffect(() => {
+    if (!needsDetail) return;
+    let cancelled = false;
+    setDetail(null);
+    setDetailError(null);
+    setDetailLoading(true);
+    void mcpApi.get(server.name)
+      .then((result) => {
+        if (!cancelled) setDetail(result);
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setDetailError(error instanceof Error ? error.message : String(error));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setDetailLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [needsDetail, server]);
 
   const menuItems = [
     {
@@ -48,7 +70,7 @@ export function ServerRow({
       onSelect: () => setDetailOpen(true),
     },
     { kind: 'separator' as const },
-    server.connection.status === 'connected'
+    server.connectionStatus === 'connected'
       ? {
           kind: 'item' as const,
           label: '断开连接',
@@ -87,7 +109,7 @@ export function ServerRow({
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-sm font-semibold text-[var(--ema-text-primary)]">{server.name}</span>
             <Badge variant={st.variant}>{st.label}</Badge>
-            {toolCount > 0 && (
+            {server.toolCount > 0 && (
               <button
                 className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-xs
                            bg-[var(--ema-surface-2)] text-[var(--ema-text-secondary)]
@@ -96,7 +118,7 @@ export function ServerRow({
                 title={expanded ? '收起工具' : '展开查看工具'}
               >
                 <span className="i-mdi:tools text-xs" aria-hidden />
-                {toolCount}
+                {server.toolCount}
                 <span className={`i-mdi:chevron-down text-xs transition-transform ${expanded ? 'rotate-180' : ''}`} aria-hidden />
               </button>
             )}
@@ -105,22 +127,29 @@ export function ServerRow({
           <p className="text-xs text-[var(--ema-text-tertiary)] mt-0.5 font-mono">
             {server.config.type === 'stdio'
               ? `${server.config.command} ${server.config.args?.join(' ') ?? ''}`.trim()
-              : (server.config as { url: string }).url}
+              : server.config.url}
           </p>
 
-          {server.connection.status === 'failed' && (
+          {server.connectionStatus === 'failed' && (
             <p className="text-xs text-[var(--ema-danger)] mt-1 line-clamp-1">
-              {server.connection.error ?? '连接失败'}
+              {server.connectionError ?? '连接失败'}
             </p>
           )}
 
           {/* Inline expanded tool list — quick glance at names + params */}
-          {expanded && toolCount > 0 && (
+          {expanded && (
             <div className="mt-2 flex flex-col gap-1.5 ema-slide-up">
-              {tools.map((t: McpServerItem['connection']['tools'][number]) => {
-                const params = toolParamNames(t.inputSchema);
+              {detailLoading && <Spinner size="sm" />}
+              {detailError && <p className="text-xs text-[var(--ema-danger)]">{detailError}</p>}
+              {detail?.tools.map((tool: McpServerDetail['tools'][number]) => {
+                const params = toolParamNames(tool.inputSchema);
                 return (
-                  <ToolSpecItem key={t.serverToolName} name={t.serverToolName} params={params} description={t.description} />
+                  <ToolSpecItem
+                    key={tool.serverToolName}
+                    name={tool.serverToolName}
+                    params={params}
+                    description={tool.description}
+                  />
                 );
               })}
             </div>
@@ -165,28 +194,32 @@ export function ServerRow({
             <p className="text-xs font-medium text-[var(--ema-text-secondary)] mb-1">连接配置</p>
             <pre className="text-xs font-mono whitespace-pre-wrap break-words rounded-lg p-2.5
                             bg-[var(--ema-surface-0)] text-[var(--ema-text-secondary)] border border-[var(--ema-border)] selectable">
-              {configSummary(server.config)}
+              {configSummary(detail?.config ?? server.config)}
             </pre>
           </div>
 
           {/* Tools */}
           <div>
             <p className="text-xs font-medium text-[var(--ema-text-secondary)] mb-1">
-              工具 ({toolCount})
+              工具 ({detail?.toolCount ?? server.toolCount})
             </p>
-            {toolCount === 0 ? (
+            {detailLoading ? (
+              <Spinner size="sm" />
+            ) : detailError ? (
+              <p className="text-xs text-[var(--ema-danger)]">{detailError}</p>
+            ) : (detail?.tools.length ?? 0) === 0 ? (
               <p className="text-xs text-[var(--ema-text-tertiary)]">尚未发现工具</p>
             ) : (
               <div className="flex flex-col gap-2">
-                {tools.map((t: McpServerItem['connection']['tools'][number]) => (
-                  <div key={t.serverToolName} className="rounded-lg p-2.5 bg-[var(--ema-surface-1)] border border-[var(--ema-border)]">
-                    <span className="text-xs font-mono font-medium text-[var(--ema-text-primary)]">{t.serverToolName}</span>
-                    {t.description && (
-                      <p className="text-[11px] text-[var(--ema-text-tertiary)] mt-0.5">{t.description}</p>
+                {detail?.tools.map((tool: McpServerDetail['tools'][number]) => (
+                  <div key={tool.serverToolName} className="rounded-lg p-2.5 bg-[var(--ema-surface-1)] border border-[var(--ema-border)]">
+                    <span className="text-xs font-mono font-medium text-[var(--ema-text-primary)]">{tool.serverToolName}</span>
+                    {tool.description && (
+                      <p className="text-[11px] text-[var(--ema-text-tertiary)] mt-0.5">{tool.description}</p>
                     )}
                     <pre className="text-[11px] font-mono whitespace-pre-wrap break-words mt-1.5 rounded p-2
                                     bg-[var(--ema-surface-0)] text-[var(--ema-text-tertiary)] border border-[var(--ema-border)] selectable">
-                      {JSON.stringify(t.inputSchema ?? {}, null, 2)}
+                      {JSON.stringify(tool.inputSchema ?? {}, null, 2)}
                     </pre>
                   </div>
                 ))}
@@ -199,7 +232,7 @@ export function ServerRow({
   );
 }
 
-function configSummary(config: McpServerItem['config']): string {
+function configSummary(config: McpServerSummary['config']): string {
   if (config.type === 'http') {
     return [
       `transport: Streamable HTTP`,

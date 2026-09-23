@@ -27,7 +27,6 @@ export interface DocumentSourceRef {
 export interface KbSearchHit {
   chunkId: string;
   text: string;
-  markdown?: string;
   score: number;
   source: DocumentSourceRef;
 }
@@ -124,7 +123,6 @@ export interface DocumentChunk {
   /** 由 ingest 层在资产行落库后写入；可选是为了让 chunker 可以在写库前先产出分块。 */
   assetId?:    string;
   text:        string;
-  markdown?:   string;
   blockKinds:  DocumentBlockKind[];
   tokenCount:  number;
   page?:       number;

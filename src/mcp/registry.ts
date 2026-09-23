@@ -9,6 +9,8 @@ import type {
   McpServerRecord,
   McpConnection,
   McpProbeResult,
+  McpServerDetail,
+  McpServerSummary,
   McpToolInfo,
   McpInstallProvenance,
 } from './types.js';
@@ -211,12 +213,44 @@ export class McpRegistry {
     return info ? copyConnection(info) : null;
   }
 
-  getAllConnections(): McpConnection[] {
-    return [...this.servers.values()].map((server) => copyConnection(server.info));
-  }
-
   getTools(serverName: string): McpToolInfo[] {
     return [...(this.servers.get(serverName)?.info.tools ?? [])];
+  }
+
+  listServers(): McpServerSummary[] {
+    return this.store.listSettings().map((settings) => {
+      const connection = this.servers.get(settings.name)?.info;
+      return {
+        name: settings.name,
+        provenance: settings.provenance,
+        config: settings.config,
+        enabled: settings.enabled,
+        connectionStatus: connection?.status ?? 'disconnected',
+        ...(connection?.error ? { connectionError: connection.error } : {}),
+        toolCount: connection?.status === 'connected'
+          ? connection.tools.length
+          : settings.cachedToolCount,
+      };
+    });
+  }
+
+  getServer(serverName: string): McpServerDetail | null {
+    const record = this.store.findByName(serverName);
+    if (!record) return null;
+    const connection = this.servers.get(serverName)?.info;
+    const tools = connection?.status === 'connected'
+      ? connection.tools
+      : (record.cachedTools ?? []);
+    return {
+      name: record.name,
+      provenance: record.provenance,
+      config: record.config,
+      enabled: record.enabled,
+      connectionStatus: connection?.status ?? 'disconnected',
+      ...(connection?.error ? { connectionError: connection.error } : {}),
+      toolCount: tools.length,
+      tools: [...tools],
+    };
   }
 
   // ── 服务器 CRUD(委托 store)─────────────────────────────────────────────
@@ -240,10 +274,6 @@ export class McpRegistry {
     return id;
   }
 
-  findByName(name: string) {
-    return this.store.findByName(name);
-  }
-
   /**
    * 启用/禁用与连接生命周期配对,不变量收在领域内而不是交给调用方:
    * 禁用 = 断开并摘除全部工具;启用 = 立即后台连接。
@@ -261,10 +291,6 @@ export class McpRegistry {
   async remove(name: string): Promise<void> {
     await this.disconnect(name);
     this.store.remove(name);
-  }
-
-  listRecords() {
-    return this.store.listAll();
   }
 
   // ── 探测 ────────────────────────────────────────────────────────────────

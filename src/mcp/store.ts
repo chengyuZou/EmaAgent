@@ -1,7 +1,7 @@
 // MCP 存储入口负责服务器配置与工具缓存的持久化转换和读取校验。
 import { Buffer }                from 'node:buffer';
 import { randomUUID }            from 'node:crypto';
-import type { McpServersRepo, McpServerRow } from '@ema-agent/storage';
+import type { McpServersRepo, McpServerRow, McpServerSettingsRow } from '@ema-agent/storage';
 import type { McpInstallProvenance, McpServerConfig, McpServerRecord, McpToolInfo } from './types.js';
 import type { McpServersChangedEvent } from './events.js';
 import { McpInstallProvenanceSchema, McpServerConfigSchema, McpToolInfoListSchema } from './types.js';
@@ -10,6 +10,14 @@ import {
   MAX_MCP_TOOL_SCHEMA_BYTES,
   assertMcpToolSchemaLimits,
 } from './toolSchemaLimits.js';
+
+interface McpServerSettings {
+  name: string;
+  provenance: McpInstallProvenance;
+  config: McpServerConfig;
+  enabled: boolean;
+  cachedToolCount: number;
+}
 
 // ── McpServerStore ────────────────────────────────────────────────────────────
 //
@@ -90,8 +98,8 @@ export class McpServerStore {
     return row ? this.rowToRecord(row) : null;
   }
 
-  listAll(): McpServerRecord[] {
-    return this.repo.listAll().map((r) => this.rowToRecord(r));
+  listSettings(): McpServerSettings[] {
+    return this.repo.listSettings().map((row) => this.rowToSettings(row));
   }
 
   listEnabled(): McpServerRecord[] {
@@ -121,20 +129,36 @@ export class McpServerStore {
         cachedTools = undefined;
       }
     }
-    const parsedProvenance = McpInstallProvenanceSchema.parse(
-      row.install_source === 'official' && row.market_entry_id
-        ? { sourceKind: row.install_source, marketEntryId: row.market_entry_id }
-        : { sourceKind: row.install_source },
-    );
     return {
       id:          row.id,
       name:        row.name,
-      provenance: parsedProvenance,
+      provenance: parseProvenance(row.install_source, row.market_entry_id),
       config:      McpServerConfigSchema.parse(rawConfig),
       cachedTools,
       enabled:     row.enabled === 1,
     };
   }
+
+  private rowToSettings(row: McpServerSettingsRow): McpServerSettings {
+    return {
+      name: row.name,
+      provenance: parseProvenance(row.install_source, row.market_entry_id),
+      config: McpServerConfigSchema.parse(JSON.parse(row.config_json) as unknown),
+      enabled: row.enabled === 1,
+      cachedToolCount: row.cached_tool_count,
+    };
+  }
+}
+
+function parseProvenance(
+  installSource: McpServerRow['install_source'],
+  marketEntryId: string | null,
+): McpInstallProvenance {
+  return McpInstallProvenanceSchema.parse(
+    installSource === 'official' && marketEntryId
+      ? { sourceKind: installSource, marketEntryId }
+      : { sourceKind: installSource },
+  );
 }
 
 function provenancePatch(provenance: McpInstallProvenance) {

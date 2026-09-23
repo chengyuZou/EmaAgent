@@ -3,7 +3,7 @@ import {
   Button, Callout, ConfirmDialog, EmptyState, ScrollArea, Spinner,
 } from '@ema-agent/ui';
 import { useMcpStore } from '../../stores/mcp.js';
-import type { McpServerItem } from '../../api/mcp.js';
+import type { McpServerSummary } from '../../api/mcp.js';
 import { showToast } from '../../lib/toast.js';
 import { ServerRow } from './McpServerRow.js';
 import { McpImportDialog, McpServerFormDialog } from './McpServerDialogs.js';
@@ -13,16 +13,16 @@ export function McpServersPage(): JSX.Element {
   const loading = useMcpStore((state) => state.loading);
   const error = useMcpStore((state) => state.error);
   const [addOpen, setAddOpen] = useState(false);
-  const [editing, setEditing] = useState<McpServerItem | null>(null);
+  const [editing, setEditing] = useState<McpServerSummary | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [pendingRemove, setPendingRemove] = useState<string | null>(null);
 
-  function handleEdit(server: McpServerItem): void {
+  function handleEdit(server: McpServerSummary): void {
     setEditing(server);
     setAddOpen(true);
   }
 
-  async function handleToggleEnabled(server: McpServerItem): Promise<void> {
+  async function handleToggleEnabled(server: McpServerSummary): Promise<void> {
     try {
       if (server.enabled) {
         await useMcpStore.getState().disable(server.name);

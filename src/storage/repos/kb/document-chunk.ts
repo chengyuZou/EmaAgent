@@ -6,7 +6,6 @@ export interface DocumentChunkRow {
   id:                string;
   asset_id:          string;
   text:              string;
-  markdown:          string | null;
   block_kinds_json:  string;
   token_count:       number;
   page:              number | null;
@@ -21,7 +20,6 @@ export interface DocumentChunkInsert {
   id:          string;
   assetId:     string;
   text:        string;
-  markdown?:   string;
   blockKinds:  string[];
   tokenCount:  number;
   page?:       number;
@@ -36,7 +34,6 @@ export interface ChunkSearchHit { chunkId: string; score: number }
 export interface ChunkSummary {
   id:           string;
   text:         string;
-  markdown?:    string;
   tokenCount:   number;
   page?:        number;
   sectionPath:  string[];
@@ -53,7 +50,6 @@ function rowToChunk(row: DocumentChunkRow) {
     id:          row.id,
     assetId:     row.asset_id,
     text:        row.text,
-    markdown:    row.markdown ?? undefined,
     blockKinds:  JSON.parse(row.block_kinds_json) as string[],
     tokenCount:  row.token_count,
     page:        row.page ?? undefined,
@@ -176,13 +172,13 @@ export class DocumentChunkRepo {
   insertMany(chunks: DocumentChunkInsert[]): void {
     const stmt = this.db.prepare(
       `INSERT OR REPLACE INTO document_chunks
-         (id, asset_id, text, tokens, markdown, block_kinds_json, token_count, page, section_path_json, parent_id, parent_text)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, asset_id, text, tokens, block_kinds_json, token_count, page, section_path_json, parent_id, parent_text)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     this.db.transaction(() => {
       for (const c of chunks) {
         // tokens = jieba 分词文本；FTS trigger 复制此列，使 BM25 对整词中文打分。
-        stmt.run(c.id, c.assetId, c.text, segmentForFts(c.text), c.markdown ?? null,
+        stmt.run(c.id, c.assetId, c.text, segmentForFts(c.text),
           JSON.stringify(c.blockKinds), c.tokenCount,
           c.page ?? null, JSON.stringify(c.sectionPath),
           c.parentId ?? null, c.parentText ?? null);
@@ -221,14 +217,14 @@ export class DocumentChunkRepo {
     if (opts.cursor !== undefined) { cursorSql = 'AND rowid > ?'; params.push(opts.cursor); }
 
     const rows = this.db.prepare(`
-      SELECT rowid AS _rowid, id, text, markdown, token_count, page, section_path_json,
+      SELECT rowid AS _rowid, id, text, token_count, page, section_path_json,
              (embedding IS NOT NULL) AS has_embedding
       FROM   document_chunks
       WHERE  asset_id = ? ${cursorSql}
       ORDER  BY rowid
       LIMIT  ?
     `).all(...params, limit + 1) as Array<{
-      _rowid: number; id: string; text: string; markdown: string | null;
+      _rowid: number; id: string; text: string;
       token_count: number; page: number | null; section_path_json: string; has_embedding: number;
     }>;
 
@@ -237,7 +233,6 @@ export class DocumentChunkRepo {
     const items: ChunkSummary[] = slice.map(r => ({
       id:           r.id,
       text:         r.text,
-      markdown:     r.markdown ?? undefined,
       tokenCount:   r.token_count,
       page:         r.page ?? undefined,
       sectionPath:  JSON.parse(r.section_path_json) as string[],

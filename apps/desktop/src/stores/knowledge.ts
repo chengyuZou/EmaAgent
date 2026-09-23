@@ -15,12 +15,11 @@ import {
 } from '../api/knowledge.js';
 import type { AppEvent } from '@ema-agent/server/application/appEvents.js';
 
-/** Route 原生摄入任务行（HTTP 水合与 SSE 进度更新共用同一形状）。 */
 type IngestTaskRow = IngestTaskList['items'][number];
 /** Route 原生重嵌任务行。 */
 type ReembedTaskRow = ReembedTaskList['items'][number];
 /** kb_ingest_* / kb_reembed_* 系统事件（KnowledgeEvent 经 AppEvent 联合原样携带）。 */
-type KnowledgeDomainEvent = Extract<AppEvent, { type: `kb_${string}` }>;
+type KnowledgeDomainEvent = Extract<AppEvent, { type: `kb_${string}`; kbId: string }>;
 
 export interface KnowledgeStoreState {
   /** 设置页正在查看的库;文档/任务/检索都以它为目标。 */
@@ -28,8 +27,6 @@ export interface KnowledgeStoreState {
   documents:    DocumentAsset[];
   loading:      boolean;
   error:        string | null;
-
-  /** assetId → Route 原生摄入任务行（仅 viewingKbId 库）；进度由 kb_ingest_* SSE 原位更新。 */
   ingestTasks:  Record<string, IngestTaskRow>;
   /** taskId → Route 原生重嵌任务行（仅 viewingKbId 库）。 */
   reembedTasks: Record<string, ReembedTaskRow>;
@@ -102,7 +99,7 @@ export const useKnowledgeStore = create<KnowledgeStoreState>((set, get) => ({
 
   setViewingKb(kbId) {
     if (get().viewingKbId === kbId) return;
-    // 换查看目标：旧库的任务行/文档全部撤下,再从新区水合。
+
     set({
       viewingKbId: kbId,
       documents: [],
@@ -184,7 +181,6 @@ export const useKnowledgeStore = create<KnowledgeStoreState>((set, get) => ({
       ...(active ? {} : { ingestDoneCount: 0, ingestCompletedAssets: new Set<string>() }),
     });
     try {
-      // 入队（202 返回任务行）后水合队列让新 pending 行出现；进度/终态由系统 SSE 驱动。
       await knowledgeApi.ingest(kbId, input);
       await get().loadIngestTasks();
       set({ ingesting: false });
@@ -366,7 +362,6 @@ export const useKnowledgeStore = create<KnowledgeStoreState>((set, get) => ({
       case 'kb_ingest_progress': {
         const row = get().ingestTasks[event.assetId];
         if (!row) {
-          // SSE 早于 HTTP 水合到达：任务行在服务端已持久化，直接整队重水合。
           void get().loadIngestTasks();
           return;
         }
@@ -488,6 +483,18 @@ export function selectIngestSummary(s: KnowledgeStoreState): IngestSummary {
 
 export function handleKnowledgeSystemEvent(event: AppEvent): void {
   switch (event.type) {
+    case 'kb_library_list_changed':
+      void useKnowledgeStore.getState().loadLibs();
+      return;
+    case 'kb_active_changed':
+      void useKnowledgeStore.getState().loadLibs();
+      return;
+    case 'kb_document_deleted': {
+      const store = useKnowledgeStore.getState();
+      void store.loadLibs();
+      if (store.viewingKbId === event.kbId) void store.loadDocuments();
+      return;
+    }
     case 'kb_ingest_progress':
     case 'kb_ingest_completed':
     case 'kb_ingest_failed':

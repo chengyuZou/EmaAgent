@@ -13,6 +13,16 @@ export interface McpServerRow {
   installed_at: number;
 }
 
+/** 已安装 Server 列表投影；Tool 缓存只在 SQLite 内计数，不把 Schema 文本带入 Node。 */
+export interface McpServerSettingsRow {
+  name:              string;
+  install_source:    'manual' | 'import' | 'official';
+  market_entry_id:   string | null;
+  config_json:       string;
+  enabled:           number;
+  cached_tool_count: number;
+}
+
 // ── McpServersRepo ─────────────────────────────────────────────────────────────
 //
 // 纯 SQL,不 import @ema-agent/mcp(避免循环依赖)。
@@ -65,8 +75,21 @@ export class McpServersRepo {
     return (this.db.prepare('SELECT * FROM mcp_servers WHERE name = ?').get(name) as McpServerRow | undefined) ?? null;
   }
 
-  listAll(): McpServerRow[] {
-    return this.db.prepare('SELECT * FROM mcp_servers ORDER BY installed_at ASC').all() as McpServerRow[];
+  listSettings(): McpServerSettingsRow[] {
+    return this.db.prepare(`
+      SELECT
+        name,
+        install_source,
+        market_entry_id,
+        config_json,
+        enabled,
+        CASE
+          WHEN tools_cache IS NULL THEN 0
+          ELSE json_array_length(tools_cache)
+        END AS cached_tool_count
+      FROM mcp_servers
+      ORDER BY installed_at ASC
+    `).all() as McpServerSettingsRow[];
   }
 
   listEnabled(): McpServerRow[] {

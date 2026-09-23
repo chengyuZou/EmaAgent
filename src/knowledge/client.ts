@@ -286,7 +286,6 @@ export class KnowledgeClient {
       hits.push({
         chunkId: chunk.id,
         text: chunk.parentText ?? chunk.text,
-        markdown: chunk.markdown,
         score: item.score,
         source,
       });
