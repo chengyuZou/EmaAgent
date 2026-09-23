@@ -1,5 +1,4 @@
-// 图片受管副本的全权 owner:粘贴/拖入时落盘到 sessions/<sid>/attachments/images/,
-// 入库即规范化;发送时盖章;自己的残留自己扫。
+// 图片粘贴/拖入时落盘到 sessions/<sid>/attachments/images/
 
 import { randomUUID } from 'node:crypto';
 import { mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises';
@@ -16,6 +15,9 @@ import type { AttachmentEvent } from './events.js';
 
 const SUPPORTED_FORMATS = new Set(['png', 'jpeg', 'gif', 'webp']);
 
+/**
+ * @param path 绝对路径
+ */
 export interface SavedImage {
   readonly path: string;
   readonly byteSize: number;
@@ -24,13 +26,13 @@ export interface SavedImage {
 export class ImageStore {
   constructor(
     private readonly repo: AttachmentImagesRepo,
-    /** Ema 数据根;副本落在 sessions/<sessionId>/attachments/images/, 随 Session 目录删除。 */
     private readonly dataDir: string,
-    private readonly onChanged?: (event: AttachmentEvent) => void,
+    private readonly emit?: (event: AttachmentEvent) => void,
   ) {}
-
-  /** 字节来源由调用方读出(剪贴板直接给字节, 拖入文件由端点读盘), 域层只见字节。
-   *  originalName 只在拖入场景存在;剪贴板图片没有原生名, 账本 name 存 NULL。 */
+  
+  /**
+   * 粘贴/拖入图片时处理并落盘
+   */
   async saveImage(
     sessionId: string,
     bytes: Buffer,
@@ -54,16 +56,20 @@ export class ImageStore {
       byte_size: normalized.bytes.length,
       created_at: Date.now(),
     }]);
-    this.onChanged?.({ type: 'attachments_changed', sessionId });
+    this.emit?.({ type: 'attachments_changed', sessionId });
     return { path: target, byteSize: normalized.bytes.length };
   }
 
-  /** 发送盖章:返回没盖上的 path(未入账或不属于该 Session)。 */
+  /**
+   * 发送前认领本次消息引用的粘贴文本, 将有效条目绑定到当前 Turn.
+   * @param paths 发送消息引用的粘贴文本路径
+   * @returns 无法认领的 path, 例如已被用户删除 未入账或不属于当前 Session.
+   */
   claimForTurn(sessionId: string, turnId: string, paths: readonly string[]): string[] {
     return this.repo.claimForTurn(sessionId, turnId, paths);
   }
 
-  /** 消息流/附件页封面用的小图:长边 ≤ maxDim 的 JPEG,原图不动。 */
+  /** 消息流/附件页封面用的小图:长边 ≤ maxDim 的 JPEG,原图不动 */
   async readThumbnail(imagePath: string, maxDim = 256): Promise<Buffer> {
     return sharp(imagePath)
       .resize({ width: maxDim, height: maxDim, fit: 'inside', withoutEnlargement: true })
@@ -72,9 +78,7 @@ export class ImageStore {
   }
 
   /**
-   * 扫自己目录的残留, 只针对这一个 Session:
-   * 账本侧 turn_id IS NULL 且超龄(贴了没发)删文件销账(Vision 描述级联消失);
-   * 磁盘侧无行的崩溃残渣超龄即删。目录不存在则磁盘侧零查询。
+   * 清扫 Repo 与本地文件系统中过期的图片残留
    */
   async sweep(sessionId: string, olderThanMs: number, now = Date.now()): Promise<StoreSweepReport> {
     const cutoff = now - olderThanMs;
@@ -88,7 +92,9 @@ export class ImageStore {
       freedBytes += row.byte_size;
     }
     this.repo.deleteByPaths(stale.map((row) => row.path));
-    if (stale.length > 0) this.onChanged?.({ type: 'attachments_changed', sessionId });
+    if (stale.length > 0) {
+      this.emit?.({ type: 'attachments_changed', sessionId });
+    }
 
     const dir = path.join(this.dataDir, 'sessions', sessionId, 'attachments', 'images');
     let entries;
@@ -115,7 +121,10 @@ export class ImageStore {
     return { deletedFiles, freedBytes };
   }
 
-  /** 不超阈值的图原样保留; 超的先缩边长, 仍超字节再 JPEG 重编码。 */
+  /**
+   * 各LLM的API对图片大小和总字节数有限制, 需要在入库前规范化:
+   * @param originalName 图片的原始文件名
+   */
   private async normalize(
     bytes: Buffer,
     originalName?: string,

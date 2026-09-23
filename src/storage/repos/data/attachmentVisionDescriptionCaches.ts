@@ -1,5 +1,3 @@
-// attachment_vision_descriptions_caches 的 SQL 层:Vision 文本派生的查找、写入、LRU 维护。
-// 主键是图片受管副本路径;图片行删除时级联消失。
 import type { SqliteDb } from '../../database/database.js';
 
 export interface AttachmentVisionDescriptionCacheRow {
@@ -38,7 +36,7 @@ export class AttachmentVisionDescriptionCachesRepo {
     `).run(now, path);
   }
 
-  /** TTL 清理:最后访问早于 cutoff 的批次。 */
+  /** TTL 清理:最后访问早于 cutoff 的批次 */
   listAccessedBefore(cutoff: number, limit: number): AttachmentVisionDescriptionCacheRow[] {
     return this.db.prepare(`
       SELECT * FROM attachment_vision_descriptions_caches

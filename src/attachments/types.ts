@@ -1,10 +1,16 @@
-/** 单侧清扫结果:删了几个文件、释放了多少字节。 */
+/**
+ * 存储清扫报告
+ * @property deletedFiles 删除的文件数
+ * @property freedBytes 释放的字节数
+ */
 export interface StoreSweepReport {
   readonly deletedFiles: number;
   readonly freedBytes: number;
 }
 
-/** LLM 图片输入只担保这四类;bmp/avif/svg 等其余图片格式按普通 file 处理。 */
+/**
+ * LLM 图片输入只担保这四类;bmp/avif/svg 等其余图片格式按普通 file 处理.
+ */
 const LLM_IMAGE_MIMES: ReadonlySet<string> = new Set([
   'image/png',
   'image/jpeg',
@@ -39,7 +45,6 @@ export function mimeForPath(filePath: string): string {
   return EXTENSION_MIME[filePath.slice(dot).toLowerCase()] ?? 'application/octet-stream';
 }
 
-/** 该路径按扩展名是否属于 LLM 可图片输入的四类格式。 */
 export function isLlmImagePath(filePath: string): boolean {
   return LLM_IMAGE_MIMES.has(mimeForPath(filePath));
 }

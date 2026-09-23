@@ -1,5 +1,3 @@
-// attachment_images 的 SQL 层:图片受管副本的账本。
-// turn_id NULL = 已落盘未被消费;发送时 claimForTurn 盖章,孤儿清扫只看 NULL 行。
 import type { SqliteDb } from '../../database/database.js';
 
 export interface AttachmentImageRow {
@@ -11,7 +9,7 @@ export interface AttachmentImageRow {
   created_at: number;
 }
 
-/** 入账时 Turn 还不存在(粘贴即落盘),turn_id 由发送时盖章,不在插入列里。 */
+/** 入账时 Turn 还不存在(粘贴即落盘),turn_id 由发送时盖章,不在插入列里 */
 export type AttachmentImageInsertRow = Omit<AttachmentImageRow, 'turn_id'>;
 
 export class AttachmentImagesRepo {
@@ -30,10 +28,6 @@ export class AttachmentImagesRepo {
     })();
   }
 
-  /**
-   * 发送盖章:把本轮输入消费的行标记到当前 Turn。
-   * 返回没有盖上的 path(未入账或不属于该 Session),调用方据此硬失败。
-   */
   claimForTurn(
     sessionId: string,
     turnId: string,
@@ -60,7 +54,6 @@ export class AttachmentImagesRepo {
     `).all(sessionId) as AttachmentImageRow[];
   }
 
-  /** 清扫账本侧:该 Session 贴了没发且超龄的行。 */
   listUnsentBefore(sessionId: string, cutoff: number): AttachmentImageRow[] {
     return this.db.prepare(`
       SELECT * FROM attachment_images

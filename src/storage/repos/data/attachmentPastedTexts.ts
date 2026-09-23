@@ -1,5 +1,3 @@
-// attachment_pasted_texts 的 SQL 层:粘贴文本落盘 txt 的账本。
-// turn_id NULL = 已落盘未被消费;发送时 claimForTurn 盖章,孤儿清扫只看 NULL 行。
 import type { SqliteDb } from '../../database/database.js';
 
 export interface AttachmentPastedTextRow {
@@ -10,7 +8,7 @@ export interface AttachmentPastedTextRow {
   created_at: number;
 }
 
-/** 入账时 Turn 还不存在(粘贴即落盘),turn_id 由发送时盖章,不在插入列里。 */
+/** 粘贴到输入框时 Turn 还不存在(粘贴即落盘),turn_id 由发送时盖章,不在插入列里 */
 export type AttachmentPastedTextInsertRow = Omit<AttachmentPastedTextRow, 'turn_id'>;
 
 export class AttachmentPastedTextsRepo {
@@ -24,8 +22,9 @@ export class AttachmentPastedTextsRepo {
   }
 
   /**
-   * 发送盖章:把本轮输入消费的行标记到当前 Turn。
-   * 返回没有盖上的 path(未入账或不属于该 Session),调用方据此硬失败。
+   * 发送前认领本次消息引用的粘贴文本, 将有效条目绑定到当前 Turn.
+   * @param paths 发送消息引用的粘贴文本路径
+   * @returns 无法认领的 path, 例如已被用户删除 未入账或不属于当前 Session.
    */
   claimForTurn(
     sessionId: string,
@@ -53,7 +52,7 @@ export class AttachmentPastedTextsRepo {
     `).all(sessionId) as AttachmentPastedTextRow[];
   }
 
-  /** 清扫账本侧:该 Session 贴了没发且超龄的行。 */
+  /** 返回指定 Session 中, 未被认领且创建时间早于指定时间的粘贴文本行 */
   listUnsentBefore(sessionId: string, cutoff: number): AttachmentPastedTextRow[] {
     return this.db.prepare(`
       SELECT * FROM attachment_pasted_texts
