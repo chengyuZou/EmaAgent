@@ -1,21 +1,20 @@
-// AgentRun 数据库操作只保存子 Agent 执行，不再复制根 Turn 生命周期。
+// Subagent 数据库操作只保存子 Agent 执行，不再复制根 Turn 生命周期。
 
 import type { SqliteDb } from '../../database/database.js';
 
-export type AgentRunStatus = 'running' | 'completed' | 'failed' | 'cancelled';
-/** agent_runs.context_mode 的 SQL CHECK 原样。 */
-export type AgentRunContextModeRow = 'subagent' | 'fork';
+export type SubagentStatus = 'running' | 'completed' | 'failed' | 'cancelled';
+/** subagents.context_mode 的 SQL CHECK 原样。 */
+export type SubagentContextModeRow = 'subagent' | 'fork';
 
-export interface AgentRunRow {
+export interface SubagentRow {
   id:                  string;
   session_id:          string;
   parent_turn_id:      string;
-  parent_agent_run_id: string | null;
-  context_mode:        AgentRunContextModeRow;
+  context_mode:        SubagentContextModeRow;
   description:         string | null;
   provider_id:         string | null;
   model_id:            string | null;
-  status:              AgentRunStatus;
+  status:              SubagentStatus;
   error:               string | null;
   iterations:          number | null;
   tool_call_count:     number | null;
@@ -27,19 +26,37 @@ export interface AgentRunRow {
   completed_at:        number | null;
 }
 
-export interface AgentRunInsert {
+export interface SubagentInsert {
   id: string;
   sessionId: string;
   parentTurnId: string;
-  parentAgentRunId?: string;
-  contextMode: AgentRunContextModeRow;
+  contextMode: SubagentContextModeRow;
   description?: string;
   providerId?: string;
   modelId?: string;
   createdAt: number;
 }
 
-export interface AgentRunCompletion {
+export interface SubagentSummaryRow {
+  id:              string;
+  session_id:      string;
+  parent_turn_id:  string;
+  context_mode:    SubagentContextModeRow;
+  description:     string | null;
+  provider_id:     string | null;
+  model_id:        string | null;
+  status:          SubagentStatus;
+  error:           string | null;
+  iterations:      number | null;
+  tool_call_count: number | null;
+  input_tokens:    number | null;
+  output_tokens:   number | null;
+  created_at:      number;
+  updated_at:      number;
+  completed_at:    number | null;
+}
+
+export interface SubagentCompletion {
   iterations: number;
   toolCallCount: number;
   inputTokens: number;
@@ -47,39 +64,38 @@ export interface AgentRunCompletion {
   finalText: string;
 }
 
-export class AgentRunsRepo {
+export class SubagentsRepo {
   constructor(private readonly db: SqliteDb) {}
 
-  insert(value: AgentRunInsert): AgentRunRow | undefined {
+  insert(value: SubagentInsert): SubagentRow | undefined {
     return this.db.prepare(
-      `INSERT OR IGNORE INTO agent_runs (
-         id, session_id, parent_turn_id, parent_agent_run_id,
+      `INSERT OR IGNORE INTO subagents (
+         id, session_id, parent_turn_id,
          context_mode, description, provider_id, model_id, status, created_at, updated_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?)
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, 'running', ?, ?)
        RETURNING *`,
     ).get(
       value.id,
       value.sessionId,
       value.parentTurnId,
-      value.parentAgentRunId ?? null,
       value.contextMode,
       value.description ?? null,
       value.providerId ?? null,
       value.modelId ?? null,
       value.createdAt,
       value.createdAt,
-    ) as AgentRunRow | undefined;
+    ) as SubagentRow | undefined;
   }
 
   // 终态迁移的唯一守卫是 status='running'：better-sqlite3 同步单写者，
   // findById 到 UPDATE 之间不存在交错。
   complete(
     id: string,
-    completion: AgentRunCompletion,
+    completion: SubagentCompletion,
     at: number,
-  ): AgentRunRow | undefined {
+  ): SubagentRow | undefined {
     return this.db.prepare(
-      `UPDATE agent_runs
+      `UPDATE subagents
           SET status = 'completed',
               error = NULL,
               iterations = ?,
@@ -100,14 +116,14 @@ export class AgentRunsRepo {
       at,
       at,
       id,
-    ) as AgentRunRow | undefined;
+    ) as SubagentRow | undefined;
   }
 
   fail(
     id: string,
     error: string,
     at: number,
-  ): AgentRunRow | undefined {
+  ): SubagentRow | undefined {
     return this.finish(id, 'failed', error, at);
   }
 
@@ -115,54 +131,67 @@ export class AgentRunsRepo {
     id: string,
     reason: string,
     at: number,
-  ): AgentRunRow | undefined {
+  ): SubagentRow | undefined {
     return this.finish(id, 'cancelled', reason, at);
   }
 
   delete(id: string): void {
-    this.db.prepare('DELETE FROM agent_runs WHERE id = ?').run(id);
+    this.db.prepare('DELETE FROM subagents WHERE id = ?').run(id);
   }
 
   deleteTerminalForSession(sessionId: string): number {
     return this.db.prepare(
-      `DELETE FROM agent_runs
+      `DELETE FROM subagents
         WHERE session_id = ? AND status IN ('completed', 'failed', 'cancelled')`,
     ).run(sessionId).changes;
   }
 
-  findById(id: string): AgentRunRow | undefined {
+  findById(id: string): SubagentRow | undefined {
     return this.db.prepare(
-      'SELECT * FROM agent_runs WHERE id = ?',
-    ).get(id) as AgentRunRow | undefined;
+      'SELECT * FROM subagents WHERE id = ?',
+    ).get(id) as SubagentRow | undefined;
   }
 
-  listForSession(sessionId: string, limit = 200): AgentRunRow[] {
+  listForSession(sessionId: string, limit = 200): SubagentSummaryRow[] {
     return this.db.prepare(
-      `SELECT * FROM agent_runs
+      `SELECT id, session_id, parent_turn_id, context_mode, description,
+              provider_id, model_id, status, error, iterations, tool_call_count,
+              input_tokens, output_tokens, created_at, updated_at, completed_at
+         FROM subagents
         WHERE session_id = ?
         ORDER BY created_at DESC, id DESC
         LIMIT ?`,
-    ).all(sessionId, limit) as AgentRunRow[];
+    ).all(sessionId, limit) as SubagentSummaryRow[];
   }
 
-  listRunning(): AgentRunRow[] {
+  findSummaryById(id: string): SubagentSummaryRow | undefined {
     return this.db.prepare(
-      `SELECT * FROM agent_runs
+      `SELECT id, session_id, parent_turn_id, context_mode, description,
+              provider_id, model_id, status, error, iterations, tool_call_count,
+              input_tokens, output_tokens, created_at, updated_at, completed_at
+         FROM subagents
+        WHERE id = ?`,
+    ).get(id) as SubagentSummaryRow | undefined;
+  }
+
+  listRunning(): SubagentRow[] {
+    return this.db.prepare(
+      `SELECT * FROM subagents
         WHERE status = 'running'
         ORDER BY created_at ASC, id ASC`,
-    ).all() as AgentRunRow[];
+    ).all() as SubagentRow[];
   }
 
-  markStuckFailed(at: number): AgentRunRow[] {
+  markStuckFailed(at: number): SubagentRow[] {
     return this.db.prepare(
-      `UPDATE agent_runs
+      `UPDATE subagents
           SET status = 'failed',
               error = 'Process terminated unexpectedly',
               completed_at = ?,
               updated_at = ?
         WHERE status = 'running'
         RETURNING *`,
-    ).all(at, at) as AgentRunRow[];
+    ).all(at, at) as SubagentRow[];
   }
 
   private finish(
@@ -170,15 +199,15 @@ export class AgentRunsRepo {
     status: 'failed' | 'cancelled',
     error: string,
     at: number,
-  ): AgentRunRow | undefined {
+  ): SubagentRow | undefined {
     return this.db.prepare(
-      `UPDATE agent_runs
+      `UPDATE subagents
           SET status = ?,
               error = ?,
               completed_at = ?,
               updated_at = ?
         WHERE id = ? AND status = 'running'
         RETURNING *`,
-    ).get(status, error, at, at, id) as AgentRunRow | undefined;
+    ).get(status, error, at, at, id) as SubagentRow | undefined;
   }
 }

@@ -90,6 +90,36 @@ describe('Turn 历史读取', () => {
     expect(second.rows.map((row) => row.id)).toEqual(['message-c']);
   });
 
+  it('Message 目录分页不读取正文，仍按正序游标完整续翻', () => {
+    const { messages, sessionId } = createFixture();
+    for (const id of ['message-a', 'message-b', 'message-c']) {
+      messages.insert({
+        id,
+        sessionId,
+        role: 'assistant',
+        blocksJson: JSON.stringify({ large: `${id}-body` }),
+        createdAt: 10,
+      });
+    }
+
+    const first = messages.listHeadersPage(sessionId, undefined, 2, 'asc');
+    const second = messages.listHeadersPage(
+      sessionId,
+      first.nextCursor ?? undefined,
+      2,
+      'asc',
+    );
+
+    expect(first.rows).toEqual([
+      { id: 'message-a', role: 'assistant', created_at: 10 },
+      { id: 'message-b', role: 'assistant', created_at: 10 },
+    ]);
+    expect(second.rows).toEqual([
+      { id: 'message-c', role: 'assistant', created_at: 10 },
+    ]);
+    expect('blocks_json' in first.rows[0]!).toBe(false);
+  });
+
   it('Message 锚点窗口按旧到新返回并报告两侧缺口', () => {
     const { messages, sessionId } = createFixture();
     for (let index = 0; index < 5; index++) {

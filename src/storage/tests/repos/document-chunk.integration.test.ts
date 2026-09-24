@@ -51,6 +51,19 @@ describe('B-072 embedding fallback 流式 Top-K', () => {
 
   afterEach(() => database.close());
 
+  it('document_chunks 只存一份正文，读取与分页结果也没有 markdown 镜像字段', () => {
+    const columns = database.sqlite.prepare('PRAGMA table_info(document_chunks)').all() as Array<{ name: string }>;
+    expect(columns.map((column) => column.name)).not.toContain('markdown');
+
+    const chunk = chunks.findById('chunk-a');
+    expect(chunk).toMatchObject({ id: 'chunk-a', text: 'chunk-a' });
+    expect(chunk).not.toHaveProperty('markdown');
+
+    const page = chunks.findByAssetPaged('asset-a', { limit: 1 });
+    expect(page.items[0]).toMatchObject({ id: 'chunk-a', text: 'chunk-a' });
+    expect(page.items[0]).not.toHaveProperty('markdown');
+  });
+
   it('返回与完整余弦排序一致的 Top-K', () => {
     const hits = chunks.searchByEmbedding([1, 0], SPACE, undefined, 3);
 

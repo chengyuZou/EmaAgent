@@ -1,7 +1,7 @@
 // 把已校验的 ZIP 记录转换为 Storage 行，并收口来源机未完成的执行状态。
 import type {
-  AgentRunMessageRow,
-  AgentRunRow,
+  SubagentMessageRow,
+  SubagentRow,
   AttachmentImageRow,
   AttachmentPastedTextRow,
   BackgroundProcessRow,
@@ -15,8 +15,8 @@ import type {
   UsageRecordRow,
 } from '@ema-agent/storage';
 import type {
-  AgentRunMessageRecord,
-  AgentRunRecord,
+  SubagentMessageRecord,
+  SubagentRecord,
   AttachmentImageRecord,
   AttachmentPastedTextRecord,
   BackgroundProcessRecord,
@@ -111,19 +111,18 @@ export function restoreTaskRecord(record: TaskRecord): SessionBackupTaskRow {
   };
 }
 
-export function restoreAgentRunRecord(record: AgentRunRecord, importedAt: number): AgentRunRow {
+export function restoreSubagentRecord(record: SubagentRecord, importedAt: number): SubagentRow {
   const unfinished = record.status === 'running';
   return {
     id: record.id,
     session_id: record.sessionId,
     parent_turn_id: record.parentTurnId,
-    parent_agent_run_id: record.parentAgentRunId,
     context_mode: record.contextMode,
     description: record.description,
     provider_id: record.providerId,
     model_id: record.modelId,
     status: unfinished ? 'cancelled' : record.status,
-    error: unfinished ? 'AgentRun 导出时尚未完成，导入后不会继续执行' : record.error,
+    error: unfinished ? 'Subagent 导出时尚未完成，导入后不会继续执行' : record.error,
     iterations: record.iterations,
     tool_call_count: record.toolCallCount,
     input_tokens: record.inputTokens,
@@ -135,11 +134,11 @@ export function restoreAgentRunRecord(record: AgentRunRecord, importedAt: number
   };
 }
 
-export const restoreAgentRunMessageRecord = (
-  record: AgentRunMessageRecord,
-): AgentRunMessageRow => ({
+export const restoreSubagentMessageRecord = (
+  record: SubagentMessageRecord,
+): SubagentMessageRow => ({
   id: record.id,
-  agent_run_id: record.agentRunId,
+  subagent_id: record.subagentId,
   role: record.role,
   content_json: record.contentJson,
   sequence: record.sequence,
@@ -159,7 +158,7 @@ export function restoreToolExecutionRecord(
     call_id: record.callId,
     session_id: record.sessionId,
     turn_id: record.turnId,
-    agent_run_id: record.agentRunId,
+    subagent_id: record.subagentId,
     tool_name: record.toolName,
     status,
     started_at: record.startedAt,

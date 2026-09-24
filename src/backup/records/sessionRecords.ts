@@ -14,7 +14,7 @@ export const omittedSessionFileSchema = z.object({
 
 export const sessionBackupManifestSchema = z.object({
   format: z.literal('ema-session'),
-  version: z.literal(2),
+  version: z.literal(3),
   sessionId: id,
   omittedFiles: z.array(omittedSessionFileSchema),
 }).strict();
@@ -109,11 +109,10 @@ export const taskRecordSchema = z.object({
   completedAt: integer.nullable(),
 }).strict();
 
-export const agentRunRecordSchema = z.object({
+export const subagentRecordSchema = z.object({
   id,
   sessionId: id,
   parentTurnId: id,
-  parentAgentRunId: nullableId,
   contextMode: z.enum(['subagent', 'fork']),
   description: z.string().nullable(),
   providerId: nullableId,
@@ -130,9 +129,9 @@ export const agentRunRecordSchema = z.object({
   completedAt: integer.nullable(),
 }).strict();
 
-export const agentRunMessageRecordSchema = z.object({
+export const subagentMessageRecordSchema = z.object({
   id,
-  agentRunId: id,
+  subagentId: id,
   role: z.enum(['assistant', 'tool_result']),
   contentJson: z.string(),
   sequence: nonNegativeInteger,
@@ -143,7 +142,7 @@ export const toolExecutionRecordSchema = z.object({
   callId: id,
   sessionId: id,
   turnId: id,
-  agentRunId: nullableId,
+  subagentId: nullableId,
   toolName: z.string().min(1),
   status: z.enum([
     'prepared', 'authorized', 'running', 'succeeded',
@@ -233,8 +232,8 @@ export type SessionRecord = z.infer<typeof sessionRecordSchema>;
 export type TurnRecord = z.infer<typeof turnRecordSchema>;
 export type MessageRecord = z.infer<typeof messageRecordSchema>;
 export type TaskRecord = z.infer<typeof taskRecordSchema>;
-export type AgentRunRecord = z.infer<typeof agentRunRecordSchema>;
-export type AgentRunMessageRecord = z.infer<typeof agentRunMessageRecordSchema>;
+export type SubagentRecord = z.infer<typeof subagentRecordSchema>;
+export type SubagentMessageRecord = z.infer<typeof subagentMessageRecordSchema>;
 export type ToolExecutionRecord = z.infer<typeof toolExecutionRecordSchema>;
 export type BackgroundProcessRecord = z.infer<typeof backgroundProcessRecordSchema>;
 export type AttachmentImageRecord = z.infer<typeof attachmentImageRecordSchema>;

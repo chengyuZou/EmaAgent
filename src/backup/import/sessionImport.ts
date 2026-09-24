@@ -13,8 +13,8 @@ import type { SessionBackupReader, SessionBackupRestorer } from '@ema-agent/stor
 import { SessionImportError } from '../errors.js';
 import { SESSION_MANIFEST_PATH } from '../records/sessionFormat.js';
 import {
-  agentRunMessageRecordSchema,
-  agentRunRecordSchema,
+  subagentMessageRecordSchema,
+  subagentRecordSchema,
   attachmentImageRecordSchema,
   attachmentPastedTextRecordSchema,
   backgroundProcessRecordSchema,
@@ -28,8 +28,8 @@ import {
   usageRecordSchema,
 } from '../records/sessionRecords.js';
 import {
-  restoreAgentRunMessageRecord,
-  restoreAgentRunRecord,
+  restoreSubagentMessageRecord,
+  restoreSubagentRecord,
   restoreAttachmentImageRecord,
   restoreAttachmentPastedTextRecord,
   restoreBackgroundProcessRecord,
@@ -68,15 +68,15 @@ export async function importSessionArchive(
       throw new SessionImportError('invalid_format', 'manifest 与 Session id 不一致');
     }
     const [
-      turns, messages, tasks, agentRuns, agentRunMessages,
+      turns, messages, tasks, subagents, subagentMessages,
       toolExecutions, backgroundProcesses, attachmentImages, attachmentPastedTexts,
       speechOutputs, usageRecords,
     ] = await Promise.all([
       readJsonlRecords(archive, 'turns', turnRecordSchema),
       readJsonlRecords(archive, 'messages', messageRecordSchema),
       readJsonlRecords(archive, 'tasks', taskRecordSchema),
-      readJsonlRecords(archive, 'agentRuns', agentRunRecordSchema),
-      readJsonlRecords(archive, 'agentRunMessages', agentRunMessageRecordSchema),
+      readJsonlRecords(archive, 'subagents', subagentRecordSchema),
+      readJsonlRecords(archive, 'subagentMessages', subagentMessageRecordSchema),
       readJsonlRecords(archive, 'toolExecutions', toolExecutionRecordSchema),
       readJsonlRecords(archive, 'backgroundProcesses', backgroundProcessRecordSchema),
       readJsonlRecords(archive, 'attachmentImages', attachmentImageRecordSchema),
@@ -86,7 +86,7 @@ export async function importSessionArchive(
     ]);
     throwIfCancelled(signal);
     assertSessionOwnership(manifest.sessionId, {
-      turns, messages, tasks, agentRuns, toolExecutions,
+      turns, messages, tasks, subagents, toolExecutions,
       backgroundProcesses, speechOutputs,
       usageRecords,
     });
@@ -127,8 +127,8 @@ export async function importSessionArchive(
           blocksJson: rewriteAttachmentPaths(record.blocksJson, files.attachments),
         })),
         tasks: tasks.map(restoreTaskRecord),
-        agentRuns: agentRuns.map(row => restoreAgentRunRecord(row, importedAt)),
-        agentRunMessages: agentRunMessages.map(restoreAgentRunMessageRecord),
+        subagents: subagents.map(row => restoreSubagentRecord(row, importedAt)),
+        subagentMessages: subagentMessages.map(restoreSubagentMessageRecord),
         toolExecutions: toolExecutions.map(row => restoreToolExecutionRecord(row, importedAt)),
         backgroundProcesses: backgroundProcesses.map(row => restoreBackgroundProcessRecord(
           row,
@@ -190,7 +190,7 @@ function rewriteAttachmentPaths(
 function readManifest(filePath: string) {
   try {
     const value = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-    if (value?.format === 'ema-session' && value.version !== 2) {
+    if (value?.format === 'ema-session' && value.version !== 3) {
       throw new SessionImportError('unsupported_version', `不支持的 Session 备份版本: ${String(value.version)}`);
     }
     return sessionBackupManifestSchema.parse(value);

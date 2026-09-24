@@ -15,7 +15,7 @@ interface ToolExecutionSqlRow {
   call_id: string;
   session_id: string;
   turn_id: string;
-  agent_run_id: string | null;
+  subagent_id: string | null;
   tool_name: string;
   status: PersistedToolExecutionStatus;
   started_at: number | null;
@@ -30,7 +30,7 @@ interface StoredToolExecution {
   callId: string;
   sessionId: string;
   turnId: string;
-  agentRunId?: string;
+  subagentId?: string;
   toolName: string;
   status: PersistedToolExecutionStatus;
   startedAt?: number;
@@ -44,7 +44,7 @@ interface ToolExecutionInsert {
   callId: string;
   sessionId: string;
   turnId: string;
-  agentRunId?: string;
+  subagentId?: string;
   toolName: string;
   createdAt: number;
 }
@@ -63,7 +63,7 @@ export class ToolExecutionsRepo {
   insertPrepared(value: ToolExecutionInsert): StoredToolExecution | undefined {
     const row = this.db.prepare(
       `INSERT OR IGNORE INTO tool_executions (
-         call_id, session_id, turn_id, agent_run_id, tool_name,
+         call_id, session_id, turn_id, subagent_id, tool_name,
          status, created_at, updated_at
        ) VALUES (?, ?, ?, ?, ?, 'prepared', ?, ?)
        RETURNING *`,
@@ -71,7 +71,7 @@ export class ToolExecutionsRepo {
       value.callId,
       value.sessionId,
       value.turnId,
-      value.agentRunId ?? null,
+      value.subagentId ?? null,
       value.toolName,
       value.createdAt,
       value.createdAt,
@@ -145,7 +145,7 @@ function fromSqlRow(row: ToolExecutionSqlRow): StoredToolExecution {
     callId: row.call_id,
     sessionId: row.session_id,
     turnId: row.turn_id,
-    ...(row.agent_run_id !== null ? { agentRunId: row.agent_run_id } : {}),
+    ...(row.subagent_id !== null ? { subagentId: row.subagent_id } : {}),
     toolName: row.tool_name,
     status: row.status,
     version: row.version,

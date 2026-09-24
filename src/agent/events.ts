@@ -23,7 +23,7 @@ export type AgentLoopEvent =
   | {
       readonly type: 'thinking_completed';
       readonly blockIndex: number;
-      /** 协议原生推理状态（signature/id/thoughtSignature）；缺失 = 无续接状态。 */
+      /** 协议原生推理状态(signature/id/thoughtSignature)缺失 = 无续接状态 */
       readonly state?: LlmThinkingState;
     }
   | {
@@ -81,37 +81,57 @@ export type AgentLoopEvent =
       readonly state: AgentLoopState;
     };
 
-export type AgentRunEvent =
+export type SubagentEvent =
   | {
-      readonly type: 'agent_run_started';
-      readonly agentRunId: string;
+      readonly type: 'subagent_started';
+      readonly subagentId: string;
       readonly contextMode: SubagentContextMode;
       readonly modelId?: string;
       readonly description?: string;
       readonly startedAt: number;
     }
   | {
-      readonly type: 'agent_run_event';
-      readonly agentRunId: string;
-      readonly event: AgentLoopEvent;
+      readonly type: 'iteration_started';
+      readonly subagentId: string;
+      readonly iteration: number;
+      readonly continuesOutput: boolean;
     }
   | {
-      readonly type: 'agent_run_completed';
-      readonly agentRunId: string;
-      readonly finalText: string;
+      readonly type: 'text_delta';
+      readonly subagentId: string;
+      readonly blockIndex: number;
+      readonly delta: string;
     }
   | {
-      readonly type: 'agent_run_failed';
-      readonly agentRunId: string;
+      readonly type: 'thinking_delta';
+      readonly subagentId: string;
+      readonly blockIndex: number;
+      readonly delta: string;
+    }
+  | {
+      readonly type: 'tool_use_completed';
+      readonly subagentId: string;
+      readonly blockIndex: number;
+      readonly toolCallId: string;
+      readonly toolName: string;
+      readonly args: unknown;
+    }
+  | {
+      readonly type: 'tool_result';
+      readonly subagentId: string;
+      readonly result: ToolResult;
+    }
+  | {
+      readonly type: 'subagent_completed';
+      readonly subagentId: string;
+    }
+  | {
+      readonly type: 'subagent_failed';
+      readonly subagentId: string;
       readonly error: string;
     }
   | {
-      readonly type: 'agent_run_aborted';
-      readonly agentRunId: string;
+      readonly type: 'subagent_aborted';
+      readonly subagentId: string;
       readonly reason: string;
     };
-
-export type AgentRunChangedEvent = {
-  readonly type: 'agent_runs_changed';
-  readonly sessionId: string;
-};

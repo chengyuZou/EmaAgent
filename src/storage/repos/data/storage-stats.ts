@@ -7,7 +7,7 @@ export interface DataDirStats {
   turnCount: number;
   messageCount: number;
   taskCount: number;
-  agentRunCount: number;
+  subagentCount: number;
   toolExecutionCount: number;
   backgroundProcessCount: number;
   totalInputTokens: number;
@@ -25,7 +25,7 @@ export interface SessionStats {
   turnCount: number;
   messageCount: number;
   taskCount: number;
-  agentRunCount: number;
+  subagentCount: number;
   toolExecutionCount: number;
   backgroundProcessCount: number;
   totalInputTokens: number;
@@ -76,7 +76,7 @@ export class DataDirStatsRepo {
       turnCount: count('turns'),
       messageCount: count('messages'),
       taskCount: count('tasks'),
-      agentRunCount: count('agent_runs'),
+      subagentCount: count('subagents'),
       toolExecutionCount: count('tool_executions'),
       backgroundProcessCount: count('background_processes'),
       attachmentCount: images.c + pasted.c,
@@ -193,7 +193,7 @@ export class SessionStatsRepo {
       turnCount: turns.turn_count,
       messageCount: count('messages'),
       taskCount: count('tasks'),
-      agentRunCount: count('agent_runs'),
+      subagentCount: count('subagents'),
       toolExecutionCount: count('tool_executions'),
       backgroundProcessCount: count('background_processes'),
       totalInputTokens: tokens.input_tokens,

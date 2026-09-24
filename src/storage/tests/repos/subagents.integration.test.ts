@@ -1,13 +1,13 @@
-// 验证 AgentRun 的父 Turn 归属、终态迁移守卫和异常退出恢复。
+// 验证 Subagent 的父 Turn 归属、终态迁移守卫和异常退出恢复。
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { AgentRunsRepo } from '../../repos/data/agent-runs.js';
+import { SubagentsRepo } from '../../repos/data/subagents.js';
 import { createTestDatabase, type TestDatabase } from '../helpers/create-test-database.js';
 
-describe('AgentRun 持久化状态机', () => {
+describe('Subagent 持久化状态机', () => {
   let database: TestDatabase;
-  let repo: AgentRunsRepo;
-  const agentRunId = 'run-a';
+  let repo: SubagentsRepo;
+  const subagentId = 'subagent-a';
 
   beforeEach(() => {
     database = createTestDatabase();
@@ -22,9 +22,9 @@ describe('AgentRun 持久化状态机', () => {
       ) VALUES ('turn-a', 'session-a', 'userMessage', 'work', 'auto', 'running', 2)
     `).run();
 
-    repo = new AgentRunsRepo(database.db);
+    repo = new SubagentsRepo(database.db);
     repo.insert({
-      id: agentRunId,
+      id: subagentId,
       sessionId: 'session-a',
       parentTurnId: 'turn-a',
       contextMode: 'subagent',
@@ -36,12 +36,13 @@ describe('AgentRun 持久化状态机', () => {
 
   it('合法完成会记录执行统计', () => {
     const completed = repo.complete(
-      agentRunId,
+      subagentId,
       {
         iterations: 3,
         toolCallCount: 2,
         inputTokens: 10,
         outputTokens: 20,
+        finalText: '完成',
       },
       4,
     );
@@ -57,21 +58,22 @@ describe('AgentRun 持久化状态机', () => {
   });
 
   it('取消获胜后迟到 Worker 不能覆盖终态', () => {
-    expect(repo.cancel(agentRunId, 'user_abort', 4)).toMatchObject({
+    expect(repo.cancel(subagentId, 'user_abort', 4)).toMatchObject({
       status: 'cancelled',
     });
 
     expect(repo.complete(
-      agentRunId,
+      subagentId,
       {
         iterations: 1,
         toolCallCount: 0,
         inputTokens: 1,
         outputTokens: 1,
+        finalText: '迟到结果',
       },
       5,
     )).toBeUndefined();
-    expect(repo.findById(agentRunId)).toMatchObject({
+    expect(repo.findById(subagentId)).toMatchObject({
       status: 'cancelled',
       error: 'user_abort',
     });
@@ -80,7 +82,7 @@ describe('AgentRun 持久化状态机', () => {
   it('异常退出会把 running 记录标为 failed', () => {
     expect(repo.markStuckFailed(4)).toEqual([
       expect.objectContaining({
-        id: agentRunId,
+        id: subagentId,
         status: 'failed',
       }),
     ]);

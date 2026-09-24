@@ -1,7 +1,7 @@
 // 把 Storage 行转换为 ZIP 记录，数据库列名和来源机文件路径不进入归档协议。
 import type {
-  AgentRunMessageRow,
-  AgentRunRow,
+  SubagentMessageRow,
+  SubagentRow,
   AttachmentImageRow,
   AttachmentPastedTextRow,
   BackgroundProcessRow,
@@ -14,8 +14,8 @@ import type {
   UsageRecordRow,
 } from '@ema-agent/storage';
 import type {
-  AgentRunMessageRecord,
-  AgentRunRecord,
+  SubagentMessageRecord,
+  SubagentRecord,
   AttachmentImageRecord,
   AttachmentPastedTextRecord,
   BackgroundProcessRecord,
@@ -96,11 +96,10 @@ export const toTaskRecord = (row: SessionBackupTaskRow): TaskRecord => ({
   completedAt: row.completed_at,
 });
 
-export const toAgentRunRecord = (row: AgentRunRow): AgentRunRecord => ({
+export const toSubagentRecord = (row: SubagentRow): SubagentRecord => ({
   id: row.id,
   sessionId: row.session_id,
   parentTurnId: row.parent_turn_id,
-  parentAgentRunId: row.parent_agent_run_id,
   contextMode: row.context_mode,
   description: row.description,
   providerId: row.provider_id,
@@ -117,9 +116,9 @@ export const toAgentRunRecord = (row: AgentRunRow): AgentRunRecord => ({
   completedAt: row.completed_at,
 });
 
-export const toAgentRunMessageRecord = (row: AgentRunMessageRow): AgentRunMessageRecord => ({
+export const toSubagentMessageRecord = (row: SubagentMessageRow): SubagentMessageRecord => ({
   id: row.id,
-  agentRunId: row.agent_run_id,
+  subagentId: row.subagent_id,
   role: row.role,
   contentJson: row.content_json,
   sequence: row.sequence,
@@ -132,7 +131,7 @@ export const toToolExecutionRecord = (
   callId: row.call_id,
   sessionId: row.session_id,
   turnId: row.turn_id,
-  agentRunId: row.agent_run_id,
+  subagentId: row.subagent_id,
   toolName: row.tool_name,
   status: row.status,
   startedAt: row.started_at,

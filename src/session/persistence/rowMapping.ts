@@ -11,7 +11,7 @@ import type {
 import type { TurnStatus } from '../types.js';
 import { parseMessageBlocksJson } from '../message.js';
 import type {
-  Message,
+  SessionMessage,
   Project,
   ProjectFolder,
   SearchSessionsOutput,
@@ -79,7 +79,7 @@ export function toSessionListItem(row: SessionRowEnriched): SessionListItem {
   };
 }
 
-export function toMessage(row: MessageRow): Message {
+export function toMessage(row: MessageRow): SessionMessage {
   return {
     id: row.id,
     sessionId: row.session_id,

@@ -1,7 +1,7 @@
 // 在同一 SQLite 读取事务中提供 Session 全量行，并在单一写事务中恢复它们。
 import type { SqliteDb } from '../../database/database.js';
-import type { AgentRunMessageRow } from './agent-run-messages.js';
-import type { AgentRunRow } from './agent-runs.js';
+import type { SubagentMessageRow } from './subagent-messages.js';
+import type { SubagentRow } from './subagents.js';
 import type { AttachmentImageRow } from './attachmentImages.js';
 import type { AttachmentPastedTextRow } from './attachmentPastedTexts.js';
 import type { BackgroundProcessRow } from './backgroundProcesses.js';
@@ -16,7 +16,7 @@ export interface SessionBackupToolExecutionRow {
   call_id: string;
   session_id: string;
   turn_id: string;
-  agent_run_id: string | null;
+  subagent_id: string | null;
   tool_name: string;
   status:
     | 'prepared'
@@ -41,8 +41,8 @@ export interface SessionBackupRows {
   readonly turns: Iterable<TurnRow>;
   readonly messages: Iterable<MessageRow>;
   readonly tasks: Iterable<SessionBackupTaskRow>;
-  readonly agentRuns: Iterable<AgentRunRow>;
-  readonly agentRunMessages: Iterable<AgentRunMessageRow>;
+  readonly subagents: Iterable<SubagentRow>;
+  readonly subagentMessages: Iterable<SubagentMessageRow>;
   readonly toolExecutions: Iterable<SessionBackupToolExecutionRow>;
   readonly backgroundProcesses: Iterable<BackgroundProcessRow>;
   readonly attachmentImages: Iterable<AttachmentImageRow>;
@@ -95,16 +95,16 @@ export class SessionBackupReader {
           WHERE session_id = ?
           ORDER BY display_number ASC, id ASC
         `, sessionId),
-        agentRuns: this.iterate<AgentRunRow>(
-          'SELECT * FROM agent_runs WHERE session_id = ? ORDER BY created_at ASC, id ASC',
+        subagents: this.iterate<SubagentRow>(
+          'SELECT * FROM subagents WHERE session_id = ? ORDER BY created_at ASC, id ASC',
           sessionId,
         ),
-        agentRunMessages: this.iterate<AgentRunMessageRow>(`
+        subagentMessages: this.iterate<SubagentMessageRow>(`
           SELECT message.*
-          FROM agent_run_messages message
-          JOIN agent_runs run ON run.id = message.agent_run_id
-          WHERE run.session_id = ?
-          ORDER BY run.created_at ASC, run.id ASC, message.sequence ASC, message.id ASC
+          FROM subagent_messages message
+          JOIN subagents subagent ON subagent.id = message.subagent_id
+          WHERE subagent.session_id = ?
+          ORDER BY subagent.created_at ASC, subagent.id ASC, message.sequence ASC, message.id ASC
         `, sessionId),
         toolExecutions: this.iterate<SessionBackupToolExecutionRow>(
           'SELECT * FROM tool_executions WHERE session_id = ? ORDER BY created_at ASC, call_id ASC',
@@ -237,44 +237,46 @@ export class SessionBackupRestorer {
       );
     }
 
-    const insertAgentRun = this.db.prepare(`
-      INSERT INTO agent_runs (
-        id, session_id, parent_turn_id, parent_agent_run_id,
+    const insertSubagent = this.db.prepare(`
+      INSERT INTO subagents (
+        id, session_id, parent_turn_id,
         context_mode, description, provider_id, model_id, status, error,
-        iterations, tool_call_count, input_tokens, output_tokens,
+        iterations, tool_call_count, input_tokens, output_tokens, final_text,
         created_at, updated_at, completed_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    for (const row of orderAgentRuns(rows.agentRuns)) {
-      insertAgentRun.run(
-        row.id, session.id, row.parent_turn_id, row.parent_agent_run_id,
+    for (const row of rows.subagents) {
+      insertSubagent.run(
+        row.id, session.id, row.parent_turn_id,
         row.context_mode, row.description, row.provider_id, row.model_id,
         row.status, row.error, row.iterations, row.tool_call_count,
-        row.input_tokens, row.output_tokens,
+        row.input_tokens, row.output_tokens, row.final_text,
         row.created_at, row.updated_at, row.completed_at,
       );
     }
 
-    const insertAgentRunMessage = this.db.prepare(`
-      INSERT INTO agent_run_messages (
-        id, agent_run_id, role, content_json, sequence, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?)
+    const insertSubagentMessage = this.db.prepare(`
+      INSERT INTO subagent_messages (
+        id, subagent_id, role, kind, blocks_json, interrupted, sequence, created_at,
+        summarized_through_message_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    for (const row of rows.agentRunMessages) {
-      insertAgentRunMessage.run(
-        row.id, row.agent_run_id, row.role, row.content_json, row.sequence, row.created_at,
+    for (const row of rows.subagentMessages) {
+      insertSubagentMessage.run(
+        row.id, row.subagent_id, row.role, row.kind, row.blocks_json, row.interrupted,
+        row.sequence, row.created_at, row.summarized_through_message_id,
       );
     }
 
     const insertToolExecution = this.db.prepare(`
       INSERT INTO tool_executions (
-        call_id, session_id, turn_id, agent_run_id, tool_name,
+        call_id, session_id, turn_id, subagent_id, tool_name,
         status, started_at, completed_at, version, created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     for (const row of rows.toolExecutions) {
       insertToolExecution.run(
-        row.call_id, session.id, row.turn_id, row.agent_run_id, row.tool_name,
+        row.call_id, session.id, row.turn_id, row.subagent_id, row.tool_name,
         row.status, row.started_at, row.completed_at,
         row.version, row.created_at, row.updated_at,
       );
@@ -358,26 +360,4 @@ export class SessionBackupRestorer {
   private exists(table: 'projects' | 'sessions', id: string): boolean {
     return Boolean(this.db.prepare(`SELECT 1 FROM ${table} WHERE id = ?`).get(id));
   }
-}
-
-function orderAgentRuns(rows: Iterable<AgentRunRow>): AgentRunRow[] {
-  const pending = new Map<string, AgentRunRow>();
-  for (const row of rows) {
-    if (pending.has(row.id)) throw new SessionBackupRestoreError(`AgentRun id 重复: ${row.id}`);
-    pending.set(row.id, row);
-  }
-
-  const ordered: AgentRunRow[] = [];
-  while (pending.size > 0) {
-    let progressed = false;
-    for (const [id, row] of pending) {
-      if (row.parent_agent_run_id === null || !pending.has(row.parent_agent_run_id)) {
-        ordered.push(row);
-        pending.delete(id);
-        progressed = true;
-      }
-    }
-    if (!progressed) throw new SessionBackupRestoreError('AgentRun 父链存在循环');
-  }
-  return ordered;
 }

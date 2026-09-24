@@ -24,7 +24,6 @@ CREATE TABLE document_chunks (
   asset_id           TEXT NOT NULL REFERENCES document_assets(id) ON DELETE CASCADE,
   text               TEXT NOT NULL,
   tokens             TEXT NOT NULL DEFAULT '',
-  markdown           TEXT,
   block_kinds_json   TEXT NOT NULL DEFAULT '[]',
   token_count        INTEGER NOT NULL DEFAULT 0,
   page               INTEGER,

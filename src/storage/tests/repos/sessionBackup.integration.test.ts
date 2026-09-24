@@ -5,6 +5,8 @@ import {
   SessionBackupReader,
   SessionBackupRestorer,
   SessionsRepo,
+  SubagentMessagesRepo,
+  SubagentsRepo,
   TurnsRepo,
 } from '../../index.js';
 import { createTestDatabase, type TestDatabase } from '../helpers/create-test-database.js';
@@ -90,6 +92,22 @@ describe('SessionBackupReader', () => {
     insertMessage.run('msg-a', 'session-cursor', 'turn-1', 'normal', '"old A"', 10, null);
     insertMessage.run('msg-summary', 'session-cursor', 'turn-1', 'summary', '"summary"', 30, 'msg-a');
     insertMessage.run('msg-b', 'session-cursor', 'turn-1', 'normal', '"B"', 20, null);
+    new SubagentsRepo(database.db).insert({
+      id: 'subagent-1',
+      sessionId: 'session-cursor',
+      parentTurnId: 'turn-1',
+      contextMode: 'subagent',
+      createdAt: 11,
+    });
+    const subagentMessages = new SubagentMessagesRepo(database.db);
+    subagentMessages.insert({
+      id: 'subagent-assistant', subagentId: 'subagent-1', role: 'assistant',
+      blocksJson: '[{"type":"text","text":"result"}]', interrupted: true, createdAt: 12,
+    });
+    subagentMessages.insert({
+      id: 'subagent-summary', subagentId: 'subagent-1', role: 'user', kind: 'summary',
+      blocksJson: '"summary"', summarizedThroughMessageId: 'subagent-assistant', createdAt: 13,
+    });
 
     const restored = new SessionBackupReader(database.db).readSession(
       'session-cursor',
@@ -98,8 +116,8 @@ describe('SessionBackupReader', () => {
         turns: [...rows.turns],
         messages: [...rows.messages],
         tasks: [...rows.tasks],
-        agentRuns: [...rows.agentRuns],
-        agentRunMessages: [...rows.agentRunMessages],
+        subagents: [...rows.subagents],
+        subagentMessages: [...rows.subagentMessages],
         toolExecutions: [...rows.toolExecutions],
         backgroundProcesses: [...rows.backgroundProcesses],
         attachmentImages: [...rows.attachmentImages],
@@ -118,5 +136,12 @@ describe('SessionBackupReader', () => {
     const history = new MessagesRepo(database.db)
       .listForSessionFromSummary('session-restored');
     expect(history.map((message) => message.id)).toEqual(['msg-summary', 'msg-b']);
+    expect(new SubagentMessagesRepo(database.db).listAllForSubagent('subagent-1')).toMatchObject([
+      { id: 'subagent-assistant', role: 'assistant', kind: 'normal', interrupted: 1, sequence: 1 },
+      {
+        id: 'subagent-summary', role: 'user', kind: 'summary', sequence: 2,
+        summarized_through_message_id: 'subagent-assistant',
+      },
+    ]);
   });
 });

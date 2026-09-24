@@ -29,6 +29,34 @@ describe('MCP 持久化', () => {
     });
   });
 
+  it('Server 列表投影只读取设置并计算缓存工具数量', () => {
+    const repo = new McpServersRepo(database.sqlite);
+    repo.insert({
+      id: 'mcp-summary',
+      name: 'summary-only',
+      install_source: 'manual',
+      market_entry_id: null,
+      config_json: JSON.stringify({ type: 'http', url: 'https://example.com/mcp' }),
+      tools_cache: JSON.stringify([
+        { serverToolName: 'one', inputSchema: { type: 'object' } },
+        { serverToolName: 'two', inputSchema: { type: 'object' } },
+      ]),
+      enabled: 1,
+      installed_at: 2,
+    });
+
+    const settings = repo.listSettings();
+    expect(settings).toEqual([{
+      name: 'summary-only',
+      install_source: 'manual',
+      market_entry_id: null,
+      config_json: JSON.stringify({ type: 'http', url: 'https://example.com/mcp' }),
+      enabled: 1,
+      cached_tool_count: 2,
+    }]);
+    expect(settings[0]).not.toHaveProperty('tools_cache');
+  });
+
   it('刷新时整批替换 Official Registry 缓存', () => {
     const repo = new McpMarketEntriesRepo(database.sqlite);
     repo.replaceSource('official', [{

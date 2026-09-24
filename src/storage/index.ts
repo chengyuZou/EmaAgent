@@ -62,7 +62,7 @@ export type {
   SpeechOutputRow,
 } from './repos/data/speechOutputs.js';
 export { McpServersRepo }  from './repos/profile/mcp-servers.js';
-export type { McpServerRow } from './repos/profile/mcp-servers.js';
+export type { McpServerRow, McpServerSettingsRow } from './repos/profile/mcp-servers.js';
 export { McpMarketEntriesRepo } from './repos/profile/mcp-market.js';
 export type { McpMarketEntryRow, McpMarketFetchStateRow } from './repos/profile/mcp-market.js';
 export { SkillsRepo }      from './repos/profile/skills.js';
@@ -118,12 +118,11 @@ export type {
   RelationshipMemoryExtraction,
   WorkMemoryExtraction,
 } from './repos/data/memory.js';
-// ── AgentRun 存储 ─────────────────────────────────────────────────────────────
-export { AgentRunsRepo } from './repos/data/agent-runs.js';
+// ── Subagent 存储 ─────────────────────────────────────────────────────────────
+export { SubagentsRepo } from './repos/data/subagents.js';
 export {
-  AgentRunMessagesRepo,
-  AgentRunMessageSerializationError,
-} from './repos/data/agent-run-messages.js';
+  SubagentMessagesRepo,
+} from './repos/data/subagent-messages.js';
 
 export {
   TasksRepo,
@@ -137,17 +136,19 @@ export {
   type TaskRowStatus,
 } from './repos/data/tasks.js';
 export type {
-  AgentRunCompletion,
-  AgentRunInsert,
-  AgentRunContextModeRow,
-  AgentRunRow,
-  AgentRunStatus,
-} from './repos/data/agent-runs.js';
+  SubagentCompletion,
+  SubagentInsert,
+  SubagentContextModeRow,
+  SubagentRow,
+  SubagentSummaryRow,
+  SubagentStatus,
+} from './repos/data/subagents.js';
 export type {
-  AgentRunMessageInsert,
-  AgentRunMessageRole,
-  AgentRunMessageRow,
-} from './repos/data/agent-run-messages.js';
+  SubagentMessageInsert,
+  SubagentMessageKind,
+  SubagentMessagePage,
+  SubagentMessageRow,
+} from './repos/data/subagent-messages.js';
 export { ToolExecutionsRepo } from './repos/data/tool-executions.js';
 export { BackgroundProcessesRepo } from './repos/data/backgroundProcesses.js';
 export type {

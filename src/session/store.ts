@@ -25,7 +25,7 @@ import {
 import type {
   Session,
   SessionListItem,
-  Message,
+  SessionMessage,
   Project,
   ProjectFolder,
   CreateSessionInput,
@@ -423,7 +423,7 @@ export class SessionStore {
   /**
    * 创建独立 Session 副本；`untilTurnId` 为空时完整复制，否则复制到该 Turn（含）。
    * 新 Session 重新生成 Turn 与 Message ID；附件块按原 path 引用源 Session 的
-   * 受管文件。不继承 Task、AgentRun 或正在运行的外部副作用。
+   * 受管文件。不继承 Task、Subagent 或正在运行的外部副作用。
    */
   forkSession(
     srcId:        string,
@@ -456,7 +456,7 @@ export class SessionStore {
 
   // ── Message ─────────────────────────────────────────────────────────────────
 
-  appendMessage(input: AppendMessageInput): Message {
+  appendMessage(input: AppendMessageInput): SessionMessage {
     if (input.turnId) {
       const turn = this.turnsRepo.findById(input.turnId);
       if (!turn) throw new Error(`turn_not_found: ${input.turnId}`);
@@ -494,7 +494,7 @@ export class SessionStore {
     turnId: string | null;
     summary: string;
     summarizedThroughMessageId: string;
-  }): Message {
+  }): SessionMessage {
     const through = this.messagesRepo.findById(input.summarizedThroughMessageId);
     if (!through || through.session_id !== input.sessionId) {
       throw new Error(
@@ -546,13 +546,13 @@ export class SessionStore {
   }
 
   /** 加载 LLM 可见历史；从最近 Summary 开始并保持时间正序。 */
-  loadHistory(sessionId: string, limit = DEFAULT_HISTORY_LIMIT): Message[] {
+  loadHistory(sessionId: string, limit = DEFAULT_HISTORY_LIMIT): SessionMessage[] {
     this.requireSession(sessionId);
     return this.messagesRepo.listForSessionFromSummary(sessionId, limit).map(toMessage);
   }
 
   /** 加载一个 Turn 的全部消息，供 Turn 后处理使用。 */
-  loadMessagesForTurn(turnId: string): Message[] {
+  loadMessagesForTurn(turnId: string): SessionMessage[] {
     return this.messagesRepo.listForTurn(turnId).map(toMessage);
   }
 
@@ -663,7 +663,7 @@ export class SessionStore {
     return toSession(row);
   }
 
-  private requireMessage(id: string): Message {
+  private requireMessage(id: string): SessionMessage {
     const row = this.messagesRepo.findById(id);
     if (!row) throw new Error(`message_not_found: ${id}`);
     return toMessage(row);

@@ -1,11 +1,5 @@
-// 保存一次 AgentLoop 的累计状态，并用不可变更新记录唯一停止原因。
-
 import type { LlmTokenUsage } from '@ema-agent/llm';
 
-/**
- * 循环还活着时的形态 + 终态。失败不是相位：Provider/执行错误以异常逃出
- * generator, 终态由根 Turn 或进程级 AgentRunExecutor 收口.
- */
 export type AgentLoopPhase =
   | 'thinking'
   | 'acting'
@@ -23,7 +17,7 @@ export interface AgentLoopState {
   readonly phase: AgentLoopPhase;
   // 当前的迭代次数
   readonly iterations: number;
-  /** 当前 AgentLoop 内全部物理 LLM 调用的累计用量。 */
+  /** 当前 AgentLoop 内全部 LLM 调用的 Token 累计用量 */
   readonly usage: LlmTokenUsage;
   readonly stopReason?: AgentLoopStopReason;
 }

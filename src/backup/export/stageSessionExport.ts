@@ -5,8 +5,8 @@ import type { SessionBackupReader, SessionBackupRows } from '@ema-agent/storage'
 import { SESSION_MANIFEST_PATH, sessionRecordFile } from '../records/sessionFormat.js';
 import type { OmittedSessionFile, SessionBackupManifest } from '../records/sessionRecords.js';
 import {
-  toAgentRunMessageRecord,
-  toAgentRunRecord,
+  toSubagentMessageRecord,
+  toSubagentRecord,
   toAttachmentImageRecord,
   toAttachmentPastedTextRecord,
   toBackgroundProcessRecord,
@@ -77,7 +77,7 @@ export function stageSessionExport(
 
     const manifest: SessionBackupManifest = {
       format: 'ema-session',
-      version: 2,
+      version: 3,
       sessionId,
       omittedFiles,
     };
@@ -109,8 +109,8 @@ function writeRecords(
   writeJsonl(directory, 'turns', rows.turns, toTurnRecord, signal);
   writeJsonl(directory, 'messages', rows.messages, toMessageRecord, signal);
   writeJsonl(directory, 'tasks', rows.tasks, toTaskRecord, signal);
-  writeJsonl(directory, 'agentRuns', rows.agentRuns, toAgentRunRecord, signal);
-  writeJsonl(directory, 'agentRunMessages', rows.agentRunMessages, toAgentRunMessageRecord, signal);
+  writeJsonl(directory, 'subagents', rows.subagents, toSubagentRecord, signal);
+  writeJsonl(directory, 'subagentMessages', rows.subagentMessages, toSubagentMessageRecord, signal);
   writeJsonl(directory, 'toolExecutions', rows.toolExecutions, toToolExecutionRecord, signal);
 
   const background = [...rows.backgroundProcesses];

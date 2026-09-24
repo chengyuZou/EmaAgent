@@ -17,7 +17,6 @@ function model(
 function idleExecutor(): StreamingToolExecutor {
   return {
     addTool: vi.fn(),
-    start: vi.fn(),
     allDone: () => true,
     hasWaitingUserTool: () => false,
     takeCompletedResults: () => [],
@@ -25,17 +24,16 @@ function idleExecutor(): StreamingToolExecutor {
   } as unknown as StreamingToolExecutor;
 }
 
-/** 单个工具：start 后第一次取结果时交付，随后枯竭。 */
+/** 单个工具：登记后第一次取结果时交付，随后枯竭。 */
 function oneShotExecutor(result: ToolResult): StreamingToolExecutor {
-  let started = false;
+  let registered = false;
   let delivered = false;
   return {
-    addTool: vi.fn(),
-    start: vi.fn(() => { started = true; }),
-    allDone: () => started,
+    addTool: vi.fn(() => { registered = true; }),
+    allDone: () => true,
     hasWaitingUserTool: () => false,
     takeCompletedResults: () => {
-      if (!started || delivered) return [];
+      if (!registered || delivered) return [];
       delivered = true;
       return [result];
     },
@@ -175,9 +173,10 @@ describe('runAgentLoop', () => {
     expect(terminalEvent(events)?.state.stopReason).toBe('aborted');
   });
 
-  it('消费方恢复事件流后才启动工具，并在 ToolResult 落库边界后才 acknowledge', async () => {
+  it('tool_use 落库边界恢复后立即启动工具, 不等 Assistant 结束; ToolResult 落库后才 acknowledge', async () => {
     let llmCall = 0;
     let started = false;
+    let startedWhileModelStreaming = false;
     let acknowledged = false;
     let delivered = false;
     const result: ToolResult = {
@@ -187,8 +186,7 @@ describe('runAgentLoop', () => {
       data: { uiOnly: true },
     };
     const executor = {
-      addTool: vi.fn(),
-      start: vi.fn(() => { started = true; }),
+      addTool: vi.fn(() => { started = true; }),
       allDone: () => started,
       hasWaitingUserTool: () => false,
       takeCompletedResults: () => {
@@ -208,6 +206,7 @@ describe('runAgentLoop', () => {
           name: 'Read',
           args: { path: 'a.ts' },
         };
+        startedWhileModelStreaming = started;
         yield { type: 'done' as const, stopReason: 'tool_use' as const };
         return;
       }
@@ -224,14 +223,107 @@ describe('runAgentLoop', () => {
     expect(observations.find(([type]) => type === 'tool_use_completed')).toEqual([
       'tool_use_completed', false, false,
     ]);
+    expect(startedWhileModelStreaming).toBe(true);
     expect(observations.find(([type]) => type === 'assistant_message_completed')).toEqual([
-      'assistant_message_completed', false, false,
+      'assistant_message_completed', true, false,
     ]);
     expect(observations.find(([type]) => type === 'tool_result')).toEqual([
       'tool_result', true, false,
     ]);
     expect(acknowledged).toBe(true);
     expect(terminalEvent(collected)?.finalText).toBe('finished');
+  });
+
+  it('多个 ToolResult 在工作历史中各占一条 User Message, 与逐条落库一致', async () => {
+    const seenMessages: Message[][] = [];
+    const results: ToolResult[] = [
+      { type: 'tool_result', toolCallId: 'call-1', content: 'first' },
+      { type: 'tool_result', toolCallId: 'call-2', content: 'second' },
+    ];
+    let registered = 0;
+    let delivered = false;
+    const executor = {
+      addTool: vi.fn(() => { registered += 1; }),
+      allDone: () => registered === 2,
+      hasWaitingUserTool: () => false,
+      takeCompletedResults: () => {
+        if (registered !== 2 || delivered) return [];
+        delivered = true;
+        return results;
+      },
+      acknowledgeResult: vi.fn(),
+    } as unknown as StreamingToolExecutor;
+    let llmCall = 0;
+    const stream: CallLlm = () => (async function* () {
+      llmCall += 1;
+      if (llmCall === 1) {
+        yield { type: 'tool_use_complete' as const, blockIndex: 0, callId: 'call-1', name: 'Read', args: {} };
+        yield { type: 'tool_use_complete' as const, blockIndex: 1, callId: 'call-2', name: 'Glob', args: {} };
+        yield { type: 'done' as const, stopReason: 'tool_use' as const };
+        return;
+      }
+      yield { type: 'done' as const, stopReason: 'end_turn' as const };
+    })();
+
+    await collect(baseInput({
+      prepareIteration: async ({ messages }) => {
+        seenMessages.push([...messages]);
+        return { request: { messages }, messages };
+      },
+      callLlm: stream,
+      createToolExecutor: () => executor,
+    }));
+
+    expect(seenMessages[1]!.slice(-3)).toMatchObject([
+      { role: 'assistant', content: [{ type: 'tool_use', id: 'call-1' }, { type: 'tool_use', id: 'call-2' }] },
+      { role: 'user', content: [{ type: 'tool_result', toolCallId: 'call-1' }] },
+      { role: 'user', content: [{ type: 'tool_result', toolCallId: 'call-2' }] },
+    ]);
+    expect(executor.acknowledgeResult).toHaveBeenCalledTimes(2);
+  });
+
+  it('模型在工具启动后断流时停止仍在运行的工具', async () => {
+    let running = false;
+    const executor = {
+      addTool: vi.fn(() => { running = true; }),
+      allDone: () => !running,
+      shutdown: vi.fn(async () => { running = false; }),
+    } as unknown as StreamingToolExecutor;
+    const stream: CallLlm = () => (async function* () {
+      yield { type: 'tool_use_complete' as const, blockIndex: 0, callId: 'call-1', name: 'Read', args: {} };
+      throw new Error('provider stream failed');
+    })();
+
+    await expect(collect(baseInput({
+      callLlm: stream,
+      createToolExecutor: () => executor,
+    }))).rejects.toThrow('provider stream failed');
+    expect(executor.addTool).toHaveBeenCalledOnce();
+    expect(executor.shutdown).toHaveBeenCalledWith('agent_loop_stopped');
+  });
+
+  it('事件消费方提前结束时停止已启动工具', async () => {
+    let running = false;
+    const executor = {
+      addTool: vi.fn(() => { running = true; }),
+      allDone: () => !running,
+      shutdown: vi.fn(async () => { running = false; }),
+    } as unknown as StreamingToolExecutor;
+    const stream: CallLlm = () => (async function* () {
+      yield { type: 'tool_use_complete' as const, blockIndex: 0, callId: 'call-1', name: 'Read', args: {} };
+      yield { type: 'text_delta' as const, blockIndex: 1, delta: '继续生成' };
+      yield { type: 'done' as const, stopReason: 'tool_use' as const };
+    })();
+
+    for await (const event of runAgentLoop(baseInput({
+      callLlm: stream,
+      createToolExecutor: () => executor,
+    }))) {
+      if (event.type === 'text_delta') break;
+    }
+
+    expect(executor.addTool).toHaveBeenCalledOnce();
+    expect(executor.shutdown).toHaveBeenCalledWith('agent_loop_stopped');
   });
 
   it('max_tokens 截断后注入续写提示并拼接 finalText', async () => {

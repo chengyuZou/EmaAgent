@@ -49,6 +49,18 @@ export interface MessageRowPage {
   nextCursor: MessagePageCursor | null;
 }
 
+/** 只供消息目录使用；正文必须按单条 Message 身份另取。 */
+export interface MessageHeaderRow {
+  id: string;
+  role: MessageRole;
+  created_at: number;
+}
+
+export interface MessageHeaderPage {
+  rows: MessageHeaderRow[];
+  nextCursor: MessagePageCursor | null;
+}
+
 export interface MessageRowWindow {
   rows: MessageRow[];
   hasOlder: boolean;
@@ -111,24 +123,54 @@ export class MessagesRepo {
     limit: number,
     order: 'asc' | 'desc',
   ): MessageRowPage {
-    // keyset 方向随排序:正序取"比游标新",倒序取"比游标旧";比较符与 ORDER 同向,链不断。
+    return this.listProjectedPage<MessageRow>('*', sessionId, cursor, limit, order);
+  }
+
+  /**
+   * 原始消息目录只读身份、角色和时间。`blocks_json` 可能很大，只有用户展开
+   * 某一条时才经 `findById` 读取，不能跟随折叠目录批量下发。
+   */
+  listHeadersPage(
+    sessionId: string,
+    cursor: MessagePageCursor | undefined,
+    limit: number,
+    order: 'asc' | 'desc',
+  ): MessageHeaderPage {
+    return this.listProjectedPage<MessageHeaderRow>(
+      'id, role, created_at',
+      sessionId,
+      cursor,
+      limit,
+      order,
+    );
+  }
+
+  /** Message 正文页与轻量目录共用同一套 keyset 方向和游标推进规则。 */
+  private listProjectedPage<Row extends { id: string; created_at: number }>(
+    projection: '*' | 'id, role, created_at',
+    sessionId: string,
+    cursor: MessagePageCursor | undefined,
+    limit: number,
+    order: 'asc' | 'desc',
+  ): { rows: Row[]; nextCursor: MessagePageCursor | null } {
+    // 正序取“比游标新”，倒序取“比游标旧”；比较符与 ORDER 同向，分页链不断。
     const direction = order === 'desc' ? 'DESC' : 'ASC';
     const comparator = order === 'desc' ? '<' : '>';
     const rows = cursor
       ? this.db.prepare(`
-          SELECT * FROM messages
+          SELECT ${projection} FROM messages
           WHERE session_id = ?
             AND (created_at ${comparator} ? OR (created_at = ? AND id ${comparator} ?))
           ORDER BY created_at ${direction}, id ${direction}
           LIMIT ?
         `).all(sessionId, cursor.createdAt, cursor.createdAt, cursor.id, limit + 1)
       : this.db.prepare(`
-          SELECT * FROM messages
+          SELECT ${projection} FROM messages
           WHERE session_id = ?
           ORDER BY created_at ${direction}, id ${direction}
           LIMIT ?
         `).all(sessionId, limit + 1);
-    const typedRows = rows as MessageRow[];
+    const typedRows = rows as Row[];
     const pageRows = typedRows.slice(0, limit);
     const last = pageRows.at(-1);
     return {

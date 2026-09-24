@@ -1,4 +1,4 @@
-// TaskStore 把 SQLite 原子操作映射成稳定工作项，并保持 Task 与 AgentRun 生命周期独立。
+// TaskStore 把 SQLite 原子操作映射成稳定工作项，并保持 Task 与 Subagent 生命周期独立。
 
 import { randomUUID } from 'node:crypto';
 import type {

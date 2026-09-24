@@ -1,27 +1,24 @@
-export { AgentRunExecutor } from './agentRunExecutor.js';
+export { SubagentExecutor } from './subagentExecutor.js';
 export type {
   PrepareSubagent,
   PrepareSubagentInput,
-  StartAgentRun,
-} from './agentRunExecutor.js';
-export { AgentRunStore } from './runs/agentRunStore.js';
-export { AgentRunMessagesStore } from './runs/agentRunMessagesStore.js';
+  StartSubagent,
+} from './subagentExecutor.js';
+export { SubagentStore } from './subagents/subagentStore.js';
+export { SubagentMessagesStore } from './subagents/subagentMessagesStore.js';
 export type {
-  AgentRun,
-  AgentRunCompletion,
-  AgentRunMessage,
-  AgentRunMessageRole,
-  AgentRunToolInteraction,
-  AgentRunStart,
-  AgentRunStatus,
-  AgentRunTransitionAction,
-  AgentRunTransitionResult,
-} from './runs/types.js';
+  Subagent,
+  SubagentCompletion,
+  SubagentMessage,
+  SubagentToolInteraction,
+  SubagentStart,
+  SubagentStatus,
+  SubagentSummary,
+} from './subagents/types.js';
 export { runAgentLoop } from './agentLoop.js';
 export type {
   AgentLoopEvent,
-  AgentRunEvent,
-  AgentRunChangedEvent,
+  SubagentEvent,
 } from './events.js';
 export type {
   AgentLoopPhase,

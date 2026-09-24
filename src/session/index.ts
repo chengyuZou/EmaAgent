@@ -14,6 +14,7 @@ export type {
   Session,
   SessionListItem,
   Message,
+  SessionMessage,
   Project,
   ProjectFolder,
   CreateSessionInput,

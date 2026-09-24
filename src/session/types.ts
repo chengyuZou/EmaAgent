@@ -91,9 +91,6 @@ export interface SessionListItem extends Session {
 
 export interface Message {
   id: string;
-  sessionId: string;
-  /** null = Session 级消息（如 /compact 的 summary），不归属任何 Turn。 */
-  turnId: string | null;
   role: MessageRole;
   kind: MessageKind;
   /**
@@ -103,6 +100,12 @@ export interface Message {
   blocks: MessageBlocks;
   interrupted: boolean;
   createdAt: number;
+}
+
+export interface SessionMessage extends Message {
+  sessionId: string;
+  /** null = Session 级消息（如 /compact 的 summary），不归属任何 Turn。 */
+  turnId: string | null;
 }
 
 /** 启动恢复从 Message 读取的 Tool 调用与既有结果，不依赖执行状态表正文。 */
@@ -161,7 +164,7 @@ export interface ListMessagesInput {
 }
 
 export interface MessagePage {
-  messages: Message[];
+  messages: SessionMessage[];
   olderCursor?: string;
   newerCursor?: string;
 }
@@ -173,7 +176,7 @@ export interface ListMessagesAroundInput {
 }
 
 export interface MessageWindow {
-  messages: Message[];
+  messages: SessionMessage[];
   /** 窗口左侧还有消息时返回, 后续通过 listMessages({ before }) 继续读取. */
   olderCursor?: string;
   /** 窗口右侧还有消息时返回, 后续通过 listMessages({ after }) 继续读取. */

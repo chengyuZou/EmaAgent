@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  AgentRunMessageSerializationError,
-  AgentRunMessagesRepo,
-  AgentRunsRepo,
   CharacterRepo,
   Database,
   DocumentAssetRepo,
@@ -166,48 +163,6 @@ describe('N-007 DocumentPreview MIME 契约', () => {
   });
 });
 
-describe('AgentRunMessage 序列化防御', () => {
-  it('合法内容正常写入并保持 JSON', () => {
-    withDatabase('data', (database) => {
-      insertAgentRun(database, 'run-a');
-      const repo = new AgentRunMessagesRepo(database.sqlite);
-      repo.insert({
-        agentRunId: 'run-a',
-        role: 'assistant',
-        content: { text: 'hello' },
-        createdAt: 2,
-      });
-
-      expect(repo.listForRun('run-a')).toHaveLength(1);
-      expect(JSON.parse(repo.listForRun('run-a')[0]!.content_json))
-        .toEqual({ text: 'hello' });
-    });
-  });
-
-  it('undefined 和循环引用在进入 SQLite 前被明确拒绝', () => {
-    withDatabase('data', (database) => {
-      insertAgentRun(database, 'run-a');
-      const repo = new AgentRunMessagesRepo(database.sqlite);
-      const circular: Record<string, unknown> = {};
-      circular['self'] = circular;
-
-      expect(() => repo.insert({
-        agentRunId: 'run-a',
-        role: 'assistant',
-        content: undefined,
-        createdAt: 2,
-      })).toThrow(AgentRunMessageSerializationError);
-      expect(() => repo.insert({
-        agentRunId: 'run-a',
-        role: 'tool_result',
-        content: circular,
-        createdAt: 3,
-      })).toThrow(AgentRunMessageSerializationError);
-      expect(repo.listForRun('run-a')).toEqual([]);
-    });
-  });
-});
-
 function insertAsset(database: Database, id: string): void {
   new DocumentAssetRepo(database.sqlite).insert({
     id,
@@ -219,25 +174,5 @@ function insertAsset(database: Database, id: string): void {
     status: 'ready',
     createdAt: 1,
     updatedAt: 1,
-  });
-}
-
-function insertAgentRun(database: Database, id: string): void {
-  database.sqlite.prepare(`
-    INSERT INTO sessions (id, title, cwd, created_at, updated_at)
-    VALUES ('session-a', 'Session A', 'D:/work', 1, 1)
-  `).run();
-  database.sqlite.prepare(`
-    INSERT INTO turns (
-      id, session_id, trigger_type, session_mode, narrative_policy,
-      status, created_at
-    ) VALUES ('turn-a', 'session-a', 'userMessage', 'work', 'auto', 'running', 1)
-  `).run();
-  new AgentRunsRepo(database.sqlite).insert({
-    id,
-    sessionId: 'session-a',
-    parentTurnId: 'turn-a',
-    contextMode: 'subagent',
-    createdAt: 1,
   });
 }
