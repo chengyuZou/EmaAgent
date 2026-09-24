@@ -1,7 +1,9 @@
-// FileReadTool 的桌面展示: 参数(路径+分页范围)与三态结果(文本/去重/图片)。
+// FileReadTool 的桌面展示: 参数(路径+分页范围)与结果卡.
+// 结果按类型分流: 图片直接渲染(base64 已有), 文本内容按扩展名走
+// Markdown 渲染 / hljs 高亮源码 / HTML 沙箱预览三态.
 // 只消费本 Tool 的类型化 data; 类型守卫失败一律返回 null, 由前端回落通用渲染。
-import type { JSX } from 'react';
-import { Badge } from '@ema-agent/ui';
+import { useMemo, useState, type JSX } from 'react';
+import { Badge, Button, Markdown, highlightFile, languageForPath } from '@ema-agent/ui';
 import type { FileReadResult } from './FileReadTool.js';
 
 // ── 类型守卫(消费 unknown data 的唯一入口) ────────────────────────────────────
@@ -123,23 +125,78 @@ export function FileReadResultView({ data }: { data: unknown }): JSX.Element | n
       );
     }
 
-    case 'file_content': {
-      const readLines = result.content === '' ? 0 : result.content.split('\n').length;
-      return (
-        <div className="flex items-center gap-2 text-[11px] leading-relaxed">
-          <span className="text-[var(--ema-text-secondary)]">
-            读取 <span className="font-medium">{readLines.toLocaleString()}</span> 行
-            <span className="text-[var(--ema-text-tertiary)]">
-              （共 {result.totalLines.toLocaleString()} 行）
-            </span>
-          </span>
-          {result.truncated && (
-            <Badge variant="warn">
-              已截断{result.nextOffset !== undefined ? ` · 从第 ${result.nextOffset} 行继续` : ''}
-            </Badge>
-          )}
-        </div>
-      );
-    }
+    case 'file_content':
+      return <FileReadContentCard result={result} />;
   }
+}
+
+// ── 文本内容卡: 按扩展名分流渲染 ─────────────────────────────────────────────
+
+type FileContentResult = Extract<FileReadResult, { type: 'file_content' }>;
+
+function FileReadContentCard({ result }: { result: FileContentResult }): JSX.Element {
+  const extension = result.filePath.split(/[\\/]/).pop()?.split('.').pop()?.toLowerCase() ?? '';
+  const isMarkdown = ['md', 'markdown', 'mdx'].includes(extension);
+  const isHtml = ['html', 'htm'].includes(extension);
+  const hasLanguage = languageForPath(result.filePath) !== null;
+  const [showHtmlPreview, setShowHtmlPreview] = useState(false);
+
+  // 高亮只跑一次, 分页追加的同文件结果是新对象, memo 按内容+路径缓存.
+  const highlighted = useMemo(
+    () => (!isMarkdown && hasLanguage ? highlightFile(result.content, result.filePath) : null),
+    [isMarkdown, hasLanguage, result.content, result.filePath],
+  );
+
+  const readLines = result.content === '' ? 0 : result.content.split('\n').length;
+  return (
+    <div className="flex flex-col gap-1 pr-6">
+      <div className="flex items-center gap-2 text-[11px] leading-relaxed">
+        <span className="text-[var(--ema-text-secondary)]">
+          读取 <span className="font-medium">{readLines.toLocaleString()}</span> 行
+          <span className="text-[var(--ema-text-tertiary)]">
+            （共 {result.totalLines.toLocaleString()} 行）
+          </span>
+        </span>
+        {result.truncated && (
+          <Badge variant="warn">
+            已截断{result.nextOffset !== undefined ? ` · 从第 ${result.nextOffset} 行继续` : ''}
+          </Badge>
+        )}
+        {isHtml && (
+          <span className="ml-auto flex gap-1">
+            <Button variant={showHtmlPreview ? 'ghost' : 'secondary'} size="sm" onClick={() => setShowHtmlPreview(false)}>
+              源码
+            </Button>
+            <Button variant={showHtmlPreview ? 'secondary' : 'ghost'} size="sm" onClick={() => setShowHtmlPreview(true)}>
+              预览
+            </Button>
+          </span>
+        )}
+      </div>
+
+      {isMarkdown && (
+        <div className="max-h-48 overflow-auto rounded-md border border-[var(--ema-border)] px-2 py-1 text-[11px]">
+          <Markdown source={result.content} />
+        </div>
+      )}
+
+      {isHtml && showHtmlPreview && (
+        /* sandbox 空属性: 禁脚本禁表单, 只渲染视觉; 本地文件与公网抓取同一边界. */
+        <iframe
+          sandbox=""
+          srcDoc={result.content}
+          title="HTML 预览"
+          className="h-48 w-full rounded-md border border-[var(--ema-border)] bg-white"
+        />
+      )}
+
+      {!isMarkdown && (!isHtml || !showHtmlPreview) && (
+        <pre className="hljs max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-md border border-[var(--ema-border)] px-2 py-1 font-mono text-[11px] leading-relaxed text-[var(--ema-text-secondary)]">
+          {highlighted !== null
+            ? <code dangerouslySetInnerHTML={{ __html: highlighted }} />
+            : result.content}
+        </pre>
+      )}
+    </div>
+  );
 }

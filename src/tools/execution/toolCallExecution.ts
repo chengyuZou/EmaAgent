@@ -28,8 +28,8 @@ type AnyTool = Tool<any, any, any, any>;
 export interface ToolExecutionEnvironment {
   readonly sessionId: string;
   readonly turnId: string;
-  /** 子 Agent 调用仍属于父 Turn，只额外关联自己的 AgentRun。 */
-  readonly agentRunId?: string;
+  /** 子 Agent 调用仍属于父 Turn，只额外关联自己的 Subagent。 */
+  readonly subagentId?: string;
   /** 父执行取消信号；每个 ToolInvocation 会再派生自己的 signal。 */
   readonly abortSignal: AbortSignal;
   /** 根 Turn 已经筛选并冻结的唯一 Tool 集合。 */
@@ -275,7 +275,7 @@ export class ToolCallExecution {
         callId: this.id,
         sessionId: this.environment.sessionId,
         turnId: this.environment.turnId,
-        agentRunId: this.environment.agentRunId,
+        subagentId: this.environment.subagentId,
         toolName: tool.name,
       });
       if (record) this.executionStatus = record.status;

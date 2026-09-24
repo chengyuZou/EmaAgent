@@ -22,8 +22,8 @@ describe('SubagentStore 终态', () => {
     store = new SubagentStore(new SubagentsRepo(database.sqlite));
     store.start({
       subagentId: 'subagent-1',
+      toolCallId: 'call-subagent-1',
       sessionId: 'session-1',
-      parentTurnId: 'turn-1',
       contextMode: 'subagent',
     });
   });
@@ -55,8 +55,8 @@ describe('SubagentStore 终态', () => {
 
     store.start({
       subagentId: 'subagent-2',
+      toolCallId: 'call-subagent-2',
       sessionId: 'session-1',
-      parentTurnId: 'turn-1',
       contextMode: 'subagent',
     });
     expect(store.cancel('subagent-2', '用户取消')).toBeUndefined();

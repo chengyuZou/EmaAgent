@@ -256,49 +256,48 @@ export class MessagesRepo {
    * 加载面向 LLM 的有界历史，最终按时间正序返回。
    *
    * - 无 summary：返回最新 `limit` 条消息。
-   * - 有 summary：保留最新 summary，并返回覆盖截止游标之后最新的消息。
-   *   边界取游标消息（summarized_through_message_id）的位置，不是 summary 自己的
-   *   插入时间——否则活跃 Turn 在摘要生成期间写入的 reminder/用户消息会被错误吞掉。
-   *   游标缺失时退回 summary 自身位置（写入路径保证非空，这只是 SQL 兜底）。
+   * - 有 summary: 保留最新 summary, 返回覆盖截止游标之后最新的非 summary 消息.
+   *   游标若指向旧 summary, 沿其覆盖游标追到原始消息; 不能用旧 summary 的
+   *   写入时间切边界, 否则会吞掉在旧摘要前写入但未被它覆盖的消息.
+   *   游标缺失时退回该 summary 自身位置.
    *
-   * 两层排序是刻意的：内层倒序利用索引截取最新 N 条，外层再恢复为
-   * LLM 需要的正序。`id` 是同毫秒消息的稳定排序键。
+   * 两层排序是刻意的: 内层倒序截取最新 N 条, 外层恢复为模型需要的正序.
+   * SessionStore.nextTs() 保证正常写入的 created_at 严格递增; id 是稳定平局键.
    */
   listForSessionFromSummary(sessionId: string, limit = 500): MessageRow[] {
     const boundedLimit = Number.isSafeInteger(limit) && limit > 0 ? limit : 500;
 
     return this.db
       .prepare(
-        `WITH latest_summary AS (
+        `WITH RECURSIVE latest_summary AS (
            SELECT *
              FROM messages
             WHERE session_id = ? AND kind = 'summary'
             ORDER BY created_at DESC, id DESC
             LIMIT 1
          ),
+         coverage_chain(id, depth) AS (
+           SELECT COALESCE(s.summarized_through_message_id, s.id), 0
+             FROM latest_summary s
+           UNION ALL
+           SELECT m.summarized_through_message_id, c.depth + 1
+             FROM coverage_chain c
+             JOIN messages m ON m.id = c.id
+            WHERE m.kind = 'summary'
+              AND m.summarized_through_message_id IS NOT NULL
+         ),
          coverage_boundary AS (
-           SELECT COALESCE(
-                    (SELECT m.created_at
-                       FROM messages m
-                       JOIN latest_summary s
-                         ON m.id = s.summarized_through_message_id),
-                    (SELECT s.created_at FROM latest_summary s)
-                  ) AS created_at,
-                  COALESCE(
-                    (SELECT m.id
-                       FROM messages m
-                       JOIN latest_summary s
-                         ON m.id = s.summarized_through_message_id),
-                    (SELECT s.id FROM latest_summary s)
-                  ) AS id
+           SELECT m.created_at, m.id
+             FROM coverage_chain c
+             JOIN messages m ON m.id = c.id
+            ORDER BY c.depth DESC
+            LIMIT 1
          ),
          recent_messages AS (
            SELECT m.*
              FROM messages m
             WHERE m.session_id = ?
-              AND NOT EXISTS (
-                SELECT 1 FROM latest_summary s WHERE s.id = m.id
-              )
+              AND m.kind <> 'summary'
               AND (
                 NOT EXISTS (SELECT 1 FROM latest_summary)
                 OR EXISTS (
@@ -316,8 +315,8 @@ export class MessagesRepo {
            UNION ALL
            SELECT * FROM recent_messages
          )
-         -- 展示顺序：summary 顶替最旧的历史段必须排第一；未覆盖消息可能先于摘要写入，
-         -- 纯按 created_at 排会把它们错误地放到 summary 前面。
+         -- 展示顺序: summary 顶替最旧的历史段必须排第一; 未覆盖消息可能先于摘要写入,
+         -- 纯按 created_at 排会把它们错误地放到 summary 前面.
          SELECT *
            FROM selected_messages
           ORDER BY CASE WHEN id = (SELECT id FROM latest_summary) THEN 0 ELSE 1 END,

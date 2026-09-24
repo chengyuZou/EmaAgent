@@ -14,7 +14,7 @@ export const omittedSessionFileSchema = z.object({
 
 export const sessionBackupManifestSchema = z.object({
   format: z.literal('ema-session'),
-  version: z.literal(3),
+  version: z.literal(5),
   sessionId: id,
   omittedFiles: z.array(omittedSessionFileSchema),
 }).strict();
@@ -112,7 +112,6 @@ export const taskRecordSchema = z.object({
 export const subagentRecordSchema = z.object({
   id,
   sessionId: id,
-  parentTurnId: id,
   contextMode: z.enum(['subagent', 'fork']),
   description: z.string().nullable(),
   providerId: nullableId,
@@ -129,13 +128,22 @@ export const subagentRecordSchema = z.object({
   completedAt: integer.nullable(),
 }).strict();
 
+export const subagentInvocationRecordSchema = z.object({
+  toolCallId: id,
+  subagentId: id,
+  createdAt: integer,
+}).strict();
+
 export const subagentMessageRecordSchema = z.object({
   id,
   subagentId: id,
-  role: z.enum(['assistant', 'tool_result']),
-  contentJson: z.string(),
+  role: z.enum(['user', 'assistant']),
+  kind: z.enum(['normal', 'tool_results', 'summary', 'continuation', 'reminder']),
+  blocksJson: z.string(),
+  interrupted: z.boolean(),
   sequence: nonNegativeInteger,
   createdAt: integer,
+  summarizedThroughMessageId: nullableId,
 }).strict();
 
 export const toolExecutionRecordSchema = z.object({
@@ -233,6 +241,7 @@ export type TurnRecord = z.infer<typeof turnRecordSchema>;
 export type MessageRecord = z.infer<typeof messageRecordSchema>;
 export type TaskRecord = z.infer<typeof taskRecordSchema>;
 export type SubagentRecord = z.infer<typeof subagentRecordSchema>;
+export type SubagentInvocationRecord = z.infer<typeof subagentInvocationRecordSchema>;
 export type SubagentMessageRecord = z.infer<typeof subagentMessageRecordSchema>;
 export type ToolExecutionRecord = z.infer<typeof toolExecutionRecordSchema>;
 export type BackgroundProcessRecord = z.infer<typeof backgroundProcessRecordSchema>;

@@ -1,10 +1,5 @@
-// 定义 Tool 框架跨结果共享的非执行类型。
 import { createHash } from 'node:crypto';
 
-// ── ReadFileState - turn 内跨工具调用共享的去重缓存 ──────────────────────────
-
-/** 内容的稳定指纹(sha256)。外部修改检测用定长哈希做基准,避免大文件全文比对;
- *  内容变必哈希变,与文件系统时间戳无关(只改 mtime 不改内容时哈希不变,照常放行)。 */
 export function contentHashOf(content: string): string {
   return createHash('sha256').update(content, 'utf8').digest('hex');
 }

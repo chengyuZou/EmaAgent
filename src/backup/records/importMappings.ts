@@ -2,6 +2,7 @@
 import type {
   SubagentMessageRow,
   SubagentRow,
+  SubagentInvocationRow,
   AttachmentImageRow,
   AttachmentPastedTextRow,
   BackgroundProcessRow,
@@ -17,6 +18,7 @@ import type {
 import type {
   SubagentMessageRecord,
   SubagentRecord,
+  SubagentInvocationRecord,
   AttachmentImageRecord,
   AttachmentPastedTextRecord,
   BackgroundProcessRecord,
@@ -116,7 +118,6 @@ export function restoreSubagentRecord(record: SubagentRecord, importedAt: number
   return {
     id: record.id,
     session_id: record.sessionId,
-    parent_turn_id: record.parentTurnId,
     context_mode: record.contextMode,
     description: record.description,
     provider_id: record.providerId,
@@ -134,15 +135,26 @@ export function restoreSubagentRecord(record: SubagentRecord, importedAt: number
   };
 }
 
+export const restoreSubagentInvocationRecord = (
+  record: SubagentInvocationRecord,
+): SubagentInvocationRow => ({
+  tool_call_id: record.toolCallId,
+  subagent_id: record.subagentId,
+  created_at: record.createdAt,
+});
+
 export const restoreSubagentMessageRecord = (
   record: SubagentMessageRecord,
 ): SubagentMessageRow => ({
   id: record.id,
   subagent_id: record.subagentId,
   role: record.role,
-  content_json: record.contentJson,
+  kind: record.kind,
+  blocks_json: record.blocksJson,
+  interrupted: record.interrupted ? 1 : 0,
   sequence: record.sequence,
   created_at: record.createdAt,
+  summarized_through_message_id: record.summarizedThroughMessageId,
 });
 
 export function restoreToolExecutionRecord(

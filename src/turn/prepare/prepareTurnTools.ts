@@ -1,12 +1,11 @@
-// 为一个根 Turn 冻结工具层：ToolPool、宿主能力上下文、权限判定上下文与两类交互口子。
+// 为一次 Turn 冻结工具层: ToolPool 宿主能力上下文 权限判定上下文与两类交互口子
 import type {
-  AgentRunExecutor,
+  SubagentExecutor,
   AgentLoopEvent,
   PrepareSubagent,
 } from '@ema-agent/agent';
 import type { KnowledgeSearch } from '@ema-agent/knowledge';
 import type { CallVision } from '@ema-agent/vision';
-import type { Message } from '@ema-agent/llm';
 import type {
   NarrativeClient,
   NarrativeLlmConnection,
@@ -35,43 +34,30 @@ import {
   type AskUserRequiredEvent,
   type BackgroundProcess,
   type ReadFileState,
-  type StreamingToolExecutor as StreamingToolExecutorType,
+  StreamingToolExecutor,
   type ToolExecutionState,
   type ToolRegistry,
   type ToolResultStore,
   type ToolUseContext,
 } from '@ema-agent/tools';
-import { StreamingToolExecutor } from '@ema-agent/tools';
 import type { SessionMode, NarrativePolicy } from '@ema-agent/session';
 import type { TurnKnowledgeSelection } from '../types.js';
 import type { SessionInteractionQueue } from '../interactionQueue.js';
 import type { TurnStreamEvent } from '../events.js';
 
-/** Chat 只暴露只读检索与 Skill；Skill 读取指令，不授予 Work 工具。 */
-const CHAT_TOOL_IDS: ReadonlySet<string> = new Set([
-  BuiltinTools.Skill.id,
-  BuiltinTools.FileRead.id,
-  BuiltinTools.Glob.id,
-  BuiltinTools.Grep.id,
-  BuiltinTools.WebFetch.id,
-  BuiltinTools.WebSearch.id,
-  BuiltinTools.KnowledgeBaseSearch.id,
-  BuiltinTools.NarrativeSearch.id,
-]);
-
 export interface TurnToolsDeps {
   readonly registry: ToolRegistry;
   readonly interactionQueue: SessionInteractionQueue;
   readonly settings: SettingsStore;
-  readonly agentRuns: AgentRunExecutor;
+  readonly subagents: SubagentExecutor;
   readonly taskStore?: TaskStore;
   readonly knowledgeSearch?: KnowledgeSearch;
-  /** narrativePolicy 非 'off' 时构建本 Turn 召回闭包；与 resolveNarrativeLlm 同时缺失则无 Narrative 能力。 */
-  readonly narrativeClient?: NarrativeClient;
-  /** Turn 开始时解析一次当次 Narrative LLM 连接并冻结进闭包；未绑定或协议不支持返回 undefined。 */
+  /** narrativePolicy 非 'off' 时构建本 Turn 召回闭包; 与 resolveNarrativeLlm 同时缺失则无 Narrative 能力 */
+  readonly currentNarrativeClient?: () => NarrativeClient | undefined;
+  /** Turn 开始时解析一次当次 Narrative LLM 连接并冻结进闭包: 未绑定或协议不支持返回 undefined */
   readonly resolveNarrativeLlm?: () => NarrativeLlmConnection | undefined;
   readonly backgroundProcesses?: BackgroundProcess;
-  /** 每 Turn 解析一次 vision 调用闭包；无绑定时返回 undefined（PDF 只读文本层）。 */
+  /** 每 Turn 解析一次 vision 调用闭包: 无绑定时返回 undefined */
   readonly resolveVision?: () => CallVision | undefined;
   readonly commandRunner?: (
     cwd: string,
@@ -90,15 +76,13 @@ export interface PrepareTurnToolsInput {
   readonly workspaceRoots: readonly string[];
   readonly scratchpadDir?: string;
   readonly skillPool?: SkillPool;
-  /** 本 Turn 在当前激活知识库内冻结的文档范围。 */
+  /** 本 Turn 在当前激活知识库内冻结的文档范围 */
   readonly knowledge?: TurnKnowledgeSelection;
   readonly prepareSubagent: PrepareSubagent;
-  /** fork 子 Agent 继承用的父工作消息；不含 System Prompt、Tool Schema 或缓存标记。 */
-  readonly parentMessages: Message[];
-  readonly model: { readonly providerId: string; readonly modelId: string };
-  /** 事件出口由 turn.ts 绑定到本 Turn 的事件通道（每 Turn 一个）。 */
+  readonly providerId: string;
+  readonly modelId: string;
   readonly emit: (event: TurnStreamEvent) => void;
-  /** 子 Agent 的物理调用不经过根 AgentLoop，由 Turn 注入同一本账的终态出口。 */
+  /** 子 Agent 的物理调用不经过根 AgentLoop, 由 Turn 注入同一本账的终态出口 */
   readonly onSubagentLlmCallFinished?: (
     event: Extract<AgentLoopEvent, { type: 'llm_call_finished' }>,
   ) => void;
@@ -115,20 +99,18 @@ export interface PrepareTurnToolsInput {
 
 export interface TurnToolsAssembly {
   readonly toolPool: ToolPool;
-  readonly toolContext: ToolUseContext;
-  readonly permissionContext: ToolPermissionContext;
-  /** 本 Turn 冻结的召回闭包：auto 时进 Tool Context，always 时供 reminder；off 或无能力为 undefined。 */
+  /** 本 Turn 冻结的召回闭包: auto 时进 Tool Context, always 时供 reminder: off 或无能力为 undefined */
   readonly narrativeSearch?: NarrativeSearch;
-  readonly createExecutor: (wake: () => void) => StreamingToolExecutorType;
-  /** 子 Agent 执行器：收窄后的独立 ToolPool、关联 agentRunId、无 askPermission（headless）。 */
+  readonly createExecutor: (wake: () => void) => StreamingToolExecutor;
+  /** 子 Agent 执行器: 收窄后的独立 ToolPool 关联 subagentId 无 askPermission */
   readonly createSubagentExecutor: (args: {
-    agentRunId: string;
+    subagentId: string;
     toolPool: ToolPool;
     signal: AbortSignal;
     wake: () => void;
-  }) => StreamingToolExecutorType;
+  }) => StreamingToolExecutor;
   readonly abortTool: (toolCallId: string) => boolean;
-  readonly abortAgentRun: (agentRunId: string) => boolean;
+  readonly abortSubagent: (subagentId: string) => boolean;
   /** 根 Turn 终态前调用：先停工具再停子 Agent；幂等。 */
   readonly shutdown: (reason: string) => Promise<void>;
 }
@@ -190,7 +172,7 @@ export function prepareTurnTools(
     const outcome = await awaitInteraction(promise, signal, () => {
       deps.interactionQueue.cancel(toolCallId, 'turn aborted');
     });
-    // 取消/超时也要发空答案清前端卡片；空答案 resolved 是清卡信号，不是成功。
+    // 取消/超时也要发空答案清前端卡片: 空答案 resolved 是清卡信号, 不是成功
     input.emit({
       type: 'ask_user_resolved',
       sessionId,
@@ -204,13 +186,14 @@ export function prepareTurnTools(
   const commandRunner = deps.commandRunner?.(cwd, input.workspaceRoots);
   const vision = deps.resolveVision?.();
   // 召回闭包在本 Turn 构建一次: LLM 连接与模式覆盖全部冻结;
-  // auto 时模型经 Tool 触发，always 时 reminder 触发，二者共用同一实现。
+  // auto 时模型经 Tool 触发, always 时 reminder 触发, 二者共用同一实现
   const narrativeSearch = ((): NarrativeSearch | undefined => {
     if (input.narrativePolicy === 'off') return undefined;
-    if (!deps.narrativeClient || !deps.resolveNarrativeLlm) return undefined;
+    if (!deps.currentNarrativeClient || !deps.resolveNarrativeLlm) return undefined;
+    const client = deps.currentNarrativeClient();
+    if (!client) return undefined;
     const llm = deps.resolveNarrativeLlm();
     if (!llm) return undefined;
-    const client = deps.narrativeClient;
     const queryModeOverride = deps.settings.get(narrativeQueryModeSetting);
     return (query, mode, signal) =>
       prepareNarrativeRecall(client, {
@@ -247,15 +230,15 @@ export function prepareTurnTools(
       : {}),
     ...(deps.taskStore ? { taskStore: deps.taskStore } : {}),
     subagents: {
-      start: (prompt, options, runInBackground, signal) => deps.agentRuns.start({
+      start: (prompt, options, toolCallId, runInBackground, signal) => deps.subagents.start({
         sessionId,
         parentTurnId: turnId,
+        toolCallId,
         prompt,
         options: {
           ...options,
-          providerId: options.providerId ?? input.model.providerId,
-          modelId: options.modelId ?? input.model.modelId,
-          agentRunId: options.agentRunId,
+          providerId: options.providerId ?? input.providerId,
+          modelId: options.modelId ?? input.modelId,
         },
         prepareSubagent: input.prepareSubagent,
         parentSignal: signal,
@@ -264,11 +247,11 @@ export function prepareTurnTools(
           ? { onLlmCallFinished: input.onSubagentLlmCallFinished }
           : {}),
       }),
-      waitForInitialResult: (agentRunId, signal) =>
-        deps.agentRuns.waitForInitialResult(agentRunId, sessionId, signal),
-      moveToBackground: agentRunId => deps.agentRuns.moveToBackground(agentRunId, sessionId),
-      awaitResult: (agentRunId, signal) => deps.agentRuns.awaitResult(agentRunId, sessionId, signal),
-      cancel: agentRunId => deps.agentRuns.cancel(agentRunId, sessionId),
+      waitForInitialResult: (subagentId, signal) =>
+        deps.subagents.waitForInitialResult(subagentId, sessionId, signal),
+      moveToBackground: subagentId => deps.subagents.moveToBackground(subagentId, sessionId),
+      awaitResult: (subagentId, signal) => deps.subagents.awaitResult(subagentId, sessionId, signal),
+      cancel: subagentId => deps.subagents.cancel(subagentId, sessionId),
     },
     ...(input.skillPool ? { skillPool: input.skillPool } : {}),
     ...(scratchpadDir
@@ -278,14 +261,11 @@ export function prepareTurnTools(
     askUser,
   });
 
-  const assembled = assembleToolPool(deps.registry, toolContext);
-  const toolPool = input.sessionMode === 'chat'
-    ? assembled.filter(tool => CHAT_TOOL_IDS.has(tool.id))
-    : assembled;
-
+  const toolPool = assembleToolPool(deps.registry, toolContext);
+  
   const toolResultStore = deps.toolResultStore?.(sessionId);
-  let currentExecutor: StreamingToolExecutorType | undefined;
-  const createExecutor = (wake: () => void): StreamingToolExecutorType => {
+  let currentExecutor: StreamingToolExecutor | undefined;
+  const createExecutor = (wake: () => void): StreamingToolExecutor => {
     const executor = new StreamingToolExecutor({
       sessionId,
       turnId,
@@ -298,8 +278,8 @@ export function prepareTurnTools(
       ...(deps.toolExecutionState
         ? { toolExecutionState: deps.toolExecutionState }
         : {}),
-      // 根 Tool 的终态要等 AgentLoop 把 ToolResult Message 落库后再广播。
-      // 进度与权限仍实时转发，tool_result 由 TurnExecutor.translate 唯一产出。
+      // 根 Tool 的终态要等 AgentLoop 把 ToolResult Message 落库后再广播
+      // 进度与权限仍实时转发，tool_result 由 TurnExecutor.translate 唯一产出
       pushEv: event => {
         if (event.type !== 'tool_result') input.emit(event);
       },
@@ -312,36 +292,38 @@ export function prepareTurnTools(
   let stopped = false;
   return {
     toolPool,
-    toolContext,
-    permissionContext,
     ...(narrativeSearch ? { narrativeSearch } : {}),
     createExecutor,
-    createSubagentExecutor: ({ agentRunId, toolPool: subPool, signal, wake }) => {
+    createSubagentExecutor: ({ subagentId, toolPool: subPool, signal, wake }) => {
       const executor = new StreamingToolExecutor({
         sessionId,
         turnId,
-        agentRunId,
+        subagentId,
         abortSignal: signal,
         toolPool: subPool,
         permissionContext,
-        // 子 Agent 无 askPermission：headless，中央把 ask 收口为 deny。
+        // 子 Agent 无 askPermission: headless, 中央把 ask 收口为 deny
         toolContext,
         toolResultStore,
         ...(deps.toolExecutionState
           ? { toolExecutionState: deps.toolExecutionState }
           : {}),
-        pushEv: event => input.emit(event),
+        // 子代理终态由 SubagentExecutor 在 ToolResult 写入 transcript 后发布;
+        // 这里只实时转发执行进度和交互事件.
+        pushEv: event => {
+          if (event.type !== 'tool_result') input.emit(event);
+        },
         wake,
       });
       return executor;
     },
     abortTool: toolCallId => currentExecutor?.abortTool(toolCallId) ?? false,
-    abortAgentRun: agentRunId => deps.agentRuns.cancel(agentRunId, sessionId),
+    abortSubagent: subagentId => deps.subagents.cancel(subagentId, sessionId),
     shutdown: async reason => {
       if (stopped) return;
       stopped = true;
       await currentExecutor?.shutdown(reason);
-      await deps.agentRuns.abortForegroundForTurn(turnId);
+      await deps.subagents.abortForegroundForTurn(turnId);
     },
   };
 }

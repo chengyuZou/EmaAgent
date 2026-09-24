@@ -85,6 +85,28 @@ function terminalNames(events: StreamingToolExecutorEvent[]): string[] {
 }
 
 describe('StreamingToolExecutor', () => {
+  it('每个工具在登记时就开始调度, 后到的独占工具仍等待前一个完成', async () => {
+    const first = gatedTool('Read', true);
+    const second = gatedTool('Write', false);
+    const { executor } = makeExecutor([first.tool, second.tool]);
+
+    executor.addTool(0, 'c1', 'Read', { value: 1 });
+    await first.started;
+    executor.addTool(1, 'c2', 'Write', { value: 2 });
+
+    const secondStartedEarly = await Promise.race([
+      second.started.then(() => true),
+      tick().then(() => false),
+    ]);
+    expect(secondStartedEarly).toBe(false);
+
+    first.release();
+    await second.started;
+    second.release();
+    await executor.join();
+    expect(executor.takeCompletedResults().map(result => result.toolCallId)).toEqual(['c1', 'c2']);
+  });
+
   it('并发安全调用一起开跑,互不等待', async () => {
     const first = gatedTool('A', true);
     const second = gatedTool('B', true);
@@ -92,7 +114,6 @@ describe('StreamingToolExecutor', () => {
 
     executor.addTool(0, 'c1', 'A', { value: 1 });
     executor.addTool(1, 'c2', 'B', { value: 2 });
-    executor.start();
 
     await Promise.all([first.started, second.started]);
     first.release();
@@ -109,7 +130,6 @@ describe('StreamingToolExecutor', () => {
 
     executor.addTool(0, 'c1', 'Safe', { value: 1 });
     executor.addTool(1, 'c2', 'Unsafe', { value: 2 });
-    executor.start();
     await safe.started;
 
     const unsafeStartedEarly = await Promise.race([
@@ -132,7 +152,6 @@ describe('StreamingToolExecutor', () => {
 
     executor.addTool(0, 'c1', 'Slow', { value: 1 });
     executor.addTool(1, 'c2', 'Fast', { value: 2 });
-    executor.start();
     await Promise.all([slow.started, fast.started]);
 
     fast.release();
@@ -151,7 +170,6 @@ describe('StreamingToolExecutor', () => {
 
     executor.addTool(0, 'c1', 'A', { value: 1 });
     executor.addTool(1, 'c2', 'B', { value: 2 });
-    executor.start();
     await Promise.all([first.started, second.started]);
 
     second.release();
@@ -175,7 +193,6 @@ describe('StreamingToolExecutor', () => {
 
     executor.addTool(0, 'c1', 'Victim', { value: 1 });
     executor.addTool(1, 'c2', 'Sibling', { value: 2 });
-    executor.start();
     await Promise.all([victim.started, sibling.started]);
 
     expect(executor.abortTool('c1')).toBe(true);
@@ -194,7 +211,6 @@ describe('StreamingToolExecutor', () => {
     const { executor } = makeExecutor([gated.tool]);
 
     executor.addTool(0, 'c1', 'A', { value: 1 });
-    executor.start();
     await gated.started;
     const shutdown = executor.shutdown('turn_abort', 500);
     executor.addTool(1, 'c2', 'A', { value: 2 });

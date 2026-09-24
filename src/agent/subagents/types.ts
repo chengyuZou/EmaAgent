@@ -7,7 +7,6 @@ export type SubagentStatus = 'running' | 'completed' | 'failed' | 'cancelled';
 export interface Subagent {
   readonly id: string;
   readonly sessionId: string;
-  readonly parentTurnId: string;
   readonly contextMode: SubagentContextMode;
   readonly description?: string;
   readonly providerId?: string;
@@ -26,12 +25,18 @@ export interface Subagent {
 
 export interface SubagentStart {
   subagentId: string;
+  toolCallId: string;
   sessionId: string;
-  parentTurnId: string;
   contextMode: SubagentContextMode;
   description?: string;
   providerId?: string;
   modelId?: string;
+}
+
+export interface SubagentInvocation {
+  readonly toolCallId: string;
+  readonly subagentId: string;
+  readonly createdAt: number;
 }
 
 export interface SubagentCompletion {
@@ -45,7 +50,6 @@ export interface SubagentCompletion {
 export interface SubagentSummary {
   readonly id: string;
   readonly sessionId: string;
-  readonly parentTurnId: string;
   readonly contextMode: SubagentContextMode;
   readonly description?: string;
   readonly providerId?: string;

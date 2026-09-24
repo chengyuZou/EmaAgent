@@ -2,6 +2,7 @@
 import type {
   SubagentMessageRow,
   SubagentRow,
+  SubagentInvocationRow,
   AttachmentImageRow,
   AttachmentPastedTextRow,
   BackgroundProcessRow,
@@ -16,6 +17,7 @@ import type {
 import type {
   SubagentMessageRecord,
   SubagentRecord,
+  SubagentInvocationRecord,
   AttachmentImageRecord,
   AttachmentPastedTextRecord,
   BackgroundProcessRecord,
@@ -99,7 +101,6 @@ export const toTaskRecord = (row: SessionBackupTaskRow): TaskRecord => ({
 export const toSubagentRecord = (row: SubagentRow): SubagentRecord => ({
   id: row.id,
   sessionId: row.session_id,
-  parentTurnId: row.parent_turn_id,
   contextMode: row.context_mode,
   description: row.description,
   providerId: row.provider_id,
@@ -116,13 +117,22 @@ export const toSubagentRecord = (row: SubagentRow): SubagentRecord => ({
   completedAt: row.completed_at,
 });
 
+export const toSubagentInvocationRecord = (row: SubagentInvocationRow): SubagentInvocationRecord => ({
+  toolCallId: row.tool_call_id,
+  subagentId: row.subagent_id,
+  createdAt: row.created_at,
+});
+
 export const toSubagentMessageRecord = (row: SubagentMessageRow): SubagentMessageRecord => ({
   id: row.id,
   subagentId: row.subagent_id,
   role: row.role,
-  contentJson: row.content_json,
+  kind: row.kind,
+  blocksJson: row.blocks_json,
+  interrupted: row.interrupted === 1,
   sequence: row.sequence,
   createdAt: row.created_at,
+  summarizedThroughMessageId: row.summarized_through_message_id,
 });
 
 export const toToolExecutionRecord = (

@@ -1,7 +1,7 @@
 // 按 Session 串联用户排队输入和本进程后台终态, 并只在 Agent 的安全边界交付给模型.
 
 import { randomUUID } from 'node:crypto';
-import type { AgentRunStatus } from '@ema-agent/agent';
+import type { SubagentStatus } from '@ema-agent/agent';
 import type { SessionStore } from '@ema-agent/session';
 import type { BackgroundProcessNotifiableStatus } from '@ema-agent/tools';
 import type {
@@ -75,14 +75,14 @@ interface PendingInput extends Omit<QueuedSessionInput, 'delivery'> {
 /**
  * 后台完成通知只携带执行身份和终态, 不复制完整输出.
  * 分为子代理和后台Process两类, 但都只在当前进程内投递一次.
- * key 统一两类执行的去重身份; 完整结果分别留在 AgentRun SQL 和后台进程日志中.
+ * key 统一两类执行的去重身份; 完整结果分别留在 Subagent SQL 和后台进程日志中.
  */
 type CompletionNotice =
   | {
       readonly key: string;
-      readonly kind: 'agent_run';
+      readonly kind: 'subagent';
       readonly id: string;
-      readonly status: Exclude<AgentRunStatus, 'running'>;
+      readonly status: Exclude<SubagentStatus, 'running'>;
       claimedByTurnId?: string;
     }
   | {
@@ -119,7 +119,7 @@ export interface SessionContinuationQueueDeps {
 }
 
 /**
- * 队列只保存当前进程还没交付的输入和轻量完成通知. AgentRun 与后台命令的完整结果
+ * 队列只保存当前进程还没交付的输入和轻量完成通知. Subagent 与后台命令的完整结果
  * 由各自的 SQL/日志保存, 模型需要详情时按通知中的 id 调 SubagentAwait 或 ProcessOutput.
  */
 export class SessionContinuationQueue {
@@ -252,25 +252,25 @@ export class SessionContinuationQueue {
     }
   }
 
-  /** AgentRunExecutor 已先持久化终态, 此处只把轻量通知加入所属 Session. */
-  agentRunCompleted(
+  /** SubagentExecutor 已先持久化终态, 此处只把轻量通知加入所属 Session. */
+  subagentCompleted(
     sessionId: string,
-    agentRunId: string,
-    status: Exclude<AgentRunStatus, 'running'>,
+    subagentId: string,
+    status: Exclude<SubagentStatus, 'running'>,
   ): void {
     this.addCompletionNotice(sessionId, {
-      key: `agent_run:${agentRunId}`,
-      kind: 'agent_run',
-      id: agentRunId,
+      key: `subagent:${subagentId}`,
+      kind: 'subagent',
+      id: subagentId,
       status,
     });
   }
 
   /** SubagentAwait 已取得完整终态时, 撤掉尚未注入模型的同一条轻量通知. */
-  agentRunResultRead(sessionId: string, agentRunId: string): void {
+  subagentResultRead(sessionId: string, subagentId: string): void {
     const notices = this.completionNotices.get(sessionId);
     if (!notices) return;
-    const key = `agent_run:${agentRunId}`;
+    const key = `subagent:${subagentId}`;
     const remaining = notices.filter(notice => (
       notice.key !== key || notice.claimedByTurnId !== undefined
     ));
@@ -435,8 +435,8 @@ function publicItem(item: PendingInput): QueuedSessionInput {
 /** 把多条后台终态整理成一条内部 continuation Message, 模型再按 ID 主动读取完整结果. */
 function formatCompletionNoticeText(notices: readonly CompletionNotice[]): string {
   if (notices.length === 0) return '';
-  const lines = notices.map(notice => notice.kind === 'agent_run'
-    ? `AgentRun ${notice.id} 已结束, status=${notice.status}. 如需完整结果, 调用 SubagentAwait.`
+  const lines = notices.map(notice => notice.kind === 'subagent'
+    ? `Subagent ${notice.id} 已结束, status=${notice.status}. 如需完整结果, 调用 SubagentAwait.`
     : `BackgroundProcess ${notice.id} 已结束, status=${notice.status}. 如需完整输出, 调用 ProcessOutput.`);
   return `以下后台工作已结束. 这里只通知身份与终态, 不代表结果已读:\n${lines.join('\n')}`;
 }

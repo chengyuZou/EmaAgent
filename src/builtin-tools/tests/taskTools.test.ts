@@ -82,7 +82,7 @@ describe('TaskListTool', () => {
     const item = result.tasks.find((t) => t.id === taskId)!;
     expect(item).toMatchObject({ displayNumber: 2, version: 0, status: 'pending' });
     expect(item.blockedBy).toBeUndefined();
-    expect(item.activeAgentRunId).toBeUndefined();
+    expect(item.activeSubagentId).toBeUndefined();
     expect(store.list).toHaveBeenCalledWith(sessionId);
   });
 });

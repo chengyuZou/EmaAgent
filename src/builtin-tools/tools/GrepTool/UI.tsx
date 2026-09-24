@@ -59,7 +59,7 @@ export function GrepArgsView({ args }: { args: unknown }): JSX.Element | null {
 
 // ── 结果视图: 三态语义 ────────────────────────────────────────────────────────
 
-export function GrepResultView({ data }: { data: unknown }): JSX.Element | null {
+export function GrepResultView({ data, args }: { data: unknown; args?: unknown }): JSX.Element | null {
   const result = asGrepResult(data);
   if (!result) return null;
 
@@ -119,6 +119,7 @@ export function GrepResultView({ data }: { data: unknown }): JSX.Element | null 
       if (result.output === '') {
         return <span className="text-[11px] text-[var(--ema-text-tertiary)]">未找到匹配</span>;
       }
+      const regex = matchRegexFromArgs(args);
       return (
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2 text-[11px] leading-relaxed">
@@ -128,10 +129,44 @@ export function GrepResultView({ data }: { data: unknown }): JSX.Element | null 
             {result.truncated && <Badge variant="warn">已截断</Badge>}
           </div>
           <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] leading-relaxed text-[var(--ema-text-secondary)]">
-            {result.output}
+            {result.output.split('\n').map((line, index) => (
+              <span key={index}>
+                {index > 0 && '\n'}
+                <MatchedLine line={line} regex={regex} />
+              </span>
+            ))}
           </pre>
         </div>
       );
     }
   }
+}
+
+/** pattern 是正则源码, 编译失败(或参数缺失)时退回纯文本. */
+function matchRegexFromArgs(args: unknown): RegExp | null {
+  if (!isRecord(args) || typeof args['pattern'] !== 'string') return null;
+  try {
+    return new RegExp(args['pattern'], 'gi');
+  } catch {
+    return null;
+  }
+}
+
+function MatchedLine({ line, regex }: { line: string; regex: RegExp | null }): JSX.Element {
+  if (!regex) return <>{line}</>;
+  const parts: Array<string | JSX.Element> = [];
+  let lastIndex = 0;
+  for (const match of line.matchAll(regex)) {
+    if (match[0] === '') continue;
+    if (match.index > lastIndex) parts.push(line.slice(lastIndex, match.index));
+    parts.push(
+      <mark key={`${match.index}`} className="rounded-sm bg-[var(--ema-primary-muted)] px-0.5 text-[var(--ema-primary-text)]">
+        {match[0]}
+      </mark>,
+    );
+    lastIndex = match.index + match[0].length;
+  }
+  if (parts.length === 0) return <>{line}</>;
+  parts.push(line.slice(lastIndex));
+  return <>{parts}</>;
 }

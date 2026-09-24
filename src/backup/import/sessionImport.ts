@@ -15,6 +15,7 @@ import { SESSION_MANIFEST_PATH } from '../records/sessionFormat.js';
 import {
   subagentMessageRecordSchema,
   subagentRecordSchema,
+  subagentInvocationRecordSchema,
   attachmentImageRecordSchema,
   attachmentPastedTextRecordSchema,
   backgroundProcessRecordSchema,
@@ -30,6 +31,7 @@ import {
 import {
   restoreSubagentMessageRecord,
   restoreSubagentRecord,
+  restoreSubagentInvocationRecord,
   restoreAttachmentImageRecord,
   restoreAttachmentPastedTextRecord,
   restoreBackgroundProcessRecord,
@@ -68,7 +70,7 @@ export async function importSessionArchive(
       throw new SessionImportError('invalid_format', 'manifest 与 Session id 不一致');
     }
     const [
-      turns, messages, tasks, subagents, subagentMessages,
+      turns, messages, tasks, subagents, subagentInvocations, subagentMessages,
       toolExecutions, backgroundProcesses, attachmentImages, attachmentPastedTexts,
       speechOutputs, usageRecords,
     ] = await Promise.all([
@@ -76,6 +78,7 @@ export async function importSessionArchive(
       readJsonlRecords(archive, 'messages', messageRecordSchema),
       readJsonlRecords(archive, 'tasks', taskRecordSchema),
       readJsonlRecords(archive, 'subagents', subagentRecordSchema),
+      readJsonlRecords(archive, 'subagentInvocations', subagentInvocationRecordSchema),
       readJsonlRecords(archive, 'subagentMessages', subagentMessageRecordSchema),
       readJsonlRecords(archive, 'toolExecutions', toolExecutionRecordSchema),
       readJsonlRecords(archive, 'backgroundProcesses', backgroundProcessRecordSchema),
@@ -90,6 +93,10 @@ export async function importSessionArchive(
       backgroundProcesses, speechOutputs,
       usageRecords,
     });
+    const importedSubagentIds = new Set(subagents.map(subagent => subagent.id));
+    if (subagentInvocations.some(invocation => !importedSubagentIds.has(invocation.subagentId))) {
+      throw new SessionImportError('invalid_format', 'subagentInvocations 引用了归档外的子代理');
+    }
     assertSummaryCursors(messages);
 
     const warnings = manifest.omittedFiles.map(file => `${file.kind}:${file.id} 未包含文件内容`);
@@ -128,6 +135,7 @@ export async function importSessionArchive(
         })),
         tasks: tasks.map(restoreTaskRecord),
         subagents: subagents.map(row => restoreSubagentRecord(row, importedAt)),
+        subagentInvocations: subagentInvocations.map(restoreSubagentInvocationRecord),
         subagentMessages: subagentMessages.map(restoreSubagentMessageRecord),
         toolExecutions: toolExecutions.map(row => restoreToolExecutionRecord(row, importedAt)),
         backgroundProcesses: backgroundProcesses.map(row => restoreBackgroundProcessRecord(
@@ -190,7 +198,7 @@ function rewriteAttachmentPaths(
 function readManifest(filePath: string) {
   try {
     const value = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-    if (value?.format === 'ema-session' && value.version !== 3) {
+    if (value?.format === 'ema-session' && value.version !== 5) {
       throw new SessionImportError('unsupported_version', `不支持的 Session 备份版本: ${String(value.version)}`);
     }
     return sessionBackupManifestSchema.parse(value);

@@ -83,7 +83,7 @@ The active knowledge base and any document scope selected by the user are suppli
             ? undefined
             : hit.source.sectionPath.join(' > '),
         ].filter((part): part is string => part !== undefined);
-        const content = hit.markdown?.trim() || hit.text.trim();
+        const content = hit.text.trim();
 
         return `## 结果 ${index + 1}：${location.join(' · ')}\n${content}`;
       })

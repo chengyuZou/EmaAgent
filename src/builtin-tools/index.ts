@@ -43,7 +43,7 @@ export type {
   ToolUseContext,
   Scratchpad,
   SubagentContextMode,
-  SubagentRunResult,
+  SubagentResult,
   SubagentSpawnOptions,
   SubagentControl,
 } from '@ema-agent/tools';

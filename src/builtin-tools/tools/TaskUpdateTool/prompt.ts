@@ -13,7 +13,7 @@ Status progresses: \`pending\` → \`in_progress\` → \`completed\`.
 - Mark a task in_progress BEFORE beginning the work
 - Mark it completed immediately after the work is fully finished and verified
 - ONLY mark a task completed when you have FULLY accomplished it. Never mark completed if: tests are failing, implementation is partial, you hit unresolved errors, or you couldn't find necessary files or dependencies
-- If blocked, keep the task pending or in_progress and create a new task describing what must be resolved
+- If blocked, keep the existing task pending or in_progress and update its description with the blocker and next step. Create another task only for a genuinely separate goal
 
 ## Destructive Actions
 

@@ -1,7 +1,7 @@
 // 测试 Turn 初始背景消息的段序、空字段省略与 Git 摘要的凭据防线。
 import { describe, expect, it } from 'vitest';
 import type { GitSummary } from '@ema-agent/git';
-import { renderTurnReminder } from '../preparation/turnReminder.js';
+import { renderTurnReminder } from '../prepare/turnReminder.js';
 
 const GIT_OK: GitSummary = {
   capability: 'ok',
@@ -27,12 +27,12 @@ describe('renderTurnReminder', () => {
     expect(text).not.toContain('## Git 状态');
   });
 
-  it('段序固定：日期 → Git → 两轨记忆 → Narrative → 任务 → Scratchpad', () => {
+  it('段序固定：日期 → Git → Work 摘要 → 当前角色关系记忆 → Narrative → 任务 → Scratchpad', () => {
     const text = renderTurnReminder({
       currentDate: '2026-08-23',
       gitSummary: GIT_OK,
       memoryWork: '工作摘要',
-      memoryRelationship: '关系摘要',
+      memoryRelationship: '共享用户记忆与当前角色记忆',
       narrativeRecall: '剧情检索结果',
       taskReminder: '任务提醒',
       scratchpad: '已有文件：a.txt',
@@ -41,7 +41,7 @@ describe('renderTurnReminder', () => {
       '## 当前日期',
       '## Git 状态',
       '## Work 记忆摘要',
-      '## Relationship 记忆摘要',
+      '## Relationship 记忆',
       '## Narrative 检索结果',
       '## 任务提醒',
       '## Scratchpad',

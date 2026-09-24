@@ -181,14 +181,14 @@ describe('SessionContinuationQueue', () => {
 
   it('后台终态只注入执行 id 和状态, 不复制完整结果', () => {
     const fixture = createFixture(true);
-    fixture.queue.agentRunCompleted('session-a', 'agent-1', 'completed');
+    fixture.queue.subagentCompleted('session-a', 'agent-1', 'completed');
     fixture.queue.backgroundProcessCompleted('session-a', 'process-1', 'failed');
 
     const claim = fixture.queue.claimNextIteration('session-a', 'active-turn');
 
     expect(claim).toMatchObject({ type: 'completion_notices' });
     if (claim?.type !== 'completion_notices') throw new Error('应领取后台完成通知');
-    expect(claim.completionNoticeText).toContain('AgentRun agent-1 已结束, status=completed');
+    expect(claim.completionNoticeText).toContain('Subagent agent-1 已结束, status=completed');
     expect(claim.completionNoticeText).toContain('BackgroundProcess process-1 已结束, status=failed');
     expect(claim.completionNoticeText).toContain('SubagentAwait');
     expect(claim.completionNoticeText).toContain('ProcessOutput');
@@ -216,11 +216,11 @@ describe('SessionContinuationQueue', () => {
     expect(fixture.queue.claimNextIteration('session-a', 'active-turn')).toBeUndefined();
   });
 
-  it('SubagentAwait 读到完整终态后撤掉尚未交付的 AgentRun 通知', () => {
+  it('SubagentAwait 读到完整终态后撤掉尚未交付的 Subagent 通知', () => {
     const fixture = createFixture(true);
-    fixture.queue.agentRunCompleted('session-a', 'agent-1', 'completed');
+    fixture.queue.subagentCompleted('session-a', 'agent-1', 'completed');
 
-    fixture.queue.agentRunResultRead('session-a', 'agent-1');
+    fixture.queue.subagentResultRead('session-a', 'agent-1');
 
     expect(fixture.queue.claimNextIteration('session-a', 'active-turn')).toBeUndefined();
   });

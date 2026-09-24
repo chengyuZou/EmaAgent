@@ -6,7 +6,7 @@ import type {
   MessageBlocks,
   SessionStore,
 } from '@ema-agent/session';
-import { TurnMessageWriter } from '../loop/turnMessageWriter.js';
+import { TurnMessageWriter } from '../turnMessageWriter.js';
 
 interface RecordedAppend extends AppendMessageInput {
   id: string;

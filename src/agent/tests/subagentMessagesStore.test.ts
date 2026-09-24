@@ -21,8 +21,8 @@ describe('SubagentMessagesStore', () => {
     `).run();
     new SubagentsRepo(database.sqlite).insert({
       id: 'subagent-1',
+      toolCallId: 'call-subagent-1',
       sessionId: 'session-1',
-      parentTurnId: 'turn-1',
       contextMode: 'subagent',
       createdAt: 1,
     });

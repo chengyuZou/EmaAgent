@@ -32,7 +32,7 @@ src/tools/
 ├─ Tool/                          契约层
 │  ├─ tool.ts                     Tool 接口、ToolOrigin、校验结果类型
 │  ├─ buildTool.ts                工厂:fail-closed 默认值、maxResultBytes 校验、冻结
-│  ├─ toolInvocation.ts           单次调用身份(session/turn/agentRun/toolCall/signal)
+│  ├─ toolInvocation.ts           单次调用身份(session/turn/subagent/toolCall/signal)
 │  └─ toolUseContext.ts           宿主能力全集 + Subagent/AskUser/Scratchpad 等入口
 ├─ assembly/                      装配层
 │  ├─ toolRegistry.ts             进程库存;MCP 整批原子注册、来源冲突即错误

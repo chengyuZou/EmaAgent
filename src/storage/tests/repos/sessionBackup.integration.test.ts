@@ -94,8 +94,8 @@ describe('SessionBackupReader', () => {
     insertMessage.run('msg-b', 'session-cursor', 'turn-1', 'normal', '"B"', 20, null);
     new SubagentsRepo(database.db).insert({
       id: 'subagent-1',
+      toolCallId: 'call-subagent-1',
       sessionId: 'session-cursor',
-      parentTurnId: 'turn-1',
       contextMode: 'subagent',
       createdAt: 11,
     });
@@ -117,6 +117,7 @@ describe('SessionBackupReader', () => {
         messages: [...rows.messages],
         tasks: [...rows.tasks],
         subagents: [...rows.subagents],
+        subagentInvocations: [...rows.subagentInvocations],
         subagentMessages: [...rows.subagentMessages],
         toolExecutions: [...rows.toolExecutions],
         backgroundProcesses: [...rows.backgroundProcesses],
@@ -143,5 +144,8 @@ describe('SessionBackupReader', () => {
         summarized_through_message_id: 'subagent-assistant',
       },
     ]);
+    expect(new SubagentsRepo(database.db).listInvocationsForSession('session-restored')).toEqual([{
+      tool_call_id: 'call-subagent-1', subagent_id: 'subagent-1', created_at: 11,
+    }]);
   });
 });

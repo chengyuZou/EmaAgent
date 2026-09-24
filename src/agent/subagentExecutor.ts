@@ -1,5 +1,6 @@
 // 进程级持有子 Agent 的执行、结果归属与取消关系，使后台运行不再依附父 Turn。
 
+import { randomUUID } from 'node:crypto';
 import type { SubagentResult, SubagentSpawnOptions } from '@ema-agent/tools';
 import { runAgentLoop } from './agentLoop.js';
 import type { AgentLoopEvent, SubagentEvent } from './events.js';
@@ -19,8 +20,9 @@ export type PrepareSubagent = (input: PrepareSubagentInput) => Promise<AgentLoop
 export interface StartSubagent {
   readonly sessionId: string;
   readonly parentTurnId: string;
+  readonly toolCallId: string;
   readonly prompt: string;
-  readonly options: SubagentSpawnOptions & { readonly subagentId: string };
+  readonly options: SubagentSpawnOptions;
   readonly prepareSubagent: PrepareSubagent;
   readonly parentSignal: AbortSignal;
   readonly runInBackground: boolean;
@@ -66,19 +68,26 @@ export class SubagentExecutor {
   constructor(private readonly deps: SubagentExecutorDeps) {}
 
   start(input: StartSubagent): string {
-    const subagentId = input.options.subagentId;
+    const subagentId = randomUUID();
     if (this.stoppingReason) throw new Error(this.stoppingReason);
-    if (this.active.has(subagentId) || this.deps.store.get(subagentId)) {
-      throw new Error(`Subagent ${subagentId} 已存在`);
-    }
     if (this.active.size >= this.deps.maxConcurrent()) {
       throw new Error('子 Agent 已达到全进程并发上限');
     }
 
+    this.deps.store.start({
+      subagentId,
+      toolCallId: input.toolCallId,
+      sessionId: input.sessionId,
+      contextMode: input.options.contextMode ?? 'subagent',
+      ...(input.options.description ? { description: input.options.description } : {}),
+      ...(input.options.providerId ? { providerId: input.options.providerId } : {}),
+      ...(input.options.modelId ? { modelId: input.options.modelId } : {}),
+    });
+
     const controller = new AbortController();
     // 显式后台从出生起就属于 Session, 因此不能接父 Turn 的取消信号.
     // 默认路径先跟随父 Turn, 只有超过前台等待期限才解除这条关系.
-    const completion = this.execute(input, controller);
+    const completion = this.execute(input, subagentId, controller);
     const active: ActiveSubagent = {
       sessionId: input.sessionId,
       parentTurnId: input.parentTurnId,
@@ -223,22 +232,12 @@ export class SubagentExecutor {
     return active?.sessionId === sessionId ? active : undefined;
   }
 
-  private async execute(input: StartSubagent, controller: AbortController): Promise<SubagentResult> {
-    const { subagentId } = input.options;
+  private async execute(input: StartSubagent, subagentId: string, controller: AbortController): Promise<SubagentResult> {
     const startedAt = Date.now();
     const contextMode = input.options.contextMode ?? 'subagent';
     const providerId = input.options.providerId;
     const modelId = input.options.modelId;
     let toolCallCount = 0;
-    this.deps.store.start({
-      subagentId,
-      sessionId: input.sessionId,
-      parentTurnId: input.parentTurnId,
-      contextMode,
-      ...(input.options.description ? { description: input.options.description } : {}),
-      ...(providerId ? { providerId } : {}),
-      ...(modelId ? { modelId } : {}),
-    });
     this.deps.publish(input.sessionId, {
       type: 'subagent_started', subagentId, contextMode, startedAt,
       ...(modelId ? { modelId } : {}),

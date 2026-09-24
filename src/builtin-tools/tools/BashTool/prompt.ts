@@ -13,7 +13,7 @@ Avoid using this tool to run \`find\`, \`grep\`, \`cat\`, \`head\`, \`tail\`, \`
 While the Bash tool can do similar things, it's better to use the built-in tools as they provide a better user experience and make it easier to review tool calls and give permission.
 
 # Instructions
-- If your command will create new directories or files, first use this tool to run \`ls\` to verify the parent directory exists and is the correct location.
+- If your command will create new directories or files, first verify the parent directory and target location using a dedicated file tool when available; otherwise use this tool to run \`ls\`.
 - Always quote file paths that contain spaces with double quotes (e.g., cd "path with spaces/file.txt").
 - Each command starts in the session workspace; shell state and the working directory do NOT persist between commands. Prefer absolute or workspace-relative paths instead of relying on \`cd\`.
 - Avoid interactive commands that read from stdin (they will hang).
@@ -53,11 +53,10 @@ Git Safety Protocol:
   - Do not commit files that likely contain secrets (.env, credentials.json, etc). Warn the user if they specifically request to commit those files
   - Draft a concise (1-2 sentences) commit message that focuses on the "why" rather than the "what"
   - Ensure it accurately reflects the changes and their purpose
-3. Run the following commands in parallel:
+3. Run the following commands in order:
    - Add relevant untracked files to the staging area.
    - Create the commit with a message.
    - Run git status after the commit completes to verify success.
-   Note: git status depends on the commit completing, so run it sequentially after the commit.
 4. If the commit fails due to pre-commit hook: fix the issue and create a NEW commit
 
 Important notes:
@@ -88,7 +87,7 @@ IMPORTANT: When the user asks you to create a pull request, follow these steps c
 2. Analyze all changes that will be included in the pull request, making sure to look at all relevant commits (NOT just the latest commit, but ALL commits that will be included in the pull request!!!), and draft a pull request title and summary:
    - Keep the PR title short (under 70 characters)
    - Use the description/body for details, not the title
-3. Run the following commands in parallel:
+3. Run the following commands in order:
    - Create new branch if needed
    - Push to remote with -u flag if needed
    - Create PR using gh pr create with the format below. Use a HEREDOC to pass the body to ensure correct formatting.

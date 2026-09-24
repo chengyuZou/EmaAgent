@@ -4,7 +4,7 @@ import type { SubagentControl, ToolInvocation } from '@ema-agent/tools';
 import { SubagentTool } from '../tools/SubagentTool/SubagentTool.js';
 import { SubagentAwaitTool } from '../tools/SubagentTool/SubagentAwaitTool.js';
 
-const AGENT_RUN_ID = 'call-sub-1';
+const SUBAGENT_ID = 'subagent-1';
 
 function makeInvocation(signal?: AbortSignal): ToolInvocation {
   return {
@@ -17,7 +17,7 @@ function makeInvocation(signal?: AbortSignal): ToolInvocation {
 
 function makeSubagents(overrides: Partial<SubagentControl> = {}): SubagentControl {
   return {
-    start: vi.fn(() => AGENT_RUN_ID),
+    start: vi.fn(() => SUBAGENT_ID),
     waitForInitialResult: vi.fn(async () => null),
     moveToBackground: vi.fn(),
     awaitResult: vi.fn(async () => null),
@@ -50,15 +50,13 @@ describe('SubagentTool — 三形态', () => {
 
     expect(result).toEqual({
       kind: 'background',
-      agentRunId: AGENT_RUN_ID,
+      subagentId: SUBAGENT_ID,
       via: 'requested',
     });
     expect(subagents.start).toHaveBeenCalledWith(
       '检查文件边界',
-      expect.objectContaining({
-        agentRunId: AGENT_RUN_ID,
-        contextMode: 'subagent',
-      }),
+      expect.objectContaining({ contextMode: 'subagent' }),
+      'call-sub-1',
       true,
       expect.any(AbortSignal),
     );
@@ -67,7 +65,7 @@ describe('SubagentTool — 三形态', () => {
   it('同步路径在 2 分钟内完成: 返回 completed 结果', async () => {
     const subagents = makeSubagents({
       waitForInitialResult: vi.fn(async () => ({
-        agentRunId: AGENT_RUN_ID,
+        subagentId: SUBAGENT_ID,
         output: 'done',
         usage: { inputTokens: 1, outputTokens: 2 },
       })),
@@ -79,7 +77,7 @@ describe('SubagentTool — 三形态', () => {
 
     expect(result).toMatchObject({ kind: 'completed', output: 'done' });
     expect(subagents.start).toHaveBeenCalledWith(
-      '检查文件边界', expect.any(Object), false, expect.any(AbortSignal),
+      '检查文件边界', expect.any(Object), 'call-sub-1', false, expect.any(AbortSignal),
     );
   });
 
@@ -105,7 +103,7 @@ describe('SubagentTool — 三形态', () => {
     }
   });
 
-  it('同步等待被中止: 取消同一个 AgentRun 后抛出', async () => {
+  it('同步等待被中止: 取消同一个 Subagent 后抛出', async () => {
     const controller = new AbortController();
     const subagents = makeSubagents({
       waitForInitialResult: vi.fn(() => new Promise(() => {})),
@@ -151,6 +149,7 @@ describe('SubagentTool — 模型身份成对校验', () => {
     expect(subagents.start).toHaveBeenCalledWith(
       '检查文件边界',
       expect.objectContaining({ providerId: 'deepseek', modelId: 'deepseek-chat' }),
+      'call-sub-1',
       true,
       expect.any(AbortSignal),
     );
@@ -159,7 +158,7 @@ describe('SubagentTool — 模型身份成对校验', () => {
 
 describe('SubagentAwait', () => {
   it('接受 Provider 产生的非 UUID ToolCall ID', () => {
-    expect(SubagentAwaitTool.inputSchema.safeParse({ agentRunId: AGENT_RUN_ID }).success).toBe(true);
+    expect(SubagentAwaitTool.inputSchema.safeParse({ subagentId: SUBAGENT_ID }).success).toBe(true);
   });
 
   it('Await 返回输出; 未知或仍被其他等待方持有时返回 output:null', async () => {
@@ -168,11 +167,11 @@ describe('SubagentAwait', () => {
     if (!projection.valid) throw new Error('投影应成功');
 
     const result = await SubagentAwaitTool.execute(
-      { agentRunId: AGENT_RUN_ID }, projection.context, makeInvocation(),
+      { subagentId: SUBAGENT_ID }, projection.context, makeInvocation(),
     );
 
     expect(result).toEqual({ output: null });
-    expect(subagents.awaitResult).toHaveBeenCalledWith(AGENT_RUN_ID, expect.any(AbortSignal));
+    expect(subagents.awaitResult).toHaveBeenCalledWith(SUBAGENT_ID, expect.any(AbortSignal));
     expect(SubagentAwaitTool.mapResultToModelContent!(result)).toContain('No result available');
   });
 });

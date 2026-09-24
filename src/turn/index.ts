@@ -28,13 +28,13 @@ export { createGenerationTargetResolver } from './turn.js';
 export {
   buildSessionSystemPrompt,
   resolveSkillPool,
-} from './preparation/sessionSystemPrompt.js';
+} from './prepare/sessionSystemPrompt.js';
 export type {
   SessionSystemPromptDeps,
   SessionSystemPromptInput,
   SkillPoolDeps,
-} from './preparation/sessionSystemPrompt.js';
-export { renderTurnReminder } from './preparation/turnReminder.js';
+} from './prepare/sessionSystemPrompt.js';
+export { renderTurnReminder } from './prepare/turnReminder.js';
 export type {
   RenderTurnReminderInput,
-} from './preparation/turnReminder.js';
+} from './prepare/turnReminder.js';

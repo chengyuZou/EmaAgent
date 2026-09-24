@@ -47,7 +47,7 @@ export interface Tool<TInput, TOutput, TContext, TProgress = never> {
   /** 发送给模型并用于匹配 tool_use 的名称。 */
   readonly name: string;
   readonly origin: ToolOrigin;
-  /** 写给模型看的用途与使用约束，不承担批准卡片的人话摘要。 */
+  /** 写给模型看的用途与使用约束，不承担批准卡片的简短摘要 */
   readonly description: string;
   /** 根据规范化输入生成批准卡片摘要。 */
   readonly getToolUseSummary?: (input: TInput) => string | undefined;

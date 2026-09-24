@@ -5,6 +5,7 @@ import type { SubagentRow, SubagentSummaryRow, SubagentsRepo } from '@ema-agent/
 import type {
   Subagent,
   SubagentCompletion,
+  SubagentInvocation,
   SubagentStart,
   SubagentStatus,
   SubagentSummary,
@@ -14,7 +15,6 @@ function fromRow(row: SubagentRow): Subagent {
   return {
     id: row.id,
     sessionId: row.session_id,
-    parentTurnId: row.parent_turn_id,
     contextMode: row.context_mode,
     status: row.status as SubagentStatus,
     createdAt: row.created_at,
@@ -38,7 +38,6 @@ function summaryFromRow(row: SubagentSummaryRow): SubagentSummary {
   return {
     id: row.id,
     sessionId: row.session_id,
-    parentTurnId: row.parent_turn_id,
     contextMode: row.context_mode,
     status: row.status as SubagentStatus,
     createdAt: row.created_at,
@@ -62,8 +61,8 @@ export class SubagentStore {
     const now = Date.now();
     const inserted = this.repo.insert({
       id: input.subagentId,
+      toolCallId: input.toolCallId,
       sessionId: input.sessionId,
-      parentTurnId: input.parentTurnId,
       contextMode: input.contextMode,
       description: input.description,
       providerId: input.providerId,
@@ -121,6 +120,14 @@ export class SubagentStore {
 
   listForSession(sessionId: string): SubagentSummary[] {
     return this.repo.listForSession(sessionId).map(summaryFromRow);
+  }
+
+  listInvocationsForSession(sessionId: string): SubagentInvocation[] {
+    return this.repo.listInvocationsForSession(sessionId).map(row => ({
+      toolCallId: row.tool_call_id,
+      subagentId: row.subagent_id,
+      createdAt: row.created_at,
+    }));
   }
 
   delete(subagentId: string): void {

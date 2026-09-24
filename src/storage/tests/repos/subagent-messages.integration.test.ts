@@ -23,8 +23,8 @@ describe('SubagentMessagesRepo', () => {
     `).run();
     new SubagentsRepo(database.db).insert({
       id: 'subagent-a',
+      toolCallId: 'call-subagent-a',
       sessionId: 'session-a',
-      parentTurnId: 'turn-a',
       contextMode: 'subagent',
       createdAt: 1,
     });

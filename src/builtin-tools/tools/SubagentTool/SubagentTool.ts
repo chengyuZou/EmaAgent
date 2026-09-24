@@ -20,7 +20,7 @@ interface SubagentToolContext {
 }
 
 /**
- * 同步等待的转交阈值: 超过即把 AgentRun 转交后台并返回引用。
+ * 同步等待的转交阈值: 超过即把 Subagent 转交后台并返回引用。
  * 比命令工具的 30s 宽, 因为子 Agent 的迭代粒度是 LLM 调用, 不是进程输出.
  */
 const AUTO_BACKGROUND_WAIT_MS = 120_000;
@@ -74,7 +74,7 @@ const inputSchema = z.object({
   runInBackground: z
     .boolean()
     .optional()
-    .describe('Return the agentRunId immediately and keep the agent running in the background.'),
+    .describe('Return the subagentId immediately and keep the agent running in the background.'),
 });
 
 type SubagentInput = z.infer<typeof inputSchema>;
@@ -83,14 +83,14 @@ type SubagentInput = z.infer<typeof inputSchema>;
 
 export interface SubagentCompletedResult {
   kind: 'completed';
-  agentRunId: string;
+  subagentId: string;
   output: string;
   usage: { inputTokens: number; outputTokens: number };
 }
 
 export interface SubagentBackgroundReference {
   kind: 'background';
-  agentRunId: string;
+  subagentId: string;
   /** requested=模型显式要求后台; auto=同步等待超限自动转交。 */
   via: 'requested' | 'auto';
 }
@@ -162,9 +162,6 @@ export const SubagentTool = buildTool<SubagentInput, SubagentResult, SubagentToo
     context: SubagentToolContext,
     invocation: ToolInvocation,
   ): Promise<SubagentResult> {
-    // Subagent ToolCall 与它创建的 AgentRun 是同一次业务动作. 共用 ID 后, History 中的
-    // tool_use 可以直接打开 AgentRun;刷新 Desktop 也不需要恢复第二张关联表.
-    const agentRunId = invocation.toolCallId;
     const role = getAgentRole(input.role ?? DEFAULT_AGENT_ROLE);
     if (!role) {
       throw new Error(
@@ -181,39 +178,38 @@ export const SubagentTool = buildTool<SubagentInput, SubagentResult, SubagentToo
           'A modelId alone is ambiguous — the same model id can exist on multiple providers.',
       );
     }
-    const options: SubagentSpawnOptions & { readonly agentRunId: string } = {
+    const options: SubagentSpawnOptions = {
       providerId,
       modelId,
       description: input.description,
       contextMode: input.contextMode ?? role.contextMode ?? ('subagent' as const),
-      agentRunId,
       systemPrompt: role.systemPrompt,
       disallowedTools: role.disallowedTools,
     };
 
     if (input.runInBackground) {
-      context.subagents.start(input.prompt, options, true, invocation.signal);
-      return { kind: 'background', agentRunId, via: 'requested' };
+      const subagentId = context.subagents.start(input.prompt, options, invocation.toolCallId, true, invocation.signal);
+      return { kind: 'background', subagentId, via: 'requested' };
     }
 
     // 同步路径: 后台拉起 + 限时等待，超时自动转交后台。
-    context.subagents.start(input.prompt, options, false, invocation.signal);
+    const subagentId = context.subagents.start(input.prompt, options, invocation.toolCallId, false, invocation.signal);
     const outcome = await raceWithAbort(
-      context.subagents.waitForInitialResult(agentRunId, invocation.signal),
+      context.subagents.waitForInitialResult(subagentId, invocation.signal),
       AUTO_BACKGROUND_WAIT_MS,
       invocation.signal,
     );
     if (outcome.kind === 'timeout') {
-      context.subagents.moveToBackground(agentRunId);
-      return { kind: 'background', agentRunId, via: 'auto' };
+      context.subagents.moveToBackground(subagentId);
+      return { kind: 'background', subagentId, via: 'auto' };
     }
     if (outcome.kind === 'aborted') {
       // 同步等待被取消: 取消子 Agent 再抛,不留孤儿运行。
-      context.subagents.cancel(agentRunId);
+      context.subagents.cancel(subagentId);
       throw outcome.reason instanceof Error ? outcome.reason : new Error(String(outcome.reason));
     }
     if (!outcome.result) {
-      throw new Error(`Sub-agent result unavailable (agentRunId: ${agentRunId})`);
+      throw new Error(`Sub-agent result unavailable (subagentId: ${subagentId})`);
     }
     return { kind: 'completed', ...outcome.result };
   },
@@ -223,10 +219,10 @@ export const SubagentTool = buildTool<SubagentInput, SubagentResult, SubagentToo
       const via = output.via === 'auto'
         ? 'transferred to background after 120s'
         : 'started in the background';
-      return `Sub-agent ${output.agentRunId} is ${via}. `
+      return `Sub-agent ${output.subagentId} is ${via}. `
         + 'You will be notified when it completes — do not poll or sleep. '
         + 'Use SubagentAwait to collect the result within this turn.';
     }
-    return output.output;
+    return `Sub-agent ${output.subagentId} completed.\n${output.output}`;
   },
 });

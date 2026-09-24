@@ -1,4 +1,4 @@
-// 子 Agent 的 AgentLoopInput 工厂：subagent/fork 上下文、收窄 ToolPool、headless 执行器、不落根 Macro。
+// 准备子 Agent 的模型调用、上下文与执行工具。
 import type { PrepareSubagent } from '@ema-agent/agent';
 import { createLlmCall } from '@ema-agent/llm';
 import type { CallLlm, Message } from '@ema-agent/llm';
@@ -6,8 +6,8 @@ import type { CompactRequest, CompactResult } from '@ema-agent/compact';
 import type { ProviderModels, Providers } from '@ema-agent/providers';
 import { BuiltinTools } from '@ema-agent/tools';
 import type { TurnStreamEvent } from '../events.js';
-import type { PreparedTurn } from '../preparation/prepareTurn.js';
-import { createPrepareLlmCall } from './prepareLlmCall.js';
+import type { PreparedTurn } from './prepareTurn.js';
+import { createPrepareAgentIteration } from './prepareAgentIteration.js';
 
 /** 子 Agent 永不获得的能力：递归派发、Task 读写与用户交互；只从父 Pool 继续收窄。 */
 const SUBAGENT_DENIED_TOOL_NAMES: ReadonlySet<string> = new Set([
@@ -37,7 +37,7 @@ export interface PrepareSubagentDeps {
 }
 
 export function createPrepareSubagent(deps: PrepareSubagentDeps): PrepareSubagent {
-  return async ({ agentRunId, prompt, options, signal }) => {
+  return async ({ subagentId, prompt, options, signal }) => {
     const prepared = deps.prepared();
     const providerId = options.providerId ?? prepared.providerId;
     const modelId = options.modelId ?? prepared.modelId;
@@ -92,13 +92,12 @@ export function createPrepareSubagent(deps: PrepareSubagentDeps): PrepareSubagen
       }),
     });
 
-    const prepareIteration = createPrepareLlmCall({
+    const prepareIteration = createPrepareAgentIteration({
       sessionId: deps.sessionId,
       turnId: deps.turnId,
       prepared: subPrepared,
       compact,
       emit: deps.emit,
-      baselineMessageCount: fork ? deps.parentMessages.length : 0,
       signal,
     });
 
@@ -107,7 +106,7 @@ export function createPrepareSubagent(deps: PrepareSubagentDeps): PrepareSubagen
       prepareIteration,
       callLlm,
       createToolExecutor: wake => prepared.tools.createSubagentExecutor({
-        agentRunId,
+        subagentId,
         toolPool: subPool,
         signal,
         wake,

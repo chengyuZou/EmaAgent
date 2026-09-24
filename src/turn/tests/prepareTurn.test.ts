@@ -1,6 +1,6 @@
 // 测试 prepareTurn 从 Session 冻结模型和推理选择、有序附件、Skill 引用与 Chat/Work 模式分流。
 import { describe, expect, it } from 'vitest';
-import type { AgentRunMessagesStore, AgentRunStore } from '@ema-agent/agent';
+import type { SubagentMessagesStore, SubagentStore } from '@ema-agent/agent';
 import type { AttachmentStore } from '@ema-agent/attachments';
 import type { ProviderModels, Providers } from '@ema-agent/providers';
 import type { SessionStore } from '@ema-agent/session';
@@ -13,7 +13,7 @@ import { TurnPreparationError } from '../errors.js';
 import {
   prepareTurn,
   type PrepareTurnDeps,
-} from '../preparation/prepareTurn.js';
+} from '../prepare/prepareTurn.js';
 import type { StartTurn } from '../types.js';
 
 const TURN: Turn = {
@@ -84,8 +84,8 @@ function makeDeps(overrides: Partial<PrepareTurnDeps> = {}): PrepareTurnDeps {
     disabledSkillPaths: () => [],
     registry: new ToolRegistry(),
     interactionQueue: new SessionInteractionQueue(null),
-    agentRunStore: {} as unknown as AgentRunStore,
-    agentRunMessagesStore: {} as unknown as AgentRunMessagesStore,
+    subagentStore: {} as unknown as SubagentStore,
+    subagentMessagesStore: {} as unknown as SubagentMessagesStore,
     ...overrides,
   };
 }
@@ -106,7 +106,6 @@ function makeRuntime(start: StartTurn) {
     request: start,
     turnId: TURN.id,
     prepareSubagent: async () => { throw new Error('不应派生子 Agent'); },
-    parentMessages: [],
     emit: () => undefined,
     signal: new AbortController().signal,
   };
@@ -115,19 +114,23 @@ function makeRuntime(start: StartTurn) {
 describe('prepareTurn', () => {
   it('将 Session 的 projectId 交给技能目录装载，并按项目文件夹冻结授权目录', async () => {
     const requested: Array<[string, string | null]> = [];
-    const prepared = await prepareTurn(
+    const runnerDirectories: Array<[string, readonly string[]]> = [];
+    await prepareTurn(
       makeDeps({
         skillEntries: async (cwd, projectId) => {
           requested.push([cwd, projectId]);
           return [];
+        },
+        commandRunner: (cwd, workspaceRoots) => {
+          runnerDirectories.push([cwd, workspaceRoots]);
+          return undefined;
         },
       }),
       makeRuntime(makeStart()),
     );
 
     expect(requested).toEqual([['/w', 'p1']]);
-    expect(prepared.cwd).toBe('/w');
-    expect(prepared.tools.permissionContext.workspaceRoots).toEqual(['/w']);
+    expect(runnerDirectories).toEqual([['/w', ['/w']]]);
   });
 
   it('项目全部源文件夹进入 Prompt，而工作区指令仍从 Session cwd 读取', async () => {

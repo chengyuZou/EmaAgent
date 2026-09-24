@@ -1,4 +1,4 @@
-// 读取单个 Task 的完整字段、依赖与当前活动 AgentRun;TaskUpdate 的 expectedVersion 从这里来。
+// 读取单个 Task 的完整字段、依赖与当前活动 Subagent;TaskUpdate 的 expectedVersion 从这里来。
 
 import { z } from 'zod';
 import {

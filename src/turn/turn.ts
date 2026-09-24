@@ -3,11 +3,12 @@ import * as fs from 'node:fs';
 import {
   runAgentLoop,
   type AgentLoopEvent,
+  type PrepareAgentIteration,
 } from '@ema-agent/agent';
 import type { VisionDescriptionCache } from '@ema-agent/attachments';
 import {
   appendEstimatedContextMessages,
-  buildHistoryMessages,
+  projectSessionMessages,
   estimatedContextUsage,
   providerContextUsage,
   type ContextUsage,
@@ -37,20 +38,20 @@ import {
   type TurnFailureCode,
 } from './errors.js';
 import type { TurnStreamEvent } from './events.js';
-import { createPrepareLlmCall } from './loop/prepareLlmCall.js';
-import { createPrepareSubagent } from './loop/prepareSubagent.js';
-import { TurnMessageWriter } from './loop/turnMessageWriter.js';
+import { createPrepareAgentIteration } from './prepare/prepareAgentIteration.js';
+import { createPrepareSubagent } from './prepare/prepareSubagent.js';
+import { TurnMessageWriter } from './turnMessageWriter.js';
 import {
   prepareTurn,
   prepareTurnInputParts,
   type PreparedTurn,
   type PrepareTurnDeps,
-} from './preparation/prepareTurn.js';
+} from './prepare/prepareTurn.js';
 import {
   renderTurnReminder,
   RenderTurnReminderInput,
-} from './preparation/turnReminder.js';
-import type { TurnToolsAssembly } from './preparation/prepareTurnTools.js';
+} from './prepare/turnReminder.js';
+import type { TurnToolsAssembly } from './prepare/prepareTurnTools.js';
 import type { TurnStore } from './turnStore.js';
 import type {
   ClaimedSessionContinuation,
@@ -69,6 +70,8 @@ import type {
 export interface TurnReminderScope {
   readonly sessionId: string;
   readonly turnId: string;
+  /** 与 Turn 行同一次冻结的角色目录名。 */
+  readonly characterName: string;
   readonly sessionMode: Turn['sessionMode'];
   /** auto = NarrativeSearchTool 可见；always = Turn 开头查询一次并写入 reminder；off = 两者皆无。 */
   readonly narrativePolicy: Turn['narrativePolicy'];
@@ -117,11 +120,6 @@ export interface TurnExecutorDeps extends PrepareTurnDeps {
    */
   readonly stage?: StageEngine;
   /**
-   * 用户消息落库后异步启动标题生成（内部自管读检/去重/条件写）；仅 userMessage
-   * 触发的 Turn 调用。不阻塞 AgentLoop，结果与 Turn 终态无关。
-   */
-  readonly startSessionTitleGeneration?: (sessionId: string, userText: string) => void;
-  /**
    * prepare 完成时读取当前激活角色的磁盘目录名（Character.directoryName），
    * 回填冻结到 Turn 行；与 characterPrompt 同一时点读取，保证同源。
    */
@@ -140,7 +138,7 @@ export interface TurnExecutorDeps extends PrepareTurnDeps {
  * 事件翻译都在 start() 内按 Turn 创建。Route 只拿这个入口，不接触任何内部件。
  */
 export class TurnExecutor {
-  /** 活动 Turn 的工具层快照，供 abortTool/abortAgentRun 按 turnId 定位。 */
+  /** 活动 Turn 的工具层快照，供 abortTool/abortSubagent 按 turnId 定位。 */
   private readonly runningTools = new Map<string, TurnToolsAssembly>();
   /** 活动 Turn 的 completion，供 abortAndAwait（Session 删除等编排）等待终态落库。 */
   private readonly runningCompletions = new Map<string, Promise<TurnOutcome>>();
@@ -210,8 +208,8 @@ export class TurnExecutor {
     return this.runningTools.get(turnId)?.abortTool(toolCallId) ?? false;
   }
 
-  abortAgentRun(turnId: string, agentRunId: string): boolean {
-    return this.runningTools.get(turnId)?.abortAgentRun(agentRunId) ?? false;
+  abortSubagent(turnId: string, subagentId: string): boolean {
+    return this.runningTools.get(turnId)?.abortSubagent(subagentId) ?? false;
   }
 
   private async pumpTurn(args: {
@@ -248,8 +246,7 @@ export class TurnExecutor {
         narrativePolicy: turn.narrativePolicy,
       });
 
-      // compact 闭包按 Turn 创建一次（内部含失败熔断计数）；prepared 就绪前延迟求值。
-      let compactForTurn: ((request: CompactRequest) => Promise<CompactResult>) | undefined;
+      let compact: ((request: CompactRequest) => Promise<CompactResult>) | undefined;
       const parentMessages: Message[] = [];
       const prepareSubagent = createPrepareSubagent({
         sessionId,
@@ -269,7 +266,6 @@ export class TurnExecutor {
         request: input,
         turnId,
         prepareSubagent,
-        parentMessages,
         emit,
         onSubagentLlmCallFinished: event => {
           recordAgentLlmCallUsage(
@@ -284,8 +280,9 @@ export class TurnExecutor {
       tools = prepared.tools;
       this.runningTools.set(turnId, tools);
       this.deps.turns.setModel(turnId, prepared.providerId, prepared.modelId, prepared.protocol);
-      this.deps.turns.setCharacterDirectoryName(turnId, this.deps.characterDirectoryName());
-      compactForTurn = this.deps.createCompact(prepared.callLlm);
+      const characterName = this.deps.characterDirectoryName();
+      this.deps.turns.setCharacterDirectoryName(turnId, characterName);
+      compact = this.deps.createCompact(prepared.callLlm);
 
       for (const degradation of prepared.degradations) {
         emit({ type: 'request_degraded', sessionId, turnId, ...degradation });
@@ -298,6 +295,7 @@ export class TurnExecutor {
       const reminderInput = await this.deps.readTurnReminder({
         sessionId,
         turnId,
+        characterName,
         sessionMode: turn.sessionMode,
         narrativePolicy: turn.narrativePolicy,
         ...(tools.narrativeSearch ? { narrativeSearch: tools.narrativeSearch } : {}),
@@ -305,7 +303,7 @@ export class TurnExecutor {
         signal,
         emit,
       });
-      const reminderMessage = this.deps.sessions.appendMessage({
+      this.deps.sessions.appendMessage({
         turnId,
         sessionId,
         role: 'user',
@@ -340,10 +338,6 @@ export class TurnExecutor {
       }
       // 队列项和后台结果只有在对应 Message 全部落库后才确认交付.
       this.deps.continuations.acknowledge(turnId);
-      // 标题生成：用户消息落库即异步启动，不等 AgentLoop；只有用户消息触发的 Turn 参与。
-      if (input.triggerType === 'userMessage' && userText.trim().length > 0) {
-        this.deps.startSessionTitleGeneration?.(sessionId, userText);
-      }
 
       const turnSkillPool = prepared.skillPool;
       const persistClaim = async (
@@ -393,14 +387,9 @@ export class TurnExecutor {
           }
         }
       };
-      // 历史区间 = reminder 之前的旧消息；reminder 从持久化读回（与落库同一份字节），
-      // 用户输入以解析后的全量 parts 进入当前 Turn（附件真实内容只在这一形态）。
-      // 两者都在不可压缩区间：Compact 只能改写 reminder 之前的旧历史。
+      // 历史, reminder 与本 Turn 用户输入按 SQL 顺序投影为同一条模型消息链.
+      // 后续 Macro 可以覆盖完整有效前缀, 不再被 Turn 边界截断.
       const persisted = this.deps.sessions.loadHistory(sessionId);
-      const reminderIndex = persisted.findIndex(message => message.id === reminderMessage.id);
-      if (reminderIndex < 0) {
-        throw new Error('reminder 消息落库后未能从 Session History 读回');
-      }
       // 每条 Assistant 历史关联所属 Turn 冻结的调用目标（providerId/modelId/protocol）；
       // 解析实现与 /compact Command 共用（createGenerationTargetResolver）。
       const resolveGenerationTarget = createGenerationTargetResolver(this.deps.turns);
@@ -411,20 +400,15 @@ export class TurnExecutor {
         ...(this.deps.describeImage ? { describeImage: this.deps.describeImage } : {}),
         signal,
       };
-      const historyWithIds = await buildHistoryMessages(
-        persisted.slice(0, reminderIndex),
+      const projected = await projectSessionMessages(
+        persisted,
         resolveGenerationTarget,
         attachmentOptions,
       );
-      const currentTurnWithIds = await buildHistoryMessages(
-        persisted.slice(reminderIndex),
-        resolveGenerationTarget,
-        attachmentOptions,
-      );
-      const initialMessages: Message[] = [
-        ...historyWithIds.map(entry => entry.message),
-        ...currentTurnWithIds.map(entry => entry.message),
-      ];
+      const initialMessages: Message[] = projected.map(entry => entry.message);
+      // 未落库的模型专用引导也占消息位置, 但没有 SQL ID.
+      const messageIds: (string | undefined)[] = projected.map(entry => entry.sessionMessageId);
+      const pendingMessageIds: (string | undefined)[] = [];
 
       const contextEstimates = new Map<string, ContextUsageEstimate>();
       let currentContextUsage:
@@ -446,25 +430,27 @@ export class TurnExecutor {
         });
       };
 
-      const prepareIteration = createPrepareLlmCall({
+      const prepareAgentIteration = createPrepareAgentIteration({
         sessionId,
         turnId,
         prepared,
-        compact: compactForTurn,
+        compact: compact,
         emit,
         usageRecorder: this.deps.usageRecorder,
-        baselineMessageCount: historyWithIds.length,
-        // 根 Turn 的 Macro 摘要落 Session：身份数组供 summarizedMessageCount 映射覆盖游标。
+        // 与 AgentLoop 消息按位置对齐; Macro 保存时用被覆盖前缀的 SQL 身份.
         macroPersistence: {
           sessions: this.deps.sessions,
-          baselineMessageIds: historyWithIds.map(entry => entry.sessionMessageId),
+          messageIds,
         },
         signal,
         onContextPrepared: publishEstimatedContext,
-        onWorkingMessagesPrepared: messages => {
-          parentMessages.splice(0, parentMessages.length, ...messages);
-        },
       });
+      const prepareIteration: PrepareAgentIteration = async input => {
+        const iteration = await prepareAgentIteration(input);
+        // fork 读取当前父模型消息; System 和本次请求缓存标记均不在此数组中.
+        parentMessages.splice(0, parentMessages.length, ...iteration.messages);
+        return iteration;
+      };
 
       let stopped: Extract<AgentLoopEvent, { type: 'loop_stopped' }> | undefined;
       const toolNames = new Map<string, string>();
@@ -479,11 +465,12 @@ export class TurnExecutor {
         createToolExecutor: tools.createExecutor,
         takeNextIterationMessages: async () => {
           const appended = await persistNextIterationMessages();
-          const projected = await buildHistoryMessages(
+          const projected = await projectSessionMessages(
             appended,
             resolveGenerationTarget,
             attachmentOptions,
           );
+          pendingMessageIds.push(...projected.map(entry => entry.sessionMessageId));
           return projected.map(entry => entry.message);
         },
         signal,
@@ -504,7 +491,17 @@ export class TurnExecutor {
           if (cleaned.length === 0) continue;
           downstream = { ...event, delta: cleaned };
         }
-        await writer.apply(downstream);
+        const storedMessageId = await writer.apply(downstream);
+        if (downstream.type === 'assistant_message_completed' || downstream.type === 'tool_result') {
+          pendingMessageIds.push(storedMessageId);
+        }
+        if (downstream.type === 'model_history_appended') {
+          // 完整 Assistant, 独立 ToolResult, 追加输入依次消耗已落库 ID.
+          // 续写提示与 stuck guide 只在模型历史里出现, 留下 undefined 位置.
+          for (let index = 0; index < downstream.messages.length; index += 1) {
+            messageIds.push(pendingMessageIds.shift());
+          }
+        }
         this.translate(downstream, sessionId, turnId, toolNames, emit);
         if (downstream.type === 'llm_call_usage_updated') {
           const estimate = contextEstimates.get(downstream.llmCallId);
@@ -651,9 +648,9 @@ export class TurnExecutor {
       if (terminal === 'completed') this.deps.continuations.turnCompleted(sessionId);
       if (prepared?.scratchpadDir) {
         const scratchpadDir = prepared.scratchpadDir;
-        // 后台 AgentRun 继续使用父 Turn 的 scratchpad. 清理动作跟随最后一个
+        // 后台 Subagent 继续使用父 Turn 的 scratchpad. 清理动作跟随最后一个
         // 派生运行结束, 但不反向占住已经完成的根 Turn.
-        void this.deps.agentRuns.waitForTurnAgentRuns(turnId).then(() => {
+        void this.deps.subagents.waitForTurnSubagents(turnId).then(() => {
           try {
             fs.rmSync(scratchpadDir, { recursive: true, force: true });
           } catch {

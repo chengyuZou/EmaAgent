@@ -1,6 +1,3 @@
-// 按 Session 与模型组装 System Prompt 的两个共享步骤：根 Turn（prepareTurn）与
-// /compact Command 共用，事实不变时逐字节一致（KV 前缀共享的前提）。
-// 拆开两个函数是因为 Turn 在工具层装配前就需要 Pool，而 toolNames 在工具层之后才有。
 import { getSystemPrompt, type PromptBlock } from '@ema-agent/prompts';
 import type { SessionMode } from '@ema-agent/session';
 import type { SettingsStore } from '@ema-agent/settings';
@@ -14,16 +11,16 @@ import {
 
 export interface SkillPoolDeps {
   readonly settings: SettingsStore;
-  /** SkillRegistry 当前全量条目（含工作区的 project 技能）。 */
+  /** SkillRegistry 当前全量条目(含工作区的 project 技能) */
   readonly skillEntries: (
     cwd: string,
     projectId: string | null,
   ) => Promise<readonly SkillDescriptor[]>;
-  /** skill_enablement 表的当前禁用路径列表（builtin/user 逐技能启停）。 */
+  /** skill_enablement 表的当前禁用路径列表 */
   readonly disabledSkillPaths: () => readonly string[];
 }
 
-/** Chat 与 Work 使用同一份冻结的 Skill 目录。 */
+/** Chat 与 Work 使用同一份冻结的 Skill 目录 */
 export async function resolveSkillPool(
   deps: SkillPoolDeps,
   cwd: string,
@@ -39,11 +36,11 @@ export async function resolveSkillPool(
 }
 
 export interface SessionSystemPromptDeps {
-  /** 角色包公共口：取当下全局唯一激活角色的 Prompt 段落（扁平数组）。 */
+  /** 角色包公共口: 取当下全局唯一激活角色的 Prompt 段落 */
   readonly characterPrompt: () => readonly string[];
-  /** 工作区指令（EMA.md/CLAUDE.md）按工作区读取；无工作区时不会调用。 */
+  /** 工作区指令(AGENT.md/CLAUDE.md等)按工作区读取 无工作区时不会调用 */
   readonly workspaceInstructions?: (cwd: string) => string | null;
-  /** 记忆使用指引（memory 包 buildMemoryGuidance 产出）。 */
+  /** 记忆使用指引(memory 包 buildMemoryGuidance 产出) */
   readonly memoryGuidance?: () => Promise<string | null> | string | null;
 }
 
@@ -80,7 +77,7 @@ export async function buildSessionSystemPrompt(
       : null,
     memorySection: await deps.memoryGuidance?.() ?? null,
     skillCatalog: input.skillPool ? renderSkillListing(input.skillPool) : null,
-    // MCP server instructions 尚无生产者（MCP 包未存 InitializeResult instructions），到位后恢复。
+    // MCP server instructions 尚无生产者(MCP 包未存 InitializeResult instructions) 到位后恢复
     mcpInstructions: null,
   });
 }

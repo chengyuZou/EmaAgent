@@ -8,7 +8,7 @@ import { cn } from '../utils/cn.js';
 // 与 Button 的差异:始终圆形、内容用 icon 类或 iconNode、label 必填(无障碍),
 // 不渲染可见文本,tooltip 由调用方负责。
 
-export type IconButtonVariant = 'default' | 'primary' | 'danger';
+export type IconButtonVariant = 'default' | 'primary' | 'danger' | 'ghost';
 export type IconButtonSize    = 'sm' | 'md' | 'lg';
 
 export interface IconButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'type' | 'children'> {
@@ -44,6 +44,11 @@ const VARIANT_CLASSES: Record<IconButtonVariant, { idle: string; toggled: string
     idle:    'bg-[var(--ema-surface-3)] hover:bg-[var(--ema-danger)]/60 hover:border-[var(--ema-danger)]/60 text-[var(--ema-text-primary)] hover:text-[var(--ema-text-inverse)] border-[var(--ema-border)]',
     toggled: 'bg-[var(--ema-danger)]/60 border-[var(--ema-danger)]/70 text-[var(--ema-text-inverse)]',
   },
+  // 裸态小图标钮(聊天工具栏/标签关闭/行内动作):默认透明, hover 才显底, 与 ema-chat-icon-btn 同语言。
+  ghost: {
+    idle:    'bg-transparent border-transparent text-[var(--ema-text-tertiary)] hover:bg-[var(--ema-surface-2)] hover:text-[var(--ema-text-primary)]',
+    toggled: 'bg-[var(--ema-primary-muted)] border-[color-mix(in_srgb,var(--ema-primary)_40%,transparent)] text-[var(--ema-primary-text)]',
+  },
 };
 
 const SIZE_CLASSES: Record<IconButtonSize, { box: string; icon: string }> = {
@@ -55,8 +60,8 @@ const SIZE_CLASSES: Record<IconButtonSize, { box: string; icon: string }> = {
 const BASE_CLASSES =
   'inline-flex items-center justify-center rounded-full border ' +
   'transition-ema cursor-pointer select-none ' +
-  'active:scale-92 hover:scale-108 ' +
-  'disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100 ' +
+  'active:scale-92 ' +
+  'disabled:cursor-not-allowed disabled:opacity-40 ' +
   'focus-ring';
 
 // ── Component ───────────────────────────────────────────────────────────────

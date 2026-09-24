@@ -1,133 +1,50 @@
 # Turn
 
-`src/turn` 拥有一次完整交互：建立 Turn 身份、冻结本轮一切可变事实、运行唯一一个根 AgentLoop、按事件顺序持续落库，并提交唯一终态。
+Turn 管一次根 Agent 对话：创建运行记录，准备模型和工具，写入消息，驱动 AgentLoop，最后写入 completed、failed 或 aborted。HTTP Route 不负责这些步骤，只调用 `TurnExecutor`。
 
-公开入口只有 `turn.ts` 的 `TurnExecutor`；领域词汇本包自持（`types.ts` 的 Turn/TurnFailureCode 等），共享词汇 SessionMode/NarrativePolicy/TurnStatus 来自 `@ema-agent/session`。
+## 对外接口
 
-## 唯一公开入口
+`TurnExecutor` 提供 `start`、`abort`、`abortAndAwait`、`abortTool` 和 `abortSubagent`。`start` 立即返回 `TurnHandle`；调用方从 `events` 读取过程事件，从 `completion` 等最终结果。`StartTurn.input` 是有序的文本、附件和 Skill 引用，Turn 保持这个顺序入库。模型和推理强度从 Session 读取，并在本轮准备时确定。
 
-```ts
-class TurnExecutor {
-  start(input: StartTurn): TurnHandle;
-  abort(sessionId: string, turnId: string): boolean;
-  abortAndAwait(sessionId: string, turnId: string): Promise<void>;
-  abortTool(turnId: string, toolCallId: string): boolean;
-  abortAgentRun(turnId: string, agentRunId: string): boolean;
-}
+## 一轮怎样运行
 
-interface TurnHandle {
-  readonly sessionId: string;
-  readonly turnId: string;
-  readonly events: AsyncIterable<TurnStreamEvent>; // 单消费者有界通道
-  readonly completion: Promise<TurnOutcome>;       // 唯一终态
-  abort(): void;
-}
-```
+1. `TurnStore.startTurn` 创建运行中的 Turn，同一 Session 不同时运行两根 Turn。
+2. `prepare/prepareTurn.ts` 读取 Session、设置和模型事实，处理输入附件与 Skill，准备工具和 System Prompt，返回本轮固定使用的 `PreparedTurn`。`prepare/prepareTurnTools.ts` 管工具池、权限询问和 AskUser 的执行入口。
+3. Turn 读取一次 reminder，先写 reminder，再写用户输入或后台完成通知。之后调用 `SessionStore.loadHistory`，由 Context 的 `projectSessionMessages` 把有效 SQL 消息投影为模型消息。这里不再切 `history/currentTurn`。
+4. 每次模型调用前，`prepare/prepareAgentIteration.ts` 用完整模型消息数组装配 Context，并把同一数组交给 Compact。Micro 改写消息内容；Macro 用摘要替换被覆盖的前缀，摘要作为 `kind='summary'` 的 Session Message 落库。System Prompt 只参加本次请求，不写入 Session Message，也不参加工作消息压缩。
+5. `AgentLoop` 产出流式事件。`turnMessageWriter.ts` 在首个 Assistant 增量时建行，后续更新同一行；`tool_use_completed` 先保存调用，AgentLoop 恢复后才启动工具；每个 `tool_result` 保存为独立 User Message。Turn 再把事件转发给前端。
+6. 完成时写入唯一终态，收口未完成的 Assistant 和工具调用，关闭交互队列与事件通道；队列决定是否启动下一根 Turn。
 
-- `start()` 同步创建并立刻返回句柄：TurnStore 建行（创建即 running、同 Session 唯一活动、`session_busy` 快速失败）→ 事件通道 → 异步泵送准备与主循环。
-- `StartTurn.input` 是唯一有序输入：`text / attachment / skill` 按数组位置持久化、投影给模型并用于历史展示。模型与推理强度从 Session 读取并在准备阶段冻结, 消息不再携带第二份模型选择；`knowledge.assetIds` 只约束当前激活知识库内的文档范围。Command/Skill 解析在调用方完成，Turn 不解析 `/` 语法，也不接受 prepare 回调。
-- `TurnOutcome` 只有 completed/failed/aborted 三态，与终态事件同一份数据。
-- 用户追加输入由 `SessionContinuationQueue` 接收。一条 Queue item 永远对应一条 UserMessage：普通输入等当前 Turn 完整结束后按顺序逐条启动新 Turn；立即引导按 `guide()` 成功顺序，在完整 ToolResult 批次之后逐条落库并进入当前 Turn 的下一次迭代。后台完成通知与用户输入使用互斥 claim；通知可合成一条 continuation Message，但不会与 UserMessage 共用一次领取或确认。
+## Macro 与消息 ID
 
-## 主链
+Compact 只认识模型消息数组和 `summarizedMessageCount`，不知道 SQL ID。Turn 同步保留一个同长度的 SQL ID 数组。最初的 ID 来自 `projectSessionMessages`；之后完整 Assistant、ToolResult 和追加的用户输入落库时，把新 ID 按 AgentLoop 的 `model_history_appended` 顺序补进去。
 
-```text
-start
-  → TurnStore.startTurn（建行 + 注册活动信号 + 收口同 Session 崩溃残留）
-  → prepareTurn（preparation/，一次性冻结）
-  │    ├─ 读取并冻结本 Turn 的 agent/compact/attachment/permission 设置
-  │    ├─ Session 事实（cwd/projectId/模型偏好）与当前 Project folders
-  │    ├─ 模型解析：Session 模型与推理强度；ProviderModels 事实 + resolveConnection + createLlm
-  │    ├─ 附件登记（AttachmentStore.addAll）→ 用户消息只保存 attachment_ref
-  │    ├─ Skill：work 态 freezeSkillPool + 选中引用冻结；正文由 Skill Tool 按需读取
-  │    ├─ 权限三桶 loadPermissionRuleBuckets
-  │    └─ prepareTurnTools：ToolUseContext + 根 ToolPool + askPermission/askUser 口子
-  │        → getSystemPrompt（扁平数组，含工具名投影）
-  ├─ setModel 回填 Turn 行
-  ├─ readTurnReminder（每根 Turn 一次：currentDate、git 仅 work、Memory 两轨摘要、
-  │    Narrative always 一次召回、Task take 一次性提醒、scratchpad 快照）→ renderTurnReminder
-  │    → 落 kind='reminder' 消息（先于用户消息）
-  ├─ 写 initial user Message（text / attachment_ref / skill_ref 保持输入顺序）
-  ├─ 若由后台完成通知触发，先写只含执行 id 与终态的 kind='continuation' Message
-  ├─ loadHistory 按 reminder 行切分：之前 = 可压缩历史区间；reminder + 当前用户消息
-  │    = 当前 Turn 区间；两段统一经 deriveLlmHistory 投影附件与 Skill 引用
-  └─ runAgentLoop（唯一一个根循环）
-       ├─ prepareLlmCall（loop/，每次模型调用前）
-       │    ├─ 基线切分：history（唯一可压缩区间）+ currentTurn
-       │    ├─ assembleContext → 未超直接返回
-       │    └─ 超限 compact：micro 直接重装配；macro 落 kind='summary' 消息（带当前 turnId，
-       │       摘要同时记录覆盖游标）再重装配；返回可能被改写的整体工作历史
-       ├─ TurnMessageWriter 流式落库
-       └─ 事件翻译 → TurnStreamEvent 通道
-  → finishSafely：writer 收口（interrupted + 孤儿 tool_use 合成）→ 交互队列清理
-    → 工具与子 Agent shutdown → 当前运行记录释放（SessionRunningRegistry，归 session 包）
-  → TurnStore 一次终态：completed / failed / aborted
-  → clearRunning 后通知 SessionContinuationQueue，决定是否启动下一根排队 Turn
-```
+续写提示和 stuck guide 当前仅存在于 AgentLoop 的模型消息里，没有 SQL 行；它们在 ID 数组中占 `undefined`。Macro 保存时取被覆盖前缀最后一个有 SQL 身份的消息作 `summarizedThroughMessageId`，不能拿“第 N 条 SQL 消息”推断。保存成功后，前缀的 ID 一起替换成新 Summary 的 ID。再次压缩若覆盖了这个 Summary，Storage 会沿 Summary 游标向前追到原始覆盖边界；重放时只放最新 Summary 和未覆盖的普通消息。
 
-## 持久化不变量
-
-- **yield 恢复 = 已保存**：`tool_use_completed` 落库后 AgentLoop 才登记调用；`assistant_message_completed` 落库后才允许 `executor.start()`；`tool_result` 落库后才 `acknowledgeResult()`。
-- 模型选择与实际调用协议在 prepare 解析成功后一次回填：`setModel(turnId, providerId, modelId, protocol)` 是唯一回填点，turns 行冻结三字段后不再从 Provider 配置事后反推。
-- 首个 delta 创建 assistant 消息，后续 delta 用 `updateMessageBlocks` 续写同一消息。
-- 终态非 completed 时未完成 assistant 标 `interrupted`；`max_tokens` 从头重试也先把被替代的半截消息标记为 `interrupted`。未等到 tool_result 的 tool_use 由 Turn 合成取消结果补配对；deriveLlmHistory 不重放中断 Assistant 或不完整 Tool 配对。
-- 先落库，再发事件：SSE 不是持久化触发器。
-- 立即引导在同一安全点逐条执行“领取 → 准备 → UserMessage 落库 → 发事件 → acknowledge”。后一条失败只 release 当前条目，已经确认的前序消息不会重新入队。
-
-## 权限与交互
-
-- 权限判定上下文（模式 + 三桶规则）Turn 冻结；settings 源次 Turn 生效，session 源本 Turn 即效。
-- 根 Turn 始终 interactive：`askPermission` 口子 = permission_required/resolved 事件 + interactionQueue 等回答 + `allowSession` 经 `applyPermissionUpdate` 沉淀 session 规则（`ruleSuggestion` 来自 Tool 的 ask 决策）。
-- 子 Agent headless：`createSubagentExecutor` 不提供 askPermission 口子，中央把 ask 收口为 deny。
-- Permission 与 AskUser 统一 toolCallId 锚，共用 `interactionQueue.ts` 的 Session FIFO（跨 Session 并行，Turn 终态统一取消）。
+这套对应关系是 Turn 内部运行状态，不向 Context、Compact 或 AgentLoop 增加 SQL 字段。模型专用引导目前没有落盘；如果以后要使它在重启后继续存在，需要单独改变 AgentLoop 的事件和 Session 写入流程。
 
 ## 子 Agent
 
-- `loop/prepareSubagent.ts`：clean 上下文或 fork 继承；`parentMessages` 只保存父 Agent 当前工作消息，不含根 System Prompt、Tool Schema 或缓存标记。ToolPool 只从父 Pool 收窄（disallowedTools + 内建拒绝：Subagent/SubagentAwait/Task 四件/AskUser）；每个子 Agent 拥有独立 Compact 状态且没有 `macroPersistence`，不碰根 Session 的 Macro 边界。
-- 子 Agent 的运行、2 分钟自动转后台和按 id 读取由 `AgentRunExecutor` 持有。后台完成只向 Session 队列交付轻量通知，完整输出不复制进根 Turn。
+`prepare/prepareSubagent.ts` 为子 Agent 选择模型、System Prompt、工具子集和独立的 Compact 闭包。子 Agent 不提供根 Session 的 `macroPersistence`，因此其摘要只改自己的模型消息。当前 fork 只复制父 Agent 已准备的消息；完整继承父 System Prompt、模型可见工具、Thinking，以及补齐尚未闭合的父 ToolUse，仍属于后续 fork 改造，不能把当前实现当成完整 fork。
 
-## 事件
-
-`turn/events.ts` 只拥有根 Turn 的生命周期及其 Tool/Permission/Compact/Narrative 事件. 后台 AgentRun 可能活过父 Turn, 因此由 Server 按 Session 直接发往 Agent WebSocket, 不再塞进 `TurnStreamEvent`.
-
-Context 球在根 Turn 运行时消费 `context_usage_updated`：请求装配先发总输入估算, 同一 `llmCallId` 收到 Provider Usage 后校正总输入和缓存子集；模型输出或 Tool Result 真正进入后续工作历史时, 再追加本地 Messages 估算。没有活动根调用时, Chat 从 Session 有效历史读取一次冷估算。成功保存 Macro 摘要后旧值失效并重读摘要及未覆盖尾部。`agent_usage_updated` 是根 AgentLoop 的累计消耗, 子 Agent 的同名事件保留在对应 `agent_run_event` 内, 二者都不更新 Context 球。
-
-Reminder 表示"本 Turn 开始时的事实"：TurnExecutor 每根 Turn 调一次 `readTurnReminder`（`TurnReminderScope`：sessionId/turnId/sessionMode/narrativePolicy/userText/emit）取回完整启动期输入（含 currentDate），`renderTurnReminder` 渲染后经 `appendMessage(kind='reminder')` 持久化，再由 loadHistory 读回放进当前 Turn 工作消息——同一份字节，不随 LLM Call 重建，也不进可压缩区间。Narrative 三态：always 在取输入时查询一次写入 reminder；auto 只装配 NarrativeSearchTool；off 两者皆无。
-
-## 目录
+## 文件位置
 
 ```text
 src/turn/
-├─ index.ts                 公共出口（含本包类型与事件）
-├─ types.ts                 StartTurn / TurnOutcome / TurnHandle
-├─ events.ts                TurnEvent / TurnStreamEvent / TurnAgentRunEvent
-├─ errors.ts                TurnOwnership/TurnPreparation + failureCodeOf/failureMessageOf
-├─ turn.ts                  TurnExecutor：唯一公开入口 + 主循环驱动
-├─ turnStore.ts             Turn 行 CRUD + 唯一终态 + 运行态/删除守卫 + 导航查询
-│                           （Session 当前根工作 = session 包 SessionRunningRegistry）
-├─ eventChannel.ts          TurnEvent 单消费者有界通道
-├─ interactionQueue.ts      SessionInteractionQueue（Permission/AskUser 共用的 Session FIFO）
-├─ sessionContinuationQueue.ts 用户追加输入、立即引导和后台完成通知的 Session 队列
-├─ settings.ts              workspace.instructionFiles（用户多选工作区指令文件，nextTurn 生效）
-├─ preparation/             Turn 启动一次性冻结
-│  ├─ prepareTurn.ts        StartTurn 请求 + 已创建 turnId 的一次性冻结编排
-│  ├─ prepareTurnTools.ts   工具层装配 + 权限/问询口子
-│  └─ turnReminder.ts       本 Turn 初始背景消息（kind='reminder'）的唯一文本构建
-├─ loop/                    运行期内部件
-│  ├─ prepareLlmCall.ts     PrepareAgentIteration 实现（assemble→compact→再 assemble）
-│  ├─ turnMessageWriter.ts  事件驱动流式落库
-│  └─ prepareSubagent.ts    子 Agent AgentLoopInput 工厂
-└─ tests/
+  turn.ts                    根 Turn 编排与唯一公开执行入口
+  turnMessageWriter.ts       AgentLoop 事件到 Session Message 的写入
+  turnStore.ts               Turn 行与运行状态
+  eventChannel.ts            单消费者过程事件通道
+  interactionQueue.ts        Permission 和 AskUser 等待队列
+  sessionContinuationQueue.ts 追加输入与后台完成通知队列
+  prepare/
+    prepareTurn.ts           一次性准备根 Turn
+    prepareTurnTools.ts      工具池及工具执行入口
+    prepareAgentIteration.ts 每次模型调用前装配与压缩
+    prepareSubagent.ts       子 Agent 调用准备
+    sessionSystemPrompt.ts   System Prompt 装配
+    turnReminder.ts          reminder 内容生成
+  tests/
 ```
 
-## 依赖方向
-
-```text
-turn ──> session / agent / context / compact / prompts / providers / skills / tools
-       / permission / attachments / characters / narrative / knowledge / sandbox / settings
-       / tasks / git / llm / storage
-```
-
-- 不实现任何 Provider、Tool、Memory、Narrative、Speech 或 HTTP 协议；Route 只拿 `TurnExecutor`，不接触内部件。
-- Memory 零 import：两轨摘要与使用指引文本经 `readTurnReminder` / `memoryGuidance` 注入闭包由 Server 装配。
-- 旧 `src/turnExecution` 已物理删除；不存在 RootAgentExecution 或任何第三层执行器。
+`types.ts`、`events.ts`、`errors.ts` 和 `index.ts` 分别定义公开词汇、事件、错误与包出口。测试只通过公开入口和真实消息读取验证行为，不为了测试暴露内部装配对象。

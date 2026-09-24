@@ -9,7 +9,6 @@ export type SubagentContextModeRow = 'subagent' | 'fork';
 export interface SubagentRow {
   id:                  string;
   session_id:          string;
-  parent_turn_id:      string;
   context_mode:        SubagentContextModeRow;
   description:         string | null;
   provider_id:         string | null;
@@ -28,8 +27,8 @@ export interface SubagentRow {
 
 export interface SubagentInsert {
   id: string;
+  toolCallId: string;
   sessionId: string;
-  parentTurnId: string;
   contextMode: SubagentContextModeRow;
   description?: string;
   providerId?: string;
@@ -37,10 +36,15 @@ export interface SubagentInsert {
   createdAt: number;
 }
 
+export interface SubagentInvocationRow {
+  tool_call_id: string;
+  subagent_id: string;
+  created_at: number;
+}
+
 export interface SubagentSummaryRow {
   id:              string;
   session_id:      string;
-  parent_turn_id:  string;
   context_mode:    SubagentContextModeRow;
   description:     string | null;
   provider_id:     string | null;
@@ -68,23 +72,40 @@ export class SubagentsRepo {
   constructor(private readonly db: SqliteDb) {}
 
   insert(value: SubagentInsert): SubagentRow | undefined {
-    return this.db.prepare(
-      `INSERT OR IGNORE INTO subagents (
-         id, session_id, parent_turn_id,
+    return this.db.transaction(() => {
+      const row = this.db.prepare(
+        `INSERT OR IGNORE INTO subagents (
+         id, session_id,
          context_mode, description, provider_id, model_id, status, created_at, updated_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, 'running', ?, ?)
+       ) VALUES (?, ?, ?, ?, ?, ?, 'running', ?, ?)
        RETURNING *`,
-    ).get(
-      value.id,
-      value.sessionId,
-      value.parentTurnId,
-      value.contextMode,
-      value.description ?? null,
-      value.providerId ?? null,
-      value.modelId ?? null,
-      value.createdAt,
-      value.createdAt,
-    ) as SubagentRow | undefined;
+      ).get(
+        value.id,
+        value.sessionId,
+        value.contextMode,
+        value.description ?? null,
+        value.providerId ?? null,
+        value.modelId ?? null,
+        value.createdAt,
+        value.createdAt,
+      ) as SubagentRow | undefined;
+      if (!row) return undefined;
+      this.db.prepare(
+        `INSERT INTO subagent_invocations (tool_call_id, subagent_id, created_at)
+         VALUES (?, ?, ?)`,
+      ).run(value.toolCallId, row.id, value.createdAt);
+      return row;
+    })();
+  }
+
+  listInvocationsForSession(sessionId: string): SubagentInvocationRow[] {
+    return this.db.prepare(
+      `SELECT invocation.tool_call_id, invocation.subagent_id, invocation.created_at
+         FROM subagent_invocations invocation
+         JOIN subagents subagent ON subagent.id = invocation.subagent_id
+        WHERE subagent.session_id = ?
+        ORDER BY invocation.created_at ASC, invocation.tool_call_id ASC`,
+    ).all(sessionId) as SubagentInvocationRow[];
   }
 
   // 终态迁移的唯一守卫是 status='running'：better-sqlite3 同步单写者，
@@ -154,7 +175,7 @@ export class SubagentsRepo {
 
   listForSession(sessionId: string, limit = 200): SubagentSummaryRow[] {
     return this.db.prepare(
-      `SELECT id, session_id, parent_turn_id, context_mode, description,
+      `SELECT id, session_id, context_mode, description,
               provider_id, model_id, status, error, iterations, tool_call_count,
               input_tokens, output_tokens, created_at, updated_at, completed_at
          FROM subagents
@@ -166,7 +187,7 @@ export class SubagentsRepo {
 
   findSummaryById(id: string): SubagentSummaryRow | undefined {
     return this.db.prepare(
-      `SELECT id, session_id, parent_turn_id, context_mode, description,
+      `SELECT id, session_id, context_mode, description,
               provider_id, model_id, status, error, iterations, tool_call_count,
               input_tokens, output_tokens, created_at, updated_at, completed_at
          FROM subagents

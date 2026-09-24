@@ -5,6 +5,7 @@ export { Button }     from './Button.js';
 export { IconButton } from './IconButton.js';
 export { Input }      from './Input.js';
 export { Textarea }   from './Textarea.js';
+export { Markdown, markdownSanitizeSchema } from './Markdown.js';
 export { Card }       from './Card.js';
 export { CardButton } from './CardButton.js';
 export { StatCard }  from './StatCard.js';

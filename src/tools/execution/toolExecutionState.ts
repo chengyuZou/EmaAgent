@@ -15,7 +15,7 @@ export interface ToolExecutionRecord {
   callId: string;
   sessionId: string;
   turnId: string;
-  agentRunId?: string;
+  subagentId?: string;
   toolName: string;
   status: ToolExecutionStatus;
   startedAt?: number;
@@ -29,7 +29,7 @@ export interface ToolExecutionPrepareRecord {
   callId: string;
   sessionId: string;
   turnId: string;
-  agentRunId?: string;
+  subagentId?: string;
   toolName: string;
   createdAt: number;
 }
@@ -63,7 +63,7 @@ export class ToolExecutionState {
     callId: string;
     sessionId: string;
     turnId: string;
-    agentRunId?: string;
+    subagentId?: string;
     toolName: string;
   }): ToolExecutionRecord {
     const now = Date.now();
@@ -72,7 +72,7 @@ export class ToolExecutionState {
       callId: args.callId,
       sessionId: args.sessionId,
       turnId: args.turnId,
-      agentRunId: args.agentRunId,
+      subagentId: args.subagentId,
       toolName: args.toolName,
       createdAt: now,
     });
@@ -83,7 +83,7 @@ export class ToolExecutionState {
       !existing
       || existing.sessionId !== args.sessionId
       || existing.turnId !== args.turnId
-      || existing.agentRunId !== args.agentRunId
+      || existing.subagentId !== args.subagentId
       || existing.toolName !== args.toolName
     ) {
       throw new ToolExecutionStateConflictError(

@@ -32,7 +32,6 @@ function makeStore(initial?: Subagent): SubagentStore {
       const subagent: Subagent = {
         id: input.subagentId,
         sessionId: input.sessionId,
-        parentTurnId: input.parentTurnId,
         contextMode: input.contextMode,
         status: 'running',
         createdAt: now,
@@ -64,12 +63,13 @@ function makeStore(initial?: Subagent): SubagentStore {
   } as unknown as SubagentStore;
 }
 
-function makeInput(subagentId: string, gate: Promise<void>, parentSignal: AbortSignal): StartSubagent {
+function makeInput(toolCallId: string, gate: Promise<void>, parentSignal: AbortSignal): StartSubagent {
   return {
     sessionId: 'session-1',
     parentTurnId: 'turn-1',
+    toolCallId,
     prompt: '检查实现',
-    options: { subagentId, contextMode: 'subagent' },
+    options: { contextMode: 'subagent' },
     parentSignal,
     runInBackground: false,
     prepareSubagent: async ({ signal }) => ({
@@ -116,9 +116,10 @@ describe('SubagentExecutor', () => {
       throw new Error('完成落库失败');
     });
     const fixture = createExecutor(store);
-    fixture.executor.start(makeInput('subagent-write-error', gate.promise, new AbortController().signal));
+    const subagentId = fixture.executor.start(makeInput('call-write-error', gate.promise, new AbortController().signal));
+    expect(subagentId).not.toBe('call-write-error');
     const result = fixture.executor.waitForInitialResult(
-      'subagent-write-error',
+      subagentId,
       'session-1',
       new AbortController().signal,
     );
@@ -126,10 +127,10 @@ describe('SubagentExecutor', () => {
     gate.resolve();
 
     await expect(result).rejects.toThrow('完成落库失败');
-    expect(store.get('subagent-write-error')?.status).toBe('running');
+    expect(store.get(subagentId)?.status).toBe('running');
     expect(fixture.publish).not.toHaveBeenCalledWith('session-1', {
       type: 'subagent_completed',
-      subagentId: 'subagent-write-error',
+      subagentId,
     });
     expect(fixture.publish).not.toHaveBeenCalledWith('session-1', expect.objectContaining({
       type: 'subagent_failed',
@@ -139,9 +140,9 @@ describe('SubagentExecutor', () => {
   it('前台等待方取得结果后不再向 Session 重复通知', async () => {
     const gate = deferred();
     const fixture = createExecutor(makeStore());
-    fixture.executor.start(makeInput('subagent-1', gate.promise, new AbortController().signal));
+    const subagentId = fixture.executor.start(makeInput('call-1', gate.promise, new AbortController().signal));
     const result = fixture.executor.waitForInitialResult(
-      'subagent-1',
+      subagentId,
       'session-1',
       new AbortController().signal,
     );
@@ -151,7 +152,7 @@ describe('SubagentExecutor', () => {
     await expect(result).resolves.toMatchObject({ output: '完成' });
     expect(fixture.publish).toHaveBeenCalledWith('session-1', {
       type: 'subagent_completed',
-      subagentId: 'subagent-1',
+      subagentId,
     });
     await vi.waitFor(() => expect(fixture.onBackgroundCompleted).not.toHaveBeenCalled());
   });
@@ -160,31 +161,31 @@ describe('SubagentExecutor', () => {
     const gate = deferred();
     const parent = new AbortController();
     const fixture = createExecutor(makeStore());
-    fixture.executor.start(makeInput('subagent-2', gate.promise, parent.signal));
+    const subagentId = fixture.executor.start(makeInput('call-2', gate.promise, parent.signal));
 
-    fixture.executor.moveToBackground('subagent-2', 'session-1');
+    fixture.executor.moveToBackground(subagentId, 'session-1');
     parent.abort(new Error('父 Turn 已结束'));
     gate.resolve();
 
     await vi.waitFor(() => expect(fixture.onBackgroundCompleted).toHaveBeenCalledWith(
-      'session-1', 'subagent-2', 'completed',
+      'session-1', subagentId, 'completed',
     ));
   });
 
   it('停止 SubagentAwait 只结束等待, 后台 Subagent 继续完成', async () => {
     const gate = deferred();
     const fixture = createExecutor(makeStore());
-    fixture.executor.start(makeInput('subagent-await', gate.promise, new AbortController().signal));
-    fixture.executor.moveToBackground('subagent-await', 'session-1');
+    const subagentId = fixture.executor.start(makeInput('call-await', gate.promise, new AbortController().signal));
+    fixture.executor.moveToBackground(subagentId, 'session-1');
 
     const waiting = new AbortController();
-    const result = fixture.executor.awaitResult('subagent-await', 'session-1', waiting.signal);
+    const result = fixture.executor.awaitResult(subagentId, 'session-1', waiting.signal);
     waiting.abort(new Error('用户停止等待'));
 
     await expect(result).resolves.toBeNull();
     gate.resolve();
     await vi.waitFor(() => expect(fixture.onBackgroundCompleted).toHaveBeenCalledWith(
-      'session-1', 'subagent-await', 'completed',
+      'session-1', subagentId, 'completed',
     ));
   });
 

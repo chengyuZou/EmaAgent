@@ -33,8 +33,8 @@ export interface SubagentSpawnOptions {
   disallowedTools?: readonly string[];
 }
 
-export interface SubagentRunResult {
-  agentRunId: string;
+export interface SubagentResult {
+  subagentId: string;
   output: string;
   usage: {
     inputTokens: number;
@@ -52,21 +52,22 @@ export interface SubagentControl {
   /** 启动当前 Turn 派生的子 Agent；后台形态从创建时就脱离父 Turn 取消。 */
   start(
     prompt: string,
-    options: SubagentSpawnOptions & { readonly agentRunId: string },
+    options: SubagentSpawnOptions,
+    toolCallId: string,
     runInBackground: boolean,
     signal: AbortSignal,
   ): string;
   /** 默认 Subagent Tool 等待自己刚启动的运行。 */
-  waitForInitialResult(agentRunId: string, signal: AbortSignal): Promise<SubagentRunResult | null>;
+  waitForInitialResult(subagentId: string, signal: AbortSignal): Promise<SubagentResult | null>;
   /** 超过前台等待期限后，把同一执行转交 Session 续接. 状态不允许转交时抛错. */
-  moveToBackground(agentRunId: string): void;
+  moveToBackground(subagentId: string): void;
   /**
    * 某一次 SubagentAwait Tool 调用独占等待当前 Session 的后台结果。
-   * 单等待者属于 Tool 调用, 不属于 Session. 取消只终止这次等待, 不取消 AgentRun.
+   * 单等待者属于 Tool 调用, 不属于 Session. 取消只终止这次等待, 不取消 Subagent.
    */
-  awaitResult(agentRunId: string, signal: AbortSignal): Promise<SubagentRunResult | null>;
+  awaitResult(subagentId: string, signal: AbortSignal): Promise<SubagentResult | null>;
   /** 取消运行中的子 Agent；未知 id 返回 false。 */
-  cancel(agentRunId: string): boolean;
+  cancel(subagentId: string): boolean;
 }
 
 /**

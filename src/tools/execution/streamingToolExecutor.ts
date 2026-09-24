@@ -37,9 +37,9 @@ export interface StreamingToolExecutorOptions extends ToolExecutionEnvironment {
  */
 export class StreamingToolExecutor {
   private tracked: TrackedTool[] = [];
-  private serialTail: Promise<void> = Promise.resolve();
+  private readonly pendingTools = new Set<Promise<void>>();
+  private exclusiveBarrier: Promise<void> = Promise.resolve();
   private stoppingReason?: string;
-  private started = false;
 
   constructor(private readonly options: StreamingToolExecutorOptions) {}
 
@@ -86,15 +86,15 @@ export class StreamingToolExecutor {
     }
   }
 
-  /** 在两次 LLM 迭代之间清空已经结束的调度状态。 */
+  /** 在两次 LLM 迭代之间清空已经结束的调度状态 */
   reset(): void {
     this.tracked = [];
-    this.serialTail = Promise.resolve();
+    this.pendingTools.clear();
+    this.exclusiveBarrier = Promise.resolve();
     this.stoppingReason = undefined;
-    this.started = false;
   }
 
-  /** 模型完成一个 tool_use block 时登记调用；必须等 assistant 消息持久化后才会执行。 */
+  /** 调用方已保存 tool_use 后登记; 立即进入并发/独占调度. */
   addTool(blockIndex: number, id: string, name: string, args: unknown): void {
     if (this.stoppingReason) return;
 
@@ -115,31 +115,40 @@ export class StreamingToolExecutor {
       suppressEvents: false,
     };
     this.tracked.push(track);
-    if (this.started) this.schedule(track);
+    this.schedule(track);
   }
 
-  /** assistant 的 tool_use 已可靠落库后，才允许越过副作用边界。 */
-  start(): void {
-    if (this.started) return;
-    this.started = true;
-    for (const track of this.tracked) this.schedule(track);
-  }
-
+  /**
+   * Tool分为并发安全和独占两类:
+   * - 并发安全工具可以和其他并发安全工具同时执行，但必须等待前一个独占工具完成.
+   * - 独占工具必须等待此前所有已调度工具完成，且后续工具不能越过它.
+   */
   private schedule(track: TrackedTool): void {
-    const priorPromises = this.tracked
-      .slice(0, this.tracked.indexOf(track))
-      .map(candidate => candidate.promise)
-      .filter((promise): promise is Promise<void> => promise !== undefined);
-
-    if (track.execution.isConcurrencySafe) {
-      track.promise = this.serialTail.then(() => this.execute(track));
-      return;
+    if (track.promise) {
+      throw new Error(`tool_already_scheduled: ${track.execution.id}`);
     }
 
-    const fence = Promise.allSettled([this.serialTail, ...priorPromises]);
-    const promise = fence.then(() => this.execute(track));
-    this.serialTail = promise;
+    let promise: Promise<void>;
+
+    if (track.execution.isConcurrencySafe) {
+      // 并发安全调用只需等待前一个独占调用 然后可以和其他 safe tool 并行
+      promise = this.exclusiveBarrier.then(() => this.execute(track));
+    } else {
+      // 独占调用必须等待此前所有已调度调用完成
+      const fence = Promise.allSettled(this.pendingTools);
+
+      promise = fence.then(() => this.execute(track));
+
+      // 后续调用不能越过本次独占调用 从现在开始后面的 safe tool 都必须等它
+      this.exclusiveBarrier = promise;
+    }
+
     track.promise = promise;
+    this.pendingTools.add(promise);
+
+    void promise.then(
+      () => this.pendingTools.delete(promise),
+    );
   }
 
   allDone(): boolean {

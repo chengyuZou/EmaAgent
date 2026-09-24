@@ -14,7 +14,7 @@ interface SubagentAwaitContext {
 }
 
 const inputSchema = z.object({
-  agentRunId: z.string().min(1).describe('AgentRun ID returned by Subagent (runInBackground).'),
+  subagentId: z.string().min(1).describe('Subagent ID returned by Subagent (runInBackground).'),
 });
 
 type SubagentAwaitInput = z.infer<typeof inputSchema>;
@@ -34,7 +34,7 @@ export const SubagentAwaitTool = buildTool<
 Use it when you need the result before you can continue the current turn.
 If you do not need the result yet, continue with other work — you will be notified when it completes; do not poll.
 Terminal results remain readable by id, including after an application restart.
-Returns output:null only when the agentRunId is unknown or the run is still active elsewhere.`,
+Returns output:null only when the subagentId is unknown or the run is still active elsewhere.`,
 
   inputSchema,
   isReadOnly:        () => false,
@@ -51,14 +51,14 @@ Returns output:null only when the agentRunId is unknown or the run is still acti
   },
 
   async execute(input, context: SubagentAwaitContext, invocation) {
-    const result = await context.subagents.awaitResult(input.agentRunId, invocation.signal);
+    const result = await context.subagents.awaitResult(input.subagentId, invocation.signal);
     if (!result) return { output: null };
     return { output: result.output, usage: result.usage };
   },
 
   mapResultToModelContent(output) {
     if (output.output === null) {
-      return 'No result available — the agentRunId is unknown or the run is still active elsewhere.';
+      return 'No result available — the subagentId is unknown or the run is still active elsewhere.';
     }
     return output.output;
   },

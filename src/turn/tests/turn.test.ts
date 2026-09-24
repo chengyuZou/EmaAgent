@@ -2,7 +2,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import os from 'node:os';
 import { z } from 'zod';
-import type { AgentRunExecutor } from '@ema-agent/agent';
+import type { SubagentExecutor } from '@ema-agent/agent';
 import type { AttachmentStore } from '@ema-agent/attachments';
 import type { CallLlm, LlmStreamEvent } from '@ema-agent/llm';
 import type { ProviderModels, Providers } from '@ema-agent/providers';
@@ -58,9 +58,8 @@ function makeDeps(options: {
   llm: CallLlm;
   sessionId: string;
   registry: ToolRegistry;
-  titleStarter?: (sessionId: string, userText: string) => void;
 }): TurnExecutorDeps {
-  const { db, llm, sessionId, registry, titleStarter } = options;
+  const { db, llm, sessionId, registry } = options;
   return {
     turns: new TurnStore({ db, sessionRunning: new SessionRunningRegistry() }),
     sessions: new SessionStore({ db }),
@@ -88,20 +87,19 @@ function makeDeps(options: {
     createLlmCall: () => llm,
     registry,
     interactionQueue: new SessionInteractionQueue(null),
-    agentRuns: {
+    subagents: {
       abortForegroundForTurn: async () => undefined,
-      waitForTurnAgentRuns: async () => undefined,
-    } as unknown as AgentRunExecutor,
+      waitForTurnSubagents: async () => undefined,
+    } as unknown as SubagentExecutor,
     continuations: {
       acknowledge: () => undefined,
       claimNextIteration: () => undefined,
       release: () => undefined,
       turnCompleted: () => undefined,
     } as never,
-    createCompact: () => async request => ({ kind: 'unchanged' as const, history: request.history }),
+    createCompact: () => async request => ({ kind: 'unchanged' as const, messages: request.messages }),
     readTurnReminder: () => ({ currentDate: '2026-08-25' }),
     characterDirectoryName: () => 'test-character',
-    ...(titleStarter ? { startSessionTitleGeneration: titleStarter } : {}),
   };
 }
 
@@ -200,19 +198,25 @@ describe('TurnExecutor 集成', () => {
         yield { type: 'done' as const, stopReason: 'end_turn' as const };
       })();
     };
+    const reminderCharacterNames: string[] = [];
     const deps = {
       ...makeDeps({ db, llm, sessionId: session.id, registry }),
-      readTurnReminder: () => ({
-        currentDate: '2026-08-25',
-        memoryWork: '用户在做 EmaAgent',
-        taskReminder: '还有 2 个任务待处理',
-      }),
+      readTurnReminder: (scope: { characterName: string }) => {
+        reminderCharacterNames.push(scope.characterName);
+        return {
+          currentDate: '2026-08-25',
+          memoryWork: '用户在做 EmaAgent',
+          taskReminder: '还有 2 个任务待处理',
+        };
+      },
     };
     const executor = new TurnExecutor(deps);
 
     const handle = executor.start(makeStart(session.id));
     const outcome = await handle.completion;
     expect(outcome.status).toBe('completed');
+    expect(reminderCharacterNames).toEqual(['test-character']);
+    expect(deps.turns.getTurn(handle.turnId)?.characterDirectoryName).toBe('test-character');
 
     // 持久化顺序：reminder 行在用户消息之前，facts 内容进 reminder。
     const messages = sessions.loadMessagesForTurn(handle.turnId);
@@ -263,41 +267,6 @@ describe('TurnExecutor 集成', () => {
     expect(types).toContain('motion_changed');
     // angry 不在当前角色词汇表：只清洗，不发事件。
     expect(types.filter(t => t === 'emotion_changed')).toHaveLength(1);
-    db.close();
-  });
-
-  it('标题生成：userMessage 落库后即异步启动，非用户触发不启动', async () => {
-    const db = new Database({ memory: true, kind: 'data' });
-    db.migrate();
-    const sessions = new SessionStore({ db });
-    const session = sessions.createSession({ cwd: os.tmpdir(), providerId: 'p', modelId: 'm' });
-    const registry = new ToolRegistry();
-    const llm = scriptedLlm([
-      [
-        { type: 'text_delta', blockIndex: 0, delta: '你好。' },
-        { type: 'done', stopReason: 'end_turn' },
-      ],
-    ]);
-    const calls: Array<[string, string]> = [];
-    const deps = makeDeps({
-      db,
-      llm,
-      sessionId: session.id,
-      registry,
-      titleStarter: (sessionId, userText) => { calls.push([sessionId, userText]); },
-    });
-    const executor = new TurnExecutor(deps);
-
-    const handle = executor.start(makeStart(session.id));
-    await handle.completion;
-    expect(calls).toEqual([[session.id, '你好']]);
-
-    const second = executor.start({
-      ...makeStart(session.id),
-      triggerType: 'sessionContinuation',
-    });
-    await second.completion;
-    expect(calls).toHaveLength(1);
     db.close();
   });
 
@@ -448,6 +417,116 @@ describe('TurnExecutor 集成', () => {
     expect(deps.turns.getTurn(handle.turnId)?.iterations).toBe(2);
     // 初始用户输入确认一次，两条 guided 各自在落库后确认一次.
     expect(acknowledge).toHaveBeenCalledTimes(3);
+    db.close();
+  });
+
+  it('工具结果落库后的下一次 Macro 可以覆盖本 Turn 消息, 游标指向真实 ToolResult', async () => {
+    const db = new Database({ memory: true, kind: 'data' });
+    db.migrate();
+    const sessions = new SessionStore({ db });
+    const session = sessions.createSession({ cwd: os.tmpdir(), providerId: 'p', modelId: 'm' });
+    const registry = new ToolRegistry();
+    registry.register(echoTool());
+    const requests: unknown[] = [];
+    const scripted = scriptedLlm([
+      [
+        { type: 'tool_use_complete', blockIndex: 0, callId: 'c1', name: 'Echo', args: {} },
+        { type: 'done', stopReason: 'tool_use' },
+      ],
+      [
+        { type: 'text_delta', blockIndex: 0, delta: '压缩后继续回答。' },
+        { type: 'done', stopReason: 'end_turn' },
+      ],
+    ]);
+    const llm: CallLlm = request => {
+      requests.push(request.messages);
+      return scripted(request);
+    };
+    let prepareCount = 0;
+    const deps = {
+      ...makeDeps({ db, llm, sessionId: session.id, registry }),
+      createCompact: () => async (request: Parameters<ReturnType<TurnExecutorDeps['createCompact']>>[0]) => {
+        prepareCount += 1;
+        if (prepareCount === 1) return { kind: 'unchanged' as const, messages: request.messages };
+        request.saveMacroSummary?.('本轮工具结果摘要', request.messages.length);
+        return {
+          kind: 'macro' as const,
+          messages: [{ role: 'user' as const, content: '本轮工具结果摘要' }],
+          summarizedMessageCount: request.messages.length,
+          beforeTokens: 100,
+          afterTokens: 20,
+          savedTokens: 80,
+          durationMs: 1,
+          usage: { inputTokens: 10, outputTokens: 5 },
+        };
+      },
+    };
+
+    const handle = new TurnExecutor(deps).start(makeStart(session.id));
+    expect((await handle.completion).status).toBe('completed');
+
+    const stored = sessions.loadMessagesForTurn(handle.turnId);
+    const toolResult = stored.find(message => message.kind === 'tool_results');
+    const summary = stored.find(message => message.kind === 'summary');
+    expect(toolResult).toBeDefined();
+    expect(summary).toBeDefined();
+    const summaryRow = db.sqlite.prepare(
+      'SELECT summarized_through_message_id FROM messages WHERE id = ?',
+    ).get(summary!.id) as { summarized_through_message_id: string };
+    expect(summaryRow.summarized_through_message_id).toBe(toolResult?.id);
+    expect(sessions.loadHistory(session.id).map(message => message.id))
+      .toEqual([summary?.id, stored.at(-1)?.id]);
+    expect(JSON.stringify(requests[1])).toContain('本轮工具结果摘要');
+    db.close();
+  });
+
+  it('续写提示没有 SQL 行时, Macro 游标落在已保存的 Assistant 上', async () => {
+    const db = new Database({ memory: true, kind: 'data' });
+    db.migrate();
+    const sessions = new SessionStore({ db });
+    const session = sessions.createSession({ cwd: os.tmpdir(), providerId: 'p', modelId: 'm' });
+    const llm = scriptedLlm([
+      [
+        { type: 'text_delta', blockIndex: 0, delta: '未完待续' },
+        { type: 'done', stopReason: 'max_tokens' },
+      ],
+      [
+        { type: 'text_delta', blockIndex: 0, delta: '后续回答' },
+        { type: 'done', stopReason: 'end_turn' },
+      ],
+    ]);
+    let prepareCount = 0;
+    const deps = {
+      ...makeDeps({ db, llm, sessionId: session.id, registry: new ToolRegistry() }),
+      createCompact: () => async (request: Parameters<ReturnType<TurnExecutorDeps['createCompact']>>[0]) => {
+        prepareCount += 1;
+        if (prepareCount === 1) return { kind: 'unchanged' as const, messages: request.messages };
+        request.saveMacroSummary?.('续写前摘要', request.messages.length);
+        return {
+          kind: 'macro' as const,
+          messages: [{ role: 'user' as const, content: '续写前摘要' }],
+          summarizedMessageCount: request.messages.length,
+          beforeTokens: 100,
+          afterTokens: 20,
+          savedTokens: 80,
+          durationMs: 1,
+          usage: { inputTokens: 10, outputTokens: 5 },
+        };
+      },
+    };
+
+    const handle = new TurnExecutor(deps).start(makeStart(session.id));
+    expect((await handle.completion).status).toBe('completed');
+
+    const stored = sessions.loadMessagesForTurn(handle.turnId);
+    const firstAssistant = stored.find(message => message.role === 'assistant');
+    const summary = stored.find(message => message.kind === 'summary');
+    const summaryRow = db.sqlite.prepare(
+      'SELECT summarized_through_message_id FROM messages WHERE id = ?',
+    ).get(summary!.id) as { summarized_through_message_id: string };
+    expect(summaryRow.summarized_through_message_id).toBe(firstAssistant?.id);
+    expect(stored.map(message => message.kind))
+      .toEqual(['reminder', 'normal', 'normal', 'summary', 'normal']);
     db.close();
   });
 

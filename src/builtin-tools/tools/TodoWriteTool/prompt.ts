@@ -21,9 +21,9 @@ replaces the complete checklist; it does not patch or append individual items.
 - A single straightforward action can complete the request.
 - The work is purely conversational or informational.
 - The checklist would only repeat obvious tool calls such as "read file" and "edit file".
-- The work must survive the current Turn, has dependencies, or is delegated to a sub-agent. Use
-  ${BuiltinTools.TaskCreate.name}, ${BuiltinTools.TaskGet.name}, ${BuiltinTools.TaskList.name}, and
-  ${BuiltinTools.TaskUpdate.name} for that persistent Session work instead.
+- The work cannot be completed in this Turn and must remain active later. Use
+  ${BuiltinTools.TaskCreate.name} and ${BuiltinTools.TaskUpdate.name} to track that persistent
+  Session task instead of copying each checklist item into it.
 
 ## Checklist rules
 

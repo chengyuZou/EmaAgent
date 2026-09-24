@@ -17,8 +17,8 @@ type WriterSessions = Pick<
 
 /**
  * 把一次根 AgentLoop 的事件流转成持久化事实。yield 恢复 = 已保存：
- * tool_use_completed 落库后 AgentLoop 才登记调用、assistant_message_completed 落库后
- * 才允许 executor.start()、tool_result 落库后才关执行状态——顺序就是崩溃正确性。
+ * tool_use_completed 落库后 AgentLoop 才登记并启动调用;
+ * 完整 Assistant 闭合后才交付 ToolResult, ToolResult 落库后才关执行状态.
  */
 export class TurnMessageWriter {
   private assistantMessageId: string | undefined;
@@ -35,7 +35,7 @@ export class TurnMessageWriter {
     private readonly sessions: WriterSessions,
   ) {}
 
-  async apply(event: AgentLoopEvent): Promise<void> {
+  async apply(event: AgentLoopEvent): Promise<string | undefined> {
     switch (event.type) {
       case 'iteration_started':
         this.resetIteration();
@@ -80,18 +80,17 @@ export class TurnMessageWriter {
 
       case 'assistant_message_completed':
         await this.persistAssistant();
-        return;
+        return this.assistantMessageId;
 
       case 'tool_result':
         this.pendingToolUses.delete(event.result.toolCallId);
-        await this.append({
+        return (await this.append({
           turnId: this.turnId,
           sessionId: this.sessionId,
           role: 'user',
           kind: 'tool_results',
           blocks: [toToolResultBlock(event.result)],
-        });
-        return;
+        })).id;
 
       default:
         return;

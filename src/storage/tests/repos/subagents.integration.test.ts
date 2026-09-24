@@ -1,6 +1,7 @@
-// 验证 Subagent 的父 Turn 归属、终态迁移守卫和异常退出恢复。
+// 验证 Subagent 的 Session 归属、终态迁移守卫和异常退出恢复。
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { SubagentMessagesRepo } from '../../repos/data/subagent-messages.js';
 import { SubagentsRepo } from '../../repos/data/subagents.js';
 import { createTestDatabase, type TestDatabase } from '../helpers/create-test-database.js';
 
@@ -25,8 +26,8 @@ describe('Subagent 持久化状态机', () => {
     repo = new SubagentsRepo(database.db);
     repo.insert({
       id: subagentId,
+      toolCallId: 'call-subagent-a',
       sessionId: 'session-a',
-      parentTurnId: 'turn-a',
       contextMode: 'subagent',
       createdAt: 3,
     });
@@ -35,6 +36,9 @@ describe('Subagent 持久化状态机', () => {
   afterEach(() => database.close());
 
   it('合法完成会记录执行统计', () => {
+    expect(repo.listInvocationsForSession('session-a')).toEqual([{
+      tool_call_id: 'call-subagent-a', subagent_id: subagentId, created_at: 3,
+    }]);
     const completed = repo.complete(
       subagentId,
       {
@@ -86,5 +90,20 @@ describe('Subagent 持久化状态机', () => {
         status: 'failed',
       }),
     ]);
+  });
+
+  it('删除首次调用所在 Turn 不删除子代理和调用关系', () => {
+    const messages = new SubagentMessagesRepo(database.db);
+    messages.insert({
+      id: 'subagent-message', subagentId, role: 'assistant',
+      blocksJson: '[{"type":"text","text":"完成"}]', createdAt: 4,
+    });
+    database.db.prepare('DELETE FROM turns WHERE id = ?').run('turn-a');
+
+    expect(repo.findById(subagentId)).toMatchObject({ session_id: 'session-a' });
+    expect(messages.listAllForSubagent(subagentId).map(message => message.id)).toEqual(['subagent-message']);
+    expect(repo.listInvocationsForSession('session-a')).toEqual([{
+      tool_call_id: 'call-subagent-a', subagent_id: subagentId, created_at: 3,
+    }]);
   });
 });

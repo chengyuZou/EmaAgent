@@ -24,7 +24,7 @@ PowerShell edition notes (this machine runs either Windows PowerShell 5.1 or Pow
 Before executing the command, follow these steps:
 
 1. Directory Verification:
-   - If the command will create new directories or files, first use \`Get-ChildItem\` (or \`ls\`) to verify the parent directory exists and is the correct location.
+   - If the command will create new directories or files, verify the parent directory and target location using a dedicated file tool when available; otherwise use \`Get-ChildItem\`.
 
 2. Command Execution:
    - Always quote file paths that contain spaces with double quotes.

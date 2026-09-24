@@ -1,7 +1,7 @@
-// WebFetchTool 的桌面展示: 参数行(URL + raw 徽标)与结果卡(字节/状态码 + 内容预览)。
-// 只消费本 Tool 的类型化 data; 类型守卫失败返回 null, 由前端回落通用渲染。
-import type { JSX } from 'react';
-import { Badge } from '@ema-agent/ui';
+// WebFetchTool 的桌面展示: 参数行(URL + raw 徽标)与结果卡(字节/状态码 + 内容预览).
+// 内容是 HTML 时给源码/沙箱预览切换; 其余保持文本预览。
+import { useState, type JSX } from 'react';
+import { Badge, Button } from '@ema-agent/ui';
 import type { WebFetchResult } from './WebFetchTool.js';
 
 const PREVIEW_CHARS = 2_000;
@@ -42,7 +42,12 @@ export function WebFetchArgsView({ args }: { args: unknown }): JSX.Element | nul
 export function WebFetchResultView({ data }: { data: unknown }): JSX.Element | null {
   const result = asWebFetchResult(data);
   if (!result) return null;
+  return <WebFetchResultCard result={result} />;
+}
 
+function WebFetchResultCard({ result }: { result: WebFetchResult }): JSX.Element {
+  const isHtml = /^\s*(<!doctype\s+html|<html[\s>])/i.test(result.content);
+  const [showPreview, setShowPreview] = useState(false);
   const preview = result.content.slice(0, PREVIEW_CHARS);
   const omitted = result.content.length - preview.length;
   return (
@@ -57,13 +62,33 @@ export function WebFetchResultView({ data }: { data: unknown }): JSX.Element | n
           </span>
         </span>
         {result.truncated && <Badge variant="warn">已截断</Badge>}
+        {isHtml && (
+          <span className="ml-auto flex gap-1">
+            <Button variant={showPreview ? 'ghost' : 'secondary'} size="sm" onClick={() => setShowPreview(false)}>
+              源码
+            </Button>
+            <Button variant={showPreview ? 'secondary' : 'ghost'} size="sm" onClick={() => setShowPreview(true)}>
+              预览
+            </Button>
+          </span>
+        )}
       </div>
-      <div className="max-h-40 overflow-auto rounded-md border border-[var(--ema-border)] px-2 py-1">
-        <pre className="m-0 whitespace-pre-wrap break-all bg-transparent p-0 font-mono text-[var(--ema-text-secondary)]">
-          {preview}
-          {omitted > 0 && `\n··· 其余 ${omitted.toLocaleString()} 字符 ···`}
-        </pre>
-      </div>
+      {isHtml && showPreview ? (
+        /* sandbox 空属性: 禁脚本禁表单, 公网内容只渲染视觉. */
+        <iframe
+          sandbox=""
+          srcDoc={preview}
+          title="网页预览"
+          className="h-48 w-full rounded-md border border-[var(--ema-border)] bg-white"
+        />
+      ) : (
+        <div className="max-h-40 overflow-auto rounded-md border border-[var(--ema-border)] px-2 py-1">
+          <pre className="m-0 whitespace-pre-wrap break-all bg-transparent p-0 font-mono text-[var(--ema-text-secondary)]">
+            {preview}
+            {omitted > 0 && `\n··· 其余 ${omitted.toLocaleString()} 字符 ···`}
+          </pre>
+        </div>
+      )}
     </div>
   );
 }

@@ -138,6 +138,7 @@ export {
 export type {
   SubagentCompletion,
   SubagentInsert,
+  SubagentInvocationRow,
   SubagentContextModeRow,
   SubagentRow,
   SubagentSummaryRow,

@@ -65,7 +65,47 @@ describe('MessagesRepo 历史加载集成测试', () => {
       .toEqual(['summary-z']);
   });
 
-  function insertMessage(id: string, createdAt: number, kind: MessageKind = 'normal'): void {
+  it('再次摘要只覆盖旧 summary 时, 沿覆盖游标保留旧摘要之前写入的尾部', () => {
+    insertMessage('covered-a', 10);
+    insertMessage('covered-b', 20);
+    insertMessage('retained-c', 30);
+    insertMessage('retained-d', 40);
+    insertMessage('summary-one', 50, 'summary', 'covered-b');
+    insertMessage('summary-two', 60, 'summary', 'summary-one');
+
+    expect(repo.listForSessionFromSummary(sessionId).map(row => row.id))
+      .toEqual(['summary-two', 'retained-c', 'retained-d']);
+  });
+
+  it('再次摘要覆盖旧 summary 和一条尾部时, 不重放旧 summary', () => {
+    insertMessage('covered-a', 10);
+    insertMessage('covered-b', 20);
+    insertMessage('retained-c', 30);
+    insertMessage('retained-d', 40);
+    insertMessage('summary-one', 50, 'summary', 'covered-b');
+    insertMessage('summary-two', 60, 'summary', 'retained-c');
+
+    expect(repo.listForSessionFromSummary(sessionId).map(row => row.id))
+      .toEqual(['summary-two', 'retained-d']);
+  });
+
+  it('三层摘要指向摘要时追到原消息边界', () => {
+    insertMessage('covered', 10);
+    insertMessage('retained', 20);
+    insertMessage('summary-one', 30, 'summary', 'covered');
+    insertMessage('summary-two', 40, 'summary', 'summary-one');
+    insertMessage('summary-three', 50, 'summary', 'summary-two');
+
+    expect(repo.listForSessionFromSummary(sessionId).map(row => row.id))
+      .toEqual(['summary-three', 'retained']);
+  });
+
+  function insertMessage(
+    id: string,
+    createdAt: number,
+    kind: MessageKind = 'normal',
+    summarizedThroughMessageId?: string,
+  ): void {
     repo.insert({
       id,
       sessionId,
@@ -73,6 +113,7 @@ describe('MessagesRepo 历史加载集成测试', () => {
       kind,
       blocksJson: JSON.stringify(id),
       createdAt,
+      ...(summarizedThroughMessageId ? { summarizedThroughMessageId } : {}),
     });
   }
 });

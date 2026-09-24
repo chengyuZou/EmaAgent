@@ -19,7 +19,7 @@ export type {
   AskUser,
   Scratchpad,
   SubagentContextMode,
-  SubagentRunResult,
+  SubagentResult,
   SubagentSpawnOptions,
   SubagentControl,
   ToolUseContext,

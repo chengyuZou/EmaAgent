@@ -2,7 +2,6 @@
 import {
   readAgentSettings,
   type AgentLoopEvent,
-  type AgentSettings,
   type PrepareSubagent,
 } from '@ema-agent/agent';
 import {
@@ -20,7 +19,6 @@ import {
   type LlmConnection,
   type LlmProtocol,
   type LlmThinking,
-  type Message,
 } from '@ema-agent/llm';
 import {
   loadPermissionRuleBuckets,
@@ -57,8 +55,6 @@ import {
 /** 一个根 Turn 的冻结事实；运行期只读取这一份，不再回读 Settings/Registry/Session。 */
 export interface PreparedTurn {
   readonly sessionMode: SessionMode;
-  readonly cwd: string;
-  readonly projectId: string | null;
   readonly scratchpadDir?: string;
   readonly callLlm: CallLlm;
   readonly providerId: string;
@@ -75,7 +71,6 @@ export interface PreparedTurn {
   /** 持久化用的用户消息块；附件只保存 attachment_ref。 */
   readonly userMessageBlocks: MessageBlocks;
   readonly skillPool?: SkillPool;
-  readonly agentSettings: AgentSettings;
   readonly compactSettings: CompactSettings;
   readonly tools: TurnToolsAssembly;
   readonly degradations: readonly RequestDegradationNotice[];
@@ -99,7 +94,7 @@ export interface PrepareTurnDeps extends TurnToolsDeps {
   readonly createLlmCall?: (connection: LlmConnection, modelId: string) => CallLlm;
   /** 工作区指令（EMA.md/CLAUDE.md）按本 Turn 的工作区读取；无工作区时不会调用。 */
   readonly workspaceInstructions?: (cwd: string) => string | null;
-  /** 记忆使用指引（静态模板文本，memory 包 buildMemoryGuidance 产出）；两轨摘要不在这里，进 reminder。 */
+  /** 记忆使用指引（静态模板文本，memory 包 buildMemoryGuidance 产出）；Work 摘要和角色关系记忆经 reminder 注入。 */
   readonly memoryGuidance?: () => Promise<string | null> | string | null;
   /** 模型不支持图片时的 Vision 描述入口。 */
   readonly describeImage?: VisionDescriptionProducer;
@@ -113,7 +108,6 @@ export interface PrepareTurnInput {
   /** TurnStore 已创建的根 Turn 身份；Session 身份只取 request.sessionId。 */
   readonly turnId: string;
   readonly prepareSubagent: PrepareSubagent;
-  readonly parentMessages: Message[];
   /** 事件出口由 turn.ts 绑定到本 Turn 的事件通道（每 Turn 一个）。 */
   readonly emit: (event: TurnStreamEvent) => void;
   readonly onSubagentLlmCallFinished?: (
@@ -208,8 +202,8 @@ export async function prepareTurn(
     ...(skillPool ? { skillPool } : {}),
     ...(request.knowledge ? { knowledge: request.knowledge } : {}),
     prepareSubagent: input.prepareSubagent,
-    parentMessages: input.parentMessages,
-    model: { providerId, modelId },
+    providerId,
+    modelId,
     emit: input.emit,
     ...(input.onSubagentLlmCallFinished
       ? { onSubagentLlmCallFinished: input.onSubagentLlmCallFinished }
@@ -242,8 +236,6 @@ export async function prepareTurn(
 
   return Object.freeze({
     sessionMode: request.sessionMode,
-    cwd,
-    projectId,
     ...(scratchpadDir ? { scratchpadDir } : {}),
     callLlm,
     providerId,
@@ -260,7 +252,6 @@ export async function prepareTurn(
     systemPrompt,
     userMessageBlocks,
     ...(skillPool ? { skillPool } : {}),
-    agentSettings,
     compactSettings,
     tools,
     degradations: Object.freeze(degradations),

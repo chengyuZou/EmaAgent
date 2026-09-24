@@ -1,7 +1,7 @@
 // 测试 prepareTurnTools 的 Chat 白名单、权限交互回路（allowSession 沉淀）与 AskUser 回路。
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import type { AgentRunMessagesStore, AgentRunStore } from '@ema-agent/agent';
+import type { SubagentMessagesStore, SubagentStore } from '@ema-agent/agent';
 import { getSessionAllowRules } from '@ema-agent/permission';
 import type { SettingsStore } from '@ema-agent/settings';
 import {
@@ -9,13 +9,14 @@ import {
   BuiltinTools,
   contextOk,
   ToolRegistry,
+  type ToolUseContext,
 } from '@ema-agent/tools';
 import { SessionInteractionQueue } from '../interactionQueue.js';
 import type { TurnStreamEvent } from '../events.js';
 import {
   prepareTurnTools,
   type TurnToolsDeps,
-} from '../preparation/prepareTurnTools.js';
+} from '../prepare/prepareTurnTools.js';
 
 const SESSION_ID = 's1';
 const TURN_ID = 't1';
@@ -63,8 +64,8 @@ function makeDeps(options: {
     registry,
     interactionQueue: options.queue,
     settings: options.settings,
-    agentRunStore: {} as unknown as AgentRunStore,
-    agentRunMessagesStore: {} as unknown as AgentRunMessagesStore,
+    subagentStore: {} as unknown as SubagentStore,
+    subagentMessagesStore: {} as unknown as SubagentMessagesStore,
   };
 }
 
@@ -80,7 +81,6 @@ function makeInput(options: {
     cwd: '/w',
     workspaceRoots: ['/w'],
     prepareSubagent: async () => { throw new Error('不应派生子 Agent'); },
-    parentMessages: [],
     model: { providerId: 'p', modelId: 'm' },
     emit: (event: TurnStreamEvent) => { options.events.push(event); },
     permission: {
@@ -93,7 +93,7 @@ function makeInput(options: {
 }
 
 describe('prepareTurnTools', () => {
-  it('文件权限与 Shell 工厂使用同一份本 Turn 冻结目录', () => {
+  it('Shell 工厂使用本 Turn 冻结的工作目录与授权目录', () => {
     const received: Array<{ cwd: string; roots: readonly string[] }> = [];
     const deps: TurnToolsDeps = {
       ...makeDeps({
@@ -107,12 +107,11 @@ describe('prepareTurnTools', () => {
       },
     };
 
-    const assembly = prepareTurnTools(deps, makeInput({
+    prepareTurnTools(deps, makeInput({
       events: [],
       overrides: { cwd: '/old', workspaceRoots: ['/current'] },
     }));
 
-    expect(assembly.permissionContext.workspaceRoots).toEqual(['/current']);
     expect(received).toEqual([{ cwd: '/old', roots: ['/current'] }]);
   });
 
@@ -147,7 +146,6 @@ describe('prepareTurnTools', () => {
     const assembly = prepareTurnTools(deps, makeInput({ events }));
     const executor = assembly.createExecutor(() => undefined);
     executor.addTool(0, 'call-1', 'Echo', {});
-    executor.start();
 
     // 等权限卡发出后按"本 Session 允许"回答。
     await vi.waitFor(() => {
@@ -161,6 +159,28 @@ describe('prepareTurnTools', () => {
     expect(getSessionAllowRules(SESSION_ID)).toContain('Echo');
     expect(events.some(e => e.type === 'permission_resolved'
       && (e as { decision?: string }).decision === 'allow')).toBe(true);
+  });
+
+  it('子代理工具终态不抢在 transcript 落库前从 Turn 事件口发出', async () => {
+    const events: TurnStreamEvent[] = [];
+    const deps = makeDeps({
+      tools: [fakeTool('Echo')],
+      queue: new SessionInteractionQueue(null),
+      settings: fakeSettings(),
+    });
+    const assembly = prepareTurnTools(deps, makeInput({ events }));
+    const executor = assembly.createSubagentExecutor({
+      subagentId: 'subagent-1',
+      toolPool: assembly.toolPool,
+      signal: new AbortController().signal,
+      wake: () => undefined,
+    });
+
+    executor.addTool(0, 'call-1', 'Echo', {});
+    await executor.join();
+
+    expect(executor.takeCompletedResults()).toMatchObject([{ toolCallId: 'call-1' }]);
+    expect(events.some(event => event.type === 'tool_result')).toBe(false);
   });
 
   it('Turn abort 时等待中的权限询问按取消收口（模型见 tool/cancelled）', async () => {
@@ -177,7 +197,6 @@ describe('prepareTurnTools', () => {
     }));
     const executor = assembly.createExecutor(() => undefined);
     executor.addTool(0, 'call-1', 'Echo', {});
-    executor.start();
 
     await vi.waitFor(() => {
       expect(queue.listPending(SESSION_ID)).toHaveLength(1);
@@ -191,9 +210,21 @@ describe('prepareTurnTools', () => {
 
   it('Knowledge 查询冻结所选知识库，Tool 未指定文档时继承本 Turn 范围', async () => {
     const requests: unknown[] = [];
+    let search: ToolUseContext['knowledgeSearch'];
+    const probe = buildTool({
+      name: 'KnowledgeProbe',
+      description: '验证知识库能力传入工具',
+      inputSchema: z.object({}),
+      validateContext: (context: ToolUseContext) => {
+        search = context.knowledgeSearch;
+        return contextOk({});
+      },
+      checkPermissions: async () => ({ behavior: 'allow' as const }),
+      execute: async () => 'ok',
+    });
     const deps = {
       ...makeDeps({
-        tools: [],
+        tools: [probe],
         queue: new SessionInteractionQueue(null),
         settings: fakeSettings(),
       }),
@@ -202,15 +233,15 @@ describe('prepareTurnTools', () => {
         return { query: 'q', hits: [] };
       },
     } as TurnToolsDeps;
-    const assembly = prepareTurnTools(deps, makeInput({
+    prepareTurnTools(deps, makeInput({
       events: [],
       overrides: {
         knowledge: { assetIds: ['asset-1'] },
       },
     }));
 
-    await assembly.toolContext.knowledgeSearch?.({ query: 'first' });
-    await assembly.toolContext.knowledgeSearch?.({ query: 'second', assetIds: ['asset-2'] });
+    await search?.({ query: 'first' });
+    await search?.({ query: 'second', assetIds: ['asset-2'] });
 
     expect(requests).toEqual([
       { query: 'first', assetIds: ['asset-1'] },

@@ -1,7 +1,7 @@
 // 在同一 SQLite 读取事务中提供 Session 全量行，并在单一写事务中恢复它们。
 import type { SqliteDb } from '../../database/database.js';
 import type { SubagentMessageRow } from './subagent-messages.js';
-import type { SubagentRow } from './subagents.js';
+import type { SubagentInvocationRow, SubagentRow } from './subagents.js';
 import type { AttachmentImageRow } from './attachmentImages.js';
 import type { AttachmentPastedTextRow } from './attachmentPastedTexts.js';
 import type { BackgroundProcessRow } from './backgroundProcesses.js';
@@ -42,6 +42,7 @@ export interface SessionBackupRows {
   readonly messages: Iterable<MessageRow>;
   readonly tasks: Iterable<SessionBackupTaskRow>;
   readonly subagents: Iterable<SubagentRow>;
+  readonly subagentInvocations: Iterable<SubagentInvocationRow>;
   readonly subagentMessages: Iterable<SubagentMessageRow>;
   readonly toolExecutions: Iterable<SessionBackupToolExecutionRow>;
   readonly backgroundProcesses: Iterable<BackgroundProcessRow>;
@@ -99,6 +100,12 @@ export class SessionBackupReader {
           'SELECT * FROM subagents WHERE session_id = ? ORDER BY created_at ASC, id ASC',
           sessionId,
         ),
+        subagentInvocations: this.iterate<SubagentInvocationRow>(`
+          SELECT invocation.* FROM subagent_invocations invocation
+          JOIN subagents subagent ON subagent.id = invocation.subagent_id
+          WHERE subagent.session_id = ?
+          ORDER BY invocation.created_at ASC, invocation.tool_call_id ASC
+        `, sessionId),
         subagentMessages: this.iterate<SubagentMessageRow>(`
           SELECT message.*
           FROM subagent_messages message
@@ -239,15 +246,15 @@ export class SessionBackupRestorer {
 
     const insertSubagent = this.db.prepare(`
       INSERT INTO subagents (
-        id, session_id, parent_turn_id,
+        id, session_id,
         context_mode, description, provider_id, model_id, status, error,
         iterations, tool_call_count, input_tokens, output_tokens, final_text,
         created_at, updated_at, completed_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     for (const row of rows.subagents) {
       insertSubagent.run(
-        row.id, session.id, row.parent_turn_id,
+        row.id, session.id,
         row.context_mode, row.description, row.provider_id, row.model_id,
         row.status, row.error, row.iterations, row.tool_call_count,
         row.input_tokens, row.output_tokens, row.final_text,
@@ -280,6 +287,14 @@ export class SessionBackupRestorer {
         row.status, row.started_at, row.completed_at,
         row.version, row.created_at, row.updated_at,
       );
+    }
+
+    const insertSubagentInvocation = this.db.prepare(`
+      INSERT INTO subagent_invocations (tool_call_id, subagent_id, created_at)
+      VALUES (?, ?, ?)
+    `);
+    for (const row of rows.subagentInvocations) {
+      insertSubagentInvocation.run(row.tool_call_id, row.subagent_id, row.created_at);
     }
 
     const insertBackgroundProcess = this.db.prepare(`

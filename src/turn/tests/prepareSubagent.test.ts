@@ -3,8 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 import type { CallLlm } from '@ema-agent/llm';
 import type { ProviderModels, Providers } from '@ema-agent/providers';
 import { ToolPool } from '@ema-agent/tools';
-import { createPrepareSubagent } from '../loop/prepareSubagent.js';
-import type { PreparedTurn } from '../preparation/prepareTurn.js';
+import { createPrepareSubagent } from '../prepare/prepareSubagent.js';
+import type { PreparedTurn } from '../prepare/prepareTurn.js';
 
 const callLlm: CallLlm = async function* () {
   yield { type: 'done', stopReason: 'end_turn' };
@@ -50,13 +50,13 @@ describe('createPrepareSubagent', () => {
 
     const signal = new AbortController().signal;
     const first = await prepare({
-      agentRunId: 'a1',
+      subagentId: 'a1',
       prompt: '查接口',
       options: { contextMode: 'fork' },
       signal,
     });
     const second = await prepare({
-      agentRunId: 'a2',
+      subagentId: 'a2',
       prompt: '查测试',
       options: { contextMode: 'fork' },
       signal,
