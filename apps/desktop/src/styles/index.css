@@ -12,6 +12,7 @@
 @import './primitives/radix.css';
 @import './primitives/decorations.css';
 @import './primitives/selectable.css';
+@import './primitives/markdown.css';
 
 @import './domains/appearance.css';
 @import './domains/storage.css';
@@ -19,7 +20,7 @@
 @import './domains/workspace.css';
 @import './domains/chatHistory.css';
 @import './domains/chatControls.css';
-@import './domains/agentRun.css';
+@import './domains/subagent.css';
 @import './domains/chatInput.css';
 @import './domains/toolRow.css';
 @import './domains/terminalCard.css';

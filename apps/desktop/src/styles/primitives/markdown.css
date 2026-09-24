@@ -1,0 +1,130 @@
+/* Markdown 排版体系:标题刻度/段落节奏/列表/发丝线表格/inline code 芯片/pre 容器。
+   消费者: chat 助手消息(assistantSections)、FilePreview、SkillMarket、MessageDetail、
+   MemoryFiles 等 5+ 域共用, 按 README 归 primitives。全部走 token, 间距走 --ema-space-*。
+   chat 气泡内的 pre 换行例外(不换行改 pre-wrap)在 domains/chatHistory.css。 */
+
+.markdown-content {
+  min-width: 0;
+  font-family: var(--ema-font-content);
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* 首末元素贴边, 气泡/卡片不叠双份间距。 */
+.markdown-content > :first-child { margin-top: 0; }
+.markdown-content > :last-child { margin-bottom: 0; }
+
+/* 标题刻度: 聊天正文里 h1 罕见, h2 是最大锚点; 正文结构靠 strong 粗体引领句,
+   不堆小标题(codex 手法)。 */
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3,
+.markdown-content h4,
+.markdown-content h5,
+.markdown-content h6 {
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  margin-block: var(--ema-space-4) var(--ema-space-2);
+}
+.markdown-content h1 { font-size: 20px; }
+.markdown-content h2 { font-size: 18px; }
+.markdown-content h3 { font-size: 16px; }
+.markdown-content h4 { font-size: 14px; }
+.markdown-content h5,
+.markdown-content h6 { font-size: 13px; color: var(--ema-text-secondary); }
+
+.markdown-content p { margin-block: var(--ema-space-2); }
+.markdown-content strong { font-weight: 650; }
+
+.markdown-content ul,
+.markdown-content ol {
+  margin-block: var(--ema-space-2);
+  padding-inline-start: var(--ema-space-5);
+}
+.markdown-content li { margin-block: var(--ema-space-0_5); }
+.markdown-content li > ul,
+.markdown-content li > ol { margin-block: var(--ema-space-0_5); }
+
+/* inline code 芯片(灰族); 链接内的 code 自动升级主色 tint = 可点引用族(codex 两族手法)。 */
+.markdown-content :not(pre) > code {
+  font-family: var(--ema-font-mono);
+  font-size: 0.9em;
+  line-height: inherit;
+  background: var(--ema-surface-2);
+  border: 1px solid var(--ema-border);
+  border-radius: var(--ema-radius-xs);
+  padding: 1px var(--ema-space-1);
+  color: var(--ema-text-code);
+}
+.markdown-content a { color: var(--ema-primary-text); text-decoration: none; }
+.markdown-content a:hover { text-decoration: underline; text-underline-offset: 2px; }
+.markdown-content a > code {
+  background: var(--ema-primary-muted);
+  border-color: color-mix(in srgb, var(--ema-primary) 28%, transparent);
+  color: var(--ema-primary-text);
+}
+
+.markdown-content pre {
+  margin-block: var(--ema-space-3);
+  padding: var(--ema-space-3);
+  background: var(--ema-surface-1);
+  border: 1px solid var(--ema-border);
+  border-radius: var(--ema-radius-lg);
+  overflow-x: auto;
+  font-size: 12px;
+}
+.markdown-content pre > code {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: inherit;
+}
+
+/* 表格: 列宽按内容分配(auto), 发丝线分组不堆框; th 左对齐与 td 同一轴线。 */
+.markdown-content table {
+  table-layout: auto;
+  border-collapse: collapse;
+  margin-block: var(--ema-space-3);
+  max-width: 100%;
+  font-size: 0.92em;
+}
+.markdown-content th {
+  text-align: left;
+  font-weight: 650;
+  color: var(--ema-text-secondary);
+  padding: var(--ema-space-1) var(--ema-space-4) var(--ema-space-1) 0;
+  border-bottom: 2px solid var(--ema-border-strong);
+  white-space: nowrap;
+}
+.markdown-content td {
+  padding: var(--ema-space-2) var(--ema-space-4) var(--ema-space-2) 0;
+  border-bottom: 1px solid var(--ema-border);
+  vertical-align: top;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.markdown-content tr:last-child td { border-bottom: none; }
+
+.markdown-content blockquote {
+  margin-block: var(--ema-space-2);
+  padding-left: var(--ema-space-3);
+  border-left: 2px solid var(--ema-border-strong);
+  color: var(--ema-text-secondary);
+}
+.markdown-content hr {
+  border: 0;
+  border-top: 1px solid var(--ema-border);
+  margin-block: var(--ema-space-4);
+}
+.markdown-content img {
+  max-width: 100%;
+  border-radius: var(--ema-radius-md);
+}
+
+/* renderer.tsx catch 分支的兜底 pre: 无高亮也要可换行可读, 不横向撑破气泡。 */
+.markdown-fallback {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--ema-text-secondary);
+}

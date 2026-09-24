@@ -64,8 +64,14 @@
 .ema-font-mono {
   font-family: var(--ema-font-mono) !important;
   font-weight: 400;
-  line-height: 1.7;
   font-feature-settings: 'liga' 1, 'calt' 1;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* 行高只给块级: inline code 的行框必须服从段落行高,
+   否则含 code 的行被撑高约 14%, 段落行距忽松忽紧。 */
+.hljs,
+.markdown-content pre {
+  line-height: 1.7;
 }

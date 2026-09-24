@@ -1,4 +1,4 @@
-/* AgentRun 面板的运行状态和执行步骤时间线。 */
+/* Subagent 面板的运行状态和执行步骤时间线。 */
 
 .ema-running-bar::before {
   content: '';
@@ -14,7 +14,7 @@
 
 .ema-timeline-row {
   position: relative;
-  padding-left: 14px;
+  padding-left: var(--ema-space-4);
 }
 .ema-timeline-row::before {
   content: '';

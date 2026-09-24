@@ -11,8 +11,8 @@
 .ema-terminal-banner {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 6px 10px;
+  gap: var(--ema-space-2);
+  padding: var(--ema-space-1) var(--ema-space-2);
   border-bottom: 1px solid var(--ema-border);
   background: var(--ema-surface-2);
 }
@@ -66,7 +66,7 @@
 .ema-terminal-output {
   max-height: 16rem;
   overflow: auto;
-  padding: 8px 10px;
+  padding: var(--ema-space-2);
 }
 
 .ema-terminal-output pre {

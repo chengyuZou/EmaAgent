@@ -33,6 +33,16 @@
   --ema-radius-panel: calc(16px * var(--ema-radius, 1));
   --ema-radius-pill:  999px;
 
+  /* Spacing - 4 倍数刻度(README 硬规矩: 间距走 token; 0_5 档只给发丝级场景,
+     组件内微调用 0_5/1, 块间距用 3 以上, 不许再出现 5/7/9/10/14px) */
+  --ema-space-0_5: 2px;
+  --ema-space-1:   4px;
+  --ema-space-2:   8px;
+  --ema-space-3:   12px;
+  --ema-space-4:   16px;
+  --ema-space-5:   24px;
+  --ema-space-6:   32px;
+
   /* Shadows - 暖暗晕(任意桌面背景都好看)*/
   --ema-shadow-1:  0 1px 2px rgba(0,0,0,0.18), 0 0px 1px rgba(0,0,0,0.12);
   --ema-shadow-2:  0 2px 4px rgba(0,0,0,0.22), 0 4px 10px rgba(0,0,0,0.16), 0 1px 2px rgba(0,0,0,0.10);

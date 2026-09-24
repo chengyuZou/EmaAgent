@@ -1,4 +1,6 @@
-/* 聊天历史滚动边缘与用户消息内部块的专属样式。 */
+/* 聊天历史滚动边缘、用户消息内部块、TurnRail、思考块的专属样式。
+   .markdown-content 排版体系在 primitives/markdown.css; 本文件只保留
+   chat 气泡内的换行例外(气泡窄, 代码与长路径 pre-wrap 不横向滚动)。 */
 
 .ema-fade-mask-top::before {
   content: '';
@@ -6,7 +8,7 @@
   top: 0;
   left: 0;
   right: 0;
-  height: 40px;
+  height: var(--ema-message-top-inset);
   background: linear-gradient(var(--ema-bg), transparent);
   pointer-events: none;
   z-index: 1;
@@ -49,14 +51,6 @@
   }
 }
 
-/* Markdown 正文用内容字体(代码块走 hljs/mono,不受此规则影响)。 */
-.markdown-content {
-  min-width: 0;
-  font-family: var(--ema-font-content);
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
-
 /* Chat Message 的正文、代码、表格和长路径都在气泡宽度内换行。 */
 .ema-message-content {
   min-width: 0;
@@ -65,6 +59,8 @@
   word-break: break-word;
 }
 
+/* chat 域内例外: 气泡内 pre/code 一律 pre-wrap + 隐藏横滚
+   (primitives/markdown.css 的标准是 overflow-x:auto)。 */
 .ema-message-content .markdown-content pre,
 .ema-message-content .markdown-content code {
   max-width: 100%;
@@ -75,17 +71,6 @@
 
 .ema-message-content .markdown-content pre {
   overflow-x: hidden;
-}
-
-.ema-message-content .markdown-content table {
-  width: 100%;
-  table-layout: fixed;
-}
-
-.ema-message-content .markdown-content th,
-.ema-message-content .markdown-content td {
-  overflow-wrap: anywhere;
-  word-break: break-word;
 }
 
 .ema-message-chip,
@@ -123,8 +108,8 @@
   min-height: 28px;
   cursor: pointer;
   align-items: center;
-  gap: 7px;
-  padding: 3px 9px;
+  gap: var(--ema-space-2);
+  padding: var(--ema-space-1) var(--ema-space-2);
   border: 0;
   background: transparent;
   text-align: left;
@@ -154,7 +139,7 @@
 
 .ema-thinking-content {
   min-width: 0;
-  padding: 4px 10px 9px 30px;
+  padding: var(--ema-space-1) var(--ema-space-2) var(--ema-space-2) var(--ema-space-6);
   color: var(--ema-text-secondary);
   font-size: 12px;
 }
