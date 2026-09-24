@@ -9,3 +9,11 @@ export const narrativeQueryModeSetting = defineSetting({
   defaultValue: 'auto' as const,
   schema: z.enum(['auto', 'local', 'global', 'hybrid', 'naive', 'mix']),
 });
+
+/** 只控制下一次桌面启动；运行中手动启停不会改写这个偏好。 */
+export const narrativeStartOnLaunchSetting = defineSetting({
+  key: 'narrative.startOnLaunch',
+  apply: 'restart',
+  defaultValue: true,
+  schema: z.boolean(),
+});

@@ -2,8 +2,10 @@
 use std::path::Path;
 use std::process::Stdio;
 
+use serde::Deserialize;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
+use tokio::sync::mpsc;
 
 use super::launch::ChildLaunch;
 use super::platform::NativeProcessTree;
@@ -12,35 +14,29 @@ use super::platform::NativeProcessTree;
 #[allow(clippy::too_many_arguments)]
 pub async fn spawn_narrative(
     launch: ChildLaunch,
-    ready_file: &Path,
     secret: &str,
     narrative_dir: &Path,
     process_tree: &NativeProcessTree,
-) -> Result<Child, String> {
-    let mut command = base_command(launch, ready_file, secret);
+) -> Result<(Child, mpsc::UnboundedReceiver<u16>), String> {
+    let mut command = base_command(launch, secret);
     command.env("EMA_NARRATIVE_DIR", narrative_dir);
     spawn(command, "narrative-bridge", process_tree).await
 }
 
 pub async fn spawn_server(
     launch: ChildLaunch,
-    ready_file: &Path,
     secret: &str,
-    narrative_url: Option<&str>,
     initialize_builtin_characters: bool,
     process_tree: &NativeProcessTree,
-) -> Result<Child, String> {
-    let mut command = base_command(launch, ready_file, secret);
-    if let Some(url) = narrative_url {
-        command.env("EMA_NARRATIVE_BRIDGE_URL", url);
-    }
+) -> Result<(Child, mpsc::UnboundedReceiver<u16>), String> {
+    let mut command = base_command(launch, secret);
     if initialize_builtin_characters {
         command.env("EMA_INITIALIZE_BUILTIN_CHARACTERS", "1");
     }
     spawn(command, "server", process_tree).await
 }
 
-fn base_command(launch: ChildLaunch, ready_file: &Path, secret: &str) -> Command {
+fn base_command(launch: ChildLaunch, secret: &str) -> Command {
     let mut command = Command::new(&launch.executable);
     command
         .args(&launch.args)
@@ -48,8 +44,7 @@ fn base_command(launch: ChildLaunch, ready_file: &Path, secret: &str) -> Command
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .stdin(Stdio::null())
-        .env("EMA_SHARED_SECRET", secret)
-        .env("EMA_READY_FILE", ready_file);
+        .env("EMA_SHARED_SECRET", secret);
     command
 }
 
@@ -57,7 +52,7 @@ async fn spawn(
     mut command: Command,
     label: &'static str,
     process_tree: &NativeProcessTree,
-) -> Result<Child, String> {
+) -> Result<(Child, mpsc::UnboundedReceiver<u16>), String> {
     process_tree.prepare_command(&mut command);
     tracing::info!(label, "launching child process");
     let mut child = command
@@ -71,16 +66,47 @@ async fn spawn(
         return Err(error);
     }
     tracing::info!(label, pid, "child process spawned");
-    pipe_stdout(child.stdout.take(), label);
+    let (ready_sender, ready_receiver) = mpsc::unbounded_channel();
+    pipe_stdout(child.stdout.take(), label, ready_sender);
     pipe_stderr(child.stderr.take(), label);
-    Ok(child)
+    Ok((child, ready_receiver))
 }
 
-fn pipe_stdout(stdout: Option<tokio::process::ChildStdout>, label: &'static str) {
+#[derive(Deserialize)]
+struct ReadyNotification {
+    jsonrpc: String,
+    method: String,
+    params: ReadyParams,
+}
+
+#[derive(Deserialize)]
+struct ReadyParams {
+    port: u16,
+}
+
+fn pipe_stdout(
+    stdout: Option<tokio::process::ChildStdout>,
+    label: &'static str,
+    ready_sender: mpsc::UnboundedSender<u16>,
+) {
     let Some(stdout) = stdout else { return };
     tokio::spawn(async move {
         let mut lines = BufReader::new(stdout).lines();
         while let Ok(Some(line)) = lines.next_line().await {
+            let expected_method = if label == "server" {
+                "server.ready"
+            } else {
+                "narrative.ready"
+            };
+            if let Ok(message) = serde_json::from_str::<ReadyNotification>(&line) {
+                if message.jsonrpc == "2.0"
+                    && message.method == expected_method
+                    && message.params.port > 0
+                {
+                    let _ = ready_sender.send(message.params.port);
+                    continue;
+                }
+            }
             tracing::debug!(label, %line, "child stdout");
         }
     });

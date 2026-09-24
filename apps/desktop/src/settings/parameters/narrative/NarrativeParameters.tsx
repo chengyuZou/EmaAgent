@@ -1,42 +1,98 @@
 import { useEffect, useState, type JSX } from 'react';
-import { Callout, Spinner } from '@ema-agent/ui';
+import { Button, Callout, Spinner } from '@ema-agent/ui';
+import { narrativeApi } from '../../../api/narrative.js';
 import { tauriBridge } from '../../../lib/tauri-bridge.js';
-import { SettingsCard, SettingsSection } from '../../shared/SettingItem.js';
+import { SettingItem, SettingsCard, SettingsSection } from '../../shared/SettingItem.js';
 import { SelectSetting } from '../controls/SelectSetting.js';
 import { SwitchSetting } from '../controls/SwitchSetting.js';
 import { useSettingValues } from '../useSettingValues.js';
 
 const QUERY_MODE = 'narrative.queryMode';
+const START_ON_LAUNCH = 'narrative.startOnLaunch';
 
 export function NarrativeParameters(): JSX.Element {
   const settings = useSettingValues();
-  const [startOnLaunch, setStartOnLaunch] = useState<boolean | null>(null);
-  const [desktopError, setDesktopError] = useState<string | null>(null);
+  const [port, setPort] = useState<number | null>(null);
+  const [portLoading, setPortLoading] = useState(true);
+  const [operation, setOperation] = useState<'starting' | 'stopping' | null>(null);
+  const [operationError, setOperationError] = useState<string | null>(null);
 
   useEffect(() => {
-    void tauriBridge.getStartNarrativeOnLaunch()
-      .then(setStartOnLaunch)
-      .catch(cause => setDesktopError(cause instanceof Error ? cause.message : 'Narrative 启动参数读取失败'));
-  }, []);
+    if (operation !== null) return;
+    let mounted = true;
+    const refresh = (): void => {
+      void tauriBridge.getNarrativePort()
+        .then(value => { if (mounted) setPort(value); })
+        .catch(cause => {
+          if (mounted) setOperationError(cause instanceof Error ? cause.message : 'Narrative 端口读取失败');
+        })
+        .finally(() => { if (mounted) setPortLoading(false); });
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 1000);
+    return () => {
+      mounted = false;
+      window.clearInterval(timer);
+    };
+  }, [operation]);
 
-  if (settings.loading || startOnLaunch === null && desktopError === null) return <Loading />;
+  async function start(): Promise<void> {
+    if (operation !== null) return;
+    setOperation('starting');
+    setOperationError(null);
+    try {
+      setPort(await tauriBridge.startNarrative());
+    } catch (cause) {
+      setOperationError(cause instanceof Error ? cause.message : 'Narrative 启动失败');
+      setPort(await tauriBridge.getNarrativePort().catch(() => null));
+    } finally {
+      setOperation(null);
+    }
+  }
+
+  async function stop(): Promise<void> {
+    if (operation !== null) return;
+    setOperation('stopping');
+    setOperationError(null);
+    try {
+      await narrativeApi.shutdown();
+      await tauriBridge.waitNarrativeExit();
+      setPort(null);
+    } catch (cause) {
+      setOperationError(cause instanceof Error ? cause.message : 'Narrative 关闭失败');
+      setPort(await tauriBridge.getNarrativePort().catch(() => null));
+    } finally {
+      setOperation(null);
+    }
+  }
+
+  if (settings.loading || portLoading) return <Loading />;
   if (settings.error) return <Callout variant="danger">Narrative 参数读取失败: {settings.error}</Callout>;
-  if (desktopError) return <Callout variant="danger">Narrative 启动参数读取失败: {desktopError}</Callout>;
-  if (startOnLaunch === null) throw new Error('Narrative 启动参数没有返回');
 
   return (
     <SettingsSection icon="i-lucide:book-open" title="Narrative" description="剧情检索行为">
+      {operationError && <Callout variant="danger">{operationError}</Callout>}
       <SettingsCard>
         <SwitchSetting
-          title="启动 Narrative"
-          hint="下次启动 Ema 时是否创建 Narrative Bridge. 本次运行不连接或断开进程."
-          apply="restart"
-          value={startOnLaunch}
-          onSave={async value => {
-            await tauriBridge.setStartNarrativeOnLaunch(value);
-            setStartOnLaunch(value);
-          }}
+          title="下次启动时自动启动 Narrative"
+          hint="只影响下次打开 Ema, 不改变本次运行状态."
+          apply={settings.apply(START_ON_LAUNCH)}
+          value={requiredBoolean(settings.values, START_ON_LAUNCH)}
+          onSave={value => settings.save(START_ON_LAUNCH, value)}
+          onReset={() => settings.reset(START_ON_LAUNCH)}
         />
+        <SettingItem
+          title="当前 Narrative Bridge"
+          hint={port === null ? '未接入或正在启动' : `正在运行, 端口 ${port}`}
+        >
+          <Button
+            size="sm"
+            disabled={operation !== null || !tauriBridge.isTauri()}
+            onClick={() => void (port === null ? start() : stop())}
+          >
+            {operation === 'starting' ? '启动中' : operation === 'stopping' ? '关闭中' : port === null ? '立即启动' : '关闭'}
+          </Button>
+        </SettingItem>
         <SelectSetting
           title="剧情检索模式"
           hint="auto 由模型选择, 其余选项强制每次剧情检索使用固定模式."
@@ -56,6 +112,12 @@ export function NarrativeParameters(): JSX.Element {
       </SettingsCard>
     </SettingsSection>
   );
+}
+
+function requiredBoolean(values: ReadonlyMap<string, unknown>, key: string): boolean {
+  const value = values.get(key);
+  if (typeof value !== 'boolean') throw new Error(`参数 ${key} 没有返回布尔值`);
+  return value;
 }
 
 function Loading(): JSX.Element {

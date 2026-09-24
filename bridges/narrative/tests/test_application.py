@@ -34,13 +34,13 @@ def test_missing_secret_is_fail_closed(monkeypatch) -> None:
     with pytest.raises(MissingSharedSecretError):
         require_shared_secret()
     with pytest.raises(MissingSharedSecretError):
-        build_app(7421)
+        build_app()
 
 
 @pytest.mark.asyncio
 async def test_health_is_public_but_business_routes_require_secret(monkeypatch) -> None:
     monkeypatch.setenv("EMA_SHARED_SECRET", TEST_SECRET)
-    app = build_app(7421)
+    app = build_app()
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://bridge.test") as client:
         health = await client.get("/health")
@@ -62,7 +62,7 @@ async def test_health_is_public_but_business_routes_require_secret(monkeypatch) 
 async def test_recall_without_runtime_is_not_configured(monkeypatch) -> None:
     # ASGITransport 不跑 lifespan：timelines 未就绪时应 503 而不是 5xx。
     monkeypatch.setenv("EMA_SHARED_SECRET", TEST_SECRET)
-    app = build_app(7421)
+    app = build_app()
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://bridge.test") as client:
         authorized = await client.post(
@@ -81,7 +81,7 @@ async def test_recall_without_runtime_is_not_configured(monkeypatch) -> None:
 async def test_second_configure_is_rejected(monkeypatch, tmp_path) -> None:
     # 真实 LightRAG 建库走集成冒烟；这里直接占用 timelines 验证一次语义。
     monkeypatch.setenv("EMA_SHARED_SECRET", TEST_SECRET)
-    app = build_app(7421)
+    app = build_app()
     app.state.narrative_root = _make_narrative_root(tmp_path)
     app.state.timelines = object()
     transport = httpx.ASGITransport(app=app)
@@ -98,7 +98,7 @@ async def test_second_configure_is_rejected(monkeypatch, tmp_path) -> None:
 @pytest.mark.asyncio
 async def test_shutdown_requires_uvicorn_handle(monkeypatch) -> None:
     monkeypatch.setenv("EMA_SHARED_SECRET", TEST_SECRET)
-    app = build_app(7421)
+    app = build_app()
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://bridge.test") as client:
         response = await client.post(

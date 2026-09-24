@@ -4,6 +4,7 @@ from __future__ import annotations
 import hmac
 import logging
 import os
+import sys
 import time
 from contextlib import asynccontextmanager
 
@@ -19,7 +20,6 @@ from .contracts import (
 )
 from .light_rag import LightRagTimelines
 from .model_client import RecallLlmClient, build_embedding_func
-from .ready import publish_ready
 from .recall import recall
 
 logger = logging.getLogger(__name__)
@@ -50,16 +50,16 @@ def secrets_equal(provided: str | None, expected: str) -> bool:
     )
 
 
-def build_app(port: int) -> FastAPI:
+def build_app() -> FastAPI:
     secret = require_shared_secret()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         started_at = time.perf_counter()
-        print("[narrative:startup] lifespan started", flush=True)
+        print("[narrative:startup] lifespan started", file=sys.stderr, flush=True)
         narrative_root = resolve_narrative_root()
         validate_narrative_root(narrative_root)
-        print(f"[narrative-bridge] content root: {narrative_root}", flush=True)
+        print(f"[narrative-bridge] content root: {narrative_root}", file=sys.stderr, flush=True)
 
         # 时间线实例等 Server 经 /internal/configure 送达进程级 Embedding 后再建；
         # 此前进程仍可回答 /health，并对 recall 返回 503。
@@ -67,16 +67,14 @@ def build_app(port: int) -> FastAPI:
         app.state.timelines = None
         app.state.startup_completed = True
 
-        clear_ready = publish_ready(port)
         print(
-            f"[narrative:startup] ready published duration_s={time.perf_counter() - started_at:.3f}",
+            f"[narrative:startup] lifespan completed duration_s={time.perf_counter() - started_at:.3f}",
+            file=sys.stderr,
             flush=True,
         )
         try:
             yield
         finally:
-            if clear_ready is not None:
-                clear_ready()
             store = app.state.timelines
             if store is not None:
                 await store.close()

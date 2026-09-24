@@ -29,4 +29,4 @@ export type {
   NarrativeSearch,
   PrepareNarrativeRecallInput,
 } from './recall.js';
-export { narrativeQueryModeSetting } from './settings.js';
+export { narrativeQueryModeSetting, narrativeStartOnLaunchSetting } from './settings.js';

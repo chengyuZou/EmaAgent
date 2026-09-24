@@ -15,15 +15,14 @@ Bridge 不持有任何全局 LLM 状态：
 
 ```text
 core/
-├─ main.py         # 向 OS 申请端口并以 uvicorn.Server 启动
+├─ main.py         # 向 OS 申请端口, uvicorn 监听后在 stdout 发 narrative.ready
 ├─ application.py  # FastAPI 生命周期、认证与各端点装配
 ├─ contracts.py    # Server 与 Bridge 的 Pydantic 请求响应（全包字段唯一来源）
 ├─ content.py      # 剧情根目录与三条固定时间线
 ├─ model_client.py # 一次 Recall 的 LLM 客户端与进程级 Embedding 闭包
 ├─ light_rag.py    # 三个 LightRAG 实例的打开、查询和关闭
 ├─ recall.py       # 周目路由、多时间线并行查询与部分失败
-├─ prompt.py       # 固定剧情摘要与周目路由 Prompt
-└─ ready.py        # 真正开始监听后向 Rust Host 原子发布实际端口
+└─ prompt.py       # 固定剧情摘要与周目路由 Prompt
 ```
 
 ## 环境变量
@@ -32,7 +31,14 @@ core/
 |---|---|
 | `EMA_SHARED_SECRET` | 进程间认证密钥（必填，否则拒绝启动） |
 | `EMA_NARRATIVE_DIR` | 剧情数据根目录（含三条时间线子目录） |
-| `EMA_READY_FILE` | Rust Host 下发的端口回执文件路径 |
+
+uvicorn 真正监听后, stdout 输出单行 JSON-RPC 2.0 通知:
+
+```json
+{"jsonrpc":"2.0","method":"narrative.ready","params":{"port":43121}}
+```
+
+Rust Host 读取该端口. Python 诊断输出走 stderr, 避免与控制消息混用.
 
 ## 接口
 

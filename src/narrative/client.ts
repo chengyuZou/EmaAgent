@@ -11,7 +11,7 @@ import {
 } from './errors.js';
 
 export interface NarrativeClientOptions {
-  /** Bridge base URL，由 Rust Host 经 EMA_NARRATIVE_BRIDGE_URL 下发。 */
+  /** Bridge base URL，由 Rust Host 的 attach 控制消息下发给 Server。 */
   baseUrl: string;
   /** Shared secret sent as X-Ema-Secret header. */
   secret?: string;

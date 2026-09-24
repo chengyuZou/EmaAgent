@@ -2,7 +2,6 @@
 use serde::Deserialize;
 use tauri::Manager;
 
-use crate::desktop::settings::{read_start_narrative_on_launch, write_start_narrative_on_launch};
 use crate::desktop::windows::{begin_main_focus_settling, show_window};
 use crate::processes::DesktopProcesses;
 
@@ -90,16 +89,6 @@ pub async fn open_window(app: tauri::AppHandle, label: String) -> Result<(), Str
 }
 
 #[tauri::command]
-pub fn get_start_narrative_on_launch() -> Result<bool, String> {
-    read_start_narrative_on_launch()
-}
-
-#[tauri::command]
-pub fn set_start_narrative_on_launch(value: bool) -> Result<(), String> {
-    write_start_narrative_on_launch(value)
-}
-
-#[tauri::command]
 pub fn open_path(app: tauri::AppHandle, path: String) -> Result<(), String> {
     // 用宿主侧 opener 打开路径本身(KB 库目录等);自研 command 不经 WebView ACL。
     use tauri_plugin_opener::OpenerExt;
@@ -109,4 +98,11 @@ pub fn open_path(app: tauri::AppHandle, path: String) -> Result<(), String> {
             tracing::warn!(%path, %error, "open_path failed");
             error.to_string()
         })
+}
+
+#[tauri::command]
+pub async fn read_draft_image(path: String) -> Result<Vec<u8>, String> {
+    // 文件选择器只返回路径, WebView 无法直接显示本机文件. 这里仅为草稿预览读取字节,
+    // 不创建 Session 附件; 点击发送后仍由原有上传接口负责正式落盘.
+    tokio::fs::read(path).await.map_err(|error| error.to_string())
 }

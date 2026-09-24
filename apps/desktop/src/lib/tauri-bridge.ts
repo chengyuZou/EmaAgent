@@ -117,14 +117,13 @@ const SUB_WINDOW_OPENED_EVENT = 'ui:window-opened';
 const SUB_WINDOW_CLOSED_EVENT = 'ui:window-closed';
 const THEME_CHANGED_EVENT = 'theme:changed';
 const DESKTOP_SETTINGS_CHANGED_EVENT = 'settings:desktop-changed';
-const SPEECH_STARTED_EVENT = 'speech:start';
-const SPEECH_DELTA_EVENT = 'speech:delta';
-const SPEECH_ENDED_EVENT = 'speech:end';
+const DIALOGUE_DELTA_EVENT = 'dialogue:delta';
+const DIALOGUE_ENDED_EVENT = 'dialogue:end';
 const DECISION_REQUIRED_EVENT = 'decision:push';
 const DECISION_DISMISSED_EVENT = 'decision:dismiss';
 const STAGE_EMOTION_EVENT = 'stage:emotion-changed';
 const STAGE_MOTION_EVENT = 'stage:motion-changed';
-const STAGE_SPEECH_EVENT = 'stage:speech-state';
+const STAGE_LIP_SYNC_EVENT = 'stage:lip-sync';
 const STAGE_LIVE2D_PREVIEW_EVENT = 'stage:live2d-preview';
 const BROWSER_EVENT = 'browser:event';
 
@@ -262,33 +261,30 @@ export const tauriBridge = {
     return listenTauri(DESKTOP_SETTINGS_CHANGED_EVENT, handler);
   },
 
-  async publishSpeechStarted(sessionId: string): Promise<void> {
-    await emitTauri(SPEECH_STARTED_EVENT, { sessionId });
+  async publishDialogueDelta(sessionId: string, turnId: string, text: string): Promise<void> {
+    await emitTauri(DIALOGUE_DELTA_EVENT, { sessionId, turnId, text });
   },
 
-  async publishSpeechDelta(sessionId: string, text: string): Promise<void> {
-    await emitTauri(SPEECH_DELTA_EVENT, { sessionId, text });
+  async publishDialogueEnded(sessionId: string, turnId: string): Promise<void> {
+    await emitTauri(DIALOGUE_ENDED_EVENT, { sessionId, turnId });
   },
 
-  async publishSpeechEnded(sessionId: string): Promise<void> {
-    await emitTauri(SPEECH_ENDED_EVENT, { sessionId });
-  },
-
-  async listenSpeechStarted(handler: (sessionId: string) => void): Promise<() => void> {
-    return listenTauri<{ sessionId: string }>(SPEECH_STARTED_EVENT, ({ sessionId }) => handler(sessionId));
-  },
-
-  async listenSpeechDelta(
-    handler: (sessionId: string, text: string) => void,
+  async listenDialogueDelta(
+    handler: (sessionId: string, turnId: string, text: string) => void,
   ): Promise<() => void> {
-    return listenTauri<{ sessionId: string; text: string }>(
-      SPEECH_DELTA_EVENT,
-      ({ sessionId, text }) => handler(sessionId, text),
+    return listenTauri<{ sessionId: string; turnId: string; text: string }>(
+      DIALOGUE_DELTA_EVENT,
+      ({ sessionId, turnId, text }) => handler(sessionId, turnId, text),
     );
   },
 
-  async listenSpeechEnded(handler: (sessionId: string) => void): Promise<() => void> {
-    return listenTauri<{ sessionId: string }>(SPEECH_ENDED_EVENT, ({ sessionId }) => handler(sessionId));
+  async listenDialogueEnded(
+    handler: (sessionId: string, turnId: string) => void,
+  ): Promise<() => void> {
+    return listenTauri<{ sessionId: string; turnId: string }>(
+      DIALOGUE_ENDED_EVENT,
+      ({ sessionId, turnId }) => handler(sessionId, turnId),
+    );
   },
 
   async publishDecisionRequired(event: DecisionRequiredEvent): Promise<void> {
@@ -320,8 +316,8 @@ export const tauriBridge = {
     await emitTauri(STAGE_MOTION_EVENT, { motion });
   },
 
-  async publishStageSpeech(speaking: boolean, mouthOpen: number): Promise<void> {
-    await emitTauri(STAGE_SPEECH_EVENT, { speaking, mouthOpen });
+  async publishStageLipSync(speaking: boolean, mouthOpen: number): Promise<void> {
+    await emitTauri(STAGE_LIP_SYNC_EVENT, { speaking, mouthOpen });
   },
 
   async publishLive2dPreview(command: Live2dPreviewCommand): Promise<void> {
@@ -346,11 +342,11 @@ export const tauriBridge = {
     );
   },
 
-  async listenStageSpeech(
+  async listenStageLipSync(
     handler: (speaking: boolean, mouthOpen: number) => void,
   ): Promise<() => void> {
     return listenTauri<{ speaking: boolean; mouthOpen: number }>(
-      STAGE_SPEECH_EVENT,
+      STAGE_LIP_SYNC_EVENT,
       ({ speaking, mouthOpen }) => handler(speaking, mouthOpen),
     );
   },
@@ -387,12 +383,20 @@ export const tauriBridge = {
     await invokeTauri('open_window', { label: 'settings' });
   },
 
-  async getStartNarrativeOnLaunch(): Promise<boolean> {
-    return (await invokeTauri<boolean>('get_start_narrative_on_launch')) ?? true;
+  async getNarrativePort(): Promise<number | null> {
+    return invokeTauri<number | null>('get_narrative_port');
   },
 
-  async setStartNarrativeOnLaunch(value: boolean): Promise<void> {
-    await invokeTauri('set_start_narrative_on_launch', { value });
+  async startNarrative(): Promise<number> {
+    const core = await getCore();
+    if (!core) throw new Error('Narrative 只能在桌面应用中启动');
+    return core.invoke<number>('start_narrative');
+  },
+
+  async waitNarrativeExit(): Promise<void> {
+    const core = await getCore();
+    if (!core) throw new Error('Narrative 只能在桌面应用中关闭');
+    await core.invoke('wait_narrative_exit');
   },
 
   async quit(): Promise<void> {
@@ -607,6 +611,13 @@ export const tauriBridge = {
         pendingBrowserVisibility.delete(browserId);
       }
     }
+  },
+
+  /** 已选择的本机图片只供草稿胶囊预览; 正式附件仍由发送流程上传到 Session. */
+  async readDraftImage(path: string): Promise<number[]> {
+    const core = await getCore();
+    if (!core) throw new Error('当前环境无法预览本机图片');
+    return core.invoke<number[]>('read_draft_image', { path });
   },
 
   async closeBrowser(browserId: string): Promise<void> {

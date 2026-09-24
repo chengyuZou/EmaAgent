@@ -1,55 +1,26 @@
-// 读写只由桌面宿主消费的启动设置.
+// 桌面宿主开机时只读 Profile SQL 中的 Narrative 启动偏好.
+use rusqlite::{Connection, OpenFlags, OptionalExtension};
 
-use std::fs;
-use std::path::PathBuf;
-
-use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct DesktopSettings {
-    start_narrative_on_launch: bool,
-}
-
-impl Default for DesktopSettings {
-    fn default() -> Self {
-        Self {
-            start_narrative_on_launch: true,
-        }
-    }
-}
+use super::profile::profile_root;
 
 pub(crate) fn read_start_narrative_on_launch() -> Result<bool, String> {
-    let path = settings_file()?;
+    let path = profile_root()?.join("profile.db");
     if !path.exists() {
-        return Ok(DesktopSettings::default().start_narrative_on_launch);
+        return Ok(true);
     }
-    let content = fs::read_to_string(&path)
-        .map_err(|error| format!("read desktop settings {}: {error}", path.display()))?;
-    let settings: DesktopSettings = serde_json::from_str(&content)
-        .map_err(|error| format!("parse desktop settings {}: {error}", path.display()))?;
-    Ok(settings.start_narrative_on_launch)
-}
-
-pub(crate) fn write_start_narrative_on_launch(value: bool) -> Result<(), String> {
-    let path = settings_file()?;
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|error| {
-            format!(
-                "create desktop settings directory {}: {error}",
-                parent.display()
-            )
-        })?;
+    let db = Connection::open_with_flags(&path, OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .map_err(|error| format!("open profile database {}: {error}", path.display()))?;
+    let value: Option<String> = db
+        .query_row(
+            "SELECT value_json FROM settings WHERE key = ?1",
+            ["narrative.startOnLaunch"],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|error| format!("read Narrative launch preference: {error}"))?;
+    match value {
+        Some(json) => serde_json::from_str::<bool>(&json)
+            .map_err(|error| format!("parse Narrative launch preference: {error}")),
+        None => Ok(true),
     }
-    let content = serde_json::to_string_pretty(&DesktopSettings {
-        start_narrative_on_launch: value,
-    })
-    .map_err(|error| format!("serialize desktop settings: {error}"))?;
-    fs::write(&path, content)
-        .map_err(|error| format!("write desktop settings {}: {error}", path.display()))
-}
-
-fn settings_file() -> Result<PathBuf, String> {
-    let home = dirs::home_dir().ok_or_else(|| "home directory is unavailable".to_string())?;
-    Ok(home.join(".ema-agent").join("desktop.json"))
 }
