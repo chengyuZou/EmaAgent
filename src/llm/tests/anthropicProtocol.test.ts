@@ -3,6 +3,26 @@ import { describe, expect, it } from 'vitest';
 import { toAnthropicMessages } from '../protocols/anthropic.js';
 
 describe('toAnthropicMessages', () => {
+  it('相邻独立 ToolResult 只在 Anthropic 请求中合为一个 User 消息', () => {
+    const converted = toAnthropicMessages([
+      { role: 'assistant', content: [
+        { type: 'tool_use', id: 'call-1', name: 'Read', args: {} },
+        { type: 'tool_use', id: 'call-2', name: 'Glob', args: {} },
+      ] },
+      { role: 'user', content: [{ type: 'tool_result', toolCallId: 'call-1', content: 'first' }], cacheBreakpoint: true },
+      { role: 'user', content: [{ type: 'tool_result', toolCallId: 'call-2', content: 'second' }] },
+    ], 'anthropic', 'claude-sonnet');
+
+    expect(converted.messages).toHaveLength(2);
+    expect(converted.messages[1]).toMatchObject({
+      role: 'user',
+      content: [
+        { type: 'tool_result', tool_use_id: 'call-1', content: 'first', cache_control: { type: 'ephemeral' } },
+        { type: 'tool_result', tool_use_id: 'call-2', content: 'second' },
+      ],
+    });
+  });
+
   it('保留多层 system 与消息尾缓存断点', () => {
     const converted = toAnthropicMessages([
       { role: 'system', content: 'product', cacheBreakpoint: true },

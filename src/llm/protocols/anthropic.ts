@@ -293,16 +293,13 @@ export function toAnthropicMessages(
     }
     if (message.role === 'user') {
       if (typeof message.content === 'string') {
-        result.push(message.cacheBreakpoint
-          ? {
-              role: 'user',
-              content: [{
-                type: 'text',
-                text: message.content,
-                cache_control: { type: 'ephemeral' },
-              }],
-            }
-          : { role: 'user', content: message.content });
+        appendAnthropicUser(result, message.cacheBreakpoint
+          ? [{
+              type: 'text',
+              text: message.content,
+              cache_control: { type: 'ephemeral' },
+            }]
+          : message.content);
         continue;
       }
       const content: Anthropic.ContentBlockParam[] = [];
@@ -322,7 +319,7 @@ export function toAnthropicMessages(
         }
       }
       setLastCacheBreakpoint(content, message.cacheBreakpoint);
-      result.push({ role: 'user', content });
+      appendAnthropicUser(result, content);
       continue;
     }
 
@@ -352,6 +349,27 @@ export function toAnthropicMessages(
     result.push({ role: 'assistant', content });
   }
   return { system: system.length > 0 ? system : undefined, messages: result };
+}
+
+function appendAnthropicUser(
+  messages: Anthropic.MessageParam[],
+  content: string | Anthropic.ContentBlockParam[],
+): void {
+  const previous = messages.at(-1);
+  if (previous?.role !== 'user') {
+    messages.push({ role: 'user', content });
+    return;
+  }
+  const previousBlocks: Anthropic.ContentBlockParam[] = typeof previous.content === 'string'
+    ? [{ type: 'text', text: previous.content }]
+    : [...previous.content];
+  const nextBlocks: Anthropic.ContentBlockParam[] = typeof content === 'string'
+    ? [{ type: 'text', text: content }]
+    : content;
+  messages[messages.length - 1] = {
+    role: 'user',
+    content: [...previousBlocks, ...nextBlocks],
+  };
 }
 
 function toAnthropicContentPart(part: ContentPart): Anthropic.ContentBlockParam {

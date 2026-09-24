@@ -231,7 +231,7 @@ function toGeminiContents(
     }
     if (message.role === 'user') {
       if (typeof message.content === 'string') {
-        contents.push({ role: 'user', parts: [{ text: message.content }] });
+        appendGeminiUser(contents, [{ text: message.content }]);
         continue;
       }
       const parts: Part[] = [];
@@ -248,7 +248,7 @@ function toGeminiContents(
           parts.push(toGeminiPart(block as ContentPart));
         }
       }
-      if (parts.length > 0) contents.push({ role: 'user', parts });
+      if (parts.length > 0) appendGeminiUser(contents, parts);
       continue;
     }
 
@@ -277,6 +277,18 @@ function toGeminiContents(
     if (parts.length > 0) contents.push({ role: 'model', parts });
   }
   return { system, contents };
+}
+
+function appendGeminiUser(contents: Content[], parts: Part[]): void {
+  const previous = contents.at(-1);
+  if (previous?.role !== 'user') {
+    contents.push({ role: 'user', parts });
+    return;
+  }
+  contents[contents.length - 1] = {
+    role: 'user',
+    parts: [...(previous.parts ?? []), ...parts],
+  };
 }
 
 function toGeminiPart(part: ContentPart): Part {

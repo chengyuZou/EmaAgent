@@ -53,9 +53,9 @@ export type Message =
       content: readonly AssistantBlock[];
       cacheBreakpoint?: true;
       /**
-       * 中立执行元数据：这条 Assistant 历史由哪个调用目标生成。Adapter 编码厂商
-       * Wire 消息时消费并剥除，绝不序列化进厂商请求；只对模型生成的 Assistant
-       * 历史有意义，user/tool/reminder/summary 不伪造。
+       * 用于区分这条 Assistant 历史由哪个provider的哪个模型,以及使用的协议生成
+       * 避免发生跨模型/跨协议的续接, 例如 Anthropic 的 thinking 不能被 OpenAI 的 Responses item id/encrypted 续接
+       * 在构建上下文时跳过所有不属于当前模型/协议的 Assistant 历史
        */
       generatedBy?: LlmGenerationSource;
     };

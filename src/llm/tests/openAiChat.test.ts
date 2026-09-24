@@ -71,6 +71,28 @@ function createCall() {
 }
 
 describe('OpenAI Chat 流收口', () => {
+  it('独立 ToolResult 各自投影为一条 tool 消息', async () => {
+    openAiMocks.create.mockResolvedValueOnce((async function* () {
+      yield chunk({ finishReason: 'stop' });
+      yield chunk({ usage: { prompt_tokens: 1, completion_tokens: 1 } });
+    })());
+    for await (const _event of createCall()({ messages: [
+      { role: 'assistant', content: [
+        { type: 'tool_use', id: 'call-1', name: 'Read', args: {} },
+        { type: 'tool_use', id: 'call-2', name: 'Glob', args: {} },
+      ] },
+      { role: 'user', content: [{ type: 'tool_result', toolCallId: 'call-1', content: 'first' }] },
+      { role: 'user', content: [{ type: 'tool_result', toolCallId: 'call-2', content: 'second' }] },
+    ] })) {
+      // 消费请求流, 再检查传给 SDK 的消息形状.
+    }
+
+    expect(openAiMocks.create.mock.calls[0]![0].messages.slice(-2)).toEqual([
+      { role: 'tool', tool_call_id: 'call-1', content: 'first' },
+      { role: 'tool', tool_call_id: 'call-2', content: 'second' },
+    ]);
+  });
+
   it('流输出正文后卡在下一帧时，用户 AbortSignal 会立即终止消费', async () => {
     openAiMocks.create.mockImplementation(async (_params, options: { signal: AbortSignal }) =>
       abortableStream([chunk({ content: '已输出正文' })], options.signal));

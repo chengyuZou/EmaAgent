@@ -24,6 +24,7 @@ describe('Memory Consolidation', () => {
     const allowed = createRelationshipTargetPathCheck([], ['艾玛']);
     expect(allowed('characters/艾玛/MEMORY.md')).toBe(true);
     expect(allowed('characters/陌生角色/MEMORY.md')).toBe(false);
+    expect(allowed('memory_summary.md')).toBe(false);
     expect(createRelationshipTargetPathCheck([], ['..'])('characters/../MEMORY.md'))
       .toBe(false);
   });

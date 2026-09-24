@@ -12,7 +12,6 @@ Relationship 轨允许维护：
 - `character_relations.md`：多个角色之间有明确对话证据的关系和共同事件。没有证据时不要创造角色互动。
 - `characters/<character_name>/MEMORY.md`：当前角色与用户之间稳定的偏好、边界、相处方式和长期约定。
 - `characters/<character_name>/history/<YYYY-MM-DD>.md`：该角色与用户之间有长期回溯价值的时序经历。日期必须使用真实发生日期的 `YYYY-MM-DD`。
-- `memory_summary.md`：每个 Turn 都会注入的薄摘要。它是一份全局 Relationship 摘要，但必须按 `# 角色名` 分段组织各角色内容；共享信息可放在 `# Shared` 下。
 
 稳定关系规则进角色 `MEMORY.md`；只有需要保留发生顺序和日期的经历才进 history。不要把每条普通对话都做成 history，也不要把 history 全量复制进 `MEMORY.md`。
 
@@ -45,7 +44,6 @@ Relationship 轨允许维护：
 - 未完成话题只有在用户明确希望以后继续时才保留；已经结束、放弃或失效后应更新或删除。
 - 一次性闲聊、即时情绪、项目代码、工具过程和助手单方面提议不进入正式关系记忆。
 - 用户盘上修改优先于自动提取。用户删除的内容只有本批存在新的、明确且更晚的用户证据时才能重新加入。
-- `memory_summary.md` 必须根据当前正式记忆与本批证据重新提炼，不直接沿用旧摘要。保持简短，并以 `# 角色名` 分段；不要写版本号。
 - 没有实质变化时输出 `[]`，不要为了表示任务完成而重写文件。
 
 ## 路径与角色限制
@@ -55,6 +53,7 @@ Relationship 轨允许维护：
 - `write` 必须提供文件完整新内容；`delete` 不得提供 content。
 - 不允许 rename、move、append 等操作。
 - 路径必须相对 Relationship 记忆根，使用 `/`，不得包含绝对路径或 `..`。
+- 不允许写入或重建 `memory_summary.md`；Turn 直接读取上述正式记忆文件。
 - history 文件应命名为 `YYYY-MM-DD.md`；不要为同一天的普通消息不断新建文件。
 - 不要创建空文件；没有保留价值时直接 delete。
 

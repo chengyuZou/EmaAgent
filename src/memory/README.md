@@ -21,14 +21,13 @@
 └─ relationship/
    ├─ shared_user_memory.md
    ├─ character_relations.md
-   ├─ memory_summary.md
    ├─ characters/<character_name>/
    │  ├─ MEMORY.md
    │  └─ history/
    └─ .git/
 ```
 
-Work 没有 `history/`。`memory_summary.md` 供 Turn 开始时注入，不进入 Memory List/Search/Read 的可读文件集合。正式 Markdown 可由用户在文件管理器中直接修改；下一次整合通过各轨 Git diff 读取这些修改。
+Work 没有 `history/`。Work 的 `memory_summary.md` 供 Turn 开始时注入，不进入 Memory List/Search/Read 的可读文件集合。Relationship 不生成摘要；Turn 读取 `shared_user_memory.md`、当前角色的 `MEMORY.md` 全文，以及 `character_relations.md` 中标题或正文含当前角色名的完整 `##` 段落。Relationship history 仅按需读取。正式 Markdown 可由用户在文件管理器中直接修改；下一次整合通过各轨 Git diff 读取这些修改。
 
 ## Turn 输入
 
@@ -90,7 +89,7 @@ Server HTTP ready 后调用 Memory Composition 的 `start()`，恢复上次遗�
 ]
 ```
 
-Memory 包在真实外部边界校验 JSON、操作类型和轨道内路径。Work 只能修改 `MEMORY.md`、`memory_summary.md` 与 `topics/*.md`；Relationship 只能修改固定根文件和当前批次已有 `character_name` 对应的目录。
+Memory 包在真实外部边界校验 JSON、操作类型和轨道内路径。Work 只能修改 `MEMORY.md`、`memory_summary.md` 与 `topics/*.md`；Relationship 只能修改 `shared_user_memory.md`、`character_relations.md` 和当前批次已有 `character_name` 对应的目录，不接受 `memory_summary.md`。
 
 `consumedTurnIds` 由本地输入打包过程产生，不由 LLM 返回。文件修改、Git 基线更新和 SQL 整合标记按此顺序执行，避免先丢掉尚未写入文件的结果。
 

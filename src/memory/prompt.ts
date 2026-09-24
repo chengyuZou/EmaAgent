@@ -2,7 +2,7 @@
 //
 // 与 prompts 包解耦:prompts 的 getSystemPrompt 只接收 memorySection 字符串
 // (闭包注入),不 import memory 包;本函数在 Turn 装配时被调用。
-// 两轨 memory_summary.md 摘要不进 System Prompt——它们表示"本 Turn 开始时的事实",
+// Work 摘要和当前角色的正式关系记忆不进 System Prompt；
 // 由 Turn 在启动时读取一次并写进持久化 reminder（kind='reminder'）。
 
 import { loadTemplate } from './templates/loader.js';

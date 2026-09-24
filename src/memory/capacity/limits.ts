@@ -1,5 +1,3 @@
-// 定义 Memory 文件, 注入和整合流程共同使用的固定预算.
-
 export const MEMORY_SUMMARY_TOKENS = 2_500;
 export const MEMORY_CONSOLIDATION_ITEMS = 256;
 export const MEMORY_CONSOLIDATION_INPUT_BYTES = 16 * 1024 * 1024;

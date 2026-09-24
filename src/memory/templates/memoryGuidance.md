@@ -14,7 +14,7 @@ Memory 不是当前代码和实时状态的事实源。仓库代码、配置、�
 - 用户提到“之前”“上次”“还记得”或要求延续既有决定。
 - 当前请求可能受用户长期工作偏好、禁止事项或协作方式影响。
 - 当前角色需要延续与用户的称呼、边界、关系经历或未完成话题。
-- 用户的要求比较模糊，而已注入摘要中出现了直接相关的线索。
+- 用户的要求比较模糊，而本 Turn 已注入的记忆中出现了直接相关的线索。
 - Agent 发现自己可能正在重复用户过去纠正过的行为。
 
 以下情况通常不必检索：
@@ -36,7 +36,6 @@ Memory 不是当前代码和实时状态的事实源。仓库代码、配置、�
 └─ relationship/
    ├─ shared_user_memory.md
    ├─ character_relations.md
-   ├─ memory_summary.md
    └─ characters/<character_name>/
       ├─ MEMORY.md
       └─ history/<YYYY-MM-DD>.md
@@ -44,11 +43,10 @@ Memory 不是当前代码和实时状态的事实源。仓库代码、配置、�
 
 文件职责：
 
-- 两个 `memory_summary.md` 已随本指引注入上下文，不要为了读取同一内容再次调用工具。
+- Work 的 `memory_summary.md` 已注入本 Turn。
 - Work 的 `MEMORY.md` 和 `topics/` 保存工作偏好；Work 没有 history。
-- Relationship 的 `shared_user_memory.md` 保存跨角色信息。
-- `characters/<character_name>/MEMORY.md` 保存该角色与用户的稳定关系记忆。
-- Relationship history 保存有回溯价值的关系经历，不代表每次对话日志。
+- Relationship 的 `shared_user_memory.md`、当前角色的 `MEMORY.md`，以及 `character_relations.md` 中涉及当前角色的完整段落已注入本 Turn；不必重复读取同一内容。
+- Relationship history 保存有回溯价值的关系经历，不代表每次对话日志；需要细节时按需检索。
 - `.git` 和整合期间的内部文件不属于可读正式记忆。
 
 ## 工具使用

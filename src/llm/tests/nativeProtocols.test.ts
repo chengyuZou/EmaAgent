@@ -115,6 +115,30 @@ describe('native LLM protocols', () => {
     expect(sdkMocks.geminiConstructor).toHaveBeenCalledWith({ apiKey: 'key' });
   });
 
+  it('Gemini 只在协议请求里合并相邻的独立 ToolResult', async () => {
+    sdkMocks.geminiStream.mockResolvedValueOnce(streamOf([{
+      candidates: [{ content: { parts: [{ text: 'done' }] }, finishReason: 'STOP' }],
+    }]));
+    const llm = createLlmCall({ providerId: 'test', protocol: 'gemini-llm', apiKey: 'key' }, 'gemini-test');
+
+    await collectText(llm({ messages: [
+      { role: 'assistant', content: [
+        { type: 'tool_use', id: 'call-1', name: 'Read', args: {} },
+        { type: 'tool_use', id: 'call-2', name: 'Glob', args: {} },
+      ] },
+      { role: 'user', content: [{ type: 'tool_result', toolCallId: 'call-1', content: 'first' }] },
+      { role: 'user', content: [{ type: 'tool_result', toolCallId: 'call-2', content: 'second' }] },
+    ] }));
+
+    expect(sdkMocks.geminiStream.mock.calls[0]![0].contents).toMatchObject([
+      { role: 'model' },
+      { role: 'user', parts: [
+        { functionResponse: { name: 'Read', response: { content: 'first' } } },
+        { functionResponse: { name: 'Glob', response: { content: 'second' } } },
+      ] },
+    ]);
+  });
+
   it('Gemini Usage 把工具提示计入输入、思考计入输出', async () => {
     sdkMocks.geminiStream.mockResolvedValueOnce(streamOf([{
       candidates: [{

@@ -97,6 +97,22 @@ describe('streamOpenAiResponses reasoning item 收集', () => {
 });
 
 describe('toResponsesInput reasoning 重放', () => {
+  it('独立 ToolResult 各自投影为 function_call_output', () => {
+    const { input } = toResponsesInput([
+      { role: 'assistant', content: [
+        { type: 'tool_use', id: 'call-1', name: 'Read', args: {} },
+        { type: 'tool_use', id: 'call-2', name: 'Glob', args: {} },
+      ] },
+      { role: 'user', content: [{ type: 'tool_result', toolCallId: 'call-1', content: 'first' }] },
+      { role: 'user', content: [{ type: 'tool_result', toolCallId: 'call-2', content: 'second' }] },
+    ], 'openai', 'gpt-5.2');
+
+    expect(input.slice(-2)).toEqual([
+      { type: 'function_call_output', call_id: 'call-1', output: 'first' },
+      { type: 'function_call_output', call_id: 'call-2', output: 'second' },
+    ]);
+  });
+
   it('同目标生成的 reasoning 原样重放（真实 id + encrypted_content 透传）', () => {
     const { input } = toResponsesInput([
       {

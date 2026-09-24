@@ -67,13 +67,17 @@ export function buildStageControlPrompt(presentation: CharacterStagePresentation
 示例：<motion>${motionExample}</motion>`);
   }
 
+  const usageRule = presentation.status === 'illustration'
+    ? '情绪标签会从对应的立绘组中选择图片；同组有多张图片时，再次输出相同情绪标签也可以切换到另一张。'
+    : '情绪标签控制 Live2D 表情，动作标签触发可用动作；只在需要改变表现时输出对应标签。';
+
   return `## 角色表达控制协议
 
 你可以在回复正文中插入以下控制标签来表达角色的情绪和动作。控制标签会被系统解析，不要向用户解释、引用或讨论标签本身。
 
 ${sections.join('\n\n')}
 
-只使用上面列出的名称。需要更换角色表现时输出标签，同一情绪也可以再次输出以切换另一张立绘。不要输出无法确认存在的名称。`;
+${usageRule}只使用上面列出的名称，不要输出无法确认存在的名称。`;
 }
 
 export function characterStageVocabulary(

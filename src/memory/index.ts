@@ -62,6 +62,7 @@ export {
   createRelationshipConsolidate,
   type RelationshipConsolidationDeps,
 } from './relationship/consolidation.js';
+export { readRelationshipMemoryForTurn } from './relationship/readForTurn.js';
 export { buildMemoryGuidance } from './prompt.js';
 export {
   searchMemoryFiles,
