@@ -25,9 +25,9 @@
   animation: ema-card-in-flat var(--ema-duration-slow) var(--ema-ease) both;
   animation-delay: calc(min(var(--stagger-i, 0), 11) * 40ms);
 }
-/* 高频列表(文件树)轻快滑入:180ms 无 scale + 行延迟 16ms 封顶 12——有呼吸感不拖时间。 */
+/* 高频列表(文件树)轻快滑入: 无 scale + 行延迟 16ms 封顶 12, 有呼吸感不拖时间。 */
 .ema-stagger-in-swift {
-  animation: ema-card-in-flat 180ms var(--ema-ease) both;
+  animation: ema-card-in-flat var(--ema-duration-base) var(--ema-ease) both;
   animation-delay: calc(min(var(--stagger-i, 0), 11) * 16ms);
 }
 .ema-chip-in {
@@ -40,22 +40,15 @@
   animation: ema-toast-in var(--ema-duration-slow) var(--ema-ease) both;
 }
 .ema-speech-in {
-  animation: ema-speech-in 0.26s var(--ema-ease) both;
+  animation: ema-speech-in var(--ema-duration-panel) var(--ema-ease) both;
 }
-.ema-panel-in {
+.ema-scale-in {
   animation: ema-scale-in var(--ema-duration-fast) var(--ema-ease) both;
 }
-.ema-pop-in {
-  animation: ema-pop-in 0.22s var(--ema-ease) both;
-}
-/* 弹簧 pop:scale 0.7→1 带回弹,块级入场的小跳动;支持 --stagger-i 波纹。 */
+/* 弹簧 pop: scale 0.7→1 带回弹, 块级入场的小跳动; 支持 --stagger-i 波纹。 */
 .ema-pop-in-spring {
-  animation: ema-pop-in-spring 0.38s var(--ema-ease-spring) both;
+  animation: ema-pop-in-spring var(--ema-duration-slow) var(--ema-ease-spring) both;
   animation-delay: calc(var(--stagger-i, 0) * 40ms);
-}
-/* 与 slide-right 同轨迹,只是节奏不同;keyframes 复用不另造。 */
-.ema-slide-in-left {
-  animation: ema-slide-right var(--ema-duration-slow) var(--ema-ease) both;
 }
 .ema-slide-in-right {
   animation: ema-slide-in-right var(--ema-duration-slow) var(--ema-ease) both;
@@ -68,19 +61,13 @@
 .ema-slide-out-right {
   animation: ema-slide-out-right var(--ema-duration-base) var(--ema-ease) both;
 }
-.ema-slide-out-left {
-  animation: ema-slide-out-left var(--ema-duration-base) var(--ema-ease) both;
-}
 
 /* ── 状态 ───────────────────────────────────────────────────────────────────*/
-.ema-spin {
-  animation: ema-spin 0.8s linear infinite;
-}
 .ema-check-pop {
-  animation: ema-check-pop 0.4s var(--ema-ease) both;
+  animation: ema-check-pop var(--ema-duration-slow) var(--ema-ease) both;
 }
 .ema-shake {
-  animation: ema-shake 0.4s var(--ema-ease) both;
+  animation: ema-shake var(--ema-duration-slow) var(--ema-ease) both;
 }
 
 /* ── 骨架/微光 ──────────────────────────────────────────────────────────────*/
@@ -115,12 +102,14 @@
   content: '';
   position: absolute;
   inset: 0;
+  /* 流光统一走 --chromatic-hue 用户色相: 亮暗双主题都可见, 且跟随外观设置换色。
+     (旧版扫 text-primary, 暗色是白光、亮色近隐形。) */
   background: linear-gradient(
     105deg,
     transparent 30%,
-    color-mix(in srgb, var(--ema-text-primary) 8%, transparent) 45%,
-    color-mix(in srgb, var(--ema-text-primary) 14%, transparent) 50%,
-    color-mix(in srgb, var(--ema-text-primary) 8%, transparent) 55%,
+    color-mix(in srgb, var(--ema-primary) 8%, transparent) 45%,
+    color-mix(in srgb, var(--ema-primary) 14%, transparent) 50%,
+    color-mix(in srgb, var(--ema-primary) 8%, transparent) 55%,
     transparent 70%
   );
   animation: ema-shimmer 2.5s ease-in-out infinite;

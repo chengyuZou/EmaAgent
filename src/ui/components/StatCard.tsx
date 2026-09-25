@@ -2,8 +2,8 @@ import type { CSSProperties, JSX } from 'react';
 import { cn } from '../utils/cn.js';
 
 // ── StatCard ─────────────────────────────────────────────────────────────────
-// 紧凑统计卡:图标 + 标签 + 数值 + 可选副文案。
-// size=lg 大数字(memory 概览),md 紧凑(storage 统计)。
+// 紧凑统计卡: 图标 + 标签 + 数值 + 可选副文案.
+// size=lg 大数字(memory 概览), md 紧凑(storage 统计).
 
 export interface StatCardProps {
   label:     string;
@@ -24,9 +24,9 @@ export function StatCard({ label, value, sub, icon, index, decorate, size = 'md'
   return (
     <div
       className={cn(
-        'ema-stagger-in ema-glass-weak ema-card-decorate bg-[var(--ema-surface-1)] rounded-xl border-2 border-solid border-[var(--ema-border)]',
+        'ema-stagger-in ema-glass-weak ema-card-decorate bg-[var(--ema-surface-1)] rounded-xl border border-solid border-[var(--ema-border)]',
         'hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]',
-        'px-4 py-3 flex items-start gap-3 shadow-[var(--ema-shadow-1)]',
+        'px-4 py-3 flex items-start gap-3 transition-ema',
         decorate,
         className,
       )}

@@ -1,8 +1,9 @@
-// SearchField — 一体式搜索杆:外层 pill 统一承担边框与焦点环,input 自身无框无背景。
-// 传 onSubmit 才内嵌搜索按钮(固定宽度不参与压缩,避免文字被挤成两行);
-// 不传则为纯即时筛选。Enter 提交;有内容才出现 × 清除。
+// SearchField: 一体式搜索杆, 外层 pill 统一承担边框与焦点环, input 自身无框无背景.
+// 传 onSubmit 才内嵌搜索按钮(固定宽度不参与压缩, 避免文字被挤成两行);
+// 不传则为纯即时筛选. Enter 提交; 有内容才出现 × 清除.
 import { forwardRef, type JSX } from 'react';
 import { cn } from '../utils/cn.js';
+import { Button } from './Button.js';
 
 export interface SearchFieldProps {
   value:            string;
@@ -33,7 +34,7 @@ export const SearchField = forwardRef<HTMLInputElement, SearchFieldProps>(
           'group flex h-11 w-full items-center gap-2 rounded-xl border border-solid',
           'border-[var(--ema-control-border)] bg-[var(--ema-control-bg)] pl-3 pr-1.5',
           'shadow-[var(--ema-control-shadow)]',
-          'transition-[background-color,border-color,box-shadow] duration-[var(--ema-duration-fast)]',
+          'transition-ema',
           'hover:bg-[var(--ema-control-bg-hover)] hover:border-[var(--ema-control-border-hover)]',
           'focus-within:bg-[var(--ema-control-bg-focus)] focus-within:border-[var(--ema-control-border-focus)] focus-within:shadow-[var(--ema-control-shadow-focus)]',
           disabled && 'opacity-60',
@@ -71,7 +72,7 @@ export const SearchField = forwardRef<HTMLInputElement, SearchFieldProps>(
             aria-label="清除搜索"
             title="清除搜索"
             disabled={disabled}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ema-chip-in
               text-[var(--ema-text-tertiary)] transition-colors
               hover:bg-[var(--ema-surface-2)] hover:text-[var(--ema-text-primary)]
               focus-ring"
@@ -81,20 +82,16 @@ export const SearchField = forwardRef<HTMLInputElement, SearchFieldProps>(
           </button>
         )}
         {onSubmit && (
-          <button
+          <Button
             type="submit"
-            aria-busy={loading || undefined}
+            variant="primary"
+            size="sm"
+            loading={loading}
             disabled={disabled || loading}
-            className="flex h-8 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap
-              rounded-lg border-0 bg-[var(--ema-primary)] px-3 text-sm font-semibold
-              text-[var(--ema-text-inverse)] shadow-[var(--ema-shadow-cta)] transition-[background-color,box-shadow,filter]
-              hover:brightness-105 hover:shadow-[var(--ema-shadow-cta-hover)]
-              active:brightness-95 disabled:cursor-not-allowed disabled:opacity-60
-              focus-ring"
+            className="shrink-0"
           >
-            {loading && <span className="i-svg-spinners:ring-resize text-xs" aria-hidden />}
             搜索
-          </button>
+          </Button>
         )}
       </form>
     );

@@ -1,0 +1,62 @@
+/* ── 语法高亮配色预设 ─────────────────────────────────────────────────────────
+ * <html data-syntax-theme> 由 theme store 写入, 色板只放 CSS(TS 不碰颜色)。
+ * auto = 深色 Tokyo Night / 浅色 GitHub(用户拍板); 无属性时回落 tokens.css 默认粉彩。
+ */
+
+[data-syntax-theme='auto'],
+[data-syntax-theme='tokyonight'] {
+  --ema-syntax-key: #bb9af7;
+  --ema-syntax-string: #9ece6a;
+  --ema-syntax-number: #ff9e64;
+  --ema-syntax-boolean: #ff9e64;
+  --ema-syntax-comment: #565f89;
+  --ema-syntax-prompt: #7aa2f7;
+}
+
+[data-syntax-theme='github'] {
+  --ema-syntax-key: #ff7b72;
+  --ema-syntax-string: #a5d6ff;
+  --ema-syntax-number: #79c0ff;
+  --ema-syntax-boolean: #79c0ff;
+  --ema-syntax-comment: #8b949e;
+  --ema-syntax-prompt: #d2a8ff;
+}
+
+[data-syntax-theme='mono'] {
+  --ema-syntax-key: #e8e8ee;
+  --ema-syntax-string: #b6b6c0;
+  --ema-syntax-number: #b6b6c0;
+  --ema-syntax-boolean: #e8e8ee;
+  --ema-syntax-comment: #6e6e7a;
+  --ema-syntax-prompt: #e8e8ee;
+}
+
+/* ── 浅色分支 ─────────────────────────────────────────────────────────────── */
+
+[data-theme='light'][data-syntax-theme='auto'],
+[data-theme='light'][data-syntax-theme='github'] {
+  --ema-syntax-key: #cf222e;
+  --ema-syntax-string: #0a3069;
+  --ema-syntax-number: #0550ae;
+  --ema-syntax-boolean: #0550ae;
+  --ema-syntax-comment: #6e7781;
+  --ema-syntax-prompt: #8250df;
+}
+
+[data-theme='light'][data-syntax-theme='tokyonight'] {
+  --ema-syntax-key: #7847bd;
+  --ema-syntax-string: #485e30;
+  --ema-syntax-number: #b15c00;
+  --ema-syntax-boolean: #b15c00;
+  --ema-syntax-comment: #848cb5;
+  --ema-syntax-prompt: #2e7de9;
+}
+
+[data-theme='light'][data-syntax-theme='mono'] {
+  --ema-syntax-key: #1c1a26;
+  --ema-syntax-string: #55525f;
+  --ema-syntax-number: #55525f;
+  --ema-syntax-boolean: #1c1a26;
+  --ema-syntax-comment: #8b8894;
+  --ema-syntax-prompt: #1c1a26;
+}

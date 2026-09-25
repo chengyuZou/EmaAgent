@@ -4,12 +4,14 @@ import { cn } from '../utils/cn.js';
 
 // ── IconButton ──────────────────────────────────────────────────────────────
 //
-// 强制圆形的纯图标按钮(FloatingDock / 聊天输入框内嵌发送 / 工具栏附件等)。
-// 与 Button 的差异:始终圆形、内容用 icon 类或 iconNode、label 必填(无障碍),
-// 不渲染可见文本,tooltip 由调用方负责。
+// 纯图标按钮(FloatingDock / 聊天输入框内嵌发送 / 工具栏附件 / 消息动作).
+// 与 Button 的差异: 内容用 icon 类或 iconNode, label 必填(无障碍), 不渲染可见文本,
+// tooltip 由调用方负责.
+// 外壳两档: circle(默认, 工具栏/发送) / rounded(圆角小芯片, 消息动作/行内弱操作).
 
 export type IconButtonVariant = 'default' | 'primary' | 'danger' | 'ghost';
 export type IconButtonSize    = 'sm' | 'md' | 'lg';
+export type IconButtonShape   = 'circle' | 'rounded';
 
 export interface IconButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'type' | 'children'> {
   /** Screen-reader label (and tooltip text consumers will mirror). */
@@ -20,6 +22,8 @@ export interface IconButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonEle
   iconNode?:      ReactNode;
   variant?:   IconButtonVariant;
   size?:      IconButtonSize;
+  /** 外壳: circle=正圆(默认), rounded=圆角小芯片(半径绑尺寸档, 消息动作/行内弱操作用). */
+  shape?:     IconButtonShape;
   /** Visual "on" state — highlighted background + glow. */
   toggled?:   boolean;
   loading?:   boolean;
@@ -57,8 +61,15 @@ const SIZE_CLASSES: Record<IconButtonSize, { box: string; icon: string }> = {
   lg: { box: 'w-11 h-11', icon: 'text-xl' },
 };
 
+// rounded 外壳的半径绑尺寸档(约 1/4~1/3 边长): 小方芯片, 不是加宽矩形.
+const ROUNDED_RADIUS: Record<IconButtonSize, string> = {
+  sm: 'rounded-[8px]',
+  md: 'rounded-[10px]',
+  lg: 'rounded-[12px]',
+};
+
 const BASE_CLASSES =
-  'inline-flex items-center justify-center rounded-full border ' +
+  'inline-flex items-center justify-center border ' +
   'transition-ema cursor-pointer select-none ' +
   'active:scale-92 ' +
   'disabled:cursor-not-allowed disabled:opacity-40 ' +
@@ -74,6 +85,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
       iconNode,
       variant = 'default',
       size    = 'md',
+      shape   = 'circle',
       toggled = false,
       loading = false,
       loadingIcon,
@@ -97,6 +109,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
         disabled={isDisabled}
         className={cn(
           BASE_CLASSES,
+          shape === 'circle' ? 'rounded-full' : ROUNDED_RADIUS[size],
           sizeCfg.box,
           toggled ? variantCfg.toggled : variantCfg.idle,
           className,

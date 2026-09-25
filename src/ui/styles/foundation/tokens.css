@@ -20,6 +20,18 @@
   --ema-duration-base:   200ms;
   --ema-duration-slow:   300ms;
   --ema-duration-panel:  280ms;
+  /* 功能性填充(Progress 宽度)缓动, 比入场慢才读得出"进度在走". */
+  --ema-duration-fill:   500ms;
+
+  /* z-index 刻度(theme 无关单一定义): overlay > dialog(对话框里的下拉必须压对话框),
+     toast 最高(任何操作反馈不可被盖). 不允许刻度外的裸 z-index. */
+  --ema-z-sticky:  20;
+  --ema-z-nav:     30;
+  --ema-z-mask:    40;
+  --ema-z-dialog:  50;
+  --ema-z-overlay: 60;
+  --ema-z-tooltip: 70;
+  --ema-z-toast:   80;
 
   /* Border radius */
   /* 基础值随 --ema-radius 乘数(0-3)缩放,uno rounded-* 与 styles 内部统一引用;
@@ -77,6 +89,12 @@
   --ema-glass-strong: saturate(200%) blur(16px);
   /* Mask 用暗灰非纯黑(暗色遮罩用 background 色非黑,视觉更协调) */
   --ema-mask: rgba(18, 18, 22, 0.65);
+
+  /* 构件级背景: 侧栏与 composer 是独立角色, 亮暗分开映射。
+     深色侧栏比页面再深半档 + 一缕用户色相 tint: 不设壁纸时与主区(=surface-0)拉开层次,
+     设壁纸时侧栏透得更多, 成为壁纸的"取景框"。 */
+  --ema-sidebar-bg: oklch(0.15 0.010 var(--chromatic-hue, 200) / 0.95);
+  --ema-composer-bg: var(--ema-surface-2);
 
   /* ── 语义色(暗色)── Ema 签名色,跟随 --chromatic-hue(跟 UnoCSS bg-primary 对齐)── */
   --ema-primary:        oklch(0.72 0.18 var(--chromatic-hue, 200));
@@ -192,13 +210,18 @@
   --ema-text-tertiary:  oklch(0.42 0.01 280);
   --ema-text-code:      oklch(0.22 0.04 280);
 
-  /* Surface: 不透明暖白(无透明,像 AstrBot 卡片)*/
-  --ema-surface-0:  rgba(240, 238, 245, 1);
-  --ema-surface-1:  rgba(250, 249, 255, 1);
-  --ema-surface-2:  rgba(235, 233, 242, 1);
-  --ema-surface-3:  rgba(225, 222, 235, 1);
+  /* Surface: 不透明暖白。页面退后半档(234)卡片纯白(255)浮起, 控件内凹(226)
+     active 再深一档(216); 每档差值拉开, 层次靠明度差不靠阴影堆叠。 */
+  --ema-surface-0:  rgba(234, 233, 241, 1);
+  --ema-surface-1:  rgba(255, 255, 255, 1);
+  --ema-surface-2:  rgba(226, 224, 236, 1);
+  --ema-surface-3:  rgba(216, 213, 230, 1);
   --ema-surface-4:  rgba(255, 255, 255, 1);
   --ema-bg:         var(--ema-surface-0);
+
+  /* 侧栏独立 tint(比页面深半档, 导航后退); composer 浅色换白卡。 */
+  --ema-sidebar-bg:   rgba(228, 227, 236, 1);
+  --ema-composer-bg:  var(--ema-surface-1);
 
   /* Glass: 禁用(不透明 surface 不需 backdrop blur)*/
   --ema-glass-weak:   none;
@@ -210,9 +233,9 @@
   --ema-border-hover:   rgba(0, 0, 0, 0.18);
   --ema-border-strong:  rgba(0, 0, 0, 0.24);
 
-  /* Shadows: 加深可见 */
+  /* Shadows: 加深可见, 但用大模糊 + 负扩散把影子收到元素正下方, 四角不积黑 */
   --ema-shadow-1:  0 1px 3px rgba(0, 0, 0, 0.10),  0 0px 1px rgba(0, 0, 0, 0.06);
-  --ema-shadow-2:  0 2px 6px rgba(0, 0, 0, 0.12),  0 4px 12px rgba(0, 0, 0, 0.08);
+  --ema-shadow-2:  0 2px 4px rgba(0, 0, 0, 0.06),  0 8px 24px -6px rgba(0, 0, 0, 0.08);
   --ema-shadow-3:  0 4px 12px rgba(0, 0, 0, 0.15), 0 8px 24px rgba(0, 0, 0, 0.10), 0 1px 3px rgba(0, 0, 0, 0.06);
   --ema-shadow-focus:   0 0 0 3px oklch(0.65 0.18 var(--chromatic-hue, 200) / 0.25);
   --ema-shadow-danger:  0 0 0 3px oklch(0.55 0.20 25  / 0.25);

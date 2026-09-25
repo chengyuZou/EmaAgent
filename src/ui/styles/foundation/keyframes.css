@@ -1,5 +1,5 @@
 /* ── Keyframe library ──────────────────────────────────────────────────────
- * 25 个 @keyframes,按 入场/状态/骨架/退场 分组。UnoCSS animate-* 别名引用这些。
+ * 按 入场/状态/骨架/退场 分组。消费者: animations.css 工具类与 radix.css 状态适配。
  */
 
 /* ── 入场 ───────────────────────────────────────────────────────────────────*/
@@ -18,10 +18,6 @@
 @keyframes ema-scale-in {
   from { opacity: 0; transform: scale(0.94); }
   to   { opacity: 1; transform: scale(1); }
-}
-@keyframes ema-scale-out {
-  from { opacity: 1; transform: scale(1); }
-  to   { opacity: 0; transform: scale(0.94); }
 }
 @keyframes ema-slide-right {
   from { opacity: 0; transform: translateX(-12px); }
@@ -52,10 +48,6 @@
   from { opacity: 0; transform: scale(0.88) translateY(-6px); }
   to   { opacity: 1; transform: scale(1)    translateY(0); }
 }
-@keyframes ema-pop-in {
-  from { opacity: 0; transform: scale(0.6); }
-  to   { opacity: 1; transform: scale(1); }
-}
 @keyframes ema-pop-in-spring {
   from { opacity: 0; transform: scale(0.7) translateY(6px); }
   to   { opacity: 1; transform: scale(1)    translateY(0); }
@@ -66,12 +58,25 @@
 }
 /* 居中 dialog:transform 必须保留 translate(-50%,-50%),否则 scale 覆盖 Radix 居中 */
 @keyframes ema-dialog-in {
-  from { opacity: 0; transform: translate(-50%, -50%) scale(0.95); }
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.96); }
   to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 }
 @keyframes ema-dialog-out {
   from { opacity: 1; transform: translate(-50%, -50%) scale(1); }
   to   { opacity: 0; transform: translate(-50%, -50%) scale(0.97); }
+}
+/* 浮层网格展开: 外层行 0fr↔1fr, 内层内容反向滑入防拉扯变形 */
+@keyframes ema-expand-in {
+  from { grid-template-rows: 0fr; }
+  to   { grid-template-rows: 1fr; }
+}
+@keyframes ema-expand-out {
+  from { grid-template-rows: 1fr; }
+  to   { grid-template-rows: 0fr; }
+}
+@keyframes ema-expand-content-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 /* ── 状态(循环)──────────────────────────────────────────────────────────*/
@@ -83,9 +88,6 @@
 @keyframes ema-breathe {
   0%, 100% { opacity: 0.35; }
   50%      { opacity: 0.78; }
-}
-@keyframes ema-spin {
-  to { transform: rotate(360deg); }
 }
 @keyframes ema-check-pop {
   0%   { transform: scale(0);    opacity: 0; }
@@ -123,8 +125,4 @@
 @keyframes ema-slide-out-right {
   from { opacity: 1; transform: translateX(0); }
   to   { opacity: 0; transform: translateX(100%); }
-}
-@keyframes ema-slide-out-left {
-  from { opacity: 1; transform: translateX(0); }
-  to   { opacity: 0; transform: translateX(-100%); }
 }

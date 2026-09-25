@@ -2,8 +2,9 @@ import * as RadixCheckbox from '@radix-ui/react-checkbox';
 import { cn } from '../utils/cn.js';
 
 // ── Checkbox ────────────────────────────────────────────────────────────────
-// 支持三态:未选中 / 选中 / 不确定(indeterminate);
-// showLabel 时用 <label> 包裹,点击文字可切换。
+// 支持三态: 未选中 / 选中 / 不确定(indeterminate);
+// showLabel 时用 <label> 包裹, 点击文字可切换.
+// 选中语言与 Switch/RadioDot 同族: 实心主色 + 反色标记, 标记入场挂 check-pop 弹入.
 
 export interface CheckboxProps {
   checked?:        boolean | 'indeterminate';
@@ -33,18 +34,19 @@ export function Checkbox(props: CheckboxProps): React.JSX.Element {
       className={cn(
         'flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border transition-ema',
         'border-[var(--ema-border)] bg-[var(--ema-surface-2)]',
-        'data-[state=checked]:border-[var(--ema-primary)] data-[state=checked]:bg-[var(--ema-primary-muted)]',
-        'data-[state=indeterminate]:border-[var(--ema-primary)] data-[state=indeterminate]:bg-[var(--ema-primary-muted)]',
-        'hover:border-[var(--ema-primary)]',
+        'data-[state=checked]:border-[var(--ema-primary)] data-[state=checked]:bg-[var(--ema-primary)]',
+        'data-[state=indeterminate]:border-[var(--ema-primary)] data-[state=indeterminate]:bg-[var(--ema-primary)]',
+        'hover:border-[color-mix(in_srgb,var(--ema-primary)_50%,transparent)]',
+        'data-[state=checked]:hover:border-[var(--ema-primary-hover)]',
         'focus-ring',
         'disabled:cursor-not-allowed disabled:opacity-50',
         className,
       )}
     >
-      <RadixCheckbox.Indicator className="flex items-center justify-center text-[var(--ema-primary-text)]">
+      <RadixCheckbox.Indicator className="flex items-center justify-center text-[var(--ema-text-inverse)]">
         {checked === 'indeterminate'
-          ? <span className={cn(indeterminateIcon ?? 'i-mdi:minus', 'text-xs')} aria-hidden />
-          : <span className={cn(checkIcon ?? 'i-mdi:check', 'text-xs')} aria-hidden />}
+          ? <span className={cn(indeterminateIcon ?? 'i-mdi:minus', 'text-xs ema-check-pop')} aria-hidden />
+          : <span className={cn(checkIcon ?? 'i-mdi:check', 'text-xs ema-check-pop')} aria-hidden />}
       </RadixCheckbox.Indicator>
     </RadixCheckbox.Root>
   );

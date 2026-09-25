@@ -11,11 +11,11 @@ import type { ReactNode, TextareaHTMLAttributes } from 'react';
 import { cn } from '../utils/cn.js';
 
 // ── Textarea ────────────────────────────────────────────────────────────────
-// 多行文本输入,支持:
-//   - 自动增高(高度随内容增长,上限 maxRows)
-//   - embeddedAction 插槽——绝对定位于输入框右下角的 ReactNode,
-//     即 ChatInput 的圆形发送按钮。按钮渲染在与 textarea 同级的 div 中
-//     (textarea 不能包含子元素),并通过右下角 padding 预留空间避免文字重叠。
+// 多行文本输入, 支持:
+//   - 自动增高(高度随内容增长, 上限 maxRows)
+//   - embeddedAction 插槽: 绝对定位于输入框右下角的 ReactNode,
+//     即 ChatInput 的圆形发送按钮. 按钮渲染在与 textarea 同级的 div 中
+//     (textarea 不能包含子元素), 并通过右下角 padding 预留空间避免文字重叠.
 
 export interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
   /** Right-bottom corner inset slot (e.g. circular send button). */
@@ -139,9 +139,6 @@ export const Textarea = forwardRef<TextareaHandle, TextareaProps>(
       };
     }, [autoGrow, scheduleHeightRecompute]);
 
-    // 给内嵌动作预留空间(约 44px 宽 + 右 16px + 下 12px)
-    const reserveAction = embeddedAction ? { paddingRight: 52, paddingBottom: 48 } : null;
-
     const textareaEl = (
       <textarea
         ref={innerRef}
@@ -156,10 +153,12 @@ export const Textarea = forwardRef<TextareaHandle, TextareaProps>(
         className={cn(
           containerless
             ? 'block w-full resize-none bg-transparent outline-none focus:outline-none'
-            : 'block w-full resize-none rounded-md bg-transparent px-3 py-2.5 text-sm text-[var(--ema-text-primary)] placeholder:text-[var(--ema-text-tertiary)] outline-none focus:outline-none disabled:cursor-not-allowed disabled:opacity-50',
+            : 'block w-full resize-none bg-transparent px-3 py-2.5 text-sm text-[var(--ema-text-primary)] placeholder:text-[var(--ema-text-tertiary)] outline-none focus:outline-none disabled:cursor-not-allowed disabled:opacity-50',
+          // 内嵌动作预留位(约 44px 宽 + 右 16px + 下 12px), 避免文字压到按钮
+          !containerless && embeddedAction && 'pr-[52px] pb-[48px]',
           className,
         )}
-        style={containerless ? style : { ...reserveAction, ...style }}
+        style={style}
         {...rest}
       />
     );

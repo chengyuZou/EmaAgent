@@ -3,8 +3,8 @@ import { cn } from '../utils/cn.js';
 import { clampFinite } from '../utils/number.js';
 
 // ── Progress ────────────────────────────────────────────────────────────────
-// 水平进度条,可选流光动画(progress < 100 且 animated=true 时触发)。
-// 用于模型下载/加载、TTS 批量合成等进度展示。
+// 水平进度条, 可选流光动画(progress < 100 且 animated=true 时触发).
+// 用于模型下载/加载, TTS 批量合成等进度展示.
 
 export interface ProgressProps {
   /** 0-100 percentage. */
@@ -41,7 +41,7 @@ export function Progress({
       {/* Fill bar */}
       <div
         className={cn(
-          'absolute left-0 top-0 rounded-lg transition-[width] duration-500 ease-in-out will-change-[width]',
+          'absolute left-0 top-0 rounded-lg transition-[width] duration-[var(--ema-duration-fill)] ease-in-out will-change-[width]',
           height,
           barClass || 'bg-[var(--ema-primary)]',
         )}
@@ -50,7 +50,7 @@ export function Progress({
         {/* 流光扫描(progress-shine 动画) */}
         {animated && clamped < 100 && (
           <div
-            className="animate-progress-shine absolute inset-0 origin-left rounded-lg bg-white/30"
+            className="animate-progress-shine absolute inset-0 origin-left rounded-lg bg-[color-mix(in_srgb,white_28%,transparent)]"
             style={{ willChange: 'transform, opacity' }}
           />
         )}

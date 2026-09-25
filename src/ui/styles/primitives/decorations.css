@@ -13,18 +13,19 @@
   z-index: -1;
   width: 25%;
   opacity: 0;
-  transition: width 280ms var(--ema-ease), opacity 280ms var(--ema-ease);
+  /* 宽度 25%→85% 与淡入同时进行: 宽度扩张本身就是"扫"的动感. */
+  transition: width 400ms ease-in-out, opacity 400ms ease-in-out;
   -webkit-mask-image: linear-gradient(120deg, white 30%, transparent 50%);
   mask-image: linear-gradient(120deg, white 30%, transparent 50%);
   background: linear-gradient(to right,
-    color-mix(in srgb, var(--ema-primary) 28%, transparent),
-    color-mix(in srgb, var(--ema-primary) 14%, transparent),
+    color-mix(in srgb, var(--ema-primary) 20%, transparent),
+    color-mix(in srgb, var(--ema-primary) 10%, transparent),
     transparent);
   pointer-events: none;
 }
 .ema-card-decorate:hover::before {
-  width: 60%;
-  opacity: 0.5;
+  width: 85%;
+  opacity: 1;
 }
 .ema-card-decorate::after {
   content: '';
@@ -39,9 +40,17 @@
   mask-image: linear-gradient(165deg, white 30%, transparent 50%);
   opacity: 1;
   pointer-events: none;
-  transition: background-size 280ms var(--ema-ease), opacity 280ms var(--ema-ease);
+  transition: background-size 400ms ease-in-out, opacity 400ms ease-in-out;
 }
-.ema-card-decorate:hover::after { background-size: 108% 108%; }
+/* 只缩基座的辉光层; 两个值必须写全, 单值会按层重复, 把点阵 tile 从 10px 炸成整卡单斑。
+   变体(--plus/--mesh 等多层纹理)不受此规则影响。 */
+.ema-card-decorate:not([class*='--']):hover::after { background-size: 108% 108%, 10px 10px; }
+/* 点阵 hover 变主色(第二层扫感); 变体的纹理层自带配色, 不覆盖。 */
+.ema-card-decorate:not([class*='--']):hover::after {
+  background-image:
+    radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--ema-primary) 25%, transparent), transparent 60%),
+    radial-gradient(circle, color-mix(in srgb, var(--ema-primary) 40%, transparent) 1px, transparent 1.5px);
+}
 
 .ema-dialog-decorate::after {
   content: '';

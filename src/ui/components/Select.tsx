@@ -2,10 +2,10 @@
 import * as RadixSelect from '@radix-ui/react-select';
 import type { AriaAttributes, ReactNode } from 'react';
 import { cn } from '../utils/cn.js';
+import { overlayItemCn } from './overlayItem.js';
 
 // ── Select ──────────────────────────────────────────────────────────────────
-// 单选下拉,用于表单字段(供应商选择/简单模型绑定);
-// 临时菜单请用 <DropdownMenu/>。
+// 单选下拉, 用于表单字段(供应商选择/简单模型绑定); 临时菜单请用 <DropdownMenu/>.
 
 export interface SelectOption {
   value:     string;
@@ -55,7 +55,7 @@ export function Select(props: SelectProps): React.JSX.Element {
         id={id}
         {...accessibilityProps}
         className={cn(
-          'inline-flex items-center justify-between gap-2 w-full font-mono',
+          'inline-flex items-center justify-between gap-2 w-full',
           'h-9 px-3 text-sm rounded-xl border text-[var(--ema-text-primary)]',
           'bg-[var(--ema-control-bg)] shadow-[var(--ema-control-shadow)]',
           'hover:bg-[var(--ema-control-bg-hover)] data-[state=open]:bg-[var(--ema-control-bg-focus)]',
@@ -79,33 +79,33 @@ export function Select(props: SelectProps): React.JSX.Element {
           position="popper"
           sideOffset={4}
           className={cn(
-            'z-50 panel-glass rounded-xl p-1 shadow-[var(--ema-shadow-2)]',
+            'z-[var(--ema-z-overlay)] panel-glass rounded-xl shadow-[var(--ema-shadow-2)]',
             'min-w-[var(--radix-select-trigger-width)]',
-            'ema-anim-scale',
+            'ema-anim-expand',
           )}
         >
-          <RadixSelect.Viewport className="max-h-72">
-            {options.map((opt) => (
-              <RadixSelect.Item
-                key={opt.value}
-                value={opt.value}
-                disabled={opt.disabled}
-                className={cn(
-                  'flex items-center gap-2 px-2.5 py-1.5 rounded-sm text-sm cursor-pointer',
-                  'outline-none transition-ema',
-                  'data-[highlighted]:bg-[var(--ema-primary-muted)] data-[highlighted]:text-[var(--ema-primary-text)]',
-                  'data-[disabled]:opacity-40 data-[disabled]:cursor-not-allowed',
-                  'data-[state=checked]:text-[var(--ema-primary-text)]',
-                )}
-              >
-                {opt.icon && <span className={cn(opt.icon, 'text-base')} aria-hidden />}
-                <RadixSelect.ItemText>{opt.label}</RadixSelect.ItemText>
-                <RadixSelect.ItemIndicator className="ml-auto">
-                  <span className={cn(checkIcon ?? 'i-mdi:check', 'text-sm')} aria-hidden />
-                </RadixSelect.ItemIndicator>
-              </RadixSelect.Item>
-            ))}
-          </RadixSelect.Viewport>
+          {/* 展开动画的 grid 子节点: 裁剪与滑动都作用在这层, Viewport 保留自身滚动 */}
+          <div className="p-1">
+            <RadixSelect.Viewport className="max-h-72 overflow-y-auto">
+              {options.map((opt) => (
+                <RadixSelect.Item
+                  key={opt.value}
+                  value={opt.value}
+                  disabled={opt.disabled}
+                  className={cn(
+                    overlayItemCn,
+                    'data-[state=checked]:text-[var(--ema-primary-text)]',
+                  )}
+                >
+                  {opt.icon && <span className={cn(opt.icon, 'text-base')} aria-hidden />}
+                  <RadixSelect.ItemText>{opt.label}</RadixSelect.ItemText>
+                  <RadixSelect.ItemIndicator className="ml-auto">
+                    <span className={cn(checkIcon ?? 'i-mdi:check', 'text-sm ema-check-pop')} aria-hidden />
+                  </RadixSelect.ItemIndicator>
+                </RadixSelect.Item>
+              ))}
+            </RadixSelect.Viewport>
+          </div>
         </RadixSelect.Content>
       </RadixSelect.Portal>
     </RadixSelect.Root>

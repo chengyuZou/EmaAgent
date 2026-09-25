@@ -4,8 +4,7 @@ import { Badge } from './Badge.js';
 import { Button } from './Button.js';
 
 // ── MarketCard ───────────────────────────────────────────────────────────────
-// 市场条目卡:左侧内容(children)+ 右侧安装/已安装按钮;
-// decorate 传 ema-card-decorate--xxx,统一 border-2。
+// 市场条目卡: 左侧内容(children) + 右侧安装/已安装按钮.
 
 export interface MarketCardProps {
   decorate?:       string;
@@ -24,8 +23,8 @@ export function MarketCard({ decorate, index, installed, installing, installDisa
   return (
     <div
       className={cn(
-        'ema-stagger-in-flat ema-glass-weak ema-card-decorate bg-[var(--ema-surface-1)] rounded-xl border-2 border-solid border-[var(--ema-border)]',
-        'hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)] px-4 py-3',
+        'ema-stagger-in-flat ema-glass-weak ema-card-decorate bg-[var(--ema-surface-1)] rounded-xl border border-solid border-[var(--ema-border)]',
+        'hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)] px-4 py-3 transition-ema',
         decorate,
         className,
       )}

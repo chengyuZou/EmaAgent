@@ -3,12 +3,11 @@ import { cn } from '../utils/cn.js';
 
 // ── MenuStatusItem ───────────────────────────────────────────────────────────
 //
-// Provider 网格卡:标题+描述、灰度图标从右缘探出(hover 回色),
-// 左上角配置状态点。装饰(hover 扫光+纹理)统一走 ema-card-decorate primitive,
-// 不在组件里手写伪元素。
+// Provider 网格卡: 标题+描述, 灰度图标从右缘探出(hover 回色), 左上角配置状态点.
+// 装饰(hover 扫光+纹理)统一走 ema-card-decorate primitive, 不在组件里手写伪元素.
 //
-// 结构保持扁平:icon 直接放在 button 里,只有一层 overflow-hidden 裁剪,
-// 右缘探出效果与主菜单卡一致。
+// 结构保持扁平: icon 直接放在 button 里, 只有一层 overflow-hidden 裁剪,
+// 右缘探出效果与主菜单卡一致.
 
 export interface MenuStatusItemProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'title'> {
   title:        string;
@@ -30,9 +29,9 @@ export function MenuStatusItem(props: MenuStatusItemProps): React.JSX.Element {
       className={cn(
         'group relative w-full h-full flex flex-col overflow-hidden box-border text-left cursor-pointer',
         'ema-card-decorate ema-card-decorate--plus',
-        'rounded-xl bg-[var(--ema-surface-1)] ema-glass-weak border-2 border-solid border-[var(--ema-border)]',
-        'hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-2)]',
-        'active:scale-[0.98]',
+        'rounded-xl bg-[var(--ema-surface-1)] ema-glass-weak border border-solid border-[var(--ema-border)]',
+        'hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]',
+        'active:scale-[0.97]',
         'transition-ema',
         className,
       )}
@@ -55,7 +54,7 @@ export function MenuStatusItem(props: MenuStatusItemProps): React.JSX.Element {
           className={cn(
             icon,
             'absolute right-0 top-1/2 -translate-y-1/2 size-16 opacity-40',
-            'text-[var(--ema-text-tertiary)] group-hover:text-[var(--ema-primary)] group-hover:opacity-70 group-hover:scale-110',
+            'text-[var(--ema-text-tertiary)] group-hover:text-[var(--ema-primary)] group-hover:opacity-70 group-hover:scale-[1.2]',
             'transition-ema',
             iconColor,
           )}

@@ -29,7 +29,6 @@ import {
   createPresetChromatic,
   EMA_PRIMARY_HUE,
   EMA_VIOLET_OFFSET,
-  VAR_HUE,
   VAR_RADIUS,
 } from './uno-preset-chromatic.js';
 
@@ -167,26 +166,16 @@ export function emaSharedPreset(options: EmaSharedPresetOptions = {}): Preset[] 
         },
       ],
     },
-    // -- 自定义动画:注册成 theme 条目,animate-* Uno 工具类可用。
-    //    @keyframes 只住在 styles/keyframes.css。
+    // -- Progress 流光(组件专用, keyframes 不进 styles/keyframes.css) --
     {
       name: 'ema-animations',
       theme: {
         animation: {
-          'fade-in':     'ema-fade-in     150ms ease-out both',
-          'fade-out':    'ema-fade-out    100ms ease-in  forwards',
-          'scale-in':    'ema-scale-in    150ms cubic-bezier(0.16,1,0.3,1) both',
-          'slide-up':    'ema-slide-up    220ms cubic-bezier(0.16,1,0.3,1) both',
-          'slide-down':  'ema-slide-down  220ms cubic-bezier(0.16,1,0.3,1) both',
-          'slide-right': 'ema-slide-right 220ms cubic-bezier(0.16,1,0.3,1) both',
-          'slide-left':  'ema-slide-left  220ms cubic-bezier(0.16,1,0.3,1) both',
-          // Progress 流光(Progress 组件专用;@keyframes 在下方 preflight 定义)
           'progress-shine': 'progress-shine 2s cubic-bezier(0.35,0.08,0.04,0.99) infinite',
         },
       },
       preflights: [
         {
-          // progress-shine 是 Progress 组件专用,不进 styles/keyframes.css。
           getCSS: () => `
 @keyframes progress-shine {
   0%   { opacity: 0.4; transform: scale(0, 1); }
@@ -216,19 +205,15 @@ export function emaSharedTheme() {
 /** 全局可用的快捷方式类。 */
 export function emaSharedShortcuts() {
   return {
-    // 毛玻璃面板——浮动 dock、popover、dialog
-    'panel-glass': 'bg-[var(--ema-surface-4)] backdrop-blur-md border border-[var(--ema-border)] shadow-lg',
-    // 面板内嵌卡片的轻玻璃(设置卡、provider 网格)
+    // 毛玻璃面板: popover / dialog / 浮层. 影子由消费方显式挂, 不内置(双影拼顺序的教训).
+    'panel-glass': 'bg-[var(--ema-surface-4)] backdrop-blur-md border border-[var(--ema-border)]',
+    // 面板内嵌卡片的轻玻璃(设置卡, provider 网格)
     'card-glass': 'bg-[var(--ema-surface-2)] backdrop-blur-sm border border-[var(--ema-border)]',
-    // 可聚焦元素的焦点环(token 驱动,亮暗自适应)。
-    // 2px 实心环(72% primary)贴边无 offset 缝 + 3px 同色 12% 光晕——与四控件方案 B 同配方;
-    // 旧版 ring-offset-2 会在环与元素之间塞一条底色缝,焦点框与发光对不上。
+    // 可聚焦元素的焦点环(token 驱动, 亮暗自适应):
+    // 2px 实心环(72% primary)贴边无 offset 缝 + 3px 同色 12% 光晕.
     'focus-ring': 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--ema-primary)_72%,transparent)] focus-visible:shadow-[0_0_0_3px_color-mix(in_srgb,var(--ema-primary)_12%,transparent)]',
-    // 标准交互动效——只覆盖视觉属性,不碰 layout(transform 给 hover/press 缩放留路)
-    'transition-ema': 'transition-[background-color,border-color,color,fill,stroke,box-shadow,transform,opacity] duration-250 ease-in-out',
-    // 按压反馈(沿用现有手感,数值不做全局并轨)
-    'press':    'active:scale-[0.95] transition-transform duration-100',
-    'press-sm': 'active:scale-[0.98] transition-transform duration-100',
+    // 标准交互动效: 只覆盖视觉属性, 不碰 layout(transform 给 press 缩放留路); 时长/缓动走 token.
+    'transition-ema': 'transition-[background-color,border-color,color,fill,stroke,box-shadow,transform,opacity] duration-[var(--ema-duration-base)] ease-[var(--ema-ease)]',
   };
 }
 

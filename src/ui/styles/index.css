@@ -1,0 +1,16 @@
+/* ── 设计系统层样式入口(ui 包自携带)─────────────────────────────────────────
+ * foundation(token/动画) → primitives(跨域构件). 顺序即规矩.
+ * 应用专属的业务域样式(domains/vendors)留在 apps/desktop/src/styles, 不在此列.
+ */
+@import './foundation/tokens.css';
+@import './foundation/syntax-themes.css';
+@import './foundation/base.css';
+@import './foundation/keyframes.css';
+@import './foundation/animations.css';
+@import './foundation/transitions.css';
+
+@import './primitives/glass.css';
+@import './primitives/radix.css';
+@import './primitives/decorations.css';
+@import './primitives/selectable.css';
+@import './primitives/markdown.css';

@@ -3,8 +3,8 @@ import type { ButtonHTMLAttributes } from 'react';
 import { cn } from '../utils/cn.js';
 
 // ── CardButton ───────────────────────────────────────────────────────────────
-// 可点击卡片:供应商选择/模型网格/会话行等"整卡即按钮"场景,
-// 自带 selected 状态(主色描边 + muted 底色),token 驱动,明暗安全。
+// 可点击卡片: 供应商选择/模型网格/会话行等"整卡即按钮"场景,
+// 自带 selected 状态(主色描边 + muted 底色).
 
 export type CardButtonPadding = 'none' | 'sm' | 'md' | 'lg';
 
@@ -30,11 +30,12 @@ export const CardButton = forwardRef<HTMLButtonElement, CardButtonProps>(
         ref={ref}
         type={type}
         className={cn(
-          'text-left rounded-xl border-2 border-solid transition-ema cursor-pointer select-none',
+          'text-left rounded-xl border border-solid transition-ema cursor-pointer select-none',
           'bg-[var(--ema-surface-1)] border-[var(--ema-border)]',
           'hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]',
-          'active:scale-[0.99] focus-ring',
-          selected && 'border-[var(--ema-primary)] bg-[var(--ema-primary-muted)]',
+          'active:scale-[0.97] focus-ring',
+          // selected 态 hover 保持全主色描边, 不掉回 30%.
+          selected && 'border-[var(--ema-primary)] bg-[var(--ema-primary-muted)] hover:border-[var(--ema-primary)] hover:bg-[var(--ema-primary-muted)] hover:shadow-none',
           PADDING_CLASSES[padding],
           className,
         )}

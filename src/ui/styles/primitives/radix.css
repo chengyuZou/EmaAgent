@@ -1,10 +1,14 @@
 /* Radix 组件的 data-state 入场/退场适配,与 Tabs 滑块定位。
    横向 Tabs 的 trigger 必须等宽,滑块才能按索引准确定位。 */
 
-.ema-anim-scale[data-state="open"] { animation: ema-scale-in var(--ema-duration-base) var(--ema-ease) both; }
-.ema-anim-scale[data-state="closed"] { animation: ema-scale-out var(--ema-duration-base) var(--ema-ease) both; }
-.ema-anim-dialog[data-state="open"] { animation: ema-dialog-in var(--ema-duration-base) var(--ema-ease) both; }
-.ema-anim-dialog[data-state="closed"] { animation: ema-dialog-out var(--ema-duration-fast) var(--ema-ease) both; }
+/* 浮层统一 grid 展开: 外层行 0fr↔1fr + 内容反向滑入防拉扯, 进 300ms 出 200ms(出场=入场×0.7). */
+.ema-anim-expand { display: grid; overflow: hidden; }
+.ema-anim-expand > * { min-height: 0; overflow: hidden; }
+.ema-anim-expand[data-state="open"] { animation: ema-expand-in 300ms cubic-bezier(0, 0, 0.2, 1) both; }
+.ema-anim-expand[data-state="closed"] { animation: ema-expand-out 200ms cubic-bezier(0, 0, 0.2, 1) both; }
+.ema-anim-expand[data-state="open"] > * { animation: ema-expand-content-in 300ms cubic-bezier(0, 0, 0.2, 1) both; }
+.ema-anim-dialog[data-state="open"] { animation: ema-dialog-in 150ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.ema-anim-dialog[data-state="closed"] { animation: ema-dialog-out 100ms cubic-bezier(0.16, 1, 0.3, 1) both; }
 .ema-anim-fade[data-state="open"],
 .ema-anim-fade[data-state="delayed-open"] { animation: ema-fade-in var(--ema-duration-base) var(--ema-ease) both; }
 .ema-anim-fade[data-state="closed"] { animation: ema-fade-out var(--ema-duration-fast) var(--ema-ease) both; }

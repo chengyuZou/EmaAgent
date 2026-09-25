@@ -25,7 +25,7 @@ export interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement
   block?:    boolean;
   /** UnoCSS icon class (e.g. "i-mdi:home") rendered left of label. */
   icon?:     string;
-  /** UnoCSS icon class for the loading spinner. Defaults to a ring spinner. */
+  /** UnoCSS icon class for the loading spinner. Defaults to the three-dot bounce. */
   loadingIcon?: string;
   children?: ReactNode;
   /** HTMLButton's type — defaults to 'button' (we never want accidental form submits). */
@@ -34,19 +34,28 @@ export interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement
 
 // ── Style tables ────────────────────────────────────────────────────────────
 
+// B 壳: 1px 描边 + 内顶高光(inset 0 1px 0) + 薄影; pressed 统一 scale(.97).
+// disabled 分变体: 填充系换不透明灰块+三级字(半透明会读成"加载中"), 透明系才降透明度.
 const VARIANT_CLASSES: Record<ButtonVariant, string> = {
   primary:
-    'bg-[var(--ema-primary-muted)] hover:bg-[var(--ema-primary)]/30 active:bg-[var(--ema-primary)]/40 ' +
-    'text-[var(--ema-primary-text)] border-[var(--ema-primary)]/40',
+    'bg-[color-mix(in_srgb,var(--ema-primary)_24%,transparent)] hover:bg-[color-mix(in_srgb,var(--ema-primary)_32%,transparent)] active:bg-[color-mix(in_srgb,var(--ema-primary)_38%,transparent)] ' +
+    'text-[var(--ema-primary-text)] border-[color-mix(in_srgb,var(--ema-primary)_45%,transparent)] ' +
+    'shadow-[0_2px_10px_-4px_var(--ema-primary),inset_0_1px_0_rgba(255,255,255,0.10)] hover:shadow-[0_3px_14px_-4px_var(--ema-primary),inset_0_1px_0_rgba(255,255,255,0.12)] ' +
+    'disabled:bg-[var(--ema-surface-2)] disabled:text-[var(--ema-text-tertiary)] disabled:border-[var(--ema-border)] disabled:shadow-none',
   secondary:
     'bg-[var(--ema-surface-3)] hover:bg-[var(--ema-surface-4)] active:bg-[var(--ema-surface-4)] ' +
-    'text-[var(--ema-text-primary)] border-[var(--ema-border)] backdrop-blur-sm',
+    'text-[var(--ema-text-primary)] border-[var(--ema-border)] hover:border-[var(--ema-border-strong)] backdrop-blur-sm ' +
+    'shadow-[var(--ema-shadow-1),inset_0_1px_0_rgba(255,255,255,0.06)] ' +
+    'disabled:bg-[var(--ema-surface-2)] disabled:text-[var(--ema-text-tertiary)] disabled:border-[var(--ema-border)] disabled:shadow-none',
   ghost:
     'bg-transparent hover:bg-[var(--ema-surface-2)] active:bg-[var(--ema-surface-3)] ' +
-    'text-[var(--ema-text-secondary)] hover:text-[var(--ema-text-primary)] border-transparent',
+    'text-[var(--ema-text-secondary)] hover:text-[var(--ema-text-primary)] border-transparent shadow-none ' +
+    'disabled:opacity-50',
   danger:
-    'bg-[var(--ema-danger-muted)] hover:bg-[var(--ema-danger)]/30 active:bg-[var(--ema-danger)]/40 ' +
-    'text-[var(--ema-danger-text)] border-[var(--ema-danger)]/40',
+    'bg-[color-mix(in_srgb,var(--ema-danger)_16%,transparent)] hover:bg-[color-mix(in_srgb,var(--ema-danger)_24%,transparent)] active:bg-[color-mix(in_srgb,var(--ema-danger)_30%,transparent)] ' +
+    'text-[var(--ema-danger-text)] border-[color-mix(in_srgb,var(--ema-danger)_42%,transparent)] ' +
+    'shadow-[var(--ema-shadow-1),inset_0_1px_0_rgba(255,255,255,0.06)] ' +
+    'disabled:bg-[var(--ema-surface-2)] disabled:text-[var(--ema-text-tertiary)] disabled:border-[var(--ema-border)] disabled:shadow-none',
 };
 
 const SIZE_CLASSES: Record<ButtonSize, string> = {
@@ -61,9 +70,9 @@ const SHAPE_CLASSES: Record<ButtonShape, string> = {
 };
 
 const BASE_CLASSES =
-  'inline-flex items-center justify-center font-medium border ' +
-  'transition-ema cursor-pointer select-none ' +
-  'disabled:cursor-not-allowed disabled:opacity-40 ' +
+  'inline-flex items-center justify-center font-medium border whitespace-nowrap ' +
+  'transition-ema cursor-pointer select-none active:scale-[0.97] ' +
+  'disabled:cursor-not-allowed ' +
   'focus-ring';
 
 // ── Component ───────────────────────────────────────────────────────────────
@@ -104,7 +113,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         {...rest}
       >
         {loading
-          ? <span className={loadingIcon ?? 'i-svg-spinners:ring-resize'} aria-hidden />
+          ? <span className={loadingIcon ?? 'i-svg-spinners:3-dots-fade'} aria-hidden />
           : icon
             ? <span className={icon} aria-hidden />
             : null}

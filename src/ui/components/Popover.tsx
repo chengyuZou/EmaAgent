@@ -57,14 +57,17 @@ export function Popover(props: PopoverProps): React.JSX.Element {
           onOpenAutoFocus={onOpenAutoFocus}
           onCloseAutoFocus={onCloseAutoFocus}
           className={cn(
-            'z-40 panel-glass rounded-xl p-2 shadow-[var(--ema-shadow-2)]',
+            'z-[var(--ema-z-overlay)] panel-glass rounded-xl shadow-[var(--ema-shadow-2)]',
             widthClass,
-            'ema-anim-scale',
+            'ema-anim-expand',
             'focus:outline-none',
             className,
           )}
         >
-          {children}
+          {/* 展开动画的 grid 子节点: 裁剪与滑动都作用在这层, padding 也移到这里(否则收起时留 16px 残边) */}
+          <div className="p-2">
+            {children}
+          </div>
         </RadixPopover.Content>
       </RadixPopover.Portal>
     </RadixPopover.Root>

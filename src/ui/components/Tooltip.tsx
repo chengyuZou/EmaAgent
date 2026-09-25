@@ -41,13 +41,13 @@ export function Tooltip(props: TooltipProps): React.JSX.Element {
           align={align}
           sideOffset={sideOffset}
           className={cn(
-            'z-50 rounded-lg border border-[var(--ema-border)] bg-[var(--ema-surface-4)] px-2.5 py-1',
-            'text-xs text-[var(--ema-text-primary)] shadow-[var(--ema-shadow-2)]',
+            'z-[var(--ema-z-tooltip)] rounded-md bg-[var(--ema-text-primary)] px-2.5 py-1',
+            'text-xs font-medium text-[var(--ema-bg)] shadow-[var(--ema-shadow-2)]',
             'ema-anim-fade',
           )}
         >
           {content}
-          <RadixTooltip.Arrow className="fill-[var(--ema-surface-4)]" />
+          <RadixTooltip.Arrow className="fill-[var(--ema-text-primary)]" />
         </RadixTooltip.Content>
       </RadixTooltip.Portal>
     </RadixTooltip.Root>

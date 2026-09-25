@@ -5,11 +5,11 @@ import { Popover } from './Popover.js';
 
 // ── Combobox ────────────────────────────────────────────────────────────────
 //
-// 基于 Popover 的可搜索单选:输入过滤、↓↑ 只在可用项间循环(Enter 选择/Esc 关闭)、
-// 高亮不落在禁用项、点击外部关闭。输入框即 trigger。
-// allowFreeText=true 时输入即值(选项只负责回填),用于"词表提示但允许自由新词"
-// 的场景(如插画 expression);默认仍是"值来自选项"。
-// 适用 V1 场景(模型选择约 10 项、会话切换约 50 项);超过 500 项需虚拟列表。
+// 基于 Popover 的可搜索单选: 输入过滤, ↓↑ 只在可用项间循环(Enter 选择/Esc 关闭),
+// 高亮不落在禁用项, 点击外部关闭. 输入框即 trigger.
+// allowFreeText=true 时输入即值(选项只负责回填), 用于"词表提示但允许自由新词"
+// 的场景(如插画 expression); 默认仍是"值来自选项".
+// 适用 V1 场景(模型选择约 10 项, 会话切换约 50 项); 超过 500 项需虚拟列表.
 
 export interface ComboboxOption {
   value:    string;
@@ -232,12 +232,12 @@ export function Combobox({
                 aria-selected={opt.value === value}
                 aria-disabled={opt.disabled || undefined}
                 className={cn(
-                  'flex flex-col rounded-sm px-3 py-1.5 text-sm cursor-pointer transition-ema',
+                  'flex flex-col rounded-md px-3 py-1.5 text-sm cursor-pointer transition-ema',
                   i === safeIdx
                     ? 'bg-[var(--ema-primary-muted)] text-[var(--ema-primary-text)]'
                     : opt.value === value
-                      ? 'bg-[var(--ema-surface-3)] text-[var(--ema-primary-text)]'
-                      : 'text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-2)]',
+                      ? 'text-[var(--ema-primary-text)]'
+                      : 'text-[var(--ema-text-primary)] hover:bg-[var(--ema-primary-muted)] hover:text-[var(--ema-primary-text)]',
                   opt.disabled && 'cursor-not-allowed opacity-40',
                 )}
                 onClick={() => !opt.disabled && select(opt)}

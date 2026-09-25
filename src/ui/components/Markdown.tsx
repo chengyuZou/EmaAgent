@@ -4,7 +4,7 @@
  *
  * 位于 ui 包的原因: desktop 聊天/文件预览与 builtin-tools 的 Tool UI 都要渲染
  * Markdown, 而 Tool UI 只允许消费 @ema-agent/ui. 排版样式是全局 .markdown-content
- * (apps/desktop/src/styles/primitives/markdown.css), KaTeX 样式由桌面入口引入.
+ * (src/ui/styles/primitives/markdown.css), KaTeX 样式由桌面入口引入.
  */
 import ReactMarkdown, { type Components } from 'react-markdown';
 import { memo } from 'react';

@@ -1,11 +1,12 @@
 import * as RadixDropdown from '@radix-ui/react-dropdown-menu';
 import type { ReactNode } from 'react';
 import { cn } from '../utils/cn.js';
+import { overlayItemCn, overlayItemDangerCn } from './overlayItem.js';
 
 // ── DropdownMenu ────────────────────────────────────────────────────────────
 //
-// 点击触发的菜单(聊天模式切换、历史操作等)。
-// 条目类型:item / separator / submenu(递归) / checkbox。
+// 点击触发的菜单(聊天模式切换, 历史操作等).
+// 条目类型: item / separator / submenu(递归) / checkbox.
 
 export type MenuItem =
   | { kind: 'item';      id?: string; label: string; icon?: string; danger?: boolean; disabled?: boolean; shortcut?: string; description?: string; onSelect(): void }
@@ -37,12 +38,15 @@ export function DropdownMenu(props: DropdownMenuProps): React.JSX.Element {
           align={align}
           sideOffset={6}
           className={cn(
-            'z-40 panel-glass rounded-xl p-1 shadow-[var(--ema-shadow-2)]',
+            'z-[var(--ema-z-overlay)] panel-glass rounded-xl shadow-[var(--ema-shadow-2)]',
             widthClass,
-            'ema-anim-scale',
+            'ema-anim-expand',
           )}
         >
-          <MenuItems items={items} checkIcon={checkIcon} submenuIcon={submenuIcon} />
+          {/* 展开动画的 grid 子节点: 裁剪与滑动都作用在这层 */}
+          <div className="p-1">
+            <MenuItems items={items} checkIcon={checkIcon} submenuIcon={submenuIcon} />
+          </div>
         </RadixDropdown.Content>
       </RadixDropdown.Portal>
     </RadixDropdown.Root>
@@ -75,7 +79,7 @@ function RenderItem({ item, checkIcon, submenuIcon }: { item: MenuItem; checkIco
         <RadixDropdown.Item
           disabled={item.disabled}
           onSelect={item.onSelect}
-          className={cn(itemBaseCn, item.danger ? itemDangerCn : '')}
+          className={cn(overlayItemCn, item.danger ? overlayItemDangerCn : '')}
         >
           {item.icon && <span className={cn(item.icon, 'text-base')} aria-hidden />}
           <span className="flex-1">
@@ -95,11 +99,11 @@ function RenderItem({ item, checkIcon, submenuIcon }: { item: MenuItem; checkIco
         <RadixDropdown.CheckboxItem
           checked={item.checked}
           onCheckedChange={item.onCheckedChange}
-          className={itemBaseCn}
+          className={overlayItemCn}
         >
           <span className="w-4 inline-flex items-center justify-center">
             <RadixDropdown.ItemIndicator>
-              <span className={cn(checkIcon ?? 'i-mdi:check', 'text-sm')} aria-hidden />
+              <span className={cn(checkIcon ?? 'i-mdi:check', 'text-sm ema-check-pop')} aria-hidden />
             </RadixDropdown.ItemIndicator>
           </span>
           {item.icon && <span className={cn(item.icon, 'text-base')} aria-hidden />}
@@ -110,7 +114,7 @@ function RenderItem({ item, checkIcon, submenuIcon }: { item: MenuItem; checkIco
     case 'submenu':
       return (
         <RadixDropdown.Sub>
-          <RadixDropdown.SubTrigger className={itemBaseCn}>
+          <RadixDropdown.SubTrigger className={overlayItemCn}>
             {item.icon && <span className={cn(item.icon, 'text-base')} aria-hidden />}
             <span className="flex-1">{item.label}</span>
             <span className={cn(submenuIcon ?? 'i-mdi:chevron-right', 'text-base')} aria-hidden />
@@ -118,23 +122,16 @@ function RenderItem({ item, checkIcon, submenuIcon }: { item: MenuItem; checkIco
           <RadixDropdown.Portal>
             <RadixDropdown.SubContent
               className={cn(
-                'z-50 panel-glass rounded-xl p-1 shadow-[var(--ema-shadow-2)] min-w-44',
-                'ema-anim-scale',
+                'z-[var(--ema-z-overlay)] panel-glass rounded-xl shadow-[var(--ema-shadow-2)] min-w-44',
+                'ema-anim-expand',
               )}
             >
-              <MenuItems items={item.items} checkIcon={checkIcon} submenuIcon={submenuIcon} />
+              <div className="p-1">
+                <MenuItems items={item.items} checkIcon={checkIcon} submenuIcon={submenuIcon} />
+              </div>
             </RadixDropdown.SubContent>
           </RadixDropdown.Portal>
         </RadixDropdown.Sub>
       );
   }
 }
-
-const itemBaseCn =
-  'flex items-center gap-2 px-2.5 py-1.5 rounded-sm text-sm cursor-pointer ' +
-  'outline-none transition-ema ' +
-  'data-[highlighted]:bg-[var(--ema-primary-muted)] data-[highlighted]:text-[var(--ema-primary-text)] ' +
-  'data-[disabled]:opacity-40 data-[disabled]:cursor-not-allowed';
-
-const itemDangerCn =
-  'data-[highlighted]:bg-[var(--ema-danger-muted)] data-[highlighted]:text-[var(--ema-danger-text)] text-[var(--ema-danger-text)]';

@@ -40,13 +40,13 @@ export function Dialog(props: DialogProps): React.JSX.Element {
       <RadixDialog.Portal>
         <RadixDialog.Overlay
           className={cn(
-            'fixed inset-0 z-50 bg-[var(--ema-mask)] backdrop-blur-sm ema-anim-fade',
+            'fixed inset-0 z-[var(--ema-z-dialog)] bg-[var(--ema-mask)] backdrop-blur-sm ema-anim-fade',
           )}
         />
         <RadixDialog.Content
           {...(!description ? { 'aria-describedby': undefined } : {})}
           className={cn(
-            'fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2',
+            'fixed left-1/2 top-1/2 z-[var(--ema-z-dialog)] -translate-x-1/2 -translate-y-1/2',
             'w-[92vw]', widthClass,
             'rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-4)] p-5 shadow-[var(--ema-shadow-3)] max-h-[90vh] overflow-auto',
             'focus:outline-none ema-anim-dialog ema-dialog-decorate',
@@ -61,7 +61,7 @@ export function Dialog(props: DialogProps): React.JSX.Element {
           {(title || description) && (
             <div className="mb-4">
               {title && (
-                <RadixDialog.Title className="text-lg font-medium text-[var(--ema-text-primary)]">
+                <RadixDialog.Title className="text-[17px] font-semibold text-[var(--ema-text-primary)]">
                   {title}
                 </RadixDialog.Title>
               )}

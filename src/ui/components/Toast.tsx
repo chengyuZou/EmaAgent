@@ -108,7 +108,7 @@ export function Toaster({ maxVisible = 5, closeIcon }: ToasterProps): React.JSX.
 
       <RadixToast.Viewport
         className={cn(
-          'fixed bottom-4 right-4 z-[9999]',
+          'fixed bottom-4 right-4 z-[var(--ema-z-toast)]',
           'flex flex-col gap-2 w-80 focus:outline-none',
         )}
       />

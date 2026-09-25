@@ -1,4 +1,4 @@
-// 为单个表单控件统一关联标签、说明、必填状态和错误信息。
+// 为单个表单控件统一关联标签, 说明, 必填状态和错误信息.
 import {
   Children,
   cloneElement,
@@ -89,7 +89,7 @@ export function Field({
       )}
       {enhancedControl}
       {error && (
-        <p id={errorId} className="text-xs text-[var(--ema-danger-text)]" role="alert">{error}</p>
+        <p id={errorId} className="text-xs text-[var(--ema-danger-text)] ema-fade-in" role="alert">{error}</p>
       )}
     </div>
   );

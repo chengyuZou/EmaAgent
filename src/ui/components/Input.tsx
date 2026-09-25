@@ -9,6 +9,8 @@ export interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 
   /** Renamed to avoid clashing with native `size` attribute. */
   inputSize?: InputSize;
   error?:     boolean;
+  /** 机器值(URL/key/ID/数字/路径)用 mono(默认); 人类文本(名称/描述)传 false 走正文栈. */
+  mono?:      boolean;
 }
 
 const SIZE_CLASSES: Record<InputSize, string> = {
@@ -19,14 +21,15 @@ const SIZE_CLASSES: Record<InputSize, string> = {
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
   function Input(props, ref) {
-    const { inputSize = 'md', error, className, type = 'text', ...rest } = props;
+    const { inputSize = 'md', error, mono = true, className, type = 'text', ...rest } = props;
     return (
       <input
         ref={ref}
         type={type}
         aria-invalid={error || undefined}
         className={cn(
-          'w-full rounded-xl border font-mono text-[var(--ema-text-primary)] placeholder:text-[var(--ema-text-tertiary)]',
+          'w-full rounded-xl border text-[var(--ema-text-primary)] placeholder:text-[var(--ema-text-tertiary)]',
+          mono && 'font-mono',
           'bg-[var(--ema-control-bg)] shadow-[var(--ema-control-shadow)]',
           'hover:bg-[var(--ema-control-bg-hover)] focus-visible:bg-[var(--ema-control-bg-focus)]',
           'transition-ema',
