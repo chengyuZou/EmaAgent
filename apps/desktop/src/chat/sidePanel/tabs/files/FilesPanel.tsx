@@ -3,9 +3,9 @@ import { useState, useCallback, useEffect, useRef, type JSX, type CSSProperties 
 import { DropdownMenu, ScrollArea, type MenuItem } from '@ema-agent/ui';
 import { ServerApiError } from '../../../../api/client.js';
 import { filesApi, type FileEntry } from '../../../../api/workspaces.js';
-import { useChatWorkspace } from '../../../state/chatWorkspace.js';
+import { useChatNavigationStore } from '../../../../stores/chatNavigation.js';
 import { useSessionStore } from '../../../../stores/session.js';
-import { fileTab, useSessionSidePanel } from '../../../state/chatWorkspace.js';
+import { fileTab, useSessionPanelStore } from '../../../../stores/sessionPanel.js';
 
 function workspaceBrowserScopeKey(
   sessionId: string,
@@ -190,7 +190,7 @@ function DirSubtree({
 // ── FilesPanel ────────────────────────────────────────────────────────────────
 
 export function FilesPanel(): JSX.Element {
-  const sessionId  = useChatWorkspace((s) => s.viewedSessionId);
+  const sessionId  = useChatNavigationStore((s) => s.viewedSessionId);
   const loading = useSessionStore((s) => s.loading);
   const session    = useSessionStore((s) =>
     sessionId ? s.sessions.byId.get(sessionId) : undefined,
@@ -252,12 +252,12 @@ function ScopedFilesPanel({
   const requestGenerations = useRef(new Map<string, number>());
 
   // 点击文件在工作区 Dock 中以 file:<path> 标签打开（同一路径复用同一标签）。
-  const sessionId = useChatWorkspace((s) => s.viewedSessionId);
+  const sessionId = useChatNavigationStore((s) => s.viewedSessionId);
   // 当前激活标签:文件行高亮"正在预览"的唯一数据源(fileTab(path).id 比对)。
-  const activeTabId = useSessionSidePanel((state) =>
+  const activeTabId = useSessionPanelStore((state) =>
     sessionId ? state.layouts[sessionId]?.activeTabId : undefined,
   );
-  const openTab = useSessionSidePanel((state) => state.openTab);
+  const openTab = useSessionPanelStore((state) => state.openTab);
   const openFileTab = useCallback((path: string): void => {
     if (!sessionId) return;
     openTab(sessionId, fileTab(path));

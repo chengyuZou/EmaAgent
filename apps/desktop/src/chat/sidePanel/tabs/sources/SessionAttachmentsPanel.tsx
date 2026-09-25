@@ -6,8 +6,8 @@ import type { SessionAttachmentsResult } from '../../../../api/sessions.js';
 import { useSessionAttachmentStore } from '../../../../stores/sessionAttachment.js';
 import {
   sessionSourceTab,
-  useSessionSidePanel,
-} from '../../../state/chatWorkspace.js';
+  useSessionPanelStore,
+} from '../../../../stores/sessionPanel.js';
 
 type SessionAttachmentItem = SessionAttachmentsResult['attachments'][number];
 
@@ -22,7 +22,7 @@ function attachmentTitle(item: SessionAttachmentItem): string {
 }
 
 export function SessionAttachmentsPanel({ sessionId }: { sessionId: string | null }): JSX.Element {
-  const openTab = useSessionSidePanel((state) => state.openTab);
+  const openTab = useSessionPanelStore((state) => state.openTab);
   const attachments = useSessionAttachmentStore((state) =>
     sessionId ? state.bySession.get(sessionId) ?? EMPTY_ATTACHMENTS : EMPTY_ATTACHMENTS,
   );

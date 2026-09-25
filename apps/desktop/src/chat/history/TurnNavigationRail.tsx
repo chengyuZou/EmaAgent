@@ -6,17 +6,17 @@ import {
   useState,
   type CSSProperties,
   type JSX,
-  type WheelEvent,
 } from 'react';
 import { Tooltip, TooltipProvider } from '@ema-agent/ui';
 
 import type { TurnIndexPage } from '../../api/sessions.js';
-import { EMPTY_SESSION_HISTORY, useHistoryStore } from '../state/history.js';
+import { EMPTY_SESSION_HISTORY, useSessionHistoryStore } from '../../stores/sessionHistory.js';
 
 type TurnIndexItem = TurnIndexPage['items'][number];
 
 interface TurnRailProps {
   sessionId: string;
+  visibleTurnIds: ReadonlySet<string>;
   onSelectTurn(turnId: string): void | Promise<void>;
 }
 
@@ -48,30 +48,29 @@ function turnRailMarkVisual(index: number, hoveredIndex: number | null, isCurren
   return isCurrent ? { scale: 0.72, opacity: 0.92, emphasis: 'current' } : { scale: 0.24, opacity: 0.38, emphasis: 'idle' };
 }
 
-export function TurnNavigationRail({ sessionId, onSelectTurn }: TurnRailProps): JSX.Element | null {
-  const railRef = useRef<HTMLDivElement | null>(null);
+export function TurnNavigationRail({ sessionId, visibleTurnIds, onSelectTurn }: TurnRailProps): JSX.Element | null {
+  const [railElement, setRailElement] = useState<HTMLDivElement | null>(null);
   const wheelDeltaRef = useRef(0);
-  const centeredTurnRef = useRef<string | null>(null);
+  const centeredViewRef = useRef<{ turnId: string; capacity: number } | null>(null);
   const [height, setHeight] = useState(0);
   const [offset, setOffset] = useState(0);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
-  const history = useHistoryStore(
+  const history = useSessionHistoryStore(
     (state) => state.bySession.get(sessionId) ?? EMPTY_SESSION_HISTORY,
   );
 
   useEffect(() => {
-    void useHistoryStore.getState().loadTurnIndex(sessionId);
+    void useSessionHistoryStore.getState().loadTurnIndex(sessionId);
   }, [sessionId, history.turnIndexLoaded]);
 
   useEffect(() => {
-    const rail = railRef.current;
-    if (!rail) return;
+    if (!railElement) return;
     const observer = new ResizeObserver(([entry]) => {
       if (entry) setHeight(entry.contentRect.height);
     });
-    observer.observe(rail);
+    observer.observe(railElement);
     return () => observer.disconnect();
-  }, []);
+  }, [railElement]);
 
   const capacity = turnRailCapacity(height);
   const visibleItems = useMemo(
@@ -80,63 +79,70 @@ export function TurnNavigationRail({ sessionId, onSelectTurn }: TurnRailProps): 
   );
 
   useEffect(() => {
+    if (!railElement) return;
+
+    const handleWheel = (event: WheelEvent): void => {
+      event.preventDefault();
+      event.stopPropagation();
+      wheelDeltaRef.current += event.deltaY;
+      if (Math.abs(wheelDeltaRef.current) < WHEEL_THRESHOLD) return;
+
+      const direction = wheelDeltaRef.current > 0 ? -1 : 1;
+      wheelDeltaRef.current = 0;
+      setHoveredIndex(null);
+      setOffset((current) => {
+        const maximum = Math.max(0, history.turnIndexItems.length - capacity);
+        const next = Math.max(0, Math.min(maximum, current + direction * WHEEL_STEP));
+        if (
+          direction > 0
+          && next + capacity >= history.turnIndexItems.length - WHEEL_STEP
+          && history.turnIndexNextCursor
+        ) {
+          void useSessionHistoryStore.getState().loadMoreTurnIndex(sessionId);
+        }
+        return next;
+      });
+    };
+
+    // React 在 Chromium 根节点委托的 wheel 监听是 passive；导航轨需要独占这次滚轮。
+    railElement.addEventListener('wheel', handleWheel, { passive: false });
+    return () => railElement.removeEventListener('wheel', handleWheel);
+  }, [capacity, history.turnIndexItems.length, history.turnIndexNextCursor, railElement, sessionId]);
+
+  useEffect(() => {
     setOffset(0);
     setHoveredIndex(null);
-    centeredTurnRef.current = null;
+    centeredViewRef.current = null;
   }, [sessionId]);
 
   useEffect(() => {
     const currentTurnId = history.currentTurnId;
-    if (!currentTurnId || centeredTurnRef.current === currentTurnId) return;
+    const centeredView = centeredViewRef.current;
+    if (
+      !currentTurnId
+      || (centeredView?.turnId === currentTurnId && centeredView.capacity === capacity)
+    ) return;
     const currentIndex = history.turnIndexItems.findIndex(
       (item) => item.turnId === history.currentTurnId,
     );
     if (currentIndex < 0) return;
-    centeredTurnRef.current = currentTurnId;
-    setOffset((current) => {
-      if (currentIndex >= current && currentIndex < current + capacity) return current;
-      const centered = Math.max(0, currentIndex - Math.floor(capacity / 2));
-      return Math.min(centered, Math.max(0, history.turnIndexItems.length - capacity));
-    });
+    centeredViewRef.current = { turnId: currentTurnId, capacity };
+    setOffset(centeredTurnOffset(history.turnIndexItems.length, currentIndex, capacity));
   }, [capacity, history.currentTurnId, history.turnIndexItems]);
-
-  function handleWheel(event: WheelEvent<HTMLDivElement>): void {
-    event.preventDefault();
-    event.stopPropagation();
-    wheelDeltaRef.current += event.deltaY;
-    if (Math.abs(wheelDeltaRef.current) < WHEEL_THRESHOLD) return;
-
-    const direction = wheelDeltaRef.current > 0 ? -1 : 1;
-    wheelDeltaRef.current = 0;
-    setHoveredIndex(null);
-    setOffset((current) => {
-      const maximum = Math.max(0, history.turnIndexItems.length - capacity);
-      const next = Math.max(0, Math.min(maximum, current + direction * WHEEL_STEP));
-      if (
-        direction > 0
-        && next + capacity >= history.turnIndexItems.length - WHEEL_STEP
-        && history.turnIndexNextCursor
-      ) {
-        void useHistoryStore.getState().loadMoreTurnIndex(sessionId);
-      }
-      return next;
-    });
-  }
 
   if (!history.turnIndexLoading && history.turnIndexItems.length === 0) return null;
 
   return (
     <TooltipProvider delayDuration={120}>
       <div
-        ref={railRef}
-        className="absolute inset-y-5 left-2 z-10 flex w-11 flex-col justify-end overflow-hidden bg-transparent"
+        ref={setRailElement}
+        className="absolute left-2 top-1/2 z-10 flex h-[64%] max-h-[36rem] w-11 -translate-y-1/2 flex-col items-center justify-center overflow-hidden bg-transparent"
         onPointerLeave={() => setHoveredIndex(null)}
-        onWheel={handleWheel}
         aria-label="Turn 快速导航"
       >
         {visibleItems.map((item, index) => {
-          const isCurrent = item.turnId === history.currentTurnId;
-          const visual = turnRailMarkVisual(index, hoveredIndex, isCurrent);
+          const isVisible = visibleTurnIds.has(item.turnId);
+          const visual = turnRailMarkVisual(index, hoveredIndex, isVisible);
           const style: TurnRailMarkStyle = {
             '--ema-turn-rail-scale': visual.scale,
             '--ema-turn-rail-opacity': visual.opacity,
@@ -157,7 +163,7 @@ export function TurnNavigationRail({ sessionId, onSelectTurn }: TurnRailProps): 
                 onBlur={() => setHoveredIndex(null)}
                 onClick={() => void onSelectTurn(item.turnId)}
                 aria-label={`跳转到 ${formatTurnTime(item.createdAt)} 的 Turn`}
-                aria-current={isCurrent ? 'step' : undefined}
+                aria-current={item.turnId === history.currentTurnId ? 'step' : undefined}
               >
                 <span
                   className="ema-turn-rail-mark block h-px w-9 rounded-full"
@@ -173,12 +179,22 @@ export function TurnNavigationRail({ sessionId, onSelectTurn }: TurnRailProps): 
   );
 }
 
+export function centeredTurnOffset(
+  itemCount: number,
+  currentIndex: number,
+  capacity: number,
+): number {
+  const maximum = Math.max(0, itemCount - capacity);
+  const centered = Math.max(0, currentIndex - Math.floor(capacity / 2));
+  return Math.min(centered, maximum);
+}
+
 function TurnRailPreview({ item }: { item: TurnIndexItem }): JSX.Element {
   return (
     <div className="w-64 py-1">
       <div className="mb-1 flex items-center gap-2 text-[11px] text-[var(--ema-text-tertiary)]">
         <span>{formatTurnTime(item.createdAt)}</span>
-        <span>{item.executionProfile === 'work' ? 'Work' : 'Chat'}</span>
+        <span>{item.sessionMode === 'work' ? 'Work' : 'Chat'}</span>
         <span>{formatTurnStatus(item.status)}</span>
       </div>
       <div className="line-clamp-3 text-xs leading-5 text-[var(--ema-text-primary)]">

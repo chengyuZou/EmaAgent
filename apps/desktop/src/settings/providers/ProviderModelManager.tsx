@@ -37,15 +37,9 @@ function ModelCard({ title, hint, lines, chips, enabled, onToggle, logo, action 
       title={hint}
       onClick={onToggle}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } }}
-      className={`group relative text-left rounded-lg border-2 border-solid px-3 py-2.5 min-w-0 cursor-pointer outline-none
+      className={`group relative text-left rounded-lg border border-solid px-3 py-2.5 min-w-0 cursor-pointer outline-none
                   overflow-hidden isolate
-                  transition-all duration-[var(--ema-duration-base)] active:scale-[0.97]
-                  before:content-empty before:absolute before:inset-0 before:z-0
-                  before:w-1/4 before:h-full before:opacity-0
-                  before:transition-all before:duration-[400ms] before:ease-in-out
-                  before:[mask-image:linear-gradient(120deg,white_50%,transparent_75%)]
-                  hover:before:opacity-100 hover:before:w-[85%]
-                  hover:before:bg-gradient-to-r hover:before:from-[var(--ema-primary)]/30 hover:before:via-[var(--ema-primary)]/15 hover:before:to-transparent
+                  transition-ema active:scale-[0.97]
                   ema-card-decorate ema-card-decorate--plus
                   ${enabled
                     ? 'border-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'

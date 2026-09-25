@@ -5,17 +5,23 @@
   appearance: none;
   width: 100%;
   height: 12px;
-  border-radius: 9999px;
+  border-radius: var(--ema-radius-pill);
   outline: none;
   cursor: pointer;
   background: linear-gradient(to right,
     oklch(65% 0.18 0), oklch(65% 0.18 60), oklch(65% 0.18 120),
     oklch(65% 0.18 180), oklch(65% 0.18 240), oklch(65% 0.18 300), oklch(65% 0.18 360));
 }
+/* outline:none 的兜底: 键盘焦点必须可见。 */
+.ema-hue-range:focus-visible {
+  box-shadow: var(--ema-shadow-focus);
+}
 .ema-hue-range::-webkit-slider-thumb {
   -webkit-appearance: none;
   width: 20px;
   height: 20px;
+  /* Chromium 对 appearance:none 的 range 不垂直居中, (12-20)/2 手动归位。 */
+  margin-top: -4px;
   border-radius: 50%;
   background: var(--ema-surface-4);
   border: 2px solid var(--ema-border-strong);
@@ -37,7 +43,7 @@
 .ema-hue-range::-moz-range-thumb:hover { transform: scale(1.15); }
 .ema-hue-range::-moz-range-track {
   height: 12px;
-  border-radius: 9999px;
+  border-radius: var(--ema-radius-pill);
   background: linear-gradient(to right,
     oklch(65% 0.18 0), oklch(65% 0.18 60), oklch(65% 0.18 120),
     oklch(65% 0.18 180), oklch(65% 0.18 240), oklch(65% 0.18 300), oklch(65% 0.18 360));

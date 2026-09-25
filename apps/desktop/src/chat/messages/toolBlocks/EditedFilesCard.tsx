@@ -1,14 +1,15 @@
-// 变更汇总卡：已编辑 N 个文件 + 增删计数 + 分页清单；无真实撤销能力不渲染。
+// 显示当前 Assistant 气泡从 FileEdit/FileWrite 结果整理出的文件清单和增删行数.
+// 这里只负责展示, 不重新读取 Git, 也不提供没有后端实现的撤销按钮.
 import { useState, type JSX } from 'react';
 
-import type { EditedFileEntry } from './workGroups.js';
+import type { EditedFile} from './toolGroups.js';
 
 const PAGE_SIZE = 5;
 
 export function EditedFilesCard({
   files, additions, deletions,
 }: {
-  files: readonly EditedFileEntry[];
+  files: readonly EditedFile[];
   additions: number;
   deletions: number;
 }): JSX.Element {

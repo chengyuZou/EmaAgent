@@ -373,19 +373,31 @@ function MappingSection<T>({
     <div className="ema-card-decorate ema-card-decorate--mesh rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-2)] p-4">
       <p className="mb-1 text-xs font-semibold text-[var(--ema-text-secondary)]">{title}</p>
       <p className="mb-3 text-[11px] text-[var(--ema-text-tertiary)]">{hint}</p>
-      <div className="mb-3 flex gap-2">
+      <form
+        className="relative mb-3"
+        onSubmit={(event) => {
+          event.preventDefault();
+          addWord();
+        }}
+      >
         <Input
           value={newWord}
           placeholder="例如 sad"
+          className="pr-[86px]"
           onChange={event => setNewWord(event.target.value.toLowerCase())}
-          onKeyDown={event => {
-            if (event.key === 'Enter') addWord();
-          }}
         />
-        <Button size="sm" variant="secondary" disabled={!canAdd} onClick={addWord}>
+        <Button
+          type="submit"
+          size="sm"
+          shape="pill"
+          variant="primary"
+          icon="i-mdi:plus"
+          disabled={!canAdd}
+          className="absolute right-1 top-1 min-w-[74px] whitespace-nowrap"
+        >
           添加
         </Button>
-      </div>
+      </form>
       {entries.length === 0 && (
         <p className="py-3 text-center text-[11px] text-[var(--ema-text-tertiary)]">暂无映射</p>
       )}

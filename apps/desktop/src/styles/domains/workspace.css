@@ -97,21 +97,26 @@
   align-items: center;
   gap: var(--ema-space-0_5);
   padding: var(--ema-space-0_5);
-  border-radius: 10px;
+  border-radius: var(--ema-radius-md);
   border: 1px solid var(--ema-border);
   background: color-mix(in srgb, var(--ema-surface-1) 72%, transparent);
 }
 .ema-slot-tab {
   position: relative;
   min-height: 26px;
-  border-radius: 8px;
+  border-radius: var(--ema-radius-sm);
   transition: background-color var(--ema-duration-fast) var(--ema-ease),
               color var(--ema-duration-fast) var(--ema-ease);
 }
+/* 旧版手搓阴影拿 text-primary 当阴影色, 暗主题下是淡白光晕不是阴影。 */
 .ema-slot-tab[data-selected='true'] {
   background: color-mix(in srgb, var(--ema-surface-3) 72%, transparent);
   color: var(--ema-text-primary);
-  box-shadow: 0 1px 2px color-mix(in srgb, var(--ema-text-primary) 7%, transparent);
+  box-shadow: var(--ema-shadow-1);
+}
+
+.ema-slot-tab:focus-visible {
+  box-shadow: var(--ema-shadow-focus);
 }
 
 .ema-slot-tab-close {

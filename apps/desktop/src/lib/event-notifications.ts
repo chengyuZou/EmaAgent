@@ -1,12 +1,22 @@
 // 把结构化实时事件转换为受用户设置控制的本地通知。
 
 import type { AppEvent } from '@ema-agent/server/application/appEvents.js';
+import type { SessionBusinessMessage } from '@ema-agent/server/routes/ws/session.js';
 import type { TurnStreamEvent } from '@ema-agent/turn';
-import { useSettingsStore, type EventDisplayConfig } from '../stores/settings.js';
-import { showToast, type ToastOptions } from './toast.js';
+import type { EventDisplayTable } from '../api/settings.js';
+import type { ToastOptions } from './toast.js';
 
-/** 通知层可见的全部线上事件：Turn 流 + 应用级广播。 */
-export type NotifiableEvent = TurnStreamEvent | AppEvent;
+export type SessionCompactEvent = Extract<SessionBusinessMessage, {
+  type:
+    | 'compact_started'
+    | 'compact_history_truncated'
+    | 'compact_cancelled'
+    | 'compact_completed'
+    | 'compact_failed';
+}>;
+
+/** 通知层可见的全部线上事件：Turn 流、Session 手动压缩与应用级广播。 */
+export type NotifiableEvent = TurnStreamEvent | SessionCompactEvent | AppEvent;
 
 export interface EventNotification {
   message: string;
@@ -23,9 +33,11 @@ export function describeEventNotification(event: NotifiableEvent): EventNotifica
     case 'tool_call_complete':
       return { message: `准备执行工具：${event.name}`, variant: 'info' };
     case 'tool_result':
+      // 成功不弹通知: 聊天区工具行自带"成功 · Xs"终态, 成功 Toast 是纯噪音(还会刷屏);
+      // 设置项 tool_result 因此只管失败通知。
       return event.error
         ? { message: `工具 ${event.name} 执行失败：${event.error.message}`, variant: 'danger' }
-        : { message: `工具 ${event.name} 执行完成`, variant: 'success' };
+        : null;
     case 'permission_required':
       return { message: `工具 ${event.toolName} 正在等待你的授权`, variant: 'warning' };
     case 'permission_resolved':
@@ -89,7 +101,7 @@ export function describeEventNotification(event: NotifiableEvent): EventNotifica
 
 export function resolveConfiguredEventNotification(
   event: NotifiableEvent,
-  config: EventDisplayConfig | undefined,
+  config: EventDisplayTable[string] | undefined,
 ): ConfiguredEventNotification | null {
   if (!config?.enabled) return null;
   const presentation = describeEventNotification(event);
@@ -105,15 +117,4 @@ export function resolveConfiguredEventNotification(
     duration: config.durationMs,
     accentColor: config.color,
   };
-}
-
-export function presentConfiguredEvent(event: NotifiableEvent): void {
-  const config = useSettingsStore.getState().eventDisplay?.[event.type];
-  const notification = resolveConfiguredEventNotification(event, config);
-  if (!notification) return;
-  showToast(notification.message, {
-    variant: notification.variant,
-    duration: notification.duration,
-    accentColor: notification.accentColor,
-  });
 }

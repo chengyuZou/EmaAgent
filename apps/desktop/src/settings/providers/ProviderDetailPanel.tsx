@@ -15,14 +15,14 @@ import {
   PROTOCOL_LABELS,
   providersApi,
   type ModelCapability,
-  type ProviderRecord,
+  type ProviderDetail,
 } from '../../api/providers.js';
 import { PROTOCOLS, PROVIDER_LIMITS, isProtocolForCapability, type Protocol } from '@ema-agent/providers/types';
 import { showToast } from '../../lib/toast.js';
 import { ProviderModelManager } from './ProviderModelManager.js';
 
 export interface ProviderDetailPanelProps {
-  provider:   ProviderRecord;
+  provider:   ProviderDetail;
   capability: ModelCapability;
 }
 

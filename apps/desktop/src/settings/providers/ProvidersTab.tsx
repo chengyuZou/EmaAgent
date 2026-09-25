@@ -13,7 +13,7 @@ import {
   resolveProviderIconClass,
 } from '@ema-agent/ui';
 import { useProviderStore } from '../../stores/provider.js';
-import { providersApi, type ProviderRecord, type ModelCapability } from '../../api/providers.js';
+import { providersApi, type ProviderRecord, type ProviderDetail, type ModelCapability } from '../../api/providers.js';
 import { showToast } from '../../lib/toast.js';
 import { ProviderDetailPanel } from './ProviderDetailPanel.js';
 import { ProviderCreatePanel } from './ProviderCreatePanel.js';
@@ -65,7 +65,7 @@ function isConfigured(record: ProviderRecord, capability: ModelCapability): bool
   if (row?.activeProtocol === undefined) return false;
   return record.authType === 'none'
     ? (row.modelCount ?? 0) > 0
-    : record.keyValue !== undefined;
+    : record.hasKey;
 }
 
 export function ProvidersTab(): JSX.Element {
@@ -174,7 +174,7 @@ export function ProvidersTab(): JSX.Element {
                       icon={resolveProviderIconClass(record.iconId)}
                       configured={isConfigured(record, section.key)}
                       onClick={() => { setSelectedId(record.id); setSelectedCapability(section.key); }}
-                      className="after:hidden ema-card-decorate ema-card-decorate--plus"
+                      className="ema-card-decorate ema-card-decorate--plus"
                     />
                     <IconButton
                       label="删除服务来源"
@@ -218,10 +218,31 @@ function ProviderConfigPanel({
   capability: ModelCapability;
   onBack():   void;
 }): JSX.Element {
-  const health = provider.health.find((h) => h.capability === capability);
+  const [detail, setDetail] = useState<ProviderDetail | null>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
   const [editingIcon, setEditingIcon] = useState(false);
   const [iconBusy, setIconBusy] = useState(false);
   const [customIcon, setCustomIcon] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    void providersApi.get(provider.id)
+      .then(value => {
+        if (!cancelled) {
+          setDetail(value);
+          setDetailError(null);
+        }
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setDetail(null);
+          setDetailError(error instanceof Error ? error.message : '读取服务来源失败');
+        }
+      });
+    return () => { cancelled = true; };
+  }, [provider]);
+
+  const health = detail?.health.find((h) => h.capability === capability);
 
   const customIconTrimmed = customIcon.trim();
   const customIconValid = PROVIDER_ICON_ID_PATTERN.test(customIconTrimmed);
@@ -271,11 +292,15 @@ function ProviderConfigPanel({
         )}
       </div>
 
-      <ProviderDetailPanel
-        key={provider.id}
-        provider={provider}
-        capability={capability}
-      />
+      {detail && (
+        <ProviderDetailPanel
+          key={provider.id}
+          provider={detail}
+          capability={capability}
+        />
+      )}
+      {detailError && <Callout variant="danger">{detailError}</Callout>}
+      {!detail && !detailError && <p className="text-sm text-[var(--ema-text-tertiary)]">正在读取服务来源...</p>}
 
       {/* 图标选择：注册表全量品牌图标 + 手写类名 + 无图标（清除）。 */}
       <Dialog

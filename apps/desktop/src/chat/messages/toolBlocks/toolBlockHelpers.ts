@@ -9,6 +9,7 @@ const VARIANT_BY_NAME: ReadonlyMap<string, BuiltinToolVariant> = new Map(
 );
 
 export type ToolVariant = BuiltinToolVariant | 'others';
+/** Tool 行实际显示的终态和中间态. 这个状态不写回 Store, 只由 ToolCallBlock 的真实数据派生. */
 export type ToolDisplayStatus = 'running' | 'awaiting_permission' | 'success' | 'failed' | 'denied';
 
 export function toolVariant(name: string): ToolVariant {
@@ -33,6 +34,15 @@ export function formatJson(value: unknown): string {
     catch { return value; }
   }
   return JSON.stringify(value, null, 2);
+}
+
+/** 耗时统一格式化: ms -> Xs -> m:ss; ToolCallBlock 与 SubagentPanel 共用, 不再各自裸拼 ms。 */
+export function fmtDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  if (ms < 10_000) return `${(ms / 1000).toFixed(1)}s`;
+  if (ms < 60_000) return `${Math.round(ms / 1000)}s`;
+  const s = Math.floor(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
 /** 无专属 copyText 时的默认复制：args 与结果的 JSON 拼接（保留完整结构，可直接解析）。 */

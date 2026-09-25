@@ -54,7 +54,7 @@
 .ema-tool-row-dot {
   width: 8px;
   height: 8px;
-  border-radius: 9999px;
+  border-radius: var(--ema-radius-pill);
 }
 
 .ema-tool-row-summary {
@@ -92,7 +92,7 @@
   column-gap: var(--ema-space-3);
   min-width: 0;
   padding: var(--ema-space-0_5) var(--ema-space-2);
-  border-radius: 3px;
+  border-radius: var(--ema-radius-xs);
 }
 
 .ema-tool-field-row:nth-child(odd) {
@@ -141,7 +141,7 @@
   margin: 0;
   padding: var(--ema-space-2) var(--ema-space-3);
   border: 1px solid color-mix(in srgb, var(--ema-border) 70%, transparent);
-  border-radius: 4px;
+  border-radius: var(--ema-radius-xs);
   background: color-mix(in srgb, var(--ema-surface-2) 58%, transparent);
   color: var(--ema-text-secondary);
   font-family: var(--ema-font-mono);

@@ -1,6 +1,8 @@
 // L2 角色详情壳:顶部 58px 只有返回 + Tab 条,无 Hero 区;Tab 内容各自成文件。
 import { useEffect, useState, type JSX } from 'react';
 import { Callout, Spinner } from '@ema-agent/ui';
+import { charactersApi, type Character } from '../../api/characters.js';
+import { ServerApiError } from '../../api/client.js';
 import { useCharacterStore } from '../../stores/character.js';
 import { CharacterInfoTab } from './CharacterInfoTab.js';
 import { Live2dTab } from './Live2dTab.js';
@@ -16,20 +18,45 @@ export function CharacterDetailPage({
   onBack(): void;
 }): JSX.Element {
   const [tab, setTab] = useState<DetailTab>('info');
-  const character = useCharacterStore(s => s.characters.find(c => c.name === name));
+  const [character, setCharacter] = useState<Character | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const summaries = useCharacterStore(s => s.characters);
 
   useEffect(() => {
-    if (!useCharacterStore.getState().characters.length) {
-      void useCharacterStore.getState().load();
-    }
-  }, []);
+    let cancelled = false;
+    setLoading(true);
+    void charactersApi.get(name)
+      .then(value => {
+        if (!cancelled) {
+          setCharacter(value);
+          setLoadError(null);
+        }
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setCharacter(null);
+          if (error instanceof ServerApiError && error.status === 404) {
+            setLoadError(`角色「${name}」不存在或已被删除`);
+          } else if (error instanceof Error) {
+            setLoadError(error.message);
+          } else {
+            setLoadError('角色详情读取失败');
+          }
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [name, summaries]);
 
-  if (!character) {
+  if (!character || character.name !== name) {
     return (
       <div className="flex h-48 items-center justify-center">
-        {useCharacterStore(s => s.loading)
+        {loading
           ? <Spinner size="md" />
-          : <Callout variant="danger">角色「{name}」不存在或已被删除</Callout>}
+          : <Callout variant="danger">{loadError}</Callout>}
       </div>
     );
   }

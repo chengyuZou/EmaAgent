@@ -1,40 +1,42 @@
-// 一次工具调用的统一行：状态、参数、进度、结果与复制。
-// props 只携带真实对象——历史路径是 tool_use 块 + 索引配对的结果信封，流式路径是
-// 瞬态项；专属 UI 经 tool_use.name 查表、以 TOutput（结果信封 data / 事件 output）渲染。
+// 一次工具调用的统一行: 状态 参数 进度 结果与复制.
+// 专属 UI 经 tool_use.name 查表 以 TOutput(结果信封 data / 事件 output)渲染.
 import { useState, useEffect, useCallback, type JSX } from 'react';
 import { IconButton } from '@ema-agent/ui';
-import { useAgentStore } from '../../../stores/agent.js';
+import { sessionWebSocket } from '../../../api/sessionWebSocket.js';
 import { renderToolResult } from './tool-renderers.js';
 import { lookupToolUI } from './toolUIRegistry.js';
 import { ToolArgsView, ToolResultViewBlock } from './ToolRenderBlocks.js';
 import {
   defaultCopyText,
+  fmtDuration,
   toolVariant,
   VARIANT_ICONS,
   type ToolDisplayStatus,
 } from './toolBlockHelpers.js';
-import { useChatWorkspace } from '../../state/chatWorkspace.js';
-import { useSessionSidePanel } from '../../state/chatWorkspace.js';
+import { useSessionPanelStore } from '../../../stores/sessionPanel.js';
 import {
   toolArgs,
   toolDurationMs,
+  toolFallbackContent,
   toolFailure,
   toolName,
   toolOutput,
   toolPermissionPending,
-  toolRowId,
+  toolCallId,
   toolRunning,
-  type ToolWorkRow,
-} from './workGroups.js';
+  type ToolDisplayCall,
+} from './toolGroups.js';
 
 export interface ToolCallBlockProps {
-  readonly row: ToolWorkRow;
+  /** History 的 tool_use + ToolResult, 或 Turn Stream 中同一次调用的实时状态. */
+  readonly call: ToolDisplayCall;
+  /** 仅表示所属 Turn 仍在执行, 具体工具是否运行以 call.item.status 为准. */
   readonly streaming?: boolean;
-  /** Turn ID — 流式期间启用单工具中止按钮。 */
+  /** Turn ID. 流式期间中止按钮把 toolCallId 和 turnId 一起发给 Server. */
   readonly turnId?: string;
+  /** 取消请求必须发给这一条消息所属 Session, 不从当前页面导航状态猜测. */
+  readonly sessionId?: string;
 }
-
-// ── 状态派生 ──────────────────────────────────────────────────────────────────
 
 const STATUS_META: Record<ToolDisplayStatus, { color: string; label: string; pulse?: boolean }> = {
   running:             { color: 'var(--ema-warning-text)', label: '运行中', pulse: true },
@@ -44,40 +46,39 @@ const STATUS_META: Record<ToolDisplayStatus, { color: string; label: string; pul
   denied:              { color: 'var(--ema-danger-text)',  label: '已拒绝' },
 };
 
-/** 毫秒 → 显示秒（<1s 显示一位小数，≥10s 取整，≥60s 显示 m:ss）。 */
-function fmtDuration(ms: number): string {
-  if (ms < 1000) return `${ms}ms`;
-  if (ms < 10_000) return `${(ms / 1000).toFixed(1)}s`;
-  if (ms < 60_000) return `${Math.round(ms / 1000)}s`;
-  const s = Math.floor(ms / 1000);
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-}
+export function ToolCallBlock({ call, streaming = false, turnId, sessionId }: ToolCallBlockProps): JSX.Element {
+  const name = toolName(call);
+  const args = toolArgs(call);
+  const failure = toolFailure(call);
+  const output = toolOutput(call);
+  const fallbackContent = toolFallbackContent(call);
+  const renderedOutput = output ?? fallbackContent;
+  const partialArgs = call.source === 'live' ? call.item.partialArgs : undefined;
+  const startedAt = call.source === 'live' ? call.item.startedAt : undefined;
+  const progress = call.source === 'live' ? call.item.progress : undefined;
+  const durationMs = toolDurationMs(call);
+  const permissionPending = toolPermissionPending(call);
 
-// ── 主组件 ────────────────────────────────────────────────────────────────────
-
-export function ToolCallBlock({ row, streaming = false, turnId }: ToolCallBlockProps): JSX.Element {
-  const name = toolName(row);
-  const args = toolArgs(row);
-  const failure = toolFailure(row);
-  const output = toolOutput(row);
-  const partialArgs = row.source === 'stream' ? row.item.partialArgs : undefined;
-  const startedAt = row.source === 'stream' ? row.item.startedAt : undefined;
-  const progress = row.source === 'stream' ? row.item.progress : undefined;
-  const durationMs = toolDurationMs(row);
-  const permissionPending = toolPermissionPending(row);
-
-  // 历史行缺结果信封 = Turn 中断的残留，不算运行中。
-  const historyInterrupted = row.source === 'history' && row.toolResult === undefined;
-  const hasResult = output !== undefined;
+  // History 缺结果信封表示应用退出或 Turn 中断时没有拿到工具终态. 它不能恢复成运行中.
+  const historyInterrupted = call.source === 'history' && call.result === undefined;
+  const historyCompleted = call.source === 'history' && call.result !== undefined;
+  const hasResult = renderedOutput !== undefined;
   const hasError = failure !== null || historyInterrupted;
 
+  // TODO: 禁止一层以上的三级嵌套
   const status: ToolDisplayStatus = failure?.code === 'permission/denied'
     ? 'denied'
     : hasError
       ? 'failed'
       : permissionPending
         ? 'awaiting_permission'
-        : hasResult || durationMs !== undefined
+        : call.source === 'live'
+          ? call.item.status === 'succeeded'
+            ? 'success'
+            : call.item.status === 'failed' || call.item.status === 'interrupted' || call.item.status === 'outcome_unknown'
+              ? 'failed'
+              : 'running'
+        : historyCompleted
           ? 'success'
           : 'running';
 
@@ -86,11 +87,10 @@ export function ToolCallBlock({ row, streaming = false, turnId }: ToolCallBlockP
   const [copied, setCopied] = useState(false);
 
   const statusMeta = STATUS_META[status];
-  const running = toolRunning(row, streaming);
+  const running = toolRunning(call, streaming);
   const argsReady = args !== undefined;
-  const isPending = running && !argsReady;
 
-  // 行头摘要由 Tool 自己的 title 钩子提供；没有注册的工具只显示工具名。
+  // 行头摘要由 Tool 自己的 title 钩子读取参数. 未注册 Tool 只显示模型调用时使用的名称.
   const target = argsReady ? toolUI?.title?.(args) ?? null : null;
   const variant = toolVariant(name);
   const errorFirstLine = failure
@@ -99,22 +99,22 @@ export function ToolCallBlock({ row, streaming = false, turnId }: ToolCallBlockP
       ? '已中断'
       : null;
 
-  // CallView 是组合卡（内部允许有状态子组件），按组件方式渲染；
-  // ArgsView/ResultView/ProgressView 是叶子渲染器：无 hooks 纯函数，返回 null = 守卫失败回落通用渲染。
+  // CallView 接管完整展开区, 供终端这类需要组合状态的工具使用.
+  // ArgsView/ResultView/ProgressView 只渲染一个区域; 类型守卫失败返回 null 后使用通用视图.
   const customArgs = toolUI?.ArgsView && argsReady ? toolUI.ArgsView({ args }) : null;
-  const customResult = toolUI?.ResultView && hasResult && output != null
-    ? toolUI.ResultView({ data: output })
+  const customResult = toolUI?.ResultView && output != null
+    ? toolUI.ResultView({ data: output, args })
     : null;
   const progressView = running && progress && progress.length > 0 && toolUI?.ProgressView
     ? toolUI.ProgressView({ progress })
     : null;
-  const CallView = toolUI?.CallView;
-  const resultView = hasResult && output !== null ? renderToolResult(output) : null;
+  // 没有类型化 data 的旧结果不能交给专属组合卡猜结构，回落通用 content 渲染。
+  const CallView = fallbackContent === undefined ? toolUI?.CallView : undefined;
+  const resultView = hasResult && renderedOutput !== null ? renderToolResult(renderedOutput) : null;
 
-  const viewedSessionId = useChatWorkspace((s) => s.viewedSessionId);
-  const openTab = useSessionSidePanel((state) => state.openTab);
+  const openTab = useSessionPanelStore((state) => state.openTab);
 
-  const bodyForCopy = toolUI?.copyText?.(args, output) ?? defaultCopyText(args, output, argsReady);
+  const bodyForCopy = toolUI?.copyText?.(args, output) ?? defaultCopyText(args, renderedOutput, argsReady);
 
   const copy = useCallback(() => {
     void navigator.clipboard.writeText(bodyForCopy).then(() => {
@@ -126,66 +126,68 @@ export function ToolCallBlock({ row, streaming = false, turnId }: ToolCallBlockP
   return (
     <div className="flex flex-col gap-0.5 py-0.5">
       {/* ── 统一工具行：leading(variant 图标/终态点) + 名 + 摘要 + 右侧状态 ── */}
-      <button
-        className={`ema-tool-row group ${status === 'running' ? 'ema-shimmer' : ''}`}
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-      >
-        <span className="ema-tool-row-leading" aria-hidden>
-          {hasError ? (
-            <span className="ema-tool-row-dot" style={{ background: 'var(--ema-danger)' }} />
-          ) : status === 'awaiting_permission' ? (
-            <span className="ema-tool-row-dot" style={{ background: 'var(--ema-info)' }} />
-          ) : (
-            <>
-              <span className={`${VARIANT_ICONS[variant]} ema-tool-row-icon`} />
-              <span className="i-lucide:chevron-down ema-tool-row-chevron" />
-            </>
-          )}
-        </span>
+      <div className="flex items-center gap-1">
+        <button
+          className={`ema-tool-row group min-w-0 flex-1 ${status === 'running' ? 'ema-shimmer' : ''}`}
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+        >
+          <span className="ema-tool-row-leading" aria-hidden>
+            {hasError ? (
+              <span className="ema-tool-row-dot" style={{ background: 'var(--ema-danger)' }} />
+            ) : status === 'awaiting_permission' ? (
+              <span className="ema-tool-row-dot" style={{ background: 'var(--ema-info)' }} />
+            ) : (
+              <>
+                <span className={`${VARIANT_ICONS[variant]} ema-tool-row-icon`} />
+                <span className="i-lucide:chevron-down ema-tool-row-chevron" />
+              </>
+            )}
+          </span>
 
-        <span className={`font-mono text-xs shrink-0 transition-colors ${
-          hasError ? 'text-[var(--ema-danger)]' : 'text-[var(--ema-text-secondary)] group-hover:text-[var(--ema-text-primary)]'
-        }`}>
-          {name}
-        </span>
+          <span className={`font-mono text-xs shrink-0 transition-colors ${
+            hasError ? 'text-[var(--ema-danger)]' : 'text-[var(--ema-text-secondary)] group-hover:text-[var(--ema-text-primary)]'
+          }`}>
+            {name}
+          </span>
 
-        {errorFirstLine !== null ? (
-          <span className="ema-tool-row-summary text-[var(--ema-danger)]">{errorFirstLine}</span>
-        ) : target ? (
-          <span className="ema-tool-row-summary">{target}</span>
-        ) : null}
+          {errorFirstLine !== null ? (
+            <span className="ema-tool-row-summary text-[var(--ema-danger)]">{errorFirstLine}</span>
+          ) : target ? (
+            <span className="ema-tool-row-summary">{target}</span>
+          ) : null}
 
-        {/* 状态徽章 + 耗时（右侧） */}
-        <span className="ml-auto flex items-center gap-1.5 text-[10px] shrink-0" style={{ color: statusMeta.color }}>
-          <span
-            className={`w-1.5 h-1.5 rounded-full ${statusMeta.pulse ? 'animate-pulse' : ''}`}
-            style={{ background: statusMeta.color }}
-            aria-hidden
-          />
-          {statusMeta.label}
-          <StatusDuration status={status} durationMs={durationMs} startedAt={startedAt} />
-        </span>
-
-        {isPending && turnId && viewedSessionId && (
+          {/* 状态徽章 + 耗时（右侧）: 点+label 染状态色, 耗时是元数据归三级灰。 */}
+          <span className="ml-auto flex items-center gap-1.5 text-[10px] shrink-0" style={{ color: statusMeta.color }}>
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${statusMeta.pulse ? 'animate-pulse' : ''}`}
+              style={{ background: statusMeta.color }}
+              aria-hidden
+            />
+            {statusMeta.label}
+            <span className="text-[var(--ema-text-tertiary)] tabular-nums">
+              <StatusDuration status={status} durationMs={durationMs} startedAt={startedAt} />
+            </span>
+          </span>
+        </button>
+        {running && turnId && sessionId && (
           <span className="ema-chip-in shrink-0">
             <IconButton
               label="中止该工具"
               icon="i-lucide:circle-stop"
               variant="danger"
               size="sm"
-              onClick={(e) => {
-                e.stopPropagation();
-                void useAgentStore.getState().cancelTool(viewedSessionId, turnId, toolRowId(row));
+              onClick={() => {
+                void sessionWebSocket.cancelTool(sessionId, turnId, toolCallId(call));
               }}
             />
           </span>
         )}
-      </button>
+      </div>
 
       {/* ── Expanded body — grid-rows trick for smooth height animation ── */}
       <div
-        className="ema-collapsible"
+        className="ema-collapsible ema-chat-collapsible"
         style={{ gridTemplateRows: open ? '1fr' : '0fr', opacity: open ? 1 : 0 }}
       >
         <div className="relative ml-3 pl-3" style={{ borderLeftColor: 'var(--ema-border)', borderLeftWidth: 1 }}>
@@ -198,8 +200,8 @@ export function ToolCallBlock({ row, streaming = false, turnId }: ToolCallBlockP
               status={status}
               running={running}
               openBackgroundProcesses={() => {
-                if (viewedSessionId) {
-                  openTab(viewedSessionId, { id: 'processes', kind: 'processes' });
+                if (sessionId) {
+                  openTab(sessionId, { id: 'processes', kind: 'processes' });
                 }
               }}
             />

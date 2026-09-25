@@ -4,9 +4,9 @@ import { IconButton, Input, Spinner } from '@ema-agent/ui';
 
 import { sessionGitApi, type SessionGitWorkspaceDiff } from '../../../../api/git.js';
 import { useSessionStore } from '../../../../stores/session.js';
-import { useAgentRunStore } from '../../../../stores/agentRun.js';
-import { useLiveTurns } from '../../../state/liveTurns.js';
-import { fileTab, useSessionSidePanel } from '../../../state/chatWorkspace.js';
+import { useSubagentStore } from '../../../../stores/subagent.js';
+import { assistantOutputBlocks, useTurnStore } from '../../../../stores/turn.js';
+import { fileTab, useSessionPanelStore } from '../../../../stores/sessionPanel.js';
 import { DiffCard, type ReviewFileItem } from './DiffCard.js';
 
 type GitDiffFile = Extract<SessionGitWorkspaceDiff, { capability: 'ok' }>['staged']['files'][number];
@@ -25,7 +25,7 @@ function reviewFile(file: GitDiffFile, scope: 'staged' | 'unstaged'): ReviewFile
 
 export function ReviewPanel({ sessionId }: { sessionId: string }): JSX.Element {
   const cwd = useSessionStore((state) => state.sessions.byId.get(sessionId)?.cwd);
-  const openTab = useSessionSidePanel((state) => state.openTab);
+  const openTab = useSessionPanelStore((state) => state.openTab);
   const [result, setResult] = useState<SessionGitWorkspaceDiff | null>(null);
   const [loading, setLoading] = useState(true);
   const [requestError, setRequestError] = useState<string | null>(null);
@@ -36,15 +36,20 @@ export function ReviewPanel({ sessionId }: { sessionId: string }): JSX.Element {
 
   useEffect(() => {
     const completedCalls = new Set(
-      useLiveTurns.getState().bySession.get(sessionId)?.items
+      [...(useTurnStore.getState().turnsBySession.get(sessionId)?.values() ?? [])]
+        .flatMap(turn => assistantOutputBlocks(turn))
         .flatMap(item => item.type === 'tool_use' && item.durationMs !== undefined
           ? [item.callId]
           : []) ?? [],
     );
-    for (const [runId, run] of useAgentRunStore.getState().live) {
-      if (run.sessionId !== sessionId) continue;
-      for (const entry of useAgentRunStore.getState().liveTranscripts.get(runId) ?? []) {
-        if (entry.role === 'tool_result') completedCalls.add(entry.result.toolCallId);
+    for (const [subagentId, progress] of useSubagentStore.getState().progressById) {
+      if (progress.sessionId !== sessionId) continue;
+      for (const message of useSubagentStore.getState().streamingMessages.get(subagentId) ?? []) {
+        for (const block of message.blocks) {
+          if (block.type === 'tool_use' && (block.status === 'succeeded' || block.status === 'failed')) {
+            completedCalls.add(block.callId);
+          }
+        }
       }
     }
     let refreshTimer: ReturnType<typeof setTimeout> | undefined;
@@ -52,8 +57,9 @@ export function ReviewPanel({ sessionId }: { sessionId: string }): JSX.Element {
       clearTimeout(refreshTimer);
       refreshTimer = setTimeout(() => setRefresh(value => value + 1), 150);
     };
-    const unsubscribe = useLiveTurns.subscribe(state => {
-      const items = state.bySession.get(sessionId)?.items ?? [];
+    const unsubscribe = useTurnStore.subscribe(state => {
+      const items = [...(state.turnsBySession.get(sessionId)?.values() ?? [])]
+        .flatMap(turn => assistantOutputBlocks(turn));
       let hasNewResult = false;
       for (const item of items) {
         if (item.type !== 'tool_use' || item.durationMs === undefined || completedCalls.has(item.callId)) continue;
@@ -63,18 +69,22 @@ export function ReviewPanel({ sessionId }: { sessionId: string }): JSX.Element {
       if (!hasNewResult) return;
       scheduleRefresh();
     });
-    const unsubscribeAgentRuns = useAgentRunStore.subscribe(state => {
-      for (const [runId, run] of state.live) {
-        if (run.sessionId !== sessionId) continue;
-        const latest = state.liveTranscripts.get(runId)?.at(-1);
-        if (latest?.role !== 'tool_result' || completedCalls.has(latest.result.toolCallId)) continue;
-        completedCalls.add(latest.result.toolCallId);
-        scheduleRefresh();
+    const unsubscribeSubagents = useSubagentStore.subscribe(state => {
+      for (const [subagentId, progress] of state.progressById) {
+        if (progress.sessionId !== sessionId) continue;
+        for (const message of state.streamingMessages.get(subagentId) ?? []) {
+          for (const block of message.blocks) {
+            if (block.type !== 'tool_use' || completedCalls.has(block.callId)) continue;
+            if (block.status !== 'succeeded' && block.status !== 'failed') continue;
+            completedCalls.add(block.callId);
+            scheduleRefresh();
+          }
+        }
       }
     });
     return () => {
       unsubscribe();
-      unsubscribeAgentRuns();
+      unsubscribeSubagents();
       clearTimeout(refreshTimer);
     };
   }, [sessionId]);
@@ -138,9 +148,9 @@ export function ReviewPanel({ sessionId }: { sessionId: string }): JSX.Element {
             aria-label="按路径筛选文件"
           />
         )}
-        <IconButton size="sm" className="chat-icon-btn" label="刷新 Git 差异" icon="i-lucide:refresh-cw" onClick={() => setRefresh((value) => value + 1)} />
+        <IconButton size="sm" className="ema-chat-icon-btn" label="刷新 Git 差异" icon="i-lucide:refresh-cw" onClick={() => setRefresh((value) => value + 1)} />
         {result?.capability !== 'diff-too-large' && (
-          <IconButton size="sm" className="chat-icon-btn" label="分列差异" icon="i-lucide:columns-2" toggled={split} onClick={() => setSplit((value) => !value)} />
+          <IconButton size="sm" className="ema-chat-icon-btn" label="分列差异" icon="i-lucide:columns-2" toggled={split} onClick={() => setSplit((value) => !value)} />
         )}
       </div>
 

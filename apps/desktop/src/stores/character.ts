@@ -2,10 +2,10 @@
 // 每次写操作成功后整体重读列表(角色数据量小,重读比分片合并简单且不会漂)。
 import { create } from 'zustand';
 import type { AppEvent } from '@ema-agent/server/application/appEvents.js';
-import { useLiveTurns } from '../chat/state/liveTurns.js';
 import {
   charactersApi,
   type Character,
+  type CharacterSummary,
   type CharacterCreateInput,
   type CharacterPatchInput,
   type IllustrationImportInput,
@@ -16,7 +16,7 @@ import {
 } from '../api/characters.js';
 
 export interface CharacterStoreState {
-  characters:        Character[];
+  characters:        CharacterSummary[];
   /** 当前角色的稳定 name;全局恰好一个。 */
   activeName:        string | null;
   loading:           boolean;
@@ -161,8 +161,6 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => {
 
 export function handleCharacterSystemEvent(event: AppEvent): void {
   if (event.type === 'character_switched') {
-    // 旧角色的情绪语义名不能补发给新角色。
-    useLiveTurns.getState().clearEmotions();
     void useCharacterStore.getState().load();
   } else if (event.type === 'character_resources_changed') {
     void useCharacterStore.getState().load();

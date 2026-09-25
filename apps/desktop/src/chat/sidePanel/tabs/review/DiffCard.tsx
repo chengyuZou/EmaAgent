@@ -1,7 +1,7 @@
 // Review 的按文件 diff 卡:头部路径/状态/增删/打开标签/折叠,正文统一或分列,上下文段增量展开。
 import { useMemo, useState, type JSX } from 'react';
 import { Button, IconButton } from '@ema-agent/ui';
-import { highlightDiffLine } from '../../../../markdown/syntaxHighlight.js';
+import { highlightDiffLine } from '@ema-agent/ui';
 import {
   buildSegments,
   parseUnifiedDiff,
@@ -87,6 +87,7 @@ export function DiffCard({
             {item.absolutePath && onOpenFile && (
               <IconButton
                 size="sm"
+                variant="ghost"
                 label={`在标签页中打开 ${item.displayPath}`}
                 icon="i-lucide:square-arrow-out-up-right"
                 onClick={() => onOpenFile(item.absolutePath!)}

@@ -56,7 +56,7 @@ export function SessionCwdDialog({
           onChange={event => setDraft(event.target.value)}
           autoFocus
         />
-        <IconButton size="md" icon="i-lucide:folder-open" label="选择目录" onClick={() => void pickDirectory()} />
+        <IconButton size="md" variant="ghost" icon="i-lucide:folder-open" label="选择目录" onClick={() => void pickDirectory()} />
       </div>
       <div className="mt-5 flex justify-end gap-2">
         <Button variant="ghost" onClick={() => onOpenChange(false)}>取消</Button>

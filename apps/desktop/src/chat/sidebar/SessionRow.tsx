@@ -2,11 +2,12 @@
 import { useState, type JSX } from 'react';
 import { Button, ConfirmDialog, DropdownMenu, IconButton, PromptDialog, type MenuItem } from '@ema-agent/ui';
 import type { SessionListItem } from '../../api/sessions.js';
-import type { AgentSessionState } from '../../stores/agent.js';
-import { useChatWorkspace } from '../state/chatWorkspace.js';
+import type { SessionActivity } from '../../stores/sessionActivity.js';
+import { useChatNavigationStore } from '../../stores/chatNavigation.js';
 import { useSessionStore } from '../../stores/session.js';
 import { runWithToast } from '../../lib/toast.js';
 import { SessionCwdDialog } from '../session/SessionCwdDialog.js';
+import { removeSessionFromChat } from '../session/removeSessionFromChat.js';
 import type { SessionSidebarMoveInput } from '../../api/workspaces.js';
 import { useSidebarDrag } from './SidebarDragContext.js';
 
@@ -14,10 +15,10 @@ type StatusDot = { cls: string } | null;
 
 export function getStatusDot(
   session: SessionListItem,
-  agentSessions: ReadonlyMap<string, AgentSessionState>,
+  activityBySession: ReadonlyMap<string, SessionActivity>,
 ): StatusDot {
-  const state = agentSessions.get(session.id);
-  if (state?.execution) return { cls: 'bg-[var(--ema-info)] animate-pulse' };
+  const state = activityBySession.get(session.id);
+  if (state?.running) return { cls: 'bg-[var(--ema-info)] animate-pulse' };
   if ((state?.pendingInteractions.length ?? 0) > 0) return { cls: 'bg-[var(--ema-warning)] animate-pulse' };
   if (session.lastTurnStatus === 'failed' || session.lastTurnStatus === 'aborted') {
     return { cls: 'bg-[var(--ema-danger)]' };
@@ -39,22 +40,22 @@ export function formatRelativeTime(updatedAt: number): string {
 export function SessionRow({
   session,
   isActive,
-  agentSessions,
+  activityBySession,
   nested = false,
   dropDestination,
 }: {
   session:   SessionListItem;
   isActive:  boolean;
-  agentSessions: ReadonlyMap<string, AgentSessionState>;
+  activityBySession: ReadonlyMap<string, SessionActivity>;
   nested?:   boolean;
   dropDestination?: SessionSidebarMoveInput['destination'];
 }): JSX.Element {
   const [pendingDelete, setPendingDelete] = useState(false);
   const [promptRename, setPromptRename] = useState(false);
   const [cwdOpen, setCwdOpen] = useState(false);
-  const dot = getStatusDot(session, agentSessions);
-  const agentSession = agentSessions.get(session.id);
-  const isRunning = agentSession?.execution != null;
+  const dot = getStatusDot(session, activityBySession);
+  const sessionActivity = activityBySession.get(session.id);
+  const isRunning = sessionActivity?.running != null;
   const timeLabel = formatRelativeTime(session.lastActivityAt);
   const drag = useSidebarDrag();
   const dropProps = dropDestination
@@ -86,14 +87,19 @@ export function SessionRow({
       icon:     'i-lucide:git-fork',
       onSelect: () => void (async () => {
         const newId = await useSessionStore.getState().forkSession(session.id);
-        void useChatWorkspace.getState().viewSession(newId);
+        useChatNavigationStore.getState().viewSession(newId);
       })(),
     },
     {
       kind:     'item',
       label:    '归档',
       icon:     'i-lucide:archive',
-      onSelect: () => void runWithToast(useSessionStore.getState().archiveSession(session.id), '归档失败'),
+      onSelect: () => void runWithToast(
+        useSessionStore.getState().archiveSession(session.id).then(() => {
+          removeSessionFromChat(session.id);
+        }),
+        '归档失败',
+      ),
     },
     { kind: 'separator' },
     {
@@ -107,7 +113,12 @@ export function SessionRow({
 
   function confirmDelete(): void {
     setPendingDelete(false);
-    void runWithToast(useSessionStore.getState().deleteSession(session.id), '删除失败');
+    void runWithToast(
+      useSessionStore.getState().deleteSession(session.id).then(() => {
+        removeSessionFromChat(session.id);
+      }),
+      '删除失败',
+    );
   }
 
   return (
@@ -125,18 +136,18 @@ export function SessionRow({
       onDragStart={(event) => drag.startSession(event, session.id)}
       onDragEnd={drag.endDrag}
       {...dropProps}
-      onClick={() => void useChatWorkspace.getState().viewSession(session.id)}
+      onClick={() => useChatNavigationStore.getState().viewSession(session.id)}
     >
       <span className="shrink-0 w-3 flex items-center justify-center">
         {dot ? (
           <span className={`w-1.5 h-1.5 rounded-full ${dot.cls}`} />
         ) : isRunning ? (
           <span className="flex gap-px">
-            {[0, 1, 2].map((i) => (
+            {[0, 150, 300].map((animationDelayMs) => (
               <span
-                key={i}
+                key={animationDelayMs}
                 className="w-0.5 h-0.5 rounded-full animate-pulse bg-[var(--ema-text-secondary)]"
-                style={{ animationDelay: `${i * 150}ms` }}
+                style={{ animationDelay: `${animationDelayMs}ms` }}
               />
             ))}
           </span>
@@ -152,12 +163,12 @@ export function SessionRow({
         <span className="truncate min-w-0 leading-snug">
           {session.title || '新对话'}
         </span>
-        {(agentSession?.pendingInteractions.length ?? 0) > 0 && (
+        {(sessionActivity?.pendingInteractions.length ?? 0) > 0 && (
           <span
             className="shrink-0 text-[10px] font-mono px-1.5 py-0.5 rounded-full ema-scale-in bg-[var(--ema-warning-muted)] text-[var(--ema-warning-text)]"
-            title={`${agentSession?.pendingInteractions.length ?? 0} 个待答问题`}
+            title={`${sessionActivity?.pendingInteractions.length ?? 0} 个待答问题`}
           >
-            {agentSession?.pendingInteractions.length}
+            {sessionActivity?.pendingInteractions.length}
           </span>
         )}
       </div>
@@ -179,7 +190,7 @@ export function SessionRow({
               size="sm"
               icon="i-lucide:more-horizontal"
               label={`${session.title || '新对话'} 操作`}
-              className={`chat-row-action absolute inset-y-0 right-0 my-auto ${
+              className={`ema-chat-row-action absolute inset-y-0 right-0 my-auto ${
                 isActive ? 'opacity-100' : ''
               }`}
             />

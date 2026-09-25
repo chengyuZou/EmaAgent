@@ -7,7 +7,7 @@ import {
 import { ServerApiError } from '../../api/client.js';
 import {
   charactersApi,
-  type Character,
+  type CharacterSummary,
   type CharacterCreateInput,
 } from '../../api/characters.js';
 import { useCharacterStore } from '../../stores/character.js';
@@ -50,7 +50,7 @@ export function CharacterGridPage({ onOpen }: { onOpen(name: string): void }): J
     }
   }
 
-  const [pendingDelete, setPendingDelete] = useState<Character | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<CharacterSummary | null>(null);
 
   // 如果当前角色有Session在跑 或者 TTS 仍在生成则删除拒绝
   // 但 Memory 后台清理不会阻塞删除
@@ -148,7 +148,7 @@ export function CharacterGridPage({ onOpen }: { onOpen(name: string): void }): J
 function CharacterCard({
   character, index, isActive, canDelete, onOpen, onActivate, onDelete,
 }: {
-  character: Character;
+  character: CharacterSummary;
   index: number;
   isActive: boolean;
   canDelete: boolean;
@@ -196,9 +196,9 @@ function CharacterCard({
           <p className="mt-0.5 truncate text-[11px] text-[var(--ema-text-tertiary)]">{character.description}</p>
         )}
         <div className="mt-1.5 flex gap-2.5 text-[10px] text-[var(--ema-text-tertiary)]">
-          {character.live2dModels.length > 0 && <span>Live2D {character.live2dModels.length}</span>}
-          {character.illustrations.length > 0 && <span>插图 {character.illustrations.length}</span>}
-          <span>音频 {character.voiceSamples.length}</span>
+          {character.live2dCount > 0 && <span>Live2D {character.live2dCount}</span>}
+          {character.illustrationCount > 0 && <span>插图 {character.illustrationCount}</span>}
+          <span>音频 {character.voiceSampleCount}</span>
         </div>
       </div>
     </div>
@@ -206,13 +206,12 @@ function CharacterCard({
 }
 
 /** 封面=当前舞台资源的真图:live2d→主模型 preview.png,illustration→主立绘,blank→素底 */
-function CharacterCover({ character }: { character: Character }): JSX.Element {
+function CharacterCover({ character }: { character: CharacterSummary }): JSX.Element {
   if (character.stageKind === 'live2d') {
-    const primary = character.live2dModels.find(model => model.isPrimary);
-    if (primary) {
+    if (character.coverResourceName) {
       return (
         <ServerImage
-          path={charactersApi.live2dPreviewUrl(character.name, primary.name)}
+          path={charactersApi.live2dPreviewUrl(character.name, character.coverResourceName)}
           alt={character.name}
           className="aspect-[3/4] w-full object-cover"
           contentUpdatedAt={character.updatedAt}
@@ -221,12 +220,10 @@ function CharacterCover({ character }: { character: Character }): JSX.Element {
     }
   }
   if (character.stageKind === 'illustration') {
-    const primary = character.illustrations.find(item => item.isPrimary)
-      ?? character.illustrations[0];
-    if (primary) {
+    if (character.coverResourceName) {
       return (
         <ServerImage
-          path={charactersApi.illustrationFileUrl(character.name, primary.name)}
+          path={charactersApi.illustrationFileUrl(character.name, character.coverResourceName)}
           alt={character.name}
           className="aspect-[3/4] w-full object-cover"
         />

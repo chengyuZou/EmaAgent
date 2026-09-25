@@ -11,6 +11,7 @@ export type SessionStats = RpcJson<RpcClient['api']['system']['stats']['sessions
 export type SessionSummaries = RpcJson<RpcClient['api']['system']['stats']['session-summaries']['$get']>;
 export type SessionSummary = SessionSummaries['sessions'][number];
 export type RawMessagesPage = RpcJson<RpcClient['api']['system']['stats']['sessions'][':id']['raw-messages']['$get']>;
+type RawMessageDetail = RpcJson<RpcClient['api']['system']['stats']['sessions'][':id']['raw-messages'][':messageId']['$get']>;
 export type UsageRecordsPage = RpcJson<RpcClient['api']['system']['usage-records']['$get']>;
 
 export const systemApi = {
@@ -52,6 +53,15 @@ export const systemApi = {
         limit: String(opts.limit ?? 50),
       },
     }));
+  },
+
+  /** GET .../raw-messages/:messageId — 用户展开原始消息后才读取完整正文。 */
+  getRawMessageDetail(sessionId: string, messageId: string): Promise<RawMessageDetail> {
+    return readRpcJson(
+      rpcClient.api.system.stats.sessions[':id']['raw-messages'][':messageId'].$get({
+        param: { id: sessionId, messageId },
+      }),
+    );
   },
 
   /** GET /api/system/usage-records — 用量明细(Token 查看器)。 */

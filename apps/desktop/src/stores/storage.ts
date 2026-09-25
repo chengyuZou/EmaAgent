@@ -8,37 +8,45 @@ interface StorageStoreState {
   sessions: SessionSummary[];
   loading: boolean;
   error: string | null;
-  loadAll(force?: boolean): Promise<void>;
+  refresh(): Promise<void>;
 }
 
-export const useStorageStore = create<StorageStoreState>()((set, get) => ({
+let refreshPromise: Promise<void> | null = null;
+let refreshAgain = false;
+
+export const useStorageStore = create<StorageStoreState>()(set => ({
   stats: null,
   sessions: [],
   loading: false,
   error: null,
 
-  async loadAll(force = false) {
-    if (get().loading) {
-      if (force) refreshAfterCurrentLoad = true;
-      return;
+  async refresh() {
+    if (refreshPromise) {
+      refreshAgain = true;
+      return refreshPromise;
     }
-    if (!force && get().stats !== null) return;
-    set({ loading: true, error: null });
+
+    refreshPromise = (async () => {
+      set({ loading: true, error: null });
+      do {
+        refreshAgain = false;
+        try {
+          const [stats, summaries] = await Promise.all([
+            systemApi.getStats(),
+            systemApi.getSessionSummaries(),
+          ]);
+          set({ stats, sessions: summaries.sessions, error: null });
+        } catch (err) {
+          set({ error: err instanceof Error ? err.message : '存储统计读取失败' });
+        }
+      } while (refreshAgain);
+      set({ loading: false });
+    })();
+
     try {
-      const [stats, summaries] = await Promise.all([
-        systemApi.getStats(),
-        systemApi.getSessionSummaries(),
-      ]);
-      set({ stats, sessions: summaries.sessions, loading: false });
-    } catch (err) {
-      set({ error: err instanceof Error ? err.message : '存储统计读取失败', loading: false });
+      await refreshPromise;
     } finally {
-      if (refreshAfterCurrentLoad) {
-        refreshAfterCurrentLoad = false;
-        void get().loadAll(true);
-      }
+      refreshPromise = null;
     }
   },
 }));
-
-let refreshAfterCurrentLoad = false;

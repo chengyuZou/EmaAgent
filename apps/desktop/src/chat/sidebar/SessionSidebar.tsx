@@ -3,9 +3,9 @@
 import { useState, useEffect, useMemo, type JSX } from 'react';
 import { Button } from '@ema-agent/ui';
 import type { SessionListItem } from '../../api/sessions.js';
-import { useChatWorkspace } from '../state/chatWorkspace.js';
+import { useChatNavigationStore } from '../../stores/chatNavigation.js';
 import { useSessionStore } from '../../stores/session.js';
-import { useAgentStore } from '../../stores/agent.js';
+import { useSessionActivityStore } from '../../stores/sessionActivity.js';
 import { useDragResize } from '../../hooks/use-drag-resize.js';
 import { getStatusDot } from './SessionRow.js';
 import { PinnedSection, ProjectSection } from './ProjectSection.js';
@@ -49,10 +49,10 @@ export function SessionSidebar(): JSX.Element {
   }, []);
 
   const sessions  = useSessionStore((s) => s.sessions);
-  const viewedId  = useChatWorkspace((s) => s.viewedSessionId);
-  const agentSessions = useAgentStore((s) => s.sessions);
+  const viewedId  = useChatNavigationStore((s) => s.viewedSessionId);
+  const activityBySession = useSessionActivityStore((s) => s.bySession);
 
-  const allActiveSessions = useMemo(() => uniqueSessions([
+  const searchableSessions = useMemo(() => uniqueSessions([
     ...sessions.pinned,
     ...sessions.pinnedProjects.flatMap((project) => project.sessions),
     ...sessions.projects.flatMap((project) => project.sessions),
@@ -61,22 +61,9 @@ export function SessionSidebar(): JSX.Element {
 
   // 服务端分桶互斥：置顶 Session 独立展示，项目成员仍由对应项目行展示。
 
-  useEffect(() => {
-    const desired = new Set<string>();
-    for (const session of allActiveSessions) {
-      if (!session.hasActiveTurn && !agentSessions.get(session.id)?.execution && session.id !== viewedId) continue;
-      desired.add(session.id);
-      useAgentStore.getState().connectSession(session.id);
-    }
-    // Chat 只维持当前页和仍在执行的 Session. 切走的空闲 Session 不应永久占一条 WebSocket.
-    for (const sessionId of agentSessions.keys()) {
-      if (!desired.has(sessionId)) useAgentStore.getState().disconnectSession(sessionId);
-    }
-  }, [agentSessions, allActiveSessions, viewedId]);
-
   return (
     <div
-      className={`relative flex h-full shrink-0 flex-col border-r bg-[var(--ema-bg)] border-[var(--ema-border)] ${
+      className={`relative flex h-full shrink-0 flex-col border-r bg-[var(--ema-sidebar-bg)] border-[var(--ema-border)] ${
         resizing ? '' : 'ema-transition-width'
       }`}
       style={{ width: collapsed ? 40 : sidebarWidth }}
@@ -94,7 +81,7 @@ export function SessionSidebar(): JSX.Element {
         <div className="flex flex-col items-center py-2 gap-2">
           <Button
             variant="ghost"
-            className="chat-icon-btn"
+            className="ema-chat-icon-btn"
             onClick={() => setCollapsed(false)}
             title="展开侧边栏"
           >
@@ -102,7 +89,7 @@ export function SessionSidebar(): JSX.Element {
           </Button>
           <div className="flex flex-col items-center gap-1.5 mt-1">
             {sessions.recent.slice(0, 8).map((s) => {
-              const dot = getStatusDot(s, agentSessions);
+              const dot = getStatusDot(s, activityBySession);
               if (!dot) return null;
               return (
                 <span
@@ -120,8 +107,8 @@ export function SessionSidebar(): JSX.Element {
             <div className="flex w-full items-center gap-2">
             <Button
               variant="ghost"
-              className="chat-bar-btn"
-              onClick={() => useChatWorkspace.getState().openNewSession()}
+              className="ema-chat-bar-btn"
+              onClick={() => useChatNavigationStore.getState().openNewSession()}
             >
               <span className="i-lucide:square-pen text-base" aria-hidden />
               <span className="truncate">新对话</span>
@@ -150,18 +137,18 @@ export function SessionSidebar(): JSX.Element {
               projects={sessions.pinnedProjects}
               sessions={sessions.pinned}
               viewedId={viewedId}
-              agentSessions={agentSessions}
+              activityBySession={activityBySession}
             />
             <ProjectSection
               projects={sessions.projects}
               viewedId={viewedId}
-              agentSessions={agentSessions}
+              activityBySession={activityBySession}
             />
             <SessionList
               label="对话"
               sessions={sessions.recent}
               viewedId={viewedId}
-              agentSessions={agentSessions}
+              activityBySession={activityBySession}
               emptyText="暂无独立对话"
               dropDestination={{ section: 'recent' }}
             />
@@ -169,7 +156,7 @@ export function SessionSidebar(): JSX.Element {
               label="归档"
               sessions={sessions.archived}
               viewedId={viewedId}
-              agentSessions={agentSessions}
+              activityBySession={activityBySession}
               initiallyCollapsed
               emptyText="暂无归档"
             />
@@ -179,7 +166,7 @@ export function SessionSidebar(): JSX.Element {
 
       {searchOpen && (
         <SessionSearch
-          recentSessions={allActiveSessions}
+          recentSessions={searchableSessions}
           onClose={() => setSearchOpen(false)}
         />
       )}

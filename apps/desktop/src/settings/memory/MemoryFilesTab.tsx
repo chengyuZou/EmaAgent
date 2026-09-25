@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type JSX } from 'react';
 import { Button, Callout, EmptyState, IconButton, SearchField, Skeleton, Spinner } from '@ema-agent/ui';
 import { memoryApi, type MemoryFileContent, type MemorySearchResult } from '../../api/memory.js';
 import { tauriBridge } from '../../lib/tauri-bridge.js';
-import { Markdown } from '../../markdown/renderer.js';
+import { Markdown } from '@ema-agent/ui';
 
 type MemoryTrack = 'work' | 'relationship';
 

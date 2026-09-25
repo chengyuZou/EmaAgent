@@ -1,6 +1,4 @@
-// 输入区添加菜单:确定性命令与启用 Skill 共用搜索浮层和键盘导航.
-// 合并选择浮层。锚定 composer 上沿（ui 包 Popover，side=top）；过滤词来自输入框
-// 的斜杠 token；键盘经 handleRef 由 textarea 转发：↑↓ 移动、Enter 选中、Esc 关闭。
+// 展示斜杠菜单并把选中结果交给 ChatInput; 菜单本身不发送消息或执行命令.
 import {
   useEffect,
   useImperativeHandle,
@@ -30,23 +28,36 @@ const LOCAL_COMMANDS: readonly LocalCommandDescriptor[] = [
 ];
 
 export interface SlashToken {
+  /** `/` 在整段输入中的下标 */
   readonly start: number;
+  /** 这个 `/词` 的末尾下标, 用于整体删除
+   * 注意 end 和光标位置不一定相同：光标可能停在词中间
+   * (如 /comp|act), 但删除时要删掉整个 /compact
+  */
   readonly end: number;
+  /** `/` 与光标之间的文字，用来过滤菜单. */
   readonly query: string;
 }
 
-/** 未闭合的斜杠 token 只能位于整段文字开头或当前输入末尾. */
+/** 判断光标当前是否正处在一个 `/搜索词` 里
+ * 如果是, 就返回这个词的范围和查询内容
+ * 供上层弹出 `/` 过滤命令菜单用。
+*/
 export function activeSlashToken(
   text: string,
+  // 默认光标在末尾
   caret = text.length,
 ): SlashToken | null {
   if (caret < 0 || caret > text.length) return null;
 
+  // 从光标往前找最后一个 `/`
   const beforeCaret = text.slice(0, caret);
   const slash = beforeCaret.lastIndexOf('/');
   if (slash < 0) return null;
 
+  // 取出 `/` 到光标之间的内容作为 query
   const token = beforeCaret.slice(slash + 1);
+  // 如果 `/` 和光标之间出现了空白(空格、换行等), 说明这个 `/` 是普通文本的一部分(比如 1/2 3), 不是命令, 直接放弃.
   if (/\s/.test(token)) return null;
 
   const atStart = slash === 0;
@@ -54,9 +65,10 @@ export function activeSlashToken(
     && (slash === 0 || /\s/.test(text[slash - 1] ?? ''));
   if (!atStart && !atEnd) return null;
 
+  const suffix = text.slice(caret).match(/^[^\s]*/)?.[0] ?? '';
   return {
     start: slash,
-    end: caret,
+    end: caret + suffix.length,
     query: token,
   };
 }
@@ -78,7 +90,7 @@ export type SlashSelection =
   | { kind: 'command'; command: CommandDescriptor }
   | { kind: 'skill'; skill: SkillListItem };
 
-/** 键盘转发出口：返回 true 表示该键已被菜单消费（调用方 preventDefault）。 */
+/** Textarea 保持焦点, ChatInput 把方向键和 Enter 交给菜单; true 表示不再按输入框按键处理. */
 export interface SlashMenuHandle {
   handleKey(key: 'ArrowUp' | 'ArrowDown' | 'Enter'): boolean;
 }
@@ -94,13 +106,21 @@ interface FlatItem {
 }
 
 export interface SlashCommandMenuProps {
-  /** 非 null 时菜单打开；值为当前过滤词。 */
+  /** 非 null 时菜单打开, 值为当前斜杠后的过滤词. */
   query: string | null;
-  /** 依附的 Session（Skill 目录按它合成 project 作用域）。 */
+  /** 已有 Session 才有当前这批命令; 技能目录也用它查找 Session 所属项目. */
   sessionId: string | null;
+  /** 新对话尚无 Session 时, 按选中项目读取技能. */
   projectId: string | null;
+  /** ChatInput 看完整份草稿后给出的命令展示条件; Skill 不受此条件限制. */
+  showCommands: boolean;
+  /** 当前 Session 忙于 Turn 或手动压缩时, 不显示 /compact. */
+  compactAvailable: boolean;
+  /** ChatInput 用它将 textarea 按键交给菜单, 菜单不抢输入焦点. */
   handleRef: RefObject<SlashMenuHandle | null>;
+  /** 用户点击条目或按 Enter 选中高亮项时调用; ChatInput 插入技能引用或执行命令, 不发送用户消息. */
   onSelect(selection: SlashSelection): void;
+  /** 点击菜单外时关闭菜单; 草稿仍由 ChatInput 保留. */
   onClose(): void;
 }
 
@@ -108,6 +128,8 @@ export function SlashCommandMenu({
   query,
   sessionId,
   projectId,
+  showCommands,
+  compactAvailable,
   handleRef,
   onSelect,
   onClose,
@@ -120,17 +142,17 @@ export function SlashCommandMenu({
   const open = query !== null;
   const filter = query ?? '';
 
-  // 命令目录全局稳定，打开时读取一次。
+  // 新对话不显示命令, 也不需要读取后端命令目录.
   useEffect(() => {
-    if (!open) return;
+    if (!open || !showCommands) return;
     let disposed = false;
     void commandsApi.list()
       .then((catalog) => { if (!disposed) setCommands(catalog.commands); })
       .catch(() => { if (!disposed) setCommands([]); });
     return () => { disposed = true; };
-  }, [open]);
+  }, [open, showCommands]);
 
-  // 技能目录跟随 Session/Project；设置窗口改动技能时重读当前目录。
+  // 已有 Session 由后端找到它所属的项目; 新对话则直接使用当前选中的项目.
   useEffect(() => {
     if (!open) return;
     let disposed = false;
@@ -151,6 +173,7 @@ export function SlashCommandMenu({
     const unsubscribe = subscribeSystemEvent(event => {
       if (event.type !== 'skills_changed') return;
       clearTimeout(refreshTimer);
+      // 设置页连续改动技能时合并刷新; 上面的 requestId 负责防止旧请求覆盖新结果.
       refreshTimer = setTimeout(refresh, 150);
     });
     return () => {
@@ -161,10 +184,11 @@ export function SlashCommandMenu({
   }, [open, sessionId, projectId]);
 
   const items = useMemo<FlatItem[]>(() => {
-    // 后端目录（确定性命令）在前，本地命令随后；同名去重（后端优先）。
+    // 同名时以后端目录为准, 避免菜单展示两个无法区分的 /命令.
     const catalogNames = new Set(commands.map((command) => command.name));
-    const commandItems: FlatItem[] = [
+    const commandItems: FlatItem[] = showCommands ? [
       ...commands
+        .filter((command) => command.name !== 'compact' || compactAvailable)
         .filter((command) => matchesSlashQuery(command.name, filter))
         .map((command) => ({
           key: `command:${command.name}`,
@@ -188,7 +212,7 @@ export function SlashCommandMenu({
           title: `/${local.name}`,
           detail: local.description,
         })),
-    ];
+    ] : [];
     const skillItems: FlatItem[] = skills
       .filter((skill) => skill.enabled)
       .filter((skill) => matchesSlashQuery(skill.name, filter))
@@ -202,9 +226,9 @@ export function SlashCommandMenu({
         origin: skillOrigin(skill),
       }));
     return [...commandItems, ...skillItems];
-  }, [commands, skills, filter]);
+  }, [commands, skills, filter, showCommands, compactAvailable]);
 
-  // 过滤词或条目数变化时回到首项。
+  // 搜索词或候选项数量变化后, Enter 从第一项开始选.
   useEffect(() => {
     setActiveIndex(0);
   }, [filter, items.length]);
@@ -268,7 +292,7 @@ export function SlashCommandMenu({
               onClick={() => onSelect(item.selection)}
             >
               <span className={`${item.icon} text-sm shrink-0 text-[var(--ema-text-tertiary)]`} aria-hidden />
-              <span className="text-xs font-mono shrink-0">{item.title}</span>
+              <span className="text-xs shrink-0">{item.title}</span>
               <span className="min-w-0 flex-1 text-xs truncate text-[var(--ema-text-tertiary)]">{item.detail}</span>
               <span className="ml-auto text-[10px] shrink-0 text-[var(--ema-text-tertiary)]">
                 {item.origin ?? (index === 0 || items[index - 1]!.section !== item.section ? item.section : '')}

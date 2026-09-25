@@ -1,5 +1,4 @@
 import type { PermissionResponse } from '@ema-agent/permission';
-import type { ActiveSession } from '@ema-agent/session';
 import type {
   ClientRequestId,
   SessionBusinessMessage,
@@ -51,7 +50,11 @@ interface SessionConnection {
   pingTimer: ReturnType<typeof setInterval> | null;
   pongTimer: ReturnType<typeof setTimeout> | null;
   generation: number;
-  closed: boolean;
+  /**
+   * Chat 已经不再观察这个 Session 时为 true. 如果还有已经发出的请求等待结果,
+   * Socket 会暂时保留到结果返回; 期间重新订阅或发起请求会撤销这次关闭.
+   */
+  closeRequested: boolean;
 }
 
 export class SessionRequestError extends Error {
@@ -65,7 +68,8 @@ class SessionWebSocket {
   private readonly connections = new Map<string, SessionConnection>();
 
   subscribe(sessionId: string, subscriber: SessionSocketSubscriber): () => void {
-    const connection = this.connection(sessionId);
+    const connection = this.getOrCreateConnection(sessionId);
+    connection.closeRequested = false;
     connection.handlers.add(subscriber.onMessage);
     connection.stateHandlers.add(subscriber.onConnectionState);
     subscriber.onConnectionState(connection.state);
@@ -140,9 +144,15 @@ class SessionWebSocket {
     }));
   }
 
-  cancelActiveSession(sessionId: string, active: ActiveSession): Promise<void> {
+  cancelTurn(sessionId: string, turnId: string): Promise<void> {
     return this.request<void>(sessionId, requestId => ({
-      type: 'cancel_active_session', requestId, active,
+      type: 'cancel_turn', requestId, turnId,
+    }));
+  }
+
+  cancelCompact(sessionId: string, compactId: string): Promise<void> {
+    return this.request<void>(sessionId, requestId => ({
+      type: 'cancel_compact', requestId, compactId,
     }));
   }
 
@@ -152,28 +162,31 @@ class SessionWebSocket {
     }));
   }
 
-  cancelAgentRun(sessionId: string, agentRunId: string): Promise<void> {
+  cancelSubagent(sessionId: string, subagentId: string): Promise<void> {
     return this.request<void>(sessionId, requestId => ({
-      type: 'cancel_agent_run', requestId, agentRunId,
+      type: 'cancel_subagent', requestId, subagentId,
     }));
   }
 
+  /**
+   * Chat 不再观察这个 Session 时关闭网络连接. 已写入 Socket 的请求会先等 Server 返回结果;
+   * History, Turn Stream, Speech 和 Presentation 由各自业务生命周期清理, 不在这里处理.
+   */
   disconnect(sessionId: string): void {
     const connection = this.connections.get(sessionId);
     if (!connection) return;
-    connection.closed = true;
-    connection.generation += 1;
-    this.clearTimers(connection);
-    connection.socket?.close(1000, 'session_evicted');
-    const error = new SessionRequestError('connection_closed', 'Session 连接已经关闭');
-    for (const pending of connection.pendingRequests.values()) pending.reject(error);
-    connection.pendingRequests.clear();
-    connection.outgoing.length = 0;
-    this.changeState(connection, 'disconnected');
-    this.connections.delete(sessionId);
+    connection.closeRequested = true;
+
+    // outgoing 里的请求还没有写入任何 Socket, 可以确定 Server 没有执行它们.
+    // 已经发出的请求必须等结果返回再关, 尤其 compact_completed 会早于
+    // manual_compact_result, 这里立即拒绝会把成功压缩误报成断线失败.
+    if (connection.outgoing.length > 0) {
+      this.rejectRequests(connection, 'connection_closed', 'Session 连接已经关闭');
+    }
+    this.finishDisconnect(sessionId, connection);
   }
 
-  private connection(sessionId: string): SessionConnection {
+  private getOrCreateConnection(sessionId: string): SessionConnection {
     const existing = this.connections.get(sessionId);
     if (existing) return existing;
     const created: SessionConnection = {
@@ -188,14 +201,14 @@ class SessionWebSocket {
       pingTimer: null,
       pongTimer: null,
       generation: 0,
-      closed: false,
+      closeRequested: false,
     };
     this.connections.set(sessionId, created);
     return created;
   }
 
   private connect(sessionId: string, connection: SessionConnection): void {
-    if (connection.closed || connection.reconnectTimer) return;
+    if (connection.closeRequested || connection.reconnectTimer) return;
     if (
       connection.socket?.readyState === WebSocket.OPEN
       || connection.socket?.readyState === WebSocket.CONNECTING
@@ -206,12 +219,12 @@ class SessionWebSocket {
     this.changeState(connection, connection.reconnectAttempt === 0 ? 'connecting' : 'reconnecting');
     void serverClient.webSocketUrl(`/api/ws/session/${encodeURIComponent(sessionId)}`)
       .then(url => {
-        if (connection.closed || generation !== connection.generation) return;
+        if (connection.closeRequested || generation !== connection.generation) return;
         const socket = new WebSocket(url);
         let opened = false;
         connection.socket = socket;
         socket.addEventListener('open', () => {
-          if (connection.socket !== socket || connection.closed) return;
+          if (connection.socket !== socket || connection.closeRequested) return;
           opened = true;
           connection.reconnectAttempt = 0;
           this.changeState(connection, 'connected');
@@ -220,7 +233,9 @@ class SessionWebSocket {
           }
           this.startHeartbeat(connection, socket);
         });
-        socket.addEventListener('message', event => this.receive(connection, String(event.data)));
+        socket.addEventListener('message', event => (
+          this.receive(sessionId, connection, String(event.data))
+        ));
         socket.addEventListener('close', () => {
           if (connection.socket !== socket) return;
           connection.socket = null;
@@ -228,17 +243,21 @@ class SessionWebSocket {
           // 打开后断线时, Server 可能已经执行写请求但回复尚未到达. 报告结果未知,
           // 不能重发, 否则同一条输入可能保存两次或排队两次.
           if (opened) this.rejectRequests(connection, 'connection_lost', 'Session 连接已中断');
-          if (!connection.closed) this.scheduleReconnect(sessionId, connection);
+          if (connection.closeRequested) {
+            this.finishDisconnect(sessionId, connection);
+          } else {
+            this.scheduleReconnect(sessionId, connection);
+          }
         });
       })
       .catch(() => {
-        if (!connection.closed && generation === connection.generation) {
+        if (!connection.closeRequested && generation === connection.generation) {
           this.scheduleReconnect(sessionId, connection);
         }
       });
   }
 
-  private receive(connection: SessionConnection, source: string): void {
+  private receive(sessionId: string, connection: SessionConnection, source: string): void {
     let value: unknown;
     try {
       value = JSON.parse(source);
@@ -256,11 +275,13 @@ class SessionWebSocket {
     if (message.type === 'manual_compact_result') {
       connection.pendingRequests.get(message.requestId)?.resolve(message.result);
       connection.pendingRequests.delete(message.requestId);
+      this.finishDisconnect(sessionId, connection);
       return;
     }
     if (message.type === 'request_succeeded') {
       connection.pendingRequests.get(message.requestId)?.resolve(undefined);
       connection.pendingRequests.delete(message.requestId);
+      this.finishDisconnect(sessionId, connection);
       return;
     }
     if (message.type === 'request_rejected') {
@@ -268,6 +289,7 @@ class SessionWebSocket {
         new SessionRequestError(message.code, message.message),
       );
       connection.pendingRequests.delete(message.requestId);
+      this.finishDisconnect(sessionId, connection);
       return;
     }
 
@@ -279,7 +301,8 @@ class SessionWebSocket {
     sessionId: string,
     createMessage: (requestId: ClientRequestId) => SessionClientMessage,
   ): Promise<T> {
-    const connection = this.connection(sessionId);
+    const connection = this.getOrCreateConnection(sessionId);
+    connection.closeRequested = false;
     const requestId = crypto.randomUUID();
     const message = createMessage(requestId);
     const result = new Promise<T>((resolve, reject) => {
@@ -294,11 +317,21 @@ class SessionWebSocket {
       connection.outgoing.push(message);
       this.connect(sessionId, connection);
     }
-    return result;
+    return result.finally(() => {
+      // 主窗口 Permission 等入口可能只发一次请求, 没有 Chat 业务订阅.
+      // 结果已经返回且没有观察者时直接关闭, 不为一次命令永久保留 Socket.
+      if (
+        connection.handlers.size === 0
+        && connection.stateHandlers.size === 0
+        && this.connections.get(sessionId) === connection
+      ) {
+        this.disconnect(sessionId);
+      }
+    });
   }
 
   private scheduleReconnect(sessionId: string, connection: SessionConnection): void {
-    if (connection.reconnectTimer || connection.closed) return;
+    if (connection.reconnectTimer || connection.closeRequested) return;
     this.changeState(connection, 'reconnecting');
     const delay = Math.min(1_000 * 2 ** connection.reconnectAttempt, 30_000);
     connection.reconnectAttempt += 1;
@@ -332,6 +365,18 @@ class SessionWebSocket {
     for (const pending of connection.pendingRequests.values()) pending.reject(error);
     connection.pendingRequests.clear();
     connection.outgoing.length = 0;
+  }
+
+  /** 没有在途请求后才真正关闭并删除连接;业务 Store 不在这个模块的清理范围内. */
+  private finishDisconnect(sessionId: string, connection: SessionConnection): void {
+    if (!connection.closeRequested || connection.pendingRequests.size > 0) return;
+    connection.generation += 1;
+    this.clearTimers(connection);
+    const socket = connection.socket;
+    connection.socket = null;
+    socket?.close(1000, 'session_subscription_closed');
+    this.changeState(connection, 'disconnected');
+    if (this.connections.get(sessionId) === connection) this.connections.delete(sessionId);
   }
 
   private changeState(connection: SessionConnection, state: SessionConnectionState): void {

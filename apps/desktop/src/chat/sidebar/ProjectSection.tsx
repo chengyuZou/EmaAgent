@@ -13,28 +13,28 @@ import type { Project, SessionListItem } from '../../api/sessions.js';
 import { projectsApi } from '../../api/workspaces.js';
 import { tauriBridge } from '../../lib/tauri-bridge.js';
 import { runWithToast } from '../../lib/toast.js';
-import type { AgentSessionState } from '../../stores/agent.js';
+import type { SessionActivity } from '../../stores/sessionActivity.js';
 import { useSessionStore } from '../../stores/session.js';
-import { useChatWorkspace } from '../state/chatWorkspace.js';
+import { useChatNavigationStore } from '../../stores/chatNavigation.js';
 import { SessionRow } from './SessionRow.js';
 import { useSidebarDrag } from './SidebarDragContext.js';
 
 interface ProjectSectionProps {
   projects: Project[];
   viewedId: string | null;
-  agentSessions: ReadonlyMap<string, AgentSessionState>;
+  activityBySession: ReadonlyMap<string, SessionActivity>;
 }
 
 export function PinnedSection({
   projects,
   sessions,
   viewedId,
-  agentSessions,
+  activityBySession,
 }: {
   projects: Project[];
   sessions: SessionListItem[];
   viewedId: string | null;
-  agentSessions: ReadonlyMap<string, AgentSessionState>;
+  activityBySession: ReadonlyMap<string, SessionActivity>;
 }): JSX.Element | null {
   const [collapsed, setCollapsed] = useState(false);
   const drag = useSidebarDrag();
@@ -66,7 +66,7 @@ export function PinnedSection({
               project={project}
               section="pinned"
               viewedId={viewedId}
-              agentSessions={agentSessions}
+              activityBySession={activityBySession}
             />
           ))}
           <div
@@ -78,7 +78,7 @@ export function PinnedSection({
               key={session.id}
               session={session}
               isActive={session.id === viewedId}
-              agentSessions={agentSessions}
+              activityBySession={activityBySession}
               dropDestination={{ section: 'pinned' }}
             />
           ))}
@@ -95,7 +95,7 @@ export function PinnedSection({
 export function ProjectSection({
   projects,
   viewedId,
-  agentSessions,
+  activityBySession,
 }: ProjectSectionProps): JSX.Element {
   const [collapsed, setCollapsed] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -128,7 +128,7 @@ export function ProjectSection({
                 project={project}
                 section="projects"
                 viewedId={viewedId}
-                agentSessions={agentSessions}
+                activityBySession={activityBySession}
               />
             ))
           )}
@@ -293,12 +293,12 @@ function ProjectRow({
   project,
   section,
   viewedId,
-  agentSessions,
+  activityBySession,
 }: {
   project: Project;
   section: 'pinned' | 'projects';
   viewedId: string | null;
-  agentSessions: ReadonlyMap<string, AgentSessionState>;
+  activityBySession: ReadonlyMap<string, SessionActivity>;
 }): JSX.Element {
   const active = project.sessions.some((session) => session.id === viewedId);
   const [collapsed, setCollapsed] = useState(!active);
@@ -386,16 +386,16 @@ function ProjectRow({
         </button>
         <IconButton
           size="sm"
-          className="chat-row-action"
+          className="ema-chat-row-action"
           icon="i-lucide:square-pen"
           label={`在 ${project.name} 中新建对话`}
-          onClick={() => useChatWorkspace.getState().openNewSession(project.id)}
+          onClick={() => useChatNavigationStore.getState().openNewSession(project.id)}
         />
         <DropdownMenu
           trigger={
             <IconButton
               size="sm"
-              className="chat-row-action"
+              className="ema-chat-row-action"
               icon="i-lucide:more-horizontal"
               label={`${project.name} 项目菜单`}
             />
@@ -414,7 +414,7 @@ function ProjectRow({
               key={session.id}
               session={session}
               isActive={session.id === viewedId}
-              agentSessions={agentSessions}
+              activityBySession={activityBySession}
               nested
               dropDestination={{ section: 'project', projectId: project.id }}
             />
@@ -436,8 +436,8 @@ function ProjectRow({
           void runWithToast(
             projectsApi.remove(project.id)
               .then(async () => {
-                if (useChatWorkspace.getState().newSessionProjectId === project.id) {
-                  useChatWorkspace.getState().openNewSession();
+                if (useChatNavigationStore.getState().newSessionProjectId === project.id) {
+                  useChatNavigationStore.getState().openNewSession();
                 }
                 await useSessionStore.getState().loadSessions();
               }),
@@ -623,7 +623,7 @@ export function SectionButton({
       {onAdd && (
         <IconButton
           size="sm"
-          className="chat-row-action mr-1"
+          className="ema-chat-row-action mr-1"
           icon="i-lucide:plus"
           label="新建项目"
           onClick={onAdd}

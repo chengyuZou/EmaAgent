@@ -58,14 +58,14 @@ export function EmaStageView({
       const target = runtimeConfig?.motionMap?.[motion];
       if (target) stageRef.current?.playMotion(target.group, target.index);
     });
-    const unlistenSpeech = tauriBridge.listenStageSpeech((speaking, mouthOpen) => {
+    const unlistenLipSync = tauriBridge.listenStageLipSync((speaking, mouthOpen) => {
       stageRef.current?.setLipSync(speaking, mouthOpen);
     });
 
     return () => {
       void unlistenEmotion.then(stop => stop());
       void unlistenMotion.then(stop => stop());
-      void unlistenSpeech.then(stop => stop());
+      void unlistenLipSync.then(stop => stop());
     };
   }, [interactive, onExpressionChanged, runtimeConfig]);
 

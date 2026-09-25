@@ -1,18 +1,26 @@
 /**
  * SpeechBubble — manga-style dialogue bubble in the pet window.
  *
- * Listens to Tauri IPC events relayed from the chat window:
- *   speech:start  — new turn started; clear and show bubble
- *   speech:delta  — streaming text delta; append to bubble
- *   speech:end    — turn finished; start fade-out timer
- *
- * Only tracks the most recently started session (mirrors ttsOwnerSessionId).
+ * Chat 窗口已经选好唯一的 Presentation owner. 这里只接收它转发的
+ * Dialogue 文本和结束事件, 不再自己根据最后一条消息抢 owner.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { tauriBridge } from '../lib/tauri-bridge.js';
 
 const FADE_DELAY_MS = 4000;
 const FADE_OUT_MS   = 600;
+const MAX_DIALOGUE_TEXT_LENGTH = 500;
+
+interface DialogueOwner {
+  readonly sessionId: string;
+  readonly turnId: string;
+}
+
+function trimDialogueText(text: string): string {
+  return text.length > MAX_DIALOGUE_TEXT_LENGTH
+    ? text.slice(-MAX_DIALOGUE_TEXT_LENGTH)
+    : text;
+}
 
 /**
  * 气泡淡出生命周期控制器(F-030)。旧实现只持有"延迟淡出"定时器, 匿名
@@ -65,53 +73,59 @@ export function SpeechBubble(): React.JSX.Element | null {
   const [text, setText]       = useState('');
   const [visible, setVisible] = useState(false);
   const [fading, setFading]   = useState(false);
-  const activeSession         = useRef<string | null>(null);
+  const activeDialogue        = useRef<DialogueOwner | null>(null);
+  const textRef               = useRef<HTMLParagraphElement | null>(null);
   const fade                  = useMemo(
     () =>
       createFadeController({
         fadeDelayMs: FADE_DELAY_MS,
         fadeOutMs:   FADE_OUT_MS,
         onFadeStart: () => setFading(true),
-        onFadeDone:  () => { setVisible(false); setText(''); setFading(false); },
+        onFadeDone:  () => {
+          activeDialogue.current = null;
+          setVisible(false);
+          setText('');
+          setFading(false);
+        },
       }),
     [],
   );
 
   useEffect(() => {
-    const unlistenStart = tauriBridge.listenSpeechStarted(
-      (sessionId) => {
+    const unlistenDelta = tauriBridge.listenDialogueDelta(
+      (sessionId, turnId, delta) => {
         fade.clear();
-        activeSession.current = sessionId;
-        setText('');
+        const active = activeDialogue.current;
+        if (active?.sessionId !== sessionId || active.turnId !== turnId) {
+          activeDialogue.current = { sessionId, turnId };
+          setText(trimDialogueText(delta));
+        } else {
+          setText(current => trimDialogueText(current + delta));
+        }
         setFading(false);
         setVisible(true);
       },
     );
 
-    const unlistenDelta = tauriBridge.listenSpeechDelta(
-      (sessionId, text) => {
-        if (sessionId !== activeSession.current) return;
-        fade.clear();
-        setText((prev) => prev + text);
-        setFading(false);
-        setVisible(true);
-      },
-    );
-
-    const unlistenEnd = tauriBridge.listenSpeechEnded(
-      (sessionId) => {
-        if (sessionId !== activeSession.current) return;
+    const unlistenEnd = tauriBridge.listenDialogueEnded(
+      (sessionId, turnId) => {
+        const active = activeDialogue.current;
+        if (active?.sessionId !== sessionId || active.turnId !== turnId) return;
         fade.scheduleFade();
       },
     );
 
     return () => {
       fade.clear();
-      void unlistenStart.then((fn) => fn());
       void unlistenDelta.then((fn) => fn());
       void unlistenEnd.then((fn) => fn());
     };
   }, [fade]);
+
+  useEffect(() => {
+    const element = textRef.current;
+    if (element) element.scrollTop = element.scrollHeight;
+  }, [text]);
 
   if (!visible || !text) return null;
 
@@ -119,7 +133,7 @@ export function SpeechBubble(): React.JSX.Element | null {
     <div
       style={{
         position:      'fixed',
-        top:           18,
+        top:           20,
         right:         16,
         width:         'min(240px, calc(100vw - 32px))',
         zIndex:        50,
@@ -136,24 +150,25 @@ export function SpeechBubble(): React.JSX.Element | null {
           background:     'var(--ema-surface-0)',
           border:         '1px solid var(--ema-glow)',
           borderRadius:   'var(--ema-radius-lg)',
-          padding:        '10px 14px',
+          padding:        '12px 16px',
           boxShadow:      'var(--ema-shadow-2), 0 0 16px color-mix(in srgb, var(--ema-pet-glow-bright) 12%, transparent)',
           backdropFilter: 'var(--ema-glass-base)',
-          maxHeight:      78,
+          maxHeight:      80,
           overflow:       'hidden',
         }}
       >
         <p
+          ref={textRef}
+          className="ema-speech-bubble-text"
           style={{
             margin:              0,
             fontSize:            13,
             lineHeight:          1.65,
             color:               'var(--ema-text-primary)',
             wordBreak:           'break-word',
-            display:             '-webkit-box',
-            WebkitLineClamp:     3,
-            WebkitBoxOrient:     'vertical',
-            overflow:            'hidden',
+            maxHeight:            60,
+            overflowY:            'auto',
+            scrollbarWidth:       'none',
             whiteSpace:          'pre-wrap',
           }}
         >

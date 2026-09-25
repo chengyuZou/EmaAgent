@@ -1,6 +1,10 @@
 // 在当前窗口显示最多三条轻量通知，并支持语义颜色、自定义强调色和手动关闭。
 /**
- * Minimal toast notification system — portal-based, bottom-right stack.
+ * Minimal toast notification system — chat-column-anchored, bottom-right stack.
+ *
+ * portal 挂进聊天列([data-ema-chat-column], SessionPage 的 chat Panel)而不是 body:
+ * fixed 定位不知右侧 workspace 面板存在, 会整叠压住面板并挡点击。
+ * 同文案通知按 ×N 合并, 成功类工具通知不再刷屏。
  *
  * Self-contained — does NOT import from @ema-agent/ui (avoids circular deps).
  * Uses UnoCSS classes from the shared ui preset.
@@ -26,6 +30,7 @@ interface ToastItem {
   message: string;
   variant: Required<ToastOptions>['variant'];
   accentColor?: string;
+  count: number;
 }
 
 // ── Internal state ────────────────────────────────────────────────────────────
@@ -35,8 +40,15 @@ const listeners = new Set<() => void>();
 let toasts: ToastItem[] = [];
 
 function addToast(message: string, variant: ToastItem['variant'], accentColor?: string): number {
+  // 同文案同类型合并计数('工具 Read 执行完成 ×12'), 不再叠满右下角。
+  const existing = toasts.find((t) => t.message === message && t.variant === variant);
+  if (existing) {
+    toasts = toasts.map((t) => (t.id === existing.id ? { ...t, count: t.count + 1 } : t));
+    listeners.forEach((fn) => fn());
+    return existing.id;
+  }
   const id = nextId++;
-  toasts = [...toasts.slice(-2), { id, message, variant, accentColor }]; // max 3
+  toasts = [...toasts.slice(-2), { id, message, variant, accentColor, count: 1 }]; // max 3
   listeners.forEach((fn) => fn());
   return id;
 }
@@ -74,14 +86,19 @@ function ToastContainer(): JSX.Element {
   if (toasts.length === 0) return <></>;
 
   return (
-    <div className="fixed bottom-4 right-4 z-9999 flex flex-col gap-2 pointer-events-none">
+    <div className="absolute bottom-4 right-4 z-9999 flex max-w-sm flex-col items-end gap-2 pointer-events-none">
       {toasts.map((t) => (
         <div
           key={t.id}
-          className={`pointer-events-auto flex items-start gap-2 px-4 py-2 rounded-xl border text-sm ${variantStyles[t.variant]} ${variantBg[t.variant]} ema-fade-in`}
+          className={`pointer-events-auto flex max-w-full items-start gap-2 px-4 py-2 rounded-xl border text-sm ${variantStyles[t.variant]} ${variantBg[t.variant]} ema-fade-in`}
           style={t.accentColor ? { borderColor: t.accentColor } as CSSProperties : undefined}
         >
           <span className="min-w-0 flex-1 break-words">{t.message}</span>
+          {t.count > 1 && (
+            <span className="shrink-0 rounded-full bg-[var(--ema-surface-2)] px-1.5 py-0.5 text-[10px] font-semibold leading-none">
+              ×{t.count}
+            </span>
+          )}
           <button
             type="button"
             aria-label="关闭通知"
@@ -105,7 +122,9 @@ function ensureMounted(): void {
   mounted = true;
   const el = document.createElement('div');
   el.id = 'desktop-ui-toast-root';
-  document.body.appendChild(el);
+  // 挂进聊天列(absolute 相对它定位); 找不到(非聊天窗口)才回落 body。
+  const host = document.querySelector('[data-ema-chat-column]') ?? document.body;
+  host.appendChild(el);
   createRoot(el).render(<ToastContainer />);
 }
 

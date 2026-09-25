@@ -1,7 +1,6 @@
 // View Transitions 封装:被点块 ⇄ 全幅视图的共享元素 morph(水滴扩散/逆扩散)。
-// 用法:源块与全幅容器都挂 style={{ viewTransitionName: MORPH_NAME }}(同一时刻只开一个),
-// 状态切换经 morphTransition(() => setX(...)) 触发;不支持的环境降级为瞬切。
-// 返回值是过渡完成的承诺,供调用方在落幕后摘掉源块上的临时挂名。
+// 共享元素的旧帧与新帧各只能有一个同名元素；调用方在 update 内完成名称交接。
+// 不支持 View Transitions 的环境直接执行状态更新。
 import { flushSync } from 'react-dom';
 
 export const MORPH_NAME = 'ema-morph-target';

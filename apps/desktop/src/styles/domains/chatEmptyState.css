@@ -29,7 +29,7 @@
   position: relative;
   width: 96px;
   height: 96px;
-  border-radius: 9999px;
+  border-radius: var(--ema-radius-pill);
   object-fit: cover;
   border: 1px solid var(--ema-border);
   box-shadow: var(--ema-shadow-2);
@@ -57,7 +57,7 @@
   align-items: center;
   gap: var(--ema-space-1);
   padding: var(--ema-space-1) var(--ema-space-3);
-  border-radius: 9999px;
+  border-radius: var(--ema-radius-pill);
   font-size: 12px;
   color: var(--ema-text-secondary);
   background: var(--ema-surface-2);

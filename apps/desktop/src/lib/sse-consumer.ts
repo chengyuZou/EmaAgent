@@ -109,6 +109,9 @@ export function createSseConsumer(): {
       let lastEventId = options.lastEventId ?? 0;
       let settled = false;
       let idleTimer: ReturnType<typeof setTimeout> | null = null;
+      let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+      let readerCancel: Promise<void> | null = null;
+      let requestedOutcome: SseConnectionOutcome | null = null;
       let resolveDone: ((outcome: SseConnectionOutcome) => void) | undefined;
       const done = new Promise<SseConnectionOutcome>((resolve) => {
         resolveDone = resolve;
@@ -129,16 +132,30 @@ export function createSseConsumer(): {
         resolveDone?.(outcome);
       }
 
-      function terminate(outcome: SseConnectionOutcome): void {
-        settle(outcome);
+      function cancelReader(reason: unknown): Promise<void> | null {
+        if (!reader) return null;
+        if (!readerCancel) {
+          readerCancel = reader.cancel(reason).catch(() => undefined);
+        }
+        return readerCancel;
+      }
+
+      function requestTermination(outcome: SseConnectionOutcome): void {
+        if (requestedOutcome || settled) return;
+        requestedOutcome = outcome;
         if (!controller.signal.aborted) controller.abort();
+        void cancelReader(outcome.kind);
+      }
+
+      function currentRequestedOutcome(): SseConnectionOutcome | null {
+        return requestedOutcome;
       }
 
       function armIdleTimeout(): void {
-        if (settled || idleTimeoutMs <= 0) return;
+        if (settled || requestedOutcome || idleTimeoutMs <= 0) return;
         if (idleTimer !== null) clearTimeout(idleTimer);
         idleTimer = setTimeout(() => {
-          terminate({
+          requestTermination({
             kind: 'idle_timeout',
             lastEventId,
             error: new Error(`SSE connection silent for ${idleTimeoutMs}ms`),
@@ -147,7 +164,7 @@ export function createSseConsumer(): {
       }
 
       function onExternalAbort(): void {
-        terminate({ kind: 'cancelled', lastEventId });
+        requestTermination({ kind: 'cancelled', lastEventId });
       }
 
       options.signal?.addEventListener('abort', onExternalAbort, { once: true });
@@ -155,7 +172,7 @@ export function createSseConsumer(): {
       armIdleTimeout();
 
       const parser = createFrameParser((frame) => {
-        if (settled) return;
+        if (settled || requestedOutcome) return;
         const parsed = parseFrame(frame);
         if (!parsed) return;
 
@@ -176,7 +193,7 @@ export function createSseConsumer(): {
           event = decoded as unknown as TEvent;
         } catch (cause) {
           const message = cause instanceof Error ? cause.message : 'invalid JSON event';
-          terminate({
+          requestTermination({
             kind: 'protocol_error',
             lastEventId,
             error: new Error(`SSE protocol error: ${message}`, { cause }),
@@ -189,7 +206,7 @@ export function createSseConsumer(): {
           if (parsed.cursor !== undefined) lastEventId = parsed.cursor;
         } catch (cause) {
           const message = cause instanceof Error ? cause.message : 'event consumer failed';
-          terminate({
+          requestTermination({
             kind: 'consumer_error',
             lastEventId,
             error: new Error(`SSE consumer error: ${message}`, { cause }),
@@ -200,55 +217,65 @@ export function createSseConsumer(): {
       void (async () => {
         try {
           const response = await options.openResponse(controller.signal, lastEventId);
-          if (settled) return;
+          const outcomeAfterOpen = currentRequestedOutcome();
+          if (outcomeAfterOpen) {
+            await response.body?.cancel(outcomeAfterOpen.kind).catch(() => undefined);
+            return;
+          }
 
           if (!response.ok) {
-            settle({
+            requestedOutcome = {
               kind: 'http_error',
               status: response.status,
               lastEventId,
               error: new Error(`SSE stream returned ${response.status}`),
-            });
+            };
             return;
           }
 
-          const reader = response.body?.getReader();
+          reader = response.body?.getReader() ?? null;
           if (!reader) {
-            settle({
+            requestedOutcome = {
               kind: 'network_error',
               lastEventId,
               error: new Error('SSE response has no readable body'),
-            });
+            };
             return;
           }
 
+          armIdleTimeout();
           const decoder = new TextDecoder();
-          while (!settled) {
+          while (!requestedOutcome) {
             const { done: readerDone, value } = await reader.read();
             if (readerDone) break;
             armIdleTimeout();
             parser.feed(decoder.decode(value, { stream: true }));
           }
 
-          if (settled) return;
+          if (requestedOutcome) return;
           parser.feed(decoder.decode());
           parser.flush();
-          if (!settled) settle({ kind: 'eof', lastEventId });
+          if (!requestedOutcome) requestedOutcome = { kind: 'eof', lastEventId };
         } catch (cause) {
-          if (settled) return;
-          const message = cause instanceof Error ? cause.message : 'unknown network error';
-          settle({
-            kind: 'network_error',
-            lastEventId,
-            error: new Error(message, { cause }),
-          });
+          if (!requestedOutcome) {
+            const message = cause instanceof Error ? cause.message : 'unknown network error';
+            requestedOutcome = {
+              kind: 'network_error',
+              lastEventId,
+              error: new Error(message, { cause }),
+            };
+          }
+        } finally {
+          const outcome = requestedOutcome ?? { kind: 'eof' as const, lastEventId };
+          await cancelReader(outcome.kind);
+          settle(outcome);
         }
       })();
 
       return {
         done,
         stop() {
-          terminate({ kind: 'cancelled', lastEventId });
+          requestTermination({ kind: 'cancelled', lastEventId });
         },
       };
     },

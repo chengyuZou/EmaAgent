@@ -3,8 +3,8 @@
    .ema-chat-window button[aria-label]:not(发送) 规则曾误杀"停止生成/录音中"的
    danger 态, 并拿中文 label 当样式开关。 */
 
-.chat-icon-btn,
-.chat-row-action {
+.ema-chat-icon-btn,
+.ema-chat-row-action {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -13,15 +13,18 @@
   flex: none;
   padding: 0;
   border: 1px solid transparent;
-  border-radius: 9px;
+  border-radius: var(--ema-radius-md);
   background: transparent;
   color: var(--ema-text-tertiary);
   box-shadow: none;
   transform: none;
+  transition: background-color var(--ema-duration-fast) var(--ema-ease),
+              color var(--ema-duration-fast) var(--ema-ease),
+              transform var(--ema-duration-fast) var(--ema-ease);
 }
 
-.chat-icon-btn:hover,
-.chat-row-action:hover {
+.ema-chat-icon-btn:hover,
+.ema-chat-row-action:hover {
   border-color: transparent;
   background: var(--ema-surface-2);
   color: var(--ema-text-primary);
@@ -29,40 +32,40 @@
   transform: none;
 }
 
-.chat-icon-btn:active,
-.chat-row-action:active {
+.ema-chat-icon-btn:active,
+.ema-chat-row-action:active {
   transform: scale(0.94);
 }
 
-.chat-icon-btn[aria-pressed='true'],
-.chat-row-action[aria-pressed='true'],
-.chat-icon-btn[data-state='open'],
-.chat-row-action[data-state='open'] {
+.ema-chat-icon-btn[aria-pressed='true'],
+.ema-chat-row-action[aria-pressed='true'],
+.ema-chat-icon-btn[data-state='open'],
+.ema-chat-row-action[data-state='open'] {
   border-color: color-mix(in srgb, var(--ema-primary) 40%, transparent);
   background: var(--ema-primary-muted);
   color: var(--ema-primary-text);
   box-shadow: none;
 }
 
-.chat-row-action {
+.ema-chat-row-action {
   width: 24px;
   height: 24px;
-  border-radius: 7px;
+  border-radius: var(--ema-radius-sm);
   opacity: 0;
 }
 
-.group:hover .chat-row-action,
-.group:focus-within .chat-row-action,
-.chat-row-action:focus-visible,
-.chat-row-action[data-state='open'] {
+.group:hover .ema-chat-row-action,
+.group:focus-within .ema-chat-row-action,
+.ema-chat-row-action:focus-visible,
+.ema-chat-row-action[data-state='open'] {
   opacity: 1;
 }
 
-.chat-row-action.opacity-100 {
+.ema-chat-row-action.opacity-100 {
   opacity: 1;
 }
 
-.chat-bar-btn {
+.ema-chat-bar-btn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -71,26 +74,26 @@
   height: 38px;
   padding: 0 var(--ema-space-3);
   border: 1px solid transparent;
-  border-radius: 12px;
+  border-radius: var(--ema-radius-lg);
   background: transparent;
   color: var(--ema-text-primary);
   box-shadow: none;
   font-size: 13px;
 }
 
-.chat-bar-btn:hover {
+.ema-chat-bar-btn:hover {
   border-color: transparent;
   background: var(--ema-surface-4);
 }
 
-.chat-btn {
+.ema-chat-btn {
   display: inline-flex;
   align-items: center;
   gap: var(--ema-space-1);
   height: 30px;
   padding: 0 var(--ema-space-2);
   border: 1px solid transparent;
-  border-radius: 9px;
+  border-radius: var(--ema-radius-md);
   background: transparent;
   box-shadow: none;
   font-size: 11px;
@@ -98,14 +101,14 @@
   white-space: nowrap;
 }
 
-.chat-btn:hover {
+.ema-chat-btn:hover {
   border-color: transparent;
   background: var(--ema-surface-4);
   color: var(--ema-text-primary);
 }
 
-.chat-bar-btn[data-state='open'],
-.chat-btn[data-state='open'] {
+.ema-chat-bar-btn[data-state='open'],
+.ema-chat-btn[data-state='open'] {
   border-color: transparent;
   background: var(--ema-surface-3);
   box-shadow: none;

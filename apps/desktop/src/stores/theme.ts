@@ -17,12 +17,23 @@ const DEFAULTS: ThemeSettings = {
   mode: 'light',
   contentFontPreset: 'system',
   contentFontFamily: '',
+  monoFontPreset: 'cascadia',
+  monoFontFamily: '',
+  syntaxThemePreset: 'auto',
 };
 
 const CONTENT_FONT_STACKS: Record<Exclude<ThemeSettings['contentFontPreset'], 'custom'>, string> = {
   system: 'var(--ema-font-content-system)',
   rounded: "'Nunito', 'Avenir Next', 'Segoe UI Variable', 'Microsoft YaHei UI', sans-serif",
   reading: "'LXGW WenKai', 'Kaiti SC', KaiTi, 'Yu Kyokasho', 'Microsoft YaHei', sans-serif",
+};
+
+/* 等宽栈都以雅黑兜中文, monospace generic 收尾。 */
+const MONO_FONT_STACKS: Record<Exclude<ThemeSettings['monoFontPreset'], 'custom'>, string> = {
+  cascadia:  "'Cascadia Code', 'JetBrains Mono', Consolas, 'Microsoft YaHei', monospace",
+  jetbrains: "'JetBrains Mono', 'Cascadia Code', Consolas, 'Microsoft YaHei', monospace",
+  consolas:  "Consolas, 'Courier New', 'Microsoft YaHei', monospace",
+  system:    "ui-monospace, 'Cascadia Code', Consolas, 'Microsoft YaHei', monospace",
 };
 
 export function normalizeLocalFontName(value: string): string {
@@ -40,11 +51,45 @@ export function resolveContentFontStack(
     : CONTENT_FONT_STACKS.system;
 }
 
+export function resolveMonoFontStack(
+  preset: ThemeSettings['monoFontPreset'],
+  customFamily: string,
+): string {
+  if (preset !== 'custom') return MONO_FONT_STACKS[preset];
+  const normalized = normalizeLocalFontName(customFamily);
+  return normalized
+    ? `'${normalized}', ui-monospace, monospace`
+    : MONO_FONT_STACKS.cascadia;
+}
+
+/** canvas 测量法探测字体是否真实安装, 用于设置页提示"未安装会回落"。 */
+export function isFontInstalled(family: string): boolean {
+  const ctx = document.createElement('canvas').getContext('2d');
+  if (!ctx) return true;
+  const probe = 'mmmmmmmmmmlli';
+  ctx.font = '72px monospace';
+  const baseline = ctx.measureText(probe).width;
+  ctx.font = `72px '${family}', monospace`;
+  return ctx.measureText(probe).width !== baseline;
+}
+
 function applyContentFont(preset: ThemeSettings['contentFontPreset'], customFamily: string): void {
   document.documentElement.style.setProperty(
     '--ema-font-content',
     resolveContentFontStack(preset, customFamily),
   );
+}
+
+function applyMonoFont(preset: ThemeSettings['monoFontPreset'], customFamily: string): void {
+  document.documentElement.style.setProperty(
+    '--ema-font-mono',
+    resolveMonoFontStack(preset, customFamily),
+  );
+}
+
+function applySyntaxTheme(preset: ThemeSettings['syntaxThemePreset']): void {
+  // 色板只在 foundation/syntax-themes.css, TS 不碰颜色; auto 的深浅分支也在 CSS 里。
+  document.documentElement.dataset.syntaxTheme = preset;
 }
 
 /** 设置 KV 通道不带类型，这里做入口收窄；坏字段逐项回落默认而不是整份丢弃。 */
@@ -66,6 +111,22 @@ function readThemeValue(value: unknown): ThemeSettings {
     contentFontFamily: normalizeLocalFontName(
       typeof raw.contentFontFamily === 'string' ? raw.contentFontFamily : '',
     ),
+    monoFontPreset:
+      raw.monoFontPreset === 'jetbrains'
+      || raw.monoFontPreset === 'consolas'
+      || raw.monoFontPreset === 'system'
+      || raw.monoFontPreset === 'custom'
+        ? raw.monoFontPreset
+        : 'cascadia',
+    monoFontFamily: normalizeLocalFontName(
+      typeof raw.monoFontFamily === 'string' ? raw.monoFontFamily : '',
+    ),
+    syntaxThemePreset:
+      raw.syntaxThemePreset === 'github'
+      || raw.syntaxThemePreset === 'tokyonight'
+      || raw.syntaxThemePreset === 'mono'
+        ? raw.syntaxThemePreset
+        : 'auto',
   };
 }
 
@@ -74,6 +135,8 @@ function applyResolvedTheme(config: ThemeSettings): void {
   setThemeRadius(config.radius);
   applyMode(config.mode);
   applyContentFont(config.contentFontPreset, config.contentFontFamily);
+  applyMonoFont(config.monoFontPreset, config.monoFontFamily);
+  applySyntaxTheme(config.syntaxThemePreset);
 }
 
 function applyMode(mode: ThemeSettings['mode']): void {
@@ -101,6 +164,9 @@ export interface ThemeStoreState {
   mode:   ThemeSettings['mode'];
   contentFontPreset: ThemeSettings['contentFontPreset'];
   contentFontFamily: string;
+  monoFontPreset: ThemeSettings['monoFontPreset'];
+  monoFontFamily: string;
+  syntaxThemePreset: ThemeSettings['syntaxThemePreset'];
   ready:  boolean;
 
   init(): Promise<void>;
@@ -108,6 +174,8 @@ export interface ThemeStoreState {
   setRadius(radius: number): Promise<void>;
   setMode(mode: ThemeSettings['mode']): Promise<void>;
   setContentFont(preset: ThemeSettings['contentFontPreset'], customFamily?: string): Promise<void>;
+  setMonoFont(preset: ThemeSettings['monoFontPreset'], customFamily?: string): Promise<void>;
+  setSyntaxTheme(preset: ThemeSettings['syntaxThemePreset']): Promise<void>;
 }
 
 export const useThemeStore = create<ThemeStoreState>((set, get) => ({
@@ -150,6 +218,19 @@ export const useThemeStore = create<ThemeStoreState>((set, get) => ({
     const next = { ...previous, contentFontPreset, contentFontFamily };
     await persistThemeChange(next, previous, value => set(value));
   },
+
+  async setMonoFont(monoFontPreset, customFamily = get().monoFontFamily) {
+    const previous = currentThemeValue(get());
+    const monoFontFamily = normalizeLocalFontName(customFamily);
+    const next = { ...previous, monoFontPreset, monoFontFamily };
+    await persistThemeChange(next, previous, value => set(value));
+  },
+
+  async setSyntaxTheme(syntaxThemePreset) {
+    const previous = currentThemeValue(get());
+    const next = { ...previous, syntaxThemePreset };
+    await persistThemeChange(next, previous, value => set(value));
+  },
 }));
 
 function emitTheme(config: ThemeSettings): void {
@@ -163,6 +244,9 @@ function currentThemeValue(state: ThemeStoreState): ThemeSettings {
     mode: state.mode,
     contentFontPreset: state.contentFontPreset,
     contentFontFamily: state.contentFontFamily,
+    monoFontPreset: state.monoFontPreset,
+    monoFontFamily: state.monoFontFamily,
+    syntaxThemePreset: state.syntaxThemePreset,
   };
 }
 

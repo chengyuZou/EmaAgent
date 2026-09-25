@@ -13,7 +13,7 @@ import { useEffect, useState, type CSSProperties } from 'react';
 import { Button } from '@ema-agent/ui';
 import { tauriBridge } from '../lib/tauri-bridge.js';
 import { ServerApiError } from '../api/client.js';
-import { useAgentStore } from '../stores/agent.js';
+import { sessionWebSocket } from '../api/sessionWebSocket.js';
 import type { PermissionRequiredEvent, PermissionResponse } from '@ema-agent/permission';
 import type { AskUserRequiredEvent } from '@ema-agent/tools';
 
@@ -90,7 +90,7 @@ function PermissionCard({
     setSubmitting(true);
     setError(undefined);
     try {
-      await useAgentStore.getState().respondPermission(
+      await sessionWebSocket.respondPermission(
         toast.sessionId,
         toast.turnId,
         toast.toolCallId,

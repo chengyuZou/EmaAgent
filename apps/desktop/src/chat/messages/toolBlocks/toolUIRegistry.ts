@@ -45,7 +45,7 @@ import {
 import { BuiltinTools } from '@ema-agent/tools/identity';
 import type { ToolDisplayStatus } from './toolBlockHelpers.js';
 
-/** CallView 接管整个展开区时的入参；data 是类型化 TOutput，progress 是原始进度事件序列。 */
+/** CallView 接管整个展开区时收到的数据. data 是 Tool 返回的 TOutput, progress 是本次调用的进度事件. */
 export interface ToolCallViewProps {
   readonly args: unknown;
   readonly partialArgs?: string;
@@ -57,24 +57,24 @@ export interface ToolCallViewProps {
   openBackgroundProcesses(): void;
 }
 
-export interface ToolUIEntry {
-  /** 需要直接呈现给用户的历史卡默认展开，例如当前 Turn 的 TODO 清单。 */
+export interface ToolUI {
+  /** 需要直接呈现给用户的历史卡默认展开, 例如当前 Turn 的 TODO 清单. */
   readonly defaultExpanded?: boolean;
-  /** 行头摘要：Tool 自己从 args 取主目标；缺省时只显示工具名。 */
+  /** Tool 从自己的 args 中提取行头主目标. 缺省时只显示工具名. */
   readonly title?: (args: unknown) => string | null;
-  /** 参数区（无 hooks 纯函数；返回 null = 守卫失败，回落通用平铺）。 */
+  /** 参数区. 返回 null 表示类型守卫失败, ToolCallBlock 会回落到通用字段表. */
   readonly ArgsView?: (props: { args: unknown }) => JSX.Element | null;
-  /** 结果区（同上）；消费类型化 data。 */
-  readonly ResultView?: (props: { data: unknown }) => JSX.Element | null;
-  /** 运行中的进度区（同上）；没有注册的 Tool 不建立假进度。 */
+  /** 结果区. data 是 ToolResult.data 或 live item.output; args 供按参数高亮(如 Grep 匹配). */
+  readonly ResultView?: (props: { data: unknown; args: unknown }) => JSX.Element | null;
+  /** 运行中的进度区. 没有真实 progress 结构的 Tool 不注册这个入口. */
   readonly ProgressView?: (props: { progress: readonly unknown[] }) => JSX.Element | null;
-  /** 接管整个展开区（终端卡等组合形态）；按组件方式渲染，内部允许有状态子组件。 */
+  /** 接管整个展开区, 供终端卡等需要一起处理参数, 进度和结果的 UI 使用. */
   readonly CallView?: (props: ToolCallViewProps) => JSX.Element | null;
-  /** 复制文本;缺省回落 args/结果的 JSON 拼接。 */
+  /** Tool 自己决定复制内容. 缺省时复制参数和结果的 JSON. */
   readonly copyText?: (args: unknown, data: unknown) => string | null;
 }
 
-const TOOL_UI_REGISTRY: Readonly<Record<string, ToolUIEntry>> = {
+const TOOL_UI_REGISTRY: Readonly<Record<string, ToolUI>> = {
   [BuiltinTools.Bash.name]: {
     title: bashTitle,
     copyText: bashCopyText,
@@ -125,6 +125,6 @@ const TOOL_UI_REGISTRY: Readonly<Record<string, ToolUIEntry>> = {
   [BuiltinTools.TodoWrite.name]: { ArgsView: TodoWriteArgsView, defaultExpanded: true },
 };
 
-export function lookupToolUI(toolName: string): ToolUIEntry | undefined {
+export function lookupToolUI(toolName: string): ToolUI | undefined {
   return TOOL_UI_REGISTRY[toolName];
 }

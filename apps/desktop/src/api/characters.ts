@@ -14,7 +14,8 @@ import { tauriBridge } from '../lib/tauri-bridge.js';
 // ── 类型（全部从路由契约推导） ────────────────────────────────────────────────
 
 export type CharacterList = RpcJson<RpcClient['api']['characters']['$get']>;
-export type Character = CharacterList['items'][number];
+export type CharacterSummary = CharacterList['items'][number];
+export type Character = RpcJson<RpcClient['api']['characters'][':characterName']['$get']>;
 export type CharacterCreateInput = InferRequestType<RpcClient['api']['characters']['$post']>['json'];
 export type CharacterPatchInput = InferRequestType<RpcClient['api']['characters'][':characterName']['$patch']>['json'];
 export type CharacterPresentation = RpcJson<RpcClient['api']['characters'][':characterName']['presentation']['$get']>;

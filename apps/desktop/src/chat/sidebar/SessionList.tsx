@@ -12,10 +12,10 @@ import {
   type SessionListItem,
   type SessionSearchResult,
 } from '../../api/sessions.js';
-import type { AgentSessionState } from '../../stores/agent.js';
+import type { SessionActivity } from '../../stores/sessionActivity.js';
 import { useSessionStore } from '../../stores/session.js';
-import { useChatWorkspace } from '../state/chatWorkspace.js';
-import { useHistoryStore } from '../state/history.js';
+import { useChatNavigationStore } from '../../stores/chatNavigation.js';
+import { useSessionHistoryStore } from '../../stores/sessionHistory.js';
 import { Collapse, SectionButton } from './ProjectSection.js';
 import type { SessionSidebarMoveInput } from '../../api/workspaces.js';
 import { useSidebarDrag } from './SidebarDragContext.js';
@@ -28,7 +28,7 @@ interface SessionListProps {
   label: string;
   sessions: SessionListItem[];
   viewedId: string | null;
-  agentSessions: ReadonlyMap<string, AgentSessionState>;
+  activityBySession: ReadonlyMap<string, SessionActivity>;
   initiallyCollapsed?: boolean;
   emptyText?: string;
   dropDestination?: SessionSidebarMoveInput['destination'];
@@ -38,7 +38,7 @@ export function SessionList({
   label,
   sessions,
   viewedId,
-  agentSessions,
+  activityBySession,
   initiallyCollapsed = false,
   emptyText = '暂无内容',
   dropDestination,
@@ -69,7 +69,7 @@ export function SessionList({
                 key={session.id}
                 session={session}
                 isActive={session.id === viewedId}
-                agentSessions={agentSessions}
+                activityBySession={activityBySession}
                 dropDestination={dropDestination}
               />
             ))
@@ -133,9 +133,8 @@ export function SessionSearch({
   const firstId = first?.session.id ?? visibleRecents[0]?.id;
 
   const select = useCallback((id: string, anchor?: string | null) => {
-    void useChatWorkspace.getState().viewSession(id).then(() => {
-      if (anchor) void useHistoryStore.getState().openAround(id, anchor);
-    });
+    useChatNavigationStore.getState().viewSession(id);
+    if (anchor) void useSessionHistoryStore.getState().openAround(id, anchor);
     onClose();
   }, [onClose]);
 

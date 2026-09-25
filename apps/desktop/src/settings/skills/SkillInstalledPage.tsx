@@ -7,7 +7,7 @@ import {
 import { useSkillStore } from '../../stores/skill.js';
 import { skillsApi, type SkillListItem } from '../../api/skills.js';
 import { showToast } from '../../lib/toast.js';
-import { Markdown } from '../../markdown/renderer.js';
+import { Markdown } from '@ema-agent/ui';
 
 const SCOPE_LABEL: Record<string, string> = {
   builtin: '内置',

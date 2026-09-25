@@ -3,7 +3,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { Button, Dialog, IconButton, Input, Popover } from '@ema-agent/ui';
 import { sessionGitApi, type SessionGitSummary } from '../../api/git.js';
 import { showToast } from '../../lib/toast.js';
-import { useAgentRunStore } from '../../stores/agentRun.js';
+import { useSubagentStore } from '../../stores/subagent.js';
 import { useBackgroundProcessStore } from '../../stores/backgroundProcess.js';
 import { useSessionAttachmentStore } from '../../stores/sessionAttachment.js';
 import { useSessionStore } from '../../stores/session.js';
@@ -12,8 +12,8 @@ import { SessionCwdDialog } from './SessionCwdDialog.js';
 import {
   backgroundProcessTab,
   sessionSourceTab,
-  useSessionSidePanel,
-} from '../state/chatWorkspace.js';
+  useSessionPanelStore,
+} from '../../stores/sessionPanel.js';
 
 const SOURCE_PREVIEW_COUNT = 3;
 
@@ -26,8 +26,8 @@ export function SessionHeader({ sessionId }: { sessionId: string }): JSX.Element
   const session = useSessionStore(state => state.sessions.byId.get(sessionId));
   const title = session?.title ?? '加载中…';
   const cwd = session?.cwd;
-  const layout = useSessionSidePanel((state) => state.layouts[sessionId]);
-  const setSidePanelOpen = useSessionSidePanel((state) => state.setSidePanelOpen);
+  const layout = useSessionPanelStore((state) => state.layouts[sessionId]);
+  const setSidePanelOpen = useSessionPanelStore((state) => state.setSidePanelOpen);
 
   async function saveTitle(): Promise<void> {
     const nextTitle = titleDraft.trim();
@@ -89,7 +89,7 @@ export function SessionHeader({ sessionId }: { sessionId: string }): JSX.Element
           trigger={(
             <Button
               variant="ghost"
-              className={`chat-icon-btn relative ${summaryOpen
+              className={`ema-chat-icon-btn relative ${summaryOpen
                 ? 'bg-[var(--ema-primary-muted)] text-[var(--ema-primary-text)] border-[var(--ema-primary)]/40'
                 : ''}`}
               aria-label="置顶摘要"
@@ -103,7 +103,7 @@ export function SessionHeader({ sessionId }: { sessionId: string }): JSX.Element
         </Popover>
         <IconButton
           size="md"
-          className="chat-icon-btn"
+          className="ema-chat-icon-btn"
           label={layout?.open ? '折叠右侧栏' : '展开右侧栏'}
           icon="i-lucide:panel-right"
           toggled={layout?.open ?? false}
@@ -138,21 +138,21 @@ function SessionSummary({
   sessionId: string;
   onNavigate(): void;
 }): JSX.Element {
-  const openTab = useSessionSidePanel((state) => state.openTab);
+  const openTab = useSessionPanelStore((state) => state.openTab);
   const cwd = useSessionStore((state) => (
     state.sessions.byId.get(sessionId)?.cwd ?? null
   ));
   const [git, setGit] = useState<SessionGitSummary | null>(null);
   const [stoppingProcessIds, setStoppingProcessIds] = useState<ReadonlySet<string>>(new Set());
-  const activity = useAgentRunStore(useShallow(state => {
+  const activity = useSubagentStore(useShallow(state => {
     const running = new Set<string>();
     let ended = 0;
-    for (const run of state.runs.values()) {
-      if (run.sessionId !== sessionId) continue;
-      if (run.status === 'running') running.add(run.id); else ended += 1;
+    for (const subagent of state.subagents.values()) {
+      if (subagent.sessionId !== sessionId) continue;
+      if (subagent.status === 'running') running.add(subagent.id); else ended += 1;
     }
-    for (const [id, run] of state.live) {
-      if (run.sessionId === sessionId) running.add(id);
+    for (const [id, subagent] of state.progressById) {
+      if (subagent.sessionId === sessionId) running.add(id);
     }
     return { running: running.size, ended };
   }));
@@ -193,7 +193,7 @@ function SessionSummary({
       mounted = false;
     };
   }, [sessionId, cwd]);
-  useEffect(() => { void useAgentRunStore.getState().loadForSession(sessionId); }, [sessionId]);
+  useEffect(() => { void useSubagentStore.getState().loadForSession(sessionId); }, [sessionId]);
   useEffect(() => { void useSessionAttachmentStore.getState().loadForSession(sessionId); }, [sessionId]);
   useEffect(() => { void useBackgroundProcessStore.getState().loadForSession(sessionId); }, [sessionId]);
   useEffect(() => { void useTaskStore.getState().loadForSession(sessionId); }, [sessionId]);

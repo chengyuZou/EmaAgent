@@ -15,6 +15,7 @@ import {
 
 export type ProviderList = RpcJson<RpcClient['api']['providers']['$get']>;
 export type ProviderRecord = ProviderList[number];
+export type ProviderDetail = RpcJson<RpcClient['api']['providers'][':providerId']['$get']>;
 export type ProviderConfigInput = InferRequestType<RpcClient['api']['providers']['$post']>['json'];
 export type ProviderPatchInput = InferRequestType<RpcClient['api']['providers'][':providerId']['$patch']>['json'];
 

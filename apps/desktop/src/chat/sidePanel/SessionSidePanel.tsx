@@ -1,4 +1,4 @@
-// 组装当前 Session 的右侧标签页, 标签生命周期由 chatWorkspace 统一维护.
+// 组装当前 Session 的右侧标签页, 标签生命周期由 sessionPanel Store 维护.
 import { useEffect, useState, type JSX } from 'react';
 import { nanoid } from 'nanoid';
 import { Button, IconButton } from '@ema-agent/ui';
@@ -8,10 +8,10 @@ import { useSessionStore } from '../../stores/session.js';
 import {
   browserTab,
   terminalTab,
-  useSessionSidePanel,
+  useSessionPanelStore,
   type SessionSidePanelTab,
-} from '../state/chatWorkspace.js';
-import { AgentRunPanel } from './tabs/subagents/AgentRunPanel.js';
+} from '../../stores/sessionPanel.js';
+import { SubagentPanel } from './tabs/subagents/SubagentPanel.js';
 import { SessionAttachmentPreview } from './tabs/sources/SessionAttachmentPreview.js';
 import { SessionAttachmentsPanel } from './tabs/sources/SessionAttachmentsPanel.js';
 import { BrowserPanel } from './tabs/browser/BrowserPanel.js';
@@ -115,8 +115,8 @@ function TabBar({
   activeTabId?: string;
   onAdd(): void;
 }): JSX.Element {
-  const closeTab = useSessionSidePanel((state) => state.closeTab);
-  const activateTab = useSessionSidePanel((state) => state.activateTab);
+  const closeTab = useSessionPanelStore((state) => state.closeTab);
+  const activateTab = useSessionPanelStore((state) => state.activateTab);
 
   function close(tab: SessionSidePanelTab): void {
     if (tab.kind === 'terminal') void closeTerminalSession(tab.terminalId).catch(() => {});
@@ -127,10 +127,11 @@ function TabBar({
     <div className="shrink-0 border-b border-[var(--ema-border)] px-1.5 py-1">
       <div className="ema-tab-slot min-w-0 overflow-x-auto">
         {tabs.map((tab) => (
-          <div
+          <button
             key={tab.id}
+            type="button"
             data-selected={tab.id === activeTabId || undefined}
-            className="ema-slot-tab group flex min-w-28 max-w-56 shrink-0 cursor-pointer items-center gap-1 py-0.5 pl-2.5 pr-0.5 text-[var(--ema-text-secondary)]"
+            className="ema-slot-tab group flex min-w-28 max-w-56 shrink-0 cursor-pointer items-center gap-1 py-0.5 pl-2.5 pr-0.5 text-left text-[var(--ema-text-secondary)]"
             onClick={() => activateTab(sessionId, tab.id)}
           >
             <span className={`${tabIcon(tab)} shrink-0 text-sm`} aria-hidden />
@@ -139,6 +140,7 @@ function TabBar({
             </span>
             <IconButton
               size="sm"
+              variant="ghost"
               label={`关闭${baseLabel(tab)}`}
               icon="i-lucide:x"
               className="ema-slot-tab-close opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
@@ -147,9 +149,9 @@ function TabBar({
                 close(tab);
               }}
             />
-          </div>
+          </button>
         ))}
-        <IconButton size="sm" label="新建标签" icon="i-lucide:plus" onClick={onAdd} />
+        <IconButton size="sm" variant="ghost" label="新建标签" icon="i-lucide:plus" onClick={onAdd} />
       </div>
     </div>
   );
@@ -162,7 +164,7 @@ function Launcher({
   sessionId: string;
   onClose?: () => void;
 }): JSX.Element {
-  const openTab = useSessionSidePanel((state) => state.openTab);
+  const openTab = useSessionPanelStore((state) => state.openTab);
   const cwd = useSessionStore(state => state.sessions.byId.get(sessionId)?.cwd);
   const [openingTerminal, setOpeningTerminal] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -277,7 +279,7 @@ export function SessionSidePanel({
 }: {
   sessionId: string;
 }): JSX.Element {
-  const layout = useSessionSidePanel((state) => state.layouts[sessionId]);
+  const layout = useSessionPanelStore((state) => state.layouts[sessionId]);
   const [launcherOpen, setLauncherOpen] = useState(false);
   useEffect(() => setLauncherOpen(false), [sessionId]);
   const tabs = (layout?.tabOrder ?? [])
@@ -325,7 +327,7 @@ function TabContent({
   visible: boolean;
 }): JSX.Element {
   const openFiles = (): void => {
-    useSessionSidePanel.getState().openTab(sessionId, { id: 'files', kind: 'files' });
+    useSessionPanelStore.getState().openTab(sessionId, { id: 'files', kind: 'files' });
   };
 
   switch (tab.kind) {
@@ -353,7 +355,7 @@ function TabContent({
         />
       );
     case 'subagents':
-      return <AgentRunPanel sessionId={sessionId} className="p-2" />;
+      return <SubagentPanel sessionId={sessionId} className="p-2" initialDetailId={tab.subagentId} />;
     case 'terminal':
       return <TerminalPanel terminalId={tab.terminalId} />;
     case 'browser':

@@ -11,7 +11,7 @@ import {
   type SkillMarketDetailResult,
 } from '../../api/skills.js';
 import { showToast } from '../../lib/toast.js';
-import { Markdown } from '../../markdown/renderer.js';
+import { Markdown } from '@ema-agent/ui';
 
 type SourceFilter = 'all' | 'skillhub' | 'clawhub';
 type InstalledFilter = 'all' | 'installed' | 'installable';

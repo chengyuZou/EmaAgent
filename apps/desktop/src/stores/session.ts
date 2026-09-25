@@ -12,16 +12,7 @@ import {
   type ProjectSidebarMoveInput,
   type SessionSidebarMoveInput,
 } from '../api/workspaces.js';
-import { useBackgroundProcessStore } from './backgroundProcess.js';
-import { useAgentStore } from './agent.js';
-import {
-  useChatWorkspace,
-  useSessionSidePanel,
-} from '../chat/state/chatWorkspace.js';
-import { useHistoryStore } from '../chat/state/history.js';
-import { useLiveTurns } from '../chat/state/liveTurns.js';
-
-import type { ExecutionProfile, NarrativePolicy } from '@ema-agent/session';
+import type { SessionMode, NarrativePolicy, ReasoningEffort } from '@ema-agent/session';
 import type { PermissionMode } from '@ema-agent/permission';
 
 // ── 类型 ──────────────────────────────────────────────────────────────────────
@@ -47,19 +38,14 @@ export interface SessionStoreState {
   moveSessionInSidebar(id: string, input: SessionSidebarMoveInput): Promise<void>;
   moveProjectInSidebar(id: string, input: ProjectSidebarMoveInput): Promise<void>;
   setCwd(id: string, cwd: string):                                  Promise<void>;
-  setExecutionSettings(
-    id: string,
-    patch: {
-      executionProfile?: ExecutionProfile;
-      narrativePolicy?: NarrativePolicy;
-      permissionMode?: PermissionMode;
-    },
-  ): Promise<void>;
-  /** 保存该 Session 后续 Turn 的模型偏好；null 恢复默认解析。 */
-  setPreferredModel(
-    id: string,
-    model: SessionPatchInput['model'],
-  ): Promise<void>;
+  setSessionMode(id: string, sessionMode: SessionMode): Promise<void>;
+  setNarrativePolicy(id: string, narrativePolicy: NarrativePolicy): Promise<void>;
+  setPermissionMode(id: string, permissionMode: PermissionMode): Promise<void>;
+  setTtsEnabled(id: string, ttsEnabled: boolean): Promise<void>;
+  /** 模型身份成对保存; 不支持推理的模型在同一请求里把强度设为 off. */
+  setModel(id: string, providerId: string, modelId: string, reasoningEffort?: ReasoningEffort): Promise<void>;
+  setReasoningEffort(id: string, reasoningEffort: ReasoningEffort): Promise<void>;
+  waitForModelSettings(id: string): Promise<void>;
   forkSession(id: string, untilTurnId?: string):                   Promise<string>;
   archiveSession(id: string):                                     Promise<void>;
   unarchiveSession(id: string):                                   Promise<void>;
@@ -112,10 +98,9 @@ function replaceSession(
   return next;
 }
 
-// 同一 Session 的偏好写入按点击顺序落库，不能让较早的请求最后覆盖较新的选择。
-const preferredModelWriteChains = new Map<string, Promise<void>>();
-const preferredModelGenerations = new Map<string, number>();
-const executionSettingsWriteChains = new Map<string, Promise<void>>();
+// 同一 Session 的设置写入按点击顺序落库, 发送前的权限保存也要排在先前选择之后.
+const modelSettingsWriteChains = new Map<string, Promise<void>>();
+const sessionPreferencesWriteChains = new Map<string, Promise<void>>();
 let sessionListRequestId = 0;
 
 // ── Store ─────────────────────────────────────────────────────────────────────
@@ -237,129 +222,36 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
     }
   },
 
-  async setExecutionSettings(id, patch) {
-    if (!get().sessions.byId.has(id)) throw new Error(`Session not loaded: ${id}`);
-
-    const previousWrite = executionSettingsWriteChains.get(id) ?? Promise.resolve();
-    let currentWrite!: Promise<void>;
-    currentWrite = previousWrite
-      .catch(() => {})
-      .then(async () => {
-        const current = get().sessions.byId.get(id);
-        if (!current) throw new Error(`Session not loaded: ${id}`);
-        if (
-          (patch.executionProfile === undefined || patch.executionProfile === current.executionProfile)
-          && (patch.narrativePolicy === undefined || patch.narrativePolicy === current.narrativePolicy)
-          && (patch.permissionMode === undefined || patch.permissionMode === current.permissionMode)
-        ) return;
-
-        try {
-          const updated = await sessionsApi.patch(id, patch);
-          set((state) => {
-            const session = state.sessions.byId.get(id);
-            if (!session) return {};
-            return {
-              sessions: replaceSession(state.sessions, id, {
-                ...session,
-                executionProfile: updated.executionProfile,
-                narrativePolicy: updated.narrativePolicy,
-                permissionMode: updated.permissionMode,
-              }),
-              error: null,
-            };
-          });
-        } catch (error) {
-          let failure = error;
-          try {
-            const saved = await sessionsApi.get(id);
-            set((state) => {
-              const session = state.sessions.byId.get(id);
-              if (!session) return {};
-              return {
-                sessions: replaceSession(state.sessions, id, {
-                  ...session,
-                  executionProfile: saved.executionProfile,
-                  narrativePolicy: saved.narrativePolicy,
-                  permissionMode: saved.permissionMode,
-                }),
-              };
-            });
-          } catch {
-            failure = new Error('保存结果未确认，连接恢复后请重新打开会话核对设置');
-          }
-          set({ error: failure instanceof Error ? failure.message : '保存执行设置失败' });
-          throw failure;
-        }
-      })
-      .finally(() => {
-        if (executionSettingsWriteChains.get(id) === currentWrite) {
-          executionSettingsWriteChains.delete(id);
-        }
-      });
-    executionSettingsWriteChains.set(id, currentWrite);
-    return currentWrite;
+  setSessionMode(id, sessionMode) {
+    return writeSessionPreference(id, 'sessionMode', sessionMode);
   },
 
-  async setPreferredModel(id, model) {
-    const key = id;
-    const previous = get().sessions.byId.get(key);
-    if (!previous) throw new Error(`Session not loaded: ${key}`);
-    const generation = (preferredModelGenerations.get(key) ?? 0) + 1;
-    preferredModelGenerations.set(key, generation);
+  setNarrativePolicy(id, narrativePolicy) {
+    return writeSessionPreference(id, 'narrativePolicy', narrativePolicy);
+  },
 
-    const optimistic: SessionListItem = {
-      ...previous,
-      providerId: model?.providerId ?? null,
-      modelId: model?.modelId ?? null,
-    };
-    set((state) => ({
-      sessions: replaceSession(state.sessions, key, optimistic),
-      error: null,
-    }));
+  setPermissionMode(id, permissionMode) {
+    return writeSessionPreference(id, 'permissionMode', permissionMode);
+  },
 
-    const previousWrite = preferredModelWriteChains.get(key) ?? Promise.resolve();
-    let currentWrite!: Promise<void>;
-    currentWrite = previousWrite
-      .catch(() => {})
-      .then(async () => {
-        const updated = await sessionsApi.patch(id, { model });
-        if (preferredModelGenerations.get(key) !== generation) return;
-        set((state) => {
-          const current = state.sessions.byId.get(key);
-          if (!current) return {};
-          return {
-            sessions: replaceSession(state.sessions, key, {
-              ...current,
-              providerId: updated.providerId,
-              modelId: updated.modelId,
-            }),
-          };
-        });
-      })
-      .catch((error: unknown) => {
-        // 已有更新选择时，旧请求失败不能回滚或向当前 UI 报错。
-        if (preferredModelGenerations.get(key) !== generation) return;
-        set((state) => {
-          const current = state.sessions.byId.get(key);
-          if (!current) return {};
-          return {
-            sessions: replaceSession(state.sessions, key, {
-              ...current,
-              providerId: previous.providerId,
-              modelId: previous.modelId,
-            }),
-            error: error instanceof Error ? error.message : '保存 Session 模型失败',
-          };
-        });
-        throw error;
-      })
-      .finally(() => {
-        if (preferredModelWriteChains.get(key) === currentWrite) {
-          preferredModelWriteChains.delete(key);
-        }
-      });
-    preferredModelWriteChains.set(key, currentWrite);
-    return currentWrite;
+  setTtsEnabled(id, ttsEnabled) {
+    return writeSessionPreference(id, 'ttsEnabled', ttsEnabled);
+  },
+
+  setModel(id, providerId, modelId, reasoningEffort) {
+    return writeModelSettings(id, {
+      providerId,
+      modelId,
+      ...(reasoningEffort !== undefined ? { reasoningEffort } : {}),
+    });
+  },
+
+  setReasoningEffort(id, reasoningEffort) {
+    return writeModelSettings(id, { reasoningEffort });
+  },
+
+  waitForModelSettings(id) {
+    return modelSettingsWriteChains.get(id) ?? Promise.resolve();
   },
 
   async forkSession(id, untilTurnId) {
@@ -376,10 +268,6 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
   async archiveSession(id) {
     try {
       await sessionsApi.archive(id);
-      useAgentStore.getState().disconnectSession(id);
-      useHistoryStore.getState().evictSession(id);
-      useLiveTurns.getState().evictSession(id);
-      useChatWorkspace.getState().evictSession(id);
       await get().loadSessions();
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : '归档会话失败' });
@@ -400,16 +288,8 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
   async deleteSession(id) {
     try {
       await sessionsApi.delete(id);
-      useAgentStore.getState().disconnectSession(id);
-      useHistoryStore.getState().evictSession(id);
-      useLiveTurns.getState().evictSession(id);
-      useChatWorkspace.getState().evictSession(id);
-      useSessionSidePanel.getState().removeSessionLayout(id);
-      // Session 永久删除后,进程面板缓存与跟随循环一并清理,不显示其他 Session 的进程。
-      useBackgroundProcessStore.getState().clearSession(id);
-      preferredModelWriteChains.delete(id);
-      preferredModelGenerations.delete(id);
-      executionSettingsWriteChains.delete(id);
+      modelSettingsWriteChains.delete(id);
+      sessionPreferencesWriteChains.delete(id);
       await get().loadSessions();
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : '删除会话失败' });
@@ -417,3 +297,106 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
     }
   },
 }));
+
+type SessionPreferenceField = 'sessionMode' | 'narrativePolicy' | 'permissionMode' | 'ttsEnabled';
+
+/** 一个选择只保存自己的字段; 后一个选择等前一个落库后再判断是否需要写入. */
+function writeSessionPreference<K extends SessionPreferenceField>(
+  id: string,
+  field: K,
+  value: SessionListItem[K],
+): Promise<void> {
+  if (!useSessionStore.getState().sessions.byId.has(id)) {
+    return Promise.reject(new Error(`Session not loaded: ${id}`));
+  }
+
+  const previousWrite = sessionPreferencesWriteChains.get(id) ?? Promise.resolve();
+  let currentWrite!: Promise<void>;
+  currentWrite = previousWrite.catch(() => {}).then(async () => {
+    const current = useSessionStore.getState().sessions.byId.get(id);
+    if (!current) throw new Error(`Session not loaded: ${id}`);
+    if (current[field] === value) return;
+
+    try {
+      const updated = await sessionsApi.patch(id, { [field]: value });
+      useSessionStore.setState((state) => {
+        const session = state.sessions.byId.get(id);
+        if (!session) return {};
+        return {
+          sessions: replaceSession(state.sessions, id, {
+            ...session,
+            [field]: updated[field],
+          }),
+          error: null,
+        };
+      });
+    } catch (error) {
+      let failure = error;
+      try {
+        const saved = await sessionsApi.get(id);
+        useSessionStore.setState((state) => {
+          const session = state.sessions.byId.get(id);
+          if (!session) return {};
+          return {
+            sessions: replaceSession(state.sessions, id, {
+              ...session,
+              [field]: saved[field],
+            }),
+          };
+        });
+      } catch {
+        failure = new Error('保存结果未确认, 连接恢复后请重新打开会话核对设置');
+      }
+      useSessionStore.setState({
+        error: failure instanceof Error ? failure.message : '保存会话设置失败',
+      });
+      throw failure;
+    }
+  }).finally(() => {
+    if (sessionPreferencesWriteChains.get(id) === currentWrite) {
+      sessionPreferencesWriteChains.delete(id);
+    }
+  });
+  sessionPreferencesWriteChains.set(id, currentWrite);
+  return currentWrite;
+}
+
+/** 同一 Session 的模型与强度写入排队, 后一个选择只在前一个保存完后才提交. */
+function writeModelSettings(
+  id: string,
+  patch: Pick<SessionPatchInput, 'providerId' | 'modelId' | 'reasoningEffort'>,
+): Promise<void> {
+  if (!useSessionStore.getState().sessions.byId.has(id)) {
+    return Promise.reject(new Error(`Session not loaded: ${id}`));
+  }
+  const previous = modelSettingsWriteChains.get(id) ?? Promise.resolve();
+  let current!: Promise<void>;
+  current = previous.catch(() => {}).then(async () => {
+    const saved = await sessionsApi.patch(id, patch);
+    // 较早发出的侧栏读取可能仍在路上; 它不能把刚保存的模型写回旧值.
+    sessionListRequestId += 1;
+    useSessionStore.setState((state) => {
+      const session = state.sessions.byId.get(id);
+      if (!session) return {};
+      return {
+        sessions: replaceSession(state.sessions, id, {
+          ...session,
+          providerId: saved.providerId,
+          modelId: saved.modelId,
+          reasoningEffort: saved.reasoningEffort,
+        }),
+        loading: false,
+        error: null,
+      };
+    });
+  }).catch((error: unknown) => {
+    useSessionStore.setState({
+      error: error instanceof Error ? error.message : '保存模型设置失败',
+    });
+    throw error;
+  }).finally(() => {
+    if (modelSettingsWriteChains.get(id) === current) modelSettingsWriteChains.delete(id);
+  });
+  modelSettingsWriteChains.set(id, current);
+  return current;
+}

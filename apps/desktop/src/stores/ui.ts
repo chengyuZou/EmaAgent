@@ -1,5 +1,5 @@
 /**
- * UI store — cross-window UI state (theme / dock / TTS toggle / sub-window sync).
+ * UI store — cross-window UI state (theme / dock / sub-window sync).
  */
 import { create } from 'zustand';
 import { tauriBridge, type SubWindowName } from '../lib/tauri-bridge.js';
@@ -10,11 +10,9 @@ export interface UiStoreState {
   openSubWindows:        Set<SubWindowName>;
   theme:                 'dark' | 'light' | 'system';
   dockVisible:           boolean;
-  ttsEnabled:            boolean;
 
   setTheme(theme: 'dark' | 'light' | 'system'): void;
   setDockVisible(value: boolean): void;
-  setTtsEnabled(value: boolean): void;
 
   notifySubWindowOpened(name: SubWindowName): Promise<void>;
   notifySubWindowClosed(name: SubWindowName): Promise<void>;
@@ -27,7 +25,6 @@ export const useUiStore = create<UiStoreState>((set, get) => ({
   openSubWindows:        new Set(),
   theme:                 'dark',
   dockVisible:           false,
-  ttsEnabled:            false,
 
   setTheme(theme) {
     set({ theme });
@@ -35,10 +32,6 @@ export const useUiStore = create<UiStoreState>((set, get) => ({
 
   setDockVisible(value) {
     set({ dockVisible: value });
-  },
-
-  setTtsEnabled(value) {
-    set({ ttsEnabled: value });
   },
 
   async notifySubWindowOpened(name) {

@@ -11,9 +11,7 @@
  * 入场 ema-fade-in(style.css)。ScrollArea 包裹(@ema-agent/ui)。
  */
 import { useEffect, useState, type JSX } from 'react';
-import { IconButton, ScrollArea, Spinner } from '@ema-agent/ui';
-import { Markdown } from '../../../../markdown/renderer.js';
-import { highlightFile } from '../../../../markdown/syntaxHighlight.js';
+import { IconButton, Markdown, ScrollArea, Spinner, highlightFile } from '@ema-agent/ui';
 import { filesApi, type FileContent } from '../../../../api/workspaces.js';
 
 function fmtSize(bytes: number): string {
@@ -47,7 +45,7 @@ export function FilePreview({ path, onBack }: { path: string; onBack: () => void
       <div className="flex items-center gap-2 px-2 py-1.5 border-b shrink-0 border-[var(--ema-border)]">
         <IconButton
           size="sm"
-          className="chat-icon-btn"
+          className="ema-chat-icon-btn"
           label="返回文件列表"
           icon="i-lucide:arrow-left"
           onClick={onBack}

@@ -1,18 +1,9 @@
 /* ── EmaAgent global styles entry ──────────────────────────────────────────
- * 唯一入口,顺序即规矩:地基 → 原语 → 业务域 → 第三方。
- * 分层定义与新样式落位规则见 styles/README.md;禁止旁路 import。
+ * 唯一入口,顺序即规矩:设计系统层 → 业务域 → 第三方.
+ * 设计系统层(foundation + primitives)住在 src/ui/styles(ui 包自携带, Ladle 同源);
+ * 分层定义与新样式落位规则见 styles/README.md;禁止旁路 import.
  */
-@import './foundation/tokens.css';
-@import './foundation/base.css';
-@import './foundation/keyframes.css';
-@import './foundation/animations.css';
-@import './foundation/transitions.css';
-
-@import './primitives/glass.css';
-@import './primitives/radix.css';
-@import './primitives/decorations.css';
-@import './primitives/selectable.css';
-@import './primitives/markdown.css';
+@import '../../../../src/ui/styles/index.css';
 
 @import './domains/appearance.css';
 @import './domains/storage.css';

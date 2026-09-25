@@ -9,6 +9,13 @@ import { useMcpStore } from '../stores/mcp.js';
 import { useProviderStore } from '../stores/provider.js';
 import { useSettingsStore } from '../stores/settings.js';
 import { useSkillStore } from '../stores/skill.js';
+import { subscribeSystemEvent } from '../lib/system-event-dispatcher.js';
+import { handleCharacterSystemEvent } from '../stores/character.js';
+import { handleKnowledgeSystemEvent } from '../stores/knowledge.js';
+import { handleMcpSystemEvent } from '../stores/mcp.js';
+import { handleProviderSystemEvent } from '../stores/provider.js';
+import { handleSettingsSystemEvent } from '../stores/settings.js';
+import { handleSkillSystemEvent } from '../stores/skill.js';
 import { useThemeSync } from '../stores/theme.js';
 import { CharactersTab } from './character/CharactersTab.js';
 import { StorageTab } from './data/StorageTab.js';
@@ -116,6 +123,14 @@ export function SettingsPanel(): JSX.Element {
   const activePage = pageOf(active);
 
   useEffect(() => mountSystemEvents({ ownsConnection: false }), []);
+  useEffect(() => subscribeSystemEvent(event => {
+    handleCharacterSystemEvent(event);
+    handleKnowledgeSystemEvent(event);
+    handleMcpSystemEvent(event);
+    handleProviderSystemEvent(event);
+    handleSettingsSystemEvent(event);
+    handleSkillSystemEvent(event);
+  }), []);
   useEffect(() => {
     void useProviderStore.getState().loadAll();
     void useSettingsStore.getState().refreshDesktopSettings().catch(() => {});
@@ -133,7 +148,7 @@ export function SettingsPanel(): JSX.Element {
   return (
     <ErrorBoundary>
       <div className="fixed inset-0 flex bg-[var(--ema-bg)] text-[var(--ema-text-primary)]">
-        <nav className="hidden w-56 flex-none flex-col overflow-y-auto border-r border-[var(--ema-border)] px-2 py-4 md:flex" aria-label="设置导航">
+        <nav className="hidden w-56 flex-none flex-col overflow-y-auto border-r border-[var(--ema-border)] bg-[var(--ema-sidebar-bg)] px-2 py-4 md:flex" aria-label="设置导航">
           <p className="px-3 pb-4 text-base font-semibold">设置</p>
           {SETTINGS_PAGES.map(page => {
             const pageActive = activePage.id === page.id;

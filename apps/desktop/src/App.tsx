@@ -20,6 +20,10 @@ import { charactersApi } from './api/characters.js';
 import { useWindowSuspension } from './hooks/use-window-suspension.js';
 import { tauriBridge } from './lib/tauri-bridge.js';
 import { subscribeSystemEvent } from './lib/system-event-dispatcher.js';
+import { resolveConfiguredEventNotification } from './lib/event-notifications.js';
+import { showToast } from './lib/toast.js';
+import { handleCharacterSystemEvent } from './stores/character.js';
+import { handleSettingsSystemEvent, useSettingsStore } from './stores/settings.js';
 
 // ── 主窗口 ──────────────────────────────────────────────────────────────────
 //
@@ -60,6 +64,21 @@ export function App(): React.JSX.Element {
   }, [serverStatus.kind]);
 
   useEffect(() => subscribeSystemEvent((event) => {
+    handleCharacterSystemEvent(event);
+    handleSettingsSystemEvent(event);
+
+    // 只有持有 System SSE 的主窗口展示 AppEvent 通知. Chat 和
+    // Settings 仍接收同一广播更新页面, 但不会重复弹 Toast.
+    const config = useSettingsStore.getState().eventDisplay?.[event.type];
+    const notification = resolveConfiguredEventNotification(event, config);
+    if (notification) {
+      showToast(notification.message, {
+        variant: notification.variant,
+        duration: notification.duration,
+        accentColor: notification.accentColor,
+      });
+    }
+
     if (
       event.type === 'character_presentation_changed'
       && event.characterName === useCharacterStore.getState().activeName

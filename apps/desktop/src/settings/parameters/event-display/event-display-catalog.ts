@@ -23,7 +23,7 @@ export const EVENT_DISPLAY_GROUPS: EventDisplayGroup[] = [
 
 const EVENT_LABELS: Record<string, string> = {
   tool_call_complete: '工具准备执行',
-  tool_result: '工具执行结果',
+  tool_result: '工具执行失败',
   permission_required: '等待权限确认',
   permission_resolved: '权限确认完成',
   compact_started: '上下文压缩开始',
@@ -36,10 +36,10 @@ const EVENT_LABELS: Record<string, string> = {
   kb_reembed_cancelled: '知识库重嵌入取消',
   kb_reembed_failed: '知识库重嵌入失败',
   agent_iteration: 'Agent 迭代进度',
-  agent_run_started: '子 Agent 开始',
-  agent_run_completed: '子 Agent 完成',
-  agent_run_failed: '子 Agent 失败',
-  agent_run_aborted: '子 Agent 中止',
+  subagent_started: '子 Agent 开始',
+  subagent_completed: '子 Agent 完成',
+  subagent_failed: '子 Agent 失败',
+  subagent_aborted: '子 Agent 中止',
   character_switched: '角色切换',
   background_process_changed: '后台进程状态变化',
   system_warning: '系统告警',

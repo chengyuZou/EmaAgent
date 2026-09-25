@@ -1,23 +1,31 @@
-/* 桌宠主窗口边缘的呼吸光，不参与鼠标命中。 */
+/* 桌宠主窗口边缘呼吸光(App.tsx GlowBorder), 不参与鼠标命中。
+   辉光放 ::before 常跑呼吸, 元素只管 hover 透明度: 否则 animation 首帧压过
+   transition, 入场从 0 硬跳到 0.35。 */
 
 .ema-pet-glow-border {
   position: fixed;
   inset: 0;
-  border-radius: 16px;
+  border-radius: var(--ema-radius-panel);
   pointer-events: none;
   z-index: 1;
+  opacity: 0;
+  transition: opacity var(--ema-duration-base) var(--ema-ease);
+}
+
+.ema-pet-glow-border::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
   box-shadow:
     inset 0 0 12px 1px var(--ema-pet-glow),
     inset 0 0 28px 4px color-mix(in srgb, var(--ema-pet-glow) 33%, transparent),
     0 0 24px 2px var(--ema-pet-glow-bright);
-  opacity: 0;
-  transition: opacity var(--ema-duration-base) var(--ema-ease);
-  animation: none;
+  animation: ema-breathe 2.6s ease-in-out infinite;
 }
 
 body:hover .ema-pet-glow-border {
   opacity: 1;
-  animation: ema-breathe 2.6s ease-in-out infinite;
 }
 
 .ema-server-status {
@@ -31,7 +39,7 @@ body:hover .ema-pet-glow-border {
   place-items: center;
   padding: 0;
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--ema-radius-pill);
   background: transparent;
   opacity: 0;
   pointer-events: none;
@@ -44,10 +52,17 @@ body:hover .ema-server-status {
   pointer-events: auto;
 }
 
+/* 平时不可见但可被键盘聚焦: focus 时强制可见并给焦点环。 */
+.ema-server-status:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+  box-shadow: var(--ema-shadow-focus);
+}
+
 .ema-server-status-dot {
   width: 10px;
   height: 10px;
-  border-radius: 999px;
+  border-radius: var(--ema-radius-pill);
   background: var(--ema-text-tertiary);
   box-shadow: 0 0 8px color-mix(in srgb, var(--ema-text-tertiary) 70%, transparent);
 }

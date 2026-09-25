@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type JSX } from 'react';
 
 import { tauriBridge, type BrowserBounds } from '../../../../lib/tauri-bridge.js';
-import { useSessionSidePanel } from '../../../state/chatWorkspace.js';
+import { useSessionPanelStore } from '../../../../stores/sessionPanel.js';
 
 export interface BrowserPanelProps {
   readonly sessionId: string;
@@ -28,7 +28,7 @@ export function BrowserPanel({
   const [ready, setReady] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const updateTab = useSessionSidePanel((state) => state.updateBrowserTab);
+  const updateTab = useSessionPanelStore((state) => state.updateBrowserTab);
 
   const showError = useCallback((cause: unknown, message: string): void => {
     setError(cause instanceof Error ? cause.message : message);

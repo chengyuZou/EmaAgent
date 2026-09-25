@@ -7,17 +7,17 @@ import {
 } from 'react-resizable-panels';
 import { useServerStore } from '../../stores/server.js';
 import { ChatInput } from '../input/ChatInput.js';
-import { SessionHistory } from '../history/SessionHistory.js';
-import { ChatActivityStrip } from '../messages/toolBlocks/ChatActivityStrip.js';
+import { MessageList } from '../messages/MessageList.js';
 import { SessionHeader } from './SessionHeader.js';
 import { SessionSidePanel } from '../sidePanel/SessionSidePanel.js';
-import { useSessionSidePanel } from '../state/chatWorkspace.js';
+import { useSessionPanelStore } from '../../stores/sessionPanel.js';
+import { submitChatDraft } from '../input/submitChatDraft.js';
 
 export function SessionPage({ sessionId }: { sessionId: string }): JSX.Element {
   const serverStatus = useServerStore(state => state.status);
-  const layout = useSessionSidePanel((state) => state.layouts[sessionId]);
-  const rightPanelPercent = useSessionSidePanel((state) => state.rightPanelPercent);
-  const setRightPanelPercent = useSessionSidePanel((state) => state.setRightPanelPercent);
+  const layout = useSessionPanelStore((state) => state.layouts[sessionId]);
+  const rightPanelPercent = useSessionPanelStore((state) => state.rightPanelPercent);
+  const setRightPanelPercent = useSessionPanelStore((state) => state.setRightPanelPercent);
   const workspacePanelRef = useRef<PanelImperativeHandle | null>(null);
   const panelOpen = layout?.open ?? false;
 
@@ -56,12 +56,16 @@ export function SessionPage({ sessionId }: { sessionId: string }): JSX.Element {
           id="chat"
           minSize="30%"
           defaultSize={`${100 - rightPanelPercent}%`}
-          className="flex min-w-0 flex-col"
+          className="relative flex min-w-0 flex-col overflow-hidden"
+          data-ema-chat-column
         >
-          <SessionHistory sessionId={sessionId} />
-          <ChatActivityStrip />
-          <ChatInput />
-          <StatusBar sessionId={sessionId} />
+          <MessageList sessionId={sessionId} />
+          <div className="relative z-20 shrink-0">
+            <ChatInput onSubmit={(submitted) => (
+              submitChatDraft(sessionId, submitted)
+            )} />
+            <StatusBar sessionId={sessionId} />
+          </div>
         </Panel>
 
         <Separator

@@ -1,7 +1,7 @@
-// 将前端草稿中的图片和长粘贴落盘，按原顺序交给 Turn 输入。
+// 发送前将图片与长粘贴落盘, 再按输入区可见的顺序生成 Turn 输入.
 import type { TurnInputPart } from '@ema-agent/turn';
 import { sessionsApi } from '../../api/sessions.js';
-import type { ChatDraftPart } from './InputReferences.js';
+import type { ChatDraft } from '../../stores/chatDraft.js';
 
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -15,14 +15,17 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
-export async function finalizeDraft(sessionId: string, parts: readonly ChatDraftPart[]): Promise<TurnInputPart[]> {
+export async function finalizeDraft(sessionId: string, draft: ChatDraft): Promise<TurnInputPart[]> {
   const output: TurnInputPart[] = [];
-  for (const part of parts) {
-    if (part.type === 'text' || part.type === 'skill_reference') {
-      output.push(part);
+  // Textarea 与胶囊已是两份状态. 后端按数组顺序保存和展示, 所以文字固定在前,
+  // 其余项只按胶囊加入顺序处理; 不再猜用户改字后隐藏引用该落在哪个 offset.
+  if (draft.text.trim()) output.push({ type: 'text', text: draft.text });
+  for (const part of draft.references) {
+    if (part.type === 'skill_reference') {
+      output.push({ type: 'skill_reference', name: part.name, path: part.path });
       continue;
     }
-    if (part.type === 'file') {
+    if (part.type === 'file_reference') {
       output.push({
         type: 'attachment',
         block: { type: 'file_reference', path: part.path },
@@ -48,7 +51,7 @@ export async function finalizeDraft(sessionId: string, parts: readonly ChatDraft
           ...(name ? { name } : {}),
         })
       : await sessionsApi.uploadImage(sessionId, {
-          sourcePath: part.sourcePath!,
+          sourcePath: part.sourcePath,
           ...(name ? { name } : {}),
         });
     output.push({

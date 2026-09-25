@@ -1,13 +1,11 @@
-// 通用回退渲染：未注册专属 UI 的工具（MCP/未知）把参数平铺为 key-value 行、
-// 结果按形状分派为文本/平铺/JSON。不识别任何具体工具的字段语义。
-// 纯展示层，纯函数，可 mock。
+// 未注册专属 UI 的工具只按结果形状选择 Markdown、字段表或 JSON, 不猜具体工具的字段语义.
 
 // ── 参数视图 ──────────────────────────────────────────────────────────────────
 
 export interface ToolArgRow {
-  key:   string;
+  key: string;
   value: string;
-  /** 等宽显示（路径/命令/pattern 等） */
+  /** 对象、数组、数字和布尔值按代码值显示, 普通说明文字继续使用内容字体. */
   mono?: boolean;
 }
 
@@ -15,7 +13,7 @@ export interface ToolArgView {
   rows: ToolArgRow[];
 }
 
-/** MCP/未知工具的兜底：平铺所有顶层字段，不理解字段含义。 */
+/** MCP/未知工具的兜底: 平铺所有顶层字段, 不理解字段含义. */
 export function renderToolArgs(args: unknown): ToolArgView {
   const a = (args ?? {}) as Record<string, unknown>;
   const str = (v: unknown): string => (typeof v === 'string' ? v : v == null ? '' : JSON.stringify(v));
@@ -31,27 +29,28 @@ export function renderToolArgs(args: unknown): ToolArgView {
 // ── 结果视图 ──────────────────────────────────────────────────────────────────
 
 export type ToolResultView =
-  | { kind: 'text'; text: string; lang?: 'plain' | 'json' }
+  | { kind: 'markdown'; source: string }
   | { kind: 'rows'; rows: ToolArgRow[] }
-  | { kind: 'raw';  text: string; lang: 'json' };
+  | { kind: 'code'; source: string; language: 'json' };
 
 /**
- * 按结果类型分派展示：字符串 → text；扁平对象 → rows 平铺；深嵌套/数组 → raw（调用方剥外层 {}）。
+ * 字符串可能来自 MCP 的 Markdown 结果, 完整交给公共 Markdown renderer.
+ * 扁平对象适合快速扫字段; 数组和嵌套对象保留完整 JSON 结构并用公共 hljs 主题显示.
  */
 export function renderToolResult(result: unknown): ToolResultView {
-  if (result == null) return { kind: 'text', text: '' };
+  if (result == null) return { kind: 'markdown', source: '' };
 
   if (typeof result === 'string') {
     const trimmed = result.trimStart();
     if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
-      // 字符串里裹着 JSON — 尝试解析后走对象/数组分支，失败则原样
+      // 字符串里包着 JSON 时按真实结构显示; 解析失败仍按原始 Markdown 显示.
       try {
         return renderObjectResult(JSON.parse(result));
       } catch {
-        return { kind: 'text', text: result };
+        return { kind: 'markdown', source: result };
       }
     }
-    return { kind: 'text', text: result };
+    return { kind: 'markdown', source: result };
   }
 
   return renderObjectResult(result);
@@ -59,11 +58,11 @@ export function renderToolResult(result: unknown): ToolResultView {
 
 function renderObjectResult(result: unknown): ToolResultView {
   if (Array.isArray(result)) {
-    return { kind: 'raw', text: JSON.stringify(result, null, 2), lang: 'json' };
+    return { kind: 'code', source: JSON.stringify(result, null, 2), language: 'json' };
   }
   if (typeof result === 'object' && result !== null) {
     const entries = Object.entries(result as Record<string, unknown>);
-    // 扁平对象（值全是基本类型）→ 平铺 rows
+    // 扁平对象直接平铺, 避免两三个状态字段占用一整块代码区域.
     const flat = entries.every(([, v]) => v == null || typeof v !== 'object');
     if (flat && entries.length > 0) {
       const str = (v: unknown): string => (typeof v === 'string' ? v : v == null ? '' : JSON.stringify(v));
@@ -74,16 +73,7 @@ function renderObjectResult(result: unknown): ToolResultView {
           .map(([k, v]) => ({ key: k, value: str(v), mono: typeof v !== 'string' })),
       };
     }
-    return { kind: 'raw', text: JSON.stringify(result, null, 2), lang: 'json' };
+    return { kind: 'code', source: JSON.stringify(result, null, 2), language: 'json' };
   }
-  return { kind: 'text', text: String(result) };
-}
-
-/** 剥掉 JSON 最外层花括号/方括号，给 raw 视图用（保留内部高亮）。 */
-export function stripOuterBraces(code: string): string {
-  return code
-    .replace(/^\{\n?/, '')
-    .replace(/\n?\}$/, '')
-    .replace(/^\[\n?/, '')
-    .replace(/\n?\]$/, '');
+  return { kind: 'markdown', source: String(result) };
 }

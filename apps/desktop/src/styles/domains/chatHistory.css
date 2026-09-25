@@ -76,17 +76,19 @@
 .ema-message-chip,
 .ema-message-mode {
   border: 1px solid var(--ema-border);
-  border-radius: 4px;
+  border-radius: var(--ema-radius-xs);
   background: transparent;
   box-shadow: none;
 }
 
-.chat-icon-btn.chat-message-action {
+.ema-chat-icon-btn.chat-message-action {
   width: 24px;
-  height: 22px;
-  border-radius: 5px;
+  height: 24px;
+  border-radius: var(--ema-radius-sm);
   opacity: 0;
   pointer-events: none;
+  transition: opacity var(--ema-duration-fast) var(--ema-ease),
+              background-color var(--ema-duration-fast) var(--ema-ease);
 }
 
 .ema-message-shell:hover .chat-message-action,
@@ -96,30 +98,41 @@
   pointer-events: auto;
 }
 
+/* 思考永远可见但弱两档(图鉴结论): 无底盒无粗轨, 与工具行同 24px 行高,
+   图标落同一 16px 槽位, 展开内容与工具展开体共用 12+12 竖轨语汇。 */
 .ema-thinking-block {
   min-width: 0;
-  border-left: 2px solid var(--ema-border-strong);
-  background: color-mix(in srgb, var(--ema-surface-2) 58%, transparent);
 }
 
 .ema-thinking-summary {
   display: flex;
   width: 100%;
-  min-height: 28px;
+  height: 24px;
   cursor: pointer;
   align-items: center;
   gap: var(--ema-space-2);
-  padding: var(--ema-space-1) var(--ema-space-2);
+  padding: 0 var(--ema-space-1);
   border: 0;
+  border-radius: var(--ema-radius-sm);
   background: transparent;
   text-align: left;
   color: var(--ema-text-tertiary);
   font-size: 12px;
   user-select: none;
+  transition: background-color var(--ema-duration-fast) var(--ema-ease),
+              color var(--ema-duration-fast) var(--ema-ease);
+}
+
+/* 与 .ema-tool-row-leading 同一 16px 槽位, 左轴线对齐。 */
+.ema-thinking-summary > span:first-child {
+  width: 16px;
+  flex: none;
+  display: inline-flex;
+  justify-content: center;
 }
 
 .ema-thinking-summary:hover {
-  background: color-mix(in srgb, var(--ema-surface-3) 62%, transparent);
+  background: var(--ema-surface-2);
   color: var(--ema-text-secondary);
 }
 
@@ -139,7 +152,10 @@
 
 .ema-thinking-content {
   min-width: 0;
-  padding: var(--ema-space-1) var(--ema-space-2) var(--ema-space-2) var(--ema-space-6);
-  color: var(--ema-text-secondary);
+  margin-left: var(--ema-space-3);
+  padding: var(--ema-space-0_5) 0 var(--ema-space-1) var(--ema-space-3);
+  border-left: 1px solid var(--ema-border);
+  color: var(--ema-text-tertiary);
   font-size: 12px;
+  font-style: italic;
 }

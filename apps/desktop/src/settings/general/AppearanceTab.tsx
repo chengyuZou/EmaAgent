@@ -1,11 +1,13 @@
-// 展示并保存主题颜色、圆角、Markdown 字体和明暗模式。
-import { useEffect, useState, type JSX, type ChangeEvent } from 'react';
+// 展示并保存主题颜色、圆角、Markdown 字体、等宽字体和明暗模式。
+import { useEffect, useMemo, useState, type JSX, type ChangeEvent } from 'react';
 import { Button, Input, Select, Slider, type SliderStep } from '@ema-agent/ui';
-import { useThemeStore } from '../../stores/theme.js';
+import { useThemeStore, isFontInstalled } from '../../stores/theme.js';
 import type { ThemeSettings } from '@ema-agent/server/composition/settings/themeSetting.js';
 
 type ThemeMode = ThemeSettings['mode'];
 type ContentFontPreset = ThemeSettings['contentFontPreset'];
+type MonoFontPreset = ThemeSettings['monoFontPreset'];
+type SyntaxThemePreset = ThemeSettings['syntaxThemePreset'];
 
 // ── Hue presets ───────────────────────────────────────────────────────────────
 
@@ -44,6 +46,30 @@ const CONTENT_FONT_OPTIONS: Array<{ value: ContentFontPreset; label: string }> =
   { value: 'custom', label: '自定义本地字体' },
 ];
 
+const MONO_FONT_OPTIONS: Array<{ value: MonoFontPreset; label: string }> = [
+  { value: 'cascadia', label: 'Cascadia Code（默认）' },
+  { value: 'jetbrains', label: 'JetBrains Mono' },
+  { value: 'consolas', label: 'Consolas' },
+  { value: 'system', label: '跟随系统等宽' },
+  { value: 'custom', label: '自定义本地字体' },
+];
+
+/* 预设对应的可检测字体族名; system/custom 无固定目标, 不检测。 */
+const MONO_PRESET_FAMILY: Record<MonoFontPreset, string | null> = {
+  cascadia: 'Cascadia Code',
+  jetbrains: 'JetBrains Mono',
+  consolas: 'Consolas',
+  system: null,
+  custom: null,
+};
+
+const SYNTAX_THEME_OPTIONS: Array<{ value: SyntaxThemePreset; label: string }> = [
+  { value: 'auto', label: '跟随主题（深色 Tokyo Night / 浅色 GitHub）' },
+  { value: 'github', label: 'GitHub' },
+  { value: 'tokyonight', label: 'Tokyo Night' },
+  { value: 'mono', label: '单色护眼' },
+];
+
 // ── Hue spectrum slider ───────────────────────────────────────────────────────
 //
 // Native <input type="range"> with a gradient track showing the full hue wheel.
@@ -73,15 +99,27 @@ export function AppearanceTab(): JSX.Element {
     mode,
     contentFontPreset,
     contentFontFamily,
+    monoFontPreset,
+    monoFontFamily,
+    syntaxThemePreset,
     ready,
     init,
     setHue,
     setRadius,
     setMode,
     setContentFont,
+    setMonoFont,
+    setSyntaxTheme,
   } = useThemeStore();
   const [shaking, setShaking] = useState<ThemeMode | null>(null);
   const [customFontDraft, setCustomFontDraft] = useState(contentFontFamily);
+  const [customMonoDraft, setCustomMonoDraft] = useState(monoFontFamily);
+
+  const monoFamilyToProbe = MONO_PRESET_FAMILY[monoFontPreset];
+  const monoMissing = useMemo(
+    () => (monoFamilyToProbe !== null && !isFontInstalled(monoFamilyToProbe)),
+    [monoFamilyToProbe],
+  );
 
   // 点当前已激活的主题按钮 -> shake 反馈(不 disabled,用户要知道点了)
   function handleModeClick(target: ThemeMode): void {
@@ -101,8 +139,16 @@ export function AppearanceTab(): JSX.Element {
     setCustomFontDraft(contentFontFamily);
   }, [contentFontFamily]);
 
+  useEffect(() => {
+    setCustomMonoDraft(monoFontFamily);
+  }, [monoFontFamily]);
+
   function saveCustomFont(): void {
     void setContentFont('custom', customFontDraft);
+  }
+
+  function saveCustomMonoFont(): void {
+    void setMonoFont('custom', customMonoDraft);
   }
 
   return (
@@ -209,6 +255,86 @@ export function AppearanceTab(): JSX.Element {
 
         <div className="markdown-content rounded-lg border border-[var(--ema-border)] bg-[var(--ema-surface-1)] px-4 py-3 text-sm text-[var(--ema-text-primary)]">
           Ema 会用这种字体显示 Markdown 正文。The quick brown fox jumps over the lazy dog.
+        </div>
+      </section>
+
+      <div className="border-t border-[var(--ema-border)]" />
+
+      {/* 等宽字体只管代码/JSON/终端/工具行, 不影响界面控件与正文。 */}
+      <section className="space-y-4">
+        <div>
+          <p className="text-sm font-medium text-[var(--ema-text-secondary)]">等宽字体</p>
+          <p className="text-xs mt-0.5 text-[var(--ema-text-tertiary)]">
+            代码块、工具参数和终端使用的字体，界面其余部分不受影响
+          </p>
+        </div>
+
+        <Select
+          value={monoFontPreset}
+          onChange={(value) => void setMonoFont(value as MonoFontPreset, customMonoDraft)}
+          options={MONO_FONT_OPTIONS}
+        />
+
+        {monoMissing && (
+          <p className="text-xs text-[var(--ema-warning-text)]">
+            检测到本机未安装 {monoFamilyToProbe}，实际会回落到系统等宽字体
+          </p>
+        )}
+
+        {monoFontPreset === 'custom' && (
+          <div className="space-y-1.5">
+            <Input
+              value={customMonoDraft}
+              maxLength={80}
+              placeholder="输入已安装的等宽字体名称，如 Maple Mono"
+              onChange={(event) => setCustomMonoDraft(event.target.value)}
+              onBlur={saveCustomMonoFont}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') event.currentTarget.blur();
+              }}
+            />
+            <p className="text-xs text-[var(--ema-text-tertiary)]">
+              字体来自本机；未安装时会自动回退到系统等宽字体
+            </p>
+          </div>
+        )}
+
+        <div className="rounded-lg border border-[var(--ema-border)] bg-[var(--ema-surface-1)] px-4 py-3 font-mono text-xs text-[var(--ema-text-secondary)]">
+          const ema = '代码 / JSON / 终端用这种字体显示'; // 0123456789
+        </div>
+      </section>
+
+      <div className="border-t border-[var(--ema-border)]" />
+
+      {/* 代码配色只管语法高亮, 色板在 src/ui/styles/foundation/syntax-themes.css。 */}
+      <section className="space-y-4">
+        <div>
+          <p className="text-sm font-medium text-[var(--ema-text-secondary)]">代码配色</p>
+          <p className="text-xs mt-0.5 text-[var(--ema-text-tertiary)]">
+            代码块和 JSON 的语法高亮配色，跟随主题会按明暗自动切换
+          </p>
+        </div>
+
+        <Select
+          value={syntaxThemePreset}
+          onChange={(value) => void setSyntaxTheme(value as SyntaxThemePreset)}
+          options={SYNTAX_THEME_OPTIONS}
+        />
+
+        <div className="rounded-lg border border-[var(--ema-border)] bg-[var(--ema-surface-1)] px-4 py-3 font-mono text-xs leading-relaxed">
+          <div style={{ color: 'var(--ema-syntax-comment)' }}>// 实时预览</div>
+          <div>
+            <span style={{ color: 'var(--ema-syntax-key)' }}>const</span>
+            <span style={{ color: 'var(--ema-text-primary)' }}> ema = </span>
+            <span style={{ color: 'var(--ema-syntax-string)' }}>'语法高亮'</span>
+            <span style={{ color: 'var(--ema-text-primary)' }}>;</span>
+          </div>
+          <div>
+            <span style={{ color: 'var(--ema-syntax-key)' }}>if</span>
+            <span style={{ color: 'var(--ema-text-primary)' }}> (ema) total += </span>
+            <span style={{ color: 'var(--ema-syntax-number)' }}>1000</span>
+            <span style={{ color: 'var(--ema-text-primary)' }}>;</span>
+          </div>
         </div>
       </section>
 

@@ -146,7 +146,7 @@ export function CharacterInfoTab({ character }: { character: Character }): JSX.E
             onChange={e => setPersonaPrompt(e.target.value)}
             minRows={7}
             maxRows={18}
-            className="font-mono leading-relaxed"
+            className="leading-relaxed"
           />
         </div>
 

@@ -4,9 +4,9 @@ import { Button, Card, CardButton, Textarea } from '@ema-agent/ui';
 import type { PermissionRequest, PermissionResponse } from '@ema-agent/permission';
 import type { AskUserQuestionSpec, AskUserRequiredEvent } from '@ema-agent/tools';
 import type { PendingInteraction } from '@ema-agent/turn';
-import { AgentWebSocketCommandError } from '../../api/websocket.js';
-import { useAgentStore } from '../../stores/agent.js';
-import { useChatWorkspace } from '../state/chatWorkspace.js';
+import { SessionRequestError, sessionWebSocket } from '../../api/sessionWebSocket.js';
+import { useChatNavigationStore } from '../../stores/chatNavigation.js';
+import { useSessionActivityStore } from '../../stores/sessionActivity.js';
 
 function useSubmission(): {
   submitting: boolean;
@@ -27,8 +27,8 @@ function useSubmission(): {
       try {
         await operation();
       } catch (cause) {
-        // 另一窗口可能已经处理了同一队首. 此时服务端恢复消息会移除卡片, 不把过期回答显示成失败.
-        if (!(cause instanceof AgentWebSocketCommandError && cause.code === 'not_found_or_expired')) {
+        // 另一窗口(可执行窗口为main与chat)可能已经处理了同一队首. 此时服务端恢复消息会移除卡片, 不把过期回答显示成失败.
+        if (!(cause instanceof SessionRequestError && cause.code === 'not_found_or_expired')) {
           setError(cause instanceof Error ? cause.message : '提交失败, 请重试');
         }
       } finally {
@@ -125,7 +125,7 @@ function PermissionView({
   const submission = useSubmission();
   const respond = (response: PermissionResponse): void => {
     void submission.run(() => (
-      useAgentStore.getState().respondPermission(
+      sessionWebSocket.respondPermission(
         sessionId,
         request.turnId,
         request.toolCallId,
@@ -141,8 +141,9 @@ function PermissionView({
       onToggle={() => setCollapsed((value) => !value)}
     >
       <>
+        {/* 工具名走正文字体(mono 拉丁+雅黑中文混排显扎眼); JSON 本体保留 mono。 */}
+        <div className="mb-1.5 text-xs font-semibold text-[var(--ema-primary-text)]">{request.toolName}</div>
         <div className="max-h-56 overflow-auto rounded-xl bg-[var(--ema-bg)] p-3 font-mono text-xs text-[var(--ema-text-secondary)]">
-          <div className="mb-1 font-semibold text-[var(--ema-primary)]">{request.toolName}</div>
           <pre className="whitespace-pre-wrap">{rawInput}</pre>
         </div>
         <div className="mt-4 flex items-center justify-between gap-2">
@@ -360,7 +361,7 @@ function AskUserView({
             className="mr-auto px-2 py-1 text-xs font-medium text-[var(--ema-text-primary)] hover:text-[var(--ema-danger)]"
             disabled={submission.submitting}
             onClick={() => void submission.run(() => (
-              useAgentStore.getState().cancelAskUser(
+              sessionWebSocket.cancelAskUser(
                 sessionId,
                 request.turnId,
                 request.toolCallId,
@@ -396,7 +397,7 @@ function AskUserView({
                 size="sm"
                 disabled={!allAnswered || submission.submitting}
                 onClick={() => void submission.run(() => (
-                  useAgentStore.getState().respondAskUser(
+                  sessionWebSocket.respondAskUser(
                     sessionId,
                     request.turnId,
                     request.toolCallId,
@@ -427,10 +428,10 @@ function Interaction({
 }
 
 export function PendingInteractionView(): JSX.Element | null {
-  const sessionId = useChatWorkspace((state) => state.viewedSessionId);
-  const current = useAgentStore((state) => (
+  const sessionId = useChatNavigationStore((state) => state.viewedSessionId);
+  const current = useSessionActivityStore((state) => (
     sessionId
-      ? state.sessions.get(sessionId)?.pendingInteractions[0]
+      ? state.bySession.get(sessionId)?.pendingInteractions[0]
       : undefined
   ));
 

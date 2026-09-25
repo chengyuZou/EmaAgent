@@ -1,6 +1,6 @@
 // 存储位置页(单库):库统计富卡 + Session 手风琴(单开) + 块扩散查看器。
 // 六块(轮次/消息/Token/附件/音频/子代理):消息与 Token 进真查看器,其余"后续开放查看"。
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type JSX } from 'react';
+import { memo, useCallback, useEffect, useRef, useState, type CSSProperties, type JSX } from 'react';
 import { Badge, Button, EmptyState, Skeleton, StatCard } from '@ema-agent/ui';
 import { useStorageStore } from '../../stores/storage.js';
 import { sessionsApi } from '../../api/sessions.js';
@@ -8,7 +8,7 @@ import { systemApi, type SessionSummary } from '../../api/system.js';
 import { showToast } from '../../lib/toast.js';
 import { subscribeSystemEvent } from '../../lib/system-event-dispatcher.js';
 import { morphTransition, MORPH_NAME } from '../../lib/viewTransition.js';
-import { Markdown } from '../../markdown/renderer.js';
+import { MessageDetail } from './MessageDetail.js';
 import { TokenDetail } from './TokenDetail.js';
 import { fmtBytes, fmtDateFull, fmtDateShort, fmtDuration, fmtTokens } from './storageFormat.js';
 
@@ -30,56 +30,57 @@ export function StorageTab(): JSX.Element {
   const [exporting, setExporting] = useState<string | null>(null);
   const morphSourceRef = useRef<HTMLElement | null>(null);
 
-  // 块 ⇄ 全幅查看器的共享元素 morph:打开时把源块挂名(旧帧有名才扩散得起来),
-  // 查看器本体常驻同名;关闭时源块名字保留到新帧做逆扩散,落幕后摘名。
+  // 旧帧只给源块挂名，新帧只给查看器挂名；同一快照出现两个同名元素会让浏览器拒绝过渡。
   function openViewerMorph(next: ViewerState, sourceEl: HTMLElement | null): void {
     morphSourceRef.current = sourceEl;
     if (sourceEl) sourceEl.style.viewTransitionName = MORPH_NAME;
-    void morphTransition(() => setViewer(next));
+    void morphTransition(() => {
+      if (sourceEl) sourceEl.style.viewTransitionName = '';
+      setViewer(next);
+    })?.catch(error => console.warn('[storage] 打开查看器过渡失败:', error));
   }
 
   function closeViewerMorph(): void {
     const sourceEl = morphSourceRef.current;
-    void morphTransition(() => setViewer(null))?.finally(() => {
+    const finished = morphTransition(() => {
+      setViewer(null);
+      if (sourceEl) sourceEl.style.viewTransitionName = MORPH_NAME;
+    });
+    const cleanup = (): void => {
       if (sourceEl) sourceEl.style.viewTransitionName = '';
       morphSourceRef.current = null;
-    });
+    };
+    if (!finished) {
+      cleanup();
+      return;
+    }
+    void finished
+      .catch(error => console.warn('[storage] 关闭查看器过渡失败:', error))
+      .finally(cleanup);
   }
 
   useEffect(() => {
-    void store.loadAll(true);
+    void store.refresh();
   }, []);
 
   useEffect(() => {
-    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
     const unsubscribe = subscribeSystemEvent(event => {
       if (
         event.type !== 'session_list_changed'
-        && event.type !== 'session_messages_changed'
         && event.type !== 'turn_completed'
         && event.type !== 'turn_failed'
         && event.type !== 'turn_aborted'
-        && event.type !== 'attachments_changed'
-        && event.type !== 'session_audio_changed'
-        && event.type !== 'agent_runs_changed'
-        && event.type !== 'usage_recorded'
       ) return;
-      clearTimeout(refreshTimer);
-      refreshTimer = setTimeout(() => {
-        void useStorageStore.getState().loadAll(true);
-      }, 150);
+      void useStorageStore.getState().refresh();
     });
-    return () => {
-      unsubscribe();
-      clearTimeout(refreshTimer);
-    };
+    return unsubscribe;
   }, []);
 
   async function handleImport(file: File): Promise<void> {
     setImporting(true);
     try {
       const result = await sessionsApi.importSession(file);
-      await store.loadAll(true);
+      await store.refresh();
       showToast(
         result.warnings.length > 0
           ? `会话已导入,但有 ${result.warnings.length} 项内容缺失`
@@ -222,7 +223,7 @@ function SessionAccordion({
           onClick={onToggle}
           aria-expanded={open}
         >
-          <span className="i-solar:chat-round-bold-duotone text-[var(--ema-primary)]" aria-hidden />
+          <span className="i-solar:chat-round-bold-duotone text-[var(--ema-primary-text)]" aria-hidden />
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold text-[var(--ema-text-primary)]">{title}</p>
             <p className="text-xs text-[var(--ema-text-tertiary)]">
@@ -277,7 +278,6 @@ function SessionBlocks({
   useEffect(() => {
     let active = true;
     let requestId = 0;
-    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
     const refresh = () => {
       const currentRequestId = ++requestId;
       systemApi.getSessionStats(sessionId)
@@ -292,20 +292,14 @@ function SessionBlocks({
     refresh();
     const unsubscribe = subscribeSystemEvent(event => {
       if (
-        (event.type === 'session_messages_changed' && event.sessionId === sessionId)
-        || (event.type === 'attachments_changed' && event.sessionId === sessionId)
-        || (event.type === 'session_audio_changed' && event.sessionId === sessionId)
-        || (event.type === 'agent_runs_changed' && event.sessionId === sessionId)
-        || (event.type === 'usage_recorded' && event.sessionId === sessionId)
-        || ('sessionId' in event && event.sessionId === sessionId && (
-          event.type === 'turn_completed' || event.type === 'turn_failed' || event.type === 'turn_aborted'
-        ))
-      ) {
-        clearTimeout(refreshTimer);
-        refreshTimer = setTimeout(refresh, 150);
-      }
+        event.type !== 'turn_completed'
+        && event.type !== 'turn_failed'
+        && event.type !== 'turn_aborted'
+      ) return;
+      if (event.sessionId !== sessionId) return;
+      refresh();
     });
-    return () => { active = false; unsubscribe(); clearTimeout(refreshTimer); };
+    return () => { active = false; unsubscribe(); };
   }, [sessionId]);
 
   if (failed) {
@@ -344,7 +338,7 @@ function SessionBlocks({
       label: '音频', value: stats.audioTurnCount, sub: fmtDuration(stats.audioTotalDurationMs),
       viewer: { kind: 'placeholder', label: '音频查看' },
     },
-    { label: '子代理', value: stats.agentRunCount, viewer: { kind: 'placeholder', label: '子代理视图' } },
+    { label: '子代理', value: stats.subagentCount, viewer: { kind: 'placeholder', label: '子代理视图' } },
   ];
 
   return (
@@ -384,11 +378,20 @@ function ViewerOverlay({
   viewer: ViewerState;
   onClose(): void;
 }): JSX.Element {
-  const title = viewer.kind === 'messages'
-    ? `原始消息 · ${viewer.sessionTitle}`
-    : viewer.kind === 'token'
-      ? `Token 明细 · ${viewer.sessionTitle}`
-      : viewer.label;
+  let title: string;
+  let content: JSX.Element;
+  if (viewer.kind === 'messages') {
+    title = `原始消息 · ${viewer.sessionTitle}`;
+    content = <RawMessageList sessionId={viewer.sessionId} />;
+  } else if (viewer.kind === 'token') {
+    title = `Token 明细 · ${viewer.sessionTitle}`;
+    content = <TokenDetail sessionId={viewer.sessionId} />;
+  } else {
+    title = viewer.label;
+    content = (
+      <p className="py-16 text-center text-sm text-[var(--ema-text-tertiary)]">后续开放查看</p>
+    );
+  }
   return (
     <div
       className="absolute inset-0 z-10 flex flex-col bg-[var(--ema-bg)]"
@@ -405,24 +408,18 @@ function ViewerOverlay({
         <span className="truncate text-base font-semibold text-[var(--ema-text-primary)]">{title}</span>
       </div>
       <div className="flex-1 overflow-y-auto p-6">
-        {viewer.kind === 'messages' ? (
-          <RawMessageList sessionId={viewer.sessionId} />
-        ) : viewer.kind === 'token' ? (
-          <TokenDetail sessionId={viewer.sessionId} />
-        ) : (
-          <p className="py-16 text-center text-sm text-[var(--ema-text-tertiary)]">后续开放查看</p>
-        )}
+        {content}
       </div>
     </div>
   );
 }
 
-// ── 原始消息列表:role • msg_id + 时间行,行内手风琴展开 blocks_json(Markdown JSON 高亮) ──
+// ── 原始消息目录:分页只取行头，用户展开单条后才读取并高亮 blocks_json ──────────
 
-type RawMessage = Awaited<ReturnType<typeof systemApi.getRawMessages>>['messages'][number];
+type RawMessageHeader = Awaited<ReturnType<typeof systemApi.getRawMessages>>['messages'][number];
 
 function RawMessageList({ sessionId }: { sessionId: string }): JSX.Element {
-  const [messages, setMessages] = useState<RawMessage[]>([]);
+  const [messages, setMessages] = useState<RawMessageHeader[]>([]);
   const [order, setOrder] = useState<'asc' | 'desc'>('asc');
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -456,19 +453,16 @@ function RawMessageList({ sessionId }: { sessionId: string }): JSX.Element {
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
-    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
     const unsubscribe = subscribeSystemEvent(event => {
       if (
-        (event.type === 'session_messages_changed' && event.sessionId === sessionId)
-        || (event.type === 'turn_completed' && event.sessionId === sessionId)
-        || (event.type === 'turn_failed' && event.sessionId === sessionId)
-        || (event.type === 'turn_aborted' && event.sessionId === sessionId)
-      ) {
-        clearTimeout(refreshTimer);
-        refreshTimer = setTimeout(() => load(), 150);
-      }
+        event.type !== 'turn_completed'
+        && event.type !== 'turn_failed'
+        && event.type !== 'turn_aborted'
+      ) return;
+      if (event.sessionId !== sessionId) return;
+      load();
     });
-    return () => { unsubscribe(); clearTimeout(refreshTimer); };
+    return unsubscribe;
   }, [sessionId, load]);
 
   if (failed) return <p className="py-10 text-center text-xs text-[var(--ema-danger)]">消息读取失败</p>;
@@ -490,15 +484,14 @@ function RawMessageList({ sessionId }: { sessionId: string }): JSX.Element {
       {messages.length === 0 ? (
         <p className="py-10 text-center text-xs text-[var(--ema-text-tertiary)]">这个会话还没有消息</p>
       ) : (
-        /* key=order:切序整体重挂,行按新序重放滑入(感知=真重排了一遍)。 */
-        <div key={order}>
+        <div>
           {messages.map((message, index) => (
             <div
               key={message.id}
               className="ema-stagger-in-swift"
               style={{ '--stagger-i': index } as CSSProperties}
             >
-              <RawMessageRow message={message} />
+              <RawMessageRow sessionId={sessionId} message={message} />
             </div>
           ))}
         </div>
@@ -514,16 +507,21 @@ function RawMessageList({ sessionId }: { sessionId: string }): JSX.Element {
   );
 }
 
-function RawMessageRow({ message }: { message: RawMessage }): JSX.Element {
+const RawMessageRow = memo(function RawMessageRow({
+  sessionId,
+  message,
+}: {
+  sessionId: string;
+  message: RawMessageHeader;
+}): JSX.Element {
   const [open, setOpen] = useState(false);
-  const pretty = useMemo(() => {
-    // blocks_json 原生是 JSON 文本;格式化失败就原样展示,绝不因脏数据挂掉整行。
-    try {
-      return JSON.stringify(JSON.parse(message.blocks_json), null, 2);
-    } catch {
-      return message.blocks_json;
-    }
-  }, [message.blocks_json]);
+  const [hasOpened, setHasOpened] = useState(false);
+
+  function toggle(): void {
+    const nextOpen = !open;
+    setOpen(nextOpen);
+    if (nextOpen) setHasOpened(true);
+  }
 
   return (
     <div className="border-b border-[var(--ema-border)]">
@@ -531,11 +529,11 @@ function RawMessageRow({ message }: { message: RawMessage }): JSX.Element {
         type="button"
         className="flex w-full items-center gap-2 px-2 py-2 text-left transition-colors
           hover:bg-[var(--ema-surface-2)]"
-        onClick={() => setOpen(value => !value)}
+        onClick={toggle}
         aria-expanded={open}
       >
         <span className={`text-xs font-medium ${message.role === 'user'
-          ? 'text-[var(--ema-primary)]'
+          ? 'text-[var(--ema-primary-text)]'
           : 'text-[var(--ema-text-secondary)]'}`}
         >
           {message.role}
@@ -543,7 +541,7 @@ function RawMessageRow({ message }: { message: RawMessage }): JSX.Element {
         <span className="min-w-0 flex-1 truncate font-mono text-xs text-[var(--ema-text-tertiary)]">
           {message.id}
         </span>
-        <span className="text-xs text-[var(--ema-text-tertiary)]">{fmtDateFull(message.created_at)}</span>
+        <span className="text-xs text-[var(--ema-text-tertiary)]">{fmtDateFull(message.createdAt)}</span>
         <span
           className="i-lucide:chevron-down text-xs text-[var(--ema-text-tertiary)]
             transition-transform duration-[var(--ema-duration-fast)]"
@@ -556,14 +554,12 @@ function RawMessageRow({ message }: { message: RawMessage }): JSX.Element {
         style={{ gridTemplateRows: open ? '1fr' : '0fr', opacity: open ? 1 : 0 }}
       >
         <div>
-          <div className="ema-raw-json mx-2 mb-2 rounded-lg border border-[var(--ema-border)] bg-[var(--ema-surface-0)]">
-            <Markdown source={`\`\`\`json\n${pretty}\n\`\`\``} />
-          </div>
+          {hasOpened && <MessageDetail sessionId={sessionId} messageId={message.id} />}
         </div>
       </div>
     </div>
   );
-}
+});
 
 // ── 总览细条:默认收起成一条仪表带(项不可点,整条是开关),展开为富卡墙。
 // ema-collapsible 双向(展开/收起都平滑) + chevron 旋转 + 内容随带淡入淡出。 ──
@@ -577,7 +573,7 @@ function OverviewBand({ stats }: { stats: NonNullable<ReturnType<typeof useStora
     { icon: 'i-solar:bolt-bold-duotone',            label: 'Token',  value: fmtTokens(stats.totalInputTokens + stats.totalOutputTokens) },
     { icon: 'i-solar:paperclip-bold-duotone',       label: '附件',   value: stats.attachmentCount },
     { icon: 'i-solar:soundwave-bold-duotone',       label: '音频',   value: stats.audioCount },
-    { icon: 'i-solar:magic-stick-3-bold-duotone',   label: '子代理', value: stats.agentRunCount },
+    { icon: 'i-solar:magic-stick-3-bold-duotone',   label: '子代理', value: stats.subagentCount },
   ];
   return (
     <div className="overflow-hidden rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)]">
@@ -599,7 +595,7 @@ function OverviewBand({ stats }: { stats: NonNullable<ReturnType<typeof useStora
         </span>
         {items.map(item => (
           <span key={item.label} className="flex items-center gap-1 text-xs text-[var(--ema-text-tertiary)]">
-            <span className={`${item.icon} text-[var(--ema-primary)]/80`} aria-hidden />
+            <span className={`${item.icon} text-[var(--ema-primary-text)]/80`} aria-hidden />
             <span className="font-medium text-[var(--ema-text-primary)]">{item.value}</span>
             {item.label}
           </span>
@@ -621,7 +617,7 @@ function OverviewBand({ stats }: { stats: NonNullable<ReturnType<typeof useStora
               label="Token" value={fmtTokens(stats.totalInputTokens + stats.totalOutputTokens)}
               sub={`↑ ${fmtTokens(stats.totalInputTokens)} · ↓ ${fmtTokens(stats.totalOutputTokens)}`} />
             <StatCard index={4} decorate="ema-card-decorate--storage" icon="i-solar:magic-stick-3-bold-duotone"
-              label="子智能体执行" value={stats.agentRunCount} />
+              label="子智能体执行" value={stats.subagentCount} />
             <StatCard index={5} decorate="ema-card-decorate--storage" icon="i-solar:paperclip-bold-duotone"
               label="附件" value={stats.attachmentCount} sub={fmtBytes(stats.attachmentTotalBytes)} />
             <StatCard index={6} decorate="ema-card-decorate--storage" icon="i-solar:soundwave-bold-duotone"

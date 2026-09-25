@@ -20,7 +20,7 @@
 .ema-terminal-gutter-dot {
   width: 8px;
   height: 8px;
-  border-radius: 9999px;
+  border-radius: var(--ema-radius-pill);
   flex: none;
 }
 
@@ -39,7 +39,7 @@
   flex: none;
   font-size: 10px;
   padding: 1px 6px;
-  border-radius: 9999px;
+  border-radius: var(--ema-radius-pill);
   border: 1px solid currentcolor;
   opacity: 0.9;
 }

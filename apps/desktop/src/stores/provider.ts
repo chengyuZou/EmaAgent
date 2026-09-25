@@ -5,6 +5,7 @@ import type { AppEvent } from '@ema-agent/server/application/appEvents.js';
 import {
   providersApi,
   type ProviderRecord,
+  type ProviderDetail,
   type ProviderConfigInput,
   type BindingModule,
   type BindingUpsertInput,
@@ -20,7 +21,7 @@ export interface ProviderStoreState {
   refreshProviders():                                 Promise<void>;
   refreshBindings():                                  Promise<void>;
 
-  createProvider(input: ProviderConfigInput): Promise<ProviderRecord>;
+  createProvider(input: ProviderConfigInput): Promise<ProviderDetail>;
   deleteProvider(id: string):                         Promise<void>;
 
   upsertBinding(module: BindingModule, input: BindingUpsertInput): Promise<void>;
@@ -83,7 +84,6 @@ export const useProviderStore = create<ProviderStoreState>((set, get) => ({
   },
 }));
 
-/** Settings 窗口只对已收到的控制面变更重读；连续事件合并，飞行中再变更则补读。 */
 export function handleProviderSystemEvent(event: AppEvent): void {
   if (
     event.type === 'provider_config_changed'

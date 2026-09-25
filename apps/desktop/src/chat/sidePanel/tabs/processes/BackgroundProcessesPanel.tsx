@@ -5,7 +5,7 @@ import type { BackgroundProcessStatus, BackgroundProcessSummary } from '../../..
 import { tauriBridge } from '../../../../lib/tauri-bridge.js';
 import { showToast } from '../../../../lib/toast.js';
 import { useBackgroundProcessStore } from '../../../../stores/backgroundProcess.js';
-import { useChatWorkspace } from '../../../state/chatWorkspace.js';
+import { useChatNavigationStore } from '../../../../stores/chatNavigation.js';
 
 const STATUS_LABEL: Record<BackgroundProcessStatus, string> = {
   queued:      '排队中',
@@ -191,7 +191,7 @@ function ProcessDetail({
   const readOutput = useBackgroundProcessStore((s) => s.readOutput);
   const setFollowTail = useBackgroundProcessStore((s) => s.setFollowTail);
   const output = useBackgroundProcessStore((s) => s.outputsById.get(process.id));
-  const scrollToTurn = useChatWorkspace((s) => s.scrollToTurn);
+  const scrollToTurn = useChatNavigationStore((s) => s.scrollToTurn);
 
   const processId = process.id;
   const originTurnId = process.originTurnId;
