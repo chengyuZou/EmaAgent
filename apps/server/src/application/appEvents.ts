@@ -9,7 +9,6 @@ import type { ProviderEvent } from '@ema-agent/providers';
 import type { SessionEvent } from '@ema-agent/session';
 import type { AttachmentEvent } from '@ema-agent/attachments';
 import type { UsageEvent } from '@ema-agent/usage';
-import type { AgentRunChangedEvent } from '@ema-agent/agent';
 import type { SpeechArchiveEvent } from '@ema-agent/speech';
 import type { TaskEvent } from '@ema-agent/tasks';
 import type { SettingsEvent } from '@ema-agent/settings';
@@ -29,7 +28,6 @@ export type AppEvent =
   | SessionEvent
   | AttachmentEvent
   | UsageEvent
-  | AgentRunChangedEvent
   | SpeechArchiveEvent
   | TaskEvent
   | SettingsEvent

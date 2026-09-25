@@ -1,7 +1,7 @@
 // 持久化一族：profile/data 两个 Database 的打开、迁移与全部存储层 Store 构造。
 import {
-  AgentRunMessagesRepo,
-  AgentRunsRepo,
+  SubagentMessagesRepo,
+  SubagentsRepo,
   MessagesRepo,
   AttachmentImagesRepo,
   AttachmentPastedTextsRepo,
@@ -11,7 +11,7 @@ import {
   TasksRepo,
   UsageRecordsRepo,
 } from '@ema-agent/storage';
-import { AgentRunMessagesStore, AgentRunStore, type AgentRunChangedEvent } from '@ema-agent/agent';
+import { SubagentMessagesStore, SubagentStore } from '@ema-agent/agent';
 import { AttachmentStore, ImageStore, PastedTextStore, type AttachmentEvent } from '@ema-agent/attachments';
 import { SessionRunningRegistry, SessionStore, type SessionEvent } from '@ema-agent/session';
 import { TaskStore, type TaskEvent } from '@ema-agent/tasks';
@@ -45,8 +45,8 @@ export interface DatabaseComposition {
   readonly attachmentImages: AttachmentImagesRepo;
   readonly attachmentPastedTexts: AttachmentPastedTextsRepo;
   readonly tasks: TaskStore;
-  readonly agentRuns: AgentRunStore;
-  readonly agentRunMessages: AgentRunMessagesStore;
+  readonly subagents: SubagentStore;
+  readonly subagentMessages: SubagentMessagesStore;
   /** 全部能力调用共享的记账口；SQL 写入成功后通知用量视图。 */
   readonly usageRecorder: UsageRecorder;
   /** 用量明细查询的 SQL Repo，供 Token 明细页读取。 */
@@ -68,7 +68,7 @@ export interface DatabaseComposition {
 export function openDatabases(
   activeDataDir: string,
   emitChanged: (
-    event: SessionEvent | AttachmentEvent | UsageEvent | AgentRunChangedEvent | TaskEvent,
+    event: SessionEvent | AttachmentEvent | UsageEvent | TaskEvent,
   ) => void,
 ): DatabaseComposition {
   const profileDb = new Database({ path: profileDbPath(), kind: 'profile' });
@@ -139,8 +139,8 @@ export function openDatabases(
     attachmentImages,
     attachmentPastedTexts,
     tasks: new TaskStore(new TasksRepo(dataDb.sqlite), emitChanged),
-    agentRuns: new AgentRunStore(new AgentRunsRepo(dataDb.sqlite), emitChanged),
-    agentRunMessages: new AgentRunMessagesStore(new AgentRunMessagesRepo(dataDb.sqlite)),
+    subagents: new SubagentStore(new SubagentsRepo(dataDb.sqlite)),
+    subagentMessages: new SubagentMessagesStore(new SubagentMessagesRepo(dataDb.sqlite)),
     usageRecorder,
     usageRecords,
     messages,

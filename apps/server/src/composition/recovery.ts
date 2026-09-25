@@ -1,5 +1,5 @@
 // 启动恢复：崩溃残留的终态收口（ready 前置）、孤儿文件清理（可降级）与权限项目规则对账。
-import type { AgentRunMessagesStore, AgentRunStore } from '@ema-agent/agent';
+import type { SubagentMessagesStore, SubagentStore } from '@ema-agent/agent';
 import { cleanupInterruptedFileWriteTemps } from '@ema-agent/builtin-tools';
 import { reconcileProjectRules } from '@ema-agent/permission';
 import type { SessionStore } from '@ema-agent/session';
@@ -24,15 +24,15 @@ export interface StartupRecoveryDeps {
   readonly dataDb: Database;
   readonly session: SessionStore;
   readonly turns: TurnStore;
-  readonly agentRuns: AgentRunStore;
-  readonly agentRunMessages: AgentRunMessagesStore;
+  readonly subagents: SubagentStore;
+  readonly subagentMessages: SubagentMessagesStore;
   readonly toolExecutionState: ToolExecutionState;
   readonly backgroundProcesses: BackgroundProcess;
   readonly settings: SettingsStore;
 }
 
 /**
- * Tool/Turn/AgentRun/后台进程的终态恢复与项目规则对账是 ready 前置条件：
+ * Tool/Turn/Subagent/后台进程的终态恢复与项目规则对账是 ready 前置条件：
  * 失败必须向上传播，不能把旧 running 状态留给新进程。
  * Memory 的启动恢复归 Sol 的 Memory 包收口后接入。
  */
@@ -46,9 +46,9 @@ export function runRequiredRecovery(deps: StartupRecoveryDeps): void {
   if (healed > 0) {
     console.warn(`[recovery] 收口 ${healed} 个崩溃残留 Turn`);
   }
-  const interruptedRuns = deps.agentRuns.recoverInterrupted();
+  const interruptedRuns = deps.subagents.recoverInterrupted();
   if (interruptedRuns.length > 0) {
-    console.warn(`[recovery] 标记 ${interruptedRuns.length} 个中断 AgentRun`);
+    console.warn(`[recovery] 标记 ${interruptedRuns.length} 个中断 Subagent`);
   }
 
   // 项目规则对账：剔除已删除项目的规则键，防止 settings 里长孤儿。
@@ -69,10 +69,10 @@ function recoverToolExecutions(deps: StartupRecoveryDeps): void {
     outcomeUnknown: boolean;
   }> = [];
   for (const execution of interrupted) {
-    // 根工具从 Session History 找调用, 子 Agent 工具从独立 AgentRun 转录找.
+    // 根工具从 Session History 找调用, 子 Agent 工具从独立 Subagent 转录找.
     // 两条链都先写 Message 再关执行状态, 所以恢复时可能已经存在 ToolResult.
-    const interaction = execution.agentRunId
-      ? deps.agentRunMessages.findToolInteraction(execution.agentRunId, execution.callId)
+    const interaction = execution.subagentId
+      ? deps.subagentMessages.findToolInteraction(execution.subagentId, execution.callId)
       : deps.session.findToolInteraction(execution.turnId, execution.callId);
     if (!interaction) {
       throw new Error(`tool_call_message_missing: ${execution.callId}`);
@@ -87,8 +87,8 @@ function recoverToolExecutions(deps: StartupRecoveryDeps): void {
       errorCode: execution.status === 'running' ? 'tool/outcome_unknown' : 'tool/cancelled',
     };
     if (!interaction.result) {
-      if (execution.agentRunId) {
-        deps.agentRunMessages.appendToolResult(execution.agentRunId, result);
+      if (execution.subagentId) {
+        deps.subagentMessages.appendToolResult(execution.subagentId, result);
       } else {
         deps.session.appendMessage({
           sessionId: execution.sessionId,

@@ -50,7 +50,10 @@ export interface ProviderConfigsRouteDeps {
 
 export const providerConfigsRoute = (deps: ProviderConfigsRouteDeps) =>
   new Hono()
-    .get('/', context => context.json(deps.providers.list()))
+    .get('/', context => context.json(deps.providers.list().map(({ keyValue, ...provider }) => ({
+      ...provider,
+      hasKey: keyValue !== undefined,
+    }))))
     .post('/', jsonBody(createProviderBody), async context => {
       try {
         const created = deps.providers.create(context.req.valid('json'));

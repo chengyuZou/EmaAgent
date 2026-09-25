@@ -24,7 +24,7 @@ import type { NarrativeSearch } from '@ema-agent/narrative';
 import { isLlmProtocol } from '@ema-agent/providers';
 import {
   type MessageBlocks,
-  type Message as SessionMessage,
+  type SessionMessage,
   type SessionStore,
 } from '@ema-agent/session';
 import type { StageEngine } from '@ema-agent/stage';

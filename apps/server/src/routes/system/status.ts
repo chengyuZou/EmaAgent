@@ -16,7 +16,7 @@ const SERVER_VERSION = (
 
 export const systemStatusRoute = (deps: SystemStatusRouteDeps) =>
   new Hono()
-    // 探活：readiness 文件发布前宿主轮询；无需认证。
+    // 探活: 宿主可用已公布的端口访问, 无需认证.
     .get('/health', context => {
       return context.json({ ok: true, service: 'server' });
     })

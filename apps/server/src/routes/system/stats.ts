@@ -21,7 +21,7 @@ const rawMessagesQuery = z.object({
 export interface SystemStatsRouteDeps {
   readonly dataDirStats: Pick<DataDirStatsRepo, 'getStats'>;
   readonly sessionStats: Pick<SessionStatsRepo, 'getStats' | 'listSummaries'>;
-  readonly messages: Pick<MessagesRepo, 'listPage'>;
+  readonly messages: Pick<MessagesRepo, 'findById' | 'listHeadersPage'>;
 }
 
 export const systemStatsRoute = (deps: SystemStatsRouteDeps) =>
@@ -34,10 +34,10 @@ export const systemStatsRoute = (deps: SystemStatsRouteDeps) =>
     .get('/stats/session-summaries', context => {
       return context.json({ sessions: deps.sessionStats.listSummaries() });
     })
-    // 存储页原始消息查看器:raw 行原样下发(blocks_json 不 parse),keyset 按排序方向续翻。
+    // 原始消息目录只下发行头；大块 blocks_json 必须等用户展开单条后再读。
     .get('/stats/sessions/:id/raw-messages', queryValidator(rawMessagesQuery), context => {
       const { beforeCreatedAt, beforeId, order, limit } = context.req.valid('query');
-      const page = deps.messages.listPage(
+      const page = deps.messages.listHeadersPage(
         context.req.param('id'),
         beforeCreatedAt === undefined || beforeId === undefined
           ? undefined
@@ -46,7 +46,18 @@ export const systemStatsRoute = (deps: SystemStatsRouteDeps) =>
         order,
       );
       return context.json({
-        messages: page.rows,
+        messages: page.rows.map(message => ({
+          id: message.id,
+          role: message.role,
+          createdAt: message.created_at,
+        })),
         ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
       });
+    })
+    .get('/stats/sessions/:id/raw-messages/:messageId', context => {
+      const message = deps.messages.findById(context.req.param('messageId'));
+      if (!message || message.session_id !== context.req.param('id')) {
+        return context.json({ error: 'message_not_found' }, 404);
+      }
+      return context.json({ blocksJson: message.blocks_json });
     });

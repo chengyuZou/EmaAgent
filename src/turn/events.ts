@@ -11,7 +11,7 @@ import type {
 import type { ToolExecutionEvent } from '@ema-agent/tools';
 import type {
   SessionMode,
-  Message as SessionMessage,
+  SessionMessage,
   NarrativePolicy,
 } from '@ema-agent/session';
 import type { TurnFailureCode } from './errors.js';

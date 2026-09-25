@@ -11,6 +11,7 @@ import {
 } from '@ema-agent/storage';
 import type {
   Character,
+  CharacterSummary,
   CharacterInput,
   CharacterPatch,
   CharacterStagePresentation,
@@ -198,6 +199,9 @@ export class CharacterStore {
       illustrations.get(character.name) ?? [],
       voices.get(character.name) ?? [],
     ));
+  }
+  listSummaries(): CharacterSummary[] {
+    return this.repository.listSummaries();
   }
   get(name: string): Character | undefined {
     const character = this.repository.findByName(name);

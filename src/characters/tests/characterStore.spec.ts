@@ -37,6 +37,17 @@ describe('CharacterStore', () => {
     expect(created).toMatchObject({ name: '爱丽丝', displayName: 'Alice', stageKind: 'blank' });
     expect(fs.existsSync(path.join(root, 'characters', '爱丽丝'))).toBe(true);
     expect(await store.update('爱丽丝', { displayName: '小爱' })).toMatchObject({ name: '爱丽丝', displayName: '小爱' });
+    const summary = store.listSummaries().find(item => item.name === '爱丽丝');
+    expect(summary).toMatchObject({
+      name: '爱丽丝',
+      displayName: '小爱',
+      live2dCount: 0,
+      illustrationCount: 0,
+      voiceSampleCount: 0,
+      coverResourceName: null,
+    });
+    expect(summary).not.toHaveProperty('personaPrompt');
+    expect(summary).not.toHaveProperty('voiceSamples');
   });
 
   it('Store 只删除指定角色，不裁决或切换替代角色', async () => {
@@ -74,10 +85,16 @@ describe('CharacterStore', () => {
     const second = await store.importIllustration('插图角色', { sourceFile: secondSource, expression: 'happy' });
     await store.setPrimaryIllustration('插图角色', first.name);
 
+    expect(store.listSummaries().find(item => item.name === '插图角色')).toMatchObject({
+      illustrationCount: 2,
+      coverResourceName: null,
+    });
+
     expect(first.name).toBe('happy-a.png');
     expect(second.name).toBe('happy-b.png');
     expect(await store.inspectStagePresentation('插图角色')).toMatchObject({ status: 'blank' });
     await store.update('插图角色', { stageKind: 'illustration' });
+    expect(store.listSummaries().find(item => item.name === '插图角色')?.coverResourceName).toBe(first.name);
     expect(await store.inspectStagePresentation('插图角色')).toMatchObject({
       status: 'illustration',
       resource: { name: 'happy-a.png' },
@@ -85,6 +102,7 @@ describe('CharacterStore', () => {
 
     await store.deleteIllustration('插图角色', 'happy-a.png');
     expect(store.get('插图角色')?.illustrations.find(resource => resource.isPrimary)).toBeUndefined();
+    expect(store.listSummaries().find(item => item.name === '插图角色')?.coverResourceName).toBe(second.name);
     expect(await store.inspectStagePresentation('插图角色')).toMatchObject({
       status: 'unavailable',
       reason: 'primary_resource_missing',

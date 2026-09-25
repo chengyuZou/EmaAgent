@@ -17,8 +17,8 @@ export async function deleteSession(composition: Composition, sessionId: string)
     if (runningTurn) {
       await turn.turnExecutor.abortAndAwait(sessionId, runningTurn.id);
     }
-    // 后台 AgentRun 不属于当前根 Turn, 删除 Session 前必须单独停止并等其落终态.
-    await turn.agentRuns.abortForSession(sessionId);
+    // 后台 Subagent 不属于当前根 Turn, 删除 Session 前必须单独停止并等其落终态.
+    await turn.subagents.abortForSession(sessionId);
     // beginSessionDeletion() 已向当前的根 Turn 或手动 Compact 发出取消信号.
     // Turn 上面的 abortAndAwait() 可以等到 completion, 但手动 Compact 没有 Turn completion;
     // 因此这里等待两种工作中仍在运行的那一种自己停止并清除运行记录,

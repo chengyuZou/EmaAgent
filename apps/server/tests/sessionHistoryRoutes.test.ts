@@ -40,7 +40,7 @@ beforeEach(() => {
     .route('/api/sessions', sessionActionsRoute({
       session: sessions,
       turns,
-      abortAgentRunsForTurn: async () => {},
+      abortSubagentsForTurn: async () => {},
       deleteSession: async (sessionId) => sessions.deleteSession(sessionId),
     }))
     .route('/api/workspaces', projectsRoute({ session: sessions }));

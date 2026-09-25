@@ -21,7 +21,7 @@ export const eventDisplaySetting = defineSetting({
 });
 
 /**
- * 默认展示表：只列当前真实存在的事件类型（Turn/Tool/Permission/Compact/AgentRun/KB/Speech/App）。
+ * 默认展示表：只列当前真实存在的事件类型（Turn/Tool/Permission/Compact/Subagent/KB/Speech/App）。
  * Memory 域事件名归 Sol 的 Memory 包接线时补；旧 central events 联合与 legacy key 迁移已随包删除。
  */
 export const DEFAULT_EVENT_DISPLAY: Record<string, EventDisplayConfig> = {
@@ -41,10 +41,10 @@ export const DEFAULT_EVENT_DISPLAY: Record<string, EventDisplayConfig> = {
   character_switched:             { enabled: true,  color: '#f59e0b', durationMs: 4000 },
   background_process_changed:   { enabled: true,  color: '#64748b', durationMs: 3000 },
   system_warning:               { enabled: true,  color: '#f59e0b', durationMs: 5000 },
-  agent_run_started:            { enabled: true,  color: '#8b5cf6', durationMs: null },
-  agent_run_completed:          { enabled: true,  color: '#22c55e', durationMs: 4000 },
-  agent_run_failed:             { enabled: true,  color: '#ef4444', durationMs: 5000 },
-  agent_run_aborted:            { enabled: true,  color: '#94a3b8', durationMs: 3000 },
+  subagent_started:            { enabled: true,  color: '#8b5cf6', durationMs: null },
+  subagent_completed:          { enabled: true,  color: '#22c55e', durationMs: 4000 },
+  subagent_failed:             { enabled: true,  color: '#ef4444', durationMs: 5000 },
+  subagent_aborted:            { enabled: true,  color: '#94a3b8', durationMs: 3000 },
   agent_iteration:              { enabled: false, color: '#64748b', durationMs: 1000 },
 };
 

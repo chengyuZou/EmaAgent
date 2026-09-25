@@ -6,7 +6,7 @@ import { characterError } from './errors.js';
 import { jsonBody } from '../validate.js';
 
 export interface CharacterCollectionRouteDeps {
-  readonly characters: Pick<CharacterStore, 'list' | 'current' | 'get' | 'create' | 'update'>;
+  readonly characters: Pick<CharacterStore, 'listSummaries' | 'current' | 'get' | 'create' | 'update'>;
   readonly activateCharacter: (characterName: string) => Promise<void>;
   readonly deleteCharacter: (characterName: string) => Promise<void>;
   readonly runWhenSessionsIdle: <T>(action: () => T | Promise<T>) => Promise<T>;
@@ -28,7 +28,7 @@ const patchBody = z.object({
 
 export const characterCollectionRoute = (deps: CharacterCollectionRouteDeps) =>
   new Hono()
-    .get('/', context => context.json({ items: deps.characters.list() }))
+    .get('/', context => context.json({ items: deps.characters.listSummaries() }))
     .get('/current', context => context.json(deps.characters.current()))
     .get('/:characterName', context => {
       const character = deps.characters.get(context.req.param('characterName'));

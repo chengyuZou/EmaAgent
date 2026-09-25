@@ -12,7 +12,7 @@ import type {
   Turn,
   TurnExecutor,
 } from '@ema-agent/turn';
-import type { AgentRunExecutor } from '@ema-agent/agent';
+import type { SubagentExecutor } from '@ema-agent/agent';
 import {
   SessionSocketConnections,
   sessionWebSocketRoute,
@@ -68,7 +68,7 @@ describe('Session WebSocket Route', () => {
     const deps: SessionWebSocketRouteDeps = {
       connections: new SessionSocketConnections(),
       executor: {} as TurnExecutor,
-      agentRuns: {} as AgentRunExecutor,
+      subagents: {} as SubagentExecutor,
       continuations: { list: () => [] } as unknown as SessionContinuationQueue,
       sessions: {
         sessionExists: id => id === sessionId,

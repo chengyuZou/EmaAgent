@@ -165,8 +165,8 @@ export function buildComposition(input: {
     stage: characters.stage,
     emitAppEvent: event => appEvents.emit(event),
     onTurnCompletedInTransaction: turnId => memory.enqueueTurnExtraction(turnId),
-    publishAgentRun: (sessionId, event) => {
-      sessionConnections.publish(sessionId, { type: 'agent_run_event', event });
+    publishSubagent: (sessionId, event) => {
+      sessionConnections.publish(sessionId, { type: 'subagent_event', event });
     },
     publishQueuedInput: (sessionId, event) => sessionConnections.publish(sessionId, event),
     fanout: turnFanout,
@@ -206,7 +206,7 @@ export function buildComposition(input: {
       turn.continuations.shutdown();
       await database.sessionRunning.abortAll();
       stopPublishingSessionRunning();
-      await turn.agentRuns.shutdown('Application is shutting down');
+      await turn.subagents.shutdown('Application is shutting down');
       await tools.backgroundProcesses.shutdown();
       memory.shutdown();
       database.close();

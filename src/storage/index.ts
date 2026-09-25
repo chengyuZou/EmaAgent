@@ -83,6 +83,7 @@ export type { TurnRow, TurnInsert, TurnCompletion } from './repos/data/turns.js'
 export type { MessageRow, MessageInsert, MessageRole, MessageKind } from './repos/data/messages.js';
 export type {
   CharacterRow,
+  CharacterSummaryRow,
   CharacterInsert,
   CharacterUpdate,
   CharacterDeleteResult,

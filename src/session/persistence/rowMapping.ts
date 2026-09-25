@@ -98,44 +98,8 @@ export function toSearchHit(
   return {
     session: toSessionListItem(row),
     matchKind: row.match_kind,
-    snippet: row.match_kind === 'title'
-      ? row.title
-      : blocksJsonToSearchText(row.snippet_json),
+    snippet: row.snippet_text ?? '',
     anchorMessageId: row.message_id,
     messageAt: row.message_created_at,
   };
-}
-
-function blocksJsonToSearchText(raw: string | null): string {
-  if (!raw) return '';
-  try {
-    const blocks: unknown = JSON.parse(raw);
-    if (typeof blocks === 'string') return normaliseSnippet(blocks);
-    if (!Array.isArray(blocks)) return '';
-
-    const parts: string[] = [];
-    for (const block of blocks) {
-      if (!isRecord(block)) continue;
-      if (block.type === 'text' && typeof block.text === 'string') {
-        parts.push(block.text);
-      } else if (block.type === 'tool_result' && typeof block.content === 'string') {
-        parts.push(block.content);
-      }
-    }
-    return normaliseSnippet(parts.join(' '));
-  } catch {
-    return normaliseSnippet(raw);
-  }
-}
-
-function normaliseSnippet(text: string): string {
-  return text
-    .replace(/\\n/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 220);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

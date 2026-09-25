@@ -17,6 +17,7 @@ export type { BuiltinCharacterSeed } from './seed/index.js';
 
 export type {
   Character,
+  CharacterSummary,
   CharacterInput,
   CharacterPatch,
   CharacterStageKind,

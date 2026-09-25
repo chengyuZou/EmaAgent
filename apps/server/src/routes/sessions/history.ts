@@ -1,11 +1,11 @@
 // Session 历史读取：Message 正文分页、Message 锚点窗口、Turn 导航索引与终态收口。
 import { Hono } from 'hono';
 import { z } from 'zod';
-import type { Message, SessionStore } from '@ema-agent/session';
+import type { SessionMessage, SessionStore } from '@ema-agent/session';
 import type { UsageRecordsRepo } from '@ema-agent/storage';
 import type { Turn, TurnStore } from '@ema-agent/turn';
 import type { AudioArchive } from '@ema-agent/speech';
-import { buildHistoryMessages } from '@ema-agent/context';
+import { projectSessionMessages } from '@ema-agent/context';
 import { estimateLlmInputTokens } from '@ema-agent/token';
 import type { ProviderModels } from '@ema-agent/providers';
 import { createGenerationTargetResolver } from '@ema-agent/turn';
@@ -60,7 +60,7 @@ function toTurnStats(
 }
 
 function turnStatsForMessages(
-  messages: readonly Message[],
+  messages: readonly SessionMessage[],
   turns: Pick<TurnStore, 'getTurn'>,
   usageRecords: Pick<UsageRecordsRepo, 'forTurn'>,
   audioArchive: Pick<AudioArchive, 'findMergedFor'>,
@@ -82,7 +82,7 @@ export const sessionHistoryRoute = (deps: SessionHistoryRouteDeps) =>
         : undefined;
       // 与下一轮 Turn 共用摘要边界和 Message 投影. 此处只估算已保存历史,
       // 不执行尚未开始的 Prompt/Tool 装配, 也不为图片触发额外 Vision 调用.
-      const history = await buildHistoryMessages(
+      const history = await projectSessionMessages(
         deps.session.loadHistory(sessionId),
         createGenerationTargetResolver(deps.turns),
         { supportsImageInput: model?.capability === 'llm' && model.inputImage === true,

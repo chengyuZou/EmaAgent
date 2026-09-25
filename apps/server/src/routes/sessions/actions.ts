@@ -35,8 +35,8 @@ export interface SessionActionsRouteDeps {
     | 'unarchiveSession'
   >;
   readonly turns: Pick<TurnStore, 'rewindLastTurn'>;
-  /** 回退会删除父 Turn 行, 必须先停仍在写 transcript 的派生 AgentRun. */
-  readonly abortAgentRunsForTurn: (turnId: string) => Promise<void>;
+  /** 回退前先停该 Turn 发起的运行中子代理, 再删除 Turn. */
+  readonly abortSubagentsForTurn: (turnId: string) => Promise<void>;
   /** 跨域删除用例（application/deleteSession）由装配层绑定 composition 后传入。 */
   readonly deleteSession: (sessionId: string) => Promise<void>;
 }
@@ -79,7 +79,7 @@ export const sessionActionsRoute = (deps: SessionActionsRouteDeps) =>
     // TODO: 当前 Desktop 禁止消息回退。此接口删除整 Turn，未来不能直接复用为单条 Message 编辑。
     .post('/:sessionId/turns/:turnId/rewind', async context => {
       try {
-        await deps.abortAgentRunsForTurn(context.req.param('turnId'));
+        await deps.abortSubagentsForTurn(context.req.param('turnId'));
         return context.json(deps.turns.rewindLastTurn(
           context.req.param('sessionId'),
           context.req.param('turnId'),

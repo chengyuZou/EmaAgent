@@ -12,13 +12,14 @@ import {
 } from '@ema-agent/providers';
 
 export interface NarrativeComposition {
-  /** EMA_NARRATIVE_BRIDGE_URL 缺失时为 null：Bridge 不在场，Narrative 能力整体降级。 */
-  readonly narrative: NarrativeClient | null;
-  /**
-   * 把 lightrag-embed 绑定解析出的进程级 Embedding 连接推给 Bridge；启动时调用一次。
-   * Bridge 不在场、绑定未配置或协议不支持都降级为不推送，不阻断主链路。
-   */
-  configureNarrativeBridge(): Promise<void>;
+  /** Rust 每次报告实际端口时替换当次 Bridge，并推送进程级 Embedding 连接。 */
+  attach(port: number): Promise<void>;
+  /** 先断开新 Turn 的入口，再请求当前 Python 进程退出。 */
+  shutdown(): Promise<boolean>;
+  /** Rust 确认 Python 意外退出时清除旧 Client。 */
+  detach(): void;
+  /** Turn 开始时冻结当前 Bridge；不在场时返回 undefined。 */
+  currentClient(): NarrativeClient | undefined;
   /** Turn 开始时冻结的当次 Narrative LLM 连接；未绑定或协议不支持时返回 undefined。 */
   resolveNarrativeLlm(): NarrativeLlmConnection | undefined;
 }
@@ -28,14 +29,10 @@ export function openNarrative(
   providerModels: ProviderModels,
   modelBindings: ModelBindings,
 ): NarrativeComposition {
-  const baseUrl = process.env['EMA_NARRATIVE_BRIDGE_URL'];
   const secret = process.env['EMA_SHARED_SECRET'];
-  const narrative = baseUrl
-    ? new NarrativeClient({ baseUrl, ...(secret ? { secret } : {}) })
-    : null;
+  let narrative: NarrativeClient | undefined;
 
-  const configureNarrativeBridge = async (): Promise<void> => {
-    if (!narrative) return;
+  const configureNarrativeBridge = async (client: NarrativeClient): Promise<void> => {
     const embedBinding = modelBindings.get('lightrag-embed');
     if (!embedBinding) return;
     // 绑定只能指向已启用模型；行缺失说明不变量被破坏，跳过并告警而不是编一个 dim。
@@ -59,11 +56,29 @@ export function openNarrative(
           dim: model.dim,
         },
       };
-      const ok = await narrative.configure(payload);
+      const ok = await client.configure(payload);
       if (!ok) console.warn('[narrative-bridge] 配置推送失败——Narrative 能力降级');
     } catch (err) {
       if (!(err instanceof ProviderError)) throw err;
     }
+  };
+
+  const attach = async (port: number): Promise<void> => {
+    const client = new NarrativeClient({
+      baseUrl: `http://127.0.0.1:${port}`,
+      ...(secret ? { secret } : {}),
+    });
+    await configureNarrativeBridge(client);
+    narrative = client;
+  };
+
+  const shutdown = async (): Promise<boolean> => {
+    const client = narrative;
+    if (!client) return false;
+    narrative = undefined;
+    const accepted = await client.shutdown();
+    if (!accepted) narrative = client;
+    return accepted;
   };
 
   const resolveNarrativeLlm = (): NarrativeLlmConnection | undefined => {
@@ -87,5 +102,11 @@ export function openNarrative(
     }
   };
 
-  return { narrative, configureNarrativeBridge, resolveNarrativeLlm };
+  return {
+    attach,
+    shutdown,
+    detach: () => { narrative = undefined; },
+    currentClient: () => narrative,
+    resolveNarrativeLlm,
+  };
 }

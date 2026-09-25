@@ -1,7 +1,7 @@
 // Session WebSocket 接收 Chat 请求, 并把该 Session 的运行状态和业务事件发给已打开的窗口.
 import { CommandsError, type ManualCompactResult } from '@ema-agent/commands';
 import type { CompactEvent } from '@ema-agent/compact';
-import type { AgentRunEvent, AgentRunExecutor } from '@ema-agent/agent';
+import type { SubagentEvent, SubagentExecutor } from '@ema-agent/agent';
 import type { PermissionResponse } from '@ema-agent/permission';
 import {
   SessionBusyError,
@@ -9,7 +9,7 @@ import {
   type SessionMode,
   type SessionRunning,
   type SessionRunningRegistry,
-  type Message as SessionMessage,
+  type SessionMessage,
   type SessionStore,
 } from '@ema-agent/session';
 import {
@@ -84,7 +84,7 @@ export const sessionClientMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('cancel_turn'), requestId: requestIdSchema, turnId: z.string().min(1) }),
   z.object({ type: z.literal('cancel_compact'), requestId: requestIdSchema, compactId: z.string().min(1) }),
   z.object({ type: z.literal('cancel_tool'), requestId: requestIdSchema, turnId: z.string().min(1), toolCallId: z.string().min(1) }),
-  z.object({ type: z.literal('cancel_agent_run'), requestId: requestIdSchema, agentRunId: z.string().min(1) }),
+  z.object({ type: z.literal('cancel_subagent'), requestId: requestIdSchema, subagentId: z.string().min(1) }),
   z.object({ type: z.literal('ping') }),
 ]);
 
@@ -151,7 +151,7 @@ export type SessionBusinessMessage =
       readonly running: SessionRunning | null;
     }
   | {
-      /** 真实 UserMessage 已写入 History, Desktop 按保存顺序替换引导产生的临时气泡或直接追加. */
+      /** 真实 UserMessage 已写入 History, Desktop 按保存顺序交给当前 Turn 或持久 History. */
       readonly type: 'user_message_stored';
       readonly message: SessionMessage;
     }
@@ -159,9 +159,9 @@ export type SessionBusinessMessage =
   | SessionContinuationEvent
   | SessionTurnMessage
   | {
-      /** AgentRun 的增量和终态, Desktop 只更新子代理 Store, 不混入根 Turn 的消息投影. */
-      readonly type: 'agent_run_event';
-      readonly event: AgentRunEvent;
+      /** Subagent 的增量和终态, Desktop 只更新子代理 Store, 不混入根 Turn 的消息投影. */
+      readonly type: 'subagent_event';
+      readonly event: SubagentEvent;
     };
 
 /**
@@ -232,7 +232,7 @@ export class SessionSocketConnections {
 export interface SessionWebSocketRouteDeps {
   readonly connections: SessionSocketConnections;
   readonly executor: TurnExecutor;
-  readonly agentRuns: AgentRunExecutor;
+  readonly subagents: SubagentExecutor;
   readonly continuations: SessionContinuationQueue;
   readonly sessions: Pick<SessionStore, 'sessionExists' | 'getSession' | 'loadMessagesForTurn'>;
   readonly turns: Pick<TurnStore, 'getTurn'>;
@@ -390,8 +390,8 @@ async function handleClientMessage(
       case 'cancel_tool':
         sendRequestResult(socket, message.requestId, deps.executor.abortTool(message.turnId, message.toolCallId));
         return;
-      case 'cancel_agent_run':
-        sendRequestResult(socket, message.requestId, deps.agentRuns.cancel(message.agentRunId, sessionId));
+      case 'cancel_subagent':
+        sendRequestResult(socket, message.requestId, deps.subagents.cancel(message.subagentId, sessionId));
         return;
     }
   } catch (error) {

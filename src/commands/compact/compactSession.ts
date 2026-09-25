@@ -1,5 +1,5 @@
 // 手动 /compact: 与根 Turn 共享同一份 Session 运行记录, 两者互斥, 且不创建 Turn.
-// 链: 注册 SessionRunning(kind='compact') → 读历史 → buildHistoryMessages 投影 → 触发线下限闸 →
+// 链: 注册 SessionRunning(kind='compact') → 读历史 → projectSessionMessages 投影 → 触发线下限闸 →
 // 与下一根 Turn 同事实的 systemMessages → compact(force=true) →
 // 游标映射 appendHistorySummary（唯一提交点；abort/失败即历史原样）。
 // 命令路径的压缩终态一定是 macro：低于触发线在调用前拒绝，macro 失败按错误上抛，
@@ -18,7 +18,7 @@ import {
   type CompactResult,
 } from '@ema-agent/compact';
 import {
-  buildHistoryMessages,
+  projectSessionMessages,
   buildPromptMessages,
 } from '@ema-agent/context';
 import {
@@ -54,9 +54,6 @@ export type ManualCompactResult =
       readonly afterTokens: number;
       readonly savedTokens: number;
       readonly durationMs: number;
-      /** 历史超出当前模型窗口被直接丢弃（未摘要）的最旧消息；未发生时缺省。 */
-      readonly truncatedMessageCount?: number;
-      readonly truncatedTokens?: number;
     }
   | { readonly status: 'cancelled' };
 
@@ -130,7 +127,7 @@ export async function compactSession(
     }
 
     const supportsImageInput = providerModel.inputImage === true;
-    const historyWithIds = await buildHistoryMessages(
+    const historyWithIds = await projectSessionMessages(
       persisted,
       createGenerationTargetResolver(deps.turns),
       {
@@ -186,7 +183,7 @@ export async function compactSession(
       compactId,
       sessionId,
       sessionMode: session.sessionMode,
-      history,
+      messages: history,
       systemMessages,
       tools: [],
       estimatedInputTokens,
@@ -203,8 +200,8 @@ export async function compactSession(
             ? { enabled: false as const }
             : { enabled: true as const, effort: session.reasoningEffort } }
         : {}),
-      // 游标映射与根 Turn 同一闭包语义：计数（含窗口截断丢弃偏移）→ 输入历史身份
-      // → 覆盖截止游标，被丢弃消息随游标一并退出可见历史。
+      // Compact 从投影数组开头累计被摘要覆盖的数量, 再映射到最后一条 SQL Message ID.
+      // 即使某些 SQL Message 没有模型可见内容, 游标也会覆盖它们所在的旧前缀.
       saveMacroSummary: (summary, summarizedMessageCount) => {
         deps.sessions.appendHistorySummary({
           sessionId,
@@ -235,12 +232,6 @@ export async function compactSession(
         afterTokens: result.afterTokens,
         savedTokens: result.savedTokens,
         durationMs: result.durationMs,
-        ...(result.droppedMessageCount > 0
-          ? {
-              truncatedMessageCount: result.droppedMessageCount,
-              truncatedTokens: result.droppedTokens,
-            }
-          : {}),
       };
     }
     // 命令路径一定是 macro（micro:false）；unchanged 即 macro 失败，micro 形态不可达。

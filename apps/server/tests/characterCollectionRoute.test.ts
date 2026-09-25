@@ -7,6 +7,8 @@ import {
 
 function fixture() {
   const characters = {
+    listSummaries: vi.fn(() => [{ name: '艾玛', live2dCount: 1, coverResourceName: 'ema' }]),
+    get: vi.fn(() => ({ name: '艾玛', personaPrompt: '你是艾玛。' })),
     update: vi.fn((_name: string, patch: unknown) => ({ name: '艾玛', patch })),
   } as unknown as CharacterCollectionRouteDeps['characters'];
   const runWhenSessionsIdle: CharacterCollectionRouteDeps['runWhenSessionsIdle'] = vi.fn(async action => action());
@@ -19,6 +21,18 @@ function fixture() {
 }
 
 describe('characterCollectionRoute', () => {
+  it('列表只返回摘要,单角色接口返回完整资料', async () => {
+    const deps = fixture();
+    const route = characterCollectionRoute(deps);
+    const list = await route.request('/');
+    const detail = await route.request('/艾玛');
+
+    expect(await list.json()).toEqual({
+      items: [{ name: '艾玛', live2dCount: 1, coverResourceName: 'ema' }],
+    });
+    expect(await detail.json()).toEqual({ name: '艾玛', personaPrompt: '你是艾玛。' });
+  });
+
   it('显示名、描述和 Persona Prompt 不经过 Session 门禁', async () => {
     const deps = fixture();
     const response = await characterCollectionRoute(deps).request('/艾玛', {

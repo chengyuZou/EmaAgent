@@ -10,7 +10,7 @@ import {
   kbRerankBlendWeightSetting,
   kbResultMaxCharsSetting,
 } from '@ema-agent/knowledge';
-import { narrativeQueryModeSetting } from '@ema-agent/narrative';
+import { narrativeQueryModeSetting, narrativeStartOnLaunchSetting } from '@ema-agent/narrative';
 import { PERMISSION_SETTINGS } from '@ema-agent/permission';
 import { SettingsStore } from '@ema-agent/settings';
 import {
@@ -42,6 +42,7 @@ export const SETTINGS_DEFINITIONS = [
   kbRerankBlendWeightSetting,
   kbResultMaxCharsSetting,
   narrativeQueryModeSetting,
+  narrativeStartOnLaunchSetting,
   disabledProjectSourcesSetting,
   disabledToolsSetting,
   maxConcurrentBackgroundSetting,

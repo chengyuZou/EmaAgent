@@ -10,7 +10,7 @@ import type {
 } from '@ema-agent/llm';
 import type {
   AttachmentBlock,
-  Message as SessionMessage,
+  SessionMessage,
   SkillReferenceBlock,
 } from '@ema-agent/session';
 import {

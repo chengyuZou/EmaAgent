@@ -16,8 +16,8 @@ import {
 import type { Composition } from '../composition/index.js';
 import { emaAuth, localWebviewCors } from '../platform/auth.js';
 import { requestBudgetMiddleware } from '../platform/requestBudget.js';
-import { agentRunListRoute } from './agentRuns/list.js';
-import { agentRunTranscriptRoute } from './agentRuns/transcript.js';
+import { subagentListRoute } from './subagents/list.js';
+import { subagentMessagesRoute } from './subagents/messages.js';
 import { backgroundProcessControlRoute } from './backgroundProcesses/control.js';
 import { backgroundProcessListRoute } from './backgroundProcesses/list.js';
 import { sessionBackupRoute } from './backup/sessions.js';
@@ -38,6 +38,7 @@ import { mcpServersRoute } from './mcp/servers.js';
 import { memoryFilesRoute } from './memory/files.js';
 import { memoryJobsRoute } from './memory/jobs.js';
 import { memoryStatsRoute } from './memory/stats.js';
+import { narrativeControlRoute } from './narrative/control.js';
 import { providerCapabilitiesRoute } from './providers/capabilities.js';
 import { providerConfigsRoute } from './providers/configs.js';
 import { providerHealthRoute } from './providers/health.js';
@@ -78,7 +79,7 @@ export const createRoutes = (composition: Composition, secret: string) => {
     .use('*', emaAuth(secret))
     .use('*', requestBudgetMiddleware())
 
-    // 探活挂在根路径 /health：宿主在 ready 文件发布前轮询，emaAuth 内豁免认证。
+    // 探活挂在根路径 /health; 宿主也可用它检查已公布端口, emaAuth 内豁免认证.
     .route('/', systemStatusRoute({
       activeDataDir: database.activeDataDir,
       getSandboxStatus: tools.getSandboxStatus,
@@ -96,7 +97,7 @@ export const createRoutes = (composition: Composition, secret: string) => {
     .route('/api/ws/session', sessionWebSocketRoute({
       connections: sessionConnections,
       executor: turn.turnExecutor,
-      agentRuns: turn.agentRuns,
+      subagents: turn.subagents,
       continuations: turn.continuations,
       sessions: database.session,
       turns: database.turns,
@@ -105,6 +106,7 @@ export const createRoutes = (composition: Composition, secret: string) => {
       compactSession: commands.compactSession,
       attachTurn: (handle, ttsEnabled) => turnFanout.attach(handle, { ttsEnabled }),
     }))
+    .route('/', narrativeControlRoute(composition.narrative))
     .route('/api/ws/speech', speechWebSocketRoute(speech))
     .route('/api/turns', turnControlRoute({
       turns: database.turns,
@@ -119,7 +121,7 @@ export const createRoutes = (composition: Composition, secret: string) => {
     .route('/api/sessions', sessionActionsRoute({
       session: database.session,
       turns: database.turns,
-      abortAgentRunsForTurn: turnId => turn.agentRuns.abortForTurn(turnId),
+      abortSubagentsForTurn: turnId => turn.subagents.abortForTurn(turnId),
       // 跨域删除用例在 application 层，装配时绑定 composition。
       deleteSession: sessionId => deleteSession(composition, sessionId),
     }))
@@ -160,10 +162,10 @@ export const createRoutes = (composition: Composition, secret: string) => {
 
     .route('/api/tasks', tasksRoute(database.tasks))
 
-    .route('/api/agent-runs', agentRunListRoute({ agentRuns: database.agentRuns }))
-    .route('/api/agent-runs', agentRunTranscriptRoute({
-      agentRuns: database.agentRuns,
-      agentRunMessages: database.agentRunMessages,
+    .route('/api/subagents', subagentListRoute({ subagents: database.subagents }))
+    .route('/api/subagents', subagentMessagesRoute({
+      subagents: database.subagents,
+      subagentMessages: database.subagentMessages,
     }))
 
     .route('/api/background-processes', backgroundProcessListRoute({

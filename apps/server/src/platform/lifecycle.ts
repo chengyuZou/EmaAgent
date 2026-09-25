@@ -1,4 +1,4 @@
-// 进程生命周期: 数据目录决议 → 锁 → Composition → 启动恢复 → 监听 → ready 文件 → 后台驱动.
+// 进程生命周期: 数据目录决议 → 锁 → Composition → 启动恢复 → 监听 → stdout ready → 后台驱动.
 // 以及对应的优雅关闭. 这里只编排顺序, 业务对象全部来自 Composition.
 import path from 'node:path';
 import type { Server } from 'node:http';
@@ -14,12 +14,11 @@ import {
 import { createRoutes } from '../routes/index.js';
 import { acquireLock } from './lockfile.js';
 import { dataDirPath, ensureDataDirLayout, profileDir } from './paths.js';
-import { publishReadyFile } from './readiness.js';
 import { HTTP_SERVER_TIMEOUTS } from './requestBudget.js';
 
 export interface ServerLifecycle {
   readonly composition: Composition;
-  /** 实际监听端口（宿主经 ready 文件读取）。 */
+  /** 实际监听端口（宿主经 stdout 控制消息读取）。 */
   readonly port: number;
   shutdown(): Promise<void>;
 }
@@ -64,8 +63,8 @@ export async function startServer(secret: string): Promise<ServerLifecycle> {
       dataDb: running.database.dataDb,
       session: running.database.session,
       turns: running.database.turns,
-      agentRuns: running.database.agentRuns,
-      agentRunMessages: running.database.agentRunMessages,
+      subagents: running.database.subagents,
+      subagentMessages: running.database.subagentMessages,
       toolExecutionState: running.tools.toolExecutionState,
       backgroundProcesses: running.tools.backgroundProcesses,
       settings: running.settings.settings,
@@ -80,7 +79,7 @@ export async function startServer(secret: string): Promise<ServerLifecycle> {
     const app = createRoutes(running, secret);
     const channelWebSocketServer = new WebSocketServer({ noServer: true });
     webSocketServer = channelWebSocketServer;
-    // 端口由 OS 分配（loopback ephemeral），实际端口经 ready 文件报告宿主；
+    // 端口由 OS 分配（loopback ephemeral），实际端口经 stdout 控制消息报告宿主；
     // 没有任何需要用户或宿主配置的端口项。未传自定义 createServer 时 serve
     // 恒为 http1 Server（headersTimeout/requestTimeout 只在 http1 上存在）。
     const httpServer = serve({
@@ -98,7 +97,7 @@ export async function startServer(secret: string): Promise<ServerLifecycle> {
     const address = httpServer.address();
     const port = typeof address === 'object' && address !== null ? address.port : 0;
     phaseStartedAt = performance.now();
-    const unpublishReady = publishReadyFile(port);
+    process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'server.ready', params: { port } })}\n`);
     logStartupDuration('ready publication', phaseStartedAt);
 
     // ── ready 之后的后台驱动 ──────────────────────────────────────────────
@@ -116,8 +115,6 @@ export async function startServer(secret: string): Promise<ServerLifecycle> {
     // models.dev 缓存是 gitignored 拉取产物: 启动后台刷一次, 失败只影响模型候选展示.
     void running.providers.refreshCatalog()
       .catch(error => console.warn('[providers] models.dev 目录刷新失败:', error));
-    void running.narrative.configureNarrativeBridge()
-      .catch(error => console.warn('[narrative] Bridge 配置推送失败:', error));
     // 默认库落在 kb/<随机 id>:参数是父目录,库目录由 KbManager 自建。
     void running.knowledge.kb.ensureDefault(path.join(profileDir(), 'kb'))
       .catch(error => console.warn('[kb] 默认知识库创建失败:', error));
@@ -125,7 +122,6 @@ export async function startServer(secret: string): Promise<ServerLifecycle> {
       composition: running,
       port,
       async shutdown() {
-        unpublishReady?.();
         for (const socket of channelWebSocketServer.clients) socket.terminate();
         channelWebSocketServer.close();
         await new Promise<void>(resolve => {

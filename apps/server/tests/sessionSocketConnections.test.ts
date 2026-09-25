@@ -72,11 +72,11 @@ describe('sessionClientMessageSchema', () => {
     }).success).toBe(false);
   });
 
-  it('accepts a ToolCall ID as the AgentRun cancellation identity', () => {
+  it('accepts a ToolCall ID as the Subagent cancellation identity', () => {
     expect(sessionClientMessageSchema.safeParse({
-      type: 'cancel_agent_run',
+      type: 'cancel_subagent',
       requestId: 'cancel-agent-1',
-      agentRunId: 'provider-tool-call-1',
+      subagentId: 'provider-tool-call-1',
     }).success).toBe(true);
   });
 });

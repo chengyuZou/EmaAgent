@@ -1,4 +1,4 @@
-// 测试 compactSession 全链：Session 运行互斥、前置拒绝、窗口截断、摘要落库游标、abort 原样、用量记账与目录投影。
+// 测试 compactSession 全链: Session 运行互斥、前置拒绝、分段摘要、落库游标、abort 原样、用量记账与目录投影.
 import { describe, expect, it, vi } from 'vitest';
 import {
   compactManualMinRatioSetting,
@@ -104,15 +104,16 @@ function makeFixture(options: {
   return { deps, sessions, turns, sessionRunning, usageRecords, compactEvents, sessionId };
 }
 
-/** 写入超过触发线的长历史（6 条 × 2 万字符，约 3 万 token > 窗口本身，同时触发窗口截断）。 */
+/** 写入超过触发线的长历史(6 条 × 2 万字符, 约 3 万 token > 窗口本身). */
 function seedLongHistory(sessions: SessionStore, sessionId: string): string[] {
   const ids: string[] = [];
   for (let index = 0; index < 6; index += 1) {
+    const text = `第${index}条 ${'长'.repeat(20_000)}`;
     const message = sessions.appendMessage({
       turnId: null,
       sessionId,
       role: index % 2 === 0 ? 'user' : 'assistant',
-      blocks: `第${index}条 ${'长'.repeat(20_000)}`,
+      blocks: index % 2 === 0 ? text : [{ type: 'text', text }],
     });
     ids.push(message.id);
   }
@@ -183,8 +184,15 @@ describe('compactSession', () => {
     });
   });
 
-  it('成功压缩：窗口截断显式计数、摘要落库、尾部续读、记录用量', async () => {
-    const { deps, sessions, usageRecords, compactEvents, sessionId } = makeFixture();
+  it('成功压缩: 超窗历史分段摘要、落库、尾部续读、记录用量', async () => {
+    let summaryCalls = 0;
+    const requestedMessages: string[] = [];
+    const callLlm: CallLlm = request => {
+      summaryCalls += 1;
+      requestedMessages.push(JSON.stringify(request.messages));
+      return summaryLlm()(request);
+    };
+    const { deps, sessions, usageRecords, compactEvents, sessionId } = makeFixture({ callLlm });
     const ids = seedLongHistory(sessions, sessionId);
 
     const result = await compactSession(deps, sessionId);
@@ -194,16 +202,18 @@ describe('compactSession', () => {
     expect(result.contextWindow).toBe(CONTEXT_WINDOW);
     expect(result.beforeTokens).toBeGreaterThan(8_500);
     expect(result.savedTokens).toBeGreaterThan(0);
-    // 历史（约 3 万 token）超过 1 万窗口：截断事件发生且计数进响应。
-    expect(result.truncatedMessageCount).toBeGreaterThan(0);
-    expect(result.truncatedTokens).toBeGreaterThan(0);
+    // 原始历史超过单次窗口, 所有旧消息仍经多次摘要调用处理.
+    expect(summaryCalls).toBeGreaterThan(1);
+    for (let index = 0; index < ids.length; index += 1) {
+      expect(requestedMessages.some(messages => messages.includes(`第${index}条 `))).toBe(true);
+    }
 
     const history = sessions.loadHistory(sessionId);
     const summary = history[0]!;
     expect(summary.kind).toBe('summary');
     expect(summary.turnId).toBeNull();
     expect(summary.blocks).toContain('压缩后的工作摘要');
-    // 游标之后的尾部是原始历史的后缀（覆盖游标把被丢弃与被摘要消息一并切出可见历史）。
+    // 游标之后的尾部是原始历史的后缀; 游标之前的消息已进入摘要.
     const tailIds = history.slice(1).map(message => message.id);
     expect(tailIds.length).toBeLessThan(ids.length);
     expect(tailIds).toEqual(ids.slice(ids.length - tailIds.length));
@@ -215,12 +225,8 @@ describe('compactSession', () => {
     expect(record.modelId).toBe(MODEL_ID);
     expect(record.sessionId).toBe(sessionId);
     expect(record.id).toMatch(/^compact:/);
-    expect(record.inputTokens).toBe(8_000);
-    expect(compactEvents.map(event => event.type)).toEqual([
-      'compact_started',
-      'compact_history_truncated',
-      'compact_completed',
-    ]);
+    expect(record.inputTokens).toBe(8_000 * summaryCalls);
+    expect(compactEvents.map(event => event.type)).toEqual(['compact_started', 'compact_completed']);
   });
 
   it('项目 Work Session 压缩时使用项目身份装载技能目录', async () => {
@@ -260,15 +266,13 @@ describe('compactSession', () => {
       request.saveMacroSummary?.('摘要正文', 1);
       return {
         kind: 'macro',
-        history: request.history,
+        messages: request.messages,
         beforeTokens: 9_000,
         afterTokens: 3_000,
         savedTokens: 6_000,
         durationMs: 5,
         usage: { inputTokens: 100, outputTokens: 20 },
         summarizedMessageCount: 1,
-        droppedMessageCount: 0,
-        droppedTokens: 0,
       };
     };
 

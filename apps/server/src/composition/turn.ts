@@ -19,6 +19,7 @@ import {
   memorySummaryFile,
   MEMORY_SUMMARY_TOKENS,
   readMemorySummary,
+  readRelationshipMemoryForTurn,
   relationshipMemoryDir,
   workMemoryDir,
 } from '@ema-agent/memory';
@@ -30,9 +31,9 @@ import type { StageEngine } from '@ema-agent/stage';
 import { AttachmentVisionDescriptionCachesRepo } from '@ema-agent/storage';
 import { formatTaskContextReminder } from '@ema-agent/tasks';
 import {
-  AgentRunExecutor,
+  SubagentExecutor,
   maxConcurrentSubagentsSetting,
-  type AgentRunEvent,
+  type SubagentEvent,
 } from '@ema-agent/agent';
 import {
   SessionInteractionQueue,
@@ -58,7 +59,7 @@ const WORKSPACE_INSTRUCTION_MAX_CHARS = 32 * 1024;
 
 export interface TurnComposition {
   readonly turnExecutor: TurnExecutor;
-  readonly agentRuns: AgentRunExecutor;
+  readonly subagents: SubagentExecutor;
   readonly continuations: SessionContinuationQueue;
   /** Permission/AskUser 回答路由与 SSE 重连恢复的入口。 */
   readonly interactionQueue: SessionInteractionQueue;
@@ -84,7 +85,7 @@ export interface TurnCompositionDeps {
   readonly emitAppEvent: (event: AppEvent) => void;
   /** completed 终态事务内的提取入队（Memory 一族）；事务提交后由它自己安排 drain。 */
   readonly onTurnCompletedInTransaction: (turnId: string) => void;
-  readonly publishAgentRun: (sessionId: string, event: AgentRunEvent) => void;
+  readonly publishSubagent: (sessionId: string, event: SubagentEvent) => void;
   readonly publishQueuedInput: (sessionId: string, event: SessionContinuationEvent) => void;
   readonly fanout: TurnFanout;
 }
@@ -98,16 +99,16 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
   );
   let turnExecutor!: TurnExecutor;
   let continuations!: SessionContinuationQueue;
-  const agentRuns = new AgentRunExecutor({
-    store: database.agentRuns,
-    messages: database.agentRunMessages,
+  const subagents = new SubagentExecutor({
+    store: database.subagents,
+    messages: database.subagentMessages,
     maxConcurrent: () => settings.get(maxConcurrentSubagentsSetting),
-    publish: deps.publishAgentRun,
-    onBackgroundCompleted: (sessionId, agentRunId, status) => {
-      continuations.agentRunCompleted(sessionId, agentRunId, status);
+    publish: deps.publishSubagent,
+    onBackgroundCompleted: (sessionId, subagentId, status) => {
+      continuations.subagentCompleted(sessionId, subagentId, status);
     },
-    onTerminalResultRead: (sessionId, agentRunId) => {
-      continuations.agentRunResultRead(sessionId, agentRunId);
+    onTerminalResultRead: (sessionId, subagentId) => {
+      continuations.subagentResultRead(sessionId, subagentId);
     },
   });
   continuations = new SessionContinuationQueue({
@@ -184,7 +185,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     const [memoryWork, memoryRelationship] = await Promise.all([
       readMemorySummary(memorySummaryFile(workMemoryDir()), summaryTokens)
         .catch(() => undefined),
-      readMemorySummary(memorySummaryFile(relationshipMemoryDir()), summaryTokens)
+      readRelationshipMemoryForTurn(relationshipMemoryDir(), scope.characterName)
         .catch(() => undefined),
     ]);
     const narrativeRecall = scope.narrativePolicy === 'always' && scope.narrativeSearch && scope.userText.trim().length > 0
@@ -245,11 +246,11 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     disabledSkillPaths: () => tools.skillEnablement.listDisabledPaths(),
     registry: tools.registry,
     interactionQueue,
-    agentRuns,
+    subagents,
     continuations,
     taskStore: database.tasks,
     knowledgeSearch: knowledge.knowledgeSearch,
-    narrativeClient: narrative.narrative ?? undefined,
+    currentNarrativeClient: narrative.currentClient,
     resolveNarrativeLlm: narrative.resolveNarrativeLlm,
     backgroundProcesses: tools.backgroundProcesses,
     resolveVision: resolveCallVision,
@@ -276,7 +277,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
 
   return {
     turnExecutor,
-    agentRuns,
+    subagents,
     continuations,
     interactionQueue,
     describeImage,

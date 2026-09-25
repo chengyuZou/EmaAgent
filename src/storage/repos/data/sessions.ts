@@ -52,7 +52,7 @@ export interface SessionRowEnriched extends SessionRow {
 /** SessionRow 带 JOIN 查询派生的 turn 字段 + 搜索匹配字段 用于查找 session标题/session内Message */
 export interface SessionSearchRow extends SessionRowEnriched {
   match_kind:         'title' | 'message';
-  snippet_json:       string | null;
+  snippet_text:       string | null;
   message_id:         string | null;
   message_created_at: number | null;
 }
@@ -213,7 +213,7 @@ export class SessionsRepo {
           SELECT
             d.session_id,
             d.message_id AS id,
-            m.blocks_json,
+            substr(d.text, 1, 220) AS snippet_text,
             d.created_at,
             ROW_NUMBER() OVER (
               PARTITION BY d.session_id
@@ -221,7 +221,6 @@ export class SessionsRepo {
             ) AS row_number
           FROM message_search_fts fts
           JOIN message_search_documents d ON d.message_id = fts.message_id
-          JOIN messages m ON m.id = d.message_id
           WHERE message_search_fts MATCH ?
         )
         SELECT
@@ -235,8 +234,8 @@ export class SessionsRepo {
           END AS match_kind,
           CASE
             WHEN lower(s.title) LIKE ? ESCAPE '\\' THEN s.title
-            ELSE mm.blocks_json
-          END AS snippet_json,
+            ELSE mm.snippet_text
+          END AS snippet_text,
           mm.id AS message_id,
           mm.created_at AS message_created_at
         FROM sessions s

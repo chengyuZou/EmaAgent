@@ -29,6 +29,31 @@ function insertTurnFixture(db: Database, sessionId: string): string {
 // ── Session ───────────────────────────────────────────────────────────────────
 
 describe('SessionStore — session', () => {
+  it('搜索预览只使用索引正文,不回读工具结果或完整消息块', () => {
+    const { store, db } = makeStore();
+    const session = store.createSession();
+    const text = `搜索正文${'甲'.repeat(240)}`;
+    db.sqlite.prepare(`
+      INSERT INTO messages (id, session_id, role, kind, blocks_json, created_at)
+      VALUES (?, ?, 'user', 'normal', ?, ?)
+    `).run(
+      'search-message',
+      session.id,
+      JSON.stringify([
+        { type: 'text', text },
+        { type: 'tool_result', content: '不应进入搜索预览' },
+      ]),
+      1,
+    );
+
+    const [hit] = store.searchSessions({ query: '搜索正文' }).results;
+    expect(hit).toMatchObject({
+      matchKind: 'message',
+      anchorMessageId: 'search-message',
+      snippet: text.slice(0, 220),
+    });
+  });
+
   it('creates a session with defaults', () => {
     const { store } = makeStore();
     const s = store.createSession();

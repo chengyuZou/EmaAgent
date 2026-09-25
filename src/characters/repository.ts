@@ -1,5 +1,5 @@
 import { CharacterRepo, type CharacterDeleteResult, type CharacterRow } from '@ema-agent/storage';
-import type { Character, CharacterInput, CharacterPatch } from './types.js';
+import type { Character, CharacterInput, CharacterPatch, CharacterSummary } from './types.js';
 
 function fromRow(row: CharacterRow): Character {
   return {
@@ -33,6 +33,21 @@ export class CharacterRepository {
 
   list(): Character[] {
     return this.characters.list().map(fromRow);
+  }
+
+  listSummaries(): CharacterSummary[] {
+    return this.characters.listSummaries().map(row => ({
+      name: row.name,
+      displayName: row.display_name,
+      description: row.description,
+      stageKind: row.stage_kind,
+      isActive: row.is_active === 1,
+      updatedAt: row.updated_at,
+      live2dCount: row.live2d_count,
+      illustrationCount: row.illustration_count,
+      voiceSampleCount: row.voice_sample_count,
+      coverResourceName: row.cover_resource_name,
+    }));
   }
 
   insert(input: CharacterInput, stageKind: Character['stageKind'] = 'blank', isActive = false): Character {

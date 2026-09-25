@@ -27,6 +27,19 @@ export interface Character {
   updatedAt: number;
 }
 
+export interface CharacterSummary {
+  name: string;
+  displayName: string | null;
+  description: string | null;
+  stageKind: CharacterStageKind;
+  isActive: boolean;
+  updatedAt: number;
+  live2dCount: number;
+  illustrationCount: number;
+  voiceSampleCount: number;
+  coverResourceName: string | null;
+}
+
 export interface CharacterInput {
   name: string;
   displayName?: string | null;

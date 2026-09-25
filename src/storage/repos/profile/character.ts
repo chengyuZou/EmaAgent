@@ -12,6 +12,19 @@ export interface CharacterRow {
   updated_at: number;
 }
 
+export interface CharacterSummaryRow {
+  name: string;
+  display_name: string | null;
+  description: string | null;
+  stage_kind: CharacterRow['stage_kind'];
+  is_active: number;
+  updated_at: number;
+  live2d_count: number;
+  illustration_count: number;
+  voice_sample_count: number;
+  cover_resource_name: string | null;
+}
+
 export interface CharacterInsert {
   name: string;
   displayName?: string | null;
@@ -72,6 +85,31 @@ export class CharacterRepo {
     return this.db.prepare(
       'SELECT * FROM characters ORDER BY is_active DESC, last_activated_at DESC, created_at ASC',
     ).all() as CharacterRow[];
+  }
+
+  listSummaries(): CharacterSummaryRow[] {
+    return this.db.prepare(`
+      SELECT
+        c.name, c.display_name, c.description, c.stage_kind, c.is_active, c.updated_at,
+        (SELECT COUNT(*) FROM character_live2d_models WHERE character_name = c.name) AS live2d_count,
+        (SELECT COUNT(*) FROM character_illustrations WHERE character_name = c.name) AS illustration_count,
+        (SELECT COUNT(*) FROM character_voice_samples WHERE character_name = c.name) AS voice_sample_count,
+        CASE c.stage_kind
+          WHEN 'live2d' THEN (
+            SELECT name FROM character_live2d_models
+            WHERE character_name = c.name AND is_primary = 1
+          )
+          WHEN 'illustration' THEN (
+            SELECT name FROM character_illustrations
+            WHERE character_name = c.name
+            ORDER BY is_primary DESC, created_at, name
+            LIMIT 1
+          )
+          ELSE NULL
+        END AS cover_resource_name
+      FROM characters c
+      ORDER BY c.is_active DESC, c.last_activated_at DESC, c.created_at ASC
+    `).all() as CharacterSummaryRow[];
   }
 
   count(): number {
