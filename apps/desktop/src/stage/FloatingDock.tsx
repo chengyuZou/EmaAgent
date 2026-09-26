@@ -1,7 +1,6 @@
 // 提供桌宠主窗口的聊天、设置、置顶、表情、拖动与退出入口。
 import { useState, type CSSProperties } from 'react';
 import { IconButton, Popover, ScrollArea, Tooltip } from '@ema-agent/ui';
-import { useUiStore } from '../stores/ui.js';
 import { tauriBridge } from '../lib/tauri-bridge.js';
 import { showToast } from '../lib/toast.js';
 
@@ -20,13 +19,11 @@ export function FloatingDock({
   selectedExpression,
   onSelectExpression,
 }: FloatingDockProps): JSX.Element {
-  const dockVisible = useUiStore((s) => s.dockVisible);
-
   const [pinned,     setPinned]     = useState(true);
   const [flyoutOpen, setFlyoutOpen] = useState(false);
   const [pinUpdating, setPinUpdating] = useState(false);
 
-  const show = visible || dockVisible;
+  const show = visible;
 
   const runDockAction = (label: string, action: () => Promise<void>): void => {
     void action().catch((error: unknown) => {

@@ -5,7 +5,7 @@ import type { SettingsStore } from '@ema-agent/settings';
 import {
   eventDisplaySetting,
   resolveEventDisplay,
-} from '../../composition/settings/eventDisplaySetting.js';
+} from '../../settings/eventDisplaySetting.js';
 
 export interface SettingsEventDisplayRouteDeps {
   readonly settings: Pick<SettingsStore, 'get'>;

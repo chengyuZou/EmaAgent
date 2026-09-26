@@ -9,8 +9,8 @@ use tauri::{Manager, RunEvent};
 
 use commands::{
     browser_back, browser_forward, close_browser, close_session_terminals, close_terminal,
-    get_narrative_port, get_server_port, get_server_secret, navigate_browser, open_browser,
-    open_path, open_terminal, open_window, quit_app, read_draft_image, reload_browser,
+    get_narrative_port, get_server_port, get_server_secret, list_system_fonts, navigate_browser,
+    open_browser, open_path, open_terminal, open_window, quit_app, read_draft_image, reload_browser,
     report_live2d_diagnostic, resize_terminal, set_always_on_top, set_browser_bounds,
     set_browser_visible, set_passthrough, start_narrative, wait_narrative_exit, write_terminal,
 };
@@ -40,6 +40,7 @@ pub fn run() {
             get_narrative_port,
             start_narrative,
             wait_narrative_exit,
+            list_system_fonts,
             set_always_on_top,
             set_passthrough,
             quit_app,

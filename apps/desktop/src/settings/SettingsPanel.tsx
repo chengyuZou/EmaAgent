@@ -19,7 +19,7 @@ import { handleSkillSystemEvent } from '../stores/skill.js';
 import { useThemeSync } from '../stores/theme.js';
 import { CharactersTab } from './character/CharactersTab.js';
 import { StorageTab } from './data/StorageTab.js';
-import { AppearanceTab } from './general/AppearanceTab.js';
+import { AppearanceTab } from './appearance/AppearanceTab.js';
 import { SecurityTab } from './security/SecurityTab.js';
 import { KnowledgeBaseTab } from './knowledge/KnowledgeBaseTab.js';
 import { McpMarketPage } from './mcp/McpMarketPage.js';

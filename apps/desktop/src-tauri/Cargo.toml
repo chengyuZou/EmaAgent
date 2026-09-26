@@ -29,6 +29,7 @@ rand                = "0.8.5"
 dirs                = "6"
 reqwest             = { version = "0.12", default-features = false, features = ["json"] }
 rusqlite            = { version = "0.32", features = ["bundled"] }
+fontdb = "0.24.0"
 
 # Windows 进程树清理：Job Object + KILL_ON_JOB_CLOSE，Rust 进程退出时 OS 自动 kill
 # 整个 Job 内子进程（server + bridge），不依赖 taskkill /T 进程树完整性。

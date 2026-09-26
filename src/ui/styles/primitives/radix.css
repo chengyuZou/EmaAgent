@@ -72,3 +72,13 @@
 .ema-overlay-item-danger[data-highlighted] {
   background: var(--ema-danger-muted);
 }
+
+/* Select 长列表的滚动条常驻着色: 全局滚动条是 hover 才显, 长列表需要一直看得到"可滚";
+   只在内容溢出时才出现条, 短列表不受影响; 全局规则的 1.8s 淡出延迟在此必须归零. */
+.ema-select-viewport::-webkit-scrollbar-thumb {
+  background: var(--ema-scrollbar-thumb);
+  transition: none;
+}
+.ema-select-viewport {
+  scrollbar-color: var(--ema-scrollbar-thumb) transparent;
+}

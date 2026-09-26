@@ -9,7 +9,7 @@
 import type { PermissionRequiredEvent } from '@ema-agent/permission';
 import type { AskUserRequiredEvent } from '@ema-agent/tools';
 import type { AppEvent } from '@ema-agent/server/application/appEvents.js';
-import type { ThemeSettings } from '@ema-agent/server/composition/settings/themeSetting.js';
+import type { ThemeSettings } from '@ema-agent/server/settings/themeSetting.js';
 import type { EventDisplayTable } from '../api/settings.js';
 
 // ── 对外类型 ────────────────────────────────────────────────────────────────
@@ -446,6 +446,11 @@ export const tauriBridge = {
 
   async getServerPort(): Promise<number | null> {
     return invokeTauri<number>('get_server_port');
+  },
+
+  /** 本机字体族名列表(每次运行只枚举一次, 取不到时返回空数组, 消费方用策展清单兜底). */
+  async listSystemFonts(): Promise<string[]> {
+    return (await invokeTauri<string[]>('list_system_fonts')) ?? [];
   },
 
   async saveFileDialog(opts = {}): Promise<string | null> {

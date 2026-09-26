@@ -1,40 +1,16 @@
 /* ── 语法高亮配色预设 ─────────────────────────────────────────────────────────
  * <html data-syntax-theme> 由 theme store 写入, 色板只放 CSS(TS 不碰颜色)。
- * auto = 深色 Tokyo Night / 浅色 GitHub(用户拍板); 无属性时回落 tokens.css 默认粉彩。
+ * 每套主题自带代码块底色与基础文字色, 不跟随明暗模式; mono 单色档随应用底色走。
  */
 
-[data-syntax-theme='auto'],
-[data-syntax-theme='tokyonight'] {
-  --ema-syntax-key: #bb9af7;
-  --ema-syntax-string: #9ece6a;
-  --ema-syntax-number: #ff9e64;
-  --ema-syntax-boolean: #ff9e64;
-  --ema-syntax-comment: #565f89;
-  --ema-syntax-prompt: #7aa2f7;
+:root {
+  --ema-syntax-bg: var(--ema-surface-1);
+  --ema-syntax-text: var(--ema-text-primary);
 }
 
 [data-syntax-theme='github'] {
-  --ema-syntax-key: #ff7b72;
-  --ema-syntax-string: #a5d6ff;
-  --ema-syntax-number: #79c0ff;
-  --ema-syntax-boolean: #79c0ff;
-  --ema-syntax-comment: #8b949e;
-  --ema-syntax-prompt: #d2a8ff;
-}
-
-[data-syntax-theme='mono'] {
-  --ema-syntax-key: #e8e8ee;
-  --ema-syntax-string: #b6b6c0;
-  --ema-syntax-number: #b6b6c0;
-  --ema-syntax-boolean: #e8e8ee;
-  --ema-syntax-comment: #6e6e7a;
-  --ema-syntax-prompt: #e8e8ee;
-}
-
-/* ── 浅色分支 ─────────────────────────────────────────────────────────────── */
-
-[data-theme='light'][data-syntax-theme='auto'],
-[data-theme='light'][data-syntax-theme='github'] {
+  --ema-syntax-bg: #f6f8fa;
+  --ema-syntax-text: #24292f;
   --ema-syntax-key: #cf222e;
   --ema-syntax-string: #0a3069;
   --ema-syntax-number: #0550ae;
@@ -43,15 +19,127 @@
   --ema-syntax-prompt: #8250df;
 }
 
-[data-theme='light'][data-syntax-theme='tokyonight'] {
-  --ema-syntax-key: #7847bd;
-  --ema-syntax-string: #485e30;
-  --ema-syntax-number: #b15c00;
-  --ema-syntax-boolean: #b15c00;
-  --ema-syntax-comment: #848cb5;
-  --ema-syntax-prompt: #2e7de9;
+[data-syntax-theme='onelight'] {
+  --ema-syntax-bg: #fafafa;
+  --ema-syntax-text: #383a42;
+  --ema-syntax-key: #a626a4;
+  --ema-syntax-string: #50a14f;
+  --ema-syntax-number: #b76b01;
+  --ema-syntax-boolean: #0184bc;
+  --ema-syntax-comment: #a0a1a7;
+  --ema-syntax-prompt: #4078f2;
 }
 
+[data-syntax-theme='solarized-light'] {
+  --ema-syntax-bg: #fdf6e3;
+  --ema-syntax-text: #657b83;
+  --ema-syntax-key: #859900;
+  --ema-syntax-string: #2aa198;
+  --ema-syntax-number: #d33682;
+  --ema-syntax-boolean: #6c71c4;
+  --ema-syntax-comment: #93a1a1;
+  --ema-syntax-prompt: #268bd2;
+}
+
+[data-syntax-theme='tokyonight'] {
+  --ema-syntax-bg: #1a1b26;
+  --ema-syntax-text: #a9b1d6;
+  --ema-syntax-key: #bb9af7;
+  --ema-syntax-string: #9ece6a;
+  --ema-syntax-number: #ff9e64;
+  --ema-syntax-boolean: #ff9e64;
+  --ema-syntax-comment: #565f89;
+  --ema-syntax-prompt: #7aa2f7;
+}
+
+[data-syntax-theme='onedark'] {
+  --ema-syntax-bg: #282c34;
+  --ema-syntax-text: #abb2bf;
+  --ema-syntax-key: #c678dd;
+  --ema-syntax-string: #98c379;
+  --ema-syntax-number: #d19a66;
+  --ema-syntax-boolean: #56b6c2;
+  --ema-syntax-comment: #5c6370;
+  --ema-syntax-prompt: #61afef;
+}
+
+[data-syntax-theme='dracula'] {
+  --ema-syntax-bg: #282a36;
+  --ema-syntax-text: #f8f8f2;
+  --ema-syntax-key: #ff79c6;
+  --ema-syntax-string: #f1fa8c;
+  --ema-syntax-number: #bd93f9;
+  --ema-syntax-boolean: #bd93f9;
+  --ema-syntax-comment: #6272a4;
+  --ema-syntax-prompt: #8be9fd;
+}
+
+[data-syntax-theme='monokai'] {
+  --ema-syntax-bg: #272822;
+  --ema-syntax-text: #f8f8f2;
+  --ema-syntax-key: #f92672;
+  --ema-syntax-string: #e6db74;
+  --ema-syntax-number: #ae81ff;
+  --ema-syntax-boolean: #ae81ff;
+  --ema-syntax-comment: #75715e;
+  --ema-syntax-prompt: #66d9ef;
+}
+
+[data-syntax-theme='nord'] {
+  --ema-syntax-bg: #2e3440;
+  --ema-syntax-text: #d8dee9;
+  --ema-syntax-key: #81a1c1;
+  --ema-syntax-string: #a3be8c;
+  --ema-syntax-number: #b48ead;
+  --ema-syntax-boolean: #81a1c1;
+  --ema-syntax-comment: #616e88;
+  --ema-syntax-prompt: #88c0d0;
+}
+
+[data-syntax-theme='gruvbox'] {
+  --ema-syntax-bg: #282828;
+  --ema-syntax-text: #ebdbb2;
+  --ema-syntax-key: #fb4934;
+  --ema-syntax-string: #b8bb26;
+  --ema-syntax-number: #fe8019;
+  --ema-syntax-boolean: #d3869b;
+  --ema-syntax-comment: #928374;
+  --ema-syntax-prompt: #83a598;
+}
+
+[data-syntax-theme='catppuccin'] {
+  --ema-syntax-bg: #1e1e2e;
+  --ema-syntax-text: #cdd6f4;
+  --ema-syntax-key: #cba6f7;
+  --ema-syntax-string: #a6e3a1;
+  --ema-syntax-number: #fab387;
+  --ema-syntax-boolean: #fab387;
+  --ema-syntax-comment: #6c7086;
+  --ema-syntax-prompt: #89b4fa;
+}
+
+[data-syntax-theme='solarized-dark'] {
+  --ema-syntax-bg: #002b36;
+  --ema-syntax-text: #839496;
+  --ema-syntax-key: #859900;
+  --ema-syntax-string: #2aa198;
+  --ema-syntax-number: #d33682;
+  --ema-syntax-boolean: #6c71c4;
+  --ema-syntax-comment: #586e75;
+  --ema-syntax-prompt: #268bd2;
+}
+
+/* mono 单色护眼: 不引彩色, 灰阶分层, 代码块底色跟随应用. */
+[data-syntax-theme='mono'] {
+  --ema-syntax-bg: var(--ema-surface-1);
+  --ema-syntax-text: var(--ema-text-primary);
+  --ema-syntax-key: #e8e8ee;
+  --ema-syntax-string: #b6b6c0;
+  --ema-syntax-number: #b6b6c0;
+  --ema-syntax-boolean: #e8e8ee;
+  --ema-syntax-comment: #6e6e7a;
+  --ema-syntax-prompt: #e8e8ee;
+}
 [data-theme='light'][data-syntax-theme='mono'] {
   --ema-syntax-key: #1c1a26;
   --ema-syntax-string: #55525f;

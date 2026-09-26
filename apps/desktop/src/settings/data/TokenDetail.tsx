@@ -163,8 +163,9 @@ function FilterChip({ label, active, onClick }: {
   onClick(): void;
 }): JSX.Element {
   return (
-    <button
-      type="button"
+    <Button
+      variant="secondary"
+      size="sm"
       onClick={onClick}
       className={`border rounded px-2.5 py-1 text-xs transition-colors 
         ${active
@@ -172,7 +173,7 @@ function FilterChip({ label, active, onClick }: {
           : 'border-[var(--ema-border)] text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)]'}`}
     >
       {label}
-    </button>
+    </Button>
   );
 }
 

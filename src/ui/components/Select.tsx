@@ -12,6 +12,8 @@ export interface SelectOption {
   label:     string;
   icon?:     string;
   disabled?: boolean;
+  /** 在该项上方画一条分组发丝线(如"系统默认"与本机清单之间). */
+  separatorAbove?: boolean;
 }
 
 export interface SelectProps extends Pick<
@@ -86,7 +88,7 @@ export function Select(props: SelectProps): React.JSX.Element {
         >
           {/* 展开动画的 grid 子节点: 裁剪与滑动都作用在这层, Viewport 保留自身滚动 */}
           <div className="p-1">
-            <RadixSelect.Viewport className="max-h-72 overflow-y-auto">
+            <RadixSelect.Viewport className="ema-select-viewport max-h-72 overflow-y-auto">
               {options.map((opt) => (
                 <RadixSelect.Item
                   key={opt.value}
@@ -95,6 +97,7 @@ export function Select(props: SelectProps): React.JSX.Element {
                   className={cn(
                     overlayItemCn,
                     'data-[state=checked]:text-[var(--ema-primary-text)]',
+                    opt.separatorAbove && 'mt-1 border-t border-[var(--ema-border)] pt-1',
                   )}
                 >
                   {opt.icon && <span className={cn(opt.icon, 'text-base')} aria-hidden />}

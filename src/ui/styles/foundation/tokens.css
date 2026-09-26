@@ -97,7 +97,9 @@
   --ema-composer-bg: var(--ema-surface-2);
 
   /* ── 语义色(暗色)── Ema 签名色,跟随 --chromatic-hue(跟 UnoCSS bg-primary 对齐)── */
-  --ema-primary:        oklch(0.72 0.18 var(--chromatic-hue, 200));
+  /* 彩度余弦调制: 显艳的色相区间自动收, 显闷的区间自动抬, 色轮手感均匀. */
+  --ema-chroma: calc(0.18 + cos(var(--chromatic-hue, 200) * 1deg) * 0.04);
+  --ema-primary:        oklch(0.72 var(--ema-chroma) var(--chromatic-hue, 200));
   --ema-primary-hover:  oklch(0.76 0.16 var(--chromatic-hue, 200));
   --ema-primary-active: oklch(0.65 0.20 var(--chromatic-hue, 200));
   --ema-primary-muted:  oklch(0.72 0.18 var(--chromatic-hue, 200) / 0.20);
@@ -123,7 +125,8 @@
   --ema-danger-text:    oklch(0.88 0.12 25);
 
   /* Violet - 紫(secondary 强调,hue+85 与 Uno chromatic preset 同式,随用户色相走) */
-  --ema-violet:         oklch(0.72 0.16 calc(var(--chromatic-hue, 200) + 85));
+  --ema-chroma-violet:  calc(0.16 + cos((var(--chromatic-hue, 200) + 85) * 1deg) * 0.04);
+  --ema-violet:         oklch(0.72 var(--ema-chroma-violet) calc(var(--chromatic-hue, 200) + 85));
   --ema-violet-hover:   oklch(0.76 0.14 calc(var(--chromatic-hue, 200) + 85));
   --ema-violet-muted:   oklch(0.72 0.16 calc(var(--chromatic-hue, 200) + 85) / 0.20);
   --ema-violet-text:    oklch(0.85 0.09 calc(var(--chromatic-hue, 200) + 85));

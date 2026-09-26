@@ -1,49 +1,54 @@
-/* 外观设置页的色谱轨道与原生滑块伪元素(唯一消费者:AppearanceTab)。 */
+/* 外观设置页的色谱轨道与原生滑块伪元素(唯一消费者:AppearanceTab)。
+   高色带 + 细竖条 thumb: 40px 轨道让色轮本身就是主角, 48px 竖条跨带指示, 不用圆点. */
 
 .ema-hue-range {
   -webkit-appearance: none;
   appearance: none;
   width: 100%;
-  height: 12px;
-  border-radius: var(--ema-radius-pill);
+  height: 40px;
+  border-radius: var(--ema-radius-lg);
   outline: none;
-  cursor: pointer;
+  cursor: col-resize;
   background: linear-gradient(to right,
     oklch(65% 0.18 0), oklch(65% 0.18 60), oklch(65% 0.18 120),
     oklch(65% 0.18 180), oklch(65% 0.18 240), oklch(65% 0.18 300), oklch(65% 0.18 360));
 }
-/* outline:none 的兜底: 键盘焦点必须可见。 */
+.ema-hue-range:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+/* outline:none 的兜底: 键盘焦点必须可见. */
 .ema-hue-range:focus-visible {
   box-shadow: var(--ema-shadow-focus);
 }
 .ema-hue-range::-webkit-slider-thumb {
   -webkit-appearance: none;
-  width: 20px;
-  height: 20px;
-  /* Chromium 对 appearance:none 的 range 不垂直居中, (12-20)/2 手动归位。 */
+  width: 4px;
+  height: 48px;
+  /* Chromium 对 appearance:none 的 range 不垂直居中, (40-48)/2 手动归位. */
   margin-top: -4px;
-  border-radius: 50%;
-  background: var(--ema-surface-4);
-  border: 2px solid var(--ema-border-strong);
-  box-shadow: var(--ema-shadow-2);
-  cursor: pointer;
-  transition: transform var(--ema-duration-fast) var(--ema-ease);
+  border-radius: var(--ema-radius-xs);
+  background: #fff;
+  border: 1px solid rgb(0 0 0 / 0.18);
+  box-shadow: 0 1px 5px rgb(0 0 0 / 0.3);
+  cursor: col-resize;
+  transition: width var(--ema-duration-fast) var(--ema-ease);
 }
-.ema-hue-range::-webkit-slider-thumb:hover { transform: scale(1.15); }
+.ema-hue-range::-webkit-slider-thumb:hover { width: 6px; }
 .ema-hue-range::-moz-range-thumb {
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: var(--ema-surface-4);
-  border: 2px solid var(--ema-border-strong);
-  box-shadow: var(--ema-shadow-2);
-  cursor: pointer;
-  transition: transform var(--ema-duration-fast) var(--ema-ease);
+  width: 4px;
+  height: 48px;
+  border-radius: var(--ema-radius-xs);
+  background: #fff;
+  border: 1px solid rgb(0 0 0 / 0.18);
+  box-shadow: 0 1px 5px rgb(0 0 0 / 0.3);
+  cursor: col-resize;
+  transition: width var(--ema-duration-fast) var(--ema-ease);
 }
-.ema-hue-range::-moz-range-thumb:hover { transform: scale(1.15); }
+.ema-hue-range::-moz-range-thumb:hover { width: 6px; }
 .ema-hue-range::-moz-range-track {
-  height: 12px;
-  border-radius: var(--ema-radius-pill);
+  height: 40px;
+  border-radius: var(--ema-radius-lg);
   background: linear-gradient(to right,
     oklch(65% 0.18 0), oklch(65% 0.18 60), oklch(65% 0.18 120),
     oklch(65% 0.18 180), oklch(65% 0.18 240), oklch(65% 0.18 300), oklch(65% 0.18 360));

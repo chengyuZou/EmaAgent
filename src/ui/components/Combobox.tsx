@@ -16,6 +16,8 @@ export interface ComboboxOption {
   label:    string;
   hint?:    string;
   disabled?: boolean;
+  /** 在该项上方画一条分组发丝线(如"系统默认"与本机清单之间). */
+  separatorAbove?: boolean;
 }
 
 // ── 键盘导航决策(纯函数, 供组件与测试共用; F-037) ────────────────────────────
@@ -239,6 +241,7 @@ export function Combobox({
                       ? 'text-[var(--ema-primary-text)]'
                       : 'text-[var(--ema-text-primary)] hover:bg-[var(--ema-primary-muted)] hover:text-[var(--ema-primary-text)]',
                   opt.disabled && 'cursor-not-allowed opacity-40',
+                  opt.separatorAbove && 'mt-1 border-t border-[var(--ema-border)] pt-1',
                 )}
                 onClick={() => !opt.disabled && select(opt)}
                 onMouseEnter={() => {

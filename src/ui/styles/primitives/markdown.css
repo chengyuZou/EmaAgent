@@ -68,7 +68,8 @@
 .markdown-content pre {
   margin-block: var(--ema-space-3);
   padding: var(--ema-space-3);
-  background: var(--ema-surface-1);
+  background: var(--ema-syntax-bg, var(--ema-surface-1));
+  color: var(--ema-syntax-text, var(--ema-text-primary));
   border: 1px solid var(--ema-border);
   border-radius: var(--ema-radius-lg);
   overflow-x: auto;
