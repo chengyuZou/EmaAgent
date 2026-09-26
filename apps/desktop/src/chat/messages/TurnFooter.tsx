@@ -53,16 +53,16 @@ export function TurnFooter({
     return historyAssistantSections(assistantMessages, toolResults)
       .flatMap(section => section.kind === 'block' ? [] : section.calls);
   }, [messages, toolResults]);
-  const liveCalls = useMemo<ToolDisplayCall[]>(() => messages.flatMap(message => (
+  const streamingCalls = useMemo<ToolDisplayCall[]>(() => messages.flatMap(message => (
     isStreamingMessage(message)
       ? message.blocks.flatMap(block => block.type === 'tool_use'
-        ? [{ source: 'live' as const, item: block }]
+        ? [{ source: 'streaming' as const, item: block }]
         : [])
       : []
   )), [messages]);
   const edited = useMemo(
-    () => editedFiles([...persistedCalls, ...liveCalls]),
-    [liveCalls, persistedCalls],
+    () => editedFiles([...persistedCalls, ...streamingCalls]),
+    [streamingCalls, persistedCalls],
   );
   const textContent = useMemo(() => assistantText(messages), [messages]);
   const createdAt = messages.at(-1)?.createdAt ?? Date.now();

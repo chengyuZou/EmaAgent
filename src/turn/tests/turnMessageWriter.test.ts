@@ -19,7 +19,7 @@ function fakeSessions() {
   let nextId = 1;
   const sessions = {
     appendMessage: (input: AppendMessageInput) => {
-      const record = { ...input, id: `m${nextId++}` };
+      const record = { ...input, id: input.id ?? `m${nextId++}` };
       appends.push(record);
       return record;
     },
@@ -37,22 +37,30 @@ function makeWriter(fake: ReturnType<typeof fakeSessions>) {
   return new TurnMessageWriter('s1', 't1', fake.sessions);
 }
 
+async function startIteration(writer: TurnMessageWriter, iteration = 1): Promise<void> {
+  await writer.apply({ type: 'iteration_started', iteration, continuesOutput: false, state: {} as never });
+}
+
 describe('TurnMessageWriter', () => {
   it('首个 delta 创建 assistant 消息，后续 delta 续写同一消息', async () => {
     const fake = fakeSessions();
     const writer = makeWriter(fake);
+    await startIteration(writer);
+    const assistantMessageId = writer.currentAssistantMessageId;
     await writer.apply({ type: 'text_delta', blockIndex: 0, delta: '你' });
     await writer.apply({ type: 'text_delta', blockIndex: 0, delta: '好' });
 
     expect(fake.appends).toHaveLength(1);
-    expect(fake.appends[0]).toMatchObject({ role: 'assistant', sessionId: 's1', turnId: 't1' });
+    expect(fake.appends[0]).toMatchObject({ id: assistantMessageId, role: 'assistant', sessionId: 's1', turnId: 't1' });
     expect(fake.updates).toHaveLength(1);
+    expect(fake.updates[0]!.id).toBe(assistantMessageId);
     expect(fake.updates[0]!.blocks).toEqual([{ type: 'text', text: '你好' }]);
   });
 
   it('tool_use_completed 落库并登记孤儿；tool_result 落库后解除', async () => {
     const fake = fakeSessions();
     const writer = makeWriter(fake);
+    await startIteration(writer);
     await writer.apply({ type: 'text_delta', blockIndex: 0, delta: '我来查' });
     await writer.apply({
       type: 'tool_use_completed',
@@ -95,6 +103,8 @@ describe('TurnMessageWriter', () => {
   it('aborted 终态：assistant 标 interrupted，孤儿 tool_use 合成取消结果', async () => {
     const fake = fakeSessions();
     const writer = makeWriter(fake);
+    await startIteration(writer);
+    const assistantMessageId = writer.currentAssistantMessageId;
     await writer.apply({ type: 'text_delta', blockIndex: 0, delta: '我来改' });
     await writer.apply({
       type: 'tool_use_completed',
@@ -106,7 +116,7 @@ describe('TurnMessageWriter', () => {
 
     await writer.finish('aborted');
 
-    expect(fake.interrupted).toEqual(['m1']);
+    expect(fake.interrupted).toEqual([assistantMessageId]);
     const synthesized = fake.appends.filter(a => a.kind === 'tool_results');
     expect(synthesized).toHaveLength(1);
     expect(synthesized[0]!.blocks).toEqual([
@@ -123,16 +133,38 @@ describe('TurnMessageWriter', () => {
   it('iteration_started 重置本轮累积，新迭代另起消息', async () => {
     const fake = fakeSessions();
     const writer = makeWriter(fake);
+    await startIteration(writer);
+    const firstAssistantMessageId = writer.currentAssistantMessageId;
     await writer.apply({ type: 'text_delta', blockIndex: 0, delta: '第一段' });
-    await writer.apply({ type: 'iteration_started', iteration: 2, continuesOutput: false, state: {} as never });
+    await startIteration(writer, 2);
+    const secondAssistantMessageId = writer.currentAssistantMessageId;
     await writer.apply({ type: 'text_delta', blockIndex: 0, delta: '第二段' });
 
     expect(fake.appends.filter(a => a.role === 'assistant')).toHaveLength(2);
+    expect(secondAssistantMessageId).not.toBe(firstAssistantMessageId);
+    expect(fake.appends.filter(a => a.role === 'assistant').map(message => message.id))
+      .toEqual([firstAssistantMessageId, secondAssistantMessageId]);
+  });
+
+  it('没有有效块的 iteration 不落库, 也不把空 Message 标记为中断', async () => {
+    const fake = fakeSessions();
+    const writer = makeWriter(fake);
+    await startIteration(writer);
+    const assistantMessageId = writer.currentAssistantMessageId;
+    await writer.apply({ type: 'text_delta', blockIndex: 0, delta: '  ' });
+    const storedMessageId = await writer.apply({ type: 'assistant_message_completed' } as AgentLoopEvent);
+    await writer.finish('aborted');
+
+    expect(assistantMessageId).toBeTypeOf('string');
+    expect(storedMessageId).toBeUndefined();
+    expect(fake.appends).toHaveLength(0);
+    expect(fake.interrupted).toHaveLength(0);
   });
 
   it('没有摘要文本的 OpenAI reasoning 状态仍然落库', async () => {
     const fake = fakeSessions();
     const writer = makeWriter(fake);
+    await startIteration(writer);
 
     await writer.apply({
       type: 'thinking_completed',

@@ -466,7 +466,7 @@ export class SessionStore {
         );
       }
     }
-    const id  = crypto.randomUUID();
+    const id = input.id ?? crypto.randomUUID();
     const now = this.nextTs();
     const blocksJson = JSON.stringify(input.blocks);
     this.messagesRepo.insert({
@@ -486,7 +486,7 @@ export class SessionStore {
 
   /**
    * 写入压缩摘要. 根 Turn 内自动压缩必须带当前 turnId, 这样 Turn terminal 后按轮读取
-   * Message 时能把摘要一并交给 History; 手动压缩传 null, 因为它不属于任何 LiveTurn.
+   * Message 时能把摘要一并交给 History; 手动压缩传 null, 因为它不属于任何运行中的 Turn.
    * summarizedThroughMessageId 是覆盖截止游标, 必须属于同一个 Session.
    */
   appendHistorySummary(input: {

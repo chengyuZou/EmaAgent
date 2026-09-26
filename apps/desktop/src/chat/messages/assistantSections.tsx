@@ -152,15 +152,15 @@ export function historyAssistantSections(
   return groupContent(content, false);
 }
 
-function liveAssistantSections(blocks: readonly AssistantOutputBlock[]): AssistantContentSection[] {
+function streamingAssistantSections(blocks: readonly AssistantOutputBlock[]): AssistantContentSection[] {
   return groupContent(blocks.map(block => block.type === 'tool_use'
-    ? { source: 'live' as const, item: block }
+    ? { source: 'streaming' as const, item: block }
     : block), true);
 }
 
 function groupContent(
   content: readonly (DisplayBlock | ToolDisplayCall)[],
-  live: boolean,
+  streaming: boolean,
 ): AssistantContentSection[] {
   const sections: AssistantContentSection[] = [];
   let tools: ToolDisplayCall[] = [];
@@ -179,7 +179,7 @@ function groupContent(
 
   for (const item of content) {
     if ('source' in item) {
-      if (isAskUserCall(item) || (live && toolPermissionPending(item))) {
+      if (isAskUserCall(item) || (streaming && toolPermissionPending(item))) {
         flushTools();
         flushAgents();
       } else if (isSubagentCall(item)) {
@@ -197,7 +197,7 @@ function groupContent(
       kind: 'block',
       key: `block:${blockIndex}`,
       block: item,
-      thinkingActive: live
+      thinkingActive: streaming
         && item.type === 'thinking'
         && 'done' in item
         && item.done === false,
@@ -210,11 +210,11 @@ function groupContent(
 }
 
 /** Text delta 会重建当前 Text item, 但已经完成的 Tool/Agent section 继续复用原对象. */
-export function useStableLiveSections(
+export function useStableStreamingSections(
   blocks: readonly AssistantOutputBlock[],
 ): readonly AssistantContentSection[] {
   const previous = useRef<readonly AssistantContentSection[]>([]);
-  const next = liveAssistantSections(blocks).map((section, index) => {
+  const next = streamingAssistantSections(blocks).map((section, index) => {
     const old = previous.current[index];
     if (!old || old.kind !== section.kind || old.key !== section.key) return section;
     if (section.kind === 'block' && old.kind === 'block' && old.block === section.block) return old;
@@ -228,6 +228,6 @@ export function useStableLiveSections(
 function sameCalls(left: readonly ToolDisplayCall[], right: readonly ToolDisplayCall[]): boolean {
   return left.length === right.length && left.every((call, index) => {
     const other = right[index];
-    return call.source === 'live' && other?.source === 'live' && call.item === other.item;
+    return call.source === 'streaming' && other?.source === 'streaming' && call.item === other.item;
   });
 }

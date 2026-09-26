@@ -34,7 +34,7 @@ export type AssistantOutputBlock =
       readonly status: 'running' | 'awaiting_permission' | 'succeeded' | 'failed' | 'interrupted' | 'outcome_unknown';
     };
 
-/** 当前 Turn 中尚未形成持久 Assistant Message 的一条屏幕消息. */
+/** 当前 Turn 中尚未交给 History 的一条 Assistant 屏幕消息. */
 export interface StreamingMessage {
   readonly type: 'streaming';
   readonly id: string;
@@ -86,20 +86,11 @@ interface TurnStore {
   ): void;
   /** 返回 false 表示消息不属于当前 Turn, 调用方应直接交给 History. */
   receiveUserMessage(sessionId: string, message: SessionMessage): boolean;
-  appendText(sessionId: string, turnId: string, blockIndex: number, delta: string): void;
-  appendThinking(sessionId: string, turnId: string, blockIndex: number, delta: string): void;
-  finishThinking(sessionId: string, turnId: string, blockIndex: number): void;
-  upsertPartialTool(
-    sessionId: string,
-    turnId: string,
-    blockIndex: number,
-    callId: string,
-    name: string,
-    argsDelta: string,
-  ): void;
+  finishThinking(sessionId: string, turnId: string, assistantMessageId: string, blockIndex: number): void;
   completeTool(
     sessionId: string,
     turnId: string,
+    assistantMessageId: string,
     blockIndex: number,
     callId: string,
     name: string,
@@ -113,7 +104,7 @@ interface TurnStore {
     result: { output?: unknown; error?: ToolError; durationMs: number },
   ): void;
   setToolPermissionPending(sessionId: string, turnId: string, callId: string, pending: boolean): void;
-  setIteration(sessionId: string, turnId: string, iteration: number): void;
+  setIteration(sessionId: string, turnId: string, iteration: number, assistantMessageId: string): void;
   markTerminal(sessionId: string, turnId: string, reason?: string): void;
   removeTurn(sessionId: string, turnId: string): void;
   applyContextUsage(sessionId: string, llmCallId: string, usage: ContextUsage): void;
@@ -124,7 +115,6 @@ interface TurnStore {
 }
 
 const MAX_TOOL_PROGRESS_EVENTS = 200;
-let nextStreamingMessageSequence = 0;
 
 export function isStreamingMessage(
   message: SessionMessage | StreamingMessage,
@@ -159,28 +149,31 @@ function upsertBlock(
   return blocks.map((item, itemIndex) => itemIndex === index ? update(item) : item);
 }
 
-function createStreamingMessage(turn: TurnState): StreamingMessage {
+function createStreamingMessage(turn: TurnState, assistantMessageId: string): StreamingMessage {
   return {
     type: 'streaming',
-    id: `streaming:${turn.turnId}:${nextStreamingMessageSequence++}`,
+    id: assistantMessageId,
     turnId: turn.turnId,
     blocks: [],
     createdAt: Date.now(),
   };
 }
 
-function patchCurrentStreamingMessage(
+function patchStreamingMessage(
   turn: TurnState,
+  assistantMessageId: string,
   update: (blocks: readonly AssistantOutputBlock[]) => readonly AssistantOutputBlock[],
 ): TurnState {
   const messages = [...turn.messages];
-  const last = messages.at(-1);
-  if (last && isStreamingMessage(last)) {
-    messages[messages.length - 1] = { ...last, blocks: update(last.blocks) };
-  } else {
-    const message = createStreamingMessage(turn);
-    messages.push({ ...message, blocks: update(message.blocks) });
+  const index = messages.findIndex(message => message.id === assistantMessageId);
+  if (index >= 0) {
+    const message = messages[index]!;
+    if (!isStreamingMessage(message)) return turn;
+    messages[index] = { ...message, blocks: update(message.blocks) };
+    return { ...turn, messages };
   }
+  const message = createStreamingMessage(turn, assistantMessageId);
+  messages.push({ ...message, blocks: update(message.blocks) });
   return { ...turn, messages };
 }
 
@@ -296,7 +289,7 @@ function deleteTurnMapValue<T>(
 
 function applyBufferedDelta(turn: TurnState, event: BufferedDelta): TurnState {
   if (event.type === 'output_text_delta') {
-    return patchCurrentStreamingMessage(turn, blocks => upsertBlock(
+    return patchStreamingMessage(turn, event.assistantMessageId, blocks => upsertBlock(
       blocks,
       event.blockIndex,
       () => ({ type: 'text', blockIndex: event.blockIndex, text: event.delta }),
@@ -305,7 +298,7 @@ function applyBufferedDelta(turn: TurnState, event: BufferedDelta): TurnState {
   }
   if (event.type === 'reasoning_delta') {
     return {
-      ...patchCurrentStreamingMessage(turn, blocks => upsertBlock(
+      ...patchStreamingMessage(turn, event.assistantMessageId, blocks => upsertBlock(
         blocks,
         event.blockIndex,
         () => ({ type: 'thinking', blockIndex: event.blockIndex, thinking: event.delta, done: false }),
@@ -316,7 +309,7 @@ function applyBufferedDelta(turn: TurnState, event: BufferedDelta): TurnState {
       thinkingActive: true,
     };
   }
-  return patchCurrentStreamingMessage(turn, blocks => upsertBlock(
+  return patchStreamingMessage(turn, event.assistantMessageId, blocks => upsertBlock(
     blocks,
     event.blockIndex,
     () => ({
@@ -389,13 +382,21 @@ export const useTurnStore = create<TurnStore>((set, get) => ({
         turnStore.begin(sessionId, turnId, event.sessionMode, event.narrativePolicy);
         return;
       case 'agent_iteration':
-        turnStore.setIteration(sessionId, turnId, event.n);
+        turnStore.setIteration(sessionId, turnId, event.n, event.assistantMessageId);
         return;
       case 'reasoning_complete':
-        turnStore.finishThinking(sessionId, turnId, event.blockIndex);
+        turnStore.finishThinking(sessionId, turnId, event.assistantMessageId, event.blockIndex);
         return;
       case 'tool_call_complete':
-        turnStore.completeTool(sessionId, turnId, event.blockIndex, event.callId, event.name, event.args);
+        turnStore.completeTool(
+          sessionId,
+          turnId,
+          event.assistantMessageId,
+          event.blockIndex,
+          event.callId,
+          event.name,
+          event.args,
+        );
         return;
       case 'tool_progress':
         turnStore.appendToolProgress(sessionId, turnId, event.callId, event.progress);
@@ -503,39 +504,10 @@ export const useTurnStore = create<TurnStore>((set, get) => ({
     return true;
   },
 
-  appendText(sessionId, turnId, blockIndex, delta) {
-    set(state => ({
-      turnsBySession: patchTurnState(state.turnsBySession, sessionId, turnId, turn => (
-        patchCurrentStreamingMessage(turn, blocks => upsertBlock(
-          blocks,
-          blockIndex,
-          () => ({ type: 'text', blockIndex, text: delta }),
-          item => item.type === 'text' ? { ...item, text: item.text + delta } : item,
-        ))
-      )),
-    }));
-  },
-
-  appendThinking(sessionId, turnId, blockIndex, delta) {
+  finishThinking(sessionId, turnId, assistantMessageId, blockIndex) {
     set(state => ({
       turnsBySession: patchTurnState(state.turnsBySession, sessionId, turnId, turn => ({
-        ...patchCurrentStreamingMessage(turn, blocks => upsertBlock(
-          blocks,
-          blockIndex,
-          () => ({ type: 'thinking', blockIndex, thinking: delta, done: false }),
-          item => item.type === 'thinking'
-            ? { ...item, thinking: item.thinking + delta }
-            : item,
-        )),
-        thinkingActive: true,
-      })),
-    }));
-  },
-
-  finishThinking(sessionId, turnId, blockIndex) {
-    set(state => ({
-      turnsBySession: patchTurnState(state.turnsBySession, sessionId, turnId, turn => ({
-        ...patchCurrentStreamingMessage(turn, blocks => blocks.map(item => (
+        ...patchStreamingMessage(turn, assistantMessageId, blocks => blocks.map(item => (
           item.type === 'thinking' && item.blockIndex === blockIndex
             ? { ...item, done: true }
             : item
@@ -545,33 +517,10 @@ export const useTurnStore = create<TurnStore>((set, get) => ({
     }));
   },
 
-  upsertPartialTool(sessionId, turnId, blockIndex, callId, name, argsDelta) {
+  completeTool(sessionId, turnId, assistantMessageId, blockIndex, callId, name, args) {
     set(state => ({
       turnsBySession: patchTurnState(state.turnsBySession, sessionId, turnId, turn => (
-        patchCurrentStreamingMessage(turn, blocks => upsertBlock(
-          blocks,
-          blockIndex,
-          () => ({
-            type: 'tool_use',
-            blockIndex,
-            callId,
-            name,
-            partialArgs: argsDelta,
-            startedAt: Date.now(),
-            status: 'running',
-          }),
-          item => item.type === 'tool_use'
-            ? { ...item, partialArgs: (item.partialArgs ?? '') + argsDelta }
-            : item,
-        ))
-      )),
-    }));
-  },
-
-  completeTool(sessionId, turnId, blockIndex, callId, name, args) {
-    set(state => ({
-      turnsBySession: patchTurnState(state.turnsBySession, sessionId, turnId, turn => (
-        patchCurrentStreamingMessage(turn, blocks => upsertBlock(
+        patchStreamingMessage(turn, assistantMessageId, blocks => upsertBlock(
           blocks,
           blockIndex,
           () => ({
@@ -634,14 +583,14 @@ export const useTurnStore = create<TurnStore>((set, get) => ({
     }));
   },
 
-  setIteration(sessionId, turnId, iteration) {
+  setIteration(sessionId, turnId, iteration, assistantMessageId) {
     set(state => ({
       turnsBySession: patchTurnState(state.turnsBySession, sessionId, turnId, turn => {
         const messages = [...turn.messages];
         const current = messages.at(-1);
-        if (turn.iteration !== iteration || !current || !isStreamingMessage(current)) {
-          messages.push(createStreamingMessage(turn));
-        }
+        if (current?.id === assistantMessageId) return { ...turn, iteration, thinkingActive: false };
+        if (current && isStreamingMessage(current) && current.blocks.length === 0) messages.pop();
+        messages.push(createStreamingMessage(turn, assistantMessageId));
         return { ...turn, iteration, messages, thinkingActive: false };
       }),
     }));

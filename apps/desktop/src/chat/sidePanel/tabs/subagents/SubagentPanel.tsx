@@ -11,7 +11,7 @@ import {
 } from '../../../../stores/subagent.js';
 import type { ToolResult } from '@ema-agent/tools';
 import { assistantOutputBlocks, useTurnStore } from '../../../../stores/turn.js';
-import { AssistantSections, historyAssistantSections, useStableLiveSections } from '../../../messages/assistantSections.js';
+import { AssistantSections, historyAssistantSections, useStableStreamingSections } from '../../../messages/assistantSections.js';
 
 const TERMINAL_PAGE_SIZE = 10;
 
@@ -424,7 +424,7 @@ function SubagentStreamingMessageView({
   message: SubagentStreamingMessage;
   sessionId: string;
 }): JSX.Element {
-  const sections = useStableLiveSections(message.blocks);
+  const sections = useStableStreamingSections(message.blocks);
   return <AssistantSections sections={sections} streaming sessionId={sessionId} />;
 }
 

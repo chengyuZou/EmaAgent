@@ -504,7 +504,7 @@ export class TurnExecutor {
             messageIds.push(pendingMessageIds.shift());
           }
         }
-        this.translate(downstream, sessionId, turnId, toolNames, emit);
+        this.translate(downstream, sessionId, turnId, writer, toolNames, emit);
         if (downstream.type === 'llm_call_usage_updated') {
           const estimate = contextEstimates.get(downstream.llmCallId);
           if (estimate) {
@@ -557,7 +557,7 @@ export class TurnExecutor {
             delta: cleaned,
           };
           await writer.apply(flushed);
-          this.translate(flushed, sessionId, turnId, toolNames, emit);
+          this.translate(flushed, sessionId, turnId, writer, toolNames, emit);
         }
       }
 
@@ -724,29 +724,74 @@ export class TurnExecutor {
     event: AgentLoopEvent,
     sessionId: string,
     turnId: string,
+    writer: TurnMessageWriter,
     toolNames: Map<string, string>,
     emit: (event: TurnStreamEvent) => void,
   ): void {
     switch (event.type) {
       case 'iteration_started':
         this.deps.turns.setIterations(turnId, event.iteration);
-        emit({ type: 'agent_iteration', sessionId, turnId, n: event.iteration });
+        emit({
+          type: 'agent_iteration',
+          sessionId,
+          turnId,
+          n: event.iteration,
+          assistantMessageId: writer.currentAssistantMessageId,
+        });
         return;
       case 'text_delta':
-        emit({ type: 'output_text_delta', sessionId, turnId, blockIndex: event.blockIndex, delta: event.delta });
+        emit({
+          type: 'output_text_delta',
+          sessionId,
+          turnId,
+          blockIndex: event.blockIndex,
+          delta: event.delta,
+          assistantMessageId: writer.currentAssistantMessageId,
+        });
         return;
       case 'thinking_delta':
-        emit({ type: 'reasoning_delta', sessionId, turnId, blockIndex: event.blockIndex, delta: event.delta });
+        emit({
+          type: 'reasoning_delta',
+          sessionId,
+          turnId,
+          blockIndex: event.blockIndex,
+          delta: event.delta,
+          assistantMessageId: writer.currentAssistantMessageId,
+        });
         return;
       case 'thinking_completed':
-        emit({ type: 'reasoning_complete', sessionId, turnId, blockIndex: event.blockIndex });
+        emit({
+          type: 'reasoning_complete',
+          sessionId,
+          turnId,
+          blockIndex: event.blockIndex,
+          assistantMessageId: writer.currentAssistantMessageId,
+        });
         return;
       case 'tool_use_partial':
-        emit({ type: 'tool_call_partial', sessionId, blockIndex: event.blockIndex, callId: event.toolCallId, name: event.toolName, argsDelta: event.argsDelta });
+        emit({
+          type: 'tool_call_partial',
+          sessionId,
+          turnId,
+          blockIndex: event.blockIndex,
+          callId: event.toolCallId,
+          name: event.toolName,
+          argsDelta: event.argsDelta,
+          assistantMessageId: writer.currentAssistantMessageId,
+        });
         return;
       case 'tool_use_completed':
         toolNames.set(event.toolCallId, event.toolName);
-        emit({ type: 'tool_call_complete', sessionId, blockIndex: event.blockIndex, callId: event.toolCallId, name: event.toolName, args: event.args });
+        emit({
+          type: 'tool_call_complete',
+          sessionId,
+          turnId,
+          blockIndex: event.blockIndex,
+          callId: event.toolCallId,
+          name: event.toolName,
+          args: event.args,
+          assistantMessageId: writer.currentAssistantMessageId,
+        });
         return;
       case 'agent_usage_updated':
         emit({ type: 'agent_usage_updated', sessionId, turnId, usage: event.usage });

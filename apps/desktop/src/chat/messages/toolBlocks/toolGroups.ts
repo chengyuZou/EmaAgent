@@ -8,13 +8,12 @@ import type { AssistantOutputBlock } from '../../../stores/turn.js';
 import { lookupToolUI } from './toolUIRegistry.js';
 
 type ToolUseBlock = Extract<AssistantBlock, { readonly type: 'tool_use' }>;
-// TODO: 这里仍存在Live字段
-type LiveToolUseItem = Extract<AssistantOutputBlock, { readonly type: 'tool_use' }>;
+type StreamingToolUseItem = Extract<AssistantOutputBlock, { readonly type: 'tool_use' }>;
 
-/** Tool UI 唯一需要理解的 History/Live 差异;普通 Text 与 Thinking 不经过这个类型. */
+/** Tool UI 区分持久 Tool Use 和尚未交给 History 的流式 Tool Use. */
 export type ToolDisplayCall =
   | { readonly source: 'history'; readonly block: ToolUseBlock; readonly result?: ToolResult }
-  | { readonly source: 'live'; readonly item: LiveToolUseItem };
+  | { readonly source: 'streaming'; readonly item: StreamingToolUseItem };
 
 export function toolName(call: ToolDisplayCall): string {
   return call.source === 'history' ? call.block.name : call.item.name;
@@ -39,7 +38,7 @@ export function toolFallbackContent(call: ToolDisplayCall): unknown {
 }
 
 export function toolFailure(call: ToolDisplayCall): { code: string; message: string } | null {
-  if (call.source === 'live') return call.item.error ?? null;
+  if (call.source === 'streaming') return call.item.error ?? null;
   const result = call.result;
   if (!result || (!result.isError && result.errorCode === undefined)) return null;
   return {
@@ -53,11 +52,11 @@ export function toolDurationMs(call: ToolDisplayCall): number | undefined {
 }
 
 export function toolPermissionPending(call: ToolDisplayCall): boolean {
-  return call.source === 'live' && call.item.permissionPending === true;
+  return call.source === 'streaming' && call.item.permissionPending === true;
 }
 
 export function toolRunning(call: ToolDisplayCall, streaming: boolean): boolean {
-  return call.source === 'live'
+  return call.source === 'streaming'
     && streaming
     && (call.item.status === 'running' || call.item.status === 'awaiting_permission');
 }

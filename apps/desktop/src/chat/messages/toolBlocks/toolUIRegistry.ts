@@ -64,7 +64,7 @@ export interface ToolUI {
   readonly title?: (args: unknown) => string | null;
   /** 参数区. 返回 null 表示类型守卫失败, ToolCallBlock 会回落到通用字段表. */
   readonly ArgsView?: (props: { args: unknown }) => JSX.Element | null;
-  /** 结果区. data 是 ToolResult.data 或 live item.output; args 供按参数高亮(如 Grep 匹配). */
+  /** 结果区. data 是 ToolResult.data 或 streaming item.output; args 供按参数高亮(如 Grep 匹配). */
   readonly ResultView?: (props: { data: unknown; args: unknown }) => JSX.Element | null;
   /** 运行中的进度区. 没有真实 progress 结构的 Tool 不注册这个入口. */
   readonly ProgressView?: (props: { progress: readonly unknown[] }) => JSX.Element | null;

@@ -14,8 +14,6 @@ export interface AskUserQuestionSpec {
 }
 
 export type ToolStreamEvent =
-  | { type: 'tool_call_partial'; sessionId: string; blockIndex: number; callId: string; name: string; argsDelta: string }
-  | { type: 'tool_call_complete'; sessionId: string; blockIndex: number; callId: string; name: string; args: unknown }
   | {
       type: 'tool_progress';
       sessionId: string;

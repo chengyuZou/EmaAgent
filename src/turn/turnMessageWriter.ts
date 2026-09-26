@@ -22,6 +22,7 @@ type WriterSessions = Pick<
  */
 export class TurnMessageWriter {
   private assistantMessageId: string | undefined;
+  private assistantStored = false;
   private textByIndex = new Map<number, string>();
   private thinkingByIndex = new Map<number, string>();
   private thinkingStates = new Map<number, LlmThinkingState>();
@@ -34,6 +35,11 @@ export class TurnMessageWriter {
     private readonly turnId: string,
     private readonly sessions: WriterSessions,
   ) {}
+
+  get currentAssistantMessageId(): string {
+    if (!this.assistantMessageId) throw new Error('assistant_iteration_not_started');
+    return this.assistantMessageId;
+  }
 
   async apply(event: AgentLoopEvent): Promise<string | undefined> {
     switch (event.type) {
@@ -80,7 +86,7 @@ export class TurnMessageWriter {
 
       case 'assistant_message_completed':
         await this.persistAssistant();
-        return this.assistantMessageId;
+        return this.assistantStored ? this.assistantMessageId : undefined;
 
       case 'tool_result':
         this.pendingToolUses.delete(event.result.toolCallId);
@@ -103,7 +109,7 @@ export class TurnMessageWriter {
    * 的配对过滤器需要完整配对才重放）。
    */
   async finish(terminal: 'completed' | 'failed' | 'aborted'): Promise<void> {
-    if (this.assistantMessageId && terminal !== 'completed') {
+    if (this.assistantStored && this.assistantMessageId && terminal !== 'completed') {
       this.sessions.markMessageInterrupted(this.assistantMessageId);
     }
     if (this.pendingToolUses.size === 0) return;
@@ -126,7 +132,8 @@ export class TurnMessageWriter {
   }
 
   private resetIteration(): void {
-    this.assistantMessageId = undefined;
+    this.assistantMessageId = crypto.randomUUID();
+    this.assistantStored = false;
     this.textByIndex = new Map();
     this.thinkingByIndex = new Map();
     this.thinkingStates = new Map();
@@ -136,17 +143,19 @@ export class TurnMessageWriter {
   private async persistAssistant(): Promise<void> {
     const blocks = this.currentBlocks();
     if (blocks.length === 0) return;
-    if (!this.assistantMessageId) {
-      const message = await this.append({
+    const assistantMessageId = this.currentAssistantMessageId;
+    if (!this.assistantStored) {
+      await this.append({
+        id: assistantMessageId,
         turnId: this.turnId,
         sessionId: this.sessionId,
         role: 'assistant',
         blocks,
       });
-      this.assistantMessageId = message.id;
+      this.assistantStored = true;
       return;
     }
-    this.sessions.updateMessageBlocks(this.assistantMessageId, blocks);
+    this.sessions.updateMessageBlocks(assistantMessageId, blocks);
   }
 
   private async append(input: AppendMessageInput) {

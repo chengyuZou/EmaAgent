@@ -53,9 +53,9 @@ export function ToolCallBlock({ call, streaming = false, turnId, sessionId }: To
   const output = toolOutput(call);
   const fallbackContent = toolFallbackContent(call);
   const renderedOutput = output ?? fallbackContent;
-  const partialArgs = call.source === 'live' ? call.item.partialArgs : undefined;
-  const startedAt = call.source === 'live' ? call.item.startedAt : undefined;
-  const progress = call.source === 'live' ? call.item.progress : undefined;
+  const partialArgs = call.source === 'streaming' ? call.item.partialArgs : undefined;
+  const startedAt = call.source === 'streaming' ? call.item.startedAt : undefined;
+  const progress = call.source === 'streaming' ? call.item.progress : undefined;
   const durationMs = toolDurationMs(call);
   const permissionPending = toolPermissionPending(call);
 
@@ -65,22 +65,28 @@ export function ToolCallBlock({ call, streaming = false, turnId, sessionId }: To
   const hasResult = renderedOutput !== undefined;
   const hasError = failure !== null || historyInterrupted;
 
-  // TODO: 禁止一层以上的三级嵌套
-  const status: ToolDisplayStatus = failure?.code === 'permission/denied'
-    ? 'denied'
-    : hasError
-      ? 'failed'
-      : permissionPending
-        ? 'awaiting_permission'
-        : call.source === 'live'
-          ? call.item.status === 'succeeded'
-            ? 'success'
-            : call.item.status === 'failed' || call.item.status === 'interrupted' || call.item.status === 'outcome_unknown'
-              ? 'failed'
-              : 'running'
-        : historyCompleted
-          ? 'success'
-          : 'running';
+  let status: ToolDisplayStatus;
+  if (failure?.code === 'permission/denied') {
+    status = 'denied';
+  } else if (hasError) {
+    status = 'failed';
+  } else if (permissionPending) {
+    status = 'awaiting_permission';
+  } else if (call.source === 'streaming') {
+    if (call.item.status === 'succeeded') {
+      status = 'success';
+    } else if (
+      call.item.status === 'failed'
+      || call.item.status === 'interrupted'
+      || call.item.status === 'outcome_unknown'
+    ) {
+      status = 'failed';
+    } else {
+      status = 'running';
+    }
+  } else {
+    status = historyCompleted ? 'success' : 'running';
+  }
 
   const toolUI = lookupToolUI(name);
   const [open, setOpen] = useState(() => toolUI?.defaultExpanded ?? false);

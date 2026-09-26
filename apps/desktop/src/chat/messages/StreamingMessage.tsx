@@ -2,7 +2,7 @@
 
 import { memo, type JSX } from 'react';
 import type { StreamingMessage as StreamingMessageData } from '../../stores/turn.js';
-import { AssistantSections, useStableLiveSections } from './assistantSections.js';
+import { AssistantSections, useStableStreamingSections } from './assistantSections.js';
 
 export const StreamingMessage = memo(function StreamingMessage({
   message,
@@ -13,7 +13,7 @@ export const StreamingMessage = memo(function StreamingMessage({
   readonly sessionId: string;
   readonly terminal: boolean;
 }): JSX.Element | null {
-  const sections = useStableLiveSections(message.blocks);
+  const sections = useStableStreamingSections(message.blocks);
   if (terminal && message.blocks.length === 0) return null;
 
   return (

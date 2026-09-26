@@ -162,6 +162,11 @@ describe('TurnExecutor 集成', () => {
       { type: 'user_message_stored', message: messages[1] },
     ]);
     expect(events.map(event => event.type)).toContain('output_text_delta');
+    for (const event of events) {
+      if (event.type === 'agent_iteration' || event.type === 'output_text_delta') {
+        expect(event.assistantMessageId).toBe(messages[2]!.id);
+      }
+    }
     expect(events.map(event => event.type)).toContain('turn_completed');
     const contextEvents = events.filter(event => event.type === 'context_usage_updated');
     expect(contextEvents.map(event => event.usage.source)).toEqual([
@@ -404,6 +409,16 @@ describe('TurnExecutor 集成', () => {
     expect(JSON.stringify(messages[3]!.blocks)).toContain('echo-ok');
     const events: TurnStreamEvent[] = [];
     for await (const event of handle.events) events.push(event);
+    expect(events.filter(event => event.type === 'agent_iteration').map(event => event.assistantMessageId))
+      .toEqual([messages[2]!.id, messages[6]!.id]);
+    expect(events.find(event => event.type === 'tool_call_complete')).toMatchObject({
+      assistantMessageId: messages[2]!.id,
+      callId: 'c1',
+    });
+    expect(events.find(event => event.type === 'output_text_delta')).toMatchObject({
+      assistantMessageId: messages[6]!.id,
+      delta: '查到了。',
+    });
     expect(events.filter(event => event.type === 'tool_result')).toEqual([{
       type: 'tool_result',
       sessionId: session.id,

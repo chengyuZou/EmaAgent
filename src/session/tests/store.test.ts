@@ -314,6 +314,24 @@ describe('SessionStore — message', () => {
     expect(msg.interrupted).toBe(false);
   });
 
+  it('Assistant 首次落库沿用 iteration 已公布的 Message ID', () => {
+    const { store, db } = makeStore();
+    const session = store.createSession();
+    const turnId = insertTurnFixture(db, session.id);
+    const id = crypto.randomUUID();
+
+    const message = store.appendMessage({
+      id,
+      sessionId: session.id,
+      turnId,
+      role: 'assistant',
+      blocks: [{ type: 'text', text: '你好' }],
+    });
+
+    expect(message.id).toBe(id);
+    expect(store.loadMessagesForTurn(turnId).map(item => item.id)).toContain(id);
+  });
+
   it('appendMessage serialises tool_use blocks correctly', () => {
     const { store, db } = makeStore();
     const s = store.createSession();

@@ -84,6 +84,7 @@ export type TurnEvent =
       sessionId: string;
       turnId: string;
       n: number;
+      assistantMessageId: string;
     }
   | ({
       type: 'request_degraded';
@@ -96,6 +97,7 @@ export type TurnEvent =
       turnId: string;
       blockIndex: number;
       delta: string;
+      assistantMessageId: string;
     }
   | {
       type: 'reasoning_delta';
@@ -103,12 +105,34 @@ export type TurnEvent =
       turnId: string;
       blockIndex: number;
       delta: string;
+      assistantMessageId: string;
     }
   | {
       type: 'reasoning_complete';
       sessionId: string;
       turnId: string;
       blockIndex: number;
+      assistantMessageId: string;
+    }
+  | {
+      type: 'tool_call_partial';
+      sessionId: string;
+      turnId: string;
+      blockIndex: number;
+      callId: string;
+      name: string;
+      argsDelta: string;
+      assistantMessageId: string;
+    }
+  | {
+      type: 'tool_call_complete';
+      sessionId: string;
+      turnId: string;
+      blockIndex: number;
+      callId: string;
+      name: string;
+      args: unknown;
+      assistantMessageId: string;
     };
 
 /** Compact 事件进入根 Turn 事件流时补上本 Turn 身份；Compact 包自身不感知 Turn。 */

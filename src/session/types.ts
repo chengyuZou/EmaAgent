@@ -147,6 +147,7 @@ export interface PatchSessionInput {
 }
 
 export interface AppendMessageInput {
+  id?: string;
   turnId: string | null;
   sessionId: string;
   role: MessageRole;

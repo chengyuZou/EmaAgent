@@ -16,12 +16,12 @@ export interface SessionActivity {
   readonly activeCompactId: string | null;
   /** 仍等待用户处理的 Permission 和 AskUser, resolved 事件到达后按 toolCallId 删除. */
   readonly pendingInteractions: readonly PendingInteraction[];
-  /** 这里只显示 after_turn 项; guide 成功后该项立即移入 Live Turn. */
+  /** 这里只显示 after_turn 项; guide 成功后该项立即移入当前 Turn. */
   readonly queuedInputs: readonly QueuedSessionInput[];
 }
 
 interface SessionActivityStore {
-  /** Chat 当前订阅的各 Session 活动事实, 不包含消息正文或 Live Turn 内容. */
+  /** Chat 当前订阅的各 Session 活动事实, 不包含消息正文或 Turn Store 内容. */
   readonly bySession: ReadonlyMap<string, SessionActivity>;
   /** Session WebSocket 状态变化时写入, ChatInput 和 Sidebar 用它显示断线而不是伪造 idle. */
   setConnection(sessionId: string, connection: SessionConnectionState): void;
@@ -42,7 +42,7 @@ interface SessionActivityStore {
   applyInteractionEvent(sessionId: string, event: TurnStreamEvent): void;
   /** queued_input_added 到达时按 ID 替换并按创建时间排列, 防止重连事件显示两次. */
   addQueuedInput(sessionId: string, item: QueuedSessionInput): void;
-  /** queued_input_removed 到达时删除队列气泡; guide 后的消息由 Live Turn 接管显示. */
+  /** queued_input_removed 到达时删除队列气泡; guide 后的消息由 Turn Store 接管显示. */
   removeQueuedInput(sessionId: string, id: string): void;
   /** Session 已归档或删除时一次删除连接, 占用, 交互和队列视图. */
   evictSession(sessionId: string): void;
