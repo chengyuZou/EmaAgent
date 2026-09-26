@@ -39,6 +39,7 @@ describe('SessionBackupReader', () => {
         triggerType: 'userMessage',
         sessionMode: 'work',
         narrativePolicy: 'auto',
+        ttsEnabled: false,
         createdAt: index,
       });
     }

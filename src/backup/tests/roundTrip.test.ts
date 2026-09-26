@@ -36,8 +36,8 @@ function seedSource(dataDir: string): Database {
   `).run(SESSION_ID);
   db.sqlite.prepare(`
     INSERT INTO turns (id, session_id, trigger_type, session_mode, narrative_policy,
-      status, created_at)
-    VALUES ('t1', ?, 'userMessage', 'chat', 'off', 'completed', 1)
+      tts_enabled, character_name, status, created_at)
+    VALUES ('t1', ?, 'userMessage', 'chat', 'off', 1, 'ema', 'completed', 1)
   `).run(SESSION_ID);
 
   const imagePath = path.join(dataDir, 'sessions', SESSION_ID, 'attachments', 'images', 'u1.png');
@@ -125,6 +125,10 @@ describe('Session 备份往返', () => {
       () => true,
     );
     expect(result.sessionId).toBe(SESSION_ID);
+    expect(targetDb.sqlite.prepare("SELECT tts_enabled FROM turns WHERE id = 't1'").get())
+      .toMatchObject({ tts_enabled: 1 });
+    expect(targetDb.sqlite.prepare("SELECT character_name FROM turns WHERE id = 't1'").get())
+      .toMatchObject({ character_name: 'ema' });
 
     // 新路径:uuid 文件名不变,数据根前缀换成目标目录
     const newImagePath = path.join(targetDir, 'sessions', SESSION_ID, 'attachments', 'images', 'u1.png');

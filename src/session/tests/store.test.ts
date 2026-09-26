@@ -21,6 +21,7 @@ function insertTurnFixture(db: Database, sessionId: string): string {
     triggerType: 'userMessage',
     sessionMode: 'chat',
     narrativePolicy: 'off',
+    ttsEnabled: false,
     createdAt: turnSeq,
   });
   return turnId;

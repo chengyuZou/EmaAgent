@@ -15,13 +15,15 @@ export interface TurnRow {
   trigger_type: TurnTriggerTypeRow;
   session_mode: SessionModeRow;
   narrative_policy: NarrativePolicyRow;
+  /** Turn 启动时写入的冻结值. 与 sessions.tts_enabled 的可变偏好不同. */
+  tts_enabled: number;
   /** 操作开始冻结的模型选择；prepare 阶段解析成功前为 null。 */
   provider_id: string | null;
   model_id: string | null;
   /** prepare 解析出的实际调用协议（与 provider_id/model_id 同生命周期，setModel 回填前为 null）。 */
   protocol: string | null;
-  /** 本 Turn 激活角色的磁盘目录名快照；prepare 完成回填，此前为 null。 */
-  character_directory_name: string | null;
+  /** Prepare 阶段冻结的 Character.name. 与可修改的 displayName 不同. */
+  character_name: string | null;
   iterations: number;
   created_at: number;
   completed_at: number | null;
@@ -35,6 +37,7 @@ export interface TurnInsert {
   triggerType: TurnTriggerTypeRow;
   sessionMode: SessionModeRow;
   narrativePolicy: NarrativePolicyRow;
+  ttsEnabled: boolean;
   createdAt: number;
 }
 
@@ -83,8 +86,8 @@ export class TurnsRepo {
       .prepare(
         `INSERT INTO turns
            (id, session_id, status, trigger_type,
-            session_mode, narrative_policy, created_at)
-         VALUES (?, ?, 'running', ?, ?, ?, ?)`,
+            session_mode, narrative_policy, tts_enabled, created_at)
+         VALUES (?, ?, 'running', ?, ?, ?, ?, ?)`,
       )
       .run(
         t.id,
@@ -92,6 +95,7 @@ export class TurnsRepo {
         t.triggerType,
         t.sessionMode,
         t.narrativePolicy,
+        t.ttsEnabled ? 1 : 0,
         t.createdAt,
       );
   }
@@ -103,11 +107,11 @@ export class TurnsRepo {
       .run(providerId, modelId, protocol, id);
   }
 
-  /** prepare 完成时冻结激活角色目录名；Memory relationship 提取经 turnId 回读此列。 */
-  setCharacterDirectoryName(id: string, characterDirectoryName: string): void {
+  /** Prepare 完成时冻结角色身份. Memory relationship 提取经 turnId 回读此列. */
+  setCharacterName(id: string, characterName: string): void {
     this.db
-      .prepare('UPDATE turns SET character_directory_name = ? WHERE id = ?')
-      .run(characterDirectoryName, id);
+      .prepare('UPDATE turns SET character_name = ? WHERE id = ?')
+      .run(characterName, id);
   }
 
   /** 根 AgentLoop 开始新迭代时立即保存，失败和取消也保留已经发生的次数。 */

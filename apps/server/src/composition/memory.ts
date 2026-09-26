@@ -94,8 +94,8 @@ export function openMemory(deps: {
       return {
         sessionId: turn.sessionId,
         messages: buildMemoryMessages(deps.session.loadMessagesForTurn(turnId)),
-        ...(turn.characterDirectoryName
-          ? { characterName: turn.characterDirectoryName }
+        ...(turn.characterName
+          ? { characterName: turn.characterName }
           : {}),
       };
     },
@@ -214,7 +214,7 @@ export function openMemory(deps: {
       } catch (error) {
         console.warn(`[memory] Work 提取入队失败(${turnId}):`, error);
       }
-      if (!turn?.characterDirectoryName) return;
+      if (!turn?.characterName) return;
       try {
         jobs.enqueueExtraction(randomUUID(), 'relationship_extraction', turnId, Date.now());
         queueMicrotask(() => kickExtraction('relationship_extraction'));

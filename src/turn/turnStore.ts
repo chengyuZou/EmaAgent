@@ -86,6 +86,7 @@ export class TurnStore {
       triggerType:  input.triggerType,
       sessionMode: input.sessionMode,
       narrativePolicy:  input.narrativePolicy,
+      ttsEnabled: input.ttsEnabled,
       createdAt:    now,
     });
     this.sessionsRepo.touchActivity(input.sessionId, now);
@@ -99,9 +100,9 @@ export class TurnStore {
     this.turnsRepo.setModel(turnId, providerId, modelId, protocol);
   }
 
-  /** prepare 完成时冻结激活角色目录名；Memory 提取经 turnId 回读。 */
-  setCharacterDirectoryName(turnId: string, characterDirectoryName: string): void {
-    this.turnsRepo.setCharacterDirectoryName(turnId, characterDirectoryName);
+  /** Prepare 完成时冻结 Character.name. Memory 提取经 turnId 回读. */
+  setCharacterName(turnId: string, characterName: string): void {
+    this.turnsRepo.setCharacterName(turnId, characterName);
   }
 
   completeTurn(
@@ -326,10 +327,11 @@ function toTurn(row: TurnRow): Turn {
     triggerType: row.trigger_type,
     sessionMode: row.session_mode,
     narrativePolicy: row.narrative_policy,
+    ttsEnabled: row.tts_enabled === 1,
     providerId: row.provider_id,
     modelId: row.model_id,
     protocol: row.protocol,
-    characterDirectoryName: row.character_directory_name,
+    characterName: row.character_name,
     iterations: row.iterations,
     createdAt: row.created_at,
     completedAt: row.completed_at,

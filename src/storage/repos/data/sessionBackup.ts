@@ -199,17 +199,17 @@ export class SessionBackupRestorer {
 
     const insertTurn = this.db.prepare(`
       INSERT INTO turns (
-        id, session_id, status, trigger_type, session_mode, narrative_policy,
-        provider_id, model_id, protocol, character_directory_name,
+        id, session_id, status, trigger_type, session_mode, narrative_policy, tts_enabled,
+        provider_id, model_id, protocol, character_name,
         iterations,
         created_at, completed_at, error_code, error_message
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     for (const row of rows.turns) {
       insertTurn.run(
         row.id, session.id, row.status, row.trigger_type,
-        row.session_mode, row.narrative_policy, row.provider_id, row.model_id,
-        row.protocol, row.character_directory_name, row.iterations,
+        row.session_mode, row.narrative_policy, row.tts_enabled, row.provider_id, row.model_id,
+        row.protocol, row.character_name, row.iterations,
         row.created_at, row.completed_at,
         row.error_code, row.error_message,
       );

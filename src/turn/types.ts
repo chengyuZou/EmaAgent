@@ -1,4 +1,3 @@
-// Turn 领域对象与公开入口契约；共享词汇 SessionMode/NarrativePolicy/TurnStatus 来自 @ema-agent/session。
 import type {
   SessionMode,
   NarrativePolicy,
@@ -9,30 +8,26 @@ import type { TurnFailureCode } from './errors.js';
 import type { TurnStreamEvent } from './events.js';
 
 /**
- * userMessage 来自用户队列, sessionContinuation 只承载后台终态.
+ * userMessage 来自用户主动输入, sessionContinuation 只承载后台终态.
  */
 export type TurnTriggerType = 'userMessage' | 'sessionContinuation';
-
-// ── Turn 领域对象（事实源；持久化行见 storage TurnRow，边界显式映射） ──────────
 
 export interface Turn {
   readonly id: string;
   readonly sessionId: string;
   readonly status: TurnStatus;
   readonly triggerType: TurnTriggerType;
-  /** Turn 启动时从 Session 复制的冻结事实。 */
   readonly sessionMode: SessionMode;
-  /** Turn 启动时从 Session 复制的冻结事实。 */
   readonly narrativePolicy: NarrativePolicy;
-  /** 操作开始冻结的模型选择；prepare 解析成功前为 null。 */
+  /** 本 Turn 启动时冻结的语音选择. 与之后可修改的 Session 偏好不同. */
+  readonly ttsEnabled: boolean;
   readonly providerId: string | null;
   readonly modelId: string | null;
-  /** prepare 解析出的实际调用协议（与 providerId/modelId 同生命周期，setModel 回填前为 null）。 */
+  /** 选择provider-model 的协议 */
   readonly protocol: string | null;
-  /** 本 Turn 激活角色的磁盘目录名快照（Memory relationship 提取的事实源）；prepare 完成回填，此前为 null。 */
-  readonly characterDirectoryName: string | null;
+  /** Prepare 阶段冻结的 Character.name. 与可修改的 displayName 不同. */
+  readonly characterName: string | null;
   readonly iterations: number;
-  /** 创建即启动的唯一时序事实：排序、分页、时长与 fork 截断都用它。 */
   readonly createdAt: number;
   readonly completedAt: number | null;
   readonly errorCode: string | null;
@@ -48,6 +43,7 @@ export interface StartTurnInput {
   readonly modelId?: string | null;
   readonly sessionMode: SessionMode;
   readonly narrativePolicy: NarrativePolicy;
+  readonly ttsEnabled: boolean;
 }
 
 // ── Turn 导航查询的输入输出（TurnStore 的读取面） ─────────────────────────────
@@ -133,6 +129,7 @@ export interface StartTurn {
   /** 已完成后台工作的轻量通知. 完整结果由模型按其中的执行 id 主动读取. */
   readonly completionNoticeText?: string;
   readonly knowledge?: TurnKnowledgeSelection;
+  readonly ttsEnabled: boolean;
 }
 
 /** Turn 对外只有一个明确终态，完成 Promise 与终态事件使用同一份数据。 */

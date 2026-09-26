@@ -7,7 +7,6 @@ export interface TurnFanoutDeps {
     sessionId: string,
     turnId: string,
     event: TurnStreamEvent,
-    ttsEnabled: boolean,
   ) => void;
   readonly emitAppEvent: (
     event: Extract<
@@ -25,32 +24,27 @@ export interface TurnFanoutDeps {
 export class TurnFanout {
   constructor(private readonly deps: TurnFanoutDeps) {}
 
-  attach(handle: TurnHandle, options: { ttsEnabled: boolean }): void {
-    const speechAbort = new AbortController();
-    const speechPromise = options.ttsEnabled
-      ? this.deps.startTurnSpeech({
-          sessionId: handle.sessionId,
-          turnId: handle.turnId,
-          signal: speechAbort.signal,
-        })
-        .catch(error => {
-          console.warn('[speech] 启动失败，本 Turn 无语音输出:', error);
-          return null;
-        })
-      : Promise.resolve(null);
-    void this.pump(handle, options.ttsEnabled, speechPromise, speechAbort);
+  attach(handle: TurnHandle): void {
+    void this.pump(handle);
   }
 
-  private async pump(
-    handle: TurnHandle,
-    ttsEnabled: boolean,
-    speechPromise: Promise<TurnSpeechHandle | null>,
-    speechAbort: AbortController,
-  ): Promise<void> {
+  private async pump(handle: TurnHandle): Promise<void> {
     const { sessionId, turnId } = handle;
+    const speechAbort = new AbortController();
+    let speechPromise: Promise<TurnSpeechHandle | null> = Promise.resolve(null);
     let completed = false;
     try {
       for await (const event of handle.events) {
+        if (event.type === 'turn_started' && event.ttsEnabled) {
+          speechPromise = this.deps.startTurnSpeech({
+            sessionId,
+            turnId,
+            signal: speechAbort.signal,
+          }).catch(error => {
+            console.warn('[speech] 启动失败，本 Turn 无语音输出:', error);
+            return null;
+          });
+        }
         if (event.type === 'output_text_delta') {
           void speechPromise.then(speech => speech?.acceptTextDelta(event.delta));
         }
@@ -60,7 +54,7 @@ export class TurnFanout {
             .then(speech => speech?.finish())
             .catch(error => console.warn(`[speech] Turn ${turnId} 收口失败:`, error));
         }
-        this.deps.publishTurnEvent(sessionId, turnId, event, ttsEnabled);
+        this.deps.publishTurnEvent(sessionId, turnId, event);
         if (event.type === 'turn_failed' || event.type === 'turn_aborted') {
           speechAbort.abort('turn ended without completion');
           void speechPromise.then(speech => speech?.abort());

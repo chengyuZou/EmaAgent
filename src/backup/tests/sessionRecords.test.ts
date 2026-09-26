@@ -45,10 +45,11 @@ describe('session records', () => {
       trigger_type: 'userMessage',
       session_mode: 'work',
       narrative_policy: 'auto',
+      tts_enabled: 1,
       provider_id: 'openai',
       model_id: 'gpt-5.2',
       protocol: 'openai-responses-llm',
-      character_directory_name: null,
+      character_name: 'ema',
       iterations: 3,
       created_at: 1,
       completed_at: 2,
@@ -59,7 +60,11 @@ describe('session records', () => {
     const record = toTurnRecord(turnRow);
     const parsed = turnRecordSchema.parse(record);
     expect(parsed.protocol).toBe('openai-responses-llm');
+    expect(parsed.ttsEnabled).toBe(true);
+    expect(parsed.characterName).toBe('ema');
     expect(restoreTurnRecord(parsed, 3).protocol).toBe('openai-responses-llm');
+    expect(restoreTurnRecord(parsed, 3).tts_enabled).toBe(1);
+    expect(restoreTurnRecord(parsed, 3).character_name).toBe('ema');
   });
 
   it('拒绝缺失 protocol 键的旧 Turn 记录（开发期不兼容）', () => {
@@ -72,7 +77,7 @@ describe('session records', () => {
       narrativePolicy: 'auto',
       providerId: 'openai',
       modelId: 'gpt-5.2',
-      characterDirectoryName: null,
+      characterName: null,
       iterations: 3,
       createdAt: 1,
       completedAt: 2,

@@ -10,6 +10,7 @@ const TURN_STARTED = {
   triggerType: 'userMessage',
   sessionMode: 'chat',
   narrativePolicy: 'auto',
+  ttsEnabled: false,
 } as const satisfies TurnStreamEvent;
 
 function handleWith(events: readonly TurnStreamEvent[]): TurnHandle {
@@ -34,14 +35,13 @@ describe('TurnFanout', () => {
       emitAppEvent: vi.fn(),
     });
 
-    fanout.attach(handleWith([TURN_STARTED]), { ttsEnabled: false });
+    fanout.attach(handleWith([TURN_STARTED]));
 
     await vi.waitFor(() => expect(publishTurnEvent).toHaveBeenCalledOnce());
     expect(publishTurnEvent).toHaveBeenCalledWith(
       'session-1',
       'turn-1',
       TURN_STARTED,
-      false,
     );
     expect(startTurnSpeech).not.toHaveBeenCalled();
   });
@@ -55,7 +55,8 @@ describe('TurnFanout', () => {
       emitAppEvent: vi.fn(),
     });
 
-    fanout.attach(handleWith([TURN_STARTED]), { ttsEnabled: true });
+    const startedWithSpeech = { ...TURN_STARTED, ttsEnabled: true };
+    fanout.attach(handleWith([startedWithSpeech]));
 
     await vi.waitFor(() => expect(publishTurnEvent).toHaveBeenCalledOnce());
     expect(startTurnSpeech).toHaveBeenCalledWith(expect.objectContaining({
@@ -65,8 +66,7 @@ describe('TurnFanout', () => {
     expect(publishTurnEvent).toHaveBeenCalledWith(
       'session-1',
       'turn-1',
-      TURN_STARTED,
-      true,
+      startedWithSpeech,
     );
   });
 });

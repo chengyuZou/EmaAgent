@@ -36,6 +36,8 @@ export type TurnEvent =
       triggerType: TurnTriggerType;
       sessionMode: SessionMode;
       narrativePolicy: NarrativePolicy;
+      /** 与 Turn 行同源的本轮语音选择, 不代表语音管线已经成功启动. */
+      ttsEnabled: boolean;
     }
   | {
       readonly type: 'context_usage_updated';

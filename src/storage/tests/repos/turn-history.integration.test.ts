@@ -33,6 +33,7 @@ describe('Turn 历史读取', () => {
         triggerType: 'userMessage',
         sessionMode: 'chat',
         narrativePolicy: 'off',
+        ttsEnabled: false,
         createdAt: 10,
       });
       messages.insert({
@@ -145,6 +146,7 @@ describe('Turn 历史读取', () => {
       triggerType: 'userMessage',
       sessionMode: 'chat',
       narrativePolicy: 'off',
+      ttsEnabled: false,
       createdAt: 1,
     });
     messages.insert({
@@ -179,6 +181,7 @@ describe('Turn 历史读取', () => {
       triggerType: 'sessionContinuation',
       sessionMode: 'chat',
       narrativePolicy: 'off',
+      ttsEnabled: false,
       createdAt: 3,
     });
 
@@ -196,6 +199,7 @@ describe('Turn 历史读取', () => {
       triggerType: 'userMessage',
       sessionMode: 'chat',
       narrativePolicy: 'off',
+      ttsEnabled: false,
       createdAt: 1,
     });
     turns.setModel('turn-a', 'provider-config-1', 'model-1', 'openai-chat');
@@ -208,6 +212,23 @@ describe('Turn 历史读取', () => {
     expect(() => database.sqlite.prepare(`
       UPDATE turns SET model_id = NULL WHERE id = 'turn-a'
     `).run()).toThrow(/both provider and model/);
+  });
+
+  it('Turn 冻结 Character.name, 不把展示名当作角色身份', () => {
+    const { turns, sessionId } = createFixture();
+    turns.insert({
+      id: 'turn-character',
+      sessionId,
+      triggerType: 'userMessage',
+      sessionMode: 'chat',
+      narrativePolicy: 'off',
+      ttsEnabled: false,
+      createdAt: 1,
+    });
+
+    turns.setCharacterName('turn-character', 'ema');
+
+    expect(turns.findById('turn-character')?.character_name).toBe('ema');
   });
 
   it('Turn 索引分页使用 Session 最新 Turn 索引', () => {

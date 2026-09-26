@@ -16,6 +16,7 @@ import type { SessionMessage } from '@ema-agent/session';
 import { charactersApi } from '../../api/characters.js';
 import { fetchServerObjectUrl } from '../../lib/serverFileUrl.js';
 import { useCharacterStore } from '../../stores/character.js';
+import { useSessionActivityStore } from '../../stores/sessionActivity.js';
 import { useSessionHistoryStore } from '../../stores/sessionHistory.js';
 import { useSessionStore } from '../../stores/session.js';
 import {
@@ -100,6 +101,9 @@ export function MessageList({
     new Map(state.turnsBySession.get(sessionId) ?? [])
   )));
   const stopReason = useTurnStore(state => state.stopReasonBySession.get(sessionId));
+  const activeCompactId = useSessionActivityStore(
+    state => state.bySession.get(sessionId)?.activeCompactId,
+  );
 
   useEffect(() => {
     void useSessionHistoryStore.getState().loadLatest(sessionId).then(() => {
@@ -220,13 +224,16 @@ export function MessageList({
     );
   }
   if (messages.length === 0) {
-    if (!history.error && !stopReason) return <ChatEmptyState sessionId={sessionId} />;
+    if (!history.error && !stopReason && !activeCompactId) {
+      return <ChatEmptyState sessionId={sessionId} />;
+    }
     return (
       <div className="flex flex-1 items-end justify-center pb-4">
         <MessageListStatus
           loadingNewer={history.loadingNewer}
           error={history.error}
           stopReason={stopReason}
+          compacting={Boolean(activeCompactId)}
         />
       </div>
     );
@@ -250,7 +257,7 @@ export function MessageList({
         data={messages}
         firstItemIndex={firstItemIndex}
         computeItemKey={(_index, message) => messageListKey(message)}
-        followOutput={turns.size > 0 ? 'auto' : false}
+        followOutput={turns.size > 0 || Boolean(activeCompactId) ? 'auto' : false}
         initialTopMostItemIndex={anchorIndex >= 0
           ? messageScrollLocation(anchorIndex)
           : messages.length - 1}
@@ -276,6 +283,7 @@ export function MessageList({
               loadingNewer={history.loadingNewer}
               error={history.error}
               stopReason={turns.size === 0 ? stopReason : undefined}
+              compacting={Boolean(activeCompactId)}
             />
           ),
         }}
@@ -347,13 +355,24 @@ function MessageListStatus({
   loadingNewer,
   error,
   stopReason,
+  compacting,
 }: {
   readonly loadingNewer: boolean;
   readonly error?: string;
   readonly stopReason?: string;
+  readonly compacting: boolean;
 }): JSX.Element {
   return (
     <div className="flex min-h-4 flex-col items-center gap-2 py-2">
+      {compacting && (
+        <div
+          role="status"
+          className="ema-shimmer mx-auto flex w-full max-w-2xl items-center gap-2 border-t border-[var(--ema-border)] px-3 py-2 text-xs text-[var(--ema-text-secondary)]"
+        >
+          <span className="i-lucide:sliders-horizontal size-3.5 shrink-0 text-[var(--ema-primary)]" aria-hidden />
+          <span>正在压缩上下文…</span>
+        </div>
+      )}
       {loadingNewer && (
         <div className="text-xs text-[var(--ema-text-tertiary)]">正在读取更新消息…</div>
       )}

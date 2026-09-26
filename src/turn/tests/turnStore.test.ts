@@ -29,6 +29,7 @@ function startTurn(store: TurnStore, sessionId: string) {
     triggerType: 'userMessage',
     sessionMode: 'chat',
     narrativePolicy: 'off',
+    ttsEnabled: false,
   });
 }
 
@@ -67,6 +68,27 @@ describe('TurnStore — 生命周期与运行锁', () => {
     expect(turn.status).toBe('running');
     expect(signal).toBeInstanceOf(AbortSignal);
     expect(signal.aborted).toBe(false);
+  });
+
+  it('Turn 冻结启动时的 TTS 选择, Session 偏好后续变化不改写旧 Turn', () => {
+    const { store, db } = makeStore();
+    const sessionId = insertSession(db, 's1');
+    const sessions = new SessionsRepo(db.sqlite);
+    sessions.patch(sessionId, { ttsEnabled: true }, 2);
+
+    const { turn } = store.startTurn({
+      sessionId,
+      triggerType: 'userMessage',
+      sessionMode: 'chat',
+      narrativePolicy: 'off',
+      ttsEnabled: true,
+    });
+    sessions.patch(sessionId, { ttsEnabled: false }, 3);
+
+    expect(sessions.findById(sessionId)?.tts_enabled).toBe(0);
+    expect(store.getTurn(turn.id)?.ttsEnabled).toBe(true);
+    expect(db.sqlite.prepare('SELECT tts_enabled FROM turns WHERE id = ?').get(turn.id))
+      .toMatchObject({ tts_enabled: 1 });
   });
 
   it('同一 Session 已有运行中 Turn 时拒绝第二个（session_busy）', () => {

@@ -23,10 +23,11 @@ const TURN: Turn = {
   triggerType: 'userMessage',
   sessionMode: 'work',
   narrativePolicy: 'off',
+  ttsEnabled: false,
   providerId: null,
   modelId: null,
   protocol: null,
-  characterDirectoryName: null,
+  characterName: null,
   iterations: 0,
   createdAt: 1,
   completedAt: null,
@@ -44,6 +45,7 @@ function fakeSession(overrides: Record<string, unknown> = {}) {
     reasoningEffort: 'off',
     sessionMode: 'work',
     narrativePolicy: 'off',
+    ttsEnabled: false,
     ...overrides,
   };
 }
@@ -96,6 +98,7 @@ function makeStart(overrides: Partial<StartTurn> = {}): StartTurn {
     triggerType: 'userMessage',
     sessionMode: 'work',
     narrativePolicy: 'off',
+    ttsEnabled: false,
     input: [{ type: 'text', text: '你好' }],
     ...overrides,
   };

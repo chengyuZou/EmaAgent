@@ -137,16 +137,9 @@ export function buildComposition(input: {
     usageRecorder: database.usageRecorder,
   });
   const turnFanout = new TurnFanout({
-    publishTurnEvent: (sessionId, turnId, event, ttsEnabled) => {
+    publishTurnEvent: (sessionId, turnId, event) => {
       if (event.type === 'user_message_stored') {
         sessionConnections.publish(sessionId, event);
-      } else if (event.type === 'turn_started') {
-        sessionConnections.publish(sessionId, {
-          type: 'turn_event',
-          turnId,
-          event,
-          ttsEnabled,
-        });
       } else {
         sessionConnections.publish(sessionId, { type: 'turn_event', turnId, event });
       }

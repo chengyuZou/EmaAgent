@@ -51,11 +51,12 @@ export const turnRecordSchema = z.object({
   triggerType: z.enum(['userMessage', 'sessionContinuation']),
   sessionMode: z.enum(['chat', 'work']),
   narrativePolicy: z.enum(['auto', 'always', 'off']),
+  ttsEnabled: z.boolean(),
   providerId: nullableId,
   modelId: nullableId,
   // 与 provider_id/model_id 同生命周期：三者同时存在或同时缺省；开发期格式不兼容缺失该键的旧 ZIP。
   protocol: nullableId,
-  characterDirectoryName: z.string().nullable(),
+  characterName: z.string().nullable(),
   iterations: nonNegativeInteger,
   createdAt: integer,
   completedAt: integer.nullable(),

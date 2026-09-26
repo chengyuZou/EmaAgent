@@ -120,10 +120,10 @@ export interface TurnExecutorDeps extends PrepareTurnDeps {
    */
   readonly stage?: StageEngine;
   /**
-   * prepare 完成时读取当前激活角色的磁盘目录名（Character.directoryName），
-   * 回填冻结到 Turn 行；与 characterPrompt 同一时点读取，保证同源。
+   * Prepare 完成时读取当前激活角色的 Character.name, 回填冻结到 Turn 行.
+   * 与 characterPrompt 同一时点读取, 不使用可修改的 displayName.
    */
-  readonly characterDirectoryName: () => string;
+  readonly characterName: () => string;
   /**
    * completed 终态的同事务登记口（Memory 提取入队）。在 completeTurn 的 SQL 事务内
    * 同步调用：只许入队类写入，禁止在此启动异步工作。Memory 零 import——由装配层注入。
@@ -152,6 +152,7 @@ export class TurnExecutor {
       triggerType: input.triggerType,
       sessionMode: input.sessionMode,
       narrativePolicy: input.narrativePolicy,
+      ttsEnabled: input.ttsEnabled,
     });
     const channel = new TurnEventChannel<TurnStreamEvent>(() => {
       this.deps.turns.requestAbort(turn.sessionId, turn.id);
@@ -244,6 +245,7 @@ export class TurnExecutor {
         triggerType: turn.triggerType,
         sessionMode: turn.sessionMode,
         narrativePolicy: turn.narrativePolicy,
+        ttsEnabled: turn.ttsEnabled,
       });
 
       let compact: ((request: CompactRequest) => Promise<CompactResult>) | undefined;
@@ -280,8 +282,8 @@ export class TurnExecutor {
       tools = prepared.tools;
       this.runningTools.set(turnId, tools);
       this.deps.turns.setModel(turnId, prepared.providerId, prepared.modelId, prepared.protocol);
-      const characterName = this.deps.characterDirectoryName();
-      this.deps.turns.setCharacterDirectoryName(turnId, characterName);
+      const characterName = this.deps.characterName();
+      this.deps.turns.setCharacterName(turnId, characterName);
       compact = this.deps.createCompact(prepared.callLlm);
 
       for (const degradation of prepared.degradations) {

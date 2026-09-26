@@ -117,7 +117,6 @@ function receiveSessionMessage(sessionId: string, message: SessionBusinessMessag
       sessionId,
       message.turnId,
       message.event,
-      'ttsEnabled' in message ? message.ttsEnabled : undefined,
     );
   }
 }
@@ -137,6 +136,7 @@ function isCompactEvent(message: SessionBusinessMessage): message is SessionComp
 
 function receiveCompactEvent(sessionId: string, event: SessionCompactEvent): void {
   presentSessionEvent(event);
+  updateCompactActivity(sessionId, event);
   if (event.type === 'compact_completed') {
     useTurnStore.getState().invalidateContextUsage(sessionId);
     void useSessionHistoryStore.getState().loadLatest(sessionId, true);
@@ -147,7 +147,6 @@ function receiveTurnEvent(
   sessionId: string,
   turnId: string,
   event: TurnStoreEvent,
-  ttsEnabled?: boolean,
 ): void {
   presentSessionEvent(event);
   useSessionActivityStore.getState().applyInteractionEvent(sessionId, event);
@@ -155,7 +154,7 @@ function receiveTurnEvent(
 
   switch (event.type) {
     case 'turn_started':
-      if (ttsEnabled) {
+      if (event.ttsEnabled) {
         startTurnSpeechPlayback(sessionId, turnId);
       } else {
         sessionPresentation.claim(sessionId, turnId, false, () => {});
@@ -191,7 +190,13 @@ function receiveTurnEvent(
       scheduleTurnHistoryClosure(sessionId);
       return;
     case 'compact_completed':
+      updateCompactActivity(sessionId, event);
       useTurnStore.getState().invalidateContextUsage(sessionId);
+      return;
+    case 'compact_started':
+    case 'compact_cancelled':
+    case 'compact_failed':
+      updateCompactActivity(sessionId, event);
       return;
     case 'request_degraded':
       console.info('[session] request_degraded:', event);
@@ -208,15 +213,21 @@ function receiveTurnEvent(
     case 'tool_progress':
     case 'tool_result':
     case 'context_usage_updated':
-    case 'compact_started':
-    case 'compact_cancelled':
-    case 'compact_failed':
     case 'narrative_recall_started':
     case 'narrative_recall_completed':
     case 'narrative_recall_failed':
       return;
     default:
       event satisfies never;
+  }
+}
+
+function updateCompactActivity(sessionId: string, event: SessionCompactEvent): void {
+  const activity = useSessionActivityStore.getState();
+  if (event.type === 'compact_started') {
+    activity.startCompact(sessionId, event.compactId);
+  } else {
+    activity.finishCompact(sessionId, event.compactId);
   }
 }
 

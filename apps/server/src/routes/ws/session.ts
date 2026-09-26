@@ -101,24 +101,12 @@ export type SessionClientMessage = z.infer<typeof sessionClientMessageSchema>;
  */
 export type UserMessagePayload = z.infer<typeof userMessagePayloadSchema>;
 
-/**
- * TurnStreamEvent 在 Session WebSocket 上的传输格式. turn_started 额外携带本轮启动时冻结的
- * ttsEnabled, Desktop 据此决定是否建立 Speech 播放通道; 后续 Turn 事件不重复该值.
- */
-type SessionTurnMessage =
-  | {
-      readonly type: 'turn_event';
-      readonly turnId: string;
-      readonly event: Extract<TurnStreamEvent, { readonly type: 'turn_started' }>;
-      readonly ttsEnabled: boolean;
-    }
-  | {
-      readonly type: 'turn_event';
-      readonly turnId: string;
-      readonly event: Exclude<TurnStreamEvent, {
-        readonly type: 'turn_started' | 'user_message_stored';
-      }>;
-    };
+/** TurnStreamEvent 原样传输. 已落库的 user_message_stored 走 Session 消息分支. */
+type SessionTurnMessage = {
+  readonly type: 'turn_event';
+  readonly turnId: string;
+  readonly event: Exclude<TurnStreamEvent, { readonly type: 'user_message_stored' }>;
+};
 
 /**
  * Server 主动发给一个 Session 的当前状态和后续变化. 它们不回答某一次 Client 请求,
@@ -239,7 +227,7 @@ export interface SessionWebSocketRouteDeps {
   readonly sessionRunning: SessionRunningRegistry;
   readonly interactions: SessionInteractionQueue;
   readonly compactSession: (sessionId: string) => Promise<ManualCompactResult>;
-  readonly attachTurn: (handle: TurnHandle, ttsEnabled: boolean) => void;
+  readonly attachTurn: (handle: TurnHandle) => void;
 }
 
 export const sessionWebSocketRoute = (deps: SessionWebSocketRouteDeps) =>
@@ -302,10 +290,11 @@ async function handleClientMessage(
           triggerType: 'userMessage',
           sessionMode: message.payload.sessionMode,
           narrativePolicy: message.payload.narrativePolicy,
+          ttsEnabled,
           input: message.payload.input,
           ...(message.payload.knowledge ? { knowledge: message.payload.knowledge } : {}),
         });
-        deps.attachTurn(handle, ttsEnabled);
+        deps.attachTurn(handle);
         socket.send({ type: 'request_succeeded', requestId: message.requestId });
         return;
       }

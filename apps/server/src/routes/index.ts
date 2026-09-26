@@ -104,7 +104,7 @@ export const createRoutes = (composition: Composition, secret: string) => {
       sessionRunning: database.sessionRunning,
       interactions: turn.interactionQueue,
       compactSession: commands.compactSession,
-      attachTurn: (handle, ttsEnabled) => turnFanout.attach(handle, { ttsEnabled }),
+      attachTurn: handle => turnFanout.attach(handle),
     }))
     .route('/', narrativeControlRoute(composition.narrative))
     .route('/api/ws/speech', speechWebSocketRoute(speech))

@@ -99,7 +99,7 @@ function makeDeps(options: {
     } as never,
     createCompact: () => async request => ({ kind: 'unchanged' as const, messages: request.messages }),
     readTurnReminder: () => ({ currentDate: '2026-08-25' }),
-    characterDirectoryName: () => 'test-character',
+    characterName: () => 'test-character',
   };
 }
 
@@ -109,6 +109,7 @@ function makeStart(sessionId: string): StartTurn {
     triggerType: 'userMessage',
     sessionMode: 'work',
     narrativePolicy: 'off',
+    ttsEnabled: true,
     input: [{ type: 'text', text: '你好' }],
   };
 }
@@ -155,6 +156,7 @@ describe('TurnExecutor 集成', () => {
     expect(events.find(event => event.type === 'turn_started')).toMatchObject({
       type: 'turn_started',
       triggerType: 'userMessage',
+      ttsEnabled: true,
     });
     expect(events.filter(event => event.type === 'user_message_stored')).toEqual([
       { type: 'user_message_stored', message: messages[1] },
@@ -216,7 +218,7 @@ describe('TurnExecutor 集成', () => {
     const outcome = await handle.completion;
     expect(outcome.status).toBe('completed');
     expect(reminderCharacterNames).toEqual(['test-character']);
-    expect(deps.turns.getTurn(handle.turnId)?.characterDirectoryName).toBe('test-character');
+    expect(deps.turns.getTurn(handle.turnId)?.characterName).toBe('test-character');
 
     // 持久化顺序：reminder 行在用户消息之前，facts 内容进 reminder。
     const messages = sessions.loadMessagesForTurn(handle.turnId);

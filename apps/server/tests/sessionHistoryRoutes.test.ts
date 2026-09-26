@@ -188,6 +188,7 @@ describe('Session collection and History routes', () => {
       triggerType: 'userMessage',
       sessionMode: 'chat',
       narrativePolicy: 'off',
+      ttsEnabled: false,
     });
     const first = sessions.appendMessage({
       sessionId: session.id,
@@ -341,6 +342,7 @@ describe('Session collection and History routes', () => {
       triggerType: 'userMessage',
       sessionMode: 'work',
       narrativePolicy: 'off',
+      ttsEnabled: false,
     });
     sessions.appendMessage({
       sessionId: session.id,

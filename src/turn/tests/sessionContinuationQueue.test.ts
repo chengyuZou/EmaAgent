@@ -69,9 +69,10 @@ describe('SessionContinuationQueue', () => {
       triggerType: 'userMessage',
       sessionMode: 'work',
       narrativePolicy: 'always',
+      ttsEnabled: true,
     });
     expect(fixture.starts[0]!.input).toEqual([{ type: 'text', text: '第一条' }]);
-    expect(fixture.attachTurn).toHaveBeenCalledWith(expect.anything(), true);
+    expect(fixture.attachTurn).toHaveBeenCalledWith(expect.anything());
 
     fixture.queue.acknowledge(fixture.starts[0]!.turnId!);
     fixture.setRunning(false);

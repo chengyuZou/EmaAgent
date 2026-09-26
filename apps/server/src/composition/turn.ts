@@ -115,7 +115,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     sessions: database.session,
     turns: database.turns,
     startTurn: input => turnExecutor.start(input),
-    attachTurn: (handle, ttsEnabled) => deps.fanout.attach(handle, { ttsEnabled }),
+    attachTurn: handle => deps.fanout.attach(handle),
     publish: (sessionId, event) => deps.publishQueuedInput(sessionId, event),
   });
   // 超时设置即改即生效（只影响此后新建的条目，已启动条目保留原超时）。
@@ -271,7 +271,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     memoryGuidance: () => buildMemoryGuidance().catch(() => null),
     usageRecorder: database.usageRecorder,
     stage,
-    characterDirectoryName: () => characters.current().name,
+    characterName: () => characters.current().name,
     onTurnCompletedInTransaction: deps.onTurnCompletedInTransaction,
   });
 

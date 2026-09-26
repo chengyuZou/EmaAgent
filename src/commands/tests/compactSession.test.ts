@@ -128,6 +128,7 @@ describe('compactSession', () => {
       triggerType: 'userMessage',
       sessionMode: 'chat',
       narrativePolicy: 'off',
+      ttsEnabled: false,
     });
     await expect(compactSession(deps, sessionId)).rejects.toBeInstanceOf(SessionBusyError);
   });

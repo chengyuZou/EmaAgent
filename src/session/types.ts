@@ -66,7 +66,7 @@ export interface Session {
   sessionMode: SessionMode;
   narrativePolicy: NarrativePolicy;
   permissionMode: PermissionMode;
-  /** 此 Session 启动新 Turn 时是否生成并播放语音; 不影响已开始的 Turn. */
+  /** 可修改的 Session 偏好. 只决定之后启动的 Turn, 不改变已启动 Turn 的语音选择. */
   ttsEnabled: boolean;
   /** 已保存的模型供应商; null 表示新会话尚未选模型, 此时不能开始 Turn. */
   providerId: string | null;

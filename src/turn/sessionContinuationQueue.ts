@@ -114,7 +114,7 @@ export interface SessionContinuationQueueDeps {
   readonly sessions: Pick<SessionStore, 'getSession' | 'sessionExists'>;
   readonly turns: Pick<TurnStore, 'getRunningTurn'>;
   readonly startTurn: (input: StartTurn) => TurnHandle;
-  readonly attachTurn: (handle: TurnHandle, ttsEnabled: boolean) => void;
+  readonly attachTurn: (handle: TurnHandle) => void;
   readonly publish: (sessionId: string, event: SessionContinuationEvent) => void;
 }
 
@@ -349,20 +349,21 @@ export class SessionContinuationQueue {
       // 其余输入继续按 guided 优先、普通 after_turn 随后的顺序等待后续安全点或 Turn.
       // 纯后台通知使用 sessionContinuation,
       // 避免标题生成等只属于用户主动发言的业务被自动续接误触发.
+      // 排队项不保留旧 TTS 选择. 启动时从 Session 偏好复制到 Turn, 后续只读 Turn 冻结值.
       const handle = this.deps.startTurn({
         turnId,
         sessionId,
         triggerType: claim.type === 'user_input' ? 'userMessage' : 'sessionContinuation',
         sessionMode: selection?.sessionMode ?? session.sessionMode,
         narrativePolicy: selection?.narrativePolicy ?? session.narrativePolicy,
+        ttsEnabled: session.ttsEnabled,
         input: claim.type === 'user_input' ? claim.userInput.input : [],
         ...(claim.type === 'completion_notices'
           ? { completionNoticeText: claim.completionNoticeText }
           : {}),
         ...(selection?.knowledge ? { knowledge: selection.knowledge } : {}),
       });
-      // 排队项不保留旧 TTS 选择; 到真正启动 Turn 时才读取 Session 当前偏好.
-      this.deps.attachTurn(handle, session.ttsEnabled);
+      this.deps.attachTurn(handle);
     } catch (error) {
       this.release(turnId);
       console.warn('[continuation] Session 续接启动失败:', error);
