@@ -33,6 +33,8 @@ export function ServerRow({
   const [detail, setDetail] = useState<McpServerDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [hasOpened, setHasOpened] = useState(false);
+  useEffect(() => { if (expanded) setHasOpened(true); }, [expanded]);
   const needsDetail = expanded || detailOpen;
 
   useEffect(() => {
@@ -97,7 +99,7 @@ export function ServerRow({
   ];
 
   return (
-    <Card variant="elevated" padding="sm" className="active:scale-[0.98] transition-all duration-[var(--ema-duration-base)] ema-card-decorate ema-card-decorate--circuit">
+    <Card variant="elevated" padding="sm" className="active:scale-[0.97] transition-all duration-[var(--ema-duration-base)] ema-card-decorate ema-card-decorate--nodes">
       <div className="group flex items-start gap-3">
         {/* Status dot */}
         <div className="pt-0.5 shrink-0">
@@ -136,24 +138,32 @@ export function ServerRow({
             </p>
           )}
 
-          {/* Inline expanded tool list — quick glance at names + params */}
-          {expanded && (
-            <div className="mt-2 flex flex-col gap-1.5 ema-slide-up">
-              {detailLoading && <Spinner size="sm" />}
-              {detailError && <p className="text-xs text-[var(--ema-danger)]">{detailError}</p>}
-              {detail?.tools.map((tool: McpServerDetail['tools'][number]) => {
-                const params = toolParamNames(tool.inputSchema);
-                return (
-                  <ToolSpecItem
-                    key={tool.serverToolName}
-                    name={tool.serverToolName}
-                    params={params}
-                    description={tool.description}
-                  />
-                );
-              })}
+          {/* Inline expanded tool list — quick glance at names + params
+              展开过的内容常驻 DOM: 收起时 0fr 网格负责裁剪, 动画才能双向跑. */}
+          <div
+            className="ema-collapsible"
+            style={{ gridTemplateRows: expanded ? '1fr' : '0fr', opacity: expanded ? 1 : 0 }}
+          >
+            <div>
+              {hasOpened && (
+                <div className="mt-2 flex flex-col gap-1.5">
+                  {detailLoading && <Spinner size="sm" />}
+                  {detailError && <p className="text-xs text-[var(--ema-danger)]">{detailError}</p>}
+                  {detail?.tools.map((tool: McpServerDetail['tools'][number]) => {
+                    const params = toolParamNames(tool.inputSchema);
+                    return (
+                      <ToolSpecItem
+                        key={tool.serverToolName}
+                        name={tool.serverToolName}
+                        params={params}
+                        description={tool.description}
+                      />
+                    );
+                  })}
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
 
         {/* Controls */}

@@ -40,7 +40,7 @@ function ModelCard({ title, hint, lines, chips, enabled, onToggle, logo, action 
       className={`group relative text-left rounded-lg border border-solid px-3 py-2.5 min-w-0 cursor-pointer outline-none
                   overflow-hidden isolate
                   transition-ema active:scale-[0.97]
-                  ema-card-decorate ema-card-decorate--plus
+                  ema-card-decorate ema-card-decorate--grid
                   ${enabled
                     ? 'border-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
                     : 'border-[var(--ema-border)] bg-[var(--ema-surface-1)] ema-glass-weak hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]'
@@ -56,7 +56,7 @@ function ModelCard({ title, hint, lines, chips, enabled, onToggle, logo, action 
       />
       {logo && (
         <span
-          className={`absolute right-1 top-1/2 z-1 -translate-y-1/2 size-6 opacity-40 group-hover:opacity-70 group-hover:scale-110 transition-all duration-[var(--ema-duration-base)] ${logo}`}
+          className={`absolute right-1 top-1/2 z-1 -translate-y-1/2 size-6 opacity-40 grayscale transition-all duration-[var(--ema-duration-base)] group-hover:opacity-70 group-hover:grayscale-0 ${logo}`}
           aria-hidden
         />
       )}
@@ -524,6 +524,7 @@ export function ProviderModelManager({ providerId, capability, iconKey, reloadKe
           <span className="i-mdi:magnify absolute left-3 top-1/2 -translate-y-1/2
                            text-[var(--ema-text-tertiary)] text-sm pointer-events-none" aria-hidden />
           <Input
+            mono={false}
             className="pl-8"
             placeholder="搜索模型…"
             value={search}
@@ -608,6 +609,7 @@ export function ProviderModelManager({ providerId, capability, iconKey, reloadKe
       {capability === 'tts' && (
         <div className="flex gap-2 mt-1">
           <Input
+            mono={false}
             placeholder="测试文本"
             value={testText}
             onChange={(e) => setTestText(e.target.value)}
@@ -619,7 +621,7 @@ export function ProviderModelManager({ providerId, capability, iconKey, reloadKe
       {capability === 'stt' && (
         <div className="flex flex-col gap-2 mt-4">
           <h3 className="text-base font-semibold text-[var(--ema-text-primary)]">参考音频</h3>
-          <div className="rounded-lg border border-[var(--ema-border)] bg-[var(--ema-surface-1)] ema-card-decorate ema-card-decorate--plus px-3 py-2.5">
+          <div className="rounded-lg border border-[var(--ema-border)] bg-[var(--ema-surface-1)] ema-card-decorate ema-card-decorate--grid px-3 py-2.5">
             <div className="flex items-center justify-between gap-2">
               <div className="min-w-0">
                 <p className="text-xs font-medium text-[var(--ema-text-secondary)]">

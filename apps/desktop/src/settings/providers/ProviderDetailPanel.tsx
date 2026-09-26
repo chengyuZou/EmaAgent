@@ -333,7 +333,7 @@ export function ProviderDetailPanel({
           />
         </button>
 
-        <div className="ema-collapsible" style={{ gridTemplateRows: advancedOpen ? '1fr' : '0fr' }}>
+        <div className="ema-collapsible" style={{ gridTemplateRows: advancedOpen ? '1fr' : '0fr', opacity: advancedOpen ? 1 : 0 }}>
           <div className="overflow-hidden min-h-0 flex flex-col gap-4 mt-1">
             {/* 协议档：当前档下拉切换；垃圾桶删除当前档（剩一档禁删）；＋新增弹窗。 */}
             <div className="flex flex-col gap-2">

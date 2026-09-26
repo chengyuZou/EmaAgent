@@ -166,8 +166,7 @@ function ModelCard({
   return (
     <div
       className={`ema-stagger-in group relative overflow-hidden rounded-xl border
-        transition-all duration-[var(--ema-duration-base)] hover:-translate-y-0.5
-        hover:shadow-[var(--ema-shadow-soft)]
+        transition-all duration-[var(--ema-duration-base)] hover:border-[var(--ema-primary)]/30
         ${model.isPrimary
           ? 'border-[var(--ema-primary)] shadow-[var(--ema-shadow-1)]'
           : 'border-[var(--ema-border)] bg-[var(--ema-surface-2)]'}`}
@@ -175,10 +174,10 @@ function ModelCard({
     >
       <div className="absolute left-2 top-2 z-10">
         <span
-          className={`block h-4 w-4 rounded-full border-2
+          className={`block h-3.5 w-3.5 rounded-full border-2
             ${model.isPrimary
-              ? 'border-[var(--ema-success)] bg-[var(--ema-success)]'
-              : 'border-[var(--ema-text-tertiary)] bg-transparent'}`}
+              ? 'border-[var(--ema-success)] bg-[var(--ema-success)] shadow-[var(--ema-shadow-1)]'
+              : 'border-[var(--ema-border-strong)] bg-[var(--ema-surface-2)]'}`}
           title={model.isPrimary ? '主要模型' : '非主要模型'}
         />
       </div>

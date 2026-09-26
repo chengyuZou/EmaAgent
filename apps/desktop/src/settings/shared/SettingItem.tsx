@@ -17,7 +17,7 @@ export function SaveStateIndicator({ state }: { state: SettingSaveState }): JSX.
   return <span className="i-lucide:circle-alert text-sm text-[var(--ema-danger)]" aria-label="保存失败" />;
 }
 
-/** 左标题+副标题,右控件。 */
+/** 左标题+副标题,右控件. 行高与字号走统一行式规格; 窄行时控件经 flex-wrap 落到第二行靠右. */
 export function SettingItem({
   title, hint, apply, children,
 }: {
@@ -27,15 +27,15 @@ export function SettingItem({
   children: ReactNode;
 }): JSX.Element {
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-4 py-3 transition-colors duration-[var(--ema-duration-base)] hover:bg-[var(--ema-surface-2)]/55">
-      <div className="min-w-0">
+    <div className="flex min-h-[58px] flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5 transition-colors duration-[var(--ema-duration-base)] hover:bg-[var(--ema-surface-2)]/55">
+      <div className="min-w-[180px] flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <div className="text-[13px] font-medium text-[var(--ema-text-primary)]">{title}</div>
+          <div className="text-[13.5px] font-[650] text-[var(--ema-text-primary)]">{title}</div>
           {apply && <SettingApplyBadge apply={apply} />}
         </div>
-        <div className="mt-0.5 text-[11px] leading-relaxed text-[var(--ema-text-tertiary)]">{hint}</div>
+        <div className="mt-0.5 text-[12px] leading-relaxed text-[var(--ema-text-tertiary)]">{hint}</div>
       </div>
-      <div className="flex shrink-0 items-center gap-2">{children}</div>
+      <div className="ml-auto flex max-w-[240px] shrink-0 items-center justify-end gap-2">{children}</div>
     </div>
   );
 }
@@ -43,7 +43,7 @@ export function SettingItem({
 /** 一组 SettingItem 的容器卡片,行间细分隔线。 */
 export function SettingsCard({ children }: { children: ReactNode }): JSX.Element {
   return (
-    <div className="ema-glass-weak ema-card-decorate ema-stagger-in divide-y divide-[var(--ema-border)] overflow-hidden rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] transition-ema hover:-translate-y-0.5 hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]">
+    <div className="ema-glass-weak ema-stagger-in divide-y divide-[var(--ema-border)] overflow-hidden rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] transition-ema hover:border-[var(--ema-primary)]/30">
       {children}
     </div>
   );
@@ -77,24 +77,26 @@ export function SettingApplyBadge({ apply }: { apply: SettingApply }): JSX.Eleme
   );
 }
 
-/** Provider 同款节头:大图标 + 描述 + 大标题,右侧可放生效时机标注。 */
+/** 设置页统一节头: 图标 + 眉线描述 + 标题, 右侧可放生效时机标注. */
 export function SettingsSection({
-  icon, title, description, trailing, children,
+  icon, title, description, trailing, children, iconClassName,
 }: {
   icon: string;
   title: string;
   description: string;
-  /** 节头右侧追加内容(如 SaveStateIndicator)。 */
+  /** 节头右侧追加内容(如 SaveStateIndicator). */
   trailing?: ReactNode;
+  /** 图标着色覆盖(默认三级灰; 状态类节头用语义色). */
+  iconClassName?: string;
   children: ReactNode;
 }): JSX.Element {
   return (
     <section>
       <div className="mb-3 flex items-center gap-3 ema-stagger-in">
-        <span className={`${icon} text-3xl text-[var(--ema-text-tertiary)]`} aria-hidden />
+        <span className={`${icon} text-[22px] ${iconClassName ?? 'text-[var(--ema-text-tertiary)]'}`} aria-hidden />
         <div className="min-w-0 flex-1">
-          <p className="text-xs text-[var(--ema-text-tertiary)]">{description}</p>
-          <h2 className="text-xl font-semibold text-[var(--ema-text-primary)]">{title}</h2>
+          <p className="text-[11px] text-[var(--ema-text-tertiary)]">{description}</p>
+          <h2 className="text-[17px] font-[650] text-[var(--ema-text-primary)]">{title}</h2>
         </div>
         {trailing}
       </div>

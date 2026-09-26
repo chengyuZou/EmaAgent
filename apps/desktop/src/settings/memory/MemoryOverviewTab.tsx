@@ -37,7 +37,7 @@ export function MemoryOverviewTab(): JSX.Element {
         <Card
           variant="glass"
           padding="md"
-          className="ema-card-decorate ema-card-decorate--starfield ema-stagger-in transition-all hover:-translate-y-0.5 hover:border-[var(--ema-primary)] hover:shadow-[var(--ema-shadow-2)]"
+          className="ema-card-decorate ema-card-decorate--cross ema-stagger-in transition-all hover:border-[var(--ema-primary)]/30"
         >
           <div className="mb-3 flex items-center gap-2">
             <span className="i-lucide:database text-xl text-[var(--ema-primary)]" aria-hidden />
@@ -104,7 +104,7 @@ function TrackCard(props: {
     <Card
       variant="glass"
       padding="md"
-      className="ema-card-decorate ema-card-decorate--plus ema-stagger-in transition-all hover:-translate-y-0.5 hover:border-[var(--ema-primary)] hover:shadow-[var(--ema-shadow-2)]"
+      className="ema-card-decorate ema-card-decorate--cross ema-stagger-in transition-all hover:border-[var(--ema-primary)]/30"
     >
       <span className={`${props.icon} text-2xl text-[var(--ema-primary)]`} aria-hidden />
       <h3 className="mt-2 text-sm font-semibold text-[var(--ema-text-primary)]">{props.title}</h3>

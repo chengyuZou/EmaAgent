@@ -1,4 +1,4 @@
-// 在子进程启动前把随包角色资源和可写 Narrative 数据铺到用户目录。
+// 在子进程启动前把随包角色资源和可写 Narrative 数据铺到用户目录.
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -8,9 +8,9 @@ use crate::desktop::profile::profile_root;
 
 const TIMELINES: [&str; 3] = ["1st_Loop", "2nd_Loop", "3rd_Loop"];
 
-/// 返回是否需要由 Server 初始化内置角色数据库行。
-/// `profile.db` 是角色配置的事实源；它已经存在时不再复制或补种内置角色，
-/// 因而用户主动删除艾玛后，后续启动不会把她恢复出来。
+/// 返回是否需要由 Server 初始化内置角色数据库行.
+/// `profile.db` 是角色配置的事实源 它已经存在时不再复制或补种内置角色
+/// 因而用户主动删除艾玛后 后续启动不会把她恢复出来
 pub async fn prepare_builtin_characters(app: &AppHandle) -> Result<bool, String> {
     let profile_root = profile_root()?;
     if profile_root.join("profile.db").exists() {

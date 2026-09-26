@@ -7,6 +7,11 @@
 .ema-fade-in {
   animation: ema-fade-in var(--ema-duration-base) var(--ema-ease) both;
 }
+/* 页面纹章入场: 切页重挂载时播一次 500ms, 终态停在低透明度(装饰不抢内容). */
+.ema-watermark-in {
+  --ema-watermark-opacity: 0.1;
+  animation: ema-watermark-in 500ms var(--ema-ease) both;
+}
 .ema-slide-up {
   animation: ema-slide-up    var(--ema-duration-slow)  var(--ema-ease) both;
 }

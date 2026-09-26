@@ -128,7 +128,7 @@ export function MemoryJobsTab(): JSX.Element {
           <Card
             variant="glass"
             padding="md"
-            className="ema-card-decorate ema-card-decorate--circuit ema-pop-in-spring"
+            className="ema-card-decorate ema-card-decorate--cross ema-pop-in-spring"
           >
             <p className="text-center text-xs text-[var(--ema-text-tertiary)]">
               当前没有排队或运行中的任务。
@@ -143,29 +143,34 @@ export function MemoryJobsTab(): JSX.Element {
         )}
       </section>
 
-      {showHistory && (
-        <section className="ema-slide-down">
-          <h4 className="mb-2 text-xs font-semibold text-[var(--ema-text-secondary)]">
-            最近 100 条终态记录
-          </h4>
+      <div
+        className="ema-collapsible"
+        style={{ gridTemplateRows: showHistory ? '1fr' : '0fr', opacity: showHistory ? 1 : 0 }}
+      >
+        <div>
+          <section>
+            <h4 className="mb-2 text-xs font-semibold text-[var(--ema-text-secondary)]">
+              最近 100 条终态记录
+            </h4>
 
-          {history === null ? (
-            <div className="flex justify-center py-8">
-              <Spinner size="sm" />
-            </div>
-          ) : history.length === 0 ? (
-            <p className="text-xs text-[var(--ema-text-tertiary)]">
-              还没有已完成或失败的任务。
-            </p>
-          ) : (
-            <div className="flex max-h-96 flex-col gap-2 overflow-y-auto pr-1">
-              {history.map((job, i) => (
-                <JobRow key={job.id} job={job} index={i} />
-              ))}
-            </div>
-          )}
-        </section>
-      )}
+            {history === null ? (
+              <div className="flex justify-center py-8">
+                <Spinner size="sm" />
+              </div>
+            ) : history.length === 0 ? (
+              <p className="text-xs text-[var(--ema-text-tertiary)]">
+                还没有已完成或失败的任务。
+              </p>
+            ) : (
+              <div className="flex max-h-96 flex-col gap-2 overflow-y-auto pr-1">
+                {history.map((job, i) => (
+                  <JobRow key={job.id} job={job} index={i} />
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
+      </div>
     </div>
   );
 }
@@ -177,7 +182,7 @@ function JobRow({ job, index = 0 }: { job: MemoryJob; index?: number }): JSX.Ele
     <Card
       variant="glass"
       padding="sm"
-      className="ema-card-decorate ema-card-decorate--circuit ema-pop-in-spring"
+      className="ema-card-decorate ema-card-decorate--cross ema-pop-in-spring"
       style={{ '--stagger-i': index } as React.CSSProperties}
     >
       <div className="flex flex-wrap items-center gap-2 text-xs">

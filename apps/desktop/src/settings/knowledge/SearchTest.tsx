@@ -33,6 +33,7 @@ export function SearchTest(): JSX.Element {
       <div className="flex gap-2">
         <div className="relative flex-1">
           <Input
+            mono={false}
             className="text-sm pr-8"
             placeholder="输入查询语句测试检索…"
             value={query}
@@ -76,7 +77,7 @@ export function SearchTest(): JSX.Element {
               {searchResult.hits.map((hit: KnowledgeSearchHit, i: number) => (
                 <div
                   key={hit.chunkId}
-                  className="p-3 rounded-xl bg-[var(--ema-surface-1)] border border-[var(--ema-border)] ema-stagger-in ema-card-decorate ema-card-decorate--starfield"
+                  className="p-3 rounded-xl bg-[var(--ema-surface-1)] border border-[var(--ema-border)] ema-stagger-in ema-card-decorate ema-card-decorate--diag"
                   style={{ '--stagger-i': i } as CSSProperties}
                 >
                   <div className="flex items-center gap-2 mb-1.5">

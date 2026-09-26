@@ -19,6 +19,11 @@
   from { opacity: 0; transform: scale(0.94); }
   to   { opacity: 1; transform: scale(1); }
 }
+/* 页面纹章入场: 旋转归位 + 淡入, 终态透明度由 --ema-watermark-opacity 决定. */
+@keyframes ema-watermark-in {
+  from { opacity: 0; transform: scale(0.9) rotate(180deg); }
+  to   { opacity: var(--ema-watermark-opacity, 0.1); transform: scale(1) rotate(0deg); }
+}
 @keyframes ema-slide-right {
   from { opacity: 0; transform: translateX(-12px); }
   to   { opacity: 1; transform: translateX(0); }

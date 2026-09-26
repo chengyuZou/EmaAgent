@@ -51,7 +51,7 @@ export function McpEnvironmentPage(): JSX.Element {
         <div className="grid gap-3">
           {result.commands.map((inspection, index) => {
             const installed = inspection.selectedPath !== null;
-            return <EntityRow key={inspection.command} index={index} decorate="ema-card-decorate--circuit" className="flex items-start gap-4 px-4 py-4">
+            return <EntityRow key={inspection.command} index={index} decorate="ema-card-decorate--nodes" className="flex items-start gap-4 px-4 py-4">
               <span className="i-lucide:terminal-square mt-0.5 shrink-0 text-xl text-[var(--ema-primary)]" aria-hidden />
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">

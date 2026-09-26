@@ -218,7 +218,7 @@ function VoiceRow({ character, sample, index }: {
 
   return (
     <div
-      className="ema-stagger-in ema-card-decorate ema-card-decorate--plus flex items-center gap-3 rounded-xl border border-[var(--ema-border)]
+      className="ema-stagger-in ema-card-decorate flex items-center gap-3 rounded-xl border border-[var(--ema-border)]
         bg-[var(--ema-surface-1)] px-3 py-2.5 transition-ema
         hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]"
       style={{ '--stagger-i': index } as React.CSSProperties}

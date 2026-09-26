@@ -83,7 +83,7 @@ function ProviderCardRow({
             key={pcId}
             selected={isSel}
             padding="md"
-            className={`group flex-shrink-0 rounded-xl border-2 min-w-[180px] ema-glass-weak ema-card-decorate ema-card-decorate--plus hover:border-[var(--ema-primary)] ${isSel ? 'shadow-[var(--ema-shadow-2)]' : 'hover:shadow-[var(--ema-shadow-2)]'}`}
+            className={`group flex-shrink-0 rounded-xl border-2 min-w-[180px] ema-glass-weak ema-card-decorate ema-card-decorate--grid hover:border-[var(--ema-primary)] ${isSel ? 'shadow-[var(--ema-shadow-2)]' : 'hover:shadow-[var(--ema-shadow-2)]'}`}
             onClick={() => onSelect(pcId)}
           >
             {/* Radio dot */}
@@ -100,7 +100,7 @@ function ProviderCardRow({
             </p>
             {logo && (
               <span
-                className={`absolute right-3 top-1/2 -translate-y-1/2 size-6 opacity-30 group-hover:opacity-60 transition-opacity ${logo}`}
+                className={`absolute right-3 top-1/2 -translate-y-1/2 size-6 opacity-30 grayscale transition-all duration-[var(--ema-duration-base)] group-hover:opacity-60 group-hover:grayscale-0 ${logo}`}
                 aria-hidden
               />
             )}
@@ -226,7 +226,7 @@ export function BindingsTab(): JSX.Element {
               <CardButton
                 key={m.id}
                 padding="md"
-                className="relative rounded-2xl ema-glass-weak hover:border-[var(--ema-primary)] hover:shadow-[var(--ema-shadow-2)] ema-stagger-in ema-card-decorate ema-card-decorate--plus"
+                className="relative rounded-2xl ema-glass-weak hover:border-[var(--ema-primary)] hover:shadow-[var(--ema-shadow-2)] ema-stagger-in ema-card-decorate ema-card-decorate--grid"
                 style={{ '--stagger-i': i } as React.CSSProperties}
                 onClick={() => goDetail(m.id)}
               >
@@ -298,7 +298,7 @@ export function BindingsTab(): JSX.Element {
             {currentBinding ? (
               <div className="relative flex items-center justify-between
                               bg-[var(--ema-primary-muted)] border-2 border-[var(--ema-primary)]
-                              rounded-xl px-4 py-3 ema-card-decorate ema-card-decorate--plus">
+                              rounded-xl px-4 py-3 ema-card-decorate ema-card-decorate--grid">
                 <span
                   className="absolute top-2 right-2 size-2 rounded-full bg-[var(--ema-success)]"
                   aria-hidden
@@ -359,6 +359,7 @@ export function BindingsTab(): JSX.Element {
                                    i-solar:magnifer-line-duotone w-4 h-4
                                    text-[var(--ema-text-tertiary)] pointer-events-none" aria-hidden />
                   <Input
+                    mono={false}
                     className="pl-10"
                     placeholder="搜索模型..."
                     value={searchQuery}
@@ -380,7 +381,7 @@ export function BindingsTab(): JSX.Element {
                         selected={isBound}
                         disabled={isBound || isSaving}
                         padding="sm"
-                        className={`group rounded-xl border-2 disabled:cursor-default ema-card-decorate ema-card-decorate--plus`}
+                        className={`group rounded-xl border-2 disabled:cursor-default ema-card-decorate ema-card-decorate--grid`}
                         onClick={() => void handleSelect(m.providerId, m.modelId)}
                       >
                         <div className="flex items-start gap-2.5">
@@ -400,7 +401,7 @@ export function BindingsTab(): JSX.Element {
                         </div>
                         {logo && (
                           <span
-                            className={`absolute right-2 top-1/2 -translate-y-1/2 size-5 opacity-25 group-hover:opacity-60 transition-opacity ${logo}`}
+                            className={`absolute right-2 top-1/2 -translate-y-1/2 size-5 opacity-25 grayscale transition-all duration-[var(--ema-duration-base)] group-hover:opacity-60 group-hover:grayscale-0 ${logo}`}
                             aria-hidden
                           />
                         )}

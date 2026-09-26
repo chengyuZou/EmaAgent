@@ -161,16 +161,16 @@ function CharacterCard({
       className="ema-stagger-in group relative cursor-pointer overflow-hidden rounded-xl border
         border-[var(--ema-border)] bg-[var(--ema-surface-2)] shadow-[var(--ema-shadow-1)]
         transition-all duration-[var(--ema-duration-base)]
-        hover:-translate-y-0.5 hover:border-[var(--ema-border-strong)] hover:shadow-[var(--ema-shadow-soft)]"
+        hover:border-[var(--ema-primary)]/30"
       style={{ '--stagger-i': index } as React.CSSProperties}
       onClick={onOpen}
     >
       <button
         type="button"
-        className={`absolute left-2 top-2 z-10 h-4 w-4 rounded-full border-2 transition-all
+        className={`absolute left-2 top-2 z-10 h-3.5 w-3.5 rounded-full border-2 transition-all
           ${isActive
-            ? 'border-[var(--ema-success)] bg-[var(--ema-success)] shadow-[0_0_8px_oklch(0.68_0.16_145/0.6)]'
-            : 'border-[var(--ema-text-tertiary)] bg-transparent hover:border-[var(--ema-text-secondary)]'}`}
+            ? 'border-[var(--ema-success)] bg-[var(--ema-success)] shadow-[var(--ema-shadow-1)]'
+            : 'border-[var(--ema-border-strong)] bg-[var(--ema-surface-2)] hover:border-[var(--ema-text-secondary)]'}`}
         title={isActive ? '当前角色' : '设为当前角色'}
         onClick={event => { event.stopPropagation(); if (!isActive) onActivate(); }}
       />
@@ -284,15 +284,15 @@ function CreateCharacterDialog({
       <div className="flex flex-col gap-3 pt-1">
         <label className="flex flex-col gap-1 text-xs text-[var(--ema-text-secondary)]">
           name(永久身份)
-          <Input value={name} onChange={e => setName(e.target.value)} placeholder="角色全名" />
+          <Input mono={false} value={name} onChange={e => setName(e.target.value)} placeholder="角色全名" />
         </label>
         <label className="flex flex-col gap-1 text-xs text-[var(--ema-text-secondary)]">
           展示名(可空)
-          <Input value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="角色展示名" />
+          <Input mono={false} value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="角色展示名" />
         </label>
         <label className="flex flex-col gap-1 text-xs text-[var(--ema-text-secondary)]">
           描述(可空)
-          <Input value={description} onChange={e => setDescription(e.target.value)} placeholder="一句话人设" />
+          <Input mono={false} value={description} onChange={e => setDescription(e.target.value)} placeholder="一句话人设" />
         </label>
         <label className="flex flex-col gap-1 text-xs text-[var(--ema-text-secondary)]">
           Persona Prompt

@@ -110,7 +110,7 @@ export function TokenDetail({ sessionId }: { sessionId: string }): JSX.Element {
 
       {tokenAggregate && (
         <p className="text-xs text-[var(--ema-text-tertiary)]">
-          已加载合计 ↑ {tokenAggregate.input.toLocaleString()} · ↓ {tokenAggregate.output.toLocaleString()}
+          已加载合计 输入 {tokenAggregate.input.toLocaleString()} Token · 输出 {tokenAggregate.output.toLocaleString()} Token
         </p>
       )}
 
@@ -166,7 +166,7 @@ function FilterChip({ label, active, onClick }: {
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-full border px-2.5 py-1 text-xs transition-colors
+      className={`border rounded px-2.5 py-1 text-xs transition-colors 
         ${active
           ? 'border-[var(--ema-primary)] bg-[var(--ema-primary-muted)] text-[var(--ema-primary)]'
           : 'border-[var(--ema-border)] text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)]'}`}
@@ -228,7 +228,7 @@ function usageCacheText(record: UsageRecord): string | null {
   if (cacheRead !== null) {
     const input = record.input_tokens ?? 0;
     const rate = input > 0 ? `${((cacheRead / input) * 100).toFixed(1)}%` : '—';
-    parts.push(`KV 读 ${cacheRead.toLocaleString()} · 命中 ${rate}`);
+    parts.push(`KV 读缓存 ${cacheRead.toLocaleString()} · KV缓存率 ${rate}`);
   }
   if (cacheWrite !== null) parts.push(`写 ${cacheWrite.toLocaleString()}`);
   return parts.join(' · ');

@@ -1,7 +1,7 @@
 // 存储位置页(单库):库统计富卡 + Session 手风琴(单开) + 块扩散查看器。
 // 六块(轮次/消息/Token/附件/音频/子代理):消息与 Token 进真查看器,其余"后续开放查看"。
 import { memo, useCallback, useEffect, useRef, useState, type CSSProperties, type JSX } from 'react';
-import { Badge, Button, EmptyState, Skeleton, StatCard } from '@ema-agent/ui';
+import { Badge, Button, EmptyState, Skeleton } from '@ema-agent/ui';
 import { useStorageStore } from '../../stores/storage.js';
 import { sessionsApi } from '../../api/sessions.js';
 import { systemApi, type SessionSummary } from '../../api/system.js';
@@ -215,15 +215,14 @@ function SessionAccordion({
         bg-[var(--ema-surface-2)] transition-colors"
       style={{ '--stagger-i': index } as CSSProperties}
     >
-      <div className="flex items-center gap-1">
+      <div className="ema-card-decorate ema-card-decorate--lines flex items-center gap-1">
         <button
           type="button"
-          className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left transition-colors
-            hover:bg-[var(--ema-surface-3)]"
+          className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left"
           onClick={onToggle}
           aria-expanded={open}
         >
-          <span className="i-solar:chat-round-bold-duotone text-[var(--ema-primary-text)]" aria-hidden />
+          <span className="i-solar:chat-round-bold-duotone text-[var(--ema-primary)]" aria-hidden />
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold text-[var(--ema-text-primary)]">{title}</p>
             <p className="text-xs text-[var(--ema-text-tertiary)]">
@@ -351,10 +350,10 @@ function SessionBlocks({
           key={block.label}
           type="button"
           onClick={(event) => block.viewer && onOpenViewer(block.viewer, event.currentTarget)}
-          className="ema-stagger-in flex cursor-pointer flex-col gap-0.5 rounded-xl border
+          className="ema-stagger-in ema-card-decorate ema-card-decorate--lines flex cursor-pointer flex-col gap-0.5 rounded-xl border
             border-[var(--ema-border)] bg-[var(--ema-surface-1)] px-3 py-2.5 text-left
             transition-all duration-[var(--ema-duration-fast)]
-            hover:border-[var(--ema-primary)]/40 hover:bg-[var(--ema-surface-3)] hover:-translate-y-0.5"
+            hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-3)]"
           style={{ '--stagger-i': i } as CSSProperties}
         >
           <span className="text-[11px] text-[var(--ema-text-tertiary)]">{block.label}</span>
@@ -561,11 +560,9 @@ const RawMessageRow = memo(function RawMessageRow({
   );
 });
 
-// ── 总览细条:默认收起成一条仪表带(项不可点,整条是开关),展开为富卡墙。
-// ema-collapsible 双向(展开/收起都平滑) + chevron 旋转 + 内容随带淡入淡出。 ──
+// ── 总览仪表带:静态一行概览,不可展开;图标统一主色,是全页唯一的常驻装饰位。 ──
 
 function OverviewBand({ stats }: { stats: NonNullable<ReturnType<typeof useStorageStore.getState>['stats']> }): JSX.Element {
-  const [open, setOpen] = useState(false);
   const items: Array<{ icon: string; label: string; value: string | number }> = [
     { icon: 'i-solar:chat-round-bold-duotone',      label: '会话',   value: stats.sessionCount },
     { icon: 'i-solar:refresh-circle-bold-duotone',  label: '轮次',   value: stats.turnCount },
@@ -577,53 +574,15 @@ function OverviewBand({ stats }: { stats: NonNullable<ReturnType<typeof useStora
   ];
   return (
     <div className="overflow-hidden rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)]">
-      <button
-        type="button"
-        className="flex w-full flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5 text-left
-          transition-colors hover:bg-[var(--ema-surface-2)]"
-        onClick={() => setOpen(value => !value)}
-        aria-expanded={open}
-      >
-        <span className="flex items-center gap-1.5 text-xs font-semibold text-[var(--ema-text-primary)]">
-          <span
-            className="i-lucide:chevron-down text-xs text-[var(--ema-text-tertiary)]
-              transition-transform duration-[var(--ema-duration-base)]"
-            style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}
-            aria-hidden
-          />
-          总览
-        </span>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5">
+        <span className="text-xs font-semibold text-[var(--ema-text-primary)]">总览</span>
         {items.map(item => (
           <span key={item.label} className="flex items-center gap-1 text-xs text-[var(--ema-text-tertiary)]">
-            <span className={`${item.icon} text-[var(--ema-primary-text)]/80`} aria-hidden />
+            <span className={`${item.icon} text-[var(--ema-primary)]`} aria-hidden />
             <span className="font-medium text-[var(--ema-text-primary)]">{item.value}</span>
             {item.label}
           </span>
         ))}
-      </button>
-      <div
-        className="ema-collapsible"
-        style={{ gridTemplateRows: open ? '1fr' : '0fr', opacity: open ? 1 : 0 }}
-      >
-        <div>
-          <div className="grid grid-cols-2 gap-3 border-t border-[var(--ema-border)] p-4 xl:grid-cols-4">
-            <StatCard index={0} decorate="ema-card-decorate--storage" icon="i-solar:chat-round-bold-duotone"
-              label="会话" value={stats.sessionCount} />
-            <StatCard index={1} decorate="ema-card-decorate--storage" icon="i-solar:refresh-circle-bold-duotone"
-              label="轮次" value={stats.turnCount} />
-            <StatCard index={2} decorate="ema-card-decorate--storage" icon="i-solar:letter-bold-duotone"
-              label="消息" value={stats.messageCount} />
-            <StatCard index={3} decorate="ema-card-decorate--storage" icon="i-solar:bolt-bold-duotone"
-              label="Token" value={fmtTokens(stats.totalInputTokens + stats.totalOutputTokens)}
-              sub={`↑ ${fmtTokens(stats.totalInputTokens)} · ↓ ${fmtTokens(stats.totalOutputTokens)}`} />
-            <StatCard index={4} decorate="ema-card-decorate--storage" icon="i-solar:magic-stick-3-bold-duotone"
-              label="子智能体执行" value={stats.subagentCount} />
-            <StatCard index={5} decorate="ema-card-decorate--storage" icon="i-solar:paperclip-bold-duotone"
-              label="附件" value={stats.attachmentCount} sub={fmtBytes(stats.attachmentTotalBytes)} />
-            <StatCard index={6} decorate="ema-card-decorate--storage" icon="i-solar:soundwave-bold-duotone"
-              label="音频轮次" value={stats.audioCount} sub={fmtDuration(stats.audioDurationMs)} />
-          </div>
-        </div>
       </div>
     </div>
   );

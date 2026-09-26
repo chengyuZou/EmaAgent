@@ -157,18 +157,17 @@ function IllustrationCard({
   return (
     <div
       className={`ema-stagger-in group relative cursor-pointer overflow-hidden rounded-xl border
-        transition-all duration-[var(--ema-duration-base)] hover:-translate-y-0.5
-        hover:shadow-[var(--ema-shadow-soft)]
+        transition-all duration-[var(--ema-duration-base)] hover:border-[var(--ema-primary)]/30
         ${selected ? 'border-[var(--ema-primary)]' : 'border-[var(--ema-border)] bg-[var(--ema-surface-2)]'}`}
       style={{ '--stagger-i': index } as React.CSSProperties}
       onClick={onSelect}
     >
       <div className="absolute left-2 top-2 z-10">
         <span
-          className={`block h-4 w-4 rounded-full border-2
+          className={`block h-3.5 w-3.5 rounded-full border-2
             ${item.isPrimary
-              ? 'border-[var(--ema-success)] bg-[var(--ema-success)]'
-              : 'border-[var(--ema-text-tertiary)] bg-transparent'}`}
+              ? 'border-[var(--ema-success)] bg-[var(--ema-success)] shadow-[var(--ema-shadow-1)]'
+              : 'border-[var(--ema-border-strong)] bg-[var(--ema-surface-2)]'}`}
           title={item.isPrimary ? '主要插图' : '非主要插图'}
         />
       </div>
@@ -255,7 +254,7 @@ function IllustrationConfig({ character, item }: {
         <div className="flex flex-1 flex-col gap-3">
           <div className="flex items-center gap-3">
             <span className="w-24 shrink-0 text-xs text-[var(--ema-text-tertiary)]">展示名</span>
-            <Input value={displayName} onChange={e => setDisplayName(e.target.value)} className="flex-1" />
+            <Input mono={false} value={displayName} onChange={e => setDisplayName(e.target.value)} className="flex-1" />
           </div>
           <div className="flex items-center gap-3">
             <span className="w-24 shrink-0 text-xs text-[var(--ema-text-tertiary)]">expression</span>

@@ -1,5 +1,5 @@
+import { useState, type ReactNode } from 'react';
 import * as RadixDropdown from '@radix-ui/react-dropdown-menu';
-import type { ReactNode } from 'react';
 import { cn } from '../utils/cn.js';
 import { overlayItemCn, overlayItemDangerCn } from './overlayItem.js';
 
@@ -7,6 +7,7 @@ import { overlayItemCn, overlayItemDangerCn } from './overlayItem.js';
 //
 // 点击触发的菜单(聊天模式切换, 历史操作等).
 // 条目类型: item / separator / submenu(递归) / checkbox.
+// 子菜单只允许点击展开(禁 hover 自动展开): Sub 受控 + SubTrigger 拦截 pointermove.
 
 export type MenuItem =
   | { kind: 'item';      id?: string; label: string; icon?: string; danger?: boolean; disabled?: boolean; shortcut?: string; description?: string; onSelect(): void }
@@ -29,8 +30,9 @@ export interface DropdownMenuProps {
 
 export function DropdownMenu(props: DropdownMenuProps): React.JSX.Element {
   const { trigger, items, side = 'bottom', align = 'start', widthClass = 'min-w-48', checkIcon, submenuIcon } = props;
+  const [openSubId, setOpenSubId] = useState<string | null>(null);
   return (
-    <RadixDropdown.Root>
+    <RadixDropdown.Root onOpenChange={(open) => { if (!open) setOpenSubId(null); }}>
       <RadixDropdown.Trigger asChild>{trigger}</RadixDropdown.Trigger>
       <RadixDropdown.Portal>
         <RadixDropdown.Content
@@ -45,7 +47,7 @@ export function DropdownMenu(props: DropdownMenuProps): React.JSX.Element {
         >
           {/* 展开动画的 grid 子节点: 裁剪与滑动都作用在这层 */}
           <div className="p-1">
-            <MenuItems items={items} checkIcon={checkIcon} submenuIcon={submenuIcon} />
+            <MenuItems items={items} checkIcon={checkIcon} submenuIcon={submenuIcon} openSubId={openSubId} onOpenSub={setOpenSubId} />
           </div>
         </RadixDropdown.Content>
       </RadixDropdown.Portal>
@@ -53,10 +55,12 @@ export function DropdownMenu(props: DropdownMenuProps): React.JSX.Element {
   );
 }
 
-function MenuItems({ items, checkIcon, submenuIcon }: {
+function MenuItems({ items, checkIcon, submenuIcon, openSubId, onOpenSub }: {
   items: MenuItem[] | (() => MenuItem[]);
   checkIcon?: string;
   submenuIcon?: string;
+  openSubId: string | null;
+  onOpenSub(id: string | null): void;
 }): React.JSX.Element {
   const resolved = typeof items === 'function' ? items() : items;
   return <>{resolved.map((item, index) => (
@@ -65,11 +69,19 @@ function MenuItems({ items, checkIcon, submenuIcon }: {
       item={item}
       checkIcon={checkIcon}
       submenuIcon={submenuIcon}
+      openSubId={openSubId}
+      onOpenSub={onOpenSub}
     />
   ))}</>;
 }
 
-function RenderItem({ item, checkIcon, submenuIcon }: { item: MenuItem; checkIcon?: string; submenuIcon?: string }): React.JSX.Element {
+function RenderItem({ item, checkIcon, submenuIcon, openSubId, onOpenSub }: {
+  item: MenuItem;
+  checkIcon?: string;
+  submenuIcon?: string;
+  openSubId: string | null;
+  onOpenSub(id: string | null): void;
+}): React.JSX.Element {
   switch (item.kind) {
     case 'separator':
       return <RadixDropdown.Separator className="my-1 h-px bg-[var(--ema-border)]" />;
@@ -111,13 +123,22 @@ function RenderItem({ item, checkIcon, submenuIcon }: { item: MenuItem; checkIco
         </RadixDropdown.CheckboxItem>
       );
 
-    case 'submenu':
+    case 'submenu': {
+      const subId = item.id ?? `submenu:${item.label}`;
+      const subOpen = openSubId === subId;
       return (
-        <RadixDropdown.Sub>
-          <RadixDropdown.SubTrigger className={overlayItemCn}>
+        <RadixDropdown.Sub open={subOpen} onOpenChange={(open) => onOpenSub(open ? subId : null)}>
+          <RadixDropdown.SubTrigger
+            className={overlayItemCn}
+            onPointerMove={(event) => event.preventDefault()}
+            onClick={(event) => { event.preventDefault(); onOpenSub(subOpen ? null : subId); }}
+          >
             {item.icon && <span className={cn(item.icon, 'text-base')} aria-hidden />}
             <span className="flex-1">{item.label}</span>
-            <span className={cn(submenuIcon ?? 'i-mdi:chevron-right', 'text-base')} aria-hidden />
+            <span
+              className={cn(submenuIcon ?? 'i-mdi:chevron-right', 'text-base transition-transform', subOpen ? 'rotate-90' : '')}
+              aria-hidden
+            />
           </RadixDropdown.SubTrigger>
           <RadixDropdown.Portal>
             <RadixDropdown.SubContent
@@ -127,11 +148,12 @@ function RenderItem({ item, checkIcon, submenuIcon }: { item: MenuItem; checkIco
               )}
             >
               <div className="p-1">
-                <MenuItems items={item.items} checkIcon={checkIcon} submenuIcon={submenuIcon} />
+                <MenuItems items={item.items} checkIcon={checkIcon} submenuIcon={submenuIcon} openSubId={openSubId} onOpenSub={onOpenSub} />
               </div>
             </RadixDropdown.SubContent>
           </RadixDropdown.Portal>
         </RadixDropdown.Sub>
       );
+    }
   }
 }

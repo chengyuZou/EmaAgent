@@ -40,3 +40,35 @@
   transition: left var(--ema-duration-base) var(--ema-ease);
   z-index: 0;
 }
+
+/* 浮层选项统一皮肤(Select/DropdownMenu/Combobox 共用): Radix 的交互态挂在 data 属性上,
+   高亮与禁用必须走原生属性选择器, 保证任何构建配置下都生效. */
+.ema-overlay-item {
+  display: flex;
+  align-items: center;
+  gap: var(--ema-space-2);
+  padding: 6px 10px;
+  border-radius: var(--ema-radius-md);
+  font-size: 0.875rem;
+  cursor: pointer;
+  outline: none;
+  transition: all var(--ema-duration-base) var(--ema-ease);
+}
+.ema-overlay-item[data-highlighted] {
+  background: color-mix(in srgb, var(--ema-primary) 16%, transparent);
+  color: var(--ema-primary-text);
+}
+[data-theme="light"] .ema-overlay-item[data-highlighted] {
+  background: color-mix(in srgb, var(--ema-primary) 22%, transparent);
+}
+.ema-overlay-item[data-disabled] {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.ema-overlay-item-danger,
+.ema-overlay-item-danger[data-highlighted] {
+  color: var(--ema-danger-text);
+}
+.ema-overlay-item-danger[data-highlighted] {
+  background: var(--ema-danger-muted);
+}

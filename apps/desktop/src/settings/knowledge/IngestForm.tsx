@@ -36,7 +36,7 @@ export function IngestForm({ onDone }: { onDone(): void }): JSX.Element {
 
   return (
     <div className="flex flex-col gap-3 p-4 rounded-xl
-                    bg-[var(--ema-surface-1)] border border-[var(--ema-border)] ema-card-decorate ema-card-decorate--starfield">
+                    bg-[var(--ema-surface-1)] border border-[var(--ema-border)] ema-card-decorate ema-card-decorate--diag">
       <p className="text-sm font-semibold text-[var(--ema-text-primary)]">导入文档</p>
 
       <div className="flex gap-2">

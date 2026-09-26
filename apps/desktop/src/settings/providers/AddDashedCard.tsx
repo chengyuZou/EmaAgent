@@ -16,7 +16,7 @@ export function AddDashedCard({ label, onClick, compact }: {
                  text-[var(--ema-text-tertiary)] outline-none w-full h-full
                  transition-all duration-[var(--ema-duration-base)]
                  hover:border-[var(--ema-primary)]/50 hover:bg-[var(--ema-surface-2)]
-                 hover:text-[var(--ema-primary)] active:scale-[0.98]
+                 hover:text-[var(--ema-primary)] active:scale-[0.97]
                  ${compact ? 'rounded-lg min-h-[72px] gap-1.5' : 'gap-1.5 py-3.5'}`}
     >
       <span className={`i-solar:add-circle-bold-duotone ${compact ? 'text-2xl' : 'text-2xl'}`} aria-hidden />

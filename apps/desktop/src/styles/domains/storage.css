@@ -1,7 +1,9 @@
 /* 存储库域:扩散 morph 的过渡曲线与库卡纹饰的域级补充。 */
 
-/* 被点块 ⇄ 全幅的共享元素过渡:300ms 跟体系 ease;新旧两帧各自的淡入淡出交给默认。 */
-::view-transition-group(ema-morph-target) {
+/* 被点块 ⇄ 全幅的共享元素过渡: 位置尺寸与新旧两帧的淡入淡出同拍(300ms 体系 ease). */
+::view-transition-group(ema-morph-target),
+::view-transition-old(ema-morph-target),
+::view-transition-new(ema-morph-target) {
   animation-duration: 300ms;
   animation-timing-function: var(--ema-ease);
 }

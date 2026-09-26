@@ -85,7 +85,7 @@ export function CharacterInfoTab({ character }: { character: Character }): JSX.E
   }
 
   return (
-    <div className="h-full overflow-y-auto p-5">
+    <div className="h-full overflow-y-auto p-5 ema-stagger-in">
       <div className="mx-auto flex max-w-5xl flex-col gap-5">
         <div className="flex items-center gap-3">
           <span className="text-base font-semibold text-[var(--ema-text-primary)]">
@@ -104,7 +104,7 @@ export function CharacterInfoTab({ character }: { character: Character }): JSX.E
         </div>
 
         <div className="rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-2)] p-4">
-          <div className="grid grid-cols-1 gap-x-6 gap-y-3 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-x-6 gap-y-3 ">
             <div className="flex items-center gap-3">
               <span className="w-20 shrink-0 text-xs text-[var(--ema-text-tertiary)]">name</span>
               <span className="text-sm text-[var(--ema-text-primary)]">
@@ -114,11 +114,11 @@ export function CharacterInfoTab({ character }: { character: Character }): JSX.E
             </div>
             <div className="flex items-center gap-3">
               <span className="w-20 shrink-0 text-xs text-[var(--ema-text-tertiary)]">展示名(可空)</span>
-              <Input value={displayName} onChange={e => setDisplayName(e.target.value)} className="flex-1" />
+              <Input mono={false} value={displayName} onChange={e => setDisplayName(e.target.value)} className="flex-1" />
             </div>
             <div className="flex items-center gap-3">
               <span className="w-20 shrink-0 text-xs text-[var(--ema-text-tertiary)]">描述</span>
-              <Input value={description} onChange={e => setDescription(e.target.value)} className="flex-1" />
+              <Input mono={false} value={description} onChange={e => setDescription(e.target.value)} className="flex-1" />
             </div>
             <div className="flex items-center gap-3">
               <span className="w-20 shrink-0 text-xs text-[var(--ema-text-tertiary)]">舞台显示</span>
@@ -146,7 +146,7 @@ export function CharacterInfoTab({ character }: { character: Character }): JSX.E
             onChange={e => setPersonaPrompt(e.target.value)}
             minRows={7}
             maxRows={18}
-            className="leading-relaxed"
+            className="min-h-[64px] w-full resize-none border-none overflow-y-auto rounded-[22px] bg-transparent px-4 py-3 text-sm text-[var(--ema-text-primary)] placeholder:text-[var(--ema-text-tertiary)] focus:outline-none"
           />
         </div>
 

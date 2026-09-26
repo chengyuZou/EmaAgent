@@ -38,7 +38,7 @@ export function ChunkViewer({ kbId, assetId, closing }: { kbId: string; assetId:
         items.map((ch, i) => (
           <div
             key={ch.id}
-            className="ema-stagger-in rounded-lg bg-[var(--ema-surface-1)] px-2.5 py-2 ema-card-decorate ema-card-decorate--starfield"
+            className="ema-stagger-in rounded-lg bg-[var(--ema-surface-1)] px-2.5 py-2 ema-card-decorate ema-card-decorate--diag"
             style={{ '--stagger-i': i % 20 } as CSSProperties}
           >
             <div className="flex items-center gap-2 mb-1 text-[10px] text-[var(--ema-text-tertiary)]">

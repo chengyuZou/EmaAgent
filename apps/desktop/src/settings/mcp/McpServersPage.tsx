@@ -60,7 +60,7 @@ export function McpServersPage(): JSX.Element {
             variant="ghost"
             size="sm"
             onClick={() => setImportOpen(true)}
-            className="active:scale-[0.98] transition-all duration-[var(--ema-duration-base)]"
+            className="active:scale-[0.97] transition-all duration-[var(--ema-duration-base)]"
           >
             <span className="i-mdi:code-json text-base" aria-hidden />
             从 JSON 导入
@@ -69,7 +69,7 @@ export function McpServersPage(): JSX.Element {
             variant="primary"
             size="sm"
             onClick={() => { setEditing(null); setAddOpen(true); }}
-            className="active:scale-[0.98] transition-all duration-[var(--ema-duration-base)]"
+            className="active:scale-[0.97] transition-all duration-[var(--ema-duration-base)]"
           >
             <span className="i-mdi:plus text-base" aria-hidden />
             添加服务器

@@ -28,7 +28,7 @@ export function MenuStatusItem(props: MenuStatusItemProps): React.JSX.Element {
       type="button"
       className={cn(
         'group relative w-full h-full flex flex-col overflow-hidden box-border text-left cursor-pointer',
-        'ema-card-decorate ema-card-decorate--plus',
+        'ema-card-decorate ema-card-decorate--grid',
         'rounded-xl bg-[var(--ema-surface-1)] ema-glass-weak border border-solid border-[var(--ema-border)]',
         'hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]',
         'active:scale-[0.97]',
@@ -64,8 +64,8 @@ export function MenuStatusItem(props: MenuStatusItemProps): React.JSX.Element {
       {/* Status dot — 左上角 */}
       <div className="absolute left-2 top-2 z-1">
         {configured
-          ? <div className="size-4 rounded-full bg-[var(--ema-success)] shadow-[var(--ema-shadow-1)]" />
-          : <div className="size-4 rounded-full bg-[var(--ema-surface-2)] border-2 border-solid border-[var(--ema-border-strong)]" />}
+          ? <div className="size-3.5 rounded-full bg-[var(--ema-success)] shadow-[var(--ema-shadow-1)]" />
+          : <div className="size-3.5 rounded-full bg-[var(--ema-surface-2)] border-2 border-solid border-[var(--ema-border-strong)]" />}
       </div>
     </button>
   );

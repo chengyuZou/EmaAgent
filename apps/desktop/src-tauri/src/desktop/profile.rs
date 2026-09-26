@@ -1,4 +1,4 @@
-// 决议桌面宿主用于内置资源和启动日志的用户目录。
+// 决议桌面宿主用于内置资源和启动日志的用户目录
 use std::path::PathBuf;
 
 pub(crate) fn profile_root() -> Result<PathBuf, String> {

@@ -111,6 +111,7 @@ export function KbDetailPanel({ lib, onBack }: {
                 title={lib.isActive ? 'Agent 检索目标库' : undefined} aria-hidden />
           {renaming ? (
             <Input
+              mono={false}
               className="text-sm h-8 max-w-64"
               value={nameInput}
               autoFocus

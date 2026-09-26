@@ -5,6 +5,7 @@ import { Button, Callout, Select, Spinner } from '@ema-agent/ui';
 import { settingsApi } from '../../api/settings.js';
 import { systemApi, type SandboxStatus } from '../../api/system.js';
 import { showToast } from '../../lib/toast.js';
+import { SettingsSection } from '../shared/SettingItem.js';
 
 type LoadState =
   | { kind: 'loading' }
@@ -71,25 +72,20 @@ export function SandboxStatusSettings(): JSX.Element {
   const appOnly = status !== null && status.isolation === 'application-only';
 
   return (
-    <section>
-      {/* Provider 同款节头:大图标 + 描述 + 标题。 */}
-      <div className="mb-4 flex items-center gap-3 ema-stagger-in">
-        <span
-          className={`text-4xl ${unsafe
-            ? 'i-lucide:shield-off text-[var(--ema-danger)]'
-            : appOnly
-              ? 'i-lucide:shield-alert text-[var(--ema-warning)]'
-              : 'i-lucide:shield-check text-[var(--ema-success)]'}`}
-          aria-hidden
-        />
-        <div>
-          <p className="text-sm text-[var(--ema-text-tertiary)]">
-            AI 在本机执行命令与访问网络时的真实隔离等级
-          </p>
-          <h2 className="text-2xl font-semibold text-[var(--ema-text-primary)]">安全与隔离</h2>
-        </div>
-      </div>
-
+    <SettingsSection
+      icon={unsafe
+        ? 'i-lucide:shield-off'
+        : appOnly
+          ? 'i-lucide:shield-alert'
+          : 'i-lucide:shield-check'}
+      iconClassName={unsafe
+        ? 'text-[var(--ema-danger)]'
+        : appOnly
+          ? 'text-[var(--ema-warning)]'
+          : 'text-[var(--ema-success)]'}
+      title="安全与隔离"
+      description="AI 在本机执行命令与访问网络时的真实隔离等级"
+    >
       {state.kind === 'loading' && (
         <div className="flex justify-center py-4"><Spinner size="sm" /></div>
       )}
@@ -142,7 +138,7 @@ export function SandboxStatusSettings(): JSX.Element {
           )}
         </>
       )}
-    </section>
+    </SettingsSection>
   );
 }
 

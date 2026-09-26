@@ -82,7 +82,7 @@ function RuleListEditor(props: { behavior: RuleBehavior; apply: SettingApply; va
   const label = { allow: '允许', deny: '拒绝', ask: '每次询问' }[props.behavior];
   return (
     <SettingItem title={`${label}规则`} hint="例如 Bash(pnpm test:*), Read(./src/**)." apply={props.apply}>
-      <Textarea className="h-24 w-[30rem] max-w-[45vw] font-mono text-xs" value={draft} onChange={event => setDraft(event.target.value)} onBlur={() => void props.onSave(parseRules(draft))} />
+      <Textarea className="h-24 w-[30rem] max-w-[45vw] font-mono text-xs resize-none border-none" value={draft} onChange={event => setDraft(event.target.value)} onBlur={() => void props.onSave(parseRules(draft))} />
     </SettingItem>
   );
 }

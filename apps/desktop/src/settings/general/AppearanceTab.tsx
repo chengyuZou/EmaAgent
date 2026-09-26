@@ -177,7 +177,7 @@ export function AppearanceTab(): JSX.Element {
               className="group flex-col gap-1 p-0 h-auto border-transparent bg-transparent hover:bg-transparent active:bg-transparent"
             >
               <span
-                className={`block w-7 h-7 rounded-full border-2 transition-ema hover:scale-110 ${
+                className={`block w-7 h-7 rounded-full border-2 transition-ema hover:border-[var(--ema-primary)]/30 ${
                   Math.abs(hue - p.hue) < 5
                     ? 'border-[var(--ema-border-strong)] shadow-[var(--ema-shadow-1)]'
                     : 'border-transparent'
@@ -238,6 +238,7 @@ export function AppearanceTab(): JSX.Element {
         {contentFontPreset === 'custom' && (
           <div className="space-y-1.5">
             <Input
+              mono={false}
               value={customFontDraft}
               maxLength={80}
               placeholder="输入已安装字体名称，如 LXGW WenKai"
@@ -284,6 +285,7 @@ export function AppearanceTab(): JSX.Element {
         {monoFontPreset === 'custom' && (
           <div className="space-y-1.5">
             <Input
+              mono={false}
               value={customMonoDraft}
               maxLength={80}
               placeholder="输入已安装的等宽字体名称，如 Maple Mono"
@@ -351,7 +353,7 @@ export function AppearanceTab(): JSX.Element {
           <Button
             variant="ghost"
             onClick={() => handleModeClick('dark')}
-            className={`flex items-center gap-2 px-4 py-2.5 h-auto rounded-xl border transition-all duration-[var(--ema-duration-base)] ema-card-decorate ema-card-decorate--mesh ${
+            className={`flex items-center gap-2 px-4 py-2.5 h-auto rounded-xl border transition-all duration-[var(--ema-duration-base)] ema-card-decorate ${
               mode === 'dark'
                 ? 'border-[var(--ema-primary)] bg-[var(--ema-primary-muted)] text-[var(--ema-text-primary)]'
                 : 'border-[var(--ema-border)] bg-[var(--ema-surface-1)] text-[var(--ema-text-tertiary)] hover:border-[var(--ema-border-hover)]'
@@ -363,7 +365,7 @@ export function AppearanceTab(): JSX.Element {
           <Button
             variant="ghost"
             onClick={() => handleModeClick('light')}
-            className={`flex items-center gap-2 px-4 py-2.5 h-auto rounded-xl border transition-all duration-[var(--ema-duration-base)] ema-card-decorate ema-card-decorate--mesh ${
+            className={`flex items-center gap-2 px-4 py-2.5 h-auto rounded-xl border transition-all duration-[var(--ema-duration-base)] ema-card-decorate ${
               mode === 'light'
                 ? 'border-[var(--ema-primary)] bg-[var(--ema-primary-muted)] text-[var(--ema-text-primary)]'
                 : 'border-[var(--ema-border)] bg-[var(--ema-surface-1)] text-[var(--ema-text-tertiary)] hover:border-[var(--ema-border-hover)]'

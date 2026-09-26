@@ -370,7 +370,7 @@ function MappingSection<T>({
   };
 
   return (
-    <div className="ema-card-decorate ema-card-decorate--mesh rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-2)] p-4">
+    <div className="ema-card-decorate rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-2)] p-4">
       <p className="mb-1 text-xs font-semibold text-[var(--ema-text-secondary)]">{title}</p>
       <p className="mb-3 text-[11px] text-[var(--ema-text-tertiary)]">{hint}</p>
       <form

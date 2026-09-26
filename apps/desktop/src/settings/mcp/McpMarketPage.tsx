@@ -167,7 +167,7 @@ export function McpMarketPage(): JSX.Element {
                   <MarketCard
                     key={key}
                     index={index}
-                    decorate="ema-card-decorate--circuit"
+                    decorate="ema-card-decorate--nodes"
                     installed={installed.has(entry.externalId)}
                     installing={installing.has(key)}
                     installedLabel="已添加"

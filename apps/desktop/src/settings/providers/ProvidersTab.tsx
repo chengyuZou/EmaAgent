@@ -15,6 +15,7 @@ import {
 import { useProviderStore } from '../../stores/provider.js';
 import { providersApi, type ProviderRecord, type ProviderDetail, type ModelCapability } from '../../api/providers.js';
 import { showToast } from '../../lib/toast.js';
+import { SettingsSection } from '../shared/SettingItem.js';
 import { ProviderDetailPanel } from './ProviderDetailPanel.js';
 import { ProviderCreatePanel } from './ProviderCreatePanel.js';
 import { AddDashedCard } from './AddDashedCard.js';
@@ -154,14 +155,7 @@ export function ProvidersTab(): JSX.Element {
         const sectionProviders = providers.filter((p) => capabilityOf(p, section.key) !== undefined);
 
         return (
-          <section key={section.key}>
-            <div className="flex items-center gap-3 mb-4 ema-stagger-in"
-              style={{ '--stagger-i': cardIdx } as React.CSSProperties}>
-              <span className={`${section.icon} text-4xl text-[var(--ema-text-tertiary)]`} aria-hidden />
-              <h3 className="text-2xl font-semibold text-[var(--ema-text-primary)]">{section.label}</h3>
-              <p className="text-sm text-[var(--ema-text-tertiary)]">{section.description}</p>
-            </div>
-
+          <SettingsSection key={section.key} icon={section.icon} title={section.label} description={section.description}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {sectionProviders.map((record) => {
                 const staggerI = cardIdx++;
@@ -174,7 +168,6 @@ export function ProvidersTab(): JSX.Element {
                       icon={resolveProviderIconClass(record.iconId)}
                       configured={isConfigured(record, section.key)}
                       onClick={() => { setSelectedId(record.id); setSelectedCapability(section.key); }}
-                      className="ema-card-decorate ema-card-decorate--plus"
                     />
                     <IconButton
                       label="删除服务来源"
@@ -191,7 +184,7 @@ export function ProvidersTab(): JSX.Element {
                 onClick={() => setCreatingFor(section.key)}
               />
             </div>
-          </section>
+          </SettingsSection>
         );
       })}
 

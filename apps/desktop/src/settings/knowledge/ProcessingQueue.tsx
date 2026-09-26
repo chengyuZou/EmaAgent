@@ -118,7 +118,7 @@ function IngestRow({ row }: { row: IngestTaskRow }): JSX.Element {
     : `${meta?.label ?? row.stage ?? ''} · ${pct}%`;
 
   return (
-    <EntityRow decorate="ema-card-decorate--starfield" className={`px-3 py-2.5 flex flex-col gap-1.5 ${done ? 'ema-fade-out' : ''}`}>
+    <EntityRow decorate="ema-card-decorate--diag" className={`px-3 py-2.5 flex flex-col gap-1.5 ${done ? 'ema-fade-out' : ''}`}>
       <div className="flex items-center gap-2">
         {failed ? (
           <span className="i-mdi:alert-circle text-base shrink-0 text-[var(--ema-danger)]" aria-hidden />
@@ -181,7 +181,7 @@ function ReembedRow({ row }: { row: ReembedTaskRow }): JSX.Element {
   const status = failed ? '错误' : done ? '100%' : pending ? '等待' : `${pct}%`;
 
   return (
-    <EntityRow decorate="ema-card-decorate--starfield" className="px-3 py-2.5 flex flex-col gap-1.5">
+    <EntityRow decorate="ema-card-decorate--diag" className="px-3 py-2.5 flex flex-col gap-1.5">
       <div className="flex items-center gap-2">
         {failed ? (
           <span className="i-mdi:alert-circle text-base shrink-0 text-[var(--ema-danger)]" aria-hidden />

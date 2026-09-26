@@ -215,8 +215,11 @@ export function SettingsPanel(): JSX.Element {
           <SettingsContent id={active} />
         </main>
 
-        <div className="pointer-events-none fixed bottom-4 right-8 z-0 hidden md:block" aria-hidden>
-          <span className={`${activePage.icon} text-[12rem] leading-none text-[var(--ema-text-tertiary)] opacity-[0.12]`} />
+        <div className="pointer-events-none fixed bottom-0 -right-6 z-0 hidden md:block" aria-hidden>
+          <span
+            key={active}
+            className={`${activePage.icon} ema-watermark-in block text-[15rem] leading-none text-[var(--ema-text-tertiary)]`}
+          />
         </div>
       </div>
     </ErrorBoundary>

@@ -25,16 +25,15 @@ export function KbLibraryCard({ lib, onOpen, onActivate, onDelete }: {
         onClick={onOpen}
         className="flex w-full h-full flex-col gap-1.5 rounded-xl border border-[var(--ema-border)]
                    bg-[var(--ema-surface-1)] p-4 text-left cursor-pointer outline-none
-                   ema-glass-weak ema-card-decorate ema-card-decorate--starfield
+                   ema-glass-weak ema-card-decorate ema-card-decorate--diag
                    transition-all duration-[var(--ema-duration-base)]
-                   hover:border-[var(--ema-primary)]/40 hover:bg-[var(--ema-surface-2)]
-                   hover:shadow-[var(--ema-shadow-2)] hover:-translate-y-0.5 active:scale-[0.98]"
+                   hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] active:scale-[0.97]"
       >
         <span
-          className={`absolute left-2.5 top-2.5 z-1 size-2.5 rounded-full ${
+          className={`absolute left-2 top-2 z-1 size-3.5 rounded-full ${
             lib.isActive
-              ? 'bg-[var(--ema-success)]'
-              : 'border-2 border-solid border-[var(--ema-border-strong)] bg-transparent'
+              ? 'bg-[var(--ema-success)] shadow-[var(--ema-shadow-1)]'
+              : 'border-2 border-solid border-[var(--ema-border-strong)] bg-[var(--ema-surface-2)]'
           }`}
           title={lib.isActive ? 'Agent 检索目标库' : undefined}
           aria-hidden
