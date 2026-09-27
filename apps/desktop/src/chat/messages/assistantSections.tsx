@@ -162,6 +162,7 @@ function groupContent(
   content: readonly (DisplayBlock | ToolDisplayCall)[],
   streaming: boolean,
 ): AssistantContentSection[] {
+  // Section key 描述块在一条 Assistant Message 内的稳定身份, 不能使用每次 render 新建的对象作 key.
   const sections: AssistantContentSection[] = [];
   let tools: ToolDisplayCall[] = [];
   let agents: ToolDisplayCall[] = [];
@@ -213,6 +214,7 @@ function groupContent(
 export function useStableStreamingSections(
   blocks: readonly AssistantOutputBlock[],
 ): readonly AssistantContentSection[] {
+  // Store 每次 delta 都会产生新 blocks 数组. 只复用语义未变化的 section, 避免后续 Tool 跟随文本一起重渲染.
   const previous = useRef<readonly AssistantContentSection[]>([]);
   const next = streamingAssistantSections(blocks).map((section, index) => {
     const old = previous.current[index];

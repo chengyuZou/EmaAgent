@@ -25,6 +25,7 @@ import {
   clearSessionSubscriptions,
   syncSessionSubscriptions,
 } from './session/sessionSubscriptions.js';
+import { WallpaperLayer } from '../wallpaper/WallpaperLayer.js';
 
 export function ChatPage(): JSX.Element {
   const sessionId = useChatNavigationStore(state => state.viewedSessionId);
@@ -133,7 +134,8 @@ export function ChatPage(): JSX.Element {
 
   return (
     <ErrorBoundary>
-      <div className="flex h-screen flex-row bg-[var(--ema-bg)]">
+      <div className="ema-wallpaper-window relative isolate flex h-screen flex-row bg-[var(--ema-bg)]">
+        <WallpaperLayer target="chat" />
         <SessionSidebar />
         {sessionId
           ? <SessionPage sessionId={sessionId} />

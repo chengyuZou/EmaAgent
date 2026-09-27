@@ -22,6 +22,7 @@ export function UIMessage({
   readonly toolResults: ReadonlyMap<string, ToolResult>;
   readonly terminal: boolean;
 }): JSX.Element | null {
+  // StreamingMessage 不是持久 SessionMessage, 但 Assistant 两个阶段必须进入同一组件类型.
   if (isStreamingMessage(message)) {
     return (
       <AssistantMessage
@@ -56,6 +57,7 @@ function isHistoryAssistantMessage(
 export function toolResultsForMessages(
   messages: readonly (SessionMessage | StreamingMessageData)[],
 ): ReadonlyMap<string, ToolResult> {
+  // tool_results 是持久数据关系, 不作为独立可见行. Tool UI 按 toolCallId 取回对应结果.
   const results = new Map<string, ToolResult>();
   for (const message of messages) {
     if (isStreamingMessage(message) || message.kind !== 'tool_results' || !Array.isArray(message.blocks)) {

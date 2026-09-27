@@ -1,4 +1,6 @@
 // 按单条可见 Message 虚拟化持久 History 与当前 Turn.
+// 附近翻页在同一窗口内合并消息并保持视口, Turn 远跳则替换窗口并重建 Virtuoso.
+// Message ID 负责跨更新识别同一条消息, 数组 index 只描述当前窗口内的位置.
 
 import {
   useCallback,
@@ -35,8 +37,8 @@ import { TurnNavigationRail } from './TurnNavigationRail.js';
 import { TurnFooter, type SessionTurnStats } from '../messages/TurnFooter.js';
 import { UIMessage, toolResultsForMessages } from '../messages/UIMessage.js';
 
-const INITIAL_ITEM_INDEX = 1_000_000;
 const MESSAGE_TOP_INSET = 40;
+const PREPEND_ANCHOR_SETTLE_FRAMES = 4;
 
 type MessageListStyle = CSSProperties & {
   '--ema-message-top-inset': string;
@@ -52,6 +54,11 @@ interface MessageListStatusProps {
 interface MessageListContext extends MessageListStatusProps {
   readonly loadingOlder: boolean;
   readonly bottomInset: number;
+}
+
+interface MessageViewportAnchor {
+  readonly messageId: string;
+  readonly topOffsetPx: number;
 }
 
 function MessageListHeader({ context }: ContextProp<MessageListContext>): JSX.Element {
@@ -114,6 +121,7 @@ export function MessageList({
   readonly bottomInset: number | null;
 }): JSX.Element {
   const listRef = useRef<VirtuosoHandle | null>(null);
+  const pendingPrependAnchor = useRef<MessageViewportAnchor | null>(null);
   const history = useSessionHistoryStore(useShallow(state => {
     const value = state.bySession.get(sessionId);
     return {
@@ -129,12 +137,8 @@ export function MessageList({
       error: value?.error,
     };
   }));
+  // around 的锚点属于窗口身份. 它变化时必须丢弃旧测量, 普通 prepend 不改变窗口身份.
   const windowId = `${sessionId}:${history.windowAnchorMessageId ?? ''}`;
-  const previousItems = useRef<{ windowId: string; keys: readonly string[] }>({
-    windowId,
-    keys: [],
-  });
-  const [listIndex, setListIndex] = useState({ windowId, firstItemIndex: INITIAL_ITEM_INDEX });
   const [scrollerElement, setScrollerElement] = useState<HTMLElement | null>(null);
   const [visibleTurnIds, setVisibleTurnIds] = useState<ReadonlySet<string>>(() => new Set());
   const atBottom = useRef(false);
@@ -142,9 +146,6 @@ export function MessageList({
   const attachScroller = useCallback((element: HTMLElement | Window | null): void => {
     setScrollerElement(element instanceof HTMLElement ? element : null);
   }, []);
-  const firstItemIndex = listIndex.windowId === windowId
-    ? listIndex.firstItemIndex
-    : INITIAL_ITEM_INDEX;
   const turns = useTurnStore(useShallow(state => (
     new Map(state.turnsBySession.get(sessionId) ?? [])
   )));
@@ -169,7 +170,6 @@ export function MessageList({
   );
   const toolResults = useMemo(() => toolResultsForMessages(allMessages), [allMessages]);
   const messagesByTurn = useMemo(() => collectMessagesByTurn(allMessages), [allMessages]);
-  const itemKeys = useMemo(() => messages.map(messageListKey), [messages]);
 
   useLayoutEffect(() => {
     const previous = previousBottomInset.current;
@@ -188,23 +188,53 @@ export function MessageList({
   }, [bottomInset, history.windowAnchorMessageId]);
 
   useLayoutEffect(() => {
-    if (previousItems.current.windowId !== windowId) {
-      previousItems.current = { windowId, keys: itemKeys };
-      setListIndex({ windowId, firstItemIndex: INITIAL_ITEM_INDEX });
+    // 整窗替换不能继承上一窗口的 DOM 锚点, 即使两个窗口恰好包含同一条 Message.
+    pendingPrependAnchor.current = null;
+  }, [windowId]);
+
+  useLayoutEffect(() => {
+    const anchor = pendingPrependAnchor.current;
+    if (!anchor || !scrollerElement) return;
+    const index = messages.findIndex(message => message.id === anchor.messageId);
+    if (index < 0) {
+      pendingPrependAnchor.current = null;
       return;
     }
-    const previousFirst = previousItems.current.keys[0];
-    if (previousFirst) {
-      const prepended = itemKeys.indexOf(previousFirst);
-      if (prepended > 0) {
-        setListIndex(value => ({
-          windowId,
-          firstItemIndex: value.firstItemIndex - prepended,
-        }));
+
+    let frame: number | null = null;
+    let remainingFrames = PREPEND_ANCHOR_SETTLE_FRAMES;
+    const settle = (): void => {
+      if (pendingPrependAnchor.current !== anchor) return;
+      const element = findMessageElement(scrollerElement, anchor.messageId);
+      if (!element) {
+        // 前插后旧锚点可能暂时不在挂载区. 先按新数组 index 定位, 再用 DOM 像素差校正.
+        listRef.current?.scrollToIndex({
+          index,
+          align: 'start',
+          behavior: 'auto',
+          offset: -MESSAGE_TOP_INSET - anchor.topOffsetPx,
+        });
+      } else {
+        // Virtuoso 会在定位后继续测量行高. 连续几帧补偿可避免估算高度造成可见文字跳动.
+        const viewportTop = scrollerElement.getBoundingClientRect().top + MESSAGE_TOP_INSET;
+        const currentOffset = element.getBoundingClientRect().top - viewportTop;
+        const correction = currentOffset - anchor.topOffsetPx;
+        if (Math.abs(correction) >= 0.5) scrollerElement.scrollTop += correction;
       }
-    }
-    previousItems.current = { windowId, keys: itemKeys };
-  }, [itemKeys, windowId]);
+
+      remainingFrames -= 1;
+      if (remainingFrames <= 0) {
+        pendingPrependAnchor.current = null;
+        return;
+      }
+      frame = requestAnimationFrame(settle);
+    };
+
+    settle();
+    return () => {
+      if (frame !== null) cancelAnimationFrame(frame);
+    };
+  }, [history.messages, messages, scrollerElement, windowId]);
 
   useEffect(() => {
     if (!scrollerElement) return;
@@ -268,12 +298,36 @@ export function MessageList({
     if (!item?.anchorMessageId) return;
     const loadedIndex = messages.findIndex(message => message.id === item.anchorMessageId);
     if (loadedIndex >= 0) {
+      // 当前窗口内跳转只使用局部数组 index, 不需要修改窗口或伪造全局虚拟编号.
       useSessionHistoryStore.getState().cancelPendingWindowReplace(sessionId);
       listRef.current?.scrollToIndex(messageScrollLocation(loadedIndex));
       return;
     }
 
     await useSessionHistoryStore.getState().openAround(sessionId, item.anchorMessageId);
+  }
+
+  async function loadOlder(): Promise<void> {
+    const store = useSessionHistoryStore.getState();
+    const before = store.bySession.get(sessionId);
+    if (!before?.olderCursor || before.loadingOlder || pendingPrependAnchor.current) return;
+
+    // 在 Store 合并旧页前保存用户眼前的 Message 和像素位置, 而不是保存会随 prepend 改变的 index.
+    const anchor = scrollerElement
+      ? captureMessageViewportAnchor(scrollerElement)
+      : null;
+    pendingPrependAnchor.current = anchor;
+    const firstMessageId = before.messages[0]?.id;
+    await store.loadOlder(sessionId);
+
+    const after = useSessionHistoryStore.getState().bySession.get(sessionId);
+    if (
+      anchor
+      && pendingPrependAnchor.current === anchor
+      && after?.messages[0]?.id === firstMessageId
+    ) {
+      pendingPrependAnchor.current = null;
+    }
   }
 
   const anchorIndex = history.windowAnchorMessageId
@@ -314,6 +368,7 @@ export function MessageList({
   }
   if (bottomInset === null) return <div className="min-h-0 flex-1" />;
 
+  // Stable Message ID owns React and Virtuoso identity. The local index may change after prepend.
   return (
     <div
       className="relative flex-1 min-h-0 ema-fade-mask-top"
@@ -330,7 +385,6 @@ export function MessageList({
         scrollerRef={attachScroller}
         className="absolute inset-0 px-14 overflow-x-hidden"
         data={messages}
-        firstItemIndex={firstItemIndex}
         computeItemKey={(_index, message) => messageListKey(message)}
         alignToBottom={!history.windowAnchorMessageId}
         followOutput={turns.size > 0 || Boolean(activeCompactId) ? 'auto' : false}
@@ -339,7 +393,7 @@ export function MessageList({
           : { index: 'LAST', align: 'end' }}
         atBottomStateChange={(value) => { atBottom.current = value; }}
         startReached={() => {
-          if (history.olderCursor) void useSessionHistoryStore.getState().loadOlder(sessionId);
+          if (history.olderCursor) void loadOlder();
         }}
         endReached={() => {
           if (history.newerCursor) void useSessionHistoryStore.getState().loadNewer(sessionId);
@@ -355,12 +409,13 @@ export function MessageList({
         components={MESSAGE_LIST_COMPONENTS}
         itemContent={(index, message) => {
           const turnId = message.turnId;
-          const next = messages[index - firstItemIndex + 1];
+          const next = messages[index + 1];
           const endsTurn = Boolean(turnId && next?.turnId !== turnId);
           const turn = turnId ? turns.get(turnId) : undefined;
           return (
             <div
               className="mx-auto max-w-3xl py-1.5"
+              data-message-id={message.id}
               data-turn-id={turnId ?? undefined}
             >
               <UIMessage
@@ -384,6 +439,32 @@ export function MessageList({
       />
     </div>
   );
+}
+
+function captureMessageViewportAnchor(scrollerElement: HTMLElement): MessageViewportAnchor | null {
+  const viewport = scrollerElement.getBoundingClientRect();
+  const viewportTop = viewport.top + MESSAGE_TOP_INSET;
+  // 选择内容视口内第一条实际可见行, Header 占用的顶部 inset 不属于阅读位置.
+  const messages = scrollerElement.querySelectorAll<HTMLElement>('[data-message-id]');
+  for (const element of messages) {
+    const bounds = element.getBoundingClientRect();
+    if (bounds.bottom <= viewportTop || bounds.top >= viewport.bottom) continue;
+    const messageId = element.dataset.messageId;
+    if (!messageId) continue;
+    return {
+      messageId,
+      topOffsetPx: bounds.top - viewportTop,
+    };
+  }
+  return null;
+}
+
+function findMessageElement(
+  scrollerElement: HTMLElement,
+  messageId: string,
+): HTMLElement | undefined {
+  const messages = scrollerElement.querySelectorAll<HTMLElement>('[data-message-id]');
+  return [...messages].find(element => element.dataset.messageId === messageId);
 }
 
 function collectOwnedMessages(

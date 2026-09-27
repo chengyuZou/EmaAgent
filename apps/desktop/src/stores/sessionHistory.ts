@@ -95,8 +95,11 @@ function replace(
   sessionId: string,
   update: (current: SessionHistoryState) => SessionHistoryState,
 ): ReadonlyMap<string, SessionHistoryState> {
+  const current = sessions.get(sessionId) ?? EMPTY_SESSION_HISTORY;
+  const updated = update(current);
+  if (updated === current) return sessions;
   const next = new Map(sessions);
-  next.set(sessionId, update(sessions.get(sessionId) ?? EMPTY_SESSION_HISTORY));
+  next.set(sessionId, updated);
   return next;
 }
 
@@ -187,8 +190,8 @@ export const useSessionHistoryStore = create<HistoryStore>((set, get) => ({
         before: current.olderCursor,
         limit: MESSAGE_PAGE_SIZE,
       });
-      set(state => ({
-        bySession: replace(state.bySession, sessionId, value => {
+      set(state => {
+        const bySession = replace(state.bySession, sessionId, value => {
           if (
             value.windowAnchorMessageId !== current.windowAnchorMessageId
             || value.olderCursor !== current.olderCursor
@@ -200,11 +203,12 @@ export const useSessionHistoryStore = create<HistoryStore>((set, get) => ({
             loadingOlder: false,
             olderCursor: page.olderCursor,
           };
-        }),
-      }));
+        });
+        return bySession === state.bySession ? state : { bySession };
+      });
     } catch (error) {
-      set(state => ({
-        bySession: replace(state.bySession, sessionId, value => (
+      set(state => {
+        const bySession = replace(state.bySession, sessionId, value => (
           value.windowAnchorMessageId !== current.windowAnchorMessageId
           || value.olderCursor !== current.olderCursor
             ? value
@@ -213,8 +217,9 @@ export const useSessionHistoryStore = create<HistoryStore>((set, get) => ({
               loadingOlder: false,
               error: error instanceof Error ? error.message : '更早消息加载失败',
             }
-        )),
-      }));
+        ));
+        return bySession === state.bySession ? state : { bySession };
+      });
     }
   },
 
@@ -232,8 +237,8 @@ export const useSessionHistoryStore = create<HistoryStore>((set, get) => ({
         after: current.newerCursor,
         limit: MESSAGE_PAGE_SIZE,
       });
-      set(state => ({
-        bySession: replace(state.bySession, sessionId, value => {
+      set(state => {
+        const bySession = replace(state.bySession, sessionId, value => {
           if (
             value.windowAnchorMessageId !== current.windowAnchorMessageId
             || value.newerCursor !== current.newerCursor
@@ -245,11 +250,12 @@ export const useSessionHistoryStore = create<HistoryStore>((set, get) => ({
             loadingNewer: false,
             newerCursor: page.newerCursor,
           };
-        }),
-      }));
+        });
+        return bySession === state.bySession ? state : { bySession };
+      });
     } catch (error) {
-      set(state => ({
-        bySession: replace(state.bySession, sessionId, value => (
+      set(state => {
+        const bySession = replace(state.bySession, sessionId, value => (
           value.windowAnchorMessageId !== current.windowAnchorMessageId
           || value.newerCursor !== current.newerCursor
             ? value
@@ -258,8 +264,9 @@ export const useSessionHistoryStore = create<HistoryStore>((set, get) => ({
               loadingNewer: false,
               error: error instanceof Error ? error.message : '更新消息加载失败',
             }
-        )),
-      }));
+        ));
+        return bySession === state.bySession ? state : { bySession };
+      });
     }
   },
 
@@ -406,13 +413,14 @@ export const useSessionHistoryStore = create<HistoryStore>((set, get) => ({
 
   // 这两个入口只改变导航轨状态; Session 清理则删除消息, 统计和索引的整份记录.
   setCurrentTurn(sessionId, turnId) {
-    set(state => ({
-      bySession: replace(state.bySession, sessionId, value => (
+    set(state => {
+      const bySession = replace(state.bySession, sessionId, value => (
         value.currentTurnId === turnId
           ? value
           : { ...value, currentTurnId: turnId }
-      )),
-    }));
+      ));
+      return bySession === state.bySession ? state : { bySession };
+    });
   },
 
   invalidateTurnIndex(sessionId) {

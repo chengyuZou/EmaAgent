@@ -149,8 +149,8 @@ function RunningTurnFooter({
       <ModeLabel sessionMode={turn.sessionMode} narrativePolicy={turn.narrativePolicy} />
       <span className="flex items-center gap-1.5">
         <span className={turn.terminal
-          ? 'h-1 w-1 shrink-0 rounded-full bg-[var(--ema-text-tertiary)]'
-          : 'h-1 w-1 shrink-0 animate-pulse rounded-full bg-[var(--ema-primary)]'} />
+          ? 'h-1 w-1 shrink-0 rounded-md bg-[var(--ema-text-tertiary)]'
+          : 'h-1 w-1 shrink-0 animate-pulse rounded-md bg-[var(--ema-primary)]'} />
         <span className="tabular-nums">{elapsed}s</span>
         {(usage?.inputTokens ?? 0) + outputTokens > 0 && (
           <span className="tabular-nums">

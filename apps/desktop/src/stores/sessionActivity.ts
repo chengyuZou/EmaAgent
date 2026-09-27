@@ -58,13 +58,16 @@ export const EMPTY_SESSION_ACTIVITY: SessionActivity = {
 };
 
 function updateSession(
-  sessions: ReadonlyMap<string, SessionActivity>,
+  state: SessionActivityStore,
   sessionId: string,
   update: (current: SessionActivity) => SessionActivity,
-): ReadonlyMap<string, SessionActivity> {
-  const next = new Map(sessions);
-  next.set(sessionId, update(sessions.get(sessionId) ?? EMPTY_SESSION_ACTIVITY));
-  return next;
+): SessionActivityStore | { bySession: ReadonlyMap<string, SessionActivity> } {
+  const current = state.bySession.get(sessionId) ?? EMPTY_SESSION_ACTIVITY;
+  const updated = update(current);
+  if (updated === current) return state;
+  const bySession = new Map(state.bySession);
+  bySession.set(sessionId, updated);
+  return { bySession };
 }
 
 function sortPending(items: readonly PendingInteraction[]): PendingInteraction[] {
@@ -84,122 +87,118 @@ export const useSessionActivityStore = create<SessionActivityStore>(set => ({
 
   // 连接与运行身份都来自 Session WebSocket, 断线时不把未知 running 强行改成 null.
   setConnection(sessionId, connection) {
-    set(state => ({
-      bySession: updateSession(state.bySession, sessionId, current => ({
-        ...current,
-        connection,
-      })),
-    }));
+    set(state => updateSession(state, sessionId, current => (
+      current.connection === connection ? current : { ...current, connection }
+    )));
   },
 
   replaceSessionState(sessionId, running, pendingInteractions, queuedInputs) {
-    set(state => ({
-      bySession: updateSession(state.bySession, sessionId, current => ({
-        ...current,
-        running,
-        activeCompactId: running?.kind === 'compact' ? running.compactId : null,
-        pendingInteractions: sortPending(pendingInteractions),
-        queuedInputs: [...queuedInputs]
-          .sort((left, right) => left.createdAt - right.createdAt),
-      })),
-    }));
+    set(state => updateSession(state, sessionId, current => ({
+      ...current,
+      running,
+      activeCompactId: running?.kind === 'compact' ? running.compactId : null,
+      pendingInteractions: sortPending(pendingInteractions),
+      queuedInputs: [...queuedInputs]
+        .sort((left, right) => left.createdAt - right.createdAt),
+    })));
   },
 
   setRunning(sessionId, running) {
-    set(state => ({
-      bySession: updateSession(state.bySession, sessionId, current => {
-        let activeCompactId = current.activeCompactId;
-        if (running === null) activeCompactId = null;
-        else if (running.kind === 'compact') activeCompactId = running.compactId;
-        return { ...current, running, activeCompactId };
-      }),
+    set(state => updateSession(state, sessionId, current => {
+      let activeCompactId = current.activeCompactId;
+      if (running === null) activeCompactId = null;
+      else if (running.kind === 'compact') activeCompactId = running.compactId;
+      if (current.running === running && current.activeCompactId === activeCompactId) return current;
+      return { ...current, running, activeCompactId };
     }));
   },
 
   startCompact(sessionId, compactId) {
-    set(state => ({
-      bySession: updateSession(state.bySession, sessionId, current => ({
-        ...current,
-        activeCompactId: compactId,
-      })),
-    }));
+    set(state => updateSession(state, sessionId, current => (
+      current.activeCompactId === compactId
+        ? current
+        : { ...current, activeCompactId: compactId }
+    )));
   },
 
   finishCompact(sessionId, compactId) {
-    set(state => ({
-      bySession: updateSession(state.bySession, sessionId, current => (
-        current.activeCompactId === compactId
-          ? { ...current, activeCompactId: null }
-          : current
-      )),
-    }));
+    set(state => updateSession(state, sessionId, current => (
+      current.activeCompactId === compactId
+        ? { ...current, activeCompactId: null }
+        : current
+    )));
   },
 
   applyInteractionEvent(sessionId, event) {
-    set(state => ({
-      bySession: updateSession(state.bySession, sessionId, current => {
-        if (event.type === 'permission_required') {
-          const { type: _type, ...request } = event;
-          return {
-            ...current,
-            pendingInteractions: sortPending([
-              ...removePending(current.pendingInteractions, event.toolCallId),
-              {
-                kind: 'permission',
-                toolCallId: event.toolCallId,
-                createdAt: Date.now(),
-                request,
-              },
-            ]),
-          };
+    if (
+      event.type !== 'permission_required'
+      && event.type !== 'permission_resolved'
+      && event.type !== 'ask_user_required'
+      && event.type !== 'ask_user_resolved'
+    ) return;
+    set(state => updateSession(state, sessionId, current => {
+      if (event.type === 'permission_required') {
+        const { type: _type, ...request } = event;
+        return {
+          ...current,
+          pendingInteractions: sortPending([
+            ...removePending(current.pendingInteractions, event.toolCallId),
+            {
+              kind: 'permission',
+              toolCallId: event.toolCallId,
+              createdAt: Date.now(),
+              request,
+            },
+          ]),
+        };
+      }
+      if (event.type === 'ask_user_required') {
+        return {
+          ...current,
+          pendingInteractions: sortPending([
+            ...removePending(current.pendingInteractions, event.toolCallId),
+            { kind: 'askUser', createdAt: Date.now(), request: event },
+          ]),
+        };
+      }
+      if (event.type === 'permission_resolved' || event.type === 'ask_user_resolved') {
+        if (!current.pendingInteractions.some(item => item.request.toolCallId === event.toolCallId)) {
+          return current;
         }
-        if (event.type === 'ask_user_required') {
-          return {
-            ...current,
-            pendingInteractions: sortPending([
-              ...removePending(current.pendingInteractions, event.toolCallId),
-              { kind: 'askUser', createdAt: Date.now(), request: event },
-            ]),
-          };
-        }
-        if (event.type === 'permission_resolved' || event.type === 'ask_user_resolved') {
-          return {
-            ...current,
-            pendingInteractions: removePending(
-              current.pendingInteractions,
-              event.toolCallId,
-            ),
-          };
-        }
-        return current;
-      }),
+        return {
+          ...current,
+          pendingInteractions: removePending(
+            current.pendingInteractions,
+            event.toolCallId,
+          ),
+        };
+      }
+      return current;
     }));
   },
 
   addQueuedInput(sessionId, item) {
-    set(state => ({
-      bySession: updateSession(state.bySession, sessionId, current => ({
-        ...current,
-        queuedInputs: [
-          ...current.queuedInputs.filter(candidate => candidate.id !== item.id),
-          item,
-        ].sort((left, right) => left.createdAt - right.createdAt),
-      })),
-    }));
+    set(state => updateSession(state, sessionId, current => ({
+      ...current,
+      queuedInputs: [
+        ...current.queuedInputs.filter(candidate => candidate.id !== item.id),
+        item,
+      ].sort((left, right) => left.createdAt - right.createdAt),
+    })));
   },
 
   removeQueuedInput(sessionId, id) {
-    set(state => ({
-      bySession: updateSession(state.bySession, sessionId, current => ({
-        ...current,
-        queuedInputs: current.queuedInputs.filter(item => item.id !== id),
-      })),
-    }));
+    set(state => updateSession(state, sessionId, current => (
+      current.queuedInputs.some(item => item.id === id)
+        ? { ...current, queuedInputs: current.queuedInputs.filter(item => item.id !== id) }
+        : current
+    )));
   },
 
   // 普通断开只更新 connection; Session 归档或删除才清掉整份活动视图.
   evictSession(sessionId) {
     set(state => {
+      if (!state.bySession.has(sessionId)) return state;
       const bySession = new Map(state.bySession);
       bySession.delete(sessionId);
       return { bySession };

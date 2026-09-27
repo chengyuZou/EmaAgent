@@ -35,6 +35,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   readonly terminal: boolean;
 }): JSX.Element | null {
   const streaming = isStreamingMessage(message);
+  // 两个 Hook 必须在两个阶段都保持相同顺序. 阶段切换只替换数据, 不替换 Message 外壳.
   const streamingSections = useStableStreamingSections(
     streaming ? message.blocks : EMPTY_STREAMING_BLOCKS,
   );
@@ -46,6 +47,7 @@ export const AssistantMessage = memo(function AssistantMessage({
 
   const sections = streaming ? streamingSections : historySections;
 
+  // Server 分配的同一 Message ID 让父列表复用此组件, 从而避免落盘交接时重新播放入场动画.
   return (
     <div className="ema-message-shell flex mr-12 ema-bubble-in">
       <div className="flex min-w-20 w-full max-w-full flex-col">
