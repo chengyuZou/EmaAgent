@@ -21,6 +21,10 @@ function asGlobResult(data: unknown): GlobResult | null {
   return data as unknown as GlobResult;
 }
 
+export function globResultCopyText(data: unknown): string | null {
+  return asGlobResult(data)?.files.join('\n') ?? null;
+}
+
 // ── 参数视图: pattern + 可选 path ──────────────────────────────────────────────
 
 export function GlobArgsView({ args }: { args: unknown }): JSX.Element | null {

@@ -19,6 +19,10 @@ function asPdfReadResult(data: unknown): PdfReadResult | null {
   return data as unknown as PdfReadResult;
 }
 
+export function pdfReadResultCopyText(data: unknown): string | null {
+  return asPdfReadResult(data)?.content ?? null;
+}
+
 export function PdfReadArgsView({ args }: { args: unknown }): JSX.Element | null {
   if (!isRecord(args) || typeof args['file_path'] !== 'string') return null;
   const startPage = typeof args['start_page'] === 'number' ? args['start_page'] : undefined;
@@ -56,7 +60,7 @@ export function PdfReadResultView({ data }: { data: unknown }): JSX.Element | nu
           <Badge variant="danger">读取不完整 {result.warnings.length} 处</Badge>
         )}
       </div>
-      <div className="max-h-40 overflow-auto rounded-md border border-[var(--ema-border)] px-2 py-1">
+      <div>
         <pre className="m-0 whitespace-pre-wrap break-all bg-transparent p-0 font-mono text-[var(--ema-text-secondary)]">
           {preview}
           {omitted > 0 && `\n··· 其余 ${omitted.toLocaleString()} 字符 ···`}

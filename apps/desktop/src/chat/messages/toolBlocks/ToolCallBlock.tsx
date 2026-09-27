@@ -1,13 +1,13 @@
 // 一次工具调用的统一行: 状态 参数 进度 结果与复制.
 // 专属 UI 经 tool_use.name 查表 以 TOutput(结果信封 data / 事件 output)渲染.
-import { useState, useEffect, useCallback, type JSX } from 'react';
+import { useState, useEffect, type JSX, type ReactNode } from 'react';
 import { IconButton } from '@ema-agent/ui';
 import { sessionWebSocket } from '../../../api/sessionWebSocket.js';
 import { renderToolResult } from './tool-renderers.js';
 import { lookupToolUI } from './toolUIRegistry.js';
 import { ToolArgsView, ToolResultViewBlock } from './ToolRenderBlocks.js';
 import {
-  defaultCopyText,
+  formatJson,
   fmtDuration,
   toolVariant,
   VARIANT_ICONS,
@@ -64,6 +64,7 @@ export function ToolCallBlock({ call, streaming = false, turnId, sessionId }: To
   const historyCompleted = call.source === 'history' && call.result !== undefined;
   const hasResult = renderedOutput !== undefined;
   const hasError = failure !== null || historyInterrupted;
+  const showResult = hasResult && !(failure !== null && output === undefined);
 
   let status: ToolDisplayStatus;
   if (failure?.code === 'permission/denied') {
@@ -90,7 +91,6 @@ export function ToolCallBlock({ call, streaming = false, turnId, sessionId }: To
 
   const toolUI = lookupToolUI(name);
   const [open, setOpen] = useState(() => toolUI?.defaultExpanded ?? false);
-  const [copied, setCopied] = useState(false);
 
   const statusMeta = STATUS_META[status];
   const running = toolRunning(call, streaming);
@@ -99,11 +99,6 @@ export function ToolCallBlock({ call, streaming = false, turnId, sessionId }: To
   // 行头摘要由 Tool 自己的 title 钩子读取参数. 未注册 Tool 只显示模型调用时使用的名称.
   const target = argsReady ? toolUI?.title?.(args) ?? null : null;
   const variant = toolVariant(name);
-  const errorFirstLine = failure
-    ? (failure.message.split('\n')[0] ?? '')
-    : historyInterrupted
-      ? '已中断'
-      : null;
 
   // CallView 接管完整展开区, 供终端这类需要组合状态的工具使用.
   // ArgsView/ResultView/ProgressView 只渲染一个区域; 类型守卫失败返回 null 后使用通用视图.
@@ -116,24 +111,24 @@ export function ToolCallBlock({ call, streaming = false, turnId, sessionId }: To
     : null;
   // 没有类型化 data 的旧结果不能交给专属组合卡猜结构，回落通用 content 渲染。
   const CallView = fallbackContent === undefined ? toolUI?.CallView : undefined;
-  const resultView = hasResult && renderedOutput !== null ? renderToolResult(renderedOutput) : null;
+  const resultView = showResult && renderedOutput !== null ? renderToolResult(renderedOutput) : null;
 
   const openTab = useSessionPanelStore((state) => state.openTab);
 
-  const bodyForCopy = toolUI?.copyText?.(args, output) ?? defaultCopyText(args, renderedOutput, argsReady);
-
-  const copy = useCallback(() => {
-    void navigator.clipboard.writeText(bodyForCopy).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    });
-  }, [bodyForCopy]);
+  const inputCopyText = argsReady ? formatJson(args) : partialArgs ?? '';
+  const resultCopyText = showResult
+    ? toolUI?.resultCopyText?.(output, args) ?? formatJson(renderedOutput)
+    : '';
+  const failureCopyText = failure
+    ? `[${failure.code}] ${failure.message}`
+    : historyInterrupted ? '未收到工具结果' : '';
+  const outputCopyText = [resultCopyText, failureCopyText].filter(Boolean).join('\n\n');
 
   return (
-    <div className="flex flex-col gap-0.5 py-0.5">
-      {/* ── 统一工具行：leading(variant 图标/终态点) + 名 + 摘要 + 右侧状态 ── */}
-      <div className="flex items-center gap-1">
+    <div className={`ema-tool-card ${hasError ? 'ema-tool-card--error' : ''}`}>
+      <div className="ema-tool-card-header">
         <button
+          type="button"
           className={`ema-tool-row group min-w-0 flex-1 ${status === 'running' ? 'ema-shimmer' : ''}`}
           onClick={() => setOpen((v) => !v)}
           aria-expanded={open}
@@ -157,14 +152,11 @@ export function ToolCallBlock({ call, streaming = false, turnId, sessionId }: To
             {name}
           </span>
 
-          {errorFirstLine !== null ? (
-            <span className="ema-tool-row-summary text-[var(--ema-danger)]">{errorFirstLine}</span>
-          ) : target ? (
+          {target ? (
             <span className="ema-tool-row-summary">{target}</span>
           ) : null}
 
-          {/* 状态徽章 + 耗时（右侧）: 点+label 染状态色, 耗时是元数据归三级灰。 */}
-          <span className="ml-auto flex items-center gap-1.5 text-[10px] shrink-0" style={{ color: statusMeta.color }}>
+          <span className="ema-tool-row-status" style={{ color: statusMeta.color }}>
             <span
               className={`w-1.5 h-1.5 rounded-full ${statusMeta.pulse ? 'animate-pulse' : ''}`}
               style={{ background: statusMeta.color }}
@@ -177,88 +169,110 @@ export function ToolCallBlock({ call, streaming = false, turnId, sessionId }: To
           </span>
         </button>
         {running && turnId && sessionId && (
-          <span className="ema-chip-in shrink-0">
-            <IconButton
-              label="中止该工具"
-              icon="i-lucide:circle-stop"
-              variant="danger"
-              size="sm"
-              onClick={() => {
-                void sessionWebSocket.cancelTool(sessionId, turnId, toolCallId(call));
-              }}
-            />
-          </span>
+          <IconButton
+            label="中止该工具"
+            icon="i-lucide:circle-stop"
+            variant="danger"
+            size="sm"
+            shape="rounded"
+            className="ema-tool-card-icon"
+            onClick={() => {
+              void sessionWebSocket.cancelTool(sessionId, turnId, toolCallId(call));
+            }}
+          />
         )}
       </div>
 
-      {/* ── Expanded body — grid-rows trick for smooth height animation ── */}
       <div
         className="ema-collapsible ema-chat-collapsible"
         style={{ gridTemplateRows: open ? '1fr' : '0fr', opacity: open ? 1 : 0 }}
       >
-        <div className="relative ml-3 pl-3" style={{ borderLeftColor: 'var(--ema-border)', borderLeftWidth: 1 }}>
+        <div className="ema-tool-card-body">
           {CallView ? (
-            <CallView
-              args={args}
-              {...(partialArgs !== undefined ? { partialArgs } : {})}
-              {...(hasResult ? { data: output } : {})}
-              {...(progress !== undefined ? { progress } : {})}
-              status={status}
-              running={running}
-              openBackgroundProcesses={() => {
-                if (sessionId) {
-                  openTab(sessionId, { id: 'processes', kind: 'processes' });
-                }
-              }}
-            />
-          ) : (
             <>
-              {/* Copy button（CallView 接管的卡片自带复制，不重复） */}
-              <button
-                className="absolute top-0 right-0 px-1.5 py-0.5 rounded text-[10px] transition-colors text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-2)]"
-                onClick={(e) => { e.stopPropagation(); copy(); }}
-              >
-                {copied ? <span className="i-lucide:check text-xs" aria-hidden /> : <span className="i-lucide:copy text-xs" aria-hidden />}
-              </button>
-
-              {/* 参数区：专属 UI 优先，否则通用平铺 */}
-              {argsReady ? (
-                customArgs ?? <ToolArgsView args={args} />
-              ) : partialArgs ? (
-                <pre className="font-mono text-[11px] text-[var(--ema-text-tertiary)] whitespace-pre-wrap break-all leading-relaxed bg-transparent m-0 p-0 pr-6">
-                  {partialArgs}
-                </pre>
-              ) : null}
-
-              {/* 进度区：只渲染 Tool 注册的 ProgressView，没有就不建立假进度 */}
-              {progressView}
-
-              {/* 透明横线（分隔参数与结果，仅当两者都有时） */}
-              {(argsReady || partialArgs) && (customResult !== null || resultView !== null) && (
-                <div className="my-2 mx-4 border-t border-[var(--ema-border)]" />
-              )}
-
-              {/* 结果区：专属 UI 优先，守卫失败（null）或通用渲染 */}
-              {customResult ?? (
-                resultView !== null && (
-                  <div className="max-h-48 overflow-auto pr-6">
-                    <ToolResultViewBlock view={resultView} />
-                  </div>
-                )
-              )}
-
-              {/* 错误区（denied/failed 状态） */}
-              {failure !== null && (
-                <div className="border-l-2 pl-2 mt-1 border-[var(--ema-danger)]">
-                  <pre className="font-mono text-[11px] whitespace-pre-wrap break-all bg-transparent m-0 p-0 text-[var(--ema-danger-text)]">
-                    {status === 'denied' ? '已拒绝' : `[${failure.code}]`} {failure.message}
-                  </pre>
-                </div>
-              )}
+              <CallView
+                args={args}
+                {...(showResult ? { data: output } : {})}
+                {...(partialArgs !== undefined ? { partialArgs } : {})}
+                {...(progress !== undefined ? { progress } : {})}
+                {...(failure !== null ? { failure } : {})}
+                interrupted={historyInterrupted}
+                status={status}
+                running={running}
+                openBackgroundProcesses={() => {
+                  if (sessionId) {
+                    openTab(sessionId, { id: 'processes', kind: 'processes' });
+                  }
+                }}
+              />
             </>
+          ) : (
+            <div className="ema-tool-frame">
+              {(argsReady || partialArgs) && (
+                <ToolPane label="复制输入" tone="input" copyText={inputCopyText}>
+                  {argsReady
+                    ? customArgs ?? <ToolArgsView args={args} />
+                    : <pre className="ema-tool-raw-input">{partialArgs}</pre>}
+                </ToolPane>
+              )}
+              {(progressView || customResult !== null || resultView !== null || hasError) && (
+                <ToolPane label="复制输出" tone="output" copyText={outputCopyText} errorOnly={hasError && !showResult}>
+                  {progressView}
+                  {customResult ?? (resultView !== null && <div className="ema-tool-generic-result"><ToolResultViewBlock view={resultView} /></div>)}
+                  {failure !== null && <ToolFailure code={failure.code} message={failure.message} />}
+                  {historyInterrupted && <ToolFailure code="tool/interrupted" message="未收到工具结果" />}
+                </ToolPane>
+              )}
+            </div>
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+export function ToolPane({ label, tone, copyText, errorOnly = false, children }: {
+  label: string;
+  tone: 'input' | 'output';
+  copyText: string;
+  errorOnly?: boolean;
+  children: ReactNode;
+}): JSX.Element {
+  return (
+    <section className={`ema-tool-pane ema-tool-pane--${tone} ${errorOnly ? 'ema-tool-pane--error' : ''}`} aria-label={tone === 'input' ? '输入参数' : '执行结果'}>
+      <div className="ema-tool-pane-content">{children}</div>
+      <ToolCopyButton label={label} text={copyText} />
+    </section>
+  );
+}
+
+function ToolCopyButton({ label, text }: { label: string; text: string }): JSX.Element {
+  const [copied, setCopied] = useState(false);
+  return (
+    <IconButton
+      label={copied ? '已复制' : label}
+      icon={copied ? 'i-lucide:check' : 'i-lucide:copy'}
+      variant="ghost"
+      size="sm"
+      shape="rounded"
+      className="ema-tool-card-icon"
+      disabled={!text}
+      onClick={(event) => {
+        event.stopPropagation();
+        void navigator.clipboard.writeText(text).then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        });
+      }}
+    />
+  );
+}
+
+export function ToolFailure({ code, message }: { code: string; message: string }): JSX.Element {
+  return (
+    <div className="ema-tool-error" role="alert">
+      <div className="ema-tool-error-code">{code}</div>
+      <pre className="ema-tool-error-message">{message}</pre>
     </div>
   );
 }

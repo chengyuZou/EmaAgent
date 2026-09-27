@@ -24,6 +24,10 @@ function asWebFetchResult(data: unknown): WebFetchResult | null {
   return data as unknown as WebFetchResult;
 }
 
+export function webFetchResultCopyText(data: unknown): string | null {
+  return asWebFetchResult(data)?.content ?? null;
+}
+
 function formatBytes(bytes: number): string {
   if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   return `${Math.max(1, Math.round(bytes / 1024))} KB`;
@@ -82,7 +86,7 @@ function WebFetchResultCard({ result }: { result: WebFetchResult }): JSX.Element
           className="h-48 w-full rounded-md border border-[var(--ema-border)] bg-white"
         />
       ) : (
-        <div className="max-h-40 overflow-auto rounded-md border border-[var(--ema-border)] px-2 py-1">
+        <div>
           <pre className="m-0 whitespace-pre-wrap break-all bg-transparent p-0 font-mono text-[var(--ema-text-secondary)]">
             {preview}
             {omitted > 0 && `\n··· 其余 ${omitted.toLocaleString()} 字符 ···`}

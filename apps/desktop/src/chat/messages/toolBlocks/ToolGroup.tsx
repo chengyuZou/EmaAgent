@@ -48,8 +48,7 @@ export const ToolGroup = memo(function ToolGroup({
         className="ema-collapsible ema-chat-collapsible"
         style={{ gridTemplateRows: open ? '1fr' : '0fr', opacity: open ? 1 : 0 }}
       >
-        {/* 子行进 12+12 竖轨, 与 ToolCallBlock 展开体/思考块同一分组语汇。 */}
-        <div className="ml-3 flex flex-col gap-0.5 border-l border-[var(--ema-border)] pt-0.5 pl-3">
+        <div className="flex flex-col">
           {open && calls.map(call => (
             <ToolCallBlock
               key={toolCallId(call)}

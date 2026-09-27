@@ -40,8 +40,7 @@ function NarrativeResultBlock({ result }: { result: NarrativeSearchResult }): JS
   const [outerOpen, setOuterOpen] = useState(false);
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-[var(--ema-info)] bg-[var(--ema-info-muted)] px-2.5 py-1.5 text-xs text-[var(--ema-text-tertiary)]"
-         style={{ borderWidth: 1 }}>
+    <div className="flex flex-col gap-2 text-xs text-[var(--ema-text-tertiary)]">
       <Button
         variant="ghost"
         type="button"
@@ -134,13 +133,13 @@ function TimelineRow({
         style={{ gridTemplateRows: innerOpen || !isMulti ? '1fr' : '0fr', opacity: innerOpen || !isMulti ? 1 : 0 }}
       >
         {error ? (
-          <p className="pl-5 text-xs text-[var(--ema-warning)]">检索失败：{error}</p>
+          <p className="pl-3 text-xs text-[var(--ema-warning)]">检索失败：{error}</p>
         ) : completed && text ? (
-          <div className="flex flex-col gap-1 pl-5">
+          <div className="flex flex-col gap-1 pl-3">
             <div
-              className={`ema-transition-text-expand ${fullText ? 'overflow-y-auto' : 'overflow-hidden'}`}
+              className={`ema-transition-text-expand ${fullText ? 'overflow-visible' : 'overflow-hidden'}`}
               style={{
-                maxHeight: fullText ? '32rem' : '8rem',
+                maxHeight: fullText ? 'none' : '8rem',
                 opacity:   fullText ? 1 : 0.92,
               }}
             >
@@ -170,7 +169,7 @@ function TimelineRow({
             )}
           </div>
         ) : completed ? (
-          <p className="pl-5 text-xs italic text-[var(--ema-text-tertiary)]">
+          <p className="pl-3 text-xs italic text-[var(--ema-text-tertiary)]">
             （该剧情线未返回相关内容）
           </p>
         ) : null}
@@ -198,6 +197,14 @@ function asNarrativeSearchResult(data: unknown): NarrativeSearchResult | null {
   }
   if (typeof data['status'] !== 'string') return null;
   return data as unknown as NarrativeSearchResult;
+}
+
+export function narrativeSearchResultCopyText(data: unknown): string | null {
+  const result = asNarrativeSearchResult(data);
+  if (!result) return null;
+  const timelines = result.timelines.map((timeline) => `${timeline.name}\n${timeline.text}`);
+  const failures = result.failures.map((failure) => `${failure.timeline}\n${failure.message}`);
+  return [...timelines, ...failures].join('\n\n') || narrativeResultLabel(result, 0);
 }
 
 export function NarrativeSearchArgsView({ args }: { args: unknown }): JSX.Element | null {

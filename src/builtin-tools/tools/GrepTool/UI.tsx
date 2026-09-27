@@ -37,6 +37,16 @@ function asGrepResult(data: unknown): GrepResult | null {
   }
 }
 
+export function grepResultCopyText(data: unknown): string | null {
+  const result = asGrepResult(data);
+  if (!result) return null;
+  switch (result.type) {
+    case 'content': return result.output;
+    case 'files_with_matches': return result.files.join('\n');
+    case 'count': return result.entries.join('\n');
+  }
+}
+
 // ── 参数视图: pattern + 可选 path/模式 ─────────────────────────────────────────
 
 export function GrepArgsView({ args }: { args: unknown }): JSX.Element | null {
@@ -128,7 +138,7 @@ export function GrepResultView({ data, args }: { data: unknown; args?: unknown }
             </span>
             {result.truncated && <Badge variant="warn">已截断</Badge>}
           </div>
-          <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] leading-relaxed text-[var(--ema-text-secondary)]">
+          <pre className="whitespace-pre-wrap break-all font-mono text-[11px] leading-relaxed text-[var(--ema-text-secondary)]">
             {result.output.split('\n').map((line, index) => (
               <span key={index}>
                 {index > 0 && '\n'}

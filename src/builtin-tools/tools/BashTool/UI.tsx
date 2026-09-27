@@ -19,6 +19,8 @@ export interface BashCallViewProps {
   readonly data?: unknown;
   /** 原始 BashProgress 事件序列（至多保留尾部若干条，由前端外壳截断）。 */
   readonly progress?: readonly unknown[];
+  readonly failure?: { readonly code: string; readonly message: string };
+  readonly interrupted?: boolean;
   readonly status: BashCallStatus;
   readonly running: boolean;
   /** 打开后台进程面板；导航动作由前端外壳提供。 */
@@ -124,21 +126,30 @@ export function BashCallView(props: BashCallViewProps): JSX.Element {
       ? bashProgressTail(props.progress)
       : null;
   const pill = PILL[props.status];
+  const errorText = props.failure
+    ? `[${props.failure.code}] ${props.failure.message}`
+    : props.interrupted ? '[tool/interrupted] 未收到工具结果' : '';
+  const outputCopyText = [output, errorText].filter(Boolean).join('\n\n');
 
   return (
     <div className="ema-terminal-card">
       <div className="ema-terminal-banner">
         <span className="ema-terminal-gutter-dot" style={{ background: pill.color }} aria-hidden />
         <code className="ema-terminal-cmd" title={command}>$ {command}</code>
-        <span className="ema-terminal-pill" style={{ color: pill.color }}>{pill.label}</span>
-        <TerminalCopyButton text={[`$ ${command}`, ...(output ? ['', output] : [])].join('\n')} />
+        <TerminalCopyButton label="复制命令" text={command} />
       </div>
-      {(output !== null || props.running) && (
-        <div className="ema-terminal-output">
-          <pre>
-            {output}
-            {props.running && <span className="text-[var(--ema-text-tertiary)] animate-pulse"> ▌</span>}
-          </pre>
+      {(output !== null || props.running || errorText) && (
+        <div className={`ema-terminal-result ${errorText && output === null ? 'ema-terminal-result--error' : ''}`}>
+          <TerminalCopyButton label="复制输出" text={outputCopyText} />
+          <div className="ema-terminal-output">
+            {(output !== null || props.running) && (
+              <pre>
+                {output}
+                {props.running && <span className="text-[var(--ema-text-tertiary)] animate-pulse"> ▌</span>}
+              </pre>
+            )}
+            {errorText && <pre className="ema-terminal-error">{errorText}</pre>}
+          </div>
         </div>
       )}
     </div>
@@ -153,35 +164,41 @@ function BashBackgroundCard({
   status: 'queued' | 'running';
   openBackgroundProcesses(): void;
 }): JSX.Element {
+  const statusText = `已转到后台${status === 'queued' ? '排队' : '运行'}`;
   return (
-    <div className="flex items-center gap-2 rounded-md border px-2.5 py-1.5 pr-6 text-[11px] bg-[var(--ema-surface-1)] border-[var(--ema-border)]">
-      <span className="i-lucide:square-terminal shrink-0 text-sm text-[var(--ema-primary)]" aria-hidden />
-      <span className="min-w-0 flex-1 truncate font-mono text-[var(--ema-text-secondary)]" title={command}>
-        {command}
-      </span>
-      <span className="shrink-0 text-[var(--ema-text-tertiary)]">
-        已转到后台{status === 'queued' ? '排队' : '运行'}
-      </span>
-      <button
-        className="shrink-0 text-[var(--ema-primary)] hover:text-[var(--ema-primary-hover)] transition-colors"
-        onClick={(event) => {
-          event.stopPropagation();
-          openBackgroundProcesses();
-        }}
-      >
-        查看后台进程
-      </button>
+    <div className="ema-terminal-card">
+      <div className="ema-terminal-banner">
+        <span className="i-lucide:square-terminal shrink-0 text-sm text-[var(--ema-primary)]" aria-hidden />
+        <code className="ema-terminal-cmd" title={command}>$ {command}</code>
+        <TerminalCopyButton label="复制命令" text={command} />
+      </div>
+      <div className="ema-terminal-result">
+        <TerminalCopyButton label="复制输出" text={statusText} />
+        <div className="ema-terminal-output ema-terminal-background-output">
+          <span className="text-[11px] text-[var(--ema-text-tertiary)]">{statusText}</span>
+          <button
+            className="ml-2 text-[11px] text-[var(--ema-primary)] hover:text-[var(--ema-primary-hover)] transition-colors"
+            onClick={(event) => {
+              event.stopPropagation();
+              openBackgroundProcesses();
+            }}
+          >
+            查看后台进程
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
 
-function TerminalCopyButton({ text }: { text: string }): JSX.Element {
+function TerminalCopyButton({ label, text }: { label: string; text: string }): JSX.Element {
   const [copied, setCopied] = useState(false);
   return (
     <button
       type="button"
       className="ema-terminal-copy"
-      aria-label="复制命令与输出"
+      aria-label={copied ? '已复制' : label}
+      disabled={!text}
       onClick={(event) => {
         event.stopPropagation();
         void navigator.clipboard.writeText(text).then(() => {

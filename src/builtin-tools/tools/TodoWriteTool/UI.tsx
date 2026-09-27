@@ -12,7 +12,7 @@ export function TodoWriteArgsView({ args }: { args: unknown }): JSX.Element | nu
 
   const completed = input.todos.filter((todo) => todo.status === 'completed').length;
   return (
-    <div className="flex flex-col gap-2 pr-6">
+    <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2 text-[11px] text-[var(--ema-text-tertiary)]">
         <span className="i-lucide:list-checks text-sm text-[var(--ema-primary)]" aria-hidden />
         <span>执行清单 {completed}/{input.todos.length}</span>

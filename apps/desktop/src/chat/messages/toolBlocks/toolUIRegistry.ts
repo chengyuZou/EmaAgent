@@ -4,6 +4,7 @@
 import type { JSX } from 'react';
 import {
   AskUserResultView,
+  askUserResultCopyText,
   BashCallView,
   FileEditArgsView,
   FileEditResultView,
@@ -11,33 +12,41 @@ import {
   FileReadResultView,
   FileWriteArgsView,
   FileWriteResultView,
+  fileWriteResultCopyText,
   GlobArgsView,
   GlobResultView,
+  globResultCopyText,
   GrepArgsView,
   GrepResultView,
   PowerShellCallView,
   SkillArgsView,
   SkillResultView,
+  skillResultCopyText,
   SubagentResultView,
+  subagentResultCopyText,
   NarrativeSearchArgsView,
   NarrativeSearchResultView,
+  narrativeSearchResultCopyText,
   PdfReadArgsView,
   PdfReadResultView,
+  pdfReadResultCopyText,
   TodoWriteArgsView,
   WebFetchArgsView,
   WebFetchResultView,
+  webFetchResultCopyText,
   WebSearchArgsView,
   WebSearchProgressView,
   WebSearchResultView,
-  bashCopyText,
+  webSearchResultCopyText,
   bashTitle,
   fileEditCopyText,
   fileEditTitle,
   fileReadTitle,
+  fileReadResultCopyText,
   fileWriteTitle,
   globTitle,
   grepTitle,
-  powerShellCopyText,
+  grepResultCopyText,
   powerShellTitle,
   webFetchTitle,
   webSearchTitle,
@@ -51,6 +60,8 @@ export interface ToolCallViewProps {
   readonly partialArgs?: string;
   readonly data?: unknown;
   readonly progress?: readonly unknown[];
+  readonly failure?: { readonly code: string; readonly message: string };
+  readonly interrupted?: boolean;
   readonly status: ToolDisplayStatus;
   readonly running: boolean;
   /** 打开后台进程面板；导航动作由外壳提供，Tool UI 不感知 Dock 实现。 */
@@ -70,58 +81,61 @@ export interface ToolUI {
   readonly ProgressView?: (props: { progress: readonly unknown[] }) => JSX.Element | null;
   /** 接管整个展开区, 供终端卡等需要一起处理参数, 进度和结果的 UI 使用. */
   readonly CallView?: (props: ToolCallViewProps) => JSX.Element | null;
-  /** Tool 自己决定复制内容. 缺省时复制参数和结果的 JSON. */
-  readonly copyText?: (args: unknown, data: unknown) => string | null;
+  /** Copy only the result shown in the output pane. */
+  readonly resultCopyText?: (data: unknown, args: unknown) => string | null;
 }
 
 const TOOL_UI_REGISTRY: Readonly<Record<string, ToolUI>> = {
   [BuiltinTools.Bash.name]: {
     title: bashTitle,
-    copyText: bashCopyText,
     CallView: BashCallView,
   },
   [BuiltinTools.PowerShell.name]: {
     title: powerShellTitle,
-    copyText: powerShellCopyText,
     CallView: PowerShellCallView,
   },
   [BuiltinTools.FileRead.name]: {
     title: fileReadTitle,
+    resultCopyText: fileReadResultCopyText,
     ArgsView: FileReadArgsView,
     ResultView: FileReadResultView,
   },
   [BuiltinTools.FileEdit.name]: {
     title: fileEditTitle,
-    copyText: fileEditCopyText,
+    resultCopyText: (data, args) => fileEditCopyText(args, data),
     ArgsView: FileEditArgsView,
     ResultView: FileEditResultView,
   },
   [BuiltinTools.FileWrite.name]: {
     title: fileWriteTitle,
+    resultCopyText: fileWriteResultCopyText,
     ArgsView: FileWriteArgsView,
     ResultView: FileWriteResultView,
   },
-  [BuiltinTools.Glob.name]: { title: globTitle, ArgsView: GlobArgsView, ResultView: GlobResultView },
-  [BuiltinTools.Grep.name]: { title: grepTitle, ArgsView: GrepArgsView, ResultView: GrepResultView },
+  [BuiltinTools.Glob.name]: { title: globTitle, resultCopyText: globResultCopyText, ArgsView: GlobArgsView, ResultView: GlobResultView },
+  [BuiltinTools.Grep.name]: { title: grepTitle, resultCopyText: grepResultCopyText, ArgsView: GrepArgsView, ResultView: GrepResultView },
   [BuiltinTools.WebFetch.name]: {
     title: webFetchTitle,
+    resultCopyText: webFetchResultCopyText,
     ArgsView: WebFetchArgsView,
     ResultView: WebFetchResultView,
   },
   [BuiltinTools.WebSearch.name]: {
     title: webSearchTitle,
+    resultCopyText: webSearchResultCopyText,
     ArgsView: WebSearchArgsView,
     ResultView: WebSearchResultView,
     ProgressView: WebSearchProgressView,
   },
-  [BuiltinTools.AskUser.name]: { ResultView: AskUserResultView },
-  [BuiltinTools.Skill.name]: { ArgsView: SkillArgsView, ResultView: SkillResultView },
-  [BuiltinTools.Subagent.name]: { ResultView: SubagentResultView },
+  [BuiltinTools.AskUser.name]: { resultCopyText: askUserResultCopyText, ResultView: AskUserResultView },
+  [BuiltinTools.Skill.name]: { resultCopyText: skillResultCopyText, ArgsView: SkillArgsView, ResultView: SkillResultView },
+  [BuiltinTools.Subagent.name]: { resultCopyText: subagentResultCopyText, ResultView: SubagentResultView },
   [BuiltinTools.NarrativeSearch.name]: {
+    resultCopyText: narrativeSearchResultCopyText,
     ArgsView: NarrativeSearchArgsView,
     ResultView: NarrativeSearchResultView,
   },
-  [BuiltinTools.PdfRead.name]: { ArgsView: PdfReadArgsView, ResultView: PdfReadResultView },
+  [BuiltinTools.PdfRead.name]: { resultCopyText: pdfReadResultCopyText, ArgsView: PdfReadArgsView, ResultView: PdfReadResultView },
   [BuiltinTools.TodoWrite.name]: { ArgsView: TodoWriteArgsView, defaultExpanded: true },
 };
 

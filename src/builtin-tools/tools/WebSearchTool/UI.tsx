@@ -23,6 +23,12 @@ function asWebSearchResult(data: unknown): WebSearchResult | null {
   return data as unknown as WebSearchResult;
 }
 
+export function webSearchResultCopyText(data: unknown): string | null {
+  const result = asWebSearchResult(data);
+  if (!result) return null;
+  return result.results.map((entry) => [entry.title, entry.url, entry.snippet].filter(Boolean).join('\n')).join('\n\n');
+}
+
 function asSearchProgress(progress: unknown): SearchProgress | null {
   if (!isRecord(progress)) return null;
   if (progress['type'] === 'query_update' && typeof progress['query'] === 'string') {
@@ -101,7 +107,7 @@ export function WebSearchResultView({ data }: { data: unknown }): JSX.Element | 
           “{result.query}”
         </span>
       </div>
-      <ul className="flex max-h-40 flex-col gap-1 overflow-auto pr-1">
+      <ul className="flex flex-col gap-1">
         {result.results.map((entry) => (
           <li key={entry.url} className="flex min-w-0 items-baseline gap-2">
             <a

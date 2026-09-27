@@ -14,6 +14,10 @@ export function asSkillToolResult(data: unknown): SkillToolResult | null {
   return data as unknown as SkillToolResult;
 }
 
+export function skillResultCopyText(data: unknown): string | null {
+  return asSkillToolResult(data)?.instructions ?? null;
+}
+
 export function SkillArgsView({ args }: { args: unknown }): JSX.Element | null {
   if (!isRecord(args) || typeof args['name'] !== 'string' || typeof args['path'] !== 'string') return null;
   return (
@@ -28,11 +32,11 @@ export function SkillResultView({ data }: { data: unknown }): JSX.Element | null
   if (!result) return null;
 
   return (
-    <div className="flex flex-col gap-1 pr-6">
+    <div className="flex flex-col gap-1">
       <span className="text-[11px] text-[var(--ema-text-tertiary)]">
         已加载技能 {result.name}{result.version ? ` · v${result.version}` : ''}
       </span>
-      <div className="max-h-40 overflow-auto rounded-md border border-[var(--ema-border)] px-2 py-1 text-[11px]">
+      <div className="text-[11px]">
         <Markdown source={result.instructions} />
       </div>
     </div>

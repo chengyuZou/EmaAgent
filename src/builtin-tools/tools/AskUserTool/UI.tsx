@@ -10,6 +10,13 @@ function asAskUserResult(data: unknown): AskUserResult | null {
   return data as unknown as AskUserResult;
 }
 
+export function askUserResultCopyText(data: unknown): string | null {
+  const result = asAskUserResult(data);
+  return result
+    ? Object.entries(result.answers).map(([question, answer]) => `${question}: ${answer}`).join('\n')
+    : null;
+}
+
 export function AskUserResultView({ data }: { data: unknown }): JSX.Element | null {
   const result = asAskUserResult(data);
   if (!result) return null;
@@ -18,7 +25,7 @@ export function AskUserResultView({ data }: { data: unknown }): JSX.Element | nu
     return <span className="text-[11px] text-[var(--ema-text-tertiary)]">用户未作答</span>;
   }
   return (
-    <div className="flex flex-col gap-1 pr-6">
+    <div className="flex flex-col gap-1">
       {entries.map(([question, answer]) => (
         <div key={question} className="text-[11px] leading-relaxed">
           <div className="text-[var(--ema-text-tertiary)]">{question}</div>

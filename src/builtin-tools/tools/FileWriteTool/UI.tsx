@@ -2,7 +2,7 @@
 import type { JSX } from 'react';
 import type { FileWriteResult } from './FileWriteTool.js';
 import { StructuredPatchCard } from '../FileEditTool/UI.js';
-import type { PatchHunk } from '../FileEditTool/patch.js';
+import { patchToUnifiedText, type PatchHunk } from '../FileEditTool/patch.js';
 
 /** 新建文件预览的最大行数; 超出截断并标注。 */
 const CREATED_PREVIEW_LINES = 10;
@@ -34,6 +34,14 @@ export function asFileWriteResult(data: unknown): FileWriteResult | null {
   return null;
 }
 
+export function fileWriteResultCopyText(data: unknown): string | null {
+  const result = asFileWriteResult(data);
+  if (!result) return null;
+  return result.type === 'updated'
+    ? patchToUnifiedText(result.structuredPatch)
+    : result.content;
+}
+
 // ── 参数视图: 路径 + 写入体积 ─────────────────────────────────────────────────
 
 export function FileWriteArgsView({ args }: { args: unknown }): JSX.Element | null {
@@ -62,7 +70,7 @@ export function FileWriteResultView({ data }: { data: unknown }): JSX.Element | 
   if (result.type === 'updated') {
     const patch: readonly PatchHunk[] = result.structuredPatch;
     return (
-      <div className="flex flex-col gap-1 pr-6">
+      <div className="flex flex-col gap-1">
         <div className="flex items-center gap-2 text-[11px] leading-relaxed">
           <span className="text-[var(--ema-text-secondary)]">已覆盖写入</span>
           <span className="text-[var(--ema-success-text)]">+{result.additions}</span>
@@ -79,11 +87,11 @@ export function FileWriteResultView({ data }: { data: unknown }): JSX.Element | 
   const preview = lines.slice(0, CREATED_PREVIEW_LINES);
   const omitted = lines.length - preview.length;
   return (
-    <div className="flex flex-col gap-1 pr-6">
+    <div className="flex flex-col gap-1">
       <span className="text-[11px] text-[var(--ema-text-secondary)]">
         新建文件 · {result.additions.toLocaleString()} 行 · {(result.bytesWritten / 1024).toFixed(1)} KB
       </span>
-      <div className="max-h-48 overflow-auto rounded-md border border-[var(--ema-border)] px-2 py-1 font-mono text-[11px] leading-relaxed">
+      <div className="font-mono text-[11px] leading-relaxed">
         {preview.map((line, index) => (
           <div key={index} className="flex text-[var(--ema-text-tertiary)]">
             <span className="w-9 shrink-0 select-none text-right opacity-60">{index + 1}</span>

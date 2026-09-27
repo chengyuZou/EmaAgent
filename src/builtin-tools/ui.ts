@@ -15,7 +15,7 @@ export {
   powerShellCopyText,
   powerShellTitle,
 } from './tools/PowerShellTool/UI.js';
-export { FileReadArgsView, FileReadResultView, fileReadTitle } from './tools/FileReadTool/UI.js';
+export { FileReadArgsView, FileReadResultView, fileReadTitle, fileReadResultCopyText } from './tools/FileReadTool/UI.js';
 export {
   asFileEditResult,
   FileEditArgsView,
@@ -29,23 +29,26 @@ export {
   FileWriteArgsView,
   FileWriteResultView,
   fileWriteTitle,
+  fileWriteResultCopyText,
 } from './tools/FileWriteTool/UI.js';
-export { GlobArgsView, GlobResultView, globTitle } from './tools/GlobTool/UI.js';
-export { GrepArgsView, GrepResultView, grepTitle } from './tools/GrepTool/UI.js';
-export { AskUserResultView } from './tools/AskUserTool/UI.js';
-export { SkillArgsView, SkillResultView, asSkillToolResult } from './tools/SkillTool/UI.js';
-export { SubagentResultView } from './tools/SubagentTool/UI.js';
+export { GlobArgsView, GlobResultView, globTitle, globResultCopyText } from './tools/GlobTool/UI.js';
+export { GrepArgsView, GrepResultView, grepTitle, grepResultCopyText } from './tools/GrepTool/UI.js';
+export { AskUserResultView, askUserResultCopyText } from './tools/AskUserTool/UI.js';
+export { SkillArgsView, SkillResultView, asSkillToolResult, skillResultCopyText } from './tools/SkillTool/UI.js';
+export { SubagentResultView, subagentResultCopyText } from './tools/SubagentTool/UI.js';
 export {
   WebSearchArgsView,
   WebSearchProgressView,
   WebSearchResultView,
   webSearchTitle,
+  webSearchResultCopyText,
 } from './tools/WebSearchTool/UI.js';
-export { WebFetchArgsView, WebFetchResultView, webFetchTitle } from './tools/WebFetchTool/UI.js';
+export { WebFetchArgsView, WebFetchResultView, webFetchTitle, webFetchResultCopyText } from './tools/WebFetchTool/UI.js';
 export {
   NarrativeSearchArgsView,
   NarrativeSearchResultView,
+  narrativeSearchResultCopyText,
 } from './tools/NarrativeSearchTool/UI.js';
-export { PdfReadArgsView, PdfReadResultView } from './tools/PdfReadTool/UI.js';
+export { PdfReadArgsView, PdfReadResultView, pdfReadResultCopyText } from './tools/PdfReadTool/UI.js';
 export { TodoWriteActivitySummary, TodoWriteArgsView } from './tools/TodoWriteTool/UI.js';
 export { additionsToUnifiedText, patchToUnifiedText } from './tools/FileEditTool/patch.js';

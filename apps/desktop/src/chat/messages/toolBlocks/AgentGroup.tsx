@@ -6,9 +6,17 @@ import { useShallow } from 'zustand/react/shallow';
 import { sessionWebSocket } from '../../../api/sessionWebSocket.js';
 import { useSubagentStore } from '../../../stores/subagent.js';
 import { useSessionPanelStore } from '../../../stores/sessionPanel.js';
+import { renderToolResult } from './tool-renderers.js';
+import { formatJson } from './toolBlockHelpers.js';
+import { ToolFailure, ToolPane } from './ToolCallBlock.js';
+import { ToolArgsView, ToolResultViewBlock } from './ToolRenderBlocks.js';
+import { lookupToolUI } from './toolUIRegistry.js';
 import {
+  toolArgs,
   toolCallId,
+  toolFallbackContent,
   toolFailure,
+  toolName,
   toolOutput,
   toolRunning,
   type ToolDisplayCall,
@@ -118,9 +126,19 @@ function AgentRow({
   readonly turnId?: string;
   readonly sessionId: string;
 }): JSX.Element {
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const openTab = useSessionPanelStore(state => state.openTab);
   const toolCallIdValue = toolCallId(call);
   const subagentId = state.subagentId;
+  const args = toolArgs(call);
+  const output = toolOutput(call);
+  const renderedOutput = output ?? toolFallbackContent(call);
+  const toolUI = lookupToolUI(toolName(call));
+  const customResult = output != null ? toolUI?.ResultView?.({ data: output, args }) : null;
+  const genericResult = renderedOutput != null ? renderToolResult(renderedOutput) : null;
+  const resultCopyText = renderedOutput != null
+    ? toolUI?.resultCopyText?.(output, args) ?? formatJson(renderedOutput)
+    : '';
   const toolStillRunning = toolRunning(call, streaming);
   const cancelTarget = agentCancelTarget(call, streaming, state.running);
   const failure = toolFailure(call);
@@ -132,37 +150,81 @@ function AgentRow({
         ? '已停止'
         : '已完成';
 
+  const failureText = failure ? `[${failure.code}] ${failure.message}` : '';
+  const hasDetails = args !== undefined || renderedOutput !== undefined || failure !== null;
+
   return (
-    <div className="flex items-center gap-2 py-1 text-xs text-[var(--ema-text-secondary)]">
-      <button
-        type="button"
-        className="flex min-w-0 flex-1 items-center gap-2 text-left hover:text-[var(--ema-text-primary)]"
-        onClick={() => {
-          if (subagentId) openTab(sessionId, { id: 'subagents', kind: 'subagents', subagentId });
-        }}
-        disabled={!subagentId}
-      >
-        <span className="i-lucide:bot shrink-0" aria-hidden />
-        <span className="truncate">{state.description ?? subagentId ?? toolCallIdValue}</span>
-        <span className="ml-auto shrink-0 text-[10px] text-[var(--ema-text-tertiary)]">{status}</span>
-      </button>
-      {cancelTarget === 'tool' && turnId && (
-        <IconButton
-          label="中止子代理工具"
-          icon="i-lucide:circle-stop"
-          variant="danger"
-          size="sm"
-          onClick={() => void sessionWebSocket.cancelTool(sessionId, turnId, toolCallIdValue)}
-        />
-      )}
-      {cancelTarget === 'subagent' && subagentId && (
-        <IconButton
-          label="中止后台子代理"
-          icon="i-lucide:circle-stop"
-          variant="danger"
-          size="sm"
-          onClick={() => void sessionWebSocket.cancelSubagent(sessionId, subagentId)}
-        />
+    <div className="ema-tool-card min-w-0 text-xs text-[var(--ema-text-secondary)]">
+      <div className="ema-tool-card-header">
+        <button
+          type="button"
+          className="ema-tool-row group min-w-0 flex-1"
+          onClick={() => setDetailsOpen(value => !value)}
+          aria-expanded={detailsOpen}
+          disabled={!hasDetails}
+        >
+          <span className="ema-tool-row-leading" aria-hidden>
+            <span className="i-lucide:bot ema-tool-row-icon" />
+            <span className="i-lucide:chevron-down ema-tool-row-chevron" />
+          </span>
+          <span className="ema-tool-row-summary">{state.description ?? subagentId ?? toolCallIdValue}</span>
+          <span className="shrink-0 text-[10px] text-[var(--ema-text-tertiary)]">{status}</span>
+        </button>
+        {subagentId && (
+          <IconButton
+            label="打开子代理面板"
+            icon="i-lucide:panel-right-open"
+            variant="ghost"
+            size="sm"
+            shape="rounded"
+            className="ema-tool-card-icon"
+            onClick={() => openTab(sessionId, { id: 'subagents', kind: 'subagents', subagentId })}
+          />
+        )}
+        {cancelTarget === 'tool' && turnId && (
+          <IconButton
+            label="中止子代理工具"
+            icon="i-lucide:circle-stop"
+            variant="danger"
+            size="sm"
+            shape="rounded"
+            className="ema-tool-card-icon"
+            onClick={() => void sessionWebSocket.cancelTool(sessionId, turnId, toolCallIdValue)}
+          />
+        )}
+        {cancelTarget === 'subagent' && subagentId && (
+          <IconButton
+            label="中止后台子代理"
+            icon="i-lucide:circle-stop"
+            variant="danger"
+            size="sm"
+            shape="rounded"
+            className="ema-tool-card-icon"
+            onClick={() => void sessionWebSocket.cancelSubagent(sessionId, subagentId)}
+          />
+        )}
+      </div>
+      {detailsOpen && (
+        <div className="ema-tool-card-body">
+          <div className="ema-tool-frame">
+            {args !== undefined && (
+              <ToolPane label="复制输入" tone="input" copyText={formatJson(args)}>
+                <ToolArgsView args={args} />
+              </ToolPane>
+            )}
+            {(renderedOutput !== undefined || failure) && (
+              <ToolPane
+                label="复制输出"
+                tone="output"
+                copyText={[resultCopyText, failureText].filter(Boolean).join('\n\n')}
+                errorOnly={failure !== null && renderedOutput === undefined}
+              >
+                {customResult ?? (genericResult !== null && <ToolResultViewBlock view={genericResult} />)}
+                {failure && <ToolFailure code={failure.code} message={failure.message} />}
+              </ToolPane>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

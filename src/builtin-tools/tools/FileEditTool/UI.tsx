@@ -1,6 +1,6 @@
 // FileEditTool 的桌面展示: 参数(仅路径,old/new 由 diff 表达)与结构化 diff 卡。
 // 行号双列与 DiffCard(Review 面板)同一视觉语言;渲染直接消费 hunks,不走文本回环。
-import { useState, type JSX } from 'react';
+import type { JSX } from 'react';
 import { Badge } from '@ema-agent/ui';
 import type { FileEditResult } from './FileEditTool.js';
 import { patchToUnifiedText, type PatchHunk } from './patch.js';
@@ -110,7 +110,7 @@ export function FileEditResultView({ data }: { data: unknown }): JSX.Element | n
 export function StructuredPatchCard({ hunks }: { hunks: readonly PatchHunk[] }): JSX.Element {
   const entries = flattenPatch(hunks);
   return (
-    <div className="max-h-64 overflow-auto rounded-md border border-[var(--ema-border)] font-mono text-[11px] leading-relaxed">
+    <div className="font-mono text-[11px] leading-relaxed">
       {entries.map((entry) => {
         if (entry.kind === 'gap') {
           return (
@@ -147,11 +147,8 @@ export function StructuredPatchCard({ hunks }: { hunks: readonly PatchHunk[] }):
 }
 
 function FileEditDiffCard({ result }: { result: FileEditResult }): JSX.Element {
-  const [copied, setCopied] = useState(false);
-
   return (
-    <div className="flex flex-col gap-1 pr-6">
-      {/* 头部: 语义行 + 增删计数 + 复制 */}
+    <div className="flex flex-col gap-1">
       <div className="flex items-center gap-2 text-[11px] leading-relaxed">
         <span className="text-[var(--ema-text-secondary)]">
           已编辑 · {result.replacements} 处替换
@@ -159,19 +156,6 @@ function FileEditDiffCard({ result }: { result: FileEditResult }): JSX.Element {
         <span className="text-[var(--ema-success-text)]">+{result.additions}</span>
         <span className="text-[var(--ema-danger-text)]">-{result.deletions}</span>
         {result.replaceAll && <Badge variant="primary">replace_all</Badge>}
-        <button
-          className="ml-auto px-1.5 py-0.5 rounded text-[10px] transition-colors text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)] hover:bg-[var(--ema-surface-2)]"
-          onClick={() => {
-            void navigator.clipboard.writeText(patchToUnifiedText(result.structuredPatch)).then(() => {
-              setCopied(true);
-              setTimeout(() => setCopied(false), 1500);
-            });
-          }}
-        >
-          {copied
-            ? <span className="i-lucide:check text-xs" aria-hidden />
-            : <span className="i-lucide:copy text-xs" aria-hidden />}
-        </button>
       </div>
 
       <StructuredPatchCard hunks={result.structuredPatch} />
