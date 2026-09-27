@@ -73,12 +73,57 @@
   background: var(--ema-danger-muted);
 }
 
-/* Select 长列表的滚动条常驻着色: 全局滚动条是 hover 才显, 长列表需要一直看得到"可滚";
-   只在内容溢出时才出现条, 短列表不受影响; 全局规则的 1.8s 淡出延迟在此必须归零. */
+/* Radix 默认隐藏 Select Viewport 滚动条. 长列表需要显示可拖动的主色滚动柄. */
+.ema-select-viewport::-webkit-scrollbar {
+  display: block !important;
+  width: 6px;
+}
 .ema-select-viewport::-webkit-scrollbar-thumb {
-  background: var(--ema-scrollbar-thumb);
+  background: var(--ema-primary);
   transition: none;
 }
 .ema-select-viewport {
-  scrollbar-color: var(--ema-scrollbar-thumb) transparent;
+  scrollbar-width: thin !important;
+  scrollbar-color: var(--ema-primary) transparent;
+}
+
+/* 开关的轨道反馈与拇指位移都双向过渡, 鼠标和键盘操作保持同一位置状态. */
+.ema-switch {
+  transition: background-color var(--ema-duration-base) var(--ema-ease),
+              border-color var(--ema-duration-base) var(--ema-ease),
+              box-shadow var(--ema-duration-base) var(--ema-ease),
+              transform var(--ema-duration-fast) var(--ema-ease);
+}
+.ema-switch:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+.ema-switch:active:not(:disabled) {
+  transform: scale(0.96);
+}
+.ema-switch-thumb {
+  transform: translateX(2px) scale(1);
+  transition: transform var(--ema-duration-base) var(--ema-ease),
+              box-shadow var(--ema-duration-base) var(--ema-ease);
+  will-change: transform;
+}
+.ema-switch[data-state='checked'] .ema-switch-thumb {
+  transform: translateX(24px) scale(1);
+}
+.ema-switch:hover:not(:disabled) .ema-switch-thumb {
+  transform: translateX(2px) scale(1.06);
+}
+.ema-switch[data-state='checked']:hover:not(:disabled) .ema-switch-thumb {
+  transform: translateX(24px) scale(1.06);
+}
+.ema-switch:active:not(:disabled) .ema-switch-thumb {
+  transform: translateX(2px) scale(0.94);
+}
+.ema-switch[data-state='checked']:active:not(:disabled) .ema-switch-thumb {
+  transform: translateX(24px) scale(0.94);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ema-switch,
+  .ema-switch-thumb {
+    transition-duration: 1ms;
+  }
 }

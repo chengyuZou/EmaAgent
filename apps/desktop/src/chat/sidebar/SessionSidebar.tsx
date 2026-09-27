@@ -62,12 +62,14 @@ export function SessionSidebar(): JSX.Element {
   // 服务端分桶互斥：置顶 Session 独立展示，项目成员仍由对应项目行展示。
 
   return (
-    <div
-      className={`relative flex h-full shrink-0 flex-col border-r bg-[var(--ema-sidebar-bg)] border-[var(--ema-border)] ${
-        resizing ? '' : 'ema-transition-width'
-      }`}
-      style={{ width: collapsed ? 40 : sidebarWidth }}
-    >
+      <div
+        className={`ema-wallpaper-sidebar relative z-10 flex h-full shrink-0 flex-col
+          overflow-hidden
+          border-r bg-[var(--ema-sidebar-bg)] border-[var(--ema-border)]
+          ${resizing ? '' : 'ema-transition-width'}
+        `}
+        style={{ width: collapsed ? 40 : sidebarWidth }}
+      >
       {/* 拖拽手柄(右边缘)。展开态才显示,collapsed 不拖 */}
       {!collapsed && (
         <div

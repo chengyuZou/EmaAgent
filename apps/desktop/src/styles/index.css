@@ -6,6 +6,7 @@
 @import '../../../../src/ui/styles/index.css';
 
 @import './domains/appearance.css';
+@import './domains/wallpaper.css';
 @import './domains/storage.css';
 @import './domains/memory.css';
 @import './domains/workspace.css';

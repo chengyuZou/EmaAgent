@@ -1,0 +1,126 @@
+/* 窗口底图跨淡入淡出, 侧栏和面板透出壁纸, 亚克力只模糊表面背后的内容. */
+
+.ema-wallpaper-frame[data-state='active'],
+.ema-wallpaper-preview-frame[data-state='active'] {
+  animation: ema-fade-in 340ms var(--ema-ease) both;
+}
+
+.ema-wallpaper-frame[data-state='outgoing'],
+.ema-wallpaper-preview-frame[data-state='outgoing'] {
+  opacity: 0;
+  transition: opacity 340ms var(--ema-ease);
+}
+
+.ema-wallpaper-preview-frame[data-state='pending'] {
+  opacity: 0;
+}
+
+.ema-wallpaper-frame img,
+.ema-wallpaper-preview-frame > div {
+  transition: opacity var(--ema-duration-base) var(--ema-ease),
+              filter var(--ema-duration-base) var(--ema-ease),
+              transform var(--ema-duration-base) var(--ema-ease);
+}
+
+.ema-wallpaper-sidebar,
+.ema-wallpaper-panel,
+.ema-wallpaper-controls {
+  transition: background-color 340ms var(--ema-ease),
+              backdrop-filter 340ms var(--ema-ease);
+}
+
+.ema-wallpaper-window:has(.ema-wallpaper-layer[data-visible='true']) .ema-wallpaper-sidebar {
+  background: color-mix(in srgb, var(--ema-sidebar-bg) 78%, transparent);
+}
+
+.ema-wallpaper-window:has(.ema-wallpaper-layer[data-visible='true']) .ema-wallpaper-panel,
+.ema-wallpaper-window:has(.ema-wallpaper-layer[data-visible='true']) .ema-wallpaper-controls {
+  background: color-mix(in srgb, var(--ema-surface-1) 82%, transparent);
+}
+
+.ema-wallpaper-window:has(.ema-wallpaper-layer[data-acrylic='true']) .ema-wallpaper-sidebar,
+.ema-wallpaper-window:has(.ema-wallpaper-layer[data-acrylic='true']) .ema-wallpaper-panel,
+.ema-wallpaper-window:has(.ema-wallpaper-layer[data-acrylic='true']) .ema-wallpaper-controls {
+  -webkit-backdrop-filter: blur(20px) saturate(1.25);
+  backdrop-filter: blur(20px) saturate(1.25);
+}
+
+.ema-wallpaper-window:has(.ema-wallpaper-layer[data-acrylic='true']) .ema-wallpaper-sidebar {
+  background: color-mix(in srgb, var(--ema-sidebar-bg) 68%, transparent);
+}
+
+.ema-wallpaper-window:has(.ema-wallpaper-layer[data-acrylic='true']) .ema-wallpaper-panel,
+.ema-wallpaper-window:has(.ema-wallpaper-layer[data-acrylic='true']) .ema-wallpaper-controls {
+  background: color-mix(in srgb, var(--ema-surface-1) 70%, transparent);
+}
+
+.ema-wallpaper-controls [role='tab'] {
+  transition: color var(--ema-duration-base) var(--ema-ease),
+              transform var(--ema-duration-base) var(--ema-ease);
+}
+
+.ema-wallpaper-controls [role='tab']:hover {
+  transform: translateY(-2px);
+}
+
+.ema-wallpaper-controls[data-pointer-focus='true'] :focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.ema-wallpaper-thumbnail {
+  transition: transform var(--ema-duration-base) var(--ema-ease),
+              border-color var(--ema-duration-base) var(--ema-ease),
+              box-shadow var(--ema-duration-base) var(--ema-ease),
+              background-color var(--ema-duration-base) var(--ema-ease);
+}
+
+.ema-wallpaper-thumbnail:hover:not(:disabled) {
+  transform: translateY(-3px) scale(1.025);
+  box-shadow: var(--ema-shadow-soft);
+}
+
+.ema-wallpaper-thumbnail:active:not(:disabled) {
+  transform: translateY(-1px) scale(0.985);
+}
+
+.ema-wallpaper-thumbnail img {
+  transition: transform var(--ema-duration-slow) var(--ema-ease);
+}
+
+.ema-wallpaper-thumbnail:hover:not(:disabled) img {
+  transform: scale(1.06);
+}
+
+.ema-wallpaper-preview-badge,
+.ema-wallpaper-thumbnail-badge {
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  box-shadow: var(--ema-shadow-1);
+  transition: background-color var(--ema-duration-base) var(--ema-ease),
+              transform var(--ema-duration-base) var(--ema-ease);
+}
+
+.ema-wallpaper-preview-badge:hover,
+.ema-wallpaper-thumbnail-badge:hover {
+  transform: translateY(-1px);
+}
+
+.ema-wallpaper-action-badge {
+  transition: background-color var(--ema-duration-base) var(--ema-ease),
+              color var(--ema-duration-base) var(--ema-ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ema-wallpaper-frame,
+  .ema-wallpaper-preview-frame {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
+  }
+
+  .ema-wallpaper-thumbnail,
+  .ema-wallpaper-thumbnail img,
+  .ema-wallpaper-controls [role='tab'] {
+    transition-duration: 1ms !important;
+  }
+}

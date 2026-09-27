@@ -1,4 +1,4 @@
-// 需要鉴权的服务端图片:<img> 直链会被 401,先 fetch 成 blob 再转 objectURL。
+// 需要鉴权的服务端图片:<img> 直链会被 401,先 fetch 成 blob 再转 objectURL
 import { useEffect, useState, type JSX } from 'react';
 import { fetchServerObjectUrl } from '../lib/serverFileUrl.js';
 
@@ -32,7 +32,6 @@ export function ServerImage({
       }
       objectUrl = result;
       setUrl(result);
-      onLoad?.();
     });
     return () => {
       disposed = true;
@@ -41,5 +40,5 @@ export function ServerImage({
   }, [path, contentUpdatedAt]);
 
   if (missing || !url) return null;
-  return <img src={url} alt={alt} className={className} />;
+  return <img src={url} alt={alt} className={className} onLoad={onLoad} />;
 }

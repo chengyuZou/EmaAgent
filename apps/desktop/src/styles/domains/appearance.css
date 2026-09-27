@@ -1,4 +1,4 @@
-/* 外观设置页的色谱轨道与原生滑块伪元素(唯一消费者:AppearanceTab)。
+/* 外观设置页的色谱与壁纸滑块(唯一消费者:AppearanceTab 和 WallpaperTab).
    高色带 + 细竖条 thumb: 40px 轨道让色轮本身就是主角, 48px 竖条跨带指示, 不用圆点. */
 
 .ema-hue-range {
@@ -63,4 +63,60 @@
   background: linear-gradient(to right,
     oklch(65% 0.18 0), oklch(65% 0.18 60), oklch(65% 0.18 120),
     oklch(65% 0.18 180), oklch(65% 0.18 240), oklch(65% 0.18 300), oklch(65% 0.18 360));
+}
+
+.ema-wallpaper-range {
+  appearance: none;
+  width: 100%;
+  height: 24px;
+  background: transparent;
+  cursor: col-resize;
+}
+.ema-wallpaper-range:focus-visible {
+  outline: none;
+  box-shadow: var(--ema-shadow-focus);
+}
+.ema-wallpaper-range:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.ema-wallpaper-range::-webkit-slider-runnable-track {
+  height: 8px;
+  border-radius: var(--ema-radius-pill);
+  background: var(--ema-primary);
+}
+.ema-wallpaper-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 4px;
+  height: 22px;
+  margin-top: -7px;
+  border-radius: var(--ema-radius-xs);
+  border: 1px solid var(--ema-border);
+  background: var(--ema-text-primary);
+  box-shadow: var(--ema-shadow-2);
+  transition: transform var(--ema-duration-base) var(--ema-ease),
+              box-shadow var(--ema-duration-base) var(--ema-ease);
+}
+.ema-wallpaper-range:hover::-webkit-slider-thumb {
+  transform: scale(1.18);
+  box-shadow: var(--ema-shadow-soft);
+}
+.ema-wallpaper-range::-moz-range-track {
+  height: 8px;
+  border-radius: var(--ema-radius-pill);
+  background: var(--ema-primary);
+}
+.ema-wallpaper-range::-moz-range-thumb {
+  width: 4px;
+  height: 22px;
+  border-radius: var(--ema-radius-xs);
+  border: 1px solid var(--ema-border);
+  background: var(--ema-text-primary);
+  box-shadow: var(--ema-shadow-2);
+  transition: transform var(--ema-duration-base) var(--ema-ease),
+              box-shadow var(--ema-duration-base) var(--ema-ease);
+}
+.ema-wallpaper-range:hover::-moz-range-thumb {
+  transform: scale(1.18);
+  box-shadow: var(--ema-shadow-soft);
 }

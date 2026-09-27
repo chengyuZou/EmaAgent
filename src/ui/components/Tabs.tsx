@@ -76,7 +76,7 @@ export function Tabs(props: TabsProps): React.JSX.Element {
             value={it.value}
             disabled={it.disabled}
             className={cn(
-              'inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-ema cursor-pointer focus-ring',
+              'inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-ema cursor-pointer',
               'disabled:opacity-40 disabled:cursor-not-allowed',
               'text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)]',
               // horizontal: 等宽 + 居中,让滑块 calc(100%/count * index) 定位准确

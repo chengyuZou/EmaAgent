@@ -1,5 +1,6 @@
-// 展示并保存主题色、动态取色、圆角、正文字体、等宽字体、代码配色和明暗模式。
+// 展示并保存主题色, 壁纸, 圆角, 字体, 代码配色和明暗模式.
 import { useEffect, useState, type JSX, type ChangeEvent } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { Button, Select, Slider, Switch, type SelectOption } from '@ema-agent/ui';
 import { useThemeStore } from '../../stores/theme.js';
 import { PageHeader } from '../shared/PageHeader.js';
@@ -11,6 +12,7 @@ import {
   HUE_LADDER_STEPS,
 } from '@ema-agent/server/settings/themeCatalog.js';
 import { hexToOklch } from '../../lib/oklch.js';
+import { WallpaperTab } from './wallpaperTab.js';
 
 type ThemeMode = ThemeSettings['mode'];
 
@@ -43,7 +45,7 @@ function HueSlider({ value, disabled, onChange }: { value: number; disabled?: bo
       className="ema-hue-range"
       min={0}
       max={360}
-      step={1}
+      step={0.1}
       value={value}
       disabled={disabled}
       onChange={(e: ChangeEvent<HTMLInputElement>) => onChange(Number(e.target.value))}
@@ -81,29 +83,131 @@ function FontFamilyField({ family, systemLabel, systemFonts, onSave, onLazyLoad 
   );
 }
 
-// ── AppearanceTab ─────────────────────────────────────────────────────────────
+// 拖动色相时只重绘色带和预设选中态, 不重绘壁纸图库及后续设置.
+function ThemeColorSection(): JSX.Element {
+  const hue = useThemeStore(state => state.hue);
+  const hueDynamic = useThemeStore(state => state.hueDynamic);
+  const setHue = useThemeStore(state => state.setHue);
+  const setHueDynamic = useThemeStore(state => state.setHueDynamic);
+
+  return (
+    <section className="rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] p-5 space-y-4">
+      <div>
+        <p className="text-sm font-medium text-[var(--ema-text-secondary)]">主题色</p>
+        <p className="text-xs mt-0.5 text-[var(--ema-text-tertiary)]">拖动选择任意色相，辅色(紫罗兰)会自动跟随</p>
+      </div>
+
+      <HueSlider value={hue} disabled={hueDynamic} onChange={value => void setHue(value)} />
+
+      <div className="flex overflow-hidden rounded-lg border border-[var(--ema-border)]">
+        {HUE_LADDER_STEPS.map(step => (
+          <div
+            key={step.label}
+            className="flex h-8 flex-1 items-center justify-center text-[10px] font-medium"
+            style={{
+              background: `oklch(${step.lightness} ${step.chroma} ${hue})`,
+              color: step.lightness > 0.62 ? 'oklch(0.35 0.02 280)' : 'oklch(0.95 0.02 280)',
+            }}
+          >
+            {step.label}
+          </div>
+        ))}
+      </div>
+
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-medium text-[var(--ema-text-secondary)]">动态取色</p>
+          <p className="text-xs mt-0.5 text-[var(--ema-text-tertiary)]">
+            主题色跟随角色立绘主色{hueDynamic ? ' 开启时手动选择暂不生效' : ''}
+          </p>
+        </div>
+        <Switch checked={hueDynamic} label="动态取色" onCheckedChange={value => void setHueDynamic(value)} />
+      </div>
+    </section>
+  );
+}
+
+function PaletteSection(): JSX.Element {
+  const hue = useThemeStore(state => state.hue);
+  const setHue = useThemeStore(state => state.setHue);
+
+  return (
+    <section className="rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] p-5 space-y-2">
+      <div className="pb-1">
+        <p className="text-sm font-medium text-[var(--ema-text-secondary)]">调色预设</p>
+        <p className="text-xs mt-0.5 text-[var(--ema-text-tertiary)]">策展调色板，点击色块取其色相</p>
+      </div>
+      {PALETTE_SWATCHES.map(palette => (
+        <div
+          key={palette.id}
+          className="flex items-center justify-between gap-4 rounded-lg bg-[var(--ema-surface-2)] px-4 py-4"
+        >
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-[var(--ema-text-secondary)]">{palette.label}</p>
+            <p className="text-xs text-[var(--ema-text-tertiary)] truncate">{palette.description}</p>
+          </div>
+          <div className="flex shrink-0 gap-2.5">
+            {palette.swatches.map(({ hex, hue: swatchHue }) => {
+              const selected = Math.abs(hue - swatchHue) < 8 || Math.abs(hue - swatchHue) > 352;
+              return (
+                <Button
+                  key={hex}
+                  variant="ghost"
+                  size="sm"
+                  title={hex}
+                  onClick={() => void setHue(swatchHue)}
+                  className="p-0 h-auto border-transparent bg-transparent hover:bg-transparent active:bg-transparent"
+                >
+                  <span
+                    className={`block h-8 w-8 rounded-full border-2 transition-ema hover:border-[var(--ema-primary)]/50 ${
+                      selected
+                        ? 'border-[var(--ema-border-strong)] shadow-[var(--ema-shadow-1)]'
+                        : 'border-transparent'
+                    }`}
+                    style={{ background: hex }}
+                  />
+                </Button>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </section>
+  );
+}
 
 export function AppearanceTab(): JSX.Element {
   const {
-    hue,
     radius,
     mode,
     readingFont,
     codeFont,
     syntaxTheme,
-    hueDynamic,
     ready,
     init,
     systemFonts,
     ensureSystemFonts,
-    setHue,
     setRadius,
     setMode,
     setReadingFont,
     setCodeFont,
     setSyntaxTheme,
-    setHueDynamic,
-  } = useThemeStore();
+  } = useThemeStore(useShallow(state => ({
+    radius: state.radius,
+    mode: state.mode,
+    readingFont: state.readingFont,
+    codeFont: state.codeFont,
+    syntaxTheme: state.syntaxTheme,
+    ready: state.ready,
+    init: state.init,
+    systemFonts: state.systemFonts,
+    ensureSystemFonts: state.ensureSystemFonts,
+    setRadius: state.setRadius,
+    setMode: state.setMode,
+    setReadingFont: state.setReadingFont,
+    setCodeFont: state.setCodeFont,
+    setSyntaxTheme: state.setSyntaxTheme,
+  })));
   const [shaking, setShaking] = useState<ThemeMode | null>(null);
 
   // 点当前已激活的主题按钮 -> shake 反馈(不 disabled,用户要知道点了)
@@ -121,93 +225,13 @@ export function AppearanceTab(): JSX.Element {
   }, [ready, init]);
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-5">
+    <div className="mx-auto flex w-[100%] flex-col gap-5">
       <PageHeader title="外观" description="主题色、动态取色、圆角、字体、代码配色与显示模式" />
 
-      {/* ── Color ── */}
-      <section className="rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] p-5 space-y-4">
-        <div>
-          <p className="text-sm font-medium text-[var(--ema-text-secondary)]">主题色</p>
-          <p className="text-xs mt-0.5 text-[var(--ema-text-tertiary)]">拖动选择任意色相，辅色(紫罗兰)会自动跟随</p>
-        </div>
+      <ThemeColorSection />
+      <PaletteSection />
 
-        <HueSlider value={hue} disabled={hueDynamic} onChange={(h) => void setHue(h)} />
-
-        {/* 当前色相的 11 级明度板, 拖滑块时实时跟随 */}
-        <div className="flex overflow-hidden rounded-lg border border-[var(--ema-border)]">
-          {HUE_LADDER_STEPS.map((step) => (
-            <div
-              key={step.label}
-              className="flex h-8 flex-1 items-center justify-center text-[10px] font-medium"
-              style={{
-                background: `oklch(${step.lightness} ${step.chroma} ${hue})`,
-                color: step.lightness > 0.62 ? 'oklch(0.35 0.02 280)' : 'oklch(0.95 0.02 280)',
-              }}
-            >
-              {step.label}
-            </div>
-          ))}
-        </div>
-
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-sm font-medium text-[var(--ema-text-secondary)]">动态取色</p>
-            <p className="text-xs mt-0.5 text-[var(--ema-text-tertiary)]">
-              主题色跟随角色立绘主色{hueDynamic ? '；开启时手动选择暂不生效' : ''}
-            </p>
-          </div>
-          <Switch
-            checked={hueDynamic}
-            label="动态取色"
-            onCheckedChange={(value) => void setHueDynamic(value)}
-          />
-        </div>
-
-      </section>
-
-      {/* 调色预设: 每套一张行卡, 左标题一行流, 右色点. */}
-      <section className="rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] p-5 space-y-2">
-        <div className="pb-1">
-          <p className="text-sm font-medium text-[var(--ema-text-secondary)]">调色预设</p>
-          <p className="text-xs mt-0.5 text-[var(--ema-text-tertiary)]">策展调色板，点击色块取其色相</p>
-        </div>
-        {PALETTE_SWATCHES.map((palette) => (
-          <div
-            key={palette.id}
-            className="flex items-center justify-between gap-4 rounded-lg bg-[var(--ema-surface-2)] px-4 py-3"
-          >
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-[var(--ema-text-secondary)]">{palette.label}</p>
-              <p className="text-xs text-[var(--ema-text-tertiary)] truncate">{palette.description}</p>
-            </div>
-            <div className="flex shrink-0 gap-1.5">
-              {palette.swatches.map(({ hex, hue: swatchHue }) => {
-                const selected = Math.abs(hue - swatchHue) < 8 || Math.abs(hue - swatchHue) > 352;
-                return (
-                  <Button
-                    key={hex}
-                    variant="ghost"
-                    size="sm"
-                    title={hex}
-                    onClick={() => void setHue(swatchHue)}
-                    className="p-0 h-auto border-transparent bg-transparent hover:bg-transparent active:bg-transparent"
-                  >
-                    <span
-                      className={`block w-6 h-6 rounded-full border-2 transition-ema hover:border-[var(--ema-primary)]/50 ${
-                        selected
-                          ? 'border-[var(--ema-border-strong)] shadow-[var(--ema-shadow-1)]'
-                          : 'border-transparent'
-                      }`}
-                      style={{ background: hex }}
-                    />
-                  </Button>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-      </section>
-
+      <WallpaperTab />
 
       {/* ── Shape ── */}
       <section className="rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] p-5 space-y-4">
@@ -324,15 +348,15 @@ export function AppearanceTab(): JSX.Element {
         <div className="flex items-center gap-4">
           <Button
             variant="ghost"
-            onClick={() => handleModeClick('dark')}
+            onClick={() => handleModeClick('system')}
             className={`flex items-center gap-2 px-4 py-2.5 h-auto rounded-xl border transition-all duration-[var(--ema-duration-base)] ema-card-decorate ema-card-decorate--grid ${
-              mode === 'dark'
+              mode === 'system'
                 ? 'border-[var(--ema-primary)] bg-[var(--ema-primary-muted)] text-[var(--ema-text-primary)]'
                 : 'border-[var(--ema-border)] bg-[var(--ema-surface-1)] text-[var(--ema-text-tertiary)] hover:border-[var(--ema-border-hover)]'
-            }${shaking === 'dark' ? ' ema-shake' : ''}`}
+            }${shaking === 'system' ? ' ema-shake' : ''}`}
           >
-            <span className="i-solar:moon-bold-duotone text-lg" aria-hidden />
-            <span className="text-sm font-medium">深色</span>
+            <span className="i-solar:monitor-bold-duotone text-lg" aria-hidden />
+            <span className="text-sm font-medium">跟随系统</span>
           </Button>
           <Button
             variant="ghost"
@@ -348,15 +372,15 @@ export function AppearanceTab(): JSX.Element {
           </Button>
           <Button
             variant="ghost"
-            onClick={() => handleModeClick('system')}
+            onClick={() => handleModeClick('dark')}
             className={`flex items-center gap-2 px-4 py-2.5 h-auto rounded-xl border transition-all duration-[var(--ema-duration-base)] ema-card-decorate ema-card-decorate--grid ${
-              mode === 'system'
+              mode === 'dark'
                 ? 'border-[var(--ema-primary)] bg-[var(--ema-primary-muted)] text-[var(--ema-text-primary)]'
                 : 'border-[var(--ema-border)] bg-[var(--ema-surface-1)] text-[var(--ema-text-tertiary)] hover:border-[var(--ema-border-hover)]'
-            }${shaking === 'system' ? ' ema-shake' : ''}`}
+            }${shaking === 'dark' ? ' ema-shake' : ''}`}
           >
-            <span className="i-solar:monitor-bold-duotone text-lg" aria-hidden />
-            <span className="text-sm font-medium">跟随系统</span>
+            <span className="i-solar:moon-bold-duotone text-lg" aria-hidden />
+            <span className="text-sm font-medium">深色</span>
           </Button>
         </div>
       </section>

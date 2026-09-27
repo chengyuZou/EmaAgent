@@ -60,6 +60,8 @@ export default defineConfig({
       // themeCatalog 是零运行时依赖的纯常量注册表, 设计上就是给浏览器消费的;
       // 它是唯一 alias 进浏览器图的后端文件, 其余后端包仍只许 type-only 导入.
       { find: '@ema-agent/server/settings/themeCatalog.js', replacement: resolve(__dirname, '../../apps/server/src/settings/themeCatalog.ts') },
+      // wallpaperCatalog 同理: 纯常量注册表(键名/默认值/扩展名), 浏览器图第二个后端例外.
+      { find: '@ema-agent/server/settings/wallpaperCatalog.js', replacement: resolve(__dirname, '../../apps/server/src/settings/wallpaperCatalog.ts') },
     ],
   },
 

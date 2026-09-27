@@ -6,8 +6,8 @@
   content: '';
   position: absolute;
   top: 0;
-  left: 0;
-  right: 0;
+  left: 3.5rem;
+  right: 3.5rem;
   height: var(--ema-message-top-inset);
   background: linear-gradient(var(--ema-bg), transparent);
   pointer-events: none;

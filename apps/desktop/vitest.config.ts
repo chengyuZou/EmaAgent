@@ -10,6 +10,10 @@ export default defineConfig({
         __dirname,
         'node_modules/@lemonneko/crop-empty-pixels/dist/index.js',
       ),
+      '@ema-agent/server/settings/wallpaperCatalog.js': resolve(
+        __dirname,
+        '../server/src/settings/wallpaperCatalog.ts',
+      ),
     },
   },
   test: {

@@ -27,9 +27,13 @@ import { sandboxNetworkSetting } from '@ema-agent/sandbox';
 import { eventDisplaySetting } from '../settings/eventDisplaySetting.js';
 import { terminalShellExecutableSetting } from '../settings/terminalSetting.js';
 import { themeSetting } from '../settings/themeSetting.js';
+import { chatWallpaperSetting, settingsWallpaperSetting } from '../settings/wallpaperSetting.js';
+import { WallpaperImages } from '../settings/wallpaperImages.js';
+import { wallpapersDir } from '../platform/paths.js';
 
 export interface SettingsComposition {
   readonly settings: SettingsStore;
+  readonly wallpaperImages: WallpaperImages;
 }
 
 export const SETTINGS_DEFINITIONS = [
@@ -51,6 +55,8 @@ export const SETTINGS_DEFINITIONS = [
   themeSetting,
   eventDisplaySetting,
   terminalShellExecutableSetting,
+  chatWallpaperSetting,
+  settingsWallpaperSetting,
   sandboxNetworkSetting,
 ] as const;
 
@@ -65,5 +71,5 @@ export function openSettings(profileDb: Database): SettingsComposition {
       compactGroup,
     ],
   });
-  return { settings };
+  return { settings, wallpaperImages: new WallpaperImages(wallpapersDir()) };
 }

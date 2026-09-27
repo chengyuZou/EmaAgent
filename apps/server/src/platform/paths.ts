@@ -47,6 +47,11 @@ export function builtinSkillsDir(): string {
   return path.join(profileDir(), 'resources', 'skills');
 }
 
+/** 窗口壁纸资源根：`<profileDir>/wallpapers/{chat,settings}/<图片文件>`, 每窗口一个图库文件夹 */
+export function wallpapersDir(): string {
+  return path.join(profileDir(), 'wallpapers');
+}
+
 /** 内置技能种子来源；只在启动铺设阶段读取，正式包由环境变量传入。 */
 export function bundledSkillsSource(): string {
   return process.env['EMA_BUNDLED_SKILLS_DIR']
@@ -56,6 +61,7 @@ export function bundledSkillsSource(): string {
 /** 创建 profile 侧不属于 profile.db 本身的目录。 */
 export function ensureProfileLayout(): void {
   fs.mkdirSync(charactersDir(), { recursive: true });
+  fs.mkdirSync(wallpapersDir(), { recursive: true });
 }
 
 // ── 数据目录顶层 ──────────────────────────────────────────────────────────────

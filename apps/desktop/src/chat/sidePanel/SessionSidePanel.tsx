@@ -287,7 +287,7 @@ export function SessionSidePanel({
     .filter((tab) => tab !== undefined);
 
   return (
-    <div className="relative flex h-full min-w-0 flex-col overflow-hidden bg-[var(--ema-surface-1)]">
+    <div className="ema-wallpaper-panel relative flex h-full min-w-0 flex-col overflow-hidden bg-[var(--ema-surface-1)]">
       {tabs.length > 0 && (
         <TabBar
           sessionId={sessionId}

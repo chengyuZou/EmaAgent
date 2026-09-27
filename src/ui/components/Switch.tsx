@@ -27,7 +27,7 @@ export const Switch = forwardRef<HTMLButtonElement, SwitchProps>(function Switch
       disabled={disabled}
       aria-label={label}
       className={cn(
-        'relative inline-flex h-7 w-12.5 shrink-0 cursor-pointer items-center rounded-pill border shadow-inner',
+        'ema-switch relative inline-flex h-7 w-12.5 shrink-0 cursor-pointer items-center rounded-pill border shadow-inner',
         'transition-ema focus-ring hover:shadow-[var(--ema-shadow-soft)]',
         'data-[state=unchecked]:border-[var(--ema-border-hover)] data-[state=unchecked]:bg-[var(--ema-surface-3)]',
         'data-[state=unchecked]:hover:border-[var(--ema-text-tertiary)]',
@@ -39,9 +39,7 @@ export const Switch = forwardRef<HTMLButtonElement, SwitchProps>(function Switch
     >
       <RadixSwitch.Thumb
         className={cn(
-          'block h-6 w-6 rounded-full border border-black/5 bg-white shadow-[var(--ema-shadow-1)]',
-          'translate-x-0.5 data-[state=checked]:translate-x-full',
-          'transition-transform duration-[var(--ema-duration-base)] ease-[var(--ema-ease)] will-change-transform',
+          'ema-switch-thumb block h-6 w-6 rounded-full border border-black/5 bg-white shadow-[var(--ema-shadow-1)]',
           'data-[state=checked]:shadow-[var(--ema-shadow-2)]',
         )}
       />

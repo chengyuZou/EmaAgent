@@ -162,7 +162,7 @@ export function BrowserPanel({
   };
 
   return (
-    <div className="flex-1 min-h-0 flex flex-col bg-[var(--ema-surface-1)]">
+    <div className="ema-wallpaper-panel flex-1 min-h-0 flex flex-col bg-[var(--ema-surface-1)]">
       <form className="h-10 shrink-0 flex items-center gap-1 px-2 border-b border-[var(--ema-border)]" onSubmit={navigate}>
         <ToolbarButton
           icon="i-lucide:arrow-left"

@@ -50,6 +50,7 @@ import { sessionHistoryRoute } from './sessions/history.js';
 import { sessionGitRoute } from './sessions/git.js';
 import { settingsEventDisplayRoute } from './settings/eventDisplay.js';
 import { settingsValuesRoute } from './settings/values.js';
+import { wallpaperRoute } from './settings/wallpaper.js';
 import { skillListRoute } from './skills/list.js';
 import { skillMarketRoute } from './skills/market.js';
 import { systemStatsRoute } from './system/stats.js';
@@ -221,6 +222,7 @@ export const createRoutes = (composition: Composition, secret: string) => {
 
     .route('/api/settings', settingsEventDisplayRoute({ settings: settings.settings }))
     .route('/api/settings', settingsValuesRoute({ settings: settings.settings }))
+    .route('/api/settings', wallpaperRoute({ images: settings.wallpaperImages }))
 
     .route('/api/skills', skillListRoute({
       skills: tools.skills,

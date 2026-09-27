@@ -34,6 +34,7 @@ import { ProvidersTab } from './providers/ProvidersTab.js';
 import { SkillInstalledPage } from './skills/SkillInstalledPage.js';
 import { SkillMarketPage } from './skills/SkillMarketPage.js';
 import { SkillSettings } from './skills/SkillSettings.js';
+import { WallpaperLayer } from '../wallpaper/WallpaperLayer.js';
 
 type SettingsPageId =
   | 'providers'
@@ -147,8 +148,9 @@ export function SettingsPanel(): JSX.Element {
 
   return (
     <ErrorBoundary>
-      <div className="fixed inset-0 flex bg-[var(--ema-bg)] text-[var(--ema-text-primary)]">
-        <nav className="hidden w-56 flex-none flex-col overflow-y-auto border-r border-[var(--ema-border)] bg-[var(--ema-sidebar-bg)] px-2 py-4 md:flex" aria-label="设置导航">
+      <div className="ema-wallpaper-window ema-wallpaper-settings fixed inset-0 isolate flex bg-[var(--ema-bg)] text-[var(--ema-text-primary)]">
+        <WallpaperLayer target="settings" />
+        <nav className="ema-wallpaper-sidebar relative z-10 hidden w-56 flex-none flex-col overflow-y-auto border-r border-[var(--ema-border)] bg-[var(--ema-sidebar-bg)] px-2 py-4 md:flex" aria-label="设置导航">
           <p className="px-3 pb-4 text-base font-semibold">设置</p>
           {SETTINGS_PAGES.map(page => {
             const pageActive = activePage.id === page.id;

@@ -100,6 +100,17 @@ function applyResolvedTheme(config: ThemeSettings): void {
   applySyntaxTheme(config.syntaxTheme);
 }
 
+function applyThemeChanges(previous: ThemeSettings, next: ThemeSettings): void {
+  if (previous.hue !== next.hue || previous.hueDynamic !== next.hueDynamic) {
+    setThemeHue(effectiveHue(next, useThemeStore.getState().dynamicHue));
+  }
+  if (previous.radius !== next.radius) setThemeRadius(next.radius);
+  if (previous.mode !== next.mode) applyMode(next.mode);
+  if (previous.readingFont !== next.readingFont) applyReadingFont(next.readingFont);
+  if (previous.codeFont !== next.codeFont) applyCodeFont(next.codeFont);
+  if (previous.syntaxTheme !== next.syntaxTheme) applySyntaxTheme(next.syntaxTheme);
+}
+
 function applyMode(mode: ThemeSettings['mode']): void {
   // 切换双向动画:切前给 <html> 加 .ema-theme-transition 触发全局 color 过渡,
   // 过渡完(400ms)移除 只过渡颜色不过渡 transform/layout(见 transitions.css)
@@ -180,7 +191,7 @@ export const useThemeStore = create<ThemeStoreState>((set, get) => ({
     // 落库停歇 200ms 后只做最后一次, pick 只发生在拖动开始与结束时.
     if (pendingHuePrevious === null) pendingHuePrevious = currentThemeValue(get());
     set({ hue });
-    applyResolvedTheme(get());
+    setThemeHue(effectiveHue(get(), get().dynamicHue));
     if (huePersistTimer !== undefined) window.clearTimeout(huePersistTimer);
     huePersistTimer = window.setTimeout(() => {
       huePersistTimer = undefined;
@@ -235,7 +246,7 @@ export const useThemeStore = create<ThemeStoreState>((set, get) => ({
 
   applyDynamicHue(hue) {
     set({ dynamicHue: hue });
-    applyResolvedTheme(currentThemeValue(get()));
+    setThemeHue(effectiveHue(get(), hue));
   },
 }));
 
@@ -270,16 +281,16 @@ async function persistThemeChange(
   updateState: (value: ThemeSettings) => void,
 ): Promise<void> {
   // 当前窗口先预览 只有 SQLite 提交成功后才通知其他窗口
-  applyResolvedTheme(next);
+  applyThemeChanges(previous, next);
   updateState(next);
   try {
     const { value } = await settingsApi.putValue(THEME_SETTING_KEY, next);
     const saved = readThemeValue(value);
-    applyResolvedTheme(saved);
+    applyThemeChanges(next, saved);
     updateState(saved);
     emitTheme(saved);
   } catch (error) {
-    applyResolvedTheme(previous);
+    applyThemeChanges(next, previous);
     updateState(previous);
     throw error;
   }

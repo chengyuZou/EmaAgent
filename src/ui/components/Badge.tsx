@@ -29,7 +29,7 @@ export function Badge(props: BadgeProps): React.JSX.Element {
   if (dot && !children) {
     return (
       <span
-        className={cn('inline-block w-2 h-2 rounded-full', v.dot, className)}
+        className={cn('inline-block w-2 h-2 rounded-md', v.dot, className)}
         aria-hidden
       />
     );
@@ -38,11 +38,11 @@ export function Badge(props: BadgeProps): React.JSX.Element {
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm text-xs font-medium',
+        'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-medium',
         v.bg, v.text, className,
       )}
     >
-      {dot && <span className={cn('w-1.5 h-1.5 rounded-full', v.dot)} aria-hidden />}
+      {dot && <span className={cn('w-1.5 h-1.5 rounded-md', v.dot)} aria-hidden />}
       {children}
     </span>
   );

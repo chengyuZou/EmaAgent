@@ -42,3 +42,14 @@
     var(--ema-bg)
   );
 }
+
+[data-ema-chat-column] .ema-composer-dock {
+  padding-inline: 3.5rem;
+}
+
+[data-ema-chat-column] .ema-composer-dock::before {
+  left: 50%;
+  right: auto;
+  width: min(calc(100% - 7rem), 48rem);
+  transform: translateX(-50%);
+}

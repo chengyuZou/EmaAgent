@@ -8,7 +8,8 @@ export type RequestBudgetId =
   | 'default-json'
   | 'turn'
   | 'audio-upload'
-  | 'session-import';
+  | 'session-import'
+  | 'wallpaper-upload';
 
 export interface RequestBudgetPolicy {
   readonly id: RequestBudgetId;
@@ -34,6 +35,10 @@ export const REQUEST_BUDGETS = Object.freeze({
     id: 'session-import',
     // ZIP 本体由 Backup 侧按 256 MiB 复核。
     maxTransportBytes: 257 * MiB,
+  }),
+  wallpaperUpload: Object.freeze({
+    id: 'wallpaper-upload',
+    maxTransportBytes: 51 * MiB,
   }),
 } satisfies Record<string, RequestBudgetPolicy>);
 
@@ -64,6 +69,7 @@ export function resolveRequestBudget(
   if (normalizedPath === '/api/turns') return REQUEST_BUDGETS.turn;
   if (normalizedPath === '/api/providers/transcribe') return REQUEST_BUDGETS.audioUpload;
   if (normalizedPath === '/api/sessions/import') return REQUEST_BUDGETS.sessionImport;
+  if (normalizedPath === '/api/settings/wallpaper/images') return REQUEST_BUDGETS.wallpaperUpload;
   if (/^\/api\/characters\/[^/]+\/voice\/publish$/.test(normalizedPath)) {
     return REQUEST_BUDGETS.audioUpload;
   }
