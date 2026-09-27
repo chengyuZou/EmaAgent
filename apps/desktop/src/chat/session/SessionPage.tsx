@@ -1,4 +1,4 @@
-import { useEffect, useRef, type JSX } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type JSX } from 'react';
 import {
   Group,
   Panel,
@@ -7,7 +7,7 @@ import {
 } from 'react-resizable-panels';
 import { useServerStore } from '../../stores/server.js';
 import { ChatInput } from '../input/ChatInput.js';
-import { MessageList } from '../messages/MessageList.js';
+import { MessageList } from '../history/MessageList.js';
 import { SessionHeader } from './SessionHeader.js';
 import { SessionSidePanel } from '../sidePanel/SessionSidePanel.js';
 import { useSessionPanelStore } from '../../stores/sessionPanel.js';
@@ -19,7 +19,22 @@ export function SessionPage({ sessionId }: { sessionId: string }): JSX.Element {
   const rightPanelPercent = useSessionPanelStore((state) => state.rightPanelPercent);
   const setRightPanelPercent = useSessionPanelStore((state) => state.setRightPanelPercent);
   const workspacePanelRef = useRef<PanelImperativeHandle | null>(null);
+  const composerRef = useRef<HTMLDivElement | null>(null);
+  const [bottomInset, setBottomInset] = useState<number | null>(null);
   const panelOpen = layout?.open ?? false;
+
+  useLayoutEffect(() => {
+    const composer = composerRef.current;
+    if (!composer) return;
+    const measure = (): void => {
+      const height = Math.ceil(composer.getBoundingClientRect().height) + 16;
+      setBottomInset(current => current === height ? current : height);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(composer);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
@@ -30,7 +45,7 @@ export function SessionPage({ sessionId }: { sessionId: string }): JSX.Element {
   }, [panelOpen, rightPanelPercent, sessionId]);
 
   return (
-    <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+    <main className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col">
       <SessionHeader sessionId={sessionId} />
       {serverStatus.kind === 'error' && (
         <div
@@ -59,8 +74,8 @@ export function SessionPage({ sessionId }: { sessionId: string }): JSX.Element {
           className="relative flex min-w-0 flex-col overflow-hidden"
           data-ema-chat-column
         >
-          <MessageList sessionId={sessionId} />
-          <div className="relative z-20 shrink-0">
+          <MessageList sessionId={sessionId} bottomInset={bottomInset} />
+          <div ref={composerRef} className="pointer-events-none absolute inset-x-0 bottom-0 z-20">
             <ChatInput onSubmit={(submitted) => (
               submitChatDraft(sessionId, submitted)
             )} />
@@ -97,7 +112,7 @@ function StatusBar({ sessionId }: { sessionId: string }): JSX.Element {
   return (
     <div className="flex shrink-0 items-center justify-between border-t border-[var(--ema-border)] px-4 py-1.5 text-[11px] text-[var(--ema-text-tertiary)]">
       <div className="flex items-center gap-2">
-        <span className={`size-1.5 rounded-full ${serverStatus.kind === 'ok'
+        <span className={`size-1.5 rounded-md ${serverStatus.kind === 'ok'
           ? 'bg-[var(--ema-success)]'
           : 'bg-[var(--ema-danger)]'}`}
         />

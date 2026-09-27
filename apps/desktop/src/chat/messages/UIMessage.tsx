@@ -9,7 +9,6 @@ import {
   type StreamingMessage as StreamingMessageData,
 } from '../../stores/turn.js';
 import { AssistantMessage } from './AssistantMessage.js';
-import { StreamingMessage } from './StreamingMessage.js';
 import { UserMessage } from './UserMessage.js';
 
 export function UIMessage({
@@ -25,23 +24,33 @@ export function UIMessage({
 }): JSX.Element | null {
   if (isStreamingMessage(message)) {
     return (
-      <StreamingMessage
+      <AssistantMessage
         message={message}
         sessionId={sessionId}
+        toolResults={toolResults}
         terminal={terminal}
       />
     );
   }
   if (message.kind === 'summary') return <SessionSummary message={message} />;
   if (message.role === 'user') return <UserMessage message={message} />;
-  if (message.role === 'assistant' && hasTurnId(message)) {
-    return <AssistantMessage message={message} toolResults={toolResults} />;
+  if (isHistoryAssistantMessage(message)) {
+    return (
+      <AssistantMessage
+        message={message}
+        sessionId={sessionId}
+        toolResults={toolResults}
+        terminal={terminal}
+      />
+    );
   }
   return null;
 }
 
-function hasTurnId(message: SessionMessage): message is SessionMessage & { readonly turnId: string } {
-  return message.turnId !== null;
+function isHistoryAssistantMessage(
+  message: SessionMessage,
+): message is SessionMessage & { readonly role: 'assistant'; readonly turnId: string } {
+  return message.role === 'assistant' && message.turnId !== null;
 }
 
 export function toolResultsForMessages(

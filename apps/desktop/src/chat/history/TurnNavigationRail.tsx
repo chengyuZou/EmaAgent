@@ -29,6 +29,12 @@ const WHEEL_STEP = 3;
 const WHEEL_THRESHOLD = 48;
 const TURN_RAIL_ROW_HEIGHT = 8;
 const TURN_RAIL_MIN_VISIBLE = 12;
+const TURN_TIME_FORMATTER = new Intl.DateTimeFormat('zh-CN', {
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+});
 
 function turnRailCapacity(height: number): number {
   return Math.max(TURN_RAIL_MIN_VISIBLE, Math.floor(Math.max(height - 24, 0) / TURN_RAIL_ROW_HEIGHT));
@@ -205,12 +211,7 @@ function TurnRailPreview({ item }: { item: TurnIndexItem }): JSX.Element {
 }
 
 function formatTurnTime(timestamp: number): string {
-  return new Intl.DateTimeFormat('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(timestamp);
+  return TURN_TIME_FORMATTER.format(timestamp);
 }
 
 function formatTurnStatus(status: TurnIndexItem['status']): string {

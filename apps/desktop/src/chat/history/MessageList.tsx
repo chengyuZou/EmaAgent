@@ -10,7 +10,12 @@ import {
   type CSSProperties,
   type JSX,
 } from 'react';
-import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
+import {
+  Virtuoso,
+  type Components,
+  type ContextProp,
+  type VirtuosoHandle,
+} from 'react-virtuoso';
 import { useShallow } from 'zustand/react/shallow';
 import type { SessionMessage } from '@ema-agent/session';
 import { charactersApi } from '../../api/characters.js';
@@ -26,15 +31,54 @@ import {
   type TurnState,
 } from '../../stores/turn.js';
 import { scheduleTurnHistoryClosure } from '../session/turnHistoryClosure.js';
-import { TurnNavigationRail } from '../history/TurnNavigationRail.js';
-import { TurnFooter, type SessionTurnStats } from './TurnFooter.js';
-import { UIMessage, toolResultsForMessages } from './UIMessage.js';
+import { TurnNavigationRail } from './TurnNavigationRail.js';
+import { TurnFooter, type SessionTurnStats } from '../messages/TurnFooter.js';
+import { UIMessage, toolResultsForMessages } from '../messages/UIMessage.js';
 
 const INITIAL_ITEM_INDEX = 1_000_000;
 const MESSAGE_TOP_INSET = 40;
 
 type MessageListStyle = CSSProperties & {
   '--ema-message-top-inset': string;
+};
+
+interface MessageListStatusProps {
+  readonly loadingNewer: boolean;
+  readonly error?: string;
+  readonly stopReason?: string;
+  readonly compacting: boolean;
+}
+
+interface MessageListContext extends MessageListStatusProps {
+  readonly loadingOlder: boolean;
+  readonly bottomInset: number;
+}
+
+function MessageListHeader({ context }: ContextProp<MessageListContext>): JSX.Element {
+  return (
+    <>
+      <div aria-hidden style={{ height: MESSAGE_TOP_INSET }} />
+      {context.loadingOlder && (
+        <div className="py-2 text-center text-xs text-[var(--ema-text-tertiary)]">
+          正在读取更早消息…
+        </div>
+      )}
+    </>
+  );
+}
+
+function MessageListFooter({ context }: ContextProp<MessageListContext>): JSX.Element {
+  return (
+    <>
+      <MessageListStatus {...context} />
+      <div aria-hidden style={{ height: context.bottomInset }} />
+    </>
+  );
+}
+
+const MESSAGE_LIST_COMPONENTS: Components<SessionMessage | StreamingMessage, MessageListContext> = {
+  Header: MessageListHeader,
+  Footer: MessageListFooter,
 };
 
 export function buildMessageList(
@@ -64,8 +108,10 @@ export function messageScrollLocation(index: number): Parameters<VirtuosoHandle[
 
 export function MessageList({
   sessionId,
+  bottomInset,
 }: {
   readonly sessionId: string;
+  readonly bottomInset: number | null;
 }): JSX.Element {
   const listRef = useRef<VirtuosoHandle | null>(null);
   const history = useSessionHistoryStore(useShallow(state => {
@@ -91,6 +137,8 @@ export function MessageList({
   const [listIndex, setListIndex] = useState({ windowId, firstItemIndex: INITIAL_ITEM_INDEX });
   const [scrollerElement, setScrollerElement] = useState<HTMLElement | null>(null);
   const [visibleTurnIds, setVisibleTurnIds] = useState<ReadonlySet<string>>(() => new Set());
+  const atBottom = useRef(false);
+  const previousBottomInset = useRef(bottomInset);
   const attachScroller = useCallback((element: HTMLElement | Window | null): void => {
     setScrollerElement(element instanceof HTMLElement ? element : null);
   }, []);
@@ -122,6 +170,22 @@ export function MessageList({
   const toolResults = useMemo(() => toolResultsForMessages(allMessages), [allMessages]);
   const messagesByTurn = useMemo(() => collectMessagesByTurn(allMessages), [allMessages]);
   const itemKeys = useMemo(() => messages.map(messageListKey), [messages]);
+
+  useLayoutEffect(() => {
+    const previous = previousBottomInset.current;
+    previousBottomInset.current = bottomInset;
+    if (
+      bottomInset === null
+      || previous === null
+      || previous === bottomInset
+      || !atBottom.current
+      || history.windowAnchorMessageId
+    ) return;
+    const frame = requestAnimationFrame(() => {
+      listRef.current?.scrollToIndex({ index: 'LAST', align: 'end' });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [bottomInset, history.windowAnchorMessageId]);
 
   useLayoutEffect(() => {
     if (previousItems.current.windowId !== windowId) {
@@ -218,17 +282,27 @@ export function MessageList({
 
   if (!history.loaded && history.loading) {
     return (
-      <div className="flex flex-1 items-center justify-center text-sm text-[var(--ema-text-tertiary)]">
+      <div
+        className="flex flex-1 items-center justify-center text-sm text-[var(--ema-text-tertiary)]"
+        style={{ paddingBottom: bottomInset ?? 0 }}
+      >
         正在读取消息…
       </div>
     );
   }
   if (messages.length === 0) {
     if (!history.error && !stopReason && !activeCompactId) {
-      return <ChatEmptyState sessionId={sessionId} />;
+      return (
+        <div className="flex min-h-0 flex-1 flex-col" style={{ paddingBottom: bottomInset ?? 0 }}>
+          <ChatEmptyState sessionId={sessionId} />
+        </div>
+      );
     }
     return (
-      <div className="flex flex-1 items-end justify-center pb-4">
+      <div
+        className="flex flex-1 items-end justify-center"
+        style={{ paddingBottom: (bottomInset ?? 0) + 16 }}
+      >
         <MessageListStatus
           loadingNewer={history.loadingNewer}
           error={history.error}
@@ -238,6 +312,7 @@ export function MessageList({
       </div>
     );
   }
+  if (bottomInset === null) return <div className="min-h-0 flex-1" />;
 
   return (
     <div
@@ -253,40 +328,31 @@ export function MessageList({
         key={windowId}
         ref={listRef}
         scrollerRef={attachScroller}
-        className="absolute inset-0 pl-14 pr-4 overflow-x-hidden"
+        className="absolute inset-0 px-14 overflow-x-hidden"
         data={messages}
         firstItemIndex={firstItemIndex}
         computeItemKey={(_index, message) => messageListKey(message)}
+        alignToBottom={!history.windowAnchorMessageId}
         followOutput={turns.size > 0 || Boolean(activeCompactId) ? 'auto' : false}
         initialTopMostItemIndex={anchorIndex >= 0
           ? messageScrollLocation(anchorIndex)
-          : messages.length - 1}
+          : { index: 'LAST', align: 'end' }}
+        atBottomStateChange={(value) => { atBottom.current = value; }}
         startReached={() => {
           if (history.olderCursor) void useSessionHistoryStore.getState().loadOlder(sessionId);
         }}
         endReached={() => {
           if (history.newerCursor) void useSessionHistoryStore.getState().loadNewer(sessionId);
         }}
-        components={{
-          Header: () => (
-            <>
-              <div aria-hidden style={{ height: MESSAGE_TOP_INSET }} />
-              {history.loadingOlder && (
-                <div className="py-2 text-center text-xs text-[var(--ema-text-tertiary)]">
-                  正在读取更早消息…
-                </div>
-              )}
-            </>
-          ),
-          Footer: () => (
-            <MessageListStatus
-              loadingNewer={history.loadingNewer}
-              error={history.error}
-              stopReason={turns.size === 0 ? stopReason : undefined}
-              compacting={Boolean(activeCompactId)}
-            />
-          ),
+        context={{
+          loadingOlder: history.loadingOlder,
+          loadingNewer: history.loadingNewer,
+          error: history.error,
+          stopReason: turns.size === 0 ? stopReason : undefined,
+          compacting: Boolean(activeCompactId),
+          bottomInset,
         }}
+        components={MESSAGE_LIST_COMPONENTS}
         itemContent={(index, message) => {
           const turnId = message.turnId;
           const next = messages[index - firstItemIndex + 1];
@@ -294,7 +360,7 @@ export function MessageList({
           const turn = turnId ? turns.get(turnId) : undefined;
           return (
             <div
-              className="mx-auto max-w-2xl py-1.5"
+              className="mx-auto max-w-3xl py-1.5"
               data-turn-id={turnId ?? undefined}
             >
               <UIMessage
@@ -356,18 +422,13 @@ function MessageListStatus({
   error,
   stopReason,
   compacting,
-}: {
-  readonly loadingNewer: boolean;
-  readonly error?: string;
-  readonly stopReason?: string;
-  readonly compacting: boolean;
-}): JSX.Element {
+}: MessageListStatusProps): JSX.Element {
   return (
     <div className="flex min-h-4 flex-col items-center gap-2 py-2">
       {compacting && (
         <div
           role="status"
-          className="ema-shimmer mx-auto flex w-full max-w-2xl items-center gap-2 border-t border-[var(--ema-border)] px-3 py-2 text-xs text-[var(--ema-text-secondary)]"
+          className="ema-shimmer mx-auto flex w-full max-w-3xl items-center gap-2 border-t border-[var(--ema-border)] px-3 py-2 text-xs text-[var(--ema-text-secondary)]"
         >
           <span className="i-lucide:sliders-horizontal size-3.5 shrink-0 text-[var(--ema-primary)]" aria-hidden />
           <span>正在压缩上下文…</span>
