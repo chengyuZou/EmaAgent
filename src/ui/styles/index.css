@@ -12,5 +12,6 @@
 @import './primitives/glass.css';
 @import './primitives/radix.css';
 @import './primitives/decorations.css';
+@import './primitives/cursorFloating.css';
 @import './primitives/selectable.css';
 @import './primitives/markdown.css';

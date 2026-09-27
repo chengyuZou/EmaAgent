@@ -171,7 +171,7 @@ export function SkillMarketPage(): JSX.Element {
       {/* 页头:标题 + 来源状态 + 刷新 */}
       <div className="flex items-start justify-between shrink-0">
         <div>
-          <h2 className="text-base font-semibold text-[var(--ema-text-primary)]">技能市场</h2>
+          <h1 className="text-base font-semibold text-[var(--ema-text-primary)]">技能市场</h1>
           <p className="text-xs text-[var(--ema-text-tertiary)] mt-0.5">浏览并安装来自 SkillHub 与 ClawHub 的技能</p>
         </div>
         <div className="flex items-center gap-3 text-xs">

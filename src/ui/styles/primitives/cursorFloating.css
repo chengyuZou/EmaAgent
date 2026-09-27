@@ -1,0 +1,66 @@
+/* 光标跟随的 3D 倾斜卡: 组件经行内 transform 逐帧驱动倾斜与缩放, 这里只定义
+   回弹曲线和两层 color-dodge 光泽. 光泽位置与不透明度由 --cf-* 变量逐帧下发. */
+.ema-cursor-floating {
+  position: relative;
+  transform-style: preserve-3d;
+  transform-origin: center;
+  will-change: transform;
+  transition:
+    transform 0.3s cubic-bezier(0.23, 1, 0.32, 1),
+    border-color var(--ema-duration-base) var(--ema-ease),
+    background-color var(--ema-duration-base) var(--ema-ease),
+    box-shadow var(--ema-duration-base) var(--ema-ease);
+}
+.ema-cursor-floating::before,
+.ema-cursor-floating::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background-repeat: no-repeat;
+  pointer-events: none;
+  transition: all 0.33s ease;
+}
+/* 斜向主光泽: 300% 大背景随 --cf-x/y 平移, hover 提亮加对比. */
+.ema-cursor-floating::before {
+  z-index: 1;
+  background-position: var(--cf-x, 50%) var(--cf-y, 50%);
+  background-size: 300% 300%;
+  background-image: linear-gradient(
+    115deg,
+    transparent 0%,
+    color-mix(in oklab, var(--ema-primary) 30%, transparent) 25%,
+    transparent 47%,
+    transparent 53%,
+    color-mix(in oklab, var(--ema-primary) 30%, transparent) 75%,
+    transparent 100%
+  );
+  opacity: calc(0.5 * var(--cf-intensity, 1.5));
+  filter: brightness(0.5) contrast(1);
+  mix-blend-mode: color-dodge;
+}
+/* 闪点层: 六段透明度过山车, 位置跟光标, 不透明度随手势角度. */
+.ema-cursor-floating::after {
+  z-index: 2;
+  background-position: var(--cf-sx, 50%) var(--cf-sy, 50%);
+  background-size: 160%;
+  background-image: linear-gradient(
+    125deg,
+    color-mix(in oklab, var(--ema-primary) 30%, transparent) 15%,
+    color-mix(in oklab, var(--ema-primary) 25%, transparent) 30%,
+    color-mix(in oklab, var(--ema-primary) 20%, transparent) 40%,
+    color-mix(in oklab, var(--ema-primary) 10%, transparent) 60%,
+    color-mix(in oklab, var(--ema-primary) 25%, transparent) 70%,
+    color-mix(in oklab, var(--ema-primary) 30%, transparent) 85%
+  );
+  opacity: calc(var(--cf-sparkle-opacity, 0.5) * var(--cf-intensity, 1.5));
+  mix-blend-mode: color-dodge;
+}
+.ema-cursor-floating:hover::before {
+  opacity: calc(0.88 * var(--cf-intensity, 1.5));
+  filter: brightness(0.66) contrast(1.33);
+}
+.ema-cursor-floating:hover::after {
+  opacity: var(--cf-intensity, 1.5);
+  filter: brightness(1.1) contrast(1.2);
+}

@@ -2,7 +2,7 @@
 // expression 是自由文本(词法 [a-z][a-z0-9_]*),纯 Input 手写新词。
 import { useCallback, useEffect, useMemo, useState, type JSX } from 'react';
 import {
-  Button, DropdownMenu, IconButton, Input, ScrollArea, Slider, Spinner,
+  Button, CursorFloating, DropdownMenu, IconButton, Input, ScrollArea, Slider, Spinner,
   type MenuItem,
 } from '@ema-agent/ui';
 import {
@@ -155,13 +155,13 @@ function IllustrationCard({
   ];
 
   return (
-    <div
-      className={`ema-stagger-in group relative cursor-pointer overflow-hidden rounded-xl border
-        transition-all duration-[var(--ema-duration-base)] hover:border-[var(--ema-primary)]/30
-        ${selected ? 'border-[var(--ema-primary)]' : 'border-[var(--ema-border)] bg-[var(--ema-surface-2)]'}`}
-      style={{ '--stagger-i': index } as React.CSSProperties}
-      onClick={onSelect}
-    >
+    <div className="ema-stagger-in" style={{ '--stagger-i': index } as React.CSSProperties}>
+      <CursorFloating
+        className={`group relative cursor-pointer overflow-hidden rounded-xl border
+          hover:border-[var(--ema-primary)]/30 hover:shadow-[var(--ema-shadow-soft)]
+          ${selected ? 'border-[var(--ema-primary)]' : 'border-[var(--ema-border)] bg-[var(--ema-surface-2)]'}`}
+        onClick={onSelect}
+      >
       <div className="absolute left-2 top-2 z-10">
         <span
           className={`block h-3.5 w-3.5 rounded-full border-2
@@ -196,6 +196,7 @@ function IllustrationCard({
         </p>
         <p className="mt-1 text-[10px] text-[var(--ema-text-tertiary)]">{formatBytes(item.byteSize)}</p>
       </div>
+      </CursorFloating>
     </div>
   );
 }

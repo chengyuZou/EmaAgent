@@ -2,6 +2,7 @@
 // 六块(轮次/消息/Token/附件/音频/子代理):消息与 Token 进真查看器,其余"后续开放查看"。
 import { memo, useCallback, useEffect, useRef, useState, type CSSProperties, type JSX } from 'react';
 import { Badge, Button, EmptyState, Skeleton } from '@ema-agent/ui';
+import { PageHeader } from '../shared/PageHeader.js';
 import { useStorageStore } from '../../stores/storage.js';
 import { sessionsApi } from '../../api/sessions.js';
 import { systemApi, type SessionSummary } from '../../api/system.js';
@@ -115,32 +116,33 @@ export function StorageTab(): JSX.Element {
   const stats = store.stats;
   return (
     <div className="relative flex h-full flex-col overflow-hidden">
-      <div className="flex shrink-0 items-center gap-3 border-b border-[var(--ema-border)] px-6 py-4">
-        <span className="text-base font-semibold text-[var(--ema-text-primary)]">存储位置</span>
-        <span className="truncate font-mono text-xs text-[var(--ema-text-tertiary)]">
-          ~/.ema-agent/data
-        </span>
-        <div className="flex-1" />
-        <Button
-          variant="secondary"
-          size="sm"
-          loading={importing}
-          onClick={() => importRef.current?.click()}
-        >
-          <span className="i-solar:upload-minimalistic-bold-duotone" aria-hidden />导入会话
-        </Button>
-        <input
-          ref={importRef}
-          type="file"
-          accept=".zip"
-          className="hidden"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) void handleImport(f);
-            e.target.value = '';
-          }}
+      <div className="shrink-0 border-b border-[var(--ema-border)] px-6 pt-5">
+        <PageHeader
+          title="存储位置"
+          description="会话与数据存储，~/.ema-agent/data"
+          action={(
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={importing}
+              onClick={() => importRef.current?.click()}
+            >
+              <span className="i-solar:upload-minimalistic-bold-duotone" aria-hidden />导入会话
+            </Button>
+          )}
         />
       </div>
+      <input
+        ref={importRef}
+        type="file"
+        accept=".zip"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) void handleImport(f);
+          e.target.value = '';
+        }}
+      />
 
       <div className="ema-fade-in flex-1 overflow-y-auto p-6">
         <div className="flex flex-col gap-6">

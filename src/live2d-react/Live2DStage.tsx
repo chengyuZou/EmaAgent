@@ -140,11 +140,26 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
           resizeTo: host,
           backgroundAlpha: 0,
           antialias: true,
+          // 固定 2x 超采样 + autoDensity 把 CSS 尺寸压回宿主: 低分屏不糊, 高分屏不放大.
+          resolution: 2,
+          autoDensity: true,
         });
       } catch (cause) {
         callbacksRef.current.onError?.(asError(cause));
         return;
       }
+
+      // 单帧渲染抛错不能杀死整个循环: 出错停 ticker, 等下一次挂载重建舞台.
+      const guardedRender = (): void => {
+        try {
+          app.render();
+        } catch (error) {
+          console.error('[live2d] Pixi render failed, ticker stopped.', error);
+          app.ticker.stop();
+        }
+      };
+      app.ticker.remove(app.render, app);
+      app.ticker.add(guardedRender);
 
       appRef.current = app;
       host.appendChild(app.view as HTMLCanvasElement);

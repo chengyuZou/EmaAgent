@@ -27,7 +27,7 @@ export function KbLibraryCard({ lib, onOpen, onActivate, onDelete }: {
                    bg-[var(--ema-surface-1)] p-4 text-left cursor-pointer outline-none
                    ema-glass-weak ema-card-decorate ema-card-decorate--diag
                    transition-all duration-[var(--ema-duration-base)]
-                   hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] active:scale-[0.97]"
+                   hover:-translate-y-0.5 hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-2)] active:scale-[0.97]"
       >
         <span
           className={`absolute left-2 top-2 z-1 size-3.5 rounded-full ${

@@ -1,5 +1,6 @@
 import { useState, type CSSProperties, type JSX } from 'react';
 import { Button } from '@ema-agent/ui';
+import { PageHeader } from '../shared/PageHeader.js';
 import { AgentParameters } from './agent/AgentParameters.js';
 import { AttachmentParameters } from './attachments/AttachmentParameters.js';
 import { ContextParameters } from './context/ContextParameters.js';
@@ -33,19 +34,16 @@ export function ParameterSettings(): JSX.Element {
   if (domain === null) {
     return (
       <div className="mx-auto w-full max-w-5xl pb-10">
-        <header className="mb-6">
-          <h1 className="text-xl font-semibold text-[var(--ema-text-primary)]">参数设置</h1>
-          <p className="mt-1 text-sm text-[var(--ema-text-tertiary)]">调整基础产品行为.</p>
-        </header>
+        <PageHeader title="参数设置" description="调整基础产品行为" />
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {DOMAINS.map((item, index) => (
             <button
               key={item.id}
-              className="ema-glass-weak ema-card-decorate ema-card-decorate--grid ema-stagger-in group flex min-h-32 flex-col items-start overflow-hidden rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] p-4 text-left transition-ema hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] active:scale-[0.97]"
+              className="ema-glass-weak ema-card-decorate ema-card-decorate--grid ema-stagger-in group flex min-h-32 flex-col items-start overflow-hidden rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] p-4 text-left transition-ema hover:-translate-y-0.5 hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)] active:scale-[0.97]"
               style={{ '--stagger-i': index } as CSSProperties}
               onClick={() => setDomain(item.id)}
             >
-              <span className={`${item.icon} text-2xl text-[var(--ema-text-tertiary)] transition-ema group-hover:text-[var(--ema-primary)]`} aria-hidden />
+              <span className={`${item.icon} text-2xl text-[var(--ema-text-tertiary)] transition-ema group-hover:scale-110 group-hover:text-[var(--ema-primary)]`} aria-hidden />
               <strong className="mt-4 text-sm text-[var(--ema-text-primary)]">{item.title}</strong>
               <span className="mt-1 text-xs leading-relaxed text-[var(--ema-text-tertiary)]">{item.description}</span>
             </button>

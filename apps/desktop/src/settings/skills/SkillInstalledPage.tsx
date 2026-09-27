@@ -8,6 +8,7 @@ import { useSkillStore } from '../../stores/skill.js';
 import { skillsApi, type SkillListItem } from '../../api/skills.js';
 import { showToast } from '../../lib/toast.js';
 import { Markdown } from '@ema-agent/ui';
+import { PageHeader } from '../shared/PageHeader.js';
 
 const SCOPE_LABEL: Record<string, string> = {
   builtin: '内置',
@@ -73,20 +74,18 @@ export function SkillInstalledPage(): JSX.Element {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-start justify-between shrink-0">
-        <div>
-          <h2 className="text-base font-semibold text-[var(--ema-text-primary)]">已安装</h2>
-          <p className="text-xs text-[var(--ema-text-tertiary)] mt-0.5">
-            内置与用户技能；启停下一根对话 Turn 生效。去「技能市场」安装新技能。
-          </p>
-        </div>
-        <IconButton
-          icon="i-lucide:refresh-cw"
-          label="重新扫描技能目录"
-          loading={rescanning}
-          onClick={() => void rescan()}
-        />
-      </div>
+      <PageHeader
+        title="已安装"
+        description="内置与用户技能；启停下一根对话 Turn 生效。去「技能市场」安装新技能"
+        action={(
+          <IconButton
+            icon="i-lucide:refresh-cw"
+            label="重新扫描技能目录"
+            loading={rescanning}
+            onClick={() => void rescan()}
+          />
+        )}
+      />
 
       {error && <Callout variant="danger" className="shrink-0">{error}</Callout>}
 

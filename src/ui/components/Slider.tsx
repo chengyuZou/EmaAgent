@@ -76,8 +76,8 @@ export function Slider<T extends string | number>(props: SliderProps<T>): React.
         <RadixSlider.Thumb
           className={cn(
             'block h-4 w-4 rounded-full bg-[var(--ema-surface-4)] border border-[var(--ema-primary)]/60',
-            'shadow-[var(--ema-shadow-1)] focus-ring',
-            'transition-ema',
+            'shadow-[var(--ema-shadow-1)] focus-ring cursor-col-resize',
+            'transition-ema hover:scale-110',
           )}
           aria-label="value"
         />

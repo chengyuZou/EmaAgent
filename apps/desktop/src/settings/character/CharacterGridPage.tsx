@@ -2,7 +2,7 @@
 // ●○切换、悬停删除、新建卡收尾。当前角色有工作在跑时拒绝切换/删除(先停再来)。
 import { useEffect, useMemo, useState, type JSX } from 'react';
 import {
-  Button, Callout, Dialog, IconButton, Input, ScrollArea, SearchField, Skeleton,
+  Button, Callout, CursorFloating, Dialog, IconButton, Input, ScrollArea, SearchField, Skeleton,
 } from '@ema-agent/ui';
 import { ServerApiError } from '../../api/client.js';
 import {
@@ -13,6 +13,7 @@ import {
 import { useCharacterStore } from '../../stores/character.js';
 import { ServerImage } from '../../lib/ServerImage.js';
 import { showToast } from '../../lib/toast.js';
+import { PageHeader } from '../shared/PageHeader.js';
 
 export function CharacterGridPage({ onOpen }: { onOpen(name: string): void }): JSX.Element {
   const characters = useCharacterStore(s => s.characters);
@@ -72,17 +73,19 @@ export function CharacterGridPage({ onOpen }: { onOpen(name: string): void }): J
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-start justify-between gap-3 px-1 pb-3 shrink-0">
-        <div>
-          <h2 className="text-base font-semibold text-[var(--ema-text-primary)]">角色卡</h2>
-          <p className="text-xs text-[var(--ema-text-tertiary)] mt-0.5">管理角色身份及其舞台资源</p>
-        </div>
-        <SearchField
-          value={search}
-          onChange={setSearch}
-          placeholder="搜索角色..."
-          aria-label="搜索角色"
-          className="h-9 w-64"
+      <div className="px-1 shrink-0">
+        <PageHeader
+          title="角色卡"
+          description="管理角色身份及其舞台资源"
+          action={(
+            <SearchField
+              value={search}
+              onChange={setSearch}
+              placeholder="搜索角色..."
+              aria-label="搜索角色"
+              className="h-9 w-64"
+            />
+          )}
         />
       </div>
 
@@ -157,14 +160,13 @@ function CharacterCard({
   onDelete(): void;
 }): JSX.Element {
   return (
-    <div
-      className="ema-stagger-in group relative cursor-pointer overflow-hidden rounded-xl border
-        border-[var(--ema-border)] bg-[var(--ema-surface-2)] shadow-[var(--ema-shadow-1)]
-        transition-all duration-[var(--ema-duration-base)]
-        hover:border-[var(--ema-primary)]/30"
-      style={{ '--stagger-i': index } as React.CSSProperties}
-      onClick={onOpen}
-    >
+    <div className="ema-stagger-in" style={{ '--stagger-i': index } as React.CSSProperties}>
+      <CursorFloating
+        className="group relative cursor-pointer overflow-hidden rounded-xl border
+          border-[var(--ema-border)] bg-[var(--ema-surface-2)] shadow-[var(--ema-shadow-1)]
+          hover:border-[var(--ema-primary)]/30 hover:shadow-[var(--ema-shadow-soft)]"
+        onClick={onOpen}
+      >
       <button
         type="button"
         className={`absolute left-2 top-2 z-10 h-3.5 w-3.5 rounded-full border-2 transition-all
@@ -201,6 +203,7 @@ function CharacterCard({
           <span>音频 {character.voiceSampleCount}</span>
         </div>
       </div>
+      </CursorFloating>
     </div>
   );
 }

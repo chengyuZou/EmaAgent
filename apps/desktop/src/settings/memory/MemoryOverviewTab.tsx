@@ -2,6 +2,7 @@ import { useEffect, useState, type JSX } from 'react';
 import { Badge, Button, Callout, Card, Progress, Spinner } from '@ema-agent/ui';
 import { memoryApi, type MemoryStats } from '../../api/memory.js';
 import { tauriBridge } from '../../lib/tauri-bridge.js';
+import { PageHeader } from '../shared/PageHeader.js';
 
 const LEVEL_LABEL = {
   normal: '正常',
@@ -32,6 +33,7 @@ export function MemoryOverviewTab(): JSX.Element {
 
   return (
     <div className="flex flex-col gap-4">
+      <PageHeader title="Memory" description="记忆存储概览与统计" />
       {error && <Callout variant="danger">{error}</Callout>}
       {stats && (
         <Card

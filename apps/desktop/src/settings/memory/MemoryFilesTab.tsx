@@ -3,6 +3,7 @@ import { Button, Callout, EmptyState, IconButton, SearchField, Skeleton, Spinner
 import { memoryApi, type MemoryFileContent, type MemorySearchResult } from '../../api/memory.js';
 import { tauriBridge } from '../../lib/tauri-bridge.js';
 import { Markdown } from '@ema-agent/ui';
+import { PageHeader } from '../shared/PageHeader.js';
 
 type MemoryTrack = 'work' | 'relationship';
 
@@ -111,12 +112,7 @@ export function MemoryFilesTab(): JSX.Element {
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col gap-3">
       <div className="shrink-0">
-        <div className="mb-2">
-          <h3 className="text-sm font-semibold text-[var(--ema-text-primary)]">Memory 文件</h3>
-          <p className="mt-0.5 text-xs text-[var(--ema-text-tertiary)]">
-            浏览、搜索并阅读 Memory 文件内容。
-          </p>
-        </div>
+        <PageHeader title="Memory 文件" description="浏览、搜索并阅读 Memory 文件内容" />
 
         <div className="flex flex-wrap items-center gap-2">
           <SearchField

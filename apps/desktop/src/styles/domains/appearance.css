@@ -32,9 +32,15 @@
   border: 1px solid rgb(0 0 0 / 0.18);
   box-shadow: 0 1px 5px rgb(0 0 0 / 0.3);
   cursor: col-resize;
-  transition: width var(--ema-duration-fast) var(--ema-ease);
+  transition:
+    width var(--ema-duration-fast) var(--ema-ease),
+    transform var(--ema-duration-fast) var(--ema-ease);
 }
-.ema-hue-range::-webkit-slider-thumb:hover { width: 6px; }
+.ema-hue-range::-webkit-slider-thumb:hover {
+  width: 6px;
+  /* 悬停加长 = 抓握确认; transform 从中心生长, 垂直居中不受影响. */
+  transform: scaleY(1.1);
+}
 .ema-hue-range::-moz-range-thumb {
   width: 4px;
   height: 48px;
@@ -43,9 +49,14 @@
   border: 1px solid rgb(0 0 0 / 0.18);
   box-shadow: 0 1px 5px rgb(0 0 0 / 0.3);
   cursor: col-resize;
-  transition: width var(--ema-duration-fast) var(--ema-ease);
+  transition:
+    width var(--ema-duration-fast) var(--ema-ease),
+    transform var(--ema-duration-fast) var(--ema-ease);
 }
-.ema-hue-range::-moz-range-thumb:hover { width: 6px; }
+.ema-hue-range::-moz-range-thumb:hover {
+  width: 6px;
+  transform: scaleY(1.1);
+}
 .ema-hue-range::-moz-range-track {
   height: 40px;
   border-radius: var(--ema-radius-lg);

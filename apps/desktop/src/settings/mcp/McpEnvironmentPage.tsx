@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Badge, Button, Callout, EntityRow, Spinner } from '@ema-agent/ui';
 import type { McpLocalCommand } from '@ema-agent/mcp';
 import { mcpApi, type McpEnvironmentResult } from '../../api/mcp.js';
+import { PageHeader } from '../shared/PageHeader.js';
 
 const LABELS: Record<McpLocalCommand, string> = {
   npx: 'Node.js / npx',
@@ -32,15 +33,15 @@ export function McpEnvironmentPage(): JSX.Element {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-base font-semibold">运行环境</h2>
-          <p className="mt-0.5 text-xs text-[var(--ema-text-tertiary)]">检查 Node Server 实际用于启动 stdio MCP 的本机命令.</p>
-        </div>
-        <Button size="sm" variant="secondary" loading={checking} onClick={() => void inspect()}>
-          <span className="i-mdi:refresh" aria-hidden />重新检查
-        </Button>
-      </div>
+      <PageHeader
+        title="运行环境"
+        description="检查 Node Server 实际用于启动 stdio MCP 的本机命令"
+        action={(
+          <Button size="sm" variant="secondary" loading={checking} onClick={() => void inspect()}>
+            <span className="i-mdi:refresh" aria-hidden />重新检查
+          </Button>
+        )}
+      />
 
       {error && <Callout variant="danger">{error}</Callout>}
       {checking && !result ? <div className="flex justify-center py-12"><Spinner size="md" /></div> : result && <>

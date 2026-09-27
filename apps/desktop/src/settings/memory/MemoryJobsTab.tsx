@@ -7,6 +7,7 @@ import {
   JOB_STATUS_VARIANT,
   relativeTime,
 } from './memoryLabels.js';
+import { PageHeader } from '../shared/PageHeader.js';
 
 const JOB_REFRESH_INTERVAL_MS = 5_000;
 
@@ -70,35 +71,30 @@ export function MemoryJobsTab(): JSX.Element {
 
   return (
     <div className="flex min-h-0 flex-col gap-4">
-      <div className="flex items-center gap-2">
-        <div>
-          <h3 className="text-sm font-semibold text-[var(--ema-text-primary)]">
-            自动任务
-          </h3>
-          <p className="mt-0.5 text-xs text-[var(--ema-text-tertiary)]">
-            提取、整合与维护由后端按固定时机自动运行。
-          </p>
-        </div>
-
-        <Button
-          variant="ghost"
-          size="sm"
-          icon="i-lucide:refresh-cw"
-          className="ml-auto"
-          loading={loading}
-          onClick={() => void refresh()}
-        >
-          刷新
-        </Button>
-
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => void toggleHistory()}
-        >
-          {showHistory ? '收起历史记录' : '查看历史记录'}
-        </Button>
-      </div>
+      <PageHeader
+        title="自动任务"
+        description="提取、整合与维护由后端按固定时机自动运行"
+        action={(
+          <>
+            <Button
+              variant="ghost"
+              size="sm"
+              icon="i-lucide:refresh-cw"
+              loading={loading}
+              onClick={() => void refresh()}
+            >
+              刷新
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => void toggleHistory()}
+            >
+              {showHistory ? '收起历史记录' : '查看历史记录'}
+            </Button>
+          </>
+        )}
+      />
 
       {error && <Callout variant="danger">{error}</Callout>}
 

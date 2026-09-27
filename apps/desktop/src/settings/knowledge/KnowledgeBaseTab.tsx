@@ -6,6 +6,7 @@ import { useKnowledgeStore } from '../../stores/knowledge.js';
 import type { KnowledgeLibrary } from '../../api/knowledge.js';
 import { showToast } from '../../lib/toast.js';
 import { AddDashedCard } from '../providers/AddDashedCard.js';
+import { PageHeader } from '../shared/PageHeader.js';
 import { KbLibraryCard } from './KbLibraryCard.js';
 import { KbCreateDialog } from './KbCreateDialog.js';
 import { KbDetailPanel } from './KbDetailPanel.js';
@@ -57,13 +58,10 @@ export function KnowledgeBaseTab(): JSX.Element {
 
   return (
     <div className="flex flex-col gap-4 ema-fade-in">
-      <div className="shrink-0">
-        <h2 className="text-base font-semibold text-[var(--ema-text-primary)]">知识库</h2>
-        <p className="text-xs text-[var(--ema-text-tertiary)] mt-1 leading-relaxed">
-          管理你的文档知识库,供 Agent 检索引用。点开库卡即可查看与管理;
-          「激活」只决定 Agent 检索哪个库——任何库的任务都照常运行。
-        </p>
-      </div>
+      <PageHeader
+        title="知识库"
+        description="管理文档知识库,供 Agent 检索引用;「激活」只决定 Agent 检索哪个库——任何库的任务都照常运行"
+      />
 
       {error && <Callout variant="danger" className="text-xs ema-fade-in">{error}</Callout>}
 

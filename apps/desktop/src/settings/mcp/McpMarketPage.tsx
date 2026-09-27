@@ -4,6 +4,7 @@ import { mcpApi, type McpMarketDetail, type McpMarketEntry } from '../../api/mcp
 import { showToast } from '../../lib/toast.js';
 import { tauriBridge } from '../../lib/tauri-bridge.js';
 import { useMcpStore } from '../../stores/mcp.js';
+import { PageHeader } from '../shared/PageHeader.js';
 
 const SOURCE = 'official' as const;
 export const MCP_MARKET_CHANGED_EVENT = 'ema:mcp-market-changed';
@@ -137,12 +138,15 @@ export function McpMarketPage(): JSX.Element {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-3">
-        <Badge variant="neutral">Official MCP Registry</Badge>
-        <Button size="sm" variant="ghost" loading={refreshing} disabled={syncing} onClick={() => void refresh()}>
-          <span className="i-mdi:refresh" aria-hidden />刷新
-        </Button>
-      </div>
+      <PageHeader
+        title="MCP 市场"
+        description="浏览并安装 Official MCP Registry 条目"
+        action={(
+          <Button size="sm" variant="ghost" loading={refreshing} disabled={syncing} onClick={() => void refresh()}>
+            <span className="i-mdi:refresh" aria-hidden />刷新
+          </Button>
+        )}
+      />
       <SearchField
         value={search}
         onChange={setSearch}

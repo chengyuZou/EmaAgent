@@ -22,6 +22,7 @@ import {
   type ModelCapability,
 } from '../../api/providers.js';
 import { useProviderStore } from '../../stores/provider.js';
+import { PageHeader } from '../shared/PageHeader.js';
 import { showToast } from '../../lib/toast.js';
 import { MODEL_BINDING_CAPABILITIES } from '@ema-agent/providers/modelBindings';
 
@@ -211,12 +212,7 @@ export function BindingsTab(): JSX.Element {
   if (view === 'grid') {
     return (
       <div className="flex flex-col gap-6">
-        <div>
-          <h2 className="text-base font-semibold text-[var(--ema-text-primary)]">模型绑定</h2>
-          <p className="text-[var(--ema-text-tertiary)] text-xs mt-1">
-            为每个模块选择要使用的模型。Provider 配好密钥后，池内模型即可绑定。
-          </p>
-        </div>
+        <PageHeader title="模型绑定" description="为每个模块选择要使用的模型；Provider 配好密钥后，池内模型即可绑定" />
 
         <div className="grid grid-cols-2 gap-3">
           {MODULES.map((m, i) => {

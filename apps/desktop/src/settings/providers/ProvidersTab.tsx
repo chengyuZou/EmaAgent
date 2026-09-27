@@ -15,6 +15,7 @@ import {
 import { useProviderStore } from '../../stores/provider.js';
 import { providersApi, type ProviderRecord, type ProviderDetail, type ModelCapability } from '../../api/providers.js';
 import { showToast } from '../../lib/toast.js';
+import { PageHeader } from '../shared/PageHeader.js';
 import { SettingsSection } from '../shared/SettingItem.js';
 import { ProviderDetailPanel } from './ProviderDetailPanel.js';
 import { ProviderCreatePanel } from './ProviderCreatePanel.js';
@@ -144,6 +145,7 @@ export function ProvidersTab(): JSX.Element {
 
   return (
     <div key="providers-grid" className="flex flex-col gap-8 pb-10 ema-fade-in">
+      <PageHeader title="服务来源" description="配置 LLM / Embed / Rerank / TTS / STT / Vision 模型服务" />
       {!anyConfigured && (
         <Callout variant="info">
           <span className="font-medium">第一次使用？</span>

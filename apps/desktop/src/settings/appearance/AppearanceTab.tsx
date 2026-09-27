@@ -2,6 +2,7 @@
 import { useEffect, useState, type JSX, type ChangeEvent } from 'react';
 import { Button, Select, Slider, Switch, type SelectOption } from '@ema-agent/ui';
 import { useThemeStore } from '../../stores/theme.js';
+import { PageHeader } from '../shared/PageHeader.js';
 import type { ThemeSettings } from '@ema-agent/server/settings/themeSetting.js';
 import {
   RADIUS_STEPS,
@@ -121,7 +122,7 @@ export function AppearanceTab(): JSX.Element {
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-5">
-      <h2 className="text-base font-semibold text-[var(--ema-text-primary)]">外观</h2>
+      <PageHeader title="外观" description="主题色、动态取色、圆角、字体、代码配色与显示模式" />
 
       {/* ── Color ── */}
       <section className="rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] p-5 space-y-4">

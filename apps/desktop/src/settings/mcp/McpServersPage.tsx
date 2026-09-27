@@ -7,6 +7,7 @@ import type { McpServerSummary } from '../../api/mcp.js';
 import { showToast } from '../../lib/toast.js';
 import { ServerRow } from './McpServerRow.js';
 import { McpImportDialog, McpServerFormDialog } from './McpServerDialogs.js';
+import { PageHeader } from '../shared/PageHeader.js';
 
 export function McpServersPage(): JSX.Element {
   const servers = useMcpStore((state) => state.servers);
@@ -48,34 +49,22 @@ export function McpServersPage(): JSX.Element {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-start justify-between shrink-0">
-        <div>
-          <h2 className="text-base font-semibold text-[var(--ema-text-primary)]">已配置</h2>
-          <p className="text-xs text-[var(--ema-text-tertiary)] mt-0.5">
-            管理 MCP 服务器并独立查看每个服务器的连接状态与工具.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setImportOpen(true)}
-            className="active:scale-[0.97] transition-all duration-[var(--ema-duration-base)]"
-          >
-            <span className="i-mdi:code-json text-base" aria-hidden />
-            从 JSON 导入
-          </Button>
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() => { setEditing(null); setAddOpen(true); }}
-            className="active:scale-[0.97] transition-all duration-[var(--ema-duration-base)]"
-          >
-            <span className="i-mdi:plus text-base" aria-hidden />
-            添加服务器
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="已配置"
+        description="管理 MCP 服务器并独立查看每个服务器的连接状态与工具"
+        action={(
+          <>
+            <Button variant="ghost" size="sm" onClick={() => setImportOpen(true)}>
+              <span className="i-mdi:code-json text-base" aria-hidden />
+              从 JSON 导入
+            </Button>
+            <Button variant="primary" size="sm" onClick={() => { setEditing(null); setAddOpen(true); }}>
+              <span className="i-mdi:plus text-base" aria-hidden />
+              添加服务器
+            </Button>
+          </>
+        )}
+      />
 
       {error && <Callout variant="danger" className="shrink-0">{error}</Callout>}
 
