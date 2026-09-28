@@ -2,7 +2,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import type { SessionMessage, SessionStore } from '@ema-agent/session';
-import type { UsageRecordsRepo } from '@ema-agent/storage';
+import type { UsageRecorder } from '@ema-agent/usage';
 import type { Turn, TurnStore } from '@ema-agent/turn';
 import type { AudioArchive } from '@ema-agent/speech';
 import { projectSessionMessages } from '@ema-agent/context';
@@ -37,7 +37,7 @@ const messagesAroundQuery = z.object({
 export interface SessionHistoryRouteDeps {
   readonly session: Pick<SessionStore, 'getSession' | 'loadHistory' | 'listMessages' | 'listMessagesAround' | 'loadMessagesForTurn'>;
   readonly turns: Pick<TurnStore, 'getTurn' | 'listTurnIndex'>;
-  readonly usageRecords: Pick<UsageRecordsRepo, 'forTurn'>;
+  readonly usageRecorder: Pick<UsageRecorder, 'forTurn'>;
   readonly audioArchive: Pick<AudioArchive, 'findMergedFor'>;
   readonly providerModels: Pick<ProviderModels, 'get'>;
   /** Session 被打开(拉历史)时触发一次 fire-and-forget 的附件残留清扫。 */
@@ -46,14 +46,14 @@ export interface SessionHistoryRouteDeps {
 
 function toTurnStats(
   turn: Turn,
-  usageRecords: Pick<UsageRecordsRepo, 'forTurn'>,
+  usageRecorder: Pick<UsageRecorder, 'forTurn'>,
   audioArchive: Pick<AudioArchive, 'findMergedFor'>,
 ) {
-  const llmCalls = usageRecords.forTurn(turn.id).filter(record => record.capability === 'llm');
+  const llmCalls = usageRecorder.forTurn(turn.id).filter(record => record.capability === 'llm');
   return {
     turnId: turn.id,
-    inputTokens: llmCalls.reduce((sum, record) => sum + (record.input_tokens ?? 0), 0),
-    outputTokens: llmCalls.reduce((sum, record) => sum + (record.output_tokens ?? 0), 0),
+    inputTokens: llmCalls.reduce((sum, record) => sum + (record.inputTokens ?? 0), 0),
+    outputTokens: llmCalls.reduce((sum, record) => sum + (record.outputTokens ?? 0), 0),
     durationMs: turn.completedAt === null ? null : turn.completedAt - turn.createdAt,
     audioAvailable: audioArchive.findMergedFor(turn.sessionId, turn.id) !== null,
   };
@@ -62,13 +62,13 @@ function toTurnStats(
 function turnStatsForMessages(
   messages: readonly SessionMessage[],
   turns: Pick<TurnStore, 'getTurn'>,
-  usageRecords: Pick<UsageRecordsRepo, 'forTurn'>,
+  usageRecorder: Pick<UsageRecorder, 'forTurn'>,
   audioArchive: Pick<AudioArchive, 'findMergedFor'>,
 ) {
   const turnIds = new Set(messages.flatMap(message => message.turnId ? [message.turnId] : []));
   return [...turnIds].flatMap(turnId => {
     const turn = turns.getTurn(turnId);
-    return turn ? [toTurnStats(turn, usageRecords, audioArchive)] : [];
+    return turn ? [toTurnStats(turn, usageRecorder, audioArchive)] : [];
   });
 }
 
@@ -104,7 +104,7 @@ export const sessionHistoryRoute = (deps: SessionHistoryRouteDeps) =>
           turnStats: turnStatsForMessages(
             page.messages,
             deps.turns,
-            deps.usageRecords,
+            deps.usageRecorder,
             deps.audioArchive,
           ),
         });
@@ -125,7 +125,7 @@ export const sessionHistoryRoute = (deps: SessionHistoryRouteDeps) =>
         turnStats: turnStatsForMessages(
           page.messages,
           deps.turns,
-          deps.usageRecords,
+          deps.usageRecorder,
           deps.audioArchive,
         ),
       });
@@ -141,6 +141,6 @@ export const sessionHistoryRoute = (deps: SessionHistoryRouteDeps) =>
       }
       return context.json({
         messages: deps.session.loadMessagesForTurn(turn.id),
-        turnStats: [toTurnStats(turn, deps.usageRecords, deps.audioArchive)],
+        turnStats: [toTurnStats(turn, deps.usageRecorder, deps.audioArchive)],
       });
     });

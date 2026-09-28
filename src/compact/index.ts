@@ -9,7 +9,6 @@ export {
   compactKeepRecentToolResultsSetting,
   compactManualMinRatioSetting,
   compactMaximumConsecutiveFailuresSetting,
-  compactOutputTokensSetting,
   compactRetainRatioSetting,
   readCompactSettings,
 } from './settings.js';

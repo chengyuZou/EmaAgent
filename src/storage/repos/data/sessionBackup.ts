@@ -218,14 +218,15 @@ export class SessionBackupRestorer {
     const insertMessage = this.db.prepare(`
       INSERT INTO messages (
         id, session_id, turn_id, role, kind, blocks_json, interrupted, created_at,
-        summarized_through_message_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        summarized_through_message_id, summary_saved_tokens
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     for (const row of rows.messages) {
       insertMessage.run(
         row.id, session.id, row.turn_id, row.role, row.kind,
         row.blocks_json, row.interrupted, row.created_at,
         row.summarized_through_message_id,
+        row.summary_saved_tokens,
       );
     }
 

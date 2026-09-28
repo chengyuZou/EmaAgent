@@ -4,6 +4,8 @@
 
 本包不拥有：六个执行面的网络调用与协议 Adapter、重试/流式/Usage、Turn/Session/Prompt/Tool、Probe 执行器（Probe 由组合层发起真实请求，只把结果交给 `recordHealth()`）。
 
+浏览器需要协议或模型绑定常量时从 `@ema-agent/providers/types` 导入. 该入口对 Storage 只有 type-only 依赖, 不加载 SQL 实现. Providers 总出口和 `modelBindings` 包含需要数据库的业务实现, 不用于前端运行时导入.
+
 ---
 
 ## 一、为什么这么设计
@@ -142,14 +144,14 @@ resolveProviderConnection(provider, keyValue, capability)   // 纯函数，实�
 ```text
 src/providers/
 ├─ types.ts           能力/协议词汇、ProviderConnection、isProtocolForCapability
-├─ providers.ts       Provider/ProviderCapability/ProviderStore 端口
+├─ providers.ts       Provider/ProviderCapability 业务类型与 SQL Row 映射
 │                     + class Providers + resolveProviderConnection 纯函数
 ├─ models.ts          ProviderModel 家族（llm/vision 同参数集）+ ProviderModels
-├─ modelBindings.ts   ModelBinding + ModelBindings（9 个业务位）
+├─ modelBindings.ts   ModelBinding + ModelBindings（6 个业务位）
 ├─ errors.ts          ProviderError
 ├─ catalog/modelsDevCatalog.ts   api.json 纯解析 + getModelsDevCatalog/refreshModelsDevCatalog
 ├─ catalog/models-dev.json       models.dev 本地快照（gitignored，拉取产物）
 └─ tests/
 ```
 
-依赖方向：`storage ──> providers`（Repo 实现端口，type-only）；本包不导入任何执行面 Adapter，Probe 执行器由组合层拥有。
+依赖方向：`providers ──> storage`. SQL Repo 与 Row 类型留在 Storage, Providers 直接构造 Repo 并在本包内映射业务类型. 本包不导入执行面 Adapter, Probe 执行器由组合层拥有.

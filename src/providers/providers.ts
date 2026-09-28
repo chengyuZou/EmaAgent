@@ -1,5 +1,10 @@
 import { ProviderError } from './errors.js';
-import type { ModelBindingStore } from './modelBindings.js';
+import {
+  ModelBindingsRepo,
+  ProvidersRepo,
+  type Database,
+  type ProviderRow,
+} from '@ema-agent/storage';
 import type {
   ModelCapability,
   ModelCapabilityProtocol,
@@ -89,22 +94,17 @@ export interface ProviderInput {
   capabilities: readonly ProviderCapability[];
 }
 
-export interface ProviderStore {
-  get(id: string): Provider | undefined;
-  list(): Provider[];
-  save(input: ProviderInput): void;
-  delete(id: string): void;
-  recordHealth(providerId: string, capability: ModelCapability, health: ProviderHealth): void;
-}
-
 export class Providers {
-  constructor(
-    private readonly store: ProviderStore,
-    private readonly bindings: Pick<ModelBindingStore, 'listByProvider'>,
-  ) {}
+  private readonly repo: ProvidersRepo;
+  private readonly bindingsRepo: ModelBindingsRepo;
+
+  constructor(db: Database) {
+    this.repo = new ProvidersRepo(db.sqlite);
+    this.bindingsRepo = new ModelBindingsRepo(db.sqlite);
+  }
 
   list(): Provider[] {
-    return this.store.list();
+    return this.repo.list().map((row) => this.toProvider(row));
   }
 
   get(id: string): Provider {
@@ -115,9 +115,9 @@ export class Providers {
    *  判重按 (id, capability)：id 存在但无此能力 → 追加能力档（同 key 共享）；id+能力都有 → already_exists。 */
   create(input: CreateProvider): Provider {
     assertValidId(input.id);
-    const existing = this.store.get(input.id);
+    const existing = this.repo.get(input.id);
     if (existing) {
-      if (existing.capabilities.some((c) => c.capability === input.capability.capability)) {
+      if (this.repo.listCapabilities(input.id).some((c) => c.capability === input.capability.capability)) {
         throw new ProviderError(
           'already_exists',
           `Provider ${input.id} 的 ${input.capability.capability} 能力已存在`,
@@ -129,7 +129,7 @@ export class Providers {
       });
     }
     const protocol = normalizeCapabilityProtocol(input.capability);
-    this.store.save({
+    this.save({
       id: input.id,
       name: normalizeName(input.name),
       iconId: input.iconId,
@@ -193,7 +193,7 @@ export class Providers {
       ];
     }
 
-    this.store.save({
+    this.save({
       id,
       name: input.name === undefined ? existing.name : normalizeName(input.name),
       iconId: input.iconId === undefined ? existing.iconId : (input.iconId ?? undefined),
@@ -207,7 +207,12 @@ export class Providers {
 
   delete(id: string): void {
     this.requireProvider(id);
-    const conflicts = this.bindings.listByProvider(id);
+    const conflicts = this.bindingsRepo.listByProvider(id).map((row) => ({
+      module: row.module,
+      capability: row.capability,
+      providerId: row.provider_id,
+      modelId: row.model_id,
+    }));
     if (conflicts.length > 0) {
       throw new ProviderError(
         'provider_in_use',
@@ -215,12 +220,19 @@ export class Providers {
         conflicts,
       );
     }
-    this.store.delete(id);
+    this.repo.delete(id);
   }
 
   recordHealth(providerId: string, capability: ModelCapability, health: ProviderHealth): void {
     this.requireProvider(providerId);
-    this.store.recordHealth(providerId, capability, health);
+    this.repo.recordHealth({
+      provider_id: providerId,
+      capability,
+      status: health.status,
+      last_probed_at: health.lastProbedAt,
+      latency_ms: health.latencyMs,
+      last_error: health.lastError,
+    });
   }
 
   resolveConnection<TCapability extends ModelCapability>(
@@ -232,21 +244,79 @@ export class Providers {
   }
 
   private requireProvider(id: string): Provider {
-    const provider = this.store.get(id);
-    if (!provider) throw notFound('Provider 不存在');
-    return provider;
+    const row = this.repo.get(id);
+    if (!row) throw notFound('Provider 不存在');
+    return this.toProvider(row);
   }
 
   private assertCapabilityNotInUse(id: string, capability: ModelCapability): void {
-    const conflicts = this.bindings
+    const conflicts = this.bindingsRepo
       .listByProvider(id)
-      .filter((binding) => binding.capability === capability);
+      .filter((binding) => binding.capability === capability)
+      .map((row) => ({
+        module: row.module,
+        capability: row.capability,
+        providerId: row.provider_id,
+        modelId: row.model_id,
+      }));
     if (conflicts.length === 0) return;
     throw new ProviderError(
       'provider_capability_in_use',
       `请先解绑正在使用 ${capability} 的业务模块`,
       conflicts,
     );
+  }
+
+  private toProvider(row: ProviderRow): Provider {
+    const protocols = this.repo.listProtocols(row.id);
+    const counts = new Map(this.repo.listModelCounts(row.id).map((entry) => [entry.capability, entry.count]));
+    return {
+      id: row.id,
+      name: row.name,
+      ...(row.icon_id === null ? {} : { iconId: row.icon_id }),
+      authType: row.auth_type,
+      ...(row.key_value === null ? {} : { keyValue: row.key_value }),
+      capabilities: this.repo.listCapabilities(row.id).map((entry) => ({
+        capability: entry.capability,
+        ...(entry.active_protocol === null ? {} : { activeProtocol: entry.active_protocol as Protocol }),
+        ...(entry.models_dev_id === null ? {} : { modelsDevId: entry.models_dev_id }),
+        protocols: protocols
+          .filter((protocol) => protocol.capability === entry.capability)
+          .map((protocol) => ({ protocol: protocol.protocol as Protocol, baseUrl: protocol.base_url })),
+        modelCount: counts.get(entry.capability) ?? 0,
+      })),
+      health: this.repo.listHealth(row.id).map((entry) => ({
+        capability: entry.capability,
+        status: entry.status,
+        lastProbedAt: entry.last_probed_at,
+        latencyMs: entry.latency_ms,
+        lastError: entry.last_error,
+      })),
+    };
+  }
+
+  private save(input: ProviderInput): void {
+    this.repo.save({
+      provider: {
+        id: input.id,
+        name: input.name,
+        icon_id: input.iconId ?? null,
+        auth_type: input.authType,
+        key_value: input.keyValue ?? null,
+      },
+      capabilities: input.capabilities.map((entry) => ({
+        provider_id: input.id,
+        capability: entry.capability,
+        active_protocol: entry.activeProtocol ?? null,
+        models_dev_id: entry.modelsDevId ?? null,
+      })),
+      protocols: input.capabilities.flatMap((entry) => entry.protocols.map((protocol) => ({
+        provider_id: input.id,
+        capability: entry.capability,
+        protocol: protocol.protocol,
+        base_url: protocol.baseUrl,
+      }))),
+    });
   }
 }
 

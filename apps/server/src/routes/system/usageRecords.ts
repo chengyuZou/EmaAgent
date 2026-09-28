@@ -1,8 +1,8 @@
-// 用量明细查询(Token 明细页):sessionId/capability 可选过滤 + keyset 游标。
-// repo 由 composition 全局装配(单库,不存在"按库选连接"的问题)。
+// 用量明细查询(Token 明细页): sessionId/capability 可选过滤 + keyset 游标.
+// 查询使用 Server 装配的 Recorder, SQL Row 映射留在 Usage 包内.
 import { Hono } from 'hono';
 import { z } from 'zod';
-import type { UsageRecordsRepo } from '@ema-agent/storage';
+import type { UsageRecorder } from '@ema-agent/usage';
 import { queryValidator } from '../validate.js';
 
 const usageRecordsQuery = z.object({
@@ -16,11 +16,11 @@ const usageRecordsQuery = z.object({
   { message: 'usage_record_cursor_incomplete' },
 );
 
-export const usageRecordsRoute = (deps: { usageRecords: UsageRecordsRepo }) =>
+export const usageRecordsRoute = (deps: { usageRecorder: UsageRecorder }) =>
   new Hono()
     .get('/usage-records', queryValidator(usageRecordsQuery), context => {
       const { sessionId, capability, beforeCreatedAt, beforeId, limit } = context.req.valid('query');
-      const page = deps.usageRecords.list({
+      const page = deps.usageRecorder.list({
         ...(sessionId ? { sessionId } : {}),
         ...(capability ? { capability } : {}),
         ...(beforeCreatedAt !== undefined && beforeId !== undefined

@@ -104,6 +104,8 @@ export interface Message {
 
 export interface SessionMessage extends Message {
   sessionId: string;
+  /** 仅压缩摘要携带请求 Token 估算的减少量; 未记录的历史摘要不补造数值. */
+  savedTokens?: number;
   /** null = Session 级消息（如 /compact 的 summary），不归属任何 Turn。 */
   turnId: string | null;
 }

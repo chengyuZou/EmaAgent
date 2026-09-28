@@ -1,5 +1,5 @@
 // Skill 路径安全:市场下载文件的相对路径校验、root 内普通目录/文件约束。
-// 全部为纯函数,供 user 域对账与 market 安装共用。
+// builtin/user 目录对账与 market 安装共用, 不负责 SQL 索引.
 import { lstat, mkdir, readdir, realpath } from 'node:fs/promises';
 import { posix, win32, resolve, dirname } from 'node:path';
 import { SkillPathError } from './errors.js';
@@ -63,12 +63,8 @@ export async function resolveFileInside(rootDir: string, relativePath: string): 
 
 /** 列出 root 下的技能目录(普通目录,跳过 .ema-skill- 内部条目)。 */
 export async function listSkillDirectories(rootPath: string): Promise<string[]> {
-  let entries;
-  try {
-    entries = await readdir(rootPath, { withFileTypes: true });
-  } catch {
-    return [];
-  }
+  // Store 已确保根目录存在. 读取失败必须上抛, 否则会把扫描失败当成目录全被删除.
+  const entries = await readdir(rootPath, { withFileTypes: true });
   return entries
     .filter(entry => entry.isDirectory() && !entry.name.startsWith(INTERNAL_ENTRY_PREFIX))
     .map(entry => joinPaths(rootPath, entry.name));

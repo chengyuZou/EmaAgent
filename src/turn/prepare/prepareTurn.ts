@@ -88,7 +88,7 @@ export interface PrepareTurnDeps extends TurnToolsDeps {
     cwd: string,
     projectId: string | null,
   ) => Promise<readonly SkillDescriptor[]>;
-  /** skill_enablement 表的当前禁用路径列表（builtin/user 逐技能启停）。 */
+  /** SkillStore 从 skills.enabled 读取当前禁用路径, 覆盖 builtin/user. */
   readonly disabledSkillPaths: () => readonly string[];
   /** 默认 llm 包的 createLlmCall；测试注入脚本化调用。 */
   readonly createLlmCall?: (connection: LlmConnection, modelId: string) => CallLlm;

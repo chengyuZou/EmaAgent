@@ -1,16 +1,8 @@
-import type { LlmCallStatus } from '@ema-agent/llm';
-import type { ModelCapability } from '@ema-agent/providers';
+import type { UsageRecordRow } from '@ema-agent/storage';
 
-export type UsageCapability = ModelCapability;
+export type UsageCapability = UsageRecordRow['capability'];
 
-export type UsageRecordStatus = LlmCallStatus;
-
-/** 把一次模型调用关联到业务身份；后台调用可以只提供 callId。 */
-export interface UsageContext {
-  callId: string;
-  sessionId?: string;
-  turnId?: string;
-}
+export type UsageRecordStatus = UsageRecordRow['status'];
 
 export interface UsageRecord {
   id: string;
@@ -28,15 +20,6 @@ export interface UsageRecord {
   unit: string | null;
   durationMs: number;
   errorCode: string | null;
+  /** 物理调用开始时间; 记录在调用结束或抛错后写入, 用此时间排序而非 SQL 写入时间. */
   createdAt: number;
 }
-
-/** AI 业务模块只依赖写入接口，数据库实现由应用装配。 */
-export interface UsageRecorder {
-  record(record: UsageRecord): void;
-}
-
-export type UsageEvent = {
-  readonly type: 'usage_recorded';
-  readonly sessionId: string | null;
-};

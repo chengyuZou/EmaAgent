@@ -9,14 +9,13 @@ import {
   DataDirStatsRepo,
   SessionStatsRepo,
   TasksRepo,
-  UsageRecordsRepo,
 } from '@ema-agent/storage';
 import { SubagentMessagesStore, SubagentStore } from '@ema-agent/agent';
 import { AttachmentStore, ImageStore, PastedTextStore, type AttachmentEvent } from '@ema-agent/attachments';
 import { SessionRunningRegistry, SessionStore, type SessionEvent } from '@ema-agent/session';
 import { TaskStore, type TaskEvent } from '@ema-agent/tasks';
 import { TurnStore } from '@ema-agent/turn';
-import type { UsageEvent, UsageRecorder } from '@ema-agent/usage';
+import { UsageRecorder } from '@ema-agent/usage';
 import {
   dataDbPathFor,
   profileDbPath,
@@ -47,10 +46,8 @@ export interface DatabaseComposition {
   readonly tasks: TaskStore;
   readonly subagents: SubagentStore;
   readonly subagentMessages: SubagentMessagesStore;
-  /** 全部能力调用共享的记账口；SQL 写入成功后通知用量视图。 */
+  /** 全部能力调用与用量查询共享的 Recorder, 不发应用事件. */
   readonly usageRecorder: UsageRecorder;
-  /** 用量明细查询的 SQL Repo，供 Token 明细页读取。 */
-  readonly usageRecords: UsageRecordsRepo;
   /** raw 消息只读投影(存储页消息查看器)。 */
   readonly messages: MessagesRepo;
   /** 数据目录/单 Session 的存储统计只读投影。 */
@@ -68,7 +65,7 @@ export interface DatabaseComposition {
 export function openDatabases(
   activeDataDir: string,
   emitChanged: (
-    event: SessionEvent | AttachmentEvent | UsageEvent | TaskEvent,
+    event: SessionEvent | AttachmentEvent | TaskEvent,
   ) => void,
 ): DatabaseComposition {
   const profileDb = new Database({ path: profileDbPath(), kind: 'profile' });
@@ -88,13 +85,7 @@ export function openDatabases(
     throw err;
   }
 
-  const usageRecords = new UsageRecordsRepo(dataDb.sqlite);
-  const usageRecorder: UsageRecorder = {
-    record(record) {
-      usageRecords.record(record);
-      emitChanged({ type: 'usage_recorded', sessionId: record.sessionId });
-    },
-  };
+  const usageRecorder = new UsageRecorder(dataDb);
   const messages = new MessagesRepo(dataDb.sqlite);
   const session = new SessionStore({
     db: dataDb,
@@ -142,7 +133,6 @@ export function openDatabases(
     subagents: new SubagentStore(new SubagentsRepo(dataDb.sqlite)),
     subagentMessages: new SubagentMessagesStore(new SubagentMessagesRepo(dataDb.sqlite)),
     usageRecorder,
-    usageRecords,
     messages,
     dataDirStats: new DataDirStatsRepo(dataDb.sqlite),
     sessionStats: new SessionStatsRepo(dataDb.sqlite),

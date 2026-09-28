@@ -131,6 +131,8 @@ describe('SessionsRepo integration', () => {
     insertTurn({ id: 'turn-2', sessionId: 'source', status: 'completed', createdAt: 200, completedAt: 210 });
     insertMessage({ id: 'message-a', sessionId: 'source', turnId: 'turn-1', text: 'old A', createdAt: 105 });
     insertMessage({ id: 'message-summary', sessionId: 'source', turnId: 'turn-1', text: 'summary', createdAt: 115, kind: 'summary', through: 'message-a' });
+    database.db.prepare('UPDATE messages SET summary_saved_tokens = ? WHERE id = ?')
+      .run(12_345, 'message-summary');
     insertMessage({ id: 'message-b', sessionId: 'source', turnId: 'turn-2', text: 'B', createdAt: 205 });
 
     expect(repo.forkInto('source', 'fork', 'Fork', 1_000)).toBe(3);
@@ -148,6 +150,8 @@ describe('SessionsRepo integration', () => {
     expect(summary.summarized_through_message_id).not.toBeNull();
     const cursorTarget = forkMessages.find((m) => m.id === summary.summarized_through_message_id)!;
     expect(cursorTarget.kind).toBe('normal');
+    expect(database.db.prepare('SELECT summary_saved_tokens FROM messages WHERE id = ?')
+      .get(summary.id)).toEqual({ summary_saved_tokens: 12_345 });
   });
 
   function insertSession(fixture: {

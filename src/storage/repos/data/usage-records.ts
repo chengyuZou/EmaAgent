@@ -1,6 +1,8 @@
 // 持久化各类模型的调用级用量，并按 Turn 或 Session 提供确定性查询。
-import type { UsageRecord } from '@ema-agent/usage';
 import type { SqliteDb } from '../../database/database.js';
+import type { ModelCapabilityRow } from '../profile/providers.js';
+
+export type UsageRecordStatusRow = 'completed' | 'failed' | 'cancelled';
 
 export interface UsageRecordRow {
   id: string;
@@ -8,8 +10,8 @@ export interface UsageRecordRow {
   turn_id: string | null;
   provider_id: string;
   model_id: string;
-  capability: UsageRecord['capability'];
-  status: UsageRecord['status'];
+  capability: ModelCapabilityRow;
+  status: UsageRecordStatusRow;
   input_tokens: number | null;
   output_tokens: number | null;
   cache_read_input_tokens: number | null;
@@ -34,7 +36,7 @@ export interface UsageRecordPage {
 
 export interface UsageRecordListFilter {
   readonly sessionId?: string;
-  readonly capability?: UsageRecord['capability'];
+  readonly capability?: UsageRecordRow['capability'];
   readonly cursor?: UsageRecordPageCursor;
   readonly limit?: number;
 }
@@ -42,7 +44,7 @@ export interface UsageRecordListFilter {
 export class UsageRecordsRepo {
   constructor(private readonly db: SqliteDb) {}
 
-  record(record: UsageRecord): void {
+  record(record: UsageRecordRow): void {
     this.db.prepare(`
       INSERT INTO usage_records (
         id, session_id, turn_id, provider_id, model_id, capability, status,
@@ -50,10 +52,10 @@ export class UsageRecordsRepo {
         quantity, unit, duration_ms, error_code, created_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      record.id, record.sessionId, record.turnId, record.providerId, record.modelId,
-      record.capability, record.status, record.inputTokens, record.outputTokens,
-      record.cacheReadInputTokens, record.cacheWriteInputTokens, record.quantity,
-      record.unit, record.durationMs, record.errorCode, record.createdAt,
+      record.id, record.session_id, record.turn_id, record.provider_id, record.model_id,
+      record.capability, record.status, record.input_tokens, record.output_tokens,
+      record.cache_read_input_tokens, record.cache_write_input_tokens, record.quantity,
+      record.unit, record.duration_ms, record.error_code, record.created_at,
     );
   }
 

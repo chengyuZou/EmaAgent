@@ -93,6 +93,7 @@ export const restoreMessageRecord = (record: MessageRecord): MessageRow => ({
   interrupted: record.interrupted ? 1 : 0,
   created_at: record.createdAt,
   summarized_through_message_id: record.summarizedThroughMessageId ?? null,
+  summary_saved_tokens: record.savedTokens ?? null,
 });
 
 export function restoreTaskRecord(record: TaskRecord): SessionBackupTaskRow {

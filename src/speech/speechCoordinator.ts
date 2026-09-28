@@ -1,6 +1,5 @@
 import type { CallTts, TtsVoice } from '@ema-agent/tts';
-import { createUsageRecord, reportUsage } from '@ema-agent/usage';
-import type { UsageRecord, UsageRecorder } from '@ema-agent/usage';
+import type { UsageRecorder } from '@ema-agent/usage';
 import type { AudioArchive, FinalizedAudio, SegmentWriter } from './audioArchive.js';
 import type { SpeechStreamEvent } from './events.js';
 import { SentenceSplitter } from './sentenceSplitter.js';
@@ -22,7 +21,6 @@ export interface SpeechCoordinatorArgs {
   readonly waitForPlaybackSlot?: () => Promise<void>;
   readonly signal?: AbortSignal;
   readonly usageRecorder?: UsageRecorder;
-  readonly onUsageRecordError?: (error: unknown, record: UsageRecord) => void;
 }
 
 type SpeechCoordinatorState = 'accepting' | 'finishing' | 'completed' | 'aborting' | 'aborted';
@@ -141,17 +139,16 @@ export class SpeechCoordinator {
         writer.write(event.bytes);
         this.args.emit({ type: 'audio_chunk', bytes: event.bytes });
       }
+      this.abortController.signal.throwIfAborted();
       if (!started || !writer) throw new Error('TTS synthesis produced no audio');
       writer.close();
       this.args.emit({ type: 'sentence_completed', sentenceId });
       await this.args.waitForPlaybackSlot?.();
     } catch (error) {
       writer?.discard();
-      errorCode = this.abortController.signal.aborted
-        ? 'tts/cancelled'
-        : timeoutSignal.aborted
-          ? 'tts/timeout'
-          : errorCodeOf(error);
+      if (this.abortController.signal.aborted) errorCode = 'tts/cancelled';
+      else if (timeoutSignal.aborted) errorCode = 'tts/timeout';
+      else errorCode = errorCodeOf(error);
       if (this.abortController.signal.aborted) return;
       this.args.emit({
         type: 'sentence_failed',
@@ -166,19 +163,27 @@ export class SpeechCoordinator {
 
   private recordUsage(callId: string, characterCount: number, startedAt: number, errorCode: string | null): void {
     if (!this.args.usageRecorder) return;
-    const record = createUsageRecord({
+    let status: 'completed' | 'failed' | 'cancelled' = 'completed';
+    if (errorCode === 'tts/cancelled' || errorCode === 'tts/aborted') status = 'cancelled';
+    else if (errorCode !== null) status = 'failed';
+    this.args.usageRecorder.record({
+      id: callId,
+      sessionId: this.args.sessionId,
+      turnId: this.args.turnId,
       capability: 'tts',
       providerId: this.args.providerId,
       modelId: this.args.modelId,
-      status: errorCode === null ? 'completed' : 'failed',
-      startedAt,
+      status,
       durationMs: Date.now() - startedAt,
-      usageContext: { callId, sessionId: this.args.sessionId, turnId: this.args.turnId },
+      inputTokens: null,
+      outputTokens: null,
+      cacheReadInputTokens: null,
+      cacheWriteInputTokens: null,
       quantity: characterCount,
       unit: 'character',
       errorCode,
+      createdAt: startedAt,
     });
-    reportUsage(this.args.usageRecorder, record, this.args.onUsageRecordError);
   }
 }
 

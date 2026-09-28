@@ -1,6 +1,7 @@
-// 使用当前角色参考声音沿正式协议入口生成一段有界试听音频。
-import type { CallTts, TtsVoiceReference, TtsVoiceRegistrar } from '@ema-agent/tts';
-import { createUsageRecord, reportUsage, type UsageRecorder } from '@ema-agent/usage';
+// 使用当前角色参考声音沿正式协议入口生成一段有界试听音频
+import { randomUUID } from 'node:crypto';
+import { TtsError, type CallTts, type TtsVoiceReference, type TtsVoiceRegistrar } from '@ema-agent/tts';
+import type { UsageRecorder } from '@ema-agent/usage';
 import { SpeechVoiceCache } from './voiceHandleCache.js';
 
 export type SpeechVoicePreviewErrorCode =
@@ -54,6 +55,7 @@ export class SpeechVoicePreview {
   ): Promise<SpeechVoicePreviewResult> {
     const startedAt = Date.now();
     let errorCode: string | null = null;
+    let status: 'completed' | 'failed' | 'cancelled' = 'completed';
     const tts = this.resolveTts(providerId, modelId);
     if (!tts) {
       throw new SpeechVoicePreviewError('client_unavailable', 'TTS Provider 运行时不可用');
@@ -90,7 +92,13 @@ export class SpeechVoicePreview {
       }
       return { bytes: concatChunks(chunks), mime };
     } catch (error) {
-      errorCode = error instanceof SpeechVoicePreviewError ? error.code : 'tts/preview_failed';
+      const cancelled = signal?.aborted === true
+        || (error instanceof Error && error.name === 'AbortError')
+        || (error instanceof TtsError && error.code === 'tts/aborted');
+      status = cancelled ? 'cancelled' : 'failed';
+      if (cancelled) errorCode = 'tts/aborted';
+      else if (error instanceof TtsError || error instanceof SpeechVoicePreviewError) errorCode = error.code;
+      else errorCode = 'tts/preview_failed';
       if (error instanceof SpeechVoicePreviewError) throw error;
       throw new SpeechVoicePreviewError(
         'synthesis_failed',
@@ -98,17 +106,24 @@ export class SpeechVoicePreview {
         error,
       );
     } finally {
-      reportUsage(this.usageRecorder, createUsageRecord({
+      this.usageRecorder.record({
+        id: randomUUID(),
+        sessionId: null,
+        turnId: null,
         capability: 'tts',
         providerId,
         modelId,
-        status: errorCode === null ? 'completed' : 'failed',
-        startedAt,
+        status,
+        inputTokens: null,
+        outputTokens: null,
+        cacheReadInputTokens: null,
+        cacheWriteInputTokens: null,
         durationMs: Date.now() - startedAt,
         quantity: text.length,
         unit: 'character',
         errorCode,
-      }), error => console.warn('[usage] TTS 试听记账失败:', error));
+        createdAt: startedAt,
+      });
     }
   }
 }

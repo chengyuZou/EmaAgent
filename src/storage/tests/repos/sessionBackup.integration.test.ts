@@ -92,6 +92,8 @@ describe('SessionBackupReader', () => {
     // 旧消息 A、Summary(cursor=A)、未覆盖消息 B。
     insertMessage.run('msg-a', 'session-cursor', 'turn-1', 'normal', '"old A"', 10, null);
     insertMessage.run('msg-summary', 'session-cursor', 'turn-1', 'summary', '"summary"', 30, 'msg-a');
+    database.db.prepare('UPDATE messages SET summary_saved_tokens = ? WHERE id = ?')
+      .run(12_345, 'msg-summary');
     insertMessage.run('msg-b', 'session-cursor', 'turn-1', 'normal', '"B"', 20, null);
     new SubagentsRepo(database.db).insert({
       id: 'subagent-1',
@@ -138,6 +140,7 @@ describe('SessionBackupReader', () => {
     const history = new MessagesRepo(database.db)
       .listForSessionFromSummary('session-restored');
     expect(history.map((message) => message.id)).toEqual(['msg-summary', 'msg-b']);
+    expect(history[0]?.summary_saved_tokens).toBe(12_345);
     expect(new SubagentMessagesRepo(database.db).listAllForSubagent('subagent-1')).toMatchObject([
       { id: 'subagent-assistant', role: 'assistant', kind: 'normal', interrupted: 1, sequence: 1 },
       {

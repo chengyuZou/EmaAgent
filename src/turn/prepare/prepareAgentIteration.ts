@@ -8,7 +8,7 @@ import {
 } from '@ema-agent/context';
 import type { Message } from '@ema-agent/llm';
 import type { SessionStore } from '@ema-agent/session';
-import { recordLlmCallUsage, type UsageRecorder } from '@ema-agent/usage';
+import type { UsageRecorder } from '@ema-agent/usage';
 import type { TurnStreamEvent } from '../events.js';
 import type { PreparedTurn } from './prepareTurn.js';
 
@@ -17,9 +17,8 @@ export interface PrepareAgentIterationDeps {
   readonly turnId: string;
   readonly prepared: PreparedTurn;
   readonly compact: (request: CompactRequest) => Promise<CompactResult>;
-  readonly emit: (event: TurnStreamEvent) => void;
-  /** 摘要调用记账; 缺省不记账(观测不阻断主链). */
   readonly usageRecorder?: UsageRecorder;
+  readonly emit: (event: TurnStreamEvent) => void;
   /**
    * 根 Turn 的 Macro 持久化能力. messageIds 与 AgentLoop 消息一一对应;
    * 未落库的引导消息占一个 undefined 位置. 子 Agent 不提供, 因此不写根 Session.
@@ -60,10 +59,12 @@ export function createPrepareAgentIteration(deps: PrepareAgentIterationDeps): Pr
       systemEnd < 0 ? assembled.messages.length : systemEnd,
     );
 
-    let compactId: string | undefined;
-    let compactDurationMs = 0;
     const result = await deps.compact({
       sessionId: deps.sessionId,
+      turnId: deps.turnId,
+      providerId: prepared.providerId,
+      modelId: prepared.modelId,
+      usageRecorder: deps.usageRecorder,
       sessionMode: prepared.sessionMode,
       messages,
       systemMessages,
@@ -77,8 +78,6 @@ export function createPrepareAgentIteration(deps: PrepareAgentIterationDeps): Pr
       signal: deps.signal,
       // Compact 事件是 Session 域事实; 进入本 Turn 事件流时在此补上 Turn 身份.
       emit: event => {
-        if (event.type === 'compact_started') compactId = event.compactId;
-        if (event.type === 'compact_completed') compactDurationMs = event.durationMs;
         deps.emit({ ...event, turnId: deps.turnId });
       },
       settings: prepared.compactSettings,
@@ -86,7 +85,7 @@ export function createPrepareAgentIteration(deps: PrepareAgentIterationDeps): Pr
       // 已落库消息, 跳过没有 SQL 身份的续写和 stuck 引导.
       ...(macroPersistence
         ? {
-            saveMacroSummary: (summary: string, summarizedMessageCount: number) => {
+            saveMacroSummary: (summary: string, summarizedMessageCount: number, savedTokens: number) => {
               let throughMessageId: string | undefined;
               for (let index = summarizedMessageCount - 1; index >= 0; index -= 1) {
                 const id = macroPersistence.messageIds[index];
@@ -101,6 +100,7 @@ export function createPrepareAgentIteration(deps: PrepareAgentIterationDeps): Pr
                 sessionId: deps.sessionId,
                 turnId: deps.turnId,
                 summary,
+                savedTokens,
                 summarizedThroughMessageId: throughMessageId,
               });
               macroPersistence.messageIds.splice(0, summarizedMessageCount, summaryMessage.id);
@@ -114,24 +114,6 @@ export function createPrepareAgentIteration(deps: PrepareAgentIterationDeps): Pr
       nextMessages = result.messages;
       assembled = assemble(nextMessages);
     }
-    if (result.kind === 'macro') {
-      // 摘要调用的 usage 随完成结果带出; 只在成功时入账(abort/失败无 completion),
-      // 与主调用共用同一本账(recordLlmCallUsage).
-      recordLlmCallUsage(deps.usageRecorder, {
-        providerId: prepared.providerId,
-        modelId: prepared.modelId,
-        status: 'completed',
-        startedAt: Date.now() - compactDurationMs,
-        durationMs: compactDurationMs,
-        usage: result.usage,
-        usageContext: {
-          callId: compactId ?? `compact:${deps.turnId}`,
-          sessionId: deps.sessionId,
-          turnId: deps.turnId,
-        },
-      });
-    }
-
     deps.onContextPrepared?.(llmCallId, assembled.usage);
 
     return {

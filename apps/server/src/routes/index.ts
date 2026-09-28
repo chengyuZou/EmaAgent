@@ -92,7 +92,7 @@ export const createRoutes = (composition: Composition, secret: string) => {
       messages: database.messages,
     }))
     .route('/api/system', usageRecordsRoute({
-      usageRecords: database.usageRecords,
+      usageRecorder: database.usageRecorder,
     }))
 
     .route('/api/ws/session', sessionWebSocketRoute({
@@ -129,7 +129,7 @@ export const createRoutes = (composition: Composition, secret: string) => {
     .route('/api/sessions', sessionHistoryRoute({
       session: database.session,
       turns: database.turns,
-      usageRecords: database.usageRecords,
+      usageRecorder: database.usageRecorder,
       audioArchive: speech.audioArchive,
       providerModels: providers.providerModels,
       onSessionOpened: sessionId => {
@@ -227,7 +227,6 @@ export const createRoutes = (composition: Composition, secret: string) => {
     .route('/api/skills', skillListRoute({
       skills: tools.skills,
       skillStore: tools.skillStore,
-      skillEnablement: tools.skillEnablement,
       settings: settings.settings,
       sessions: database.session,
       emitApp: event => appEvents.emit(event),

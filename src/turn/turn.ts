@@ -29,7 +29,7 @@ import {
 } from '@ema-agent/session';
 import type { StageEngine } from '@ema-agent/stage';
 import type { Turn } from './types.js';
-import { recordLlmCallUsage, type UsageRecorder } from '@ema-agent/usage';
+import type { UsageRecorder } from '@ema-agent/usage';
 import { TurnEventChannel } from './eventChannel.js';
 import {
   failureCodeOf,
@@ -260,6 +260,7 @@ export class TurnExecutor {
         providers: this.deps.providers,
         providerModels: this.deps.providerModels,
         createCompact: this.deps.createCompact,
+        usageRecorder: this.deps.usageRecorder,
         emit,
         parentMessages,
       });
@@ -437,8 +438,8 @@ export class TurnExecutor {
         turnId,
         prepared,
         compact: compact,
-        emit,
         usageRecorder: this.deps.usageRecorder,
+        emit,
         // 与 AgentLoop 消息按位置对齐; Macro 保存时用被覆盖前缀的 SQL 身份.
         macroPersistence: {
           sessions: this.deps.sessions,
@@ -858,14 +859,22 @@ function recordAgentLlmCallUsage(
   turnId: string,
   event: Extract<AgentLoopEvent, { type: 'llm_call_finished' }>,
 ): void {
-  recordLlmCallUsage(recorder, {
+  recorder?.record({
+    id: event.llmCallId,
+    sessionId,
+    turnId,
     providerId: event.source.providerId,
     modelId: event.source.modelId,
+    capability: 'llm',
     status: event.status,
-    startedAt: event.startedAt,
     durationMs: event.durationMs,
-    ...(event.usage ? { usage: event.usage } : {}),
-    ...(event.errorCode ? { errorCode: event.errorCode } : {}),
-    usageContext: { callId: event.llmCallId, sessionId, turnId },
+    inputTokens: event.usage?.inputTokens ?? null,
+    outputTokens: event.usage?.outputTokens ?? null,
+    cacheReadInputTokens: event.usage?.cacheReadInputTokens ?? null,
+    cacheWriteInputTokens: event.usage?.cacheWriteInputTokens ?? null,
+    quantity: null,
+    unit: null,
+    errorCode: event.errorCode ?? null,
+    createdAt: event.startedAt,
   });
 }

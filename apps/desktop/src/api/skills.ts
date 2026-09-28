@@ -61,7 +61,7 @@ export const skillsApi = {
     return readRpcJson(rpcClient.api.skills.file.$get({ query: { skillPath, path } }));
   },
 
-  /** PUT /api/skills/enabled — builtin/user 逐技能启停（skill_enablement 表）。 */
+  /** PUT /api/skills/enabled - builtin/user 逐技能启停, 写 skills.enabled. */
   setEnabled(path: string, enabled: boolean): Promise<SkillDescriptorResult> {
     return readRpcJson(rpcClient.api.skills.enabled.$put({ json: { path, enabled } }));
   },
@@ -71,10 +71,17 @@ export const skillsApi = {
     return readRpcJson(rpcClient.api.skills.rescan.$post({ query: withSessionId(sessionId) }));
   },
 
-  /** DELETE /api/skills?skillPath=&sessionId= — 只有 user 技能可删。 */
-  remove(path: string, sessionId?: string) {
-    return readRpcJson(rpcClient.api.skills.$delete({
-      query: { skillPath: path, ...withSessionId(sessionId) },
+  /** 删除 user 技能目录与索引. */
+  removeUser(path: string) {
+    return readRpcJson(rpcClient.api.skills.user.$delete({
+      query: { skillPath: path },
+    }));
+  },
+
+  /** 只删除 profile 内的 builtin 副本, 不修改发行包种子目录. */
+  removeBuiltin(path: string) {
+    return readRpcJson(rpcClient.api.skills.builtin.$delete({
+      query: { skillPath: path },
     }));
   },
 

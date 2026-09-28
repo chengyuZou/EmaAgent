@@ -225,7 +225,7 @@ function receiveTurnEvent(
 function updateCompactActivity(sessionId: string, event: SessionCompactEvent): void {
   const activity = useSessionActivityStore.getState();
   if (event.type === 'compact_started') {
-    activity.startCompact(sessionId, event.compactId);
+    activity.startCompact(sessionId, event.compactId, event.startedAt);
   } else {
     activity.finishCompact(sessionId, event.compactId);
   }

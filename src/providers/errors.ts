@@ -1,5 +1,4 @@
-import type { ModelCapability } from './types.js';
-import type { ModelBindingModule } from './modelBindings.js';
+import type { ModelCapability, ModelBindingModule } from './types.js';
 
 export type ProviderErrorCode =
   | 'already_exists'

@@ -531,11 +531,11 @@ export class SessionsRepo {
       this.db.prepare(
         `INSERT INTO messages
            (id, session_id, turn_id, role, kind, blocks_json, interrupted, created_at,
-            summarized_through_message_id)
+            summarized_through_message_id, summary_saved_tokens)
          SELECT message_map.new_id, ?,
                 turn_map.new_id,
                 source.role, source.kind, source.blocks_json, source.interrupted, source.created_at,
-                cursor_map.new_id
+                cursor_map.new_id, source.summary_saved_tokens
          FROM messages source
          JOIN _message_id_map message_map ON message_map.old_id = source.id
          LEFT JOIN _turn_id_map turn_map ON turn_map.old_id = source.turn_id

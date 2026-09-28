@@ -1,4 +1,5 @@
 // 语音一族：TTS 绑定解析、角色声音准备、Turn 级语音输出、试听与 Session 音频归档。
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { readFile } from 'node:fs/promises';
 import type { Character, CharacterStore } from '@ema-agent/characters';
@@ -22,14 +23,14 @@ import {
   SpeechOutputsRepo,
   type Database,
 } from '@ema-agent/storage';
-import { createSttCall, type TranscriptionRequest, type TranscriptionResult } from '@ema-agent/stt';
+import { createSttCall, SttError, type TranscriptionRequest, type TranscriptionResult } from '@ema-agent/stt';
 import {
   createTtsCall,
   createTtsVoiceRegistrar,
   TtsError,
   type TtsVoiceReference,
 } from '@ema-agent/tts';
-import { createUsageRecord, reportUsage, type UsageRecorder } from '@ema-agent/usage';
+import type { UsageRecorder } from '@ema-agent/usage';
 
 /** 单 Turn 的语音输出句柄；由 turnFanout 喂文本增量并收口。 */
 export interface TurnSpeechHandle {
@@ -243,18 +244,19 @@ export function openSpeech(
       binding.modelId,
     );
     const startedAt = Date.now();
-    const result = await callStt(request);
+    const callId = randomUUID();
+    const result = await callStt(request).catch(error => {
+      const cancelled = request.signal?.aborted === true || (error instanceof Error && error.name === 'AbortError');
+      let errorCode = 'stt/call_failed';
+      if (cancelled) errorCode = 'stt/aborted';
+      else if (error instanceof SttError) errorCode = error.code;
+      recordSttUsage(usageRecorder, callId, binding.providerId, binding.modelId, startedAt,
+        cancelled ? 'cancelled' : 'failed', null, errorCode);
+      throw error;
+    });
     const lastEndMs = result.segments?.reduce((max, s) => Math.max(max, s.endMs), 0) ?? 0;
-    reportUsage(usageRecorder, createUsageRecord({
-      capability: 'stt',
-      providerId: binding.providerId,
-      modelId: binding.modelId,
-      status: 'completed',
-      startedAt,
-      durationMs: Date.now() - startedAt,
-      quantity: lastEndMs > 0 ? lastEndMs / 1000 : null,
-      unit: lastEndMs > 0 ? 'second' : null,
-    }), error => console.warn('[usage] STT 记账失败:', error));
+    recordSttUsage(usageRecorder, callId, binding.providerId, binding.modelId, startedAt, 'completed',
+      lastEndMs > 0 ? lastEndMs / 1000 : null, null);
     return result;
   };
 
@@ -269,11 +271,24 @@ export function openSpeech(
     const audioPath = characters.resolveVoiceSampleFile(character.name, sample.name);
     const audio = await readFile(audioPath);
     const callStt = createSttCall(connection, modelId);
+    const startedAt = Date.now();
+    const callId = randomUUID();
     const result = await callStt({
       audio: new Uint8Array(audio),
       mimeType: sample.mimeType,
       ...(signal ? { signal } : {}),
+    }).catch(error => {
+      const cancelled = signal?.aborted === true || (error instanceof Error && error.name === 'AbortError');
+      let errorCode = 'stt/call_failed';
+      if (cancelled) errorCode = 'stt/aborted';
+      else if (error instanceof SttError) errorCode = error.code;
+      recordSttUsage(usageRecorder, callId, providerId, modelId, startedAt,
+        cancelled ? 'cancelled' : 'failed', null, errorCode);
+      throw error;
     });
+    const lastEndMs = result.segments?.reduce((max, segment) => Math.max(max, segment.endMs), 0) ?? 0;
+    recordSttUsage(usageRecorder, callId, providerId, modelId, startedAt, 'completed',
+      lastEndMs > 0 ? lastEndMs / 1000 : null, null);
     return { text: result.text, referenceText: sample.promptText };
   };
 
@@ -303,6 +318,36 @@ export function openSpeech(
       return parsed?.type === 'cancel';
     },
   };
+}
+
+function recordSttUsage(
+  recorder: UsageRecorder,
+  id: string,
+  providerId: string,
+  modelId: string,
+  startedAt: number,
+  status: 'completed' | 'failed' | 'cancelled',
+  seconds: number | null,
+  errorCode: string | null,
+): void {
+  recorder.record({
+    id,
+    sessionId: null,
+    turnId: null,
+    capability: 'stt',
+    providerId,
+    modelId,
+    status,
+    inputTokens: null,
+    outputTokens: null,
+    cacheReadInputTokens: null,
+    cacheWriteInputTokens: null,
+    quantity: seconds,
+    unit: seconds === null ? null : 'second',
+    durationMs: Date.now() - startedAt,
+    errorCode,
+    createdAt: startedAt,
+  });
 }
 
 /** 每个 Turn 一条实时语音连接，同时用已完成句子的确认数量限制生成领先量。 */

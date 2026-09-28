@@ -4,16 +4,11 @@
 // 装载模型：
 // - builtin + user 与工作区无关，合并为 core；启动时、安装/卸载后由 refreshCore() 重扫；
 // - project 技能按源文件夹清单首次读取并缓存,显式 refreshProjectFolders() 时重扫。
-import type { SkillStore } from './sources/user.js';
-import { scanBuiltinSkills } from './sources/builtin.js';
+import type { SkillStore } from './store.js';
 import { scanProjectSkills } from './sources/project.js';
 import type { SkillDescriptor } from './types.js';
 
 export interface SkillRegistryDeps {
-  /** user 技能根(<profileDir>/skills)。 */
-  readonly userRoot: string;
-  /** 内置技能目录(<profileDir>/resources/skills,由宿主在启动时铺好,只读)。 */
-  readonly builtinRoot: string;
   readonly store: SkillStore;
 }
 
@@ -32,8 +27,7 @@ export interface SkillRegistry {
 }
 
 /**
- * core 刷新流程:builtin 直扫 + user 对账 → 合成 core 全量。
- * 任一来源失败只降级该来源(空数组 + warning),不拖垮整轮刷新。
+ * builtin/user 各自对账自己的索引, 合成 core 全量; project 仍只来自工作区扫描.
  */
 export function createSkillRegistry(deps: SkillRegistryDeps): SkillRegistry {
   let core: readonly SkillDescriptor[] = [];
@@ -44,12 +38,16 @@ export function createSkillRegistry(deps: SkillRegistryDeps): SkillRegistry {
 
   async function scanCore(): Promise<void> {
     const [builtin, user] = await Promise.all([
-      scanBuiltinSkills({
-        builtinRoot: deps.builtinRoot,
-      }).catch(() => [] as SkillDescriptor[]),
+      deps.store.reconcileBuiltinRoot()
+        .catch(error => {
+          console.warn('[skills] builtin 对账失败:', error);
+          return [] as SkillDescriptor[];
+        }),
       deps.store.reconcileUserRoot()
-        .then((result) => result.entries)
-        .catch(() => [] as SkillDescriptor[]),
+        .catch(error => {
+          console.warn('[skills] user 对账失败:', error);
+          return [] as SkillDescriptor[];
+        }),
     ]);
     core = [...builtin, ...user];
     coreByPath.clear();

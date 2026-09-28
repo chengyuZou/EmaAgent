@@ -1,6 +1,8 @@
+import type { ModelCapabilityRow, ModelBindingModuleRow } from '@ema-agent/storage';
+
 export const MODEL_CAPABILITIES = ['llm', 'embed', 'rerank', 'vision', 'tts', 'stt'] as const;
 
-export type ModelCapability = typeof MODEL_CAPABILITIES[number];
+export type ModelCapability = ModelCapabilityRow;
 
 export const PROTOCOLS = [
   'openai-llm',
@@ -49,6 +51,18 @@ export interface ProviderConnection<TModelCapability extends ModelCapability> {
   baseUrl: string;
   apiKey?: string;
 }
+
+export type ModelBindingModule = ModelBindingModuleRow;
+
+export const MODEL_BINDING_CAPABILITIES: Readonly<Record<ModelBindingModule, ModelCapability>> =
+  Object.freeze({
+    'memory-llm': 'llm',
+    'lightrag-llm': 'llm',
+    'lightrag-embed': 'embed',
+    'tts': 'tts',
+    'stt': 'stt',
+    'vision': 'vision',
+  });
 
 export const PROVIDER_LIMITS = Object.freeze({
   idChars: 64,

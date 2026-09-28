@@ -4,8 +4,13 @@
 import { ProviderError } from './errors.js';
 import type { ModelsDevCatalog } from './catalog/modelsDevCatalog.js';
 import type { ModelCapability } from './types.js';
-import type { ModelBindingStore } from './modelBindings.js';
-import type { ProviderStore } from './providers.js';
+import {
+  ModelBindingsRepo,
+  ProviderModelsRepo,
+  type Database,
+  type ProviderModelRow,
+} from '@ema-agent/storage';
+import type { Providers } from './providers.js';
 
 export type ProviderModelSource = 'user' | 'dev';
 
@@ -59,42 +64,37 @@ export type ProviderModelInput = ProviderModelParams;
 
 export type ProviderModel = ProviderModelParams & { source: ProviderModelSource; enabled: boolean };
 
-export interface ProviderModelStore {
-  get(providerId: string, capability: ModelCapability, modelId: string): ProviderModel | undefined;
-  listByProvider(providerId: string, capability?: ModelCapability): ProviderModel[];
-  listByCapability(capability: ModelCapability): ProviderModel[];
-  hasAny(): boolean;
-  save(model: ProviderModel): void;
-  setEnabled(providerId: string, capability: ModelCapability, modelId: string, enabled: boolean): void;
-  delete(providerId: string, capability: ModelCapability, modelId: string): void;
-}
-
 export class ProviderModels {
+  private readonly repo: ProviderModelsRepo;
+  private readonly bindingsRepo: ModelBindingsRepo;
+
   constructor(
-    private readonly providers: Pick<ProviderStore, 'get'>,
-    private readonly store: ProviderModelStore,
+    db: Database,
+    private readonly providers: Providers,
     private readonly catalog: ModelsDevCatalog,
-    private readonly bindings: Pick<ModelBindingStore, 'listByProvider'>,
-  ) {}
+  ) {
+    this.repo = new ProviderModelsRepo(db.sqlite);
+    this.bindingsRepo = new ModelBindingsRepo(db.sqlite);
+  }
 
   listByProvider(providerId: string, capability?: ModelCapability): ProviderModel[] {
     this.requireProvider(providerId);
-    return this.store.listByProvider(providerId, capability);
+    return this.repo.listByProvider(providerId, capability).map(fromRow);
   }
 
   listByCapability(capability: ModelCapability): ProviderModel[] {
-    return this.store.listByCapability(capability);
+    return this.repo.listByCapability(capability).map(fromRow);
   }
 
   /** 首次使用判定：表里有没有任何模型行（目录同步落库或手写都算"用过"）。 */
   hasAny(): boolean {
-    return this.store.hasAny();
+    return this.repo.hasAny();
   }
 
   get(providerId: string, capability: ModelCapability, modelId: string): ProviderModel {
-    const found = this.store.get(providerId, capability, modelId);
+    const found = this.repo.get(providerId, capability, modelId);
     if (!found) throw new ProviderError('model_not_found', 'Provider 模型不存在');
-    return found;
+    return fromRow(found);
   }
 
   /** 手写保存：新增行 source='user' 且默认启用；已有行保留 source 与 enabled。dev 行禁修改。 */
@@ -110,15 +110,15 @@ export class ProviderModels {
       );
     }
     validateModel(model);
-    const existing = this.store.get(model.providerId, model.capability, model.modelId);
+    const existing = this.repo.get(model.providerId, model.capability, model.modelId);
     if (existing?.source === 'dev') {
       throw new ProviderError('invalid_configuration', '该模型来自 models.dev 目录，参数由目录维护');
     }
-    this.store.save({
+    this.repo.save(toRow({
       ...model,
       source: 'user',
-      enabled: existing?.enabled ?? true,
-    });
+      enabled: existing ? existing.enabled === 1 : true,
+    }));
     return this.get(model.providerId, model.capability, model.modelId);
   }
 
@@ -134,7 +134,7 @@ export class ProviderModels {
       this.assertModelNotInUse(providerId, capability, modelId);
     }
     if (model.enabled !== enabled) {
-      this.store.setEnabled(providerId, capability, modelId, enabled);
+      this.repo.setEnabled(providerId, capability, modelId, enabled ? 1 : 0);
     }
     return this.get(providerId, capability, modelId);
   }
@@ -142,7 +142,7 @@ export class ProviderModels {
   delete(providerId: string, capability: ModelCapability, modelId: string): void {
     this.get(providerId, capability, modelId);
     this.assertModelNotInUse(providerId, capability, modelId);
-    this.store.delete(providerId, capability, modelId);
+    this.repo.delete(providerId, capability, modelId);
   }
 
   /**
@@ -163,9 +163,9 @@ export class ProviderModels {
     for (const id of ids) {
       const spec = this.catalog.get(modelsDevId, id);
       if (!spec?.contextWindow) continue;
-      const existing = this.store.get(providerId, capability, id);
+      const existing = this.repo.get(providerId, capability, id);
       if (existing?.source === 'user') continue;
-      this.store.save({
+      this.repo.save(toRow({
         providerId,
         capability,
         modelId: spec.id,
@@ -177,25 +177,29 @@ export class ProviderModels {
         temperature: spec.temperature ?? null,
         inputImage: spec.inputImage ?? null,
         source: 'dev',
-        enabled: existing?.enabled ?? false,
-      });
+        enabled: existing ? existing.enabled === 1 : false,
+      }));
     }
-    return this.store.listByProvider(providerId, capability);
+    return this.repo.listByProvider(providerId, capability).map(fromRow);
   }
 
   private assertModelNotInUse(providerId: string, capability: ModelCapability, modelId: string): void {
-    const conflicts = this.bindings
+    const conflicts = this.bindingsRepo
       .listByProvider(providerId)
-      .filter((binding) => binding.capability === capability && binding.modelId === modelId);
+      .filter((binding) => binding.capability === capability && binding.model_id === modelId)
+      .map((row) => ({
+        module: row.module,
+        capability: row.capability,
+        providerId: row.provider_id,
+        modelId: row.model_id,
+      }));
     if (conflicts.length > 0) {
       throw new ProviderError('model_in_use', '请先解绑正在使用该模型的业务模块', conflicts);
     }
   }
 
   private requireProvider(providerId: string) {
-    const provider = this.providers.get(providerId);
-    if (!provider) throw new ProviderError('not_found', 'Provider 不存在');
-    return provider;
+    return this.providers.get(providerId);
   }
 }
 
@@ -217,4 +221,65 @@ function positive(value: number, field: string): void {
   if (!Number.isInteger(value) || value <= 0) {
     throw new ProviderError('invalid_configuration', `${field} 必须是正整数`);
   }
+}
+
+function fromRow(row: ProviderModelRow): ProviderModel {
+  const identity = {
+    providerId: row.provider_id,
+    modelId: row.model_id,
+    ...(row.name === null ? {} : { name: row.name }),
+    source: row.source,
+    enabled: row.enabled === 1,
+  };
+  switch (row.capability) {
+    case 'llm':
+    case 'vision':
+      return {
+        ...identity,
+        capability: row.capability,
+        contextWindow: row.context_window!,
+        maxOutput: row.max_output,
+        toolCall: fromBoolean(row.tool_call),
+        reasoning: fromBoolean(row.reasoning),
+        temperature: fromBoolean(row.temperature),
+        inputImage: fromBoolean(row.input_image),
+      };
+    case 'embed':
+      return { ...identity, capability: 'embed', dim: row.embedding_dim! };
+    case 'rerank':
+      return { ...identity, capability: 'rerank', maxChunks: row.rerank_max_chunks };
+    case 'tts':
+      return { ...identity, capability: 'tts' };
+    case 'stt':
+      return { ...identity, capability: 'stt' };
+  }
+}
+
+function toRow(model: ProviderModel): ProviderModelRow {
+  const withWindow = model.capability === 'llm' || model.capability === 'vision';
+  return {
+    provider_id: model.providerId,
+    capability: model.capability,
+    model_id: model.modelId,
+    name: model.name ?? null,
+    source: model.source,
+    enabled: model.enabled ? 1 : 0,
+    context_window: withWindow ? model.contextWindow : null,
+    max_output: withWindow ? model.maxOutput : null,
+    tool_call: withWindow ? toBoolean(model.toolCall) : null,
+    reasoning: withWindow ? toBoolean(model.reasoning) : null,
+    temperature: withWindow ? toBoolean(model.temperature) : null,
+    input_image: withWindow ? toBoolean(model.inputImage) : null,
+    embedding_dim: model.capability === 'embed' ? model.dim : null,
+    rerank_max_chunks: model.capability === 'rerank' ? model.maxChunks : null,
+  };
+}
+
+function toBoolean(value: boolean | null): number | null {
+  if (value === null) return null;
+  return value ? 1 : 0;
+}
+
+function fromBoolean(value: number | null): boolean | null {
+  return value === null ? null : value === 1;
 }

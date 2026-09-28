@@ -42,7 +42,7 @@ import {
   resolveSkillPool,
   type TurnStore,
 } from '@ema-agent/turn';
-import { recordLlmCallUsage, type UsageRecorder } from '@ema-agent/usage';
+import type { UsageRecorder } from '@ema-agent/usage';
 import { CommandsError } from '../errors.js';
 
 export type ManualCompactResult =
@@ -73,7 +73,7 @@ export interface ManualCompactDeps {
     cwd: string,
     projectId: string | null,
   ) => Promise<readonly SkillDescriptor[]>;
-  /** skill_enablement 表的当前禁用路径列表（与根 Turn 同一来源）。 */
+  /** SkillStore 从 skills.enabled 读取当前禁用路径, 与根 Turn 同一来源. */
   readonly disabledSkillPaths: () => readonly string[];
   readonly workspaceInstructions?: (cwd: string) => string | null;
   readonly memoryGuidance?: () => Promise<string | null> | string | null;
@@ -182,6 +182,9 @@ export async function compactSession(
     const result = await compact({
       compactId,
       sessionId,
+      providerId,
+      modelId,
+      usageRecorder: deps.usageRecorder,
       sessionMode: session.sessionMode,
       messages: history,
       systemMessages,
@@ -202,11 +205,12 @@ export async function compactSession(
         : {}),
       // Compact 从投影数组开头累计被摘要覆盖的数量, 再映射到最后一条 SQL Message ID.
       // 即使某些 SQL Message 没有模型可见内容, 游标也会覆盖它们所在的旧前缀.
-      saveMacroSummary: (summary, summarizedMessageCount) => {
+      saveMacroSummary: (summary, summarizedMessageCount, savedTokens) => {
         deps.sessions.appendHistorySummary({
           sessionId,
           turnId: null,
           summary,
+          savedTokens,
           summarizedThroughMessageId:
             historyWithIds[summarizedMessageCount - 1]!.sessionMessageId,
         });
@@ -214,17 +218,6 @@ export async function compactSession(
     });
 
     if (result.kind === 'macro') {
-      // 摘要调用的 usage 随完成结果带出（收完的 completion 快照）；abort/失败没有
-      recordLlmCallUsage(deps.usageRecorder, {
-        providerId,
-        modelId,
-        status: 'completed',
-        startedAt: Date.now() - result.durationMs,
-        durationMs: result.durationMs,
-        usage: result.usage,
-        // 手动压缩不铸 turnId/llmCallId. 用事件里同一个 compactId 关联这次调用.
-        usageContext: { callId: `compact:${compactId}`, sessionId },
-      });
       return {
         status: 'completed',
         contextWindow: providerModel.contextWindow,

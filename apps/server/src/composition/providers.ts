@@ -1,10 +1,5 @@
 // Provider 一族：控制面三类（Providers/ProviderModels/ModelBindings）+ models.dev 目录。
-import {
-  ModelBindingsRepo,
-  ProviderModelsRepo,
-  ProvidersRepo,
-  type Database,
-} from '@ema-agent/storage';
+import type { Database } from '@ema-agent/storage';
 import {
   ModelBindings,
   ProviderModels,
@@ -24,16 +19,14 @@ export interface ProvidersComposition {
   refreshCatalog(signal?: AbortSignal): Promise<boolean>;
 }
 
-/** 控制面三个类共享同一批 profile 表 repo；Provider 折叠后不存在按能力分 Map 的执行面装配。 */
 export function openProviders(profileDb: Database): ProvidersComposition {
-  const providersRepo = new ProvidersRepo(profileDb.sqlite);
-  const modelsRepo = new ProviderModelsRepo(profileDb.sqlite);
-  const bindingsRepo = new ModelBindingsRepo(profileDb.sqlite);
+  const providers = new Providers(profileDb);
+  const providerModels = new ProviderModels(profileDb, providers, getModelsDevCatalog());
 
   return {
-    providers: new Providers(providersRepo, bindingsRepo),
-    providerModels: new ProviderModels(providersRepo, modelsRepo, getModelsDevCatalog(), bindingsRepo),
-    modelBindings: new ModelBindings(modelsRepo, bindingsRepo),
+    providers,
+    providerModels,
+    modelBindings: new ModelBindings(profileDb, providerModels),
     modelCatalog: getModelsDevCatalog(),
     refreshCatalog: signal => refreshModelsDevCatalog(signal),
   };

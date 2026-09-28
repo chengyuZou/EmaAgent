@@ -12,12 +12,18 @@ export interface SessionActivity {
   readonly connection: SessionConnectionState;
   /** Server 当前占用 Session 的根 Turn 或手动 Compact; 已收到 session_state 后 null 表示空闲. */
   readonly running: SessionRunning | null;
-  /** 当前正在生成摘要的 Compact ID, 同时覆盖手动命令和根 Turn 自动压缩. */
-  readonly activeCompactId: string | null;
+  /** 当前正在生成摘要的 Compact, 同时覆盖手动命令和根 Turn 自动压缩. */
+  readonly activeCompact: ActiveCompact | null;
   /** 仍等待用户处理的 Permission 和 AskUser, resolved 事件到达后按 toolCallId 删除. */
   readonly pendingInteractions: readonly PendingInteraction[];
   /** 这里只显示 after_turn 项; guide 成功后该项立即移入当前 Turn. */
   readonly queuedInputs: readonly QueuedSessionInput[];
+}
+
+export interface ActiveCompact {
+  readonly compactId: string;
+  /** session_state 只能恢复运行身份, 只有实时 compact_started 带准确开始时间. */
+  readonly startedAt: number | null;
 }
 
 interface SessionActivityStore {
@@ -35,7 +41,7 @@ interface SessionActivityStore {
   /** session_running_changed 到达时原样保存 Server 的 Turn/Compact 占用身份. */
   setRunning(sessionId: string, running: SessionRunning | null): void;
   /** 两种启动方式的 compact_started 最终都写入这一份会话级展示状态. */
-  startCompact(sessionId: string, compactId: string): void;
+  startCompact(sessionId: string, compactId: string, startedAt: number): void;
   /** 仅结束对应 ID 的压缩, 不让迟到的终态清除下一次压缩. */
   finishCompact(sessionId: string, compactId: string): void;
   /** 流式 required/resolved 事件按 toolCallId 增删交互, 保持创建时间顺序. */
@@ -52,7 +58,7 @@ interface SessionActivityStore {
 export const EMPTY_SESSION_ACTIVITY: SessionActivity = {
   connection: 'disconnected',
   running: null,
-  activeCompactId: null,
+  activeCompact: null,
   pendingInteractions: [],
   queuedInputs: [],
 };
@@ -96,7 +102,9 @@ export const useSessionActivityStore = create<SessionActivityStore>(set => ({
     set(state => updateSession(state, sessionId, current => ({
       ...current,
       running,
-      activeCompactId: running?.kind === 'compact' ? running.compactId : null,
+      activeCompact: running?.kind === 'compact'
+        ? { compactId: running.compactId, startedAt: null }
+        : null,
       pendingInteractions: sortPending(pendingInteractions),
       queuedInputs: [...queuedInputs]
         .sort((left, right) => left.createdAt - right.createdAt),
@@ -105,26 +113,30 @@ export const useSessionActivityStore = create<SessionActivityStore>(set => ({
 
   setRunning(sessionId, running) {
     set(state => updateSession(state, sessionId, current => {
-      let activeCompactId = current.activeCompactId;
-      if (running === null) activeCompactId = null;
-      else if (running.kind === 'compact') activeCompactId = running.compactId;
-      if (current.running === running && current.activeCompactId === activeCompactId) return current;
-      return { ...current, running, activeCompactId };
+      let activeCompact: ActiveCompact | null = null;
+      if (running?.kind === 'compact') {
+        activeCompact = current.activeCompact?.compactId === running.compactId
+          ? current.activeCompact
+          : { compactId: running.compactId, startedAt: null };
+      }
+      if (current.running === running && current.activeCompact === activeCompact) return current;
+      return { ...current, running, activeCompact };
     }));
   },
 
-  startCompact(sessionId, compactId) {
+  startCompact(sessionId, compactId, startedAt) {
     set(state => updateSession(state, sessionId, current => (
-      current.activeCompactId === compactId
+      current.activeCompact?.compactId === compactId
+      && current.activeCompact.startedAt === startedAt
         ? current
-        : { ...current, activeCompactId: compactId }
+        : { ...current, activeCompact: { compactId, startedAt } }
     )));
   },
 
   finishCompact(sessionId, compactId) {
     set(state => updateSession(state, sessionId, current => (
-      current.activeCompactId === compactId
-        ? { ...current, activeCompactId: null }
+      current.activeCompact?.compactId === compactId
+        ? { ...current, activeCompact: null }
         : current
     )));
   },

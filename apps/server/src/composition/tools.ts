@@ -24,17 +24,14 @@ import {
   createMarketInstaller,
   createMarketService,
   createSkillRegistry,
-  createSkillStore,
+  SkillStore,
   type MarketInstaller,
   type MarketService,
   type SkillRegistry,
-  type SkillStore,
 } from '@ema-agent/skills';
 import {
   McpMarketEntriesRepo,
   McpServersRepo,
-  SkillEnablementRepo,
-  SkillsRepo,
   ToolExecutionsRepo,
   BackgroundProcessesRepo,
   type Database,
@@ -91,8 +88,6 @@ export interface ToolsComposition {
   readonly mcpEnvironment: McpLocalCommandEnvironment;
   readonly skills: SkillRegistry;
   readonly skillStore: SkillStore;
-  /** builtin/user 逐技能启停事实（skill_enablement 表）。 */
-  readonly skillEnablement: SkillEnablementRepo;
   /** 技能市场聚合服务与安装器（SkillHub/ClawHub 真实 Adapter）。 */
   readonly skillMarket: MarketService;
   readonly skillMarketInstaller: MarketInstaller;
@@ -232,17 +227,8 @@ export function openTools(deps: ToolsDeps): ToolsComposition {
   // 内置技能由宿主打包资源提供；开发期从仓库种子目录铺到 profile，目标已存在即不动。
   installBuiltinSkills(bundledSkillsSource(), builtinSkillsDir());
   const skillUserRoot = path.join(profileDir(), 'skills');
-  const skillEnablement = new SkillEnablementRepo(profileDb.sqlite);
-  const skillStore = createSkillStore({
-    repo: new SkillsRepo(profileDb.sqlite),
-    enablement: skillEnablement,
-    userRoot: skillUserRoot,
-  });
-  const skills = createSkillRegistry({
-    userRoot: skillUserRoot,
-    builtinRoot: builtinSkillsDir(),
-    store: skillStore,
-  });
+  const skillStore = new SkillStore(profileDb, skillUserRoot, builtinSkillsDir());
+  const skills = createSkillRegistry({ store: skillStore });
   // builtin+user 启动时装载一次；project 技能按工作区在 list() 时现扫。
   // 装载前先清掉安装中途死掉留下的孤儿 staging 目录。
   // 首根 Turn 的 list() 会等待这次装载，无需在此阻塞装配。
@@ -269,7 +255,6 @@ export function openTools(deps: ToolsDeps): ToolsComposition {
     mcpEnvironment,
     skills,
     skillStore,
-    skillEnablement,
     skillMarket,
     skillMarketInstaller,
     skillUserRoot,

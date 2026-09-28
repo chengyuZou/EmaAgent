@@ -57,6 +57,12 @@ function seedSource(dataDir: string): Database {
     INSERT INTO messages (id, session_id, turn_id, role, kind, blocks_json, interrupted, created_at)
     VALUES ('m1', ?, 't1', 'user', 'normal', ?, 0, 2)
   `).run(SESSION_ID, blocks);
+  db.sqlite.prepare(`
+    INSERT INTO messages (
+      id, session_id, role, kind, blocks_json, created_at,
+      summarized_through_message_id, summary_saved_tokens
+    ) VALUES ('summary-1', ?, 'user', 'summary', '"summary"', 3, 'm1', 12345)
+  `).run(SESSION_ID);
 
   new AttachmentImagesRepo(db.sqlite).insertMany([{
     path: imagePath, session_id: SESSION_ID, name: '猫.png', byte_size: 4, created_at: 1,
@@ -68,21 +74,21 @@ function seedSource(dataDir: string): Database {
   new AttachmentPastedTextsRepo(db.sqlite).claimForTurn(SESSION_ID, 't1', [pastedPath]);
   new UsageRecordsRepo(db.sqlite).record({
     id: 'llm-call-1',
-    sessionId: SESSION_ID,
-    turnId: 't1',
-    providerId: 'provider',
-    modelId: 'model',
+    session_id: SESSION_ID,
+    turn_id: 't1',
+    provider_id: 'provider',
+    model_id: 'model',
     capability: 'llm',
     status: 'completed',
-    inputTokens: 100,
-    outputTokens: 20,
-    cacheReadInputTokens: null,
-    cacheWriteInputTokens: null,
+    input_tokens: 100,
+    output_tokens: 20,
+    cache_read_input_tokens: null,
+    cache_write_input_tokens: null,
     quantity: null,
     unit: null,
-    durationMs: 50,
-    errorCode: null,
-    createdAt: 2,
+    duration_ms: 50,
+    error_code: null,
+    created_at: 2,
   });
   return db;
 }
@@ -125,6 +131,8 @@ describe('Session 备份往返', () => {
       () => true,
     );
     expect(result.sessionId).toBe(SESSION_ID);
+    expect(targetDb.sqlite.prepare('SELECT summary_saved_tokens FROM messages WHERE id = ?')
+      .get('summary-1')).toEqual({ summary_saved_tokens: 12_345 });
     expect(targetDb.sqlite.prepare("SELECT tts_enabled FROM turns WHERE id = 't1'").get())
       .toMatchObject({ tts_enabled: 1 });
     expect(targetDb.sqlite.prepare("SELECT character_name FROM turns WHERE id = 't1'").get())

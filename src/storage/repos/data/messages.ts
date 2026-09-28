@@ -23,6 +23,8 @@ export interface MessageRow {
   created_at:  number;
   /** 仅 summary 行非空：摘要覆盖截止点（含该消息）。 */
   summarized_through_message_id: string | null;
+  /** 压缩前后请求 Token 估算的减少量; 非摘要和未记录该数值的摘要为 null. */
+  summary_saved_tokens: number | null;
 }
 
 export interface MessageInsert {
@@ -37,6 +39,8 @@ export interface MessageInsert {
   createdAt:  number;
   /** 仅 kind='summary'：摘要覆盖截止消息 id。 */
   summarizedThroughMessageId?: string;
+  /** 仅 summary 保存压缩管线计算的 Token 减少量. */
+  savedTokens?: number;
 }
 
 export interface MessagePageCursor {
@@ -75,8 +79,8 @@ export class MessagesRepo {
       .prepare(
         `INSERT INTO messages
            (id, session_id, turn_id, role, kind, blocks_json, interrupted, created_at,
-            summarized_through_message_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            summarized_through_message_id, summary_saved_tokens)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         m.id,
@@ -88,6 +92,7 @@ export class MessagesRepo {
         m.interrupted ? 1 : 0,
         m.createdAt,
         m.summarizedThroughMessageId ?? null,
+        m.savedTokens ?? null,
       );
   }
 

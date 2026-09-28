@@ -8,6 +8,10 @@ Compact 在模型输入接近窗口上限时, 把模型可见的工作消息 `Me
 const compact = createCompact(callLlm, defaultSettings);
 const result = await compact({
   sessionId,
+  turnId,
+  providerId,
+  modelId,
+  usageRecorder,
   sessionMode,
   messages,
   systemMessages,
@@ -31,7 +35,7 @@ const result = await compact({
 - `estimatedInputTokens`: 调用方对完整候选请求的估算, 包括 `messages` 之外的固定成本. Compact 用差额计算替换消息后完整请求的估算量.
 - `force`: 跳过自动触发阈值和连续失败熔断, 但仍受摘要请求和最终请求的预算限制.
 - `micro`: 默认执行 Micro; 传 `false` 则只走 Macro. 手动 `/compact` 不落盘 Micro 的替换, 因而传 `false`.
-- `saveMacroSummary`: 可选的持久化回调, 接收最终摘要正文和 `summarizedMessageCount`. Compact 不知道 SQL Message ID; 调用方负责把计数映射为覆盖截止位置.
+- `saveMacroSummary`: 可选的持久化回调, 接收最终摘要正文, `summarizedMessageCount` 和 `savedTokens`. Token 减少量与完成事件来自同一次计算, 随摘要保存. Compact 不知道 SQL Message ID; 调用方负责把计数映射为覆盖截止位置.
 
 ## 返回值和事件
 
@@ -39,7 +43,7 @@ const result = await compact({
 
 - `unchanged`: 未触发, 被熔断, 或 Macro 失败. Macro 失败时仍返回原输入消息, 并带 `failureDetail`; 不会交付只压缩了一半的数组.
 - `micro`: 只替换了可重新获取的旧 Tool Result 内容. 消息数量和顺序不变.
-- `macro`: 第一条消息是 `<context-summary>` 包裹的摘要, 后面是保留原文的近期消息. 附带 `beforeTokens`, `afterTokens`, `savedTokens`, `durationMs`, 摘要调用的 `usage` 总和, 以及 `summarizedMessageCount`.
+- `macro`: 第一条消息是 `<context-summary>` 包裹的摘要, 后面是保留原文的近期消息. 附带 `beforeTokens`, `afterTokens`, `savedTokens`, `durationMs` 和 `summarizedMessageCount`. Macro 在分段请求的现有 `try/catch` 中直接调用 Recorder, 每次物理调用独立记账, 不包装 `CallLlm`, 不把多次请求合成一笔调用.
 
 `summarizedMessageCount` 表示输入 `messages` 从头起有多少条被最终摘要覆盖. 若前缀中已有一条旧摘要, 它也算一条输入消息. 该值不是 SQL 自增 ID, 也不是被直接丢弃的消息数.
 
@@ -56,6 +60,8 @@ Macro 的消息边界是一个切点: 切点左边的消息全部参加摘要, �
 切点计算只估算一次每条消息的 token, 再组成后缀数组. 例如三条消息分别为 `10, 20, 40` Token, 后缀数组就是 `[70, 60, 40, 0]`. 近期原文预算为 `45` 时, 二分找到从第 2 条消息开始的 `40` Token 尾部; 从第 1 条开始则是 `60` Token, 放不下. 摘要分段用同一数组二分寻找预算内最远的结束切点, 然后避开会拆开工具调用与结果的位置.
 
 待摘要前缀若一次放不进摘要请求, 就按时间顺序分段. 每段输入为 `systemMessages + 上一段摘要 + 当前完整消息段 + 压缩指令`, 并复用传入的工具定义和 thinking 配置. 成功后游标才前进; Provider 报输入过长或模型以 `max_tokens` 结束时, 缩小当前分段重试, 后移的消息留给下一段. 每段至多尝试 3 次.
+
+每段的最大输出为模型 `maxOutput`, 当前摘要请求剩余窗口和最终摘要容量三者的最小值. 没有独立的固定摘要输出设置. 重试缩小的是本段 History 输入量, 不是把模型输出上限继续压低.
 
 例如输入为 `A B C D`, 切点在 `C` 前, 最终得到 `Summary(A+B) C D`. 若 `A B` 还需分段, 第二段会看到第一段摘要和后续原文, 不会跳过早期消息. Macro 不预先截断旧前缀, 也不裁剪已经生成的摘要正文. 任何分段失败或最终摘要无法与近期原文一起放进预算, 都返回原输入消息.
 

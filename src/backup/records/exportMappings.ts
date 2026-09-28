@@ -81,6 +81,7 @@ export const toMessageRecord = (row: MessageRow): MessageRecord => ({
   interrupted: row.interrupted === 1,
   createdAt: row.created_at,
   summarizedThroughMessageId: row.summarized_through_message_id,
+  ...(row.summary_saved_tokens !== null ? { savedTokens: row.summary_saved_tokens } : {}),
 });
 
 export const toTaskRecord = (row: SessionBackupTaskRow): TaskRecord => ({

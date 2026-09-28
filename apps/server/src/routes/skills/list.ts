@@ -1,5 +1,4 @@
-// 技能目录与正文：全量列表（含 enabled 投影）、单条详情、SKILL.md 正文、
-// 目录文件清单与文件预览、逐技能启停（skill_enablement）、真实重扫与 user 技能删除。
+// 技能目录与正文: 列表, 详情, 文件预览, skills.enabled 启停, 重扫和 builtin/user 分开删除.
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { Hono } from 'hono';
@@ -18,16 +17,13 @@ import {
   type SkillRegistry,
   type SkillStore,
 } from '@ema-agent/skills';
-import type { SkillEnablementRepo } from '@ema-agent/storage';
 import type { SettingsStore } from '@ema-agent/settings';
 import { jsonBody, queryValidator } from '../validate.js';
 import type { AppEvent } from '../../application/appEvents.js';
 
 export interface SkillListRouteDeps {
   readonly skills: Pick<SkillRegistry, 'list' | 'getByPath' | 'refreshCore' | 'refreshProjectFolders'>;
-  readonly skillStore: Pick<SkillStore, 'deleteUserSkill'>;
-  /** builtin/user 逐技能启停事实（skill_enablement 表）。 */
-  readonly skillEnablement: Pick<SkillEnablementRepo, 'listDisabledPaths' | 'setEnabled'>;
+  readonly skillStore: Pick<SkillStore, 'deleteUserSkill' | 'deleteBuiltinSkill' | 'listDisabledPaths' | 'setEnabled'>;
   readonly settings: Pick<SettingsStore, 'get'>;
   /** 按 Session 或 Project 取得技能扫描文件夹；无上下文只见 builtin/user。 */
   readonly sessions: Pick<SessionStore, 'getSession' | 'listProjectFolders'>;
@@ -88,16 +84,17 @@ export const skillListRoute = (deps: SkillListRouteDeps) => {
     }
   };
   const readEnablement = (): SkillEnablement => ({
-    disabledPaths: deps.skillEnablement.listDisabledPaths(),
+    disabledPaths: deps.skillStore.listDisabledPaths(),
     disabledProjectSources: deps.settings.get(disabledProjectSourcesSetting).disabledSourceIds,
   });
 
   return new Hono()
     .get('/sources', context => context.json({ items: PROJECT_ECOSYSTEMS }))
     .get('/', queryValidator(listQuery), async context => {
-      const enablement = readEnablement();
       const { sessionId, projectId } = context.req.valid('query');
       const entries = await deps.skills.list(folderPathsOf(sessionId, projectId));
+      // 首装会搬入 builtin 的旧开关, 等目录就绪后再读取 enabled 投影.
+      const enablement = readEnablement();
       return context.json({ items: entries.map(entry => toWire(entry, enablement)) });
     })
     .get('/descriptor', queryValidator(skillQuery), async context => {
@@ -138,12 +135,12 @@ export const skillListRoute = (deps: SkillListRouteDeps) => {
         : raw;
       return context.json({ path: filePath, content, size: info.size, truncated });
     })
-    // 逐技能启停只覆盖 builtin/user；project 技能由来源级开关控制（disabledProjectSources）。
+    // 逐技能启停只覆盖 builtin/user; project 仍由 disabledProjectSources 控制.
     .put('/enabled', jsonBody(enabledBody), async context => {
       const { path, enabled } = context.req.valid('json');
       const entry = await deps.skills.getByPath(path);
       if (!entry) return context.json({ error: 'skill_not_found' }, 404);
-      deps.skillEnablement.setEnabled(path, enabled);
+      deps.skillStore.setEnabled(path, enabled);
       deps.emitApp({ type: 'skills_changed' });
       return context.json(toWire(entry, readEnablement()));
     })
@@ -156,15 +153,27 @@ export const skillListRoute = (deps: SkillListRouteDeps) => {
       deps.emitApp({ type: 'skills_changed' });
       return context.json({ ok: true });
     })
-    // 只有 user 技能可删：builtin 只读，project 跟随工作区文件。
-    .delete('/', queryValidator(skillQuery), async context => {
-      const { skillPath, sessionId } = context.req.valid('query');
-      const entry = await deps.skills.getByPath(skillPath, folderPathsOf(sessionId, undefined));
+    // 两类删除分别检查来源, Store 再约束真实目录; project 不提供删除入口.
+    .delete('/user', queryValidator(z.object({ skillPath: z.string().min(1) })), async context => {
+      const { skillPath } = context.req.valid('query');
+      const entry = await deps.skills.getByPath(skillPath);
       if (!entry) return context.json({ error: 'skill_not_found' }, 404);
       if (entry.scope !== 'user') {
         return context.json({ error: 'skill_not_deletable', message: '只有用户技能可以删除' }, 400);
       }
       await deps.skillStore.deleteUserSkill(skillPath);
+      await deps.skills.refreshCore();
+      deps.emitApp({ type: 'skills_changed' });
+      return context.json({ ok: true });
+    })
+    .delete('/builtin', queryValidator(z.object({ skillPath: z.string().min(1) })), async context => {
+      const { skillPath } = context.req.valid('query');
+      const entry = await deps.skills.getByPath(skillPath);
+      if (!entry) return context.json({ error: 'skill_not_found' }, 404);
+      if (entry.scope !== 'builtin') {
+        return context.json({ error: 'skill_not_deletable', message: '此入口只删除内置技能' }, 400);
+      }
+      await deps.skillStore.deleteBuiltinSkill(skillPath);
       await deps.skills.refreshCore();
       deps.emitApp({ type: 'skills_changed' });
       return context.json({ ok: true });

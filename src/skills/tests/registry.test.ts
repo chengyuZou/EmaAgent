@@ -1,43 +1,32 @@
-// SkillRegistry 测试：core 装载、project 工作区缓存与隔离、串行刷新不交错、首装等待。
+// 验证真实 SkillStore 的 core 装载, project 缓存隔离, 串行刷新及首装等待.
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { SkillEnablementRepo, SkillRow, SkillsRepo } from '@ema-agent/storage';
+import { Database } from '@ema-agent/storage';
 import { createSkillRegistry } from '../registry.js';
-import { createSkillStore } from '../sources/user.js';
+import { SkillStore } from '../store.js';
 
 const SKILL_MD = (name: string) =>
   `---\nname: ${name}\nversion: 1.0.0\ndescription: ${name} desc\n---\n# ${name}\n`;
 
 const dirs: string[] = [];
+const databases: Database[] = [];
 function makeDir(): string {
   const dir = mkdtempSync(join(tmpdir(), 'ema-skill-registry-'));
   dirs.push(dir);
   return dir;
 }
 afterEach(() => {
+  while (databases.length > 0) databases.pop()!.close();
   while (dirs.length > 0) rmSync(dirs.pop()!, { recursive: true, force: true });
 });
 
-function makeRepo() {
-  const rows = new Map<string, SkillRow>();
-  const repo: SkillsRepo = {
-    upsert: row => { rows.set(row.path, { ...row }); },
-    findByPath: path => rows.get(path) ?? null,
-    listAll: () => [...rows.values()],
-    deleteByPath: path => { rows.delete(path); },
-  } as SkillsRepo;
-  return repo;
-}
-
-function makeEnablement(): SkillEnablementRepo {
-  const states = new Map<string, boolean>();
-  return {
-    listDisabledPaths: () => [...states.entries()].filter(([, enabled]) => !enabled).map(([path]) => path),
-    setEnabled: (path: string, enabled: boolean) => { states.set(path, enabled); },
-    deleteByPath: (path: string) => { states.delete(path); },
-  } as SkillEnablementRepo;
+function makeStore(userRoot: string, builtinRoot = makeDir()): SkillStore {
+  const db = new Database({ memory: true, kind: 'profile' });
+  databases.push(db);
+  db.migrate();
+  return new SkillStore(db, userRoot, builtinRoot);
 }
 
 function makeWorkspace(skillName: string): string {
@@ -57,12 +46,8 @@ describe('SkillRegistry', () => {
     writeFileSync(join(userRoot, 'my-skill', 'SKILL.md'), SKILL_MD('my-skill'));
     const workspace = makeWorkspace('proj-skill');
 
-    const store = createSkillStore({ repo: makeRepo(), enablement: makeEnablement(), userRoot });
-    const registry = createSkillRegistry({
-      userRoot,
-      builtinRoot,
-      store,
-    });
+    const store = makeStore(userRoot, builtinRoot);
+    const registry = createSkillRegistry({ store });
 
     await registry.refreshCore();
     // 不带工作区：只有 builtin+user
@@ -78,9 +63,7 @@ describe('SkillRegistry', () => {
   it('不同工作区的 project 技能互不覆盖', async () => {
     const userRoot = makeDir();
     const registry = createSkillRegistry({
-      userRoot,
-      builtinRoot: makeDir(),
-      store: createSkillStore({ repo: makeRepo(), enablement: makeEnablement(), userRoot }),
+      store: makeStore(userRoot),
     });
     await registry.refreshCore();
     const wsA = makeWorkspace('skill-a');
@@ -99,9 +82,7 @@ describe('SkillRegistry', () => {
     const first = makeWorkspace('alpha');
     const second = makeWorkspace('beta');
     const registry = createSkillRegistry({
-      userRoot,
-      builtinRoot: makeDir(),
-      store: createSkillStore({ repo: makeRepo(), enablement: makeEnablement(), userRoot }),
+      store: makeStore(userRoot),
     });
     await registry.refreshCore();
 
@@ -116,9 +97,7 @@ describe('SkillRegistry', () => {
     const userRoot = makeDir();
     const workspace = makeWorkspace('before');
     const registry = createSkillRegistry({
-      userRoot,
-      builtinRoot: makeDir(),
-      store: createSkillStore({ repo: makeRepo(), enablement: makeEnablement(), userRoot }),
+      store: makeStore(userRoot),
     });
     await registry.refreshCore();
     expect((await registry.list([workspace])).map(entry => entry.name)).toContain('before');
@@ -142,9 +121,7 @@ describe('SkillRegistry', () => {
     writeFileSync(join(userRoot, 'only', 'SKILL.md'), SKILL_MD('only'));
 
     const registry = createSkillRegistry({
-      userRoot,
-      builtinRoot: makeDir(),
-      store: createSkillStore({ repo: makeRepo(), enablement: makeEnablement(), userRoot }),
+      store: makeStore(userRoot),
     });
 
     await Promise.all([registry.refreshCore(), registry.refreshCore(), registry.refreshCore()]);
@@ -157,9 +134,7 @@ describe('SkillRegistry', () => {
     writeFileSync(join(userRoot, 'late', 'SKILL.md'), SKILL_MD('late'));
 
     const registry = createSkillRegistry({
-      userRoot,
-      builtinRoot: makeDir(),
-      store: createSkillStore({ repo: makeRepo(), enablement: makeEnablement(), userRoot }),
+      store: makeStore(userRoot),
     });
 
     // 不 await refreshCore，直接 list：必须等到首装完成。

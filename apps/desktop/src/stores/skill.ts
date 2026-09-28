@@ -1,5 +1,4 @@
-// 管理已安装 Skill 目录（含 enabled 投影）与启停开关。
-// 启停走 skills 业务端点（skill_enablement 表）；市场浏览与安装在独立市场窗口。
+// 管理已安装 Skill 目录与 enabled 投影; 启停走 skills 端点, 市场安装在独立窗口.
 import { create } from 'zustand';
 import type { AppEvent } from '@ema-agent/server/application/appEvents.js';
 import {
@@ -23,11 +22,11 @@ export interface SkillStoreState {
   /** 真实重扫 builtin+user 目录后重读（手放目录即时生效）。 */
   rescan(): Promise<void>;
 
-  /** 逐技能启停：写 skill_enablement 后用返回的投影原位更新。 */
+  /** 逐技能启停: 写 skills.enabled 后用返回投影原位更新. */
   setEnabled(path: string, enabled: boolean): Promise<void>;
 
-  /** 卸载一个 user Skill（builtin 只读、project 跟随工作区，服务端会拒绝）。 */
-  remove(path: string): Promise<void>;
+  /** 按来源调用 builtin/user 删除入口, project 不由应用删除. */
+  remove(skill: SkillListItem): Promise<void>;
 }
 
 // ── Store ─────────────────────────────────────────────────────────────────────
@@ -73,10 +72,16 @@ export const useSkillStore = create<SkillStoreState>((set, get) => ({
     }
   },
 
-  async remove(path) {
+  async remove(skill) {
     try {
-      await skillsApi.remove(path);
-      set(s => ({ skills: s.skills.filter(sk => sk.path !== path) }));
+      if (skill.scope === 'builtin') {
+        await skillsApi.removeBuiltin(skill.path);
+      } else if (skill.scope === 'user') {
+        await skillsApi.removeUser(skill.path);
+      } else {
+        throw new Error('项目技能不由应用删除');
+      }
+      set(s => ({ skills: s.skills.filter(sk => sk.path !== skill.path) }));
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : '卸载技能失败' });
       throw err;

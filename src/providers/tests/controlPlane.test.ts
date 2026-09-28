@@ -1,42 +1,29 @@
 // 测试自建 Provider 创建（按能力分区、id 缺省生成）、一把 key 解析连接、update 的能力 delta 与目录落行。
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { Database } from '@ema-agent/storage';
 import {
   ModelBindings,
   ModelsDevCatalog,
   ProviderModels,
   Providers,
-  type ModelBinding,
-  type Provider,
-  type ProviderInput,
-  type ProviderModel,
-  type ProviderStore,
 } from '../index.js';
 
-class MemoryProviderStore implements ProviderStore {
-  readonly providers = new Map<string, Provider>();
+const databases: Database[] = [];
 
-  get(id: string) { return this.providers.get(id); }
-  list() { return [...this.providers.values()]; }
-  save(input: ProviderInput) {
-    this.providers.set(input.id, {
-      id: input.id,
-      name: input.name,
-      ...(input.iconId !== undefined ? { iconId: input.iconId } : {}),
-      authType: input.authType,
-      ...(input.keyValue !== undefined ? { keyValue: input.keyValue } : {}),
-      capabilities: input.capabilities,
-      health: this.providers.get(input.id)?.health ?? [],
-    });
+class TestProfileDatabase extends Database {
+  constructor() {
+    super({ memory: true, kind: 'profile' });
+    this.migrate();
+    databases.push(this);
   }
-  delete(id: string) { this.providers.delete(id); }
-  recordHealth() {}
 }
 
-function createProviders(store: MemoryProviderStore, bindings: ModelBinding[] = []) {
-  return new Providers(
-    store,
-    { listByProvider: (id) => bindings.filter((item) => item.providerId === id) },
-  );
+afterEach(() => {
+  for (const database of databases.splice(0)) database.close();
+});
+
+function createProviders(database: TestProfileDatabase) {
+  return new Providers(database);
 }
 
 /** 测试目录：acme-pro 参数齐全；acme-nolimit 缺 contextWindow（不可落行）。 */
@@ -57,41 +44,19 @@ function createTestCatalog(): ModelsDevCatalog {
   return catalog;
 }
 
-/** 模型池 + 绑定的内存接线。 */
-function createModelStack(store: MemoryProviderStore) {
-  const modelRows = new Map<string, ProviderModel>();
-  const modelStore = {
-    get: (providerId: string, capability: ProviderModel['capability'], modelId: string) =>
-      modelRows.get(`${providerId}/${capability}/${modelId}`),
-    listByProvider: () => [], listByCapability: () => [],
-    hasAny: () => modelRows.size > 0,
-    save: (model: ProviderModel) => modelRows.set(`${model.providerId}/${model.capability}/${model.modelId}`, model),
-    setEnabled: (providerId: string, capability: ProviderModel['capability'], modelId: string, enabled: boolean) => {
-      const row = modelRows.get(`${providerId}/${capability}/${modelId}`);
-      if (row) modelRows.set(`${providerId}/${capability}/${modelId}`, { ...row, enabled });
-    },
-    delete: (providerId: string, capability: ProviderModel['capability'], modelId: string) => {
-      modelRows.delete(`${providerId}/${capability}/${modelId}`);
-    },
-  };
-  const bindingRows = new Map<string, ModelBinding>();
-  const bindingStore = {
-    get: (module: ModelBinding['module']) => bindingRows.get(module),
-    list: () => [...bindingRows.values()],
-    listByProvider: (id: string) => [...bindingRows.values()].filter((row) => row.providerId === id),
-    set: (binding: ModelBinding) => bindingRows.set(binding.module, binding),
-    delete: (module: ModelBinding['module']) => { bindingRows.delete(module); },
-  };
+/** Exercise the business mapping against the real profile schema. */
+function createModelStack(database: TestProfileDatabase) {
+  const providers = new Providers(database);
+  const models = new ProviderModels(database, providers, createTestCatalog());
   return {
-    models: new ProviderModels(store, modelStore, createTestCatalog(), bindingStore),
-    bindings: new ModelBindings(modelStore, bindingStore),
-    modelRows,
+    models,
+    bindings: new ModelBindings(database, models),
   };
 }
 
 describe('Provider 控制面', () => {
   it('自建 Provider 创建后按能力解析连接，key 来自 Provider 的一把 key', () => {
-    const store = new MemoryProviderStore();
+    const store = new TestProfileDatabase();
     const providers = createProviders(store);
 
     providers.create({
@@ -115,7 +80,7 @@ describe('Provider 控制面', () => {
   });
 
   it('重复 id 判定按 (id, capability)：同能力拒绝，无此能力则追加能力档', () => {
-    const store = new MemoryProviderStore();
+    const store = new TestProfileDatabase();
     const providers = createProviders(store);
     providers.create({
       id: 'my-gateway',
@@ -158,7 +123,7 @@ describe('Provider 控制面', () => {
   });
 
   it('id 是语义 slug：用户显式给定；非法/空值创建被拒', () => {
-    const store = new MemoryProviderStore();
+    const store = new TestProfileDatabase();
     const providers = createProviders(store);
 
     const created = providers.create({
@@ -169,7 +134,7 @@ describe('Provider 控制面', () => {
     });
 
     expect(created.id).toBe('company-gateway');
-    expect(created.capabilities).toEqual([{
+    expect(created.capabilities).toMatchObject([{
       capability: 'llm',
       activeProtocol: 'openai-llm',
       protocols: [{ protocol: 'openai-llm', baseUrl: 'http://localhost:8000/v1' }],
@@ -184,7 +149,7 @@ describe('Provider 控制面', () => {
   });
 
   it('一个 Provider 一把 key：全能力共享；update 未提供 key 不动，null 清空', () => {
-    const store = new MemoryProviderStore();
+    const store = new TestProfileDatabase();
     const providers = createProviders(store);
     providers.create({
       id: 'siliconflow-copy',
@@ -218,7 +183,7 @@ describe('Provider 控制面', () => {
   });
 
   it('空白创建必须显式填写协议与 baseUrl，不允许任何默认猜测', () => {
-    const store = new MemoryProviderStore();
+    const store = new TestProfileDatabase();
     const providers = createProviders(store);
 
     expect(() => providers.create({
@@ -236,7 +201,7 @@ describe('Provider 控制面', () => {
   });
 
   it('模型绑定只接受已启用模型', () => {
-    const store = new MemoryProviderStore();
+    const store = new TestProfileDatabase();
     const providers = createProviders(store);
     providers.create({
       id: 'custom-main',
@@ -255,17 +220,17 @@ describe('Provider 控制面', () => {
     expect(bindings.set({ module: 'memory-llm', providerId: 'custom-main', modelId: 'model-a' }))
       .toMatchObject({ capability: 'llm' });
     expect(() => bindings.set({ module: 'vision', providerId: 'custom-main', modelId: 'model-a' }))
-      .toThrow(/vision/);
+      .toThrow(/不存在/);
 
     // 先解绑，再停用，之后新绑定被拒绝（只绑已启用）
     bindings.delete('memory-llm');
     models.setEnabled('custom-main', 'llm', 'model-a', false);
-    expect(() => bindings.set({ module: 'title', providerId: 'custom-main', modelId: 'model-a' }))
+    expect(() => bindings.set({ module: 'memory-llm', providerId: 'custom-main', modelId: 'model-a' }))
       .toThrow(/已启用/);
   });
 
   it('手填：新增 user 行默认启用；dev 行禁修改', () => {
-    const store = new MemoryProviderStore();
+    const store = new TestProfileDatabase();
     const providers = createProviders(store);
     providers.create({
       id: 'custom-main',
@@ -292,7 +257,7 @@ describe('Provider 控制面', () => {
   });
 
   it('目录同步：新 spec 默认禁用；已有 dev 行参数对齐（enabled 不动）；手写行不动', () => {
-    const store = new MemoryProviderStore();
+    const store = new TestProfileDatabase();
     const providers = createProviders(store);
     providers.create({
       id: 'custom-main',
@@ -332,7 +297,7 @@ describe('Provider 控制面', () => {
   });
 
   it('删除协议档：删激活档自动切剩余第一档；删到最后一档被拒', () => {
-    const store = new MemoryProviderStore();
+    const store = new TestProfileDatabase();
     const providers = createProviders(store);
     providers.create({
       id: 'deepseek-copy',
@@ -364,7 +329,8 @@ describe('Provider 控制面', () => {
     })).toThrow(/至少/);
   });
 
-  it('守卫：停用/删除被绑定模型都抛 model_in_use 并带 conflicts', () => {    const store = new MemoryProviderStore();
+  it('守卫：停用/删除被绑定模型都抛 model_in_use 并带 conflicts', () => {
+    const store = new TestProfileDatabase();
     const providers = createProviders(store);
     providers.create({
       id: 'custom-main',

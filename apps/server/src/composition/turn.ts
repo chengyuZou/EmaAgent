@@ -1,4 +1,5 @@
 // Turn 一族：TurnExecutor 全接线——交互队列、reminder 工厂、Vision 降级、工作区指令。
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
@@ -43,8 +44,8 @@ import {
   type SessionContinuationEvent,
   type TurnReminderScope,
 } from '@ema-agent/turn';
-import { createUsageRecord, reportUsage, type UsageRecorder } from '@ema-agent/usage';
-import { createVisionCall, type CallVision, type VisionImageMime } from '@ema-agent/vision';
+import type { UsageRecorder } from '@ema-agent/usage';
+import { createVisionCall, VisionError, type CallVision, type VisionImageMime } from '@ema-agent/vision';
 import { ensureScratchpadDir, scratchpadTurnDir } from '../platform/paths.js';
 import type { AppEvent } from '../application/appEvents.js';
 import type { DatabaseComposition } from './database.js';
@@ -150,6 +151,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     const bytes = await fs.promises.readFile(imagePath);
     const startedAt = Date.now();
     // 描述指令用 vision 包内置的 caption 任务文本，不在装配层另写一份。
+    const callId = randomUUID();
     const result = await selected.vision({
       images: [{
         kind: 'bytes',
@@ -158,8 +160,16 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
       }],
       task: 'caption',
       signal,
+    }).catch(error => {
+      const cancelled = signal?.aborted === true || (error instanceof Error && error.name === 'AbortError');
+      let errorCode = 'vision/call_failed';
+      if (cancelled) errorCode = 'vision/aborted';
+      else if (error instanceof VisionError) errorCode = error.code;
+      recordVisionUsage(database.usageRecorder, selected.providerId, selected.modelId, callId, startedAt,
+        cancelled ? 'cancelled' : 'failed', undefined, errorCode);
+      throw error;
     });
-    recordVisionUsage(database.usageRecorder, selected.providerId, selected.modelId, startedAt, result.usage);
+    recordVisionUsage(database.usageRecorder, selected.providerId, selected.modelId, callId, startedAt, 'completed', result.usage, null);
     return result.text;
   };
   // Turn 工具面的 vision 闭包（PdfReadTool 扫描页 OCR 等）：无绑定即 undefined（降级纯文本），
@@ -169,8 +179,17 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     if (!selected) return undefined;
     return async (request) => {
       const startedAt = Date.now();
-      const result = await selected.vision(request);
-      recordVisionUsage(database.usageRecorder, selected.providerId, selected.modelId, startedAt, result.usage);
+      const callId = randomUUID();
+      const result = await selected.vision(request).catch(error => {
+        const cancelled = request.signal?.aborted === true || (error instanceof Error && error.name === 'AbortError');
+        let errorCode = 'vision/call_failed';
+        if (cancelled) errorCode = 'vision/aborted';
+        else if (error instanceof VisionError) errorCode = error.code;
+        recordVisionUsage(database.usageRecorder, selected.providerId, selected.modelId, callId, startedAt,
+          cancelled ? 'cancelled' : 'failed', undefined, errorCode);
+        throw error;
+      });
+      recordVisionUsage(database.usageRecorder, selected.providerId, selected.modelId, callId, startedAt, 'completed', result.usage, null);
       return result;
     };
   };
@@ -243,7 +262,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
       }
       return tools.skills.list(folderPaths);
     },
-    disabledSkillPaths: () => tools.skillEnablement.listDisabledPaths(),
+    disabledSkillPaths: () => tools.skillStore.listDisabledPaths(),
     registry: tools.registry,
     interactionQueue,
     subagents,
@@ -302,28 +321,33 @@ function readWorkspaceInstructions(
   return parts.length > 0 ? parts.join('\n\n') : null;
 }
 
-/** Vision 调用记账；Provider 未返回 usage 时只记延迟与状态。 */
+/** Vision 调用记账; Provider 未返回 usage 时只记延迟与终态, 不补造 Token 数量. */
 function recordVisionUsage(
   recorder: UsageRecorder,
   providerId: string,
   modelId: string,
+  callId: string,
   startedAt: number,
+  status: 'completed' | 'failed' | 'cancelled',
   usage: LlmTokenUsage | undefined,
+  errorCode: string | null,
 ): void {
-  reportUsage(
-    recorder,
-    createUsageRecord({
-      capability: 'vision',
-      providerId,
-      modelId,
-      status: 'completed',
-      startedAt,
-      durationMs: Date.now() - startedAt,
-      inputTokens: usage?.inputTokens ?? null,
-      outputTokens: usage?.outputTokens ?? null,
-      cacheReadInputTokens: usage?.cacheReadInputTokens ?? null,
-      cacheWriteInputTokens: usage?.cacheWriteInputTokens ?? null,
-    }),
-    error => console.warn('[usage] Vision 调用记账失败:', error),
-  );
+  recorder.record({
+    id: callId,
+    sessionId: null,
+    turnId: null,
+    capability: 'vision',
+    providerId,
+    modelId,
+    status,
+    durationMs: Date.now() - startedAt,
+    inputTokens: usage?.inputTokens ?? null,
+    outputTokens: usage?.outputTokens ?? null,
+    cacheReadInputTokens: usage?.cacheReadInputTokens ?? null,
+    cacheWriteInputTokens: usage?.cacheWriteInputTokens ?? null,
+    quantity: null,
+    unit: null,
+    errorCode,
+    createdAt: startedAt,
+  });
 }

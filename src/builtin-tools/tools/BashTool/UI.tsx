@@ -142,9 +142,15 @@ export function BashCallView(props: BashCallViewProps): JSX.Element {
         <div className={`ema-terminal-result ${errorText && output === null ? 'ema-terminal-result--error' : ''}`}>
           <TerminalCopyButton label="复制输出" text={outputCopyText} />
           <div className="ema-terminal-output">
-            {(output !== null || props.running) && (
+            {(output !== '' || props.running) && (
               <pre>
                 {output}
+                {props.running && <span className="text-[var(--ema-text-tertiary)] animate-pulse"> ▌</span>}
+              </pre>
+            )}
+            {(output === '' || props.running) && (
+              <pre>
+                {"无输出"}
                 {props.running && <span className="text-[var(--ema-text-tertiary)] animate-pulse"> ▌</span>}
               </pre>
             )}

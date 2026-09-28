@@ -33,5 +33,6 @@
     "vitest": "^2.0.0"
   },
   "dependencies": {
+    "@ema-agent/storage": "workspace:*"
   }
 }

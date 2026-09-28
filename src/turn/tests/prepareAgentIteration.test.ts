@@ -39,7 +39,6 @@ function macroResult(messages: readonly Message[], count: number): CompactResult
     afterTokens: 20,
     savedTokens: 80,
     durationMs: 1,
-    usage: { inputTokens: 20, outputTokens: 5 },
     summarizedMessageCount: count,
   };
 }
@@ -99,7 +98,7 @@ describe('prepareAgentIteration', () => {
     const summary: Message = { role: 'user', content: '摘要' };
     const { deps, messageIds, appendHistorySummary } = makeDeps({
       compact: async request => {
-        request.saveMacroSummary?.('摘要', 4);
+        request.saveMacroSummary?.('摘要', 4, 80);
         return macroResult([summary], 4);
       },
     });
@@ -113,6 +112,7 @@ describe('prepareAgentIteration', () => {
       sessionId: 's1',
       turnId: 't1',
       summary: '摘要',
+      savedTokens: 80,
       summarizedThroughMessageId: 'input-1',
     });
     expect(messageIds).toEqual(['summary-1']);
@@ -128,10 +128,10 @@ describe('prepareAgentIteration', () => {
       compact: async request => {
         call += 1;
         if (call === 1) {
-          request.saveMacroSummary?.('摘要一', 2);
+          request.saveMacroSummary?.('摘要一', 2, 80);
           return macroResult([first, ...request.messages.slice(2)], 2);
         }
-        request.saveMacroSummary?.('摘要二', 1);
+        request.saveMacroSummary?.('摘要二', 1, 80);
         return macroResult([second, ...request.messages.slice(1)], 1);
       },
     });
@@ -143,6 +143,7 @@ describe('prepareAgentIteration', () => {
       sessionId: 's1',
       turnId: 't1',
       summary: '摘要二',
+      savedTokens: 80,
       summarizedThroughMessageId: 'summary-1',
     });
     expect(messageIds).toEqual(['summary-2', 'reminder-1', 'input-1']);
@@ -153,7 +154,7 @@ describe('prepareAgentIteration', () => {
     const { deps, messageIds, appendHistorySummary } = makeDeps({
       messageIds: ['old-1', 'old-2', 'reminder-1', 'input-1', undefined],
       compact: async request => {
-        request.saveMacroSummary?.('摘要', 5);
+        request.saveMacroSummary?.('摘要', 5, 80);
         return macroResult([{ role: 'user', content: '摘要' }], 5);
       },
     });

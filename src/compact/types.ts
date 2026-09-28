@@ -1,12 +1,19 @@
-import type { LlmThinking, LlmTokenUsage, LlmTool, Message } from '@ema-agent/llm';
+import type { LlmThinking, LlmTool, Message } from '@ema-agent/llm';
 import type { SessionMode } from '@ema-agent/session';
+import type { UsageRecorder } from '@ema-agent/usage';
 import type { CompactSettings } from './settings.js';
 import type { CompactEvent } from './events.js';
 
 export interface CompactRequest {
-  /** 手动 Compact 在占用 Session 前生成此 ID, 让取消、事件与用量记录使用同一身份. */
+  /** 手动 Compact 在占用 Session 前生成此 ID, 让取消与生命周期事件使用同一身份. */
   readonly compactId?: string;
   readonly sessionId: string;
+  /** 自动压缩归属当前 Turn; 手动压缩没有 Turn. 每次物理调用另有独立的用量 ID. */
+  readonly turnId?: string;
+  readonly providerId: string;
+  readonly modelId: string;
+  /** Macro 在现有请求的成功与异常出口直接记账, 不装饰 CallLlm. */
+  readonly usageRecorder?: UsageRecorder;
   readonly sessionMode: SessionMode;
   /** 按模型可见顺序排列的工作消息. System Prompt 不在此数组中. */
   readonly messages: readonly Message[];
@@ -40,6 +47,7 @@ export interface CompactRequest {
   readonly saveMacroSummary?: (
     summary: string,
     summarizedMessageCount: number,
+    savedTokens: number,
   ) => void;
   /** 不提供时使用构造时的默认设置. */
   readonly settings?: Readonly<CompactSettings>;
@@ -66,8 +74,6 @@ export type CompactResult =
       readonly afterTokens: number;
       readonly savedTokens: number;
       readonly durationMs: number;
-      /** 摘要调用的最终 usage  */
-      readonly usage: LlmTokenUsage;
       /**
        * 从输入数组开头起, 被最终摘要覆盖的消息数.
        * Compact 不持有 SQL Message ID, 调用方据此映射覆盖游标.

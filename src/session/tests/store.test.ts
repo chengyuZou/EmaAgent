@@ -436,6 +436,7 @@ describe('SessionStore — message', () => {
       sessionId: s.id,
       turnId: null,
       summary: 'summary',
+      savedTokens: 12_345,
       summarizedThroughMessageId: through.id,
     });
     store.appendMessage({ sessionId: s.id, turnId, role: 'user', blocks: 'after' });
@@ -443,6 +444,10 @@ describe('SessionStore — message', () => {
     // summary 顶替最旧段排第一；未覆盖的 reminder 早于摘要落库也必须存活。
     expect(store.loadHistory(s.id).map((message) => message.blocks))
       .toEqual(['summary', 'current-reminder', 'after']);
+    expect(store.listMessages(s.id).messages.find(message => message.kind === 'summary')?.savedTokens)
+      .toBe(12_345);
+    expect(db.sqlite.prepare('SELECT summary_saved_tokens FROM messages WHERE kind = ?')
+      .get('summary')).toEqual({ summary_saved_tokens: 12_345 });
   });
 
   it('appendHistorySummary 拒绝其他 Session 的游标消息', () => {
@@ -456,6 +461,7 @@ describe('SessionStore — message', () => {
       sessionId: b.id,
       turnId: null,
       summary: 's',
+      savedTokens: 10,
       summarizedThroughMessageId: foreign.id,
     })).toThrow(/summary_through_message_not_in_session/);
   });
@@ -476,6 +482,7 @@ describe('SessionStore — message', () => {
       sessionId: session.id,
       turnId,
       summary: 'automatic-summary',
+      savedTokens: 80,
       summarizedThroughMessageId: through.id,
     });
     store.appendMessage({
@@ -489,6 +496,7 @@ describe('SessionStore — message', () => {
       'automatic-summary',
       [{ type: 'text', text: 'tail' }],
     ]);
+    expect(store.loadMessagesForTurn(turnId)[0]?.savedTokens).toBe(80);
   });
 
   it('listMessages 返回旧到新的 Message 页', () => {

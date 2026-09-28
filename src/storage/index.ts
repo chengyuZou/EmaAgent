@@ -32,8 +32,19 @@ export { CharacterVoiceSampleRepo } from './repos/profile/characterVoiceSample.j
 export { SettingsRepo } from './repos/profile/settings.js';
 export { UsageRecordsRepo } from './repos/data/usage-records.js';
 export { ProvidersRepo } from './repos/profile/providers.js';
+export type {
+  ModelCapabilityRow,
+  ProviderRow,
+  ProviderCapabilityRow,
+  ProviderProtocolRow,
+  ProviderHealthRow,
+  ProviderModelCountRow,
+  ProviderSave,
+} from './repos/profile/providers.js';
 export { ProviderModelsRepo } from './repos/profile/providerModels.js';
+export type { ProviderModelRow } from './repos/profile/providerModels.js';
 export { ModelBindingsRepo } from './repos/profile/modelBindings.js';
+export type { ModelBindingModuleRow, ModelBindingRow } from './repos/profile/modelBindings.js';
 export { AttachmentImagesRepo } from './repos/data/attachmentImages.js';
 export type { AttachmentImageRow, AttachmentImageInsertRow } from './repos/data/attachmentImages.js';
 export { AttachmentPastedTextsRepo } from './repos/data/attachmentPastedTexts.js';
@@ -67,7 +78,6 @@ export { McpMarketEntriesRepo } from './repos/profile/mcp-market.js';
 export type { McpMarketEntryRow, McpMarketFetchStateRow } from './repos/profile/mcp-market.js';
 export { SkillsRepo }      from './repos/profile/skills.js';
 export type { SkillRow }   from './repos/profile/skills.js';
-export { SkillEnablementRepo } from './repos/profile/skillEnablement.js';
 export type { DatabaseOptions, SqliteDb } from './database/database.js';
 export type {
   SessionRow,
@@ -106,7 +116,12 @@ export type {
 export { SettingSerializationError } from './repos/profile/settings.js';
 export type { SettingRow, SettingReadResult } from './repos/profile/settings.js';
 export type { SettingWrite } from './repos/profile/settings.js';
-export type { UsageRecordRow } from './repos/data/usage-records.js';
+export type {
+  UsageRecordRow,
+  UsageRecordListFilter,
+  UsageRecordPage,
+  UsageRecordPageCursor,
+} from './repos/data/usage-records.js';
 export { MemoryRepo } from './repos/data/memory.js';
 export type {
   MemoryConsolidationJobKind,

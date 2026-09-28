@@ -1,5 +1,5 @@
 // Skill 域的用户设置:project 生态来源开关与工作区指令文件。
-// 逐技能启停不进 Settings——那是 skill_enablement 表的事(skills 业务拥有)。
+// 逐技能启停不进 Settings, 由 SkillStore 管理 skills.enabled.
 import { defineSetting } from '@ema-agent/settings';
 import { z } from 'zod';
 

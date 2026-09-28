@@ -8,7 +8,14 @@ function collectRecorder(): { recorder: UsageRecorder; records: UsageRecord[] } 
   const records: UsageRecord[] = [];
   return {
     records,
-    recorder: { record: (record) => records.push(record) },
+    recorder: {
+      record: record => records.push(record),
+      finish: record => {
+        const index = records.findIndex(current => current.id === record.id);
+        if (index < 0) throw new Error(`usage record ${record.id} does not exist`);
+        records[index] = record;
+      },
+    },
   };
 }
 
@@ -78,6 +85,7 @@ describe('reportUsage', () => {
   it('recorder 抛错时转交 onError，且不向调用方抛出', () => {
     const recorder: UsageRecorder = {
       record: () => { throw new Error('db down'); },
+      finish: () => { throw new Error('db down'); },
     };
     const onError = vi.fn();
     const record = validRecord();

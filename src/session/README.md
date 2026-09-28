@@ -11,6 +11,8 @@
 
 ## 公共入口
 
+压缩摘要的 `SessionMessage.savedTokens` 是压缩前后完整请求 Token 估算的减少量, 由 Compact 计算并与摘要一起保存到 `messages.summary_saved_tokens`. 手动和自动压缩使用同一字段, Fork 和备份保留它. 未记录该值的历史摘要不补造数字. 聊天只显示压缩提示与减少量, 正文仍保存在 `blocks` 中供设置页查看.
+
 `SessionStore` 是唯一读写聚合：
 
 - **Session**：createSession（可同时携带 projectId 与显式 cwd；未给 cwd 时取创建当刻的项目主文件夹；项目无主文件夹或无项目时，创建并使用 `~/.ema-agent/workspace`）/ getSession / sessionExists / patchSession（项目成员也可显式改 cwd）/ pin / archive / setViewedAt / updateTitle；

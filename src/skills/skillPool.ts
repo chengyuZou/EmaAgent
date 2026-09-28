@@ -1,5 +1,5 @@
 // SkillPool:根 Turn 冻结的技能集合(镜像 ToolPool)。
-// 冻结 = 取 Registry 当前全量 → 过滤禁用(逐技能 skill_enablement + project 来源级) →
+// 冻结 = 取 Registry 当前全量 -> 过滤禁用(skills.enabled + project 来源级) ->
 // 排序 → path 索引。Pool 是本 Turn Prompt 目录与 SkillCall 查找的唯一事实源;
 // Turn 内的安装/禁用变化只影响下一根 Turn。
 import {

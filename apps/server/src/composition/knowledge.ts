@@ -3,7 +3,8 @@
 // 未配置或能力被禁用即 undefined（该库检索降级，不阻塞主链路）。
 // 模型身份在闭包创建时冻结；usage 在闭包内"调接口得结果 → 从结果记录"，
 // knowledge 业务包不感知 providerId/modelId，也不感知用量。
-import { createEmbedCall, createEmbeddingSpace } from '@ema-agent/embed';
+import { randomUUID } from 'node:crypto';
+import { createEmbedCall, createEmbeddingSpace, EmbeddingError } from '@ema-agent/embed';
 import {
   KbManager,
   readKnowledgeRetrievalSettings,
@@ -16,11 +17,11 @@ import {
   type ProviderModels,
   type Providers,
 } from '@ema-agent/providers';
-import { createRerankCall, type CallRerank } from '@ema-agent/rerank';
+import { createRerankCall, RerankError, type CallRerank } from '@ema-agent/rerank';
 import type { SettingsStore } from '@ema-agent/settings';
 import { KbRegistryRepo, type Database, type KbModelRef } from '@ema-agent/storage';
-import { createUsageRecord, reportUsage, type UsageRecorder } from '@ema-agent/usage';
-import { createVisionCall, type CallVision } from '@ema-agent/vision';
+import type { UsageRecorder } from '@ema-agent/usage';
+import { createVisionCall, VisionError, type CallVision } from '@ema-agent/vision';
 
 export interface KnowledgeComposition {
   readonly kb: KbManager;
@@ -43,10 +44,19 @@ export function openKnowledge(
       const callEmbed = createEmbedCall(providers.resolveConnection(ref.providerId, 'embed'), ref.modelId);
       return async (request) => {
         const startedAt = Date.now();
-        const result = await callEmbed(request);
-        reportModelUsage(usageRecorder, 'embed', ref, startedAt, {
-          inputTokens: result.usage?.inputTokens ?? null,
+        const callId = randomUUID();
+        const result = await callEmbed(request).catch(error => {
+          const cancelled = request.signal?.aborted === true || (error instanceof Error && error.name === 'AbortError');
+          let errorCode = 'embed/call_failed';
+          if (cancelled) errorCode = 'embed/aborted';
+          else if (error instanceof EmbeddingError) errorCode = error.code;
+          recordModelUsage(usageRecorder, 'embed', ref, callId, startedAt,
+            cancelled ? 'cancelled' : 'failed', null, errorCode);
+          throw error;
         });
+        recordModelUsage(usageRecorder, 'embed', ref, callId, startedAt, 'completed', {
+          inputTokens: result.usage?.inputTokens ?? null,
+        }, null);
         return {
           ...result,
           space: createEmbeddingSpace({
@@ -66,10 +76,19 @@ export function openKnowledge(
       const callRerank = createRerankCall(providers.resolveConnection(ref.providerId, 'rerank'), ref.modelId);
       return async (request) => {
         const startedAt = Date.now();
-        const result = await callRerank(request);
-        reportModelUsage(usageRecorder, 'rerank', ref, startedAt, {
-          inputTokens: result.usage?.totalTokens ?? null,
+        const callId = randomUUID();
+        const result = await callRerank(request).catch(error => {
+          const cancelled = request.signal?.aborted === true || (error instanceof Error && error.name === 'AbortError');
+          let errorCode = 'rerank/call_failed';
+          if (cancelled) errorCode = 'rerank/aborted';
+          else if (error instanceof RerankError) errorCode = error.code;
+          recordModelUsage(usageRecorder, 'rerank', ref, callId, startedAt,
+            cancelled ? 'cancelled' : 'failed', null, errorCode);
+          throw error;
         });
+        recordModelUsage(usageRecorder, 'rerank', ref, callId, startedAt, 'completed', {
+          inputTokens: result.usage?.totalTokens ?? null,
+        }, null);
         return result;
       };
     } catch (err) {
@@ -84,11 +103,22 @@ export function openKnowledge(
       const vision = createVisionCall(providers.resolveConnection(binding.providerId, 'vision'), binding.modelId);
       return async (request) => {
         const startedAt = Date.now();
-        const result = await vision(request);
-        reportModelUsage(usageRecorder, 'vision', binding, startedAt, {
+        const callId = randomUUID();
+        const result = await vision(request).catch(error => {
+          const cancelled = request.signal?.aborted === true || (error instanceof Error && error.name === 'AbortError');
+          let errorCode = 'vision/call_failed';
+          if (cancelled) errorCode = 'vision/aborted';
+          else if (error instanceof VisionError) errorCode = error.code;
+          recordModelUsage(usageRecorder, 'vision', binding, callId, startedAt,
+            cancelled ? 'cancelled' : 'failed', null, errorCode);
+          throw error;
+        });
+        recordModelUsage(usageRecorder, 'vision', binding, callId, startedAt, 'completed', {
           inputTokens: result.usage?.inputTokens ?? null,
           outputTokens: result.usage?.outputTokens ?? null,
-        });
+          cacheReadInputTokens: result.usage?.cacheReadInputTokens ?? null,
+          cacheWriteInputTokens: result.usage?.cacheWriteInputTokens ?? null,
+        }, null);
         return result;
       };
     } catch (err) {
@@ -118,22 +148,38 @@ export function openKnowledge(
   };
 }
 
-/** 一次完成的模型调用记一条 usage；失败调用在闭包内抛错，走不到这里（只记 completed）。 */
-function reportModelUsage(
+/** Record one physical model call after its provider returns or throws. */
+function recordModelUsage(
   recorder: UsageRecorder,
   capability: 'embed' | 'rerank' | 'vision',
   ref: KbModelRef,
+  callId: string,
   startedAt: number,
-  tokens: { inputTokens: number | null; outputTokens?: number | null },
+  status: 'completed' | 'failed' | 'cancelled',
+  tokens: {
+    inputTokens: number | null;
+    outputTokens?: number | null;
+    cacheReadInputTokens?: number | null;
+    cacheWriteInputTokens?: number | null;
+  } | null,
+  errorCode: string | null,
 ): void {
-  reportUsage(recorder, createUsageRecord({
+  recorder.record({
+    id: callId,
+    sessionId: null,
+    turnId: null,
     capability,
     providerId: ref.providerId,
     modelId: ref.modelId,
-    status: 'completed',
-    startedAt,
+    status,
     durationMs: Date.now() - startedAt,
-    inputTokens: tokens.inputTokens,
-    outputTokens: tokens.outputTokens ?? null,
-  }), error => console.warn(`[usage] KB ${capability} 记账失败:`, error));
+    inputTokens: tokens?.inputTokens ?? null,
+    outputTokens: tokens?.outputTokens ?? null,
+    cacheReadInputTokens: tokens?.cacheReadInputTokens ?? null,
+    cacheWriteInputTokens: tokens?.cacheWriteInputTokens ?? null,
+    quantity: null,
+    unit: null,
+    errorCode,
+    createdAt: startedAt,
+  });
 }

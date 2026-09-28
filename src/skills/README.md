@@ -1,6 +1,6 @@
 # @ema-agent/skills
 
-Skills 域负责发现 `SKILL.md`,维护内存注册表,为根 Turn 冻结 SkillPool,以及安装和删除用户技能.
+Skills 域负责发现 `SKILL.md`, 维护内存注册表, 为根 Turn 冻结 SkillPool, 以及 builtin/user 的索引, 启停与删除和 user 的安装.
 
 `SkillEvent` 只有 `skills_changed`。逐技能启停、删除、重扫与市场安装完成后广播；已打开的设置页和聊天输入技能菜单重新查询目录，事件不携带技能快照。
 
@@ -23,7 +23,7 @@ Skill 只有两个跨边界身份字段:
 
 ```text
 builtin/user/project 目录
-  -> scanBuiltinSkills / SkillStore.reconcileUserRoot / scanProjectSkills
+  -> SkillStore.reconcileBuiltinRoot / SkillStore.reconcileUserRoot / scanProjectSkills
   -> SkillRegistry 按文件夹清单缓存目录
   -> freezeSkillPool
   -> System Prompt 技能目录 + SkillTool
@@ -38,7 +38,19 @@ builtin/user/project 目录
 
 ## 持久化
 
-用户 Skill 的目录是事实源. `skills` 表只按绝对 `SKILL.md path` 保存索引和展示数据. `skill_enablement` 按同一路径保存 builtin/user 的禁用状态;project 使用来源级设置.
+builtin/user 的目录是技能内容事实源. `skills` 按绝对 `SKILL.md path` 保存索引和展示数据, `scope` 区分 builtin/user, `enabled` 保存逐技能开关. project 不进入此表, 仍使用来源级设置.
+
+`SkillStore` 是直接实现业务方法的具体类. 宿主构造 `new SkillStore(profileDb, userRoot, builtinRoot)`, Store 内部构造 Storage 的 `SkillsRepo` 并映射 Row, 不接收独立启停 Repo, 不通过旧工厂转发.
+
+- `reconcileUserRoot()` / `reconcileBuiltinRoot()`: 只对账各自来源, 直接返回 `SkillDescriptor[]`. 重扫更新目录元数据, 不覆盖已有 `enabled` 和 `installed_at`. 损坏目录不展示, 但保留原行和开关; 目录真正消失才删除索引.
+- `setEnabled(path, enabled)` / `listDisabledPaths()`: 设置页, 根 Turn 和手动 Compact 使用同一份 `skills.enabled`.
+- `finalizeInstall(stagingDir, dirName)`: 校验 staging 中的 SKILL.md, 替换 user 目录后建立索引, 原有启停状态保留.
+- `deleteUserSkill(path)` / `deleteBuiltinSkill(path)`: 来源分开, 只删除对应根目录下的直接技能目录与索引. builtin 只删除 profile 的本地副本, 不修改发行包种子; 保留根目录, 普通重启不自动恢复已删技能.
+- `sweepOrphanStaging()`: 启动时清理 userRoot 内未完成的安装目录.
+
+HTTP 删除入口为 `DELETE /api/skills/user?skillPath=...` 和 `DELETE /api/skills/builtin?skillPath=...`. 不再提供旧的根路径删除入口, project 无应用删除入口. 逐技能启停仍为 `PUT /api/skills/enabled`.
+
+profile 的 004 迁移保留已有技能数据与开关. user 索引先直接接收旧开关; 尚未索引的路径暂留 `skill_enablement_migration`. 目录对账生成真实索引后, 事务性搬入其开关并移除待搬行, 全部搬完删除迁移表. 缺失或损坏的目录保留待搬记录, 以后修复重扫继续. 正常业务不读取或双写旧开关表.
 
 市场安装先写 userRoot 内 staging 目录,完成后 rename 到目标目录并交给 SkillStore 建索引. 市场来源由 SkillHub 与 ClawHub 的真实 Adapter 各自解析,不使用自定义 `index.json`.
 

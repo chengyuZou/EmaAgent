@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { assertPortableRelativePath } from '../../paths.js';
-import { STAGING_PREFIX, type SkillStore } from '../user.js';
+import { STAGING_PREFIX, type SkillStore } from '../../store.js';
 import { readMarketMeta, type MarketService } from './marketService.js';
 import {
   MARKET_ERROR_CODES,

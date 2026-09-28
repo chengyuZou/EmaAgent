@@ -1,13 +1,14 @@
 // 按时间顺序总结全部旧消息, 保留近期原文, 不直接丢弃未总结的前缀.
+import { randomUUID } from 'node:crypto';
 import type {
   AssistantBlock,
   CallLlm,
   LlmThinking,
-  LlmTokenUsage,
   LlmTool,
   Message,
 } from '@ema-agent/llm';
-import { createLlmCompletion } from '@ema-agent/llm';
+import { createLlmCompletion, llmProviderErrorCode } from '@ema-agent/llm';
+import type { UsageRecorder } from '@ema-agent/usage';
 import type { SessionMode } from '@ema-agent/session';
 import { estimateLlmInputTokens, estimateMessagesTokens } from '@ema-agent/token';
 import { compactTokenLimit, createSummaryMessage, fitCompactMessages } from './budget.js';
@@ -20,6 +21,11 @@ const MIN_SUMMARY_BUDGET_TOKENS = 256;
 
 export interface MacroCompactArgs {
   readonly callLlm: CallLlm;
+  readonly sessionId: string;
+  readonly turnId?: string;
+  readonly providerId: string;
+  readonly modelId: string;
+  readonly usageRecorder?: UsageRecorder;
   readonly sessionMode: SessionMode;
   readonly systemMessages: readonly Message[];
   readonly tools: readonly LlmTool[];
@@ -38,8 +44,6 @@ export type MacroCompactResult =
       readonly summary: string;
       readonly messages: Message[];
       readonly afterTokens: number;
-      /** 多段摘要包含每次物理调用的用量之和. */
-      readonly usage: LlmTokenUsage;
       /** 输入数组从头起被摘要覆盖的消息数. */
       readonly summarizedMessageCount: number;
     }
@@ -82,7 +86,7 @@ export async function runMacroCompact(args: MacroCompactArgs): Promise<MacroComp
 
   const tail = args.messages.slice(retainStart);
   // 最终请求需要给摘要消息留出正文空间, 分段摘要的输出上限也不能超过它.
-  const finalSummaryBudget = tokenLimit
+  const finalSummaryCapacity = tokenLimit
     - fixedRequestTokens
     - suffix[retainStart]!
     - summaryEnvelopeTokens;
@@ -104,10 +108,9 @@ export async function runMacroCompact(args: MacroCompactArgs): Promise<MacroComp
   // 因此分段间靠摘要传递事实, 不把已经处理的原文重复发送给模型.
   let cursor = 0;
   let summary: string | undefined;
-  let usage: LlmTokenUsage = { inputTokens: 0, outputTokens: 0 };
 
   while (cursor < retainStart) {
-    let budgetScale = 1;
+    let chunkInputScale = 1;
     let lastFailure = '摘要模型未返回结果';
     let completed = false;
 
@@ -121,11 +124,11 @@ export async function runMacroCompact(args: MacroCompactArgs): Promise<MacroComp
         ...previousSummary,
         instruction,
       ];
-      const chunkBudget = Math.floor(
-        (tokenLimit - estimateMessagesTokens(fixedInput) - toolsTokens) * budgetScale,
+      const chunkInputBudget = Math.floor(
+        (tokenLimit - estimateMessagesTokens(fixedInput) - toolsTokens) * chunkInputScale,
       );
       // 只缩小当前分段的 end. cursor 直到本段成功才前进, 重试不会跳过消息.
-      const end = findChunkEnd(suffix, pairs, cursor, retainStart, chunkBudget);
+      const end = findChunkEnd(suffix, pairs, cursor, retainStart, chunkInputBudget);
       if (end <= cursor) {
         return {
           succeeded: false,
@@ -144,17 +147,18 @@ export async function runMacroCompact(args: MacroCompactArgs): Promise<MacroComp
       const remainingOutputTokens = args.modelContextWindow
         - estimateMessagesTokens(requestMessages)
         - toolsTokens;
-      // 同时受模型硬上限, 请求剩余窗口和最终摘要可容纳空间约束.
+      // 输出只受模型硬上限, 当前请求剩余窗口和最终摘要容量约束.
       const maxOutputTokens = Math.floor(Math.min(
-        args.settings.outputTokens,
         args.modelMaxOutput ?? Number.POSITIVE_INFINITY,
         remainingOutputTokens,
-        finalSummaryBudget,
+        finalSummaryCapacity,
       ));
       if (maxOutputTokens < 1) {
         return { succeeded: false, detail: '摘要请求没有足够的输出预算' };
       }
 
+      const callId = randomUUID();
+      const callStartedAt = Date.now();
       try {
         const completion = await createLlmCompletion(args.callLlm({
           messages: requestMessages,
@@ -164,10 +168,27 @@ export async function runMacroCompact(args: MacroCompactArgs): Promise<MacroComp
           temperature: 0.2,
           signal: args.signal,
         }));
-        usage = addUsage(usage, completion.usage);
+        args.usageRecorder?.record({
+          id: callId,
+          sessionId: args.sessionId,
+          turnId: args.turnId ?? null,
+          providerId: args.providerId,
+          modelId: args.modelId,
+          capability: 'llm',
+          status: 'completed',
+          inputTokens: completion.usage?.inputTokens ?? null,
+          outputTokens: completion.usage?.outputTokens ?? null,
+          cacheReadInputTokens: completion.usage?.cacheReadInputTokens ?? null,
+          cacheWriteInputTokens: completion.usage?.cacheWriteInputTokens ?? null,
+          quantity: null,
+          unit: null,
+          durationMs: Date.now() - callStartedAt,
+          errorCode: null,
+          createdAt: callStartedAt,
+        });
         if (completion.stopReason === 'max_tokens') {
           lastFailure = '摘要输出达到模型上限';
-          budgetScale *= RETRY_BUDGET_SCALE;
+          chunkInputScale *= RETRY_BUDGET_SCALE;
           continue;
         }
         if (completion.stopReason === 'tool_use') {
@@ -182,13 +203,32 @@ export async function runMacroCompact(args: MacroCompactArgs): Promise<MacroComp
         completed = true;
         break;
       } catch (error) {
-        if (isAbort(error, args.signal)) throw error;
+        const aborted = isAbort(error, args.signal);
+        args.usageRecorder?.record({
+          id: callId,
+          sessionId: args.sessionId,
+          turnId: args.turnId ?? null,
+          providerId: args.providerId,
+          modelId: args.modelId,
+          capability: 'llm',
+          status: aborted ? 'cancelled' : 'failed',
+          inputTokens: null,
+          outputTokens: null,
+          cacheReadInputTokens: null,
+          cacheWriteInputTokens: null,
+          quantity: null,
+          unit: null,
+          durationMs: Date.now() - callStartedAt,
+          errorCode: aborted ? 'llm/aborted' : llmProviderErrorCode(error),
+          createdAt: callStartedAt,
+        });
+        if (aborted) throw error;
         lastFailure = error instanceof Error ? error.message : String(error);
         if (!isPromptTooLong(lastFailure)) {
           return { succeeded: false, detail: lastFailure };
         }
         // Provider 判超时缩短当前分段, 下一段仍从原 cursor 接着读, 不丢前缀.
-        budgetScale *= RETRY_BUDGET_SCALE;
+        chunkInputScale *= RETRY_BUDGET_SCALE;
       }
     }
 
@@ -220,7 +260,6 @@ export async function runMacroCompact(args: MacroCompactArgs): Promise<MacroComp
     summary: fitted.summary,
     messages: fitted.messages,
     afterTokens: fitted.afterTokens,
-    usage,
     summarizedMessageCount: retainStart,
   };
 }
@@ -392,19 +431,6 @@ function buildNextSafeBoundary(pairs: ToolPairs, length: number): number[] {
     nextSafe[boundary] = unsafe[boundary] ? nextSafe[boundary + 1]! : boundary;
   }
   return nextSafe;
-}
-
-function addUsage(total: LlmTokenUsage, call: LlmTokenUsage): LlmTokenUsage {
-  return {
-    inputTokens: total.inputTokens + call.inputTokens,
-    outputTokens: total.outputTokens + call.outputTokens,
-    ...(total.cacheReadInputTokens !== undefined || call.cacheReadInputTokens !== undefined
-      ? { cacheReadInputTokens: (total.cacheReadInputTokens ?? 0) + (call.cacheReadInputTokens ?? 0) }
-      : {}),
-    ...(total.cacheWriteInputTokens !== undefined || call.cacheWriteInputTokens !== undefined
-      ? { cacheWriteInputTokens: (total.cacheWriteInputTokens ?? 0) + (call.cacheWriteInputTokens ?? 0) }
-      : {}),
-  };
 }
 
 function collectText(blocks: readonly AssistantBlock[]): string {

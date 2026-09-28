@@ -36,11 +36,41 @@ describe('UsageRecordsRepo', () => {
   });
 
   it('同一 Turn 的多次调用不会互相覆盖', () => {
-    expect(database.db.pragma('user_version', { simple: true })).toBe(2);
+    expect(database.db.pragma('user_version', { simple: true })).toBe(8);
     repo.record(record('call-b', 10));
     repo.record(record('call-a', 10));
     expect(repo.forTurn('turn-a').map((row) => row.id)).toEqual(['call-a', 'call-b']);
     expect(repo.forSession('session-a')).toHaveLength(2);
+  });
+
+  it('running 记录只能用同一身份收口一次', () => {
+    const running = {
+      ...record('call-running', 10),
+      status: 'running' as const,
+      inputTokens: null,
+      outputTokens: null,
+      durationMs: 0,
+    };
+    repo.record(running);
+    repo.finish({
+      ...running,
+      status: 'completed',
+      inputTokens: 40,
+      outputTokens: 8,
+      durationMs: 25,
+    });
+
+    expect(repo.forTurn('turn-a')).toEqual([
+      expect.objectContaining({
+        id: 'call-running',
+        status: 'completed',
+        input_tokens: 40,
+        output_tokens: 8,
+        duration_ms: 25,
+      }),
+    ]);
+    expect(() => repo.finish({ ...record('call-running', 10), status: 'failed' }))
+      .toThrow(/missing or already terminal/);
   });
 
   it('重复物理调用身份由唯一键暴露为实现错误', () => {

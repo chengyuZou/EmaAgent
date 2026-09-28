@@ -1,15 +1,8 @@
-import type {
-  ModelCapability,
-  Protocol,
-  Provider,
-  ProviderCapability,
-  ProviderHealth,
-  ProviderInput,
-  ProviderStore,
-} from '@ema-agent/providers';
 import type { SqliteDb } from '../../database/database.js';
 
-interface ProviderRow {
+export type ModelCapabilityRow = "llm" | "embed" | "rerank" | "vision" | "tts" | "stt";
+
+export interface ProviderRow {
   id: string;
   name: string;
   icon_id: string | null;
@@ -17,47 +10,62 @@ interface ProviderRow {
   key_value: string | null;
 }
 
-interface CapabilityRow {
+export interface ProviderCapabilityRow {
   provider_id: string;
-  capability: ModelCapability;
-  active_protocol: Protocol | null;
+  capability: ModelCapabilityRow;
+  active_protocol: string | null;
   models_dev_id: string | null;
 }
 
-interface ProtocolRow {
+export interface ProviderProtocolRow {
   provider_id: string;
-  capability: ModelCapability;
-  protocol: Protocol;
+  capability: ModelCapabilityRow;
+  protocol: string;
   base_url: string;
 }
 
-interface HealthRow {
+export interface ProviderHealthRow {
   provider_id: string;
-  capability: ModelCapability;
-  status: ProviderHealth['status'];
+  capability: ModelCapabilityRow;
+  status: 'ok' | 'failed' | 'unknown';
   last_probed_at: number | null;
   latency_ms: number | null;
   last_error: string | null;
 }
 
-export class ProvidersRepo implements ProviderStore {
+export interface ProviderModelCountRow {
+  capability: ModelCapabilityRow;
+  count: number;
+}
+
+export interface ProviderSave {
+  provider: ProviderRow;
+  capabilities: readonly ProviderCapabilityRow[];
+  protocols: readonly ProviderProtocolRow[];
+}
+
+export class ProvidersRepo {
   constructor(private readonly db: SqliteDb) {}
 
-  get(id: string): Provider | undefined {
-    const row = this.getRow(id);
-    return row ? this.toProvider(row) : undefined;
+  get(id: string): ProviderRow | undefined {
+    return this.db.prepare(
+      `SELECT id, name, icon_id, auth_type, key_value
+       FROM providers WHERE id = ?`,
+    ).get(id) as ProviderRow | undefined;
   }
 
-  list(): Provider[] {
+  list(): ProviderRow[] {
     const rows = this.db.prepare(
       `SELECT id, name, icon_id, auth_type, key_value
        FROM providers ORDER BY created_at ASC, id ASC`,
     ).all() as ProviderRow[];
-    return rows.map((row) => this.toProvider(row));
+
+    return rows;
   }
 
-  save(input: ProviderInput): void {
+  save(input: ProviderSave): void {
     const now = Date.now();
+    const { provider } = input;
     this.db.transaction(() => {
       this.db.prepare(
         `INSERT INTO providers
@@ -70,11 +78,11 @@ export class ProvidersRepo implements ProviderStore {
            key_value = excluded.key_value,
            updated_at = excluded.updated_at`,
       ).run(
-        input.id,
-        input.name,
-        input.iconId ?? null,
-        input.authType,
-        input.keyValue ?? null,
+        provider.id,
+        provider.name,
+        provider.icon_id,
+        provider.auth_type,
+        provider.key_value,
         now,
         now,
       );
@@ -96,10 +104,10 @@ export class ProvidersRepo implements ProviderStore {
       );
       for (const capability of input.capabilities) {
         upsertCapability.run(
-          input.id,
+          capability.provider_id,
           capability.capability,
-          capability.activeProtocol ?? null,
-          capability.modelsDevId ?? null,
+          capability.active_protocol,
+          capability.models_dev_id,
           now,
           now,
         );
@@ -107,20 +115,22 @@ export class ProvidersRepo implements ProviderStore {
         this.db.prepare(
           `DELETE FROM provider_protocols
            WHERE provider_id = ? AND capability = ?`,
-        ).run(input.id, capability.capability);
-        for (const protocol of capability.protocols) {
-          insertProtocol.run(input.id, capability.capability, protocol.protocol, protocol.baseUrl, now, now);
+        ).run(capability.provider_id, capability.capability);
+        for (const protocol of input.protocols.filter(
+          (entry) => entry.capability === capability.capability,
+        )) {
+          insertProtocol.run(protocol.provider_id, protocol.capability, protocol.protocol, protocol.base_url, now, now);
         }
       }
 
       const retained = new Set(input.capabilities.map((entry) => entry.capability));
-      for (const existing of this.listCapabilityRows(input.id)) {
+      for (const existing of this.listCapabilities(provider.id)) {
         if (retained.has(existing.capability)) continue;
         // 能力行删除经 FK 级联清理协议与模型事实。
         this.db.prepare(
           `DELETE FROM provider_capabilities
            WHERE provider_id = ? AND capability = ?`,
-        ).run(input.id, existing.capability);
+        ).run(provider.id, existing.capability);
       }
     })();
   }
@@ -129,7 +139,7 @@ export class ProvidersRepo implements ProviderStore {
     this.db.prepare('DELETE FROM providers WHERE id = ?').run(id);
   }
 
-  recordHealth(providerId: string, capability: ModelCapability, health: ProviderHealth): void {
+  recordHealth(health: ProviderHealthRow): void {
     this.db.prepare(
       `INSERT INTO provider_health
          (provider_id, capability, status, last_probed_at, latency_ms, last_error)
@@ -140,85 +150,45 @@ export class ProvidersRepo implements ProviderStore {
          latency_ms = excluded.latency_ms,
          last_error = excluded.last_error`,
     ).run(
-      providerId,
-      capability,
+      health.provider_id,
+      health.capability,
       health.status,
-      health.lastProbedAt,
-      health.latencyMs,
-      health.lastError,
+      health.last_probed_at,
+      health.latency_ms,
+      health.last_error,
     );
   }
 
-  private getRow(id: string): ProviderRow | undefined {
-    return this.db.prepare(
-      `SELECT id, name, icon_id, auth_type, key_value
-       FROM providers WHERE id = ?`,
-    ).get(id) as ProviderRow | undefined;
-  }
-
-  private listCapabilityRows(providerId: string): CapabilityRow[] {
+  listCapabilities(providerId: string): ProviderCapabilityRow[] {
     return this.db.prepare(
       `SELECT provider_id, capability, active_protocol, models_dev_id
        FROM provider_capabilities
        WHERE provider_id = ?
        ORDER BY capability ASC`,
-    ).all(providerId) as CapabilityRow[];
+    ).all(providerId) as ProviderCapabilityRow[];
   }
 
-  private listProtocolRows(providerId: string): ProtocolRow[] {
+  listProtocols(providerId: string): ProviderProtocolRow[] {
     return this.db.prepare(
       `SELECT provider_id, capability, protocol, base_url
        FROM provider_protocols
        WHERE provider_id = ?
        ORDER BY capability ASC, protocol ASC`,
-    ).all(providerId) as ProtocolRow[];
+    ).all(providerId) as ProviderProtocolRow[];
   }
 
-  private listHealthRows(providerId: string): HealthRow[] {
+  listHealth(providerId: string): ProviderHealthRow[] {
     return this.db.prepare(
       `SELECT provider_id, capability, status, last_probed_at, latency_ms, last_error
        FROM provider_health WHERE provider_id = ?
        ORDER BY capability ASC`,
-    ).all(providerId) as HealthRow[];
+    ).all(providerId) as ProviderHealthRow[];
   }
 
-  /** 该 provider 各能力的模型行数（一次 group by；none 类型的"已配置"判定数据源）。 */
-  private modelCounts(providerId: string): Map<ModelCapability, number> {
-    const rows = this.db.prepare(
+  listModelCounts(providerId: string): ProviderModelCountRow[] {
+    return this.db.prepare(
       `SELECT capability, COUNT(*) AS count FROM provider_models
        WHERE provider_id = ? GROUP BY capability`,
-    ).all(providerId) as Array<{ capability: ModelCapability; count: number }>;
-    return new Map(rows.map((row) => [row.capability, row.count]));
-  }
-
-  private toProvider(row: ProviderRow): Provider {
-    const protocols = this.listProtocolRows(row.id);
-    const counts = this.modelCounts(row.id);
-    const capabilities: ProviderCapability[] = this.listCapabilityRows(row.id)
-      .map((entry) => ({
-        capability: entry.capability,
-        ...(entry.active_protocol === null ? {} : { activeProtocol: entry.active_protocol }),
-        ...(entry.models_dev_id === null ? {} : { modelsDevId: entry.models_dev_id }),
-        protocols: protocols
-          .filter((protocol) => protocol.capability === entry.capability)
-          .map((protocol) => ({ protocol: protocol.protocol, baseUrl: protocol.base_url })),
-        modelCount: counts.get(entry.capability) ?? 0,
-      }));
-    const health: ProviderHealth[] = this.listHealthRows(row.id).map((entry) => ({
-      capability: entry.capability,
-      status: entry.status,
-      lastProbedAt: entry.last_probed_at,
-      latencyMs: entry.latency_ms,
-      lastError: entry.last_error,
-    }));
-    return {
-      id: row.id,
-      name: row.name,
-      ...(row.icon_id === null ? {} : { iconId: row.icon_id }),
-      authType: row.auth_type,
-      ...(row.key_value === null ? {} : { keyValue: row.key_value }),
-      capabilities,
-      health,
-    };
+    ).all(providerId) as ProviderModelCountRow[];
   }
 }

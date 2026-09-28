@@ -28,7 +28,7 @@ listCommandDescriptors(): readonly CommandDescriptor[]
 → getSystemPrompt（与下一根 Turn 同事实装配）→ buildPromptMessages → systemMessages
 → compact(force=true + micro=false，终态必是 macro；tools=[]、推理强度沿用 Session)
 → saveMacroSummary：summarizedMessageCount → historyWithIds 游标映射 → appendHistorySummary
-→ ManualCompactResult { beforeTokens, afterTokens, savedTokens, durationMs, truncated*? }
+→ ManualCompactResult { beforeTokens, afterTokens, savedTokens, durationMs }
 finally 释放坑位
 ```
 
@@ -40,8 +40,7 @@ finally 释放坑位
 - 摘要请求形状：同字节 systemMessages + 结构化历史 + 尾部指令（Codex 本地 compact 同款）。`tools` 恒空：根 Turn 的 ToolPool 装配需要 Turn 身份（SubagentSpawner/scratchpad/narrative 事件归因），Turn 外伪造身份被禁止；因此历史边界缓存断点在手动路径架构性不可达，可共享的是静态产品段 + 动态尾到 session-mode 的前缀。手动路径直接读取 Session 的推理强度, 不借用不存在的根 Turn 选择。
 - `micro:false`：Micro 的占位替换从不落库（持久化的只有 Macro 摘要+游标），命令路径只要纯粹的 Macro 摘要。
 - 摘要落库（`appendHistorySummary`）是唯一提交点；手动压缩明确写 `turnId=null`。abort / 失败即历史原样，abort 返回 `{ status: 'cancelled' }` 而非错误。
-- 摘要调用经 `usageRecorder` 记账(`callId=compact:<compactId>`, 不铸造
-  turnId/llmCallId). 零消耗不记账.
+- 每次实际发出的摘要请求都有独立调用 ID. 请求进入 Provider 前先写 `running`, 收到完整流、失败或取消后再把同一行更新为终态. 分段和重试不会聚合成一笔, 手动压缩不铸造 `turnId`.
 - 成功响应的 before/after/saved（+ 窗口截断计数）用于压缩结果提示。Context 圆环丢弃压缩前的值, 按已保存的摘要及未覆盖尾部重新估算, 不把 `afterTokens` 当作下一轮输入实报。
 
 ## 错误

@@ -25,12 +25,9 @@ export { freezeSkillPool, isSkillEnabled, renderSkillListing } from './skillPool
 export type { SkillEnablement, SkillPoolFreezeInput } from './skillPool.js';
 export type { SkillRegistry, SkillRegistryDeps } from './registry.js';
 export { createSkillRegistry } from './registry.js';
-export { createSkillStore, STAGING_PREFIX } from './sources/user.js';
-export type { SkillStore, SkillStoreDeps, ReconcileResult } from './sources/user.js';
+export { SkillStore, STAGING_PREFIX } from './store.js';
 export { PROJECT_ECOSYSTEMS, scanProjectSkills } from './sources/project.js';
 export type { ProjectEcosystem } from './sources/project.js';
-export { scanBuiltinSkills } from './sources/builtin.js';
-export type { BuiltinScanDeps } from './sources/builtin.js';
 export { createMarketService, readMarketMeta } from './sources/market/marketService.js';
 export type { MarketListParams, MarketService, MarketServiceDeps } from './sources/market/marketService.js';
 export { createMarketInstaller, MarketInstallError } from './sources/market/installService.js';

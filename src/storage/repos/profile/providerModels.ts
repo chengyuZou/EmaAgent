@@ -1,10 +1,10 @@
-// 在一张表中持久化六类模型，并在 Repo 边界恢复 ProviderModel 判别联合。
-import type { ModelCapability, ProviderModel, ProviderModelStore } from '@ema-agent/providers';
+// Store model rows without interpreting capability-specific business fields.
 import type { SqliteDb } from '../../database/database.js';
+import type { ModelCapabilityRow } from './providers.js';
 
-interface ProviderModelRow {
+export interface ProviderModelRow {
   provider_id: string;
-  capability: ModelCapability;
+  capability: ModelCapabilityRow;
   model_id: string;
   name: string | null;
   source: 'user' | 'dev';
@@ -19,22 +19,22 @@ interface ProviderModelRow {
   rerank_max_chunks: number | null;
 }
 
-export class ProviderModelsRepo implements ProviderModelStore {
+export class ProviderModelsRepo {
   constructor(private readonly db: SqliteDb) {}
 
   get(
     providerId: string,
-    capability: ModelCapability,
+    capability: ProviderModelRow['capability'],
     modelId: string,
-  ): ProviderModel | undefined {
+  ): ProviderModelRow | undefined {
     const row = this.db.prepare(
       `SELECT * FROM provider_models
        WHERE provider_id = ? AND capability = ? AND model_id = ?`,
     ).get(providerId, capability, modelId) as ProviderModelRow | undefined;
-    return row ? fromRow(row) : undefined;
+    return row;
   }
 
-  listByProvider(providerId: string, capability?: ModelCapability): ProviderModel[] {
+  listByProvider(providerId: string, capability?: ProviderModelRow['capability']): ProviderModelRow[] {
     const rows = capability === undefined
       ? this.db.prepare(
         `SELECT * FROM provider_models
@@ -44,24 +44,22 @@ export class ProviderModelsRepo implements ProviderModelStore {
         `SELECT * FROM provider_models
          WHERE provider_id = ? AND capability = ? ORDER BY model_id ASC`,
       ).all(providerId, capability);
-    return (rows as ProviderModelRow[]).map(fromRow);
+    return rows as ProviderModelRow[];
   }
 
-  listByCapability(capability: ModelCapability): ProviderModel[] {
-    const rows = this.db.prepare(
+  listByCapability(capability: ProviderModelRow['capability']): ProviderModelRow[] {
+    return this.db.prepare(
       `SELECT * FROM provider_models
        WHERE capability = ? ORDER BY provider_id ASC, model_id ASC`,
     ).all(capability) as ProviderModelRow[];
-    return rows.map(fromRow);
   }
 
   hasAny(): boolean {
     return this.db.prepare(`SELECT 1 AS x FROM provider_models LIMIT 1`).get() !== undefined;
   }
 
-  save(model: ProviderModel): void {
+  save(model: ProviderModelRow): void {
     const now = Date.now();
-    const fields = toColumns(model);
     this.db.prepare(
       `INSERT INTO provider_models
          (provider_id, capability, model_id, name, source, enabled, context_window, max_output,
@@ -81,99 +79,36 @@ export class ProviderModelsRepo implements ProviderModelStore {
          rerank_max_chunks = excluded.rerank_max_chunks,
          updated_at = excluded.updated_at`,
     ).run(
-      model.providerId,
+      model.provider_id,
       model.capability,
-      model.modelId,
-      model.name ?? null,
+      model.model_id,
+      model.name,
       model.source,
-      model.enabled ? 1 : 0,
-      fields.contextWindow,
-      fields.maxOutput,
-      fields.toolCall,
-      fields.reasoning,
-      fields.temperature,
-      fields.inputImage,
-      fields.embeddingDim,
-      fields.rerankMaxChunks,
+      model.enabled,
+      model.context_window,
+      model.max_output,
+      model.tool_call,
+      model.reasoning,
+      model.temperature,
+      model.input_image,
+      model.embedding_dim,
+      model.rerank_max_chunks,
       now,
       now,
     );
   }
 
-  setEnabled(providerId: string, capability: ModelCapability, modelId: string, enabled: boolean): void {
+  setEnabled(providerId: string, capability: ProviderModelRow['capability'], modelId: string, enabled: number): void {
     this.db.prepare(
       `UPDATE provider_models SET enabled = ?, updated_at = ?
        WHERE provider_id = ? AND capability = ? AND model_id = ?`,
-    ).run(enabled ? 1 : 0, Date.now(), providerId, capability, modelId);
+    ).run(enabled, Date.now(), providerId, capability, modelId);
   }
 
-  delete(providerId: string, capability: ModelCapability, modelId: string): void {
+  delete(providerId: string, capability: ProviderModelRow['capability'], modelId: string): void {
     this.db.prepare(
       `DELETE FROM provider_models
        WHERE provider_id = ? AND capability = ? AND model_id = ?`,
     ).run(providerId, capability, modelId);
   }
-}
-
-function fromRow(row: ProviderModelRow): ProviderModel {
-  const identity = {
-    providerId: row.provider_id,
-    capability: row.capability,
-    modelId: row.model_id,
-    ...(row.name === null ? {} : { name: row.name }),
-    source: row.source,
-    enabled: row.enabled === 1,
-  };
-  switch (row.capability) {
-    case 'llm':
-      return {
-        ...identity,
-        capability: 'llm',
-        contextWindow: row.context_window!,
-        maxOutput: row.max_output,
-        toolCall: fromBoolean(row.tool_call),
-        reasoning: fromBoolean(row.reasoning),
-        temperature: fromBoolean(row.temperature),
-        inputImage: fromBoolean(row.input_image),
-      };
-    case 'embed':
-      return { ...identity, capability: 'embed', dim: row.embedding_dim! };
-    case 'rerank':
-      return { ...identity, capability: 'rerank', maxChunks: row.rerank_max_chunks };
-    case 'vision':
-      return {
-        ...identity,
-        capability: 'vision',
-        contextWindow: row.context_window!,
-        maxOutput: row.max_output,
-        toolCall: fromBoolean(row.tool_call),
-        reasoning: fromBoolean(row.reasoning),
-        temperature: fromBoolean(row.temperature),
-        inputImage: fromBoolean(row.input_image),
-      };
-    case 'tts': return { ...identity, capability: 'tts' };
-    case 'stt': return { ...identity, capability: 'stt' };
-  }
-}
-
-function toColumns(model: ProviderModel) {
-  const withWindow = model.capability === 'llm' || model.capability === 'vision';
-  return {
-    contextWindow: withWindow ? model.contextWindow : null,
-    maxOutput: withWindow ? model.maxOutput : null,
-    toolCall: withWindow ? toBoolean(model.toolCall) : null,
-    reasoning: withWindow ? toBoolean(model.reasoning) : null,
-    temperature: withWindow ? toBoolean(model.temperature) : null,
-    inputImage: withWindow ? toBoolean(model.inputImage) : null,
-    embeddingDim: model.capability === 'embed' ? model.dim : null,
-    rerankMaxChunks: model.capability === 'rerank' ? model.maxChunks : null,
-  };
-}
-
-function toBoolean(value: boolean | null): number | null {
-  return value === null ? null : value ? 1 : 0;
-}
-
-function fromBoolean(value: number | null): boolean | null {
-  return value === null ? null : value === 1;
 }

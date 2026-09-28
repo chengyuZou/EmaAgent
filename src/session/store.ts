@@ -493,6 +493,7 @@ export class SessionStore {
     sessionId: string;
     turnId: string | null;
     summary: string;
+    savedTokens: number;
     summarizedThroughMessageId: string;
   }): SessionMessage {
     const through = this.messagesRepo.findById(input.summarizedThroughMessageId);
@@ -520,6 +521,7 @@ export class SessionStore {
       blocksJson: JSON.stringify(input.summary),
       createdAt: this.nextTs(),
       summarizedThroughMessageId: input.summarizedThroughMessageId,
+      savedTokens: input.savedTokens,
     });
     const message = this.requireMessage(id);
     this.onChanged?.({ type: 'session_messages_changed', sessionId: input.sessionId });

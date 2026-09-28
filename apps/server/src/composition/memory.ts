@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import {
   createLlmCall,
   createLlmCompletion,
+  llmProviderErrorCode,
   type Message,
 } from '@ema-agent/llm';
 import {
@@ -31,7 +32,7 @@ import {
   type MemoryMaintenanceJobKind,
 } from '@ema-agent/storage';
 import type { TurnStore } from '@ema-agent/turn';
-import { createUsageRecord, reportUsage, type UsageRecorder } from '@ema-agent/usage';
+import type { UsageRecorder } from '@ema-agent/usage';
 
 export interface MemoryComposition {
   readonly jobs: MemoryRepo;
@@ -65,26 +66,57 @@ export function openMemory(deps: {
       binding.modelId,
     );
     const startedAt = Date.now();
-    const completion = await createLlmCompletion(callLlm({
-      messages,
-      ...(signal ? { signal } : {}),
-    }));
-    reportUsage(deps.usageRecorder, createUsageRecord({
-      capability: 'llm',
-      providerId: binding.providerId,
-      modelId: binding.modelId,
-      status: 'completed',
-      startedAt,
-      durationMs: Date.now() - startedAt,
-      inputTokens: completion.usage?.inputTokens ?? null,
-      outputTokens: completion.usage?.outputTokens ?? null,
-      cacheReadInputTokens: completion.usage?.cacheReadInputTokens ?? null,
-      cacheWriteInputTokens: completion.usage?.cacheWriteInputTokens ?? null,
-    }), error => console.warn('[usage] Memory LLM 记账失败:', error));
-    return completion.blocks
-      .filter(block => block.type === 'text')
-      .map(block => block.text)
-      .join('');
+    const callId = randomUUID();
+    try {
+      const completion = await createLlmCompletion(callLlm({
+        messages,
+        ...(signal ? { signal } : {}),
+      }));
+      deps.usageRecorder.record({
+        id: callId,
+        sessionId: null,
+        turnId: null,
+        capability: 'llm',
+        providerId: binding.providerId,
+        modelId: binding.modelId,
+        status: 'completed',
+        durationMs: Date.now() - startedAt,
+        inputTokens: completion.usage?.inputTokens ?? null,
+        outputTokens: completion.usage?.outputTokens ?? null,
+        cacheReadInputTokens: completion.usage?.cacheReadInputTokens ?? null,
+        cacheWriteInputTokens: completion.usage?.cacheWriteInputTokens ?? null,
+        quantity: null,
+        unit: null,
+        errorCode: null,
+        createdAt: startedAt,
+      });
+      return completion.blocks
+        .filter(block => block.type === 'text')
+        .map(block => block.text)
+        .join('');
+    } catch (error) {
+      const cancelled = signal?.aborted === true
+        || (error instanceof Error && error.name === 'AbortError');
+      deps.usageRecorder.record({
+        id: callId,
+        sessionId: null,
+        turnId: null,
+        capability: 'llm',
+        providerId: binding.providerId,
+        modelId: binding.modelId,
+        status: cancelled ? 'cancelled' : 'failed',
+        durationMs: Date.now() - startedAt,
+        inputTokens: null,
+        outputTokens: null,
+        cacheReadInputTokens: null,
+        cacheWriteInputTokens: null,
+        quantity: null,
+        unit: null,
+        errorCode: cancelled ? 'llm/aborted' : llmProviderErrorCode(error),
+        createdAt: startedAt,
+      });
+      throw error;
+    }
   };
 
   const extractTurn = createExtractTurn({

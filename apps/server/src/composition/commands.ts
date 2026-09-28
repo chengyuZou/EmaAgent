@@ -52,7 +52,7 @@ export function openCommands(deps: {
       }
       return tools.skills.list(folderPaths);
     },
-    disabledSkillPaths: () => tools.skillEnablement.listDisabledPaths(),
+    disabledSkillPaths: () => tools.skillStore.listDisabledPaths(),
     workspaceInstructions: turn.workspaceInstructions,
     memoryGuidance: () => buildMemoryGuidance().catch(() => null),
     describeImage: turn.describeImage,

@@ -16,7 +16,7 @@ export interface SkillPoolDeps {
     cwd: string,
     projectId: string | null,
   ) => Promise<readonly SkillDescriptor[]>;
-  /** skill_enablement 表的当前禁用路径列表 */
+  /** SkillStore 从 skills.enabled 读取的当前禁用路径. */
   readonly disabledSkillPaths: () => readonly string[];
 }
 

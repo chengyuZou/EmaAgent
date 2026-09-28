@@ -89,6 +89,11 @@ async function compactMessages(args: {
   try {
     macro = await runMacroCompact({
       callLlm: args.callLlm,
+      sessionId: request.sessionId,
+      turnId: request.turnId,
+      providerId: request.providerId,
+      modelId: request.modelId,
+      usageRecorder: request.usageRecorder,
       sessionMode: request.sessionMode,
       systemMessages: request.systemMessages,
       tools: request.tools,
@@ -125,10 +130,11 @@ async function compactMessages(args: {
     return { kind: 'unchanged', messages, failureDetail: macro.detail };
   }
 
-  // 只有最终摘要保存成功才发 completed, 中间分段摘要不改变调用方消息.
+  const savedTokens = Math.max(0, beforeTokens - macro.afterTokens);
+  // 摘要与 Token 减少量一起保存成功才发 completed, 中间分段不改变调用方消息.
   if (request.saveMacroSummary) {
     try {
-      request.saveMacroSummary(macro.summary, macro.summarizedMessageCount);
+      request.saveMacroSummary(macro.summary, macro.summarizedMessageCount, savedTokens);
     } catch (error) {
       request.emit?.({
         type: 'compact_failed',
@@ -153,7 +159,7 @@ async function compactMessages(args: {
     beforeTokens,
     startedAt,
     afterTokens: macro.afterTokens,
-    savedTokens: Math.max(0, beforeTokens - macro.afterTokens),
+    savedTokens,
     durationMs,
   });
   return {
@@ -161,9 +167,8 @@ async function compactMessages(args: {
     messages: macro.messages,
     beforeTokens,
     afterTokens: macro.afterTokens,
-    savedTokens: Math.max(0, beforeTokens - macro.afterTokens),
+    savedTokens,
     durationMs,
-    usage: macro.usage,
     summarizedMessageCount: macro.summarizedMessageCount,
   };
 }

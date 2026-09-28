@@ -79,6 +79,8 @@ export const messageRecordSchema = z.object({
   createdAt: integer,
   // summary 必须携带覆盖截止游标，其他 kind 必须为 null；开发期不兼容缺失游标的旧 ZIP。
   summarizedThroughMessageId: nullableId,
+  // 与消息正文同属摘要记录; 未记录 Token 减少量的摘要没有此字段.
+  savedTokens: nonNegativeInteger.optional(),
 }).strict().superRefine((value, ctx) => {
   if (value.kind === 'summary' && value.summarizedThroughMessageId === null) {
     ctx.addIssue({
@@ -90,6 +92,12 @@ export const messageRecordSchema = z.object({
     ctx.addIssue({
       code: 'custom',
       message: '非 summary 消息不能携带覆盖截止游标 summarizedThroughMessageId',
+    });
+  }
+  if (value.kind !== 'summary' && value.savedTokens !== undefined) {
+    ctx.addIssue({
+      code: 'custom',
+      message: '非 summary 消息不能携带 savedTokens',
     });
   }
 });

@@ -1,45 +1,41 @@
-// 持久化每个业务模块唯一的模型绑定；模型删除时由外键自动清理绑定。
-import type {
-  ModelBinding,
-  ModelBindingModule,
-  ModelBindingStore,
-} from '@ema-agent/providers';
-import type { ModelCapability } from '@ema-agent/providers';
+// Store model binding rows; model deletion cascades through the foreign key.
+import type { ModelCapabilityRow } from './providers.js';
 import type { SqliteDb } from '../../database/database.js';
 
-interface ModelBindingRow {
-  module: ModelBindingModule;
-  capability: ModelCapability;
+export type ModelBindingModuleRow =
+  'memory-llm' | 'lightrag-embed' | 'lightrag-llm' | 'tts' | 'stt' | 'vision';
+
+export interface ModelBindingRow {
+  module: ModelBindingModuleRow;
+  capability: ModelCapabilityRow;
   provider_id: string;
   model_id: string;
 }
 
-export class ModelBindingsRepo implements ModelBindingStore {
+export class ModelBindingsRepo {
   constructor(private readonly db: SqliteDb) {}
 
-  get(module: ModelBindingModule): ModelBinding | undefined {
+  get(module: ModelBindingModuleRow): ModelBindingRow | undefined {
     const row = this.db.prepare(
       'SELECT * FROM model_bindings WHERE module = ?',
     ).get(module) as ModelBindingRow | undefined;
-    return row ? fromRow(row) : undefined;
+    return row;
   }
 
-  list(): ModelBinding[] {
-    const rows = this.db.prepare(
+  list(): ModelBindingRow[] {
+    return this.db.prepare(
       'SELECT * FROM model_bindings ORDER BY module ASC',
     ).all() as ModelBindingRow[];
-    return rows.map(fromRow);
   }
 
-  listByProvider(providerId: string): ModelBinding[] {
-    const rows = this.db.prepare(
+  listByProvider(providerId: string): ModelBindingRow[] {
+    return this.db.prepare(
       `SELECT * FROM model_bindings
        WHERE provider_id = ? ORDER BY module ASC`,
     ).all(providerId) as ModelBindingRow[];
-    return rows.map(fromRow);
   }
 
-  set(binding: ModelBinding): void {
+  set(binding: ModelBindingRow): void {
     this.db.prepare(
       `INSERT INTO model_bindings (module, capability, provider_id, model_id)
        VALUES (?, ?, ?, ?)
@@ -47,19 +43,10 @@ export class ModelBindingsRepo implements ModelBindingStore {
          capability = excluded.capability,
          provider_id = excluded.provider_id,
          model_id = excluded.model_id`,
-    ).run(binding.module, binding.capability, binding.providerId, binding.modelId);
+    ).run(binding.module, binding.capability, binding.provider_id, binding.model_id);
   }
 
-  delete(module: ModelBindingModule): void {
+  delete(module: ModelBindingModuleRow): void {
     this.db.prepare('DELETE FROM model_bindings WHERE module = ?').run(module);
   }
-}
-
-function fromRow(row: ModelBindingRow): ModelBinding {
-  return {
-    module: row.module,
-    capability: row.capability,
-    providerId: row.provider_id,
-    modelId: row.model_id,
-  };
 }

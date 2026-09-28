@@ -5,6 +5,7 @@ import type { CallLlm, Message } from '@ema-agent/llm';
 import type { CompactRequest, CompactResult } from '@ema-agent/compact';
 import type { ProviderModels, Providers } from '@ema-agent/providers';
 import { BuiltinTools } from '@ema-agent/tools';
+import type { UsageRecorder } from '@ema-agent/usage';
 import type { TurnStreamEvent } from '../events.js';
 import type { PreparedTurn } from './prepareTurn.js';
 import { createPrepareAgentIteration } from './prepareAgentIteration.js';
@@ -31,6 +32,7 @@ export interface PrepareSubagentDeps {
   readonly providerModels: ProviderModels;
   /** compact 工厂：覆盖模型时用子模型 callLlm 创建独立闭包（独立失败熔断）。 */
   readonly createCompact: (callLlm: CallLlm) => (request: CompactRequest) => Promise<CompactResult>;
+  readonly usageRecorder?: UsageRecorder;
   readonly emit: (event: TurnStreamEvent) => void;
   /** fork 子 Agent 继承的父工作消息；不含父 System Prompt、Tool Schema 或缓存标记。 */
   readonly parentMessages: Message[];
@@ -97,6 +99,7 @@ export function createPrepareSubagent(deps: PrepareSubagentDeps): PrepareSubagen
       turnId: deps.turnId,
       prepared: subPrepared,
       compact,
+      usageRecorder: deps.usageRecorder,
       emit: deps.emit,
       signal,
     });

@@ -1,7 +1,8 @@
 // 让每个业务模块只绑定一个已启用模型，不在 Provider 内触发业务副作用。
 import { ProviderError } from './errors.js';
-import type { ProviderModelStore } from './models.js';
-import type { ModelCapability } from './types.js';
+import { ModelBindingsRepo, type Database, type ModelBindingRow } from '@ema-agent/storage';
+import type { ProviderModels } from './models.js';
+import  { type ModelCapability, type ModelBindingModule, MODEL_BINDING_CAPABILITIES } from './types.js';
 
 export const MODEL_BINDING_MODULES = [
   'memory-llm',
@@ -12,17 +13,7 @@ export const MODEL_BINDING_MODULES = [
   'vision',
 ] as const;
 
-export type ModelBindingModule = typeof MODEL_BINDING_MODULES[number];
 
-export const MODEL_BINDING_CAPABILITIES: Readonly<Record<ModelBindingModule, ModelCapability>> =
-  Object.freeze({
-    'memory-llm': 'llm',
-    'lightrag-llm': 'llm',
-    'lightrag-embed': 'embed',
-    'tts': 'tts',
-    'stt': 'stt',
-    'vision': 'vision',
-  });
 
 export interface ModelBindingInput {
   module: ModelBindingModule;
@@ -34,47 +25,55 @@ export interface ModelBinding extends ModelBindingInput {
   capability: ModelCapability;
 }
 
-export interface ModelBindingStore {
-  get(module: ModelBindingModule): ModelBinding | undefined;
-  list(): ModelBinding[];
-  listByProvider(providerId: string): ModelBinding[];
-  set(binding: ModelBinding): void;
-  delete(module: ModelBindingModule): void;
-}
-
 export class ModelBindings {
-  constructor(
-    private readonly models: Pick<ProviderModelStore, 'get'>,
-    private readonly store: ModelBindingStore,
-  ) {}
+  private readonly repo: ModelBindingsRepo;
+
+  constructor(db: Database, private readonly models: ProviderModels) {
+    this.repo = new ModelBindingsRepo(db.sqlite);
+  }
 
   get(module: ModelBindingModule): ModelBinding | undefined {
-    return this.store.get(module);
+    const row = this.repo.get(module);
+    return row ? this.toBinding(row) : undefined;
   }
 
   list(): ModelBinding[] {
-    return this.store.list();
+    return this.repo.list().map((row) => this.toBinding(row));
   }
 
   listByProvider(providerId: string): ModelBinding[] {
-    return this.store.listByProvider(providerId);
+    return this.repo.listByProvider(providerId).map((row) => this.toBinding(row));
   }
 
   set(input: ModelBindingInput): ModelBinding {
     const capability = MODEL_BINDING_CAPABILITIES[input.module];
     const model = this.models.get(input.providerId, capability, input.modelId);
-    if (!model?.enabled) {
+    if (!model.enabled) {
       throw new ProviderError(
         'model_not_found',
         `${input.module} 只能绑定已启用的 ${capability} 模型`,
       );
     }
     const binding = { ...input, capability };
-    this.store.set(binding);
+    this.repo.set({
+      module: binding.module,
+      capability: binding.capability,
+      provider_id: binding.providerId,
+      model_id: binding.modelId,
+    });
     return binding;
   }
 
   delete(module: ModelBindingModule): void {
-    this.store.delete(module);
+    this.repo.delete(module);
+  }
+
+  private toBinding(row: ModelBindingRow): ModelBinding {
+    return {
+      module: row.module,
+      capability: row.capability,
+      providerId: row.provider_id,
+      modelId: row.model_id,
+    };
   }
 }

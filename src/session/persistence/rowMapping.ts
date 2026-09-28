@@ -89,6 +89,7 @@ export function toMessage(row: MessageRow): SessionMessage {
     blocks: parseMessageBlocksJson(row.blocks_json, row.role),
     interrupted: row.interrupted === 1,
     createdAt: row.created_at,
+    ...(row.summary_saved_tokens !== null ? { savedTokens: row.summary_saved_tokens } : {}),
   };
 }
 

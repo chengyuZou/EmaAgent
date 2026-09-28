@@ -133,7 +133,14 @@ describe('TurnExecutor 集成', () => {
     const records: UsageRecord[] = [];
     const deps = {
       ...makeDeps({ db, llm, sessionId: session.id, registry }),
-      usageRecorder: { record: (record: UsageRecord) => records.push(record) },
+      usageRecorder: {
+        record: (record: UsageRecord) => records.push(record),
+        finish: (record: UsageRecord) => {
+          const index = records.findIndex(current => current.id === record.id);
+          if (index < 0) throw new Error(`usage record ${record.id} does not exist`);
+          records[index] = record;
+        },
+      },
     };
     const executor = new TurnExecutor(deps);
 
@@ -465,7 +472,7 @@ describe('TurnExecutor 集成', () => {
       createCompact: () => async (request: Parameters<ReturnType<TurnExecutorDeps['createCompact']>>[0]) => {
         prepareCount += 1;
         if (prepareCount === 1) return { kind: 'unchanged' as const, messages: request.messages };
-        request.saveMacroSummary?.('本轮工具结果摘要', request.messages.length);
+        request.saveMacroSummary?.('本轮工具结果摘要', request.messages.length, 80);
         return {
           kind: 'macro' as const,
           messages: [{ role: 'user' as const, content: '本轮工具结果摘要' }],
@@ -474,7 +481,6 @@ describe('TurnExecutor 集成', () => {
           afterTokens: 20,
           savedTokens: 80,
           durationMs: 1,
-          usage: { inputTokens: 10, outputTokens: 5 },
         };
       },
     };
@@ -518,7 +524,7 @@ describe('TurnExecutor 集成', () => {
       createCompact: () => async (request: Parameters<ReturnType<TurnExecutorDeps['createCompact']>>[0]) => {
         prepareCount += 1;
         if (prepareCount === 1) return { kind: 'unchanged' as const, messages: request.messages };
-        request.saveMacroSummary?.('续写前摘要', request.messages.length);
+        request.saveMacroSummary?.('续写前摘要', request.messages.length, 80);
         return {
           kind: 'macro' as const,
           messages: [{ role: 'user' as const, content: '续写前摘要' }],
@@ -527,7 +533,6 @@ describe('TurnExecutor 集成', () => {
           afterTokens: 20,
           savedTokens: 80,
           durationMs: 1,
-          usage: { inputTokens: 10, outputTokens: 5 },
         };
       },
     };
