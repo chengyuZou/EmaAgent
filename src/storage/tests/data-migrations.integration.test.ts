@@ -46,7 +46,7 @@ describe('data migration v2', () => {
 
     database.migrate();
 
-    expect(database.currentVersion()).toBe(9);
+    expect(database.currentVersion()).toBe(10);
     const columns = database.sqlite.pragma('table_info(turns)') as Array<{ name: string }>;
     expect(columns.map(column => column.name)).not.toContain('usage_input_tokens');
     expect(columns.map(column => column.name)).not.toContain('usage_output_tokens');
@@ -68,5 +68,44 @@ describe('data migration v2', () => {
         output_tokens: 8,
       },
     ]);
+  });
+});
+
+describe('data migration v10', () => {
+  it('保留全部旧权限与关联消息, 新约束接受 plan 且不留下临时列', () => {
+    database = new Database({ memory: true, kind: 'data' });
+    database.sqlite.exec(fs.readFileSync(
+      fileURLToPath(new URL('../migrations/data/001_initial.sql', import.meta.url)), 'utf8',
+    ));
+    database.sqlite.pragma('user_version = 1');
+    database.sqlite.exec(`
+      INSERT INTO sessions (id, title, cwd, permission_mode, created_at, updated_at) VALUES
+        ('default', 'Default', 'D:/work', 'default', 1, 1),
+        ('edits', 'Edits', 'D:/work', 'acceptEdits', 2, 2),
+        ('bypass', 'Bypass', 'D:/work', 'bypassPermissions', 3, 3);
+      INSERT INTO turns (id, session_id, status, created_at)
+        VALUES ('turn-1', 'edits', 'completed', 4);
+      INSERT INTO messages (id, session_id, turn_id, role, blocks_json, created_at)
+        VALUES ('message-1', 'edits', 'turn-1', 'user', '"Keep me"', 5);
+      UPDATE sessions SET forked_from_session_id = 'edits', forked_from_turn_id = 'turn-1'
+        WHERE id = 'bypass';
+    `);
+    const originalSessions = database.sqlite.prepare('SELECT * FROM sessions ORDER BY id').all();
+    database.migrate();
+
+    expect(database.sqlite.prepare('SELECT * FROM sessions ORDER BY id').all()).toEqual(originalSessions);
+    expect(database.sqlite.prepare('SELECT id, blocks_json FROM messages').all())
+      .toEqual([{ id: 'message-1', blocks_json: '"Keep me"' }]);
+    expect(database.sqlite.pragma('foreign_key_check')).toEqual([]);
+    expect(database.sqlite.pragma('foreign_keys', { simple: true })).toBe(1);
+    const columns = database.sqlite.pragma('table_info(sessions)') as Array<{ name: string }>;
+    expect(columns.map(column => column.name)).not.toContain('previous_permission_mode');
+    database.sqlite.prepare('UPDATE sessions SET permission_mode = ? WHERE id = ?').run('plan', 'edits');
+    expect(database.sqlite.prepare('SELECT permission_mode FROM sessions WHERE id = ?').get('edits'))
+      .toEqual({ permission_mode: 'plan' });
+    expect(() => database!.sqlite.prepare('UPDATE sessions SET permission_mode = ? WHERE id = ?')
+      .run('invalid', 'edits')).toThrow(/CHECK constraint failed/);
+    expect(() => database!.sqlite.prepare('UPDATE sessions SET id = ? WHERE id = ?')
+      .run('renamed', 'edits')).toThrow(/sessions.id is immutable/);
   });
 });

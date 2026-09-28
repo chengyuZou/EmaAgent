@@ -31,8 +31,8 @@ function seedSource(dataDir: string): Database {
   const db = new Database({ memory: true, kind: 'data' });
   db.migrate();
   db.sqlite.prepare(`
-    INSERT INTO sessions (id, title, cwd, pinned, last_activity_at, created_at, updated_at)
-    VALUES (?, '往返', 'D:/work', 0, 1, 1, 1)
+    INSERT INTO sessions (id, title, cwd, pinned, last_activity_at, created_at, updated_at, permission_mode)
+    VALUES (?, '往返', 'D:/work', 0, 1, 1, 1, 'plan')
   `).run(SESSION_ID);
   db.sqlite.prepare(`
     INSERT INTO turns (id, session_id, trigger_type, session_mode, narrative_policy,
@@ -131,6 +131,8 @@ describe('Session 备份往返', () => {
       () => true,
     );
     expect(result.sessionId).toBe(SESSION_ID);
+    expect(targetDb.sqlite.prepare('SELECT permission_mode FROM sessions WHERE id = ?').get(SESSION_ID))
+      .toEqual({ permission_mode: 'plan' });
     expect(targetDb.sqlite.prepare('SELECT summary_saved_tokens FROM messages WHERE id = ?')
       .get('summary-1')).toEqual({ summary_saved_tokens: 12_345 });
     expect(targetDb.sqlite.prepare("SELECT tts_enabled FROM turns WHERE id = 't1'").get())

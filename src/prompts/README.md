@@ -59,6 +59,9 @@ PromptEnvironment
   不能静默退化成没有身份的 Agent。角色可任意时刻更换,换角色只影响下一根 Turn。
 - `toolNames`:根 Turn 已冻结 ToolPool 的稳定名称集合,只决定动态能力引导是否出现;
   每个 Tool 的参数 Schema 与详细用法仍由 Provider `tools[]` 提供。
+- `permissionMode`:本轮冻结的 Session 权限. 四档权限在 SessionMode 后使用同一个权限说明块,
+  分别说明默认批准规则, 工作区自动接受编辑, 中央绕过权限和 Plan 只读限制.
+  不替换 Chat/Work, 不新增进入或退出流程; 说明不替代工具池和执行期的实际判定.
 - `environment`:本轮平台、工作区和模型事实,由调用方冻结后注入。
 - `workspaceInstructions` / `skillCatalog` / `mcpInstructions` / `memorySection`:可选,由调用方
   在根 Turn 装配时注入;变化只影响下一根 Turn。
@@ -79,6 +82,7 @@ skillCatalog                │
 mcpInstructions…            ┘
 character                   角色单块(切换才变;角色包内部 section 合并不拆)
 sessionMode            chat/work(每根 Turn 可变)
+permissionMode         四档权限的实际边界, Plan 约束 Chat/Work 中的实施要求
 sessionCapabilityGuidance   当轮 ToolPool 派生的完整跨工具规则
 runtimeEnvironment          平台/工作区/模型——最末:换模型是最高频变化,只损失这块
 ```

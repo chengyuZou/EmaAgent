@@ -45,6 +45,29 @@ import type { TurnKnowledgeSelection } from '../types.js';
 import type { SessionInteractionQueue } from '../interactionQueue.js';
 import type { TurnStreamEvent } from '../events.js';
 
+// Plan 只暴露整项能力均只读的工具. isReadOnly(input) 依赖尚未生成的参数,
+// 不能用于装配筛选; Shell, 子代理和用户交互不作为只读例外放行.
+const PLAN_TOOL_IDS: ReadonlySet<string> = new Set([
+  BuiltinTools.FileRead.id,
+  BuiltinTools.PdfRead.id,
+  BuiltinTools.Glob.id,
+  BuiltinTools.Grep.id,
+  BuiltinTools.WebFetch.id,
+  BuiltinTools.WebSearch.id,
+  BuiltinTools.ProcessList.id,
+  BuiltinTools.ProcessOutput.id,
+  BuiltinTools.TaskGet.id,
+  BuiltinTools.TaskList.id,
+  BuiltinTools.KnowledgeBaseSearch.id,
+  BuiltinTools.NarrativeSearch.id,
+  BuiltinTools.MemorySearch.id,
+  BuiltinTools.MemoryRead.id,
+  BuiltinTools.MemoryList.id,
+  BuiltinTools.Skill.id,
+  BuiltinTools.ScratchpadRead.id,
+  BuiltinTools.ScratchpadList.id,
+]);
+
 export interface TurnToolsDeps {
   readonly registry: ToolRegistry;
   readonly interactionQueue: SessionInteractionQueue;
@@ -261,8 +284,12 @@ export function prepareTurnTools(
     askUser,
   });
 
-  const toolPool = assembleToolPool(deps.registry, toolContext);
-  
+  const availablePool = assembleToolPool(deps.registry, toolContext);
+  // 模型与执行器共用筛选后的池, 历史中的写工具名和 allow 规则不能重新扩入.
+  const toolPool = input.permission.mode === 'plan'
+    ? availablePool.filter(tool => PLAN_TOOL_IDS.has(tool.id))
+    : availablePool;
+
   const toolResultStore = deps.toolResultStore?.(sessionId);
   let currentExecutor: StreamingToolExecutor | undefined;
   const createExecutor = (wake: () => void): StreamingToolExecutor => {

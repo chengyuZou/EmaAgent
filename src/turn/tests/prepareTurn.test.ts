@@ -45,6 +45,7 @@ function fakeSession(overrides: Record<string, unknown> = {}) {
     reasoningEffort: 'off',
     sessionMode: 'work',
     narrativePolicy: 'off',
+    permissionMode: 'default',
     ttsEnabled: false,
     ...overrides,
   };
@@ -115,6 +116,19 @@ function makeRuntime(start: StartTurn) {
 }
 
 describe('prepareTurn', () => {
+  it('Session 的 Plan 权限进入本轮 Prompt, 不改 Work 执行方式', async () => {
+    const prepared = await prepareTurn(
+      makeDeps({ sessions: {
+        getSession: () => fakeSession({ permissionMode: 'plan' }),
+        listProjectFolders: () => [],
+      } as never }),
+      makeRuntime(makeStart()),
+    );
+    expect(prepared.sessionMode).toBe('work');
+    expect(prepared.systemPrompt.find(block => block.name === 'permission-mode')?.content)
+      .toContain('当前权限: Plan');
+  });
+
   it('将 Session 的 projectId 交给技能目录装载，并按项目文件夹冻结授权目录', async () => {
     const requested: Array<[string, string | null]> = [];
     const runnerDirectories: Array<[string, readonly string[]]> = [];

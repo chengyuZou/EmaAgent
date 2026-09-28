@@ -1,8 +1,8 @@
 // 验证当前 Session 记录协议接受现行字段并拒绝旧备份字段。
 import { describe, expect, it } from 'vitest';
 import type { TurnRow } from '@ema-agent/storage';
-import { toTurnRecord } from '../records/exportMappings.js';
-import { restoreTurnRecord } from '../records/importMappings.js';
+import { toSessionRecord, toTurnRecord } from '../records/exportMappings.js';
+import { restoreSessionRecord, restoreTurnRecord } from '../records/importMappings.js';
 import { sessionRecordSchema, turnRecordSchema } from '../records/sessionRecords.js';
 
 const currentSession = {
@@ -30,6 +30,13 @@ const currentSession = {
 describe('session records', () => {
   it('接受当前 Session 结构', () => {
     expect(sessionRecordSchema.parse(currentSession).id).toBe('session-1');
+  });
+
+  it('Plan 权限在导出, 协议校验和恢复映射中原样保留', () => {
+    const record = sessionRecordSchema.parse({ ...currentSession, permissionMode: 'plan' });
+    const row = restoreSessionRecord(record);
+    expect(row.permission_mode).toBe('plan');
+    expect(toSessionRecord(row)).toEqual(record);
   });
 
   it('拒绝旧协议遗留字段', () => {

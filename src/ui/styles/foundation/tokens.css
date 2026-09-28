@@ -84,6 +84,9 @@
   --ema-surface-3:  rgba(44, 44, 50, 0.78);
   --ema-surface-4:  rgba(52, 52, 58, 0.90);
   --ema-bg:         var(--ema-surface-0);
+  /* 设置材质的无 Alpha 色源, 透明度由应用的表面层级决定. */
+  --ema-material-fill: rgb(28, 28, 32);
+  --ema-material-tint: rgb(20, 20, 24);
   --ema-glass-weak:   saturate(150%) blur(4px);
   --ema-glass-base:   saturate(180%) blur(8px);
   --ema-glass-strong: saturate(200%) blur(16px);
@@ -221,6 +224,8 @@
   --ema-surface-3:  rgba(216, 213, 230, 1);
   --ema-surface-4:  rgba(255, 255, 255, 1);
   --ema-bg:         var(--ema-surface-0);
+  --ema-material-fill: rgb(244, 248, 253);
+  --ema-material-tint: rgb(191, 208, 226);
 
   /* 侧栏独立 tint(比页面深半档, 导航后退); composer 浅色换白卡。 */
   --ema-sidebar-bg:   rgba(228, 227, 236, 1);

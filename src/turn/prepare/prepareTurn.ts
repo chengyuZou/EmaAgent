@@ -227,6 +227,7 @@ export async function prepareTurn(
       sessionMode: request.sessionMode,
       cwd,
       projectFolderPaths: projectFolders,
+      permissionMode,
       providerId,
       modelId,
       toolNames: tools.toolPool.tools.map(tool => tool.name),

@@ -37,7 +37,7 @@ export const sessionRecordSchema = z.object({
   reasoningEffort: z.enum(['off', 'low', 'medium', 'high', 'max']),
   sessionMode: z.enum(['chat', 'work']),
   narrativePolicy: z.enum(['auto', 'always', 'off']),
-  permissionMode: z.enum(['default', 'acceptEdits', 'bypassPermissions']),
+  permissionMode: z.enum(['default', 'acceptEdits', 'bypassPermissions', 'plan']),
   ttsEnabled: z.boolean(),
 }).strict().refine(
   value => (value.providerId === null) === (value.modelId === null),

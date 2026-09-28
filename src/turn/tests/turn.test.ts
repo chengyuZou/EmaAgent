@@ -13,6 +13,7 @@ import { StageEngine } from '@ema-agent/stage';
 import type { UsageRecord } from '@ema-agent/usage';
 import {
   buildTool,
+  BuiltinTools,
   contextOk,
   ToolRegistry,
 } from '@ema-agent/tools';
@@ -143,6 +144,60 @@ function forkFixture(llm: CallLlm, onStarted: (id: string) => void) {
 }
 
 describe('TurnExecutor 集成', () => {
+  it('Plan 请求与执行共用只读池, 运行中切换权限只影响下一根 Turn', async () => {
+    const db = new Database({ memory: true, kind: 'data' });
+    db.migrate();
+    const sessions = new SessionStore({ db });
+    const session = sessions.createSession({
+      cwd: os.tmpdir(), providerId: 'p', modelId: 'm', permissionMode: 'plan', sessionMode: 'work',
+    });
+    const read = vi.fn(async () => 'read-ok');
+    const write = vi.fn(async () => 'write-ok');
+    const registry = new ToolRegistry();
+    for (const [identity, execute] of [[BuiltinTools.FileRead, read], [BuiltinTools.FileWrite, write]] as const) {
+      registry.register(buildTool({
+        id: identity.id, name: identity.name, description: identity.name,
+        inputSchema: z.object({}), validateContext: () => contextOk({}),
+        checkPermissions: async () => ({ behavior: 'allow' as const }), execute,
+      }));
+    }
+    const toolsPerCall: string[][] = [];
+    const systems: string[] = [];
+    const llm: CallLlm = async function* (request) {
+      toolsPerCall.push((request.tools ?? []).map(tool => tool.name));
+      systems.push(JSON.stringify(request.messages.filter(message => message.role === 'system')));
+      if (toolsPerCall.length === 1) {
+        sessions.patchSession(session.id, { permissionMode: 'bypassPermissions' });
+        yield { type: 'tool_use_complete', blockIndex: 0, callId: 'write-1', name: 'Write', args: {} };
+        yield { type: 'tool_use_complete', blockIndex: 1, callId: 'read-1', name: 'Read', args: {} };
+        yield { type: 'done', stopReason: 'tool_use' };
+        return;
+      }
+      yield { type: 'text_delta', blockIndex: 0, delta: '调查完成, 方案在回复中.' };
+      yield { type: 'done', stopReason: 'end_turn' };
+    };
+    const executor = new TurnExecutor(makeDeps({ db, llm, sessionId: session.id, registry }));
+    try {
+      const first = executor.start(makeStart(session.id));
+      expect((await first.completion).status).toBe('completed');
+      expect(toolsPerCall).toEqual([['Read'], ['Read']]);
+      expect(systems.every(system => system.includes('当前权限: Plan'))).toBe(true);
+      expect(read).toHaveBeenCalledOnce();
+      expect(write).not.toHaveBeenCalled();
+      const events: TurnStreamEvent[] = [];
+      for await (const event of first.events) events.push(event);
+      expect(events).toContainEqual(expect.objectContaining({
+        type: 'tool_result', callId: 'write-1', error: expect.objectContaining({ code: 'tool/unavailable' }),
+      }));
+      const second = executor.start(makeStart(session.id));
+      expect((await second.completion).status).toBe('completed');
+      expect(toolsPerCall[2]).toEqual(['Read', 'Write']);
+      expect(systems[2]).not.toContain('当前权限: Plan');
+    } finally {
+      db.close();
+    }
+  });
+
   it('fork 同轮共享完整父前缀, 第二轮重新分叉, 占位不写父 SQL', async () => {
     let releaseParent!: () => void;
     const parentRelease = new Promise<void>(resolve => { releaseParent = resolve; });

@@ -1,4 +1,5 @@
 import { getSystemPrompt, type PromptBlock } from '@ema-agent/prompts';
+import type { PermissionMode } from '@ema-agent/permission';
 import type { SessionMode } from '@ema-agent/session';
 import type { SettingsStore } from '@ema-agent/settings';
 import {
@@ -46,6 +47,7 @@ export interface SessionSystemPromptDeps {
 
 export interface SessionSystemPromptInput {
   readonly sessionMode: SessionMode;
+  readonly permissionMode: PermissionMode;
   readonly cwd: string;
   readonly projectFolderPaths: readonly string[];
   readonly providerId: string;
@@ -64,6 +66,7 @@ export async function buildSessionSystemPrompt(
   return getSystemPrompt({
     characterPrompt: deps.characterPrompt,
     sessionMode,
+    permissionMode: input.permissionMode,
     toolNames: input.toolNames,
     environment: {
       platform: process.platform,

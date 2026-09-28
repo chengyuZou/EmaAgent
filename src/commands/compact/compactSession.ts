@@ -273,6 +273,7 @@ async function buildCompactSystemMessages(
       sessionMode: session.sessionMode,
       cwd,
       projectFolderPaths,
+      permissionMode: session.permissionMode,
       providerId,
       modelId,
       toolNames: [],

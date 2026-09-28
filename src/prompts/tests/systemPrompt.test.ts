@@ -12,6 +12,7 @@ function input(overrides: Partial<Parameters<typeof getSystemPrompt>[0]> = {}) {
   return {
     characterPrompt: () => CHARACTER,
     sessionMode: 'work' as const,
+    permissionMode: 'default' as const,
     toolNames: [
       BuiltinTools.FileRead.name,
       BuiltinTools.FileEdit.name,
@@ -30,7 +31,35 @@ function input(overrides: Partial<Parameters<typeof getSystemPrompt>[0]> = {}) {
 }
 
 describe('getSystemPrompt', () => {
-  it('块顺序：产品静态单块 → 数据级 → 角色单块 → Session 模式 → 能力 → 运行环境（最末）', () => {
+  it.each(['chat', 'work'] as const)('Plan 权限约束 %s 的实施要求, 不改变 SessionMode', sessionMode => {
+    const blocks = getSystemPrompt(input({ sessionMode, permissionMode: 'plan' }));
+    const plan = blocks.find(block => block.name === 'permission-mode')!;
+    const sessionIndex = blocks.findIndex(block => block.name === 'session-mode');
+
+    expect(blocks[sessionIndex + 1]).toBe(plan);
+    expect(plan.content).toContain('当前权限: Plan');
+    expect(plan.content).toContain('不自行切换权限');
+    expect(plan.content).toContain('用回复交付结论');
+    expect(plan.cacheBreakpoint).toBeUndefined();
+    expect(blocks[0]).toEqual(getSystemPrompt(input())[0]);
+  });
+
+  it.each([
+    ['default', '默认权限', '默认权限不是只读限制'],
+    ['acceptEdits', '自动接受编辑', '不因自动接受编辑而全面放行'],
+    ['bypassPermissions', '绕过权限', '绕过权限不保证每次调用都被允许'],
+  ] as const)('%s 说明实际权限边界, 不混入 Plan 限制', (permissionMode, label, detail) => {
+    const blocks = getSystemPrompt(input({ permissionMode }));
+    const permissions = blocks.filter(block => block.name === 'permission-mode');
+    expect(permissions).toHaveLength(1);
+    expect(permissions[0]!.content).toContain(`当前权限: ${label}`);
+    expect(permissions[0]!.content).toContain(detail);
+    expect(permissions[0]!.content).toContain('不自行切换权限');
+    expect(permissions[0]!.content).not.toContain('本轮只允许只读');
+    expect(blocks[0]).toEqual(getSystemPrompt(input())[0]);
+  });
+
+  it('块顺序: 产品静态单块 -> 数据级 -> 角色 -> Session 模式 -> 权限 -> 能力 -> 运行环境', () => {
     const blocks = getSystemPrompt(input({
       workspaceInstructions: '# 项目约定',
       memorySection: '使用 MemorySearch 按轨检索',
@@ -46,6 +75,7 @@ describe('getSystemPrompt', () => {
       'mcp-instructions',
       'character',
       'session-mode',
+      'permission-mode',
       'capability-guidance',
       'runtime-environment',
     ]);
@@ -66,7 +96,8 @@ describe('getSystemPrompt', () => {
     expect(env.content).toContain('openai / gpt-5.2');
     expect(env.content).toContain('win32');
     expect(blocks.at(-2)!.content).toContain('本轮能力引导');
-    expect(blocks.at(-3)!.content).toContain('当前执行方式：Work');
+    expect(blocks.at(-3)!.content).toContain('当前权限: 默认权限');
+    expect(blocks.at(-4)!.content).toContain('当前执行方式：Work');
   });
 
   it('memorySection 缺省时没有 memory-guidance 块；可选输入缺省无空洞', () => {

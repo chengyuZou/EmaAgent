@@ -9,7 +9,7 @@ import { escapeLikePattern } from '../../search/like-utils.js';
 export type SessionModeRow = 'chat' | 'work';
 /** sessions/turns 行上的剧情策略枚举（SQL CHECK 原样）。 */
 export type NarrativePolicyRow = 'auto' | 'always' | 'off';
-export type PermissionModeRow = 'default' | 'acceptEdits' | 'bypassPermissions';
+export type PermissionModeRow = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
 export type ReasoningEffortRow = 'off' | 'low' | 'medium' | 'high' | 'max';
 
 export interface SessionRow {

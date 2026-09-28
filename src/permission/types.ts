@@ -2,7 +2,7 @@
 
 // ── 模式与行为 ────────────────────────────────────────────────────────────────
 
-export type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions';
+export type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
 
 export type PermissionBehavior = 'allow' | 'deny' | 'ask';
 

@@ -57,7 +57,7 @@ checkPermissions(
 
 ```ts
 interface ToolPermissionContext {
-  mode: PermissionMode;                     // 'default' | 'acceptEdits' | 'bypassPermissions'
+  mode: PermissionMode;                     // 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan'
   alwaysAllowRules: ToolPermissionRulesBySource;  // 原始规则字符串桶
   alwaysDenyRules: ToolPermissionRulesBySource;
   alwaysAskRules: ToolPermissionRulesBySource;
@@ -106,6 +106,12 @@ interface ToolPermissionContext {
 | Task / Skill / Subagent / 其余 | `passthrough`（由整体规则或模式收口） |
 
 acceptEdits 模式语义归文件 Tool（"工作区内写入放行"）；default/bypassPermissions 归中央。
+
+`plan` 在 Turn 装配时按内置工具稳定 ID 收窄为只读 ToolPool, 模型定义与执行查找共用这个池.
+Shell, 写入工具, Subagent, AskUser 和 MCP 不进入 Plan 池; Task 与 Scratchpad 只保留读取.
+保留的只读工具仍走现有 deny/ask/allow 判定, Plan 不等于绕过读取权限.
+没有单独的 Plan SessionMode, 进入/退出工具或待确认状态. 菜单切换只影响下一根 Turn,
+聊天消息, 用量与正常运行记录仍然落库.
 
 ## 规则存储与生命周期
 

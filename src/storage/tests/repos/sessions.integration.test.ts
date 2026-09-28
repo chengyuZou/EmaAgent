@@ -27,6 +27,16 @@ describe('SessionsRepo integration', () => {
     expect(repo.findById('fork')?.permission_mode).toBe('bypassPermissions');
   });
 
+  it('Plan 创建, 修改和 Fork 沿用现有权限列, 不改变 Chat/Work', () => {
+    repo.insert({ id: 'plan-source', title: 'Plan', cwd: 'D:/work', sessionMode: 'work',
+      permissionMode: 'plan', createdAt: 1, updatedAt: 1 });
+    repo.forkInto('plan-source', 'plan-fork', 'Fork', 2);
+    expect(repo.findById('plan-fork')).toMatchObject({ permission_mode: 'plan', session_mode: 'work' });
+    repo.patch('plan-source', { permissionMode: 'default' }, 3);
+    repo.patch('plan-source', { permissionMode: 'plan' }, 4);
+    expect(repo.findById('plan-source')?.permission_mode).toBe('plan');
+  });
+
   it('listEnrichedAll 返回带投影的扁平行（分桶归业务层）', () => {
     insertSession({ id: 'a', cwd: 'D:/work/a', lastActivityAt: 30 });
     insertSession({ id: 'b', pinned: true, lastActivityAt: 50 });

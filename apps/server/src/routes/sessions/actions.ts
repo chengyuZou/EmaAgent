@@ -11,7 +11,7 @@ const patchSessionBody = z.object({
   cwd: z.string().min(1).max(500).optional(),
   sessionMode: z.enum(['chat', 'work']).optional(),
   narrativePolicy: z.enum(['auto', 'always', 'off']).optional(),
-  permissionMode: z.enum(['default', 'acceptEdits', 'bypassPermissions']).optional(),
+  permissionMode: z.enum(['default', 'acceptEdits', 'bypassPermissions', 'plan']).optional(),
   ttsEnabled: z.boolean().optional(),
   providerId: z.string().min(1).optional(),
   modelId: z.string().min(1).optional(),

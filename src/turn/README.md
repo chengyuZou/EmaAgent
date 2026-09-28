@@ -23,6 +23,13 @@ Compact 只认识模型消息数组和 `summarizedMessageCount`，不知道 SQL 
 
 这套对应关系是 Turn 内部运行状态，不向 Context、Compact 或 AgentLoop 增加 SQL 字段。模型专用引导目前没有落盘；如果以后要使它在重启后继续存在，需要单独改变 AgentLoop 的事件和 Session 写入流程。
 
+## Plan 权限
+
+`session.permissionMode = 'plan'` 在准备阶段收窄本轮 ToolPool, System Prompt 同时声明只读调查与规划约束.
+模型与执行器共用筛选后的池, 显式 allow 规则不会扩入已排除的工具. Chat/Work 不变,
+没有 Plan 进入/退出工具和确认状态. 权限在 Turn 开始时冻结, 菜单切换只影响下一根 Turn.
+只读池保留检索与读取, 包括 Task/Scratchpad 读取; 不包含 Shell, 写入, Subagent, AskUser 或 MCP.
+
 ## 子 Agent
 
 `prepare/prepareSubagent.ts` 为子 Agent 选择模型, System Prompt, 工具子集和独立的 Compact 闭包. 子 Agent 不提供根 Session 的 `macroPersistence`, 因此其摘要只改自己的模型消息.

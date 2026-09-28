@@ -1,7 +1,7 @@
-// 测试 prepareTurnTools 的 Chat 白名单、权限交互回路（allowSession 沉淀）与 AskUser 回路。
+// 测试 Turn 冻结工具池的 Plan 收窄, 权限交互回路和子代理事件顺序.
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import type { SubagentMessagesStore, SubagentStore } from '@ema-agent/agent';
+import type { SubagentExecutor } from '@ema-agent/agent';
 import { getSessionAllowRules } from '@ema-agent/permission';
 import type { SettingsStore } from '@ema-agent/settings';
 import {
@@ -64,8 +64,7 @@ function makeDeps(options: {
     registry,
     interactionQueue: options.queue,
     settings: options.settings,
-    subagentStore: {} as unknown as SubagentStore,
-    subagentMessagesStore: {} as unknown as SubagentMessagesStore,
+    subagents: {} as unknown as SubagentExecutor,
   };
 }
 
@@ -81,7 +80,8 @@ function makeInput(options: {
     cwd: '/w',
     workspaceRoots: ['/w'],
     prepareSubagent: async () => { throw new Error('不应派生子 Agent'); },
-    model: { providerId: 'p', modelId: 'm' },
+    providerId: 'p',
+    modelId: 'm',
     emit: (event: TurnStreamEvent) => { options.events.push(event); },
     permission: {
       mode: 'default' as const,
@@ -115,7 +115,7 @@ describe('prepareTurnTools', () => {
     expect(received).toEqual([{ cwd: '/old', roots: ['/current'] }]);
   });
 
-  it('Chat 保留只读工具与 Skill，Work 保留全部工具', () => {
+  it('Chat 和 Work 都保留宿主可用工具, 只读限制由 Plan 权限决定', () => {
     const readTool = fakeTool('Read', { id: BuiltinTools.FileRead.id });
     const skillTool = fakeTool('Skill', { id: BuiltinTools.Skill.id });
     const bashTool = fakeTool('Bash', { id: BuiltinTools.Bash.id });
@@ -128,10 +128,44 @@ describe('prepareTurnTools', () => {
     const chat = prepareTurnTools(deps, makeInput({ events: [], overrides: { sessionMode: 'chat' } }));
     expect(chat.toolPool.get('Read')).toBeDefined();
     expect(chat.toolPool.get('Skill')).toBeDefined();
-    expect(chat.toolPool.get('Bash')).toBeUndefined();
+    expect(chat.toolPool.get('Bash')).toBeDefined();
 
     const work = prepareTurnTools(deps, makeInput({ events: [] }));
     expect(work.toolPool.get('Bash')).toBeDefined();
+  });
+
+  it.each(['chat', 'work'] as const)('Plan 在 %s 中只保留指定只读工具, 执行器无法重新找到写工具', async sessionMode => {
+    const tools = Object.values(BuiltinTools).map(identity =>
+      fakeTool(identity.name, { id: identity.id }));
+    // 即使工具自称只读, 也不能用任意名字或 MCP 声明扩入 Plan 池.
+    tools.push(fakeTool('mcp__demo__read', { id: 'mcp:demo:read' }));
+    const deps = makeDeps({ tools, queue: new SessionInteractionQueue(null), settings: fakeSettings() });
+    const assembly = prepareTurnTools(deps, makeInput({
+      events: [],
+      overrides: {
+        sessionMode,
+        permission: {
+          mode: 'plan',
+          buckets: { alwaysAllowRules: { session: ['Write', 'Bash'] }, alwaysDenyRules: {}, alwaysAskRules: {} },
+        },
+      },
+    }));
+    expect(assembly.toolPool.tools.map(tool => tool.name).sort()).toEqual([
+      'Read', 'PdfRead', 'Glob', 'Grep', 'WebFetch', 'WebSearch', 'ProcessList', 'ProcessOutput',
+      'TaskGet', 'TaskList', 'KnowledgeBaseSearch', 'NarrativeSearch', 'MemorySearch', 'MemoryRead',
+      'MemoryList', 'Skill', 'ScratchpadRead', 'ScratchpadList',
+    ].sort());
+
+    const executor = assembly.createExecutor(() => undefined);
+    executor.addTool(0, 'read-1', 'Read', {});
+    executor.addTool(1, 'write-1', 'Write', {});
+    executor.addTool(2, 'shell-1', 'Bash', {});
+    await executor.join();
+    expect(executor.takeCompletedResults()).toMatchObject([
+      { toolCallId: 'read-1', isError: false },
+      { toolCallId: 'write-1', isError: true, errorCode: 'tool/unavailable' },
+      { toolCallId: 'shell-1', isError: true, errorCode: 'tool/unavailable' },
+    ]);
   });
 
   it('ask 决策经队列等用户；allowSession 沉淀 session 规则并发出 resolved', async () => {

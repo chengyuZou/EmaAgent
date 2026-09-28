@@ -36,12 +36,14 @@ const PERMISSION_MODE_LABELS: Record<PermissionMode, string> = {
   default: '默认权限',
   acceptEdits: '自动接受编辑',
   bypassPermissions: '绕过权限',
+  plan: 'Plan',
 };
 
 const PERMISSION_MODE_ICONS: Record<PermissionMode, string> = {
   default: 'i-lucide:shield-question',
   acceptEdits: 'i-lucide:file-check-2',
   bypassPermissions: 'i-lucide:shield-off',
+  plan: 'i-lucide:clipboard-list',
 };
 
 /* 菜单第二行解释(安全语义区,光看标题不够):每档说清它实际放行什么。 */
@@ -49,6 +51,7 @@ const PERMISSION_MODE_DESCRIPTIONS: Record<PermissionMode, string> = {
   default: '编辑文件和使用互联网时始终询问',
   acceptEdits: '仅对检测到的风险操作请求批准',
   bypassPermissions: '可不受限制地访问互联网和电脑上的任何文件',
+  plan: '仅使用只读工具调查和规划, 不实施修改; 切换在下一轮生效',
 };
 
 export function SessionModeSelector({
@@ -93,8 +96,8 @@ export function PermissionModeSelector({
   value: PermissionMode;
   onChange(value: PermissionMode): void;
 }): JSX.Element {
-  // 三档权限含义不同, 未选项也各自显示对应图标, 不用三个相同的圆圈.
-  const items = (): MenuItem[] => (['default', 'acceptEdits', 'bypassPermissions'] as const).map((mode) => ({
+  // 各档权限有对应图标, 菜单与当前按钮共用同一映射.
+  const items = (): MenuItem[] => (['default', 'acceptEdits', 'bypassPermissions', 'plan'] as const).map((mode) => ({
     kind: 'item',
     label: PERMISSION_MODE_LABELS[mode],
     description: PERMISSION_MODE_DESCRIPTIONS[mode],
@@ -117,7 +120,7 @@ export function PermissionModeSelector({
               : ''
           }`}
         >
-          <span className="i-lucide:shield-check text-sm" aria-hidden />
+          <span className={`${PERMISSION_MODE_ICONS[value]} text-sm`} aria-hidden />
           {PERMISSION_MODE_LABELS[value]}
           <span className="i-lucide:chevron-up text-[10px]" aria-hidden />
         </Button>

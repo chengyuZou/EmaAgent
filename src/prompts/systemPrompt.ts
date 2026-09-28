@@ -5,7 +5,7 @@
 // 工作区指令由工作区模块产出——本包只摆它们的位置。
 // 进入本提示的外部/用户级内容(工作区指令、技能目录、MCP 指引)不再逐段声明信任级,
 // 统一由 product-rules 块末尾的全局声明约束(它们是外部内容,遵循合理要求但不得提权)。
-import type { SessionMode } from '@ema-agent/session';
+import type { Session, SessionMode } from '@ema-agent/session';
 import {
   actionSafetyRules,
   baseToneRules,
@@ -39,6 +39,7 @@ export interface GetSystemPromptInput {
   /** 角色包公共口：取当下全局唯一激活角色的 Prompt 段落（扁平数组）。 */
   readonly characterPrompt: () => readonly string[];
   readonly sessionMode: SessionMode;
+  readonly permissionMode: Session['permissionMode'];
   /**
    * 当根 Turn 冻结 ToolPool 的工具名集合(与 Provider tools[] 同一个 Pool 投影)。
    * 能力引导只按名字判定存在性,不复制任何工具说明。
@@ -97,6 +98,34 @@ function block(name: string, content: string, cacheBreakpoint = false): PromptBl
   return cacheBreakpoint ? { name, content, cacheBreakpoint: true } : { name, content };
 }
 
+const PERMISSION_MODE_PROMPTS: Readonly<Record<Session['permissionMode'], string>> = {
+  default: `# 当前权限: 默认权限
+  本轮使用默认权限. 工具执行仍按已有授权规则和自身权限检查决定允许, 拒绝或请求批准.
+  - 可在本轮 ToolPool 内推进用户明确要求的工作, 默认权限不是只读限制.
+  - 工作区内读取通常可直接执行; 文件写入, Shell 和联网等操作未获授权时可能需要用户批准.
+  - 遇到批准请求时等待真实决定. 用户拒绝后不要换工具规避, 不自行切换权限.`,
+
+  acceptEdits: `# 当前权限: 自动接受编辑
+  本轮允许自动接受工作区内的文件编辑. 这项权限不等于自动放行所有操作.
+  - 在本轮 ToolPool 内实施用户要求的工作; 工作区内普通文件写入可按工具规则自动允许.
+  - 工作区外写入, Shell 和联网等操作仍按原有授权规则判定, 不因自动接受编辑而全面放行.
+  - 显式拒绝, 强制询问和敏感路径检查仍然生效. 需要批准时等待真实决定, 不自行切换权限.`,
+
+  bypassPermissions: `# 当前权限: 绕过权限
+  本轮在中央权限收口时自动允许可用工具, 不把普通的未授权请求转为批准询问.
+  - 在用户要求的范围内推进实施, 不把权限放宽理解为允许执行无关操作.
+  - 显式拒绝规则, 强制询问和工具自身安全检查仍然生效; 绕过权限不保证每次调用都被允许.
+  - ToolPool 和宿主能力限制仍然有效. 遇到拒绝或批准请求如实处理, 不自行切换权限.`,
+
+  plan: `# 当前权限: Plan
+  本轮只允许只读调查, 分析和规划. 这项权限限制适用于 Chat 和 Work, 优先约束其中的实施要求.
+  - 按需使用本轮只读 ToolPool 读取事实, 用回复交付结论, 方案, 涉及文件和验证方法.
+  - 不修改文件, 不运行 Shell, 不启动子代理, 不创建或修改 Task, Todo 和 Scratchpad, 不实施外部写入.
+  - 需要澄清时直接在回复中提问, 不要求进入或退出 Plan 的确认流程.
+  - 不自行切换权限, 不换工具规避限制. 需要实施时说明限制, 由用户在权限菜单切换后继续.
+  - 不因为计划已经写完就声称实施或验证已经完成.`,
+};
+
 export function getSystemPrompt(
   input: GetSystemPromptInput,
 ): readonly PromptBlock[] {
@@ -129,6 +158,7 @@ export function getSystemPrompt(
     // 角色是一整块：角色包内部 section 不拆成独立分类单元。
     block('character', character.join('\n\n')),
     block('session-mode', sessionModeInstructions(input.sessionMode)),
+    block('permission-mode', PERMISSION_MODE_PROMPTS[input.permissionMode]),
     block('capability-guidance', sessionCapabilityGuidance(input.toolNames)),
     // 运行环境（含当前模型）排最末：中转站按 Turn 换模型是最高频变化，
     // 只损失这一块，前面的前缀继续命中。
