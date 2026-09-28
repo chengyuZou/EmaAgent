@@ -1,6 +1,6 @@
 // 展示当前 Session 的队首 Permission 或 AskUser, 后续交互继续留在服务端单队列中.
 import { useEffect, useRef, useState, type CSSProperties, type JSX } from 'react';
-import { Button, Card, CardButton, Textarea } from '@ema-agent/ui';
+import { Button, Card, CardButton, IconButton, Textarea } from '@ema-agent/ui';
 import type { PermissionRequest, PermissionResponse } from '@ema-agent/permission';
 import type { AskUserQuestionSpec, AskUserRequiredEvent } from '@ema-agent/tools';
 import type { PendingInteraction } from '@ema-agent/turn';
@@ -83,8 +83,8 @@ function CollapsibleCard({
         border-[color-mix(in_srgb,var(--ema-warning)_33%,transparent)]
         bg-[color-mix(in_srgb,var(--ema-warning)_5%,var(--ema-surface-1))]"
     >
-      <div className="flex min-h-10 items-center gap-3 px-4 py-2">
-        <span className="min-w-0 flex-1 truncate text-xs font-medium text-[var(--ema-text-secondary)]">
+      <div className="flex min-h-8 items-center gap-2 px-3 py-1.5">
+        <span className="min-w-0 flex-1 break-words text-xs font-medium text-[var(--ema-text-secondary)]">
           {title}
         </span>
         {headerRight}
@@ -105,7 +105,7 @@ function CollapsibleCard({
         }}
       >
         <div>
-          <div className="border-t border-[var(--ema-border)] px-4 pb-4 pt-3">
+          <div className="border-t border-[var(--ema-border)] px-3 pb-3 pt-2">
             {children}
           </div>
         </div>
@@ -122,6 +122,7 @@ function PermissionView({
   request: PermissionRequest;
 }): JSX.Element {
   const [collapsed, setCollapsed] = useState(false);
+  const [copied, setCopied] = useState(false);
   const submission = useSubmission();
   const respond = (response: PermissionResponse): void => {
     void submission.run(() => (
@@ -142,11 +143,27 @@ function PermissionView({
     >
       <>
         {/* 工具名走正文字体(mono 拉丁+雅黑中文混排显扎眼); JSON 本体保留 mono。 */}
-        <div className="mb-1.5 text-xs font-semibold text-[var(--ema-primary-text)]">{request.toolName}</div>
-        <div className="max-h-56 overflow-auto rounded-xl bg-[var(--ema-bg)] p-3 font-mono text-xs text-[var(--ema-text-secondary)]">
-          <pre className="whitespace-pre-wrap">{rawInput}</pre>
+        <div className="overflow-hidden rounded-md border border-[var(--ema-border)]">
+          <div className="flex items-center gap-2 bg-[color-mix(in_srgb,var(--ema-primary)_7%,var(--ema-surface-1))] px-2 py-1">
+            <span className="min-w-0 flex-1 truncate text-xs font-semibold text-[var(--ema-primary-text)]">{request.toolName}</span>
+            <IconButton
+              label={copied ? '已复制输入' : '复制输入'}
+              icon={copied ? 'i-lucide:check' : 'i-lucide:copy'}
+              variant="ghost"
+              size="sm"
+              shape="rounded"
+              className="ema-tool-card-icon"
+              onClick={() => {
+                void navigator.clipboard.writeText(rawInput).then(() => {
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 1500);
+                });
+              }}
+            />
+          </div>
+          <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all bg-[color-mix(in_srgb,var(--ema-surface-2)_76%,var(--ema-surface-1))] p-2 font-mono text-[11px] leading-relaxed text-[var(--ema-text-secondary)]">{rawInput}</pre>
         </div>
-        <div className="mt-4 flex items-center justify-between gap-2">
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
           <Button
             variant="danger"
             size="sm"
@@ -293,7 +310,7 @@ function AskUserView({
         )}
         <p className="text-xs text-[var(--ema-text-tertiary)]">{question.header}</p>
         <p className="mb-3 mt-1 text-sm font-medium text-[var(--ema-text-primary)]">{question.question}</p>
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-1.5">
           {(question.options ?? []).map((option, index) => {
             const active = selected[question.id]?.includes(option.label) ?? false;
             return (
@@ -355,7 +372,7 @@ function AskUserView({
             )}
           </CardButton>
         </div>
-        <div className="mt-4 flex items-center gap-2">
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           <button
             type="button"
             className="mr-auto px-2 py-1 text-xs font-medium text-[var(--ema-text-primary)] hover:text-[var(--ema-danger)]"

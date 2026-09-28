@@ -61,7 +61,7 @@ export function SkillInstalledPage(): JSX.Element {
     const path = pendingRemove.path;
     setRemoving(true);
     try {
-      await useSkillStore.getState().remove(path);
+      await useSkillStore.getState().remove(pendingRemove);
       showToast(`已卸载 ${pendingRemove.name}`, { variant: 'success' });
       setPendingRemove(null);
       if (detail?.path === path) setDetail(null);
@@ -151,7 +151,7 @@ export function SkillInstalledPage(): JSX.Element {
                       }}
                     />
                   </Tooltip>
-                  {sk.scope === 'user' && (
+                  {sk.scope !== 'project' && (
                     <Tooltip content="卸载技能">
                       <Button
                         variant="ghost"
@@ -181,7 +181,9 @@ export function SkillInstalledPage(): JSX.Element {
         {pendingRemove && (
           <div className="flex flex-col gap-3">
             <Callout variant="danger" className="text-xs">
-              将删除本地目录与索引。市场安装的技能卸载后可随时回市场重装。
+              {pendingRemove.scope === 'builtin'
+                ? '将删除本地内置技能副本与索引，不修改发行包。重启不会自动恢复这个技能。'
+                : '将删除本地目录与索引。市场安装的技能卸载后可随时回市场重装。'}
             </Callout>
             <div className="flex justify-end gap-2">
               <Button variant="ghost" size="sm" onClick={() => setPendingRemove(null)}>取消</Button>
@@ -306,7 +308,7 @@ function SkillDetailDialog(props: {
             </div>
           )}
 
-          {skill.scope === 'user' && (
+          {skill.scope !== 'project' && (
             <div className="flex justify-end">
               <Button variant="danger" size="sm" onClick={() => onRemove(skill)}>卸载</Button>
             </div>

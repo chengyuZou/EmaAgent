@@ -88,16 +88,18 @@ export function KnowledgeBaseTab(): JSX.Element {
         </div>
       </div>
 
-      <KbCreateDialog
-        open={creating}
-        onOpenChange={setCreating}
-        onCreated={(id) => {
-          void useKnowledgeStore.getState().loadLibs().then(() => {
-            const created = useKnowledgeStore.getState().libs.find((lib) => lib.id === id);
-            if (created) openLibrary(created);
-          });
-        }}
-      />
+      <div className="ema-stagger-in">
+        <KbCreateDialog
+          open={creating}
+          onOpenChange={setCreating}
+          onCreated={(id) => {
+            void useKnowledgeStore.getState().loadLibs().then(() => {
+              const created = useKnowledgeStore.getState().libs.find((lib) => lib.id === id);
+              if (created) openLibrary(created);
+            });
+          }}
+        />
+      </div>
 
       <ConfirmDialog
         open={deleting !== null}

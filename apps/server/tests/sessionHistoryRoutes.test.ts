@@ -86,6 +86,7 @@ describe('Session collection and History routes', () => {
       sessionId: session.id,
       turnId: null,
       summary: 'summary',
+      savedTokens: 80,
       summarizedThroughMessageId: through.id,
     });
     sessions.appendMessage({ sessionId: session.id, turnId: null, role: 'user', blocks: 'tail-after-summary' });

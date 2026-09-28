@@ -2,7 +2,7 @@
    + 复制），输出区独立滚动、white-space: pre 不换行。 */
 
 .ema-terminal-card {
-  border-radius: var(--ema-radius-xl);
+  border-radius: var(--ema-radius-sm);
   border: 1px solid var(--ema-border);
   background: var(--ema-surface-1);
   overflow: hidden;
@@ -12,9 +12,9 @@
   display: flex;
   align-items: center;
   gap: var(--ema-space-2);
-  padding: var(--ema-space-1) var(--ema-space-2);
+  padding: 2px var(--ema-space-2);
   border-bottom: 1px solid var(--ema-border);
-  background: var(--ema-surface-2);
+  background: color-mix(in srgb, var(--ema-primary) 7%, var(--ema-surface-1));
 }
 
 .ema-terminal-gutter-dot {
@@ -49,10 +49,10 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
-  border-radius: var(--ema-radius-sm);
-  font-size: 12px;
+  width: 19px;
+  height: 19px;
+  border-radius: var(--ema-radius-xs);
+  font-size: 11px;
   color: var(--ema-text-tertiary);
   transition: color var(--ema-duration-fast) var(--ema-ease),
               background-color var(--ema-duration-fast) var(--ema-ease);
@@ -63,10 +63,26 @@
   background: var(--ema-surface-3);
 }
 
+.ema-terminal-result {
+  position: relative;
+  background: color-mix(in srgb, var(--ema-surface-2) 76%, var(--ema-surface-1));
+}
+
+.ema-terminal-result--error {
+  background: color-mix(in srgb, var(--ema-danger) 8%, var(--ema-surface-1));
+}
+
 .ema-terminal-output {
   max-height: 16rem;
   overflow: auto;
-  padding: var(--ema-space-2);
+  padding: 5px 25px 5px 7px;
+}
+
+.ema-terminal-result > .ema-terminal-copy {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  z-index: 1;
 }
 
 .ema-terminal-output pre {
@@ -78,4 +94,11 @@
   margin: 0;
   background: transparent;
   overflow-wrap: normal;
+}
+
+.ema-terminal-output .ema-terminal-error {
+  margin-top: 5px;
+  color: var(--ema-danger-text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }

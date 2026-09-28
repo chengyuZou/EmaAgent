@@ -5,7 +5,6 @@ import type { ToolResult } from '@ema-agent/tools';
 import { BuiltinTools } from '@ema-agent/tools/identity';
 import { asFileEditResult, asFileWriteResult } from '@ema-agent/builtin-tools/ui';
 import type { AssistantOutputBlock } from '../../../stores/turn.js';
-import { lookupToolUI } from './toolUIRegistry.js';
 
 type ToolUseBlock = Extract<AssistantBlock, { readonly type: 'tool_use' }>;
 type StreamingToolUseItem = Extract<AssistantOutputBlock, { readonly type: 'tool_use' }>;
@@ -105,17 +104,7 @@ export function tallyTools(calls: readonly ToolDisplayCall[]): ToolTally {
   return tally;
 }
 
-export function toolGroupSummary(calls: readonly ToolDisplayCall[], tally = tallyTools(calls)): string[] {
-  const only = calls.length === 1 ? calls[0] : undefined;
-  if (only) {
-    const change = editedFileOf(toolOutput(only));
-    if (change) {
-      return [`${change.created ? '已创建' : '已编辑'} ${basename(change.path)} +${change.additions} -${change.deletions}`];
-    }
-    const title = lookupToolUI(toolName(only))?.title?.(toolArgs(only));
-    if (title) return [truncate(title, 60)];
-  }
-
+export function toolGroupSummary(tally: ToolTally): string[] {
   const parts: string[] = [];
   if (tally.commands) parts.push(`执行 ${tally.commands} 条命令`);
   if (tally.reads) parts.push(`读取 ${tally.reads} 次`);
@@ -208,14 +197,6 @@ const TASK_TOOLS = new Set<string>([
   BuiltinTools.TaskList.name,
   BuiltinTools.TaskUpdate.name,
 ]);
-
-function basename(path: string): string {
-  return path.replaceAll('\\', '/').split('/').pop() ?? path;
-}
-
-function truncate(text: string, max: number): string {
-  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
-}
 
 /** 消息与 Turn 统一使用不随当前日期变化的绝对时间. */
 export function formatTurnTime(createdAt: number): string {

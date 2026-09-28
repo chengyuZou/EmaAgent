@@ -180,7 +180,7 @@ function groupContent(
 
   for (const item of content) {
     if ('source' in item) {
-      if (isAskUserCall(item) || (streaming && toolPermissionPending(item))) {
+      if ((streaming && isAskUserCall(item)) || (streaming && toolPermissionPending(item))) {
         flushTools();
         flushAgents();
       } else if (isSubagentCall(item)) {

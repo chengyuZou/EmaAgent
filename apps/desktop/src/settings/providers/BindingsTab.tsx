@@ -24,13 +24,13 @@ import {
 import { useProviderStore } from '../../stores/provider.js';
 import { PageHeader } from '../shared/PageHeader.js';
 import { showToast } from '../../lib/toast.js';
-import { MODEL_BINDING_CAPABILITIES } from '@ema-agent/providers/modelBindings';
+import { MODEL_BINDING_CAPABILITIES } from '@ema-agent/providers/types';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const MODULES: Array<{ id: BindingModule; label: string; desc: string }> = [
   { id: 'memory-llm',     label: 'Memory',        desc: '记忆提取与整合' },
-  { id: 'lightrag-embed', label: 'LightRAG 嵌入', desc: '⚠️ 叙事专用嵌入（Pro/bge-m3），重启应用后生效。中途换模型检索质量大幅下降——非必要勿动。知识库的嵌入在各库详情页单独配置。' },
+  { id: 'lightrag-embed', label: 'LightRAG 嵌入', desc: '⚠️ 叙事专用嵌入(Pro/bge-m3),重启应用后生效。中途换模型检索质量大幅下降——非必要勿动 知识库的嵌入在各库详情页单独配置 ' },
   { id: 'lightrag-llm',   label: 'LightRAG LLM',  desc: '叙事模式剧情检索 LLM' },
   { id: 'tts',           label: 'TTS',          desc: '语音合成' },
   { id: 'stt',           label: 'STT',          desc: '语音识别' },
@@ -212,7 +212,7 @@ export function BindingsTab(): JSX.Element {
   if (view === 'grid') {
     return (
       <div className="flex flex-col gap-6">
-        <PageHeader title="模型绑定" description="为每个模块选择要使用的模型；Provider 配好密钥后，池内模型即可绑定" />
+        <PageHeader title="模型绑定" description="为每个模块选择要使用的模型 Provider 配好密钥后, 池内模型即可绑定" />
 
         <div className="grid grid-cols-2 gap-3">
           {MODULES.map((m, i) => {
@@ -267,7 +267,7 @@ export function BindingsTab(): JSX.Element {
         />
         <div>
           <h2 className="text-base font-semibold text-[var(--ema-text-primary)]">{moduleLabel} 绑定
-            <span className="text-[10px] px-2 py-0.5 rounded-full
+            <span className="text-[10px] px-2 py-0.5 rounded-md
                              bg-[var(--ema-surface-2)] text-[var(--ema-text-tertiary)]
                              ml-2 align-middle uppercase">
               {CAP_LABELS[cap] ?? cap}
@@ -278,14 +278,14 @@ export function BindingsTab(): JSX.Element {
 
       {activeModule === 'lightrag-embed' && (
         <Callout variant="warn" className="text-xs leading-relaxed ema-slide-up">
-          这是 <b>叙事模式(narrative)专用</b>的嵌入模型，请绑定 <b>Pro/bge-m3</b>；知识库用的是另一套（各知识库详情页内配置）。
-          绑定与更换都<b>在重启应用后才生效</b>；中途换模型会让新查询与已建好的剧情向量<b>错配、检索质量大幅下降</b>——非必要请勿改动。
+          这是 <b>叙事模式(narrative)专用</b>的嵌入模型,请绑定 <b>Pro/bge-m3</b>;知识库用的是另一套
+          绑定与更换都<b>在重启应用后才生效</b>;中途换模型会让新查询与已建好的剧情向量<b>错配 检索质量大幅下降</b>——非必要请勿改动
           且 <b>叙事模式(narrative)</b> 仅适用于魔法少女的魔女审判的角色, 启用其他角色请勿使用
         </Callout>
       )}
 
       {loading ? (
-        <div className="text-[var(--ema-text-tertiary)] text-sm">加载中…</div>
+        <div className="text-[var(--ema-text-tertiary)] text-sm">加载中...</div>
       ) : (
         <>
           {/* ── Current binding ──────────────────────────────────────────── */}
@@ -315,7 +315,7 @@ export function BindingsTab(): JSX.Element {
                 </Button>
               </div>
             ) : (
-              <p className="text-[var(--ema-text-tertiary)] text-sm">暂无绑定，请从下方选择</p>
+              <p className="text-[var(--ema-text-tertiary)] text-sm">暂无绑定, 请从下方选择</p>
             )}
           </section>
 
@@ -324,7 +324,7 @@ export function BindingsTab(): JSX.Element {
             <div className="bg-[var(--ema-surface-1)] border border-[var(--ema-border)] rounded-xl px-4 py-6 text-center">
               <p className="text-[var(--ema-text-tertiary)] text-sm">暂无可用的 {CAP_LABELS[cap] ?? cap} 模型</p>
               <p className="text-[var(--ema-text-tertiary)] text-xs opacity-70 mt-1">
-                请先到「服务来源」为 Provider 配置密钥；保存后池内模型会出现在这里。
+                请先到「服务来源」为 Provider 配置密钥; 保存后池内模型会出现在这里
               </p>
             </div>
           ) : (

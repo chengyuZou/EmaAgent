@@ -85,8 +85,8 @@ export function TokenDetail({ sessionId }: { sessionId: string }): JSX.Element {
     let input = 0;
     let output = 0;
     for (const r of filtered) {
-      input += r.input_tokens ?? 0;
-      output += r.output_tokens ?? 0;
+      input += r.inputTokens ?? 0;
+      output += r.outputTokens ?? 0;
     }
     return { input, output };
   }, [chip, filtered]);
@@ -167,7 +167,7 @@ function FilterChip({ label, active, onClick }: {
       variant="secondary"
       size="sm"
       onClick={onClick}
-      className={`border rounded px-2.5 py-1 text-xs transition-colors 
+      className={`border rounded-md px-2.5 py-1 text-xs transition-colors
         ${active
           ? 'border-[var(--ema-primary)] bg-[var(--ema-primary-muted)] text-[var(--ema-primary)]'
           : 'border-[var(--ema-border)] text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)]'}`}
@@ -183,10 +183,10 @@ const UsageRow = memo(function UsageRow({ record }: { record: UsageRecord }): JS
   return (
     <div className="flex items-center gap-4 border-b border-[var(--ema-border)] px-2 py-1.5 text-xs">
       <span className="w-36 shrink-0 text-[var(--ema-text-tertiary)]">
-        {fmtDateFull(record.created_at)}
+        {fmtDateFull(record.createdAt)}
       </span>
       <span className="w-72 shrink-0 truncate font-mono text-[var(--ema-text-secondary)]">
-        {record.model_id}
+        {record.modelId}
       </span>
       <div className="ml-auto flex shrink-0 items-center gap-4">
         <span className="flex w-12 shrink-0 justify-end">
@@ -197,7 +197,7 @@ const UsageRow = memo(function UsageRow({ record }: { record: UsageRecord }): JS
           {cacheText && <span className="text-[var(--ema-text-tertiary)]"> · {cacheText}</span>}
         </span>
         <span className="w-14 shrink-0 text-right text-[var(--ema-text-tertiary)]">
-          {(record.duration_ms / 1_000).toFixed(1)}s
+          {(record.durationMs / 1_000).toFixed(1)}s
         </span>
       </div>
     </div>
@@ -209,9 +209,9 @@ function usageMetricText(record: UsageRecord): string {
   if (record.capability === 'tts' || record.capability === 'stt') {
     return record.quantity !== null ? `${record.quantity} ${record.unit ?? ''}`.trim() : '—';
   }
-  const input = record.input_tokens ?? 0;
-  const output = record.output_tokens ?? 0;
-  return `↑${input.toLocaleString()} ↓${output.toLocaleString()}`;
+  const input = record.inputTokens === null ? '—' : record.inputTokens.toLocaleString();
+  const output = record.outputTokens === null ? '—' : record.outputTokens.toLocaleString();
+  return `↑${input} ↓${output}`;
 }
 
 /**
@@ -221,13 +221,13 @@ function usageMetricText(record: UsageRecord): string {
 function usageCacheText(record: UsageRecord): string | null {
   if (record.capability !== 'llm' && record.capability !== 'vision') return null;
 
-  const cacheRead = record.cache_read_input_tokens;
-  const cacheWrite = record.cache_write_input_tokens;
+  const cacheRead = record.cacheReadInputTokens;
+  const cacheWrite = record.cacheWriteInputTokens;
   if (cacheRead === null && cacheWrite === null) return null;
 
   const parts: string[] = [];
   if (cacheRead !== null) {
-    const input = record.input_tokens ?? 0;
+    const input = record.inputTokens ?? 0;
     const rate = input > 0 ? `${((cacheRead / input) * 100).toFixed(1)}%` : '—';
     parts.push(`KV 读缓存 ${cacheRead.toLocaleString()} · KV缓存率 ${rate}`);
   }

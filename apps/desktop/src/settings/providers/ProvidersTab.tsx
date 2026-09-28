@@ -144,7 +144,7 @@ export function ProvidersTab(): JSX.Element {
   }
 
   return (
-    <div key="providers-grid" className="flex flex-col gap-8 pb-10 ema-fade-in">
+    <div key="providers-grid" className="flex flex-col pb-10 ema-fade-in">
       <PageHeader title="服务来源" description="配置 LLM / Embed / Rerank / TTS / STT / Vision 模型服务" />
       {!anyConfigured && (
         <Callout variant="info">
@@ -181,10 +181,12 @@ export function ProvidersTab(): JSX.Element {
                   </div>
                 );
               })}
-              <AddDashedCard
-                label={`添加${section.label}服务来源`}
-                onClick={() => setCreatingFor(section.key)}
-              />
+              <div className="relative group/card ema-stagger-in">
+                <AddDashedCard
+                  label={`添加${section.label}服务来源`}
+                  onClick={() => setCreatingFor(section.key)}
+                />
+              </div>
             </div>
           </SettingsSection>
         );

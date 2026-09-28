@@ -21,7 +21,7 @@ export function ToolsSettings(): JSX.Element {
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 pb-10">
+    <div className="flex w-full flex-col gap-8 pb-10">
       <header>
         <h1 className="text-xl font-semibold text-[var(--ema-text-primary)]">Tools</h1>
         <p className="mt-1 text-sm text-[var(--ema-text-tertiary)]">管理下一根 Turn 可以看到的内置工具和后台 Shell 行为.</p>

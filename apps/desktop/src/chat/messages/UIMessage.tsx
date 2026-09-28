@@ -1,9 +1,8 @@
 // 把一条持久或流式消息交给对应的具体渲染组件.
 
 import type { JSX } from 'react';
-import type { Message, MessageBlocks, SessionMessage, SessionUserBlock } from '@ema-agent/session';
+import type { SessionMessage } from '@ema-agent/session';
 import type { ToolResult } from '@ema-agent/tools';
-import { Markdown } from '@ema-agent/ui';
 import {
   isStreamingMessage,
   type StreamingMessage as StreamingMessageData,
@@ -70,23 +69,18 @@ export function toolResultsForMessages(
   return results;
 }
 
-function SessionSummary({ message }: { readonly message: Message }): JSX.Element {
+const tokenCountFormatter = new Intl.NumberFormat('zh-CN');
+
+function SessionSummary({ message }: { readonly message: SessionMessage }): JSX.Element {
   return (
-    <div className="flex items-center gap-3 py-2 text-xs text-[var(--ema-text-tertiary)]">
-      <span className="i-lucide:fold-horizontal" aria-hidden />
-      <span>上下文已压缩</span>
-      <span className="line-clamp-1 opacity-60">
-        <Markdown source={messageText(message)} />
-      </span>
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 py-3 text-xs text-[var(--ema-text-secondary)]">
+      <span className="i-ema:context-compact size-3.5 shrink-0" aria-hidden />
+      <span className="shrink-0 whitespace-nowrap">上下文已压缩</span>
+      {message.savedTokens !== undefined && (
+        <span className="whitespace-nowrap tabular-nums text-[var(--ema-text-tertiary)]">
+          压缩约 {tokenCountFormatter.format(message.savedTokens)} Tokens
+        </span>
+      )}
     </div>
   );
-}
-
-function messageText(message: { readonly blocks: MessageBlocks }): string {
-  if (typeof message.blocks === 'string') return message.blocks;
-  if (!Array.isArray(message.blocks)) return '';
-  return message.blocks
-    .filter((block): block is Extract<SessionUserBlock, { type: 'text' }> => block.type === 'text')
-    .map(block => block.text)
-    .join('');
 }

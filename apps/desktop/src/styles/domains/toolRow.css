@@ -14,6 +14,134 @@
   transition: background-color var(--ema-duration-fast) var(--ema-ease),
               color var(--ema-duration-fast) var(--ema-ease);
 }
+.ema-tool-card {
+  min-width: 0;
+}
+
+.ema-tool-card-header {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ema-tool-card-icon {
+  flex: none;
+  width: 19px;
+  height: 19px;
+  border-radius: var(--ema-radius-xs);
+}
+
+.ema-tool-card-icon > span {
+  font-size: 11px;
+}
+
+.ema-tool-card-body {
+  min-width: 0;
+  margin: 0 0 2px;
+}
+
+.ema-tool-frame {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--ema-border);
+  border-radius: var(--ema-radius-sm);
+}
+
+.ema-tool-pane {
+  position: relative;
+  min-width: 0;
+  padding: 4px 0 4px 7px;
+}
+
+.ema-tool-pane--input {
+  background: color-mix(in srgb, var(--ema-primary) 7%, var(--ema-surface-1));
+}
+
+.ema-tool-pane--output {
+  background: color-mix(in srgb, var(--ema-surface-2) 76%, var(--ema-surface-1));
+}
+
+.ema-tool-pane--error {
+  background: color-mix(in srgb, var(--ema-danger) 8%, var(--ema-surface-1));
+}
+
+.ema-tool-pane + .ema-tool-pane {
+  border-top: 1px solid var(--ema-border);
+}
+
+.ema-tool-pane-content {
+  min-width: 0;
+  padding-right: 25px;
+}
+
+.ema-tool-pane--input .ema-tool-pane-content {
+  max-height: 8rem;
+  overflow: auto;
+}
+
+.ema-tool-pane--output .ema-tool-pane-content {
+  max-height: 12rem;
+  overflow: auto;
+}
+
+.ema-tool-pane > .ema-tool-card-icon {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  z-index: 1;
+}
+
+.ema-tool-generic-result {
+  min-width: 0;
+}
+
+.ema-tool-pane .ema-tool-result-code,
+.ema-tool-pane pre.hljs {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.ema-tool-error {
+  min-width: 0;
+  margin-top: 5px;
+}
+
+.ema-tool-pane .ema-tool-error:first-child {
+  margin-top: 0;
+}
+
+.ema-tool-raw-input,
+.ema-tool-error-message {
+  margin: 0;
+  color: var(--ema-text-secondary);
+  font-family: var(--ema-font-mono);
+  font-size: 11px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ema-tool-error-code {
+  color: var(--ema-danger-text);
+  font-family: var(--ema-font-mono);
+  font-size: 10px;
+}
+
+.ema-tool-error-message {
+  color: var(--ema-danger-text);
+}
+
+.ema-tool-row-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  margin-left: auto;
+  font-size: 10px;
+  white-space: nowrap;
+}
 .ema-tool-row:hover {
   background: var(--ema-surface-2);
   color: var(--ema-text-secondary);
@@ -81,7 +209,7 @@
   gap: var(--ema-space-0_5);
   min-width: 0;
   margin: 0;
-  padding-right: var(--ema-space-5);
+  padding-right: 0;
   font-size: 11px;
   line-height: 1.55;
 }

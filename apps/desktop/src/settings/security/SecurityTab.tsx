@@ -6,7 +6,7 @@ import { TerminalShellSettings } from './TerminalShellSettings.js';
 
 export function SecurityTab(): JSX.Element {
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 pb-8">
+    <div className="mx-auto flex w-[100%] flex-col gap-8 pb-8">
       <PageHeader title="安全" description="执行环境的真实隔离等级，沙箱网络与集成终端" />
 
       <SandboxStatusSettings />

@@ -95,7 +95,7 @@ function ToastContainer(): JSX.Element {
         >
           <span className="min-w-0 flex-1 break-words">{t.message}</span>
           {t.count > 1 && (
-            <span className="shrink-0 rounded-full bg-[var(--ema-surface-2)] px-1.5 py-0.5 text-[10px] font-semibold leading-none">
+            <span className="shrink-0 rounded-md bg-[var(--ema-surface-2)] px-1.5 py-0.5 text-[10px] font-semibold leading-none">
               ×{t.count}
             </span>
           )}

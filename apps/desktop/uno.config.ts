@@ -32,6 +32,9 @@ const config: UserConfig = {
       // 名加 "icon-" 前缀 -> lucide:icon-git-fork failed to load,icon 不显示)
       lucide: lucideIcons,
       solar: solarIcons,
+      ema: {
+        'context-compact': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none"><path d="M4 2.5H3a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h1m8-11h1a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-1M6 5h4M6 8h5M6 11h3" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+      },
     },
   }),
   theme:     emaSharedTheme(),

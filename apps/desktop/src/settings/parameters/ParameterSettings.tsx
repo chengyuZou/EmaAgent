@@ -33,7 +33,7 @@ export function ParameterSettings(): JSX.Element {
 
   if (domain === null) {
     return (
-      <div className="mx-auto w-full max-w-5xl pb-10">
+      <div className="mx-auto w-[100%] pb-10">
         <PageHeader title="参数设置" description="调整基础产品行为" />
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {DOMAINS.map((item, index) => (
@@ -54,7 +54,7 @@ export function ParameterSettings(): JSX.Element {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 pb-10">
+    <div className="mx-auto flex w-[90%] flex-col gap-6 pb-10">
       <Button className="self-start" variant="ghost" size="sm" onClick={() => setDomain(null)}>
         <span className="i-lucide:arrow-left" aria-hidden />返回参数设置
       </Button>

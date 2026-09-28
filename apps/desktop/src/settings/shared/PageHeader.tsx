@@ -8,7 +8,7 @@ export function PageHeader({ title, description, action }: {
   action?: ReactNode;
 }): JSX.Element {
   return (
-    <header className="mb-5 flex items-end justify-between gap-4">
+    <header className="mb-0 flex items-end justify-between gap-4">
       <div className="min-w-0">
         <h1 className="text-[20px] font-semibold tracking-[-0.03em] text-[var(--ema-text-primary)]">
           {title}

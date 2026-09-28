@@ -26,7 +26,7 @@ export function PermissionSettings(): JSX.Element {
   if (settings.error) return <Callout variant="danger">权限设置读取失败: {settings.error}</Callout>;
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 pb-10">
+    <div className="flex w-full flex-col gap-8 pb-10">
       <header>
         <h1 className="text-xl font-semibold text-[var(--ema-text-primary)]">权限规则</h1>
         <p className="mt-1 text-sm text-[var(--ema-text-tertiary)]">控制 Tool 在执行前是直接允许, 直接拒绝还是询问.</p>

@@ -23,7 +23,10 @@ import type { SessionMessage } from '@ema-agent/session';
 import { charactersApi } from '../../api/characters.js';
 import { fetchServerObjectUrl } from '../../lib/serverFileUrl.js';
 import { useCharacterStore } from '../../stores/character.js';
-import { useSessionActivityStore } from '../../stores/sessionActivity.js';
+import {
+  useSessionActivityStore,
+  type ActiveCompact,
+} from '../../stores/sessionActivity.js';
 import { useSessionHistoryStore } from '../../stores/sessionHistory.js';
 import { useSessionStore } from '../../stores/session.js';
 import {
@@ -48,7 +51,7 @@ interface MessageListStatusProps {
   readonly loadingNewer: boolean;
   readonly error?: string;
   readonly stopReason?: string;
-  readonly compacting: boolean;
+  readonly activeCompact: ActiveCompact | null;
 }
 
 interface MessageListContext extends MessageListStatusProps {
@@ -150,8 +153,8 @@ export function MessageList({
     new Map(state.turnsBySession.get(sessionId) ?? [])
   )));
   const stopReason = useTurnStore(state => state.stopReasonBySession.get(sessionId));
-  const activeCompactId = useSessionActivityStore(
-    state => state.bySession.get(sessionId)?.activeCompactId,
+  const activeCompact = useSessionActivityStore(
+    state => state.bySession.get(sessionId)?.activeCompact ?? null,
   );
 
   useEffect(() => {
@@ -345,7 +348,7 @@ export function MessageList({
     );
   }
   if (messages.length === 0) {
-    if (!history.error && !stopReason && !activeCompactId) {
+    if (!history.error && !stopReason && !activeCompact) {
       return (
         <div className="flex min-h-0 flex-1 flex-col" style={{ paddingBottom: bottomInset ?? 0 }}>
           <ChatEmptyState sessionId={sessionId} />
@@ -361,7 +364,7 @@ export function MessageList({
           loadingNewer={history.loadingNewer}
           error={history.error}
           stopReason={stopReason}
-          compacting={Boolean(activeCompactId)}
+          activeCompact={activeCompact}
         />
       </div>
     );
@@ -387,7 +390,7 @@ export function MessageList({
         data={messages}
         computeItemKey={(_index, message) => messageListKey(message)}
         alignToBottom={!history.windowAnchorMessageId}
-        followOutput={turns.size > 0 || Boolean(activeCompactId) ? 'auto' : false}
+        followOutput={turns.size > 0 || activeCompact !== null ? 'auto' : false}
         initialTopMostItemIndex={anchorIndex >= 0
           ? messageScrollLocation(anchorIndex)
           : { index: 'LAST', align: 'end' }}
@@ -403,7 +406,7 @@ export function MessageList({
           loadingNewer: history.loadingNewer,
           error: history.error,
           stopReason: turns.size === 0 ? stopReason : undefined,
-          compacting: Boolean(activeCompactId),
+          activeCompact,
           bottomInset,
         }}
         components={MESSAGE_LIST_COMPONENTS}
@@ -502,17 +505,40 @@ function MessageListStatus({
   loadingNewer,
   error,
   stopReason,
-  compacting,
+  activeCompact,
 }: MessageListStatusProps): JSX.Element {
+  const [compactElapsedSeconds, setCompactElapsedSeconds] = useState<number | null>(null);
+
+  useEffect(() => {
+    const startedAt = activeCompact?.startedAt;
+    if (startedAt === null || startedAt === undefined) {
+      setCompactElapsedSeconds(null);
+      return;
+    }
+    const updateElapsed = (): void => {
+      setCompactElapsedSeconds(Math.max(0, Math.floor((Date.now() - startedAt) / 1_000)));
+    };
+    updateElapsed();
+    const timer = window.setInterval(updateElapsed, 1_000);
+    return () => window.clearInterval(timer);
+  }, [activeCompact]);
+
   return (
     <div className="flex min-h-4 flex-col items-center gap-2 py-2">
-      {compacting && (
-        <div
-          role="status"
-          className="ema-shimmer mx-auto flex w-full max-w-3xl items-center gap-2 border-t border-[var(--ema-border)] px-3 py-2 text-xs text-[var(--ema-text-secondary)]"
-        >
-          <span className="i-lucide:sliders-horizontal size-3.5 shrink-0 text-[var(--ema-primary)]" aria-hidden />
-          <span>正在压缩上下文…</span>
+      {activeCompact && (
+        <div className="mx-auto w-full max-w-3xl">
+          {compactElapsedSeconds !== null && (
+            <div className="border-b border-[var(--ema-border)] px-3 py-2 text-xs text-[var(--ema-text-tertiary)]">
+              已处理 {compactElapsedSeconds}秒
+            </div>
+          )}
+          <div
+            role="status"
+            className="ema-shimmer flex items-center gap-2 px-3 py-2 text-xs text-[var(--ema-text-secondary)]"
+          >
+            <span className="i-ema:context-compact size-3.5 shrink-0 text-[var(--ema-primary)]" aria-hidden />
+            <span>正在压缩上下文…</span>
+          </div>
         </div>
       )}
       {loadingNewer && (

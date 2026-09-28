@@ -1,4 +1,4 @@
-// 把连续普通 Tool 折叠成一行摘要, 只有用户展开时才挂载组内调用明细.
+// 单个普通 Tool 直接显示调用卡片, 多个连续 Tool 才折叠成一行摘要.
 
 import { memo, useState, type JSX } from 'react';
 import { ToolCallBlock } from './ToolCallBlock.js';
@@ -21,15 +21,34 @@ export const ToolGroup = memo(function ToolGroup({
   readonly sessionId?: string;
 }): JSX.Element {
   const [open, setOpen] = useState(false);
+  const [hasOpened, setHasOpened] = useState(false);
+
+  // 流式期间调用数量会增长, Hook 必须在单个调用的提前返回之前执行.
+  if (calls.length === 1) {
+    const call = calls[0]!;
+    return (
+      <ToolCallBlock
+        key={toolCallId(call)}
+        call={call}
+        streaming={streaming}
+        turnId={turnId}
+        sessionId={sessionId}
+      />
+    );
+  }
+
   const tally = tallyTools(calls);
-  const summary = toolGroupSummary(calls, tally);
+  const summary = toolGroupSummary(tally);
 
   return (
     <div className="flex flex-col">
       <button
         type="button"
         className="flex items-center gap-1.5 py-0.5 text-left text-xs select-none text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-secondary)] transition-colors"
-        onClick={() => setOpen(value => !value)}
+        onClick={() => {
+          setHasOpened(true);
+          setOpen(value => !value);
+        }}
         aria-expanded={open}
       >
         <span className="i-lucide:wrench text-[11px] shrink-0" aria-hidden />
@@ -49,7 +68,8 @@ export const ToolGroup = memo(function ToolGroup({
         style={{ gridTemplateRows: open ? '1fr' : '0fr', opacity: open ? 1 : 0 }}
       >
         <div className="flex flex-col">
-          {open && calls.map(call => (
+          {/* 首次展开才挂载明细, 随后保持挂载, 让 CSS 完成收起动画并保留调用卡片状态. */}
+          {hasOpened && calls.map(call => (
             <ToolCallBlock
               key={toolCallId(call)}
               call={call}
