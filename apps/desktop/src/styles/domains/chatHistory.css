@@ -1,17 +1,26 @@
-/* 聊天历史滚动边缘、用户消息内部块、TurnRail、思考块的专属样式。
-   .markdown-content 排版体系在 primitives/markdown.css; 本文件只保留
-   chat 气泡内的换行例外(气泡窄, 代码与长路径 pre-wrap 不横向滚动)。 */
+/* MessageList 与 ChatInput 的共享内容列, 以及历史滚动边缘、消息内部块、TurnRail 和思考块.
+   .markdown-content 排版体系在 primitives/markdown.css; 本文件保留
+   chat 气泡内的换行例外(气泡窄, 代码与长路径 pre-wrap 不横向滚动). */
 
-.ema-fade-mask-top::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 3.5rem;
-  right: 3.5rem;
-  height: var(--ema-message-top-inset);
-  background: linear-gradient(var(--ema-bg), transparent);
-  pointer-events: none;
-  z-index: 1;
+[data-ema-chat-column] {
+  --ema-chat-content-max-width: 56rem;
+  --ema-chat-content-gutter: 3.5rem;
+  --ema-chat-scrollbar-width: 0px;
+}
+
+.ema-chat-content-column {
+  width: 100%;
+  max-width: var(--ema-chat-content-max-width, 56rem);
+  margin-inline: auto;
+}
+
+.ema-chat-history-content-inset {
+  padding-inline: var(--ema-chat-content-gutter, 3.5rem);
+}
+
+.ema-chat-history-inset {
+  padding-left: var(--ema-chat-content-gutter, 3.5rem);
+  padding-right: calc(var(--ema-chat-content-gutter, 3.5rem) + var(--ema-chat-scrollbar-width, 0px));
 }
 
 .ema-md-inline p {

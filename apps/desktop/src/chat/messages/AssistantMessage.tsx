@@ -49,7 +49,7 @@ export const AssistantMessage = memo(function AssistantMessage({
 
   // Server 分配的同一 Message ID 让父列表复用此组件, 从而避免落盘交接时重新播放入场动画.
   return (
-    <div className="ema-message-shell flex mr-12 ema-bubble-in">
+    <div className="ema-message-shell flex ema-bubble-in">
       <div className="flex min-w-20 w-full max-w-full flex-col">
         {streaming && message.blocks.length === 0 ? (
           <StreamingDots />

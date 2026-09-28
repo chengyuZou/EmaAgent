@@ -91,7 +91,7 @@ function ThemeColorSection(): JSX.Element {
   const setHueDynamic = useThemeStore(state => state.setHueDynamic);
 
   return (
-    <section className="rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] p-5 space-y-4">
+    <section className="ema-material-section rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] p-5 space-y-4">
       <div>
         <p className="text-sm font-medium text-[var(--ema-text-secondary)]">主题色</p>
         <p className="text-xs mt-0.5 text-[var(--ema-text-tertiary)]">拖动选择任意色相，辅色(紫罗兰)会自动跟随</p>
@@ -132,7 +132,7 @@ function PaletteSection(): JSX.Element {
   const setHue = useThemeStore(state => state.setHue);
 
   return (
-    <section className="rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] p-5 space-y-2">
+    <section className="ema-material-section rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] p-5 space-y-2">
       <div className="pb-1">
         <p className="text-sm font-medium text-[var(--ema-text-secondary)]">调色预设</p>
         <p className="text-xs mt-0.5 text-[var(--ema-text-tertiary)]">策展调色板，点击色块取其色相</p>
@@ -140,7 +140,7 @@ function PaletteSection(): JSX.Element {
       {PALETTE_SWATCHES.map(palette => (
         <div
           key={palette.id}
-          className="flex items-center justify-between gap-4 rounded-lg bg-[var(--ema-surface-2)] px-4 py-4"
+          className="ema-material-card flex items-center justify-between gap-4 rounded-lg bg-[var(--ema-surface-2)] px-4 py-4"
         >
           <div className="min-w-0">
             <p className="text-sm font-medium text-[var(--ema-text-secondary)]">{palette.label}</p>
@@ -234,7 +234,7 @@ export function AppearanceTab(): JSX.Element {
       <WallpaperTab />
 
       {/* ── Shape ── */}
-      <section className="rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] p-5 space-y-4">
+      <section className="ema-material-section rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] p-5 space-y-4">
         <div>
           <p className="text-sm font-medium text-[var(--ema-text-secondary)]">圆角风格</p>
           <p className="text-xs mt-0.5 text-[var(--ema-text-tertiary)]">调整按钮、卡片、弹窗的圆角程度</p>
@@ -258,7 +258,7 @@ export function AppearanceTab(): JSX.Element {
       </section>
 
       {/* 正文字体只管 Markdown 正文与长文本, 不影响界面控件、代码块和公式。 */}
-      <section className="rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] p-5 space-y-4">
+      <section className="ema-material-section rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] p-5 space-y-4">
         <div>
           <p className="text-sm font-medium text-[var(--ema-text-secondary)]">Markdown 正文字体</p>
           <p className="text-xs mt-0.5 text-[var(--ema-text-tertiary)]">
@@ -274,14 +274,14 @@ export function AppearanceTab(): JSX.Element {
           onLazyLoad={() => void ensureSystemFonts()}
         />
 
-        <div className="markdown-content rounded-lg border border-[var(--ema-border)] bg-[var(--ema-surface-1)] px-4 py-3 text-sm text-[var(--ema-text-primary)]">
+        <div className="ema-material-reading markdown-content rounded-lg border border-[var(--ema-border)] bg-[var(--ema-surface-1)] px-4 py-3 text-sm text-[var(--ema-text-primary)]">
           Ema 会用这种字体显示 Markdown 正文。The quick brown fox jumps over the lazy dog.
         </div>
       </section>
 
 
       {/* 等宽字体只管代码/JSON/终端/工具行, 不影响界面控件与正文。 */}
-      <section className="rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] p-5 space-y-4">
+      <section className="ema-material-section rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] p-5 space-y-4">
         <div>
           <p className="text-sm font-medium text-[var(--ema-text-secondary)]">等宽字体</p>
           <p className="text-xs mt-0.5 text-[var(--ema-text-tertiary)]">
@@ -297,14 +297,14 @@ export function AppearanceTab(): JSX.Element {
           onLazyLoad={() => void ensureSystemFonts()}
         />
 
-        <div className="rounded-lg border border-[var(--ema-border)] bg-[var(--ema-surface-1)] px-4 py-3 font-mono text-xs text-[var(--ema-text-secondary)]">
+        <div className="ema-material-reading rounded-lg border border-[var(--ema-border)] bg-[var(--ema-surface-1)] px-4 py-3 font-mono text-xs text-[var(--ema-text-secondary)]">
           const ema = '代码 / JSON / 终端用这种字体显示'; // 0123456789
         </div>
       </section>
 
 
       {/* 代码配色只管语法高亮, 色板在 src/ui/styles/foundation/syntax-themes.css。 */}
-      <section className="rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] p-5 space-y-4">
+      <section className="ema-material-section rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] p-5 space-y-4">
         <div>
           <p className="text-sm font-medium text-[var(--ema-text-secondary)]">代码配色</p>
           <p className="text-xs mt-0.5 text-[var(--ema-text-tertiary)]">
@@ -319,7 +319,7 @@ export function AppearanceTab(): JSX.Element {
         />
 
         <div className="markdown-content">
-          <pre>
+          <pre className="ema-material-code">
             <span style={{ color: 'var(--ema-syntax-comment)' }}>// 实时预览: 语法色板全色样</span>{'\n'}
             <span style={{ color: 'var(--ema-syntax-key)' }}>const</span>
             <span style={{ color: 'var(--ema-text-primary)' }}> ema = </span>
@@ -339,7 +339,7 @@ export function AppearanceTab(): JSX.Element {
 
 
       {/* ── Mode ── */}
-      <section className="rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] p-5 space-y-4">
+      <section className="ema-material-section rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] p-5 space-y-4">
         <div>
           <p className="text-sm font-medium text-[var(--ema-text-secondary)]">显示模式</p>
           <p className="text-xs mt-0.5 text-[var(--ema-text-tertiary)]">切换深色 / 浅色主题，文字与背景自动适配</p>
@@ -348,8 +348,9 @@ export function AppearanceTab(): JSX.Element {
         <div className="flex items-center gap-4">
           <Button
             variant="ghost"
+            data-selected={mode === 'system' || undefined}
             onClick={() => handleModeClick('system')}
-            className={`flex items-center gap-2 px-4 py-2.5 h-auto rounded-xl border transition-all duration-[var(--ema-duration-base)] ema-card-decorate ema-card-decorate--grid ${
+            className={`ema-material-card flex items-center gap-2 px-4 py-2.5 h-auto rounded-xl border transition-all duration-[var(--ema-duration-base)] ema-card-decorate ema-card-decorate--grid ${
               mode === 'system'
                 ? 'border-[var(--ema-primary)] bg-[var(--ema-primary-muted)] text-[var(--ema-text-primary)]'
                 : 'border-[var(--ema-border)] bg-[var(--ema-surface-1)] text-[var(--ema-text-tertiary)] hover:border-[var(--ema-border-hover)]'
@@ -360,8 +361,9 @@ export function AppearanceTab(): JSX.Element {
           </Button>
           <Button
             variant="ghost"
+            data-selected={mode === 'light' || undefined}
             onClick={() => handleModeClick('light')}
-            className={`flex items-center gap-2 px-4 py-2.5 h-auto rounded-xl border transition-all duration-[var(--ema-duration-base)] ema-card-decorate ema-card-decorate--grid ${
+            className={`ema-material-card flex items-center gap-2 px-4 py-2.5 h-auto rounded-xl border transition-all duration-[var(--ema-duration-base)] ema-card-decorate ema-card-decorate--grid ${
               mode === 'light'
                 ? 'border-[var(--ema-primary)] bg-[var(--ema-primary-muted)] text-[var(--ema-text-primary)]'
                 : 'border-[var(--ema-border)] bg-[var(--ema-surface-1)] text-[var(--ema-text-tertiary)] hover:border-[var(--ema-border-hover)]'
@@ -372,8 +374,9 @@ export function AppearanceTab(): JSX.Element {
           </Button>
           <Button
             variant="ghost"
+            data-selected={mode === 'dark' || undefined}
             onClick={() => handleModeClick('dark')}
-            className={`flex items-center gap-2 px-4 py-2.5 h-auto rounded-xl border transition-all duration-[var(--ema-duration-base)] ema-card-decorate ema-card-decorate--grid ${
+            className={`ema-material-card flex items-center gap-2 px-4 py-2.5 h-auto rounded-xl border transition-all duration-[var(--ema-duration-base)] ema-card-decorate ema-card-decorate--grid ${
               mode === 'dark'
                 ? 'border-[var(--ema-primary)] bg-[var(--ema-primary-muted)] text-[var(--ema-text-primary)]'
                 : 'border-[var(--ema-border)] bg-[var(--ema-surface-1)] text-[var(--ema-text-tertiary)] hover:border-[var(--ema-border-hover)]'

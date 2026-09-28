@@ -1,6 +1,6 @@
 // 组织十一个已定稿的设置业务入口, 不再读取后端 UI 目录或生成通用表单.
 // 有并列子业务的模块(技能库与 MCP)由一级入口展开或收起二级导航.
-import { useEffect, useState, type JSX } from 'react';
+import { useEffect, useLayoutEffect, useState, type JSX } from 'react';
 import { Button, Callout, Select } from '@ema-agent/ui';
 import { ErrorBoundary } from '../lib/error-boundary.js';
 import { mountSystemEvents } from '../lib/system-sse.js';
@@ -123,6 +123,12 @@ export function SettingsPanel(): JSX.Element {
   const [expandedPage, setExpandedPage] = useState<SettingsPageId | null>(null);
   const activePage = pageOf(active);
 
+  // 仅外观页启用控件和 Portal 的试验材质, 其他设置业务页面本轮保持原样.
+  useLayoutEffect(() => {
+    document.documentElement.dataset.settingsPage = active;
+    return () => { delete document.documentElement.dataset.settingsPage; };
+  }, [active]);
+
   useEffect(() => mountSystemEvents({ ownsConnection: false }), []);
   useEffect(() => subscribeSystemEvent(event => {
     handleCharacterSystemEvent(event);
@@ -150,7 +156,7 @@ export function SettingsPanel(): JSX.Element {
     <ErrorBoundary>
       <div className="ema-wallpaper-window ema-wallpaper-settings fixed inset-0 isolate flex bg-[var(--ema-bg)] text-[var(--ema-text-primary)]">
         <WallpaperLayer target="settings" />
-        <nav className="ema-wallpaper-sidebar relative z-10 hidden w-56 flex-none flex-col overflow-y-auto border-r border-[var(--ema-border)] bg-[var(--ema-sidebar-bg)] px-2 py-4 md:flex" aria-label="设置导航">
+        <nav className="ema-settings-sidebar ema-wallpaper-sidebar relative z-10 hidden w-56 flex-none flex-col overflow-y-auto border-r border-[var(--ema-border)] bg-[var(--ema-sidebar-bg)] px-2 py-4 md:flex" aria-label="设置导航">
           <p className="px-3 pb-4 text-base font-semibold">设置</p>
           {SETTINGS_PAGES.map(page => {
             const pageActive = activePage.id === page.id;
@@ -203,7 +209,7 @@ export function SettingsPanel(): JSX.Element {
 
         <main
           key={active}
-          className={`relative z-10 min-w-0 flex-1 ema-slide-right ${activePage.fullHeight ? 'overflow-hidden' : 'overflow-y-auto px-5 py-5 md:px-8 md:py-6'}`}
+          className={`relative z-10 min-w-0 flex-1 ema-slide-right ${active === 'appearance' ? 'ema-settings-appearance' : ''} ${activePage.fullHeight ? 'overflow-hidden' : 'overflow-y-auto px-5 py-5 md:px-8 md:py-6'}`}
           id="settings-scroll-container"
         >
           <div className={`mb-5 md:hidden ${activePage.fullHeight ? 'px-5 pt-5' : ''}`}>

@@ -10,7 +10,7 @@
  * 顶部回退按钮(IconButton i-lucide:arrow-left)+ 文件名 + 大小。
  * 入场 ema-fade-in(style.css)。ScrollArea 包裹(@ema-agent/ui)。
  */
-import { useEffect, useState, type JSX } from 'react';
+import { useEffect, useMemo, useState, type JSX } from 'react';
 import { IconButton, Markdown, ScrollArea, Spinner, highlightFile } from '@ema-agent/ui';
 import { filesApi, type FileContent } from '../../../../api/workspaces.js';
 
@@ -106,14 +106,55 @@ function ContentBody({ content, ext }: { content: FileContent; ext: string }): J
   if (ext === 'md' || ext === 'mdx') {
     return <Markdown source={content.content} />;
   }
-  // 代码/文本:highlight.js 直接高亮(按 ext 指定语言,未知自动检测),不包 Markdown
-  const html = highlightFile(content.content, ext);
-  return (
-    <pre className="ema-font-mono min-w-0 whitespace-pre-wrap break-words text-xs [overflow-wrap:anywhere]">
-      <code
-        className="hljs block min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere]"
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
-    </pre>
+  return <CodePreview source={content.content} ext={ext} />;
+}
+
+function CodePreview({ source, ext }: { source: string; ext: string }): JSX.Element {
+  const lines = useMemo(
+    () => splitHighlightedLines(highlightFile(source.replace(/\r\n?/g, '\n'), ext)),
+    [source, ext],
   );
+  const gutterWidth = `${String(lines.length).length + 1}ch`;
+  return (
+    <div className="ema-font-mono min-w-0 text-xs">
+      {lines.map((html, index) => (
+        <div key={index} className="flex min-w-0 leading-[1.7]">
+          <span
+            className="shrink-0 select-none pr-2 text-right tabular-nums text-[var(--ema-text-tertiary)]"
+            style={{ width: gutterWidth }}
+            aria-hidden
+          >
+            {index + 1}
+          </span>
+          <code
+            className="hljs block min-w-0 flex-1 whitespace-pre-wrap break-words [overflow-wrap:anywhere]"
+            dangerouslySetInnerHTML={{ __html: html || ' ' }}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Split highlight.js spans at newlines while keeping multiline token colors intact. */
+export function splitHighlightedLines(html: string): string[] {
+  const lines: string[] = [];
+  const openSpans: string[] = [];
+  let current = '';
+  for (const part of html.split(/(<span\b[^>]*>|<\/span>|\n)/g)) {
+    if (part === '\n') {
+      lines.push(current + '</span>'.repeat(openSpans.length));
+      current = openSpans.join('');
+    } else if (part.startsWith('<span')) {
+      openSpans.push(part);
+      current += part;
+    } else if (part === '</span>') {
+      openSpans.pop();
+      current += part;
+    } else {
+      current += part;
+    }
+  }
+  lines.push(current);
+  return lines;
 }

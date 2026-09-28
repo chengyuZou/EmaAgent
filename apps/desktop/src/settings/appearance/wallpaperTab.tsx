@@ -10,7 +10,7 @@ import {
   Switch,
   Tabs,
 } from '@ema-agent/ui';
-import type { WallpaperSettings } from '@ema-agent/server/settings/wallpaperSetting.js';
+import type { MaterialMode, WallpaperSettings } from '@ema-agent/server/settings/wallpaperSetting.js';
 import {
   DEFAULT_WALLPAPER_IMAGE_PARAMS,
   DEFAULT_WALLPAPER_SETTINGS,
@@ -28,6 +28,11 @@ const WINDOW_TABS = [
 
 const FILE_TYPES = '.png,.jpg,.jpeg,.webp';
 
+const MATERIAL_TABS = [
+  { value: 'translucent', label: '通透', content: null },
+  { value: 'frosted', label: '磨砂', content: null },
+];
+
 interface PreviewFrame {
   readonly id: number;
   readonly target: WallpaperWindowTarget;
@@ -39,8 +44,8 @@ interface PreviewFrame {
 }
 
 export function WallpaperTab(): JSX.Element {
-  const [target, setTarget] = useState<WallpaperWindowTarget>('chat');
-  const [displayTarget, setDisplayTarget] = useState<WallpaperWindowTarget>('chat');
+  const [target, setTarget] = useState<WallpaperWindowTarget>('settings');
+  const [displayTarget, setDisplayTarget] = useState<WallpaperWindowTarget>('settings');
   const [items, setItems] = useState<WallpaperImageSummary[]>([]);
   const [settings, setSettings] = useState<WallpaperSettings>(DEFAULT_WALLPAPER_SETTINGS);
   const [selectedName, setSelectedName] = useState('');
@@ -84,6 +89,8 @@ export function WallpaperTab(): JSX.Element {
   const selected = items.find(item => item.name === selectedName);
   const active = settings.activeImage === selectedName;
   const controlsDisabled = busy || loading || target !== displayTarget;
+  const materialDisabled = controlsDisabled || !settings.enabled
+    || !items.some(item => item.name === settings.activeImage);
   const filenameBase = selected ? selected.name.slice(0, selected.name.lastIndexOf('.')) : '';
 
   async function saveSettings(next: WallpaperSettings): Promise<void> {
@@ -138,8 +145,9 @@ export function WallpaperTab(): JSX.Element {
     void withBusy(() => saveSettings({ ...settings, enabled }));
   }
 
-  function setAcrylicEnabled(acrylicEnabled: boolean): void {
-    void withBusy(() => saveSettings({ ...settings, acrylicEnabled }));
+  function setMaterialMode(value: string): void {
+    if (materialDisabled) return;
+    void withBusy(() => saveSettings({ ...settings, materialMode: value as MaterialMode }));
   }
 
   function selectImage(name: string): void {
@@ -222,7 +230,7 @@ export function WallpaperTab(): JSX.Element {
 
   return (
     <section
-      className="ema-wallpaper-controls space-y-5 rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] p-5"
+      className="ema-material-section ema-wallpaper-controls space-y-5 rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] p-5"
       onPointerDownCapture={event => { event.currentTarget.dataset.pointerFocus = 'true'; }}
       onKeyDownCapture={event => { delete event.currentTarget.dataset.pointerFocus; }}
       onBlurCapture={event => {
@@ -253,14 +261,23 @@ export function WallpaperTab(): JSX.Element {
           className="w-64 max-w-full"
         />
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-[var(--ema-text-secondary)]">
-          <div className="flex items-center gap-2">
-            <span>亚克力质感</span>
-            <Switch
-              checked={settings.acrylicEnabled}
-              onCheckedChange={setAcrylicEnabled}
-              disabled={controlsDisabled || items.length === 0}
-              label="亚克力质感"
-            />
+          <div className="flex flex-col gap-1" aria-label="窗口界面材质">
+            <div className="flex items-center gap-2">
+              <span>界面材质</span>
+              <Tabs
+                value={settings.materialMode}
+                onChange={setMaterialMode}
+                items={MATERIAL_TABS.map(item => ({ ...item, disabled: materialDisabled }))}
+                variant="pill"
+                triggersOnly
+                className="w-32"
+              />
+            </div>
+            {!controlsDisabled && materialDisabled && (
+              <span className="text-[var(--ema-text-tertiary)]">
+                {settings.enabled ? '设为壁纸后生效' : '开启壁纸后生效'}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <span>在此窗口显示壁纸</span>
@@ -313,7 +330,7 @@ export function WallpaperTab(): JSX.Element {
 
               <div className="space-y-3">
                 <label className="block text-xs text-[var(--ema-text-secondary)]" htmlFor="wallpaper-blur">
-                  <span className="flex justify-between"><span>模糊半径</span><span>{blur}px</span></span>
+                  <span className="flex justify-between"><span>壁纸模糊</span><span>{blur}px</span></span>
                 </label>
                 <input
                   id="wallpaper-blur"

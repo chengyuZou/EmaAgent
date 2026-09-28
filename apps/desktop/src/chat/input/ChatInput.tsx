@@ -630,7 +630,7 @@ export function ChatInput({
 
   return (
     <div className="ema-composer-dock pointer-events-none shrink-0 px-4 pb-3 pt-6">
-      <div className="pointer-events-auto mx-auto max-w-3xl">
+      <div className="ema-chat-content-column pointer-events-auto">
         <PendingInteractionView />
         {/* 整组常驻挂载 + 网格裁剪, 开合双向平滑(动画铁律); 单行入场 fade,
             单行删除瞬时(由容器平滑收拢兜底, 不为单行再造延迟卸载). */}

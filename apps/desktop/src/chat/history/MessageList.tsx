@@ -3,6 +3,7 @@
 // Message ID 负责跨更新识别同一条消息, 数组 index 只描述当前窗口内的位置.
 
 import {
+  forwardRef,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -16,6 +17,7 @@ import {
   Virtuoso,
   type Components,
   type ContextProp,
+  type ListProps,
   type VirtuosoHandle,
 } from 'react-virtuoso';
 import { useShallow } from 'zustand/react/shallow';
@@ -43,10 +45,6 @@ import { UIMessage, toolResultsForMessages } from '../messages/UIMessage.js';
 const MESSAGE_TOP_INSET = 40;
 const PREPEND_ANCHOR_SETTLE_FRAMES = 4;
 
-type MessageListStyle = CSSProperties & {
-  '--ema-message-top-inset': string;
-};
-
 interface MessageListStatusProps {
   readonly loadingNewer: boolean;
   readonly error?: string;
@@ -64,12 +62,19 @@ interface MessageViewportAnchor {
   readonly topOffsetPx: number;
 }
 
+// Virtuoso's absolute viewport ignores scroller padding, so gutters belong on the content layer.
+const MessageListContent = forwardRef<HTMLDivElement, ListProps & ContextProp<MessageListContext>>(
+  function MessageListContent({ context: _context, ...props }, ref): JSX.Element {
+    return <div {...props} ref={ref} className="ema-chat-history-content-inset" />;
+  },
+);
+
 function MessageListHeader({ context }: ContextProp<MessageListContext>): JSX.Element {
   return (
     <>
       <div aria-hidden style={{ height: MESSAGE_TOP_INSET }} />
       {context.loadingOlder && (
-        <div className="py-2 text-center text-xs text-[var(--ema-text-tertiary)]">
+        <div className="ema-chat-history-content-inset py-2 text-center text-xs text-[var(--ema-text-tertiary)]">
           正在读取更早消息…
         </div>
       )}
@@ -80,13 +85,18 @@ function MessageListHeader({ context }: ContextProp<MessageListContext>): JSX.El
 function MessageListFooter({ context }: ContextProp<MessageListContext>): JSX.Element {
   return (
     <>
-      <MessageListStatus {...context} />
+      <div className="ema-chat-history-content-inset">
+        <div className="ema-chat-content-column">
+          <MessageListStatus {...context} />
+        </div>
+      </div>
       <div aria-hidden style={{ height: context.bottomInset }} />
     </>
   );
 }
 
 const MESSAGE_LIST_COMPONENTS: Components<SessionMessage | StreamingMessage, MessageListContext> = {
+  List: MessageListContent,
   Header: MessageListHeader,
   Footer: MessageListFooter,
 };
@@ -149,6 +159,24 @@ export function MessageList({
   const attachScroller = useCallback((element: HTMLElement | Window | null): void => {
     setScrollerElement(element instanceof HTMLElement ? element : null);
   }, []);
+
+  useLayoutEffect(() => {
+    if (!scrollerElement) return;
+    const chatColumn = scrollerElement.closest<HTMLElement>('[data-ema-chat-column]');
+    if (!chatColumn) return;
+    // The composer is outside the scroller and must reserve the same native scrollbar width.
+    const measureScrollbar = (): void => {
+      const width = scrollerElement.offsetWidth - scrollerElement.clientWidth;
+      chatColumn.style.setProperty('--ema-chat-scrollbar-width', `${width}px`);
+    };
+    measureScrollbar();
+    const observer = new ResizeObserver(measureScrollbar);
+    observer.observe(scrollerElement);
+    return () => {
+      observer.disconnect();
+      chatColumn.style.removeProperty('--ema-chat-scrollbar-width');
+    };
+  }, [scrollerElement]);
   const turns = useTurnStore(useShallow(state => (
     new Map(state.turnsBySession.get(sessionId) ?? [])
   )));
@@ -357,7 +385,7 @@ export function MessageList({
     }
     return (
       <div
-        className="flex flex-1 items-end justify-center"
+        className="ema-chat-history-inset flex flex-1 items-end justify-center"
         style={{ paddingBottom: (bottomInset ?? 0) + 16 }}
       >
         <MessageListStatus
@@ -373,10 +401,7 @@ export function MessageList({
 
   // Stable Message ID owns React and Virtuoso identity. The local index may change after prepend.
   return (
-    <div
-      className="relative flex-1 min-h-0 ema-fade-mask-top"
-      style={{ '--ema-message-top-inset': `${MESSAGE_TOP_INSET}px` } as MessageListStyle}
-    >
+    <div className="relative flex-1 min-h-0">
       <TurnNavigationRail
         sessionId={sessionId}
         visibleTurnIds={visibleTurnIds}
@@ -386,7 +411,7 @@ export function MessageList({
         key={windowId}
         ref={listRef}
         scrollerRef={attachScroller}
-        className="absolute inset-0 px-14 overflow-x-hidden"
+        className="absolute inset-0 overflow-x-hidden"
         data={messages}
         computeItemKey={(_index, message) => messageListKey(message)}
         alignToBottom={!history.windowAnchorMessageId}
@@ -417,7 +442,7 @@ export function MessageList({
           const turn = turnId ? turns.get(turnId) : undefined;
           return (
             <div
-              className="mx-auto max-w-3xl py-1.5"
+              className="ema-chat-content-column py-1.5"
               data-message-id={message.id}
               data-turn-id={turnId ?? undefined}
             >
@@ -526,7 +551,7 @@ function MessageListStatus({
   return (
     <div className="flex min-h-4 flex-col items-center gap-2 py-2">
       {activeCompact && (
-        <div className="mx-auto w-full max-w-3xl">
+        <div className="ema-chat-content-column">
           {compactElapsedSeconds !== null && (
             <div className="border-b border-[var(--ema-border)] px-3 py-2 text-xs text-[var(--ema-text-tertiary)]">
               已处理 {compactElapsedSeconds}秒

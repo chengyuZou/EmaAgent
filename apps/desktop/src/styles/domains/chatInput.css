@@ -1,5 +1,5 @@
-/* ChatInput 胶囊输入卡与 dock 顶部 36px 渐变淡出遮罩。
-   token 全部走语义层(--ema-border/--ema-surface-N/--ema-bg), 亮暗主题零覆写. */
+/* ChatInput 输入卡与 dock 的列对齐, 不在输入区上方添加底色渐变.
+   token 全部走语义层, 亮暗主题零覆写. */
 
 .ema-composer-card {
   border: 1px solid var(--ema-border);
@@ -22,34 +22,11 @@
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--ema-primary) 6%, transparent), var(--ema-shadow-2);
 }
 
-/* dock 顶部渐变淡出：消息滚到输入卡下方时向上渐隐。
-   ::before 浮在 dock 上沿外侧，不拦截指针。 */
 .ema-composer-dock {
   position: relative;
 }
 
-.ema-composer-dock::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: -36px;
-  height: 36px;
-  pointer-events: none;
-  background: linear-gradient(
-    to bottom,
-    rgb(from var(--ema-bg) r g b / 0),
-    var(--ema-bg)
-  );
-}
-
 [data-ema-chat-column] .ema-composer-dock {
-  padding-inline: 3.5rem;
-}
-
-[data-ema-chat-column] .ema-composer-dock::before {
-  left: 50%;
-  right: auto;
-  width: min(calc(100% - 7rem), 48rem);
-  transform: translateX(-50%);
+  padding-left: var(--ema-chat-content-gutter);
+  padding-right: calc(var(--ema-chat-content-gutter) + var(--ema-chat-scrollbar-width));
 }

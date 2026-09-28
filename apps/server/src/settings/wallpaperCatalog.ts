@@ -1,6 +1,6 @@
 // 壁纸常量注册表: 前端只消费, 不另行定义这些数据.
 // 本文件必须保持零运行时依赖: 它允许打进桌面浏览器图(见 desktop vite.config alias).
-import type { WallpaperImageParams, WallpaperSettings } from './wallpaperSetting.js';
+import type { WallpaperSettings, WallpaperImageParams } from './wallpaperSetting.js';
 
 export type WallpaperWindowTarget = 'chat' | 'settings';
 
@@ -11,7 +11,7 @@ export const WALLPAPER_SETTING_KEYS: Record<WallpaperWindowTarget, string> = {
 
 export const DEFAULT_WALLPAPER_SETTINGS: WallpaperSettings = {
   enabled: false,
-  acrylicEnabled: false,
+  materialMode: 'translucent',
   activeImage: '',
   images: {},
 };

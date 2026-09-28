@@ -97,7 +97,7 @@ export function TurnFooter({
   return (
     <>
       {edited.files.length > 0 && (
-        <div className="ema-message-shell flex mr-12">
+        <div className="ema-message-shell flex">
           <div className="flex min-w-20 w-full max-w-full flex-col">
             <EditedFilesCard
               files={edited.files}
@@ -145,7 +145,7 @@ function RunningTurnFooter({
   const outputTokens = estimated ? estimateTextTokens(text) : usage?.outputTokens ?? 0;
 
   return (
-    <div className="mr-12 mt-1.5 flex min-h-6 items-center gap-2 text-[11px] text-[var(--ema-text-tertiary)]">
+    <div className="mt-1.5 flex min-h-6 items-center gap-2 text-[11px] text-[var(--ema-text-tertiary)]">
       <ModeLabel sessionMode={turn.sessionMode} narrativePolicy={turn.narrativePolicy} />
       <span className="flex items-center gap-1.5">
         <span className={turn.terminal
@@ -186,7 +186,7 @@ function HistoryTurnFooter({
 }): JSX.Element {
   const showAudio = isPlaying || turnStats?.audioAvailable === true;
   return (
-    <div className="mr-12 mt-1.5 flex min-h-6 items-center gap-2 text-[11px] text-[var(--ema-text-tertiary)]">
+    <div className="mt-1.5 flex min-h-6 items-center gap-2 text-[11px] text-[var(--ema-text-tertiary)]">
       {showAudio && (
         <IconButton
           size="sm"

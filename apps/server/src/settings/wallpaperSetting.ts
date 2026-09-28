@@ -12,8 +12,8 @@ const wallpaperImageParamsSchema = z.object({
 const wallpaperSettingsSchema = z.object({
   /** 壁纸开关; 关闭时显示默认桌布, 图片与参数全部保留. */
   enabled: z.boolean().default(false),
-  /** 当前窗口的侧栏和面板是否使用亚克力表面. */
-  acrylicEnabled: z.boolean().default(false),
+  /** 界面表面的材质, 与图片自身的不透明度和模糊分开. */
+  materialMode: z.enum(['translucent', 'frosted']).default('translucent'),
   /** 当前壁纸资源名; 空串 = 无壁纸, 显示默认桌布. */
   activeImage: z.string().max(120).default(''),
   /** 每张图各自的调参, 键 = 资源名(壁纸文件夹内带后缀的文件名). */
@@ -22,6 +22,7 @@ const wallpaperSettingsSchema = z.object({
 
 export type WallpaperImageParams = z.infer<typeof wallpaperImageParamsSchema>;
 export type WallpaperSettings = z.infer<typeof wallpaperSettingsSchema>;
+export type MaterialMode = WallpaperSettings['materialMode'];
 
 export const chatWallpaperSetting = defineSetting({
   key: WALLPAPER_SETTING_KEYS.chat,

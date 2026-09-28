@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type JSX } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type JSX } from 'react';
 import type { WallpaperSettings } from '@ema-agent/server/settings/wallpaperSetting.js';
 import {
   DEFAULT_WALLPAPER_IMAGE_PARAMS,
@@ -133,11 +133,25 @@ export function WallpaperLayer({ target }: { target: WallpaperWindowTarget }): J
   }, [target]);
 
   const hasImage = frames.length > 0;
+  const materialMode = settings?.materialMode ?? 'translucent';
+
+  // 文档根承载设置材质, 外观页的 body Portal 也能读到. 不影响聊天文档.
+  useLayoutEffect(() => {
+    if (target !== 'settings') return;
+    const root = document.documentElement;
+    root.dataset.settingsMaterial = materialMode;
+    root.dataset.settingsWallpaper = String(hasImage);
+    return () => {
+      delete root.dataset.settingsMaterial;
+      delete root.dataset.settingsWallpaper;
+    };
+  }, [target, materialMode, hasImage]);
+
   return (
     <div
       className="ema-wallpaper-layer pointer-events-none absolute inset-0 z-0 overflow-hidden"
       data-visible={hasImage || undefined}
-      data-acrylic={(hasImage && settings?.acrylicEnabled) || undefined}
+      data-material-mode={hasImage ? materialMode : undefined}
       aria-hidden
     >
       {frames.map(frame => {
