@@ -51,7 +51,7 @@ export function SessionHeader({ sessionId }: { sessionId: string }): JSX.Element
   }
 
   return (
-    <header className="flex shrink-0 items-center justify-between border-b border-[var(--ema-border)] px-4 py-2">
+    <header className="ema-chat-header flex shrink-0 items-center justify-between border-b border-[var(--ema-border)] px-4 py-2">
       <div className="flex min-w-0 items-center gap-2">
         <span className="i-lucide:folder shrink-0 text-sm text-[var(--ema-text-secondary)]" aria-hidden />
         <Button

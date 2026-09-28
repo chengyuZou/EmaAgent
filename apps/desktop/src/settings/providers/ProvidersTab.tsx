@@ -181,7 +181,8 @@ export function ProvidersTab(): JSX.Element {
                   </div>
                 );
               })}
-              <div className="relative group/card ema-stagger-in">
+              <div className="relative group/card ema-stagger-in"
+                style={{ '--stagger-i': cardIdx++ } as React.CSSProperties}>
                 <AddDashedCard
                   label={`添加${section.label}服务来源`}
                   onClick={() => setCreatingFor(section.key)}

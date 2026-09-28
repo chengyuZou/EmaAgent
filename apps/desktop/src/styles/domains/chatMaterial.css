@@ -1,0 +1,48 @@
+/* Chat 的 Header, 输入 dock, 消息阅读与右侧工作区的局部表面. 通用参数不在此重复. */
+
+.ema-chat-main .ema-chat-header,
+.ema-chat-main .ema-chat-status {
+  background: var(--ema-material-section);
+}
+
+/* Header 与内容列平行, 不是在已磨砂的列里面再做一层模糊. */
+.ema-chat-main:not(.ema-chat-content-surface) > .ema-chat-header {
+  -webkit-backdrop-filter: var(--ema-material-workspace-filter);
+  backdrop-filter: var(--ema-material-workspace-filter);
+}
+
+/* 输入卡盖在消息上方, 需要稳定填充, 不增加整块 dock 的白色渐变. */
+.ema-chat-main .ema-composer-card {
+  background: var(--ema-material-control);
+}
+
+.ema-chat-main .ema-message-content,
+.ema-chat-main .ema-file-preview,
+.ema-chat-main .ema-process-output {
+  --ema-surface-2: var(--ema-material-reading);
+}
+
+.ema-chat-main .ema-session-side-panel {
+  background: var(--ema-material-workspace);
+}
+
+.ema-chat-main .ema-terminal-panel {
+  background: var(--ema-material-reading);
+}
+
+.ema-chat-main .ema-terminal-panel .xterm,
+.ema-chat-main .ema-terminal-panel .xterm-viewport {
+  background-color: transparent !important;
+}
+
+.ema-chat-main .ema-material-code {
+  border-radius: var(--ema-radius-sm);
+}
+
+/* 文件代码与 Markdown pre 的填充来自语法主题, 普通文字也要跟随该配色, 不能残留亮色黑字. */
+.ema-chat-main :is(.ema-material-code, .markdown-content pre) {
+  --ema-text-primary: var(--ema-syntax-text);
+  --ema-text-secondary: var(--ema-syntax-text);
+  --ema-text-tertiary: var(--ema-syntax-comment);
+  color: var(--ema-syntax-text);
+}

@@ -4,9 +4,8 @@ import {
   useEffect,
   useState,
   type JSX,
-  type ReactNode,
 } from 'react';
-import { Button, Input } from '@ema-agent/ui';
+import { Dialog, IconButton, Input } from '@ema-agent/ui';
 import {
   sessionsApi,
   type SessionListItem,
@@ -148,49 +147,55 @@ export function SessionSearch({
     }));
 
   return (
-    <div className="fixed inset-0 z-40" onMouseDown={onClose}>
-      <div
-        className="absolute left-1/2 top-14 w-[min(520px,calc(100vw-32px))] -translate-x-1/2 overflow-hidden rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-4)] shadow-[var(--ema-shadow-3)]"
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <div className="border-b border-[var(--ema-border)] p-3">
-          <Input
-            autoFocus
-            inputSize="md"
-            placeholder="搜索对话"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Escape') onClose();
-              if (event.key === 'Enter' && firstId) {
-                select(firstId, first?.anchorMessageId);
-              }
-            }}
-          />
-        </div>
-
-        <div className="max-h-[420px] overflow-y-auto p-1.5">
-          <div className="px-2 py-1.5 text-xs text-[var(--ema-text-tertiary)]">
-            {trimmed ? (loading ? '搜索中…' : '匹配结果') : '近期对话'}
-          </div>
-
-          {trimmed && results.length === 0 && !loading && (
-            <div className="px-3 py-6 text-center text-sm text-[var(--ema-text-tertiary)]">
-              没有匹配的对话
-            </div>
-          )}
-
-          {visibleItems.map((item) => (
-            <SearchRow
-              key={`${item.session.id}:${item.anchorMessageId ?? 'title'}`}
-              session={item.session}
-              snippet={item.snippet}
-              onSelect={() => select(item.session.id, item.anchorMessageId)}
-            />
-          ))}
-        </div>
+    <Dialog
+      open
+      onOpenChange={(open) => { if (!open) onClose(); }}
+      ariaLabel="搜索对话"
+      hideClose
+      widthClass="max-w-xl"
+      className="ema-session-search"
+    >
+      <div className="ema-session-search-header">
+        <span className="i-lucide:search shrink-0 text-base text-[var(--ema-text-tertiary)]" aria-hidden />
+        <Input
+          autoFocus
+          mono={false}
+          placeholder="搜索对话"
+          aria-label="搜索对话"
+          className="ema-session-search-input"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') onClose();
+            if (event.key === 'Enter' && firstId) {
+              select(firstId, first?.anchorMessageId);
+            }
+          }}
+        />
+        <IconButton label="关闭搜索" icon="i-lucide:x" variant="ghost" size="sm" shape="rounded" onClick={onClose} />
       </div>
-    </div>
+
+      <div className="ema-session-search-results">
+        <div className="ema-session-search-heading">
+          {trimmed ? (loading ? '搜索中…' : '匹配结果') : '近期对话'}
+        </div>
+
+        {trimmed && results.length === 0 && !loading && (
+          <div className="px-3 py-6 text-center text-sm text-[var(--ema-text-tertiary)]">
+            没有匹配的对话
+          </div>
+        )}
+
+        {visibleItems.map((item) => (
+          <SearchRow
+            key={`${item.session.id}:${item.anchorMessageId ?? 'title'}`}
+            session={item.session}
+            snippet={item.snippet}
+            onSelect={() => select(item.session.id, item.anchorMessageId)}
+          />
+        ))}
+      </div>
+    </Dialog>
   );
 }
 
@@ -210,33 +215,25 @@ function SearchRow({
     return project?.name ?? null;
   });
 
-  return row(onSelect, (
-    <>
-      <span className="mt-1 size-1.5 shrink-0 rounded-full bg-[var(--ema-text-tertiary)]" />
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm">{session.title || '新对话'}</span>
-        <span className="mt-0.5 block truncate text-xs text-[var(--ema-text-tertiary)]">
-          {snippet && snippet !== session.title
-            ? snippet
-            : formatRelativeTime(session.lastActivityAt)}
-        </span>
-      </span>
-      <span className="max-w-28 shrink-0 truncate text-xs text-[var(--ema-text-tertiary)]">
-        {projectName ?? '对话'}
-      </span>
-    </>
-  ));
-}
-
-function row(onClick: () => void, children: ReactNode): JSX.Element {
+  const showSnippet = Boolean(snippet && snippet !== session.title);
   return (
-    <Button
-      variant="ghost"
-      className="flex w-full items-start gap-3 rounded-lg px-3 py-2 text-left font-normal hover:bg-[var(--ema-surface-2)]"
-      onClick={onClick}
+    <button
+      type="button"
+      className="ema-session-search-row focus-ring"
+      data-has-snippet={showSnippet}
+      onClick={onSelect}
     >
-      {children}
-    </Button>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate">{session.title || '新对话'}</span>
+        {showSnippet && (
+          <span className="ema-session-search-snippet block truncate">{snippet}</span>
+        )}
+      </span>
+      <span className="ema-session-search-meta">
+        <span className="max-w-28 truncate">{projectName ?? '对话'}</span>
+        <span className="tabular-nums">{formatRelativeTime(session.lastActivityAt)}</span>
+      </span>
+    </button>
   );
 }
 

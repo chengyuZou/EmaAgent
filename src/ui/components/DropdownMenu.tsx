@@ -42,10 +42,10 @@ export function DropdownMenu(props: DropdownMenuProps): React.JSX.Element {
           className={cn(
             'z-[var(--ema-z-overlay)] panel-glass rounded-xl shadow-[var(--ema-shadow-2)]',
             widthClass,
-            'ema-anim-expand',
+            'ema-anim-menu',
           )}
         >
-          {/* 展开动画的 grid 子节点: 裁剪与滑动都作用在这层 */}
+          {/* 内容保持自然尺寸, 展开只裁剪外观, 避免边缘避让随动画反复重新定位. */}
           <div className="p-1">
             <MenuItems items={items} checkIcon={checkIcon} submenuIcon={submenuIcon} openSubId={openSubId} onOpenSub={setOpenSubId} />
           </div>
@@ -144,7 +144,7 @@ function RenderItem({ item, checkIcon, submenuIcon, openSubId, onOpenSub }: {
             <RadixDropdown.SubContent
               className={cn(
                 'z-[var(--ema-z-overlay)] panel-glass rounded-xl shadow-[var(--ema-shadow-2)] min-w-44',
-                'ema-anim-expand',
+                'ema-anim-menu',
               )}
             >
               <div className="p-1">

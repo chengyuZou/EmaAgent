@@ -90,13 +90,10 @@ function FileRow({
   };
 
   return (
-    <div
+    <button
+      type="button"
       data-selected={!isDir && activeTabId === fileTab(entry.path).id ? true : undefined}
-      className={`flex items-center gap-1.5 px-2 py-0.5 rounded cursor-pointer group select-none transition-colors ${
-        !isDir && activeTabId === fileTab(entry.path).id
-          ? 'bg-[var(--ema-primary-muted)]'
-          : 'hover:bg-[var(--ema-surface-2)]'
-      }`}
+      className="ema-workspace-file-row group focus-ring"
       style={{ paddingLeft: 8 + indent }}
       onClick={handleClick}
       title={entry.path}
@@ -115,11 +112,11 @@ function FileRow({
       )}
 
       {isDir && !loading && (
-        <span className={`${expanded ? 'i-lucide:folder-open' : 'i-lucide:folder'} text-sm shrink-0 text-[var(--ema-warning)]`} aria-hidden />
+        <span className={`${expanded ? 'i-lucide:folder-open' : 'i-lucide:folder'} text-sm shrink-0 text-[var(--ema-text-tertiary)]`} aria-hidden />
       )}
 
       <span
-        className="flex-1 truncate font-mono text-[11px] leading-tight text-[var(--ema-text-primary)]"
+        className="min-w-0 flex-1 truncate"
       >
         {entry.name}
       </span>
@@ -129,7 +126,7 @@ function FileRow({
           {fmtSize(entry.size)}
         </span>
       )}
-    </div>
+    </button>
   );
 }
 
@@ -326,9 +323,9 @@ function ScopedFilesPanel({
 
   return (
     <div className="flex flex-col h-full ema-fade-in">
-      <div className="shrink-0 space-y-1.5 border-b border-[var(--ema-border)] px-2 py-1.5">
+      <div className="shrink-0 space-y-1 border-b border-[var(--ema-border)] px-2 py-2">
         <div
-          className="flex min-w-0 items-center gap-2 rounded-md border border-[var(--ema-border)] bg-[var(--ema-surface-2)] px-2 py-1 text-xs text-[var(--ema-text-primary)]"
+          className="flex min-h-7 min-w-0 items-center gap-2 px-2 text-[12px] text-[var(--ema-text-primary)]"
           title={projectName ?? root}
         >
           <span className="i-lucide:folder shrink-0 text-sm" aria-hidden />
@@ -343,7 +340,7 @@ function ScopedFilesPanel({
             trigger={(
               <button
                 type="button"
-                className="flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left text-xs text-[var(--ema-text-secondary)] transition-colors hover:bg-[var(--ema-surface-2)] hover:text-[var(--ema-text-primary)]"
+                className="flex min-h-7 w-full min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left text-[12px] text-[var(--ema-text-secondary)] transition-colors hover:bg-[var(--ema-surface-2)] hover:text-[var(--ema-text-primary)]"
                 title={root}
                 aria-label="选择项目源文件夹"
               >
@@ -355,7 +352,7 @@ function ScopedFilesPanel({
           />
         ) : (
           <div
-            className="flex items-center gap-2 truncate px-1 text-xs text-[var(--ema-text-secondary)]"
+            className="flex min-h-6 items-center gap-2 truncate px-2 text-[12px] text-[var(--ema-text-tertiary)]"
             title={root}
           >
             <span className="i-lucide:folder text-sm" aria-hidden />
@@ -364,10 +361,11 @@ function ScopedFilesPanel({
         )}
       </div>
       {/* Search */}
-      <div className="px-2 py-1.5 border-b shrink-0 border-[var(--ema-border)]">
+      <div className="px-2 py-2 shrink-0">
         <input
-          className="w-full rounded-md px-2 py-1 text-[11px] outline-none bg-[var(--ema-surface-0)] text-[var(--ema-text-primary)] border border-[var(--ema-border)] shadow-[var(--ema-shadow-inset)] focus:border-[var(--ema-control-border-focus)] focus:shadow-[var(--ema-control-shadow-focus)]"
+          className="h-8 w-full rounded-md px-2 text-[12px] outline-none bg-transparent text-[var(--ema-text-primary)] border border-[var(--ema-border)] focus:border-[var(--ema-control-border-focus)] focus:shadow-[var(--ema-control-shadow-focus)]"
           placeholder="筛选文件…"
+          aria-label="筛选文件"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           spellCheck={false}

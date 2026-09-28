@@ -159,6 +159,8 @@ export function TurnNavigationRail({ sessionId, visibleTurnIds, onSelectTurn }: 
               side="right"
               align="center"
               sideOffset={8}
+              delayDuration={120}
+              variant="card"
               content={<TurnRailPreview item={item} />}
             >
               <button
@@ -197,7 +199,7 @@ export function centeredTurnOffset(
 
 function TurnRailPreview({ item }: { item: TurnIndexItem }): JSX.Element {
   return (
-    <div className="w-64 py-1">
+    <div className="w-64 max-w-full">
       <div className="mb-1 flex items-center gap-2 text-[11px] text-[var(--ema-text-tertiary)]">
         <span>{formatTurnTime(item.createdAt)}</span>
         <span>{item.sessionMode === 'work' ? 'Work' : 'Chat'}</span>

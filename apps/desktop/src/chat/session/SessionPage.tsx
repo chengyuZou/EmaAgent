@@ -21,14 +21,22 @@ export function SessionPage({ sessionId }: { sessionId: string }): JSX.Element {
   const workspacePanelRef = useRef<PanelImperativeHandle | null>(null);
   const composerRef = useRef<HTMLDivElement | null>(null);
   const [bottomInset, setBottomInset] = useState<number | null>(null);
+  const [latestButtonBottom, setLatestButtonBottom] = useState<number | null>(null);
   const panelOpen = layout?.open ?? false;
 
   useLayoutEffect(() => {
     const composer = composerRef.current;
     if (!composer) return;
     const measure = (): void => {
-      const height = Math.ceil(composer.getBoundingClientRect().height) + 16;
+      const bounds = composer.getBoundingClientRect();
+      const height = Math.ceil(bounds.height) + 16;
       setBottomInset(current => current === height ? current : height);
+      const card = composer.querySelector<HTMLElement>('.ema-composer-card');
+      if (card) {
+        // 阅读留白包含项目栏和 dock padding, 按钮则贴近真正的输入卡片.
+        const buttonBottom = Math.ceil(bounds.bottom - card.getBoundingClientRect().top) + 8;
+        setLatestButtonBottom(current => current === buttonBottom ? current : buttonBottom);
+      }
     };
     measure();
     const observer = new ResizeObserver(measure);
@@ -45,7 +53,7 @@ export function SessionPage({ sessionId }: { sessionId: string }): JSX.Element {
   }, [panelOpen, rightPanelPercent, sessionId]);
 
   return (
-    <main className="relative z-10 flex min-h-0 min-w-0 flex-1 flex-col">
+    <main className="ema-chat-main relative z-10 flex min-h-0 min-w-0 flex-1 flex-col">
       <SessionHeader sessionId={sessionId} />
       {serverStatus.kind === 'error' && (
         <div
@@ -71,10 +79,14 @@ export function SessionPage({ sessionId }: { sessionId: string }): JSX.Element {
           id="chat"
           minSize="30%"
           defaultSize={`${100 - rightPanelPercent}%`}
-          className="relative flex min-w-0 flex-col overflow-hidden"
+          className="ema-chat-content-surface relative flex min-w-0 flex-col overflow-hidden"
           data-ema-chat-column
         >
-          <MessageList sessionId={sessionId} bottomInset={bottomInset} />
+          <MessageList
+            sessionId={sessionId}
+            bottomInset={bottomInset}
+            latestButtonBottom={latestButtonBottom}
+          />
           <div ref={composerRef} className="pointer-events-none absolute inset-x-0 bottom-0 z-20">
             <ChatInput onSubmit={(submitted) => (
               submitChatDraft(sessionId, submitted)
@@ -110,7 +122,7 @@ export function SessionPage({ sessionId }: { sessionId: string }): JSX.Element {
 function StatusBar({ sessionId }: { sessionId: string }): JSX.Element {
   const serverStatus = useServerStore(state => state.status);
   return (
-    <div className="flex shrink-0 items-center justify-between border-t border-[var(--ema-border)] px-4 py-1.5 text-[11px] text-[var(--ema-text-tertiary)]">
+    <div className="ema-chat-status flex shrink-0 items-center justify-between border-t border-[var(--ema-border)] px-4 py-1.5 text-[11px] text-[var(--ema-text-tertiary)]">
       <div className="flex items-center gap-2">
         <span className={`size-1.5 rounded-md ${serverStatus.kind === 'ok'
           ? 'bg-[var(--ema-success)]'

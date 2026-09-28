@@ -16,6 +16,7 @@ import {
   Input,
   PromptDialog,
   Textarea,
+  Tooltip,
   type MenuItem,
   type TextareaHandle,
 } from '@ema-agent/ui';
@@ -697,14 +698,22 @@ export function ChatInput({
           {!viewedId && (
             <div className="flex min-w-0 flex-1 items-center gap-1.5">
               <label htmlFor="new-session-cwd" className="shrink-0">cwd:</label>
-              <Input
-                id="new-session-cwd"
-                aria-label="新对话执行目录"
-                value={displayedNewCwd}
-                onChange={event => useChatNavigationStore.getState().setNewSessionCwd(event.target.value)}
-                placeholder="使用 Ema 默认工作目录"
-                className="min-w-0 flex-1"
-              />
+              <Tooltip
+                variant="card"
+                side="top"
+                content={<span className="block max-w-lg break-all font-mono">{displayedNewCwd || '使用 Ema 默认工作目录'}</span>}
+              >
+                <Input
+                  id="new-session-cwd"
+                  aria-label="新对话执行目录"
+                  autoComplete="off"
+                  spellCheck={false}
+                  value={displayedNewCwd}
+                  onChange={event => useChatNavigationStore.getState().setNewSessionCwd(event.target.value)}
+                  placeholder="使用 Ema 默认工作目录"
+                  className="min-w-0 flex-1"
+                />
+              </Tooltip>
               {currentProject && currentProject.folders.length > 0 && (
                 <DropdownMenu
                   side="top"

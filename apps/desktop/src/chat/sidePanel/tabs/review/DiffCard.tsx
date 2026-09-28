@@ -95,7 +95,7 @@ export function DiffCard({
             )}
           </div>
           <div
-            className="max-h-[32rem] overflow-auto border-t border-[var(--ema-border)] font-mono text-[11px] leading-relaxed whitespace-pre-wrap break-words"
+            className="ema-material-reading max-h-[32rem] overflow-auto border-t border-[var(--ema-border)] font-mono text-[11px] leading-relaxed whitespace-pre-wrap break-words"
           >
             {segments.length === 0 ? (
               <p className="px-2.5 py-2 text-[var(--ema-text-tertiary)]">无文本 diff(二进制或空变更)</p>

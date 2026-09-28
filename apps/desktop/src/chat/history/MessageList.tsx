@@ -10,7 +10,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
   type JSX,
 } from 'react';
 import {
@@ -21,16 +20,15 @@ import {
   type VirtuosoHandle,
 } from 'react-virtuoso';
 import { useShallow } from 'zustand/react/shallow';
+import { IconButton } from '@ema-agent/ui';
 import type { SessionMessage } from '@ema-agent/session';
-import { charactersApi } from '../../api/characters.js';
-import { fetchServerObjectUrl } from '../../lib/serverFileUrl.js';
-import { useCharacterStore } from '../../stores/character.js';
+import { emptyChatDraft, useChatDraftStore } from '../../stores/chatDraft.js';
+import { ConversationStarters } from '../conversationStarters.js';
 import {
   useSessionActivityStore,
   type ActiveCompact,
 } from '../../stores/sessionActivity.js';
 import { useSessionHistoryStore } from '../../stores/sessionHistory.js';
-import { useSessionStore } from '../../stores/session.js';
 import {
   isStreamingMessage,
   useTurnStore,
@@ -129,9 +127,11 @@ export function messageScrollLocation(index: number): Parameters<VirtuosoHandle[
 export function MessageList({
   sessionId,
   bottomInset,
+  latestButtonBottom,
 }: {
   readonly sessionId: string;
   readonly bottomInset: number | null;
+  readonly latestButtonBottom: number | null;
 }): JSX.Element {
   const listRef = useRef<VirtuosoHandle | null>(null);
   const pendingPrependAnchor = useRef<MessageViewportAnchor | null>(null);
@@ -154,11 +154,20 @@ export function MessageList({
   const windowId = `${sessionId}:${history.windowAnchorMessageId ?? ''}`;
   const [scrollerElement, setScrollerElement] = useState<HTMLElement | null>(null);
   const [visibleTurnIds, setVisibleTurnIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [isAtBottom, setIsAtBottom] = useState(true);
+  const [returningToLatest, setReturningToLatest] = useState(false);
+  const pendingLatestScroll = useRef<string | null>(null);
   const atBottom = useRef(false);
   const previousBottomInset = useRef(bottomInset);
   const attachScroller = useCallback((element: HTMLElement | Window | null): void => {
     setScrollerElement(element instanceof HTMLElement ? element : null);
   }, []);
+
+  useLayoutEffect(() => {
+    pendingLatestScroll.current = null;
+    setIsAtBottom(true);
+    setReturningToLatest(false);
+  }, [sessionId]);
 
   useLayoutEffect(() => {
     if (!scrollerElement) return;
@@ -201,6 +210,20 @@ export function MessageList({
   );
   const toolResults = useMemo(() => toolResultsForMessages(allMessages), [allMessages]);
   const messagesByTurn = useMemo(() => collectMessagesByTurn(allMessages), [allMessages]);
+
+  useLayoutEffect(() => {
+    if (pendingLatestScroll.current !== sessionId || history.loading) return;
+    if (history.error) {
+      pendingLatestScroll.current = null;
+      return;
+    }
+    // Latest may replace an around window and remount Virtuoso. Scroll after the new list has committed.
+    const frame = requestAnimationFrame(() => {
+      pendingLatestScroll.current = null;
+      listRef.current?.scrollToIndex({ index: 'LAST', align: 'end', behavior: 'auto' });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [history.loading, history.error, messages, returningToLatest, sessionId, windowId]);
 
   useLayoutEffect(() => {
     const previous = previousBottomInset.current;
@@ -338,6 +361,28 @@ export function MessageList({
     await useSessionHistoryStore.getState().openAround(sessionId, item.anchorMessageId);
   }
 
+  async function returnToLatest(): Promise<void> {
+    if (returningToLatest) return;
+    const store = useSessionHistoryStore.getState();
+    const current = store.bySession.get(sessionId);
+    pendingPrependAnchor.current = null;
+    // A pending rail jump must not overwrite this explicit return to the latest messages.
+    store.cancelPendingWindowReplace(sessionId);
+    if (!current?.windowAnchorMessageId && !current?.newerCursor && !current?.loading) {
+      const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        ? 'auto' : 'smooth';
+      listRef.current?.scrollToIndex({ index: 'LAST', align: 'end', behavior });
+      return;
+    }
+    pendingLatestScroll.current = sessionId;
+    setReturningToLatest(true);
+    try {
+      await store.loadLatest(sessionId, true);
+    } finally {
+      setReturningToLatest(false);
+    }
+  }
+
   async function loadOlder(): Promise<void> {
     const store = useSessionHistoryStore.getState();
     const before = store.bySession.get(sessionId);
@@ -400,6 +445,8 @@ export function MessageList({
   if (bottomInset === null) return <div className="min-h-0 flex-1" />;
 
   // Stable Message ID owns React and Virtuoso identity. The local index may change after prepend.
+  const showReturnToLatest = latestButtonBottom !== null
+    && (!isAtBottom || Boolean(history.newerCursor));
   return (
     <div className="relative flex-1 min-h-0">
       <TurnNavigationRail
@@ -419,7 +466,11 @@ export function MessageList({
         initialTopMostItemIndex={anchorIndex >= 0
           ? messageScrollLocation(anchorIndex)
           : { index: 'LAST', align: 'end' }}
-        atBottomStateChange={(value) => { atBottom.current = value; }}
+        atBottomStateChange={(value) => {
+          atBottom.current = value;
+          setIsAtBottom(value);
+        }}
+        atBottomThreshold={24}
         startReached={() => {
           if (history.olderCursor) void loadOlder();
         }}
@@ -464,6 +515,20 @@ export function MessageList({
             </div>
           );
         }}
+      />
+      <IconButton
+        label="回到最新消息"
+        icon="i-lucide:arrow-down"
+        variant="ghost"
+        size="sm"
+        className="ema-chat-jump-latest"
+        data-visible={showReturnToLatest}
+        aria-hidden={!showReturnToLatest}
+        tabIndex={showReturnToLatest ? 0 : -1}
+        disabled={!showReturnToLatest || returningToLatest}
+        loading={returningToLatest}
+        style={{ bottom: latestButtonBottom ?? 0 }}
+        onClick={() => void returnToLatest()}
       />
     </div>
   );
@@ -587,81 +652,11 @@ const EMPTY_TURN_STATS: ReadonlyMap<string, SessionTurnStats> = new Map();
 const EMPTY_HISTORY_MESSAGES: readonly SessionMessage[] = [];
 
 function ChatEmptyState({ sessionId }: { readonly sessionId: string }): JSX.Element {
-  const characterName = useCharacterStore(state => state.activeName);
-  const character = useCharacterStore(state => state.characters.find(item => item.name === state.activeName));
-  const cwd = useSessionStore(state => state.sessions.byId.get(sessionId)?.cwd ?? null);
-  const projectName = useSessionStore(state => {
-    const projectId = state.sessions.byId.get(sessionId)?.projectId;
-    if (!projectId) return null;
-    return [...state.sessions.pinnedProjects, ...state.sessions.projects]
-      .find(item => item.id === projectId)?.name ?? null;
-  });
-  const [illustrationUrl, setIllustrationUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!characterName) {
-      setIllustrationUrl(null);
-      return;
-    }
-    let mounted = true;
-    let objectUrl: string | null = null;
-    void charactersApi.presentation(characterName)
-      .then(async presentation => presentation.status === 'illustration'
-        ? fetchServerObjectUrl(charactersApi.illustrationFileUrl(characterName, presentation.resource.name))
-        : null)
-      .then(url => {
-        if (!mounted) {
-          if (url) URL.revokeObjectURL(url);
-          return;
-        }
-        objectUrl = url;
-        setIllustrationUrl(url);
-      })
-      .catch(() => {
-        if (mounted) setIllustrationUrl(null);
-      });
-    return () => {
-      mounted = false;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [characterName]);
-
-  const locationName = projectName ?? cwd?.split(/[\\/]/).filter(Boolean).at(-1);
   return (
-    <div className="ema-empty-state">
-      <div className="ema-empty-state-glow ema-fade-in" aria-hidden />
-      {illustrationUrl ? (
-        <img
-          className="ema-empty-state-avatar ema-stagger-in"
-          style={{ '--stagger-i': 0 } as CSSProperties}
-          src={illustrationUrl}
-          alt={character?.name ?? '角色'}
-          draggable={false}
-        />
-      ) : (
-        <div
-          className="ema-empty-state-avatar ema-empty-state-avatar-fallback ema-stagger-in"
-          style={{ '--stagger-i': 0 } as CSSProperties}
-          aria-hidden
-        >
-          <span className="i-lucide:paw-print" />
-        </div>
-      )}
-      <h2
-        className="ema-empty-state-title ema-stagger-in"
-        style={{ '--stagger-i': 1 } as CSSProperties}
-      >
-        {character ? `和 ${character.name} 开始聊天` : '开始聊天吧'}
-      </h2>
-      {locationName && (
-        <div
-          className="ema-empty-state-chip ema-stagger-in"
-          style={{ '--stagger-i': 2 } as CSSProperties}
-        >
-          <span className="i-lucide:folder" aria-hidden />
-          {locationName}
-        </div>
-      )}
-    </div>
+    <ConversationStarters onChoose={prompt => {
+      const drafts = useChatDraftStore.getState();
+      const draft = drafts.bySession.get(sessionId) ?? emptyChatDraft();
+      drafts.setForSession(sessionId, { ...draft, text: prompt });
+    }} />
   );
 }

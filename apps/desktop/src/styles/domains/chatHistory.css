@@ -27,6 +27,51 @@
   padding-block: var(--ema-space-2);
 }
 
+button.ema-chat-jump-latest {
+  position: absolute;
+  z-index: 30;
+  left: calc((100% - var(--ema-chat-scrollbar-width, 0px)) / 2);
+  width: 32px;
+  height: 32px;
+  transform: translate(-50%, 6px) scale(0.96);
+  border: 1px solid var(--ema-border);
+  background: var(--ema-surface-3);
+  color: var(--ema-text-secondary);
+  box-shadow: none;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 150ms var(--ema-ease),
+              transform 150ms var(--ema-ease),
+              visibility 0ms 150ms,
+              background-color var(--ema-duration-fast) var(--ema-ease),
+              color var(--ema-duration-fast) var(--ema-ease);
+}
+
+button.ema-chat-jump-latest[data-visible='true'] {
+  opacity: 1;
+  transform: translate(-50%, 0) scale(1);
+  visibility: visible;
+  pointer-events: auto;
+  transition-delay: 0ms;
+}
+
+button.ema-chat-jump-latest:hover:not(:disabled) {
+  background: var(--ema-surface-2);
+  color: var(--ema-text-primary);
+}
+
+button.ema-chat-jump-latest:active:not(:disabled) {
+  transform: translate(-50%, 0) scale(0.94);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button.ema-chat-jump-latest {
+    transform: translateX(-50%);
+    transition: none;
+  }
+}
+
 .ema-message-footer {
   display: flex;
   flex-wrap: wrap;

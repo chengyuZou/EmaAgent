@@ -1,0 +1,127 @@
+/* SettingsPanel, Chat 的结构表面与 body 下的菜单, Dialog, Tooltip, Toast 共用皮肤.
+   参数来自 material.css; 只在平行结构边界模糊, 普通卡片和控件不重复 blur. */
+
+.ema-settings-sidebar,
+.ema-settings-material-page,
+.ema-session-sidebar,
+.ema-chat-main,
+html[data-material-window] :is(.panel-glass, [role='dialog'], .ema-tooltip-surface, .ema-material-toast) {
+  --ema-surface-0: var(--ema-material-reading);
+  --ema-surface-1: var(--ema-material-section);
+  --ema-surface-2: var(--ema-material-card);
+  --ema-surface-3: var(--ema-material-control);
+  --ema-surface-4: var(--ema-material-control-hover);
+  --ema-control-bg: var(--ema-material-control);
+  --ema-control-bg-hover: var(--ema-material-control-hover);
+  --ema-control-bg-focus: var(--ema-material-control-hover);
+  --ema-composer-bg: var(--ema-material-control);
+  --ema-glass-weak: none;
+  --ema-text-secondary: color-mix(in srgb, var(--ema-text-primary) 90%, var(--ema-material-fill));
+  --ema-text-tertiary: color-mix(in srgb, var(--ema-text-primary) 78%, var(--ema-material-fill));
+}
+
+.ema-settings-sidebar,
+.ema-session-sidebar {
+  background: var(--ema-material-sidebar);
+  -webkit-backdrop-filter: var(--ema-material-sidebar-filter);
+  backdrop-filter: var(--ema-material-sidebar-filter);
+}
+
+.ema-settings-material-page,
+.ema-chat-content-surface {
+  background: var(--ema-material-workspace);
+  -webkit-backdrop-filter: var(--ema-material-workspace-filter);
+  backdrop-filter: var(--ema-material-workspace-filter);
+}
+
+.ema-settings-material-page .ema-material-workspace {
+  background: var(--ema-material-workspace);
+}
+
+:is(.ema-settings-material-page, .ema-chat-main) .ema-material-section {
+  background: var(--ema-material-section);
+  box-shadow: var(--ema-shadow-soft);
+}
+
+:is(.ema-settings-material-page, .ema-chat-main) .ema-material-card,
+html[data-material-window] [role='dialog'] .ema-material-card {
+  background-color: var(--ema-material-card);
+}
+
+:is(.ema-settings-material-page, .ema-chat-main) .ema-material-card[data-selected='true'],
+html[data-material-window] [role='dialog'] .ema-material-card[data-selected='true'] {
+  background-color: var(--ema-material-card);
+  background-image: var(--ema-selected-bg);
+}
+
+:is(.ema-settings-material-page, .ema-chat-main) :is(button, [role='button']).ema-material-card:hover:not(:disabled),
+html[data-material-window] [role='dialog'] button.ema-material-card:hover:not(:disabled) {
+  background-color: var(--ema-material-control-hover);
+}
+
+:is(.ema-settings-material-page, .ema-chat-main) .ema-material-reading {
+  background: var(--ema-material-reading);
+}
+
+/* 代码底色沿用语法主题, 不改变高亮前景. 非 Markdown 的代码区有具名标记. */
+:is(.ema-settings-material-page, .ema-chat-main) :is(.ema-material-code, .markdown-content pre),
+html[data-material-window] [role='dialog'] .markdown-content pre {
+  background: color-mix(in srgb, var(--ema-syntax-bg, var(--ema-material-fill)) var(--ema-material-code-alpha), transparent);
+}
+
+html[data-window-wallpaper='true'] :is(.ema-settings-material-page, .ema-chat-main, [role='dialog']) .ema-switch[data-state='checked'] {
+  background-color: var(--ema-material-control);
+  background-image: linear-gradient(var(--ema-primary-muted), var(--ema-primary-muted));
+  border-color: color-mix(in srgb, var(--ema-primary) 70%, transparent);
+  box-shadow: var(--ema-shadow-inset), var(--ema-shadow-1);
+}
+
+html[data-window-wallpaper='true'] :is(.ema-settings-material-page, .ema-chat-main, [role='dialog']) .ema-switch[data-state='checked']:hover:not(:disabled) {
+  background-color: var(--ema-material-control-hover);
+  border-color: var(--ema-primary-hover);
+  box-shadow: var(--ema-shadow-soft);
+}
+
+:is(.ema-settings-material-page, .ema-chat-main) :is(button, .ema-glass-weak),
+:is(.ema-settings-sidebar, .ema-session-sidebar) button,
+html[data-material-window] [role='dialog'] :is(button, .ema-glass-weak) {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+html[data-material-window] :is(.panel-glass, [role='dialog'], .ema-tooltip-surface, .ema-material-toast) {
+  background: var(--ema-material-overlay);
+  -webkit-backdrop-filter: var(--ema-material-overlay-filter);
+  backdrop-filter: var(--ema-material-overlay-filter);
+}
+
+html[data-material-window] .ema-tooltip-surface {
+  color: var(--ema-text-primary);
+}
+
+html[data-material-window] .ema-tooltip-arrow {
+  fill: var(--ema-material-overlay);
+}
+
+html[data-material-window] .ema-dialog-overlay {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* 会话侧栏自身控制宽度过渡, CursorFloating 自身控制倾斜过渡, 不覆盖它们. */
+.ema-settings-sidebar,
+.ema-settings-material-page,
+:is(.ema-settings-material-page, .ema-chat-main) :is(.ema-material-section, .ema-material-card, .ema-material-reading, .ema-material-code):not(.ema-cursor-floating) {
+  transition: background-color var(--ema-duration-slow) var(--ema-ease),
+              border-color var(--ema-duration-base) var(--ema-ease),
+              box-shadow var(--ema-duration-base) var(--ema-ease),
+              transform var(--ema-duration-base) var(--ema-ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ema-settings-sidebar,
+  .ema-settings-material-page,
+  :is(.ema-settings-material-page, .ema-chat-main) :is(.ema-material-section, .ema-material-card, .ema-material-reading, .ema-material-code) {
+    transition: none;
+  }
+}

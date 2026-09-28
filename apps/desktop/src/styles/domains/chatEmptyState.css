@@ -1,121 +1,61 @@
-/* 会话空态：淡蓝椭圆辉光随内容居中，角色立绘标 + 标题 + 工作区 chip。 */
+/* ConversationStarters 在新对话和无消息的会话里居中展示四个快捷条. */
 
 .ema-empty-state {
   position: relative;
   flex: 1;
+  min-height: 0;
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--ema-space-4);
-  overflow: hidden;
-}
-
-.ema-empty-state-glow {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 420px;
-  height: 300px;
-  transform: translate(-50%, -50%);
-  border-radius: 50%;
-  background: var(--ema-primary);
-  opacity: 0.08;
-  filter: blur(72px);
-  pointer-events: none;
-}
-
-.ema-empty-state-avatar {
-  position: relative;
-  width: 96px;
-  height: 96px;
-  border-radius: var(--ema-radius-pill);
-  object-fit: cover;
-  border: 1px solid var(--ema-border);
-  box-shadow: var(--ema-shadow-2);
-}
-
-.ema-empty-state-avatar-fallback {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 36px;
-  color: var(--ema-text-tertiary);
-  background: var(--ema-surface-2);
-}
-
-.ema-empty-state-title {
-  position: relative;
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--ema-text-primary);
-}
-
-.ema-empty-state-chip {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--ema-space-1);
-  padding: var(--ema-space-1) var(--ema-space-3);
-  border-radius: var(--ema-radius-pill);
-  font-size: 12px;
-  color: var(--ema-text-secondary);
-  background: var(--ema-surface-2);
-  border: 1px solid var(--ema-border);
-  transition: background-color var(--ema-duration-fast) var(--ema-ease),
-              border-color var(--ema-duration-fast) var(--ema-ease),
-              color var(--ema-duration-fast) var(--ema-ease);
-}
-
-/* hover 三件套:muted 底 + primary 边 + primary-text 字。 */
-.ema-empty-state-chip:hover {
-  background: var(--ema-primary-muted);
-  border-color: var(--ema-primary);
-  color: var(--ema-primary-text);
-}
-
-.ema-empty-state-chip-empty {
-  border-style: dashed;
-  color: var(--ema-text-tertiary);
-}
-
-/* 新会话 welcome 区:eyebrow 装饰小字 + 2×2 快捷动作网格。 */
-.ema-empty-state-eyebrow {
-  position: relative;
-  font-size: 10px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--ema-primary-text);
+  align-items: safe center;
+  justify-content: safe center;
+  overflow: auto;
+  padding: var(--ema-space-6);
 }
 
 .ema-empty-state-prompts {
-  position: relative;
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: var(--ema-space-2);
-  width: min(420px, 100%);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--ema-space-3);
+  width: min(36rem, 100%);
 }
 
 .ema-empty-state-prompt {
   display: flex;
   align-items: center;
-  gap: var(--ema-space-2);
-  padding: var(--ema-space-3);
-  font-size: 12px;
+  gap: var(--ema-space-3);
+  min-height: 64px;
+  padding: var(--ema-space-4) var(--ema-space-5);
+  font-size: 14px;
   text-align: left;
   border: 1px solid var(--ema-border);
   border-radius: var(--ema-radius-lg);
-  background: var(--ema-surface-1);
+  background: var(--ema-surface-2);
   color: var(--ema-text-secondary);
   cursor: pointer;
   transition: background-color var(--ema-duration-fast) var(--ema-ease),
               border-color var(--ema-duration-fast) var(--ema-ease),
-              color var(--ema-duration-fast) var(--ema-ease);
+              color var(--ema-duration-fast) var(--ema-ease),
+              transform var(--ema-duration-fast) var(--ema-ease);
 }
 
-/* hover 三件套与 chip 同方。 */
 .ema-empty-state-prompt:hover {
-  background: var(--ema-primary-muted);
   border-color: var(--ema-primary);
   color: var(--ema-primary-text);
+  transform: translateY(-2px);
+}
+
+.ema-empty-state-prompt:active {
+  transform: scale(0.98);
+}
+
+@media (max-width: 560px) {
+  .ema-empty-state-prompts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ema-empty-state-prompt {
+    transition: none;
+    transform: none;
+  }
 }

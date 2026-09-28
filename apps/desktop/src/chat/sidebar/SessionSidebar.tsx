@@ -1,6 +1,6 @@
 // 会话侧栏主装配:折叠/宽度拖拽状态;分区数据直接消费服务端五桶分组
 // （置顶 Session / 置顶项目 / 其余项目 / 最近 / 已归档），行、分区与搜索各自成文件。
-import { useState, useEffect, useMemo, type JSX } from 'react';
+import { useState, useEffect, useMemo, type CSSProperties, type JSX } from 'react';
 import { Button } from '@ema-agent/ui';
 import type { SessionListItem } from '../../api/sessions.js';
 import { useChatNavigationStore } from '../../stores/chatNavigation.js';
@@ -63,12 +63,16 @@ export function SessionSidebar(): JSX.Element {
 
   return (
       <div
-        className={`ema-wallpaper-sidebar relative z-10 flex h-full shrink-0 flex-col
+        className={`ema-session-sidebar relative z-10 flex h-full shrink-0 flex-col
           overflow-hidden
           border-r bg-[var(--ema-sidebar-bg)] border-[var(--ema-border)]
-          ${resizing ? '' : 'ema-transition-width'}
         `}
-        style={{ width: collapsed ? 40 : sidebarWidth }}
+        data-collapsed={collapsed}
+        data-resizing={resizing}
+        style={{
+          width: collapsed ? 40 : sidebarWidth,
+          '--ema-sidebar-expanded-width': `${sidebarWidth}px`,
+        } as CSSProperties}
       >
       {/* 拖拽手柄(右边缘)。展开态才显示,collapsed 不拖 */}
       {!collapsed && (
@@ -79,8 +83,11 @@ export function SessionSidebar(): JSX.Element {
           aria-hidden
         />
       )}
-      {collapsed ? (
-        <div className="flex flex-col items-center py-2 gap-2">
+        <div
+          className="ema-session-sidebar-rail flex flex-col items-center py-2 gap-2"
+          aria-hidden={!collapsed}
+          {...(!collapsed ? { inert: '' } : {})}
+        >
           <Button
             variant="ghost"
             className="ema-chat-icon-btn"
@@ -103,7 +110,11 @@ export function SessionSidebar(): JSX.Element {
             })}
           </div>
         </div>
-      ) : (
+        <div
+          className="ema-session-sidebar-expanded flex h-full flex-col"
+          aria-hidden={collapsed}
+          {...(collapsed ? { inert: '' } : {})}
+        >
         <SidebarDragProvider>
           <div className="px-1.5 py-2 border-b border-[var(--ema-border)]">
             <div className="flex w-full items-center gap-2">
@@ -117,7 +128,7 @@ export function SessionSidebar(): JSX.Element {
             </Button>
               <Button
                 variant="ghost"
-                className="flex size-6 shrink-0 items-center justify-center rounded border border-[var(--ema-border)] bg-[var(--ema-surface-3)] p-0"
+              className="ema-chat-icon-btn flex size-6 shrink-0 items-center justify-center p-0"
                 onClick={() => setCollapsed(true)}
                 title="折叠侧边栏"
               >
@@ -164,7 +175,7 @@ export function SessionSidebar(): JSX.Element {
             />
           </div>
         </SidebarDragProvider>
-      )}
+        </div>
 
       {searchOpen && (
         <SessionSearch

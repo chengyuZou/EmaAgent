@@ -67,7 +67,7 @@ export function SessionAttachmentPreview({ sessionId, attachmentPath }: {
         )}
         {url && <img src={url} alt={title} className="mx-auto max-w-full rounded-lg" />}
         {text !== null && (
-          <pre className="text-xs font-mono whitespace-pre-wrap break-all text-[var(--ema-text-secondary)]">
+          <pre className="ema-material-reading rounded-lg p-3 text-xs font-mono whitespace-pre-wrap break-all text-[var(--ema-text-secondary)]">
             {text}
           </pre>
         )}

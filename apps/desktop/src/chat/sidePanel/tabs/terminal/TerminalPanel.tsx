@@ -7,6 +7,7 @@ import {
   fitTerminal,
   subscribeTerminal,
   terminalState,
+  updateTerminalTheme,
 } from './terminalSessions.js';
 
 export function TerminalPanel({ terminalId }: { terminalId: string }): JSX.Element {
@@ -14,6 +15,15 @@ export function TerminalPanel({ terminalId }: { terminalId: string }): JSX.Eleme
   const [state, setState] = useState(() => terminalState(terminalId));
 
   useEffect(() => subscribeTerminal(terminalId, () => setState(terminalState(terminalId))), [terminalId]);
+
+  useEffect(() => {
+    const observer = new MutationObserver(() => updateTerminalTheme(terminalId));
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-theme', 'style'],
+    });
+    return () => observer.disconnect();
+  }, [terminalId]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -25,7 +35,7 @@ export function TerminalPanel({ terminalId }: { terminalId: string }): JSX.Eleme
   }, [terminalId]);
 
   return (
-    <div className="relative flex-1 min-h-0 bg-[#151515]">
+    <div className="ema-terminal-panel relative flex-1 min-h-0">
       <div ref={hostRef} className="absolute inset-0 p-1.5" />
       {state.status === 'exited' && (
         <div className="absolute inset-x-0 bottom-0 px-3 py-1.5 text-[11px] border-t bg-[var(--ema-surface-3)] border-[var(--ema-border)] text-[var(--ema-text-tertiary)]">
@@ -35,4 +45,3 @@ export function TerminalPanel({ terminalId }: { terminalId: string }): JSX.Eleme
     </div>
   );
 }
-

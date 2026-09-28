@@ -40,7 +40,7 @@ export function Dialog(props: DialogProps): React.JSX.Element {
       <RadixDialog.Portal>
         <RadixDialog.Overlay
           className={cn(
-            'fixed inset-0 z-[var(--ema-z-dialog)] bg-[var(--ema-mask)] backdrop-blur-sm ema-anim-fade',
+            'ema-dialog-overlay fixed inset-0 z-[var(--ema-z-dialog)] bg-[var(--ema-mask)] backdrop-blur-sm ema-anim-fade',
           )}
         />
         <RadixDialog.Content

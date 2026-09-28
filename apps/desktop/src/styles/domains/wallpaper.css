@@ -1,4 +1,4 @@
-/* 窗口底图与图库预览跨淡入淡出. 聊天现有表面消费材质模式, 设置表面由 material.css 管理. */
+/* WallpaperLayer 与外观图库的图片切换动画及预览交互. 窗口表面由 material 样式管理. */
 
 .ema-wallpaper-frame[data-state='active'],
 .ema-wallpaper-preview-frame[data-state='active'] {
@@ -31,36 +31,9 @@
   transition: none;
 }
 
-.ema-wallpaper-sidebar,
-.ema-wallpaper-panel,
 .ema-wallpaper-controls {
   transition: background-color 340ms var(--ema-ease),
               backdrop-filter 340ms var(--ema-ease);
-}
-
-.ema-wallpaper-window:not(.ema-wallpaper-settings):has(.ema-wallpaper-layer[data-visible='true']) .ema-wallpaper-sidebar {
-  background: color-mix(in srgb, var(--ema-sidebar-bg) 78%, transparent);
-}
-
-.ema-wallpaper-window:not(.ema-wallpaper-settings):has(.ema-wallpaper-layer[data-visible='true']) .ema-wallpaper-panel,
-.ema-wallpaper-window:not(.ema-wallpaper-settings):has(.ema-wallpaper-layer[data-visible='true']) .ema-wallpaper-controls {
-  background: color-mix(in srgb, var(--ema-panel-fill, var(--ema-surface-1)) 82%, transparent);
-}
-
-.ema-wallpaper-window:not(.ema-wallpaper-settings):has(.ema-wallpaper-layer[data-material-mode='frosted']) .ema-wallpaper-sidebar,
-.ema-wallpaper-window:not(.ema-wallpaper-settings):has(.ema-wallpaper-layer[data-material-mode='frosted']) .ema-wallpaper-panel,
-.ema-wallpaper-window:not(.ema-wallpaper-settings):has(.ema-wallpaper-layer[data-material-mode='frosted']) .ema-wallpaper-controls {
-  -webkit-backdrop-filter: blur(20px) saturate(1.25);
-  backdrop-filter: blur(20px) saturate(1.25);
-}
-
-.ema-wallpaper-window:not(.ema-wallpaper-settings):has(.ema-wallpaper-layer[data-material-mode='frosted']) .ema-wallpaper-sidebar {
-  background: color-mix(in srgb, var(--ema-sidebar-bg) 68%, transparent);
-}
-
-.ema-wallpaper-window:not(.ema-wallpaper-settings):has(.ema-wallpaper-layer[data-material-mode='frosted']) .ema-wallpaper-panel,
-.ema-wallpaper-window:not(.ema-wallpaper-settings):has(.ema-wallpaper-layer[data-material-mode='frosted']) .ema-wallpaper-controls {
-  background: color-mix(in srgb, var(--ema-panel-fill, var(--ema-surface-1)) 70%, transparent);
 }
 
 .ema-wallpaper-controls [role='tab'] {

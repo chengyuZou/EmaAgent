@@ -83,7 +83,7 @@ export function SubagentPanel({ sessionId, className = '', initialDetailId }: Su
   }
 
   return (
-    <div className={`flex flex-col gap-1 overflow-y-auto ${className}`}>
+    <div className={`ema-subagent-view flex flex-col gap-1 overflow-y-auto ${className}`}>
       {/* 已开启：空也如实显示，不隐藏分区 */}
       <SectionLabel>已开启</SectionLabel>
       {running.length === 0 ? (
@@ -183,41 +183,46 @@ function SubagentRow({
 
   return (
     <div
-      className="relative rounded-lg overflow-hidden cursor-pointer transition-all flex ema-stagger-in bg-[var(--ema-surface-1)] border border-[var(--ema-border)] hover:border-[var(--ema-border-hover)] hover:shadow-[var(--ema-shadow-soft)]"
+      className="ema-subagent-summary ema-stagger-in-swift"
       style={{ '--stagger-i': staggerIndex } as CSSProperties}
-      onClick={onOpen}
     >
       {status === 'running' && <div className="ema-running-bar" />}
-      <div className="flex items-start gap-2 px-2.5 py-2 flex-1 min-w-0">
+      <button
+        type="button"
+        className="flex min-w-0 flex-1 items-start gap-2 rounded-[var(--ema-radius-sm)] px-3 py-2 text-left cursor-pointer focus-ring"
+        aria-label={`查看子代理: ${title}`}
+        onClick={onOpen}
+      >
         <span className={`mt-0.5 text-base shrink-0 ${icon}`} style={{ color }} aria-hidden />
-        <div className="flex-1 min-w-0">
-          <div className="text-xs font-medium truncate text-[var(--ema-text-primary)]" title={title}>
+        <span className="flex-1 min-w-0">
+          <span className="block text-[12px] leading-[18px] font-medium truncate text-[var(--ema-text-primary)]" title={title}>
             {title}
-          </div>
+          </span>
           {summary && (
-            <p className="text-[11px] mt-0.5 truncate text-[var(--ema-text-tertiary)]" title={summary}>
+            <span className="block text-[11px] leading-[16px] mt-0.5 truncate text-[var(--ema-text-tertiary)]" title={summary}>
               {summary}
-            </p>
+            </span>
           )}
-        </div>
+        </span>
         {at !== undefined && (
-          <span className="shrink-0 mt-0.5 text-[10px] tabular-nums text-[var(--ema-text-tertiary)]">
+          <span className="shrink-0 mt-0.5 text-[11px] leading-[16px] tabular-nums text-[var(--ema-text-tertiary)]">
             {formatRelativeTime(at)}
           </span>
         )}
-        {status === 'running' && !ownedByForegroundTool && (
-          <IconButton
-            label="中止子代理"
-            icon="i-lucide:circle-stop"
-            variant="danger"
-            size="sm"
-            onClick={(event) => {
-              event.stopPropagation();
-              if (sessionId) void sessionWebSocket.cancelSubagent(sessionId, row.id);
-            }}
-          />
-        )}
-      </div>
+      </button>
+      {status === 'running' && !ownedByForegroundTool && (
+        <IconButton
+          label="中止子代理"
+          icon="i-lucide:circle-stop"
+          variant="danger"
+          size="sm"
+          shape="rounded"
+          className="mr-2 mt-2 shrink-0"
+          onClick={() => {
+            if (sessionId) void sessionWebSocket.cancelSubagent(sessionId, row.id);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -238,12 +243,17 @@ function SubagentDetail({
   const exists = record !== undefined || progress !== undefined;
 
   return (
-    <div className={`flex flex-col min-h-0 h-full ${className}`}>
+    <div className={`ema-subagent-view flex flex-col min-h-0 h-full ${className}`}>
       {/* 返回 + 标题 */}
       <div className="flex items-center gap-1.5 px-2 py-1.5 shrink-0 border-b border-[var(--ema-border)]">
-        <Button variant="ghost" size="sm" className="px-1.5 text-[var(--ema-text-tertiary)]" onClick={onBack}>
-          <span className="i-lucide:arrow-left text-sm" aria-hidden />
-        </Button>
+        <IconButton
+          label="返回子代理列表"
+          icon="i-lucide:arrow-left"
+          variant="ghost"
+          size="sm"
+          shape="rounded"
+          onClick={onBack}
+        />
         {exists && (
           <>
             <span className={`text-sm shrink-0 ${icon}`} style={{ color }} aria-hidden />

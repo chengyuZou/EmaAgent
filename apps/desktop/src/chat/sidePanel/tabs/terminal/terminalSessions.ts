@@ -1,7 +1,7 @@
 // 让 xterm 实例跨 Dock 重挂与 Session 切换继续存在，并把输入输出接到同一个 PTY。
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
-import { Terminal } from '@xterm/xterm';
+import { Terminal, type ITheme } from '@xterm/xterm';
 
 import { tauriBridge, type TerminalEvent } from '../../../../lib/tauri-bridge.js';
 import { settingsApi } from '../../../../api/settings.js';
@@ -23,6 +23,42 @@ interface TerminalEntry {
 
 const entries = new Map<string, TerminalEntry>();
 
+// xterm 自绘文字和底色, CSS 只能改外壳. 底色交给窗口材质, 前景与 ANSI 仍由主题明确提供.
+function terminalTheme(): ITheme {
+  const style = getComputedStyle(document.documentElement);
+  const color = (name: string): string => style.getPropertyValue(name).trim();
+  const foreground = color('--ema-text-primary');
+  const red = color('--ema-danger-text');
+  const green = color('--ema-success-text');
+  const yellow = color('--ema-warning-text');
+  const blue = color('--ema-syntax-key');
+  const magenta = color('--ema-violet-text');
+  const cyan = color('--ema-info-text');
+  return {
+    background: '#00000000',
+    foreground,
+    cursor: foreground,
+    cursorAccent: color('--ema-material-fill'),
+    selectionBackground: color('--ema-primary-muted'),
+    black: foreground,
+    red,
+    green,
+    yellow,
+    blue,
+    magenta,
+    cyan,
+    white: color('--ema-text-secondary'),
+    brightBlack: color('--ema-text-tertiary'),
+    brightRed: red,
+    brightGreen: green,
+    brightYellow: yellow,
+    brightBlue: blue,
+    brightMagenta: magenta,
+    brightCyan: cyan,
+    brightWhite: foreground,
+  };
+}
+
 export interface StartTerminalInput {
   readonly terminalId: string;
   readonly sessionId: string;
@@ -40,17 +76,13 @@ export async function startTerminal(input: StartTerminalInput): Promise<void> {
     ? shells.find(candidate => candidate.kind === preferredKind)
     : undefined) ?? shells[0];
   const terminal = new Terminal({
+    allowTransparency: true,
     cursorBlink: true,
     convertEol: false,
     fontFamily: 'Cascadia Code, JetBrains Mono, Consolas, monospace',
     fontSize: 13,
     scrollback: 10_000,
-    theme: {
-      background: '#151515',
-      foreground: '#d8d8d8',
-      cursor: '#d8d8d8',
-      selectionBackground: '#4a4a4a',
-    },
+    theme: terminalTheme(),
   });
   const fit = new FitAddon();
   terminal.loadAddon(fit);
@@ -88,6 +120,7 @@ export async function startTerminal(input: StartTerminalInput): Promise<void> {
 
 export function attachTerminal(terminalId: string, element: HTMLElement): void {
   const entry = requireTerminal(terminalId);
+  entry.terminal.options.theme = terminalTheme();
   if (!entry.opened) {
     entry.terminal.open(element);
     entry.opened = true;
@@ -96,6 +129,11 @@ export function attachTerminal(terminalId: string, element: HTMLElement): void {
   }
   fitTerminal(terminalId);
   entry.terminal.focus();
+}
+
+export function updateTerminalTheme(terminalId: string): void {
+  const entry = entries.get(terminalId);
+  if (entry) entry.terminal.options.theme = terminalTheme();
 }
 
 export function fitTerminal(terminalId: string): void {

@@ -116,7 +116,7 @@ function CodePreview({ source, ext }: { source: string; ext: string }): JSX.Elem
   );
   const gutterWidth = `${String(lines.length).length + 1}ch`;
   return (
-    <div className="ema-font-mono min-w-0 text-xs">
+    <div className="ema-material-code ema-font-mono min-w-0 p-2 text-xs">
       {lines.map((html, index) => (
         <div key={index} className="flex min-w-0 leading-[1.7]">
           <span

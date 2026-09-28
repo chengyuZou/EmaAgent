@@ -1,5 +1,6 @@
 // 圆环只展示当前 Session 的根调用用量, 或从有效历史读取的一次本地估算.
 import { useEffect, useState, type JSX } from 'react';
+import { Tooltip } from '@ema-agent/ui';
 import { sessionsApi } from '../../api/sessions.js';
 import { useTurnStore } from '../../stores/turn.js';
 
@@ -55,17 +56,47 @@ export function ContextMeter({ sessionId, contextWindow }: {
   }
 
   return (
-    <span className="flex size-7 items-center justify-center text-[var(--ema-text-tertiary)]" title={title} aria-label={title} role="img">
-      <svg viewBox="0 0 16 16" className="size-4 -rotate-90" aria-hidden>
-        <circle cx="8" cy="8" r={radius} fill="none" stroke="currentColor" strokeWidth="2" opacity="0.2" />
-        {entry && (
-          <circle
-            cx="8" cy="8" r={radius} fill="none" stroke="var(--ema-primary)"
-            strokeWidth="2" strokeLinecap="round" strokeDasharray={circumference}
-            strokeDashoffset={circumference * (1 - percent / 100)}
-          />
-        )}
-      </svg>
-    </span>
+    <Tooltip
+      side="top"
+      variant="card"
+      content={(
+        <div className="min-w-40 text-center text-[12px]">
+          <div className="text-[var(--ema-text-secondary)]">上下文窗口</div>
+          {entry && windowSize > 0 ? (
+            <>
+              <div className="mt-1 tabular-nums">{percent}% 已用</div>
+              <div className="tabular-nums text-[var(--ema-text-secondary)]">
+                已用 {formatTokens(entry.inputTokens)}，共 {formatTokens(windowSize)} tokens
+              </div>
+              <div className="mt-1 text-[11px] text-[var(--ema-text-tertiary)]">
+                {entry.estimate ? '本地估算' : 'Provider 实报'}
+              </div>
+            </>
+          ) : <div className="mt-1 text-[var(--ema-text-tertiary)]">尚未统计</div>}
+        </div>
+      )}
+    >
+      <button
+        type="button"
+        className="flex size-7 items-center justify-center rounded-[var(--ema-radius-sm)] text-[var(--ema-text-tertiary)] hover:bg-[var(--ema-surface-2)] focus-ring"
+        aria-label={title}
+      >
+        <svg viewBox="0 0 16 16" className="size-4 -rotate-90" aria-hidden>
+          <circle cx="8" cy="8" r={radius} fill="none" stroke="currentColor" strokeWidth="2" opacity="0.2" />
+          {entry && (
+            <circle
+              cx="8" cy="8" r={radius} fill="none" stroke="var(--ema-primary)"
+              strokeWidth="2" strokeLinecap="round" strokeDasharray={circumference}
+              strokeDashoffset={circumference * (1 - percent / 100)}
+            />
+          )}
+        </svg>
+      </button>
+    </Tooltip>
   );
+}
+
+function formatTokens(tokens: number): string {
+  if (tokens < 1000) return String(tokens);
+  return `${new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 1 }).format(tokens / 1000)}k`;
 }

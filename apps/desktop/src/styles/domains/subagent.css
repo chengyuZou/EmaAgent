@@ -1,4 +1,31 @@
-/* Subagent 面板的运行状态和执行步骤时间线。 */
+/* SubagentPanel 的摘要列表, 详情切换与运行状态. */
+
+.ema-subagent-view {
+  animation: ema-fade-in var(--ema-duration-base) var(--ema-ease) both;
+}
+
+.ema-subagent-summary {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  border: 1px solid transparent;
+  border-radius: var(--ema-radius-sm);
+  background: color-mix(in srgb, var(--ema-surface-2) 50%, transparent);
+  transition: background-color var(--ema-duration-fast) var(--ema-ease),
+              border-color var(--ema-duration-fast) var(--ema-ease);
+}
+
+.ema-subagent-summary:hover,
+.ema-subagent-summary:focus-within {
+  border-color: var(--ema-border);
+  background: var(--ema-surface-2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ema-subagent-summary {
+    animation-delay: 0ms;
+  }
+}
 
 .ema-running-bar::before {
   content: '';

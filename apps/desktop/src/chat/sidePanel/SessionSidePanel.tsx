@@ -35,16 +35,16 @@ function tabIcon(tab: SessionSidePanelTab): string {
     case 'review':
       return 'i-lucide:file-diff';
     case 'files':
-      return 'i-solar:folder-bold-duotone';
+      return 'i-lucide:folder';
     case 'file':
-      return 'i-mdi:file-outline';
+      return 'i-lucide:file';
     case 'source':
     case 'sources':
       return 'i-lucide:paperclip';
     case 'tasks':
       return 'i-lucide:list-checks';
     case 'subagents':
-      return 'i-solar:cpu-bold-duotone';
+      return 'i-lucide:cpu';
     case 'terminal':
       return 'i-lucide:terminal';
     case 'browser':
@@ -108,15 +108,16 @@ function TabBar({
   sessionId,
   tabs,
   activeTabId,
+  onActivate,
   onAdd,
 }: {
   sessionId: string;
   tabs: readonly SessionSidePanelTab[];
   activeTabId?: string;
+  onActivate(tabId: string): void;
   onAdd(): void;
 }): JSX.Element {
   const closeTab = useSessionPanelStore((state) => state.closeTab);
-  const activateTab = useSessionPanelStore((state) => state.activateTab);
 
   function close(tab: SessionSidePanelTab): void {
     if (tab.kind === 'terminal') void closeTerminalSession(tab.terminalId).catch(() => {});
@@ -124,34 +125,37 @@ function TabBar({
   }
 
   return (
-    <div className="shrink-0 border-b border-[var(--ema-border)] px-1.5 py-1">
+    <div className="ema-workspace-tab-bar shrink-0 border-b border-[var(--ema-border)] px-2 py-1.5">
       <div className="ema-tab-slot min-w-0 overflow-x-auto">
         {tabs.map((tab) => (
-          <button
+          <div
             key={tab.id}
-            type="button"
             data-selected={tab.id === activeTabId || undefined}
-            className="ema-slot-tab group flex min-w-28 max-w-56 shrink-0 cursor-pointer items-center gap-1 py-0.5 pl-2.5 pr-0.5 text-left text-[var(--ema-text-secondary)]"
-            onClick={() => activateTab(sessionId, tab.id)}
+            className="ema-slot-tab group"
           >
-            <span className={`${tabIcon(tab)} shrink-0 text-sm`} aria-hidden />
-            <span className="min-w-0 flex-1 truncate text-xs">
-              <TabLabel sessionId={sessionId} tab={tab} />
-            </span>
+            <button
+              type="button"
+              className="ema-slot-tab-trigger focus-ring"
+              title={baseLabel(tab)}
+              onClick={() => onActivate(tab.id)}
+            >
+              <span className={`${tabIcon(tab)} shrink-0 text-[16px]`} aria-hidden />
+              <span className="min-w-0 flex-1 truncate text-[12px]">
+                <TabLabel sessionId={sessionId} tab={tab} />
+              </span>
+            </button>
             <IconButton
               size="sm"
               variant="ghost"
+              shape="rounded"
               label={`关闭${baseLabel(tab)}`}
               icon="i-lucide:x"
-              className="ema-slot-tab-close opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
-              onClick={(event) => {
-                event.stopPropagation();
-                close(tab);
-              }}
+              className="ema-slot-tab-close"
+              onClick={() => close(tab)}
             />
-          </button>
+          </div>
         ))}
-        <IconButton size="sm" variant="ghost" label="新建标签" icon="i-lucide:plus" onClick={onAdd} />
+        <IconButton size="sm" variant="ghost" shape="rounded" label="新建标签" icon="i-lucide:plus" onClick={onAdd} />
       </div>
     </div>
   );
@@ -180,96 +184,95 @@ function Launcher({
     return () => document.removeEventListener('keydown', closeOnEscape);
   }, [onClose]);
 
-  const menu = (
-    <div className="flex w-52 flex-col gap-0.5 rounded-xl border border-[var(--ema-border-hover)] bg-[var(--ema-surface-4)] p-1.5 shadow-[var(--ema-shadow-3)]">
-      {LAUNCHER_TABS.map((tab) => (
-        <Button
-          key={tab.id}
-          variant="ghost"
-          className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-xs text-[var(--ema-text-secondary)] hover:bg-[var(--ema-primary-muted)] hover:text-[var(--ema-primary-text)]"
-          onClick={() => {
-            openTab(sessionId, tab);
-            onClose?.();
-          }}
-        >
-          <span
-            className={`${tabIcon(tab)} text-base text-[var(--ema-text-tertiary)]`}
-            aria-hidden
-          />
-          {baseLabel(tab)}
-        </Button>
-      ))}
-
-      <Button
-        variant="ghost"
-        disabled={openingTerminal || !cwd}
-        className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-xs text-[var(--ema-text-secondary)] hover:bg-[var(--ema-primary-muted)] hover:text-[var(--ema-primary-text)]"
-        onClick={() => {
-          if (!cwd) return;
-          const terminalId = nanoid();
-          setOpeningTerminal(true);
-          setError(null);
-
-          void startTerminal({
-            terminalId,
-            sessionId,
-            cwd,
-          })
-            .then(() => {
-              openTab(sessionId, terminalTab(terminalId));
-              onClose?.();
-            })
-            .catch((cause) => {
-              setError(cause instanceof Error ? cause.message : '终端打开失败');
-            })
-            .finally(() => setOpeningTerminal(false));
-        }}
-      >
-        <span
-          className="i-lucide:terminal text-base text-[var(--ema-text-tertiary)]"
-          aria-hidden
-        />
-        {openingTerminal ? '正在打开终端…' : '终端'}
-      </Button>
-
-      <Button
-        variant="ghost"
-        className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-xs text-[var(--ema-text-secondary)] hover:bg-[var(--ema-primary-muted)] hover:text-[var(--ema-primary-text)]"
-        onClick={() => {
-          const browserId = nanoid();
-          openTab(sessionId, browserTab(browserId));
-          onClose?.();
-        }}
-      >
-        <span
-          className="i-lucide:globe text-base text-[var(--ema-text-tertiary)]"
-          aria-hidden
-        />
-        浏览器
-      </Button>
-
-      {error && (
-        <div className="px-3 py-1 text-[11px] text-[var(--ema-danger)]">
-          {error}
-        </div>
-      )}
-    </div>
-  );
-
-  if (!onClose) {
-    return (
-      <div className="flex flex-1 items-center justify-center ema-fade-in">
-        {menu}
-      </div>
-    );
-  }
-
   return (
-    <div
-      className="absolute inset-0 z-20 flex items-center justify-center bg-[var(--ema-mask)] ema-fade-in"
-      onClick={onClose}
-    >
-      <div onClick={(event) => event.stopPropagation()}>{menu}</div>
+    <div className="ema-workspace-launcher ema-fade-in">
+      <div className="ema-workspace-launcher-content">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <h2 className="text-[12px] font-medium text-[var(--ema-text-secondary)]">工具</h2>
+          {onClose && (
+            <IconButton
+              size="sm"
+              variant="ghost"
+              shape="rounded"
+              label="返回当前标签"
+              icon="i-lucide:x"
+              onClick={onClose}
+            />
+          )}
+        </div>
+        <div className="ema-workspace-launcher-grid">
+          {LAUNCHER_TABS.map((tab) => (
+            <Button
+              key={tab.id}
+              variant="ghost"
+              className="ema-workspace-launcher-action"
+              onClick={() => {
+                openTab(sessionId, tab);
+                onClose?.();
+              }}
+            >
+              <span
+                className={`${tabIcon(tab)} shrink-0 text-[16px] text-[var(--ema-text-tertiary)]`}
+                aria-hidden
+              />
+              {baseLabel(tab)}
+            </Button>
+          ))}
+
+          <Button
+            variant="ghost"
+            disabled={openingTerminal || !cwd}
+            className="ema-workspace-launcher-action"
+            onClick={() => {
+              if (!cwd) return;
+              const terminalId = nanoid();
+              setOpeningTerminal(true);
+              setError(null);
+
+              void startTerminal({
+                terminalId,
+                sessionId,
+                cwd,
+              })
+                .then(() => {
+                  openTab(sessionId, terminalTab(terminalId));
+                  onClose?.();
+                })
+                .catch((cause) => {
+                  setError(cause instanceof Error ? cause.message : '终端打开失败');
+                })
+                .finally(() => setOpeningTerminal(false));
+            }}
+          >
+            <span
+              className="i-lucide:terminal shrink-0 text-[16px] text-[var(--ema-text-tertiary)]"
+              aria-hidden
+            />
+            {openingTerminal ? '正在打开终端…' : '终端'}
+          </Button>
+
+          <Button
+            variant="ghost"
+            className="ema-workspace-launcher-action"
+            onClick={() => {
+              const browserId = nanoid();
+              openTab(sessionId, browserTab(browserId));
+              onClose?.();
+            }}
+          >
+            <span
+              className="i-lucide:globe shrink-0 text-[16px] text-[var(--ema-text-tertiary)]"
+              aria-hidden
+            />
+            浏览器
+          </Button>
+        </div>
+        {error && (
+          <div className="mt-3 text-[12px] text-[var(--ema-danger)]">
+            {error}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -280,6 +283,7 @@ export function SessionSidePanel({
   sessionId: string;
 }): JSX.Element {
   const layout = useSessionPanelStore((state) => state.layouts[sessionId]);
+  const activateTab = useSessionPanelStore((state) => state.activateTab);
   const [launcherOpen, setLauncherOpen] = useState(false);
   useEffect(() => setLauncherOpen(false), [sessionId]);
   const tabs = (layout?.tabOrder ?? [])
@@ -287,17 +291,24 @@ export function SessionSidePanel({
     .filter((tab) => tab !== undefined);
 
   return (
-    <div className="ema-wallpaper-panel relative flex h-full min-w-0 flex-col overflow-hidden bg-[var(--ema-surface-1)]">
+    <div className="ema-session-side-panel ema-chat-content-surface relative flex h-full min-w-0 flex-col overflow-hidden">
       {tabs.length > 0 && (
         <TabBar
           sessionId={sessionId}
           tabs={tabs}
           activeTabId={layout?.activeTabId}
+          onActivate={(tabId) => {
+            activateTab(sessionId, tabId);
+            setLauncherOpen(false);
+          }}
           onAdd={() => setLauncherOpen(true)}
         />
       )}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {tabs.length === 0 && <Launcher sessionId={sessionId} />}
+        {launcherOpen && tabs.length > 0 && (
+          <Launcher sessionId={sessionId} onClose={() => setLauncherOpen(false)} />
+        )}
         {tabs.map(tab => {
           const visible = Boolean(layout?.open) && !launcherOpen && tab.id === layout?.activeTabId;
           return (
@@ -310,9 +321,6 @@ export function SessionSidePanel({
           );
         })}
       </div>
-      {launcherOpen && (
-        <Launcher sessionId={sessionId} onClose={() => setLauncherOpen(false)} />
-      )}
     </div>
   );
 }

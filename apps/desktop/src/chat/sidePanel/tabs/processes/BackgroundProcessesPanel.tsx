@@ -310,7 +310,7 @@ function OutputStream({
       <div className={`text-[10px] font-medium ${danger ? 'text-[var(--ema-danger-text)]' : 'text-[var(--ema-text-tertiary)]'}`}>
         {label}
       </div>
-      <pre className="selectable whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-[var(--ema-text-secondary)]">
+      <pre className="ema-process-output ema-material-reading selectable rounded-lg p-2 whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-[var(--ema-text-secondary)]">
         {text}
       </pre>
     </div>

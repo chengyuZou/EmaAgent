@@ -2,6 +2,7 @@
 // 后台转交卡、行头摘要、复制文本与实时输出尾巴也各归本文件。
 // 守卫失败返回 null，由前端回落通用渲染。
 import { useState, type JSX } from 'react';
+import { Tooltip } from '@ema-agent/ui';
 import type {
   BashCommandResult,
   BashProcessReference,
@@ -135,7 +136,7 @@ export function BashCallView(props: BashCallViewProps): JSX.Element {
     <div className="ema-terminal-card">
       <div className="ema-terminal-banner">
         <span className="ema-terminal-gutter-dot" style={{ background: pill.color }} aria-hidden />
-        <code className="ema-terminal-cmd" title={command}>$ {command}</code>
+        <CommandPreview command={command} />
         <TerminalCopyButton label="复制命令" text={command} />
       </div>
       {(output !== null || props.running || errorText) && (
@@ -175,7 +176,7 @@ function BashBackgroundCard({
     <div className="ema-terminal-card">
       <div className="ema-terminal-banner">
         <span className="i-lucide:square-terminal shrink-0 text-sm text-[var(--ema-primary)]" aria-hidden />
-        <code className="ema-terminal-cmd" title={command}>$ {command}</code>
+        <CommandPreview command={command} />
         <TerminalCopyButton label="复制命令" text={command} />
       </div>
       <div className="ema-terminal-result">
@@ -194,6 +195,19 @@ function BashBackgroundCard({
         </div>
       </div>
     </div>
+  );
+}
+
+function CommandPreview({ command }: { command: string }): JSX.Element {
+  return (
+    <Tooltip
+      side="top"
+      align="start"
+      variant="card"
+      content={<pre className="ema-terminal-command-preview">{command}</pre>}
+    >
+      <code className="ema-terminal-cmd focus-ring" tabIndex={0}>$ {command}</code>
+    </Tooltip>
   );
 }
 

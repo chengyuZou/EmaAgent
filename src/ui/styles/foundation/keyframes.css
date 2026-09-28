@@ -84,6 +84,16 @@
   to   { opacity: 1; transform: translateY(0); }
 }
 
+/* DropdownMenu 保留完整布局尺寸, 仅从触发侧裁剪显隐, 不触发 ResizeObserver 重新避让. */
+@keyframes ema-menu-in {
+  from { opacity: 0; clip-path: var(--ema-menu-collapsed-clip); }
+  to   { opacity: 1; clip-path: inset(0); }
+}
+@keyframes ema-menu-out {
+  from { opacity: 1; clip-path: inset(0); }
+  to   { opacity: 0; clip-path: var(--ema-menu-collapsed-clip); }
+}
+
 /* ── 状态(循环)──────────────────────────────────────────────────────────*/
 @keyframes ema-pulse-bar {
   0%, 100% { opacity: 1; }

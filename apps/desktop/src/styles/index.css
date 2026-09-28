@@ -8,6 +8,8 @@
 @import './domains/appearance.css';
 @import './domains/wallpaper.css';
 @import './domains/material.css';
+@import './domains/materialSurfaces.css';
+@import './domains/chatMaterial.css';
 @import './domains/storage.css';
 @import './domains/memory.css';
 @import './domains/workspace.css';
