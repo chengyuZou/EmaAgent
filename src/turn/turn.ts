@@ -39,7 +39,7 @@ import {
 } from './errors.js';
 import type { TurnStreamEvent } from './events.js';
 import { createPrepareAgentIteration } from './prepare/prepareAgentIteration.js';
-import { createPrepareSubagent } from './prepare/prepareSubagent.js';
+import { createPrepareSubagent, type ForkParentMessages } from './prepare/prepareSubagent.js';
 import { TurnMessageWriter } from './turnMessageWriter.js';
 import {
   prepareTurn,
@@ -236,6 +236,9 @@ export class TurnExecutor {
     let prepared: PreparedTurn | undefined;
     let tools: TurnToolsAssembly | undefined;
     let terminal: 'completed' | 'failed' | 'aborted' = 'failed';
+    let parentMessagesReady: Promise<ForkParentMessages>;
+    let resolveParentMessages: ((messages: ForkParentMessages) => void) | undefined;
+    let rejectParentMessages: ((reason: unknown) => void) | undefined;
 
     try {
       emit({
@@ -249,7 +252,7 @@ export class TurnExecutor {
       });
 
       let compact: ((request: CompactRequest) => Promise<CompactResult>) | undefined;
-      const parentMessages: Message[] = [];
+      let parentMessages: readonly Message[] = [];
       const prepareSubagent = createPrepareSubagent({
         sessionId,
         turnId,
@@ -262,7 +265,25 @@ export class TurnExecutor {
         createCompact: this.deps.createCompact,
         usageRecorder: this.deps.usageRecorder,
         emit,
-        parentMessages,
+        readParentMessages: forkSignal => {
+          forkSignal.throwIfAborted();
+          // 先捕获本轮 Promise. 父循环之后换轮, 已创建的 fork 也不会读到新历史.
+          const current = parentMessagesReady;
+          return new Promise<ForkParentMessages>((resolve, reject) => {
+            const onAbort = (): void => reject(forkSignal.reason);
+            forkSignal.addEventListener('abort', onAbort, { once: true });
+            current.then(
+              messages => {
+                forkSignal.removeEventListener('abort', onAbort);
+                resolve(messages);
+              },
+              error => {
+                forkSignal.removeEventListener('abort', onAbort);
+                reject(error);
+              },
+            );
+          });
+        },
       });
 
       prepared = await prepareTurn(this.deps, {
@@ -450,8 +471,15 @@ export class TurnExecutor {
       });
       const prepareIteration: PrepareAgentIteration = async input => {
         const iteration = await prepareAgentIteration(input);
-        // fork 读取当前父模型消息; System 和本次请求缓存标记均不在此数组中.
-        parentMessages.splice(0, parentMessages.length, ...iteration.messages);
+        // 每次物理父请求独立交接, 包含 Compact 改写后的历史, 不订阅后续迭代.
+        parentMessages = [...iteration.messages];
+        parentMessagesReady = new Promise<ForkParentMessages>((resolve, reject) => {
+          resolveParentMessages = resolve;
+          rejectParentMessages = reject;
+        });
+        // 没有 fork 的请求也可能失败. 原 Promise 保留拒绝给等待者,
+        // 无等待者时的父错误则由 Turn 终态处理, 不产生未处理的 Promise 拒绝.
+        void parentMessagesReady.catch(() => undefined);
         return iteration;
       };
 
@@ -495,6 +523,25 @@ export class TurnExecutor {
           downstream = { ...event, delta: cleaned };
         }
         const storedMessageId = await writer.apply(downstream);
+        if (downstream.type === 'assistant_message_completed') {
+          // 父消息先落库, 再让 fork 发出第一条模型请求. 副本中的占位不进入 writer.
+          resolveParentMessages?.({
+            history: parentMessages,
+            assistant: {
+              role: 'assistant',
+              content: downstream.content,
+              generatedBy: {
+                providerId: prepared.providerId,
+                modelId: prepared.modelId,
+                protocol: prepared.protocol,
+              },
+            },
+          });
+        }
+        if (downstream.type === 'llm_call_finished' && downstream.status !== 'completed') {
+          // 在恢复 generator 的工具清理之前释放等待, 不能等外层 catch 才结束 fork 准备.
+          rejectParentMessages?.(new Error(`父 Assistant 未完成, fork 准备终止: ${downstream.errorCode ?? downstream.status}`));
+        }
         if (downstream.type === 'assistant_message_completed' || downstream.type === 'tool_result') {
           pendingMessageIds.push(storedMessageId);
         }
@@ -545,7 +592,10 @@ export class TurnExecutor {
             });
           }
         }
-        if (downstream.type === 'loop_stopped') stopped = downstream;
+        if (downstream.type === 'loop_stopped') {
+          stopped = downstream;
+          rejectParentMessages?.(new Error(`父循环已结束: ${downstream.state.stopReason}`));
+        }
       }
 
       // 扫描器未闭合尾部按正文释放
@@ -608,6 +658,7 @@ export class TurnExecutor {
         () => emit({ type: 'turn_failed', sessionId, turnId, code, message: outcome.message }),
       );
     } catch (error) {
+      rejectParentMessages?.(error);
       // 准备或持久化失败时, 尚未确认的队列项必须回到可领取状态.
       this.deps.continuations.release(turnId);
       if (signal.aborted || error instanceof TurnEventChannelClosedError) {

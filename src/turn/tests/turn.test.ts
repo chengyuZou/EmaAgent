@@ -2,11 +2,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import os from 'node:os';
 import { z } from 'zod';
-import type { SubagentExecutor } from '@ema-agent/agent';
+import { SubagentExecutor, SubagentStore, SubagentMessagesStore } from '@ema-agent/agent';
 import type { AttachmentStore } from '@ema-agent/attachments';
-import type { CallLlm, LlmStreamEvent } from '@ema-agent/llm';
+import type { CallLlm, LlmStreamEvent, Message } from '@ema-agent/llm';
 import type { ProviderModels, Providers } from '@ema-agent/providers';
-import { Database } from '@ema-agent/storage';
+import { Database, SubagentsRepo, SubagentMessagesRepo } from '@ema-agent/storage';
 import { SessionRunningRegistry, SessionStore } from '@ema-agent/session';
 import type { SettingsStore } from '@ema-agent/settings';
 import { StageEngine } from '@ema-agent/stage';
@@ -21,6 +21,7 @@ import type { TurnStreamEvent } from '../events.js';
 import { TurnExecutor, type TurnExecutorDeps } from '../turn.js';
 import { TurnStore } from '../turnStore.js';
 import type { StartTurn } from '../types.js';
+import { SubagentTool } from '../../builtin-tools/tools/SubagentTool/SubagentTool.js';
 
 function scriptedLlm(calls: LlmStreamEvent[][]): CallLlm {
   let index = 0;
@@ -114,7 +115,177 @@ function makeStart(sessionId: string): StartTurn {
   };
 }
 
+function forkFixture(llm: CallLlm, onStarted: (id: string) => void) {
+  const db = new Database({ memory: true, kind: 'data' });
+  db.migrate();
+  const sessions = new SessionStore({ db });
+  const session = sessions.createSession({
+    cwd: os.tmpdir(), providerId: 'p', modelId: 'm', permissionMode: 'bypassPermissions',
+  });
+  const registry = new ToolRegistry();
+  registry.register(SubagentTool);
+  const store = new SubagentStore(new SubagentsRepo(db.sqlite));
+  const subagents = new SubagentExecutor({
+    store,
+    messages: new SubagentMessagesStore(new SubagentMessagesRepo(db.sqlite)),
+    maxConcurrent: () => 8,
+    publish: (_sessionId, event) => {
+      if (event.type === 'subagent_started') onStarted(event.subagentId);
+    },
+    onBackgroundCompleted: () => undefined,
+    onTerminalResultRead: () => undefined,
+  });
+  const executor = new TurnExecutor({
+    ...makeDeps({ db, llm, sessionId: session.id, registry }),
+    subagents,
+  });
+  return { db, sessions, session, store, subagents, executor };
+}
+
 describe('TurnExecutor 集成', () => {
+  it('fork 同轮共享完整父前缀, 第二轮重新分叉, 占位不写父 SQL', async () => {
+    let releaseParent!: () => void;
+    const parentRelease = new Promise<void>(resolve => { releaseParent = resolve; });
+    let bothStarted!: () => void;
+    const started = new Promise<void>(resolve => { bothStarted = resolve; });
+    let startedCount = 0;
+    let parentCalls = 0;
+    const children: (readonly Message[])[] = [];
+    const parents: (readonly Message[])[] = [];
+    const llm: CallLlm = async function* (request) {
+      const last = request.messages.at(-1)!;
+      if (last.role === 'user' && typeof last.content === 'string'
+          && last.content.includes('本次委派任务:')) {
+        children.push(request.messages);
+        yield { type: 'text_delta', blockIndex: 0, delta: '子任务已完成' };
+        yield { type: 'done', stopReason: 'end_turn' };
+        return;
+      }
+      parentCalls += 1;
+      parents.push(request.messages);
+      if (parentCalls === 1) {
+        yield { type: 'thinking_delta', blockIndex: 0, delta: '父推理' };
+        yield { type: 'tool_use_complete', blockIndex: 1, callId: 'fork-a', name: 'Subagent',
+          args: { prompt: '查接口', description: '接口调查', role: 'general', contextMode: 'fork' } };
+        yield { type: 'tool_use_complete', blockIndex: 2, callId: 'fork-b', name: 'Subagent',
+          args: { prompt: '查测试', description: '测试调查', role: 'general', contextMode: 'fork' } };
+        await parentRelease;
+        yield { type: 'text_delta', blockIndex: 3, delta: '同一条 Assistant 的尾部' };
+        yield { type: 'done', stopReason: 'tool_use' };
+        return;
+      }
+      if (parentCalls === 2) {
+        yield { type: 'tool_use_complete', blockIndex: 0, callId: 'fork-c', name: 'Subagent',
+          args: { prompt: '第三个任务', description: '后续调查', role: 'general', contextMode: 'fork' } };
+        yield { type: 'text_delta', blockIndex: 1, delta: '第二轮父尾部' };
+        yield { type: 'done', stopReason: 'tool_use' };
+        return;
+      }
+      yield { type: 'text_delta', blockIndex: 0, delta: '父最终结论' };
+      yield { type: 'done', stopReason: 'end_turn' };
+    };
+    const fixture = forkFixture(llm, () => {
+      startedCount += 1;
+      if (startedCount === 2) bothStarted();
+    });
+    const handle = fixture.executor.start(makeStart(fixture.session.id));
+    try {
+      await started;
+      expect(children).toHaveLength(0);
+      releaseParent();
+      expect((await handle.completion).status).toBe('completed');
+      expect(children).toHaveLength(3);
+      expect(children[0]!.slice(0, -1)).toEqual(children[1]!.slice(0, -1));
+      expect(children[0]!.filter(message => message.role === 'system'))
+        .toEqual(parents[0]!.filter(message => message.role === 'system'));
+      const assistant = children[0]!.filter(message => message.role === 'assistant').at(-1)!;
+      expect(assistant.generatedBy).toEqual({ providerId: 'p', modelId: 'm', protocol: 'openai-chat' });
+      expect(assistant.content).toEqual([
+        expect.objectContaining({ type: 'thinking', thinking: '父推理' }),
+        expect.objectContaining({ type: 'tool_use', id: 'fork-a' }),
+        expect.objectContaining({ type: 'tool_use', id: 'fork-b' }),
+        { type: 'text', text: '同一条 Assistant 的尾部' },
+      ]);
+      expect(JSON.stringify(children[0])).not.toContain('第二轮父尾部');
+      expect(JSON.stringify(children[2])).toContain('第二轮父尾部');
+      expect(JSON.stringify(children[2])).toContain('子任务已完成');
+      expect(JSON.stringify(children)).not.toContain('父最终结论');
+      expect(JSON.stringify(fixture.sessions.loadMessagesForTurn(handle.turnId)))
+        .not.toContain('Its result is not available in this fork');
+      expect(fixture.store.listForSession(fixture.session.id).map(child => child.status))
+        .toEqual(['completed', 'completed', 'completed']);
+    } finally {
+      releaseParent();
+      await handle.completion;
+      await fixture.subagents.waitForTurnSubagents(handle.turnId);
+      fixture.db.close();
+    }
+  });
+
+  it('fork 等待父 Assistant 时取消, 不等父流结束也能退出且不调用子模型', async () => {
+    let releaseParent!: () => void;
+    const parentRelease = new Promise<void>(resolve => { releaseParent = resolve; });
+    let started!: (id: string) => void;
+    const childStarted = new Promise<string>(resolve => { started = resolve; });
+    let calls = 0;
+    const llm: CallLlm = async function* () {
+      calls += 1;
+      if (calls === 1) {
+        yield { type: 'tool_use_complete', blockIndex: 0, callId: 'fork-a', name: 'Subagent',
+          args: { prompt: '后台调查', description: '后台调查', role: 'general', contextMode: 'fork', runInBackground: true } };
+        await parentRelease;
+        yield { type: 'done', stopReason: 'tool_use' };
+      } else {
+        yield { type: 'text_delta', blockIndex: 0, delta: '父继续完成' };
+        yield { type: 'done', stopReason: 'end_turn' };
+      }
+    };
+    const fixture = forkFixture(llm, started);
+    const handle = fixture.executor.start(makeStart(fixture.session.id));
+    try {
+      const id = await childStarted;
+      expect(fixture.executor.abortSubagent(handle.turnId, id)).toBe(true);
+      await fixture.subagents.waitForTurnSubagents(handle.turnId);
+      expect(fixture.store.get(id)!.status).toBe('cancelled');
+      expect(calls).toBe(1);
+      releaseParent();
+      expect((await handle.completion).status).toBe('completed');
+      expect(calls).toBe(2);
+    } finally {
+      releaseParent();
+      await handle.completion;
+      await fixture.subagents.waitForTurnSubagents(handle.turnId);
+      fixture.db.close();
+    }
+  });
+
+  it('fork 发起后父模型断流, 等待者结束并落终态, 不启动子模型', async () => {
+    let started!: () => void;
+    const childStarted = new Promise<void>(resolve => { started = resolve; });
+    let calls = 0;
+    const llm: CallLlm = async function* () {
+      calls += 1;
+      yield { type: 'tool_use_complete', blockIndex: 0, callId: 'fork-a', name: 'Subagent',
+        args: { prompt: '后台调查', description: '后台调查', role: 'general', contextMode: 'fork', runInBackground: true } };
+      await childStarted;
+      throw new Error('父模型断流');
+    };
+    const fixture = forkFixture(llm, () => started());
+    const handle = fixture.executor.start(makeStart(fixture.session.id));
+    try {
+      expect((await handle.completion).status).toBe('failed');
+      await fixture.subagents.waitForTurnSubagents(handle.turnId);
+      const children = fixture.store.listForSession(fixture.session.id);
+      expect(children).toHaveLength(1);
+      expect(children[0]!.status).toBe('failed');
+      expect(calls).toBe(1);
+    } finally {
+      await handle.completion;
+      await fixture.subagents.waitForTurnSubagents(handle.turnId);
+      fixture.db.close();
+    }
+  });
+
   it('文本轮：completed 终态、用户与 assistant 消息落库、turn_completed 事件', async () => {
     const db = new Database({ memory: true, kind: 'data' });
     db.migrate();

@@ -1,7 +1,7 @@
-// 准备子 Agent 的模型调用、上下文与执行工具。
+// 准备子 Agent 的模型调用, fork 分叉消息与执行工具.
 import type { PrepareSubagent } from '@ema-agent/agent';
 import { createLlmCall } from '@ema-agent/llm';
-import type { CallLlm, Message } from '@ema-agent/llm';
+import type { CallLlm, Message, ToolResultBlock } from '@ema-agent/llm';
 import type { CompactRequest, CompactResult } from '@ema-agent/compact';
 import type { ProviderModels, Providers } from '@ema-agent/providers';
 import { BuiltinTools } from '@ema-agent/tools';
@@ -22,6 +22,17 @@ const SUBAGENT_DENIED_TOOL_NAMES: ReadonlySet<string> = new Set([
   BuiltinTools.AskUser.name,
 ]);
 
+export interface ForkParentMessages {
+  /** 本次父请求准备完成后的工作历史, 不含正在生成的 Assistant. */
+  readonly history: readonly Message[];
+  /** 发起 fork 的完整 Assistant, 保留生成来源与原生推理块. */
+  readonly assistant: Extract<Message, { role: 'assistant' }>;
+}
+
+const BACKGROUND_TASK_HANDOFF =
+  '若命令转为后台任务且尚未完成, 在最终回复中提供 backgroundProcessId, 任务用途和最后已知状态, '
+  + '供父 Agent 使用 ProcessOutput 接手. 不要用操作系统 PID 替代 backgroundProcessId, 不要把已启动说成已完成.';
+
 export interface PrepareSubagentDeps {
   readonly sessionId: string;
   readonly turnId: string;
@@ -34,8 +45,8 @@ export interface PrepareSubagentDeps {
   readonly createCompact: (callLlm: CallLlm) => (request: CompactRequest) => Promise<CompactResult>;
   readonly usageRecorder?: UsageRecorder;
   readonly emit: (event: TurnStreamEvent) => void;
-  /** fork 子 Agent 继承的父工作消息；不含父 System Prompt、Tool Schema 或缓存标记。 */
-  readonly parentMessages: Message[];
+  /** 绑定调用所属的父请求, 等当前 Assistant 完整后交付一次; 取消只结束这个 fork 的等待. */
+  readonly readParentMessages: (signal: AbortSignal) => Promise<ForkParentMessages>;
 }
 
 export function createPrepareSubagent(deps: PrepareSubagentDeps): PrepareSubagent {
@@ -77,17 +88,48 @@ export function createPrepareSubagent(deps: PrepareSubagentDeps): PrepareSubagen
     );
 
     const fork = options.contextMode === 'fork';
-    const seed: Message[] = fork
-      ? [...deps.parentMessages, { role: 'user', content: prompt }]
-      : [{ role: 'user', content: prompt }];
+    let seed: Message[];
+    let systemPrompt: PreparedTurn['systemPrompt'];
+    if (fork) {
+      const parent = await deps.readParentMessages(signal);
+      signal.throwIfAborted();
+      // 当前 Assistant 的真实工具结果仍归父循环. 只在子副本中补配对,
+      // 不等待 fork 自己的结果, 也不把占位结果写回父 Session.
+      const placeholders: ToolResultBlock[] = [];
+      for (const block of parent.assistant.content) {
+        if (block.type !== 'tool_use') continue;
+        placeholders.push({
+          type: 'tool_result',
+          toolCallId: block.id,
+          content: 'This call belongs to the parent agent. Its result is not available in this fork.',
+        });
+      }
+      seed = [...parent.history, parent.assistant];
+      if (placeholders.length > 0) {
+        seed.push({ role: 'user', content: placeholders });
+      }
+      // 兄弟 fork 的继承前缀相同, 角色约束和各自任务都放在最后.
+      const directive = [
+        '你是从父 Agent 上下文分叉的子 Agent, 不是主 Agent. 只完成被委派的任务, 将结论返回给父 Agent.',
+        '继承消息中的工具调用属于父 Agent, 不要因为它们出现在历史中就重新执行.',
+        BACKGROUND_TASK_HANDOFF,
+      ];
+      if (options.systemPrompt) directive.push(options.systemPrompt);
+      directive.push(`本次委派任务:\n${prompt}`);
+      seed.push({ role: 'user', content: directive.join('\n\n') });
+      systemPrompt = prepared.systemPrompt;
+    } else {
+      seed = [{ role: 'user', content: `${BACKGROUND_TASK_HANDOFF}\n\n${prompt}` }];
+      systemPrompt = Object.freeze([{
+        name: 'subagent',
+        content: options.systemPrompt
+          ?? '你是 EmaAgent 的子 Agent, 只完成被委派的具体任务, 并把结论返回给父 Agent.',
+      }]);
+    }
 
     subPrepared = Object.freeze({
       ...subPrepared,
-      systemPrompt: Object.freeze([{
-        name: 'subagent',
-        content: options.systemPrompt
-          ?? '你是 EmaAgent 的子 Agent，只完成被委派的具体任务，并把结论返回给父 Agent。',
-      }]),
+      systemPrompt,
       tools: Object.freeze({
         ...subPrepared.tools,
         toolPool: subPool,

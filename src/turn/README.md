@@ -25,7 +25,11 @@ Compact 只认识模型消息数组和 `summarizedMessageCount`，不知道 SQL 
 
 ## 子 Agent
 
-`prepare/prepareSubagent.ts` 为子 Agent 选择模型、System Prompt、工具子集和独立的 Compact 闭包。子 Agent 不提供根 Session 的 `macroPersistence`，因此其摘要只改自己的模型消息。当前 fork 只复制父 Agent 已准备的消息；完整继承父 System Prompt、模型可见工具、Thinking，以及补齐尚未闭合的父 ToolUse，仍属于后续 fork 改造，不能把当前实现当成完整 fork。
+`prepare/prepareSubagent.ts` 为子 Agent 选择模型, System Prompt, 工具子集和独立的 Compact 闭包. 子 Agent 不提供根 Session 的 `macroPersistence`, 因此其摘要只改自己的模型消息.
+
+fork 在发起它的父 Assistant 完整落库后, 领取本次父请求准备好的工作历史与这条完整 Assistant. 分叉后不继续接收父消息. 当前 Assistant 的工具调用在子代理输入副本中补统一的占位结果, 不等待父工具完成, 也不把占位写回父 Session. fork 继承父 System Prompt 与默认模型/Thinking 配置, 子角色约束和具体任务追加在最后的 User 指令中. 工具池仍按既有子代理规则收窄, 尚未实现父子完全相同的工具定义.
+
+普通子代理仍以独立角色提示词和任务开始, 不等待父 Assistant. 两种子代理都被要求在交差时说明未完成后台命令的 `backgroundProcessId`, 用途和最后已知状态, 由父 Agent 使用 `ProcessOutput` 接手. 等待分叉输入时的子代理取消, 父模型失败或父消息保存失败, 都会结束等待, 不启动缺少完整父上下文的子模型请求.
 
 ## 文件位置
 
