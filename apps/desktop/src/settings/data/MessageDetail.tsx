@@ -56,7 +56,7 @@ export function MessageDetail({ sessionId, messageId }: MessageDetailProps): JSX
 
   if (pretty === null) return null;
   return (
-    <div className="ema-raw-json mx-2 mb-2 rounded-lg border border-[var(--ema-border)] bg-[var(--ema-surface-0)]">
+    <div className="ema-raw-json mx-2 mb-2 rounded-lg border border-[var(--ema-border)]">
       <Markdown source={`\`\`\`json\n${pretty}\n\`\`\``} />
     </div>
   );

@@ -44,7 +44,7 @@
 
 .ema-wallpaper-window:not(.ema-wallpaper-settings):has(.ema-wallpaper-layer[data-visible='true']) .ema-wallpaper-panel,
 .ema-wallpaper-window:not(.ema-wallpaper-settings):has(.ema-wallpaper-layer[data-visible='true']) .ema-wallpaper-controls {
-  background: color-mix(in srgb, var(--ema-surface-1) 82%, transparent);
+  background: color-mix(in srgb, var(--ema-panel-fill, var(--ema-surface-1)) 82%, transparent);
 }
 
 .ema-wallpaper-window:not(.ema-wallpaper-settings):has(.ema-wallpaper-layer[data-material-mode='frosted']) .ema-wallpaper-sidebar,
@@ -60,7 +60,7 @@
 
 .ema-wallpaper-window:not(.ema-wallpaper-settings):has(.ema-wallpaper-layer[data-material-mode='frosted']) .ema-wallpaper-panel,
 .ema-wallpaper-window:not(.ema-wallpaper-settings):has(.ema-wallpaper-layer[data-material-mode='frosted']) .ema-wallpaper-controls {
-  background: color-mix(in srgb, var(--ema-surface-1) 70%, transparent);
+  background: color-mix(in srgb, var(--ema-panel-fill, var(--ema-surface-1)) 70%, transparent);
 }
 
 .ema-wallpaper-controls [role='tab'] {

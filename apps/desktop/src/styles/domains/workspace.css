@@ -1,5 +1,74 @@
-/* 会话侧栏、设置导航和工作区 Dock 共用的拖拽反馈。
+/* 会话侧栏与设置导航的拖拽反馈, 以及右侧工作区的标签栏, 工具入口和文件树。
    选中态语言在 primitives/selectable.css,Chat 控件皮肤在 chatControls.css。 */
+
+.ema-session-sidebar {
+  transition: width var(--ema-duration-panel) var(--ema-ease),
+              background-color 340ms var(--ema-ease),
+              backdrop-filter 340ms var(--ema-ease);
+}
+
+.ema-session-sidebar[data-resizing='true'] {
+  transition-property: background-color, backdrop-filter;
+}
+
+.ema-session-sidebar-expanded {
+  width: var(--ema-sidebar-expanded-width);
+  opacity: 1;
+  visibility: visible;
+  transition: opacity var(--ema-duration-fast) var(--ema-ease),
+              visibility 0ms;
+}
+
+.ema-session-sidebar-rail {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 40px;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--ema-duration-fast) var(--ema-ease),
+              visibility 0ms var(--ema-duration-fast);
+}
+
+.ema-session-sidebar[data-collapsed='true'] .ema-session-sidebar-expanded {
+  opacity: 0;
+  visibility: hidden;
+  transition-delay: 0ms, var(--ema-duration-fast);
+}
+
+.ema-session-sidebar[data-collapsed='true'] .ema-session-sidebar-rail {
+  opacity: 1;
+  visibility: visible;
+  transition-delay: var(--ema-duration-fast), 0ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ema-session-sidebar-expanded,
+  .ema-session-sidebar-rail {
+    transition-delay: 0ms;
+  }
+}
+
+.ema-session-search {
+  top: clamp(48px, 8vh, 88px);
+  width: min(36rem, calc(100vw - 32px));
+  max-height: calc(100dvh - 112px);
+  padding: 0;
+  transform: translateX(-50%);
+  overflow: hidden;
+}
+
+.ema-session-search[data-state='open'] {
+  animation: ema-fade-in var(--ema-duration-base) var(--ema-ease) both;
+}
+
+.ema-session-search[data-state='closed'] {
+  animation: ema-fade-out var(--ema-duration-fast) var(--ema-ease) both;
+}
+
+.ema-session-search-results {
+  max-height: min(420px, calc(100dvh - 184px));
+}
 
 .ema-resize-handle {
   position: absolute;
@@ -90,39 +159,128 @@
 }
 .ema-resize-handle-h:hover { background: var(--ema-primary); }
 
-/* 右侧工作区标签槽:内凹轨道 + 槽内胶囊(替代旧 dock-tab 下划线,替换非并存)。
-   动态变宽可关 tab:激活=抬升胶囊,未激活贴槽底;关闭键由消费方 hover/focus-within 浮现。 */
+.ema-session-side-panel {
+  --ema-panel-fill: var(--ema-bg);
+  border-left: 1px solid var(--ema-border);
+  background: var(--ema-panel-fill);
+}
+
+/* 标签栏属于工作区表面, 只有活动标签有浅底和描边, 不再嵌套胶囊轨道. */
 .ema-tab-slot {
   display: flex;
   align-items: center;
-  gap: var(--ema-space-0_5);
-  padding: var(--ema-space-0_5);
-  border-radius: var(--ema-radius-md);
-  border: 1px solid var(--ema-border);
-  background: color-mix(in srgb, var(--ema-surface-1) 72%, transparent);
+  gap: var(--ema-space-1);
 }
 .ema-slot-tab {
-  position: relative;
-  min-height: 26px;
+  display: flex;
+  align-items: center;
+  flex: none;
+  width: clamp(140px, 18vw, 224px);
+  height: 32px;
+  padding-right: var(--ema-space-1);
+  border: 1px solid transparent;
   border-radius: var(--ema-radius-sm);
+  color: var(--ema-text-tertiary);
   transition: background-color var(--ema-duration-fast) var(--ema-ease),
+              border-color var(--ema-duration-fast) var(--ema-ease),
               color var(--ema-duration-fast) var(--ema-ease);
 }
-/* 旧版手搓阴影拿 text-primary 当阴影色, 暗主题下是淡白光晕不是阴影。 */
-.ema-slot-tab[data-selected='true'] {
-  background: color-mix(in srgb, var(--ema-surface-3) 72%, transparent);
-  color: var(--ema-text-primary);
-  box-shadow: var(--ema-shadow-1);
+.ema-slot-tab:hover {
+  background: color-mix(in srgb, var(--ema-surface-2) 50%, transparent);
+  color: var(--ema-text-secondary);
 }
 
-.ema-slot-tab:focus-visible {
-  box-shadow: var(--ema-shadow-focus);
+.ema-slot-tab[data-selected='true'] {
+  border-color: var(--ema-border);
+  background: var(--ema-surface-2);
+  color: var(--ema-text-primary);
+}
+
+.ema-slot-tab-trigger {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  gap: var(--ema-space-2);
+  padding-inline: var(--ema-space-2);
+  border-radius: var(--ema-radius-sm);
+  cursor: pointer;
+  text-align: left;
 }
 
 .ema-slot-tab-close {
-  width: 22px;
-  height: 22px;
-  margin-left: auto;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--ema-duration-fast) var(--ema-ease),
+              background-color var(--ema-duration-fast) var(--ema-ease);
+}
+
+.ema-slot-tab[data-selected='true'] .ema-slot-tab-close,
+.ema-slot-tab:hover .ema-slot-tab-close,
+.ema-slot-tab:focus-within .ema-slot-tab-close {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.ema-workspace-launcher {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--ema-space-6) var(--ema-space-4);
+}
+
+.ema-workspace-launcher-content {
+  width: 100%;
+  max-width: 40rem;
+  margin-inline: auto;
+}
+
+.ema-workspace-launcher-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
+  gap: var(--ema-space-2);
+}
+
+button.ema-workspace-launcher-action {
+  justify-content: flex-start;
+  min-width: 0;
+  height: 40px;
+  gap: var(--ema-space-2);
+  padding-inline: var(--ema-space-3);
+  background: color-mix(in srgb, var(--ema-surface-2) 50%, transparent);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+button.ema-workspace-launcher-action:hover:not(:disabled) {
+  background: var(--ema-surface-2);
+}
+
+.ema-workspace-file-row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 26px;
+  gap: var(--ema-space-2);
+  padding: var(--ema-space-1) var(--ema-space-2);
+  border-radius: var(--ema-radius-xs);
+  color: var(--ema-text-primary);
+  font-family: var(--ema-font-ui);
+  font-size: 12px;
+  line-height: 18px;
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color var(--ema-duration-fast) var(--ema-ease);
+}
+
+.ema-workspace-file-row:hover,
+.ema-workspace-file-row[data-selected='true'] {
+  background: var(--ema-surface-2);
 }
 
 .ema-file-preview .markdown-content pre,

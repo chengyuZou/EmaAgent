@@ -122,9 +122,8 @@ export function SettingsPanel(): JSX.Element {
   const [active, setActive] = useState<ActiveNav>('providers');
   const [expandedPage, setExpandedPage] = useState<SettingsPageId | null>(null);
   const activePage = pageOf(active);
-  const materialPage = active === 'appearance' || active === 'parameters';
 
-  // 已接入的页面共用窗口材质, 根节点标记让 Portal 也读取当前页面的材质范围.
+  // 全部设置页面共用窗口材质, 根节点标记让 body 下的 Portal 也读取材质范围.
   useLayoutEffect(() => {
     document.documentElement.dataset.settingsPage = active;
     return () => { delete document.documentElement.dataset.settingsPage; };
@@ -210,7 +209,7 @@ export function SettingsPanel(): JSX.Element {
 
         <main
           key={active}
-          className={`relative z-10 min-w-0 flex-1 ema-slide-right ${materialPage ? 'ema-settings-material-page' : ''} ${activePage.fullHeight ? 'overflow-hidden' : 'overflow-y-auto px-5 py-5 md:px-8 md:py-6'}`}
+          className={`relative z-10 min-w-0 flex-1 ema-slide-right ema-settings-material-page ${activePage.fullHeight ? 'overflow-hidden' : 'overflow-y-auto px-5 py-5 md:px-8 md:py-6'}`}
           id="settings-scroll-container"
         >
           <div className={`mb-5 md:hidden ${activePage.fullHeight ? 'px-5 pt-5' : ''}`}>

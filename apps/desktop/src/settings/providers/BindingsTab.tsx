@@ -83,8 +83,9 @@ function ProviderCardRow({
           <CardButton
             key={pcId}
             selected={isSel}
+            data-selected={isSel || undefined}
             padding="md"
-            className={`group flex-shrink-0 rounded-xl border-2 min-w-[180px] ema-glass-weak ema-card-decorate ema-card-decorate--grid hover:border-[var(--ema-primary)] ${isSel ? 'shadow-[var(--ema-shadow-2)]' : 'hover:shadow-[var(--ema-shadow-2)]'}`}
+            className={`group flex-shrink-0 rounded-xl border-2 min-w-[180px] ema-material-card ema-glass-weak ema-card-decorate ema-card-decorate--grid hover:border-[var(--ema-primary)] ${isSel ? 'shadow-[var(--ema-shadow-2)]' : 'hover:shadow-[var(--ema-shadow-2)]'}`}
             onClick={() => onSelect(pcId)}
           >
             {/* Radio dot */}
@@ -222,7 +223,7 @@ export function BindingsTab(): JSX.Element {
               <CardButton
                 key={m.id}
                 padding="md"
-                className="relative rounded-2xl ema-glass-weak hover:border-[var(--ema-primary)] hover:shadow-[var(--ema-shadow-2)] ema-stagger-in ema-card-decorate ema-card-decorate--grid"
+                className="relative rounded-2xl ema-material-card ema-glass-weak hover:border-[var(--ema-primary)] hover:shadow-[var(--ema-shadow-2)] ema-stagger-in ema-card-decorate ema-card-decorate--grid"
                 style={{ '--stagger-i': i } as React.CSSProperties}
                 onClick={() => goDetail(m.id)}
               >
@@ -292,7 +293,7 @@ export function BindingsTab(): JSX.Element {
           <section className="flex flex-col gap-2">
             <h3 className="text-sm text-[var(--ema-text-tertiary)]">已绑定</h3>
             {currentBinding ? (
-              <div className="relative flex items-center justify-between
+              <div data-selected="true" className="ema-material-card relative flex items-center justify-between
                               bg-[var(--ema-primary-muted)] border-2 border-[var(--ema-primary)]
                               rounded-xl px-4 py-3 ema-card-decorate ema-card-decorate--grid">
                 <span
@@ -375,9 +376,10 @@ export function BindingsTab(): JSX.Element {
                       <CardButton
                         key={key}
                         selected={isBound}
+                        data-selected={isBound || undefined}
                         disabled={isBound || isSaving}
                         padding="sm"
-                        className={`group rounded-xl border-2 disabled:cursor-default ema-card-decorate ema-card-decorate--grid`}
+                        className="group rounded-xl border-2 disabled:cursor-default ema-material-card ema-card-decorate ema-card-decorate--grid"
                         onClick={() => void handleSelect(m.providerId, m.modelId)}
                       >
                         <div className="flex items-start gap-2.5">

@@ -35,6 +35,17 @@
   color: var(--ema-syntax-prompt);
 }
 
+.ema-terminal-command-preview {
+  max-height: 16rem;
+  margin: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--ema-font-mono, monospace);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
 .ema-terminal-pill {
   flex: none;
   font-size: 10px;

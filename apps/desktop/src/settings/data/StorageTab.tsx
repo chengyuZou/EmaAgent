@@ -116,7 +116,7 @@ export function StorageTab(): JSX.Element {
   const stats = store.stats;
   return (
     <div className="relative flex h-full flex-col overflow-hidden">
-      <div className="shrink-0 border-b border-[var(--ema-border)] px-6 pt-5">
+      <div className={`shrink-0 border-b border-[var(--ema-border)] px-6 pt-5 ${viewer ? 'invisible' : ''}`} aria-hidden={viewer !== null}>
         <PageHeader
           title="存储位置"
           description="会话与数据存储，~/.ema-agent/data"
@@ -144,7 +144,7 @@ export function StorageTab(): JSX.Element {
         }}
       />
 
-      <div className="ema-fade-in flex-1 overflow-y-auto p-6">
+      <div className={`ema-fade-in flex-1 overflow-y-auto p-6 ${viewer ? 'invisible' : ''}`} aria-hidden={viewer !== null}>
         <div className="flex flex-col gap-6">
           {stats && <OverviewBand stats={stats} />}
 
@@ -395,7 +395,7 @@ function ViewerOverlay({
   }
   return (
     <div
-      className="absolute inset-0 z-10 flex flex-col bg-[var(--ema-bg)]"
+      className="ema-material-workspace absolute inset-0 z-10 flex flex-col"
       style={{ viewTransitionName: MORPH_NAME } as CSSProperties}
     >
       <div className="flex shrink-0 items-center gap-3 border-b border-[var(--ema-border)] px-6 py-4">

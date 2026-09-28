@@ -2,6 +2,19 @@
    横向 Tabs 的 trigger 必须等宽,滑块才能按索引准确定位。 */
 
 /* 浮层统一 grid 展开: 外层行 0fr↔1fr + 内容反向滑入防拉扯, 进 300ms 出 200ms(出场=入场×0.7). */
+.ema-tooltip-card {
+  max-width: min(32rem, calc(100vw - 24px));
+  max-height: var(--radix-tooltip-content-available-height);
+  overflow: auto;
+  padding: var(--ema-space-3);
+  border: 1px solid var(--ema-border);
+  border-radius: var(--ema-radius-md);
+  background: var(--ema-surface-4);
+  color: var(--ema-text-primary);
+  font-weight: 400;
+  line-height: 1.5;
+}
+
 .ema-anim-expand { display: grid; overflow: hidden; }
 .ema-anim-expand > * { min-height: 0; overflow: hidden; }
 .ema-anim-expand[data-state="open"] { animation: ema-expand-in 300ms cubic-bezier(0, 0, 0.2, 1) both; }

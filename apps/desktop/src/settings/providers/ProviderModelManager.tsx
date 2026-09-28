@@ -35,12 +35,13 @@ function ModelCard({ title, hint, lines, chips, enabled, onToggle, logo, action 
       role="button"
       tabIndex={0}
       title={hint}
+      data-selected={enabled || undefined}
       onClick={onToggle}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } }}
       className={`group relative text-left rounded-lg border border-solid px-3 py-2.5 min-w-0 cursor-pointer outline-none
                   overflow-hidden isolate
                   transition-ema active:scale-[0.97]
-                  ema-card-decorate ema-card-decorate--grid
+                  ema-material-card ema-card-decorate ema-card-decorate--grid
                   ${enabled
                     ? 'border-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
                     : 'border-[var(--ema-border)] bg-[var(--ema-surface-1)] ema-glass-weak hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]'

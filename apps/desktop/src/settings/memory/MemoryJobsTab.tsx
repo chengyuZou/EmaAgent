@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type JSX } from 'react';
+import { useCallback, useEffect, useId, useState, type JSX } from 'react';
 import { Badge, Button, Callout, Card, Skeleton, Spinner } from '@ema-agent/ui';
 import { memoryApi, type MemoryJob } from '../../api/memory.js';
 import {
@@ -17,6 +17,9 @@ export function MemoryJobsTab(): JSX.Element {
   const [jobs, setJobs] = useState<readonly MemoryJob[] | null>(null);
   const [history, setHistory] = useState<readonly MemoryJob[] | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [showFailed, setShowFailed] = useState(false);
+  const failedListId = useId();
+  const historyListId = useId();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -89,6 +92,8 @@ export function MemoryJobsTab(): JSX.Element {
               variant="secondary"
               size="sm"
               onClick={() => void toggleHistory()}
+              aria-expanded={showHistory}
+              aria-controls={historyListId}
             >
               {showHistory ? '收起历史记录' : '查看历史记录'}
             </Button>
@@ -105,12 +110,33 @@ export function MemoryJobsTab(): JSX.Element {
       )}
 
       {failed.length > 0 && (
-        <Callout variant="danger" className="ema-pop-in-spring">
-          <p className="font-semibold">有 {failed.length} 个任务需要注意</p>
-          <div className="mt-2 flex flex-col gap-2">
-            {failed.map((job, i) => (
-              <JobRow key={job.id} job={job} index={i} />
-            ))}
+        <Callout variant="danger" className="shrink-0 ema-pop-in-spring">
+          <button
+            type="button"
+            className="flex w-full items-center justify-between gap-3 text-left font-semibold"
+            aria-expanded={showFailed}
+            aria-controls={failedListId}
+            onClick={() => setShowFailed(value => !value)}
+          >
+            <span>有 {failed.length} 个任务需要注意</span>
+            <span className="flex shrink-0 items-center gap-1 text-xs">
+              {showFailed ? '收起任务' : '展开任务'}
+              <span className={`i-lucide:chevron-down transition-transform ${showFailed ? 'rotate-180' : ''}`} aria-hidden />
+            </span>
+          </button>
+          <div
+            id={failedListId}
+            className={`ema-collapsible ${showFailed ? '' : 'invisible'}`}
+            style={{ gridTemplateRows: showFailed ? '1fr' : '0fr', opacity: showFailed ? 1 : 0 }}
+            aria-hidden={!showFailed}
+          >
+            <div>
+              <div className="mt-2 flex flex-col gap-2">
+                {failed.map((job, i) => (
+                  <JobRow key={job.id} job={job} index={i} />
+                ))}
+              </div>
+            </div>
           </div>
         </Callout>
       )}
@@ -140,8 +166,10 @@ export function MemoryJobsTab(): JSX.Element {
       </section>
 
       <div
-        className="ema-collapsible"
+        id={historyListId}
+        className={`ema-collapsible shrink-0 ${showHistory ? '' : 'invisible'}`}
         style={{ gridTemplateRows: showHistory ? '1fr' : '0fr', opacity: showHistory ? 1 : 0 }}
+        aria-hidden={!showHistory}
       >
         <div>
           <section>
@@ -158,7 +186,7 @@ export function MemoryJobsTab(): JSX.Element {
                 还没有已完成或失败的任务。
               </p>
             ) : (
-              <div className="flex max-h-96 flex-col gap-2 overflow-y-auto pr-1">
+              <div className="flex flex-col gap-2">
                 {history.map((job, i) => (
                   <JobRow key={job.id} job={job} index={i} />
                 ))}
@@ -178,7 +206,7 @@ function JobRow({ job, index = 0 }: { job: MemoryJob; index?: number }): JSX.Ele
     <Card
       variant="glass"
       padding="sm"
-      className="ema-card-decorate ema-card-decorate--cross ema-pop-in-spring"
+      className="shrink-0 ema-card-decorate ema-card-decorate--cross ema-pop-in-spring"
       style={{ '--stagger-i': index } as React.CSSProperties}
     >
       <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -201,9 +229,13 @@ function JobRow({ job, index = 0 }: { job: MemoryJob; index?: number }): JSX.Ele
       </div>
 
       {job.error && (
-        <p className="mt-2 break-words text-xs text-[var(--ema-danger-text)]">
-          {job.error}
-        </p>
+        <details className="group/error mt-2 text-xs text-[var(--ema-danger-text)]">
+          <summary className="flex cursor-pointer list-none items-center gap-1 font-medium [&::-webkit-details-marker]:hidden">
+            <span className="i-lucide:chevron-right transition-transform group-open/error:rotate-90" aria-hidden />
+            错误详情
+          </summary>
+          <p className="mt-2 whitespace-pre-wrap break-words">{job.error}</p>
+        </details>
       )}
     </Card>
   );

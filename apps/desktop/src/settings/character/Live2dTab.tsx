@@ -167,7 +167,8 @@ function ModelCard({
   return (
     <div className="ema-stagger-in" style={{ '--stagger-i': index } as React.CSSProperties}>
       <CursorFloating
-        className={`group relative overflow-hidden rounded-xl border
+        data-selected={model.isPrimary || undefined}
+        className={`ema-material-card group relative overflow-hidden rounded-xl border
           hover:border-[var(--ema-primary)]/30 hover:shadow-[var(--ema-shadow-soft)]
           ${model.isPrimary
             ? 'border-[var(--ema-primary)] shadow-[var(--ema-shadow-1)]'

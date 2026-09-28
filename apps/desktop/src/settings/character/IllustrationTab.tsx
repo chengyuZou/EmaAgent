@@ -157,7 +157,8 @@ function IllustrationCard({
   return (
     <div className="ema-stagger-in" style={{ '--stagger-i': index } as React.CSSProperties}>
       <CursorFloating
-        className={`group relative cursor-pointer overflow-hidden rounded-xl border
+        data-selected={selected || undefined}
+        className={`ema-material-card group relative cursor-pointer overflow-hidden rounded-xl border
           hover:border-[var(--ema-primary)]/30 hover:shadow-[var(--ema-shadow-soft)]
           ${selected ? 'border-[var(--ema-primary)]' : 'border-[var(--ema-border)] bg-[var(--ema-surface-2)]'}`}
         onClick={onSelect}

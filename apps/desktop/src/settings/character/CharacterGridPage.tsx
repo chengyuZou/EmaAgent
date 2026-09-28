@@ -162,7 +162,7 @@ function CharacterCard({
   return (
     <div className="ema-stagger-in" style={{ '--stagger-i': index } as React.CSSProperties}>
       <CursorFloating
-        className="group relative cursor-pointer overflow-hidden rounded-xl border
+        className="ema-material-card group relative cursor-pointer overflow-hidden rounded-xl border
           border-[var(--ema-border)] bg-[var(--ema-surface-2)] shadow-[var(--ema-shadow-1)]
           hover:border-[var(--ema-primary)]/30 hover:shadow-[var(--ema-shadow-soft)]"
         onClick={onOpen}

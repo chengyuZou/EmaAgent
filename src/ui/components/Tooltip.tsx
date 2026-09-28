@@ -4,8 +4,8 @@ import { cn } from '../utils/cn.js';
 
 // ── Tooltip ─────────────────────────────────────────────────────────────────
 //
-// 悬停/聚焦触发的文字标签,包裹任意可聚焦元素;仅单行文本,
-// 更丰富的内容请用 <Popover/>。应用根部需挂载 <TooltipProvider>。
+// 悬停/聚焦的只读提示: label 用于短标签, card 用于用量或文本预览.
+// 含交互操作的内容使用 Popover. 应用根部需挂载 TooltipProvider.
 
 export const TooltipProvider = RadixTooltip.Provider;
 
@@ -16,6 +16,8 @@ export interface TooltipProps {
   align?:     'start' | 'center' | 'end';
   sideOffset?: number;
   delayDuration?: number;
+  variant?: 'label' | 'card';
+  className?: string;
   /** Disable so consumer can conditionally suppress. */
   disabled?:  boolean;
 }
@@ -27,6 +29,8 @@ export function Tooltip(props: TooltipProps): React.JSX.Element {
     align      = 'center',
     sideOffset = 6,
     delayDuration = 200,
+    variant = 'label',
+    className,
     disabled,
   } = props;
 
@@ -41,13 +45,16 @@ export function Tooltip(props: TooltipProps): React.JSX.Element {
           align={align}
           sideOffset={sideOffset}
           className={cn(
-            'z-[var(--ema-z-tooltip)] rounded-md bg-[var(--ema-text-primary)] px-2.5 py-1',
-            'text-xs font-medium text-[var(--ema-bg)] shadow-[var(--ema-shadow-2)]',
-            'ema-anim-fade',
+            'z-[var(--ema-z-tooltip)] text-xs shadow-[var(--ema-shadow-2)]',
+            variant === 'card'
+              ? 'ema-tooltip-card'
+              : 'rounded-md bg-[var(--ema-text-primary)] px-2.5 py-1 font-medium text-[var(--ema-bg)]',
+            'ema-tooltip-surface ema-anim-fade',
+            className,
           )}
         >
           {content}
-          <RadixTooltip.Arrow className="fill-[var(--ema-text-primary)]" />
+          {variant === 'label' && <RadixTooltip.Arrow className="ema-tooltip-arrow fill-[var(--ema-text-primary)]" />}
         </RadixTooltip.Content>
       </RadixTooltip.Portal>
     </RadixTooltip.Root>

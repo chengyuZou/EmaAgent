@@ -90,7 +90,7 @@ function ToastContainer(): JSX.Element {
       {toasts.map((t) => (
         <div
           key={t.id}
-          className={`pointer-events-auto flex max-w-full items-start gap-2 px-4 py-2 rounded-xl border text-sm ${variantStyles[t.variant]} ${variantBg[t.variant]} ema-fade-in`}
+          className={`ema-material-toast pointer-events-auto flex max-w-full items-start gap-2 px-4 py-2 rounded-xl border text-sm ${variantStyles[t.variant]} ${variantBg[t.variant]} ema-fade-in`}
           style={t.accentColor ? { borderColor: t.accentColor } as CSSProperties : undefined}
         >
           <span className="min-w-0 flex-1 break-words">{t.message}</span>

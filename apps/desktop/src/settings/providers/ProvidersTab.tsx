@@ -345,7 +345,8 @@ function ProviderConfigPanel({
               type="button"
               disabled={iconBusy}
               onClick={() => void pickIcon(id)}
-              className={`flex flex-col items-center gap-1.5 rounded-lg border px-2 py-3 cursor-pointer
+              data-selected={provider.iconId === id || undefined}
+              className={`ema-material-card flex flex-col items-center gap-1.5 rounded-lg border px-2 py-3 cursor-pointer
                           transition-all duration-[var(--ema-duration-base)]
                           ${provider.iconId === id
                             ? 'border-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
@@ -359,7 +360,8 @@ function ProviderConfigPanel({
             type="button"
             disabled={iconBusy}
             onClick={() => void pickIcon(null)}
-            className={`flex flex-col items-center gap-1.5 rounded-lg border px-2 py-3 cursor-pointer
+            data-selected={provider.iconId === undefined || undefined}
+            className={`ema-material-card flex flex-col items-center gap-1.5 rounded-lg border px-2 py-3 cursor-pointer
                         transition-all duration-[var(--ema-duration-base)]
                         ${provider.iconId === undefined
                           ? 'border-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
