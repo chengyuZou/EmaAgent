@@ -104,11 +104,13 @@ export function UserMessage({ message }: UserMessageProps): JSX.Element {
           </div>
         ) : null}
 
-        <div className="flex items-center justify-end gap-1.5 text-[11px] text-[var(--ema-text-tertiary)]">
-          <span className="opacity-50 tabular-nums">{formatTurnTime(message.createdAt)}</span>
+        <div className="ema-message-footer ema-message-footer-user">
+          <span className="ema-message-footer-stats tabular-nums">{formatTurnTime(message.createdAt)}</span>
           {content.trim().length > 0 && (
             <IconButton
               size="sm"
+              variant="ghost"
+              shape="rounded"
               icon={copied ? 'i-lucide:check' : 'i-lucide:copy'}
               label="复制"
               className="ema-chat-icon-btn chat-message-action"

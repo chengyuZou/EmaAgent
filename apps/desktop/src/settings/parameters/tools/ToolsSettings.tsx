@@ -24,7 +24,7 @@ export function ToolsSettings(): JSX.Element {
     <div className="flex w-full flex-col gap-8 pb-10">
       <header>
         <h1 className="text-xl font-semibold text-[var(--ema-text-primary)]">Tools</h1>
-        <p className="mt-1 text-sm text-[var(--ema-text-tertiary)]">管理下一根 Turn 可以看到的内置工具和后台 Shell 行为.</p>
+        <p className="mt-1 text-sm text-[var(--ema-text-tertiary)]">管理下一次执行可以看到的内置工具和后台 Shell 行为.</p>
       </header>
       <SettingsSection icon="i-lucide:wrench" title="内置工具" description="身份和分组直接来自 tools 包">
         <SettingsCard>

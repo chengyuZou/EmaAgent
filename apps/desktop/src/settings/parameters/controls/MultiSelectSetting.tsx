@@ -61,7 +61,7 @@ export function MultiSelectSetting(props: {
           </Button>
         </div>
       </div>
-      <div className="mt-3 divide-y divide-[var(--ema-border)] overflow-hidden rounded-lg border border-[var(--ema-border)] bg-[var(--ema-surface-1)]">
+      <div className="ema-material-card mt-3 divide-y divide-[var(--ema-border)] overflow-hidden rounded-lg border border-[var(--ema-border)] bg-[var(--ema-surface-1)]">
         {props.options.map(option => (
           <div key={option.value} className="flex min-h-14 items-center gap-4 px-3 py-2.5 transition-colors duration-[var(--ema-duration-base)] hover:bg-[var(--ema-surface-2)]">
             <div className="min-w-0 flex-1">

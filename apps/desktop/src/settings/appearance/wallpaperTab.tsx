@@ -39,6 +39,7 @@ interface PreviewFrame {
   readonly image: WallpaperImageSummary;
   readonly opacity: number;
   readonly blur: number;
+  readonly transition: 'crossfade' | 'replace';
   readonly ready: boolean;
   readonly outgoing: boolean;
 }
@@ -91,6 +92,7 @@ export function WallpaperTab(): JSX.Element {
   const controlsDisabled = busy || loading || target !== displayTarget;
   const materialDisabled = controlsDisabled || !settings.enabled
     || !items.some(item => item.name === settings.activeImage);
+  const materialHintVisible = !controlsDisabled && materialDisabled;
   const filenameBase = selected ? selected.name.slice(0, selected.name.lastIndexOf('.')) : '';
 
   async function saveSettings(next: WallpaperSettings): Promise<void> {
@@ -273,11 +275,12 @@ export function WallpaperTab(): JSX.Element {
                 className="w-32"
               />
             </div>
-            {!controlsDisabled && materialDisabled && (
-              <span className="text-[var(--ema-text-tertiary)]">
-                {settings.enabled ? '设为壁纸后生效' : '开启壁纸后生效'}
-              </span>
-            )}
+            <span
+              className={`block h-4 whitespace-nowrap text-[var(--ema-text-tertiary)] ${materialHintVisible ? '' : 'invisible'}`}
+              aria-hidden={!materialHintVisible}
+            >
+              {settings.enabled ? '设为壁纸后生效' : '开启壁纸后生效'}
+            </span>
           </div>
           <div className="flex items-center gap-2">
             <span>在此窗口显示壁纸</span>
@@ -427,9 +430,10 @@ function WallpaperPreview({
   blur: number;
 }): JSX.Element {
   const [frames, setFrames] = useState<PreviewFrame[]>([
-    { id: 0, target, image, opacity, blur, ready: false, outgoing: false },
+    { id: 0, target, image, opacity, blur, transition: 'crossfade', ready: false, outgoing: false },
   ]);
   const currentKey = useRef(`${target}/${image.name}/${image.modifiedAt}`);
+  const currentTarget = useRef(target);
   const nextFrameId = useRef(0);
   const retirementTimers = useRef(new Set<ReturnType<typeof setTimeout>>());
 
@@ -442,11 +446,13 @@ function WallpaperPreview({
       }));
       return;
     }
+    const transition = currentTarget.current === target ? 'crossfade' : 'replace';
     currentKey.current = key;
+    currentTarget.current = target;
     const id = ++nextFrameId.current;
     setFrames(previous => [
       ...previous.filter(frame => frame.ready && !frame.outgoing),
-      { id, target, image, opacity, blur, ready: false, outgoing: false },
+      { id, target, image, opacity, blur, transition, ready: false, outgoing: false },
     ]);
   }, [target, image.name, image.modifiedAt, opacity, blur]);
 
@@ -456,6 +462,15 @@ function WallpaperPreview({
 
   function markReady(id: number): void {
     if (id !== nextFrameId.current) return;
+    const incoming = frames.find(frame => frame.id === id);
+    if (!incoming) return;
+    // 切换配置对象时完整替换预览, 不让两张图同时淡向透明而露出底面.
+    if (incoming.transition === 'replace') {
+      for (const timer of retirementTimers.current) clearTimeout(timer);
+      retirementTimers.current.clear();
+      setFrames([{ ...incoming, ready: true }]);
+      return;
+    }
     setFrames(previous => previous.map(frame => {
       if (frame.id === id) return { ...frame, ready: true };
       return frame.ready ? { ...frame, outgoing: true } : frame;
@@ -469,18 +484,21 @@ function WallpaperPreview({
 
   return (
     <>
-      {frames.map(frame => (
+      {frames.map(frame => {
+        const visibility = frame.ready ? 'active' : 'pending';
+        return (
         <div
           key={frame.id}
           className="ema-wallpaper-preview-frame absolute inset-0"
-          data-state={frame.outgoing ? 'outgoing' : frame.ready ? 'active' : 'pending'}
+          data-state={frame.outgoing ? 'outgoing' : visibility}
+          data-transition={frame.transition}
         >
           <div
             className="absolute inset-0"
             style={{
-              opacity: frame.outgoing ? frame.opacity : opacity,
-              filter: `blur(${frame.outgoing ? frame.blur : blur}px)`,
-              transform: `scale(${1 + (frame.outgoing ? frame.blur : blur) / 100})`,
+              opacity: frame.opacity,
+              filter: `blur(${frame.blur}px)`,
+              transform: `scale(${1 + frame.blur / 100})`,
             }}
           >
             <ServerImage
@@ -492,7 +510,8 @@ function WallpaperPreview({
             />
           </div>
         </div>
-      ))}
+        );
+      })}
     </>
   );
 }

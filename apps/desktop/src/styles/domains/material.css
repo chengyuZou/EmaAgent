@@ -1,4 +1,4 @@
-/* 设置侧栏, 外观页及该页打开的 Portal 共用材质. 聊天和其他设置页不覆盖.
+/* 设置侧栏, 外观页, 参数设置及这些页面打开的 Portal 共用材质. 聊天和其他设置页不覆盖.
    色源沿用 foundation token, 只改背景 Alpha, 不降低文字或媒体的 opacity. */
 
 html[data-settings-material] {
@@ -63,8 +63,8 @@ html[data-settings-wallpaper='true'][data-settings-material='frosted'] {
 }
 
 .ema-settings-sidebar,
-.ema-settings-appearance,
-html[data-settings-page='appearance'] :is(.panel-glass, [role='dialog']) {
+.ema-settings-material-page,
+html:is([data-settings-page='appearance'], [data-settings-page='parameters']) :is(.panel-glass, [role='dialog']) {
   --ema-surface-1: var(--ema-material-section);
   --ema-surface-2: var(--ema-material-card);
   --ema-surface-3: var(--ema-material-control);
@@ -83,81 +83,86 @@ html[data-settings-page='appearance'] :is(.panel-glass, [role='dialog']) {
   backdrop-filter: var(--ema-material-sidebar-filter);
 }
 
-.ema-settings-appearance {
+.ema-settings-material-page {
   background: var(--ema-material-workspace);
   -webkit-backdrop-filter: var(--ema-material-workspace-filter);
   backdrop-filter: var(--ema-material-workspace-filter);
 }
 
-.ema-settings-appearance .ema-material-section {
+.ema-settings-material-page .ema-material-section {
   background: var(--ema-material-section);
   box-shadow: var(--ema-shadow-soft);
 }
 
-.ema-settings-appearance .ema-material-card {
+.ema-settings-material-page .ema-material-card {
   background-color: var(--ema-material-card);
 }
 
-.ema-settings-appearance .ema-material-card[data-selected='true'] {
+.ema-settings-material-page .ema-material-card[data-selected='true'] {
   background-color: var(--ema-material-card);
   background-image: var(--ema-selected-bg);
 }
 
-.ema-settings-appearance .ema-material-reading {
+html[data-settings-page='parameters'] .ema-settings-material-page button.ema-material-card:hover:not(:disabled) {
+  background-color: var(--ema-material-control-hover);
+}
+
+.ema-settings-material-page .ema-material-reading {
   background: var(--ema-material-reading);
 }
 
 /* 代码主题有独立底色和前景色, 保留配色关系, 比普通卡片多一层阅读填充. */
-.ema-settings-appearance .ema-material-code {
+.ema-settings-material-page .ema-material-code {
   background: color-mix(in srgb, var(--ema-syntax-bg, var(--ema-material-fill)) var(--ema-material-code-alpha), transparent);
 }
 
 /* 开关轨道也透出壁纸, 开启态叠加主色, 白色滑块保持清晰. 位移动画沿用 radix.css. */
-html[data-settings-wallpaper='true'] .ema-settings-appearance .ema-switch[data-state='checked'] {
+html[data-settings-wallpaper='true'] .ema-settings-material-page .ema-switch[data-state='checked'] {
   background-color: var(--ema-material-control);
   background-image: linear-gradient(var(--ema-primary-muted), var(--ema-primary-muted));
   border-color: color-mix(in srgb, var(--ema-primary) 70%, transparent);
   box-shadow: var(--ema-shadow-inset), var(--ema-shadow-1);
 }
 
-html[data-settings-wallpaper='true'] .ema-settings-appearance .ema-switch[data-state='checked']:hover:not(:disabled) {
+html[data-settings-wallpaper='true'] .ema-settings-material-page .ema-switch[data-state='checked']:hover:not(:disabled) {
   background-color: var(--ema-material-control-hover);
   border-color: var(--ema-primary-hover);
   box-shadow: var(--ema-shadow-soft);
 }
 
 /* 模糊仅在侧栏, 主工作区和浮层边界执行, 子控件不再叠加 blur. */
-.ema-settings-appearance :is(button, .ema-glass-weak),
+.ema-settings-material-page :is(button, .ema-glass-weak),
 .ema-settings-sidebar button,
-html[data-settings-page='appearance'] [role='dialog'] button {
+html:is([data-settings-page='appearance'], [data-settings-page='parameters']) [role='dialog'] button {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
 
-html[data-settings-page='appearance'] :is(.panel-glass, [role='dialog']) {
+html:is([data-settings-page='appearance'], [data-settings-page='parameters']) :is(.panel-glass, [role='dialog']) {
   background: var(--ema-material-overlay);
   -webkit-backdrop-filter: var(--ema-material-overlay-filter);
   backdrop-filter: var(--ema-material-overlay-filter);
 }
 
-/* 外观页的确认/改名对话框已有半透明遮罩, 通透档不能再被旧遮罩 blur. */
-html[data-settings-page='appearance'] body > .ema-anim-fade {
+/* 对话框已有半透明遮罩, 通透档不能再被旧遮罩 blur. */
+html:is([data-settings-page='appearance'], [data-settings-page='parameters']) body > .ema-anim-fade {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
 
 .ema-settings-sidebar,
-.ema-settings-appearance,
-.ema-settings-appearance :is(.ema-material-section, .ema-material-card, .ema-material-reading, .ema-material-code) {
+.ema-settings-material-page,
+.ema-settings-material-page :is(.ema-material-section, .ema-material-card, .ema-material-reading, .ema-material-code) {
   transition: background-color var(--ema-duration-slow) var(--ema-ease),
               border-color var(--ema-duration-base) var(--ema-ease),
-              box-shadow var(--ema-duration-base) var(--ema-ease);
+              box-shadow var(--ema-duration-base) var(--ema-ease),
+              transform var(--ema-duration-base) var(--ema-ease);
 }
 
 @media (prefers-reduced-motion: reduce) {
   .ema-settings-sidebar,
-  .ema-settings-appearance,
-  .ema-settings-appearance :is(.ema-material-section, .ema-material-card, .ema-material-reading, .ema-material-code) {
+  .ema-settings-material-page,
+  .ema-settings-material-page :is(.ema-material-section, .ema-material-card, .ema-material-reading, .ema-material-code) {
     transition: none;
   }
 }

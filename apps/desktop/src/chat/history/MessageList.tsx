@@ -442,7 +442,7 @@ export function MessageList({
           const turn = turnId ? turns.get(turnId) : undefined;
           return (
             <div
-              className="ema-chat-content-column py-1.5"
+              className="ema-chat-content-column ema-chat-message-row"
               data-message-id={message.id}
               data-turn-id={turnId ?? undefined}
             >

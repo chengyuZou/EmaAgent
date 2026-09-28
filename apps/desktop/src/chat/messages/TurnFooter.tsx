@@ -145,9 +145,9 @@ function RunningTurnFooter({
   const outputTokens = estimated ? estimateTextTokens(text) : usage?.outputTokens ?? 0;
 
   return (
-    <div className="mt-1.5 flex min-h-6 items-center gap-2 text-[11px] text-[var(--ema-text-tertiary)]">
+    <div className="ema-message-footer">
       <ModeLabel sessionMode={turn.sessionMode} narrativePolicy={turn.narrativePolicy} />
-      <span className="flex items-center gap-1.5">
+      <span className="ema-message-footer-stats">
         <span className={turn.terminal
           ? 'h-1 w-1 shrink-0 rounded-md bg-[var(--ema-text-tertiary)]'
           : 'h-1 w-1 shrink-0 animate-pulse rounded-md bg-[var(--ema-primary)]'} />
@@ -186,27 +186,33 @@ function HistoryTurnFooter({
 }): JSX.Element {
   const showAudio = isPlaying || turnStats?.audioAvailable === true;
   return (
-    <div className="mt-1.5 flex min-h-6 items-center gap-2 text-[11px] text-[var(--ema-text-tertiary)]">
-      {showAudio && (
-        <IconButton
-          size="sm"
-          label={isPlaying ? '停止播放' : '重播语音'}
-          icon={isPlaying ? 'i-lucide:square' : 'i-lucide:audio-lines'}
-          className="ema-chat-icon-btn chat-message-action -ml-0.5"
-          onClick={onToggleAudio}
-        />
-      )}
-      {textContent && (
-        <IconButton
-          size="sm"
-          label="复制"
-          icon={copied ? 'i-lucide:check' : 'i-lucide:copy'}
-          className="ema-chat-icon-btn chat-message-action"
-          onClick={onCopy}
-        />
-      )}
-      {canFork && <ForkButton turnId={turnId} />}
-      <span className="ml-auto flex items-center gap-2 opacity-60 tabular-nums">
+    <div className="ema-message-footer">
+      <div className="ema-message-footer-actions">
+        {textContent && (
+          <IconButton
+            size="sm"
+            variant="ghost"
+            shape="rounded"
+            label="复制"
+            icon={copied ? 'i-lucide:check' : 'i-lucide:copy'}
+            className="ema-chat-icon-btn chat-message-action"
+            onClick={onCopy}
+          />
+        )}
+        {showAudio && (
+          <IconButton
+            size="sm"
+            variant="ghost"
+            shape="rounded"
+            label={isPlaying ? '停止播放' : '重播语音'}
+            icon={isPlaying ? 'i-lucide:square' : 'i-lucide:volume-2'}
+            className="ema-chat-icon-btn chat-message-action"
+            onClick={onToggleAudio}
+          />
+        )}
+        {canFork && <ForkButton turnId={turnId} />}
+      </div>
+      <span className="ema-message-footer-stats tabular-nums">
         <span>{formatTurnTime(createdAt)}</span>
         {turnStats?.inputTokens !== undefined && (
           <span>Token: {formatTokens(turnStats.inputTokens + turnStats.outputTokens)}</span>
@@ -225,7 +231,9 @@ function ForkButton({ turnId }: { readonly turnId: string }): JSX.Element | null
   return (
     <IconButton
       size="sm"
-      icon="i-lucide:git-fork"
+      variant="ghost"
+      shape="rounded"
+      iconNode={<span className="i-lucide:split rotate-90" />}
       label="从该回复创建新会话"
       className="ema-chat-icon-btn chat-message-action"
       onClick={() => void useSessionStore.getState().forkSession(sessionId, turnId)

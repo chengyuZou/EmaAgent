@@ -15,11 +15,20 @@
   opacity: 0;
 }
 
+/* 切换聊天/设置配置时加载好再替换, 不重播大预览入场; 同窗口换图保留动画. */
+.ema-wallpaper-preview-frame[data-state='active'][data-transition='replace'] {
+  animation: none;
+}
+
 .ema-wallpaper-frame img,
 .ema-wallpaper-preview-frame > div {
   transition: opacity var(--ema-duration-base) var(--ema-ease),
               filter var(--ema-duration-base) var(--ema-ease),
               transform var(--ema-duration-base) var(--ema-ease);
+}
+
+.ema-wallpaper-preview-frame[data-state='pending'][data-transition='replace'] > div {
+  transition: none;
 }
 
 .ema-wallpaper-sidebar,

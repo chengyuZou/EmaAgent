@@ -39,7 +39,7 @@ export function ParameterSettings(): JSX.Element {
           {DOMAINS.map((item, index) => (
             <button
               key={item.id}
-              className="ema-glass-weak ema-card-decorate ema-card-decorate--grid ema-stagger-in group flex min-h-32 flex-col items-start overflow-hidden rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] p-4 text-left transition-ema hover:-translate-y-0.5 hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)] active:scale-[0.97]"
+              className="ema-material-card ema-glass-weak ema-card-decorate ema-card-decorate--grid ema-stagger-in group flex min-h-32 flex-col items-start overflow-hidden rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] p-4 text-left transition-ema hover:-translate-y-0.5 hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)] active:scale-[0.97]"
               style={{ '--stagger-i': index } as CSSProperties}
               onClick={() => setDomain(item.id)}
             >

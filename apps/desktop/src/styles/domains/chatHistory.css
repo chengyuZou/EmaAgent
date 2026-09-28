@@ -23,6 +23,43 @@
   padding-right: calc(var(--ema-chat-content-gutter, 3.5rem) + var(--ema-chat-scrollbar-width, 0px));
 }
 
+.ema-chat-message-row {
+  padding-block: var(--ema-space-2);
+}
+
+.ema-message-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ema-space-3);
+  min-height: 28px;
+  margin-top: var(--ema-space-2);
+  color: var(--ema-text-tertiary);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.ema-message-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--ema-space-1);
+}
+
+.ema-message-footer-user {
+  justify-content: flex-end;
+  gap: var(--ema-space-2);
+}
+
+.ema-message-footer-stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ema-space-2);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--ema-duration-fast) var(--ema-ease);
+}
+
 .ema-md-inline p {
   display: inline;
   margin: 0;
@@ -91,8 +128,8 @@
 }
 
 .ema-chat-icon-btn.chat-message-action {
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   border-radius: var(--ema-radius-sm);
   opacity: 0;
   pointer-events: none;
@@ -100,10 +137,26 @@
               background-color var(--ema-duration-fast) var(--ema-ease);
 }
 
-.ema-message-shell:hover .chat-message-action,
-.ema-message-shell:focus-within .chat-message-action,
+.chat-message-action > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  font-size: 16px;
+}
+
+/* TurnFooter is a sibling of the body shell, so the message row owns action visibility. */
+.ema-chat-message-row:hover .chat-message-action,
+.ema-chat-message-row:focus-within .chat-message-action,
 .chat-message-action:focus-visible {
   opacity: 1;
+  pointer-events: auto;
+}
+
+.ema-chat-message-row:hover .ema-message-footer-stats,
+.ema-chat-message-row:focus-within .ema-message-footer-stats {
+  opacity: 0.6;
   pointer-events: auto;
 }
 

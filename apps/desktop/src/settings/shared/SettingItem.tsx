@@ -43,7 +43,7 @@ export function SettingItem({
 /** 一组 SettingItem 的容器卡片,行间细分隔线。 */
 export function SettingsCard({ children }: { children: ReactNode }): JSX.Element {
   return (
-    <div className="ema-glass-weak ema-stagger-in divide-y divide-[var(--ema-border)] overflow-hidden rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] transition-ema hover:border-[var(--ema-primary)]/30">
+    <div className="ema-material-section ema-glass-weak ema-stagger-in divide-y divide-[var(--ema-border)] overflow-hidden rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] transition-ema hover:border-[var(--ema-primary)]/30">
       {children}
     </div>
   );
