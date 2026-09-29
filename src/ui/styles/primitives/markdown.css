@@ -129,3 +129,67 @@
   overflow-wrap: anywhere;
   color: var(--ema-text-secondary);
 }
+
+/* 公共 Mermaid 图表与源码共用边框; SVG 按可用宽度缩放, 不给长图固定高度或纵向裁切. */
+.markdown-mermaid {
+  position: relative;
+  min-width: 0;
+  margin-block: var(--ema-space-3);
+  border: 1px solid var(--ema-border);
+  border-radius: var(--ema-radius-lg);
+}
+
+.markdown-mermaid-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--ema-space-2);
+  padding: var(--ema-space-2) var(--ema-space-3);
+  color: var(--ema-text-tertiary);
+  font-size: 12px;
+}
+
+.markdown-mermaid-toolbar > button {
+  margin-left: auto;
+}
+
+.markdown-mermaid-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ema-space-1);
+}
+
+.markdown-mermaid-diagram {
+  overflow-x: auto;
+  padding: var(--ema-space-3);
+  text-align: center;
+}
+
+.markdown-mermaid-diagram > svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin-inline: auto;
+}
+
+.markdown-content .markdown-mermaid > pre {
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--ema-border);
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.markdown-mermaid-error {
+  padding: 0 var(--ema-space-3) var(--ema-space-2);
+  color: var(--ema-text-tertiary);
+  font-size: 12px;
+}
+
+/* 官方 render 需要真实 DOM 测量文字, 测量区不可 display:none, 但不能参与页面布局. */
+.markdown-mermaid-measure {
+  position: fixed;
+  inset: 0 auto auto 0;
+  font-family: var(--ema-font-content);
+  visibility: hidden;
+  pointer-events: none;
+}

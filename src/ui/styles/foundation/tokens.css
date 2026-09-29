@@ -195,9 +195,9 @@
   --ema-glow:        oklch(0.72 0.18 var(--chromatic-hue, 200) / 0.15);
   --ema-glow-strong: oklch(0.72 0.18 var(--chromatic-hue, 200) / 0.35);
 
-  /* 桌宠窗口签名粉白呼吸光(App GlowBorder,跨主题一致的签名色,不随主题翻转) */
-  --ema-pet-glow:        rgba(255, 214, 230, 0.55);
-  --ema-pet-glow-bright: rgba(255, 192, 214, 0.85);
+  /* 桌宠边框与气泡辉光沿用当前生效色相, 明暗主题下保留同一柔和亮度与呼吸强度. */
+  --ema-pet-glow:        oklch(0.88 0.10 var(--chromatic-hue, 200) / 0.55);
+  --ema-pet-glow-bright: oklch(0.86 0.14 var(--chromatic-hue, 200) / 0.85);
 
   /* ── Scrollbar(暗色:跟 primary 联动,滚动条 token 化)── */
   --ema-scrollbar-thumb: oklch(0.72 0.18 var(--chromatic-hue, 200) / 0.50);

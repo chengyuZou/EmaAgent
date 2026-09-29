@@ -80,14 +80,3 @@ export function highlightFile(source: string, path: string): string {
     return escapeHtml(source);
   }
 }
-
-/** Diff 按行渲染; 只对已知扩展名高亮, 避免逐行自动探测产生误判和卡顿. */
-export function highlightDiffLine(source: string, path: string): string {
-  const language = languageForPath(path);
-  if (!language) return escapeHtml(source);
-  try {
-    return hljs.highlight(source, { language, ignoreIllegals: true }).value;
-  } catch {
-    return escapeHtml(source);
-  }
-}

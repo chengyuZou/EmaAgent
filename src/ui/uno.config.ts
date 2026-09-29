@@ -43,7 +43,6 @@ export const RADIUS_SCALE = {
   lg:      'var(--ema-radius-lg)',    // 按钮与小浮件
   xl:      'var(--ema-radius-xl)',    // 卡片、对话框、浮层、主窗口
   pill:    'var(--ema-radius-pill)',  // pill 按钮 - 固定 999px
-  full:    '50%',                     // 圆形图标钮、圆点、头像
 } as const;
 
 /**

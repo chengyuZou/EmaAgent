@@ -72,8 +72,7 @@ const BASE_CLASSES =
   'inline-flex items-center justify-center border ' +
   'transition-ema cursor-pointer select-none ' +
   'active:scale-92 ' +
-  'disabled:cursor-not-allowed disabled:opacity-40 ' +
-  'focus-ring';
+  'disabled:cursor-not-allowed disabled:opacity-40 ';
 
 // ── Component ───────────────────────────────────────────────────────────────
 
