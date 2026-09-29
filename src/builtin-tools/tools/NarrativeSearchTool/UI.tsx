@@ -137,13 +137,13 @@ function TimelineRow({
         ) : completed && text ? (
           <div className="flex flex-col gap-1 pl-3">
             <div
-              className={`ema-transition-text-expand ${fullText ? 'overflow-visible' : 'overflow-hidden'}`}
+              className="ema-transition-text-expand overflow-auto"
               style={{
                 maxHeight: fullText ? 'none' : '8rem',
                 opacity:   fullText ? 1 : 0.92,
               }}
             >
-              <p className="whitespace-pre-wrap break-words text-xs text-[var(--ema-text-tertiary)]">
+              <p className="whitespace-pre text-xs text-[var(--ema-text-tertiary)]">
                 {displayText}
               </p>
             </div>
@@ -216,7 +216,7 @@ export function NarrativeSearchArgsView({ args }: { args: unknown }): JSX.Elemen
   return (
     <div className="flex items-baseline gap-2 text-[11px] leading-relaxed">
       <span className="shrink-0 text-[var(--ema-text-tertiary)]">query:</span>
-      <span className="break-all text-[var(--ema-text-secondary)]">{args['query']}</span>
+      <span className="min-w-0 text-[var(--ema-text-secondary)]">{args['query']}</span>
       {modeLabel && (
         <span className="ml-auto shrink-0 rounded-full bg-[var(--ema-info-muted)] px-1.5 py-0.5 text-[10px] text-[var(--ema-info)]">
           {modeLabel}

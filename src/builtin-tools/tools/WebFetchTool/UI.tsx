@@ -37,7 +37,7 @@ export function WebFetchArgsView({ args }: { args: unknown }): JSX.Element | nul
   if (!isRecord(args) || typeof args['url'] !== 'string') return null;
   return (
     <div className="flex items-center gap-2 text-[11px] leading-relaxed">
-      <span className="break-all text-[var(--ema-text-secondary)]">{args['url']}</span>
+      <span className="min-w-0 text-[var(--ema-text-secondary)]">{args['url']}</span>
       {args['raw'] === true && <Badge variant="warn">raw</Badge>}
     </div>
   );
@@ -87,7 +87,7 @@ function WebFetchResultCard({ result }: { result: WebFetchResult }): JSX.Element
         />
       ) : (
         <div>
-          <pre className="m-0 whitespace-pre-wrap break-all bg-transparent p-0 font-mono text-[var(--ema-text-secondary)]">
+          <pre className="m-0 whitespace-pre bg-transparent p-0 font-mono text-[var(--ema-text-secondary)]">
             {preview}
             {omitted > 0 && `\n··· 其余 ${omitted.toLocaleString()} 字符 ···`}
           </pre>

@@ -74,7 +74,7 @@ export function WebSearchArgsView({ args }: { args: unknown }): JSX.Element | nu
   const blocked = stringList(args['blocked_domains']);
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] leading-relaxed">
-      <span className="break-all text-[var(--ema-text-secondary)]">{args['query']}</span>
+      <span className="min-w-0 text-[var(--ema-text-secondary)]">{args['query']}</span>
       {allowed.length > 0 && (
         <Badge variant="primary">限 {allowed.length} 个域名</Badge>
       )}

@@ -51,7 +51,7 @@ export function FileWriteArgsView({ args }: { args: unknown }): JSX.Element | nu
   return (
     <div className="flex items-baseline gap-2 text-[11px] leading-relaxed">
       <span className="shrink-0 text-[var(--ema-text-tertiary)]">path:</span>
-      <span className="break-all font-mono text-[var(--ema-text-secondary)]" title={args['file_path']}>
+      <span className="min-w-0 font-mono text-[var(--ema-text-secondary)]" title={args['file_path']}>
         {args['file_path']}
         {sizeKb !== null && (
           <span className="text-[var(--ema-text-tertiary)]">{` · 写入 ${sizeKb} KB`}</span>
@@ -91,11 +91,11 @@ export function FileWriteResultView({ data }: { data: unknown }): JSX.Element | 
       <span className="text-[11px] text-[var(--ema-text-secondary)]">
         新建文件 · {result.additions.toLocaleString()} 行 · {(result.bytesWritten / 1024).toFixed(1)} KB
       </span>
-      <div className="font-mono text-[11px] leading-relaxed">
+      <div className="w-max min-w-full font-mono text-[11px] leading-relaxed">
         {preview.map((line, index) => (
           <div key={index} className="flex text-[var(--ema-text-tertiary)]">
             <span className="w-9 shrink-0 select-none text-right opacity-60">{index + 1}</span>
-            <span className="min-w-0 flex-1 pl-2 whitespace-pre-wrap break-all text-[var(--ema-text-secondary)]">
+            <span className="min-w-0 flex-1 pl-2 whitespace-pre text-[var(--ema-text-secondary)]">
               {line}
             </span>
           </div>

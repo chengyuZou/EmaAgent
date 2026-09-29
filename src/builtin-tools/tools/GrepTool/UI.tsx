@@ -56,7 +56,7 @@ export function GrepArgsView({ args }: { args: unknown }): JSX.Element | null {
   return (
     <div className="flex items-baseline gap-2 text-[11px] leading-relaxed">
       <span className="shrink-0 text-[var(--ema-text-tertiary)]">pattern:</span>
-      <span className="break-all font-mono text-[var(--ema-text-secondary)]">
+      <span className="min-w-0 font-mono text-[var(--ema-text-secondary)]">
         {args['pattern']}
         {path && <span className="text-[var(--ema-text-tertiary)]">{` · ${path}`}</span>}
         {mode && mode !== 'files_with_matches' && (
@@ -90,7 +90,7 @@ export function GrepResultView({ data, args }: { data: unknown; args?: unknown }
             {result.files.map((file) => (
               <span
                 key={file}
-                className="break-all font-mono text-[11px] leading-relaxed text-[var(--ema-text-secondary)]"
+                className="font-mono text-[11px] leading-relaxed text-[var(--ema-text-secondary)]"
               >
                 {file}
               </span>
@@ -116,7 +116,7 @@ export function GrepResultView({ data, args }: { data: unknown; args?: unknown }
             {result.entries.map((entry) => (
               <span
                 key={entry}
-                className="break-all font-mono text-[11px] leading-relaxed text-[var(--ema-text-secondary)]"
+                className="font-mono text-[11px] leading-relaxed text-[var(--ema-text-secondary)]"
               >
                 {entry}
               </span>
@@ -138,7 +138,7 @@ export function GrepResultView({ data, args }: { data: unknown; args?: unknown }
             </span>
             {result.truncated && <Badge variant="warn">已截断</Badge>}
           </div>
-          <pre className="whitespace-pre-wrap break-all font-mono text-[11px] leading-relaxed text-[var(--ema-text-secondary)]">
+          <pre className="whitespace-pre font-mono text-[11px] leading-relaxed text-[var(--ema-text-secondary)]">
             {result.output.split('\n').map((line, index) => (
               <span key={index}>
                 {index > 0 && '\n'}

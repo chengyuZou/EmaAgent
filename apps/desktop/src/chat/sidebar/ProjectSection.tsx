@@ -7,6 +7,7 @@ import {
   DropdownMenu,
   IconButton,
   Input,
+  Tooltip,
   type MenuItem,
 } from '@ema-agent/ui';
 import type { Project, SessionListItem } from '../../api/sessions.js';
@@ -23,6 +24,77 @@ interface ProjectSectionProps {
   projects: Project[];
   viewedId: string | null;
   activityBySession: ReadonlyMap<string, SessionActivity>;
+}
+
+const PROJECT_DIALOG_CLASSES =
+  '!p-[20px] [&_h2]:!text-[20px] [&_h2]:pr-[28px] ' +
+  '[&>button]:!h-[28px] [&>button]:!w-[28px]';
+
+function projectFolderLabel(path: string, paths: readonly string[]): string {
+  const folderName = (value: string): string =>
+    value.replaceAll('\\', '/').split('/').filter(Boolean).at(-1) ?? value;
+  const name = folderName(path);
+  if (paths.some((other) => other !== path && folderName(other) === name)) {
+    const parent = path.replace(/[\\/]+$/, '').slice(0, -name.length);
+    return `${name} · ${parent}`;
+  }
+  return name;
+}
+
+function ProjectFolderRow({
+  path,
+  label,
+  primary,
+  onSetPrimary,
+  onRemove,
+}: {
+  path: string;
+  label: string;
+  primary: boolean;
+  onSetPrimary(): void;
+  onRemove(): void;
+}): JSX.Element {
+  return (
+    <div className="flex min-h-[48px] items-center gap-[12px] border-b border-[var(--ema-border)] px-[12px] py-[8px] text-[14px] text-[var(--ema-text-primary)]">
+      <span className="i-lucide:folder shrink-0 text-[16px] text-[var(--ema-text-tertiary)]" aria-hidden />
+      <Tooltip
+        variant="card"
+        align="start"
+        content={<span className="break-all font-mono">{path}</span>}
+      >
+        <span tabIndex={0} className="min-w-0 flex-1 truncate rounded-sm focus-ring">
+          {label}
+        </span>
+      </Tooltip>
+      <div className="flex w-[76px] shrink-0 justify-end">
+        {primary ? (
+          <span className="inline-flex h-[28px] items-center rounded-md border border-[var(--ema-border)] px-[8px] text-[13px] text-[var(--ema-text-secondary)]">
+            主要
+          </span>
+        ) : (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="!h-[28px] !border-[var(--ema-border)] !px-[8px] !text-[13px]"
+            onClick={onSetPrimary}
+          >
+            设为主要
+          </Button>
+        )}
+      </div>
+      <Tooltip content="移除文件夹">
+        <IconButton
+          variant="ghost"
+          shape="rounded"
+          size="sm"
+          className="!h-[28px] !w-[28px] shrink-0"
+          icon="i-lucide:x"
+          label={`移除源文件夹 ${path}`}
+          onClick={onRemove}
+        />
+      </Tooltip>
+    </div>
+  );
 }
 
 export function PinnedSection({
@@ -205,66 +277,46 @@ function ProjectCreator({ open, onClose }: {
       open={open}
       onOpenChange={(next) => !next && onClose()}
       title="创建项目"
-      widthClass="max-w-lg"
+      widthClass="max-w-[520px]"
+      className={PROJECT_DIALOG_CLASSES}
     >
       <div className="relative">
         <span
-          className="i-lucide:folder absolute left-3 top-1/2 -translate-y-1/2 text-sm text-[var(--ema-text-tertiary)]"
+          className="i-lucide:folder pointer-events-none absolute left-[12px] top-1/2 -translate-y-1/2 text-[16px] text-[var(--ema-text-tertiary)]"
           aria-hidden
         />
         <Input
           aria-label="项目名称"
-          className="h-10 rounded-lg pl-10 font-sans"
+          mono={false}
+          className="!h-[40px] !pl-[40px] !text-[14px]"
           placeholder="项目名称"
           value={name}
           onChange={(event) => setName(event.target.value)}
           autoFocus
         />
       </div>
-      <p className="mb-2 mt-4 text-sm text-[var(--ema-text-secondary)]">
+      <p className="mb-[8px] mt-[16px] text-[14px] text-[var(--ema-text-secondary)]">
         源文件夹
       </p>
       <div className="overflow-hidden rounded-lg border border-[var(--ema-border)] bg-[var(--ema-surface-3)]">
         {folderPaths.map((path) => (
-          <div
+          <ProjectFolderRow
             key={path}
-            className="flex min-h-12 items-center gap-3 border-b border-[var(--ema-border)] px-3 text-sm text-[var(--ema-text-primary)]"
-          >
-            <span className="i-lucide:folder shrink-0 text-[var(--ema-text-tertiary)]" aria-hidden />
-            <span className="min-w-0 flex-1 truncate" title={path}>
-              {path.replaceAll('\\', '/').split('/').filter(Boolean).at(-1) ?? path}
-            </span>
-            {primaryFolderPath === path ? (
-              <span className="shrink-0 rounded-md border border-[var(--ema-border)] px-2 py-1 text-xs text-[var(--ema-text-secondary)]">
-                主要
-              </span>
-            ) : (
-              <button
-                type="button"
-                className="shrink-0 rounded-md border border-[var(--ema-border)] px-2 py-1 text-xs text-[var(--ema-text-secondary)] hover:bg-[var(--ema-surface-2)] hover:text-[var(--ema-text-primary)]"
-                onClick={() => setPrimaryFolderPath(path)}
-              >
-                设为主要
-              </button>
-            )}
-            <button
-              type="button"
-              className="flex size-7 shrink-0 items-center justify-center rounded-md text-[var(--ema-text-tertiary)] hover:bg-[var(--ema-surface-2)] hover:text-[var(--ema-text-primary)]"
-              aria-label={`移除源文件夹 ${path}`}
-              onClick={() => removeFolder(path)}
-            >
-              <span className="i-lucide:x text-sm" aria-hidden />
-            </button>
-          </div>
+            path={path}
+            label={projectFolderLabel(path, folderPaths)}
+            primary={primaryFolderPath === path}
+            onSetPrimary={() => setPrimaryFolderPath(path)}
+            onRemove={() => removeFolder(path)}
+          />
         ))}
         <button
           type="button"
-          className={`flex w-full cursor-pointer items-center gap-3 px-3 text-left text-sm text-[var(--ema-text-primary)] transition-colors hover:bg-[var(--ema-surface-2)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ema-primary)] ${
-            folderPaths.length === 0 ? 'min-h-24 flex-col justify-center gap-2' : 'min-h-12'
+          className={`flex w-full cursor-pointer items-center gap-[12px] px-[12px] py-[8px] text-left text-[14px] text-[var(--ema-text-primary)] transition-ema hover:bg-[var(--ema-surface-2)] focus-ring ${
+            folderPaths.length === 0 ? 'min-h-[96px] flex-col justify-center' : 'min-h-[48px]'
           }`}
           onClick={() => void pickFolder()}
         >
-          <span className="i-lucide:folder-plus shrink-0 text-base text-[var(--ema-text-secondary)]" aria-hidden />
+          <span className="i-lucide:folder-plus shrink-0 text-[16px] text-[var(--ema-text-secondary)]" aria-hidden />
           <span>
             {folderPaths.length === 0
               ? '添加可读取和编辑的文件夹'
@@ -272,13 +324,13 @@ function ProjectCreator({ open, onClose }: {
           </span>
         </button>
       </div>
-      <div className="mt-5 flex justify-end gap-3">
-        <Button variant="ghost" onClick={onClose}>
+      <div className="mt-[20px] flex justify-end gap-[12px]">
+        <Button variant="ghost" className="!h-[36px] !text-[14px]" onClick={onClose}>
           取消
         </Button>
         <button
           type="button"
-          className="h-9 rounded-lg bg-[var(--ema-text-primary)] px-4 text-sm font-medium text-[var(--ema-bg)] transition-opacity hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-40"
+          className="h-[36px] rounded-lg bg-[var(--ema-text-primary)] px-[16px] text-[14px] font-medium text-[var(--ema-bg)] transition-opacity hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-40 focus-ring"
           disabled={!name.trim() || saving}
           onClick={() => void create()}
         >
@@ -490,27 +542,34 @@ function ProjectEditor({
     }
   }
 
+  const folderPaths = project.folders.map((folder) => folder.path);
+
   return (
     <Dialog
       open={open}
       onOpenChange={(next) => !next && onClose()}
       title="编辑项目"
-      widthClass="max-w-lg"
+      widthClass="max-w-[520px]"
+      className={PROJECT_DIALOG_CLASSES}
     >
-      <label
-        className="mb-2 block text-sm text-[var(--ema-text-secondary)]"
-        htmlFor={`project-name-${project.id}`}
-      >
-        项目名称
-      </label>
-      <div className="flex gap-2">
-        <Input
-          id={`project-name-${project.id}`}
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-        />
+      <div className="flex items-center gap-[8px]">
+        <div className="relative min-w-0 flex-1">
+          <span
+            className="i-lucide:folder pointer-events-none absolute left-[12px] top-1/2 -translate-y-1/2 text-[16px] text-[var(--ema-text-tertiary)]"
+            aria-hidden
+          />
+          <Input
+            id={`project-name-${project.id}`}
+            aria-label="项目名称"
+            mono={false}
+            className="!h-[40px] !pl-[40px] !text-[14px]"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+          />
+        </div>
         <Button
           variant="primary"
+          className="!h-[40px] shrink-0 !px-[16px] !text-[14px]"
           disabled={!name.trim() || name.trim() === project.name}
           onClick={() => void change(
             projectsApi.patch(project.id, name.trim()),
@@ -520,52 +579,34 @@ function ProjectEditor({
           保存
         </Button>
       </div>
-      <div className="mt-5 flex items-center justify-between">
-        <span className="text-sm text-[var(--ema-text-secondary)]">源文件夹</span>
-        <Button variant="ghost" size="sm" onClick={() => void addFolder()}>
-          <span className="i-lucide:plus mr-1" aria-hidden />
-          添加文件夹
-        </Button>
-      </div>
-      <div className="mt-2 flex flex-col gap-2">
+      <p className="mb-[8px] mt-[16px] text-[14px] text-[var(--ema-text-secondary)]">
+        源文件夹
+      </p>
+      <div className="overflow-hidden rounded-lg border border-[var(--ema-border)] bg-[var(--ema-surface-3)]">
         {project.folders.map((folder) => (
-          <div
+          <ProjectFolderRow
             key={folder.path}
-            className="flex items-center gap-2 rounded-md border border-[var(--ema-border)] p-2 text-sm"
-          >
-            <span className="min-w-0 flex-1 break-all text-[var(--ema-text-primary)]">
-              {folder.path}
-            </span>
-            {folder.isPrimary ? (
-              <span className="shrink-0 rounded-md border border-[var(--ema-border)] px-2 py-1 text-xs text-[var(--ema-primary)]">
-                主要
-              </span>
-            ) : (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="border border-[var(--ema-border)]"
-                onClick={() => void change(
-                  projectsApi.setPrimaryFolder(project.id, folder.path),
-                  '设置主文件夹失败',
-                )}
-              >
-                设为主要
-              </Button>
+            path={folder.path}
+            label={projectFolderLabel(folder.path, folderPaths)}
+            primary={folder.isPrimary}
+            onSetPrimary={() => void change(
+              projectsApi.setPrimaryFolder(project.id, folder.path),
+              '设置主文件夹失败',
             )}
-            <Button
-              variant="ghost"
-              size="sm"
-              title="移除文件夹"
-              onClick={() => void change(
-                projectsApi.removeFolder(project.id, folder.path),
-                '移除源文件夹失败',
-              )}
-            >
-              <span className="i-lucide:x" aria-hidden />
-            </Button>
-          </div>
+            onRemove={() => void change(
+              projectsApi.removeFolder(project.id, folder.path),
+              '移除源文件夹失败',
+            )}
+          />
         ))}
+        <button
+          type="button"
+          className="flex min-h-[48px] w-full cursor-pointer items-center gap-[12px] px-[12px] py-[8px] text-left text-[14px] text-[var(--ema-text-primary)] transition-ema hover:bg-[var(--ema-surface-2)] focus-ring"
+          onClick={() => void addFolder()}
+        >
+          <span className="i-lucide:folder-plus shrink-0 text-[16px] text-[var(--ema-text-secondary)]" aria-hidden />
+          添加文件夹
+        </button>
       </div>
     </Dialog>
   );

@@ -54,7 +54,7 @@ export function FileEditArgsView({ args }: { args: unknown }): JSX.Element | nul
   return (
     <div className="flex items-baseline gap-2 text-[11px] leading-relaxed">
       <span className="shrink-0 text-[var(--ema-text-tertiary)]">path:</span>
-      <span className="break-all font-mono text-[var(--ema-text-secondary)]" title={args['file_path']}>
+      <span className="min-w-0 font-mono text-[var(--ema-text-secondary)]" title={args['file_path']}>
         {args['file_path']}
       </span>
     </div>
@@ -110,7 +110,7 @@ export function FileEditResultView({ data }: { data: unknown }): JSX.Element | n
 export function StructuredPatchCard({ hunks }: { hunks: readonly PatchHunk[] }): JSX.Element {
   const entries = flattenPatch(hunks);
   return (
-    <div className="font-mono text-[11px] leading-relaxed">
+    <div className="w-max min-w-full font-mono text-[11px] leading-relaxed">
       {entries.map((entry) => {
         if (entry.kind === 'gap') {
           return (
@@ -135,7 +135,7 @@ export function StructuredPatchCard({ hunks }: { hunks: readonly PatchHunk[] }):
             <span className="w-9 shrink-0 select-none text-right opacity-60">
               {entry.newLine ?? ''}
             </span>
-            <span className="min-w-0 flex-1 pl-2 whitespace-pre-wrap break-all">
+            <span className="min-w-0 flex-1 pl-2 whitespace-pre">
               {entry.kind === 'add' ? '+' : entry.kind === 'del' ? '-' : ' '}
               {entry.text}
             </span>

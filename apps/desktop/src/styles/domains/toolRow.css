@@ -78,11 +78,17 @@
 .ema-tool-pane--input .ema-tool-pane-content {
   max-height: 8rem;
   overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .ema-tool-pane--output .ema-tool-pane-content {
   max-height: 12rem;
   overflow: auto;
+  white-space: pre;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .ema-tool-pane > .ema-tool-card-icon {
@@ -119,8 +125,15 @@
   font-family: var(--ema-font-mono);
   font-size: 11px;
   line-height: 1.55;
+  white-space: pre;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.ema-tool-raw-input {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .ema-tool-error-code {
@@ -214,6 +227,15 @@
   line-height: 1.55;
 }
 
+.ema-tool-pane--output .ema-tool-field-list {
+  min-width: 100%;
+  width: max-content;
+}
+
+.ema-tool-pane--input .ema-tool-field-row {
+  grid-template-columns: 72px minmax(0, 1fr);
+}
+
 .ema-tool-field-row {
   display: grid;
   grid-template-columns: minmax(72px, max-content) minmax(0, 1fr);
@@ -235,8 +257,6 @@
   min-width: 0;
   margin: 0;
   color: var(--ema-text-secondary);
-  overflow-wrap: anywhere;
-  word-break: break-word;
 }
 
 .ema-tool-result-markdown {
@@ -244,7 +264,6 @@
   color: var(--ema-text-secondary);
   font-size: 11px;
   line-height: 1.65;
-  white-space: pre-wrap;
 }
 
 .ema-tool-result-markdown > :first-child {
@@ -275,7 +294,71 @@
   font-family: var(--ema-font-mono);
   font-size: 11px;
   line-height: 1.65;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  word-break: break-word;
+  white-space: pre;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+/* Read 只在摘要行预留复制按钮的位置, 正文铺满结果滚动区域. */
+.ema-tool-pane-content:has(> .ema-file-read-content) {
+  padding-right: 0;
+}
+
+.ema-tool-pane-content > .ema-file-read-content > .ema-file-read-summary {
+  padding-right: 25px;
+}
+
+/* Read 源码与行号共用纵向滚动区域, 只有右侧 Markdown pre 横向滚动. */
+.ema-file-read-code {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: start;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--ema-border);
+  border-radius: var(--ema-radius-lg);
+  background: var(--ema-syntax-bg, var(--ema-surface-1));
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.ema-file-read-code > .ema-file-read-line-numbers {
+  margin: 0;
+  padding: var(--ema-space-3) var(--ema-space-2) var(--ema-space-3) var(--ema-space-3);
+  border: 0;
+  background: transparent;
+  color: var(--ema-syntax-comment);
+  font-size: inherit;
+  line-height: inherit;
+  text-align: right;
+  white-space: pre;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.ema-file-read-code .ema-file-read-markdown pre {
+  margin: 0;
+  padding: var(--ema-space-3) var(--ema-space-3) var(--ema-space-3) var(--ema-space-2);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+/* Tool 输出保留原始换行, 不按卡片宽度折行. Markdown 覆盖聊天正文的换行规则,
+   容器间的 HTML 排版空白仍合并; 段落和代码里的原始换行由各自元素保留. */
+.ema-tool-pane--output .markdown-content {
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.ema-tool-pane--output .markdown-content :is(h1, h2, h3, h4, h5, h6, p, li, th, td, pre, code),
+.ema-tool-pane--output .markdown-fallback {
+  white-space: pre;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.ema-tool-pane--output .markdown-content pre {
+  overflow-x: auto;
 }

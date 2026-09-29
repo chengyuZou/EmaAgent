@@ -1,5 +1,4 @@
-/* 终端卡（Bash/PowerShell 工具调用展示）：banner 固定（gutter 状态点 + 命令 + 状态 pill
-   + 复制），输出区独立滚动、white-space: pre 不换行。 */
+/* Bash/PowerShell 工具调用展示: 输入命令按宽度折行, 输出区保留原始行结构并独立滚动. */
 
 .ema-terminal-card {
   border-radius: var(--ema-radius-sm);
@@ -27,9 +26,11 @@
 .ema-terminal-cmd {
   flex: 1 1 0;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  max-height: 8rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
   font-family: var(--ema-font-mono, monospace);
   font-size: 11px;
   color: var(--ema-syntax-prompt);
@@ -41,6 +42,7 @@
   overflow: auto;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  word-break: break-word;
   font-family: var(--ema-font-mono, monospace);
   font-size: 12px;
   line-height: 1.6;
@@ -87,6 +89,9 @@
   max-height: 16rem;
   overflow: auto;
   padding: 5px 25px 5px 7px;
+  white-space: pre;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .ema-terminal-result > .ema-terminal-copy {
@@ -110,6 +115,6 @@
 .ema-terminal-output .ema-terminal-error {
   margin-top: 5px;
   color: var(--ema-danger-text);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  white-space: pre;
+  overflow-wrap: normal;
 }

@@ -33,7 +33,7 @@ export function GlobArgsView({ args }: { args: unknown }): JSX.Element | null {
   return (
     <div className="flex items-baseline gap-2 text-[11px] leading-relaxed">
       <span className="shrink-0 text-[var(--ema-text-tertiary)]">pattern:</span>
-      <span className="break-all font-mono text-[var(--ema-text-secondary)]">
+      <span className="min-w-0 font-mono text-[var(--ema-text-secondary)]">
         {args['pattern']}
         {path && <span className="text-[var(--ema-text-tertiary)]">{` · ${path}`}</span>}
       </span>
@@ -63,7 +63,7 @@ export function GlobResultView({ data }: { data: unknown }): JSX.Element | null 
         {result.files.map((file) => (
           <span
             key={file}
-            className="break-all font-mono text-[11px] leading-relaxed text-[var(--ema-text-secondary)]"
+            className="font-mono text-[11px] leading-relaxed text-[var(--ema-text-secondary)]"
           >
             {file}
           </span>

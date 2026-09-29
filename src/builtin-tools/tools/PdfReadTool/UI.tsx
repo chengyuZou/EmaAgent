@@ -29,7 +29,7 @@ export function PdfReadArgsView({ args }: { args: unknown }): JSX.Element | null
   const pageCount = typeof args['page_count'] === 'number' ? args['page_count'] : undefined;
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] leading-relaxed">
-      <span className="break-all font-mono text-[var(--ema-text-secondary)]">
+      <span className="min-w-0 font-mono text-[var(--ema-text-secondary)]">
         {args['file_path']}
       </span>
       {(startPage !== undefined || pageCount !== undefined) && (
@@ -49,7 +49,7 @@ export function PdfReadResultView({ data }: { data: unknown }): JSX.Element | nu
   const omitted = result.content.length - preview.length;
   return (
     <div className="flex flex-col gap-1 text-[11px] leading-relaxed">
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex items-center gap-2">
         <span className="text-[var(--ema-text-secondary)]">
           第 {result.startPage}–{result.endPage} 页 · 共 {result.totalPages} 页
         </span>
@@ -61,7 +61,7 @@ export function PdfReadResultView({ data }: { data: unknown }): JSX.Element | nu
         )}
       </div>
       <div>
-        <pre className="m-0 whitespace-pre-wrap break-all bg-transparent p-0 font-mono text-[var(--ema-text-secondary)]">
+        <pre className="m-0 whitespace-pre bg-transparent p-0 font-mono text-[var(--ema-text-secondary)]">
           {preview}
           {omitted > 0 && `\n··· 其余 ${omitted.toLocaleString()} 字符 ···`}
         </pre>

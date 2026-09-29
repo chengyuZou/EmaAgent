@@ -30,7 +30,7 @@ export function AskUserResultView({ data }: { data: unknown }): JSX.Element | nu
         <div key={question} className="text-[11px] leading-relaxed">
           <div className="text-[var(--ema-text-tertiary)]">{question}</div>
           <div className="pl-3 text-[var(--ema-text-secondary)]">
-            {answer || <span className="text-[var(--ema-text-tertiary)]">（未作答）</span>}
+            {answer || <span className="text-[var(--ema-text-tertiary)]">(未作答)</span>}
           </div>
         </div>
       ))}

@@ -1,9 +1,9 @@
 // FileReadTool 的桌面展示: 参数(路径+分页范围)与结果卡.
 // 结果按类型分流: 图片直接渲染(base64 已有), 文本内容按扩展名走
-// Markdown 渲染 / hljs 高亮源码 / HTML 沙箱预览三态.
+// Markdown 正文 / Markdown 代码块 / HTML 沙箱预览三态.
 // 只消费本 Tool 的类型化 data; 类型守卫失败一律返回 null, 由前端回落通用渲染。
 import { useMemo, useState, type JSX } from 'react';
-import { Badge, Button, Markdown, highlightFile, languageForPath } from '@ema-agent/ui';
+import { Badge, Button, Markdown, languageForPath } from '@ema-agent/ui';
 import type { FileReadResult } from './FileReadTool.js';
 
 // ── 类型守卫(消费 unknown data 的唯一入口) ────────────────────────────────────
@@ -66,7 +66,7 @@ export function FileReadArgsView({ args }: { args: unknown }): JSX.Element | nul
   return (
     <div className="flex items-baseline gap-2 text-[11px] leading-relaxed">
       <span className="shrink-0 text-[var(--ema-text-tertiary)]">path:</span>
-      <span className="break-all font-mono text-[var(--ema-text-secondary)]">
+      <span className="min-w-0 font-mono text-[var(--ema-text-secondary)]">
         {args['file_path']}
         {range && <span className="text-[var(--ema-text-tertiary)]">{` · ${range}`}</span>}
       </span>
@@ -149,23 +149,37 @@ function FileReadContentCard({ result }: { result: FileContentResult }): JSX.Ele
   const extension = result.filePath.split(/[\\/]/).pop()?.split('.').pop()?.toLowerCase() ?? '';
   const isMarkdown = ['md', 'markdown', 'mdx'].includes(extension);
   const isHtml = ['html', 'htm'].includes(extension);
-  const hasLanguage = languageForPath(result.filePath) !== null;
   const [showHtmlPreview, setShowHtmlPreview] = useState(false);
 
-  // 高亮只跑一次, 分页追加的同文件结果是新对象, memo 按内容+路径缓存.
-  const highlighted = useMemo(
-    () => (!isMarkdown && hasLanguage ? highlightFile(result.content, result.filePath) : null),
-    [isMarkdown, hasLanguage, result.content, result.filePath],
-  );
+  // 编号单独展示, Markdown 只消费原文; 结果信封与外层复制仍保留模型定位编号.
+  const { source, lineNumbers } = useMemo(() => {
+    const lineNumbers: string[] = [];
+    const source = result.content.replace(/^ *(\d+)\t/gm, (_prefix, number: string) => {
+      lineNumbers.push(number);
+      return '';
+    });
+    return { source, lineNumbers };
+  }, [result.content]);
+  const markdownSource = useMemo(() => {
+    if (isMarkdown) return source;
+    // 文件可能含 Markdown 围栏, 外层围栏比原文里的反引号串长, 保证源码只作为代码显示.
+    let fenceLength = 3;
+    for (const match of source.matchAll(/`+/g)) {
+      fenceLength = Math.max(fenceLength, match[0].length + 1);
+    }
+    const fence = '`'.repeat(fenceLength);
+    const language = languageForPath(result.filePath) ?? 'text';
+    return `${fence}${language}\n${source}\n${fence}`;
+  }, [isMarkdown, source, result.filePath]);
 
   const readLines = result.content === '' ? 0 : result.content.split('\n').length;
   return (
-    <div className="flex flex-col gap-1">
-      <div className="flex items-center gap-2 text-[11px] leading-relaxed">
+    <div className="ema-file-read-content flex flex-col gap-1">
+      <div className="ema-file-read-summary flex items-center gap-2 text-[11px] leading-relaxed">
         <span className="text-[var(--ema-text-secondary)]">
           读取 <span className="font-medium">{readLines.toLocaleString()}</span> 行
           <span className="text-[var(--ema-text-tertiary)]">
-            （共 {result.totalLines.toLocaleString()} 行）
+            (共 {result.totalLines.toLocaleString()} 行)
           </span>
         </span>
         {result.truncated && (
@@ -185,28 +199,25 @@ function FileReadContentCard({ result }: { result: FileContentResult }): JSX.Ele
         )}
       </div>
 
-      {isMarkdown && (
-        <div className="text-[11px]">
-          <Markdown source={result.content} />
-        </div>
-      )}
-
       {isHtml && showHtmlPreview && (
         /* sandbox 空属性: 禁脚本禁表单, 只渲染视觉; 本地文件与公网抓取同一边界. */
         <iframe
           sandbox=""
-          srcDoc={result.content}
+          srcDoc={source}
           title="HTML 预览"
           className="h-48 w-full rounded-md border border-[var(--ema-border)] bg-white"
         />
       )}
 
-      {!isMarkdown && (!isHtml || !showHtmlPreview) && (
-        <pre className="hljs whitespace-pre-wrap break-all font-mono text-[11px] leading-relaxed text-[var(--ema-text-secondary)]">
-          {highlighted !== null
-            ? <code dangerouslySetInnerHTML={{ __html: highlighted }} />
-            : result.content}
-        </pre>
+      {(!isHtml || !showHtmlPreview) && (
+        <div className={isMarkdown ? 'min-w-0 text-[12px]' : 'ema-file-read-code ema-material-code'}>
+          {!isMarkdown && (
+            <pre className="ema-file-read-line-numbers ema-font-mono" aria-hidden="true">
+              {`${lineNumbers.join('\n')}\n`}
+            </pre>
+          )}
+          <Markdown source={markdownSource} className="ema-file-read-markdown" />
+        </div>
       )}
     </div>
   );
