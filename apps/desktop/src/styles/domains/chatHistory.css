@@ -18,6 +18,24 @@
   padding-inline: var(--ema-chat-content-gutter, 3.5rem);
 }
 
+.ema-chat-history-scroller {
+  overflow-anchor: none;
+  scrollbar-gutter: stable;
+}
+
+.ema-chat-history-load-status {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ema-space-2);
+  height: 40px;
+  font-size: 12px;
+  color: var(--ema-text-tertiary);
+}
+
 .ema-chat-history-inset {
   padding-left: var(--ema-chat-content-gutter, 3.5rem);
   padding-right: calc(var(--ema-chat-content-gutter, 3.5rem) + var(--ema-chat-scrollbar-width, 0px));
@@ -25,6 +43,11 @@
 
 .ema-chat-message-row {
   padding-block: var(--ema-space-2);
+}
+
+/* 仅实时新消息入场, 由列表在到达时添加; 不改变尺寸或创建 transform 材质层. */
+.ema-chat-message-enter {
+  animation: ema-fade-in var(--ema-duration-base) var(--ema-ease);
 }
 
 button.ema-chat-jump-latest {

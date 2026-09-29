@@ -2,6 +2,7 @@
 
 import { memo, useState, type JSX } from 'react';
 import { ToolCallBlock } from './ToolCallBlock.js';
+import { useMessageExpansion } from '../messageExpansion.js';
 import {
   tallyTools,
   toolCallId,
@@ -14,14 +15,16 @@ export const ToolGroup = memo(function ToolGroup({
   streaming,
   turnId,
   sessionId,
+  sectionKey,
 }: {
   readonly calls: readonly ToolDisplayCall[];
   readonly streaming: boolean;
   readonly turnId?: string;
   readonly sessionId?: string;
+  readonly sectionKey: string;
 }): JSX.Element {
-  const [open, setOpen] = useState(false);
-  const [hasOpened, setHasOpened] = useState(false);
+  const [open, setOpen] = useMessageExpansion(sectionKey);
+  const [hasOpened, setHasOpened] = useState(open);
 
   // 流式期间调用数量会增长, Hook 必须在单个调用的提前返回之前执行.
   if (calls.length === 1) {

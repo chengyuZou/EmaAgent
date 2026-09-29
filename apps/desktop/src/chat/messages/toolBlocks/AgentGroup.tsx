@@ -1,6 +1,7 @@
 // 单独展示 Subagent Tool 创建的 Subagent;前台 Tool 与后台 Subagent 只暴露各自正确的停止入口.
 
-import { memo, useState, type JSX } from 'react';
+import { memo, type JSX } from 'react';
+import { useMessageExpansion } from '../messageExpansion.js';
 import { IconButton } from '@ema-agent/ui';
 import { useShallow } from 'zustand/react/shallow';
 import { sessionWebSocket } from '../../../api/sessionWebSocket.js';
@@ -34,13 +35,15 @@ export const AgentGroup = memo(function AgentGroup({
   streaming,
   turnId,
   sessionId,
+  sectionKey,
 }: {
   readonly calls: readonly ToolDisplayCall[];
   readonly streaming: boolean;
   readonly turnId?: string;
   readonly sessionId: string;
+  readonly sectionKey: string;
 }): JSX.Element {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useMessageExpansion(sectionKey);
   const subagentIds = useSubagentStore(useShallow(state => (
     calls.map(call => state.invocationsBySession.get(sessionId)?.get(toolCallId(call)) ?? resultSubagentId(call))
   )));
@@ -126,7 +129,7 @@ function AgentRow({
   readonly turnId?: string;
   readonly sessionId: string;
 }): JSX.Element {
-  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useMessageExpansion(`agent:${toolCallId(call)}`);
   const openTab = useSessionPanelStore(state => state.openTab);
   const toolCallIdValue = toolCallId(call);
   const subagentId = state.subagentId;

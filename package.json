@@ -24,5 +24,11 @@
   "packageManager": "pnpm@9.0.0",
   "engines": {
     "node": ">=20.0.0"
+  },
+  "pnpm": {
+    "patchedDependencies": {
+      "@pierre/trees@1.0.0-beta.6": "patches/@pierre__trees@1.0.0-beta.6.patch",
+      "@mermaid-js/layout-elk@0.2.2": "patches/@mermaid-js__layout-elk@0.2.2.patch"
+    }
   }
 }

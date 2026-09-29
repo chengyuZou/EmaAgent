@@ -1,6 +1,7 @@
 // 按 Server 给出的块顺序渲染正文, Thinking, 普通 Tool Group 和 Agent Group.
 
-import { memo, useRef, useState, type JSX } from 'react';
+import { memo, useRef, type JSX } from 'react';
+import { useMessageExpansion } from './messageExpansion.js';
 import type { AssistantBlock } from '@ema-agent/llm';
 import type { SubagentMessage } from '@ema-agent/agent';
 import type { Message } from '@ema-agent/session';
@@ -47,6 +48,7 @@ export function AssistantSections({
           return (
             <ToolGroup
               key={section.key}
+              sectionKey={section.key}
               calls={section.calls}
               streaming={streaming}
               turnId={turnId}
@@ -58,6 +60,7 @@ export function AssistantSections({
           return (
             <AgentGroup
               key={section.key}
+              sectionKey={section.key}
               calls={section.calls}
               streaming={streaming}
               turnId={turnId}
@@ -68,8 +71,10 @@ export function AssistantSections({
         return (
           <AssistantBlockView
             key={section.key}
+            sectionKey={section.key}
             block={section.block}
-            streaming={section.thinkingActive}
+            streaming={streaming}
+            thinkingActive={section.thinkingActive}
           />
         );
       })}
@@ -79,33 +84,62 @@ export function AssistantSections({
 
 const AssistantBlockView = memo(function AssistantBlockView({
   block,
+  sectionKey,
   streaming,
+  thinkingActive,
 }: {
   readonly block: DisplayBlock;
+  readonly sectionKey: string;
   readonly streaming: boolean;
+  readonly thinkingActive: boolean;
 }): JSX.Element | null {
   switch (block.type) {
     case 'text':
-      return <Markdown source={block.text} />;
+      return <Markdown source={block.text} streaming={streaming} />;
     case 'thinking':
-      return <ThinkingBlock text={block.thinking} streaming={streaming} />;
+      return (
+        <ThinkingBlock
+          sectionKey={sectionKey}
+          text={block.thinking}
+          streaming={streaming}
+          thinkingActive={thinkingActive}
+        />
+      );
     case 'reasoning':
       return block.summaryText
-        ? <ThinkingBlock text={block.summaryText} streaming={streaming} />
+        ? (
+          <ThinkingBlock
+            sectionKey={sectionKey}
+            text={block.summaryText}
+            streaming={streaming}
+            thinkingActive={thinkingActive}
+          />
+        )
         : null;
     case 'gemini_thought':
-      return <ThinkingBlock text={block.text} streaming={streaming} />;
+      return (
+        <ThinkingBlock
+          sectionKey={sectionKey}
+          text={block.text}
+          streaming={streaming}
+          thinkingActive={thinkingActive}
+        />
+      );
   }
 });
 
 const ThinkingBlock = memo(function ThinkingBlock({
   text,
+  sectionKey,
   streaming,
+  thinkingActive,
 }: {
   readonly text: string;
+  readonly sectionKey: string;
   readonly streaming: boolean;
+  readonly thinkingActive: boolean;
 }): JSX.Element {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useMessageExpansion(sectionKey);
   return (
     <div className="ema-thinking-block">
       <button
@@ -115,7 +149,7 @@ const ThinkingBlock = memo(function ThinkingBlock({
         onClick={() => setOpen(value => !value)}
       >
         <span className="i-lucide:brain-circuit" aria-hidden />
-        <span>{streaming ? '正在思考' : '思考过程'}</span>
+        <span>{streaming && thinkingActive ? '正在思考' : '思考过程'}</span>
         <span className="i-lucide:chevron-right ema-thinking-chevron" aria-hidden />
       </button>
       <div
@@ -124,7 +158,7 @@ const ThinkingBlock = memo(function ThinkingBlock({
       >
         <div>
           <div className="ema-thinking-content">
-            <Markdown source={text} />
+            <Markdown source={text} streaming={streaming} />
           </div>
         </div>
       </div>

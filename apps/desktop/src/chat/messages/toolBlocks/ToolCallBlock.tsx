@@ -14,6 +14,7 @@ import {
   type ToolDisplayStatus,
 } from './toolBlockHelpers.js';
 import { useSessionPanelStore } from '../../../stores/sessionPanel.js';
+import { useMessageExpansion } from '../messageExpansion.js';
 import {
   toolArgs,
   toolDurationMs,
@@ -90,7 +91,7 @@ export function ToolCallBlock({ call, streaming = false, turnId, sessionId }: To
   }
 
   const toolUI = lookupToolUI(name);
-  const [open, setOpen] = useState(() => toolUI?.defaultExpanded ?? false);
+  const [open, setOpen] = useMessageExpansion(`tool:${toolCallId(call)}`, toolUI?.defaultExpanded ?? false);
 
   const statusMeta = STATUS_META[status];
   const running = toolRunning(call, streaming);

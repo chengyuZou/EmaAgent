@@ -47,9 +47,9 @@ export const AssistantMessage = memo(function AssistantMessage({
 
   const sections = streaming ? streamingSections : historySections;
 
-  // Server 分配的同一 Message ID 让父列表复用此组件, 从而避免落盘交接时重新播放入场动画.
+  // 历史行会因虚拟化反复挂载, mount 不代表新消息到达.
   return (
-    <div className="ema-message-shell flex ema-bubble-in">
+    <div className="ema-message-shell flex">
       <div className="flex min-w-20 w-full max-w-full flex-col">
         {streaming && message.blocks.length === 0 ? (
           <StreamingDots />

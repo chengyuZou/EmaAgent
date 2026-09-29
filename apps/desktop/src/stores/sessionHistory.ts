@@ -10,13 +10,28 @@ type TurnIndexItem = TurnIndexPage['items'][number];
 type SessionTurnStats = SessionMessagePage['turnStats'][number];
 const MESSAGE_PAGE_SIZE = 50;
 const TURN_INDEX_PAGE_SIZE = 200;
-let nextWindowRequestId = 0;
-const currentWindowRequestIds = new Map<string, number>();
+interface HistoryWindowRequest {
+  readonly arrivedMessages: Map<string, SessionMessage>;
+  readonly arrivedTurnStats: Map<string, SessionTurnStats>;
+}
+// 对象身份使旧请求失效; 两份临时事实只在窗口读取期间使用, 提交后清空.
+const currentWindowRequests = new Map<string, HistoryWindowRequest>();
+
+function windowRequest(): HistoryWindowRequest {
+  return { arrivedMessages: new Map(), arrivedTurnStats: new Map() };
+}
+
+function clearArrivals(request: HistoryWindowRequest): void {
+  request.arrivedMessages.clear();
+  request.arrivedTurnStats.clear();
+}
 
 export interface SessionHistoryState {
   /** 当前加载窗口内的持久化消息, 可能是最新一页, 也可能是 Turn 游标打开的锚点窗口. */
   readonly messages: readonly SessionMessage[];
-  /** around 窗口的锚点 Message ID. 最新页为 undefined, MessageList 用它重建虚拟列表. */
+  /** 成功整窗替换后产生的新身份. 普通翻页不改变它, 同锚点重开也不复用旧测量. */
+  readonly windowId?: string;
+  /** around 的初始定位目标. 是否已连到最新位置由 newerCursor 决定. */
   readonly windowAnchorMessageId?: string;
   /** 已加载 Turn 的最终 Token, 耗时和音频状态, AssistantMessage 只从这里读取落盘事实. */
   readonly turnStatsById: ReadonlyMap<string, SessionTurnStats>;
@@ -28,6 +43,9 @@ export interface SessionHistoryState {
   readonly loadingOlder: boolean;
   /** 锚点窗口之后仍有消息时, 正在把下一页合并到当前窗口尾部. */
   readonly loadingNewer: boolean;
+  /** 该方向失败后暂停自动分页, 只有用户点击重试才重新请求. */
+  readonly olderError?: string;
+  readonly newerError?: string;
   /** 当前窗口之前仍有消息时, Server 返回并由 loadOlder 原样回传. */
   readonly olderCursor?: string;
   /** 当前窗口之后仍有消息时, Server 返回并由 loadNewer 原样回传. */
@@ -59,7 +77,7 @@ interface HistoryStore {
   loadNewer(sessionId: string): Promise<void>;
   /** TurnNavigationRail 跳转时以真实 Message ID 重新加载前后有界的窗口. */
   openAround(sessionId: string, anchorMessageId: string): Promise<void>;
-  /** 点击已加载 Message 时, 使仍在请求中的整窗替换不能覆盖这次导航. */
+  /** 点击已加载 Message 时, 使正在读取的窗口替换和分页都不能覆盖这次导航. */
   cancelPendingWindowReplace(sessionId: string): void;
   /** Turn terminal 或音频归档变化后只重读该 Turn, 按 Message ID 和 turnId 合入当前窗口. */
   mergeTurnMessages(sessionId: string, turnId: string): Promise<void>;
@@ -114,10 +132,47 @@ function mergeMessages(current: readonly SessionMessage[], incoming: readonly Se
 function mergeTurnStats(
   current: ReadonlyMap<string, SessionTurnStats>,
   incoming: readonly SessionTurnStats[],
+  messages: readonly SessionMessage[],
 ): ReadonlyMap<string, SessionTurnStats> {
-  const next = new Map(current);
-  for (const stats of incoming) next.set(stats.turnId, stats);
+  const retainedTurns = new Set(messages.map(message => message.turnId));
+  const next = new Map([...current].filter(([turnId]) => retainedTurns.has(turnId)));
+  for (const stats of incoming) {
+    if (retainedTurns.has(stats.turnId)) next.set(stats.turnId, stats);
+  }
   return next;
+}
+
+function compareMessages(left: SessionMessage, right: SessionMessage): number {
+  return left.createdAt - right.createdAt || left.id.localeCompare(right.id);
+}
+
+/** 实时事实只更新窗口内消息; 连到最新时才允许扩展尾部, 工具结果按调用关系保留. */
+function mergeWindowMessages(
+  window: SessionHistoryState,
+  incoming: readonly SessionMessage[],
+): SessionMessage[] {
+  const first = window.messages[0];
+  const last = window.messages.at(-1);
+  const knownIds = new Set(window.messages.map(message => message.id));
+  const selected = incoming.filter(message => {
+    if (knownIds.has(message.id) || !window.loaded) return true;
+    if (first && compareMessages(message, first) < 0) return false;
+    return !window.newerCursor || Boolean(last && compareMessages(message, last) <= 0);
+  });
+  const toolCallIds = new Set<string>();
+  for (const message of [...window.messages, ...selected]) {
+    if (!Array.isArray(message.blocks)) continue;
+    for (const block of message.blocks) {
+      if (block.type === 'tool_use') toolCallIds.add(block.id);
+    }
+  }
+  for (const message of incoming) {
+    if (selected.includes(message) || message.kind !== 'tool_results' || !Array.isArray(message.blocks)) continue;
+    if (message.blocks.some(block => block.type === 'tool_result' && toolCallIds.has(block.toolCallId))) {
+      selected.push(message);
+    }
+  }
+  return mergeMessages(window.messages, selected);
 }
 
 /** MessageList, TurnNavigationRail 和终态订阅共享的持久化 History Store. */
@@ -126,10 +181,14 @@ export const useSessionHistoryStore = create<HistoryStore>((set, get) => ({
 
   // 落盘 UserMessage 可以在 Turn 运行期间到达, 立即按 ID 合入当前窗口.
   appendMessage(sessionId, message) {
+    const current = get().bySession.get(sessionId);
+    if (current?.loading || current?.loadingNewer) {
+      currentWindowRequests.get(sessionId)?.arrivedMessages.set(message.id, message);
+    }
     set(state => ({
       bySession: replace(state.bySession, sessionId, value => ({
         ...value,
-        messages: mergeMessages(value.messages, [message]),
+        messages: mergeWindowMessages(value, [message]),
       })),
     }));
   },
@@ -138,34 +197,53 @@ export const useSessionHistoryStore = create<HistoryStore>((set, get) => ({
   async loadLatest(sessionId, force = false) {
     const current = get().bySession.get(sessionId) ?? EMPTY_SESSION_HISTORY;
     if (current.loading || (current.loaded && !force)) return;
-    const requestId = ++nextWindowRequestId;
-    currentWindowRequestIds.set(sessionId, requestId);
+    const request = windowRequest();
+    currentWindowRequests.set(sessionId, request);
     set(state => ({
       bySession: replace(state.bySession, sessionId, value => ({
         ...value,
         loading: true,
+        loadingOlder: false,
+        loadingNewer: false,
+        olderError: undefined,
+        newerError: undefined,
         error: undefined,
       })),
     }));
     try {
       const page = await sessionsApi.listMessages(sessionId, { limit: MESSAGE_PAGE_SIZE });
-      if (currentWindowRequestIds.get(sessionId) !== requestId) return;
+      if (currentWindowRequests.get(sessionId) !== request) return;
       set(state => ({
-        bySession: replace(state.bySession, sessionId, value => ({
-          ...value,
-          messages: page.messages,
-          windowAnchorMessageId: undefined,
-          turnStatsById: new Map(page.turnStats.map(stats => [stats.turnId, stats])),
-          loaded: true,
-          loading: false,
-          loadingOlder: false,
-          loadingNewer: false,
-          olderCursor: page.olderCursor,
-          newerCursor: undefined,
-        })),
+        bySession: replace(state.bySession, sessionId, value => {
+          // 请求期间落盘的消息不能被请求开始时的服务端页面覆盖.
+          const latest: SessionHistoryState = {
+            ...value,
+            messages: page.messages,
+            loaded: true,
+            newerCursor: undefined,
+          };
+          const messages = mergeWindowMessages(latest, [...request.arrivedMessages.values()]);
+          return {
+            ...latest,
+            messages,
+            windowId: crypto.randomUUID(),
+            windowAnchorMessageId: undefined,
+            turnStatsById: mergeTurnStats(
+              new Map(page.turnStats.map(stats => [stats.turnId, stats])),
+              [...request.arrivedTurnStats.values()],
+              messages,
+            ),
+            loading: false,
+            loadingOlder: false,
+            loadingNewer: false,
+            olderCursor: page.olderCursor,
+          };
+        }),
       }));
+      clearArrivals(request);
     } catch (error) {
-      if (currentWindowRequestIds.get(sessionId) !== requestId) return;
+      if (currentWindowRequests.get(sessionId) !== request) return;
+      clearArrivals(request);
       set(state => ({
         bySession: replace(state.bySession, sessionId, value => ({
           ...value,
@@ -178,11 +256,13 @@ export const useSessionHistoryStore = create<HistoryStore>((set, get) => ({
 
   async loadOlder(sessionId) {
     const current = get().bySession.get(sessionId);
-    if (!current?.olderCursor || current.loadingOlder) return;
+    if (!current?.olderCursor || current.loading || current.loadingOlder) return;
+    const request = currentWindowRequests.get(sessionId);
     set(state => ({
       bySession: replace(state.bySession, sessionId, value => ({
         ...value,
         loadingOlder: true,
+        olderError: undefined,
       })),
     }));
     try {
@@ -190,16 +270,19 @@ export const useSessionHistoryStore = create<HistoryStore>((set, get) => ({
         before: current.olderCursor,
         limit: MESSAGE_PAGE_SIZE,
       });
+      if (currentWindowRequests.get(sessionId) !== request) return;
+      if (page.olderCursor === current.olderCursor) throw new Error('历史游标没有推进, 请重试');
       set(state => {
         const bySession = replace(state.bySession, sessionId, value => {
           if (
-            value.windowAnchorMessageId !== current.windowAnchorMessageId
+            value.windowId !== current.windowId
             || value.olderCursor !== current.olderCursor
           ) return value;
+          const messages = mergeMessages(value.messages, page.messages);
           return {
             ...value,
-            messages: mergeMessages(value.messages, page.messages),
-            turnStatsById: mergeTurnStats(value.turnStatsById, page.turnStats),
+            messages,
+            turnStatsById: mergeTurnStats(value.turnStatsById, page.turnStats, messages),
             loadingOlder: false,
             olderCursor: page.olderCursor,
           };
@@ -207,15 +290,16 @@ export const useSessionHistoryStore = create<HistoryStore>((set, get) => ({
         return bySession === state.bySession ? state : { bySession };
       });
     } catch (error) {
+      if (currentWindowRequests.get(sessionId) !== request) return;
       set(state => {
         const bySession = replace(state.bySession, sessionId, value => (
-          value.windowAnchorMessageId !== current.windowAnchorMessageId
+          value.windowId !== current.windowId
           || value.olderCursor !== current.olderCursor
             ? value
             : {
               ...value,
               loadingOlder: false,
-              error: error instanceof Error ? error.message : '更早消息加载失败',
+              olderError: error instanceof Error ? error.message : '更早消息加载失败',
             }
         ));
         return bySession === state.bySession ? state : { bySession };
@@ -225,11 +309,14 @@ export const useSessionHistoryStore = create<HistoryStore>((set, get) => ({
 
   async loadNewer(sessionId) {
     const current = get().bySession.get(sessionId);
-    if (!current?.newerCursor || current.loadingNewer) return;
+    if (!current?.newerCursor || current.loading || current.loadingNewer) return;
+    const request = currentWindowRequests.get(sessionId);
+    if (request) clearArrivals(request);
     set(state => ({
       bySession: replace(state.bySession, sessionId, value => ({
         ...value,
         loadingNewer: true,
+        newerError: undefined,
       })),
     }));
     try {
@@ -237,32 +324,46 @@ export const useSessionHistoryStore = create<HistoryStore>((set, get) => ({
         after: current.newerCursor,
         limit: MESSAGE_PAGE_SIZE,
       });
+      if (currentWindowRequests.get(sessionId) !== request) return;
+      if (page.newerCursor === current.newerCursor) throw new Error('历史游标没有推进, 请重试');
       set(state => {
         const bySession = replace(state.bySession, sessionId, value => {
           if (
-            value.windowAnchorMessageId !== current.windowAnchorMessageId
+            value.windowId !== current.windowId
             || value.newerCursor !== current.newerCursor
           ) return value;
-          return {
+          const window = {
             ...value,
             messages: mergeMessages(value.messages, page.messages),
-            turnStatsById: mergeTurnStats(value.turnStatsById, page.turnStats),
             loadingNewer: false,
             newerCursor: page.newerCursor,
+          };
+          const messages = mergeWindowMessages(window, [...(request?.arrivedMessages.values() ?? [])]);
+          return {
+            ...window,
+            messages,
+            turnStatsById: mergeTurnStats(
+              value.turnStatsById,
+              [...page.turnStats, ...(request?.arrivedTurnStats.values() ?? [])],
+              messages,
+            ),
           };
         });
         return bySession === state.bySession ? state : { bySession };
       });
+      if (request) clearArrivals(request);
     } catch (error) {
+      if (currentWindowRequests.get(sessionId) !== request) return;
+      if (request) clearArrivals(request);
       set(state => {
         const bySession = replace(state.bySession, sessionId, value => (
-          value.windowAnchorMessageId !== current.windowAnchorMessageId
+          value.windowId !== current.windowId
           || value.newerCursor !== current.newerCursor
             ? value
             : {
               ...value,
               loadingNewer: false,
-              error: error instanceof Error ? error.message : '更新消息加载失败',
+              newerError: error instanceof Error ? error.message : '更新消息加载失败',
             }
         ));
         return bySession === state.bySession ? state : { bySession };
@@ -272,12 +373,16 @@ export const useSessionHistoryStore = create<HistoryStore>((set, get) => ({
 
   // 导航轨跳转会用锚点窗口替换 messages, 后续向 newer 方向逐页回到 Session 最新位置.
   async openAround(sessionId, anchorMessageId) {
-    const requestId = ++nextWindowRequestId;
-    currentWindowRequestIds.set(sessionId, requestId);
+    const request = windowRequest();
+    currentWindowRequests.set(sessionId, request);
     set(state => ({
       bySession: replace(state.bySession, sessionId, value => ({
         ...value,
         loading: true,
+        loadingOlder: false,
+        loadingNewer: false,
+        olderError: undefined,
+        newerError: undefined,
         error: undefined,
       })),
     }));
@@ -287,23 +392,37 @@ export const useSessionHistoryStore = create<HistoryStore>((set, get) => ({
         before: MESSAGE_PAGE_SIZE,
         after: MESSAGE_PAGE_SIZE,
       });
-      if (currentWindowRequestIds.get(sessionId) !== requestId) return;
+      if (currentWindowRequests.get(sessionId) !== request) return;
       set(state => ({
-        bySession: replace(state.bySession, sessionId, value => ({
-          ...value,
-          messages: page.messages,
-          windowAnchorMessageId: anchorMessageId,
-          turnStatsById: new Map(page.turnStats.map(stats => [stats.turnId, stats])),
-          loaded: true,
-          loading: false,
-          loadingOlder: false,
-          loadingNewer: false,
-          olderCursor: page.olderCursor,
-          newerCursor: page.newerCursor,
-        })),
+        bySession: replace(state.bySession, sessionId, value => {
+          const window: SessionHistoryState = {
+            ...value,
+            messages: page.messages,
+            windowId: crypto.randomUUID(),
+            windowAnchorMessageId: anchorMessageId,
+            loaded: true,
+            loading: false,
+            loadingOlder: false,
+            loadingNewer: false,
+            olderCursor: page.olderCursor,
+            newerCursor: page.newerCursor,
+          };
+          const messages = mergeWindowMessages(window, [...request.arrivedMessages.values()]);
+          return {
+            ...window,
+            messages,
+            turnStatsById: mergeTurnStats(
+              new Map(page.turnStats.map(stats => [stats.turnId, stats])),
+              [...request.arrivedTurnStats.values()],
+              messages,
+            ),
+          };
+        }),
       }));
+      clearArrivals(request);
     } catch (error) {
-      if (currentWindowRequestIds.get(sessionId) !== requestId) return;
+      if (currentWindowRequests.get(sessionId) !== request) return;
+      clearArrivals(request);
       set(state => ({
         bySession: replace(state.bySession, sessionId, value => ({
           ...value,
@@ -315,11 +434,13 @@ export const useSessionHistoryStore = create<HistoryStore>((set, get) => ({
   },
 
   cancelPendingWindowReplace(sessionId) {
-    currentWindowRequestIds.set(sessionId, ++nextWindowRequestId);
+    currentWindowRequests.set(sessionId, windowRequest());
     set(state => ({
       bySession: replace(state.bySession, sessionId, value => ({
         ...value,
         loading: false,
+        loadingOlder: false,
+        loadingNewer: false,
       })),
     }));
   },
@@ -327,13 +448,24 @@ export const useSessionHistoryStore = create<HistoryStore>((set, get) => ({
   // Turn terminal 和音频归档变化只重读该 Turn, 避免整页 History 再渲染一次.
   async mergeTurnMessages(sessionId, turnId) {
     const result = await sessionsApi.listTurnMessages(sessionId, turnId);
+    const current = get().bySession.get(sessionId);
+    const request = currentWindowRequests.get(sessionId);
+    if (request && (current?.loading || current?.loadingNewer)) {
+      for (const message of result.messages) request.arrivedMessages.set(message.id, message);
+      for (const stats of result.turnStats) request.arrivedTurnStats.set(stats.turnId, stats);
+    }
     set(state => ({
-      bySession: replace(state.bySession, sessionId, value => ({
-        ...value,
-        messages: mergeMessages(value.messages, result.messages),
-        turnStatsById: mergeTurnStats(value.turnStatsById, result.turnStats),
-        error: undefined,
-      })),
+      bySession: state.bySession.has(sessionId)
+        ? replace(state.bySession, sessionId, value => {
+          const messages = mergeWindowMessages(value, result.messages);
+          return {
+            ...value,
+            messages,
+            turnStatsById: mergeTurnStats(value.turnStatsById, result.turnStats, messages),
+            error: undefined,
+          };
+        })
+        : state.bySession,
     }));
   },
 
@@ -442,7 +574,7 @@ export const useSessionHistoryStore = create<HistoryStore>((set, get) => ({
   },
 
   evictSession(sessionId) {
-    currentWindowRequestIds.delete(sessionId);
+    currentWindowRequests.delete(sessionId);
     set(state => {
       const bySession = new Map(state.bySession);
       bySession.delete(sessionId);

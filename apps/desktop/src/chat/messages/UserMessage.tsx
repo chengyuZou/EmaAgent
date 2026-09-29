@@ -51,7 +51,7 @@ export function UserMessage({ message }: UserMessageProps): JSX.Element {
   };
 
   return (
-    <div className="ema-message-shell flex flex-row-reverse ema-bubble-in">
+    <div className="ema-message-shell flex flex-row-reverse">
       <div className="flex flex-col min-w-20 max-w-full items-end">
         {attachments.length > 0 && (
           <div className="flex flex-wrap justify-end gap-1.5 mb-1.5 max-w-full">
