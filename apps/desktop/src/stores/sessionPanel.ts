@@ -120,6 +120,8 @@ interface SessionPanelStore {
   readonly rightPanelPercent: number;
   /** 新标签追加到末尾; 已存在的标签更新内容并直接激活. */
   openTab(sessionId: string, tab: SessionSidePanelTab): void;
+  /** 文件浏览器选择文件时原位替换空白入口; 已有文件只激活, 不覆盖其他文件. */
+  openWorkspaceFile(sessionId: string, filePath: string): void;
   /** 关闭标签并选择相邻标签; Browser 标签同时关闭对应 Tauri Browser. */
   closeTab(sessionId: string, tabId: string): void;
   /** 用户点击标签时激活它并重新展开侧栏, 不创建不存在的标签. */
@@ -158,6 +160,29 @@ export const useSessionPanelStore = create<SessionPanelStore>((set, get) => ({
             activeTabId: tab.id,
             open: true,
           },
+        },
+      };
+    });
+  },
+
+  openWorkspaceFile(sessionId, filePath) {
+    const tab = fileTab(filePath);
+    set(state => {
+      const layout = state.layouts[sessionId] ?? emptySidePanelLayout();
+      const tabsById = { ...layout.tabsById, [tab.id]: tab };
+      delete tabsById.files;
+      let tabOrder: string[];
+      if (layout.tabOrder.includes(tab.id)) {
+        tabOrder = layout.tabOrder.filter(id => id !== 'files');
+      } else if (layout.tabOrder.includes('files')) {
+        tabOrder = layout.tabOrder.map(id => id === 'files' ? tab.id : id);
+      } else {
+        tabOrder = [...layout.tabOrder, tab.id];
+      }
+      return {
+        layouts: {
+          ...state.layouts,
+          [sessionId]: { tabsById, tabOrder, activeTabId: tab.id, open: true },
         },
       };
     });

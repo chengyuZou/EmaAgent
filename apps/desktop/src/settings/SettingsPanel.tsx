@@ -122,6 +122,13 @@ export function SettingsPanel(): JSX.Element {
   const [active, setActive] = useState<ActiveNav>('providers');
   const [expandedPage, setExpandedPage] = useState<SettingsPageId | null>(null);
   const activePage = pageOf(active);
+  const memoryFilesOpen = active === 'memory-files';
+  let contentLayout = 'overflow-y-auto px-5 py-5 md:px-8 md:py-6';
+  if (activePage.fullHeight) {
+    contentLayout = 'overflow-hidden';
+  } else if (memoryFilesOpen) {
+    contentLayout = 'flex min-h-0 flex-col overflow-hidden px-5 py-5 md:px-8 md:py-6';
+  }
 
   useEffect(() => mountSystemEvents({ ownsConnection: false }), []);
   useEffect(() => subscribeSystemEvent(event => {
@@ -203,10 +210,10 @@ export function SettingsPanel(): JSX.Element {
 
         <main
           key={active}
-          className={`relative z-10 min-w-0 flex-1 ema-slide-right ema-settings-material-page ${activePage.fullHeight ? 'overflow-hidden' : 'overflow-y-auto px-5 py-5 md:px-8 md:py-6'}`}
+          className={`relative z-10 min-w-0 flex-1 ema-slide-right ema-settings-material-page ${contentLayout}`}
           id="settings-scroll-container"
         >
-          <div className={`mb-5 md:hidden ${activePage.fullHeight ? 'px-5 pt-5' : ''}`}>
+          <div className={`mb-5 shrink-0 md:hidden ${activePage.fullHeight ? 'px-5 pt-5' : ''}`}>
             <Select
               value={active}
               options={mobileOptions}

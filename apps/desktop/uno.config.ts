@@ -7,6 +7,8 @@
 // (the unocss vite plugin injects this config file into the graph for HMR).
 import type { UserConfig } from '@unocss/core';
 import { createExternalPackageIconLoader } from '@iconify/utils/lib/loader/external-pkg';
+import { FileSystemIconLoader } from '@iconify/utils/lib/loader/node-loaders';
+import { fileURLToPath } from 'node:url';
 import lucideIcons from '@iconify-json/lucide/icons.json';
 import solarIcons from '@iconify-json/solar/icons.json';
 import lobeIconsJson from '@proj-airi/lobe-icons/icons.json';
@@ -32,6 +34,8 @@ const config: UserConfig = {
       // 名加 "icon-" 前缀 -> lucide:icon-git-fork failed to load,icon 不显示)
       lucide: lucideIcons,
       solar: solarIcons,
+      // Codex 同款审查图标独立保存为 SVG, 业务只使用 i-review:* 类名.
+      review: FileSystemIconLoader(fileURLToPath(new URL('./src/assets/icons', import.meta.url))),
       ema: {
         'context-compact': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none"><path d="M4 2.5H3a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h1m8-11h1a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-1M6 5h4M6 8h5M6 11h3" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/></svg>',
       },

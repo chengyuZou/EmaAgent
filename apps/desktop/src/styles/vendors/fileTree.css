@@ -1,0 +1,46 @@
+/* Review、工作区和 Memory 共用官方树主题; 横滚只属于整个树视口, 尺寸修复在依赖 patch. */
+:host {
+  --trees-bg-override: transparent;
+  --trees-fg-override: var(--ema-text-secondary);
+  --trees-fg-muted-override: var(--ema-text-tertiary);
+  --trees-font-family-override: var(--ema-font-ui);
+  --trees-font-size-override: 12px;
+  --trees-selected-bg-override: var(--ema-primary-muted);
+  --trees-selected-fg-override: var(--ema-primary-text);
+  --trees-border-color-override: var(--ema-border);
+  --trees-padding-inline-override: var(--ema-space-1);
+  --trees-item-padding-x-override: var(--ema-space-1);
+  --trees-icon-width-override: 14px;
+}
+
+[data-file-tree-virtualized-scroll="true"] {
+  overflow: auto;
+}
+
+[data-file-tree-virtualized-list="true"] {
+  min-width: 100%;
+  overflow: visible;
+}
+
+[data-type="item"] {
+  width: max-content;
+  min-width: 100%;
+}
+
+[data-item-section="content"] {
+  flex: none;
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+[data-truncate-container],
+[data-truncate-group-container] {
+  min-width: max-content;
+  overflow: visible;
+}
+
+[data-truncate-content="overflow"],
+[data-truncate-marker] {
+  display: none;
+}

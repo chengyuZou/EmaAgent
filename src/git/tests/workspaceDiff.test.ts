@@ -1,161 +1,165 @@
-// 测试 patch 分段解析与 gitWorkspaceDiff 在真实临时仓库上的双 scope、untracked 伪 diff 与计数。
+// 验证真实 Git 的三个比较范围, 原生 patch, 初始空树和查询体积限制.
 import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { gitWorkspaceDiff } from '../index.js';
-import { parseGitDiffSections } from '../diff.js';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { gitCompareDiff, gitWorkspaceDiff } from '../index.js';
+import { GIT_DIFF_MAX_TOTAL_CHARS } from '../limits.js';
 
-function gitAvailable(): boolean {
-  try {
-    execFileSync('git', ['--version'], { stdio: 'ignore' });
-    return true;
-  } catch {
-    return false;
-  }
+let hasGit = true;
+try {
+  execFileSync('git', ['--version'], { stdio: 'ignore' });
+} catch {
+  hasGit = false;
 }
 
-const HAS_GIT = gitAvailable();
-
-function git(cwd: string, args: readonly string[]): void {
-  execFileSync('git', args, { cwd, stdio: 'ignore' });
+function git(cwd: string, args: readonly string[]): string {
+  return execFileSync('git', ['-c', 'commit.gpgsign=false', ...args], {
+    cwd,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
 }
 
-describe('parseGitDiffSections', () => {
-  it('识别修改/新增/删除/重命名并计数', () => {
-    const patch = [
-      'diff --git a/mod.txt b/mod.txt',
-      'index 111..222 100644',
-      '--- a/mod.txt',
-      '+++ b/mod.txt',
-      '@@ -1 +1 @@',
-      '-old',
-      '+new',
-      'diff --git a/new.txt b/new.txt',
-      'new file mode 100644',
-      '--- /dev/null',
-      '+++ b/new.txt',
-      '@@ -0,0 +1,2 @@',
-      '+a',
-      '+b',
-      'diff --git a/gone.txt b/gone.txt',
-      'deleted file mode 100644',
-      '--- a/gone.txt',
-      '+++ /dev/null',
-      '@@ -1 +0,0 @@',
-      '-bye',
-      'diff --git a/old.txt b/renamed.txt',
-      'similarity index 90%',
-      'rename from old.txt',
-      'rename to renamed.txt',
-      '--- a/old.txt',
-      '+++ b/renamed.txt',
-      '@@ -1 +1 @@',
-      '-x',
-      '+y',
-      '',
-    ].join('\n');
-
-    const sections = parseGitDiffSections(patch);
-    expect(sections).toHaveLength(4);
-    expect(sections[0]).toMatchObject({ path: 'mod.txt', status: 'modified', additions: 1, deletions: 1 });
-    expect(sections[1]).toMatchObject({ path: 'new.txt', status: 'added', additions: 2, deletions: 0 });
-    expect(sections[2]).toMatchObject({ path: 'gone.txt', status: 'deleted', additions: 0, deletions: 1 });
-    expect(sections[3]).toMatchObject({ path: 'renamed.txt', status: 'renamed', additions: 1, deletions: 1 });
-  });
-
-  it('空 patch 与无标记段', () => {
-    expect(parseGitDiffSections('')).toEqual([]);
-    expect(parseGitDiffSections('garbage without header\n')).toEqual([]);
-  });
-});
-
-describe.skipIf(!HAS_GIT)('gitWorkspaceDiff(真实临时仓库)', () => {
+describe.skipIf(!hasGit)('原生工作区差异', () => {
   let root: string;
 
-  beforeAll(async () => {
+  beforeEach(async () => {
     root = await fs.mkdtemp(path.join(os.tmpdir(), 'ema-git-diff-'));
     git(root, ['init', '-b', 'main']);
     git(root, ['config', 'user.email', 'test@example.com']);
     git(root, ['config', 'user.name', 'Test']);
-    await fs.writeFile(path.join(root, 'tracked.txt'), 'line1\nline2\n');
+    git(root, ['config', 'core.autocrlf', 'false']);
+    await fs.writeFile(path.join(root, 'tracked.txt'), 'original\n');
     git(root, ['add', 'tracked.txt']);
     git(root, ['commit', '-m', 'init']);
   });
 
-  afterAll(async () => {
+  afterEach(async () => {
     await fs.rm(root, { recursive: true, force: true });
   });
 
-  it('非仓库目录裁决为 not-a-repo', async () => {
-    const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'ema-git-diff-out-'));
+  it('分别查询 HEAD→磁盘、HEAD→暂存区、暂存区→磁盘, 全部未提交不是两份 patch 拼接', async () => {
+    await fs.writeFile(path.join(root, 'tracked.txt'), 'staged\n');
+    git(root, ['add', 'tracked.txt']);
+    await fs.writeFile(path.join(root, 'tracked.txt'), 'original\n');
+    await fs.writeFile(path.join(root, 'loose.txt'), 'untracked\n');
+    const [all, staged, unstaged] = await Promise.all([
+      gitWorkspaceDiff(root, 'uncommitted'),
+      gitWorkspaceDiff(root, 'staged'),
+      gitWorkspaceDiff(root, 'unstaged'),
+    ]);
+    expect(all.capability).toBe('ok');
+    expect(staged.capability).toBe('ok');
+    expect(unstaged.capability).toBe('ok');
+    if (all.capability !== 'ok' || staged.capability !== 'ok' || unstaged.capability !== 'ok') {
+      throw Error('Git query failed');
+    }
+    expect(all.patch).not.toContain('tracked.txt');
+    expect(all.patch).toContain('b/loose.txt');
+    expect(staged.patch).toContain('-original\n+staged');
+    expect(staged.patch).not.toContain('loose.txt');
+    expect(unstaged.patch).toContain('-staged\n+original');
+    expect(unstaged.patch).toContain('b/loose.txt');
+    expect(all.omittedFiles).toBe(0);
+  });
+
+  it('保留纯重命名、空文件、二进制和权限变化的原始头部, 不因没有 hunk 丢弃', async () => {
+    await fs.rename(path.join(root, 'tracked.txt'), path.join(root, 'renamed.txt'));
+    await fs.writeFile(path.join(root, 'empty.txt'), '');
+    await fs.writeFile(path.join(root, 'binary.bin'), Buffer.from([0, 1, 2]));
+    git(root, ['add', '-A']);
+    const result = await gitWorkspaceDiff(root, 'staged');
+    if (result.capability !== 'ok') {
+      throw Error('Git query failed');
+    }
+    expect(result.patch).toContain('rename from tracked.txt\nrename to renamed.txt');
+    expect(result.patch).toContain('diff --git a/empty.txt b/empty.txt\nnew file mode');
+    expect(result.patch).toContain('Binary files');
+    git(root, ['update-index', '--chmod=+x', 'renamed.txt']);
+    const mode = await gitWorkspaceDiff(root, 'staged');
+    if (mode.capability !== 'ok') {
+      throw Error('Git query failed');
+    }
+    expect(mode.patch).toContain('new mode 100755');
+  });
+
+  it('未跟踪清单保留前导空格和非 ASCII 路径, 空新文件也有原生 patch', async () => {
+    await fs.writeFile(path.join(root, ' leading file.txt'), '++ incorrect-name\n');
+    await fs.writeFile(path.join(root, '中文.txt'), '内容\n');
+    await fs.writeFile(path.join(root, 'empty.txt'), '');
+    const result = await gitWorkspaceDiff(root, 'unstaged');
+    if (result.capability !== 'ok') {
+      throw Error('Git query failed');
+    }
+    expect(result.omittedFiles).toBe(0);
+    expect(result.patch).toContain('b/ leading file.txt');
+    expect(result.patch).toContain('+++ incorrect-name');
+    expect(result.patch).toContain('b/empty.txt');
+    expect(result.patch).toContain('+内容');
+  });
+
+  it.each(['sha1', 'sha256'])('无 HEAD 的 %s 仓库使用 Git 计算的空树, 不硬编码摘要', async (format) => {
+    const initial = await fs.mkdtemp(path.join(os.tmpdir(), 'ema-git-initial-'));
     try {
-      expect(await gitWorkspaceDiff(outside)).toEqual({ capability: 'not-a-repo' });
+      git(initial, ['init', '--object-format', format]);
+      await fs.writeFile(path.join(initial, 'first.txt'), 'first\n');
+      git(initial, ['add', 'first.txt']);
+      await fs.writeFile(path.join(initial, 'first.txt'), 'final\n');
+      const all = await gitWorkspaceDiff(initial, 'uncommitted');
+      const staged = await gitWorkspaceDiff(initial, 'staged');
+      expect(all).toMatchObject({
+        capability: 'ok',
+        omittedFiles: 0,
+      });
+      expect(staged).toMatchObject({
+        capability: 'ok',
+        omittedFiles: 0,
+      });
+      if (all.capability !== 'ok' || staged.capability !== 'ok') {
+        throw Error('Git query failed');
+      }
+      expect(all.patch).toContain('+final');
+      expect(staged.patch).toContain('+first');
+    } finally {
+      await fs.rm(initial, { recursive: true, force: true });
+    }
+  });
+
+  it('不再逐文件截断, 原生总体输出超限才返回 diff-too-large', async () => {
+    await fs.writeFile(path.join(root, 'large.txt'), 'x'.repeat(210_000) + '\n');
+    const accepted = await gitWorkspaceDiff(root, 'unstaged');
+    expect(accepted.capability).toBe('ok');
+    if (accepted.capability !== 'ok') {
+      throw Error('Git query failed');
+    }
+    expect(accepted.patch).not.toContain('diff 已截断');
+    await fs.writeFile(path.join(root, 'large.txt'), 'x'.repeat(GIT_DIFF_MAX_TOTAL_CHARS + 1) + '\n');
+    expect(await gitWorkspaceDiff(root, 'unstaged')).toEqual({ capability: 'diff-too-large' });
+  });
+
+  it('compare 同样返回原生 patch, 不保留旧文件模型', async () => {
+    const result = await gitCompareDiff(root, { kind: 'commit', sha: 'HEAD' });
+    expect(result.capability).toBe('ok');
+    if (result.capability !== 'ok') {
+      throw Error('Git query failed');
+    }
+    expect(result.patch).toContain('+original');
+    expect(result).not.toHaveProperty('diff');
+  });
+
+  it('干净范围返回空 patch, 非仓库返回 not-a-repo', async () => {
+    expect(await gitWorkspaceDiff(root, 'uncommitted')).toMatchObject({
+      capability: 'ok',
+      patch: '',
+      omittedFiles: 0,
+    });
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'ema-git-outside-'));
+    try {
+      expect(await gitWorkspaceDiff(outside, 'uncommitted')).toEqual({ capability: 'not-a-repo' });
     } finally {
       await fs.rm(outside, { recursive: true, force: true });
-    }
-  });
-
-  it('未暂存含修改与未跟踪,已暂存独立计数', async () => {
-    await fs.writeFile(path.join(root, 'tracked.txt'), 'line1\nchanged\n');
-    await fs.writeFile(path.join(root, 'staged-new.txt'), 'staged\n');
-    git(root, ['add', 'staged-new.txt']);
-    await fs.writeFile(path.join(root, 'loose.txt'), 'untracked\n');
-
-    const result = await gitWorkspaceDiff(root);
-    expect(result.capability).toBe('ok');
-    if (result.capability !== 'ok') return;
-
-    const unstagedPaths = result.unstaged.files.map((f) => `${f.path}:${f.status}`).sort();
-    expect(unstagedPaths).toEqual(['loose.txt:added', 'tracked.txt:modified']);
-    const tracked = result.unstaged.files.find((f) => f.path === 'tracked.txt');
-    expect(tracked).toMatchObject({ additions: 1, deletions: 1, truncated: false });
-    expect(tracked?.unifiedDiff).toContain('+changed');
-    const loose = result.unstaged.files.find((f) => f.path === 'loose.txt');
-    expect(loose).toMatchObject({ additions: 1, deletions: 0 });
-    expect(loose?.absolutePath).toBe(path.join(root, 'loose.txt'));
-
-    expect(result.staged.files.map((f) => `${f.path}:${f.status}`)).toEqual(['staged-new.txt:added']);
-    expect(result.staged.totalAdditions).toBe(1);
-  });
-
-  it('单个文件差异超出上限时返回整页超限状态', async () => {
-    const file = path.join(root, 'large-file.txt');
-    await fs.writeFile(file, `${'x'.repeat(100)}\n`.repeat(2_100));
-    try {
-      expect(await gitWorkspaceDiff(root)).toEqual({ capability: 'diff-too-large' });
-    } finally {
-      await fs.rm(file);
-    }
-  });
-
-  it('Git 原始输出超出缓冲区时返回整页超限状态', async () => {
-    const file = path.join(root, 'large-output.txt');
-    await fs.writeFile(file, `${'x'.repeat(100)}\n`.repeat(84_000));
-    try {
-      expect(await gitWorkspaceDiff(root)).toEqual({ capability: 'diff-too-large' });
-    } finally {
-      await fs.rm(file);
-    }
-  });
-
-  it('干净仓库双 scope 为空且 omittedFiles 为 0', async () => {
-    const clean = await fs.mkdtemp(path.join(os.tmpdir(), 'ema-git-diff-clean-'));
-    try {
-      git(clean, ['init', '-b', 'main']);
-      git(clean, ['config', 'user.email', 'test@example.com']);
-      git(clean, ['config', 'user.name', 'Test']);
-      await fs.writeFile(path.join(clean, 'a.txt'), 'a\n');
-      git(clean, ['add', 'a.txt']);
-      git(clean, ['commit', '-m', 'init']);
-      const result = await gitWorkspaceDiff(clean);
-      expect(result.capability).toBe('ok');
-      if (result.capability !== 'ok') return;
-      expect(result.staged).toMatchObject({ files: [], omittedFiles: 0 });
-      expect(result.unstaged).toMatchObject({ files: [], omittedFiles: 0 });
-    } finally {
-      await fs.rm(clean, { recursive: true, force: true });
     }
   });
 });

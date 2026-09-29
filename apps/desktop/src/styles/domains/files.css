@@ -1,0 +1,119 @@
+/* 工作区文件标签共用左右布局与目录栏动画; 树行、搜索与滚动由官方 Trees 负责. */
+.ema-files-panel,
+.ema-files-content,
+.ema-files-tree,
+.ema-files-preview {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.ema-files-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--ema-space-2);
+  padding: var(--ema-space-1) var(--ema-space-2);
+  border-bottom: 1px solid var(--ema-border);
+}
+
+.ema-files-location {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ema-text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.ema-files-body {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.ema-files-content {
+  flex: 1;
+  overflow: hidden;
+}
+
+.ema-files-preview {
+  flex: 1;
+}
+
+.ema-files-empty {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ema-space-2);
+  padding: var(--ema-space-4);
+  color: var(--ema-text-secondary);
+}
+
+.ema-files-tree-pane {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: clamp(148px, 30%, 224px);
+  overflow: hidden;
+  box-shadow: inset 1px 0 var(--ema-border);
+  opacity: 1;
+  transition:
+    width var(--ema-duration-panel) var(--ema-ease),
+    opacity var(--ema-duration-base) var(--ema-ease);
+}
+
+.ema-files-tree-pane[data-open="false"] {
+  width: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ema-files-root,
+.ema-files-tree-search {
+  flex: none;
+  padding: var(--ema-space-2) var(--ema-space-1);
+}
+
+.ema-files-root {
+  display: flex;
+  min-width: 148px;
+  color: var(--ema-text-secondary);
+  font-size: 12px;
+}
+
+.ema-files-tree {
+  flex: 1;
+  min-width: 148px;
+}
+
+.ema-files-tree-view {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.ema-files-tree-notice {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--ema-space-1);
+  margin: 0;
+  padding: var(--ema-space-1);
+  color: var(--ema-text-tertiary);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ema-files-tree-pane {
+    transition: none;
+  }
+}

@@ -48,40 +48,19 @@ export type GitSummary =
 
 // ── 工作区 diff ─────────────────────────────────────────────────────────────
 
-export type GitFileStatus = 'added' | 'modified' | 'deleted' | 'renamed';
-
-export interface GitDiffFile {
-  /** 仓库相对 POSIX 路径(展示用)。 */
-  readonly path: string;
-  /** 打开文件标签用的绝对路径;deleted 文件指向其删除前位置。 */
-  readonly absolutePath: string;
-  readonly status: GitFileStatus;
-  readonly additions: number;
-  readonly deletions: number;
-  /** 该文件的完整 patch 段(含 diff --git 头);超限截断并以 truncated 标记。 */
-  readonly unifiedDiff: string;
-  readonly truncated: boolean;
-}
-
-export interface GitScopeDiff {
-  readonly files: readonly GitDiffFile[];
-  readonly totalAdditions: number;
-  readonly totalDeletions: number;
-  /** 未包含的文件数:比较查询触顶,或工作区中单个未跟踪文件读取失败。 */
-  readonly omittedFiles: number;
-}
+export type GitDiffScope = 'uncommitted' | 'staged' | 'unstaged';
 
 export interface GitDiffOk {
   readonly capability: 'ok';
   readonly repoRoot: string;
-  /** 已暂存(index ⇄ HEAD)。 */
-  readonly staged: GitScopeDiff;
-  /** 未暂存(worktree ⇄ index),含未跟踪文件的伪 diff。 */
-  readonly unstaged: GitScopeDiff;
+  /** 当前范围的原生 Git patch, 不截断或重写内容. */
+  readonly patch: string;
+  /** 查询期间未能读取的未跟踪文件数, 不包含超限情况. */
+  readonly omittedFiles: number;
 }
 
 export interface GitDiffTooLarge {
-  /** 原始 Git 输出、单文件补丁、文件数或总体积超出审阅页展示上限。 */
+  /** 原始 Git 输出或未跟踪文件数量超出审查查询上限. */
   readonly capability: 'diff-too-large';
 }
 
@@ -97,11 +76,12 @@ export type GitWorkspaceDiffResult =
 export interface GitCompareOk {
   readonly capability: 'ok';
   readonly repoRoot: string;
-  readonly diff: GitScopeDiff;
+  readonly patch: string;
 }
 
 export type GitCompareResult =
   | GitCompareOk
+  | GitDiffTooLarge
   | GitSummaryNotARepo
   | GitSummaryUnavailable
   | GitSummaryError;

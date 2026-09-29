@@ -15,7 +15,7 @@
 | `get_narrative_port` | 无 | `Result<Option<u16>, String>` | `getNarrativePort()` | 查询已接入 Server 的 Narrative 实际端口 |
 | `start_narrative` | 无 | `Result<u16, String>` | `startNarrative()` | 本次运行手动启动 Python 并接入当前 Server |
 | `wait_narrative_exit` | 无 | `Result<(), String>` | `waitNarrativeExit()` | 等待 `/internal/shutdown` 后 Python 子进程完全退出 |
-| `open_window` | `{ label }` | `Result<(), String>` | `openWindow(label)` | 显示或聚焦 `main`、`chat`、`settings` 中的窗口 |
+| `open_window` | `{ label }` | `Result<(), String>` | `openChatWindow()` / `openSettingsWindow()` | 显示, 解除最小化并聚焦目标窗口; 原生共用入口支持 `main`、`chat`、`settings` |
 | `quit_app` | 无 | `()` | `quit()` | 关闭子进程后退出 Desktop |
 | `set_always_on_top` | `{ value }` | `Result<(), String>` | `setAlwaysOnTop(value)` | 设置当前窗口是否置顶 |
 | `set_passthrough` | `{ value }` | `Result<(), String>` | `setPassthrough(value)` | 设置 main 的点击穿透模式, 并发送模式事件 |

@@ -13,6 +13,8 @@
 @import './domains/storage.css';
 @import './domains/memory.css';
 @import './domains/workspace.css';
+@import './domains/files.css';
+@import './domains/review.css';
 @import './domains/chatHistory.css';
 @import './domains/chatControls.css';
 @import './domains/subagent.css';

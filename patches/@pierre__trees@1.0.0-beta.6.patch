@@ -1,0 +1,36 @@
+diff --git a/dist/render/focusHelpers.js b/dist/render/focusHelpers.js
+index 285d149dab1ac745f2cc1bba2057abaf61709b5f..94e93d00f4d5068d5fc57e28e05d5809198b582a 100644
+--- a/dist/render/focusHelpers.js
++++ b/dist/render/focusHelpers.js
+@@ -19,17 +19,12 @@ function getActiveTreeElement(rootElement) {
+ }
+ function readMeasuredViewportHeight(scrollElement, fallbackViewportHeight) {
+ 	if (scrollElement == null) return fallbackViewportHeight;
+-	const rectHeight = scrollElement.getBoundingClientRect().height;
+-	if (rectHeight > 0) return rectHeight;
+ 	return scrollElement.clientHeight > 0 ? scrollElement.clientHeight : fallbackViewportHeight;
+ }
+ function getCachedViewportHeight(cachedViewportHeight, fallbackViewportHeight) {
+ 	return cachedViewportHeight != null && cachedViewportHeight > 0 ? cachedViewportHeight : fallbackViewportHeight;
+ }
+ function getResizeObserverViewportHeight(entry) {
+-	const borderBoxSize = entry.borderBoxSize;
+-	const firstBorderBoxSize = Array.isArray(borderBoxSize) ? borderBoxSize[0] : borderBoxSize;
+-	if (firstBorderBoxSize != null && Number.isFinite(firstBorderBoxSize.blockSize) && firstBorderBoxSize.blockSize > 0) return firstBorderBoxSize.blockSize;
+ 	return entry.contentRect.height > 0 ? entry.contentRect.height : null;
+ }
+ function scrollFocusedRowIntoView(scrollElement, focusedIndex, itemHeight, viewportHeight, topInset = 0) {
+diff --git a/dist/utils/cssWrappers.js b/dist/utils/cssWrappers.js
+index 7f2bce923d954bcb3a0a35b71b887bdd60913948..52534e209af68c66ff1987736b412e92cb83e038 100644
+--- a/dist/utils/cssWrappers.js
++++ b/dist/utils/cssWrappers.js
+@@ -5,6 +5,9 @@ function wrapCoreCSS(coreCSS) {
+ 	return `${LAYER_ORDER}
+ @layer base {
+   ${coreCSS}
++  :host([data-file-tree-virtualized="true"]) {
++    max-height: round(down, 100%, 1px);
++  }
+ }`;
+ }
+ function wrapUnsafeCSS(unsafeCSS) {

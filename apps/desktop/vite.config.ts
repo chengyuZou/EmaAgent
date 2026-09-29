@@ -84,6 +84,7 @@ export default defineConfig({
 
   // Prevent vite from clobbering Rust errors with the spinner UI.
   clearScreen: false,
+  worker: { format: 'es' },
   server: {
     port:        1420,
     strictPort:  true,

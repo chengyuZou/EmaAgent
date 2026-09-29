@@ -94,8 +94,11 @@ export type FileContent = RpcJson<RpcClient['api']['workspaces']['files']['file'
 
 export const filesApi = {
   /** GET /api/workspaces/files/ls?path= — 目录列表（目录在前，组内按名称）。 */
-  ls(dirPath: string): Promise<FileListResult> {
-    return readRpcJson(rpcClient.api.workspaces.files.ls.$get({ query: { path: dirPath } }));
+  ls(dirPath: string, signal?: AbortSignal): Promise<FileListResult> {
+    return readRpcJson(rpcClient.api.workspaces.files.ls.$get(
+      { query: { path: dirPath } },
+      { init: { signal } },
+    ));
   },
 
   /** GET /api/workspaces/files/file?path= — 有界预览（文本/图片/过大/二进制四态）。 */

@@ -27,6 +27,8 @@ pub fn show_window(app: &tauri::AppHandle, label: &str) -> Result<(), String> {
         None => create_window(app, label)?,
     };
     window.show().map_err(|error| error.to_string())?;
+    // 显示不等于解除最小化, 必须先恢复窗口再请求前台焦点.
+    window.unminimize().map_err(|error| error.to_string())?;
     emit_visibility(&window, true);
     window.set_focus().map_err(|error| error.to_string())
 }

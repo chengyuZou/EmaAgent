@@ -1,325 +1,190 @@
-// 工作区 diff:tracked 走 git diff,untracked 逐文件 --no-index 伪 diff。
-// 禁 textconv/ext-diff 可执行 helper,filter driver 置空,
-// submodule 只看短状态;--no-index 有差异时退出码 1 属正常。
-import path from 'node:path';
+// Git 查询只返回原生 patch, 文件/hunk/行的解析由审查使用的 diff 包负责.
 import { GitError, mapGitError } from './errors.js';
 import { runGit } from './gitProcess.js';
 import { findRepoRoot } from './repoDetection.js';
 import {
   GIT_DIFF_CONTEXT_LINES,
-  GIT_DIFF_MAX_FILE_CHARS,
-  GIT_DIFF_MAX_FILES_PER_SCOPE,
   GIT_DIFF_MAX_TOTAL_CHARS,
   GIT_DIFF_MAX_UNTRACKED_FILES,
   GIT_DIFF_PROCESS_OUTPUT_BYTES,
   GIT_DIFF_UNTRACKED_CONCURRENCY,
 } from './limits.js';
-import type {
-  GitCompareResult,
-  GitDiffFile,
-  GitFileStatus,
-  GitScopeDiff,
-  GitWorkspaceDiffResult,
-  GitSummaryUnavailable,
-  GitSummaryError,
-} from './types.js';
+import type { GitCompareResult, GitDiffScope, GitWorkspaceDiffResult } from './types.js';
 
 const NULL_DEVICE = process.platform === 'win32' ? 'NUL' : '/dev/null';
-/** 所有 diff 查询共用的安全旗标:禁止仓库配置选择可执行 helper。上下文行数 -U 按 settings 动态拼。 */
-const DIFF_SAFETY_FLAGS = [
+const DIFF_FLAGS = [
+  `-U${GIT_DIFF_CONTEXT_LINES}`,
   '--no-color',
   '--no-textconv',
   '--no-ext-diff',
+  '--src-prefix=a/',
+  '--dst-prefix=b/',
   '--submodule=short',
   '--ignore-submodules=dirty',
 ] as const;
 
-export async function gitWorkspaceDiff(
-  cwd: string,
-): Promise<GitWorkspaceDiffResult> {
+export async function gitWorkspaceDiff(cwd: string, scope: GitDiffScope): Promise<GitWorkspaceDiffResult> {
   const repoRoot = await findRepoRoot(cwd);
-  if (!repoRoot) return { capability: 'not-a-repo' };
+  if (!repoRoot) {
+    return { capability: 'not-a-repo' };
+  }
 
   try {
     const overrides = await filterDriverOverrides(repoRoot);
-    const [staged, unstaged] = await Promise.all([
-      queryScopeDiff(repoRoot, overrides, 'staged'),
-      queryScopeDiff(repoRoot, overrides, 'unstaged'),
-    ]);
-    return { capability: 'ok', repoRoot, staged, unstaged };
-  } catch (error) {
-    if (error instanceof GitError && (error.code === 'git/output-too-large' || error.code === 'git/diff-too-large')) {
-      return { capability: 'diff-too-large' };
+    const args: string[] = [...overrides, 'diff', ...DIFF_FLAGS];
+    if (scope === 'staged') {
+      // Git 在尚无 HEAD 时会自动将 --cached 与空树比较.
+      args.push('--cached');
+    } else if (scope === 'uncommitted') {
+      const head = await runGit(repoRoot, ['rev-parse', '--verify', '--quiet', 'HEAD'], {
+        allowedExitCodes: [1],
+      });
+      let base = 'HEAD';
+      if (!head.stdout) {
+        // 空树对象 ID 由 Git 自己计算, 同时支持 SHA-1 与 SHA-256 仓库.
+        base = (await runGit(repoRoot, ['hash-object', '-t', 'tree', '--', NULL_DEVICE])).stdout.trim();
+      }
+      args.push(base);
     }
-    return mapGitError(error, (kind, message): GitSummaryUnavailable | GitSummaryError =>
-      kind === 'unavailable'
-        ? { capability: 'git-unavailable' }
-        : { capability: 'error', message });
-  }
-}
+    args.push('--');
+    const tracked = await readPatch(repoRoot, args);
+    const chunks = [tracked];
+    let totalChars = tracked.length;
+    let omittedFiles = 0;
 
-async function queryScopeDiff(
-  repoRoot: string,
-  overrides: readonly string[],
-  scope: 'staged' | 'unstaged',
-): Promise<GitScopeDiff> {
-  const diffArgs = [
-    ...overrides,
-    'diff',
-    `-U${GIT_DIFF_CONTEXT_LINES}`,
-    ...DIFF_SAFETY_FLAGS,
-    ...(scope === 'staged' ? ['--cached'] : []),
-  ];
-  const collected = await collectTrackedDiff(repoRoot, diffArgs);
-  if (collected.omittedFiles > 0 || collected.totalChars > GIT_DIFF_MAX_TOTAL_CHARS
-    || collected.files.some((file) => file.truncated)) {
-    throw new GitError('git/diff-too-large', 'Git 工作区差异超出展示上限');
-  }
-  const files: GitDiffFile[] = [...collected.files];
-  let omittedFiles = collected.omittedFiles;
-  let totalChars = collected.totalChars;
-
-  // 未跟踪文件只属于未暂存维度:ls-files 列清单,逐文件 --no-index 伪 diff。
-  if (scope === 'unstaged') {
-    const untracked = await listUntrackedFiles(repoRoot, overrides);
-    if (untracked.length > GIT_DIFF_MAX_UNTRACKED_FILES) {
-      throw new GitError('git/diff-too-large', '未跟踪文件数量超出展示上限');
-    }
-    for (let i = 0; i < untracked.length; i += GIT_DIFF_UNTRACKED_CONCURRENCY) {
-      const batch = untracked.slice(i, i + GIT_DIFF_UNTRACKED_CONCURRENCY);
-      // 单个文件读取失败只计入 omitted;输出超限必须上报为整页超限。
-      const patches = await Promise.all(batch.map((file) =>
-        diffUntrackedFile(repoRoot, overrides, file).catch((error: unknown) => {
-          if (error instanceof GitError && error.code === 'git/output-too-large') throw error;
-          if (error instanceof GitError) return null;
-          throw error;
-        })));
-      for (const patch of patches) {
-        if (patch === null) {
-          omittedFiles += 1;
-          continue;
+    if (scope !== 'staged') {
+      const paths = await listUntrackedFiles(repoRoot, overrides);
+      if (paths.length > GIT_DIFF_MAX_UNTRACKED_FILES) {
+        throw new GitError('git/diff-too-large', '未跟踪文件数量超出审查上限');
+      }
+      for (let index = 0; index < paths.length; index += GIT_DIFF_UNTRACKED_CONCURRENCY) {
+        const batch = paths.slice(index, index + GIT_DIFF_UNTRACKED_CONCURRENCY);
+        const patches = await Promise.all(
+          batch.map(file => (
+            diffUntrackedFile(repoRoot, overrides, file).catch((error: unknown) => {
+              if (error instanceof GitError && error.code === 'git/command-failed') {
+                return null;
+              }
+              throw error;
+            })
+          )),
+        );
+        for (const patch of patches) {
+          if (patch === null) {
+            omittedFiles += 1;
+            continue;
+          }
+          totalChars += patch.length;
+          assertPatchSize(totalChars);
+          chunks.push(patch);
         }
-        if (files.length >= GIT_DIFF_MAX_FILES_PER_SCOPE || totalChars >= GIT_DIFF_MAX_TOTAL_CHARS) {
-          throw new GitError('git/diff-too-large', 'Git 工作区差异超出展示上限');
-        }
-        const parsed = parseGitDiffSections(patch)[0];
-        if (!parsed) continue;
-        const file = toDiffFile(repoRoot, parsed, 'added');
-        if (file.truncated) {
-          throw new GitError('git/diff-too-large', '单个文件差异超出展示上限');
-        }
-        files.push(file);
-        totalChars += file.unifiedDiff.length;
       }
     }
-  }
-
-  if (totalChars > GIT_DIFF_MAX_TOTAL_CHARS) {
-    throw new GitError('git/diff-too-large', 'Git 工作区差异超出展示上限');
-  }
-
-  return {
-    files,
-    totalAdditions: files.reduce((sum, f) => sum + f.additions, 0),
-    totalDeletions: files.reduce((sum, f) => sum + f.deletions, 0),
-    omittedFiles,
-  };
-}
-
-// ── 比较 diff:提交记录与分支比较,只读,复用同一解析与封顶 ─────────────────────
-
-export type GitCompareTarget =
-  /** 该提交自身的补丁(git show)。 */
-  | { readonly kind: 'commit'; readonly sha: string }
-  /** 相对分叉点的全部变更(merge-base HEAD <branch> 后 diff,含未提交)。 */
-  | { readonly kind: 'branch'; readonly branch: string };
-
-export async function gitCompareDiff(
-  cwd: string,
-  target: GitCompareTarget,
-): Promise<GitCompareResult> {
-  const repoRoot = await findRepoRoot(cwd);
-  if (!repoRoot) return { capability: 'not-a-repo' };
-
-  try {
-    const overrides = await filterDriverOverrides(repoRoot);
-    const diffArgs = target.kind === 'commit'
-      ? [...overrides, 'show', '--format=', `-U${GIT_DIFF_CONTEXT_LINES}`, ...DIFF_SAFETY_FLAGS, target.sha]
-      : [
-        ...overrides,
-        'diff',
-        `-U${GIT_DIFF_CONTEXT_LINES}`,
-        ...DIFF_SAFETY_FLAGS,
-        // 分支可能已前进,比较分叉点而不是分支尖端,语义是"我们这条线改了什么"。
-        (await runGit(repoRoot, ['merge-base', 'HEAD', target.branch])).stdout.trim(),
-      ];
-    const collected = await collectTrackedDiff(repoRoot, diffArgs);
     return {
       capability: 'ok',
       repoRoot,
-      diff: {
-        files: collected.files,
-        totalAdditions: collected.files.reduce((sum, f) => sum + f.additions, 0),
-        totalDeletions: collected.files.reduce((sum, f) => sum + f.deletions, 0),
-        omittedFiles: collected.omittedFiles,
-      },
+      patch: chunks.join(''),
+      omittedFiles,
     };
   } catch (error) {
-    return mapGitError(error, (kind, message): GitSummaryUnavailable | GitSummaryError =>
-      kind === 'unavailable'
-        ? { capability: 'git-unavailable' }
-        : { capability: 'error', message });
+    return diffFailure(error);
   }
 }
 
-/** 跑一条 diff 命令并按段解析、计数、封顶;compare 与 scope 两条链路共用。 */
-async function collectTrackedDiff(
-  repoRoot: string,
-  diffArgs: readonly string[],
-): Promise<{ files: GitDiffFile[]; omittedFiles: number; totalChars: number }> {
-  const { stdout } = await runGit(repoRoot, diffArgs, {
-    maxOutputBytes: GIT_DIFF_PROCESS_OUTPUT_BYTES,
-  });
-  const files: GitDiffFile[] = [];
-  let omittedFiles = 0;
-  let totalChars = 0;
-  for (const section of parseGitDiffSections(stdout)) {
-    if (files.length >= GIT_DIFF_MAX_FILES_PER_SCOPE || totalChars >= GIT_DIFF_MAX_TOTAL_CHARS) {
-      omittedFiles += 1;
-      continue;
+export type GitCompareTarget =
+  | { readonly kind: 'commit'; readonly sha: string }
+  | { readonly kind: 'branch'; readonly branch: string };
+
+export async function gitCompareDiff(cwd: string, target: GitCompareTarget): Promise<GitCompareResult> {
+  const repoRoot = await findRepoRoot(cwd);
+  if (!repoRoot) {
+    return { capability: 'not-a-repo' };
+  }
+  try {
+    const overrides = await filterDriverOverrides(repoRoot);
+    let args: string[];
+    if (target.kind === 'commit') {
+      args = [...overrides, 'show', '--format=', ...DIFF_FLAGS, target.sha, '--'];
+    } else {
+      const base = (await runGit(repoRoot, ['merge-base', 'HEAD', target.branch])).stdout.trim();
+      args = [...overrides, 'diff', ...DIFF_FLAGS, base, '--'];
     }
-    files.push(toDiffFile(repoRoot, section, 'modified'));
-    totalChars += files[files.length - 1]?.unifiedDiff.length ?? 0;
+    return {
+      capability: 'ok',
+      repoRoot,
+      patch: await readPatch(repoRoot, args),
+    };
+  } catch (error) {
+    return diffFailure(error);
   }
-  return { files, omittedFiles, totalChars };
 }
 
-/**
- * 仓库可通过 filter.<driver>.clean/process 配置可执行 helper,diff 工作区文件时会触发;
- * 与 hooksPath=NUL 同一威胁模型,逐一查出并置空(codex 同款)。
- */
-async function filterDriverOverrides(repoRoot: string): Promise<readonly string[]> {
-  const { stdout } = await runGit(repoRoot, [
-    'config', '--null', '--name-only', '--get-regexp', '^filter\\..*\\.(clean|process)$',
-  ], { allowedExitCodes: [1] });
-  const drivers = new Set<string>();
-  for (const key of stdout.split('\0')) {
-    const driver = key.replace(/\.(clean|process)$/, '');
-    if (driver.startsWith('filter.') && driver.length > 'filter.'.length) drivers.add(driver);
-  }
-  return [...drivers].flatMap((driver) => ['-c', `${driver}.clean=`, '-c', `${driver}.process=`]);
-}
-
-export async function listUntrackedFiles(
-  repoRoot: string,
-  overrides: readonly string[],
-): Promise<string[]> {
-  const { stdout } = await runGit(repoRoot, [
-    ...overrides, 'ls-files', '--others', '--exclude-standard',
-  ]);
-  return stdout.split('\n').map((line) => line.trim()).filter((line) => line.length > 0);
-}
-
-export async function diffUntrackedFile(
-  repoRoot: string,
-  overrides: readonly string[],
-  file: string,
-): Promise<string> {
-  const { stdout } = await runGit(repoRoot, [
-    ...overrides,
-    'diff', '--no-index', '--no-color', `-U${GIT_DIFF_CONTEXT_LINES}`,
-    '--no-textconv', '--no-ext-diff',
-    '--', NULL_DEVICE, file,
-  ], { allowedExitCodes: [1], maxOutputBytes: GIT_DIFF_PROCESS_OUTPUT_BYTES });
+async function readPatch(repoRoot: string, args: readonly string[]): Promise<string> {
+  const { stdout } = await runGit(repoRoot, args, { maxOutputBytes: GIT_DIFF_PROCESS_OUTPUT_BYTES });
+  assertPatchSize(stdout.length);
   return stdout;
 }
 
-// ── patch 解析(纯函数,供测试)───────────────────────────────────────────────
-
-export interface GitDiffSection {
-  /** b 侧路径(删除文件时取 a 侧),POSIX 相对路径。 */
-  readonly path: string;
-  readonly status: GitFileStatus;
-  readonly additions: number;
-  readonly deletions: number;
-  readonly patch: string;
-}
-
-/** 把合并 patch 按 "diff --git" 头切成单文件段,并解析路径/状态/增删计数。 */
-export function parseGitDiffSections(patch: string): GitDiffSection[] {
-  const sections: GitDiffSection[] = [];
-  let current: string[] = [];
-
-  const flush = (): void => {
-    if (current.length === 0) return;
-    const parsed = parseSection(current);
-    if (parsed) sections.push(parsed);
-    current = [];
-  };
-
-  for (const line of patch.split('\n')) {
-    if (line.startsWith('diff --git ') && current.length > 0) flush();
-    current.push(line);
+function assertPatchSize(chars: number): void {
+  if (chars > GIT_DIFF_MAX_TOTAL_CHARS) {
+    throw new GitError('git/diff-too-large', 'Git 原始差异超出审查上限');
   }
-  flush();
-  return sections;
 }
 
-function parseSection(lines: readonly string[]): GitDiffSection | null {
-  let newPath: string | null = null;
-  let oldPath: string | null = null;
-  let status: GitFileStatus = 'modified';
-  let additions = 0;
-  let deletions = 0;
-
-  for (const line of lines) {
-    if (line.startsWith('new file mode')) status = 'added';
-    else if (line.startsWith('deleted file mode')) status = 'deleted';
-    else if (line.startsWith('rename from ')) status = 'renamed';
-    else if (line.startsWith('+++ ')) newPath = parseMarkerPath(line.slice(4));
-    else if (line.startsWith('--- ')) oldPath = parseMarkerPath(line.slice(4));
-    else if (line.startsWith('+')) additions += 1;
-    else if (line.startsWith('-')) deletions += 1;
+function diffFailure(error: unknown): Exclude<GitWorkspaceDiffResult, { capability: 'ok' }> {
+  if (
+    error instanceof GitError
+    && (error.code === 'git/output-too-large' || error.code === 'git/diff-too-large')
+  ) {
+    return { capability: 'diff-too-large' };
   }
-
-  const path = newPath ?? oldPath;
-  if (!path) return null;
-  return { path, status, additions, deletions, patch: lines.join('\n') };
+  return mapGitError(error, (kind, message) => {
+    if (kind === 'unavailable') {
+      return { capability: 'git-unavailable' } as const;
+    }
+    return { capability: 'error', message } as const;
+  });
 }
 
-/** 解析 ---/+++ 标记行:b/ 前缀取新侧,a/ 前缀取旧侧,/dev/null 返回 null。 */
-function parseMarkerPath(raw: string): string | null {
-  const value = raw.trim();
-  if (value === '/dev/null') return null;
-  const unprefixed = value.replace(/^[ab]\//, '');
-  // git 对含特殊字符的路径整体加双引号并转义,按 JSON 字符串解码。
-  if (unprefixed.startsWith('"')) {
-    try {
-      return JSON.parse(unprefixed) as string;
-    } catch {
-      return unprefixed;
+// 工作区 diff 可能触发仓库的 clean/process helper, 延续已有禁用策略.
+async function filterDriverOverrides(repoRoot: string): Promise<readonly string[]> {
+  const { stdout } = await runGit(repoRoot, [
+    'config',
+    '--null',
+    '--name-only',
+    '--get-regexp',
+    '^filter\\..*\\.(clean|process)$',
+  ], {
+    allowedExitCodes: [1],
+  });
+  const drivers = new Set<string>();
+  for (const key of stdout.split('\0')) {
+    const driver = key.replace(/\.(clean|process)$/, '');
+    if (driver.startsWith('filter.') && driver.length > 'filter.'.length) {
+      drivers.add(driver);
     }
   }
-  return unprefixed;
+  return [...drivers].flatMap(driver => ['-c', `${driver}.clean=`, '-c', `${driver}.process=`]);
 }
 
-function toDiffFile(
-  repoRoot: string,
-  section: GitDiffSection,
-  fallbackStatus: GitFileStatus,
-): GitDiffFile {
-  const truncated = section.patch.length > GIT_DIFF_MAX_FILE_CHARS;
-  return {
-    path: section.path,
-    absolutePath: path.join(repoRoot, section.path),
-    status: section.status === 'modified' && fallbackStatus !== 'modified'
-      ? fallbackStatus
-      : section.status,
-    additions: section.additions,
-    deletions: section.deletions,
-    unifiedDiff: truncated
-      ? `${section.patch.slice(0, GIT_DIFF_MAX_FILE_CHARS)}\n@@ diff 已截断 @@\n`
-      : section.patch,
-    truncated,
-  };
+export async function listUntrackedFiles(repoRoot: string, overrides: readonly string[]): Promise<string[]> {
+  const { stdout } = await runGit(repoRoot, [...overrides, 'ls-files', '--others', '--exclude-standard', '-z']);
+  return stdout.split('\0').filter(file => file.length > 0);
+}
+
+// Memory 的基线也消费此入口; 保留原生 Git 文本与 --no-index 的退出码语义.
+export async function diffUntrackedFile(repoRoot: string, overrides: readonly string[], file: string): Promise<string> {
+  const { stdout } = await runGit(repoRoot, [
+    ...overrides,
+    'diff',
+    '--no-index',
+    ...DIFF_FLAGS,
+    '--',
+    NULL_DEVICE,
+    file,
+  ], {
+    allowedExitCodes: [1],
+    maxOutputBytes: GIT_DIFF_PROCESS_OUTPUT_BYTES,
+  });
+  return stdout;
 }

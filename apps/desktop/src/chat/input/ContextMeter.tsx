@@ -78,7 +78,7 @@ export function ContextMeter({ sessionId, contextWindow }: {
     >
       <button
         type="button"
-        className="flex size-7 items-center justify-center rounded-[var(--ema-radius-sm)] text-[var(--ema-text-tertiary)] hover:bg-[var(--ema-surface-2)] focus-ring"
+        className="flex size-7 items-center justify-center rounded-[var(--ema-radius-sm)] text-[var(--ema-text-tertiary)] hover:bg-[var(--ema-surface-2)]"
         aria-label={title}
       >
         <svg viewBox="0 0 16 16" className="size-4 -rotate-90" aria-hidden>

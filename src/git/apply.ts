@@ -73,7 +73,7 @@ export async function applyPatch(request: ApplyRequest): Promise<ApplyResult> {
 
 /**
  * 从 unified diff 文本解析变更文件路径(diff --git a/x b/y 头;rename 取两端)。
- * 轻量子集:只扫头行拿路径清单;需要增删计数/分段时用 diff.ts 的 parseGitDiffSections。
+ * 轻量子集:只扫头行拿应用路径清单;审查解析由前端 diff 包负责.
  */
 export function extractPathsFromDiff(diff: string): string[] {
   const paths: string[] = [];

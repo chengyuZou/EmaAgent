@@ -189,7 +189,7 @@ function SubagentRow({
       {status === 'running' && <div className="ema-running-bar" />}
       <button
         type="button"
-        className="flex min-w-0 flex-1 items-start gap-2 rounded-[var(--ema-radius-sm)] px-3 py-2 text-left cursor-pointer focus-ring"
+        className="flex min-w-0 flex-1 items-start gap-2 rounded-[var(--ema-radius-sm)] px-3 py-2 text-left cursor-pointer"
         aria-label={`查看子代理: ${title}`}
         onClick={onOpen}
       >

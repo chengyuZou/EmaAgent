@@ -15,9 +15,7 @@ export type {
   GitRefsResult,
   GitDiffOk,
   GitDiffTooLarge,
-  GitScopeDiff,
-  GitDiffFile,
-  GitFileStatus,
+  GitDiffScope,
 } from './types.js';
 
 

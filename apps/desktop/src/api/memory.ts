@@ -29,31 +29,34 @@ export const memoryApi = {
     path?: string;
     cursor?: string;
     maxResults?: number;
-  }): Promise<MemoryFileList> {
+  }, signal?: AbortSignal): Promise<MemoryFileList> {
     return readRpcJson(rpcClient.api.memory.files.$get({
       query: {
         ...(opts?.path ? { path: opts.path } : {}),
         ...(opts?.cursor ? { cursor: opts.cursor } : {}),
         ...(opts?.maxResults !== undefined ? { maxResults: String(opts.maxResults) } : {}),
       },
-    }));
+    }, { init: { signal } }));
   },
 
   readFile(opts: {
     path: string;
     lineOffset?: number;
     maxLines?: number;
-  }): Promise<MemoryFileContent> {
+  }, signal?: AbortSignal): Promise<MemoryFileContent> {
     return readRpcJson(rpcClient.api.memory.files.content.$get({
       query: {
         path: opts.path,
         ...(opts.lineOffset !== undefined ? { lineOffset: String(opts.lineOffset) } : {}),
         ...(opts.maxLines !== undefined ? { maxLines: String(opts.maxLines) } : {}),
       },
-    }));
+    }, { init: { signal } }));
   },
 
-  search(body: MemorySearchInput): Promise<MemorySearchResult> {
-    return readRpcJson(rpcClient.api.memory.files.search.$post({ json: body }));
+  search(body: MemorySearchInput, signal?: AbortSignal): Promise<MemorySearchResult> {
+    return readRpcJson(rpcClient.api.memory.files.search.$post(
+      { json: body },
+      { init: { signal } },
+    ));
   },
 };

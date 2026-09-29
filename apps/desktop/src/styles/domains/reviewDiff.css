@@ -1,0 +1,24 @@
+/* 通过官方 unsafeCSS 进入 diff shadow root, 只调整产品样式, 不改布局算法. */
+:host {
+  --diffs-font-family: var(--ema-font-mono);
+  --diffs-header-font-family: var(--ema-font-ui);
+  --diffs-font-size: 12px;
+  --diffs-line-height: 20px;
+  --diffs-bg: transparent;
+  --diffs-bg-separator-override: var(--ema-surface-2);
+  --diffs-fg-number-override: var(--ema-text-tertiary);
+  --diffs-bg-addition-override: var(--ema-success-muted);
+  --diffs-bg-deletion-override: var(--ema-danger-muted);
+}
+
+[data-column-number] {
+  padding-inline: 0.6ch;
+}
+
+[data-line-number-content] {
+  min-width: 2ch;
+}
+
+[data-line] {
+  padding-inline: 0.75ch;
+}

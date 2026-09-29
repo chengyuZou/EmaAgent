@@ -372,7 +372,7 @@ export function WallpaperTab(): JSX.Element {
                   aria-pressed={item.name === selectedName}
                   title={item.name}
                   onClick={() => selectImage(item.name)}
-                  className={`ema-wallpaper-thumbnail group relative w-28 shrink-0 overflow-hidden rounded-lg border text-left focus-ring ${
+                  className={`ema-wallpaper-thumbnail group relative w-28 shrink-0 overflow-hidden rounded-lg border text-left ${
                     item.name === selectedName
                       ? 'border-[var(--ema-primary)] shadow-[var(--ema-shadow-soft)]'
                       : 'border-[var(--ema-border)] hover:border-[var(--ema-primary)]/60'

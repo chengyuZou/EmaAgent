@@ -15,7 +15,6 @@ import { SubagentPanel } from './tabs/subagents/SubagentPanel.js';
 import { SessionAttachmentPreview } from './tabs/sources/SessionAttachmentPreview.js';
 import { SessionAttachmentsPanel } from './tabs/sources/SessionAttachmentsPanel.js';
 import { BrowserPanel } from './tabs/browser/BrowserPanel.js';
-import { FilePreview } from './tabs/files/FilePreview.js';
 import { FilesPanel } from './tabs/files/FilesPanel.js';
 import { BackgroundProcessesPanel } from './tabs/processes/BackgroundProcessesPanel.js';
 import { ReviewPanel } from './tabs/review/ReviewPanel.js';
@@ -60,7 +59,7 @@ function baseLabel(tab: SessionSidePanelTab): string {
     case 'review':
       return '审阅';
     case 'files':
-      return '文件';
+      return '打开文件';
     case 'file':
       return tab.path.split(/[\\/]/).pop() ?? tab.path;
     case 'source':
@@ -289,6 +288,10 @@ export function SessionSidePanel({
   const tabs = (layout?.tabOrder ?? [])
     .map((id) => layout?.tabsById[id])
     .filter((tab) => tab !== undefined);
+  const hasFileTabs = tabs.some(tab => tab.kind === 'files' || tab.kind === 'file');
+  const activeTab = layout?.activeTabId ? layout.tabsById[layout.activeTabId] : undefined;
+  const filesVisible = Boolean(layout?.open) && !launcherOpen
+    && (activeTab?.kind === 'files' || activeTab?.kind === 'file');
 
   return (
     <div className="ema-session-side-panel ema-chat-content-surface relative flex h-full min-w-0 flex-col overflow-hidden">
@@ -309,7 +312,13 @@ export function SessionSidePanel({
         {launcherOpen && tabs.length > 0 && (
           <Launcher sessionId={sessionId} onClose={() => setLauncherOpen(false)} />
         )}
-        {tabs.map(tab => {
+        {/* 文件标签共用一个浏览器; 首次替换空白标签也不卸载目录模型. */}
+        {hasFileTabs && (
+          <div className={filesVisible ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}>
+            <FilesPanel key={sessionId} sessionId={sessionId} />
+          </div>
+        )}
+        {tabs.filter(tab => tab.kind !== 'files' && tab.kind !== 'file').map(tab => {
           const visible = Boolean(layout?.open) && !launcherOpen && tab.id === layout?.activeTabId;
           return (
             <div
@@ -334,17 +343,12 @@ function TabContent({
   tab: SessionSidePanelTab;
   visible: boolean;
 }): JSX.Element {
-  const openFiles = (): void => {
-    useSessionPanelStore.getState().openTab(sessionId, { id: 'files', kind: 'files' });
-  };
-
   switch (tab.kind) {
     case 'review':
       return <ReviewPanel sessionId={sessionId} />;
     case 'files':
-      return <FilesPanel />;
     case 'file':
-      return <FilePreview path={tab.path} onBack={openFiles} />;
+      return <></>;
     case 'source':
       return (
         <SessionAttachmentPreview sessionId={sessionId} attachmentPath={tab.path} />

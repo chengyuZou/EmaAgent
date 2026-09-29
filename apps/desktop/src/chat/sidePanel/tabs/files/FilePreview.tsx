@@ -1,17 +1,5 @@
-/**
- * FilePreview - in-app 文件预览(像 Codex/Claude)。
- *
- * 点 FilesPanel 文件 -> 调 workspaceApi.readFile -> 按类型渲染:
- *   - md/mdx  -> Markdown 组件
- *   - 图片    -> <img src=data:mime;base64>
- *   - 文本    -> <pre> + highlight.js 语法高亮
- *   - 过大    -> 提示
- *   - 二进制  -> 提示
- * 顶部回退按钮(IconButton i-lucide:arrow-left)+ 文件名 + 大小。
- * 入场 ema-fade-in(style.css)。ScrollArea 包裹(@ema-agent/ui)。
- */
-import { useEffect, useMemo, useState, type JSX } from 'react';
-import { IconButton, Markdown, ScrollArea, Spinner, highlightFile } from '@ema-agent/ui';
+import { memo, useEffect, useMemo, useState, type JSX } from 'react';
+import { Markdown, ScrollArea, Spinner, highlightFile } from '@ema-agent/ui';
 import { filesApi, type FileContent } from '../../../../api/workspaces.js';
 
 function fmtSize(bytes: number): string {
@@ -20,7 +8,7 @@ function fmtSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)}M`;
 }
 
-export function FilePreview({ path, onBack }: { path: string; onBack: () => void }): JSX.Element {
+export const FilePreview = memo(function FilePreview({ path }: { path: string }): JSX.Element {
   const [content, setContent] = useState<FileContent | null>(null);
   const [error,  setError]   = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -41,25 +29,6 @@ export function FilePreview({ path, onBack }: { path: string; onBack: () => void
 
   return (
     <div className="ema-file-preview flex h-full flex-col ema-fade-in">
-      {/* 顶栏:回退 + 文件名 + 大小 */}
-      <div className="flex items-center gap-2 px-2 py-1.5 border-b shrink-0 border-[var(--ema-border)]">
-        <IconButton
-          size="sm"
-          className="ema-chat-icon-btn"
-          label="返回文件列表"
-          icon="i-lucide:arrow-left"
-          onClick={onBack}
-        />
-        <span className="flex-1 truncate text-xs font-mono text-[var(--ema-text-primary)]" title={path}>
-          {fileName}
-        </span>
-        {content && 'size' in content && (
-          <span className="text-[10px] shrink-0 tabular-nums text-[var(--ema-text-tertiary)]">
-            {fmtSize(content.size)}
-          </span>
-        )}
-      </div>
-
       {/* 内容区 */}
       <ScrollArea orientation="vertical" className="flex-1" viewportClassName="p-3">
         {loading && (
@@ -74,7 +43,7 @@ export function FilePreview({ path, onBack }: { path: string; onBack: () => void
       </ScrollArea>
     </div>
   );
-}
+});
 
 function ContentBody({ content, ext }: { content: FileContent; ext: string }): JSX.Element {
   if ('tooLarge' in content) {

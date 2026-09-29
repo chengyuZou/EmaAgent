@@ -1,0 +1,218 @@
+/* 审查外层布局与交互反馈; 源码和树行的布局由官方虚拟组件负责. */
+.ema-review-actions .ema-review-action {
+  border: 0;
+  color: var(--ema-text-secondary);
+  transform: none;
+  box-shadow: none;
+  transition:
+    background-color var(--ema-duration-fast) var(--ema-ease),
+    color var(--ema-duration-fast) var(--ema-ease);
+}
+
+.ema-review-actions .ema-review-action:hover,
+.ema-review-actions .ema-review-action:active {
+  background: var(--ema-surface-3);
+  color: var(--ema-text-primary);
+}
+
+.ema-review-actions .ema-review-action[aria-pressed="true"]:not(:disabled) {
+  background: var(--ema-primary-muted);
+  color: var(--ema-primary-text);
+}
+
+.ema-review-action > span {
+  width: 16px;
+  height: 16px;
+}
+
+.ema-review-scope {
+  color: var(--ema-text-secondary);
+  background: var(--ema-surface-2);
+}
+
+.ema-review-content {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.ema-review-viewport {
+  height: 100%;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  --diffs-font-family: var(--ema-font-mono);
+  --diffs-font-size: 12px;
+  --diffs-line-height: 20px;
+}
+.ema-review-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--ema-space-4);
+  color: var(--ema-text-tertiary);
+  font-size: 12px;
+  text-align: center;
+}
+
+.ema-review-notice {
+  margin: 0;
+  padding: 6px 12px;
+  color: var(--ema-text-tertiary);
+  font-size: 12px;
+}
+
+.ema-review-file-header {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 4px;
+  padding-inline: 8px;
+  font-size: 12px;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.ema-review-file-header:hover,
+.ema-review-file-header:focus-within {
+  background: var(--ema-surface-2);
+}
+
+.ema-review-file-header .ema-review-file-heading {
+  display: flex;
+  flex: 0 1 auto;
+  min-width: 0;
+  height: 100%;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ema-text-secondary);
+  font-size: inherit;
+  font-weight: 400;
+  text-align: left;
+  transform: none;
+}
+
+.ema-review-file-header .ema-review-file-heading:hover,
+.ema-review-file-header .ema-review-file-heading:active {
+  background: transparent;
+  transform: none;
+}
+
+.ema-review-file-path {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.ema-review-file-directory,
+.ema-review-file-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ema-review-file-directory {
+  color: var(--ema-text-tertiary);
+}
+
+.ema-review-file-name {
+  flex: none;
+  max-width: min(24ch, 100%);
+  color: var(--ema-text-primary);
+  font-weight: 500;
+}
+
+.ema-review-file-counts {
+  display: flex;
+  flex: none;
+  gap: 4px;
+}
+
+.ema-review-file-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ema-review-file-header .ema-review-file-action {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border: 0;
+}
+
+.ema-review-file-header:hover .ema-review-file-actions,
+.ema-review-file-header:focus-within .ema-review-file-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (hover: none) {
+  .ema-review-file-actions {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+.ema-review-file-note {
+  flex: none;
+  color: var(--ema-text-tertiary);
+  font-size: 11px;
+}
+
+.ema-review-tree-pane {
+  flex: none;
+  width: clamp(148px, 30%, 224px);
+  overflow: hidden;
+  box-shadow: inset 1px 0 var(--ema-border);
+  opacity: 1;
+  transition:
+    width var(--ema-duration-panel) var(--ema-ease),
+    opacity var(--ema-duration-base) var(--ema-ease);
+}
+
+.ema-review-tree-pane[data-open="false"] {
+  width: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ema-review-tree {
+  display: flex;
+  flex-direction: column;
+  min-width: 148px;
+  height: 100%;
+  min-height: 0;
+}
+
+.ema-review-tree-search {
+  position: relative;
+  flex: none;
+  padding: var(--ema-space-2) var(--ema-space-1);
+}
+
+.ema-review-tree-view {
+  display: block;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ema-review-tree-pane,
+  .ema-review-panel .transition-transform {
+    transition: none;
+  }
+}

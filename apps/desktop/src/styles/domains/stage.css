@@ -24,7 +24,7 @@
   animation: ema-breathe 2.6s ease-in-out infinite;
 }
 
-body:hover .ema-pet-glow-border {
+body[data-pet-pointer-inside='true'] .ema-pet-glow-border {
   opacity: 1;
 }
 
@@ -47,7 +47,7 @@ body:hover .ema-pet-glow-border {
   transition: opacity var(--ema-duration-base) var(--ema-ease);
 }
 
-body:hover .ema-server-status {
+body[data-pet-pointer-inside='true'] .ema-server-status {
   opacity: 1;
   pointer-events: auto;
 }
