@@ -16,6 +16,10 @@ import type { EventDisplayTable } from '../api/settings.js';
 
 export type SubWindowName = 'chat' | 'settings';
 
+export type PetPointerEvent =
+  | { readonly type: 'position'; readonly clientX: number; readonly clientY: number; readonly inside: boolean }
+  | { readonly type: 'error'; readonly message: string };
+
 export interface DesktopSettingsPayload {
   readonly permissionTimeoutMs: number | null;
   readonly eventDisplay: EventDisplayTable | null;
@@ -112,6 +116,8 @@ const pendingBrowserOpens = new Map<string, Promise<void>>();
 const pendingBrowserVisibility = new Map<string, Promise<void>>();
 
 const WINDOW_VISIBILITY_EVENT = 'ema://window-visibility';
+const PET_PASSTHROUGH_EVENT = 'ema://pet-passthrough';
+const PET_POINTER_EVENT = 'ema://pet-pointer';
 const SYSTEM_EVENT = 'ema://system-event';
 const SUB_WINDOW_OPENED_EVENT = 'ui:window-opened';
 const SUB_WINDOW_CLOSED_EVENT = 'ui:window-closed';
@@ -413,31 +419,40 @@ export const tauriBridge = {
 
   async setPassthrough(value: boolean): Promise<void> {
     const core = await getCore();
-    if (!core) return;
+    if (!core) throw new Error('点击穿透只能在桌宠窗口使用');
     await core.invoke('set_passthrough', { value });
+  },
+
+  async getPassthrough(): Promise<boolean> {
+    const core = await getCore();
+    if (!core) throw new Error('点击穿透只能在桌宠窗口使用');
+    return core.invoke<boolean>('get_passthrough');
+  },
+
+  async listenPassthrough(handler: (enabled: boolean) => void): Promise<() => void> {
+    return listenTauri<boolean>(PET_PASSTHROUGH_EVENT, handler);
+  },
+
+  async listenPetPointer(handler: (event: PetPointerEvent) => void): Promise<() => void> {
+    return listenTauri<PetPointerEvent>(PET_POINTER_EVENT, handler);
+  },
+
+  async startPetPointer(): Promise<void> {
+    const core = await getCore();
+    if (!core) throw new Error('系统鼠标跟随只能在桌宠窗口使用');
+    await core.invoke('start_pet_pointer');
+  },
+
+  async setPassthroughControlsHovered(hovered: boolean): Promise<void> {
+    const core = await getCore();
+    if (!core) return;
+    await core.invoke('set_passthrough_controls_hovered', { hovered });
   },
 
   async startDragging(): Promise<void> {
     const winMod = await getWindow();
     if (!winMod) return;
     await winMod.getCurrentWindow().startDragging();
-  },
-
-  async cursorAndBounds() {
-    const winMod = await getWindow();
-    if (!winMod) return null;
-    const w = winMod.getCurrentWindow();
-    const [cursor, pos, size, scale] = await Promise.all([
-      winMod.cursorPosition(),
-      w.outerPosition(),
-      w.outerSize(),
-      w.scaleFactor(),
-    ]);
-    return {
-      cursor: { x: cursor.x, y: cursor.y },
-      win:    { x: pos.x, y: pos.y, width: size.width, height: size.height },
-      scale,
-    };
   },
 
   async getServerSecret(): Promise<string | null> {

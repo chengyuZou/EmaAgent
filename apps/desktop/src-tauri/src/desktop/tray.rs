@@ -1,8 +1,8 @@
-// 创建系统托盘并处理显示主窗口与可靠退出操作。
+// 创建系统托盘, 提供主窗口显示, 点击穿透恢复与可靠退出操作.
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::Manager;
 
-use crate::desktop::windows::{show_main_window, toggle_main_window};
+use crate::desktop::windows::{set_main_passthrough, show_main_window, toggle_main_window};
 use crate::processes::DesktopProcesses;
 
 pub fn install(app: &mut tauri::App) -> tauri::Result<()> {
@@ -11,6 +11,13 @@ pub fn install(app: &mut tauri::App) -> tauri::Result<()> {
             app,
             "show",
             "显示 Ema",
+            true,
+            None::<&str>,
+        )?)
+        .item(&tauri::menu::MenuItem::with_id(
+            app,
+            "disable_passthrough",
+            "关闭点击穿透",
             true,
             None::<&str>,
         )?)
@@ -40,6 +47,18 @@ pub fn install(app: &mut tauri::App) -> tauri::Result<()> {
         })
         .on_menu_event(|app, event| match event.id.as_ref() {
             "show" => show_main_window(app),
+            "disable_passthrough" => {
+                if let Some(window) = app.get_webview_window("main") {
+                    if let Err(error) = set_main_passthrough(&window, false) {
+                        tracing::error!(%error, "failed to disable main window click passthrough");
+                        return;
+                    }
+                    if let Err(error) = window.unminimize() {
+                        tracing::warn!(%error, "failed to restore main window from minimized state");
+                    }
+                    show_main_window(app);
+                }
+            }
             "quit" => {
                 let app = app.clone();
                 tauri::async_runtime::spawn(async move {

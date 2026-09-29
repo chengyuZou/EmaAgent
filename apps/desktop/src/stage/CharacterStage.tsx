@@ -14,15 +14,15 @@ import type {
   CharacterLive2dStageEntry,
   CharacterStagePresentation,
 } from '@ema-agent/characters';
-import type {
-  Live2DStageHandle,
-  Live2DStageProps,
-  Live2DStageReadyInfo,
+import {
+  Live2DStage,
+  type Live2DStageHandle,
+  type Live2DStageProps,
+  type Live2DStageReadyInfo,
 } from '@ema-agent/live2d-react';
 import { charactersApi } from '../api/characters.js';
 import { fetchServerObjectUrl } from '../lib/serverFileUrl.js';
 import { tauriBridge } from '../lib/tauri-bridge.js';
-import { EmaStageView } from './EmaStageView.js';
 
 export interface CharacterStageProps {
   targetCharacterName: string | null;
@@ -199,21 +199,53 @@ function Live2dResource({
   onError(error: Error): void;
 }): JSX.Element {
   const handleRef = useRef<Live2DStageHandle | null>(null);
+  const runtimeConfig = resource.runtimeConfig;
+
+  useEffect(() => {
+    if (!tauriBridge.isTauri()) return;
+    const unlistenPointer = tauriBridge.listenPetPointer((event) => {
+      if (event.type === 'position') {
+        handleRef.current?.setPointerPosition(event.clientX, event.clientY);
+      }
+    });
+    return () => {
+      void unlistenPointer.then(stop => stop());
+    };
+  }, []);
+
+  useEffect(() => {
+    const unlistenEmotion = tauriBridge.listenStageEmotion((emotion) => {
+      const target = runtimeConfig?.emotionMap?.[emotion];
+      const expression = target?.expression ?? null;
+      handleRef.current?.setExpression(expression);
+      onExpressionChanged?.(expression);
+    });
+    const unlistenMotion = tauriBridge.listenStageMotion((motion) => {
+      const target = runtimeConfig?.motionMap?.[motion];
+      if (target) handleRef.current?.playMotion(target.group, target.index);
+    });
+    const unlistenLipSync = tauriBridge.listenStageLipSync((speaking, mouthOpen) => {
+      handleRef.current?.setLipSync(speaking, mouthOpen);
+    });
+
+    return () => {
+      void unlistenEmotion.then(stop => stop());
+      void unlistenMotion.then(stop => stop());
+      void unlistenLipSync.then(stop => stop());
+    };
+  }, [onExpressionChanged, runtimeConfig]);
 
   return (
     <div className="ema-character-stage-resource" data-state="active">
-      <EmaStageView
+      <Live2DStage
+        ref={handleRef}
         modelArchive={archive}
-        runtimeConfig={resource.runtimeConfig ?? undefined}
         stageScale={resource.stageScale}
         stageOffsetX={resource.stageOffsetX}
         stageOffsetY={resource.stageOffsetY}
         suspended={suspended}
-        onExpressionChanged={onExpressionChanged}
+        pointerSource={tauriBridge.isTauri() ? 'host' : 'window'}
         onDiagnostic={onDiagnostic}
-        onHandleChanged={(handle) => {
-          handleRef.current = handle;
-        }}
         onReady={(info) => {
           if (handleRef.current) onReady(handleRef.current, info);
         }}

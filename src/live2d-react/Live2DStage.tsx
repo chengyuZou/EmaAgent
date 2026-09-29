@@ -39,6 +39,7 @@ export interface Live2DStageProps {
   stageOffsetY?: number;
   suspended?: boolean;
   interactive?: boolean;
+  pointerSource?: 'window' | 'host';
   onReady?: (info: Live2DStageReadyInfo) => void;
   onError?: (error: Error) => void;
   onDiagnostic?: (
@@ -62,6 +63,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
     stageOffsetY = 0,
     suspended = false,
     interactive = true,
+    pointerSource = 'window',
     onReady,
     onError,
     onDiagnostic,
@@ -80,11 +82,14 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
     const applyFramingRef = useRef<() => void>(() => {});
     const suspendedRef = useRef(suspended);
     const interactiveRef = useRef(interactive);
+    const pointerSourceRef = useRef(pointerSource);
+    const focusPointerRef = useRef<(clientX: number, clientY: number) => void>(() => {});
     const lastPointerActivityAtRef = useRef(0);
     const callbacksRef = useRef({ onReady, onError, onDiagnostic });
 
     suspendedRef.current = suspended;
     interactiveRef.current = interactive;
+    pointerSourceRef.current = pointerSource;
     callbacksRef.current = { onReady, onError, onDiagnostic };
 
     useImperativeHandle(ref, () => ({
@@ -120,6 +125,9 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
       },
       setLipSync(nextSpeaking, mouthOpen) {
         lipSyncRef.current?.set(nextSpeaking, mouthOpen);
+      },
+      setPointerPosition(clientX, clientY) {
+        focusPointerRef.current(clientX, clientY);
       },
     }), []);
 
@@ -221,6 +229,8 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
         modelCleanupRef.current?.();
         const cleanupModel = mountModel(app, model, {
           interactiveRef,
+          pointerSourceRef,
+          focusPointerRef,
           suspendedRef,
           lastPointerActivityAtRef,
           modelRef,
@@ -275,6 +285,8 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
 
 interface MountedModelRefs {
   readonly interactiveRef: MutableRefObject<boolean>;
+  readonly pointerSourceRef: MutableRefObject<'window' | 'host'>;
+  readonly focusPointerRef: MutableRefObject<(clientX: number, clientY: number) => void>;
   readonly suspendedRef: MutableRefObject<boolean>;
   readonly lastPointerActivityAtRef: MutableRefObject<number>;
   readonly modelRef: MutableRefObject<Cubism4Model | null>;
@@ -330,28 +342,32 @@ function mountModel(
   app.renderer.on('resize', fit);
   cleanups.push(() => app.renderer.off('resize', fit));
 
-  const followPointer = (event: MouseEvent): void => {
-    if (!refs.interactiveRef.current) return;
-    refs.lastPointerActivityAtRef.current = performance.now();
+  let previousPointerX: number | null = null;
+  let previousPointerY: number | null = null;
+  refs.focusPointerRef.current = (clientX, clientY): void => {
+    if (!refs.interactiveRef.current || refs.suspendedRef.current) return;
+    // 系统每帧采样, 静止坐标不算新活动, 保留原有待机视线.
+    if (clientX === previousPointerX && clientY === previousPointerY) return;
     const rect = (app.view as HTMLCanvasElement).getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return;
-    const inside = event.clientX >= rect.left
-      && event.clientX <= rect.right
-      && event.clientY >= rect.top
-      && event.clientY <= rect.bottom;
-    const x = inside
-      ? ((event.clientX - rect.left) / rect.width) * app.screen.width
-      : app.screen.width / 2;
-    const y = inside
-      ? ((event.clientY - rect.top) / rect.height) * app.screen.height
-      : app.screen.height / 2;
+    previousPointerX = clientX;
+    previousPointerY = clientY;
+    refs.lastPointerActivityAtRef.current = performance.now();
+    // 窗口外的鼠标仍决定视线方向, 不再因为离开画布就回到正中间.
+    const x = ((clientX - rect.left) / rect.width) * app.screen.width;
+    const y = ((clientY - rect.top) / rect.height) * app.screen.height;
     model.focus(x, y);
+  };
+  const followPointer = (event: MouseEvent): void => {
+    if (refs.pointerSourceRef.current !== 'window') return;
+    refs.focusPointerRef.current(event.clientX, event.clientY);
   };
   window.addEventListener('mousemove', followPointer);
   cleanups.push(() => window.removeEventListener('mousemove', followPointer));
 
   refs.expressionsRef.current = extractExpressionNames(model.internalModel);
   return () => {
+    refs.focusPointerRef.current = () => {};
     refs.applyFramingRef.current = () => {};
     for (const cleanup of cleanups.reverse()) cleanup();
     refs.lipSyncRef.current?.dispose();

@@ -18,7 +18,10 @@
 | `open_window` | `{ label }` | `Result<(), String>` | `openWindow(label)` | 显示或聚焦 `main`、`chat`、`settings` 中的窗口 |
 | `quit_app` | 无 | `()` | `quit()` | 关闭子进程后退出 Desktop |
 | `set_always_on_top` | `{ value }` | `Result<(), String>` | `setAlwaysOnTop(value)` | 设置当前窗口是否置顶 |
-| `set_passthrough` | `{ value }` | `Result<(), String>` | `setPassthrough(value)` | 设置当前窗口是否忽略鼠标事件 |
+| `set_passthrough` | `{ value }` | `Result<(), String>` | `setPassthrough(value)` | 设置 main 的点击穿透模式, 并发送模式事件 |
+| `get_passthrough` | 无 | `bool` | `getPassthrough()` | 查询本次进程中的 main 穿透模式初值 |
+| `start_pet_pointer` | 无 | `Result<(), String>` | `startPetPointer()` | 为 main 启动唯一的原生系统鼠标采样任务 |
+| `set_passthrough_controls_hovered` | `{ hovered }` | `Result<(), String>` | `setPassthroughControlsHovered(hovered)` | 穿透模式内临时恢复控制区点击, 不改变模式 |
 | `list_terminal_shells` | 无 | `DetectedTerminalShell[]` | `listTerminalShells()` | 返回本机可发现 Shell 的显示名、类型与绝对可执行路径 |
 | `open_terminal` | `{ terminalId, sessionId, cwd?, shellExecutable?, columns, rows, onEvent }` | `Result<(), String>` | `openTerminal(input)` | 使用当前选择的 Shell 创建交互 PTY，并用 Channel 发送输出 |
 | `write_terminal` | `{ terminalId, data }` | `Result<(), String>` | `writeTerminal(...)` | 向指定 PTY 写入用户输入 |
@@ -34,6 +37,25 @@
 | `close_browser` | `{ browserId }` | `Result<(), String>` | `closeBrowser(...)` | 释放一个原生网页视图 |
 
 `plugin:opener|open_url` 和 `plugin:opener|reveal_item_in_dir` 属于 Tauri 插件，不是 Ema Rust Command；它们仍只能出现在 `tauri-bridge.ts` 内。
+
+桌宠浮动菜单开启 / 关闭 main 的点击穿透模式. 角色继续显示, 非控制区的点击落到后面的窗口. FloatingDock 按系统坐标命中菜单, 权限提示和通知控制区, 通过 `set_passthrough_controls_hovered` 临时恢复点击; 离开后继续穿透. 模式和置顶独立, 开启穿透时不执行未置顶窗口的失焦自动最小化. 托盘的 "关闭点击穿透" 调用同一模式入口, 解除最小化并显示 / 聚焦 main. 模式不持久化, 不改变 chat / settings 的交互.
+
+## 系统鼠标与穿透事件
+
+事件只发给 main. 原生生产者是 `desktop/petPointer.rs` 和 `desktop/windows.rs`, WebView 只经 `tauri-bridge.ts` 的具名方法订阅.
+
+| 事件 | Payload | 前端方法 | 实际消费者 |
+|---|---|---|---|
+| `ema://pet-pointer` | `{ type: "position", clientX: number, clientY: number, inside: boolean }` 或 `{ type: "error", message: string }` | `listenPetPointer(handler)` | CharacterStage 的 Live2dResource 直接驱动当前模型视线; FloatingDock 更新显隐及控制区命中 |
+| `ema://pet-passthrough` | `boolean` | `listenPassthrough(handler)` | FloatingDock 展示原生穿透模式, 包含托盘发起的关闭 |
+
+`clientX/clientY` 是相对 main 内容区左上角的 CSS 逻辑坐标, 允许位于窗口外; 原生已扣除 `inner_position` 并除以窗口缩放系数. `inside` 表示是否在内容区内, 不表示命中模型像素或控制区.
+
+FloatingDock 在订阅就绪后调用一次 `startPetPointer()`. Rust 按 60Hz 目标间隔在原生主线程读取系统鼠标与窗口位置, 忙时跳过错过的 tick, 不堆积主线程采样. Live2D 与窗口交互共用这份采样, 前端不轮询. 隐藏 / 最小化时跳过坐标读取与推送, 恢复后继续; HMR 重新启动采样时取消旧任务, 应用退出时停止任务. 平台坐标接口不可用时启动失败; 运行中的坐标采样失败时原生尝试关闭穿透并发送 error, Dock 提示错误并禁用穿透按钮.
+
+模式只从原生事件更新, 初值查询不覆盖查询期间已收到的新模式. 迟到的控制区报告也只能依据原生当前模式临时恢复点击, 不能重新开启托盘已关闭的模式.
+
+原生 Command, 采样任务和托盘的变更需要重新编译并重启 Tauri Host 才能验收; 前端 HMR 不会更新现有原生进程. 本次按用户约定只核对源码调用链, 未运行测试 / typecheck, 未操作 dev 或重启宿主, 不把此记录当成运行验收.
 
 Shell 检测不扫描固定盘符。Windows 使用 `where.exe` 收集 `PATH` 中全部匹配路径，并补入 `COMSPEC`；macOS/Linux 使用 `$SHELL` 与 `which -a`。同一类型的多个可执行文件按绝对路径分别返回。设置 `frontend.terminal.shellExecutable` 只影响之后新建的终端，已经运行的 PTY 不重启也不换 Shell。
 

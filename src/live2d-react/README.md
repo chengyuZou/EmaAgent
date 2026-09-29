@@ -12,6 +12,7 @@ interface Live2DStageHandle {
   playMotion(group: string, index: number): void;
   setPlacement(stageScale: number, stageOffsetX: number, stageOffsetY: number): void;
   setLipSync(speaking: boolean, mouthOpen: number): void;
+  setPointerPosition(clientX: number, clientY: number): void;
 }
 ```
 
@@ -29,6 +30,12 @@ interface Live2DStageHandle {
 ```
 
 `mouthOpen` 是宿主已换算的 `0..1` 开口度,本包不理解音频分析或某个 TTS 协议。嘴部 Parameter 只从 `.model3.json` 的 `LipSync` Group 读取,模型没有登记时不驱动口型。
+
+`setPointerPosition` 接收窗口内 CSS 逻辑坐标, 鼠标位于窗口外时可以为负或超出窗口尺寸. 本包按 Canvas 的实际位置和尺寸换算为 PIXI 世界坐标, 交给 `model.focus`, 不把窗口外坐标截到画布边缘.
+
+`pointerSource` 默认为 `window`, 使用当前页面的 `mousemove`; 桌宠设置为 `host`, 由宿主收到系统坐标事件后调用 `setPointerPosition`, 不同时消费页面鼠标移动. 本包不读取系统鼠标, 不订阅 Tauri 事件, 不处理菜单显隐或点击穿透.
+
+相同坐标的重复采样不刷新鼠标活动时间, 保留静止 1s 后的待机游移. 该判断属于当前模型的视线输入, 不按角色身份缓存坐标, 不排队或补发旧坐标. 暂停或不交互时不执行跟随.
 
 待机动作交给 Cubism MotionManager,它从 `.model3.json` 的 `Idle` Group 自动选择并在 Motion 结束后继续播放。手动 Motion 使用更高优先级,播放完成后自然回到原生待机链。
 

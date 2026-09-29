@@ -2,7 +2,11 @@
 use serde::Deserialize;
 use tauri::Manager;
 
-use crate::desktop::windows::{begin_main_focus_settling, show_window};
+use crate::desktop::pet_pointer::PetPointerTracking;
+use crate::desktop::windows::{
+    begin_main_focus_settling, main_passthrough_enabled, set_main_passthrough,
+    set_main_passthrough_controls_hovered, show_window,
+};
 use crate::processes::DesktopProcesses;
 
 #[derive(Debug, Deserialize)]
@@ -59,10 +63,29 @@ pub fn set_always_on_top(window: tauri::Window, value: bool) -> Result<(), Strin
 }
 
 #[tauri::command]
-pub fn set_passthrough(window: tauri::Window, value: bool) -> Result<(), String> {
-    window
-        .set_ignore_cursor_events(value)
-        .map_err(|error| error.to_string())
+pub fn set_passthrough(window: tauri::WebviewWindow, value: bool) -> Result<(), String> {
+    set_main_passthrough(&window, value)
+}
+
+#[tauri::command]
+pub fn get_passthrough() -> bool {
+    main_passthrough_enabled()
+}
+
+#[tauri::command]
+pub fn start_pet_pointer(
+    window: tauri::WebviewWindow,
+    tracking: tauri::State<'_, PetPointerTracking>,
+) -> Result<(), String> {
+    tracking.start(window)
+}
+
+#[tauri::command]
+pub fn set_passthrough_controls_hovered(
+    window: tauri::WebviewWindow,
+    hovered: bool,
+) -> Result<(), String> {
+    set_main_passthrough_controls_hovered(&window, hovered)
 }
 
 #[tauri::command]

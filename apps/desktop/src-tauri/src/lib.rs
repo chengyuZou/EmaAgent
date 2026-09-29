@@ -9,12 +9,15 @@ use tauri::{Manager, RunEvent};
 
 use commands::{
     browser_back, browser_forward, close_browser, close_session_terminals, close_terminal,
-    get_narrative_port, get_server_port, get_server_secret, list_system_fonts, navigate_browser,
-    open_browser, open_path, open_terminal, open_window, quit_app, read_draft_image, reload_browser,
+    get_narrative_port, get_passthrough, get_server_port, get_server_secret, list_system_fonts,
+    navigate_browser, open_browser, open_path, open_terminal, open_window, quit_app, read_draft_image,
+    reload_browser,
     report_live2d_diagnostic, resize_terminal, set_always_on_top, set_browser_bounds,
-    set_browser_visible, set_passthrough, start_narrative, wait_narrative_exit, write_terminal,
+    set_browser_visible, set_passthrough, set_passthrough_controls_hovered, start_narrative,
+    start_pet_pointer, wait_narrative_exit, write_terminal,
 };
 use desktop::terminal::TerminalSessions;
+use desktop::pet_pointer::PetPointerTracking;
 use desktop::windows::{handle_window_event, show_main_window};
 use processes::DesktopProcesses;
 
@@ -33,6 +36,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(processes)
         .manage(TerminalSessions::new())
+        .manage(PetPointerTracking::default())
         .invoke_handler(tauri::generate_handler![
             get_server_secret,
             get_server_port,
@@ -43,6 +47,9 @@ pub fn run() {
             list_system_fonts,
             set_always_on_top,
             set_passthrough,
+            get_passthrough,
+            start_pet_pointer,
+            set_passthrough_controls_hovered,
             quit_app,
             open_window,
             open_path,
@@ -81,6 +88,7 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|app_handle, event| {
             if let RunEvent::Exit = event {
+                app_handle.state::<PetPointerTracking>().stop();
                 // 最后防线负责回收异常退出路径遗留的整棵子进程树与全部 PTY 终端。
                 let state = app_handle.state::<DesktopProcesses>();
                 app_handle.state::<TerminalSessions>().close_all();

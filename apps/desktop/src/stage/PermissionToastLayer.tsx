@@ -65,7 +65,7 @@ export function PermissionToastLayer(): React.JSX.Element {
       }}
     >
       {toasts.map((toast) => (
-        <div key={toast.toolCallId} className="ema-toast-in" style={{ pointerEvents: 'auto' }}>
+        <div key={toast.toolCallId} data-pet-interactive className="ema-toast-in" style={{ pointerEvents: 'auto' }}>
           <PermissionCard toast={toast} onDismiss={removeToast} />
         </div>
       ))}

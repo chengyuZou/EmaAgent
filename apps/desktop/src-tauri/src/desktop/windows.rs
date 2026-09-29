@@ -1,5 +1,6 @@
 // 统一处理桌面窗口的惰性创建、显示、隐藏和前端可见性通知。
 use serde::Serialize;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tauri::{
@@ -7,10 +8,13 @@ use tauri::{
 };
 
 const WINDOW_VISIBILITY_EVENT: &str = "ema://window-visibility";
+const MAIN_PASSTHROUGH_EVENT: &str = "ema://pet-passthrough";
 // 同一进程内的 WebView2 必须使用一致的浏览器参数，否则后创建的窗口会被环境复用规则拒绝。
 pub(crate) const SHARED_BROWSER_ARGS: &str = "--autoplay-policy=no-user-gesture-required";
 const MAIN_FOCUS_SETTLE_GRACE: Duration = Duration::from_millis(350);
 static MAIN_FOCUSED_AT: Mutex<Option<Instant>> = Mutex::new(None);
+// 控制区可临时接收点击, 但仍处于穿透模式, 不能恢复失焦自动最小化.
+static MAIN_PASSTHROUGH_ENABLED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Clone, Serialize)]
 struct WindowVisibilityPayload {
@@ -103,6 +107,41 @@ pub fn begin_main_focus_settling() {
     }
 }
 
+pub fn main_passthrough_enabled() -> bool {
+    MAIN_PASSTHROUGH_ENABLED.load(Ordering::SeqCst)
+}
+
+pub fn set_main_passthrough(window: &WebviewWindow, enabled: bool) -> Result<(), String> {
+    if window.label() != "main" {
+        return Err("click passthrough is only available for the pet window".into());
+    }
+
+    if !enabled {
+        begin_main_focus_settling();
+    }
+    let previous = MAIN_PASSTHROUGH_ENABLED.swap(enabled, Ordering::SeqCst);
+    if let Err(error) = window.set_ignore_cursor_events(enabled) {
+        MAIN_PASSTHROUGH_ENABLED.store(previous, Ordering::SeqCst);
+        return Err(error.to_string());
+    }
+    window
+        .emit_to(EventTarget::window("main"), MAIN_PASSTHROUGH_EVENT, enabled)
+        .map_err(|error| error.to_string())
+}
+
+pub fn set_main_passthrough_controls_hovered(
+    window: &WebviewWindow,
+    hovered: bool,
+) -> Result<(), String> {
+    if window.label() != "main" {
+        return Err("click passthrough is only available for the pet window".into());
+    }
+    // 托盘可能已关闭模式. 迟到的鼠标坐标更新不得重新开启原生穿透.
+    window
+        .set_ignore_cursor_events(main_passthrough_enabled() && !hovered)
+        .map_err(|error| error.to_string())
+}
+
 pub fn handle_window_event(window: &tauri::Window, event: &WindowEvent) {
     // Tauri 的 emit 会广播到所有窗口;可见性必须按 label 定向,否则关闭子窗口会暂停 main 舞台。
     match event {
@@ -145,7 +184,10 @@ pub fn handle_window_event(window: &tauri::Window, event: &WindowEvent) {
                 .map_or(true, |focused_at| {
                     focused_at.elapsed() >= MAIN_FOCUS_SETTLE_GRACE
                 });
-            if focus_is_stable && matches!(window.is_always_on_top(), Ok(false)) {
+            if focus_is_stable
+                && !main_passthrough_enabled()
+                && matches!(window.is_always_on_top(), Ok(false))
+            {
                 if let Err(error) = window.minimize() {
                     tracing::warn!(%error, "failed to minimize unpinned main window");
                 } else {

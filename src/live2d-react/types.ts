@@ -14,4 +14,6 @@ export interface Live2DStageHandle {
   playMotion(group: string, index: number): void;
   /** `mouthOpen` 是由 Speech/宿主换算好的 0..1 归一化开口度。 */
   setLipSync(speaking: boolean, mouthOpen: number): void;
+  /** 鼠标相对窗口内容区的位置, 单位为页面逻辑像素, 允许位于窗口外. */
+  setPointerPosition(clientX: number, clientY: number): void;
 }

@@ -34,9 +34,7 @@ import { handleSettingsSystemEvent, useSettingsStore } from './stores/settings.j
 //   - FloatingDock：鼠标进入窗口后出现的右侧工具条
 //   - ServerBadge：左上角应用服务器状态点
 //
-// Dock 监听 body 的鼠标进入和离开；离开后保留 600ms，避免沿右缘移动时闪烁。
-
-const DOCK_FADE_GRACE_MS = 600;
+// 系统鼠标驱动视线与 Dock, 点击穿透不会切断跟随或隐藏角色.
 
 export function App(): React.JSX.Element {
   const stageSuspended = useWindowSuspension();
@@ -46,7 +44,6 @@ export function App(): React.JSX.Element {
   const [expressionAvailable, setExpressionAvailable] = useState(false);
   const [expressions, setExpressions] = useState<readonly string[]>([]);
   const [selectedExpression, setSelectedExpression] = useState<string | null>(null);
-  const [dockVisible, setDockVisible] = useState(false);
   const [stagePresentation, setStagePresentation] = useState<CharacterStagePresentation | null>(null);
   const [presentationChangeCount, setPresentationChangeCount] = useState(0);
   const stageRequestSequence = useRef(0);
@@ -192,26 +189,6 @@ export function App(): React.JSX.Element {
     return stop;
   }, []);
 
-  // 鼠标进出窗口时控制 Dock 显隐。
-  useEffect(() => {
-    let leaveTimer: ReturnType<typeof setTimeout> | null = null;
-    const onEnter = (): void => {
-      if (leaveTimer) { clearTimeout(leaveTimer); leaveTimer = null; }
-      setDockVisible(true);
-    };
-    const onLeave = (): void => {
-      if (leaveTimer) clearTimeout(leaveTimer);
-      leaveTimer = setTimeout(() => setDockVisible(false), DOCK_FADE_GRACE_MS);
-    };
-    document.body.addEventListener('mouseenter', onEnter);
-    document.body.addEventListener('mouseleave', onLeave);
-    return () => {
-      document.body.removeEventListener('mouseenter', onEnter);
-      document.body.removeEventListener('mouseleave', onLeave);
-      if (leaveTimer) clearTimeout(leaveTimer);
-    };
-  }, []);
-
   return (
     <>
 
@@ -231,7 +208,7 @@ export function App(): React.JSX.Element {
       <SpeechBubble />
 
       <FloatingDock
-        visible={dockVisible}
+        suspended={stageSuspended}
         expressionAvailable={expressionAvailable}
         expressions={expressions}
         selectedExpression={selectedExpression}
@@ -249,9 +226,9 @@ export function App(): React.JSX.Element {
   );
 }
 
-// ── 粉白呼吸光边框 ──────────────────────────────────────────────────────────
+// ── 主题色相呼吸光边框 ────────────────────────────────────────────────────────
 //
-// 视觉全部归 styles 的 .ema-pet-glow-border(含 ema-breathe keyframes 与签名粉 token)。
+// 视觉全部归 styles 的 .ema-pet-glow-border, 颜色 token 跟随当前生效 hue, 呼吸节奏不变.
 
 function GlowBorder(): React.JSX.Element {
   return <div className="ema-pet-glow-border" />;
@@ -276,6 +253,7 @@ function ServerBadge({ status }: { status: ServerStatus }): React.JSX.Element {
     <Tooltip content={detail} side="right" sideOffset={8}>
       <button
         type="button"
+        data-pet-interactive
         className="ema-server-status"
         data-status={status.kind}
         aria-label={detail}
