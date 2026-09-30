@@ -11,6 +11,7 @@ import { SessionRunningRegistry, SessionStore } from '@ema-agent/session';
 import type { SettingsStore } from '@ema-agent/settings';
 import { StageEngine } from '@ema-agent/stage';
 import type { UsageRecord } from '@ema-agent/usage';
+import { GoalStore } from '@ema-agent/goal';
 import {
   buildTool,
   BuiltinTools,
@@ -21,8 +22,11 @@ import { SessionInteractionQueue } from '../interactionQueue.js';
 import type { TurnStreamEvent } from '../events.js';
 import { TurnExecutor, type TurnExecutorDeps } from '../turn.js';
 import { TurnStore } from '../turnStore.js';
-import type { StartTurn } from '../types.js';
+import type { StartTurn, TurnHandle } from '../types.js';
+import { SessionContinuationQueue } from '../sessionContinuationQueue.js';
 import { SubagentTool } from '../../builtin-tools/tools/SubagentTool/SubagentTool.js';
+import { GoalGetTool } from '../../builtin-tools/tools/GoalGetTool/GoalGetTool.js';
+import { GoalUpdateTool } from '../../builtin-tools/tools/GoalUpdateTool/GoalUpdateTool.js';
 
 function scriptedLlm(calls: LlmStreamEvent[][]): CallLlm {
   let index = 0;
@@ -97,10 +101,10 @@ function makeDeps(options: {
       acknowledge: () => undefined,
       claimNextIteration: () => undefined,
       release: () => undefined,
-      turnCompleted: () => undefined,
+      turnFinished: () => undefined,
     } as never,
     createCompact: () => async request => ({ kind: 'unchanged' as const, messages: request.messages }),
-    readTurnReminder: () => ({ currentDate: '2026-08-25' }),
+    readTurnReminder: () => ({ currentDate: '2026-08-25', goal: null }),
     characterName: () => 'test-character',
   };
 }
@@ -114,6 +118,36 @@ function makeStart(sessionId: string): StartTurn {
     ttsEnabled: true,
     input: [{ type: 'text', text: '你好' }],
   };
+}
+
+function goalContinuationFixture(llm: CallLlm) {
+  const db = new Database({ memory: true, kind: 'data' });
+  db.migrate();
+  const sessions = new SessionStore({ db });
+  const session = sessions.createSession({ cwd: os.tmpdir(), providerId: 'p', modelId: 'm', sessionMode: 'work' });
+  const sessionRunning = new SessionRunningRegistry();
+  const turns = new TurnStore({ db, sessionRunning });
+  const registry = new ToolRegistry();
+  registry.register(GoalGetTool);
+  registry.register(GoalUpdateTool);
+  const handles: TurnHandle[] = [];
+  let queue: SessionContinuationQueue;
+  const goals = new GoalStore(db, event => {
+    if (event.type === 'goal_created' || event.type === 'goal_activated') queue.requestDrain(event.goal.sessionId);
+  });
+  const deps = makeDeps({ db, llm, sessionId: session.id, registry });
+  let executor: TurnExecutor;
+  queue = new SessionContinuationQueue({
+    sessions, sessionRunning, goals,
+    startTurn: input => executor.start(input),
+    attachTurn: handle => { handles.push(handle); },
+    publish: () => undefined,
+  });
+  executor = new TurnExecutor({
+    ...deps, sessions, turns, goalStore: goals, continuations: queue,
+    readTurnReminder: () => ({ currentDate: '2026-09-29', goal: goals.getCurrent(session.id) }),
+  });
+  return { db, sessions, session, sessionRunning, turns, registry, goals, queue, executor, handles, deps };
 }
 
 function forkFixture(llm: CallLlm, onStarted: (id: string) => void) {
@@ -144,6 +178,272 @@ function forkFixture(llm: CallLlm, onStarted: (id: string) => void) {
 }
 
 describe('TurnExecutor 集成', () => {
+  it('初始 Goal 与用户任务只启动一根 Turn, 短续接和用户 Message 分别落库, 编辑不添加用户气泡', async () => {
+    const objective = '  原始任务\r\n第二行  ';
+    let fixture: ReturnType<typeof goalContinuationFixture>;
+    let requests = 0;
+    const llm: CallLlm = async function* (request) {
+      requests += 1;
+      const goal = fixture.goals.getCurrent(fixture.session.id)!;
+      const edited = fixture.goals.edit({ sessionId: goal.sessionId, goalId: goal.id, expectedVersion: goal.version }, '后续手动修改');
+      fixture.goals.complete({ sessionId: edited.sessionId, goalId: edited.id, expectedVersion: edited.version }, '目标已完成');
+      yield { type: 'text_delta', blockIndex: 0, delta: '初始任务已处理' };
+      yield { type: 'done', stopReason: 'end_turn' };
+    };
+    fixture = goalContinuationFixture(llm);
+    try {
+      const goal = fixture.goals.create(fixture.session.id, objective);
+      fixture.queue.enqueue({ sessionId: fixture.session.id,
+        input: [{ type: 'text', text: objective }], selection: { sessionMode: 'work', narrativePolicy: 'off' } });
+      await vi.waitFor(() => expect(fixture.handles).toHaveLength(1));
+      const handle = fixture.handles[0]!;
+      expect((await handle.completion).status).toBe('completed');
+      await Promise.resolve();
+      expect(fixture.handles).toHaveLength(1);
+      expect(requests).toBe(1);
+      const userMessages = fixture.sessions.loadMessagesForTurn(handle.turnId).filter(message => message.role === 'user');
+      expect(userMessages.map(message => message.kind)).toEqual(['reminder', 'continuation', 'normal']);
+      expect(userMessages[1]!.blocks).toBe('根据本轮 reminder 和 GoalGet 继续推进当前目标. '
+        + '目标已暂停或关闭时不要继续历史目标, 不自行创建或激活目标.');
+      expect(userMessages[2]!.blocks).toBe(objective);
+      expect(fixture.goals.get(fixture.session.id, goal.id)?.objective).toBe('后续手动修改');
+      const events: TurnStreamEvent[] = [];
+      for await (const event of handle.events) events.push(event);
+      expect(events.filter(event => event.type === 'user_message_stored')).toHaveLength(1);
+      expect(fixture.queue.list(fixture.session.id)).toEqual([]);
+    } finally {
+      fixture.queue.shutdown();
+      fixture.db.close();
+    }
+  });
+
+  it('真实 Goal 工具报告进度后经同一队列开启下一根 Turn, 完成目标后不再续接', async () => {
+    const requests: string[] = [];
+    let fixture: ReturnType<typeof goalContinuationFixture>;
+    const llm: CallLlm = async function* (request) {
+      requests.push(JSON.stringify(request.messages));
+      const goal = fixture.goals.getCurrent(fixture.session.id)!;
+      if (requests.length === 1 || requests.length === 3) {
+        const args = requests.length === 1
+          ? { goalId: goal.id, expectedVersion: goal.version, status: 'active', feedback: '已读 2/8, 下一轮继续' }
+          : { goalId: goal.id, expectedVersion: goal.version, status: 'completed', reason: 'succeeded', feedback: '8/8 已读完并整理' };
+        yield { type: 'tool_use_complete', blockIndex: 0, callId: `goal-${requests.length}`, name: 'GoalUpdate', args };
+        yield { type: 'done', stopReason: 'tool_use' };
+        return;
+      }
+      yield { type: 'text_delta', blockIndex: 0, delta: '阶段汇报' };
+      yield { type: 'done', stopReason: 'end_turn' };
+    };
+    fixture = goalContinuationFixture(llm);
+    try {
+      const goal = fixture.goals.create(fixture.session.id, '整理 8 个 README');
+      const first = fixture.executor.start(makeStart(fixture.session.id));
+      expect((await first.completion).status).toBe('completed');
+      await vi.waitFor(() => expect(fixture.handles).toHaveLength(1));
+      const second = fixture.handles[0]!;
+      expect((await second.completion).status).toBe('completed');
+      await Promise.resolve();
+      expect(requests).toHaveLength(4);
+      expect(fixture.handles).toHaveLength(1);
+      expect(fixture.goals.get(fixture.session.id, goal.id)).toMatchObject({ status: 'completed', reason: 'succeeded' });
+      expect(requests[2]).toContain('已读 2/8, 下一轮继续');
+      const messages = fixture.sessions.loadMessagesForTurn(second.turnId);
+      expect(messages.filter(message => message.role === 'user').map(message => message.kind))
+        .toEqual(['reminder', 'continuation', 'tool_results']);
+      const events: TurnStreamEvent[] = [];
+      for await (const event of second.events) events.push(event);
+      expect(events.some(event => event.type === 'user_message_stored')).toBe(false);
+      expect(fixture.sessionRunning.isRunning(fixture.session.id)).toBe(false);
+    } finally {
+      fixture.queue.shutdown();
+      fixture.db.close();
+    }
+  });
+
+  it.each(['cancel', 'delete'] as const)('当前模型执行中 %s Goal, 本轮正常完成且不复活目标或启动下一轮', async action => {
+    let fixture: ReturnType<typeof goalContinuationFixture>;
+    const llm: CallLlm = async function* () {
+      const goal = fixture.goals.getCurrent(fixture.session.id)!;
+      fixture.goals[action]({ sessionId: goal.sessionId, goalId: goal.id, expectedVersion: goal.version });
+      yield { type: 'text_delta', blockIndex: 0, delta: '本轮继续完成' };
+      yield { type: 'done', stopReason: 'end_turn' };
+    };
+    fixture = goalContinuationFixture(llm);
+    try {
+      fixture.goals.create(fixture.session.id, '关闭不停止当前 Turn');
+      const handle = fixture.executor.start(makeStart(fixture.session.id));
+      expect((await handle.completion).status).toBe('completed');
+      await Promise.resolve();
+      expect(fixture.handles).toHaveLength(0);
+      expect(fixture.goals.getCurrent(fixture.session.id)).toBeNull();
+    } finally {
+      fixture.queue.shutdown();
+      fixture.db.close();
+    }
+  });
+
+  it('用户停止时暂停同一 Goal 的当前 active 版本, 不被 feedback 和编辑增加的版本漏掉', async () => {
+    let fixture: ReturnType<typeof goalContinuationFixture>;
+    let handle: TurnHandle;
+    const llm: CallLlm = async function* (request) {
+      const goal = fixture.goals.getCurrent(fixture.session.id)!;
+      const progress = fixture.goals.reportFeedback({ sessionId: goal.sessionId, goalId: goal.id, expectedVersion: goal.version }, '已完成部分');
+      fixture.goals.edit({ sessionId: goal.sessionId, goalId: goal.id, expectedVersion: progress.version }, '修改后的要求');
+      handle.abort();
+      request.signal?.throwIfAborted();
+      yield { type: 'done', stopReason: 'end_turn' };
+    };
+    fixture = goalContinuationFixture(llm);
+    try {
+      const goal = fixture.goals.create(fixture.session.id, '初始目标');
+      handle = fixture.executor.start(makeStart(fixture.session.id));
+      expect((await handle.completion).status).toBe('aborted');
+      await Promise.resolve();
+      expect(fixture.goals.getCurrent(fixture.session.id)).toMatchObject({
+        id: goal.id, status: 'paused', version: 4, objective: '修改后的要求', reason: null, error: null,
+      });
+      expect(fixture.handles).toHaveLength(0);
+      expect(fixture.sessionRunning.isRunning(fixture.session.id)).toBe(false);
+    } finally {
+      fixture.queue.shutdown();
+      fixture.db.close();
+    }
+  });
+
+  it.each(['same', 'replacement'] as const)('准备最终失败时只暂停本轮同一 Goal, %s 目标的处理不串身份', async target => {
+    const fixture = goalContinuationFixture(scriptedLlm([[{ type: 'done', stopReason: 'end_turn' }]]));
+    try {
+      const goal = fixture.goals.create(fixture.session.id, '初始目标');
+      const executor = new TurnExecutor({
+        ...fixture.deps, turns: fixture.turns, goalStore: fixture.goals, continuations: fixture.queue,
+        createLlmCall: () => {
+          const identity = { sessionId: goal.sessionId, goalId: goal.id, expectedVersion: goal.version };
+          if (target === 'same') fixture.goals.reportFeedback(identity, '调用前已经推进');
+          else {
+            fixture.goals.cancel(identity);
+            fixture.goals.create(fixture.session.id, '后来新建的 B');
+          }
+          throw new Error('provider 准备失败');
+        },
+      });
+      const handle = executor.start(makeStart(fixture.session.id));
+      expect((await handle.completion).status).toBe('failed');
+      const current = fixture.goals.getCurrent(fixture.session.id)!;
+      if (target === 'same') {
+        expect(current).toMatchObject({ id: goal.id, status: 'paused', version: 3, feedback: '调用前已经推进', reason: null });
+      } else {
+        expect(current.id).not.toBe(goal.id);
+        expect(current).toMatchObject({ status: 'active', objective: '后来新建的 B', version: 1 });
+      }
+      await Promise.resolve();
+      expect(fixture.handles).toHaveLength(0);
+    } finally {
+      fixture.queue.shutdown();
+      fixture.db.close();
+    }
+  });
+
+  it('模型抛错也暂停已交付 Goal 的最新版本, 不把运行错误标成 Goal failed 完成', async () => {
+    let fixture: ReturnType<typeof goalContinuationFixture>;
+    const llm: CallLlm = async function* () {
+      const goal = fixture.goals.getCurrent(fixture.session.id)!;
+      fixture.goals.reportFeedback({ sessionId: goal.sessionId, goalId: goal.id, expectedVersion: goal.version }, '已读取部分文件');
+      yield { type: 'text_delta', blockIndex: 0, delta: '尚未完成' };
+      throw new Error('模型调用最终失败');
+    };
+    fixture = goalContinuationFixture(llm);
+    try {
+      const goal = fixture.goals.create(fixture.session.id, '未完成的目标');
+      const handle = fixture.executor.start(makeStart(fixture.session.id));
+      expect((await handle.completion).status).toBe('failed');
+      expect(fixture.goals.get(fixture.session.id, goal.id)).toMatchObject({
+        status: 'paused', version: 3, feedback: '已读取部分文件', reason: null, error: null,
+      });
+      await Promise.resolve();
+      expect(fixture.handles).toHaveLength(0);
+    } finally {
+      fixture.queue.shutdown();
+      fixture.db.close();
+    }
+  });
+
+  it('模型已结束但工具还在收尾时按停止, 仍暂停 Goal 且不立即续接', async () => {
+    const fixture = goalContinuationFixture(scriptedLlm([[{ type: 'done', stopReason: 'end_turn' }]]));
+    let releaseCleanup!: () => void;
+    const cleanup = new Promise<void>(resolve => { releaseCleanup = resolve; });
+    let cleanupStarted!: () => void;
+    const started = new Promise<void>(resolve => { cleanupStarted = resolve; });
+    const executor = new TurnExecutor({
+      ...fixture.deps, turns: fixture.turns, goalStore: fixture.goals, continuations: fixture.queue,
+      readTurnReminder: () => ({ currentDate: '2026-09-29', goal: fixture.goals.getCurrent(fixture.session.id) }),
+      subagents: {
+        abortForegroundForTurn: async () => { cleanupStarted(); await cleanup; },
+        waitForTurnSubagents: async () => undefined,
+      } as unknown as SubagentExecutor,
+    });
+    let handle: TurnHandle | undefined;
+    try {
+      fixture.goals.create(fixture.session.id, '用户停止不再续接');
+      handle = executor.start(makeStart(fixture.session.id));
+      await started;
+      handle.abort();
+      releaseCleanup();
+      await handle.completion;
+      expect(fixture.goals.getCurrent(fixture.session.id)?.status).toBe('paused');
+      await Promise.resolve();
+      expect(fixture.handles).toHaveLength(0);
+    } finally {
+      releaseCleanup();
+      fixture.queue.shutdown();
+      await handle?.completion;
+      fixture.db.close();
+    }
+  });
+
+  it('终态行提交后仍等工具收尾, completion 返回前解锁并阻止 Session 删除期间续接', async () => {
+    const fixture = goalContinuationFixture(scriptedLlm([[{ type: 'done', stopReason: 'end_turn' }]]));
+    let releaseCleanup!: () => void;
+    const cleanup = new Promise<void>(resolve => { releaseCleanup = resolve; });
+    let cleanupStarted!: () => void;
+    const started = new Promise<void>(resolve => { cleanupStarted = resolve; });
+    const executor = new TurnExecutor({
+      ...fixture.deps, turns: fixture.turns, goalStore: fixture.goals, continuations: fixture.queue,
+      readTurnReminder: () => ({ currentDate: '2026-09-29', goal: fixture.goals.getCurrent(fixture.session.id) }),
+      subagents: {
+        abortForegroundForTurn: async () => { cleanupStarted(); await cleanup; },
+        waitForTurnSubagents: async () => undefined,
+      } as unknown as SubagentExecutor,
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    let handle: TurnHandle | undefined;
+    try {
+      fixture.goals.create(fixture.session.id, '删除期间不再启动');
+      handle = executor.start(makeStart(fixture.session.id));
+      await started;
+      expect(fixture.turns.getTurn(handle.turnId)?.status).toBe('completed');
+      expect(fixture.sessionRunning.isRunning(fixture.session.id)).toBe(true);
+      expect(() => executor.start(makeStart(fixture.session.id))).toThrow('session_busy');
+      fixture.turns.beginSessionDeletion(fixture.session.id);
+      fixture.queue.enqueue({ sessionId: fixture.session.id,
+        input: [{ type: 'text', text: '不能在删除期间开新 Turn' }],
+        selection: { sessionMode: 'work', narrativePolicy: 'off' } });
+      releaseCleanup();
+      await handle.completion;
+      expect(fixture.sessionRunning.isRunning(fixture.session.id)).toBe(false);
+      fixture.queue.requestDrain(fixture.session.id);
+      await Promise.resolve();
+      expect(fixture.handles).toHaveLength(0);
+      expect(() => executor.start(makeStart(fixture.session.id))).toThrow('session_deleting');
+      expect(warn).toHaveBeenCalledWith('[continuation] Session 续接启动失败:', expect.objectContaining({ message: expect.stringContaining('session_deleting') }));
+    } finally {
+      releaseCleanup();
+      fixture.queue.shutdown();
+      await handle?.completion;
+      warn.mockRestore();
+      fixture.db.close();
+    }
+  });
+
   it('Plan 请求与执行共用只读池, 运行中切换权限只影响下一根 Turn', async () => {
     const db = new Database({ memory: true, kind: 'data' });
     db.migrate();
@@ -445,6 +745,7 @@ describe('TurnExecutor 集成', () => {
         reminderCharacterNames.push(scope.characterName);
         return {
           currentDate: '2026-08-25',
+          goal: null,
           memoryWork: '用户在做 EmaAgent',
           taskReminder: '还有 2 个任务待处理',
         };
@@ -472,6 +773,51 @@ describe('TurnExecutor 集成', () => {
     expect(first.indexOf('用户在做 EmaAgent')).toBeLessThan(first.indexOf('你好'));
     expect(first.indexOf('用户在做 EmaAgent')).toBe(first.lastIndexOf('用户在做 EmaAgent'));
     db.close();
+  });
+
+  it('每根 Turn 持久化当前 Goal 与反馈, 关闭后的新 reminder 撤销旧历史目标', async () => {
+    const db = new Database({ memory: true, kind: 'data' });
+    db.migrate();
+    try {
+      const sessions = new SessionStore({ db });
+      const session = sessions.createSession({ cwd: os.tmpdir(), providerId: 'p', modelId: 'm' });
+      const goals = new GoalStore(db);
+      const created = goals.create(session.id, '整理 8 个 README');
+      const goal = goals.reportFeedback({
+        sessionId: session.id, goalId: created.id, expectedVersion: created.version,
+      }, '已整理 2/8');
+      const requests: Array<readonly Message[]> = [];
+      const llm: CallLlm = request => {
+        requests.push(request.messages);
+        return (async function* () {
+          yield { type: 'text_delta' as const, blockIndex: 0, delta: '已处理本轮工作。' };
+          yield { type: 'done' as const, stopReason: 'end_turn' as const };
+        })();
+      };
+      const readTurnReminder = vi.fn(() => ({
+        currentDate: '2026-09-29', goal: goals.getCurrent(session.id),
+      }));
+      const executor = new TurnExecutor({
+        ...makeDeps({ db, llm, sessionId: session.id, registry: new ToolRegistry() }),
+        goalStore: goals,
+        readTurnReminder,
+      });
+      const first = executor.start(makeStart(session.id));
+      expect((await first.completion).status).toBe('completed');
+      expect(JSON.stringify(requests[0])).toContain('已整理 2/8');
+      expect(sessions.loadMessagesForTurn(first.turnId)[0]?.blocks).toContain(goal.id);
+      goals.cancel({ sessionId: session.id, goalId: goal.id, expectedVersion: goal.version });
+      const second = executor.start(makeStart(session.id));
+      expect((await second.completion).status).toBe('completed');
+      const latestReminder = sessions.loadMessagesForTurn(second.turnId)[0]!;
+      expect(latestReminder.kind).toBe('reminder');
+      expect(latestReminder.blocks).toContain('当前没有激活的 Goal');
+      const secondRequest = JSON.stringify(requests[1]);
+      expect(secondRequest.indexOf('当前没有激活的 Goal')).toBeGreaterThan(secondRequest.indexOf('整理 8 个 README'));
+      expect(readTurnReminder).toHaveBeenCalledTimes(2);
+    } finally {
+      db.close();
+    }
   });
 
   it('舞台清洗：表现标签剥离后落库与发射，emotion/motion 事件随流发出', async () => {
@@ -546,7 +892,7 @@ describe('TurnExecutor 集成', () => {
       describeImage,
       readTurnReminder: (scope: { userText: string }) => {
         reminderTexts.push(scope.userText);
-        return { currentDate: '2026-08-25' };
+        return { currentDate: '2026-08-25', goal: null };
       },
     };
     const executor = new TurnExecutor(deps);
@@ -618,7 +964,7 @@ describe('TurnExecutor 集成', () => {
           };
         },
         release: () => undefined,
-        turnCompleted: () => undefined,
+        turnFinished: () => undefined,
       } as never,
     };
     const executor = new TurnExecutor(deps);
@@ -834,7 +1180,7 @@ describe('TurnExecutor 集成', () => {
           operations.push(`release:${claimedInputId}`);
           claimedInputId = undefined;
         },
-        turnCompleted: () => undefined,
+        turnFinished: () => undefined,
       } as never,
     };
 

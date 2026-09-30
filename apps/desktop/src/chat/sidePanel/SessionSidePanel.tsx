@@ -19,6 +19,7 @@ import { FilesPanel } from './tabs/files/FilesPanel.js';
 import { BackgroundProcessesPanel } from './tabs/processes/BackgroundProcessesPanel.js';
 import { ReviewPanel } from './tabs/review/ReviewPanel.js';
 import { SessionTasksPanel } from './tabs/tasks/SessionTasksPanel.js';
+import { GoalPanel } from './tabs/goal/goalPanel.js';
 import { TerminalPanel } from './tabs/terminal/TerminalPanel.js';
 import { closeTerminalSession, startTerminal } from './tabs/terminal/terminalSessions.js';
 
@@ -42,6 +43,8 @@ function tabIcon(tab: SessionSidePanelTab): string {
       return 'i-lucide:paperclip';
     case 'tasks':
       return 'i-lucide:list-checks';
+    case 'goal':
+      return 'i-lucide:goal';
     case 'subagents':
       return 'i-lucide:cpu';
     case 'terminal':
@@ -68,6 +71,8 @@ function baseLabel(tab: SessionSidePanelTab): string {
       return '附件';
     case 'tasks':
       return '任务';
+    case 'goal':
+      return '编辑目标';
     case 'subagents':
       return '子智能体';
     case 'terminal':
@@ -357,6 +362,8 @@ function TabContent({
       return <SessionAttachmentsPanel sessionId={sessionId} />;
     case 'tasks':
       return <SessionTasksPanel sessionId={sessionId} />;
+    case 'goal':
+      return <GoalPanel sessionId={sessionId} goalId={tab.id} />;
     case 'processes':
       return <BackgroundProcessesPanel sessionId={sessionId} />;
     case 'process':

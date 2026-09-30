@@ -6,13 +6,14 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   MessagesRepo,
+  GoalsRepo,
   ProjectsRepo,
   SessionsRepo,
   TurnsRepo,
   type MessagePageCursor,
   type SessionRowEnriched,
 } from '@ema-agent/storage';
-import { SessionOwnershipError } from './errors.js';
+import { SessionOwnershipError, SessionPlanGoalConflictError } from './errors.js';
 import type { Database } from '@ema-agent/storage';
 import {
   toMessage,
@@ -59,6 +60,7 @@ export interface SessionStoreDeps {
 /** 管理 Session/Project/Message 聚合的规则与读写。 */
 export class SessionStore {
   private readonly sessionsRepo: SessionsRepo;
+  private readonly goalsRepo: GoalsRepo;
   private readonly turnsRepo:    TurnsRepo;
   private readonly messagesRepo: MessagesRepo;
   private readonly projectsRepo: ProjectsRepo;
@@ -70,6 +72,7 @@ export class SessionStore {
 
   constructor({ db, onSessionRemoved, onChanged }: SessionStoreDeps) {
     this.sessionsRepo = new SessionsRepo(db.sqlite);
+    this.goalsRepo = new GoalsRepo(db.sqlite);
     this.turnsRepo    = new TurnsRepo(db.sqlite);
     this.messagesRepo = new MessagesRepo(db.sqlite);
     this.projectsRepo = new ProjectsRepo(db.sqlite);
@@ -256,7 +259,14 @@ export class SessionStore {
 
     if (Object.keys(cleaned).length === 0) return;
 
-    this.sessionsRepo.patch(id, cleaned, Date.now());
+    this.db.sqlite.transaction(() => {
+      this.requireSession(id);
+      if (cleaned.permissionMode === 'plan') {
+        const goal = this.goalsRepo.findCurrent(id);
+        if (goal) throw new SessionPlanGoalConflictError(goal.id);
+      }
+      this.sessionsRepo.patch(id, cleaned, Date.now());
+    }).immediate();
     this.onChanged?.({ type: 'session_list_changed' });
   }
 

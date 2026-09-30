@@ -8,7 +8,7 @@ import type { TurnFailureCode } from './errors.js';
 import type { TurnStreamEvent } from './events.js';
 
 /**
- * userMessage 来自用户主动输入, sessionContinuation 只承载后台终态.
+ * userMessage 来自用户主动输入, sessionContinuation 承载内部完成通知或 Goal 续接.
  */
 export type TurnTriggerType = 'userMessage' | 'sessionContinuation';
 
@@ -126,8 +126,8 @@ export interface StartTurn {
   readonly sessionMode: SessionMode;
   readonly narrativePolicy: NarrativePolicy;
   readonly input: readonly TurnInputPart[];
-  /** 已完成后台工作的轻量通知. 完整结果由模型按其中的执行 id 主动读取. */
-  readonly completionNoticeText?: string;
+  /** 队列交付的内部通知或继续指令, 持久化为 kind='continuation' 的 Message. */
+  readonly continuationText?: string;
   readonly knowledge?: TurnKnowledgeSelection;
   readonly ttsEnabled: boolean;
 }

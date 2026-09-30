@@ -119,9 +119,7 @@ export class TurnStore {
       });
       withinTransaction?.();
     })();
-    // 终态落库即释放运行锁：await completion/终态事件的消费方可以立即开新 Turn，
-    // 不等执行器 finally（它清的是同一把锁，幂等）。
-    this.registry.clear(this.requireTurn(turnId).sessionId, { kind: 'turn', turnId });
+    // 终态行不等于执行收尾结束. 运行占用由 TurnExecutor 收完消息和工具后释放.
   }
 
   /** 提交 failed 终态；失败前已持久化的迭代与调用级用量保持不变。 */
@@ -136,7 +134,6 @@ export class TurnStore {
       errorCode:    failure.errorCode,
       errorMessage: failure.errorMessage,
     });
-    this.registry.clear(this.requireTurn(turnId).sessionId, { kind: 'turn', turnId });
   }
 
   /** 触发取消信号并提交 Turn 的 aborted 终态。 */
@@ -151,7 +148,6 @@ export class TurnStore {
       status:      'aborted',
       completedAt: Date.now(),
     });
-    this.registry.clear(sessionId, running);
   }
 
   /**

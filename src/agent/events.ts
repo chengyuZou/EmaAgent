@@ -119,6 +119,8 @@ export type SubagentEvent =
   | {
       readonly type: 'tool_result';
       readonly subagentId: string;
+      /** 模型可见工具名, 消费方无需反查流式消息来识别结果来源. */
+      readonly toolName: string;
       readonly result: ToolResult;
     }
   | {

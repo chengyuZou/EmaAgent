@@ -27,7 +27,7 @@ src/storage/
 | 数据库 | 默认位置 | 负责内容 |
 |---|---|---|
 | `profile.db` | `~/.ema-agent/profile.db` | Provider、模型绑定、角色、设置、Skill、权限规则、全局 Memory 与 KB 注册信息 |
-| `data.db` | `~/.ema-agent/data/data.db`，也可切换数据目录 | Session、Turn、Message、附件索引、Task、Subagent、ToolExecution、后台进程与 Session 级状态 |
+| `data.db` | `~/.ema-agent/data/data.db`，也可切换数据目录 | Session、Turn、Message、附件索引、Task、Goal、Subagent、ToolExecution、后台进程与 Session 级状态 |
 | `kb.db` | 每个 KB 自己的受控目录 | 文档、分块、预览、FTS、导入与重嵌入任务 |
 
 `Database` 只负责打开某一个 SQLite 文件、设置 pragma、执行对应迁移和暴露受控句柄。业务装配层负责把正确的数据库实例交给正确的 Repo。
@@ -43,6 +43,7 @@ src/storage/
 - `MessagesRepo.listPage()` 返回 History 所需的完整 Message；只做目录展示时使用
   `listHeadersPage()`，正文由明确的 Message id 再经 `findById()` 读取，不能让大块
   `blocks_json` 跟随折叠目录批量穿过 HTTP 边界。
+- `GoalsRepo.listSummariesForSession()` 只选择 Goal 历史列表的身份, 正文, 状态, 终态原因和时间列, 不批量读取 feedback/error/version. 完整详情通过 `findById()` 读取, Row 到业务 Goal/GoalSummary 的映射由 GoalStore 负责.
 
 ## 迁移规则
 

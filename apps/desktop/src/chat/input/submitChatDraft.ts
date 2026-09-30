@@ -12,6 +12,7 @@ import { finalizeDraft } from './finalizeDraft.js';
 export async function submitChatDraft(
   sessionId: string,
   submitted: ChatDraft,
+  objective?: string,
 ): Promise<void> {
   let requestStarted = false;
   try {
@@ -52,6 +53,7 @@ export async function submitChatDraft(
       input,
       sessionMode: submitted.sessionMode,
       narrativePolicy: submitted.narrativePolicy,
+      ...(objective !== undefined ? { objective } : {}),
       ...(submitted.sessionMode === 'work' && submitted.selectedAssetIds.length > 0
         ? { knowledge: { assetIds: [...submitted.selectedAssetIds] } }
         : {}),
@@ -77,6 +79,9 @@ export async function submitChatDraft(
           || error.code === 'session_idle'
           || error.code === 'session_busy'
           || error.code === 'session_not_found'
+          || error.code === 'goal_already_exists'
+          || error.code === 'goal_plan_conflict'
+          || error.code === 'goal_objective_empty'
         ));
     if (definitelyNotStored) {
       const drafts = useChatDraftStore.getState();

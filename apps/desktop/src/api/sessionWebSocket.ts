@@ -19,7 +19,7 @@ export type SessionConnectionState =
 
 export interface SessionSocketSubscriber {
   readonly onMessage: SessionMessageHandler;
-  readonly onConnectionState: SessionConnectionStateHandler;
+  readonly onConnectionState?: SessionConnectionStateHandler;
 }
 
 interface PendingRequest {
@@ -71,12 +71,17 @@ class SessionWebSocket {
     const connection = this.getOrCreateConnection(sessionId);
     connection.closeRequested = false;
     connection.handlers.add(subscriber.onMessage);
-    connection.stateHandlers.add(subscriber.onConnectionState);
-    subscriber.onConnectionState(connection.state);
+    const onConnectionState = subscriber.onConnectionState;
+    if (onConnectionState) {
+      connection.stateHandlers.add(onConnectionState);
+      onConnectionState(connection.state);
+    }
     this.connect(sessionId, connection);
     return () => {
       connection.handlers.delete(subscriber.onMessage);
-      connection.stateHandlers.delete(subscriber.onConnectionState);
+      if (onConnectionState) {
+        connection.stateHandlers.delete(onConnectionState);
+      }
     };
   }
 

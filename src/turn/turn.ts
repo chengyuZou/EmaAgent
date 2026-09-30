@@ -77,7 +77,7 @@ export interface TurnReminderScope {
   readonly narrativePolicy: Turn['narrativePolicy'];
   /** 本 Turn 冻结的召回闭包（prepareTurnTools 构建）；always 路径据此查询，off 或无能力为 undefined。 */
   readonly narrativeSearch?: NarrativeSearch;
-  /** 本 Turn 用户文本. 纯后台续接触发时可以为空串. */
+  /** 本 Turn 用户文本. 内部续接触发时可以为空串. */
   readonly userText: string;
   /** Turn 级取消信号；reminder 期的召回随 Turn 中止一并取消。 */
   readonly signal: AbortSignal;
@@ -129,7 +129,7 @@ export interface TurnExecutorDeps extends PrepareTurnDeps {
    * 同步调用：只许入队类写入，禁止在此启动异步工作。Memory 零 import——由装配层注入。
    */
   readonly onTurnCompletedInTransaction?: (turnId: string) => void;
-  /** 用户排队输入和后台终态的唯一 Session 级续接所有者. */
+  /** 用户排队输入, 后台终态和 Goal 的唯一 Session 级续接所有者. */
   readonly continuations: SessionContinuationQueue;
 }
 
@@ -236,11 +236,14 @@ export class TurnExecutor {
     let prepared: PreparedTurn | undefined;
     let tools: TurnToolsAssembly | undefined;
     let terminal: 'completed' | 'failed' | 'aborted' = 'failed';
+    let handledGoalId: string | undefined;
     let parentMessagesReady: Promise<ForkParentMessages>;
     let resolveParentMessages: ((messages: ForkParentMessages) => void) | undefined;
     let rejectParentMessages: ((reason: unknown) => void) | undefined;
 
     try {
+      const initialGoal = this.deps.goalStore?.getCurrent(sessionId);
+      handledGoalId = initialGoal?.status === 'active' ? initialGoal.id : undefined;
       emit({
         type: 'turn_started',
         sessionId,
@@ -327,6 +330,7 @@ export class TurnExecutor {
         signal,
         emit,
       });
+      handledGoalId = reminderInput.goal?.status === 'active' ? reminderInput.goal.id : undefined;
       this.deps.sessions.appendMessage({
         turnId,
         sessionId,
@@ -340,15 +344,14 @@ export class TurnExecutor {
         this.deps.onTaskReminderPersisted?.(sessionId);
       }
 
-      // 后台终态使用内部 Message kind, 避免 History 把它伪装成用户手写内容.
-      // 此处只写 id 与终态, 完整结果仍由模型通过对应查询工具读取.
-      if (input.completionNoticeText) {
+      // 内部完成通知与 Goal 续接共用 Message kind, 不伪装成用户手写内容.
+      if (input.continuationText) {
         this.deps.sessions.appendMessage({
           turnId,
           sessionId,
           role: 'user',
           kind: 'continuation',
-          blocks: input.completionNoticeText,
+          blocks: input.continuationText,
         });
       }
       if (prepared.userMessageBlocks.length > 0) {
@@ -367,14 +370,14 @@ export class TurnExecutor {
       const persistClaim = async (
         claim: ClaimedSessionContinuation,
       ): Promise<SessionMessage> => {
-        if (claim.type === 'completion_notices') {
-          // completionNoticeText 不会在前端显示 因此无需 emit 事件
+        if (claim.type === 'continuation') {
+          // 内部续接文本不在聊天显示, 只持久化并交给模型.
           return this.deps.sessions.appendMessage({
             turnId,
             sessionId,
             role: 'user',
             kind: 'continuation',
-            blocks: claim.completionNoticeText,
+            blocks: claim.continuationText,
           });
         }
 
@@ -619,7 +622,7 @@ export class TurnExecutor {
         this.deps.turns.abortTurn(sessionId, turnId);
         const outcome: TurnOutcome = { status: 'aborted', sessionId, turnId, reason: 'user_stop' };
         await this.finishSafely(
-          channel, writer, terminal, tools, turnId,
+          channel, writer, terminal, tools, turn, signal, handledGoalId,
           () => resolveCompletion(outcome),
           rejectCompletion,
           () => emit({ type: 'turn_aborted', sessionId, turnId, reason: outcome.reason }),
@@ -638,7 +641,7 @@ export class TurnExecutor {
           turnId,
         };
         await this.finishSafely(
-          channel, writer, terminal, tools, turnId,
+          channel, writer, terminal, tools, turn, signal, handledGoalId,
           () => resolveCompletion(outcome),
           rejectCompletion,
           () => emit({ type: 'turn_completed', sessionId, turnId }),
@@ -652,7 +655,7 @@ export class TurnExecutor {
         : 'turn/execution_failed';
       const outcome = this.failTurn(turn, code, `AgentLoop 终止：${stopped.state.stopReason}`);
       await this.finishSafely(
-        channel, writer, terminal, tools, turnId,
+        channel, writer, terminal, tools, turn, signal, handledGoalId,
         () => resolveCompletion(outcome),
         rejectCompletion,
         () => emit({ type: 'turn_failed', sessionId, turnId, code, message: outcome.message }),
@@ -666,7 +669,7 @@ export class TurnExecutor {
         this.deps.turns.abortTurn(sessionId, turnId);
         const outcome: TurnOutcome = { status: 'aborted', sessionId, turnId, reason: 'user_stop' };
         await this.finishSafely(
-          channel, writer, terminal, tools, turnId,
+          channel, writer, terminal, tools, turn, signal, handledGoalId,
           () => resolveCompletion(outcome),
           rejectCompletion,
           () => emit({ type: 'turn_aborted', sessionId, turnId, reason: outcome.reason }),
@@ -678,7 +681,7 @@ export class TurnExecutor {
       try {
         const outcome = this.failTurn(turn, failureCodeOf(error), failureMessageOf(error));
         await this.finishSafely(
-          channel, writer, terminal, tools, turnId,
+          channel, writer, terminal, tools, turn, signal, handledGoalId,
           () => resolveCompletion(outcome),
           rejectCompletion,
           () => emit({
@@ -690,16 +693,13 @@ export class TurnExecutor {
           }),
         );
       } catch (terminalError) {
-        await this.finishSafely(channel, writer, terminal, tools, turnId, () => undefined, rejectCompletion);
+        await this.finishSafely(channel, writer, terminal, tools, turn, signal, handledGoalId, () => undefined, rejectCompletion);
         rejectCompletion(terminalError);
       }
     } finally {
       this.runningTools.delete(turnId);
       this.runningCompletions.delete(turnId);
       this.deps.turns.clearRunning(sessionId, turnId);
-      // 下一根排队 Turn 只能在当前运行记录清除后启动. completion Promise 在此前已兑现,
-      // 因而不能由它负责唤醒, 否则队列会把本 Session 误判为仍在执行.
-      if (terminal === 'completed') this.deps.continuations.turnCompleted(sessionId);
       if (prepared?.scratchpadDir) {
         const scratchpadDir = prepared.scratchpadDir;
         // 后台 Subagent 继续使用父 Turn 的 scratchpad. 清理动作跟随最后一个
@@ -721,18 +721,21 @@ export class TurnExecutor {
     writer: TurnMessageWriter,
     terminal: 'completed' | 'failed' | 'aborted',
     tools: TurnToolsAssembly | undefined,
-    turnId: string,
+    turn: Turn,
+    signal: AbortSignal,
+    handledGoalId: string | undefined,
     resolve: () => void,
     reject: (error: unknown) => void,
     emitTerminal?: () => void,
   ): Promise<void> {
-    let writerFinished = false;
-    let writerError: unknown;
+    const { sessionId, id: turnId } = turn;
+    let finishSucceeded = false;
+    let finishError: unknown;
     try {
       await writer.finish(terminal);
-      writerFinished = true;
+      finishSucceeded = true;
     } catch (error) {
-      writerError = error;
+      finishError = error;
       console.warn('[turn] 消息收口失败，终态事件未广播:', error);
     }
     try {
@@ -747,14 +750,38 @@ export class TurnExecutor {
         // 工具关闭失败不能覆盖终态。
       }
     }
-    if (!writerFinished) {
-      reject(writerError);
-      channel.fail(writerError);
+    try {
+      if (terminal !== 'completed' || signal.aborted || !finishSucceeded) {
+        this.pauseHandledGoal(sessionId, handledGoalId);
+      }
+    } catch (error) {
+      finishSucceeded = false;
+      finishError = error;
+    }
+    // 收尾和 Goal 暂停先完成, 再解除占用. completion/终态事件不会暴露半收尾的 Session.
+    this.runningTools.delete(turnId);
+    this.runningCompletions.delete(turnId);
+    this.deps.turns.clearRunning(sessionId, turnId);
+    let continuationStatus = terminal;
+    if (!finishSucceeded) continuationStatus = 'failed';
+    else if (signal.aborted) continuationStatus = 'aborted';
+    this.deps.continuations.turnFinished(sessionId, continuationStatus);
+    if (!finishSucceeded) {
+      reject(finishError);
+      channel.fail(finishError);
       return;
     }
     emitTerminal?.();
     resolve();
     channel.finish();
+  }
+
+  private pauseHandledGoal(sessionId: string, goalId: string | undefined): void {
+    if (!goalId || !this.deps.goalStore) return;
+    const goal = this.deps.goalStore.get(sessionId, goalId);
+    if (goal?.status !== 'active') return;
+    // feedback 和用户编辑都可能增加版本. 暂停同一目标的当前版本, 不影响后来新建的目标.
+    this.deps.goalStore.pause({ sessionId, goalId, expectedVersion: goal.version });
   }
 
   private failTurn(

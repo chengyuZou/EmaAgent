@@ -26,6 +26,34 @@ export function renderToolArgs(args: unknown): ToolArgView {
   };
 }
 
+/** 结构化错误仅改变展示; 工具返回给模型的原文与复制内容不变. */
+export function renderToolError(message: string): ToolArgRow[] | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(message);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+
+  const rows: ToolArgRow[] = [];
+  const visit = (key: string, value: unknown): void => {
+    if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+      for (const [childKey, childValue] of Object.entries(value)) {
+        visit(`${key}.${childKey}`, childValue);
+      }
+      return;
+    }
+    rows.push({
+      key,
+      value: value == null ? '' : typeof value === 'string' ? value : JSON.stringify(value),
+      ...(typeof value !== 'string' && value !== null ? { mono: true } : {}),
+    });
+  };
+  for (const [key, value] of Object.entries(parsed)) visit(key, value);
+  return rows.length > 0 ? rows : null;
+}
+
 // ── 结果视图 ──────────────────────────────────────────────────────────────────
 
 export type ToolResultView =

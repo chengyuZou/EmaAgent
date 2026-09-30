@@ -8,8 +8,10 @@ Backup 只负责导出和导入单个 Session。角色、Provider 配置、MCP�
 
 - `manifest.json`：格式版本、Session id、导出时缺失的文件；
 - `records/session.json`：Session 本身；
-- `records/*.jsonl`：Turn、Message、Task、Subagent、Tool 执行、后台进程、附件、语音、用量和 KB 使用记录；
+- `records/*.jsonl`：Turn、Message、Task、Goal、Subagent、Tool 执行、后台进程、附件、语音和用量记录；
 - `files/`：附件、TTS 成品、TTS 片段和后台进程输出。
+
+新导出的格式为 v6。仍可导入 v5 归档；v5 没有 Goal 记录，因此不会凭空生成目标。
 
 导出在一个 SQLite 读取事务中依次读取数据库行并写入临时 JSONL，文件复制在事务结束后进行。最终 ZIP 逐块压缩并写入调用方提供的输出，不把整个 Session 或 ZIP 放进内存。
 
@@ -20,7 +22,7 @@ Backup 只负责导出和导入单个 Session。角色、Provider 配置、MCP�
 - 导出或导入失败后，本次临时目录会立即删除；
 - 软件下次启动构造 `SessionBackup` 时，会清空上次异常退出遗留的 `.backup-temp`；
 - 不续传、不续压缩，失败后整次重来；
-- 来源机尚未结束的 Turn、Subagent、Tool 执行和后台进程在导入时转成明确终态，不会自动继续。
+- 来源机尚未结束的 Turn、Subagent、Tool 执行和后台进程在导入时转成明确终态，不会自动继续；active Goal 则变为 paused，保留原目标和反馈，等待用户手动激活。
 
 ## 公共入口
 

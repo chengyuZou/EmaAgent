@@ -146,6 +146,11 @@
   color: var(--ema-danger-text);
 }
 
+.ema-tool-error .ema-tool-field-row dd {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .ema-tool-row-status {
   display: inline-flex;
   align-items: center;

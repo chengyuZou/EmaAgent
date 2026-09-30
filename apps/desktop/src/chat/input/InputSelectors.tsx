@@ -91,16 +91,20 @@ export function SessionModeSelector({
 
 export function PermissionModeSelector({
   value,
+  planUnavailableReason,
   onChange,
 }: {
   value: PermissionMode;
+  planUnavailableReason?: string;
   onChange(value: PermissionMode): void;
 }): JSX.Element {
   // 各档权限有对应图标, 菜单与当前按钮共用同一映射.
   const items = (): MenuItem[] => (['default', 'acceptEdits', 'bypassPermissions', 'plan'] as const).map((mode) => ({
     kind: 'item',
     label: PERMISSION_MODE_LABELS[mode],
-    description: PERMISSION_MODE_DESCRIPTIONS[mode],
+    description: mode === 'plan' && planUnavailableReason
+      ? planUnavailableReason : PERMISSION_MODE_DESCRIPTIONS[mode],
+    disabled: mode === 'plan' && !!planUnavailableReason,
     icon: value === mode ? 'i-lucide:check' : PERMISSION_MODE_ICONS[mode],
     onSelect: () => onChange(mode),
   }));

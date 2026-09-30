@@ -10,10 +10,22 @@ Turn 管一次根 Agent 对话：创建运行记录，准备模型和工具，�
 
 1. `TurnStore.startTurn` 创建运行中的 Turn，同一 Session 不同时运行两根 Turn。
 2. `prepare/prepareTurn.ts` 读取 Session、设置和模型事实，处理输入附件与 Skill，准备工具和 System Prompt，返回本轮固定使用的 `PreparedTurn`。`prepare/prepareTurnTools.ts` 管工具池、权限询问和 AskUser 的执行入口。
-3. Turn 读取一次 reminder，先写 reminder，再写用户输入或后台完成通知。之后调用 `SessionStore.loadHistory`，由 Context 的 `projectSessionMessages` 把有效 SQL 消息投影为模型消息。这里不再切 `history/currentTurn`。
+3. Turn 读取一次 reminder, 先写 reminder, 再分别写 `continuationText` 内部续接文本与用户输入. 二者可以在同一 Turn 中同时存在; 前者持久化为 `kind='continuation'`, 不发用户发言事件. 之后调用 `SessionStore.loadHistory`, 由 Context 的 `projectSessionMessages` 把有效 SQL 消息投影为模型消息. 这里不再切 `history/currentTurn`.
 4. 每次模型调用前，`prepare/prepareAgentIteration.ts` 用完整模型消息数组装配 Context，并把同一数组交给 Compact。Micro 改写消息内容；Macro 用摘要替换被覆盖的前缀，摘要作为 `kind='summary'` 的 Session Message 落库。System Prompt 只参加本次请求，不写入 Session Message，也不参加工作消息压缩。
 5. `AgentLoop` 产出流式事件。`turnMessageWriter.ts` 在首个 Assistant 增量时建行，后续更新同一行；`tool_use_completed` 先保存调用，AgentLoop 恢复后才启动工具；每个 `tool_result` 保存为独立 User Message。Turn 再把事件转发给前端。
-6. 完成时写入唯一终态，收口未完成的 Assistant 和工具调用，关闭交互队列与事件通道；队列决定是否启动下一根 Turn。
+6. 写入唯一终态后, 收口未完成的 Assistant 和工具调用, 关闭交互与工具, 按停止/失败策略暂停本轮 Goal, 再清除运行占用并通知队列. `completion` 和终态事件在执行收尾与解锁之后交付, 不让消费方接到半收尾的 Session.
+
+## Session 续接与 Goal
+
+`SessionContinuationQueue` 是唯一交付入口. `SessionRunningRegistry` 判断根 Turn 或手动 Compact 的占用; 同一 Session 的多个唤醒合并成一次微任务, 领取和注册之间不 await.
+
+- 下一根 Turn 先领取用户输入, 当前 Goal active 则同时附带短 continuationText. Turn 将提示与正常用户 Message 分别落库, 不互相替换, 不额外启动第二根 Turn. 没有用户输入时保留后台通知顺序, 没有一次性内容时生成纯 Goal 继续指令. 只有一个 `startTurn` 路径, Goal 不永久入队或复制正文.
+- `claimNextIteration` 仍只交付后台完成通知和用户立即引导, 不生成 Goal 续接. 普通排队输入和 Goal 留到 Turn 收尾后处理.
+- 后台通知与 Goal 续接对 Turn 都是 `type='continuation'` / `continuationText`. Subagent 和后台 Process 的通知仍在队列内部保留执行 ID, 去重键和 claim/acknowledge/release 身份. 模型用 `SubagentAwait` 或 `ProcessOutput` 读取完整结果.
+- 一次性输入/通知在对应 Message 持久化后才 acknowledge, 准备或写入失败则 release. 停止和最终失败向同一 `turnFinished` 入口交付事实, 但不立即重试归还内容; 后续用户入队, Goal 激活或后台完成等明确唤醒仍可交付.
+- Goal 创建/激活事件请求同一队列排水. Session 忙碌时不抢占, 正常 Turn 收尾和手动 Compact 的 finally 解锁后重新选择最新工作. Server 关闭先 shutdown 队列, Session 删除由既有 TurnStore 删除守卫挡住新启动.
+- 新 Turn 的 reminder 交付 Goal 身份, version, objective 和 feedback. 当前 Turn 中关闭 Goal 不直接 abort; Store 拒绝旧工具写入, 收尾后不再生成已关闭目标的续接. 不增加每次模型请求的目标替换协调或第二套 AgentLoop.
+- 用户停止或最终运行失败时, 暂停本轮处理的同一个 GoalId 的当前 active 版本. feedback, 编辑或重新激活增加版本也不漏暂停; 不改写已经关闭的 Goal 或后来新建的另一个 Goal. 模型已结束但工具仍在收尾时收到停止信号, 也会暂停该 Goal 并停止自动续接, 不重写已提交的 Turn 终态.
 
 ## Macro 与消息 ID
 
@@ -47,7 +59,7 @@ src/turn/
   turnStore.ts               Turn 行与运行状态
   eventChannel.ts            单消费者过程事件通道
   interactionQueue.ts        Permission 和 AskUser 等待队列
-  sessionContinuationQueue.ts 追加输入与后台完成通知队列
+  sessionContinuationQueue.ts 追加输入, 后台通知与 Goal 的统一续接队列
   prepare/
     prepareTurn.ts           一次性准备根 Turn
     prepareTurnTools.ts      工具池及工具执行入口

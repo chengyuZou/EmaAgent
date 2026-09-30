@@ -1,16 +1,17 @@
-// 按 Session 串联用户排队输入和本进程后台终态, 并只在 Agent 的安全边界交付给模型.
+// 按 Session 串联排队输入, 后台终态与 Goal, 在既有迭代边界或 Turn 收尾后交付.
 
 import { randomUUID } from 'node:crypto';
 import type { SubagentStatus } from '@ema-agent/agent';
-import type { SessionStore } from '@ema-agent/session';
+import type { GoalStore } from '@ema-agent/goal';
+import type { SessionRunningRegistry, SessionStore } from '@ema-agent/session';
 import type { BackgroundProcessNotifiableStatus } from '@ema-agent/tools';
 import type {
   StartTurn,
   TurnHandle,
   TurnInputPart,
   TurnKnowledgeSelection,
+  TurnOutcome,
 } from './types.js';
-import type { TurnStore } from './turnStore.js';
 
 /**
  * 自动续接只保留本次输入范围和朗读选择. 模型与推理强度每次从 Session 读取,
@@ -59,11 +60,12 @@ export type ClaimedSessionContinuation =
       readonly type: 'user_input';
       readonly turnId: string;
       readonly userInput: QueuedSessionInput;
+      readonly continuationText?: string;
     }
   | {
-      readonly type: 'completion_notices';
+      readonly type: 'continuation';
       readonly turnId: string;
-      readonly completionNoticeText: string;
+      readonly continuationText: string;
     };
 
 /** 队列内部条目. claimedByTurnId 存在时禁止删除、改为引导或被另一根 Turn 重复领取. */
@@ -93,7 +95,7 @@ type CompletionNotice =
       claimedByTurnId?: string;
     };
 
-/** 一次领取的反向索引. 用户输入和后台通知互斥, 一次确认只对应一条持久化 Message. */
+/** 一次领取的反向索引. 用户输入和后台通知互斥; Goal 提示不需要消费确认. */
 type ContinuationClaim =
   | {
       readonly type: 'user_input';
@@ -107,16 +109,20 @@ type ContinuationClaim =
     };
 
 /**
- * 队列依赖由 Server Composition 装配. Session/Turn Store 提供权威存在性和忙碌状态;
+ * 队列依赖由 Server Composition 装配. SessionStore 提供存在性, SessionRunningRegistry 提供根工作占用;
  * startTurn 与 attachTurn 负责真正启动执行并接入事件消费; publish 只同步前端队列状态.
  */
 export interface SessionContinuationQueueDeps {
   readonly sessions: Pick<SessionStore, 'getSession' | 'sessionExists'>;
-  readonly turns: Pick<TurnStore, 'getRunningTurn'>;
+  readonly sessionRunning: Pick<SessionRunningRegistry, 'isRunning'>;
+  readonly goals: Pick<GoalStore, 'getCurrent'>;
   readonly startTurn: (input: StartTurn) => TurnHandle;
   readonly attachTurn: (handle: TurnHandle) => void;
   readonly publish: (sessionId: string, event: SessionContinuationEvent) => void;
 }
+
+const GOAL_CONTINUATION_TEXT = '根据本轮 reminder 和 GoalGet 继续推进当前目标. '
+  + '目标已暂停或关闭时不要继续历史目标, 不自行创建或激活目标.';
 
 /**
  * 队列只保存当前进程还没交付的输入和轻量完成通知. Subagent 与后台命令的完整结果
@@ -293,11 +299,11 @@ export class SessionContinuationQueue {
   }
 
   /**
-   * 必须在 TurnStore.clearRunning 之后调用. completion Promise 会先于 finally 清理完成,
-   * 若从 Promise 回调唤醒, requestDrain 会把仍然 active 的 Session 当成忙碌而丢掉唤醒.
+   * 收尾完成并解除占用后交付终态. 停止/失败不立即重试归还的内容,
+   * 原输入和通知仍留到后续明确唤醒, 正常完成才自动选择下一份工作.
    */
-  turnCompleted(sessionId: string): void {
-    this.requestDrain(sessionId);
+  turnFinished(sessionId: string, status: TurnOutcome['status']): void {
+    if (status === 'completed') this.requestDrain(sessionId);
   }
 
   /** Session 删除流程在数据库删行前调用, 丢弃只属于该 Session 的全部进程内续接状态. */
@@ -328,14 +334,19 @@ export class SessionContinuationQueue {
     this.requestDrain(sessionId);
   }
 
-  private requestDrain(sessionId: string): void {
-    if (this.stopped || this.draining.has(sessionId) || this.deps.turns.getRunningTurn(sessionId)) return;
+  /** 只请求重新领取消息, 创建/激活 Goal 或手动 Compact 解锁也使用这个入口. */
+  requestDrain(sessionId: string): void {
+    if (this.stopped || this.draining.has(sessionId) || this.deps.sessionRunning.isRunning(sessionId)) return;
     // 推到微任务后再启动, 避免 startTurn 在生产者的终态回调栈内重入.
-    queueMicrotask(() => this.drain(sessionId));
+    this.draining.add(sessionId);
+    queueMicrotask(() => {
+      this.draining.delete(sessionId);
+      this.drain(sessionId);
+    });
   }
 
   private drain(sessionId: string): void {
-    if (this.stopped || this.draining.has(sessionId) || this.deps.turns.getRunningTurn(sessionId)) return;
+    if (this.stopped || this.draining.has(sessionId) || this.deps.sessionRunning.isRunning(sessionId)) return;
     if (!this.deps.sessions.sessionExists(sessionId)) return;
     this.draining.add(sessionId);
     const turnId = randomUUID();
@@ -347,7 +358,7 @@ export class SessionContinuationQueue {
       const selection = this.selections.get(sessionId);
       // 有用户输入时保持 userMessage 语义; 新 Turn 每次只领取一个 Queue item,
       // 其余输入继续按 guided 优先、普通 after_turn 随后的顺序等待后续安全点或 Turn.
-      // 纯后台通知使用 sessionContinuation,
+      // 内部通知与 Goal 续接共用 sessionContinuation,
       // 避免标题生成等只属于用户主动发言的业务被自动续接误触发.
       // 排队项不保留旧 TTS 选择. 启动时从 Session 偏好复制到 Turn, 后续只读 Turn 冻结值.
       const handle = this.deps.startTurn({
@@ -358,8 +369,8 @@ export class SessionContinuationQueue {
         narrativePolicy: selection?.narrativePolicy ?? session.narrativePolicy,
         ttsEnabled: session.ttsEnabled,
         input: claim.type === 'user_input' ? claim.userInput.input : [],
-        ...(claim.type === 'completion_notices'
-          ? { completionNoticeText: claim.completionNoticeText }
+        ...(claim.continuationText
+          ? { continuationText: claim.continuationText }
           : {}),
         ...(selection?.knowledge ? { knowledge: selection.knowledge } : {}),
       });
@@ -406,12 +417,22 @@ export class SessionContinuationQueue {
         completionNoticeKeys: notices.map(notice => notice.key),
       });
       return {
-        type: 'completion_notices',
+        type: 'continuation',
         turnId,
-        completionNoticeText: formatCompletionNoticeText(notices),
+        continuationText: formatCompletionNoticeText(notices),
       };
     }
-    if (!userInput) return undefined;
+    if (!userInput) {
+      if (nextIterationOnly) return undefined;
+      const goal = this.deps.goals.getCurrent(sessionId);
+      if (goal?.status !== 'active') return undefined;
+      // Goal 是持续消息来源, 不复制正文或永久入队; 下一次领取重新读取 SQL.
+      return {
+        type: 'continuation',
+        turnId,
+        continuationText: GOAL_CONTINUATION_TEXT,
+      };
+    }
 
     userInput.claimedByTurnId = turnId;
     this.claims.set(turnId, {
@@ -419,10 +440,12 @@ export class SessionContinuationQueue {
       sessionId,
       userInputId: userInput.id,
     });
+    const goal = nextIterationOnly ? null : this.deps.goals.getCurrent(sessionId);
     return {
       type: 'user_input',
       turnId,
       userInput: publicItem(userInput),
+      ...(goal?.status === 'active' ? { continuationText: GOAL_CONTINUATION_TEXT } : {}),
     };
   }
 }

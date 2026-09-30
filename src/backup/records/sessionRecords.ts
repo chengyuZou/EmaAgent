@@ -14,7 +14,7 @@ export const omittedSessionFileSchema = z.object({
 
 export const sessionBackupManifestSchema = z.object({
   format: z.literal('ema-session'),
-  version: z.literal(5),
+  version: z.union([z.literal(5), z.literal(6)]),
   sessionId: id,
   omittedFiles: z.array(omittedSessionFileSchema),
 }).strict();
@@ -117,6 +117,33 @@ export const taskRecordSchema = z.object({
   updatedAt: integer,
   completedAt: integer.nullable(),
 }).strict();
+
+export const goalRecordSchema = z.object({
+  id,
+  sessionId: id,
+  objective: z.string().min(1),
+  feedback: z.string().nullable(),
+  status: z.enum(['active', 'paused', 'completed']),
+  version: integer.positive(),
+  reason: z.enum(['succeeded', 'failed', 'cancelled']).nullable(),
+  error: z.string().nullable(),
+  createdAt: integer,
+  updatedAt: integer,
+  completedAt: integer.nullable(),
+}).strict().superRefine((goal, ctx) => {
+  if (goal.status !== 'completed') {
+    if (goal.reason !== null || goal.error !== null || goal.completedAt !== null) {
+      ctx.addIssue({ code: 'custom', message: '未完成 Goal 不能携带终态字段' });
+    }
+    return;
+  }
+  if (goal.reason === null || goal.completedAt === null) {
+    ctx.addIssue({ code: 'custom', message: '已完成 Goal 缺少终态原因或时间' });
+  }
+  if ((goal.reason === 'failed') !== (goal.error !== null)) {
+    ctx.addIssue({ code: 'custom', message: 'Goal 错误必须与 failed 原因一致' });
+  }
+});
 
 export const subagentRecordSchema = z.object({
   id,
@@ -249,6 +276,7 @@ export type SessionRecord = z.infer<typeof sessionRecordSchema>;
 export type TurnRecord = z.infer<typeof turnRecordSchema>;
 export type MessageRecord = z.infer<typeof messageRecordSchema>;
 export type TaskRecord = z.infer<typeof taskRecordSchema>;
+export type GoalRecord = z.infer<typeof goalRecordSchema>;
 export type SubagentRecord = z.infer<typeof subagentRecordSchema>;
 export type SubagentInvocationRecord = z.infer<typeof subagentInvocationRecordSchema>;
 export type SubagentMessageRecord = z.infer<typeof subagentMessageRecordSchema>;

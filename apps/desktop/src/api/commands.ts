@@ -1,4 +1,4 @@
-// Commands API：/api/commands——前端斜杠菜单的确定性命令目录投影（V1 只有 compact）。
+// Commands API: 前端斜杠菜单的确定性操作目录, 包含 compact 和 Goal 管理入口.
 // Skill 条目不走这里，归 api/skills.js；菜单在前端合并两份目录展示。
 import { rpcClient, readRpcJson, type RpcClient, type RpcJson } from './client.js';
 

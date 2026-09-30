@@ -1,6 +1,7 @@
 // 定义宿主在单次工具调用中提供的业务能力集合。
 import type { CommandRunner } from '@ema-agent/sandbox';
 import type { TaskStore } from '@ema-agent/tasks';
+import type { GoalStore } from '@ema-agent/goal';
 import type { KnowledgeSearch } from '@ema-agent/knowledge';
 import type {
   ListMemory,
@@ -121,6 +122,8 @@ export interface ToolUseContext {
   readonly narrativeSearch?: NarrativeSearch;
   /** Task 工具族的持久存储。 */
   readonly taskStore?: TaskStore;
+  /** 根 Agent 读取和报告 Session Goal, 子代理不提供此能力. */
+  readonly goalStore?: GoalStore;
   /** Subagent 工具的子 Agent 启动器。 */
   readonly subagents?: SubagentControl;
   /** Skill 工具的本根 Turn 冻结技能池;缺省(子 Agent、chat 态)时 Skill 工具不可见。 */

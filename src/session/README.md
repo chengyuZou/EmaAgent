@@ -32,6 +32,12 @@
 
 `SessionStoreDeps.onChanged` 在对应写入成功后接收 `SessionEvent`：`session_list_changed` 表示侧栏会话或项目投影须重查；`session_messages_changed { sessionId }` 表示该会话新增了持久 Message。流式 Message 块更新不逐次广播，完整正文以 Turn 终态事件为刷新边界。导入备份和末轮回退绕过本 Store 写入口，分别由 Server 导入路由和 TurnStore 清理回调在提交后发相同事件。
 
+`patchSession` 切换 Permission 为 plan 时, 在同一 SQL 事务内检查 Goals 当前事实.
+active 或 paused 都表示目标未关闭, 拒绝切换并抛出 `SessionPlanGoalConflictError`,
+其 `goalId` 指出需要用户关闭的目标. 同请求的其它字段也不写入, 不发成功事件.
+完成或删除目标后才允许切 Plan. SessionStore 只读取 Storage 的 GoalRow,
+不导入 Goal 业务包, 不代替用户取消目标. 反方向的新建/激活检查由 GoalStore 负责.
+
 ## 边界（本包不负责）
 
 - Turn 生命周期、运行态（取消信号/运行锁）、导航查询、rewind、Session 删除守卫 → `@ema-agent/turn` 的 `TurnStore`；

@@ -167,6 +167,11 @@ export function buildComposition(input: {
   notifyBackgroundCompletion = (sessionId, backgroundProcessId, status) => {
     turn.continuations.backgroundProcessCompleted(sessionId, backgroundProcessId, status);
   };
+  const stopGoalContinuation = appEvents.subscribe(event => {
+    if (event.type === 'goal_created' || event.type === 'goal_activated') {
+      turn.continuations.requestDrain(event.goal.sessionId);
+    }
+  });
   const commands = openCommands({
     database,
     settings,
@@ -197,6 +202,7 @@ export function buildComposition(input: {
       // 先封住自动续接, 再中止并等待根 Turn/手动 Compact 清除各自的 Session 运行记录.
       // 否则数据库关闭后, 在执行 Turn 的 finally 仍可能继续落终态或启动下一根 Turn.
       turn.continuations.shutdown();
+      stopGoalContinuation();
       await database.sessionRunning.abortAll();
       stopPublishingSessionRunning();
       await turn.subagents.shutdown('Application is shutting down');

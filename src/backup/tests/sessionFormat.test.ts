@@ -11,6 +11,7 @@ describe('sessionFormat', () => {
     expect(new Set(SESSION_RECORD_FILES.map(file => file.path)).size)
       .toBe(SESSION_RECORD_FILES.length);
     expect(sessionRecordFile('messages').path).toBe('records/messages.jsonl');
+    expect(sessionRecordFile('goals').path).toBe('records/goals.jsonl');
   });
 
   it('只接受已登记记录和三类 Session 文件', () => {

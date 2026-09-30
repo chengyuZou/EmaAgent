@@ -3,9 +3,9 @@
 import { useState, useEffect, type JSX, type ReactNode } from 'react';
 import { IconButton } from '@ema-agent/ui';
 import { sessionWebSocket } from '../../../api/sessionWebSocket.js';
-import { renderToolResult } from './tool-renderers.js';
+import { renderToolError, renderToolResult } from './tool-renderers.js';
 import { lookupToolUI } from './toolUIRegistry.js';
-import { ToolArgsView, ToolResultViewBlock } from './ToolRenderBlocks.js';
+import { ToolArgsView, ToolResultViewBlock, ToolRows } from './ToolRenderBlocks.js';
 import {
   formatJson,
   fmtDuration,
@@ -270,10 +270,11 @@ function ToolCopyButton({ label, text }: { label: string; text: string }): JSX.E
 }
 
 export function ToolFailure({ code, message }: { code: string; message: string }): JSX.Element {
+  const rows = renderToolError(message);
   return (
     <div className="ema-tool-error" role="alert">
       <div className="ema-tool-error-code">{code}</div>
-      <pre className="ema-tool-error-message">{message}</pre>
+      {rows ? <ToolRows rows={rows} /> : <pre className="ema-tool-error-message">{message}</pre>}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 // Session 动作：偏好修改、fork、末轮回退、已读、归档与永久删除。
 import { Hono } from 'hono';
 import { z } from 'zod';
-import type { SessionStore } from '@ema-agent/session';
+import { SessionPlanGoalConflictError, type SessionStore } from '@ema-agent/session';
 import type { TurnStore } from '@ema-agent/turn';
 import { jsonBody } from '../validate.js';
 
@@ -50,6 +50,9 @@ export const sessionActionsRoute = (deps: SessionActionsRouteDeps) =>
         deps.session.patchSession(sessionId, patch);
         return context.json(deps.session.getSession(sessionId));
       } catch (error) {
+        if (error instanceof SessionPlanGoalConflictError) {
+          return context.json({ error: error.code, goalId: error.goalId }, 409);
+        }
         if (errorMessageStartsWith(error, 'session_not_found')) {
           return context.json({ error: 'session_not_found' }, 404);
         }

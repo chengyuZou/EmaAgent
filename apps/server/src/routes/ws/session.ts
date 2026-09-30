@@ -2,6 +2,7 @@
 import { CommandsError, type ManualCompactResult } from '@ema-agent/commands';
 import type { CompactEvent } from '@ema-agent/compact';
 import type { SubagentEvent, SubagentExecutor } from '@ema-agent/agent';
+import { GoalError, type GoalStore } from '@ema-agent/goal';
 import type { PermissionResponse } from '@ema-agent/permission';
 import {
   SessionBusyError,
@@ -46,6 +47,7 @@ const userMessagePayloadSchema = z.object({
   sessionMode: z.enum(['chat', 'work']),
   narrativePolicy: z.enum(['auto', 'always', 'off']),
   input: z.array(inputPartSchema).min(1).max(REQUEST_VALUE_LIMITS.maxTurnContentParts),
+  objective: z.string().refine(text => text.trim().length > 0, '目标正文不能为空').optional(),
   knowledge: z.object({
     assetIds: z.array(z.string().min(1)).min(1).max(REQUEST_VALUE_LIMITS.maxTurnKbAssetScopes),
   }).optional(),
@@ -222,6 +224,7 @@ export interface SessionWebSocketRouteDeps {
   readonly executor: TurnExecutor;
   readonly subagents: SubagentExecutor;
   readonly continuations: SessionContinuationQueue;
+  readonly goals: Pick<GoalStore, 'create'>;
   readonly sessions: Pick<SessionStore, 'sessionExists' | 'getSession' | 'loadMessagesForTurn'>;
   readonly turns: Pick<TurnStore, 'getTurn'>;
   readonly sessionRunning: SessionRunningRegistry;
@@ -283,6 +286,22 @@ async function handleClientMessage(
     switch (message.type) {
       case 'send_user_message': {
         if (!hasTurnInput(message.payload.input)) throw new SessionRequestError('empty_input', 'Turn 输入为空');
+        if (message.payload.objective !== undefined) {
+          if (deps.sessionRunning.getRunning(sessionId)?.kind === 'compact') throw new SessionBusyError(sessionId);
+          // 创建事件只请求排水微任务. 同步入队后, 初始用户任务与 Goal 提示才一起领取.
+          deps.goals.create(sessionId, message.payload.objective);
+          deps.continuations.enqueue({
+            sessionId,
+            input: message.payload.input,
+            selection: {
+              sessionMode: message.payload.sessionMode,
+              narrativePolicy: message.payload.narrativePolicy,
+              ...(message.payload.knowledge ? { knowledge: message.payload.knowledge } : {}),
+            },
+          });
+          socket.send({ type: 'request_succeeded', requestId: message.requestId });
+          return;
+        }
         // 发送消息只提交内容; 新 Turn 的语音选择从该 Session 的已保存设置读取.
         const ttsEnabled = deps.sessions.getSession(sessionId).ttsEnabled;
         const handle = deps.executor.start({
@@ -303,6 +322,7 @@ async function handleClientMessage(
         if (deps.sessionRunning.getRunning(sessionId)?.kind !== 'turn') {
           throw new SessionRequestError('session_idle', '当前 Session 没有运行中的 Turn');
         }
+        if (message.payload.objective !== undefined) deps.goals.create(sessionId, message.payload.objective);
         deps.continuations.enqueue({
           sessionId,
           input: message.payload.input,
@@ -418,6 +438,11 @@ function commandFailure(error: unknown): { code: string; message: string } {
   if (error instanceof SessionRequestError) return { code: error.code, message: error.message };
   if (error instanceof SessionBusyError) return { code: 'session_busy', message: error.message };
   if (error instanceof CommandsError) return { code: error.code.replace('/', '_'), message: error.message };
+  if (error instanceof GoalError) {
+    if (error.code === 'goal_already_exists') return { code: error.code, message: '已有进行中或暂停的目标, 请先关闭它.' };
+    if (error.code === 'goal_plan_conflict') return { code: error.code, message: 'Plan 与 Goal 互斥, 请先关闭 Plan.' };
+    return { code: error.code, message: error.message };
+  }
   if (error instanceof Error && error.message.startsWith('session_not_found')) {
     return { code: 'session_not_found', message: error.message };
   }

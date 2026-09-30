@@ -26,6 +26,7 @@ import type { CommandRunner } from '@ema-agent/sandbox';
 import type { SettingsStore } from '@ema-agent/settings';
 import type { SkillPool } from '@ema-agent/skills';
 import type { TaskStore } from '@ema-agent/tasks';
+import type { GoalStore } from '@ema-agent/goal';
 import {
   assembleToolPool,
   BuiltinTools,
@@ -74,6 +75,7 @@ export interface TurnToolsDeps {
   readonly settings: SettingsStore;
   readonly subagents: SubagentExecutor;
   readonly taskStore?: TaskStore;
+  readonly goalStore?: GoalStore;
   readonly knowledgeSearch?: KnowledgeSearch;
   /** narrativePolicy 非 'off' 时构建本 Turn 召回闭包; 与 resolveNarrativeLlm 同时缺失则无 Narrative 能力 */
   readonly currentNarrativeClient?: () => NarrativeClient | undefined;
@@ -252,6 +254,7 @@ export function prepareTurnTools(
       ? { narrativeSearch }
       : {}),
     ...(deps.taskStore ? { taskStore: deps.taskStore } : {}),
+    ...(deps.goalStore ? { goalStore: deps.goalStore } : {}),
     subagents: {
       start: (prompt, options, toolCallId, runInBackground, signal) => deps.subagents.start({
         sessionId,
@@ -291,6 +294,8 @@ export function prepareTurnTools(
     : availablePool;
 
   const toolResultStore = deps.toolResultStore?.(sessionId);
+  // 子代理继承其它宿主能力, 但不能读取或结束根 Session 的目标.
+  const { goalStore: _goalStore, ...subagentToolContext } = toolContext;
   let currentExecutor: StreamingToolExecutor | undefined;
   const createExecutor = (wake: () => void): StreamingToolExecutor => {
     const executor = new StreamingToolExecutor({
@@ -330,7 +335,7 @@ export function prepareTurnTools(
         toolPool: subPool,
         permissionContext,
         // 子 Agent 无 askPermission: headless, 中央把 ask 收口为 deny
-        toolContext,
+        toolContext: subagentToolContext,
         toolResultStore,
         ...(deps.toolExecutionState
           ? { toolExecutionState: deps.toolExecutionState }

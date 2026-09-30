@@ -18,10 +18,10 @@ export type SessionSidePanelTab =
       url: string | null;
       title?: string;
     }
-  // TODO: 最好是有个子代理总览跟某一个子代理
   | { id: 'subagents'; kind: 'subagents'; subagentId?: string }
   | { id: 'sources'; kind: 'sources' }
   | { id: 'tasks'; kind: 'tasks' }
+  | { id: string; kind: 'goal' }
   | { id: 'processes'; kind: 'processes' }
   | { id: `process:${string}`; kind: 'process'; backgroundProcessId: string };
 
@@ -51,7 +51,7 @@ export function normalizeFileTabKey(filePath: string): string {
 /** 为工作区文件建立稳定标签 ID, 原始 path 仍交给 FilesPanel 读取. */
 export function fileTab(filePath: string): SessionSidePanelTab {
   return {
-    id: `file:${normalizeFileTabKey(filePath)}`,
+    id: `file:${normalizeFileTabKey(filePath)}` as const,
     kind: 'file',
     path: filePath,
   };
@@ -60,7 +60,7 @@ export function fileTab(filePath: string): SessionSidePanelTab {
 /** Session 附件和来源文件使用独立 kind, 避免与工作区同路径文件混用面板行为. */
 export function sessionSourceTab(sourcePath: string): SessionSidePanelTab {
   return {
-    id: `source:${normalizeFileTabKey(sourcePath)}`,
+    id: `source:${normalizeFileTabKey(sourcePath)}` as const,
     kind: 'source',
     path: sourcePath,
   };
@@ -68,13 +68,13 @@ export function sessionSourceTab(sourcePath: string): SessionSidePanelTab {
 
 /** 一个 Terminal ID 对应一个可重复激活的终端标签. */
 export function terminalTab(terminalId: string): SessionSidePanelTab {
-  return { id: `terminal:${terminalId}`, kind: 'terminal', terminalId };
+  return { id: `terminal:${terminalId}` as const, kind: 'terminal', terminalId };
 }
 
 /** Summary 中点击某个后台进程时打开该进程自己的输出标签, 不是进程列表标签. */
 export function backgroundProcessTab(backgroundProcessId: string): SessionSidePanelTab {
   return {
-    id: `process:${backgroundProcessId}`,
+    id: `process:${backgroundProcessId}` as const,
     kind: 'process',
     backgroundProcessId,
   };
@@ -82,7 +82,7 @@ export function backgroundProcessTab(backgroundProcessId: string): SessionSidePa
 
 /** 浏览器创建时 URL 尚未回报, BrowserPanel 后续按 browserId 更新同一个标签. */
 export function browserTab(browserId: string): SessionSidePanelTab {
-  return { id: `browser:${browserId}`, kind: 'browser', browserId, url: null };
+  return { id: `browser:${browserId}` as const, kind: 'browser', browserId, url: null };
 }
 
 const DEFAULT_RIGHT_PANEL_PERCENT = 30;

@@ -2,7 +2,7 @@ export { SessionStore } from './store.js';
 export type { SessionEvent } from './events.js';
 export { DEFAULT_SESSION_TITLE } from './store.js';
 export type { SessionStoreDeps } from './store.js';
-export { SessionOwnershipError } from './errors.js';
+export { SessionOwnershipError, SessionPlanGoalConflictError } from './errors.js';
 export {
   SessionRunningAlreadyRegisteredError,
   SessionBusyError,

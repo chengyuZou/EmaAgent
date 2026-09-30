@@ -11,6 +11,36 @@ afterEach(() => {
   database = undefined;
 });
 
+describe('data migration v12', () => {
+  it('现有 v11 Goal 保留全部字段, 新反馈列初始为 null 且可以持久化', () => {
+    database = new Database({ memory: true, kind: 'data' });
+    const folder = fileURLToPath(new URL('../migrations/data/', import.meta.url));
+    const migrations = fs.readdirSync(folder)
+      .filter(name => name.endsWith('.sql') && Number.parseInt(name.slice(0, 3), 10) <= 11)
+      .sort();
+    for (const migration of migrations) {
+      database.sqlite.exec(fs.readFileSync(new URL(`../migrations/data/${migration}`, import.meta.url), 'utf8'));
+    }
+    database.sqlite.pragma('user_version = 11');
+    database.sqlite.exec(`
+      INSERT INTO sessions (id, title, cwd, created_at, updated_at)
+        VALUES ('goal-session', 'Keep session', '/workspace', 1, 2);
+      INSERT INTO goals (id, session_id, objective, status, version, reason, error, created_at, updated_at, completed_at)
+        VALUES ('old-goal', 'goal-session', 'Keep objective', 'active', 3, NULL, NULL, 4, 5, NULL);
+    `);
+    const before = database.sqlite.prepare('SELECT * FROM goals').get();
+    database.migrate();
+    expect(database.currentVersion()).toBe(12);
+    expect(database.sqlite.prepare('SELECT * FROM goals').get()).toEqual({ ...before as object, feedback: null });
+    database.sqlite.prepare('UPDATE goals SET feedback = ? WHERE id = ?').run('已完成第一部分', 'old-goal');
+    expect(database.sqlite.prepare('SELECT feedback FROM goals WHERE id = ?').get('old-goal'))
+      .toEqual({ feedback: '已完成第一部分' });
+    expect(database.sqlite.prepare('SELECT title FROM sessions WHERE id = ?').get('goal-session'))
+      .toEqual({ title: 'Keep session' });
+    expect(database.sqlite.pragma('foreign_key_check')).toEqual([]);
+  });
+});
+
 describe('data migration v2', () => {
   it('迁移旧汇总且不重复已有的 LLM Usage 记录', () => {
     database = new Database({ memory: true, kind: 'data' });
@@ -46,7 +76,7 @@ describe('data migration v2', () => {
 
     database.migrate();
 
-    expect(database.currentVersion()).toBe(10);
+    expect(database.currentVersion()).toBe(12);
     const columns = database.sqlite.pragma('table_info(turns)') as Array<{ name: string }>;
     expect(columns.map(column => column.name)).not.toContain('usage_input_tokens');
     expect(columns.map(column => column.name)).not.toContain('usage_output_tokens');

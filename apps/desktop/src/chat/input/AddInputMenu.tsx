@@ -116,6 +116,8 @@ export interface SlashCommandMenuProps {
   showCommands: boolean;
   /** 当前 Session 忙于 Turn 或手动压缩时, 不显示 /compact. */
   compactAvailable: boolean;
+  /** Plan 下隐藏目标入口, 读取失败时也不提供未经核对的目标操作. */
+  goalAvailable: boolean;
   /** ChatInput 用它将 textarea 按键交给菜单, 菜单不抢输入焦点. */
   handleRef: RefObject<SlashMenuHandle | null>;
   /** 用户点击条目或按 Enter 选中高亮项时调用; ChatInput 插入技能引用或执行命令, 不发送用户消息. */
@@ -130,6 +132,7 @@ export function SlashCommandMenu({
   projectId,
   showCommands,
   compactAvailable,
+  goalAvailable,
   handleRef,
   onSelect,
   onClose,
@@ -189,12 +192,13 @@ export function SlashCommandMenu({
     const commandItems: FlatItem[] = showCommands ? [
       ...commands
         .filter((command) => command.name !== 'compact' || compactAvailable)
+        .filter((command) => command.name !== 'goal' || goalAvailable)
         .filter((command) => matchesSlashQuery(command.name, filter))
         .map((command) => ({
           key: `command:${command.name}`,
           selection: { kind: 'command', command } as SlashSelection,
           section: '命令',
-          icon: 'i-lucide:terminal',
+          icon: command.name === 'goal' ? 'i-lucide:goal' : 'i-lucide:terminal',
           title: `/${command.name}`,
           detail: command.description,
         })),
@@ -226,7 +230,7 @@ export function SlashCommandMenu({
         origin: skillOrigin(skill),
       }));
     return [...commandItems, ...skillItems];
-  }, [commands, skills, filter, showCommands, compactAvailable]);
+  }, [commands, skills, filter, showCommands, compactAvailable, goalAvailable]);
 
   // 搜索词或候选项数量变化后, Enter 从第一项开始选.
   useEffect(() => {

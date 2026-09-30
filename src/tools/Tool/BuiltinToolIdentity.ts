@@ -30,6 +30,8 @@ export const BuiltinTools = Object.freeze({
   TaskGet:    Object.freeze({ id: 'builtin.task.get',    name: 'TaskGet', variant: 'task' }),
   TaskList:   Object.freeze({ id: 'builtin.task.list',   name: 'TaskList', variant: 'task' }),
   TaskUpdate: Object.freeze({ id: 'builtin.task.update', name: 'TaskUpdate', variant: 'task' }),
+  GoalGet:    Object.freeze({ id: 'builtin.goal.get', name: 'GoalGet', variant: 'task' }),
+  GoalUpdate: Object.freeze({ id: 'builtin.goal.update', name: 'GoalUpdate', variant: 'task' }),
   KnowledgeBaseSearch: Object.freeze({
     id: 'builtin.knowledge_base.search',
     name: 'KnowledgeBaseSearch',

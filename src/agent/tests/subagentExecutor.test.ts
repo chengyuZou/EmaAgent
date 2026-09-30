@@ -1,6 +1,7 @@
 // 验证进程级 Subagent 的结果归属: 前台直接返回, 转后台后通知 Session, 持久终态可重复读取.
 
-import type { StreamingToolExecutor } from '@ema-agent/tools';
+import type { StreamingToolExecutor, ToolResult } from '@ema-agent/tools';
+import { BuiltinTools } from '@ema-agent/tools/identity';
 import { describe, expect, it, vi } from 'vitest';
 import { SubagentExecutor, type StartSubagent } from '../subagentExecutor.js';
 import type { SubagentMessagesStore } from '../subagents/subagentMessagesStore.js';
@@ -109,6 +110,58 @@ function createExecutor(store: SubagentStore) {
 }
 
 describe('SubagentExecutor', () => {
+  it.each([false, true])('工具结果带原始工具名, 成功与失败都不需要消费者扫描消息(isError=%s)', async isError => {
+    const fixture = createExecutor(makeStore());
+    const input = makeInput('parent-call', Promise.resolve(), new AbortController().signal);
+    const prepare = input.prepareSubagent;
+    const toolResult: ToolResult = {
+      type: 'tool_result',
+      toolCallId: 'write-call',
+      content: 'result',
+      isError,
+    };
+    let registered = false;
+    let delivered = false;
+    let iteration = 0;
+    const toolExecutor = {
+      ...idleExecutor(),
+      addTool: () => { registered = true; },
+      takeCompletedResults: () => {
+        if (!registered || delivered) return [];
+        delivered = true;
+        return [toolResult];
+      },
+    } as unknown as StreamingToolExecutor;
+    const subagentId = fixture.executor.start({
+      ...input,
+      prepareSubagent: async args => ({
+        ...await prepare(args),
+        createToolExecutor: () => toolExecutor,
+        callLlm: () => (async function* () {
+          if (iteration++ === 0) {
+            yield {
+              type: 'tool_use_complete' as const,
+              blockIndex: 0,
+              callId: toolResult.toolCallId,
+              name: BuiltinTools.FileWrite.name,
+              args: {},
+            };
+            yield { type: 'done' as const, stopReason: 'tool_use' as const };
+          } else {
+            yield { type: 'done' as const, stopReason: 'end_turn' as const };
+          }
+        })(),
+      }),
+    });
+    await fixture.executor.waitForInitialResult(subagentId, 'session-1', new AbortController().signal);
+    expect(fixture.publish).toHaveBeenCalledWith('session-1', {
+      type: 'tool_result',
+      subagentId,
+      toolName: BuiltinTools.FileWrite.name,
+      result: toolResult,
+    });
+  });
+
   it('完成落库失败不会发布完成事件, 也不会改写为执行失败', async () => {
     const gate = deferred();
     const store = makeStore();

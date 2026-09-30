@@ -16,6 +16,7 @@ import { SessionRunningRegistry, SessionStore, type SessionEvent } from '@ema-ag
 import { TaskStore, type TaskEvent } from '@ema-agent/tasks';
 import { TurnStore } from '@ema-agent/turn';
 import { UsageRecorder } from '@ema-agent/usage';
+import { GoalStore, type GoalEvent } from '@ema-agent/goal';
 import {
   dataDbPathFor,
   profileDbPath,
@@ -44,6 +45,7 @@ export interface DatabaseComposition {
   readonly attachmentImages: AttachmentImagesRepo;
   readonly attachmentPastedTexts: AttachmentPastedTextsRepo;
   readonly tasks: TaskStore;
+  readonly goals: GoalStore;
   readonly subagents: SubagentStore;
   readonly subagentMessages: SubagentMessagesStore;
   /** 全部能力调用与用量查询共享的 Recorder, 不发应用事件. */
@@ -65,7 +67,7 @@ export interface DatabaseComposition {
 export function openDatabases(
   activeDataDir: string,
   emitChanged: (
-    event: SessionEvent | AttachmentEvent | TaskEvent,
+    event: SessionEvent | AttachmentEvent | TaskEvent | GoalEvent,
   ) => void,
 ): DatabaseComposition {
   const profileDb = new Database({ path: profileDbPath(), kind: 'profile' });
@@ -130,6 +132,7 @@ export function openDatabases(
     attachmentImages,
     attachmentPastedTexts,
     tasks: new TaskStore(new TasksRepo(dataDb.sqlite), emitChanged),
+    goals: new GoalStore(dataDb, emitChanged),
     subagents: new SubagentStore(new SubagentsRepo(dataDb.sqlite)),
     subagentMessages: new SubagentMessagesStore(new SubagentMessagesRepo(dataDb.sqlite)),
     usageRecorder,

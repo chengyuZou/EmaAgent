@@ -238,6 +238,7 @@ export class SubagentExecutor {
     const providerId = input.options.providerId;
     const modelId = input.options.modelId;
     let toolCallCount = 0;
+    const toolNames = new Map<string, string>();
     this.deps.publish(input.sessionId, {
       type: 'subagent_started', subagentId, contextMode, startedAt,
       ...(modelId ? { modelId } : {}),
@@ -250,11 +251,14 @@ export class SubagentExecutor {
         subagentId, prompt: input.prompt, options: input.options, signal: controller.signal,
       });
       for await (const event of runAgentLoop(loopInput)) {
-        if (event.type === 'tool_use_completed') toolCallCount += 1;
+        if (event.type === 'tool_use_completed') {
+          toolCallCount += 1;
+          toolNames.set(event.toolCallId, event.toolName);
+        }
         // 持久 transcript 必须先越过对应语义边界, 然后才能恢复 generator
         // 触发下一步工具副作用. 实时发布独立于 SQL, 不借父 Turn 通道.
         this.deps.messages.record(subagentId, event);
-        publishLoopEvent(this.deps.publish, input.sessionId, subagentId, event);
+        publishLoopEvent(this.deps.publish, input.sessionId, subagentId, event, toolNames);
         if (event.type === 'llm_call_finished') input.onLlmCallFinished?.(event);
         if (event.type === 'loop_stopped') terminal = event;
       }
@@ -296,6 +300,7 @@ function publishLoopEvent(
   sessionId: string,
   subagentId: string,
   event: AgentLoopEvent,
+  toolNames: Map<string, string>,
 ): void {
   switch (event.type) {
     case 'iteration_started':
@@ -336,8 +341,10 @@ function publishLoopEvent(
       publish(sessionId, {
         type: 'tool_result',
         subagentId,
+        toolName: toolNames.get(event.result.toolCallId) ?? 'unknown',
         result: event.result,
       });
+      toolNames.delete(event.result.toolCallId);
       return;
     default:
       return;

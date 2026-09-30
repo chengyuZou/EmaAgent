@@ -94,6 +94,13 @@ describe('SessionBackupReader', () => {
     insertMessage.run('msg-summary', 'session-cursor', 'turn-1', 'summary', '"summary"', 30, 'msg-a');
     database.db.prepare('UPDATE messages SET summary_saved_tokens = ? WHERE id = ?')
       .run(12_345, 'msg-summary');
+    database.db.prepare(`
+      INSERT INTO goals (
+        id, session_id, objective, feedback, status, version, reason, error,
+        created_at, updated_at, completed_at
+      ) VALUES ('goal-1', 'session-cursor', '目标原文', '阶段反馈', 'completed', 3,
+        'succeeded', NULL, 4, 8, 8)
+    `).run();
     insertMessage.run('msg-b', 'session-cursor', 'turn-1', 'normal', '"B"', 20, null);
     new SubagentsRepo(database.db).insert({
       id: 'subagent-1',
@@ -119,6 +126,7 @@ describe('SessionBackupReader', () => {
         turns: [...rows.turns],
         messages: [...rows.messages],
         tasks: [...rows.tasks],
+        goals: [...rows.goals],
         subagents: [...rows.subagents],
         subagentInvocations: [...rows.subagentInvocations],
         subagentMessages: [...rows.subagentMessages],
@@ -141,6 +149,15 @@ describe('SessionBackupReader', () => {
       .listForSessionFromSummary('session-restored');
     expect(history.map((message) => message.id)).toEqual(['msg-summary', 'msg-b']);
     expect(history[0]?.summary_saved_tokens).toBe(12_345);
+    expect(database.db.prepare('SELECT * FROM goals WHERE id = ?').get('goal-1')).toMatchObject({
+      session_id: 'session-restored',
+      objective: '目标原文',
+      feedback: '阶段反馈',
+      status: 'completed',
+      version: 3,
+      reason: 'succeeded',
+      completed_at: 8,
+    });
     expect(new SubagentMessagesRepo(database.db).listAllForSubagent('subagent-1')).toMatchObject([
       { id: 'subagent-assistant', role: 'assistant', kind: 'normal', interrupted: 1, sequence: 1 },
       {

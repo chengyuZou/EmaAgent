@@ -8,6 +8,16 @@ export class SessionOwnershipError extends Error {
   }
 }
 
+/** active 和 paused 都是未关闭的 Goal, 切 Plan 前必须由用户明确关闭目标. */
+export class SessionPlanGoalConflictError extends Error {
+  readonly code = 'session_plan_goal_conflict' as const;
+
+  constructor(readonly goalId: string) {
+    super('session_plan_goal_conflict');
+    this.name = 'SessionPlanGoalConflictError';
+  }
+}
+
 /** 同一 Session 已有根 Turn 或手动 Compact 时拒绝启动另一份根工作. */
 export class SessionBusyError extends Error {
   readonly code = 'session_busy' as const;

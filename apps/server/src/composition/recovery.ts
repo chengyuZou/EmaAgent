@@ -4,6 +4,7 @@ import { cleanupInterruptedFileWriteTemps } from '@ema-agent/builtin-tools';
 import { reconcileProjectRules } from '@ema-agent/permission';
 import type { SessionStore } from '@ema-agent/session';
 import type { SettingsStore } from '@ema-agent/settings';
+import type { GoalStore } from '@ema-agent/goal';
 import {
   ProjectsRepo,
   type Database,
@@ -29,6 +30,7 @@ export interface StartupRecoveryDeps {
   readonly toolExecutionState: ToolExecutionState;
   readonly backgroundProcesses: BackgroundProcess;
   readonly settings: SettingsStore;
+  readonly goals: GoalStore;
 }
 
 /**
@@ -37,6 +39,7 @@ export interface StartupRecoveryDeps {
  * Memory 的启动恢复归 Sol 的 Memory 包收口后接入。
  */
 export function runRequiredRecovery(deps: StartupRecoveryDeps): void {
+  deps.goals.pauseActiveOnStartup();
   recoverToolExecutions(deps);
   const interruptedProcesses = deps.backgroundProcesses.recoverInterrupted();
   if (interruptedProcesses.length > 0) {

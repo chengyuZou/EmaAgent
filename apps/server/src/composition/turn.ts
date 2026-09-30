@@ -114,7 +114,8 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
   });
   continuations = new SessionContinuationQueue({
     sessions: database.session,
-    turns: database.turns,
+    sessionRunning: database.sessionRunning,
+    goals: database.goals,
     startTurn: input => turnExecutor.start(input),
     attachTurn: handle => deps.fanout.attach(handle),
     publish: (sessionId, event) => deps.publishQueuedInput(sessionId, event),
@@ -230,6 +231,8 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
       : undefined;
     return {
       currentDate: new Date().toISOString().slice(0, 10),
+      // 异步召回结束后再读目标, 不把召回开始前的旧状态冻结进 reminder.
+      goal: database.goals.getCurrent(scope.sessionId),
       ...(git ? { gitSummary: git } : {}),
       ...(memoryWork ? { memoryWork } : {}),
       ...(memoryRelationship ? { memoryRelationship } : {}),
@@ -268,6 +271,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     subagents,
     continuations,
     taskStore: database.tasks,
+    goalStore: database.goals,
     knowledgeSearch: knowledge.knowledgeSearch,
     currentNarrativeClient: narrative.currentClient,
     resolveNarrativeLlm: narrative.resolveNarrativeLlm,

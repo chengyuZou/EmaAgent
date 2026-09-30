@@ -63,7 +63,14 @@ export function openCommands(deps: {
     emit: deps.publishCompactEvent,
   };
   return {
-    compactSession: sessionId => compactSession(compactDeps, sessionId),
+    compactSession: async sessionId => {
+      try {
+        return await compactSession(compactDeps, sessionId);
+      } finally {
+        // compactSession 已在自身 finally 解除占用, 重新交付期间到来的消息或 Goal.
+        turn.continuations.requestDrain(sessionId);
+      }
+    },
     listCommandDescriptors,
   };
 }

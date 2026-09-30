@@ -31,6 +31,7 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
+    "@ema-agent/goal": "workspace:*",
     "@ema-agent/knowledge": "workspace:*",
     "@ema-agent/llm": "workspace:*",
     "@ema-agent/memory": "workspace:*",
@@ -55,6 +56,7 @@
     "react": "^18.3.0"
   },
   "devDependencies": {
+    "@ema-agent/storage": "workspace:*",
     "@types/diff": "^8.0.0",
     "@types/node": "^20.0.0",
     "@types/react": "^18.3.0",

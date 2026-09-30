@@ -5,6 +5,7 @@ import type { SubagentInvocationRow, SubagentRow } from './subagents.js';
 import type { AttachmentImageRow } from './attachmentImages.js';
 import type { AttachmentPastedTextRow } from './attachmentPastedTexts.js';
 import type { BackgroundProcessRow } from './backgroundProcesses.js';
+import type { GoalRow } from './goals.js';
 import type { MessageRow } from './messages.js';
 import type { SessionRow } from './sessions.js';
 import type { SpeechOutputRow } from './speechOutputs.js';
@@ -41,6 +42,7 @@ export interface SessionBackupRows {
   readonly turns: Iterable<TurnRow>;
   readonly messages: Iterable<MessageRow>;
   readonly tasks: Iterable<SessionBackupTaskRow>;
+  readonly goals: Iterable<GoalRow>;
   readonly subagents: Iterable<SubagentRow>;
   readonly subagentInvocations: Iterable<SubagentInvocationRow>;
   readonly subagentMessages: Iterable<SubagentMessageRow>;
@@ -96,6 +98,10 @@ export class SessionBackupReader {
           WHERE session_id = ?
           ORDER BY display_number ASC, id ASC
         `, sessionId),
+        goals: this.iterate<GoalRow>(
+          'SELECT * FROM goals WHERE session_id = ? ORDER BY created_at ASC, id ASC',
+          sessionId,
+        ),
         subagents: this.iterate<SubagentRow>(
           'SELECT * FROM subagents WHERE session_id = ? ORDER BY created_at ASC, id ASC',
           sessionId,
@@ -242,6 +248,19 @@ export class SessionBackupRestorer {
         row.id, session.id, row.display_number, row.subject, row.description,
         row.active_form, row.status, row.created_by_turn_id,
         row.completed_by_turn_id, row.version, row.created_at, row.updated_at, row.completed_at,
+      );
+    }
+
+    const insertGoal = this.db.prepare(`
+      INSERT INTO goals (
+        id, session_id, objective, feedback, status, version, reason, error,
+        created_at, updated_at, completed_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const row of rows.goals) {
+      insertGoal.run(
+        row.id, session.id, row.objective, row.feedback, row.status, row.version,
+        row.reason, row.error, row.created_at, row.updated_at, row.completed_at,
       );
     }
 

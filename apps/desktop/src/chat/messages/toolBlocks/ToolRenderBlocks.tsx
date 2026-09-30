@@ -3,7 +3,7 @@ import { type JSX } from 'react';
 import { Markdown, highlightCode } from '@ema-agent/ui';
 import { renderToolArgs, renderToolResult, type ToolArgRow } from './tool-renderers.js';
 
-function ToolRows({ rows }: { rows: readonly ToolArgRow[] }): JSX.Element {
+export function ToolRows({ rows }: { rows: readonly ToolArgRow[] }): JSX.Element {
   return (
     <dl className="ema-tool-field-list">
       {rows.map((row) => (

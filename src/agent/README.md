@@ -4,6 +4,8 @@
 
 `SubagentStore` 在运行行创建、终态变更、删除或启动恢复落库后发 `subagents_changed { sessionId }`；跨窗口消费者重查该 Session 的子代理统计。`SubagentEvent` 仍是执行流事件，不替代持久化通知。
 
+`SubagentEvent.tool_result` 携带 `subagentId`、模型可见的 `toolName` 和原始 `result`. Desktop 用工具名称筛选工作区差异刷新, 不反查聊天消息; 名称由 `SubagentExecutor` 按本次调用 ID 从 `tool_use_completed` 配对, 结果发出后立即释放配对记录.
+
 ## 唯一循环
 
 ```text

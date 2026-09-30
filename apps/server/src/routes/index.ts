@@ -58,6 +58,7 @@ import { usageRecordsRoute } from './system/usageRecords.js';
 import { systemStatusRoute } from './system/status.js';
 import { systemEventsRoute } from './system/events.js';
 import { tasksRoute } from './tasks.js';
+import { goalsRoute } from './goals.js';
 import { turnAudioRoute } from './turns/audio.js';
 import { turnControlRoute } from './turns/control.js';
 import { filesRoute } from './workspaces/files.js';
@@ -100,6 +101,7 @@ export const createRoutes = (composition: Composition, secret: string) => {
       executor: turn.turnExecutor,
       subagents: turn.subagents,
       continuations: turn.continuations,
+      goals: database.goals,
       sessions: database.session,
       turns: database.turns,
       sessionRunning: database.sessionRunning,
@@ -162,6 +164,7 @@ export const createRoutes = (composition: Composition, secret: string) => {
     }))
 
     .route('/api/tasks', tasksRoute(database.tasks))
+    .route('/api/goals', goalsRoute(database.goals))
 
     .route('/api/subagents', subagentListRoute({ subagents: database.subagents }))
     .route('/api/subagents', subagentMessagesRoute({

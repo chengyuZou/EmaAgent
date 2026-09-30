@@ -68,6 +68,7 @@ export async function startServer(secret: string): Promise<ServerLifecycle> {
       toolExecutionState: running.tools.toolExecutionState,
       backgroundProcesses: running.tools.backgroundProcesses,
       settings: running.settings.settings,
+      goals: running.database.goals,
     };
     phaseStartedAt = performance.now();
     console.info('[server:startup] required recovery started');

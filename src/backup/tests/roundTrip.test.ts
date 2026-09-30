@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   AttachmentImagesRepo,
@@ -62,6 +63,13 @@ function seedSource(dataDir: string): Database {
       id, session_id, role, kind, blocks_json, created_at,
       summarized_through_message_id, summary_saved_tokens
     ) VALUES ('summary-1', ?, 'user', 'summary', '"summary"', 3, 'm1', 12345)
+  `).run(SESSION_ID);
+  db.sqlite.prepare(`
+    INSERT INTO goals (
+      id, session_id, objective, feedback, status, version, reason, error,
+      created_at, updated_at, completed_at
+    ) VALUES ('goal-completed', ?, '整理全部文件', '已读 8/8', 'completed', 5,
+      'succeeded', NULL, 2, 6, 6)
   `).run(SESSION_ID);
 
   new AttachmentImagesRepo(db.sqlite).insertMany([{
@@ -139,6 +147,16 @@ describe('Session 备份往返', () => {
       .toMatchObject({ tts_enabled: 1 });
     expect(targetDb.sqlite.prepare("SELECT character_name FROM turns WHERE id = 't1'").get())
       .toMatchObject({ character_name: 'ema' });
+    expect(targetDb.sqlite.prepare('SELECT * FROM goals WHERE id = ?').get('goal-completed'))
+      .toMatchObject({
+        session_id: SESSION_ID,
+        objective: '整理全部文件',
+        feedback: '已读 8/8',
+        status: 'completed',
+        version: 5,
+        reason: 'succeeded',
+        completed_at: 6,
+      });
 
     // 新路径:uuid 文件名不变,数据根前缀换成目标目录
     const newImagePath = path.join(targetDir, 'sessions', SESSION_ID, 'attachments', 'images', 'u1.png');
@@ -174,6 +192,97 @@ describe('Session 备份往返', () => {
       }),
     ]);
 
+    targetDb.close();
+  });
+
+  it('导入仍在执行的 Goal 时暂停, 保留身份、正文和反馈', async () => {
+    const sourceDir = tempDir('ema-backup-goal-src-');
+    const targetDir = tempDir('ema-backup-goal-dst-');
+    const workDir = tempDir('ema-backup-goal-work-');
+    const sourceDb = seedSource(sourceDir);
+    sourceDb.sqlite.prepare("UPDATE sessions SET permission_mode = 'default' WHERE id = ?")
+      .run(SESSION_ID);
+    sourceDb.sqlite.prepare(`
+      INSERT INTO goals (
+        id, session_id, objective, feedback, status, version, reason, error,
+        created_at, updated_at, completed_at
+      ) VALUES ('goal-active', ?, '读取剩余文件', '已读 2/8', 'active', 3,
+        NULL, NULL, 3, 5, NULL)
+    `).run(SESSION_ID);
+
+    const chunks: Buffer[] = [];
+    const sessionExport = createSessionExport(
+      SESSION_ID, sourceDir, workDir, new SessionBackupReader(sourceDb.sqlite),
+    );
+    expect(sessionExport).not.toBeNull();
+    await sessionExport!.writeTo({
+      write: async chunk => { chunks.push(Buffer.from(chunk)); },
+      complete: async () => {},
+      fail: async reason => { throw reason instanceof Error ? reason : new Error(String(reason)); },
+    });
+    sourceDb.close();
+
+    const targetDb = new Database({ memory: true, kind: 'data' });
+    targetDb.migrate();
+    const zipBytes = Buffer.concat(chunks);
+    await importSessionArchive(
+      { declaredBytes: zipBytes.byteLength, async *chunks() { yield zipBytes; } },
+      targetDir,
+      workDir,
+      new SessionBackupReader(targetDb.sqlite),
+      new SessionBackupRestorer(targetDb.sqlite),
+      () => true,
+    );
+    expect(targetDb.sqlite.prepare('SELECT * FROM goals WHERE id = ?').get('goal-active'))
+      .toMatchObject({
+        session_id: SESSION_ID,
+        objective: '读取剩余文件',
+        feedback: '已读 2/8',
+        status: 'paused',
+        version: 4,
+        reason: null,
+        error: null,
+        completed_at: null,
+      });
+    targetDb.close();
+  });
+
+  it('仍能导入没有 Goal 记录的 v5 归档', async () => {
+    const sourceDir = tempDir('ema-backup-v5-src-');
+    const targetDir = tempDir('ema-backup-v5-dst-');
+    const workDir = tempDir('ema-backup-v5-work-');
+    const sourceDb = seedSource(sourceDir);
+    const chunks: Buffer[] = [];
+    const sessionExport = createSessionExport(
+      SESSION_ID, sourceDir, workDir, new SessionBackupReader(sourceDb.sqlite),
+    );
+    expect(sessionExport).not.toBeNull();
+    await sessionExport!.writeTo({
+      write: async chunk => { chunks.push(Buffer.from(chunk)); },
+      complete: async () => {},
+      fail: async reason => { throw reason instanceof Error ? reason : new Error(String(reason)); },
+    });
+    sourceDb.close();
+
+    const entries = unzipSync(Buffer.concat(chunks));
+    const manifest = JSON.parse(strFromU8(entries['manifest.json']!)) as { version: number };
+    manifest.version = 5;
+    entries['manifest.json'] = strToU8(JSON.stringify(manifest));
+    delete entries['records/goals.jsonl'];
+    const zipBytes = Buffer.from(zipSync(entries));
+
+    const targetDb = new Database({ memory: true, kind: 'data' });
+    targetDb.migrate();
+    await importSessionArchive(
+      { declaredBytes: zipBytes.byteLength, async *chunks() { yield zipBytes; } },
+      targetDir,
+      workDir,
+      new SessionBackupReader(targetDb.sqlite),
+      new SessionBackupRestorer(targetDb.sqlite),
+      () => true,
+    );
+    expect(targetDb.sqlite.prepare('SELECT id FROM goals WHERE session_id = ?').all(SESSION_ID))
+      .toEqual([]);
     targetDb.close();
   });
 });

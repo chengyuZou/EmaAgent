@@ -12,6 +12,7 @@ import {
   toAttachmentPastedTextRecord,
   toBackgroundProcessRecord,
   toMessageRecord,
+  toGoalRecord,
   toSessionRecord,
   toSpeechOutputRecord,
   toTaskRecord,
@@ -78,7 +79,7 @@ export function stageSessionExport(
 
     const manifest: SessionBackupManifest = {
       format: 'ema-session',
-      version: 5,
+      version: 6,
       sessionId,
       omittedFiles,
     };
@@ -110,6 +111,7 @@ function writeRecords(
   writeJsonl(directory, 'turns', rows.turns, toTurnRecord, signal);
   writeJsonl(directory, 'messages', rows.messages, toMessageRecord, signal);
   writeJsonl(directory, 'tasks', rows.tasks, toTaskRecord, signal);
+  writeJsonl(directory, 'goals', rows.goals, toGoalRecord, signal);
   writeJsonl(directory, 'subagents', rows.subagents, toSubagentRecord, signal);
   writeJsonl(directory, 'subagentInvocations', rows.subagentInvocations, toSubagentInvocationRecord, signal);
   writeJsonl(directory, 'subagentMessages', rows.subagentMessages, toSubagentMessageRecord, signal);

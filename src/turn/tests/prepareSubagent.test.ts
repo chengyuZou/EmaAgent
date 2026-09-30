@@ -6,6 +6,8 @@ import type { ProviderModels, Providers } from '@ema-agent/providers';
 import { ToolPool } from '@ema-agent/tools';
 import { createPrepareSubagent, type ForkParentMessages } from '../prepare/prepareSubagent.js';
 import type { PreparedTurn } from '../prepare/prepareTurn.js';
+import { GoalGetTool } from '../../builtin-tools/tools/GoalGetTool/GoalGetTool.js';
+import { GoalUpdateTool } from '../../builtin-tools/tools/GoalUpdateTool/GoalUpdateTool.js';
 
 const callLlm: CallLlm = async function* () {
   yield { type: 'done', stopReason: 'end_turn' };
@@ -44,8 +46,10 @@ function parentMessages(): ForkParentMessages {
   };
 }
 
-function fixture(readParentMessages: (signal: AbortSignal) => Promise<ForkParentMessages>) {
-  const prepared = preparedTurn();
+function fixture(
+  readParentMessages: (signal: AbortSignal) => Promise<ForkParentMessages>,
+  prepared: PreparedTurn = preparedTurn(),
+) {
   const createCompact = vi.fn((_call: CallLlm) => async (request: CompactRequest) => ({
     kind: 'unchanged' as const,
     messages: request.messages,
@@ -63,6 +67,22 @@ function fixture(readParentMessages: (signal: AbortSignal) => Promise<ForkParent
 }
 
 describe('createPrepareSubagent fork', () => {
+  it.each(['fork', 'subagent'] as const)('%s 子代理不继承根 Goal 工具', async contextMode => {
+    const base = preparedTurn();
+    const root = {
+      ...base,
+      tools: { ...base.tools, toolPool: new ToolPool([GoalGetTool, GoalUpdateTool]) },
+    };
+    const { prepare } = fixture(async () => parentMessages(), root);
+    const child = await prepare({
+      subagentId: 'child', prompt: '只处理子任务', options: { contextMode },
+      signal: new AbortController().signal,
+    });
+    const prepared = await child.prepareIteration({ llmCallId: 'child-call', messages: child.messages });
+    expect(prepared.request.tools).toEqual([]);
+    expect(root.tools.toolPool.tools.map(tool => tool.name)).toEqual(['GoalGet', 'GoalUpdate']);
+  });
+
   it('兄弟 fork 保留完整父 Assistant, 统一占位配对, 只在最后指令分歧', async () => {
     const parent = parentMessages();
     const before = JSON.stringify(parent);

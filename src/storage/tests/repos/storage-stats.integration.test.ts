@@ -54,6 +54,17 @@ afterEach(() => {
 });
 
 describe('DataDirStatsRepo.getStats', () => {
+  it('总览目标数包含各 Session 保留的历史目标', () => {
+    database.sqlite.prepare(`
+      INSERT INTO goals (id, session_id, objective, status, version, reason, created_at, updated_at, completed_at)
+      VALUES
+        ('g1', 's1', '已完成', 'completed', 2, 'succeeded', 1, 2, 2),
+        ('g2', 's1', '当前目标', 'active', 1, NULL, 3, 3, NULL),
+        ('g3', 's2', '已取消', 'completed', 2, 'cancelled', 4, 5, 5)
+    `).run();
+    expect(new DataDirStatsRepo(database.sqlite).getStats().goalCount).toBe(3);
+  });
+
   it('附件统计来自 images+pasted 两本新账, vision 单列', () => {
     const stats = new DataDirStatsRepo(database.sqlite).getStats();
     expect(stats.sessionCount).toBe(2);
@@ -69,6 +80,18 @@ describe('DataDirStatsRepo.getStats', () => {
 });
 
 describe('SessionStatsRepo.getStats', () => {
+  it('只统计该 Session 的目标历史', () => {
+    database.sqlite.prepare(`
+      INSERT INTO goals (id, session_id, objective, status, version, reason, created_at, updated_at, completed_at)
+      VALUES
+        ('g1', 's1', '目标一', 'completed', 2, 'succeeded', 1, 2, 2),
+        ('g2', 's1', '目标二', 'active', 1, NULL, 3, 3, NULL),
+        ('g3', 's2', '别的目标', 'active', 1, NULL, 4, 4, NULL)
+    `).run();
+    expect(new SessionStatsRepo(database.sqlite).getStats('s1').goalCount).toBe(2);
+    expect(new SessionStatsRepo(database.sqlite).getStats('s2').goalCount).toBe(1);
+  });
+
   it('Turn 分类与 Session 内全部 LLM 调用分别汇总', () => {
     const stats = new SessionStatsRepo(database.sqlite).getStats('s1');
     expect(stats.turnCount).toBe(2);

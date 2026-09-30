@@ -1,5 +1,5 @@
 // 存储位置页(单库):库统计富卡 + Session 手风琴(单开) + 块扩散查看器。
-// 六块(轮次/消息/Token/附件/音频/子代理):消息与 Token 进真查看器,其余"后续开放查看"。
+// 七块(轮次/消息/Token/目标/附件/音频/子代理):消息、Token 和目标进真查看器。
 import { memo, useCallback, useEffect, useRef, useState, type CSSProperties, type JSX } from 'react';
 import { Badge, Button, EmptyState, Skeleton } from '@ema-agent/ui';
 import { PageHeader } from '../shared/PageHeader.js';
@@ -11,6 +11,7 @@ import { subscribeSystemEvent } from '../../lib/system-event-dispatcher.js';
 import { morphTransition, MORPH_NAME } from '../../lib/viewTransition.js';
 import { MessageDetail } from './MessageDetail.js';
 import { TokenDetail } from './TokenDetail.js';
+import { GoalHistory } from './GoalHistory.js';
 import { fmtBytes, fmtDateFull, fmtDateShort, fmtDuration, fmtTokens } from './storageFormat.js';
 
 /** 消息查看器每页条数:前端与后端 pageSize 的约定值,随每个分页请求传给端点;
@@ -20,6 +21,7 @@ const RAW_MESSAGES_PAGE_SIZE = 50;
 type ViewerState =
   | { kind: 'messages'; sessionId: string; sessionTitle: string }
   | { kind: 'token'; sessionId: string; sessionTitle: string }
+  | { kind: 'goals'; sessionId: string; sessionTitle: string }
   | { kind: 'placeholder'; label: string };
 
 export function StorageTab(): JSX.Element {
@@ -189,7 +191,7 @@ export function StorageTab(): JSX.Element {
   );
 }
 
-// ── Session 手风琴:折叠态行(标题+最后活跃+消息数+Token)+ 展开六块 ─────────────
+// ── Session 手风琴:折叠态行(标题+最后活跃+消息数+Token)+ 展开七块 ─────────────
 
 function SessionAccordion({
   session, index, open, exporting, onToggle, onExport, onOpenViewer,
@@ -264,7 +266,7 @@ function SessionAccordion({
   );
 }
 
-// ── 展开态六块:统一规格,auto-fill 自适应,数字在块上 ──────────────────────────
+// ── 展开态七块:统一规格,auto-fill 自适应,数字在块上 ──────────────────────────
 
 function SessionBlocks({
   sessionId, sessionTitle, onOpenViewer,
@@ -292,6 +294,14 @@ function SessionBlocks({
     };
     refresh();
     const unsubscribe = subscribeSystemEvent(event => {
+      if (event.type === 'goal_deleted') {
+        if (event.sessionId === sessionId) refresh();
+        return;
+      }
+      if ('goal' in event) {
+        if (event.goal.sessionId === sessionId) refresh();
+        return;
+      }
       if (
         event.type !== 'turn_completed'
         && event.type !== 'turn_failed'
@@ -331,6 +341,7 @@ function SessionBlocks({
       sub: `↑ ${fmtTokens(stats.totalInputTokens)} · ↓ ${fmtTokens(stats.totalOutputTokens)}`,
       viewer: { kind: 'token', sessionId, sessionTitle },
     },
+    { label: '目标', value: stats.goalCount, viewer: { kind: 'goals', sessionId, sessionTitle } },
     {
       label: '附件', value: stats.attachmentCount, sub: fmtBytes(stats.attachmentTotalBytes),
       viewer: { kind: 'placeholder', label: '附件查看(chat 会话内已有展示)' },
@@ -387,6 +398,9 @@ function ViewerOverlay({
   } else if (viewer.kind === 'token') {
     title = `Token 明细 · ${viewer.sessionTitle}`;
     content = <TokenDetail sessionId={viewer.sessionId} />;
+  } else if (viewer.kind === 'goals') {
+    title = `目标记录 · ${viewer.sessionTitle}`;
+    content = <GoalHistory sessionId={viewer.sessionId} />;
   } else {
     title = viewer.label;
     content = (
@@ -569,6 +583,7 @@ function OverviewBand({ stats }: { stats: NonNullable<ReturnType<typeof useStora
     { icon: 'i-solar:chat-round-bold-duotone',      label: '会话',   value: stats.sessionCount },
     { icon: 'i-solar:refresh-circle-bold-duotone',  label: '轮次',   value: stats.turnCount },
     { icon: 'i-solar:letter-bold-duotone',          label: '消息',   value: stats.messageCount },
+    { icon: 'i-lucide:goal',                         label: '目标',   value: stats.goalCount },
     { icon: 'i-solar:bolt-bold-duotone',            label: 'Token',  value: fmtTokens(stats.totalInputTokens + stats.totalOutputTokens) },
     { icon: 'i-solar:paperclip-bold-duotone',       label: '附件',   value: stats.attachmentCount },
     { icon: 'i-solar:soundwave-bold-duotone',       label: '音频',   value: stats.audioCount },

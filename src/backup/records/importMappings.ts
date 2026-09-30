@@ -6,6 +6,7 @@ import type {
   AttachmentImageRow,
   AttachmentPastedTextRow,
   BackgroundProcessRow,
+  GoalRow,
   MessageRow,
   SessionBackupRestoreRows,
   SessionBackupTaskRow,
@@ -22,6 +23,7 @@ import type {
   AttachmentImageRecord,
   AttachmentPastedTextRecord,
   BackgroundProcessRecord,
+  GoalRecord,
   MessageRecord,
   SessionRecord,
   SpeechOutputRecord,
@@ -111,6 +113,23 @@ export function restoreTaskRecord(record: TaskRecord): SessionBackupTaskRow {
     version: unfinished ? record.version + 1 : record.version,
     created_at: record.createdAt,
     updated_at: record.updatedAt,
+    completed_at: record.completedAt,
+  };
+}
+
+export function restoreGoalRecord(record: GoalRecord, importedAt: number): GoalRow {
+  const active = record.status === 'active';
+  return {
+    id: record.id,
+    session_id: record.sessionId,
+    objective: record.objective,
+    feedback: record.feedback,
+    status: active ? 'paused' : record.status,
+    version: active ? record.version + 1 : record.version,
+    reason: record.reason,
+    error: record.error,
+    created_at: record.createdAt,
+    updated_at: active ? Math.max(record.updatedAt, importedAt) : record.updatedAt,
     completed_at: record.completedAt,
   };
 }

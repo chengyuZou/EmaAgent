@@ -12,6 +12,7 @@ import type { SpeechArchiveEvent } from '@ema-agent/speech';
 import type { TaskEvent } from '@ema-agent/tasks';
 import type { SettingsEvent } from '@ema-agent/settings';
 import type { SkillEvent } from '@ema-agent/skills';
+import type { GoalEvent } from '@ema-agent/goal';
 
 export type TurnActivityEvent = Extract<
   TurnEvent,
@@ -30,6 +31,7 @@ export type AppEvent =
   | TaskEvent
   | SettingsEvent
   | SkillEvent
+  | GoalEvent
   | McpEvent
   | SystemWarningEvent;
 

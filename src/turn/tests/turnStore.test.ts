@@ -110,7 +110,7 @@ describe('TurnStore — 生命周期与运行锁', () => {
     }).not.toThrow();
   });
 
-  it('终态提交即释放运行锁，新 Turn 可立即开始', () => {
+  it('终态行提交后仍占用 Session, 执行器收尾清理后才允许新 Turn', () => {
     const { store, db } = makeStore();
     const sessionId = insertSession(db, 's1');
 
@@ -121,6 +121,8 @@ describe('TurnStore — 生命周期与运行锁', () => {
     const completed = store.getTurn(turn.id)!;
     expect(completed.status).toBe('completed');
     expect(completed.iterations).toBe(2);
+    expect(() => startTurn(store, sessionId)).toThrow('session_busy');
+    store.clearRunning(sessionId, turn.id);
     expect(() => startTurn(store, sessionId)).not.toThrow();
   });
 
@@ -133,6 +135,9 @@ describe('TurnStore — 生命周期与运行锁', () => {
 
     expect(signal.aborted).toBe(true);
     expect(store.getTurn(turn.id)!.status).toBe('aborted');
+    expect(() => startTurn(store, sessionId)).toThrow('session_busy');
+    store.clearRunning(sessionId, turn.id);
+    expect(() => startTurn(store, sessionId)).not.toThrow();
   });
 
   it('requestAbort 只触发信号，不提前写 Turn 终态', () => {
@@ -157,6 +162,9 @@ describe('TurnStore — 生命周期与运行锁', () => {
     expect(failed.status).toBe('failed');
     expect(failed.errorCode).toBe('provider/timeout');
     expect(failed.errorMessage).toBe('LLM timed out');
+    expect(() => startTurn(store, sessionId)).toThrow('session_busy');
+    store.clearRunning(sessionId, turn.id);
+    expect(() => startTurn(store, sessionId)).not.toThrow();
   });
 
   it('旧 Turn 的迟到 clearRunning 不会清掉后继 Turn', () => {

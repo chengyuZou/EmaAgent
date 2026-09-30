@@ -6,6 +6,7 @@ export interface DataDirStats {
   sessionCount: number;
   turnCount: number;
   messageCount: number;
+  goalCount: number;
   taskCount: number;
   subagentCount: number;
   toolExecutionCount: number;
@@ -24,6 +25,7 @@ export interface DataDirStats {
 export interface SessionStats {
   turnCount: number;
   messageCount: number;
+  goalCount: number;
   taskCount: number;
   subagentCount: number;
   toolExecutionCount: number;
@@ -75,6 +77,7 @@ export class DataDirStatsRepo {
       sessionCount: count('sessions'),
       turnCount: count('turns'),
       messageCount: count('messages'),
+      goalCount: count('goals'),
       taskCount: count('tasks'),
       subagentCount: count('subagents'),
       toolExecutionCount: count('tool_executions'),
@@ -192,6 +195,7 @@ export class SessionStatsRepo {
     return {
       turnCount: turns.turn_count,
       messageCount: count('messages'),
+      goalCount: count('goals'),
       taskCount: count('tasks'),
       subagentCount: count('subagents'),
       toolExecutionCount: count('tool_executions'),

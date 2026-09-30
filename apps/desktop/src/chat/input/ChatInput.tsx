@@ -25,6 +25,7 @@ import type { NarrativePolicy, ReasoningEffort } from '@ema-agent/session';
 import { PASTE_TEXT_MIN_CHARS } from '@ema-agent/attachments/limits';
 import { projectsApi } from '../../api/workspaces.js';
 import { ServerApiError } from '../../api/client.js';
+import { goalsApi, type Goal } from '../../api/goals.js';
 import { findAvailableModel, providersApi, type AvailableModel } from '../../api/providers.js';
 import type { SessionListItem } from '../../api/sessions.js';
 import { SessionRequestError, sessionWebSocket } from '../../api/sessionWebSocket.js';
@@ -43,6 +44,7 @@ import { useTurnStore } from '../../stores/turn.js';
 import { useSessionActivityStore } from '../../stores/sessionActivity.js';
 import { useServerStore } from '../../stores/server.js';
 import { useSessionStore } from '../../stores/session.js';
+import { useSessionPanelStore } from '../../stores/sessionPanel.js';
 import { PendingInteractionView } from '../interactions/PendingInteractionView.js';
 import {
   ensureSessionSubscription,
@@ -58,6 +60,7 @@ import {
 } from './AddInputMenu.js';
 import { DraftReferenceList } from './draftReferenceList.js';
 import { ModelPicker, type ModelCatalog } from './ModelPicker.js';
+import { GoalBar } from './goalBar.js';
 
 const COMPACT_ERRORS: Record<string, string> = {
   session_busy: '当前会话正忙, 请稍后再试',
@@ -97,7 +100,7 @@ function draftFromSession(session: SessionListItem | undefined): ChatDraft {
 export function ChatInput({
   onSubmit,
 }: {
-  readonly onSubmit: (submitted: ChatDraft) => Promise<void>;
+  readonly onSubmit: (submitted: ChatDraft, objective?: string) => Promise<void>;
 }): JSX.Element {
   const viewedId = useChatNavigationStore(state => state.viewedSessionId);
   const newProjectId = useChatNavigationStore(state => state.newSessionProjectId);
@@ -123,6 +126,15 @@ export function ChatInput({
   const [submitting, setSubmitting] = useState(false);
   const [compacting, setCompacting] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
+  const [goalRead, setGoalRead] = useState<{
+    sessionId: string | null;
+    goal: Goal | null;
+    loading: boolean;
+    error: string | null;
+  }>({ sessionId: null, goal: null, loading: false, error: null });
+  const [goalIntent, setGoalIntent] = useState<string | null>(null);
+  const [goalPending, setGoalPending] = useState<string | null>(null);
+  const goalRequest = useRef<AbortController | null>(null);
   const [changingProject, setChangingProject] = useState(false);
   const [recording, setRecording] = useState(false);
   const [slashFilter, setSlashFilter] = useState<string | null>(null);
@@ -173,6 +185,106 @@ export function ChatInput({
     && slashToken?.start === 0
     && slashToken.end === text.length
     && caret() === text.length;
+  const goalLoaded = goalRead.sessionId === viewedId && !goalRead.loading && !goalRead.error;
+  const currentGoal = goalRead.sessionId === viewedId ? goalRead.goal : null;
+  const creatingGoal = viewedId !== null && goalIntent === viewedId;
+  const goalAvailable = viewedId !== null && draft.permissionMode !== 'plan' && goalLoaded && serverReady;
+  let planUnavailableReason: string | undefined;
+  if (viewedId) {
+    if (currentGoal) planUnavailableReason = '请先关闭当前 Goal, 暂停目标仍不能开启 Plan';
+    else if (creatingGoal) planUnavailableReason = '请先取消输入框的目标标记';
+    else if (goalRead.sessionId === viewedId && goalRead.error) planUnavailableReason = '目标读取失败, 请重试后再开启 Plan';
+    else if (!goalLoaded) planUnavailableReason = '正在核对当前目标';
+  }
+
+  async function readCurrentGoal(sessionId: string): Promise<void> {
+    if (useChatNavigationStore.getState().viewedSessionId !== sessionId) return;
+    goalRequest.current?.abort();
+    const controller = new AbortController();
+    goalRequest.current = controller;
+    setGoalRead(current => ({ ...current, sessionId, loading: true, error: null }));
+    try {
+      const { goal } = await goalsApi.current(sessionId, controller.signal);
+      if (!controller.signal.aborted) setGoalRead({ sessionId, goal, loading: false, error: null });
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        setGoalRead(current => ({ ...current, loading: false, error: error instanceof Error ? error.message : '目标读取失败' }));
+      }
+    }
+  }
+
+  useEffect(() => {
+    setGoalIntent(null);
+    setGoalRead({ sessionId: viewedId, goal: null, loading: viewedId !== null, error: null });
+    if (!viewedId || !serverReady) return;
+    const unsubscribe = subscribeSystemEvent(event => {
+      if (event.type === 'goal_deleted') {
+        if (event.sessionId !== viewedId) return;
+        goalRequest.current?.abort();
+        setGoalRead(current => ({
+          ...current,
+          goal: current.goal?.id === event.goalId ? null : current.goal,
+          loading: false,
+          error: null,
+        }));
+        return;
+      }
+      switch (event.type) {
+        case 'goal_created':
+        case 'goal_updated':
+        case 'goal_paused':
+        case 'goal_activated':
+        case 'goal_completed':
+        case 'goal_failed':
+        case 'goal_cancelled': {
+          if (event.goal.sessionId !== viewedId) return;
+          goalRequest.current?.abort();
+          const goal = event.goal;
+          setGoalRead(current => {
+            let nextGoal = current.goal;
+            if (goal.status !== 'completed') nextGoal = goal;
+            else if (current.goal?.id === goal.id) nextGoal = null;
+            return { sessionId: viewedId, goal: nextGoal, loading: false, error: null };
+          });
+          if (goal.status !== 'completed') setGoalIntent(null);
+          break;
+        }
+      }
+    });
+    void readCurrentGoal(viewedId);
+    return () => {
+      goalRequest.current?.abort();
+      unsubscribe();
+    };
+  }, [viewedId, serverReady]);
+
+  function editGoal(): void {
+    if (!viewedId || !currentGoal) return;
+    useSessionPanelStore.getState().openTab(viewedId, { id: currentGoal.id, kind: 'goal' });
+  }
+
+  async function changeGoal(action: 'pause' | 'activate' | 'cancel'): Promise<void> {
+    if (!viewedId || !currentGoal || !goalLoaded || goalPending === viewedId) return;
+    const sessionId = viewedId;
+    const goalId = currentGoal.id;
+    setGoalPending(sessionId);
+    try {
+      const { goal } = await goalsApi[action](goalId, { sessionId, expectedVersion: currentGoal.version });
+      // 已交付的删除或新目标事件优先于旧操作响应, 不复活已关闭的 Goal.
+      setGoalRead(current => {
+        if (current.sessionId !== sessionId || current.goal?.id !== goalId || current.goal.version > goal.version) return current;
+        return { sessionId, goal: goal.status === 'completed' ? null : goal, loading: false, error: null };
+      });
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '目标操作失败', { variant: 'danger' });
+      await readCurrentGoal(sessionId);
+      if (error instanceof ServerApiError && error.code === 'goal_plan_conflict') {
+        await useSessionStore.getState().loadSessions();
+      }
+    } finally {
+      setGoalPending(current => current === sessionId ? null : current);
+    }
+  }
 
   async function changeProject(projectId: string | null): Promise<void> {
     if (projectId === currentProjectId || changingProject) return;
@@ -269,6 +381,11 @@ export function ChatInput({
   }, [editCurrentDraft]);
 
   function showSessionPreferenceError(error: unknown): void {
+    if (error instanceof ServerApiError && error.code === 'session_plan_goal_conflict') {
+      showToast('请先关闭当前 Goal, 暂停目标仍不能开启 Plan', { variant: 'warning' });
+      if (viewedId) void readCurrentGoal(viewedId);
+      return;
+    }
     showToast(
       error instanceof Error ? `保存会话设置失败: ${error.message}` : '保存会话设置失败',
       { variant: 'danger' },
@@ -440,6 +557,16 @@ export function ChatInput({
       return;
     }
     if (!viewedId) return;
+    if (name === 'goal') {
+      if (!goalAvailable) {
+        showToast('请先关闭 Plan 并等待目标信息读取完成', { variant: 'warning' });
+        return;
+      }
+      if (currentGoal) editGoal();
+      else setGoalIntent(viewedId);
+      textareaRef.current?.el()?.focus();
+      return;
+    }
     if (name === 'fork') {
       useChatNavigationStore.getState().viewSession(await sessions.forkSession(viewedId));
       return;
@@ -498,6 +625,11 @@ export function ChatInput({
   async function send(): Promise<void> {
     if (!hasInput || !serverReady || submitting || compacting) return;
     const submitted = draft;
+    const objective = creatingGoal ? submitted.text : undefined;
+    if (objective !== undefined && !objective.trim()) {
+      showToast('请在输入框填写目标正文', { variant: 'warning' });
+      return;
+    }
     if (catalog.status !== 'ready') {
       showToast(catalog.status === 'error' ? '模型目录加载失败, 请重试' : '模型目录仍在加载', { variant: 'danger' });
       return;
@@ -515,9 +647,16 @@ export function ChatInput({
     editCurrentDraft(current => ({ ...current, text: '', references: [] }));
     setSlashFilter(null);
     try {
-      await onSubmit(submitted);
+      await onSubmit(submitted, objective);
+      if (objective !== undefined) setGoalIntent(current => current === viewedId ? null : current);
     } catch (error) {
       showToast(error instanceof Error ? `发送失败: ${error.message}` : '发送失败', { variant: 'danger' });
+      if (objective !== undefined && viewedId) {
+        void readCurrentGoal(viewedId);
+        if (error instanceof SessionRequestError && error.code === 'goal_plan_conflict') {
+          void useSessionStore.getState().loadSessions();
+        }
+      }
     } finally {
       setSubmitting(false);
     }
@@ -741,6 +880,16 @@ export function ChatInput({
             </div>
           )}
         </div>
+        {viewedId && goalRead.sessionId === viewedId && goalRead.error && (
+          <div role="alert" className="mb-2 flex items-center gap-2 px-2 text-xs text-[var(--ema-danger)]">
+            <span className="min-w-0 flex-1">目标读取失败: {goalRead.error}</span>
+            <Button size="sm" variant="ghost" disabled={goalRead.loading} onClick={() => void readCurrentGoal(viewedId)}>重试</Button>
+          </div>
+        )}
+        {currentGoal && <GoalBar goal={currentGoal} disabled={!goalLoaded || goalPending === viewedId || !serverReady}
+          onClose={() => void changeGoal('cancel')}
+          onTogglePause={() => void changeGoal(currentGoal.status === 'active' ? 'pause' : 'activate')}
+          onEdit={editGoal} />}
         <div className="ema-composer-card relative transition-shadow">
           <SlashCommandMenu
             query={slashFilter}
@@ -748,6 +897,7 @@ export function ChatInput({
             projectId={currentProjectId}
             showCommands={showCommands}
             compactAvailable={viewedId !== null && !sessionRunning && !compacting}
+            goalAvailable={goalAvailable}
             handleRef={slashMenuRef}
             onSelect={selectSlash}
             onClose={() => setSlashFilter(null)}
@@ -762,7 +912,7 @@ export function ChatInput({
             autoGrow={false}
             rows={1}
             value={text}
-            placeholder="随心输入, / 打开命令与技能…"
+            placeholder={creatingGoal ? '描述你的目标, 定义可衡量的成果, 以获得最佳效果…' : '随心输入, / 打开命令与技能…'}
             className="min-h-[64px] w-full resize-none border-none overflow-y-auto rounded-[22px] bg-transparent px-4 py-3 text-sm text-[var(--ema-text-primary)] placeholder:text-[var(--ema-text-tertiary)] focus:outline-none"
             style={{ maxHeight: 200 }}
             onChange={(event: ChangeEvent<HTMLTextAreaElement>) => (
@@ -814,7 +964,12 @@ export function ChatInput({
             />
             <PermissionModeSelector
               value={draft.permissionMode}
+              planUnavailableReason={planUnavailableReason}
               onChange={(permissionMode) => {
+                if (permissionMode === 'plan' && planUnavailableReason) {
+                  showToast(planUnavailableReason, { variant: 'warning' });
+                  return;
+                }
                 if (viewedId) {
                   void useSessionStore.getState()
                     .setPermissionMode(viewedId, permissionMode)
@@ -824,6 +979,15 @@ export function ChatInput({
                 }
               }}
             />
+            {creatingGoal && (
+              <Tooltip content="取消目标标记, 保留输入框文字">
+                <Button size="sm" variant="ghost" className="gap-1.5 rounded-full bg-[var(--ema-surface-2)]"
+                  disabled={submitting} onClick={() => setGoalIntent(null)}>
+                  <span className="i-lucide:circle-x" aria-hidden />
+                  目标
+                </Button>
+              </Tooltip>
+            )}
             <span className="min-w-2 flex-1" />
             <ContextMeter
               sessionId={viewedId}

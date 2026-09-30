@@ -18,6 +18,8 @@ import { TaskCreateTool } from './tools/TaskCreateTool/TaskCreateTool.js';
 import { TaskGetTool } from './tools/TaskGetTool/TaskGetTool.js';
 import { TaskListTool } from './tools/TaskListTool/TaskListTool.js';
 import { TaskUpdateTool } from './tools/TaskUpdateTool/TaskUpdateTool.js';
+import { GoalGetTool } from './tools/GoalGetTool/GoalGetTool.js';
+import { GoalUpdateTool } from './tools/GoalUpdateTool/GoalUpdateTool.js';
 import { AskUserTool } from './tools/AskUserTool/AskUserTool.js';
 import { MemorySearchTool } from './tools/MemoryTool/MemorySearchTool.js';
 import { MemoryReadTool } from './tools/MemoryTool/MemoryReadTool.js';
@@ -72,6 +74,8 @@ export {
   TaskGetTool,
   TaskListTool,
   TaskUpdateTool,
+  GoalGetTool,
+  GoalUpdateTool,
   AskUserTool,
   SkillTool,
   KnowledgeBaseSearchTool,
@@ -141,6 +145,8 @@ const ALL_BUILTIN_TOOLS: Tool<any, any, any, any>[] = [
   TaskGetTool,
   TaskListTool,
   TaskUpdateTool,
+  GoalGetTool,
+  GoalUpdateTool,
   AskUserTool,
   SkillTool,
   KnowledgeBaseSearchTool,

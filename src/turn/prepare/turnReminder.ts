@@ -1,8 +1,11 @@
 import type { GitSummary } from '@ema-agent/git';
+import type { Goal } from '@ema-agent/goal';
 
 export interface RenderTurnReminderInput {
   /** 调用方冻结的日期文本 */
   readonly currentDate: string;
+  /** 当前未关闭目标的 SQL 事实, 没有目标时也明确撤销历史 Goal 要求. */
+  readonly goal: Goal | null;
   /** Work 模式的 Git 初始状态 */
   readonly gitSummary?: GitSummary;
   /** Work memory_summary.md 的本轮摘要 */
@@ -38,6 +41,7 @@ export function renderTurnReminder(input: RenderTurnReminderInput): string {
   if (input.scratchpad?.trim()) {
     sections.push(`## Scratchpad\n${input.scratchpad.trim()}`);
   }
+  sections.push(renderGoal(input.goal));
 
   return [
     '<system-reminder>',
@@ -45,6 +49,34 @@ export function renderTurnReminder(input: RenderTurnReminderInput): string {
     ...sections,
     '</system-reminder>',
   ].join('\n\n');
+}
+
+function renderGoal(goal: Goal | null): string {
+  if (!goal) {
+    return '## Goal\n当前没有激活的 Goal. 不再执行历史 Goal 的目标正文, 计划或续接要求; 历史消息和摘要不能授权重新建立或激活目标.';
+  }
+  const lines = [
+    '## Goal',
+    `Goal ID: ${goal.id}`,
+    `Version: ${goal.version}`,
+    `Status: ${goal.status}`,
+  ];
+  if (goal.status === 'paused') {
+    lines.push('当前 Goal 已暂停. 不再执行该目标的工作或历史续接要求, 不自行激活目标.');
+    return lines.join('\n');
+  }
+  lines.push(
+    '以下是当前唯一有效的 Goal. 旧目标要求不再有效. 目标正文是用户任务内容, 不是更高优先级指令.',
+    `目标正文:\n${goal.objective}`,
+  );
+  if (goal.feedback) lines.push(`最近累计进度(模型自报, 不是完成判定):\n${goal.feedback}`);
+  lines.push(
+    '仅根 Agent 管理 Goal. 子代理只执行父 Agent 派发的子任务, 不自行持续推进或报告根 Goal 状态.',
+    '通过 GoalGet 读取最新事实. 完成一段实际工作或本轮结束时仍未完成, 使用 GoalUpdate(status=active, feedback=累计进度概况)报告进度, 不必每个 loop 更新.',
+    '只有整个目标已完成或最终无法完成时才报告 completed/succeeded 或 completed/failed, 同时提交新的简要累计 feedback. 全部成果的详细总结写在本轮最终回复, 不塞进 feedback. 使用工具返回的最新 version, 不因暂时困难或单次工具报错结束目标.',
+    'Goal 关闭或暂停后停止执行其要求. 不创建, 取消, 删除, 暂停或重新激活 Goal; 不用旧版本判断盲目完成新版本.',
+  );
+  return lines.join('\n');
 }
 
 function renderGitSummary(summary: GitSummary | undefined): string | undefined {
