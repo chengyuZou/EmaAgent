@@ -1,4 +1,4 @@
-// 测试 shortstat/porcelain 解析与 gitSummary 在真实临时仓库上的能力裁决和统计。
+// 验证轻量摘要的 shortstat 统计和逐文件未跟踪计数.
 import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -6,7 +6,6 @@ import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { gitSummary } from '../index.js';
 import { parseShortStat } from '../queries/changeStats.js';
-import { countUntracked } from '../queries/status.js';
 import { findRepoRoot } from '../repoDetection.js';
 
 function gitAvailable(): boolean {
@@ -34,13 +33,6 @@ describe('parseShortStat', () => {
     expect(parseShortStat(' 1 file changed, 5 insertions(+)'))
       .toEqual({ filesChanged: 1, insertions: 5, deletions: 0 });
     expect(parseShortStat('')).toEqual({ filesChanged: 0, insertions: 0, deletions: 0 });
-  });
-});
-
-describe('countUntracked', () => {
-  it('只统计 ?? 行', () => {
-    expect(countUntracked(' M src/a.ts\n?? src/b.ts\n?? README.md\nA  src/c.ts\n')).toBe(2);
-    expect(countUntracked('')).toBe(0);
   });
 });
 
@@ -114,5 +106,18 @@ describe.skipIf(!HAS_GIT)('gitSummary(真实临时仓库)', () => {
     expect(summary.unstaged).toEqual({ filesChanged: 1, insertions: 1, deletions: 0 });
     expect(summary.staged).toEqual({ filesChanged: 1, insertions: 1, deletions: 0 });
     expect(summary.untrackedCount).toBe(1);
+  });
+
+  it('未跟踪目录展开到每个文件, 保留带空格和中文的路径', async () => {
+    const nested = path.join(root, 'new-directory', '中文');
+    await fs.mkdir(nested, { recursive: true });
+    await fs.writeFile(path.join(nested, ' first.txt'), 'one\n');
+    await fs.writeFile(path.join(nested, 'second.txt'), 'two\n');
+    try {
+      const summary = await gitSummary(root);
+      expect(summary).toMatchObject({ capability: 'ok', untrackedCount: 3 });
+    } finally {
+      await fs.rm(path.join(root, 'new-directory'), { recursive: true, force: true });
+    }
   });
 });

@@ -57,6 +57,15 @@ describe.skipIf(!HAS_GIT)('baseline', () => {
     expect(diff.truncated).toBe(false);
   });
 
+  it('空 Memory 目录也能建立基线', async () => {
+    const root = await tempRepo();
+    await ensureBaseline(root);
+    expect(await hasUsableBaseline(root)).toBe(true);
+    expect(await diffSinceBaseline(root)).toMatchObject({
+      changes: [], unifiedDiff: '', truncated: false, omittedFiles: 0,
+    });
+  });
+
   it('新增/修改/删除后 diff 报出完整 changes 与 unified diff(含 untracked)', async () => {
     const root = await tempRepo();
     await fs.writeFile(path.join(root, 'a.md'), 'hello', 'utf8');
@@ -136,5 +145,48 @@ describe.skipIf(!HAS_GIT)('baseline', () => {
     expect(diff.unifiedDiff).toBe('');
     expect(diff.changes).toHaveLength(201);
     expect(diff.changes.every((c) => c.status === 'added')).toBe(true);
+  });
+
+  it('文件清单和 patch 都按基线到磁盘的最终变化, 不叠加暂存中间状态', async () => {
+    const root = await tempRepo();
+    await fs.writeFile(path.join(root, 'a.md'), 'original\n');
+    await ensureBaseline(root);
+    await fs.writeFile(path.join(root, 'a.md'), 'staged\n');
+    git(root, ['add', 'a.md']);
+    await fs.writeFile(path.join(root, 'a.md'), 'original\n');
+    expect(await diffSinceBaseline(root)).toMatchObject({ changes: [], unifiedDiff: '' });
+  });
+
+  it('重命名按删除和新增表达, 路径不经过 trim 或手写 porcelain 解析', async () => {
+    const root = await tempRepo();
+    const oldPath = ' old 中文.md';
+    const newPath = ' new 中文.md';
+    await fs.writeFile(path.join(root, oldPath), 'original\n');
+    await ensureBaseline(root);
+    await fs.rename(path.join(root, oldPath), path.join(root, newPath));
+    git(root, ['add', '-A']);
+    const diff = await diffSinceBaseline(root);
+    expect(diff.changes).toEqual(expect.arrayContaining([
+      { status: 'deleted', path: oldPath },
+      { status: 'added', path: newPath },
+    ]));
+    expect(diff.changes).toHaveLength(2);
+    expect(diff.unifiedDiff).toContain('deleted file mode');
+    expect(diff.unifiedDiff).toContain('new file mode');
+  });
+
+  it('Memory 正文可超过审查的 200 万字符上限, 字节截断仍保留完整字符和清单', async () => {
+    const root = await tempRepo();
+    await ensureBaseline(root);
+    await fs.writeFile(path.join(root, 'large.md'), '修改'.repeat(1_100_000));
+    await fs.writeFile(path.join(root, 'other.md'), 'small\n');
+    const full = await diffSinceBaseline(root, { maxDiffBytes: 8 * 1024 * 1024 });
+    expect(full.truncated).toBe(false);
+    expect(full.unifiedDiff.length).toBeGreaterThan(2_000_000);
+    const limited = await diffSinceBaseline(root, { maxDiffBytes: 257 });
+    expect(limited.truncated).toBe(true);
+    expect(limited.unifiedDiff).not.toContain('\uFFFD');
+    expect(Buffer.byteLength(limited.unifiedDiff, 'utf8')).toBeLessThanOrEqual(257);
+    expect(limited.changes).toHaveLength(2);
   });
 });

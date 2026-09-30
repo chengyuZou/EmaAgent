@@ -11,7 +11,6 @@ import {
   type MouseEvent,
 } from 'react';
 import {
-  parsePatchFiles,
   type CodeViewItem,
   type FileDiffMetadata,
 } from '@pierre/diffs';
@@ -34,16 +33,11 @@ import {
   toast,
   type SelectOption,
 } from '@ema-agent/ui';
-import {
-  sessionGitApi,
-  type GitDiffScope,
-  type SessionGitWorkspaceDiff,
-} from '../../../../api/git.js';
+import type { GitDiffScope } from '../../../../api/git.js';
 import { useSessionStore } from '../../../../stores/session.js';
-import { useSubagentStore } from '../../../../stores/subagent.js';
-import { assistantOutputBlocks, useTurnStore } from '../../../../stores/turn.js';
 import { fileTab, useSessionPanelStore } from '../../../../stores/sessionPanel.js';
 import { ReviewFileTree } from './reviewFileTree.js';
+import { useReviewGitDiff, useSessionGitDiff } from '../../../session/gitDiffContext.js';
 import diffCSS from '../../../../styles/domains/reviewDiff.css?inline';
 
 const EMPTY_FILES: FileDiffMetadata[] = [];
@@ -70,7 +64,7 @@ const SCOPE_OPTIONS: SelectOption[] = [
 
 export function ReviewPanel({ sessionId }: { sessionId: string }): JSX.Element {
   const cwd = useSessionStore(state => state.sessions.byId.get(sessionId)?.cwd);
-  const [scope, setScope] = useState<GitDiffScope>('uncommitted');
+  const { reviewScope: scope, setReviewScope: setScope } = useSessionGitDiff();
   const [split, setSplit] = useState(false);
   const [wrap, setWrap] = useState(false);
   const [filesOpen, setFilesOpen] = useState(true);
@@ -87,7 +81,6 @@ export function ReviewPanel({ sessionId }: { sessionId: string }): JSX.Element {
       <ReviewWorkspace
         key={JSON.stringify([sessionId, cwd, scope])}
         sessionId={sessionId}
-        cwd={cwd}
         scope={scope}
         split={split}
         wrap={wrap}
@@ -103,7 +96,6 @@ export function ReviewPanel({ sessionId }: { sessionId: string }): JSX.Element {
 
 interface ReviewWorkspaceProps {
   sessionId: string;
-  cwd: string | null | undefined;
   scope: GitDiffScope;
   split: boolean;
   wrap: boolean;
@@ -116,7 +108,6 @@ interface ReviewWorkspaceProps {
 
 function ReviewWorkspace({
   sessionId,
-  cwd,
   scope,
   split,
   wrap,
@@ -127,11 +118,10 @@ function ReviewWorkspace({
   onFiles,
 }: ReviewWorkspaceProps): JSX.Element {
   const openTab = useSessionPanelStore(state => state.openTab);
-  const [result, setResult] = useState<SessionGitWorkspaceDiff | null>(null);
-  const [files, setFiles] = useState<FileDiffMetadata[]>(EMPTY_FILES);
-  const [loading, setLoading] = useState(true);
-  const [requestError, setRequestError] = useState<string | null>(null);
-  const [refresh, setRefresh] = useState(0);
+  const { data, loading, error: requestError } = useReviewGitDiff(scope);
+  const { refresh: requestRefresh } = useSessionGitDiff();
+  const result = data?.result ?? null;
+  const files = data?.files ?? EMPTY_FILES;
   const [allCollapsed, setAllCollapsed] = useState(false);
   const [themeType, setThemeType] = useState<'light' | 'dark'>(() => {
     if (typeof document === 'undefined' || document.documentElement.dataset.theme === 'light') {
@@ -140,11 +130,7 @@ function ReviewWorkspace({
     return 'dark';
   });
   const viewerRef = useRef<CodeViewHandle<undefined, undefined>>(null);
-  const acceptedPatch = useRef<string | null>(null);
-  const patchRevision = useRef(0);
-  const instanceId = useId();
   const treeId = useId();
-  const requestRefresh = useCallback(() => setRefresh(value => value + 1), []);
 
   useEffect(() => {
     const observer = new MutationObserver(() => {
@@ -156,111 +142,6 @@ function ReviewWorkspace({
     });
     return () => observer.disconnect();
   }, []);
-
-  useEffect(() => {
-    const completedCalls = new Set(
-      [...(useTurnStore.getState().turnsBySession.get(sessionId)?.values() ?? [])]
-        .flatMap(turn => assistantOutputBlocks(turn))
-        .flatMap(item => {
-          if (item.type === 'tool_use' && item.durationMs !== undefined) {
-            return [item.callId];
-          }
-          return [];
-        }),
-    );
-    for (const [subagentId, progress] of useSubagentStore.getState().progressById) {
-      if (progress.sessionId !== sessionId) {
-        continue;
-      }
-      for (const message of useSubagentStore.getState().streamingMessages.get(subagentId) ?? []) {
-        for (const block of message.blocks) {
-          if (block.type === 'tool_use' && (block.status === 'succeeded' || block.status === 'failed')) {
-            completedCalls.add(block.callId);
-          }
-        }
-      }
-    }
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const scheduleRefresh = () => {
-      clearTimeout(timer);
-      timer = setTimeout(requestRefresh, 150);
-    };
-    const unsubscribe = useTurnStore.subscribe(state => {
-      for (const turn of state.turnsBySession.get(sessionId)?.values() ?? []) {
-        for (const block of assistantOutputBlocks(turn)) {
-          if (
-            block.type !== 'tool_use'
-            || block.durationMs === undefined
-            || completedCalls.has(block.callId)
-          ) {
-            continue;
-          }
-          completedCalls.add(block.callId);
-          scheduleRefresh();
-        }
-      }
-    });
-    const unsubscribeSubagents = useSubagentStore.subscribe(state => {
-      for (const [subagentId, progress] of state.progressById) {
-        if (progress.sessionId !== sessionId) {
-          continue;
-        }
-        for (const message of state.streamingMessages.get(subagentId) ?? []) {
-          for (const block of message.blocks) {
-            if (block.type !== 'tool_use' || completedCalls.has(block.callId)) {
-              continue;
-            }
-            if (block.status !== 'succeeded' && block.status !== 'failed') {
-              continue;
-            }
-            completedCalls.add(block.callId);
-            scheduleRefresh();
-          }
-        }
-      }
-    });
-    return () => {
-      unsubscribe();
-      unsubscribeSubagents();
-      clearTimeout(timer);
-    };
-  }, [sessionId, requestRefresh]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    setLoading(true);
-    setRequestError(null);
-    void sessionGitApi
-      .workspaceDiff(sessionId, scope, controller.signal)
-      .then(next => {
-        if (controller.signal.aborted) {
-          return;
-        }
-        if (next.capability === 'ok') {
-          if (next.patch !== acceptedPatch.current) {
-            const prefix = `${instanceId}:${++patchRevision.current}`;
-            const parsed = parsePatchFiles(next.patch, prefix, true).flatMap(patch => patch.files);
-            acceptedPatch.current = next.patch;
-            setFiles(parsed);
-          }
-        } else {
-          acceptedPatch.current = null;
-          setFiles(EMPTY_FILES);
-        }
-        setResult(next);
-      })
-      .catch((error: unknown) => {
-        if (!controller.signal.aborted) {
-          setRequestError(error instanceof Error ? error.message : 'Git 差异读取失败');
-        }
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) {
-          setLoading(false);
-        }
-      });
-    return () => controller.abort();
-  }, [sessionId, cwd, scope, refresh, instanceId]);
 
   useEffect(() => {
     const viewer = viewerRef.current;
@@ -369,18 +250,7 @@ function ReviewWorkspace({
     itemMetrics: { diffHeaderHeight: FILE_HEADER_HEIGHT },
     layout: { paddingTop: 8, paddingBottom: 8, gap: 2 },
   }), [split, wrap, themeType]);
-  const counts = useMemo(() => (
-    files.reduce((total, file) => {
-      for (const hunk of file.hunks) {
-        total.additions += hunk.additionLines;
-        total.deletions += hunk.deletionLines;
-      }
-      return total;
-    }, {
-      additions: 0,
-      deletions: 0,
-    })
-  ), [files]);
+  const counts = { additions: data?.additions ?? 0, deletions: data?.deletions ?? 0 };
 
   let message: string | null = requestError;
   if (!message && result) {

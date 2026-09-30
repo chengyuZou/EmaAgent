@@ -3,7 +3,7 @@ import { findRepoRoot } from './repoDetection.js';
 import { mapGitError } from './errors.js';
 import { queryBranch } from './queries/branch.js';
 import { queryChangeStats } from './queries/changeStats.js';
-import { queryUntrackedCount } from './queries/status.js';
+import { listUntrackedFiles } from './queries/status.js';
 import { queryUpstream } from './queries/upstream.js';
 import { queryOriginUrl } from './queries/remote.js';
 import type {
@@ -18,11 +18,11 @@ export async function gitSummary(cwd: string): Promise<GitSummary> {
 
   try {
     // 先确认仓库,再并行全部只读查询。
-    const [branchInfo, unstaged, staged, untrackedCount, upstream, originUrl] = await Promise.all([
+    const [branchInfo, unstaged, staged, untracked, upstream, originUrl] = await Promise.all([
       queryBranch(repoRoot),
       queryChangeStats(repoRoot, 'unstaged'),
       queryChangeStats(repoRoot, 'staged'),
-      queryUntrackedCount(repoRoot),
+      listUntrackedFiles(repoRoot),
       queryUpstream(repoRoot),
       queryOriginUrl(repoRoot),
     ]);
@@ -32,7 +32,7 @@ export async function gitSummary(cwd: string): Promise<GitSummary> {
       ...branchInfo,
       unstaged,
       staged,
-      untrackedCount,
+      untrackedCount: untracked.length,
       upstream,
       originUrl,
     };

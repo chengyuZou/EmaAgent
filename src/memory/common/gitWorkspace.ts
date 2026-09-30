@@ -82,13 +82,19 @@ export function renderMemoryGitDiff(
     text += `\n- ${changeStatusLabel(change.status)} ${change.path}`;
   }
 
-  const unifiedDiff = truncateUtf8(diff.unifiedDiff, maxUnifiedDiffBytes);
+  if (diff.unifiedSkipped) {
+    text += '\n\nDiff body skipped because too many files changed. The status list is complete.\n';
+  }
+  if (diff.omittedFiles > 0) {
+    text += `\n\n${diff.omittedFiles} file(s) could not be read while collecting the diff.\n`;
+  }
+  const unifiedDiff = diff.unifiedDiff;
   text += '\n\n## Diff\n\n```diff\n';
   text += unifiedDiff;
   if (!unifiedDiff.endsWith('\n')) {
     text += '\n';
   }
-  if (Buffer.byteLength(diff.unifiedDiff, 'utf8') > maxUnifiedDiffBytes) {
+  if (diff.truncated) {
     text += `\n[workspace diff truncated at ${maxUnifiedDiffBytes} bytes]\n`;
   }
   text += '```\n';
@@ -104,18 +110,4 @@ function changeStatusLabel(status: BaselineChangeStatus): string {
     case 'deleted':
       return 'D';
   }
-}
-
-function truncateUtf8(text: string, maxBytes: number): string {
-  if (Buffer.byteLength(text, 'utf8') <= maxBytes) {
-    return text;
-  }
-
-  let result = Buffer.from(text, 'utf8')
-    .subarray(0, maxBytes)
-    .toString('utf8');
-  while (result.endsWith('\uFFFD')) {
-    result = result.slice(0, -1);
-  }
-  return result;
 }

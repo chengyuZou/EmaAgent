@@ -14,9 +14,10 @@ export interface GitSummaryOk {
   /** 当前分支名;detached HEAD 时为 null,由 headShortSha 表达。 */
   readonly branch: string | null;
   readonly headShortSha: string | null;
+  /** 已跟踪文件的暂存区到磁盘统计, 未跟踪文件另外计数. */
   readonly unstaged: GitChangeStats;
   readonly staged: GitChangeStats;
-  /** 未跟踪文件数(status --porcelain 中 "??" 行)。 */
+  /** 实际未跟踪文件数, 目录展开到文件级. */
   readonly untrackedCount: number;
   /** upstream 引用名(如 origin/main);未配置 upstream 为 null,属正常状态。 */
   readonly upstream: string | null;

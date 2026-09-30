@@ -9,6 +9,7 @@ import { useSessionAttachmentStore } from '../../stores/sessionAttachment.js';
 import { useSessionStore } from '../../stores/session.js';
 import { useTaskStore } from '../../stores/task.js';
 import { SessionCwdDialog } from './SessionCwdDialog.js';
+import { useSessionGitDiff } from './gitDiffContext.js';
 import {
   backgroundProcessTab,
   sessionSourceTab,
@@ -18,7 +19,7 @@ import {
 const SOURCE_PREVIEW_COUNT = 3;
 
 export function SessionHeader({ sessionId }: { sessionId: string }): JSX.Element {
-  const [summaryOpen, setSummaryOpen] = useState(false);
+  const { summaryOpen, setSummaryOpen } = useSessionGitDiff();
   const [cwdOpen, setCwdOpen] = useState(false);
   const [titleOpen, setTitleOpen] = useState(false);
   const [titleDraft, setTitleDraft] = useState('');
@@ -229,7 +230,7 @@ function SessionSummary({
           label="变更"
           onClick={() => navigate({ id: 'review', kind: 'review' })}
         >
-          <GitChanges git={git} />
+          <GitChanges />
         </SummaryRow>
         <SummaryRow icon="i-lucide:monitor" label="本地" title={cwd ?? undefined} />
         <SummaryRow
@@ -377,19 +378,18 @@ function SummaryRow({
   );
 }
 
-function GitChanges({ git }: { git: SessionGitSummary | null }): JSX.Element {
-  if (!git || git.capability !== 'ok') {
-    return <span className="text-[var(--ema-text-tertiary)]">不可用</span>;
+function GitChanges(): JSX.Element {
+  const { data, error } = useSessionGitDiff().uncommitted;
+  if (!data) {
+    return <span className="text-[var(--ema-text-tertiary)]">{error ? '不可用' : '…'}</span>;
   }
-  const insertions = git.unstaged.insertions + git.staged.insertions;
-  const deletions = git.unstaged.deletions + git.staged.deletions;
-  if (insertions === 0 && deletions === 0 && git.untrackedCount === 0) {
-    return <span className="text-[var(--ema-text-tertiary)]">无变更</span>;
+  if (data.result.capability !== 'ok') {
+    return <span className="text-[var(--ema-text-tertiary)]">不可用</span>;
   }
   return (
     <span className="flex items-center gap-1">
-      <span className="text-[var(--ema-success)]">+{insertions}</span>{' '}
-      <span className="text-[var(--ema-danger)]">-{deletions}</span>
+      <span className="text-[var(--ema-success)]">+{data.additions}</span>{' '}
+      <span className="text-[var(--ema-danger)]">-{data.deletions}</span>
     </span>
   );
 }

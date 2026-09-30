@@ -1,13 +1,14 @@
 // 内部目录的可重置 diff 机制
 // 用系统 git 实现"单 commit 基线":ensure → init + 首次提交;reset → add + amend 折叠为单 commit。
-// untracked 伪 diff 复用 diff.ts 的成熟实现(listUntrackedFiles / diffUntrackedFile),不重复造轮子。
+// 差异读取与审查共用, 基线写入只供内部 Memory 目录.
+import { StringDecoder } from 'node:string_decoder';
 import { GitError } from './errors.js';
 import { runGit } from './gitProcess.js';
-import { diffUntrackedFile } from './diff.js';
+import { readWorkspacePatches } from './diff.js';
+import { listUntrackedFiles } from './queries/status.js';
 import {
   GIT_BASELINE_MAX_CHANGES_FOR_UNIFIED,
   GIT_BASELINE_MAX_DIFF_BYTES,
-  GIT_DIFF_UNTRACKED_CONCURRENCY,
   GIT_WRITE_TIMEOUT_MS,
 } from './limits.js';
 
@@ -41,6 +42,8 @@ export interface BaselineDiff {
   readonly truncated: boolean;
   /** 变化文件过多时按快探跳过 unified diff 渲染(claude fetchGitDiff 同款策略),changes 仍完整。 */
   readonly unifiedSkipped: boolean;
+  /** 查询期间未能读取的文件数, 给 Memory 整合输入明确提示. */
+  readonly omittedFiles: number;
 }
 
 export interface BaselineOptions {
@@ -73,7 +76,7 @@ export async function resetBaseline(root: string): Promise<void> {
   if (!(await hasUsableBaseline(root))) {
     await runGit(root, ['init', '-q'], { extraConfig: BASELINE_GIT_CONFIG, timeoutMs: GIT_WRITE_TIMEOUT_MS });
     await runGit(root, ['add', '-A'], { extraConfig: BASELINE_GIT_CONFIG, timeoutMs: GIT_WRITE_TIMEOUT_MS });
-    await runGit(root, ['commit', '-q', '-m', BASELINE_COMMIT_MESSAGE, '--no-gpg-sign'], {
+    await runGit(root, ['commit', '-q', '-m', BASELINE_COMMIT_MESSAGE, '--allow-empty', '--no-gpg-sign'], {
       extraConfig: BASELINE_GIT_CONFIG,
       timeoutMs: GIT_WRITE_TIMEOUT_MS,
     });
@@ -104,7 +107,7 @@ export async function compactBaselineStorage(root: string): Promise<void> {
 
 /**
  * 返回自上次基线以来的变化:文件级清单(完整)+ unified diff(有界)。
- * tracked 变化走 git diff HEAD;untracked 新增复用 diff.ts 的 --no-index 伪 diff。
+ * 文件分类交给 Git, patch 读取与审查共用.
  * 变化文件过多时跳过 unified diff 渲染(快探),changes 仍完整。
  */
 export async function diffSinceBaseline(
@@ -113,117 +116,74 @@ export async function diffSinceBaseline(
 ): Promise<BaselineDiff> {
   const maxDiffBytes = options.maxDiffBytes ?? GIT_BASELINE_MAX_DIFF_BYTES;
 
-  const status = await runGit(
-    root,
-    ['status', '--porcelain', '--untracked-files=all'],
-    { extraConfig: BASELINE_GIT_CONFIG },
-  );
-  const { changes, untracked } = parsePorcelain(status.stdout);
+  const [added, modified, deleted, untracked] = await Promise.all([
+    baselinePaths(root, 'A'),
+    baselinePaths(root, 'MT'),
+    baselinePaths(root, 'D'),
+    listUntrackedFiles(root, BASELINE_GIT_CONFIG),
+  ]);
+  const changes: BaselineChange[] = [
+    ...added.map(path => ({ status: 'added' as const, path })),
+    ...modified.map(path => ({ status: 'modified' as const, path })),
+    ...deleted.map(path => ({ status: 'deleted' as const, path })),
+    ...untracked.map(path => ({ status: 'added' as const, path })),
+  ];
+  changes.sort((left, right) => left.path.localeCompare(right.path));
 
   // 快探:变化文件过多时不渲染 unified diff(claude fetchGitDiff 同款),避免拖慢整合。
   if (changes.length > GIT_BASELINE_MAX_CHANGES_FOR_UNIFIED) {
-    return { changes, unifiedDiff: '', truncated: false, unifiedSkipped: true };
+    return { changes, unifiedDiff: '', truncated: false, unifiedSkipped: true, omittedFiles: 0 };
   }
 
   const chunks: string[] = [];
 
-  // tracked 变化(modified / deleted / staged added / rename):一次 git diff HEAD 取回
-  const trackedPaths = changes.filter((c) => !untracked.includes(c.path));
-  if (trackedPaths.length > 0) {
-    const tracked = await runGit(
-      root,
-      ['diff', 'HEAD', '--no-color', '--no-textconv', '--no-ext-diff', '--no-renames'],
-      {
-        maxOutputBytes: Math.max(maxDiffBytes * 2, 8 * 1024 * 1024),
-        extraConfig: BASELINE_GIT_CONFIG,
-      },
-    );
-    if (tracked.stdout.trim()) chunks.push(tracked.stdout);
-  }
-
-  // untracked 新增:复用 diff.ts 的成熟实现(内部已处理 NUL 设备与 8MB buffer),批并发 + 失败容错。
-  // overrides 传空数组:filter driver 只存在于用户仓库的 .gitattributes,memory-workspace 是受控内部目录,不需要 filterDriverOverrides 防护。
-  for (let i = 0; i < untracked.length; i += GIT_DIFF_UNTRACKED_CONCURRENCY) {
-    const batch = untracked.slice(i, i + GIT_DIFF_UNTRACKED_CONCURRENCY);
-    const patches = await Promise.all(
-      batch.map((file) =>
-        diffUntrackedFile(root, [], file).catch((error: unknown) => {
-          // 伪 diff 期间文件被删等竞态:忽略该文件,不中断整体 diff
-          if (error instanceof GitError) return null;
-          throw error;
-        }),
-      ),
-    );
-    for (const patch of patches) {
-      if (patch) chunks.push(patch);
+  let bytes = 0;
+  let truncated = false;
+  let omittedFiles = 0;
+  try {
+    for await (const patch of readWorkspacePatches({
+      repoRoot: root,
+      scope: 'uncommitted',
+      untrackedFiles: untracked,
+      extraConfig: BASELINE_GIT_CONFIG,
+      maxOutputBytes: Math.max(maxDiffBytes * 2, 8 * 1024 * 1024),
+      detectRenames: false,
+    })) {
+      if (patch === null) {
+        omittedFiles += 1;
+        continue;
+      }
+      const buffer = Buffer.from(patch, 'utf8');
+      const remaining = maxDiffBytes - bytes;
+      if (buffer.length > remaining) {
+        // Node 原生解码器保留完整字符, 不逐字符回退扫描整份正文.
+        chunks.push(new StringDecoder('utf8').write(buffer.subarray(0, remaining)));
+        truncated = true;
+        break;
+      }
+      chunks.push(patch);
+      bytes += buffer.length;
     }
+  } catch (error) {
+    if (!(error instanceof GitError) || error.code !== 'git/output-too-large') {
+      throw error;
+    }
+    // 单次 Git 输出也有上限, 正文不完整时仍交付完整文件清单.
+    truncated = true;
   }
-
-  const raw = chunks.join('');
-  const truncated = Buffer.byteLength(raw, 'utf8') > maxDiffBytes;
   return {
     changes,
-    unifiedDiff: truncated ? truncateAtCharBoundary(raw, maxDiffBytes) : raw,
+    unifiedDiff: chunks.join(''),
     truncated,
     unifiedSkipped: false,
+    omittedFiles,
   };
 }
 
-// ── 解析 ─────────────────────────────────────────────────────────────────────
-
-interface PorcelainResult {
-  changes: BaselineChange[];
-  /** porcelain 中 "??" 开头的未跟踪文件(相对路径,展开到文件级)。 */
-  untracked: string[];
-}
-
-function parsePorcelain(stdout: string): PorcelainResult {
-  const changes: BaselineChange[] = [];
-  const untracked: string[] = [];
-  for (const line of stdout.split('\n')) {
-    if (!line) continue;
-    if (line.startsWith('?? ')) {
-      const file = line.slice(3).trim();
-      if (!file) continue;
-      changes.push({ status: 'added', path: file });
-      untracked.push(file);
-      continue;
-    }
-    const x = line[0] as string;
-    const y = line[1] as string;
-    const rest = line.slice(3).trim();
-    if (!rest) continue;
-
-    if (x === 'R' || y === 'R' || x === 'C' || y === 'C') {
-      // "R100 old\tnew"。拆成 deleted + added 双状态而非单一 renamed:
-      // 与 tracked 侧 --no-renames 的 diff 表达保持一致,防 rename 检测差异导致漏计数。
-      const [oldPath, newPath] = rest.split('\t');
-      changes.push({ status: 'deleted', path: oldPath ?? rest });
-      if (newPath) changes.push({ status: 'added', path: newPath });
-      continue;
-    }
-
-    const status = porcelainStatus(x, y);
-    if (status) changes.push({ status, path: rest });
-  }
-  changes.sort((a, b) => a.path.localeCompare(b.path));
-  return { changes, untracked };
-}
-
-function porcelainStatus(x: string, y: string): BaselineChangeStatus | null {
-  const codes = x + y;
-  if (codes.includes('A')) return 'added';
-  if (codes.includes('M')) return 'modified';
-  if (codes.includes('D')) return 'deleted';
-  return null;
-}
-
-/** 按 UTF-8 字符边界截断,不切半字符 */
-function truncateAtCharBoundary(text: string, maxBytes: number): string {
-  if (Buffer.byteLength(text, 'utf8') <= maxBytes) return text;
-  let slice = text;
-  while (Buffer.byteLength(slice, 'utf8') > maxBytes) {
-    slice = slice.slice(0, -1);
-  }
-  return slice;
+async function baselinePaths(root: string, filter: 'A' | 'MT' | 'D'): Promise<string[]> {
+  const { stdout } = await runGit(root, [
+    'diff', 'HEAD', '--name-only', '-z', '--no-renames', '--no-ext-diff', '--no-textconv',
+    `--diff-filter=${filter}`, '--',
+  ], { extraConfig: BASELINE_GIT_CONFIG });
+  return stdout.split('\0').filter(path => path.length > 0);
 }

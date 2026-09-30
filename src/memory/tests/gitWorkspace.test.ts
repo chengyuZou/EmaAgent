@@ -23,6 +23,7 @@ describe('Memory Git workspace diff', () => {
         unifiedDiff: '@@ -1 +1 @@\n-old\n+new\n',
         truncated: false,
         unifiedSkipped: false,
+        omittedFiles: 0,
       },
       1_024,
     );
@@ -33,13 +34,14 @@ describe('Memory Git workspace diff', () => {
     expect(result).toContain('@@ -1 +1 @@\n-old\n+new');
   });
 
-  it('cuts unified diff content on a UTF-8 boundary', () => {
+  it('reports upstream truncation even when the received body already fits the budget', () => {
     const result = renderMemoryGitDiff(
       {
         changes: [{ status: 'modified', path: 'MEMORY.md' }],
-        unifiedDiff: '修改'.repeat(100),
+        unifiedDiff: '修改修改修',
         truncated: true,
         unifiedSkipped: false,
+        omittedFiles: 0,
       },
       17,
     );
@@ -50,6 +52,19 @@ describe('Memory Git workspace diff', () => {
     expect(Buffer.byteLength(renderedDiff.trimEnd(), 'utf8')).toBeLessThanOrEqual(17);
     expect(renderedDiff).not.toContain('\uFFFD');
     expect(result).toContain('[workspace diff truncated at 17 bytes]');
+  });
+
+  it('reports skipped and unreadable diff bodies without dropping the file list', () => {
+    const result = renderMemoryGitDiff({
+      changes: [{ status: 'added', path: 'new.md' }],
+      unifiedDiff: '',
+      truncated: false,
+      unifiedSkipped: true,
+      omittedFiles: 1,
+    }, 1_024);
+    expect(result).toContain('- A new.md');
+    expect(result).toContain('Diff body skipped');
+    expect(result).toContain('1 file(s) could not be read');
   });
 
   it('uses one fixed generated file inside the selected track', () => {
