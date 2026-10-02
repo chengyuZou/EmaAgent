@@ -36,7 +36,7 @@ describe('UsageRecordsRepo', () => {
   });
 
   it('同一 Turn 的多次调用不会互相覆盖', () => {
-    expect(database.db.pragma('user_version', { simple: true })).toBe(8);
+    expect(database.db.pragma('user_version', { simple: true })).toBe(13);
     repo.record(record('call-b', 10));
     repo.record(record('call-a', 10));
     expect(repo.forTurn('turn-a').map((row) => row.id)).toEqual(['call-a', 'call-b']);

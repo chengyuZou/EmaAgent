@@ -6,6 +6,7 @@ import {
   SessionBackupRestorer,
   SessionsRepo,
   SubagentMessagesRepo,
+  SubagentRunsRepo,
   SubagentsRepo,
   TurnsRepo,
 } from '../../index.js';
@@ -102,22 +103,41 @@ describe('SessionBackupReader', () => {
         'succeeded', NULL, 4, 8, 8)
     `).run();
     insertMessage.run('msg-b', 'session-cursor', 'turn-1', 'normal', '"B"', 20, null);
-    new SubagentsRepo(database.db).insert({
-      id: 'subagent-1',
-      toolCallId: 'call-subagent-1',
-      sessionId: 'session-cursor',
-      contextMode: 'subagent',
-      createdAt: 11,
-    });
+    const runs = new SubagentRunsRepo(database.db);
+    const identities = new SubagentsRepo(database.db);
+    database.db.transaction(() => {
+      identities.insert({ id: 'subagent-1', sessionId: 'session-cursor', title: '调查', description: '持久化调查', createdAt: 11 });
+      return runs.insert({ id: 'run-1', subagentId: 'subagent-1', parentToolCallId: 'call-subagent-1', contextMode: 'fork', createdAt: 11 });
+    })();
+    runs.setRunConfiguration('run-1', {
+      providerId: 'provider-1', modelId: 'model-1', protocol: 'openai-llm',
+      permissionMode: 'default', reasoningEffort: 'medium',
+    }, 11);
     const subagentMessages = new SubagentMessagesRepo(database.db);
     subagentMessages.insert({
-      id: 'subagent-assistant', subagentId: 'subagent-1', role: 'assistant',
+      id: 'subagent-assistant', subagentId: 'subagent-1', runId: null, role: 'assistant',
       blocksJson: '[{"type":"text","text":"result"}]', interrupted: true, createdAt: 12,
+      providerId: 'parent-provider', modelId: 'parent-model', protocol: 'anthropic-llm',
     });
     subagentMessages.insert({
-      id: 'subagent-summary', subagentId: 'subagent-1', role: 'user', kind: 'summary',
-      blocksJson: '"summary"', summarizedThroughMessageId: 'subagent-assistant', createdAt: 13,
+      id: 'subagent-summary', subagentId: 'subagent-1', runId: 'run-1', role: 'user', kind: 'summary',
+      blocksJson: '"summary"', summarizedThroughMessageId: 'subagent-assistant', savedTokens: 456, createdAt: 13,
     });
+
+    runs.cancelRun('run-1', 'first stopped', 11);
+    // 相同毫秒的后一次 Run, 导出顺序必须保留最近一次的含义.
+    runs.startRun({ id: 'run-0', subagentId: 'subagent-1', contextMode: 'fork', createdAt: 11 });
+    runs.setRunConfiguration('run-0', {
+      providerId: 'provider-2', modelId: 'model-2', protocol: 'openai-llm',
+      permissionMode: 'acceptEdits', reasoningEffort: 'high',
+    }, 11);
+    subagentMessages.insert({
+      id: 'subagent-own', subagentId: 'subagent-1', runId: 'run-0', role: 'assistant',
+      blocksJson: '[{"type":"reasoning","id":"native-item","encryptedContent":"encrypted"}]', createdAt: 14,
+    });
+    runs.completeRun('run-0', {
+      iterations: 2, toolCallCount: 3, inputTokens: 100, outputTokens: 20, finalText: 'done',
+    }, 15);
 
     const restored = new SessionBackupReader(database.db).readSession(
       'session-cursor',
@@ -128,7 +148,7 @@ describe('SessionBackupReader', () => {
         tasks: [...rows.tasks],
         goals: [...rows.goals],
         subagents: [...rows.subagents],
-        subagentInvocations: [...rows.subagentInvocations],
+        subagentRuns: [...rows.subagentRuns],
         subagentMessages: [...rows.subagentMessages],
         toolExecutions: [...rows.toolExecutions],
         backgroundProcesses: [...rows.backgroundProcesses],
@@ -159,14 +179,38 @@ describe('SessionBackupReader', () => {
       completed_at: 8,
     });
     expect(new SubagentMessagesRepo(database.db).listAllForSubagent('subagent-1')).toMatchObject([
-      { id: 'subagent-assistant', role: 'assistant', kind: 'normal', interrupted: 1, sequence: 1 },
       {
-        id: 'subagent-summary', role: 'user', kind: 'summary', sequence: 2,
-        summarized_through_message_id: 'subagent-assistant',
+        id: 'subagent-assistant', run_id: null, role: 'assistant', kind: 'normal', interrupted: 1,
+        provider_id: 'parent-provider', model_id: 'parent-model', protocol: 'anthropic-llm',
       },
+      {
+        id: 'subagent-summary', run_id: 'run-1', role: 'user', kind: 'summary',
+        summarized_through_message_id: 'subagent-assistant', summary_saved_tokens: 456,
+      },
+      { id: 'subagent-own', run_id: 'run-0', provider_id: 'provider-2', model_id: 'model-2', protocol: 'openai-llm' },
     ]);
-    expect(new SubagentsRepo(database.db).listInvocationsForSession('session-restored')).toEqual([{
-      tool_call_id: 'call-subagent-1', subagent_id: 'subagent-1', created_at: 11,
-    }]);
+    const restoredRuns = new SubagentRunsRepo(database.db);
+    expect(restoredRuns.listForSubagent('subagent-1').items).toMatchObject([
+      { id: 'run-1', parent_tool_call_id: 'call-subagent-1', subagent_id: 'subagent-1', status: 'cancelled', created_at: 11, permission_mode: 'default', reasoning_effort: 'medium', completed_at: 11 },
+      { id: 'run-0', parent_tool_call_id: null, subagent_id: 'subagent-1', status: 'completed', created_at: 11, permission_mode: 'acceptEdits', reasoning_effort: 'high', completed_at: 15 },
+    ]);
+    expect(restoredRuns.findLatestRun('subagent-1')?.id).toBe('run-0');
+    const completedRun = restoredRuns.findById('run-0')!;
+    expect(completedRun.completed_at! - completedRun.created_at).toBe(4);
+    expect(completedRun).not.toHaveProperty('duration_ms');
+    const restoredIdentity = new SubagentsRepo(database.db).findById('subagent-1');
+    expect(restoredIdentity).toEqual({
+      id: 'subagent-1', session_id: 'session-restored', title: '调查', description: '持久化调查',
+      provider_id: 'provider-2', model_id: 'model-2', protocol: 'openai-llm',
+      permission_mode: 'acceptEdits', reasoning_effort: 'high', status: 'completed',
+      created_at: 11, updated_at: 15,
+    });
+    expect(restoredIdentity).not.toHaveProperty('input_tokens');
+    expect(restoredIdentity).not.toHaveProperty('duration_ms');
+    expect(new SubagentMessagesRepo(database.db).listForSubagentFromSummary('subagent-1').map(row => row.id))
+      .toEqual(['subagent-summary', 'subagent-own']);
+    expect(database.db.prepare('SELECT provider_id, model_id, protocol FROM subagent_messages WHERE id = ?').get('subagent-own'))
+      .toEqual({ provider_id: null, model_id: null, protocol: null });
+    expect(database.db.pragma('foreign_key_check')).toEqual([]);
   });
 });

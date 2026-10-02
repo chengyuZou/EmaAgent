@@ -138,6 +138,7 @@ export type {
 } from './repos/data/memory.js';
 // ── Subagent 存储 ─────────────────────────────────────────────────────────────
 export { SubagentsRepo } from './repos/data/subagents.js';
+export { SubagentRunsRepo } from './repos/data/subagentRuns.js';
 export {
   SubagentMessagesRepo,
 } from './repos/data/subagent-messages.js';
@@ -154,17 +155,24 @@ export {
   type TaskRowStatus,
 } from './repos/data/tasks.js';
 export type {
-  SubagentCompletion,
   SubagentInsert,
-  SubagentInvocationRow,
-  SubagentContextModeRow,
+  SubagentDetailsUpdate,
+  SubagentPage,
+  SubagentPageCursor,
   SubagentRow,
-  SubagentSummaryRow,
-  SubagentStatus,
+  SubagentStatusRow,
 } from './repos/data/subagents.js';
 export type {
+  SubagentRunCompletion,
+  SubagentRunConfiguration,
+  SubagentRunInsert,
+  SubagentRunPage,
+  SubagentRunPageCursor,
+  SubagentRunRow,
+  SubagentContextModeRow,
+} from './repos/data/subagentRuns.js';
+export type {
   SubagentMessageInsert,
-  SubagentMessageKind,
   SubagentMessagePage,
   SubagentMessageRow,
 } from './repos/data/subagent-messages.js';
