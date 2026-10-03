@@ -264,6 +264,7 @@ export class SessionContinuationQueue {
     subagentId: string,
     status: Exclude<SubagentStatus, 'running'>,
   ): void {
+    // TODO: (post-V1): 若将来要求上次结果交接后才能复用同一子代理, 将交付确认与下一次调用资格关联. V1 不以待领通知阻止复用.
     this.addCompletionNotice(sessionId, {
       key: `subagent:${subagentId}`,
       kind: 'subagent',

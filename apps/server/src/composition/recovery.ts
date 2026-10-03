@@ -74,8 +74,11 @@ function recoverToolExecutions(deps: StartupRecoveryDeps): void {
   for (const execution of interrupted) {
     // 根工具从 Session History 找调用, 子 Agent 工具从独立 Subagent 转录找.
     // 两条链都先写 Message 再关执行状态, 所以恢复时可能已经存在 ToolResult.
-    const interaction = execution.subagentId
+    const childInteraction = execution.subagentId
       ? deps.subagentMessages.findToolInteraction(execution.subagentId, execution.callId)
+      : undefined;
+    const interaction = execution.subagentId
+      ? childInteraction
       : deps.session.findToolInteraction(execution.turnId, execution.callId);
     if (!interaction) {
       throw new Error(`tool_call_message_missing: ${execution.callId}`);
@@ -90,8 +93,8 @@ function recoverToolExecutions(deps: StartupRecoveryDeps): void {
       errorCode: execution.status === 'running' ? 'tool/outcome_unknown' : 'tool/cancelled',
     };
     if (!interaction.result) {
-      if (execution.subagentId) {
-        deps.subagentMessages.appendToolResult(execution.subagentId, result);
+      if (execution.subagentId && childInteraction) {
+        deps.subagentMessages.appendToolResult(execution.subagentId, childInteraction.runId, result);
       } else {
         deps.session.appendMessage({
           sessionId: execution.sessionId,

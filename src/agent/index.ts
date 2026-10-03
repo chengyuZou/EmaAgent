@@ -13,7 +13,9 @@ export type {
   SubagentToolInteraction,
   SubagentStart,
   SubagentStatus,
-  SubagentSummary,
+  SubagentRun,
+  ForkParentMessage,
+  ForkParentMessages,
 } from './subagents/types.js';
 export { runAgentLoop } from './agentLoop.js';
 export type {

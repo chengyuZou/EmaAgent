@@ -1,5 +1,5 @@
 // 手动 /compact: 与根 Turn 共享同一份 Session 运行记录, 两者互斥, 且不创建 Turn.
-// 链: 注册 SessionRunning(kind='compact') → 读历史 → projectSessionMessages 投影 → 触发线下限闸 →
+// 链: 注册 SessionRunning(kind='compact') → 读历史 → projectMessages 投影 → 触发线下限闸 →
 // 与下一根 Turn 同事实的 systemMessages → compact(force=true) →
 // 游标映射 appendHistorySummary（唯一提交点；abort/失败即历史原样）。
 // 命令路径的压缩终态一定是 macro：低于触发线在调用前拒绝，macro 失败按错误上抛，
@@ -18,7 +18,7 @@ import {
   type CompactResult,
 } from '@ema-agent/compact';
 import {
-  projectSessionMessages,
+  projectMessages,
   buildPromptMessages,
 } from '@ema-agent/context';
 import {
@@ -27,6 +27,7 @@ import {
   type Message,
 } from '@ema-agent/llm';
 import type { ProviderModels, Providers } from '@ema-agent/providers';
+import { staticSystemPrompt, getDynamicSystemPrompt } from '@ema-agent/prompts';
 import {
   SessionBusyError,
   type SessionRunningRegistry,
@@ -34,10 +35,9 @@ import {
   type SessionStore,
 } from '@ema-agent/session';
 import type { SettingsStore } from '@ema-agent/settings';
-import type { SkillDescriptor } from '@ema-agent/skills';
+import { renderSkillListing, type SkillDescriptor } from '@ema-agent/skills';
 import { estimateMessagesTokens } from '@ema-agent/token';
 import {
-  buildSessionSystemPrompt,
   createGenerationTargetResolver,
   resolveSkillPool,
   type TurnStore,
@@ -106,7 +106,7 @@ export async function compactSession(
   if (!providerId || !modelId) {
     throw new CommandsError(
       'provider/not_configured',
-      '未配置模型：Session 未指定 providerId/modelId',
+      '未配置模型: Session 未指定 providerId/modelId',
     );
   }
   const providerModel = deps.providerModels.get(providerId, 'llm', modelId);
@@ -127,9 +127,10 @@ export async function compactSession(
     }
 
     const supportsImageInput = providerModel.inputImage === true;
-    const historyWithIds = await projectSessionMessages(
+    const resolveGenerationTarget = createGenerationTargetResolver(deps.turns);
+    const historyWithIds = await projectMessages(
       persisted,
-      createGenerationTargetResolver(deps.turns),
+      message => message.turnId ? resolveGenerationTarget(message.turnId) : undefined,
       {
         supportsImageInput,
         ...(deps.visionCache ? { visionCache: deps.visionCache } : {}),
@@ -212,7 +213,7 @@ export async function compactSession(
           summary,
           savedTokens,
           summarizedThroughMessageId:
-            historyWithIds[summarizedMessageCount - 1]!.sessionMessageId,
+            historyWithIds[summarizedMessageCount - 1]!.messageId,
         });
       },
     });
@@ -242,8 +243,8 @@ export async function compactSession(
 }
 
 /**
- * 摘要请求的系统段：与根 Turn 共用同一装配（resolveSkillPool +
- * buildSessionSystemPrompt），事实不变时逐字节一致，共享前缀缓存。
+ * 摘要请求的系统段: 与根 Turn 使用同一静态数组和动态装配函数,
+ * 同样的输入得到同样的正文与顺序, 共享前缀缓存.
  * toolNames 恒空（手动路径不装配 ToolPool，见文件头注释）。
  */
 async function buildCompactSystemMessages(
@@ -261,24 +262,25 @@ async function buildCompactSystemMessages(
     cwd,
     session.projectId,
   );
-  const blocks = await buildSessionSystemPrompt(
-    {
+  const blocks = [
+    ...staticSystemPrompt,
+    ...getDynamicSystemPrompt({
       characterPrompt: deps.characterPrompt,
-      ...(deps.workspaceInstructions
-        ? { workspaceInstructions: deps.workspaceInstructions }
-        : {}),
-      ...(deps.memoryGuidance ? { memoryGuidance: deps.memoryGuidance } : {}),
-    },
-    {
       sessionMode: session.sessionMode,
-      cwd,
-      projectFolderPaths,
       permissionMode: session.permissionMode,
-      providerId,
-      modelId,
       toolNames: [],
-      ...(skillPool ? { skillPool } : {}),
-    },
-  );
+      environment: {
+        platform: process.platform,
+        cwd: cwd || null,
+        projectFolderPaths,
+        providerId,
+        modelId,
+      },
+      workspaceInstructions: cwd ? deps.workspaceInstructions?.(cwd) ?? null : null,
+      memorySection: await deps.memoryGuidance?.() ?? null,
+      skillCatalog: skillPool ? renderSkillListing(skillPool) : null,
+      mcpInstructions: null,
+    }),
+  ];
   return buildPromptMessages(blocks).messages;
 }

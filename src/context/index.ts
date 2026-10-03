@@ -1,10 +1,10 @@
 export { assembleContext, buildPromptMessages } from './assembleContext.js';
 export type { PromptMessages } from './assembleContext.js';
 export {
-  projectSessionMessages,
+  projectMessages,
   renderSkillReferenceForModel,
-} from './projectSessionMessages.js';
-export type { ProjectedSessionMessage } from './projectSessionMessages.js';
+} from './projectMessages.js';
+export type { ProjectedMessage } from './projectMessages.js';
 export { buildAttachmentMessages } from './buildAttachmentMessages.js';
 export type { BuildAttachmentMessagesOptions } from './buildAttachmentMessages.js';
 export {

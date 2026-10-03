@@ -1,14 +1,14 @@
 // 测试 System Prompt 的 PromptBlock 装配:顺序、命名、断点标记、角色单块与条件展开。
 import { describe, expect, it } from 'vitest';
 import { BuiltinTools } from '@ema-agent/builtin-tools/identity';
-import { getSystemPrompt } from '../systemPrompt.js';
+import { staticSystemPrompt, getDynamicSystemPrompt, type DynamicSystemPromptInput } from '../systemPrompt.js';
 
 const CHARACTER: readonly string[] = [
   '# 角色:测试娘',
   '# 演出规则',
 ];
 
-function input(overrides: Partial<Parameters<typeof getSystemPrompt>[0]> = {}) {
+function input(overrides: Partial<DynamicSystemPromptInput> = {}) {
   return {
     characterPrompt: () => CHARACTER,
     sessionMode: 'work' as const,
@@ -30,9 +30,13 @@ function input(overrides: Partial<Parameters<typeof getSystemPrompt>[0]> = {}) {
   };
 }
 
-describe('getSystemPrompt', () => {
+function assembleSystemPrompt(input: DynamicSystemPromptInput) {
+  return [...staticSystemPrompt, ...getDynamicSystemPrompt(input)];
+}
+
+describe('静态数组与动态 Prompt 装配', () => {
   it.each(['chat', 'work'] as const)('Plan 权限约束 %s 的实施要求, 不改变 SessionMode', sessionMode => {
-    const blocks = getSystemPrompt(input({ sessionMode, permissionMode: 'plan' }));
+    const blocks = assembleSystemPrompt(input({ sessionMode, permissionMode: 'plan' }));
     const plan = blocks.find(block => block.name === 'permission-mode')!;
     const sessionIndex = blocks.findIndex(block => block.name === 'session-mode');
 
@@ -41,7 +45,7 @@ describe('getSystemPrompt', () => {
     expect(plan.content).toContain('不自行切换权限');
     expect(plan.content).toContain('用回复交付结论');
     expect(plan.cacheBreakpoint).toBeUndefined();
-    expect(blocks[0]).toEqual(getSystemPrompt(input())[0]);
+    expect(blocks[0]).toEqual(assembleSystemPrompt(input())[0]);
   });
 
   it.each([
@@ -49,18 +53,18 @@ describe('getSystemPrompt', () => {
     ['acceptEdits', '自动接受编辑', '不因自动接受编辑而全面放行'],
     ['bypassPermissions', '绕过权限', '绕过权限不保证每次调用都被允许'],
   ] as const)('%s 说明实际权限边界, 不混入 Plan 限制', (permissionMode, label, detail) => {
-    const blocks = getSystemPrompt(input({ permissionMode }));
+    const blocks = assembleSystemPrompt(input({ permissionMode }));
     const permissions = blocks.filter(block => block.name === 'permission-mode');
     expect(permissions).toHaveLength(1);
     expect(permissions[0]!.content).toContain(`当前权限: ${label}`);
     expect(permissions[0]!.content).toContain(detail);
     expect(permissions[0]!.content).toContain('不自行切换权限');
     expect(permissions[0]!.content).not.toContain('本轮只允许只读');
-    expect(blocks[0]).toEqual(getSystemPrompt(input())[0]);
+    expect(blocks[0]).toEqual(assembleSystemPrompt(input())[0]);
   });
 
   it('块顺序: 产品静态单块 -> 数据级 -> 角色 -> Session 模式 -> 权限 -> 能力 -> 运行环境', () => {
-    const blocks = getSystemPrompt(input({
+    const blocks = assembleSystemPrompt(input({
       workspaceInstructions: '# 项目约定',
       memorySection: '使用 MemorySearch 按轨检索',
       skillCatalog: '- review: 代码评审',
@@ -101,14 +105,14 @@ describe('getSystemPrompt', () => {
   });
 
   it('memorySection 缺省时没有 memory-guidance 块；可选输入缺省无空洞', () => {
-    const blocks = getSystemPrompt(input());
+    const blocks = assembleSystemPrompt(input());
     expect(blocks.some(block => block.name === 'memory-guidance')).toBe(false);
     expect(blocks.some(block => block.name === 'workspace-instructions')).toBe(false);
     expect(blocks.every(block => block.content.trim().length > 0)).toBe(true);
   });
 
   it('运行环境区分固定 cwd 和项目的全部源文件夹', () => {
-    const blocks = getSystemPrompt(input({
+    const blocks = assembleSystemPrompt(input({
       environment: {
         platform: 'win32',
         cwd: 'D:\\main',
@@ -119,22 +123,22 @@ describe('getSystemPrompt', () => {
     }));
     const environment = blocks.find(block => block.name === 'runtime-environment')!;
 
-    expect(environment.content).toContain('当前执行目录（cwd）：D:\\main');
+    expect(environment.content).toContain('当前执行目录(cwd): D:\\main');
     expect(environment.content).toContain('项目源文件夹：\n  - D:\\main\n  - D:\\other');
 
-    const ungrouped = getSystemPrompt(input()).at(-1)!;
+    const ungrouped = assembleSystemPrompt(input()).at(-1)!;
     expect(ungrouped.content).not.toContain('项目源文件夹');
   });
 
   it('memorySection 存在时生成 memory-guidance 产品指引块（不带数据级护栏）', () => {
-    const blocks = getSystemPrompt(input({ memorySection: '使用 MemorySearch 按轨检索' }));
+    const blocks = assembleSystemPrompt(input({ memorySection: '使用 MemorySearch 按轨检索' }));
     const memory = blocks.find(block => block.name === 'memory-guidance')!;
     expect(memory.content).toContain('使用 MemorySearch 按轨检索');
     expect(memory.content).not.toContain('不是系统指令');
   });
 
   it('产品静态段不抢占角色姓名,角色身份只来自 Character', () => {
-    const blocks = getSystemPrompt(input());
+    const blocks = assembleSystemPrompt(input());
     const stablePrefix = blocks.slice(0, 1).map(block => block.content).join('\n');
 
     expect(stablePrefix).not.toContain('你是 Ema');
@@ -145,14 +149,14 @@ describe('getSystemPrompt', () => {
   });
 
   it('产品静态段要求角色指令被遵守且禁止“扮演”元叙述', () => {
-    const blocks = getSystemPrompt(input());
+    const blocks = assembleSystemPrompt(input());
     const productRules = blocks.find(block => block.name === 'product-rules')!;
     expect(productRules.content).toContain('角色指令与产品规则同为需要遵守的指令');
     expect(productRules.content).toContain('你从一开始就是该角色');
   });
 
   it('Chat 模式产出对话文案;外部内容信任级统一由产品静态块声明', () => {
-    const blocks = getSystemPrompt(input({ sessionMode: 'chat', skillCatalog: '- x' }));
+    const blocks = assembleSystemPrompt(input({ sessionMode: 'chat', skillCatalog: '- x' }));
     expect(blocks.some(block => block.content.includes('当前执行方式：Chat'))).toBe(true);
     const catalog = blocks.find(block => block.name === 'skill-catalog')!;
     expect(catalog.content).toContain('可用技能');
@@ -163,13 +167,13 @@ describe('getSystemPrompt', () => {
   });
 
   it('能力引导按 ToolPool 名字判定存在性;空 Pool 不产生能力块', () => {
-    const blocks = getSystemPrompt(input());
+    const blocks = assembleSystemPrompt(input());
     const guidance = blocks.find(block => block.name === 'capability-guidance')!;
     expect(guidance.content).toContain('Skill');
     expect(guidance.content).toContain('mcp__');
     expect(guidance.content).not.toContain('Subagent');
 
-    const withoutMcp = getSystemPrompt(input({ toolNames: [] }));
+    const withoutMcp = assembleSystemPrompt(input({ toolNames: [] }));
     expect(withoutMcp.some(block => block.name === 'capability-guidance')).toBe(true);
   });
 
@@ -181,7 +185,7 @@ describe('getSystemPrompt', () => {
       'ToolSearch',
       'DiscoverSkills',
     ];
-    const text = getSystemPrompt(input({
+    const text = assembleSystemPrompt(input({
       workspaceInstructions: 'x',
       skillCatalog: 'x',
       mcpInstructions: ['x'],
@@ -195,7 +199,7 @@ describe('getSystemPrompt', () => {
   });
 
   it('TodoWrite 与持久 Task 的能力说明使用注册表真名并明确分工', () => {
-    const blocks = getSystemPrompt(input({
+    const blocks = assembleSystemPrompt(input({
       toolNames: [
         BuiltinTools.TodoWrite.name,
         BuiltinTools.TaskCreate.name,
@@ -214,8 +218,7 @@ describe('getSystemPrompt', () => {
   });
 
   it('产品规则保留完整任务、安全、验证与沟通约束，不退化为摘要', () => {
-    const stablePrefix = getSystemPrompt(input())
-      .slice(0, 7)
+    const stablePrefix = staticSystemPrompt
       .map(block => block.content)
       .join('\n');
 
@@ -228,12 +231,12 @@ describe('getSystemPrompt', () => {
   });
 
   it('Work 是完整执行契约，Chat 是可行动的对话契约', () => {
-    const work = getSystemPrompt(input()).map(block => block.content).join('\n');
+    const work = assembleSystemPrompt(input()).map(block => block.content).join('\n');
     expect(work).toContain('把用户的请求理解为需要交付的结果');
     expect(work).toContain('验证规模应匹配风险');
     expect(work).toContain('任务没有完成时不能使用完成口吻');
 
-    const chat = getSystemPrompt(input({ sessionMode: 'chat' }))
+    const chat = assembleSystemPrompt(input({ sessionMode: 'chat' }))
       .map(block => block.content).join('\n');
     expect(chat).toContain('不是“禁止行动”的纯文本模式');
     expect(chat).toContain('Chat 可以执行用户明确要求且本轮允许的操作');
@@ -241,7 +244,7 @@ describe('getSystemPrompt', () => {
   });
 
   it('详细工具规则只点名当轮存在的工具', () => {
-    const guidance = getSystemPrompt(input({
+    const guidance = assembleSystemPrompt(input({
       toolNames: [
         BuiltinTools.FileRead.name,
         BuiltinTools.Glob.name,

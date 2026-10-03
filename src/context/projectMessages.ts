@@ -1,4 +1,4 @@
-// Session Message → 模型历史的唯一转换入口:把持久化消息构建为 Provider 中立消息,
+// Message → 模型历史的转换入口: Session 和子代理共用正文投影, 各自解析模型来源.
 // 只保留完整配对的 Tool 配对;thinking 作为协议原生推理状态保留并携带生成来源
 import type {
   AssistantBlock,
@@ -10,7 +10,7 @@ import type {
 } from '@ema-agent/llm';
 import type {
   AttachmentBlock,
-  SessionMessage,
+  Message,
   SkillReferenceBlock,
 } from '@ema-agent/session';
 import {
@@ -18,17 +18,17 @@ import {
   type BuildAttachmentMessagesOptions,
 } from './buildAttachmentMessages.js';
 
-export interface ProjectedSessionMessage {
-  readonly sessionMessageId: string;
+export interface ProjectedMessage {
+  readonly messageId: string;
   readonly message: ModelMessage;
 }
 
-export async function projectSessionMessages(
-  sessionMessages: readonly SessionMessage[],
-  resolveGenerationSource: (turnId: string) => LlmGenerationSource | undefined,
+export async function projectMessages<T extends Message>(
+  sessionMessages: readonly T[],
+  resolveGenerationSource: (message: T) => LlmGenerationSource | undefined,
   attachmentOptions: BuildAttachmentMessagesOptions,
-): Promise<ProjectedSessionMessage[]> {
-  const projectedMessages: ProjectedSessionMessage[] = [];
+): Promise<ProjectedMessage[]> {
+  const projectedMessages: ProjectedMessage[] = [];
   const pairedToolIds = collectPairedToolIds(sessionMessages);
 
   for (const message of sessionMessages) {
@@ -36,7 +36,7 @@ export async function projectSessionMessages(
       if (typeof message.blocks === 'string') {
         if (message.blocks.trim()) {
           projectedMessages.push({
-            sessionMessageId: message.id,
+            messageId: message.id,
             message: { role: 'user', content: message.blocks },
           });
         }
@@ -50,7 +50,7 @@ export async function projectSessionMessages(
         }
         if (content.length > 0) {
           projectedMessages.push({
-            sessionMessageId: message.id,
+            messageId: message.id,
             message: { role: 'user', content },
           });
         }
@@ -64,11 +64,9 @@ export async function projectSessionMessages(
         .map((block) => buildAssistantBlock(block, pairedToolIds))
         .filter((block): block is AssistantBlock => block !== undefined);
       if (content.length > 0) {
-        const generatedBy = message.turnId
-          ? resolveGenerationSource(message.turnId)
-          : undefined;
+        const generatedBy = resolveGenerationSource(message);
         projectedMessages.push({
-          sessionMessageId: message.id,
+          messageId: message.id,
           message: {
             role: 'assistant',
             content,
@@ -238,7 +236,7 @@ function buildToolResultContentPart(block: unknown): ToolResultContentPart | und
  * 收集配对的工具 ID
  * 确保 tool_use 与 tool_result 都只出现一次,且 tool_use 在前
  */
-function collectPairedToolIds(sessionMessages: readonly SessionMessage[]): ReadonlySet<string> {
+function collectPairedToolIds(sessionMessages: readonly Message[]): ReadonlySet<string> {
   const calls = new Map<string, { count: number; position: number }>();
   const results = new Map<string, { count: number; position: number }>();
   let position = 0;

@@ -1,10 +1,9 @@
-// 流式解压 Session ZIP，并在写盘时检查条目白名单和压缩炸弹。
+// 流式解压 Session ZIP, 写盘前检查路径与重名, 写盘时限制总展开体积.
 import fs from 'node:fs';
 import path from 'node:path';
 import { Unzip, UnzipInflate } from 'fflate';
 import type { BackupArchiveSource } from '../types.js';
 import { SessionImportError } from '../errors.js';
-import { isSessionArchivePath } from '../records/sessionFormat.js';
 import { normalizeArchivePath, resolveInside } from './pathPolicy.js';
 
 // 单人本地导入的真防线只有一条:总展开体积(防 zip 炸弹撑爆磁盘/内存)。
@@ -58,9 +57,7 @@ export async function extractSessionArchive(
   try {
     const unzip = new Unzip(file => {
       const entryPath = normalizeArchivePath(file.name);
-      if (!isSessionArchivePath(entryPath)) {
-        throw new SessionImportError('invalid_format', `ZIP 包含未知条目: ${entryPath}`);
-      }
+      // 路径安全在写盘前检查, 记录白名单留给导入流程在版本校验后检查.
       const portable = entryPath.toLocaleLowerCase('en-US');
       if (portablePaths.has(portable)) {
         throw new SessionImportError('invalid_format', `ZIP 存在同名路径: ${entryPath}`);

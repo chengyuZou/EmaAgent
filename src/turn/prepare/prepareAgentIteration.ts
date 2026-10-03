@@ -7,7 +7,6 @@ import {
   type PreparedContext,
 } from '@ema-agent/context';
 import type { Message } from '@ema-agent/llm';
-import type { SessionStore } from '@ema-agent/session';
 import type { UsageRecorder } from '@ema-agent/usage';
 import type { TurnStreamEvent } from '../events.js';
 import type { PreparedTurn } from './prepareTurn.js';
@@ -20,11 +19,13 @@ export interface PrepareAgentIterationDeps {
   readonly usageRecorder?: UsageRecorder;
   readonly emit: (event: TurnStreamEvent) => void;
   /**
-   * 根 Turn 的 Macro 持久化能力. messageIds 与 AgentLoop 消息一一对应;
-   * 未落库的引导消息占一个 undefined 位置. 子 Agent 不提供, 因此不写根 Session.
+   * 调用方保存各自的摘要. messageIds 与 AgentLoop 消息一一对应;
+   * 未落库的引导消息占一个 undefined 位置. 子代理保存到自己的消息表.
    */
   readonly macroPersistence?: {
-    readonly sessions: Pick<SessionStore, 'appendHistorySummary'>;
+    readonly appendSummary: (
+      summary: string, summarizedThroughMessageId: string, savedTokens: number,
+    ) => { readonly id: string };
     readonly messageIds: (string | undefined)[];
   };
   readonly signal: AbortSignal;
@@ -94,15 +95,9 @@ export function createPrepareAgentIteration(deps: PrepareAgentIterationDeps): Pr
                 break;
               }
               if (!throughMessageId) {
-                throw new Error('Macro 摘要覆盖范围内没有已落库的 Session Message');
+                throw new Error('Macro 摘要覆盖范围内没有已落库的 Message');
               }
-              const summaryMessage = macroPersistence.sessions.appendHistorySummary({
-                sessionId: deps.sessionId,
-                turnId: deps.turnId,
-                summary,
-                savedTokens,
-                summarizedThroughMessageId: throughMessageId,
-              });
+              const summaryMessage = macroPersistence.appendSummary(summary, throughMessageId, savedTokens);
               macroPersistence.messageIds.splice(0, summarizedMessageCount, summaryMessage.id);
             },
           }

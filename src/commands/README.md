@@ -25,7 +25,7 @@ listCommandDescriptors(): readonly CommandDescriptor[]
 → loadHistory → deriveLlmHistory（generatedBy 解析与根 Turn 共用 createGenerationTargetResolver）
 → 手动下限闸：历史估算 < 窗口 × settings.manualMinRatio（默认 15%）拒绝 compact_below_threshold
   ——只量可压缩历史本身；高于它用户随时可主动整理，不等 85% 自动触发线
-→ getSystemPrompt（与下一根 Turn 同事实装配）→ buildPromptMessages → systemMessages
+→ staticSystemPrompt + getDynamicSystemPrompt（与下一根 Turn 同事实装配）→ buildPromptMessages → systemMessages
 → compact(force=true + micro=false，终态必是 macro；tools=[]、推理强度沿用 Session)
 → saveMacroSummary：summarizedMessageCount → historyWithIds 游标映射 → appendHistorySummary
 → ManualCompactResult { beforeTokens, afterTokens, savedTokens, durationMs }

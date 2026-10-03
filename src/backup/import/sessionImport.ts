@@ -11,11 +11,11 @@
 import fs from 'node:fs';
 import type { SessionBackupReader, SessionBackupRestorer } from '@ema-agent/storage';
 import { SessionImportError } from '../errors.js';
-import { SESSION_MANIFEST_PATH } from '../records/sessionFormat.js';
+import { SESSION_MANIFEST_PATH, isSessionArchivePath } from '../records/sessionFormat.js';
 import {
   subagentMessageRecordSchema,
   subagentRecordSchema,
-  subagentInvocationRecordSchema,
+  subagentRunRecordSchema,
   attachmentImageRecordSchema,
   attachmentPastedTextRecordSchema,
   backgroundProcessRecordSchema,
@@ -32,7 +32,7 @@ import {
 import {
   restoreSubagentMessageRecord,
   restoreSubagentRecord,
-  restoreSubagentInvocationRecord,
+  restoreSubagentRunRecord,
   restoreAttachmentImageRecord,
   restoreAttachmentPastedTextRecord,
   restoreBackgroundProcessRecord,
@@ -45,7 +45,12 @@ import {
   restoreTurnRecord,
   restoreUsageRecord,
 } from '../records/importMappings.js';
-import type { MessageRecord } from '../records/sessionRecords.js';
+import type {
+  MessageRecord,
+  SubagentRecord,
+  SubagentRunRecord,
+  SubagentMessageRecord,
+} from '../records/sessionRecords.js';
 import type { BackupArchiveSource, SessionImportResult } from '../types.js';
 import { extractSessionArchive } from './archive.js';
 import { readJsonRecord, readJsonlRecords } from './recordReader.js';
@@ -63,6 +68,12 @@ export async function importSessionArchive(
   const archive = await extractSessionArchive(source, temporaryRoot, signal);
   try {
     const manifest = readManifest(archive.require(SESSION_MANIFEST_PATH).filePath);
+    // 先拒绝旧版本, 再按当前文件清单校验, 不把旧结构误报成未知条目.
+    for (const entryPath of archive.paths()) {
+      if (!isSessionArchivePath(entryPath)) {
+        throw new SessionImportError('invalid_format', `ZIP 包含未知条目: ${entryPath}`);
+      }
+    }
     if (reader.hasSession(manifest.sessionId)) {
       throw new SessionImportError('destination_conflict', '同 id 的 Session 已存在', 409);
     }
@@ -72,18 +83,16 @@ export async function importSessionArchive(
       throw new SessionImportError('invalid_format', 'manifest 与 Session id 不一致');
     }
     const [
-      turns, messages, tasks, goals, subagents, subagentInvocations, subagentMessages,
+      turns, messages, tasks, goals, subagents, subagentRuns, subagentMessages,
       toolExecutions, backgroundProcesses, attachmentImages, attachmentPastedTexts,
       speechOutputs, usageRecords,
     ] = await Promise.all([
       readJsonlRecords(archive, 'turns', turnRecordSchema),
       readJsonlRecords(archive, 'messages', messageRecordSchema),
       readJsonlRecords(archive, 'tasks', taskRecordSchema),
-      manifest.version === 6
-        ? readJsonlRecords(archive, 'goals', goalRecordSchema)
-        : Promise.resolve([]),
+      readJsonlRecords(archive, 'goals', goalRecordSchema),
       readJsonlRecords(archive, 'subagents', subagentRecordSchema),
-      readJsonlRecords(archive, 'subagentInvocations', subagentInvocationRecordSchema),
+      readJsonlRecords(archive, 'subagentRuns', subagentRunRecordSchema),
       readJsonlRecords(archive, 'subagentMessages', subagentMessageRecordSchema),
       readJsonlRecords(archive, 'toolExecutions', toolExecutionRecordSchema),
       readJsonlRecords(archive, 'backgroundProcesses', backgroundProcessRecordSchema),
@@ -98,10 +107,7 @@ export async function importSessionArchive(
       backgroundProcesses, speechOutputs,
       usageRecords,
     });
-    const importedSubagentIds = new Set(subagents.map(subagent => subagent.id));
-    if (subagentInvocations.some(invocation => !importedSubagentIds.has(invocation.subagentId))) {
-      throw new SessionImportError('invalid_format', 'subagentInvocations 引用了归档外的子代理');
-    }
+    assertSubagentReferences(subagents, subagentRuns, subagentMessages);
     if (session.permissionMode === 'plan' && goals.some(goal => goal.status !== 'completed')) {
       throw new SessionImportError('invalid_format', 'Plan Session 不能包含未完成 Goal');
     }
@@ -147,8 +153,11 @@ export async function importSessionArchive(
         tasks: tasks.map(restoreTaskRecord),
         goals: goals.map(goal => restoreGoalRecord(goal, importedAt)),
         subagents: subagents.map(row => restoreSubagentRecord(row, importedAt)),
-        subagentInvocations: subagentInvocations.map(restoreSubagentInvocationRecord),
-        subagentMessages: subagentMessages.map(restoreSubagentMessageRecord),
+        subagentRuns: subagentRuns.map(row => restoreSubagentRunRecord(row, importedAt)),
+        subagentMessages: subagentMessages.map(record => restoreSubagentMessageRecord({
+          ...record,
+          blocksJson: rewriteAttachmentPaths(record.blocksJson, files.attachments),
+        })),
         toolExecutions: toolExecutions.map(row => restoreToolExecutionRecord(row, importedAt)),
         backgroundProcesses: backgroundProcesses.map(row => restoreBackgroundProcessRecord(
           row,
@@ -210,7 +219,7 @@ function rewriteAttachmentPaths(
 function readManifest(filePath: string) {
   try {
     const value = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-    if (value?.format === 'ema-session' && value.version !== 5 && value.version !== 6) {
+    if (value?.format === 'ema-session' && value.version !== 7) {
       throw new SessionImportError('unsupported_version', `不支持的 Session 备份版本: ${String(value.version)}`);
     }
     return sessionBackupManifestSchema.parse(value);
@@ -247,6 +256,42 @@ function assertSummaryCursors(messages: readonly MessageRecord[]): void {
         'invalid_format',
         `summary 消息 ${message.id} 的覆盖截止游标不在本次归档的 messages 中`,
       );
+    }
+  }
+}
+
+/** 子消息只能属于自己的身份和 Run; 摘要游标不能指向别的子代理历史. */
+function assertSubagentReferences(
+  subagents: readonly SubagentRecord[],
+  runs: readonly SubagentRunRecord[],
+  messages: readonly SubagentMessageRecord[],
+): void {
+  const subagentIds = new Set(subagents.map(subagent => subagent.id));
+  const runsById = new Map(runs.map(run => [run.id, run]));
+  const messagesById = new Map(messages.map(message => [message.id, message]));
+  for (const run of runs) {
+    if (!subagentIds.has(run.subagentId)) {
+      throw new SessionImportError('invalid_format', `Run ${run.id} 引用了归档外的子代理`);
+    }
+  }
+  for (const message of messages) {
+    if (!subagentIds.has(message.subagentId)) {
+      throw new SessionImportError('invalid_format', `子消息 ${message.id} 引用了归档外的子代理`);
+    }
+    if (message.runId !== null) {
+      const run = runsById.get(message.runId);
+      if (!run || run.subagentId !== message.subagentId) {
+        throw new SessionImportError('invalid_format', `子消息 ${message.id} 的 Run 不存在或属于其他子代理`);
+      }
+    }
+    if (message.kind !== 'summary' || message.summarizedThroughMessageId === null) continue;
+    const through = messagesById.get(message.summarizedThroughMessageId);
+    if (!through || through.subagentId !== message.subagentId) {
+      throw new SessionImportError('invalid_format', `子摘要 ${message.id} 的覆盖游标不在本子代理归档中`);
+    }
+    if (through.createdAt > message.createdAt
+      || (through.createdAt === message.createdAt && through.id >= message.id)) {
+      throw new SessionImportError('invalid_format', `子摘要 ${message.id} 的覆盖游标必须早于摘要`);
     }
   }
 }

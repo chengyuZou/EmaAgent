@@ -16,13 +16,10 @@ export const subagentListRoute = (deps: SubagentListRouteDeps) =>
   new Hono()
     .get('/', queryValidator(listQuery), context => {
       const { sessionId } = context.req.valid('query');
-      return context.json({
-        items: deps.subagents.listForSession(sessionId),
-        invocations: deps.subagents.listInvocationsForSession(sessionId),
-      });
+      return context.json(deps.subagents.listForSession(sessionId));
     })
     .get('/:subagentId', context => {
-      const subagent = deps.subagents.getSummary(context.req.param('subagentId'));
+      const subagent = deps.subagents.get(context.req.param('subagentId'));
       if (!subagent) return context.json({ error: 'subagent_not_found' }, 404);
       return context.json(subagent);
     });

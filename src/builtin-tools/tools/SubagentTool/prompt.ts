@@ -9,14 +9,17 @@ When NOT to use this tool:
 - If the task takes you only a few tool calls, do it yourself instead of delegating.
 
 Usage notes:
-- Always include a short description (3–5 words) summarizing what the agent will do — it is shown in the dashboard.
+- When creating a sub-agent, provide title and description so its stable identity can be recognized later. The prompt is the actual task, not a replacement for description.
+- Supply subagentId only for a clear follow-up, correction, or continuation of that same task. Omit title/description to keep them unchanged; supply them explicitly to update them. If tasks merely sound similar, their boundaries are unclear, or old history may confuse them, create a new sub-agent instead.
+- Continuing loads that sub-agent's own history and adds your new prompt. It never forks the parent history again. A running sub-agent returns a busy error; continuation is not queued.
+- New sub-agents without a model override use the parent model. Continuing without an override keeps the sub-agent's latest model. Explicit overrides require both providerId and modelId; invalid configuration is an error, not a fallback.
 - To launch multiple agents in parallel, emit multiple tool calls in a single message.
 - The agent's final report is returned to you but is NOT shown to the user — summarize it for the user yourself.
 - The agent's report is input to your own conclusion. Integrate its findings and verify consequential claims or changes in proportion to risk before reporting completion.
 - Clearly tell the agent whether you expect it to write code or just do research (search, file reads, web fetches) — it is not aware of the user's intent.
 - Foreground (default) blocks until the agent finishes — use it when you need the results before you can proceed. A synchronous wait longer than 2 minutes transfers to background automatically and returns the same reference shape.
 - runInBackground=true returns the subagentId immediately. You will be notified when the agent completes — do NOT sleep, poll, or proactively check on its progress. Use SubagentAwait only when the current turn truly depends on the result.
-- If the parent turn is aborted, running sub-agents are cancelled with it.
+- Aborting the parent turn cancels foreground sub-agents, not agents already running in the background.
 
 ## Choosing contextMode
 
@@ -44,8 +47,8 @@ Do not delegate an undefined outcome such as "figure it out and fix everything."
 <example>
 user: "这个分支上线前还差什么?"
 assistant: <thinking>这是独立盘点,提供自包含目标即可。</thinking>
-Subagent({ description: "Branch ship-readiness audit", role: "explore", contextMode: "subagent", runInBackground: true,
-  prompt: "Audit what's left before this branch can ship. Check: uncommitted changes, commits ahead of main, whether tests exist, whether CI-relevant files changed. Report a punch list — done vs. missing. Under 200 words." })
+Subagent({ title: "Ship-readiness audit", description: "Branch ship-readiness audit", contextMode: "subagent", runInBackground: true,
+  prompt: "Audit what's left before this branch can ship. Check: uncommitted changes, commits ahead of main, whether tests exist, whether CI-relevant files changed. Report a punch list — done vs. missing. Under 200 words. This is research only — do not modify files." })
 assistant: 审计已在后台运行,结果回来我告诉你。
 <commentary>Turn 在这里结束。完成通知会以消息形式在后面的 Turn 到达,不是你自己写的。</commentary>
 </example>
@@ -59,6 +62,6 @@ assistant: 审计还在跑——"开关接线"正是它在查的项之一,应该
 <example>
 user: "找个第二意见看看这个迁移安不安全"
 assistant: <thinking>子 Agent 看不到我的分析,正好给出独立判断。它需要完整上下文。</thinking>
-Subagent({ description: "Independent migration review", role: "general", contextMode: "subagent",
+Subagent({ title: "Migration review", description: "Independent migration review", contextMode: "subagent",
   prompt: "Review migration 0042_user_schema.sql for safety. Context: we're adding a NOT NULL column to a 50M-row table with a backfill default. I want a second opinion on whether the backfill approach is safe under concurrent writes — I've checked locking behavior but want independent verification. Report: is this safe, and if not, what specifically breaks? This is research only — do not modify files." })
 </example>`;

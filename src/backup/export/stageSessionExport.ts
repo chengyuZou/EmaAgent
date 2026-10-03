@@ -7,7 +7,7 @@ import type { OmittedSessionFile, SessionBackupManifest } from '../records/sessi
 import {
   toSubagentMessageRecord,
   toSubagentRecord,
-  toSubagentInvocationRecord,
+  toSubagentRunRecord,
   toAttachmentImageRecord,
   toAttachmentPastedTextRecord,
   toBackgroundProcessRecord,
@@ -79,7 +79,7 @@ export function stageSessionExport(
 
     const manifest: SessionBackupManifest = {
       format: 'ema-session',
-      version: 6,
+      version: 7,
       sessionId,
       omittedFiles,
     };
@@ -113,7 +113,7 @@ function writeRecords(
   writeJsonl(directory, 'tasks', rows.tasks, toTaskRecord, signal);
   writeJsonl(directory, 'goals', rows.goals, toGoalRecord, signal);
   writeJsonl(directory, 'subagents', rows.subagents, toSubagentRecord, signal);
-  writeJsonl(directory, 'subagentInvocations', rows.subagentInvocations, toSubagentInvocationRecord, signal);
+  writeJsonl(directory, 'subagentRuns', rows.subagentRuns, toSubagentRunRecord, signal);
   writeJsonl(directory, 'subagentMessages', rows.subagentMessages, toSubagentMessageRecord, signal);
   writeJsonl(directory, 'toolExecutions', rows.toolExecutions, toToolExecutionRecord, signal);
 

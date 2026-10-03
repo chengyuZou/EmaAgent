@@ -10,9 +10,9 @@ Turn 管一次根 Agent 对话：创建运行记录，准备模型和工具，�
 
 1. `TurnStore.startTurn` 创建运行中的 Turn，同一 Session 不同时运行两根 Turn。
 2. `prepare/prepareTurn.ts` 读取 Session、设置和模型事实，处理输入附件与 Skill，准备工具和 System Prompt，返回本轮固定使用的 `PreparedTurn`。`prepare/prepareTurnTools.ts` 管工具池、权限询问和 AskUser 的执行入口。
-3. Turn 读取一次 reminder, 先写 reminder, 再分别写 `continuationText` 内部续接文本与用户输入. 二者可以在同一 Turn 中同时存在; 前者持久化为 `kind='continuation'`, 不发用户发言事件. 之后调用 `SessionStore.loadHistory`, 由 Context 的 `projectSessionMessages` 把有效 SQL 消息投影为模型消息. 这里不再切 `history/currentTurn`.
+3. Turn 读取一次 reminder, 先写 reminder, 再分别写 `continuationText` 内部续接文本与用户输入. 二者可以在同一 Turn 中同时存在; 前者持久化为 `kind='continuation'`, 不发用户发言事件. 之后调用 `SessionStore.loadHistory`, 由 Context 的 `projectMessages` 把有效 SQL 消息投影为模型消息. 这里不再切 `history/currentTurn`.
 4. 每次模型调用前，`prepare/prepareAgentIteration.ts` 用完整模型消息数组装配 Context，并把同一数组交给 Compact。Micro 改写消息内容；Macro 用摘要替换被覆盖的前缀，摘要作为 `kind='summary'` 的 Session Message 落库。System Prompt 只参加本次请求，不写入 Session Message，也不参加工作消息压缩。
-5. `AgentLoop` 产出流式事件。`turnMessageWriter.ts` 在首个 Assistant 增量时建行，后续更新同一行；`tool_use_completed` 先保存调用，AgentLoop 恢复后才启动工具；每个 `tool_result` 保存为独立 User Message。Turn 再把事件转发给前端。
+5. `AgentLoop` 产出流式事件。`turnMessageWriter.ts` 在首个 Assistant 增量时建行，后续更新同一行；`tool_use_completed` 先保存调用，AgentLoop 恢复后才启动工具；每个 `tool_result` 保存为独立 User Message。写入完成后, `turnLoopEvents.ts` 再把根循环事件转成前端事件, 更新 Context 用量并记录物理 LLM 调用用量. 子代理调用只复用记账入口, 不改根 Context 用量.
 6. 写入唯一终态后, 收口未完成的 Assistant 和工具调用, 关闭交互与工具, 按停止/失败策略暂停本轮 Goal, 再清除运行占用并通知队列. `completion` 和终态事件在执行收尾与解锁之后交付, 不让消费方接到半收尾的 Session.
 
 ## Session 续接与 Goal
@@ -29,7 +29,7 @@ Turn 管一次根 Agent 对话：创建运行记录，准备模型和工具，�
 
 ## Macro 与消息 ID
 
-Compact 只认识模型消息数组和 `summarizedMessageCount`，不知道 SQL ID。Turn 同步保留一个同长度的 SQL ID 数组。最初的 ID 来自 `projectSessionMessages`；之后完整 Assistant、ToolResult 和追加的用户输入落库时，把新 ID 按 AgentLoop 的 `model_history_appended` 顺序补进去。
+Compact 只认识模型消息数组和 `summarizedMessageCount`，不知道 SQL ID。Turn 同步保留一个同长度的 SQL ID 数组。最初的 ID 来自 `projectMessages`；之后完整 Assistant、ToolResult 和追加的用户输入落库时，把新 ID 按 AgentLoop 的 `model_history_appended` 顺序补进去。
 
 续写提示和 stuck guide 当前仅存在于 AgentLoop 的模型消息里，没有 SQL 行；它们在 ID 数组中占 `undefined`。Macro 保存时取被覆盖前缀最后一个有 SQL 身份的消息作 `summarizedThroughMessageId`，不能拿“第 N 条 SQL 消息”推断。保存成功后，前缀的 ID 一起替换成新 Summary 的 ID。再次压缩若覆盖了这个 Summary，Storage 会沿 Summary 游标向前追到原始覆盖边界；重放时只放最新 Summary 和未覆盖的普通消息。
 
@@ -44,17 +44,23 @@ Compact 只认识模型消息数组和 `summarizedMessageCount`，不知道 SQL 
 
 ## 子 Agent
 
-`prepare/prepareSubagent.ts` 为子 Agent 选择模型, System Prompt, 工具子集和独立的 Compact 闭包. 子 Agent 不提供根 Session 的 `macroPersistence`, 因此其摘要只改自己的模型消息.
+`forkParentMessages.ts` 持有每次父请求固定的模型消息与 ID 对应关系. `beginRequest` 只复制两个数组, 不读取 SQL; `completeAssistant` 在父 Assistant 完整落库后只交付其 ID 和生成来源. 真实新建 fork 才调用 `read`: 绑定所属请求, 等完整 Assistant 后读取持久化信息并构建父前缀. 同一父请求的兄弟 fork 共用一次构建, 没有领取者就不回查 SQL. 等待取消只影响对应子代理, 父失败释放等待者. 它不写子代理消息表, 复制和新 ID 映射仍由 Agent 消息层负责.
 
-fork 在发起它的父 Assistant 完整落库后, 领取本次父请求准备好的工作历史与这条完整 Assistant. 分叉后不继续接收父消息. 当前 Assistant 的工具调用在子代理输入副本中补统一的占位结果, 不等待父工具完成, 也不把占位写回父 Session. fork 继承父 System Prompt 与默认模型/Thinking 配置, 子角色约束和具体任务追加在最后的 User 指令中. 工具池仍按既有子代理规则收窄, 尚未实现父子完全相同的工具定义.
+`prepare/prepareSubagent.ts` 为子 Agent 选择模型, System Prompt, 工具子集和独立的 Compact 闭包. 它调用 Agent 的 `messageStore` 初始化/读取子代理历史, 复用根循环的消息投影与 Compact 准备; Macro 通过各自的 `appendSummary` 回调写到子代理消息表, 不写根 Session.
 
-普通子代理仍以独立角色提示词和任务开始, 不等待父 Assistant. 两种子代理都被要求在交差时说明未完成后台命令的 `backgroundProcessId`, 用途和最后已知状态, 由父 Agent 使用 `ProcessOutput` 接手. 等待分叉输入时的子代理取消, 父模型失败或父消息保存失败, 都会结束等待, 不启动缺少完整父上下文的子模型请求.
+新建 fork 在发起它的父 Assistant 完整落库后, 领取本次父请求固定前缀与这条完整 Assistant; 消息 ID、摘要字段和生成来源一起交给 Agent 消息层复制. 分叉后不继续接收父消息. 当前 Assistant 的工具调用在子代理副本中补统一占位结果, 不等待父工具完成, 不把占位写回父 Session. 子任务和子代理边界 reminder 分别作为 User Message. 继续旧 ID 不再领取父前缀. Role 及其 System/工具排除覆盖参数已移除, 工具池仍按统一子代理规则收窄.
+
+Prompt 包提供 `staticSystemPrompt` 数组和 `getDynamicSystemPrompt(input)`. 根 Turn 直接准备输入并拼接, `PreparedTurn.DynamicSystemPromptInput` 保存本轮动态输入, 不再经过完整 System 装配包装函数. 手动 Compact 使用同一数组和动态函数.
+
+普通、fork 和继续旧子代理共用纯工作 System: 复用静态规则与父调用已经读取的工作区/Memory/Skill/MCP 文本, 不传角色和 SessionMode, 按实际子模型与子 ToolPool 生成环境和能力说明, 最后追加 `subagent` 块. 该块说明委派范围、验证、向父交付、不接管父 Goal 与后台任务交接. 普通子代理不等待父 Assistant; fork 仍按原有顺序等待完整父前缀. 未完成后台命令交付 `backgroundProcessId`, 用途和最后已知状态, 由父 Agent 使用 `ProcessOutput` 接手. 等待分叉输入时的子代理取消, 父模型失败或父消息保存失败, 都会结束等待.
 
 ## 文件位置
 
 ```text
 src/turn/
   turn.ts                    根 Turn 编排与唯一公开执行入口
+  forkParentMessages.ts      固定父请求前缀, 等完整 Assistant 落库后交付 fork
+  turnLoopEvents.ts          根事件投影, Context 用量与根/子 LLM 调用记账
   turnMessageWriter.ts       AgentLoop 事件到 Session Message 的写入
   turnStore.ts               Turn 行与运行状态
   eventChannel.ts            单消费者过程事件通道
@@ -65,9 +71,9 @@ src/turn/
     prepareTurnTools.ts      工具池及工具执行入口
     prepareAgentIteration.ts 每次模型调用前装配与压缩
     prepareSubagent.ts       子 Agent 调用准备
-    sessionSystemPrompt.ts   System Prompt 装配
+    skillPool.ts             根 Turn 与 Compact 共用的 SkillPool 准备
     turnReminder.ts          reminder 内容生成
   tests/
 ```
 
-`types.ts`、`events.ts`、`errors.ts` 和 `index.ts` 分别定义公开词汇、事件、错误与包出口。测试只通过公开入口和真实消息读取验证行为，不为了测试暴露内部装配对象。
+`types.ts`、`events.ts`、`errors.ts` 和 `index.ts` 分别定义公开词汇、事件、错误与包出口。执行链集成测试通过公开入口和真实消息读取验证行为; fork 交接与事件投影另有模块测试. 这两个模块只供 Turn 内部使用, 不增加包出口.

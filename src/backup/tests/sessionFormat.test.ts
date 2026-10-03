@@ -12,12 +12,14 @@ describe('sessionFormat', () => {
       .toBe(SESSION_RECORD_FILES.length);
     expect(sessionRecordFile('messages').path).toBe('records/messages.jsonl');
     expect(sessionRecordFile('goals').path).toBe('records/goals.jsonl');
+    expect(sessionRecordFile('subagentRuns').path).toBe('records/subagentRuns.jsonl');
   });
 
   it('只接受已登记记录和三类 Session 文件', () => {
     expect(isSessionArchivePath('manifest.json')).toBe(true);
     expect(isSessionArchivePath('files/attachments/u1.png')).toBe(true);
     expect(isSessionArchivePath('records/legacy.jsonl')).toBe(false);
+    expect(isSessionArchivePath('records/subagentInvocations.jsonl')).toBe(false);
     expect(isSessionArchivePath('files/unknown/file')).toBe(false);
   });
 });

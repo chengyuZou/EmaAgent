@@ -4,8 +4,11 @@ import { z } from 'zod';
 import { queryValidator } from '../validate.js';
 
 const messagesQuery = z.object({
-  beforeSequence: z.coerce.number().int().positive().optional(),
+  beforeCreatedAt: z.coerce.number().int().optional(),
+  beforeId: z.string().min(1).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
+}).refine(value => (value.beforeCreatedAt === undefined) === (value.beforeId === undefined), {
+  message: 'beforeCreatedAt and beforeId must be provided together',
 });
 
 export const subagentMessagesRoute = (deps: {
@@ -15,9 +18,12 @@ export const subagentMessagesRoute = (deps: {
   new Hono()
     .get('/:subagentId/messages', queryValidator(messagesQuery), context => {
       const subagentId = context.req.param('subagentId');
-      if (!deps.subagents.getSummary(subagentId)) {
+      if (!deps.subagents.get(subagentId)) {
         return context.json({ error: 'subagent_not_found' }, 404);
       }
-      const { beforeSequence, limit } = context.req.valid('query');
-      return context.json(deps.subagentMessages.listPage(subagentId, beforeSequence, limit));
+      const { beforeCreatedAt, beforeId, limit } = context.req.valid('query');
+      const cursor = beforeCreatedAt !== undefined && beforeId !== undefined
+        ? { createdAt: beforeCreatedAt, id: beforeId }
+        : undefined;
+      return context.json(deps.subagentMessages.listPage(subagentId, cursor, limit));
     });

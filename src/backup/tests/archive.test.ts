@@ -1,4 +1,4 @@
-// 验证 ZIP 流式解压接受现行路径并拒绝归档白名单之外的条目。
+// 验证 ZIP 流式解压和写盘路径安全; 记录白名单由导入流程在版本校验后检查.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -18,10 +18,10 @@ describe('archive', () => {
     archive.dispose();
   });
 
-  it('拒绝未知条目', async () => {
-    const bytes = zipSync({ 'unknown.txt': new Uint8Array([1]) });
+  it('写盘前拒绝越界路径', async () => {
+    const bytes = zipSync({ '../unknown.txt': new Uint8Array([1]) });
     await expect(extractSessionArchive(source(bytes), temporaryRoot()))
-      .rejects.toMatchObject({ code: 'invalid_format' });
+      .rejects.toMatchObject({ code: 'unsafe_archive_path' });
   });
 });
 

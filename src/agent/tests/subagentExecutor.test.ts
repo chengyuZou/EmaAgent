@@ -2,11 +2,21 @@
 
 import type { StreamingToolExecutor, ToolResult } from '@ema-agent/tools';
 import { BuiltinTools } from '@ema-agent/tools/identity';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SubagentExecutor, type StartSubagent } from '../subagentExecutor.js';
 import type { SubagentMessagesStore } from '../subagents/subagentMessagesStore.js';
 import type { SubagentStore } from '../subagents/subagentStore.js';
-import type { Subagent, SubagentCompletion, SubagentStart } from '../subagents/types.js';
+import { Database, SubagentMessagesRepo, SubagentRunsRepo, SubagentsRepo } from '@ema-agent/storage';
+import { SubagentMessagesStore as MessagesStore } from '../subagents/subagentMessagesStore.js';
+import { SubagentStore as Store } from '../subagents/subagentStore.js';
+
+const databases = new Set<Database>();
+const messageStores = new Map<SubagentStore, SubagentMessagesStore>();
+afterEach(() => {
+  for (const database of databases) database.close();
+  databases.clear();
+  messageStores.clear();
+});
 
 function deferred(): { promise: Promise<void>; resolve(): void } {
   let resolve!: () => void;
@@ -24,44 +34,22 @@ function idleExecutor(): StreamingToolExecutor {
   } as unknown as StreamingToolExecutor;
 }
 
-function makeStore(initial?: Subagent): SubagentStore {
-  const subagents = new Map<string, Subagent>();
-  if (initial) subagents.set(initial.id, initial);
-  return {
-    start(input: SubagentStart) {
-      const now = Date.now();
-      const subagent: Subagent = {
-        id: input.subagentId,
-        sessionId: input.sessionId,
-        contextMode: input.contextMode,
-        status: 'running',
-        createdAt: now,
-        updatedAt: now,
-      };
-      subagents.set(subagent.id, subagent);
-      return subagent;
-    },
-    get: (id: string) => subagents.get(id),
-    complete(id: string, completion: SubagentCompletion) {
-      const current = subagents.get(id)!;
-      const subagent: Subagent = {
-        ...current,
-        ...completion,
-        status: 'completed',
-        updatedAt: Date.now(),
-        completedAt: Date.now(),
-      };
-      subagents.set(id, subagent);
-    },
-    fail(id: string, error: string) {
-      const subagent: Subagent = { ...subagents.get(id)!, status: 'failed', error, updatedAt: Date.now() };
-      subagents.set(id, subagent);
-    },
-    cancel(id: string, error: string) {
-      const subagent: Subagent = { ...subagents.get(id)!, status: 'cancelled', error, updatedAt: Date.now() };
-      subagents.set(id, subagent);
-    },
-  } as unknown as SubagentStore;
+function makeStore(initial?: { id: string; finalText: string; inputTokens: number; outputTokens: number }): SubagentStore {
+  const db = new Database({ memory: true, kind: 'data' });
+  db.migrate();
+  db.sqlite.prepare("INSERT INTO sessions (id,title,cwd,created_at,updated_at) VALUES ('session-1','会话','',1,1)").run();
+  databases.add(db);
+  const store = new Store(db.sqlite, new SubagentsRepo(db.sqlite), new SubagentRunsRepo(db.sqlite));
+  messageStores.set(store, new MessagesStore(new SubagentMessagesRepo(db.sqlite)));
+  if (initial) {
+    store.start({
+      subagentId: initial.id, runId: initial.id + '-run', toolCallId: 'initial-call',
+      sessionId: 'session-1', title: '历史代理', description: '历史任务',
+      contextMode: 'subagent', isNew: true,
+    });
+    store.complete(initial.id + '-run', { ...initial, iterations: 1, toolCallCount: 0 });
+  }
+  return store;
 }
 
 function makeInput(toolCallId: string, gate: Promise<void>, parentSignal: AbortSignal): StartSubagent {
@@ -70,10 +58,15 @@ function makeInput(toolCallId: string, gate: Promise<void>, parentSignal: AbortS
     parentTurnId: 'turn-1',
     toolCallId,
     prompt: '检查实现',
-    options: { contextMode: 'subagent' },
+    options: { contextMode: 'subagent', title: '检查实现', description: '检查实现边界' },
+    permissionMode: 'default',
+    reasoningEffort: 'high',
     parentSignal,
     runInBackground: false,
-    prepareSubagent: async ({ signal }) => ({
+    prepareSubagent: async ({ signal, subagentId, runId, messageStore, prompt, messageIds, options }) => {
+      messageStore.initialize(subagentId, runId, prompt);
+      messageIds.push(...messageStore.loadHistory(subagentId).map(message => message.id));
+      return ({
       messages: [{ role: 'user', content: '检查实现' }],
       prepareIteration: async ({ messages }) => ({ request: { messages }, messages }),
       callLlm: () => (async function* () {
@@ -86,11 +79,12 @@ function makeInput(toolCallId: string, gate: Promise<void>, parentSignal: AbortS
       signal,
       maxIterations: 2,
       generationSource: {
-        providerId: 'provider-1',
-        modelId: 'model-1',
-        protocol: 'openai-llm',
+        providerId: options.providerId ?? 'provider-1',
+        modelId: options.modelId ?? 'model-1',
+        protocol: 'openai-chat',
       },
-    }),
+    });
+    },
   };
 }
 
@@ -100,7 +94,7 @@ function createExecutor(store: SubagentStore) {
   const publish = vi.fn();
   const executor = new SubagentExecutor({
     store,
-    messages: { record: vi.fn(), interruptActiveAssistant: vi.fn() } as unknown as SubagentMessagesStore,
+    messageStore: messageStores.get(store)!,
     maxConcurrent: () => 4,
     publish,
     onBackgroundCompleted,
@@ -243,7 +237,7 @@ describe('SubagentExecutor', () => {
   });
 
   it('已持久化终态可以按 id 重复读取', async () => {
-    const stored: Subagent = {
+    const stored = {
       id: 'subagent-3',
       sessionId: 'session-1',
       parentTurnId: 'turn-1',
@@ -264,5 +258,58 @@ describe('SubagentExecutor', () => {
     expect(first).toEqual(second);
     expect(first).toMatchObject({ output: '持久结果' });
     expect(fixture.onTerminalResultRead).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('持久子代理继续', () => {
+  it('同 ID 多 Run, 未提供模型时沿用最近实际模型, Permission 和强度用父本次值', async () => {
+    const store = makeStore();
+    const fixture = createExecutor(store);
+    const firstInput = makeInput('first', Promise.resolve(), new AbortController().signal);
+    const id = fixture.executor.start({
+      ...firstInput, options: { ...firstInput.options, providerId: 'custom-p', modelId: 'custom-m' },
+      permissionMode: 'bypassPermissions', reasoningEffort: 'low',
+    });
+    await fixture.executor.waitForInitialResult(id, 'session-1', new AbortController().signal);
+    const firstRun = store.latestRun(id)!;
+    const prepared = vi.fn(makeInput('second', Promise.resolve(), new AbortController().signal).prepareSubagent);
+    const continuedId = fixture.executor.start({
+      ...makeInput('second', Promise.resolve(), new AbortController().signal),
+      options: { subagentId: id }, permissionMode: 'default', reasoningEffort: 'high', prepareSubagent: prepared,
+    });
+    expect(continuedId).toBe(id);
+    await fixture.executor.waitForInitialResult(id, 'session-1', new AbortController().signal);
+    const secondRun = store.latestRun(id)!;
+    expect(secondRun.id).not.toBe(firstRun.id);
+    expect(secondRun).toMatchObject({ providerId: 'custom-p', modelId: 'custom-m', permissionMode: 'default', reasoningEffort: 'high', status: 'completed' });
+    expect(store.getRun(firstRun.id)).toMatchObject({ permissionMode: 'bypassPermissions', reasoningEffort: 'low', status: 'completed' });
+    expect(store.get(id)?.title).toBe('检查实现');
+    expect(prepared.mock.calls[0]![0]).toMatchObject({ isNew: false, options: { providerId: 'custom-p', modelId: 'custom-m' } });
+    expect(messageStores.get(store)!.loadHistory(id).filter(message => message.kind === 'normal' && message.role === 'user')).toHaveLength(2);
+  });
+
+  it('运行中不能复用, 不创建第二条 Run', async () => {
+    const gate = deferred();
+    const store = makeStore();
+    const fixture = createExecutor(store);
+    const input = makeInput('first', gate.promise, new AbortController().signal);
+    const id = fixture.executor.start(input);
+    expect(() => fixture.executor.start({ ...input, toolCallId: 'second', options: { subagentId: id } })).toThrow('正在被占用');
+    expect(store.listRuns(id).items).toHaveLength(1);
+    gate.resolve();
+    await fixture.executor.waitForInitialResult(id, 'session-1', new AbortController().signal);
+  });
+
+  it('显式模型配置准备失败就报错, 不悄悄回退; 错误保存到本次 Run', async () => {
+    const store = makeStore();
+    const fixture = createExecutor(store);
+    const input = makeInput('invalid', Promise.resolve(), new AbortController().signal);
+    const id = fixture.executor.start({
+      ...input, options: { ...input.options, providerId: 'missing', modelId: 'missing' },
+      prepareSubagent: async () => { throw new Error('模型不存在'); },
+    });
+    await expect(fixture.executor.waitForInitialResult(id, 'session-1', new AbortController().signal)).rejects.toThrow('模型不存在');
+    expect(store.latestRun(id)).toMatchObject({ status: 'failed', error: '模型不存在', providerId: null });
+    expect(store.get(id)).toMatchObject({ status: 'failed', providerId: null });
   });
 });

@@ -6,13 +6,12 @@ import {
   buildTool,
   contextFail,
   contextOk,
-  SubagentSpawnOptions,
+  type SubagentSpawnOptions,
   type SubagentControl,
   type ToolInvocation,
 } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { SUBAGENT_DESCRIPTION } from './prompt.js';
-import { AGENT_ROLES, DEFAULT_AGENT_ROLE, getAgentRole } from './agentRoles.js';
 
 /** Subagent 工具的窄 Context：子 Agent 启动器;取消与身份走 ToolInvocation。 */
 interface SubagentToolContext {
@@ -27,9 +26,11 @@ const AUTO_BACKGROUND_WAIT_MS = 120_000;
 
 // ── 输入 schema ──────────────────────────────────────────────────────────────
 
-const ROLE_IDS = AGENT_ROLES.map((role) => role.agentType) as [string, ...string[]];
-
 const inputSchema = z.object({
+  subagentId: z.string().min(1).optional()
+    .describe('Continue this existing sub-agent. Omit to create a new sub-agent.'),
+  title: z.string().trim().min(1).optional()
+    .describe('Required when creating a new sub-agent. Continuing keeps its title unless explicitly supplied.'),
   prompt: z
     .string()
     .min(1)
@@ -37,33 +38,27 @@ const inputSchema = z.object({
       'Task prompt for the sub-agent. In the default "subagent" mode it must include all ' +
         'needed context because parent conversation history is not inherited.',
     ),
-  role: z
-    .enum(ROLE_IDS)
-    .optional()
-    .describe(
-      `Sub-agent role (default "${DEFAULT_AGENT_ROLE}"). `
-        + AGENT_ROLES.map((role) => `${role.agentType}: ${role.whenToUse}`).join(' '),
-    ),
   providerId: z
     .string()
     .optional()
     .describe(
       'Provider of the model override. Must be given together with modelId — ' +
-        'a modelId alone is not unique across providers. Defaults to the parent agent\'s provider.',
+        'a modelId alone is not unique across providers. New agents inherit the parent; continued agents keep their last model.',
     ),
   modelId: z
     .string()
     .optional()
     .describe(
       'Model override for this sub-agent. Must be given together with providerId. ' +
-        'Defaults to the parent agent\'s model.',
+        'New agents inherit the parent; continued agents keep their last model.',
     ),
   description: z
     .string()
     .trim()
     .min(1)
     .max(200)
-    .describe('Short description of this sub-agent\'s role (shown in the dashboard and logs).'),
+    .optional()
+    .describe('Short description of this sub-agent\'s work, used to recognize it for later continuation.'),
   contextMode: z
     .enum(['subagent', 'fork'])
     .optional()
@@ -139,9 +134,7 @@ function raceWithAbort<T>(
 export const SubagentTool = buildTool<SubagentInput, SubagentResult, SubagentToolContext>({
   id: BuiltinTools.Subagent.id,
   name: BuiltinTools.Subagent.name,
-  description: SUBAGENT_DESCRIPTION
-    + `\n\nAvailable roles (role parameter; default "${DEFAULT_AGENT_ROLE}"):\n`
-    + AGENT_ROLES.map((role) => `- ${role.agentType}: ${role.whenToUse}`).join('\n'),
+  description: SUBAGENT_DESCRIPTION,
 
   inputSchema,
   isReadOnly: () => false,
@@ -162,29 +155,25 @@ export const SubagentTool = buildTool<SubagentInput, SubagentResult, SubagentToo
     context: SubagentToolContext,
     invocation: ToolInvocation,
   ): Promise<SubagentResult> {
-    const role = getAgentRole(input.role ?? DEFAULT_AGENT_ROLE);
-    if (!role) {
-      throw new Error(
-        `Unknown subagent role: ${input.role}. Available: ${AGENT_ROLES.map((r) => r.agentType).join(', ')}`,
-      );
+    if (!input.subagentId && (!input.title || !input.description)) {
+      throw new Error('Creating a sub-agent requires title and description.');
     }
-    const modelId = input.modelId ?? role.modelId;
-    const providerId = input.providerId ?? role.providerId;
+    const { modelId, providerId } = input;
     // modelId 跨 provider 不唯一（同名可能是不同权重/量化/托管）；
     // 只给 modelId 不给 providerId = 让编排层猜，直接拒绝。
-    if (modelId !== undefined && providerId === undefined) {
+    if ((modelId === undefined) !== (providerId === undefined)) {
       throw new Error(
         'Sub-agent model override requires both providerId and modelId. ' +
           'A modelId alone is ambiguous — the same model id can exist on multiple providers.',
       );
     }
     const options: SubagentSpawnOptions = {
+      subagentId: input.subagentId,
+      title: input.title,
       providerId,
       modelId,
       description: input.description,
-      contextMode: input.contextMode ?? role.contextMode ?? ('subagent' as const),
-      systemPrompt: role.systemPrompt,
-      disallowedTools: role.disallowedTools,
+      contextMode: input.contextMode ?? (input.subagentId ? undefined : 'subagent'),
     };
 
     if (input.runInBackground) {

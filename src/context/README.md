@@ -1,10 +1,10 @@
 # Context
 
-Context 把已保存的 Session 消息变成模型消息，再把模型消息、System Prompt 和工具拼成一次调用的输入。它不读数据库，也不决定何时压缩。
+Context 把已保存的 Message 变成模型消息, Session 与子代理共用这一转换; 再把模型消息、System Prompt 和工具拼成一次调用的输入. 它不读数据库, 也不决定何时压缩.
 
-## 从 Session 消息得到模型消息
+## 从持久化消息得到模型消息
 
-`projectSessionMessages(sessionMessages, resolveGenerationSource, attachmentOptions)` 按传入顺序处理消息，返回 `ProjectedSessionMessage[]`。每项都有投影后的 `message` 和原来的 `sessionMessageId`。有些消息或内容块会被丢掉，因此不能用数组下标反查原消息；需要对应 SQL 消息时用 `sessionMessageId`。
+`projectMessages(messages, resolveGenerationSource, attachmentOptions)` 按传入顺序处理 Message 或其业务扩展, 返回 `ProjectedMessage[]`. 每项都有投影后的 `message` 和原来的 `messageId`. 有些消息或内容块会被丢掉, 因此不能用数组下标反查原消息; 需要对应 SQL 消息时用 `messageId`. 来源回调接收原业务消息: 根 Turn 从该消息所属 Turn 解析, 子代理从 Run 或 fork 保存的父来源解析.
 
 - 空内容和中断的 Assistant 消息不进入模型输入。`tool_use` 与 `tool_result` 必须按 ID 完整配对，且调用在结果之前，才会被保留。
 - Assistant 的推理块会保留；若能查到这条消息当时使用的模型，也会附上生成来源。换模型后能否重放推理块，由 LLM 的协议代码判断。

@@ -27,9 +27,10 @@ function makeSubagents(overrides: Partial<SubagentControl> = {}): SubagentContro
 }
 
 const INPUT = {
+  subagentId: undefined,
+  title: '文件边界',
   prompt: '检查文件边界',
   description: '检查边界',
-  role: undefined,
   providerId: undefined,
   modelId: undefined,
   contextMode: undefined,
@@ -37,6 +38,26 @@ const INPUT = {
 };
 
 describe('SubagentTool — 三形态', () => {
+  it('继续旧 ID 不要求重新提供 Title/description, 不强制再次 fork', async () => {
+    const subagents = makeSubagents();
+    const projection = SubagentTool.validateContext({ subagents } as never);
+    if (!projection.valid) throw new Error('投影应成功');
+    await SubagentTool.execute({ ...INPUT, subagentId: SUBAGENT_ID, title: undefined,
+      description: undefined, runInBackground: true }, projection.context, makeInvocation());
+    expect(subagents.start).toHaveBeenCalledWith('检查文件边界',
+      expect.objectContaining({ subagentId: SUBAGENT_ID, contextMode: undefined }),
+      'call-sub-1', true, expect.any(AbortSignal));
+  });
+
+  it('新建缺少 Title 或 description 时不启动执行', async () => {
+    const subagents = makeSubagents();
+    const projection = SubagentTool.validateContext({ subagents } as never);
+    if (!projection.valid) throw new Error('投影应成功');
+    await expect(SubagentTool.execute({ ...INPUT, title: undefined }, projection.context, makeInvocation()))
+      .rejects.toThrow(/title/i);
+    expect(subagents.start).not.toHaveBeenCalled();
+  });
+
   it('runInBackground=true: 立即返回引用, 不等待', async () => {
     const subagents = makeSubagents();
     const projection = SubagentTool.validateContext({ subagents } as never);

@@ -247,7 +247,7 @@ describe('Session 备份往返', () => {
     targetDb.close();
   });
 
-  it('仍能导入没有 Goal 记录的 v5 归档', async () => {
+  it.each([5, 6])('拒绝 v%s 旧归档, 不因旧记录文件抢先报格式错误', async version => {
     const sourceDir = tempDir('ema-backup-v5-src-');
     const targetDir = tempDir('ema-backup-v5-dst-');
     const workDir = tempDir('ema-backup-v5-work-');
@@ -266,23 +266,26 @@ describe('Session 备份往返', () => {
 
     const entries = unzipSync(Buffer.concat(chunks));
     const manifest = JSON.parse(strFromU8(entries['manifest.json']!)) as { version: number };
-    manifest.version = 5;
+    manifest.version = version;
     entries['manifest.json'] = strToU8(JSON.stringify(manifest));
     delete entries['records/goals.jsonl'];
+    delete entries['records/subagentRuns.jsonl'];
+    entries['records/subagentInvocations.jsonl'] = strToU8('');
     const zipBytes = Buffer.from(zipSync(entries));
 
     const targetDb = new Database({ memory: true, kind: 'data' });
     targetDb.migrate();
-    await importSessionArchive(
+    await expect(importSessionArchive(
       { declaredBytes: zipBytes.byteLength, async *chunks() { yield zipBytes; } },
       targetDir,
       workDir,
       new SessionBackupReader(targetDb.sqlite),
       new SessionBackupRestorer(targetDb.sqlite),
       () => true,
-    );
-    expect(targetDb.sqlite.prepare('SELECT id FROM goals WHERE session_id = ?').all(SESSION_ID))
+    )).rejects.toMatchObject({ code: 'unsupported_version' });
+    expect(targetDb.sqlite.prepare('SELECT id FROM sessions').all())
       .toEqual([]);
+    expect(fs.existsSync(path.join(targetDir, 'sessions', SESSION_ID))).toBe(false);
     targetDb.close();
   });
 });

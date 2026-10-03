@@ -2,7 +2,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { CompactRequest, CompactResult } from '@ema-agent/compact';
 import type { Message } from '@ema-agent/llm';
-import type { Message as SessionMessage, SessionStore } from '@ema-agent/session';
+import type { Message as SessionMessage } from '@ema-agent/session';
 import { ToolPool } from '@ema-agent/tools';
 import {
   createPrepareAgentIteration,
@@ -50,7 +50,9 @@ function makeDeps(overrides: {
 } = {}) {
   const messageIds = overrides.messageIds ?? ['old-1', 'old-2', 'reminder-1', 'input-1'];
   let summaryNumber = 0;
-  const appendHistorySummary = vi.fn(() => {
+  const appendHistorySummary = vi.fn((_input: {
+    sessionId: string; turnId: string; summary: string; savedTokens: number; summarizedThroughMessageId: string;
+  }) => {
     summaryNumber += 1;
     return { id: `summary-${summaryNumber}` } as SessionMessage;
   });
@@ -62,7 +64,9 @@ function makeDeps(overrides: {
     emit: vi.fn(),
     ...(overrides.persist === false ? {} : {
       macroPersistence: {
-        sessions: { appendHistorySummary } as unknown as Pick<SessionStore, 'appendHistorySummary'>,
+        appendSummary: (summary, throughMessageId, savedTokens) => appendHistorySummary({
+          sessionId: 's1', turnId: 't1', summary, savedTokens, summarizedThroughMessageId: throughMessageId,
+        }),
         messageIds,
       },
     }),

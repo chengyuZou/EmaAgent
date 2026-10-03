@@ -1,6 +1,5 @@
 // 产出注入 system prompt 的"记忆使用指引"段（静态模板文本）。
-//
-// 与 prompts 包解耦:prompts 的 getSystemPrompt 只接收 memorySection 字符串
+// 与 prompts 包解耦: prompts 的 getDynamicSystemPrompt 只接收 memorySection 字符串
 // (闭包注入),不 import memory 包;本函数在 Turn 装配时被调用。
 // Work 摘要和当前角色的正式关系记忆不进 System Prompt；
 // 由 Turn 在启动时读取一次并写进持久化 reminder（kind='reminder'）。

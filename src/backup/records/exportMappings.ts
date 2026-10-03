@@ -2,7 +2,7 @@
 import type {
   SubagentMessageRow,
   SubagentRow,
-  SubagentInvocationRow,
+  SubagentRunRow,
   AttachmentImageRow,
   AttachmentPastedTextRow,
   BackgroundProcessRow,
@@ -18,7 +18,7 @@ import type {
 import type {
   SubagentMessageRecord,
   SubagentRecord,
-  SubagentInvocationRecord,
+  SubagentRunRecord,
   AttachmentImageRecord,
   AttachmentPastedTextRecord,
   BackgroundProcessRecord,
@@ -119,10 +119,29 @@ export const toGoalRecord = (row: GoalRow): GoalRecord => ({
 export const toSubagentRecord = (row: SubagentRow): SubagentRecord => ({
   id: row.id,
   sessionId: row.session_id,
+  title: row.title,
+  description: row.description,
+  permissionMode: row.permission_mode,
+  reasoningEffort: row.reasoning_effort,
+  providerId: row.provider_id,
+  modelId: row.model_id,
+  protocol: row.protocol,
+  status: row.status,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
+export const toSubagentRunRecord = (row: SubagentRunRow): SubagentRunRecord => ({
+  id: row.id,
+  subagentId: row.subagent_id,
+  parentToolCallId: row.parent_tool_call_id,
   contextMode: row.context_mode,
   description: row.description,
   providerId: row.provider_id,
   modelId: row.model_id,
+  protocol: row.protocol,
+  permissionMode: row.permission_mode,
+  reasoningEffort: row.reasoning_effort,
   status: row.status,
   error: row.error,
   iterations: row.iterations,
@@ -135,22 +154,20 @@ export const toSubagentRecord = (row: SubagentRow): SubagentRecord => ({
   completedAt: row.completed_at,
 });
 
-export const toSubagentInvocationRecord = (row: SubagentInvocationRow): SubagentInvocationRecord => ({
-  toolCallId: row.tool_call_id,
-  subagentId: row.subagent_id,
-  createdAt: row.created_at,
-});
-
 export const toSubagentMessageRecord = (row: SubagentMessageRow): SubagentMessageRecord => ({
   id: row.id,
   subagentId: row.subagent_id,
+  runId: row.run_id,
   role: row.role,
   kind: row.kind,
   blocksJson: row.blocks_json,
   interrupted: row.interrupted === 1,
-  sequence: row.sequence,
   createdAt: row.created_at,
   summarizedThroughMessageId: row.summarized_through_message_id,
+  ...(row.summary_saved_tokens !== null ? { savedTokens: row.summary_saved_tokens } : {}),
+  providerId: row.provider_id,
+  modelId: row.model_id,
+  protocol: row.protocol,
 });
 
 export const toToolExecutionRecord = (

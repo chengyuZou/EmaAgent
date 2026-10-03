@@ -14,7 +14,7 @@ export const omittedSessionFileSchema = z.object({
 
 export const sessionBackupManifestSchema = z.object({
   format: z.literal('ema-session'),
-  version: z.union([z.literal(5), z.literal(6)]),
+  version: z.literal(7),
   sessionId: id,
   omittedFiles: z.array(omittedSessionFileSchema),
 }).strict();
@@ -148,10 +148,30 @@ export const goalRecordSchema = z.object({
 export const subagentRecordSchema = z.object({
   id,
   sessionId: id,
+  title: z.string().nullable(),
+  description: z.string().nullable(),
+  // 身份保留最近一次实际配置; 每次执行的配置另存 subagentRuns.
+  permissionMode: z.enum(['default', 'acceptEdits', 'bypassPermissions', 'plan']).nullable(),
+  reasoningEffort: z.enum(['off', 'low', 'medium', 'high', 'max']).nullable(),
+  providerId: nullableId,
+  modelId: nullableId,
+  protocol: nullableId,
+  status: z.enum(['running', 'completed', 'failed', 'cancelled']),
+  createdAt: integer,
+  updatedAt: integer,
+}).strict();
+
+export const subagentRunRecordSchema = z.object({
+  id,
+  subagentId: id,
+  parentToolCallId: nullableId,
   contextMode: z.enum(['subagent', 'fork']),
   description: z.string().nullable(),
   providerId: nullableId,
   modelId: nullableId,
+  protocol: nullableId,
+  permissionMode: z.enum(['default', 'acceptEdits', 'bypassPermissions', 'plan']).nullable(),
+  reasoningEffort: z.enum(['off', 'low', 'medium', 'high', 'max']).nullable(),
   status: z.enum(['running', 'completed', 'failed', 'cancelled']),
   error: z.string().nullable(),
   iterations: nonNegativeInteger.nullable(),
@@ -164,23 +184,31 @@ export const subagentRecordSchema = z.object({
   completedAt: integer.nullable(),
 }).strict();
 
-export const subagentInvocationRecordSchema = z.object({
-  toolCallId: id,
-  subagentId: id,
-  createdAt: integer,
-}).strict();
-
 export const subagentMessageRecordSchema = z.object({
   id,
   subagentId: id,
+  // fork 从父 Session 复制来的消息不属于子代理 Run, 原样保留 null.
+  runId: nullableId,
   role: z.enum(['user', 'assistant']),
   kind: z.enum(['normal', 'tool_results', 'summary', 'continuation', 'reminder']),
   blocksJson: z.string(),
   interrupted: z.boolean(),
-  sequence: nonNegativeInteger,
   createdAt: integer,
   summarizedThroughMessageId: nullableId,
-}).strict();
+  savedTokens: nonNegativeInteger.optional(),
+  // 只保存消息表实际写入的来源, 不把 Run 查询出来的来源重复写进消息.
+  providerId: nullableId,
+  modelId: nullableId,
+  protocol: nullableId,
+}).strict().superRefine((message, ctx) => {
+  if (message.kind !== 'summary' && message.summarizedThroughMessageId !== null) {
+    ctx.addIssue({ code: 'custom', message: '非 summary 子消息不能携带摘要覆盖游标' });
+  }
+  if (message.kind !== 'summary' && message.savedTokens !== undefined) {
+    ctx.addIssue({ code: 'custom', message: '非 summary 子消息不能携带 savedTokens' });
+  }
+  // fork 复制的摘要找不到旧覆盖消息时, 游标可以为 null, 以摘要自身为边界.
+});
 
 export const toolExecutionRecordSchema = z.object({
   callId: id,
@@ -278,7 +306,7 @@ export type MessageRecord = z.infer<typeof messageRecordSchema>;
 export type TaskRecord = z.infer<typeof taskRecordSchema>;
 export type GoalRecord = z.infer<typeof goalRecordSchema>;
 export type SubagentRecord = z.infer<typeof subagentRecordSchema>;
-export type SubagentInvocationRecord = z.infer<typeof subagentInvocationRecordSchema>;
+export type SubagentRunRecord = z.infer<typeof subagentRunRecordSchema>;
 export type SubagentMessageRecord = z.infer<typeof subagentMessageRecordSchema>;
 export type ToolExecutionRecord = z.infer<typeof toolExecutionRecordSchema>;
 export type BackgroundProcessRecord = z.infer<typeof backgroundProcessRecordSchema>;

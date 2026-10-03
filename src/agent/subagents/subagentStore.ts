@@ -1,150 +1,116 @@
-// 管理一次子 Agent 运行的状态机与终态统计（一次运行一行）。
-// Assistant 的工具调用事实与完整消息、ToolResult 流水归 subagentMessagesStore.ts.
-
-import type { SubagentRow, SubagentSummaryRow, SubagentsRepo } from '@ema-agent/storage';
+// 管理稳定子代理身份与每次 Run, 首次创建的外层事务归本业务层.
 import type {
-  Subagent,
-  SubagentCompletion,
-  SubagentInvocation,
-  SubagentStart,
-  SubagentStatus,
-  SubagentSummary,
-} from './types.js';
-
-function fromRow(row: SubagentRow): Subagent {
-  return {
-    id: row.id,
-    sessionId: row.session_id,
-    contextMode: row.context_mode,
-    status: row.status as SubagentStatus,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-    ...(row.description !== null ? { description: row.description } : {}),
-    ...(row.provider_id !== null
-      ? { providerId: row.provider_id }
-      : {}),
-    ...(row.model_id !== null ? { modelId: row.model_id } : {}),
-    ...(row.error !== null ? { error: row.error } : {}),
-    ...(row.iterations !== null ? { iterations: row.iterations } : {}),
-    ...(row.tool_call_count !== null ? { toolCallCount: row.tool_call_count } : {}),
-    ...(row.input_tokens !== null ? { inputTokens: row.input_tokens } : {}),
-    ...(row.output_tokens !== null ? { outputTokens: row.output_tokens } : {}),
-    ...(row.final_text !== null ? { finalText: row.final_text } : {}),
-    ...(row.completed_at !== null ? { completedAt: row.completed_at } : {}),
-  };
-}
-
-function summaryFromRow(row: SubagentSummaryRow): SubagentSummary {
-  return {
-    id: row.id,
-    sessionId: row.session_id,
-    contextMode: row.context_mode,
-    status: row.status as SubagentStatus,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-    ...(row.description !== null ? { description: row.description } : {}),
-    ...(row.provider_id !== null ? { providerId: row.provider_id } : {}),
-    ...(row.model_id !== null ? { modelId: row.model_id } : {}),
-    ...(row.error !== null ? { error: row.error } : {}),
-    ...(row.iterations !== null ? { iterations: row.iterations } : {}),
-    ...(row.tool_call_count !== null ? { toolCallCount: row.tool_call_count } : {}),
-    ...(row.input_tokens !== null ? { inputTokens: row.input_tokens } : {}),
-    ...(row.output_tokens !== null ? { outputTokens: row.output_tokens } : {}),
-    ...(row.completed_at !== null ? { completedAt: row.completed_at } : {}),
-  };
-}
+  SqliteDb, SubagentPageCursor, SubagentRow, SubagentRunConfiguration,
+  SubagentRunPageCursor, SubagentRunRow, SubagentRunsRepo, SubagentsRepo,
+} from '@ema-agent/storage';
+import type { Subagent, SubagentCompletion, SubagentRun, SubagentStart } from './types.js';
 
 export class SubagentStore {
-  constructor(private readonly repo: SubagentsRepo) {}
+  constructor(
+    private readonly db: SqliteDb,
+    private readonly subagents: SubagentsRepo,
+    private readonly runs: SubagentRunsRepo,
+  ) {}
 
-  start(input: SubagentStart): Subagent {
+  start(input: SubagentStart): SubagentRun {
     const now = Date.now();
-    const inserted = this.repo.insert({
-      id: input.subagentId,
-      toolCallId: input.toolCallId,
-      sessionId: input.sessionId,
-      contextMode: input.contextMode,
-      description: input.description,
-      providerId: input.providerId,
-      modelId: input.modelId,
-      createdAt: now,
-    });
-    if (!inserted) {
-      throw new Error(`Subagent ${input.subagentId} 已存在`);
+    const run = {
+      id: input.runId, subagentId: input.subagentId, parentToolCallId: input.toolCallId,
+      contextMode: input.contextMode, description: input.description, createdAt: now,
+    };
+    if (input.isNew) {
+      const { title, description } = input;
+      if (!title || !description) throw new Error('新建子代理必须提供 title 和 description');
+      return this.db.transaction(() => {
+        this.subagents.insert({
+          id: input.subagentId, sessionId: input.sessionId, title, description, createdAt: now,
+        });
+        return runFromRow(this.runs.insert(run));
+      })();
     }
-    return fromRow(inserted);
+    const inserted = this.runs.startRun(run, { title: input.title, description: input.description });
+    if (!inserted) throw new Error(`Subagent ${input.subagentId} 正在被占用`);
+    return runFromRow(inserted);
   }
 
-  complete(
-    subagentId: string,
-    completion: SubagentCompletion,
-  ): void {
-    const current = this.requireSubagent(subagentId);
-    if (current.status === 'completed') return;
-    if (current.status !== 'running') {
-      throw new Error(`Subagent ${subagentId} 已处于 ${current.status}, 无法完成`);
+  setConfiguration(runId: string, configuration: SubagentRunConfiguration): void {
+    if (!this.runs.setRunConfiguration(runId, configuration, Date.now())) {
+      throw new Error(`Subagent Run ${runId} 无法写入配置`);
     }
-    const completed = this.repo.complete(subagentId, completion, Date.now());
-    if (!completed) throw new Error(`Subagent ${subagentId} 完成状态写入失败`);
   }
 
-  fail(subagentId: string, reason: string): void {
-    const current = this.requireSubagent(subagentId);
-    if (current.status === 'failed' && current.error === reason) return;
-    if (current.status !== 'running') {
-      throw new Error(`Subagent ${subagentId} 已处于 ${current.status}, 无法写入失败终态`);
+  complete(runId: string, completion: SubagentCompletion): void {
+    if (!this.runs.completeRun(runId, completion, Date.now())) {
+      throw new Error(`Subagent Run ${runId} 无法完成`);
     }
-    const failed = this.repo.fail(subagentId, reason, Date.now());
-    if (!failed) throw new Error(`Subagent ${subagentId} 失败状态写入失败`);
   }
 
-  cancel(subagentId: string, reason: string): void {
-    const current = this.requireSubagent(subagentId);
-    if (current.status === 'cancelled') return;
-    if (current.status !== 'running') {
-      throw new Error(`Subagent ${subagentId} 已处于 ${current.status}, 无法取消`);
+  fail(runId: string, reason: string): void {
+    if (!this.runs.failRun(runId, reason, Date.now())) {
+      throw new Error(`Subagent Run ${runId} 无法写入失败终态`);
     }
-    const cancelled = this.repo.cancel(subagentId, reason, Date.now());
-    if (!cancelled) throw new Error(`Subagent ${subagentId} 取消状态写入失败`);
+  }
+
+  cancel(runId: string, reason: string): void {
+    if (!this.runs.cancelRun(runId, reason, Date.now())) throw new Error(`Subagent Run ${runId} 无法取消`);
   }
 
   get(subagentId: string): Subagent | undefined {
-    const row = this.repo.findById(subagentId);
+    const row = this.subagents.findById(subagentId);
     return row ? fromRow(row) : undefined;
   }
 
-  getSummary(subagentId: string): SubagentSummary | undefined {
-    const row = this.repo.findSummaryById(subagentId);
-    return row ? summaryFromRow(row) : undefined;
+  getRun(runId: string): SubagentRun | undefined {
+    const row = this.runs.findById(runId);
+    return row ? runFromRow(row) : undefined;
   }
 
-  listForSession(sessionId: string): SubagentSummary[] {
-    return this.repo.listForSession(sessionId).map(summaryFromRow);
+  latestRun(subagentId: string): SubagentRun | undefined {
+    const row = this.runs.findLatestRun(subagentId);
+    return row ? runFromRow(row) : undefined;
   }
 
-  listInvocationsForSession(sessionId: string): SubagentInvocation[] {
-    return this.repo.listInvocationsForSession(sessionId).map(row => ({
-      toolCallId: row.tool_call_id,
-      subagentId: row.subagent_id,
-      createdAt: row.created_at,
-    }));
+  listForSession(sessionId: string, cursor?: SubagentPageCursor, limit?: number) {
+    const page = this.subagents.listForSession(sessionId, cursor, limit);
+    return { items: page.items.map(fromRow), nextCursor: page.nextCursor };
+  }
+
+  listRuns(subagentId: string, cursor?: SubagentRunPageCursor, limit?: number) {
+    const page = this.runs.listForSubagent(subagentId, cursor, limit);
+    return { items: page.items.map(runFromRow), nextCursor: page.nextCursor };
   }
 
   delete(subagentId: string): void {
-    this.repo.delete(subagentId);
+    this.subagents.delete(subagentId);
   }
 
   clearTerminalForSession(sessionId: string): number {
-    return this.repo.deleteTerminalForSession(sessionId);
+    return this.subagents.deleteTerminalForSession(sessionId);
   }
 
-  recoverInterrupted(): Subagent[] {
-    return this.repo.markStuckFailed(Date.now()).map(fromRow);
+  recoverInterrupted(): SubagentRun[] {
+    return this.runs.markStuckRunsFailed(Date.now()).map(runFromRow);
   }
+}
 
-  private requireSubagent(subagentId: string): SubagentRow {
-    const row = this.repo.findById(subagentId);
-    if (!row) throw new Error(`Subagent ${subagentId} 不存在`);
-    return row;
-  }
+function fromRow(row: SubagentRow): Subagent {
+  return {
+    id: row.id, sessionId: row.session_id, title: row.title, description: row.description,
+    permissionMode: row.permission_mode, providerId: row.provider_id, modelId: row.model_id,
+    protocol: row.protocol, reasoningEffort: row.reasoning_effort, status: row.status,
+    createdAt: row.created_at, updatedAt: row.updated_at,
+  };
+}
+
+function runFromRow(row: SubagentRunRow): SubagentRun {
+  return {
+    id: row.id, subagentId: row.subagent_id, parentToolCallId: row.parent_tool_call_id,
+    contextMode: row.context_mode, description: row.description,
+    providerId: row.provider_id, modelId: row.model_id, protocol: row.protocol,
+    permissionMode: row.permission_mode, reasoningEffort: row.reasoning_effort,
+    status: row.status, error: row.error, iterations: row.iterations,
+    toolCallCount: row.tool_call_count, inputTokens: row.input_tokens,
+    outputTokens: row.output_tokens, finalText: row.final_text,
+    createdAt: row.created_at, updatedAt: row.updated_at, completedAt: row.completed_at,
+  };
 }

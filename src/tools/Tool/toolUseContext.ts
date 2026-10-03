@@ -23,15 +23,14 @@ import type { BackgroundProcess } from '../background/backgroundProcess.js';
 export type SubagentContextMode = 'subagent' | 'fork';
 
 export interface SubagentSpawnOptions {
+  /** 省略时新建, 提供时继续该稳定身份. */
+  subagentId?: string;
+  title?: string;
   providerId?: string;
   modelId?: string;
   /** 任务短描述（3–5 词），展示在 dashboard 与日志；映射自 SubagentTool 的 description 入参。 */
   description?: string;
   contextMode?: SubagentContextMode;
-  /** AgentRole 目录钉死的角色身份 Prompt（非模型入参）；由 PrepareSubagent 装配进子 Agent 上下文。 */
-  systemPrompt?: string;
-  /** AgentRole 目录钉死的工具收窄（模型可见名）；PrepareSubagent 只从父 ToolPool 继续收窄，绝不扩权。 */
-  disallowedTools?: readonly string[];
 }
 
 export interface SubagentResult {

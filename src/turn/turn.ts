@@ -6,14 +6,7 @@ import {
   type PrepareAgentIteration,
 } from '@ema-agent/agent';
 import type { VisionDescriptionCache } from '@ema-agent/attachments';
-import {
-  appendEstimatedContextMessages,
-  projectSessionMessages,
-  estimatedContextUsage,
-  providerContextUsage,
-  type ContextUsage,
-  type ContextUsageEstimate,
-} from '@ema-agent/context';
+import { projectMessages } from '@ema-agent/context';
 import type { CompactRequest, CompactResult } from '@ema-agent/compact';
 import type {
   CallLlm,
@@ -39,8 +32,10 @@ import {
 } from './errors.js';
 import type { TurnStreamEvent } from './events.js';
 import { createPrepareAgentIteration } from './prepare/prepareAgentIteration.js';
-import { createPrepareSubagent, type ForkParentMessages } from './prepare/prepareSubagent.js';
+import { createPrepareSubagent } from './prepare/prepareSubagent.js';
 import { TurnMessageWriter } from './turnMessageWriter.js';
+import { createForkParentMessages } from './forkParentMessages.js';
+import { createTurnLoopEvents } from './turnLoopEvents.js';
 import {
   prepareTurn,
   prepareTurnInputParts,
@@ -93,6 +88,7 @@ export interface TurnExecutorDeps extends PrepareTurnDeps {
     | 'appendMessage'
     | 'appendHistorySummary'
     | 'loadHistory'
+    | 'getMessage'
     | 'markMessageInterrupted'
     | 'updateMessageBlocks'
   >;
@@ -237,9 +233,15 @@ export class TurnExecutor {
     let tools: TurnToolsAssembly | undefined;
     let terminal: 'completed' | 'failed' | 'aborted' = 'failed';
     let handledGoalId: string | undefined;
-    let parentMessagesReady: Promise<ForkParentMessages>;
-    let resolveParentMessages: ((messages: ForkParentMessages) => void) | undefined;
-    let rejectParentMessages: ((reason: unknown) => void) | undefined;
+    const forkParentMessages = createForkParentMessages(this.deps.sessions);
+    const loopEvents = createTurnLoopEvents({
+      sessionId,
+      turnId,
+      turns: this.deps.turns,
+      writer,
+      usageRecorder: this.deps.usageRecorder,
+      emit,
+    });
 
     try {
       const initialGoal = this.deps.goalStore?.getCurrent(sessionId);
@@ -255,7 +257,6 @@ export class TurnExecutor {
       });
 
       let compact: ((request: CompactRequest) => Promise<CompactResult>) | undefined;
-      let parentMessages: readonly Message[] = [];
       const prepareSubagent = createPrepareSubagent({
         sessionId,
         turnId,
@@ -267,26 +268,10 @@ export class TurnExecutor {
         providerModels: this.deps.providerModels,
         createCompact: this.deps.createCompact,
         usageRecorder: this.deps.usageRecorder,
+        visionCache: this.deps.visionCache,
+        describeImage: this.deps.describeImage,
         emit,
-        readParentMessages: forkSignal => {
-          forkSignal.throwIfAborted();
-          // 先捕获本轮 Promise. 父循环之后换轮, 已创建的 fork 也不会读到新历史.
-          const current = parentMessagesReady;
-          return new Promise<ForkParentMessages>((resolve, reject) => {
-            const onAbort = (): void => reject(forkSignal.reason);
-            forkSignal.addEventListener('abort', onAbort, { once: true });
-            current.then(
-              messages => {
-                forkSignal.removeEventListener('abort', onAbort);
-                resolve(messages);
-              },
-              error => {
-                forkSignal.removeEventListener('abort', onAbort);
-                reject(error);
-              },
-            );
-          });
-        },
+        readParentMessages: forkParentMessages.read,
       });
 
       prepared = await prepareTurn(this.deps, {
@@ -294,14 +279,7 @@ export class TurnExecutor {
         turnId,
         prepareSubagent,
         emit,
-        onSubagentLlmCallFinished: event => {
-          recordAgentLlmCallUsage(
-            this.deps.usageRecorder,
-            sessionId,
-            turnId,
-            event,
-          );
-        },
+        onSubagentLlmCallFinished: loopEvents.recordLlmCall,
         signal,
       });
       tools = prepared.tools;
@@ -427,35 +405,15 @@ export class TurnExecutor {
         ...(this.deps.describeImage ? { describeImage: this.deps.describeImage } : {}),
         signal,
       };
-      const projected = await projectSessionMessages(
+      const projected = await projectMessages(
         persisted,
-        resolveGenerationTarget,
+        message => message.turnId ? resolveGenerationTarget(message.turnId) : undefined,
         attachmentOptions,
       );
       const initialMessages: Message[] = projected.map(entry => entry.message);
       // 未落库的模型专用引导也占消息位置, 但没有 SQL ID.
-      const messageIds: (string | undefined)[] = projected.map(entry => entry.sessionMessageId);
+      const messageIds: (string | undefined)[] = projected.map(entry => entry.messageId);
       const pendingMessageIds: (string | undefined)[] = [];
-
-      const contextEstimates = new Map<string, ContextUsageEstimate>();
-      let currentContextUsage:
-        | { readonly llmCallId: string; readonly usage: ContextUsage }
-        | undefined;
-      const publishEstimatedContext = (
-        llmCallId: string,
-        estimate: ContextUsageEstimate,
-      ): void => {
-        contextEstimates.set(llmCallId, estimate);
-        const usage = estimatedContextUsage(estimate);
-        currentContextUsage = { llmCallId, usage };
-        emit({
-          type: 'context_usage_updated',
-          sessionId,
-          turnId,
-          llmCallId,
-          usage,
-        });
-      };
 
       const prepareAgentIteration = createPrepareAgentIteration({
         sessionId,
@@ -466,28 +424,22 @@ export class TurnExecutor {
         emit,
         // 与 AgentLoop 消息按位置对齐; Macro 保存时用被覆盖前缀的 SQL 身份.
         macroPersistence: {
-          sessions: this.deps.sessions,
+          appendSummary: (summary, throughMessageId, savedTokens) => this.deps.sessions.appendHistorySummary({
+            sessionId, turnId, summary, savedTokens, summarizedThroughMessageId: throughMessageId,
+          }),
           messageIds,
         },
         signal,
-        onContextPrepared: publishEstimatedContext,
+        onContextPrepared: loopEvents.onContextPrepared,
       });
       const prepareIteration: PrepareAgentIteration = async input => {
         const iteration = await prepareAgentIteration(input);
         // 每次物理父请求独立交接, 包含 Compact 改写后的历史, 不订阅后续迭代.
-        parentMessages = [...iteration.messages];
-        parentMessagesReady = new Promise<ForkParentMessages>((resolve, reject) => {
-          resolveParentMessages = resolve;
-          rejectParentMessages = reject;
-        });
-        // 没有 fork 的请求也可能失败. 原 Promise 保留拒绝给等待者,
-        // 无等待者时的父错误则由 Turn 终态处理, 不产生未处理的 Promise 拒绝.
-        void parentMessagesReady.catch(() => undefined);
+        forkParentMessages.beginRequest(iteration.messages, messageIds);
         return iteration;
       };
 
       let stopped: Extract<AgentLoopEvent, { type: 'loop_stopped' }> | undefined;
-      const toolNames = new Map<string, string>();
       const stage = this.deps.stage;
       // 新 Turn 重置舞台扫描器；情绪状态跨 Turn 保留。
       stage?.beginTurn(sessionId);
@@ -499,12 +451,12 @@ export class TurnExecutor {
         createToolExecutor: tools.createExecutor,
         takeNextIterationMessages: async () => {
           const appended = await persistNextIterationMessages();
-          const projected = await projectSessionMessages(
+          const projected = await projectMessages(
             appended,
-            resolveGenerationTarget,
+            message => message.turnId ? resolveGenerationTarget(message.turnId) : undefined,
             attachmentOptions,
           );
-          pendingMessageIds.push(...projected.map(entry => entry.sessionMessageId));
+          pendingMessageIds.push(...projected.map(entry => entry.messageId));
           return projected.map(entry => entry.message);
         },
         signal,
@@ -528,22 +480,16 @@ export class TurnExecutor {
         const storedMessageId = await writer.apply(downstream);
         if (downstream.type === 'assistant_message_completed') {
           // 父消息先落库, 再让 fork 发出第一条模型请求. 副本中的占位不进入 writer.
-          resolveParentMessages?.({
-            history: parentMessages,
-            assistant: {
-              role: 'assistant',
-              content: downstream.content,
-              generatedBy: {
-                providerId: prepared.providerId,
-                modelId: prepared.modelId,
-                protocol: prepared.protocol,
-              },
-            },
+          // 空回复没有 Message 行, 也没有可以发起 fork 的工具调用.
+          forkParentMessages.completeAssistant(storedMessageId, {
+            providerId: prepared.providerId,
+            modelId: prepared.modelId,
+            protocol: prepared.protocol,
           });
         }
         if (downstream.type === 'llm_call_finished' && downstream.status !== 'completed') {
           // 在恢复 generator 的工具清理之前释放等待, 不能等外层 catch 才结束 fork 准备.
-          rejectParentMessages?.(new Error(`父 Assistant 未完成, fork 准备终止: ${downstream.errorCode ?? downstream.status}`));
+          forkParentMessages.fail(new Error(`父 Assistant 未完成, fork 准备终止: ${downstream.errorCode ?? downstream.status}`));
         }
         if (downstream.type === 'assistant_message_completed' || downstream.type === 'tool_result') {
           pendingMessageIds.push(storedMessageId);
@@ -555,49 +501,10 @@ export class TurnExecutor {
             messageIds.push(pendingMessageIds.shift());
           }
         }
-        this.translate(downstream, sessionId, turnId, writer, toolNames, emit);
-        if (downstream.type === 'llm_call_usage_updated') {
-          const estimate = contextEstimates.get(downstream.llmCallId);
-          if (estimate) {
-            const usage = providerContextUsage(estimate, downstream.usage);
-            currentContextUsage = { llmCallId: downstream.llmCallId, usage };
-            emit({
-              type: 'context_usage_updated',
-              sessionId,
-              turnId,
-              llmCallId: downstream.llmCallId,
-              usage,
-            });
-          }
-        }
-        if (downstream.type === 'llm_call_finished') {
-          recordAgentLlmCallUsage(
-            this.deps.usageRecorder,
-            sessionId,
-            turnId,
-            downstream,
-          );
-        }
-        if (downstream.type === 'model_history_appended') {
-          const current = currentContextUsage;
-          if (current?.llmCallId === downstream.llmCallId) {
-            const usage = appendEstimatedContextMessages(
-              current.usage,
-              downstream.messages,
-            );
-            currentContextUsage = { llmCallId: downstream.llmCallId, usage };
-            emit({
-              type: 'context_usage_updated',
-              sessionId,
-              turnId,
-              llmCallId: downstream.llmCallId,
-              usage,
-            });
-          }
-        }
+        loopEvents.accept(downstream);
         if (downstream.type === 'loop_stopped') {
           stopped = downstream;
-          rejectParentMessages?.(new Error(`父循环已结束: ${downstream.state.stopReason}`));
+          forkParentMessages.fail(new Error(`父循环已结束: ${downstream.state.stopReason}`));
         }
       }
 
@@ -611,7 +518,7 @@ export class TurnExecutor {
             delta: cleaned,
           };
           await writer.apply(flushed);
-          this.translate(flushed, sessionId, turnId, writer, toolNames, emit);
+          loopEvents.accept(flushed);
         }
       }
 
@@ -661,7 +568,7 @@ export class TurnExecutor {
         () => emit({ type: 'turn_failed', sessionId, turnId, code, message: outcome.message }),
       );
     } catch (error) {
-      rejectParentMessages?.(error);
+      forkParentMessages.fail(error);
       // 准备或持久化失败时, 尚未确认的队列项必须回到可领取状态.
       this.deps.continuations.release(turnId);
       if (signal.aborted || error instanceof TurnEventChannelClosedError) {
@@ -798,106 +705,6 @@ export class TurnExecutor {
       message,
     };
   }
-
-  private translate(
-    event: AgentLoopEvent,
-    sessionId: string,
-    turnId: string,
-    writer: TurnMessageWriter,
-    toolNames: Map<string, string>,
-    emit: (event: TurnStreamEvent) => void,
-  ): void {
-    switch (event.type) {
-      case 'iteration_started':
-        this.deps.turns.setIterations(turnId, event.iteration);
-        emit({
-          type: 'agent_iteration',
-          sessionId,
-          turnId,
-          n: event.iteration,
-          assistantMessageId: writer.currentAssistantMessageId,
-        });
-        return;
-      case 'text_delta':
-        emit({
-          type: 'output_text_delta',
-          sessionId,
-          turnId,
-          blockIndex: event.blockIndex,
-          delta: event.delta,
-          assistantMessageId: writer.currentAssistantMessageId,
-        });
-        return;
-      case 'thinking_delta':
-        emit({
-          type: 'reasoning_delta',
-          sessionId,
-          turnId,
-          blockIndex: event.blockIndex,
-          delta: event.delta,
-          assistantMessageId: writer.currentAssistantMessageId,
-        });
-        return;
-      case 'thinking_completed':
-        emit({
-          type: 'reasoning_complete',
-          sessionId,
-          turnId,
-          blockIndex: event.blockIndex,
-          assistantMessageId: writer.currentAssistantMessageId,
-        });
-        return;
-      case 'tool_use_partial':
-        emit({
-          type: 'tool_call_partial',
-          sessionId,
-          turnId,
-          blockIndex: event.blockIndex,
-          callId: event.toolCallId,
-          name: event.toolName,
-          argsDelta: event.argsDelta,
-          assistantMessageId: writer.currentAssistantMessageId,
-        });
-        return;
-      case 'tool_use_completed':
-        toolNames.set(event.toolCallId, event.toolName);
-        emit({
-          type: 'tool_call_complete',
-          sessionId,
-          turnId,
-          blockIndex: event.blockIndex,
-          callId: event.toolCallId,
-          name: event.toolName,
-          args: event.args,
-          assistantMessageId: writer.currentAssistantMessageId,
-        });
-        return;
-      case 'agent_usage_updated':
-        emit({ type: 'agent_usage_updated', sessionId, turnId, usage: event.usage });
-        return;
-      case 'tool_result': {
-        const { result } = event;
-        emit({
-          type: 'tool_result',
-          sessionId,
-          callId: result.toolCallId,
-          name: toolNames.get(result.toolCallId) ?? 'unknown',
-          ...(result.isError
-            ? { error: { code: result.errorCode ?? 'tool/error', message: String(result.content) } }
-            : { output: result.data ?? result.content }),
-          durationMs: result.durationMs ?? 0,
-        });
-        return;
-      }
-      case 'llm_call_usage_updated':
-      case 'llm_call_finished':
-      case 'assistant_message_completed':
-      case 'model_history_appended':
-        return;
-      default:
-        return;
-    }
-  }
 }
 
 /** Narrative 与标题只读取用户显式文本，不混入附件描述或 Skill 指引。 */
@@ -928,31 +735,4 @@ export function createGenerationTargetResolver(
     cache.set(turnId, source);
     return source;
   };
-}
-
-/** 根与子 Agent 共用的一次物理 LLM 调用终态记账。 */
-function recordAgentLlmCallUsage(
-  recorder: UsageRecorder | undefined,
-  sessionId: string,
-  turnId: string,
-  event: Extract<AgentLoopEvent, { type: 'llm_call_finished' }>,
-): void {
-  recorder?.record({
-    id: event.llmCallId,
-    sessionId,
-    turnId,
-    providerId: event.source.providerId,
-    modelId: event.source.modelId,
-    capability: 'llm',
-    status: event.status,
-    durationMs: event.durationMs,
-    inputTokens: event.usage?.inputTokens ?? null,
-    outputTokens: event.usage?.outputTokens ?? null,
-    cacheReadInputTokens: event.usage?.cacheReadInputTokens ?? null,
-    cacheWriteInputTokens: event.usage?.cacheWriteInputTokens ?? null,
-    quantity: null,
-    unit: null,
-    errorCode: event.errorCode ?? null,
-    createdAt: event.startedAt,
-  });
 }

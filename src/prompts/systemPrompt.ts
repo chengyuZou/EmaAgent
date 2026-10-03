@@ -1,4 +1,4 @@
-// System Prompt 的唯一装配函数:扁平有序 PromptBlock 数组,顺序即代码顺序。
+// 共享静态数组与动态装配函数: 调用方按静态 -> 动态顺序拼接 PromptBlock.
 // name 只供 Context Usage 分类与前端展示,不发送给模型;cacheBreakpoint 标在
 // 产品静态块上,是静态/动态分界的唯一表达(哨兵已删除)。
 // 角色人设由 characters 包产出,Skill 目录由 skills 包产出,MCP 指引由 mcp 包捕获,
@@ -35,13 +35,14 @@ export interface PromptEnvironment {
   readonly modelId: string;
 }
 
-export interface GetSystemPromptInput {
-  /** 角色包公共口：取当下全局唯一激活角色的 Prompt 段落（扁平数组）。 */
-  readonly characterPrompt: () => readonly string[];
-  readonly sessionMode: SessionMode;
+export interface DynamicSystemPromptInput {
+  /** 根 Session 提供当前角色段落; 纯工作子代理不传. */
+  readonly characterPrompt?: () => readonly string[];
+  /** 根 Session 提供 Chat/Work; 子代理由末尾的委派说明约束执行方式. */
+  readonly sessionMode?: SessionMode;
   readonly permissionMode: Session['permissionMode'];
   /**
-   * 当根 Turn 冻结 ToolPool 的工具名集合(与 Provider tools[] 同一个 Pool 投影)。
+   * 当次 Agent 冻结 ToolPool 的工具名集合(与 Provider tools[] 同一个 Pool 投影)。
    * 能力引导只按名字判定存在性,不复制任何工具说明。
    */
   readonly toolNames: readonly string[];
@@ -77,7 +78,7 @@ const EXTERNAL_CONTENT_TRUST = `## 外部内容信任级
 /** 运行时事实段:模型按此回答"当前环境",不猜日期、平台或自己是什么模型。 */
 function runtimeEnvironment(env: PromptEnvironment): string {
   const currentDirectory = env.cwd
-    ? `- 当前执行目录（cwd）：${env.cwd}`
+    ? `- 当前执行目录(cwd): ${env.cwd}`
     : '- 当前没有执行目录。';
   return [
     '# 本轮运行环境',
@@ -126,22 +127,26 @@ const PERMISSION_MODE_PROMPTS: Readonly<Record<Session['permissionMode'], string
   - 不因为计划已经写完就声称实施或验证已经完成.`,
 };
 
-export function getSystemPrompt(
-  input: GetSystemPromptInput,
+/** 全员共用同一静态前缀; 不随 Session, 模型或子代理任务重新生成. */
+export const staticSystemPrompt: readonly PromptBlock[] = Object.freeze([
+  Object.freeze(block('product-rules', [
+    productIdentity(),
+    systemRules(),
+    taskExecutionRules(),
+    actionSafetyRules(),
+    toolSelectionRules(),
+    communicationRules(),
+    baseToneRules(),
+    EXTERNAL_CONTENT_TRUST,
+  ].join('\n\n'), true)),
+]);
+
+/** 只装配调用方给出的动态内容; 不读取 Session, Store 或文件. */
+export function getDynamicSystemPrompt(
+  input: DynamicSystemPromptInput,
 ): readonly PromptBlock[] {
-  const character = input.characterPrompt();
+  const character = input.characterPrompt?.();
   const blocks: readonly (PromptBlock | null)[] = [
-    // ── 产品静态块:全产品稳定的规则合集,断点标在这里(静态/动态唯一分界) ──
-    block('product-rules', [
-      productIdentity(),
-      systemRules(),
-      taskExecutionRules(),
-      actionSafetyRules(),
-      toolSelectionRules(),
-      communicationRules(),
-      baseToneRules(),
-      EXTERNAL_CONTENT_TRUST,
-    ].join('\n\n'), true),
     // ── 动态尾部:按"较稳定 → 较易变化"排列,延长稳定字节的缓存前缀 ──
     input.workspaceInstructions
       ? block('workspace-instructions', section('工作区指令', input.workspaceInstructions))
@@ -156,8 +161,8 @@ export function getSystemPrompt(
       block('mcp-instructions', section('MCP 服务器指引', text))),
     // 角色、Session 模式与能力说明排后段：它们的变化不应破坏前面各段的缓存前缀。
     // 角色是一整块：角色包内部 section 不拆成独立分类单元。
-    block('character', character.join('\n\n')),
-    block('session-mode', sessionModeInstructions(input.sessionMode)),
+    character ? block('character', character.join('\n\n')) : null,
+    input.sessionMode ? block('session-mode', sessionModeInstructions(input.sessionMode)) : null,
     block('permission-mode', PERMISSION_MODE_PROMPTS[input.permissionMode]),
     block('capability-guidance', sessionCapabilityGuidance(input.toolNames)),
     // 运行环境（含当前模型）排最末：中转站按 Turn 换模型是最高频变化，

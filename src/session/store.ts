@@ -489,7 +489,7 @@ export class SessionStore {
       interrupted: input.interrupted ?? false,
       createdAt:   now,
     });
-    const message = this.requireMessage(id);
+    const message = this.getMessage(id);
     this.onChanged?.({ type: 'session_messages_changed', sessionId: input.sessionId });
     return message;
   }
@@ -533,13 +533,13 @@ export class SessionStore {
       summarizedThroughMessageId: input.summarizedThroughMessageId,
       savedTokens: input.savedTokens,
     });
-    const message = this.requireMessage(id);
+    const message = this.getMessage(id);
     this.onChanged?.({ type: 'session_messages_changed', sessionId: input.sessionId });
     return message;
   }
 
   markMessageInterrupted(id: string): void {
-    const message = this.requireMessage(id);
+    const message = this.getMessage(id);
     this.messagesRepo.markInterrupted(id);
     this.onChanged?.({ type: 'session_messages_changed', sessionId: message.sessionId });
   }
@@ -659,7 +659,7 @@ export class SessionStore {
 
   /** 校验 message 属于指定 session；不向调用方暴露仓储。 */
   assertMessageOwnership(sessionId: string, messageId: string): void {
-    const message = this.requireMessage(messageId);
+    const message = this.getMessage(messageId);
     if (message.sessionId !== sessionId) {
       throw new SessionOwnershipError(
         `message ${messageId} belongs to session ${message.sessionId}, not ${sessionId}`,
@@ -675,7 +675,8 @@ export class SessionStore {
     return toSession(row);
   }
 
-  private requireMessage(id: string): SessionMessage {
+  /** fork 复制固定父前缀时按已知 ID 读取正文和摘要字段, 不重新加载后续历史. */
+  getMessage(id: string): SessionMessage {
     const row = this.messagesRepo.findById(id);
     if (!row) throw new Error(`message_not_found: ${id}`);
     return toMessage(row);

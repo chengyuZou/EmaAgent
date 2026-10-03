@@ -26,14 +26,11 @@ export type {
 export { TurnExecutor, TurnReminderScope } from './turn.js';
 export { createGenerationTargetResolver } from './turn.js';
 export {
-  buildSessionSystemPrompt,
   resolveSkillPool,
-} from './prepare/sessionSystemPrompt.js';
+} from './prepare/skillPool.js';
 export type {
-  SessionSystemPromptDeps,
-  SessionSystemPromptInput,
   SkillPoolDeps,
-} from './prepare/sessionSystemPrompt.js';
+} from './prepare/skillPool.js';
 export { renderTurnReminder } from './prepare/turnReminder.js';
 export type {
   RenderTurnReminderInput,

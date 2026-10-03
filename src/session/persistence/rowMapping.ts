@@ -86,6 +86,7 @@ export function toMessage(row: MessageRow): SessionMessage {
     turnId: row.turn_id as string | null,
     role: row.role,
     kind: row.kind,
+    summarizedThroughMessageId: row.summarized_through_message_id,
     blocks: parseMessageBlocksJson(row.blocks_json, row.role),
     interrupted: row.interrupted === 1,
     createdAt: row.created_at,

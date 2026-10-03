@@ -1,6 +1,8 @@
 // 进程级持有子 Agent 的执行、结果归属与取消关系，使后台运行不再依附父 Turn。
 
 import { randomUUID } from 'node:crypto';
+import type { ReasoningEffort } from '@ema-agent/session';
+import type { PermissionModeRow } from '@ema-agent/storage';
 import type { SubagentResult, SubagentSpawnOptions } from '@ema-agent/tools';
 import { runAgentLoop } from './agentLoop.js';
 import type { AgentLoopEvent, SubagentEvent } from './events.js';
@@ -10,6 +12,11 @@ import type { AgentLoopInput } from './types.js';
 
 export interface PrepareSubagentInput {
   readonly subagentId: string;
+  readonly runId: string;
+  readonly isNew: boolean;
+  readonly messageStore: SubagentMessagesStore;
+  /** 与工作历史同序, 摘要保存和循环追加共用这一数组. */
+  readonly messageIds: (string | undefined)[];
   readonly prompt: string;
   readonly options: SubagentSpawnOptions;
   readonly signal: AbortSignal;
@@ -23,6 +30,8 @@ export interface StartSubagent {
   readonly toolCallId: string;
   readonly prompt: string;
   readonly options: SubagentSpawnOptions;
+  readonly permissionMode: PermissionModeRow;
+  readonly reasoningEffort: ReasoningEffort;
   readonly prepareSubagent: PrepareSubagent;
   readonly parentSignal: AbortSignal;
   readonly runInBackground: boolean;
@@ -40,6 +49,7 @@ export interface StartSubagent {
 type ResultOwner = 'subagent_call' | 'subagent_await' | 'session_notification';
 
 interface ActiveSubagent {
+  readonly runId: string;
   readonly sessionId: string;
   readonly parentTurnId: string;
   readonly controller: AbortController;
@@ -50,7 +60,7 @@ interface ActiveSubagent {
 
 export interface SubagentExecutorDeps {
   readonly store: SubagentStore;
-  readonly messages: SubagentMessagesStore;
+  readonly messageStore: SubagentMessagesStore;
   readonly maxConcurrent: () => number;
   readonly publish: (sessionId: string, event: SubagentEvent) => void;
   readonly onBackgroundCompleted: (
@@ -68,27 +78,43 @@ export class SubagentExecutor {
   constructor(private readonly deps: SubagentExecutorDeps) {}
 
   start(input: StartSubagent): string {
-    const subagentId = randomUUID();
+    const isNew = input.options.subagentId === undefined;
+    const subagentId = input.options.subagentId ?? randomUUID();
+    const previous = isNew ? undefined : this.deps.store.get(subagentId);
+    if (!isNew && (!previous || previous.sessionId !== input.sessionId)) {
+      throw new Error(`当前 Session 中不存在 Subagent ${subagentId}`);
+    }
     if (this.stoppingReason) throw new Error(this.stoppingReason);
     if (this.active.size >= this.deps.maxConcurrent()) {
       throw new Error('子 Agent 已达到全进程并发上限');
     }
 
+    const options: SubagentSpawnOptions = {
+      ...input.options,
+      providerId: input.options.providerId ?? previous?.providerId ?? undefined,
+      modelId: input.options.modelId ?? previous?.modelId ?? undefined,
+      description: input.options.description ?? previous?.description ?? undefined,
+      contextMode: input.options.contextMode ?? this.deps.store.latestRun(subagentId)?.contextMode ?? 'subagent',
+    };
+    const runId = randomUUID();
     this.deps.store.start({
       subagentId,
+      runId,
+      isNew,
       toolCallId: input.toolCallId,
       sessionId: input.sessionId,
-      contextMode: input.options.contextMode ?? 'subagent',
-      ...(input.options.description ? { description: input.options.description } : {}),
-      ...(input.options.providerId ? { providerId: input.options.providerId } : {}),
-      ...(input.options.modelId ? { modelId: input.options.modelId } : {}),
+      contextMode: options.contextMode!,
+      title: input.options.title,
+      description: options.description,
     });
 
     const controller = new AbortController();
     // 显式后台从出生起就属于 Session, 因此不能接父 Turn 的取消信号.
     // 默认路径先跟随父 Turn, 只有超过前台等待期限才解除这条关系.
-    const completion = this.execute(input, subagentId, controller);
+    if (!input.runInBackground && input.parentSignal.aborted) controller.abort(input.parentSignal.reason);
+    const completion = this.execute({ ...input, options }, subagentId, runId, isNew, controller);
     const active: ActiveSubagent = {
+      runId,
       sessionId: input.sessionId,
       parentTurnId: input.parentTurnId,
       controller,
@@ -104,11 +130,11 @@ export class SubagentExecutor {
     this.active.set(subagentId, active);
     void completion.finally(() => {
       active.detachParentAbort?.();
-      this.active.delete(subagentId);
+      if (this.active.get(subagentId) === active) this.active.delete(subagentId);
       // execute 先把终态事实写入 SQL, completion 才会兑现. 只有结果仍归 Session 时发送轻量通知;
       // 原 Tool 或 SubagentAwait 会通过自己的 ToolResult 交付结果.
       if (active.owner === 'session_notification') {
-        const terminal = this.deps.store.get(subagentId);
+        const terminal = this.deps.store.getRun(runId);
         if (terminal && terminal.status !== 'running') {
           this.deps.onBackgroundCompleted(active.sessionId, subagentId, terminal.status);
         }
@@ -155,8 +181,10 @@ export class SubagentExecutor {
       }
     }
 
-    const stored = this.deps.store.get(subagentId);
-    if (!stored || stored.sessionId !== sessionId || stored.status === 'running') return null;
+    const identity = this.deps.store.get(subagentId);
+    if (!identity || identity.sessionId !== sessionId) return null;
+    const stored = this.deps.store.latestRun(subagentId);
+    if (!stored || stored.status === 'running') return null;
     // 终态结果按 id 可重复读取. 断电后不自动创建 Turn, 由模型根据历史中的 id 主动查询.
     this.deps.onTerminalResultRead(sessionId, subagentId);
     if (stored.status !== 'completed') {
@@ -232,10 +260,11 @@ export class SubagentExecutor {
     return active?.sessionId === sessionId ? active : undefined;
   }
 
-  private async execute(input: StartSubagent, subagentId: string, controller: AbortController): Promise<SubagentResult> {
+  private async execute(
+    input: StartSubagent, subagentId: string, runId: string, isNew: boolean, controller: AbortController,
+  ): Promise<SubagentResult> {
     const startedAt = Date.now();
     const contextMode = input.options.contextMode ?? 'subagent';
-    const providerId = input.options.providerId;
     const modelId = input.options.modelId;
     let toolCallCount = 0;
     const toolNames = new Map<string, string>();
@@ -247,8 +276,21 @@ export class SubagentExecutor {
 
     let terminal: Extract<AgentLoopEvent, { type: 'loop_stopped' }> | undefined;
     try {
+      // 与模型工作历史逐条对齐, 保存每条消息的 SQL ID. 纯文本循环引导未入库, 对应 undefined.
+      // Macro 摘要靠它找到覆盖截止 ID; 初始历史由 prepareSubagent 填入, 之后随循环追加或压缩改写.
+      const messageIds: (string | undefined)[] = [];
+      // Assistant/ToolResult 先落库, 后追加到模型历史. 暂存已写好的 ID,
+      // 等 model_history_appended 时按追加顺序移入 messageIds, 不参与任务或通知调度.
+      const pendingMessageIds: (string | undefined)[] = [];
       const loopInput = await input.prepareSubagent({
-        subagentId, prompt: input.prompt, options: input.options, signal: controller.signal,
+        subagentId, runId, isNew, messageStore: this.deps.messageStore, messageIds,
+        prompt: input.prompt, options: input.options, signal: controller.signal,
+      });
+      controller.signal.throwIfAborted();
+      this.deps.store.setConfiguration(runId, {
+        ...loopInput.generationSource,
+        permissionMode: input.permissionMode,
+        reasoningEffort: input.reasoningEffort,
       });
       for await (const event of runAgentLoop(loopInput)) {
         if (event.type === 'tool_use_completed') {
@@ -257,7 +299,13 @@ export class SubagentExecutor {
         }
         // 持久 transcript 必须先越过对应语义边界, 然后才能恢复 generator
         // 触发下一步工具副作用. 实时发布独立于 SQL, 不借父 Turn 通道.
-        this.deps.messages.record(subagentId, event);
+        const messageId = this.deps.messageStore.record(subagentId, runId, event);
+        if (event.type === 'assistant_message_completed' || event.type === 'tool_result') {
+          pendingMessageIds.push(messageId);
+        }
+        if (event.type === 'model_history_appended') {
+          for (const _message of event.messages) messageIds.push(pendingMessageIds.shift());
+        }
         publishLoopEvent(this.deps.publish, input.sessionId, subagentId, event, toolNames);
         if (event.type === 'llm_call_finished') input.onLlmCallFinished?.(event);
         if (event.type === 'loop_stopped') terminal = event;
@@ -265,21 +313,21 @@ export class SubagentExecutor {
       if (controller.signal.aborted) throw abortReason(controller.signal, 'Sub-agent aborted');
       if (!terminal) throw new Error('AgentLoop 未产生终止事件');
     } catch (error) {
-      this.deps.messages.interruptActiveAssistant(subagentId);
+      this.deps.messageStore.interruptActiveAssistant(runId);
       const message = error instanceof Error ? error.message : String(error);
       if (controller.signal.aborted) {
         const reason = this.stoppingReason ?? message;
-        this.deps.store.cancel(subagentId, reason);
+        this.deps.store.cancel(runId, reason);
         this.deps.publish(input.sessionId, { type: 'subagent_aborted', subagentId, reason });
       } else {
-        this.deps.store.fail(subagentId, message);
+        this.deps.store.fail(runId, message);
         this.deps.publish(input.sessionId, { type: 'subagent_failed', subagentId, error: message });
       }
       throw error;
     }
 
     // 终态与 finalText 先写入事实表, 再发完成事件. 写库错误不能被当成 AgentLoop 失败重写为 failed.
-    this.deps.store.complete(subagentId, {
+    this.deps.store.complete(runId, {
       iterations: terminal.state.iterations,
       toolCallCount,
       inputTokens: terminal.state.usage.inputTokens,

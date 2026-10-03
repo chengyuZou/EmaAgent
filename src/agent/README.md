@@ -2,7 +2,7 @@
 
 `src/agent` 只实现一个 Agent 的 `LLM → Tool → Result` 循环，以及父 Agent 派生的子 Subagent。根 Turn、Session 历史、Context、Compact、权限装配和 ToolPool 发现都不属于本包；循环只产 `AgentLoopEvent`，持久化由事件消费方（Turn / SubagentExecutor）在 yield 恢复点完成。
 
-`SubagentStore` 在运行行创建、终态变更、删除或启动恢复落库后发 `subagents_changed { sessionId }`；跨窗口消费者重查该 Session 的子代理统计。`SubagentEvent` 仍是执行流事件，不替代持久化通知。
+`SubagentStore` 管稳定身份和每次 Run 的 SQL 事实; `SubagentEvent` 由执行器发布执行进度. 本批尚未接身份列表的刷新通知, 不把执行流事件当作完整持久化记录.
 
 `SubagentEvent.tool_result` 携带 `subagentId`、模型可见的 `toolName` 和原始 `result`. Desktop 用工具名称筛选工作区差异刷新, 不反查聊天消息; 名称由 `SubagentExecutor` 按本次调用 ID 从 `tool_use_completed` 配对, 结果发出后立即释放配对记录.
 
@@ -58,19 +58,27 @@ SSE 不是数据库写入触发器。Agent 也不透明中转 Tool、Permission�
 
 `SubagentExecutor` 只负责：
 
-- 创建 Subagent 行并写唯一终态（CAS 状态机，幂等终态，崩溃恢复收口 running）；
+- 新建稳定身份与首次 Run, 或给已有身份新建 Run; 配置和终态按 RunId 与身份在同一事务内更新, 崩溃恢复收口 running;
 - 建立父取消信号到子 Agent 的取消树；
 - 管理全进程并发上限、前台等待、后台转交与取消；
 - 调用外层注入的 `PrepareSubagent`，随后运行同一个 `runAgentLoop()`；
 - 在恢复子 Agent generator 前, 先把完整 `tool_use` 写入 Assistant Message, 再启动对应工具; Assistant 闭合时补全同一条 Message, ToolResult 逐条落库.
 
-`subagents/` 下两个存储各司其职: `SubagentStore` 管一次运行的状态机与终态统计(一次运行一行); `SubagentMessagesStore` 在工具启动前记录 `tool_use`, 消息闭合后补全同一条 Assistant, 并逐条记录 ToolResult. Assistant 行内部保留 `AssistantBlock[]` 的原始块顺序, 不以每轮都会重新计数的 `blockIndex` 充当跨轮身份.
+`subagents/` 下两个存储各司其职: `SubagentStore` 组合身份与 Run Repo, 身份不带统计, Run 保存当次结果和统计; `SubagentMessagesStore` 管同一子代理跨 Run 的消息历史, 在工具启动前记录 `tool_use`, 消息闭合后补全同一条 Assistant, 并逐条记录 ToolResult. Assistant 行内部保留 `AssistantBlock[]` 的原始块顺序, 不以每轮都会重新计数的 `blockIndex` 充当跨轮身份.
 
-`PrepareSubagent` 决定 clean context 或 fork context、模型、Prompt、ToolPool 和工具执行环境。**角色注册表（general/explore 等）归 `builtinTools/tools/SubagentTool/agentRoles.ts`**——模型经 SubagentTool 选角色，角色 Prompt 与 disallowedTools 经 `SubagentSpawnOptions` 传给 PrepareSubagent 应用。V1 子 Agent 深度为 1：子 Agent 没有再次派生子 Agent 的能力。
+子代理 Message 继承 Session 的基础 Message, 共用正文解析和 Context 的 `projectMessages` 投影. 自身输出的来源从 Run 读取; fork 复制来的父 Assistant 可能来自多个父 Turn/模型, 因此单独保留原始来源. 所有消息用 `createdAt/id` 游标, 不另设 sequence.
 
-`Subagent` 只表示子 Agent；根 Agent 不创建 Subagent。持久记录继续保存父 `turnId` 外键，这是 Subagent 自己的归属事实，不会进入 AgentLoop 输入。
+fork 的父前缀由 Turn 在发起调用所属的父 Assistant 完整落库后交付. Agent 消息层生成新消息 ID、复制有效前缀并补父工具调用的占位结果, 不改父 Session. 摘要覆盖 ID 在副本内则映射, 不在则留 null, 以摘要自身位置为覆盖边界, 不复制被摘要覆盖的旧历史. 继续旧 ID 只加载子代理自己的有效历史并追加本次 reminder/任务, 不再 fork.
 
-前台等待超过 2 分钟只改变结果所有者和父 Turn 取消关系，同一条执行不会重启。自然终态先写 `subagents.final_text`，再向 Session 队列发送 `subagentId + status`；完整结果可由 `SubagentAwait` 按 id 重复读取。应用启动只把遗留 `running` 收口为失败，不扫描终态并启动新 Turn。
+`PrepareSubagentInput.messageStore` 是消息存储入口, `messageIds` 则是与模型历史逐条对齐的 SQL ID 数组. 执行器先持久化 Assistant/ToolResult, 将 ID 暂存到 `pendingMessageIds`, 再按 `model_history_appended` 移入历史 ID 数组. Macro 保存摘要后同时替换这段 ID 前缀, 和根 Turn 使用同一压缩逻辑, 但写各自的消息表.
+
+`PrepareSubagent` 决定独立上下文或 fork 上下文、模型、Prompt、ToolPool 和工具执行环境. SubagentTool 不再提供 Role, 启动参数不携带角色 System 或角色工具排除列表. 子任务范围由 prompt 表达, 工具池仍从父 Pool 按统一的子代理排除规则收窄. V1 子 Agent 深度为 1: 子 Agent 没有再次派生子 Agent 的能力.
+
+`Subagent` 只表示子 Agent; 根 Agent 不创建 Subagent. 身份属于 Session, 每次 Run 通过 `parentToolCallId` 关联发起工具; 父 Turn 取消归属只在当前执行上下文保存, 不进入 AgentLoop 输入.
+
+前台等待超过 2 分钟只改变结果所有者和父 Turn 取消关系, 同一条执行不会重启. 自然终态先写 `subagent_runs.final_text`, 再向 Session 队列发送 `subagentId + status`; 完整结果可由 `SubagentAwait` 按稳定 ID 读取当前/最近 Run. 应用启动只把遗留 `running` 收口为失败, 不扫描终态并启动新 Turn.
+
+模型新建时未指定则沿用父模型, 继续时未指定则沿用身份记录最近实际使用的模型; 显式配置无效直接报错. Permission 和 reasoningEffort 每次取父 Turn 当前冻结值, 身份上的最近配置仅供展示. 旧 Role 已移除; 普通/fork/继续共用产品静态规则, 不带角色与 SessionMode, 按实际子模型和子 ToolPool 装配动态 System, 最后补纯工作委派说明. Session 共用 Permission FIFO 尚待后续分段, 子工具仍使用 headless 环境.
 
 ## 文件结构
 
@@ -82,7 +90,7 @@ src/agent/
 ├─ events.ts
 ├─ settings.ts
 ├─ subagentExecutor.ts
-├─ runs/
+├─ subagents/
 │  ├─ types.ts
 │  ├─ subagentStore.ts
 │  └─ subagentMessagesStore.ts
@@ -94,6 +102,6 @@ src/agent/
 ## 依赖方向
 
 ```text
-turn ──> agent ──> llm / tools
+turn ──> agent ──> llm / tools / session（共用 Message 正文）
                  └─ storage（只用于 Subagent）
 ```

@@ -104,6 +104,8 @@ export interface Message {
 
 export interface SessionMessage extends Message {
   sessionId: string;
+  /** 摘要覆盖截止消息, fork 复制时用于重映射; 非摘要为 null. */
+  summarizedThroughMessageId: string | null;
   /** 仅压缩摘要携带请求 Token 估算的减少量; 未记录的历史摘要不补造数值. */
   savedTokens?: number;
   /** null = Session 级消息（如 /compact 的 summary），不归属任何 Turn。 */

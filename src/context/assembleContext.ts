@@ -78,7 +78,7 @@ function assertNoSystemMessages(messages: readonly Message[]): void {
   if (!messages.some((message) => message.role === 'system')) return;
   throw new ContextAssemblyError(
     'context/system-message-outside-prompt',
-    'System message 只能来自 getSystemPrompt()，不能混入 Agent 工作消息。',
+    'System message 只能来自 PromptBlock 装配, 不能混入 Agent 工作消息.',
   );
 }
 

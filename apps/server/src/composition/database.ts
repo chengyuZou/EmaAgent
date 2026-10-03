@@ -2,6 +2,7 @@
 import {
   SubagentMessagesRepo,
   SubagentsRepo,
+  SubagentRunsRepo,
   MessagesRepo,
   AttachmentImagesRepo,
   AttachmentPastedTextsRepo,
@@ -133,7 +134,7 @@ export function openDatabases(
     attachmentPastedTexts,
     tasks: new TaskStore(new TasksRepo(dataDb.sqlite), emitChanged),
     goals: new GoalStore(dataDb, emitChanged),
-    subagents: new SubagentStore(new SubagentsRepo(dataDb.sqlite)),
+    subagents: new SubagentStore(dataDb.sqlite, new SubagentsRepo(dataDb.sqlite), new SubagentRunsRepo(dataDb.sqlite)),
     subagentMessages: new SubagentMessagesStore(new SubagentMessagesRepo(dataDb.sqlite)),
     usageRecorder,
     messages,

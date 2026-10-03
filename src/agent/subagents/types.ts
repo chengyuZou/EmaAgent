@@ -1,87 +1,85 @@
-import type { AssistantBlock, UserBlock } from '@ema-agent/llm';
-import type { SubagentMessageKind } from '@ema-agent/storage';
+import type { LlmGenerationSource } from '@ema-agent/llm';
+import type { Message, ReasoningEffort } from '@ema-agent/session';
+import type { PermissionModeRow, SubagentRunCompletion, SubagentStatusRow } from '@ema-agent/storage';
 import type { SubagentContextMode, ToolResult } from '@ema-agent/tools';
 
-export type SubagentStatus = 'running' | 'completed' | 'failed' | 'cancelled';
+export type SubagentStatus = SubagentStatusRow;
 
+/** 稳定身份. 配置记录最近一次准备成功的 Run, 不包含历次执行统计. */
 export interface Subagent {
   readonly id: string;
   readonly sessionId: string;
-  readonly contextMode: SubagentContextMode;
-  readonly description?: string;
-  readonly providerId?: string;
-  readonly modelId?: string;
+  readonly title: string | null;
+  readonly description: string | null;
+  readonly permissionMode: PermissionModeRow | null;
+  readonly providerId: string | null;
+  readonly modelId: string | null;
+  readonly protocol: string | null;
+  readonly reasoningEffort: ReasoningEffort | null;
   readonly status: SubagentStatus;
-  readonly error?: string;
-  readonly iterations?: number;
-  readonly toolCallCount?: number;
-  readonly inputTokens?: number;
-  readonly outputTokens?: number;
-  readonly finalText?: string;
   readonly createdAt: number;
   readonly updatedAt: number;
-  readonly completedAt?: number;
+}
+
+export interface SubagentRun {
+  readonly id: string;
+  readonly subagentId: string;
+  readonly parentToolCallId: string | null;
+  readonly contextMode: SubagentContextMode;
+  readonly description: string | null;
+  readonly providerId: string | null;
+  readonly modelId: string | null;
+  readonly protocol: string | null;
+  readonly permissionMode: PermissionModeRow | null;
+  readonly reasoningEffort: ReasoningEffort | null;
+  readonly status: SubagentStatus;
+  readonly error: string | null;
+  readonly iterations: number | null;
+  readonly toolCallCount: number | null;
+  readonly inputTokens: number | null;
+  readonly outputTokens: number | null;
+  readonly finalText: string | null;
+  readonly createdAt: number;
+  readonly updatedAt: number;
+  readonly completedAt: number | null;
 }
 
 export interface SubagentStart {
   subagentId: string;
+  runId: string;
   toolCallId: string;
   sessionId: string;
   contextMode: SubagentContextMode;
+  title?: string;
   description?: string;
-  providerId?: string;
-  modelId?: string;
+  isNew: boolean;
 }
 
-export interface SubagentInvocation {
-  readonly toolCallId: string;
+export type SubagentCompletion = SubagentRunCompletion;
+
+/** 与普通 Message 共用正文, 只增加子代理归属、摘要边界和有效生成来源. */
+export interface SubagentMessage extends Message {
   readonly subagentId: string;
-  readonly createdAt: number;
+  readonly runId: string | null;
+  readonly summarizedThroughMessageId: string | null;
+  readonly savedTokens?: number;
+  readonly generatedBy?: LlmGenerationSource;
 }
 
-export interface SubagentCompletion {
-  iterations: number;
-  toolCallCount: number;
-  inputTokens: number;
-  outputTokens: number;
-  finalText: string;
+/** Turn 只交付本次请求的固定前缀. 复制、补工具配对和 ID 映射由 Agent 处理. */
+export interface ForkParentMessage extends Message {
+  readonly summarizedThroughMessageId: string | null;
+  readonly savedTokens?: number;
+  readonly generatedBy?: LlmGenerationSource;
 }
 
-export interface SubagentSummary {
-  readonly id: string;
-  readonly sessionId: string;
-  readonly contextMode: SubagentContextMode;
-  readonly description?: string;
-  readonly providerId?: string;
-  readonly modelId?: string;
-  readonly status: SubagentStatus;
-  readonly error?: string;
-  readonly iterations?: number;
-  readonly toolCallCount?: number;
-  readonly inputTokens?: number;
-  readonly outputTokens?: number;
-  readonly createdAt: number;
-  readonly updatedAt: number;
-  readonly completedAt?: number;
+export interface ForkParentMessages {
+  readonly messages: readonly ForkParentMessage[];
 }
 
-interface SubagentMessageFields {
-  readonly id: string;
-  readonly subagentId: string;
-  readonly kind: SubagentMessageKind;
-  readonly interrupted: boolean;
-  readonly sequence: number;
-  readonly createdAt: number;
-}
-
-/** ToolResult 是 User 消息内的 block, 不是第三种消息角色. */
-export type SubagentMessage = SubagentMessageFields & (
-  | { readonly role: 'assistant'; readonly blocks: readonly AssistantBlock[] }
-  | { readonly role: 'user'; readonly blocks: string | readonly (UserBlock | ToolResult)[] }
-);
-
-/** 启动恢复从 Subagent 转录找回的原始调用与已有结果. */
+/** 恢复只能匹配子代理自己执行的调用, 不把 fork 复制来的父调用当成本次执行. */
 export interface SubagentToolInteraction {
+  readonly runId: string;
   readonly name: string;
   readonly args: unknown;
   result?: ToolResult;

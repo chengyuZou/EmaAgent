@@ -24,18 +24,25 @@ import {
   loadPermissionRuleBuckets,
   type PermissionRuleBuckets,
 } from '@ema-agent/permission';
-import type { PromptBlock } from '@ema-agent/prompts';
+import {
+  staticSystemPrompt,
+  getDynamicSystemPrompt,
+  type DynamicSystemPromptInput,
+  type PromptBlock,
+} from '@ema-agent/prompts';
 import type { ProviderModels, Providers } from '@ema-agent/providers';
 import type {
   AttachmentBlock,
   MessageBlocks,
+  ReasoningEffort,
   SessionStore,
   SessionUserBlock,
 } from '@ema-agent/session';
 import type { SettingsStore } from '@ema-agent/settings';
-import type {
-  SkillDescriptor,
-  SkillPool,
+import {
+  renderSkillListing,
+  type SkillDescriptor,
+  type SkillPool,
 } from '@ema-agent/skills';
 import type { SessionMode } from '@ema-agent/session';
 import type { RequestDegradationNotice } from '../types.js';
@@ -48,13 +55,13 @@ import {
   type TurnToolsDeps,
 } from './prepareTurnTools.js';
 import {
-  buildSessionSystemPrompt,
   resolveSkillPool,
-} from './sessionSystemPrompt.js';
+} from './skillPool.js';
 
 /** 一个根 Turn 的冻结事实；运行期只读取这一份，不再回读 Settings/Registry/Session。 */
 export interface PreparedTurn {
   readonly sessionMode: SessionMode;
+  readonly reasoningEffort: ReasoningEffort;
   readonly scratchpadDir?: string;
   readonly callLlm: CallLlm;
   readonly providerId: string;
@@ -67,6 +74,8 @@ export interface PreparedTurn {
   readonly supportsImageInput: boolean;
   /** 开启 thinking 时冻结的中立推理配置（enabled + effort），协议 Adapter 各自映射。 */
   readonly thinking?: LlmThinking;
+  /** 本轮已读取的动态输入; 子代理复用数据段, 换成自己的模型和工具, 不传角色与模式. */
+  readonly DynamicSystemPromptInput: DynamicSystemPromptInput;
   readonly systemPrompt: readonly PromptBlock[];
   /** 持久化用的用户消息块；附件只保存 attachment_ref。 */
   readonly userMessageBlocks: MessageBlocks;
@@ -204,6 +213,7 @@ export async function prepareTurn(
     prepareSubagent: input.prepareSubagent,
     providerId,
     modelId,
+    reasoningEffort: session.reasoningEffort,
     emit: input.emit,
     ...(input.onSubagentLlmCallFinished
       ? { onSubagentLlmCallFinished: input.onSubagentLlmCallFinished }
@@ -215,28 +225,32 @@ export async function prepareTurn(
     signal,
   });
 
-  const systemPrompt = await buildSessionSystemPrompt(
-    {
-      characterPrompt: deps.characterPrompt,
-      ...(deps.workspaceInstructions
-        ? { workspaceInstructions: deps.workspaceInstructions }
-        : {}),
-      ...(deps.memoryGuidance ? { memoryGuidance: deps.memoryGuidance } : {}),
-    },
-    {
-      sessionMode: request.sessionMode,
-      cwd,
+  const dynamicInput: DynamicSystemPromptInput = Object.freeze({
+    characterPrompt: deps.characterPrompt,
+    sessionMode: request.sessionMode,
+    permissionMode,
+    toolNames: tools.toolPool.tools.map(tool => tool.name),
+    environment: {
+      platform: process.platform,
+      cwd: cwd || null,
       projectFolderPaths: projectFolders,
-      permissionMode,
       providerId,
       modelId,
-      toolNames: tools.toolPool.tools.map(tool => tool.name),
-      ...(skillPool ? { skillPool } : {}),
     },
-  );
+    workspaceInstructions: cwd ? deps.workspaceInstructions?.(cwd) ?? null : null,
+    memorySection: await deps.memoryGuidance?.() ?? null,
+    skillCatalog: skillPool ? renderSkillListing(skillPool) : null,
+    // MCP 指引尚无生产者, 不自行补正文.
+    mcpInstructions: null,
+  });
+  const systemPrompt = Object.freeze([
+    ...staticSystemPrompt,
+    ...getDynamicSystemPrompt(dynamicInput),
+  ]);
 
   return Object.freeze({
     sessionMode: request.sessionMode,
+    reasoningEffort: session.reasoningEffort,
     ...(scratchpadDir ? { scratchpadDir } : {}),
     callLlm,
     providerId,
@@ -250,6 +264,7 @@ export async function prepareTurn(
           ? { enabled: false as const }
           : { enabled: true as const, effort: session.reasoningEffort } }
       : {}),
+    DynamicSystemPromptInput: dynamicInput,
     systemPrompt,
     userMessageBlocks,
     ...(skillPool ? { skillPool } : {}),

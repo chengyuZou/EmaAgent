@@ -41,7 +41,7 @@ import {
   type ToolResultStore,
   type ToolUseContext,
 } from '@ema-agent/tools';
-import type { SessionMode, NarrativePolicy } from '@ema-agent/session';
+import type { SessionMode, NarrativePolicy, ReasoningEffort } from '@ema-agent/session';
 import type { TurnKnowledgeSelection } from '../types.js';
 import type { SessionInteractionQueue } from '../interactionQueue.js';
 import type { TurnStreamEvent } from '../events.js';
@@ -106,6 +106,7 @@ export interface PrepareTurnToolsInput {
   readonly prepareSubagent: PrepareSubagent;
   readonly providerId: string;
   readonly modelId: string;
+  readonly reasoningEffort: ReasoningEffort;
   readonly emit: (event: TurnStreamEvent) => void;
   /** 子 Agent 的物理调用不经过根 AgentLoop, 由 Turn 注入同一本账的终态出口 */
   readonly onSubagentLlmCallFinished?: (
@@ -261,11 +262,9 @@ export function prepareTurnTools(
         parentTurnId: turnId,
         toolCallId,
         prompt,
-        options: {
-          ...options,
-          providerId: options.providerId ?? input.providerId,
-          modelId: options.modelId ?? input.modelId,
-        },
+        options,
+        permissionMode: input.permission.mode,
+        reasoningEffort: input.reasoningEffort,
         prepareSubagent: input.prepareSubagent,
         parentSignal: signal,
         runInBackground,

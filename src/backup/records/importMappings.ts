@@ -2,7 +2,7 @@
 import type {
   SubagentMessageRow,
   SubagentRow,
-  SubagentInvocationRow,
+  SubagentRunRow,
   AttachmentImageRow,
   AttachmentPastedTextRow,
   BackgroundProcessRow,
@@ -19,7 +19,7 @@ import type {
 import type {
   SubagentMessageRecord,
   SubagentRecord,
-  SubagentInvocationRecord,
+  SubagentRunRecord,
   AttachmentImageRecord,
   AttachmentPastedTextRecord,
   BackgroundProcessRecord,
@@ -139,10 +139,32 @@ export function restoreSubagentRecord(record: SubagentRecord, importedAt: number
   return {
     id: record.id,
     session_id: record.sessionId,
+    title: record.title,
+    description: record.description,
+    permission_mode: record.permissionMode,
+    reasoning_effort: record.reasoningEffort,
+    provider_id: record.providerId,
+    model_id: record.modelId,
+    protocol: record.protocol,
+    status: unfinished ? 'cancelled' : record.status,
+    created_at: record.createdAt,
+    updated_at: unfinished ? Math.max(record.updatedAt, importedAt) : record.updatedAt,
+  };
+}
+
+export function restoreSubagentRunRecord(record: SubagentRunRecord, importedAt: number): SubagentRunRow {
+  const unfinished = record.status === 'running';
+  return {
+    id: record.id,
+    subagent_id: record.subagentId,
+    parent_tool_call_id: record.parentToolCallId,
     context_mode: record.contextMode,
     description: record.description,
     provider_id: record.providerId,
     model_id: record.modelId,
+    protocol: record.protocol,
+    permission_mode: record.permissionMode,
+    reasoning_effort: record.reasoningEffort,
     status: unfinished ? 'cancelled' : record.status,
     error: unfinished ? 'Subagent 导出时尚未完成，导入后不会继续执行' : record.error,
     iterations: record.iterations,
@@ -156,26 +178,22 @@ export function restoreSubagentRecord(record: SubagentRecord, importedAt: number
   };
 }
 
-export const restoreSubagentInvocationRecord = (
-  record: SubagentInvocationRecord,
-): SubagentInvocationRow => ({
-  tool_call_id: record.toolCallId,
-  subagent_id: record.subagentId,
-  created_at: record.createdAt,
-});
-
 export const restoreSubagentMessageRecord = (
   record: SubagentMessageRecord,
 ): SubagentMessageRow => ({
   id: record.id,
   subagent_id: record.subagentId,
+  run_id: record.runId,
   role: record.role,
   kind: record.kind,
   blocks_json: record.blocksJson,
   interrupted: record.interrupted ? 1 : 0,
-  sequence: record.sequence,
   created_at: record.createdAt,
   summarized_through_message_id: record.summarizedThroughMessageId,
+  summary_saved_tokens: record.savedTokens ?? null,
+  provider_id: record.providerId,
+  model_id: record.modelId,
+  protocol: record.protocol,
 });
 
 export function restoreToolExecutionRecord(

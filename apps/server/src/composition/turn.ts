@@ -102,7 +102,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
   let continuations!: SessionContinuationQueue;
   const subagents = new SubagentExecutor({
     store: database.subagents,
-    messages: database.subagentMessages,
+    messageStore: database.subagentMessages,
     maxConcurrent: () => settings.get(maxConcurrentSubagentsSetting),
     publish: deps.publishSubagent,
     onBackgroundCompleted: (sessionId, subagentId, status) => {

@@ -5,7 +5,7 @@ import type { SessionMessage, SessionStore } from '@ema-agent/session';
 import type { UsageRecorder } from '@ema-agent/usage';
 import type { Turn, TurnStore } from '@ema-agent/turn';
 import type { AudioArchive } from '@ema-agent/speech';
-import { projectSessionMessages } from '@ema-agent/context';
+import { projectMessages } from '@ema-agent/context';
 import { estimateLlmInputTokens } from '@ema-agent/token';
 import type { ProviderModels } from '@ema-agent/providers';
 import { createGenerationTargetResolver } from '@ema-agent/turn';
@@ -82,9 +82,10 @@ export const sessionHistoryRoute = (deps: SessionHistoryRouteDeps) =>
         : undefined;
       // 与下一轮 Turn 共用摘要边界和 Message 投影. 此处只估算已保存历史,
       // 不执行尚未开始的 Prompt/Tool 装配, 也不为图片触发额外 Vision 调用.
-      const history = await projectSessionMessages(
+      const resolveGenerationTarget = createGenerationTargetResolver(deps.turns);
+      const history = await projectMessages(
         deps.session.loadHistory(sessionId),
-        createGenerationTargetResolver(deps.turns),
+        message => message.turnId ? resolveGenerationTarget(message.turnId) : undefined,
         { supportsImageInput: model?.capability === 'llm' && model.inputImage === true,
           signal: context.req.raw.signal },
       );
