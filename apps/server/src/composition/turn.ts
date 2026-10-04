@@ -2,19 +2,11 @@
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import {
-  mimeForPath,
-  VisionDescriptionCache,
-  type VisionDescriptionProducer,
-} from '@ema-agent/attachments';
+import { mimeForPath, VisionDescriptionCache, type VisionDescriptionProducer } from '@ema-agent/attachments';
 import { buildCharacterPrompt, type CharacterStore } from '@ema-agent/characters';
 import { createCompact } from '@ema-agent/compact';
 import { gitSummary } from '@ema-agent/git';
-import {
-  createLlmCall,
-  createLlmCompletion,
-  type LlmTokenUsage,
-} from '@ema-agent/llm';
+import { createLlmCall, createLlmCompletion, type LlmTokenUsage } from '@ema-agent/llm';
 import {
   buildMemoryGuidance,
   memorySummaryFile,
@@ -24,18 +16,15 @@ import {
   relationshipMemoryDir,
   workMemoryDir,
 } from '@ema-agent/memory';
-import { permissionAskTimeoutSetting } from '@ema-agent/permission';
+import { permissionAskTimeoutSetting, type PermissionStreamEvent } from '@ema-agent/permission';
+import type { ToolExecutionEvent } from '@ema-agent/tools';
 import { DEFAULT_SESSION_TITLE } from '@ema-agent/session';
 import type { SettingsStore } from '@ema-agent/settings';
 import { workspaceInstructionFilesSetting } from '@ema-agent/skills';
 import type { StageEngine } from '@ema-agent/stage';
-import { AttachmentVisionDescriptionCachesRepo } from '@ema-agent/storage';
+import { AttachmentVisionDescriptionCachesRepo, type SubagentPageCursor } from '@ema-agent/storage';
 import { formatTaskContextReminder } from '@ema-agent/tasks';
-import {
-  SubagentExecutor,
-  maxConcurrentSubagentsSetting,
-  type SubagentEvent,
-} from '@ema-agent/agent';
+import { SubagentExecutor, maxConcurrentSubagentsSetting, type SubagentEvent, type Subagent } from '@ema-agent/agent';
 import {
   SessionInteractionQueue,
   SessionContinuationQueue,
@@ -62,7 +51,7 @@ export interface TurnComposition {
   readonly turnExecutor: TurnExecutor;
   readonly subagents: SubagentExecutor;
   readonly continuations: SessionContinuationQueue;
-  /** Permission/AskUser 回答路由与 SSE 重连恢复的入口。 */
+  /** Permission/AskUser 回答路由与 Session 首条状态读取的入口. */
   readonly interactionQueue: SessionInteractionQueue;
   /** 模型不支持图片输入时的 Vision 描述链（commands 的手动压缩历史投影同源复用）。 */
   readonly describeImage: VisionDescriptionProducer;
@@ -88,11 +77,21 @@ export interface TurnCompositionDeps {
   readonly onTurnCompletedInTransaction: (turnId: string) => void;
   readonly publishSubagent: (sessionId: string, event: SubagentEvent) => void;
   readonly publishQueuedInput: (sessionId: string, event: SessionContinuationEvent) => void;
+  readonly publishInteraction: (event: PermissionStreamEvent | Extract<ToolExecutionEvent, { type: 'ask_user_required' | 'ask_user_resolved' }>) => void;
   readonly fanout: TurnFanout;
 }
 
 export function openTurns(deps: TurnCompositionDeps): TurnComposition {
-  const { database, settings, providers, tools, knowledge, narrative, characters, stage } = deps;
+  const {
+    database,
+    settings,
+    providers,
+    tools,
+    knowledge,
+    narrative,
+    characters,
+    stage
+  } = deps;
   const { activeDataDir } = database;
 
   const interactionQueue = new SessionInteractionQueue(
@@ -110,6 +109,9 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     },
     onTerminalResultRead: (sessionId, subagentId) => {
       continuations.subagentResultRead(sessionId, subagentId);
+    },
+    onRunFinished: runId => {
+      interactionQueue.cancelForRun(runId);
     },
   });
   continuations = new SessionContinuationQueue({
@@ -148,49 +150,91 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
   // Vision 生产者:读字节+调 vision+记账;缓存查/写由 context 投影侧的 getOrCreate 负责。
   const describeImage: VisionDescriptionProducer = async (imagePath, signal) => {
     const selected = resolveVision();
-    if (!selected) throw new Error('未配置 vision 模型绑定，无法描述图片');
+    if (!selected) {
+      throw new Error('未配置 vision 模型绑定，无法描述图片');
+    }
     const bytes = await fs.promises.readFile(imagePath);
     const startedAt = Date.now();
     // 描述指令用 vision 包内置的 caption 任务文本，不在装配层另写一份。
     const callId = randomUUID();
     const result = await selected.vision({
-      images: [{
-        kind: 'bytes',
-        bytes: new Uint8Array(bytes),
-        mimeType: mimeForPath(imagePath) as VisionImageMime,
-      }],
+      images: [{ kind: 'bytes', bytes: new Uint8Array(bytes), mimeType: mimeForPath(imagePath) as VisionImageMime }],
       task: 'caption',
       signal,
     }).catch(error => {
-      const cancelled = signal?.aborted === true || (error instanceof Error && error.name === 'AbortError');
+      const cancelled = signal?.aborted === true
+        || (error instanceof Error && error.name === 'AbortError');
       let errorCode = 'vision/call_failed';
-      if (cancelled) errorCode = 'vision/aborted';
-      else if (error instanceof VisionError) errorCode = error.code;
-      recordVisionUsage(database.usageRecorder, selected.providerId, selected.modelId, callId, startedAt,
-        cancelled ? 'cancelled' : 'failed', undefined, errorCode);
+      if (cancelled) {
+        errorCode = 'vision/aborted';
+      } else if (error instanceof VisionError) {
+        errorCode = error.code;
+      }
+      recordVisionUsage(
+        database.usageRecorder,
+        selected.providerId,
+        selected.modelId,
+        callId,
+        startedAt,
+        cancelled ? 'cancelled' : 'failed',
+        undefined,
+        errorCode
+      );
       throw error;
     });
-    recordVisionUsage(database.usageRecorder, selected.providerId, selected.modelId, callId, startedAt, 'completed', result.usage, null);
+    recordVisionUsage(
+      database.usageRecorder,
+      selected.providerId,
+      selected.modelId,
+      callId,
+      startedAt,
+      'completed',
+      result.usage,
+      null
+    );
     return result.text;
   };
   // Turn 工具面的 vision 闭包（PdfReadTool 扫描页 OCR 等）：无绑定即 undefined（降级纯文本），
   // 模型身份在闭包内冻结，usage 从结果记录。
   const resolveCallVision = (): CallVision | undefined => {
     const selected = resolveVision();
-    if (!selected) return undefined;
+    if (!selected) {
+      return undefined;
+    }
     return async (request) => {
       const startedAt = Date.now();
       const callId = randomUUID();
       const result = await selected.vision(request).catch(error => {
-        const cancelled = request.signal?.aborted === true || (error instanceof Error && error.name === 'AbortError');
+        const cancelled = request.signal?.aborted === true
+          || (error instanceof Error && error.name === 'AbortError');
         let errorCode = 'vision/call_failed';
-        if (cancelled) errorCode = 'vision/aborted';
-        else if (error instanceof VisionError) errorCode = error.code;
-        recordVisionUsage(database.usageRecorder, selected.providerId, selected.modelId, callId, startedAt,
-          cancelled ? 'cancelled' : 'failed', undefined, errorCode);
+        if (cancelled) {
+          errorCode = 'vision/aborted';
+        } else if (error instanceof VisionError) {
+          errorCode = error.code;
+        }
+        recordVisionUsage(
+          database.usageRecorder,
+          selected.providerId,
+          selected.modelId,
+          callId,
+          startedAt,
+          cancelled ? 'cancelled' : 'failed',
+          undefined,
+          errorCode
+        );
         throw error;
       });
-      recordVisionUsage(database.usageRecorder, selected.providerId, selected.modelId, callId, startedAt, 'completed', result.usage, null);
+      recordVisionUsage(
+        database.usageRecorder,
+        selected.providerId,
+        selected.modelId,
+        callId,
+        startedAt,
+        'completed',
+        result.usage,
+        null
+      );
       return result;
     };
   };
@@ -208,7 +252,8 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
       readRelationshipMemoryForTurn(relationshipMemoryDir(), scope.characterName)
         .catch(() => undefined),
     ]);
-    const narrativeRecall = scope.narrativePolicy === 'always' && scope.narrativeSearch && scope.userText.trim().length > 0
+    const narrativeRecall = scope.narrativePolicy === 'always' && scope.narrativeSearch
+      && scope.userText.trim().length > 0
       ? await scope.narrativeSearch(scope.userText, undefined, scope.signal)
         .then(result => result.contextText ?? undefined)
         .catch(() => undefined)
@@ -216,8 +261,8 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     // shouldRemind 只检查不消费；提醒随 reminder 落库成功后由 onTaskReminderPersisted 提交 markReminded。
     const pendingTasks = database.tasks.shouldRemind(scope.sessionId)
       ? database.tasks.list(scope.sessionId).filter(
-          (task) => task.status === 'pending' || task.status === 'in_progress',
-        )
+        (task) => task.status === 'pending' || task.status === 'in_progress',
+      )
       : [];
     const taskReminder = pendingTasks.length > 0
       ? formatTaskContextReminder(pendingTasks)
@@ -229,6 +274,15 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     const scratchpad = scratchpadNames.length > 0
       ? `本 Turn scratchpad 已有文件：${scratchpadNames.join('、')}`
       : undefined;
+    // 目录没有总条数上限, 不能把 Store 默认的一页当作全部身份.
+    // 连续同步读取, 中间不 await; 同一根 Turn 只在 reminder 生产时读取一次.
+    const subagents: Subagent[] = [];
+    let subagentCursor: SubagentPageCursor | undefined;
+    do {
+      const page = database.subagents.listForSession(scope.sessionId, subagentCursor);
+      subagents.push(...page.items);
+      subagentCursor = page.nextCursor ?? undefined;
+    } while (subagentCursor);
     return {
       currentDate: new Date().toISOString().slice(0, 10),
       // 异步召回结束后再读目标, 不把召回开始前的旧状态冻结进 reminder.
@@ -268,6 +322,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     disabledSkillPaths: () => tools.skillStore.listDisabledPaths(),
     registry: tools.registry,
     interactionQueue,
+    publishInteraction: deps.publishInteraction,
     subagents,
     continuations,
     taskStore: database.tasks,
@@ -310,10 +365,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
 }
 
 /** 按用户多选的文件名读取工作区指令，顺序即拼接顺序；全部缺失返回 null。 */
-function readWorkspaceInstructions(
-  cwd: string,
-  fileNames: readonly string[],
-): string | null {
+function readWorkspaceInstructions(cwd: string, fileNames: readonly string[]): string | null {
   const parts: string[] = [];
   for (const name of fileNames) {
     try {

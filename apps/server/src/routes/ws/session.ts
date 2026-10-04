@@ -3,7 +3,8 @@ import { CommandsError, type ManualCompactResult } from '@ema-agent/commands';
 import type { CompactEvent } from '@ema-agent/compact';
 import type { SubagentEvent, SubagentExecutor } from '@ema-agent/agent';
 import { GoalError, type GoalStore } from '@ema-agent/goal';
-import type { PermissionResponse } from '@ema-agent/permission';
+import type { PermissionResponse, PermissionStreamEvent } from '@ema-agent/permission';
+import type { ToolExecutionEvent } from '@ema-agent/tools';
 import {
   SessionBusyError,
   type NarrativePolicy,
@@ -31,26 +32,30 @@ import type { WSContext } from 'hono/ws';
 import { z } from 'zod';
 import { REQUEST_VALUE_LIMITS } from '../../platform/requestBudget.js';
 
-const attachmentBlockSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('image_reference'), path: z.string().min(1), name: z.string().min(1).optional() }),
-  z.object({ type: z.literal('pasted_text_reference'), path: z.string().min(1), preview: z.string() }),
-  z.object({ type: z.literal('file_reference'), path: z.string().min(1) }),
-]);
+const attachmentBlockSchema = z.discriminatedUnion(
+  'type',
+  [
+    z.object({ type: z.literal('image_reference'), path: z.string().min(1), name: z.string().min(1).optional() }),
+    z.object({ type: z.literal('pasted_text_reference'), path: z.string().min(1), preview: z.string() }),
+    z.object({ type: z.literal('file_reference'), path: z.string().min(1) }),
+  ]
+);
 
-const inputPartSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('text'), text: z.string().max(REQUEST_VALUE_LIMITS.maxTurnTextChars) }),
-  z.object({ type: z.literal('attachment'), block: attachmentBlockSchema }),
-  z.object({ type: z.literal('skill_reference'), name: z.string().min(1), path: z.string().min(1) }),
-]);
+const inputPartSchema = z.discriminatedUnion(
+  'type',
+  [
+    z.object({ type: z.literal('text'), text: z.string().max(REQUEST_VALUE_LIMITS.maxTurnTextChars) }),
+    z.object({ type: z.literal('attachment'), block: attachmentBlockSchema }),
+    z.object({ type: z.literal('skill_reference'), name: z.string().min(1), path: z.string().min(1) }),
+  ]
+);
 
 const userMessagePayloadSchema = z.object({
   sessionMode: z.enum(['chat', 'work']),
   narrativePolicy: z.enum(['auto', 'always', 'off']),
   input: z.array(inputPartSchema).min(1).max(REQUEST_VALUE_LIMITS.maxTurnContentParts),
   objective: z.string().refine(text => text.trim().length > 0, '目标正文不能为空').optional(),
-  knowledge: z.object({
-    assetIds: z.array(z.string().min(1)).min(1).max(REQUEST_VALUE_LIMITS.maxTurnKbAssetScopes),
-  }).optional(),
+  knowledge: z.object({ assetIds: z.array(z.string().min(1)).min(1).max(REQUEST_VALUE_LIMITS.maxTurnKbAssetScopes) }).optional(),
 }).superRefine((payload, context) => {
   if (payload.input.filter(part => part.type === 'attachment').length > REQUEST_VALUE_LIMITS.maxTurnAttachments) {
     context.addIssue({ code: 'custom', path: ['input'], message: '附件数量超过单次 Turn 上限' });
@@ -61,34 +66,46 @@ const userMessagePayloadSchema = z.object({
 });
 
 const requestIdSchema = z.string().min(1);
-export const sessionClientMessageSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('send_user_message'), requestId: requestIdSchema, payload: userMessagePayloadSchema }),
-  z.object({ type: z.literal('queue_user_message'), requestId: requestIdSchema, payload: userMessagePayloadSchema }),
-  z.object({ type: z.literal('remove_queued_input'), requestId: requestIdSchema, id: z.string().uuid() }),
-  z.object({ type: z.literal('guide_queued_input'), requestId: requestIdSchema, id: z.string().uuid() }),
-  z.object({ type: z.literal('start_compaction'), requestId: requestIdSchema }),
-  z.object({
-    type: z.literal('respond_permission'),
-    requestId: requestIdSchema,
-    turnId: z.string().min(1),
-    toolCallId: z.string().min(1),
-    action: z.enum(['allow', 'allowSession', 'deny']),
-    reason: z.string().optional(),
-  }),
-  z.object({
-    type: z.literal('respond_ask_user'),
-    requestId: requestIdSchema,
-    turnId: z.string().min(1),
-    toolCallId: z.string().min(1),
-    answers: z.record(z.string(), z.string()),
-  }),
-  z.object({ type: z.literal('cancel_ask_user'), requestId: requestIdSchema, turnId: z.string().min(1), toolCallId: z.string().min(1) }),
-  z.object({ type: z.literal('cancel_turn'), requestId: requestIdSchema, turnId: z.string().min(1) }),
-  z.object({ type: z.literal('cancel_compact'), requestId: requestIdSchema, compactId: z.string().min(1) }),
-  z.object({ type: z.literal('cancel_tool'), requestId: requestIdSchema, turnId: z.string().min(1), toolCallId: z.string().min(1) }),
-  z.object({ type: z.literal('cancel_subagent'), requestId: requestIdSchema, subagentId: z.string().min(1) }),
-  z.object({ type: z.literal('ping') }),
-]);
+export const sessionClientMessageSchema = z.discriminatedUnion(
+  'type',
+  [
+    z.object({ type: z.literal('send_user_message'), requestId: requestIdSchema, payload: userMessagePayloadSchema }),
+    z.object({ type: z.literal('queue_user_message'), requestId: requestIdSchema, payload: userMessagePayloadSchema }),
+    z.object({ type: z.literal('remove_queued_input'), requestId: requestIdSchema, id: z.string().uuid() }),
+    z.object({ type: z.literal('guide_queued_input'), requestId: requestIdSchema, id: z.string().uuid() }),
+    z.object({ type: z.literal('start_compaction'), requestId: requestIdSchema }),
+    z.object({
+      type: z.literal('respond_permission'),
+      requestId: requestIdSchema,
+      toolCallId: z.string().min(1),
+      action: z.enum(['allow', 'allowSession', 'deny']),
+      reason: z.string().optional(),
+    }),
+    z.object({
+      type: z.literal('respond_ask_user'),
+      requestId: requestIdSchema,
+      turnId: z.string().min(1),
+      toolCallId: z.string().min(1),
+      answers: z.record(z.string(), z.string()),
+    }),
+    z.object({
+      type: z.literal('cancel_ask_user'),
+      requestId: requestIdSchema,
+      turnId: z.string().min(1),
+      toolCallId: z.string().min(1)
+    }),
+    z.object({ type: z.literal('cancel_turn'), requestId: requestIdSchema, turnId: z.string().min(1) }),
+    z.object({ type: z.literal('cancel_compact'), requestId: requestIdSchema, compactId: z.string().min(1) }),
+    z.object({
+      type: z.literal('cancel_tool'),
+      requestId: requestIdSchema,
+      turnId: z.string().min(1),
+      toolCallId: z.string().min(1)
+    }),
+    z.object({ type: z.literal('cancel_subagent'), requestId: requestIdSchema, subagentId: z.string().min(1) }),
+    z.object({ type: z.literal('ping') }),
+  ]
+);
 
 /**
  * Desktop 为每次需要结果的 Session 请求生成. Server 在成功或失败结果中原样返回,
@@ -115,44 +132,43 @@ type SessionTurnMessage = {
  * 因此没有 requestId; 同一 Session 的多个观察窗口会收到相同变化.
  */
 export type SessionBusinessMessage =
+  | PermissionStreamEvent
+  | Extract<ToolExecutionEvent, { type: 'ask_user_required' | 'ask_user_resolved' }>
   | {
-      /** 每次 Socket 打开只发送一次, Desktop 用它替换该 Session 的连接当前值. */
-      readonly type: 'session_state';
-      readonly running:
-        | null
-        | {
-            readonly kind: 'turn';
-            readonly turnId: string;
-            readonly createdAt: number;
-            readonly sessionMode: SessionMode;
-            readonly narrativePolicy: NarrativePolicy;
-            readonly messages: readonly SessionMessage[];
-          }
-        | {
-            readonly kind: 'compact';
-            readonly compactId: string;
-          };
-      readonly pendingInteractions: readonly PendingInteraction[];
-      readonly queuedInputs: readonly QueuedSessionInput[];
+    /** 每次 Socket 打开只发送一次, Desktop 用它替换该 Session 的连接当前值. */
+    readonly type: 'session_state';
+    readonly running:
+    | null
+    | {
+      readonly kind: 'turn';
+      readonly turnId: string;
+      readonly createdAt: number;
+      readonly sessionMode: SessionMode;
+      readonly narrativePolicy: NarrativePolicy;
+      readonly messages: readonly SessionMessage[];
     }
+    | { readonly kind: 'compact'; readonly compactId: string };
+    readonly pendingInteractions: readonly PendingInteraction[];
+    readonly queuedInputs: readonly QueuedSessionInput[];
+  }
   | {
-      /** 已连接期间根 Turn 或手动 Compact 的注册和清除变化. */
-      readonly type: 'session_running_changed';
-      readonly running: SessionRunning | null;
-    }
+    /** 已连接期间根 Turn 或手动 Compact 的注册和清除变化. */
+    readonly type: 'session_running_changed';
+    readonly running: SessionRunning | null;
+  }
   | {
-      /** 真实 UserMessage 已写入 History, Desktop 按保存顺序交给当前 Turn 或持久 History. */
-      readonly type: 'user_message_stored';
-      readonly message: SessionMessage;
-    }
+    /** 真实 UserMessage 已写入 History, Desktop 按保存顺序交给当前 Turn 或持久 History. */
+    readonly type: 'user_message_stored';
+    readonly message: SessionMessage;
+  }
   | CompactEvent
   | SessionContinuationEvent
   | SessionTurnMessage
   | {
-      /** Subagent 的增量和终态, Desktop 只更新子代理 Store, 不混入根 Turn 的消息投影. */
-      readonly type: 'subagent_event';
-      readonly event: SubagentEvent;
-    };
+    /** Subagent 的增量和终态, Desktop 只更新子代理 Store, 不混入根 Turn 的消息投影. */
+    readonly type: 'subagent_event';
+    readonly event: SubagentEvent;
+  };
 
 /**
  * Server 可以通过 Session WebSocket 发给 Desktop 的全部 JSON 消息: Session 主动推送、
@@ -161,27 +177,27 @@ export type SessionBusinessMessage =
 export type SessionServerMessage =
   | SessionBusinessMessage
   | {
-      /** 回答 start_compaction; afterTokens 只用于结果提示, Context 球另按有效历史重估. */
-      readonly type: 'manual_compact_result';
-      readonly requestId: ClientRequestId;
-      readonly result: ManualCompactResult;
-    }
+    /** 回答 start_compaction; afterTokens 只用于结果提示, Context 球另按有效历史重估. */
+    readonly type: 'manual_compact_result';
+    readonly requestId: ClientRequestId;
+    readonly result: ManualCompactResult;
+  }
   | {
-      /** 回答没有额外结果数据的 Client 请求, Desktop 据 requestId 结束对应 Promise. */
-      readonly type: 'request_succeeded';
-      readonly requestId: ClientRequestId;
-    }
+    /** 回答没有额外结果数据的 Client 请求, Desktop 据 requestId 结束对应 Promise. */
+    readonly type: 'request_succeeded';
+    readonly requestId: ClientRequestId;
+  }
   | {
-      /** 请求没有执行或执行失败, Desktop 据 requestId 拒绝对应 Promise 并向当前操作显示错误. */
-      readonly type: 'request_rejected';
-      readonly requestId: ClientRequestId;
-      readonly code: string;
-      readonly message: string;
-    }
+    /** 请求没有执行或执行失败, Desktop 据 requestId 拒绝对应 Promise 并向当前操作显示错误. */
+    readonly type: 'request_rejected';
+    readonly requestId: ClientRequestId;
+    readonly code: string;
+    readonly message: string;
+  }
   | {
-      /** 回答 ping, 只证明当前 Socket 仍能双向传输, 不对应业务请求. */
-      readonly type: 'pong';
-    };
+    /** 回答 ping, 只证明当前 Socket 仍能双向传输, 不对应业务请求. */
+    readonly type: 'pong';
+  };
 
 interface SessionSocket {
   send(message: SessionServerMessage): void;
@@ -200,7 +216,9 @@ export class SessionSocketConnections {
 
   publish(sessionId: string, message: SessionBusinessMessage): void {
     const sockets = this.bySession.get(sessionId);
-    if (!sockets) return;
+    if (!sockets) {
+      return;
+    }
     for (const socket of [...sockets]) {
       try {
         socket.send(message);
@@ -208,14 +226,20 @@ export class SessionSocketConnections {
         sockets.delete(socket);
       }
     }
-    if (sockets.size === 0) this.bySession.delete(sessionId);
+    if (sockets.size === 0) {
+      this.bySession.delete(sessionId);
+    }
   }
 
   private detach(sessionId: string, socket: SessionSocket): void {
     const sockets = this.bySession.get(sessionId);
-    if (!sockets) return;
+    if (!sockets) {
+      return;
+    }
     sockets.delete(socket);
-    if (sockets.size === 0) this.bySession.delete(sessionId);
+    if (sockets.size === 0) {
+      this.bySession.delete(sessionId);
+    }
   }
 }
 
@@ -234,42 +258,48 @@ export interface SessionWebSocketRouteDeps {
 }
 
 export const sessionWebSocketRoute = (deps: SessionWebSocketRouteDeps) =>
-  new Hono().get('/:sessionId', upgradeWebSocket(context => {
-    const sessionId = context.req.param('sessionId')!;
-    let detach: (() => void) | undefined;
-    return {
-      onOpen(_event, socket) {
-        if (!deps.sessions.sessionExists(sessionId)) {
-          socket.close(1008, 'session_not_found');
-          return;
-        }
-        const client = socketClient(socket);
-        detach = deps.connections.attach(sessionId, client);
-        client.send({
-          type: 'session_state',
-          running: readSessionRunningState(deps, sessionId),
-          pendingInteractions: deps.interactions.listPending(sessionId),
-          queuedInputs: deps.continuations.list(sessionId)
-            .filter(item => item.delivery === 'after_turn'),
-        });
-        // TODO: 真实使用若证明断线期间的增量不可接受，再设计按 Turn 游标的有界重放和缺口通知。
-      },
-      async onMessage(event, socket) {
-        if (typeof event.data !== 'string') return;
-        const parsed = sessionClientMessageSchema.safeParse(parseJson(event.data));
-        if (!parsed.success) {
-          socket.close(1008, 'invalid_session_message');
-          return;
-        }
-        await handleClientMessage(deps, sessionId, parsed.data, socketClient(socket));
-      },
-      onClose() { detach?.(); },
-      onError() { detach?.(); },
-    };
-  }));
+  new Hono().get(
+    '/:sessionId',
+    upgradeWebSocket(context => {
+      const sessionId = context.req.param('sessionId')!;
+      let detach: (() => void) | undefined;
+      return {
+        onOpen(_event, socket) {
+          if (!deps.sessions.sessionExists(sessionId)) {
+            socket.close(1008, 'session_not_found');
+            return;
+          }
+          const client = socketClient(socket);
+          detach = deps.connections.attach(sessionId, client);
+          client.send({
+            type: 'session_state',
+            running: readSessionRunningState(deps, sessionId),
+            pendingInteractions: deps.interactions.listPending(sessionId),
+            queuedInputs: deps.continuations.list(sessionId)
+              .filter(item => item.delivery === 'after_turn'),
+          });
+          // TODO: 真实使用若证明断线期间的增量不可接受，再设计按 Turn 游标的有界重放和缺口通知。
+        },
+        async onMessage(event, socket) {
+          if (typeof event.data !== 'string') return;
+          const parsed = sessionClientMessageSchema.safeParse(parseJson(event.data));
+          if (!parsed.success) {
+            socket.close(1008, 'invalid_session_message');
+            return;
+          }
+          await handleClientMessage(deps, sessionId, parsed.data, socketClient(socket));
+        },
+        onClose() { detach?.(); },
+        onError() { detach?.(); },
+      };
+    }));
 
 function socketClient(socket: WSContext): SessionSocket {
-  return { send(message) { socket.send(JSON.stringify(message)); } };
+  return {
+    send(message) {
+      socket.send(JSON.stringify(message));
+    }
+  };
 }
 
 async function handleClientMessage(
@@ -285,10 +315,14 @@ async function handleClientMessage(
   try {
     switch (message.type) {
       case 'send_user_message': {
-        if (!hasTurnInput(message.payload.input)) throw new SessionRequestError('empty_input', 'Turn 输入为空');
+        if (!hasTurnInput(message.payload.input)) {
+          throw new SessionRequestError('empty_input', 'Turn 输入为空');
+        }
         if (message.payload.objective !== undefined) {
-          if (deps.sessionRunning.getRunning(sessionId)?.kind === 'compact') throw new SessionBusyError(sessionId);
-          // 创建事件只请求排水微任务. 同步入队后, 初始用户任务与 Goal 提示才一起领取.
+          if (deps.sessionRunning.getRunning(sessionId)?.kind === 'compact') {
+            throw new SessionBusyError(sessionId);
+          }
+          // 创建事件只请求微任务. 同步入队后, 初始用户任务与 Goal 提示才一起领取.
           deps.goals.create(sessionId, message.payload.objective);
           deps.continuations.enqueue({
             sessionId,
@@ -322,7 +356,9 @@ async function handleClientMessage(
         if (deps.sessionRunning.getRunning(sessionId)?.kind !== 'turn') {
           throw new SessionRequestError('session_idle', '当前 Session 没有运行中的 Turn');
         }
-        if (message.payload.objective !== undefined) deps.goals.create(sessionId, message.payload.objective);
+        if (message.payload.objective !== undefined) {
+          deps.goals.create(sessionId, message.payload.objective);
+        }
         deps.continuations.enqueue({
           sessionId,
           input: message.payload.input,
@@ -349,52 +385,36 @@ async function handleClientMessage(
       case 'respond_permission': {
         let response: PermissionResponse;
         if (message.action === 'deny') {
-          response = message.reason
-            ? { action: 'deny', reason: message.reason }
-            : { action: 'deny' };
+          response = message.reason ? { action: 'deny', reason: message.reason } : { action: 'deny' };
         } else {
           response = { action: message.action };
         }
-        sendRequestResult(socket, message.requestId, deps.interactions.respondPermission(
-          message.toolCallId,
-          response,
-          message.turnId,
-        ));
+        sendRequestResult(
+          socket,
+          message.requestId,
+          deps.interactions.respondPermission(sessionId, message.toolCallId, response)
+        );
         return;
       }
       case 'respond_ask_user':
         sendRequestResult(
           socket,
           message.requestId,
-          deps.interactions.respondAskUser(
-            message.toolCallId,
-            message.answers,
-            message.turnId,
-          ),
+          deps.interactions.respondAskUser(message.toolCallId, message.answers, message.turnId),
         );
         return;
       case 'cancel_ask_user':
         sendRequestResult(
           socket,
           message.requestId,
-          deps.interactions.cancelAskUser(
-            message.toolCallId,
-            'cancelled by user',
-            message.turnId,
-          ),
+          deps.interactions.cancelAskUser(message.toolCallId, 'cancelled by user', message.turnId),
         );
         return;
       case 'cancel_turn':
-        sendRequestResult(socket, message.requestId, deps.sessionRunning.abort(
-          sessionId,
-          { kind: 'turn', turnId: message.turnId },
-        ));
+        sendRequestResult(socket, message.requestId, deps.sessionRunning.abort(sessionId, { kind: 'turn', turnId: message.turnId }));
         return;
       case 'cancel_compact':
-        sendRequestResult(socket, message.requestId, deps.sessionRunning.abort(
-          sessionId,
-          { kind: 'compact', compactId: message.compactId },
-        ));
+        sendRequestResult(socket, message.requestId, deps.sessionRunning.abort(sessionId, { kind: 'compact', compactId: message.compactId }));
         return;
       case 'cancel_tool':
         sendRequestResult(socket, message.requestId, deps.executor.abortTool(message.turnId, message.toolCallId));
@@ -409,10 +429,7 @@ async function handleClientMessage(
   }
 }
 
-function readSessionRunningState(
-  deps: SessionWebSocketRouteDeps,
-  sessionId: string,
-): Extract<SessionBusinessMessage, { readonly type: 'session_state' }>['running'] {
+function readSessionRunningState(deps: SessionWebSocketRouteDeps, sessionId: string): Extract<SessionBusinessMessage, { readonly type: 'session_state' }>['running'] {
   const running = deps.sessionRunning.getRunning(sessionId);
   if (!running || running.kind === 'compact') return running ?? null;
 
@@ -429,9 +446,7 @@ function readSessionRunningState(
 }
 
 function sendRequestResult(socket: SessionSocket, requestId: ClientRequestId, accepted: boolean): void {
-  socket.send(accepted
-    ? { type: 'request_succeeded', requestId }
-    : { type: 'request_rejected', requestId, code: 'not_found_or_expired', message: '目标已经结束或不属于当前工作' });
+  socket.send(accepted ? { type: 'request_succeeded', requestId } : { type: 'request_rejected', requestId, code: 'not_found_or_expired', message: '目标已经结束或不属于当前工作' });
 }
 
 function commandFailure(error: unknown): { code: string; message: string } {

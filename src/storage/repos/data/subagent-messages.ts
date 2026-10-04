@@ -51,7 +51,7 @@ const MESSAGE_SELECT = `
   FROM subagent_messages m LEFT JOIN subagent_runs r ON r.id = m.run_id`;
 
 export class SubagentMessagesRepo {
-  constructor(private readonly db: SqliteDb) {}
+  constructor(private readonly db: SqliteDb) { }
 
   /** 与主 Message 一样, 调用方按对话顺序生成单调 createdAt, Repo 不维护第二套编号. */
   insert(message: SubagentMessageInsert): void {
@@ -80,20 +80,73 @@ export class SubagentMessagesRepo {
   /** 首次 fork 前缀与任务一起入库, 不留下半段初始化历史. */
   insertMany(messages: readonly SubagentMessageInsert[]): void {
     this.db.transaction(() => {
-      for (const message of messages) this.insert(message);
+      for (const message of messages) {
+        this.insert(message);
+      }
     })();
   }
 
   updateBlocks(id: string, blocksJson: string): void {
-    this.db.prepare(
-      'UPDATE subagent_messages SET blocks_json = ? WHERE id = ?',
-    ).run(blocksJson, id);
+    this.db.prepare('UPDATE subagent_messages SET blocks_json = ? WHERE id = ?').run(blocksJson, id);
   }
 
   markInterrupted(id: string): void {
-    this.db.prepare(
-      'UPDATE subagent_messages SET interrupted = 1 WHERE id = ?',
-    ).run(id);
+    this.db.prepare('UPDATE subagent_messages SET interrupted = 1 WHERE id = ?').run(id);
+  }
+
+  findById(id: string): SubagentMessageRow | undefined {
+    return this.db.prepare(`${MESSAGE_SELECT} WHERE m.id = ?`).get(id) as SubagentMessageRow | undefined;
+  }
+
+  listWindow(
+    subagentId: string,
+    cursor?: MessagePageCursor,
+    direction: 'before' | 'after' = 'before',
+    limit = 50
+  ) {
+    if (direction === 'before') {
+      return this.windowCursors(subagentId, this.listPage(subagentId, cursor, limit).rows);
+    }
+    const rows = this.db.prepare(`${MESSAGE_SELECT}
+      WHERE m.subagent_id = ? AND (m.created_at > ? OR (m.created_at = ? AND m.id > ?))
+      ORDER BY m.created_at, m.id LIMIT ?`).all(
+      subagentId,
+      cursor!.createdAt,
+      cursor!.createdAt,
+      cursor!.id,
+      Math.min(Math.max(limit, 1), 100)
+    ) as SubagentMessageRow[];
+    return this.windowCursors(subagentId, rows);
+  }
+
+  private windowCursors(subagentId: string, rows: SubagentMessageRow[]) {
+    const first = rows[0];
+    const last = rows.at(-1);
+    let olderCursor: MessagePageCursor | null = null;
+    let newerCursor: MessagePageCursor | null = null;
+    if (first
+      && this.db.prepare(`SELECT 1 FROM subagent_messages
+      WHERE subagent_id = ? AND (created_at < ? OR (created_at = ? AND id < ?)) LIMIT 1`)
+        .get(
+          subagentId,
+          first.created_at,
+          first.created_at,
+          first.id
+        )) {
+      olderCursor = { createdAt: first.created_at, id: first.id };
+    }
+    if (last
+      && this.db.prepare(`SELECT 1 FROM subagent_messages
+      WHERE subagent_id = ? AND (created_at > ? OR (created_at = ? AND id > ?)) LIMIT 1`)
+        .get(
+          subagentId,
+          last.created_at,
+          last.created_at,
+          last.id
+        )) {
+      newerCursor = { createdAt: last.created_at, id: last.id };
+    }
+    return { rows, olderCursor, newerCursor };
   }
 
   listPage(subagentId: string, cursor: MessagePageCursor | undefined, limit = 50): SubagentMessagePage {
@@ -118,10 +171,7 @@ export class SubagentMessagesRepo {
     if (rows.length > pageSize && last) {
       nextCursor = { createdAt: last.created_at, id: last.id };
     }
-    return {
-      rows: pageRows.reverse(),
-      nextCursor,
-    };
+    return { rows: pageRows.reverse(), nextCursor };
   }
 
   listAllForSubagent(subagentId: string): SubagentMessageRow[] {
@@ -162,6 +212,11 @@ export class SubagentMessagesRepo {
       )
       ORDER BY CASE WHEN m.id = (SELECT id FROM latest_summary) THEN 0 ELSE 1 END,
         m.created_at ASC, m.id ASC
-    `).all(subagentId, subagentId, subagentId, subagentId) as SubagentMessageRow[];
+    `).all(
+      subagentId,
+      subagentId,
+      subagentId,
+      subagentId
+    ) as SubagentMessageRow[];
   }
 }

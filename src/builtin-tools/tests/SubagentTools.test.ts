@@ -17,7 +17,7 @@ function makeInvocation(signal?: AbortSignal): ToolInvocation {
 
 function makeSubagents(overrides: Partial<SubagentControl> = {}): SubagentControl {
   return {
-    start: vi.fn(() => SUBAGENT_ID),
+    start: vi.fn(() => ({ subagentId: SUBAGENT_ID, runId: 'run-1' })),
     waitForInitialResult: vi.fn(async () => null),
     moveToBackground: vi.fn(),
     awaitResult: vi.fn(async () => null),
@@ -72,6 +72,7 @@ describe('SubagentTool — 三形态', () => {
     expect(result).toEqual({
       kind: 'background',
       subagentId: SUBAGENT_ID,
+        runId: 'run-1',
       via: 'requested',
     });
     expect(subagents.start).toHaveBeenCalledWith(
@@ -87,6 +88,7 @@ describe('SubagentTool — 三形态', () => {
     const subagents = makeSubagents({
       waitForInitialResult: vi.fn(async () => ({
         subagentId: SUBAGENT_ID,
+        runId: 'run-1',
         output: 'done',
         usage: { inputTokens: 1, outputTokens: 2 },
       })),

@@ -1,18 +1,89 @@
-/* SubagentPanel 的摘要列表, 详情切换与运行状态. */
+/* 子代理身份列表. 详情正文复用根聊天的 Message 虚拟视口和样式. */
 
 .ema-subagent-view {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--ema-space-3);
+  padding: var(--ema-space-3);
+  color: var(--ema-text-primary);
   animation: ema-fade-in var(--ema-duration-base) var(--ema-ease) both;
+}
+
+.ema-subagent-detail {
+  color: var(--ema-text-primary);
+}
+
+.ema-subagent-list {
+  overflow-y: auto;
+}
+
+.ema-subagent-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--ema-space-2);
+}
+
+.ema-subagent-heading span,
+.ema-subagent-row-meta {
+  color: var(--ema-text-tertiary);
+  font-size: 12px;
+}
+
+.ema-subagent-row-content {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--ema-space-1);
+}
+
+.ema-subagent-row-content > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ema-subagent-row-content span {
+  color: var(--ema-text-secondary);
+}
+
+.ema-subagent-row-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: end;
+  gap: var(--ema-space-1);
+}
+
+.ema-subagent-error {
+  margin: 0;
+  color: var(--ema-danger-text);
+  font-size: 12px;
+}
+
+.ema-subagent-empty {
+  color: var(--ema-text-tertiary);
+  text-align: center;
+  font-size: 14px;
 }
 
 .ema-subagent-summary {
   position: relative;
   display: flex;
+  align-items: center;
+  gap: var(--ema-space-2);
+  padding: var(--ema-space-3);
+  text-align: left;
+  font-size: 12px;
   min-width: 0;
   border: 1px solid transparent;
   border-radius: var(--ema-radius-sm);
   background: color-mix(in srgb, var(--ema-surface-2) 50%, transparent);
-  transition: background-color var(--ema-duration-fast) var(--ema-ease),
-              border-color var(--ema-duration-fast) var(--ema-ease);
+  color: inherit;
+  transition:
+    background-color var(--ema-duration-fast) var(--ema-ease),
+    border-color var(--ema-duration-fast) var(--ema-ease);
 }
 
 .ema-subagent-summary:hover,
@@ -38,33 +109,3 @@
   background: var(--ema-primary);
   animation: ema-pulse-bar 1.6s ease-in-out infinite;
 }
-
-.ema-timeline-row {
-  position: relative;
-  padding-left: var(--ema-space-4);
-  /* 流式追加只给 fade: 列表频繁插入, stagger 会吵(动画铁律的克制档). */
-  animation: ema-fade-in var(--ema-duration-fast) var(--ema-ease) both;
-}
-.ema-timeline-row::before {
-  content: '';
-  position: absolute;
-  left: 2px;
-  top: 6px;
-  width: 6px;
-  height: 6px;
-  border-radius: var(--ema-radius-pill);
-  background: var(--ema-text-tertiary);
-  opacity: 0.5;
-}
-.ema-timeline-row::after {
-  content: '';
-  position: absolute;
-  left: 4px;
-  top: 14px;
-  /* 与消费方(SubagentPanel 时间线容器)的 gap-0.5(2px)配套: 改 gap 必须同步改这里。 */
-  bottom: -4px;
-  width: 1px;
-  background: var(--ema-text-tertiary);
-  opacity: 0.25;
-}
-.ema-timeline-row:last-child::after { display: none; }

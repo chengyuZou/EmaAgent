@@ -2,22 +2,16 @@
 // Route 只做传输解析与协议转换，业务入口全部来自 Composition，这里不构造业务对象。
 // 顶层必须整链（.use/.route/.notFound/.onError 同链）：语句式 app.route(...) 会丢类型账本，
 // ReturnType<typeof createRoutes>（AppType）将退化为裸 Hono，Hono RPC 契约直接失效。
-import {
-  ATTACHMENT_RESIDUE_MAX_AGE_MS,
-  readAttachmentCacheSettings,
-} from '@ema-agent/attachments';
+import { ATTACHMENT_RESIDUE_MAX_AGE_MS, readAttachmentCacheSettings } from '@ema-agent/attachments';
 import { Hono } from 'hono';
 import { deleteSession } from '../application/deleteSession.js';
-import {
-  activateCharacter,
-  deleteCharacter,
-  runWhenSessionsIdle,
-} from '../application/changeCharacter.js';
+import { activateCharacter, deleteCharacter, runWhenSessionsIdle } from '../application/changeCharacter.js';
 import type { Composition } from '../composition/index.js';
 import { emaAuth, localWebviewCors } from '../platform/auth.js';
 import { requestBudgetMiddleware } from '../platform/requestBudget.js';
 import { subagentListRoute } from './subagents/list.js';
 import { subagentMessagesRoute } from './subagents/messages.js';
+import { subagentRunsRoute } from './subagents/runs.js';
 import { backgroundProcessControlRoute } from './backgroundProcesses/control.js';
 import { backgroundProcessListRoute } from './backgroundProcesses/list.js';
 import { sessionBackupRoute } from './backup/sessions.js';
@@ -70,10 +64,7 @@ export const createRoutes = (composition: Composition, secret: string) => {
     characters, speech, turn, commands, memory, backup,
     sessionConnections, appEvents, turnFanout,
   } = composition;
-  const characterChangeDeps = {
-    characters: characters.store,
-    sessionRunning: database.sessionRunning,
-  };
+  const characterChangeDeps = { characters: characters.store, sessionRunning: database.sessionRunning };
 
   // CORS 必须先处理不携带业务密钥的 OPTIONS 预检，真正请求再进入认证和预算。
   return new Hono()
@@ -82,20 +73,14 @@ export const createRoutes = (composition: Composition, secret: string) => {
     .use('*', requestBudgetMiddleware())
 
     // 探活挂在根路径 /health; 宿主也可用它检查已公布端口, emaAuth 内豁免认证.
-    .route('/', systemStatusRoute({
-      activeDataDir: database.activeDataDir,
-      getSandboxStatus: tools.getSandboxStatus,
-    }))
+    .route('/', systemStatusRoute({ activeDataDir: database.activeDataDir, getSandboxStatus: tools.getSandboxStatus }))
     .route('/api/system', systemEventsRoute(appEvents))
     .route('/api/system', systemStatsRoute({
       dataDirStats: database.dataDirStats,
       sessionStats: database.sessionStats,
       messages: database.messages,
     }))
-    .route('/api/system', usageRecordsRoute({
-      usageRecorder: database.usageRecorder,
-    }))
-
+    .route('/api/system', usageRecordsRoute({ usageRecorder: database.usageRecorder }))
     .route('/api/ws/session', sessionWebSocketRoute({
       connections: sessionConnections,
       executor: turn.turnExecutor,
@@ -111,14 +96,8 @@ export const createRoutes = (composition: Composition, secret: string) => {
     }))
     .route('/', narrativeControlRoute(composition.narrative))
     .route('/api/ws/speech', speechWebSocketRoute(speech))
-    .route('/api/turns', turnControlRoute({
-      turns: database.turns,
-      toolExecutionState: tools.toolExecutionState,
-    }))
-    .route('/api/turns', turnAudioRoute({
-      audioArchive: speech.audioArchive,
-      turns: database.turns,
-    }))
+    .route('/api/turns', turnControlRoute({ turns: database.turns, toolExecutionState: tools.toolExecutionState }))
+    .route('/api/turns', turnAudioRoute({ audioArchive: speech.audioArchive, turns: database.turns }))
 
     .route('/api/sessions', sessionCollectionRoute({ session: database.session }))
     .route('/api/sessions', sessionActionsRoute({
@@ -155,44 +134,27 @@ export const createRoutes = (composition: Composition, secret: string) => {
       activeDataDir: database.activeDataDir,
     }))
     // backup 是独立业务域（未来还有角色/设置备份）；Session 支路的 URL 仍在 /api/sessions 下。
-    .route('/api/sessions', sessionBackupRoute({
-      backup: backup.sessionBackup,
-      onImported: () => appEvents.emit({ type: 'session_list_changed' }),
-    }))
-    .route('/api/commands', commandsCatalogRoute({
-      listCommandDescriptors: commands.listCommandDescriptors,
-    }))
+    .route('/api/sessions', sessionBackupRoute({ backup: backup.sessionBackup, onImported: () => appEvents.emit({ type: 'session_list_changed' }) }))
+    .route('/api/commands', commandsCatalogRoute({ listCommandDescriptors: commands.listCommandDescriptors }))
 
     .route('/api/tasks', tasksRoute(database.tasks))
     .route('/api/goals', goalsRoute(database.goals))
 
     .route('/api/subagents', subagentListRoute({ subagents: database.subagents }))
-    .route('/api/subagents', subagentMessagesRoute({
-      subagents: database.subagents,
-      subagentMessages: database.subagentMessages,
-    }))
+    .route('/api/subagents', subagentRunsRoute({ subagents: database.subagents }))
+    .route('/api/subagents', subagentMessagesRoute({ subagents: database.subagents, subagentMessages: database.subagentMessages }))
 
-    .route('/api/background-processes', backgroundProcessListRoute({
-      backgroundProcesses: tools.backgroundProcesses,
-    }))
-    .route('/api/background-processes', backgroundProcessControlRoute({
-      backgroundProcesses: tools.backgroundProcesses,
-    }))
+    .route('/api/background-processes', backgroundProcessListRoute({ backgroundProcesses: tools.backgroundProcesses }))
+    .route('/api/background-processes', backgroundProcessControlRoute({ backgroundProcesses: tools.backgroundProcesses }))
 
-    .route('/api/kb', knowledgeLibsRoute({
-      kb: knowledge.kb,
-      providerModels: providers.providerModels,
-      emit: event => appEvents.emit(event),
-    }))
+    .route('/api/kb', knowledgeLibsRoute({ kb: knowledge.kb, providerModels: providers.providerModels, emit: event => appEvents.emit(event) }))
     .route('/api/kb', knowledgeIngestRoute({ kb: knowledge.kb }))
     .route('/api/kb', knowledgeReembedRoute({ kb: knowledge.kb }))
     .route('/api/kb', knowledgeSearchRoute({ kb: knowledge.kb }))
     .route('/api/kb', knowledgeDocumentsRoute({ kb: knowledge.kb, emit: event => appEvents.emit(event) }))
 
     .route('/api/mcp', mcpServersRoute({ mcp: tools.mcp }))
-    .route('/api/mcp', mcpEnvironmentRoute({
-      environment: tools.mcpEnvironment,
-    }))
+    .route('/api/mcp', mcpEnvironmentRoute({ environment: tools.mcpEnvironment }))
     .route('/api/mcp', mcpMarketRoute({ market: tools.mcpMarket }))
 
     // 静态 /bindings、/available 路由必须先于 configs 的 /:providerId，避免被当作 Provider id。
@@ -217,16 +179,11 @@ export const createRoutes = (composition: Composition, secret: string) => {
       modelCatalog: providers.modelCatalog,
       notifyProviderHealthChanged: providerId => appEvents.emit({ type: 'provider_health_changed', providerId }),
     }))
-    .route('/api/providers', providerCapabilitiesRoute({
-      voicePreview: speech.voicePreview,
-      transcribe: speech.transcribe,
-      sttPreview: speech.sttPreview,
-    }))
+    .route('/api/providers', providerCapabilitiesRoute({ voicePreview: speech.voicePreview, transcribe: speech.transcribe, sttPreview: speech.sttPreview }))
 
     .route('/api/settings', settingsEventDisplayRoute({ settings: settings.settings }))
     .route('/api/settings', settingsValuesRoute({ settings: settings.settings }))
     .route('/api/settings', wallpaperRoute({ images: settings.wallpaperImages }))
-
     .route('/api/skills', skillListRoute({
       skills: tools.skills,
       skillStore: tools.skillStore,
@@ -240,7 +197,6 @@ export const createRoutes = (composition: Composition, secret: string) => {
       skills: tools.skills,
       emitApp: event => appEvents.emit(event),
     }))
-
     .route('/api/characters', characterCollectionRoute({
       characters: characters.store,
       activateCharacter: characterName => activateCharacter(characterChangeDeps, characterName),
@@ -255,9 +211,7 @@ export const createRoutes = (composition: Composition, secret: string) => {
 
     .route('/api/memory', memoryJobsRoute({ jobs: memory.jobs }))
     .route('/api/memory', memoryFilesRoute({ memoryRoot: memory.memoryRoot }))
-    .route('/api/memory', memoryStatsRoute({
-      memoryRoot: memory.memoryRoot,
-    }))
+    .route('/api/memory', memoryStatsRoute({ memoryRoot: memory.memoryRoot }))
 
     .route('/api/workspaces', projectsRoute({ session: database.session }))
     .route('/api/workspaces', filesRoute())

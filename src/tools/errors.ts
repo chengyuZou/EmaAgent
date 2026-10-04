@@ -17,6 +17,7 @@ export class ToolRegistrationConflictError extends ToolRegistryError {
     public readonly toolName: string,
     public readonly existingOrigin: ToolOrigin,
     public readonly attemptedOrigin: ToolOrigin,
+
   ) {
     super(
       `Tool "${toolName}" registration conflict: ` +
@@ -46,12 +47,25 @@ export class ToolInputError extends Error {
 
 // ── 工具执行状态 ─────────────────────────────────────────────────────────────
 
+/** 执行失败时仍有业务结果, 如已建立的子代理 Run 引用. 执行器分别保存 output 与错误. */
+export class ToolExecutionError extends Error {
+  constructor(
+    readonly output: unknown,
+    message: string,
+    readonly code = 'tool/error'
+  ) {
+    super(message);
+    this.name = 'ToolExecutionError';
+  }
+}
+
 /** 工具执行状态机发生非法迁移（CAS 冲突或调用不存在）。 */
 export class ToolExecutionStateConflictError extends Error {
   constructor(
     readonly callId: string,
     readonly expected: readonly ToolExecutionStatus[],
     readonly actual?: ToolExecutionStatus,
+
   ) {
     super(
       actual
@@ -109,8 +123,5 @@ export class BackgroundProcessError extends Error {
 
 /** 命令在真正启动前被取消；保持 name=AbortError 供统一取消判断识别。 */
 export function createBackgroundProcessAbortError(): Error {
-  return Object.assign(
-    new Error('Command cancelled before start'),
-    { name: 'AbortError' },
-  );
+  return Object.assign(new Error('Command cancelled before start'), { name: 'AbortError' });
 }

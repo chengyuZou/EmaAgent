@@ -7,14 +7,11 @@ import { useSubagentStore } from '../../stores/subagent.js';
 import { useBackgroundProcessStore } from '../../stores/backgroundProcess.js';
 import { useSessionAttachmentStore } from '../../stores/sessionAttachment.js';
 import { useSessionStore } from '../../stores/session.js';
+import { useServerStore } from '../../stores/server.js';
 import { useTaskStore } from '../../stores/task.js';
 import { SessionCwdDialog } from './SessionCwdDialog.js';
 import { useSessionGitDiff } from './gitDiffContext.js';
-import {
-  backgroundProcessTab,
-  sessionSourceTab,
-  useSessionPanelStore,
-} from '../../stores/sessionPanel.js';
+import { backgroundProcessTab, sessionSourceTab, useSessionPanelStore } from '../../stores/sessionPanel.js';
 
 const SOURCE_PREVIEW_COUNT = 3;
 
@@ -25,6 +22,7 @@ export function SessionHeader({ sessionId }: { sessionId: string }): JSX.Element
   const [titleDraft, setTitleDraft] = useState('');
   const [titleSaving, setTitleSaving] = useState(false);
   const session = useSessionStore(state => state.sessions.byId.get(sessionId));
+  const serverStatus = useServerStore(state => state.status);
   const title = session?.title ?? '加载中…';
   const cwd = session?.cwd;
   const layout = useSessionPanelStore((state) => state.layouts[sessionId]);
@@ -32,7 +30,9 @@ export function SessionHeader({ sessionId }: { sessionId: string }): JSX.Element
 
   async function saveTitle(): Promise<void> {
     const nextTitle = titleDraft.trim();
-    if (!session || !nextTitle || titleSaving) return;
+    if (!session || !nextTitle || titleSaving) {
+      return;
+    }
     if (nextTitle === session.title) {
       setTitleOpen(false);
       return;
@@ -80,6 +80,19 @@ export function SessionHeader({ sessionId }: { sessionId: string }): JSX.Element
         )}
       </div>
       <div className="flex shrink-0 items-center gap-0.5">
+        <div
+          className="mr-2 flex items-center gap-2 text-[11px] text-[var(--ema-text-tertiary)]"
+          title={`Session: ${sessionId}`}
+        >
+          <span
+            className={`size-1.5 shrink-0 rounded-full ${serverStatus.kind === 'ok' ? 'bg-[var(--ema-success)]' : 'bg-[var(--ema-danger)]'}`}
+            aria-label={serverStatus.kind === 'ok' ? '服务器在线' : '服务器未连接'}
+          />
+          {serverStatus.kind === 'ok' && (
+            <span className="tabular-nums">{serverStatus.latencyMs}ms</span>
+          )}
+          <span className="font-mono opacity-60">{sessionId.slice(0, 8)}</span>
+        </div>
         <Popover
           open={summaryOpen}
           onOpenChange={setSummaryOpen}
@@ -113,7 +126,10 @@ export function SessionHeader({ sessionId }: { sessionId: string }): JSX.Element
       </div>
       <SessionCwdDialog sessionId={sessionId} open={cwdOpen} onOpenChange={setCwdOpen} />
       <Dialog open={titleOpen} onOpenChange={setTitleOpen} title="重命名会话">
-        <form onSubmit={(event) => { event.preventDefault(); void saveTitle(); }}>
+        <form onSubmit={(event) => {
+          event.preventDefault();
+          void saveTitle();
+        }}>
           <Input
             aria-label="会话标题"
             value={titleDraft}
@@ -132,10 +148,7 @@ export function SessionHeader({ sessionId }: { sessionId: string }): JSX.Element
   );
 }
 
-function SessionSummary({
-  sessionId,
-  onNavigate,
-}: {
+function SessionSummary({ sessionId, onNavigate }: {
   sessionId: string;
   onNavigate(): void;
 }): JSX.Element {
@@ -149,11 +162,19 @@ function SessionSummary({
     const running = new Set<string>();
     let ended = 0;
     for (const subagent of state.subagents.values()) {
-      if (subagent.sessionId !== sessionId) continue;
-      if (subagent.status === 'running') running.add(subagent.id); else ended += 1;
+      if (subagent.sessionId !== sessionId) {
+        continue;
+      }
+      if (subagent.status === 'running') {
+        running.add(subagent.id);
+      } else {
+        ended += 1;
+      }
     }
     for (const [id, subagent] of state.progressById) {
-      if (subagent.sessionId === sessionId) running.add(id);
+      if (subagent.sessionId === sessionId) {
+        running.add(id);
+      }
     }
     return { running: running.size, ended };
   }));
@@ -170,8 +191,12 @@ function SessionSummary({
     let active = 0;
     let completed = 0;
     for (const task of tasks?.values() ?? []) {
-      if (task.status === 'pending' || task.status === 'in_progress') active += 1;
-      if (task.status === 'completed') completed += 1;
+      if (task.status === 'pending' || task.status === 'in_progress') {
+        active += 1;
+      }
+      if (task.status === 'completed') {
+        completed += 1;
+      }
     }
     return { active, completed, total: tasks?.size ?? 0 };
   }, [tasks]);
@@ -185,19 +210,33 @@ function SessionSummary({
     // 不用加入 cwd 参数 后端会根据 sessionId 自动获取 cwd
     void sessionGitApi.summary(sessionId)
       .then((value) => {
-        if (mounted) setGit(value);
+        if (mounted) {
+          setGit(value);
+        }
       })
       .catch(() => {
-        if (mounted) setGit(null);
+        if (mounted) {
+          setGit(null);
+        }
       });
     return () => {
       mounted = false;
     };
   }, [sessionId, cwd]);
-  useEffect(() => { void useSubagentStore.getState().loadForSession(sessionId); }, [sessionId]);
-  useEffect(() => { void useSessionAttachmentStore.getState().loadForSession(sessionId); }, [sessionId]);
-  useEffect(() => { void useBackgroundProcessStore.getState().loadForSession(sessionId); }, [sessionId]);
-  useEffect(() => { void useTaskStore.getState().loadForSession(sessionId); }, [sessionId]);
+  useEffect(() => {
+    const controller = new AbortController();
+    void useSubagentStore.getState().loadForSession(sessionId, controller.signal).catch(() => { });
+    return () => controller.abort();
+  }, [sessionId]);
+  useEffect(() => {
+    void useSessionAttachmentStore.getState().loadForSession(sessionId);
+  }, [sessionId]);
+  useEffect(() => {
+    void useBackgroundProcessStore.getState().loadForSession(sessionId);
+  }, [sessionId]);
+  useEffect(() => {
+    void useTaskStore.getState().loadForSession(sessionId);
+  }, [sessionId]);
 
   const navigate = (tab: Parameters<typeof openTab>[1]): void => {
     openTab(sessionId, tab);
@@ -225,21 +264,17 @@ function SessionSummary({
   return (
     <div className="ema-session-summary text-xs">
       <SummarySection title="环境信息">
-        <SummaryRow
-          icon="i-lucide:file-diff"
-          label="变更"
-          onClick={() => navigate({ id: 'review', kind: 'review' })}
-        >
+        <SummaryRow icon="i-lucide:file-diff" label="变更" onClick={() => navigate({ id: 'review', kind: 'review' })}>
           <GitChanges />
         </SummaryRow>
         <SummaryRow icon="i-lucide:monitor" label="本地" title={cwd ?? undefined} />
-        <SummaryRow
-          icon="i-lucide:git-branch"
-          label={git?.capability === 'ok' ? git.branch ?? '未命名分支' : '分支不可用'}
-        />
+        <SummaryRow icon="i-lucide:git-branch" label={git?.capability === 'ok' ? git.branch ?? '未命名分支' : '分支不可用'} />
       </SummarySection>
 
-      <SummarySection title="子代理" summary={activity.running > 0 ? `${activity.running} 运行中` : undefined}>
+      <SummarySection
+        title="子代理"
+        summary={activity.running > 0 ? `${activity.running} 运行中` : undefined}
+      >
         <SummaryRow
           icon="i-solar:cpu-bold-duotone"
           label={activity.running > 0 ? `${activity.running} 个运行中` : '暂无运行中的子代理'}
@@ -249,35 +284,43 @@ function SessionSummary({
         </SummaryRow>
       </SummarySection>
 
-      <SummarySection title="后台进程" summary={liveProcesses.length > 0 ? `${liveProcesses.length} 运行中` : undefined}>
-        {liveProcesses.length === 0 ? (
-          <SummaryRow icon="i-lucide:square-terminal" label="暂无运行中的后台进程" />
-        ) : liveProcesses.map(process => (
-          <div key={process.id} className="ema-summary-process-row">
-            <button
-              type="button"
-              className="ema-summary-row min-w-0 flex-1"
-              title={process.command}
-              onClick={() => navigate(backgroundProcessTab(process.id))}
-            >
-              <span className="i-lucide:square-terminal shrink-0 text-sm" aria-hidden />
-              <span className="min-w-0 flex-1 truncate text-left">
-                {process.description ?? process.command}
-              </span>
-            </button>
-            <IconButton
-              size="sm"
-              variant="danger"
-              icon="i-lucide:square"
-              label={`终止 ${process.description ?? process.command}`}
-              loading={stoppingProcessIds.has(process.id)}
-              onClick={() => void stopProcess(process.id)}
-            />
-          </div>
-        ))}
+      <SummarySection
+        title="后台进程"
+        summary={liveProcesses.length > 0 ? `${liveProcesses.length} 运行中` : undefined}
+      >
+        {liveProcesses.length === 0
+          ? (
+            <SummaryRow icon="i-lucide:square-terminal" label="暂无运行中的后台进程" />
+          )
+          : liveProcesses.map(process => (
+            <div key={process.id} className="ema-summary-process-row">
+              <button
+                type="button"
+                className="ema-summary-row min-w-0 flex-1"
+                title={process.command}
+                onClick={() => navigate(backgroundProcessTab(process.id))}
+              >
+                <span className="i-lucide:square-terminal shrink-0 text-sm" aria-hidden />
+                <span className="min-w-0 flex-1 truncate text-left">
+                  {process.description ?? process.command}
+                </span>
+              </button>
+              <IconButton
+                size="sm"
+                variant="danger"
+                icon="i-lucide:square"
+                label={`终止 ${process.description ?? process.command}`}
+                loading={stoppingProcessIds.has(process.id)}
+                onClick={() => void stopProcess(process.id)}
+              />
+            </div>
+          ))}
       </SummarySection>
 
-      <SummarySection title="Tasks" summary={taskCounts.active > 0 ? `${taskCounts.active} 待处理` : undefined}>
+      <SummarySection
+        title="Tasks"
+        summary={taskCounts.active > 0 ? `${taskCounts.active} 待处理` : undefined}
+      >
         <SummaryRow
           icon="i-lucide:list-checks"
           label={taskCounts.total > 0 ? `${taskCounts.active} 待处理` : '当前会话没有 Tasks'}
@@ -287,12 +330,17 @@ function SessionSummary({
         </SummaryRow>
       </SummarySection>
 
-      <SummarySection title="附件" summary={sources && sources.length > 0 ? `${sources.length}` : undefined}>
-        {sources === undefined ? (
+      <SummarySection
+        title="附件"
+        summary={sources && sources.length > 0 ? `${sources.length}` : undefined}
+      >
+        {sources === undefined && (
           <SummaryRow icon="i-lucide:loader-circle animate-spin" label="正在读取附件…" />
-        ) : sources.length === 0 ? (
+        )}
+        {sources?.length === 0 && (
           <SummaryRow icon="i-lucide:paperclip" label="当前会话没有附件" />
-        ) : (
+        )}
+        {sources && sources.length > 0 && (
           <>
             {sources.slice(0, SOURCE_PREVIEW_COUNT).map(source => (
               <SummaryRow
@@ -314,15 +362,7 @@ function SessionSummary({
   );
 }
 
-function SummarySection({
-  title,
-  summary,
-  children,
-}: {
-  title: string;
-  summary?: string;
-  children: ReactNode;
-}): JSX.Element {
+function SummarySection({ title, summary, children }: { title: string; summary?: string; children: ReactNode }): JSX.Element {
   const [open, setOpen] = useState(true);
   return (
     <section className="ema-summary-section">
@@ -363,19 +403,32 @@ function SummaryRow({
 }): JSX.Element {
   const content = (
     <>
-      <span className={`${icon} text-sm text-[var(--ema-text-tertiary)]`} aria-hidden />
+      <span
+        className={`${icon} text-sm text-[var(--ema-text-tertiary)]`}
+        aria-hidden
+      />
       <span className="min-w-0 flex-1 truncate text-left">{label}</span>
       {children && <span className="shrink-0 text-[var(--ema-text-tertiary)]">{children}</span>}
-      {onClick && <span className="i-lucide:chevron-right shrink-0 text-[10px] opacity-0 transition-opacity group-hover:opacity-100" aria-hidden />}
+      {onClick && <span
+        className="i-lucide:chevron-right shrink-0 text-[10px] opacity-0 transition-opacity group-hover:opacity-100"
+        aria-hidden
+      />}
     </>
   );
-  return onClick ? (
-    <button type="button" className="ema-summary-row group" title={title} onClick={onClick}>
-      {content}
-    </button>
-  ) : (
-    <div className="ema-summary-row" title={title}>{content}</div>
-  );
+  return onClick
+    ? (
+      <button
+        type="button"
+        className="ema-summary-row group"
+        title={title}
+        onClick={onClick}
+      >
+        {content}
+      </button>
+    )
+    : (
+      <div className="ema-summary-row" title={title}>{content}</div>
+    );
 }
 
 function GitChanges(): JSX.Element {

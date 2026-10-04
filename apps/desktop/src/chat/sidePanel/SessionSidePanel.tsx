@@ -5,12 +5,7 @@ import { Button, IconButton } from '@ema-agent/ui';
 import { useSessionAttachmentStore } from '../../stores/sessionAttachment.js';
 import { useBackgroundProcessStore } from '../../stores/backgroundProcess.js';
 import { useSessionStore } from '../../stores/session.js';
-import {
-  browserTab,
-  terminalTab,
-  useSessionPanelStore,
-  type SessionSidePanelTab,
-} from '../../stores/sessionPanel.js';
+import { browserTab, terminalTab, useSessionPanelStore, type SessionSidePanelTab } from '../../stores/sessionPanel.js';
 import { SubagentPanel } from './tabs/subagents/SubagentPanel.js';
 import { SessionAttachmentPreview } from './tabs/sources/SessionAttachmentPreview.js';
 import { SessionAttachmentsPanel } from './tabs/sources/SessionAttachmentsPanel.js';
@@ -86,20 +81,24 @@ function baseLabel(tab: SessionSidePanelTab): string {
   }
 }
 
-function TabLabel({
-  sessionId,
-  tab,
-}: {
-  sessionId: string;
-  tab: SessionSidePanelTab;
-}): JSX.Element {
+function TabLabel({ sessionId, tab }: { sessionId: string; tab: SessionSidePanelTab }): JSX.Element {
   const sourceTitle = useSessionAttachmentStore((state) => {
-    if (tab.kind !== 'source') return undefined;
+    if (tab.kind !== 'source') {
+      return undefined;
+    }
     const source = state.bySession.get(sessionId)?.find(item => item.path === tab.path);
-    return source?.kind === 'image' ? source.name ?? '剪贴板图片' : source ? '粘贴文本' : undefined;
+    if (!source) {
+      return undefined;
+    }
+    if (source.kind === 'image') {
+      return source.name ?? '剪贴板图片';
+    }
+    return '粘贴文本';
   });
   const processTitle = useBackgroundProcessStore((state) => {
-    if (tab.kind !== 'process') return undefined;
+    if (tab.kind !== 'process') {
+      return undefined;
+    }
     return state.listsBySession.get(sessionId)?.processes
       .find((process) => process.id === tab.backgroundProcessId)?.description
       ?? state.listsBySession.get(sessionId)?.processes
@@ -124,7 +123,9 @@ function TabBar({
   const closeTab = useSessionPanelStore((state) => state.closeTab);
 
   function close(tab: SessionSidePanelTab): void {
-    if (tab.kind === 'terminal') void closeTerminalSession(tab.terminalId).catch(() => {});
+    if (tab.kind === 'terminal') {
+      void closeTerminalSession(tab.terminalId).catch(() => { });
+    }
     closeTab(sessionId, tab.id);
   }
 
@@ -132,18 +133,17 @@ function TabBar({
     <div className="ema-workspace-tab-bar shrink-0 border-b border-[var(--ema-border)] px-2 py-1.5">
       <div className="ema-tab-slot min-w-0 overflow-x-auto">
         {tabs.map((tab) => (
-          <div
-            key={tab.id}
-            data-selected={tab.id === activeTabId || undefined}
-            className="ema-slot-tab group"
-          >
+          <div key={tab.id} data-selected={tab.id === activeTabId || undefined} className="ema-slot-tab group">
             <button
               type="button"
               className="ema-slot-tab-trigger focus-ring"
               title={baseLabel(tab)}
               onClick={() => onActivate(tab.id)}
             >
-              <span className={`${tabIcon(tab)} shrink-0 text-[16px]`} aria-hidden />
+              <span
+                className={`${tabIcon(tab)} shrink-0 text-[16px]`}
+                aria-hidden
+              />
               <span className="min-w-0 flex-1 truncate text-[12px]">
                 <TabLabel sessionId={sessionId} tab={tab} />
               </span>
@@ -159,29 +159,34 @@ function TabBar({
             />
           </div>
         ))}
-        <IconButton size="sm" variant="ghost" shape="rounded" label="新建标签" icon="i-lucide:plus" onClick={onAdd} />
+        <IconButton
+          size="sm"
+          variant="ghost"
+          shape="rounded"
+          label="新建标签"
+          icon="i-lucide:plus"
+          onClick={onAdd}
+        />
       </div>
     </div>
   );
 }
 
-function Launcher({
-  sessionId,
-  onClose,
-}: {
-  sessionId: string;
-  onClose?: () => void;
-}): JSX.Element {
+function Launcher({ sessionId, onClose }: { sessionId: string; onClose?: () => void }): JSX.Element {
   const openTab = useSessionPanelStore((state) => state.openTab);
   const cwd = useSessionStore(state => state.sessions.byId.get(sessionId)?.cwd);
   const [openingTerminal, setOpeningTerminal] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!onClose) return;
+    if (!onClose) {
+      return;
+    }
 
     const closeOnEscape = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape') {
+        onClose();
+      }
     };
 
     document.addEventListener('keydown', closeOnEscape);
@@ -228,16 +233,14 @@ function Launcher({
             disabled={openingTerminal || !cwd}
             className="ema-workspace-launcher-action"
             onClick={() => {
-              if (!cwd) return;
+              if (!cwd) {
+                return;
+              }
               const terminalId = nanoid();
               setOpeningTerminal(true);
               setError(null);
 
-              void startTerminal({
-                terminalId,
-                sessionId,
-                cwd,
-              })
+              void startTerminal({ terminalId, sessionId, cwd })
                 .then(() => {
                   openTab(sessionId, terminalTab(terminalId));
                   onClose?.();
@@ -248,10 +251,7 @@ function Launcher({
                 .finally(() => setOpeningTerminal(false));
             }}
           >
-            <span
-              className="i-lucide:terminal shrink-0 text-[16px] text-[var(--ema-text-tertiary)]"
-              aria-hidden
-            />
+            <span className="i-lucide:terminal shrink-0 text-[16px] text-[var(--ema-text-tertiary)]" aria-hidden />
             {openingTerminal ? '正在打开终端…' : '终端'}
           </Button>
 
@@ -264,10 +264,7 @@ function Launcher({
               onClose?.();
             }}
           >
-            <span
-              className="i-lucide:globe shrink-0 text-[16px] text-[var(--ema-text-tertiary)]"
-              aria-hidden
-            />
+            <span className="i-lucide:globe shrink-0 text-[16px] text-[var(--ema-text-tertiary)]" aria-hidden />
             浏览器
           </Button>
         </div>
@@ -281,11 +278,7 @@ function Launcher({
   );
 }
 
-export function SessionSidePanel({
-  sessionId,
-}: {
-  sessionId: string;
-}): JSX.Element {
+export function SessionSidePanel({ sessionId }: { sessionId: string }): JSX.Element {
   const layout = useSessionPanelStore((state) => state.layouts[sessionId]);
   const activateTab = useSessionPanelStore((state) => state.activateTab);
   const [launcherOpen, setLauncherOpen] = useState(false);
@@ -326,10 +319,7 @@ export function SessionSidePanel({
         {tabs.filter(tab => tab.kind !== 'files' && tab.kind !== 'file').map(tab => {
           const visible = Boolean(layout?.open) && !launcherOpen && tab.id === layout?.activeTabId;
           return (
-            <div
-              key={tab.id}
-              className={visible ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}
-            >
+            <div key={tab.id} className={visible ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}>
               <TabContent sessionId={sessionId} tab={tab} visible={visible} />
             </div>
           );
@@ -339,15 +329,7 @@ export function SessionSidePanel({
   );
 }
 
-function TabContent({
-  sessionId,
-  tab,
-  visible,
-}: {
-  sessionId: string;
-  tab: SessionSidePanelTab;
-  visible: boolean;
-}): JSX.Element {
+function TabContent({ sessionId, tab, visible }: { sessionId: string; tab: SessionSidePanelTab; visible: boolean }): JSX.Element {
   switch (tab.kind) {
     case 'review':
       return <ReviewPanel sessionId={sessionId} />;
@@ -368,13 +350,12 @@ function TabContent({
       return <BackgroundProcessesPanel sessionId={sessionId} />;
     case 'process':
       return (
-        <BackgroundProcessesPanel
-          sessionId={sessionId}
-          backgroundProcessId={tab.backgroundProcessId}
-        />
+        <BackgroundProcessesPanel sessionId={sessionId} backgroundProcessId={tab.backgroundProcessId} />
       );
     case 'subagents':
-      return <SubagentPanel sessionId={sessionId} className="p-2" initialDetailId={tab.subagentId} />;
+      return (
+        <SubagentPanel sessionId={sessionId} initialDetailId={tab.subagentId} />
+      );
     case 'terminal':
       return <TerminalPanel terminalId={tab.terminalId} />;
     case 'browser':

@@ -1,11 +1,6 @@
 // 阻塞等待后台子 Agent 完成并取回最终输出。
 import { z } from 'zod';
-import {
-  buildTool,
-  contextFail,
-  contextOk,
-  type SubagentControl,
-} from '@ema-agent/tools';
+import { buildTool, contextFail, contextOk, type SubagentControl } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 
 /** 窄 Context：启动器自带等待端口;身份与取消走 ToolInvocation。 */
@@ -13,14 +8,17 @@ interface SubagentAwaitContext {
   subagents: SubagentControl;
 }
 
-const inputSchema = z.object({
-  subagentId: z.string().min(1).describe('Subagent ID returned by Subagent (runInBackground).'),
-});
+const inputSchema = z.object({ subagentId: z.string().min(1).describe('Subagent ID returned by Subagent (runInBackground).') });
 
 type SubagentAwaitInput = z.infer<typeof inputSchema>;
 
 export type SubagentAwaitResult =
-  | { output: string; usage: { inputTokens: number; outputTokens: number } }
+  | {
+    subagentId: string;
+    runId: string;
+    output: string;
+    usage: { inputTokens: number; outputTokens: number }
+  }
   | { output: null };
 
 export const SubagentAwaitTool = buildTool<
@@ -37,7 +35,7 @@ Terminal results remain readable by id, including after an application restart.
 Returns output:null only when the subagentId is unknown or the run is still active elsewhere.`,
 
   inputSchema,
-  isReadOnly:        () => false,
+  isReadOnly: () => false,
   isConcurrencySafe: () => true,
 
   // 等待本会话子 Agent 结果, 内置信任放行。
@@ -52,8 +50,10 @@ Returns output:null only when the subagentId is unknown or the run is still acti
 
   async execute(input, context: SubagentAwaitContext, invocation) {
     const result = await context.subagents.awaitResult(input.subagentId, invocation.signal);
-    if (!result) return { output: null };
-    return { output: result.output, usage: result.usage };
+    if (!result) {
+      return { output: null };
+    }
+    return result;
   },
 
   mapResultToModelContent(output) {

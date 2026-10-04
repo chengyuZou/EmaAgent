@@ -38,10 +38,7 @@ export interface Composition {
   close(): Promise<void>;
 }
 
-export function buildComposition(input: {
-  activeDataDir: string;
-  initializeBuiltinCharacters: boolean;
-}): Composition {
+export function buildComposition(input: { activeDataDir: string; initializeBuiltinCharacters: boolean }): Composition {
   const appEvents = new AppEvents();
   const database = openDatabases(input.activeDataDir, event => appEvents.emit(event));
   const settings = openSettings(database.profileDb);
@@ -52,11 +49,7 @@ export function buildComposition(input: {
   });
   // Tools 在 Composition 返回前没有调用入口, 因此装配期间不可能产生真实完成通知.
   // 先放空出口打断构造顺序, openTurns 完成后再接到唯一 Session 队列.
-  let notifyBackgroundCompletion = (
-    _sessionId: string,
-    _backgroundProcessId: string,
-    _status: BackgroundProcessNotifiableStatus,
-  ): void => undefined;
+  let notifyBackgroundCompletion = (_sessionId: string, _backgroundProcessId: string, _status: BackgroundProcessNotifiableStatus): void => undefined;
   const tools = openTools({
     profileDb: database.profileDb,
     dataDb: database.dataDb,
@@ -93,31 +86,19 @@ export function buildComposition(input: {
   // 旧角色的情绪语义名在新角色映射下无意义，不重置会把旧情绪补发给新角色。
   characters.store.onSwitched((next, presentation) => {
     const vocabulary = characterStageVocabulary(presentation);
-    characters.stage.updateVocabulary(
-      vocabulary.emotions,
-      vocabulary.motions,
-    );
+    characters.stage.updateVocabulary(vocabulary.emotions, vocabulary.motions);
     characters.stage.reset();
     appEvents.emit({ type: 'character_switched', characterName: next.name, displayName: next.displayName });
   });
   characters.store.onResourcesChanged((character) => {
-    appEvents.emit({
-      type: 'character_resources_changed',
-      characterName: character.name,
-    });
+    appEvents.emit({ type: 'character_resources_changed', characterName: character.name });
   });
   characters.store.onPresentationChanged((character, presentation) => {
     if (character.name === characters.store.current().name) {
       const vocabulary = characterStageVocabulary(presentation);
-      characters.stage.updateVocabulary(
-        vocabulary.emotions,
-        vocabulary.motions,
-      );
+      characters.stage.updateVocabulary(vocabulary.emotions, vocabulary.motions);
     }
-    appEvents.emit({
-      type: 'character_presentation_changed',
-      characterName: character.name,
-    });
+    appEvents.emit({ type: 'character_presentation_changed', characterName: character.name });
   });
   // 设置变更：前端设置页以外的视图据此刷新。
   settings.settings.subscribe(() => {
@@ -162,6 +143,7 @@ export function buildComposition(input: {
       sessionConnections.publish(sessionId, { type: 'subagent_event', event });
     },
     publishQueuedInput: (sessionId, event) => sessionConnections.publish(sessionId, event),
+    publishInteraction: event => sessionConnections.publish(event.sessionId, event),
     fanout: turnFanout,
   });
   notifyBackgroundCompletion = (sessionId, backgroundProcessId, status) => {

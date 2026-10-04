@@ -31,7 +31,7 @@ flowchart TD
     D6 -->|allow| ALLOW
     D6 -->|passthrough| ASK
     ASK --> H{有交互通道？}
-    H -->|无（headless/子 Agent）| ZD[deny headless]
+    H -->|无交互通道| ZD[deny headless]
     H -->|有| Q[SessionInteractionQueue<br/>锚 = toolCallId]
     Q --> UI[前端批准卡 PermissionRequest]
     UI -->|允许一次| ALLOW
@@ -114,6 +114,17 @@ Shell, 写入工具, Subagent, AskUser 和 MCP 不进入 Plan 池; Task 与 Scra
 聊天消息, 用量与正常运行记录仍然落库.
 
 ## 规则存储与生命周期
+
+批准请求与授权规则不是同一种状态. 根 Agent、前台与后台子代理的 ask 共用所属 Session 的内存 FIFO;
+Session 首次出现请求时才创建队列, 最后一条移出后释放, 不清除已保存的 Session 授权规则.
+`PermissionRequest` 保留 sessionId/turnId/toolCallId, 子代理额外成对携带 subagentId/runId.
+子请求的 turnId 是父调用来源, 实际收尾按 runId. 工具定义 ID 不是批准定位键.
+required/resolved 由 Server 的 Session 出口发送, 不经过父 Turn 事件流.
+WS 回答只需 toolCallId/action/reason, Session 取自路由; 队列核对 Session 与活动队首,
+从原请求取得执行归属. 父 Turn 已结束不影响后台子代理等待. Desktop 批准卡/桌宠卡
+标明主 Agent 或子代理来源. 同 Session 的 AskUser 仍占队首, 桌宠不能越过它显示后续批准;
+不同 Session 可独立显示批准. Permission 与 AskUser required/resolved 均使用 Session 出口,
+初始队列和后续交付顺序保持一致, 不新增 queue_changed 快照事件.
 
 - **settings KV 六个 key**：`permission.rules.user.{allow,deny,ask}`（`string[]`）、`permission.rules.project.{allow,deny,ask}`（`Record<projectId, string[]>`）；`apply: 'nextTurn'`（settings 源次 Turn 冻结生效）。
 - **session 规则**：`rules/update.ts` 的内存 per-session 表（本 Turn 即效，不落盘）。

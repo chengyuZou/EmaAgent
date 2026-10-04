@@ -1,32 +1,25 @@
 // 同 Session 串行、跨 Session 并行的统一交互队列；Permission 与 AskUser 按进入顺序共同排队。
-import type {
-  PendingPermissionRequest,
-  PermissionRequest,
-  PermissionResponse,
-} from '@ema-agent/permission';
-import type {
-  AskUserRequiredEvent,
-  PendingAskUserPrompt,
-} from '@ema-agent/tools';
+import type { PendingPermissionRequest, PermissionRequest, PermissionResponse } from '@ema-agent/permission';
+import type { AskUserRequiredEvent, PendingAskUserPrompt } from '@ema-agent/tools';
 
 // ── 联合交互类型 ─────────────────────────────────────────────────────────────
 
 /** Permission 交互条目；三身份含于 PermissionRequest 内，条目不再重复携带。 */
 export interface PermissionInteraction {
-  readonly kind:        'permission';
-  readonly createdAt:   number;
-  readonly timeoutMs:   number | null;
-  readonly request:     PermissionRequest;
-  readonly resolve:     (response: PermissionResponse) => void;
+  readonly kind: 'permission';
+  readonly createdAt: number;
+  readonly timeoutMs: number | null;
+  readonly request: PermissionRequest;
+  readonly resolve: (response: PermissionResponse) => void;
 }
 
 /** AskUser 交互条目；三身份含于 AskUserRequiredEvent 内。 */
 export interface AskUserInteraction {
-  readonly kind:        'askUser';
-  readonly createdAt:   number;
-  readonly timeoutMs:   number | null;
-  readonly request:     AskUserRequiredEvent;
-  readonly resolve:     (outcome: AskUserInteractionOutcome) => void;
+  readonly kind: 'askUser';
+  readonly createdAt: number;
+  readonly timeoutMs: number | null;
+  readonly request: AskUserRequiredEvent;
+  readonly resolve: (outcome: AskUserInteractionOutcome) => void;
 }
 
 /** 统一队列承载的两种业务 Payload；kind 区分 resolve 签名。 */
@@ -44,20 +37,21 @@ export type AskUserInteractionOutcome =
  */
 export type PendingInteraction =
   | ({ readonly kind: 'permission' } & PendingPermissionRequest)
-  | ({ readonly kind: 'askUser' }    & PendingAskUserPrompt);
+  | ({ readonly kind: 'askUser' } & PendingAskUserPrompt);
 
 // ── 内部 FIFO ────────────────────────────────────────────────────────────────
 
 /** 单个 Session 的 FIFO；entries[0] 是队首，只有队首持有活动 timer。 */
 interface SessionFifo {
   entries: SessionInteraction[];
-  timer:   ReturnType<typeof setTimeout> | undefined;
+  timer: ReturnType<typeof setTimeout> | undefined;
 }
 
 // ── SessionInteractionQueue ─────────────────────────────────────────────────
 
 /**
- * 内存交互队列。Process-local，无持久化——Turn abort 或进程重启取消全部待交互
+ * 内存交互队列. 根 Turn、子代理 Run 或 Session 结束时清理对应条目, 不持久化待批准请求.
+ * Session FIFO 在首次入队时创建, 最后一条移出后释放; 软件重启不恢复旧等待.
  * （Permission 以 deny resolve，AskUser 以明确取消终态 resolve，使等待方干净退出）。
  *
  * 语义：
@@ -67,7 +61,7 @@ interface SessionFifo {
  *   - 不同 Session 互相独立，可并行等待用户。
  *   - 响应按 toolCallId 查址（全局唯一）：一次交互永远由唯一一次 Tool 调用触发，
  *     Permission 锚 = 触发审批的调用，AskUser 锚 = 发起问询的调用。
- *   - listPending(sessionId?) 供 Agent WebSocket 重连后恢复指定 Session 的队列投影。
+ *   - listPending(sessionId?) 供 Session WebSocket 首条状态读取待交互事实, 不实现重连.
  */
 export class SessionInteractionQueue {
   private readonly sessions = new Map<string, SessionFifo>();
@@ -89,21 +83,12 @@ export class SessionInteractionQueue {
    * 身份含于其中，由 Tool 执行链装配）；返回在用户响应或超时后 resolve 的 Promise。
    * 若该 Session 队列为空，新条目立即成为队首并开始超时；否则排队，等升为队首才计时。
    */
-  enqueuePermission(
-    request: PermissionRequest,
-    timeoutMs?: number | null,
-  ): { createdAt: number; promise: Promise<PermissionResponse> } {
+  enqueuePermission(request: PermissionRequest, timeoutMs?: number | null): { createdAt: number; promise: Promise<PermissionResponse> } {
     const createdAt = Date.now();
     let resolve!: (response: PermissionResponse) => void;
     const promise = new Promise<PermissionResponse>(r => { resolve = r; });
 
-    this.pushEntry({
-      kind:      'permission',
-      createdAt,
-      timeoutMs: timeoutMs ?? this.defaultTimeoutMs,
-      request,
-      resolve,
-    });
+    this.pushEntry({ kind: 'permission', createdAt, timeoutMs: timeoutMs ?? this.defaultTimeoutMs, request, resolve });
     return { createdAt, promise };
   }
 
@@ -111,66 +96,65 @@ export class SessionInteractionQueue {
    * 预约一个 AskUser 问询槽。请求本体即已发出的 ask_user_required 事件；
    * 返回在用户回答或超时后 resolve 的 Promise。
    */
-  enqueueAskUser(
-    request: AskUserRequiredEvent,
-    timeoutMs?: number | null,
-  ): { createdAt: number; promise: Promise<AskUserInteractionOutcome> } {
+  enqueueAskUser(request: AskUserRequiredEvent, timeoutMs?: number | null): { createdAt: number; promise: Promise<AskUserInteractionOutcome> } {
     const createdAt = Date.now();
     let resolve!: (outcome: AskUserInteractionOutcome) => void;
-    const promise = new Promise<AskUserInteractionOutcome>(r => { resolve = r; });
-
-    this.pushEntry({
-      kind:      'askUser',
-      createdAt,
-      timeoutMs: timeoutMs ?? this.defaultTimeoutMs,
-      request,
-      resolve,
+    const promise = new Promise<AskUserInteractionOutcome>(r => {
+      resolve = r;
     });
+
+    this.pushEntry({ kind: 'askUser', createdAt, timeoutMs: timeoutMs ?? this.defaultTimeoutMs, request, resolve });
     return { createdAt, promise };
   }
 
-  /** 用用户响应解决一条 Permission 待审批；同时核对 Turn，防止陈旧卡片误答。 */
-  respondPermission(
-    toolCallId: string,
-    response: PermissionResponse,
-    expectedTurnId?: string,
-  ): boolean {
+  /** 回答当前 Session 的 Permission 队首; Turn/Run 归属直接读取原请求. */
+  respondPermission(sessionId: string, toolCallId: string, response: PermissionResponse): boolean {
     const record = this.index.get(toolCallId);
-    if (!record || record.entry.kind !== 'permission') return false;
-    if (record.fifo.entries[0] !== record.entry) return false;
-    if (expectedTurnId !== undefined && record.entry.request.turnId !== expectedTurnId) return false;
+    if (!record || record.entry.kind !== 'permission') {
+      return false;
+    }
+    if (record.fifo.entries[0] !== record.entry) {
+      return false;
+    }
+    if (record.entry.request.sessionId !== sessionId) {
+      return false;
+    }
     return this.evict(toolCallId, response);
   }
 
   /** 用用户答案解决一条 AskUser 问询；toolCallId 未知或已解决时返回 false。 */
-  respondAskUser(
-    toolCallId: string,
-    answers: Record<string, string>,
-    expectedTurnId?: string,
-  ): boolean {
+  respondAskUser(toolCallId: string, answers: Record<string, string>, expectedTurnId?: string): boolean {
     const record = this.index.get(toolCallId);
-    if (!record || record.entry.kind !== 'askUser') return false;
-    if (record.fifo.entries[0] !== record.entry) return false;
-    if (expectedTurnId !== undefined && record.entry.request.turnId !== expectedTurnId) return false;
+    if (!record || record.entry.kind !== 'askUser') {
+      return false;
+    }
+    if (record.fifo.entries[0] !== record.entry) {
+      return false;
+    }
+    if (expectedTurnId !== undefined && record.entry.request.turnId !== expectedTurnId) {
+      return false;
+    }
     return this.evict(toolCallId, { status: 'answered', answers });
   }
 
   /** 只允许 Permission 路由取消匹配 Turn 的活动 Permission 队首。 */
-  cancelPermission(
-    toolCallId: string,
-    reason = 'cancelled',
-    expectedTurnId?: string,
-  ): boolean {
-    return this.cancelActiveByKind('permission', toolCallId, reason, expectedTurnId);
+  cancelPermission(toolCallId: string, reason = 'cancelled', expectedTurnId?: string): boolean {
+    return this.cancelActiveByKind(
+      'permission',
+      toolCallId,
+      reason,
+      expectedTurnId
+    );
   }
 
   /** 只允许 AskUser 路由取消匹配 Turn 的活动 AskUser 队首。 */
-  cancelAskUser(
-    toolCallId: string,
-    reason = 'cancelled',
-    expectedTurnId?: string,
-  ): boolean {
-    return this.cancelActiveByKind('askUser', toolCallId, reason, expectedTurnId);
+  cancelAskUser(toolCallId: string, reason = 'cancelled', expectedTurnId?: string): boolean {
+    return this.cancelActiveByKind(
+      'askUser',
+      toolCallId,
+      reason,
+      expectedTurnId
+    );
   }
 
   /**
@@ -184,9 +168,15 @@ export class SessionInteractionQueue {
     expectedTurnId?: string,
   ): boolean {
     const record = this.index.get(id);
-    if (!record || record.fifo.entries[0] !== record.entry) return false;
-    if (record.entry.kind !== kind) return false;
-    if (expectedTurnId !== undefined && record.entry.request.turnId !== expectedTurnId) return false;
+    if (!record || record.fifo.entries[0] !== record.entry) {
+      return false;
+    }
+    if (record.entry.kind !== kind) {
+      return false;
+    }
+    if (expectedTurnId !== undefined && record.entry.request.turnId !== expectedTurnId) {
+      return false;
+    }
     return this.cancel(id, reason);
   }
 
@@ -196,29 +186,47 @@ export class SessionInteractionQueue {
    */
   cancel(id: string, reason = 'cancelled'): boolean {
     const record = this.index.get(id);
-    if (!record) return false;
+    if (!record) {
+      return false;
+    }
     if (record.entry.kind === 'permission') {
       return this.evict(id, { action: 'deny', reason });
     }
     return this.evict(id, { status: 'cancelled', reason });
   }
 
-  /** 取消某 Turn 的全部待交互（turn abort 时用）。 */
+  /** 只取消根 Turn 自己的交互, 不清理带相同父 turnId 的子代理请求. */
   cancelForTurn(turnId: string, reason = 'turn aborted'): number {
     const ids = [...this.index.values()]
-      .filter(({ entry }) => entry.request.turnId === turnId)
+      .filter(({ entry }) => entry.request.turnId === turnId
+        && (entry.kind !== 'permission' || entry.request.runId === undefined))
       .map(({ entry }) => entry.request.toolCallId);
     let n = 0;
     for (const id of ids) {
-      if (this.cancel(id, reason)) n++;
+      if (this.cancel(id, reason)) {
+        n++;
+      }
     }
     return n;
+  }
+
+  /** 清理本次子代理执行的批准请求, 不影响父 Turn、其它 Run 或下一次复用. */
+  cancelForRun(runId: string, reason = 'subagent run ended'): number {
+    const ids = [...this.index.values()]
+      .filter(({ entry }) => entry.kind === 'permission' && entry.request.runId === runId)
+      .map(({ entry }) => entry.request.toolCallId);
+    for (const id of ids) {
+      this.cancel(id, reason);
+    }
+    return ids.length;
   }
 
   /** Session 删除时取消其全部待交互，避免悬挂 Promise。 */
   cancelForSession(sessionId: string, reason = 'session deleted'): number {
     const fifo = this.sessions.get(sessionId);
-    if (!fifo) return 0;
+    if (!fifo) {
+      return 0;
+    }
     const ids = fifo.entries.map(entry => entry.request.toolCallId);
     for (const id of ids) {
       this.cancel(id, reason);
@@ -238,7 +246,9 @@ export class SessionInteractionQueue {
   listPending(sessionId?: string): PendingInteraction[] {
     if (sessionId) {
       const fifo = this.sessions.get(sessionId);
-      if (!fifo) return [];
+      if (!fifo) {
+        return [];
+      }
       return fifo.entries.map(toPending);
     }
     return [...this.index.values()]
@@ -273,7 +283,9 @@ export class SessionInteractionQueue {
    * 条目升为队首继续计时。
    */
   private startHeadTimer(fifo: SessionFifo): void {
-    if (fifo.timer) clearTimeout(fifo.timer);
+    if (fifo.timer) {
+      clearTimeout(fifo.timer);
+    }
     const head = fifo.entries[0];
     if (!head) {
       fifo.timer = undefined;
@@ -298,12 +310,11 @@ export class SessionInteractionQueue {
    * 把 id 对应条目移出 fifo 并 resolve。
    * 若移除的是队首，清理 timer 并让下一个升为队首开始计时；若队列空，移除 SessionFifo。
    */
-  private evict(
-    id: string,
-    payload: PermissionResponse | AskUserInteractionOutcome,
-  ): boolean {
+  private evict(id: string, payload: PermissionResponse | AskUserInteractionOutcome): boolean {
     const record = this.index.get(id);
-    if (!record) return false;
+    if (!record) {
+      return false;
+    }
     const { fifo, entry } = record;
     const wasHead = fifo.entries[0] === entry;
 
@@ -333,15 +344,11 @@ export class SessionInteractionQueue {
 function toPending(entry: SessionInteraction): PendingInteraction {
   if (entry.kind === 'permission') {
     return {
-      kind:       'permission',
+      kind: 'permission',
       toolCallId: entry.request.toolCallId,
-      createdAt:  entry.createdAt,
-      request:    entry.request,
+      createdAt: entry.createdAt,
+      request: entry.request,
     };
   }
-  return {
-    kind:      'askUser',
-    createdAt: entry.createdAt,
-    request:   entry.request,
-  };
+  return { kind: 'askUser', createdAt: entry.createdAt, request: entry.request };
 }

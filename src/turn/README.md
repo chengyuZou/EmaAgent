@@ -17,6 +17,15 @@ Turn 管一次根 Agent 对话：创建运行记录，准备模型和工具，�
 
 ## Session 续接与 Goal
 
+Permission 与 AskUser required/resolved 独立于根 Turn 事件流, 由宿主的 publishInteraction 直接交付 Session.
+根与前后台子工具共用 SessionInteractionQueue; 根收尾的 cancelForTurn 只清自己的
+Permission/AskUser, 不清携带同一父 turnId 的子请求. 子执行统一收尾通过 onRunFinished
+调用 cancelForRun, Session 删除使用 cancelForSession. 队列按需创建并在空时释放,
+不检查 Goal、后台进程或 Session 是否完全空闲. Desktop 按 Session 出口消费交互事实,
+初始 pendingInteractions 保持服务端顺序, 后续按交付顺序追加/移除; 不用浏览器时钟重排.
+Permission 回答仅携带 SessionId 和 ToolCallId, 由队首原请求取得所属 Turn/Run.
+AskUser 回答保留其 turnId, 但展示和队首约束同样来自 Session FIFO.
+
 `SessionContinuationQueue` 是唯一交付入口. `SessionRunningRegistry` 判断根 Turn 或手动 Compact 的占用; 同一 Session 的多个唤醒合并成一次微任务, 领取和注册之间不 await.
 
 - 下一根 Turn 先领取用户输入, 当前 Goal active 则同时附带短 continuationText. Turn 将提示与正常用户 Message 分别落库, 不互相替换, 不额外启动第二根 Turn. 没有用户输入时保留后台通知顺序, 没有一次性内容时生成纯 Goal 继续指令. 只有一个 `startTurn` 路径, Goal 不永久入队或复制正文.
@@ -43,6 +52,8 @@ Compact 只认识模型消息数组和 `summarizedMessageCount`，不知道 SQL 
 只读池保留检索与读取, 包括 Task/Scratchpad 读取; 不包含 Shell, 写入, Subagent, AskUser 或 MCP.
 
 ## 子 Agent
+
+每根 Turn 的 reminder 包含当前 Session 的子代理身份目录. Server 在异步背景读取结束后沿身份 Cursor 读完所有页, 按 updatedAt 降序、同时间 ID 降序交付. 前 10 个展示 ID、完整 Title 和 description 前 50 个 Unicode 字符, 其余全部只展示 ID; 没有目录总条数或总内容长度截断. 空目录不生成该段, SQL 正文不改写. 目录随本轮 reminder 落库, 后续模型请求复用, 不每个 loop 回查或读取 Run/子消息. 主模型的子代理详情查询工具尚未接入.
 
 `forkParentMessages.ts` 持有每次父请求固定的模型消息与 ID 对应关系. `beginRequest` 只复制两个数组, 不读取 SQL; `completeAssistant` 在父 Assistant 完整落库后只交付其 ID 和生成来源. 真实新建 fork 才调用 `read`: 绑定所属请求, 等完整 Assistant 后读取持久化信息并构建父前缀. 同一父请求的兄弟 fork 共用一次构建, 没有领取者就不回查 SQL. 等待取消只影响对应子代理, 父失败释放等待者. 它不写子代理消息表, 复制和新 ID 映射仍由 Agent 消息层负责.
 

@@ -2,52 +2,55 @@ import type { SubagentEvent } from '@ema-agent/agent';
 import type { SessionMessage } from '@ema-agent/session';
 import type { SessionBusinessMessage } from '@ema-agent/server/routes/ws/session.js';
 import { sessionWebSocket } from '../../api/sessionWebSocket.js';
-import {
-  resolveConfiguredEventNotification,
-  type NotifiableEvent,
-} from '../../lib/event-notifications.js';
+import { resolveConfiguredEventNotification, type NotifiableEvent } from '../../lib/event-notifications.js';
 import { tauriBridge } from '../../lib/tauri-bridge.js';
 import { showToast } from '../../lib/toast.js';
 import { useSubagentStore } from '../../stores/subagent.js';
-import {
-  useTurnStore,
-  type TurnStoreEvent,
-} from '../../stores/turn.js';
+import { useTurnStore, type TurnStoreEvent } from '../../stores/turn.js';
 import { useSessionActivityStore } from '../../stores/sessionActivity.js';
 import { useSessionHistoryStore } from '../../stores/sessionHistory.js';
 import { useSettingsStore } from '../../stores/settings.js';
 import { sessionPresentation } from '../presentation/sessionPresentation.js';
-import {
-  cancelTurnSpeech,
-  startTurnSpeechPlayback,
-} from '../speech/turnSpeechPlayback.js';
+import { cancelTurnSpeech, startTurnSpeechPlayback } from '../speech/turnSpeechPlayback.js';
 import { scheduleTurnHistoryClosure } from './turnHistoryClosure.js';
 
 const subscriptions = new Map<string, () => void>();
 
 type SessionCompactEvent = Extract<SessionBusinessMessage, {
   readonly type:
-    | 'compact_started'
-    | 'compact_cancelled'
-    | 'compact_completed'
-    | 'compact_failed';
+  | 'compact_started'
+  | 'compact_cancelled'
+  | 'compact_completed'
+  | 'compact_failed';
 }>;
 
 export function ensureSessionSubscription(sessionId: string): void {
-  if (subscriptions.has(sessionId)) return;
-  subscriptions.set(sessionId, sessionWebSocket.subscribe(sessionId, {
-    onMessage: message => receiveSessionMessage(sessionId, message),
-    onConnectionState: connection => {
-      useSessionActivityStore.getState().setConnection(sessionId, connection);
-    },
-  }));
+  if (subscriptions.has(sessionId)) {
+    return;
+  }
+  subscriptions.set(
+    sessionId,
+    sessionWebSocket.subscribe(
+      sessionId,
+      {
+        onMessage: message => receiveSessionMessage(sessionId, message),
+        onConnectionState: connection => {
+          useSessionActivityStore.getState().setConnection(sessionId, connection);
+        },
+      }
+    )
+  );
 }
 
 export function syncSessionSubscriptions(sessionIds: ReadonlySet<string>): void {
   const desired = sessionIds;
-  for (const sessionId of desired) ensureSessionSubscription(sessionId);
+  for (const sessionId of desired) {
+    ensureSessionSubscription(sessionId);
+  }
   for (const sessionId of [...subscriptions.keys()]) {
-    if (!desired.has(sessionId)) removeSessionSubscription(sessionId);
+    if (!desired.has(sessionId)) {
+      removeSessionSubscription(sessionId);
+    }
   }
 }
 
@@ -60,7 +63,9 @@ export function removeSessionSubscription(sessionId: string): void {
 }
 
 export function clearSessionSubscriptions(): void {
-  for (const sessionId of [...subscriptions.keys()]) removeSessionSubscription(sessionId);
+  for (const sessionId of [...subscriptions.keys()]) {
+    removeSessionSubscription(sessionId);
+  }
 }
 
 function receiveSessionMessage(sessionId: string, message: SessionBusinessMessage): void {
@@ -82,10 +87,47 @@ function receiveSessionMessage(sessionId: string, message: SessionBusinessMessag
         message.running.messages,
       );
     }
+    for (const pending of message.pendingInteractions) {
+      if (pending.kind === 'permission') {
+        void tauriBridge.publishDecisionRequired({ type: 'permission_required', ...pending.request });
+        if (!pending.request.subagentId) {
+          useTurnStore.getState().setToolPermissionPending(
+            sessionId,
+            pending.request.turnId,
+            pending.request.toolCallId,
+            true
+          );
+        }
+      } else {
+        void tauriBridge.publishDecisionRequired(pending.request);
+      }
+    }
     return;
   }
   if (message.type === 'session_running_changed') {
     activity.setRunning(sessionId, message.running);
+    return;
+  }
+  if (message.type === 'permission_required' || message.type === 'permission_resolved'
+    || message.type === 'ask_user_required'
+    || message.type === 'ask_user_resolved') {
+    presentSessionEvent(message);
+    activity.applyInteractionEvent(sessionId, message);
+    if (message.type === 'permission_required' || message.type === 'permission_resolved') {
+      if (!message.subagentId) {
+        useTurnStore.getState().setToolPermissionPending(
+          sessionId,
+          message.turnId,
+          message.toolCallId,
+          message.type === 'permission_required'
+        );
+      }
+    }
+    if (message.type === 'permission_required' || message.type === 'ask_user_required') {
+      void tauriBridge.publishDecisionRequired(message);
+    } else {
+      void tauriBridge.publishDecisionDismissed(message.toolCallId);
+    }
     return;
   }
   if (message.type === 'queued_input_added') {
@@ -113,11 +155,7 @@ function receiveSessionMessage(sessionId: string, message: SessionBusinessMessag
     return;
   }
   if (message.type === 'turn_event') {
-    receiveTurnEvent(
-      sessionId,
-      message.turnId,
-      message.event,
-    );
+    receiveTurnEvent(sessionId, message.turnId, message.event);
   }
 }
 
@@ -143,21 +181,30 @@ function receiveCompactEvent(sessionId: string, event: SessionCompactEvent): voi
   }
 }
 
-function receiveTurnEvent(
-  sessionId: string,
-  turnId: string,
-  event: TurnStoreEvent,
-): void {
+function receiveTurnEvent(sessionId: string, turnId: string, event: TurnStoreEvent): void {
   presentSessionEvent(event);
-  useSessionActivityStore.getState().applyInteractionEvent(sessionId, event);
   useTurnStore.getState().receiveTurnEvent(sessionId, turnId, event);
+  if (event.type === 'tool_call_complete') {
+    const pending = useSessionActivityStore.getState().bySession.get(sessionId)?.pendingInteractions
+      .some(item => item.kind === 'permission' && !item.request.subagentId
+        && item.request.turnId === turnId
+        && item.request.toolCallId === event.callId);
+    if (pending) {
+      useTurnStore.getState().setToolPermissionPending(
+        sessionId,
+        turnId,
+        event.callId,
+        true
+      );
+    }
+  }
 
   switch (event.type) {
     case 'turn_started':
       if (event.ttsEnabled) {
         startTurnSpeechPlayback(sessionId, turnId);
       } else {
-        sessionPresentation.claim(sessionId, turnId, false, () => {});
+        sessionPresentation.claim(sessionId, turnId, false, () => { });
       }
       return;
     case 'output_text_delta':
@@ -168,14 +215,6 @@ function receiveTurnEvent(
       return;
     case 'motion_changed':
       sessionPresentation.motion(sessionId, turnId, event.motion);
-      return;
-    case 'permission_required':
-    case 'ask_user_required':
-      void tauriBridge.publishDecisionRequired(event);
-      return;
-    case 'permission_resolved':
-    case 'ask_user_resolved':
-      void tauriBridge.publishDecisionDismissed(event.toolCallId);
       return;
     case 'turn_completed':
       sessionPresentation.finishTurn(sessionId, turnId);
@@ -234,35 +273,19 @@ function updateCompactActivity(sessionId: string, event: SessionCompactEvent): v
 function presentSessionEvent(event: NotifiableEvent): void {
   const config = useSettingsStore.getState().eventDisplay?.[event.type];
   const notification = resolveConfiguredEventNotification(event, config);
-  if (!notification) return;
-  showToast(notification.message, {
-    variant: notification.variant,
-    duration: notification.duration,
-    accentColor: notification.accentColor,
-  });
+  if (!notification) {
+    return;
+  }
+  showToast(
+    notification.message,
+    {
+      variant: notification.variant,
+      duration: notification.duration,
+      accentColor: notification.accentColor,
+    }
+  );
 }
 
 function receiveSubagentEvent(sessionId: string, event: SubagentEvent): void {
-  const subagents = useSubagentStore.getState();
-  if (event.type === 'subagent_started') {
-    subagents.startProgress({
-      id: event.subagentId,
-      sessionId,
-      startedAtMs: event.startedAt,
-      ...(event.description !== undefined ? { description: event.description } : {}),
-      ...(event.modelId !== undefined ? { modelId: event.modelId } : {}),
-      iteration: 0,
-      toolCallCount: 0,
-    });
-    return;
-  }
-  if (
-    event.type === 'subagent_completed'
-    || event.type === 'subagent_failed'
-    || event.type === 'subagent_aborted'
-  ) {
-    subagents.finishProgress(event.subagentId);
-    return;
-  }
-  subagents.receiveMessageEvent(event);
+  useSubagentStore.getState().receiveEvent(sessionId, event);
 }

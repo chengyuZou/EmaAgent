@@ -10,10 +10,7 @@ import type {
   ToolPermissionContext,
   ToolPermissionRulesBySource,
 } from './types.js';
-import {
-  matchesWholeTool,
-  permissionRuleValueFromString,
-} from './rules/permissionRuleParser.js';
+import { matchesWholeTool, permissionRuleValueFromString } from './rules/permissionRuleParser.js';
 
 /** 中央对 Tool 的最小需求：名字 + 自我解释权。 */
 export interface PermissionCheckableTool {
@@ -26,7 +23,7 @@ export interface PermissionCheckableTool {
 }
 
 export interface HasPermissionsOptions {
-  /** 有交互通道（根 Turn 桌面宿主）时 ask 才弹卡；否则 ask 收口为 deny。 */
+  /** 有宿主交互通道时 ask 才等待批准, 根与子代理共用 Session 通道; 否则 deny. */
   readonly interactive: boolean;
 }
 
@@ -41,13 +38,14 @@ export async function hasPermissionsToUseTool(
   permissionContext: ToolPermissionContext,
   options: HasPermissionsOptions,
 ): Promise<PermissionDecision> {
-  const inner = await hasPermissionsToUseToolInner(tool, input, context, permissionContext);
+  const inner = await hasPermissionsToUseToolInner(
+    tool,
+    input,
+    context,
+    permissionContext
+  );
   if (inner.behavior === 'ask' && !options.interactive) {
-    return {
-      behavior: 'deny',
-      message: inner.message,
-      decisionReason: { type: 'headless' },
-    };
+    return { behavior: 'deny', message: inner.message, decisionReason: { type: 'headless' } };
   }
   return inner;
 }
@@ -86,19 +84,13 @@ async function hasPermissionsToUseToolInner(
 
   // 4. bypassPermissions；显式 deny 与 Tool ask 已在前面拦截。
   if (permissionContext.mode === 'bypassPermissions') {
-    return {
-      behavior: 'allow',
-      decisionReason: { type: 'mode', mode: 'bypassPermissions' },
-    };
+    return { behavior: 'allow', decisionReason: { type: 'mode', mode: 'bypassPermissions' } };
   }
 
   // 5. 整体 Tool allow 规则
   const allowRule = findWholeToolRule(permissionContext.alwaysAllowRules, tool.name, 'allow');
   if (allowRule) {
-    return {
-      behavior: 'allow',
-      decisionReason: { type: 'rule', rule: allowRule },
-    };
+    return { behavior: 'allow', decisionReason: { type: 'rule', rule: allowRule } };
   }
 
   // 6. Tool 自我放行；passthrough 收口为 ask
@@ -113,11 +105,7 @@ async function hasPermissionsToUseToolInner(
 }
 
 /** source 优先级：session > projectSettings > userSettings（更具体的范围先生效）。 */
-const SOURCE_PRECEDENCE: readonly PermissionRuleSource[] = [
-  'session',
-  'projectSettings',
-  'userSettings',
-];
+const SOURCE_PRECEDENCE: readonly PermissionRuleSource[] = ['session', 'projectSettings', 'userSettings'];
 
 function findWholeToolRule(
   rulesBySource: ToolPermissionRulesBySource,
@@ -140,16 +128,14 @@ function findWholeToolRule(
  * 只含 ruleContent（整体规则 Bash 不参与）；source 优先级 session > project > user。
  * 精确匹配（域名/路径语义串）用 findContentRule；模式匹配（Bash git *）遍历本数组。
  */
-export function listContentRules(
-  permissionContext: ToolPermissionContext,
-  toolName: string,
-  behavior: PermissionBehavior,
-): PermissionRule[] {
+export function listContentRules(permissionContext: ToolPermissionContext, toolName: string, behavior: PermissionBehavior): PermissionRule[] {
   const rules: PermissionRule[] = [];
   for (const source of SOURCE_PRECEDENCE) {
     for (const ruleString of rulesBySource(permissionContext, behavior)[source] ?? []) {
       const ruleValue = permissionRuleValueFromString(ruleString);
-      if (ruleValue.ruleContent === undefined || ruleValue.toolName !== toolName) continue;
+      if (ruleValue.ruleContent === undefined || ruleValue.toolName !== toolName) {
+        continue;
+      }
       rules.push({ source, ruleBehavior: behavior, ruleValue });
     }
   }
@@ -164,7 +150,9 @@ export function findContentRule(
   ruleContent: string,
 ): PermissionRule | undefined {
   for (const rule of listContentRules(permissionContext, toolName, behavior)) {
-    if (rule.ruleValue.ruleContent === ruleContent) return rule;
+    if (rule.ruleValue.ruleContent === ruleContent) {
+      return rule;
+    }
   }
   return undefined;
 }
@@ -180,15 +168,14 @@ export function findMatchingContentRule(
   matches: (ruleContent: string) => boolean,
 ): PermissionRule | undefined {
   for (const rule of listContentRules(permissionContext, toolName, behavior)) {
-    if (matches(rule.ruleValue.ruleContent!)) return rule;
+    if (matches(rule.ruleValue.ruleContent!)) {
+      return rule;
+    }
   }
   return undefined;
 }
 
-function rulesBySource(
-  permissionContext: ToolPermissionContext,
-  behavior: PermissionBehavior,
-): ToolPermissionRulesBySource {
+function rulesBySource(permissionContext: ToolPermissionContext, behavior: PermissionBehavior): ToolPermissionRulesBySource {
   switch (behavior) {
     case 'allow': return permissionContext.alwaysAllowRules;
     case 'deny': return permissionContext.alwaysDenyRules;

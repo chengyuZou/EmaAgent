@@ -20,7 +20,9 @@ function useSubmission(): {
     submitting,
     error,
     async run(operation) {
-      if (busy.current) return;
+      if (busy.current) {
+        return;
+      }
       busy.current = true;
       setSubmitting(true);
       setError(undefined);
@@ -39,23 +41,15 @@ function useSubmission(): {
   };
 }
 
-function Feedback({
-  submitting,
-  error,
-}: {
-  submitting: boolean;
-  error?: string;
-}): JSX.Element | null {
-  if (!submitting && !error) return null;
+function Feedback({ submitting, error }: { submitting: boolean; error?: string }): JSX.Element | null {
+  if (!submitting && !error) {
+    return null;
+  }
 
   return (
     <p
       role={error ? 'alert' : 'status'}
-      className={`mt-2 text-xs ${
-        error
-          ? 'text-[var(--ema-danger-text)]'
-          : 'text-[var(--ema-text-tertiary)]'
-      }`}
+      className={`mt-2 text-xs ${error ? 'text-[var(--ema-danger-text)]' : 'text-[var(--ema-text-tertiary)]'}`}
     >
       {error ?? '正在提交…'}
     </p>
@@ -90,19 +84,14 @@ function CollapsibleCard({
         {headerRight}
         <button
           type="button"
-          className={`i-lucide:chevron-down text-xs text-[var(--ema-text-tertiary)] transition-transform ${
-            collapsed ? '-rotate-90' : ''
-          }`}
+          className={`i-lucide:chevron-down text-xs text-[var(--ema-text-tertiary)] transition-transform ${collapsed ? '-rotate-90' : ''}`}
           aria-label={collapsed ? '展开交互' : '折叠交互'}
           onClick={onToggle}
         />
       </div>
       <div
         className="ema-collapsible"
-        style={{
-          gridTemplateRows: collapsed ? '0fr' : '1fr',
-          opacity: collapsed ? 0 : 1,
-        }}
+        style={{ gridTemplateRows: collapsed ? '0fr' : '1fr', opacity: collapsed ? 0 : 1 }}
       >
         <div>
           <div className="border-t border-[var(--ema-border)] px-3 pb-3 pt-2">
@@ -114,27 +103,18 @@ function CollapsibleCard({
   );
 }
 
-function PermissionView({
-  sessionId,
-  request,
-}: {
-  sessionId: string;
-  request: PermissionRequest;
-}): JSX.Element {
+function PermissionView({ sessionId, request }: { sessionId: string; request: PermissionRequest }): JSX.Element {
   const [collapsed, setCollapsed] = useState(false);
   const [copied, setCopied] = useState(false);
   const submission = useSubmission();
   const respond = (response: PermissionResponse): void => {
     void submission.run(() => (
-      sessionWebSocket.respondPermission(
-        sessionId,
-        request.turnId,
-        request.toolCallId,
-        response,
-      )
+      sessionWebSocket.respondPermission(sessionId, request.toolCallId, response)
     ));
   };
-  const rawInput = typeof request.input === 'string' ? request.input : JSON.stringify(request.input, null, 2);
+  const rawInput = typeof request.input === 'string'
+    ? request.input
+    : JSON.stringify(request.input, null, 2);
   return (
     <CollapsibleCard
       title={request.toolDescription ?? `即将运行 ${request.toolName}`}
@@ -146,6 +126,9 @@ function PermissionView({
         <div className="overflow-hidden rounded-md border border-[var(--ema-border)]">
           <div className="flex items-center gap-2 bg-[color-mix(in_srgb,var(--ema-primary)_7%,var(--ema-surface-1))] px-2 py-1">
             <span className="min-w-0 flex-1 truncate text-xs font-semibold text-[var(--ema-primary-text)]">{request.toolName}</span>
+            <span className="text-[11px] text-[var(--ema-text-tertiary)]" title={request.subagentId}>
+              {request.subagentId ? `子代理 · ${request.subagentId.slice(0, 8)}` : '主 Agent'}
+            </span>
             <IconButton
               label={copied ? '已复制输入' : '复制输入'}
               icon={copied ? 'i-lucide:check' : 'i-lucide:copy'}
@@ -202,24 +185,11 @@ function PermissionView({
 
 type SelectedAnswers = Record<string, string[]>;
 
-function resolvedAnswer(
-  question: AskUserQuestionSpec,
-  selected: SelectedAnswers,
-  custom: Record<string, string>,
-): string {
-  return [
-    ...(selected[question.id] ?? []),
-    custom[question.id]?.trim() ?? '',
-  ].filter(Boolean).join(', ');
+function resolvedAnswer(question: AskUserQuestionSpec, selected: SelectedAnswers, custom: Record<string, string>): string {
+  return [...(selected[question.id] ?? []), custom[question.id]?.trim() ?? ''].filter(Boolean).join(', ');
 }
 
-function AskUserView({
-  sessionId,
-  request,
-}: {
-  sessionId: string;
-  request: AskUserRequiredEvent;
-}): JSX.Element {
+function AskUserView({ sessionId, request }: { sessionId: string; request: AskUserRequiredEvent }): JSX.Element {
   const [collapsed, setCollapsed] = useState(false);
   const [step, setStep] = useState(0);
   const [selected, setSelected] = useState<SelectedAnswers>({});
@@ -229,20 +199,26 @@ function AskUserView({
   const questionAtStep = request.questions[step];
 
   useEffect(() => {
-    setStep((current) => Math.min(
-      current,
-      Math.max(0, request.questions.length - 1),
-    ));
+    setStep((current) => Math.min(current, Math.max(0, request.questions.length - 1)));
   }, [request.questions.length]);
 
-  if (!questionAtStep) return <></>;
+  if (!questionAtStep) {
+    return <></>;
+  }
   const question = questionAtStep;
+  let customIcon: string;
+  if (question.multiSelect) {
+    customIcon = customActive[question.id]
+      ? 'i-lucide:square-check-big'
+      : 'i-lucide:square';
+  } else {
+    customIcon = customActive[question.id]
+      ? 'i-lucide:circle-dot'
+      : 'i-lucide:circle';
+  }
 
   const answer = resolvedAnswer(question, selected, custom);
-  const answers = Object.fromEntries(request.questions.map((item) => [
-    item.id,
-    resolvedAnswer(item, selected, custom),
-  ]));
+  const answers = Object.fromEntries(request.questions.map((item) => [item.id, resolvedAnswer(item, selected, custom)]));
   const allAnswered = request.questions.every((item) => (
     Boolean(answers[item.id]?.trim())
   ));
@@ -250,11 +226,14 @@ function AskUserView({
   function toggleOption(label: string): void {
     setSelected((current) => {
       const values = current[question.id] ?? [];
-      const next = question.multiSelect
-        ? values.includes(label)
-          ? values.filter((value) => value !== label)
-          : [...values, label]
-        : [label];
+      let next: string[];
+      if (!question.multiSelect) {
+        next = [label];
+      } else if (values.includes(label)) {
+        next = values.filter(value => value !== label);
+      } else {
+        next = [...values, label];
+      }
       return { ...current, [question.id]: next };
     });
     if (!question.multiSelect) {
@@ -263,10 +242,7 @@ function AskUserView({
   }
 
   function toggleCustom(): void {
-    setCustomActive((current) => ({
-      ...current,
-      [question.id]: !current[question.id],
-    }));
+    setCustomActive((current) => ({ ...current, [question.id]: !current[question.id] }));
     if (!question.multiSelect) {
       setSelected((current) => ({ ...current, [question.id]: [] }));
     }
@@ -277,21 +253,24 @@ function AskUserView({
       className="flex items-center gap-2"
       aria-label={`${step + 1}/${request.questions.length} 个问题`}
     >
-      {request.questions.map((item, index) => (
-        <button
+      {request.questions.map((item, index) => {
+        let markColor: string;
+        if (index === step) {
+          markColor = 'bg-[var(--ema-text-primary)]';
+        } else if (resolvedAnswer(item, selected, custom)) {
+          markColor = 'bg-[var(--ema-primary)]';
+        } else {
+          markColor = 'bg-[var(--ema-text-tertiary)]/60';
+        }
+
+        return <button
           key={item.id}
           type="button"
-          className={`h-0.5 w-4 rounded-full transition-colors ${
-            index === step
-              ? 'bg-[var(--ema-text-primary)]'
-              : resolvedAnswer(item, selected, custom)
-                ? 'bg-[var(--ema-primary)]'
-                : 'bg-[var(--ema-text-tertiary)]/60'
-          }`}
+          className={`h-0.5 w-4 rounded-full transition-colors ${markColor}`}
           aria-label={`跳转到第 ${index + 1} 个问题`}
           onClick={() => setStep(index)}
-        />
-      ))}
+        />;
+      })}
     </div>
   );
 
@@ -313,6 +292,12 @@ function AskUserView({
         <div className="flex flex-col gap-1.5">
           {(question.options ?? []).map((option, index) => {
             const active = selected[question.id]?.includes(option.label) ?? false;
+            let icon: string;
+            if (question.multiSelect) {
+              icon = active ? 'i-lucide:square-check-big' : 'i-lucide:square';
+            } else {
+              icon = active ? 'i-lucide:circle-dot' : 'i-lucide:circle';
+            }
             return (
               <CardButton
                 key={option.label}
@@ -324,9 +309,7 @@ function AskUserView({
               >
                 <div className="flex items-start gap-2">
                   <span
-                    className={`${question.multiSelect
-                      ? active ? 'i-lucide:square-check-big' : 'i-lucide:square'
-                      : active ? 'i-lucide:circle-dot' : 'i-lucide:circle'} mt-0.5 shrink-0`}
+                    className={`${icon} mt-0.5 shrink-0`}
                     aria-hidden
                   />
                   <span>
@@ -341,16 +324,10 @@ function AskUserView({
               </CardButton>
             );
           })}
-          <CardButton
-            selected={customActive[question.id] === true}
-            padding="sm"
-            onClick={toggleCustom}
-          >
+          <CardButton selected={customActive[question.id] === true} padding="sm" onClick={toggleCustom}>
             <div className="flex items-start gap-2">
               <span
-                className={`${question.multiSelect
-                  ? customActive[question.id] ? 'i-lucide:square-check-big' : 'i-lucide:square'
-                  : customActive[question.id] ? 'i-lucide:circle-dot' : 'i-lucide:circle'} mt-0.5 shrink-0`}
+                className={`${customIcon} mt-0.5 shrink-0`}
                 aria-hidden
               />
               <span className="text-sm font-medium">输入自己的答案</span>
@@ -364,10 +341,7 @@ function AskUserView({
                 placeholder="输入你的答案…"
                 value={custom[question.id] ?? ''}
                 onClick={(event) => event.stopPropagation()}
-                onChange={(event) => setCustom((current) => ({
-                  ...current,
-                  [question.id]: event.target.value,
-                }))}
+                onChange={(event) => setCustom((current) => ({ ...current, [question.id]: event.target.value }))}
               />
             )}
           </CardButton>
@@ -378,11 +352,7 @@ function AskUserView({
             className="mr-auto px-2 py-1 text-xs font-medium text-[var(--ema-text-primary)] hover:text-[var(--ema-danger)]"
             disabled={submission.submitting}
             onClick={() => void submission.run(() => (
-              sessionWebSocket.cancelAskUser(
-                sessionId,
-                request.turnId,
-                request.toolCallId,
-              )
+              sessionWebSocket.cancelAskUser(sessionId, request.turnId, request.toolCallId)
             ))}
           >
             忽略
@@ -432,13 +402,7 @@ function AskUserView({
   );
 }
 
-function Interaction({
-  entry,
-  sessionId,
-}: {
-  entry: PendingInteraction;
-  sessionId: string;
-}): JSX.Element {
+function Interaction({ entry, sessionId }: { entry: PendingInteraction; sessionId: string }): JSX.Element {
   return entry.kind === 'permission'
     ? <PermissionView sessionId={sessionId} request={entry.request} />
     : <AskUserView sessionId={sessionId} request={entry.request} />;
@@ -452,15 +416,13 @@ export function PendingInteractionView(): JSX.Element | null {
       : undefined
   ));
 
-  if (!sessionId || !current) return null;
+  if (!sessionId || !current) {
+    return null;
+  }
 
   return (
     <div className="mb-2 w-full ema-slide-up">
-      <Interaction
-        key={current.request.toolCallId}
-        entry={current}
-        sessionId={sessionId}
-      />
+      <Interaction key={current.request.toolCallId} entry={current} sessionId={sessionId} />
     </div>
   );
 }

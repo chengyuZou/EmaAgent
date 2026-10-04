@@ -2,10 +2,7 @@
 
 import type { ToolExecutionEvent } from '../events.js';
 import type { ToolResultStore } from '../results/toolResultStore.js';
-import {
-  ToolCallExecution,
-  type ToolExecutionEnvironment,
-} from './toolCallExecution.js';
+import { ToolCallExecution, type ToolExecutionEnvironment } from './toolCallExecution.js';
 import type { ToolResult } from '../results/toolResult.js';
 
 interface TrackedTool {
@@ -22,12 +19,12 @@ interface TrackedTool {
 
 export type StreamingToolExecutorEvent = ToolExecutionEvent;
 
-export interface StreamingToolExecutorOptions extends ToolExecutionEnvironment {
+export type StreamingToolExecutorOptions = ToolExecutionEnvironment & {
   /** 写入 Agent 待发送事件队列；实现方同时负责唤醒流式排空循环。 */
   readonly pushEv: (event: StreamingToolExecutorEvent) => void;
   /** 工具完成但没有新增进度事件时，唤醒 Agent 重新检查 allDone()。 */
   readonly wake: () => void;
-}
+};
 
 /**
  * 流式工具调度器。
@@ -41,11 +38,13 @@ export class StreamingToolExecutor {
   private exclusiveBarrier: Promise<void> = Promise.resolve();
   private stoppingReason?: string;
 
-  constructor(private readonly options: StreamingToolExecutorOptions) {}
+  constructor(private readonly options: StreamingToolExecutorOptions) { }
 
   abortTool(callId: string): boolean {
     const track = this.tracked.find(candidate => candidate.execution.id === callId && !candidate.done);
-    if (!track) return false;
+    if (!track) {
+      return false;
+    }
     track.execution.abort('user_abort');
     return true;
   }
@@ -53,7 +52,9 @@ export class StreamingToolExecutor {
   abortAll(reason: string): void {
     this.stoppingReason = reason;
     for (const track of this.tracked) {
-      if (!track.done) track.execution.abort(reason);
+      if (!track.done) {
+        track.execution.abort(reason);
+      }
     }
   }
 
@@ -76,11 +77,17 @@ export class StreamingToolExecutor {
       timer.unref?.();
     });
     const completed = await Promise.race([joined, timedOut]);
-    if (timer) clearTimeout(timer);
-    if (completed) return;
+    if (timer) {
+      clearTimeout(timer);
+    }
+    if (completed) {
+      return;
+    }
 
     for (const track of this.tracked) {
-      if (track.done) continue;
+      if (track.done) {
+        continue;
+      }
       track.suppressEvents = true;
       track.execution.closeAfterShutdown();
     }
@@ -95,15 +102,24 @@ export class StreamingToolExecutor {
   }
 
   /** 调用方已保存 tool_use 后登记; 立即进入并发/独占调度. */
-  addTool(blockIndex: number, id: string, name: string, args: unknown): void {
-    if (this.stoppingReason) return;
+  addTool(
+    blockIndex: number,
+    id: string,
+    name: string,
+    args: unknown
+  ): void {
+    if (this.stoppingReason) {
+      return;
+    }
 
     let track!: TrackedTool;
     const execution = new ToolCallExecution(
       this.options,
       { callId: id, name, args },
       (event: ToolExecutionEvent) => {
-        if (!track.suppressEvents) this.options.pushEv(event);
+        if (!track.suppressEvents) {
+          this.options.pushEv(event);
+        }
       },
     );
     track = {
@@ -166,8 +182,12 @@ export class StreamingToolExecutor {
     const delivered: ToolResult[] = [];
     const ordered = [...this.tracked].sort((left, right) => left.blockIndex - right.blockIndex);
     for (const track of ordered) {
-      if (track.resultDelivered) continue;
-      if (!track.done || !track.result) break;
+      if (track.resultDelivered) {
+        continue;
+      }
+      if (!track.done || !track.result) {
+        break;
+      }
       track.resultDelivered = true;
       delivered.push(track.result);
     }
@@ -185,7 +205,9 @@ export class StreamingToolExecutor {
 
   private async execute(track: TrackedTool): Promise<void> {
     try {
-      if (this.stoppingReason) track.execution.abort(this.stoppingReason);
+      if (this.stoppingReason) {
+        track.execution.abort(this.stoppingReason);
+      }
       const completion = await track.execution.run();
       track.result = completion.result;
       track.terminalEvent = completion.terminalEvent;
@@ -222,8 +244,12 @@ export class StreamingToolExecutor {
   private flushTerminalEvents(): void {
     const ordered = [...this.tracked].sort((left, right) => left.blockIndex - right.blockIndex);
     for (const track of ordered) {
-      if (track.terminalEmitted) continue;
-      if (!track.done) break;
+      if (track.terminalEmitted) {
+        continue;
+      }
+      if (!track.done) {
+        break;
+      }
       track.terminalEmitted = true;
       if (!track.suppressEvents && track.terminalEvent) {
         this.options.pushEv(track.terminalEvent);

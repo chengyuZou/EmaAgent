@@ -48,6 +48,7 @@ export {
   BackgroundProcessError,
   createBackgroundProcessAbortError,
   ToolDefinitionError,
+  ToolExecutionError,
   ToolExecutionStateConflictError,
   ToolInputError,
   ToolRegistrationConflictError,

@@ -1,6 +1,7 @@
 // 单独展示 Subagent Tool 创建的 Subagent;前台 Tool 与后台 Subagent 只暴露各自正确的停止入口.
 
-import { memo, type JSX } from 'react';
+import { memo, useEffect, useState, type JSX } from 'react';
+import { subagentsApi, type SubagentRunItem } from '../../../api/subagents.js';
 import { useMessageExpansion } from '../messageExpansion.js';
 import { IconButton } from '@ema-agent/ui';
 import { useShallow } from 'zustand/react/shallow';
@@ -25,6 +26,7 @@ import {
 
 interface AgentState {
   readonly subagentId?: string;
+  readonly runId?: string;
   readonly running: boolean;
   readonly status: 'running' | 'completed' | 'failed' | 'cancelled' | 'unknown';
   readonly description?: string;
@@ -44,23 +46,35 @@ export const AgentGroup = memo(function AgentGroup({
   readonly sectionKey: string;
 }): JSX.Element {
   const [open, setOpen] = useMessageExpansion(sectionKey);
-  const subagentIds = useSubagentStore(useShallow(state => (
-    calls.map(call => state.invocationsBySession.get(sessionId)?.get(toolCallId(call)) ?? resultSubagentId(call))
+  const liveReferences = useSubagentStore(useShallow(state => (
+    calls.map(call => state.toolReferences.get(toolCallId(call)))
   )));
+  const references = calls.map((call, index) => resultReference(call) ?? liveReferences[index]);
   const subagentProgress = useSubagentStore(useShallow(state => (
-    subagentIds.map(id => id ? state.progressById.get(id) : undefined)
+    references.map(ref => ref ? state.progressById.get(ref.subagentId) : undefined)
   )));
   const storedSubagents = useSubagentStore(useShallow(state => (
-    subagentIds.map(id => id ? state.subagents.get(id) : undefined)
+    references.map(ref => ref ? state.subagents.get(ref.subagentId) : undefined)
   )));
-  const states = calls.map((_call, index): AgentState => {
+  const liveRuns = useSubagentStore(useShallow(state => (
+    references.map(ref => ref ? state.runsById.get(ref.runId) : undefined)
+  )));
+  const states = calls.map((call, index): AgentState => {
     const progress = subagentProgress[index];
     const record = storedSubagents[index];
+    const reference = references[index];
+    const running = progress !== undefined && progress.runId === reference?.runId;
+    let status: AgentState['status'] = liveRuns[index]?.status ?? 'unknown';
+    if (running || toolRunning(call, streaming)) {
+      status = 'running';
+    } else if (toolFailure(call)) {
+      status = 'failed';
+    }
     return {
-      ...(subagentIds[index] ? { subagentId: subagentIds[index] } : {}),
-      running: progress !== undefined,
-      status: progress ? 'running' : record?.status ?? 'unknown',
-      description: record?.description ?? progress?.description,
+      ...reference,
+      running,
+      status,
+      description: record?.title ?? undefined,
     };
   });
   const running = states.filter(state => state.running).length;
@@ -133,6 +147,23 @@ function AgentRow({
   const openTab = useSessionPanelStore(state => state.openTab);
   const toolCallIdValue = toolCallId(call);
   const subagentId = state.subagentId;
+  const runId = state.runId;
+  const liveRun = useSubagentStore(value => runId ? value.runsById.get(runId) : undefined);
+  const [run, setRun] = useState<SubagentRunItem | null>(null);
+  useEffect(() => {
+    if (!subagentId || !runId) {
+      return;
+    }
+    const controller = new AbortController();
+    setRun(null);
+    void subagentsApi.getRun(subagentId, runId, controller.signal).then(value => {
+      if (!controller.signal.aborted) {
+        setRun(value);
+      }
+    }).catch(() => { });
+    return () => controller.abort();
+  }, [subagentId, runId]);
+  const runStatus = liveRun?.status ?? run?.status;
   const args = toolArgs(call);
   const output = toolOutput(call);
   const renderedOutput = output ?? toolFallbackContent(call);
@@ -145,13 +176,16 @@ function AgentRow({
   const toolStillRunning = toolRunning(call, streaming);
   const cancelTarget = agentCancelTarget(call, streaming, state.running);
   const failure = toolFailure(call);
-  const status = toolStillRunning || state.running
-    ? '运行中'
-    : failure || state.status === 'failed'
-      ? '失败'
-      : state.status === 'cancelled'
-        ? '已停止'
-        : '已完成';
+  let status = '读取中';
+  if (toolStillRunning || state.running) {
+    status = '运行中';
+  } else if (failure || runStatus === 'failed') {
+    status = '失败';
+  } else if (runStatus === 'cancelled') {
+    status = '已停止';
+  } else if (runStatus === 'completed') {
+    status = '已完成';
+  }
 
   const failureText = failure ? `[${failure.code}] ${failure.message}` : '';
   const hasDetails = args !== undefined || renderedOutput !== undefined || failure !== null;
@@ -233,18 +267,22 @@ function AgentRow({
   );
 }
 
-function resultSubagentId(call: ToolDisplayCall): string | undefined {
+function resultReference(call: ToolDisplayCall): { subagentId: string; runId: string } | undefined {
   const output = toolOutput(call);
-  if (typeof output !== 'object' || output === null || !('subagentId' in output)) return undefined;
-  return typeof output.subagentId === 'string' ? output.subagentId : undefined;
+  if (typeof output !== 'object' || output === null || !('subagentId' in output)
+    || !('runId' in output)) {
+    return undefined;
+  }
+  if (typeof output.subagentId !== 'string' || typeof output.runId !== 'string') {
+    return undefined;
+  }
+  return { subagentId: output.subagentId, runId: output.runId };
 }
 
 /** 前台 Tool 仍在执行时取消 Tool；转入后台后用独立的 SubagentId 取消子代理. */
-export function agentCancelTarget(
-  call: ToolDisplayCall,
-  streaming: boolean,
-  subagentRunning: boolean,
-): 'tool' | 'subagent' | null {
-  if (toolRunning(call, streaming)) return 'tool';
+export function agentCancelTarget(call: ToolDisplayCall, streaming: boolean, subagentRunning: boolean): 'tool' | 'subagent' | null {
+  if (toolRunning(call, streaming)) {
+    return 'tool';
+  }
   return subagentRunning ? 'subagent' : null;
 }

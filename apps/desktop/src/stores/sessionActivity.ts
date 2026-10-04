@@ -1,10 +1,8 @@
 import { create } from 'zustand';
 import type { SessionRunning } from '@ema-agent/session';
-import type {
-  PendingInteraction,
-  QueuedSessionInput,
-  TurnStreamEvent,
-} from '@ema-agent/turn';
+import type { PermissionStreamEvent } from '@ema-agent/permission';
+import type { AskUserRequiredEvent, ToolExecutionEvent } from '@ema-agent/tools';
+import type { PendingInteraction, QueuedSessionInput } from '@ema-agent/turn';
 import type { SessionConnectionState } from '../api/sessionWebSocket.js';
 
 export interface SessionActivity {
@@ -41,11 +39,18 @@ interface SessionActivityStore {
   /** session_running_changed 到达时原样保存 Server 的 Turn/Compact 占用身份. */
   setRunning(sessionId: string, running: SessionRunning | null): void;
   /** 两种启动方式的 compact_started 最终都写入这一份会话级展示状态. */
-  startCompact(sessionId: string, compactId: string, startedAt: number): void;
+  startCompact(
+    sessionId: string,
+    compactId: string,
+    startedAt: number
+  ): void;
   /** 仅结束对应 ID 的压缩, 不让迟到的终态清除下一次压缩. */
   finishCompact(sessionId: string, compactId: string): void;
-  /** 流式 required/resolved 事件按 toolCallId 增删交互, 保持创建时间顺序. */
-  applyInteractionEvent(sessionId: string, event: TurnStreamEvent): void;
+  /** Session required/resolved 按 toolCallId 增删, 保持 Server 交付的 FIFO 顺序. */
+  applyInteractionEvent(
+    sessionId: string,
+    event: PermissionStreamEvent | AskUserRequiredEvent | Extract<ToolExecutionEvent, { type: 'ask_user_resolved' }>
+  ): void;
   /** queued_input_added 到达时按 ID 替换并按创建时间排列, 防止重连事件显示两次. */
   addQueuedInput(sessionId: string, item: QueuedSessionInput): void;
   /** queued_input_removed 到达时删除队列气泡; guide 后的消息由 Turn Store 接管显示. */
@@ -70,20 +75,15 @@ function updateSession(
 ): SessionActivityStore | { bySession: ReadonlyMap<string, SessionActivity> } {
   const current = state.bySession.get(sessionId) ?? EMPTY_SESSION_ACTIVITY;
   const updated = update(current);
-  if (updated === current) return state;
+  if (updated === current) {
+    return state;
+  }
   const bySession = new Map(state.bySession);
   bySession.set(sessionId, updated);
   return { bySession };
 }
 
-function sortPending(items: readonly PendingInteraction[]): PendingInteraction[] {
-  return [...items].sort((left, right) => left.createdAt - right.createdAt);
-}
-
-function removePending(
-  items: readonly PendingInteraction[],
-  toolCallId: string,
-): PendingInteraction[] {
+function removePending(items: readonly PendingInteraction[], toolCallId: string): PendingInteraction[] {
   return items.filter(item => item.request.toolCallId !== toolCallId);
 }
 
@@ -93,22 +93,37 @@ export const useSessionActivityStore = create<SessionActivityStore>(set => ({
 
   // 连接与运行身份都来自 Session WebSocket, 断线时不把未知 running 强行改成 null.
   setConnection(sessionId, connection) {
-    set(state => updateSession(state, sessionId, current => (
-      current.connection === connection ? current : { ...current, connection }
-    )));
+    set(state => updateSession(
+      state,
+      sessionId,
+      current => (
+        current.connection === connection
+          ? current
+          : { ...current, connection }
+      )
+    ));
   },
 
-  replaceSessionState(sessionId, running, pendingInteractions, queuedInputs) {
-    set(state => updateSession(state, sessionId, current => ({
-      ...current,
-      running,
-      activeCompact: running?.kind === 'compact'
-        ? { compactId: running.compactId, startedAt: null }
-        : null,
-      pendingInteractions: sortPending(pendingInteractions),
-      queuedInputs: [...queuedInputs]
-        .sort((left, right) => left.createdAt - right.createdAt),
-    })));
+  replaceSessionState(
+    sessionId,
+    running,
+    pendingInteractions,
+    queuedInputs
+  ) {
+    set(state => updateSession(
+      state,
+      sessionId,
+      current => ({
+        ...current,
+        running,
+        activeCompact: running?.kind === 'compact'
+          ? { compactId: running.compactId, startedAt: null }
+          : null,
+        pendingInteractions: [...pendingInteractions],
+        queuedInputs: [...queuedInputs]
+          .sort((left, right) => left.createdAt - right.createdAt),
+      })
+    ));
   },
 
   setRunning(sessionId, running) {
@@ -119,26 +134,36 @@ export const useSessionActivityStore = create<SessionActivityStore>(set => ({
           ? current.activeCompact
           : { compactId: running.compactId, startedAt: null };
       }
-      if (current.running === running && current.activeCompact === activeCompact) return current;
+      if (current.running === running && current.activeCompact === activeCompact) {
+        return current;
+      }
       return { ...current, running, activeCompact };
     }));
   },
 
   startCompact(sessionId, compactId, startedAt) {
-    set(state => updateSession(state, sessionId, current => (
-      current.activeCompact?.compactId === compactId
-      && current.activeCompact.startedAt === startedAt
-        ? current
-        : { ...current, activeCompact: { compactId, startedAt } }
-    )));
+    set(state => updateSession(
+      state,
+      sessionId,
+      current => (
+        current.activeCompact?.compactId === compactId
+          && current.activeCompact.startedAt === startedAt
+          ? current
+          : { ...current, activeCompact: { compactId, startedAt } }
+      )
+    ));
   },
 
   finishCompact(sessionId, compactId) {
-    set(state => updateSession(state, sessionId, current => (
-      current.activeCompact?.compactId === compactId
-        ? { ...current, activeCompact: null }
-        : current
-    )));
+    set(state => updateSession(
+      state,
+      sessionId,
+      current => (
+        current.activeCompact?.compactId === compactId
+          ? { ...current, activeCompact: null }
+          : current
+      )
+    ));
   },
 
   applyInteractionEvent(sessionId, event) {
@@ -147,13 +172,15 @@ export const useSessionActivityStore = create<SessionActivityStore>(set => ({
       && event.type !== 'permission_resolved'
       && event.type !== 'ask_user_required'
       && event.type !== 'ask_user_resolved'
-    ) return;
+    ) {
+      return;
+    }
     set(state => updateSession(state, sessionId, current => {
       if (event.type === 'permission_required') {
         const { type: _type, ...request } = event;
         return {
           ...current,
-          pendingInteractions: sortPending([
+          pendingInteractions: [
             ...removePending(current.pendingInteractions, event.toolCallId),
             {
               kind: 'permission',
@@ -161,56 +188,57 @@ export const useSessionActivityStore = create<SessionActivityStore>(set => ({
               createdAt: Date.now(),
               request,
             },
-          ]),
+          ],
         };
       }
       if (event.type === 'ask_user_required') {
         return {
           ...current,
-          pendingInteractions: sortPending([
+          pendingInteractions: [
             ...removePending(current.pendingInteractions, event.toolCallId),
             { kind: 'askUser', createdAt: Date.now(), request: event },
-          ]),
+          ],
         };
       }
       if (event.type === 'permission_resolved' || event.type === 'ask_user_resolved') {
         if (!current.pendingInteractions.some(item => item.request.toolCallId === event.toolCallId)) {
           return current;
         }
-        return {
-          ...current,
-          pendingInteractions: removePending(
-            current.pendingInteractions,
-            event.toolCallId,
-          ),
-        };
+        return { ...current, pendingInteractions: removePending(current.pendingInteractions, event.toolCallId) };
       }
       return current;
     }));
   },
 
   addQueuedInput(sessionId, item) {
-    set(state => updateSession(state, sessionId, current => ({
-      ...current,
-      queuedInputs: [
-        ...current.queuedInputs.filter(candidate => candidate.id !== item.id),
-        item,
-      ].sort((left, right) => left.createdAt - right.createdAt),
-    })));
+    set(state => updateSession(
+      state,
+      sessionId,
+      current => ({
+        ...current,
+        queuedInputs: [...current.queuedInputs.filter(candidate => candidate.id !== item.id), item].sort((left, right) => left.createdAt - right.createdAt),
+      })
+    ));
   },
 
   removeQueuedInput(sessionId, id) {
-    set(state => updateSession(state, sessionId, current => (
-      current.queuedInputs.some(item => item.id === id)
-        ? { ...current, queuedInputs: current.queuedInputs.filter(item => item.id !== id) }
-        : current
-    )));
+    set(state => updateSession(
+      state,
+      sessionId,
+      current => (
+        current.queuedInputs.some(item => item.id === id)
+          ? { ...current, queuedInputs: current.queuedInputs.filter(item => item.id !== id) }
+          : current
+      )
+    ));
   },
 
   // 普通断开只更新 connection; Session 归档或删除才清掉整份活动视图.
   evictSession(sessionId) {
     set(state => {
-      if (!state.bySession.has(sessionId)) return state;
+      if (!state.bySession.has(sessionId)) {
+        return state;
+      }
       const bySession = new Map(state.bySession);
       bySession.delete(sessionId);
       return { bySession };

@@ -3,11 +3,7 @@ import type { CommandRunner } from '@ema-agent/sandbox';
 import type { TaskStore } from '@ema-agent/tasks';
 import type { GoalStore } from '@ema-agent/goal';
 import type { KnowledgeSearch } from '@ema-agent/knowledge';
-import type {
-  ListMemory,
-  ReadMemory,
-  SearchMemory,
-} from '@ema-agent/memory';
+import type { ListMemory, ReadMemory, SearchMemory } from '@ema-agent/memory';
 import type { NarrativeSearch } from '@ema-agent/narrative';
 import type { SkillPool } from '@ema-agent/skills';
 import type { CallVision } from '@ema-agent/vision';
@@ -35,11 +31,9 @@ export interface SubagentSpawnOptions {
 
 export interface SubagentResult {
   subagentId: string;
+  runId: string;
   output: string;
-  usage: {
-    inputTokens: number;
-    outputTokens: number;
-  };
+  usage: { inputTokens: number; outputTokens: number };
 }
 
 /**
@@ -56,7 +50,7 @@ export interface SubagentControl {
     toolCallId: string,
     runInBackground: boolean,
     signal: AbortSignal,
-  ): string;
+  ): { readonly subagentId: string; readonly runId: string };
   /** 默认 Subagent Tool 等待自己刚启动的运行。 */
   waitForInitialResult(subagentId: string, signal: AbortSignal): Promise<SubagentResult | null>;
   /** 超过前台等待期限后，把同一执行转交 Session 续接. 状态不允许转交时抛错. */

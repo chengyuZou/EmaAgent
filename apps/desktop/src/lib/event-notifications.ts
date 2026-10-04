@@ -3,20 +3,23 @@
 import type { AppEvent } from '@ema-agent/server/application/appEvents.js';
 import type { SessionBusinessMessage } from '@ema-agent/server/routes/ws/session.js';
 import type { TurnStreamEvent } from '@ema-agent/turn';
+import type { PermissionStreamEvent } from '@ema-agent/permission';
+import type { ToolExecutionEvent } from '@ema-agent/tools';
 import type { EventDisplayTable } from '../api/settings.js';
 import type { ToastOptions } from './toast.js';
 
 export type SessionCompactEvent = Extract<SessionBusinessMessage, {
   type:
-    | 'compact_started'
-    | 'compact_history_truncated'
-    | 'compact_cancelled'
-    | 'compact_completed'
-    | 'compact_failed';
+  | 'compact_started'
+  | 'compact_history_truncated'
+  | 'compact_cancelled'
+  | 'compact_completed'
+  | 'compact_failed';
 }>;
 
 /** 通知层可见的全部线上事件：Turn 流、Session 手动压缩与应用级广播。 */
-export type NotifiableEvent = TurnStreamEvent | SessionCompactEvent | AppEvent;
+export type NotifiableEvent = TurnStreamEvent | SessionCompactEvent | AppEvent | PermissionStreamEvent
+  | Extract<ToolExecutionEvent, { type: 'ask_user_required' | 'ask_user_resolved' }>;
 
 export interface EventNotification {
   message: string;
@@ -48,18 +51,19 @@ export function describeEventNotification(event: NotifiableEvent): EventNotifica
     case 'narrative_recall_started':
       return { message: '正在检索剧情资料', variant: 'info' };
     case 'narrative_recall_completed':
-      return event.timelineOrder.length === 0
-        ? { message: '未找到相关剧情资料', variant: 'info' }
-        : {
-            message: `剧情检索完成：${event.timelines.length}/${event.timelineOrder.length} 条时间线可用`,
-            variant: event.failures.length > 0 ? 'warning' : 'success',
-          };
+      return event.timelineOrder.length === 0 ? { message: '未找到相关剧情资料', variant: 'info' } : {
+        message: `剧情检索完成：${event.timelines.length}/${event.timelineOrder.length} 条时间线可用`,
+        variant: event.failures.length > 0 ? 'warning' : 'success',
+      };
     case 'narrative_recall_failed':
       return { message: `剧情检索失败：${event.message}`, variant: 'warning' };
     case 'compact_started':
       return { message: '正在压缩上下文…', variant: 'info' };
     case 'compact_completed':
-      return { message: `上下文压缩完成，节省 ${event.savedTokens.toLocaleString()} tokens`, variant: 'success' };
+      return {
+        message: `上下文压缩完成，节省 ${event.savedTokens.toLocaleString()} tokens`,
+        variant: 'success'
+      };
     case 'compact_failed':
       return { message: `上下文压缩失败：${event.error}`, variant: 'danger' };
     case 'kb_ingest_completed':
@@ -92,20 +96,28 @@ export function describeEventNotification(event: NotifiableEvent): EventNotifica
       return { message: `已切换角色：${event.displayName ?? event.characterName}`, variant: 'success' };
     case 'agent_iteration':
       return { message: `Agent 正在执行第 ${event.n} 轮`, variant: 'info' };
-    case 'system_warning':
-      return { message: event.message, variant: event.level === 'error' ? 'danger' : event.level === 'warn' ? 'warning' : 'info' };
+    case 'system_warning': {
+      let variant: EventNotification['variant'] = 'info';
+      if (event.level === 'error') {
+        variant = 'danger';
+      } else if (event.level === 'warn') {
+        variant = 'warning';
+      }
+      return { message: event.message, variant };
+    }
     default:
       return null;
   }
 }
 
-export function resolveConfiguredEventNotification(
-  event: NotifiableEvent,
-  config: EventDisplayTable[string] | undefined,
-): ConfiguredEventNotification | null {
-  if (!config?.enabled) return null;
+export function resolveConfiguredEventNotification(event: NotifiableEvent, config: EventDisplayTable[string] | undefined): ConfiguredEventNotification | null {
+  if (!config?.enabled) {
+    return null;
+  }
   const presentation = describeEventNotification(event);
-  if (!presentation) return null;
+  if (!presentation) {
+    return null;
+  }
 
   const limit = config.truncateChars;
   const message = limit && presentation.message.length > limit

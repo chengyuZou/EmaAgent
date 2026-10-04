@@ -10,16 +10,27 @@ export interface SubagentListRouteDeps {
 
 const listQuery = z.object({
   sessionId: z.string().min(1),
-});
+  beforeUpdatedAt: z.coerce.number().int().optional(),
+  beforeId: z.string().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+}).refine(
+  value => (value.beforeUpdatedAt === undefined) === (value.beforeId === undefined),
+  { message: 'beforeUpdatedAt and beforeId must be provided together' }
+);
 
 export const subagentListRoute = (deps: SubagentListRouteDeps) =>
   new Hono()
     .get('/', queryValidator(listQuery), context => {
-      const { sessionId } = context.req.valid('query');
-      return context.json(deps.subagents.listForSession(sessionId));
+      const { sessionId, beforeUpdatedAt, beforeId, limit } = context.req.valid('query');
+      const cursor = beforeUpdatedAt !== undefined && beforeId !== undefined
+        ? { updatedAt: beforeUpdatedAt, id: beforeId }
+        : undefined;
+      return context.json(deps.subagents.listForSession(sessionId, cursor, limit));
     })
     .get('/:subagentId', context => {
       const subagent = deps.subagents.get(context.req.param('subagentId'));
-      if (!subagent) return context.json({ error: 'subagent_not_found' }, 404);
+      if (!subagent) {
+        return context.json({ error: 'subagent_not_found' }, 404);
+      }
       return context.json(subagent);
     });

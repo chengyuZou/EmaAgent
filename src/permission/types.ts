@@ -34,17 +34,17 @@ export type PermissionUpdateDestination = PermissionRuleSource;
  */
 export type PermissionUpdate =
   | {
-      readonly type: 'addRules';
-      readonly destination: PermissionUpdateDestination;
-      readonly rules: readonly PermissionRuleValue[];
-      readonly behavior: PermissionBehavior;
-    }
+    readonly type: 'addRules';
+    readonly destination: PermissionUpdateDestination;
+    readonly rules: readonly PermissionRuleValue[];
+    readonly behavior: PermissionBehavior;
+  }
   | {
-      readonly type: 'removeRules';
-      readonly destination: PermissionUpdateDestination;
-      readonly rules: readonly PermissionRuleValue[];
-      readonly behavior: PermissionBehavior;
-    };
+    readonly type: 'removeRules';
+    readonly destination: PermissionUpdateDestination;
+    readonly rules: readonly PermissionRuleValue[];
+    readonly behavior: PermissionBehavior;
+  };
 
 // ── 决策 ─────────────────────────────────────────────────────────────────────
 
@@ -55,7 +55,7 @@ export type PermissionDecisionReason =
   /** Tool 自检拦截（敏感路径/危险输入）；先于 bypass 生效。 */
   | { readonly type: 'safetyCheck'; readonly reason: string }
   | { readonly type: 'user'; readonly action: PermissionResponse['action'] }
-  /** 无交互通道（headless/子 Agent）时 ask 被收口为 deny。 */
+  /** 没有宿主交互通道时, ask 被收口为 deny. 子代理可使用所属 Session 的通道. */
   | { readonly type: 'headless' }
   | { readonly type: 'other'; readonly reason: string };
 
@@ -95,10 +95,10 @@ export type PermissionDecision =
 export type PermissionResult =
   | PermissionDecision
   | {
-      readonly behavior: 'passthrough';
-      readonly message: string;
-      readonly decisionReason?: PermissionDecisionReason;
-    };
+    readonly behavior: 'passthrough';
+    readonly message: string;
+    readonly decisionReason?: PermissionDecisionReason;
+  };
 
 // ── 上下文 ────────────────────────────────────────────────────────────────────
 
@@ -124,8 +124,8 @@ export interface ToolPermissionContext {
 }
 
 
-/** 批准卡唯一需要理解的投影：哪个 Tool、拿什么输入、为什么是 ask、定位三身份。 */
-export interface PermissionRequest {
+/** 批准请求: Session 负责排队, toolCallId 定位调用, Turn 或子代理 Run 负责收尾. */
+export type PermissionRequest = {
   readonly toolName: string;
   readonly toolDescription?: string;
   readonly input: unknown;
@@ -133,9 +133,18 @@ export interface PermissionRequest {
   /** ask 决策自带的规则建议；用户选 allowSession 时沉淀为 session allow 规则。 */
   readonly ruleSuggestion?: PermissionRuleValue;
   readonly sessionId: string;
+  /** 根请求是当前 Turn; 子代理请求是发起本次 Run 的父 Turn, 不代表清理归属. */
   readonly turnId: string;
   readonly toolCallId: string;
-}
+} & (
+    | { readonly subagentId?: never; readonly runId?: never }
+    | {
+      /** 稳定的子代理身份, 用于批准卡标明来源. */
+      readonly subagentId: string;
+      /** 发起工具调用的本次执行, 用于 Run 收尾清理. 与 subagentId 一起提供. */
+      readonly runId: string;
+    }
+  );
 
 /** 待批准快照；Promise、计时器不进入事件协议。 */
 export interface PendingPermissionRequest {

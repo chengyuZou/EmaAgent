@@ -3,7 +3,7 @@
 import { randomUUID } from 'node:crypto';
 import type { ReasoningEffort } from '@ema-agent/session';
 import type { PermissionModeRow } from '@ema-agent/storage';
-import type { SubagentResult, SubagentSpawnOptions } from '@ema-agent/tools';
+import { ToolExecutionError, type SubagentResult, type SubagentSpawnOptions, type ToolExecutionEvent } from '@ema-agent/tools';
 import { runAgentLoop } from './agentLoop.js';
 import type { AgentLoopEvent, SubagentEvent } from './events.js';
 import type { SubagentMessagesStore } from './subagents/subagentMessagesStore.js';
@@ -69,22 +69,49 @@ export interface SubagentExecutorDeps {
     status: 'completed' | 'failed' | 'cancelled',
   ) => void;
   readonly onTerminalResultRead: (sessionId: string, subagentId: string) => void;
+  /**
+   * 本次 Run 完成、失败或取消后的针对该RunId的permission收尾通知.
+   * 宿主用 runId 清理这次执行尚未解决的批准请求.
+   * 不按父 Turn 清理, 不影响同一子代理后续的 Run; 执行异常退出也会通知.
+   */
+  readonly onRunFinished: (runId: string) => void;
 }
 
 export class SubagentExecutor {
   private readonly active = new Map<string, ActiveSubagent>();
   private stoppingReason: string | undefined;
 
-  constructor(private readonly deps: SubagentExecutorDeps) {}
+  constructor(private readonly deps: SubagentExecutorDeps) { }
 
-  start(input: StartSubagent): string {
+  /** 工具执行器的进度属于这个 Run, 不能借已经结束的父 Turn 输出. */
+  publishToolProgress(
+    sessionId: string,
+    subagentId: string,
+    runId: string,
+    event: Extract<ToolExecutionEvent, { type: 'tool_progress' }>
+  ): void {
+    this.deps.publish(
+      sessionId,
+      {
+        type: 'tool_progress',
+        subagentId,
+        runId,
+        toolCallId: event.callId,
+        progress: event.progress
+      }
+    );
+  }
+
+  start(input: StartSubagent): { readonly subagentId: string; readonly runId: string } {
     const isNew = input.options.subagentId === undefined;
     const subagentId = input.options.subagentId ?? randomUUID();
     const previous = isNew ? undefined : this.deps.store.get(subagentId);
     if (!isNew && (!previous || previous.sessionId !== input.sessionId)) {
       throw new Error(`当前 Session 中不存在 Subagent ${subagentId}`);
     }
-    if (this.stoppingReason) throw new Error(this.stoppingReason);
+    if (this.stoppingReason) {
+      throw new Error(this.stoppingReason);
+    }
     if (this.active.size >= this.deps.maxConcurrent()) {
       throw new Error('子 Agent 已达到全进程并发上限');
     }
@@ -111,8 +138,16 @@ export class SubagentExecutor {
     const controller = new AbortController();
     // 显式后台从出生起就属于 Session, 因此不能接父 Turn 的取消信号.
     // 默认路径先跟随父 Turn, 只有超过前台等待期限才解除这条关系.
-    if (!input.runInBackground && input.parentSignal.aborted) controller.abort(input.parentSignal.reason);
-    const completion = this.execute({ ...input, options }, subagentId, runId, isNew, controller);
+    if (!input.runInBackground && input.parentSignal.aborted) {
+      controller.abort(input.parentSignal.reason);
+    }
+    const completion = this.execute(
+      { ...input, options },
+      subagentId,
+      runId,
+      isNew,
+      controller
+    );
     const active: ActiveSubagent = {
       runId,
       sessionId: input.sessionId,
@@ -129,8 +164,11 @@ export class SubagentExecutor {
     }
     this.active.set(subagentId, active);
     void completion.finally(() => {
+      this.deps.onRunFinished(runId);
       active.detachParentAbort?.();
-      if (this.active.get(subagentId) === active) this.active.delete(subagentId);
+      if (this.active.get(subagentId) === active) {
+        this.active.delete(subagentId);
+      }
       // execute 先把终态事实写入 SQL, completion 才会兑现. 只有结果仍归 Session 时发送轻量通知;
       // 原 Tool 或 SubagentAwait 会通过自己的 ToolResult 交付结果.
       if (active.owner === 'session_notification') {
@@ -140,12 +178,14 @@ export class SubagentExecutor {
         }
       }
     }).catch(() => undefined);
-    return subagentId;
+    return { subagentId, runId };
   }
 
   async waitForInitialResult(subagentId: string, sessionId: string, signal: AbortSignal): Promise<SubagentResult | null> {
     const active = this.ownedActive(subagentId, sessionId);
-    if (!active || active.owner !== 'subagent_call') return null;
+    if (!active || active.owner !== 'subagent_call') {
+      return null;
+    }
     return waitWithoutCancelling(active.completion, signal);
   }
 
@@ -168,10 +208,19 @@ export class SubagentExecutor {
   async awaitResult(subagentId: string, sessionId: string, signal: AbortSignal): Promise<SubagentResult | null> {
     const active = this.ownedActive(subagentId, sessionId);
     if (active) {
-      if (active.owner !== 'session_notification') return null;
+      if (active.owner !== 'session_notification') {
+        return null;
+      }
       active.owner = 'subagent_await';
       try {
         return await waitWithoutCancelling(active.completion, signal);
+      } catch (error) {
+        const run = this.deps.store.getRun(active.runId);
+        throw new ToolExecutionError(
+          { subagentId, runId: active.runId },
+          error instanceof Error ? error.message : String(error),
+          run?.status === 'cancelled' ? 'tool/cancelled' : 'tool/error'
+        );
       } finally {
         // 用户停止的是这次等待, 不是后台 Subagent. 
         // 若执行仍活着, 把结果归还 Session 续接, 让它在后续安全点正常交付.
@@ -182,27 +231,35 @@ export class SubagentExecutor {
     }
 
     const identity = this.deps.store.get(subagentId);
-    if (!identity || identity.sessionId !== sessionId) return null;
+    if (!identity || identity.sessionId !== sessionId) {
+      return null;
+    }
     const stored = this.deps.store.latestRun(subagentId);
-    if (!stored || stored.status === 'running') return null;
+    if (!stored || stored.status === 'running') {
+      return null;
+    }
     // 终态结果按 id 可重复读取. 断电后不自动创建 Turn, 由模型根据历史中的 id 主动查询.
     this.deps.onTerminalResultRead(sessionId, subagentId);
     if (stored.status !== 'completed') {
-      throw new Error(stored.error ?? `Subagent ${subagentId} ended with status ${stored.status}`);
+      throw new ToolExecutionError(
+        { subagentId, runId: stored.id },
+        stored.error ?? `Subagent ${subagentId} ended with status ${stored.status}`,
+        stored.status === 'cancelled' ? 'tool/cancelled' : 'tool/error'
+      );
     }
     return {
       subagentId,
+      runId: stored.id,
       output: stored.finalText ?? '',
-      usage: {
-        inputTokens: stored.inputTokens ?? 0,
-        outputTokens: stored.outputTokens ?? 0,
-      },
+      usage: { inputTokens: stored.inputTokens ?? 0, outputTokens: stored.outputTokens ?? 0 },
     };
   }
 
   cancel(subagentId: string, sessionId?: string): boolean {
     const active = this.active.get(subagentId);
-    if (!active || (sessionId !== undefined && active.sessionId !== sessionId)) return false;
+    if (!active || (sessionId !== undefined && active.sessionId !== sessionId)) {
+      return false;
+    }
     active.controller.abort(new Error('Sub-agent aborted by user'));
     return true;
   }
@@ -222,7 +279,9 @@ export class SubagentExecutor {
   async abortForSession(sessionId: string): Promise<void> {
     const completions: Promise<SubagentResult>[] = [];
     for (const active of this.active.values()) {
-      if (active.sessionId !== sessionId) continue;
+      if (active.sessionId !== sessionId) {
+        continue;
+      }
       active.controller.abort(new Error('Session deleted'));
       completions.push(active.completion);
     }
@@ -232,7 +291,9 @@ export class SubagentExecutor {
   async abortForTurn(turnId: string): Promise<void> {
     const completions: Promise<SubagentResult>[] = [];
     for (const active of this.active.values()) {
-      if (active.parentTurnId !== turnId) continue;
+      if (active.parentTurnId !== turnId) {
+        continue;
+      }
       active.controller.abort(new Error('Parent Turn removed'));
       completions.push(active.completion);
     }
@@ -261,18 +322,25 @@ export class SubagentExecutor {
   }
 
   private async execute(
-    input: StartSubagent, subagentId: string, runId: string, isNew: boolean, controller: AbortController,
+    input: StartSubagent,
+    subagentId: string,
+    runId: string,
+    isNew: boolean,
+    controller: AbortController,
   ): Promise<SubagentResult> {
     const startedAt = Date.now();
-    const contextMode = input.options.contextMode ?? 'subagent';
-    const modelId = input.options.modelId;
     let toolCallCount = 0;
     const toolNames = new Map<string, string>();
-    this.deps.publish(input.sessionId, {
-      type: 'subagent_started', subagentId, contextMode, startedAt,
-      ...(modelId ? { modelId } : {}),
-      ...(input.options.description ? { description: input.options.description } : {}),
-    });
+    this.deps.publish(
+      input.sessionId,
+      {
+        type: 'subagent_started',
+        subagentId,
+        runId,
+        startedAt,
+        parentToolCallId: input.toolCallId,
+      }
+    );
 
     let terminal: Extract<AgentLoopEvent, { type: 'loop_stopped' }> | undefined;
     try {
@@ -283,15 +351,34 @@ export class SubagentExecutor {
       // 等 model_history_appended 时按追加顺序移入 messageIds, 不参与任务或通知调度.
       const pendingMessageIds: (string | undefined)[] = [];
       const loopInput = await input.prepareSubagent({
-        subagentId, runId, isNew, messageStore: this.deps.messageStore, messageIds,
-        prompt: input.prompt, options: input.options, signal: controller.signal,
+        subagentId,
+        runId,
+        isNew,
+        messageStore: this.deps.messageStore,
+        messageIds,
+        prompt: input.prompt,
+        options: input.options,
+        signal: controller.signal,
       });
       controller.signal.throwIfAborted();
-      this.deps.store.setConfiguration(runId, {
-        ...loopInput.generationSource,
-        permissionMode: input.permissionMode,
-        reasoningEffort: input.reasoningEffort,
-      });
+      this.deps.store.setConfiguration(
+        runId,
+        {
+          ...loopInput.generationSource,
+          permissionMode: input.permissionMode,
+          reasoningEffort: input.reasoningEffort,
+        }
+      );
+      // prepare 已保存本次任务. 即使面板在准备完成前打开, 也能补上这条真实 User Message.
+      const task = this.deps.messageStore.listPage(subagentId, undefined, 1).items[0];
+      if (task) {
+        this.publishMessage(
+          input.sessionId,
+          subagentId,
+          runId,
+          task.id
+        );
+      }
       for await (const event of runAgentLoop(loopInput)) {
         if (event.type === 'tool_use_completed') {
           toolCallCount += 1;
@@ -304,111 +391,154 @@ export class SubagentExecutor {
           pendingMessageIds.push(messageId);
         }
         if (event.type === 'model_history_appended') {
-          for (const _message of event.messages) messageIds.push(pendingMessageIds.shift());
+          for (const _message of event.messages) {
+            messageIds.push(pendingMessageIds.shift());
+          }
         }
-        publishLoopEvent(this.deps.publish, input.sessionId, subagentId, event, toolNames);
-        if (event.type === 'llm_call_finished') input.onLlmCallFinished?.(event);
-        if (event.type === 'loop_stopped') terminal = event;
+        if (messageId) {
+          this.publishMessage(
+            input.sessionId,
+            subagentId,
+            runId,
+            messageId,
+            event.type === 'text_delta' || event.type === 'thinking_delta'
+            || event.type === 'thinking_completed'
+            || event.type === 'tool_use_completed'
+          );
+        }
+        if (event.type === 'tool_result') {
+          this.deps.publish(
+            input.sessionId,
+            {
+              type: 'tool_result',
+              subagentId,
+              runId,
+              toolName: toolNames.get(event.result.toolCallId)!,
+              result: event.result
+            }
+          );
+          toolNames.delete(event.result.toolCallId);
+        }
+        if (event.type === 'iteration_started') {
+          this.deps.publish(
+            input.sessionId,
+            {
+              type: 'iteration_started',
+              subagentId,
+              runId,
+              iteration: event.iteration,
+              continuesOutput: event.continuesOutput,
+              run: this.deps.store.getRun(runId)!
+            }
+          );
+        }
+        if (event.type === 'llm_call_finished') {
+          input.onLlmCallFinished?.(event);
+        }
+        if (event.type === 'loop_stopped') {
+          terminal = event;
+        }
       }
-      if (controller.signal.aborted) throw abortReason(controller.signal, 'Sub-agent aborted');
-      if (!terminal) throw new Error('AgentLoop 未产生终止事件');
+      if (controller.signal.aborted) {
+        throw abortReason(controller.signal, 'Sub-agent aborted');
+      }
+      if (!terminal) {
+        throw new Error('AgentLoop 未产生终止事件');
+      }
     } catch (error) {
-      this.deps.messageStore.interruptActiveAssistant(runId);
+      const interruptedId = this.deps.messageStore.interruptActiveAssistant(runId);
+      if (interruptedId) {
+        this.publishMessage(
+          input.sessionId,
+          subagentId,
+          runId,
+          interruptedId
+        );
+      }
       const message = error instanceof Error ? error.message : String(error);
       if (controller.signal.aborted) {
         const reason = this.stoppingReason ?? message;
         this.deps.store.cancel(runId, reason);
-        this.deps.publish(input.sessionId, { type: 'subagent_aborted', subagentId, reason });
+        this.deps.publish(
+          input.sessionId,
+          {
+            type: 'subagent_aborted',
+            subagentId,
+            runId,
+            run: this.deps.store.getRun(runId)!
+          }
+        );
       } else {
         this.deps.store.fail(runId, message);
-        this.deps.publish(input.sessionId, { type: 'subagent_failed', subagentId, error: message });
+        this.deps.publish(
+          input.sessionId,
+          {
+            type: 'subagent_failed',
+            subagentId,
+            runId,
+            run: this.deps.store.getRun(runId)!
+          }
+        );
       }
       throw error;
     }
 
     // 终态与 finalText 先写入事实表, 再发完成事件. 写库错误不能被当成 AgentLoop 失败重写为 failed.
-    this.deps.store.complete(runId, {
-      iterations: terminal.state.iterations,
-      toolCallCount,
-      inputTokens: terminal.state.usage.inputTokens,
-      outputTokens: terminal.state.usage.outputTokens,
-      finalText: terminal.finalText,
-    });
-    this.deps.publish(input.sessionId, { type: 'subagent_completed', subagentId });
+    this.deps.store.complete(
+      runId,
+      {
+        iterations: terminal.state.iterations,
+        toolCallCount,
+        inputTokens: terminal.state.usage.inputTokens,
+        outputTokens: terminal.state.usage.outputTokens,
+        finalText: terminal.finalText,
+      }
+    );
+    this.deps.publish(
+      input.sessionId,
+      {
+        type: 'subagent_completed',
+        subagentId,
+        runId,
+        run: this.deps.store.getRun(runId)!
+      }
+    );
     return {
       subagentId,
+      runId,
       output: terminal.finalText,
       usage: { inputTokens: terminal.state.usage.inputTokens, outputTokens: terminal.state.usage.outputTokens },
     };
   }
-}
 
-function publishLoopEvent(
-  publish: SubagentExecutorDeps['publish'],
-  sessionId: string,
-  subagentId: string,
-  event: AgentLoopEvent,
-  toolNames: Map<string, string>,
-): void {
-  switch (event.type) {
-    case 'iteration_started':
-      publish(sessionId, {
-        type: 'iteration_started',
-        subagentId,
-        iteration: event.iteration,
-        continuesOutput: event.continuesOutput,
-      });
-      return;
-    case 'text_delta':
-      publish(sessionId, {
-        type: 'text_delta',
-        subagentId,
-        blockIndex: event.blockIndex,
-        delta: event.delta,
-      });
-      return;
-    case 'thinking_delta':
-      publish(sessionId, {
-        type: 'thinking_delta',
-        subagentId,
-        blockIndex: event.blockIndex,
-        delta: event.delta,
-      });
-      return;
-    case 'tool_use_completed':
-      publish(sessionId, {
-        type: 'tool_use_completed',
-        subagentId,
-        blockIndex: event.blockIndex,
-        toolCallId: event.toolCallId,
-        toolName: event.toolName,
-        args: event.args,
-      });
-      return;
-    case 'tool_result':
-      publish(sessionId, {
-        type: 'tool_result',
-        subagentId,
-        toolName: toolNames.get(event.result.toolCallId) ?? 'unknown',
-        result: event.result,
-      });
-      toolNames.delete(event.result.toolCallId);
-      return;
-    default:
-      return;
+  private publishMessage(
+    sessionId: string,
+    subagentId: string,
+    runId: string,
+    messageId: string,
+    streaming = false
+  ): void {
+    const message = this.deps.messageStore.get(messageId)!;
+    this.deps.publish(sessionId, { type: 'message_updated', subagentId, runId, message, streaming });
   }
 }
 
 async function waitWithoutCancelling<T>(promise: Promise<T>, signal: AbortSignal): Promise<T | null> {
-  if (signal.aborted) return null;
+  if (signal.aborted) {
+    return null;
+  }
   return new Promise<T | null>((resolve, reject) => {
     // 调用方取消只结束 await. 是否取消底层执行由结果所有者在外层决定.
     const onAbort = (): void => resolve(null);
     signal.addEventListener('abort', onAbort, { once: true });
-    void promise.then(
-      value => { signal.removeEventListener('abort', onAbort); resolve(value); },
-      error => { signal.removeEventListener('abort', onAbort); reject(error); },
-    );
+    void promise.then(value => {
+      signal.removeEventListener('abort', onAbort);
+      resolve(value);
+    },
+      error => {
+        signal.removeEventListener('abort', onAbort);
+        reject(error);
+      });
   });
 }
 

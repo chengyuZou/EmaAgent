@@ -10,6 +10,7 @@ import {
   contextOk,
   ToolExecutionState,
   ToolPool,
+  ToolExecutionError,
   type Tool,
   type ToolExecutionEvent,
   type ToolExecutionRecord,
@@ -29,6 +30,7 @@ const PERMISSION_CONTEXT: ToolPermissionContext = {
   alwaysAllowRules: {},
   alwaysDenyRules: {},
   alwaysAskRules: {},
+  workspaceRoots: [],
 };
 
 /** 内存版原子存储:与 SQL 实现同语义(version CAS + from 集合)。 */
@@ -93,7 +95,9 @@ function makeState() {
 type EchoInput = { value: number };
 type AnyTestTool = Tool<EchoInput, unknown, Record<string, never>, never>;
 
-function echoTool(overrides: Partial<Parameters<typeof buildTool>[0]> = {}): AnyTestTool {
+function echoTool(overrides: Partial<Parameters<
+  typeof buildTool<EchoInput, unknown, Record<string, never>, never>
+>[0]> = {}): AnyTestTool {
   return buildTool({
     name: 'Echo',
     description: 'echo',
@@ -113,10 +117,9 @@ function makeEnv(options: {
   state?: ToolExecutionState;
   subagentId?: string;
 }): ToolExecutionEnvironment {
-  return {
+  const environment = {
     sessionId: SESSION_ID,
     turnId: TURN_ID,
-    ...(options.subagentId ? { subagentId: options.subagentId } : {}),
     abortSignal: new AbortController().signal,
     toolPool: new ToolPool(options.tools as never),
     permissionContext: PERMISSION_CONTEXT,
@@ -124,6 +127,9 @@ function makeEnv(options: {
     toolContext: { cwd: '', platform: process.platform },
     ...(options.state ? { toolExecutionState: options.state } : {}),
   };
+  return options.subagentId
+    ? { ...environment, subagentId: options.subagentId, runId: 'test-run' }
+    : environment;
 }
 
 function makeCall(env: ToolExecutionEnvironment, name: string, args: unknown): {
@@ -140,6 +146,14 @@ function makeCall(env: ToolExecutionEnvironment, name: string, args: unknown): {
 }
 
 describe('ToolCallExecution', () => {
+  it.each(['tool/error', 'tool/cancelled'])('已建立 Run 的 %s 分别保留业务引用与错误', async code => {
+    const reference = { subagentId: 'child', runId: 'run-1' };
+    const tool = echoTool({ execute: async () => { throw new ToolExecutionError(reference, '子任务失败', code); } });
+    const { execution } = makeCall(makeEnv({ tools: [tool] }), 'Echo', { value: 1 });
+    const completion = await execution.run();
+    expect(completion.result).toMatchObject({ isError: true, errorCode: code, data: reference, content: '子任务失败' });
+    expect(completion.terminalEvent).toMatchObject({ type: 'tool_result', output: reference, error: { code, message: '子任务失败' } });
+  });
   it('ToolInvocation 只包含本次调用身份, Subagent 归属仍写入执行记录', async () => {
     const invocations: unknown[] = [];
     const tool = echoTool({
@@ -342,6 +356,24 @@ describe('ToolCallExecution', () => {
 
     expect(result.content).toBe(parts);
     expect(result.isError).toBe(false);
+  });
+
+  it('取消后工具仍返回部分结果: data 保留引用, error 单独标记取消', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    let started!: () => void;
+    const executing = new Promise<void>(resolve => { started = resolve; });
+    const reference = { subagentId: 'child', runId: 'run' };
+    const tool = echoTool({ execute: async () => { started(); await gate; return reference; } });
+    const { execution } = makeCall(makeEnv({ tools: [tool] }), 'Echo', { value: 1 });
+    const pending = execution.run();
+    // 等到 execute 已开始, 再取消原调用.
+    await executing;
+    execution.abort();
+    release();
+    const { result, terminalEvent } = await pending;
+    expect(result).toMatchObject({ data: reference, isError: true, errorCode: 'tool/cancelled' });
+    expect(terminalEvent).toMatchObject({ output: reference, error: { code: 'tool/cancelled' } });
   });
 
   it('执行中被用户取消:终态是 cancelled 而不是 succeeded(回归)', async () => {

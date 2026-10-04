@@ -5,12 +5,7 @@ import { createLlmCall } from '@ema-agent/llm';
 import type { CallLlm } from '@ema-agent/llm';
 import type { CompactRequest, CompactResult } from '@ema-agent/compact';
 import type { ProviderModels, Providers } from '@ema-agent/providers';
-import {
-  staticSystemPrompt,
-  getDynamicSystemPrompt,
-  type DynamicSystemPromptInput,
-  type PromptBlock,
-} from '@ema-agent/prompts';
+import { staticSystemPrompt, getDynamicSystemPrompt, type DynamicSystemPromptInput, type PromptBlock } from '@ema-agent/prompts';
 import { BuiltinTools } from '@ema-agent/tools';
 import type { VisionDescriptionCache, VisionDescriptionProducer } from '@ema-agent/attachments';
 import type { UsageRecorder } from '@ema-agent/usage';
@@ -94,8 +89,11 @@ export function createPrepareSubagent(deps: PrepareSubagentDeps): PrepareSubagen
       callLlm = createLlmCall(connection, modelId);
       let thinking: PreparedTurn['thinking'];
       if (facts.reasoning === true) {
-        if (prepared.reasoningEffort === 'off') thinking = { enabled: false };
-        else thinking = { enabled: true, effort: prepared.reasoningEffort };
+        if (prepared.reasoningEffort === 'off') {
+          thinking = { enabled: false };
+        } else {
+          thinking = { enabled: true, effort: prepared.reasoningEffort };
+        }
       }
       subPrepared = Object.freeze({
         ...prepared,
@@ -120,7 +118,12 @@ export function createPrepareSubagent(deps: PrepareSubagentDeps): PrepareSubagen
       ? await deps.readParentMessages(signal)
       : undefined;
     signal.throwIfAborted();
-    messageStore.initialize(subagentId, runId, prompt, parent);
+    messageStore.initialize(
+      subagentId,
+      runId,
+      prompt,
+      parent
+    );
     const history = await projectMessages(
       messageStore.loadHistory(subagentId),
       message => message.generatedBy,
@@ -138,30 +141,19 @@ export function createPrepareSubagent(deps: PrepareSubagentDeps): PrepareSubagen
     const dynamicInput: DynamicSystemPromptInput = Object.freeze({
       permissionMode: parentInput.permissionMode,
       toolNames: subPool.tools.map(tool => tool.name),
-      environment: {
-        ...parentInput.environment,
-        providerId: subPrepared.providerId,
-        modelId: subPrepared.modelId,
-      },
+      environment: { ...parentInput.environment, providerId: subPrepared.providerId, modelId: subPrepared.modelId },
       workspaceInstructions: parentInput.workspaceInstructions,
       memorySection: parentInput.memorySection,
       skillCatalog: parentInput.skillCatalog,
       mcpInstructions: parentInput.mcpInstructions,
     });
-    const systemPrompt = Object.freeze([
-      ...staticSystemPrompt,
-      ...getDynamicSystemPrompt(dynamicInput),
-      subagentPrompt,
-    ]);
+    const systemPrompt = Object.freeze([...staticSystemPrompt, ...getDynamicSystemPrompt(dynamicInput), subagentPrompt]);
 
     subPrepared = Object.freeze({
       ...subPrepared,
       DynamicSystemPromptInput: dynamicInput,
       systemPrompt,
-      tools: Object.freeze({
-        ...subPrepared.tools,
-        toolPool: subPool,
-      }),
+      tools: Object.freeze({ ...subPrepared.tools, toolPool: subPool }),
     });
 
     const prepareIteration = createPrepareAgentIteration({
@@ -175,7 +167,13 @@ export function createPrepareSubagent(deps: PrepareSubagentDeps): PrepareSubagen
       macroPersistence: {
         messageIds,
         appendSummary: (summary, throughMessageId, savedTokens) =>
-          messageStore.appendSummary(subagentId, runId, summary, throughMessageId, savedTokens),
+          messageStore.appendSummary(
+            subagentId,
+            runId,
+            summary,
+            throughMessageId,
+            savedTokens
+          ),
       },
     });
 
@@ -183,19 +181,10 @@ export function createPrepareSubagent(deps: PrepareSubagentDeps): PrepareSubagen
       messages: history.map(entry => entry.message),
       prepareIteration,
       callLlm,
-      createToolExecutor: wake => prepared.tools.createSubagentExecutor({
-        subagentId,
-        toolPool: subPool,
-        signal,
-        wake,
-      }),
+      createToolExecutor: wake => prepared.tools.createSubagentExecutor({ subagentId, runId, toolPool: subPool, signal, wake }),
       signal,
       maxIterations: prepared.maxIterations,
-      generationSource: {
-        providerId: subPrepared.providerId,
-        modelId: subPrepared.modelId,
-        protocol: subPrepared.protocol,
-      },
+      generationSource: { providerId: subPrepared.providerId, modelId: subPrepared.modelId, protocol: subPrepared.protocol },
     };
   };
 }

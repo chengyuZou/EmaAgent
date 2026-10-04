@@ -30,9 +30,9 @@ export class SubagentMessagesStore {
   private readonly activeAssistants = new Map<string, ActiveAssistant>();
   private lastTs = 0;
 
-  constructor(private readonly repo: SubagentMessagesRepo) {}
+  constructor(private readonly repo: SubagentMessagesRepo) { }
 
-  /** 新建 fork 才复制父前缀; 继续旧子代理只追加本次任务, 不再次 fork. */
+  /** 新建子代理且contextMode为fork时才复制父前缀; 继续旧子代理只追加本次任务, 不再次 fork. */
   initialize(subagentId: string, runId: string, prompt: string, parent?: ForkParentMessages): void {
     const latest = this.repo.listPage(subagentId, undefined, 1).rows[0];
     this.lastTs = Math.max(this.lastTs, latest?.created_at ?? 0);
@@ -49,17 +49,17 @@ export class SubagentMessagesStore {
           // 只复制有效前缀. 摘要覆盖的旧消息不在副本里时, 以摘要自身位置为边界.
           summarizedThroughMessageId: through ? ids.get(through) : undefined,
           savedTokens: message.savedTokens,
-          ...(message.role === 'assistant' && message.generatedBy
-            ? {
-                providerId: message.generatedBy.providerId,
-                modelId: message.generatedBy.modelId,
-                protocol: message.generatedBy.protocol,
-              }
-            : {}),
+          ...(message.role === 'assistant' && message.generatedBy ? {
+            providerId: message.generatedBy.providerId,
+            modelId: message.generatedBy.modelId,
+            protocol: message.generatedBy.protocol,
+          } : {}),
         });
       }
       const assistant = parent.messages.at(-1);
       const placeholders: ToolResult[] = [];
+      // 如果最后一条消息是父 Agent 的 ToolUse, 需要提前插入占位结果, 以免子 Agent 继续调用父 Agent 的工具
+      // 或者交给LLM时因为没有配对的 tool_use 与 tool_result 而报错. 这些占位结果不包含实际结果
       if (assistant?.role === 'assistant' && Array.isArray(assistant.blocks)) {
         for (const block of assistant.blocks) {
           if (block.type !== 'tool_use') continue;
@@ -81,12 +81,17 @@ export class SubagentMessagesStore {
 
   record(subagentId: string, runId: string, event: AgentLoopEvent): string | undefined {
     if (event.type === 'text_delta' || event.type === 'thinking_delta'
-      || event.type === 'thinking_completed' || event.type === 'tool_use_completed') {
+      || event.type === 'thinking_completed'
+      || event.type === 'tool_use_completed') {
       let active = this.activeAssistants.get(runId);
       if (!active) {
         active = {
-          id: randomUUID(), stored: false, text: new Map(), thinking: new Map(),
-          thinkingStates: new Map(), toolUses: new Map(),
+          id: randomUUID(),
+          stored: false,
+          text: new Map(),
+          thinking: new Map(),
+          thinkingStates: new Map(),
+          toolUses: new Map(),
         };
         this.activeAssistants.set(runId, active);
       }
@@ -95,35 +100,73 @@ export class SubagentMessagesStore {
       } else if (event.type === 'thinking_delta') {
         active.thinking.set(event.blockIndex, (active.thinking.get(event.blockIndex) ?? '') + event.delta);
       } else if (event.type === 'thinking_completed') {
-        if (event.state) active.thinkingStates.set(event.blockIndex, event.state);
+        if (event.state) {
+          active.thinkingStates.set(event.blockIndex, event.state);
+        }
       } else {
-        active.toolUses.set(event.blockIndex, {
-          type: 'tool_use', id: event.toolCallId, name: event.toolName, args: event.args,
-        });
+        active.toolUses.set(
+          event.blockIndex,
+          {
+            type: 'tool_use',
+            id: event.toolCallId,
+            name: event.toolName,
+            args: event.args,
+          }
+        );
       }
-      this.persistAssistant(subagentId, runId, active, currentBlocks(active));
-      return;
+      this.persistAssistant(
+        subagentId,
+        runId,
+        active,
+        currentBlocks(active)
+      );
+      return active.stored ? active.id : undefined;
     }
     if (event.type === 'assistant_message_completed') {
       const active = this.activeAssistants.get(runId);
       if (active) {
-        this.persistAssistant(subagentId, runId, active, [...event.content]);
+        this.persistAssistant(
+          subagentId,
+          runId,
+          active,
+          [...event.content]
+        );
         this.activeAssistants.delete(runId);
         return active.stored ? active.id : undefined;
       }
-      if (event.content.length === 0) return;
-      return this.append(subagentId, runId, 'assistant', 'normal', [...event.content]).id;
+      if (event.content.length === 0) {
+        return;
+      }
+      return this.append(
+        subagentId,
+        runId,
+        'assistant',
+        'normal',
+        [...event.content]
+      ).id;
     }
-    if (event.type === 'tool_result') return this.appendToolResult(subagentId, runId, event.result);
-    if (event.type === 'loop_stopped') this.interruptActiveAssistant(runId);
+    if (event.type === 'tool_result') {
+      return this.appendToolResult(subagentId, runId, event.result);
+    }
+    if (event.type === 'loop_stopped') {
+      return this.interruptActiveAssistant(runId);
+    }
     return;
   }
 
-  interruptActiveAssistant(runId: string): void {
+  interruptActiveAssistant(runId: string): string | undefined {
     const active = this.activeAssistants.get(runId);
     if (!active) return;
-    if (active.stored) this.repo.markInterrupted(active.id);
+    if (active.stored) {
+      this.repo.markInterrupted(active.id);
+    }
     this.activeAssistants.delete(runId);
+    return active.stored ? active.id : undefined;
+  }
+
+  get(messageId: string): SubagentMessage | undefined {
+    const row = this.repo.findById(messageId);
+    return row ? toMessage(row) : undefined;
   }
 
   appendToolResult(subagentId: string, runId: string, result: ToolResult): string {
@@ -131,16 +174,33 @@ export class SubagentMessagesStore {
   }
 
   appendSummary(
-    subagentId: string, runId: string, summary: string,
-    summarizedThroughMessageId: string, savedTokens: number,
+    subagentId: string,
+    runId: string,
+    summary: string,
+    summarizedThroughMessageId: string,
+    savedTokens: number,
   ): SubagentMessage {
-    const insert = this.messageInsert(subagentId, runId, 'user', 'summary', summary);
+    const insert = this.messageInsert(
+      subagentId,
+      runId,
+      'user',
+      'summary',
+      summary
+    );
     insert.summarizedThroughMessageId = summarizedThroughMessageId;
     insert.savedTokens = savedTokens;
     this.repo.insert(insert);
     return {
-      id: insert.id, subagentId, runId, role: 'user', kind: 'summary', blocks: summary,
-      interrupted: false, createdAt: insert.createdAt, summarizedThroughMessageId, savedTokens,
+      id: insert.id,
+      subagentId,
+      runId,
+      role: 'user',
+      kind: 'summary',
+      blocks: summary,
+      interrupted: false,
+      createdAt: insert.createdAt,
+      summarizedThroughMessageId,
+      savedTokens,
     };
   }
 
@@ -153,31 +213,64 @@ export class SubagentMessagesStore {
     return { items: page.rows.map(toMessage), nextCursor: page.nextCursor };
   }
 
+  listWindow(
+    subagentId: string,
+    cursor: MessagePageCursor | undefined,
+    direction: 'before' | 'after',
+    limit: number
+  ) {
+    const page = this.repo.listWindow(
+      subagentId,
+      cursor,
+      direction,
+      limit
+    );
+    return { items: page.rows.map(toMessage), olderCursor: page.olderCursor, newerCursor: page.newerCursor };
+  }
+
+  // TODO: 这个接口没有注释说明要干什么
   findToolInteraction(subagentId: string, toolCallId: string): SubagentToolInteraction | undefined {
     let interaction: SubagentToolInteraction | undefined;
+    // TODO: 这个效率有点太低了, 不如放到SQL里面要么Index优化要么专门找
     for (const message of this.repo.listAllForSubagent(subagentId).map(toMessage)) {
-      if (!message.runId || !Array.isArray(message.blocks)) continue;
+      if (!message.runId || !Array.isArray(message.blocks)) {
+        continue;
+      }
       if (message.role === 'assistant') {
         const call = message.blocks.find(block => block.type === 'tool_use' && block.id === toolCallId);
         if (call?.type === 'tool_use') {
           interaction = { runId: message.runId, name: call.name, args: call.args };
         }
-      } else if (interaction && message.runId === interaction.runId && message.kind === 'tool_results') {
+      } else if (interaction && message.runId === interaction.runId
+        && message.kind === 'tool_results') {
         const result = message.blocks.find(block => block.type === 'tool_result' && block.toolCallId === toolCallId);
-        if (result?.type === 'tool_result') interaction.result = result;
+        if (result?.type === 'tool_result') {
+          interaction.result = result;
+        }
       }
     }
     return interaction;
   }
 
   private persistAssistant(
-    subagentId: string, runId: string, active: ActiveAssistant, blocks: AssistantBlock[],
+    subagentId: string,
+    runId: string,
+    active: ActiveAssistant,
+    blocks: AssistantBlock[],
   ): void {
-    if (blocks.length === 0) return;
+    if (blocks.length === 0) {
+      return;
+    }
     if (active.stored) {
       this.repo.updateBlocks(active.id, JSON.stringify(blocks));
     } else {
-      const insert = this.messageInsert(subagentId, runId, 'assistant', 'normal', blocks);
+      const insert = this.messageInsert(
+        subagentId,
+        runId,
+        'assistant',
+        'normal',
+        blocks
+      );
       insert.id = active.id;
       this.repo.insert(insert);
       active.stored = true;
@@ -185,24 +278,48 @@ export class SubagentMessagesStore {
   }
 
   private append(
-    subagentId: string, runId: string, role: SubagentMessage['role'],
-    kind: SubagentMessage['kind'], blocks: MessageBlocks,
+    subagentId: string,
+    runId: string,
+    role: SubagentMessage['role'],
+    kind: SubagentMessage['kind'],
+    blocks: MessageBlocks,
   ): SubagentMessage {
-    const insert = this.messageInsert(subagentId, runId, role, kind, blocks);
+    const insert = this.messageInsert(
+      subagentId,
+      runId,
+      role,
+      kind,
+      blocks
+    );
     this.repo.insert(insert);
     return {
-      id: insert.id, subagentId, runId, role, kind, blocks,
-      interrupted: false, createdAt: insert.createdAt, summarizedThroughMessageId: null,
+      id: insert.id,
+      subagentId,
+      runId,
+      role,
+      kind,
+      blocks,
+      interrupted: false,
+      createdAt: insert.createdAt,
+      summarizedThroughMessageId: null,
     };
   }
 
   private messageInsert(
-    subagentId: string, runId: string | null, role: SubagentMessage['role'],
-    kind: SubagentMessage['kind'], blocks: MessageBlocks,
+    subagentId: string,
+    runId: string | null,
+    role: SubagentMessage['role'],
+    kind: SubagentMessage['kind'],
+    blocks: MessageBlocks,
   ): SubagentMessageInsert {
     return {
-      id: randomUUID(), subagentId, runId, role, kind,
-      blocksJson: JSON.stringify(blocks), createdAt: this.nextTs(),
+      id: randomUUID(),
+      subagentId,
+      runId,
+      role,
+      kind,
+      blocksJson: JSON.stringify(blocks),
+      createdAt: this.nextTs(),
     };
   }
 
@@ -216,14 +333,20 @@ function toMessage(row: SubagentMessageRow): SubagentMessage {
   let generatedBy: LlmGenerationSource | undefined;
   if (row.role === 'assistant' && row.provider_id && row.model_id && row.protocol) {
     generatedBy = {
-      providerId: row.provider_id, modelId: row.model_id,
+      providerId: row.provider_id,
+      modelId: row.model_id,
       protocol: row.protocol as LlmGenerationSource['protocol'],
     };
   }
   return {
-    id: row.id, subagentId: row.subagent_id, runId: row.run_id, role: row.role,
-    kind: row.kind, blocks: parseMessageBlocksJson(row.blocks_json, row.role),
-    interrupted: row.interrupted === 1, createdAt: row.created_at,
+    id: row.id,
+    subagentId: row.subagent_id,
+    runId: row.run_id,
+    role: row.role,
+    kind: row.kind,
+    blocks: parseMessageBlocksJson(row.blocks_json, row.role),
+    interrupted: row.interrupted === 1,
+    createdAt: row.created_at,
     summarizedThroughMessageId: row.summarized_through_message_id,
     ...(row.summary_saved_tokens !== null ? { savedTokens: row.summary_saved_tokens } : {}),
     ...(generatedBy ? { generatedBy } : {}),
@@ -233,12 +356,20 @@ function toMessage(row: SubagentMessageRow): SubagentMessage {
 function currentBlocks(active: ActiveAssistant): AssistantBlock[] {
   const blocks = new Map<number, AssistantBlock>();
   for (const [index, text] of active.text) {
-    if (text.trim()) blocks.set(index, { type: 'text', text });
+    if (text.trim()) {
+      blocks.set(index, { type: 'text', text });
+    }
   }
   for (const index of new Set([...active.thinking.keys(), ...active.thinkingStates.keys()])) {
     const block = createAssistantThinkingBlock(active.thinking.get(index), active.thinkingStates.get(index));
-    if (block) blocks.set(index, block);
+    if (block) {
+      blocks.set(index, block);
+    }
   }
-  for (const [index, toolUse] of active.toolUses) blocks.set(index, toolUse);
-  return [...blocks.entries()].sort(([left], [right]) => left - right).map(([, block]) => block);
+  for (const [index, toolUse] of active.toolUses) {
+    blocks.set(index, toolUse);
+  }
+  return [...blocks.entries()]
+    .sort(([left], [right]) => left - right)
+    .map(([, block]) => block);
 }

@@ -8,12 +8,12 @@ import { WebSocketServer } from 'ws';
 import os from 'node:os';
 import { GoalStore } from '@ema-agent/goal';
 import { Database, GoalsRepo } from '@ema-agent/storage';
-import { SessionRunningRegistry, SessionStore, type Message } from '@ema-agent/session';
+import { SessionRunningRegistry, SessionStore, type SessionMessage } from '@ema-agent/session';
 import {
   SessionContinuationQueue,
+  SessionInteractionQueue,
   type StartTurn,
   type TurnHandle,
-  type SessionInteractionQueue,
   type Turn,
   type TurnExecutor,
 } from '@ema-agent/turn';
@@ -92,6 +92,58 @@ function goalFixture() {
 }
 
 describe('Session WebSocket Route', () => {
+  it('没有运行中的父 Turn 时仍能回答子代理批准, 不需要提交 Turn 或 Run ID', async () => {
+    const fixture = goalFixture();
+    const queue = new SessionInteractionQueue(null);
+    const deps = { ...fixture.deps, interactions: queue };
+    const pending = queue.enqueuePermission({
+      sessionId: fixture.session.id, turnId: 'finished-parent', toolCallId: 'child-call',
+      subagentId: 'agent-1', runId: 'run-1', toolName: 'PowerShell', input: { command: 'Get-Date' },
+    });
+    const { socket, waitForMessage } = await connect(deps, fixture.session.id);
+    const required = queue.listPending(fixture.session.id).find(entry => entry.kind === 'permission')!.request;
+    const notification = waitForMessage();
+    deps.connections.publish(fixture.session.id, { type: 'permission_required', ...required });
+    expect(await notification).toEqual({ type: 'permission_required', ...required });
+    const response = waitForMessage();
+    socket.send(JSON.stringify({ type: 'respond_permission', requestId: 'approve-child',
+      toolCallId: 'child-call', action: 'allow' }));
+    expect(await response).toEqual({ type: 'request_succeeded', requestId: 'approve-child' });
+    await expect(pending.promise).resolves.toEqual({ action: 'allow' });
+    expect(fixture.running.getRunning(fixture.session.id)).toBeUndefined();
+    expect(fixture.starts).toEqual([]);
+    fixture.queue.shutdown();
+  });
+
+  it('拒绝回答其它 Session 的批准, 也拒绝已经取消的 Run 请求', async () => {
+    const fixture = goalFixture();
+    const queue = new SessionInteractionQueue(null);
+    const deps = { ...fixture.deps, interactions: queue };
+    const foreign = queue.enqueuePermission({
+      sessionId: 'other-session', turnId: 'parent', toolCallId: 'foreign-call',
+      toolName: 'PowerShell', input: {},
+    });
+    const { socket, waitForMessage } = await connect(deps, fixture.session.id);
+    let response = waitForMessage();
+    socket.send(JSON.stringify({ type: 'respond_permission', requestId: 'wrong-session',
+      toolCallId: 'foreign-call', action: 'allow' }));
+    expect(await response).toMatchObject({ type: 'request_rejected', code: 'not_found_or_expired' });
+    expect(queue.size()).toBe(1);
+    const child = queue.enqueuePermission({
+      sessionId: fixture.session.id, turnId: 'parent', toolCallId: 'child-call',
+      subagentId: 'agent', runId: 'run', toolName: 'PowerShell', input: {},
+    });
+    queue.cancelForRun('run');
+    response = waitForMessage();
+    socket.send(JSON.stringify({ type: 'respond_permission', requestId: 'late-answer',
+      toolCallId: 'child-call', action: 'allow' }));
+    expect(await response).toMatchObject({ type: 'request_rejected', code: 'not_found_or_expired' });
+    await expect(child.promise).resolves.toMatchObject({ action: 'deny' });
+    queue.cancelForSession('other-session');
+    await foreign.promise;
+    fixture.queue.shutdown();
+  });
+
   it('正常发送携带原始 objective 时先建 Goal 再入队, 创建事件不会提前开第二根 Turn', async () => {
     const fixture = goalFixture();
     const { socket, waitForMessage } = await connect(fixture.deps, fixture.session.id);
@@ -156,7 +208,7 @@ describe('Session WebSocket Route', () => {
     const turnId = 'turn-1';
     const registry = new SessionRunningRegistry();
     registry.register(sessionId, { kind: 'turn', turnId });
-    const persisted: Message = {
+    const persisted: SessionMessage = {
       id: 'message-1',
       sessionId,
       turnId,
@@ -165,6 +217,7 @@ describe('Session WebSocket Route', () => {
       blocks: '已经落库',
       interrupted: false,
       createdAt: 100,
+      summarizedThroughMessageId: null,
     };
     const turn: Turn = {
       id: turnId,

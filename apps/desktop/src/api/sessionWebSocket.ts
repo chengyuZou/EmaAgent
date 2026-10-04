@@ -86,27 +86,19 @@ class SessionWebSocket {
   }
 
   sendUserMessage(sessionId: string, payload: UserMessagePayload): Promise<void> {
-    return this.request<void>(sessionId, requestId => ({
-      type: 'send_user_message', requestId, payload,
-    }));
+    return this.request<void>(sessionId, requestId => ({ type: 'send_user_message', requestId, payload }));
   }
 
   queueUserMessage(sessionId: string, payload: UserMessagePayload): Promise<void> {
-    return this.request<void>(sessionId, requestId => ({
-      type: 'queue_user_message', requestId, payload,
-    }));
+    return this.request<void>(sessionId, requestId => ({ type: 'queue_user_message', requestId, payload }));
   }
 
   removeQueuedInput(sessionId: string, id: string): Promise<void> {
-    return this.request<void>(sessionId, requestId => ({
-      type: 'remove_queued_input', requestId, id,
-    }));
+    return this.request<void>(sessionId, requestId => ({ type: 'remove_queued_input', requestId, id }));
   }
 
   guideQueuedInput(sessionId: string, id: string): Promise<void> {
-    return this.request<void>(sessionId, requestId => ({
-      type: 'guide_queued_input', requestId, id,
-    }));
+    return this.request<void>(sessionId, requestId => ({ type: 'guide_queued_input', requestId, id }));
   }
 
   startCompaction(sessionId: string) {
@@ -116,16 +108,10 @@ class SessionWebSocket {
     );
   }
 
-  respondPermission(
-    sessionId: string,
-    turnId: string,
-    toolCallId: string,
-    response: PermissionResponse,
-  ): Promise<void> {
+  respondPermission(sessionId: string, toolCallId: string, response: PermissionResponse): Promise<void> {
     return this.request<void>(sessionId, requestId => ({
       type: 'respond_permission',
       requestId,
-      turnId,
       toolCallId,
       action: response.action,
       ...(response.action === 'deny' && response.reason ? { reason: response.reason } : {}),
@@ -150,15 +136,11 @@ class SessionWebSocket {
   }
 
   cancelTurn(sessionId: string, turnId: string): Promise<void> {
-    return this.request<void>(sessionId, requestId => ({
-      type: 'cancel_turn', requestId, turnId,
-    }));
+    return this.request<void>(sessionId, requestId => ({ type: 'cancel_turn', requestId, turnId }));
   }
 
   cancelCompact(sessionId: string, compactId: string): Promise<void> {
-    return this.request<void>(sessionId, requestId => ({
-      type: 'cancel_compact', requestId, compactId,
-    }));
+    return this.request<void>(sessionId, requestId => ({ type: 'cancel_compact', requestId, compactId }));
   }
 
   cancelTool(sessionId: string, turnId: string, toolCallId: string): Promise<void> {
@@ -168,9 +150,7 @@ class SessionWebSocket {
   }
 
   cancelSubagent(sessionId: string, subagentId: string): Promise<void> {
-    return this.request<void>(sessionId, requestId => ({
-      type: 'cancel_subagent', requestId, subagentId,
-    }));
+    return this.request<void>(sessionId, requestId => ({ type: 'cancel_subagent', requestId, subagentId }));
   }
 
   /**
@@ -269,7 +249,10 @@ class SessionWebSocket {
     } catch {
       return;
     }
-    if (!value || typeof value !== 'object' || !('type' in value) || typeof value.type !== 'string') return;
+    if (!value || typeof value !== 'object' || !('type' in value)
+      || typeof value.type !== 'string') {
+      return;
+    }
     const message = value as SessionServerMessage;
 
     if (message.type === 'pong') {
@@ -299,22 +282,18 @@ class SessionWebSocket {
     }
 
     // Chat 只收到 Session 业务更新. 心跳和请求结果在 API 内结束, 不进入 Store.
-    for (const handler of [...connection.handlers]) handler(message);
+    for (const handler of [...connection.handlers]) {
+      handler(message);
+    }
   }
 
-  private request<T>(
-    sessionId: string,
-    createMessage: (requestId: ClientRequestId) => SessionClientMessage,
-  ): Promise<T> {
+  private request<T>(sessionId: string, createMessage: (requestId: ClientRequestId) => SessionClientMessage): Promise<T> {
     const connection = this.getOrCreateConnection(sessionId);
     connection.closeRequested = false;
     const requestId = crypto.randomUUID();
     const message = createMessage(requestId);
     const result = new Promise<T>((resolve, reject) => {
-      connection.pendingRequests.set(requestId, {
-        resolve: value => resolve(value as T),
-        reject,
-      });
+      connection.pendingRequests.set(requestId, { resolve: value => resolve(value as T), reject });
     });
     if (connection.socket?.readyState === WebSocket.OPEN) {
       connection.socket.send(JSON.stringify(message));
@@ -367,27 +346,35 @@ class SessionWebSocket {
 
   private rejectRequests(connection: SessionConnection, code: string, message: string): void {
     const error = new SessionRequestError(code, message);
-    for (const pending of connection.pendingRequests.values()) pending.reject(error);
+    for (const pending of connection.pendingRequests.values()) {
+      pending.reject(error);
+    }
     connection.pendingRequests.clear();
     connection.outgoing.length = 0;
   }
 
   /** 没有在途请求后才真正关闭并删除连接;业务 Store 不在这个模块的清理范围内. */
   private finishDisconnect(sessionId: string, connection: SessionConnection): void {
-    if (!connection.closeRequested || connection.pendingRequests.size > 0) return;
+    if (!connection.closeRequested || connection.pendingRequests.size > 0) {
+      return;
+    }
     connection.generation += 1;
     this.clearTimers(connection);
     const socket = connection.socket;
     connection.socket = null;
     socket?.close(1000, 'session_subscription_closed');
     this.changeState(connection, 'disconnected');
-    if (this.connections.get(sessionId) === connection) this.connections.delete(sessionId);
+    if (this.connections.get(sessionId) === connection) {
+      this.connections.delete(sessionId);
+    }
   }
 
   private changeState(connection: SessionConnection, state: SessionConnectionState): void {
     if (connection.state === state) return;
     connection.state = state;
-    for (const handler of [...connection.stateHandlers]) handler(state);
+    for (const handler of [...connection.stateHandlers]) {
+      handler(state);
+    }
   }
 }
 

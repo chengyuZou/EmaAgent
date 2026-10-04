@@ -1,289 +1,183 @@
-// 持久 Subagent 摘要来自 Route; WebSocket 只维护执行进度和未闭合的 Assistant Message.
+// 共享身份与实时执行事实. 普通 Run/历史查询由面板局部状态持有.
 import { create } from 'zustand';
-import {
-  subagentsApi,
-  type SubagentSummary,
-} from '../api/subagents.js';
-import type { SubagentEvent } from '@ema-agent/agent';
-import type { AssistantOutputBlock } from './turn.js';
+import type { SubagentEvent, SubagentMessage } from '@ema-agent/agent';
+import { subagentsApi, type SubagentRecord, type SubagentRunItem } from '../api/subagents.js';
 
 export interface SubagentProgress {
   readonly sessionId: string;
+  readonly runId: string;
   readonly startedAtMs: number;
-  readonly description?: string;
-  readonly modelId?: string;
   readonly iteration: number;
-  readonly toolCallCount: number;
 }
-
-/** SSE 尚未闭合的 Assistant Message, 与持久消息使用同一套展示块. */
-export interface SubagentStreamingMessage {
-  readonly iteration: number;
-  readonly blocks: readonly AssistantOutputBlock[];
-}
-
-type SubagentMessageEvent = Exclude<SubagentEvent, {
-  readonly type: 'subagent_started' | 'subagent_completed' | 'subagent_failed' | 'subagent_aborted';
-}>;
-
-export interface SubagentStoreState {
-  /** 持久记录, 唯一写入方是 Route 响应. */
-  subagents: Map<string, SubagentSummary>;
-  /** 每个 Session 的 ToolCallId 到子代理身份, 来自同一次 Session 列表响应. */
-  invocationsBySession: Map<string, Map<string, string>>;
-  /** 在途运行的实时进度, 唯一写入方是 subagent_* 事件. */
-  progressById: Map<string, SubagentProgress>;
-  streamingMessages: Map<string, readonly SubagentStreamingMessage[]>;
-  loadingSessions: Set<string>;
-  error: string | null;
-
-  loadForSession(sessionId: string): Promise<void>;
-  /** 终态事件后重读单条持久记录, 返回是否成功(失败由调用方决定兜底). */
-  refreshSubagent(subagentId: string): Promise<boolean>;
-  /** subagent_started, 建立实时缓冲并重读刚落库的记录行。 */
-  startProgress(progress: SubagentProgress & { readonly id: string }): void;
-  receiveMessageEvent(event: SubagentMessageEvent): void;
-  /** 终态丢弃流式消息, 然后重读持久记录. */
-  finishProgress(subagentId: string): void;
+interface SubagentStoreState {
+  subagents: ReadonlyMap<string, SubagentRecord>;
+  progressById: ReadonlyMap<string, SubagentProgress>;
+  /** 工具卡与面板共享当前/刚结束的 Run, 不缓存所有历史查询. */
+  runsById: ReadonlyMap<string, SubagentRunItem>;
+  /** 真实 Message 的实时更新, 闭合后不先清空, 避免查询回来前闪空. */
+  streamingMessages: ReadonlyMap<string, readonly SubagentMessage[]>;
+  openMessageIds: ReadonlySet<string>;
+  /** 尚在屏幕交接期的工具进度, 与主 Tool 一样最多保留最近 200 条. */
+  toolProgress: ReadonlyMap<string, readonly unknown[]>;
+  /** 仅当前进程收到的启动关联, 不整批加载旧 ToolCall 映射. */
+  toolReferences: ReadonlyMap<string, { sessionId: string; subagentId: string; runId: string }>;
+  receiveEvent(sessionId: string, event: SubagentEvent): void;
+  rememberSubagents(items: readonly SubagentRecord[]): void;
+  loadForSession(sessionId: string, signal?: AbortSignal): Promise<void>;
+  refreshSubagent(subagentId: string): Promise<void>;
   evictSession(sessionId: string): void;
 }
 
 export const useSubagentStore = create<SubagentStoreState>((set, get) => ({
   subagents: new Map(),
-  invocationsBySession: new Map(),
   progressById: new Map(),
+  runsById: new Map(),
   streamingMessages: new Map(),
-  loadingSessions: new Set(),
-  error: null,
-
-  async loadForSession(sessionId) {
-    set((state) => ({
-      loadingSessions: addValue(state.loadingSessions, sessionId),
-      error: null,
-    }));
-
-    try {
-      const { items, invocations } = await subagentsApi.list(sessionId);
-      set((state) => {
-        const incomingIds = new Set(items.map((item) => item.id));
-        const next = new Map(state.subagents);
-        for (const [id, subagent] of next) {
-          // 只删快照里确实不存在的行；快照携带的行走下方逐行新旧守卫，
-          // 有实时缓冲的行必然比任何列表快照新，不能被快照的缺失删除。
-          if (subagent.sessionId === sessionId && !incomingIds.has(id) && !state.progressById.has(id)) {
-            next.delete(id);
-          }
+  openMessageIds: new Set(),
+  toolReferences: new Map(),
+  toolProgress: new Map(),
+  rememberSubagents(items) {
+    set(state => {
+      const subagents = new Map(state.subagents);
+      for (const item of items) {
+        const old = subagents.get(item.id);
+        if (!old || old.updatedAt <= item.updatedAt) {
+          subagents.set(item.id, item);
         }
-        for (const subagent of items) {
-          // 列表响应可能早于终态单条响应返回，较旧的摘要不能覆盖较新的终态。
-          const existing = next.get(subagent.id);
-          if (!existing || subagent.updatedAt >= existing.updatedAt) {
-            next.set(subagent.id, subagent);
-          }
-        }
-        const sessionInvocations = new Map<string, string>();
-        for (const invocation of invocations) {
-          sessionInvocations.set(invocation.toolCallId, invocation.subagentId);
-        }
-        const invocationsBySession = new Map(state.invocationsBySession);
-        invocationsBySession.set(sessionId, sessionInvocations);
-        return {
-          subagents: next,
-          invocationsBySession,
-          loadingSessions: withoutValue(state.loadingSessions, sessionId),
-        };
-      });
-    } catch (error: unknown) {
-      set((state) => ({
-        loadingSessions: withoutValue(state.loadingSessions, sessionId),
-        error: error instanceof Error ? error.message : String(error),
-      }));
-    }
+      }
+      return { subagents };
+    });
   },
-
+  async loadForSession(sessionId, signal) {
+    let cursor: { updatedAt: number; id: string } | undefined;
+    do {
+      const page = await subagentsApi.list(sessionId, cursor, signal);
+      if (signal?.aborted) {
+        return;
+      }
+      get().rememberSubagents(page.items);
+      cursor = page.nextCursor ?? undefined;
+    } while (cursor);
+  },
   async refreshSubagent(subagentId) {
     try {
-      const subagent = await subagentsApi.get(subagentId);
-      set((state) => {
-        const existing = state.subagents.get(subagent.id);
-        if (existing && subagent.updatedAt < existing.updatedAt) return {};
-        const next = new Map(state.subagents);
-        next.set(subagent.id, subagent);
-        return { subagents: next };
-      });
-      return true;
+      get().rememberSubagents([await subagentsApi.get(subagentId)]);
     } catch {
-      return false;
+      // 面板的查询负责展示错误, 后台刷新不制造未处理拒绝.
     }
   },
-
-  startProgress(progress) {
-    set((state) => {
-      const progressById = new Map(state.progressById);
-      progressById.set(progress.id, {
-        sessionId: progress.sessionId,
-        startedAtMs: progress.startedAtMs,
-        ...(progress.description !== undefined ? { description: progress.description } : {}),
-        ...(progress.modelId !== undefined ? { modelId: progress.modelId } : {}),
-        iteration: progress.iteration,
-        toolCallCount: progress.toolCallCount,
-      });
-      const streamingMessages = new Map(state.streamingMessages);
-      streamingMessages.set(progress.id, []);
-      return { progressById, streamingMessages };
-    });
-    // 记录行先于事件落库，这里直接能读到真实的 running 行。
-    void get().loadForSession(progress.sessionId);
-  },
-
-  receiveMessageEvent(event) {
-    set((state) => {
+  receiveEvent(sessionId, event) {
+    set(state => {
+      if (event.type === 'subagent_started') {
+        const progressById = new Map(state.progressById);
+        progressById.set(event.subagentId, { sessionId, runId: event.runId, startedAtMs: event.startedAt, iteration: 0 });
+        const toolReferences = new Map(state.toolReferences);
+        toolReferences.set(event.parentToolCallId, { sessionId, subagentId: event.subagentId, runId: event.runId });
+        return { progressById, toolReferences };
+      }
+      if (event.type === 'message_updated') {
+        const openMessageIds = new Set(state.openMessageIds);
+        if (event.streaming) {
+          openMessageIds.add(event.message.id);
+        } else {
+          openMessageIds.delete(event.message.id);
+        }
+        const streamingMessages = new Map(state.streamingMessages);
+        const messages = new Map((streamingMessages.get(event.subagentId) ?? []).map(message => [message.id, message]));
+        messages.set(event.message.id, event.message);
+        streamingMessages.set(
+          event.subagentId,
+          [...messages.values()].sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id))
+        );
+        return { streamingMessages, openMessageIds };
+      }
       const progress = state.progressById.get(event.subagentId);
-      const messages = state.streamingMessages.get(event.subagentId);
-      if (!progress || !messages) return {};
-
+      if (event.type === 'iteration_started') {
+        if (progress?.runId !== event.runId) {
+          return state;
+        }
+        const progressById = new Map(state.progressById);
+        progressById.set(event.subagentId, { ...progress, iteration: event.iteration });
+        const runsById = new Map(state.runsById);
+        runsById.set(event.runId, event.run);
+        return { progressById, runsById };
+      }
+      if (event.type === 'tool_progress') {
+        const toolProgress = new Map(state.toolProgress);
+        toolProgress.set(event.toolCallId, [...(toolProgress.get(event.toolCallId) ?? []), event.progress].slice(-200));
+        return { toolProgress };
+      }
+      if (event.type === 'tool_result') {
+        return state;
+      }
+      const runsById = new Map(state.runsById);
+      runsById.set(event.runId, event.run);
+      const progressById = new Map(state.progressById);
+      if (progress?.runId === event.runId) {
+        progressById.delete(event.subagentId);
+      }
+      return { runsById, progressById };
+    });
+    if (event.type === 'subagent_started' || event.type === 'subagent_completed'
+      || event.type === 'subagent_failed'
+      || event.type === 'subagent_aborted') {
+      void get().refreshSubagent(event.subagentId);
+    }
+  },
+  evictSession(sessionId) {
+    set(state => {
+      const subagents = new Map(state.subagents);
       const progressById = new Map(state.progressById);
       const streamingMessages = new Map(state.streamingMessages);
-      if (event.type === 'iteration_started') {
-        progressById.set(event.subagentId, { ...progress, iteration: event.iteration });
-        streamingMessages.set(event.subagentId, [
-          ...messages.map(message => ({
-            ...message,
-            blocks: message.blocks.map(block => block.type === 'thinking'
-              ? { ...block, done: true }
-              : block),
-          })),
-          { iteration: event.iteration, blocks: [] },
-        ]);
-        return { progressById, streamingMessages };
+      const runsById = new Map(state.runsById);
+      const toolReferences = new Map(state.toolReferences);
+      const openMessageIds = new Set(state.openMessageIds);
+      const toolProgress = new Map(state.toolProgress);
+      const ids = new Set([...subagents.values()].filter(item => item.sessionId === sessionId).map(item => item.id));
+      for (const [id, progress] of progressById) {
+        if (progress.sessionId === sessionId) {
+          ids.add(id);
+        }
       }
-
-      if (event.type === 'tool_result') {
-        streamingMessages.set(event.subagentId, messages.map(message => ({
-          ...message,
-          blocks: message.blocks.map(block => {
-            if (block.type !== 'tool_use' || block.callId !== event.result.toolCallId) return block;
-            const content = event.result.content;
-            const errorText = typeof content === 'string'
-              ? content
-              : content.find(part => part.type === 'text')?.text ?? '工具执行失败';
-            return {
-              ...block,
-              status: event.result.isError ? 'failed' as const : 'succeeded' as const,
-              output: event.result.data ?? content,
-              durationMs: event.result.durationMs,
-              ...(event.result.isError ? {
-                error: { code: event.result.errorCode ?? 'tool/error', message: errorText },
-              } : {}),
-            };
-          }),
-        })));
-        return { streamingMessages };
+      for (const ref of toolReferences.values()) {
+        if (ref.sessionId === sessionId) {
+          ids.add(ref.subagentId);
+        }
       }
-
-      const current = messages.at(-1) ?? { iteration: progress.iteration, blocks: [] };
-      const blocks = [...current.blocks];
-      const index = blocks.findIndex(block => block.blockIndex === event.blockIndex);
-      const previous = index >= 0 ? blocks[index] : undefined;
-      let nextBlock: AssistantOutputBlock;
-
-      if (event.type === 'text_delta') {
-        nextBlock = {
-          type: 'text',
-          blockIndex: event.blockIndex,
-          text: previous?.type === 'text' ? previous.text + event.delta : event.delta,
-        };
-      } else if (event.type === 'thinking_delta') {
-        nextBlock = {
-          type: 'thinking',
-          blockIndex: event.blockIndex,
-          thinking: previous?.type === 'thinking' ? previous.thinking + event.delta : event.delta,
-          done: false,
-        };
-      } else {
-        nextBlock = {
-          type: 'tool_use',
-          blockIndex: event.blockIndex,
-          callId: event.toolCallId,
-          name: event.toolName,
-          args: event.args,
-          startedAt: Date.now(),
-          status: 'running',
-        };
-        progressById.set(event.subagentId, {
-          ...progress,
-          toolCallCount: progress.toolCallCount + 1,
-        });
-      }
-
-      if (index >= 0) blocks[index] = nextBlock;
-      else blocks.push(nextBlock);
-      blocks.sort((left, right) => left.blockIndex - right.blockIndex);
-      if (event.type !== 'thinking_delta') {
-        for (let blockIndex = 0; blockIndex < blocks.length; blockIndex += 1) {
-          const block = blocks[blockIndex];
-          if (block?.type === 'thinking' && block.blockIndex < event.blockIndex) {
-            blocks[blockIndex] = { ...block, done: true };
+      for (const id of ids) {
+        for (const message of streamingMessages.get(id) ?? []) {
+          openMessageIds.delete(message.id);
+          if (Array.isArray(message.blocks)) {
+            for (const block of message.blocks) {
+              if (block.type === 'tool_use') {
+                toolProgress.delete(block.id);
+              }
+            }
           }
         }
+        subagents.delete(id);
+        progressById.delete(id);
+        streamingMessages.delete(id);
       }
-      streamingMessages.set(event.subagentId, [
-        ...messages.slice(0, -1),
-        { ...current, blocks },
-      ]);
-      return { progressById, streamingMessages };
-    });
-  },
-
-  finishProgress(subagentId) {
-    set((state) => {
-      const progressById = new Map(state.progressById);
-      progressById.delete(subagentId);
-      const streamingMessages = new Map(state.streamingMessages);
-      streamingMessages.delete(subagentId);
-      return { progressById, streamingMessages };
-    });
-    void get().refreshSubagent(subagentId);
-  },
-
-  evictSession(sessionId) {
-    set((state) => {
-      const subagents = new Map(state.subagents);
-      const invocationsBySession = new Map(state.invocationsBySession);
-      invocationsBySession.delete(sessionId);
-      const progressById = new Map(state.progressById);
-      const streamingMessages = new Map(state.streamingMessages);
-      for (const [id, subagent] of subagents) {
-        if (subagent.sessionId === sessionId) {
-          subagents.delete(id);
-          streamingMessages.delete(id);
+      for (const [id, run] of runsById) {
+        if (ids.has(run.subagentId)) {
+          runsById.delete(id);
         }
       }
-      for (const [id, entry] of progressById) {
-        if (entry.sessionId === sessionId) {
-          progressById.delete(id);
-          streamingMessages.delete(id);
+      for (const [id, ref] of toolReferences) {
+        if (ref.sessionId === sessionId) {
+          toolReferences.delete(id);
         }
       }
       return {
         subagents,
-        invocationsBySession,
         progressById,
         streamingMessages,
-        loadingSessions: withoutValue(state.loadingSessions, sessionId),
+        runsById,
+        toolReferences,
+        openMessageIds,
+        toolProgress
       };
     });
   },
 }));
-
-function addValue<T>(values: Set<T>, value: T): Set<T> {
-  const next = new Set(values);
-  next.add(value);
-  return next;
-}
-
-function withoutValue<T>(values: Set<T>, value: T): Set<T> {
-  const next = new Set(values);
-  next.delete(value);
-  return next;
-}

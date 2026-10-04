@@ -1,25 +1,15 @@
 // 为一次 Turn 冻结工具层: ToolPool 宿主能力上下文 权限判定上下文与两类交互口子
-import type {
-  SubagentExecutor,
-  AgentLoopEvent,
-  PrepareSubagent,
-} from '@ema-agent/agent';
+import type { SubagentExecutor, AgentLoopEvent, PrepareSubagent } from '@ema-agent/agent';
 import type { KnowledgeSearch } from '@ema-agent/knowledge';
 import type { CallVision } from '@ema-agent/vision';
-import type {
-  NarrativeClient,
-  NarrativeLlmConnection,
-  NarrativeSearch,
-} from '@ema-agent/narrative';
-import {
-  narrativeQueryModeSetting,
-  prepareNarrativeRecall,
-} from '@ema-agent/narrative';
+import type { NarrativeClient, NarrativeLlmConnection, NarrativeSearch } from '@ema-agent/narrative';
+import { narrativeQueryModeSetting, prepareNarrativeRecall } from '@ema-agent/narrative';
 import {
   applyPermissionUpdate,
   type PermissionMode,
   type PermissionRequest,
   type PermissionResponse,
+  type PermissionStreamEvent,
   type ToolPermissionContext,
 } from '@ema-agent/permission';
 import type { CommandRunner } from '@ema-agent/sandbox';
@@ -37,6 +27,7 @@ import {
   type ReadFileState,
   StreamingToolExecutor,
   type ToolExecutionState,
+  type ToolExecutionEvent,
   type ToolRegistry,
   type ToolResultStore,
   type ToolUseContext,
@@ -72,6 +63,8 @@ const PLAN_TOOL_IDS: ReadonlySet<string> = new Set([
 export interface TurnToolsDeps {
   readonly registry: ToolRegistry;
   readonly interactionQueue: SessionInteractionQueue;
+  /** Session 的批准事件出口, 不依赖父 Turn 是否仍在运行. */
+  readonly publishInteraction: (event: PermissionStreamEvent | Extract<ToolExecutionEvent, { type: 'ask_user_required' | 'ask_user_resolved' }>) => void;
   readonly settings: SettingsStore;
   readonly subagents: SubagentExecutor;
   readonly taskStore?: TaskStore;
@@ -128,9 +121,10 @@ export interface TurnToolsAssembly {
   /** 本 Turn 冻结的召回闭包: auto 时进 Tool Context, always 时供 reminder: off 或无能力为 undefined */
   readonly narrativeSearch?: NarrativeSearch;
   readonly createExecutor: (wake: () => void) => StreamingToolExecutor;
-  /** 子 Agent 执行器: 收窄后的独立 ToolPool 关联 subagentId 无 askPermission */
+  /** 子代理使用独立工具池, 批准请求按本次 Run 归属, 共用 Session FIFO. */
   readonly createSubagentExecutor: (args: {
     subagentId: string;
+    runId: string;
     toolPool: ToolPool;
     signal: AbortSignal;
     wake: () => void;
@@ -141,11 +135,13 @@ export interface TurnToolsAssembly {
   readonly shutdown: (reason: string) => Promise<void>;
 }
 
-export function prepareTurnTools(
-  deps: TurnToolsDeps,
-  input: PrepareTurnToolsInput,
-): TurnToolsAssembly {
-  const { sessionId, turnId, cwd, scratchpadDir } = input;
+export function prepareTurnTools(deps: TurnToolsDeps, input: PrepareTurnToolsInput): TurnToolsAssembly {
+  const {
+    sessionId,
+    turnId,
+    cwd,
+    scratchpadDir
+  } = input;
   const readFileState: ReadFileState = new Map();
 
   const permissionContext: ToolPermissionContext = {
@@ -156,31 +152,37 @@ export function prepareTurnTools(
     workspaceRoots: input.workspaceRoots,
   };
 
-  // 根 Turn 始终 interactive：ask 决策经队列等用户；子 Agent 的装配（prepareSubagent）
-  // 不提供此口子，中央自动收口 deny(headless)。
-  const askPermission = async (
-    request: PermissionRequest,
-    signal: AbortSignal,
-  ): Promise<PermissionResponse> => {
-    input.emit({ type: 'permission_required', ...request });
+  // 根 Agent 与前后台子代理共用这条 Session 交互通道.
+  const askPermission = async (request: PermissionRequest, signal: AbortSignal): Promise<PermissionResponse> => {
     const { promise } = deps.interactionQueue.enqueuePermission(request);
+    // 先建立可回答的队列条目, 再发布事件. 子代理不借父 Turn 通道.
+    deps.publishInteraction({ type: 'permission_required', ...request });
     const response = await awaitInteraction(promise, signal, () => {
-      deps.interactionQueue.cancel(request.toolCallId, 'turn aborted');
+      deps.interactionQueue.cancel(request.toolCallId, 'tool aborted');
     });
-    input.emit({
-      type: 'permission_resolved',
-      sessionId,
-      turnId,
+    const resolved = {
+      type: 'permission_resolved' as const,
+      sessionId: request.sessionId,
+      turnId: request.turnId,
       toolCallId: request.toolCallId,
-      decision: response.action === 'deny' ? 'deny' : 'allow',
-    });
+      decision: response.action === 'deny' ? 'deny' as const : 'allow' as const,
+    };
+    if (request.subagentId !== undefined) {
+      deps.publishInteraction({ ...resolved, subagentId: request.subagentId, runId: request.runId });
+    } else {
+      deps.publishInteraction(resolved);
+    }
     if (response.action === 'allowSession' && request.ruleSuggestion) {
-      applyPermissionUpdate(deps.settings, {
-        type: 'addRules',
-        destination: 'session',
-        rules: [request.ruleSuggestion],
-        behavior: 'allow',
-      }, { sessionId });
+      applyPermissionUpdate(
+        deps.settings,
+        {
+          type: 'addRules',
+          destination: 'session',
+          rules: [request.ruleSuggestion],
+          behavior: 'allow',
+        },
+        { sessionId }
+      );
     }
     return response;
   };
@@ -193,19 +195,21 @@ export function prepareTurnTools(
       toolCallId,
       questions: [...specs],
     };
-    input.emit(request);
     const { promise } = deps.interactionQueue.enqueueAskUser(request);
+    deps.publishInteraction(request);
     const outcome = await awaitInteraction(promise, signal, () => {
       deps.interactionQueue.cancel(toolCallId, 'turn aborted');
     });
     // 取消/超时也要发空答案清前端卡片: 空答案 resolved 是清卡信号, 不是成功
-    input.emit({
+    deps.publishInteraction({
       type: 'ask_user_resolved',
       sessionId,
       toolCallId,
       answers: outcome.status === 'answered' ? { ...outcome.answers } : {},
     });
-    if (outcome.status === 'answered') return { answers: { ...outcome.answers } };
+    if (outcome.status === 'answered') {
+      return { answers: { ...outcome.answers } };
+    }
     throw new Error(`AskUser ${outcome.status}: ${outcome.reason}`);
   };
 
@@ -214,50 +218,59 @@ export function prepareTurnTools(
   // 召回闭包在本 Turn 构建一次: LLM 连接与模式覆盖全部冻结;
   // auto 时模型经 Tool 触发, always 时 reminder 触发, 二者共用同一实现
   const narrativeSearch = ((): NarrativeSearch | undefined => {
-    if (input.narrativePolicy === 'off') return undefined;
-    if (!deps.currentNarrativeClient || !deps.resolveNarrativeLlm) return undefined;
+    if (input.narrativePolicy === 'off') {
+      return undefined;
+    }
+    if (!deps.currentNarrativeClient || !deps.resolveNarrativeLlm) {
+      return undefined;
+    }
     const client = deps.currentNarrativeClient();
-    if (!client) return undefined;
+    if (!client) {
+      return undefined;
+    }
     const llm = deps.resolveNarrativeLlm();
-    if (!llm) return undefined;
+    if (!llm) {
+      return undefined;
+    }
     const queryModeOverride = deps.settings.get(narrativeQueryModeSetting);
     return (query, mode, signal) =>
-      prepareNarrativeRecall(client, {
-        sessionId,
-        turnId,
-        userInput: query,
-        llm,
-        mode: queryModeOverride !== 'auto' ? queryModeOverride : (mode ?? 'hybrid'),
-        signal,
-        emit: event => input.emit(event),
-      });
+      prepareNarrativeRecall(
+        client,
+        {
+          sessionId,
+          turnId,
+          userInput: query,
+          llm,
+          mode: queryModeOverride !== 'auto' ? queryModeOverride : (mode ?? 'hybrid'),
+          signal,
+          emit: event => input.emit(event),
+        }
+      );
   })();
   const toolContext: ToolUseContext = Object.freeze({
     cwd,
     platform: process.platform,
     ...(commandRunner ? { commandRunner } : {}),
     ...(vision ? { vision } : {}),
-    ...(deps.backgroundProcesses
-      ? { backgroundProcesses: deps.backgroundProcesses }
-      : {}),
-    ...(deps.knowledgeSearch
-      ? {
-          knowledgeSearch: ((request) => deps.knowledgeSearch!({
-            ...request,
-            // Tool 显式给出 assetIds 时优先；否则继承本 Turn 冻结的文档范围。
-            ...(request.assetIds === undefined && input.knowledge?.assetIds?.length
-              ? { assetIds: [...input.knowledge.assetIds] }
-              : {}),
-          })) as KnowledgeSearch,
-        }
-      : {}),
-    ...(input.narrativePolicy === 'auto' && narrativeSearch
-      ? { narrativeSearch }
-      : {}),
+    ...(deps.backgroundProcesses ? { backgroundProcesses: deps.backgroundProcesses } : {}),
+    ...(deps.knowledgeSearch ? {
+      knowledgeSearch: ((request) => deps.knowledgeSearch!({
+        ...request,
+        // Tool 显式给出 assetIds 时优先；否则继承本 Turn 冻结的文档范围。
+        ...(request.assetIds === undefined && input.knowledge?.assetIds?.length ? { assetIds: [...input.knowledge.assetIds] } : {}),
+      })) as KnowledgeSearch,
+    } : {}),
+    ...(input.narrativePolicy === 'auto' && narrativeSearch ? { narrativeSearch } : {}),
     ...(deps.taskStore ? { taskStore: deps.taskStore } : {}),
     ...(deps.goalStore ? { goalStore: deps.goalStore } : {}),
     subagents: {
-      start: (prompt, options, toolCallId, runInBackground, signal) => deps.subagents.start({
+      start: (
+        prompt,
+        options,
+        toolCallId,
+        runInBackground,
+        signal
+      ) => deps.subagents.start({
         sessionId,
         parentTurnId: turnId,
         toolCallId,
@@ -268,9 +281,7 @@ export function prepareTurnTools(
         prepareSubagent: input.prepareSubagent,
         parentSignal: signal,
         runInBackground,
-        ...(input.onSubagentLlmCallFinished
-          ? { onLlmCallFinished: input.onSubagentLlmCallFinished }
-          : {}),
+        ...(input.onSubagentLlmCallFinished ? { onLlmCallFinished: input.onSubagentLlmCallFinished } : {}),
       }),
       waitForInitialResult: (subagentId, signal) =>
         deps.subagents.waitForInitialResult(subagentId, sessionId, signal),
@@ -279,9 +290,7 @@ export function prepareTurnTools(
       cancel: subagentId => deps.subagents.cancel(subagentId, sessionId),
     },
     ...(input.skillPool ? { skillPool: input.skillPool } : {}),
-    ...(scratchpadDir
-      ? { scratchpad: { dir: scratchpadDir, author: 'main' } }
-      : {}),
+    ...(scratchpadDir ? { scratchpad: { dir: scratchpadDir, author: 'main' } } : {}),
     readFileState,
     askUser,
   });
@@ -306,13 +315,13 @@ export function prepareTurnTools(
       askPermission,
       toolContext,
       toolResultStore,
-      ...(deps.toolExecutionState
-        ? { toolExecutionState: deps.toolExecutionState }
-        : {}),
+      ...(deps.toolExecutionState ? { toolExecutionState: deps.toolExecutionState } : {}),
       // 根 Tool 的终态要等 AgentLoop 把 ToolResult Message 落库后再广播
       // 进度与权限仍实时转发，tool_result 由 TurnExecutor.translate 唯一产出
       pushEv: event => {
-        if (event.type !== 'tool_result') input.emit(event);
+        if (event.type === 'tool_progress') {
+          input.emit(event);
+        }
       },
       wake,
     });
@@ -325,24 +334,31 @@ export function prepareTurnTools(
     toolPool,
     ...(narrativeSearch ? { narrativeSearch } : {}),
     createExecutor,
-    createSubagentExecutor: ({ subagentId, toolPool: subPool, signal, wake }) => {
+    createSubagentExecutor: ({ subagentId, runId, toolPool: subPool, signal, wake }) => {
       const executor = new StreamingToolExecutor({
         sessionId,
         turnId,
         subagentId,
+        runId,
         abortSignal: signal,
         toolPool: subPool,
         permissionContext,
-        // 子 Agent 无 askPermission: headless, 中央把 ask 收口为 deny
+        askPermission,
         toolContext: subagentToolContext,
         toolResultStore,
-        ...(deps.toolExecutionState
-          ? { toolExecutionState: deps.toolExecutionState }
-          : {}),
+        ...(deps.toolExecutionState ? { toolExecutionState: deps.toolExecutionState } : {}),
         // 子代理终态由 SubagentExecutor 在 ToolResult 写入 transcript 后发布;
         // 这里只实时转发执行进度和交互事件.
         pushEv: event => {
-          if (event.type !== 'tool_result') input.emit(event);
+          // 子代理进度通过自己的 Session 事件发布, 不写进父 Turn.
+          if (event.type === 'tool_progress') {
+            deps.subagents.publishToolProgress(
+              sessionId,
+              subagentId,
+              runId,
+              event
+            );
+          }
         },
         wake,
       });
@@ -363,11 +379,7 @@ export function prepareTurnTools(
  * 队列条目在 cancel 时会以其默认终态 resolve（permission→deny、askUser→cancelled），
  * 因此这里只需在 abort 时撤销条目并等待同一个 Promise 收尾。
  */
-async function awaitInteraction<T>(
-  promise: Promise<T>,
-  signal: AbortSignal,
-  cancel: () => void,
-): Promise<T> {
+async function awaitInteraction<T>(promise: Promise<T>, signal: AbortSignal, cancel: () => void): Promise<T> {
   if (signal.aborted) {
     cancel();
     return promise;

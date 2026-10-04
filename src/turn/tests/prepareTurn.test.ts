@@ -87,6 +87,7 @@ function makeDeps(overrides: Partial<PrepareTurnDeps> = {}): PrepareTurnDeps {
     disabledSkillPaths: () => [],
     registry: new ToolRegistry(),
     interactionQueue: new SessionInteractionQueue(null),
+    publishInteraction: () => undefined,
     subagentStore: {} as unknown as SubagentStore,
     subagentMessagesStore: {} as unknown as SubagentMessagesStore,
     ...overrides,
@@ -168,7 +169,7 @@ describe('prepareTurn', () => {
     const environment = prepared.systemPrompt.find(block => block.name === 'runtime-environment')!;
 
     expect(instructionDirectories).toEqual(['/w']);
-    expect(environment.content).toContain('当前执行目录（cwd）：/w');
+    expect(environment.content).toContain('当前执行目录(cwd): /w');
     expect(environment.content).toContain('项目源文件夹：\n  - /w\n  - /other');
     expect(prepared.systemPrompt.find(block => block.name === 'workspace-instructions')?.content)
       .toContain('主目录约定');

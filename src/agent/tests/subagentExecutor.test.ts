@@ -81,7 +81,7 @@ function makeInput(toolCallId: string, gate: Promise<void>, parentSignal: AbortS
       generationSource: {
         providerId: options.providerId ?? 'provider-1',
         modelId: options.modelId ?? 'model-1',
-        protocol: 'openai-chat',
+        protocol: 'openai-llm',
       },
     });
     },
@@ -91,6 +91,7 @@ function makeInput(toolCallId: string, gate: Promise<void>, parentSignal: AbortS
 function createExecutor(store: SubagentStore) {
   const onBackgroundCompleted = vi.fn();
   const onTerminalResultRead = vi.fn();
+  const onRunFinished = vi.fn();
   const publish = vi.fn();
   const executor = new SubagentExecutor({
     store,
@@ -99,11 +100,52 @@ function createExecutor(store: SubagentStore) {
     publish,
     onBackgroundCompleted,
     onTerminalResultRead,
+    onRunFinished,
   });
-  return { executor, publish, onBackgroundCompleted, onTerminalResultRead };
+  return { executor, publish, onBackgroundCompleted, onTerminalResultRead, onRunFinished };
 }
 
 describe('SubagentExecutor', () => {
+  it('流式与闭合事件沿用真实 SQL ID, 终态携带具体 Run 的持久结果', async () => {
+    const store = makeStore();
+    const fixture = createExecutor(store);
+    const reference = fixture.executor.start(makeInput('stable-message', Promise.resolve(), new AbortController().signal));
+    const result = await fixture.executor.waitForInitialResult(reference.subagentId, 'session-1', new AbortController().signal);
+    expect(result).toMatchObject(reference);
+    const events = fixture.publish.mock.calls.map(([, event]) => event);
+    const updates = events.filter(event => event.type === 'message_updated' && event.message.role === 'assistant');
+    expect(updates.length).toBeGreaterThan(1);
+    expect(new Set(updates.map(event => event.message.id)).size).toBe(1);
+    const stored = messageStores.get(store)!.get(updates[0].message.id)!;
+    expect(updates.at(-1)).toMatchObject({ ...reference, message: stored, streaming: false });
+    expect(events.find(event => event.type === 'subagent_completed')).toMatchObject({ ...reference, run: store.getRun(reference.runId) });
+  });
+  it.each(['completed', 'failed', 'cancelled'] as const)('Run %s 后只通知一次实际 runId', async status => {
+    const store = makeStore();
+    const fixture = createExecutor(store);
+    const gate = deferred();
+    const parent = new AbortController();
+    const input = makeInput('parent-call', gate.promise, parent.signal);
+    const originalPrepare = input.prepareSubagent;
+    let actualRunId = '';
+    const { subagentId: subagentId } = fixture.executor.start({
+      ...input,
+      prepareSubagent: async args => {
+        actualRunId = args.runId;
+        if (status === 'failed') throw new Error('prepare failed');
+        return originalPrepare(args);
+      },
+    });
+    const result = fixture.executor.waitForInitialResult(subagentId, 'session-1', new AbortController().signal);
+    if (status === 'cancelled') parent.abort(new Error('stop'));
+    gate.resolve();
+    if (status === 'completed') await expect(result).resolves.toMatchObject({ output: '完成' });
+    else await expect(result).rejects.toThrow();
+    expect(store.getRun(actualRunId)?.status).toBe(status);
+    expect(fixture.onRunFinished).toHaveBeenCalledTimes(1);
+    expect(fixture.onRunFinished).toHaveBeenCalledWith(actualRunId);
+  });
+
   it.each([false, true])('工具结果带原始工具名, 成功与失败都不需要消费者扫描消息(isError=%s)', async isError => {
     const fixture = createExecutor(makeStore());
     const input = makeInput('parent-call', Promise.resolve(), new AbortController().signal);
@@ -126,7 +168,7 @@ describe('SubagentExecutor', () => {
         return [toolResult];
       },
     } as unknown as StreamingToolExecutor;
-    const subagentId = fixture.executor.start({
+    const { subagentId: subagentId } = fixture.executor.start({
       ...input,
       prepareSubagent: async args => ({
         ...await prepare(args),
@@ -148,12 +190,7 @@ describe('SubagentExecutor', () => {
       }),
     });
     await fixture.executor.waitForInitialResult(subagentId, 'session-1', new AbortController().signal);
-    expect(fixture.publish).toHaveBeenCalledWith('session-1', {
-      type: 'tool_result',
-      subagentId,
-      toolName: BuiltinTools.FileWrite.name,
-      result: toolResult,
-    });
+    expect(fixture.publish).toHaveBeenCalledWith('session-1', expect.objectContaining({ type: 'tool_result', subagentId, toolName: BuiltinTools.FileWrite.name, result: toolResult }));
   });
 
   it('完成落库失败不会发布完成事件, 也不会改写为执行失败', async () => {
@@ -163,7 +200,7 @@ describe('SubagentExecutor', () => {
       throw new Error('完成落库失败');
     });
     const fixture = createExecutor(store);
-    const subagentId = fixture.executor.start(makeInput('call-write-error', gate.promise, new AbortController().signal));
+    const { subagentId: subagentId } = fixture.executor.start(makeInput('call-write-error', gate.promise, new AbortController().signal));
     expect(subagentId).not.toBe('call-write-error');
     const result = fixture.executor.waitForInitialResult(
       subagentId,
@@ -175,10 +212,7 @@ describe('SubagentExecutor', () => {
 
     await expect(result).rejects.toThrow('完成落库失败');
     expect(store.get(subagentId)?.status).toBe('running');
-    expect(fixture.publish).not.toHaveBeenCalledWith('session-1', {
-      type: 'subagent_completed',
-      subagentId,
-    });
+    expect(fixture.publish).not.toHaveBeenCalledWith('session-1', expect.objectContaining({ type: 'subagent_completed', subagentId }));
     expect(fixture.publish).not.toHaveBeenCalledWith('session-1', expect.objectContaining({
       type: 'subagent_failed',
     }));
@@ -187,7 +221,7 @@ describe('SubagentExecutor', () => {
   it('前台等待方取得结果后不再向 Session 重复通知', async () => {
     const gate = deferred();
     const fixture = createExecutor(makeStore());
-    const subagentId = fixture.executor.start(makeInput('call-1', gate.promise, new AbortController().signal));
+    const { subagentId: subagentId } = fixture.executor.start(makeInput('call-1', gate.promise, new AbortController().signal));
     const result = fixture.executor.waitForInitialResult(
       subagentId,
       'session-1',
@@ -197,10 +231,7 @@ describe('SubagentExecutor', () => {
     gate.resolve();
 
     await expect(result).resolves.toMatchObject({ output: '完成' });
-    expect(fixture.publish).toHaveBeenCalledWith('session-1', {
-      type: 'subagent_completed',
-      subagentId,
-    });
+    expect(fixture.publish).toHaveBeenCalledWith('session-1', expect.objectContaining({ type: 'subagent_completed', subagentId }));
     await vi.waitFor(() => expect(fixture.onBackgroundCompleted).not.toHaveBeenCalled());
   });
 
@@ -208,7 +239,7 @@ describe('SubagentExecutor', () => {
     const gate = deferred();
     const parent = new AbortController();
     const fixture = createExecutor(makeStore());
-    const subagentId = fixture.executor.start(makeInput('call-2', gate.promise, parent.signal));
+    const { subagentId: subagentId } = fixture.executor.start(makeInput('call-2', gate.promise, parent.signal));
 
     fixture.executor.moveToBackground(subagentId, 'session-1');
     parent.abort(new Error('父 Turn 已结束'));
@@ -222,7 +253,7 @@ describe('SubagentExecutor', () => {
   it('停止 SubagentAwait 只结束等待, 后台 Subagent 继续完成', async () => {
     const gate = deferred();
     const fixture = createExecutor(makeStore());
-    const subagentId = fixture.executor.start(makeInput('call-await', gate.promise, new AbortController().signal));
+    const { subagentId: subagentId } = fixture.executor.start(makeInput('call-await', gate.promise, new AbortController().signal));
     fixture.executor.moveToBackground(subagentId, 'session-1');
 
     const waiting = new AbortController();
@@ -266,14 +297,14 @@ describe('持久子代理继续', () => {
     const store = makeStore();
     const fixture = createExecutor(store);
     const firstInput = makeInput('first', Promise.resolve(), new AbortController().signal);
-    const id = fixture.executor.start({
+    const { subagentId: id } = fixture.executor.start({
       ...firstInput, options: { ...firstInput.options, providerId: 'custom-p', modelId: 'custom-m' },
       permissionMode: 'bypassPermissions', reasoningEffort: 'low',
     });
     await fixture.executor.waitForInitialResult(id, 'session-1', new AbortController().signal);
     const firstRun = store.latestRun(id)!;
     const prepared = vi.fn(makeInput('second', Promise.resolve(), new AbortController().signal).prepareSubagent);
-    const continuedId = fixture.executor.start({
+    const { subagentId: continuedId } = fixture.executor.start({
       ...makeInput('second', Promise.resolve(), new AbortController().signal),
       options: { subagentId: id }, permissionMode: 'default', reasoningEffort: 'high', prepareSubagent: prepared,
     });
@@ -293,7 +324,7 @@ describe('持久子代理继续', () => {
     const store = makeStore();
     const fixture = createExecutor(store);
     const input = makeInput('first', gate.promise, new AbortController().signal);
-    const id = fixture.executor.start(input);
+    const { subagentId: id } = fixture.executor.start(input);
     expect(() => fixture.executor.start({ ...input, toolCallId: 'second', options: { subagentId: id } })).toThrow('正在被占用');
     expect(store.listRuns(id).items).toHaveLength(1);
     gate.resolve();
@@ -304,7 +335,7 @@ describe('持久子代理继续', () => {
     const store = makeStore();
     const fixture = createExecutor(store);
     const input = makeInput('invalid', Promise.resolve(), new AbortController().signal);
-    const id = fixture.executor.start({
+    const { subagentId: id } = fixture.executor.start({
       ...input, options: { ...input.options, providerId: 'missing', modelId: 'missing' },
       prepareSubagent: async () => { throw new Error('模型不存在'); },
     });

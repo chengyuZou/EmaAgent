@@ -6,6 +6,7 @@ import {
   buildTool,
   contextFail,
   contextOk,
+  ToolExecutionError,
   type SubagentSpawnOptions,
   type SubagentControl,
   type ToolInvocation,
@@ -36,21 +37,21 @@ const inputSchema = z.object({
     .min(1)
     .describe(
       'Task prompt for the sub-agent. In the default "subagent" mode it must include all ' +
-        'needed context because parent conversation history is not inherited.',
+      'needed context because parent conversation history is not inherited.',
     ),
   providerId: z
     .string()
     .optional()
     .describe(
       'Provider of the model override. Must be given together with modelId — ' +
-        'a modelId alone is not unique across providers. New agents inherit the parent; continued agents keep their last model.',
+      'a modelId alone is not unique across providers. New agents inherit the parent; continued agents keep their last model.',
     ),
   modelId: z
     .string()
     .optional()
     .describe(
       'Model override for this sub-agent. Must be given together with providerId. ' +
-        'New agents inherit the parent; continued agents keep their last model.',
+      'New agents inherit the parent; continued agents keep their last model.',
     ),
   description: z
     .string()
@@ -64,7 +65,7 @@ const inputSchema = z.object({
     .optional()
     .describe(
       'Context strategy. "subagent" is the default and starts with only the task prompt. ' +
-        'Use "fork" only when the worker explicitly needs the parent conversation history.',
+      'Use "fork" only when the worker explicitly needs the parent conversation history.',
     ),
   runInBackground: z
     .boolean()
@@ -79,6 +80,7 @@ type SubagentInput = z.infer<typeof inputSchema>;
 export interface SubagentCompletedResult {
   kind: 'completed';
   subagentId: string;
+  runId: string;
   output: string;
   usage: { inputTokens: number; outputTokens: number };
 }
@@ -86,6 +88,7 @@ export interface SubagentCompletedResult {
 export interface SubagentBackgroundReference {
   kind: 'background';
   subagentId: string;
+  runId: string;
   /** requested=模型显式要求后台; auto=同步等待超限自动转交。 */
   via: 'requested' | 'auto';
 }
@@ -99,11 +102,7 @@ type WaitOutcome<T> =
   | { kind: 'timeout' }
   | { kind: 'aborted'; reason: unknown };
 
-function raceWithAbort<T>(
-  promise: Promise<T>,
-  timeoutMs: number,
-  signal: AbortSignal,
-): Promise<WaitOutcome<T>> {
+function raceWithAbort<T>(promise: Promise<T>, timeoutMs: number, signal: AbortSignal): Promise<WaitOutcome<T>> {
   return new Promise((resolve, reject) => {
     if (signal.aborted) {
       resolve({ kind: 'aborted', reason: signal.reason });
@@ -117,15 +116,20 @@ function raceWithAbort<T>(
       cleanup();
       resolve({ kind: 'timeout' });
     }, timeoutMs);
+    
     const onAbort = (): void => {
       cleanup();
       resolve({ kind: 'aborted', reason: signal.reason });
     };
     signal.addEventListener('abort', onAbort, { once: true });
-    void promise.then(
-      (result) => { cleanup(); resolve({ kind: 'result', result }); },
-      (error: unknown) => { cleanup(); reject(error); },
-    );
+    void promise.then((result) => {
+      cleanup();
+      resolve({ kind: 'result', result });
+    },
+      (error: unknown) => {
+        cleanup();
+        reject(error);
+      });
   });
 }
 
@@ -150,11 +154,7 @@ export const SubagentTool = buildTool<SubagentInput, SubagentResult, SubagentToo
     return contextOk({ subagents: ctx.subagents });
   },
 
-  async execute(
-    input: SubagentInput,
-    context: SubagentToolContext,
-    invocation: ToolInvocation,
-  ): Promise<SubagentResult> {
+  async execute(input: SubagentInput, context: SubagentToolContext, invocation: ToolInvocation): Promise<SubagentResult> {
     if (!input.subagentId && (!input.title || !input.description)) {
       throw new Error('Creating a sub-agent requires title and description.');
     }
@@ -164,7 +164,7 @@ export const SubagentTool = buildTool<SubagentInput, SubagentResult, SubagentToo
     if ((modelId === undefined) !== (providerId === undefined)) {
       throw new Error(
         'Sub-agent model override requires both providerId and modelId. ' +
-          'A modelId alone is ambiguous — the same model id can exist on multiple providers.',
+        'A modelId alone is ambiguous — the same model id can exist on multiple providers.',
       );
     }
     const options: SubagentSpawnOptions = {
@@ -177,30 +177,54 @@ export const SubagentTool = buildTool<SubagentInput, SubagentResult, SubagentToo
     };
 
     if (input.runInBackground) {
-      const subagentId = context.subagents.start(input.prompt, options, invocation.toolCallId, true, invocation.signal);
-      return { kind: 'background', subagentId, via: 'requested' };
+      const reference = context.subagents.start(
+        input.prompt,
+        options,
+        invocation.toolCallId,
+        true,
+        invocation.signal
+      );
+      return { kind: 'background', ...reference, via: 'requested' };
     }
 
     // 同步路径: 后台拉起 + 限时等待，超时自动转交后台。
-    const subagentId = context.subagents.start(input.prompt, options, invocation.toolCallId, false, invocation.signal);
-    const outcome = await raceWithAbort(
-      context.subagents.waitForInitialResult(subagentId, invocation.signal),
-      AUTO_BACKGROUND_WAIT_MS,
-      invocation.signal,
+    const reference = context.subagents.start(
+      input.prompt,
+      options,
+      invocation.toolCallId,
+      false,
+      invocation.signal
     );
-    if (outcome.kind === 'timeout') {
-      context.subagents.moveToBackground(subagentId);
-      return { kind: 'background', subagentId, via: 'auto' };
+    const { subagentId } = reference;
+    try {
+      const outcome = await raceWithAbort(
+        context.subagents.waitForInitialResult(subagentId, invocation.signal),
+        AUTO_BACKGROUND_WAIT_MS,
+        invocation.signal,
+      );
+      if (outcome.kind === 'timeout') {
+        context.subagents.moveToBackground(subagentId);
+        return { kind: 'background', ...reference, via: 'auto' };
+      }
+      if (outcome.kind === 'aborted') {
+        // 同步等待被取消: 取消子 Agent 再抛,不留孤儿运行。
+        context.subagents.cancel(subagentId);
+        throw outcome.reason instanceof Error
+          ? outcome.reason
+          : new Error(String(outcome.reason));
+      }
+      if (!outcome.result) {
+        throw new Error(`Sub-agent result unavailable (subagentId: ${subagentId})`);
+      }
+      return { kind: 'completed', ...outcome.result };
+    } catch (error) {
+      // start 已成功才有这份引用. 错误与业务输出分开, 失败卡片仍能打开本次 Run.
+      throw new ToolExecutionError(
+        reference,
+        error instanceof Error ? error.message : String(error),
+        invocation.signal.aborted ? 'tool/cancelled' : 'tool/error'
+      );
     }
-    if (outcome.kind === 'aborted') {
-      // 同步等待被取消: 取消子 Agent 再抛,不留孤儿运行。
-      context.subagents.cancel(subagentId);
-      throw outcome.reason instanceof Error ? outcome.reason : new Error(String(outcome.reason));
-    }
-    if (!outcome.result) {
-      throw new Error(`Sub-agent result unavailable (subagentId: ${subagentId})`);
-    }
-    return { kind: 'completed', ...outcome.result };
   },
 
   mapResultToModelContent(output) {

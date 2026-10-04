@@ -12,6 +12,7 @@ import type { SettingsStore } from '@ema-agent/settings';
 import { StageEngine } from '@ema-agent/stage';
 import type { UsageRecord } from '@ema-agent/usage';
 import { GoalStore } from '@ema-agent/goal';
+import { staticSystemPrompt } from '@ema-agent/prompts';
 import {
   buildTool,
   BuiltinTools,
@@ -93,6 +94,7 @@ function makeDeps(options: {
     createLlmCall: () => llm,
     registry,
     interactionQueue: new SessionInteractionQueue(null),
+    publishInteraction: () => undefined,
     subagents: {
       abortForegroundForTurn: async () => undefined,
       waitForTurnSubagents: async () => undefined,
@@ -169,6 +171,7 @@ function forkFixture(llm: CallLlm, onStarted: (id: string) => void, createCompac
     },
     onBackgroundCompleted: () => undefined,
     onTerminalResultRead: () => undefined,
+    onRunFinished: () => undefined,
   });
   const executor = new TurnExecutor({
     ...makeDeps({ db, llm, sessionId: session.id, registry }),
@@ -598,8 +601,12 @@ describe('TurnExecutor 集成', () => {
       expect((await handle.completion).status).toBe('completed');
       expect(children).toHaveLength(3);
       expect(children[0]!.slice(0, -1)).toEqual(children[1]!.slice(0, -1));
-      expect(children[0]!.filter(message => message.role === 'system'))
-        .toEqual(parents[0]!.filter(message => message.role === 'system'));
+      const childSystem = children[0]!.filter(message => message.role === 'system');
+      const parentSystem = parents[0]!.filter(message => message.role === 'system');
+      // fork 继承父工作历史, 不继承角色 System; 产品静态前缀仍共用.
+      expect(childSystem.slice(0, staticSystemPrompt.length)).toEqual(parentSystem.slice(0, staticSystemPrompt.length));
+      expect(childSystem.at(-1)?.content).toContain('# 子代理工作约束');
+      expect(childSystem).not.toEqual(parentSystem);
       const assistant = children[0]!.filter(message => message.role === 'assistant').at(-1)!;
       expect(assistant.generatedBy).toEqual({ providerId: 'p', modelId: 'm', protocol: 'openai-chat' });
       expect(assistant.content).toEqual([
@@ -771,16 +778,24 @@ describe('TurnExecutor 集成', () => {
     db.close();
   });
 
-  it('reminder：事实在 Turn 开始一次持久化并回放进请求，先于用户输入且不重复', async () => {
+  it('reminder：事实和子代理目录在 Turn 开始一次持久化, 多次模型请求不重读或重复添加', async () => {
     const db = new Database({ memory: true, kind: 'data' });
     db.migrate();
     const sessions = new SessionStore({ db });
     const session = sessions.createSession({ cwd: os.tmpdir(), providerId: 'p', modelId: 'm' });
     const registry = new ToolRegistry();
+    registry.register(echoTool());
     const requests: unknown[] = [];
+    const directory = [{ id: 'old-agent', title: '原任务', description: '原说明' }];
     const llm: CallLlm = request => {
       requests.push(request.messages);
       return (async function* () {
+        if (requests.length === 1) {
+          directory[0]!.description = '本轮中途修改';
+          yield { type: 'tool_use_complete' as const, blockIndex: 0, callId: 'echo', name: 'Echo', args: {} };
+          yield { type: 'done' as const, stopReason: 'tool_use' as const };
+          return;
+        }
         yield { type: 'text_delta' as const, blockIndex: 0, delta: '好。' };
         yield { type: 'done' as const, stopReason: 'end_turn' as const };
       })();
@@ -795,6 +810,7 @@ describe('TurnExecutor 集成', () => {
           goal: null,
           memoryWork: '用户在做 EmaAgent',
           taskReminder: '还有 2 个任务待处理',
+          subagents: directory,
         };
       },
     };
@@ -813,6 +829,16 @@ describe('TurnExecutor 集成', () => {
     expect(reminderBlocks).toContain('本 Turn 开始时的状态');
     expect(reminderBlocks).toContain('用户在做 EmaAgent');
     expect(reminderBlocks).toContain('还有 2 个任务待处理');
+    expect(reminderBlocks).toContain('old-agent');
+    expect(reminderBlocks).toContain('原说明');
+    expect(messages.filter(message => message.kind === 'reminder')).toHaveLength(1);
+    expect(requests).toHaveLength(2);
+    for (const request of requests) {
+      const serialized = JSON.stringify(request);
+      expect(serialized).toContain('原说明');
+      expect(serialized).not.toContain('本轮中途修改');
+      expect(serialized.indexOf('old-agent')).toBe(serialized.lastIndexOf('old-agent'));
+    }
 
     // 首个 LLM 请求：reminder 回放出现在用户输入之前，且全文只出现一次。
     const first = JSON.stringify(requests[0]);

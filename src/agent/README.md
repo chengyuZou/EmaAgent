@@ -2,7 +2,7 @@
 
 `src/agent` 只实现一个 Agent 的 `LLM → Tool → Result` 循环，以及父 Agent 派生的子 Subagent。根 Turn、Session 历史、Context、Compact、权限装配和 ToolPool 发现都不属于本包；循环只产 `AgentLoopEvent`，持久化由事件消费方（Turn / SubagentExecutor）在 yield 恢复点完成。
 
-`SubagentStore` 管稳定身份和每次 Run 的 SQL 事实; `SubagentEvent` 由执行器发布执行进度. 本批尚未接身份列表的刷新通知, 不把执行流事件当作完整持久化记录.
+`SubagentStore` 管稳定身份和每次 Run 的 SQL 事实; `SubagentEvent` 由执行器发布执行进度、已持久化的消息更新和终态 Run. Desktop 在启动/终态时刷新身份列表中的对应身份; 未收到的历史仍通过 HTTP 查询, 不把执行流当成完整历史重放.
 
 `SubagentEvent.tool_result` 携带 `subagentId`、模型可见的 `toolName` 和原始 `result`. Desktop 用工具名称筛选工作区差异刷新, 不反查聊天消息; 名称由 `SubagentExecutor` 按本次调用 ID 从 `tool_use_completed` 配对, 结果发出后立即释放配对记录.
 
@@ -78,7 +78,17 @@ fork 的父前缀由 Turn 在发起调用所属的父 Assistant 完整落库后�
 
 前台等待超过 2 分钟只改变结果所有者和父 Turn 取消关系, 同一条执行不会重启. 自然终态先写 `subagent_runs.final_text`, 再向 Session 队列发送 `subagentId + status`; 完整结果可由 `SubagentAwait` 按稳定 ID 读取当前/最近 Run. 应用启动只把遗留 `running` 收口为失败, 不扫描终态并启动新 Turn.
 
-模型新建时未指定则沿用父模型, 继续时未指定则沿用身份记录最近实际使用的模型; 显式配置无效直接报错. Permission 和 reasoningEffort 每次取父 Turn 当前冻结值, 身份上的最近配置仅供展示. 旧 Role 已移除; 普通/fork/继续共用产品静态规则, 不带角色与 SessionMode, 按实际子模型和子 ToolPool 装配动态 System, 最后补纯工作委派说明. Session 共用 Permission FIFO 尚待后续分段, 子工具仍使用 headless 环境.
+模型新建时未指定则沿用父模型, 继续时未指定则沿用身份记录最近实际使用的模型; 显式配置无效直接报错. Permission 和 reasoningEffort 每次取父 Turn 当前冻结值, 身份上的最近配置仅供展示. 旧 Role 已移除; 普通/fork/继续共用产品静态规则, 不带角色与 SessionMode, 按实际子模型和子 ToolPool 装配动态 System, 最后补纯工作委派说明.
+
+前后台子工具通过宿主提供的 askPermission 共用 Session FIFO, 不再因子代理身份被视为 headless.
+请求按 subagentId/runId/toolCallId 定位来源与执行, 父 Turn ID 仅保留发起关联.
+`SubagentExecutorDeps.onRunFinished(runId)` 在执行完成或异常退出后的统一收尾中调用一次,
+宿主负责清理这次 Run 的批准请求, Agent 包不导入队列. 转后台保持原 Run 和工具等待,
+父 Turn 结束只终止仍在前台的子代理; Desktop 从 Session 消费批准, 标明来源, 按 sessionId/toolCallId 回答, 不依赖父 Turn.
+
+`SubagentExecutor.start` 返回 `{subagentId, runId}`, ToolResult 的 data 和 error 独立保存. Run 创建后的失败/取消通过 `ToolExecutionError` 保留两个 ID, 未开始的失败不伪造引用. `SubagentAwait` 的成功结果也携带实际 RunId.
+
+实时 `message_updated` 在 SQL 写入后发送完整原生 Message 和真实 MessageId; delta 与闭合更新同一条. `iteration_started` 提供本次实际 Run 配置, completed/failed/aborted 在终态 SQL 提交后携带完整 Run. 终态属于对应 Run, 不代表该身份后来启动的新 Run 也已结束. Desktop 按稳定子代理 ID 打开连续消息历史, 所有 Run 与 fork 前缀一起显示. Message 窗口用 createdAt/id 双向游标并按 ID 合并实时更新, 不要求 Run 有起始任务消息. 已有身份没有消息时返回空窗口, 不报未找到.
 
 ## 文件结构
 

@@ -1,7 +1,6 @@
 /* Chat 的 Header, 输入 dock, 消息阅读与右侧工作区的局部表面. 通用参数不在此重复. */
 
-.ema-chat-main .ema-chat-header,
-.ema-chat-main .ema-chat-status {
+.ema-chat-main .ema-chat-header {
   background: var(--ema-material-section);
 }
 

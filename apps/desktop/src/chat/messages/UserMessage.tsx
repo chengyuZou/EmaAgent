@@ -3,43 +3,32 @@ import { useState, type JSX } from 'react';
 import { IconButton } from '@ema-agent/ui';
 
 import { Markdown } from '@ema-agent/ui';
-import type {
-  AttachmentBlock,
-  Message,
-  MessageBlocks,
-  SkillReferenceBlock,
-  SessionUserBlock,
-} from '@ema-agent/session';
-import { useChatNavigationStore } from '../../stores/chatNavigation.js';
+import type { AttachmentBlock, Message, MessageBlocks, SkillReferenceBlock, SessionUserBlock } from '@ema-agent/session';
 import { formatTurnTime } from './toolBlocks/toolGroups.js';
-import {
-  sessionSourceTab,
-  useSessionPanelStore,
-} from '../../stores/sessionPanel.js';
+import { sessionSourceTab, useSessionPanelStore } from '../../stores/sessionPanel.js';
 
 export interface UserMessageProps {
   message: Message;
+  sessionId: string;
 }
 
-export function UserMessage({ message }: UserMessageProps): JSX.Element {
+export function UserMessage({ message, sessionId }: UserMessageProps): JSX.Element {
   const content = messageText(message);
   // 附件卡置顶；正文按输入顺序走：text 段与 skill_reference chip 内联混排（用户放置的位置）。
   const attachments = Array.isArray(message.blocks)
     ? message.blocks.filter(
-        (block): block is AttachmentBlock =>
-          block.type === 'image_reference'
-          || block.type === 'pasted_text_reference'
-          || block.type === 'file_reference',
-      )
+      (block): block is AttachmentBlock =>
+        block.type === 'image_reference'
+        || block.type === 'pasted_text_reference'
+        || block.type === 'file_reference',
+    )
     : [];
   const segments = Array.isArray(message.blocks)
     ? message.blocks.filter(
-        (block): block is Extract<SessionUserBlock, { type: 'text' }> | SkillReferenceBlock =>
-          block.type === 'text' || block.type === 'skill_reference',
-      )
+      (block): block is Extract<SessionUserBlock, { type: 'text' }> | SkillReferenceBlock =>
+        block.type === 'text' || block.type === 'skill_reference',
+    )
     : [{ type: 'text' as const, text: content }];
-
-  const viewedId = useChatNavigationStore((s) => s.viewedSessionId);
 
   const [copied, setCopied] = useState(false);
 
@@ -63,20 +52,26 @@ export function UserMessage({ message }: UserMessageProps): JSX.Element {
                 <button
                   type="button"
                   key={block.path}
-                  className={`ema-message-chip inline-flex items-center gap-1 border px-2 py-0.5 text-[11px] text-[var(--ema-text-tertiary)] ${
-                    openable
-                      ? 'hover:border-[var(--ema-border-strong)] hover:text-[var(--ema-text-primary)]'
-                      : 'cursor-default'
-                  }`}
+                  className={`ema-message-chip inline-flex items-center gap-1 border px-2 py-0.5 text-[11px] text-[var(--ema-text-tertiary)] ${openable
+                    ? 'hover:border-[var(--ema-border-strong)] hover:text-[var(--ema-text-primary)]'
+                    : 'cursor-default'
+                    }`}
                   onClick={() => {
-                    if (openable && viewedId) {
+                    if (openable) {
                       useSessionPanelStore
                         .getState()
-                        .openTab(viewedId, sessionSourceTab(block.path));
+                        .openTab(
+                          sessionId,
+                          sessionSourceTab(block.path)
+                        );
                     }
                   }}
                 >
-                  <span className={`${chip.icon} text-[10px]`} style={{ color: chip.color }} aria-hidden />
+                  <span
+                    className={`${chip.icon} text-[10px]`}
+                    style={{ color: chip.color }}
+                    aria-hidden
+                  />
                   {chip.label}
                 </button>
               );
@@ -84,25 +79,32 @@ export function UserMessage({ message }: UserMessageProps): JSX.Element {
           </div>
         )}
 
-        {content.trim().length > 0 || segments.some((s) => s.type === 'skill_reference') ? (
-          <div className="ema-message-content rounded-2xl rounded-br-md px-5 py-3 border text-sm bg-[var(--ema-surface-2)] border-[var(--ema-border)] text-[var(--ema-text-secondary)]">
-            {segments.map((segment, index) =>
-              segment.type === 'skill_reference' ? (
-                <span
-                  key={`skill-${segment.path}-${index}`}
-                  className="ema-message-chip mx-0.5 inline-flex items-center gap-1 px-1.5 py-0.5 align-baseline text-[11px] text-[var(--ema-text-secondary)]"
-                >
-                  <span className="i-lucide:sparkles text-[10px]" aria-hidden />
-                  {segment.name}
-                </span>
-              ) : (
-                <span key={`text-${index}`} className="ema-md-inline">
-                  <Markdown source={segment.text} />
-                </span>
-              ),
-            )}
-          </div>
-        ) : null}
+        {content.trim().length > 0 || segments.some((s) => s.type === 'skill_reference')
+          ? (
+            <div className="ema-message-content rounded-2xl rounded-br-md px-5 py-3 border text-sm bg-[var(--ema-surface-2)] border-[var(--ema-border)] text-[var(--ema-text-secondary)]">
+              {segments.map((segment, index) =>
+                segment.type === 'skill_reference'
+                  ? (
+                    <span
+                      key={`skill-${segment.path}-${index}`}
+                      className="ema-message-chip mx-0.5 inline-flex items-center gap-1 px-1.5 py-0.5 align-baseline text-[11px] text-[var(--ema-text-secondary)]"
+                    >
+                      <span className="i-lucide:sparkles text-[10px]" aria-hidden />
+                      {segment.name}
+                    </span>
+                  )
+                  : (
+                    <span
+                      key={`text-${index}`}
+                      className="ema-md-inline"
+                    >
+                      <Markdown source={segment.text} />
+                    </span>
+                  ),
+              )}
+            </div>
+          )
+          : null}
 
         <div className="ema-message-footer ema-message-footer-user">
           <span className="ema-message-footer-stats tabular-nums">{formatTurnTime(message.createdAt)}</span>
@@ -124,8 +126,12 @@ export function UserMessage({ message }: UserMessageProps): JSX.Element {
 }
 
 function messageText(message: { readonly blocks: MessageBlocks }): string {
-  if (typeof message.blocks === 'string') return message.blocks;
-  if (!Array.isArray(message.blocks)) return '';
+  if (typeof message.blocks === 'string') {
+    return message.blocks;
+  }
+  if (!Array.isArray(message.blocks)) {
+    return '';
+  }
   return message.blocks
     .filter((block): block is Extract<SessionUserBlock, { type: 'text' }> => block.type === 'text')
     .map(block => block.text)
@@ -144,10 +150,18 @@ function chipDisplay(block: AttachmentBlock): { icon: string; color: string; lab
   if (['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(extension)) {
     return { icon: 'i-mdi:image-outline', color: 'var(--ema-file-image)', label: name };
   }
-  if (extension === 'pdf') return { icon: 'i-mdi:file-pdf-box', color: 'var(--ema-file-pdf)', label: name };
-  if (['doc', 'docx'].includes(extension)) return { icon: 'i-mdi:file-word', color: 'var(--ema-file-word)', label: name };
-  if (['ppt', 'pptx'].includes(extension)) return { icon: 'i-mdi:file-powerpoint', color: 'var(--ema-file-ppt)', label: name };
-  if (['xls', 'xlsx'].includes(extension)) return { icon: 'i-mdi:file-excel', color: 'var(--ema-file-excel)', label: name };
+  if (extension === 'pdf') {
+    return { icon: 'i-mdi:file-pdf-box', color: 'var(--ema-file-pdf)', label: name };
+  }
+  if (['doc', 'docx'].includes(extension)) {
+    return { icon: 'i-mdi:file-word', color: 'var(--ema-file-word)', label: name };
+  }
+  if (['ppt', 'pptx'].includes(extension)) {
+    return { icon: 'i-mdi:file-powerpoint', color: 'var(--ema-file-ppt)', label: name };
+  }
+  if (['xls', 'xlsx'].includes(extension)) {
+    return { icon: 'i-mdi:file-excel', color: 'var(--ema-file-excel)', label: name };
+  }
   if (/^(ts|tsx|js|jsx|py|rs|go|cpp|c|java|rb|php|sh|yaml|yml|toml|sql)$/.test(extension)) {
     return { icon: 'i-mdi:file-code-outline', color: 'var(--ema-file-code)', label: name };
   }

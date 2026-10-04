@@ -42,11 +42,11 @@ describe('SessionInteractionQueue Permission FIFO', () => {
 
     expect(q.listPending('s1').map(idOf)).toEqual(['c1', 'c2']);
 
-    expect(q.respondPermission('c1', { action: 'allow' })).toBe(true);
+    expect(q.respondPermission('s1', 'c1', { action: 'allow' })).toBe(true);
     expect((await a.promise).action).toBe('allow');
     expect(q.listPending('s1').map(idOf)).toEqual(['c2']);
 
-    expect(q.respondPermission('c2', { action: 'deny' })).toBe(true);
+    expect(q.respondPermission('s1', 'c2', { action: 'deny' })).toBe(true);
     expect((await b.promise).action).toBe('deny');
     expect(q.size()).toBe(0);
   });
@@ -59,24 +59,24 @@ describe('SessionInteractionQueue Permission FIFO', () => {
     expect(q.listPending('s1').map(idOf)).toEqual(['c1']);
     expect(q.listPending('s2').map(idOf)).toEqual(['c2']);
 
-    q.respondPermission('c1', { action: 'allow' });
+    q.respondPermission('s1', 'c1', { action: 'allow' });
     expect(q.listPending('s2').map(idOf)).toEqual(['c2']);
   });
 
   it('respondPermission 按 toolCallId 定位,未知或已解决返回 false', () => {
     const q = makeQueue();
     q.enqueuePermission(makePermissionRequest('c1'));
-    expect(q.respondPermission('nonexistent', { action: 'allow' })).toBe(false);
-    expect(q.respondPermission('c1', { action: 'allow' })).toBe(true);
-    expect(q.respondPermission('c1', { action: 'allow' })).toBe(false);
+    expect(q.respondPermission('s1', 'nonexistent', { action: 'allow' })).toBe(false);
+    expect(q.respondPermission('s1', 'c1', { action: 'allow' })).toBe(true);
+    expect(q.respondPermission('s1', 'c1', { action: 'allow' })).toBe(false);
   });
 
-  it('Permission 响应必须属于 URL 指定的 Turn', () => {
+  it('Permission 响应必须属于 WS 指定的 Session', () => {
     const q = makeQueue();
     q.enqueuePermission(makePermissionRequest('call-a', 'session-a', 'turn-a'));
 
-    expect(q.respondPermission('call-a', { action: 'allow' }, 'turn-stale')).toBe(false);
-    expect(q.respondPermission('call-a', { action: 'allow' }, 'turn-a')).toBe(true);
+    expect(q.respondPermission('session-other', 'call-a', { action: 'allow' })).toBe(false);
+    expect(q.respondPermission('session-a', 'call-a', { action: 'allow' })).toBe(true);
   });
 
   it('respondAskUser 不能解决 Permission 条目(类型互斥)', () => {
@@ -91,7 +91,7 @@ describe('SessionInteractionQueue Permission FIFO', () => {
     q.enqueuePermission(makePermissionRequest('c1'));
     q.enqueuePermission(makePermissionRequest('c2'));
 
-    expect(q.respondPermission('c2', { action: 'allow' })).toBe(false);
+    expect(q.respondPermission('s1', 'c2', { action: 'allow' })).toBe(false);
     expect(q.listPending('s1').map(idOf)).toEqual(['c1', 'c2']);
   });
 });
@@ -141,6 +141,67 @@ describe('SessionInteractionQueue AskUser FIFO', () => {
 });
 
 describe('SessionInteractionQueue Permission 与 AskUser 混合 FIFO', () => {
+  it('根 Turn 收尾不取消子代理, Run 收尾只清自己, 空队列之后可以重新入队', async () => {
+    const q = makeQueue(null);
+    const root = q.enqueuePermission(makePermissionRequest('root'));
+    const child = q.enqueuePermission({
+      ...makePermissionRequest('child'), subagentId: 'agent-1', runId: 'run-1',
+    });
+    const other = q.enqueuePermission({
+      ...makePermissionRequest('other'), subagentId: 'agent-2', runId: 'run-2',
+    });
+    expect(q.respondPermission('s1', 'child', { action: 'allow' })).toBe(false);
+    expect(q.cancelForTurn('t1')).toBe(1);
+    await expect(root.promise).resolves.toMatchObject({ action: 'deny' });
+    expect(q.listPending('s1').map(idOf)).toEqual(['child', 'other']);
+    expect(q.cancelForRun('run-2')).toBe(1);
+    await expect(other.promise).resolves.toMatchObject({ action: 'deny' });
+    expect(q.respondPermission('s1', 'child', { action: 'allow' })).toBe(true);
+    await expect(child.promise).resolves.toEqual({ action: 'allow' });
+    expect(q.size()).toBe(0);
+    expect(q.listPending('s1')).toEqual([]);
+
+    const next = q.enqueuePermission({
+      ...makePermissionRequest('next', 's1', 't2'), subagentId: 'agent-1', runId: 'run-3',
+    });
+    expect(q.cancelForRun('run-1')).toBe(0);
+    expect(q.respondPermission('s1', 'next', { action: 'allow' })).toBe(true);
+    await expect(next.promise).resolves.toEqual({ action: 'allow' });
+  });
+
+  it('回答与 Run 取消只结算一次, 迟到操作不影响下一条', async () => {
+    const q = makeQueue(null);
+    const first = q.enqueuePermission({
+      ...makePermissionRequest('first'), subagentId: 'agent-1', runId: 'run-1',
+    });
+    expect(q.respondPermission('s1', 'first', { action: 'allow' })).toBe(true);
+    expect(q.cancelForRun('run-1')).toBe(0);
+    await expect(first.promise).resolves.toEqual({ action: 'allow' });
+    const next = q.enqueuePermission({
+      ...makePermissionRequest('next'), subagentId: 'agent-1', runId: 'run-2',
+    });
+    expect(q.cancelForRun('run-2')).toBe(1);
+    expect(q.respondPermission('s1', 'next', { action: 'allow' })).toBe(false);
+    await expect(next.promise).resolves.toMatchObject({ action: 'deny' });
+    expect(q.size()).toBe(0);
+  });
+
+  it('Session 删除同时取消根请求、子请求和问询, 不影响另一 Session', async () => {
+    const q = makeQueue(null);
+    const root = q.enqueuePermission(makePermissionRequest('root'));
+    const child = q.enqueuePermission({
+      ...makePermissionRequest('child'), subagentId: 'agent-1', runId: 'run-1',
+    });
+    const ask = q.enqueueAskUser(makeAskUserRequest('ask'));
+    const other = q.enqueuePermission(makePermissionRequest('other', 's2', 't2'));
+    expect(q.cancelForSession('s1')).toBe(3);
+    await expect(root.promise).resolves.toMatchObject({ action: 'deny' });
+    await expect(child.promise).resolves.toMatchObject({ action: 'deny' });
+    await expect(ask.promise).resolves.toMatchObject({ status: 'cancelled' });
+    expect(q.respondPermission('s2', 'other', { action: 'allow' })).toBe(true);
+    await expect(other.promise).resolves.toEqual({ action: 'allow' });
+  });
+
   it('同 Session [permission, askUser, permission] 按进入顺序共同排队', async () => {
     const q = makeQueue();
     const perm1 = q.enqueuePermission(makePermissionRequest('c1'));
@@ -151,7 +212,7 @@ describe('SessionInteractionQueue Permission 与 AskUser 混合 FIFO', () => {
     expect(q.listPending('s1').map(idOf)).toEqual(['c1', 'a1', 'c2']);
 
     // 解决队首 perm1,ask1 升为队首
-    q.respondPermission('c1', { action: 'allow' });
+    q.respondPermission('s1', 'c1', { action: 'allow' });
     expect((await perm1.promise).action).toBe('allow');
     expect(q.listPending('s1').map(idOf)).toEqual(['a1', 'c2']);
 
@@ -161,7 +222,7 @@ describe('SessionInteractionQueue Permission 与 AskUser 混合 FIFO', () => {
     expect(q.listPending('s1').map(idOf)).toEqual(['c2']);
 
     // 解决 perm2
-    q.respondPermission('c2', { action: 'deny' });
+    q.respondPermission('s1', 'c2', { action: 'deny' });
     expect((await perm2.promise).action).toBe('deny');
     expect(q.size()).toBe(0);
   });
@@ -263,7 +324,7 @@ describe('SessionInteractionQueue Permission 与 AskUser 混合 FIFO', () => {
 
       await vi.advanceTimersByTimeAsync(24 * 60 * 60 * 1_000);
       expect(q.listPending('s1')).toHaveLength(1);
-      expect(q.respondPermission('c1', { action: 'allow' })).toBe(true);
+      expect(q.respondPermission('s1', 'c1', { action: 'allow' })).toBe(true);
       await expect(pending.promise).resolves.toEqual({ action: 'allow' });
     } finally {
       vi.useRealTimers();
@@ -276,8 +337,7 @@ describe('SessionInteractionQueue Permission 与 AskUser 混合 FIFO', () => {
     const ask  = q.enqueueAskUser(makeAskUserRequest('a1', 's2', 't2'));
 
     expect(q.cancel('c1', 'test')).toBe(true);
-    expect((await perm.promise).action).toBe('deny');
-    expect((await perm.promise).reason).toBe('test');
+    expect(await perm.promise).toEqual({ action: 'deny', reason: 'test' });
 
     expect(q.cancel('a1', 'test')).toBe(true);
     expect(await ask.promise).toEqual({

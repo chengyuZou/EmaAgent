@@ -1,10 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type JSX } from 'react';
-import {
-  Group,
-  Panel,
-  Separator,
-  type PanelImperativeHandle,
-} from 'react-resizable-panels';
+import { Group, Panel, Separator, type PanelImperativeHandle } from 'react-resizable-panels';
 import { useServerStore } from '../../stores/server.js';
 import { ChatInput } from '../input/ChatInput.js';
 import { MessageList } from '../history/MessageList.js';
@@ -27,7 +22,9 @@ export function SessionPage({ sessionId }: { sessionId: string }): JSX.Element {
 
   useLayoutEffect(() => {
     const composer = composerRef.current;
-    if (!composer) return;
+    if (!composer) {
+      return;
+    }
     const measure = (): void => {
       const bounds = composer.getBoundingClientRect();
       const height = Math.ceil(bounds.height) + 16;
@@ -47,8 +44,11 @@ export function SessionPage({ sessionId }: { sessionId: string }): JSX.Element {
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
-      if (panelOpen) workspacePanelRef.current?.resize(`${rightPanelPercent}%`);
-      else workspacePanelRef.current?.collapse();
+      if (panelOpen) {
+        workspacePanelRef.current?.resize(`${rightPanelPercent}%`);
+      } else {
+        workspacePanelRef.current?.collapse();
+      }
     });
     return () => cancelAnimationFrame(frame);
   }, [panelOpen, rightPanelPercent, sessionId]);
@@ -74,7 +74,9 @@ export function SessionPage({ sessionId }: { sessionId: string }): JSX.Element {
           className="ema-session-workspace-group min-h-0 min-w-0 flex-1"
           defaultLayout={!panelOpen ? { chat: 100, workspace: 0 } : { chat: 100 - rightPanelPercent, workspace: rightPanelPercent }}
           onLayoutChanged={(sizes, detail) => {
-            if (detail.isUserInteraction && sizes.workspace !== undefined) setRightPanelPercent(sizes.workspace);
+            if (detail.isUserInteraction && sizes.workspace !== undefined) {
+              setRightPanelPercent(sizes.workspace);
+            }
           }}
         >
           <Panel
@@ -84,24 +86,13 @@ export function SessionPage({ sessionId }: { sessionId: string }): JSX.Element {
             className="ema-chat-content-surface relative flex min-w-0 flex-col overflow-hidden"
             data-ema-chat-column
           >
-            <MessageList
-              sessionId={sessionId}
-              bottomInset={bottomInset}
-              latestButtonBottom={latestButtonBottom}
-            />
+            <MessageList sessionId={sessionId} bottomInset={bottomInset} latestButtonBottom={latestButtonBottom} />
             <div ref={composerRef} className="pointer-events-none absolute inset-x-0 bottom-0 z-20">
-              <ChatInput onSubmit={(submitted, objective) => (
-                submitChatDraft(sessionId, submitted, objective)
-              )} />
-              <StatusBar sessionId={sessionId} />
+              <ChatInput onSubmit={(submitted, objective) => (submitChatDraft(sessionId, submitted, objective))} />
             </div>
           </Panel>
 
-          <Separator
-            disabled={!panelOpen}
-            data-open={panelOpen}
-            className="ema-workspace-separator"
-          />
+          <Separator disabled={!panelOpen} data-open={panelOpen} className="ema-workspace-separator" />
 
           <Panel
             id="workspace"
@@ -119,22 +110,5 @@ export function SessionPage({ sessionId }: { sessionId: string }): JSX.Element {
         </Group>
       </main>
     </SessionGitDiffProvider>
-  );
-}
-
-function StatusBar({ sessionId }: { sessionId: string }): JSX.Element {
-  const serverStatus = useServerStore(state => state.status);
-  return (
-    <div className="ema-chat-status flex shrink-0 items-center justify-between border-t border-[var(--ema-border)] px-4 py-1.5 text-[11px] text-[var(--ema-text-tertiary)]">
-      <div className="flex items-center gap-2">
-        <span className={`size-1.5 rounded-md ${serverStatus.kind === 'ok'
-          ? 'bg-[var(--ema-success)]'
-          : 'bg-[var(--ema-danger)]'}`}
-        />
-        <span>服务器</span>
-        {serverStatus.kind === 'ok' && <span>{serverStatus.latencyMs}ms</span>}
-      </div>
-      <span className="font-mono opacity-40">{sessionId.slice(0, 8)}</span>
-    </div>
   );
 }
