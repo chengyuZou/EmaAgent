@@ -1,9 +1,10 @@
-// FileEditTool 的桌面展示: 参数(仅路径,old/new 由 diff 表达)与结构化 diff 卡。
-// 行号双列与 DiffCard(Review 面板)同一视觉语言;渲染直接消费 hunks,不走文本回环。
+// FileEditTool 的参数与结果展示; 官方 Diff 组件消费 Tool 保存的补丁.
 import type { JSX } from 'react';
+import type { StructuredPatchHunk } from 'diff';
 import { Badge } from '@ema-agent/ui';
 import type { FileEditResult } from './FileEditTool.js';
-import { patchToUnifiedText, type PatchHunk } from './patch.js';
+import { patchToUnifiedText } from './patch.js';
+import { FilePatchView } from '../shared/filePatchView.js';
 
 // ── 类型守卫(消费 unknown data 的唯一入口) ────────────────────────────────────
 
@@ -11,11 +12,29 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function isPatchHunk(value: unknown): value is PatchHunk {
+function isPatchHunk(value: unknown): value is StructuredPatchHunk {
   return isRecord(value)
     && typeof value['oldStart'] === 'number'
     && typeof value['newStart'] === 'number'
     && Array.isArray(value['lines']);
+}
+
+export function FileEditResultView({ data }: { data: unknown }): JSX.Element | null {
+  const result = asFileEditResult(data);
+  if (!result) return null;
+  return (
+    <div className="ema-file-change-content flex min-w-0 flex-col gap-1">
+      <div className="ema-file-change-summary flex items-center gap-2 text-[11px] leading-relaxed">
+        <span className="text-[var(--ema-text-secondary)]">
+          已编辑 · {result.replacements} 处替换
+        </span>
+        <span className="text-[var(--ema-success-text)]">+{result.additions}</span>
+        <span className="text-[var(--ema-danger-text)]">-{result.deletions}</span>
+        {result.replaceAll && <Badge variant="primary">replace_all</Badge>}
+      </div>
+      <FilePatchView filePath={result.filePath} hunks={result.structuredPatch} />
+    </div>
+  );
 }
 
 /** 失败结果(字符串等)与旧消息都没有这个形状,返回 null 让前端回落通用渲染。 */
@@ -57,108 +76,6 @@ export function FileEditArgsView({ args }: { args: unknown }): JSX.Element | nul
       <span className="min-w-0 font-mono text-[var(--ema-text-secondary)]" title={args['file_path']}>
         {args['file_path']}
       </span>
-    </div>
-  );
-}
-
-// ── 结果视图: diff 卡 ─────────────────────────────────────────────────────────
-
-interface DiffRow {
-  key: string;
-  kind: 'context' | 'del' | 'add';
-  oldLine: number | null;
-  newLine: number | null;
-  text: string;
-}
-
-type DiffEntry = DiffRow | { key: string; kind: 'gap' };
-
-/** hunks → 展示行; hunk 之间插 gap 带。行号: 删除行用旧号, 新增行用新号, 上下文双号。 */
-function flattenPatch(hunks: readonly PatchHunk[]): DiffEntry[] {
-  const entries: DiffEntry[] = [];
-  hunks.forEach((hunk, hunkIndex) => {
-    if (hunkIndex > 0) entries.push({ key: `gap-${hunkIndex}`, kind: 'gap' });
-    let oldLine = hunk.oldStart;
-    let newLine = hunk.newStart;
-    hunk.lines.forEach((line, lineIndex) => {
-      const marker = line.charAt(0);
-      const text = line.slice(1);
-      const key = `${hunkIndex}-${lineIndex}`;
-      if (marker === '-') {
-        entries.push({ key, kind: 'del', oldLine: oldLine++, newLine: null, text });
-      } else if (marker === '+') {
-        entries.push({ key, kind: 'add', oldLine: null, newLine: newLine++, text });
-      } else {
-        entries.push({ key, kind: 'context', oldLine: oldLine++, newLine: newLine++, text });
-      }
-    });
-  });
-  return entries;
-}
-
-/** 复制用: 还原为 unified diff 近似文本(无文件头)。 */
-// 序列化器在 patch.ts(形状拥有方), 这里只消费。
-
-export function FileEditResultView({ data }: { data: unknown }): JSX.Element | null {
-  const result = asFileEditResult(data);
-  if (!result) return null;
-  // 守卫在纯函数里完成;真正的卡片是组件,内部可以用 hooks。
-  return <FileEditDiffCard result={result} />;
-}
-
-/** 结构化补丁卡: 红删绿增灰上下文, 行号双列, hunk 间隔带。Edit/Write 共用(第三个消费者出现时再议提取位置)。 */
-export function StructuredPatchCard({ hunks }: { hunks: readonly PatchHunk[] }): JSX.Element {
-  const entries = flattenPatch(hunks);
-  return (
-    <div className="w-max min-w-full font-mono text-[11px] leading-relaxed">
-      {entries.map((entry) => {
-        if (entry.kind === 'gap') {
-          return (
-            <div
-              key={entry.key}
-              className="px-2.5 py-0.5 text-center text-[10px] text-[var(--ema-text-tertiary)] bg-[var(--ema-surface-2)]"
-            >
-              ···
-            </div>
-          );
-        }
-        const tone = entry.kind === 'add'
-          ? 'text-[var(--ema-success-text)] bg-[var(--ema-success-muted)]'
-          : entry.kind === 'del'
-            ? 'text-[var(--ema-danger-text)] bg-[var(--ema-danger-muted)]'
-            : 'text-[var(--ema-text-tertiary)]';
-        return (
-          <div key={entry.key} className={`flex px-2 ${tone}`}>
-            <span className="w-9 shrink-0 select-none text-right opacity-60">
-              {entry.oldLine ?? ''}
-            </span>
-            <span className="w-9 shrink-0 select-none text-right opacity-60">
-              {entry.newLine ?? ''}
-            </span>
-            <span className="min-w-0 flex-1 pl-2 whitespace-pre">
-              {entry.kind === 'add' ? '+' : entry.kind === 'del' ? '-' : ' '}
-              {entry.text}
-            </span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function FileEditDiffCard({ result }: { result: FileEditResult }): JSX.Element {
-  return (
-    <div className="flex flex-col gap-1">
-      <div className="flex items-center gap-2 text-[11px] leading-relaxed">
-        <span className="text-[var(--ema-text-secondary)]">
-          已编辑 · {result.replacements} 处替换
-        </span>
-        <span className="text-[var(--ema-success-text)]">+{result.additions}</span>
-        <span className="text-[var(--ema-danger-text)]">-{result.deletions}</span>
-        {result.replaceAll && <Badge variant="primary">replace_all</Badge>}
-      </div>
-
-      <StructuredPatchCard hunks={result.structuredPatch} />
     </div>
   );
 }

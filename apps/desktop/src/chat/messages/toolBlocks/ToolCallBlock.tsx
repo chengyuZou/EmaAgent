@@ -129,10 +129,10 @@ export function ToolCallBlock({ call, streaming = false, turnId, sessionId }: To
 
   return (
     <div className={`ema-tool-card ${hasError ? 'ema-tool-card--error' : ''}`}>
-      <div className="ema-tool-card-header">
+      <div className={`ema-tool-card-header ${status === 'running' ? 'ema-shimmer' : ''}`}>
         <button
           type="button"
-          className={`ema-tool-row group min-w-0 flex-1 ${status === 'running' ? 'ema-shimmer' : ''}`}
+          className="ema-tool-row group min-w-0 flex-1"
           onClick={() => setOpen((v) => !v)}
           aria-expanded={open}
         >
@@ -174,11 +174,11 @@ export function ToolCallBlock({ call, streaming = false, turnId, sessionId }: To
         {running && turnId && sessionId && (
           <IconButton
             label="中止该工具"
-            icon="i-lucide:circle-stop"
-            variant="danger"
+            iconNode={<span className="ema-tool-stop-square" />}
+            variant="ghost"
             size="sm"
             shape="rounded"
-            className="ema-tool-card-icon"
+            className="ema-tool-card-icon ema-tool-stop"
             onClick={() => {
               void sessionWebSocket.cancelTool(sessionId, turnId, toolCallId(call));
             }}

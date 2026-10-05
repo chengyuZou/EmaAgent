@@ -22,7 +22,6 @@ export {
   FileEditResultView,
   fileEditCopyText,
   fileEditTitle,
-  StructuredPatchCard,
 } from './tools/FileEditTool/UI.js';
 export {
   asFileWriteResult,
@@ -51,4 +50,4 @@ export {
 } from './tools/NarrativeSearchTool/UI.js';
 export { PdfReadArgsView, PdfReadResultView, pdfReadResultCopyText } from './tools/PdfReadTool/UI.js';
 export { TodoWriteActivitySummary, TodoWriteArgsView } from './tools/TodoWriteTool/UI.js';
-export { additionsToUnifiedText, patchToUnifiedText } from './tools/FileEditTool/patch.js';
+export { patchToUnifiedText } from './tools/FileEditTool/patch.js';

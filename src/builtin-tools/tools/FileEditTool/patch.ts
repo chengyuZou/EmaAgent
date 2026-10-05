@@ -1,13 +1,4 @@
-import { structuredPatch } from 'diff';
-
-export interface PatchHunk {
-  oldStart: number;
-  oldLines: number;
-  newStart: number;
-  newLines: number;
-  /** 每行以 ' '(上下文)/'-'(删除)/'+'(新增) 开头。 */
-  lines: string[];
-}
+import { formatPatch, OMIT_HEADERS, structuredPatch, type StructuredPatchHunk } from 'diff';
 
 export interface PatchLineCounts {
   /** structuredPatch 中以 `+` 开头的新增行数. */
@@ -21,7 +12,7 @@ export function buildStructuredPatch(
   filePath: string,
   oldContent: string,
   newContent: string,
-): PatchHunk[] {
+): StructuredPatchHunk[] {
   return structuredPatch(filePath, filePath, oldContent, newContent, '', '').hunks;
 }
 
@@ -29,7 +20,7 @@ export function buildStructuredPatch(
  * 在 Tool 生成 structuredPatch 后立即统计一次增删行数. ToolResult 会保存这个结果,
  * Desktop 不需要在每次 React render 时重新扫描同一份 patch.
  */
-export function countPatchLines(hunks: readonly PatchHunk[]): PatchLineCounts {
+export function countPatchLines(hunks: readonly StructuredPatchHunk[]): PatchLineCounts {
   let additions = 0;
   let deletions = 0;
   for (const hunk of hunks) {
@@ -49,17 +40,13 @@ export function countCreatedFileLines(content: string): number {
   return lines.length;
 }
 
-/** hunks → unified diff 近似文本(无文件头),供复制与 Review 面板的文本解析器消费。 */
-export function patchToUnifiedText(hunks: readonly PatchHunk[]): string {
-  return hunks
-    .map((h) => [`@@ -${h.oldStart},${h.oldLines} +${h.newStart},${h.newLines} @@`, ...h.lines].join('\n'))
-    .join('\n');
-}
-
-/** 新建文件内容 → 全新增行的 unified 文本(Review 面板 created 形态的展示输入)。 */
-export function additionsToUnifiedText(content: string): string {
-  const lines = content.split('\n');
-  // split 口径的末尾空行不是真实行("a\n" → ['a',''])。
-  if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
-  return [`@@ -0,0 +1,${lines.length} @@`, ...lines.map((line) => `+${line}`)].join('\n');
+/** 复制正文沿用官方补丁序列化, 不重复实现 hunk 行号或末尾换行规则. */
+export function patchToUnifiedText(hunks: readonly StructuredPatchHunk[]): string {
+  return formatPatch({
+    oldFileName: '',
+    newFileName: '',
+    oldHeader: '',
+    newHeader: '',
+    hunks: [...hunks],
+  }, OMIT_HEADERS);
 }

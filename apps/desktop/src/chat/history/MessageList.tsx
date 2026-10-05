@@ -252,7 +252,6 @@ function HistoryViewport({
             scrollDirection.current = scroller.scrollTop < lastScrollTop.current ? 'older' : 'newer';
           }
           lastScrollTop.current = scroller.scrollTop;
-          viewport.onScroll();
           checkPagination();
         }}
       >

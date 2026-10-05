@@ -1,4 +1,4 @@
-// 组装 Tauri 插件、桌面能力、共享状态和应用生命周期。
+// 组装 Tauri 插件 桌面能力 共享状态和应用生命周期
 mod bundled_data;
 mod commands;
 mod desktop;

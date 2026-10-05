@@ -147,7 +147,8 @@ pub fn set_main_passthrough_controls_hovered(
 pub fn handle_window_event(window: &tauri::Window, event: &WindowEvent) {
     // Tauri 的 emit 会广播到所有窗口;可见性必须按 label 定向,否则关闭子窗口会暂停 main 舞台。
     match event {
-        WindowEvent::CloseRequested { api, .. } => {
+        // 设置只消费已保存数据, 关闭时销毁 WebView; chat 继续隐藏以保留会话连接.
+        WindowEvent::CloseRequested { api, .. } if window.label() != "settings" => {
             api.prevent_close();
             let _ = window.hide();
             let _ = window.emit_to(

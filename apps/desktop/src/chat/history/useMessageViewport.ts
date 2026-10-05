@@ -90,14 +90,16 @@ export function useMessageViewport({
     }
   }
 
-  function onScroll(): void {
-    if (!scroller) return;
+  function onScroll(event: Event): void {
+    if (!scroller || event.target !== scroller) return;
     const bottom = nearEnd();
     setAtBottom(bottom);
     const commanded = programmaticOffset.current !== null
       && Math.abs(scroller.scrollTop - programmaticOffset.current) <= 1;
     if (commanded) programmaticOffset.current = null;
-    if (userScrolling.current && !commanded) {
+    // 原生滚动条不保证派发 DOM pointerdown. 非导航、非程序定位的 scroll 本身就是阅读输入.
+    if (!commanded && navigation.current === null) {
+      userScrolling.current = true;
       following.current = bottom && reachesLatest;
       rememberReadingPosition();
     }
@@ -129,6 +131,12 @@ export function useMessageViewport({
     }
 
     const target = navigation.current;
+    if (!target && userScrolling.current && !following.current) {
+      // 拖动期间尺寸变化由原生滑块控制位置. 记录新布局中的锚点, 不用旧锚点反向写 scrollTop.
+      rememberReadingPosition();
+      setAtBottom(nearEnd());
+      return;
+    }
     if (target?.kind === 'message') {
       const index = Math.max(0, messages.findIndex(message => message.id === target.messageId));
       const row = virtualizer.measurementsCache[index];
@@ -211,6 +219,8 @@ export function useMessageViewport({
     scroller.addEventListener('touchmove', takeControl, { passive: true });
     scroller.addEventListener('pointerdown', pointer);
     scroller.addEventListener('keydown', keyboard);
+    // 必须先于 virtualizer 的冒泡监听: 它会 flushSync, layout effect 要读到新锚点而不是旧位置.
+    scroller.addEventListener('scroll', onScroll, { capture: true, passive: true });
     scroller.addEventListener('scrollend', settleScroll);
     return () => {
       stopUserScroll();
@@ -218,9 +228,10 @@ export function useMessageViewport({
       scroller.removeEventListener('touchmove', takeControl);
       scroller.removeEventListener('pointerdown', pointer);
       scroller.removeEventListener('keydown', keyboard);
+      scroller.removeEventListener('scroll', onScroll, true);
       scroller.removeEventListener('scrollend', settleScroll);
     };
-  }, [scroller, virtualizer, paddingStart]);
+  }, [scroller, virtualizer, paddingStart, reachesLatest]);
 
   function scrollToMessage(messageId: string): void {
     stopUserScroll();
@@ -240,5 +251,5 @@ export function useMessageViewport({
     return !initialized.current || navigation.current !== null;
   }
 
-  return { virtualizer, atBottom, onScroll, scrollToMessage, scrollToLatest, isPositioning };
+  return { virtualizer, atBottom, scrollToMessage, scrollToLatest, isPositioning };
 }

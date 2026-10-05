@@ -23,6 +23,33 @@
   align-items: center;
   gap: 2px;
   min-width: 0;
+  position: relative;
+  border-radius: var(--ema-radius-sm);
+  transition: background-color var(--ema-duration-fast) var(--ema-ease);
+}
+
+.ema-tool-card-header:hover {
+  background: var(--ema-surface-2);
+}
+
+.ema-tool-card-header::after {
+  pointer-events: none;
+}
+
+.ema-tool-card-header > .ema-tool-row:hover {
+  background: transparent;
+}
+
+.ema-tool-stop {
+  margin-right: 3px;
+}
+
+.ema-tool-stop-square {
+  display: block;
+  width: 9px;
+  height: 9px;
+  border-radius: 1px;
+  background: currentColor;
 }
 
 .ema-tool-card-icon {
@@ -304,12 +331,14 @@
   word-break: normal;
 }
 
-/* Read 只在摘要行预留复制按钮的位置, 正文铺满结果滚动区域. */
-.ema-tool-pane-content:has(> .ema-file-read-content) {
+/* 文件 Tool 只在摘要行预留复制按钮的位置, 正文铺满结果滚动区域. */
+.ema-tool-pane-content:has(> .ema-file-read-content),
+.ema-tool-pane-content:has(> .ema-file-change-content) {
   padding-right: 0;
 }
 
-.ema-tool-pane-content > .ema-file-read-content > .ema-file-read-summary {
+.ema-tool-pane-content > .ema-file-read-content > .ema-file-read-summary,
+.ema-tool-pane-content > .ema-file-change-content > .ema-file-change-summary {
   padding-right: 25px;
 }
 

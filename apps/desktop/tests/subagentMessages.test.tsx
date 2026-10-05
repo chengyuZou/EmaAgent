@@ -125,7 +125,10 @@ vi.mock(
           }),
         ),
         getVirtualItemForOffset: () => undefined,
-        scrollToOffset: () => { },
+        scrollToOffset: (offset: number) => {
+          const scroller = current.current.getScrollElement();
+          if (scroller) scroller.scrollTop = offset;
+        },
         scrollToEnd: () => {
           const scroller = current.current.getScrollElement();
           if (scroller) {

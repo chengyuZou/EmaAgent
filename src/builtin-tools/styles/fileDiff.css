@@ -1,4 +1,4 @@
-/* 通过官方 unsafeCSS 进入 diff shadow root, 只调整产品样式, 不改布局算法. */
+/* ReviewPanel 和 Edit/覆盖 Write 通过官方 unsafeCSS 共用 shadow root 皮肤. */
 :host {
   --diffs-font-family: var(--ema-font-mono);
   --diffs-header-font-family: var(--ema-font-ui);

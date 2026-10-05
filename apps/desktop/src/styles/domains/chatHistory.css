@@ -6,6 +6,7 @@
   --ema-chat-content-max-width: 56rem;
   --ema-chat-content-gutter: 3.5rem;
   --ema-chat-scrollbar-width: 0px;
+  --ema-chat-edited-files-gap: 12px;
 }
 
 .ema-chat-content-column {
@@ -43,6 +44,118 @@
 
 .ema-chat-message-row {
   padding-block: var(--ema-space-2);
+}
+
+/* 正文到本轮编辑汇总的距离, 不影响其他消息或统计栏. */
+.ema-turn-edited-files {
+  margin-top: var(--ema-chat-edited-files-gap, 12px);
+}
+
+.ema-edited-files-card {
+  overflow: hidden;
+  border: 1px solid var(--ema-border);
+  border-radius: var(--ema-radius-lg);
+  background: var(--ema-surface-1);
+}
+
+.ema-edited-files-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border-bottom: 1px solid var(--ema-border);
+  background: var(--ema-surface-2);
+}
+
+.ema-edited-files-icon {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--ema-border);
+  border-radius: var(--ema-radius-md);
+  background: var(--ema-surface-1);
+  color: var(--ema-text-secondary);
+}
+
+.ema-edited-files-counts {
+  display: inline-flex;
+  flex: none;
+  gap: 5px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ema-edited-file-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--ema-space-2);
+  min-width: 0;
+  padding: var(--ema-space-2) var(--ema-space-3);
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.ema-edited-file-path {
+  display: flex;
+  flex: 1;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.ema-edited-file-directory {
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ema-text-secondary);
+}
+
+.ema-edited-file-name {
+  flex-shrink: 0;
+  max-width: 65%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ema-text-primary);
+  font-weight: 500;
+}
+
+.ema-edited-files-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--ema-space-1);
+  width: 100%;
+  padding: var(--ema-space-2) var(--ema-space-3);
+  border: 0;
+  border-top: 1px solid var(--ema-border);
+  background: var(--ema-surface-2);
+  color: var(--ema-text-primary);
+  text-align: left;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color var(--ema-duration-fast) var(--ema-ease);
+}
+
+.ema-edited-files-toggle:hover {
+  background: var(--ema-surface-3);
+}
+
+.ema-edited-files-toggle > span {
+  transition: transform var(--ema-duration-base) var(--ema-ease);
+}
+
+.ema-edited-files-toggle[aria-expanded='true'] > span {
+  transform: rotate(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ema-edited-files-extra,
+  .ema-edited-files-toggle > span {
+    transition: none;
+  }
 }
 
 /* 仅实时新消息入场, 由列表在到达时添加; 不改变尺寸或创建 transform 材质层. */

@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
+import type { StructuredPatchHunk } from 'diff';
 import {
   buildTool,
   contentHashOf,
@@ -14,7 +15,7 @@ import {
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { checkWritePathPermission } from '../shared/pathPermission.js';
 import { atomicTransformUtf8 } from '../FileWriteTool/atomicWrite.js';
-import { buildStructuredPatch, countPatchLines, type PatchHunk } from './patch.js';
+import { buildStructuredPatch, countPatchLines } from './patch.js';
 import { FILE_EDIT_DESCRIPTION } from './prompt.js';
 import {
   countOccurrences,
@@ -57,7 +58,7 @@ export interface FileEditResult {
   newString: string;
   /** 编辑前全文,审计与重算的基准。 */
   originalFile: string;
-  structuredPatch: PatchHunk[];
+  structuredPatch: StructuredPatchHunk[];
   /** 本次 Tool 调用在 structuredPatch 中新增的行数. */
   additions: number;
   /** 本次 Tool 调用在 structuredPatch 中删除的行数. */

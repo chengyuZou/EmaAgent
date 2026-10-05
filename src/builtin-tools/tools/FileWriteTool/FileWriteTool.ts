@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
+import type { StructuredPatchHunk } from 'diff';
 import {
   buildTool,
   contentHashOf,
@@ -19,7 +20,6 @@ import {
   buildStructuredPatch,
   countCreatedFileLines,
   countPatchLines,
-  type PatchHunk,
 } from '../FileEditTool/patch.js';
 import { FILE_WRITE_DESCRIPTION } from './prompt.js';
 
@@ -47,7 +47,7 @@ export interface FileWriteResult {
   /** updated 的前文;created 为 null。 */
   originalFile: string | null;
   /** updated 的 diff;created 为空数组(UI 用 content 直接展示,不合成假 diff)。 */
-  structuredPatch: PatchHunk[];
+  structuredPatch: StructuredPatchHunk[];
   /** 本次 Tool 调用新增的行数. created 表示新文件实际文本行数. */
   additions: number;
   /** 本次 Tool 调用删除的行数. created 固定为 0. */

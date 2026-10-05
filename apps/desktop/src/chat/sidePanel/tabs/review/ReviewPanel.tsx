@@ -38,7 +38,7 @@ import { useSessionStore } from '../../../../stores/session.js';
 import { fileTab, useSessionPanelStore } from '../../../../stores/sessionPanel.js';
 import { ReviewFileTree } from './reviewFileTree.js';
 import { useReviewGitDiff, useSessionGitDiff } from '../../../session/gitDiffContext.js';
-import diffCSS from '../../../../styles/domains/reviewDiff.css?inline';
+import diffCSS from '@ema-agent/builtin-tools/fileDiff.css?inline';
 
 const EMPTY_FILES: FileDiffMetadata[] = [];
 const EMPTY_ITEMS: CodeViewItem<undefined>[] = [];

@@ -215,7 +215,6 @@ export function SubagentMessages({ subagentId, sessionId }: { readonly subagentI
         tabIndex={0}
         aria-label="子代理消息"
         onScroll={() => {
-          viewport.onScroll();
           checkPagination();
         }}
       >

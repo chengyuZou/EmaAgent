@@ -1,14 +1,57 @@
-// FileWriteTool 的桌面展示: created 给内容预览, updated 复用结构化补丁卡。
+// FileWriteTool 的参数与结果展示; 覆盖写入和 Edit 共用官方补丁视图.
 import type { JSX } from 'react';
 import type { FileWriteResult } from './FileWriteTool.js';
-import { StructuredPatchCard } from '../FileEditTool/UI.js';
-import { patchToUnifiedText, type PatchHunk } from '../FileEditTool/patch.js';
+import { patchToUnifiedText } from '../FileEditTool/patch.js';
+import { FilePatchView } from '../shared/filePatchView.js';
 
-/** 新建文件预览的最大行数; 超出截断并标注。 */
 const CREATED_PREVIEW_LINES = 10;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+export function FileWriteResultView({ data }: { data: unknown }): JSX.Element | null {
+  const result = asFileWriteResult(data);
+  if (!result) return null;
+  if (result.type === 'updated') {
+    return (
+      <div className="ema-file-change-content flex min-w-0 flex-col gap-1">
+        <div className="ema-file-change-summary flex items-center gap-2 text-[11px] leading-relaxed">
+          <span className="text-[var(--ema-text-secondary)]">已覆盖写入</span>
+          <span className="text-[var(--ema-success-text)]">+{result.additions}</span>
+          <span className="text-[var(--ema-danger-text)]">-{result.deletions}</span>
+        </div>
+        <FilePatchView filePath={result.filePath} hunks={result.structuredPatch} />
+      </div>
+    );
+  }
+
+  const lines = result.content.length === 0 ? [] : result.content.split('\n');
+  if (lines.at(-1) === '') lines.pop();
+  const preview = lines.slice(0, CREATED_PREVIEW_LINES);
+  const omitted = lines.length - preview.length;
+  return (
+    <div className="ema-file-change-content flex min-w-0 flex-col gap-1">
+      <span className="ema-file-change-summary text-[11px] text-[var(--ema-text-secondary)]">
+        新建文件 · {result.additions.toLocaleString()} 行 · {(result.bytesWritten / 1024).toFixed(1)} KB
+      </span>
+      <div className="w-max min-w-full font-mono text-[11px] leading-relaxed">
+        {preview.map((line, index) => (
+          <div key={index} className="flex text-[var(--ema-text-tertiary)]">
+            <span className="w-9 shrink-0 select-none text-right opacity-60">{index + 1}</span>
+            <span className="min-w-0 flex-1 pl-2 whitespace-pre text-[var(--ema-text-secondary)]">
+              {line}
+            </span>
+          </div>
+        ))}
+        {omitted > 0 && (
+          <div className="px-2 py-0.5 text-center text-[10px] text-[var(--ema-text-tertiary)]">
+            ··· 其余 {omitted} 行 ···
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 /** 行头摘要：写入路径。 */
@@ -57,55 +100,6 @@ export function FileWriteArgsView({ args }: { args: unknown }): JSX.Element | nu
           <span className="text-[var(--ema-text-tertiary)]">{` · 写入 ${sizeKb} KB`}</span>
         )}
       </span>
-    </div>
-  );
-}
-
-// ── 结果视图 ──────────────────────────────────────────────────────────────────
-
-export function FileWriteResultView({ data }: { data: unknown }): JSX.Element | null {
-  const result = asFileWriteResult(data);
-  if (!result) return null;
-
-  if (result.type === 'updated') {
-    const patch: readonly PatchHunk[] = result.structuredPatch;
-    return (
-      <div className="flex flex-col gap-1">
-        <div className="flex items-center gap-2 text-[11px] leading-relaxed">
-          <span className="text-[var(--ema-text-secondary)]">已覆盖写入</span>
-          <span className="text-[var(--ema-success-text)]">+{result.additions}</span>
-          <span className="text-[var(--ema-danger-text)]">-{result.deletions}</span>
-        </div>
-        <StructuredPatchCard hunks={patch} />
-      </div>
-    );
-  }
-
-  // created 没有 structuredPatch. 预览与 ToolResult 使用相同的文本行口径, 不把结尾换行算成空白行.
-  const lines = result.content.length === 0 ? [] : result.content.split('\n');
-  if (lines.at(-1) === '') lines.pop();
-  const preview = lines.slice(0, CREATED_PREVIEW_LINES);
-  const omitted = lines.length - preview.length;
-  return (
-    <div className="flex flex-col gap-1">
-      <span className="text-[11px] text-[var(--ema-text-secondary)]">
-        新建文件 · {result.additions.toLocaleString()} 行 · {(result.bytesWritten / 1024).toFixed(1)} KB
-      </span>
-      <div className="w-max min-w-full font-mono text-[11px] leading-relaxed">
-        {preview.map((line, index) => (
-          <div key={index} className="flex text-[var(--ema-text-tertiary)]">
-            <span className="w-9 shrink-0 select-none text-right opacity-60">{index + 1}</span>
-            <span className="min-w-0 flex-1 pl-2 whitespace-pre text-[var(--ema-text-secondary)]">
-              {line}
-            </span>
-          </div>
-        ))}
-        {omitted > 0 && (
-          <div className="px-2 py-0.5 text-center text-[10px] text-[var(--ema-text-tertiary)]">
-            ··· 其余 {omitted} 行 ···
-          </div>
-        )}
-      </div>
     </div>
   );
 }

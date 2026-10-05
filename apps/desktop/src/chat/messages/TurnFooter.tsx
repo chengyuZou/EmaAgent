@@ -97,7 +97,7 @@ export function TurnFooter({
   return (
     <>
       {edited.files.length > 0 && (
-        <div className="ema-message-shell flex">
+        <div className="ema-message-shell ema-turn-edited-files flex">
           <div className="flex min-w-20 w-full max-w-full flex-col">
             <EditedFilesCard
               files={edited.files}

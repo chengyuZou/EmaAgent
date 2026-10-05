@@ -2,6 +2,8 @@
 
 唯一入口是 `index.css`，import 顺序即层级顺序：**foundation → primitives → domains → vendors**。禁止从组件里旁路 import 任何 CSS 文件。
 
+Diff 的 shadow root 是例外: 全局样式无法进入它, ReviewPanel 和内置文件 Tool 共用 builtin-tools 导出的 `fileDiff.css`, 以字符串传给官方 `unsafeCSS`, 不旁路注入页面样式.
+
 **设计系统层(foundation + primitives)住在 `src/ui/styles/`**: 它们是跨应用的组件皮肤, ui 包自携带后 Ladle 与 App 同源消费, ui 包不反向依赖任何业务包。本目录(domains + vendors)只留应用专属样式。
 
 ## 四层定义

@@ -136,7 +136,7 @@ function TabBar({
           <div key={tab.id} data-selected={tab.id === activeTabId || undefined} className="ema-slot-tab group">
             <button
               type="button"
-              className="ema-slot-tab-trigger focus-ring"
+              className="ema-slot-tab-trigger"
               title={baseLabel(tab)}
               onClick={() => onActivate(tab.id)}
             >
