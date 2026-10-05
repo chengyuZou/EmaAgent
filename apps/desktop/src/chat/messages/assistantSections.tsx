@@ -1,7 +1,7 @@
 // 按 Server 给出的块顺序渲染正文, Thinking, 普通 Tool Group 和 Agent Group.
 
 import { memo, useRef, type JSX } from 'react';
-import { useMessageExpansion } from './messageExpansion.js';
+import { useCollapsibleBody, useMessageExpansion } from './messageExpansion.js';
 import type { AssistantBlock } from '@ema-agent/llm';
 import type { SubagentMessage } from '@ema-agent/agent';
 import type { Message } from '@ema-agent/session';
@@ -140,6 +140,7 @@ const ThinkingBlock = memo(function ThinkingBlock({
   readonly thinkingActive: boolean;
 }): JSX.Element {
   const [open, setOpen] = useMessageExpansion(sectionKey);
+  const { containerRef, mounted } = useCollapsibleBody(open);
   return (
     <div className="ema-thinking-block">
       <button
@@ -153,13 +154,16 @@ const ThinkingBlock = memo(function ThinkingBlock({
         <span className="i-lucide:chevron-right ema-thinking-chevron" aria-hidden />
       </button>
       <div
+        ref={containerRef}
         className="ema-collapsible ema-chat-collapsible"
         style={{ gridTemplateRows: open ? '1fr' : '0fr', opacity: open ? 1 : 0 }}
       >
         <div>
-          <div className="ema-thinking-content">
-            <Markdown source={text} streaming={streaming} />
-          </div>
+          {mounted && (
+            <div className="ema-thinking-content">
+              <Markdown source={text} streaming={streaming} />
+            </div>
+          )}
         </div>
       </div>
     </div>

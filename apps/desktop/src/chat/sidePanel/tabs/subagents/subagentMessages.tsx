@@ -1,23 +1,18 @@
 // 同一子代理的全部消息连续阅读. HTTP 与实时消息按 SQL MessageId 合并, 不按 Run 切换窗口.
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX } from 'react';
-import { useVirtualizer } from '@tanstack/react-virtual';
+import { useEffect, useMemo, useRef, useState, type JSX } from 'react';
 import type { SubagentMessage } from '@ema-agent/agent';
 import type { ToolResult } from '@ema-agent/tools';
 import { Button, IconButton, Spinner } from '@ema-agent/ui';
 import { subagentsApi, type SubagentMessageCursor } from '../../../../api/subagents.js';
 import { useSubagentStore } from '../../../../stores/subagent.js';
 import { useSessionActivityStore } from '../../../../stores/sessionActivity.js';
-import { useThemeStore } from '../../../../stores/theme.js';
 import type { AssistantOutputBlock } from '../../../../stores/turn.js';
 import { UIMessage, toolResultsForMessages } from '../../../messages/UIMessage.js';
 import { MessageExpansionContext } from '../../../messages/messageExpansion.js';
+import { useMessageViewport } from '../../../history/useMessageViewport.js';
 
 const NO_MESSAGES: readonly SubagentMessage[] = [];
 const TOP_INSET = 24;
-
-type ReadingPosition =
-  | { readonly kind: 'latest' }
-  | { readonly kind: 'message'; readonly messageId: string; readonly offset: number };
 
 /** 旧窗口只更新已加载的 ID, 不越过未加载的 newer 历史接入最新消息. */
 export function collectSubagentMessages(history: readonly SubagentMessage[], live: readonly SubagentMessage[], reachesLatest: boolean): readonly SubagentMessage[] {
@@ -50,19 +45,9 @@ export function SubagentMessages({ subagentId, sessionId }: { readonly subagentI
   const [error, setError] = useState<string | null>(null);
   const [latestRequest, setLatestRequest] = useState(0);
   const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
-  const [atBottom, setAtBottom] = useState(true);
   const request = useRef<AbortController | null>(null);
   const busy = useRef(false);
-  const target = useRef<ReadingPosition | null>(null);
   const expansions = useRef(new Map<string, Map<string, boolean>>());
-  const initialized = useRef(false);
-  const layoutChanged = useRef(false);
-  const previouslyLatest = useRef(false);
-  const atBottomRef = useRef(true);
-  const newerRef = useRef(newer);
-  const readingFont = useThemeStore(state => state.readingFont);
-  const codeFont = useThemeStore(state => state.codeFont);
-  const [, requestPositionCommit] = useState(0);
   const live = useSubagentStore(state => (
     state.streamingMessages.get(subagentId) ?? NO_MESSAGES
   ));
@@ -76,11 +61,12 @@ export function SubagentMessages({ subagentId, sessionId }: { readonly subagentI
     [owned],
   );
   const results = useMemo(() => toolResultsForMessages(owned), [owned]);
-  const getItemKey = useCallback((index: number) => messages[index]!.id, [messages]);
-  const virtualizer = useVirtualizer<HTMLDivElement, HTMLDivElement>({
-    count: messages.length,
-    getScrollElement: () => scroller,
-    getItemKey,
+  const viewport = useMessageViewport({
+    messages,
+    scroller,
+    windowKey: `${subagentId}:${latestRequest}`,
+    ready: loaded,
+    reachesLatest: loaded && !newer,
     estimateSize: index => {
       const message = messages[index]!;
       if (message.kind === 'summary') {
@@ -94,31 +80,21 @@ export function SubagentMessages({ subagentId, sessionId }: { readonly subagentI
           .join('');
       return Math.min(1_000, 96 + Math.ceil(text.length / 90) * 22);
     },
-    overscan: 5,
-    anchorTo: 'end',
-    followOnAppend: previouslyLatest.current && loaded && !newer,
-    scrollEndThreshold: 24,
     paddingStart: TOP_INSET,
     paddingEnd: 32,
   });
-
-  useLayoutEffect(() => {
-    previouslyLatest.current = loaded && !newer;
-    newerRef.current = newer;
-  }, [loaded, newer]);
+  const { virtualizer, atBottom } = viewport;
 
   useEffect(() => {
     const controller = new AbortController();
     request.current?.abort();
     request.current = controller;
     busy.current = true;
-    initialized.current = false;
     setLoading(true);
     setLoaded(false);
     setHistory([]);
     setOlder(null);
     setNewer(null);
-    target.current = null;
     setError(null);
 
     void subagentsApi.listMessages(
@@ -134,7 +110,6 @@ export function SubagentMessages({ subagentId, sessionId }: { readonly subagentI
         setHistory(page.items);
         setOlder(page.olderCursor);
         setNewer(page.newerCursor);
-        target.current = { kind: 'latest' };
         setLoaded(true);
       })
       .catch(cause => {
@@ -154,108 +129,6 @@ export function SubagentMessages({ subagentId, sessionId }: { readonly subagentI
       request.current?.abort();
     };
   }, [subagentId, latestRequest]);
-
-  useLayoutEffect(() => {
-    if (!loaded || !scroller || messages.length === 0) {
-      return;
-    }
-    if (layoutChanged.current) {
-      layoutChanged.current = false;
-      virtualizer.scrollToOffset(scroller.scrollTop);
-      virtualizer.measure();
-      virtualizer.getTotalSize();
-      for (const node of virtualizer.elementsCache.values()) {
-        virtualizer.measureElement(node);
-      }
-      virtualizer.getTotalSize();
-    }
-
-    const position = target.current;
-    if (!position) {
-      return;
-    }
-    if (position.kind === 'latest') {
-      virtualizer.scrollToEnd();
-    } else {
-      const index = messages.findIndex(message => message.id === position.messageId);
-      const row = virtualizer.measurementsCache[index];
-      if (row) {
-        virtualizer.scrollToOffset(row.start + position.offset);
-      }
-    }
-    target.current = null;
-    initialized.current = true;
-  });
-
-  useEffect(() => {
-    if (!scroller) {
-      return;
-    }
-    let previousWidth = scroller.clientWidth;
-    let previousHeight = scroller.clientHeight;
-    let frame: number | null = null;
-
-    const rememberReadingPosition = (): void => {
-      if (!initialized.current || target.current) {
-        return;
-      }
-      if (atBottomRef.current && !newerRef.current) {
-        target.current = { kind: 'latest' };
-        return;
-      }
-      const row = virtualizer.getVirtualItemForOffset(scroller.scrollTop + TOP_INSET);
-      if (row) {
-        target.current = { kind: 'message', messageId: String(row.key), offset: scroller.scrollTop - row.start };
-      }
-    };
-    const invalidate = (): void => {
-      rememberReadingPosition();
-      layoutChanged.current = true;
-      if (frame !== null) {
-        cancelAnimationFrame(frame);
-      }
-      frame = requestAnimationFrame(() => {
-        frame = null;
-        requestPositionCommit(value => value + 1);
-      });
-    };
-    const measure = (): void => {
-      const width = scroller.clientWidth;
-      const height = scroller.clientHeight;
-      if (width === previousWidth && height === previousHeight) {
-        return;
-      }
-      previousWidth = width;
-      previousHeight = height;
-      invalidate();
-    };
-    const cancelRestore = (): void => {
-      target.current = null;
-      if (frame !== null) {
-        cancelAnimationFrame(frame);
-        frame = null;
-      }
-    };
-
-    const observer = new ResizeObserver(measure);
-    observer.observe(scroller);
-    document.fonts?.addEventListener('loadingdone', invalidate);
-    scroller.addEventListener('wheel', cancelRestore, { passive: true });
-    scroller.addEventListener('pointerdown', cancelRestore);
-    scroller.addEventListener('keydown', cancelRestore);
-    invalidate();
-
-    return () => {
-      observer.disconnect();
-      if (frame !== null) {
-        cancelAnimationFrame(frame);
-      }
-      document.fonts?.removeEventListener('loadingdone', invalidate);
-      scroller.removeEventListener('wheel', cancelRestore);
-      scroller.removeEventListener('pointerdown', cancelRestore);
-      scroller.removeEventListener('keydown', cancelRestore);
-    };
-  }, [scroller, virtualizer, readingFont, codeFont]);
 
   async function loadPage(direction: 'before' | 'after'): Promise<void> {
     const cursor = direction === 'before' ? older : newer;
@@ -305,7 +178,7 @@ export function SubagentMessages({ subagentId, sessionId }: { readonly subagentI
   }
 
   function checkPagination(): void {
-    if (!scroller || !loaded || busy.current || target.current || error) {
+    if (!scroller || !loaded || busy.current || viewport.isPositioning() || error) {
       return;
     }
     const threshold = Math.max(80, scroller.clientHeight * 0.35);
@@ -342,9 +215,7 @@ export function SubagentMessages({ subagentId, sessionId }: { readonly subagentI
         tabIndex={0}
         aria-label="子代理消息"
         onScroll={() => {
-          const followsBottom = virtualizer.isAtEnd(24);
-          atBottomRef.current = followsBottom;
-          setAtBottom(followsBottom);
+          viewport.onScroll();
           checkPagination();
         }}
       >
@@ -408,7 +279,7 @@ export function SubagentMessages({ subagentId, sessionId }: { readonly subagentI
           if (newer) {
             setLatestRequest(value => value + 1);
           } else {
-            virtualizer.scrollToEnd({ behavior: 'smooth' });
+            viewport.scrollToLatest(true);
           }
         }}
       />

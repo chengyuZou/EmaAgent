@@ -14,7 +14,7 @@ import {
   type ToolDisplayStatus,
 } from './toolBlockHelpers.js';
 import { useSessionPanelStore } from '../../../stores/sessionPanel.js';
-import { useMessageExpansion } from '../messageExpansion.js';
+import { useCollapsibleBody, useMessageExpansion } from '../messageExpansion.js';
 import {
   toolArgs,
   toolDurationMs,
@@ -92,6 +92,7 @@ export function ToolCallBlock({ call, streaming = false, turnId, sessionId }: To
 
   const toolUI = lookupToolUI(name);
   const [open, setOpen] = useMessageExpansion(`tool:${toolCallId(call)}`, toolUI?.defaultExpanded ?? false);
+  const { containerRef, mounted } = useCollapsibleBody(open);
 
   const statusMeta = STATUS_META[status];
   const running = toolRunning(call, streaming);
@@ -103,21 +104,22 @@ export function ToolCallBlock({ call, streaming = false, turnId, sessionId }: To
 
   // CallView 接管完整展开区, 供终端这类需要组合状态的工具使用.
   // ArgsView/ResultView/ProgressView 只渲染一个区域; 类型守卫失败返回 null 后使用通用视图.
-  const customArgs = toolUI?.ArgsView && argsReady ? toolUI.ArgsView({ args }) : null;
-  const customResult = toolUI?.ResultView && output != null
+  const customArgs = mounted && toolUI?.ArgsView && argsReady ? toolUI.ArgsView({ args }) : null;
+  const customResult = mounted && toolUI?.ResultView && output != null
     ? toolUI.ResultView({ data: output, args })
     : null;
-  const progressView = running && progress && progress.length > 0 && toolUI?.ProgressView
+  const progressView = mounted && running && progress && progress.length > 0 && toolUI?.ProgressView
     ? toolUI.ProgressView({ progress })
     : null;
   // 没有类型化 data 的旧结果不能交给专属组合卡猜结构，回落通用 content 渲染。
   const CallView = fallbackContent === undefined ? toolUI?.CallView : undefined;
-  const resultView = showResult && renderedOutput !== null ? renderToolResult(renderedOutput) : null;
+  const resultView = mounted && showResult && renderedOutput !== null ? renderToolResult(renderedOutput) : null;
 
   const openTab = useSessionPanelStore((state) => state.openTab);
 
-  const inputCopyText = argsReady ? formatJson(args) : partialArgs ?? '';
-  const resultCopyText = showResult
+  let inputCopyText = '';
+  if (mounted) inputCopyText = argsReady ? formatJson(args) : partialArgs ?? '';
+  const resultCopyText = mounted && showResult
     ? toolUI?.resultCopyText?.(output, args) ?? formatJson(renderedOutput)
     : '';
   const failureCopyText = failure
@@ -185,44 +187,47 @@ export function ToolCallBlock({ call, streaming = false, turnId, sessionId }: To
       </div>
 
       <div
+        ref={containerRef}
         className="ema-collapsible ema-chat-collapsible"
         style={{ gridTemplateRows: open ? '1fr' : '0fr', opacity: open ? 1 : 0 }}
       >
-        <div className="ema-tool-card-body">
-          {CallView ? (
-            <>
-              <CallView
-                args={args}
-                {...(showResult ? { data: output } : {})}
-                {...(partialArgs !== undefined ? { partialArgs } : {})}
-                {...(progress !== undefined ? { progress } : {})}
-                {...(failure !== null ? { failure } : {})}
-                interrupted={historyInterrupted}
-                status={status}
-                running={running}
-                openBackgroundProcesses={() => {
-                  if (sessionId) {
-                    openTab(sessionId, { id: 'processes', kind: 'processes' });
-                  }
-                }}
-              />
-            </>
-          ) : (
-            <div className="ema-tool-frame">
-              {(argsReady || partialArgs) && (
-                <ToolPane label="复制输入" tone="input" copyText={inputCopyText}>
-                  {argsReady
-                    ? customArgs ?? <ToolArgsView args={args} />
-                    : <pre className="ema-tool-raw-input">{partialArgs}</pre>}
-                </ToolPane>
-              )}
-              {(progressView || customResult !== null || resultView !== null || hasError) && (
-                <ToolPane label="复制输出" tone="output" copyText={outputCopyText} errorOnly={hasError && !showResult}>
-                  {progressView}
-                  {customResult ?? (resultView !== null && <div className="ema-tool-generic-result"><ToolResultViewBlock view={resultView} /></div>)}
-                  {failure !== null && <ToolFailure code={failure.code} message={failure.message} />}
-                  {historyInterrupted && <ToolFailure code="tool/interrupted" message="未收到工具结果" />}
-                </ToolPane>
+        <div>
+          {mounted && (
+            <div className="ema-tool-card-body">
+              {CallView ? (
+                <CallView
+                  args={args}
+                  {...(showResult ? { data: output } : {})}
+                  {...(partialArgs !== undefined ? { partialArgs } : {})}
+                  {...(progress !== undefined ? { progress } : {})}
+                  {...(failure !== null ? { failure } : {})}
+                  interrupted={historyInterrupted}
+                  status={status}
+                  running={running}
+                  openBackgroundProcesses={() => {
+                    if (sessionId) openTab(sessionId, { id: 'processes', kind: 'processes' });
+                  }}
+                />
+              ) : (
+                <div className="ema-tool-frame">
+                  {(argsReady || partialArgs) && (
+                    <ToolPane label="复制输入" tone="input" copyText={inputCopyText}>
+                      {argsReady
+                        ? customArgs ?? <ToolArgsView args={args} />
+                        : <pre className="ema-tool-raw-input">{partialArgs}</pre>}
+                    </ToolPane>
+                  )}
+                  {(progressView || customResult !== null || resultView !== null || hasError) && (
+                    <ToolPane label="复制输出" tone="output" copyText={outputCopyText} errorOnly={hasError && !showResult}>
+                      {progressView}
+                      {customResult ?? (resultView !== null && (
+                        <div className="ema-tool-generic-result"><ToolResultViewBlock view={resultView} /></div>
+                      ))}
+                      {failure !== null && <ToolFailure code={failure.code} message={failure.message} />}
+                      {historyInterrupted && <ToolFailure code="tool/interrupted" message="未收到工具结果" />}
+                    </ToolPane>
+                  )}
+                </div>
               )}
             </div>
           )}

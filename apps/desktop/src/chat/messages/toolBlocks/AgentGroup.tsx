@@ -2,7 +2,7 @@
 
 import { memo, useEffect, useState, type JSX } from 'react';
 import { subagentsApi, type SubagentRunItem } from '../../../api/subagents.js';
-import { useMessageExpansion } from '../messageExpansion.js';
+import { useCollapsibleBody, useMessageExpansion } from '../messageExpansion.js';
 import { IconButton } from '@ema-agent/ui';
 import { useShallow } from 'zustand/react/shallow';
 import { sessionWebSocket } from '../../../api/sessionWebSocket.js';
@@ -46,6 +46,7 @@ export const AgentGroup = memo(function AgentGroup({
   readonly sectionKey: string;
 }): JSX.Element {
   const [open, setOpen] = useMessageExpansion(sectionKey);
+  const groupBody = useCollapsibleBody(open && calls.length > 1);
   const liveReferences = useSubagentStore(useShallow(state => (
     calls.map(call => state.toolReferences.get(toolCallId(call)))
   )));
@@ -110,11 +111,12 @@ export const AgentGroup = memo(function AgentGroup({
         />
       </button>
       <div
+        ref={groupBody.containerRef}
         className="ema-collapsible ema-chat-collapsible"
         style={{ gridTemplateRows: open ? '1fr' : '0fr', opacity: open ? 1 : 0 }}
       >
         <div className="flex flex-col gap-0.5 pt-0.5">
-          {open && calls.map((call, index) => (
+          {groupBody.mounted && calls.map((call, index) => (
             <AgentRow
               key={toolCallId(call)}
               call={call}
@@ -144,6 +146,7 @@ function AgentRow({
   readonly sessionId: string;
 }): JSX.Element {
   const [detailsOpen, setDetailsOpen] = useMessageExpansion(`agent:${toolCallId(call)}`);
+  const { containerRef, mounted } = useCollapsibleBody(detailsOpen);
   const openTab = useSessionPanelStore(state => state.openTab);
   const toolCallIdValue = toolCallId(call);
   const subagentId = state.subagentId;
@@ -168,9 +171,9 @@ function AgentRow({
   const output = toolOutput(call);
   const renderedOutput = output ?? toolFallbackContent(call);
   const toolUI = lookupToolUI(toolName(call));
-  const customResult = output != null ? toolUI?.ResultView?.({ data: output, args }) : null;
-  const genericResult = renderedOutput != null ? renderToolResult(renderedOutput) : null;
-  const resultCopyText = renderedOutput != null
+  const customResult = mounted && output != null ? toolUI?.ResultView?.({ data: output, args }) : null;
+  const genericResult = mounted && renderedOutput != null ? renderToolResult(renderedOutput) : null;
+  const resultCopyText = mounted && renderedOutput != null
     ? toolUI?.resultCopyText?.(output, args) ?? formatJson(renderedOutput)
     : '';
   const toolStillRunning = toolRunning(call, streaming);
@@ -241,28 +244,36 @@ function AgentRow({
           />
         )}
       </div>
-      {detailsOpen && (
-        <div className="ema-tool-card-body">
-          <div className="ema-tool-frame">
-            {args !== undefined && (
-              <ToolPane label="复制输入" tone="input" copyText={formatJson(args)}>
-                <ToolArgsView args={args} />
-              </ToolPane>
-            )}
-            {(renderedOutput !== undefined || failure) && (
-              <ToolPane
-                label="复制输出"
-                tone="output"
-                copyText={[resultCopyText, failureText].filter(Boolean).join('\n\n')}
-                errorOnly={failure !== null && renderedOutput === undefined}
-              >
-                {customResult ?? (genericResult !== null && <ToolResultViewBlock view={genericResult} />)}
-                {failure && <ToolFailure code={failure.code} message={failure.message} />}
-              </ToolPane>
-            )}
-          </div>
+      <div
+        ref={containerRef}
+        className="ema-collapsible ema-chat-collapsible"
+        style={{ gridTemplateRows: detailsOpen ? '1fr' : '0fr', opacity: detailsOpen ? 1 : 0 }}
+      >
+        <div>
+          {mounted && (
+            <div className="ema-tool-card-body">
+              <div className="ema-tool-frame">
+                {args !== undefined && (
+                  <ToolPane label="复制输入" tone="input" copyText={formatJson(args)}>
+                    <ToolArgsView args={args} />
+                  </ToolPane>
+                )}
+                {(renderedOutput !== undefined || failure) && (
+                  <ToolPane
+                    label="复制输出"
+                    tone="output"
+                    copyText={[resultCopyText, failureText].filter(Boolean).join('\n\n')}
+                    errorOnly={failure !== null && renderedOutput === undefined}
+                  >
+                    {customResult ?? (genericResult !== null && <ToolResultViewBlock view={genericResult} />)}
+                    {failure && <ToolFailure code={failure.code} message={failure.message} />}
+                  </ToolPane>
+                )}
+              </div>
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }

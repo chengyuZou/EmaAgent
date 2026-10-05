@@ -1,6 +1,5 @@
-// Store 管历史窗口, 此处管视口需求和显式导航; 行高与普通前插锚定交给虚拟内核.
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX } from 'react';
-import { useVirtualizer } from '@tanstack/react-virtual';
+// Store 管历史窗口, 此处管分页与消息展示; 行高由内核测量, 定位交给共用视口逻辑.
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { IconButton } from '@ema-agent/ui';
 import type { SessionMessage } from '@ema-agent/session';
@@ -8,19 +7,16 @@ import { emptyChatDraft, useChatDraftStore } from '../../stores/chatDraft.js';
 import { ConversationStarters } from '../conversationStarters.js';
 import { useSessionActivityStore, type ActiveCompact } from '../../stores/sessionActivity.js';
 import { EMPTY_SESSION_HISTORY, useSessionHistoryStore, type SessionHistoryState } from '../../stores/sessionHistory.js';
-import { useThemeStore } from '../../stores/theme.js';
 import { isStreamingMessage, useTurnStore, type StreamingMessage, type TurnState } from '../../stores/turn.js';
 import { scheduleTurnHistoryClosure } from '../session/turnHistoryClosure.js';
 import { TurnNavigationRail } from './TurnNavigationRail.js';
 import { TurnFooter } from '../messages/TurnFooter.js';
 import { UIMessage, toolResultsForMessages } from '../messages/UIMessage.js';
 import { MessageExpansionContext } from '../messages/messageExpansion.js';
+import { useMessageViewport } from './useMessageViewport.js';
 
 const MESSAGE_TOP_INSET = 40;
 type DisplayMessage = SessionMessage | StreamingMessage;
-type PositionTarget =
-  | { readonly kind: 'latest' | 'jump-latest' | 'reading-bottom' }
-  | { readonly kind: 'message'; readonly messageId: string; readonly offsetPx?: number };
 
 /** 缺口窗口只更新已有 Message, 不能把最新 Turn 接到旧历史后面. */
 export function collectOwnedMessages(
@@ -112,21 +108,8 @@ function HistoryViewport({
 }): JSX.Element {
   const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
   const statusRef = useRef<HTMLDivElement | null>(null);
-  const readingFont = useThemeStore(state => state.readingFont);
-  const codeFont = useThemeStore(state => state.codeFont);
-  const previousFonts = useRef({ readingFont, codeFont });
   const [statusHeight, setStatusHeight] = useState(32);
-  const [isAtBottom, setIsAtBottom] = useState(true);
   const [visibleTurnIds, setVisibleTurnIds] = useState<ReadonlySet<string>>(() => new Set());
-  const [, requestPositionCommit] = useState(0);
-  const positionTarget = useRef<PositionTarget | null>(history.windowAnchorMessageId
-    ? { kind: 'message', messageId: history.windowAnchorMessageId }
-    : { kind: 'latest' });
-  const initialized = useRef(false);
-  const latestJump = useRef<'idle' | 'scrolling' | 'interrupted'>('idle');
-  const layoutResetRequested = useRef(false);
-  const atBottom = useRef(true);
-  const previousInset = useRef(bottomInset + statusHeight);
   const scrollDirection = useRef<'older' | 'newer'>('older');
   const lastScrollTop = useRef(0);
   const expansionByMessage = useRef(new Map<string, Map<string, boolean>>());
@@ -135,25 +118,20 @@ function HistoryViewport({
   const followsNewMessages = previouslyReachedLatest.current && !history.newerCursor;
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
-  const getItemKey = useCallback((index: number) => messages[index]!.id, [messages]);
-  const virtualizer = useVirtualizer<HTMLDivElement, HTMLDivElement>({
-    count: messages.length,
-    getScrollElement: () => scroller,
-    getItemKey,
+  const viewport = useMessageViewport({
+    messages,
+    scroller,
+    windowKey: history.windowId ?? 'unloaded',
+    ready: history.loaded && !history.loading,
+    reachesLatest: !history.newerCursor,
+    initialMessageId: history.windowAnchorMessageId,
     estimateSize: index => estimateMessageHeight(messages[index]!),
-    anchorTo: 'end',
-    // 补 newer 历史页仍保留阅读位置; 只有本来已连到最新的窗口才跟随新消息.
-    followOnAppend: followsNewMessages,
-    scrollEndThreshold: 24,
-    overscan: 5,
     paddingStart: MESSAGE_TOP_INSET,
     paddingEnd: bottomInset + statusHeight,
-    scrollPaddingStart: MESSAGE_TOP_INSET,
-    scrollPaddingEnd: bottomInset + statusHeight,
   });
+  const { virtualizer, atBottom: isAtBottom } = viewport;
   const totalHeight = virtualizer.getTotalSize();
   const virtualRows = virtualizer.getVirtualItems();
-  const lastMessageId = messages.at(-1)?.id;
 
   useLayoutEffect(() => {
     for (const message of messages) {
@@ -171,58 +149,12 @@ function HistoryViewport({
     previouslyReachedLatest.current = !history.newerCursor;
   }, [history.newerCursor]);
 
-  useLayoutEffect(() => {
-    // 平滑回底途中若又到达新消息, 目标仍是最新一条, 而不是点击时的旧末项.
-    if (latestJump.current === 'scrolling') virtualizer.scrollToEnd({ behavior: 'smooth' });
-  }, [lastMessageId, virtualizer]);
-
   useEffect(() => {
     const retained = new Set(messages.map(message => message.id));
     for (const id of expansionByMessage.current.keys()) {
       if (!retained.has(id)) expansionByMessage.current.delete(id);
     }
   }, [messages]);
-
-  useLayoutEffect(() => {
-    if (!scroller || !history.loaded || history.loading || messages.length === 0) return;
-    if (layoutResetRequested.current) {
-      layoutResetRequested.current = false;
-      // 同一定位事务中重新测量已挂载行; 未挂载行退回新布局下的估算.
-      // 先登记当前程序定位, 让内核在滚动期间也接受这次同步测量.
-      virtualizer.scrollToOffset(scroller.scrollTop);
-      virtualizer.measure();
-      virtualizer.getTotalSize();
-      for (const node of virtualizer.elementsCache.values()) virtualizer.measureElement(node);
-      virtualizer.getTotalSize();
-    }
-    const target = positionTarget.current;
-    if (!target) return;
-    const smooth = target.kind === 'jump-latest'
-      && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    latestJump.current = smooth ? 'scrolling' : 'idle';
-    if (target.kind !== 'message') virtualizer.scrollToEnd({ behavior: smooth ? 'smooth' : 'auto' });
-    else {
-      const index = messages.findIndex(message => message.id === target.messageId);
-      if (index < 0) {
-        virtualizer.scrollToIndex(0, { align: 'start' });
-      } else if (target.offsetPx === undefined) {
-        virtualizer.scrollToIndex(index, { align: 'start' });
-      } else {
-        const item = virtualizer.measurementsCache[index];
-        if (item) virtualizer.scrollToOffset(item.start + target.offsetPx);
-      }
-    }
-    positionTarget.current = null;
-    initialized.current = true;
-  });
-
-  useLayoutEffect(() => {
-    if (previousInset.current === bottomInset + statusHeight) return;
-    previousInset.current = bottomInset + statusHeight;
-    if (!initialized.current || !atBottom.current || history.newerCursor || positionTarget.current) return;
-    positionTarget.current = { kind: 'reading-bottom' };
-    requestPositionCommit(value => value + 1);
-  }, [bottomInset, statusHeight, history.newerCursor]);
 
   useLayoutEffect(() => {
     const status = statusRef.current;
@@ -240,91 +172,23 @@ function HistoryViewport({
   useEffect(() => {
     if (!scroller) return;
     const column = scroller.closest<HTMLElement>('[data-ema-chat-column]');
-    let previousWidth = scroller.clientWidth;
-    let previousHeight = scroller.clientHeight;
-    let frame: number | null = null;
-    const invalidateLayout = (): void => {
-      if (initialized.current && !positionTarget.current) {
-        const item = virtualizer.getVirtualItemForOffset(scroller.scrollTop + MESSAGE_TOP_INSET);
-        if (atBottom.current && !useSessionHistoryStore.getState().bySession.get(sessionId)?.newerCursor) {
-          positionTarget.current = { kind: 'reading-bottom' };
-        } else if (item) {
-          positionTarget.current = {
-            kind: 'message', messageId: String(item.key), offsetPx: scroller.scrollTop - item.start,
-          };
-        }
-      }
-      layoutResetRequested.current = true;
-      requestPositionCommit(value => value + 1);
-    };
-    const measureLayout = (): void => {
+    const measureScrollbar = (): void => {
       column?.style.setProperty('--ema-chat-scrollbar-width', String(scroller.offsetWidth - scroller.clientWidth) + 'px');
-      const width = scroller.clientWidth;
-      const height = scroller.clientHeight;
-      const heightChanged = height !== previousHeight;
-      previousHeight = height;
-      if (width === previousWidth) {
-        if (heightChanged) {
-          if (initialized.current && atBottom.current && !positionTarget.current
-            && !useSessionHistoryStore.getState().bySession.get(sessionId)?.newerCursor) {
-            positionTarget.current = { kind: 'reading-bottom' };
-          }
-          requestPositionCommit(value => value + 1);
-        }
-        return;
-      }
-      previousWidth = width;
-      layoutResetRequested.current = true;
-      if (frame !== null) cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => { frame = null; invalidateLayout(); });
     };
-    const cancelLayoutRestore = (): void => {
-      if (latestJump.current === 'scrolling') latestJump.current = 'interrupted';
-      if (frame !== null) {
-        cancelAnimationFrame(frame);
-        frame = null;
-        requestPositionCommit(value => value + 1);
-      }
-      if (positionTarget.current?.kind === 'reading-bottom'
-        || (positionTarget.current?.kind === 'message' && positionTarget.current.offsetPx !== undefined)) {
-        positionTarget.current = null;
-      }
-    };
-    const observer = new ResizeObserver(measureLayout);
+    const observer = new ResizeObserver(measureScrollbar);
     observer.observe(scroller);
-    // 外观设置是字体变化的真实生产者, 不用隐藏文本猜测字体是否改变.
-    if (previousFonts.current.readingFont !== readingFont || previousFonts.current.codeFont !== codeFont) {
-      previousFonts.current = { readingFont, codeFont };
-      invalidateLayout();
-    }
-    column?.style.setProperty('--ema-chat-scrollbar-width', String(scroller.offsetWidth - scroller.clientWidth) + 'px');
-    document.fonts.addEventListener('loadingdone', invalidateLayout);
-    scroller.addEventListener('wheel', cancelLayoutRestore, { passive: true });
-    scroller.addEventListener('pointerdown', cancelLayoutRestore);
-    scroller.addEventListener('touchstart', cancelLayoutRestore, { passive: true });
-    scroller.addEventListener('keydown', cancelLayoutRestore);
+    measureScrollbar();
     return () => {
       observer.disconnect();
-      if (frame !== null) cancelAnimationFrame(frame);
-      document.fonts.removeEventListener('loadingdone', invalidateLayout);
-      scroller.removeEventListener('wheel', cancelLayoutRestore);
-      scroller.removeEventListener('pointerdown', cancelLayoutRestore);
-      scroller.removeEventListener('touchstart', cancelLayoutRestore);
-      scroller.removeEventListener('keydown', cancelLayoutRestore);
       column?.style.removeProperty('--ema-chat-scrollbar-width');
     };
-  }, [scroller, sessionId, virtualizer, readingFont, codeFont]);
+  }, [scroller]);
 
   function checkPagination(): void {
     const state = useSessionHistoryStore.getState().bySession.get(sessionId);
     if (!state?.loaded || state.loading || state.loadingOlder || state.loadingNewer) return;
     const empty = messagesRef.current.length === 0;
-    if (!empty && (!initialized.current || positionTarget.current || !scroller)) return;
-    // 主动回底期间不再补头部历史, 否则前插会改变平滑定位中的目标索引.
-    if (latestJump.current !== 'idle') {
-      if (!virtualizer.isAtEnd(24)) return;
-      latestJump.current = 'idle';
-    }
+    if (!empty && (viewport.isPositioning() || !scroller)) return;
     const threshold = Math.max(80, (scroller?.clientHeight ?? 0) * 0.35);
     const needsOlder = Boolean(state.olderCursor && !state.olderError
       && (empty || (scroller && scroller.scrollTop <= threshold)));
@@ -357,22 +221,17 @@ function HistoryViewport({
     const store = useSessionHistoryStore.getState();
     const item = store.bySession.get(sessionId)?.turnIndexItems.find(candidate => candidate.turnId === turnId);
     if (!item?.anchorMessageId) return;
-    latestJump.current = 'idle';
-    positionTarget.current = null;
     if (messages.some(message => message.id === item.anchorMessageId)) {
       store.cancelPendingWindowReplace(sessionId);
-      positionTarget.current = { kind: 'message', messageId: item.anchorMessageId };
-      requestPositionCommit(value => value + 1);
+      viewport.scrollToMessage(item.anchorMessageId);
     } else await store.openAround(sessionId, item.anchorMessageId);
   }
 
   async function returnToLatest(): Promise<void> {
     const store = useSessionHistoryStore.getState();
-    positionTarget.current = null;
     store.cancelPendingWindowReplace(sessionId);
     if (!history.newerCursor && !history.loading) {
-      positionTarget.current = { kind: 'jump-latest' };
-      requestPositionCommit(value => value + 1);
+      viewport.scrollToLatest(!window.matchMedia('(prefers-reduced-motion: reduce)').matches);
     } else await store.loadLatest(sessionId, true);
   }
 
@@ -385,19 +244,15 @@ function HistoryViewport({
       <div
         ref={setScroller}
         className="ema-chat-history-scroller absolute inset-0 overflow-x-hidden overflow-y-auto"
+        tabIndex={0}
+        aria-label="会话消息"
         onScroll={() => {
           if (!scroller) return;
-          if (latestJump.current === 'interrupted') {
-            latestJump.current = 'idle';
-            // 手势已经产生实际滚动后再替换内核目标, 不把首个滚轮动作拉回旧位置.
-            virtualizer.scrollToOffset(scroller.scrollTop);
-          }
           if (scroller.scrollTop !== lastScrollTop.current) {
             scrollDirection.current = scroller.scrollTop < lastScrollTop.current ? 'older' : 'newer';
           }
           lastScrollTop.current = scroller.scrollTop;
-          atBottom.current = virtualizer.isAtEnd(24);
-          setIsAtBottom(atBottom.current);
+          viewport.onScroll();
           checkPagination();
         }}
       >

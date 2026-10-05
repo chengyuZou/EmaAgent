@@ -110,7 +110,7 @@ export function toolGroupSummary(tally: ToolTally): string[] {
   if (tally.reads) parts.push(`读取 ${tally.reads} 次`);
   if (tally.searches) parts.push(`搜索 ${tally.searches} 次`);
   if (tally.fileEdits) parts.push(`编辑 ${tally.fileEdits} 次`);
-  if (tally.contextQueries) parts.push(`查询知识 ${tally.contextQueries} 次`);
+  if (tally.contextQueries) parts.push(`查询上下文 ${tally.contextQueries} 次`);
   if (tally.tasks) parts.push(`更新任务 ${tally.tasks} 次`);
   if (tally.otherTools) parts.push(`其他工具 ${tally.otherTools} 次`);
   return parts;
