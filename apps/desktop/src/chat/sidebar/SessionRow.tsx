@@ -30,11 +30,11 @@ export function getStatusDot(
 export function formatRelativeTime(updatedAt: number): string {
   const diff = Math.max(0, Date.now() - updatedAt);
   if (diff < 60_000) return '刚刚';
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时`;
-  if (diff < 604_800_000) return `${Math.floor(diff / 86_400_000)} 天`;
-  if (diff < 2_592_000_000) return `${Math.floor(diff / 604_800_000)} 周`;
-  return `${Math.floor(diff / 2_592_000_000)} 个月`;
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`;
+  if (diff < 604_800_000) return `${Math.floor(diff / 86_400_000)} 天前`;
+  if (diff < 2_592_000_000) return `${Math.floor(diff / 604_800_000)} 周前`;
+  return `${Math.floor(diff / 2_592_000_000)} 个月前`;
 }
 
 export function SessionRow({

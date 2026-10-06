@@ -42,6 +42,7 @@ Diff 的 shadow root 是例外: 全局样式无法进入它, ReviewPanel 和内�
 - File 页由 `domains/files.css` 负责预览/目录两栏. 空白入口原位替换为首个文件, 后续文件追加, 已打开文件按完整路径激活. 同一 Session 的文件标签共用一个目录模型; 目录只在展开时读取, 文件预览按标签 ID 保留.
 - Trees 的原生横滚可见高度修正和宿主整数高度限制由同一份 pnpm 依赖补丁保存, 所有使用处共享; Review 只指定填满可用空间. 说明见仓库根目录 `patches/README.md`. 不固定像素高度, 不拦截滚轮或覆盖库的鼠标响应.
 
+- Stage 的气泡, 权限提示和菜单各自读取 `frontend.wallpaper.settings` 的 `enabled` 与 `materialMode`. 关闭时使用普通主题表面; 开启时通过局部 `ema-stage-translucent` / `ema-stage-frosted` 类复用材质参数, 不修改文档根节点或加载壁纸图片. 主题和字体消费已有同步变量.
 - 命名: 工具类 `ema-<动作>`(`ema-fade-in`); 构件类 `ema-<名>`; 域类 `ema-<域>-<件>`(`ema-tool-row`)。
-- 单文件 <200 行, 超了按职责拆; 文件头注释必须写清"谁在用我", 样式变了就更新注释。
+- 文件按内聚职责组织, 不因行数拆分. 注释说明必要的样式约束与跨组件关系.
 - 颜色, 间距, 圆角, 阴影一律走 `foundation/tokens.css` 的 token, 域文件里不写死色值; 亮暗主题差异只允许靠 token 覆盖, 不写主题分支判断。

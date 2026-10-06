@@ -9,12 +9,16 @@
 //
 // 多个 Session 可以同时堆叠卡片. 按钮经 Session WebSocket 回答队首,
 // 不改变当前 TTS/Live2D 归属 Session。
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@ema-agent/ui';
 import { tauriBridge } from '../lib/tauri-bridge.js';
 import { SessionRequestError, sessionWebSocket } from '../api/sessionWebSocket.js';
 import type { PermissionRequiredEvent, PermissionResponse } from '@ema-agent/permission';
 import type { AskUserRequiredEvent } from '@ema-agent/tools';
+import type { WallpaperSettings } from '@ema-agent/server/settings/wallpaperSetting.js';
+import { DEFAULT_WALLPAPER_SETTINGS, WALLPAPER_SETTING_KEYS } from '@ema-agent/server/settings/wallpaperCatalog.js';
+import { settingsApi } from '../api/settings.js';
+import { subscribeSystemEvent } from '../lib/system-event-dispatcher.js';
 
 /** decision:push 的载荷来自 Session 交互出口, 不依赖父 Turn 存活. */
 type DecisionPushEvent = PermissionRequiredEvent | AskUserRequiredEvent;
@@ -22,6 +26,38 @@ type DecisionPushEvent = PermissionRequiredEvent | AskUserRequiredEvent;
 // ── 根组件 ───────────────────────────────────────────────────────────────────
 
 export function PermissionToastLayer(): React.JSX.Element {
+  const [wallpaper, setWallpaper] = useState<Pick<WallpaperSettings, 'enabled' | 'materialMode'>>({
+    enabled: DEFAULT_WALLPAPER_SETTINGS.enabled,
+    materialMode: DEFAULT_WALLPAPER_SETTINGS.materialMode,
+  });
+  const materialClass = wallpaper.enabled ? `ema-stage-${wallpaper.materialMode}` : '';
+
+  useEffect(() => {
+    let disposed = false;
+    let sequence = 0;
+
+    async function refresh(): Promise<void> {
+      const requestSequence = ++sequence;
+      try {
+        const response = await settingsApi.getValue(WALLPAPER_SETTING_KEYS.settings);
+        if (disposed || requestSequence !== sequence) return;
+        const value = response.value as WallpaperSettings;
+        setWallpaper({ enabled: value.enabled, materialMode: value.materialMode });
+      } catch (error) {
+        console.warn('[permission-toast] 读取浮层外观设置失败:', error);
+      }
+    }
+
+    const stop = subscribeSystemEvent((event) => {
+      if (event.type === 'settings_changed') void refresh();
+    });
+    void refresh();
+    return () => {
+      disposed = true;
+      stop();
+    };
+  }, []);
+
   // AskUser 虽不在桌宠展示, 仍占这个 Session 的队首, 不能放行后面的批准.
   const [toasts, setToasts] = useState<DecisionPushEvent[]>([]);
 
@@ -56,16 +92,7 @@ export function PermissionToastLayer(): React.JSX.Element {
   return (
     <div
       data-tauri-drag-region={false}
-      style={{
-        position: 'fixed',
-        bottom: 90,          // 悬浮坞上方
-        right: 10,
-        zIndex: 200,
-        display: 'flex',
-        flexDirection: 'column-reverse',
-        gap: 8,
-        pointerEvents: 'none',
-      }}
+      className={`ema-stage-permission-layer ${materialClass}`}
     >
       {toasts.filter((toast, index) => toast.type === 'permission_required'
         && !toasts.slice(0, index).some(previous => previous.sessionId === toast.sessionId))
@@ -74,8 +101,7 @@ export function PermissionToastLayer(): React.JSX.Element {
             <div
               key={toast.toolCallId}
               data-pet-interactive
-              className="ema-toast-in"
-              style={{ pointerEvents: 'auto' }}
+              className="ema-stage-permission-entry"
             >
               <PermissionCard toast={toast} onDismiss={removeToast} />
             </div>
@@ -120,9 +146,9 @@ function PermissionCard({ toast, onDismiss }: {
       sessionId={toast.sessionId}
       label={toast.subagentId ? `子代理 · ${toast.subagentId.slice(0, 8)}` : '主 Agent'}
     >
-      <p style={toolNameStyle}>{toast.toolName}</p>
-      <p style={descStyle}>{desc}</p>
-      <div style={rowStyle}>
+      <p className="ema-stage-permission-tool">{toast.toolName}</p>
+      <p className="ema-stage-permission-description">{desc}</p>
+      <div className="ema-stage-permission-actions">
         <Button
           variant="danger"
           size="sm"
@@ -142,7 +168,7 @@ function PermissionCard({ toast, onDismiss }: {
           onClick={() => void respond({ action: 'allow' })}
         >允许</Button>
       </div>
-      {error && <p style={errorStyle}>{error}</p>}
+      {error && <p className="ema-stage-permission-error">{error}</p>}
     </ToastCard>
   );
 }
@@ -151,70 +177,12 @@ function PermissionCard({ toast, onDismiss }: {
 
 function ToastCard({ sessionId, label, children }: { sessionId?: string; label: string; children: React.ReactNode }): React.JSX.Element {
   return (
-    <div style={cardStyle}>
-      <div style={headerStyle}>
-        <span style={sessionChipStyle}>{sessionId?.slice(0, 8) ?? '—'}</span>
-        <span style={labelStyle}>{label}</span>
+    <div className="ema-stage-surface ema-stage-permission-card ema-toast-in">
+      <div className="ema-stage-permission-header">
+        <span className="ema-stage-permission-session">{sessionId?.slice(0, 8) ?? '—'}</span>
+        <span className="ema-stage-permission-label">{label}</span>
       </div>
       {children}
     </div>
   );
 }
-
-// ── 样式 ─────────────────────────────────────────────────────────────────────
-
-const cardStyle: CSSProperties = {
-  width: 234,
-  background: 'var(--ema-surface-0)',
-  border: '1px solid var(--ema-glow)',
-  borderRadius: 'var(--ema-radius-md)',
-  padding: '10px 12px',
-  backdropFilter: 'var(--ema-glass-strong)',
-  boxShadow: 'var(--ema-shadow-3)',
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 6,
-};
-
-const headerStyle: CSSProperties = { display: 'flex', alignItems: 'center', gap: 6 };
-
-const sessionChipStyle: CSSProperties = {
-  fontSize: 10,
-  fontFamily: 'monospace',
-  padding: '1px 6px',
-  borderRadius: 'var(--ema-radius-pill)',
-  background: 'var(--ema-primary-muted)',
-  border: '1px solid var(--ema-glow)',
-  color: 'var(--ema-primary)',
-  letterSpacing: '0.02em',
-};
-
-const labelStyle: CSSProperties = { fontSize: 10, color: 'var(--ema-text-tertiary)' };
-
-const toolNameStyle: CSSProperties = {
-  margin: 0,
-  fontSize: 12,
-  fontWeight: 600,
-  color: 'var(--ema-text-code)',
-  fontFamily: 'monospace',
-};
-
-const descStyle: CSSProperties = {
-  margin: 0,
-  fontSize: 11.5,
-  color: 'var(--ema-text-secondary)',
-  lineHeight: 1.5,
-  display: '-webkit-box',
-  WebkitLineClamp: 3,
-  WebkitBoxOrient: 'vertical',
-  overflow: 'hidden',
-};
-
-const errorStyle: CSSProperties = { margin: 0, fontSize: 10.5, color: 'var(--ema-danger-text)' };
-
-const rowStyle: CSSProperties = {
-  display: 'flex',
-  gap: 6,
-  justifyContent: 'flex-end',
-  marginTop: 2,
-};

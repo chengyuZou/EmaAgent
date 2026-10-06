@@ -1,10 +1,12 @@
-/* SettingsPanel, Chat 的结构表面与 body 下的菜单, Dialog, Tooltip, Toast 共用皮肤.
+/* SettingsPanel, Chat 的结构表面, Stage 浮层与 body 下的菜单, Dialog, Tooltip, Toast 共用皮肤.
    参数来自 material.css; 只在平行结构边界模糊, 普通卡片和控件不重复 blur. */
 
 .ema-settings-sidebar,
 .ema-settings-material-page,
 .ema-session-sidebar,
 .ema-chat-main,
+.ema-stage-surface:is(.ema-stage-translucent, .ema-stage-frosted),
+:is(.ema-stage-translucent, .ema-stage-frosted) .ema-stage-surface,
 html[data-material-window] :is(.panel-glass, [role='dialog'], .ema-tooltip-surface, .ema-material-toast) {
   --ema-surface-0: var(--ema-material-reading);
   --ema-surface-1: var(--ema-material-section);
@@ -90,6 +92,22 @@ html[data-material-window] [role='dialog'] :is(button, .ema-glass-weak) {
 }
 
 html[data-material-window] :is(.panel-glass, [role='dialog'], .ema-tooltip-surface, .ema-material-toast) {
+  background: var(--ema-material-overlay);
+  -webkit-backdrop-filter: var(--ema-material-overlay-filter);
+  backdrop-filter: var(--ema-material-overlay-filter);
+}
+
+/* 普通浮层保留主题表面; 组件启用材质类时才使用共享参数.
+   Popover 的 panel-glass 需要同等 specificity, 避免自身底色和 blur 覆盖局部状态. */
+.ema-stage-surface,
+.panel-glass.ema-stage-surface {
+  background: var(--ema-surface-0);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.ema-stage-surface:is(.ema-stage-translucent, .ema-stage-frosted),
+:is(.ema-stage-translucent, .ema-stage-frosted) .ema-stage-surface {
   background: var(--ema-material-overlay);
   -webkit-backdrop-filter: var(--ema-material-overlay-filter);
   backdrop-filter: var(--ema-material-overlay-filter);

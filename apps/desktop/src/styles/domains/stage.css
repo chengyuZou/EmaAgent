@@ -82,6 +82,167 @@ body[data-pet-pointer-inside='true'] .ema-server-status {
   box-shadow: 0 0 9px color-mix(in srgb, var(--ema-danger) 80%, transparent);
 }
 
+.ema-stage-surface {
+  color: var(--ema-text-primary);
+  font-family: var(--ema-font-ui);
+}
+
+.ema-stage-permission-layer {
+  position: fixed;
+  right: var(--ema-space-3);
+  bottom: 90px;
+  z-index: var(--ema-z-toast);
+  display: flex;
+  flex-direction: column-reverse;
+  gap: var(--ema-space-2);
+  pointer-events: none;
+}
+
+.ema-stage-permission-entry {
+  pointer-events: auto;
+}
+
+.ema-stage-permission-card {
+  display: flex;
+  width: min(234px, calc(100vw - 24px));
+  flex-direction: column;
+  gap: var(--ema-space-2);
+  padding: var(--ema-space-3);
+  border: 1px solid var(--ema-glow);
+  border-radius: var(--ema-radius-md);
+  box-shadow: var(--ema-shadow-3);
+  font-family: var(--ema-font-ui);
+}
+
+.ema-stage-permission-header {
+  display: flex;
+  align-items: center;
+  gap: var(--ema-space-2);
+}
+
+.ema-stage-permission-session {
+  padding: var(--ema-space-0_5) var(--ema-space-2);
+  border: 1px solid var(--ema-glow);
+  border-radius: var(--ema-radius-pill);
+  background: var(--ema-primary-muted);
+  color: var(--ema-primary);
+  font-family: var(--ema-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+}
+
+.ema-stage-permission-label {
+  color: var(--ema-text-tertiary);
+  font-size: 10px;
+}
+
+.ema-stage-permission-tool {
+  margin: 0;
+  color: var(--ema-text-primary);
+  font-size: 12px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.ema-stage-permission-description {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: var(--ema-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.ema-stage-permission-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--ema-space-2);
+  margin-top: var(--ema-space-0_5);
+}
+
+.ema-stage-permission-error {
+  margin: 0;
+  color: var(--ema-danger-text);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.ema-stage-dock-menu {
+  border-color: var(--ema-border);
+}
+
+.ema-stage-speech-bubble {
+  position: fixed;
+  top: var(--ema-space-5);
+  right: var(--ema-space-4);
+  z-index: var(--ema-z-dialog);
+  width: min(240px, calc(100vw - 32px));
+  pointer-events: none;
+  opacity: 1;
+  transition-property: opacity;
+  transition-timing-function: var(--ema-ease);
+}
+
+.ema-stage-speech-bubble[data-fading='true'] {
+  opacity: 0;
+}
+
+/* 入场只改变位置和尺寸, 父层的 opacity 动画会限制子表面的背景取样.
+   静默淡出仍由整个气泡的 opacity 控制, 同时隐藏正文和尾巴. */
+.ema-stage-speech-bubble.ema-speech-in {
+  animation-name: ema-stage-speech-enter;
+}
+
+@keyframes ema-stage-speech-enter {
+  from {
+    transform: scale(0.88) translateY(-6px);
+  }
+  to {
+    transform: scale(1) translateY(0);
+  }
+}
+
+.ema-stage-speech-body {
+  padding: var(--ema-space-3) var(--ema-space-4);
+  border: 1px solid var(--ema-glow);
+  border-radius: var(--ema-radius-lg);
+  box-shadow: var(--ema-shadow-2),
+    0 0 16px color-mix(in srgb, var(--ema-pet-glow-bright) 12%, transparent);
+}
+
+.ema-speech-bubble-text {
+  max-height: 60px;
+  margin: 0;
+  overflow-y: auto;
+  color: var(--ema-text-primary);
+  font-family: var(--ema-font-content);
+  font-size: 13px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+  scrollbar-width: none;
+  white-space: pre-wrap;
+}
+
 .ema-speech-bubble-text::-webkit-scrollbar {
   display: none;
+}
+
+.ema-stage-speech-tail {
+  position: relative;
+  left: 72%;
+  width: 18px;
+  height: 11px;
+  margin-top: -1px;
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+  transform: translateX(-50%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ema-stage-speech-bubble {
+    transition: none;
+    animation: none;
+  }
 }

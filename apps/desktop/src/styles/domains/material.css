@@ -1,7 +1,9 @@
-/* WallpaperLayer 为聊天与设置文档提供同一套材质参数. 表面规则在 materialSurfaces.css.
+/* 聊天和设置通过文档属性, Stage 浮层通过组件样式类复用材质参数. 表面规则在 materialSurfaces.css.
    只改变背景 Alpha, 图片与前景元素不使用容器 opacity. */
 
-html[data-window-material] {
+html[data-window-material],
+.ema-stage-translucent,
+.ema-stage-frosted {
   --ema-material-sidebar-alpha: 100%;
   --ema-material-workspace-alpha: 100%;
   --ema-material-section-alpha: 100%;
@@ -24,7 +26,9 @@ html[data-window-material] {
   --ema-material-reading: var(--ema-surface-1);
 }
 
-html[data-window-wallpaper='true']:is([data-window-material='translucent'], [data-window-material='frosted']) {
+html[data-window-wallpaper='true']:is([data-window-material='translucent'], [data-window-material='frosted']),
+.ema-stage-translucent,
+.ema-stage-frosted {
   --ema-material-sidebar: color-mix(in srgb, var(--ema-material-fill) var(--ema-material-sidebar-alpha), transparent);
   --ema-material-workspace: color-mix(in srgb, var(--ema-material-tint) var(--ema-material-workspace-alpha), transparent);
   --ema-material-section: color-mix(in srgb, var(--ema-material-fill) var(--ema-material-section-alpha), transparent);
@@ -35,7 +39,8 @@ html[data-window-wallpaper='true']:is([data-window-material='translucent'], [dat
   --ema-material-reading: color-mix(in srgb, var(--ema-material-fill) var(--ema-material-reading-alpha), transparent);
 }
 
-html[data-window-wallpaper='true'][data-window-material='translucent'] {
+html[data-window-wallpaper='true'][data-window-material='translucent'],
+.ema-stage-translucent {
   --ema-material-sidebar-alpha: 26%;
   --ema-material-workspace-alpha: 10%;
   --ema-material-section-alpha: 15%;
@@ -47,7 +52,8 @@ html[data-window-wallpaper='true'][data-window-material='translucent'] {
   --ema-material-code-alpha: 50%;
 }
 
-html[data-window-wallpaper='true'][data-window-material='frosted'] {
+html[data-window-wallpaper='true'][data-window-material='frosted'],
+.ema-stage-frosted {
   --ema-material-sidebar-alpha: 31%;
   --ema-material-workspace-alpha: 14%;
   --ema-material-section-alpha: 19%;

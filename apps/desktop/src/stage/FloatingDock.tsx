@@ -3,6 +3,10 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from 're
 import { IconButton, Popover, ScrollArea, Tooltip } from '@ema-agent/ui';
 import { tauriBridge } from '../lib/tauri-bridge.js';
 import { showToast } from '../lib/toast.js';
+import type { WallpaperSettings } from '@ema-agent/server/settings/wallpaperSetting.js';
+import { DEFAULT_WALLPAPER_SETTINGS, WALLPAPER_SETTING_KEYS } from '@ema-agent/server/settings/wallpaperCatalog.js';
+import { settingsApi } from '../api/settings.js';
+import { subscribeSystemEvent } from '../lib/system-event-dispatcher.js';
 
 export interface FloatingDockProps {
   suspended: boolean;
@@ -19,6 +23,37 @@ export function FloatingDock({
   selectedExpression,
   onSelectExpression,
 }: FloatingDockProps): JSX.Element {
+  const [wallpaper, setWallpaper] = useState<Pick<WallpaperSettings, 'enabled' | 'materialMode'>>({
+    enabled: DEFAULT_WALLPAPER_SETTINGS.enabled,
+    materialMode: DEFAULT_WALLPAPER_SETTINGS.materialMode,
+  });
+  const materialClass = wallpaper.enabled ? `ema-stage-${wallpaper.materialMode}` : '';
+
+  useEffect(() => {
+    let disposed = false;
+    let sequence = 0;
+
+    async function refresh(): Promise<void> {
+      const requestSequence = ++sequence;
+      try {
+        const response = await settingsApi.getValue(WALLPAPER_SETTING_KEYS.settings);
+        if (disposed || requestSequence !== sequence) return;
+        const value = response.value as WallpaperSettings;
+        setWallpaper({ enabled: value.enabled, materialMode: value.materialMode });
+      } catch (error) {
+        console.warn('[floating-dock] 读取浮层外观设置失败:', error);
+      }
+    }
+
+    const stop = subscribeSystemEvent((event) => {
+      if (event.type === 'settings_changed') void refresh();
+    });
+    void refresh();
+    return () => {
+      disposed = true;
+      stop();
+    };
+  }, []);
   const [pinned,     setPinned]     = useState(true);
   const [flyoutOpen, setFlyoutOpen] = useState(false);
   const [pinUpdating, setPinUpdating] = useState(false);
@@ -208,12 +243,11 @@ export function FloatingDock({
       <div className="relative">
         <div
           data-pet-interactive={show && flyoutOpen ? '' : undefined}
-          className={`absolute bottom-full right-0 mb-3 p-3 rounded-2xl border shadow-[var(--ema-shadow-3)] backdrop-blur grid grid-cols-[repeat(3,auto)] gap-3 origin-bottom-right transition-ema ${
+          className={`ema-stage-surface ema-stage-dock-menu ${materialClass} absolute bottom-full right-0 mb-3 p-3 rounded-2xl border shadow-[var(--ema-shadow-3)] grid grid-cols-[repeat(3,auto)] gap-3 origin-bottom-right transition-ema ${
             flyoutOpen
               ? 'opacity-100 translate-y-0 scale-100'
               : 'opacity-0 translate-y-3 scale-90 pointer-events-none'
           }`}
-          style={{ background: 'var(--ema-surface-4)', borderColor: 'var(--ema-border)' }}
         >
           {flyoutButtons.map((btn, i) => (
             <Tooltip key={btn.id} content={btn.label} side="top">
@@ -244,7 +278,7 @@ export function FloatingDock({
 
       {/* ── Expression ── */}
       <Popover
-        className="ema-pet-interactive"
+        className={`ema-pet-interactive ema-stage-surface ${materialClass}`}
         side="left"
         align="end"
         widthClass="w-56"
@@ -324,7 +358,7 @@ function ExpressionChoice({
     <button
       type="button"
       className={`rounded-md px-2 py-1.5 text-left text-xs transition-colors ${selected
-        ? 'bg-[var(--ema-primary-soft)] text-[var(--ema-primary)]'
+        ? 'bg-[var(--ema-primary-muted)] text-[var(--ema-primary)]'
         : 'text-[var(--ema-text-secondary)] hover:bg-[var(--ema-surface-2)]'}`}
       onClick={onClick}
     >
