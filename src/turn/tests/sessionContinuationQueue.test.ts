@@ -27,7 +27,10 @@ function createFixture(running = false) {
       sessionExists: sessionId => sessionId === 'session-a',
       getSession: () => ({ sessionMode: 'chat', narrativePolicy: 'off', ttsEnabled: true }) as never,
     },
-    sessionRunning: { isRunning: () => sessionRunning },
+    sessionRunning: {
+      isRunning: () => sessionRunning,
+      getRunning: () => sessionRunning ? { kind: 'turn', turnId: 'running-turn' } : undefined,
+    },
     goals: { getCurrent: () => null },
     startTurn: input => {
       starts.push(input);
@@ -87,6 +90,54 @@ function createGoalFixture() {
 }
 
 describe('SessionContinuationQueue', () => {
+  it.each(['idle', 'compact'] as const)('%s 时编辑 active Goal 只保存, 不领取隐藏消息或启动 Turn', async mode => {
+    const fixture = createGoalFixture();
+    const created = fixture.goals.create(fixture.session.id, '原目标');
+    if (mode === 'compact') fixture.sessionRunning.register(fixture.session.id, { kind: 'compact', compactId: 'compact' });
+    const edited = fixture.goals.edit({ sessionId: created.sessionId, goalId: created.id, expectedVersion: created.version }, '新目标');
+    fixture.queue.goalEdited(edited);
+    await Promise.resolve();
+    expect(fixture.starts).toHaveLength(0);
+    expect(fixture.queue.claimNextIteration(fixture.session.id, 'turn')).toBeUndefined();
+    expect(fixture.queue.list(fixture.session.id)).toEqual([]);
+    expect(fixture.goals.getCurrent(fixture.session.id)?.objective).toBe('新目标');
+    fixture.queue.shutdown();
+  });
+
+  it('Goal 编辑领取可重试, 后到编辑不被旧确认删除, 只绑定原根 Turn', () => {
+    const fixture = createGoalFixture();
+    fixture.sessionRunning.register(fixture.session.id, { kind: 'turn', turnId: 'root' });
+    const original = fixture.goals.create(fixture.session.id, '原目标');
+    const edited = fixture.goals.edit({ sessionId: original.sessionId, goalId: original.id, expectedVersion: original.version }, '第一版');
+    fixture.queue.goalEdited(edited);
+    expect(fixture.queue.claimNextIteration(fixture.session.id, 'other-turn')).toBeUndefined();
+    const first = fixture.queue.claimNextIteration(fixture.session.id, 'root');
+    fixture.queue.release('root');
+    expect(fixture.queue.claimNextIteration(fixture.session.id, 'root')).toEqual(first);
+    const latest = fixture.goals.edit({ sessionId: edited.sessionId, goalId: edited.id, expectedVersion: edited.version }, '第二版');
+    fixture.queue.goalEdited(latest);
+    fixture.queue.acknowledge('root');
+    expect(fixture.queue.claimNextIteration(fixture.session.id, 'root')).toMatchObject({
+      type: 'continuation', continuationText: expect.stringContaining('第二版'),
+    });
+    fixture.queue.acknowledge('root');
+    expect(fixture.queue.claimNextIteration(fixture.session.id, 'root')).toBeUndefined();
+    fixture.queue.shutdown();
+  });
+
+  it.each(['pause', 'cancel', 'delete'] as const)('编辑后 %s Goal 不再注入旧目标正文', action => {
+    const fixture = createGoalFixture();
+    fixture.sessionRunning.register(fixture.session.id, { kind: 'turn', turnId: 'root' });
+    const original = fixture.goals.create(fixture.session.id, '原目标');
+    const edited = fixture.goals.edit({ sessionId: original.sessionId, goalId: original.id, expectedVersion: original.version }, '新目标');
+    fixture.queue.goalEdited(edited);
+    fixture.goals[action]({ sessionId: edited.sessionId, goalId: edited.id, expectedVersion: edited.version });
+    expect(fixture.queue.claimNextIteration(fixture.session.id, 'root')).toBeUndefined();
+    fixture.queue.turnFinished(fixture.session.id, 'aborted');
+    expect(fixture.queue.claimNextIteration(fixture.session.id, 'root')).toBeUndefined();
+    fixture.queue.shutdown();
+  });
+
   it('普通排队输入按入队顺序逐条启动 Turn, 不再合并消息', async () => {
     const fixture = createFixture();
     const first = fixture.queue.enqueue({

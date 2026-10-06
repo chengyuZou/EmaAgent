@@ -58,13 +58,9 @@ Server 将唯一 GoalStore 挂到 `/api/goals`, 前端 `apps/desktop/src/api/goa
 
 ## 事件
 
-`goal_created`, `goal_updated`, `goal_paused`, `goal_activated`, `goal_completed`, `goal_failed`, `goal_cancelled` 携带完整 `goal`. `goal_deleted` 只携带被删除的 `sessionId` 和 `goalId`. 一次修改只发对应事件, 不给创建再发 activated 或给取消再发 completed.
+`goal_created`, `goal_edited`, `goal_updated`, `goal_paused`, `goal_activated`, `goal_completed`, `goal_failed`, `goal_cancelled` 携带完整 `goal`. `goal_edited` 只表示用户正文改变, `goal_updated` 表示模型反馈改变; 执行队列只对正文编辑产生隐藏输入. `goal_deleted` 只携带被删除的 `sessionId` 和 `goalId`. 一次修改只发对应事件, 不给创建再发 activated 或给取消再发 completed.
 
 Server 装配把 GoalEvent 接入现有 AppEvents/SSE. 启动恢复也在整个事务提交后发 paused, 页面初次打开仍应查询数据库, 不能依赖启动时尚未连接的事件.
-
-## 当前分段范围
-
-第一段已实现 SQL, GoalStore, Plan 后端互斥, 提交后事件和启动暂停. 第二段已接根模型工具与每根 Turn 的持久化 Goal reminder, 并用 `012_goal_feedback.sql` 升级现有数据. 第三段已接既有 SessionContinuationQueue 的 after-turn Goal 续接与停止/运行失败暂停, 不新增调度器或模型评审. 第四段已接 Goal HTTP 管理 Route, 前端类型 API 与 Summary/详情查询. 第五段已接已有 Session 的 Commands 目标标记, 正常聊天发送创建 Goal, 输入区目标条和右侧编辑标签页. 设置 Data 界面已接只读历史列表与详情, Backup 尚未接入; 实际界面仍需验收, 不将当前代码宣称为完整可用 Goal 模式.
 
 ## 聊天输入与编辑
 
@@ -83,12 +79,15 @@ Server 装配把 GoalEvent 接入现有 AppEvents/SSE. 启动恢复也在整个�
 - 模型没有创建, 编辑正文, 取消, 删除, 暂停或激活入口. Goal 工具既从 fork/普通子代理工具池排除, 也不向子代理工具 Context 提供 GoalStore.
 - 更新成功返回新的版本. 版本冲突要求重新判断最新目标, 不允许盲目用新版本重试旧完成结论. 关闭/删除或 paused 的工具错误明确要求停止该目标, 不自行恢复.
 - 每根 Turn 的现有 reminder 保存当时的 Goal 身份, 版本, 状态, 正文和反馈. paused 或无 Goal 时明确停止历史 Goal 要求. 异步召回完成后再读取 SQL; 不改写旧 reminder, 不另建空目标 Message.
-- 不实现逐次模型请求的目标替换协调或统一工具拦截. 当前 Turn 不因关闭 Goal 强制中止; 之后报告进度或终态时由 Store 拒绝旧写入. 收尾后的统一队列重新读取 SQL, 已关闭或 paused 目标不生成下一轮续接.
+- 运行中 active Goal 的正文编辑在完整 Assistant 和整批工具结果后的安全点追加隐藏消息, 不取消在途请求, 不改写旧 reminder. 空闲或手动 Compact 时编辑只保存. 当前 Turn 不因关闭 Goal 强制中止; 之后报告进度或终态时由 Store 拒绝旧写入. 收尾后的统一队列重新读取 SQL, 已关闭或 paused 目标不生成下一轮续接.
+- succeeded 前的逐项审计是模型指令: 要从最新目标及引用要求中核对交付物, 测试, 验收条件与约束, 取得当前证据并在 feedback 保存简要验证依据. 数据库保存模型提交的反馈和状态, 不执行硬编码验收器或保存独立的条件数组; version 检查只防止过期判断写入新目标.
 
 ## 续接与停止
 
 - Goal 是 SessionContinuationQueue 的持续消息来源, 不是永久 Queue card 或后台完成通知. after-turn 领取用户输入时, 当前 Goal active 则同一 StartTurn 也带短 continuationText, 两条 Message 分别保存. 没有用户输入时保留后台通知顺序; 没有一次性内容时才生成纯 Goal continuation. 不将 objective 塞入短提示.
-- Goal 不进入 `claimNextIteration`, 不在每个 loop 加消息. 新一轮的 Goal 事实仍从 reminder 和 GoalGet 获取, 不缓存唤醒时的正文或在 StartTurn 加 GoalId.
+- 持续 Goal 续接不进入 `claimNextIteration`, 不在每个 loop 加消息; 只有当前根 Turn 收到正文编辑时才交付内部更新. 新一轮的 Goal 事实仍从 reminder 和 GoalGet 获取, 不缓存唤醒时的正文或在 StartTurn 加 GoalId.
 - 创建/激活后的 AppEvent 唤醒队列, 不依赖前端在线. 根 Turn 正常收尾和手动 Compact 解锁后也走同一排水入口, 空闲判断覆盖两种工作.
 - 用户停止或 Turn 最终执行失败时, 暂停该 Turn 实际处理的同一个 GoalId 的当前 active 版本. 不因 feedback 或用户编辑的版本增加而漏暂停, 不碰后来新建的其他 Goal. 普通运行失败不是 Goal 的 completed/failed.
 - 先结束消息/工具/交互收尾与必要暂停, 再解除 Session 占用, 最后向队列交付终态. 停止或失败不立即重试 release 的一次性内容, 内容保留到后续明确唤醒.
+- 同一个 active Goal 的根 Turn 达到 max_iterations 时正常结束本 Turn, Goal 保持 active, 队列解锁后继续选择下一 Turn. 这不改变无 Goal 或子代理的轮数上限策略, 也不把 Goal 标记为成功. 暂停 Goal 不 abort 当前 Turn, 只停止后续 Goal 续接.
+- 尚无整体 Goal Token 预算或跨 Turn 空转停止判定. 预算数据, 物理调用归属记账和自动续接准入分别在 GoalStore, turnLoopEvents 和 SessionContinuationQueue 留有 TODO, 当前不提供对应设置或数据库字段.

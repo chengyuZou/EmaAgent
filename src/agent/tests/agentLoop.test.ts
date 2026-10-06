@@ -80,6 +80,30 @@ function terminalEvent(events: readonly AgentLoopEvent[]) {
 }
 
 describe('runAgentLoop', () => {
+  it('最终文本生成期间收到追加输入, 先保存完整 Assistant 再交付并继续当前 Turn', async () => {
+    const requests: Message[][] = [];
+    let pending = true;
+    const stream: CallLlm = async function* (request) {
+      requests.push([...request.messages]);
+      yield { type: 'text_delta', blockIndex: 0, delta: requests.length === 1 ? '旧答案' : '更新后的答案' };
+      yield { type: 'done', stopReason: 'end_turn' };
+    };
+    const events = await collect(baseInput({
+      callLlm: stream,
+      takeNextIterationMessages: async () => {
+        if (!pending) return [];
+        pending = false;
+        return [{ role: 'user', content: '目标已修改' }];
+      },
+    }));
+    expect(requests).toHaveLength(2);
+    expect(requests[1]!.slice(-2)).toMatchObject([
+      { role: 'assistant', content: [{ type: 'text', text: '旧答案' }] },
+      { role: 'user', content: '目标已修改' },
+    ]);
+    expect(terminalEvent(events)?.state.stopReason).toBe('completed');
+  });
+
   it('每次迭代都经 prepareIteration，请求透传其输出上限并累计 Usage 差值', async () => {
     const stream = vi.fn((_request: LlmRequest) => (async function* () {
       yield { type: 'usage' as const, inputTokens: 10, outputTokens: 0 };

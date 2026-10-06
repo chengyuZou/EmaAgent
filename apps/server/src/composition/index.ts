@@ -152,6 +152,8 @@ export function buildComposition(input: { activeDataDir: string; initializeBuilt
   const stopGoalContinuation = appEvents.subscribe(event => {
     if (event.type === 'goal_created' || event.type === 'goal_activated') {
       turn.continuations.requestDrain(event.goal.sessionId);
+    } else if (event.type === 'goal_edited') {
+      turn.continuations.goalEdited(event.goal);
     }
   });
   const commands = openCommands({

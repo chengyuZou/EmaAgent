@@ -52,7 +52,7 @@ export async function* runAgentLoop(
   // max_tokens 截断后注入续写提示接着写; 只允许续一次, 再撞判 output_recovery_failed
   let injectedContinuation = false;
   // 同一批工具(工具名+参数完全相同)连续调用记轮数; 连续多轮视为空转
-  // 注入一次提醒让模型换方法, 防止原地烧 Token 不硬停, 硬兜底靠 maxIterations
+  // 注入一次提醒让模型换方法, 单次循环仍由 maxIterations 限制; 跨 Turn 续接归调用方.
   let lastBatchSignature: string | undefined;
   let sameBatchStreak = 0;
   let stuckGuideInjected = false;
@@ -333,6 +333,15 @@ export async function* runAgentLoop(
           llmCallId,
           messages: [assistantMessage],
         };
+        // 没有工具的最终回复也可能与运行中修改交错. 先保存完整 Assistant,
+        // 再领取安全点输入, 避免目标编辑只在工具轮生效或丢到下一根 Turn.
+        const nextIterationMessages = await input.takeNextIterationMessages?.() ?? [];
+        if (nextIterationMessages.length > 0) {
+          messages.push(...nextIterationMessages);
+          yield { type: 'model_history_appended', llmCallId, messages: nextIterationMessages };
+          continuedOutput.length = 0;
+          continue;
+        }
         state = updateAgentLoopState(state, {
           phase: 'completed',
           stopReason: 'completed',
@@ -378,7 +387,7 @@ export async function* runAgentLoop(
       }
 
       // 连续多轮完全相同的工具批次视为原地空转：注入一次软引导让模型换方法，
-      // 不硬停（轮询类合法重复不能误杀），硬兜底仍归 maxIterations 与 budget。
+      // 不立即硬停（轮询类合法重复不能误杀）, 单次循环由 maxIterations 限制.
       const batchSignature = [...toolUseByIndex.values()]
         .map((use) => `${use.name}:${JSON.stringify(use.args)}`)
         .sort()

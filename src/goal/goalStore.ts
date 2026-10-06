@@ -5,6 +5,8 @@ import type { Goal, GoalSummary, GoalIdentity, GoalReason } from './types.js';
 import { GoalError } from './error.js';
 
 export class GoalStore {
+  // TODO: 持久化可选的 Goal Token 总预算和累计用量. 用量跨 Turn 保留,
+  // 编辑和暂停不重置; 调用记账不能递增正文/状态修改使用的 version.
   private readonly repo: GoalsRepo;
   private readonly sessions: SessionsRepo;
 
@@ -69,7 +71,7 @@ export class GoalStore {
 
   edit(identity: GoalIdentity, objective: string): Goal {
     const text = this.objectiveText(objective);
-    return this.mutate(identity, 'goal_updated', goal => {
+    return this.mutate(identity, 'goal_edited', goal => {
       this.requireUnfinished(goal);
       if (goal.objective === text) return goal;
       return { ...goal, objective: text, feedback: null };

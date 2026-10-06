@@ -113,6 +113,9 @@ describe('renderTurnReminder', () => {
     expect(text).toContain('已整理 2/8');
     expect(text).toContain('模型自报, 不是完成判定');
     expect(text).toContain('旧目标要求不再有效');
+    expect(text).toContain('逐项核对交付物, 测试, 验收条件和必须保持的约束');
+    expect(text).toContain('仍有未满足或不确定项时继续工作');
+    expect(text).toContain('feedback 中简要记录验证依据和覆盖结果');
   });
 
   it('无 Goal 明确撤销旧目标, paused 不暴露可执行目标正文', () => {

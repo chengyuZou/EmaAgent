@@ -92,7 +92,7 @@ describe('GoalStore', () => {
     const edited = store.edit(identity(latest), '只整理两个文件');
     expect(edited).toMatchObject({ feedback: null, version: 4 });
     expect(events.map(event => event.type)).toEqual([
-      'goal_created', 'goal_updated', 'goal_updated', 'goal_updated',
+      'goal_created', 'goal_updated', 'goal_updated', 'goal_edited',
     ]);
   });
 
@@ -150,7 +150,7 @@ describe('GoalStore', () => {
     const active = store.activate(identity(paused));
     expect(active).toMatchObject({ id: a.id, status: 'active', version: 4, objective: '新要求' });
     expect(events.map(event => event.type)).toEqual([
-      'goal_created', 'goal_updated', 'goal_paused', 'goal_activated',
+      'goal_created', 'goal_edited', 'goal_paused', 'goal_activated',
     ]);
   });
 

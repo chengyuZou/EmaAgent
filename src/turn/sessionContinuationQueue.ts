@@ -2,7 +2,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { SubagentStatus } from '@ema-agent/agent';
-import type { GoalStore } from '@ema-agent/goal';
+import type { Goal, GoalStore } from '@ema-agent/goal';
 import type { SessionRunningRegistry, SessionStore } from '@ema-agent/session';
 import type { BackgroundProcessNotifiableStatus } from '@ema-agent/tools';
 import type {
@@ -12,6 +12,7 @@ import type {
   TurnKnowledgeSelection,
   TurnOutcome,
 } from './types.js';
+import { renderGoalEditReminder } from './prepare/turnReminder.js';
 
 /**
  * 自动续接只保留本次输入范围和朗读选择. 模型与推理强度每次从 Session 读取,
@@ -95,7 +96,7 @@ type CompletionNotice =
       claimedByTurnId?: string;
     };
 
-/** 一次领取的反向索引. 用户输入和后台通知互斥; Goal 提示不需要消费确认. */
+/** 一次领取的反向索引. 一次性输入, 通知和目标编辑需要确认; after-turn Goal 提示不消耗队列项. */
 type ContinuationClaim =
   | {
       readonly type: 'user_input';
@@ -106,6 +107,12 @@ type ContinuationClaim =
       readonly type: 'completion_notices';
       readonly sessionId: string;
       readonly completionNoticeKeys: readonly string[];
+    }
+  | {
+      readonly type: 'goal_edit';
+      readonly sessionId: string;
+      readonly goalId: string;
+      readonly version: number;
     };
 
 /**
@@ -114,7 +121,7 @@ type ContinuationClaim =
  */
 export interface SessionContinuationQueueDeps {
   readonly sessions: Pick<SessionStore, 'getSession' | 'sessionExists'>;
-  readonly sessionRunning: Pick<SessionRunningRegistry, 'isRunning'>;
+  readonly sessionRunning: Pick<SessionRunningRegistry, 'isRunning' | 'getRunning'>;
   readonly goals: Pick<GoalStore, 'getCurrent'>;
   readonly startTurn: (input: StartTurn) => TurnHandle;
   readonly attachTurn: (handle: TurnHandle) => void;
@@ -135,6 +142,12 @@ export class SessionContinuationQueue {
   private readonly selections = new Map<string, SessionTurnSelection>();
   /** 当前进程产生但尚未交付模型的后台终态通知. */
   private readonly completionNotices = new Map<string, CompletionNotice[]>();
+  /** 只绑定编辑发生时的根 Turn, 不唤醒空闲 Session 或留给后来 Turn. */
+  private readonly goalEdits = new Map<string, {
+    readonly turnId: string;
+    readonly goalId: string;
+    readonly version: number;
+  }>();
   /** 已被 Turn 暂时占用的输入和通知, 是 acknowledge/release 的依据. */
   private readonly claims = new Map<string, ContinuationClaim>();
   /** 防止同一 Session 被多个微任务重复启动 Turn. */
@@ -142,6 +155,18 @@ export class SessionContinuationQueue {
   private stopped = false;
 
   constructor(private readonly deps: SessionContinuationQueueDeps) {}
+
+  /** 正文提交事件不是用户 Queue card. 同一安全点前多次编辑只交付最新 SQL 事实. */
+  goalEdited(goal: Goal): void {
+    if (this.stopped || goal.status !== 'active') return;
+    const running = this.deps.sessionRunning.getRunning(goal.sessionId);
+    if (running?.kind !== 'turn') return;
+    this.goalEdits.set(goal.sessionId, {
+      turnId: running.turnId,
+      goalId: goal.id,
+      version: goal.version,
+    });
+  }
 
   /**
    * 入队时冻结输入与选择, 避免前端草稿或调用方对象随后变化影响已经排队的内容.
@@ -205,7 +230,7 @@ export class SessionContinuationQueue {
 
   /**
    * AgentLoop 只在 Assistant 和整批 ToolResult 都已完成后再调用这里. 普通排队输入
-   * 留给下一个 Turn, 只有立即引导和此刻已完成的后台通知可进入当前循环.
+   * 留给下一个 Turn; 正文编辑, 立即引导和此刻已完成的后台通知可进入当前循环.
    */
   claimNextIteration(sessionId: string, turnId: string): ClaimedSessionContinuation | undefined {
     return this.claim(sessionId, turnId, true);
@@ -216,6 +241,14 @@ export class SessionContinuationQueue {
     const claim = this.claims.get(turnId);
     if (!claim) return;
     this.claims.delete(turnId);
+    if (claim.type === 'goal_edit') {
+      const pending = this.goalEdits.get(claim.sessionId);
+      // 写入期间后到的编辑不能被较早 Message 的确认吞掉.
+      if (pending?.turnId === turnId && pending.goalId === claim.goalId && pending.version === claim.version) {
+        this.goalEdits.delete(claim.sessionId);
+      }
+      return;
+    }
     if (claim.type === 'user_input') {
       const claimedInput = (this.inputs.get(claim.sessionId) ?? []).find(item => (
         item.id === claim.userInputId && item.claimedByTurnId === turnId
@@ -243,6 +276,7 @@ export class SessionContinuationQueue {
     const claim = this.claims.get(turnId);
     if (!claim) return;
     this.claims.delete(turnId);
+    if (claim.type === 'goal_edit') return;
     if (claim.type === 'user_input') {
       for (const item of this.inputs.get(claim.sessionId) ?? []) {
         if (item.id === claim.userInputId && item.claimedByTurnId === turnId) {
@@ -304,6 +338,7 @@ export class SessionContinuationQueue {
    * 原输入和通知仍留到后续明确唤醒, 正常完成才自动选择下一份工作.
    */
   turnFinished(sessionId: string, status: TurnOutcome['status']): void {
+    this.goalEdits.delete(sessionId);
     if (status === 'completed') this.requestDrain(sessionId);
   }
 
@@ -312,6 +347,7 @@ export class SessionContinuationQueue {
     this.inputs.delete(sessionId);
     this.selections.delete(sessionId);
     this.completionNotices.delete(sessionId);
+    this.goalEdits.delete(sessionId);
     for (const [turnId, claim] of this.claims) {
       if (claim.sessionId === sessionId) this.claims.delete(turnId);
     }
@@ -323,6 +359,7 @@ export class SessionContinuationQueue {
     this.inputs.clear();
     this.selections.clear();
     this.completionNotices.clear();
+    this.goalEdits.clear();
     this.claims.clear();
   }
 
@@ -395,6 +432,20 @@ export class SessionContinuationQueue {
     nextIterationOnly: boolean,
   ): ClaimedSessionContinuation | undefined {
     if (this.claims.has(turnId)) return undefined;
+    const edit = this.goalEdits.get(sessionId);
+    if (nextIterationOnly && edit?.turnId === turnId) {
+      const goal = this.deps.goals.getCurrent(sessionId);
+      if (goal?.id === edit.goalId && goal.status === 'active') {
+        this.claims.set(turnId, {
+          type: 'goal_edit',
+          sessionId,
+          goalId: edit.goalId,
+          version: edit.version,
+        });
+        return { type: 'continuation', turnId, continuationText: renderGoalEditReminder(goal) };
+      }
+      this.goalEdits.delete(sessionId);
+    }
     const availableInputs = (this.inputs.get(sessionId) ?? [])
       .filter(item => item.claimedByTurnId === undefined);
     const guidedInputs = availableInputs.filter(item => item.delivery === 'next_iteration');
@@ -427,6 +478,8 @@ export class SessionContinuationQueue {
       if (nextIterationOnly) return undefined;
       const goal = this.deps.goals.getCurrent(sessionId);
       if (goal?.status !== 'active') return undefined;
+      // TODO: 自动续接前检查持久化的 Goal 总预算. 单 Turn 的 iter 切分
+      // 不重置总预算, 耗尽不代表成功; 所有实际模型调用还需要同一预算准入检查.
       // Goal 是持续消息来源, 不复制正文或永久入队; 下一次领取重新读取 SQL.
       return {
         type: 'continuation',

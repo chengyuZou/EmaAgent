@@ -42,7 +42,7 @@ export interface AgentLoopInput {
   readonly prepareIteration: PrepareAgentIteration;
   readonly callLlm: CallLlm;
   readonly createToolExecutor: ToolExecutorFactory;
-  /** 消息队列立即引导的下一轮消息  在某一个 Iteration 工具结果已经完成后, 领取可进入下一轮的 Session 输入. */
+  /** 完整 Assistant 和本批 ToolResult 已保存后的安全点输入; 无工具回复也检查, 不打断生成或工具. */
   readonly takeNextIterationMessages?: () => Promise<readonly Message[]>;
   readonly signal: AbortSignal;
   readonly maxIterations: number;

@@ -136,6 +136,7 @@ function goalContinuationFixture(llm: CallLlm) {
   let queue: SessionContinuationQueue;
   const goals = new GoalStore(db, event => {
     if (event.type === 'goal_created' || event.type === 'goal_activated') queue.requestDrain(event.goal.sessionId);
+    else if (event.type === 'goal_edited') queue.goalEdited(event.goal);
   });
   const deps = makeDeps({ db, llm, sessionId: session.id, registry });
   let executor: TurnExecutor;
@@ -182,6 +183,174 @@ function forkFixture(llm: CallLlm, onStarted: (id: string) => void, createCompac
 }
 
 describe('TurnExecutor 集成', () => {
+  it.each(['tool', 'text'] as const)('运行中连续编辑 Goal 在 %s 轮的安全边界持久化最新正文, 不发用户气泡', async mode => {
+    let fixture: ReturnType<typeof goalContinuationFixture>;
+    const requests: string[] = [];
+    const llm: CallLlm = async function* (request) {
+      requests.push(JSON.stringify(request.messages));
+      const goal = fixture.goals.getCurrent(fixture.session.id)!;
+      if (requests.length === 1) {
+        const changed = fixture.goals.edit({ sessionId: goal.sessionId, goalId: goal.id, expectedVersion: goal.version }, '中间要求');
+        fixture.goals.edit({ sessionId: goal.sessionId, goalId: goal.id, expectedVersion: changed.version }, '最新要求');
+        expect(request.signal?.aborted).toBe(false);
+        if (mode === 'tool') {
+          yield { type: 'tool_use_complete', blockIndex: 0, callId: 'stale-complete', name: 'GoalUpdate', args: {
+            goalId: goal.id, expectedVersion: goal.version, status: 'completed', reason: 'succeeded', feedback: '旧目标完成',
+          } };
+          yield { type: 'done', stopReason: 'tool_use' };
+        } else {
+          yield { type: 'text_delta', blockIndex: 0, delta: '旧正文的回复' };
+          yield { type: 'done', stopReason: 'end_turn' };
+        }
+        return;
+      }
+      expect(goal).toMatchObject({ status: 'active', objective: '最新要求', version: 3 });
+      fixture.goals.complete({ sessionId: goal.sessionId, goalId: goal.id, expectedVersion: goal.version }, '最新目标逐项验证完成');
+      yield { type: 'text_delta', blockIndex: 0, delta: '最新目标完成' };
+      yield { type: 'done', stopReason: 'end_turn' };
+    };
+    fixture = goalContinuationFixture(llm);
+    let handle: TurnHandle | undefined;
+    try {
+      fixture.goals.create(fixture.session.id, '原目标');
+      handle = fixture.executor.start(makeStart(fixture.session.id));
+      expect((await handle.completion).status).toBe('completed');
+      expect(requests).toHaveLength(2);
+      const messages = fixture.sessions.loadMessagesForTurn(handle.turnId);
+      const edits = messages.filter(message => message.kind === 'continuation');
+      expect(edits).toHaveLength(1);
+      expect(edits[0]!.blocks).toContain('用户已修改当前 Goal');
+      expect(edits[0]!.blocks).toContain('最新要求');
+      expect(edits[0]!.blocks).not.toContain('中间要求');
+      expect(messages.find(message => message.kind === 'reminder')!.blocks).toContain('原目标');
+      expect(requests[1]).toContain('用户已修改当前 Goal');
+      if (mode === 'tool') {
+        const resultIndex = messages.findIndex(message => message.kind === 'tool_results');
+        expect(resultIndex).toBeLessThan(messages.indexOf(edits[0]!));
+        expect(JSON.stringify(messages[resultIndex]!.blocks)).toContain('goal_version_conflict');
+        expect(JSON.stringify(messages[resultIndex]!.blocks)).toContain('"isError":true');
+      }
+      const events: TurnStreamEvent[] = [];
+      for await (const event of handle.events) events.push(event);
+      expect(events.filter(event => event.type === 'user_message_stored')).toHaveLength(1);
+      expect(fixture.queue.list(fixture.session.id)).toEqual([]);
+      await Promise.resolve();
+      expect(fixture.handles).toHaveLength(0);
+    } finally {
+      fixture.queue.shutdown();
+      await handle?.completion;
+      fixture.db.close();
+    }
+  });
+
+  it('暂停 Goal 不取消正在生成的回复, 收尾后不再启动 Goal 续接', async () => {
+    let fixture: ReturnType<typeof goalContinuationFixture>;
+    const llm: CallLlm = async function* (request) {
+      const goal = fixture.goals.getCurrent(fixture.session.id)!;
+      fixture.goals.pause({ sessionId: goal.sessionId, goalId: goal.id, expectedVersion: goal.version });
+      expect(request.signal?.aborted).toBe(false);
+      yield { type: 'text_delta', blockIndex: 0, delta: '当前回复正常完成' };
+      yield { type: 'done', stopReason: 'end_turn' };
+    };
+    fixture = goalContinuationFixture(llm);
+    let handle: TurnHandle | undefined;
+    try {
+      fixture.goals.create(fixture.session.id, '暂停不打断当前执行');
+      handle = fixture.executor.start(makeStart(fixture.session.id));
+      expect((await handle.completion).status).toBe('completed');
+      expect(fixture.goals.getCurrent(fixture.session.id)?.status).toBe('paused');
+      await Promise.resolve();
+      expect(fixture.handles).toHaveLength(0);
+    } finally {
+      fixture.queue.shutdown();
+      await handle?.completion;
+      fixture.db.close();
+    }
+  });
+
+  it('没有 Goal 的 50 轮工具执行仍报告轮数上限失败, 不自动续接', async () => {
+    let calls = 0;
+    const llm: CallLlm = async function* () {
+      calls += 1;
+      yield { type: 'tool_use_complete', blockIndex: 0, callId: `echo-${calls}`, name: 'Echo', args: {} };
+      yield { type: 'done', stopReason: 'tool_use' };
+    };
+    const fixture = goalContinuationFixture(llm);
+    fixture.registry.register(echoTool());
+    let handle: TurnHandle | undefined;
+    try {
+      handle = fixture.executor.start(makeStart(fixture.session.id));
+      expect(await handle.completion).toMatchObject({ status: 'failed', code: 'turn/budget_exceeded' });
+      expect(calls).toBe(50);
+      await Promise.resolve();
+      expect(fixture.handles).toHaveLength(0);
+    } finally {
+      fixture.queue.shutdown();
+      await handle?.completion;
+      fixture.db.close();
+    }
+  });
+
+  it('active Goal 达到 50 轮后保留工具历史并自动开启新 Turn, 不失败或暂停目标', async () => {
+    let fixture: ReturnType<typeof goalContinuationFixture>;
+    let calls = 0;
+    let nextRequest: readonly Message[] = [];
+    let releaseNext!: () => void;
+    const nextReady = new Promise<void>(resolve => { releaseNext = resolve; });
+    const llm: CallLlm = async function* (request) {
+      calls += 1;
+      if (calls <= 50) {
+        yield { type: 'tool_use_complete', blockIndex: 0, callId: `echo-${calls}`, name: 'Echo', args: {} };
+        yield { type: 'done', stopReason: 'tool_use' };
+        return;
+      }
+      if (calls === 51) {
+        nextRequest = request.messages;
+        await nextReady;
+        const goal = fixture.goals.getCurrent(fixture.session.id)!;
+        yield { type: 'tool_use_complete', blockIndex: 0, callId: 'complete', name: 'GoalUpdate', args: {
+          goalId: goal.id, expectedVersion: goal.version, status: 'completed',
+          reason: 'succeeded', feedback: '工作和验证全部完成',
+        } };
+        yield { type: 'done', stopReason: 'tool_use' };
+        return;
+      }
+      yield { type: 'text_delta', blockIndex: 0, delta: '完成' };
+      yield { type: 'done', stopReason: 'end_turn' };
+    };
+    fixture = goalContinuationFixture(llm);
+    fixture.registry.register(echoTool());
+    let first: TurnHandle | undefined;
+    try {
+      const goal = fixture.goals.create(fixture.session.id, '持续工作直到验证完成');
+      first = fixture.executor.start(makeStart(fixture.session.id));
+      expect((await first.completion).status).toBe('completed');
+      await vi.waitFor(() => expect(calls).toBe(51));
+      expect(fixture.handles).toHaveLength(1);
+      const second = fixture.handles[0]!;
+      expect(second.turnId).not.toBe(first.turnId);
+      expect(fixture.goals.getCurrent(fixture.session.id)).toMatchObject({ id: goal.id, status: 'active', version: 1 });
+      expect(JSON.stringify(nextRequest)).toContain('echo-50');
+      const toolResults = fixture.sessions.loadMessagesForTurn(first.turnId).filter(message => message.kind === 'tool_results');
+      expect(toolResults).toHaveLength(50);
+      const events: TurnStreamEvent[] = [];
+      for await (const event of first.events) events.push(event);
+      expect(events.some(event => event.type === 'turn_failed')).toBe(false);
+      releaseNext();
+      expect((await second.completion).status).toBe('completed');
+      await Promise.resolve();
+      expect(calls).toBe(52);
+      expect(fixture.handles).toHaveLength(1);
+      expect(fixture.goals.get(fixture.session.id, goal.id)).toMatchObject({ status: 'completed', reason: 'succeeded' });
+    } finally {
+      fixture.queue.shutdown();
+      releaseNext();
+      await first?.completion;
+      await Promise.all(fixture.handles.map(handle => handle.completion));
+      fixture.db.close();
+    }
+  });
+
   it('fork 保留本次 Micro 压短的工具结果, 不恢复原始长输出或修改父 SQL 消息', async () => {
     let childRequest: readonly Message[] = [];
     let rootCalls = 0;
@@ -417,8 +586,19 @@ describe('TurnExecutor 集成', () => {
     }
   });
 
-  it('模型已结束但工具还在收尾时按停止, 仍暂停 Goal 且不立即续接', async () => {
-    const fixture = goalContinuationFixture(scriptedLlm([[{ type: 'done', stopReason: 'end_turn' }]]));
+  it.each(['normal', 'iteration-limit'] as const)('%s 已结束但工具还在收尾时按停止, 仍暂停 Goal 且不立即续接', async mode => {
+    let calls = 0;
+    const llm: CallLlm = async function* () {
+      calls += 1;
+      if (mode === 'iteration-limit') {
+        yield { type: 'tool_use_complete', blockIndex: 0, callId: `echo-${calls}`, name: 'Echo', args: {} };
+        yield { type: 'done', stopReason: 'tool_use' };
+        return;
+      }
+      yield { type: 'done', stopReason: 'end_turn' };
+    };
+    const fixture = goalContinuationFixture(llm);
+    fixture.registry.register(echoTool());
     let releaseCleanup!: () => void;
     const cleanup = new Promise<void>(resolve => { releaseCleanup = resolve; });
     let cleanupStarted!: () => void;

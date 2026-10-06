@@ -39,6 +39,9 @@ export function createTurnLoopEvents(deps: TurnLoopEventsDeps) {
 
   /** 根与子 Agent 的物理调用终态进入同一本账; 子调用不更新根 Context 圆环. */
   function recordLlmCall(event: Extract<AgentLoopEvent, { type: 'llm_call_finished' }>): void {
+    // TODO: Goal 用量沿物理调用身份记账, 在调用开始时绑定 GoalId,
+    // 覆盖根/子调用及自动 Compact. 使用 input + output, 缓存是 input 子集,
+    // 不重复相加或从 Session 历史总量反推本 Goal 消耗.
     deps.usageRecorder?.record({
       id: event.llmCallId,
       sessionId,

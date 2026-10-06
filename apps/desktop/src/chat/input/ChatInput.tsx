@@ -231,6 +231,7 @@ export function ChatInput({
       }
       switch (event.type) {
         case 'goal_created':
+        case 'goal_edited':
         case 'goal_updated':
         case 'goal_paused':
         case 'goal_activated':

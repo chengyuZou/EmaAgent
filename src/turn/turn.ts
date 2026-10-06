@@ -537,7 +537,13 @@ export class TurnExecutor {
         return;
       }
 
-      if (stopped.state.stopReason === 'completed') {
+      const currentGoal = this.deps.goalStore?.getCurrent(sessionId);
+      // 单 Turn 配额只切分仍在推进的同一个 Goal. 子代理的 max_iterations
+      // 不经过此根 Turn 分支; 无 Goal 的执行仍以原失败策略结束.
+      const goalIterationYield = stopped.state.stopReason === 'max_iterations'
+        && currentGoal?.status === 'active'
+        && currentGoal.id === handledGoalId;
+      if (stopped.state.stopReason === 'completed' || goalIterationYield) {
         terminal = 'completed';
         this.deps.turns.completeTurn(turnId, () => {
           this.deps.onTurnCompletedInTransaction?.(turnId);

@@ -5,6 +5,7 @@ export type GoalEvent =
   | {
     readonly type:
       | 'goal_created'
+      | 'goal_edited'
       | 'goal_updated'
       | 'goal_paused'
       | 'goal_activated'

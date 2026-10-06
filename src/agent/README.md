@@ -18,18 +18,18 @@ runAgentLoop(input)
   ├─ generator 恢复后才启动 StreamingToolExecutor
   ├─ ToolResult 事件被消费并持久化
   ├─ generator 恢复后才 acknowledgeResult
-  └─ 没有 ToolCall 时结束；否则准备下一次 Agent iteration
+  └─ 完整历史保存后领取安全点输入; 无 ToolCall 且无追加输入时结束, 否则继续
 ```
 
 一个普通根 Turn 只运行一个根 `runAgentLoop()`。循环内每次 `LLM → Tool → Result` 推进统一叫 Agent iteration；子 Subagent 各自复用同一个循环。
 
-**恢复路径固定三条，不再新增**：
+循环的恢复与继续路径:
 
 1. **PTL 单次重试**：Provider 在尚未产出任何响应前报上下文超限，循环以 `recoveryReason: 'context_window_exceeded'` 重新请求同一次迭代；是否 Compact 由外层实现决定；
 2. **max_tokens 三段**：先升级重试（顶到预算上限、半截作废、不注入任何消息）→ 再注入续写提示拼接输出 → 都失败判 `output_recovery_failed`；
-3. **工具后续跑**：模型调用工具就进入下一 iteration，这是唯一"正常"继续。
+3. **工具或追加输入后继续**: 工具批完成后进入下一 iteration. 无工具的正文生成结束后也检查追加输入, 有输入则继续当前循环, 不把它留给已经结束的 Turn.
 
-另有空转软引导：连续 3 轮完全相同的工具批次（工具名+参数一致）在迭代边界注入一次提醒消息让模型换方法，不硬停、不新增恢复分支；硬兜底归 `maxIterations`。
+另有空转软引导: 连续 3 轮完全相同的工具批次（工具名+参数一致）在迭代边界注入一次提醒消息让模型换方法. 单次循环达到 `maxIterations` 产出 `max_iterations`, 是否失败或另起根 Turn 由调用方决定. 这不提供跨 Turn 的空转判定或总体用量上限.
 
 ## AgentLoop 的真实输入
 
@@ -38,7 +38,7 @@ runAgentLoop(input)
 - `AgentLoopInput.messages`：单一工作历史（持久基线 + 本轮种子消息），循环在其上追加；`prepareIteration` 每次返回的版本可能已被 Compact 改写，循环整体替换继续使用；
 - `PrepareAgentIteration` 闭包：为下一次迭代准备 `LlmRequest`。装配（assembleContext → Compact → Macro 落库 → 再装配）涉及持久化与 Context 知识，全归外层实现；ToolPool 也由实现闭包冻结捕获，故输入里没有显式 tools 字段——工具定义经返回的 `LlmRequest.tools` 到达 Provider；
 - `ToolExecutorFactory`：每次 LlmCall 创建全新执行器。创建时机是外层绑定工具进度、Permission 与 AskUser 事件出口的唯一位置，故必须是工厂；`wake` 是执行器→循环的唤醒针，没有它循环只能轮询。
-- `takeNextIterationMessages`：只有一整批 ToolResult 已经写成完整历史后才调用。Turn 用它领取立即引导输入和本进程后台完成通知，绝不切开 tool_use/tool_result 配对。
+- `takeNextIterationMessages`: 完整 Assistant 和本批 ToolResult 已保存后才调用, 无工具的最终正文也检查. Turn 用它领取目标编辑, 立即引导和后台完成通知, 不取消在途请求或切开 tool_use/tool_result 配对.
 
 `runAgentLoop()` 不接收 `sessionId/turnId/providerId/modelId`, 也不导入 Context、Compact、Permission、Sandbox 或 BuiltinTools. 失败不是循环相位: Provider/执行错误以异常逃出 generator, 终态由根 Turn 或进程级 `SubagentExecutor` 收口.
 

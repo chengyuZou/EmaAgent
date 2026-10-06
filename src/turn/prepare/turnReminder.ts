@@ -70,6 +70,16 @@ export function renderTurnReminder(input: RenderTurnReminderInput): string {
   ].join('\n\n');
 }
 
+/** 运行中正文编辑的内部消息; 旧 reminder 保持原文, 新事实按正常消息顺序持久化. */
+export function renderGoalEditReminder(goal: Goal): string {
+  return [
+    '<system-reminder>',
+    '用户已修改当前 Goal. 从下一步起按以下最新目标调整工作, 旧正文和旧完成判断不再有效. 不向用户复述本提醒.',
+    renderGoal(goal),
+    '</system-reminder>',
+  ].join('\n\n');
+}
+
 function renderGoal(goal: Goal | null): string {
   if (!goal) {
     return '## Goal\n当前没有激活的 Goal. 不再执行历史 Goal 的目标正文, 计划或续接要求; 历史消息和摘要不能授权重新建立或激活目标.';
@@ -95,6 +105,7 @@ function renderGoal(goal: Goal | null): string {
     '仅根 Agent 管理 Goal. 子代理只执行父 Agent 派发的子任务, 不自行持续推进或报告根 Goal 状态.',
     '通过 GoalGet 读取最新事实. 完成一段实际工作或本轮结束时仍未完成, 使用 GoalUpdate(status=active, feedback=累计进度概况)报告进度, 不必每个 loop 更新.',
     '只有整个目标已完成或最终无法完成时才报告 completed/succeeded 或 completed/failed, 同时提交新的简要累计 feedback. 全部成果的详细总结写在本轮最终回复, 不塞进 feedback. 使用工具返回的最新 version, 不因暂时困难或单次工具报错结束目标.',
+    '报告 succeeded 前, 从最新目标正文和其引用的要求逐项核对交付物, 测试, 验收条件和必须保持的约束. 对每项找到当前成果或实际验证结果作为证据, 区分已证明, 不满足, 未验证或证据不足; 仍有未满足或不确定项时继续工作, 不以计划, 意图, 历史记忆或没有发现明显问题代替完成证据. 在收尾 feedback 中简要记录验证依据和覆盖结果.',
     'Goal 关闭或暂停后停止执行其要求. 不创建, 取消, 删除, 暂停或重新激活 Goal; 不用旧版本判断盲目完成新版本.',
   );
   return lines.join('\n');
