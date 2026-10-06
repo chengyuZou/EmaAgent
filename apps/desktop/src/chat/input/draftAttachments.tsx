@@ -1,6 +1,6 @@
-// 展示草稿中按加入顺序排列的图片、文件、长粘贴与 Skill; 不修改 textarea 文字.
-import { memo, useEffect, useState, type JSX } from 'react';
-import type { ChatDraftReference } from '../../stores/chatDraft.js';
+import { memo, useCallback, useEffect, useState, type ClipboardEvent as ReactClipboardEvent, type JSX } from 'react';
+import { PASTE_TEXT_MIN_CHARS } from '@ema-agent/attachments/limits';
+import type { ChatDraft, ChatDraftReference } from '../../stores/chatDraft.js';
 import { tauriBridge } from '../../lib/tauri-bridge.js';
 
 interface DraftReferenceListProps {
@@ -73,3 +73,53 @@ export const DraftReferenceList = memo(function DraftReferenceList({ references,
     </div>
   );
 });
+
+function isLlmImagePath(filePath: string): boolean {
+  return ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(filePath.split('.').pop()?.toLowerCase() ?? '');
+}
+
+export function useDraftAttachments(editCurrentDraft: (edit: (current: ChatDraft) => ChatDraft) => void) {
+  function appendReferences(items: readonly ChatDraftReference[]): void {
+    editCurrentDraft(current => ({
+      ...current,
+      references: [...current.references, ...items],
+    }));
+  }
+
+  const removeReference = useCallback((draftId: string): void => {
+    editCurrentDraft(current => ({
+      ...current,
+      references: current.references.filter(reference => reference.draftId !== draftId),
+    }));
+  }, [editCurrentDraft]);
+
+  async function pickAttachments(): Promise<void> {
+    const paths = await tauriBridge.openFileDialogMultiple();
+    appendReferences(paths.map(sourcePath => (
+      isLlmImagePath(sourcePath)
+        ? { draftId: crypto.randomUUID(), type: 'image' as const, sourcePath, name: sourcePath.split(/[\\/]/).pop() }
+        : { draftId: crypto.randomUUID(), type: 'file_reference' as const, path: sourcePath }
+    )));
+  }
+
+  function handlePaste(event: ReactClipboardEvent<HTMLTextAreaElement>): void {
+    const image = [...(event.clipboardData?.files ?? [])].find(file => file.type.startsWith('image/'));
+    if (image) {
+      event.preventDefault();
+      appendReferences([{ draftId: crypto.randomUUID(), type: 'image', file: image, name: image.name || undefined }]);
+      return;
+    }
+    const pasted = event.clipboardData?.getData('text/plain') ?? '';
+    if (pasted.length >= PASTE_TEXT_MIN_CHARS) {
+      event.preventDefault();
+      appendReferences([{
+        draftId: crypto.randomUUID(),
+        type: 'pasted_text',
+        content: pasted,
+        preview: `${pasted.slice(0, 120)}${pasted.length > 120 ? '…' : ''}`,
+      }]);
+    }
+  }
+
+  return { pickAttachments, handlePaste, removeReference };
+}

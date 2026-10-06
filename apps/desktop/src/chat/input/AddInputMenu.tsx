@@ -1,4 +1,3 @@
-// 展示斜杠菜单并把选中结果交给 ChatInput; 菜单本身不发送消息或执行命令.
 import {
   useEffect,
   useImperativeHandle,
@@ -8,10 +7,20 @@ import {
   type JSX,
   type RefObject,
 } from 'react';
-import { Popover } from '@ema-agent/ui';
+import { Popover, PromptDialog } from '@ema-agent/ui';
 import { commandsApi, type CommandDescriptor } from '../../api/commands.js';
 import { skillsApi, type SkillListItem } from '../../api/skills.js';
 import { subscribeSystemEvent } from '../../lib/system-event-dispatcher.js';
+
+import { ServerApiError } from '../../api/client.js';
+import type { SessionListItem } from '../../api/sessions.js';
+import { SessionRequestError, sessionWebSocket } from '../../api/sessionWebSocket.js';
+import { useChatNavigationStore } from '../../stores/chatNavigation.js';
+import { useSessionStore } from '../../stores/session.js';
+import { useSessionActivityStore } from '../../stores/sessionActivity.js';
+import { ensureSessionSubscription } from '../session/sessionSubscriptions.js';
+import { removeSessionFromChat } from '../session/removeSessionFromChat.js';
+import { showToast } from '../../lib/toast.js';
 
 interface LocalCommandDescriptor {
   readonly name: string;
@@ -307,4 +316,97 @@ export function SlashCommandMenu({
       </div>
     </Popover>
   );
+}
+
+const COMPACT_ERRORS: Record<string, string> = {
+  session_busy: '当前会话正忙, 请稍后再试',
+  compact_below_threshold: '历史还短, 不需要压缩',
+  nothing_to_compact: '没有可压缩的内容',
+  provider_not_configured: '未配置可用模型',
+  compact_failed: '压缩失败, 请重试',
+};
+
+export function useInputCommands(
+  viewedId: string | null,
+  viewedSession: SessionListItem | undefined,
+  onGoalCommand: () => void,
+) {
+  const [compacting, setCompacting] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
+
+  async function runCompact(): Promise<void> {
+    if (
+      !viewedId
+      || compacting
+      || useSessionActivityStore.getState().bySession.get(viewedId)?.running != null
+    ) return;
+    setCompacting(true);
+    try {
+      ensureSessionSubscription(viewedId);
+      const result = await sessionWebSocket.startCompaction(viewedId);
+      if (result.status === 'cancelled') {
+        showToast('压缩已取消', { variant: 'info' });
+      } else {
+        showToast(`已压缩 ${result.beforeTokens} → ${result.afterTokens} tokens`, { variant: 'success' });
+      }
+    } catch (error) {
+      const code = error instanceof ServerApiError || error instanceof SessionRequestError
+        ? error.code
+        : undefined;
+      let message = '压缩失败';
+      if (code && COMPACT_ERRORS[code]) message = COMPACT_ERRORS[code];
+      else if (error instanceof Error) message = error.message;
+      showToast(message, { variant: 'danger' });
+    } finally {
+      setCompacting(false);
+    }
+  }
+
+  async function runCommand(name: string): Promise<void> {
+    const sessions = useSessionStore.getState();
+    if (name === 'compact') return runCompact();
+    if (name === 'new') {
+      useChatNavigationStore.getState().openNewSession();
+      return;
+    }
+    if (!viewedId) return;
+    if (name === 'goal') {
+      onGoalCommand();
+      return;
+    }
+    if (name === 'fork') {
+      useChatNavigationStore.getState().viewSession(await sessions.forkSession(viewedId));
+      return;
+    }
+    if (name === 'rename') {
+      setRenameOpen(true);
+      return;
+    }
+    if (name === 'pin') return sessions.pinSession(viewedId, !(viewedSession?.pinned ?? false));
+    if (name === 'archive') {
+      await sessions.archiveSession(viewedId);
+      removeSessionFromChat(viewedId);
+      return;
+    }
+    showToast(`未知命令: /${name}`, { variant: 'warning' });
+  }
+
+  const renameDialog = renameOpen && viewedSession ? (
+    <PromptDialog
+      open
+      title="重命名聊天"
+      message="为当前聊天输入新标题."
+      initialValue={viewedSession.title ?? ''}
+      placeholder="聊天标题"
+      onConfirm={(value) => {
+        setRenameOpen(false);
+        if (viewedId && value.trim()) {
+          void useSessionStore.getState().renameSession(viewedId, value.trim());
+        }
+      }}
+      onCancel={() => setRenameOpen(false)}
+    />
+  ) : null;
+
+  return { compacting, runCommand, renameDialog };
 }

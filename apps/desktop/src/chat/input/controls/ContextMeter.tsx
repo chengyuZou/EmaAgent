@@ -1,8 +1,8 @@
 // 圆环只展示当前 Session 的根调用用量, 或从有效历史读取的一次本地估算.
 import { useEffect, useState, type JSX } from 'react';
 import { Tooltip } from '@ema-agent/ui';
-import { sessionsApi } from '../../api/sessions.js';
-import { useTurnStore } from '../../stores/turn.js';
+import { sessionsApi } from '../../../api/sessions.js';
+import { useTurnStore } from '../../../stores/turn.js';
 
 export function ContextMeter({ sessionId, contextWindow }: {
   sessionId: string | null;

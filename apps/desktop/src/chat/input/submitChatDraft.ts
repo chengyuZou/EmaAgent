@@ -1,4 +1,6 @@
 // 将一份草稿提交到已经存在的 Session; 新对话必须先取得真实 Session ID.
+import type { TurnInputPart } from '@ema-agent/turn';
+import { sessionsApi } from '../../api/sessions.js';
 import { knowledgeApi } from '../../api/knowledge.js';
 import { ServerApiError } from '../../api/client.js';
 import { SessionRequestError, sessionWebSocket } from '../../api/sessionWebSocket.js';
@@ -7,7 +9,6 @@ import { useKnowledgeStore } from '../../stores/knowledge.js';
 import { useSessionActivityStore } from '../../stores/sessionActivity.js';
 import { useSessionStore } from '../../stores/session.js';
 import { ensureSessionSubscription } from '../session/sessionSubscriptions.js';
-import { finalizeDraft } from './finalizeDraft.js';
 
 export async function submitChatDraft(
   sessionId: string,
@@ -89,4 +90,67 @@ export async function submitChatDraft(
     }
     throw error;
   }
+}
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('剪贴板图片读取失败'));
+    reader.onload = () => {
+      const dataUrl = String(reader.result);
+      resolve(dataUrl.slice(dataUrl.indexOf(',') + 1));
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function finalizeDraft(sessionId: string, draft: ChatDraft): Promise<TurnInputPart[]> {
+  const output: TurnInputPart[] = [];
+  // Textarea 与胶囊已是两份状态. 后端按数组顺序保存和展示, 所以文字固定在前,
+  // 其余项只按胶囊加入顺序处理; 不再猜用户改字后隐藏引用该落在哪个 offset.
+  if (draft.text.trim()) output.push({ type: 'text', text: draft.text });
+  for (const part of draft.references) {
+    if (part.type === 'skill_reference') {
+      output.push({ type: 'skill_reference', name: part.name, path: part.path });
+      continue;
+    }
+    if (part.type === 'file_reference') {
+      output.push({
+        type: 'attachment',
+        block: { type: 'file_reference', path: part.path },
+      });
+      continue;
+    }
+    if (part.type === 'pasted_text') {
+      const saved = await sessionsApi.createPastedText(sessionId, part.content);
+      output.push({
+        type: 'attachment',
+        block: {
+          type: 'pasted_text_reference',
+          path: saved.path,
+          preview: saved.preview,
+        },
+      });
+      continue;
+    }
+    const name = part.name ?? part.sourcePath?.split(/[\\/]/).pop();
+    const saved = part.file
+      ? await sessionsApi.uploadImage(sessionId, {
+          dataBase64: await fileToBase64(part.file),
+          ...(name ? { name } : {}),
+        })
+      : await sessionsApi.uploadImage(sessionId, {
+          sourcePath: part.sourcePath,
+          ...(name ? { name } : {}),
+        });
+    output.push({
+      type: 'attachment',
+      block: {
+        type: 'image_reference',
+        path: saved.path,
+        ...(name ? { name } : {}),
+      },
+    });
+  }
+  return output;
 }
