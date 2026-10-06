@@ -1,4 +1,4 @@
-// 统一管理命令的 30 秒结果转交、后台队列、日志与终态.
+// 统一管理命令的前台等待、后台队列、日志与终态.
 
 import crypto from 'node:crypto';
 import type {
@@ -32,7 +32,7 @@ import type {
 } from './types.js';
 import type { BackgroundProcessSettings } from './settings.js';
 
-const IMMEDIATE_RESULT_WAIT_MS = 30_000;
+export const FOREGROUND_COMMAND_WAIT_MS = 3 * 60 * 1_000;
 /** 交互命令转交后台后仍占原坑位, 直到真实进程终态才释放. */
 const INTERACTIVE_MAX_CONCURRENT = 4;
 
@@ -40,7 +40,7 @@ interface ActiveProcess {
   request: BackgroundCommandRequest;
   writer: BackgroundProcessOutputWriter;
   handle: CommandProcessHandle;
-  /** 交互快速路径不落 DB; 30s 转交或队列启动后才为 true. */
+  /** 交互快速路径不落 DB; 转交后台或队列启动后才为 true. */
   persisted: boolean;
   version?: number;
   startedAt: number;
@@ -51,7 +51,7 @@ interface ActiveProcess {
 }
 
 interface QueuedProcess {
-  request: BackgroundCommandRequest;
+  request: BackgroundCommandRequest & { timeoutMs: number };
   writer: BackgroundProcessOutputWriter;
   version: number;
 }
@@ -71,13 +71,13 @@ export interface BackgroundProcessDeps {
     backgroundProcessId: string,
     status: BackgroundProcessNotifiableStatus,
   ) => void;
-  /** 交互等待上限, 默认 30s; 仅测试用更短值. */
+  /** 交互等待上限, 默认 3 分钟; 仅测试用更短值. */
   immediateResultWaitMs?: number;
 }
 
 export class BackgroundProcess {
   private readonly output: BackgroundProcessOutputStore;
-  /** 交互命令(30s 内完成或转交)的独立坑位池. */
+  /** 前台启动命令的独立坑位池, 转后台后仍占用直到进程退出. */
   private readonly interactiveScheduler: BackgroundProcessScheduler;
   /** 持久后台任务的坑位池,上限来自用户设置。 */
   private readonly backgroundScheduler: BackgroundProcessScheduler;
@@ -107,8 +107,8 @@ export class BackgroundProcess {
   /**
    * 执行一条命令。两条路径:
    * runInBackground=true → 直接落库排队,立即返回 processReference;
-   * 否则先占交互坑位 spawn, 30 秒内完成则返回普通结果, 超时则把结果所有权
-   * 转交后台(detach 取消信号、交还坑位),后续终态由完成通知链接管。
+   * 否则先占交互坑位 spawn, 3 分钟内完成则返回普通结果, 等待结束则把结果所有权
+   * 转交后台并解除原调用的取消绑定. 进程仍占原坑位, 后续终态由完成通知链接管.
    */
   async runCommand(request: BackgroundCommandRequest): Promise<BackgroundCommandResult> {
     if (this.shuttingDown) {
@@ -203,7 +203,7 @@ export class BackgroundProcess {
     try {
       winner = await Promise.race([
         active.handle.completion,
-        delay(this.deps.immediateResultWaitMs ?? IMMEDIATE_RESULT_WAIT_MS, transfer),
+        delay(this.deps.immediateResultWaitMs ?? FOREGROUND_COMMAND_WAIT_MS, transfer),
       ]);
     } catch (error) {
       active.detachWaitAbort?.();
@@ -245,7 +245,7 @@ export class BackgroundProcess {
 
     // 结果所有权已转交后台:从此不再响应原 Turn 的取消信号。
     // 这里只解除父 Turn 的等待和取消绑定. 真实进程仍占原 interactive 坑位,
-    // 否则每过 30 秒就能有一批长进程逃离全部并发统计.
+    // 否则每次转交都会让一批长进程逃离全部并发统计.
     active.detachWaitAbort?.();
     active.detachWaitAbort = undefined;
     const record = this.deps.store.insert({
@@ -506,7 +506,7 @@ export class BackgroundProcess {
 
   private startProcess(
     id: string,
-    request: BackgroundCommandRequest,
+    request: BackgroundCommandRequest & { timeoutMs: number },
     writer: BackgroundProcessOutputWriter,
     persisted: boolean,
     bindWaitSignal: boolean,

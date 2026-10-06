@@ -4,10 +4,10 @@
 import { useState, type JSX } from 'react';
 import { Tooltip } from '@ema-agent/ui';
 import type {
-  BashCommandResult,
-  BashProcessReference,
-  BashProgress,
-} from './BashTool.js';
+  ShellCommandResult,
+  ShellProcessReference,
+  ShellProgress,
+} from '../shared/shellExecution.js';
 
 // ── 入参与守卫 ────────────────────────────────────────────────────────────────
 
@@ -18,7 +18,7 @@ export interface BashCallViewProps {
   readonly args: unknown;
   readonly partialArgs?: string;
   readonly data?: unknown;
-  /** 原始 BashProgress 事件序列（至多保留尾部若干条，由前端外壳截断）。 */
+  /** 原始 ShellProgress 事件序列（至多保留尾部若干条，由前端外壳截断）。 */
   readonly progress?: readonly unknown[];
   readonly failure?: { readonly code: string; readonly message: string };
   readonly interrupted?: boolean;
@@ -32,25 +32,25 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-export function asBashCommandResult(data: unknown): BashCommandResult | null {
+export function asBashCommandResult(data: unknown): ShellCommandResult | null {
   if (!isRecord(data) || data['kind'] !== 'commandResult') return null;
   if (typeof data['stdout'] !== 'string' || typeof data['stderr'] !== 'string') return null;
-  return data as unknown as BashCommandResult;
+  return data as unknown as ShellCommandResult;
 }
 
-export function asBashProcessReference(data: unknown): BashProcessReference | null {
+export function asBashProcessReference(data: unknown): ShellProcessReference | null {
   if (!isRecord(data) || data['kind'] !== 'processReference') return null;
   if (typeof data['backgroundProcessId'] !== 'string') return null;
-  return data as unknown as BashProcessReference;
+  return data as unknown as ShellProcessReference;
 }
 
-function asBashProgress(progress: unknown): BashProgress | null {
+function asBashProgress(progress: unknown): ShellProgress | null {
   if (!isRecord(progress)) return null;
   const stream = progress['stream'];
   if ((stream !== 'stdout' && stream !== 'stderr') || typeof progress['text'] !== 'string') {
     return null;
   }
-  return progress as unknown as BashProgress;
+  return progress as unknown as ShellProgress;
 }
 
 function commandFromArgs(args: unknown): string {
@@ -65,11 +65,11 @@ export function bashTitle(args: unknown): string | null {
   const command = commandFromArgs(args);
   if (!command) return null;
   const firstLine = command.split('\n')[0] ?? '';
-  return firstLine.length > 60 ? firstLine.slice(0, 60) : firstLine;
+  return firstLine.length > 60 ? firstLine.slice(0, 60) + "..." : firstLine;
 }
 
 /** 命令结果 → 终端文本：stdout、stderr 与 note 依序拼接。 */
-export function bashResultText(result: BashCommandResult): string {
+export function bashResultText(result: ShellCommandResult): string {
   const parts: string[] = [];
   if (result.stdout.trim()) parts.push(result.stdout.trimEnd());
   if (result.stderr.trim()) parts.push(`[stderr]\n${result.stderr.trimEnd()}`);

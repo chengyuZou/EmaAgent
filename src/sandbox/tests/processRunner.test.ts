@@ -7,9 +7,9 @@ import { describe, expect, it } from 'vitest';
 import { startProcess } from '../processRunner.js';
 import { buildProcessEnvironment } from '../processEnvironment.js';
 import { probeBash } from '../bashProbe.js';
-import type { SandboxCommand } from '../types.js';
+import type { ProcessCommand } from '../types.js';
 
-function makeCommand(executable: string, args: string[], cwd: string): SandboxCommand {
+function makeCommand(executable: string, args: string[], cwd: string): ProcessCommand {
   return {
     executable,
     args,

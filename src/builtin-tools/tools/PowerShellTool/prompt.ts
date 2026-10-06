@@ -1,7 +1,4 @@
-// PowerShellTool 的模型说明书:静态 description(契约冻结),版本差异用保守双写覆盖。
-
-const DEFAULT_TIMEOUT_MS = 120_000;
-const MAX_TIMEOUT_MS = 600_000;
+import { FOREGROUND_COMMAND_WAIT_SECONDS } from '../shared/shellExecution.js';
 
 export const POWERSHELL_DESCRIPTION = `Executes a given PowerShell command on Windows with an optional timeout. Working directory is fixed to the workspace; shell state (variables, functions) does not persist between calls.
 
@@ -58,7 +55,9 @@ Second line with $literal dollar signs.
 
 Usage notes:
 - The command argument is required.
-- Optional timeout in milliseconds, up to ${MAX_TIMEOUT_MS}ms (${MAX_TIMEOUT_MS / 60000} minutes). Default ${DEFAULT_TIMEOUT_MS}ms (${DEFAULT_TIMEOUT_MS / 60000} minutes). A command that exceeds its timeout is killed — there is no background mode; keep commands within the timeout.
+- Commands that finish within ${FOREGROUND_COMMAND_WAIT_SECONDS} seconds (3 minutes) return their result directly. Slower commands keep running as background processes without being restarted — you will be notified when they complete; do not poll.
+- Set runInBackground=true to start a long-running command in the background immediately. Use ProcessOutput for incremental output, ProcessStop to terminate it, or Read the logs in the directory included in the background reference.
+- timeout is the total runtime limit in milliseconds, including foreground time. When omitted, the user's background-process setting applies. A supplied timeout cannot exceed that setting; reaching it kills the process rather than transferring it.
 - Do NOT prefix commands with \`cd\` or \`Set-Location\` — the working directory is already the workspace root.
 - When issuing multiple commands: independent commands can be separate parallel tool calls; dependent commands must be chained in one call using the edition-appropriate syntax above.
 - Do NOT use newlines to separate commands (newlines are fine inside quoted strings and here-strings).

@@ -1,4 +1,4 @@
-export { BackgroundProcess } from './backgroundProcess.js';
+export { BackgroundProcess, FOREGROUND_COMMAND_WAIT_MS } from './backgroundProcess.js';
 export type { BackgroundProcessDeps } from './backgroundProcess.js';
 export type {
   BackgroundProcessInsertRecord,

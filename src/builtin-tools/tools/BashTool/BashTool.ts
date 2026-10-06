@@ -1,4 +1,3 @@
-import { StringDecoder } from 'node:string_decoder';
 import { z } from 'zod';
 import { findMatchingContentRule, matchShellRule } from '@ema-agent/permission';
 import {
@@ -13,6 +12,14 @@ import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { analyzeBashCommand, splitCommandSegments } from './security/bashSecurity.js';
 import { interpretExitCode } from './commandSemantics.js';
 import { BASH_DESCRIPTION } from './prompt.js';
+import {
+  createShellOutputCallback,
+  shellBackgroundSchema,
+  shellProcessReferenceText,
+  shellTimeoutSchema,
+  type ShellProgress,
+  type ShellResult,
+} from '../shared/shellExecution.js';
 
 /** Bash 工具的窄 Context：命令执行器与后台进程入口;身份与取消走 ToolInvocation。 */
 interface BashToolContext {
@@ -21,15 +28,8 @@ interface BashToolContext {
   cwd: string;
 }
 
-/** 交互等待期的输出增量(转交后台后不再上报)。 */
-export interface BashProgress {
-  stream: 'stdout' | 'stderr';
-  text: string;
-}
-
 // ── 常量 ─────────────────────────────────────────────────────────────────────
 
-const MAX_TIMEOUT_MS = 7 * 24 * 60 * 60 * 1_000;
 /**
  * 命令字符串上限: 压 Windows CreateProcess 的 32,767 字符硬上限以下
  * (WSL 路径转义最坏 4 倍膨胀),超限给模型可读错误而不是平台 EINVAL。
@@ -49,51 +49,15 @@ const inputSchema = z.object({
     .string()
     .optional()
     .describe('Brief description of what this command does (shown in permission dialogs).'),
-  timeout: z
-    .number()
-    .int()
-    .min(1000)
-    .max(MAX_TIMEOUT_MS)
-    .optional()
-    .describe('Maximum total runtime in milliseconds. Defaults to the user setting.'),
-  runInBackground: z
-    .boolean()
-    .optional()
-    .describe('Start in the background immediately instead of waiting up to 15 seconds.'),
+  timeout: shellTimeoutSchema,
+  runInBackground: shellBackgroundSchema,
 });
 
 type BashInput = z.infer<typeof inputSchema>;
 
-// ── 输出类型 ───────────────────────────────────────────────────────────────────
-
-export interface BashCommandResult {
-  kind: 'commandResult';
-  stdout:     string;
-  stderr:     string;
-  exitCode:   number;
-  timedOut:   boolean;
-  truncated:  boolean;
-  durationMs: number;
-  /** 进程被 per-tool abort 杀掉(非超时或 turn abort)时为 true。 */
-  aborted: boolean;
-  /** 退出码语义解释或破坏性命令提醒(grep 无匹配不是错误/git push -f 覆盖远端历史等)。 */
-  note?: string;
-}
-
-export interface BashProcessReference {
-  kind: 'processReference';
-  backgroundProcessId: string;
-  status: 'queued' | 'running';
-  outputPreview: string;
-  /** 日志落盘位置(相对数据目录), 模型可 Read 完整输出。 */
-  outputRelativePath: string;
-}
-
-export type BashResult = BashCommandResult | BashProcessReference;
-
 // ── 工具定义 ───────────────────────────────────────────────────────────────────
 
-export const BashTool = buildTool<BashInput, BashResult, BashToolContext, BashProgress>({
+export const BashTool = buildTool<BashInput, ShellResult, BashToolContext, ShellProgress>({
   id: BuiltinTools.Bash.id,
   name: BuiltinTools.Bash.name,
   description: BASH_DESCRIPTION,
@@ -178,8 +142,8 @@ export const BashTool = buildTool<BashInput, BashResult, BashToolContext, BashPr
     input: BashInput,
     context: BashToolContext,
     invocation: ToolInvocation,
-    onProgress?: (progress: BashProgress) => void,
-  ): Promise<BashResult> {
+    onProgress?: (progress: ShellProgress) => void,
+  ): Promise<ShellResult> {
     const { command, timeout, runInBackground } = input;
 
     // 执行前复查: 直接分发(未过 Permission)时硬拦依然生效。
@@ -187,15 +151,6 @@ export const BashTool = buildTool<BashInput, BashResult, BashToolContext, BashPr
     if (verdict.kind === 'deny') {
       throw new Error(`Command blocked by safety policy: ${verdict.reason ?? command}`);
     }
-
-    // 进度上报: 跨 chunk 的多字节字符用 StringDecoder 拼齐, 不发半个字符。
-    const stdoutDecoder = new StringDecoder('utf8');
-    const stderrDecoder = new StringDecoder('utf8');
-    const emitChunk = (stream: 'stdout' | 'stderr', data: Uint8Array): void => {
-      if (!onProgress) return;
-      const text = (stream === 'stdout' ? stdoutDecoder : stderrDecoder).write(Buffer.from(data));
-      if (text) onProgress({ stream, text });
-    };
 
     const lastSegment = splitCommandSegments(command).at(-1) ?? command;
     const lastBase = /^(\S+)/.exec(lastSegment)?.[1]?.replace(/^.*\//, '') ?? '';
@@ -212,19 +167,11 @@ export const BashTool = buildTool<BashInput, BashResult, BashToolContext, BashPr
       waitSignal: invocation.signal,
       isSuccessfulExitCode: exitCode =>
         interpretExitCode(lastBase, exitCode).ok,
-      onOutput: onProgress
-        ? chunk => emitChunk(chunk.stream, chunk.data)
-        : undefined,
+      onOutput: createShellOutputCallback(onProgress),
     });
 
     if (result.kind === 'processReference') {
-      return {
-        kind: result.kind,
-        backgroundProcessId: result.backgroundProcessId,
-        status: result.status,
-        outputPreview: result.outputPreview,
-        outputRelativePath: result.outputRelativePath,
-      };
+      return result;
     }
 
     const interpretation = interpretExitCode(lastBase, result.result.exitCode);
@@ -251,10 +198,7 @@ export const BashTool = buildTool<BashInput, BashResult, BashToolContext, BashPr
 
   mapResultToModelContent(output) {
     if (output.kind === 'processReference') {
-      return `Command is running in the background (id: ${output.backgroundProcessId}, status: ${output.status}).\n`
-        + `Output so far: ${output.outputPreview}\n`
-        + `You will be notified when it completes. To inspect progress, use ProcessOutput `
-        + `or Read the log at: ${output.outputRelativePath}`;
+      return shellProcessReferenceText(output);
     }
     const parts: string[] = [];
     if (output.stdout.trim()) parts.push(output.stdout.trimEnd());

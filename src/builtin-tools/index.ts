@@ -100,8 +100,12 @@ export type { FileWriteResult } from './tools/FileWriteTool/FileWriteTool.js';
 export type { FileEditResult } from './tools/FileEditTool/FileEditTool.js';
 export type { GlobResult } from './tools/GlobTool/GlobTool.js';
 export type { GrepResult } from './tools/GrepTool/GrepTool.js';
-export type { BashResult } from './tools/BashTool/BashTool.js';
-export type { PowerShellCommandResult } from './tools/PowerShellTool/PowerShellTool.js';
+export type {
+  ShellResult,
+  ShellCommandResult,
+  ShellProcessReference,
+  ShellProgress,
+} from './tools/shared/shellExecution.js';
 export type { ProcessListResult } from './tools/ProcessListTool/ProcessListTool.js';
 export type { ProcessOutputResult } from './tools/ProcessOutputTool/ProcessOutputTool.js';
 export type { ProcessStopResult } from './tools/ProcessStopTool/ProcessStopTool.js';

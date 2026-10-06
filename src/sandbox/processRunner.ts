@@ -1,5 +1,5 @@
-// 启动沙箱包装后的子进程，并统一处理输出上限、超时和取消。
-// 只执行 SandboxCommand: 不读取 process.env, 不理解 Sandbox Policy。
+// 执行已准备的进程参数, 统一处理输出上限、超时和取消.
+// 环境和权限由调用方决定, 此处不读取 process.env 或应用沙箱策略.
 
 import { spawn, spawnSync } from 'node:child_process';
 import { StringDecoder } from 'node:string_decoder';
@@ -7,7 +7,7 @@ import type {
   CommandOutputChunk,
   CommandProcessHandle,
   CommandRunResult,
-  SandboxCommand,
+  ProcessCommand,
 } from './types.js';
 
 const MAX_OUTPUT_CHARS = 200_000;
@@ -15,7 +15,7 @@ const MAX_STREAM_CHARS = MAX_OUTPUT_CHARS / 2;
 const FORCE_KILL_DELAY_MS = 3_000;
 
 export function startProcess(
-  command: SandboxCommand,
+  command: ProcessCommand,
   timeoutMs: number,
   signal?: AbortSignal,
   onOutput?: (chunk: CommandOutputChunk) => void,
@@ -35,6 +35,7 @@ export function startProcess(
       cwd: command.cwd,
       stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...command.environment },
+      windowsHide: true,
       // POSIX: 独立进程组, 终止时整组(SIGTERM→SIGKILL)而不是只杀包装进程。
       detached: process.platform !== 'win32',
     });

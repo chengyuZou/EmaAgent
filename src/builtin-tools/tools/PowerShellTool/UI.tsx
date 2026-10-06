@@ -1,5 +1,4 @@
-// PowerShellTool 的桌面展示：与 Bash 共用终端卡（同为 commandResult 输出），
-// 本文件只提供入口转发；没有 Bash 的后台转交分支（本工具不产生 processReference）。
+// 两种 Shell 共用命令结果、实时输出和后台进程引用的终端展示.
 import type { JSX } from 'react';
 import {
   BashCallView,

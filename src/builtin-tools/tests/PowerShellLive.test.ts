@@ -6,7 +6,7 @@ import {
   peekPowerShellDetection,
 } from '../tools/PowerShellTool/powershellDetection.js';
 import { parsePowerShellCommand } from '../tools/PowerShellTool/psParser.js';
-import { runPowerShellCommand } from '../tools/PowerShellTool/powershellRunner.js';
+import { startPowerShellCommand } from '../tools/PowerShellTool/powershellRunner.js';
 
 const LIVE = process.env['EMA_LIVE_PWSH'] === '1';
 
@@ -38,22 +38,22 @@ describe.skipIf(!LIVE)('PowerShell 真机冒烟(EMA_LIVE_PWSH=1)', () => {
 
   it('执行:中文输出按 UTF-8 解码不乱码', async () => {
     const detection = await detectPowerShell();
-    const result = await runPowerShellCommand(
+    const result = await startPowerShellCommand(
       detection.path!,
       `Write-Output '你好Ema'`,
       { cwd: process.cwd(), timeoutMs: 30_000 },
-    );
+    ).completion;
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('你好Ema');
   }, 60_000);
 
   it('执行:超时被杀并标记 timedOut', async () => {
     const detection = await detectPowerShell();
-    const result = await runPowerShellCommand(
+    const result = await startPowerShellCommand(
       detection.path!,
       `Start-Sleep -Seconds 30`,
       { cwd: process.cwd(), timeoutMs: 3_000 },
-    );
+    ).completion;
     expect(result.timedOut).toBe(true);
   }, 60_000);
 });

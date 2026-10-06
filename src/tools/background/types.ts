@@ -1,6 +1,6 @@
 import type {
   CommandOutputChunk,
-  CommandRunner,
+  CommandStarter,
   CommandRunResult,
 } from '@ema-agent/sandbox';
 
@@ -54,7 +54,7 @@ export interface BackgroundCommandRequest {
   sessionId: string;
   turnId: string;
   toolCallId: string;
-  runner: CommandRunner;
+  runner: CommandStarter;
   command: string;
   description?: string;
   cwd: string;

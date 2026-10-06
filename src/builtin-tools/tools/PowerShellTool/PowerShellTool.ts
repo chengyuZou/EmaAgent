@@ -1,6 +1,6 @@
 // PowerShell 命令执行工具:无沙箱 Windows 的"AST 分析 + 逐条权限"路线。
 // 安全链:validateInput(长度闸门 + AST 硬拦 deny 档) → checkPermissions(内容规则 +
-// 默认询问) → 中央裁决 → powershellRunner 直接执行。
+// 默认询问) → 中央裁决 → 共享后台管理 → 本机 PowerShell 执行.
 // 与 BashTool 的分工:Bash 走 OS 沙箱(bwrap/WSL),无沙箱时整体隐藏;
 // 本工具专为无沙箱 Windows 存在,安全性不依赖 OS 隔离。
 
@@ -10,6 +10,7 @@ import {
   buildTool,
   contextFail,
   contextOk,
+  type BackgroundProcess,
   type ToolUseContext,
 } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
@@ -23,60 +24,48 @@ import {
 } from './psParser.js';
 import { powershellCommandIsSafe } from './security/powershellSecurity.js';
 import { interpretCommandResult } from './security/commandSemantics.js';
-import { runPowerShellCommand } from './powershellRunner.js';
+import { startPowerShellCommand } from './powershellRunner.js';
 import { POWERSHELL_DESCRIPTION } from './prompt.js';
-
-const DEFAULT_TIMEOUT_MS = 120_000;
-const MAX_TIMEOUT_MS = 600_000;
+import {
+  createShellOutputCallback,
+  shellBackgroundSchema,
+  shellProcessReferenceText,
+  shellTimeoutSchema,
+  type ShellProgress,
+  type ShellResult,
+} from '../shared/shellExecution.js';
 
 // ── 输入输出 ───────────────────────────────────────────────────────────────────
 
 const inputSchema = z.object({
   command: z.string().min(1).describe('The PowerShell command to execute.'),
-  timeout: z
-    .number()
-    .int()
-    .min(1)
-    .max(MAX_TIMEOUT_MS)
-    .optional()
-    .describe(`Optional timeout in milliseconds (default ${DEFAULT_TIMEOUT_MS}, max ${MAX_TIMEOUT_MS}).`),
+  description: z.string().optional().describe('Brief description of what this command does (shown in permission dialogs).'),
+  timeout: shellTimeoutSchema,
+  runInBackground: shellBackgroundSchema,
 }).strict();
 
 type PowerShellInput = z.infer<typeof inputSchema>;
 
-/** 与 BashCommandResult 同形(去掉 durationMs——耗时由执行层信封统一打),
- * 前端终端渲染与 Review 链路可零改造复用。 */
-export interface PowerShellCommandResult {
-  kind: 'commandResult';
-  stdout: string;
-  stderr: string;
-  exitCode: number;
-  timedOut: boolean;
-  truncated: boolean;
-  aborted: boolean;
-  /** 退出码语义解释(robocopy 0-7 是成功 / findstr 1 是无匹配等)。 */
-  note?: string;
-}
-
-/** 窄 Context:只要工作区(cwd);Shell 路径由探测模块提供,不进 Context。 */
 interface PowerShellToolContext {
   cwd: string;
+  backgroundProcesses: BackgroundProcess;
 }
 
 // ── 工具定义 ───────────────────────────────────────────────────────────────────
 
-export const PowerShellTool = buildTool<PowerShellInput, PowerShellCommandResult, PowerShellToolContext>({
+export const PowerShellTool = buildTool<PowerShellInput, ShellResult, PowerShellToolContext, ShellProgress>({
   id: BuiltinTools.PowerShell.id,
   name: BuiltinTools.PowerShell.name,
   description: POWERSHELL_DESCRIPTION,
 
   inputSchema,
+  getToolUseSummary: input => input.description,
   // 静态只读证明需要 AST,而 isReadOnly 是同步钩子;保守报 false。
   isReadOnly: () => false,
   isConcurrencySafe: () => false,
 
   // 内容规则(shell 模式)优先;无规则默认询问(与旧 whenRequired 全档一致)。
-  // AST 分析不在此处重复:deny 档已在 validateInput 硬拦,execute 内复查兜底。
+  // AST 分析不在此处重复, deny 档由调用管线中的 validateInput 拦截.
   async checkPermissions(input, _context, permissionContext) {
     const command = input.command;
     const denyRule = findMatchingContentRule(
@@ -123,7 +112,10 @@ export const PowerShellTool = buildTool<PowerShellInput, PowerShellCommandResult
     if (!ctx.cwd) {
       return contextFail('PowerShell 需要先选择工作区。');
     }
-    return contextOk({ cwd: ctx.cwd });
+    if (!ctx.backgroundProcesses) {
+      return contextFail('当前执行环境没有后台进程能力。');
+    }
+    return contextOk({ cwd: ctx.cwd, backgroundProcesses: ctx.backgroundProcesses });
   },
 
   async validateInput(input) {
@@ -151,36 +143,50 @@ export const PowerShellTool = buildTool<PowerShellInput, PowerShellCommandResult
     return { valid: true };
   },
 
-  async execute(input, context, invocation): Promise<PowerShellCommandResult> {
+  async execute(input, context, invocation, onProgress): Promise<ShellResult> {
     const detection = await detectPowerShell();
     if (!detection.path) {
       throw new Error('PowerShell is not available on this machine.');
     }
-    const result = await runPowerShellCommand(detection.path, input.command, {
+    const shellPath = detection.path;
+    const result = await context.backgroundProcesses.runCommand({
+      sessionId: invocation.sessionId,
+      turnId: invocation.turnId,
+      toolCallId: invocation.toolCallId,
+      runner: {
+        start: (command, options) => startPowerShellCommand(shellPath, command, {
+          ...options,
+          cwd: context.cwd,
+        }),
+      },
+      command: input.command,
+      description: input.description,
       cwd: context.cwd,
-      timeoutMs: input.timeout ?? DEFAULT_TIMEOUT_MS,
-      signal: invocation.signal,
+      timeoutMs: input.timeout,
+      runInBackground: input.runInBackground,
+      waitSignal: invocation.signal,
+      isSuccessfulExitCode: exitCode =>
+        !interpretCommandResult(input.command, exitCode, '', '').isError,
+      onOutput: createShellOutputCallback(onProgress),
     });
+    if (result.kind === 'processReference') return result;
     // 退出码语义只作补充说明,不改写真实退出状态(robocopy 1 仍是 1)。
     const interpretation = interpretCommandResult(
       input.command,
-      result.exitCode,
-      result.stdout,
-      result.stderr,
+      result.result.exitCode,
+      result.result.stdout,
+      result.result.stderr,
     );
     return {
       kind: 'commandResult',
-      stdout: result.stdout,
-      stderr: result.stderr,
-      exitCode: result.exitCode,
-      timedOut: result.timedOut,
-      truncated: result.truncated,
-      aborted: result.aborted,
+      ...result.result,
+      durationMs: result.durationMs,
       ...(interpretation.message ? { note: interpretation.message } : {}),
     };
   },
 
   mapResultToModelContent(output) {
+    if (output.kind === 'processReference') return shellProcessReferenceText(output);
     const parts: string[] = [];
     if (output.stdout.trim()) parts.push(output.stdout.trimEnd());
     if (output.stderr.trim()) parts.push(`[stderr]\n${output.stderr.trimEnd()}`);

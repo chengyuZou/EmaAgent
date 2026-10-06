@@ -2,7 +2,8 @@
 // 交互期 onProgress 流式(含跨 chunk 字符拼接)、30K 命令上限、map 投影。
 import { describe, expect, it, vi } from 'vitest';
 import type { ToolInvocation } from '@ema-agent/tools';
-import { BashTool, type BashProgress } from '../tools/BashTool/BashTool.js';
+import { BashTool } from '../tools/BashTool/BashTool.js';
+import type { ShellProgress } from '../tools/shared/shellExecution.js';
 import { extractBashCommentLabel } from '../tools/BashTool/commentLabel.js';
 
 function makeInvocation(): ToolInvocation {
@@ -87,7 +88,7 @@ describe('BashTool — 执行', () => {
     const projection = BashTool.validateContext(host as never);
     if (!projection.valid) throw new Error('投影应成功');
 
-    const progress: BashProgress[] = [];
+    const progress: ShellProgress[] = [];
     await BashTool.execute(
       { command: 'echo 中' },
       projection.context,

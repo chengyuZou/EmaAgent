@@ -43,15 +43,14 @@ export interface WrappedCommand {
 }
 
 /**
- * Sandbox 最终决定的启动形态: 平台后端 + 结构化 argv + 工作目录 + 净化环境。
- * Backend 产出 WrappedCommand, CommandRunner 补齐 cwd/environment,
- * ProcessRunner 只执行, 不再读取 process.env 或理解 Sandbox Policy。
+ * 已准备好的进程启动参数. 沙箱命令由 CommandRunner 包装并净化环境;
+ * 本机 PowerShell 由内置工具准备参数. 进程执行层不决定权限或隔离策略.
  */
-export interface SandboxCommand {
+export interface ProcessCommand {
   readonly executable: string;
   readonly args: readonly string[];
   readonly cwd: string;
-  readonly environment: Readonly<Record<string, string>>;
+  readonly environment: Readonly<Record<string, string | undefined>>;
 }
 
 export interface SandboxBackend {
@@ -101,3 +100,7 @@ export interface CommandProcessHandle {
   stop(): void;
 }
 
+/** 后台调度只需要启动句柄, 不依赖具体 Shell 的权限与包装方式. */
+export interface CommandStarter {
+  start(command: string, options: CommandRunOptions & { cwd: string; timeoutMs: number }): CommandProcessHandle;
+}

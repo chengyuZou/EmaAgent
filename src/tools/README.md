@@ -14,7 +14,7 @@
 - 单调用管线 `ToolCallExecution` 与流式协调器 `StreamingToolExecutor`;
 - `ToolExecutionState` 副作用边界状态机（prepared/authorized/running → 终态）;
 - Results 层：`ToolResult` 信封、单项预算、异步外置落盘与回收；
-- 后台进程：`BackgroundProcess`（30s 转交、双坑位池、日志、终态、轻量完成通知）。
+- 后台进程：`BackgroundProcess`（3 分钟转交、双坑位池、日志、终态、轻量完成通知）。
 
 **本包不拥有（禁止反向依赖）：**
 
@@ -47,7 +47,7 @@ src/tools/
 │  ├─ toolResultStore.ts          空输出占位、单项预算异步外置、稳定预览
 │  └─ toolResultCleaner.ts        8 路异步扫描, TTL + 单 Session + 全局配额回收
 ├─ background/                    后台进程
-│  ├─ backgroundProcess.ts        30s 转交、双坑位池、列表/读取/停止
+│  ├─ backgroundProcess.ts        3 分钟转交、双坑位池、列表/读取/停止
 │  ├─ backgroundProcessScheduler.ts 公平轮转坑位
 │  ├─ backgroundProcessStore.ts   后台进程持久化窄端口 + camelCase 记录
 │  ├─ outputStore.ts              stdout/stderr 有界落盘与双游标读取
@@ -72,7 +72,7 @@ src/tools/
 - `ToolRegistry`(Builtin 启动注册、MCP 热更新）、`assembleToolPool`、`ToolPool`;
 - `StreamingToolExecutor` + `StreamingToolExecutorOptions` —— **执行的唯一公开入口；`ToolCallExecution` 不导出，任何包不得绕过协调器直接单发**;
 - `ToolExecutionState` + `ToolExecutionStateStore`（Storage 适配端口）——SQL 实现在 storage,Core 注入;执行链、审计路由与启动恢复都直接消费 `ToolExecutionState` 类;
-- `BackgroundProcess` + `BackgroundProcessStore`. Bash/Process 工具调用同一实例;自然终态只向 Server 回调 `sessionId + backgroundProcessId + status`, 完整输出仍由 `ProcessOutput` 读取.
+- `BackgroundProcess` + `BackgroundProcessStore`. Bash、PowerShell 和 Process 工具调用同一实例; 自然终态只向 Server 回调 `sessionId + backgroundProcessId + status`, 完整输出仍由 `ProcessOutput` 读取.
 - `ToolResultStore`、`ToolResultCleaner`、`backgroundProcessSetting`。
 
 **Agent/Turn 消费**:
@@ -89,11 +89,27 @@ src/tools/
 4. **running 是副作用边界。** `ToolExecutionState.start()` 落库成功后才能 `execute()`;running 后断电/取消按 `outcome_unknown` 关账，不伪装干净 cancelled。
 5. **Message 先落，状态后关。** `acknowledgeResult`（写 Message）先于 `commitResult`（推进状态机）——先持久化后关账。
 6. **终态 FIFO。** 完成可乱序，`tool_result` 终态必须按模型 blockIndex 顺序发射；进度事件实时但有界。
-7. **后台双坑位池.** 交互命令独立小池(30s 内完成或转交), 后台长任务使用 `maxConcurrent`; 30s 转交只解除父 Turn 的等待与取消绑定, 活进程继续占原坑位直到终态.
+7. **后台双坑位池.** 交互命令独立小池(3 分钟内完成或转交), 显式后台任务使用 `maxConcurrent`; 自动转交只解除父 Turn 的等待与取消绑定, 活进程继续占原坑位直到终态.
 8. **取消与降级诚实。** 无批准界面 deny、无 workspace 相对路径 fail-closed、超大结果先外置再给稳定预览（落盘失败当前原样放行，改有界错误待拍板）、后台 interrupted 墓碑不自动重跑。
 9. **结果只有一份事实。** Tool 作者不同时返回 `data + modelContent`；模型内容必须由 `mapResultToModelContent(TOutput)` 在执行期投影一次并持久化（重放不重算）。缺省投影为 JSON/Text；复杂结果必须自定义映射，过滤内部字段并保留多模态语义；多模态 parts 不做文本外置，由 Tool 业务层自限尺寸。
 10. **MCP 只有一个结果 Adapter。** 动态 MCP Tool 共用标准 `content` 转换；`structuredContent` 稳定 JSON 化，`isError` 进入失败路径，`_meta` 不进模型，图片/资源/二进制按各自协议语义处理。
 
+
+## Shell 后台执行
+
+Bash 和 PowerShell 都把命令交给同一个 `BackgroundProcess.runCommand`.
+请求中的 `runner` 只实现 `CommandStarter.start`, 返回 `completion` 与 `stop` 句柄;
+Shell 的参数包装、权限与沙箱策略仍由各自执行路径负责.
+
+- 默认先在前台等待 `FOREGROUND_COMMAND_WAIT_MS` (180 秒). 提前完成则直接返回命令结果, 不留下后台数据库行.
+- 超过等待阈值, 同一进程转交后台并返回 `processReference`. 已捕获与后续输出保存在同一日志目录, 不重新启动命令.
+- `runInBackground=true` 直接进入后台队列, 立即返回引用. `ProcessList`、`ProcessOutput` 和 `ProcessStop` 按 Session 身份访问共享进程记录.
+- 总运行上限来自 `tools.backgroundProcess.maxRuntimeHours` (默认 24 小时, 范围 1–168). 提交命令时读取并固定上限, 设置修改不影响已提交的排队或运行项. 命令指定的 `timeout` 可以更短, 不能超过设置上限. 从实际进程启动开始计时, 包含前台时间, 排队时间不计入.
+- 前台取消会停止进程树. 自动转交后不再绑定原调用的取消信号; 停止后台进程需要显式调用 `ProcessStop`. 删除 Session 或关闭应用会停止所属进程.
+- 完成、失败或总超时先保存日志与终态, 再回调 Server. Server 将轻量完成通知交给 Session 续接队列, 完整输出不复制进通知. 应用重启时记录为 `interrupted`, 不自动重跑.
+
+回归入口: `tests/backgroundProcessRuntime.test.ts`; 真实 Shell 转交与日志验证位于
+`src/builtin-tools/tests/shellBackgroundLive.test.ts`, 设置 `EMA_LIVE_SHELL_BACKGROUND=1` 才运行约 3 分钟的测试.
 
 ## 失败语义速查
 

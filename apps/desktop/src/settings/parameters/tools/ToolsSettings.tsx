@@ -42,7 +42,7 @@ export function ToolsSettings(): JSX.Element {
       <SettingsSection icon="i-lucide:terminal-square" title="后台进程" description="Shell 后台任务采用的进程约束">
         <SettingsCard>
           <NumberSetting title="最大并发数" hint="同一时间最多保留多少个后台进程." apply={settings.apply('tools.backgroundProcess.maxConcurrent')} value={readNumber(settings.values, 'tools.backgroundProcess.maxConcurrent')} unit="个" onSave={value => settings.save('tools.backgroundProcess.maxConcurrent', value)} onReset={() => settings.reset('tools.backgroundProcess.maxConcurrent')} />
-          <NumberSetting title="最长运行小时" hint="后台进程超过这个时长后由进程管理器停止." apply={settings.apply('tools.backgroundProcess.maxRuntimeHours')} value={readNumber(settings.values, 'tools.backgroundProcess.maxRuntimeHours')} unit="小时" onSave={value => settings.save('tools.backgroundProcess.maxRuntimeHours', value)} onReset={() => settings.reset('tools.backgroundProcess.maxRuntimeHours')} />
+          <NumberSetting title="最长运行小时" hint="Bash 和 PowerShell 从进程启动起计算, 包含前台等待时间. 超过上限会停止; 修改只影响新提交的命令." apply={settings.apply('tools.backgroundProcess.maxRuntimeHours')} value={readNumber(settings.values, 'tools.backgroundProcess.maxRuntimeHours')} unit="小时" onSave={value => settings.save('tools.backgroundProcess.maxRuntimeHours', value)} onReset={() => settings.reset('tools.backgroundProcess.maxRuntimeHours')} />
         </SettingsCard>
       </SettingsSection>
     </div>

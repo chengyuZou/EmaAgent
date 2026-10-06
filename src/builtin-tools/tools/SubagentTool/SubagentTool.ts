@@ -1,5 +1,5 @@
 // 启动子 Agent: 默认同步等待完成, runInBackground 立即返回引用;
-// 同步等待超限时自动转交后台(与命令工具 30s 转交同思想).
+// 同步等待超限时自动转交后台.
 // 模型说明书见 prompt.ts。
 import { z } from 'zod';
 import {
@@ -21,7 +21,7 @@ interface SubagentToolContext {
 
 /**
  * 同步等待的转交阈值: 超过即把 Subagent 转交后台并返回引用。
- * 比命令工具的 30s 宽, 因为子 Agent 的迭代粒度是 LLM 调用, 不是进程输出.
+ * 子 Agent 按独立的等待阈值转交, 不使用 Shell 命令的前台等待时间.
  */
 const AUTO_BACKGROUND_WAIT_MS = 120_000;
 

@@ -1,4 +1,5 @@
 // BashTool 的模型说明书, 单点维护。条目主体为完整模型说明书,
+import { FOREGROUND_COMMAND_WAIT_SECONDS } from '../shared/shellExecution.js';
 
 export const BASH_DESCRIPTION = `Execute a bash/sh shell command inside the workspace sandbox and return stdout, stderr, and exit code.
 
@@ -17,9 +18,9 @@ While the Bash tool can do similar things, it's better to use the built-in tools
 - Always quote file paths that contain spaces with double quotes (e.g., cd "path with spaces/file.txt").
 - Each command starts in the session workspace; shell state and the working directory do NOT persist between commands. Prefer absolute or workspace-relative paths instead of relying on \`cd\`.
 - Avoid interactive commands that read from stdin (they will hang).
-- Commands that finish within 15 seconds return their result directly. Slower commands keep running as background processes without being restarted — you will be notified when they complete; do not poll.
+- Commands that finish within ${FOREGROUND_COMMAND_WAIT_SECONDS} seconds (3 minutes) return their result directly. Slower commands keep running as background processes without being restarted — you will be notified when they complete; do not poll.
 - Set runInBackground=true when the command is expected to be long-running. Use ProcessOutput to read incremental output and ProcessStop to terminate it; the full log file path is included in the background reference, so you can also Read it.
-- timeout is the total runtime limit in milliseconds. When omitted, the user's background-process setting applies.
+- timeout is the total runtime limit in milliseconds, including foreground time. When omitted, the user's background-process setting applies. A supplied timeout cannot exceed that setting; reaching it kills the process rather than transferring it.
 - Output redirects (> and >>) may only target paths inside the workspace or the system temp directory.
 - All commands run inside a sandbox that isolates file and network access to the workspace; there is no way to run a command outside the sandbox.
 

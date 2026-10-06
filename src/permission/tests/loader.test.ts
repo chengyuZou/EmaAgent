@@ -5,7 +5,7 @@ import {
   loadPermissionRuleBuckets,
   reconcileProjectRules,
 } from '../rules/loader.js';
-import { applyPermissionUpdate } from '../rules/update.js';
+import { applyPermissionUpdate, clearSessionRules } from '../rules/update.js';
 import {
   permissionRulesProjectAllowSetting,
   permissionRulesProjectAskSetting,
@@ -28,6 +28,43 @@ function makeStore(): { store: SettingsStore; data: Map<string, unknown> } {
 }
 
 describe('loadPermissionRuleBuckets', () => {
+  it('已有规则桶立即读取新增及清空的 Session 规则, 其他 Session 隔离, SQL 来源仍冻结', () => {
+    const { store } = makeStore();
+    const sessionId = 'live-session';
+    clearSessionRules(sessionId);
+    const buckets = loadPermissionRuleBuckets(store, sessionId, 'project-live');
+    const other = loadPermissionRuleBuckets(store, 'other-live-session', 'project-live');
+
+    try {
+      applyPermissionUpdate(store, {
+        type: 'addRules', destination: 'session', behavior: 'allow',
+        rules: [{ toolName: 'Bash', ruleContent: 'pnpm test' }],
+      }, { sessionId });
+      expect(buckets.alwaysAllowRules.session).toEqual(['Bash(pnpm test)']);
+      expect(other.alwaysAllowRules.session ?? []).toEqual([]);
+
+      applyPermissionUpdate(store, {
+        type: 'addRules', destination: 'userSettings', behavior: 'allow',
+        rules: [{ toolName: 'Read' }],
+      }, { sessionId });
+      applyPermissionUpdate(store, {
+        type: 'addRules', destination: 'projectSettings', behavior: 'allow',
+        rules: [{ toolName: 'Write' }],
+      }, { sessionId, projectId: 'project-live' });
+      expect(buckets.alwaysAllowRules.userSettings).toEqual([]);
+      expect(buckets.alwaysAllowRules.projectSettings).toBeUndefined();
+      const nextTurn = loadPermissionRuleBuckets(store, sessionId, 'project-live');
+      expect(nextTurn.alwaysAllowRules.userSettings).toEqual(['Read']);
+      expect(nextTurn.alwaysAllowRules.projectSettings).toEqual(['Write']);
+
+      clearSessionRules(sessionId);
+      expect(buckets.alwaysAllowRules.session ?? []).toEqual([]);
+      expect(nextTurn.alwaysAllowRules.session ?? []).toEqual([]);
+    } finally {
+      clearSessionRules(sessionId);
+    }
+  });
+
   it('user/project/session 三源分别入桶；无项目时无 projectSettings 键', () => {
     const { store } = makeStore();
     applyPermissionUpdate(store, {

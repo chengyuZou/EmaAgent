@@ -1,12 +1,11 @@
-// 测试后台进程的 30s 转交、取消竞态、停止终态、池分离与断电恢复.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   CommandOutputChunk,
   CommandProcessHandle,
-  CommandRunner,
+  CommandStarter,
   CommandRunResult,
 } from '@ema-agent/sandbox';
 import { Database, BackgroundProcessesRepo } from '@ema-agent/storage';
@@ -27,7 +26,7 @@ class FakeProcess {
   stopDelayMs = 0;
   stopped = false;
   private readonly resolveCompletion!: (result: CommandRunResult) => void;
-  private options?: Parameters<CommandRunner['start']>[1];
+  private options?: Parameters<CommandStarter['start']>[1];
   readonly completion: Promise<CommandRunResult>;
 
   constructor() {
@@ -43,7 +42,7 @@ class FakeProcess {
     };
   }
 
-  attach(options: Parameters<CommandRunner['start']>[1]): void {
+  attach(options: Parameters<CommandStarter['start']>[1]): void {
     this.options = options;
   }
 
@@ -72,7 +71,7 @@ function killedResult(): CommandRunResult {
 class FakeRunner {
   readonly processes: FakeProcess[] = [];
 
-  start(_command: string, options?: Parameters<CommandRunner['start']>[1]): CommandProcessHandle {
+  start(_command: string, options: Parameters<CommandStarter['start']>[1]): CommandProcessHandle {
     const process = new FakeProcess();
     process.attach(options);
     this.processes.push(process);
@@ -197,7 +196,7 @@ function tracked(options?: Parameters<typeof createFixture>[0]): Fixture {
 // ── 测试 ─────────────────────────────────────────────────────────────────────
 
 describe('BackgroundProcess', () => {
-  it('30 秒内完成:返回普通结果,不留 DB 行,日志目录已清理', async () => {
+  it('前台等待内完成:返回普通结果,不留 DB 行,日志目录已清理', async () => {
     const fixture = tracked();
     const pending = fixture.runtime.runCommand(makeRequest(fixture));
     await tick();
@@ -210,6 +209,58 @@ describe('BackgroundProcess', () => {
     const rows = fixture.repo.listForSession(SESSION_ID);
     expect(rows).toHaveLength(0);
     expect(processesRootEmpty(fixture)).toBe(true);
+  });
+
+  it('默认等待 180 秒才转后台, 转交后原调用取消不停止进程也不再发送进度', async () => {
+    vi.useFakeTimers();
+    try {
+      const fixture = tracked();
+      const controller = new AbortController();
+      const onOutput = vi.fn();
+      const settled = vi.fn();
+      const pending = fixture.runtime.runCommand(makeRequest(fixture, {
+        waitSignal: controller.signal,
+        onOutput,
+      }));
+      void pending.then(settled);
+      await vi.advanceTimersByTimeAsync(0);
+      const process = fixture.runner.processes[0]!;
+      process.emit('before');
+      await vi.advanceTimersByTimeAsync(179_999);
+      expect(settled).not.toHaveBeenCalled();
+      expect(fixture.repo.listForSession(SESSION_ID)).toHaveLength(0);
+      await vi.advanceTimersByTimeAsync(1);
+      const result = await pending;
+      expect(result.kind).toBe('processReference');
+      expect(fixture.runner.processes).toHaveLength(1);
+      controller.abort();
+      expect(process.stopped).toBe(false);
+      process.emit('after');
+      expect(onOutput).toHaveBeenCalledTimes(1);
+      process.finishWith(okResult('beforeafter'));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fixture.notified).toHaveLength(1);
+      if (result.kind !== 'processReference') throw new Error('Expected background reference');
+      const output = await fixture.runtime.readOutput(SESSION_ID, result.backgroundProcessId);
+      expect(output.stdout).toBe('beforeafter');
+      expect(output.process.status).toBe('completed');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('总超时默认读取设置, 显式更短值有效而更长值不能超过设置', async () => {
+    const fixture = tracked();
+    const start = vi.spyOn(fixture.runner, 'start');
+    for (const timeoutMs of [undefined, 240_000, 7 * 24 * 60 * 60 * 1_000]) {
+      await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true, timeoutMs }));
+    }
+    expect(start.mock.calls[0]?.[1].timeoutMs).toBe(24 * 60 * 60 * 1_000);
+    expect(start.mock.calls[1]?.[1].timeoutMs).toBe(240_000);
+    fixture.runner.processes[0]!.finishWith(okResult());
+    await tick();
+    expect(start.mock.calls[2]?.[1].timeoutMs).toBe(24 * 60 * 60 * 1_000);
+    await fixture.runtime.shutdown();
   });
 
   it('超过交互等待转交后台:落 running,自然完成后转 completed 并通知,日志保留', async () => {
