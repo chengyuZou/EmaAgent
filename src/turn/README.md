@@ -15,6 +15,9 @@ Turn 管一次根 Agent 对话：创建运行记录，准备模型和工具，�
 5. `AgentLoop` 产出流式事件。`turnMessageWriter.ts` 在首个 Assistant 增量时建行，后续更新同一行；`tool_use_completed` 先保存调用，AgentLoop 恢复后才启动工具；每个 `tool_result` 保存为独立 User Message。写入完成后, `turnLoopEvents.ts` 再把根循环事件转成前端事件, 更新 Context 用量并记录物理 LLM 调用用量. 子代理调用只复用记账入口, 不改根 Context 用量.
 6. 写入唯一终态后, 收口未完成的 Assistant 和工具调用, 关闭交互与工具, 按停止/失败策略暂停本轮 Goal, 再清除运行占用并通知队列. `completion` 和终态事件在执行收尾与解锁之后交付, 不让消费方接到半收尾的 Session.
 
+文件状态由 Server 按 Session 持有, `prepareTurnTools` 只取得同一 `FileStateCache` 并注入根工具与子代理工具.
+Turn 收尾或中断不释放它, Compact 不修改它; 删除 Session 或关闭 Server 才释放.
+
 ## Session 续接与 Goal
 
 Permission 与 AskUser required/resolved 独立于根 Turn 事件流, 由宿主的 publishInteraction 直接交付 Session.
@@ -25,6 +28,12 @@ Permission/AskUser, 不清携带同一父 turnId 的子请求. 子执行统一�
 初始 pendingInteractions 保持服务端顺序, 后续按交付顺序追加/移除; 不用浏览器时钟重排.
 Permission 回答仅携带 SessionId 和 ToolCallId, 由队首原请求取得所属 Turn/Run.
 AskUser 回答保留其 turnId, 但展示和队首约束同样来自 Session FIFO.
+
+Permission 中央的最终 ask 携带具体 `sessionAllowRule`, 工具执行链把规则值交给
+`prepareTurnTools` 的批准通道, 等待时不重新分析输入. 前端只回答 action; allowSession
+先通过 `applyPermissionUpdate` 保存 Session 规则, 再发布 resolved 和继续执行.
+仅本次允许、拒绝和未回答即取消不保存规则. 根与子代理、后续 Turn 读取同一份
+Session 批准, 收尾只清理等待, 不清批准. 范围与匹配契约见 [Permission](../permission/README.md).
 
 `SessionContinuationQueue` 是唯一交付入口. `SessionRunningRegistry` 判断根 Turn 或手动 Compact 的占用; 同一 Session 的多个唤醒合并成一次微任务, 领取和注册之间不 await.
 

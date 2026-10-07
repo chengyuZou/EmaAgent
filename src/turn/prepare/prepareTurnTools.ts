@@ -9,6 +9,7 @@ import {
   type PermissionMode,
   type PermissionRequest,
   type PermissionResponse,
+  type SessionAllowRule,
   type PermissionStreamEvent,
   type ToolPermissionContext,
 } from '@ema-agent/permission';
@@ -24,7 +25,7 @@ import {
   type AskUser,
   type AskUserRequiredEvent,
   type BackgroundProcess,
-  type ReadFileState,
+  type FileStateCache,
   StreamingToolExecutor,
   type ToolExecutionState,
   type ToolExecutionEvent,
@@ -61,6 +62,7 @@ const PLAN_TOOL_IDS: ReadonlySet<string> = new Set([
 ]);
 
 export interface TurnToolsDeps {
+  readonly fileStateCache: (sessionId: string) => FileStateCache;
   readonly registry: ToolRegistry;
   readonly interactionQueue: SessionInteractionQueue;
   /** Session 的批准事件出口, 不依赖父 Turn 是否仍在运行. */
@@ -142,7 +144,7 @@ export function prepareTurnTools(deps: TurnToolsDeps, input: PrepareTurnToolsInp
     cwd,
     scratchpadDir
   } = input;
-  const readFileState: ReadFileState = new Map();
+  const fileStateCache = deps.fileStateCache(sessionId);
 
   const permissionContext: ToolPermissionContext = {
     mode: input.permission.mode,
@@ -153,13 +155,29 @@ export function prepareTurnTools(deps: TurnToolsDeps, input: PrepareTurnToolsInp
   };
 
   // 根 Agent 与前后台子代理共用这条 Session 交互通道.
-  const askPermission = async (request: PermissionRequest, signal: AbortSignal): Promise<PermissionResponse> => {
+  const askPermission = async (
+    request: PermissionRequest,
+    signal: AbortSignal,
+    sessionAllowRule: SessionAllowRule,
+  ): Promise<PermissionResponse> => {
     const { promise } = deps.interactionQueue.enqueuePermission(request);
     // 先建立可回答的队列条目, 再发布事件. 子代理不借父 Turn 通道.
     deps.publishInteraction({ type: 'permission_required', ...request });
     const response = await awaitInteraction(promise, signal, () => {
       deps.interactionQueue.cancel(request.toolCallId, 'tool aborted');
     });
+    if (response.action === 'allowSession') {
+      applyPermissionUpdate(
+        deps.settings,
+        {
+          type: 'addRules',
+          destination: 'session',
+          rules: [sessionAllowRule],
+          behavior: 'allow',
+        },
+        { sessionId }
+      );
+    }
     const resolved = {
       type: 'permission_resolved' as const,
       sessionId: request.sessionId,
@@ -171,18 +189,6 @@ export function prepareTurnTools(deps: TurnToolsDeps, input: PrepareTurnToolsInp
       deps.publishInteraction({ ...resolved, subagentId: request.subagentId, runId: request.runId });
     } else {
       deps.publishInteraction(resolved);
-    }
-    if (response.action === 'allowSession' && request.ruleSuggestion) {
-      applyPermissionUpdate(
-        deps.settings,
-        {
-          type: 'addRules',
-          destination: 'session',
-          rules: [request.ruleSuggestion],
-          behavior: 'allow',
-        },
-        { sessionId }
-      );
     }
     return response;
   };
@@ -291,7 +297,7 @@ export function prepareTurnTools(deps: TurnToolsDeps, input: PrepareTurnToolsInp
     },
     ...(input.skillPool ? { skillPool: input.skillPool } : {}),
     ...(scratchpadDir ? { scratchpad: { dir: scratchpadDir, author: 'main' } } : {}),
-    readFileState,
+    fileStateCache,
     askUser,
   });
 

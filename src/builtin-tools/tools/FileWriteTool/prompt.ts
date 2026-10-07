@@ -7,4 +7,4 @@ export const FILE_WRITE_DESCRIPTION = `Write full content to a file, creating it
 - Parent directories are created automatically.
 - Paths are resolved against the session workspace (absolute paths are used as-is).
 - Line endings in \`content\` are written as-is (LF preserved, no rewriting).
-- After writing, the file is added to the read-state cache so subsequent \`Edit\` calls work without a separate read.`;
+- After writing, the file's full content is saved in this session's file-state cache so subsequent \`Edit\` calls work without a separate read.`;

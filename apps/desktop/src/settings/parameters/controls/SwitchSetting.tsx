@@ -44,9 +44,20 @@ export function SwitchSetting(props: {
   return (
     <SettingItem title={props.title} hint={props.hint} apply={props.apply}>
       <SaveStateIndicator state={state} />
-      <Switch checked={props.value} disabled={state === 'saving'} label={props.title} onCheckedChange={value => void save(value)} />
+      <Switch 
+        checked={props.value} 
+        disabled={state === 'saving'} 
+        label={props.title} 
+        onCheckedChange={value => void save(value)} 
+      />
       {props.onReset && (
-        <Button variant="ghost" size="sm" disabled={state === 'saving'} onClick={() => void reset()} title="恢复默认值">
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          disabled={state === 'saving'} 
+          onClick={() => void reset()} 
+          title="恢复默认值"
+        >
           <span className="i-lucide:rotate-ccw" aria-hidden />
         </Button>
       )}

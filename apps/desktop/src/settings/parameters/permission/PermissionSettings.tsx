@@ -34,7 +34,12 @@ export function PermissionSettings(): JSX.Element {
 
       <SettingsSection icon="i-lucide:shield-check" title="用户确认" description="Tool 需要询问时的等待时间">
         <SettingsCard>
-          <PermissionTimeout apply={settings.apply(TIMEOUT_KEY)} value={readNullableNumber(settings.values, TIMEOUT_KEY)} onSave={value => settings.save(TIMEOUT_KEY, value)} onReset={() => settings.reset(TIMEOUT_KEY)} />
+          <PermissionTimeout 
+            apply={settings.apply(TIMEOUT_KEY)} 
+            value={readNullableNumber(settings.values, TIMEOUT_KEY)} 
+            onSave={value => settings.save(TIMEOUT_KEY, value)} 
+            onReset={() => settings.reset(TIMEOUT_KEY)} 
+          />
         </SettingsCard>
       </SettingsSection>
 
@@ -57,32 +62,61 @@ export function PermissionSettings(): JSX.Element {
   );
 }
 
-function PermissionTimeout(props: { apply: SettingApply; value: number | null; onSave(value: number | null): Promise<void>; onReset(): Promise<void> }): JSX.Element {
+function PermissionTimeout(props: { 
+    apply: SettingApply; 
+    value: number | null; 
+    onSave(value: number | null): 
+    Promise<void>; 
+    onReset(): Promise<void> 
+  }): JSX.Element {
   const [draft, setDraft] = useState(props.value === null ? '' : String(props.value / 1000));
   useEffect(() => setDraft(props.value === null ? '' : String(props.value / 1000)), [props.value]);
   return (
     <SettingItem title="等待用户确认" hint="留空表示一直等待. 填写秒数后, 超时自动拒绝本次操作." apply={props.apply}>
-      <Input className="w-28" inputSize="sm" type="number" value={draft} placeholder="一直等待" onChange={event => setDraft(event.target.value)} onBlur={() => {
-        const trimmed = draft.trim();
-        if (!trimmed) void props.onSave(null);
-        else {
-          const seconds = Number(trimmed);
-          if (Number.isFinite(seconds)) void props.onSave(seconds * 1000);
-        }
-      }} />
+      <Input 
+        className="w-28" 
+        inputSize="sm" 
+        type="number" 
+        value={draft} 
+        placeholder="一直等待" 
+        onChange={event => setDraft(event.target.value)} 
+        onBlur={() => {
+          const trimmed = draft.trim();
+          if (!trimmed) void props.onSave(null);
+          else {
+            const seconds = Number(trimmed);
+            if (Number.isFinite(seconds)) void props.onSave(seconds * 1000);
+          }
+        }} 
+      />
       <span className="text-xs text-[var(--ema-text-tertiary)]">秒</span>
-      <Button variant="ghost" size="sm" onClick={() => void props.onReset()} title="恢复默认值"><span className="i-lucide:rotate-ccw" aria-hidden /></Button>
+      <Button 
+        variant="ghost" 
+        size="sm" 
+        onClick={() => void props.onReset()} 
+        title="恢复默认值"
+      >
+        <span className="i-lucide:rotate-ccw" aria-hidden />
+      </Button>
     </SettingItem>
   );
 }
 
 function RuleListEditor(props: { behavior: RuleBehavior; apply: SettingApply; value: readonly string[]; onSave(value: string[]): Promise<void> }): JSX.Element {
   const [draft, setDraft] = useState(props.value.join('\n'));
-  useEffect(() => setDraft(props.value.join('\n')), [props.value]);
+  useEffect(() => { 
+    setDraft(props.value.join('\n'))
+  }, [props.value]);
+
   const label = { allow: '允许', deny: '拒绝', ask: '每次询问' }[props.behavior];
   return (
     <SettingItem title={`${label}规则`} hint="例如 Bash(pnpm test:*), Read(./src/**)." apply={props.apply}>
-      <Textarea className="h-24 w-[30rem] max-w-[45vw] font-mono text-xs resize-none border-none" value={draft} onChange={event => setDraft(event.target.value)} onBlur={() => void props.onSave(parseRules(draft))} />
+      <Textarea 
+        className="h-24 w-[30rem] max-w-[45vw] font-mono text-xs resize-none border-none" 
+        value={draft} 
+        onChange={event => setDraft(event.target.value)} 
+        onBlur={() => void props.onSave(parseRules(draft))} 
+      />
     </SettingItem>
   );
 }
@@ -132,7 +166,13 @@ function ProjectRules(props: { values: ReadonlyMap<string, unknown>; apply(key: 
           </SettingItem>
         )}
         {selected && (['deny', 'ask', 'allow'] as const).map(behavior => (
-          <RuleListEditor key={`${selected}:${behavior}`} behavior={behavior} apply={props.apply(PROJECT_RULE_KEYS[behavior])} value={records[behavior][selected] ?? []} onSave={value => saveRules(behavior, value)} />
+          <RuleListEditor 
+            key={`${selected}:${behavior}`} 
+            behavior={behavior} 
+            apply={props.apply(PROJECT_RULE_KEYS[behavior])} 
+            value={records[behavior][selected] ?? []} 
+            onSave={value => saveRules(behavior, value)} 
+          />
         ))}
       </SettingsCard>
     </SettingsSection>

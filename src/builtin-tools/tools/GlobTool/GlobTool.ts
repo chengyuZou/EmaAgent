@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
+import { directoryPathToRuleContent } from '@ema-agent/permission';
 import { globIterate } from 'glob';
 import { buildTool, contextFail, contextOk, type ToolInvocation } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
@@ -94,15 +95,25 @@ export const GlobTool = buildTool<GlobInput, GlobResult, GlobToolContext>({
     return { valid: true };
   },
 
-  checkPermissions: async (input, context, permissionContext) =>
-    checkReadPathPermission({
+  async checkPermissions(input, context, permissionContext) {
+    const directory = path.resolve(context.cwd, input.path ?? '.');
+    const result = checkReadPathPermission({
       toolName: BuiltinTools.Glob.name,
-      path: input.path
-        ? path.resolve(context.cwd, input.path)
-        : context.cwd,
+      path: directory,
       cwd: context.cwd,
       permissionContext,
-    }),
+    });
+    if (result.behavior === 'deny') {
+      return result;
+    }
+    return {
+      ...result,
+      sessionAllowRule: {
+        toolName: BuiltinTools.Glob.name,
+        ruleContent: directoryPathToRuleContent(directory),
+      },
+    };
+  },
 
   async execute(
     input: GlobInput,

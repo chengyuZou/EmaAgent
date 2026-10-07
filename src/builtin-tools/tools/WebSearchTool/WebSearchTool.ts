@@ -1,5 +1,6 @@
 // 通过已配置的搜索服务返回有界的网页搜索结果; 后端选择、过滤与归一在 adapters 层。
 import { z } from 'zod';
+import { findContentRule, findMatchingContentRule } from '@ema-agent/permission';
 import { buildTool, contextOk, type ToolInvocation } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { searchWeb, type SearchProgress } from './adapters/index.js';
@@ -54,8 +55,39 @@ export const WebSearchTool = buildTool<WebSearchInput, WebSearchResult, undefine
 
   getToolUseSummary: (input) => input.query,
 
-  // 联网检索走公网出口, 交给中央规则与模式收口(默认询问)。
-  checkPermissions: async () => ({ behavior: 'passthrough', message: 'Web 搜索需要用户确认' }),
+  async checkPermissions(input, _context, permissionContext) {
+    const ruleContent = webSearchRuleContent(input);
+    const sessionAllowRule = { toolName: BuiltinTools.WebSearch.name, ruleContent };
+    const denied = findContentRule(permissionContext, BuiltinTools.WebSearch.name, 'deny', ruleContent);
+    if (denied) {
+      return {
+        behavior: 'deny',
+        message: '已禁止本次 Web 搜索',
+        decisionReason: { type: 'rule', rule: denied },
+      };
+    }
+    const sessionRule = findMatchingContentRule(
+      permissionContext, BuiltinTools.WebSearch.name, 'allow',
+      content => content === ruleContent, 'session',
+    );
+    if (sessionRule) {
+      return { behavior: 'allow', decisionReason: { type: 'rule', rule: sessionRule }, sessionAllowRule };
+    }
+    const asked = findContentRule(permissionContext, BuiltinTools.WebSearch.name, 'ask', ruleContent);
+    if (asked) {
+      return {
+        behavior: 'ask',
+        message: 'Web 搜索需要用户确认',
+        decisionReason: { type: 'rule', rule: asked },
+        sessionAllowRule,
+      };
+    }
+    const allowed = findContentRule(permissionContext, BuiltinTools.WebSearch.name, 'allow', ruleContent);
+    if (allowed) {
+      return { behavior: 'allow', decisionReason: { type: 'rule', rule: allowed }, sessionAllowRule };
+    }
+    return { behavior: 'passthrough', message: 'Web 搜索需要用户确认', sessionAllowRule };
+  },
 
   // 本工具不消费宿主能力: 只依赖环境配置, 无需窄 Context。
   validateContext() {
@@ -114,6 +146,16 @@ export const WebSearchTool = buildTool<WebSearchInput, WebSearchResult, undefine
       + 'REMINDER: You MUST include the sources above in your response to the user using markdown hyperlinks.';
   },
 });
+
+function webSearchRuleContent(input: WebSearchInput): string {
+  const normalizeDomains = (domains: readonly string[] = []): string[] =>
+    [...new Set(domains.map(domain => domain.trim().toLowerCase()))].sort();
+  return `search:${JSON.stringify({
+    query: input.query.trim(),
+    allowed_domains: normalizeDomains(input.allowed_domains),
+    blocked_domains: normalizeDomains(input.blocked_domains),
+  })}`;
+}
 
 /** 域名条目形状校验: 拒绝空、协议/路径、通配符与空白, 规整交给适配层。 */
 function validateDomainEntry(domain: string): string | null {

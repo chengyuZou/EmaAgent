@@ -11,7 +11,7 @@ import {
   type InternalPathRoots,
   matchPathRule,
   pathInAnyWorkingDir,
-  type PermissionDecision,
+  type PermissionResult,
   type ToolPermissionContext,
 } from '@ema-agent/permission';
 import os from 'node:os';
@@ -38,12 +38,35 @@ const WRITE_PROTECTED_DIRS: ReadonlySet<string> = new Set([
 /** 读取权限：固定检查顺序。 */
 export function checkReadPathPermission(
   input: PathPermissionInput,
-): PermissionDecision {
+): PermissionResult {
   const { toolName, path, cwd, permissionContext, internalRoots } = input;
   // 原路径与 symlink 真实路径都必须通过全部检查（防符号链接逃逸）。
-  const pathsToCheck = getPathsForPermissionCheck(path);
+  const isNetworkPath = path.startsWith('\\\\') || path.startsWith('//');
+  // 网络路径在批准前不能做 exists/realpath, 这些查询本身就会访问网络.
+  const pathsToCheck = isNetworkPath ? [path] : getPathsForPermissionCheck(path);
 
-  // 1. UNC 路径早拦（纵深防御）：可能访问网络资源。
+  for (const pathToCheck of pathsToCheck) {
+    const denyRule = findMatchingContentRule(
+      permissionContext, toolName, 'deny',
+      content => matchPathRule(content, pathToCheck, cwd),
+    );
+    if (denyRule) {
+      return {
+        behavior: 'deny',
+        message: `已禁止读取 ${path}`,
+        decisionReason: { type: 'rule', rule: denyRule },
+      };
+    }
+  }
+  const sessionRule = findMatchingContentRule(
+    permissionContext, toolName, 'allow',
+    content => matchPathRule(content, path, cwd), 'session',
+  );
+  if (sessionRule) {
+    return { behavior: 'allow', decisionReason: { type: 'rule', rule: sessionRule } };
+  }
+
+  // 未获会话批准的网络路径需要确认, 不在批准前访问网络.
   for (const pathToCheck of pathsToCheck) {
     if (pathToCheck.startsWith('\\\\') || pathToCheck.startsWith('//')) {
       return {
@@ -54,7 +77,7 @@ export function checkReadPathPermission(
     }
   }
 
-  // 2. 可疑 Windows 路径模式（ADS/短名/长前缀/连续点）：必须人工确认。
+  // 可疑 Windows 路径模式需要人工确认.
   for (const pathToCheck of pathsToCheck) {
     if (hasSuspiciousWindowsPath(pathToCheck)) {
       return {
@@ -68,22 +91,7 @@ export function checkReadPathPermission(
     }
   }
 
-  // 3. read 专属 deny 规则（先于一切放行，防绕过显式拒绝）。
-  for (const pathToCheck of pathsToCheck) {
-    const denyRule = findMatchingContentRule(
-      permissionContext, toolName, 'deny',
-      (content) => matchPathRule(content, pathToCheck, cwd),
-    );
-    if (denyRule) {
-      return {
-        behavior: 'deny',
-        message: `已禁止读取 ${path}`,
-        decisionReason: { type: 'rule', rule: denyRule },
-      };
-    }
-  }
-
-  // 4. read 专属 ask 规则。
+  // 未命中会话批准时检查读取询问规则.
   for (const pathToCheck of pathsToCheck) {
     const askRule = findMatchingContentRule(
       permissionContext, toolName, 'ask',
@@ -98,11 +106,11 @@ export function checkReadPathPermission(
     }
   }
 
-  // 5. 编辑权限蕴含读取权限：可写路径也可读（须在 read 专属规则之后）。
+  // 当前工具的写入路径判定若放行, 同一路径也可以读取.
   const editResult = checkWritePathPermission(input);
   if (editResult.behavior === 'allow') return editResult;
 
-  // 6. 工作区内读取默认放行（default 模式）。
+  // 工作区内读取默认放行.
   if (pathInAnyWorkingDir(path, permissionContext)) {
     return {
       behavior: 'allow',
@@ -110,7 +118,7 @@ export function checkReadPathPermission(
     };
   }
 
-  // 7. 内部目录（宿主授予的 scratchpad 等）放行。
+  // 宿主授予的内部目录放行.
   if (internalReadAllow(path, internalRoots)) {
     return {
       behavior: 'allow',
@@ -118,7 +126,7 @@ export function checkReadPathPermission(
     };
   }
 
-  // 8. allow 规则。
+  // 用户和项目的内容允许规则.
   const allowRule = findMatchingContentRule(
     permissionContext, toolName, 'allow',
     (content) => matchPathRule(content, path, cwd),
@@ -130,7 +138,7 @@ export function checkReadPathPermission(
     };
   }
 
-  // 9. 默认询问（路径在工作区之外）。
+  // 工作区外路径默认询问.
   return {
     behavior: 'ask',
     message: `读取 ${path} 需要用户确认`,
@@ -141,12 +149,13 @@ export function checkReadPathPermission(
 /** 写入权限：固定检查顺序。 */
 export function checkWritePathPermission(
   input: PathPermissionInput,
-): PermissionDecision {
+): PermissionResult {
   const { toolName, path, cwd, permissionContext, internalRoots } = input;
   // 原路径与 symlink 真实路径都必须通过 deny 规则。
-  const pathsToCheck = getPathsForPermissionCheck(path);
+  const isNetworkPath = path.startsWith('\\\\') || path.startsWith('//');
+  const pathsToCheck = isNetworkPath ? [path] : getPathsForPermissionCheck(path);
 
-  // 1. deny 规则。
+  // 原路径及解析后的路径都检查显式拒绝.
   for (const pathToCheck of pathsToCheck) {
     const denyRule = findMatchingContentRule(
       permissionContext, toolName, 'deny',
@@ -161,7 +170,15 @@ export function checkWritePathPermission(
     }
   }
 
-  // 2. 内部可编辑目录（宿主授予的 scratchpad 等）直接放行。
+  const sessionRule = findMatchingContentRule(
+    permissionContext, toolName, 'allow',
+    content => matchPathRule(content, path, cwd), 'session',
+  );
+  if (sessionRule) {
+    return { behavior: 'allow', decisionReason: { type: 'rule', rule: sessionRule } };
+  }
+
+  // 宿主授予的内部可编辑目录直接放行.
   if (internalWriteAllow(path, internalRoots)) {
     return {
       behavior: 'allow',
@@ -169,8 +186,7 @@ export function checkWritePathPermission(
     };
   }
 
-  // 3. 安全路径检查（UNC / 可疑 Windows 模式 / 危险文件与目录）：
-  //    先于 allow 规则与 acceptEdits，防止意外授权凭据、配置与可执行任务。
+  // 未获会话批准的敏感路径先询问, 普通配置 allow 与 acceptEdits 不跳过确认.
   const safetyIssue = checkWriteSafety(path, pathsToCheck);
   if (safetyIssue) {
     return {
@@ -180,7 +196,7 @@ export function checkWritePathPermission(
     };
   }
 
-  // 4. ask 规则。
+  // 用户和项目的内容询问规则.
   for (const pathToCheck of pathsToCheck) {
     const askRule = findMatchingContentRule(
       permissionContext, toolName, 'ask',
@@ -195,7 +211,7 @@ export function checkWritePathPermission(
     }
   }
 
-  // 5. acceptEdits 模式：工作区内写入放行（模式是 Tool 侧语义）。
+  // acceptEdits 的工作区写入语义由路径工具处理.
   if (
     permissionContext.mode === 'acceptEdits'
     && pathInAnyWorkingDir(path, permissionContext)
@@ -206,7 +222,7 @@ export function checkWritePathPermission(
     };
   }
 
-  // 6. allow 规则。
+  // 用户和项目的内容允许规则.
   const allowRule = findMatchingContentRule(
     permissionContext, toolName, 'allow',
     (content) => matchPathRule(content, path, cwd),
@@ -218,7 +234,7 @@ export function checkWritePathPermission(
     };
   }
 
-  // 7. 默认询问。
+  // 未获得放行理由时默认询问.
   return {
     behavior: 'ask',
     message: `写入 ${path} 需要用户确认`,

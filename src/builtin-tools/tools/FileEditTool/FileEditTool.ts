@@ -3,13 +3,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
+import { filePathToRuleContent } from '@ema-agent/permission';
 import type { StructuredPatchHunk } from 'diff';
 import {
   buildTool,
-  contentHashOf,
+  fileChangedSinceRead,
   contextFail,
   contextOk,
-  type ReadFileState,
+  type FileStateCache,
   type ToolInvocation,
 } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
@@ -24,9 +25,8 @@ import {
   stripTrailingWhitespace,
 } from './textMatch.js';
 
-/** File 编辑工具只取得当前 Turn 的读取状态与工作区;取消与调用身份走 ToolInvocation。 */
 interface FileEditToolContext {
-  readFileState: ReadFileState;
+  fileStateCache: FileStateCache;
   cwd: string;
 }
 
@@ -82,11 +82,11 @@ export const FileEditTool = buildTool<FileEditInput, FileEditResult, FileEditToo
     if (!ctx.cwd) {
       return contextFail('File 编辑工具需要明确的工作区。');
     }
-    if (!ctx.readFileState) {
+    if (!ctx.fileStateCache) {
       return contextFail('File 编辑工具未装配读取状态。');
     }
     return contextOk({
-      readFileState: ctx.readFileState,
+      fileStateCache: ctx.fileStateCache,
       cwd: ctx.cwd,
     });
   },
@@ -104,13 +104,25 @@ export const FileEditTool = buildTool<FileEditInput, FileEditResult, FileEditToo
     return { valid: true };
   },
 
-  checkPermissions: async (input, context, permissionContext) =>
-    checkWritePathPermission({
+  async checkPermissions(input, context, permissionContext) {
+    const filePath = path.resolve(context.cwd, input.file_path);
+    const result = checkWritePathPermission({
       toolName: BuiltinTools.FileEdit.name,
-      path: path.resolve(context.cwd, input.file_path),
+      path: filePath,
       cwd: context.cwd,
       permissionContext,
-    }),
+    });
+    if (result.behavior === 'deny') {
+      return result;
+    }
+    return {
+      ...result,
+      sessionAllowRule: {
+        toolName: BuiltinTools.FileEdit.name,
+        ruleContent: filePathToRuleContent(filePath),
+      },
+    };
+  },
 
   async execute(
     input: FileEditInput,
@@ -135,22 +147,17 @@ export const FileEditTool = buildTool<FileEditInput, FileEditResult, FileEditToo
     }
 
     // ── 必须先读守卫 ─────────────────────────────────────────────────────────
-    const cached = context.readFileState.get(fullPath);
+    const cached = context.fileStateCache.get(fullPath);
     if (!cached) {
       throw new Error(
         `Edit requires the file to be read first. Call Read("${file_path}") before editing.`,
       );
     }
-    if (cached.isPartialView) {
-      throw new Error(
-        `Edit requires a full read of the file. The cached view of "${file_path}" is partial ` +
-          `(offset/limit was used). Call Read("${file_path}") without offset/limit first.`,
-      );
-    }
 
     // ── new_string 预处理:尾部空白裁剪(Markdown 保留硬换行)─────────────────
     const isMarkdown = /\.(md|mdx)$/i.test(file_path);
-    const newString = isMarkdown ? input.new_string : stripTrailingWhitespace(input.new_string);
+    const normalizedNew = input.new_string.replace(/\r\n/g, '\n');
+    const newString = isMarkdown ? normalizedNew : stripTrailingWhitespace(normalizedNew);
 
     let actualOld = '';
     let styledNew = '';
@@ -164,16 +171,15 @@ export const FileEditTool = buildTool<FileEditInput, FileEditResult, FileEditToo
           throw new Error(`File no longer exists: ${file_path}`);
         }
 
-        // 外部修改检测：内容指纹(sha256)与缓存基准比对——内容变必哈希变，与 mtime 无关；
-        // 只改 mtime 不改内容(云同步/杀软触碰)哈希不变，照常放行，不误报。
-        if (contentHashOf(current.content) !== cached.contentHash) {
+        if (fileChangedSinceRead(cached, current.mtimeMs, current.content)) {
           throw new Error(
             `File "${file_path}" was modified externally since it was read. ` +
               'Re-read it with Read before editing.',
           );
         }
 
-        const actual = findActualString(current.content, old_string);
+        const normalizedContent = current.content.replace(/\r\n/g, '\n');
+        const actual = findActualString(normalizedContent, old_string.replace(/\r\n/g, '\n'));
         if (actual === null) {
           throw new Error(
             `The string to replace was not found in "${file_path}".\n\n` +
@@ -182,7 +188,7 @@ export const FileEditTool = buildTool<FileEditInput, FileEditResult, FileEditToo
           );
         }
 
-        const occurrences = countOccurrences(current.content, actual);
+        const occurrences = countOccurrences(normalizedContent, actual);
         if (!replace_all && occurrences > 1) {
           throw new Error(
             `The string to replace appears ${occurrences} times in "${file_path}". ` +
@@ -190,29 +196,32 @@ export const FileEditTool = buildTool<FileEditInput, FileEditResult, FileEditToo
           );
         }
         replacements = replace_all ? occurrences : 1;
-        actualOld = actual;
         // 文件用弯引号时把 newString 直引号转回弯引号,保持排版风格
-        styledNew = preserveQuoteStyle(actual, newString);
+        const replacement = preserveQuoteStyle(actual, newString);
+        const usesCrlf = current.content.includes('\r\n');
+        actualOld = usesCrlf ? actual.replace(/\n/g, '\r\n') : actual;
+        styledNew = usesCrlf ? replacement.replace(/\n/g, '\r\n') : replacement;
         // 删除场景:连同紧跟换行一起删,避免留空行
-        if (styledNew === '' && !actual.endsWith('\n') && current.content.includes(actual + '\n')) {
-          return current.content.split(actual + '\n').join('');
+        let updated: string;
+        if (replacement === '' && !actual.endsWith('\n') && normalizedContent.includes(actual + '\n')) {
+          updated = normalizedContent.split(actual + '\n').join('');
+        } else if (replace_all) {
+          updated = normalizedContent.split(actual).join(replacement);
+        } else {
+          updated = normalizedContent.replace(actual, replacement);
         }
-        return replace_all
-          ? current.content.split(actual).join(styledNew)
-          : current.content.replace(actual, styledNew);
+        return usesCrlf ? updated.replace(/\n/g, '\r\n') : updated;
       },
       false,
     );
 
     // 用编辑后内容更新缓存,后续 Read/Edit 命中新版本。
-    // contentHash 一并刷新,使下一次 Edit 的"外部修改"检测基准滚动到本次落盘状态。
-    context.readFileState.set(fullPath, {
+    context.fileStateCache.set(fullPath, {
       content: written.content,
-      contentHash: contentHashOf(written.content),
       timestamp: written.mtimeMs,
       offset: undefined,
       limit: undefined,
-      isPartialView: false,
+      totalLines: written.content.split('\n').length,
       truncated: false,
     });
 

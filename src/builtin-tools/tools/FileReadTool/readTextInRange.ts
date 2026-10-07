@@ -41,6 +41,10 @@ async function readFast(
   signal?: AbortSignal,
 ): Promise<TextRangeResult> {
   const raw = await fs.promises.readFile(filePath, { encoding: 'utf8', signal });
+  return selectTextRange(raw, offset, limit);
+}
+
+export function selectTextRange(raw: string, offset: number, limit: number | undefined): TextRangeResult {
   const text = raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw;
   const all = text.split('\n').map(stripCr);
   const selected = all.slice(offset - 1, limit === undefined ? undefined : offset - 1 + limit);

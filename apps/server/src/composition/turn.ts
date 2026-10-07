@@ -321,6 +321,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     },
     disabledSkillPaths: () => tools.skillStore.listDisabledPaths(),
     registry: tools.registry,
+    fileStateCache: tools.getSessionFileStateCache,
     interactionQueue,
     publishInteraction: deps.publishInteraction,
     subagents,

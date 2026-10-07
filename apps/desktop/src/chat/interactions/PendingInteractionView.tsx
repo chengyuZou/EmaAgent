@@ -155,18 +155,15 @@ function PermissionView({ sessionId, request }: { sessionId: string; request: Pe
           >
             拒绝
           </Button>
-          {/*TODO: 我没有看到本对话允许的按钮, 疑似ruleSuggestion 这个字段没起作用*/}
           <div className="flex gap-2">
-            {request.ruleSuggestion && (
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={submission.submitting}
-                onClick={() => respond({ action: 'allowSession' })}
-              >
-                本会话允许
-              </Button>
-            )}
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={submission.submitting}
+              onClick={() => respond({ action: 'allowSession' })}
+            >
+              本会话允许
+            </Button>
             <Button
               variant="primary"
               size="sm"

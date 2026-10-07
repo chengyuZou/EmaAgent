@@ -11,8 +11,18 @@ const DISABLED_KEY = 'tools.disabled';
 export function ToolsSettings(): JSX.Element {
   const settings = useSettingValues();
   const tools = useMemo(() => Object.values(BuiltinTools), []);
-  if (settings.loading) return <div className="flex h-48 items-center justify-center"><Spinner size="md" /></div>;
-  if (settings.error) return <Callout variant="danger">Tools 设置读取失败: {settings.error}</Callout>;
+  if (settings.loading) return (
+    <div className="flex h-48 items-center justify-center">
+      <Spinner size="md" />
+    </div>
+  );
+
+  if (settings.error) return (
+    <Callout variant="danger">
+      Tools 设置读取失败: {settings.error}
+    </Callout>
+  );
+
   const disabled = readStringArray(settings.values, DISABLED_KEY);
 
   const setEnabled = async (id: string, enabled: boolean): Promise<void> => {
@@ -32,8 +42,18 @@ export function ToolsSettings(): JSX.Element {
             const locked = tool.id === BuiltinTools.AskUser.id;
             const enabled = !disabled.includes(tool.id);
             return (
-              <SettingItem key={tool.id} title={tool.name} hint={`${tool.variant} · ${tool.id}`} apply={settings.apply(DISABLED_KEY)}>
-                <Switch checked={enabled} disabled={locked} label={tool.name} onCheckedChange={value => void setEnabled(tool.id, value)} />
+              <SettingItem 
+                key={tool.id} 
+                title={tool.name} 
+                hint={`${tool.variant} · ${tool.id}`} 
+                apply={settings.apply(DISABLED_KEY)}
+              >
+                <Switch 
+                  checked={enabled} 
+                  disabled={locked} 
+                  label={tool.name} 
+                  onCheckedChange={value => void setEnabled(tool.id, value)} 
+                />
               </SettingItem>
             );
           })}
@@ -41,8 +61,24 @@ export function ToolsSettings(): JSX.Element {
       </SettingsSection>
       <SettingsSection icon="i-lucide:terminal-square" title="后台进程" description="Shell 后台任务采用的进程约束">
         <SettingsCard>
-          <NumberSetting title="最大并发数" hint="同一时间最多保留多少个后台进程." apply={settings.apply('tools.backgroundProcess.maxConcurrent')} value={readNumber(settings.values, 'tools.backgroundProcess.maxConcurrent')} unit="个" onSave={value => settings.save('tools.backgroundProcess.maxConcurrent', value)} onReset={() => settings.reset('tools.backgroundProcess.maxConcurrent')} />
-          <NumberSetting title="最长运行小时" hint="Bash 和 PowerShell 从进程启动起计算, 包含前台等待时间. 超过上限会停止; 修改只影响新提交的命令." apply={settings.apply('tools.backgroundProcess.maxRuntimeHours')} value={readNumber(settings.values, 'tools.backgroundProcess.maxRuntimeHours')} unit="小时" onSave={value => settings.save('tools.backgroundProcess.maxRuntimeHours', value)} onReset={() => settings.reset('tools.backgroundProcess.maxRuntimeHours')} />
+          <NumberSetting 
+            title="最大并发数" 
+            hint="同一时间最多保留多少个后台进程." 
+            apply={settings.apply('tools.backgroundProcess.maxConcurrent')} 
+            value={readNumber(settings.values, 'tools.backgroundProcess.maxConcurrent')} 
+            unit="个" 
+            onSave={value => settings.save('tools.backgroundProcess.maxConcurrent', value)} 
+            onReset={() => settings.reset('tools.backgroundProcess.maxConcurrent')} 
+          />
+          <NumberSetting 
+            title="最长运行小时" 
+            hint="Bash 和 PowerShell 从进程启动起计算, 包含前台等待时间. 超过上限会停止; 修改只影响新提交的命令." 
+            apply={settings.apply('tools.backgroundProcess.maxRuntimeHours')} 
+            value={readNumber(settings.values, 'tools.backgroundProcess.maxRuntimeHours')} 
+            unit="小时" 
+            onSave={value => settings.save('tools.backgroundProcess.maxRuntimeHours', value)} 
+            onReset={() => settings.reset('tools.backgroundProcess.maxRuntimeHours')} 
+          />
         </SettingsCard>
       </SettingsSection>
     </div>

@@ -54,7 +54,7 @@ src/tools/
 │  ├─ types.ts / events.ts / settings.ts
 ├─ events.ts                      Tool 事件(ToolStreamEvent/AskUser 事件)
 ├─ errors.ts                      本包全部错误类型
-├─ types.ts                       ReadFileState、ToolCapabilityScope 等共享类型
+├─ fileState/fileStateCache.ts    Session 文件正文缓存与写入前校验基准
 └─ index.ts                       公共出口(见下)
 ```
 
@@ -78,7 +78,7 @@ src/tools/
 **Agent/Turn 消费**:
 
 - `ToolResult`（唯一结果信封）、`ToolExecutionEvent`、`AskUserQuestionSpec`、`PendingAskUserPrompt`;
-- `ToolCapabilityScope`（只能收窄的能力边界）、`ReadFileState`;
+- `FileStateCache` 与 `FileState`;
 - `BackgroundProcessEvent`。
 
 ## 关键不变量
@@ -94,6 +94,24 @@ src/tools/
 9. **结果只有一份事实。** Tool 作者不同时返回 `data + modelContent`；模型内容必须由 `mapResultToModelContent(TOutput)` 在执行期投影一次并持久化（重放不重算）。缺省投影为 JSON/Text；复杂结果必须自定义映射，过滤内部字段并保留多模态语义；多模态 parts 不做文本外置，由 Tool 业务层自限尺寸。
 10. **MCP 只有一个结果 Adapter。** 动态 MCP Tool 共用标准 `content` 转换；`structuredContent` 稳定 JSON 化，`isError` 进入失败路径，`_meta` 不进模型，图片/资源/二进制按各自协议语义处理。
 
+
+## 会话权限批准
+
+工具在现有 `checkPermissions` 结果中携带可选的 `sessionAllowRule`, 不另设规则生成方法.
+Permission 中央为缺省范围补完整输入精确规则, 最终 ask 保证带规则. `ToolCallExecution`
+把已经生成的规则值交给 `askPermission(request, signal, sessionAllowRule)`, 不传生成回调,
+也不把规则放入前端请求. 宿主在 allowSession 时保存规则后再继续执行; 仅本次允许不保存.
+具体范围、匹配顺序与生命周期见 [Permission](../permission/README.md).
+
+## 文件状态
+
+Server 按 Session 持有 `FileStateCache`, Turn 与子代理通过 `ToolUseContext.fileStateCache` 使用同一实例.
+缓存跨 Turn 完成、中断和 Goal 续接保留, 不随压缩或对话回退清空. Session 删除和 Server 关闭时释放;
+缓存只在进程内保存, 不从历史消息或数据库重建. 条目数与 UTF-8 正文字节数由 LRU 限制.
+
+Read 保存最近一次成功读取的全文或范围正文; 相同文件版本与请求范围命中时仍返回正文和截断事实.
+普通范围读取允许后续 Edit, 覆盖已有文件的 Write 仍要求完整记录. 修改时间变新时,
+只有完整原文可以通过 LF/CRLF 归一化后的全文相等兜底. 成功 Edit/Write 保存更新后的完整原文.
 
 ## Shell 后台执行
 

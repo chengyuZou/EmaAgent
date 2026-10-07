@@ -3,12 +3,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
+import { filePathToRuleContent } from '@ema-agent/permission';
 import {
   buildTool,
-  contentHashOf,
   contextFail,
   contextOk,
-  type ReadFileState,
+  type FileStateCache,
   type ToolInvocation,
 } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
@@ -21,16 +21,13 @@ import {
   type FileReadNotebookResult,
 } from './notebookReader.js';
 import { MAX_READ_LINES, MAX_RESULT_BYTES, SELECTED_BYTES_LIMIT, TEXT_WHOLE_READ_LIMIT } from './limits.js';
-import { FILE_READ_DESCRIPTION, FILE_UNCHANGED_STUB, imageResultNotice } from './prompt.js';
-import { readTextInRange } from './readTextInRange.js';
+import { FILE_READ_DESCRIPTION, imageResultNotice } from './prompt.js';
+import { readTextInRange, selectTextRange, type TextRangeResult } from './readTextInRange.js';
 
-/** File 读取工具只取得当前 Turn 的读取状态与工作区；取消信号走 ToolInvocation。 */
 interface FileReadToolContext {
-  readFileState: ReadFileState;
+  fileStateCache: FileStateCache;
   cwd: string;
 }
-
-// ── 常量 ─────────────────────────────────────────────────────────────────────
 
 /**
  * 会无限阻塞进程或产生无限输出的设备路径。以这些开头的路径拒绝读取。
@@ -93,18 +90,8 @@ export interface FileReadTextResult {
   notice?: string;
 }
 
-/** 同文件同范围同 mtime 的去重回放; 不带正文。 */
-export interface FileReadUnchangedResult {
-  type: 'file_unchanged';
-  filePath: string;
-  totalLines: number;
-  isPartialView: boolean;
-  truncated?: true;
-}
-
 export type FileReadResult =
   | FileReadTextResult
-  | FileReadUnchangedResult
   | FileReadImageResult
   | FileReadNotebookResult;
 
@@ -163,6 +150,30 @@ function formatWithLineNumbers(lines: string[], startLine: number): string {
     .join('\n');
 }
 
+function textReadResult(
+  filePath: string,
+  result: TextRangeResult,
+  startLine: number,
+  isPartialView: boolean,
+): FileReadTextResult {
+  const nextOffset = startLine + result.lines.length;
+  return {
+    type: 'file_content',
+    filePath,
+    content: formatWithLineNumbers(result.lines, startLine),
+    totalLines: result.totalLines,
+    isPartialView,
+    ...(result.truncated
+      ? {
+          truncated: true as const,
+          truncationReason: 'bytes' as const,
+          nextOffset,
+          notice: `Output truncated at ${SELECTED_BYTES_LIMIT / 1024} KB. Use offset=${nextOffset} to continue reading.`,
+        }
+      : {}),
+  };
+}
+
 // ── 工具定义 ───────────────────────────────────────────────────────────────────
 
 export const FileReadTool = buildTool<FileReadInput, FileReadResult, FileReadToolContext>({
@@ -179,22 +190,34 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, FileReadToo
     if (!ctx.cwd) {
       return contextFail('File 读取工具需要明确的工作区。');
     }
-    if (!ctx.readFileState) {
+    if (!ctx.fileStateCache) {
       return contextFail('File 读取工具未装配读取状态。');
     }
     return contextOk({
-      readFileState: ctx.readFileState,
+      fileStateCache: ctx.fileStateCache,
       cwd: ctx.cwd,
     });
   },
 
-  checkPermissions: async (input, context, permissionContext) =>
-    checkReadPathPermission({
+  async checkPermissions(input, context, permissionContext) {
+    const filePath = path.resolve(context.cwd, input.file_path);
+    const result = checkReadPathPermission({
       toolName: BuiltinTools.FileRead.name,
-      path: path.resolve(context.cwd, input.file_path),
+      path: filePath,
       cwd: context.cwd,
       permissionContext,
-    }),
+    });
+    if (result.behavior === 'deny') {
+      return result;
+    }
+    return {
+      ...result,
+      sessionAllowRule: {
+        toolName: BuiltinTools.FileRead.name,
+        ruleContent: filePathToRuleContent(filePath),
+      },
+    };
+  },
 
   async execute(
     input: FileReadInput,
@@ -278,24 +301,25 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, FileReadToo
     const mtimeMs = stat.mtimeMs;
     const startLine = offset ?? 1;
 
-    // ── 去重检查: 同文件同范围同 mtime 直接回放 ───────────────────────────────
-    const existing = context.readFileState.get(fullPath);
+    const existing = context.fileStateCache.get(fullPath);
     if (
       existing &&
-      existing.timestamp === mtimeMs &&
+      Math.floor(existing.timestamp) === Math.floor(mtimeMs) &&
       existing.offset === offset &&
       existing.limit === limit
     ) {
-      const cachedLines = existing.content.split('\n');
-      // 判别联合: 两个分支都带截断事实, 回放原样保留(分页分支另有 totalLines)。
-      const totalLines = existing.isPartialView ? existing.totalLines : cachedLines.length;
-      return {
-        type: 'file_unchanged',
-        filePath: file_path,
-        totalLines,
-        isPartialView,
-        ...(existing.truncated ? { truncated: true as const } : {}),
-      };
+      if (!isPartialView) {
+        return textReadResult(file_path, selectTextRange(existing.content, startLine, limit), startLine, false);
+      }
+      let lines = existing.content.split('\n');
+      if (existing.content === '' && existing.truncated) {
+        lines = [];
+      }
+      return textReadResult(file_path, {
+        lines,
+        totalLines: existing.totalLines,
+        truncated: existing.truncated,
+      }, startLine, true);
     }
 
     // ── 读文件(小文件快路径整读, 大文件流式只留选中行) ─────────────────────────
@@ -307,54 +331,29 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, FileReadToo
       );
     }
 
-    const content = formatWithLineNumbers(result.lines, startLine);
-
-    // ── 更新去重缓存 ──────────────────────────────────────────────────────────
-    // 整读存完整原文(FileEdit 防覆盖需要);分页只存选中切片(Edit 拒绝局部视图,
-    // 缓存仅供去重回放),不再整文件占内存。contentHash 是外部修改检测的指纹。
+    // 全文缓存用于修改时间变化后的正文比对, 范围缓存只保留已返回的切片.
     if (isPartialView) {
-      context.readFileState.set(fullPath, {
+      context.fileStateCache.set(fullPath, {
         content: result.lines.join('\n'),
-        contentHash: contentHashOf(result.lines.join('\n')),
         timestamp: mtimeMs,
         offset,
         limit,
-        isPartialView: true,
         totalLines: result.totalLines,
         truncated: result.truncated,
       });
     } else {
-      context.readFileState.set(fullPath, {
+      context.fileStateCache.set(fullPath, {
         content: result.raw ?? result.lines.join('\n'),
-        contentHash: contentHashOf(result.raw ?? result.lines.join('\n')),
         timestamp: mtimeMs,
-        isPartialView: false,
+        totalLines: result.totalLines,
         truncated: result.truncated,
       });
     }
-    const nextOffset = startLine + result.lines.length;
-    return {
-      type: 'file_content',
-      filePath: file_path,
-      content,
-      totalLines: result.totalLines,
-      isPartialView,
-      // 截断必须模型可见，不能只告诉 UI 后让模型对不完整内容继续推理。
-      ...(result.truncated
-        ? {
-            truncated: true as const,
-            truncationReason: 'bytes' as const,
-            nextOffset,
-            notice: `Output truncated at ${SELECTED_BYTES_LIMIT / 1024} KB. Use offset=${nextOffset} to continue reading.`,
-          }
-        : {}),
-    };
+    return textReadResult(file_path, result, startLine, isPartialView);
   },
 
   mapResultToModelContent(output) {
     switch (output.type) {
-      case 'file_unchanged':
-        return FILE_UNCHANGED_STUB;
       case 'image_content':
         return [
           {

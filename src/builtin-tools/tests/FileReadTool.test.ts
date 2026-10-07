@@ -4,12 +4,12 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
-import type { ReadFileState, ToolInvocation } from '@ema-agent/tools';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { FileStateCache, type ToolInvocation } from '@ema-agent/tools';
 import { FileReadTool, type FileReadResult } from '../tools/FileReadTool/FileReadTool.js';
 
-function makeCtx(cwd = ''): { readFileState: ReadFileState; cwd: string } {
-  return { readFileState: new Map(), cwd };
+function makeCtx(cwd = ''): { fileStateCache: FileStateCache; cwd: string } {
+  return { fileStateCache: new FileStateCache(), cwd };
 }
 
 function makeInvocation(signal?: AbortSignal): ToolInvocation {
@@ -24,6 +24,7 @@ function makeInvocation(signal?: AbortSignal): ToolInvocation {
 // 临时目录统一登记, 每个用例结束清理——大文件用例单次跑会在 %TEMP% 留几十 MB。
 const tempDirs: string[] = [];
 afterEach(() => {
+  vi.restoreAllMocks();
   for (const dir of tempDirs.splice(0)) {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -69,8 +70,9 @@ describe('FileReadTool — 快路径(小文件)', () => {
     const text = asText(result);
     expect(text.totalLines).toBe(4); // 结尾 \n 产生末尾空行, 与 split 口径一致
     expect(text.content).toContain('l2');
-    const entry = ctx.readFileState.get(path.resolve(file))!;
-    expect(entry.isPartialView).toBe(false);
+    const entry = ctx.fileStateCache.get(path.resolve(file))!;
+    expect(entry.offset).toBeUndefined();
+    expect(entry.limit).toBeUndefined();
     expect(entry.content).toBe('l1\nl2\nl3\n'); // 完整原文
   });
 
@@ -86,8 +88,9 @@ describe('FileReadTool — 快路径(小文件)', () => {
     expect(text.content).toContain('a2');
     expect(text.content).toContain('a3');
     expect(text.content).not.toContain('a1');
-    const entry = ctx.readFileState.get(path.resolve(file))!;
-    expect(entry.isPartialView).toBe(true);
+    const entry = ctx.fileStateCache.get(path.resolve(file))!;
+    expect(entry.offset).toBe(2);
+    expect(entry.limit).toBe(2);
     expect(entry.content).toBe('a2\na3'); // 只有切片, 不是全文
     expect(entry.totalLines).toBe(6);
   });
@@ -119,7 +122,7 @@ describe('FileReadTool — 流式路径(大文件)', () => {
     expect(text.totalLines).toBe(200_001);
     expect(text.isPartialView).toBe(true);
 
-    const entry = ctx.readFileState.get(path.resolve(file))!;
+    const entry = ctx.fileStateCache.get(path.resolve(file))!;
     // 关键回归: 修复前缓存整个 12MB raw, 现在只有 5 行切片
     expect(entry.content.length).toBeLessThan(1024);
     expect(entry.totalLines).toBe(200_001);
@@ -151,16 +154,46 @@ describe('FileReadTool — 流式路径(大文件)', () => {
 });
 
 describe('FileReadTool — 去重回放', () => {
-  it('同文件同范围同 mtime 返回 file_unchanged', async () => {
+  it('完整缓存复用正文但仍应用字节预算并剥 BOM/CRLF', async () => {
+    const dir = makeDir();
+    const file = path.join(dir, 'cached-full.txt');
+    fs.writeFileSync(file, '\ufeff' + ('x'.repeat(1024) + '\r\n').repeat(100));
+    const ctx = makeCtx();
+    const first = await read(file, { ctx });
+    const diskRead = vi.spyOn(fs.promises, 'readFile');
+
+    const second = await read(file, { ctx });
+
+    expect(second.result).toEqual(first.result);
+    expect(asText(second.result).truncated).toBe(true);
+    expect(asText(second.result).content).not.toContain('\r');
+    expect(asText(second.result).content).not.toContain('\ufeff');
+    expect(diskRead).not.toHaveBeenCalled();
+  });
+
+  it('完整缓存被范围读取替换, 再完整读取会重新取正文', async () => {
+    const dir = makeDir();
+    const file = path.join(dir, 'ranges.txt');
+    fs.writeFileSync(file, 'a\nb\nc');
+    const ctx = makeCtx();
+    await read(file, { ctx });
+    await read(file, { ctx, offset: 2, limit: 1 });
+    expect(ctx.fileStateCache.get(file)?.content).toBe('b');
+    const last = await read(file, { ctx });
+    expect(asText(last.result).content).toContain('c');
+    expect(ctx.fileStateCache.get(file)?.offset).toBeUndefined();
+  });
+  it('同文件同范围同 mtime 返回缓存正文', async () => {
     const dir = makeDir();
     const file = path.join(dir, 'd.txt');
     fs.writeFileSync(file, 'q1\nq2\nq3\n');
 
     const ctx = makeCtx();
-    await read(file, { offset: 1, limit: 2, ctx });
+    const first = await read(file, { offset: 1, limit: 2, ctx });
     const { result } = await read(file, { offset: 1, limit: 2, ctx });
 
-    expect(result.type).toBe('file_unchanged');
+    expect(result).toEqual(first.result);
+    expect(asText(result).content).toContain('q2');
   });
 
   it('mtime 变化后重新读取', async () => {
@@ -243,8 +276,11 @@ describe('FileReadTool — 截断模型可见与回放保留', () => {
     await read(file, { offset: 1, limit: 10, ctx });
     const { result } = await read(file, { offset: 1, limit: 10, ctx });
 
-    expect(result.type).toBe('file_unchanged');
-    expect(result.truncated).toBe(true);
+    const text = asText(result);
+    expect(text.truncated).toBe(true);
+    expect(text.content).toBe('');
+    expect(text.nextOffset).toBe(1);
+    expect(text.notice).toContain('50 KB');
   });
 });
 
@@ -303,7 +339,7 @@ describe('FileReadTool — 图片分支', () => {
     expect(result.mediaType).toBe('image/png');
     expect(Buffer.from(result.base64, 'base64').equals(TINY_PNG)).toBe(true);
     expect(result.originalBytes).toBe(TINY_PNG.length);
-    // 图片不写 readFileState(Edit 只比对文本)
+    // 图片不写 fileStateCache(Edit 只比对文本)
     expect(result.filePath).toBe(file);
   });
 
@@ -339,16 +375,6 @@ describe('FileReadTool.mapResultToModelContent', () => {
       notice: 'Output truncated at 50 KB.',
     });
     expect(out).toBe('     1\thi\nOutput truncated at 50 KB.');
-  });
-
-  it('去重回放: 引导模型引用早前内容', () => {
-    const out = FileReadTool.mapResultToModelContent!({
-      type: 'file_unchanged',
-      filePath: 'a.txt',
-      totalLines: 3,
-      isPartialView: false,
-    });
-    expect(out).toContain('unchanged since last read');
   });
 
   it('图片: 文本说明 + image_data part', () => {

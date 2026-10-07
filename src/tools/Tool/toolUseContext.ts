@@ -7,7 +7,7 @@ import type { ListMemory, ReadMemory, SearchMemory } from '@ema-agent/memory';
 import type { NarrativeSearch } from '@ema-agent/narrative';
 import type { SkillPool } from '@ema-agent/skills';
 import type { CallVision } from '@ema-agent/vision';
-import type { ReadFileState } from '../types.js';
+import type { FileStateCache } from '../fileState/fileStateCache.js';
 import type { AskUserQuestionSpec } from '../events.js';
 import type { BackgroundProcess } from '../background/backgroundProcess.js';
 
@@ -123,8 +123,8 @@ export interface ToolUseContext {
   readonly skillPool?: SkillPool;
   /** Scratchpad 工具的 Turn 级临时存储位置。 */
   readonly scratchpad?: Scratchpad;
-  /** File 工具在当前 Turn 内共享的读取状态，用于去重和写入前校验。 */
-  readonly readFileState?: ReadFileState;
+  /** 同一 Session 的文件正文缓存与写入前校验基准, 跨 Turn 保留. */
+  readonly fileStateCache?: FileStateCache;
   /** AskUser 工具的问询解析器。 */
   readonly askUser?: AskUser;
   /** 本 Turn 冻结的 vision 调用（OCR/图注）；缺省时 PdfReadTool 只读文本层。 */

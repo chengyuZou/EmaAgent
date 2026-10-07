@@ -2,6 +2,7 @@
 import { open, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
+import { filePathToRuleContent } from '@ema-agent/permission';
 import { ImageReader, PdfReader, type DocumentBlock } from '@ema-agent/knowledge';
 import type { CallVision } from '@ema-agent/vision';
 import {
@@ -87,13 +88,25 @@ export const PdfReadTool = buildTool<PdfReadInput, PdfReadResult, PdfReadToolCon
       : { valid: true };
   },
 
-  checkPermissions: async (input, context, permissionContext) =>
-    checkReadPathPermission({
+  async checkPermissions(input, context, permissionContext) {
+    const filePath = path.resolve(context.cwd, input.file_path);
+    const result = checkReadPathPermission({
       toolName: BuiltinTools.PdfRead.name,
-      path: path.resolve(context.cwd, input.file_path),
+      path: filePath,
       cwd: context.cwd,
       permissionContext,
-    }),
+    });
+    if (result.behavior === 'deny') {
+      return result;
+    }
+    return {
+      ...result,
+      sessionAllowRule: {
+        toolName: BuiltinTools.PdfRead.name,
+        ruleContent: filePathToRuleContent(filePath),
+      },
+    };
+  },
 
   async execute(
     input: PdfReadInput,

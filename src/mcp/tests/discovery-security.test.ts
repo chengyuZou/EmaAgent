@@ -1,7 +1,7 @@
 // 测试 MCP Server 的动态 Schema、结果预算和自报 annotations 都受 Ema Tool 契约约束。
 import { describe, expect, it, vi } from 'vitest';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import type { ToolPermissionContext } from '@ema-agent/permission';
+import { hasPermissionsToUseTool, permissionRuleValueToString, type ToolPermissionContext } from '@ema-agent/permission';
 import { DEFAULT_MAX_RESULT_BYTES } from '@ema-agent/tools';
 import type { McpToolInfo } from '../types.js';
 import { buildMcpBuiltTool, discoverServerTools } from '../discovery.js';
@@ -15,6 +15,7 @@ const PERMISSION_CONTEXT: ToolPermissionContext = {
   alwaysAllowRules: {},
   alwaysDenyRules: {},
   alwaysAskRules: {},
+  workspaceRoots: [],
 };
 
 describe('MCP 工具发现安全边界', () => {
@@ -131,6 +132,32 @@ describe('MCP 工具发现安全边界', () => {
       });
     expect(destructive.isReadOnly({})).toBe(false);
     expect(destructive.isConcurrencySafe({})).toBe(false);
+  });
+
+  it('MCP 会话批准仅覆盖当前工具与完整输入, 已批准输入不重复询问', async () => {
+    const registry = registryStub();
+    const tool = buildMcpBuiltTool(toolInfo({ reportedDestructive: true }), registry);
+    const firstInput = tool.inputSchema.parse({ query: 'one', options: { b: 2, a: 1 } });
+    const first = await hasPermissionsToUseTool(tool as never, firstInput, {}, PERMISSION_CONTEXT, { interactive: true });
+    expect(first.behavior).toBe('ask');
+    if (first.behavior !== 'ask') throw new Error('expected ask');
+    const permissions: ToolPermissionContext = {
+      ...PERMISSION_CONTEXT,
+      alwaysAllowRules: { session: [permissionRuleValueToString(first.sessionAllowRule)] },
+      alwaysAskRules: { userSettings: [tool.name] },
+    };
+    expect((await hasPermissionsToUseTool(tool as never,
+      { options: { a: 1, b: 2 }, query: 'one' }, {}, permissions, { interactive: true })).behavior).toBe('allow');
+    expect((await hasPermissionsToUseTool(tool as never,
+      { query: 'two', options: { a: 1, b: 2 } }, {}, permissions, { interactive: true })).behavior).toBe('ask');
+    const other = buildMcpBuiltTool(toolInfo({
+      qualifiedName: 'mcp__test__other', serverToolName: 'other',
+    }), registry);
+    expect((await hasPermissionsToUseTool(other as never, firstInput, {}, permissions,
+      { interactive: true })).behavior).toBe('ask');
+    expect((await hasPermissionsToUseTool(tool as never, firstInput, {}, {
+      ...permissions, alwaysDenyRules: { userSettings: [tool.name] },
+    }, { interactive: true })).behavior).toBe('deny');
   });
 });
 

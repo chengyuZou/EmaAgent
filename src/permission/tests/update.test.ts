@@ -1,16 +1,16 @@
-// 测试 PermissionUpdate 应用：session 内存表、settings KV 读写与项目清理。
+// 测试 PermissionUpdate 应用: session 内存表与 settings KV 读写.
 import { describe, expect, it } from 'vitest';
 import { SettingsStore, type SettingsRepository } from '@ema-agent/settings';
 import {
   applyPermissionUpdate,
   clearSessionRules,
   getSessionAllowRules,
-  purgeProjectRules,
 } from '../rules/update.js';
 import {
   permissionRulesProjectAllowSetting,
   permissionRulesUserAllowSetting,
 } from '../settings.js';
+import { permissionRuleValueFromString } from '../rules/permissionRuleParser.js';
 
 function makeStore(): { store: SettingsStore; data: Map<string, unknown> } {
   const data = new Map<string, unknown>();
@@ -42,12 +42,15 @@ describe('applyPermissionUpdate', () => {
     expect(getSessionAllowRules('s1')).toEqual([]);
   });
 
-  it('session 只支持 allow 行为，deny 直接拒绝', () => {
+  it('session 授权隔离且保留规则内容的转义', () => {
     const { store } = makeStore();
-    expect(() => applyPermissionUpdate(store, {
-      type: 'addRules', destination: 'session', behavior: 'deny',
-      rules: [{ toolName: 'Bash' }],
-    }, { sessionId: 's1' })).toThrow(/allow/);
+    const rule = { toolName: 'Mcp', ruleContent: 'input:{"text":"a(b)\\\\c"}' };
+    applyPermissionUpdate(store, {
+      type: 'addRules', destination: 'session', behavior: 'allow', rules: [rule],
+    }, { sessionId: 'isolation-one' });
+    expect(getSessionAllowRules('isolation-two')).toEqual([]);
+    expect(permissionRuleValueFromString(getSessionAllowRules('isolation-one')[0]!)).toEqual(rule);
+    clearSessionRules('isolation-one');
   });
 
   it('userSettings addRules 写 KV 并去重；removeRules 规范化移除', () => {
@@ -69,7 +72,7 @@ describe('applyPermissionUpdate', () => {
     expect(store.get(permissionRulesUserAllowSetting)).toEqual(['Bash(npm test)']);
   });
 
-  it('projectSettings 按 projectId 分桶写；缺 projectId 拒绝；purgeProjectRules 清三张 record', () => {
+  it('projectSettings 按 projectId 分桶写；缺 projectId 拒绝', () => {
     const { store } = makeStore();
     expect(() => applyPermissionUpdate(store, {
       type: 'addRules', destination: 'projectSettings', behavior: 'allow',
@@ -82,9 +85,6 @@ describe('applyPermissionUpdate', () => {
     }, { sessionId: 's1', projectId: 'proj-a' });
     expect(store.get(permissionRulesProjectAllowSetting)).toEqual({ 'proj-a': ['Bash(pnpm test)'] });
 
-    purgeProjectRules(store, 'proj-a');
-    expect(store.get(permissionRulesProjectAllowSetting)).toEqual({});
-    purgeProjectRules(store, 'nonexistent');
   });
 
   it('roundtrip 规范化：等价写法（Bash / Bash() / Bash(*)）只存一条，删除不失配', () => {

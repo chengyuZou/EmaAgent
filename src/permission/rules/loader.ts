@@ -27,7 +27,6 @@ export function loadPermissionRuleBuckets(
   sessionId: string,
   projectId?: string,
 ): PermissionRuleBuckets {
-  const sessionAllow = getSessionAllowRules(sessionId);
   // 与 session 桶一致：无规则时省略键，不出现空数组（空数组 truthy 会误带键）。
   const project = <T extends Record<string, string[]>>(record: T, projectId?: string) =>
     projectId && (record[projectId]?.length ?? 0) > 0 ? record[projectId] : undefined;
@@ -40,7 +39,11 @@ export function loadPermissionRuleBuckets(
     alwaysAllowRules: {
       userSettings: store.get(permissionRulesUserAllowSetting),
       ...(projectAllow ? { projectSettings: projectAllow } : {}),
-      ...(sessionAllow.length > 0 ? { session: sessionAllow } : {}),
+      // Map 更新会替换数组. 捕获 Session 身份而不是数组, 使已有 Turn 和子代理立即读取新规则.
+      get session() {
+        const rules = getSessionAllowRules(sessionId);
+        return rules.length > 0 ? rules : undefined;
+      },
     },
     alwaysDenyRules: {
       userSettings: store.get(permissionRulesUserDenySetting),

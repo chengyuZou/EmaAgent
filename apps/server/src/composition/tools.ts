@@ -38,6 +38,7 @@ import {
 } from '@ema-agent/storage';
 import {
   BackgroundProcess,
+  FileStateCache,
   ToolExecutionState,
   ToolRegistry,
   ToolResultCleaner,
@@ -101,9 +102,11 @@ export interface ToolsComposition {
   ): CommandRunner;
   /** Session 级外置工具结果存储（按 Session 缓存目录句柄）。 */
   getSessionToolResultStore(sessionId: string): ToolResultStore;
+  getSessionFileStateCache(sessionId: string): FileStateCache;
+  clearFileStateCaches(): void;
   /**
    * Session 删除时清理其工具侧进程内状态：停掉该 Session 的后台进程、
-   * 释放外置工具结果存储缓存。
+   * 释放文件状态与外置工具结果存储缓存。
    */
   discardSessionToolState(sessionId: string): Promise<void>;
 }
@@ -195,6 +198,14 @@ export function openTools(deps: ToolsDeps): ToolsComposition {
 
   const sessionsDir = path.join(activeDataDir, 'sessions');
   const resultStores = new Map<string, ToolResultStore>();
+  const fileStateCaches = new Map<string, FileStateCache>();
+  const getSessionFileStateCache = (sessionId: string): FileStateCache => {
+    const cached = fileStateCaches.get(sessionId);
+    if (cached) return cached;
+    const cache = new FileStateCache();
+    fileStateCaches.set(sessionId, cache);
+    return cache;
+  };
   const getSessionToolResultStore = (sessionId: string): ToolResultStore => {
     const cached = resultStores.get(sessionId);
     if (cached) return cached;
@@ -261,9 +272,18 @@ export function openTools(deps: ToolsDeps): ToolsComposition {
     getSandboxStatus,
     getCommandRunner,
     getSessionToolResultStore,
+    getSessionFileStateCache,
+    clearFileStateCaches() {
+      for (const cache of fileStateCaches.values()) {
+        cache.clear();
+      }
+      fileStateCaches.clear();
+    },
     async discardSessionToolState(sessionId) {
       await backgroundProcesses.discardSession(sessionId);
       resultStores.delete(sessionId);
+      fileStateCaches.get(sessionId)?.clear();
+      fileStateCaches.delete(sessionId);
     },
   };
 }

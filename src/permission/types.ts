@@ -20,6 +20,9 @@ export interface PermissionRuleValue {
   readonly ruleContent?: string;
 }
 
+export type SessionAllowRule = PermissionRuleValue
+  & Required<Pick<PermissionRuleValue, 'ruleContent'>>;
+
 export interface PermissionRule {
   readonly source: PermissionRuleSource;
   readonly ruleBehavior: PermissionBehavior;
@@ -35,7 +38,13 @@ export type PermissionUpdateDestination = PermissionRuleSource;
 export type PermissionUpdate =
   | {
     readonly type: 'addRules';
-    readonly destination: PermissionUpdateDestination;
+    readonly destination: 'session';
+    readonly rules: readonly SessionAllowRule[];
+    readonly behavior: 'allow';
+  }
+  | {
+    readonly type: 'addRules';
+    readonly destination: Exclude<PermissionUpdateDestination, 'session'>;
     readonly rules: readonly PermissionRuleValue[];
     readonly behavior: PermissionBehavior;
   }
@@ -68,13 +77,8 @@ export interface PermissionAskDecision {
   readonly behavior: 'ask';
   readonly message: string;
   readonly decisionReason?: PermissionDecisionReason;
-  /**
-   * "本 Session 允许"该沉淀成什么规则；只有 Tool 自己知道同类输入的边界
-   * （Bash→`Bash(git status)`，FileEdit→`FileEdit(./src/**)`）。
-   * 执行链抄进 PermissionRequest，用户选 allowSession 时按它 addRules(session)；
-   * 缺省时批准卡不提供"本 Session 允许"。
-   */
-  readonly ruleSuggestion?: PermissionRuleValue;
+  /** 后端等待回答时持有, 不进入前端批准协议. */
+  readonly sessionAllowRule: SessionAllowRule;
 }
 
 export interface PermissionDenyDecision {
@@ -93,12 +97,19 @@ export type PermissionDecision =
  * 表示"我没有允许或拒绝的理由，请中央规则与模式收口"；公共终态仍是 allow/ask/deny。
  */
 export type PermissionResult =
-  | PermissionDecision
-  | {
-    readonly behavior: 'passthrough';
-    readonly message: string;
-    readonly decisionReason?: PermissionDecisionReason;
-  };
+  | PermissionDenyDecision
+  | ((
+    | PermissionAllowDecision
+    | Omit<PermissionAskDecision, 'sessionAllowRule'>
+    | {
+      readonly behavior: 'passthrough';
+      readonly message: string;
+      readonly decisionReason?: PermissionDecisionReason;
+    }
+  ) & {
+    /** 缺省时中央按本次已校验输入生成精确规则. */
+    readonly sessionAllowRule?: SessionAllowRule;
+  });
 
 // ── 上下文 ────────────────────────────────────────────────────────────────────
 
@@ -130,8 +141,6 @@ export type PermissionRequest = {
   readonly toolDescription?: string;
   readonly input: unknown;
   readonly decisionReason?: PermissionDecisionReason;
-  /** ask 决策自带的规则建议；用户选 allowSession 时沉淀为 session allow 规则。 */
-  readonly ruleSuggestion?: PermissionRuleValue;
   readonly sessionId: string;
   /** 根请求是当前 Turn; 子代理请求是发起本次 Run 的父 Turn, 不代表清理归属. */
   readonly turnId: string;

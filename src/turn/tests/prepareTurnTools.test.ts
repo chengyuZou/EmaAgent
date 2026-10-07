@@ -1,14 +1,21 @@
 // 测试 Turn 冻结工具池的 Plan 收窄, 权限交互回路和子代理事件顺序.
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { SubagentExecutor, SubagentStore, SubagentMessagesStore } from '@ema-agent/agent';
 import { Database, SubagentsRepo, SubagentRunsRepo, SubagentMessagesRepo } from '@ema-agent/storage';
-import { getSessionAllowRules, type PermissionStreamEvent } from '@ema-agent/permission';
+import {
+  clearSessionRules, findMatchingContentRule, getSessionAllowRules, loadPermissionRuleBuckets,
+  matchShellRule, shellCommandToRuleContent, type PermissionStreamEvent,
+} from '@ema-agent/permission';
 import type { SettingsStore } from '@ema-agent/settings';
 import {
   buildTool,
   BuiltinTools,
   contextOk,
+  FileStateCache,
   ToolRegistry,
   type ToolUseContext,
 } from '@ema-agent/tools';
@@ -18,6 +25,8 @@ import {
   prepareTurnTools,
   type TurnToolsDeps,
 } from '../prepare/prepareTurnTools.js';
+import { FileReadTool } from '../../builtin-tools/tools/FileReadTool/FileReadTool.js';
+import { FileEditTool } from '../../builtin-tools/tools/FileEditTool/FileEditTool.js';
 
 const SESSION_ID = 's1';
 const TURN_ID = 't1';
@@ -33,7 +42,7 @@ function fakeSettings(): SettingsStore {
 
 function fakeTool(name: string, options: {
   id?: string;
-  askWithSuggestion?: boolean;
+  ask?: boolean;
 } = {}) {
   return buildTool({
     ...(options.id ? { id: options.id } : {}),
@@ -43,11 +52,10 @@ function fakeTool(name: string, options: {
     validateContext: () => contextOk({}),
     isReadOnly: () => true,
     isConcurrencySafe: () => true,
-    checkPermissions: async () => options.askWithSuggestion
+    checkPermissions: async () => options.ask
       ? {
           behavior: 'ask' as const,
           message: '需要确认',
-          ruleSuggestion: { toolName: name },
         }
       : { behavior: 'allow' as const },
     execute: async () => 'ok',
@@ -60,9 +68,18 @@ function makeDeps(options: {
   settings: SettingsStore;
 }): TurnToolsDeps {
   const registry = new ToolRegistry();
+  const caches = new Map<string, FileStateCache>();
   for (const tool of options.tools) registry.register(tool);
   return {
     registry,
+    fileStateCache: sessionId => {
+      let cache = caches.get(sessionId);
+      if (!cache) {
+        cache = new FileStateCache();
+        caches.set(sessionId, cache);
+      }
+      return cache;
+    },
     interactionQueue: options.queue,
     publishInteraction: () => undefined,
     settings: options.settings,
@@ -96,6 +113,161 @@ function makeInput(options: {
 }
 
 describe('prepareTurnTools', () => {
+  beforeEach(() => clearSessionRules(SESSION_ID));
+
+  it('根 Turn 结束或中断后复用 Session 文件状态, 子代理共享, 别的 Session 隔离', async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ema-session-file-state-'));
+    const target = path.join(directory, 'file.txt');
+    fs.writeFileSync(target, 'a\nb');
+    const controller = new AbortController();
+    const deps = {
+      ...makeDeps({ tools: [], queue: new SessionInteractionQueue(null), settings: fakeSettings() }),
+      subagents: { abortForegroundForTurn: async () => undefined } as unknown as SubagentExecutor,
+    };
+    deps.registry.register(FileReadTool);
+    deps.registry.register(FileEditTool);
+    const input = (turnId: string, sessionId = SESSION_ID) => makeInput({
+      events: [],
+      overrides: {
+        turnId, sessionId, cwd: directory, workspaceRoots: [directory],
+        permission: {
+          mode: 'acceptEdits',
+          buckets: { alwaysAllowRules: {}, alwaysDenyRules: {}, alwaysAskRules: {} },
+        },
+      },
+    });
+    try {
+      const first = prepareTurnTools(deps, {
+        ...input('turn-1'), signal: controller.signal,
+      });
+      const reader = first.createExecutor(() => undefined);
+      reader.addTool(0, 'read', 'Read', { file_path: target, offset: 2, limit: 1 });
+      await reader.join();
+      expect(reader.takeCompletedResults()[0]?.isError).toBe(false);
+      controller.abort();
+      await first.shutdown('interrupted');
+
+      const second = prepareTurnTools(deps, input('turn-2'));
+      const editor = second.createExecutor(() => undefined);
+      editor.addTool(0, 'edit', 'Edit', { file_path: target, old_string: 'b', new_string: 'root' });
+      await editor.join();
+      expect(editor.takeCompletedResults()[0]?.isError).toBe(false);
+      const child = second.createSubagentExecutor({
+        subagentId: 'child', runId: 'child-run', toolPool: second.toolPool,
+        signal: new AbortController().signal, wake: () => undefined,
+      });
+      child.addTool(0, 'child-edit', 'Edit', { file_path: target, old_string: 'root', new_string: 'child' });
+      await child.join();
+      expect(child.takeCompletedResults()[0]?.isError).toBe(false);
+      await second.shutdown('completed');
+
+      const third = prepareTurnTools(deps, input('turn-3'));
+      const next = third.createExecutor(() => undefined);
+      next.addTool(0, 'next-edit', 'Edit', { file_path: target, old_string: 'child', new_string: 'final' });
+      await next.join();
+      expect(next.takeCompletedResults()[0]?.isError).toBe(false);
+      await third.shutdown('completed');
+
+      const other = prepareTurnTools(deps, input('other-turn', 'other-session'));
+      const denied = other.createExecutor(() => undefined);
+      denied.addTool(0, 'unread-edit', 'Edit', { file_path: target, old_string: 'final', new_string: 'wrong' });
+      await denied.join();
+      expect(denied.takeCompletedResults()[0]?.isError).toBe(true);
+      expect(fs.readFileSync(target, 'utf8')).toBe('a\nfinal');
+      await other.shutdown('completed');
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it.each([false, true])('Session 批准立即供当前 Turn 与已创建的子代理使用, 不写 SQL (专门范围=%s)', async specialized => {
+    const queue = new SessionInteractionQueue(null);
+    const settings = fakeSettings();
+    const set = vi.spyOn(settings, 'set');
+    const tool = buildTool({
+      name: 'PermissionProbe', description: '验证批准范围',
+      inputSchema: z.object({ command: z.string() }),
+      validateContext: () => contextOk({}),
+      isReadOnly: () => true,
+      isConcurrencySafe: () => true,
+      checkPermissions: async (input, _context, permissionContext) => {
+        if (!specialized) {
+          return { behavior: 'passthrough', message: '需要确认' };
+        }
+        const sessionAllowRule = {
+          toolName: 'PermissionProbe', ruleContent: shellCommandToRuleContent(input.command),
+        };
+        const rule = findMatchingContentRule(permissionContext, 'PermissionProbe', 'allow',
+          content => matchShellRule(content, input.command));
+        if (rule) {
+          return { behavior: 'allow', decisionReason: { type: 'rule', rule }, sessionAllowRule };
+        }
+        return { behavior: 'passthrough', message: '需要确认', sessionAllowRule };
+      },
+      execute: async () => 'ok',
+    });
+    const deps = makeDeps({ tools: [], queue, settings });
+    deps.registry.register(tool);
+    const assembly = prepareTurnTools(deps, makeInput({ events: [], overrides: {
+      permission: { mode: 'default', buckets: loadPermissionRuleBuckets(settings, SESSION_ID) },
+    } }));
+    const child = assembly.createSubagentExecutor({
+      subagentId: 'child', runId: 'run', toolPool: assembly.toolPool,
+      signal: new AbortController().signal, wake: () => undefined,
+    });
+    const first = assembly.createExecutor(() => undefined);
+    first.addTool(0, 'first', 'PermissionProbe', { command: 'echo *' });
+    await vi.waitFor(() => expect(queue.size()).toBe(1));
+    expect(queue.respondPermission(SESSION_ID, 'first', { action: 'allowSession' })).toBe(true);
+    await first.join();
+    expect(first.takeCompletedResults()[0]?.isError).toBe(false);
+    expect(set).not.toHaveBeenCalled();
+
+    const next = assembly.createExecutor(() => undefined);
+    next.addTool(0, 'next', 'PermissionProbe', { command: 'echo *' });
+    child.addTool(0, 'child-next', 'PermissionProbe', { command: 'echo *' });
+    await Promise.all([next.join(), child.join()]);
+    expect(queue.size()).toBe(0);
+    expect(next.takeCompletedResults()[0]?.isError).toBe(false);
+    expect(child.takeCompletedResults()[0]?.isError).toBe(false);
+
+    const changed = assembly.createExecutor(() => undefined);
+    changed.addTool(0, 'changed', 'PermissionProbe', { command: 'echo other' });
+    await vi.waitFor(() => expect(queue.size()).toBe(1));
+    queue.respondPermission(SESSION_ID, 'changed', { action: 'deny' });
+    await changed.join();
+    expect(changed.takeCompletedResults()[0]?.isError).toBe(true);
+
+    const later = prepareTurnTools(deps, makeInput({ events: [], overrides: {
+      turnId: 'later-turn',
+      permission: { mode: 'default', buckets: loadPermissionRuleBuckets(settings, SESSION_ID) },
+    } }));
+    const laterExecutor = later.createExecutor(() => undefined);
+    laterExecutor.addTool(0, 'later', 'PermissionProbe', { command: 'echo *' });
+    await laterExecutor.join();
+    expect(laterExecutor.takeCompletedResults()[0]?.isError).toBe(false);
+    expect(queue.size()).toBe(0);
+
+    const other = prepareTurnTools(deps, makeInput({ events: [], overrides: {
+      sessionId: 'other-session', turnId: 'other-turn',
+      permission: { mode: 'default', buckets: loadPermissionRuleBuckets(settings, 'other-session') },
+    } }));
+    const otherExecutor = other.createExecutor(() => undefined);
+    otherExecutor.addTool(0, 'other', 'PermissionProbe', { command: 'echo *' });
+    await vi.waitFor(() => expect(queue.listPending('other-session')).toHaveLength(1));
+    queue.respondPermission('other-session', 'other', { action: 'deny' });
+    await otherExecutor.join();
+    expect(otherExecutor.takeCompletedResults()[0]?.isError).toBe(true);
+
+    clearSessionRules(SESSION_ID);
+    const cleared = assembly.createExecutor(() => undefined);
+    cleared.addTool(0, 'cleared', 'PermissionProbe', { command: 'echo *' });
+    await vi.waitFor(() => expect(queue.size()).toBe(1));
+    queue.respondPermission(SESSION_ID, 'cleared', { action: 'deny' });
+    await cleared.join();
+    expect(cleared.takeCompletedResults()[0]?.isError).toBe(true);
+  });
+
   it.each(['foreground', 'background', 'shutdown', 'session_deleted'] as const)(
     '真实子代理批准等待的生命周期(%s)', async mode => {
     const db = new Database({ memory: true, kind: 'data' });
@@ -112,7 +284,7 @@ describe('prepareTurnTools', () => {
       onTerminalResultRead: vi.fn(), onRunFinished,
     });
     const assembly = prepareTurnTools({
-      ...makeDeps({ tools: [fakeTool('Echo', { askWithSuggestion: true })], queue, settings: fakeSettings() }),
+      ...makeDeps({ tools: [fakeTool('Echo', { ask: true })], queue, settings: fakeSettings() }),
       subagents, publishInteraction: event => { events.push(event); },
     }, makeInput({ events: [], overrides: { signal: parent.signal } }));
     let calls = 0;
@@ -192,7 +364,7 @@ describe('prepareTurnTools', () => {
     const childController = new AbortController();
     const otherController = new AbortController();
     const assembly = prepareTurnTools({
-      ...makeDeps({ tools: [fakeTool('Echo', { askWithSuggestion: true })], queue, settings: fakeSettings() }),
+      ...makeDeps({ tools: [fakeTool('Echo', { ask: true })], queue, settings: fakeSettings() }),
       publishInteraction: event => { events.push(event); },
     }, makeInput({ events: turnEvents, overrides: { signal: parent.signal } }));
     const root = assembly.createExecutor(() => undefined);
@@ -292,7 +464,7 @@ describe('prepareTurnTools', () => {
         sessionMode,
         permission: {
           mode: 'plan',
-          buckets: { alwaysAllowRules: { session: ['Write', 'Bash'] }, alwaysDenyRules: {}, alwaysAskRules: {} },
+          buckets: { alwaysAllowRules: { session: ['Write(input:{})', 'Bash(input:{})'] }, alwaysDenyRules: {}, alwaysAskRules: {} },
         },
       },
     }));
@@ -319,7 +491,7 @@ describe('prepareTurnTools', () => {
     const queue = new SessionInteractionQueue(null);
     const settings = fakeSettings();
     const deps = makeDeps({
-      tools: [fakeTool('Echo', { askWithSuggestion: true })],
+      tools: [fakeTool('Echo', { ask: true })],
       queue,
       settings,
     });
@@ -327,6 +499,9 @@ describe('prepareTurnTools', () => {
       ...deps,
       publishInteraction: event => {
         expect(queue.listPending(SESSION_ID)).toHaveLength(event.type === 'permission_required' ? 1 : 0);
+        if (event.type === 'permission_resolved') {
+          expect(getSessionAllowRules(SESSION_ID)).toContain('Echo(input:{})');
+        }
         events.push(event);
       },
     }, makeInput({ events: [] }));
@@ -342,7 +517,7 @@ describe('prepareTurnTools', () => {
 
     const results = executor.takeCompletedResults();
     expect(results[0]).toMatchObject({ toolCallId: 'call-1', isError: false });
-    expect(getSessionAllowRules(SESSION_ID)).toContain('Echo');
+    expect(getSessionAllowRules(SESSION_ID)).toContain('Echo(input:{})');
     expect(events.some(e => e.type === 'permission_resolved'
       && (e as { decision?: string }).decision === 'allow')).toBe(true);
   });
@@ -370,11 +545,29 @@ describe('prepareTurnTools', () => {
     expect(events.some(event => event.type === 'tool_result')).toBe(false);
   });
 
+  it.each(['allow', 'deny'] as const)('%s 不保存本会话批准规则', async action => {
+    const queue = new SessionInteractionQueue(null);
+    const settings = fakeSettings();
+    const set = vi.spyOn(settings, 'set');
+    const assembly = prepareTurnTools(
+      makeDeps({ tools: [fakeTool('Echo', { ask: true })], queue, settings }),
+      makeInput({ events: [] }),
+    );
+    const executor = assembly.createExecutor(() => undefined);
+    executor.addTool(0, 'once', 'Echo', {});
+    await vi.waitFor(() => expect(queue.size()).toBe(1));
+    queue.respondPermission(SESSION_ID, 'once', { action });
+    await executor.join();
+    expect(executor.takeCompletedResults()[0]?.isError).toBe(action === 'deny');
+    expect(getSessionAllowRules(SESSION_ID)).toEqual([]);
+    expect(set).not.toHaveBeenCalled();
+  });
+
   it('Turn abort 时等待中的权限询问按取消收口（模型见 tool/cancelled）', async () => {
     const queue = new SessionInteractionQueue(null);
     const controller = new AbortController();
     const deps = makeDeps({
-      tools: [fakeTool('Echo', { askWithSuggestion: true })],
+      tools: [fakeTool('Echo', { ask: true })],
       queue,
       settings: fakeSettings(),
     });
@@ -393,6 +586,7 @@ describe('prepareTurnTools', () => {
 
     const results = executor.takeCompletedResults();
     expect(results[0]).toMatchObject({ isError: true, errorCode: 'tool/cancelled' });
+    expect(getSessionAllowRules(SESSION_ID)).toEqual([]);
   });
 
   it('Knowledge 查询冻结所选知识库，Tool 未指定文档时继承本 Turn 范围', async () => {

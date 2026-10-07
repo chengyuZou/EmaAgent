@@ -4,6 +4,7 @@ import {
   hasPermissionsToUseTool,
   type PermissionRequest,
   type PermissionResponse,
+  type SessionAllowRule,
   type ToolPermissionContext,
 } from '@ema-agent/permission';
 import { ZodError } from 'zod';
@@ -40,6 +41,7 @@ export type ToolExecutionEnvironment = {
   readonly askPermission?: (
     request: PermissionRequest,
     signal: AbortSignal,
+    sessionAllowRule: SessionAllowRule,
   ) => Promise<PermissionResponse>;
   readonly toolContext: ToolUseContext;
   readonly toolResultStore?: ToolResultStore;
@@ -349,7 +351,6 @@ export class ToolCallExecution {
         ...(summary ? { toolDescription: summary } : {}),
         input,
         ...(decision.decisionReason ? { decisionReason: decision.decisionReason } : {}),
-        ...(decision.ruleSuggestion ? { ruleSuggestion: decision.ruleSuggestion } : {}),
         sessionId,
         turnId,
         toolCallId: this.id,
@@ -357,7 +358,7 @@ export class ToolCallExecution {
       const request: PermissionRequest = this.environment.subagentId !== undefined
         ? { ...requestFields, subagentId: this.environment.subagentId, runId: this.environment.runId }
         : requestFields;
-      const response = await askPermission!(request, signal);
+      const response = await askPermission!(request, signal, decision.sessionAllowRule);
 
       if (isCancelled(signal, this.environment.abortSignal)) {
         this.completeCancellation();

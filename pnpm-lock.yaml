@@ -1362,6 +1362,9 @@ importers:
       glob:
         specifier: ^11.0.0
         version: 11.1.0
+      lru-cache:
+        specifier: ^10.4.3
+        version: 10.4.3
       zod:
         specifier: ^4.4.3
         version: 4.4.3

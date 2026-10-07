@@ -1,5 +1,4 @@
-// shell 命令与规则内容的匹配引擎：exact / `:*` 前缀 / wildcard 三形态。
-// `:*` 前缀语法作为规则格式正式一员保留（非 legacy），suggestion 构造器移出（归卡片流程）。
+// Shell 规则支持完整命令, `:*` 前缀和 wildcard; 完整命令中的模式字符必须转义.
 
 const ESCAPED_STAR_PLACEHOLDER = '\x00ESCAPED_STAR\x00';
 const ESCAPED_BACKSLASH_PLACEHOLDER = '\x00ESCAPED_BACKSLASH\x00';
@@ -10,6 +9,10 @@ export type ShellPermissionRule =
   | { readonly type: 'exact'; readonly command: string }
   | { readonly type: 'prefix'; readonly prefix: string }
   | { readonly type: 'wildcard'; readonly pattern: string };
+
+export function shellCommandToRuleContent(command: string): string {
+  return command.replace(/\\/g, '\\\\').replace(/\*/g, '\\*');
+}
 
 /** `npm:*` → `npm`；不是前缀形态返回 null。 */
 export function permissionRuleExtractPrefix(permissionRule: string): string | null {
@@ -91,7 +94,7 @@ export function parsePermissionRule(permissionRule: string): ShellPermissionRule
   if (hasWildcards(permissionRule)) {
     return { type: 'wildcard', pattern: permissionRule };
   }
-  return { type: 'exact', command: permissionRule };
+  return { type: 'exact', command: permissionRule.replace(/\\([\\*])/g, '$1') };
 }
 
 /** 命令是否命中规则内容（shell 家族 checkPermissions 的单条判定）。 */

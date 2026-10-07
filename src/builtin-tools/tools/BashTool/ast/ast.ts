@@ -36,6 +36,32 @@ export type ParseForSecurityResult =
   | { kind: 'too-complex'; reason: string; nodeType?: string }
   | { kind: 'parse-unavailable' }
 
+export async function parsePermissionCommands(command: string): Promise<{
+  commands: string[]
+  allowByCommands: boolean
+}> {
+  const root = await parseCommandRaw(command)
+  if (!root || root === PARSE_ABORTED) {
+    return { commands: [], allowByCommands: false }
+  }
+  const commands: string[] = []
+  const collect = (node: Node): void => {
+    if (node.type === 'command' || node.type === 'declaration_command') {
+      commands.push(node.text)
+    }
+    for (const child of node.children) {
+      collect(child)
+    }
+  }
+  collect(root)
+  const parsed = parseForSecurityFromAst(command, root)
+  // 动态参数无法完整证明时仍检查 AST 中已知的 deny/ask, 但不据此前缀放行.
+  if (parsed.kind === 'simple') {
+    commands.push(...parsed.commands.map(item => item.text))
+  }
+  return { commands: [...new Set(commands)], allowByCommands: parsed.kind === 'simple' }
+}
+
 /**
  * Structural node types that represent composition of commands. We recurse
  * through these to find the leaf `command` nodes. `program` is the root;
@@ -495,6 +521,18 @@ function collectCommands(
   }
 
   if (STRUCTURAL_TYPES.has(node.type)) {
+    // 解析器可能保留缺少右操作数的连接符; 这种语句不能凭开头的规则放行.
+    const statements = node.children.filter(child => child.type !== 'comment' && child.type !== '\n')
+    for (let index = 0; index < statements.length; index++) {
+      const child = statements[index]!
+      if (child.type === '&&' || child.type === '||' || child.type === '|' || child.type === '|&') {
+        const before = statements[index - 1]
+        const after = statements[index + 1]
+        if (!before || !after || SEPARATOR_TYPES.has(before.type) || SEPARATOR_TYPES.has(after.type)) {
+          return tooComplex(child)
+        }
+      }
+    }
     // SECURITY: `||`, `|`, `|&`, `&` must NOT carry varScope linearly. In bash:
     //   `||` RHS runs conditionally → vars set there MAY not be set
     //   `|`/`|&` stages run in subshells → vars set there are NEVER visible after

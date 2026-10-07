@@ -1,11 +1,12 @@
-// FileEditTool 收口测试: 先读守卫(含局部视图拒绝)、精确替换、并发防覆盖、
+// FileEditTool 测试: 先读守卫、范围读取、精确替换、并发防覆盖、
 // 外部修改检测、引号归一、replace_all、结构化补丁与 map 投影。
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { contentHashOf, type ReadFileState, type ToolInvocation } from '@ema-agent/tools';
+import { FileStateCache, type ToolInvocation } from '@ema-agent/tools';
 import { FileEditTool } from '../tools/FileEditTool/FileEditTool.js';
+import { FileReadTool } from '../tools/FileReadTool/FileReadTool.js';
 
 const tempDirs: string[] = [];
 
@@ -26,20 +27,19 @@ function makeInvocation(callId = 'call-edit-1', signal?: AbortSignal): ToolInvoc
 
 function makeContext(callId: string) {
   return {
-    readFileState: new Map() as ReadFileState,
+    fileStateCache: new FileStateCache(),
     cwd: '',
     callId,
   };
 }
 
-/** 模拟"已完整读取":把当前文件内容+mtime+内容指纹写入读取状态。 */
+/** 保存当前完整原文及修改时间. */
 function markRead(ctx: ReturnType<typeof makeContext>, target: string): void {
   const content = fs.readFileSync(target, 'utf8');
-  ctx.readFileState.set(path.resolve(target), {
+  ctx.fileStateCache.set(path.resolve(target), {
     content,
-    contentHash: contentHashOf(content),
     timestamp: fs.statSync(target).mtimeMs,
-    isPartialView: false,
+    totalLines: content.split('\n').length,
     truncated: false,
   });
 }
@@ -61,7 +61,7 @@ async function edit(
 ) {
   return FileEditTool.execute(
     { file_path: target, old_string: oldString, new_string: newString, replace_all: replaceAll },
-    { readFileState: ctx.readFileState, cwd: '' },
+    { fileStateCache: ctx.fileStateCache, cwd: '' },
     makeInvocation(ctx.callId),
   );
 }
@@ -73,7 +73,7 @@ describe('FileEditTool — 输入与先读守卫', () => {
     }).success).toBe(false);
     const verdict = FileEditTool.validateInput!(
       { file_path: 'a.txt', old_string: 'same', new_string: 'same', replace_all: false },
-      { readFileState: new Map(), cwd: '' },
+      { fileStateCache: new FileStateCache(), cwd: '' },
       makeInvocation(),
     );
     expect(verdict).toMatchObject({ valid: false, code: 'edit/empty' });
@@ -86,24 +86,64 @@ describe('FileEditTool — 输入与先读守卫', () => {
     expect(fs.readFileSync(target, 'utf8')).toBe('旧内容');
   });
 
-  it('局部视图(offset/limit)读取后拒绝编辑', async () => {
+  it('局部读取后允许在当前文件中精确编辑', async () => {
     const target = makeFile('partial.txt', 'a\nb\nc\n');
     const ctx = makeContext('c2');
-    ctx.readFileState.set(path.resolve(target), {
+    ctx.fileStateCache.set(path.resolve(target), {
       content: 'a\nb',
-      contentHash: contentHashOf('a\nb'),
       timestamp: fs.statSync(target).mtimeMs,
       offset: 1,
       limit: 2,
-      isPartialView: true,
       totalLines: 4,
       truncated: false,
     });
-    await expect(edit(target, 'a', 'x', ctx)).rejects.toThrow('full read');
+    await edit(target, 'a', 'x', ctx);
+    expect(fs.readFileSync(target, 'utf8')).toBe('x\nb\nc\n');
   });
 });
 
 describe('FileEditTool — 替换语义', () => {
+  it('真实范围 Read 后连续 Edit, 再 Read 返回最新完整内容', async () => {
+    const target = makeFile('read-edit.txt', 'a\nb\nc');
+    const ctx = makeContext('read-edit');
+    await FileReadTool.execute({ file_path: target, offset: 2, limit: 1 }, ctx, makeInvocation());
+    await edit(target, 'b', 'updated', ctx);
+    await edit(target, 'updated', 'final', ctx);
+    const result = await FileReadTool.execute({ file_path: target }, ctx, makeInvocation());
+    expect(result.type).toBe('file_content');
+    expect(result).toMatchObject({ content: '     1\ta\n     2\tfinal\n     3\tc' });
+  });
+
+  it('全文读取后仅修改时间变化不阻止编辑', async () => {
+    const target = makeFile('touched.txt', 'a\nb');
+    const ctx = makeContext('touched');
+    await FileReadTool.execute({ file_path: target }, ctx, makeInvocation());
+    const newer = new Date(fs.statSync(target).mtimeMs + 1000);
+    fs.utimesSync(target, newer, newer);
+    await edit(target, 'a', 'x', ctx);
+    expect(fs.readFileSync(target, 'utf8')).toBe('x\nb');
+  });
+
+  it('范围读取后文件修改时间变新时要求重新读, 失败不改缓存', async () => {
+    const target = makeFile('changed-partial.txt', 'a\nb');
+    const ctx = makeContext('changed-partial');
+    await FileReadTool.execute({ file_path: target, offset: 1, limit: 1 }, ctx, makeInvocation());
+    const before = ctx.fileStateCache.get(target);
+    fs.writeFileSync(target, 'a\nexternal');
+    const newer = new Date(fs.statSync(target).mtimeMs + 1000);
+    fs.utimesSync(target, newer, newer);
+    await expect(edit(target, 'a', 'x', ctx)).rejects.toThrow('modified externally');
+    expect(ctx.fileStateCache.get(target)).toBe(before);
+  });
+  it('LF 多行输入匹配 CRLF 文件并保留原换行', async () => {
+    const target = makeFile('crlf.txt', '前文\r\n旧一\r\n旧二\r\n后文\r\n');
+    const ctx = makeContext('crlf-edit');
+    markRead(ctx, target);
+
+    await edit(target, '旧一\n旧二', '新一\n新二', ctx);
+
+    expect(fs.readFileSync(target, 'utf8')).toBe('前文\r\n新一\r\n新二\r\n后文\r\n');
+  });
   it('精确替换并返回完整事实(含 structuredPatch)', async () => {
     const target = makeFile('actual.txt', '前文\n旧内容\n后文\n');
     const ctx = makeContext('c3');
@@ -127,7 +167,7 @@ describe('FileEditTool — 替换语义', () => {
     expect(allLines.some(l => l === '+新内容')).toBe(true);
     expect(fs.readFileSync(target, 'utf8')).toBe('前文\n新内容\n后文\n');
     // 缓存更新为新版本: 再次编辑基于新内容
-    const ctxEntry = ctx.readFileState.get(path.resolve(target))!;
+    const ctxEntry = ctx.fileStateCache.get(path.resolve(target))!;
     expect(ctxEntry.content).toBe('前文\n新内容\n后文\n');
   });
 
@@ -176,7 +216,7 @@ describe('FileEditTool — 替换语义', () => {
     await expect(edit(target, '原版', '新版', ctx)).rejects.toThrow('modified externally');
   });
 
-  it('外部修改内容但 mtime 被还原(如 FAT32 粗粒度)时仍拒绝', async () => {
+  it('mtime 未变时仍检查 old_string 是否存在于当前正文', async () => {
     const target = makeFile('stale-mtime.txt', '原版\n');
     const ctx = makeContext('c8');
     markRead(ctx, target);
@@ -185,7 +225,7 @@ describe('FileEditTool — 替换语义', () => {
     // 把 mtime 还原到读取时的值,模拟粗粒度文件系统上"内容变但 mtime 未变"。
     fs.utimesSync(target, new Date(originalMtime), new Date(originalMtime));
 
-    await expect(edit(target, '原版', '新版', ctx)).rejects.toThrow('modified externally');
+    await expect(edit(target, '原版', '新版', ctx)).rejects.toThrow('not found');
   });
 
   it('两个 Session 基于同一旧版本并发编辑时只允许一个提交', async () => {

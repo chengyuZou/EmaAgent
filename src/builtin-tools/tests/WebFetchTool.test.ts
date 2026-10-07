@@ -49,8 +49,7 @@ function makePermissionContext(): ToolPermissionContext {
     alwaysAllowRules: {},
     alwaysDenyRules: {},
     alwaysAskRules: {},
-    sessionId: 's1',
-    toolCallId: 'c1',
+    workspaceRoots: [],
   };
 }
 
@@ -73,13 +72,26 @@ describe('WebFetchTool 权限判定', () => {
     expect(decision.behavior).toBe('passthrough');
   });
 
-  it('无法解析的 URL 不抛错, 交给中央', async () => {
-    const decision = await WebFetchTool.checkPermissions(
-      { url: 'not-a-url' },
-      undefined,
-      makePermissionContext(),
-    );
-    expect(decision.behavior).toBe('passthrough');
+  it('会话域名批准覆盖路径、协议和端口变化, 不覆盖其他域或子域', async () => {
+    const context = makePermissionContext();
+    context.alwaysAllowRules.session = ['WebFetch(domain:example.test)'];
+    context.alwaysAskRules.userSettings = ['WebFetch(domain:example.test)'];
+    for (const url of ['https://example.test/a', 'http://example.test:8443/b?q=1']) {
+      const result = await WebFetchTool.checkPermissions(
+        WebFetchTool.inputSchema.parse({ url }), undefined, context,
+      );
+      expect(result.behavior).toBe('allow');
+    }
+    for (const url of ['https://other.test/a', 'https://sub.example.test/a']) {
+      const result = await WebFetchTool.checkPermissions(
+        WebFetchTool.inputSchema.parse({ url }), undefined, context,
+      );
+      expect(result.behavior).toBe('passthrough');
+    }
+    context.alwaysDenyRules.userSettings = ['WebFetch(domain:example.test)'];
+    expect((await WebFetchTool.checkPermissions(
+      WebFetchTool.inputSchema.parse({ url: 'https://example.test/a' }), undefined, context,
+    )).behavior).toBe('deny');
   });
 });
 

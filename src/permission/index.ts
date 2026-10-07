@@ -19,9 +19,10 @@ export {
   matchShellRule,
   matchWildcardPattern,
   parsePermissionRule,
+  shellCommandToRuleContent,
   type ShellPermissionRule,
 } from './rules/shellRuleMatching.js';
-export { matchPathRule } from './rules/pathRuleMatching.js';
+export { directoryPathToRuleContent, filePathToRuleContent, matchPathRule } from './rules/pathRuleMatching.js';
 export {
   loadPermissionRuleBuckets,
   reconcileProjectRules,
@@ -53,7 +54,6 @@ export {
   applyPermissionUpdate,
   clearSessionRules,
   getSessionAllowRules,
-  purgeProjectRules,
 } from './rules/update.js';
 export {
   DEFAULT_PERMISSION_ASK_TIMEOUT_MS,

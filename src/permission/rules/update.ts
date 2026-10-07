@@ -42,10 +42,6 @@ export function applyPermissionUpdate(
     case 'addRules': {
       const ruleStrings = update.rules.map(permissionRuleValueToString);
       if (update.destination === 'session') {
-        // "本 Session 允许"是 session 规则唯一语义；deny/ask 请写设置。
-        if (update.behavior !== 'allow') {
-          throw new Error('session destination 只支持 allow 行为');
-        }
         const existing = sessionAllowRules.get(context.sessionId) ?? [];
         sessionAllowRules.set(
           context.sessionId,
@@ -69,21 +65,6 @@ export function applyPermissionUpdate(
       writeRules(store, update.destination, update.behavior, ruleStrings, 'remove', context.projectId);
       return;
     }
-  }
-}
-
-/** 项目删除时清理三张 record 里该项目的条目；不存在则不动。 */
-export function purgeProjectRules(store: SettingsStore, projectId: string): void {
-  for (const setting of [
-    permissionRulesProjectAllowSetting,
-    permissionRulesProjectDenySetting,
-    permissionRulesProjectAskSetting,
-  ]) {
-    const record = store.get(setting);
-    if (!(projectId in record)) continue;
-    const next = { ...record };
-    delete next[projectId];
-    store.set(setting, next);
   }
 }
 
@@ -117,9 +98,8 @@ function writeRules(
 }
 
 /**
- * roundtrip 规范化：parse→serialize 归一到规范形。
- * 'Bash()' / 'Bash(*)' → 'Bash'；'Bash(npm test)' 不变。
- * Claude 同款：add/delete 都按规范形去重和比较，等价写法不会并存、删除不失配。
+ * 配置规则按 parse→serialize 的规范形去重和删除, 避免等价写法并存.
+ * 'Bash()' / 'Bash(*)' → 'Bash'; 'Bash(npm test)' 不变.
  */
 function normalizeRuleString(raw: string): string {
   return permissionRuleValueToString(permissionRuleValueFromString(raw));

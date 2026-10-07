@@ -6,10 +6,6 @@ import {
   SELECTED_BYTES_LIMIT,
 } from './limits.js';
 
-export const FILE_UNCHANGED_STUB =
-  'File unchanged since last read. The content from the earlier Read tool_result '
-  + 'in this conversation is still current — refer to that instead of re-reading.';
-
 export const FILE_READ_DESCRIPTION = `Read a file from the local filesystem.
 
 Usage:
@@ -20,7 +16,7 @@ Usage:
 - Image files (PNG/JPEG/GIF/WebP up to ${IMAGE_FILE_SIZE_LIMIT / 1024 / 1024} MiB) are returned as visual content you can see. \`offset\`/\`limit\` do not apply to images.
 - Notebook files (.ipynb) are parsed into cells with their outputs; oversized outputs are summarized. \`offset\`/\`limit\` do not apply to notebooks.
 - PDF files are read with the PdfRead tool instead. Other binary files, device files, and UNC paths are refused.
-- If the same file+range is read twice without the file changing, the tool reports it is unchanged — refer to the earlier content instead of re-reading.`;
+- Repeated reads of an unchanged file return the requested content from the session cache.`;
 
 /** 图片结果的模型文本说明; 图片本体走 image_data part, 不走这段文本。 */
 export function imageResultNotice(filePath: string, mediaType: string, originalBytes: number): string {

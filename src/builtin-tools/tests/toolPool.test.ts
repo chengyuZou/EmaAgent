@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ToolPermissionContext } from '@ema-agent/permission';
 import {
+  FileStateCache,
   assembleToolPool,
   ToolRegistry,
   type ToolUseContext,
@@ -42,7 +43,7 @@ describe('Builtin ToolPool 能力装配', () => {
     const context: ToolUseContext = {
       ...baseContext(),
       cwd: 'D:/workspace',
-      readFileState: new Map(),
+      fileStateCache: new FileStateCache(),
       taskStore: {} as never,
       askUser: async () => ({ answers: {} }),
       subagents: {} as never,

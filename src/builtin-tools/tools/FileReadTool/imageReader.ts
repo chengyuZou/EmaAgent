@@ -29,7 +29,7 @@ export function imageMediaTypeFor(filePath: string): ImageMediaType | undefined 
 }
 
 /**
- * 读取图片并编码 base64。图片不进 readFileState: Edit 只比对文本原文,
+ * 读取图片并编码 base64。图片不进 fileStateCache: Edit 只比对文本原文,
  * 缓存 base64 纯属内存浪费; 重复读图每次重新编码, V1 接受这个代价。
  */
 export async function readImageFile(options: {

@@ -4,9 +4,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { contentHashOf, type ToolInvocation } from '@ema-agent/tools';
+import { FileStateCache, type ToolInvocation } from '@ema-agent/tools';
 import { BuiltinTools } from '../BuiltinToolIdentity.js';
 import { FileWriteTool } from '../tools/FileWriteTool/FileWriteTool.js';
+import { FileReadTool } from '../tools/FileReadTool/FileReadTool.js';
 import { atomicTempPrefix, atomicWriteUtf8 } from '../tools/FileWriteTool/atomicWrite.js';
 import { checkWritePathPermission } from '../tools/shared/pathPermission.js';
 import {
@@ -34,7 +35,7 @@ function makeInvocation(signal?: AbortSignal): ToolInvocation {
 
 function makeContext(cwd = '') {
   return {
-    readFileState: new Map(),
+    fileStateCache: new FileStateCache(),
     cwd,
   };
 }
@@ -48,6 +49,20 @@ async function write(
 }
 
 describe('FileWriteTool — 新建与覆盖', () => {
+  it('范围 Read 不能授权全文覆盖, 完整 Read 后仅时间变化仍可覆盖', async () => {
+    const directory = makeTempDir();
+    const target = path.join(directory, 'read-write.txt');
+    fs.writeFileSync(target, 'a\r\nb');
+    const ctx = makeContext();
+    await FileReadTool.execute({ file_path: target, offset: 1, limit: 1 }, ctx, makeInvocation());
+    await expect(write(target, 'replacement', ctx)).rejects.toThrow('read in full first');
+    await FileReadTool.execute({ file_path: target }, ctx, makeInvocation());
+    const newer = new Date(fs.statSync(target).mtimeMs + 1000);
+    fs.utimesSync(target, newer, newer);
+    await write(target, 'replacement', ctx);
+    const result = await FileReadTool.execute({ file_path: target }, ctx, makeInvocation());
+    expect(result).toMatchObject({ type: 'file_content', content: '     1\treplacement' });
+  });
   it('默认工作目录可写，但同级 data 仍受保护', () => {
     const workspace = path.join(os.homedir(), '.ema-agent', 'workspace');
     const permissionContext = {
@@ -94,7 +109,7 @@ describe('FileWriteTool — 新建与覆盖', () => {
     expect(fs.readFileSync(target, 'utf8')).toBe('完整内容');
     // 缓存更新: 后续 Edit 无需重读
     const canonical = fs.realpathSync.native(target);
-    expect(ctx.readFileState.get(canonical)?.content).toBe('完整内容');
+    expect(ctx.fileStateCache.get(canonical)?.content).toBe('完整内容');
     expect(listWriteTemps(path.dirname(target))).toEqual([]);
   });
 
@@ -133,11 +148,10 @@ describe('FileWriteTool — 新建与覆盖', () => {
     fs.writeFileSync(target, '第一行\n旧内容\n', 'utf8');
     const stat = fs.statSync(target);
     const ctx = makeContext();
-    ctx.readFileState.set(path.resolve(target), {
+    ctx.fileStateCache.set(path.resolve(target), {
       content: '第一行\n旧内容\n',
-      contentHash: contentHashOf('第一行\n旧内容\n'),
       timestamp: stat.mtimeMs,
-      isPartialView: false,
+      totalLines: 3,
       truncated: false,
     });
 
@@ -158,14 +172,15 @@ describe('FileWriteTool — 新建与覆盖', () => {
     const target = path.join(directory, 'stale.txt');
     fs.writeFileSync(target, '原版', 'utf8');
     const ctx = makeContext();
-    ctx.readFileState.set(path.resolve(target), {
+    ctx.fileStateCache.set(path.resolve(target), {
       content: '原版',
-      contentHash: contentHashOf('原版'),
       timestamp: fs.statSync(target).mtimeMs,
-      isPartialView: false,
+      totalLines: 1,
       truncated: false,
     });
     fs.writeFileSync(target, '外部改动', 'utf8');
+    const newer = new Date(fs.statSync(target).mtimeMs + 1000);
+    fs.utimesSync(target, newer, newer);
 
     await expect(write(target, '新版', ctx)).rejects.toThrow('modified externally');
     expect(fs.readFileSync(target, 'utf8')).toBe('外部改动');
@@ -251,7 +266,7 @@ describe('FileWriteTool — 路径与守卫', () => {
     const expected = path.join(workspace, 'nested', 'rel.txt');
     expect(result.type).toBe('created');
     expect(fs.readFileSync(expected, 'utf8')).toBe('相对写入');
-    expect(ctx.readFileState.get(path.resolve(workspace, 'nested/rel.txt'))?.content)
+    expect(ctx.fileStateCache.get(path.resolve(workspace, 'nested/rel.txt'))?.content)
       .toBe('相对写入');
   });
 

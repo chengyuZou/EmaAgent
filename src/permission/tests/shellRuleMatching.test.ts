@@ -5,9 +5,17 @@ import {
   matchShellRule,
   matchWildcardPattern,
   parsePermissionRule,
+  shellCommandToRuleContent,
 } from '../rules/shellRuleMatching.js';
 
 describe('shellRuleMatching', () => {
+  it.each(['echo *', 'echo value:*', String.raw`echo C:\\tmp\\*.ts`, 'echo "a(b)"'])('完整命令批准保留字面字符: %s', command => {
+    const content = shellCommandToRuleContent(command);
+    expect(parsePermissionRule(content).type).toBe('exact');
+    expect(matchShellRule(content, command)).toBe(true);
+    expect(matchShellRule(content, `${command} --more`)).toBe(false);
+    expect(matchShellRule(content, command.replace('*', 'other'))).toBe(!command.includes('*'));
+  });
   it('三形态判别', () => {
     expect(parsePermissionRule('npm test')).toEqual({ type: 'exact', command: 'npm test' });
     expect(parsePermissionRule('npm:*')).toEqual({ type: 'prefix', prefix: 'npm' });

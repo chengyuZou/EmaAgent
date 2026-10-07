@@ -3,13 +3,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
+import { filePathToRuleContent } from '@ema-agent/permission';
 import type { StructuredPatchHunk } from 'diff';
 import {
   buildTool,
-  contentHashOf,
+  fileChangedSinceRead,
   contextFail,
   contextOk,
-  type ReadFileState,
+  type FileStateCache,
   type ToolInvocation,
 } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
@@ -23,9 +24,8 @@ import {
 } from '../FileEditTool/patch.js';
 import { FILE_WRITE_DESCRIPTION } from './prompt.js';
 
-/** File 写入工具只取得当前 Turn 的读取状态与工作区;取消与调用身份走 ToolInvocation。 */
 interface FileWriteToolContext {
-  readFileState: ReadFileState;
+  fileStateCache: FileStateCache;
   cwd: string;
 }
 
@@ -69,22 +69,34 @@ export const FileWriteTool = buildTool<FileWriteInput, FileWriteResult, FileWrit
     if (!ctx.cwd) {
       return contextFail('File 写入工具需要明确的工作区。');
     }
-    if (!ctx.readFileState) {
+    if (!ctx.fileStateCache) {
       return contextFail('File 写入工具未装配读取状态。');
     }
     return contextOk({
-      readFileState: ctx.readFileState,
+      fileStateCache: ctx.fileStateCache,
       cwd: ctx.cwd,
     });
   },
 
-  checkPermissions: async (input, context, permissionContext) =>
-    checkWritePathPermission({
+  async checkPermissions(input, context, permissionContext) {
+    const filePath = path.resolve(context.cwd, input.file_path);
+    const result = checkWritePathPermission({
       toolName: BuiltinTools.FileWrite.name,
-      path: path.resolve(context.cwd, input.file_path),
+      path: filePath,
       cwd: context.cwd,
       permissionContext,
-    }),
+    });
+    if (result.behavior === 'deny') {
+      return result;
+    }
+    return {
+      ...result,
+      sessionAllowRule: {
+        toolName: BuiltinTools.FileWrite.name,
+        ruleContent: filePathToRuleContent(filePath),
+      },
+    };
+  },
 
   async execute(
     input: FileWriteInput,
@@ -113,15 +125,15 @@ export const FileWriteTool = buildTool<FileWriteInput, FileWriteResult, FileWrit
       invocation.signal,
       current => {
         if (!current.existed) return content;
-        const cached = context.readFileState.get(fullPath);
-        if (!cached || cached.isPartialView) {
+        const cached = context.fileStateCache.get(fullPath);
+        if (!cached || cached.offset !== undefined || cached.limit !== undefined) {
           throw new Error(
             `Write requires an existing file to be read in full first. ` +
               `Call Read("${file_path}") without offset/limit before overwriting it.`,
           );
         }
-        // current.existed 已保证内容非空;空守卫仅为类型收窄。
-        if (current.content === null || contentHashOf(current.content) !== cached.contentHash) {
+        if (current.content === null || current.mtimeMs === null
+          || fileChangedSinceRead(cached, current.mtimeMs, current.content)) {
           throw new Error(
             `File "${file_path}" was modified externally since it was read. ` +
               'Re-read it with Read before overwriting it.',
@@ -132,14 +144,12 @@ export const FileWriteTool = buildTool<FileWriteInput, FileWriteResult, FileWrit
     );
     const mtimeMs = written.mtimeMs;
 
-    // 更新 read-state 缓存，使后续 Edit 无需重新读取即可工作。
-    context.readFileState.set(fullPath, {
+    context.fileStateCache.set(fullPath, {
       content,
-      contentHash: contentHashOf(content),
       timestamp: mtimeMs,
       offset: undefined,
       limit: undefined,
-      isPartialView: false,
+      totalLines: content.split('\n').length,
       truncated: false,
     });
     const existed = written.existed;

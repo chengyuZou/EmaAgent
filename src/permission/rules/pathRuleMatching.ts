@@ -2,12 +2,21 @@
 // 规则形态：'./src/**'（工作区相对）、'src/**'（同义）、'//abs/path/**'（绝对路径，双斜杠前缀）。
 import { createRequire } from 'node:module';
 import type { Ignore } from 'ignore';
+import { normalizeCaseForComparison } from '../paths/pathSafety.js';
 
 // ignore 是 CJS 包；NodeNext ESM 下经 createRequire 取工厂函数。
 const require = createRequire(import.meta.url);
 const ignore = require('ignore') as (options?: { ignorecase?: boolean }) => Ignore;
 
 const matcherCache = new Map<string, Ignore>();
+
+export function filePathToRuleContent(absolutePath: string): string {
+  return `file:${absolutePath.replace(/\\/g, '/')}`;
+}
+
+export function directoryPathToRuleContent(absolutePath: string): string {
+  return `directory:${absolutePath.replace(/\\/g, '/')}`;
+}
 
 function matcherFor(ruleContent: string): Ignore {
   let matcher = matcherCache.get(ruleContent);
@@ -31,6 +40,16 @@ export function matchPathRule(
   candidatePath: string,
   cwd?: string,
 ): boolean {
+  // 本会话批准保存字面路径, 不把文件名中的 *、[] 等解释成目录模式.
+  if (ruleContent.startsWith('file:')) {
+    return normalizeCaseForComparison(toPosixDrive(ruleContent.slice(5)))
+      === normalizeCaseForComparison(toPosixDrive(candidatePath));
+  }
+  if (ruleContent.startsWith('directory:')) {
+    const directory = normalizeCaseForComparison(toPosixDrive(ruleContent.slice(10))).replace(/\/+$/, '');
+    const candidate = normalizeCaseForComparison(toPosixDrive(candidatePath));
+    return candidate === directory || candidate.startsWith(directory + '/');
+  }
   if (ruleContent.startsWith('//')) {
     const absoluteRule = toPosixDrive(ruleContent.slice(1).replace(/^\/+/, ''));
     const target = toPosixDrive(candidatePath).replace(/^\/+/, '');

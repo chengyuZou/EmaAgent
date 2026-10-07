@@ -6,7 +6,7 @@ import type { ProviderModels, Providers } from '@ema-agent/providers';
 import type { SessionStore } from '@ema-agent/session';
 import type { SettingsStore } from '@ema-agent/settings';
 import type { SkillDescriptor } from '@ema-agent/skills';
-import { ToolRegistry } from '@ema-agent/tools';
+import { FileStateCache, ToolRegistry } from '@ema-agent/tools';
 import type { Turn } from '@ema-agent/turn';
 import { SessionInteractionQueue } from '../interactionQueue.js';
 import { TurnPreparationError } from '../errors.js';
@@ -53,6 +53,7 @@ function fakeSession(overrides: Record<string, unknown> = {}) {
 
 function makeDeps(overrides: Partial<PrepareTurnDeps> = {}): PrepareTurnDeps {
   const settingsValues = new Map<string, unknown>();
+  const cache = new FileStateCache();
   return {
     sessions: {
       getSession: () => fakeSession(),
@@ -86,6 +87,7 @@ function makeDeps(overrides: Partial<PrepareTurnDeps> = {}): PrepareTurnDeps {
     skillEntries: () => [],
     disabledSkillPaths: () => [],
     registry: new ToolRegistry(),
+    fileStateCache: () => cache,
     interactionQueue: new SessionInteractionQueue(null),
     publishInteraction: () => undefined,
     subagentStore: {} as unknown as SubagentStore,

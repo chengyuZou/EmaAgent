@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { findMatchingContentRule, matchShellRule } from '@ema-agent/permission';
 import {
   buildTool,
   contextFail,
@@ -10,6 +9,8 @@ import {
 import type { CommandRunner } from '@ema-agent/sandbox';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { analyzeBashCommand, splitCommandSegments } from './security/bashSecurity.js';
+import { parsePermissionCommands } from './ast/ast.js';
+import { checkShellContentPermission } from '../shared/shellPermission.js';
 import { interpretExitCode } from './commandSemantics.js';
 import { BASH_DESCRIPTION } from './prompt.js';
 import {
@@ -99,43 +100,12 @@ export const BashTool = buildTool<BashInput, ShellResult, BashToolContext, Shell
       : { valid: true };
   },
 
-  // 内容规则按 shell 模式匹配（exact / :* / wildcard）；deny → ask → allow。
-  // 命令安全由 bashSecurity（validateInput 硬拦 + execute 复查）兜底，二者互补。
+  // 复合命令逐段匹配. 完整命令批准不扩大到其他参数或后续子命令.
   async checkPermissions(input, _context, permissionContext) {
-    const command = input.command;
-    const denyRule = findMatchingContentRule(
-      permissionContext, BuiltinTools.Bash.name, 'deny',
-      (content) => matchShellRule(content, command),
+    const { commands, allowByCommands } = await parsePermissionCommands(input.command);
+    return checkShellContentPermission(
+      BuiltinTools.Bash.name, input.command, commands, allowByCommands, permissionContext,
     );
-    if (denyRule) {
-      return {
-        behavior: 'deny',
-        message: `已禁止执行: ${command}`,
-        decisionReason: { type: 'rule', rule: denyRule },
-      };
-    }
-    const askRule = findMatchingContentRule(
-      permissionContext, BuiltinTools.Bash.name, 'ask',
-      (content) => matchShellRule(content, command),
-    );
-    if (askRule) {
-      return {
-        behavior: 'ask',
-        message: `执行 ${command} 需要用户确认`,
-        decisionReason: { type: 'rule', rule: askRule },
-      };
-    }
-    const allowRule = findMatchingContentRule(
-      permissionContext, BuiltinTools.Bash.name, 'allow',
-      (content) => matchShellRule(content, command),
-    );
-    if (allowRule) {
-      return {
-        behavior: 'allow',
-        decisionReason: { type: 'rule', rule: allowRule },
-      };
-    }
-    return { behavior: 'passthrough', message: '执行命令需要用户确认' };
   },
 
   async execute(

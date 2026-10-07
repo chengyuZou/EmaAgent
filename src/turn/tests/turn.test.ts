@@ -17,6 +17,7 @@ import {
   buildTool,
   BuiltinTools,
   contextOk,
+  FileStateCache,
   ToolRegistry,
 } from '@ema-agent/tools';
 import { SessionInteractionQueue } from '../interactionQueue.js';
@@ -67,6 +68,7 @@ function makeDeps(options: {
   registry: ToolRegistry;
 }): TurnExecutorDeps {
   const { db, llm, sessionId, registry } = options;
+  const cache = new FileStateCache();
   return {
     turns: new TurnStore({ db, sessionRunning: new SessionRunningRegistry() }),
     sessions: new SessionStore({ db }),
@@ -93,6 +95,7 @@ function makeDeps(options: {
     skillEntries: () => [],
     createLlmCall: () => llm,
     registry,
+    fileStateCache: () => cache,
     interactionQueue: new SessionInteractionQueue(null),
     publishInteraction: () => undefined,
     subagents: {

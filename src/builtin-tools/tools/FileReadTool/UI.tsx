@@ -24,8 +24,6 @@ function asFileReadResult(data: unknown): FileReadResult | null {
       return typeof data['content'] === 'string' && typeof data['totalLines'] === 'number'
         ? (data as unknown as FileReadResult)
         : null;
-    case 'file_unchanged':
-      return typeof data['totalLines'] === 'number' ? (data as unknown as FileReadResult) : null;
     case 'image_content':
       return typeof data['base64'] === 'string' && typeof data['mediaType'] === 'string'
         ? (data as unknown as FileReadResult)
@@ -44,7 +42,6 @@ export function fileReadResultCopyText(data: unknown): string | null {
   if (!result) return null;
   switch (result.type) {
     case 'file_content': return result.content;
-    case 'file_unchanged': return `与上次读取一致 · 共 ${result.totalLines} 行`;
     case 'image_content': return result.filePath;
     case 'notebook_content': return `${result.filePath} · ${result.totalCells} 个 cell`;
   }
@@ -81,13 +78,6 @@ export function FileReadResultView({ data }: { data: unknown }): JSX.Element | n
   if (!result) return null;
 
   switch (result.type) {
-    case 'file_unchanged':
-      return (
-        <span className="text-[11px] text-[var(--ema-text-tertiary)]">
-          与上次读取一致 · 共 {result.totalLines.toLocaleString()} 行
-        </span>
-      );
-
     case 'image_content':
       return (
         <div className="flex flex-col gap-1.5">

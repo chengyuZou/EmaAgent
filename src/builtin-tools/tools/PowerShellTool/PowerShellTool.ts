@@ -5,7 +5,6 @@
 // 本工具专为无沙箱 Windows 存在,安全性不依赖 OS 隔离。
 
 import { z } from 'zod';
-import { findMatchingContentRule, matchShellRule } from '@ema-agent/permission';
 import {
   buildTool,
   contextFail,
@@ -21,7 +20,10 @@ import {
 import {
   MAX_COMMAND_LENGTH,
   parsePowerShellCommand,
+  getAllCommands,
+  deriveSecurityFlags,
 } from './psParser.js';
+import { checkShellContentPermission } from '../shared/shellPermission.js';
 import { powershellCommandIsSafe } from './security/powershellSecurity.js';
 import { interpretCommandResult } from './security/commandSemantics.js';
 import { startPowerShellCommand } from './powershellRunner.js';
@@ -64,43 +66,22 @@ export const PowerShellTool = buildTool<PowerShellInput, ShellResult, PowerShell
   isReadOnly: () => false,
   isConcurrencySafe: () => false,
 
-  // 内容规则(shell 模式)优先;无规则默认询问(与旧 whenRequired 全档一致)。
-  // AST 分析不在此处重复, deny 档由调用管线中的 validateInput 拦截.
+  // 解析函数已有命令级缓存, 与 validateInput 共用结果; 权限规则逐段检查.
   async checkPermissions(input, _context, permissionContext) {
-    const command = input.command;
-    const denyRule = findMatchingContentRule(
-      permissionContext, BuiltinTools.PowerShell.name, 'deny',
-      (content) => matchShellRule(content, command),
+    const parsed = await parsePowerShellCommand(input.command);
+    const commands = getAllCommands(parsed);
+    const flags = deriveSecurityFlags(parsed);
+    const allowByCommands = parsed.valid && !parsed.hasStopParsing
+      && !flags.hasAssignments && !flags.hasSubExpressions && !flags.hasScriptBlocks
+      && !flags.hasExpandableStrings && !flags.hasMemberInvocations && !flags.hasSplatting
+      && parsed.statements.every(statement =>
+        (statement.statementType === 'PipelineAst' || statement.statementType === 'PipelineChainAst')
+        && (statement.commands.length > 0 || (statement.nestedCommands?.length ?? 0) > 0))
+      && commands.every(command => command.elementType === 'CommandAst');
+    return checkShellContentPermission(
+      BuiltinTools.PowerShell.name, input.command, commands.map(command => command.text),
+      allowByCommands, permissionContext,
     );
-    if (denyRule) {
-      return {
-        behavior: 'deny',
-        message: `已禁止执行: ${command}`,
-        decisionReason: { type: 'rule', rule: denyRule },
-      };
-    }
-    const askRule = findMatchingContentRule(
-      permissionContext, BuiltinTools.PowerShell.name, 'ask',
-      (content) => matchShellRule(content, command),
-    );
-    if (askRule) {
-      return {
-        behavior: 'ask',
-        message: `执行 ${command} 需要用户确认`,
-        decisionReason: { type: 'rule', rule: askRule },
-      };
-    }
-    const allowRule = findMatchingContentRule(
-      permissionContext, BuiltinTools.PowerShell.name, 'allow',
-      (content) => matchShellRule(content, command),
-    );
-    if (allowRule) {
-      return {
-        behavior: 'allow',
-        decisionReason: { type: 'rule', rule: allowRule },
-      };
-    }
-    return { behavior: 'passthrough', message: '执行 PowerShell 命令需要用户确认' };
   },
 
   validateContext(ctx: ToolUseContext) {

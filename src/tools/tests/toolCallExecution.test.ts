@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import type {
   PermissionRequest,
+  SessionAllowRule,
   ToolPermissionContext,
 } from '@ema-agent/permission';
 import {
@@ -247,21 +248,22 @@ describe('ToolCallExecution', () => {
     expect(store.findByCallId('call-1')?.status).toBe('prepared');
   });
 
-  it('ask 决策走交互通道:请求携带身份、摘要与规则建议,allowSession 后放行', async () => {
+  it('ask 决策走交互通道:请求携带身份和摘要,allowSession 后放行', async () => {
     const seen: PermissionRequest[] = [];
+    const rules: SessionAllowRule[] = [];
     const tool = echoTool({
       getToolUseSummary: () => '回显一个数字',
       checkPermissions: async () => ({
         behavior: 'ask' as const,
         message: '需要确认',
-        ruleSuggestion: { toolName: 'Echo' },
       }),
     });
     const { execution } = makeCall(
       makeEnv({
         tools: [tool],
-        askPermission: async (request) => {
+        askPermission: async (request, _signal, rule) => {
           seen.push(request);
+          rules.push(rule);
           return { action: 'allowSession' };
         },
       }),
@@ -273,13 +275,14 @@ describe('ToolCallExecution', () => {
 
     expect(result.isError).toBe(false);
     expect(seen).toHaveLength(1);
+    expect(rules).toEqual([{ toolName: 'Echo', ruleContent: 'input:{"value":1}' }]);
+    expect(seen[0]).not.toHaveProperty('sessionAllowRule');
     expect(seen[0]).toMatchObject({
       toolName: 'Echo',
       toolDescription: '回显一个数字',
       toolCallId: 'call-1',
       sessionId: SESSION_ID,
       turnId: TURN_ID,
-      ruleSuggestion: { toolName: 'Echo' },
     });
   });
 
