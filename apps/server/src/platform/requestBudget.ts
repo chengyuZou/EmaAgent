@@ -47,8 +47,6 @@ export const REQUEST_VALUE_LIMITS = Object.freeze({
   maxTurnTextChars: 1_000_000,
   maxTurnContentParts: 64,
   maxTurnAttachments: 64,
-  maxTurnKbIds: 128,
-  maxTurnKbAssetScopes: 128,
   maxTtsTestTextChars: 2_000,
 });
 

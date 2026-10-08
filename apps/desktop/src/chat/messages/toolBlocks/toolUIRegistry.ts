@@ -27,9 +27,6 @@ import {
   NarrativeSearchArgsView,
   NarrativeSearchResultView,
   narrativeSearchResultCopyText,
-  PdfReadArgsView,
-  PdfReadResultView,
-  pdfReadResultCopyText,
   TodoWriteArgsView,
   WebFetchArgsView,
   WebFetchResultView,
@@ -135,7 +132,6 @@ const TOOL_UI_REGISTRY: Readonly<Record<string, ToolUI>> = {
     ArgsView: NarrativeSearchArgsView,
     ResultView: NarrativeSearchResultView,
   },
-  [BuiltinTools.PdfRead.name]: { resultCopyText: pdfReadResultCopyText, ArgsView: PdfReadArgsView, ResultView: PdfReadResultView },
   [BuiltinTools.TodoWrite.name]: { ArgsView: TodoWriteArgsView, defaultExpanded: true },
 };
 

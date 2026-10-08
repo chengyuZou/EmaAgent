@@ -8,13 +8,15 @@ describe('V1 内置工具注册边界', () => {
     const registry = new ToolRegistry();
     registerBuiltinTools(registry);
     const names = registry.list().map((tool) => tool.name);
+    expect(names).toContain('Read');
+    expect(names).not.toContain('PdfRead');
+    expect(names).not.toContain('KnowledgeBaseSearch');
     expect(names).toEqual(expect.arrayContaining([
       BuiltinTools.TaskCreate.name,
       BuiltinTools.TaskGet.name,
       BuiltinTools.TaskList.name,
       BuiltinTools.TaskUpdate.name,
       BuiltinTools.TodoWrite.name,
-      BuiltinTools.PdfRead.name,
     ]));
   });
 

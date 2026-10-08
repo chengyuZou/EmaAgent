@@ -4,12 +4,6 @@ import {
   attachmentCacheMaxBytesSetting,
 } from '@ema-agent/attachments';
 import { COMPACT_SETTINGS, compactGroup } from '@ema-agent/compact';
-import {
-  kbAlphaSetting,
-  kbDefaultTopKSetting,
-  kbRerankBlendWeightSetting,
-  kbResultMaxCharsSetting,
-} from '@ema-agent/knowledge';
 import { narrativeQueryModeSetting, narrativeStartOnLaunchSetting } from '@ema-agent/narrative';
 import { PERMISSION_SETTINGS } from '@ema-agent/permission';
 import { SettingsStore } from '@ema-agent/settings';
@@ -41,10 +35,6 @@ export const SETTINGS_DEFINITIONS = [
   ...COMPACT_SETTINGS,
   ...PERMISSION_SETTINGS,
   attachmentCacheMaxBytesSetting,
-  kbAlphaSetting,
-  kbDefaultTopKSetting,
-  kbRerankBlendWeightSetting,
-  kbResultMaxCharsSetting,
   narrativeQueryModeSetting,
   narrativeStartOnLaunchSetting,
   disabledProjectSourcesSetting,
@@ -62,7 +52,6 @@ export const SETTINGS_DEFINITIONS = [
 
 /**
  * 构造类型化设置入口。定义与组在构造时全量注册，重复 key 启动期 fail-fast。
- * knowledge 的模型绑定设置随 Provider 折叠改为 model_bindings 表，不再是 settings key。
  */
 export function openSettings(profileDb: Database): SettingsComposition {
   const settings = new SettingsStore(new SettingsRepo(profileDb.sqlite), {

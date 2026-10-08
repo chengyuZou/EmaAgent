@@ -3,6 +3,9 @@
 import {
   IMAGE_FILE_SIZE_LIMIT,
   MAX_READ_LINES,
+  MAX_PDF_BYTES,
+  DEFAULT_PDF_PAGE_COUNT,
+  MAX_PDF_PAGE_COUNT,
   SELECTED_BYTES_LIMIT,
 } from './limits.js';
 
@@ -15,7 +18,9 @@ Usage:
 - Each text read returns at most ${SELECTED_BYTES_LIMIT / 1024} KB of content; larger selections are truncated with a \`nextOffset\` to continue from. Files over 10 MiB can only be read with pagination.
 - Image files (PNG/JPEG/GIF/WebP up to ${IMAGE_FILE_SIZE_LIMIT / 1024 / 1024} MiB) are returned as visual content you can see. \`offset\`/\`limit\` do not apply to images.
 - Notebook files (.ipynb) are parsed into cells with their outputs; oversized outputs are summarized. \`offset\`/\`limit\` do not apply to notebooks.
-- PDF files are read with the PdfRead tool instead. Other binary files, device files, and UNC paths are refused.
+- PDF files are parsed by this tool (up to ${MAX_PDF_BYTES / 1024 / 1024} MiB). Use start_page and page_count (1-based pages, defaults to ${DEFAULT_PDF_PAGE_COUNT}, maximum ${MAX_PDF_PAGE_COUNT}); offset/limit are text-line parameters and must not be used for PDF.
+- PDF results include totalPages and nextPage for continuation. Scanned or garbled pages use the configured Vision model for OCR; figures use it for captions. Without Vision, these pages/figures produce explicit warnings rather than complete content.
+- Other binary files, device files, and UNC paths are refused.
 - Repeated reads of an unchanged file return the requested content from the session cache.`;
 
 /** 图片结果的模型文本说明; 图片本体走 image_data part, 不走这段文本。 */

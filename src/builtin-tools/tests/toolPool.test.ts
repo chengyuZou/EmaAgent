@@ -30,7 +30,6 @@ describe('Builtin ToolPool 能力装配', () => {
     expect(names).toContain(BuiltinTools.WebSearch.name);
     expect(names).toContain(BuiltinTools.TodoWrite.name);
     expect(names).not.toContain(BuiltinTools.FileRead.name);
-    expect(names).not.toContain(BuiltinTools.PdfRead.name);
     expect(names).not.toContain(BuiltinTools.Glob.name);
     expect(names).not.toContain(BuiltinTools.Bash.name);
     expect(names).not.toContain(BuiltinTools.TaskList.name);
@@ -47,7 +46,6 @@ describe('Builtin ToolPool 能力装配', () => {
       taskStore: {} as never,
       askUser: async () => ({ answers: {} }),
       subagents: {} as never,
-      knowledgeSearch: async () => [] as never,
       narrativeSearch: async () => ({
         timelines: [],
         contextText: null,
@@ -60,12 +58,10 @@ describe('Builtin ToolPool 能力装配', () => {
 
     expect(names).toEqual(expect.arrayContaining([
       BuiltinTools.FileRead.name,
-      BuiltinTools.PdfRead.name,
       BuiltinTools.Glob.name,
       BuiltinTools.TaskCreate.name,
       BuiltinTools.AskUser.name,
       BuiltinTools.Subagent.name,
-      BuiltinTools.KnowledgeBaseSearch.name,
       BuiltinTools.NarrativeSearch.name,
       BuiltinTools.ScratchpadWrite.name,
       BuiltinTools.TodoWrite.name,

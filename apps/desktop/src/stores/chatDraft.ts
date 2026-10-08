@@ -20,8 +20,6 @@ export type ChatDraftReference = { readonly draftId: string } & (
 export interface ChatDraft {
   readonly text: string;
   readonly references: readonly ChatDraftReference[];
-  /** KB 只限制本轮检索范围, 不占输入项顺序, 也不显示为胶囊. */
-  readonly selectedAssetIds: readonly string[];
   readonly sessionMode: SessionMode;
   readonly narrativePolicy: NarrativePolicy;
   readonly permissionMode: PermissionMode;
@@ -37,7 +35,6 @@ export function emptyChatDraft(): ChatDraft {
   return {
     text: '',
     references: [],
-    selectedAssetIds: [],
     sessionMode: 'chat',
     narrativePolicy: 'auto',
     permissionMode: 'default',
@@ -46,7 +43,6 @@ export function emptyChatDraft(): ChatDraft {
   };
 }
 
-/** 单独选中 KB 文档不能发送; 有文字或任意胶囊才形成 UserMessage. */
 export function hasDraftContent(draft: ChatDraft): boolean {
   return draft.text.trim().length > 0 || draft.references.length > 0;
 }
@@ -68,9 +64,6 @@ interface ChatDraftStore {
   setForNewSession(draft: ChatDraft): void;
   promoteNewSession(sessionId: string): void;
   evictSession(sessionId: string): void;
-  /** 激活库切换后, 所有未发送草稿都不能继续携带旧库的文档 ID. */
-  clearSelectedAssetIds(): void;
-  removeSelectedAssetId(assetId: string): void;
 }
 
 export const useChatDraftStore = create<ChatDraftStore>((set, get) => ({
@@ -97,26 +90,5 @@ export const useChatDraftStore = create<ChatDraftStore>((set, get) => ({
       bySession.delete(sessionId);
       return { bySession };
     });
-  },
-
-  clearSelectedAssetIds() {
-    set(state => ({
-      newSessionDraft: { ...state.newSessionDraft, selectedAssetIds: [] },
-      bySession: new Map([...state.bySession].map(([id, draft]) => [
-        id, { ...draft, selectedAssetIds: [] },
-      ])),
-    }));
-  },
-
-  removeSelectedAssetId(assetId) {
-    set(state => ({
-      newSessionDraft: {
-        ...state.newSessionDraft,
-        selectedAssetIds: state.newSessionDraft.selectedAssetIds.filter(id => id !== assetId),
-      },
-      bySession: new Map([...state.bySession].map(([id, draft]) => [
-        id, { ...draft, selectedAssetIds: draft.selectedAssetIds.filter(selected => selected !== assetId) },
-      ])),
-    }));
   },
 }));

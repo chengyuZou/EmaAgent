@@ -58,22 +58,6 @@ CREATE TABLE character_voice_samples (
   PRIMARY KEY(character_name, name)
 );
 
-CREATE TABLE knowledge_bases (
-  id         TEXT    PRIMARY KEY,
-  name       TEXT    NOT NULL,
-  path       TEXT    NOT NULL,          -- 绝对文件夹:{path}/kb.db + {path}/files/
-  is_active  INTEGER NOT NULL DEFAULT 0,
-  -- Embedding/Rerank 是库的属性(向量空间由它建立),不是全局绑定;成对出现,半配置无意义。
-  embed_provider_id  TEXT,
-  embed_model_id     TEXT,
-  rerank_provider_id TEXT,
-  rerank_model_id    TEXT,
-  created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL,
-  CHECK ((embed_provider_id IS NULL) = (embed_model_id IS NULL)),
-  CHECK ((rerank_provider_id IS NULL) = (rerank_model_id IS NULL))
-);
-
 CREATE TABLE mcp_servers (
   id           TEXT PRIMARY KEY,
   name         TEXT NOT NULL UNIQUE,
@@ -199,7 +183,6 @@ CREATE TABLE provider_models (
 -- 模型绑定:每个业务模块只绑定一个已启用模型；绑定与选中入口断言连接可解析。
 -- module 枚举与 providers/modelBindings.ts 的 MODEL_BINDING_MODULES 保持一致;
 -- 命名统一为 <域>-<能力>(memory-llm/lightrag-embed/...);memory 只消费 llm(双轨重构后)。
--- kb 的 embed/rerank 不在此表:它们是 knowledge_bases 注册行上的库级属性。
 CREATE TABLE model_bindings (
   module      TEXT PRIMARY KEY CHECK(module IN (
                 'memory-llm',
@@ -270,10 +253,6 @@ CREATE INDEX idx_character_voice_samples_order
 CREATE UNIQUE INDEX idx_character_voice_samples_primary
   ON character_voice_samples(character_name)
   WHERE is_primary = 1;
-
-CREATE UNIQUE INDEX idx_kb_active ON knowledge_bases(is_active) WHERE is_active = 1;
-
-CREATE UNIQUE INDEX idx_kb_name   ON knowledge_bases(name);
 
 CREATE INDEX idx_provider_capability_active
   ON provider_capabilities(capability, provider_id)

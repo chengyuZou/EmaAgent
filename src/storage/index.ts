@@ -184,31 +184,3 @@ export type {
   BackgroundProcessStatus,
   BackgroundProcessTerminal,
 } from './repos/data/backgroundProcesses.js';
-
-// ── Knowledge-base repo ────────────────────────────────────────────────────────
-export { DocumentAssetRepo, DocumentAssetCursorError } from './repos/kb/document-asset.js';
-export { DocumentChunkRepo }   from './repos/kb/document-chunk.js';
-export {
-  DocumentPreviewRepo,
-  DocumentPreviewValidationError,
-} from './repos/kb/document-preview.js';
-export { KbIngestTasksRepo }   from './repos/kb/kb-ingest-tasks.js';
-export type {
-  KbIngestTask,
-  KbIngestStatus,
-} from './repos/kb/kb-ingest-tasks.js';
-export { KbReembedTasksRepo }  from './repos/kb/kb-reembed-tasks.js';
-export type {
-  KbReembedTask,
-  KbReembedStatus,
-} from './repos/kb/kb-reembed-tasks.js';
-export { KbRegistryRepo }      from './repos/profile/kb-registry.js';
-export type { KbRecord, KbModelRef } from './repos/profile/kb-registry.js';
-export type { DocumentAssetRow, DocumentAssetInsert, AssetPage } from './repos/kb/document-asset.js';
-export type { DocumentChunkRow, DocumentChunkInsert, ChunkSearchHit, ChunkSummary, ChunkPage }  from './repos/kb/document-chunk.js';
-export type {
-  DocumentPreview,
-  DocumentPreviewMime,
-  DocumentPreviewRow,
-  DocumentPreviewUpsert,
-} from './repos/kb/document-preview.js';

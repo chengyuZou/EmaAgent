@@ -13,4 +13,4 @@ Provider / 接线层
 
 `EmbeddingSpace` 是向量索引的领域事实，不是协议路由。调用方根据已选择的 `providerId`、模型与维度调用 `createEmbeddingSpace()`，身份四元组 (providerId, model, dim, normalization) 任一变化即生成新空间——providerId 承担"同名不同权重"的隔离（换端点 = 换空间 = 重新嵌入，宁可重嵌绝不混写）。`embed()` 不接受 Provider ID，也不替调用方选择空间。
 
-正常请求只执行一次。批处理、限时、重试和 Usage 记录由知道具体业务语义的 Knowledge、Memory 或接线层拥有。
+正常请求只执行一次。批处理、限时、重试和 Usage 记录由实际业务调用方处理。

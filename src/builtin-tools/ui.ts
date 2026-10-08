@@ -48,6 +48,5 @@ export {
   NarrativeSearchResultView,
   narrativeSearchResultCopyText,
 } from './tools/NarrativeSearchTool/UI.js';
-export { PdfReadArgsView, PdfReadResultView, pdfReadResultCopyText } from './tools/PdfReadTool/UI.js';
 export { TodoWriteActivitySummary, TodoWriteArgsView } from './tools/TodoWriteTool/UI.js';
 export { patchToUnifiedText } from './tools/FileEditTool/patch.js';

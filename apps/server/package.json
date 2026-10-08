@@ -34,7 +34,6 @@
     "@ema-agent/embed": "workspace:*",
     "@ema-agent/git": "workspace:*",
     "@ema-agent/goal": "workspace:*",
-    "@ema-agent/knowledge": "workspace:*",
     "@ema-agent/llm": "workspace:*",
     "@ema-agent/mcp": "workspace:*",
     "@ema-agent/memory": "workspace:*",

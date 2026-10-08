@@ -209,7 +209,6 @@ export async function prepareTurn(
     workspaceRoots,
     ...(scratchpadDir ? { scratchpadDir } : {}),
     ...(skillPool ? { skillPool } : {}),
-    ...(request.knowledge ? { knowledge: request.knowledge } : {}),
     prepareSubagent: input.prepareSubagent,
     providerId,
     modelId,

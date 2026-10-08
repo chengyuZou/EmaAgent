@@ -113,7 +113,7 @@ pub async fn open_window(app: tauri::AppHandle, label: String) -> Result<(), Str
 
 #[tauri::command]
 pub fn open_path(app: tauri::AppHandle, path: String) -> Result<(), String> {
-    // 用宿主侧 opener 打开路径本身(KB 库目录等);自研 command 不经 WebView ACL。
+    // 用宿主侧 opener 打开路径本身;自研 command 不经 WebView ACL。
     use tauri_plugin_opener::OpenerExt;
     app.opener()
         .open_path(&path, None::<&str>)

@@ -2,14 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   CharacterRepo,
   Database,
-  DocumentAssetRepo,
-  DocumentPreviewRepo,
-  DocumentPreviewValidationError,
   SettingSerializationError,
   SettingsRepo,
 } from '../../index.js';
 
-type TestDatabaseKind = 'profile' | 'data' | 'kb';
+type TestDatabaseKind = 'profile' | 'data';
 
 function withDatabase<T>(kind: TestDatabaseKind, run: (database: Database) => T): T {
   const database = new Database({ memory: true, kind });
@@ -106,73 +103,3 @@ describe('N-004 Character 更新契约', () => {
     });
   });
 });
-
-describe('N-007 DocumentPreview MIME 契约', () => {
-  it('PNG 缩略图可以完整往返', () => {
-    withDatabase('kb', (database) => {
-      insertAsset(database, 'asset-a');
-      const repo = new DocumentPreviewRepo(database.sqlite);
-      repo.upsert({
-        assetId: 'asset-a',
-        text: 'preview',
-        thumbnail: new Uint8Array([137, 80, 78, 71]),
-        thumbnailMime: 'image/png',
-        wordCount: 1,
-      });
-
-      expect(repo.findByAsset('asset-a')).toMatchObject({
-        assetId: 'asset-a',
-        thumbnailMime: 'image/png',
-      });
-    });
-  });
-
-  it('拒绝只提供缩略图或只提供 MIME', () => {
-    withDatabase('kb', (database) => {
-      insertAsset(database, 'asset-a');
-      const repo = new DocumentPreviewRepo(database.sqlite);
-
-      expect(() => repo.upsert({
-        assetId: 'asset-a',
-        text: '',
-        thumbnail: new Uint8Array([1]),
-        wordCount: 0,
-      })).toThrow(DocumentPreviewValidationError);
-      expect(() => repo.upsert({
-        assetId: 'asset-a',
-        text: '',
-        thumbnailMime: 'image/png',
-        wordCount: 0,
-      })).toThrow(DocumentPreviewValidationError);
-    });
-  });
-
-  it('读取到伪装成 PNG 类型的数据库坏值时明确失败', () => {
-    withDatabase('kb', (database) => {
-      insertAsset(database, 'asset-a');
-      database.sqlite.prepare(`
-        INSERT INTO document_previews
-          (asset_id, text, thumbnail, thumbnail_mime, word_count)
-        VALUES (?, ?, ?, ?, ?)
-      `).run('asset-a', '', Buffer.from([1]), 'image/jpeg', 0);
-
-      const repo = new DocumentPreviewRepo(database.sqlite);
-      expect(() => repo.findByAsset('asset-a'))
-        .toThrow(DocumentPreviewValidationError);
-    });
-  });
-});
-
-function insertAsset(database: Database, id: string): void {
-  new DocumentAssetRepo(database.sqlite).insert({
-    id,
-    sourcePath: `D:/Docs/${id}.txt`,
-    filePath: `files/${id}.txt`,
-    fileName: `${id}.txt`,
-    mimeType: 'text/plain',
-    wordCount: 0,
-    status: 'ready',
-    createdAt: 1,
-    updatedAt: 1,
-  });
-}

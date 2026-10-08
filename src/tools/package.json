@@ -27,7 +27,6 @@
     },
     "dependencies":  {
       "@ema-agent/goal":  "workspace:*",
-      "@ema-agent/knowledge":  "workspace:*",
       "@ema-agent/vision":  "workspace:*",
       "@ema-agent/llm":  "workspace:*",
       "@ema-agent/memory":  "workspace:*",

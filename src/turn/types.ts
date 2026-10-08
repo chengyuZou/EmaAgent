@@ -99,11 +99,6 @@ export type TurnInputPart =
       readonly path: string;
     };
 
-/** 本 Turn 在当前激活知识库内的文档范围；不提供 knowledge 表示使用整个激活库。 */
-export interface TurnKnowledgeSelection {
-  readonly assetIds: readonly string[];
-}
-
 /** 空白文本不是输入；附件或 Skill 引用本身就是有效输入。 */
 export function hasTurnInput(input: readonly TurnInputPart[]): boolean {
   return input.some(part => part.type !== 'text' || part.text.trim().length > 0);
@@ -128,7 +123,6 @@ export interface StartTurn {
   readonly input: readonly TurnInputPart[];
   /** 队列交付的内部通知或继续指令, 持久化为 kind='continuation' 的 Message. */
   readonly continuationText?: string;
-  readonly knowledge?: TurnKnowledgeSelection;
   readonly ttsEnabled: boolean;
 }
 

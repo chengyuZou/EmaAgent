@@ -9,7 +9,6 @@ import { openBackup, type BackupComposition } from './backup.js';
 import { openCharacters, type CharactersComposition } from './characters.js';
 import { openCommands, type CommandsComposition } from './commands.js';
 import { openDatabases, type DatabaseComposition } from './database.js';
-import { openKnowledge, type KnowledgeComposition } from './knowledge.js';
 import { openMemory, type MemoryComposition } from './memory.js';
 import { openNarrative, type NarrativeComposition } from './narrative.js';
 import { openProviders, type ProvidersComposition } from './providers.js';
@@ -23,7 +22,6 @@ export interface Composition {
   readonly settings: SettingsComposition;
   readonly providers: ProvidersComposition;
   readonly tools: ToolsComposition;
-  readonly knowledge: KnowledgeComposition;
   readonly characters: CharactersComposition;
   readonly narrative: NarrativeComposition;
   readonly speech: SpeechComposition;
@@ -61,14 +59,6 @@ export function buildComposition(input: { activeDataDir: string; initializeBuilt
     },
     emitMcpEvent: event => appEvents.emit(event),
   });
-  const knowledge = openKnowledge(
-    database.profileDb,
-    providers.providers,
-    providers.providerModels,
-    providers.modelBindings,
-    settings.settings,
-    database.usageRecorder,
-  );
   const characters = openCharacters(database.profileDb, input.initializeBuiltinCharacters);
   const narrative = openNarrative(providers.providers, providers.providerModels, providers.modelBindings);
   const speech = openSpeech(
@@ -104,8 +94,6 @@ export function buildComposition(input: { activeDataDir: string; initializeBuilt
   settings.settings.subscribe(() => {
     appEvents.emit({ type: 'settings_changed' });
   });
-  // KB 域事件进应用通道。
-  knowledge.kb.events.on(event => appEvents.emit(event));
 
   // Memory 只依赖 database 层的 TurnStore/SessionStore，必须先于 openTurns 创建：
   // Turn completed 终态事务内的提取入队闭包由它提供。
@@ -133,7 +121,6 @@ export function buildComposition(input: { activeDataDir: string; initializeBuilt
     settings: settings.settings,
     providers,
     tools,
-    knowledge,
     narrative,
     characters: characters.store,
     stage: characters.stage,
@@ -171,7 +158,6 @@ export function buildComposition(input: { activeDataDir: string; initializeBuilt
     settings,
     providers,
     tools,
-    knowledge,
     characters,
     narrative,
     speech,

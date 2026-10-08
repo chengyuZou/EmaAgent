@@ -38,7 +38,6 @@ remove(path.join(profileRoot, 'data'));
 // 这些目录由首次启动、后端业务或用户操作重新建立。
 for (const directory of [
   'characters',
-  'kb',
   'memories',
   'narrative',
   'resources',

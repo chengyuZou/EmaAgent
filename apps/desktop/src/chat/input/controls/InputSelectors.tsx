@@ -163,7 +163,6 @@ export function useInputOptions(
   }
 
   function chooseSessionMode(sessionMode: SessionMode): void {
-    if (sessionMode === 'chat') patchCurrentDraft({ selectedAssetIds: [] });
     if (viewedId) {
       void useSessionStore.getState()
         .setSessionMode(viewedId, sessionMode)

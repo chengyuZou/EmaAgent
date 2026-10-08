@@ -18,7 +18,7 @@ export class DatabaseCapabilityError extends Error {
 }
 
 /**
- * SQLite 封装。V1 中三种 kind 共存,各开一个 Database 实例:
+ * SQLite 封装。V1 中两种 kind 共存,各开一个 Database 实例:
  *
  *   kind: 'profile' - `~/.ema-agent/profile.db`
  *     Provider 配置、模型绑定、角色卡、应用设置。
@@ -27,10 +27,8 @@ export class DatabaseCapabilityError extends Error {
  *   kind: 'data'    - `{activeDataDir}/data.db`
  *     Session / Memory / 音频 等。用户切换数据目录时随之切换。
  *
- *   kind: 'kb'      - `{kbPath}/kb.db`
- *     单个命名知识库的文档 / 分块 / FTS5 索引。每个 KB 独立一个。
  *
- * 运行时三个实例同时打开。Repo 直接接收 `SqliteDb`,不关心 kind--
+ * 运行时两个实例同时打开。Repo 直接接收 `SqliteDb`,不关心 kind--
  * 由装配层把每个 repo 和正确的 DB 配对。
  *
  * 生命周期:构造(打开 + 设 pragma)-> `migrate()`(建表)-> 使用 -> `close()`。

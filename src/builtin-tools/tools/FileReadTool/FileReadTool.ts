@@ -1,8 +1,10 @@
-// 读取文本或图片文件，并维护后续编辑需要的文件状态。
+// 按格式读取本地文件, 仅文本分支维护后续编辑需要的文件状态.
 // 模型说明书见 prompt.ts; 结果预算见 limits.ts; 图片分支见 imageReader.ts。
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
+import type { CallVision } from '@ema-agent/vision';
+import { readPdfFile, renderPdfContent, type PdfReadResult } from './pdfReader.js';
 import { filePathToRuleContent } from '@ema-agent/permission';
 import {
   buildTool,
@@ -20,13 +22,22 @@ import {
   renderNotebookCells,
   type FileReadNotebookResult,
 } from './notebookReader.js';
-import { MAX_READ_LINES, MAX_RESULT_BYTES, SELECTED_BYTES_LIMIT, TEXT_WHOLE_READ_LIMIT } from './limits.js';
+import {
+  DEFAULT_PDF_PAGE_COUNT,
+  MAX_PDF_PAGE_COUNT,
+  PDF_RESULT_BYTES_LIMIT,
+  MAX_READ_LINES,
+  MAX_RESULT_BYTES,
+  SELECTED_BYTES_LIMIT,
+  TEXT_WHOLE_READ_LIMIT,
+} from './limits.js';
 import { FILE_READ_DESCRIPTION, imageResultNotice } from './prompt.js';
 import { readTextInRange, selectTextRange, type TextRangeResult } from './readTextInRange.js';
 
 interface FileReadToolContext {
   fileStateCache: FileStateCache;
   cwd: string;
+  vision?: CallVision;
 }
 
 /**
@@ -68,7 +79,10 @@ const inputSchema = z.object({
     .max(MAX_READ_LINES)
     .optional()
     .describe(`Maximum number of lines to read (capped at ${MAX_READ_LINES}).`),
-});
+  start_page: z.number().int().min(1).optional().describe('1-based first page (PDF only).'),
+  page_count: z.number().int().min(1).max(MAX_PDF_PAGE_COUNT).optional()
+    .describe(`Number of PDF pages to read, up to ${MAX_PDF_PAGE_COUNT}; defaults to ${DEFAULT_PDF_PAGE_COUNT}.`),
+}).strict();
 
 type FileReadInput = z.infer<typeof inputSchema>;
 
@@ -93,7 +107,8 @@ export interface FileReadTextResult {
 export type FileReadResult =
   | FileReadTextResult
   | FileReadImageResult
-  | FileReadNotebookResult;
+  | FileReadNotebookResult
+  | PdfReadResult;
 
 // ── 辅助函数 ───────────────────────────────────────────────────────────────────
 
@@ -184,7 +199,7 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, FileReadToo
   inputSchema,
   isReadOnly: () => true,
   isConcurrencySafe: () => true,
-  maxResultBytes: MAX_RESULT_BYTES,
+  maxResultBytes: Math.max(MAX_RESULT_BYTES, PDF_RESULT_BYTES_LIMIT),
 
   validateContext(ctx) {
     if (!ctx.cwd) {
@@ -196,6 +211,7 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, FileReadToo
     return contextOk({
       fileStateCache: ctx.fileStateCache,
       cwd: ctx.cwd,
+      ...(ctx.vision ? { vision: ctx.vision } : {}),
     });
   },
 
@@ -254,6 +270,23 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, FileReadToo
 
     if (!stat.isFile()) {
       throw new Error(`Path is not a regular file: ${fullPath}`);
+    }
+
+    if (path.extname(fullPath).toLowerCase() === '.pdf') {
+      if (offset !== undefined || limit !== undefined) {
+        throw new Error('offset/limit do not apply to PDF files. Use start_page/page_count.');
+      }
+      // PDF 提取正文不代表二进制原文件的编辑基准, 不写入 FileStateCache.
+      return readPdfFile({
+        fullPath,
+        filePath: file_path,
+        sizeBytes: stat.size,
+        startPage: input.start_page,
+        pageCount: input.page_count,
+      }, context.vision, invocation);
+    }
+    if (input.start_page !== undefined || input.page_count !== undefined) {
+      throw new Error('start_page/page_count only apply to PDF files.');
     }
 
     // ── 图片分支: 扩展名单点判定, 分页参数对图片无意义 ─────────────────────────
@@ -362,6 +395,8 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, FileReadToo
           },
           { type: 'image_data', data: output.base64, mimeType: output.mediaType },
         ];
+      case 'pdf_content':
+        return renderPdfContent(output);
       case 'notebook_content':
         return renderNotebookCells(output.cells);
       case 'file_content': {

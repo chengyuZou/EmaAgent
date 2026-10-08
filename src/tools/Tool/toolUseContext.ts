@@ -2,7 +2,6 @@
 import type { CommandRunner } from '@ema-agent/sandbox';
 import type { TaskStore } from '@ema-agent/tasks';
 import type { GoalStore } from '@ema-agent/goal';
-import type { KnowledgeSearch } from '@ema-agent/knowledge';
 import type { ListMemory, ReadMemory, SearchMemory } from '@ema-agent/memory';
 import type { NarrativeSearch } from '@ema-agent/narrative';
 import type { SkillPool } from '@ema-agent/skills';
@@ -109,8 +108,6 @@ export interface ToolUseContext {
   readonly commandRunner?: CommandRunner;
   /** Bash 与 Process 工具族共享的持久后台进程入口。 */
   readonly backgroundProcesses?: BackgroundProcess;
-  /** KB 检索工具的搜索入口。 */
-  readonly knowledgeSearch?: KnowledgeSearch;
   /** Narrative 剧情资料的按需检索入口，仅在 auto 策略下装配。 */
   readonly narrativeSearch?: NarrativeSearch;
   /** Task 工具族的持久存储。 */
@@ -127,7 +124,7 @@ export interface ToolUseContext {
   readonly fileStateCache?: FileStateCache;
   /** AskUser 工具的问询解析器。 */
   readonly askUser?: AskUser;
-  /** 本 Turn 冻结的 vision 调用（OCR/图注）；缺省时 PdfReadTool 只读文本层。 */
+  /** 本 Turn 冻结的 vision 调用（OCR/图注）；缺省时 Read 的 PDF 分支只读文本层。 */
   readonly vision?: CallVision;
   // ── Memory 工具族的三个只读能力 ────────────────────────────────────────────
   /** MemorySearch 工具的跨两轨关键词搜索能力。 */

@@ -38,7 +38,6 @@ import { createVisionCall, VisionError, type CallVision, type VisionImageMime } 
 import { ensureScratchpadDir, scratchpadTurnDir } from '../platform/paths.js';
 import type { AppEvent } from '../application/appEvents.js';
 import type { DatabaseComposition } from './database.js';
-import type { KnowledgeComposition } from './knowledge.js';
 import type { NarrativeComposition } from './narrative.js';
 import type { ProvidersComposition } from './providers.js';
 import type { ToolsComposition } from './tools.js';
@@ -66,7 +65,6 @@ export interface TurnCompositionDeps {
   readonly settings: SettingsStore;
   readonly providers: ProvidersComposition;
   readonly tools: ToolsComposition;
-  readonly knowledge: KnowledgeComposition;
   readonly narrative: NarrativeComposition;
   readonly characters: CharacterStore;
   /** 角色舞台：Turn 泵内剥离表现标签；实例由 characters 一族持有（词汇随角色切换）。 */
@@ -87,7 +85,6 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     settings,
     providers,
     tools,
-    knowledge,
     narrative,
     characters,
     stage
@@ -194,7 +191,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     );
     return result.text;
   };
-  // Turn 工具面的 vision 闭包（PdfReadTool 扫描页 OCR 等）：无绑定即 undefined（降级纯文本），
+  // Turn 工具面的 vision 闭包（Read 的 PDF 扫描页 OCR 等）：无绑定即 undefined（降级纯文本），
   // 模型身份在闭包内冻结，usage 从结果记录。
   const resolveCallVision = (): CallVision | undefined => {
     const selected = resolveVision();
@@ -328,7 +325,6 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     continuations,
     taskStore: database.tasks,
     goalStore: database.goals,
-    knowledgeSearch: knowledge.knowledgeSearch,
     currentNarrativeClient: narrative.currentClient,
     resolveNarrativeLlm: narrative.resolveNarrativeLlm,
     backgroundProcesses: tools.backgroundProcesses,

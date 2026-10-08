@@ -70,8 +70,6 @@
   pointer-events: none;
 }
 
-/* 展开的知识库行需要让主题底色透过纹理。 */
-.ema-card-decorate.ema-row-active::after { opacity: 0.4; }
 
 /* ── 细几何纹理变体: 单色低透明 + 渐隐 mask, 每域一种, 禁大色块 ─────────────
    background-size 必须显式给(基座是两值列表, 不覆盖会错配层数)。
@@ -83,13 +81,6 @@
     linear-gradient(90deg, color-mix(in srgb, var(--ema-text-tertiary) 14%, transparent) 1px, transparent 1px),
     linear-gradient(color-mix(in srgb, var(--ema-text-tertiary) 14%, transparent) 1px, transparent 1px);
   background-size: 18px 18px;
-}
-
-/* 细斜线: knowledge */
-.ema-card-decorate--diag::after {
-  background-image: repeating-linear-gradient(45deg,
-    color-mix(in srgb, var(--ema-text-tertiary) 12%, transparent) 0 1px, transparent 1px 9px);
-  background-size: 100% 100%;
 }
 
 /* 细横线: storage */

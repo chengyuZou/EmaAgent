@@ -117,7 +117,7 @@ export function EventDisplayParameters(): JSX.Element {
     <SettingsSection
       icon="i-lucide:bell"
       title="事件通知"
-      description="控制工具、记忆、知识库和系统事件是否显示为本地通知。"
+      description="控制工具、记忆和系统事件是否显示为本地通知。"
       trailing={(
         <div className="flex items-center gap-2">
           {apply && <SettingApplyBadge apply={apply} />}

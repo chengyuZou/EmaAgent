@@ -1,6 +1,5 @@
 // 进程生命周期: 数据目录决议 → 锁 → Composition → 启动恢复 → 监听 → stdout ready → 后台驱动.
 // 以及对应的优雅关闭. 这里只编排顺序, 业务对象全部来自 Composition.
-import path from 'node:path';
 import type { Server } from 'node:http';
 import { performance } from 'node:perf_hooks';
 import { serve } from '@hono/node-server';
@@ -13,7 +12,7 @@ import {
 } from '../composition/recovery.js';
 import { createRoutes } from '../routes/index.js';
 import { acquireLock } from './lockfile.js';
-import { dataDirPath, ensureDataDirLayout, profileDir } from './paths.js';
+import { dataDirPath, ensureDataDirLayout } from './paths.js';
 import { HTTP_SERVER_TIMEOUTS } from './requestBudget.js';
 
 export interface ServerLifecycle {
@@ -26,7 +25,7 @@ export interface ServerLifecycle {
 /**
  * 唯一启动序列。失败即抛：入口负责打印并非零退出。
  * 启动恢复是 ready 前置(不能把旧 running 状态留给新进程); ready 之后的文件维护、
- * Narrative 推送、默认 KB 等后台驱动允许降级. 启动不会续跑旧 Turn 或后台工作.
+ * Narrative 推送等后台驱动允许降级. 启动不会续跑旧 Turn 或后台工作.
  */
 export async function startServer(secret: string): Promise<ServerLifecycle> {
   let phaseStartedAt = performance.now();
@@ -116,9 +115,6 @@ export async function startServer(secret: string): Promise<ServerLifecycle> {
     // models.dev 缓存是 gitignored 拉取产物: 启动后台刷一次, 失败只影响模型候选展示.
     void running.providers.refreshCatalog()
       .catch(error => console.warn('[providers] models.dev 目录刷新失败:', error));
-    // 默认库落在 kb/<随机 id>:参数是父目录,库目录由 KbManager 自建。
-    void running.knowledge.kb.ensureDefault(path.join(profileDir(), 'kb'))
-      .catch(error => console.warn('[kb] 默认知识库创建失败:', error));
     return {
       composition: running,
       port,

@@ -67,7 +67,7 @@ describe('Server 子代理 reminder 目录', () => {
         tasks: { shouldRemind: () => false }, goals: { getCurrent: () => null },
       },
       settings: { get: (definition: { defaultValue: unknown }) => definition.defaultValue, subscribe: vi.fn() },
-      providers: {}, tools: {}, knowledge: {}, narrative: {}, characters: {}, stage: {},
+      providers: {}, tools: {}, narrative: {}, characters: {}, stage: {},
       publishSubagent: vi.fn(), publishQueuedInput: vi.fn(), emitAppEvent: vi.fn(),
       publishInteraction: vi.fn(),
       onTurnCompletedInTransaction: vi.fn(), fanout: {},

@@ -1,6 +1,5 @@
 // 广播不属于单个 Turn 的应用级提示事件，查询型状态仍由各自 HTTP Route 提供。
 import type { CharacterEvent } from '@ema-agent/characters';
-import type { KnowledgeEvent } from '@ema-agent/knowledge';
 import type { McpEvent } from '@ema-agent/mcp';
 import type { SystemWarningEvent } from '@ema-agent/system';
 import type { BackgroundProcessEvent } from '@ema-agent/tools';
@@ -21,7 +20,6 @@ export type TurnActivityEvent = Extract<
 
 export type AppEvent =
   | BackgroundProcessEvent
-  | KnowledgeEvent
   | CharacterEvent
   | TurnActivityEvent
   | ProviderEvent

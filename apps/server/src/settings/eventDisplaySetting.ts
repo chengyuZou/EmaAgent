@@ -21,8 +21,7 @@ export const eventDisplaySetting = defineSetting({
 });
 
 /**
- * 默认展示表：只列当前真实存在的事件类型（Turn/Tool/Permission/Compact/Subagent/KB/Speech/App）。
- * Memory 域事件名归 Sol 的 Memory 包接线时补；旧 central events 联合与 legacy key 迁移已随包删除。
+ * 默认展示表只列当前应用广播的事件类型, 前端设置页据此列出可配置项.
  */
 export const DEFAULT_EVENT_DISPLAY: Record<string, EventDisplayConfig> = {
   tool_call_complete:           { enabled: true,  color: '#3b82f6', durationMs: 4000 },
@@ -33,11 +32,6 @@ export const DEFAULT_EVENT_DISPLAY: Record<string, EventDisplayConfig> = {
   compact_completed:            { enabled: true,  color: '#f59e0b', durationMs: 5000 },
   compact_failed:               { enabled: true,  color: '#ef4444', durationMs: 5000 },
   compact_cancelled:            { enabled: true,  color: '#94a3b8', durationMs: 3000 },
-  kb_ingest_completed:          { enabled: true,  color: '#22c55e', durationMs: 3000 },
-  kb_ingest_failed:             { enabled: true,  color: '#ef4444', durationMs: 5000 },
-  kb_reembed_completed:         { enabled: true,  color: '#22c55e', durationMs: 3000 },
-  kb_reembed_cancelled:         { enabled: true,  color: '#94a3b8', durationMs: 3000 },
-  kb_reembed_failed:            { enabled: true,  color: '#ef4444', durationMs: 5000 },
   character_switched:             { enabled: true,  color: '#f59e0b', durationMs: 4000 },
   background_process_changed:   { enabled: true,  color: '#64748b', durationMs: 3000 },
   system_warning:               { enabled: true,  color: '#f59e0b', durationMs: 5000 },

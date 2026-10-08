@@ -34,6 +34,6 @@ const result = await callVision({
 
 Vision 没有自己的 Provider protocol。`vision` capability 直接使用 LLM 已实现的 `openai-llm`、`openai-responses-llm`、`anthropic-llm` 或 `gemini-llm`，因此协议请求、流收口、Usage 和取消只有一套实现。
 
-当前聊天模型支持图片时，附件直接进入根 LLM，不调用独立 Vision。独立 Vision 只用于不支持图片的聊天模型降级描述，以及 KB/PDF 的 OCR、图注、布局与表格提取。附件描述缓存属于 `@ema-agent/attachments`，不进入本模块。
+当前聊天模型支持图片时，附件直接进入根 LLM，不调用独立 Vision。独立 Vision 只用于不支持图片的聊天模型降级描述，以及 PDF 的 OCR、图注、布局与表格提取。附件描述缓存属于 `@ema-agent/attachments`，不进入本模块。
 
 普通 HTTP 图片 URL 不能直接交给 Gemini Files 接口；调用方需要先下载为受管字节。图片数量、单图大小、归一化、EXIF 清理和并发上限属于附件接收与调用编排，不在 Vision 重复定义。

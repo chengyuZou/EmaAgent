@@ -21,11 +21,6 @@ import { characterResourcesRoute } from './characters/resources.js';
 import { commandsCatalogRoute } from './commands/catalog.js';
 import { sessionWebSocketRoute } from './ws/session.js';
 import { speechWebSocketRoute } from './ws/speech.js';
-import { knowledgeDocumentsRoute } from './knowledge/documents.js';
-import { knowledgeIngestRoute } from './knowledge/ingest.js';
-import { knowledgeLibsRoute } from './knowledge/libs.js';
-import { knowledgeReembedRoute } from './knowledge/reembed.js';
-import { knowledgeSearchRoute } from './knowledge/search.js';
 import { mcpMarketRoute } from './mcp/market.js';
 import { mcpEnvironmentRoute } from './mcp/environment.js';
 import { mcpServersRoute } from './mcp/servers.js';
@@ -60,7 +55,7 @@ import { projectsRoute } from './workspaces/projects.js';
 
 export const createRoutes = (composition: Composition, secret: string) => {
   const {
-    database, settings, providers, tools, knowledge,
+    database, settings, providers, tools,
     characters, speech, turn, commands, memory, backup,
     sessionConnections, appEvents, turnFanout,
   } = composition;
@@ -147,11 +142,6 @@ export const createRoutes = (composition: Composition, secret: string) => {
     .route('/api/background-processes', backgroundProcessListRoute({ backgroundProcesses: tools.backgroundProcesses }))
     .route('/api/background-processes', backgroundProcessControlRoute({ backgroundProcesses: tools.backgroundProcesses }))
 
-    .route('/api/kb', knowledgeLibsRoute({ kb: knowledge.kb, providerModels: providers.providerModels, emit: event => appEvents.emit(event) }))
-    .route('/api/kb', knowledgeIngestRoute({ kb: knowledge.kb }))
-    .route('/api/kb', knowledgeReembedRoute({ kb: knowledge.kb }))
-    .route('/api/kb', knowledgeSearchRoute({ kb: knowledge.kb }))
-    .route('/api/kb', knowledgeDocumentsRoute({ kb: knowledge.kb, emit: event => appEvents.emit(event) }))
 
     .route('/api/mcp', mcpServersRoute({ mcp: tools.mcp }))
     .route('/api/mcp', mcpEnvironmentRoute({ environment: tools.mcpEnvironment }))

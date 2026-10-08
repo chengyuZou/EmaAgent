@@ -7,17 +7,16 @@ const dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.join(dirname, '..', 'migrations');
 
 /**
- * 三条独立迁移流,各自 DB 的 `user_version` pragma 跟踪:
- *   profile.db -> migrations/profile/  Provider 配置/模型绑定/角色卡/设置/全局记忆/KB 注册
+ * 两条独立迁移流,各自 DB 的 `user_version` pragma 跟踪:
+ *   profile.db -> migrations/profile/  Provider 配置/模型绑定/角色卡/设置/全局记忆
  *   data.db    -> migrations/data/     sessions/turns/messages/音频/agent tasks
- *   kb.db      -> migrations/kb/       单个命名 KB 的文档/分块/FTS5 索引
  *
- * 三条流独立:profile 可 v3 而 data v7(或反之)。版本只在自己文件夹内推进。
+ * 两条流独立:profile 可 v3 而 data v7(或反之)。版本只在自己文件夹内推进。
  *
- * 2026-08-01 在首次公开内测前将三条开发迁移链压为新的 001 基线。此后迁移只追加，
+ * 2026-08-01 在首次公开内测前将开发迁移链压为新的 001 基线。此后迁移只追加，
  * 编号发布后不可修改；再次压缩必须建立明确的 baseline/checksum 升级机制。
  */
-export type DatabaseKind = 'profile' | 'data' | 'kb';
+export type DatabaseKind = 'profile' | 'data';
 
 export class MigrationsRunner {
   constructor(

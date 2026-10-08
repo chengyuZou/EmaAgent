@@ -55,7 +55,6 @@ const userMessagePayloadSchema = z.object({
   narrativePolicy: z.enum(['auto', 'always', 'off']),
   input: z.array(inputPartSchema).min(1).max(REQUEST_VALUE_LIMITS.maxTurnContentParts),
   objective: z.string().refine(text => text.trim().length > 0, '目标正文不能为空').optional(),
-  knowledge: z.object({ assetIds: z.array(z.string().min(1)).min(1).max(REQUEST_VALUE_LIMITS.maxTurnKbAssetScopes) }).optional(),
 }).superRefine((payload, context) => {
   if (payload.input.filter(part => part.type === 'attachment').length > REQUEST_VALUE_LIMITS.maxTurnAttachments) {
     context.addIssue({ code: 'custom', path: ['input'], message: '附件数量超过单次 Turn 上限' });
@@ -330,7 +329,6 @@ async function handleClientMessage(
             selection: {
               sessionMode: message.payload.sessionMode,
               narrativePolicy: message.payload.narrativePolicy,
-              ...(message.payload.knowledge ? { knowledge: message.payload.knowledge } : {}),
             },
           });
           socket.send({ type: 'request_succeeded', requestId: message.requestId });
@@ -345,7 +343,6 @@ async function handleClientMessage(
           narrativePolicy: message.payload.narrativePolicy,
           ttsEnabled,
           input: message.payload.input,
-          ...(message.payload.knowledge ? { knowledge: message.payload.knowledge } : {}),
         });
         deps.attachTurn(handle);
         socket.send({ type: 'request_succeeded', requestId: message.requestId });
@@ -365,7 +362,6 @@ async function handleClientMessage(
           selection: {
             sessionMode: message.payload.sessionMode,
             narrativePolicy: message.payload.narrativePolicy,
-            ...(message.payload.knowledge ? { knowledge: message.payload.knowledge } : {}),
           },
         });
         socket.send({ type: 'request_succeeded', requestId: message.requestId });

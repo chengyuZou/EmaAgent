@@ -11,7 +11,6 @@ import { useSettingsStore } from '../stores/settings.js';
 import { useSkillStore } from '../stores/skill.js';
 import { subscribeSystemEvent } from '../lib/system-event-dispatcher.js';
 import { handleCharacterSystemEvent } from '../stores/character.js';
-import { handleKnowledgeSystemEvent } from '../stores/knowledge.js';
 import { handleMcpSystemEvent } from '../stores/mcp.js';
 import { handleProviderSystemEvent } from '../stores/provider.js';
 import { handleSettingsSystemEvent } from '../stores/settings.js';
@@ -21,7 +20,6 @@ import { CharactersTab } from './character/CharactersTab.js';
 import { StorageTab } from './data/StorageTab.js';
 import { AppearanceTab } from './appearance/AppearanceTab.js';
 import { SecurityTab } from './security/SecurityTab.js';
-import { KnowledgeBaseTab } from './knowledge/KnowledgeBaseTab.js';
 import { McpMarketPage } from './mcp/McpMarketPage.js';
 import { McpEnvironmentPage } from './mcp/McpEnvironmentPage.js';
 import { McpServersPage } from './mcp/McpServersPage.js';
@@ -43,7 +41,6 @@ type SettingsPageId =
   | 'skills'
   | 'mcp'
   | 'memory'
-  | 'knowledge-base'
   | 'storage'
   | 'security'
   | 'parameters'
@@ -99,7 +96,6 @@ const SETTINGS_PAGES: readonly SettingsPage[] = [
   { id: 'skills', label: '技能库', icon: 'i-lucide:blocks', subPages: SKILLS_SUB_PAGES },
   { id: 'mcp', label: 'MCP 服务器', icon: 'i-lucide:plug', subPages: MCP_SUB_PAGES },
   { id: 'memory', label: 'Memory', icon: 'i-lucide:library', subPages: MEMORY_SUB_PAGES },
-  { id: 'knowledge-base', label: '知识库', icon: 'i-lucide:database' },
   { id: 'storage', label: '存储位置', icon: 'i-lucide:hard-drive', fullHeight: true },
   { id: 'security', label: '安全', icon: 'i-lucide:shield-check' },
   { id: 'parameters', label: '参数设置', icon: 'i-lucide:sliders-horizontal' },
@@ -133,7 +129,6 @@ export function SettingsPanel(): JSX.Element {
   useEffect(() => mountSystemEvents({ ownsConnection: false }), []);
   useEffect(() => subscribeSystemEvent(event => {
     handleCharacterSystemEvent(event);
-    handleKnowledgeSystemEvent(event);
     handleMcpSystemEvent(event);
     handleProviderSystemEvent(event);
     handleSettingsSystemEvent(event);
@@ -285,7 +280,6 @@ function SettingsContent({ id }: { id: ActiveNav }): JSX.Element {
     case 'memory-overview': return <MemoryOverviewTab />;
     case 'memory-files': return <MemoryFilesTab />;
     case 'memory-jobs': return <MemoryJobsTab />;
-    case 'knowledge-base': return <KnowledgeBaseTab />;
     case 'storage': return <StorageTab />;
     case 'security': return <SecurityTab />;
     case 'parameters': return <ParameterSettings />;

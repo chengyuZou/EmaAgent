@@ -1,6 +1,5 @@
 // 为一次 Turn 冻结工具层: ToolPool 宿主能力上下文 权限判定上下文与两类交互口子
 import type { SubagentExecutor, AgentLoopEvent, PrepareSubagent } from '@ema-agent/agent';
-import type { KnowledgeSearch } from '@ema-agent/knowledge';
 import type { CallVision } from '@ema-agent/vision';
 import type { NarrativeClient, NarrativeLlmConnection, NarrativeSearch } from '@ema-agent/narrative';
 import { narrativeQueryModeSetting, prepareNarrativeRecall } from '@ema-agent/narrative';
@@ -34,7 +33,6 @@ import {
   type ToolUseContext,
 } from '@ema-agent/tools';
 import type { SessionMode, NarrativePolicy, ReasoningEffort } from '@ema-agent/session';
-import type { TurnKnowledgeSelection } from '../types.js';
 import type { SessionInteractionQueue } from '../interactionQueue.js';
 import type { TurnStreamEvent } from '../events.js';
 
@@ -42,7 +40,6 @@ import type { TurnStreamEvent } from '../events.js';
 // 不能用于装配筛选; Shell, 子代理和用户交互不作为只读例外放行.
 const PLAN_TOOL_IDS: ReadonlySet<string> = new Set([
   BuiltinTools.FileRead.id,
-  BuiltinTools.PdfRead.id,
   BuiltinTools.Glob.id,
   BuiltinTools.Grep.id,
   BuiltinTools.WebFetch.id,
@@ -51,7 +48,6 @@ const PLAN_TOOL_IDS: ReadonlySet<string> = new Set([
   BuiltinTools.ProcessOutput.id,
   BuiltinTools.TaskGet.id,
   BuiltinTools.TaskList.id,
-  BuiltinTools.KnowledgeBaseSearch.id,
   BuiltinTools.NarrativeSearch.id,
   BuiltinTools.MemorySearch.id,
   BuiltinTools.MemoryRead.id,
@@ -71,7 +67,6 @@ export interface TurnToolsDeps {
   readonly subagents: SubagentExecutor;
   readonly taskStore?: TaskStore;
   readonly goalStore?: GoalStore;
-  readonly knowledgeSearch?: KnowledgeSearch;
   /** narrativePolicy 非 'off' 时构建本 Turn 召回闭包; 与 resolveNarrativeLlm 同时缺失则无 Narrative 能力 */
   readonly currentNarrativeClient?: () => NarrativeClient | undefined;
   /** Turn 开始时解析一次当次 Narrative LLM 连接并冻结进闭包: 未绑定或协议不支持返回 undefined */
@@ -96,8 +91,6 @@ export interface PrepareTurnToolsInput {
   readonly workspaceRoots: readonly string[];
   readonly scratchpadDir?: string;
   readonly skillPool?: SkillPool;
-  /** 本 Turn 在当前激活知识库内冻结的文档范围 */
-  readonly knowledge?: TurnKnowledgeSelection;
   readonly prepareSubagent: PrepareSubagent;
   readonly providerId: string;
   readonly modelId: string;
@@ -259,13 +252,6 @@ export function prepareTurnTools(deps: TurnToolsDeps, input: PrepareTurnToolsInp
     ...(commandRunner ? { commandRunner } : {}),
     ...(vision ? { vision } : {}),
     ...(deps.backgroundProcesses ? { backgroundProcesses: deps.backgroundProcesses } : {}),
-    ...(deps.knowledgeSearch ? {
-      knowledgeSearch: ((request) => deps.knowledgeSearch!({
-        ...request,
-        // Tool 显式给出 assetIds 时优先；否则继承本 Turn 冻结的文档范围。
-        ...(request.assetIds === undefined && input.knowledge?.assetIds?.length ? { assetIds: [...input.knowledge.assetIds] } : {}),
-      })) as KnowledgeSearch,
-    } : {}),
     ...(input.narrativePolicy === 'auto' && narrativeSearch ? { narrativeSearch } : {}),
     ...(deps.taskStore ? { taskStore: deps.taskStore } : {}),
     ...(deps.goalStore ? { goalStore: deps.goalStore } : {}),

@@ -181,10 +181,9 @@ const COMMAND_TOOLS = new Set<string>([
   BuiltinTools.ProcessStop.name,
 ]);
 const FILE_EDIT_TOOLS = new Set<string>([BuiltinTools.FileEdit.name, BuiltinTools.FileWrite.name]);
-const READ_TOOLS = new Set<string>([BuiltinTools.FileRead.name, BuiltinTools.PdfRead.name]);
+const READ_TOOLS = new Set<string>([BuiltinTools.FileRead.name]);
 const SEARCH_TOOLS = new Set<string>([BuiltinTools.Glob.name, BuiltinTools.Grep.name, BuiltinTools.WebFetch.name, BuiltinTools.WebSearch.name]);
 const CONTEXT_TOOLS = new Set<string>([
-  BuiltinTools.KnowledgeBaseSearch.name,
   BuiltinTools.NarrativeSearch.name,
   BuiltinTools.MemorySearch.name,
   BuiltinTools.MemoryRead.name,

@@ -66,16 +66,6 @@ export function describeEventNotification(event: NotifiableEvent): EventNotifica
       };
     case 'compact_failed':
       return { message: `上下文压缩失败：${event.error}`, variant: 'danger' };
-    case 'kb_ingest_completed':
-      return { message: '知识库文档处理完成', variant: 'success' };
-    case 'kb_ingest_failed':
-      return { message: `知识库文档处理失败：${event.error}`, variant: 'danger' };
-    case 'kb_reembed_completed':
-      return { message: '知识库重嵌入完成', variant: 'success' };
-    case 'kb_reembed_cancelled':
-      return { message: '知识库重嵌入已取消', variant: 'warning' };
-    case 'kb_reembed_failed':
-      return { message: `知识库重嵌入失败：${event.error}`, variant: 'danger' };
     case 'background_process_changed':
       // 只给失败/超时弹通知;完成、停止与运行状态变化只更新面板(2026-07-30 拍板)。
       if (event.status === 'failed') {

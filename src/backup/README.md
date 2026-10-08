@@ -1,6 +1,6 @@
 # Backup
 
-Backup 只负责导出和导入单个 Session。角色、Provider 配置、MCP、Skill、Knowledge Base 原文和整机数据不属于当前备份范围。
+Backup 只负责导出和导入单个 Session。角色、Provider 配置、MCP、Skill 和整机数据不属于当前备份范围。
 
 ## 归档内容
 

@@ -1,6 +1,5 @@
 // 统一导出并注册 EmaAgent 自带的工具，也提供这些工具启动恢复所需的入口。
 import { FileReadTool } from './tools/FileReadTool/FileReadTool.js';
-import { PdfReadTool } from './tools/PdfReadTool/PdfReadTool.js';
 import { FileWriteTool } from './tools/FileWriteTool/FileWriteTool.js';
 import { cleanupInterruptedFileWriteTemps } from './tools/FileWriteTool/recovery.js';
 import { FileEditTool } from './tools/FileEditTool/FileEditTool.js';
@@ -25,7 +24,6 @@ import { MemorySearchTool } from './tools/MemoryTool/MemorySearchTool.js';
 import { MemoryReadTool } from './tools/MemoryTool/MemoryReadTool.js';
 import { MemoryListTool } from './tools/MemoryTool/MemoryListTool.js';
 import { SkillTool } from './tools/SkillTool/SkillTool.js';
-import { KnowledgeBaseSearchTool } from './tools/KnowledgeBaseSearchTool/KnowledgeBaseSearchTool.js';
 import { NarrativeSearchTool } from './tools/NarrativeSearchTool/NarrativeSearchTool.js';
 import { SubagentTool } from './tools/SubagentTool/SubagentTool.js';
 import { SubagentAwaitTool } from './tools/SubagentTool/SubagentAwaitTool.js';
@@ -56,7 +54,6 @@ export { contextOk, contextFail } from '@ema-agent/tools';
 export {
   BuiltinTools,
   FileReadTool,
-  PdfReadTool,
   FileWriteTool,
   cleanupInterruptedFileWriteTemps,
   FileEditTool,
@@ -78,7 +75,6 @@ export {
   GoalUpdateTool,
   AskUserTool,
   SkillTool,
-  KnowledgeBaseSearchTool,
   NarrativeSearchTool,
   MemorySearchTool,
   MemoryReadTool,
@@ -92,10 +88,6 @@ export {
   ScratchpadClearTool,
 };
 export type { FileReadResult } from './tools/FileReadTool/FileReadTool.js';
-export type {
-  PdfReadResult,
-  PdfReadWarning,
-} from './tools/PdfReadTool/PdfReadTool.js';
 export type { FileWriteResult } from './tools/FileWriteTool/FileWriteTool.js';
 export type { FileEditResult } from './tools/FileEditTool/FileEditTool.js';
 export type { GlobResult } from './tools/GlobTool/GlobTool.js';
@@ -132,7 +124,6 @@ export type { NarrativeSearchResult } from './tools/NarrativeSearchTool/Narrativ
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const ALL_BUILTIN_TOOLS: Tool<any, any, any, any>[] = [
   FileReadTool,
-  PdfReadTool,
   FileWriteTool,
   FileEditTool,
   GlobTool,
@@ -153,7 +144,6 @@ const ALL_BUILTIN_TOOLS: Tool<any, any, any, any>[] = [
   GoalUpdateTool,
   AskUserTool,
   SkillTool,
-  KnowledgeBaseSearchTool,
   NarrativeSearchTool,
   MemorySearchTool,
   MemoryReadTool,

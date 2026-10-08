@@ -5,6 +5,7 @@
 import { useMemo, useState, type JSX } from 'react';
 import { Badge, Button, Markdown, languageForPath } from '@ema-agent/ui';
 import type { FileReadResult } from './FileReadTool.js';
+import { PdfContentView } from './pdfContentView.js';
 
 // ── 类型守卫(消费 unknown data 的唯一入口) ────────────────────────────────────
 
@@ -20,6 +21,19 @@ export function fileReadTitle(args: unknown): string | null {
 function asFileReadResult(data: unknown): FileReadResult | null {
   if (!isRecord(data) || typeof data['filePath'] !== 'string') return null;
   switch (data['type']) {
+    case 'pdf_content':
+      return typeof data['content'] === 'string'
+        && typeof data['startPage'] === 'number'
+        && typeof data['endPage'] === 'number'
+        && typeof data['totalPages'] === 'number'
+        && Array.isArray(data['warnings'])
+        && data['warnings'].every(warning => isRecord(warning)
+          && typeof warning['page'] === 'number'
+          && typeof warning['code'] === 'string'
+          && typeof warning['message'] === 'string'
+          && typeof warning['retryable'] === 'boolean')
+        ? (data as unknown as FileReadResult)
+        : null;
     case 'file_content':
       return typeof data['content'] === 'string' && typeof data['totalLines'] === 'number'
         ? (data as unknown as FileReadResult)
@@ -41,6 +55,7 @@ export function fileReadResultCopyText(data: unknown): string | null {
   const result = asFileReadResult(data);
   if (!result) return null;
   switch (result.type) {
+    case 'pdf_content':
     case 'file_content': return result.content;
     case 'image_content': return result.filePath;
     case 'notebook_content': return `${result.filePath} · ${result.totalCells} 个 cell`;
@@ -54,10 +69,17 @@ export function FileReadArgsView({ args }: { args: unknown }): JSX.Element | nul
   const offset = typeof args['offset'] === 'number' ? args['offset'] : undefined;
   const limit = typeof args['limit'] === 'number' ? args['limit'] : undefined;
 
+  const startPage = typeof args['start_page'] === 'number' ? args['start_page'] : undefined;
+  const pageCount = typeof args['page_count'] === 'number' ? args['page_count'] : undefined;
   let range: string | null = null;
   if (offset !== undefined || limit !== undefined) {
     const start = offset ?? 1;
     range = limit !== undefined ? `第 ${start}–${start + limit - 1} 行` : `从第 ${start} 行起`;
+  }
+
+  if (startPage !== undefined || pageCount !== undefined) {
+    const start = startPage ?? 1;
+    range = pageCount !== undefined ? `第 ${start}–${start + pageCount - 1} 页` : `从第 ${start} 页起`;
   }
 
   return (
@@ -71,13 +93,15 @@ export function FileReadArgsView({ args }: { args: unknown }): JSX.Element | nul
   );
 }
 
-// ── 结果视图: 三态语义 ────────────────────────────────────────────────────────
+// ── 结果视图: 按文件格式展示 ──────────────────────────────────────────────────
 
 export function FileReadResultView({ data }: { data: unknown }): JSX.Element | null {
   const result = asFileReadResult(data);
   if (!result) return null;
 
   switch (result.type) {
+    case 'pdf_content':
+      return <PdfContentView result={result} />;
     case 'image_content':
       return (
         <div className="flex flex-col gap-1.5">

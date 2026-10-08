@@ -9,7 +9,6 @@ import type {
   StartTurn,
   TurnHandle,
   TurnInputPart,
-  TurnKnowledgeSelection,
   TurnOutcome,
 } from './types.js';
 import { renderGoalEditReminder } from './prepare/turnReminder.js';
@@ -21,7 +20,6 @@ import { renderGoalEditReminder } from './prepare/turnReminder.js';
 export interface SessionTurnSelection {
   readonly sessionMode: StartTurn['sessionMode'];
   readonly narrativePolicy: StartTurn['narrativePolicy'];
-  readonly knowledge?: TurnKnowledgeSelection;
 }
 
 /** WebSocket queue_user_message 交给队列的完整业务输入. 内容此时只进入进程内存, 尚未写入 Message. */
@@ -410,7 +408,6 @@ export class SessionContinuationQueue {
         ...(claim.continuationText
           ? { continuationText: claim.continuationText }
           : {}),
-        ...(selection?.knowledge ? { knowledge: selection.knowledge } : {}),
       });
       this.deps.attachTurn(handle);
     } catch (error) {

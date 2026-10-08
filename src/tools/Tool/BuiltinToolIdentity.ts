@@ -12,7 +12,6 @@ export interface BuiltinToolIdentity {
 
 export const BuiltinTools = Object.freeze({
   FileRead:  Object.freeze({ id: 'builtin.file.read',  name: 'Read', variant: 'read' }),
-  PdfRead:   Object.freeze({ id: 'builtin.pdf.read',   name: 'PdfRead', variant: 'read' }),
   FileEdit:  Object.freeze({ id: 'builtin.file.edit',  name: 'Edit', variant: 'edit' }),
   FileWrite: Object.freeze({ id: 'builtin.file.write', name: 'Write', variant: 'edit' }),
   Glob:      Object.freeze({ id: 'builtin.search.glob', name: 'Glob', variant: 'search' }),
@@ -32,11 +31,6 @@ export const BuiltinTools = Object.freeze({
   TaskUpdate: Object.freeze({ id: 'builtin.task.update', name: 'TaskUpdate', variant: 'task' }),
   GoalGet:    Object.freeze({ id: 'builtin.goal.get', name: 'GoalGet', variant: 'task' }),
   GoalUpdate: Object.freeze({ id: 'builtin.goal.update', name: 'GoalUpdate', variant: 'task' }),
-  KnowledgeBaseSearch: Object.freeze({
-    id: 'builtin.knowledge_base.search',
-    name: 'KnowledgeBaseSearch',
-    variant: 'search',
-  }),
   NarrativeSearch: Object.freeze({
     id: 'builtin.narrative.search',
     name: 'NarrativeSearch',

@@ -469,8 +469,8 @@ describe('prepareTurnTools', () => {
       },
     }));
     expect(assembly.toolPool.tools.map(tool => tool.name).sort()).toEqual([
-      'Read', 'PdfRead', 'Glob', 'Grep', 'WebFetch', 'WebSearch', 'ProcessList', 'ProcessOutput',
-      'TaskGet', 'TaskList', 'KnowledgeBaseSearch', 'NarrativeSearch', 'MemorySearch', 'MemoryRead',
+      'Read', 'Glob', 'Grep', 'WebFetch', 'WebSearch', 'ProcessList', 'ProcessOutput',
+      'TaskGet', 'TaskList', 'NarrativeSearch', 'MemorySearch', 'MemoryRead',
       'MemoryList', 'Skill', 'ScratchpadRead', 'ScratchpadList',
     ].sort());
 
@@ -589,44 +589,4 @@ describe('prepareTurnTools', () => {
     expect(getSessionAllowRules(SESSION_ID)).toEqual([]);
   });
 
-  it('Knowledge 查询冻结所选知识库，Tool 未指定文档时继承本 Turn 范围', async () => {
-    const requests: unknown[] = [];
-    let search: ToolUseContext['knowledgeSearch'];
-    const probe = buildTool({
-      name: 'KnowledgeProbe',
-      description: '验证知识库能力传入工具',
-      inputSchema: z.object({}),
-      validateContext: (context: ToolUseContext) => {
-        search = context.knowledgeSearch;
-        return contextOk({});
-      },
-      checkPermissions: async () => ({ behavior: 'allow' as const }),
-      execute: async () => 'ok',
-    });
-    const deps = {
-      ...makeDeps({
-        tools: [probe],
-        queue: new SessionInteractionQueue(null),
-        settings: fakeSettings(),
-      }),
-      knowledgeSearch: async (request: unknown) => {
-        requests.push(request);
-        return { query: 'q', hits: [] };
-      },
-    } as TurnToolsDeps;
-    prepareTurnTools(deps, makeInput({
-      events: [],
-      overrides: {
-        knowledge: { assetIds: ['asset-1'] },
-      },
-    }));
-
-    await search?.({ query: 'first' });
-    await search?.({ query: 'second', assetIds: ['asset-2'] });
-
-    expect(requests).toEqual([
-      { query: 'first', assetIds: ['asset-1'] },
-      { query: 'second', assetIds: ['asset-2'] },
-    ]);
-  });
 });

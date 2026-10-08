@@ -33,7 +33,6 @@ import { useServerStore } from '../../stores/server.js';
 import { useSessionStore } from '../../stores/session.js';
 import { PendingInteractionView } from '../interactions/PendingInteractionView.js';
 import { SessionModeSelector, PermissionModeSelector, TtsButton, useInputOptions } from './controls/InputSelectors.js';
-import { KbButton } from './controls/knowledgePicker.js';
 import { ContextMeter } from './controls/ContextMeter.js';
 import {
   activeSlashToken,
@@ -415,11 +414,6 @@ export function ChatInput({
                   className="ema-chat-icon-btn"
                 />
               )}
-            />
-            <KbButton
-              visible={draft.sessionMode === 'work'}
-              selectedIds={draft.selectedAssetIds}
-              onChange={(selectedAssetIds) => patchCurrentDraft({ selectedAssetIds })}
             />
             <TtsButton enabled={draft.ttsEnabled} onToggle={options.toggleTts} />
             <PermissionModeSelector

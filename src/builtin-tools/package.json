@@ -34,7 +34,6 @@
   },
   "dependencies": {
     "@ema-agent/goal": "workspace:*",
-    "@ema-agent/knowledge": "workspace:*",
     "@ema-agent/llm": "workspace:*",
     "@ema-agent/memory": "workspace:*",
     "@ema-agent/narrative": "workspace:*",
@@ -50,10 +49,14 @@
     "@pierre/diffs": "1.5.1",
     "diff": "^9.0.0",
     "glob": "^11.0.0",
+    "pdfjs-dist": "^4.10.38",
     "lru-cache": "^10.4.3",
     "shell-quote": "^1.10.0",
     "turndown": "^7.2.4",
     "zod": "^4.4.3"
+  },
+  "optionalDependencies": {
+    "canvas": "^2.11.2"
   },
   "peerDependencies": {
     "react": "^18.3.0"

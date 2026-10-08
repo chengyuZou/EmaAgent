@@ -9,12 +9,10 @@ src/storage/
 ├─ database/                  SQLite 连接、迁移执行器、迁移 CLI 与批量 ID 工具
 ├─ migrations/
 │  ├─ profile/               全局配置与用户资产表结构
-│  ├─ data/                  Session 与运行记录表结构
-│  └─ kb/                    单个 Knowledge Base 的表结构
+│  └─ data/                  Session 与运行记录表结构
 ├─ repos/
 │  ├─ profile/               只访问 profile.db 的 Repo
-│  ├─ data/                  只访问 data.db 的 Repo
-│  └─ kb/                    只访问 kb.db 的 Repo
+│  └─ data/                  只访问 data.db 的 Repo
 ├─ search/                   FTS、中文分词与 LIKE 转义
 ├─ tests/                    迁移、Repo 与数据库行为测试
 └─ index.ts                  对其他业务包提供的统一公共出口
@@ -22,13 +20,12 @@ src/storage/
 
 目录按数据库归属分组，而不是为每张表建立一层文件夹。开发者看到 Repo 的路径，就能先判断它应由哪个数据库实例装配。
 
-## 三个数据库
+## 两个数据库
 
 | 数据库 | 默认位置 | 负责内容 |
 |---|---|---|
-| `profile.db` | `~/.ema-agent/profile.db` | Provider、模型绑定、角色、设置、Skill、权限规则、全局 Memory 与 KB 注册信息 |
+| `profile.db` | `~/.ema-agent/profile.db` | Provider、模型绑定、角色、设置、Skill、权限规则、全局 Memory |
 | `data.db` | `~/.ema-agent/data/data.db`，也可切换数据目录 | Session、Turn、Message、附件索引、Task、Goal、Subagent、ToolExecution、后台进程与 Session 级状态 |
-| `kb.db` | 每个 KB 自己的受控目录 | 文档、分块、预览、FTS、导入与重嵌入任务 |
 
 `Database` 只负责打开某一个 SQLite 文件、设置 pragma、执行对应迁移和暴露受控句柄。业务装配层负责把正确的数据库实例交给正确的 Repo。
 
@@ -67,7 +64,7 @@ fork 只复制父请求的有效固定前缀, 为每条消息生成子代理内�
 
 ## 迁移规则
 
-三个数据库分别读取 `migrations/profile`、`migrations/data` 和 `migrations/kb`，各自使用 SQLite `user_version` 推进。
+两个数据库分别读取 `migrations/profile` 和 `migrations/data`，各自使用 SQLite `user_version` 推进。
 
 ```text
 001_initial.sql
@@ -91,11 +88,11 @@ pnpm --filter @ema-agent/storage test
 pnpm --filter @ema-agent/storage build
 ```
 
-`--data-dir` 只覆盖 `data.db` 所在目录；`profile.db` 仍位于用户的 `.ema-agent` 目录。KB 数据库由 Knowledge Base 装配流程按具体 KB 路径创建。
+`--data-dir` 只覆盖 `data.db` 所在目录；`profile.db` 仍位于用户的 `.ema-agent` 目录。
 
 ## 新增或修改 Repo
 
-1. 先确认字段属于 `profile`、`data` 还是 `kb`，再选择对应迁移目录与 Repo 目录。
+1. 先确认字段属于 `profile` 还是 `data`，再选择对应迁移目录与 Repo 目录。
 2. Schema 变化新增迁移文件；不要依赖 Repo 在运行时偷偷补列。
 3. Repo 返回稳定、明确的行类型，数据库命名与业务命名的转换集中在 Repo 内。
 4. 更新根 `index.ts` 的必要公共出口；不要把仅供 Storage 内部使用的 helper 暴露出去。

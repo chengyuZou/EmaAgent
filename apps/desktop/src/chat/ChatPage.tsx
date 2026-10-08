@@ -14,13 +14,11 @@ import { useChatNavigationStore } from '../stores/chatNavigation.js';
 import { useSessionActivityStore } from '../stores/sessionActivity.js';
 import { useSubagentStore } from '../stores/subagent.js';
 import { handleBackgroundProcessSystemEvent } from '../stores/backgroundProcess.js';
-import { handleKnowledgeSystemEvent, useKnowledgeStore } from '../stores/knowledge.js';
 import { handleMcpSystemEvent } from '../stores/mcp.js';
 import { handleSettingsSystemEvent } from '../stores/settings.js';
 import { handleSkillSystemEvent } from '../stores/skill.js';
 import { handleTaskSystemEvent } from '../stores/task.js';
 import { useSessionHistoryStore } from '../stores/sessionHistory.js';
-import { useChatDraftStore } from '../stores/chatDraft.js';
 import {
   clearSessionSubscriptions,
   syncSessionSubscriptions,
@@ -41,7 +39,6 @@ export function ChatPage(): JSX.Element {
   useEffect(() => useServerStore.getState().startPolling(), []);
   useEffect(() => {
     void useSessionStore.getState().loadSessions();
-    void useKnowledgeStore.getState().loadLibs();
   }, []);
   const listedSessions = useMemo(() => {
     const byId = new Map<string, { id: string; hasActiveTurn: boolean }>();
@@ -82,12 +79,6 @@ export function ChatPage(): JSX.Element {
     let refreshTimer: ReturnType<typeof setTimeout> | undefined;
     const unsubscribe = subscribeSystemEvent(event => {
       handleBackgroundProcessSystemEvent(event);
-      handleKnowledgeSystemEvent(event);
-      if (event.type === 'kb_active_changed') {
-        useChatDraftStore.getState().clearSelectedAssetIds();
-      } else if (event.type === 'kb_document_deleted') {
-        useChatDraftStore.getState().removeSelectedAssetId(event.assetId);
-      }
       handleMcpSystemEvent(event);
       handleSettingsSystemEvent(event);
       handleSkillSystemEvent(event);

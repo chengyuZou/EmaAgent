@@ -62,9 +62,9 @@ writeFileSync(
   [
     "import { createRequire } from 'node:module';",
     "const storageRequire = createRequire(import.meta.resolve('@ema-agent/storage'));",
-    "const knowledgeRequire = createRequire(import.meta.resolve('@ema-agent/knowledge'));",
+    "const serverRequire = createRequire(import.meta.url);",
     "const Database = storageRequire('better-sqlite3');",
-    "const sharp = knowledgeRequire('sharp');",
+    "const sharp = serverRequire('sharp');",
     "const db = new Database(':memory:');",
     "db.exec('CREATE TABLE smoke (id INTEGER PRIMARY KEY)');",
     'db.close();',

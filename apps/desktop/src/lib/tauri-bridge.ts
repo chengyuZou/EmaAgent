@@ -511,7 +511,7 @@ export const tauriBridge = {
     await core.invoke('plugin:opener|reveal_item_in_dir', { paths: [path] });
   },
 
-  /** 用系统默认方式打开路径本身(KB 库目录等);失败抛错由调用方提示。 */
+  /** 用系统默认方式打开路径本身;失败抛错由调用方提示。 */
   async openPath(path: string): Promise<void> {
     const core = await getCore();
     if (!core) throw new Error('当前环境不支持打开路径');
