@@ -102,7 +102,9 @@ export function openSpeech(
         kind: 'reference',
         resourceName: reference.name,
         resourceUpdatedAt: reference.updatedAt,
-        registrationName: `${character.name}-${path.parse(reference.name).name}`,
+        // SiliconFlow customName 只允许短 ASCII 名称, 不能直接使用中文角色名或资源名.
+        // 注册名不参与本地音色缓存身份; UUID 避免不同参考音频的远端名称冲突.
+        registrationName: `ema-${randomUUID()}`,
         audioPath: characters.resolveVoiceSampleFile(character.name, reference.name),
         promptText: reference.promptText,
         promptLanguage: reference.promptLang,

@@ -92,7 +92,7 @@ export function ProviderCreatePanel({ capability, label, onCancel, onCreated }: 
         <Field
           label="Provider ID"
           required
-          description="语义 ID（如 company-gateway），创建后不可改；绑定、模型与选择器都以它显示。"
+          description="语义 ID(如 company-gateway),创建后不可改. 绑定, 模型与选择器都以它显示。"
           error={id.trim() && !idValid ? '只能包含字母、数字、中划线、下划线，且不超过 64 字符' : undefined}
         >
           <Input

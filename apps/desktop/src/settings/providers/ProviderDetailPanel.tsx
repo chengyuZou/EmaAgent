@@ -305,7 +305,7 @@ export function ProviderDetailPanel({
             />
             <IconButton
               label={eyeOpen ? '隐藏密钥' : '显示密钥'}
-              icon={eyeOpen ? 'i-lucide:eye-off' : 'i-lucide:eye'}
+              icon={eyeOpen ? 'i-lucide:eye' : 'i-lucide:eye-off'}
               size="sm"
               type="button"
               tabIndex={-1}
