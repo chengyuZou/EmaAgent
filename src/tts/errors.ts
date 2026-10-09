@@ -10,7 +10,6 @@ export type TtsErrorCode =
   | 'tts/aborted'
   | 'tts/resource_exhausted';
 
-/** 对外只暴露稳定错误码，不把各协议的响应形状泄漏给调用方。 */
 export class TtsError extends Error {
   constructor(
     readonly code: TtsErrorCode,
@@ -27,10 +26,18 @@ export function isTtsError(error: unknown): error is TtsError {
 }
 
 export function ttsErrorFromHttp(status: number, message: string): TtsError {
-  if (status === 401 || status === 403) return new TtsError('tts/credentials', message);
-  if (status === 404) return new TtsError('tts/unsupported_model', message);
-  if (status === 413) return new TtsError('tts/resource_exhausted', message);
-  if (status === 400 || status === 422) return new TtsError('tts/invalid_request', message);
+  if (status === 401 || status === 403) {
+    return new TtsError('tts/credentials', message);
+  }
+  if (status === 404) {
+    return new TtsError('tts/unsupported_model', message);
+  }
+  if (status === 413) {
+    return new TtsError('tts/resource_exhausted', message);
+  }
+  if (status === 400 || status === 422) {
+    return new TtsError('tts/invalid_request', message);
+  }
   return new TtsError('tts/provider_error', message);
 }
 

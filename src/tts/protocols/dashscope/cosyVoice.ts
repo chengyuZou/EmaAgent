@@ -3,9 +3,11 @@ import { randomUUID } from 'node:crypto';
 import WebSocket from 'ws';
 
 import { TtsError } from '../../errors.js';
-import type { TtsRequest, TtsStreamEvent } from '../../types.js';
-import { mimeForFormat } from '../../utils.js';
+import type { PcmAudioFormat, TtsRequest, TtsStreamEvent } from '../../types.js';
+import { pcmEvents } from '../../audio/pcm.js';
 import { SocketEventQueue } from './socketEventQueue.js';
+
+const COSY_VOICE_PCM_FORMAT: PcmAudioFormat = { sampleRate: 24_000, channelCount: 1 };
 
 export async function* synthesizeCosyVoice(
   webSocketBaseUrl: string,
@@ -19,11 +21,9 @@ export async function* synthesizeCosyVoice(
 
   const url = `${webSocketBaseUrl.replace(/\/$/, '')}/api-ws/v1/inference/`;
   const taskId = randomUUID().replace(/-/g, '');
-  const queue = new SocketEventQueue<TtsStreamEvent>();
+  request.signal?.throwIfAborted();
+  const queue = new SocketEventQueue<Uint8Array>();
   const startedAt = Date.now();
-  const mime = mimeForFormat(request.format ?? 'mp3');
-  let firstByteMs = 0;
-  let totalBytes = 0;
   let completed = false;
   let aborted = false;
   let socket: WebSocket;
@@ -58,8 +58,9 @@ export async function* synthesizeCosyVoice(
         parameters: {
           text_type: 'PlainText',
           voice: request.voice.kind === 'provider' ? request.voice.id : '',
-          format: request.format ?? 'mp3',
-          sample_rate: request.sampleRate ?? defaultSampleRate(request.format ?? 'mp3'),
+          format: 'pcm',
+          // TODO: 新增模型时核对支持的采样率. 明确请求此值, 返回的裸 PCM 没有文件头可再读取采样率.
+          sample_rate: COSY_VOICE_PCM_FORMAT.sampleRate,
           volume: 50,
           rate: request.speed ?? 1,
           pitch: 1,
@@ -74,9 +75,7 @@ export async function* synthesizeCosyVoice(
     if (aborted || completed) return;
     if (isBinary) {
       const buffer = data as Buffer;
-      if (firstByteMs === 0) firstByteMs = Date.now() - startedAt;
-      totalBytes += buffer.byteLength;
-      queue.push({ type: 'audio_chunk', bytes: new Uint8Array(buffer), mime });
+      queue.push(buffer);
       return;
     }
 
@@ -99,7 +98,6 @@ export async function* synthesizeCosyVoice(
     }
     if (message.header?.event === 'task-finished') {
       completed = true;
-      queue.push({ type: 'done', totalBytes, firstByteMs });
       queue.close();
       socket.close(1000, 'completed');
       return;
@@ -125,15 +123,11 @@ export async function* synthesizeCosyVoice(
   });
 
   try {
-    yield* queue.iterate();
+    yield* pcmEvents(queue.iterate(), COSY_VOICE_PCM_FORMAT, startedAt);
   } finally {
     request.signal?.removeEventListener('abort', onAbort);
     if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
       socket.close();
     }
   }
-}
-
-function defaultSampleRate(format: string): number {
-  return format === 'pcm' ? 24_000 : 22_050;
 }

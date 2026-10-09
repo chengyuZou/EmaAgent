@@ -1,11 +1,13 @@
-// 执行 DashScope Qwen TTS Realtime 协议，并把裸 PCM 归一为 WAV 音频块。
+// 执行 DashScope Qwen TTS Realtime 协议, 音频 delta 到达后即可交付 PCM.
 import WebSocket from 'ws';
 
 import { TtsError } from '../../errors.js';
-import type { TtsRequest, TtsStreamEvent } from '../../types.js';
+import type { PcmAudioFormat, TtsRequest, TtsStreamEvent } from '../../types.js';
 import { SocketEventQueue } from './socketEventQueue.js';
+import { pcmEvents } from '../../audio/pcm.js';
 
 const MAX_PCM_BYTES = 16 * 1024 * 1024;
+const QWEN_TTS_PCM_FORMAT: PcmAudioFormat = { sampleRate: 24_000, channelCount: 1 };
 
 export async function* synthesizeQwenTts(
   webSocketBaseUrl: string,
@@ -17,12 +19,10 @@ export async function* synthesizeQwenTts(
     throw new TtsError('tts/unsupported_voice', 'DashScope Qwen TTS requires a prepared provider voice');
   }
 
-  const sampleRate = request.sampleRate ?? 24_000;
+  request.signal?.throwIfAborted();
   const url = `${webSocketBaseUrl.replace(/\/$/, '')}/api-ws/v1/realtime?model=${encodeURIComponent(modelId)}`;
-  const queue = new SocketEventQueue<TtsStreamEvent>();
-  const pcmChunks: Buffer[] = [];
+  const queue = new SocketEventQueue<Uint8Array>();
   const startedAt = Date.now();
-  let firstByteMs = 0;
   let pcmBytes = 0;
   let completed = false;
   let aborted = false;
@@ -48,7 +48,8 @@ export async function* synthesizeQwenTts(
       session: {
         voice: request.voice.kind === 'provider' ? request.voice.id : '',
         response_format: 'pcm',
-        sample_rate: sampleRate,
+        // TODO: 扩展模型族时核对限制. Qwen-TTS-Realtime 只支持 24 kHz; 此处明确指定, 与输出的 PCM 声明一致.
+        sample_rate: QWEN_TTS_PCM_FORMAT.sampleRate,
         mode: 'commit',
       },
     }));
@@ -77,8 +78,7 @@ export async function* synthesizeQwenTts(
         socket.close(1009, 'audio too large');
         return;
       }
-      if (firstByteMs === 0) firstByteMs = Date.now() - startedAt;
-      pcmChunks.push(chunk);
+      queue.push(chunk);
       return;
     }
     if (message.type === 'response.done') {
@@ -87,9 +87,6 @@ export async function* synthesizeQwenTts(
     }
     if (message.type === 'session.finished') {
       completed = true;
-      const wav = pcmToWav(Buffer.concat(pcmChunks), sampleRate);
-      queue.push({ type: 'audio_chunk', bytes: new Uint8Array(wav), mime: 'audio/wav' });
-      queue.push({ type: 'done', totalBytes: wav.byteLength, firstByteMs });
       queue.close();
       socket.close(1000, 'completed');
       return;
@@ -115,32 +112,13 @@ export async function* synthesizeQwenTts(
   });
 
   try {
-    yield* queue.iterate();
+    yield* pcmEvents(queue.iterate(), QWEN_TTS_PCM_FORMAT, startedAt);
   } finally {
     request.signal?.removeEventListener('abort', onAbort);
     if (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING) {
       socket.close();
     }
   }
-}
-
-function pcmToWav(pcm: Buffer, sampleRate: number): Buffer {
-  const header = Buffer.alloc(44);
-  const byteRate = sampleRate * 2;
-  header.write('RIFF', 0);
-  header.writeUInt32LE(36 + pcm.byteLength, 4);
-  header.write('WAVE', 8);
-  header.write('fmt ', 12);
-  header.writeUInt32LE(16, 16);
-  header.writeUInt16LE(1, 20);
-  header.writeUInt16LE(1, 22);
-  header.writeUInt32LE(sampleRate, 24);
-  header.writeUInt32LE(byteRate, 28);
-  header.writeUInt16LE(2, 32);
-  header.writeUInt16LE(16, 34);
-  header.write('data', 36);
-  header.writeUInt32LE(pcm.byteLength, 40);
-  return Buffer.concat([header, pcm]);
 }
 
 function eventId(): string {

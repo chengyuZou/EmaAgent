@@ -54,9 +54,8 @@ function validateReference(reference: TtsVoiceReference): void {
 }
 
 function validateRequest(request: TtsRequest): void {
-  if (!request.text.trim()) throw new TtsError('tts/invalid_request', 'TTS text must not be empty');
-  if (request.sampleRate !== undefined && (!Number.isSafeInteger(request.sampleRate) || request.sampleRate <= 0)) {
-    throw new TtsError('tts/invalid_request', 'TTS sampleRate must be a positive integer');
+  if (!request.text.trim()) {
+    throw new TtsError('tts/invalid_request', 'TTS text must not be empty');
   }
   if (request.speed !== undefined && (!Number.isFinite(request.speed) || request.speed <= 0)) {
     throw new TtsError('tts/invalid_request', 'TTS speed must be positive');
@@ -68,16 +67,26 @@ async function* validateStream(
 ): AsyncGenerator<TtsStreamEvent> {
   let terminal = false;
   let countedBytes = 0;
+  let blockAlign = 0;
   for await (const event of stream) {
-    if (terminal) throw new TtsError('tts/invalid_response', 'TTS protocol emitted data after done');
-    if (event.type === 'audio_chunk') {
-      if (event.bytes.byteLength === 0 || !event.mime.trim()) {
-        throw new TtsError('tts/invalid_response', 'TTS protocol emitted an empty audio chunk');
+    if (terminal) {
+      throw new TtsError('tts/invalid_response', 'TTS protocol emitted data after done');
+    }
+    if (event.type === 'audio_started') {
+      if (blockAlign !== 0 || !Number.isSafeInteger(event.sampleRate)
+        || event.sampleRate < 8_000 || event.sampleRate > 192_000
+        || (event.channelCount !== 1 && event.channelCount !== 2)) {
+        throw new TtsError('tts/invalid_response', 'TTS protocol emitted invalid or duplicate PCM format');
+      }
+      blockAlign = event.channelCount * 2;
+    } else if (event.type === 'audio_chunk') {
+      if (blockAlign === 0 || event.bytes.byteLength === 0 || event.bytes.byteLength % blockAlign !== 0) {
+        throw new TtsError('tts/invalid_response', 'TTS protocol emitted invalid PCM frames or no format');
       }
       countedBytes += event.bytes.byteLength;
     } else {
       terminal = true;
-      if (countedBytes === 0) {
+      if (countedBytes === 0 || countedBytes % blockAlign !== 0) {
         throw new TtsError('tts/invalid_response', 'TTS protocol completed without audio');
       }
       if (event.totalBytes !== countedBytes) {
@@ -86,5 +95,7 @@ async function* validateStream(
     }
     yield event;
   }
-  if (!terminal) throw new TtsError('tts/invalid_response', 'TTS protocol ended without done');
+  if (!terminal) {
+    throw new TtsError('tts/invalid_response', 'TTS protocol ended without done');
+  }
 }

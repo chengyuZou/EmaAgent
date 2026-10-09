@@ -1,5 +1,9 @@
 # @ema-agent/speech
 
+当前可用语音生成入口是设置页 `SpeechVoicePreview`: 收集有界 PCM 后调用 `packPcmWav` 写入完整 WAV 文件头, 返回 `audio/wav`. 保留 TTS 实际返回的采样率和声道数, 不重新采样, 不启动转换子进程或创建临时文件. 试听 PCM 上限为 16 MiB, 结果不进入 Session storage 或 backup. `SentenceSplitter` 每句最多 200 个 UTF-16 code units, 无空白长文本也会切分, 不拆开代理对.
+
+实时对话输出暂由 Server 的 `REALTIME_PCM_PLAYBACK_AVAILABLE` 条件暂停. 下述实时 Coordinator、分段归档和确认机制仍按 MP3 处理, 不能接收 `CallTts` 的裸 PCM 输出. 连续 WAV 播放、播放进度确认与整轮 WAV 归档接通前, 该路径不会创建实时合成或 MP3 资产.
+
 Speech 是 Ema 的语音输出业务包。它旁路消费根 Turn 的文本增量，清理并切句后按顺序调用 `@ema-agent/tts`，把实时音频交给独立 Speech WebSocket，并把完整结果归档到当前 Session。Speech 的失败、积压与取消不改变文字 Turn 的终态。
 
 ```text

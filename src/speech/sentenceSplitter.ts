@@ -1,7 +1,5 @@
 // 将增量文本按可朗读边界切句，并避开缩写、小数点和过短片段。
 
-// ── 严格句子切分器 ───────────────────────────────────────────────────────────
-//
 // 把自由文本切成 utterance 大小的块,供流式 TTS 使用。设计为在 LLM
 // 文本流入时调用 - 调用方喂入部分文本,切分器持有缓冲,一旦形成完整
 // 句子就 yield 出来。
@@ -16,8 +14,7 @@
 //       * 紧跟字母/数字        (file.txt - 防御性)
 //   - 最小句子长度:4 字符(trim 后)- 避免 "Ok." "?!" 单独 yield;
 //     它们会累积到下一句。
-//   - 最大缓冲长度:200 字符 - 达到时在最近的空白处强制切分,不管终止符。
-//     避免模型输出长无标点文本时延迟无界。
+//   - 每句最多 200 个 UTF-16 code units, 优先在空白处切分, 否则硬切且不拆开代理对.
 
 const TERMINATORS = new Set<string>([
   '.', '!', '?', '。', '！', '？',
@@ -70,19 +67,7 @@ export class SentenceSplitter {
 
       if (piece.length === 0) continue;
 
-      if (piece.length < MIN_SENTENCE_LEN && !isFinal) {
-        // 单独太短;推回缓冲加分隔符,让它和下一句合并,而非 yield 碎片。
-        this.buffer = piece + ' ' + this.buffer;
-        break;
-      }
-
       out.push({ index: this.nextIndex++, text: piece });
-    }
-
-    // 最终 flush 时,剩余的都作为最后一句,即使短。
-    if (isFinal && this.buffer.trim().length > 0) {
-      out.push({ index: this.nextIndex++, text: this.buffer.trim() });
-      this.buffer = '';
     }
 
     return out;
@@ -92,32 +77,35 @@ export class SentenceSplitter {
    * 找 `this.buffer` 中下一个有效终止符的索引。
    * 还没有有效终止符时返回 -1。
    *
-   * `force` 为 true(长度超 max)时,回退到最近的空白边界,
-   * 避免在长无标点文本上卡住。
+   * 流结束或达到单句上限时必须交付, 没有空白也不能超过上限.
    */
   private findCutIndex(force: boolean): number {
-    for (let i = 0; i < this.buffer.length; i++) {
+    let cutoff = Math.min(this.buffer.length, MAX_BUFFER_LEN);
+    const lastCode = this.buffer.charCodeAt(cutoff - 1);
+    if (cutoff < this.buffer.length && lastCode >= 0xD800 && lastCode <= 0xDBFF) cutoff--;
+    for (let i = 0; i < cutoff; i++) {
       const ch = this.buffer[i];
       if (ch === undefined) break;
 
       // 省略号 "..."(三个连续点)-> 在最后一个点切分
-      if (ch === '.' && this.buffer[i + 1] === '.' && this.buffer[i + 2] === '.') {
-        return i + 2;
+      if (ch === '.' && i + 2 < cutoff && this.buffer[i + 1] === '.' && this.buffer[i + 2] === '.') {
+        if (force || this.buffer.slice(0, i + 3).trim().length >= MIN_SENTENCE_LEN) return i + 2;
+        i += 2;
+        continue;
       }
 
       if (!TERMINATORS.has(ch)) continue;
       if (!this.isValidTerminator(i)) continue;
+      if (!force && this.buffer.slice(0, i + 1).trim().length < MIN_SENTENCE_LEN) continue;
       return i;
     }
 
     // 在 MAX_BUFFER_LEN 前的最后一个空白处强制切分
     if (this.buffer.length >= MAX_BUFFER_LEN || force) {
-      const cutoff = Math.min(this.buffer.length, MAX_BUFFER_LEN);
       const slice  = this.buffer.slice(0, cutoff);
       const lastWs = Math.max(slice.lastIndexOf(' '), slice.lastIndexOf('\n'));
-      if (lastWs > 0) return lastWs;
-      // 也没有空白 - emit 现有的。
-      if (force) return this.buffer.length - 1;
+      if (lastWs >= MIN_SENTENCE_LEN) return lastWs;
+      return cutoff - 1;
     }
 
     return -1;

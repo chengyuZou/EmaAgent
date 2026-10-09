@@ -122,7 +122,6 @@ export class SpeechCoordinator {
       for await (const event of this.args.callTts({
         text,
         voice: this.args.voice,
-        format: 'mp3',
         signal,
       })) {
         if (this.state !== 'accepting' && this.state !== 'finishing') break;

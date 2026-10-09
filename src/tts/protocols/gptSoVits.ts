@@ -1,4 +1,5 @@
-// 执行 GPT-SoVITS 本地协议，并直接使用角色参考音频路径。
+import { Readable } from 'node:stream';
+import type { ReadableStream } from 'node:stream/web';
 import { TtsError, ttsErrorFromHttp, ttsErrorFromNetwork } from '../errors.js';
 import type {
   TtsConnection,
@@ -6,16 +7,17 @@ import type {
   TtsRequest,
   TtsStreamEvent,
 } from '../types.js';
-import { concatBytes, safeReadText } from '../utils.js';
+import { safeReadText } from '../utils.js';
+import { gptSoVitsWavEvents } from '../audio/wav.js';
 
-const CHUNK_BYTES = 8 * 1024;
+const DEFAULT_BASE_URL = 'http://127.0.0.1:9880';
 
-// GPT-SoVITS 本地协议的载荷没有模型字段；modelId 仅为创建点签名统一而传入。
+// GPT-SoVITS 使用服务已经加载的权重, /tts 请求中不传 modelId.
 export function createGptSoVitsTtsProtocol(
   connection: TtsConnection,
   _modelId: string,
 ): TtsProtocolImplementation {
-  const baseUrl = (connection.baseUrl ?? 'http://127.0.0.1:9880').replace(/\/$/, '');
+  const baseUrl = (connection.baseUrl ?? DEFAULT_BASE_URL).replace(/\/$/, '');
   return {
     async prepareVoice(reference) {
       return reference;
@@ -33,7 +35,7 @@ async function* synthesizeGptSoVits(
   if (request.voice.kind !== 'reference') {
     throw new TtsError('tts/unsupported_voice', 'GPT-SoVITS requires a local reference voice');
   }
-  const outputFormat = mapFormat(request.format ?? 'mp3');
+  const startedAt = Date.now();
   let response: Response;
   try {
     response = await fetch(`${baseUrl}/tts`, {
@@ -45,7 +47,8 @@ async function* synthesizeGptSoVits(
         ref_audio_path: request.voice.audioPath,
         prompt_text: request.voice.promptText,
         prompt_lang: request.voice.promptLanguage,
-        media_type: outputFormat,
+        // WAV 自带实际采样率, 不猜测不同 GPT-SoVITS 权重的裸 PCM 格式.
+        media_type: 'wav',
         streaming_mode: true,
         speed_factor: request.speed ?? 1,
       }),
@@ -61,51 +64,25 @@ async function* synthesizeGptSoVits(
     }
     throw ttsErrorFromHttp(response.status, body);
   }
-  const reader = response.body?.getReader();
-  if (!reader) throw new TtsError('tts/invalid_response', 'GPT-SoVITS response has no body');
-
-  const startedAt = Date.now();
-  const mime = response.headers.get('content-type') ?? mimeForOutput(outputFormat);
-  let firstByteMs = 0;
-  let totalBytes = 0;
-  let pending: Uint8Array<ArrayBufferLike> = new Uint8Array(0);
-  try {
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      if (!value?.byteLength) continue;
-      if (firstByteMs === 0) firstByteMs = Date.now() - startedAt;
-      totalBytes += value.byteLength;
-      pending = concatBytes(pending, value);
-      while (pending.byteLength >= CHUNK_BYTES) {
-        yield { type: 'audio_chunk', bytes: pending.slice(0, CHUNK_BYTES), mime };
-        pending = pending.slice(CHUNK_BYTES);
-      }
-    }
-  } catch (error) {
-    throw ttsErrorFromNetwork(error, request.signal);
+  if (!response.body) {
+    throw new TtsError('tts/invalid_response', 'GPT-SoVITS response has no body');
   }
-  if (pending.byteLength > 0) yield { type: 'audio_chunk', bytes: pending, mime };
-  yield { type: 'done', totalBytes, firstByteMs };
+  const input = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
+  try {
+    yield* gptSoVitsWavEvents(input, startedAt, request.signal);
+  } catch (error) {
+    if (error instanceof TtsError) {
+      throw error;
+    }
+    throw ttsErrorFromNetwork(error, request.signal);
+  } finally {
+    input.destroy();
+  }
 }
 
 function looksLikeMissingReference(body: string): boolean {
   const lower = body.toLowerCase();
   return lower.includes('ref_audio_path') && (lower.includes('not exist') || lower.includes('not found'));
-}
-
-function mapFormat(format: string): 'wav' | 'raw' | 'ogg' | 'aac' {
-  if (format === 'mp3') return 'aac';
-  if (format === 'opus') return 'ogg';
-  if (format === 'pcm') return 'raw';
-  return 'wav';
-}
-
-function mimeForOutput(format: string): string {
-  if (format === 'aac') return 'audio/aac';
-  if (format === 'ogg') return 'audio/ogg';
-  if (format === 'raw') return 'audio/L16';
-  return 'audio/wav';
 }
 
 function detectLanguage(text: string, fallback: string): string {

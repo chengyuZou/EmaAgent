@@ -1,8 +1,17 @@
 // 使用当前角色参考声音沿正式协议入口生成一段有界试听音频
 import { randomUUID } from 'node:crypto';
-import { TtsError, type CallTts, type TtsVoiceReference, type TtsVoiceRegistrar } from '@ema-agent/tts';
+import {
+  packPcmWav,
+  TtsError,
+  type CallTts,
+  type PcmAudioFormat,
+  type TtsVoiceReference,
+  type TtsVoiceRegistrar,
+} from '@ema-agent/tts';
 import type { UsageRecorder } from '@ema-agent/usage';
 import { SpeechVoiceCache } from './voiceHandleCache.js';
+
+const MAX_PREVIEW_PCM_BYTES = 16 * 1024 * 1024;
 
 export type SpeechVoicePreviewErrorCode =
   | 'client_unavailable'
@@ -75,22 +84,28 @@ export class SpeechVoicePreview {
         ...(signal === undefined ? {} : { signal }),
       });
       const chunks: Uint8Array[] = [];
-      let mime = 'audio/mpeg';
+      let format: PcmAudioFormat | undefined;
+      let totalBytes = 0;
       for await (const event of tts.callTts({
         text,
         voice,
-        format: 'mp3',
         ...(signal === undefined ? {} : { signal }),
       })) {
-        if (event.type === 'audio_chunk') {
+        if (event.type === 'audio_started') {
+          format = event;
+        } else if (event.type === 'audio_chunk') {
+          totalBytes += event.bytes.byteLength;
+          if (totalBytes > MAX_PREVIEW_PCM_BYTES) {
+            throw new TtsError('tts/resource_exhausted', 'TTS preview exceeds 16 MiB of PCM');
+          }
           chunks.push(event.bytes);
-          mime = event.mime;
         }
       }
-      if (chunks.length === 0) {
+      if (!format || chunks.length === 0) {
         throw new SpeechVoicePreviewError('no_audio', '合成未产生音频');
       }
-      return { bytes: concatChunks(chunks), mime };
+      signal?.throwIfAborted();
+      return { bytes: packPcmWav(chunks, format), mime: 'audio/wav' };
     } catch (error) {
       const cancelled = signal?.aborted === true
         || (error instanceof Error && error.name === 'AbortError')
@@ -126,14 +141,4 @@ export class SpeechVoicePreview {
       });
     }
   }
-}
-
-function concatChunks(chunks: readonly Uint8Array[]): Uint8Array {
-  const output = new Uint8Array(chunks.reduce((size, chunk) => size + chunk.byteLength, 0));
-  let offset = 0;
-  for (const chunk of chunks) {
-    output.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return output;
 }

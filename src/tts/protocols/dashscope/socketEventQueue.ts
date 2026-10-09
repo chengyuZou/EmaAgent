@@ -18,6 +18,9 @@ export class SocketEventQueue<T> {
   }
 
   fail(error: unknown): void {
+    if (this.closed) return;
+    // 失败或取消后不继续交付已积压的音频, 错误优先于尚未消费的回调结果.
+    this.entries.length = 0;
     this.enqueue({ kind: 'error', error });
   }
 

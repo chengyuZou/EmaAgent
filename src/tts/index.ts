@@ -3,7 +3,7 @@ export { isTtsError, TtsError } from './errors.js';
 export type { TtsErrorCode } from './errors.js';
 export type {
   CallTts,
-  TtsAudioFormat,
+  PcmAudioFormat,
   TtsConnection,
   TtsProtocol,
   TtsRequest,
@@ -13,3 +13,4 @@ export type {
   TtsProviderVoice,
   TtsVoiceRegistrar,
 } from './types.js';
+export { packPcmWav } from './audio/wav.js';

@@ -1,17 +1,21 @@
 // 执行 SiliconFlow 的参考音频注册与流式语音合成协议。
 import { readFile, stat } from 'node:fs/promises';
+import { Readable } from 'node:stream';
+import type { ReadableStream } from 'node:stream/web';
 
 import { TtsError, ttsErrorFromHttp, ttsErrorFromNetwork } from '../errors.js';
 import type {
   TtsConnection,
+  PcmAudioFormat,
   TtsProtocolImplementation,
   TtsRequest,
   TtsStreamEvent,
 } from '../types.js';
-import { concatBytes, mimeForFormat, mimeFromExt, safeReadText } from '../utils.js';
+import { mimeFromExt, safeReadText } from '../utils.js';
+import { pcmEvents } from '../audio/pcm.js';
 
-const CHUNK_BYTES = 8 * 1024;
 const MAX_REFERENCE_AUDIO_BYTES = 25 * 1024 * 1024;
+const SILICON_FLOW_PCM_FORMAT: PcmAudioFormat = { sampleRate: 24_000, channelCount: 1 };
 
 export function createSiliconFlowTtsProtocol(
   connection: TtsConnection,
@@ -79,6 +83,7 @@ async function* synthesizeSiliconFlow(
     throw new TtsError('tts/unsupported_voice', 'SiliconFlow TTS requires a registered provider voice');
   }
 
+  const startedAt = Date.now();
   let response: Response;
   try {
     response = await fetch(`${baseUrl}/audio/speech`, {
@@ -88,7 +93,9 @@ async function* synthesizeSiliconFlow(
         model: modelId,
         voice: request.voice.id,
         input: request.text,
-        response_format: request.format ?? 'mp3',
+        response_format: 'pcm',
+        // TODO: 新增模型时核对 PCM 的采样率和声道约定. 此处明确请求 24 kHz, 不使用供应商默认值.
+        sample_rate: SILICON_FLOW_PCM_FORMAT.sampleRate,
         stream: true,
         ...(request.speed === undefined ? {} : { speed: request.speed }),
       }),
@@ -100,31 +107,14 @@ async function* synthesizeSiliconFlow(
   if (!response.ok) {
     throw ttsErrorFromHttp(response.status, await safeReadText(response));
   }
-  const reader = response.body?.getReader();
-  if (!reader) throw new TtsError('tts/invalid_response', 'TTS response has no body');
-
-  const startedAt = Date.now();
-  const mime = response.headers.get('content-type') ?? mimeForFormat(request.format ?? 'mp3');
-  let firstByteMs = 0;
-  let totalBytes = 0;
-  let pending: Uint8Array<ArrayBufferLike> = new Uint8Array(0);
-
+  if (!response.body) throw new TtsError('tts/invalid_response', 'TTS response has no body');
+  const input = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
   try {
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      if (!value?.byteLength) continue;
-      if (firstByteMs === 0) firstByteMs = Date.now() - startedAt;
-      totalBytes += value.byteLength;
-      pending = concatBytes(pending, value);
-      while (pending.byteLength >= CHUNK_BYTES) {
-        yield { type: 'audio_chunk', bytes: pending.slice(0, CHUNK_BYTES), mime };
-        pending = pending.slice(CHUNK_BYTES);
-      }
-    }
+    yield* pcmEvents(input, SILICON_FLOW_PCM_FORMAT, startedAt);
   } catch (error) {
+    if (error instanceof TtsError) throw error;
     throw ttsErrorFromNetwork(error, request.signal);
+  } finally {
+    input.destroy();
   }
-  if (pending.byteLength > 0) yield { type: 'audio_chunk', bytes: pending, mime };
-  yield { type: 'done', totalBytes, firstByteMs };
 }
