@@ -18,7 +18,7 @@ export class DatabaseCapabilityError extends Error {
 }
 
 /**
- * SQLite 封装。V1 中两种 kind 共存,各开一个 Database 实例:
+ * SQLite 连接按 kind 选择各自的初始化 SQL:
  *
  *   kind: 'profile' - `~/.ema-agent/profile.db`
  *     Provider 配置、模型绑定、角色卡、应用设置。
@@ -26,9 +26,10 @@ export class DatabaseCapabilityError extends Error {
  *
  *   kind: 'data'    - `{activeDataDir}/data.db`
  *     Session / Memory / 音频 等。用户切换数据目录时随之切换。
+ *   kind: 'narrative' - `~/.ema-agent/narrative/narrative.db`
+ *     固定剧情检索资产与查询缓存.
  *
- *
- * 运行时两个实例同时打开。Repo 直接接收 `SqliteDb`,不关心 kind--
+ * Repo 直接接收 `SqliteDb`,不关心 kind--
  * 由装配层把每个 repo 和正确的 DB 配对。
  *
  * 生命周期:构造(打开 + 设 pragma)-> `migrate()`(建表)-> 使用 -> `close()`。
@@ -59,18 +60,19 @@ export class Database {
       sqlite.pragma('temp_store = MEMORY');
       if (!opts.memory) sqlite.pragma('mmap_size = 268435456');
 
-      const hasFts5 = sqlite
-        .prepare("SELECT sqlite_compileoption_used('ENABLE_FTS5') AS enabled")
-        .pluck()
-        .get() as number;
-      if (opts.kind !== 'profile' && hasFts5 !== 1) {
-        throw new DatabaseCapabilityError('fts5', process.platform);
-      }
+      if (opts.kind === 'data') {
+        const hasFts5 = sqlite
+          .prepare("SELECT sqlite_compileoption_used('ENABLE_FTS5') AS enabled")
+          .pluck()
+          .get() as number;
+        if (hasFts5 !== 1) {
+          throw new DatabaseCapabilityError('fts5', process.platform);
+        }
 
-      // data migration 的 message search trigger 会调用这两个同步函数。
-      // 所有 repo 共用同一连接，因此普通 insert、fork 和恢复导入都走同一索引管线。
-      sqlite.function('ema_message_search_text', { deterministic: true }, extractMessageSearchText);
-      sqlite.function('ema_segment_fts', { deterministic: true }, tokenizeMessageSearchText);
+        // data 的检索触发器需要这些函数; profile/narrative 不安装消息检索能力.
+        sqlite.function('ema_message_search_text', { deterministic: true }, extractMessageSearchText);
+        sqlite.function('ema_segment_fts', { deterministic: true }, tokenizeMessageSearchText);
+      }
     } catch (err) {
       // pragma 失败(如磁盘只读)时关闭已打开的句柄,避免泄漏 + -wal 残留。
       try { sqlite.close(); } catch { /* close 失败忽略,优先抛原错 */ }

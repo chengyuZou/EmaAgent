@@ -2,21 +2,28 @@ import Database from 'better-sqlite3';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { StringDecoder } from 'node:string_decoder';
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.join(dirname, '..', 'migrations');
+const NARRATIVE_VERSION = 1;
+const SEED_READ_BYTES = 64 * 1024;
+const SEED_EXEC_CHARS = 512 * 1024;
+const NARRATIVE_SEED_FILES = [
+  'narrative-seeds-1st.sql',
+  'narrative-seeds-2nd.sql',
+  'narrative-seeds-3rd.sql',
+] as const;
 
 /**
- * 两条独立迁移流,各自 DB 的 `user_version` pragma 跟踪:
+ * 各个数据库使用独立的 `user_version`:
  *   profile.db -> migrations/profile/  Provider 配置/模型绑定/角色卡/设置/全局记忆
  *   data.db    -> migrations/data/     sessions/turns/messages/音频/agent tasks
+ *   narrative.db -> migrations/narrative/ 具名 schema 和固定剧情种子, 初始版本为 1.
  *
- * 两条流独立:profile 可 v3 而 data v7(或反之)。版本只在自己文件夹内推进。
- *
- * 2026-08-01 在首次公开内测前将开发迁移链压为新的 001 基线。此后迁移只追加，
- * 编号发布后不可修改；再次压缩必须建立明确的 baseline/checksum 升级机制。
+ * profile/data 按数字编号逐个迁移, narrative 首次执行两份定义和三份种子 SQL.
  */
-export type DatabaseKind = 'profile' | 'data';
+export type DatabaseKind = 'profile' | 'data' | 'narrative';
 
 export class MigrationsRunner {
   constructor(
@@ -30,6 +37,10 @@ export class MigrationsRunner {
    */
   run(): void {
     const folder = path.join(MIGRATIONS_DIR, this.kind);
+    if (this.kind === 'narrative') {
+      this.initializeNarrative(folder);
+      return;
+    }
     let entries: string[];
     try {
       entries = fs.readdirSync(folder).filter(f => f.endsWith('.sql'));
@@ -100,5 +111,64 @@ export class MigrationsRunner {
 
   currentVersion(): number {
     return this.db.pragma('user_version', { simple: true }) as number;
+  }
+
+  private initializeNarrative(folder: string): void {
+    const current = this.currentVersion();
+    if (current === NARRATIVE_VERSION) {
+      return;
+    }
+    if (current > NARRATIVE_VERSION) {
+      throw new Error(`[narrative] 数据库版本 v${current} 高于支持的 v${NARRATIVE_VERSION}`);
+    }
+
+    // 三周目和缓存 schema 全部成功才记录版本; 出错时连建表一起回滚.
+    this.db.transaction(() => {
+      this.db.exec(fs.readFileSync(path.join(folder, 'narrative.sql'), 'utf8'));
+      this.db.exec(fs.readFileSync(path.join(folder, 'narrative-cache.sql'), 'utf8'));
+      for (const filename of NARRATIVE_SEED_FILES) {
+        this.executeNarrativeSeeds(path.join(folder, filename));
+      }
+      this.db.pragma(`user_version = ${NARRATIVE_VERSION}`);
+    })();
+  }
+
+  private executeNarrativeSeeds(filename: string): void {
+    const fd = fs.openSync(filename, 'r');
+    const buffer = Buffer.allocUnsafe(SEED_READ_BYTES);
+    const decoder = new StringDecoder('utf8');
+    let pending = '';
+    let scanOffset = 0;
+    let inString = false;
+
+    // 生成器输出 INSERT 和固定文件头. 原文可以含换行和分号, 只能在字符串外的分号后分批.
+    // 字符串里的两个连续单引号表示一个原文单引号, 两次切换后仍处于字符串内.
+    const executeStatements = (text: string): void => {
+      pending += text;
+      while (scanOffset < pending.length) {
+        const character = pending[scanOffset];
+        if (character === "'") {
+          inString = !inString;
+        } else if (character === ';' && !inString && scanOffset + 1 >= SEED_EXEC_CHARS) {
+          this.db.exec(pending.slice(0, scanOffset + 1));
+          pending = pending.slice(scanOffset + 1);
+          scanOffset = 0;
+          continue;
+        }
+        scanOffset += 1;
+      }
+    };
+
+    try {
+      let count = fs.readSync(fd, buffer);
+      while (count > 0) {
+        executeStatements(decoder.write(buffer.subarray(0, count)));
+        count = fs.readSync(fd, buffer);
+      }
+      executeStatements(decoder.end());
+      this.db.exec(pending);
+    } finally {
+      fs.closeSync(fd);
+    }
   }
 }
