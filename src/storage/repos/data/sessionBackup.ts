@@ -364,13 +364,13 @@ export class SessionBackupRestorer {
     const insertSpeechOutput = this.db.prepare(`
       INSERT INTO speech_outputs (
         turn_id, session_id, storage_path, mime_type,
-        byte_size, duration_ms, segment_count, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        byte_size, duration_ms, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
     for (const row of rows.speechOutputs) {
       insertSpeechOutput.run(
         row.turn_id, session.id, row.storage_path, row.mime_type,
-        row.byte_size, row.duration_ms, row.segment_count, row.created_at,
+        row.byte_size, row.duration_ms, row.created_at,
       );
     }
 

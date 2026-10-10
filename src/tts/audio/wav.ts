@@ -10,6 +10,7 @@ const PCM_FORMAT_CODE = 1;
 const PCM_BITS_PER_SAMPLE = 16;
 const WAV_HEADER_BYTES = RIFF_HEADER_BYTES + CHUNK_HEADER_BYTES * 2 + PCM_FORMAT_BYTES;
 const RIFF_SIZE_FIELD_BYTES = 8;
+const UNKNOWN_WAV_BYTE_SIZE = 0xffffffff;
 
 /** 读取 GPT-SoVITS 的 PCM16LE WAV, 保留文件头中的采样率和声道数. */
 export async function* gptSoVitsWavEvents(
@@ -68,27 +69,38 @@ export async function* gptSoVitsWavEvents(
 /** 给已完成且由调用方限制大小的 PCM 写 WAV 头, 不转换或重新采样. */
 export function packPcmWav(chunks: readonly Uint8Array[], format: PcmAudioFormat): Uint8Array {
   const dataBytes = chunks.reduce((total, chunk) => total + chunk.byteLength, 0);
-  const frameBytes = format.channelCount * PCM_SAMPLE_BYTES;
-  const wav = Buffer.alloc(WAV_HEADER_BYTES + dataBytes);
-  wav.write('RIFF', 0);
-  wav.writeUInt32LE(wav.byteLength - RIFF_SIZE_FIELD_BYTES, 4);
-  wav.write('WAVE', 8);
-  wav.write('fmt ', 12);
-  wav.writeUInt32LE(PCM_FORMAT_BYTES, 16);
-  wav.writeUInt16LE(PCM_FORMAT_CODE, 20);
-  wav.writeUInt16LE(format.channelCount, 22);
-  wav.writeUInt32LE(format.sampleRate, 24);
-  wav.writeUInt32LE(format.sampleRate * frameBytes, 28);
-  wav.writeUInt16LE(frameBytes, 32);
-  wav.writeUInt16LE(PCM_BITS_PER_SAMPLE, 34);
-  wav.write('data', 36);
-  wav.writeUInt32LE(dataBytes, 40);
+  const header = createPcmWavHeader(format, dataBytes);
+  const wav = Buffer.alloc(header.byteLength + dataBytes);
+  wav.set(header);
   let offset = WAV_HEADER_BYTES;
   for (const chunk of chunks) {
     wav.set(chunk, offset);
     offset += chunk.byteLength;
   }
   return wav;
+}
+
+/** pcmByteSize 为 null 时写未知长度, 供持续追加 PCM 的音频响应使用. */
+export function createPcmWavHeader(format: PcmAudioFormat, pcmByteSize: number | null): Uint8Array {
+  const frameBytes = format.channelCount * PCM_SAMPLE_BYTES;
+  const header = Buffer.alloc(WAV_HEADER_BYTES);
+  header.write('RIFF', 0);
+  const riffByteSize = pcmByteSize === null
+    ? UNKNOWN_WAV_BYTE_SIZE
+    : WAV_HEADER_BYTES - RIFF_SIZE_FIELD_BYTES + pcmByteSize;
+  header.writeUInt32LE(riffByteSize, 4);
+  header.write('WAVE', 8);
+  header.write('fmt ', 12);
+  header.writeUInt32LE(PCM_FORMAT_BYTES, 16);
+  header.writeUInt16LE(PCM_FORMAT_CODE, 20);
+  header.writeUInt16LE(format.channelCount, 22);
+  header.writeUInt32LE(format.sampleRate, 24);
+  header.writeUInt32LE(format.sampleRate * frameBytes, 28);
+  header.writeUInt16LE(frameBytes, 32);
+  header.writeUInt16LE(PCM_BITS_PER_SAMPLE, 34);
+  header.write('data', 36);
+  header.writeUInt32LE(pcmByteSize ?? UNKNOWN_WAV_BYTE_SIZE, 40);
+  return header;
 }
 
 function readPcmFormat(bytes: Buffer): PcmAudioFormat {

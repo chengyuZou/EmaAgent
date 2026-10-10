@@ -59,8 +59,11 @@ export function emaAuth(secret: string) {
     // 健康检查不包含用户数据，保留给 Tauri 启动探测使用。
     if (c.req.path === '/health') return next();
 
+    // 原生 audio 不能设置自定义请求头, 仅音频 GET 和 WebSocket 接受 URL 中的现有口令.
+    const acceptsQuerySecret = c.req.header('upgrade')?.toLowerCase() === 'websocket'
+      || (c.req.method === 'GET' && /^\/api\/turns\/[^/]+\/audio$/.test(c.req.path));
     const provided = c.req.header(EMA_SECRET_HEADER)
-      ?? (c.req.header('upgrade')?.toLowerCase() === 'websocket'
+      ?? (acceptsQuerySecret
         ? c.req.query('secret')
         : undefined);
     if (!timingSafeEqual(digestSecret(provided), expectedDigest)) {

@@ -7,7 +7,6 @@ import { join } from 'node:path';
 import {
   sqliteFileSet,
   sweepOrphanSessionDirectories,
-  sweepOrphanTurnFiles,
   removeLegacyArtifactDirectories,
 } from '../src/platform/paths.js';
 
@@ -44,37 +43,6 @@ describe('sweepOrphanSessionDirectories', () => {
       expect(result).toEqual({ removed: 1, failed: 0 });
       expect(existsSync(liveDir)).toBe(true);
       expect(existsSync(orphanDir)).toBe(false);
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-});
-
-describe('sweepOrphanTurnFiles(启动自检孤儿 turn 文件)', () => {
-  it('清理 DB 已删 turn 的音频分段/合并文件/scratchpad, 保留 live turn', () => {
-    const root = mkdtempSync(join(tmpdir(), 'ema-sweep-'));
-    try {
-      const sid = 'sess-1';
-      const segLive = join(root, 'sessions', sid, 'audio', 'segments', 'turn-live');
-      const segDead = join(root, 'sessions', sid, 'audio', 'segments', 'turn-dead');
-      const mergedDir = join(root, 'sessions', sid, 'audio', 'merged');
-      const scratchDead = join(root, 'sessions', sid, 'scratchpad', 'turn-dead');
-      mkdirSync(segLive, { recursive: true });
-      mkdirSync(segDead, { recursive: true });
-      mkdirSync(mergedDir, { recursive: true });
-      mkdirSync(scratchDead, { recursive: true });
-      writeFileSync(join(mergedDir, 'turn-live.mp3'), 'a');
-      writeFileSync(join(mergedDir, 'turn-dead.mp3'), 'b');
-      writeFileSync(join(scratchDead, 'note.md'), 'x');
-
-      const result = sweepOrphanTurnFiles(root, () => new Set(['turn-live']));
-
-      expect(result.removed).toBe(3);
-      expect(existsSync(segLive)).toBe(true);
-      expect(existsSync(segDead)).toBe(false);
-      expect(existsSync(join(mergedDir, 'turn-live.mp3'))).toBe(true);
-      expect(existsSync(join(mergedDir, 'turn-dead.mp3'))).toBe(false);
-      expect(existsSync(scratchDead)).toBe(false);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

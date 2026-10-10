@@ -65,7 +65,7 @@ export function publishSessionFiles(
       throwIfCancelled(signal);
       const source = archive.get(record.filePath);
       if (!source) continue;
-      const destination = path.join(temporaryRoot, 'audio', 'merged', fileName(record.turnId, record.filePath));
+      const destination = path.join(temporaryRoot, 'audio', `${record.turnId.replace(/[^A-Za-z0-9._-]/g, '_')}.wav`);
       copy(source.filePath, destination, record.byteSize);
       speechOutputPaths.set(record.turnId, toFinal(finalRoot, temporaryRoot, destination));
     }
@@ -111,11 +111,6 @@ function copy(source: string, destination: string, expectedBytes?: number): void
   if (expectedBytes !== undefined && fs.statSync(destination).size !== expectedBytes) {
     throw new SessionImportError('invalid_format', `资源字节数与记录不一致: ${path.basename(destination)}`);
   }
-}
-
-function fileName(id: string, archivePath: string): string {
-  const extension = path.extname(archivePath);
-  return `${id.replace(/[^A-Za-z0-9._-]/g, '_')}${extension}`;
 }
 
 function toFinal(finalRoot: string, temporaryRoot: string, temporaryPath: string): string {

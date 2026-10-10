@@ -288,7 +288,6 @@ export const restoreSpeechOutputRecord = (
   mime_type: record.mimeType,
   byte_size: record.byteSize,
   duration_ms: record.durationMs,
-  segment_count: record.segmentCount,
   created_at: record.createdAt,
 });
 

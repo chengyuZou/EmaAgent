@@ -13,4 +13,4 @@ export type {
   TtsProviderVoice,
   TtsVoiceRegistrar,
 } from './types.js';
-export { packPcmWav } from './audio/wav.js';
+export { createPcmWavHeader, packPcmWav } from './audio/wav.js';

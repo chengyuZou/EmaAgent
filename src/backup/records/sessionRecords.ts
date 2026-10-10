@@ -1,5 +1,6 @@
 // 定义 Session ZIP 的记录结构，并在导入外部归档时执行基础字段校验。
 import { z } from 'zod';
+import { SESSION_BACKUP_VERSION } from './sessionFormat.js';
 
 const id = z.string().min(1);
 const nullableId = id.nullable();
@@ -14,7 +15,7 @@ export const omittedSessionFileSchema = z.object({
 
 export const sessionBackupManifestSchema = z.object({
   format: z.literal('ema-session'),
-  version: z.literal(7),
+  version: z.literal(SESSION_BACKUP_VERSION),
   sessionId: id,
   omittedFiles: z.array(omittedSessionFileSchema),
 }).strict();
@@ -269,10 +270,9 @@ export const attachmentPastedTextRecordSchema = z.object({
 export const speechOutputRecordSchema = z.object({
   turnId: id,
   sessionId: id,
-  mimeType: z.string(),
+  mimeType: z.literal('audio/wav'),
   byteSize: nonNegativeInteger,
-  durationMs: nonNegativeInteger.nullable(),
-  segmentCount: nonNegativeInteger,
+  durationMs: nonNegativeInteger,
   createdAt: integer,
   filePath: z.string(),
 }).strict();

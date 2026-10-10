@@ -11,7 +11,7 @@
 import fs from 'node:fs';
 import type { SessionBackupReader, SessionBackupRestorer } from '@ema-agent/storage';
 import { SessionImportError } from '../errors.js';
-import { SESSION_MANIFEST_PATH, isSessionArchivePath } from '../records/sessionFormat.js';
+import { SESSION_BACKUP_VERSION, SESSION_MANIFEST_PATH, isSessionArchivePath } from '../records/sessionFormat.js';
 import {
   subagentMessageRecordSchema,
   subagentRecordSchema,
@@ -219,7 +219,7 @@ function rewriteAttachmentPaths(
 function readManifest(filePath: string) {
   try {
     const value = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-    if (value?.format === 'ema-session' && value.version !== 7) {
+    if (value?.format === 'ema-session' && value.version !== SESSION_BACKUP_VERSION) {
       throw new SessionImportError('unsupported_version', `不支持的 Session 备份版本: ${String(value.version)}`);
     }
     return sessionBackupManifestSchema.parse(value);

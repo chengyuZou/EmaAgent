@@ -4,7 +4,7 @@ import { z } from 'zod';
 import type { SessionMessage, SessionStore } from '@ema-agent/session';
 import type { UsageRecorder } from '@ema-agent/usage';
 import type { Turn, TurnStore } from '@ema-agent/turn';
-import type { AudioArchive } from '@ema-agent/speech';
+import type { FsAudioArchive } from '@ema-agent/speech';
 import { projectMessages } from '@ema-agent/context';
 import { estimateLlmInputTokens } from '@ema-agent/token';
 import type { ProviderModels } from '@ema-agent/providers';
@@ -38,7 +38,7 @@ export interface SessionHistoryRouteDeps {
   readonly session: Pick<SessionStore, 'getSession' | 'loadHistory' | 'listMessages' | 'listMessagesAround' | 'loadMessagesForTurn'>;
   readonly turns: Pick<TurnStore, 'getTurn' | 'listTurnIndex'>;
   readonly usageRecorder: Pick<UsageRecorder, 'forTurn'>;
-  readonly audioArchive: Pick<AudioArchive, 'findMergedFor'>;
+  readonly audioArchive: Pick<FsAudioArchive, 'findFinalized'>;
   readonly providerModels: Pick<ProviderModels, 'get'>;
   /** Session 被打开(拉历史)时触发一次 fire-and-forget 的附件残留清扫。 */
   readonly onSessionOpened?: (sessionId: string) => void;
@@ -47,7 +47,7 @@ export interface SessionHistoryRouteDeps {
 function toTurnStats(
   turn: Turn,
   usageRecorder: Pick<UsageRecorder, 'forTurn'>,
-  audioArchive: Pick<AudioArchive, 'findMergedFor'>,
+  audioArchive: Pick<FsAudioArchive, 'findFinalized'>,
 ) {
   const llmCalls = usageRecorder.forTurn(turn.id).filter(record => record.capability === 'llm');
   return {
@@ -55,7 +55,7 @@ function toTurnStats(
     inputTokens: llmCalls.reduce((sum, record) => sum + (record.inputTokens ?? 0), 0),
     outputTokens: llmCalls.reduce((sum, record) => sum + (record.outputTokens ?? 0), 0),
     durationMs: turn.completedAt === null ? null : turn.completedAt - turn.createdAt,
-    audioAvailable: audioArchive.findMergedFor(turn.sessionId, turn.id) !== null,
+    audioAvailable: audioArchive.findFinalized(turn.sessionId, turn.id) !== null,
   };
 }
 
@@ -63,7 +63,7 @@ function turnStatsForMessages(
   messages: readonly SessionMessage[],
   turns: Pick<TurnStore, 'getTurn'>,
   usageRecorder: Pick<UsageRecorder, 'forTurn'>,
-  audioArchive: Pick<AudioArchive, 'findMergedFor'>,
+  audioArchive: Pick<FsAudioArchive, 'findFinalized'>,
 ) {
   const turnIds = new Set(messages.flatMap(message => message.turnId ? [message.turnId] : []));
   return [...turnIds].flatMap(turnId => {

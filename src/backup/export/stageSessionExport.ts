@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { SessionBackupReader, SessionBackupRows } from '@ema-agent/storage';
-import { SESSION_MANIFEST_PATH, sessionRecordFile } from '../records/sessionFormat.js';
+import { SESSION_BACKUP_VERSION, SESSION_MANIFEST_PATH, sessionRecordFile } from '../records/sessionFormat.js';
 import type { OmittedSessionFile, SessionBackupManifest } from '../records/sessionRecords.js';
 import {
   toSubagentMessageRecord,
@@ -79,7 +79,7 @@ export function stageSessionExport(
 
     const manifest: SessionBackupManifest = {
       format: 'ema-session',
-      version: 7,
+      version: SESSION_BACKUP_VERSION,
       sessionId,
       omittedFiles,
     };
@@ -156,7 +156,7 @@ function writeRecords(
   }, signal);
 
   writeJsonl(directory, 'speechOutputs', rows.speechOutputs, row => {
-    const archivePath = `files/speechOutputs/${safeName(row.turn_id)}${safeExtension(path.extname(row.storage_path))}`;
+    const archivePath = `files/speechOutputs/${safeName(row.turn_id)}.wav`;
     pending.push({ kind: 'speechOutput', id: row.turn_id, sourcePath: row.storage_path, archivePath });
     return toSpeechOutputRecord(row, archivePath);
   }, signal);
@@ -222,10 +222,6 @@ function relativeArchivePath(root: string, filePath: string): string {
 
 function safeName(value: string): string {
   return value.replace(/[^A-Za-z0-9._-]/g, '_');
-}
-
-function safeExtension(value: string): string {
-  return /^\.[A-Za-z0-9]{1,12}$/.test(value) ? value.toLowerCase() : '';
 }
 
 function throwIfCancelled(signal?: AbortSignal): void {

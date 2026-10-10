@@ -1,43 +1,60 @@
 # @ema-agent/speech
 
-当前可用语音生成入口是设置页 `SpeechVoicePreview`: 收集有界 PCM 后调用 `packPcmWav` 写入完整 WAV 文件头, 返回 `audio/wav`. 保留 TTS 实际返回的采样率和声道数, 不重新采样, 不启动转换子进程或创建临时文件. 试听 PCM 上限为 16 MiB, 结果不进入 Session storage 或 backup. `SentenceSplitter` 每句最多 200 个 UTF-16 code units, 无空白长文本也会切分, 不拆开代理对.
+Speech 旁路接收根 Turn 的文字增量, 清理 Markdown 并切句后按顺序调用 TTS. 每个 Turn 的所有 PCM 块持续写入同一份 WAV, 不保存另一份整轮音频到内存. 文字 Turn 不等待语音生成、播放或文件保存.
 
-实时对话输出暂由 Server 的 `REALTIME_PCM_PLAYBACK_AVAILABLE` 条件暂停. 下述实时 Coordinator、分段归档和确认机制仍按 MP3 处理, 不能接收 `CallTts` 的裸 PCM 输出. 连续 WAV 播放、播放进度确认与整轮 WAV 归档接通前, 该路径不会创建实时合成或 MP3 资产.
+设置页 `SpeechVoicePreview` 可直接试听. Server 的实时输出目前由 `REALTIME_SPEECH_PLAYBACK_AVAILABLE` 暂停, 等 Desktop 的原生 audio URL 播放接通后再开启; 本包的整轮写入、读取和取消接口已可独立使用.
 
-Speech 是 Ema 的语音输出业务包。它旁路消费根 Turn 的文本增量，清理并切句后按顺序调用 `@ema-agent/tts`，把实时音频交给独立 Speech WebSocket，并把完整结果归档到当前 Session。Speech 的失败、积压与取消不改变文字 Turn 的终态。
+## 生成与文件
+
+`SpeechCoordinator` 接收 `sessionId`、`turnId`、固定的 Provider/模型、准备好的声音、`CallTts`、`FsAudioArchive` 和取消信号. `acceptTextDelta()` 接收文字; `finish()` 等待所有句子并完成文件; `cancel()` 中断合成, 保存已经写入的部分. 后两个入口共用一次完成 Promise, 不重复发布文件.
+
+`SentenceSplitter` 每句最多 200 个 UTF-16 code units, 无空白长文本也会切分, 不拆开代理对. 单句合成最多运行 120 秒并交付 16 MiB PCM. 每句单独记录字符数与调用结果到 Usage. 普通供应商单句失败会通知 `onSentenceError` 并继续后面的句子; 文件写入失败或采样率/声道改变则停止追加, 不能把不同格式的 PCM 塞进同一份 WAV.
+
+`FsAudioArchive.openTurn(sessionId, turnId, format)` 创建一个 `AudioWriter`. 调用方必须等 `write(bytes)` 完成后再取下一块, 所以磁盘来不及写时, Speech 会暂停读取这次 TTS 的结果. `finish()` 返回文件路径、`audio/wav`、字节数和毫秒时长; 没有 PCM 时删除空文件并返回 null.
 
 ```text
-Turn output_text_delta
-  -> TextFilterStream
-  -> SentenceSplitter
-  -> SpeechCoordinator
-       |- CallTts(request)            单句协议调用（连接与模型在装配层冻结）
-       |- SpeechEvent + binary audio 独立 WebSocket 控制帧与二进制帧
-       |- UsageRecord                每句字符数和终态
-       `- AudioArchive               Session 临时分段与最终归档
-             |- segments/<turnId>/   合并前临时文件，完成或取消后删除
-             `- merged/<turnId>.mp3  Turn 完整音频
+Turn 文字增量 -> 清理和切句 -> CallTts -> PCM 块
+                                          |
+                                          v
+                    sessions/<sessionId>/audio/<turnId>.wav.pending
+                                          |
+                           完成或取消: 补齐 WAV 头并改名
+                                          v
+                    sessions/<sessionId>/audio/<turnId>.wav
+                                          |
+                           Server 保存 speech_outputs 记录
+                                          |
+                           session_audio_changed 通知
+                                          |
+                           speech_generate_* 终态通知
 ```
 
-`session_audio_changed { sessionId, turnId }` 只在合并音频写入 `speech_outputs`
-后发送. Chat 用 `turnId` 只重读这一轮的音频可用状态, 临时分段和实时音频帧不触发
-跨窗口统计刷新.
+第一块 PCM 写入成功后只调用一次 `onAudioReady`, 此时 Server 可以发 `speech_generate_started`. 生成期间文件头使用未知长度; 完成或取消后写真实长度, 计算时长并发布正式 WAV. 取消后的正式文件可以少于整轮文字, 但仍是结构完整的 WAV. 文件改名或头部更新失败时不登记音频; 已经保存成功但 SQL 登记失败的文件仍可通过 Turn 路由读取.
 
-## 定死的边界
+## 读取与通知
 
-- 根 Turn 的语音接线由装配层 `startTurnSpeech` 建立：事件泵只把文字副本喂给 Speech，Turn 终态立即照常发布，不等待合成、播放或归档。
-- `SpeechCoordinator` 每个 Turn 一个实例，顺序执行句子，拥有单句超时、单句 16 MiB 基础边界和取消；没有整轮音频上限。逐句 Usage 记账归它（sentenceId 与字符数只有这一层知道）。
-- Speech WebSocket 的 `sentence_played` 确认把已生成未播放的完成句限制为 3 条；背压只暂停 Speech 生成，不反压 LLM Turn。
-- `SpeechVoiceCache.prepare()` 只缓存当前 Node 进程内的 Provider 声音标识，不写 SQLite；缓存键包含角色、完整资源名与更新时间、Provider 和模型。
-- `SpeechVoicePreview` 复用装配层按 providerId + modelId 即时冻结的同一对 TTS 入口，不建立第二套协议调用。
-- `FsAudioArchive` 把结果写到 `{sessionsRoot}/{sessionId}/audio`，因此归档身份属于 Speech 而不是 TTS。
-- 单句 segment 不进入 SQL、不存 Base64，也不是历史资产；它只用于长 Turn 的流式落盘与最终合并，合并成功或 Speech 取消后删除。
-- `speech_outputs` 只登记合并后的完整 MP3，供 Assistant 消息历史重播。
-- 实时音频和控制帧不进入 Turn SSE 或 `TurnEventStore`，Speech WebSocket 断线不补播；历史重播读取最终合并文件。
-- 角色选择、Provider binding 与 TTS 入口创建由 Server 装配；本包不读取角色 Repo 或 Provider Repo。
+`FsAudioArchive.openRead(sessionId, turnId, signal)` 返回 `AudioRead` 或 null. 正在生成时 `byteSize=null`, 已完成时返回真实大小. 每个读取方持有自己的文件位置, 一次最多取 64 KiB. 读到当前末尾会等下一次写入, 不把句间停顿当成结束; 文件完成且已读取全部 PCM 后结束响应. 关闭读取流或取消读取信号只关闭这个读取方, 不取消合成.
 
-## 不属于本包
+Server 使用既有 `GET /api/turns/:turnId/audio` 提供实时和历史文件流. 路由先从 Turn 查询 Session, 不接受任意本机路径. 原生 audio 不能设置 `X-Ema-Secret`, 所以只有音频 GET 与 WebSocket 允许通过 `secret` 查询参数携带现有进程口令; 其他 HTTP API 仍用请求头认证. 音频响应禁止缓存, 生成中的响应不发送 Content-Length.
 
-- Provider HTTP/WebSocket 请求和声音注册属于 `@ema-agent/tts`。
-- 音频转文字属于 `@ema-agent/stt`。
-- Session/Turn 的创建、终态和消息持久化仍属于对应业务包。
+`SpeechGenerateEvent` 均带 `sessionId` 和 `turnId`, 不带文件路径、URL 或二进制音频. WebSocket 只交付生成开始、单句警告、生成完成/取消/失败、不可用状态, 并接收 `speech_generate_cancel`. 生成终态带 `audioAvailable`, 与浏览器是否播放结束无关. 断开 WebSocket 只结束订阅; 重新连接时, 正在写入的文件可通知开始, 正式文件可通知生成完成.
+
+文件完成并写入 `speech_outputs` 后, Server 才发送 `SpeechArchiveEvent` 中的 `session_audio_changed`. SQL 只记录正式 WAV, 不记录 pending 文件. Backup 同样只处理有正式记录的文件, 包括取消后保留的部分.
+
+## 停止与播放归属
+
+开启 TTS 的 Turn 不依赖播放器连接或 owner 才能合成, 也不等待播放进度确认. 当前没有三句或 10 秒的生成限制. 播放 owner 由 Desktop 决定, 不影响后端合成.
+
+根 Turn 失败/取消时停止语音. 根 Turn 文字正常完成时, 语音可以继续处理剩余句子. Server 登记声音准备中的任务, 所以 Session 删除、归档和 Server 关闭会取消并等待相关任务完成; 删除数据行或关闭数据库发生在语音保存之后. 只取消语音不会取消文字 Turn, TTS 开关变化也不自动停止当前语音.
+
+没有整轮文字队列上限, 普通 WAV 长度字段也有限制. DashScope 回调队列当前没有独立容量限制. 大文件 Range/定位、几十分钟生成与浏览器播放的内存表现仍需单独验收, 不能据此声称整条链拥有固定内存上限.
+
+## 参考声音与试听
+
+`SpeechVoiceCache.prepare()` 只缓存当前 Node 进程内的 Provider 声音标识, 不写 SQLite. 缓存键包含角色、完整资源名与更新时间、Provider 和模型. Server 决定角色、TTS binding 与协议入口, 本包不读取角色或 Provider Repo.
+
+`SpeechVoicePreview` 复用相同的声音准备与协议入口, 收集最多 16 MiB PCM 后用 `packPcmWav` 添加完整 WAV 头, 返回 `audio/wav`. 保留实际采样率和声道数, 不重新采样, 不启动转换进程或创建临时文件. 试听结果不进入 Session Storage 或 Backup.
+
+协议请求和音色注册属于 `@ema-agent/tts`; 转写属于 `@ema-agent/stt`; Session 和 Turn 的文字终态仍由对应业务包管理.
+
+测试入口: `pnpm --filter @ema-agent/speech test`. Server 的 `turnSpeechWebSocket.test.ts` 另外使用真实本机 HTTP/WebSocket、临时 SQLite 和 ZIP 验证传输与备份. 这些测试不代替真实供应商、WebView 播放和口型验收.

@@ -177,6 +177,7 @@ export function buildComposition(input: { activeDataDir: string; initializeBuilt
       turn.continuations.shutdown();
       stopGoalContinuation();
       await database.sessionRunning.abortAll();
+      await speech.close();
       stopPublishingSessionRunning();
       await turn.subagents.shutdown('Application is shutting down');
       await tools.backgroundProcesses.shutdown();

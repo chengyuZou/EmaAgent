@@ -88,7 +88,7 @@ export const createRoutes = (composition: Composition, secret: string) => {
       compactSession: commands.compactSession,
       attachTurn: handle => turnFanout.attach(handle),
     }))
-    .route('/api/ws/speech', speechWebSocketRoute(speech))
+    .route('/api/ws/speech', speechWebSocketRoute(speech, database.turns))
     .route('/api/turns', turnControlRoute({ turns: database.turns, toolExecutionState: tools.toolExecutionState }))
     .route('/api/turns', turnAudioRoute({ audioArchive: speech.audioArchive, turns: database.turns }))
 
@@ -97,6 +97,7 @@ export const createRoutes = (composition: Composition, secret: string) => {
       session: database.session,
       turns: database.turns,
       abortSubagentsForTurn: turnId => turn.subagents.abortForTurn(turnId),
+      cancelSessionSpeech: sessionId => speech.cancelSessionSpeech(sessionId),
       // 跨域删除用例在 application 层，装配时绑定 composition。
       deleteSession: sessionId => deleteSession(composition, sessionId),
     }))

@@ -1,37 +1,63 @@
-// Speech WebSocket Route：转发单个 Turn 的控制帧和二进制音频。
 import { upgradeWebSocket } from '@hono/node-server';
 import { Hono } from 'hono';
 import type { WSContext } from 'hono/ws';
+import type { SpeechClientCommand } from '@ema-agent/speech';
+import type { TurnStore } from '@ema-agent/turn';
 import type { SpeechComposition, SpeechSocketClient } from '../../composition/speech.js';
-export type { SpeechControlEvent } from '@ema-agent/speech';
+export type { SpeechClientCommand, SpeechGenerateEvent } from '@ema-agent/speech';
 
-export const speechWebSocketRoute = (speech: Pick<
-  SpeechComposition,
-  'attachSpeechSocket' | 'handleSpeechSocketMessage' | 'detachSpeechSocket'
->) => new Hono().get('/:turnId', upgradeWebSocket(context => {
+export const speechWebSocketRoute = (
+  speech: Pick<SpeechComposition, 'attachSpeechSocket' | 'detachSpeechSocket' | 'cancelTurnSpeech'>,
+  turns: Pick<TurnStore, 'getTurn'>,
+) => new Hono().get('/:turnId', upgradeWebSocket(context => {
   const turnId = context.req.param('turnId')!;
+  const sessionId = turns.getTurn(turnId)?.sessionId;
   let client: SpeechSocketClient | null = null;
   return {
     onOpen(_event, socket) {
+      if (!sessionId) {
+        socket.close(1008, 'turn_not_found');
+        return;
+      }
       client = socketClient(socket);
-      if (!speech.attachSpeechSocket(turnId, client)) socket.close(1008, 'speech_not_available');
+      void speech.attachSpeechSocket(sessionId, turnId, client).catch(() => {
+        socket.close(1011, 'speech_attach_failed');
+      });
     },
     onMessage(event, socket) {
-      if (typeof event.data !== 'string' || !client) return;
-      if (speech.handleSpeechSocketMessage(turnId, event.data)) {
-        speech.detachSpeechSocket(turnId, client);
-        socket.close(1000, 'speech_cancelled');
+      if (!client || !sessionId || typeof event.data !== 'string') return;
+      const command = parseClientCommand(event.data);
+      if (command) {
+        void speech.cancelTurnSpeech(turnId).catch(() => {
+          socket.close(1011, 'speech_cancel_failed');
+        });
       }
     },
-    onClose() { if (client) speech.detachSpeechSocket(turnId, client); },
-    onError() { if (client) speech.detachSpeechSocket(turnId, client); },
+    onClose() {
+      if (client && sessionId) speech.detachSpeechSocket(sessionId, turnId, client);
+    },
+    onError() {
+      if (client && sessionId) speech.detachSpeechSocket(sessionId, turnId, client);
+    },
   };
 }));
 
 function socketClient(socket: WSContext): SpeechSocketClient {
   return {
-    sendControl(event) { socket.send(JSON.stringify(event)); },
-    sendAudio(bytes) { socket.send(Uint8Array.from(bytes)); },
-    close() { socket.close(1000, 'speech_completed'); },
+    sendControl(event) {
+      if (socket.readyState === 1) socket.send(JSON.stringify(event));
+    },
+    close() {
+      socket.close(1000, 'speech_generate_ended');
+    },
   };
+}
+
+function parseClientCommand(source: string): SpeechClientCommand | null {
+  try {
+    const value = JSON.parse(source) as { type?: unknown } | null;
+    return value?.type === 'speech_generate_cancel' ? { type: value.type } : null;
+  } catch {
+    return null;
+  }
 }

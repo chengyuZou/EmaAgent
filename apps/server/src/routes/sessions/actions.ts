@@ -36,6 +36,7 @@ export interface SessionActionsRouteDeps {
   readonly turns: Pick<TurnStore, 'rewindLastTurn'>;
   /** 回退前先停该 Turn 发起的运行中子代理, 再删除 Turn. */
   readonly abortSubagentsForTurn: (turnId: string) => Promise<void>;
+  readonly cancelSessionSpeech: (sessionId: string) => Promise<void>;
   /** 跨域删除用例（application/deleteSession）由装配层绑定 composition 后传入。 */
   readonly deleteSession: (sessionId: string) => Promise<void>;
 }
@@ -111,8 +112,10 @@ export const sessionActionsRoute = (deps: SessionActionsRouteDeps) =>
       }
       return context.body(null, 204);
     })
-    .post('/:sessionId/archive', context => {
-      deps.session.archiveSession(context.req.param('sessionId'));
+    .post('/:sessionId/archive', async context => {
+      const sessionId = context.req.param('sessionId');
+      await deps.cancelSessionSpeech(sessionId);
+      deps.session.archiveSession(sessionId);
       return context.body(null, 204);
     })
     .post('/:sessionId/unarchive', context => {

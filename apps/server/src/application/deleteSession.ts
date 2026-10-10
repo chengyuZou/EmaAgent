@@ -24,6 +24,8 @@ export async function deleteSession(composition: Composition, sessionId: string)
     // 因此这里等待两种工作中仍在运行的那一种自己停止并清除运行记录,
     // 然后才能删除 Session 数据.
     await database.sessionRunning.waitUntilIdle(sessionId);
+    // 根 Turn 结束后语音仍可能在生成, 必须等所有整轮音频保存完再删除行和目录.
+    await composition.speech.cancelSessionSpeech(sessionId);
     turn.interactionQueue.cancelForSession(sessionId, 'session deleted');
     turn.continuations.discardSession(sessionId);
     clearSessionRules(sessionId);

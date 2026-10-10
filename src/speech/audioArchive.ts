@@ -1,172 +1,234 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { once } from 'node:events';
+import { PassThrough, Readable } from 'node:stream';
+import { finished, pipeline } from 'node:stream/promises';
+import { createPcmWavHeader, type PcmAudioFormat } from '@ema-agent/tts';
+
+const AUDIO_READ_BYTES = 64 * 1024;
+const PCM_SAMPLE_BYTES = 2;
+const MILLISECONDS_PER_SECOND = 1000;
 
 export interface FinalizedAudio {
-  readonly path: string;
-  readonly mime: 'audio/mpeg';
+  readonly storagePath: string;
+  readonly mimeType: 'audio/wav';
   readonly byteSize: number;
-  readonly durationMs: null;
-  readonly segmentCount: number;
+  readonly durationMs: number;
 }
 
-export interface SegmentWriter {
-  write(bytes: Uint8Array): void;
-  close(): void;
-  discard(): void;
+export interface AudioWriter {
+  /** 等这一块写入文件后才返回, 调用方必须 await 后再取下一块 PCM. */
+  write(bytes: Uint8Array): Promise<void>;
+  /** 完成 WAV 头并发布文件; 未写入 PCM 时删除空文件并返回 null. */
+  finish(): Promise<FinalizedAudio | null>;
 }
 
-export interface AudioArchive {
-  openSegment(sessionId: string, turnId: string, sentenceIndex: number): SegmentWriter;
-  finalizeTurn(sessionId: string, turnId: string): Promise<FinalizedAudio | null>;
-  discardTurn(sessionId: string, turnId: string): void;
-  findMergedFor(sessionId: string, turnId: string): { path: string; mime: 'audio/mpeg' } | null;
+export interface AudioRead {
+  readonly stream: Readable;
+  readonly mimeType: 'audio/wav';
+  /** 正在写入时最终大小未知, HTTP 响应不能设置 Content-Length. */
+  readonly byteSize: number | null;
 }
 
-interface ByteRange {
-  readonly start: number;
-  readonly end: number;
-}
+export class FsAudioArchive {
+  private readonly writing = new Map<string, AudioFile>();
 
-/** V1 的 TTS 输出固定为 MP3。逐句文件只服务实时合并，成功合并或取消后立即删除。 */
-export class FsAudioArchive implements AudioArchive {
   constructor(private readonly sessionsRoot: string) {}
 
-  openSegment(sessionId: string, turnId: string, sentenceIndex: number): SegmentWriter {
-    const directory = this.segmentDirectory(sessionId, turnId);
-    fs.mkdirSync(directory, { recursive: true });
-    const filePath = path.join(directory, `${sentenceIndex}.mp3`);
-    const descriptor = fs.openSync(filePath, 'w');
-    let closed = false;
+  async openTurn(sessionId: string, turnId: string, format: PcmAudioFormat): Promise<AudioWriter> {
+    const storagePath = this.audioPath(sessionId, turnId);
+    await fs.promises.mkdir(path.dirname(storagePath), { recursive: true });
+    const file = new AudioFile(storagePath, format, () => this.writing.delete(turnId));
+    await file.initialize();
+    this.writing.set(turnId, file);
+    return file;
+  }
 
+  async openRead(sessionId: string, turnId: string, signal: AbortSignal): Promise<AudioRead | null> {
+    signal.throwIfAborted();
+    const file = this.writing.get(turnId);
+    if (file) {
+      const readAbort = new AbortController();
+      const readSignal = AbortSignal.any([signal, readAbort.signal]);
+      const source = Readable.from(file.read(readSignal), {
+        objectMode: false,
+        highWaterMark: AUDIO_READ_BYTES,
+        signal: readSignal,
+      });
+      const stream = new PassThrough({ highWaterMark: AUDIO_READ_BYTES });
+      // HTTP 消费方关闭流时, 也要解除文件末尾的等待, 但不触碰合成的取消信号.
+      stream.once('close', () => readAbort.abort('audio reader closed'));
+      // pipeline 把读取错误交给返回的 stream; Promise 不能再留下未处理的拒绝.
+      void pipeline(source, stream, { signal: readSignal }).catch(() => undefined);
+      return {
+        stream,
+        mimeType: 'audio/wav',
+        byteSize: null,
+      };
+    }
+
+    const found = this.findFinalized(sessionId, turnId);
+    if (!found) return null;
+    const stat = await fs.promises.stat(found.storagePath);
     return {
-      write(bytes) {
-        if (closed) throw new Error('TTS segment writer is already closed');
-        fs.writeSync(descriptor, bytes);
-      },
-      close() {
-        if (closed) return;
-        fs.closeSync(descriptor);
-        closed = true;
-      },
-      discard() {
-        if (!closed) {
-          fs.closeSync(descriptor);
-          closed = true;
-        }
-        fs.rmSync(filePath, { force: true });
-      },
+      stream: fs.createReadStream(found.storagePath, { signal, highWaterMark: AUDIO_READ_BYTES }),
+      mimeType: found.mimeType,
+      byteSize: stat.size,
     };
   }
 
-  async finalizeTurn(sessionId: string, turnId: string): Promise<FinalizedAudio | null> {
-    const segmentDirectory = this.segmentDirectory(sessionId, turnId);
-    if (!fs.existsSync(segmentDirectory)) return null;
-    const segments = fs.readdirSync(segmentDirectory)
-      .filter(file => file.endsWith('.mp3'))
-      .sort((left, right) => Number.parseInt(left, 10) - Number.parseInt(right, 10))
-      .map(file => path.join(segmentDirectory, file));
-    if (segments.length === 0) {
-      fs.rmSync(segmentDirectory, { recursive: true, force: true });
-      return null;
-    }
+  findFinalized(
+    sessionId: string,
+    turnId: string,
+  ): Pick<FinalizedAudio, 'storagePath' | 'mimeType'> | null {
+    const storagePath = this.audioPath(sessionId, turnId);
+    return fs.existsSync(storagePath) ? { storagePath, mimeType: 'audio/wav' } : null;
+  }
 
-    const mergedDirectory = path.join(this.audioDirectory(sessionId), 'merged');
-    fs.mkdirSync(mergedDirectory, { recursive: true });
-    const target = path.join(mergedDirectory, `${turnId}.mp3`);
-    const temporary = path.join(mergedDirectory, `.${turnId}.${process.pid}.tmp`);
+  private audioPath(sessionId: string, turnId: string): string {
+    return path.join(this.sessionsRoot, sessionId, 'audio', `${turnId}.wav`);
+  }
+}
+
+/** 写入进度只记录已完成的文件字节数; 读取方自行持有位置, 不保存第二份整轮 PCM. */
+class AudioFile implements AudioWriter {
+  private readonly pendingPath: string;
+  private readonly output: fs.WriteStream;
+  private readonly headerBytes: number;
+  private readonly readers = new Set<() => void>();
+  private pcmByteSize = 0;
+  private completed = false;
+  private writeError: Error | null = null;
+  private finishPromise: Promise<FinalizedAudio | null> | null = null;
+
+  constructor(
+    private readonly storagePath: string,
+    private readonly format: PcmAudioFormat,
+    private readonly onFinished: () => void,
+  ) {
+    this.pendingPath = `${storagePath}.pending`;
+    this.headerBytes = createPcmWavHeader(format, null).byteLength;
+    this.output = fs.createWriteStream(this.pendingPath, { flags: 'wx' });
+    // WriteStream 的 error 事件必须被接收; write 的 Promise 仍会把失败交给 Coordinator.
+    this.output.on('error', error => {
+      this.writeError = error;
+    });
+  }
+
+  async initialize(): Promise<void> {
     try {
-      const ranges = await Promise.all(segments.map(readMp3PayloadRange));
-      await streamRanges(segments, ranges, temporary);
-      await replaceFile(temporary, target);
-      const byteSize = (await fs.promises.stat(target)).size;
-      await fs.promises.rm(segmentDirectory, { recursive: true, force: true });
-      return {
-        path: target,
-        mime: 'audio/mpeg',
-        byteSize,
-        durationMs: null,
-        segmentCount: segments.length,
-      };
+      await this.writeBytes(createPcmWavHeader(this.format, null));
     } catch (error) {
-      await fs.promises.rm(temporary, { force: true }).catch(() => undefined);
+      await this.finish().catch(() => undefined);
       throw error;
     }
   }
 
-  discardTurn(sessionId: string, turnId: string): void {
-    fs.rmSync(this.segmentDirectory(sessionId, turnId), { recursive: true, force: true });
-    const mergedDirectory = path.join(this.audioDirectory(sessionId), 'merged');
-    fs.rmSync(path.join(mergedDirectory, `${turnId}.mp3`), { force: true });
-    fs.rmSync(path.join(mergedDirectory, `.${turnId}.${process.pid}.tmp`), { force: true });
+  async write(bytes: Uint8Array): Promise<void> {
+    await this.writeBytes(bytes);
+    this.pcmByteSize += bytes.byteLength;
+    this.notifyReaders();
   }
 
-  findMergedFor(sessionId: string, turnId: string): { path: string; mime: 'audio/mpeg' } | null {
-    const filePath = path.join(this.audioDirectory(sessionId), 'merged', `${turnId}.mp3`);
-    return fs.existsSync(filePath) ? { path: filePath, mime: 'audio/mpeg' } : null;
+  finish(): Promise<FinalizedAudio | null> {
+    this.finishPromise ??= this.finishInternal();
+    return this.finishPromise;
   }
 
-  private audioDirectory(sessionId: string): string {
-    return path.join(this.sessionsRoot, sessionId, 'audio');
-  }
-
-  private segmentDirectory(sessionId: string, turnId: string): string {
-    return path.join(this.audioDirectory(sessionId), 'segments', turnId);
-  }
-}
-
-async function streamRanges(files: readonly string[], ranges: readonly ByteRange[], target: string): Promise<void> {
-  const output = fs.createWriteStream(target, { flags: 'w' });
-  try {
-    for (let index = 0; index < files.length; index += 1) {
-      const range = ranges[index]!;
-      if (range.end < range.start) continue;
-      for await (const chunk of fs.createReadStream(files[index]!, range)) {
-        if (!output.write(chunk)) await once(output, 'drain');
+  async *read(signal: AbortSignal): AsyncGenerator<Uint8Array> {
+    // 请求可能恰好遇到 pending 改名; 打开失败时只尝试它对应的正式文件.
+    const handle = await fs.promises.open(this.pendingPath, 'r').catch(error => {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      return fs.promises.open(this.storagePath, 'r');
+    });
+    let position = 0;
+    try {
+      while (true) {
+        signal.throwIfAborted();
+        const available = this.headerBytes + this.pcmByteSize - position;
+        if (available > 0) {
+          const bytes = Buffer.allocUnsafe(Math.min(AUDIO_READ_BYTES, available));
+          const result = await handle.read(bytes, 0, bytes.byteLength, position);
+          if (result.bytesRead === 0) throw new Error('Speech audio file ended before its written bytes');
+          position += result.bytesRead;
+          yield bytes.subarray(0, result.bytesRead);
+        } else if (this.completed) {
+          return;
+        } else {
+          // 读到当前文件末尾时等待下一次写入, 不能把句间停顿当成整轮结束.
+          await this.waitForWrite(signal);
+        }
       }
+    } finally {
+      await handle.close();
     }
-    output.end();
-    await once(output, 'finish');
-  } catch (error) {
-    output.destroy();
-    throw error;
   }
-}
 
-/** MP3 各段可能各带一份 ID3 标签，合并时只拼音频帧。 */
-async function readMp3PayloadRange(file: string): Promise<ByteRange> {
-  const handle = await fs.promises.open(file, 'r');
-  try {
-    const size = (await handle.stat()).size;
-    let start = 0;
-    let end = size - 1;
-    const header = Buffer.alloc(Math.min(10, size));
-    await handle.read(header, 0, header.length, 0);
-    if (header.length === 10 && header.subarray(0, 3).toString('ascii') === 'ID3') {
-      const tagSize = ((header[6]! & 0x7f) << 21)
-        | ((header[7]! & 0x7f) << 14)
-        | ((header[8]! & 0x7f) << 7)
-        | (header[9]! & 0x7f);
-      start = 10 + tagSize + ((header[5]! & 0x10) !== 0 ? 10 : 0);
-    }
-    if (size >= 128) {
-      const trailer = Buffer.alloc(3);
-      await handle.read(trailer, 0, 3, size - 128);
-      if (trailer.toString('ascii') === 'TAG') end -= 128;
-    }
-    return { start, end };
-  } finally {
-    await handle.close();
+  private writeBytes(bytes: Uint8Array): Promise<void> {
+    if (this.writeError) return Promise.reject(this.writeError);
+    return new Promise((resolve, reject) => {
+      // 这一块的文件写入完成前不继续读取 TTS, 磁盘慢时不会堆积全部音频块.
+      this.output.write(bytes, error => {
+        if (error) reject(error);
+        else resolve();
+      });
+    });
   }
-}
 
-async function replaceFile(temporary: string, target: string): Promise<void> {
-  try {
-    await fs.promises.rename(temporary, target);
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code !== 'EEXIST' && code !== 'EPERM') throw error;
-    await fs.promises.rm(target, { force: true });
-    await fs.promises.rename(temporary, target);
+  private async finishInternal(): Promise<FinalizedAudio | null> {
+    try {
+      const closed = finished(this.output, { cleanup: true });
+      if (!this.output.destroyed) this.output.end();
+      await closed.catch(error => {
+        if (!this.writeError) throw error;
+      });
+      if (this.pcmByteSize === 0) {
+        await fs.promises.rm(this.pendingPath, { force: true });
+        return null;
+      }
+
+      const handle = await fs.promises.open(this.pendingPath, 'r+');
+      try {
+        // 写入失败的最后一块可能只落下部分字节, 只保留已确认写完的 PCM.
+        await handle.truncate(this.headerBytes + this.pcmByteSize);
+        await handle.writeFile(createPcmWavHeader(this.format, this.pcmByteSize));
+      } finally {
+        await handle.close();
+      }
+      await fs.promises.rename(this.pendingPath, this.storagePath);
+      const frames = this.pcmByteSize / (this.format.channelCount * PCM_SAMPLE_BYTES);
+      return {
+        storagePath: this.storagePath,
+        mimeType: 'audio/wav',
+        byteSize: this.headerBytes + this.pcmByteSize,
+        durationMs: Math.round(frames / this.format.sampleRate * MILLISECONDS_PER_SECOND),
+      };
+    } catch (error) {
+      await fs.promises.rm(this.pendingPath, { force: true }).catch(() => undefined);
+      throw error;
+    } finally {
+      this.completed = true;
+      this.notifyReaders();
+      this.onFinished();
+    }
+  }
+
+  private waitForWrite(signal: AbortSignal): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const written = (): void => {
+        signal.removeEventListener('abort', aborted);
+        this.readers.delete(written);
+        resolve();
+      };
+      const aborted = (): void => {
+        this.readers.delete(written);
+        reject(signal.reason);
+      };
+      this.readers.add(written);
+      signal.addEventListener('abort', aborted, { once: true });
+    });
+  }
+
+  private notifyReaders(): void {
+    for (const reader of this.readers) reader();
   }
 }

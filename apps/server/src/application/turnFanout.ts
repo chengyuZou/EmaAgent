@@ -1,4 +1,4 @@
-// 消费每个 Turn 的唯一事件流，并定向发布给 AgentChannel 与可选语音管线。
+// 消费每个 Turn 的唯一事件流, 并定向发布给 AgentChannel 与可选语音管线
 import type { TurnHandle, TurnStreamEvent } from '@ema-agent/turn';
 import type { TurnSpeechHandle } from '../composition/speech.js';
 
@@ -52,12 +52,14 @@ export class TurnFanout {
           completed = true;
           void speechPromise
             .then(speech => speech?.finish())
-            .catch(error => console.warn(`[speech] Turn ${turnId} 收口失败:`, error));
+            .catch(error => console.warn(`[speech] Turn ${turnId} 音频保存失败:`, error));
         }
         this.deps.publishTurnEvent(sessionId, turnId, event);
         if (event.type === 'turn_failed' || event.type === 'turn_aborted') {
           speechAbort.abort('turn ended without completion');
-          void speechPromise.then(speech => speech?.abort());
+          void speechPromise
+            .then(speech => speech?.cancel())
+            .catch(error => console.warn(`[speech] Turn ${turnId} 取消失败:`, error));
         }
         if (isTurnActivity(event)) {
           this.deps.emitAppEvent(event);

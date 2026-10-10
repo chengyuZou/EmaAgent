@@ -1,15 +1,14 @@
 export { FsAudioArchive } from './audioArchive.js';
 export type {
-  AudioArchive,
+  AudioRead,
+  AudioWriter,
   FinalizedAudio,
-  SegmentWriter,
 } from './audioArchive.js';
-export type { SpeechControlEvent, SpeechStreamEvent } from './events.js';
-export type { SpeechArchiveEvent } from './events.js';
+export type { SpeechArchiveEvent, SpeechClientCommand, SpeechGenerateEvent } from './events.js';
 export { SentenceSplitter } from './sentenceSplitter.js';
 export type { SentenceChunk } from './sentenceSplitter.js';
 export { SpeechCoordinator } from './speechCoordinator.js';
-export type { SpeechCoordinatorArgs } from './speechCoordinator.js';
+export type { SpeechCoordinatorArgs, SpeechGenerationResult } from './speechCoordinator.js';
 export { filterSentenceForTts, TextFilterStream } from './textFilter.js';
 export { SpeechVoiceCache } from './voiceHandleCache.js';
 export type {

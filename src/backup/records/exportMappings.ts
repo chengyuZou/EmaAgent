@@ -241,7 +241,6 @@ export const toSpeechOutputRecord = (
   mimeType: row.mime_type,
   byteSize: row.byte_size,
   durationMs: row.duration_ms,
-  segmentCount: row.segment_count,
   createdAt: row.created_at,
   filePath,
 });
