@@ -87,6 +87,9 @@ export function CharacterGridPage({ onOpen }: { onOpen(name: string): void }): J
             />
           )}
         />
+        <p className="mt-2 text-xs text-[var(--ema-text-tertiary)]">
+          非《魔法少女的魔女审判》角色请在工具设置中关闭 NarrativeSearch, 否则可能引入游戏剧情并造成 OOC (角色表现偏离设定).
+        </p>
       </div>
 
       <ScrollArea className="flex-1" viewportClassName="pb-2">

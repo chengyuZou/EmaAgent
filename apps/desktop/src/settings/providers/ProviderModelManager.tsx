@@ -84,8 +84,8 @@ const DEFAULT_TEST_TEXT = '你好，我是艾玛，很高兴认识你。';
 const MODULE_LABELS: Record<string, string> = {
   'memory-llm': 'Memory',
   title: '标题生成',
-  'lightrag-embed': 'LightRAG 嵌入',
-  'lightrag-llm': 'LightRAG LLM',
+  'narrative-embed': 'Narrative 嵌入',
+  'narrative-llm': 'Narrative LLM',
   tts: 'TTS',
   stt: 'STT',
   vision: 'Vision',
@@ -691,7 +691,7 @@ export function ProviderModelManager({ providerId, capability, iconKey, reloadKe
 
       <ConfirmDialog
         open={!!confirmModel}
-        message={confirmModel ? `从模型池移除 "${confirmModel}"？` : ''}
+        message={confirmModel ? `从模型池移除 "${confirmModel}"?` : ''}
         confirmText="移除"
         onConfirm={() => void confirmRemove()}
         onCancel={() => setConfirmModel(null)}
@@ -700,7 +700,8 @@ export function ProviderModelManager({ providerId, capability, iconKey, reloadKe
       <ConfirmDialog
         open={!!pendingConflict}
         message={pendingConflict
-          ? `该模型已被 ${pendingConflict.conflicts.map((c) => MODULE_LABELS[c.module] ?? c.module).join('、')} 绑定，${pendingConflict.action === 'disable' ? '禁用' : '删除'}将自动解除对这些模块的绑定。`
+          ? `该模型已被 ${pendingConflict.conflicts.map((c) => 
+            MODULE_LABELS[c.module] ?? c.module).join(', ')} 绑定, ${pendingConflict.action === 'disable' ? '禁用' : '删除'}将自动解除对这些模块的绑定。`
           : ''}
         confirmText={pendingConflict?.action === 'disable' ? '解绑并禁用' : '解绑并删除'}
         onConfirm={() => void resolveConflict()}
@@ -767,7 +768,7 @@ function ManualAddModelForm({ meta, capability, existing, onAdd }: {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-2">
-        <div className="text-sm font-medium text-[var(--ema-text-secondary)]">模型 ID（必填）</div>
+        <div className="text-sm font-medium text-[var(--ema-text-secondary)]">模型 ID(必填)</div>
         <Input
           className="font-mono"
           placeholder={meta.idPlaceholder}
@@ -777,7 +778,7 @@ function ManualAddModelForm({ meta, capability, existing, onAdd }: {
       </div>
       {meta.numericField && (
         <div className="flex flex-col gap-2">
-          <div className="text-sm font-medium text-[var(--ema-text-secondary)]">{meta.numericField.label}（必填）</div>
+          <div className="text-sm font-medium text-[var(--ema-text-secondary)]">{meta.numericField.label}(必填)</div>
           <Input
             type="number"
             className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -790,7 +791,7 @@ function ManualAddModelForm({ meta, capability, existing, onAdd }: {
       {withLlmParams && (
         <>
           <div className="flex flex-col gap-2">
-            <div className="text-sm font-medium text-[var(--ema-text-secondary)]">maxOutput（可空）</div>
+            <div className="text-sm font-medium text-[var(--ema-text-secondary)]">maxOutput(可空)</div>
             <Input
               type="number"
               className="[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -800,7 +801,7 @@ function ManualAddModelForm({ meta, capability, existing, onAdd }: {
             />
           </div>
           <div className="flex flex-col gap-3">
-            <Switch checked={reasoning} onCheckedChange={setReasoning} label="推理（支持 thinking）" showLabel />
+            <Switch checked={reasoning} onCheckedChange={setReasoning} label="推理(支持 thinking)" showLabel />
             <Switch checked={toolCall} onCheckedChange={setToolCall} label="工具调用" showLabel />
             <Switch checked={inputImage} onCheckedChange={setInputImage} label="图片输入" showLabel />
           </div>

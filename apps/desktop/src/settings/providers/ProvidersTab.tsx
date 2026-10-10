@@ -39,8 +39,8 @@ const SECTIONS: ReadonlyArray<{ key: ModelCapability; label: string; icon: strin
 const MODULE_LABELS: Record<string, string> = {
   'memory-llm': 'Memory',
   title: '标题生成',
-  'lightrag-embed': 'LightRAG 嵌入',
-  'lightrag-llm': 'LightRAG LLM',
+  'narrative-embed': 'Narrative 嵌入',
+  'narrative-llm': 'Narrative LLM',
   tts: 'TTS',
   stt: 'STT',
   vision: 'Vision',

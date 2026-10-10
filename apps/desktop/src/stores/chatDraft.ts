@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { AttachmentBlock, SessionMode, NarrativePolicy, ReasoningEffort } from '@ema-agent/session';
+import type { AttachmentBlock, SessionMode, ReasoningEffort } from '@ema-agent/session';
 import type { PermissionMode } from '@ema-agent/permission';
 import type { TurnInputPart } from '@ema-agent/turn';
 
@@ -21,7 +21,6 @@ export interface ChatDraft {
   readonly text: string;
   readonly references: readonly ChatDraftReference[];
   readonly sessionMode: SessionMode;
-  readonly narrativePolicy: NarrativePolicy;
   readonly permissionMode: PermissionMode;
   /** 新对话创建前暂存 TTS 选择; 已有对话以 Session 保存的值为准. */
   readonly ttsEnabled: boolean;
@@ -36,7 +35,6 @@ export function emptyChatDraft(): ChatDraft {
     text: '',
     references: [],
     sessionMode: 'chat',
-    narrativePolicy: 'auto',
     permissionMode: 'default',
     ttsEnabled: false,
     reasoningEffort: 'off',

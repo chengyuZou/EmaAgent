@@ -1,5 +1,4 @@
-// 启动 Server/Narrative Bridge 子进程并转发标准输出与错误日志。
-use std::path::Path;
+// 启动 Server 子进程并转发标准输出与错误日志.
 use std::process::Stdio;
 
 use serde::Deserialize;
@@ -9,19 +8,6 @@ use tokio::sync::mpsc;
 
 use super::launch::ChildLaunch;
 use super::platform::NativeProcessTree;
-
-// 这些参数分别来自进程、认证、数据目录和进程树边界；保持显式比包装成通用配置更清楚。
-#[allow(clippy::too_many_arguments)]
-pub async fn spawn_narrative(
-    launch: ChildLaunch,
-    secret: &str,
-    narrative_dir: &Path,
-    process_tree: &NativeProcessTree,
-) -> Result<(Child, mpsc::UnboundedReceiver<u16>), String> {
-    let mut command = base_command(launch, secret);
-    command.env("EMA_NARRATIVE_DIR", narrative_dir);
-    spawn(command, "narrative-bridge", process_tree).await
-}
 
 pub async fn spawn_server(
     launch: ChildLaunch,
@@ -93,14 +79,9 @@ fn pipe_stdout(
     tokio::spawn(async move {
         let mut lines = BufReader::new(stdout).lines();
         while let Ok(Some(line)) = lines.next_line().await {
-            let expected_method = if label == "server" {
-                "server.ready"
-            } else {
-                "narrative.ready"
-            };
             if let Ok(message) = serde_json::from_str::<ReadyNotification>(&line) {
                 if message.jsonrpc == "2.0"
-                    && message.method == expected_method
+                    && message.method == "server.ready"
                     && message.params.port > 0
                 {
                     let _ = ready_sender.send(message.params.port);

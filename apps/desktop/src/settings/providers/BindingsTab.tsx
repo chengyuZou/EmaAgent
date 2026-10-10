@@ -29,8 +29,8 @@ import { MODEL_BINDING_CAPABILITIES } from '@ema-agent/providers/types';
 
 const MODULES: Array<{ id: BindingModule; label: string; desc: string }> = [
   { id: 'memory-llm',     label: 'Memory',        desc: '记忆提取与整合' },
-  { id: 'lightrag-embed', label: 'LightRAG 嵌入', desc: '⚠️ 叙事专用嵌入(Pro/bge-m3),重启应用后生效。中途换模型检索质量大幅下降——非必要勿动' },
-  { id: 'lightrag-llm',   label: 'LightRAG LLM',  desc: '叙事模式剧情检索 LLM' },
+  { id: 'narrative-embed', label: 'Narrative 嵌入', desc: '剧情检索嵌入, 请绑定 Pro/bge-m3 (1024 维)' },
+  { id: 'narrative-llm',   label: 'Narrative LLM',  desc: '剧情路由与关键词提取' },
   { id: 'tts',           label: 'TTS',          desc: '语音合成' },
   { id: 'stt',           label: 'STT',          desc: '语音识别' },
   { id: 'vision',        label: 'Vision',       desc: '图像理解' },
@@ -276,11 +276,10 @@ export function BindingsTab(): JSX.Element {
         </div>
       </div>
 
-      {activeModule === 'lightrag-embed' && (
+      {activeModule === 'narrative-embed' && (
         <Callout variant="warn" className="text-xs leading-relaxed ema-slide-up">
-          这是 <b>叙事模式(narrative)专用</b>的嵌入模型,请绑定 <b>Pro/bge-m3</b>;
-          绑定与更换都<b>在重启应用后才生效</b>;中途换模型会让新查询与已建好的剧情向量<b>错配 检索质量大幅下降</b>——非必要请勿改动
-          且 <b>叙事模式(narrative)</b> 仅适用于魔法少女的魔女审判的角色, 启用其他角色请勿使用
+          剧情资产使用 <b>Pro/bge-m3 (1024 维)</b> 编码, 请绑定同一模型.
+          换用其他嵌入模型会让查询向量与剧情向量不匹配. 修改绑定从下一轮对话生效.
         </Callout>
       )}
 

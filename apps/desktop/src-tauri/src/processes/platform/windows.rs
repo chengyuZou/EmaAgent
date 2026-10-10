@@ -1,4 +1,4 @@
-// 使用单一 Windows Job Object 持有并回收 Server 与 Bridge 整棵进程树。
+// 使用单一 Windows Job Object 持有并回收 Server 及其派生进程.
 use std::sync::Arc;
 use std::time::Duration;
 

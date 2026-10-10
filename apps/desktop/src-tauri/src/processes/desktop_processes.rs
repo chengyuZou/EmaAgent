@@ -1,20 +1,18 @@
-// 并行启动 Server 与 Narrative, 并把每次 Python 实际监听端口接入当前 Server.
+// 启动和监控 Server 子进程, 向 WebView 提供当前端口和认证信息.
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use rand::{rngs::OsRng, RngCore};
-use serde_json::json;
 use tauri::AppHandle;
 use tokio::process::Child;
 use tokio::sync::{mpsc, Mutex, RwLock};
 
-use super::child::{spawn_narrative, spawn_server};
-use super::launch::{resolve_narrative_launch, resolve_server_launch};
+use super::child::spawn_server;
+use super::launch::resolve_server_launch;
 use super::platform::NativeProcessTree;
 use super::ready::wait_for_ready;
-use crate::bundled_data::{prepare_builtin_characters, prepare_narrative_data};
-use crate::desktop::settings::read_start_narrative_on_launch;
+use crate::bundled_data::prepare_builtin_characters;
 
 const READY_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -38,11 +36,8 @@ enum State {
 struct Inner {
     stopping: AtomicBool,
     operation: Mutex<()>,
-    narrative_operation: Mutex<()>,
     state: RwLock<State>,
     server: Mutex<Option<Child>>,
-    narrative: Mutex<Option<Child>>,
-    narrative_port: RwLock<Option<u16>>,
     process_tree: NativeProcessTree,
 }
 
@@ -51,11 +46,8 @@ impl DesktopProcesses {
         Ok(Self(Arc::new(Inner {
             stopping: AtomicBool::new(false),
             operation: Mutex::new(()),
-            narrative_operation: Mutex::new(()),
             state: RwLock::new(State::Stopped),
             server: Mutex::new(None),
-            narrative: Mutex::new(None),
-            narrative_port: RwLock::new(None),
             process_tree: NativeProcessTree::new()?,
         })))
     }
@@ -75,27 +67,6 @@ impl DesktopProcesses {
             Err(error) => return self.fail_server_start(error).await,
         };
         let secret = generate_shared_secret();
-        let start_narrative = read_start_narrative_on_launch().unwrap_or_else(|error| {
-            tracing::warn!(%error, "read Narrative launch preference failed; using enabled default");
-            true
-        });
-
-        if start_narrative {
-            let processes = self.clone();
-            let narrative_app = app.clone();
-            let narrative_secret = secret.clone();
-            tokio::spawn(async move {
-                if let Err(error) = processes
-                    .start_narrative(&narrative_app, &narrative_secret)
-                    .await
-                {
-                    tracing::warn!(%error, "Narrative Bridge unavailable at startup");
-                }
-            });
-        } else {
-            tracing::info!("Narrative Bridge disabled for this launch");
-        }
-
         let server_launch = match resolve_server_launch(&app) {
             Ok(launch) => launch,
             Err(error) => return self.fail_server_start(error).await,
@@ -132,49 +103,10 @@ impl DesktopProcesses {
         Ok(())
     }
 
-    pub async fn start_narrative_manually(&self, app: AppHandle) -> Result<u16, String> {
-        let connection = self
-            .wait_for_server(READY_TIMEOUT)
-            .await
-            .ok_or_else(|| "Server is not ready".to_string())?;
-        self.start_narrative(&app, &connection.secret).await
-    }
-
-    pub async fn narrative_port(&self) -> Option<u16> {
-        *self.0.narrative_port.read().await
-    }
-
-    pub async fn wait_narrative_exit(&self) -> Result<(), String> {
-        loop {
-            let mut child = self.0.narrative.lock().await;
-            let status = match child.as_mut() {
-                None => None,
-                Some(process) => match process.try_wait() {
-                    Ok(status) => status,
-                    Err(error) => return Err(format!("wait for Narrative exit: {error}")),
-                },
-            };
-            if let Some(status) = status {
-                child.take();
-                drop(child);
-                *self.0.narrative_port.write().await = None;
-                tracing::info!(%status, "Narrative Bridge exited");
-                return Ok(());
-            }
-            if child.is_none() {
-                drop(child);
-                *self.0.narrative_port.write().await = None;
-                return Ok(());
-            }
-            drop(child);
-            tokio::time::sleep(Duration::from_millis(100)).await;
-        }
-    }
-
     pub async fn shutdown(&self) {
         self.0.stopping.store(true, Ordering::Release);
         let _operation = self.0.operation.lock().await;
-        self.stop_children().await;
+        self.terminate_server().await;
         *self.0.state.write().await = State::Stopped;
     }
 
@@ -193,60 +125,6 @@ impl DesktopProcesses {
         }
     }
 
-    async fn start_narrative(&self, app: &AppHandle, secret: &str) -> Result<u16, String> {
-        let _operation = self.0.narrative_operation.lock().await;
-        if self.0.stopping.load(Ordering::Acquire) {
-            return Err("desktop is shutting down".to_string());
-        }
-        if let Some(port) = *self.0.narrative_port.read().await {
-            return Ok(port);
-        }
-        let narrative_dir = prepare_narrative_data(app).await?;
-        let launch = resolve_narrative_launch(app)?;
-        let (child, mut ready) =
-            spawn_narrative(launch, secret, &narrative_dir, &self.0.process_tree).await?;
-        *self.0.narrative.lock().await = Some(child);
-        let port = match wait_for_ready(
-            "narrative-bridge",
-            READY_TIMEOUT,
-            &self.0.stopping,
-            &self.0.narrative,
-            &mut ready,
-        )
-        .await
-        {
-            Ok(port) => port,
-            Err(error) => {
-                self.terminate_narrative().await;
-                return Err(error);
-            }
-        };
-        let connection = match self.wait_for_server(READY_TIMEOUT).await {
-            Some(connection) => connection,
-            None => {
-                self.terminate_narrative().await;
-                return Err("Server did not become ready for Narrative attach".to_string());
-            }
-        };
-        if let Err(error) = self.attach_narrative(&connection, port).await {
-            self.terminate_narrative().await;
-            if let Err(detach_error) = send_control(&connection, NarrativeControl::Detach).await {
-                tracing::warn!(%detach_error, "Narrative detach after failed attach failed");
-            }
-            return Err(error);
-        }
-        if let Some(status) = poll_exit(&self.0.narrative).await {
-            return Err(format!("Narrative Bridge exited during attach ({status})"));
-        }
-        *self.0.narrative_port.write().await = Some(port);
-        tracing::info!(port, "Narrative Bridge ready");
-        Ok(port)
-    }
-
-    async fn attach_narrative(&self, server: &ServerConnection, port: u16) -> Result<(), String> {
-        send_control(server, NarrativeControl::Attach(port)).await
-    }
-
     fn watch_server_ready(&self, mut ready: mpsc::UnboundedReceiver<u16>) {
         let processes = self.clone();
         tokio::spawn(async move {
@@ -262,16 +140,6 @@ impl DesktopProcesses {
                     _ => return,
                 };
                 *processes.0.state.write().await = State::Ready(connection.clone());
-                let _operation = processes.0.narrative_operation.lock().await;
-                let narrative_port = *processes.0.narrative_port.read().await;
-                if let Some(narrative_port) = narrative_port {
-                    if let Err(error) = processes
-                        .attach_narrative(&connection, narrative_port)
-                        .await
-                    {
-                        tracing::warn!(%error, "Narrative reattach after Server restart failed");
-                    }
-                }
             }
         });
     }
@@ -286,22 +154,8 @@ impl DesktopProcesses {
                 }
                 if let Some(status) = poll_exit(&processes.0.server).await {
                     *processes.0.state.write().await = State::Failed;
-                    processes.terminate_narrative().await;
                     tracing::error!(%status, "Server exited unexpectedly");
                     return;
-                }
-                let _operation = processes.0.narrative_operation.lock().await;
-                if let Some(status) = poll_exit(&processes.0.narrative).await {
-                    *processes.0.narrative_port.write().await = None;
-                    let state = processes.0.state.read().await.clone();
-                    if let State::Ready(connection) = state {
-                        if let Err(error) =
-                            send_control(&connection, NarrativeControl::Detach).await
-                        {
-                            tracing::warn!(%error, "Narrative detach after exit failed");
-                        }
-                    }
-                    tracing::warn!(%status, "Narrative Bridge exited");
                 }
             }
         });
@@ -311,14 +165,8 @@ impl DesktopProcesses {
         tracing::error!(%error, "Server startup failed");
         self.0.stopping.store(true, Ordering::Release);
         *self.0.state.write().await = State::Failed;
-        self.stop_children().await;
-        Err(error)
-    }
-
-    async fn stop_children(&self) {
         self.terminate_server().await;
-        let _narrative_operation = self.0.narrative_operation.lock().await;
-        self.terminate_narrative().await;
+        Err(error)
     }
 
     async fn terminate_server(&self) {
@@ -327,53 +175,6 @@ impl DesktopProcesses {
         }
     }
 
-    async fn terminate_narrative(&self) {
-        if let Some(mut child) = self.0.narrative.lock().await.take() {
-            self.0
-                .process_tree
-                .terminate(&mut child, "narrative-bridge")
-                .await;
-        }
-        *self.0.narrative_port.write().await = None;
-    }
-}
-
-enum NarrativeControl {
-    Attach(u16),
-    Detach,
-}
-
-async fn send_control(server: &ServerConnection, control: NarrativeControl) -> Result<(), String> {
-    let (method, request) = match control {
-        NarrativeControl::Attach(port) => (
-            "narrative.attach",
-            json!({ "jsonrpc": "2.0", "id": 1, "method": "narrative.attach", "params": { "port": port } }),
-        ),
-        NarrativeControl::Detach => (
-            "narrative.detach",
-            json!({ "jsonrpc": "2.0", "id": 1, "method": "narrative.detach" }),
-        ),
-    };
-    let response = reqwest::Client::new()
-        .post(format!(
-            "http://127.0.0.1:{}/internal/narrative/control",
-            server.port
-        ))
-        .header("X-Ema-Secret", &server.secret)
-        .json(&request)
-        .timeout(Duration::from_secs(90))
-        .send()
-        .await
-        .map_err(|error| format!("send {method} to Server: {error}"))?;
-    let status = response.status();
-    let body: serde_json::Value = response
-        .json()
-        .await
-        .map_err(|error| format!("read {method} response: {error}"))?;
-    if !status.is_success() || body.get("error").is_some() || body.get("id") != Some(&json!(1)) {
-        return Err(format!("Server rejected {method}: {body}"));
-    }
-    Ok(())
 }
 
 async fn poll_exit(slot: &Mutex<Option<Child>>) -> Option<std::process::ExitStatus> {

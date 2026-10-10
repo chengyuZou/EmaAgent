@@ -32,7 +32,6 @@ export function NewSessionPage(): JSX.Element {
         ...(selectedProjectId ? { projectId: selectedProjectId } : {}),
         ...(explicitCwd ? { cwd: explicitCwd } : {}),
         sessionMode: submitted.sessionMode,
-        narrativePolicy: submitted.narrativePolicy,
         permissionMode: submitted.permissionMode,
         ttsEnabled: submitted.ttsEnabled,
         providerId: submitted.providerId!,

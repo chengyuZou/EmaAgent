@@ -12,7 +12,7 @@ import {
   type ProjectSidebarMoveInput,
   type SessionSidebarMoveInput,
 } from '../api/workspaces.js';
-import type { SessionMode, NarrativePolicy, ReasoningEffort } from '@ema-agent/session';
+import type { SessionMode, ReasoningEffort } from '@ema-agent/session';
 import type { PermissionMode } from '@ema-agent/permission';
 
 // ── 类型 ──────────────────────────────────────────────────────────────────────
@@ -39,7 +39,6 @@ export interface SessionStoreState {
   moveProjectInSidebar(id: string, input: ProjectSidebarMoveInput): Promise<void>;
   setCwd(id: string, cwd: string):                                  Promise<void>;
   setSessionMode(id: string, sessionMode: SessionMode): Promise<void>;
-  setNarrativePolicy(id: string, narrativePolicy: NarrativePolicy): Promise<void>;
   setPermissionMode(id: string, permissionMode: PermissionMode): Promise<void>;
   setTtsEnabled(id: string, ttsEnabled: boolean): Promise<void>;
   /** 模型身份成对保存; 不支持推理的模型在同一请求里把强度设为 off. */
@@ -226,9 +225,6 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
     return writeSessionPreference(id, 'sessionMode', sessionMode);
   },
 
-  setNarrativePolicy(id, narrativePolicy) {
-    return writeSessionPreference(id, 'narrativePolicy', narrativePolicy);
-  },
 
   setPermissionMode(id, permissionMode) {
     return writeSessionPreference(id, 'permissionMode', permissionMode);
@@ -298,7 +294,7 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
   },
 }));
 
-type SessionPreferenceField = 'sessionMode' | 'narrativePolicy' | 'permissionMode' | 'ttsEnabled';
+type SessionPreferenceField = 'sessionMode' | 'permissionMode' | 'ttsEnabled';
 
 /** 一个选择只保存自己的字段; 后一个选择等前一个落库后再判断是否需要写入. */
 function writeSessionPreference<K extends SessionPreferenceField>(

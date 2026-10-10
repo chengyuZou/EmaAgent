@@ -28,7 +28,6 @@ export async function submitChatDraft(
     const payload = {
       input,
       sessionMode: submitted.sessionMode,
-      narrativePolicy: submitted.narrativePolicy,
       ...(objective !== undefined ? { objective } : {}),
     };
 

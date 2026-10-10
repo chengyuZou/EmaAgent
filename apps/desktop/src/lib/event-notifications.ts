@@ -48,15 +48,6 @@ export function describeEventNotification(event: NotifiableEvent): EventNotifica
         message: event.decision === 'allow' ? '工具权限已允许' : '工具权限已拒绝',
         variant: event.decision === 'allow' ? 'success' : 'warning',
       };
-    case 'narrative_recall_started':
-      return { message: '正在检索剧情资料', variant: 'info' };
-    case 'narrative_recall_completed':
-      return event.timelineOrder.length === 0 ? { message: '未找到相关剧情资料', variant: 'info' } : {
-        message: `剧情检索完成：${event.timelines.length}/${event.timelineOrder.length} 条时间线可用`,
-        variant: event.failures.length > 0 ? 'warning' : 'success',
-      };
-    case 'narrative_recall_failed':
-      return { message: `剧情检索失败：${event.message}`, variant: 'warning' };
     case 'compact_started':
       return { message: '正在压缩上下文…', variant: 'info' };
     case 'compact_completed':

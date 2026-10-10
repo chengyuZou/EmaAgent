@@ -70,9 +70,6 @@ importers:
       '@ema-agent/mcp':
         specifier: workspace:*
         version: link:../../src/mcp
-      '@ema-agent/narrative':
-        specifier: workspace:*
-        version: link:../../src/narrative
       '@ema-agent/permission':
         specifier: workspace:*
         version: link:../../src/permission
@@ -1396,9 +1393,6 @@ importers:
       '@ema-agent/llm':
         specifier: workspace:*
         version: link:../llm
-      '@ema-agent/narrative':
-        specifier: workspace:*
-        version: link:../narrative
       '@ema-agent/permission':
         specifier: workspace:*
         version: link:../permission

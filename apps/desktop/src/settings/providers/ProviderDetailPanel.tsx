@@ -166,31 +166,8 @@ export function ProviderDetailPanel({
     return capabilityRow?.protocols.find((p) => p.protocol === proto)?.baseUrl ?? '';
   }
 
-  /** 切换激活档对 Narrative 的影响：目标协议不满足 lightrag 协议锁、且该 provider 被对应模块绑定。 */
-  function narrativeConflictOnSwitch(target: string): 'lightrag-llm' | 'lightrag-embed' | null {
-    const expected = capability === 'llm'
-      ? { module: 'lightrag-llm' as const, protocol: 'openai-llm' }
-      : capability === 'embed'
-        ? { module: 'lightrag-embed' as const, protocol: 'openai-embed' }
-        : null;
-    if (!expected || target === expected.protocol) return null;
-    const bindings = useProviderStore.getState().bindings;
-    return bindings[expected.module]?.providerId === provider.id ? expected.module : null;
-  }
-
-  const [switchingProtocol, setSwitchingProtocol] = useState<string | null>(null);
-
-  /** 切换激活档：先查 lightrag 绑定冲突（有冲突先弹窗），确认或无辜后写后端。 */
   async function activateProtocol(proto: string): Promise<void> {
     if (protocolBusy || proto === activeProtocol) return;
-    if (narrativeConflictOnSwitch(proto)) {
-      setSwitchingProtocol(proto);
-      return;
-    }
-    await doActivateProtocol(proto);
-  }
-
-  async function doActivateProtocol(proto: string): Promise<void> {
     setProtocolBusy(true);
     try {
       await providersApi.patch(provider.id, {
@@ -205,35 +182,10 @@ export function ProviderDetailPanel({
     }
   }
 
-  /** 切换弹窗确认：先解绑冲突的 lightrag 模块，再执行切换。 */
-  async function confirmSwitchProtocol(): Promise<void> {
-    const proto = switchingProtocol;
-    setSwitchingProtocol(null);
-    if (!proto) return;
-    const narrativeModule = narrativeConflictOnSwitch(proto);
-    if (narrativeModule) {
-      await useProviderStore.getState().deleteBinding(narrativeModule);
-    }
-    await doActivateProtocol(proto);
-  }
-
-  /** 删除档对 Narrative 的影响：删的是当前激活档、且该 provider 被 lightrag 对应模块绑定。 */
-  function narrativeConflictOf(proto: string): 'lightrag-llm' | 'lightrag-embed' | null {
-    if (proto !== activeProtocol) return null;
-    const module = capability === 'llm' ? 'lightrag-llm' : capability === 'embed' ? 'lightrag-embed' : null;
-    if (!module) return null;
-    const bindings = useProviderStore.getState().bindings;
-    return bindings[module]?.providerId === provider.id ? module : null;
-  }
-
   async function removeProtocol(proto: string): Promise<void> {
     setRemovingProtocol(null);
     setProtocolBusy(true);
     try {
-      const narrativeModule = narrativeConflictOf(proto);
-      if (narrativeModule) {
-        await useProviderStore.getState().deleteBinding(narrativeModule);
-      }
       await providersApi.patch(provider.id, {
         capability: { capability, removedProtocols: [proto as Protocol] },
       });
@@ -445,27 +397,10 @@ export function ProviderDetailPanel({
         reloadKey={modelsReloadKey}
       />
 
-      {/* 切换激活档：目标协议不满足 lightrag 协议锁时先告知，确认即解绑并切换。 */}
-      <ConfirmDialog
-        open={switchingProtocol !== null}
-        message={switchingProtocol
-          ? `该 Provider 正被 ${capability === 'llm' ? 'LightRAG LLM' : 'LightRAG 嵌入'} 绑定使用（仅支持 ${capability === 'llm' ? 'openai-llm' : 'openai-embed'} 协议）。切换到 "${PROTOCOL_LABELS[switchingProtocol] ?? switchingProtocol}" 后该绑定会失效并自动解除。确定切换吗？`
-          : ''}
-        confirmText="解绑并切换"
-        onConfirm={() => void confirmSwitchProtocol()}
-        onCancel={() => setSwitchingProtocol(null)}
-      />
-
-      {/* 删除协议档：对 Narrative 绑定有协议锁影响时先告知，确认即解绑并删除。 */}
       <ConfirmDialog
         open={removingProtocol !== null}
         message={removingProtocol
-          ? (() => {
-              const narrativeModule = narrativeConflictOf(removingProtocol);
-              return narrativeModule
-                ? `该协议档被 ${narrativeModule === 'lightrag-llm' ? 'LightRAG LLM' : 'LightRAG 嵌入'} 绑定使用，删除后该绑定会失效并自动解除。确定删除 "${PROTOCOL_LABELS[removingProtocol] ?? removingProtocol}" 协议档吗？`
-                : `确定删除 "${PROTOCOL_LABELS[removingProtocol] ?? removingProtocol}" 协议档吗？`;
-            })()
+          ? `确定删除 "${PROTOCOL_LABELS[removingProtocol] ?? removingProtocol}" 协议档吗？`
           : ''}
         confirmText="删除"
         onConfirm={() => { if (removingProtocol) void removeProtocol(removingProtocol); }}

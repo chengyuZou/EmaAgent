@@ -62,7 +62,6 @@ function draftFromSession(session: SessionListItem | undefined): ChatDraft {
   return {
     ...emptyChatDraft(),
     sessionMode: session?.sessionMode ?? 'chat',
-    narrativePolicy: session?.narrativePolicy ?? 'auto',
     permissionMode: session?.permissionMode ?? 'default',
     ttsEnabled: session?.ttsEnabled ?? false,
     reasoningEffort: session?.reasoningEffort ?? 'off',
@@ -96,7 +95,6 @@ export function ChatInput({
     ? {
         ...savedDraft,
         sessionMode: viewedSession.sessionMode,
-        narrativePolicy: viewedSession.narrativePolicy,
         permissionMode: viewedSession.permissionMode,
         ttsEnabled: viewedSession.ttsEnabled,
       }

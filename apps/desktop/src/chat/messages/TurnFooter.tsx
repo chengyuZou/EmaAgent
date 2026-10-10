@@ -146,7 +146,7 @@ function RunningTurnFooter({
 
   return (
     <div className="ema-message-footer">
-      <ModeLabel sessionMode={turn.sessionMode} narrativePolicy={turn.narrativePolicy} />
+      <ModeLabel sessionMode={turn.sessionMode} />
       <span className="ema-message-footer-stats">
         <span className={turn.terminal
           ? 'h-1 w-1 shrink-0 rounded-md bg-[var(--ema-text-tertiary)]'
@@ -251,10 +251,8 @@ function ForkButton({ turnId }: { readonly turnId: string }): JSX.Element | null
 
 function ModeLabel({
   sessionMode,
-  narrativePolicy,
 }: {
   readonly sessionMode: string;
-  readonly narrativePolicy: string;
 }): JSX.Element {
   const color = sessionMode === 'work'
     ? 'text-[var(--ema-text-secondary)]'
@@ -262,7 +260,6 @@ function ModeLabel({
   return (
     <span className={`ema-message-mode px-1.5 py-0.5 font-medium ${color}`}>
       {sessionMode === 'work' ? 'Work' : 'Chat'}
-      {narrativePolicy === 'always' ? ' · 剧情常开' : ''}
     </span>
   );
 }

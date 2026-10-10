@@ -2,7 +2,6 @@
 mod browser;
 mod desktop;
 mod fonts;
-mod narrative;
 mod server;
 mod terminal;
 
@@ -15,7 +14,6 @@ pub use desktop::{
     set_always_on_top, set_passthrough, set_passthrough_controls_hovered, start_pet_pointer,
 };
 pub use fonts::list_system_fonts;
-pub use narrative::{get_narrative_port, start_narrative, wait_narrative_exit};
 pub use server::{get_server_port, get_server_secret};
 pub use terminal::{
     close_session_terminals, close_terminal, open_terminal, resize_terminal, write_terminal,

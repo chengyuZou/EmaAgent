@@ -1,6 +1,6 @@
 import type { JSX } from 'react';
 import { Button, DropdownMenu, IconButton, type MenuItem } from '@ema-agent/ui';
-import type { NarrativePolicy, SessionMode } from '@ema-agent/session';
+import type { SessionMode } from '@ema-agent/session';
 import type { PermissionMode } from '@ema-agent/permission';
 import { ServerApiError } from '../../../api/client.js';
 import type { ChatDraft } from '../../../stores/chatDraft.js';
@@ -172,11 +172,6 @@ export function useInputOptions(
     }
   }
 
-  const narrativeLabels: Record<NarrativePolicy, string> = {
-    auto: '自动',
-    always: '始终',
-    off: '关闭',
-  };
   const plusItems = (): MenuItem[] => [
     {
       kind: 'item',
@@ -184,27 +179,6 @@ export function useInputOptions(
       label: '添加文件或图片',
       icon: 'i-lucide:paperclip',
       onSelect: () => void onPickAttachments(),
-    },
-    {
-      kind: 'submenu',
-      id: 'add:narrative',
-      label: 'Narrative选择',
-      icon: 'i-lucide:book-open',
-      items: (['auto', 'always', 'off'] as const).map(narrativePolicy => ({
-        kind: 'item',
-        id: `narrative:${narrativePolicy}`,
-        label: narrativeLabels[narrativePolicy],
-        icon: draft.narrativePolicy === narrativePolicy ? 'i-lucide:check' : 'i-lucide:circle',
-        onSelect: () => {
-          if (viewedId) {
-            void useSessionStore.getState()
-              .setNarrativePolicy(viewedId, narrativePolicy)
-              .catch(showSessionPreferenceError);
-          } else {
-            patchCurrentDraft({ narrativePolicy });
-          }
-        },
-      })),
     },
   ];
 

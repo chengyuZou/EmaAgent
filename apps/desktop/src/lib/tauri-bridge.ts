@@ -389,22 +389,6 @@ export const tauriBridge = {
     await invokeTauri('open_window', { label: 'settings' });
   },
 
-  async getNarrativePort(): Promise<number | null> {
-    return invokeTauri<number | null>('get_narrative_port');
-  },
-
-  async startNarrative(): Promise<number> {
-    const core = await getCore();
-    if (!core) throw new Error('Narrative 只能在桌面应用中启动');
-    return core.invoke<number>('start_narrative');
-  },
-
-  async waitNarrativeExit(): Promise<void> {
-    const core = await getCore();
-    if (!core) throw new Error('Narrative 只能在桌面应用中关闭');
-    await core.invoke('wait_narrative_exit');
-  },
-
   async quit(): Promise<void> {
     const core = await getCore();
     if (!core) return;

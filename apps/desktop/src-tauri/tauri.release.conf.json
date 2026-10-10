@@ -6,9 +6,7 @@
     ],
     "resources": {
       "resources/server/": "server/",
-      "resources/narrative-bridge/": "narrative-bridge/",
-      "resources/characters/": "characters/",
-      "../../bridges/narrative/data/witch-trial/": "narrative/witch-trial/"
+      "resources/characters/": "characters/"
     }
   }
 }

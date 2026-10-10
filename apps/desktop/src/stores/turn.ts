@@ -3,7 +3,7 @@
 import { create } from 'zustand';
 import type { ContextUsage } from '@ema-agent/context';
 import type { LlmTokenUsage } from '@ema-agent/llm';
-import type { Message, SessionMessage, NarrativePolicy, SessionMode } from '@ema-agent/session';
+import type { Message, SessionMessage, SessionMode } from '@ema-agent/session';
 import type { TurnStreamEvent } from '@ema-agent/turn';
 import type { ToolError } from '@ema-agent/tools';
 
@@ -45,7 +45,6 @@ export interface StreamingMessage {
 export interface TurnState {
   readonly turnId: string;
   readonly sessionMode: SessionMode;
-  readonly narrativePolicy: NarrativePolicy;
   readonly startedAt: number;
   /** 已确认 Message 与流式 Assistant Message 共用这一份屏幕顺序. */
   readonly messages: readonly (SessionMessage | StreamingMessage)[];
@@ -78,14 +77,12 @@ interface TurnStore {
     turnId: string,
     createdAt: number,
     sessionMode: SessionMode,
-    narrativePolicy: NarrativePolicy,
     messages: readonly SessionMessage[],
   ): void;
   begin(
     sessionId: string,
     turnId: string,
     sessionMode: SessionMode,
-    narrativePolicy: NarrativePolicy,
   ): void;
   /** 返回 false 表示消息不属于当前 Turn, 调用方应直接交给 History. */
   receiveUserMessage(sessionId: string, message: SessionMessage): boolean;
@@ -452,7 +449,6 @@ export const useTurnStore = create<TurnStore>((set, get) => ({
           sessionId,
           turnId,
           event.sessionMode,
-          event.narrativePolicy
         );
         return;
       case 'agent_iteration':
@@ -508,9 +504,6 @@ export const useTurnStore = create<TurnStore>((set, get) => ({
       case 'agent_usage_updated':
         turnStore.setRootUsage(turnId, event.usage);
         return;
-      case 'narrative_recall_started':
-      case 'narrative_recall_completed':
-      case 'narrative_recall_failed':
         return;
       case 'turn_completed':
         turnStore.markTerminal(sessionId, turnId);
@@ -538,7 +531,6 @@ export const useTurnStore = create<TurnStore>((set, get) => ({
     turnId,
     createdAt,
     sessionMode,
-    narrativePolicy,
     messages
   ) {
     discardBufferedDeltas(sessionId, turnId);
@@ -549,7 +541,6 @@ export const useTurnStore = create<TurnStore>((set, get) => ({
         {
           turnId,
           sessionMode,
-          narrativePolicy,
           startedAt: createdAt,
           messages: [...messages],
           thinkingActive: false,
@@ -565,7 +556,6 @@ export const useTurnStore = create<TurnStore>((set, get) => ({
     sessionId,
     turnId,
     sessionMode,
-    narrativePolicy
   ) {
     set(state => {
       const currentTurns = state.turnsBySession.get(sessionId);
@@ -578,7 +568,6 @@ export const useTurnStore = create<TurnStore>((set, get) => ({
         {
           turnId,
           sessionMode,
-          narrativePolicy,
           startedAt: Date.now(),
           messages: [],
           thinkingActive: false,

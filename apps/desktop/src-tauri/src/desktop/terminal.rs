@@ -187,7 +187,7 @@ impl TerminalSessions {
         }
     }
 
-    /// 应用退出时回收全部 PTY 会话；Desktop 的进程树只管 Server/Narrative。
+    /// 应用退出时回收全部 PTY 会话；Desktop 的进程树只管 Server。
     pub fn close_all(&self) {
         let sessions = std::mem::take(&mut *self.sessions.lock().unwrap());
         for (_, mut session) in sessions {

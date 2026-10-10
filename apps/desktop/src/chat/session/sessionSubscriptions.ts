@@ -83,7 +83,6 @@ function receiveSessionMessage(sessionId: string, message: SessionBusinessMessag
         message.running.turnId,
         message.running.createdAt,
         message.running.sessionMode,
-        message.running.narrativePolicy,
         message.running.messages,
       );
     }
@@ -252,9 +251,6 @@ function receiveTurnEvent(sessionId: string, turnId: string, event: TurnStoreEve
     case 'tool_progress':
     case 'tool_result':
     case 'context_usage_updated':
-    case 'narrative_recall_started':
-    case 'narrative_recall_completed':
-    case 'narrative_recall_failed':
       return;
     default:
       event satisfies never;
