@@ -11,7 +11,7 @@ import { useSessionActivityStore } from '../../stores/sessionActivity.js';
 import { useSessionHistoryStore } from '../../stores/sessionHistory.js';
 import { useSettingsStore } from '../../stores/settings.js';
 import { sessionPresentation } from '../presentation/sessionPresentation.js';
-import { cancelTurnSpeech, startTurnSpeechPlayback } from '../speech/turnSpeechPlayback.js';
+import { startTurnSpeechPlayback, stopTurnPlayback } from '../speech/turnSpeechPlayback.js';
 import { scheduleTurnHistoryClosure } from './turnHistoryClosure.js';
 
 const subscriptions = new Map<string, () => void>();
@@ -203,7 +203,7 @@ function receiveTurnEvent(sessionId: string, turnId: string, event: TurnStoreEve
       if (event.ttsEnabled) {
         startTurnSpeechPlayback(sessionId, turnId);
       } else {
-        sessionPresentation.claim(sessionId, turnId, false, () => { });
+        sessionPresentation.claim(sessionId, turnId);
       }
       return;
     case 'output_text_delta':
@@ -221,9 +221,8 @@ function receiveTurnEvent(sessionId: string, turnId: string, event: TurnStoreEve
       return;
     case 'turn_failed':
     case 'turn_aborted':
-      // 失败或用户取消以后不再播放剩余句子. Speech 先结算, Presentation 再按
-      // turnTerminal && speechSettled 判断是否把桌宠交给 FIFO 队首.
-      cancelTurnSpeech(turnId);
+      // 失败或用户取消后停止本轮语音, 立即释放 owner; 不补播已经开始的其他 Turn.
+      stopTurnPlayback(sessionId, turnId);
       sessionPresentation.finishTurn(sessionId, turnId);
       scheduleTurnHistoryClosure(sessionId);
       return;

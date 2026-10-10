@@ -8,6 +8,7 @@ import { useSessionActivityStore } from '../../stores/sessionActivity.js';
 import { useSessionPanelStore } from '../../stores/sessionPanel.js';
 import { useTaskStore } from '../../stores/task.js';
 import { sessionPresentation } from '../presentation/sessionPresentation.js';
+import { removeSessionPlayback } from '../speech/turnSpeechPlayback.js';
 import { removeSessionSubscription } from './sessionSubscriptions.js';
 
 /**
@@ -17,7 +18,7 @@ import { removeSessionSubscription } from './sessionSubscriptions.js';
  */
 export function removeSessionFromChat(sessionId: string): void {
   removeSessionSubscription(sessionId);
-  // Presentation Claim 持有这一轮的 Speech 取消函数, 这里一次调用同时停止桌宠表现和实时语音.
+  removeSessionPlayback(sessionId);
   sessionPresentation.cancelSession(sessionId);
   useSessionActivityStore.getState().evictSession(sessionId);
   useTurnStore.getState().evictSession(sessionId);

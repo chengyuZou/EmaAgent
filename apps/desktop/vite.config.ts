@@ -78,7 +78,7 @@ export default defineConfig({
     // never enters the pre-bundler. Vite's esbuildOptions type omits
     // `external`, so exclusion is the only supported lever here.
     exclude: ['@ema-agent/ui', '@ema-agent/live2d-react', 'oxc-parser'],
-    // wlipsync 使用 top-level await,预构建器默认 target(es2020)不支持,与 build.target 对齐。
+    // 与正式构建的现代 WebView 语法目标保持一致.
     esbuildOptions: { target: 'es2022' },
   },
 
@@ -94,13 +94,17 @@ export default defineConfig({
   },
   // Build output (used by Tauri prod bundle later).
   build: {
-    // wlipsync 的 WASM 包使用 top-level await：safari13 不支持而拖垮整个 target 交集；
-    // 真实运行面是 WebView2（Chromium 常绿）与现代 WKWebView，safari15 已覆盖。
+    // 运行环境为现代 WebView2 与 WKWebView.
     target:       ['es2022', 'chrome105', 'safari15'],
     minify:       'esbuild',
     sourcemap:    true,
     outDir:       'dist',
     emptyOutDir:  true,
+    // Worklet 必须以本地脚本文件加载, 不能因为体积小而内联成被 CSP 拦截的 data: URL.
+    assetsInlineLimit: file => {
+      if (file.endsWith('/wlipsync/dist/audio-processor.js')) return false;
+      return undefined;
+    },
     rollupOptions: {
       input: {
         main:     resolve(__dirname, 'index.html'),

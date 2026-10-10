@@ -17,7 +17,12 @@ import {
   type StreamingMessage,
   type TurnState,
 } from '../../stores/turn.js';
-import { replayTurn, stopTurnPlayback, usePlaybackStore } from '../speech/turnSpeechPlayback.js';
+import {
+  replayTurn,
+  stopTurnPlayback,
+  usePlaybackStore,
+  type PlaybackStatus,
+} from '../speech/turnSpeechPlayback.js';
 import { historyAssistantSections } from './assistantSections.js';
 import { toolResultsForMessages } from './UIMessage.js';
 import { EditedFilesCard } from './toolBlocks/EditedFilesCard.js';
@@ -66,7 +71,12 @@ export function TurnFooter({
   );
   const textContent = useMemo(() => assistantText(messages), [messages]);
   const createdAt = messages.at(-1)?.createdAt ?? Date.now();
-  const isPlaying = usePlaybackStore(state => state.playingTurnId === turnId);
+  const playbackStatus = usePlaybackStore(state => {
+    const playback = state.playback;
+    return playback?.sessionId === sessionId && playback.turnId === turnId
+      ? playback.status
+      : null;
+  });
   const lastAudioClick = useRef(0);
   const [copied, setCopied] = useState(false);
 
@@ -82,16 +92,14 @@ export function TurnFooter({
   }, [turn?.startedAt, turn?.terminal]);
 
   const toggleAudio = (): void => {
+    if (playbackStatus) {
+      stopTurnPlayback(sessionId, turnId);
+      return;
+    }
     const now = Date.now();
     if (now - lastAudioClick.current < AUDIO_CLICK_THROTTLE_MS) return;
     lastAudioClick.current = now;
-    if (isPlaying) {
-      stopTurnPlayback(turnId);
-      return;
-    }
-    void replayTurn(turnId).catch(() => {
-      showToast('该轮没有可重播的语音', { variant: 'warning' });
-    });
+    replayTurn(sessionId, turnId);
   };
 
   return (
@@ -108,7 +116,13 @@ export function TurnFooter({
         </div>
       )}
       {turn ? (
-        <RunningTurnFooter turn={turn} usage={usage} elapsed={elapsed} />
+        <RunningTurnFooter
+          turn={turn}
+          usage={usage}
+          elapsed={elapsed}
+          playbackStatus={playbackStatus}
+          onToggleAudio={toggleAudio}
+        />
       ) : (
         <HistoryTurnFooter
           turnId={turnId}
@@ -116,7 +130,7 @@ export function TurnFooter({
           textContent={textContent}
           turnStats={turnStats}
           canFork={canFork}
-          isPlaying={isPlaying}
+          playbackStatus={playbackStatus}
           copied={copied}
           onToggleAudio={toggleAudio}
           onCopy={() => void navigator.clipboard.writeText(textContent).then(() => {
@@ -133,10 +147,14 @@ function RunningTurnFooter({
   turn,
   usage,
   elapsed,
+  playbackStatus,
+  onToggleAudio,
 }: {
   readonly turn: TurnState;
   readonly usage?: LlmTokenUsage;
   readonly elapsed: number;
+  readonly playbackStatus: PlaybackStatus | null;
+  readonly onToggleAudio: () => void;
 }): JSX.Element {
   const text = assistantOutputBlocks(turn)
     .flatMap(block => block.type === 'text' ? [block.text] : [])
@@ -146,7 +164,12 @@ function RunningTurnFooter({
 
   return (
     <div className="ema-message-footer">
-      <ModeLabel sessionMode={turn.sessionMode} />
+      <div className="ema-message-footer-actions">
+        <ModeLabel sessionMode={turn.sessionMode} />
+        {playbackStatus && (
+          <AudioPlaybackButton status={playbackStatus} onClick={onToggleAudio} />
+        )}
+      </div>
       <span className="ema-message-footer-stats">
         <span className={turn.terminal
           ? 'h-1 w-1 shrink-0 rounded-md bg-[var(--ema-text-tertiary)]'
@@ -169,7 +192,7 @@ function HistoryTurnFooter({
   textContent,
   turnStats,
   canFork,
-  isPlaying,
+  playbackStatus,
   copied,
   onToggleAudio,
   onCopy,
@@ -179,12 +202,12 @@ function HistoryTurnFooter({
   readonly textContent: string;
   readonly turnStats?: SessionTurnStats;
   readonly canFork: boolean;
-  readonly isPlaying: boolean;
+  readonly playbackStatus: PlaybackStatus | null;
   readonly copied: boolean;
   readonly onToggleAudio: () => void;
   readonly onCopy: () => void;
 }): JSX.Element {
-  const showAudio = isPlaying || turnStats?.audioAvailable === true;
+  const showAudio = playbackStatus !== null || turnStats?.audioAvailable === true;
   return (
     <div className="ema-message-footer">
       <div className="ema-message-footer-actions">
@@ -200,15 +223,7 @@ function HistoryTurnFooter({
           />
         )}
         {showAudio && (
-          <IconButton
-            size="sm"
-            variant="ghost"
-            shape="rounded"
-            label={isPlaying ? '停止播放' : '重播语音'}
-            icon={isPlaying ? 'i-lucide:square' : 'i-lucide:volume-2'}
-            className="ema-chat-icon-btn chat-message-action"
-            onClick={onToggleAudio}
-          />
+          <AudioPlaybackButton status={playbackStatus} onClick={onToggleAudio} />
         )}
         {canFork && <ForkButton turnId={turnId} />}
       </div>
@@ -222,6 +237,29 @@ function HistoryTurnFooter({
         )}
       </span>
     </div>
+  );
+}
+
+function AudioPlaybackButton({
+  status,
+  onClick,
+}: {
+  readonly status: PlaybackStatus | null;
+  readonly onClick: () => void;
+}): JSX.Element {
+  let label = '重播语音';
+  if (status === 'loading') label = '停止播放 (正在加载)';
+  else if (status === 'playing') label = '停止播放';
+  return (
+    <IconButton
+      size="sm"
+      variant="ghost"
+      shape="rounded"
+      label={label}
+      icon={status ? 'i-lucide:square' : 'i-lucide:volume-2'}
+      className="ema-chat-icon-btn chat-message-action"
+      onClick={onClick}
+    />
   );
 }
 

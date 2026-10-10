@@ -30,9 +30,6 @@ import {
 } from '@ema-agent/tts';
 import type { UsageRecorder } from '@ema-agent/usage';
 
-// TODO: 前端接通原生 audio 的 URL 播放后移除暂停条件, 避免使用尚未替换的逐句播放器.
-const REALTIME_SPEECH_PLAYBACK_AVAILABLE = false;
-
 /** TurnFanout 喂入文字增量; cancel 只停语音, 保留已生成的音频. */
 export interface TurnSpeechHandle {
   acceptTextDelta(delta: string): void;
@@ -211,7 +208,7 @@ export function openSpeech(
   };
 
   const startTurnSpeech: SpeechComposition['startTurnSpeech'] = async setup => {
-    if (closed || !REALTIME_SPEECH_PLAYBACK_AVAILABLE) return null;
+    if (closed) return null;
     const binding = modelBindings.get('tts');
     if (!binding) return null;
 

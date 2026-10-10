@@ -1,5 +1,7 @@
 // 基于 wLipSync 的 Live2D 唇同步: MFCC 元音识别替代 RMS 音量包络, 聚合为单一 mouthOpen
 import type { Profile } from 'wlipsync';
+import processorUrl from 'wlipsync/audio-processor.js?url';
+import wasmUrl from 'wlipsync/wlipsync.wasm?url';
 import profileJson from './wlipsync-profile.json';
 
 // wLipSync 原始输出为 A/E/I/O/U/S 六个权重
@@ -16,6 +18,8 @@ const VOLUME_EXPONENT = 0.7;
 const MOUTH_UPDATE_INTERVAL_MS = 40;
 const MOUTH_LERP_WINDOW_MS = 120;
 
+let wasmModulePromise: Promise<WebAssembly.Module> | null = null;
+
 export interface EmaLipSync {
   /** 把音频源接入 wLipSync worklet(只分析, 不改变原播放链路) */
   connectSource(source: AudioNode): void;
@@ -25,20 +29,19 @@ export interface EmaLipSync {
   dispose(): void;
 }
 
-/**
- * 创建基于 wLipSync 的唇同步 helper。
- *
- * 运行时注意：wlipsync 默认导出为单文件构建，WASM 与 AudioWorklet processor
- * 均内联为 data: URL，不依赖额外资源路径；但 Tauri CSP 若禁止
- * data: 的 script/worker/worklet 加载（audioWorklet.addModule / WebAssembly
- * instantiateStreaming），运行时仍会失败。此处只做 typecheck 层集成，
- * WASM 加载失败时, Chat 语音播放会改用 RMS 音量包络驱动口型.
- */
+/** 加载口型分析节点; 加载失败时由播放模块改用音量变化驱动口型. */
 export async function createEmaLipSync(audioContext: AudioContext): Promise<EmaLipSync> {
-  // wlipsync 顶层引用 AudioWorkletNode(浏览器 API),Node/vitest/SSR 环境会ReferenceError
-  // 改为懒加载:仅在浏览器真正创建唇同步时才 import.
-  const { createWLipSyncNode } = await import('wlipsync');
-  const node = await createWLipSyncNode(audioContext, profileJson as unknown as Profile);
+  // 单文件入口的 new URL(data:..., import.meta.url) 会被 Vite 改成不存在的文件路径.
+  // 使用包内独立资源, 由 Vite 生成开发地址和正式包地址, 不依赖 data: 脚本.
+  // WASM 编译结果可以跨 AudioContext 复用, Worklet 脚本仍须注册到当前 Context.
+  wasmModulePromise ??= WebAssembly.compileStreaming(fetch(wasmUrl));
+  const [{ WLipSyncAudioNode }, wasmModule] = await Promise.all([
+    // 包的顶层引用 AudioWorkletNode, 只在浏览器使用时加载, 避免 Node 测试直接执行.
+    import('wlipsync/wlipsync.js'),
+    wasmModulePromise,
+    audioContext.audioWorklet.addModule(processorUrl),
+  ]);
+  const node = new WLipSyncAudioNode(audioContext, profileJson as unknown as Profile, wasmModule);
 
   const now = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 

@@ -20,6 +20,7 @@ import {
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const desktopRoot = path.resolve(scriptDirectory, '..');
 const workspaceRoot = path.resolve(desktopRoot, '..', '..');
+const serverPackageRoot = path.join(workspaceRoot, 'apps', 'server');
 const tauriRoot = path.join(desktopRoot, 'src-tauri');
 const config = readJson(path.join(desktopRoot, 'release-config.json'));
 const target = parseTargetArgument();
@@ -48,8 +49,9 @@ execFileSync('pnpm', ['--filter', '@ema-agent/server...', 'build'], {
   cwd: workspaceRoot,
   stdio: 'inherit',
 });
-execFileSync('pnpm', ['--filter', '@ema-agent/server', 'deploy', '--prod', stagingApp], {
-  cwd: workspaceRoot,
+// pnpm 9 的 deploy 复制与依赖链接使用不同目录基准; cwd 与所选包一致并传相对目标路径.
+execFileSync('pnpm', ['--filter', '@ema-agent/server', 'deploy', '--prod', path.relative(serverPackageRoot, stagingApp)], {
+  cwd: serverPackageRoot,
   stdio: 'inherit',
 });
 

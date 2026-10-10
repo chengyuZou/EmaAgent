@@ -1,4 +1,4 @@
-// Turns API 只保留持久执行审计与最终合并音频. 运行态请求走 Session WebSocket.
+// Turn 的持久执行审计与音频地址. 运行态请求走 Session WebSocket.
 import type { UserMessagePayload } from '@ema-agent/server/routes/ws/session.js';
 import {
   rpcClient,
@@ -29,8 +29,16 @@ export const turnsApi = {
     return readRpcJson(rpcClient.api.turns[':turnId']['tool-executions'].$get({ param: { turnId } }));
   },
 
-  /** 读取已完成 Turn 的最终合并音频。 */
-  readAudio(turnId: string): Promise<Response> {
-    return serverClient.requestRaw(`/api/turns/${turnId}/audio`);
+  /** 实时与历史共用同一路由, 由浏览器读取音频, 不先下载整轮文件. */
+  async audioUrl(turnId: string): Promise<string> {
+    const [baseUrl, headers] = await Promise.all([
+      serverClient.baseUrl(),
+      serverClient.getAuthHeaders(),
+    ]);
+    const url = new URL(`/api/turns/${encodeURIComponent(turnId)}/audio`, baseUrl);
+    // 原生 audio 无法设置 X-Ema-Secret. Server 仅对音频 GET 接受这个现有进程口令.
+    const secret = headers['X-Ema-Secret'];
+    if (secret) url.searchParams.set('secret', secret);
+    return url.toString();
   },
 };

@@ -1,22 +1,42 @@
 import { create } from 'zustand';
-import type { SpeechControlEvent } from '@ema-agent/server/routes/ws/speech.js';
+import type { SpeechGenerateEvent } from '@ema-agent/server/routes/ws/speech.js';
 import { openSpeechSocket, type SpeechSocketHandle } from '../../api/speechWebSocket.js';
 import { turnsApi } from '../../api/turns.js';
 import { tauriBridge } from '../../lib/tauri-bridge.js';
 import { showToast } from '../../lib/toast.js';
-import type { EmaLipSync } from '../../lib/wlipsync-lipsync.js';
-import { createEmaLipSync } from '../../lib/wlipsync-lipsync.js';
+import { createEmaLipSync, type EmaLipSync } from '../../lib/wlipsync-lipsync.js';
 import { sessionPresentation } from '../presentation/sessionPresentation.js';
 
+export type PlaybackStatus = 'loading' | 'playing';
+
 interface PlaybackState {
-  playingTurnId: string | null;
+  playback: {
+    readonly sessionId: string;
+    readonly turnId: string;
+    readonly status: PlaybackStatus;
+  } | null;
 }
 
-export const usePlaybackStore = create<PlaybackState>(() => ({ playingTurnId: null }));
+export const usePlaybackStore = create<PlaybackState>(() => ({ playback: null }));
 
+interface SpeechPlayer {
+  readonly sessionId: string;
+  readonly turnId: string;
+  readonly origin: 'live' | 'history';
+  readonly audio: HTMLAudioElement;
+  readonly mediaListeners: AbortController;
+  source: MediaElementAudioSourceNode | null;
+  socket: SpeechSocketHandle | null;
+  generationFinished: boolean;
+  urlRequested: boolean;
+  /** 用户在 WebSocket 握手完成前停止时, 握手成功后仍要把取消命令送给原来的 Turn. */
+  cancelGeneration: boolean;
+}
+
+let currentPlayer: SpeechPlayer | null = null;
 let audioContext: AudioContext | null = null;
 let analyser: AnalyserNode | null = null;
-let fallbackVolumeData: Uint8Array | null = null;
+let fallbackVolumeData: Uint8Array<ArrayBuffer> | null = null;
 let lipSync: EmaLipSync | null = null;
 let lipSyncPromise: Promise<EmaLipSync | null> | null = null;
 let mouthTrackingFrame = 0;
@@ -36,23 +56,23 @@ function audioGraph(): { context: AudioContext; analyser: AnalyserNode } {
 
 async function ensureLipSync(): Promise<EmaLipSync | null> {
   if (lipSync) return lipSync;
-  if (!lipSyncPromise) {
-    lipSyncPromise = createEmaLipSync(audioGraph().context)
-      .then(value => {
-        lipSync = value;
-        return value;
-      })
-      .catch(error => {
-        console.error('[tts-playback] wLipSync 初始化失败，改用音量包络', error);
-        return null;
-      });
-  }
+  lipSyncPromise ??= createEmaLipSync(audioGraph().context)
+    .then(value => {
+      lipSync = value;
+      return value;
+    })
+    .catch(error => {
+      console.error('[tts-playback] wLipSync 初始化失败, 改用音量变化驱动口型', error);
+      return null;
+    });
   return lipSyncPromise;
 }
 
-function connectLipSync(source: AudioNode): void {
-  if (lipSync) lipSync.connectSource(source);
-  else void ensureLipSync().then(value => value?.connectSource(source));
+function connectLipSync(player: SpeechPlayer, source: MediaElementAudioSourceNode): void {
+  void ensureLipSync().then(value => {
+    // Worklet 可能晚于停止或换 Turn 才加载完成, 不能重新接回已经断开的音源.
+    if (currentPlayer === player && player.source === source) value?.connectSource(source);
+  });
 }
 
 function publishLipSync(speaking: boolean, mouthOpen: number, force = false): void {
@@ -65,26 +85,17 @@ function publishLipSync(speaking: boolean, mouthOpen: number, force = false): vo
 function startMouthTracking(): void {
   if (mouthTrackingFrame) return;
   publishLipSync(true, 0, true);
-  void ensureLipSync();
   const frame = (): void => {
     let mouthOpen = lipSync?.getMouthOpen();
     if (mouthOpen === undefined) {
-      const graph = audioGraph();
-      if (!fallbackVolumeData || fallbackVolumeData.length !== graph.analyser.frequencyBinCount) {
-        fallbackVolumeData = new Uint8Array(graph.analyser.frequencyBinCount);
-      }
-      graph.analyser.getByteTimeDomainData(
-        fallbackVolumeData as Uint8Array<ArrayBuffer>,
-      );
+      const output = audioGraph().analyser;
+      output.getByteTimeDomainData(fallbackVolumeData!);
       let sum = 0;
-      for (const sample of fallbackVolumeData) {
+      for (const sample of fallbackVolumeData!) {
         const value = (sample - 128) / 128;
         sum += value * value;
       }
-      mouthOpen = Math.min(
-        1,
-        Math.sqrt(sum / fallbackVolumeData.length) * 3,
-      );
+      mouthOpen = Math.min(1, Math.sqrt(sum / fallbackVolumeData!.length) * 3);
     }
     publishLipSync(true, mouthOpen);
     mouthTrackingFrame = requestAnimationFrame(frame);
@@ -98,210 +109,182 @@ function stopMouthTracking(): void {
   publishLipSync(false, 0, true);
 }
 
-function setPlaying(turnId: string | null): void {
-  if (usePlaybackStore.getState().playingTurnId !== turnId) {
-    usePlaybackStore.setState({ playingTurnId: turnId });
-  }
+function setPlaybackStatus(player: SpeechPlayer, status: PlaybackStatus): void {
+  const previous = usePlaybackStore.getState().playback;
+  if (previous?.sessionId === player.sessionId
+    && previous.turnId === player.turnId
+    && previous.status === status) return;
+  usePlaybackStore.setState({
+    playback: { sessionId: player.sessionId, turnId: player.turnId, status },
+  });
 }
 
-interface LivePlayer {
-  readonly sessionId: string;
-  readonly turnId: string;
-  currentSentenceId: string | null;
-  currentChunks: Uint8Array[];
-  /**
-   * Server 可以在上一句仍播放时继续送来下一句. 每个句子追加到这条 Promise 链,
-   * 保证扬声器按原顺序播放; speech_completed 必须等这条链结束后才能结算 Claim.
-   */
-  playChain: Promise<void>;
-  activeSource: AudioBufferSourceNode | null;
-  stopped: boolean;
-  completed: boolean;
-  settled: boolean;
-  socket: SpeechSocketHandle | null;
-}
-
-const livePlayers = new Map<string, LivePlayer>();
-let replaySource: AudioBufferSourceNode | null = null;
-
-export function startTurnSpeechPlayback(sessionId: string, turnId: string): void {
-  if (livePlayers.has(turnId)) return;
-  const player: LivePlayer = {
+function createPlayer(sessionId: string, turnId: string, origin: SpeechPlayer['origin']): SpeechPlayer {
+  const audio = new Audio();
+  // 音频走 loopback Server, 与 WebView 页面不同源. 必须先设置 CORS 再赋 src,
+  // 否则 MediaElementAudioSourceNode 会播放静音, 口型分析也拿不到采样.
+  audio.crossOrigin = 'anonymous';
+  audio.preload = 'auto';
+  const player: SpeechPlayer = {
     sessionId,
     turnId,
-    currentSentenceId: null,
-    currentChunks: [],
-    playChain: Promise.resolve(),
-    activeSource: null,
-    stopped: false,
-    completed: false,
-    settled: false,
+    origin,
+    audio,
+    mediaListeners: new AbortController(),
+    source: null,
     socket: null,
+    generationFinished: origin === 'history',
+    urlRequested: false,
+    cancelGeneration: false,
   };
-  livePlayers.set(turnId, player);
-  sessionPresentation.claim(sessionId, turnId, true, () => destroyLivePlayer(player, true));
-  void openSpeechSocket(turnId, {
+  currentPlayer = player;
+  sessionPresentation.playbackStarted(sessionId, turnId);
+  setPlaybackStatus(player, 'loading');
+
+  const signal = player.mediaListeners.signal;
+  audio.addEventListener('playing', () => {
+    if (currentPlayer !== player) return;
+    setPlaybackStatus(player, 'playing');
+    startMouthTracking();
+  }, { signal });
+  audio.addEventListener('waiting', () => {
+    if (currentPlayer !== player) return;
+    setPlaybackStatus(player, 'loading');
+    stopMouthTracking();
+  }, { signal });
+  audio.addEventListener('ended', () => finishPlayer(player), { signal });
+  audio.addEventListener('error', () => failPlayer(player, mediaErrorMessage(audio.error)), { signal });
+  return player;
+}
+
+export function startTurnSpeechPlayback(sessionId: string, turnId: string): void {
+  // 没有 owner 的 Turn 不连接本地播放器. Server 仍会独立完成合成和落盘.
+  if (!sessionPresentation.claim(sessionId, turnId)) return;
+  const player = createPlayer(sessionId, turnId, 'live');
+  void openSpeechSocket(sessionId, turnId, {
     onControl: event => receiveSpeechControl(player, event),
-    onAudio: bytes => {
-      if (!player.stopped && player.currentSentenceId) {
-        player.currentChunks.push(new Uint8Array(bytes));
-      }
-    },
     onClosed: () => {
-      if (!player.completed) destroyLivePlayer(player, false);
+      if (!player.generationFinished) failPlayer(player, '语音状态连接已断开，播放已停止');
     },
   }).then(socket => {
-    if (player.stopped) {
-      socket.cancel();
+    if (currentPlayer !== player) {
+      if (player.cancelGeneration) socket.cancel();
+      else socket.close();
       return;
     }
     player.socket = socket;
-  }).catch(() => destroyLivePlayer(player, false));
+  }).catch(error => failPlayer(
+    player,
+    error instanceof Error ? error.message : '语音状态连接失败',
+  ));
 }
 
-function receiveSpeechControl(player: LivePlayer, event: SpeechControlEvent): void {
-  if (player.stopped) return;
-  if (event.type === 'sentence_started') {
-    player.currentSentenceId = event.sentenceId;
-    player.currentChunks = [];
-    return;
+function receiveSpeechControl(player: SpeechPlayer, event: SpeechGenerateEvent): void {
+  if (currentPlayer !== player) return;
+  switch (event.type) {
+    case 'speech_generate_started':
+      void playUrl(player);
+      return;
+    case 'speech_generate_warning':
+      showToast(`语音合成失败: ${event.message}`, { variant: 'warning' });
+      return;
+    case 'speech_generate_completed':
+      // Server 已写完文件, 不代表浏览器已播完. HTTP 读到文件尾后由 audio 的 ended 释放 owner.
+      player.generationFinished = true;
+      if (event.audioAvailable) void playUrl(player);
+      else finishPlayer(player);
+      return;
+    case 'speech_generate_cancelled':
+      player.generationFinished = true;
+      finishPlayer(player);
+      return;
+    case 'speech_generate_failed':
+      player.generationFinished = true;
+      failPlayer(player, `语音生成失败: ${event.message}`);
+      return;
+    case 'speech_generate_unavailable':
+      player.generationFinished = true;
+      failPlayer(player, '该轮没有可播放的语音');
+      return;
   }
-  if (event.type === 'sentence_completed') {
-    const bytes = joinChunks(player.currentChunks);
-    player.currentChunks = [];
-    player.currentSentenceId = null;
-    player.playChain = player.playChain
-      .then(() => playSentence(player, bytes))
-      .catch(error => console.error('[turn-speech] 句子播放失败', error))
-      .finally(() => player.socket?.sentencePlayed(event.sentenceId));
-    return;
-  }
-  if (event.type === 'sentence_failed') {
-    player.currentChunks = [];
-    player.currentSentenceId = null;
-    showToast(`语音合成失败: ${event.message}`, { variant: 'warning' });
-    return;
-  }
-  if (event.type === 'speech_completed') {
-    player.completed = true;
-    void player.playChain.finally(() => finishLivePlayer(player));
-    return;
-  }
-  if (event.type === 'speech_cancelled') destroyLivePlayer(player, false);
 }
 
-async function playSentence(player: LivePlayer, bytes: Uint8Array): Promise<void> {
-  if (player.stopped || bytes.byteLength === 0) return;
-  await sessionPresentation.whenActive(player.sessionId, player.turnId);
-  if (player.stopped) return;
-  const { context, analyser: output } = audioGraph();
-  if (context.state === 'suspended') await context.resume();
-  const buffer = await context.decodeAudioData(
-    bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
-  );
-  if (player.stopped) return;
-
-  const source = context.createBufferSource();
-  source.buffer = buffer;
-  source.connect(output);
-  connectLipSync(source);
-  player.activeSource = source;
-  setPlaying(player.turnId);
-  startMouthTracking();
-  await new Promise<void>(resolve => {
-    source.onended = () => resolve();
-    source.start();
-  });
-  if (player.activeSource === source) player.activeSource = null;
-  stopMouthTracking();
-}
-
-function finishLivePlayer(player: LivePlayer): void {
-  if (player.stopped || !player.completed || player.activeSource) return;
-  livePlayers.delete(player.turnId);
-  setPlaying(null);
-  stopMouthTracking();
-  settlePlayer(player);
-}
-
-function destroyLivePlayer(player: LivePlayer, cancelServer = false): void {
-  if (player.stopped) return;
-  player.stopped = true;
-  player.currentChunks = [];
-  if (cancelServer) player.socket?.cancel();
-  player.socket = null;
-  try { player.activeSource?.stop(); } catch { /* 已经自然结束。 */ }
-  player.activeSource = null;
-  livePlayers.delete(player.turnId);
-  if (usePlaybackStore.getState().playingTurnId === player.turnId) setPlaying(null);
-  stopMouthTracking();
-  settlePlayer(player);
-}
-
-function settlePlayer(player: LivePlayer): void {
-  if (player.settled) return;
-  player.settled = true;
-  sessionPresentation.speechSettled(player.sessionId, player.turnId);
-}
-
-function joinChunks(chunks: readonly Uint8Array[]): Uint8Array {
-  const output = new Uint8Array(chunks.reduce((total, chunk) => total + chunk.byteLength, 0));
-  let offset = 0;
-  for (const chunk of chunks) {
-    output.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return output;
-}
-
-export function cancelTurnSpeech(turnId: string): void {
-  const player = livePlayers.get(turnId);
-  if (player) destroyLivePlayer(player, true);
-}
-
-export async function replayTurn(turnId: string): Promise<void> {
-  if (livePlayers.size > 0) {
-    showToast('实时语音尚未结束', { variant: 'info' });
-    return;
-  }
-  stopReplay();
-  const { context, analyser: output } = audioGraph();
-  if (context.state === 'suspended') await context.resume();
-  const response = await turnsApi.readAudio(turnId);
-  const buffer = await context.decodeAudioData(await response.arrayBuffer());
-  const source = context.createBufferSource();
-  source.buffer = buffer;
-  source.connect(output);
-  connectLipSync(source);
-  replaySource = source;
-  setPlaying(turnId);
-  startMouthTracking();
+async function playUrl(player: SpeechPlayer): Promise<void> {
+  if (currentPlayer !== player || player.urlRequested) return;
+  player.urlRequested = true;
   try {
-    await new Promise<void>(resolve => {
-      source.onended = () => resolve();
-      source.start();
-    });
-  } finally {
-    if (replaySource === source) replaySource = null;
-    setPlaying(null);
-    stopMouthTracking();
+    const { context, analyser: output } = audioGraph();
+    if (context.state === 'suspended') await context.resume();
+    const url = await turnsApi.audioUrl(player.turnId);
+    if (currentPlayer !== player) return;
+
+    const source = context.createMediaElementSource(player.audio);
+    player.source = source;
+    source.connect(output);
+    connectLipSync(player, source);
+    // 浏览器边读取 URL 边解码播放; 不先 fetch 整轮文件, 也不保存整轮 AudioBuffer.
+    player.audio.src = url;
+    await player.audio.play();
+  } catch (error) {
+    failPlayer(player, error instanceof Error ? error.message : '语音播放失败');
   }
 }
 
-export function stopTurnPlayback(turnId: string): void {
-  const player = livePlayers.get(turnId);
-  if (player) {
-    destroyLivePlayer(player, true);
+function finishPlayer(player: SpeechPlayer, cancelGeneration = false): void {
+  if (currentPlayer !== player) return;
+  player.cancelGeneration = cancelGeneration && player.origin === 'live' && !player.generationFinished;
+  // 先取消当前身份和事件监听. pause/load 或迟到的 play() 拒绝不能清掉下一轮播放器.
+  currentPlayer = null;
+  player.mediaListeners.abort();
+  player.audio.pause();
+  player.audio.removeAttribute('src');
+  player.audio.load();
+  player.source?.disconnect();
+  player.source = null;
+  if (player.cancelGeneration) player.socket?.cancel();
+  else player.socket?.close();
+  player.socket = null;
+  stopMouthTracking();
+  usePlaybackStore.setState({ playback: null });
+  sessionPresentation.playbackEnded(player.sessionId, player.turnId);
+}
+
+function failPlayer(player: SpeechPlayer, message: string): void {
+  if (currentPlayer !== player) return;
+  finishPlayer(player);
+  showToast(message, { variant: 'warning' });
+}
+
+function mediaErrorMessage(error: MediaError | null): string {
+  switch (error?.code) {
+    case 2:
+      return '音频读取失败，请检查本地服务是否仍在运行';
+    case 3:
+      return '浏览器无法解码该轮音频';
+    case 4:
+      return '该轮音频不可用或格式不受浏览器支持';
+    default:
+      return '语音播放失败';
+  }
+}
+
+export function replayTurn(sessionId: string, turnId: string): void {
+  if (!sessionPresentation.claim(sessionId, turnId)) {
+    showToast('当前对话仍在呈现或播放，请结束后再重播', { variant: 'info' });
     return;
   }
-  if (usePlaybackStore.getState().playingTurnId === turnId) stopReplay();
+  const player = createPlayer(sessionId, turnId, 'history');
+  void playUrl(player);
 }
 
-function stopReplay(): void {
-  if (replaySource) {
-    try { replaySource.stop(); } catch { /* 已经自然结束。 */ }
-    replaySource = null;
-  }
-  setPlaying(null);
-  stopMouthTracking();
+/** Footer 明确停止本轮播放. 实时生成也停止并保留已生成部分, 正文不受影响. */
+export function stopTurnPlayback(sessionId: string, turnId: string): void {
+  const player = currentPlayer;
+  if (player?.sessionId === sessionId && player.turnId === turnId) finishPlayer(player, true);
+}
+
+/** Server 已完成归档或删除后停止本地读取; 不再发送一次生成取消命令. */
+export function removeSessionPlayback(sessionId: string): void {
+  const player = currentPlayer;
+  if (player?.sessionId === sessionId) finishPlayer(player);
 }
