@@ -95,6 +95,8 @@ export function ToolCallBlock({ call, streaming = false, turnId, sessionId }: To
   const { containerRef, mounted } = useCollapsibleBody(open);
 
   const statusMeta = STATUS_META[status];
+  const customStatusLabel = toolUI?.statusLabel?.(status);
+  const statusLabel = customStatusLabel === undefined ? statusMeta.label : customStatusLabel;
   const running = toolRunning(call, streaming);
   const argsReady = args !== undefined;
 
@@ -160,14 +162,18 @@ export function ToolCallBlock({ call, streaming = false, turnId, sessionId }: To
           ) : null}
 
           <span className="ema-tool-row-status" style={{ color: statusMeta.color }}>
-            <span
-              className={`w-1.5 h-1.5 rounded-full ${statusMeta.pulse ? 'animate-pulse' : ''}`}
-              style={{ background: statusMeta.color }}
-              aria-hidden
-            />
-            {statusMeta.label}
+            {statusLabel !== null && (
+              <>
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${statusMeta.pulse ? 'animate-pulse' : ''}`}
+                  style={{ background: statusMeta.color }}
+                  aria-hidden
+                />
+                {statusLabel}
+              </>
+            )}
             <span className="text-[var(--ema-text-tertiary)] tabular-nums">
-              <StatusDuration status={status} durationMs={durationMs} startedAt={startedAt} />
+              <StatusDuration status={status} durationMs={durationMs} startedAt={startedAt} separated={statusLabel !== null} />
             </span>
           </span>
         </button>
@@ -288,11 +294,12 @@ export function ToolFailure({ code, message }: { code: string; message: string }
 // ── StatusDuration（实时耗时 hook）────────────────────────────────────────────
 
 function StatusDuration({
-  status, durationMs, startedAt,
+  status, durationMs, startedAt, separated,
 }: {
   status: ToolDisplayStatus;
   durationMs?: number;
   startedAt?: number;
+  separated: boolean;
 }): JSX.Element | null {
   // 运行中：用 startedAt 实时算
   const [now, setNow] = useState(() => Date.now());
@@ -303,10 +310,10 @@ function StatusDuration({
   }, [status, startedAt]);
 
   if (status === 'running' && startedAt) {
-    return <span className="tabular-nums">· {fmtDuration(now - startedAt)}</span>;
+    return <span className="tabular-nums">{separated ? '· ' : ''}{fmtDuration(now - startedAt)}</span>;
   }
   if (durationMs != null && (status === 'success' || status === 'failed' || status === 'denied')) {
-    return <span className="tabular-nums">· {fmtDuration(durationMs)}</span>;
+    return <span className="tabular-nums">{separated ? '· ' : ''}{fmtDuration(durationMs)}</span>;
   }
   // awaiting_permission / 无耗时的 failed / denied（durationMs 为 0 也不显示）
   return null;

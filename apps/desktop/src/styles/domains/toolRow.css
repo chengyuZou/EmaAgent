@@ -396,3 +396,110 @@
 .ema-tool-pane--output .markdown-content pre {
   overflow-x: auto;
 }
+
+/* 周目展开后的高度由聊天列表承载, 不再套一层 12rem 的纵向滚动区.
+   复制按钮的位置由周目标题预留, 正文自己处理横向滚动. */
+.ema-tool-pane--output .ema-tool-pane-content:has(> .ema-narrative-results) {
+  max-height: none;
+  overflow: visible;
+  padding-right: 0;
+  white-space: normal;
+}
+
+.ema-narrative-results {
+  min-width: 0;
+  font-size: 11px;
+}
+
+.ema-narrative-timeline + .ema-narrative-timeline {
+  border-top: 1px solid var(--ema-border);
+}
+
+.ema-narrative-results .ema-narrative-timeline-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 25px 6px 8px;
+  color: var(--ema-text-secondary);
+  font-size: 11px;
+  text-align: left;
+}
+
+.ema-narrative-chevron {
+  flex: none;
+  color: var(--ema-text-tertiary);
+  font-size: 13px;
+  transition: transform 200ms var(--ema-ease);
+}
+
+.ema-narrative-timeline-trigger[aria-expanded="true"] .ema-narrative-chevron {
+  transform: rotate(90deg);
+}
+
+.ema-narrative-error-label {
+  margin-left: auto;
+  color: var(--ema-danger-text);
+}
+
+.ema-narrative-collapse > div {
+  min-height: 0;
+}
+
+.ema-narrative-body {
+  min-width: 0;
+  padding: 0 8px 10px 30px;
+}
+
+.ema-narrative-body-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 4px;
+}
+
+.ema-narrative-results .ema-narrative-raw-toggle {
+  color: var(--ema-text-tertiary);
+  font-size: 10px;
+}
+
+.ema-narrative-markdown,
+.ema-narrative-raw,
+.ema-narrative-error-detail {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.ema-narrative-raw,
+.ema-narrative-error-detail {
+  margin: 0;
+  color: var(--ema-text-secondary);
+  font-family: var(--ema-font-mono);
+  font-size: 11px;
+  line-height: 1.65;
+  white-space: pre;
+}
+
+.ema-narrative-error-detail {
+  color: var(--ema-danger-text);
+}
+
+.ema-narrative-empty {
+  margin: 0;
+  padding: 8px 25px 8px 8px;
+  color: var(--ema-text-tertiary);
+}
+
+@media (max-width: 400px) {
+  .ema-narrative-body {
+    padding-left: 8px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ema-narrative-collapse,
+  .ema-narrative-chevron {
+    transition: none;
+  }
+}

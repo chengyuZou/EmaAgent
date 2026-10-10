@@ -1,190 +1,133 @@
-// NarrativeSearchTool 的桌面参数与结果展示. 运行状态由通用 Tool 块负责, 检索内容在结果落盘后显示.
-import { useState, type JSX } from 'react';
-import { Button } from '@ema-agent/ui';
-import type { NarrativeQueryMode } from '@ema-agent/narrative';
+import { useId, useMemo, useState, type JSX } from 'react';
+import { Button, Markdown } from '@ema-agent/ui';
+import type { NarrativeTimelineId } from '@ema-agent/storage';
 import type { NarrativeSearchResult } from './NarrativeSearchTool.js';
 
-/** 展示前 N 个字符. 内容更长时允许用户展开全文. */
-const PREVIEW_CHARS = 500;
-
-/** 检索模式的中文标签. NarrativeQueryMode 增加成员时这里必须同批补齐. */
-const NARRATIVE_MODE_LABELS: Record<NarrativeQueryMode, string> = {
-  local: '局部',
-  global: '全局',
-  hybrid: '混合',
-  naive: '向量',
-  mix: '图谱',
+const TIMELINE_LABELS: Record<NarrativeTimelineId, string> = {
+  '1st_Loop': '第一周目',
+  '2nd_Loop': '第二周目',
+  '3rd_Loop': '第三周目',
 };
 
-/**
- * 剧情检索结果可以整体折叠.
- * 单周目展开后直接显示正文, 多周目再为每个周目提供独立折叠.
- * Tool 完成后从类型化结果显示正文. Tool 是否仍在运行以及调用本身是否失败由外层 Tool 块显示.
- */
 function NarrativeResultBlock({ result }: { result: NarrativeSearchResult }): JSX.Element {
-  const completed = new Set(result.timelines.map((timeline) => timeline.name));
-  const snippets = Object.fromEntries(
-    result.timelines.map((timeline) => [timeline.name, timeline.text]),
-  );
-  const failed = Object.fromEntries(
-    result.failures.map((failure) => [failure.timeline, failure.message]),
-  );
-  const timelines = [
-    ...result.timelines.map((timeline) => timeline.name),
-    ...result.failures
-      .map((failure) => failure.timeline)
-      .filter((name) => !completed.has(name)),
-  ];
-  const isFailed = result.status === 'unavailable';
-  const isMulti = timelines.length > 1;
-  const [outerOpen, setOuterOpen] = useState(false);
+  const texts = new Map(result.timelines
+    .filter(timeline => timeline.text.trim().length > 0)
+    .map(timeline => [timeline.name, timeline.text]));
+  const failures = new Map(result.failures.map(failure => [failure.timeline, failure.message]));
+  const names = (Object.keys(TIMELINE_LABELS) as NarrativeTimelineId[])
+    .filter(name => texts.has(name) || failures.has(name));
+  const firstContent = names.find(name => texts.has(name) && !failures.has(name));
 
   return (
-    <div className="flex flex-col gap-2 text-xs text-[var(--ema-text-tertiary)]">
+    <div className="ema-narrative-results">
+      {names.length === 0 ? (
+        <p className="ema-narrative-empty">未找到相关剧情资料</p>
+      ) : names.map(name => (
+        <TimelineRow
+          key={name}
+          name={name}
+          text={texts.get(name)}
+          error={failures.get(name)}
+          initiallyOpen={name === firstContent || names.length === 1}
+        />
+      ))}
+    </div>
+  );
+}
+
+function TimelineRow({ name, text, error, initiallyOpen }: {
+  name: NarrativeTimelineId;
+  text: string | undefined;
+  error: string | undefined;
+  initiallyOpen: boolean;
+}): JSX.Element {
+  const bodyId = useId();
+  const [open, setOpen] = useState(initiallyOpen);
+  const [raw, setRaw] = useState(false);
+  // 首次展开才渲染 Markdown. 收起时保留正文完成高度动画, 再次展开也不用重新挂载.
+  // 外层 Tool 收起后会卸载整个结果区, 不跨工具调用保留正文.
+  const [bodyMounted, setBodyMounted] = useState(initiallyOpen);
+  const chunks = useMemo(() => narrativeChunks(text ?? ''), [text]);
+
+  return (
+    <section className="ema-narrative-timeline">
       <Button
         variant="ghost"
-        type="button"
-        onClick={() => setOuterOpen((v) => !v)}
-        className="flex w-full items-center gap-1.5 text-left font-medium text-[var(--ema-info)] transition-colors hover:opacity-80"
-        aria-expanded={outerOpen}
+        size="sm"
+        className="ema-narrative-timeline-trigger"
+        aria-expanded={open}
+        aria-controls={bodyId}
+        onClick={() => {
+          setBodyMounted(true);
+          setOpen(value => !value);
+        }}
       >
-        {!isFailed && (
-          <span className="i-lucide:circle-check shrink-0 text-[var(--ema-info)]" aria-hidden />
-        )}
-        {isFailed && (
-          <span className="i-lucide:triangle-alert shrink-0 text-[var(--ema-warning)]" aria-hidden />
-        )}
-        <span className="flex-1">
-          {narrativeResultLabel(result, timelines.length)}
-        </span>
-        <span className={`${outerOpen ? 'i-lucide:chevron-down' : 'i-lucide:chevron-right'} text-[var(--ema-text-tertiary)]`} aria-hidden />
+        <span className="i-lucide:chevron-right ema-narrative-chevron" aria-hidden />
+        <span>{TIMELINE_LABELS[name]}</span>
+        {error !== undefined && <span className="ema-narrative-error-label">Error</span>}
       </Button>
-
       <div
-        className="ema-collapsible"
-        style={{ gridTemplateRows: outerOpen ? '1fr' : '0fr', opacity: outerOpen ? 1 : 0 }}
+        id={bodyId}
+        className="ema-collapsible ema-narrative-collapse"
+        style={{ gridTemplateRows: open ? '1fr' : '0fr', opacity: open ? 1 : 0 }}
+        aria-hidden={!open}
+        ref={element => {
+          if (element) element.inert = !open;
+        }}
       >
-        <div className="flex flex-col gap-2">
-          {isFailed && (
-            <p className="text-xs text-[var(--ema-warning)]">
-              {result.failures[0]?.message ?? '剧情检索不可用'}
-            </p>
+        <div>
+          {bodyMounted && (
+            <div className="ema-narrative-body">
+              {error !== undefined ? (
+                <pre className="ema-narrative-error-detail" role="alert">{error}</pre>
+              ) : (
+                <>
+                  {chunks !== null && (
+                    <div className="ema-narrative-body-toolbar">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="ema-narrative-raw-toggle"
+                        aria-pressed={raw}
+                        onClick={() => setRaw(value => !value)}
+                      >
+                        {raw ? '返回正文' : '原始输出'}
+                      </Button>
+                    </div>
+                  )}
+                  {raw ? (
+                    <pre className="ema-narrative-raw">{text}</pre>
+                  ) : (
+                    <Markdown
+                      source={chunks?.join('\n\n') ?? text ?? ''}
+                      className="ema-tool-result-markdown ema-narrative-markdown"
+                    />
+                  )}
+                </>
+              )}
+            </div>
           )}
-          {!isFailed && timelines.length === 0 && (
-            <p className="text-xs italic text-[var(--ema-text-tertiary)]">
-              未找到相关剧情资料
-            </p>
-          )}
-          {timelines.map((name) => (
-            <TimelineRow
-              key={name}
-              name={name}
-              completed={completed.has(name)}
-              error={failed[name]}
-              text={snippets[name]}
-              isMulti={isMulti}
-            />
-          ))}
         </div>
       </div>
-    </div>
+    </section>
   );
 }
 
-/**
- * 单周目直接显示正文, 多周目各自独立折叠.
- * 正文超过 PREVIEW_CHARS 个字符时先显示预览, 用户可以继续展开全文.
- */
-function TimelineRow({
-  name, completed, error, text, isMulti,
-}: {
-  name:      string;
-  completed: boolean;
-  error:     string | undefined;
-  text:      string | undefined;
-  isMulti:   boolean;
-}): JSX.Element {
-  const [innerOpen, setInnerOpen] = useState(false);
-  const [fullText, setFullText]   = useState(false);
-  const hasFull   = !!text && text.length > PREVIEW_CHARS;
-  const displayText = fullText ? text : (text?.slice(0, PREVIEW_CHARS) ?? '');
-
-  return (
-    <div className="flex flex-col gap-1.5">
-      <Button
-        variant="ghost"
-        type="button"
-        disabled={!isMulti}
-        onClick={isMulti ? () => setInnerOpen((v) => !v) : undefined}
-        className="flex w-full items-center gap-1.5 text-left hover:opacity-80 disabled:cursor-default disabled:hover:opacity-100"
-      >
-        {error
-          ? <span className="i-lucide:triangle-alert shrink-0 text-[var(--ema-warning)]" aria-hidden />
-          : <span className="i-lucide:check shrink-0 text-[var(--ema-info)]" aria-hidden />
-        }
-        <span className={error ? 'text-[var(--ema-warning)]' : completed ? 'text-[var(--ema-text-secondary)]' : 'text-[var(--ema-text-tertiary)]'}>{name}</span>
-        {isMulti && (
-          <span className={`ml-auto ${innerOpen ? 'i-lucide:chevron-down' : 'i-lucide:chevron-right'} text-[var(--ema-text-tertiary)]`} aria-hidden />
-        )}
-      </Button>
-
-      <div
-        className="ema-collapsible"
-        style={{ gridTemplateRows: innerOpen || !isMulti ? '1fr' : '0fr', opacity: innerOpen || !isMulti ? 1 : 0 }}
-      >
-        {error ? (
-          <p className="pl-3 text-xs text-[var(--ema-warning)]">检索失败：{error}</p>
-        ) : completed && text ? (
-          <div className="flex flex-col gap-1 pl-3">
-            <div
-              className="ema-transition-text-expand overflow-auto"
-              style={{
-                maxHeight: fullText ? 'none' : '8rem',
-                opacity:   fullText ? 1 : 0.92,
-              }}
-            >
-              <p className="whitespace-pre text-xs text-[var(--ema-text-tertiary)]">
-                {displayText}
-              </p>
-            </div>
-            {hasFull && !fullText && (
-              <Button
-                variant="ghost"
-                type="button"
-                onClick={() => setFullText(true)}
-                className="w-fit text-left text-[var(--ema-info)] hover:opacity-80"
-              >
-                …展开全文
-              </Button>
-            )}
-            {hasFull && fullText && (
-              <Button
-                variant="ghost"
-                type="button"
-                onClick={() => setFullText(false)}
-                className="w-fit text-left text-[var(--ema-info)] hover:opacity-80"
-              >
-                收起全文
-              </Button>
-            )}
-          </div>
-        ) : completed ? (
-          <p className="pl-3 text-xs italic text-[var(--ema-text-tertiary)]">
-            （该剧情线未返回相关内容）
-          </p>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-function narrativeResultLabel(result: NarrativeSearchResult, timelineCount: number): string {
-  if (result.status === 'unavailable') return '剧情检索失败';
-  if (timelineCount === 0) return '未找到相关剧情资料';
-  if (result.failures.length > 0) {
-    return `已检索 ${result.timelines.length}/${timelineCount} 条剧情线`;
+// buildContext 的每个正文块占一行 JSON, 换行保存在 content 的转义字符串里.
+// 只拆现有 content 用于阅读; 没有正文块或格式无法读取时显示完整原文, 不丢掉图背景.
+function narrativeChunks(text: string): string[] | null {
+  const chunks: string[] = [];
+  for (const line of text.split('\n')) {
+    if (!line.startsWith('{"reference_id":')) continue;
+    try {
+      const chunk: unknown = JSON.parse(line);
+      if (!isRecord(chunk) || typeof chunk['content'] !== 'string') return null;
+      chunks.push(chunk['content']);
+    } catch {
+      return null;
+    }
   }
-  return `已检索 ${timelineCount} 条剧情线`;
+  return chunks.length > 0 ? chunks : null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -195,38 +138,27 @@ function asNarrativeSearchResult(data: unknown): NarrativeSearchResult | null {
   if (!isRecord(data) || !Array.isArray(data['timelines']) || !Array.isArray(data['failures'])) {
     return null;
   }
-  if (typeof data['status'] !== 'string') return null;
+  if (!['found', 'partial', 'empty', 'unavailable'].includes(String(data['status']))) return null;
+  if (!data['timelines'].every(timeline => isRecord(timeline)
+    && typeof timeline['name'] === 'string'
+    && Object.hasOwn(TIMELINE_LABELS, timeline['name'])
+    && typeof timeline['text'] === 'string')) return null;
+  if (!data['failures'].every(failure => isRecord(failure)
+    && typeof failure['timeline'] === 'string'
+    && Object.hasOwn(TIMELINE_LABELS, failure['timeline'])
+    && typeof failure['message'] === 'string')) return null;
   return data as unknown as NarrativeSearchResult;
 }
 
 export function narrativeSearchResultCopyText(data: unknown): string | null {
   const result = asNarrativeSearchResult(data);
   if (!result) return null;
-  const timelines = result.timelines.map((timeline) => `${timeline.name}\n${timeline.text}`);
-  const failures = result.failures.map((failure) => `${failure.timeline}\n${failure.message}`);
-  return [...timelines, ...failures].join('\n\n') || narrativeResultLabel(result, 0);
+  // 阅读视图可能只显示正文, 复制仍保留工具返回的图背景、所有正文和失败说明.
+  const timelines = result.timelines.map(timeline => `${timeline.name}\n${timeline.text}`);
+  const failures = result.failures.map(failure => `${failure.timeline}\n${failure.message}`);
+  return [...timelines, ...failures].join('\n\n') || '未找到相关剧情资料';
 }
 
-export function NarrativeSearchArgsView({ args }: { args: unknown }): JSX.Element | null {
-  if (!isRecord(args) || typeof args['query'] !== 'string') return null;
-  const mode = typeof args['mode'] === 'string' ? args['mode'] : undefined;
-  const modeLabel = mode && mode in NARRATIVE_MODE_LABELS
-    ? NARRATIVE_MODE_LABELS[mode as NarrativeQueryMode]
-    : mode;
-  return (
-    <div className="flex items-baseline gap-2 text-[11px] leading-relaxed">
-      <span className="shrink-0 text-[var(--ema-text-tertiary)]">query:</span>
-      <span className="min-w-0 text-[var(--ema-text-secondary)]">{args['query']}</span>
-      {modeLabel && (
-        <span className="ml-auto shrink-0 rounded-full bg-[var(--ema-info-muted)] px-1.5 py-0.5 text-[10px] text-[var(--ema-info)]">
-          {modeLabel}
-        </span>
-      )}
-    </div>
-  );
-}
-
-/** Tool 完成后直接显示 NarrativeSearchResult, 不再转换成第二套流式状态. */
 export function NarrativeSearchResultView({ data }: { data: unknown }): JSX.Element | null {
   const result = asNarrativeSearchResult(data);
   if (!result) return null;

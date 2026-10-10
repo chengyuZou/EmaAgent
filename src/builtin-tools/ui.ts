@@ -44,7 +44,6 @@ export {
 } from './tools/WebSearchTool/UI.js';
 export { WebFetchArgsView, WebFetchResultView, webFetchTitle, webFetchResultCopyText } from './tools/WebFetchTool/UI.js';
 export {
-  NarrativeSearchArgsView,
   NarrativeSearchResultView,
   narrativeSearchResultCopyText,
 } from './tools/NarrativeSearchTool/UI.js';

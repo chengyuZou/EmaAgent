@@ -24,7 +24,6 @@ import {
   skillResultCopyText,
   SubagentResultView,
   subagentResultCopyText,
-  NarrativeSearchArgsView,
   NarrativeSearchResultView,
   narrativeSearchResultCopyText,
   TodoWriteArgsView,
@@ -70,6 +69,8 @@ export interface ToolUI {
   readonly defaultExpanded?: boolean;
   /** Tool 从自己的 args 中提取行头主目标. 缺省时只显示工具名. */
   readonly title?: (args: unknown) => string | null;
+  /** 仅控制行头文字. null 隐藏状态文字和圆点, undefined 沿用默认文案; 不改变执行状态和错误外壳. */
+  readonly statusLabel?: (status: ToolDisplayStatus) => string | null | undefined;
   /** 参数区. 返回 null 表示类型守卫失败, ToolCallBlock 会回落到通用字段表. */
   readonly ArgsView?: (props: { args: unknown }) => JSX.Element | null;
   /** 结果区. data 是 ToolResult.data 或 streaming item.output; args 供按参数高亮(如 Grep 匹配). */
@@ -128,8 +129,12 @@ const TOOL_UI_REGISTRY: Readonly<Record<string, ToolUI>> = {
   [BuiltinTools.Skill.name]: { resultCopyText: skillResultCopyText, ArgsView: SkillArgsView, ResultView: SkillResultView },
   [BuiltinTools.Subagent.name]: { resultCopyText: subagentResultCopyText, ResultView: SubagentResultView },
   [BuiltinTools.NarrativeSearch.name]: {
+    statusLabel: status => {
+      if (status === 'success') return null;
+      if (status === 'failed') return 'Error';
+      return undefined;
+    },
     resultCopyText: narrativeSearchResultCopyText,
-    ArgsView: NarrativeSearchArgsView,
     ResultView: NarrativeSearchResultView,
   },
   [BuiltinTools.TodoWrite.name]: { ArgsView: TodoWriteArgsView, defaultExpanded: true },
