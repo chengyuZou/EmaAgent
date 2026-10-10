@@ -157,7 +157,10 @@ export class NarrativeGraphRepo {
     return result;
   }
 
-  /** 每个实体分别保留来源块的资产插入顺序, 不合并不同实体的引用. */
+  /** 
+   * 获得每个实体对应的来源Chunk块 ID 列表, 按插入顺序返回; 并忽略不存在的实体.
+   * @returns Map<entity_name, chunk_id[]>
+   */
   getEntityChunkIds(timelineId: NarrativeTimelineId, entityNames: readonly string[]): Map<string, string[]> {
     const result = new Map<string, string[]>();
     for (const name of entityNames) {

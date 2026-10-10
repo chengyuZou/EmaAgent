@@ -5,5 +5,5 @@
     "outDir": "dist",
     "lib": ["ES2022", "DOM"]
   },
-  "include": ["*.ts"]
+  "include": ["*.ts", "pipeline/**/*.ts"]
 }

@@ -22,6 +22,9 @@ importers:
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.39
+      saxes:
+        specifier: ^6.0.0
+        version: 6.0.0
       tsx:
         specifier: ^4.21.0
         version: 4.21.0
@@ -914,16 +917,31 @@ importers:
 
   src/narrative:
     dependencies:
-      '@ema-agent/settings':
+      '@ema-agent/embed':
         specifier: workspace:*
-        version: link:../settings
+        version: link:../embed
+      '@ema-agent/llm':
+        specifier: workspace:*
+        version: link:../llm
+      '@ema-agent/storage':
+        specifier: workspace:*
+        version: link:../storage
+      jsonrepair:
+        specifier: ^3.13.1
+        version: 3.15.0
       zod:
         specifier: ^4
         version: 4.4.3
     devDependencies:
+      '@types/better-sqlite3':
+        specifier: ^7.6.13
+        version: 7.6.13
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.39
+      better-sqlite3:
+        specifier: ^12.9.0
+        version: 12.9.0
       rimraf:
         specifier: ^5.0.0
         version: 5.0.10
@@ -5739,6 +5757,10 @@ packages:
   json5@2.2.3:
     resolution: {integrity: sha512-XmOWe7eyHYH14cLdVPoyg+GOH3rYX++KpzrylJwSW98t3Nk+U8XOl8FWKOgwtzdb8lXGf6zYwDUzeHMWfxasyg==}
     engines: {node: '>=6'}
+    hasBin: true
+
+  jsonrepair@3.15.0:
+    resolution: {integrity: sha512-wy8OTjwsJwQRnQJkKnMJJ9vcytRdBPAgIF/Hy6+s1dAj42BHMKiyL8JzEieIl3JY7idt8eyHwBWTO8mh/+mtwA==}
     hasBin: true
 
   jszip@3.10.1:
@@ -11476,6 +11498,8 @@ snapshots:
   json-schema-typed@8.0.2: {}
 
   json5@2.2.3: {}
+
+  jsonrepair@3.15.0: {}
 
   jszip@3.10.1:
     dependencies:

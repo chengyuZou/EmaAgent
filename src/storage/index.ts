@@ -1,6 +1,21 @@
 // 统一导出 Storage 数据库、迁移和各业务 Repo。
 export { Database, DatabaseCapabilityError } from './database/database.js';
 export { MigrationsRunner } from './database/migrationsRunner.js';
+export { NarrativeChunksRepo } from './repos/narrative/chunks.js';
+export type {
+  NarrativeTimelineId,
+  NarrativeChunkRow,
+  NarrativeChunkVectorRow,
+} from './repos/narrative/chunks.js';
+export { NarrativeGraphRepo } from './repos/narrative/graph.js';
+export type {
+  NarrativeEntityRow,
+  NarrativeEntityVectorRow,
+  NarrativeRelationRow,
+  NarrativeRelationVectorRow,
+} from './repos/narrative/graph.js';
+export { NarrativeKeywordCacheRepo } from './repos/narrative/keywordCache.js';
+export type { NarrativeKeywords } from './repos/narrative/keywordCache.js';
 export {
   SQLITE_ID_BATCH_HARD_LIMIT,
   SqliteVariableLimitError,
