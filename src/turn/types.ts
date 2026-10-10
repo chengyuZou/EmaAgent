@@ -1,6 +1,5 @@
 import type {
   SessionMode,
-  NarrativePolicy,
   TurnStatus,
 } from '@ema-agent/session';
 import type { AttachmentBlock } from '@ema-agent/session';
@@ -18,7 +17,6 @@ export interface Turn {
   readonly status: TurnStatus;
   readonly triggerType: TurnTriggerType;
   readonly sessionMode: SessionMode;
-  readonly narrativePolicy: NarrativePolicy;
   /** 本 Turn 启动时冻结的语音选择. 与之后可修改的 Session 偏好不同. */
   readonly ttsEnabled: boolean;
   readonly providerId: string | null;
@@ -42,7 +40,6 @@ export interface StartTurnInput {
   readonly providerId?: string | null;
   readonly modelId?: string | null;
   readonly sessionMode: SessionMode;
-  readonly narrativePolicy: NarrativePolicy;
   readonly ttsEnabled: boolean;
 }
 
@@ -119,7 +116,6 @@ export interface StartTurn {
   readonly sessionId: string;
   readonly triggerType: TurnTriggerType;
   readonly sessionMode: SessionMode;
-  readonly narrativePolicy: NarrativePolicy;
   readonly input: readonly TurnInputPart[];
   /** 队列交付的内部通知或继续指令, 持久化为 kind='continuation' 的 Message. */
   readonly continuationText?: string;

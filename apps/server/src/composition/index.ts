@@ -60,7 +60,10 @@ export function buildComposition(input: { activeDataDir: string; initializeBuilt
     emitMcpEvent: event => appEvents.emit(event),
   });
   const characters = openCharacters(database.profileDb, input.initializeBuiltinCharacters);
-  const narrative = openNarrative(providers.providers, providers.providerModels, providers.modelBindings);
+  const narrative = openNarrative(
+    database.narrativeDb, providers.providers, providers.providerModels,
+    providers.modelBindings, settings.settings,
+  );
   const speech = openSpeech(
     database.dataDb,
     input.activeDataDir,

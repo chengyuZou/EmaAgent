@@ -3,7 +3,7 @@ import type { ModelCapabilityRow } from './providers.js';
 import type { SqliteDb } from '../../database/database.js';
 
 export type ModelBindingModuleRow =
-  'memory-llm' | 'lightrag-embed' | 'lightrag-llm' | 'tts' | 'stt' | 'vision';
+  'memory-llm' | 'narrative-embed' | 'narrative-llm' | 'tts' | 'stt' | 'vision';
 
 export interface ModelBindingRow {
   module: ModelBindingModuleRow;

@@ -2,10 +2,9 @@
 import type { CompactEvent } from '@ema-agent/compact';
 import type { ContextUsage } from '@ema-agent/context';
 import type { LlmTokenUsage } from '@ema-agent/llm';
-import type { NarrativeEvent } from '@ema-agent/narrative';
 import type { StageStreamEvent } from '@ema-agent/stage';
 import type { ToolExecutionEvent } from '@ema-agent/tools';
-import type { SessionMode, SessionMessage, NarrativePolicy } from '@ema-agent/session';
+import type { SessionMode, SessionMessage } from '@ema-agent/session';
 import type { TurnFailureCode } from './errors.js';
 import type { RequestDegradationNotice, TurnTriggerType } from './types.js';
 
@@ -24,7 +23,6 @@ export type TurnEvent =
     turnId: string;
     triggerType: TurnTriggerType;
     sessionMode: SessionMode;
-    narrativePolicy: NarrativePolicy;
     /** 与 Turn 行同源的本轮语音选择, 不代表语音管线已经成功启动. */
     ttsEnabled: boolean;
   }
@@ -122,14 +120,12 @@ export type TurnCompactEvent = CompactEvent & { readonly turnId: string };
 /**
  * 根 Turn 事件流的全部成员. Permission 独立走 Session 出口, 不依赖父 Turn.
  * 各域事件由拥有方定义(turn/tools/
- * compact/narrative/stage), 这里只做流组合, 不重复声明; AgentLoop 事件经执行器翻译为
- * 带身份的 TurnEvent 成员后入流。Narrative 召回发生在 Turn 内（每 Turn 至多一次），
- * 其生命周期事件随本 Turn 事件流有序到达。Stage 事件由正文标签清洗顺带产出，
+ * compact/stage), 这里只做流组合, 不重复声明; AgentLoop 事件经执行器翻译为
+ * 带身份的 TurnEvent 成员后入流。Stage 事件由正文标签清洗顺带产出，
  * 与引发它的正文 delta 保持先后顺序。
  */
 export type TurnStreamEvent =
   | TurnEvent
   | Exclude<ToolExecutionEvent, { type: 'ask_user_required' | 'ask_user_resolved' }>
   | TurnCompactEvent
-  | NarrativeEvent
   | StageStreamEvent;

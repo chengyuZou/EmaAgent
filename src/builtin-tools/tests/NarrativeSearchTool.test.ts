@@ -1,153 +1,89 @@
-// 验证 NarrativeSearchTool 只消费宿主授予的检索端口, 并诚实区分完整/部分/空/不可用结果。
 import { describe, expect, it, vi } from 'vitest';
-import type { NarrativeSearch } from '@ema-agent/narrative';
-import type { ToolInvocation } from '@ema-agent/tools';
+import type { NarrativeRecallResult } from '@ema-agent/narrative';
+import type { ToolInvocation, ToolUseContext } from '@ema-agent/tools';
 import { NarrativeSearchTool } from '../tools/NarrativeSearchTool/NarrativeSearchTool.js';
+import { narrativeSearchResultCopyText } from '../tools/NarrativeSearchTool/UI.js';
 
 function invocation(): ToolInvocation {
-  return Object.freeze({
+  return {
     sessionId: 'session-narrative-tool',
     turnId: 'turn-narrative-tool',
     toolCallId: 'toolcall-narrative-tool',
     signal: new AbortController().signal,
-  });
+  };
 }
 
-describe('NarrativeSearchTool validateContext', () => {
-  it('没有 auto 策略授予的 Port 时拒绝执行', () => {
+describe('NarrativeSearchTool', () => {
+  it('没有可用绑定时拒绝装配, 有查询函数时只取得对应能力', () => {
     expect(NarrativeSearchTool.validateContext({} as never)).toEqual({
       valid: false,
-      reason: '当前 Turn 未启用按需剧情检索。',
+      reason: '当前 Turn 未配置可用的 Narrative 模型绑定。',
     });
+    const narrativeSearch: NonNullable<ToolUseContext['narrativeSearch']> = async () => new Map();
+    expect(NarrativeSearchTool.validateContext({ narrativeSearch } as never))
+      .toEqual({ valid: true, context: { narrativeSearch } });
   });
 
-  it('有 Port 时只投影窄 Context', () => {
-    const narrativeSearch: NarrativeSearch = async () => ({
-      timelines: [],
-      failures: [],
-      contextText: null,
-    });
-    const result = NarrativeSearchTool.validateContext({
-      narrativeSearch,
-    } as never);
-    expect(result).toEqual({ valid: true, context: { narrativeSearch } });
-  });
-});
-
-describe('NarrativeSearchTool execute', () => {
-  it('把聚焦查询与检索模式交给宿主并保留分时间线结果', async () => {
-    const narrativeSearch = vi.fn(async () => ({
-      timelines: [{
-        name: '1st_Loop',
-        charCount: 4,
-        text: '剧情正文',
-      }],
-      contextText: '## 1st_Loop\n剧情正文',
-      failures: [{
-        timeline: '2nd_Loop',
-        code: 'timeline_query_failed' as const,
-        message: '检索失败',
-      }],
-    }));
-    const context = { narrativeSearch };
+  it('Map 转为可保存的 Tool 结果, 前端和模型能读到相同正文与失败说明', async () => {
+    const narrativeSearch = vi.fn(async (): Promise<NarrativeRecallResult> => new Map([
+      ['1st_Loop', { text: '剧情正文' }],
+      ['2nd_Loop', { code: 'timeline_query_failed', message: '检索失败' }],
+    ]));
     const input = NarrativeSearchTool.inputSchema.parse({ query: '  查询角色过去  ' });
-
-    const result = await NarrativeSearchTool.execute(
-      input,
-      context,
-      invocation(),
-    );
+    const current = invocation();
+    const result = await NarrativeSearchTool.execute(input, { narrativeSearch }, current);
+    expect(narrativeSearch).toHaveBeenCalledWith('查询角色过去', undefined, current.signal);
     expect(result).toEqual({
       status: 'partial',
-      timelines: [{
-        name: '1st_Loop',
-        charCount: 4,
-        text: '剧情正文',
-      }],
-      failures: [{
-        timeline: '2nd_Loop',
-        code: 'timeline_query_failed',
-        message: '检索失败',
-      }],
+      timelines: [{ name: '1st_Loop', text: '剧情正文' }],
+      failures: [{ timeline: '2nd_Loop', message: '检索失败' }],
     });
-    expect(narrativeSearch).toHaveBeenCalledWith(
-      '查询角色过去',
-      undefined,
-      expect.any(AbortSignal),
-    );
-  });
-
-  it('模型显式给出的 mode 原样传给宿主', async () => {
-    const narrativeSearch = vi.fn(async () => ({
-      timelines: [],
-      contextText: null,
-      failures: [],
-    }));
-    const input = NarrativeSearchTool.inputSchema.parse({ query: '角色关系', mode: 'global' });
-    await NarrativeSearchTool.execute(input, { narrativeSearch }, invocation());
-    expect(narrativeSearch).toHaveBeenCalledWith(
-      '角色关系',
-      'global',
-      expect.any(AbortSignal),
-    );
-  });
-
-  it('无正文且没有失败时返回 empty', async () => {
-    const context = {
-      narrativeSearch: async () => ({
-        timelines: [{ name: '2nd_Loop', charCount: 0, text: '' }],
-        contextText: null,
-        failures: [],
-      }),
-    };
-    await expect(
-      NarrativeSearchTool.execute({ query: '未知细节' }, context, invocation()),
-    ).resolves.toMatchObject({ status: 'empty', failures: [] });
-  });
-
-  it('有正文但存在失败时返回 partial, 全部失败且无正文时返回 unavailable', async () => {
-    const context = {
-      narrativeSearch: async () => ({
-        timelines: [{ name: '1st_Loop', charCount: 0, text: '' }],
-        contextText: null,
-        failures: [{
-          timeline: '1st_Loop',
-          code: 'timeline_query_failed' as const,
-          message: '检索失败',
-        }],
-      }),
-    };
-    await expect(
-      NarrativeSearchTool.execute({ query: '世界状态' }, context, invocation()),
-    ).resolves.toMatchObject({ status: 'unavailable' });
-  });
-});
-
-describe('NarrativeSearchTool 模型投影与摘要', () => {
-  it('mapResultToModelContent 按时间线输出正文与失败说明', () => {
-    const content = String(NarrativeSearchTool.mapResultToModelContent!({
-      status: 'partial',
-      timelines: [{ name: '1st_Loop', charCount: 4, text: '剧情正文' }],
-      failures: [{
-        timeline: '2nd_Loop',
-        code: 'timeline_query_failed',
-        message: '检索失败',
-      }],
-    }));
+    const saved = JSON.parse(JSON.stringify(result));
+    expect(saved).toEqual(result);
+    expect(narrativeSearchResultCopyText(saved)).toContain('剧情正文');
+    const content = String(NarrativeSearchTool.mapResultToModelContent!(saved));
     expect(content).toContain('## 1st_Loop\n剧情正文');
     expect(content).toContain('检索失败的剧情线：2nd_Loop (检索失败)');
   });
 
-  it('空结果给模型明确提示', () => {
-    const content = String(NarrativeSearchTool.mapResultToModelContent!({
-      status: 'empty',
-      timelines: [],
-      failures: [],
-    }));
-    expect(content).toContain('未返回可用剧情资料');
+  it('同一 Turn 可以继续查询, mode 和取消信号原样传入', async () => {
+    const narrativeSearch = vi.fn(async (): Promise<NarrativeRecallResult> => new Map());
+    const input = NarrativeSearchTool.inputSchema.parse({ query: '角色关系', mode: 'global' });
+    const current = invocation();
+    await NarrativeSearchTool.execute(input, { narrativeSearch }, current);
+    await NarrativeSearchTool.execute(input, { narrativeSearch }, current);
+    expect(narrativeSearch).toHaveBeenCalledTimes(2);
+    expect(narrativeSearch).toHaveBeenLastCalledWith('角色关系', 'global', current.signal);
   });
 
-  it('getToolUseSummary 返回查询摘要', () => {
+  it('无正文为 empty, 全部失败为 unavailable, 有正文且无失败为 found', async () => {
+    const narrativeSearch = vi.fn<NonNullable<ToolUseContext['narrativeSearch']>>()
+      .mockResolvedValueOnce(new Map([['2nd_Loop', { text: '' }]]))
+      .mockResolvedValueOnce(new Map([
+        ['1st_Loop', { code: 'timeline_query_failed', message: '检索失败' }],
+      ]))
+      .mockResolvedValueOnce(new Map([['3rd_Loop', { text: '正文' }]]));
+    const context = { narrativeSearch };
+    const input = { query: '世界状态' };
+    await expect(NarrativeSearchTool.execute(input, context, invocation()))
+      .resolves.toMatchObject({ status: 'empty' });
+    await expect(NarrativeSearchTool.execute(input, context, invocation()))
+      .resolves.toMatchObject({ status: 'unavailable' });
+    await expect(NarrativeSearchTool.execute(input, context, invocation()))
+      .resolves.toMatchObject({ status: 'found' });
+  });
+
+  it('取消和路由错误不伪装成 empty', async () => {
+    const error = new Error('查询已取消');
+    const narrativeSearch = vi.fn().mockRejectedValue(error);
+    await expect(NarrativeSearchTool.execute({ query: '角色关系' }, { narrativeSearch }, invocation()))
+      .rejects.toBe(error);
+  });
+
+  it('空结果不把旧角色知识当作检索结果', () => {
+    expect(String(NarrativeSearchTool.mapResultToModelContent!({
+      status: 'empty', timelines: [], failures: [],
+    }))).toContain('未返回可用剧情资料');
     expect(NarrativeSearchTool.getToolUseSummary?.({ query: '角色过去' }))
       .toBe('检索剧情资料：角色过去');
   });

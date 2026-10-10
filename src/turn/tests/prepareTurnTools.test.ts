@@ -15,6 +15,7 @@ import {
   buildTool,
   BuiltinTools,
   contextOk,
+  disabledToolsSetting,
   FileStateCache,
   ToolRegistry,
   type ToolUseContext,
@@ -95,7 +96,6 @@ function makeInput(options: {
     sessionId: SESSION_ID,
     turnId: TURN_ID,
     sessionMode: 'work' as const,
-    narrativePolicy: 'off' as const,
     cwd: '/w',
     workspaceRoots: ['/w'],
     prepareSubagent: async () => { throw new Error('不应派生子 Agent'); },
@@ -114,6 +114,21 @@ function makeInput(options: {
 
 describe('prepareTurnTools', () => {
   beforeEach(() => clearSessionRules(SESSION_ID));
+
+  it('Narrative 与普通工具共用禁用设置, 不改变已经准备好的 Turn', () => {
+    const settings = fakeSettings();
+    const narrative = fakeTool('NarrativeSearch', { id: BuiltinTools.NarrativeSearch.id });
+    const other = fakeTool('Other');
+    const deps = makeDeps({ tools: [narrative, other], queue: new SessionInteractionQueue(null), settings });
+    const first = prepareTurnTools(deps, makeInput({ events: [] }));
+    settings.set(disabledToolsSetting, [narrative.id, other.id]);
+    const second = prepareTurnTools(deps, makeInput({ events: [], overrides: { turnId: 't2' } }));
+    expect(first.toolPool.tools.map(tool => tool.name)).toEqual(['Other', 'NarrativeSearch']);
+    expect(second.toolPool.tools).toEqual([]);
+    settings.set(disabledToolsSetting, []);
+    const third = prepareTurnTools(deps, makeInput({ events: [], overrides: { turnId: 't3' } }));
+    expect(third.toolPool.tools.map(tool => tool.name)).toEqual(['Other', 'NarrativeSearch']);
+  });
 
   it('根 Turn 结束或中断后复用 Session 文件状态, 子代理共享, 别的 Session 隔离', async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ema-session-file-state-'));

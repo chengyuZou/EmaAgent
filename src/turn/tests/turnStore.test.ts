@@ -28,7 +28,6 @@ function startTurn(store: TurnStore, sessionId: string) {
     sessionId,
     triggerType: 'userMessage',
     sessionMode: 'chat',
-    narrativePolicy: 'off',
     ttsEnabled: false,
   });
 }
@@ -80,7 +79,6 @@ describe('TurnStore — 生命周期与运行锁', () => {
       sessionId,
       triggerType: 'userMessage',
       sessionMode: 'chat',
-      narrativePolicy: 'off',
       ttsEnabled: true,
     });
     sessions.patch(sessionId, { ttsEnabled: false }, 3);

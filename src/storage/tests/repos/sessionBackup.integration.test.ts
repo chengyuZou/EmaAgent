@@ -29,7 +29,6 @@ describe('SessionBackupReader', () => {
       title: 'backup',
       cwd: 'D:/work',
       sessionMode: 'work',
-      narrativePolicy: 'auto',
       createdAt: 1,
       updatedAt: 1,
     });
@@ -39,7 +38,6 @@ describe('SessionBackupReader', () => {
         sessionId: 'session-backup',
         triggerType: 'userMessage',
         sessionMode: 'work',
-        narrativePolicy: 'auto',
         ttsEnabled: false,
         createdAt: index,
       });
@@ -75,14 +73,13 @@ describe('SessionBackupReader', () => {
       title: 'cursor',
       cwd: 'D:/work',
       sessionMode: 'work',
-      narrativePolicy: 'auto',
       createdAt: 1,
       updatedAt: 1,
     });
     database.db.prepare(`
       INSERT INTO turns
-        (id, session_id, trigger_type, session_mode, narrative_policy, status, created_at)
-      VALUES (?, ?, 'userMessage', 'work', 'auto', 'completed', ?)
+        (id, session_id, trigger_type, session_mode, status, created_at)
+      VALUES (?, ?, 'userMessage', 'work', 'completed', ?)
     `).run('turn-1', 'session-cursor', 10);
 
     const insertMessage = database.db.prepare(`

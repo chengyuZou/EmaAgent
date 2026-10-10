@@ -150,7 +150,7 @@ describe('Session WebSocket Route', () => {
     const objective = ' \r\n任务正文\n  ';
     const response = waitForMessage();
     socket.send(JSON.stringify({ type: 'send_user_message', requestId: 'initial-goal', payload: {
-      sessionMode: 'work', narrativePolicy: 'off', input: [{ type: 'text', text: objective }], objective,
+      sessionMode: 'work', input: [{ type: 'text', text: objective }], objective,
     } }));
     expect(await response).toEqual({ type: 'request_succeeded', requestId: 'initial-goal' });
     expect(fixture.starts).toHaveLength(1);
@@ -169,7 +169,7 @@ describe('Session WebSocket Route', () => {
     const objective = '  下一轮的任务  ';
     const response = waitForMessage();
     socket.send(JSON.stringify({ type: 'queue_user_message', requestId: 'queued-goal', payload: {
-      sessionMode: 'work', narrativePolicy: 'off', input: [{ type: 'text', text: objective }], objective,
+      sessionMode: 'work', input: [{ type: 'text', text: objective }], objective,
     } }));
     expect(await response).toEqual({ type: 'request_succeeded', requestId: 'queued-goal' });
     expect(fixture.starts).toHaveLength(0);
@@ -193,7 +193,7 @@ describe('Session WebSocket Route', () => {
     } else fixture.running.register(fixture.session.id, { kind: 'compact', compactId: 'compact' });
     const response = waitForMessage();
     socket.send(JSON.stringify({ type: 'send_user_message', requestId: 'rejected-goal', payload: {
-      sessionMode: 'work', narrativePolicy: 'off', input: [{ type: 'text', text: '新任务' }], objective: '新任务',
+      sessionMode: 'work', input: [{ type: 'text', text: '新任务' }], objective: '新任务',
     } }));
     const codes = { plan: 'goal_plan_conflict', existing: 'goal_already_exists', compact: 'session_busy' };
     expect(await response).toMatchObject({ type: 'request_rejected', code: codes[conflict] });
@@ -225,7 +225,6 @@ describe('Session WebSocket Route', () => {
       status: 'running',
       triggerType: 'userMessage',
       sessionMode: 'work',
-      narrativePolicy: 'auto',
       ttsEnabled: true,
       providerId: null,
       modelId: null,
@@ -292,7 +291,6 @@ describe('Session WebSocket Route', () => {
         turnId,
         createdAt: 42,
         sessionMode: 'work',
-        narrativePolicy: 'auto',
         messages: [persisted],
       },
       pendingInteractions: [],

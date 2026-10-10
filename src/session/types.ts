@@ -10,12 +10,6 @@ import type { LlmThinkingEffort } from '@ema-agent/llm';
  */
 export type SessionMode = 'chat' | 'work';
 
-/**
- * Narrative 只控制剧情检索策略，不改变角色身份或创建第三套 Engine。
- * 会话级偏好；Turn 保存当次实际值，保证历史可解释。
- */
-export type NarrativePolicy = 'auto' | 'always' | 'off';
-
 /** Session 的推理选择. off 明确要求协议关闭推理, 不表示沿用模型默认值. */
 export type ReasoningEffort = 'off' | LlmThinkingEffort;
 
@@ -64,7 +58,6 @@ export interface Session {
   forkedFromSessionId: string | null;
   forkedFromTurnId: string | null;
   sessionMode: SessionMode;
-  narrativePolicy: NarrativePolicy;
   permissionMode: PermissionMode;
   /** 可修改的 Session 偏好. 只决定之后启动的 Turn, 不改变已启动 Turn 的语音选择. */
   ttsEnabled: boolean;
@@ -127,7 +120,6 @@ export interface CreateSessionInput {
   /** 项目新对话的初始 cwd 取创建时的主文件夹；无主文件夹取固定默认目录。 */
   projectId?: string;
   sessionMode?: SessionMode;
-  narrativePolicy?: NarrativePolicy;
   permissionMode?: PermissionMode;
   ttsEnabled?: boolean;
   providerId?: string;
@@ -141,7 +133,6 @@ export interface PatchSessionInput {
   pinned?: boolean;
   cwd?: string;
   sessionMode?: SessionMode;
-  narrativePolicy?: NarrativePolicy;
   permissionMode?: PermissionMode;
   ttsEnabled?: boolean;
   /** 换模型时与 modelId 同传; 只改推理强度时两者都省略. */

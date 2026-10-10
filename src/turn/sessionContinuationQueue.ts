@@ -19,7 +19,6 @@ import { renderGoalEditReminder } from './prepare/turnReminder.js';
  */
 export interface SessionTurnSelection {
   readonly sessionMode: StartTurn['sessionMode'];
-  readonly narrativePolicy: StartTurn['narrativePolicy'];
 }
 
 /** WebSocket queue_user_message 交给队列的完整业务输入. 内容此时只进入进程内存, 尚未写入 Message. */
@@ -402,7 +401,6 @@ export class SessionContinuationQueue {
         sessionId,
         triggerType: claim.type === 'user_input' ? 'userMessage' : 'sessionContinuation',
         sessionMode: selection?.sessionMode ?? session.sessionMode,
-        narrativePolicy: selection?.narrativePolicy ?? session.narrativePolicy,
         ttsEnabled: session.ttsEnabled,
         input: claim.type === 'user_input' ? claim.userInput.input : [],
         ...(claim.continuationText

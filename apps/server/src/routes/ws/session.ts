@@ -7,7 +7,6 @@ import type { PermissionResponse, PermissionStreamEvent } from '@ema-agent/permi
 import type { ToolExecutionEvent } from '@ema-agent/tools';
 import {
   SessionBusyError,
-  type NarrativePolicy,
   type SessionMode,
   type SessionRunning,
   type SessionRunningRegistry,
@@ -52,7 +51,6 @@ const inputPartSchema = z.discriminatedUnion(
 
 const userMessagePayloadSchema = z.object({
   sessionMode: z.enum(['chat', 'work']),
-  narrativePolicy: z.enum(['auto', 'always', 'off']),
   input: z.array(inputPartSchema).min(1).max(REQUEST_VALUE_LIMITS.maxTurnContentParts),
   objective: z.string().refine(text => text.trim().length > 0, '目标正文不能为空').optional(),
 }).superRefine((payload, context) => {
@@ -143,7 +141,6 @@ export type SessionBusinessMessage =
       readonly turnId: string;
       readonly createdAt: number;
       readonly sessionMode: SessionMode;
-      readonly narrativePolicy: NarrativePolicy;
       readonly messages: readonly SessionMessage[];
     }
     | { readonly kind: 'compact'; readonly compactId: string };
@@ -328,7 +325,6 @@ async function handleClientMessage(
             input: message.payload.input,
             selection: {
               sessionMode: message.payload.sessionMode,
-              narrativePolicy: message.payload.narrativePolicy,
             },
           });
           socket.send({ type: 'request_succeeded', requestId: message.requestId });
@@ -340,7 +336,6 @@ async function handleClientMessage(
           sessionId,
           triggerType: 'userMessage',
           sessionMode: message.payload.sessionMode,
-          narrativePolicy: message.payload.narrativePolicy,
           ttsEnabled,
           input: message.payload.input,
         });
@@ -361,7 +356,6 @@ async function handleClientMessage(
           input: message.payload.input,
           selection: {
             sessionMode: message.payload.sessionMode,
-            narrativePolicy: message.payload.narrativePolicy,
           },
         });
         socket.send({ type: 'request_succeeded', requestId: message.requestId });
@@ -436,7 +430,6 @@ function readSessionRunningState(deps: SessionWebSocketRouteDeps, sessionId: str
     turnId: running.turnId,
     createdAt: turn.createdAt,
     sessionMode: turn.sessionMode,
-    narrativePolicy: turn.narrativePolicy,
     messages: deps.sessions.loadMessagesForTurn(running.turnId),
   };
 }

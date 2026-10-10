@@ -24,8 +24,8 @@ export interface ServerLifecycle {
 
 /**
  * 唯一启动序列。失败即抛：入口负责打印并非零退出。
- * 启动恢复是 ready 前置(不能把旧 running 状态留给新进程); ready 之后的文件维护、
- * Narrative 推送等后台驱动允许降级. 启动不会续跑旧 Turn 或后台工作.
+ * 启动恢复是 ready 前置(不能把旧 running 状态留给新进程); ready 之后的文件维护和
+ * Memory 等后台任务允许降级. 启动不会续跑旧 Turn 或后台工作.
  */
 export async function startServer(secret: string): Promise<ServerLifecycle> {
   let phaseStartedAt = performance.now();

@@ -36,7 +36,6 @@ export const sessionRecordSchema = z.object({
   modelId: nullableId,
   reasoningEffort: z.enum(['off', 'low', 'medium', 'high', 'max']),
   sessionMode: z.enum(['chat', 'work']),
-  narrativePolicy: z.enum(['auto', 'always', 'off']),
   permissionMode: z.enum(['default', 'acceptEdits', 'bypassPermissions', 'plan']),
   ttsEnabled: z.boolean(),
 }).strict().refine(
@@ -50,7 +49,6 @@ export const turnRecordSchema = z.object({
   status: z.enum(['running', 'completed', 'failed', 'aborted']),
   triggerType: z.enum(['userMessage', 'sessionContinuation']),
   sessionMode: z.enum(['chat', 'work']),
-  narrativePolicy: z.enum(['auto', 'always', 'off']),
   ttsEnabled: z.boolean(),
   providerId: nullableId,
   modelId: nullableId,

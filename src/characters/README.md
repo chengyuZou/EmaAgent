@@ -1,6 +1,6 @@
 # Character
 
-Character 管理全局当前角色、Persona、角色舞台选择和三类本地角色资源。它不管理 Turn、普通后台进程、Memory 内容或 Narrative 进程；跨域停止顺序由 Server 应用层编排。
+Character 管理全局当前角色、Persona、角色舞台选择和三类本地角色资源。它不管理 Turn、普通后台进程、Memory 内容或 Narrative 查询；跨域停止顺序由 Server 应用层编排。
 
 ## 身份
 

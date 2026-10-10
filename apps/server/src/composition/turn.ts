@@ -249,12 +249,6 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
       readRelationshipMemoryForTurn(relationshipMemoryDir(), scope.characterName)
         .catch(() => undefined),
     ]);
-    const narrativeRecall = scope.narrativePolicy === 'always' && scope.narrativeSearch
-      && scope.userText.trim().length > 0
-      ? await scope.narrativeSearch(scope.userText, undefined, scope.signal)
-        .then(result => result.contextText ?? undefined)
-        .catch(() => undefined)
-      : undefined;
     // shouldRemind 只检查不消费；提醒随 reminder 落库成功后由 onTaskReminderPersisted 提交 markReminded。
     const pendingTasks = database.tasks.shouldRemind(scope.sessionId)
       ? database.tasks.list(scope.sessionId).filter(
@@ -282,12 +276,11 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     } while (subagentCursor);
     return {
       currentDate: new Date().toISOString().slice(0, 10),
-      // 异步召回结束后再读目标, 不把召回开始前的旧状态冻结进 reminder.
+      // Memory 读取结束后再读目标, 不把等待期间的旧状态冻结进 reminder.
       goal: database.goals.getCurrent(scope.sessionId),
       ...(git ? { gitSummary: git } : {}),
       ...(memoryWork ? { memoryWork } : {}),
       ...(memoryRelationship ? { memoryRelationship } : {}),
-      ...(narrativeRecall ? { narrativeRecall } : {}),
       ...(taskReminder ? { taskReminder } : {}),
       ...(scratchpad ? { scratchpad } : {}),
     };
@@ -325,8 +318,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     continuations,
     taskStore: database.tasks,
     goalStore: database.goals,
-    currentNarrativeClient: narrative.currentClient,
-    resolveNarrativeLlm: narrative.resolveNarrativeLlm,
+    resolveNarrativeSearch: narrative.resolveSearch,
     backgroundProcesses: tools.backgroundProcesses,
     resolveVision: resolveCallVision,
     commandRunner: tools.getCommandRunner,

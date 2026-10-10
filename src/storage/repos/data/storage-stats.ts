@@ -34,7 +34,6 @@ export interface SessionStats {
   totalOutputTokens: number;
   chatTurns: number;
   workTurns: number;
-  narrativeAlwaysTurns: number;
   audioTurnCount: number;
   audioTotalBytes: number;
   audioTotalDurationMs: number;
@@ -168,14 +167,12 @@ export class SessionStatsRepo {
     const turns = this.db.prepare(`
       SELECT COUNT(*) AS turn_count,
              COALESCE(SUM(session_mode = 'chat'), 0) AS chat_turns,
-             COALESCE(SUM(session_mode = 'work'), 0) AS work_turns,
-             COALESCE(SUM(narrative_policy = 'always'), 0) AS narrative_always_turns
+             COALESCE(SUM(session_mode = 'work'), 0) AS work_turns
         FROM turns WHERE session_id = ?
     `).get(sessionId) as {
       turn_count: number;
       chat_turns: number;
       work_turns: number;
-      narrative_always_turns: number;
     };
     const tokens = this.db.prepare(`
       SELECT COALESCE(SUM(input_tokens), 0) AS input_tokens,
@@ -204,7 +201,6 @@ export class SessionStatsRepo {
       totalOutputTokens: tokens.output_tokens,
       chatTurns: turns.chat_turns,
       workTurns: turns.work_turns,
-      narrativeAlwaysTurns: turns.narrative_always_turns,
       audioTurnCount: speechOutputs.c,
       audioTotalBytes: speechOutputs.b,
       audioTotalDurationMs: speechOutputs.d,

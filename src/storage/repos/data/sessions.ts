@@ -8,7 +8,6 @@ import { escapeLikePattern } from '../../search/like-utils.js';
 /** sessions/turns 行上的 Chat/Work 模式（SQL CHECK 原样）。 */
 export type SessionModeRow = 'chat' | 'work';
 /** sessions/turns 行上的剧情策略枚举（SQL CHECK 原样）。 */
-export type NarrativePolicyRow = 'auto' | 'always' | 'off';
 export type PermissionModeRow = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
 export type ReasoningEffortRow = 'off' | 'low' | 'medium' | 'high' | 'max';
 
@@ -31,7 +30,6 @@ export interface SessionRow {
   forked_from_session_id: string | null;
   forked_from_turn_id:    string | null;
   session_mode: SessionModeRow;
-  narrative_policy: NarrativePolicyRow;
   permission_mode: PermissionModeRow;
   tts_enabled: number;
   /** null 表示尚未选模型, 不能开始 Turn. */
@@ -65,7 +63,6 @@ export interface SessionInsert {
   forkedFromSessionId?: string;
   forkedFromTurnId?: string | null;
   sessionMode?: SessionModeRow;
-  narrativePolicy?: NarrativePolicyRow;
   permissionMode?: PermissionModeRow;
   ttsEnabled?: boolean;
   providerId?: string;
@@ -85,11 +82,11 @@ export class SessionsRepo {
         `INSERT INTO sessions
            (id, title, cwd, project_id,
             forked_from_session_id, forked_from_turn_id,
-            session_mode, narrative_policy, permission_mode, tts_enabled,
+            session_mode, permission_mode, tts_enabled,
             provider_id, model_id, reasoning_effort,
             created_at, updated_at, last_activity_at, sidebar_order)
          VALUES (
-           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
            (SELECT COALESCE(MAX(sidebar_order), 0) + 1
               FROM sessions
              WHERE archived_at IS NULL
@@ -103,7 +100,6 @@ export class SessionsRepo {
         s.forkedFromSessionId ?? null,
         s.forkedFromTurnId ?? null,
         s.sessionMode ?? 'chat',
-        s.narrativePolicy ?? 'auto',
         s.permissionMode ?? 'default',
         s.ttsEnabled ? 1 : 0,
         s.providerId ?? null,
@@ -385,11 +381,11 @@ export class SessionsRepo {
         `INSERT INTO sessions
            (id, title, cwd, project_id,
             forked_from_session_id, forked_from_turn_id,
-            session_mode, narrative_policy, permission_mode, tts_enabled,
+            session_mode, permission_mode, tts_enabled,
             provider_id, model_id, reasoning_effort,
             created_at, updated_at, last_activity_at, sidebar_order)
          VALUES (
-           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
            (SELECT COALESCE(MAX(sidebar_order), 0) + 1
               FROM sessions
              WHERE archived_at IS NULL
@@ -399,7 +395,7 @@ export class SessionsRepo {
       ).run(newId, title, src.cwd,
         src.project_id,
         srcId, untilTurnId ?? null,
-        src.session_mode, src.narrative_policy, src.permission_mode, src.tts_enabled,
+        src.session_mode, src.permission_mode, src.tts_enabled,
         src.provider_id, src.model_id, src.reasoning_effort,
         createdAt, createdAt, createdAt, src.project_id);
 
@@ -439,11 +435,11 @@ export class SessionsRepo {
       this.db.prepare(
         `INSERT INTO turns
            (id, session_id, status, trigger_type,
-            session_mode, narrative_policy, provider_id, model_id, protocol,
+            session_mode, provider_id, model_id, protocol,
             iterations,
             created_at, completed_at, error_code, error_message)
          SELECT m.new_id, ?, t.status, t.trigger_type,
-                 t.session_mode, t.narrative_policy, t.provider_id, t.model_id, t.protocol,
+                 t.session_mode, t.provider_id, t.model_id, t.protocol,
                  t.iterations,
                  t.created_at, t.completed_at, t.error_code, t.error_message
          FROM turns t JOIN _turn_id_map m ON m.old_id = t.id
@@ -574,7 +570,6 @@ export class SessionsRepo {
       pinned?:         boolean;
       cwd?:  string;
       sessionMode?: SessionModeRow;
-      narrativePolicy?: NarrativePolicyRow;
       permissionMode?: PermissionModeRow;
       ttsEnabled?: boolean;
       providerId?: string;
@@ -602,10 +597,6 @@ export class SessionsRepo {
     if (patch.sessionMode !== undefined) {
       setClauses.push('session_mode = ?');
       values.push(patch.sessionMode);
-    }
-    if (patch.narrativePolicy !== undefined) {
-      setClauses.push('narrative_policy = ?');
-      values.push(patch.narrativePolicy);
     }
     if (patch.permissionMode !== undefined) {
       setClauses.push('permission_mode = ?');

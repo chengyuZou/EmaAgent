@@ -20,7 +20,6 @@ function insertTurnFixture(db: Database, sessionId: string): string {
     sessionId,
     triggerType: 'userMessage',
     sessionMode: 'chat',
-    narrativePolicy: 'off',
     ttsEnabled: false,
     createdAt: turnSeq,
   });
@@ -106,14 +105,12 @@ describe('SessionStore — session', () => {
     const session = store.createSession({
       projectId: project.id,
       sessionMode: 'work',
-      narrativePolicy: 'off',
     });
 
     expect(session).toMatchObject({
       projectId: project.id,
       cwd: 'D:/main',
       sessionMode: 'work',
-      narrativePolicy: 'off',
     });
     const chosen = store.createSession({ projectId: project.id, cwd: os.tmpdir() });
     expect(chosen.projectId).toBe(project.id);

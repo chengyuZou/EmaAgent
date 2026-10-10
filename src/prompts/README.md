@@ -47,8 +47,8 @@ const systemPrompt = [
 - 前台根 Agent 始终以当前激活角色行动. Chat/Work 只改变执行方式, 不切换身份.
   子代理不传角色与 SessionMode; Turn 在通用规则之后明确纯工作身份、委派范围和向父交付.
   静态文案原样共用, 不另建子代理版产品规则.
-- Narrative 是否可用由 Character 领域和当轮 ToolPool 决定。Prompt 不识别作品归属、
-  不判断角色资格;最终 Pool 没有 Narrative Tool 时,Prompt 也不会凭空声明该能力。
+- Narrative 是否可用由模型绑定、工具开关和当轮 ToolPool 决定. 不按角色名称自动开关工具;
+  最终 Pool 没有 Narrative Tool 时, Prompt 也不会凭空声明该能力.
 - 工作区/Skill/MCP 的信任级由产品静态块末尾统一说明, 不逐段重复, 不设 delivery 标记.
 - Tool 的参数、Schema、单工具输入限制与结果语义只住在 `Tool` 契约，Provider 经
   ToolPool 投影；Prompt 不复制参数说明。跨工具的选择顺序、专用工具优先、搜索构造、

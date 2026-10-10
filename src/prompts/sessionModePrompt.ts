@@ -1,4 +1,4 @@
-// 定义 Chat 与 Work 两种执行语义，不承担工具授权、Narrative 资格或运行时检索。
+// 定义 Chat 与 Work 两种执行语义, 不承担工具授权或运行时检索.
 
 import type { SessionMode } from '@ema-agent/session';
 

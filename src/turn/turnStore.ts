@@ -85,7 +85,6 @@ export class TurnStore {
       sessionId:    input.sessionId,
       triggerType:  input.triggerType,
       sessionMode: input.sessionMode,
-      narrativePolicy:  input.narrativePolicy,
       ttsEnabled: input.ttsEnabled,
       createdAt:    now,
     });
@@ -322,7 +321,6 @@ function toTurn(row: TurnRow): Turn {
     status: row.status,
     triggerType: row.trigger_type,
     sessionMode: row.session_mode,
-    narrativePolicy: row.narrative_policy,
     ttsEnabled: row.tts_enabled === 1,
     providerId: row.provider_id,
     modelId: row.model_id,

@@ -204,7 +204,6 @@ export async function prepareTurn(
     sessionId: request.sessionId,
     turnId,
     sessionMode: request.sessionMode,
-    narrativePolicy: request.narrativePolicy,
     cwd,
     workspaceRoots,
     ...(scratchpadDir ? { scratchpadDir } : {}),

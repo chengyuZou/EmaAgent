@@ -24,8 +24,8 @@ describe('Subagent 身份与 Run', () => {
     database.db.exec(`
       INSERT INTO sessions (id, title, cwd, created_at, updated_at)
       VALUES ('session-a', 'Session A', 'D:/work', 1, 1);
-      INSERT INTO turns (id, session_id, trigger_type, session_mode, narrative_policy, status, created_at)
-      VALUES ('turn-a', 'session-a', 'userMessage', 'work', 'auto', 'running', 2);
+      INSERT INTO turns (id, session_id, trigger_type, session_mode, status, created_at)
+      VALUES ('turn-a', 'session-a', 'userMessage', 'work', 'running', 2);
     `);
     identities = new SubagentsRepo(database.db);
     runs = new SubagentRunsRepo(database.db);

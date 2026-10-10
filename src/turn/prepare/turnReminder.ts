@@ -13,8 +13,6 @@ export interface RenderTurnReminderInput {
   readonly memoryWork?: string;
   /** 共享用户记忆, 当前角色记忆与相关角色关系的本轮正式文本 */
   readonly memoryRelationship?: string;
-  /** NarrativePolicy='always' 时对本 Turn 用户输入的一次剧情检索结果 */
-  readonly narrativeRecall?: string;
   /** Task 包的低频提醒 宿主在 reminder 落库成功后显式提交"已提醒" */
   readonly taskReminder?: string;
   /** Turn 开始时已存在的 Scratchpad 摘要 */
@@ -35,9 +33,6 @@ export function renderTurnReminder(input: RenderTurnReminderInput): string {
   }
   if (input.memoryRelationship?.trim()) {
     sections.push(`## Relationship 记忆\n${input.memoryRelationship.trim()}`);
-  }
-  if (input.narrativeRecall?.trim()) {
-    sections.push(`## Narrative 检索结果\n${input.narrativeRecall.trim()}`);
   }
 
   if (input.taskReminder?.trim()) {

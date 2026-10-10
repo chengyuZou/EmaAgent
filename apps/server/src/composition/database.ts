@@ -1,4 +1,4 @@
-// 持久化一族：profile/data 两个 Database 的打开、迁移与全部存储层 Store 构造。
+// 持久化一族：profile/data/narrative 三个 Database 的打开、迁移与全部存储层 Store 构造。
 import {
   SubagentMessagesRepo,
   SubagentsRepo,
@@ -21,6 +21,7 @@ import { GoalStore, type GoalEvent } from '@ema-agent/goal';
 import {
   dataDbPathFor,
   profileDbPath,
+  narrativeDbPath,
   removeOrphanSessionDirectories,
   removeSessionDir,
   removeTurnFiles,
@@ -31,6 +32,8 @@ export interface DatabaseComposition {
   readonly profileDb: Database;
   /** `{activeDataDir}/data.db`：Session/Turn/Message/附件/后台进程。 */
   readonly dataDb: Database;
+  /** 固定剧情资产与关键词缓存, 不随会话数据目录或角色切换. */
+  readonly narrativeDb: Database;
   /** 当前活动数据目录绝对路径；文件类存储（附件、音频、后台日志）都落在它下面。 */
   readonly activeDataDir: string;
 
@@ -57,12 +60,12 @@ export interface DatabaseComposition {
   readonly dataDirStats: DataDirStatsRepo;
   readonly sessionStats: SessionStatsRepo;
 
-  /** 关闭两个数据库；进程关闭序列的最后一步。 */
+  /** 关闭三个数据库；进程关闭序列的最后一步。 */
   close(): void;
 }
 
 /**
- * 打开并迁移两个数据库，构造全部存储层 Store。
+ * 打开并迁移三个数据库，构造全部存储层 Store。
  * activeDataDir 由 lifecycle 经 profile.db 的 data_dirs 表决议后传入——本函数不决定"用哪个目录"。
  */
 export function openDatabases(
@@ -86,6 +89,16 @@ export function openDatabases(
     dataDb.close();
     profileDb.close();
     throw err;
+  }
+
+  const narrativeDb = new Database({ path: narrativeDbPath(), kind: 'narrative' });
+  try {
+    narrativeDb.migrate();
+  } catch (error) {
+    narrativeDb.close();
+    dataDb.close();
+    profileDb.close();
+    throw error;
   }
 
   const usageRecorder = new UsageRecorder(dataDb);
@@ -123,6 +136,7 @@ export function openDatabases(
   return {
     profileDb,
     dataDb,
+    narrativeDb,
     activeDataDir,
     session,
     turns,
@@ -141,6 +155,7 @@ export function openDatabases(
     dataDirStats: new DataDirStatsRepo(dataDb.sqlite),
     sessionStats: new SessionStatsRepo(dataDb.sqlite),
     close() {
+      narrativeDb.close();
       dataDb.close();
       profileDb.close();
     },

@@ -22,7 +22,6 @@ const currentSession = {
   modelId: null,
   reasoningEffort: 'off',
   sessionMode: 'work',
-  narrativePolicy: 'auto',
   permissionMode: 'default',
   ttsEnabled: false,
 } as const;
@@ -51,7 +50,6 @@ describe('session records', () => {
       status: 'completed',
       trigger_type: 'userMessage',
       session_mode: 'work',
-      narrative_policy: 'auto',
       tts_enabled: 1,
       provider_id: 'openai',
       model_id: 'gpt-5.2',
@@ -81,7 +79,6 @@ describe('session records', () => {
       status: 'completed',
       triggerType: 'userMessage',
       sessionMode: 'work',
-      narrativePolicy: 'auto',
       providerId: 'openai',
       modelId: 'gpt-5.2',
       characterName: null,

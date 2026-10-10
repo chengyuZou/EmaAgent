@@ -29,14 +29,13 @@ describe('renderTurnReminder', () => {
     expect(text).not.toContain('## Git 状态');
   });
 
-  it('段序固定：日期 → Git → Work 摘要 → 当前角色关系记忆 → Narrative → 任务 → Scratchpad → 子代理 → Goal', () => {
+  it('段序固定：日期 → Git → Work 摘要 → 当前角色关系记忆 → 任务 → Scratchpad → 子代理 → Goal', () => {
     const text = renderTurnReminder({
       currentDate: '2026-08-23',
       goal: null,
       gitSummary: GIT_OK,
       memoryWork: '工作摘要',
       memoryRelationship: '共享用户记忆与当前角色记忆',
-      narrativeRecall: '剧情检索结果',
       taskReminder: '任务提醒',
       scratchpad: '已有文件：a.txt',
       subagents: [{ id: 'agent-1', title: '调查', description: '查调用链' }],
@@ -46,7 +45,6 @@ describe('renderTurnReminder', () => {
       '## Git 状态',
       '## Work 记忆摘要',
       '## Relationship 记忆',
-      '## Narrative 检索结果',
       '## 任务提醒',
       '## Scratchpad',
       '## 本 Session 子代理目录',

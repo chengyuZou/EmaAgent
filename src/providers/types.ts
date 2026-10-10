@@ -57,8 +57,8 @@ export type ModelBindingModule = ModelBindingModuleRow;
 export const MODEL_BINDING_CAPABILITIES: Readonly<Record<ModelBindingModule, ModelCapability>> =
   Object.freeze({
     'memory-llm': 'llm',
-    'lightrag-llm': 'llm',
-    'lightrag-embed': 'embed',
+    'narrative-llm': 'llm',
+    'narrative-embed': 'embed',
     'tts': 'tts',
     'stt': 'stt',
     'vision': 'vision',

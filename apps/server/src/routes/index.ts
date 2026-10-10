@@ -27,7 +27,6 @@ import { mcpServersRoute } from './mcp/servers.js';
 import { memoryFilesRoute } from './memory/files.js';
 import { memoryJobsRoute } from './memory/jobs.js';
 import { memoryStatsRoute } from './memory/stats.js';
-import { narrativeControlRoute } from './narrative/control.js';
 import { providerCapabilitiesRoute } from './providers/capabilities.js';
 import { providerConfigsRoute } from './providers/configs.js';
 import { providerHealthRoute } from './providers/health.js';
@@ -89,7 +88,6 @@ export const createRoutes = (composition: Composition, secret: string) => {
       compactSession: commands.compactSession,
       attachTurn: handle => turnFanout.attach(handle),
     }))
-    .route('/', narrativeControlRoute(composition.narrative))
     .route('/api/ws/speech', speechWebSocketRoute(speech))
     .route('/api/turns', turnControlRoute({ turns: database.turns, toolExecutionState: tools.toolExecutionState }))
     .route('/api/turns', turnAudioRoute({ audioArchive: speech.audioArchive, turns: database.turns }))

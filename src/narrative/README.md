@@ -26,6 +26,10 @@ for (const [timeline, value] of result) {
 
 `CallEmbed` 必须使用资产原有的 `Pro/bge-m3` 向量空间. 仅维度相同不代表模型可以互换; 包内检查返回维度是否为 1024. `CallLlm` 负责路由与提词, 其绑定、协议必填参数和调用重试由宿主处理. 例如 Anthropic 协议所需的 `maxOutputTokens` 应由传入的调用函数补齐, 本包不另设输出预算.
 
+Server 使用 `narrative-llm` 和 `narrative-embed` 绑定创建这两个调用函数. `NarrativeSearch` 与其他工具共用 `tools.disabled` 开关, 不判断当前角色是否属于游戏, 不自动更改开关. 模型绑定、工具开关和 `narrative.queryMode` 在 Turn 准备时读取, 之后修改设置影响下一 Turn, 不取消当前查询.
+
+Agent 仅通过工具调用查询剧情, 不在准备 Turn reminder 时预先查询, 也不限制每轮调用次数. Map 只在 `NarrativeSearchTool` 输出时转为可保存的数组结果; 工具调用事件、历史存储和 ToolUI 使用这份普通工具结果, 不增加 Narrative 专用事件.
+
 ## 查询流程
 
 ```text

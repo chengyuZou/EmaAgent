@@ -1,8 +1,6 @@
 // 为一次 Turn 冻结工具层: ToolPool 宿主能力上下文 权限判定上下文与两类交互口子
 import type { SubagentExecutor, AgentLoopEvent, PrepareSubagent } from '@ema-agent/agent';
 import type { CallVision } from '@ema-agent/vision';
-import type { NarrativeClient, NarrativeLlmConnection, NarrativeSearch } from '@ema-agent/narrative';
-import { narrativeQueryModeSetting, prepareNarrativeRecall } from '@ema-agent/narrative';
 import {
   applyPermissionUpdate,
   type PermissionMode,
@@ -19,6 +17,7 @@ import type { TaskStore } from '@ema-agent/tasks';
 import type { GoalStore } from '@ema-agent/goal';
 import {
   assembleToolPool,
+  readToolSettings,
   BuiltinTools,
   ToolPool,
   type AskUser,
@@ -32,7 +31,7 @@ import {
   type ToolResultStore,
   type ToolUseContext,
 } from '@ema-agent/tools';
-import type { SessionMode, NarrativePolicy, ReasoningEffort } from '@ema-agent/session';
+import type { SessionMode, ReasoningEffort } from '@ema-agent/session';
 import type { SessionInteractionQueue } from '../interactionQueue.js';
 import type { TurnStreamEvent } from '../events.js';
 
@@ -67,10 +66,8 @@ export interface TurnToolsDeps {
   readonly subagents: SubagentExecutor;
   readonly taskStore?: TaskStore;
   readonly goalStore?: GoalStore;
-  /** narrativePolicy 非 'off' 时构建本 Turn 召回闭包; 与 resolveNarrativeLlm 同时缺失则无 Narrative 能力 */
-  readonly currentNarrativeClient?: () => NarrativeClient | undefined;
-  /** Turn 开始时解析一次当次 Narrative LLM 连接并冻结进闭包: 未绑定或协议不支持返回 undefined */
-  readonly resolveNarrativeLlm?: () => NarrativeLlmConnection | undefined;
+  /** Turn 准备时冻结模型绑定与算法设置. 缺少绑定时不提供剧情工具. */
+  readonly resolveNarrativeSearch?: () => ToolUseContext['narrativeSearch'];
   readonly backgroundProcesses?: BackgroundProcess;
   /** 每 Turn 解析一次 vision 调用闭包: 无绑定时返回 undefined */
   readonly resolveVision?: () => CallVision | undefined;
@@ -86,7 +83,6 @@ export interface PrepareTurnToolsInput {
   readonly sessionId: string;
   readonly turnId: string;
   readonly sessionMode: SessionMode;
-  readonly narrativePolicy: NarrativePolicy;
   readonly cwd: string;
   readonly workspaceRoots: readonly string[];
   readonly scratchpadDir?: string;
@@ -113,8 +109,6 @@ export interface PrepareTurnToolsInput {
 
 export interface TurnToolsAssembly {
   readonly toolPool: ToolPool;
-  /** 本 Turn 冻结的召回闭包: auto 时进 Tool Context, always 时供 reminder: off 或无能力为 undefined */
-  readonly narrativeSearch?: NarrativeSearch;
   readonly createExecutor: (wake: () => void) => StreamingToolExecutor;
   /** 子代理使用独立工具池, 批准请求按本次 Run 归属, 共用 Session FIFO. */
   readonly createSubagentExecutor: (args: {
@@ -214,45 +208,14 @@ export function prepareTurnTools(deps: TurnToolsDeps, input: PrepareTurnToolsInp
 
   const commandRunner = deps.commandRunner?.(cwd, input.workspaceRoots);
   const vision = deps.resolveVision?.();
-  // 召回闭包在本 Turn 构建一次: LLM 连接与模式覆盖全部冻结;
-  // auto 时模型经 Tool 触发, always 时 reminder 触发, 二者共用同一实现
-  const narrativeSearch = ((): NarrativeSearch | undefined => {
-    if (input.narrativePolicy === 'off') {
-      return undefined;
-    }
-    if (!deps.currentNarrativeClient || !deps.resolveNarrativeLlm) {
-      return undefined;
-    }
-    const client = deps.currentNarrativeClient();
-    if (!client) {
-      return undefined;
-    }
-    const llm = deps.resolveNarrativeLlm();
-    if (!llm) {
-      return undefined;
-    }
-    const queryModeOverride = deps.settings.get(narrativeQueryModeSetting);
-    return (query, mode, signal) =>
-      prepareNarrativeRecall(
-        client,
-        {
-          sessionId,
-          turnId,
-          userInput: query,
-          llm,
-          mode: queryModeOverride !== 'auto' ? queryModeOverride : (mode ?? 'hybrid'),
-          signal,
-          emit: event => input.emit(event),
-        }
-      );
-  })();
+  const narrativeSearch = deps.resolveNarrativeSearch?.();
   const toolContext: ToolUseContext = Object.freeze({
     cwd,
     platform: process.platform,
     ...(commandRunner ? { commandRunner } : {}),
     ...(vision ? { vision } : {}),
     ...(deps.backgroundProcesses ? { backgroundProcesses: deps.backgroundProcesses } : {}),
-    ...(input.narrativePolicy === 'auto' && narrativeSearch ? { narrativeSearch } : {}),
+    ...(narrativeSearch ? { narrativeSearch } : {}),
     ...(deps.taskStore ? { taskStore: deps.taskStore } : {}),
     ...(deps.goalStore ? { goalStore: deps.goalStore } : {}),
     subagents: {
@@ -287,7 +250,10 @@ export function prepareTurnTools(deps: TurnToolsDeps, input: PrepareTurnToolsInp
     askUser,
   });
 
-  const availablePool = assembleToolPool(deps.registry, toolContext);
+  // 禁用设置按 Turn 冻结, 模型和执行器使用同一个筛选结果. 运行中改开关只影响下一 Turn.
+  const disabledToolIds = new Set(readToolSettings(deps.settings).disabledToolIds);
+  const availablePool = assembleToolPool(deps.registry, toolContext)
+    .filter(tool => !disabledToolIds.has(tool.id));
   // 模型与执行器共用筛选后的池, 历史中的写工具名和 allow 规则不能重新扩入.
   const toolPool = input.permission.mode === 'plan'
     ? availablePool.filter(tool => PLAN_TOOL_IDS.has(tool.id))
@@ -324,7 +290,6 @@ export function prepareTurnTools(deps: TurnToolsDeps, input: PrepareTurnToolsInp
   let stopped = false;
   return {
     toolPool,
-    ...(narrativeSearch ? { narrativeSearch } : {}),
     createExecutor,
     createSubagentExecutor: ({ subagentId, runId, toolPool: subPool, signal, wake }) => {
       const executor = new StreamingToolExecutor({

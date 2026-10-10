@@ -25,7 +25,7 @@ function createFixture(running = false) {
   const queue = new SessionContinuationQueue({
     sessions: {
       sessionExists: sessionId => sessionId === 'session-a',
-      getSession: () => ({ sessionMode: 'chat', narrativePolicy: 'off', ttsEnabled: true }) as never,
+      getSession: () => ({ sessionMode: 'chat', ttsEnabled: true }) as never,
     },
     sessionRunning: {
       isRunning: () => sessionRunning,
@@ -51,7 +51,6 @@ function createFixture(running = false) {
 
 const workSelection = {
   sessionMode: 'work' as const,
-  narrativePolicy: 'always' as const,
 };
 
 const goalDatabases: Database[] = [];
@@ -143,7 +142,7 @@ describe('SessionContinuationQueue', () => {
     const first = fixture.queue.enqueue({
       sessionId: 'session-a',
       input: [{ type: 'text', text: '第一条' }],
-      selection: { sessionMode: 'chat', narrativePolicy: 'off' },
+      selection: { sessionMode: 'chat' },
     });
     fixture.queue.enqueue({
       sessionId: 'session-a',
@@ -157,7 +156,6 @@ describe('SessionContinuationQueue', () => {
     expect(fixture.starts[0]).toMatchObject({
       triggerType: 'userMessage',
       sessionMode: 'work',
-      narrativePolicy: 'always',
       ttsEnabled: true,
     });
     expect(fixture.starts[0]!.input).toEqual([{ type: 'text', text: '第一条' }]);

@@ -19,8 +19,8 @@ describe('SubagentMessagesRepo', () => {
     `).run();
     database.db.prepare(`
       INSERT INTO turns (
-        id, session_id, trigger_type, session_mode, narrative_policy, status, created_at
-      ) VALUES ('turn-a', 'session-a', 'userMessage', 'work', 'auto', 'running', 1)
+        id, session_id, trigger_type, session_mode, status, created_at
+      ) VALUES ('turn-a', 'session-a', 'userMessage', 'work', 'running', 1)
     `).run();
     const identities = new SubagentsRepo(database.db);
     const runs = new SubagentRunsRepo(database.db);

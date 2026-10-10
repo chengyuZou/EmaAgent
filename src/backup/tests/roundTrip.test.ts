@@ -36,9 +36,9 @@ function seedSource(dataDir: string): Database {
     VALUES (?, '往返', 'D:/work', 0, 1, 1, 1, 'plan')
   `).run(SESSION_ID);
   db.sqlite.prepare(`
-    INSERT INTO turns (id, session_id, trigger_type, session_mode, narrative_policy,
+    INSERT INTO turns (id, session_id, trigger_type, session_mode,
       tts_enabled, character_name, status, created_at)
-    VALUES ('t1', ?, 'userMessage', 'chat', 'off', 1, 'ema', 'completed', 1)
+    VALUES ('t1', ?, 'userMessage', 'chat', 1, 'ema', 'completed', 1)
   `).run(SESSION_ID);
 
   const imagePath = path.join(dataDir, 'sessions', SESSION_ID, 'attachments', 'images', 'u1.png');

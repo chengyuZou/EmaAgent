@@ -74,7 +74,6 @@ describe('Server 子代理 reminder 目录', () => {
     } as unknown as TurnCompositionDeps);
     const scope: TurnReminderScope = {
       sessionId: 'session', turnId: 'turn-1', characterName: 'test', sessionMode: 'chat',
-      narrativePolicy: 'off', userText: '', signal: new AbortController().signal, emit: vi.fn(),
     };
     const first = await captured.readTurnReminder!(scope);
     expect(first.subagents?.map(subagent => subagent.id)).toEqual([...ids].reverse());

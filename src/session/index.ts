@@ -28,7 +28,6 @@ export type {
   SessionSearchHit,
   SearchSessionsOutput,
   SessionMode,
-  NarrativePolicy,
   ReasoningEffort,
   TurnStatus,
   SessionSidebarDestination,

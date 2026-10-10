@@ -13,12 +13,12 @@ beforeEach(() => {
     VALUES ('s1', 'a', 'D:/work', 0, 1, 1, 1), ('s2', 'b', 'D:/work', 0, 1, 1, 1)
   `).run();
   database.sqlite.prepare(`
-    INSERT INTO turns (id, session_id, trigger_type, session_mode, narrative_policy,
+    INSERT INTO turns (id, session_id, trigger_type, session_mode,
       status, created_at)
     VALUES
-      ('t1', 's1', 'userMessage', 'chat', 'off', 'completed', 1),
-      ('t2', 's1', 'userMessage', 'work', 'always', 'completed', 2),
-      ('t3', 's2', 'userMessage', 'chat', 'off', 'completed', 3)
+      ('t1', 's1', 'userMessage', 'chat', 'completed', 1),
+      ('t2', 's1', 'userMessage', 'work', 'completed', 2),
+      ('t3', 's2', 'userMessage', 'chat', 'completed', 3)
   `).run();
   database.sqlite.prepare(`
     INSERT INTO usage_records (
@@ -99,7 +99,6 @@ describe('SessionStatsRepo.getStats', () => {
     expect(stats.totalOutputTokens).toBe(140);
     expect(stats.chatTurns).toBe(1);
     expect(stats.workTurns).toBe(1);
-    expect(stats.narrativeAlwaysTurns).toBe(1);
     expect(stats.attachmentCount).toBe(2);
     expect(stats.attachmentTotalBytes).toBe(140);
   });

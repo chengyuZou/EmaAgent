@@ -21,6 +21,12 @@ export function profileDbPath(): string {
   return path.join(profileDir(), 'profile.db');
 }
 
+export function narrativeDbPath(): string {
+  const directory = path.join(profileDir(), 'narrative');
+  fs.mkdirSync(directory, { recursive: true });
+  return path.join(directory, 'narrative.db');
+}
+
 /** 返回 SQLite 主文件及其 WAL/SHM 辅助文件。 */
 export function sqliteFileSet(databasePath: string): string[] {
   return [databasePath, `${databasePath}-wal`, `${databasePath}-shm`];

@@ -46,11 +46,7 @@ describe('Builtin ToolPool 能力装配', () => {
       taskStore: {} as never,
       askUser: async () => ({ answers: {} }),
       subagents: {} as never,
-      narrativeSearch: async () => ({
-        timelines: [],
-        contextText: null,
-        failures: [],
-      }),
+      narrativeSearch: async () => new Map(),
       scratchpad: { dir: 'D:/scratchpad', author: 'main' },
     };
 

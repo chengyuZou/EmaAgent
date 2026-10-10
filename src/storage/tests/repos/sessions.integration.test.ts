@@ -197,9 +197,9 @@ describe('SessionsRepo integration', () => {
   }): void {
     database.db.prepare(`
       INSERT INTO turns
-        (id, session_id, trigger_type, session_mode, narrative_policy,
+        (id, session_id, trigger_type, session_mode,
          status, created_at, completed_at)
-      VALUES (?, ?, 'userMessage', 'chat', 'off', ?, ?, ?)
+      VALUES (?, ?, 'userMessage', 'chat', ?, ?, ?)
     `).run(
       fixture.id,
       fixture.sessionId,

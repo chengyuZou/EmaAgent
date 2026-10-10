@@ -1,5 +1,6 @@
 // 测试自建 Provider 创建（按能力分区、id 缺省生成）、一把 key 解析连接、update 的能力 delta 与目录落行。
 import { afterEach, describe, expect, it } from 'vitest';
+import { readFileSync, readdirSync } from 'node:fs';
 import { Database } from '@ema-agent/storage';
 import {
   ModelBindings,
@@ -55,6 +56,49 @@ function createModelStack(database: TestProfileDatabase) {
 }
 
 describe('Provider 控制面', () => {
+  it('旧 LightRAG 绑定改名为 Narrative 后保留模型, 外键删除仍生效', () => {
+    const database = new Database({ memory: true, kind: 'profile' });
+    databases.push(database);
+    const folder = new URL('../../storage/migrations/profile/', import.meta.url);
+    for (const name of readdirSync(folder).filter(name => name.endsWith('.sql') && Number.parseInt(name, 10) <= 4).sort()) {
+      database.sqlite.exec(readFileSync(new URL(name, folder), 'utf8'));
+    }
+    database.sqlite.pragma('user_version = 4');
+    const providers = new Providers(database);
+    providers.create({
+      id: 'legacy-narrative', name: 'Legacy', authType: 'none',
+      capability: { capability: 'llm', protocol: 'openai-llm', baseUrl: 'http://localhost/v1' },
+    });
+    providers.update('legacy-narrative', {
+      capability: { capability: 'embed', protocol: 'openai-embed', baseUrl: 'http://localhost/v1' },
+    });
+    const models = new ProviderModels(database, providers, createTestCatalog());
+    models.save({
+      providerId: 'legacy-narrative', capability: 'llm', modelId: 'route',
+      contextWindow: 128_000, maxOutput: null, toolCall: null,
+      reasoning: null, temperature: null, inputImage: null,
+    });
+    models.save({ providerId: 'legacy-narrative', capability: 'embed', modelId: 'Pro/bge-m3', dim: 1024 });
+    database.sqlite.exec(`
+      INSERT INTO model_bindings VALUES
+        ('lightrag-llm', 'llm', 'legacy-narrative', 'route'),
+        ('lightrag-embed', 'embed', 'legacy-narrative', 'Pro/bge-m3');
+      INSERT INTO settings VALUES ('narrative.startOnLaunch', 'true', 1);
+    `);
+    database.migrate();
+    const bindings = new ModelBindings(database, models);
+    expect(bindings.list()).toEqual([
+      { module: 'narrative-embed', capability: 'embed', providerId: 'legacy-narrative', modelId: 'Pro/bge-m3' },
+      { module: 'narrative-llm', capability: 'llm', providerId: 'legacy-narrative', modelId: 'route' },
+    ]);
+    expect(database.sqlite.prepare("SELECT * FROM settings WHERE key = 'narrative.startOnLaunch'").get())
+      .toBeUndefined();
+    expect(database.sqlite.pragma('foreign_key_check')).toEqual([]);
+    database.sqlite.prepare("DELETE FROM provider_models WHERE provider_id = 'legacy-narrative' AND capability = 'embed'").run();
+    expect(bindings.get('narrative-embed')).toBeUndefined();
+    expect(bindings.get('narrative-llm')).toHaveProperty('modelId', 'route');
+  });
+
   it('自建 Provider 创建后按能力解析连接，key 来自 Provider 的一把 key', () => {
     const store = new TestProfileDatabase();
     const providers = createProviders(store);

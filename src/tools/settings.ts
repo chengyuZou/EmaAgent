@@ -1,6 +1,6 @@
 // 内置工具的用户级启用/禁用设置。
-// 禁用是"黑名单"维度, 与能力装配(validateContext)和产品执行模式(chat/work
-// 白名单)正交——三者叠加后才是模型可见集合。默认空数组 = 全部启用。
+// 禁用设置与能力装配(validateContext)、Plan 只读筛选分别生效.
+// 工具必须同时满足这些条件才提供给模型. 默认空数组 = 不主动禁用工具.
 
 import type { SettingsStore } from '@ema-agent/settings';
 import { defineSetting } from '@ema-agent/settings';
@@ -11,8 +11,7 @@ import { BuiltinTools } from './Tool/BuiltinToolIdentity.js';
  *  身份来自框架层单一事实源 BuiltinToolIdentity, 不与工具实现包重复。 */
 export const ASK_USER_TOOL_ID = BuiltinTools.AskUser.id;
 
-/** 内置工具禁用: 存工具的稳定 id(BuiltinTools.*.id), 默认全开。
- *  与执行模式白名单(chat/work)是独立维度: 这里禁掉的工具两种模式都不可见。 */
+/** 内置工具禁用: 存工具的稳定 id(BuiltinTools.*.id), Chat 与 Work 共用这份设置. */
 export const disabledToolsSetting = defineSetting({
   key: 'tools.disabled',
   apply: 'nextTurn',

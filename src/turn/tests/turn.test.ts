@@ -119,7 +119,6 @@ function makeStart(sessionId: string): StartTurn {
     sessionId,
     triggerType: 'userMessage',
     sessionMode: 'work',
-    narrativePolicy: 'off',
     ttsEnabled: true,
     input: [{ type: 'text', text: '你好' }],
   };
@@ -416,7 +415,7 @@ describe('TurnExecutor 集成', () => {
     try {
       const goal = fixture.goals.create(fixture.session.id, objective);
       fixture.queue.enqueue({ sessionId: fixture.session.id,
-        input: [{ type: 'text', text: objective }], selection: { sessionMode: 'work', narrativePolicy: 'off' } });
+        input: [{ type: 'text', text: objective }], selection: { sessionMode: 'work' } });
       await vi.waitFor(() => expect(fixture.handles).toHaveLength(1));
       const handle = fixture.handles[0]!;
       expect((await handle.completion).status).toBe('completed');
@@ -659,7 +658,7 @@ describe('TurnExecutor 集成', () => {
       fixture.turns.beginSessionDeletion(fixture.session.id);
       fixture.queue.enqueue({ sessionId: fixture.session.id,
         input: [{ type: 'text', text: '不能在删除期间开新 Turn' }],
-        selection: { sessionMode: 'work', narrativePolicy: 'off' } });
+        selection: { sessionMode: 'work' } });
       releaseCleanup();
       await handle.completion;
       expect(fixture.sessionRunning.isRunning(fixture.session.id)).toBe(false);

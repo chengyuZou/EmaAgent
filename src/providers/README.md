@@ -76,7 +76,7 @@ providers                id PK · name · icon_id NULL · auth_type('none'|'bear
    ├─ provider_models    (provider_id, capability, model_id) PK · name NULL · source('user'|'dev') · enabled · 能力参数列
    │                     name = 目录同步自带的显示名快照（空则回退 model_id）
    │                     user 手写（可编辑）+ dev 目录同步（禁修改、参数以目录为准、enabled 不动）；FK 级联到能力行
-   └─ model_bindings     module PK（memory/title/lightrag-embed/lightrag-llm/tts/stt/vision）
+   └─ model_bindings     module PK（memory/title/narrative-embed/narrative-llm/tts/stt/vision）
                          → (provider_id, capability, model_id)，只能绑已启用模型，且绑定入口断言连接可解析
 ```
 

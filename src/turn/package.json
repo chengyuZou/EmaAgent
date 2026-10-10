@@ -32,7 +32,6 @@
     "@ema-agent/git": "workspace:*",
     "@ema-agent/goal": "workspace:*",
     "@ema-agent/llm": "workspace:*",
-    "@ema-agent/narrative": "workspace:*",
     "@ema-agent/permission": "workspace:*",
     "@ema-agent/prompts": "workspace:*",
     "@ema-agent/providers": "workspace:*",

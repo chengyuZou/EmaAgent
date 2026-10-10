@@ -13,7 +13,6 @@ import type {
   LlmGenerationSource,
   Message,
 } from '@ema-agent/llm';
-import type { NarrativeSearch } from '@ema-agent/narrative';
 import { isLlmProtocol } from '@ema-agent/providers';
 import {
   type MessageBlocks,
@@ -59,8 +58,7 @@ import type {
 } from './types.js';
 
 /**
- * Reminder 事实的作用域：git/任务/scratchpad 等工作区与 Session 事实、Narrative 召回
- * 所需的用户输入、以及召回事件的 Turn 事件流出口，全部按 Turn 绑定。
+ * Reminder 读取当前 Turn 的工作区, 任务, Memory 等事实, 不在准备阶段执行工具查询.
  */
 export interface TurnReminderScope {
   readonly sessionId: string;
@@ -68,10 +66,6 @@ export interface TurnReminderScope {
   /** 与 Turn 行同一次冻结的角色目录名。 */
   readonly characterName: string;
   readonly sessionMode: Turn['sessionMode'];
-  /** auto = NarrativeSearchTool 可见；always = Turn 开头查询一次并写入 reminder；off = 两者皆无。 */
-  readonly narrativePolicy: Turn['narrativePolicy'];
-  /** 本 Turn 冻结的召回闭包（prepareTurnTools 构建）；always 路径据此查询，off 或无能力为 undefined。 */
-  readonly narrativeSearch?: NarrativeSearch;
   /** 本 Turn 用户文本. 内部续接触发时可以为空串. */
   readonly userText: string;
   /** Turn 级取消信号；reminder 期的召回随 Turn 中止一并取消。 */
@@ -97,7 +91,7 @@ export interface TurnExecutorDeps extends PrepareTurnDeps {
   ) => (request: CompactRequest) => Promise<CompactResult>;
   /**
    * 每根 Turn 调用一次，产出 reminder 的完整启动期输入（含 currentDate 等全部字段：
-   * git 探测、Memory 摘要、Narrative always 召回、Task 一次性提醒、Scratchpad 快照）。
+   * git 探测、Memory 摘要、Task 一次性提醒、Scratchpad 快照）。
    * 结果即冻结，本 Turn 后续 LLM Call 复用同一份持久化 reminder，不再回读。
    */
   readonly readTurnReminder: (
@@ -147,7 +141,6 @@ export class TurnExecutor {
       sessionId: input.sessionId,
       triggerType: input.triggerType,
       sessionMode: input.sessionMode,
-      narrativePolicy: input.narrativePolicy,
       ttsEnabled: input.ttsEnabled,
     });
     const channel = new TurnEventChannel<TurnStreamEvent>(() => {
@@ -252,7 +245,6 @@ export class TurnExecutor {
         turnId,
         triggerType: turn.triggerType,
         sessionMode: turn.sessionMode,
-        narrativePolicy: turn.narrativePolicy,
         ttsEnabled: turn.ttsEnabled,
       });
 
@@ -302,8 +294,6 @@ export class TurnExecutor {
         turnId,
         characterName,
         sessionMode: turn.sessionMode,
-        narrativePolicy: turn.narrativePolicy,
-        ...(tools.narrativeSearch ? { narrativeSearch: tools.narrativeSearch } : {}),
         userText,
         signal,
         emit,
@@ -713,7 +703,7 @@ export class TurnExecutor {
   }
 }
 
-/** Narrative 与标题只读取用户显式文本，不混入附件描述或 Skill 指引。 */
+/** 标题只读取用户显式文本, 不混入附件描述或 Skill 指引. */
 function explicitUserText(blocks: MessageBlocks): string {
   if (typeof blocks === 'string') return blocks;
   return blocks

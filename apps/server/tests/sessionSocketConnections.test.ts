@@ -52,7 +52,6 @@ describe('sessionClientMessageSchema', () => {
   it('separates direct UserMessage and Queue commands and removes the old mixed entry', () => {
     const payload = {
       sessionMode: 'chat',
-      narrativePolicy: 'auto',
       input: [{ type: 'text', text: 'hello' }],
     };
     expect(sessionClientMessageSchema.safeParse({

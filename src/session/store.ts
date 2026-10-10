@@ -122,7 +122,6 @@ export class SessionStore {
         cwd,
         projectId: input.projectId,
         sessionMode: input.sessionMode,
-        narrativePolicy: input.narrativePolicy,
         permissionMode: input.permissionMode,
         ttsEnabled: input.ttsEnabled,
         providerId: input.providerId,
@@ -250,7 +249,6 @@ export class SessionStore {
       cleaned.cwd = patch.cwd;
     }
     if (patch.sessionMode !== undefined) cleaned.sessionMode = patch.sessionMode;
-    if (patch.narrativePolicy !== undefined) cleaned.narrativePolicy = patch.narrativePolicy;
     if (patch.permissionMode !== undefined) cleaned.permissionMode = patch.permissionMode;
     if (patch.ttsEnabled !== undefined) cleaned.ttsEnabled = patch.ttsEnabled;
     if (patch.providerId !== undefined) cleaned.providerId = patch.providerId;

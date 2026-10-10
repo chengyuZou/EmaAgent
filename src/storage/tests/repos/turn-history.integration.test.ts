@@ -32,7 +32,6 @@ describe('Turn 历史读取', () => {
         sessionId,
         triggerType: 'userMessage',
         sessionMode: 'chat',
-        narrativePolicy: 'off',
         ttsEnabled: false,
         createdAt: 10,
       });
@@ -145,7 +144,6 @@ describe('Turn 历史读取', () => {
       sessionId,
       triggerType: 'userMessage',
       sessionMode: 'chat',
-      narrativePolicy: 'off',
       ttsEnabled: false,
       createdAt: 1,
     });
@@ -180,7 +178,6 @@ describe('Turn 历史读取', () => {
       sessionId,
       triggerType: 'sessionContinuation',
       sessionMode: 'chat',
-      narrativePolicy: 'off',
       ttsEnabled: false,
       createdAt: 3,
     });
@@ -198,7 +195,6 @@ describe('Turn 历史读取', () => {
       sessionId,
       triggerType: 'userMessage',
       sessionMode: 'chat',
-      narrativePolicy: 'off',
       ttsEnabled: false,
       createdAt: 1,
     });
@@ -221,7 +217,6 @@ describe('Turn 历史读取', () => {
       sessionId,
       triggerType: 'userMessage',
       sessionMode: 'chat',
-      narrativePolicy: 'off',
       ttsEnabled: false,
       createdAt: 1,
     });

@@ -3,7 +3,7 @@ import type { CommandRunner } from '@ema-agent/sandbox';
 import type { TaskStore } from '@ema-agent/tasks';
 import type { GoalStore } from '@ema-agent/goal';
 import type { ListMemory, ReadMemory, SearchMemory } from '@ema-agent/memory';
-import type { NarrativeSearch } from '@ema-agent/narrative';
+import type { NarrativeQueryMode, NarrativeRecallResult } from '@ema-agent/narrative';
 import type { SkillPool } from '@ema-agent/skills';
 import type { CallVision } from '@ema-agent/vision';
 import type { FileStateCache } from '../fileState/fileStateCache.js';
@@ -108,8 +108,12 @@ export interface ToolUseContext {
   readonly commandRunner?: CommandRunner;
   /** Bash 与 Process 工具族共享的持久后台进程入口。 */
   readonly backgroundProcesses?: BackgroundProcess;
-  /** Narrative 剧情资料的按需检索入口，仅在 auto 策略下装配。 */
-  readonly narrativeSearch?: NarrativeSearch;
+  /** 当前模型绑定可用时提供的剧情查询. 身份由 ToolInvocation 管理, 结果在 Tool 中转为可保存数据. */
+  readonly narrativeSearch?: (
+    query: string,
+    mode: NarrativeQueryMode | undefined,
+    signal: AbortSignal,
+  ) => Promise<NarrativeRecallResult>;
   /** Task 工具族的持久存储。 */
   readonly taskStore?: TaskStore;
   /** 根 Agent 读取和报告 Session Goal, 子代理不提供此能力. */

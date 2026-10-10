@@ -181,29 +181,11 @@ export const providerModelsRoute = (deps: ProviderModelsRouteDeps) =>
       return context.body(null, 204);
     });
 
-/**
- * 绑定门槛：模块能力的连接必须可解析（协议档在位、bearer 有 key）——
- * 不让"绑定成功、执行时才炸"。Narrative Bridge 只实现 openai-llm/openai-embed
- * 两个协议族，它的两个模块额外锁定协议。
- */
-const NARRATIVE_BINDING_PROTOCOLS = {
-  'lightrag-llm': 'openai-llm',
-  'lightrag-embed': 'openai-embed',
-} as const;
-
+// 绑定前确认对应能力的连接可用. 协议选择与其他模型调用使用同一入口.
 function assertBindingConnection(
   deps: ProviderModelsRouteDeps,
   module: ModelBindingModule,
   providerId: string,
 ): void {
-  const connection = deps.providers.resolveConnection(providerId, MODEL_BINDING_CAPABILITIES[module]);
-  const expected = module === 'lightrag-llm' || module === 'lightrag-embed'
-    ? NARRATIVE_BINDING_PROTOCOLS[module]
-    : undefined;
-  if (expected && connection.protocol !== expected) {
-    throw new ProviderError(
-      'invalid_configuration',
-      `${module} 只支持 ${expected} 协议，当前 Provider 该能力为 ${connection.protocol}`,
-    );
-  }
+  deps.providers.resolveConnection(providerId, MODEL_BINDING_CAPABILITIES[module]);
 }

@@ -6,8 +6,8 @@ import  { type ModelCapability, type ModelBindingModule, MODEL_BINDING_CAPABILIT
 
 export const MODEL_BINDING_MODULES = [
   'memory-llm',
-  'lightrag-embed',
-  'lightrag-llm',
+  'narrative-embed',
+  'narrative-llm',
   'tts',
   'stt',
   'vision',

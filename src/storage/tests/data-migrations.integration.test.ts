@@ -39,11 +39,12 @@ describe('data migration v13', () => {
       INSERT INTO tool_executions (call_id, session_id, turn_id, subagent_id, tool_name, status, created_at, updated_at)
         VALUES ('inner-call', 's', 't', 'child', 'Read', 'succeeded', 7, 8);
     `);
-    const sessionsBefore = database.sqlite.prepare('SELECT * FROM sessions').all();
+    const sessionsBefore = (database.sqlite.prepare('SELECT * FROM sessions').all() as Array<{ narrative_policy: string }>)
+      .map(({ narrative_policy, ...session }) => session);
     const messagesBefore = database.sqlite.prepare('SELECT * FROM messages').all();
     const toolsBefore = database.sqlite.prepare('SELECT * FROM tool_executions').all();
     database.migrate();
-    expect(database.currentVersion()).toBe(13);
+    expect(database.currentVersion()).toBe(14);
     expect(database.sqlite.prepare('SELECT * FROM subagents ORDER BY id').all()).toEqual([
       {
         id: 'child', session_id: 's', title: null, description: 'old description',
@@ -106,7 +107,7 @@ describe('data migration v12', () => {
     `);
     const before = database.sqlite.prepare('SELECT * FROM goals').get();
     database.migrate();
-    expect(database.currentVersion()).toBe(13);
+    expect(database.currentVersion()).toBe(14);
     expect(database.sqlite.prepare('SELECT * FROM goals').get()).toEqual({ ...before as object, feedback: null });
     database.sqlite.prepare('UPDATE goals SET feedback = ? WHERE id = ?').run('已完成第一部分', 'old-goal');
     expect(database.sqlite.prepare('SELECT feedback FROM goals WHERE id = ?').get('old-goal'))
@@ -132,12 +133,12 @@ describe('data migration v2', () => {
     `).run();
     database.sqlite.prepare(`
       INSERT INTO turns (
-        id, session_id, status, trigger_type, session_mode, narrative_policy,
+        id, session_id, status, trigger_type, session_mode,
         provider_id, model_id, usage_input_tokens, usage_output_tokens, created_at, completed_at
       ) VALUES
-        ('turn-legacy', 'session-1', 'completed', 'userMessage', 'work', 'off',
+        ('turn-legacy', 'session-1', 'completed', 'userMessage', 'work',
          'provider', 'model', 100, 20, 10, 30),
-        ('turn-recorded', 'session-1', 'completed', 'userMessage', 'work', 'off',
+        ('turn-recorded', 'session-1', 'completed', 'userMessage', 'work',
          'provider', 'model', 40, 8, 40, 50)
     `).run();
     database.sqlite.prepare(`
@@ -152,7 +153,7 @@ describe('data migration v2', () => {
 
     database.migrate();
 
-    expect(database.currentVersion()).toBe(13);
+    expect(database.currentVersion()).toBe(14);
     const columns = database.sqlite.pragma('table_info(turns)') as Array<{ name: string }>;
     expect(columns.map(column => column.name)).not.toContain('usage_input_tokens');
     expect(columns.map(column => column.name)).not.toContain('usage_output_tokens');
@@ -196,7 +197,8 @@ describe('data migration v10', () => {
       UPDATE sessions SET forked_from_session_id = 'edits', forked_from_turn_id = 'turn-1'
         WHERE id = 'bypass';
     `);
-    const originalSessions = database.sqlite.prepare('SELECT * FROM sessions ORDER BY id').all();
+    const originalSessions = (database.sqlite.prepare('SELECT * FROM sessions ORDER BY id').all() as Array<{ narrative_policy: string }>)
+      .map(({ narrative_policy, ...session }) => session);
     database.migrate();
 
     expect(database.sqlite.prepare('SELECT * FROM sessions ORDER BY id').all()).toEqual(originalSessions);
