@@ -14,7 +14,7 @@ import {
 
 export interface ProviderStoreState {
   providers:           ProviderRecord[];
-  /** 一个业务位一条绑定；缺省模块表示跟随系统默认解析。 */
+  /** 缺少对应项表示未绑定. TTS / STT 不会自动选择默认模型. */
   bindings:            Partial<Record<BindingModule, BindingsList[number]>>;
 
   loadAll():                                          Promise<void>;

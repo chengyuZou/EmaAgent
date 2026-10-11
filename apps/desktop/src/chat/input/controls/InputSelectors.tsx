@@ -1,5 +1,5 @@
 import type { JSX } from 'react';
-import { Button, DropdownMenu, IconButton, type MenuItem } from '@ema-agent/ui';
+import { Button, DropdownMenu, IconButton, Tooltip, type MenuItem } from '@ema-agent/ui';
 import type { PermissionMode } from '@ema-agent/permission';
 import { ServerApiError } from '../../../api/client.js';
 import type { ChatDraft } from '../../../stores/chatDraft.js';
@@ -129,18 +129,29 @@ export function useInputOptions(
   return { plusItems, toggleTts, choosePermissionMode };
 }
 
-export function TtsButton({ enabled, onToggle }: {
-  enabled: boolean;
+export function TtsButton({
+  ttsEnabled,
+  modelBound,
+  onToggle,
+}: {
+  ttsEnabled: boolean;
+  modelBound: boolean;
   onToggle(): void;
 }): JSX.Element {
+  const tooltip = modelBound ? '切换 TTS' : '请先配置 TTS 模型绑定';
   return (
-    <IconButton
-      size="sm"
-      icon={enabled ? 'i-lucide:volume-2' : 'i-lucide:volume-x'}
-      label="切换 TTS"
-      toggled={enabled}
-      className="ema-chat-icon-btn"
-      onClick={onToggle}
-    />
+    <Tooltip content={tooltip} side="top">
+      <span className="inline-flex shrink-0" tabIndex={modelBound ? undefined : 0}>
+        <IconButton
+          size="sm"
+          icon={ttsEnabled ? 'i-lucide:volume-2' : 'i-lucide:volume-x'}
+          label="切换 TTS"
+          toggled={ttsEnabled}
+          className="ema-chat-icon-btn"
+          disabled={!modelBound}
+          onClick={onToggle}
+        />
+      </span>
+    </Tooltip>
   );
 }

@@ -28,6 +28,7 @@ import {
   type ChatDraft,
 } from '../../stores/chatDraft.js';
 import { useMainNavigationStore } from '../../layout/navigation.js';
+import { useProviderStore } from '../../stores/provider.js';
 import { useSessionActivityStore } from '../../stores/sessionActivity.js';
 import { useServerStore } from '../../stores/server.js';
 import { useSessionStore } from '../../stores/session.js';
@@ -82,12 +83,18 @@ export function ChatInput({
     viewedId ? state.bySession.get(viewedId) : undefined
   ));
   const serverReady = useServerStore(state => state.status.kind === 'ok');
+  const ttsModelBound = useProviderStore(state => state.bindings.tts !== undefined);
+  const sttModelBound = useProviderStore(state => state.bindings.stt !== undefined);
   const [submitting, setSubmitting] = useState(false);
   const [recording, setRecording] = useState(false);
   const [slashFilter, setSlashFilter] = useState<string | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const textareaRef = useRef<TextareaHandle>(null);
   const slashMenuRef = useRef<SlashMenuHandle | null>(null);
+  const recordingLabel = recording ? '停止录音' : '语音输入';
+  const recordingTooltip = !recording && !sttModelBound
+    ? '请先配置 STT 模型绑定'
+    : recordingLabel;
 
   const savedDraft = storedDraft ?? draftFromSession(viewedSession);
   const draft: ChatDraft = viewedSession
@@ -249,6 +256,10 @@ export function ChatInput({
       recorderRef.current?.stop();
       return;
     }
+    if (!useProviderStore.getState().bindings.stt) {
+      showToast('请先配置 STT 模型绑定', { variant: 'warning' });
+      return;
+    }
     try {
       const media = await navigator.mediaDevices.getUserMedia({ audio: true });
       const recorder = new MediaRecorder(media);
@@ -259,7 +270,13 @@ export function ChatInput({
       };
       recorder.onstop = () => {
         setRecording(false);
+        recorderRef.current = null;
         media.getTracks().forEach((track) => track.stop());
+        // 录音期间可以进入 Settings 修改绑定. 提交前读取当前值, 不使用开始录音时的旧值.
+        if (!useProviderStore.getState().bindings.stt) {
+          showToast('STT 模型已解绑, 本次录音未转写', { variant: 'warning' });
+          return;
+        }
         const audio = new Blob(chunks, { type: recorder.mimeType });
         void providersApi.transcribe({ audio, mime: recorder.mimeType })
           .then((result) => {
@@ -411,7 +428,11 @@ export function ChatInput({
                 />
               )}
             />
-            <TtsButton enabled={draft.ttsEnabled} onToggle={options.toggleTts} />
+            <TtsButton
+              ttsEnabled={draft.ttsEnabled}
+              modelBound={ttsModelBound}
+              onToggle={options.toggleTts}
+            />
             <PermissionModeSelector
               value={draft.permissionMode}
               planUnavailableReason={goal.planUnavailableReason}
@@ -439,14 +460,22 @@ export function ChatInput({
               onModelChange={chooseModel}
               onEffortChange={chooseReasoningEffort}
             />
-            <IconButton
-              size="sm"
-              variant={recording ? 'danger' : 'default'}
-              icon={recording ? 'i-lucide:square' : 'i-lucide:mic'}
-              label={recording ? '停止录音' : '语音输入'}
-              className={recording ? undefined : 'ema-chat-icon-btn'}
-              onClick={() => void toggleRecording()}
-            />
+            <Tooltip content={recordingTooltip} side="top">
+              <span
+                className="inline-flex shrink-0"
+                tabIndex={!recording && !sttModelBound ? 0 : undefined}
+              >
+                <IconButton
+                  size="sm"
+                  variant={recording ? 'danger' : 'default'}
+                  icon={recording ? 'i-lucide:square' : 'i-lucide:mic'}
+                  label={recordingLabel}
+                  className={recording ? undefined : 'ema-chat-icon-btn'}
+                  disabled={!recording && !sttModelBound}
+                  onClick={() => void toggleRecording()}
+                />
+              </span>
+            </Tooltip>
             {sessionRunning && !hasInput ? (
               <IconButton
                 size="sm"
