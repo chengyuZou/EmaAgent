@@ -6,6 +6,8 @@ import { Markdown } from '@ema-agent/ui';
 import type { AttachmentBlock, Message, MessageBlocks, SkillReferenceBlock, SessionUserBlock } from '@ema-agent/session';
 import { formatTurnTime } from './toolBlocks/toolGroups.js';
 import { sessionSourceTab, useSessionPanelStore } from '../../stores/sessionPanel.js';
+import { AttachmentImagePreview } from '../../lib/images/attachmentImagePreview.js';
+import { ImagePreview } from '../../lib/images/imagePreview.js';
 
 export interface UserMessageProps {
   message: Message;
@@ -17,8 +19,10 @@ export function UserMessage({ message, sessionId }: UserMessageProps): JSX.Eleme
   // 附件卡置顶；正文按输入顺序走：text 段与 skill_reference chip 内联混排（用户放置的位置）。
   const attachments = Array.isArray(message.blocks)
     ? message.blocks.filter(
-      (block): block is AttachmentBlock =>
+      (block): block is AttachmentBlock | Extract<SessionUserBlock, { type: 'image_data' | 'image_url' }> =>
         block.type === 'image_reference'
+        || block.type === 'image_data'
+        || block.type === 'image_url'
         || block.type === 'pasted_text_reference'
         || block.type === 'file_reference',
     )
@@ -43,10 +47,41 @@ export function UserMessage({ message, sessionId }: UserMessageProps): JSX.Eleme
     <div className="ema-message-shell flex flex-row-reverse">
       <div className="flex flex-col min-w-20 max-w-full items-end">
         {attachments.length > 0 && (
-          <div className="flex flex-wrap justify-end gap-1.5 mb-1.5 max-w-full">
-            {attachments.map((block) => {
+          <div className="flex flex-wrap items-start justify-end gap-1.5 mb-1.5 max-w-full">
+            {attachments.map((block, index) => {
+              if (block.type === 'image_reference') {
+                return (
+                  <AttachmentImagePreview
+                    key={block.path}
+                    sessionId={sessionId}
+                    path={block.path}
+                    alt={block.name ?? '剪贴板图片'}
+                    className="ema-image-preview--attachment"
+                  />
+                );
+              }
+              if (block.type === 'image_data') {
+                return (
+                  <ImagePreview
+                    key={`image-data-${index}`}
+                    src={`data:${block.mimeType};base64,${block.data}`}
+                    alt={block.name ?? '图片'}
+                    className="ema-image-preview--attachment"
+                  />
+                );
+              }
+              if (block.type === 'image_url') {
+                return (
+                  <ImagePreview
+                    key={block.url}
+                    src={block.url}
+                    alt={block.name ?? '图片'}
+                    className="ema-image-preview--attachment"
+                  />
+                );
+              }
               const chip = chipDisplay(block);
-              // file_reference 无预览 image/pasted 点开预览 tab。
+              // 文件引用只显示名称, 粘贴文本继续打开附件面板.
               const openable = block.type !== 'file_reference';
               return (
                 <button

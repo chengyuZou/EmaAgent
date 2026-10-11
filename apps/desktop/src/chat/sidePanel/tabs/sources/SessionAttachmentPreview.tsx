@@ -1,9 +1,10 @@
 // Session 附件预览:按 path 找条目、经内容端点读内容。
 // 图片显示图(点开原图),粘贴文本显示 txt 全文(截断 50KB),其余显示路径信息。
-import { useEffect, useState, type JSX } from 'react';
+import { useCallback, useEffect, useState, type JSX } from 'react';
 import { ScrollArea, Spinner } from '@ema-agent/ui';
 import { sessionsApi } from '../../../../api/sessions.js';
 import { useSessionAttachmentStore } from '../../../../stores/sessionAttachment.js';
+import { ImagePreview } from '../../../../lib/images/imagePreview.js';
 
 const TEXT_PREVIEW_MAX_BYTES = 50 * 1024;
 
@@ -23,7 +24,8 @@ export function SessionAttachmentPreview({ sessionId, attachmentPath }: {
     setText(null);
     setFailed(false);
     let cancelled = false;
-    void sessionsApi.readAttachmentContent(sessionId, attachmentPath)
+    let objectUrl: string | undefined;
+    void sessionsApi.readAttachmentContent(sessionId, attachmentPath, true)
       .then(async (response) => {
         if (cancelled) return;
         if (!response.ok) {
@@ -32,16 +34,34 @@ export function SessionAttachmentPreview({ sessionId, attachmentPath }: {
         }
         const contentType = response.headers.get('Content-Type') ?? '';
         if (contentType.startsWith('image/')) {
-          setUrl(URL.createObjectURL(await response.blob()));
+          const blob = await response.blob();
+          if (cancelled) {
+            return;
+          }
+          objectUrl = URL.createObjectURL(blob);
+          setUrl(objectUrl);
         } else {
           const raw = await response.text();
+          if (cancelled) {
+            return;
+          }
           setText(raw.length > TEXT_PREVIEW_MAX_BYTES
             ? `${raw.slice(0, TEXT_PREVIEW_MAX_BYTES)}\n\n…(已截断,完整内容见文件)`
             : raw);
         }
       })
       .catch(() => { if (!cancelled) setFailed(true); });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [sessionId, attachmentPath]);
+
+  const loadImage = useCallback(async (): Promise<Blob> => {
+    const response = await sessionsApi.readAttachmentContent(sessionId, attachmentPath);
+    return response.blob();
   }, [sessionId, attachmentPath]);
 
   const title = entry?.kind === 'image'
@@ -65,7 +85,7 @@ export function SessionAttachmentPreview({ sessionId, attachmentPath }: {
         {!failed && !url && !text && (
           <div className="flex justify-center py-10"><Spinner size="md" /></div>
         )}
-        {url && <img src={url} alt={title} className="mx-auto max-w-full rounded-lg" />}
+        {url && <ImagePreview src={url} alt={title} loadImage={loadImage} />}
         {text !== null && (
           <pre className="ema-material-reading rounded-lg p-3 text-xs font-mono whitespace-pre-wrap break-all text-[var(--ema-text-secondary)]">
             {text}

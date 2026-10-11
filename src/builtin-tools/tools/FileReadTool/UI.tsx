@@ -1,9 +1,9 @@
 // FileReadTool 的桌面展示: 参数(路径+分页范围)与结果卡.
-// 结果按类型分流: 图片直接渲染(base64 已有), 文本内容按扩展名走
+// 结果按类型分流: 图片使用调用方提供的显示组件, 文本内容按扩展名走
 // Markdown 正文 / Markdown 代码块 / HTML 沙箱预览三态.
 // 只消费本 Tool 的类型化 data; 类型守卫失败一律返回 null, 由前端回落通用渲染。
 import { useMemo, useState, type JSX } from 'react';
-import { Badge, Button, Markdown, languageForPath } from '@ema-agent/ui';
+import { Badge, Button, Markdown, languageForPath, Tooltip } from '@ema-agent/ui';
 import type { FileReadResult } from './FileReadTool.js';
 import { PdfContentView } from './pdfContentView.js';
 
@@ -95,7 +95,11 @@ export function FileReadArgsView({ args }: { args: unknown }): JSX.Element | nul
 
 // ── 结果视图: 按文件格式展示 ──────────────────────────────────────────────────
 
-export function FileReadResultView({ data }: { data: unknown }): JSX.Element | null {
+export function FileReadResultView({ data, renderImage, renderMarkdown }: {
+  readonly data: unknown;
+  readonly renderImage: (image: { readonly src: string; readonly alt: string }) => JSX.Element;
+  readonly renderMarkdown: (source: string, filePath: string) => JSX.Element;
+}): JSX.Element | null {
   const result = asFileReadResult(data);
   if (!result) return null;
 
@@ -104,16 +108,16 @@ export function FileReadResultView({ data }: { data: unknown }): JSX.Element | n
       return <PdfContentView result={result} />;
     case 'image_content':
       return (
-        <div className="flex flex-col gap-1.5">
-          <img
-            src={`data:${result.mediaType};base64,${result.base64}`}
-            alt={result.filePath}
-            className="max-h-48 w-fit rounded-md border border-[var(--ema-border)] object-contain"
-          />
-          <span className="text-[11px] text-[var(--ema-text-tertiary)]">
-            {result.mediaType} · {(result.originalBytes / 1024).toFixed(1)} KB
+        <Tooltip
+          content={`${result.mediaType} · ${(result.originalBytes / 1024).toFixed(1)} KB`}
+        >
+          <span className="inline-flex w-fit max-w-full">
+            {renderImage({
+              src: `data:${result.mediaType};base64,${result.base64}`,
+              alt: result.filePath,
+            })}
           </span>
-        </div>
+        </Tooltip>
       );
 
     case 'notebook_content': {
@@ -151,7 +155,7 @@ export function FileReadResultView({ data }: { data: unknown }): JSX.Element | n
     }
 
     case 'file_content':
-      return <FileReadContentCard result={result} />;
+      return <FileReadContentCard result={result} renderMarkdown={renderMarkdown} />;
   }
 }
 
@@ -159,7 +163,10 @@ export function FileReadResultView({ data }: { data: unknown }): JSX.Element | n
 
 type FileContentResult = Extract<FileReadResult, { type: 'file_content' }>;
 
-function FileReadContentCard({ result }: { result: FileContentResult }): JSX.Element {
+function FileReadContentCard({ result, renderMarkdown }: {
+  readonly result: FileContentResult;
+  readonly renderMarkdown: (source: string, filePath: string) => JSX.Element;
+}): JSX.Element {
   const extension = result.filePath.split(/[\\/]/).pop()?.split('.').pop()?.toLowerCase() ?? '';
   const isMarkdown = ['md', 'markdown', 'mdx'].includes(extension);
   const isHtml = ['html', 'htm'].includes(extension);
@@ -230,7 +237,9 @@ function FileReadContentCard({ result }: { result: FileContentResult }): JSX.Ele
               {`${lineNumbers.join('\n')}\n`}
             </pre>
           )}
-          <Markdown source={markdownSource} className="ema-file-read-markdown" />
+          {isMarkdown
+            ? renderMarkdown(markdownSource, result.filePath)
+            : <Markdown source={markdownSource} className="ema-file-read-markdown" />}
         </div>
       )}
     </div>

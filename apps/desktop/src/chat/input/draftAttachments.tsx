@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useState, type ClipboardEvent as ReactCli
 import { PASTE_TEXT_MIN_CHARS } from '@ema-agent/attachments/limits';
 import type { ChatDraft, ChatDraftReference } from '../../stores/chatDraft.js';
 import { tauriBridge } from '../../lib/tauri-bridge.js';
+import { ImagePreview } from '../../lib/images/imagePreview.js';
 import { Tooltip } from '@ema-agent/ui';
 
 interface DraftReferenceListProps {
@@ -16,12 +17,15 @@ function referenceLabel(reference: ChatDraftReference): string {
   return reference.name ?? '图片';
 }
 
-function ImagePreview({ reference }: { readonly reference: Extract<ChatDraftReference, { type: 'image' }> }): JSX.Element {
+function DraftImagePreview({ reference }: { readonly reference: Extract<ChatDraftReference, { type: 'image' }> }): JSX.Element {
   const [url, setUrl] = useState<string>();
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     let objectUrl: string | undefined;
+    setUrl(undefined);
+    setFailed(false);
     if (reference.file) {
       objectUrl = URL.createObjectURL(reference.file);
       setUrl(objectUrl);
@@ -33,7 +37,11 @@ function ImagePreview({ reference }: { readonly reference: Extract<ChatDraftRefe
         const mimeType = extension === 'jpg' ? 'image/jpeg' : `image/${extension ?? 'png'}`;
         objectUrl = URL.createObjectURL(new Blob([new Uint8Array(bytes)], { type: mimeType }));
         setUrl(objectUrl);
-      }).catch(() => { if (!cancelled) setUrl(undefined); });
+      }).catch(() => {
+        if (!cancelled) {
+          setFailed(true);
+        }
+      });
     }
     return () => {
       cancelled = true;
@@ -41,38 +49,55 @@ function ImagePreview({ reference }: { readonly reference: Extract<ChatDraftRefe
     };
   }, [reference.file, reference.sourcePath]);
 
-  return url
-    ? <img src={url} alt="" className="h-8 w-8 shrink-0 rounded object-cover" />
-    : <span className="i-lucide:image shrink-0 text-base" aria-hidden />;
+  if (url) {
+    return <ImagePreview src={url} alt={reference.name ?? '图片'} className="ema-image-preview--attachment" />;
+  }
+  return <span className="ema-attachment-image-placeholder" role="status">{failed ? '图片无法加载' : '加载图片中…'}</span>;
 }
 
 // 改 textarea 文字会重渲染 ChatInput, 但 references 数组没有变;
-// 只在胶囊增删时重画列表, 不让每次打字都重建图片与删除按钮.
+// 只在附件增删时重画列表, 不让每次打字都重建图片与删除按钮.
 export const DraftReferenceList = memo(function DraftReferenceList({ references, onRemove }: DraftReferenceListProps): JSX.Element | null {
   if (references.length === 0) return null;
   return (
-    <div className="flex flex-wrap gap-1.5 px-3 pb-2 pt-3">
-      {references.map(reference => (
-        <span
-          key={reference.draftId}
-          className="inline-flex max-w-52 items-center gap-1.5 rounded-md border border-[var(--ema-border)] bg-[var(--ema-primary-muted)] px-2 py-1 text-[11px] text-[var(--ema-primary-text)]"
-        >
-          {reference.type === 'image'
-            ? <ImagePreview reference={reference} />
-            : <span className={reference.type === 'skill_reference' ? 'i-lucide:box' : 'i-lucide:paperclip'} aria-hidden />}
-          <Tooltip content={reference.type === 'pasted_text' ? reference.preview : undefined} variant="card">
-            <span className="truncate">
-              {referenceLabel(reference)}
+    <div className="flex flex-wrap items-start gap-1.5 px-3 pb-2 pt-3">
+      {references.map(reference => {
+        if (reference.type === 'image') {
+          return (
+            <span key={reference.draftId} className="ema-draft-image-reference">
+              <DraftImagePreview reference={reference} />
+              <span className="ema-draft-image-name" title={referenceLabel(reference)}>{referenceLabel(reference)}</span>
+              <button
+                type="button"
+                className="ema-draft-image-remove"
+                aria-label="移除这个图片附件"
+                onClick={() => onRemove(reference.draftId)}
+              >
+                <span className="i-lucide:x" aria-hidden />
+              </button>
             </span>
-          </Tooltip>
-          <button
-            type="button"
-            className="i-lucide:x shrink-0 opacity-60 hover:opacity-100"
-            aria-label={`移除这个附件或技能`}
-            onClick={() => onRemove(reference.draftId)}
-          />
-        </span>
-      ))}
+          );
+        }
+        return (
+          <span
+            key={reference.draftId}
+            className="inline-flex max-w-52 items-center gap-1.5 rounded-md border border-[var(--ema-border)] bg-[var(--ema-primary-muted)] px-2 py-1 text-[11px] text-[var(--ema-primary-text)]"
+          >
+            <span className={reference.type === 'skill_reference' ? 'i-lucide:box' : 'i-lucide:paperclip'} aria-hidden />
+            <Tooltip content={reference.type === 'pasted_text' ? reference.preview : undefined} variant="card">
+              <span className="truncate">
+                {referenceLabel(reference)}
+              </span>
+            </Tooltip>
+            <button
+              type="button"
+              className="i-lucide:x shrink-0 opacity-60 hover:opacity-100"
+              aria-label="移除这个附件或技能"
+              onClick={() => onRemove(reference.draftId)}
+            />
+          </span>
+        );
+      })}
     </div>
   );
 });

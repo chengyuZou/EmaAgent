@@ -11,7 +11,7 @@ const pathQuery = z.object({
 });
 
 /** 文件预览体积上限；超出只回尺寸让前端降级。 */
-const MAX_PREVIEW_BYTES = 2 * 1024 * 1024;
+const MAX_PREVIEW_BYTES = 10 * 1024 * 1024;
 
 const TEXT_EXTS = new Set([
   'md', 'mdx', 'txt', 'ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs', 'py', 'rs', 'go', 'java', 'c', 'cpp', 'h', 'hpp',

@@ -1,6 +1,8 @@
 import { memo, useEffect, useMemo, useState, type JSX } from 'react';
 import { Markdown, ScrollArea, Spinner, highlightFile } from '@ema-agent/ui';
 import { filesApi, type FileContent } from '../../../../api/workspaces.js';
+import { ImagePreview } from '../../../../lib/images/imagePreview.js';
+import { MarkdownImages } from '../../../../lib/images/markdownImages.js';
 
 function fmtSize(bytes: number): string {
   if (bytes < 1024) return `${bytes}B`;
@@ -39,13 +41,17 @@ export const FilePreview = memo(function FilePreview({ path }: { path: string })
             读取失败:{error}
           </p>
         )}
-        {!loading && !error && content && <ContentBody content={content} ext={ext} />}
+        {!loading && !error && content && (
+          <MarkdownImages directory={path.replace(/[\\/][^\\/]+$/, '')}>
+            <ContentBody content={content} ext={ext} fileName={fileName} />
+          </MarkdownImages>
+        )}
       </ScrollArea>
     </div>
   );
 });
 
-function ContentBody({ content, ext }: { content: FileContent; ext: string }): JSX.Element {
+function ContentBody({ content, ext, fileName }: { content: FileContent; ext: string; fileName: string }): JSX.Element {
   if ('tooLarge' in content) {
     return (
       <p className="text-xs text-center py-8 text-[var(--ema-text-tertiary)]">
@@ -63,10 +69,9 @@ function ContentBody({ content, ext }: { content: FileContent; ext: string }): J
   if (content.encoding === 'base64') {
     return (
       <div className="flex items-center justify-center">
-        <img
+        <ImagePreview
           src={`data:${content.mimeType};base64,${content.content}`}
-          alt="preview"
-          className="max-w-full h-auto rounded-lg bg-[var(--ema-surface-2)]"
+          alt={fileName}
         />
       </div>
     );

@@ -7,6 +7,7 @@
 @import './domains/material.css';
 @import './domains/materialSurfaces.css';
 @import './domains/main.css';
+@import './domains/images.css';
 @import './domains/toast.css';
 @import './domains/chatMaterial.css';
 @import './domains/storage.css';
@@ -25,3 +26,4 @@
 @import './domains/characterStage.css';
 
 @import './vendors/hljs-theme.css';
+@import 'yet-another-react-lightbox/styles.css';

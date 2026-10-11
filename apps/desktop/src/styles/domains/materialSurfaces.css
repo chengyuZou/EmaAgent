@@ -7,7 +7,7 @@
 .ema-chat-main,
 .ema-stage-surface:is(.ema-stage-translucent, .ema-stage-frosted),
 :is(.ema-stage-translucent, .ema-stage-frosted) .ema-stage-surface,
-html[data-material-window] :is(.panel-glass, [role='dialog'], .ema-tooltip-surface, .ema-material-toast) {
+html[data-material-window] :is(.panel-glass, [role='dialog'], .ema-tooltip-surface, .ema-material-toast):not(:where(.ema-image-viewer, .ema-image-viewer *)) {
   --ema-surface-0: var(--ema-material-reading);
   --ema-surface-1: var(--ema-material-section);
   --ema-surface-2: var(--ema-material-card);
@@ -91,7 +91,7 @@ html[data-material-window] [role='dialog'] :is(button, .ema-glass-weak) {
   backdrop-filter: none;
 }
 
-html[data-material-window] :is(.panel-glass, [role='dialog'], .ema-tooltip-surface, .ema-material-toast) {
+html[data-material-window] :is(.panel-glass, [role='dialog'], .ema-tooltip-surface, .ema-material-toast):not(:where(.ema-image-viewer, .ema-image-viewer *)) {
   background: var(--ema-material-overlay);
   -webkit-backdrop-filter: var(--ema-material-overlay-filter);
   backdrop-filter: var(--ema-material-overlay-filter);

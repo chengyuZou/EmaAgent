@@ -6,8 +6,8 @@
  * Markdown, 而 Tool UI 只允许消费 @ema-agent/ui. 排版样式是全局 .markdown-content
  * (src/ui/styles/primitives/markdown.css), KaTeX 样式由桌面入口引入.
  */
-import ReactMarkdown, { type Components } from 'react-markdown';
-import { createContext, memo, useContext } from 'react';
+import ReactMarkdown, { type Components, type UrlTransform } from 'react-markdown';
+import { createContext, memo, useContext, type ReactNode } from 'react';
 import type { Extension } from 'mdast-util-from-markdown';
 import type { Plugin } from 'unified';
 import remarkMath from 'remark-math';
@@ -35,6 +35,30 @@ export interface MarkdownProps {
 }
 
 const StreamingMarkdown = createContext(false);
+
+interface MarkdownRenderers {
+  /** 只覆盖传入的标签, 其他标签继续使用 Markdown 的默认显示方式. */
+  readonly components: Components;
+  /** 替换 URL 处理时, 调用方必须拒绝脚本等不允许的协议. HTML 的其他清洗规则保持不变. */
+  readonly urlTransform: UrlTransform;
+}
+
+const CustomMarkdownRenderers = createContext<MarkdownRenderers | null>(null);
+
+/**
+ * 让 desktop 为 Markdown 提供图片点击和文件链接打开操作, UI 包不导入 desktop 的 Viewer 或文件侧栏.
+ * components 负责显示和点击, urlTransform 负责允许的地址; 文件读取和导航仍由调用方处理.
+ * 作用范围内的 Markdown 都使用这些处理方式, 未设置 Provider 的 Markdown 保持默认行为.
+ */
+export function MarkdownRendererProvider({ children, components, urlTransform }: MarkdownRenderers & {
+  readonly children: ReactNode;
+}): JSX.Element {
+  return (
+    <CustomMarkdownRenderers.Provider value={{ components, urlTransform }}>
+      {children}
+    </CustomMarkdownRenderers.Provider>
+  );
+}
 
 // 使用现有 micromark 的围栏 token, 不重复解析 Markdown 或用正则猜测闭合状态.
 const mermaidFences: Extension = {
@@ -102,6 +126,11 @@ export const markdownSanitizeSchema = {
   ],
 };
 
+// Windows 文件路径和 Base64 图片需要先交给自定义 urlTransform 判断, 否则会被默认协议规则提前删除.
+// 移除 href/src 的协议过滤, 脚本标签, 事件和布局属性仍按原规则清洗.
+const { href: _hrefProtocols, src: _srcProtocols, ...otherProtocols } = markdownSanitizeSchema.protocols ?? {};
+const customUrlSanitizeSchema = { ...markdownSanitizeSchema, protocols: otherProtocols };
+
 const markdownComponents: Components = {
   pre({ node, children, ...props }) {
     const streaming = useContext(StreamingMarkdown);
@@ -149,6 +178,7 @@ const markdownComponents: Components = {
 };
 
 export const Markdown = memo(function Markdown({ source, className, streaming = false }: MarkdownProps): JSX.Element {
+  const renderers = useContext(CustomMarkdownRenderers);
   if (!source) {
     return <div className="markdown-content" />;
   }
@@ -161,11 +191,12 @@ export const Markdown = memo(function Markdown({ source, className, streaming = 
           rehypePlugins={[
             rehypeRaw,
             // 先清洗 raw HTML, 再运行可信渲染器(KaTeX/highlight).
-            [rehypeSanitize, markdownSanitizeSchema],
+            [rehypeSanitize, renderers ? customUrlSanitizeSchema : markdownSanitizeSchema],
             rehypeKatex,
             [rehypeHighlight, { plainText: ['mermaid'] }],
           ]}
-          components={markdownComponents}
+          components={renderers ? { ...markdownComponents, ...renderers.components } : markdownComponents}
+          urlTransform={renderers?.urlTransform}
           className={`markdown-content${className ? ` ${className}` : ''}`}
         >
           {source}

@@ -1,7 +1,7 @@
 // 复杂 Tool 的专属 UI 注册表: 按模型可见名查找, 未注册的工具回落通用平铺渲染。
 // Renderer 来自各 Tool 自己目录的 UI.tsx(经 @ema-agent/builtin-tools/ui 出口);
 // 注册表只做查找与回落, 权限卡、状态条、耗时、错误外壳仍在 ToolCallBlock。
-import type { JSX } from 'react';
+import { createElement, type JSX } from 'react';
 import {
   AskUserResultView,
   askUserResultCopyText,
@@ -48,6 +48,9 @@ import {
   webSearchTitle,
 } from '@ema-agent/builtin-tools/ui';
 import { BuiltinTools } from '@ema-agent/tools/identity';
+import { Markdown } from '@ema-agent/ui';
+import { ImagePreview } from '../../../lib/images/imagePreview.js';
+import { MarkdownImages } from '../../../lib/images/markdownImages.js';
 import type { ToolDisplayStatus } from './toolBlockHelpers.js';
 
 /** CallView 接管整个展开区时收到的数据. data 是 Tool 返回的 TOutput, progress 是本次调用的进度事件. */
@@ -96,7 +99,14 @@ const TOOL_UI_REGISTRY: Readonly<Record<string, ToolUI>> = {
     title: fileReadTitle,
     resultCopyText: fileReadResultCopyText,
     ArgsView: FileReadArgsView,
-    ResultView: FileReadResultView,
+    ResultView: ({ data }) => createElement(FileReadResultView, {
+      data,
+      renderImage: image => createElement(ImagePreview, image),
+      renderMarkdown: (source, filePath) => createElement(MarkdownImages, {
+        directory: /[\\/]/.test(filePath) ? filePath.replace(/[\\/][^\\/]+$/, '') : undefined,
+        children: createElement(Markdown, { source, className: 'ema-file-read-markdown' }),
+      }),
+    }),
   },
   [BuiltinTools.FileEdit.name]: {
     title: fileEditTitle,
