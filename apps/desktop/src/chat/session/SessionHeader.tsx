@@ -6,7 +6,7 @@ import { showToast } from '../../lib/toast.js';
 import { useSubagentStore } from '../../stores/subagent.js';
 import { useBackgroundProcessStore } from '../../stores/backgroundProcess.js';
 import { useSessionAttachmentStore } from '../../stores/sessionAttachment.js';
-import { useSessionStore } from '../../stores/session.js';
+import { formatSessionTitle, useSessionStore } from '../../stores/session.js';
 import { useServerStore } from '../../stores/server.js';
 import { useTaskStore } from '../../stores/task.js';
 import { SessionCwdDialog } from './SessionCwdDialog.js';
@@ -65,7 +65,7 @@ export function SessionHeader({ sessionId }: { sessionId: string }): JSX.Element
             setTitleOpen(true);
           }}
         >
-          <span className="truncate">{title}</span>
+          <span className="truncate">{formatSessionTitle(title)}</span>
         </Button>
         {cwd && (
           <Button

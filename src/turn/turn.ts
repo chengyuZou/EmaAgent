@@ -15,6 +15,7 @@ import type {
 } from '@ema-agent/llm';
 import { isLlmProtocol } from '@ema-agent/providers';
 import {
+  DEFAULT_SESSION_TITLE,
   type MessageBlocks,
   type SessionMessage,
   type SessionStore,
@@ -84,7 +85,9 @@ export interface TurnExecutorDeps extends PrepareTurnDeps {
     | 'getMessage'
     | 'markMessageInterrupted'
     | 'updateMessageBlocks'
+    | 'updateTitleIfDefault'
   >;
+  readonly hasNormalUserMessage: (sessionId: string) => boolean;
   readonly createCompact: (
     callLlm: CallLlm,
   ) => (request: CompactRequest) => Promise<CompactResult>;
@@ -319,12 +322,26 @@ export class TurnExecutor {
         });
       }
       if (prepared.userMessageBlocks.length > 0) {
+        const shouldRename = this.deps.sessions.getSession(sessionId).title === DEFAULT_SESSION_TITLE
+          && !this.deps.hasNormalUserMessage(sessionId);
+        // 判断后直接保存, 中间不 await, 避免另一条用户消息先写入.
         const userMessage = this.deps.sessions.appendMessage({
-          turnId,
           sessionId,
+          turnId,
           role: 'user',
           blocks: prepared.userMessageBlocks,
         });
+        if (shouldRename) {
+          try {
+            this.deps.sessions.updateTitleIfDefault(
+              sessionId,
+              createSessionTitle(prepared.userMessageBlocks),
+            );
+          } catch (error) {
+            // 消息已保存, 改名失败不能阻止消息交付或模型继续执行.
+            console.warn('[turn] 自动命名会话失败:', error);
+          }
+        }
         emit({ type: 'user_message_stored', message: userMessage });
       }
       // 队列项和后台结果只有在对应 Message 全部落库后才确认交付.
@@ -353,12 +370,21 @@ export class TurnExecutor {
           turnSkillPool,
         );
 
+        const shouldRename = this.deps.sessions.getSession(sessionId).title === DEFAULT_SESSION_TITLE
+          && !this.deps.hasNormalUserMessage(sessionId);
         const userMessage = this.deps.sessions.appendMessage({
-          turnId,
           sessionId,
+          turnId,
           role: 'user',
           blocks,
         });
+        if (shouldRename) {
+          try {
+            this.deps.sessions.updateTitleIfDefault(sessionId, createSessionTitle(blocks));
+          } catch (error) {
+            console.warn('[turn] 自动命名会话失败:', error);
+          }
+        }
         emit({ type: 'user_message_stored', message: userMessage });
         return userMessage;
       };
@@ -699,13 +725,80 @@ export class TurnExecutor {
   }
 }
 
-/** 标题只读取用户显式文本, 不混入附件描述或 Skill 指引. */
+/** Reminder 的用户文本只取显式正文, 不混入附件描述或 Skill 指引. */
 function explicitUserText(blocks: MessageBlocks): string {
   if (typeof blocks === 'string') return blocks;
   return blocks
     .filter((block): block is Extract<typeof block, { type: 'text' }> => block.type === 'text')
     .map(block => block.text)
     .join('');
+}
+
+const AUTO_SESSION_TITLE_LENGTH = 30;
+const IMAGE_SESSION_TITLE = '图片';
+const FILE_SESSION_TITLE = '附件';
+// 按完整可见字符截取, 不拆开组合 emoji 或带重音的字符.
+const titleSegmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+
+function createSessionTitle(blocks: MessageBlocks): string {
+  let source: string;
+  if (typeof blocks === 'string') {
+    source = blocks;
+  } else {
+    const texts: string[] = [];
+    const previews: string[] = [];
+    const files: string[] = [];
+    const skills: string[] = [];
+    let imageCount = 0;
+    for (const block of blocks) {
+      switch (block.type) {
+        case 'text':
+          texts.push(block.text);
+          break;
+        case 'pasted_text_reference':
+          previews.push(block.preview);
+          break;
+        case 'file_reference':
+          files.push(block.path.split(/[\\/]/).pop() || FILE_SESSION_TITLE);
+          break;
+        case 'image_reference':
+          imageCount += 1;
+          break;
+        case 'skill_reference':
+          skills.push(block.name);
+          break;
+      }
+    }
+    source = texts.join(' ').trim() || previews.join(' ').trim();
+    if (!source) {
+      const attachmentCount = files.length + imageCount;
+      if (files.length > 0) {
+        source = files[0]!;
+        if (attachmentCount > 1) {
+          source = `${source} 等 ${attachmentCount} 个附件`;
+        }
+      } else if (imageCount > 0) {
+        source = IMAGE_SESSION_TITLE;
+        if (imageCount > 1) {
+          source = `${imageCount} 张图片`;
+        }
+      } else if (skills.length > 0) {
+        source = skills[0]!;
+        if (skills.length > 1) {
+          source = `${source} 等 ${skills.length} 个技能`;
+        }
+      }
+    }
+  }
+  const normalized = source.replace(/\s+/gu, ' ').trim() || DEFAULT_SESSION_TITLE;
+  let title = '';
+  let length = 0;
+  for (const part of titleSegmenter.segment(normalized)) {
+    if (length === AUTO_SESSION_TITLE_LENGTH) break;
+    title += part.segment;
+    length += 1;
+  }
+  return title;
 }
 
 /**

@@ -1,4 +1,4 @@
-// 管理前端 Session 列表、执行目录、模式和下一轮模型偏好。
+// 管理前端 Session 列表, 执行目录, 权限与下一轮模型偏好.
 import { create } from 'zustand';
 import {
   sessionsApi,
@@ -14,6 +14,23 @@ import {
 } from '../api/workspaces.js';
 import type { ReasoningEffort } from '@ema-agent/session';
 import type { PermissionMode } from '@ema-agent/permission';
+
+const SESSION_TITLE_DISPLAY_LENGTH = 10;
+const SESSION_TITLE_ELLIPSIS = '...';
+const titleSegmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+
+export function formatSessionTitle(title: string): string {
+  let visible = '';
+  let length = 0;
+  for (const part of titleSegmenter.segment(title)) {
+    if (length === SESSION_TITLE_DISPLAY_LENGTH) {
+      return visible + SESSION_TITLE_ELLIPSIS;
+    }
+    visible += part.segment;
+    length += 1;
+  }
+  return visible;
+}
 
 // ── 类型 ──────────────────────────────────────────────────────────────────────
 

@@ -21,6 +21,47 @@ describe('MessagesRepo 历史加载集成测试', () => {
     database.close();
   });
 
+  it('没有普通用户消息时返回 false', () => {
+    expect(repo.hasNormalUserMessage(sessionId)).toBe(false);
+  });
+
+  it('忽略提醒, 续接, 摘要, 工具结果和 Assistant 消息', () => {
+    const kinds = ['reminder', 'continuation', 'summary', 'tool_results'] as const;
+    for (const kind of kinds) {
+      insertMessage(`internal-${kind}`, 100, kind);
+    }
+    repo.insert({
+      id: 'assistant-message',
+      sessionId,
+      role: 'assistant',
+      blocksJson: JSON.stringify('Assistant 正文'),
+      createdAt: 110,
+    });
+
+    expect(repo.hasNormalUserMessage(sessionId)).toBe(false);
+
+    insertMessage('first-user-message', 120);
+    expect(repo.hasNormalUserMessage(sessionId)).toBe(true);
+  });
+
+  it('只检查指定 Session 的普通用户消息', () => {
+    const otherSessionId = 'other-session';
+    database.db.prepare(`
+      INSERT INTO sessions (id, title, cwd, created_at, updated_at)
+      VALUES (?, '其他会话', 'D:/work', 1, 1)
+    `).run(otherSessionId);
+    repo.insert({
+      id: 'other-user-message',
+      sessionId: otherSessionId,
+      role: 'user',
+      blocksJson: JSON.stringify('其他会话的输入'),
+      createdAt: 100,
+    });
+
+    expect(repo.hasNormalUserMessage(sessionId)).toBe(false);
+    expect(repo.hasNormalUserMessage(otherSessionId)).toBe(true);
+  });
+
   it('updateBlocks 覆盖 blocks_json 并返回受影响行数', () => {
     insertMessage('message-upd', 100);
     const changed = repo.updateBlocks('message-upd', '{"new":true}');

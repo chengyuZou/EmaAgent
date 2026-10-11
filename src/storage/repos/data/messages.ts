@@ -100,6 +100,14 @@ export class MessagesRepo {
     return this.db.prepare('SELECT * FROM messages WHERE id = ?').get(id) as MessageRow | undefined;
   }
 
+  hasNormalUserMessage(sessionId: string): boolean {
+    return this.db.prepare(`
+      SELECT 1 FROM messages
+      WHERE session_id = ? AND role = 'user' AND kind = 'normal'
+      LIMIT 1
+    `).get(sessionId) !== undefined;
+  }
+
   listForTurn(turnId: string): MessageRow[] {
     return this.db
       .prepare('SELECT * FROM messages WHERE turn_id = ? ORDER BY created_at ASC, id ASC')

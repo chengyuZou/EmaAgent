@@ -4,6 +4,7 @@ import { memo, useCallback, useEffect, useRef, useState, type CSSProperties, typ
 import { Badge, Button, EmptyState, Skeleton } from '@ema-agent/ui';
 import { PageHeader } from '../shared/PageHeader.js';
 import { useStorageStore } from '../../stores/storage.js';
+import { formatSessionTitle } from '../../stores/session.js';
 import { sessionsApi } from '../../api/sessions.js';
 import { systemApi, type SessionSummary } from '../../api/system.js';
 import { showToast } from '../../lib/toast.js';
@@ -228,7 +229,12 @@ function SessionAccordion({
         >
           <span className="i-solar:chat-round-bold-duotone text-[var(--ema-primary)]" aria-hidden />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-[var(--ema-text-primary)]">{title}</p>
+            <p
+              className="truncate text-sm font-semibold text-[var(--ema-text-primary)]"
+              title={title}
+            >
+              {formatSessionTitle(title)}
+            </p>
             <p className="text-xs text-[var(--ema-text-tertiary)]">
               {fmtDateShort(session.lastActivityAt)}
               {` · ${session.messageCount} 消息 · ${tokenTotal} Token`}

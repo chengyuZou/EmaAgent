@@ -18,6 +18,16 @@ Turn 管一次根 Agent 对话：创建运行记录，准备模型和工具，�
 文件状态由 Server 按 Session 持有, `prepareTurnTools` 只取得同一 `FileStateCache` 并注入根工具与子代理工具.
 Turn 收尾或中断不释放它, Compact 不修改它; 删除 Session 或关闭 Server 才释放.
 
+## 会话自动命名
+
+初始输入和运行中追加的普通用户输入使用同一规则. 调用 `SessionStore.appendMessage` 前, 先检查标题是否为 `DEFAULT_SESSION_TITLE`, 再通过 Server 注入的 `hasNormalUserMessage` 查询当前 Session 是否已有 `role='user', kind='normal'` 的消息. 查询只返回是否存在, 不读取首条正文或比较 Message ID. 判断和消息保存之间不 await.
+
+只有默认标题且没有普通用户消息时才自动命名. 消息保存成功后, Turn 用这条消息的块生成标题, 再调用 `SessionStore.updateTitleIfDefault`. Reminder, 续接, 摘要, 工具结果和 Assistant 消息不参与. 后续用户消息不会再次命名, 即使首条消息生成的标题仍是默认值. 消息保存失败不改名; 改名失败保留已保存的消息并继续执行, 不让后续消息替代首条命名.
+
+标题优先使用显式正文, 没有正文时使用大段粘贴文本的预览. 文件附件使用首个文件名, 多个附件附带总数量; 图片与文件混合时也计入总数量. 只有图片时使用 `图片` 或 `N 张图片`, 不使用图片原文件名. 只有 Skill 引用时使用首个技能名, 多个技能附带数量. 清理多余空白后, 按 `AUTO_SESSION_TITLE_LENGTH` 最多保存 30 个完整可见字符, 不拆开组合 emoji 或带重音的字符, 不调用模型生成标题.
+
+Desktop 的 `stores/session.ts` 导出 `formatSessionTitle`, 用 `SESSION_TITLE_DISPLAY_LENGTH` 显示前 10 个完整可见字符, 超出时加 `SESSION_TITLE_ELLIPSIS` 的 `...`. 侧栏, 搜索结果, 会话顶部和数据管理只在渲染时使用它, 不把截短值写回 Store 或 API.
+
 ## Session 续接与 Goal
 
 Permission 与 AskUser required/resolved 独立于根 Turn 事件流, 由宿主的 publishInteraction 直接交付 Session.

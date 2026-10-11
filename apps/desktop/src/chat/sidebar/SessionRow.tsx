@@ -4,7 +4,7 @@ import { Button, ConfirmDialog, DropdownMenu, IconButton, PromptDialog, type Men
 import type { SessionListItem } from '../../api/sessions.js';
 import type { SessionActivity } from '../../stores/sessionActivity.js';
 import { useMainNavigationStore } from '../../layout/navigation.js';
-import { useSessionStore } from '../../stores/session.js';
+import { formatSessionTitle, useSessionStore } from '../../stores/session.js';
 import { runWithToast } from '../../lib/toast.js';
 import { SessionCwdDialog } from '../session/SessionCwdDialog.js';
 import { removeSessionFromChat } from '../session/removeSessionFromChat.js';
@@ -160,8 +160,11 @@ export function SessionRow({
         {session.pinned && (
           <span className={`i-lucide:pin text-[11px] shrink-0 ${isActive ? 'text-[var(--ema-text-secondary)]' : 'text-[var(--ema-text-tertiary)]'}`} aria-hidden />
         )}
-        <span className="truncate min-w-0 leading-snug">
-          {session.title || '新对话'}
+        <span
+          className="truncate min-w-0 leading-snug"
+          title={session.title || '新对话'}
+        >
+          {formatSessionTitle(session.title || '新对话')}
         </span>
         {(sessionActivity?.pendingInteractions.length ?? 0) > 0 && (
           <span

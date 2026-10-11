@@ -278,6 +278,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
   turnExecutor = new TurnExecutor({
     turns: database.turns,
     sessions: database.session,
+    hasNormalUserMessage: sessionId => database.messages.hasNormalUserMessage(sessionId),
     providers: providers.providers,
     providerModels: providers.providerModels,
     settings,

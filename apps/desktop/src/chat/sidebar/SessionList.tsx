@@ -12,7 +12,7 @@ import {
   type SessionSearchResult,
 } from '../../api/sessions.js';
 import type { SessionActivity } from '../../stores/sessionActivity.js';
-import { useSessionStore } from '../../stores/session.js';
+import { formatSessionTitle, useSessionStore } from '../../stores/session.js';
 import { useMainNavigationStore } from '../../layout/navigation.js';
 import { useSessionHistoryStore } from '../../stores/sessionHistory.js';
 import { Collapse, SectionButton } from './ProjectSection.js';
@@ -224,7 +224,12 @@ function SearchRow({
       onClick={onSelect}
     >
       <span className="min-w-0 flex-1">
-        <span className="block truncate">{session.title || '新对话'}</span>
+        <span
+          className="block truncate"
+          title={session.title || '新对话'}
+        >
+          {formatSessionTitle(session.title || '新对话')}
+        </span>
         {showSnippet && (
           <span className="ema-session-search-snippet block truncate">{snippet}</span>
         )}

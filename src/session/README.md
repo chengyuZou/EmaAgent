@@ -25,7 +25,6 @@
 其余出口：
 
 - `SessionRunningRegistry`：同一 Session 只记录一个当前根工作，身份为根 Turn（kind='turn'）或手动 Compact（kind='compact'）；`waitUntilIdle` 供 Session 删除和 Server 关闭等待实际执行者收尾。`SessionBusyError` 是业务拒绝，`SessionRunningAlreadyRegisteredError` 是进程内重复注册错误。
-- `generateSessionTitle(query, complete)`：让模型生成 7–15 字标题，失败或为空时截断原文前 100 字兜底；返回空串表示没有可用输入。持久化不在此发生，调用方拿返回值走 `SessionStore.updateTitle`。
 - `parseMessageBlocksJson`：blocks_json 的唯一解析点。
 - `collectAttachmentReferenceIds`：一次批量收集消息里全部附件引用 id，供历史重放前批量预取附件。
 - `SessionOwnershipError`：跨 Session 引用的稳定错误。
@@ -37,6 +36,12 @@ active 或 paused 都表示目标未关闭, 拒绝切换并抛出 `SessionPlanGo
 其 `goalId` 指出需要用户关闭的目标. 同请求的其它字段也不写入, 不发成功事件.
 完成或删除目标后才允许切 Plan. SessionStore 只读取 Storage 的 GoalRow,
 不导入 Goal 业务包, 不代替用户取消目标. 反方向的新建/激活检查由 GoalStore 负责.
+
+## 会话标题
+
+`DEFAULT_SESSION_TITLE` 是新建时未指定标题的默认值. `appendMessage` 只保存消息, 不生成或修改标题. 自动命名由 [Turn 的发送流程](../turn/README.md#会话自动命名) 判断, 用户手动改名使用 `updateTitle`.
+
+`updateTitleIfDefault(sessionId, title)` 在 SQL 更新时检查当前标题仍为默认值, 避免自动命名覆盖用户已经保存的标题. 更新成功后发 `session_list_changed`, Desktop 重新读取完整标题. Session 不保存截短显示值, 搜索与备份使用完整标题.
 
 ## 边界（本包不负责）
 
