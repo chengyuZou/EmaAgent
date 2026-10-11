@@ -1,7 +1,6 @@
-// 展示并保存主题色, 壁纸, 圆角, 字体, 代码配色和明暗模式.
-import { useEffect, useState, type JSX, type ChangeEvent } from 'react';
+import { useState, type JSX, type ChangeEvent } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { Button, Select, Slider, Switch, type SelectOption } from '@ema-agent/ui';
+import { Button, Select, Slider, Switch } from '@ema-agent/ui';
 import { useThemeStore } from '../../stores/theme.js';
 import { PageHeader } from '../shared/PageHeader.js';
 import type { ThemeSettings } from '@ema-agent/server/settings/themeSetting.js';
@@ -12,11 +11,10 @@ import {
   HUE_LADDER_STEPS,
 } from '@ema-agent/server/settings/themeCatalog.js';
 import { hexToOklch } from '../../lib/oklch.js';
-import { WallpaperTab } from './wallpaperTab.js';
 
 type ThemeMode = ThemeSettings['mode'];
 
-/** 圆角预览块静态映射--UnoCSS 扫不到 `rounded-${size}` 动态拼接，必须完整字面量。 */
+// UnoCSS 无法扫描动态拼接的圆角类名, 这里保留完整字面量.
 const RADIUS_PREVIEW_CLASS: Record<'sm' | 'md' | 'lg' | 'xl', string> = {
   sm: 'rounded-sm',
   md: 'rounded-md',
@@ -24,21 +22,17 @@ const RADIUS_PREVIEW_CLASS: Record<'sm' | 'md' | 'lg' | 'xl', string> = {
   xl: 'rounded-xl',
 };
 
-/* Radix 保留空串为清空值, 系统档用哨兵值, 保存时再翻译回空串. */
-const SYSTEM_FONT_VALUE = '__system__';
-
-/** 调色板色值与预提色相: catalog 是常量, 预提一次后渲染零换算. */
+// 调色板是常量, 色相只需在首次加载时换算一次.
 const PALETTE_SWATCHES = COLOR_PALETTES.map((palette) => ({
   ...palette,
   swatches: palette.colors.map((hex) => ({ hex, hue: Math.round(hexToOklch(hex)?.h ?? 0) })),
 }));
 
-// ── Hue spectrum slider ───────────────────────────────────────────────────────
-//
-// Native <input type="range"> with a gradient track showing the full hue wheel.
-// 色谱轨道与原生滑块伪元素由 styles/domains/appearance.css 提供。
-
-function HueSlider({ value, disabled, onChange }: { value: number; disabled?: boolean; onChange: (h: number) => void }): JSX.Element {
+function HueSlider({ value, disabled, onChange }: {
+  value: number;
+  disabled?: boolean;
+  onChange(hue: number): void;
+}): JSX.Element {
   return (
     <input
       type="range"
@@ -54,36 +48,7 @@ function HueSlider({ value, disabled, onChange }: { value: number; disabled?: bo
   );
 }
 
-/** 字体选择行: "系统默认"置顶, 横线之下是本机字体全表(点开选择器时才懒加载). */
-function FontFamilyField({ family, systemLabel, systemFonts, onSave, onLazyLoad }: {
-  family: string;
-  systemLabel: string;
-  systemFonts: string[];
-  onSave(family: string): void;
-  onLazyLoad(): void;
-}): JSX.Element {
-  const known = family === '' || systemFonts.includes(family);
-  const selectOptions: SelectOption[] = [
-    { value: SYSTEM_FONT_VALUE, label: systemLabel },
-    ...(known ? [] : [{ value: family, label: `${family}(本机未安装)` }]),
-    ...systemFonts.map((name, index) => ({
-      value: name,
-      label: name,
-      ...(index === 0 ? { separatorAbove: true } : {}),
-    })),
-  ];
-  return (
-    <div onPointerDownCapture={onLazyLoad} onFocusCapture={onLazyLoad}>
-      <Select
-        value={family === '' ? SYSTEM_FONT_VALUE : family}
-        onChange={(value) => onSave(value === SYSTEM_FONT_VALUE ? '' : value)}
-        options={selectOptions}
-      />
-    </div>
-  );
-}
-
-// 拖动色相时只重绘色带和预设选中态, 不重绘壁纸图库及后续设置.
+// 拖动色相时只重绘色带和预设选中态, 不重绘其余主题设置.
 function ThemeColorSection(): JSX.Element {
   const hue = useThemeStore(state => state.hue);
   const hueDynamic = useThemeStore(state => state.hueDynamic);
@@ -97,7 +62,11 @@ function ThemeColorSection(): JSX.Element {
         <p className="text-xs mt-0.5 text-[var(--ema-text-tertiary)]">拖动选择任意色相，辅色(紫罗兰)会自动跟随</p>
       </div>
 
-      <HueSlider value={hue} disabled={hueDynamic} onChange={value => void setHue(value)} />
+      <HueSlider
+        value={hue}
+        disabled={hueDynamic}
+        onChange={value => void setHue(value)}
+      />
 
       <div className="flex overflow-hidden rounded-lg border border-[var(--ema-border)]">
         {HUE_LADDER_STEPS.map(step => (
@@ -121,7 +90,11 @@ function ThemeColorSection(): JSX.Element {
             主题色跟随角色立绘主色{hueDynamic ? ' 开启时手动选择暂不生效' : ''}
           </p>
         </div>
-        <Switch checked={hueDynamic} label="动态取色" onCheckedChange={value => void setHueDynamic(value)} />
+        <Switch
+          checked={hueDynamic}
+          label="动态取色"
+          onCheckedChange={value => void setHueDynamic(value)}
+        />
       </div>
     </section>
   );
@@ -176,41 +149,25 @@ function PaletteSection(): JSX.Element {
   );
 }
 
-export function AppearanceTab(): JSX.Element {
+export function ThemeTab(): JSX.Element {
   const {
     radius,
     mode,
-    readingFont,
-    codeFont,
     syntaxTheme,
-    ready,
-    init,
-    systemFonts,
-    ensureSystemFonts,
     setRadius,
     setMode,
-    setReadingFont,
-    setCodeFont,
     setSyntaxTheme,
   } = useThemeStore(useShallow(state => ({
     radius: state.radius,
     mode: state.mode,
-    readingFont: state.readingFont,
-    codeFont: state.codeFont,
     syntaxTheme: state.syntaxTheme,
-    ready: state.ready,
-    init: state.init,
-    systemFonts: state.systemFonts,
-    ensureSystemFonts: state.ensureSystemFonts,
     setRadius: state.setRadius,
     setMode: state.setMode,
-    setReadingFont: state.setReadingFont,
-    setCodeFont: state.setCodeFont,
     setSyntaxTheme: state.setSyntaxTheme,
   })));
   const [shaking, setShaking] = useState<ThemeMode | null>(null);
 
-  // 点当前已激活的主题按钮 -> shake 反馈(不 disabled,用户要知道点了)
+  // 重复点击当前模式时给出短暂反馈, 不重复保存相同设置.
   function handleModeClick(target: ThemeMode): void {
     if (mode === target) {
       setShaking(target);
@@ -220,20 +177,16 @@ export function AppearanceTab(): JSX.Element {
     void setMode(target);
   }
 
-  useEffect(() => {
-    if (!ready) void init();
-  }, [ready, init]);
-
   return (
     <div className="mx-auto flex w-[100%] flex-col gap-5">
-      <PageHeader title="外观" description="主题色、动态取色、圆角、字体、代码配色与显示模式" />
+      <PageHeader
+        title="主题"
+        description="主题色、动态取色、圆角、代码配色与显示模式"
+      />
 
       <ThemeColorSection />
       <PaletteSection />
 
-      <WallpaperTab />
-
-      {/* ── Shape ── */}
       <section className="ema-material-section rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] p-5 space-y-4">
         <div>
           <p className="text-sm font-medium text-[var(--ema-text-secondary)]">圆角风格</p>
@@ -246,7 +199,6 @@ export function AppearanceTab(): JSX.Element {
           steps={RADIUS_STEPS}
         />
 
-        {/* Shape preview: 四档撑满整行, 直观对比圆角量级. */}
         <div className="flex gap-3 pt-2">
           {(['sm', 'md', 'lg', 'xl'] as const).map((size) => (
             <div
@@ -257,53 +209,7 @@ export function AppearanceTab(): JSX.Element {
         </div>
       </section>
 
-      {/* 正文字体只管 Markdown 正文与长文本, 不影响界面控件、代码块和公式。 */}
-      <section className="ema-material-section rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] p-5 space-y-4">
-        <div>
-          <p className="text-sm font-medium text-[var(--ema-text-secondary)]">Markdown 正文字体</p>
-          <p className="text-xs mt-0.5 text-[var(--ema-text-tertiary)]">
-            调整聊天正文和长文本的阅读观感，代码仍使用等宽字体
-          </p>
-        </div>
-
-        <FontFamilyField
-          family={readingFont}
-          systemLabel="跟随系统"
-          systemFonts={systemFonts}
-          onSave={(value) => void setReadingFont(value)}
-          onLazyLoad={() => void ensureSystemFonts()}
-        />
-
-        <div className="ema-material-reading markdown-content rounded-lg border border-[var(--ema-border)] bg-[var(--ema-surface-1)] px-4 py-3 text-sm text-[var(--ema-text-primary)]">
-          Ema 会用这种字体显示 Markdown 正文。The quick brown fox jumps over the lazy dog.
-        </div>
-      </section>
-
-
-      {/* 等宽字体只管代码/JSON/终端/工具行, 不影响界面控件与正文。 */}
-      <section className="ema-material-section rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] p-5 space-y-4">
-        <div>
-          <p className="text-sm font-medium text-[var(--ema-text-secondary)]">等宽字体</p>
-          <p className="text-xs mt-0.5 text-[var(--ema-text-tertiary)]">
-            代码块、工具参数和终端使用的字体，界面其余部分不受影响
-          </p>
-        </div>
-
-        <FontFamilyField
-          family={codeFont}
-          systemLabel="跟随系统等宽"
-          systemFonts={systemFonts}
-          onSave={(value) => void setCodeFont(value)}
-          onLazyLoad={() => void ensureSystemFonts()}
-        />
-
-        <div className="ema-material-reading rounded-lg border border-[var(--ema-border)] bg-[var(--ema-surface-1)] px-4 py-3 font-mono text-xs text-[var(--ema-text-secondary)]">
-          const ema = '代码 / JSON / 终端用这种字体显示'; // 0123456789
-        </div>
-      </section>
-
-
-      {/* 代码配色只管语法高亮, 色板在 src/ui/styles/foundation/syntax-themes.css。 */}
+      {/* 代码配色只影响语法高亮, 不改变字体. */}
       <section className="ema-material-section rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] p-5 space-y-4">
         <div>
           <p className="text-sm font-medium text-[var(--ema-text-secondary)]">代码配色</p>
@@ -338,7 +244,6 @@ export function AppearanceTab(): JSX.Element {
       </section>
 
 
-      {/* ── Mode ── */}
       <section className="ema-material-section rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] p-5 space-y-4">
         <div>
           <p className="text-sm font-medium text-[var(--ema-text-secondary)]">显示模式</p>

@@ -53,7 +53,7 @@ export function builtinSkillsDir(): string {
   return path.join(profileDir(), 'resources', 'skills');
 }
 
-/** 窗口壁纸资源根：`<profileDir>/wallpapers/{chat,settings}/<图片文件>`, 每窗口一个图库文件夹 */
+/** 主窗口壁纸图库: <profileDir>/wallpapers/<图片文件>. */
 export function wallpapersDir(): string {
   return path.join(profileDir(), 'wallpapers');
 }

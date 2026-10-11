@@ -16,7 +16,7 @@ import { SessionRequestError, sessionWebSocket } from '../api/sessionWebSocket.j
 import type { PermissionRequiredEvent, PermissionResponse } from '@ema-agent/permission';
 import type { AskUserRequiredEvent } from '@ema-agent/tools';
 import type { WallpaperSettings } from '@ema-agent/server/settings/wallpaperSetting.js';
-import { DEFAULT_WALLPAPER_SETTINGS, WALLPAPER_SETTING_KEYS } from '@ema-agent/server/settings/wallpaperCatalog.js';
+import { DEFAULT_WALLPAPER_SETTINGS, WALLPAPER_SETTING_KEY } from '@ema-agent/server/settings/wallpaperCatalog.js';
 import { settingsApi } from '../api/settings.js';
 import { subscribeSystemEvent } from '../lib/system-event-dispatcher.js';
 
@@ -39,7 +39,7 @@ export function PermissionToastLayer(): React.JSX.Element {
     async function refresh(): Promise<void> {
       const requestSequence = ++sequence;
       try {
-        const response = await settingsApi.getValue(WALLPAPER_SETTING_KEYS.settings);
+        const response = await settingsApi.getValue(WALLPAPER_SETTING_KEY);
         if (disposed || requestSequence !== sequence) return;
         const value = response.value as WallpaperSettings;
         setWallpaper({ enabled: value.enabled, materialMode: value.materialMode });

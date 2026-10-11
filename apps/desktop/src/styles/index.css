@@ -1,14 +1,13 @@
-/* ── EmaAgent global styles entry ──────────────────────────────────────────
- * 唯一入口,顺序即规矩:设计系统层 → 业务域 → 第三方.
- * 设计系统层(foundation + primitives)住在 src/ui/styles(ui 包自携带, Ladle 同源);
- * 分层定义与新样式落位规则见 styles/README.md;禁止旁路 import.
- */
+/* 样式加载顺序: 设计系统层, 业务样式, 第三方样式.
+   设计系统样式由 UI 包携带; 分层规则见 styles/README.md. */
 @import '../../../../src/ui/styles/index.css';
 
 @import './domains/appearance.css';
 @import './domains/wallpaper.css';
 @import './domains/material.css';
 @import './domains/materialSurfaces.css';
+@import './domains/main.css';
+@import './domains/toast.css';
 @import './domains/chatMaterial.css';
 @import './domains/storage.css';
 @import './domains/memory.css';

@@ -4,7 +4,7 @@ import type { PermissionMode } from '@ema-agent/permission';
 import { goalsApi, type Goal } from '../../../api/goals.js';
 import { ServerApiError } from '../../../api/client.js';
 import { SessionRequestError } from '../../../api/sessionWebSocket.js';
-import { useChatNavigationStore } from '../../../stores/chatNavigation.js';
+import { useMainNavigationStore } from '../../../layout/navigation.js';
 import { useSessionStore } from '../../../stores/session.js';
 import { useSessionPanelStore } from '../../../stores/sessionPanel.js';
 import { subscribeSystemEvent } from '../../../lib/system-event-dispatcher.js';
@@ -38,7 +38,7 @@ export function useInputGoal(viewedId: string | null, permissionMode: Permission
   }
 
   async function readCurrentGoal(sessionId: string): Promise<void> {
-    if (useChatNavigationStore.getState().viewedSessionId !== sessionId) return;
+    if (useMainNavigationStore.getState().viewedSessionId !== sessionId) return;
     goalRequest.current?.abort();
     const controller = new AbortController();
     goalRequest.current = controller;

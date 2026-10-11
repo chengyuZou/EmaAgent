@@ -1,4 +1,5 @@
-// 汇合 Tauri 窗口显隐与浏览器页面可见性，向桌宠舞台提供统一暂停状态。
+// Tauri 以原生窗口显隐为准. 浏览器预览以页面可见性为准.
+// 暂停状态只交给需要停止绘制的组件, 不停止 Chat 的订阅和任务.
 import { useEffect, useState } from 'react';
 import { tauriBridge } from '../lib/tauri-bridge.js';
 

@@ -1,4 +1,4 @@
-// 组装桌宠主窗口、Live2D 舞台、权限提示与桌面交互入口。
+// 组装角色舞台窗口, Live2D, 权限提示与桌面交互入口.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CharacterStagePresentation } from '@ema-agent/characters';
 import { Tooltip } from '@ema-agent/ui';
@@ -25,15 +25,6 @@ import { showToast } from './lib/toast.js';
 import { handleCharacterSystemEvent } from './stores/character.js';
 import { handleSettingsSystemEvent, useSettingsStore } from './stores/settings.js';
 
-// ── 主窗口 ──────────────────────────────────────────────────────────────────
-//
-// 透明窗口上的绝对定位层：
-//   - DragLayer：覆盖全窗的透明拖拽区
-//   - GlowBorder：窗口边缘呼吸光
-//   - CharacterStage：Live2D、立绘或占位
-//   - FloatingDock：鼠标进入窗口后出现的右侧工具条
-//   - ServerBadge：左上角应用服务器状态点
-//
 // 系统鼠标驱动视线与 Dock, 点击穿透不会切断跟随或隐藏角色.
 
 export function App(): React.JSX.Element {
@@ -54,7 +45,7 @@ export function App(): React.JSX.Element {
     setSelectedExpression(null);
   }, []);
 
-  // 应用服务器首次可用及角色切换事件都会刷新角色 store；舞台只订阅稳定角色字段。
+  // 应用服务器首次可用及角色切换事件都会刷新角色 Store, 舞台只订阅稳定角色字段.
   useEffect(() => {
     if (serverStatus.kind !== 'ok') return;
     void useCharacterStore.getState().load();
@@ -64,8 +55,7 @@ export function App(): React.JSX.Element {
     handleCharacterSystemEvent(event);
     handleSettingsSystemEvent(event);
 
-    // 只有持有 System SSE 的主窗口展示 AppEvent 通知. Chat 和
-    // Settings 仍接收同一广播更新页面, 但不会重复弹 Toast.
+    // stage 持有 System SSE 并展示应用事件通知. main 接收广播更新共享状态, 不重复弹通知.
     const config = useSettingsStore.getState().eventDisplay?.[event.type];
     const notification = resolveConfiguredEventNotification(event, config);
     if (notification) {
@@ -84,8 +74,8 @@ export function App(): React.JSX.Element {
     }
   }), []);
 
-  // 角色切换和真正影响主舞台的事件才重新读取 presentation。普通资源导入只刷新
-  // Settings 列表,不能让正在渲染的主模型因为一张封面变化而重新加载。
+  // 角色切换和影响舞台的事件才重新读取 presentation.
+  // 普通资源导入只刷新 Settings 列表, 不让当前模型因为封面变化而重新加载.
   useEffect(() => {
     const requestSequence = ++stageRequestSequence.current;
 
@@ -136,7 +126,7 @@ export function App(): React.JSX.Element {
   useThemeSync();
   useSettingsSync(serverStatus.kind === 'ok');
 
-  // 主桌宠窗口与应用同生命周期，负责唯一的全局系统事件连接。
+  // stage 与应用同生命周期, 隐藏舞台时仍保留系统事件连接.
   useEffect(() => mountSystemEvents({ ownsConnection: true }), []);
 
   useEffect(() => {
@@ -183,7 +173,7 @@ export function App(): React.JSX.Element {
     };
   }, []);
 
-  // 主窗口持有应用服务器健康轮询。
+  // stage 持有应用服务器健康轮询.
   useEffect(() => {
     const stop = useServerStore.getState().startPolling();
     return stop;
@@ -192,7 +182,7 @@ export function App(): React.JSX.Element {
   return (
     <>
 
-      {/* 拖拽层位于所有内容下方；可交互组件必须显式关闭 Tauri 拖拽。 */}
+      {/* 拖拽层位于所有内容下方, 可交互组件必须显式关闭 Tauri 拖拽. */}
       <div style={dragLayerStyle} data-tauri-drag-region />
 
       <GlowBorder />
@@ -220,14 +210,12 @@ export function App(): React.JSX.Element {
 
       <ServerBadge status={serverStatus} />
 
-      {/* 主窗口只显示非阻塞授权提示；其他 AskUser 由聊天窗口的 Session 队列处理。 */}
+      {/* stage 只显示非阻塞授权提示, AskUser 由 main 的 Session 队列处理. */}
       <PermissionToastLayer />
     </>
   );
 }
 
-// ── 主题色相呼吸光边框 ────────────────────────────────────────────────────────
-//
 // 视觉全部归 styles 的 .ema-pet-glow-border, 颜色 token 跟随当前生效 hue, 呼吸节奏不变.
 
 function GlowBorder(): React.JSX.Element {
@@ -238,16 +226,24 @@ const dragLayerStyle: React.CSSProperties = {
   position:      'fixed',
   inset:         0,
   zIndex:        0,
-  // 拖拽区必须接收鼠标事件，因此不能设置 pointer-events:none。
+  // 拖拽区必须接收鼠标事件, 因此不能设置 pointer-events:none.
 };
 
-// ── 应用服务器状态点 ─────────────────────────────────────────────────────────
-
 function ServerBadge({ status }: { status: ServerStatus }): React.JSX.Element {
-  const detail = status.kind === 'ok'      ? `服务器 @ port ${status.port}`
-               : status.kind === 'pending' ? '等待服务器启动 …'
-               : status.kind === 'error'   ? `服务器错误：${status.reason}`
-               :                              '服务器状态未知';
+  let detail: string;
+  switch (status.kind) {
+    case 'ok':
+      detail = `服务器 @ port ${status.port}`;
+      break;
+    case 'pending':
+      detail = '等待服务器启动 …';
+      break;
+    case 'error':
+      detail = `服务器错误：${status.reason}`;
+      break;
+    default:
+      detail = '服务器状态未知';
+  }
 
   return (
     <Tooltip content={detail} side="right" sideOffset={8}>
@@ -264,4 +260,3 @@ function ServerBadge({ status }: { status: ServerStatus }): React.JSX.Element {
   );
 }
 
-// ── 开发测试入口：让音频经过 Live2D 口型管线 ─────────────────────────────────

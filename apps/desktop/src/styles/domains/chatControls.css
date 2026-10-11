@@ -1,7 +1,6 @@
-/* Chat 的侧栏、Header、消息动作、输入栏与右侧 Panel 共用控件皮肤。
-   裸态纪律: 皮肤由组件 variant 或本文件具名类提供; 不做全域剥皮 — 旧的
-   .ema-chat-window button[aria-label]:not(发送) 规则曾误杀"停止生成/录音中"的
-   danger 态, 并拿中文 label 当样式开关。 */
+/* Chat 侧栏, 顶部操作, 消息操作, 输入栏和右侧面板共用控件样式.
+   按钮外观由组件 variant 或具名类提供. 不根据中文 label 覆盖所有按钮,
+   否则停止生成和录音中的 danger 状态会被普通控件样式覆盖. */
 
 .ema-chat-icon-btn,
 .ema-chat-row-action {

@@ -4,13 +4,17 @@ use std::sync::Mutex;
 use std::time::Duration;
 use tauri::{Emitter, EventTarget, WebviewWindow};
 
-use super::windows::set_main_passthrough;
+use super::windows::set_stage_passthrough;
 
 const PET_POINTER_EVENT: &str = "ema://pet-pointer";
 const POINTER_INTERVAL: Duration = Duration::from_nanos(1_000_000_000 / 60);
 
 #[derive(Clone, Serialize)]
-#[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 enum PetPointerEvent {
     Position {
         client_x: f64,
@@ -29,11 +33,13 @@ pub struct PetPointerTracking {
 
 impl PetPointerTracking {
     pub fn start(&self, window: WebviewWindow) -> Result<(), String> {
-        if window.label() != "main" {
+        if window.label() != "stage" {
             return Err("system pointer tracking is only available for the pet window".into());
         }
         // 开始订阅前确认系统坐标可读, 失败时前端不能开放穿透按钮.
-        window.cursor_position().map_err(|error| error.to_string())?;
+        window
+            .cursor_position()
+            .map_err(|error| error.to_string())?;
         let mut task = self.task.lock().map_err(|error| error.to_string())?;
         if let Some(previous) = task.take() {
             previous.abort();
@@ -53,11 +59,11 @@ impl PetPointerTracking {
                     let result = sample_and_emit(&sampled_window);
                     if let Err(error) = &result {
                         tracing::error!(%error, "pet system pointer tracking failed");
-                        if let Err(restore_error) = set_main_passthrough(&sampled_window, false) {
+                        if let Err(restore_error) = set_stage_passthrough(&sampled_window, false) {
                             tracing::error!(%restore_error, "failed to restore pet pointer interaction");
                         }
                         let _ = sampled_window.emit_to(
-                            EventTarget::window("main"),
+                            EventTarget::window("stage"),
                             PET_POINTER_EVENT,
                             PetPointerEvent::Error { message: error.clone() },
                         );
@@ -91,7 +97,9 @@ fn sample_and_emit(window: &WebviewWindow) -> Result<(), String> {
     {
         return Ok(());
     }
-    let cursor = window.cursor_position().map_err(|error| error.to_string())?;
+    let cursor = window
+        .cursor_position()
+        .map_err(|error| error.to_string())?;
     let position = window.inner_position().map_err(|error| error.to_string())?;
     let size = window.inner_size().map_err(|error| error.to_string())?;
     let scale = window.scale_factor().map_err(|error| error.to_string())?;
@@ -100,10 +108,12 @@ fn sample_and_emit(window: &WebviewWindow) -> Result<(), String> {
     let pointer = PetPointerEvent::Position {
         client_x: relative_x / scale,
         client_y: relative_y / scale,
-        inside: relative_x >= 0.0 && relative_x < f64::from(size.width)
-            && relative_y >= 0.0 && relative_y < f64::from(size.height),
+        inside: relative_x >= 0.0
+            && relative_x < f64::from(size.width)
+            && relative_y >= 0.0
+            && relative_y < f64::from(size.height),
     };
     window
-        .emit_to(EventTarget::window("main"), PET_POINTER_EVENT, pointer)
+        .emit_to(EventTarget::window("stage"), PET_POINTER_EVENT, pointer)
         .map_err(|error| error.to_string())
 }

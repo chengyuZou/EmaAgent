@@ -2,13 +2,13 @@ import { useEffect, useLayoutEffect, useRef, useState, type JSX } from 'react';
 import type { WallpaperSettings } from '@ema-agent/server/settings/wallpaperSetting.js';
 import {
   DEFAULT_WALLPAPER_IMAGE_PARAMS,
-  WALLPAPER_SETTING_KEYS,
-  type WallpaperWindowTarget,
+  WALLPAPER_SETTING_KEY,
 } from '@ema-agent/server/settings/wallpaperCatalog.js';
 import { settingsApi } from '../api/settings.js';
 import { wallpaperApi } from '../api/wallpaper.js';
 import { subscribeSystemEvent } from '../lib/system-event-dispatcher.js';
 import { fetchServerObjectUrl } from '../lib/serverFileUrl.js';
+import { useServerStore } from '../stores/server.js';
 
 interface WallpaperFrame {
   readonly id: number;
@@ -19,13 +19,17 @@ interface WallpaperFrame {
   readonly outgoing: boolean;
 }
 
-export function WallpaperLayer({ target }: { target: WallpaperWindowTarget }): JSX.Element {
+export function WallpaperLayer(): JSX.Element {
+  const serverReady = useServerStore(state => state.status.kind === 'ok');
   const [settings, setSettings] = useState<WallpaperSettings | null>(null);
   const [frames, setFrames] = useState<WallpaperFrame[]>([]);
   const framesRef = useRef<WallpaperFrame[]>([]);
   const nextFrameId = useRef(0);
 
   useEffect(() => {
+    if (!serverReady) {
+      return;
+    }
     let disposed = false;
     let sequence = 0;
     let refreshTimer: ReturnType<typeof setTimeout> | undefined;
@@ -70,7 +74,7 @@ export function WallpaperLayer({ target }: { target: WallpaperWindowTarget }): J
     async function refresh(): Promise<void> {
       const currentSequence = ++sequence;
       try {
-        const response = await settingsApi.getValue(WALLPAPER_SETTING_KEYS[target]);
+        const response = await settingsApi.getValue(WALLPAPER_SETTING_KEY);
         if (disposed || currentSequence !== sequence) return;
         let value = response.value as WallpaperSettings;
         if (!value.enabled || !value.activeImage) {
@@ -83,16 +87,16 @@ export function WallpaperLayer({ target }: { target: WallpaperWindowTarget }): J
           return;
         }
 
-        let url = await fetchServerObjectUrl(wallpaperApi.imagePath(target, value.activeImage));
+        let url = await fetchServerObjectUrl(wallpaperApi.imagePath(value.activeImage));
         if (!url) {
-          const catalog = await wallpaperApi.listImages(target);
+          const catalog = await wallpaperApi.listImages();
           if (catalog.items.some(item => item.name === value.activeImage)) return;
           const nextName = catalog.items.find(item => item.name > value.activeImage)?.name
             ?? catalog.items[0]?.name
             ?? '';
           value = { ...value, activeImage: nextName };
-          await settingsApi.putValue(WALLPAPER_SETTING_KEYS[target], value);
-          if (nextName) url = await fetchServerObjectUrl(wallpaperApi.imagePath(target, nextName));
+          await settingsApi.putValue(WALLPAPER_SETTING_KEY, value);
+          if (nextName) url = await fetchServerObjectUrl(wallpaperApi.imagePath(nextName));
         }
         if (url) {
           try {
@@ -129,8 +133,9 @@ export function WallpaperLayer({ target }: { target: WallpaperWindowTarget }): J
       for (const timer of retirementTimers) clearTimeout(timer);
       for (const frame of framesRef.current) URL.revokeObjectURL(frame.url);
       framesRef.current = [];
+      setFrames([]);
     };
-  }, [target]);
+  }, [serverReady]);
 
   const hasImage = frames.length > 0;
   const materialMode = settings?.materialMode ?? 'translucent';
@@ -138,7 +143,7 @@ export function WallpaperLayer({ target }: { target: WallpaperWindowTarget }): J
   // 当前窗口文档承载材质, body 下的 Portal 与主界面读取同一个窗口状态.
   useLayoutEffect(() => {
     const root = document.documentElement;
-    root.dataset.materialWindow = target;
+    root.dataset.materialWindow = 'main';
     root.dataset.windowMaterial = materialMode;
     root.dataset.windowWallpaper = String(hasImage);
     return () => {
@@ -146,7 +151,7 @@ export function WallpaperLayer({ target }: { target: WallpaperWindowTarget }): J
       delete root.dataset.windowMaterial;
       delete root.dataset.windowWallpaper;
     };
-  }, [target, materialMode, hasImage]);
+  }, [materialMode, hasImage]);
 
   return (
     <div

@@ -1,11 +1,11 @@
-// 提供窗口显示、交互模式与应用退出相关的 Tauri commands。
+// 提供主窗口显示, 舞台交互模式与应用退出命令.
 use serde::Deserialize;
 use tauri::Manager;
 
 use crate::desktop::pet_pointer::PetPointerTracking;
 use crate::desktop::windows::{
-    begin_main_focus_settling, main_passthrough_enabled, set_main_passthrough,
-    set_main_passthrough_controls_hovered, show_window,
+    begin_stage_focus_settling, set_stage_passthrough, set_stage_passthrough_controls_hovered,
+    show_window, stage_passthrough_enabled,
 };
 use crate::processes::DesktopProcesses;
 
@@ -56,20 +56,20 @@ pub fn set_always_on_top(window: tauri::Window, value: bool) -> Result<(), Strin
     window
         .set_always_on_top(value)
         .map_err(|error| error.to_string())?;
-    if window.label() == "main" && !value {
-        begin_main_focus_settling();
+    if window.label() == "stage" && !value {
+        begin_stage_focus_settling();
     }
     Ok(())
 }
 
 #[tauri::command]
 pub fn set_passthrough(window: tauri::WebviewWindow, value: bool) -> Result<(), String> {
-    set_main_passthrough(&window, value)
+    set_stage_passthrough(&window, value)
 }
 
 #[tauri::command]
 pub fn get_passthrough() -> bool {
-    main_passthrough_enabled()
+    stage_passthrough_enabled()
 }
 
 #[tauri::command]
@@ -85,7 +85,7 @@ pub fn set_passthrough_controls_hovered(
     window: tauri::WebviewWindow,
     hovered: bool,
 ) -> Result<(), String> {
-    set_main_passthrough_controls_hovered(&window, hovered)
+    set_stage_passthrough_controls_hovered(&window, hovered)
 }
 
 #[tauri::command]
@@ -98,22 +98,22 @@ pub async fn quit_app(app: tauri::AppHandle) {
 }
 
 #[tauri::command]
-pub async fn open_window(app: tauri::AppHandle, label: String) -> Result<(), String> {
-    // WebView2 在 Windows 的同步 command 中创建窗口会与 UI 线程互等并死锁。
-    // async command 由 Tauri 调度到异步线程，窗口首次惰性创建时不会冻住整个桌面宿主。
-    tracing::info!(%label, "open_window requested");
-    show_window(&app, &label).map_err(|error| {
-        // 原生侧保留窗口创建错误，便于前端提示之外继续从 Desktop 日志定位。
-        tracing::error!(%label, %error, "open_window failed");
+pub async fn open_main_window(app: tauri::AppHandle) -> Result<(), String> {
+    // Windows 同步 command 创建 WebView2 会与 UI 线程互等, 必须由异步线程请求创建.
+    show_window(&app, "main").map_err(|error| {
+        tracing::error!(%error, "open_main_window failed");
         error
-    })?;
-    tracing::info!(%label, "open_window completed");
-    Ok(())
+    })
+}
+
+#[tauri::command]
+pub fn hide_main_window(app: tauri::AppHandle) -> Result<(), String> {
+    crate::desktop::windows::hide_main_window(&app)
 }
 
 #[tauri::command]
 pub fn open_path(app: tauri::AppHandle, path: String) -> Result<(), String> {
-    // 用宿主侧 opener 打开路径本身;自研 command 不经 WebView ACL。
+    // 用宿主侧 opener 打开路径本身, 自有 command 不经 WebView ACL.
     use tauri_plugin_opener::OpenerExt;
     app.opener()
         .open_path(&path, None::<&str>)
@@ -127,5 +127,7 @@ pub fn open_path(app: tauri::AppHandle, path: String) -> Result<(), String> {
 pub async fn read_draft_image(path: String) -> Result<Vec<u8>, String> {
     // 文件选择器只返回路径, WebView 无法直接显示本机文件. 这里仅为草稿预览读取字节,
     // 不创建 Session 附件; 点击发送后仍由原有上传接口负责正式落盘.
-    tokio::fs::read(path).await.map_err(|error| error.to_string())
+    tokio::fs::read(path)
+        .await
+        .map_err(|error| error.to_string())
 }

@@ -13,7 +13,7 @@ import {
 } from '../../api/sessions.js';
 import type { SessionActivity } from '../../stores/sessionActivity.js';
 import { useSessionStore } from '../../stores/session.js';
-import { useChatNavigationStore } from '../../stores/chatNavigation.js';
+import { useMainNavigationStore } from '../../layout/navigation.js';
 import { useSessionHistoryStore } from '../../stores/sessionHistory.js';
 import { Collapse, SectionButton } from './ProjectSection.js';
 import type { SessionSidebarMoveInput } from '../../api/workspaces.js';
@@ -132,7 +132,7 @@ export function SessionSearch({
   const firstId = first?.session.id ?? visibleRecents[0]?.id;
 
   const select = useCallback((id: string, anchor?: string | null) => {
-    useChatNavigationStore.getState().viewSession(id);
+    useMainNavigationStore.getState().viewSession(id);
     if (anchor) void useSessionHistoryStore.getState().openAround(id, anchor);
     onClose();
   }, [onClose]);

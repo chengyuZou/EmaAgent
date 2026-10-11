@@ -17,8 +17,8 @@ vi.mock('../src/api/settings.js', () => ({ settingsApi: {
 const bridge = vi.hoisted(() => ({ required: undefined as undefined | ((event: PermissionRequiredEvent | AskUserRequiredEvent) => void),
   dismissed: undefined as undefined | ((id: string) => void), respond: vi.fn(async () => undefined) }));
 const pending = vi.hoisted(() => ({ entry: undefined as PendingInteraction | undefined }));
-vi.mock('../src/stores/chatNavigation.js', () => ({
-  useChatNavigationStore: (selector: (state: { viewedSessionId: string }) => unknown) =>
+vi.mock('../src/layout/navigation.js', () => ({
+  useMainNavigationStore: (selector: (state: { viewedSessionId: string }) => unknown) =>
     selector({ viewedSessionId: 'session' }),
 }));
 vi.mock('../src/stores/sessionActivity.js', () => ({

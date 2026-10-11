@@ -1,42 +1,28 @@
 import { useEffect, useMemo, type JSX } from 'react';
-import { mountSystemEvents } from '../lib/system-sse.js';
 import { sessionsApi } from '../api/sessions.js';
 import { subscribeSystemEvent } from '../lib/system-event-dispatcher.js';
 import { ErrorBoundary } from '../lib/error-boundary.js';
 import { useServerStore } from '../stores/server.js';
 import { useSessionStore } from '../stores/session.js';
-import { useSettingsSync } from '../stores/settings-sync.js';
-import { useThemeSync } from '../stores/theme.js';
 import { NewSessionPage } from './NewSessionPage.js';
 import { SessionPage } from './session/SessionPage.js';
 import { SessionSidebar } from './sidebar/SessionSidebar.js';
-import { useChatNavigationStore } from '../stores/chatNavigation.js';
+import { useMainNavigationStore } from '../layout/navigation.js';
 import { useSessionActivityStore } from '../stores/sessionActivity.js';
 import { useSubagentStore } from '../stores/subagent.js';
-import { handleBackgroundProcessSystemEvent } from '../stores/backgroundProcess.js';
-import { handleMcpSystemEvent } from '../stores/mcp.js';
-import { handleSettingsSystemEvent } from '../stores/settings.js';
-import { handleSkillSystemEvent } from '../stores/skill.js';
-import { handleTaskSystemEvent } from '../stores/task.js';
 import { useSessionHistoryStore } from '../stores/sessionHistory.js';
 import {
   clearSessionSubscriptions,
   syncSessionSubscriptions,
 } from './session/sessionSubscriptions.js';
-import { WallpaperLayer } from '../wallpaper/WallpaperLayer.js';
 
 export function ChatPage(): JSX.Element {
-  const sessionId = useChatNavigationStore(state => state.viewedSessionId);
+  const sessionId = useMainNavigationStore(state => state.viewedSessionId);
   const sessions = useSessionStore(state => state.sessions);
   const activity = useSessionActivityStore(state => state.bySession);
   const progressById = useSubagentStore(state => state.progressById);
   const serverStatus = useServerStore(state => state.status);
   const hasConnected = useServerStore(state => state.lastKnownPort !== null);
-  useThemeSync();
-  useSettingsSync(serverStatus.kind === 'ok');
-
-  useEffect(() => mountSystemEvents({ ownsConnection: false }), []);
-  useEffect(() => useServerStore.getState().startPolling(), []);
   useEffect(() => {
     void useSessionStore.getState().loadSessions();
   }, []);
@@ -78,11 +64,6 @@ export function ChatPage(): JSX.Element {
   useEffect(() => {
     let refreshTimer: ReturnType<typeof setTimeout> | undefined;
     const unsubscribe = subscribeSystemEvent(event => {
-      handleBackgroundProcessSystemEvent(event);
-      handleMcpSystemEvent(event);
-      handleSettingsSystemEvent(event);
-      handleSkillSystemEvent(event);
-      handleTaskSystemEvent(event);
       if (event.type === 'session_audio_changed') {
         void useSessionHistoryStore.getState().mergeTurnMessages(event.sessionId, event.turnId);
       }
@@ -100,7 +81,7 @@ export function ChatPage(): JSX.Element {
 
   if (serverStatus.kind === 'error' && !hasConnected) {
     return (
-      <div className="flex h-screen items-center justify-center text-[var(--ema-text-tertiary)] ema-fade-in">
+      <div className="flex h-full items-center justify-center text-[var(--ema-text-tertiary)] ema-fade-in">
         <div className="text-center">
           <div className="mb-2 inline-flex items-center gap-1.5 text-lg">
             <span className="i-lucide:unplug" aria-hidden />
@@ -117,7 +98,7 @@ export function ChatPage(): JSX.Element {
       || serverStatus.kind === 'unknown'
   )) {
     return (
-      <div className="flex h-screen items-center justify-center text-[var(--ema-text-tertiary)] ema-fade-in">
+      <div className="flex h-full items-center justify-center text-[var(--ema-text-tertiary)] ema-fade-in">
         连接中…
       </div>
     );
@@ -125,8 +106,7 @@ export function ChatPage(): JSX.Element {
 
   return (
     <ErrorBoundary>
-      <div className="ema-wallpaper-window relative isolate flex h-screen flex-row bg-[var(--ema-bg)]">
-        <WallpaperLayer target="chat" />
+      <div className="relative flex h-full flex-row">
         <SessionSidebar />
         {sessionId
           ? <SessionPage sessionId={sessionId} />

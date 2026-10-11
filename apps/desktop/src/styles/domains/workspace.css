@@ -1,5 +1,5 @@
-/* 会话侧栏与设置导航的拖拽反馈, 以及右侧工作区的标签栏, 工具入口和文件树。
-   选中态语言在 primitives/selectable.css,Chat 控件皮肤在 chatControls.css。 */
+/* 会话侧栏的拖拽反馈, 以及右侧工作区的标签栏, 工具入口和文件树.
+   选中态在 primitives/selectable.css, Chat 控件皮肤在 chatControls.css. */
 
 .ema-session-sidebar {
   transition: width var(--ema-duration-panel) var(--ema-ease),
@@ -19,32 +19,16 @@
               visibility 0ms;
 }
 
-.ema-session-sidebar-rail {
-  position: absolute;
-  inset-block: 0;
-  left: 0;
-  width: 40px;
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity var(--ema-duration-fast) var(--ema-ease),
-              visibility 0ms var(--ema-duration-fast);
-}
-
 .ema-session-sidebar[data-collapsed='true'] .ema-session-sidebar-expanded {
   opacity: 0;
   visibility: hidden;
   transition-delay: 0ms, var(--ema-duration-fast);
 }
 
-.ema-session-sidebar[data-collapsed='true'] .ema-session-sidebar-rail {
-  opacity: 1;
-  visibility: visible;
-  transition-delay: var(--ema-duration-fast), 0ms;
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .ema-session-sidebar-expanded,
-  .ema-session-sidebar-rail {
+  .ema-session-sidebar,
+  .ema-session-sidebar-expanded {
+    transition: none;
     transition-delay: 0ms;
   }
 }

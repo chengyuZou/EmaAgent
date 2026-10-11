@@ -15,7 +15,7 @@ import { subscribeSystemEvent } from '../../lib/system-event-dispatcher.js';
 import { ServerApiError } from '../../api/client.js';
 import type { SessionListItem } from '../../api/sessions.js';
 import { SessionRequestError, sessionWebSocket } from '../../api/sessionWebSocket.js';
-import { useChatNavigationStore } from '../../stores/chatNavigation.js';
+import { useMainNavigationStore } from '../../layout/navigation.js';
 import { useSessionStore } from '../../stores/session.js';
 import { useSessionActivityStore } from '../../stores/sessionActivity.js';
 import { ensureSessionSubscription } from '../session/sessionSubscriptions.js';
@@ -366,7 +366,7 @@ export function useInputCommands(
     const sessions = useSessionStore.getState();
     if (name === 'compact') return runCompact();
     if (name === 'new') {
-      useChatNavigationStore.getState().openNewSession();
+      useMainNavigationStore.getState().openNewSession();
       return;
     }
     if (!viewedId) return;
@@ -375,7 +375,7 @@ export function useInputCommands(
       return;
     }
     if (name === 'fork') {
-      useChatNavigationStore.getState().viewSession(await sessions.forkSession(viewedId));
+      useMainNavigationStore.getState().viewSession(await sessions.forkSession(viewedId));
       return;
     }
     if (name === 'rename') {

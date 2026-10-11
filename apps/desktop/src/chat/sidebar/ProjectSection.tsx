@@ -16,7 +16,7 @@ import { tauriBridge } from '../../lib/tauri-bridge.js';
 import { runWithToast } from '../../lib/toast.js';
 import type { SessionActivity } from '../../stores/sessionActivity.js';
 import { useSessionStore } from '../../stores/session.js';
-import { useChatNavigationStore } from '../../stores/chatNavigation.js';
+import { useMainNavigationStore } from '../../layout/navigation.js';
 import { SessionRow } from './SessionRow.js';
 import { useSidebarDrag } from './SidebarDragContext.js';
 
@@ -441,7 +441,7 @@ function ProjectRow({
           className="ema-chat-row-action"
           icon="i-lucide:square-pen"
           label={`在 ${project.name} 中新建对话`}
-          onClick={() => useChatNavigationStore.getState().openNewSession(project.id)}
+          onClick={() => useMainNavigationStore.getState().openNewSession(project.id)}
         />
         <DropdownMenu
           trigger={
@@ -488,8 +488,11 @@ function ProjectRow({
           void runWithToast(
             projectsApi.remove(project.id)
               .then(async () => {
-                if (useChatNavigationStore.getState().newSessionProjectId === project.id) {
-                  useChatNavigationStore.getState().openNewSession();
+                if (useMainNavigationStore.getState().newSessionProjectId === project.id) {
+                  useMainNavigationStore.setState({
+                    newSessionProjectId: null,
+                    newSessionCwd: null,
+                  });
                 }
                 await useSessionStore.getState().loadSessions();
               }),

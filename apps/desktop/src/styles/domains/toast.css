@@ -1,0 +1,96 @@
+.ema-toast-container {
+  position: fixed;
+  right: var(--ema-space-4);
+  bottom: var(--ema-space-4);
+  z-index: var(--ema-z-toast);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--ema-space-2);
+  max-width: min(24rem, calc(100vw - 2 * var(--ema-space-4)));
+  pointer-events: none;
+}
+
+.ema-toast-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ema-space-2);
+  max-width: 100%;
+  padding: var(--ema-space-2) var(--ema-space-4);
+  border: 1px solid;
+  border-radius: var(--ema-radius-lg);
+  font-size: 14px;
+  line-height: 20px;
+  pointer-events: auto;
+}
+
+.ema-toast-item[data-variant='info'] {
+  border-color: var(--ema-info);
+  color: var(--ema-info-text);
+  background-color: var(--ema-info-muted);
+}
+
+.ema-toast-item[data-variant='success'] {
+  border-color: var(--ema-success);
+  color: var(--ema-success-text);
+  background-color: var(--ema-success-muted);
+}
+
+.ema-toast-item[data-variant='warning'] {
+  border-color: var(--ema-warning);
+  color: var(--ema-warning-text);
+  background-color: var(--ema-warning-muted);
+}
+
+.ema-toast-item[data-variant='danger'] {
+  border-color: var(--ema-danger);
+  color: var(--ema-danger-text);
+  background-color: var(--ema-danger-muted);
+}
+
+.ema-toast-message {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ema-toast-count {
+  flex-shrink: 0;
+  padding: var(--ema-space-0_5) var(--ema-space-2);
+  border-radius: var(--ema-radius-sm);
+  background: var(--ema-surface-2);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 12px;
+}
+
+.ema-toast-close {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  margin-top: var(--ema-space-0_5);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity var(--ema-duration-fast) var(--ema-ease);
+}
+
+.ema-toast-close:hover,
+.ema-toast-close:focus-visible {
+  opacity: 1;
+}
+
+.ema-toast-close:focus-visible {
+  outline: 2px solid var(--ema-primary);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ema-toast-close {
+    transition: none;
+  }
+}

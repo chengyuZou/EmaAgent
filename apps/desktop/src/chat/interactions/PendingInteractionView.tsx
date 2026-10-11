@@ -5,7 +5,7 @@ import type { PermissionRequest, PermissionResponse } from '@ema-agent/permissio
 import type { AskUserQuestionSpec, AskUserRequiredEvent } from '@ema-agent/tools';
 import type { PendingInteraction } from '@ema-agent/turn';
 import { SessionRequestError, sessionWebSocket } from '../../api/sessionWebSocket.js';
-import { useChatNavigationStore } from '../../stores/chatNavigation.js';
+import { useMainNavigationStore } from '../../layout/navigation.js';
 import { useSessionActivityStore } from '../../stores/sessionActivity.js';
 
 function useSubmission(): {
@@ -407,7 +407,7 @@ function Interaction({ entry, sessionId }: { entry: PendingInteraction; sessionI
 }
 
 export function PendingInteractionView(): JSX.Element | null {
-  const sessionId = useChatNavigationStore((state) => state.viewedSessionId);
+  const sessionId = useMainNavigationStore((state) => state.viewedSessionId);
   const current = useSessionActivityStore((state) => (
     sessionId
       ? state.bySession.get(sessionId)?.pendingInteractions[0]

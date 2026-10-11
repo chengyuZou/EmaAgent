@@ -1,5 +1,5 @@
-/* 外观设置页的色谱与壁纸滑块(唯一消费者:AppearanceTab 和 WallpaperTab).
-   高色带 + 细竖条 thumb: 40px 轨道让色轮本身就是主角, 48px 竖条跨带指示, 不用圆点. */
+/* 主题色谱由 ThemeTab 使用, 壁纸滑块由 WallpaperTab 使用.
+   色谱轨道高 40px, 指示条高 48px, 在轨道上下各延伸 4px. */
 
 .ema-hue-range {
   -webkit-appearance: none;

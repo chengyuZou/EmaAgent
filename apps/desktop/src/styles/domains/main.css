@@ -1,0 +1,124 @@
+.ema-main-window {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  background: var(--ema-bg);
+  color: var(--ema-text-primary);
+}
+
+.ema-main-titlebar {
+  position: relative;
+  z-index: var(--ema-z-sticky);
+  display: flex;
+  flex: 0 0 40px;
+  align-items: center;
+  gap: var(--ema-space-2);
+  padding-left: var(--ema-space-2);
+  border-bottom: 1px solid var(--ema-border);
+  background: var(--ema-material-sidebar);
+  user-select: none;
+}
+
+.ema-main-titlebar-drag {
+  display: flex;
+  align-items: center;
+  align-self: stretch;
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--ema-text-tertiary);
+}
+
+button.ema-main-menu-trigger {
+  padding-inline: var(--ema-space-2);
+  color: var(--ema-text-secondary);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+button.ema-main-menu-trigger:hover,
+button.ema-main-menu-trigger[data-state='open'] {
+  background: var(--ema-material-control-hover);
+  color: var(--ema-text-primary);
+}
+
+.ema-main-window-controls {
+  display: flex;
+  align-self: stretch;
+}
+
+.ema-main-window-controls button {
+  display: flex;
+  width: 46px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: var(--ema-text-secondary);
+  transition: background-color var(--ema-duration-fast) var(--ema-ease);
+}
+
+.ema-main-window-controls button:hover {
+  background: var(--ema-material-control-hover);
+}
+
+.ema-main-window-controls .ema-main-window-close:hover {
+  background: var(--ema-danger-muted);
+  color: var(--ema-danger-text);
+}
+
+.ema-main-window-controls button:focus-visible {
+  outline: 2px solid var(--ema-primary);
+  outline-offset: -3px;
+}
+
+.ema-main-body {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.ema-main-rail {
+  display: flex;
+  flex: 0 0 52px;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--ema-space-3);
+  padding: var(--ema-space-3) var(--ema-space-1);
+  border-right: 1px solid var(--ema-border);
+  background: var(--ema-material-sidebar);
+  user-select: none;
+}
+
+.ema-main-views {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.ema-main-view {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+/* 保留隐藏 View 的尺寸, 避免阅读位置和输入框高度被零尺寸重算.
+   子节点可以覆盖 visibility, 所以同时隐藏整组内容的 opacity.
+   inert 阻止隐藏内容接收焦点, 不卸载组件或停止其后台操作. */
+.ema-main-view[data-active='false'] {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ema-main-window-controls button {
+    transition: none;
+  }
+}

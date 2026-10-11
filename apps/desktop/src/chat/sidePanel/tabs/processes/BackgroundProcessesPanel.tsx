@@ -5,7 +5,6 @@ import type { BackgroundProcessStatus, BackgroundProcessSummary } from '../../..
 import { tauriBridge } from '../../../../lib/tauri-bridge.js';
 import { showToast } from '../../../../lib/toast.js';
 import { useBackgroundProcessStore } from '../../../../stores/backgroundProcess.js';
-import { useChatNavigationStore } from '../../../../stores/chatNavigation.js';
 
 const STATUS_LABEL: Record<BackgroundProcessStatus, string> = {
   queued:      '排队中',
@@ -191,10 +190,8 @@ function ProcessDetail({
   const readOutput = useBackgroundProcessStore((s) => s.readOutput);
   const setFollowTail = useBackgroundProcessStore((s) => s.setFollowTail);
   const output = useBackgroundProcessStore((s) => s.outputsById.get(process.id));
-  const scrollToTurn = useChatNavigationStore((s) => s.scrollToTurn);
 
   const processId = process.id;
-  const originTurnId = process.originTurnId;
   const live = isLive(process.status);
 
   useEffect(() => {
@@ -240,15 +237,6 @@ function ProcessDetail({
           输出 {formatBytes(process.stdoutBytes + process.stderrBytes)}
           {process.outputTruncated ? '(已截断)' : ''}
         </span>
-        {originTurnId && (
-          <button
-            className="text-[var(--ema-primary)] hover:text-[var(--ema-primary-hover)] transition-colors"
-            onClick={() => scrollToTurn(originTurnId)}
-            title="滚动到启动该进程的对话轮次"
-          >
-            来源轮次
-          </button>
-        )}
       </div>
       {process.terminationReason && (
         <p className="shrink-0 truncate border-b border-[var(--ema-border)] px-3 py-1 text-xs text-[var(--ema-warning-text)]">

@@ -1,0 +1,15 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "stage-window",
+  "description": "角色舞台可使用桌面窗口、文件选择与系统打开能力。",
+  "windows": ["stage"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-is-visible",
+    "core:window:allow-is-minimized",
+    "dialog:default",
+    "opener:default",
+    "opener:allow-open-path"
+  ]
+}

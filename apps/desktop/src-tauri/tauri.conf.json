@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "label":         "main",
+        "label":         "stage",
         "title":         "Ema",
         "url":           "/",
         "width":         400,
@@ -37,7 +37,7 @@
         "script-src": "'self' 'wasm-unsafe-eval'",
         "style-src": "'self' 'unsafe-inline'"
       },
-      "capabilities": ["main-window", "chat-window", "settings-window"]
+      "capabilities": ["main-window", "stage-window"]
     }
   },
   "bundle": {

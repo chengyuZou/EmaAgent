@@ -1,8 +1,8 @@
-// 创建系统托盘, 提供主窗口显示, 点击穿透恢复与可靠退出操作.
+// 创建系统托盘, 提供角色舞台显示, 点击穿透恢复与可靠退出操作.
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::Manager;
 
-use crate::desktop::windows::{set_main_passthrough, show_main_window, toggle_main_window};
+use crate::desktop::windows::{set_stage_passthrough, show_stage_window, toggle_stage_window};
 use crate::processes::DesktopProcesses;
 
 pub fn install(app: &mut tauri::App) -> tauri::Result<()> {
@@ -42,21 +42,21 @@ pub fn install(app: &mut tauri::App) -> tauri::Result<()> {
                 ..
             } = event
             {
-                toggle_main_window(tray.app_handle());
+                toggle_stage_window(tray.app_handle());
             }
         })
         .on_menu_event(|app, event| match event.id.as_ref() {
-            "show" => show_main_window(app),
+            "show" => show_stage_window(app),
             "disable_passthrough" => {
-                if let Some(window) = app.get_webview_window("main") {
-                    if let Err(error) = set_main_passthrough(&window, false) {
-                        tracing::error!(%error, "failed to disable main window click passthrough");
+                if let Some(window) = app.get_webview_window("stage") {
+                    if let Err(error) = set_stage_passthrough(&window, false) {
+                        tracing::error!(%error, "failed to disable stage window click passthrough");
                         return;
                     }
                     if let Err(error) = window.unminimize() {
-                        tracing::warn!(%error, "failed to restore main window from minimized state");
+                        tracing::warn!(%error, "failed to restore stage window from minimized state");
                     }
-                    show_main_window(app);
+                    show_stage_window(app);
                 }
             }
             "quit" => {

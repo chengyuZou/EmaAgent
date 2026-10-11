@@ -17,13 +17,13 @@ Diff 的 shadow root 是例外: 全局样式无法进入它, ReviewPanel 和内�
 
 ## 新样式去哪(按顺序自问)
 
-1. **utility/Tailwind 类能拼出来** → 不落 CSS 文件, 直接写在组件 className 里。
+1. 简单的局部布局直接使用 utility 类. 同一业务域的控件皮肤, 多状态样式或连续动画放到已有的 `domains/` 文件, 不在 TSX 中维护成组的样式映射.
 2. 是**全 App 的变量或通用动画/过渡** → `src/ui/styles/foundation/`(tokens.css 或 animations/transitions.css)。
 3. 是**跨业务的构件**(两个以上域在用) → `src/ui/styles/primitives/` 对应文件, 没有合适的才新开。
 4. 是**单业务专属** → `domains/` 里那个域的文件; 该域还没有文件才新建 `<domain>.css`。
 5. 是**适配第三方库的固定类名** → `vendors/`。
 
-只有 utility 表达不了的东西才值得落 CSS 文件: 伪元素, 遮罩, 动画 calc(如 `var(--stagger-i)*40ms`), 滚动条, 第三方类名。
+伪元素, 遮罩, 动画 calc(如 `var(--stagger-i)*40ms`), 滚动条和第三方类名适配也放到对应样式文件. 桌面通知的变体通过 `data-variant` 选择 `domains/toast.css` 的样式, TSX 只提供状态和内容.
 
 ## Tool 内容换行
 
@@ -42,7 +42,12 @@ Diff 的 shadow root 是例外: 全局样式无法进入它, ReviewPanel 和内�
 - File 页由 `domains/files.css` 负责预览/目录两栏. 空白入口原位替换为首个文件, 后续文件追加, 已打开文件按完整路径激活. 同一 Session 的文件标签共用一个目录模型; 目录只在展开时读取, 文件预览按标签 ID 保留.
 - Trees 的原生横滚可见高度修正和宿主整数高度限制由同一份 pnpm 依赖补丁保存, 所有使用处共享; Review 只指定填满可用空间. 说明见仓库根目录 `patches/README.md`. 不固定像素高度, 不拦截滚轮或覆盖库的鼠标响应.
 
-- Stage 的气泡, 权限提示和菜单各自读取 `frontend.wallpaper.settings` 的 `enabled` 与 `materialMode`. 关闭时使用普通主题表面; 开启时通过局部 `ema-stage-translucent` / `ema-stage-frosted` 类复用材质参数, 不修改文档根节点或加载壁纸图片. 主题和字体消费已有同步变量.
+- main 的 Chat 和 Settings 共用 `frontend.wallpaper` 与 `wallpapers/` 图库. 文档根节点提供材质属性, 壁纸仅由主窗口的 WallpaperLayer 加载, 切换 View 不重复绘制图片.
+- Stage 的气泡, 权限提示和菜单各自读取 `frontend.wallpaper` 的 `enabled` 与 `materialMode`. 关闭时使用普通主题表面; 开启时通过局部 `ema-stage-translucent` / `ema-stage-frosted` 类复用材质参数, 不修改文档根节点或加载壁纸图片. 主题和字体消费已有同步变量.
+- `domains/main.css` 管理公共标题栏, 左侧主导航和 View 显隐. 隐藏 View 保留尺寸并设置 inert, 不卸载组件. 显隐同时使用 visibility 和 opacity, 防止侧栏子节点的 visibility 覆盖父节点隐藏状态. Chat 会话侧栏由 `workspace.css` 管理折叠动画; Settings 导航保持展开.
+- 主窗口导航由 `layout/navigation.tsx` 保存. 访问记录只存会话 ID 或设置子页 ID, 当前窗口内最多保留 100 条, 不保存消息或表单副本. 返回和前进只移动 historyIndex; 打开新位置会删除当前位置之后的记录, 重复访问当前位置不追加. 新对话创建成功时替换原位置, 会话归档或删除后移除对应记录. 关闭主窗口只隐藏, 保留访问记录与已挂载 View; 退出应用后不保留这份内存记录.
+- 外观导航分为主题, 壁纸和字体. 三个子页分别渲染 ThemeTab, WallpaperTab 和 FontTab, 仍使用原有主题与壁纸设置字段, 不分别保存新的设置副本.
+- 桌面通知通过 `lib/toast.tsx` 挂在同一个窗口的 body 下, 不属于 Chat 或 Settings. `domains/toast.css` 按 `data-variant` 提供颜色和布局, 切换 View 不移动通知根节点或重新计时.
 - 命名: 工具类 `ema-<动作>`(`ema-fade-in`); 构件类 `ema-<名>`; 域类 `ema-<域>-<件>`(`ema-tool-row`)。
 - 文件按内聚职责组织, 不因行数拆分. 注释说明必要的样式约束与跨组件关系.
 - 颜色, 间距, 圆角, 阴影一律走 `foundation/tokens.css` 的 token, 域文件里不写死色值; 亮暗主题差异只允许靠 token 覆盖, 不写主题分支判断。

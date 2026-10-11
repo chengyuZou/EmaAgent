@@ -12,12 +12,13 @@
 |---|---|---|---|---|
 | `get_server_secret` | 无 | `Result<String, String>` | `getServerSecret()` | 取得本次 Desktop 启动生成的 Server 访问口令 |
 | `get_server_port` | 无 | `Result<u16, String>` | `getServerPort()` | 取得本次 Desktop 启动的本机 Server 端口 |
-| `open_window` | `{ label }` | `Result<(), String>` | `openChatWindow()` / `openSettingsWindow()` | 显示, 解除最小化并聚焦目标窗口; 原生共用入口支持 `main`、`chat`、`settings` |
+| `open_main_window` | 无 | `Result<(), String>` | `openMainWindow()` | 首次创建 main, 或显示, 解除最小化并聚焦已有 main |
+| `hide_main_window` | 无 | `Result<(), String>` | `hideMainWindow()` | 隐藏 main, 不销毁 WebView 或停止任务 |
 | `quit_app` | 无 | `()` | `quit()` | 关闭子进程后退出 Desktop |
 | `set_always_on_top` | `{ value }` | `Result<(), String>` | `setAlwaysOnTop(value)` | 设置当前窗口是否置顶 |
-| `set_passthrough` | `{ value }` | `Result<(), String>` | `setPassthrough(value)` | 设置 main 的点击穿透模式, 并发送模式事件 |
-| `get_passthrough` | 无 | `bool` | `getPassthrough()` | 查询本次进程中的 main 穿透模式初值 |
-| `start_pet_pointer` | 无 | `Result<(), String>` | `startPetPointer()` | 为 main 启动唯一的原生系统鼠标采样任务 |
+| `set_passthrough` | `{ value }` | `Result<(), String>` | `setPassthrough(value)` | 设置 stage 的点击穿透模式, 并发送模式事件 |
+| `get_passthrough` | 无 | `bool` | `getPassthrough()` | 查询本次进程中的 stage 穿透模式初值 |
+| `start_pet_pointer` | 无 | `Result<(), String>` | `startPetPointer()` | 为 stage 启动原生系统鼠标采样任务 |
 | `set_passthrough_controls_hovered` | `{ hovered }` | `Result<(), String>` | `setPassthroughControlsHovered(hovered)` | 穿透模式内临时恢复控制区点击, 不改变模式 |
 | `list_terminal_shells` | 无 | `DetectedTerminalShell[]` | `listTerminalShells()` | 返回本机可发现 Shell 的显示名、类型与绝对可执行路径 |
 | `open_terminal` | `{ terminalId, sessionId, cwd?, shellExecutable?, columns, rows, onEvent }` | `Result<(), String>` | `openTerminal(input)` | 使用当前选择的 Shell 创建交互 PTY，并用 Channel 发送输出 |
@@ -25,28 +26,39 @@
 | `resize_terminal` | `{ terminalId, columns, rows }` | `Result<(), String>` | `resizeTerminal(...)` | 同步 xterm 与 PTY 尺寸 |
 | `close_terminal` | `{ terminalId }` | `Result<(), String>` | `closeTerminal(...)` | 关闭一个 Shell |
 | `close_session_terminals` | `{ sessionId }` | `Result<(), String>` | `closeSessionTerminals(...)` | 删除 Session 时关闭其全部 Shell |
-| `open_browser` | `{ browserId, url, bounds }` | `Result<(), String>` | `openBrowser(...)` | 在 Chat 窗口中创建原生网页视图 |
+| `open_browser` | `{ browserId, url, bounds }` | `Result<(), String>` | `openBrowser(...)` | 在 main 中创建 Chat 的原生网页视图 |
 | `navigate_browser` | `{ browserId, url }` | `Result<(), String>` | `navigateBrowser(...)` | 导航到新地址 |
 | `browser_back` / `browser_forward` | `{ browserId }` | `Result<(), String>` | `browserBack(...)` / `browserForward(...)` | 操作页面历史 |
 | `reload_browser` | `{ browserId }` | `Result<(), String>` | `reloadBrowser(...)` | 刷新页面 |
 | `set_browser_bounds` | `{ browserId, bounds }` | `Result<(), String>` | `setBrowserBounds(...)` | 对齐原生页面与 Dock 正文区域 |
-| `set_browser_visible` | `{ browserId, visible }` | `Result<(), String>` | `setBrowserVisible(...)` | 标签隐藏或激活时同步原生页面显隐 |
+| `set_browser_visible` | `{ browserId, visible }` | `Result<(), String>` | `setBrowserVisible(...)` | 标签, Chat View 和 main 窗口显隐共同决定原生页面显隐 |
 | `close_browser` | `{ browserId }` | `Result<(), String>` | `closeBrowser(...)` | 释放一个原生网页视图 |
 
 `plugin:opener|open_url` 和 `plugin:opener|reveal_item_in_dir` 属于 Tauri 插件，不是 Ema Rust Command；它们仍只能出现在 `tauri-bridge.ts` 内。
 
-桌宠浮动菜单开启 / 关闭 main 的点击穿透模式. 角色继续显示, 非控制区的点击落到后面的窗口. FloatingDock 按系统坐标命中菜单, 权限提示和通知控制区, 通过 `set_passthrough_controls_hovered` 临时恢复点击; 离开后继续穿透. 模式和置顶独立, 开启穿透时不执行未置顶窗口的失焦自动最小化. 托盘的 "关闭点击穿透" 调用同一模式入口, 解除最小化并显示 / 聚焦 main. 模式不持久化, 不改变 chat / settings 的交互.
+## 窗口和前端入口
+
+| 原生窗口 | 页面入口 | React 装配 | 生命周期 |
+|---|---|---|---|
+| `stage` | `index.html` -> `src/main.tsx` | `App.tsx` | 启动时显示角色舞台, 拥有系统 SSE 连接和舞台交互 |
+| `main` | `main.html` -> `src/windows/main.tsx` | `src/layout/main.tsx` | 点击舞台入口后创建, 首次显示 Chat; 关闭按钮隐藏窗口, 再次打开复用原 WebView |
+
+main 的标题栏和左侧主导航常驻. `layout/navigation.tsx` 保存 `activeView` 和 Chat 的 `sidebarOpen`. Chat 始终挂载; Settings 首次访问时加载, 此后切换 View 只隐藏内容. 折叠按钮仅在 Chat 显示, 不折叠 Settings 导航. 已提交操作继续执行并通过同一个桌面通知根节点显示结果. 已打开的 Dialog 保持原有模态行为, 先处理 Dialog 再点击被它遮挡的导航或窗口按钮.
+
+标题栏经 Tauri Window API 处理拖动, 最小化和最大化. 原生外框不绘制标题栏, 主窗口外观由 CSS 和现有主题变量控制, 不使用原生 Acrylic.
+
+桌宠浮动菜单开启 / 关闭 stage 的点击穿透模式. 角色继续显示, 非控制区的点击落到后面的窗口. FloatingDock 按系统坐标命中菜单, 权限提示和通知控制区, 通过 `set_passthrough_controls_hovered` 临时恢复点击; 离开后继续穿透. 模式和置顶独立, 开启穿透时不执行未置顶窗口的失焦自动最小化. 托盘的 "关闭点击穿透" 调用同一模式入口, 解除最小化并显示 / 聚焦 stage. 模式不持久化, 不改变 main 的交互.
 
 ## 系统鼠标与穿透事件
 
-事件只发给 main. 原生生产者是 `desktop/petPointer.rs` 和 `desktop/windows.rs`, WebView 只经 `tauri-bridge.ts` 的具名方法订阅.
+鼠标和穿透事件只发给 stage. 原生生产者是 `desktop/petPointer.rs` 和 `desktop/windows.rs`, WebView 只经 `tauri-bridge.ts` 的具名方法订阅. 窗口显隐事件按原生窗口名称发送给各自 WebView.
 
 | 事件 | Payload | 前端方法 | 实际消费者 |
 |---|---|---|---|
 | `ema://pet-pointer` | `{ type: "position", clientX: number, clientY: number, inside: boolean }` 或 `{ type: "error", message: string }` | `listenPetPointer(handler)` | CharacterStage 的 Live2dResource 直接驱动当前模型视线; FloatingDock 更新显隐及控制区命中 |
 | `ema://pet-passthrough` | `boolean` | `listenPassthrough(handler)` | FloatingDock 展示原生穿透模式, 包含托盘发起的关闭 |
 
-`clientX/clientY` 是相对 main 内容区左上角的 CSS 逻辑坐标, 允许位于窗口外; 原生已扣除 `inner_position` 并除以窗口缩放系数. `inside` 表示是否在内容区内, 不表示命中模型像素或控制区.
+`clientX/clientY` 是相对 stage 内容区左上角的 CSS 逻辑坐标, 允许位于窗口外; 原生已扣除 `inner_position` 并除以窗口缩放系数. `inside` 表示是否在内容区内, 不表示命中模型像素或控制区.
 
 FloatingDock 在订阅就绪后调用一次 `startPetPointer()`. Rust 按 60Hz 目标间隔在原生主线程读取系统鼠标与窗口位置, 忙时跳过错过的 tick, 不堆积主线程采样. Live2D 与窗口交互共用这份采样, 前端不轮询. 隐藏 / 最小化时跳过坐标读取与推送, 恢复后继续; HMR 重新启动采样时取消旧任务, 应用退出时停止任务. 平台坐标接口不可用时启动失败; 运行中的坐标采样失败时原生尝试关闭穿透并发送 error, Dock 提示错误并禁用穿透按钮.
 

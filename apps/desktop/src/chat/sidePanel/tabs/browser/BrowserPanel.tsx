@@ -1,8 +1,10 @@
-// 用 React 工具栏控制一个 Tauri 原生子 WebView，并同步它在 Dock 中的真实位置。
+// 原生子 WebView 不随 CSS 容器隐藏. 切换 View 和隐藏窗口时必须单独同步显隐.
 import { useCallback, useEffect, useRef, useState, type FormEvent, type JSX } from 'react';
 
 import { tauriBridge, type BrowserBounds } from '../../../../lib/tauri-bridge.js';
 import { useSessionPanelStore } from '../../../../stores/sessionPanel.js';
+import { MainView, useMainNavigationStore } from '../../../../layout/navigation.js';
+import { useWindowSuspension } from '../../../../hooks/use-window-suspension.js';
 
 export interface BrowserPanelProps {
   readonly sessionId: string;
@@ -12,15 +14,21 @@ export interface BrowserPanelProps {
 }
 
 export function BrowserPanel({
-  sessionId, browserId, url, visible,
+  sessionId,
+  browserId,
+  url,
+  visible,
 }: BrowserPanelProps): JSX.Element {
+  const activeView = useMainNavigationStore(state => state.activeView);
+  const suspended = useWindowSuspension();
+  const browserVisible = visible && activeView === MainView.Chat && !suspended;
   const hostRef = useRef<HTMLDivElement>(null);
   const restoredUrlRef = useRef(url);
   const nativeReadyRef = useRef(false);
   const openingRef = useRef<Promise<void> | null>(null);
   const mountedRef = useRef(false);
-  const visibleRef = useRef(visible);
-  visibleRef.current = visible;
+  const visibleRef = useRef(browserVisible);
+  visibleRef.current = browserVisible;
   const latestBoundsRef = useRef<BrowserBounds | null>(null);
   const currentUrlRef = useRef(url);
   const editingAddressRef = useRef(false);
@@ -123,7 +131,7 @@ export function BrowserPanel({
 
   useEffect(() => {
     if (!ready) return;
-    if (visible && latestBoundsRef.current) {
+    if (browserVisible && latestBoundsRef.current) {
       void tauriBridge.setBrowserBounds(browserId, latestBoundsRef.current)
         .then(() => {
           if (mountedRef.current && visibleRef.current) {
@@ -135,7 +143,7 @@ export function BrowserPanel({
     } else {
       void tauriBridge.setBrowserVisible(browserId, false).catch(() => {});
     }
-  }, [browserId, ready, showError, visible]);
+  }, [browserId, ready, showError, browserVisible]);
 
   const navigate = (event: FormEvent): void => {
     event.preventDefault();
@@ -147,11 +155,14 @@ export function BrowserPanel({
     setError(null);
     setAddress(url);
     const previousUrl = currentUrlRef.current;
-    const operation = nativeReadyRef.current
-      ? tauriBridge.navigateBrowser(browserId, url)
-      : openingRef.current
-        ? openingRef.current.then(() => tauriBridge.navigateBrowser(browserId, url))
-        : openPage(url);
+    let operation: Promise<void>;
+    if (nativeReadyRef.current) {
+      operation = tauriBridge.navigateBrowser(browserId, url);
+    } else if (openingRef.current) {
+      operation = openingRef.current.then(() => tauriBridge.navigateBrowser(browserId, url));
+    } else {
+      operation = openPage(url);
+    }
     void operation.then(() => {
       const pageUrl = currentUrlRef.current === previousUrl
         ? url
@@ -163,7 +174,10 @@ export function BrowserPanel({
 
   return (
     <div className="flex-1 min-h-0 flex flex-col">
-      <form className="h-10 shrink-0 flex items-center gap-1 px-2 border-b border-[var(--ema-border)]" onSubmit={navigate}>
+      <form
+        className="h-10 shrink-0 flex items-center gap-1 px-2 border-b border-[var(--ema-border)]"
+        onSubmit={navigate}
+      >
         <ToolbarButton
           icon="i-lucide:arrow-left"
           label="后退"
@@ -257,11 +271,11 @@ function boundsOf(element: HTMLElement): BrowserBounds {
 function normalizeUrl(value: string): string | null {
   const trimmed = value.trim();
   if (!trimmed) return null;
-  const candidate = /^https?:\/\//i.test(trimmed)
-    ? trimmed
-    : /^(localhost|127\.0\.0\.1|\[::1\])(?::|\/|$)/i.test(trimmed)
-      ? `http://${trimmed}`
-      : `https://${trimmed}`;
+  let candidate = trimmed;
+  if (!/^https?:\/\//i.test(trimmed)) {
+    const local = /^(localhost|127\.0\.0\.1|\[::1\])(?::|\/|$)/i.test(trimmed);
+    candidate = `${local ? 'http' : 'https'}://${trimmed}`;
+  }
   try {
     const url = new URL(candidate);
     return url.protocol === 'http:' || url.protocol === 'https:' ? url.toString() : null;

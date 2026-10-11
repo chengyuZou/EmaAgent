@@ -2,7 +2,7 @@ import type { JSX } from 'react';
 import { useSessionStore } from '../stores/session.js';
 import { ChatInput } from './input/ChatInput.js';
 import { restoreFailedDraft, useChatDraftStore, type ChatDraft } from '../stores/chatDraft.js';
-import { useChatNavigationStore } from '../stores/chatNavigation.js';
+import { useMainNavigationStore } from '../layout/navigation.js';
 import { submitChatDraft } from './input/submitChatDraft.js';
 import { ConversationStarters } from './conversationStarters.js';
 
@@ -13,14 +13,14 @@ function fillQuickPrompt(prompt: string): void {
 }
 
 export function NewSessionPage(): JSX.Element {
-  const projectId = useChatNavigationStore(state => state.newSessionProjectId);
+  const projectId = useMainNavigationStore(state => state.newSessionProjectId);
   const pinnedProjects = useSessionStore(state => state.sessions.pinnedProjects);
   const projects = useSessionStore(state => state.sessions.projects);
   const project = pinnedProjects.find(item => item.id === projectId)
     ?? projects.find(item => item.id === projectId);
 
   async function submitNewSession(submitted: ChatDraft): Promise<void> {
-    const navigation = useChatNavigationStore.getState();
+    const navigation = useMainNavigationStore.getState();
     const selectedProjectId = navigation.newSessionProjectId;
     const explicitCwd = navigation.newSessionCwd?.trim();
     let sessionId: string;

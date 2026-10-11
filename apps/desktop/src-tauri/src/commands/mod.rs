@@ -1,4 +1,4 @@
-// 汇总桌面宿主暴露给 WebView 的 Tauri commands。
+// 汇总桌面宿主暴露给 WebView 的命令.
 mod browser;
 mod desktop;
 mod fonts;
@@ -10,8 +10,9 @@ pub use browser::{
     set_browser_bounds, set_browser_visible,
 };
 pub use desktop::{
-    get_passthrough, open_path, open_window, quit_app, read_draft_image, report_live2d_diagnostic,
-    set_always_on_top, set_passthrough, set_passthrough_controls_hovered, start_pet_pointer,
+    get_passthrough, hide_main_window, open_main_window, open_path, quit_app, read_draft_image,
+    report_live2d_diagnostic, set_always_on_top, set_passthrough, set_passthrough_controls_hovered,
+    start_pet_pointer,
 };
 pub use fonts::list_system_fonts;
 pub use server::{get_server_port, get_server_secret};

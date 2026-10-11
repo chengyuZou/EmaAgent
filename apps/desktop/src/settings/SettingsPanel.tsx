@@ -1,24 +1,12 @@
-// 组织十一个已定稿的设置业务入口, 不再读取后端 UI 目录或生成通用表单.
-// 有并列子业务的模块(技能库与 MCP)由一级入口展开或收起二级导航.
 import { useEffect, useState, type JSX } from 'react';
-import { Button, Callout, Select } from '@ema-agent/ui';
+import { Button, Callout } from '@ema-agent/ui';
 import { ErrorBoundary } from '../lib/error-boundary.js';
-import { mountSystemEvents } from '../lib/system-sse.js';
-import { useCharacterStore } from '../stores/character.js';
-import { useMcpStore } from '../stores/mcp.js';
-import { useProviderStore } from '../stores/provider.js';
-import { useSettingsStore } from '../stores/settings.js';
-import { useSkillStore } from '../stores/skill.js';
-import { subscribeSystemEvent } from '../lib/system-event-dispatcher.js';
-import { handleCharacterSystemEvent } from '../stores/character.js';
-import { handleMcpSystemEvent } from '../stores/mcp.js';
-import { handleProviderSystemEvent } from '../stores/provider.js';
-import { handleSettingsSystemEvent } from '../stores/settings.js';
-import { handleSkillSystemEvent } from '../stores/skill.js';
-import { useThemeSync } from '../stores/theme.js';
+import { useMainNavigationStore } from '../layout/navigation.js';
 import { CharactersTab } from './character/CharactersTab.js';
 import { StorageTab } from './data/StorageTab.js';
-import { AppearanceTab } from './appearance/AppearanceTab.js';
+import { ThemeTab } from './appearance/themeTab.js';
+import { FontTab } from './appearance/fontTab.js';
+import { WallpaperTab } from './appearance/wallpaperTab.js';
 import { SecurityTab } from './security/SecurityTab.js';
 import { McpMarketPage } from './mcp/McpMarketPage.js';
 import { McpEnvironmentPage } from './mcp/McpEnvironmentPage.js';
@@ -32,7 +20,6 @@ import { ProvidersTab } from './providers/ProvidersTab.js';
 import { SkillInstalledPage } from './skills/SkillInstalledPage.js';
 import { SkillMarketPage } from './skills/SkillMarketPage.js';
 import { SkillSettings } from './skills/SkillSettings.js';
-import { WallpaperLayer } from '../wallpaper/WallpaperLayer.js';
 
 type SettingsPageId =
   | 'providers'
@@ -46,7 +33,7 @@ type SettingsPageId =
   | 'parameters'
   | 'appearance';
 
-/** 子页 id: 一级页面 id 加子页后缀。 */
+/** 子页 id: 一级页面 id 加子页后缀. */
 type SettingsSubPageId =
   | 'memory-overview'
   | 'memory-files'
@@ -56,7 +43,10 @@ type SettingsSubPageId =
   | 'skills-settings'
   | 'mcp-servers'
   | 'mcp-market'
-  | 'mcp-environment';
+  | 'mcp-environment'
+  | 'appearance-theme'
+  | 'appearance-fonts'
+  | 'appearance-wallpapers';
 
 interface SettingsSubPage {
   readonly id: SettingsSubPageId;
@@ -89,6 +79,12 @@ const MCP_SUB_PAGES: readonly SettingsSubPage[] = [
   { id: 'mcp-environment', label: '运行环境' },
 ];
 
+const APPEARANCE_SUB_PAGES: readonly SettingsSubPage[] = [
+  { id: 'appearance-theme', label: '主题' },
+  { id: 'appearance-wallpapers', label: '壁纸' },
+  { id: 'appearance-fonts', label: '字体' },
+];
+
 const SETTINGS_PAGES: readonly SettingsPage[] = [
   { id: 'providers', label: '服务来源', icon: 'i-lucide:server' },
   { id: 'bindings', label: '模型绑定', icon: 'i-lucide:link-2' },
@@ -99,25 +95,31 @@ const SETTINGS_PAGES: readonly SettingsPage[] = [
   { id: 'storage', label: '存储位置', icon: 'i-lucide:hard-drive', fullHeight: true },
   { id: 'security', label: '安全', icon: 'i-lucide:shield-check' },
   { id: 'parameters', label: '参数设置', icon: 'i-lucide:sliders-horizontal' },
-  { id: 'appearance', label: '外观', icon: 'i-lucide:palette' },
+  { id: 'appearance', label: '外观', icon: 'i-lucide:palette', subPages: APPEARANCE_SUB_PAGES },
 ];
 
-/** 当前选中的导航目标:一级页或子页。 */
-type ActiveNav = SettingsPageId | SettingsSubPageId;
 
-function pageOf(id: ActiveNav): SettingsPage {
+
+export type SettingsTabId = SettingsPageId | SettingsSubPageId;
+
+function pageOf(id: SettingsTabId): SettingsPage {
   for (const page of SETTINGS_PAGES) {
-    if (page.id === id) return page;
-    if (page.subPages?.some(sub => sub.id === id)) return page;
+    if (page.id === id || page.subPages?.some(sub => sub.id === id)) {
+      return page;
+    }
   }
   return SETTINGS_PAGES[0]!;
 }
 
 export function SettingsPanel(): JSX.Element {
-  useThemeSync();
-  const [active, setActive] = useState<ActiveNav>('providers');
+  const active = useMainNavigationStore(state => state.settingsTab);
+  const setActive = useMainNavigationStore(state => state.setSettingsTab);
   const [expandedPage, setExpandedPage] = useState<SettingsPageId | null>(null);
   const activePage = pageOf(active);
+  useEffect(() => {
+    // 返回或前进到子页时, 同时展开它所属的导航分组.
+    setExpandedPage(activePage.subPages ? activePage.id : null);
+  }, [active, activePage]);
   const memoryFilesOpen = active === 'memory-files';
   let contentLayout = 'overflow-y-auto px-5 py-5 md:px-8 md:py-6';
   if (activePage.fullHeight) {
@@ -126,33 +128,13 @@ export function SettingsPanel(): JSX.Element {
     contentLayout = 'flex min-h-0 flex-col overflow-hidden px-5 py-5 md:px-8 md:py-6';
   }
 
-  useEffect(() => mountSystemEvents({ ownsConnection: false }), []);
-  useEffect(() => subscribeSystemEvent(event => {
-    handleCharacterSystemEvent(event);
-    handleMcpSystemEvent(event);
-    handleProviderSystemEvent(event);
-    handleSettingsSystemEvent(event);
-    handleSkillSystemEvent(event);
-  }), []);
-  useEffect(() => {
-    void useProviderStore.getState().loadAll();
-    void useSettingsStore.getState().refreshDesktopSettings().catch(() => {});
-    void useCharacterStore.getState().load();
-    void useSkillStore.getState().load();
-    void useMcpStore.getState().load();
-  }, []);
-
-  const mobileOptions = SETTINGS_PAGES.flatMap(page =>
-    page.subPages
-      ? page.subPages.map(sub => ({ value: sub.id as string, label: `${page.label} · ${sub.label}` }))
-      : [{ value: page.id as string, label: page.label }],
-  );
-
   return (
     <ErrorBoundary>
-      <div className="ema-wallpaper-window ema-wallpaper-settings fixed inset-0 isolate flex bg-[var(--ema-bg)] text-[var(--ema-text-primary)]">
-        <WallpaperLayer target="settings" />
-        <nav className="ema-settings-sidebar relative z-10 hidden w-56 flex-none flex-col overflow-y-auto border-r border-[var(--ema-border)] bg-[var(--ema-sidebar-bg)] px-2 py-4 md:flex" aria-label="设置导航">
+      <div className="relative flex h-full text-[var(--ema-text-primary)]">
+        <nav
+          className="ema-settings-sidebar relative z-10 flex w-56 flex-none flex-col overflow-y-auto border-r border-[var(--ema-border)] px-2 py-4"
+          aria-label="设置导航"
+        >
           <p className="px-3 pb-4 text-base font-semibold">设置</p>
           {SETTINGS_PAGES.map(page => {
             const pageActive = activePage.id === page.id;
@@ -177,7 +159,9 @@ export function SettingsPanel(): JSX.Element {
                       return;
                     }
                     setExpandedPage(page.id);
-                    if (!page.subPages.some(sub => sub.id === active)) setActive(page.subPages[0]!.id);
+                    if (!page.subPages.some(sub => sub.id === active)) {
+                      setActive(page.subPages[0]!.id);
+                    }
                   }}
                 />
                 {page.subPages && (
@@ -208,18 +192,13 @@ export function SettingsPanel(): JSX.Element {
           className={`relative z-10 min-w-0 flex-1 ema-slide-right ema-settings-material-page ${contentLayout}`}
           id="settings-scroll-container"
         >
-          <div className={`mb-5 shrink-0 md:hidden ${activePage.fullHeight ? 'px-5 pt-5' : ''}`}>
-            <Select
-              value={active}
-              options={mobileOptions}
-              onChange={value => setActive(value as ActiveNav)}
-              aria-label="设置页面"
-            />
-          </div>
           <SettingsContent id={active} />
         </main>
 
-        <div className="pointer-events-none fixed bottom-0 -right-6 z-0 hidden md:block" aria-hidden>
+        <div
+          className="pointer-events-none absolute bottom-0 -right-6 z-0 hidden md:block"
+          aria-hidden
+        >
           <span
             key={active}
             className={`${activePage.icon} ema-watermark-in block text-[15rem] leading-none text-[var(--ema-text-tertiary)]`}
@@ -230,7 +209,14 @@ export function SettingsPanel(): JSX.Element {
   );
 }
 
-function NavButton(props: { active: boolean; expandable: boolean; expanded: boolean; icon: string; label: string; onClick(): void }): JSX.Element {
+function NavButton(props: {
+  active: boolean;
+  expandable: boolean;
+  expanded: boolean;
+  icon: string;
+  label: string;
+  onClick(): void;
+}): JSX.Element {
   return (
     <Button
       variant="ghost"
@@ -242,13 +228,22 @@ function NavButton(props: { active: boolean; expandable: boolean; expanded: bool
     >
       <span className={`${props.icon} shrink-0 text-base`} aria-hidden />
       <span className="min-w-0 flex-1 truncate text-left">{props.label}</span>
-      {props.expandable && <span className={`i-lucide:chevron-right shrink-0 text-sm transition-transform duration-200 ${props.expanded ? 'rotate-90' : ''}`} aria-hidden />}
+      {props.expandable && (
+        <span
+          className={`i-lucide:chevron-right shrink-0 text-sm transition-transform duration-200 ${props.expanded ? 'rotate-90' : ''}`}
+          aria-hidden
+        />
+      )}
     </Button>
   );
 }
 
-/** 二级导航:缩进小字,无图标,激活态与一级同一条左侧 rail。 */
-function SubNavButton(props: { active: boolean; expanded: boolean; label: string; onClick(): void }): JSX.Element {
+function SubNavButton(props: {
+  active: boolean;
+  expanded: boolean;
+  label: string;
+  onClick(): void;
+}): JSX.Element {
   return (
     <Button
       variant="ghost"
@@ -263,27 +258,49 @@ function SubNavButton(props: { active: boolean; expanded: boolean; label: string
   );
 }
 
-function SettingsContent({ id }: { id: ActiveNav }): JSX.Element {
+function SettingsContent({ id }: { id: SettingsTabId }): JSX.Element {
   switch (id) {
-    case 'providers': return <ProvidersTab />;
-    case 'bindings': return <BindingsTab />;
-    case 'characters': return <CharactersTab />;
+    case 'providers':
+      return <ProvidersTab />;
+    case 'bindings':
+      return <BindingsTab />;
+    case 'characters':
+      return <CharactersTab />;
     case 'skills-installed':
-    case 'skills': return <SkillInstalledPage />;
-    case 'skills-market': return <SkillMarketPage />;
-    case 'skills-settings': return <SkillSettings />;
+    case 'skills':
+      return <SkillInstalledPage />;
+    case 'skills-market':
+      return <SkillMarketPage />;
+    case 'skills-settings':
+      return <SkillSettings />;
     case 'mcp-servers':
-    case 'mcp': return <McpServersPage />;
-    case 'mcp-market': return <McpMarketPage />;
-    case 'mcp-environment': return <McpEnvironmentPage />;
+    case 'mcp':
+      return <McpServersPage />;
+    case 'mcp-market':
+      return <McpMarketPage />;
+    case 'mcp-environment':
+      return <McpEnvironmentPage />;
     case 'memory':
-    case 'memory-overview': return <MemoryOverviewTab />;
-    case 'memory-files': return <MemoryFilesTab />;
-    case 'memory-jobs': return <MemoryJobsTab />;
-    case 'storage': return <StorageTab />;
-    case 'security': return <SecurityTab />;
-    case 'parameters': return <ParameterSettings />;
-    case 'appearance': return <AppearanceTab />;
-    default: return <Callout variant="info">没有找到该设置页面.</Callout>;
+    case 'memory-overview':
+      return <MemoryOverviewTab />;
+    case 'memory-files':
+      return <MemoryFilesTab />;
+    case 'memory-jobs':
+      return <MemoryJobsTab />;
+    case 'storage':
+      return <StorageTab />;
+    case 'security':
+      return <SecurityTab />;
+    case 'parameters':
+      return <ParameterSettings />;
+    case 'appearance':
+    case 'appearance-theme':
+      return <ThemeTab />;
+    case 'appearance-wallpapers':
+      return <WallpaperTab />;
+    case 'appearance-fonts':
+      return <FontTab />;
+    default:
+      return <Callout variant="info">没有找到该设置页面.</Callout>;
   }
 }

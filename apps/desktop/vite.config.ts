@@ -5,21 +5,13 @@ import presetUno                       from '@unocss/preset-uno';
 import presetAttributify               from '@unocss/preset-attributify';
 import { resolve }                     from 'node:path';
 
-// Tauri 2 conventions:
-//   - dev server on port 1420
-//   - HMR via WebSocket on 1421
-//   - public/ contents are served at /
-// Tauri's main.rs will navigate the webview to http://localhost:1420 in dev.
+// Tauri 开发页面使用 1420, HMR 使用 1421, public/ 资源从网站根路径读取.
 
 export default defineConfig({
   plugins: [
     UnoCSS({
       presets: [presetUno(), presetAttributify()],
-      // UnoCSS's built-in preflight doesn't reset button/pre UA defaults.
-      // WebView2 gives <button> a system-grey background and <pre> a white one —
-      // both bleed through when bg-transparent is used on a dark UI.
-      // Scrollbar styling lives in styles/base.css (token-driven);
-      // kept out of Uno so there is a single source of truth.
+      // WebView2 的 button/pre 默认背景会盖住透明材质, 在业务样式加载前清除.
       preflights: [
         {
           getCSS: () =>
@@ -27,8 +19,7 @@ export default defineConfig({
             `pre,code{background:transparent;}`,
         },
       ],
-      // Extend the content pipeline to also handle .js extension imports that
-      // come from workspace packages resolved via the alias below.
+      // 工作区包的 .js 路径实际指向 TSX 源码, 也需要参与工具类提取.
       content: {
         pipeline: {
           include: [/\.(vue|svelte|[jt]sx?|mdx?|astro|html)($|\?)/],
@@ -38,51 +29,29 @@ export default defineConfig({
     react(),
   ],
 
-  // Point workspace packages directly at their TypeScript source so Vite
-  // processes the TSX files through its transform pipeline (and UnoCSS can
-  // extract class names from them) instead of loading the pre-built dist/.
-  //
-  // @ema-agent/ui MUST be aliased too: without this, Vite resolves it via
-  // package.json exports -> dist/ and pre-bundles dist into .vite/deps. Vite
-  // only re-optimizes pre-bundled deps when package.json/lockfile change, NOT
-  // when dist content changes - so a rebuilt ui/dist was silently served stale
-  // from .vite/deps (the same trap that bit live2d-react's registerTicker fix).
-  // Aliasing to src makes dev read the live source on every reload.
-  // builtin-tools 同理：Tool 的 UI.tsx 是活跃开发面，dist 重建不会触发 dev 更新。
-  // 注意不要再 alias 其他后端包：它们只应被 type-only 导入（构建期擦除），
-  // alias 到源码反而会把 Node 实现静默打进浏览器图。
+  // UI, Tool UI 和 Live2D 直接读取源码, 不依赖 dist 更新触发预打包缓存失效.
+  // 后端实现只允许类型导入, 避免把 Node 代码打进浏览器.
   resolve: {
     alias: [
       { find: /^@ema-agent\/ui$/, replacement: resolve(__dirname, '../../src/ui/index.ts') },
       { find: /^@ema-agent\/ui\/utils$/, replacement: resolve(__dirname, '../../src/ui/utils/index.ts') },
       { find: '@ema-agent/builtin-tools/ui', replacement: resolve(__dirname, '../../src/builtin-tools/ui.ts') },
       { find: '@ema-agent/live2d-react', replacement: resolve(__dirname, '../../src/live2d-react/index.ts') },
-      // themeCatalog 是零运行时依赖的纯常量注册表, 设计上就是给浏览器消费的;
-      // 它是唯一 alias 进浏览器图的后端文件, 其余后端包仍只许 type-only 导入.
+      // 两份外观常量没有 Node 依赖, 前后端共用键名和默认值.
       { find: '@ema-agent/server/settings/themeCatalog.js', replacement: resolve(__dirname, '../../apps/server/src/settings/themeCatalog.ts') },
-      // wallpaperCatalog 同理: 纯常量注册表(键名/默认值/扩展名), 浏览器图第二个后端例外.
       { find: '@ema-agent/server/settings/wallpaperCatalog.js', replacement: resolve(__dirname, '../../apps/server/src/settings/wallpaperCatalog.ts') },
     ],
   },
 
-  // Exclude workspace packages from Vite's esbuild pre-bundler so they pass
-  // through the full transform pipeline where UnoCSS can extract class names.
-  //
-  // live2d-react is here too: Vite only re-optimizes pre-bundled deps when
-  // package.json/lockfile change, NOT when a workspace dep's dist content
-  // changes — so a rebuilt live2d-react/dist was silently served stale from
-  // .vite/deps cache (the registerTicker fix never reached the running app).
-  // Excluding it makes Vite read its current dist on every reload.
+  // 工作区前端包不进入预打包缓存, 源码更新时直接重新转换.
   optimizeDeps: {
-    // 'oxc-parser' excluded so its optional wasm binding (absent on Windows)
-    // never enters the pre-bundler. Vite's esbuildOptions type omits
-    // `external`, so exclusion is the only supported lever here.
+    // oxc-parser 的可选 WASM 在 Windows 不可用, 不让它进入浏览器预打包.
     exclude: ['@ema-agent/ui', '@ema-agent/live2d-react', 'oxc-parser'],
     // 与正式构建的现代 WebView 语法目标保持一致.
     esbuildOptions: { target: 'es2022' },
   },
 
-  // Prevent vite from clobbering Rust errors with the spinner UI.
+  // 保留终端里的 Rust 编译错误.
   clearScreen: false,
   worker: { format: 'es' },
   server: {
@@ -90,9 +59,7 @@ export default defineConfig({
     strictPort:  true,
     host:        '127.0.0.1',
     hmr:         { protocol: 'ws', host: '127.0.0.1', port: 1421 },
-    // Tauri expects assets relative to the root. publicDir defaults to "public".
   },
-  // Build output (used by Tauri prod bundle later).
   build: {
     // 运行环境为现代 WebView2 与 WKWebView.
     target:       ['es2022', 'chrome105', 'safari15'],
@@ -107,13 +74,10 @@ export default defineConfig({
     },
     rollupOptions: {
       input: {
-        main:     resolve(__dirname, 'index.html'),
-        chat:     resolve(__dirname, 'chat.html'),
-        settings: resolve(__dirname, 'settings.html'),
+        stage: resolve(__dirname, 'index.html'),
+        main: resolve(__dirname, 'main.html'),
       },
-      // oxc-parser is a build-time tool dragged in via unocss's dependency
-      // graph; its optional wasm binding doesn't exist on Windows and must
-      // never be bundled into the webview.
+      // 该 WASM 仅服务构建工具, 不打进 WebView.
       external: ['@oxc-parser/binding-wasm32-wasi'],
     },
   },

@@ -27,7 +27,7 @@ import {
   useChatDraftStore,
   type ChatDraft,
 } from '../../stores/chatDraft.js';
-import { useChatNavigationStore } from '../../stores/chatNavigation.js';
+import { useMainNavigationStore } from '../../layout/navigation.js';
 import { useSessionActivityStore } from '../../stores/sessionActivity.js';
 import { useServerStore } from '../../stores/server.js';
 import { useSessionStore } from '../../stores/session.js';
@@ -73,8 +73,8 @@ export function ChatInput({
 }: {
   readonly onSubmit: (submitted: ChatDraft, objective?: string) => Promise<void>;
 }): JSX.Element {
-  const viewedId = useChatNavigationStore(state => state.viewedSessionId);
-  const newProjectId = useChatNavigationStore(state => state.newSessionProjectId);
+  const viewedId = useMainNavigationStore(state => state.viewedSessionId);
+  const newProjectId = useMainNavigationStore(state => state.newSessionProjectId);
   const storedDraft = useChatDraftStore(state => (
     viewedId ? state.bySession.get(viewedId) : state.newSessionDraft
   ));

@@ -7,7 +7,7 @@ import type { SessionMessage } from '@ema-agent/session';
 import { estimateTextTokens } from '@ema-agent/token';
 import type { SessionMessagePage } from '../../api/sessions.js';
 import { showToast } from '../../lib/toast.js';
-import { useChatNavigationStore } from '../../stores/chatNavigation.js';
+import { useMainNavigationStore } from '../../layout/navigation.js';
 import { useSessionStore } from '../../stores/session.js';
 import {
   assistantOutputBlocks,
@@ -264,7 +264,7 @@ function AudioPlaybackButton({
 }
 
 function ForkButton({ turnId }: { readonly turnId: string }): JSX.Element | null {
-  const sessionId = useChatNavigationStore(state => state.viewedSessionId);
+  const sessionId = useMainNavigationStore(state => state.viewedSessionId);
   if (!sessionId) return null;
   return (
     <IconButton
@@ -276,7 +276,7 @@ function ForkButton({ turnId }: { readonly turnId: string }): JSX.Element | null
       className="ema-chat-icon-btn chat-message-action"
       onClick={() => void useSessionStore.getState().forkSession(sessionId, turnId)
         .then(newSessionId => {
-          useChatNavigationStore.getState().viewSession(newSessionId);
+          useMainNavigationStore.getState().viewSession(newSessionId);
           showToast('已从该回复创建新会话');
         })
         .catch(error => showToast(

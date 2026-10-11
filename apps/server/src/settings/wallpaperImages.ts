@@ -1,11 +1,8 @@
-// 管理 Chat 与 Settings 的壁纸文件, 列表只返回文件摘要并按需生成缩略图.
+// 管理主窗口的壁纸文件, 列表只返回文件摘要并按需生成缩略图.
 import fs from 'node:fs';
 import path from 'node:path';
 import sharp from 'sharp';
-import {
-  WALLPAPER_IMAGE_EXTENSIONS,
-  type WallpaperWindowTarget,
-} from './wallpaperCatalog.js';
+import { WALLPAPER_IMAGE_EXTENSIONS } from './wallpaperCatalog.js';
 
 export interface WallpaperImageSummary {
   readonly name: string;
@@ -21,8 +18,42 @@ export interface WallpaperImageFile extends WallpaperImageSummary {
 export class WallpaperImages {
   constructor(private readonly root: string) {}
 
-  async list(target: WallpaperWindowTarget): Promise<WallpaperImageSummary[]> {
-    const dir = this.dir(target);
+  // 只在启动装配时执行. 单个文件原地改路径, 不解码或重存图片.
+  migrateSettingsGallery(): void {
+    const settingsDirectory = path.join(this.root, 'settings');
+    if (fs.existsSync(settingsDirectory)) {
+      const entries = fs.readdirSync(settingsDirectory, { withFileTypes: true })
+        .filter(entry => entry.isFile() && this.validName(entry.name));
+      // 先核对全部目标文件, 不允许覆盖统一目录里已有的同名图片.
+      for (const entry of entries) {
+        if (fs.existsSync(path.join(this.root, entry.name))) {
+          throw new Error(`壁纸迁移存在同名文件: ${entry.name}`);
+        }
+      }
+      for (const entry of entries) {
+        fs.renameSync(path.join(settingsDirectory, entry.name), path.join(this.root, entry.name));
+      }
+      if (fs.readdirSync(settingsDirectory).length === 0) {
+        fs.rmdirSync(settingsDirectory);
+      }
+    }
+
+    // Chat 图库不参与合并. 只删除受管图片, 不递归删除目录里的其他文件.
+    const chatDirectory = path.join(this.root, 'chat');
+    if (fs.existsSync(chatDirectory)) {
+      for (const entry of fs.readdirSync(chatDirectory, { withFileTypes: true })) {
+        if (entry.isFile() && this.validName(entry.name)) {
+          fs.unlinkSync(path.join(chatDirectory, entry.name));
+        }
+      }
+      if (fs.readdirSync(chatDirectory).length === 0) {
+        fs.rmdirSync(chatDirectory);
+      }
+    }
+  }
+
+  async list(): Promise<WallpaperImageSummary[]> {
+    const dir = this.root;
     let names: string[];
     try {
       names = await fs.promises.readdir(dir);
@@ -40,7 +71,7 @@ export class WallpaperImages {
     return items;
   }
 
-  async import(target: WallpaperWindowTarget, originalName: string, bytes: Buffer): Promise<WallpaperImageSummary | null> {
+  async import(originalName: string, bytes: Buffer): Promise<WallpaperImageSummary | null> {
     const ext = path.extname(originalName).toLowerCase();
     const expectedFormat = formatFor(ext);
     if (!expectedFormat || originalName.length > 120) return null;
@@ -50,7 +81,7 @@ export class WallpaperImages {
     } catch {
       return null;
     }
-    const dir = this.dir(target);
+    const dir = this.root;
     await fs.promises.mkdir(dir, { recursive: true });
     const base = cleanBase(path.basename(originalName, path.extname(originalName)));
     for (let serial = 0; ; serial += 1) {
@@ -66,9 +97,9 @@ export class WallpaperImages {
     }
   }
 
-  async get(target: WallpaperWindowTarget, name: string): Promise<WallpaperImageFile | null> {
+  async get(name: string): Promise<WallpaperImageFile | null> {
     if (!this.validName(name)) return null;
-    const filePath = path.join(this.dir(target), name);
+    const filePath = path.join(this.root, name);
     let stat: fs.Stats;
     try {
       stat = await fs.promises.stat(filePath);
@@ -86,8 +117,8 @@ export class WallpaperImages {
     };
   }
 
-  async thumbnail(target: WallpaperWindowTarget, name: string): Promise<Buffer | null> {
-    const file = await this.get(target, name);
+  async thumbnail(name: string): Promise<Buffer | null> {
+    const file = await this.get(name);
     if (!file) return null;
     return sharp(file.path)
       .rotate()
@@ -96,15 +127,15 @@ export class WallpaperImages {
       .toBuffer();
   }
 
-  async rename(target: WallpaperWindowTarget, name: string, requestedBase: string): Promise<WallpaperImageSummary | null> {
-    const file = await this.get(target, name);
+  async rename(name: string, requestedBase: string): Promise<WallpaperImageSummary | null> {
+    const file = await this.get(name);
     if (!file) return null;
     const base = cleanBase(requestedBase);
     const ext = path.extname(name);
     if (base === path.basename(name, ext)) {
       return { name: file.name, size: file.size, modifiedAt: file.modifiedAt };
     }
-    const dir = this.dir(target);
+    const dir = this.root;
     for (let serial = 0; ; serial += 1) {
       const nextName = candidateName(base, ext, serial);
       const destination = path.join(dir, nextName);
@@ -120,15 +151,11 @@ export class WallpaperImages {
     }
   }
 
-  async remove(target: WallpaperWindowTarget, name: string): Promise<boolean> {
-    const file = await this.get(target, name);
+  async remove(name: string): Promise<boolean> {
+    const file = await this.get(name);
     if (!file) return false;
     await fs.promises.unlink(file.path);
     return true;
-  }
-
-  private dir(target: WallpaperWindowTarget): string {
-    return path.join(this.root, target);
   }
 
   private validName(name: string): boolean {

@@ -1,4 +1,4 @@
-// 设置一族：SettingsStore 构造时注册全部业务包设置定义与组（原 SettingsCatalog 已并入 Store）。
+// SettingsStore 构造时注册全部业务包的设置定义与分组.
 import { AGENT_LIMITS_SETTINGS } from '@ema-agent/agent';
 import {
   attachmentCacheMaxBytesSetting,
@@ -21,7 +21,7 @@ import { eventDisplaySetting } from '../settings/eventDisplaySetting.js';
 import { narrativeQueryModeSetting } from '../settings/narrativeSetting.js';
 import { terminalShellExecutableSetting } from '../settings/terminalSetting.js';
 import { themeSetting } from '../settings/themeSetting.js';
-import { chatWallpaperSetting, settingsWallpaperSetting } from '../settings/wallpaperSetting.js';
+import { wallpaperSetting } from '../settings/wallpaperSetting.js';
 import { WallpaperImages } from '../settings/wallpaperImages.js';
 import { wallpapersDir } from '../platform/paths.js';
 
@@ -44,13 +44,12 @@ export const SETTINGS_DEFINITIONS = [
   themeSetting,
   eventDisplaySetting,
   terminalShellExecutableSetting,
-  chatWallpaperSetting,
-  settingsWallpaperSetting,
+  wallpaperSetting,
   sandboxNetworkSetting,
 ] as const;
 
 /**
- * 构造类型化设置入口。定义与组在构造时全量注册，重复 key 启动期 fail-fast。
+ * 构造类型化设置入口, 定义和分组一次注册, 重复 key 在启动时直接报错.
  */
 export function openSettings(profileDb: Database): SettingsComposition {
   const settings = new SettingsStore(new SettingsRepo(profileDb.sqlite), {
@@ -59,5 +58,8 @@ export function openSettings(profileDb: Database): SettingsComposition {
       compactGroup,
     ],
   });
-  return { settings, wallpaperImages: new WallpaperImages(wallpapersDir()) };
+  const wallpaperImages = new WallpaperImages(wallpapersDir());
+  // 在路由开始接收请求前完成文件迁移, 保持资源名与 SQL 中的图片参数配对.
+  wallpaperImages.migrateSettingsGallery();
+  return { settings, wallpaperImages };
 }

@@ -30,10 +30,10 @@ import {
   Select,
   Spinner,
   Tooltip,
-  toast,
   type SelectOption,
 } from '@ema-agent/ui';
 import type { GitDiffScope } from '../../../../api/git.js';
+import { showToast } from '../../../../lib/toast.js';
 import { useSessionStore } from '../../../../stores/session.js';
 import { fileTab, useSessionPanelStore } from '../../../../stores/sessionPanel.js';
 import { ReviewFileTree } from './reviewFileTree.js';
@@ -434,8 +434,8 @@ const ReviewFileHeader = memo(function ReviewFileHeader({
   const open = useCallback(() => onOpen(file.name), [onOpen, file.name]);
   const copyPath = useCallback(() => {
     void navigator.clipboard.writeText(file.name).then(
-      () => toast.success('已复制文件路径'),
-      () => toast.error('复制文件路径失败'),
+      () => showToast('已复制文件路径', { variant: 'success' }),
+      () => showToast('复制文件路径失败', { variant: 'danger' }),
     );
   }, [file.name]);
   const toggleLabel = `${item.collapsed ? '展开差异' : '折叠差异'} ${file.name}`;

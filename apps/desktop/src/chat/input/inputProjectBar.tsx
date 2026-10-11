@@ -2,7 +2,7 @@ import { useState, type JSX } from 'react';
 import { Button, DropdownMenu, IconButton, Input, Tooltip, type MenuItem } from '@ema-agent/ui';
 import { projectsApi } from '../../api/workspaces.js';
 import type { SessionListItem } from '../../api/sessions.js';
-import { useChatNavigationStore } from '../../stores/chatNavigation.js';
+import { useMainNavigationStore } from '../../layout/navigation.js';
 import { useSessionStore } from '../../stores/session.js';
 import { tauriBridge } from '../../lib/tauri-bridge.js';
 import { showToast } from '../../lib/toast.js';
@@ -12,7 +12,7 @@ export function InputProjectBar({ sessionId: viewedId, session: viewedSession, p
   session: SessionListItem | undefined;
   projectId: string | null;
 }): JSX.Element {
-  const newSessionCwd = useChatNavigationStore(state => state.newSessionCwd);
+  const newSessionCwd = useMainNavigationStore(state => state.newSessionCwd);
   const pinnedProjects = useSessionStore(state => state.sessions.pinnedProjects);
   const projects = useSessionStore(state => state.sessions.projects);
   const [changingProject, setChangingProject] = useState(false);
@@ -24,7 +24,7 @@ export function InputProjectBar({ sessionId: viewedId, session: viewedSession, p
   async function changeProject(projectId: string | null): Promise<void> {
     if (projectId === currentProjectId || changingProject) return;
     if (!viewedId) {
-      useChatNavigationStore.getState().openNewSession(projectId ?? undefined);
+      useMainNavigationStore.getState().openNewSession(projectId ?? undefined);
       return;
     }
     if (!viewedSession) return;
@@ -57,7 +57,7 @@ export function InputProjectBar({ sessionId: viewedId, session: viewedSession, p
   async function pickNewCwd(): Promise<void> {
     try {
       const path = await tauriBridge.openFileDialog({ directory: true });
-      if (path) useChatNavigationStore.getState().setNewSessionCwd(path);
+      if (path) useMainNavigationStore.getState().setNewSessionCwd(path);
     } catch (error) {
       showToast(
         error instanceof Error ? error.message : '选择执行目录失败',
@@ -121,7 +121,7 @@ export function InputProjectBar({ sessionId: viewedId, session: viewedSession, p
               autoComplete="off"
               spellCheck={false}
               value={displayedNewCwd}
-              onChange={event => useChatNavigationStore.getState().setNewSessionCwd(event.target.value)}
+              onChange={event => useMainNavigationStore.getState().setNewSessionCwd(event.target.value)}
               placeholder="使用 Ema 默认工作目录"
               className="min-w-0 flex-1"
             />
@@ -136,7 +136,7 @@ export function InputProjectBar({ sessionId: viewedId, session: viewedSession, p
                 id: `folder:${folder.path}`,
                 label: folder.path,
                 icon: folder.path === displayedNewCwd ? 'i-lucide:check' : 'i-lucide:folder',
-                onSelect: () => useChatNavigationStore.getState().setNewSessionCwd(folder.path),
+                onSelect: () => useMainNavigationStore.getState().setNewSessionCwd(folder.path),
               }))}
               trigger={(
                 <IconButton size="sm" variant="ghost" icon="i-lucide:list" label="从项目文件夹中选择" />

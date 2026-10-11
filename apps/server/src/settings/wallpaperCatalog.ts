@@ -2,12 +2,7 @@
 // 本文件必须保持零运行时依赖: 它允许打进桌面浏览器图(见 desktop vite.config alias).
 import type { WallpaperSettings, WallpaperImageParams } from './wallpaperSetting.js';
 
-export type WallpaperWindowTarget = 'chat' | 'settings';
-
-export const WALLPAPER_SETTING_KEYS: Record<WallpaperWindowTarget, string> = {
-  chat: 'frontend.wallpaper.chat',
-  settings: 'frontend.wallpaper.settings',
-};
+export const WALLPAPER_SETTING_KEY = 'frontend.wallpaper';
 
 export const DEFAULT_WALLPAPER_SETTINGS: WallpaperSettings = {
   enabled: false,

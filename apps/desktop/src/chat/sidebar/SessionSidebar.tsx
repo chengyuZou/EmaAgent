@@ -1,23 +1,22 @@
-// 会话侧栏主装配:折叠/宽度拖拽状态;分区数据直接消费服务端五桶分组
-// （置顶 Session / 置顶项目 / 其余项目 / 最近 / 已归档），行、分区与搜索各自成文件。
-import { useState, useEffect, useMemo, type CSSProperties, type JSX } from 'react';
+import { useState, useMemo, type CSSProperties, type JSX } from 'react';
 import { Button } from '@ema-agent/ui';
 import type { SessionListItem } from '../../api/sessions.js';
-import { useChatNavigationStore } from '../../stores/chatNavigation.js';
+import { useMainNavigationStore } from '../../layout/navigation.js';
 import { useSessionStore } from '../../stores/session.js';
 import { useSessionActivityStore } from '../../stores/sessionActivity.js';
 import { useDragResize } from '../../hooks/use-drag-resize.js';
-import { getStatusDot } from './SessionRow.js';
 import { PinnedSection, ProjectSection } from './ProjectSection.js';
 import { SessionList, SessionSearch } from './SessionList.js';
 import { SidebarDragProvider } from './SidebarDragContext.js';
 
-/** 同一会话可同时出现在置顶桶与项目桶；搜索覆盖层的近期清单合并展示前去重保序。 */
+/** 同一会话可同时出现在置顶桶与项目桶; 搜索清单去重后保留原顺序. */
 function uniqueSessions(items: readonly SessionListItem[]): SessionListItem[] {
   const seen = new Set<string>();
   const out: SessionListItem[] = [];
   for (const item of items) {
-    if (seen.has(item.id)) continue;
+    if (seen.has(item.id)) {
+      continue;
+    }
     seen.add(item.id);
     out.push(item);
   }
@@ -25,9 +24,9 @@ function uniqueSessions(items: readonly SessionListItem[]): SessionListItem[] {
 }
 
 export function SessionSidebar(): JSX.Element {
-  const [collapsed, setCollapsed]   = useState(false);
+  const collapsed = !useMainNavigationStore(state => state.sidebarOpen);
   const [searchOpen, setSearchOpen] = useState(false);
-  // 侧栏宽度(可拖拽,右边缘手柄)。默认 256px,范围 200-480。collapsed 时 w-10 不拖。
+  // 折叠不丢弃拖拽后的宽度, 再展开时恢复同一个宽度.
   const [sidebarWidth, setSidebarWidth] = useState(256);
   const { resizing, handleProps } = useDragResize({
     axis: 'x',
@@ -38,18 +37,8 @@ export function SessionSidebar(): JSX.Element {
     max: 480,
   });
 
-  // 窄视口自动收成 rail；手动展开不受宽度限制，回到宽视口也不强行复原。
-  useEffect(() => {
-    const media = window.matchMedia('(max-width: 1100px)');
-    const onChange = (event: MediaQueryListEvent) => {
-      if (event.matches) setCollapsed(true);
-    };
-    media.addEventListener('change', onChange);
-    return () => media.removeEventListener('change', onChange);
-  }, []);
-
   const sessions  = useSessionStore((s) => s.sessions);
-  const viewedId  = useChatNavigationStore((s) => s.viewedSessionId);
+  const viewedId  = useMainNavigationStore((s) => s.viewedSessionId);
   const activityBySession = useSessionActivityStore((s) => s.bySession);
 
   const searchableSessions = useMemo(() => uniqueSessions([
@@ -59,22 +48,23 @@ export function SessionSidebar(): JSX.Element {
     ...sessions.recent,
   ]), [sessions]);
 
-  // 服务端分桶互斥：置顶 Session 独立展示，项目成员仍由对应项目行展示。
-
   return (
-      <div
-        className={`ema-session-sidebar relative z-10 flex h-full shrink-0 flex-col
-          overflow-hidden
-          border-r bg-[var(--ema-sidebar-bg)] border-[var(--ema-border)]
-        `}
-        data-collapsed={collapsed}
-        data-resizing={resizing}
-        style={{
-          width: collapsed ? 40 : sidebarWidth,
-          '--ema-sidebar-expanded-width': `${sidebarWidth}px`,
-        } as CSSProperties}
-      >
-      {/* 拖拽手柄(右边缘)。展开态才显示,collapsed 不拖 */}
+    <div
+      className="ema-session-sidebar relative z-10 flex h-full shrink-0 flex-col overflow-hidden border-r border-[var(--ema-border)] bg-[var(--ema-sidebar-bg)]"
+      data-collapsed={collapsed}
+      data-resizing={resizing}
+      aria-hidden={collapsed}
+      ref={element => {
+        if (element) {
+          element.inert = collapsed;
+        }
+      }}
+      style={{
+        width: collapsed ? 0 : sidebarWidth,
+        borderRightWidth: collapsed ? 0 : undefined,
+        '--ema-sidebar-expanded-width': `${sidebarWidth}px`,
+      } as CSSProperties}
+    >
       {!collapsed && (
         <div
           className="ema-resize-handle"
@@ -83,58 +73,17 @@ export function SessionSidebar(): JSX.Element {
           aria-hidden
         />
       )}
-        <div
-          className="ema-session-sidebar-rail flex flex-col items-center py-2 gap-2"
-          aria-hidden={!collapsed}
-          {...(!collapsed ? { inert: '' } : {})}
-        >
-          <Button
-            variant="ghost"
-            className="ema-chat-icon-btn"
-            onClick={() => setCollapsed(false)}
-            title="展开侧边栏"
-          >
-            <span className="i-lucide:panel-right text-base shrink-0 leading-none" aria-hidden />
-          </Button>
-          <div className="flex flex-col items-center gap-1.5 mt-1">
-            {sessions.recent.slice(0, 8).map((s) => {
-              const dot = getStatusDot(s, activityBySession);
-              if (!dot) return null;
-              return (
-                <span
-                  key={s.id}
-                  className={`w-1.5 h-1.5 rounded-full ${dot.cls}`}
-                  title={s.title}
-                />
-              );
-            })}
-          </div>
-        </div>
-        <div
-          className="ema-session-sidebar-expanded flex h-full flex-col"
-          aria-hidden={collapsed}
-          {...(collapsed ? { inert: '' } : {})}
-        >
+      <div className="ema-session-sidebar-expanded flex h-full flex-col">
         <SidebarDragProvider>
-          <div className="px-1.5 py-2 border-b border-[var(--ema-border)]">
-            <div className="flex w-full items-center gap-2">
+          <div className="border-b border-[var(--ema-border)] px-1.5 py-2">
             <Button
               variant="ghost"
               className="ema-chat-bar-btn"
-              onClick={() => useChatNavigationStore.getState().openNewSession()}
+              onClick={() => useMainNavigationStore.getState().openNewSession()}
             >
               <span className="i-lucide:square-pen text-base" aria-hidden />
               <span className="truncate">新对话</span>
             </Button>
-              <Button
-                variant="ghost"
-              className="ema-chat-icon-btn flex size-6 shrink-0 items-center justify-center p-0"
-                onClick={() => setCollapsed(true)}
-                title="折叠侧边栏"
-              >
-                <span className="i-lucide:panel-left text-[15px]" aria-hidden />
-              </Button>
-            </div>
             <Button
               variant="ghost"
               className="flex h-8 w-full items-center gap-2 rounded-lg px-2 text-xs text-[var(--ema-text-tertiary)] transition-colors hover:bg-[var(--ema-surface-2)] hover:text-[var(--ema-text-primary)]"
@@ -144,7 +93,6 @@ export function SessionSidebar(): JSX.Element {
               <span>搜索</span>
             </Button>
           </div>
-
           <div className="flex-1 overflow-y-auto py-1.5">
             <PinnedSection
               projects={sessions.pinnedProjects}
@@ -175,8 +123,7 @@ export function SessionSidebar(): JSX.Element {
             />
           </div>
         </SidebarDragProvider>
-        </div>
-
+      </div>
       {searchOpen && (
         <SessionSearch
           recentSessions={searchableSessions}

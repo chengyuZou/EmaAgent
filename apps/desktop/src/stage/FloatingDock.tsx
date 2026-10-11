@@ -1,10 +1,10 @@
-// 提供桌宠主窗口的聊天, 设置, 置顶, 点击穿透, 表情, 拖动与退出入口.
+// 提供角色舞台的主窗口, 置顶, 点击穿透, 表情, 拖动与退出入口.
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { IconButton, Popover, ScrollArea, Tooltip } from '@ema-agent/ui';
 import { tauriBridge } from '../lib/tauri-bridge.js';
 import { showToast } from '../lib/toast.js';
 import type { WallpaperSettings } from '@ema-agent/server/settings/wallpaperSetting.js';
-import { DEFAULT_WALLPAPER_SETTINGS, WALLPAPER_SETTING_KEYS } from '@ema-agent/server/settings/wallpaperCatalog.js';
+import { DEFAULT_WALLPAPER_SETTINGS, WALLPAPER_SETTING_KEY } from '@ema-agent/server/settings/wallpaperCatalog.js';
 import { settingsApi } from '../api/settings.js';
 import { subscribeSystemEvent } from '../lib/system-event-dispatcher.js';
 
@@ -36,7 +36,7 @@ export function FloatingDock({
     async function refresh(): Promise<void> {
       const requestSequence = ++sequence;
       try {
-        const response = await settingsApi.getValue(WALLPAPER_SETTING_KEYS.settings);
+        const response = await settingsApi.getValue(WALLPAPER_SETTING_KEY);
         if (disposed || requestSequence !== sequence) return;
         const value = response.value as WallpaperSettings;
         setWallpaper({ enabled: value.enabled, materialMode: value.materialMode });
@@ -188,12 +188,14 @@ export function FloatingDock({
     });
   };
 
-  // 第一排聊天 / 设置 / 置顶, 第二排点击穿透 / 退出. 控制区与托盘都可关闭穿透.
+  // 控制区与托盘都可关闭点击穿透.
   const flyoutButtons = [
-    { id: 'chat',     icon: 'i-mdi:chat-outline', label: '聊天',
-      onClick: () => runDockAction('打开聊天窗口', () => tauriBridge.openChatWindow()) },
-    { id: 'settings', icon: 'i-mdi:cog-outline',  label: '设置',
-      onClick: () => runDockAction('打开设置窗口', () => tauriBridge.openSettingsWindow()) },
+    {
+      id: 'main',
+      icon: 'i-mdi:chat-outline',
+      label: '打开主窗口',
+      onClick: () => runDockAction('打开主窗口', () => tauriBridge.openMainWindow()),
+    },
     {
       id: 'pin',
       icon: pinned ? 'i-mdi:pin' : 'i-mdi:pin-off-outline',
@@ -227,8 +229,13 @@ export function FloatingDock({
         }
       }),
     },
-    { id: 'quit', icon: 'i-mdi:power', label: '退出', danger: true,
-      onClick: () => runDockAction('退出应用', () => tauriBridge.quit()) },
+    {
+      id: 'quit',
+      icon: 'i-mdi:power',
+      label: '退出',
+      danger: true,
+      onClick: () => runDockAction('退出应用', () => tauriBridge.quit()),
+    },
   ];
 
   return (
@@ -239,7 +246,6 @@ export function FloatingDock({
         show ? 'opacity-100' : 'opacity-0 pointer-events-none'
       }`}
     >
-      {/* ── More (click-to-toggle, flyout expands upward like a drawer) ── */}
       <div className="relative">
         <div
           data-pet-interactive={show && flyoutOpen ? '' : undefined}
@@ -276,7 +282,6 @@ export function FloatingDock({
         />
       </div>
 
-      {/* ── Expression ── */}
       <Popover
         className={`ema-pet-interactive ema-stage-surface ${materialClass}`}
         side="left"
@@ -312,7 +317,6 @@ export function FloatingDock({
         </ScrollArea>
       </Popover>
 
-      {/* ── Drag handle ── */}
       <Tooltip content="按住拖动" side="left">
         <IconButton
           size="lg"

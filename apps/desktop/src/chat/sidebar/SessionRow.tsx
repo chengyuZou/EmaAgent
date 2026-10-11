@@ -3,7 +3,7 @@ import { useState, type JSX } from 'react';
 import { Button, ConfirmDialog, DropdownMenu, IconButton, PromptDialog, type MenuItem } from '@ema-agent/ui';
 import type { SessionListItem } from '../../api/sessions.js';
 import type { SessionActivity } from '../../stores/sessionActivity.js';
-import { useChatNavigationStore } from '../../stores/chatNavigation.js';
+import { useMainNavigationStore } from '../../layout/navigation.js';
 import { useSessionStore } from '../../stores/session.js';
 import { runWithToast } from '../../lib/toast.js';
 import { SessionCwdDialog } from '../session/SessionCwdDialog.js';
@@ -87,7 +87,7 @@ export function SessionRow({
       icon:     'i-lucide:git-fork',
       onSelect: () => void (async () => {
         const newId = await useSessionStore.getState().forkSession(session.id);
-        useChatNavigationStore.getState().viewSession(newId);
+        useMainNavigationStore.getState().viewSession(newId);
       })(),
     },
     {
@@ -136,7 +136,7 @@ export function SessionRow({
       onDragStart={(event) => drag.startSession(event, session.id)}
       onDragEnd={drag.endDrag}
       {...dropProps}
-      onClick={() => useChatNavigationStore.getState().viewSession(session.id)}
+      onClick={() => useMainNavigationStore.getState().viewSession(session.id)}
     >
       <span className="shrink-0 w-3 flex items-center justify-center">
         {dot ? (

@@ -1,10 +1,10 @@
 import { z } from 'zod';
 import { defineSetting } from '@ema-agent/settings';
-import { DEFAULT_WALLPAPER_SETTINGS, WALLPAPER_SETTING_KEYS } from './wallpaperCatalog.js';
+import { DEFAULT_WALLPAPER_SETTINGS, WALLPAPER_SETTING_KEY } from './wallpaperCatalog.js';
 
 const wallpaperImageParamsSchema = z.object({
   /** 该图的不透明度, 0-1. */
-  opacity: z.number().min(0).max(1).default(0.35),
+  opacity: z.number().min(0).max(1).default(1),
   /** 该图的模糊半径 px, 0-40. */
   blur: z.number().min(0).max(40).default(0),
 });
@@ -24,16 +24,10 @@ export type WallpaperImageParams = z.infer<typeof wallpaperImageParamsSchema>;
 export type WallpaperSettings = z.infer<typeof wallpaperSettingsSchema>;
 export type MaterialMode = WallpaperSettings['materialMode'];
 
-export const chatWallpaperSetting = defineSetting({
-  key: WALLPAPER_SETTING_KEYS.chat,
+export const wallpaperSetting = defineSetting({
+  key: WALLPAPER_SETTING_KEY,
   apply: 'immediate',
   defaultValue: DEFAULT_WALLPAPER_SETTINGS,
   schema: wallpaperSettingsSchema,
 });
 
-export const settingsWallpaperSetting = defineSetting({
-  key: WALLPAPER_SETTING_KEYS.settings,
-  apply: 'immediate',
-  defaultValue: DEFAULT_WALLPAPER_SETTINGS,
-  schema: wallpaperSettingsSchema,
-});

@@ -9,15 +9,15 @@ use tauri::{Manager, RunEvent};
 
 use commands::{
     browser_back, browser_forward, close_browser, close_session_terminals, close_terminal,
-    get_passthrough, get_server_port, get_server_secret, list_system_fonts,
-    navigate_browser, open_browser, open_path, open_terminal, open_window, quit_app, read_draft_image,
-    reload_browser,
-    report_live2d_diagnostic, resize_terminal, set_always_on_top, set_browser_bounds,
-    set_browser_visible, set_passthrough, set_passthrough_controls_hovered, start_pet_pointer, write_terminal,
+    get_passthrough, get_server_port, get_server_secret, hide_main_window, list_system_fonts,
+    navigate_browser, open_browser, open_main_window, open_path, open_terminal, quit_app,
+    read_draft_image, reload_browser, report_live2d_diagnostic, resize_terminal, set_always_on_top,
+    set_browser_bounds, set_browser_visible, set_passthrough, set_passthrough_controls_hovered,
+    start_pet_pointer, write_terminal,
 };
-use desktop::terminal::TerminalSessions;
 use desktop::pet_pointer::PetPointerTracking;
-use desktop::windows::{handle_window_event, show_main_window};
+use desktop::terminal::TerminalSessions;
+use desktop::windows::{handle_window_event, show_stage_window};
 use processes::DesktopProcesses;
 
 pub fn run() {
@@ -27,9 +27,9 @@ pub fn run() {
     let processes_for_setup = processes.clone();
 
     tauri::Builder::default()
-        // 单实例插件在 setup 前取得所有权，第二实例只能唤醒主窗口。
+        // 第二实例只显示已有角色舞台, 不重复启动后端进程.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            show_main_window(app);
+            show_stage_window(app);
         }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -47,7 +47,8 @@ pub fn run() {
             start_pet_pointer,
             set_passthrough_controls_hovered,
             quit_app,
-            open_window,
+            open_main_window,
+            hide_main_window,
             open_path,
             read_draft_image,
             open_terminal,
@@ -75,8 +76,8 @@ pub fn run() {
 
             desktop::tray::install(app)?;
 
-            // 主窗必须在首次启动时出现；聊天与设置仍由用户操作时惰性创建。
-            show_main_window(app.handle());
+            // 首次启动显示角色舞台, 用户点击舞台按钮后才创建 main.
+            show_stage_window(app.handle());
             Ok(())
         })
         .on_window_event(handle_window_event)
@@ -85,7 +86,7 @@ pub fn run() {
         .run(|app_handle, event| {
             if let RunEvent::Exit = event {
                 app_handle.state::<PetPointerTracking>().stop();
-                // 最后防线负责回收异常退出路径遗留的整棵子进程树与全部 PTY 终端。
+                // 退出时回收子进程树与全部 PTY 终端.
                 let state = app_handle.state::<DesktopProcesses>();
                 app_handle.state::<TerminalSessions>().close_all();
                 tauri::async_runtime::block_on(async {

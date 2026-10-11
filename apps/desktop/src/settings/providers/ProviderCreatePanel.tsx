@@ -76,7 +76,7 @@ export function ProviderCreatePanel({ capability, label, onCancel, onCreated }: 
   }
 
   return (
-    <div className="flex flex-col gap-4 pb-10">
+    <div className="flex flex-col gap-4 pb-10 w-full">
       <div className="flex items-center gap-3">
         <IconButton
           label="返回服务来源"
@@ -88,7 +88,7 @@ export function ProviderCreatePanel({ capability, label, onCancel, onCreated }: 
         <h2 className="text-xl font-semibold text-[var(--ema-text-primary)]">添加{label}服务来源</h2>
       </div>
 
-      <form onSubmit={(e) => void handleSubmit(e)} className="flex flex-col gap-6 max-w-lg">
+      <form onSubmit={(e) => void handleSubmit(e)} className="flex flex-col gap-6 w-full">
         <Field
           label="Provider ID"
           required
@@ -113,9 +113,9 @@ export function ProviderCreatePanel({ capability, label, onCancel, onCreated }: 
         </Field>
 
         <Field
-          label="图标（可空）"
-          description="lobe-icons 类名，如 i-lobe-icons:qwen；留空用默认图标。不支持 emoji"
-          error={iconIdTrimmed && !iconIdValid ? '仅支持 uno 图标类名（i-xxx:yyy 形态）' : undefined}
+          label="图标(可空)"
+          description="lobe-icons 类名，如 i-lobe-icons:qwen; 留空用默认图标。不支持 emoji"
+          error={iconIdTrimmed && !iconIdValid ? '仅支持 uno 图标类名(i-xxx:yyy 形态)' : undefined}
         >
           <Input
             placeholder="i-lobe-icons:deepseek"
@@ -130,7 +130,7 @@ export function ProviderCreatePanel({ capability, label, onCancel, onCreated }: 
             value={authType}
             onChange={(value) => setAuthType(value as 'bearer' | 'none')}
             options={[
-              { value: 'bearer', label: '需要 API Key（Bearer）' },
+              { value: 'bearer', label: '需要 API Key(Bearer)' },
               { value: 'none', label: '无需密钥（本地服务）' },
             ]}
           />
@@ -139,7 +139,7 @@ export function ProviderCreatePanel({ capability, label, onCancel, onCreated }: 
         <Field
           label="协议"
           required
-          description="该能力支持的协议；协议决定请求格式，Base URL 跟它一起生效。"
+          description="该能力支持的协议; 协议决定请求格式, Base URL 跟它一起生效。"
         >
           <Select
             value={protocol}
@@ -154,7 +154,7 @@ export function ProviderCreatePanel({ capability, label, onCancel, onCreated }: 
         <Field
           label="Base URL"
           required
-          description="API 根地址，如 https://api.deepseek.com 或 http://localhost:8000/v1（不要带 /embeddings 等端点路径）"
+          description="API 根地址，如 https://api.deepseek.com 或 http://localhost:8000/v1)不要带 /embeddings 等端点路径)"
         >
           <Input
             placeholder="https://..."

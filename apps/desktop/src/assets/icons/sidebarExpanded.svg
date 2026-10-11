@@ -1,0 +1,25 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 16 16"
+  fill="none"
+>
+  <path
+    d="M4.5 3.5H6V12.5H4.5A2 2 0 0 1 2.5 10.5V5.5A2 2 0 0 1 4.5 3.5Z"
+    fill="currentColor"
+    fill-opacity="0.28"
+  />
+  <rect
+    x="2.5"
+    y="3.5"
+    width="11"
+    height="9"
+    rx="2"
+    stroke="currentColor"
+    stroke-width="1"
+  />
+  <path
+    d="M6 3.5V12.5"
+    stroke="currentColor"
+    stroke-width="1"
+  />
+</svg>

@@ -1,10 +1,8 @@
 /**
- * Tauri 桥接层——所有 Tauri IPC 通信的唯一统一入口。
+ * Tauri 桥接层, 集中调用 IPC 与原生窗口 API.
  *
- * 所有 `@tauri-apps/api/*` 的导入都集中在这里。
- * `apps/desktop/src` 中的其他文件都不允许直接导入 `@tauri-apps/api`。
- * 这样可以为普通浏览器环境提供降级方案，使 Ladle stories
- * 和单元测试即使没有 Tauri 运行时也能正常渲染。
+ * 所有 `@tauri-apps/api/*` 的导入都集中在这里.
+ * 普通浏览器不加载 Tauri 模块, 需要原生能力的操作由具名方法处理.
  */
 import type { PermissionRequiredEvent } from '@ema-agent/permission';
 import type { AskUserRequiredEvent } from '@ema-agent/tools';
@@ -13,8 +11,6 @@ import type { ThemeSettings } from '@ema-agent/server/settings/themeSetting.js';
 import type { EventDisplayTable } from '../api/settings.js';
 
 // ── 对外类型 ────────────────────────────────────────────────────────────────
-
-export type SubWindowName = 'chat' | 'settings';
 
 export type PetPointerEvent =
   | { readonly type: 'position'; readonly clientX: number; readonly clientY: number; readonly inside: boolean }
@@ -35,7 +31,7 @@ export interface OpenTerminalInput {
   readonly terminalId: string;
   readonly sessionId: string;
   readonly cwd?: string;
-  // kind 决定启动参数(如 PowerShell 补 -NoLogo),path 是唯一启动落点。
+  // kind 决定启动参数(如 PowerShell 补 -NoLogo), path 是 Shell 可执行文件的实际路径.
   readonly shell?: { readonly kind: string; readonly path: string };
   readonly columns: number;
   readonly rows: number;
@@ -119,8 +115,6 @@ const WINDOW_VISIBILITY_EVENT = 'ema://window-visibility';
 const PET_PASSTHROUGH_EVENT = 'ema://pet-passthrough';
 const PET_POINTER_EVENT = 'ema://pet-pointer';
 const SYSTEM_EVENT = 'ema://system-event';
-const SUB_WINDOW_OPENED_EVENT = 'ui:window-opened';
-const SUB_WINDOW_CLOSED_EVENT = 'ui:window-closed';
 const THEME_CHANGED_EVENT = 'theme:changed';
 const DESKTOP_SETTINGS_CHANGED_EVENT = 'settings:desktop-changed';
 const DIALOGUE_DELTA_EVENT = 'dialogue:delta';
@@ -213,7 +207,16 @@ export const tauriBridge = {
   async isWindowVisible(): Promise<boolean | null> {
     const winMod = await getWindow();
     if (!winMod) return null;
-    return winMod.getCurrentWindow().isVisible().catch(() => null);
+    const currentWindow = winMod.getCurrentWindow();
+    try {
+      const [visible, minimized] = await Promise.all([
+        currentWindow.isVisible(),
+        currentWindow.isMinimized(),
+      ]);
+      return visible && !minimized;
+    } catch {
+      return null;
+    }
   },
 
   async listenWindowVisibility(handler: (visible: boolean) => void): Promise<() => void> {
@@ -231,22 +234,6 @@ export const tauriBridge = {
 
   async listenSystemEvents(handler: (event: AppEvent) => void): Promise<() => void> {
     return listenTauri(SYSTEM_EVENT, handler);
-  },
-
-  async publishSubWindowOpened(name: SubWindowName): Promise<void> {
-    await emitTauri(SUB_WINDOW_OPENED_EVENT, { name });
-  },
-
-  async publishSubWindowClosed(name: SubWindowName): Promise<void> {
-    await emitTauri(SUB_WINDOW_CLOSED_EVENT, { name });
-  },
-
-  async listenSubWindowOpened(handler: (name: SubWindowName) => void): Promise<() => void> {
-    return listenTauri<{ name: SubWindowName }>(SUB_WINDOW_OPENED_EVENT, ({ name }) => handler(name));
-  },
-
-  async listenSubWindowClosed(handler: (name: SubWindowName) => void): Promise<() => void> {
-    return listenTauri<{ name: SubWindowName }>(SUB_WINDOW_CLOSED_EVENT, ({ name }) => handler(name));
   },
 
   async publishThemeChanged(theme: ThemeSettings): Promise<void> {
@@ -381,12 +368,48 @@ export const tauriBridge = {
     }
   },
 
-  async openChatWindow(): Promise<void> {
-    await invokeTauri('open_window', { label: 'chat' });
+  async openMainWindow(): Promise<void> {
+    await invokeTauri('open_main_window');
   },
 
-  async openSettingsWindow(): Promise<void> {
-    await invokeTauri('open_window', { label: 'settings' });
+  async hideMainWindow(): Promise<void> {
+    await invokeTauri('hide_main_window');
+  },
+
+  async minimizeWindow(): Promise<void> {
+    const module = await getWindow();
+    if (!module) {
+      return;
+    }
+    await module.getCurrentWindow().minimize();
+  },
+
+  async toggleMaximizeWindow(): Promise<void> {
+    const module = await getWindow();
+    if (!module) {
+      return;
+    }
+    await module.getCurrentWindow().toggleMaximize();
+  },
+
+  async listenWindowMaximized(handler: (maximized: boolean) => void): Promise<() => void> {
+    const module = await getWindow();
+    if (!module) {
+      return () => {};
+    }
+    const currentWindow = module.getCurrentWindow();
+    const unlisten = await currentWindow.onResized(() => {
+      void currentWindow.isMaximized().then(handler).catch(error => {
+        console.warn('[main] 读取窗口大小状态失败', error);
+      });
+    });
+    try {
+      handler(await currentWindow.isMaximized());
+    } catch (error) {
+      unlisten();
+      throw error;
+    }
+    return unlisten;
   },
 
   async quit(): Promise<void> {
@@ -471,31 +494,32 @@ export const tauriBridge = {
     if (!dialog) return [];
     const result = await dialog.open({ multiple: true, ...opts });
     if (Array.isArray(result)) return result as string[];
-    // 如果底层意外返回单个结果，则统一包装成单元素数组；取消选择则返回 []
+    // 单个结果也返回数组, 取消选择返回空数组.
     return result ? [result as string] : [];
   },
 
   async openUrl(url: string): Promise<void> {
-    // Tauri 2：调用 plugin:opener|open_url（需要在 tauri.conf.json 中配置 @tauri-apps/plugin-opener）。
-    // 如果插件不可用，则退化为 window.open；Tauri WebView 会将其交给系统浏览器处理。
+    // 原生调用 opener 插件, 插件不可用时沿用浏览器的 window.open.
     const core = await getCore();
     if (core) {
       try {
         await core.invoke('plugin:opener|open_url', { url });
         return;
-      } catch { /* 插件未配置——继续执行后面的降级逻辑 */ }
+      } catch {
+        // 继续执行浏览器打开逻辑.
+      }
     }
     window.open(url, '_blank');
   },
 
-  /** 在系统文件管理器中定位路径(后台进程日志目录等);插件缺失时抛错由调用方提示。 */
+  /** 在系统文件管理器中定位路径(后台进程日志目录等), 插件缺失时抛错由调用方提示. */
   async revealInFolder(path: string): Promise<void> {
     const core = await getCore();
     if (!core) throw new Error('当前环境不支持文件管理器定位');
     await core.invoke('plugin:opener|reveal_item_in_dir', { paths: [path] });
   },
 
-  /** 用系统默认方式打开路径本身;失败抛错由调用方提示。 */
+  /** 用系统默认方式打开路径本身, 失败抛错由调用方提示. */
   async openPath(path: string): Promise<void> {
     const core = await getCore();
     if (!core) throw new Error('当前环境不支持打开路径');
