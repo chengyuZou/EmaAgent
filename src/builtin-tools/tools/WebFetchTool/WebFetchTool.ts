@@ -1,4 +1,3 @@
-// 在网络安全与响应大小边界内获取公开网页内容, 转换结果按 URL 缓存。
 import { z } from 'zod';
 import { findContentRule, findMatchingContentRule } from '@ema-agent/permission';
 import { buildTool, contextOk, type ToolInvocation } from '@ema-agent/tools';
@@ -7,11 +6,7 @@ import { fetchPublicPage } from './httpClient.js';
 import { isPreapprovedHost } from './preapproved.js';
 import { WEB_FETCH_DESCRIPTION } from './prompt.js';
 
-// ── 常量 ─────────────────────────────────────────────────────────────────────
-
 const MAX_RESPONSE_CHARS = 100_000;
-
-// ── 输入 schema ──────────────────────────────────────────────────────────────
 
 const inputSchema = z.object({
   url: z.url().describe('HTTP or HTTPS URL to fetch.'),
@@ -33,33 +28,29 @@ const inputSchema = z.object({
   raw: z
     .boolean()
     .default(false)
-    .describe('Return raw HTML instead of converting to Markdown.'),
+    .describe('Return decoded source text without HTML extraction or Markdown conversion.'),
 }).strict();
 
 type WebFetchInput = z.infer<typeof inputSchema>;
 
-// ── 输出类型 ───────────────────────────────────────────────────────────────────
-
 export interface WebFetchResult {
-  /** 重定向后的最终 URL, 与首次请求的 finalUrl 一致。 */
+  /** 重定向后的最终 URL, 分页读取仍使用同一个结果地址. */
   url: string;
-  /** 响应体字节数, 供 UI 展示接收体积。 */
+  /** 原始响应体字节数, 供 UI 展示接收体积. */
   bytes: number;
   code: number;
   codeText: string;
-  /** 模型可见内容(分页后的 Markdown 或原始 HTML)。 */
+  /** 分页后的正文 Markdown 或解码后的原始文本. */
   content: string;
   truncated: boolean;
   totalLength: number;
 }
 
-// ── 工具定义 ───────────────────────────────────────────────────────────────────
-
 export const WebFetchTool = buildTool<WebFetchInput, WebFetchResult, undefined>({
   id: BuiltinTools.WebFetch.id,
   name: BuiltinTools.WebFetch.name,
   description: WEB_FETCH_DESCRIPTION,
-  // 业务上限是 100K 字符; 按 UTF-8 最坏 3 字节/字符(CJK)折算成结果预算。
+  // 业务上限是 100K 个 UTF-16 字符单元, 按每单元至多 3 个 UTF-8 字节计算结果预算.
   maxResultBytes: 300_000,
 
   inputSchema,
@@ -69,10 +60,12 @@ export const WebFetchTool = buildTool<WebFetchInput, WebFetchResult, undefined>(
   getToolUseSummary: (input) => input.url,
 
   validateInput(input) {
-    // 只校验 URL 是合法 http/https；其余交给权限规则。
+    // 只校验合法 HTTP/HTTPS 地址, 是否批准访问交给权限规则.
     try {
       const url = new URL(input.url);
-      if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('bad protocol');
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+        throw new Error('bad protocol');
+      }
       return { valid: true };
     } catch {
       return {
@@ -84,7 +77,7 @@ export const WebFetchTool = buildTool<WebFetchInput, WebFetchResult, undefined>(
     }
   },
 
-  // 域名内容规则(用户显式 deny/ask/allow 优先) → 预批准域名 → passthrough(中央收口)。
+  // 用户权限规则优先于预批准域名, 其余请求交给通用工具权限流程.
   async checkPermissions(input, _context, permissionContext) {
     const ruleContent = webFetchInputToPermissionRuleContent(input.url);
     const sessionAllowRule = { toolName: BuiltinTools.WebFetch.name, ruleContent };
@@ -125,7 +118,7 @@ export const WebFetchTool = buildTool<WebFetchInput, WebFetchResult, undefined>(
         sessionAllowRule,
       };
     }
-    // 预批准域名只对 WebFetch 的 GET 放行, 不继承到其他工具或沙箱网络规则。
+    // 预批准域名只对 WebFetch 的 GET 放行, 不继承到其他工具或沙箱网络规则.
     if (isPreapprovedUrl(input.url)) {
       return {
         behavior: 'allow',
@@ -136,7 +129,6 @@ export const WebFetchTool = buildTool<WebFetchInput, WebFetchResult, undefined>(
     return { behavior: 'passthrough', message: '获取网页需要用户确认', sessionAllowRule };
   },
 
-  // 本工具不消费宿主能力: 无需窄 Context。
   validateContext() {
     return contextOk(undefined);
   },
@@ -167,7 +159,7 @@ export const WebFetchTool = buildTool<WebFetchInput, WebFetchResult, undefined>(
     };
   },
 
-  // 模型只需要内容本身; 字节/状态码等 HTTP 事实留在 TOutput 给 UI 与审计。
+  // 模型只接收正文, HTTP 状态和体积由工具卡消费.
   mapResultToModelContent(output) {
     return output.content;
   },
@@ -182,7 +174,6 @@ function isPreapprovedUrl(rawUrl: string): boolean {
   }
 }
 
-/** input → 内容规则语义串: domain:hostname。 */
 function webFetchInputToPermissionRuleContent(url: string): string {
   return `domain:${new URL(url).hostname}`;
 }

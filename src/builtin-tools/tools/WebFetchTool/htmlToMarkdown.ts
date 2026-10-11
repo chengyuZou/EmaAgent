@@ -1,14 +1,9 @@
-// HTML → Markdown 转换: turndown 懒加载单例, 首次真正转换时才加载(~1.4MB), 之后复用。
-type TurndownCtor = typeof import('turndown');
+import TurndownService from 'turndown';
 
-let turndownServicePromise: Promise<InstanceType<TurndownCtor>> | undefined;
+const service = new TurndownService({ headingStyle: 'atx', codeBlockStyle: 'fenced' });
+// Turndown 本身不转换表格. 保留 table HTML, 不把参数名、数值和列关系摊成一段文字.
+service.keep('table');
 
 export async function htmlToMarkdown(html: string): Promise<string> {
-  const service = await (turndownServicePromise ??= import('turndown').then((module) => {
-    // turndown 是 CJS, NodeNext 下动态 import 的 default 才是构造器。
-    const Turndown = (module as unknown as { default: TurndownCtor }).default;
-    // atx 标题 + fenced 代码块比 turndown 默认的 setext/indented 更适合模型阅读。
-    return new Turndown({ headingStyle: 'atx', codeBlockStyle: 'fenced' });
-  }));
   return service.turndown(html);
 }

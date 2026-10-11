@@ -1,5 +1,5 @@
-// Brave 搜索 API 后端: 只取回原始结果, 过滤/归一/去重交给适配层统一处理。
 import { z } from 'zod';
+import { readWebResponse } from '../../readWebResponse.js';
 import { SearchHttpStatusError } from './types.js';
 import type { SearchOptions, SearchResult, WebSearchAdapter } from './types.js';
 
@@ -28,19 +28,18 @@ export const braveSearch: WebSearchAdapter = async (
   }
   const url =
     `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=20`;
+  const signal = AbortSignal.any([options.signal, AbortSignal.timeout(SEARCH_TIMEOUT_MS)]);
   const res = await fetch(url, {
-    signal: AbortSignal.any([options.signal, AbortSignal.timeout(SEARCH_TIMEOUT_MS)]),
+    signal,
     redirect: 'manual',
     headers: { Accept: 'application/json', 'X-Subscription-Token': apiKey },
   });
   if (res.status !== 200) {
+    await res.body?.cancel();
     throw new SearchHttpStatusError(res.status);
   }
-  const body = await res.arrayBuffer();
-  if (body.byteLength > API_RESPONSE_LIMIT) {
-    throw new Error(`搜索响应体超过 ${API_RESPONSE_LIMIT} 字节上限`);
-  }
-  const data = braveResponseSchema.parse(parseJsonBody(Buffer.from(body)));
+  const body = await readWebResponse(res, API_RESPONSE_LIMIT, signal);
+  const data = braveResponseSchema.parse(parseJsonBody(body));
   return (data.web?.results ?? []).map((r) => ({
     title: r.title,
     url: r.url,

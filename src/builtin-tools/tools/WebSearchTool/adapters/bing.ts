@@ -1,9 +1,10 @@
-import { decodeHtmlEntities } from './html.js';
+import { load, loadBuffer, type CheerioAPI } from 'cheerio';
+import { readWebResponse } from '../../readWebResponse.js';
 import { SearchHttpStatusError } from './types.js';
 import type { SearchOptions, SearchResult, WebSearchAdapter } from './types.js';
 
 const SEARCH_TIMEOUT_MS = 30_000;
-const HTML_RESPONSE_LIMIT = 2 * 1024 * 1024;
+const HTML_RESPONSE_LIMIT = 5 * 1024 * 1024;
 
 const BROWSER_HEADERS = {
   'User-Agent':
@@ -28,8 +29,9 @@ export const bingSearch: WebSearchAdapter = async (
   options: SearchOptions,
 ): Promise<SearchResult[]> => {
   const url = `https://www.bing.com/search?q=${encodeURIComponent(query)}&setmkt=en-US`;
+  const signal = AbortSignal.any([options.signal, AbortSignal.timeout(SEARCH_TIMEOUT_MS)]);
   const res = await fetch(url, {
-    signal: AbortSignal.any([options.signal, AbortSignal.timeout(SEARCH_TIMEOUT_MS)]),
+    signal,
     // Bing 会跳转到地区站点. 此请求不携带 API Key 或 Cookie, 跟随后再核对最终页面.
     redirect: 'follow',
     headers: BROWSER_HEADERS,
@@ -44,17 +46,15 @@ export const bingSearch: WebSearchAdapter = async (
     await res.body?.cancel();
     throw new Error('搜索响应不是 HTML 页面');
   }
-  const body = await res.arrayBuffer();
-  if (body.byteLength > HTML_RESPONSE_LIMIT) {
-    throw new Error(`搜索响应体超过 ${HTML_RESPONSE_LIMIT} 字节上限`);
-  }
-  return readBingSearchPage(Buffer.from(body).toString('utf8'), res.url);
+  const body = await readWebResponse(res, HTML_RESPONSE_LIMIT, signal);
+  const page = loadBuffer(body, { encoding: { defaultEncoding: 'utf-8' } });
+  return readBingSearchPage(page, res.url);
 };
 
-function readBingSearchPage(html: string, pageUrl: string): SearchResult[] {
+function readBingSearchPage(page: CheerioAPI, pageUrl: string): SearchResult[] {
   const url = new URL(pageUrl);
   const captchaAddress = /^\/turing\/captcha(?:\/|$)/i.test(url.pathname);
-  const captchaElement = /<(?:div|form|iframe)\b[^>]*\sid\s*=\s*(["'])b_captcha(?:_frame)?\1/i.test(html);
+  const captchaElement = page('#b_captcha, #b_captcha_frame').length > 0;
   if (captchaAddress || captchaElement) {
     throw new Error('搜索请求需要网页验证, 当前无法读取搜索结果');
   }
@@ -64,17 +64,17 @@ function readBingSearchPage(html: string, pageUrl: string): SearchResult[] {
     throw new Error('搜索请求跳转到了非 Bing 搜索页面');
   }
 
-  const resultsContainer = /<ol\b[^>]*\sid\s*=\s*(["'])b_results\1/i.test(html);
+  const resultsContainer = page('ol#b_results').length > 0;
   if (!resultsContainer) {
     throw new Error('无法识别搜索页面, 页面结构可能已经变化');
   }
-  const results = extractBingResults(html);
+  const results = readResultElements(page);
   if (results.length > 0) {
     return results;
   }
 
   // b_no 是搜索页明确显示的无结果提示. 只有空列表时也可能是解析规则失效, 不能返回无结果.
-  const noResults = /<li\b[^>]*\sclass\s*=\s*(["'])(?:[^"']*\s)?b_no(?:\s[^"']*)?\1/i.test(html);
+  const noResults = page('#b_results li.b_no').length > 0;
   if (noResults) {
     return [];
   }
@@ -83,65 +83,62 @@ function readBingSearchPage(html: string, pageUrl: string): SearchResult[] {
 
 /** 只提取 b_algo 中的网页条目. 空数组不代表搜索确实无结果, 页面判断由请求入口负责. */
 export function extractBingResults(html: string): SearchResult[] {
+  return readResultElements(load(html));
+}
+
+function readResultElements(page: CheerioAPI): SearchResult[] {
   const results: SearchResult[] = [];
-  const algoBlockRe = /<li\s+class="b_algo"[^>]*>([\s\S]*?)<\/li>/gi;
-  let blockMatch: RegExpExecArray | null;
-  while ((blockMatch = algoBlockRe.exec(html)) !== null) {
-    const block = blockMatch[1]!;
-    const h2LinkRe = /<h2[^>]*>\s*<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/i;
-    const linkMatch = h2LinkRe.exec(block);
-    if (!linkMatch) continue;
-
-    const rawUrl = decodeHtmlEntities(linkMatch[1]!);
-    const title = decodeHtmlEntities(linkMatch[2]!.replace(/<[^>]+>/g, '').trim());
+  for (const element of page('li.b_algo').toArray()) {
+    const block = page(element);
+    const link = block.find('h2 a[href]').first();
+    const rawUrl = link.attr('href');
+    if (!rawUrl) {
+      continue;
+    }
     const url = resolveBingUrl(rawUrl);
-    if (!url) continue;
+    if (!url) {
+      continue;
+    }
 
-    results.push({ title, url, snippet: extractSnippet(block) });
+    const title = link.text().replace(/\s+/gu, ' ').trim();
+    let snippet = '';
+    // 优先读摘要段落, 没有时再读摘要容器. Cheerio 负责嵌套标签和字符实体.
+    for (const selector of ['p.b_lineclamp', '.b_caption p', '.b_caption']) {
+      snippet = block.find(selector).first().text().replace(/\s+/gu, ' ').trim();
+      if (snippet) {
+        break;
+      }
+    }
+
+    results.push({ title, url, snippet });
   }
   return results;
 }
 
 /**
- * 解析 Bing 跳转: /ck/a 的 `u` 参数是带 a1/a0 前缀的 base64url 编码目标.
- * 站内与相对链接丢弃, 直接外链原样保留.
+ * Bing /ck/a 的 u 参数是带 a1/a0 前缀的 base64url 目标地址.
+ * 只在 Bing 跳转链接上解码, 不改其他网站名称也叫 u 的查询参数.
  */
 export function resolveBingUrl(rawUrl: string): string | undefined {
-  if (rawUrl.startsWith('/') || rawUrl.startsWith('#')) return undefined;
-
-  const uMatch = rawUrl.match(/[?&]u=([a-zA-Z0-9+/_=-]+)/);
-  if (uMatch) {
-    const encoded = uMatch[1]!;
-    if (encoded.length >= 3) {
-      const b64 = encoded.slice(2);
-      try {
-        const padded = b64.replace(/-/g, '+').replace(/_/g, '/');
-        const decoded = Buffer.from(padded, 'base64').toString('utf-8');
-        if (decoded.startsWith('http')) return decoded;
-      } catch {
-        // 非法的 base64 不是有效跳转, 落到下面的直链判断.
-      }
+  try {
+    const url = new URL(rawUrl, 'https://www.bing.com');
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return undefined;
     }
+    const bingHost = url.hostname === 'bing.com' || url.hostname.endsWith('.bing.com');
+    if (!bingHost) {
+      return url.toString();
+    }
+    const encoded = url.searchParams.get('u');
+    if (url.pathname !== '/ck/a' || !encoded || !/^a[01]/u.test(encoded)) {
+      return undefined;
+    }
+    const target = new URL(Buffer.from(encoded.slice(2), 'base64url').toString('utf8'));
+    if (target.protocol === 'http:' || target.protocol === 'https:') {
+      return target.toString();
+    }
+  } catch {
+    // 地址或跳转参数无效时忽略该条目, 不把 Bing 站内链接交给模型.
   }
-
-  if (!rawUrl.includes('bing.com')) return rawUrl;
   return undefined;
-}
-
-/** snippet 三段提取: b_lineclamp <p> -> b_caption <p> -> b_caption 文本兜底. */
-function extractSnippet(block: string): string {
-  const lineclamp = /<p[^>]*class="b_lineclamp[^"]*"[^>]*>([\s\S]*?)<\/p>/i.exec(block);
-  if (lineclamp) {
-    return decodeHtmlEntities(lineclamp[1]!.replace(/<[^>]+>/g, '').trim());
-  }
-  const captionP = /<div[^>]*class="b_caption[^"]*"[^>]*>[\s\S]*?<p[^>]*>([\s\S]*?)<\/p>/i.exec(block);
-  if (captionP) {
-    return decodeHtmlEntities(captionP[1]!.replace(/<[^>]+>/g, '').trim());
-  }
-  const captionDiv = /<div[^>]*class="b_caption[^"]*"[^>]*>([\s\S]*?)<\/div>/i.exec(block);
-  if (captionDiv) {
-    const text = captionDiv[1]!.replace(/<[^>]+>/g, '').trim();
-    if (text) return decodeHtmlEntities(text);
-  }
-  return '';
 }

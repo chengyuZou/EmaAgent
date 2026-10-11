@@ -1,12 +1,13 @@
 import { WebPageCache } from './cache.js';
-import { htmlToMarkdown } from './htmlToMarkdown.js';
+import { readWebResponse } from '../readWebResponse.js';
+import { extractPageContent } from './extractPageContent.js';
 
 const MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
 const FETCH_TIMEOUT_MS = 30_000;
 
 export interface FetchedPage {
   finalUrl: string;
-  /** 转换后的内容(Markdown 或原始 HTML). */
+  /** HTML 主体转为 Markdown, 非 HTML 文本或 raw 模式保留解码后的原文. */
   content: string;
   contentType: string;
   bytes: number;
@@ -15,7 +16,7 @@ export interface FetchedPage {
 }
 
 export interface FetchPageOptions {
-  /** true 时缓存并返回原始 HTML, 不做 Markdown 转换. */
+  /** true 时返回解码后的原始文本, 不提取主体或转换 Markdown. */
   raw: boolean;
 }
 
@@ -24,6 +25,7 @@ export async function fetchPublicPage(
   signal: AbortSignal,
   options: FetchPageOptions,
 ): Promise<FetchedPage> {
+  signal.throwIfAborted();
   // 缓存按调用方原始 URL 区分 raw/markdown, 命中后不再下载也不再转换.
   const cacheKey = `${options.raw ? 'raw:' : 'md:'}${rawUrl}`;
   const cached = WebPageCache.get(cacheKey);
@@ -38,8 +40,9 @@ export async function fetchPublicPage(
     };
   }
 
+  const requestSignal = AbortSignal.any([signal, AbortSignal.timeout(FETCH_TIMEOUT_MS)]);
   const response = await fetch(upgradeToHttps(rawUrl), {
-    signal: AbortSignal.any([signal, AbortSignal.timeout(FETCH_TIMEOUT_MS)]),
+    signal: requestSignal,
     headers: {
       Accept: 'text/markdown, text/html, text/plain, application/json, application/xml',
     },
@@ -52,18 +55,14 @@ export async function fetchPublicPage(
     throw new Error(`网页读取失败: HTTP ${response.status}${statusText}`);
   }
 
-  const rawBody = await response.arrayBuffer();
-  if (rawBody.byteLength > MAX_RESPONSE_BYTES) {
-    throw new Error(`响应体超过 ${MAX_RESPONSE_BYTES} 字节上限`);
-  }
   const contentType = (response.headers.get('content-type') ?? 'application/octet-stream').toLowerCase();
   if (!isTextContent(contentType)) {
+    await response.body?.cancel();
     throw new Error(`不支持读取二进制内容: ${contentType}`);
   }
-  const body = Buffer.from(rawBody);
-  const content = options.raw
-    ? body.toString('utf8')
-    : await htmlToMarkdown(body.toString('utf8'));
+  const body = await readWebResponse(response, MAX_RESPONSE_BYTES, requestSignal);
+  const content = await extractPageContent(body, contentType, response.url, options.raw);
+  requestSignal.throwIfAborted();
 
   const entry = {
     finalUrl: response.url,
@@ -97,7 +96,7 @@ function upgradeToHttps(rawUrl: string): string {
 }
 
 function isTextContent(contentType: string): boolean {
-  const normalized = contentType.toLowerCase();
+  const normalized = contentType.split(';')[0]!.trim().toLowerCase();
   return normalized.startsWith('text/')
     || normalized.includes('json')
     || normalized.includes('xml')

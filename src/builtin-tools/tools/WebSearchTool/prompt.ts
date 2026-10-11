@@ -1,5 +1,4 @@
-// WebSearch 的模型说明书: 用途、强制引用、域名过滤语义与当前年月提醒。
-// 描述在模块加载时计算一次, 进程内稳定, 不把后端选择或环境变量泄露给模型。
+// 当前年月在模块加载时计算, 进程内保持稳定, 避免每轮改变工具说明.
 export const WEB_SEARCH_DESCRIPTION = buildWebSearchDescription();
 
 function buildWebSearchDescription(): string {
@@ -15,19 +14,20 @@ Use WebSearch for:
 - Facts that change over time (prices, versions, releases, documentation)
 - Verifying or updating knowledge you are not sure is still accurate
 
-After answering based on search results, you MUST include a "Sources:" section at the end of your response with markdown hyperlinks: [Title](URL). Never skip the sources section.
+Cite the sources that actually support your answer using markdown hyperlinks: [Title](URL). Do not cite every returned result merely because it appears in the list. Search snippets are previews, not verified page content; use WebFetch to check details when needed.
 
 Example format:
 
     [Your answer here]
 
-    Sources:
+    Sources used:
     - [Source Title 1](https://example.com/1)
     - [Source Title 2](https://example.com/2)
 
 Usage notes:
 - allowed_domains restricts results to the given domains (exact or any subdomain); blocked_domains excludes them. Do not pass both at once.
 - Keep the query focused and specific.
-- The current month is ${currentMonthYear}. Use the current year when searching for recent information, documentation, or current events.
+- Local ranking compares the query with titles and snippets. It cannot find a page the search provider did not return, or verify that a page is correct.
+- The current month is ${currentMonthYear}. Include dates or versions when they matter to the question. Do not replace an explicitly requested historical date or software version with the current year.
 `;
 }
