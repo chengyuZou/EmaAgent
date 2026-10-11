@@ -20,7 +20,8 @@ export function createOpenAiSttProtocol(
       filenameFor(request.mimeType),
     );
     form.append('model', modelId);
-    form.append('response_format', 'verbose_json');
+    // 调用方只需要转写文本, 使用接口默认的 JSON 响应, 不强制要求时间分段.
+    // 兼容此接口的模型不都接受 verbose_json, SiliconFlow 的 Qwen3-ASR 会因此返回 400.
     if (request.language?.trim()) form.append('language', request.language.trim());
 
     const headers: Record<string, string> = {};

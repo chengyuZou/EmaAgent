@@ -36,6 +36,31 @@ describe('CallStt', () => {
     expect(url).toBe('https://example.test/v1/audio/transcriptions');
     expect((init?.headers as Record<string, string>)['Authorization']).toBe('Bearer secret');
     expect(init?.body).toBeInstanceOf(FormData);
+    const form = init?.body as FormData;
+    expect(form.get('model')).toBe('whisper-1');
+    expect(form.get('language')).toBe('zh');
+    expect(form.has('response_format')).toBe(false);
+  });
+
+  it('使用默认 JSON 响应, 不要求供应商返回时间分段', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
+      text: '你好',
+    }), { status: 200 }));
+    const transcribe = createSttCall({
+      protocol: 'openai-stt',
+      baseUrl: 'https://api.siliconflow.cn/v1',
+    }, 'Qwen/Qwen3-ASR-1.7B');
+
+    await expect(transcribe({
+      audio: new Uint8Array([1, 2, 3]),
+      mimeType: 'audio/mpeg',
+    })).resolves.toEqual({ text: '你好' });
+
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('https://api.siliconflow.cn/v1/audio/transcriptions');
+    const form = init?.body as FormData;
+    expect([...form.keys()]).toEqual(['file', 'model']);
+    expect(form.get('model')).toBe('Qwen/Qwen3-ASR-1.7B');
   });
 
   it('空音频在访问 Provider 前失败', async () => {
