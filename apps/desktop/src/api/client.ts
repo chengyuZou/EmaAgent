@@ -28,6 +28,9 @@ export interface ServerClient {
   /** Build a full SSE URL with optional lastEventId query param. */
   streamUrl(path: string, params?: { lastEventId?: number }): Promise<string>;
 
+  /** 原生 audio 使用的完整地址; 仅后端允许的音频 GET 路由接受 URL 里的现有口令. */
+  audioUrl(path: string): Promise<string>;
+
   /** 构建浏览器 WebSocket URL；浏览器不能设置认证 header，因此密钥只放在 loopback 握手查询串。 */
   webSocketUrl(path: string): Promise<string>;
 
@@ -144,12 +147,15 @@ async function doRequestRaw(
   try {
     res = await fetch(url, requestInit);
   } catch (err: unknown) {
+    // 用户取消不是端口失效, 不重新发现端口或重试已取消的试听.
+    if (init?.signal?.aborted) throw err;
     // server 重启换端口后旧端口连接失败：重新发现端口重试一次，再不行才报不可达。
     try {
       await refreshPortDiscovery();
       const retryUrl = await buildUrl(path);
       res = await fetch(retryUrl, requestInit);
     } catch (retryErr: unknown) {
+      if (init?.signal?.aborted) throw retryErr;
       const error = new Error(`Server unreachable: ${url}`);
       (error as Error & { cause?: unknown; code?: string }).cause = retryErr;
       (error as Error & { cause?: unknown; code?: string }).code = 'server_unreachable';
@@ -275,6 +281,13 @@ export const serverClient: ServerClient = {
 
   async streamUrl(path: string, params?: { lastEventId?: number }): Promise<string> {
     return buildUrl(path, params as Record<string, string | number | undefined>);
+  },
+
+  async audioUrl(path: string): Promise<string> {
+    const [httpUrl, secret] = await Promise.all([buildUrl(path), getSecretPromise()]);
+    const url = new URL(httpUrl);
+    if (secret) url.searchParams.set('secret', secret);
+    return url.toString();
   },
 
   async webSocketUrl(path: string): Promise<string> {

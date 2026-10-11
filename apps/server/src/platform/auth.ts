@@ -50,7 +50,7 @@ function digestSecret(value: string | undefined): Buffer {
   return createHash('sha256').update(value ?? '', 'utf8').digest();
 }
 
-/** 校验 X-Ema-Secret 的 Hono 中间件；运行时禁止 fail-open。 */
+/** 校验本机 Server 的进程口令; 音频 GET 和 WebSocket 可通过 URL 提供同一口令. */
 export function emaAuth(secret: string) {
   if (secret.length < MIN_SECRET_LENGTH) throw new MissingSharedSecretError();
   const expectedDigest = digestSecret(secret);
@@ -59,9 +59,13 @@ export function emaAuth(secret: string) {
     // 健康检查不包含用户数据，保留给 Tauri 启动探测使用。
     if (c.req.path === '/health') return next();
 
-    // 原生 audio 不能设置自定义请求头, 仅音频 GET 和 WebSocket 接受 URL 中的现有口令.
+    // 原生 audio 不能设置自定义请求头, 仅 Turn 音频和角色参考音频的 GET 接受 URL 中的口令.
+    const isAudioGet = c.req.method === 'GET' && (
+      /^\/api\/turns\/[^/]+\/audio$/.test(c.req.path)
+      || /^\/api\/characters\/[^/]+\/voice\/[^/]+\/file$/.test(c.req.path)
+    );
     const acceptsQuerySecret = c.req.header('upgrade')?.toLowerCase() === 'websocket'
-      || (c.req.method === 'GET' && /^\/api\/turns\/[^/]+\/audio$/.test(c.req.path));
+      || isAudioGet;
     const provided = c.req.header(EMA_SECRET_HEADER)
       ?? (acceptsQuerySecret
         ? c.req.query('secret')

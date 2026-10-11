@@ -158,10 +158,11 @@ export const providersApi = {
   },
 
   /** TTS 试听：音频字节流，走 requestRaw 逃生口。 */
-  ttsPreview(providerId: string, modelId: string, text?: string): Promise<Response> {
-    return serverClient.requestRaw(`/api/providers/${providerId}/tts-preview`, {
+  ttsPreview(providerId: string, modelId: string, text?: string, signal?: AbortSignal): Promise<Response> {
+    return serverClient.requestRaw(`/api/providers/${encodeURIComponent(providerId)}/tts-preview`, {
       method: 'POST',
       json: { modelId, ...(text ? { text } : {}) },
+      signal,
     });
   },
 

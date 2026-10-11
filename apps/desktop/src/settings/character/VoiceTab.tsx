@@ -10,14 +10,13 @@ import { ServerApiError } from '../../api/client.js';
 import { charactersApi, type Character } from '../../api/characters.js';
 import { useCharacterStore } from '../../stores/character.js';
 import { tauriBridge } from '../../lib/tauri-bridge.js';
-import { fetchServerObjectUrl } from '../../lib/serverFileUrl.js';
 import { showToast } from '../../lib/toast.js';
+import { MainView, useMainNavigationStore } from '../../layout/navigation.js';
 
 type VoiceSample = Character['voiceSamples'][number];
 
-// ── 试听唯一出口:同一时刻只响一条,播新句先停旧句;模块级单例,跨行共享。 ──────
-
-let currentAudio: { audio: HTMLAudioElement; objectUrl: string; key: string } | null = null;
+// 同一页的音频行共享播放器, 新试听先停旧试听.
+let currentAudio: { audio: HTMLAudioElement; key: string } | null = null;
 const playbackListeners = new Set<(key: string | null) => void>();
 
 function notifyPlaying(key: string | null): void {
@@ -25,31 +24,42 @@ function notifyPlaying(key: string | null): void {
 }
 
 function stopCurrentPlayback(): void {
-  if (!currentAudio) return;
-  currentAudio.audio.pause();
-  URL.revokeObjectURL(currentAudio.objectUrl);
+  const current = currentAudio;
+  if (!current) return;
   currentAudio = null;
+  current.audio.onended = null;
+  current.audio.onerror = null;
+  current.audio.pause();
+  current.audio.removeAttribute('src');
+  current.audio.load();
   notifyPlaying(null);
 }
 
-async function playVoice(key: string, apiPath: string): Promise<void> {
+async function playVoice(characterName: string, voiceName: string): Promise<void> {
   stopCurrentPlayback();
-  const objectUrl = await fetchServerObjectUrl(apiPath);
-  if (!objectUrl) throw new Error('音频读取失败');
-  const audio = new Audio(objectUrl);
-  currentAudio = { audio, objectUrl, key };
-  notifyPlaying(key);
+  const audio = new Audio();
+  const current = { audio, key: voiceName };
+  currentAudio = current;
+  notifyPlaying(voiceName);
   audio.onended = () => {
-    if (currentAudio?.key === key) {
-      URL.revokeObjectURL(objectUrl);
-      currentAudio = null;
-      notifyPlaying(null);
-    }
+    if (currentAudio === current) stopCurrentPlayback();
   };
   audio.onerror = () => {
-    if (currentAudio?.key === key) stopCurrentPlayback();
+    if (currentAudio !== current) return;
+    stopCurrentPlayback();
+    showToast('播放失败: 音频读取或解码失败', { variant: 'danger' });
   };
-  await audio.play();
+  try {
+    const url = await charactersApi.voiceFileUrl(characterName, voiceName);
+    // 文件地址准备期间也可以停止或切换音频, 旧结果不能恢复已经结束的试听.
+    if (currentAudio !== current) return;
+    audio.src = url;
+    await audio.play();
+  } catch (error) {
+    if (currentAudio !== current) return;
+    stopCurrentPlayback();
+    throw error;
+  }
 }
 
 function usePlayingKey(): string | null {
@@ -65,6 +75,18 @@ export function VoiceTab({ character }: { character: Character }): JSX.Element {
   const samples = character.voiceSamples;
   const [importOpen, setImportOpen] = useState(false);
   const store = useCharacterStore();
+
+  useEffect(() => {
+    const unsubscribe = useMainNavigationStore.subscribe((state, previous) => {
+      if (previous.activeView === MainView.Settings && state.activeView !== MainView.Settings) {
+        stopCurrentPlayback();
+      }
+    });
+    return () => {
+      unsubscribe();
+      stopCurrentPlayback();
+    };
+  }, [character.name]);
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -117,7 +139,7 @@ function VoiceRow({ character, sample, index }: {
       return;
     }
     try {
-      await playVoice(sample.name, charactersApi.voiceFileUrl(character.name, sample.name));
+      await playVoice(character.name, sample.name);
     } catch (error) {
       showToast(error instanceof Error ? error.message : '播放失败', { variant: 'danger' });
     }

@@ -2,7 +2,7 @@
 // llm/vision 提供目录刷新（models.dev 拉取并同步，新增默认禁用）；卡片按能力特化参数行与来源标记。
 import { useState, useEffect, useCallback, useRef, type JSX, type ReactNode } from 'react';
 import { Tooltip, Button, Callout, ConfirmDialog, Dialog, IconButton, Input, Spinner, Switch } from '@ema-agent/ui';
-import { ServerApiError, serverClient } from '../../api/client.js';
+import { ServerApiError } from '../../api/client.js';
 import { charactersApi } from '../../api/characters.js';
 import {
   providersApi,
@@ -12,6 +12,7 @@ import {
 } from '../../api/providers.js';
 import { showToast } from '../../lib/toast.js';
 import { useProviderStore } from '../../stores/provider.js';
+import { MainView, useMainNavigationStore } from '../../layout/navigation.js';
 import { AddDashedCard } from './AddDashedCard.js';
 
 /** 模型卡：左上启停点（空心=禁用/绿点=启用）、整卡点击=启停、右上垃圾桶（角标不触发启停）。 */
@@ -247,6 +248,19 @@ function conflictsOf(err: unknown): BindingConflict[] | null {
     : null;
 }
 
+interface AudioPreview {
+  readonly audio: HTMLAudioElement;
+  readonly controller: AbortController;
+  // 参考音频直接读取 HTTP URL; TTS POST 响应才需要由前端创建临时地址.
+  objectUrl: string | null;
+}
+
+interface SttReference {
+  characterName: string;
+  voiceName: string;
+  promptText: string;
+}
+
 export function ProviderModelManager({ providerId, capability, iconKey, reloadKey }: {
   providerId: string;
   capability: ModelCapability;
@@ -265,6 +279,54 @@ export function ProviderModelManager({ providerId, capability, iconKey, reloadKe
   const [testText, setTestText] = useState(DEFAULT_TEST_TEXT);
   const [testing, setTesting] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [playingReference, setPlayingReference] = useState(false);
+  const previewRef = useRef<AudioPreview | null>(null);
+
+  const stopPreview = useCallback(() => {
+    const preview = previewRef.current;
+    if (!preview) return;
+    // 先使旧试听失效, 再取消请求和媒体监听. 迟到的 play() 拒绝不能清理新试听.
+    previewRef.current = null;
+    preview.controller.abort();
+    preview.audio.pause();
+    preview.audio.removeAttribute('src');
+    preview.audio.load();
+    if (preview.objectUrl !== null) URL.revokeObjectURL(preview.objectUrl);
+    setTesting(null);
+    setPlayingReference(false);
+  }, []);
+
+  useEffect(() => {
+    // main 返回 Chat 时只隐藏 Settings. 直接订阅导航变化, 在页面离开时结束试听.
+    const unsubscribe = useMainNavigationStore.subscribe((state, previous) => {
+      if (previous.activeView === MainView.Settings && state.activeView !== MainView.Settings) {
+        stopPreview();
+      }
+    });
+    return () => {
+      unsubscribe();
+      stopPreview();
+    };
+  }, [providerId, capability, stopPreview]);
+
+  function startPreview(): AudioPreview {
+    stopPreview();
+    const preview: AudioPreview = {
+      audio: new Audio(),
+      controller: new AbortController(),
+      objectUrl: null,
+    };
+    previewRef.current = preview;
+    preview.audio.addEventListener('ended', () => {
+      if (previewRef.current === preview) stopPreview();
+    }, { signal: preview.controller.signal });
+    preview.audio.addEventListener('error', () => {
+      if (previewRef.current !== preview) return;
+      stopPreview();
+      showToast('播放失败: 音频读取或解码失败', { variant: 'danger' });
+    }, { signal: preview.controller.signal });
+    return preview;
+  }
 
   const canRefresh = capability === 'llm' || capability === 'vision';
 
@@ -401,51 +463,44 @@ export function ProviderModelManager({ providerId, capability, iconKey, reloadKe
     }
   }
 
-  /** TTS 试听：音频字节流经 ttsPreview 取回本地播放。 */
+  /** TTS 试听仍使用 POST 生成音频, 不将生成请求作为 audio.src. */
   async function handleTest(modelId: string): Promise<void> {
+    const preview = startPreview();
     setTesting(modelId);
     try {
-      const res = await providersApi.ttsPreview(providerId, modelId, testText);
-      const url = URL.createObjectURL(await res.blob());
-      const audio = new Audio(url);
-      audio.addEventListener('ended', () => URL.revokeObjectURL(url), { once: true });
-      await audio.play();
+      const response = await providersApi.ttsPreview(providerId, modelId, testText, preview.controller.signal);
+      if (preview.controller.signal.aborted) return;
+      const blob = await response.blob();
+      if (preview.controller.signal.aborted) return;
+      preview.objectUrl = URL.createObjectURL(blob);
+      preview.audio.src = preview.objectUrl;
+      await preview.audio.play();
+      if (preview.controller.signal.aborted) return;
+      setTesting(null);
       showToast('正在播放测试声音', { variant: 'success' });
     } catch (err) {
+      if (preview.controller.signal.aborted) return;
+      stopPreview();
       showToast(`测试失败: ${err instanceof Error ? err.message : '未知错误'}`, { variant: 'danger' });
-    } finally {
-      setTesting(null);
     }
   }
 
-  // ── STT 试听：参考音频（当前角色主音频）播放 + 模型转写对照 ────────────────
-
-  interface SttReference {
-    characterId: string;
-    characterName: string;
-    sampleId: string;
-    sampleName: string;
-    promptText: string;
-  }
   const [sttReference, setSttReference] = useState<SttReference | null>(null);
   const [sttTesting, setSttTesting] = useState<string | null>(null);
   const [sttResult, setSttResult] = useState<{ modelId: string; text: string; referenceText: string } | null>(null);
-  const [playingReference, setPlayingReference] = useState(false);
 
   useEffect(() => {
     if (capability !== 'stt') return;
     void (async () => {
       try {
         const character = await charactersApi.current();
-        // 新合同:音频资源没有 enabled;STT 试听取主要参考音频,没有就取第一条。
+        // STT 试听优先取主要参考音频, 没有主项时取第一条.
         const sample = character.voiceSamples.find((v) => v.isPrimary)
           ?? character.voiceSamples[0];
         setSttReference(sample
           ? {
-              characterId: character.name,
               characterName: character.name,
-              sampleId: sample.name,
-              sampleName: sample.name,
+              voiceName: sample.name,
               promptText: sample.promptText,
             }
           : null);
@@ -469,36 +524,25 @@ export function ProviderModelManager({ providerId, capability, iconKey, reloadKe
     }
   }
 
-  /** 参考音频播放控制：播放中按钮变终止（点击即停），结束/卸载自动停止。 */
-  const referenceAudioRef = useRef<HTMLAudioElement | null>(null);
-
-  function stopReference(): void {
-    referenceAudioRef.current?.pause();
-    referenceAudioRef.current = null;
-    setPlayingReference(false);
-  }
-
-  // 退出页面（组件卸载）时立刻停止播放。
-  useEffect(() => () => {
-    referenceAudioRef.current?.pause();
-    referenceAudioRef.current = null;
-  }, []);
-
   async function playReference(): Promise<void> {
     if (!sttReference) return;
-    if (playingReference) { stopReference(); return; }
+    if (previewRef.current) {
+      stopPreview();
+      return;
+    }
+    const preview = startPreview();
     setPlayingReference(true);
     try {
-      const res = await serverClient.requestRaw(
-        `/api/characters/${sttReference.characterId}/voice/${sttReference.sampleId}/file`,
+      const url = await charactersApi.voiceFileUrl(
+        sttReference.characterName,
+        sttReference.voiceName,
       );
-      const url = URL.createObjectURL(await res.blob());
-      const audio = new Audio(url);
-      referenceAudioRef.current = audio;
-      audio.addEventListener('ended', () => { URL.revokeObjectURL(url); stopReference(); }, { once: true });
-      await audio.play();
+      if (preview.controller.signal.aborted) return;
+      preview.audio.src = url;
+      await preview.audio.play();
     } catch (err) {
-      stopReference();
+      if (preview.controller.signal.aborted) return;
+      stopPreview();
       showToast(`播放失败: ${err instanceof Error ? err.message : '未知错误'}`, { variant: 'danger' });
     }
   }
@@ -627,7 +671,7 @@ export function ProviderModelManager({ providerId, capability, iconKey, reloadKe
             <div className="flex items-center justify-between gap-2">
               <div className="min-w-0">
                 <p className="text-xs font-medium text-[var(--ema-text-secondary)]">
-                  参考音频 · {sttReference ? `${sttReference.characterName} / ${sttReference.sampleName}` : '当前角色未配置'}
+                  参考音频 · {sttReference ? `${sttReference.characterName} / ${sttReference.voiceName}` : '当前角色未配置'}
                 </p>
                 {sttReference && (
                   <p className="text-[11px] text-[var(--ema-text-tertiary)] mt-0.5 break-all">

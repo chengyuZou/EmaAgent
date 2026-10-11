@@ -289,9 +289,11 @@ export const charactersApi = {
     }));
   },
 
-  /** 参考音频文件是字节流,不进入 JSON RPC;设置页播放直接用它。 */
-  voiceFileUrl(characterName: string, voiceName: string): string {
-    return `/api/characters/${encodeURIComponent(characterName)}/voice/${encodeURIComponent(voiceName)}/file`;
+  /** 返回可直接交给 audio.src 的认证地址, 不先下载参考音频. */
+  voiceFileUrl(characterName: string, voiceName: string): Promise<string> {
+    return serverClient.audioUrl(
+      `/api/characters/${encodeURIComponent(characterName)}/voice/${encodeURIComponent(voiceName)}/file`,
+    );
   },
 
   voiceLocation(characterName: string, voiceName: string): Promise<{ path: string }> {
