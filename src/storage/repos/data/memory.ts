@@ -18,7 +18,54 @@ export interface MemoryJob {
   readonly createdAt: number;
   readonly startedAt: number | null;
   readonly finishedAt: number | null;
+  readonly reminderIgnored: boolean;
 }
+
+export type MemoryJobResult =
+  | 'no_content'
+  | 'awaiting_consolidation'
+  | 'consolidated'
+  | 'consolidation_completed'
+  | 'maintenance_completed';
+
+export interface MemoryJobRecord extends Pick<MemoryJob,
+  'id' | 'kind' | 'status' | 'createdAt' | 'reminderIgnored'
+> {
+  readonly characterName: string | null;
+  readonly result: MemoryJobResult | null;
+}
+
+export interface MemoryJobDetail extends MemoryJobRecord {
+  readonly error: string | null;
+  readonly content: string | null;
+}
+
+export interface MemoryJobCursor {
+  readonly createdAt: number;
+  readonly id: string;
+  readonly direction: 'next' | 'previous';
+}
+
+export interface MemoryJobPageRequest {
+  readonly startAt?: number;
+  readonly endAt?: number;
+  readonly order: 'asc' | 'desc';
+  readonly page: number;
+  readonly cursor?: MemoryJobCursor;
+}
+
+export interface MemoryJobPage {
+  readonly items: readonly MemoryJobRecord[];
+  readonly page: number;
+  readonly pageSize: number;
+  readonly total: number;
+  readonly previousCursor: MemoryJobCursor | null;
+  readonly nextCursor: MemoryJobCursor | null;
+  // 忽略按钮针对全部失败提醒, 不受日期范围或当前页限制.
+  readonly unignoredFailureCount: number;
+}
+
+export const MEMORY_JOB_PAGE_SIZE = 6;
 
 export interface WorkMemoryExtraction {
   readonly turnId: string;
@@ -46,7 +93,35 @@ interface MemoryJobRow {
   created_at: number;
   started_at: number | null;
   finished_at: number | null;
+  reminder_ignored: number;
 }
+
+interface MemoryJobRecordRow {
+  id: string;
+  kind: MemoryJobKind;
+  status: MemoryJobStatus;
+  created_at: number;
+  reminder_ignored: number;
+  character_name: string | null;
+  extraction_job_id: string | null;
+  integrated_at: number | null;
+}
+
+interface MemoryJobDetailRow extends MemoryJobRecordRow {
+  error: string | null;
+  content: string | null;
+}
+
+const JOB_RECORD_COLUMNS = `job.id, job.kind, job.status, job.created_at,
+  job.reminder_ignored,
+  COALESCE(relationship.character_name, turn.character_name) AS character_name,
+  COALESCE(work.job_id, relationship.job_id) AS extraction_job_id,
+  COALESCE(work.integrated_at, relationship.integrated_at) AS integrated_at`;
+
+const JOB_RECORD_JOINS = `FROM memory_jobs AS job
+  LEFT JOIN memory_work_extractions AS work ON work.job_id = job.id
+  LEFT JOIN memory_relationship_extractions AS relationship ON relationship.job_id = job.id
+  LEFT JOIN turns AS turn ON turn.id = job.turn_id`;
 
 interface WorkExtractionRow {
   turn_id: string;
@@ -90,7 +165,7 @@ export class MemoryRepo {
     })();
   }
 
-  /** Maintenance 到点时只在同轨没有文件任务时创建，跳过不留下空历史。 */
+  /** Maintenance 到点时只在同轨没有文件任务时创建, 跳过不留下空历史. */
   startMaintenanceIfIdle(
     id: string,
     kind: MemoryMaintenanceJobKind,
@@ -220,20 +295,109 @@ export class MemoryRepo {
     return row ? mapJob(row) : undefined;
   }
 
-  listCurrent(limit = 100): MemoryJob[] {
-    return this.listByStatus(
-      `status IN ('pending', 'running', 'failed')`,
-      'created_at DESC, id DESC',
-      limit,
-    );
+  listRecent(limit: number): MemoryJobRecord[] {
+    const rows = this.db.prepare(
+      `SELECT ${JOB_RECORD_COLUMNS} ${JOB_RECORD_JOINS}
+       ORDER BY job.created_at DESC, job.id DESC LIMIT ?`,
+    ).all(limit) as MemoryJobRecordRow[];
+    return rows.map(mapJobRecord);
   }
 
-  listHistory(limit = 100): MemoryJob[] {
-    return this.listByStatus(
-      `status IN ('completed', 'failed')`,
-      'finished_at DESC, id DESC',
-      limit,
-    );
+  listPage(request: MemoryJobPageRequest): MemoryJobPage {
+    const conditions: string[] = [];
+    const parameters: (string | number)[] = [];
+    if (request.startAt !== undefined) {
+      conditions.push('job.created_at >= ?');
+      parameters.push(request.startAt);
+    }
+    if (request.endAt !== undefined) {
+      conditions.push('job.created_at < ?');
+      parameters.push(request.endAt);
+    }
+    const where = conditions.length > 0 ? conditions.join(' AND ') : '1 = 1';
+    const { total } = this.db.prepare(
+      `SELECT COUNT(*) AS total FROM memory_jobs AS job WHERE ${where}`,
+    ).get(...parameters) as { total: number };
+    const pageCount = Math.max(1, Math.ceil(total / MEMORY_JOB_PAGE_SIZE));
+    const page = Math.min(request.page, pageCount);
+    const order = request.order === 'asc' ? 'ASC' : 'DESC';
+    let cursor = page === request.page ? request.cursor : undefined;
+
+    if (!cursor && page > 1) {
+      // 跳到尚未访问的页时, 只查该页前一条记录的排序键, 不加载前面所有任务正文.
+      // OFFSET 仍会跳过前面的索引项; 相邻翻页使用返回的游标, 不走这条查询.
+      const anchor = this.db.prepare(
+        `SELECT job.id, job.created_at FROM memory_jobs AS job
+         WHERE ${where} ORDER BY job.created_at ${order}, job.id ${order}
+         LIMIT 1 OFFSET ?`,
+      ).get(...parameters, (page - 1) * MEMORY_JOB_PAGE_SIZE - 1) as
+        { id: string; created_at: number };
+      cursor = { id: anchor.id, createdAt: anchor.created_at, direction: 'next' };
+    }
+
+    let cursorCondition = '';
+    let queryOrder = order;
+    if (cursor) {
+      const forward = cursor.direction === 'next';
+      const comparison = (request.order === 'asc') === forward ? '>' : '<';
+      cursorCondition = `AND (job.created_at, job.id) ${comparison} (?, ?)`;
+      parameters.push(cursor.createdAt, cursor.id);
+      if (!forward) queryOrder = order === 'ASC' ? 'DESC' : 'ASC';
+    }
+    const rows = this.db.prepare(
+      `SELECT ${JOB_RECORD_COLUMNS} ${JOB_RECORD_JOINS}
+       WHERE ${where} ${cursorCondition}
+       ORDER BY job.created_at ${queryOrder}, job.id ${queryOrder} LIMIT ?`,
+    ).all(...parameters, MEMORY_JOB_PAGE_SIZE) as MemoryJobRecordRow[];
+    if (cursor?.direction === 'previous') rows.reverse();
+    const first = rows[0];
+    const last = rows.at(-1);
+    return {
+      items: rows.map(mapJobRecord),
+      page,
+      pageSize: MEMORY_JOB_PAGE_SIZE,
+      total,
+      previousCursor: page > 1 && first
+        ? { id: first.id, createdAt: first.created_at, direction: 'previous' }
+        : null,
+      nextCursor: page < pageCount && last
+        ? { id: last.id, createdAt: last.created_at, direction: 'next' }
+        : null,
+      unignoredFailureCount: this.countUnignoredFailures(),
+    };
+  }
+
+  findDetail(id: string): MemoryJobDetail | undefined {
+    const row = this.db.prepare(
+      `SELECT ${JOB_RECORD_COLUMNS}, job.error,
+              COALESCE(work.content, relationship.content) AS content
+       ${JOB_RECORD_JOINS} WHERE job.id = ?`,
+    ).get(id) as MemoryJobDetailRow | undefined;
+    if (!row) return undefined;
+    return { ...mapJobRecord(row), error: row.error, content: row.content };
+  }
+
+  countUnignoredFailures(): number {
+    const row = this.db.prepare(
+      `SELECT COUNT(*) AS count FROM memory_jobs
+       WHERE status = 'failed' AND reminder_ignored = 0`,
+    ).get() as { count: number };
+    return row.count;
+  }
+
+  ignoreFailure(id: string): boolean {
+    const row = this.db.prepare(
+      `UPDATE memory_jobs SET reminder_ignored = 1
+       WHERE id = ? AND status = 'failed' RETURNING id`,
+    ).get(id);
+    return row !== undefined;
+  }
+
+  ignoreAllFailures(): void {
+    this.db.prepare(
+      `UPDATE memory_jobs SET reminder_ignored = 1
+       WHERE status = 'failed' AND reminder_ignored = 0`,
+    ).run();
   }
 
   workReadiness(): MemoryExtractionReadiness {
@@ -350,11 +514,6 @@ export class MemoryRepo {
     return { count: row.count, oldestCreatedAt: row.oldest_created_at };
   }
 
-  private listByStatus(where: string, order: string, limit: number): MemoryJob[] {
-    return (this.db.prepare(
-      `SELECT * FROM memory_jobs WHERE ${where} ORDER BY ${order} LIMIT ?`,
-    ).all(limit) as MemoryJobRow[]).map(mapJob);
-  }
 }
 
 function trackKinds(
@@ -391,6 +550,42 @@ function mapJob(row: MemoryJobRow): MemoryJob {
     createdAt: row.created_at,
     startedAt: row.started_at,
     finishedAt: row.finished_at,
+    reminderIgnored: row.reminder_ignored === 1,
+  };
+}
+
+function mapJobRecord(row: MemoryJobRecordRow): MemoryJobRecord {
+  let result: MemoryJobResult | null = null;
+  if (row.status === 'completed') {
+    switch (row.kind) {
+      case 'work_extraction':
+      case 'relationship_extraction':
+        if (row.extraction_job_id === null) {
+          result = 'no_content';
+        } else if (row.integrated_at === null) {
+          result = 'awaiting_consolidation';
+        } else {
+          result = 'consolidated';
+        }
+        break;
+      case 'work_consolidation':
+      case 'relationship_consolidation':
+        result = 'consolidation_completed';
+        break;
+      case 'work_maintenance':
+      case 'relationship_maintenance':
+        result = 'maintenance_completed';
+        break;
+    }
+  }
+  return {
+    id: row.id,
+    kind: row.kind,
+    status: row.status,
+    createdAt: row.created_at,
+    reminderIgnored: row.reminder_ignored === 1,
+    characterName: row.character_name,
+    result,
   };
 }
 

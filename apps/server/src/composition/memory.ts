@@ -3,6 +3,7 @@ import {
   createLlmCall,
   createLlmCompletion,
   llmProviderErrorCode,
+  type LlmCompletion,
   type Message,
 } from '@ema-agent/llm';
 import {
@@ -34,11 +35,14 @@ import {
 import type { TurnStore } from '@ema-agent/turn';
 import type { UsageRecorder } from '@ema-agent/usage';
 
+const MEMORY_EXTRACTION_MAX_OUTPUT_TOKENS = 4_096;
+const MEMORY_CONSOLIDATION_MAX_OUTPUT_TOKENS = 16_384;
+
 export interface MemoryComposition {
   readonly jobs: MemoryRepo;
   readonly memoryRoot: string;
   readonly enqueueTurnExtraction: (turnId: string) => void;
-  /** HTTP ready 后启动恢复和定时器，避免 Memory IO 延长应用启动。 */
+  /** HTTP ready 后启动恢复和定时器, 避免 Memory IO 延长应用启动. */
   readonly start: () => void;
   readonly shutdown: () => void;
 }
@@ -58,7 +62,11 @@ export function openMemory(deps: {
   let consolidationTimer: NodeJS.Timeout | undefined;
   let maintenanceTimer: NodeJS.Timeout | undefined;
 
-  const complete = async (messages: readonly Message[], signal?: AbortSignal): Promise<string> => {
+  const complete = async (
+    messages: readonly Message[],
+    maxOutputTokens: number,
+    signal?: AbortSignal,
+  ): Promise<string> => {
     const binding = deps.modelBindings.get('memory-llm');
     if (!binding) throw new Error('未配置 memory-llm 模型绑定');
     const callLlm = createLlmCall(
@@ -67,11 +75,17 @@ export function openMemory(deps: {
     );
     const startedAt = Date.now();
     const callId = randomUUID();
+    let completion: LlmCompletion | undefined;
     try {
-      const completion = await createLlmCompletion(callLlm({
+      completion = await createLlmCompletion(callLlm({
         messages,
+        // Anthropic 要求调用方明确给出输出上限. 提取和整合使用各自的任务预算.
+        maxOutputTokens,
         ...(signal ? { signal } : {}),
       }));
+      if (completion.stopReason === 'max_tokens') {
+        throw new Error('Memory 输出达到上限, 结果未完整返回');
+      }
       deps.usageRecorder.record({
         id: callId,
         sessionId: null,
@@ -106,10 +120,10 @@ export function openMemory(deps: {
         modelId: binding.modelId,
         status: cancelled ? 'cancelled' : 'failed',
         durationMs: Date.now() - startedAt,
-        inputTokens: null,
-        outputTokens: null,
-        cacheReadInputTokens: null,
-        cacheWriteInputTokens: null,
+        inputTokens: completion?.usage.inputTokens ?? null,
+        outputTokens: completion?.usage.outputTokens ?? null,
+        cacheReadInputTokens: completion?.usage.cacheReadInputTokens ?? null,
+        cacheWriteInputTokens: completion?.usage.cacheWriteInputTokens ?? null,
         quantity: null,
         unit: null,
         errorCode: cancelled ? 'llm/aborted' : llmProviderErrorCode(error),
@@ -131,11 +145,14 @@ export function openMemory(deps: {
           : {}),
       };
     },
-    complete,
+    complete: (messages, signal) => complete(messages, MEMORY_EXTRACTION_MAX_OUTPUT_TOKENS, signal),
   });
 
-  const workConsolidate = createWorkConsolidate({ complete });
-  const relationshipConsolidate = createRelationshipConsolidate({ complete });
+  const completeConsolidation = (messages: readonly Message[], signal?: AbortSignal): Promise<string> => (
+    complete(messages, MEMORY_CONSOLIDATION_MAX_OUTPUT_TOKENS, signal)
+  );
+  const workConsolidate = createWorkConsolidate({ complete: completeConsolidation });
+  const relationshipConsolidate = createRelationshipConsolidate({ complete: completeConsolidation });
   const extractionDrains = new Map<MemoryExtractionJobKind, Promise<void>>();
   const consolidationDrains = new Map<ConsolidationKind, Promise<void>>();
   const maintenanceDrains = new Map<MemoryMaintenanceJobKind, Promise<void>>();

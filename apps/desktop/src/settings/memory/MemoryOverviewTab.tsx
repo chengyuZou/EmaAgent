@@ -1,8 +1,15 @@
-import { useEffect, useState, type JSX } from 'react';
-import { Badge, Button, Callout, Card, Progress, Spinner } from '@ema-agent/ui';
-import { memoryApi, type MemoryStats } from '../../api/memory.js';
-import { tauriBridge } from '../../lib/tauri-bridge.js';
+import { memo, type JSX } from 'react';
+import { Callout, Markdown, Spinner } from '@ema-agent/ui';
+import { memoryApi, type MemoryPreview, type MemoryStats } from '../../api/memory.js';
+import { useWindowSuspension } from '../../hooks/use-window-suspension.js';
+import { MainView, useMainNavigationStore } from '../../layout/navigation.js';
 import { PageHeader } from '../shared/PageHeader.js';
+import { MemoryJobRow } from './memoryJobRow.js';
+import { formatMemoryBytes } from './memoryLabels.js';
+import { useMemoryQuery } from './useMemoryQuery.js';
+
+const OVERVIEW_REFRESH_INTERVAL_MS = 30_000;
+const RECENT_JOBS_REFRESH_INTERVAL_MS = 5_000;
 
 const LEVEL_LABEL = {
   normal: '正常',
@@ -11,117 +18,165 @@ const LEVEL_LABEL = {
 } as const;
 
 export function MemoryOverviewTab(): JSX.Element {
-  const [stats, setStats] = useState<MemoryStats | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const view = useMainNavigationStore(state => state.activeView);
+  const tab = useMainNavigationStore(state => state.settingsTab);
+  const suspended = useWindowSuspension();
+  const active = view === MainView.Settings
+    && (tab === 'memory' || tab === 'memory-overview')
+    && !suspended;
 
-  useEffect(() => {
-    void memoryApi.stats()
-      .then(value => {
-        setStats(value);
-        setError(null);
-      })
-      .catch(reason => setError(errorMessage(reason, '读取 Memory 容量失败')));
-  }, []);
-
-  if (!stats && !error) {
-    return <div className="flex justify-center py-16"><Spinner size="md" /></div>;
-  }
-
-  const progress = stats
-    ? Math.min(100, Math.round((stats.usedBytes / stats.maxBytes) * 100))
-    : 0;
+  const previews = useMemoryQuery(active, OVERVIEW_REFRESH_INTERVAL_MS, memoryApi.overview);
+  const recent = useMemoryQuery(active, RECENT_JOBS_REFRESH_INTERVAL_MS, memoryApi.recentJobs);
+  const capacity = useMemoryQuery(active, OVERVIEW_REFRESH_INTERVAL_MS, memoryApi.stats);
 
   return (
-    <div className="flex flex-col gap-4">
-      <PageHeader title="Memory" description="记忆存储概览与统计" />
-      {error && <Callout variant="danger">{error}</Callout>}
-      {stats && (
-        <Card
-          variant="glass"
-          padding="md"
-          className="ema-card-decorate ema-card-decorate--cross ema-stagger-in transition-all hover:border-[var(--ema-primary)]/30"
-        >
-          <div className="mb-3 flex items-center gap-2">
-            <span className="i-lucide:database text-xl text-[var(--ema-primary)]" aria-hidden />
-            <h3 className="text-sm font-semibold text-[var(--ema-text-primary)]">本地 Memory 存储</h3>
-            <Badge
-              className="ml-auto"
-              variant={stats.level === 'normal' ? 'success' : stats.level === 'warning' ? 'warn' : 'danger'}
-              dot
-            >
-              {LEVEL_LABEL[stats.level]}
-            </Badge>
-          </div>
-          <Progress
-            progress={progress}
-            height="h-2"
-            barClass={stats.level === 'normal'
-              ? 'bg-[var(--ema-primary)]'
-              : stats.level === 'warning'
-                ? 'bg-[var(--ema-warning)]'
-                : 'bg-[var(--ema-danger)]'}
-          />
-          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-[var(--ema-text-tertiary)]">
-            <span>已用 {formatBytes(stats.usedBytes)} / {formatBytes(stats.maxBytes)}</span>
-            <span>剩余 {formatBytes(stats.remainingBytes)}</span>
-            <Button
-              variant="ghost"
-              size="sm"
-              icon="i-lucide:folder-open"
-              className="ml-auto"
-              onClick={() => void tauriBridge.openPath(stats.rootPath)
-                .catch(reason => setError(errorMessage(reason, '打开 Memory 文件夹失败')))}
-            >
-              打开文件夹
-            </Button>
-          </div>
-        </Card>
-      )}
+    <div className="ema-memory-overview">
+      <div className="ema-memory-overview-header">
+        <PageHeader
+          title="Memory"
+          description="查看已保存的记忆, 以及最近几条处理结果."
+        />
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <TrackCard
-          icon="i-lucide:briefcase-business"
-          title="Work"
-          description="全局共享的工作偏好、习惯、协作方式与长期约束。"
-          detail="不记录代码、工具输出和每日工作日志。"
-        />
-        <TrackCard
-          icon="i-lucide:heart-handshake"
-          title="Relationship"
-          description="共享关系信息，以及按角色名称分开的角色关系记忆。"
-          detail="只有带角色归属的 Turn 才会自动提取。"
-        />
+        <div className="ema-memory-capacity-region" aria-label="Memory 存储容量">
+          {!capacity.value && capacity.loading && (
+            <Spinner size="sm" />
+          )}
+          {capacity.error && (
+            <p className="ema-memory-inline-error" role="alert">
+              {capacity.error}
+            </p>
+          )}
+          {capacity.value && (
+            <MemoryCapacity stats={capacity.value} />
+          )}
+        </div>
+      </div>
+
+      <div className="ema-memory-overview-columns">
+        <section className="ema-memory-previews" aria-label="已保存的记忆预览">
+          {previews.error && (
+            <Callout variant="danger">{previews.error}</Callout>
+          )}
+          {!previews.value && previews.loading && (
+            <div className="ema-memory-section-loading">
+              <Spinner size="sm" />
+            </div>
+          )}
+          {previews.value?.items.length === 0 && (
+            <p className="ema-memory-empty">
+              还没有已保存的记忆. 有可保存的提取内容时, 后台会继续整理.
+            </p>
+          )}
+          {previews.value?.items.map(preview => (
+            <MemoryPreviewCard
+              key={preview.path}
+              path={preview.path}
+              content={preview.content}
+              truncated={preview.truncated}
+            />
+          ))}
+        </section>
+
+        <aside className="ema-memory-recent" aria-label="最近处理">
+          <div className="ema-memory-section-heading">
+            <h2>最近处理</h2>
+            <span>最近 3 条</span>
+          </div>
+
+          {recent.error && (
+            <p className="ema-memory-inline-error" role="alert">
+              {recent.error}
+            </p>
+          )}
+          {!recent.value && recent.loading && (
+            <div className="ema-memory-section-loading">
+              <Spinner size="sm" />
+            </div>
+          )}
+          {recent.value?.items.length === 0 && (
+            <p className="ema-memory-empty">还没有处理记录.</p>
+          )}
+          <div className="ema-memory-timeline">
+            {recent.value?.items.map(job => (
+              <MemoryJobRow
+                key={job.id}
+                job={job}
+                active={active}
+                compact
+                onIgnored={recent.refresh}
+              />
+            ))}
+          </div>
+        </aside>
       </div>
     </div>
   );
 }
 
-function TrackCard(props: {
-  icon: string;
-  title: string;
-  description: string;
-  detail: string;
-}): JSX.Element {
+const MemoryPreviewCard = memo(function MemoryPreviewCard({
+  path,
+  content,
+  truncated,
+}: MemoryPreview): JSX.Element {
   return (
-    <Card
-      variant="glass"
-      padding="md"
-      className="ema-card-decorate ema-card-decorate--cross ema-stagger-in transition-all hover:border-[var(--ema-primary)]/30"
-    >
-      <span className={`${props.icon} text-2xl text-[var(--ema-primary)]`} aria-hidden />
-      <h3 className="mt-2 text-sm font-semibold text-[var(--ema-text-primary)]">{props.title}</h3>
-      <p className="mt-1 text-xs text-[var(--ema-text-secondary)]">{props.description}</p>
-      <p className="mt-2 text-[11px] text-[var(--ema-text-tertiary)]">{props.detail}</p>
-    </Card>
+    <article className="ema-memory-preview">
+      <div className="ema-memory-section-heading">
+        <h2>
+          <span className="i-lucide:file-text" aria-hidden />
+          <span>{path}</span>
+        </h2>
+        <span className="ema-memory-saved">已保存</span>
+      </div>
+
+      <Markdown source={content} streaming={truncated} />
+
+      {truncated && (
+        <p className="ema-memory-note">仅显示文件开头, 完整内容可在文件栏查看.</p>
+      )}
+    </article>
   );
-}
+});
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
-}
+const MemoryCapacity = memo(function MemoryCapacity({ stats }: {
+  readonly stats: MemoryStats;
+}): JSX.Element {
+  const percent = stats.usedBytes / stats.maxBytes * 100;
+  const progress = Math.min(100, percent);
 
-function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error ? error.message : fallback;
-}
+  return (
+    <div className="ema-memory-capacity" data-level={stats.level}>
+      <div
+        className="ema-memory-capacity-ring"
+        role="progressbar"
+        aria-label="Memory 已用空间"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Number(progress.toFixed(1))}
+        aria-valuetext={`${formatMemoryBytes(stats.usedBytes)} / ${formatMemoryBytes(stats.maxBytes)}`}
+      >
+        <svg viewBox="0 0 88 88" aria-hidden>
+          <circle className="ema-memory-ring-track" cx="44" cy="44" r="36" />
+          <circle
+            className="ema-memory-ring-value"
+            cx="44"
+            cy="44"
+            r="36"
+            pathLength="100"
+            strokeDasharray={`${progress} 100`}
+          />
+        </svg>
+        <span>{percent.toFixed(1)}%</span>
+      </div>
+
+      <div className="ema-memory-capacity-text">
+        <span>Memory 存储</span>
+        <strong>{formatMemoryBytes(stats.usedBytes)} / {formatMemoryBytes(stats.maxBytes)}</strong>
+        <span>{LEVEL_LABEL[stats.level]}</span>
+      </div>
+    </div>
+  );
+}, (previous, next) => (
+  previous.stats.usedBytes === next.stats.usedBytes
+  && previous.stats.maxBytes === next.stats.maxBytes
+  && previous.stats.level === next.stats.level
+));

@@ -1,278 +1,283 @@
-import { useCallback, useEffect, useId, useState, type JSX } from 'react';
-import { Badge, Button, Callout, Card, Skeleton, Spinner } from '@ema-agent/ui';
-import { memoryApi, type MemoryJob } from '../../api/memory.js';
-import {
-  JOB_KIND_LABEL,
-  JOB_STATUS_LABEL,
-  JOB_STATUS_VARIANT,
-  relativeTime,
-} from './memoryLabels.js';
+import { useCallback, useEffect, useMemo, useState, type JSX } from 'react';
+import { Button, Callout, Input, Select, Spinner } from '@ema-agent/ui';
+import { memoryApi, type MemoryJobCursor } from '../../api/memory.js';
+import { useWindowSuspension } from '../../hooks/use-window-suspension.js';
+import { MainView, useMainNavigationStore } from '../../layout/navigation.js';
 import { PageHeader } from '../shared/PageHeader.js';
+import { MemoryJobRow } from './memoryJobRow.js';
+import {
+  MEMORY_TIME_RANGE_LABEL,
+  MEMORY_TIME_RANGES,
+  memoryTimeRange,
+  type MemoryTimeRange,
+} from './memoryLabels.js';
+import { useMemoryQuery } from './useMemoryQuery.js';
 
 const JOB_REFRESH_INTERVAL_MS = 5_000;
 
-type JobTrack = 'work' | 'relationship';
-
 export function MemoryJobsTab(): JSX.Element {
-  const [jobs, setJobs] = useState<readonly MemoryJob[] | null>(null);
-  const [history, setHistory] = useState<readonly MemoryJob[] | null>(null);
-  const [showHistory, setShowHistory] = useState(false);
-  const [showFailed, setShowFailed] = useState(false);
-  const failedListId = useId();
-  const historyListId = useId();
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const view = useMainNavigationStore(state => state.activeView);
+  const tab = useMainNavigationStore(state => state.settingsTab);
+  const suspended = useWindowSuspension();
+  const active = view === MainView.Settings && tab === 'memory-jobs' && !suspended;
+  const [range, setRange] = useState<MemoryTimeRange>('today');
+  const [order, setOrder] = useState<'asc' | 'desc'>('desc');
+  const [position, setPosition] = useState<{ page: number; cursor?: MemoryJobCursor }>({ page: 1 });
+  const [pageInput, setPageInput] = useState('1');
+  const [ignoringAll, setIgnoringAll] = useState(false);
+  const [ignoreError, setIgnoreError] = useState<string | null>(null);
+  const [jumpError, setJumpError] = useState<string | null>(null);
 
-  const refresh = useCallback(async (): Promise<void> => {
-    setLoading(true);
-
-    try {
-      const result = await memoryApi.listJobs();
-      setJobs(result.items);
-      setError(null);
-    } catch (reason) {
-      setError(errorMessage(reason, '读取 Memory 后台任务失败'));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const readPage = useMemo(() => {
+    let cursor = position.cursor;
+    return (signal: AbortSignal) => {
+      const navigationCursor = cursor;
+      cursor = undefined;
+      // 游标只用于本次翻页. 定时刷新按页码重新定位, 新任务出现后不会一直停在旧页边界.
+      return memoryApi.listJobs({
+        ...memoryTimeRange(range),
+        order,
+        page: position.page,
+        ...(navigationCursor ? { cursor: navigationCursor } : {}),
+      }, signal);
+    };
+  }, [range, order, position]);
+  const query = useMemoryQuery(active, JOB_REFRESH_INTERVAL_MS, readPage);
+  const result = query.value;
+  const page = result?.page ?? 1;
+  const pageCount = Math.max(1, Math.ceil((result?.total ?? 0) / (result?.pageSize ?? 1)));
+  const pageNumbers = useMemo(() => visiblePageNumbers(page, pageCount), [page, pageCount]);
+  const firstItem = result && result.items.length > 0 ? (page - 1) * result.pageSize + 1 : 0;
+  const lastItem = result && result.items.length > 0 ? firstItem + result.items.length - 1 : 0;
 
   useEffect(() => {
-    void refresh();
+    setPageInput(String(page));
+  }, [page]);
 
-    const timer = setInterval(
-      () => void refresh(),
-      JOB_REFRESH_INTERVAL_MS,
-    );
+  const goToPage = useCallback((target: number, cursor?: MemoryJobCursor): void => {
+    setJumpError(null);
+    setPosition({ page: target, ...(cursor ? { cursor } : {}) });
+    setPageInput(String(target));
+  }, []);
 
-    return () => clearInterval(timer);
-  }, [refresh]);
+  function changeRange(value: string): void {
+    setRange(value as MemoryTimeRange);
+    goToPage(1);
+  }
 
-  async function toggleHistory(): Promise<void> {
-    if (showHistory) {
-      setShowHistory(false);
+  function changeOrder(): void {
+    setOrder(current => current === 'desc' ? 'asc' : 'desc');
+    goToPage(1);
+  }
+
+  function jump(): void {
+    const target = Number(pageInput);
+    if (!Number.isInteger(target) || target < 1 || target > pageCount) {
+      setJumpError(`请输入 1 到 ${pageCount} 之间的页码.`);
       return;
     }
+    goToPage(target);
+  }
 
-    setShowHistory(true);
-
+  async function ignoreAll(): Promise<void> {
+    setIgnoringAll(true);
+    setIgnoreError(null);
     try {
-      const result = await memoryApi.listJobHistory();
-      setHistory(result.items);
-      setError(null);
+      await memoryApi.ignoreAllJobs();
+      query.refresh();
     } catch (reason) {
-      setHistory([]);
-      setError(errorMessage(reason, '读取 Memory 任务历史失败'));
+      setIgnoreError(reason instanceof Error ? reason.message : '忽略全部提醒失败');
+    } finally {
+      setIgnoringAll(false);
     }
   }
 
-  const active = (jobs ?? []).filter(
-    job => job.status === 'pending' || job.status === 'running',
-  );
-
-  const failed = (jobs ?? []).filter(job => job.status === 'failed');
-
   return (
-    <div className="flex min-h-0 flex-col gap-4">
+    <div className="ema-memory-jobs">
       <PageHeader
-        title="自动任务"
-        description="提取、整合与维护由后端按固定时机自动运行"
-        action={(
-          <>
-            <Button
-              variant="ghost"
-              size="sm"
-              icon="i-lucide:refresh-cw"
-              loading={loading}
-              onClick={() => void refresh()}
-            >
-              刷新
-            </Button>
+        title="后台任务"
+        description="查看提取、整合与维护结果. 忽略提醒不会删除记录或重试任务."
+      />
+
+      <div className="ema-memory-jobs-toolbar">
+        {(result?.unignoredFailureCount ?? 0) > 0 && (
+          <Button
+            variant="ghost"
+            size="sm"
+            icon="i-lucide:bell-off"
+            loading={ignoringAll}
+            onClick={() => void ignoreAll()}
+          >
+            忽略全部提醒
+          </Button>
+        )}
+
+        <div className="ema-memory-jobs-filters">
+          <Select
+            aria-label="任务时间范围"
+            value={range}
+            options={MEMORY_TIME_RANGES}
+            onChange={changeRange}
+            className="ema-memory-range-select"
+            trigger={(
+              <span className="ema-memory-range-label">
+                <span>时间范围</span>
+                <strong>{MEMORY_TIME_RANGE_LABEL[range]}</strong>
+              </span>
+            )}
+          />
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={order === 'desc' ? 'i-lucide:list-filter' : 'i-lucide:list-ordered'}
+            onClick={changeOrder}
+            aria-label="切换任务排列顺序"
+          >
+            {order === 'desc' ? '最新在前' : '最早在前'}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            icon="i-lucide:refresh-cw"
+            loading={query.loading}
+            onClick={query.refresh}
+            aria-label="刷新任务"
+          />
+        </div>
+      </div>
+
+      {query.error && (
+        <Callout variant="danger">{query.error}</Callout>
+      )}
+      {ignoreError && (
+        <Callout variant="danger">{ignoreError}</Callout>
+      )}
+
+      {result && result.unignoredFailureCount > 0 && (
+        <p className="ema-memory-reminder-count" role="status">
+          <span className="i-lucide:circle-alert" aria-hidden />
+          共有 {result.unignoredFailureCount} 条失败提醒未忽略, 不受时间筛选限制.
+        </p>
+      )}
+
+      <section
+        className="ema-memory-job-list"
+        aria-label="处理记录"
+        aria-busy={query.loading}
+      >
+        {!result && query.loading && (
+          <div className="ema-memory-section-loading">
+            <Spinner size="sm" />
+          </div>
+        )}
+        {result?.items.length === 0 && (
+          <p className="ema-memory-empty">这个时间范围内没有处理记录.</p>
+        )}
+        {result?.items.map(job => (
+          <MemoryJobRow
+            key={job.id}
+            job={job}
+            active={active}
+            onIgnored={query.refresh}
+          />
+        ))}
+      </section>
+
+      {result && result.total > 0 && (
+        <footer className="ema-memory-pagination">
+          <p>第 {firstItem}-{lastItem} 条, 共 {result.total} 条. 每页 {result.pageSize} 条.</p>
+
+          <nav className="ema-memory-page-buttons" aria-label="处理记录分页">
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => void toggleHistory()}
-              aria-expanded={showHistory}
-              aria-controls={historyListId}
-            >
-              {showHistory ? '收起历史记录' : '查看历史记录'}
-            </Button>
-          </>
-        )}
-      />
-
-      {error && <Callout variant="danger">{error}</Callout>}
-
-      {!jobs && loading && (
-        <div className="flex flex-col gap-2">
-          {[0, 1, 2].map(i => <Skeleton key={i} className="h-12 rounded-xl" />)}
-        </div>
-      )}
-
-      {failed.length > 0 && (
-        <Callout variant="danger" className="shrink-0 ema-pop-in-spring">
-          <button
-            type="button"
-            className="flex w-full items-center justify-between gap-3 text-left font-semibold"
-            aria-expanded={showFailed}
-            aria-controls={failedListId}
-            onClick={() => setShowFailed(value => !value)}
-          >
-            <span>有 {failed.length} 个任务需要注意</span>
-            <span className="flex shrink-0 items-center gap-1 text-xs">
-              {showFailed ? '收起任务' : '展开任务'}
-              <span className={`i-lucide:chevron-down transition-transform ${showFailed ? 'rotate-180' : ''}`} aria-hidden />
-            </span>
-          </button>
-          <div
-            id={failedListId}
-            className={`ema-collapsible ${showFailed ? '' : 'invisible'}`}
-            style={{ gridTemplateRows: showFailed ? '1fr' : '0fr', opacity: showFailed ? 1 : 0 }}
-            aria-hidden={!showFailed}
-          >
-            <div>
-              <div className="mt-2 flex flex-col gap-2">
-                {failed.map((job, i) => (
-                  <JobRow key={job.id} job={job} index={i} />
-                ))}
-              </div>
-            </div>
-          </div>
-        </Callout>
-      )}
-
-      <section>
-        <h4 className="mb-2 text-xs font-semibold text-[var(--ema-text-secondary)]">
-          正在处理
-        </h4>
-
-        {active.length === 0 ? (
-          <Card
-            variant="glass"
-            padding="md"
-            className="ema-card-decorate ema-card-decorate--cross ema-pop-in-spring"
-          >
-            <p className="text-center text-xs text-[var(--ema-text-tertiary)]">
-              当前没有排队或运行中的任务。
-            </p>
-          </Card>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {active.map((job, i) => (
-              <JobRow key={job.id} job={job} index={i} />
+              shape="rounded"
+              icon="i-lucide:chevron-left"
+              aria-label="上一页"
+              disabled={!result.previousCursor || query.loading}
+              onClick={() => goToPage(page - 1, result.previousCursor ?? undefined)}
+            />
+            {pageNumbers.map(number => (
+              <Button
+                key={number}
+                variant="secondary"
+                size="sm"
+                shape="rounded"
+                aria-label={`第 ${number} 页`}
+                aria-current={number === page ? 'page' : undefined}
+                disabled={query.loading}
+                onClick={() => goToPage(number)}
+              >
+                {number}
+              </Button>
             ))}
+            <Button
+              variant="secondary"
+              size="sm"
+              shape="rounded"
+              icon="i-lucide:chevron-right"
+              aria-label="下一页"
+              disabled={!result.nextCursor || query.loading}
+              onClick={() => goToPage(page + 1, result.nextCursor ?? undefined)}
+            />
+          </nav>
+
+          <div className="ema-memory-page-jump">
+            <label htmlFor="memory-job-page">跳至</label>
+            <Input
+              id="memory-job-page"
+              type="number"
+              inputSize="sm"
+              min={1}
+              max={pageCount}
+              value={pageInput}
+              error={jumpError !== null}
+              aria-describedby={jumpError ? 'memory-job-page-error' : undefined}
+              onChange={event => {
+                setPageInput(event.target.value);
+                setJumpError(null);
+              }}
+              onKeyDown={event => {
+                if (event.key === 'Enter') {
+                  jump();
+                }
+              }}
+            />
+            <span>页 / 共 {pageCount} 页</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={query.loading}
+              onClick={jump}
+            >
+              跳转
+            </Button>
           </div>
-        )}
-      </section>
-
-      <div
-        id={historyListId}
-        className={`ema-collapsible shrink-0 ${showHistory ? '' : 'invisible'}`}
-        style={{ gridTemplateRows: showHistory ? '1fr' : '0fr', opacity: showHistory ? 1 : 0 }}
-        aria-hidden={!showHistory}
-      >
-        <div>
-          <section>
-            <h4 className="mb-2 text-xs font-semibold text-[var(--ema-text-secondary)]">
-              最近 100 条终态记录
-            </h4>
-
-            {history === null ? (
-              <div className="flex justify-center py-8">
-                <Spinner size="sm" />
-              </div>
-            ) : history.length === 0 ? (
-              <p className="text-xs text-[var(--ema-text-tertiary)]">
-                还没有已完成或失败的任务。
-              </p>
-            ) : (
-              <div className="flex flex-col gap-2">
-                {history.map((job, i) => (
-                  <JobRow key={job.id} job={job} index={i} />
-                ))}
-              </div>
-            )}
-          </section>
-        </div>
-      </div>
+          {jumpError && (
+            <p id="memory-job-page-error" className="ema-memory-inline-error" role="alert">
+              {jumpError}
+            </p>
+          )}
+        </footer>
+      )}
     </div>
   );
 }
 
-function JobRow({ job, index = 0 }: { job: MemoryJob; index?: number }): JSX.Element {
-  const track = resolveJobTrack(job);
+function visiblePageNumbers(current: number, total: number): number[] {
+  const visiblePageLimit = 10;
+  const visibleCount = Math.min(visiblePageLimit, total);
+  const pagesBeforeCurrent = Math.floor(visibleCount / 2);
 
-  return (
-    <Card
-      variant="glass"
-      padding="sm"
-      className="shrink-0 ema-card-decorate ema-card-decorate--cross ema-pop-in-spring"
-      style={{ '--stagger-i': index } as React.CSSProperties}
-    >
-      <div className="flex flex-wrap items-center gap-2 text-xs">
-        {track && <TrackBadge track={track} />}
-
-        <Badge
-          variant={JOB_STATUS_VARIANT[job.status]}
-          dot={job.status === 'running'}
-        >
-          {JOB_STATUS_LABEL[job.status]}
-        </Badge>
-
-        <span className="font-semibold text-[var(--ema-text-secondary)]">
-          {JOB_KIND_LABEL[job.kind]}
-        </span>
-
-        <span className="ml-auto text-[var(--ema-text-tertiary)]">
-          {relativeTime(job.finishedAt ?? job.startedAt ?? job.createdAt)}
-        </span>
-      </div>
-
-      {job.error && (
-        <details className="group/error mt-2 text-xs text-[var(--ema-danger-text)]">
-          <summary className="flex cursor-pointer list-none items-center gap-1 font-medium [&::-webkit-details-marker]:hidden">
-            <span className="i-lucide:chevron-right transition-transform group-open/error:rotate-90" aria-hidden />
-            错误详情
-          </summary>
-          <p className="mt-2 whitespace-pre-wrap break-words">{job.error}</p>
-        </details>
-      )}
-    </Card>
+  // 靠近首尾时移动整段页码, 保持显示数量, 不生成范围之外的页码.
+  const latestStart = total - visibleCount + 1;
+  const firstPage = Math.max(
+    1,
+    Math.min(current - pagesBeforeCurrent, latestStart),
   );
-}
 
-function TrackBadge({ track }: { track: JobTrack }): JSX.Element {
-  // 语义 token 双主题自适应;硬编码 sky/violet 浅色系在暗色下会瞎。
-  const tones = track === 'work'
-    ? 'border-[var(--ema-info)]/30 bg-[var(--ema-info-muted)] text-[var(--ema-info-text)]'
-    : 'border-[var(--ema-violet)]/30 bg-[var(--ema-violet-muted)] text-[var(--ema-violet-text)]';
-  return (
-    <span className={`inline-flex h-5 items-center rounded-md border px-2 text-[10px] font-semibold uppercase tracking-wide ${tones}`}>
-      {track === 'work' ? 'Work' : 'Relationship'}
-    </span>
+  return Array.from(
+    { length: visibleCount },
+    (_, index) => firstPage + index,
   );
-}
-
-/**
- * 优先读取后端未来可能直接返回的 track 字段。
- * 当前若 MemoryJob 没有 track，则从 kind 名称兜底推断。
- * 这样前端不用为了展示 Work / Relationship 改现有 Job API。
- */
-function resolveJobTrack(job: MemoryJob): JobTrack | null {
-  const possibleTrack = (job as MemoryJob & { track?: unknown }).track;
-
-  if (possibleTrack === 'work' || possibleTrack === 'relationship') {
-    return possibleTrack;
-  }
-
-  const kind = String(job.kind).toLowerCase();
-
-  if (kind.includes('relationship')) return 'relationship';
-  if (kind.includes('work')) return 'work';
-
-  return null;
-}
-
-function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error ? error.message : fallback;
 }

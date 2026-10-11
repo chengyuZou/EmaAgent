@@ -3,6 +3,7 @@
 import { promises as fs } from 'node:fs';
 import type { Dirent } from 'node:fs';
 import path from 'node:path';
+import { StringDecoder } from 'node:string_decoder';
 import { estimateTextTokens } from '@ema-agent/token';
 
 export const DEFAULT_SEARCH_MAX_RESULTS = 200;
@@ -10,6 +11,14 @@ export const MAX_SEARCH_RESULTS = 200;
 export const DEFAULT_LIST_MAX_RESULTS = 2_000;
 export const MAX_LIST_RESULTS = 2_000;
 export const DEFAULT_READ_MAX_TOKENS = 20_000;
+export const MEMORY_PREVIEW_FILES = 5;
+export const MEMORY_PREVIEW_BYTES = 2 * 1024;
+
+export interface MemoryPreview {
+  readonly path: string;
+  readonly content: string;
+  readonly truncated: boolean;
+}
 
 // ── 公开请求与响应 ────────────────────────────────────────
 
@@ -304,6 +313,70 @@ export async function readMemoryFile(
     content: text,
     truncated: includedLines < available.length,
   };
+}
+
+export async function readMemoryPreviews(
+  memoryRoot: string,
+  signal?: AbortSignal,
+): Promise<readonly MemoryPreview[]> {
+  throwIfAborted(signal);
+  const candidates: { path: string; modifiedAt: number }[] = [];
+  for (const relativePath of await listReadableFiles(memoryRoot)) {
+    throwIfAborted(signal);
+    try {
+      const stat = await fs.stat(path.join(memoryRoot, relativePath));
+      if (stat.isFile() && stat.size > 0) {
+        candidates.push({ path: relativePath, modifiedAt: stat.mtimeMs });
+      }
+    } catch (error) {
+      if (!isMissing(error)) throw error;
+    }
+  }
+  candidates.sort((left, right) => {
+    const timeOrder = right.modifiedAt - left.modifiedAt;
+    return timeOrder || left.path.localeCompare(right.path);
+  });
+  const previews = await Promise.all(
+    candidates.slice(0, MEMORY_PREVIEW_FILES).map(candidate => (
+      readPreviewPrefix(memoryRoot, candidate.path, signal)
+    )),
+  );
+  return previews.filter((preview): preview is MemoryPreview => preview !== undefined);
+}
+
+async function readPreviewPrefix(
+  memoryRoot: string,
+  relativePath: string,
+  signal?: AbortSignal,
+): Promise<MemoryPreview | undefined> {
+  throwIfAborted(signal);
+  let file;
+  try {
+    file = await fs.open(path.join(memoryRoot, relativePath), 'r');
+  } catch (error) {
+    if (isMissing(error)) return undefined;
+    throw error;
+  }
+  try {
+    const { size } = await file.stat();
+    const buffer = Buffer.alloc(Math.min(size, MEMORY_PREVIEW_BYTES));
+    let bytesRead = 0;
+    while (bytesRead < buffer.length) {
+      throwIfAborted(signal);
+      const read = await file.read(buffer, bytesRead, buffer.length - bytesRead, bytesRead);
+      if (read.bytesRead === 0) break;
+      bytesRead += read.bytesRead;
+    }
+    throwIfAborted(signal);
+    const truncated = size > bytesRead;
+    // 只分配和读取预览上限内的字节. 截断时不输出末尾尚未读全的 UTF-8 字符.
+    const decoder = new StringDecoder('utf8');
+    let content = decoder.write(buffer.subarray(0, bytesRead));
+    if (!truncated) content += decoder.end();
+    return { path: relativePath, content, truncated };
+  } finally {
+    await file.close();
+  }
 }
 
 // ── list ───────────────────────────────────────────────────────────────────────

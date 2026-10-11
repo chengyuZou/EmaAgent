@@ -67,6 +67,7 @@ export { buildMemoryGuidance } from './prompt.js';
 export {
   searchMemoryFiles,
   readMemoryFile,
+  readMemoryPreviews,
   listMemoryFiles,
   type ListMemory,
   type MemoryListEntry,
@@ -74,6 +75,7 @@ export {
   type MemoryListResponse,
   type MemoryReadRequest,
   type MemoryReadResponse,
+  type MemoryPreview,
   type MemorySearchMatch,
   type MemorySearchMatchMode,
   type MemorySearchRequest,

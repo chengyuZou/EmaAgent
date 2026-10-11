@@ -65,7 +65,19 @@ work_maintenance
 relationship_maintenance
 ```
 
-状态固定为 `pending | running | completed | failed`。没有取消、重试、心跳、租约、路径锁或手动 Job 接口。
+状态固定为 `pending | running | completed | failed`. 没有手动启动或重试 Job 的接口. `memory_jobs.reminder_ignored` 只记录失败提醒是否被用户忽略, 不改变任务状态、错误或提取内容. 新失败任务默认未忽略.
+
+任务完成与写入正式记忆是不同的事实:
+
+| 后端结果 | 展示含义 |
+| --- | --- |
+| Extraction 完成, 没有提取表记录 | 没有可保存内容 |
+| 有提取记录, `integrated_at` 为空 | 提取内容已保存, 等待整理 |
+| 有提取记录, `integrated_at` 非空 | 提取内容已参与整合, 不表示每句话都写入正式记忆 |
+| Consolidation 完成 | 整合完成 |
+| Maintenance 完成 | 维护完成 |
+
+列表只读取状态、结果标签、时间、角色名和忽略标记. 错误与提取正文在展开详情时单独读取, 不随每次列表刷新传输.
 
 ## 调度
 
@@ -93,6 +105,8 @@ Memory 包在真实外部边界校验 JSON、操作类型和轨道内路径。Wo
 
 `consumedTurnIds` 由本地输入打包过程产生，不由 LLM 返回。文件修改、Git 基线更新和 SQL 整合标记按此顺序执行，避免先丢掉尚未写入文件的结果。
 
+Server 调用 LLM 时, Extraction 的输出上限为 4,096 tokens, 两轨 Consolidation 为 16,384 tokens. Anthropic 和 OpenAI 兼容协议都收到明确的 `maxOutputTokens`. 若模型以 `max_tokens` 结束, 本次调用失败, 不把截断内容交给后续提取或文件操作解析. 有响应的失败调用仍记录其真实用量.
+
 ## Maintenance 与容量
 
 - Work Maintenance：移除临时 diff 文件并压缩本轨 Git 基线存储。
@@ -107,14 +121,43 @@ Memory 包在真实外部边界校验 JSON、操作类型和轨道内路径。Wo
 GET  /api/memory/files
 GET  /api/memory/files/content
 POST /api/memory/files/search
+GET  /api/memory/overview
 GET  /api/memory/jobs
-GET  /api/memory/jobs/history
+GET  /api/memory/jobs/recent
+GET  /api/memory/jobs/:id
+POST /api/memory/jobs/:id/ignore
+POST /api/memory/jobs/ignore-all
 GET  /api/memory/stats
 ```
 
-Files 只读。`/jobs` 返回 pending、running 与 failed；`/jobs/history` 返回最近最多 100 条 completed/failed 终态记录。
+Files 与 Overview 只读. `/overview` 返回最近修改的 5 份非空正式 Markdown 文件的开头, 不限定轨道或当前角色. 选择文件时只读取目录和文件属性; 每份正文最多读取 2 KiB 就关闭文件, 不先加载完整正文. 返回 `path`、`content` 和 `truncated`, UTF-8 截断不会产生半个字符. `.git`、临时 diff 和 Work 的注入摘要不作为正式预览.
 
-`/stats` 另外返回 `rootPath`，只供 Desktop 的“打开 Memory 文件夹”按钮消费；`/files/content` 返回所读文件的 `absolutePath`，只供 Tauri 在文件管理器中定位。Memory Tool 仍只拿相对路径和正文。
+`/jobs/recent` 返回最新 3 条 SQL 任务记录, 不按 Turn 合并. `/jobs` 按 `created_at`、`id` 排序, 每页 6 条, 支持:
+
+- `startAt`、`endAt`: 毫秒时间戳, 范围包含起点、不包含终点.
+- `order`: `asc` 或 `desc`.
+- `page`: 从 1 开始. 请求超出最后一页时返回最后一页.
+- `cursorCreatedAt`、`cursorId`、`cursorDirection`: 三个字段一起传入, 用于相邻的 `next` 或 `previous` 翻页. SQL 表不保存游标列.
+
+直接跳到尚未访问的页时, 先查询该页前一条记录的排序键, 再读取当页任务. 此时仍需要跳过前面的索引项, 但不加载这些任务的正文. 相邻翻页使用返回的 `previousCursor`、`nextCursor`. `unignoredFailureCount` 针对全部失败提醒, 不受日期或当前页限制.
+
+忽略接口成功返回 HTTP 204. Desktop 随后重新读取列表; 单项忽略只接受失败任务, 全部忽略只更新当时尚未忽略的失败记录. 它们不删除任务、不自动重试, 后续的新失败仍需提醒.
+
+`/stats` 另外返回 `rootPath`, 供 Desktop 文件栏的打开文件夹操作消费; `/files/content` 返回所读文件的 `absolutePath`, 供 Tauri 在文件管理器中定位. Memory Tool 仍只拿相对路径和正文.
+
+## Desktop 展示与刷新
+
+Memory 保留概览、文件和后台任务三个入口. 概览的正式预览、最近任务和容量是独立请求, 哪一项返回就先显示哪一项. 预览和容量每 30 秒刷新, 最近任务与后台任务列表每 5 秒刷新. 一次请求结束后才安排下一次, 慢查询不会重复并行发出.
+
+离开对应 Memory 页面、回到聊天、隐藏或最小化 main 时, 停止页面读取与定时器. 返回时重新读取. 已提交的忽略操作继续完成, 不因离开页面取消. 页面状态只留在组件中, 不建立 Memory 全局 Store; 正文与容量的相同字段不会因为任务列表刷新而重复渲染.
+
+后台任务默认今天、最新在前. 日期选项还包括昨天、近 7 天、近 30 天、本月、上月与全部, 由浏览器本地日历计算范围. 相邻分页使用游标, 页码按钮或输入页码支持直接跳转. 时间显示到 `YYYY/MM/DD HH:mm`. 展开详情与容量变化有局部过渡, 定时刷新不重复播放列表入场动画; 减少动态效果设置会关闭这些动画.
+
+## 验证入口
+
+- `src/memory/tests/memoryFiles.test.ts`: 有界预览、UTF-8 截断、目录筛选与取消.
+- `src/storage/tests/repos/memory.integration.test.ts`: 结果标签、忽略持久化、日期与游标分页.
+- `apps/server/tests/memoryRoutes.test.ts`: 真实临时数据库上的 HTTP 请求, 以及两种 LLM 协议的实际输出上限和截断响应.
 
 ## Agent 能力边界
 

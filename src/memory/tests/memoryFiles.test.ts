@@ -3,10 +3,12 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   listMemoryFiles,
   readMemoryFile,
+  readMemoryPreviews,
+  MEMORY_PREVIEW_BYTES,
   searchMemoryFiles,
 } from '../common/memoryFiles.js';
 
@@ -25,6 +27,7 @@ describe('Memory 文件读搜', () => {
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     await fs.rm(root, { recursive: true, force: true });
   });
 
@@ -67,5 +70,44 @@ describe('Memory 文件读搜', () => {
       signal: controller.signal,
     })).rejects.toBe(reason);
     await expect(listMemoryFiles(root, { signal: controller.signal })).rejects.toBe(reason);
+    await expect(readMemoryPreviews(root, controller.signal)).rejects.toBe(reason);
+  });
+
+  it('预览只读取开头, UTF-8 被截在中间时不补乱码, 完整文件读取不受影响', async () => {
+    const prefix = 'x'.repeat(MEMORY_PREVIEW_BYTES - 1);
+    await fs.writeFile(path.join(root, 'work', 'large.md'), `${prefix}中文\n${'正文\n'.repeat(50_000)}`);
+    const readFile = vi.spyOn(fs, 'readFile');
+    const previews = await readMemoryPreviews(root);
+    expect(previews.find(file => file.path === 'work/large.md')).toEqual({
+      path: 'work/large.md', content: prefix, truncated: true,
+    });
+    expect(readFile).not.toHaveBeenCalled();
+    readFile.mockRestore();
+    const full = await readMemoryFile(root, { path: 'work/large.md', maxLines: 1 });
+    expect(full?.content.length).toBeGreaterThan(MEMORY_PREVIEW_BYTES);
+  });
+
+  it('按最近修改顺序取五个正式文件, 不限定轨道或角色, 不展示摘要和内部文件', async () => {
+    const files = [
+      'work/topics/old.md',
+      'relationship/shared_user_memory.md',
+      'work/MEMORY.md',
+      'relationship/characters/艾玛/MEMORY.md',
+      'work/topics/new.md',
+      'relationship/characters/其他角色/MEMORY.md',
+    ];
+    await fs.utimes(path.join(root, 'work', 'topics', 'typescript.md'), 1, 1);
+    for (const [index, relative] of files.entries()) {
+      const filename = path.join(root, relative);
+      await fs.mkdir(path.dirname(filename), { recursive: true });
+      await fs.writeFile(filename, `# Memory ${index}\n正文`);
+      await fs.utimes(filename, 100 + index, 100 + index);
+    }
+    await fs.mkdir(path.join(root, '.git'), { recursive: true });
+    await fs.writeFile(path.join(root, '.git', 'internal.md'), 'internal');
+    await fs.writeFile(path.join(root, 'work', 'empty.md'), '');
+    const previews = await readMemoryPreviews(root);
+    expect(previews.map(file => file.path)).toEqual(files.slice(1).reverse());
+    expect(previews.every(file => !file.truncated)).toBe(true);
   });
 });

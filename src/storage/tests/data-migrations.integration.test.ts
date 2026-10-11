@@ -44,7 +44,7 @@ describe('data migration v13', () => {
     const messagesBefore = database.sqlite.prepare('SELECT * FROM messages').all();
     const toolsBefore = database.sqlite.prepare('SELECT * FROM tool_executions').all();
     database.migrate();
-    expect(database.currentVersion()).toBe(14);
+    expect(database.currentVersion()).toBe(15);
     expect(database.sqlite.prepare('SELECT * FROM subagents ORDER BY id').all()).toEqual([
       {
         id: 'child', session_id: 's', title: null, description: 'old description',
@@ -107,7 +107,7 @@ describe('data migration v12', () => {
     `);
     const before = database.sqlite.prepare('SELECT * FROM goals').get();
     database.migrate();
-    expect(database.currentVersion()).toBe(14);
+    expect(database.currentVersion()).toBe(15);
     expect(database.sqlite.prepare('SELECT * FROM goals').get()).toEqual({ ...before as object, feedback: null });
     database.sqlite.prepare('UPDATE goals SET feedback = ? WHERE id = ?').run('已完成第一部分', 'old-goal');
     expect(database.sqlite.prepare('SELECT feedback FROM goals WHERE id = ?').get('old-goal'))
@@ -153,7 +153,7 @@ describe('data migration v2', () => {
 
     database.migrate();
 
-    expect(database.currentVersion()).toBe(14);
+    expect(database.currentVersion()).toBe(15);
     const columns = database.sqlite.pragma('table_info(turns)') as Array<{ name: string }>;
     expect(columns.map(column => column.name)).not.toContain('usage_input_tokens');
     expect(columns.map(column => column.name)).not.toContain('usage_output_tokens');
