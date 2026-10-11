@@ -1,7 +1,7 @@
 // 渲染保存为 boolean 的开关参数.
 
 import { useState, type JSX } from 'react';
-import { Button, Switch } from '@ema-agent/ui';
+import { Tooltip, Button, Switch } from '@ema-agent/ui';
 import type { SettingApply } from '../../../api/settings.js';
 import { showToast } from '../../../lib/toast.js';
 import { SaveStateIndicator, SettingItem } from '../../shared/SettingItem.js';
@@ -51,15 +51,17 @@ export function SwitchSetting(props: {
         onCheckedChange={value => void save(value)} 
       />
       {props.onReset && (
-        <Button 
-          variant="ghost" 
-          size="sm" 
-          disabled={state === 'saving'} 
-          onClick={() => void reset()} 
-          title="恢复默认值"
-        >
-          <span className="i-lucide:rotate-ccw" aria-hidden />
-        </Button>
+        <Tooltip content="恢复默认值">
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={state === 'saving'}
+            aria-label="恢复默认值"
+            onClick={() => void reset()}
+          >
+            <span className="i-lucide:rotate-ccw" aria-hidden />
+          </Button>
+        </Tooltip>
       )}
     </SettingItem>
   );

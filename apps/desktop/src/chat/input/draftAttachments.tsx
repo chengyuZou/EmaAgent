@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useState, type ClipboardEvent as ReactCli
 import { PASTE_TEXT_MIN_CHARS } from '@ema-agent/attachments/limits';
 import type { ChatDraft, ChatDraftReference } from '../../stores/chatDraft.js';
 import { tauriBridge } from '../../lib/tauri-bridge.js';
+import { Tooltip } from '@ema-agent/ui';
 
 interface DraftReferenceListProps {
   readonly references: readonly ChatDraftReference[];
@@ -59,9 +60,11 @@ export const DraftReferenceList = memo(function DraftReferenceList({ references,
           {reference.type === 'image'
             ? <ImagePreview reference={reference} />
             : <span className={reference.type === 'skill_reference' ? 'i-lucide:box' : 'i-lucide:paperclip'} aria-hidden />}
-          <span className="truncate" title={reference.type === 'pasted_text' ? reference.preview : undefined}>
-            {referenceLabel(reference)}
-          </span>
+          <Tooltip content={reference.type === 'pasted_text' ? reference.preview : undefined} variant="card">
+            <span className="truncate">
+              {referenceLabel(reference)}
+            </span>
+          </Tooltip>
           <button
             type="button"
             className="i-lucide:x shrink-0 opacity-60 hover:opacity-100"

@@ -1,7 +1,7 @@
 // 组装当前 Session 的右侧标签页, 标签生命周期由 sessionPanel Store 维护.
 import { useEffect, useState, type JSX } from 'react';
 import { nanoid } from 'nanoid';
-import { Button, IconButton } from '@ema-agent/ui';
+import { Tooltip, Button, IconButton } from '@ema-agent/ui';
 import { useSessionAttachmentStore } from '../../stores/sessionAttachment.js';
 import { useBackgroundProcessStore } from '../../stores/backgroundProcess.js';
 import { useSessionStore } from '../../stores/session.js';
@@ -134,20 +134,22 @@ function TabBar({
       <div className="ema-tab-slot min-w-0 overflow-x-auto">
         {tabs.map((tab) => (
           <div key={tab.id} data-selected={tab.id === activeTabId || undefined} className="ema-slot-tab group">
-            <button
-              type="button"
-              className="ema-slot-tab-trigger"
-              title={baseLabel(tab)}
-              onClick={() => onActivate(tab.id)}
-            >
-              <span
-                className={`${tabIcon(tab)} shrink-0 text-[16px]`}
-                aria-hidden
-              />
-              <span className="min-w-0 flex-1 truncate text-[12px]">
-                <TabLabel sessionId={sessionId} tab={tab} />
-              </span>
-            </button>
+            <Tooltip content={baseLabel(tab)}>
+              <button
+                type="button"
+                className="ema-slot-tab-trigger"
+                aria-label={baseLabel(tab)}
+                onClick={() => onActivate(tab.id)}
+              >
+                <span
+                  className={`${tabIcon(tab)} shrink-0 text-[16px]`}
+                  aria-hidden
+                />
+                <span className="min-w-0 flex-1 truncate text-[12px]">
+                  <TabLabel sessionId={sessionId} tab={tab} />
+                </span>
+              </button>
+            </Tooltip>
             <IconButton
               size="sm"
               variant="ghost"

@@ -214,7 +214,9 @@ function GoalBar({ goal, disabled, onClose, onTogglePause, onEdit }: {
           <span className="shrink-0 font-medium text-[var(--ema-text-primary)]">
             {active ? '进行中的目标' : '已暂停的目标'}
           </span>
-          <span className="truncate text-[var(--ema-text-secondary)]" title={goal.objective}>{goal.objective}</span>
+          <Tooltip content={goal.objective} variant="card">
+            <span className="truncate text-[var(--ema-text-secondary)]">{goal.objective}</span>
+          </Tooltip>
         </div>
       </button>
       <Tooltip content="关闭目标, 保留历史; 不停止当前 Turn">

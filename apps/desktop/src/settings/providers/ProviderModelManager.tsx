@@ -1,7 +1,7 @@
 // Provider 模型池：池内行 = SQL 事实（启用集合），卡片整卡点击 = 启停开关；
 // llm/vision 提供目录刷新（models.dev 拉取并同步，新增默认禁用）；卡片按能力特化参数行与来源标记。
 import { useState, useEffect, useCallback, useRef, type JSX, type ReactNode } from 'react';
-import { Button, Callout, ConfirmDialog, Dialog, IconButton, Input, Spinner, Switch } from '@ema-agent/ui';
+import { Tooltip, Button, Callout, ConfirmDialog, Dialog, IconButton, Input, Spinner, Switch } from '@ema-agent/ui';
 import { ServerApiError, serverClient } from '../../api/client.js';
 import { charactersApi } from '../../api/characters.js';
 import {
@@ -31,51 +31,52 @@ function ModelCard({ title, hint, lines, chips, enabled, onToggle, logo, action 
   action?:  ReactNode;
 }): JSX.Element {
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      title={hint}
-      data-selected={enabled || undefined}
-      onClick={onToggle}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } }}
-      className={`group relative text-left rounded-lg border border-solid px-3 py-2.5 min-w-0 cursor-pointer outline-none
-                  overflow-hidden isolate
-                  transition-ema active:scale-[0.97]
-                  ema-material-card ema-card-decorate ema-card-decorate--grid
-                  ${enabled
-                    ? 'border-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
-                    : 'border-[var(--ema-border)] bg-[var(--ema-surface-1)] ema-glass-weak hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]'
-                  }`}
-    >
-      <span
-        className={`absolute left-2 top-2 z-1 size-2.5 rounded-full transition-all duration-[var(--ema-duration-base)] ${
-          enabled
-            ? 'bg-[var(--ema-success)] ema-scale-in'
-            : 'border-2 border-solid border-[var(--ema-border-strong)] bg-transparent'
-        }`}
-        aria-hidden
-      />
-      {logo && (
+    <Tooltip content={hint} variant="card">
+      <div
+        role="button"
+        tabIndex={0}
+        data-selected={enabled || undefined}
+        onClick={onToggle}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } }}
+        className={`group relative text-left rounded-lg border border-solid px-3 py-2.5 min-w-0 cursor-pointer outline-none
+                    overflow-hidden isolate
+                    transition-ema active:scale-[0.97]
+                    ema-material-card ema-card-decorate ema-card-decorate--grid
+                    ${enabled
+                      ? 'border-[var(--ema-primary)] bg-[var(--ema-primary-muted)]'
+                      : 'border-[var(--ema-border)] bg-[var(--ema-surface-1)] ema-glass-weak hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]'
+                    }`}
+      >
         <span
-          className={`absolute right-1 top-1/2 z-1 -translate-y-1/2 size-6 opacity-40 grayscale transition-all duration-[var(--ema-duration-base)] group-hover:opacity-70 group-hover:grayscale-0 ${logo}`}
+          className={`absolute left-2 top-2 z-1 size-2.5 rounded-full transition-all duration-[var(--ema-duration-base)] ${
+            enabled
+              ? 'bg-[var(--ema-success)] ema-scale-in'
+              : 'border-2 border-solid border-[var(--ema-border-strong)] bg-transparent'
+          }`}
           aria-hidden
         />
-      )}
-      {action && (
-        <span className="absolute right-1.5 top-1.5 z-2" onClick={(e) => e.stopPropagation()}>{action}</span>
-      )}
-      <div className="relative z-1 pl-4">
-        <p className="text-[13px] font-mono font-semibold text-[var(--ema-text-primary)] group-hover:text-[var(--ema-primary-text)] truncate pr-6 leading-tight">{title}</p>
-        <div className="flex flex-col gap-0 mt-0.5 leading-snug">
-          {lines.map((line) => (
-            <p key={line} className="text-[11px] font-medium text-[var(--ema-text-tertiary)] truncate">{line}</p>
-          ))}
-        </div>
-        {chips && (
-          <div className="flex flex-wrap gap-1 mt-1.5">{chips}</div>
+        {logo && (
+          <span
+            className={`absolute right-1 top-1/2 z-1 -translate-y-1/2 size-6 opacity-40 grayscale transition-all duration-[var(--ema-duration-base)] group-hover:opacity-70 group-hover:grayscale-0 ${logo}`}
+            aria-hidden
+          />
         )}
+        {action && (
+          <span className="absolute right-1.5 top-1.5 z-2" onClick={(e) => e.stopPropagation()}>{action}</span>
+        )}
+        <div className="relative z-1 pl-4">
+          <p className="text-[13px] font-mono font-semibold text-[var(--ema-text-primary)] group-hover:text-[var(--ema-primary-text)] truncate pr-6 leading-tight">{title}</p>
+          <div className="flex flex-col gap-0 mt-0.5 leading-snug">
+            {lines.map((line) => (
+              <p key={line} className="text-[11px] font-medium text-[var(--ema-text-tertiary)] truncate">{line}</p>
+            ))}
+          </div>
+          {chips && (
+            <div className="flex flex-wrap gap-1 mt-1.5">{chips}</div>
+          )}
+        </div>
       </div>
-    </div>
+    </Tooltip>
   );
 }
 

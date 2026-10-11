@@ -1,6 +1,6 @@
 // 编辑全局与已有项目的权限规则, 以及交互等待时间.
 import { useEffect, useState, type JSX } from 'react';
-import { Button, Callout, Input, Select, Spinner, Textarea } from '@ema-agent/ui';
+import { Tooltip, Button, Callout, Input, Select, Spinner, Textarea } from '@ema-agent/ui';
 import { sessionsApi, type Project } from '../../../api/sessions.js';
 import type { SettingApply } from '../../../api/settings.js';
 import { SettingsCard, SettingsSection, SettingItem } from '../../shared/SettingItem.js';
@@ -90,14 +90,16 @@ function PermissionTimeout(props: {
         }} 
       />
       <span className="text-xs text-[var(--ema-text-tertiary)]">秒</span>
-      <Button 
-        variant="ghost" 
-        size="sm" 
-        onClick={() => void props.onReset()} 
-        title="恢复默认值"
-      >
-        <span className="i-lucide:rotate-ccw" aria-hidden />
-      </Button>
+      <Tooltip content="恢复默认值">
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label="恢复默认值"
+          onClick={() => void props.onReset()}
+        >
+          <span className="i-lucide:rotate-ccw" aria-hidden />
+        </Button>
+      </Tooltip>
     </SettingItem>
   );
 }

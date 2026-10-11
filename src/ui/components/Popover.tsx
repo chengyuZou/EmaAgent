@@ -1,6 +1,7 @@
 import * as RadixPopover from '@radix-ui/react-popover';
 import type { CSSProperties, ReactNode } from 'react';
 import { cn } from '../utils/cn.js';
+import { Tooltip } from './Tooltip.js';
 
 // ── Popover ─────────────────────────────────────────────────────────────────
 //
@@ -9,6 +10,8 @@ import { cn } from '../utils/cn.js';
 export interface PopoverProps {
   /** Trigger element. The trigger ref forwarding is handled by Radix. */
   trigger:     ReactNode;
+  /** 触发按钮的只读悬停提示, 不改变面板的点击或焦点行为. */
+  triggerTooltip?: ReactNode;
   /** Popover body. */
   children:    ReactNode;
   /** Default open state for uncontrolled use. */
@@ -29,8 +32,12 @@ export interface PopoverProps {
 
 export function Popover(props: PopoverProps): React.JSX.Element {
   const {
-    trigger, children,
-    defaultOpen, open, onOpenChange,
+    trigger,
+    triggerTooltip,
+    children,
+    defaultOpen,
+    open,
+    onOpenChange,
     side       = 'bottom',
     align      = 'center',
     sideOffset = 8,
@@ -47,7 +54,9 @@ export function Popover(props: PopoverProps): React.JSX.Element {
       defaultOpen={defaultOpen}
       onOpenChange={onOpenChange}
     >
-      <RadixPopover.Trigger asChild>{trigger}</RadixPopover.Trigger>
+      <Tooltip content={triggerTooltip} side={side}>
+        <RadixPopover.Trigger asChild>{trigger}</RadixPopover.Trigger>
+      </Tooltip>
       <RadixPopover.Portal>
         <RadixPopover.Content
           side={side}

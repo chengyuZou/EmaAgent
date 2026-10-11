@@ -15,7 +15,7 @@ if (!container) {
 createRoot(container).render(
   <React.StrictMode>
     <ErrorBoundary>
-      <TooltipProvider delayDuration={300}>
+      <TooltipProvider>
         <MainWindow />
       </TooltipProvider>
     </ErrorBoundary>

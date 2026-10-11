@@ -1,6 +1,6 @@
 import { useState, type JSX, type ChangeEvent } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { Button, Select, Slider, Switch } from '@ema-agent/ui';
+import { Tooltip, Button, Select, Slider, Switch } from '@ema-agent/ui';
 import { useThemeStore } from '../../stores/theme.js';
 import { PageHeader } from '../shared/PageHeader.js';
 import type { ThemeSettings } from '@ema-agent/server/settings/themeSetting.js';
@@ -123,23 +123,24 @@ function PaletteSection(): JSX.Element {
             {palette.swatches.map(({ hex, hue: swatchHue }) => {
               const selected = Math.abs(hue - swatchHue) < 8 || Math.abs(hue - swatchHue) > 352;
               return (
-                <Button
-                  key={hex}
-                  variant="ghost"
-                  size="sm"
-                  title={hex}
-                  onClick={() => void setHue(swatchHue)}
-                  className="p-0 h-auto border-transparent bg-transparent hover:bg-transparent active:bg-transparent"
-                >
-                  <span
-                    className={`block h-8 w-8 rounded-full border-2 transition-ema hover:border-[var(--ema-primary)]/50 ${
-                      selected
-                        ? 'border-[var(--ema-border-strong)] shadow-[var(--ema-shadow-1)]'
-                        : 'border-transparent'
-                    }`}
-                    style={{ background: hex }}
-                  />
-                </Button>
+                <Tooltip key={hex} content={hex}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label={hex}
+                    onClick={() => void setHue(swatchHue)}
+                    className="p-0 h-auto border-transparent bg-transparent hover:bg-transparent active:bg-transparent"
+                  >
+                    <span
+                      className={`block h-8 w-8 rounded-full border-2 transition-ema hover:border-[var(--ema-primary)]/50 ${
+                        selected
+                          ? 'border-[var(--ema-border-strong)] shadow-[var(--ema-shadow-1)]'
+                          : 'border-transparent'
+                      }`}
+                      style={{ background: hex }}
+                    />
+                  </Button>
+                </Tooltip>
               );
             })}
           </div>

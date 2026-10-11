@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react';
-import { Button, Callout, Input, Select } from '@ema-agent/ui';
+import { Tooltip, Button, Callout, Input, Select } from '@ema-agent/ui';
 import { sessionsApi, type ArchivedSession } from '../../api/sessions.js';
 import { subscribeSystemEvent } from '../../lib/system-event-dispatcher.js';
 import { runWithToast } from '../../lib/toast.js';
@@ -160,9 +160,11 @@ export function ArchivedChatsTab(): JSX.Element {
                 className="flex items-center gap-4 px-4 py-3"
               >
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium" title={session.title}>
-                    {formatSessionTitle(session.title)}
-                  </p>
+                  <Tooltip content={session.title} variant="card">
+                    <p className="truncate text-sm font-medium">
+                      {formatSessionTitle(session.title)}
+                    </p>
+                  </Tooltip>
                   <p className="mt-1 text-xs text-[var(--ema-text-tertiary)]">
                     归档于 {new Date(session.archivedAt).toLocaleString()}
                   </p>

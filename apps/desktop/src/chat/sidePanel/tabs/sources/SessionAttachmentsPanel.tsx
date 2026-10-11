@@ -1,6 +1,6 @@
 // 展示当前 Session 的全部持久附件(图片/粘贴文本两本账合并),点击打开预览标签。
 import { useEffect, type CSSProperties, type JSX } from 'react';
-import { Button, ScrollArea } from '@ema-agent/ui';
+import { Tooltip, Button, ScrollArea } from '@ema-agent/ui';
 
 import type { SessionAttachmentsResult } from '../../../../api/sessions.js';
 import { useSessionAttachmentStore } from '../../../../stores/sessionAttachment.js';
@@ -73,9 +73,11 @@ export function SessionAttachmentsPanel({ sessionId }: { sessionId: string | nul
           >
             <span className={`${attachmentIcon(attachment)} mt-0.5 shrink-0 text-base text-[var(--ema-primary)]`} aria-hidden />
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-xs font-medium text-[var(--ema-text-primary)]" title={attachmentTitle(attachment)}>
-                {attachmentTitle(attachment)}
-              </span>
+              <Tooltip content={attachmentTitle(attachment)} variant="card">
+                <span className="block truncate text-xs font-medium text-[var(--ema-text-primary)]">
+                  {attachmentTitle(attachment)}
+                </span>
+              </Tooltip>
               <span className="mt-0.5 block truncate text-[10px] font-mono text-[var(--ema-text-tertiary)]">
                 {attachment.path}
               </span>

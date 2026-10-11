@@ -1,20 +1,40 @@
 /* Radix 组件的 data-state 入场/退场适配, DropdownMenu 的稳定尺寸裁剪动画, 与 Tabs 滑块定位.
    横向 Tabs 的 trigger 必须等宽,滑块才能按索引准确定位。 */
 
-/* Popover / Select 保留 grid 展开; DropdownMenu 按定位侧裁剪, 不改变定位器测量的尺寸. */
-.ema-tooltip-card {
-  max-width: min(32rem, calc(100vw - 24px));
+.ema-tooltip-surface {
+  z-index: var(--ema-z-tooltip);
+  max-width: min(32rem, calc(100vw - 24px), var(--radix-tooltip-content-available-width));
   max-height: var(--radix-tooltip-content-available-height);
-  overflow: auto;
-  padding: var(--ema-space-3);
   border: 1px solid var(--ema-border);
   border-radius: var(--ema-radius-md);
   background: var(--ema-surface-4);
   color: var(--ema-text-primary);
-  font-weight: 400;
+  box-shadow: var(--ema-shadow-2);
+  font-family: var(--ema-font-ui);
+  font-size: 0.75rem;
   line-height: 1.5;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  white-space: pre-wrap;
 }
 
+.ema-tooltip-label {
+  max-width: min(22rem, calc(100vw - 24px), var(--radix-tooltip-content-available-width));
+  padding: var(--ema-space-1) var(--ema-space-2);
+  font-weight: 500;
+}
+
+.ema-tooltip-card {
+  overflow: auto;
+  padding: var(--ema-space-3);
+  font-weight: 400;
+}
+
+.ema-tooltip-arrow {
+  fill: var(--ema-surface-4);
+}
+
+/* Popover / Select 保留 grid 展开; DropdownMenu 按定位侧裁剪, 不改变定位器测量的尺寸. */
 .ema-anim-expand { display: grid; overflow: hidden; }
 .ema-anim-expand > * { min-height: 0; overflow: hidden; }
 .ema-anim-expand[data-state="open"] { animation: ema-expand-in 300ms cubic-bezier(0, 0, 0.2, 1) both; }

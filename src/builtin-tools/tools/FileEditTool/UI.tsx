@@ -1,7 +1,7 @@
 // FileEditTool 的参数与结果展示; 官方 Diff 组件消费 Tool 保存的补丁.
 import type { JSX } from 'react';
 import type { StructuredPatchHunk } from 'diff';
-import { Badge } from '@ema-agent/ui';
+import { Tooltip, Badge } from '@ema-agent/ui';
 import type { FileEditResult } from './FileEditTool.js';
 import { patchToUnifiedText } from './patch.js';
 import { FilePatchView } from '../shared/filePatchView.js';
@@ -73,9 +73,11 @@ export function FileEditArgsView({ args }: { args: unknown }): JSX.Element | nul
   return (
     <div className="flex items-baseline gap-2 text-[11px] leading-relaxed">
       <span className="shrink-0 text-[var(--ema-text-tertiary)]">path:</span>
-      <span className="min-w-0 font-mono text-[var(--ema-text-secondary)]" title={args['file_path']}>
-        {args['file_path']}
-      </span>
+      <Tooltip content={args['file_path']} variant="card">
+        <span className="min-w-0 font-mono text-[var(--ema-text-secondary)]">
+          {args['file_path']}
+        </span>
+      </Tooltip>
     </div>
   );
 }

@@ -1,7 +1,7 @@
 // WebSearchTool 的桌面展示: 参数行(query + 域名过滤)、结果摘要(条数)与两态进度。
 // 只消费本 Tool 的类型化 data; 类型守卫失败返回 null, 由前端回落通用渲染。
 import type { JSX } from 'react';
-import { Badge } from '@ema-agent/ui';
+import { Tooltip, Badge } from '@ema-agent/ui';
 import type { WebSearchResult } from './WebSearchTool.js';
 import type { SearchProgress } from './adapters/types.js';
 
@@ -110,15 +110,16 @@ export function WebSearchResultView({ data }: { data: unknown }): JSX.Element | 
       <ul className="flex flex-col gap-1">
         {result.results.map((entry) => (
           <li key={entry.url} className="flex min-w-0 items-baseline gap-2">
-            <a
-              href={entry.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              title={entry.url}
-              className="max-w-[65%] shrink-0 truncate text-[var(--ema-primary)] transition-colors hover:text-[var(--ema-primary-hover)] hover:underline"
-            >
-              {entry.title || entry.url}
-            </a>
+            <Tooltip content={entry.url} variant="card">
+              <a
+                href={entry.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="max-w-[65%] shrink-0 truncate text-[var(--ema-primary)] transition-colors hover:text-[var(--ema-primary-hover)] hover:underline"
+              >
+                {entry.title || entry.url}
+              </a>
+            </Tooltip>
             {entry.snippet && (
               <span className="truncate text-[var(--ema-text-tertiary)]">
                 {entry.snippet}

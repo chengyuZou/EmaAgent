@@ -2,6 +2,7 @@
 // expression 是自由文本(词法 [a-z][a-z0-9_]*),纯 Input 手写新词。
 import { useCallback, useEffect, useMemo, useState, type JSX } from 'react';
 import {
+  Tooltip,
   Button, CursorFloating, DropdownMenu, IconButton, Input, ScrollArea, Slider, Spinner,
   type MenuItem,
 } from '@ema-agent/ui';
@@ -164,13 +165,14 @@ function IllustrationCard({
         onClick={onSelect}
       >
       <div className="absolute left-2 top-2 z-10">
-        <span
-          className={`block h-3.5 w-3.5 rounded-full border-2
-            ${item.isPrimary
-              ? 'border-[var(--ema-success)] bg-[var(--ema-success)] shadow-[var(--ema-shadow-1)]'
-              : 'border-[var(--ema-border-strong)] bg-[var(--ema-surface-2)]'}`}
-          title={item.isPrimary ? '主要插图' : '非主要插图'}
-        />
+        <Tooltip content={item.isPrimary ? '主要插图' : '非主要插图'}>
+          <span
+            className={`block h-3.5 w-3.5 rounded-full border-2
+              ${item.isPrimary
+                ? 'border-[var(--ema-success)] bg-[var(--ema-success)] shadow-[var(--ema-shadow-1)]'
+                : 'border-[var(--ema-border-strong)] bg-[var(--ema-surface-2)]'}`}
+          />
+        </Tooltip>
       </div>
       <div className="absolute right-2 top-2 z-10" onClick={event => event.stopPropagation()}>
         <DropdownMenu

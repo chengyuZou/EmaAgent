@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type JSX, type ReactNode } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { Button, Dialog, IconButton, Input, Popover } from '@ema-agent/ui';
+import { Tooltip, Button, Dialog, IconButton, Input, Popover } from '@ema-agent/ui';
 import { sessionGitApi, type SessionGitSummary } from '../../api/git.js';
 import { showToast } from '../../lib/toast.js';
 import { useSubagentStore } from '../../stores/subagent.js';
@@ -55,44 +55,47 @@ export function SessionHeader({ sessionId }: { sessionId: string }): JSX.Element
     <header className="ema-chat-header flex shrink-0 items-center justify-between border-b border-[var(--ema-border)] px-4 py-2">
       <div className="flex min-w-0 items-center gap-2">
         <span className="i-lucide:folder shrink-0 text-sm text-[var(--ema-text-secondary)]" aria-hidden />
-        <Button
-          variant="ghost"
-          disabled={!session}
-          className="h-auto max-w-56 min-w-0 px-1 py-0.5 text-sm font-semibold text-[var(--ema-text-primary)] hover:bg-transparent"
-          title={`重命名会话: ${title}`}
-          onClick={() => {
-            setTitleDraft(title);
-            setTitleOpen(true);
-          }}
-        >
-          <span className="truncate">{formatSessionTitle(title)}</span>
-        </Button>
-        {cwd && (
+        <Tooltip content={`重命名会话: ${title}`}>
           <Button
             variant="ghost"
-            className="h-auto max-w-72 min-w-0 px-2 py-1 font-mono text-xs font-normal text-[var(--ema-text-tertiary)] hover:bg-transparent hover:text-[var(--ema-text-primary)]"
-            title={`执行目录: ${cwd} · 点击修改`}
-            onClick={() => setCwdOpen(true)}
+            disabled={!session}
+            className="h-auto max-w-56 min-w-0 px-1 py-0.5 text-sm font-semibold text-[var(--ema-text-primary)] hover:bg-transparent"
+            onClick={() => {
+              setTitleDraft(title);
+              setTitleOpen(true);
+            }}
           >
-            <span className="text-[var(--ema-text-tertiary)]" aria-hidden>·</span>
-            <span className="truncate">{cwd}</span>
+            <span className="truncate">{formatSessionTitle(title)}</span>
           </Button>
+        </Tooltip>
+        {cwd && (
+          <Tooltip content={`执行目录: ${cwd} · 点击修改`} variant="card">
+            <Button
+              variant="ghost"
+              className="h-auto max-w-72 min-w-0 px-2 py-1 font-mono text-xs font-normal text-[var(--ema-text-tertiary)] hover:bg-transparent hover:text-[var(--ema-text-primary)]"
+              onClick={() => setCwdOpen(true)}
+            >
+              <span className="text-[var(--ema-text-tertiary)]" aria-hidden>·</span>
+              <span className="truncate">{cwd}</span>
+            </Button>
+          </Tooltip>
         )}
       </div>
       <div className="flex shrink-0 items-center gap-0.5">
-        <div
-          className="mr-2 flex items-center gap-2 text-[11px] text-[var(--ema-text-tertiary)]"
-          title={`Session: ${sessionId}`}
-        >
-          <span
-            className={`size-1.5 shrink-0 rounded-full ${serverStatus.kind === 'ok' ? 'bg-[var(--ema-success)]' : 'bg-[var(--ema-danger)]'}`}
-            aria-label={serverStatus.kind === 'ok' ? '服务器在线' : '服务器未连接'}
-          />
-          {serverStatus.kind === 'ok' && (
-            <span className="tabular-nums">{serverStatus.latencyMs}ms</span>
-          )}
-          <span className="font-mono opacity-60">{sessionId.slice(0, 8)}</span>
-        </div>
+        <Tooltip content={`Session: ${sessionId}`} variant="card">
+          <div
+            className="mr-2 flex items-center gap-2 text-[11px] text-[var(--ema-text-tertiary)]"
+          >
+            <span
+              className={`size-1.5 shrink-0 rounded-full ${serverStatus.kind === 'ok' ? 'bg-[var(--ema-success)]' : 'bg-[var(--ema-danger)]'}`}
+              aria-label={serverStatus.kind === 'ok' ? '服务器在线' : '服务器未连接'}
+            />
+            {serverStatus.kind === 'ok' && (
+              <span className="tabular-nums">{serverStatus.latencyMs}ms</span>
+            )}
+            <span className="font-mono opacity-60">{sessionId.slice(0, 8)}</span>
+          </div>
+        </Tooltip>
         <Popover
           open={summaryOpen}
           onOpenChange={setSummaryOpen}
@@ -100,6 +103,7 @@ export function SessionHeader({ sessionId }: { sessionId: string }): JSX.Element
           align="end"
           widthClass="w-80"
           className="overflow-hidden p-0"
+          triggerTooltip="置顶摘要"
           trigger={(
             <Button
               variant="ghost"
@@ -107,7 +111,6 @@ export function SessionHeader({ sessionId }: { sessionId: string }): JSX.Element
                 ? 'bg-[var(--ema-primary-muted)] text-[var(--ema-primary-text)] border-[var(--ema-primary)]/40'
                 : ''}`}
               aria-label="置顶摘要"
-              title="置顶摘要"
             >
               <span className="i-lucide:sliders-horizontal text-base" aria-hidden />
             </Button>
@@ -294,17 +297,18 @@ function SessionSummary({ sessionId, onNavigate }: {
           )
           : liveProcesses.map(process => (
             <div key={process.id} className="ema-summary-process-row">
-              <button
-                type="button"
-                className="ema-summary-row min-w-0 flex-1"
-                title={process.command}
-                onClick={() => navigate(backgroundProcessTab(process.id))}
-              >
-                <span className="i-lucide:square-terminal shrink-0 text-sm" aria-hidden />
-                <span className="min-w-0 flex-1 truncate text-left">
-                  {process.description ?? process.command}
-                </span>
-              </button>
+              <Tooltip content={process.command} variant="card">
+                <button
+                  type="button"
+                  className="ema-summary-row min-w-0 flex-1"
+                  onClick={() => navigate(backgroundProcessTab(process.id))}
+                >
+                  <span className="i-lucide:square-terminal shrink-0 text-sm" aria-hidden />
+                  <span className="min-w-0 flex-1 truncate text-left">
+                    {process.description ?? process.command}
+                  </span>
+                </button>
+              </Tooltip>
               <IconButton
                 size="sm"
                 variant="danger"
@@ -417,17 +421,20 @@ function SummaryRow({
   );
   return onClick
     ? (
-      <button
-        type="button"
-        className="ema-summary-row group"
-        title={title}
-        onClick={onClick}
-      >
-        {content}
-      </button>
+      <Tooltip content={title} variant="card">
+        <button
+          type="button"
+          className="ema-summary-row group"
+          onClick={onClick}
+        >
+          {content}
+        </button>
+      </Tooltip>
     )
     : (
-      <div className="ema-summary-row" title={title}>{content}</div>
+      <Tooltip content={title} variant="card">
+        <div className="ema-summary-row">{content}</div>
+      </Tooltip>
     );
 }
 

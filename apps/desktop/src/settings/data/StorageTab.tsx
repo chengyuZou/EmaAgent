@@ -1,7 +1,7 @@
 // 存储位置页(单库):库统计富卡 + Session 手风琴(单开) + 块扩散查看器。
 // 七块(轮次/消息/Token/目标/附件/音频/子代理):消息、Token 和目标进真查看器。
 import { memo, useCallback, useEffect, useRef, useState, type CSSProperties, type JSX } from 'react';
-import { Badge, Button, EmptyState, Skeleton } from '@ema-agent/ui';
+import { Tooltip, Badge, Button, EmptyState, Skeleton } from '@ema-agent/ui';
 import { PageHeader } from '../shared/PageHeader.js';
 import { useStorageStore } from '../../stores/storage.js';
 import { formatSessionTitle } from '../../stores/session.js';
@@ -229,12 +229,13 @@ function SessionAccordion({
         >
           <span className="i-solar:chat-round-bold-duotone text-[var(--ema-primary)]" aria-hidden />
           <div className="min-w-0 flex-1">
-            <p
-              className="truncate text-sm font-semibold text-[var(--ema-text-primary)]"
-              title={title}
-            >
-              {formatSessionTitle(title)}
-            </p>
+            <Tooltip content={title} variant="card">
+              <p
+                className="truncate text-sm font-semibold text-[var(--ema-text-primary)]"
+              >
+                {formatSessionTitle(title)}
+              </p>
+            </Tooltip>
             <p className="text-xs text-[var(--ema-text-tertiary)]">
               {fmtDateShort(session.lastActivityAt)}
               {` · ${session.messageCount} 消息 · ${tokenTotal} Token`}

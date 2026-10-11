@@ -1,6 +1,6 @@
 // 后台进程面板:列表到终端风格的只读详情；终止入口统一留在 Header 置顶摘要。
 import { useEffect, useMemo, useState, type JSX } from 'react';
-import { Badge, Button, Spinner, type BadgeVariant } from '@ema-agent/ui';
+import { Tooltip, Badge, Button, Spinner, type BadgeVariant } from '@ema-agent/ui';
 import type { BackgroundProcessStatus, BackgroundProcessSummary } from '../../../../api/backgroundProcesses.js';
 import { tauriBridge } from '../../../../lib/tauri-bridge.js';
 import { showToast } from '../../../../lib/toast.js';
@@ -163,9 +163,11 @@ function ProcessRow({
     >
       <span className={`${meta.icon} shrink-0 text-base`} style={{ color: meta.color }} aria-hidden />
       <div className="min-w-0 flex-1">
-        <div className="truncate text-xs font-medium text-[var(--ema-text-primary)]" title={process.command}>
-          {process.description ?? process.command}
-        </div>
+        <Tooltip content={process.command} variant="card">
+          <div className="truncate text-xs font-medium text-[var(--ema-text-primary)]">
+            {process.description ?? process.command}
+          </div>
+        </Tooltip>
         <p className="mt-0.5 truncate text-[11px] text-[var(--ema-text-tertiary)]">
           {STATUS_LABEL[process.status]}
           {process.exitCode !== undefined ? ` · exit ${process.exitCode}` : ''}
@@ -219,9 +221,11 @@ function ProcessDetail({
           </Button>
         )}
         <span className={`${meta.icon} shrink-0 text-sm`} style={{ color: meta.color }} aria-hidden />
-        <span className="truncate text-xs font-medium text-[var(--ema-text-primary)]" title={process.command}>
-          {process.description ?? process.command}
-        </span>
+        <Tooltip content={process.command} variant="card">
+          <span className="truncate text-xs font-medium text-[var(--ema-text-primary)]">
+            {process.description ?? process.command}
+          </span>
+        </Tooltip>
         <Badge variant={STATUS_BADGE[process.status]} dot={process.status === 'running'}>
           {STATUS_LABEL[process.status]}
         </Badge>
@@ -229,8 +233,12 @@ function ProcessDetail({
 
       {/* 事实行:命令/目录/退出码/时长/输出量,全部来自持久记录。 */}
       <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-0.5 border-b border-[var(--ema-border)] px-3 py-1.5 text-[11px] text-[var(--ema-text-tertiary)]">
-        <span className="max-w-full truncate font-mono" title={process.command}>{process.command}</span>
-        <span className="max-w-64 truncate" title={process.cwd}>{process.cwd}</span>
+        <Tooltip content={process.command} variant="card">
+          <span className="max-w-full truncate font-mono">{process.command}</span>
+        </Tooltip>
+        <Tooltip content={process.cwd} variant="card">
+          <span className="max-w-64 truncate">{process.cwd}</span>
+        </Tooltip>
         {process.exitCode !== undefined && <span>exit {process.exitCode}</span>}
         <span>{formatDuration(process.durationMs)}</span>
         <span>

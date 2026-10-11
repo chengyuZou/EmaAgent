@@ -1,7 +1,7 @@
 // 渲染固定候选项的字符串多选参数.
 
 import { useState, type JSX } from 'react';
-import { Button, Switch } from '@ema-agent/ui';
+import { Tooltip, Button, Switch } from '@ema-agent/ui';
 import type { SettingApply } from '../../../api/settings.js';
 import { showToast } from '../../../lib/toast.js';
 import { SaveStateIndicator, SettingApplyBadge } from '../../shared/SettingItem.js';
@@ -56,9 +56,17 @@ export function MultiSelectSetting(props: {
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <SaveStateIndicator state={state} />
-          <Button variant="ghost" size="sm" disabled={state === 'saving'} onClick={() => void reset()} title="恢复默认值">
-            <span className="i-lucide:rotate-ccw" aria-hidden />
-          </Button>
+          <Tooltip content="恢复默认值">
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={state === 'saving'}
+              aria-label="恢复默认值"
+              onClick={() => void reset()}
+            >
+              <span className="i-lucide:rotate-ccw" aria-hidden />
+            </Button>
+          </Tooltip>
         </div>
       </div>
       <div className="ema-material-card mt-3 divide-y divide-[var(--ema-border)] overflow-hidden rounded-lg border border-[var(--ema-border)] bg-[var(--ema-surface-1)]">

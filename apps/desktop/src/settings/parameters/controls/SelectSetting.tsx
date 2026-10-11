@@ -1,7 +1,7 @@
 // 渲染保存为有限字符串选项的参数.
 
 import { useState, type JSX } from 'react';
-import { Button, Select, type SelectOption } from '@ema-agent/ui';
+import { Tooltip, Button, Select, type SelectOption } from '@ema-agent/ui';
 import type { SettingApply } from '../../../api/settings.js';
 import { showToast } from '../../../lib/toast.js';
 import { SaveStateIndicator, SettingItem } from '../../shared/SettingItem.js';
@@ -40,14 +40,16 @@ export function SelectSetting(props: {
         disabled={state === 'saving'} 
         onChange={value => void save(value)} 
       />
-      <Button 
-        variant="ghost" 
-        size="sm" 
-        onClick={() => void props.onReset()} 
-        title="恢复默认值">
-        <span className="i-lucide:rotate-ccw" aria-hidden 
-      />
-      </Button>
+      <Tooltip content="恢复默认值">
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label="恢复默认值"
+          onClick={() => void props.onReset()}
+        >
+          <span className="i-lucide:rotate-ccw" aria-hidden />
+        </Button>
+      </Tooltip>
     </SettingItem>
   );
 }

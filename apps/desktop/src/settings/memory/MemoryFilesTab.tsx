@@ -95,9 +95,11 @@ export function MemoryFilesTab(): JSX.Element {
 
       <section className="ema-memory-browser" aria-label="Memory 文件浏览器">
         <div className="ema-memory-browser-header">
-          <span className="ema-memory-location" title={read?.path}>
-            {read?.path ?? '请选择一份 Memory 文件'}
-          </span>
+          <Tooltip content={read?.path} variant="card">
+            <span className="ema-memory-location">
+              {read?.path ?? '请选择一份 Memory 文件'}
+            </span>
+          </Tooltip>
           <Tooltip content={treeOpen ? '隐藏文件列表' : '显示文件列表'} side="bottom">
             <IconButton
               size="sm"
@@ -241,7 +243,9 @@ const MemorySearchMatch = memo(function MemorySearchMatch({ match, selected, onO
       aria-pressed={selected}
       onClick={() => onOpen(match.path)}
     >
-      <span className="truncate font-semibold" title={match.path}>{match.path}</span>
+      <Tooltip content={match.path} variant="card">
+        <span className="truncate font-semibold">{match.path}</span>
+      </Tooltip>
       <span className="text-[var(--ema-text-tertiary)]">第 {match.matchLineNumber} 行</span>
       <span className="line-clamp-3 whitespace-pre-wrap font-normal">{match.content}</span>
     </Button>

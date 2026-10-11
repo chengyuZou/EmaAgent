@@ -80,9 +80,11 @@ function WorkspaceFiles({ sessionId, projectName, roots, primaryRoot }: {
   return (
     <div className="ema-files-panel">
       <div className="ema-files-header">
-        <span className="ema-files-location" title={selectedPath ?? root}>
-          {selectedPath ?? root}
-        </span>
+        <Tooltip content={selectedPath ?? root} variant="card">
+          <span className="ema-files-location">
+            {selectedPath ?? root}
+          </span>
+        </Tooltip>
         <Tooltip content={treeOpen ? '隐藏文件树' : '显示文件树'} side="bottom">
           <IconButton
             size="sm"
@@ -128,7 +130,9 @@ function WorkspaceFiles({ sessionId, projectName, roots, primaryRoot }: {
                 className="h-7 w-full text-xs"
               />
             ) : (
-              <span title={root} className="truncate">{projectName ?? folderName(root)}</span>
+              <Tooltip content={root} variant="card">
+                <span className="truncate">{projectName ?? folderName(root)}</span>
+              </Tooltip>
             )}
           </div>
           <WorkspaceFileTree key={root} root={root} selectedPath={selectedPath} onOpen={openFile} />

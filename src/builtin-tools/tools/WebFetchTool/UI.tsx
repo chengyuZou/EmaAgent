@@ -1,5 +1,5 @@
 import { useState, type JSX } from 'react';
-import { Badge, Button } from '@ema-agent/ui';
+import { Tooltip, Badge, Button } from '@ema-agent/ui';
 import type { WebFetchResult } from './WebFetchTool.js';
 
 const PREVIEW_CHARS = 2_000;
@@ -34,15 +34,16 @@ export function WebFetchArgsView({ args }: { args: unknown }): JSX.Element | nul
   if (!isRecord(args) || typeof args['url'] !== 'string') return null;
   return (
     <div className="flex items-center gap-2 text-[11px] leading-relaxed">
-      <a
-        href={args['url']}
-        target="_blank"
-        rel="noopener noreferrer"
-        title={args['url']}
-        className="min-w-0 truncate text-[var(--ema-primary)] transition-colors hover:text-[var(--ema-primary-hover)] hover:underline"
-      >
-        {args['url']}
-      </a>
+      <Tooltip content={args['url']} variant="card">
+        <a
+          href={args['url']}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="min-w-0 truncate text-[var(--ema-primary)] transition-colors hover:text-[var(--ema-primary-hover)] hover:underline"
+        >
+          {args['url']}
+        </a>
+      </Tooltip>
       {args['raw'] === true && <Badge variant="warn">raw</Badge>}
     </div>
   );
@@ -61,15 +62,16 @@ function WebFetchResultCard({ result }: { result: WebFetchResult }): JSX.Element
   const omitted = result.content.length - preview.length;
   return (
     <div className="flex flex-col gap-1 text-[11px] leading-relaxed">
-      <a
-        href={result.url}
-        target="_blank"
-        rel="noopener noreferrer"
-        title={result.url}
-        className="min-w-0 truncate text-[var(--ema-primary)] transition-colors hover:text-[var(--ema-primary-hover)] hover:underline"
-      >
-        {result.url}
-      </a>
+      <Tooltip content={result.url} variant="card">
+        <a
+          href={result.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="min-w-0 truncate text-[var(--ema-primary)] transition-colors hover:text-[var(--ema-primary-hover)] hover:underline"
+        >
+          {result.url}
+        </a>
+      </Tooltip>
       <div className="flex items-center gap-2">
         <span className="text-[var(--ema-text-secondary)]">
           收到 <span className="font-medium text-[var(--ema-text-primary)]">

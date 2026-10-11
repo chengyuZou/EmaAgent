@@ -2,6 +2,7 @@
 // 导入后只允许改展示名;promptText/promptLang/时长/体积都是导入事实,不重传。
 import { useEffect, useState, type JSX } from 'react';
 import {
+  Tooltip,
   Button, Dialog, DropdownMenu, IconButton, Input, ScrollArea, Select, Textarea,
   type MenuItem,
 } from '@ema-agent/ui';
@@ -223,13 +224,14 @@ function VoiceRow({ character, sample, index }: {
         hover:border-[var(--ema-primary)]/30 hover:bg-[var(--ema-surface-2)] hover:shadow-[var(--ema-shadow-soft)]"
       style={{ '--stagger-i': index } as React.CSSProperties}
     >
-      <span
-        className={`h-4 w-4 shrink-0 rounded-full border-2
-          ${sample.isPrimary
-            ? 'border-[var(--ema-success)] bg-[var(--ema-success)]'
-            : 'border-[var(--ema-text-tertiary)] bg-transparent'}`}
-        title={sample.isPrimary ? '主要参考音频' : '非主要参考音频'}
-      />
+      <Tooltip content={sample.isPrimary ? '主要参考音频' : '非主要参考音频'}>
+        <span
+          className={`h-4 w-4 shrink-0 rounded-full border-2
+            ${sample.isPrimary
+              ? 'border-[var(--ema-success)] bg-[var(--ema-success)]'
+              : 'border-[var(--ema-text-tertiary)] bg-transparent'}`}
+        />
+      </Tooltip>
       <span className="i-solar:music-note-bold-duotone text-lg text-[var(--ema-primary)]" aria-hidden />
 
       <div className="min-w-0 flex-1">
@@ -247,14 +249,15 @@ function VoiceRow({ character, sample, index }: {
             }}
           />
         ) : (
-          <button
-            type="button"
-            className="block truncate text-[11px] text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-secondary)]"
-            title="点击编辑展示名"
-            onClick={() => setEditing(true)}
-          >
-            {sample.displayName}
-          </button>
+          <Tooltip content="点击编辑展示名">
+            <button
+              type="button"
+              className="block truncate text-[11px] text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-secondary)]"
+              onClick={() => setEditing(true)}
+            >
+              {sample.displayName}
+            </button>
+          </Tooltip>
         )}
         <p className="text-[10px] text-[var(--ema-text-tertiary)]">
           {formatDuration(sample.durationMs)}{sample.durationMs !== null ? ' · ' : ''}{formatBytes(sample.byteSize)}

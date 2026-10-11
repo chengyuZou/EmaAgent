@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import * as RadixDropdown from '@radix-ui/react-dropdown-menu';
 import { cn } from '../utils/cn.js';
 import { overlayItemCn, overlayItemDangerCn } from './overlayItem.js';
+import { Tooltip } from './Tooltip.js';
 
 // ── DropdownMenu ────────────────────────────────────────────────────────────
 //
@@ -17,6 +18,8 @@ export type MenuItem =
 
 export interface DropdownMenuProps {
   trigger:   ReactNode;
+  /** 触发按钮的只读悬停提示, 不改变菜单的点击或焦点行为. */
+  triggerTooltip?: ReactNode;
   /** 传函数时只在菜单真正展开后生成条目, 避免每次输入文字都重建模型等列表. */
   items:     MenuItem[] | (() => MenuItem[]);
   side?:     'top' | 'right' | 'bottom' | 'left';
@@ -29,11 +32,22 @@ export interface DropdownMenuProps {
 }
 
 export function DropdownMenu(props: DropdownMenuProps): React.JSX.Element {
-  const { trigger, items, side = 'bottom', align = 'start', widthClass = 'min-w-48', checkIcon, submenuIcon } = props;
+  const {
+    trigger,
+    triggerTooltip,
+    items,
+    side = 'bottom',
+    align = 'start',
+    widthClass = 'min-w-48',
+    checkIcon,
+    submenuIcon,
+  } = props;
   const [openSubId, setOpenSubId] = useState<string | null>(null);
   return (
     <RadixDropdown.Root onOpenChange={(open) => { if (!open) setOpenSubId(null); }}>
-      <RadixDropdown.Trigger asChild>{trigger}</RadixDropdown.Trigger>
+      <Tooltip content={triggerTooltip} side={side}>
+        <RadixDropdown.Trigger asChild>{trigger}</RadixDropdown.Trigger>
+      </Tooltip>
       <RadixDropdown.Portal>
         <RadixDropdown.Content
           side={side}

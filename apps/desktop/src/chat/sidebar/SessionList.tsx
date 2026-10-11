@@ -5,7 +5,7 @@ import {
   useState,
   type JSX,
 } from 'react';
-import { Dialog, IconButton, Input } from '@ema-agent/ui';
+import { Tooltip, Dialog, IconButton, Input } from '@ema-agent/ui';
 import {
   sessionsApi,
   type SessionListItem,
@@ -224,12 +224,13 @@ function SearchRow({
       onClick={onSelect}
     >
       <span className="min-w-0 flex-1">
-        <span
-          className="block truncate"
-          title={session.title || '新对话'}
-        >
-          {formatSessionTitle(session.title || '新对话')}
-        </span>
+        <Tooltip content={session.title || '新对话'} variant="card">
+          <span
+            className="block truncate"
+          >
+            {formatSessionTitle(session.title || '新对话')}
+          </span>
+        </Tooltip>
         {showSnippet && (
           <span className="ema-session-search-snippet block truncate">{snippet}</span>
         )}

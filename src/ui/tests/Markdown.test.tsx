@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Markdown } from '../components/Markdown.js';
+import { TooltipProvider } from '../components/Tooltip.js';
 
 const drawing = vi.hoisted(() => ({
   render: vi.fn(),
@@ -26,6 +27,11 @@ const closed = `\`\`\`mermaid\n${graph}\n\`\`\``;
 beforeEach(() => {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   drawing.render.mockReset().mockResolvedValue('<svg viewBox="0 0 100 100"><text>已渲染</text></svg>');
+  vi.stubGlobal('ResizeObserver', class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  });
   container = document.createElement('div');
   document.body.append(container);
   root = createRoot(container);
@@ -38,8 +44,37 @@ afterEach(() => {
 });
 
 async function show(source: string, streaming = false): Promise<void> {
-  await act(async () => root.render(<Markdown source={source} streaming={streaming} />));
+  await act(async () => root.render(
+    <TooltipProvider>
+      <Markdown source={source} streaming={streaming} />
+    </TooltipProvider>,
+  ));
 }
+
+describe('Markdown links', () => {
+  it.each([
+    ['https://example.com/docs?section=audio', '_blank'],
+    ['/workspace/src/index.ts', null],
+  ])('shows the full address on focus without changing %s', async (href, target) => {
+    await show(`[查看内容](${href})`);
+    const link = container.querySelector('a')!;
+    expect(link.getAttribute('href')).toBe(href);
+    expect(link.getAttribute('target')).toBe(target);
+    expect(link.hasAttribute('title')).toBe(false);
+    await act(async () => link.focus());
+    expect(document.querySelector('.ema-tooltip-card')?.textContent).toContain(href);
+  });
+
+  it('keeps the link description together with its address in the custom tooltip', async () => {
+    await show('[文档](https://example.com/docs "官方文档")');
+    const link = container.querySelector('a')!;
+    expect(link.hasAttribute('title')).toBe(false);
+    await act(async () => link.focus());
+    const content = document.querySelector('.ema-tooltip-card')?.textContent;
+    expect(content).toContain('官方文档');
+    expect(content).toContain('https://example.com/docs');
+  });
+});
 
 describe('Markdown Mermaid', () => {
   it('renders static Mermaid without syntax highlighting its source', async () => {

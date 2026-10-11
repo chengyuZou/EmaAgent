@@ -1,6 +1,6 @@
 // 展示当前 Session 的队首 Permission 或 AskUser, 后续交互继续留在服务端单队列中.
 import { useEffect, useRef, useState, type CSSProperties, type JSX } from 'react';
-import { Button, Card, CardButton, IconButton, Textarea } from '@ema-agent/ui';
+import { Tooltip, Button, Card, CardButton, IconButton, Textarea } from '@ema-agent/ui';
 import type { PermissionRequest, PermissionResponse } from '@ema-agent/permission';
 import type { AskUserQuestionSpec, AskUserRequiredEvent } from '@ema-agent/tools';
 import type { PendingInteraction } from '@ema-agent/turn';
@@ -126,9 +126,11 @@ function PermissionView({ sessionId, request }: { sessionId: string; request: Pe
         <div className="overflow-hidden rounded-md border border-[var(--ema-border)]">
           <div className="flex items-center gap-2 bg-[color-mix(in_srgb,var(--ema-primary)_7%,var(--ema-surface-1))] px-2 py-1">
             <span className="min-w-0 flex-1 truncate text-xs font-semibold text-[var(--ema-primary-text)]">{request.toolName}</span>
-            <span className="text-[11px] text-[var(--ema-text-tertiary)]" title={request.subagentId}>
-              {request.subagentId ? `子代理 · ${request.subagentId.slice(0, 8)}` : '主 Agent'}
-            </span>
+            <Tooltip content={request.subagentId} variant="card">
+              <span className="text-[11px] text-[var(--ema-text-tertiary)]">
+                {request.subagentId ? `子代理 · ${request.subagentId.slice(0, 8)}` : '主 Agent'}
+              </span>
+            </Tooltip>
             <IconButton
               label={copied ? '已复制输入' : '复制输入'}
               icon={copied ? 'i-lucide:check' : 'i-lucide:copy'}

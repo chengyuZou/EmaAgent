@@ -16,6 +16,16 @@
 
 raw HTML 先经 `rehype-sanitize` 清洗, 然后执行 KaTeX 和代码高亮. Mermaid 代码不经过语法高亮, 由官方 Mermaid 解析和输出 SVG.
 
+链接保留原来的 `href` 与外链行为, 聚焦或悬停时通过 `Tooltip` 显示完整地址. 原文提供的链接说明也显示在提示中, 不使用原生 `title` 提示框. 使用 Markdown 的应用根部需要挂载 `TooltipProvider`.
+
+## 悬停提示
+
+应用根部挂载 `TooltipProvider`, 默认等待 200ms 后显示鼠标悬停提示. `Tooltip` 未传 `delayDuration` 时使用最近的 Provider 设置; 键盘聚焦可直接查看提示. `label` 用于短操作说明, `card` 用于地址、路径或多行只读预览, 两者共享主题、边框与动画. 长文本在可用窗口宽度内换行.
+
+`Tooltip` 的子元素需要能接收 DOM ref 和事件. 它不会额外包裹布局元素, 也不改变子元素的点击行为. `content` 为 undefined、null 或空字符串, 或设置 `disabled`, 则保持子元素原样. 使用自定义提示时移除同一元素的原生 `title`, 图标按钮仍需保留 `aria-label`.
+
+下拉菜单与 Popover 的触发按钮需要提示时, 使用它们的 `triggerTooltip`. 提示与点击事件在同一个按钮上组合, 不把 `Tooltip` 放进 `trigger` 来替代按钮. 提示内容保持只读, 含按钮等交互内容使用 Popover.
+
 ## Mermaid 与 ELK
 
 依赖固定为 `mermaid` 11.17.2 和 `@mermaid-js/layout-elk` 0.2.2. 流程图使用官方 ELK; 时序图等类型保持 Mermaid 自身的渲染器. 不自行维护布局或连线算法.
@@ -33,6 +43,7 @@ raw HTML 先经 `rehype-sanitize` 清洗, 然后执行 KaTeX 和代码高亮. Me
 ## 验证
 
 - `pnpm --filter @ema-agent/ui typecheck`
+- `pnpm --filter @ema-agent/ui test -- tests/Tooltip.test.tsx`: 默认与单独设置的等待时间、只读提示、菜单和面板触发按钮的点击与焦点行为.
 - `pnpm --filter @ema-agent/ui test -- tests/Markdown.test.tsx tests/mermaidRender.test.ts tests/mermaidIntegration.test.ts`
 - `pnpm --filter @ema-agent/ui ladle`: 现有组件预览中的 `Markdown / Mermaid`, 覆盖分支、分组、时序图、错误回退、明暗与宽度切换、流式围栏.
 

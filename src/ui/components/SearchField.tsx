@@ -4,6 +4,7 @@
 import { forwardRef, type JSX } from 'react';
 import { cn } from '../utils/cn.js';
 import { Button } from './Button.js';
+import { Tooltip } from './Tooltip.js';
 
 export interface SearchFieldProps {
   value:            string;
@@ -67,19 +68,20 @@ export const SearchField = forwardRef<HTMLInputElement, SearchFieldProps>(
           onChange={(event) => onChange(event.target.value)}
         />
         {value.length > 0 && (
-          <button
-            type="button"
-            aria-label="清除搜索"
-            title="清除搜索"
-            disabled={disabled}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ema-chip-in
-              text-[var(--ema-text-tertiary)] transition-colors
-              hover:bg-[var(--ema-surface-2)] hover:text-[var(--ema-text-primary)]
-              focus-ring"
-            onClick={() => onChange('')}
-          >
-            <span className="i-lucide:x text-sm" aria-hidden />
-          </button>
+          <Tooltip content="清除搜索">
+            <button
+              type="button"
+              aria-label="清除搜索"
+              disabled={disabled}
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ema-chip-in
+                text-[var(--ema-text-tertiary)] transition-colors
+                hover:bg-[var(--ema-surface-2)] hover:text-[var(--ema-text-primary)]
+                focus-ring"
+              onClick={() => onChange('')}
+            >
+              <span className="i-lucide:x text-sm" aria-hidden />
+            </button>
+          </Tooltip>
         )}
         {onSubmit && (
           <Button

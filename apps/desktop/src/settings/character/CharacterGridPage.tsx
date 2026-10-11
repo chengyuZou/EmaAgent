@@ -2,6 +2,7 @@
 // ●○切换、悬停删除、新建卡收尾。当前角色有工作在跑时拒绝切换/删除(先停再来)。
 import { useEffect, useMemo, useState, type JSX } from 'react';
 import {
+  Tooltip,
   Button, Callout, CursorFloating, Dialog, IconButton, Input, ScrollArea, SearchField, Skeleton,
 } from '@ema-agent/ui';
 import { ServerApiError } from '../../api/client.js';
@@ -170,15 +171,20 @@ function CharacterCard({
           hover:border-[var(--ema-primary)]/30 hover:shadow-[var(--ema-shadow-soft)]"
         onClick={onOpen}
       >
-      <button
-        type="button"
-        className={`absolute left-2 top-2 z-10 h-3.5 w-3.5 rounded-full border-2 transition-all
-          ${isActive
-            ? 'border-[var(--ema-success)] bg-[var(--ema-success)] shadow-[var(--ema-shadow-1)]'
-            : 'border-[var(--ema-border-strong)] bg-[var(--ema-surface-2)] hover:border-[var(--ema-text-secondary)]'}`}
-        title={isActive ? '当前角色' : '设为当前角色'}
-        onClick={event => { event.stopPropagation(); if (!isActive) onActivate(); }}
-      />
+      <Tooltip content={isActive ? '当前角色' : '设为当前角色'}>
+        <button
+          type="button"
+          className={`absolute left-2 top-2 z-10 h-3.5 w-3.5 rounded-full border-2 transition-all
+            ${isActive
+              ? 'border-[var(--ema-success)] bg-[var(--ema-success)] shadow-[var(--ema-shadow-1)]'
+              : 'border-[var(--ema-border-strong)] bg-[var(--ema-surface-2)] hover:border-[var(--ema-text-secondary)]'}`}
+          aria-label={isActive ? '当前角色' : '设为当前角色'}
+          onClick={event => {
+            event.stopPropagation();
+            if (!isActive) onActivate();
+          }}
+        />
+      </Tooltip>
       {canDelete && (
         <div
           className="absolute right-2 top-2 z-10 opacity-0 transition-opacity group-hover:opacity-100"

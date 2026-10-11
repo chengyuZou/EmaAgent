@@ -231,8 +231,9 @@ export function ModelPicker({ catalog, providerId, modelId, reasoningEffort, onM
       align="end"
       widthClass="min-w-52"
       items={items}
+      triggerTooltip={label}
       trigger={(
-        <Button variant="ghost" className="ema-chat-btn min-w-0" title={label} disabled={!canOpen}>
+        <Button variant="ghost" className="ema-chat-btn min-w-0" disabled={!canOpen}>
           <span className="max-w-44 truncate">{label}</span>
           {selected && (
             <span className="text-[var(--ema-text-tertiary)]">

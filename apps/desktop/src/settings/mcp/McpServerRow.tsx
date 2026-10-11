@@ -112,17 +112,18 @@ export function ServerRow({
             <span className="text-sm font-semibold text-[var(--ema-text-primary)]">{server.name}</span>
             <Badge variant={st.variant}>{st.label}</Badge>
             {server.toolCount > 0 && (
-              <button
-                className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-xs
-                           bg-[var(--ema-surface-2)] text-[var(--ema-text-secondary)]
-                           hover:bg-[var(--ema-surface-3)] transition-colors"
-                onClick={() => setExpanded((v) => !v)}
-                title={expanded ? '收起工具' : '展开查看工具'}
-              >
-                <span className="i-mdi:tools text-xs" aria-hidden />
-                {server.toolCount}
-                <span className={`i-mdi:chevron-down text-xs transition-transform ${expanded ? 'rotate-180' : ''}`} aria-hidden />
-              </button>
+              <Tooltip content={expanded ? '收起工具' : '展开查看工具'}>
+                <button
+                  className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-xs
+                             bg-[var(--ema-surface-2)] text-[var(--ema-text-secondary)]
+                             hover:bg-[var(--ema-surface-3)] transition-colors"
+                  onClick={() => setExpanded((v) => !v)}
+                >
+                  <span className="i-mdi:tools text-xs" aria-hidden />
+                  {server.toolCount}
+                  <span className={`i-mdi:chevron-down text-xs transition-transform ${expanded ? 'rotate-180' : ''}`} aria-hidden />
+                </button>
+              </Tooltip>
             )}
           </div>
 

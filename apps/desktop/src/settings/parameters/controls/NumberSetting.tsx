@@ -1,7 +1,7 @@
 // 渲染直接以数字保存的参数, 不承担单位换算或业务范围定义.
 
 import { useEffect, useState, type JSX } from 'react';
-import { Button, Input } from '@ema-agent/ui';
+import { Tooltip, Button, Input } from '@ema-agent/ui';
 import type { SettingApply } from '../../../api/settings.js';
 import { showToast } from '../../../lib/toast.js';
 import { SaveStateIndicator, SettingItem } from '../../shared/SettingItem.js';
@@ -63,9 +63,16 @@ export function NumberSetting(props: {
         onKeyDown={event => { if (event.key === 'Enter') event.currentTarget.blur(); }}
       />
       {props.unit && <span className="text-xs text-[var(--ema-text-tertiary)]">{props.unit}</span>}
-      <Button variant="ghost" size="sm" onClick={() => void reset()} title="恢复默认值">
-        <span className="i-lucide:rotate-ccw" aria-hidden />
-      </Button>
+      <Tooltip content="恢复默认值">
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label="恢复默认值"
+          onClick={() => void reset()}
+        >
+          <span className="i-lucide:rotate-ccw" aria-hidden />
+        </Button>
+      </Tooltip>
     </SettingItem>
   );
 }

@@ -1,6 +1,6 @@
 // 子代理身份入口与聊天 Header. 同一身份的全部 Run 在连续消息视口中阅读.
 import { useEffect, useMemo, useRef, useState, type JSX } from 'react';
-import { Button, IconButton, Spinner } from '@ema-agent/ui';
+import { Tooltip, Button, IconButton, Spinner } from '@ema-agent/ui';
 import { isStreamingMessage, useTurnStore } from '../../../../stores/turn.js';
 import { subagentsApi, type SubagentListResult } from '../../../../api/subagents.js';
 import { sessionWebSocket } from '../../../../api/sessionWebSocket.js';
@@ -125,7 +125,9 @@ export function SubagentPanel({ sessionId, className = '', initialDetailId }: Su
         <span className={running ? 'i-lucide:loader-circle animate-spin' : 'i-lucide:bot'} aria-hidden />
         <span className="ema-subagent-row-content">
           <strong>{record?.title ?? id}</strong>
-          {record?.description && <span title={record.description}>{record.description}</span>}
+          {record?.description && <Tooltip content={record.description} variant="card">
+            <span>{record.description}</span>
+          </Tooltip>}
         </span>
         <span className="ema-subagent-row-meta">
           <span>{running ? '运行中' : statusLabel(record?.status)}</span>
@@ -226,15 +228,19 @@ function SubagentDetail({
           size="sm"
           onClick={onBack}
         />
-        <strong className="min-w-0 flex-1 truncate text-sm" title={detail}>
-          {title}
-        </strong>
+        <Tooltip content={detail} variant="card">
+          <strong className="min-w-0 flex-1 truncate text-sm">
+            {title}
+          </strong>
+        </Tooltip>
         <div className="flex shrink-0 items-center gap-2 text-xs text-[var(--ema-text-tertiary)]">
           <span>{status}</span>
           {record?.modelId && (
-            <span className="max-w-40 truncate" title={record.modelId}>
-              {record.modelId}
-            </span>
+            <Tooltip content={record.modelId} variant="card">
+              <span className="max-w-40 truncate">
+                {record.modelId}
+              </span>
+            </Tooltip>
           )}
           {record?.reasoningEffort && <span>{record.reasoningEffort}</span>}
         </div>

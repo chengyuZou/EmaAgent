@@ -5,6 +5,7 @@ import { tauriBridge, type BrowserBounds } from '../../../../lib/tauri-bridge.js
 import { useSessionPanelStore } from '../../../../stores/sessionPanel.js';
 import { MainView, useMainNavigationStore } from '../../../../layout/navigation.js';
 import { useWindowSuspension } from '../../../../hooks/use-window-suspension.js';
+import { Tooltip } from '@ema-agent/ui';
 
 export interface BrowserPanelProps {
   readonly sessionId: string;
@@ -250,16 +251,17 @@ function ToolbarButton({
   onClick(): void;
 }): JSX.Element {
   return (
-    <button
-      type="button"
-      title={label}
-      aria-label={label}
-      disabled={disabled}
-      className="size-7 shrink-0 rounded-md flex items-center justify-center text-[var(--ema-text-secondary)] hover:bg-[var(--ema-surface-3)] disabled:opacity-40 disabled:hover:bg-transparent"
-      onClick={onClick}
-    >
-      <span className={`${icon} text-sm`} aria-hidden />
-    </button>
+    <Tooltip content={label}>
+      <button
+        type="button"
+        aria-label={label}
+        disabled={disabled}
+        className="size-7 shrink-0 rounded-md flex items-center justify-center text-[var(--ema-text-secondary)] hover:bg-[var(--ema-surface-3)] disabled:opacity-40 disabled:hover:bg-transparent"
+        onClick={onClick}
+      >
+        <span className={`${icon} text-sm`} aria-hidden />
+      </button>
+    </Tooltip>
   );
 }
 

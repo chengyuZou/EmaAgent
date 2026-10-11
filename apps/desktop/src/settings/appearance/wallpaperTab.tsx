@@ -1,6 +1,7 @@
 // 管理主窗口的壁纸图库, 选图和单图参数.
 import { useEffect, useLayoutEffect, useRef, useState, type JSX, type KeyboardEvent, type PointerEvent, type CSSProperties } from 'react';
 import {
+  Tooltip,
   Badge,
   Button,
   Callout,
@@ -407,37 +408,37 @@ export function WallpaperTab(): JSX.Element {
             <p className="mb-2 text-xs text-[var(--ema-text-tertiary)]">图库 · {items.length} 张</p>
             <div className="flex gap-3 overflow-x-auto pb-2">
               {items.map(item => (
-                <button
-                  key={item.name}
-                  type="button"
-                  disabled={controlsDisabled}
-                  aria-pressed={item.name === selectedName}
-                  title={item.name}
-                  onClick={() => selectImage(item.name)}
-                  className={`ema-wallpaper-thumbnail group relative w-28 shrink-0 overflow-hidden rounded-lg border text-left ${
-                    item.name === selectedName
-                      ? 'border-[var(--ema-primary)] shadow-[var(--ema-shadow-soft)]'
-                      : 'border-[var(--ema-border)] hover:border-[var(--ema-primary)]/60'
-                  }`}
-                >
-                  <div className="h-18 bg-[var(--ema-surface-2)] ema-fade-in">
-                    <ServerImage
-                      path={wallpaperApi.thumbnailPath(item.name)}
-                      contentUpdatedAt={item.modifiedAt}
-                      alt=""
-                      className="h-full w-full object-cover "
-                    />
-                  </div>
-                  <span className="block truncate px-2 py-1 text-[11px] text-[var(--ema-text-secondary)]">{item.name}</span>
-                  {item.name === settings.activeImage && (
-                    <Badge
-                      variant="primary"
-                      className="ema-wallpaper-thumbnail-badge absolute right-1 top-1 rounded-md px-1.5 py-0.5 text-[10px]"
-                    >
-                      使用中
-                    </Badge>
-                  )}
-                </button>
+                <Tooltip key={item.name} content={item.name}>
+                  <button
+                    type="button"
+                    disabled={controlsDisabled}
+                    aria-pressed={item.name === selectedName}
+                    onClick={() => selectImage(item.name)}
+                    className={`ema-wallpaper-thumbnail group relative w-28 shrink-0 overflow-hidden rounded-lg border text-left ${
+                      item.name === selectedName
+                        ? 'border-[var(--ema-primary)] shadow-[var(--ema-shadow-soft)]'
+                        : 'border-[var(--ema-border)] hover:border-[var(--ema-primary)]/60'
+                    }`}
+                  >
+                    <div className="h-18 bg-[var(--ema-surface-2)] ema-fade-in">
+                      <ServerImage
+                        path={wallpaperApi.thumbnailPath(item.name)}
+                        contentUpdatedAt={item.modifiedAt}
+                        alt=""
+                        className="h-full w-full object-cover "
+                      />
+                    </div>
+                    <span className="block truncate px-2 py-1 text-[11px] text-[var(--ema-text-secondary)]">{item.name}</span>
+                    {item.name === settings.activeImage && (
+                      <Badge
+                        variant="primary"
+                        className="ema-wallpaper-thumbnail-badge absolute right-1 top-1 rounded-md px-1.5 py-0.5 text-[10px]"
+                      >
+                        使用中
+                      </Badge>
+                    )}
+                  </button>
+                </Tooltip>
               ))}
             </div>
           </div>

@@ -1,6 +1,7 @@
 // 编辑单个 Live2D 模型的舞台位置、原生资源清单与语义映射。
 import { useCallback, useEffect, useMemo, useState, type JSX } from 'react';
 import {
+  Tooltip,
   Badge,
   Button,
   IconButton,
@@ -490,21 +491,23 @@ function NativeResourceList({ title, items }: {
             key={item.file}
             className="grid grid-cols-[minmax(0,1fr)_minmax(96px,140px)_auto] items-center gap-2 border-b border-[var(--ema-border)] -mx-2 px-2 py-1.5 last:border-none rounded-lg transition-colors hover:bg-[var(--ema-surface-1)]"
           >
-            <span
-              className="truncate font-mono text-[11px] text-[var(--ema-text-secondary)]"
-              title={item.file}
-            >
-              {item.file}
-            </span>
+            <Tooltip content={item.file} variant="card">
+              <span
+                className="truncate font-mono text-[11px] text-[var(--ema-text-secondary)]"
+              >
+                {item.file}
+              </span>
+            </Tooltip>
             {item.identity === null
               ? <Badge variant="neutral">未登记</Badge>
               : (
-                  <span
-                    className="truncate text-[11px] text-[var(--ema-info)]"
-                    title={item.identity}
-                  >
-                    {item.identity}
-                  </span>
+                  <Tooltip content={item.identity} variant="card">
+                    <span
+                      className="truncate text-[11px] text-[var(--ema-info)]"
+                    >
+                      {item.identity}
+                    </span>
+                  </Tooltip>
                 )}
             {item.onPreview && (
               <Button size="sm" variant="ghost" onClick={item.onPreview}>

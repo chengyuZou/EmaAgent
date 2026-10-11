@@ -3,6 +3,7 @@ import type { JSX } from 'react';
 import type { FileWriteResult } from './FileWriteTool.js';
 import { patchToUnifiedText } from '../FileEditTool/patch.js';
 import { FilePatchView } from '../shared/filePatchView.js';
+import { Tooltip } from '@ema-agent/ui';
 
 const CREATED_PREVIEW_LINES = 10;
 
@@ -94,12 +95,14 @@ export function FileWriteArgsView({ args }: { args: unknown }): JSX.Element | nu
   return (
     <div className="flex items-baseline gap-2 text-[11px] leading-relaxed">
       <span className="shrink-0 text-[var(--ema-text-tertiary)]">path:</span>
-      <span className="min-w-0 font-mono text-[var(--ema-text-secondary)]" title={args['file_path']}>
-        {args['file_path']}
-        {sizeKb !== null && (
-          <span className="text-[var(--ema-text-tertiary)]">{` · 写入 ${sizeKb} KB`}</span>
-        )}
-      </span>
+      <Tooltip content={args['file_path']} variant="card">
+        <span className="min-w-0 font-mono text-[var(--ema-text-secondary)]">
+          {args['file_path']}
+          {sizeKb !== null && (
+            <span className="text-[var(--ema-text-tertiary)]">{` · 写入 ${sizeKb} KB`}</span>
+          )}
+        </span>
+      </Tooltip>
     </div>
   );
 }

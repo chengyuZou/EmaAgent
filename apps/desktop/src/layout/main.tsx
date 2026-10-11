@@ -174,34 +174,37 @@ export function MainWindow(): JSX.Element {
         >
         </div>
         <div className="ema-main-window-controls">
-          <button
-            type="button"
-            aria-label="最小化"
-            title="最小化"
-            onClick={() => runWindowAction(() => tauriBridge.minimizeWindow())}
-          >
-            <span className="i-lucide:minus" aria-hidden />
-          </button>
-          <button
-            type="button"
-            aria-label={maximized ? '还原窗口' : '最大化'}
-            title={maximized ? '还原窗口' : '最大化'}
-            onClick={() => runWindowAction(() => tauriBridge.toggleMaximizeWindow())}
-          >
-            <span
-              className={maximized ? 'i-mdi:window-restore' : 'i-mdi:window-maximize'}
-              aria-hidden
-            />
-          </button>
-          <button
-            type="button"
-            className="ema-main-window-close"
-            aria-label="关闭主窗口"
-            title="关闭主窗口"
-            onClick={() => runWindowAction(() => tauriBridge.hideMainWindow())}
-          >
-            <span className="i-lucide:x" aria-hidden />
-          </button>
+          <Tooltip content="最小化">
+            <button
+              type="button"
+              aria-label="最小化"
+              onClick={() => runWindowAction(() => tauriBridge.minimizeWindow())}
+            >
+              <span className="i-lucide:minus" aria-hidden />
+            </button>
+          </Tooltip>
+          <Tooltip content={maximized ? '还原窗口' : '最大化'}>
+            <button
+              type="button"
+              aria-label={maximized ? '还原窗口' : '最大化'}
+              onClick={() => runWindowAction(() => tauriBridge.toggleMaximizeWindow())}
+            >
+              <span
+                className={maximized ? 'i-mdi:window-restore' : 'i-mdi:window-maximize'}
+                aria-hidden
+              />
+            </button>
+          </Tooltip>
+          <Tooltip content="关闭主窗口">
+            <button
+              type="button"
+              className="ema-main-window-close"
+              aria-label="关闭主窗口"
+              onClick={() => runWindowAction(() => tauriBridge.hideMainWindow())}
+            >
+              <span className="i-lucide:x" aria-hidden />
+            </button>
+          </Tooltip>
         </div>
       </header>
       <div className="ema-main-body">

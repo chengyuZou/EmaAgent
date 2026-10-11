@@ -43,7 +43,7 @@ createRoot(container).render(
       </button>
     </div>
   )}>
-    <TooltipProvider delayDuration={300}>
+    <TooltipProvider>
       <App />
     </TooltipProvider>
   </ErrorBoundary>,

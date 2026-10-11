@@ -93,13 +93,13 @@ export function InputProjectBar({ sessionId: viewedId, session: viewedSession, p
         align="start"
         widthClass="min-w-56"
         items={projectItems}
+        triggerTooltip={currentProject?.name ?? '不在项目中工作'}
         trigger={(
           <Button
             variant="ghost"
             size="sm"
             disabled={changingProject || (viewedId !== null && !viewedSession)}
             className="max-w-56 gap-1.5 rounded-md px-2"
-            title={currentProject?.name ?? '不在项目中工作'}
           >
             <span className="i-lucide:folder shrink-0 text-sm" aria-hidden />
             <span className="truncate">{currentProject?.name ?? '选择项目'}</span>

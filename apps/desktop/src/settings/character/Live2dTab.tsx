@@ -1,6 +1,7 @@
 // 展示角色的 Live2D 模型卡片，并承接导入、封面和资源级操作。
 import { useState, type JSX } from 'react';
 import {
+  Tooltip,
   Button,
   CursorFloating,
   DropdownMenu,
@@ -175,13 +176,14 @@ function ModelCard({
             : 'border-[var(--ema-border)] bg-[var(--ema-surface-2)]'}`}
       >
       <div className="absolute left-2 top-2 z-10">
-        <span
-          className={`block h-3.5 w-3.5 rounded-full border-2
-            ${model.isPrimary
-              ? 'border-[var(--ema-success)] bg-[var(--ema-success)] shadow-[var(--ema-shadow-1)]'
-              : 'border-[var(--ema-border-strong)] bg-[var(--ema-surface-2)]'}`}
-          title={model.isPrimary ? '主要模型' : '非主要模型'}
-        />
+        <Tooltip content={model.isPrimary ? '主要模型' : '非主要模型'}>
+          <span
+            className={`block h-3.5 w-3.5 rounded-full border-2
+              ${model.isPrimary
+                ? 'border-[var(--ema-success)] bg-[var(--ema-success)] shadow-[var(--ema-shadow-1)]'
+                : 'border-[var(--ema-border-strong)] bg-[var(--ema-surface-2)]'}`}
+          />
+        </Tooltip>
       </div>
       <div className="absolute right-2 top-2 z-10" onClick={event => event.stopPropagation()}>
         <DropdownMenu

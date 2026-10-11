@@ -1,5 +1,5 @@
 import { useState, type JSX } from 'react';
-import { ConfirmDialog, DropdownMenu, IconButton, PromptDialog, type MenuItem } from '@ema-agent/ui';
+import { Tooltip, ConfirmDialog, DropdownMenu, IconButton, PromptDialog, type MenuItem } from '@ema-agent/ui';
 import type { SessionListItem } from '../../api/sessions.js';
 import type { SessionActivity } from '../../stores/sessionActivity.js';
 import { useMainNavigationStore } from '../../layout/navigation.js';
@@ -157,19 +157,21 @@ export function SessionRow({
         {session.pinned && (
           <span className={`i-lucide:pin text-[11px] shrink-0 ${isActive ? 'text-[var(--ema-text-secondary)]' : 'text-[var(--ema-text-tertiary)]'}`} aria-hidden />
         )}
-        <span
-          className="truncate min-w-0 leading-snug"
-          title={session.title || '新对话'}
-        >
-          {formatSessionTitle(session.title || '新对话')}
-        </span>
-        {(sessionActivity?.pendingInteractions.length ?? 0) > 0 && (
+        <Tooltip content={session.title || '新对话'} variant="card">
           <span
-            className="shrink-0 text-[10px] font-mono px-1.5 py-0.5 rounded-full ema-scale-in bg-[var(--ema-warning-muted)] text-[var(--ema-warning-text)]"
-            title={`${sessionActivity?.pendingInteractions.length ?? 0} 个待答问题`}
+            className="truncate min-w-0 leading-snug"
           >
-            {sessionActivity?.pendingInteractions.length}
+            {formatSessionTitle(session.title || '新对话')}
           </span>
+        </Tooltip>
+        {(sessionActivity?.pendingInteractions.length ?? 0) > 0 && (
+          <Tooltip content={`${sessionActivity?.pendingInteractions.length ?? 0} 个待答问题`} variant="card">
+            <span
+              className="shrink-0 text-[10px] font-mono px-1.5 py-0.5 rounded-full ema-scale-in bg-[var(--ema-warning-muted)] text-[var(--ema-warning-text)]"
+            >
+              {sessionActivity?.pendingInteractions.length}
+            </span>
+          </Tooltip>
         )}
       </div>
 

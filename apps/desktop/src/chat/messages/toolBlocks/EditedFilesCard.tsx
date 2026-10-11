@@ -4,6 +4,7 @@ import { useId, useState, type JSX } from 'react';
 import { useCollapsibleBody } from '../messageExpansion.js';
 
 import type { EditedFile } from './toolGroups.js';
+import { Tooltip } from '@ema-agent/ui';
 
 export function EditedFilesCard({
   files, additions, deletions,
@@ -70,10 +71,12 @@ function EditedFileRow({ file }: { file: EditedFile }): JSX.Element {
   const name = displayPath.slice(separator + 1);
   return (
     <div className="ema-edited-file-row">
-      <span className="ema-edited-file-path" title={displayPath}>
-        {directory && <span className="ema-edited-file-directory">{directory}</span>}
-        <span className="ema-edited-file-name">{name}</span>
-      </span>
+      <Tooltip content={displayPath} variant="card">
+        <span className="ema-edited-file-path">
+          {directory && <span className="ema-edited-file-directory">{directory}</span>}
+          <span className="ema-edited-file-name">{name}</span>
+        </span>
+      </Tooltip>
       <FileLineCounts additions={file.additions} deletions={file.deletions} />
     </div>
   );
