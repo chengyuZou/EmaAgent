@@ -1,5 +1,3 @@
-// WebFetchTool 的桌面展示: 参数行(URL + raw 徽标)与结果卡(字节/状态码 + 内容预览).
-// 内容是 HTML 时给源码/沙箱预览切换; 其余保持文本预览。
 import { useState, type JSX } from 'react';
 import { Badge, Button } from '@ema-agent/ui';
 import type { WebFetchResult } from './WebFetchTool.js';
@@ -10,7 +8,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** 行头摘要：抓取 URL。 */
 export function webFetchTitle(args: unknown): string | null {
   return isRecord(args) && typeof args['url'] === 'string' ? args['url'] : null;
 }
@@ -37,7 +34,15 @@ export function WebFetchArgsView({ args }: { args: unknown }): JSX.Element | nul
   if (!isRecord(args) || typeof args['url'] !== 'string') return null;
   return (
     <div className="flex items-center gap-2 text-[11px] leading-relaxed">
-      <span className="min-w-0 text-[var(--ema-text-secondary)]">{args['url']}</span>
+      <a
+        href={args['url']}
+        target="_blank"
+        rel="noopener noreferrer"
+        title={args['url']}
+        className="min-w-0 truncate text-[var(--ema-primary)] transition-colors hover:text-[var(--ema-primary-hover)] hover:underline"
+      >
+        {args['url']}
+      </a>
       {args['raw'] === true && <Badge variant="warn">raw</Badge>}
     </div>
   );
@@ -56,6 +61,15 @@ function WebFetchResultCard({ result }: { result: WebFetchResult }): JSX.Element
   const omitted = result.content.length - preview.length;
   return (
     <div className="flex flex-col gap-1 text-[11px] leading-relaxed">
+      <a
+        href={result.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        title={result.url}
+        className="min-w-0 truncate text-[var(--ema-primary)] transition-colors hover:text-[var(--ema-primary-hover)] hover:underline"
+      >
+        {result.url}
+      </a>
       <div className="flex items-center gap-2">
         <span className="text-[var(--ema-text-secondary)]">
           收到 <span className="font-medium text-[var(--ema-text-primary)]">

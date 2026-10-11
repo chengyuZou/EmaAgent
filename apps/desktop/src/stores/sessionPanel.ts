@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { nanoid } from 'nanoid';
 import { tauriBridge } from '../lib/tauri-bridge.js';
 
 /**
@@ -80,11 +81,6 @@ export function backgroundProcessTab(backgroundProcessId: string): SessionSidePa
   };
 }
 
-/** 浏览器创建时 URL 尚未回报, BrowserPanel 后续按 browserId 更新同一个标签. */
-export function browserTab(browserId: string): SessionSidePanelTab {
-  return { id: `browser:${browserId}` as const, kind: 'browser', browserId, url: null };
-}
-
 const DEFAULT_RIGHT_PANEL_PERCENT = 30;
 const MIN_RIGHT_PANEL_PERCENT = 20;
 const MAX_RIGHT_PANEL_PERCENT = 70;
@@ -120,6 +116,8 @@ interface SessionPanelStore {
   readonly rightPanelPercent: number;
   /** 新标签追加到末尾; 已存在的标签更新内容并直接激活. */
   openTab(sessionId: string, tab: SessionSidePanelTab): void;
+  /** 每次新建并激活一个浏览器标签, 不复用相同 URL; null 表示空白页. */
+  openBrowserTab(sessionId: string, url: string | null): void;
   /** 文件浏览器选择文件时原位替换空白入口; 已有文件只激活, 不覆盖其他文件. */
   openWorkspaceFile(sessionId: string, filePath: string): void;
   /** 关闭标签并选择相邻标签; Browser 标签同时关闭对应 Tauri Browser. */
@@ -162,6 +160,16 @@ export const useSessionPanelStore = create<SessionPanelStore>((set, get) => ({
           },
         },
       };
+    });
+  },
+
+  openBrowserTab(sessionId, url) {
+    const browserId = nanoid();
+    get().openTab(sessionId, {
+      id: `browser:${browserId}` as const,
+      kind: 'browser',
+      browserId,
+      url,
     });
   },
 

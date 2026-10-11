@@ -1,5 +1,4 @@
-// 验证 WebFetchTool 的 schema、输入校验、权限判定、模型投影与缓存/转换细节, 不发起网络请求。
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ToolPermissionContext } from '@ema-agent/permission';
 import {
   WebFetchTool,
@@ -112,6 +111,123 @@ describe('WebFetchTool 模型投影与摘要', () => {
   it('getToolUseSummary 返回 URL', () => {
     expect(WebFetchTool.getToolUseSummary?.({ url: 'https://example.com' }))
       .toBe('https://example.com');
+  });
+});
+
+describe('WebFetchTool 读取网页', () => {
+  const invocation = {
+    sessionId: 'fetch-session',
+    turnId: 'fetch-turn',
+    toolCallId: 'fetch-call',
+    signal: new AbortController().signal,
+  };
+
+  beforeEach(() => {
+    clearWebFetchCache();
+  });
+
+  afterEach(() => {
+    clearWebFetchCache();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it.each([
+    { status: 403, statusText: 'Forbidden', raw: false },
+    { status: 404, statusText: 'Not Found', raw: false },
+    { status: 403, statusText: 'Forbidden', raw: true },
+    { status: 404, statusText: 'Not Found', raw: true },
+  ])('HTTP $status, raw=$raw 时不读取或缓存错误正文', async ({ status, statusText, raw }) => {
+    const url = 'https://example.com/error';
+    const readBodies = vi.fn();
+    const fetchMock = vi.fn(() => {
+      const response = new Response('<h1>Error page</h1>', {
+        status,
+        statusText,
+        headers: { 'content-type': 'text/html' },
+      });
+      const readBody = response.arrayBuffer.bind(response);
+      vi.spyOn(response, 'arrayBuffer').mockImplementation(() => {
+        readBodies();
+        return readBody();
+      });
+      return Promise.resolve(response);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const input = WebFetchTool.inputSchema.parse({ url, raw });
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await expect(WebFetchTool.execute(input, undefined, invocation))
+        .rejects.toThrow(`网页读取失败: HTTP ${status} ${statusText}`);
+    }
+
+    expect(readBodies).not.toHaveBeenCalled();
+    expect(WebPageCache.size).toBe(0);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('成功读取保留最终网址, 后续分页复用完整转换结果', async () => {
+    const response = new Response('<p>abcdefgh</p>', {
+      status: 200,
+      statusText: 'OK',
+      headers: { 'content-type': 'text/html' },
+    });
+    Object.defineProperty(response, 'url', { value: 'https://docs.example.com/final' });
+    const fetchMock = vi.fn().mockResolvedValue(response);
+    vi.stubGlobal('fetch', fetchMock);
+    const url = 'http://example.com/start';
+
+    const first = await WebFetchTool.execute(
+      WebFetchTool.inputSchema.parse({ url, max_length: 3 }),
+      undefined,
+      invocation,
+    );
+    expect(first).toMatchObject({
+      url: 'https://docs.example.com/final',
+      code: 200,
+      codeText: 'OK',
+      totalLength: 8,
+      truncated: true,
+    });
+    expect(first.content).toBe(
+      'abc\n[Output truncated: 8 chars -> 3 chars shown. Use start_index to paginate.]',
+    );
+
+    const second = await WebFetchTool.execute(
+      WebFetchTool.inputSchema.parse({ url, start_index: 3, max_length: 5 }),
+      undefined,
+      invocation,
+    );
+    expect(second.content).toBe('defgh');
+    expect(second.truncated).toBe(false);
+    expect(second.url).toBe(first.url);
+    expect(WebPageCache.get(`md:${url}`)?.content).toBe('abcdefgh');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith('https://example.com/start', expect.objectContaining({
+      redirect: 'follow',
+    }));
+  });
+
+  it('同一网址的原始 HTML 与 Markdown 分别缓存', async () => {
+    const html = '<h1>Hello</h1>';
+    const fetchMock = vi.fn(() => Promise.resolve(new Response(html, {
+      status: 200,
+      headers: { 'content-type': 'text/html' },
+    })));
+    vi.stubGlobal('fetch', fetchMock);
+    const url = 'https://example.com/page';
+
+    const markdown = await WebFetchTool.execute(
+      WebFetchTool.inputSchema.parse({ url }), undefined, invocation,
+    );
+    const raw = await WebFetchTool.execute(
+      WebFetchTool.inputSchema.parse({ url, raw: true }), undefined, invocation,
+    );
+
+    expect(markdown.content).toBe('# Hello');
+    expect(raw.content).toBe(html);
+    expect(WebPageCache.size).toBe(2);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
 

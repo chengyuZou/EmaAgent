@@ -1,4 +1,3 @@
-// 这里把公共 HTTP 响应收紧为 WebFetchTool 可以返回的文本网页, 并缓存转换结果。
 import { WebPageCache } from './cache.js';
 import { htmlToMarkdown } from './htmlToMarkdown.js';
 
@@ -7,7 +6,7 @@ const FETCH_TIMEOUT_MS = 30_000;
 
 export interface FetchedPage {
   finalUrl: string;
-  /** 转换后的内容(Markdown 或原始 HTML)。 */
+  /** 转换后的内容(Markdown 或原始 HTML). */
   content: string;
   contentType: string;
   bytes: number;
@@ -16,7 +15,7 @@ export interface FetchedPage {
 }
 
 export interface FetchPageOptions {
-  /** true 时缓存并返回原始 HTML, 不做 Markdown 转换。 */
+  /** true 时缓存并返回原始 HTML, 不做 Markdown 转换. */
   raw: boolean;
 }
 
@@ -25,7 +24,7 @@ export async function fetchPublicPage(
   signal: AbortSignal,
   options: FetchPageOptions,
 ): Promise<FetchedPage> {
-  // 缓存按调用方原始 URL 区分 raw/markdown, 命中后不再下载也不再转换。
+  // 缓存按调用方原始 URL 区分 raw/markdown, 命中后不再下载也不再转换.
   const cacheKey = `${options.raw ? 'raw:' : 'md:'}${rawUrl}`;
   const cached = WebPageCache.get(cacheKey);
   if (cached) {
@@ -46,6 +45,13 @@ export async function fetchPublicPage(
     },
     redirect: 'follow',
   });
+  if (!response.ok) {
+    // 错误页面不能作为网页正文或写入缓存; 取消未读取的响应体, 不继续下载它.
+    await response.body?.cancel();
+    const statusText = response.statusText ? ` ${response.statusText}` : '';
+    throw new Error(`网页读取失败: HTTP ${response.status}${statusText}`);
+  }
+
   const rawBody = await response.arrayBuffer();
   if (rawBody.byteLength > MAX_RESPONSE_BYTES) {
     throw new Error(`响应体超过 ${MAX_RESPONSE_BYTES} 字节上限`);
@@ -67,7 +73,7 @@ export async function fetchPublicPage(
     code: response.status,
     codeText: response.statusText,
   };
-  // 缓存体积按转换后内容计; lru-cache 要求 size 为正整数, 空响应钳到 1。
+  // 缓存体积按转换后内容计; lru-cache 要求 size 为正整数, 空响应按 1 字节计.
   WebPageCache.set(cacheKey, entry, { size: Math.max(1, Buffer.byteLength(content)) });
 
   return {
@@ -80,7 +86,7 @@ export async function fetchPublicPage(
   };
 }
 
-/** http 自动升级 https(Claude 同款); 只支持 https 的站点会如实报 https 侧错误。 */
+/** HTTP 地址先改用 HTTPS 请求, 不回退到未加密连接. */
 function upgradeToHttps(rawUrl: string): string {
   const url = new URL(rawUrl);
   if (url.protocol === 'http:') {

@@ -5,7 +5,7 @@ import { Button, IconButton } from '@ema-agent/ui';
 import { useSessionAttachmentStore } from '../../stores/sessionAttachment.js';
 import { useBackgroundProcessStore } from '../../stores/backgroundProcess.js';
 import { useSessionStore } from '../../stores/session.js';
-import { browserTab, terminalTab, useSessionPanelStore, type SessionSidePanelTab } from '../../stores/sessionPanel.js';
+import { terminalTab, useSessionPanelStore, type SessionSidePanelTab } from '../../stores/sessionPanel.js';
 import { SubagentPanel } from './tabs/subagents/SubagentPanel.js';
 import { SessionAttachmentPreview } from './tabs/sources/SessionAttachmentPreview.js';
 import { SessionAttachmentsPanel } from './tabs/sources/SessionAttachmentsPanel.js';
@@ -174,6 +174,7 @@ function TabBar({
 
 function Launcher({ sessionId, onClose }: { sessionId: string; onClose?: () => void }): JSX.Element {
   const openTab = useSessionPanelStore((state) => state.openTab);
+  const openBrowserTab = useSessionPanelStore((state) => state.openBrowserTab);
   const cwd = useSessionStore(state => state.sessions.byId.get(sessionId)?.cwd);
   const [openingTerminal, setOpeningTerminal] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -259,8 +260,7 @@ function Launcher({ sessionId, onClose }: { sessionId: string; onClose?: () => v
             variant="ghost"
             className="ema-workspace-launcher-action"
             onClick={() => {
-              const browserId = nanoid();
-              openTab(sessionId, browserTab(browserId));
+              openBrowserTab(sessionId, null);
               onClose?.();
             }}
           >
@@ -282,7 +282,8 @@ export function SessionSidePanel({ sessionId }: { sessionId: string }): JSX.Elem
   const layout = useSessionPanelStore((state) => state.layouts[sessionId]);
   const activateTab = useSessionPanelStore((state) => state.activateTab);
   const [launcherOpen, setLauncherOpen] = useState(false);
-  useEffect(() => setLauncherOpen(false), [sessionId]);
+  // 聊天链接也能激活新标签, 此时关闭新建菜单, 避免菜单挡住已经打开的网页.
+  useEffect(() => setLauncherOpen(false), [sessionId, layout?.activeTabId]);
   const tabs = (layout?.tabOrder ?? [])
     .map((id) => layout?.tabsById[id])
     .filter((tab) => tab !== undefined);

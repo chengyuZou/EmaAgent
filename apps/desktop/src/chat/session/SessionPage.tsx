@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type JSX } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type JSX, type MouseEvent } from 'react';
 import { Group, Panel, Separator, type PanelImperativeHandle } from 'react-resizable-panels';
 import { useServerStore } from '../../stores/server.js';
 import { ChatInput } from '../input/ChatInput.js';
@@ -14,6 +14,7 @@ export function SessionPage({ sessionId }: { sessionId: string }): JSX.Element {
   const layout = useSessionPanelStore((state) => state.layouts[sessionId]);
   const rightPanelPercent = useSessionPanelStore((state) => state.rightPanelPercent);
   const setRightPanelPercent = useSessionPanelStore((state) => state.setRightPanelPercent);
+  const openBrowserTab = useSessionPanelStore((state) => state.openBrowserTab);
   const workspacePanelRef = useRef<PanelImperativeHandle | null>(null);
   const composerRef = useRef<HTMLDivElement | null>(null);
   const [bottomInset, setBottomInset] = useState<number | null>(null);
@@ -53,9 +54,37 @@ export function SessionPage({ sessionId }: { sessionId: string }): JSX.Element {
     return () => cancelAnimationFrame(frame);
   }, [panelOpen, rightPanelPercent, sessionId]);
 
+  function openWebLink(event: MouseEvent<HTMLElement>): void {
+    if (event.defaultPrevented || event.button !== 0
+      || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) {
+      return;
+    }
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const link = target.closest<HTMLAnchorElement>('a[href]');
+    if (!link || link.hasAttribute('download')) return;
+    const href = link.getAttribute('href');
+    if (!href) return;
+
+    let url: URL;
+    try {
+      // 不加页面地址作为 base, 让本地文件和页内锚点沿用各自的打开方式.
+      url = new URL(href);
+    } catch {
+      return;
+    }
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
+
+    event.preventDefault();
+    openBrowserTab(sessionId, url.href);
+  }
+
   return (
     <SessionGitDiffProvider sessionId={sessionId}>
-      <main className="ema-chat-main relative z-10 flex min-h-0 min-w-0 flex-1 flex-col">
+      <main
+        className="ema-chat-main relative z-10 flex min-h-0 min-w-0 flex-1 flex-col"
+        onClick={openWebLink}
+      >
         <SessionHeader sessionId={sessionId} />
         {serverStatus.kind === 'error' && (
           <div

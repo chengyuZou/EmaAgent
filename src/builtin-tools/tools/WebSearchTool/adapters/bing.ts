@@ -1,5 +1,3 @@
-// Bing HTML 兜底后端: 零 key 可用, 解析协议对照 Claude bingAdapter。
-// 浏览器指纹头避免反爬返回 JS 渲染页; 禁重定向防止指纹头泄露到跳转目标。
 import { decodeHtmlEntities } from './html.js';
 import { SearchHttpStatusError } from './types.js';
 import type { SearchOptions, SearchResult, WebSearchAdapter } from './types.js';
@@ -32,20 +30,58 @@ export const bingSearch: WebSearchAdapter = async (
   const url = `https://www.bing.com/search?q=${encodeURIComponent(query)}&setmkt=en-US`;
   const res = await fetch(url, {
     signal: AbortSignal.any([options.signal, AbortSignal.timeout(SEARCH_TIMEOUT_MS)]),
-    redirect: 'manual',
+    // Bing 会跳转到地区站点. 此请求不携带 API Key 或 Cookie, 跟随后再核对最终页面.
+    redirect: 'follow',
     headers: BROWSER_HEADERS,
   });
   if (res.status !== 200) {
+    // 不使用的响应停止下载, 让 HTTP 连接及时释放.
+    await res.body?.cancel();
     throw new SearchHttpStatusError(res.status);
+  }
+  const contentType = (res.headers.get('content-type') ?? '').split(';')[0]!.trim().toLowerCase();
+  if (contentType !== 'text/html' && contentType !== 'application/xhtml+xml') {
+    await res.body?.cancel();
+    throw new Error('搜索响应不是 HTML 页面');
   }
   const body = await res.arrayBuffer();
   if (body.byteLength > HTML_RESPONSE_LIMIT) {
     throw new Error(`搜索响应体超过 ${HTML_RESPONSE_LIMIT} 字节上限`);
   }
-  return extractBingResults(Buffer.from(body).toString('utf8'));
+  return readBingSearchPage(Buffer.from(body).toString('utf8'), res.url);
 };
 
-/** Bing 有机结果在 <li class="b_algo"> 块内; 独立导出供 fixture 测试锁定解析。 */
+function readBingSearchPage(html: string, pageUrl: string): SearchResult[] {
+  const url = new URL(pageUrl);
+  const captchaAddress = /^\/turing\/captcha(?:\/|$)/i.test(url.pathname);
+  const captchaElement = /<(?:div|form|iframe)\b[^>]*\sid\s*=\s*(["'])b_captcha(?:_frame)?\1/i.test(html);
+  if (captchaAddress || captchaElement) {
+    throw new Error('搜索请求需要网页验证, 当前无法读取搜索结果');
+  }
+
+  const bingHost = url.hostname === 'bing.com' || url.hostname.endsWith('.bing.com');
+  if (!bingHost || !/^\/search\/?$/i.test(url.pathname)) {
+    throw new Error('搜索请求跳转到了非 Bing 搜索页面');
+  }
+
+  const resultsContainer = /<ol\b[^>]*\sid\s*=\s*(["'])b_results\1/i.test(html);
+  if (!resultsContainer) {
+    throw new Error('无法识别搜索页面, 页面结构可能已经变化');
+  }
+  const results = extractBingResults(html);
+  if (results.length > 0) {
+    return results;
+  }
+
+  // b_no 是搜索页明确显示的无结果提示. 只有空列表时也可能是解析规则失效, 不能返回无结果.
+  const noResults = /<li\b[^>]*\sclass\s*=\s*(["'])(?:[^"']*\s)?b_no(?:\s[^"']*)?\1/i.test(html);
+  if (noResults) {
+    return [];
+  }
+  throw new Error('无法识别搜索页面, 页面结构可能已经变化');
+}
+
+/** 只提取 b_algo 中的网页条目. 空数组不代表搜索确实无结果, 页面判断由请求入口负责. */
 export function extractBingResults(html: string): SearchResult[] {
   const results: SearchResult[] = [];
   const algoBlockRe = /<li\s+class="b_algo"[^>]*>([\s\S]*?)<\/li>/gi;
@@ -67,8 +103,8 @@ export function extractBingResults(html: string): SearchResult[] {
 }
 
 /**
- * 解析 Bing 跳转: /ck/a 的 `u` 参数是带 a1/a0 前缀的 base64url 编码目标,
- * 站内与相对链接丢弃, 直接外链原样保留。
+ * 解析 Bing 跳转: /ck/a 的 `u` 参数是带 a1/a0 前缀的 base64url 编码目标.
+ * 站内与相对链接丢弃, 直接外链原样保留.
  */
 export function resolveBingUrl(rawUrl: string): string | undefined {
   if (rawUrl.startsWith('/') || rawUrl.startsWith('#')) return undefined;
@@ -83,7 +119,7 @@ export function resolveBingUrl(rawUrl: string): string | undefined {
         const decoded = Buffer.from(padded, 'base64').toString('utf-8');
         if (decoded.startsWith('http')) return decoded;
       } catch {
-        // 非法的 base64 不是有效跳转, 落到下面的直链判断。
+        // 非法的 base64 不是有效跳转, 落到下面的直链判断.
       }
     }
   }
@@ -92,7 +128,7 @@ export function resolveBingUrl(rawUrl: string): string | undefined {
   return undefined;
 }
 
-/** snippet 三段提取: b_lineclamp <p> → b_caption <p> → b_caption 文本兜底。 */
+/** snippet 三段提取: b_lineclamp <p> -> b_caption <p> -> b_caption 文本兜底. */
 function extractSnippet(block: string): string {
   const lineclamp = /<p[^>]*class="b_lineclamp[^"]*"[^>]*>([\s\S]*?)<\/p>/i.exec(block);
   if (lineclamp) {
