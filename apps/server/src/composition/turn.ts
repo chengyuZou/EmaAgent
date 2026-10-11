@@ -95,6 +95,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
   let turnExecutor!: TurnExecutor;
   let continuations!: SessionContinuationQueue;
   const subagents = new SubagentExecutor({
+    assertSessionWorkAllowed: sessionId => database.session.getSessionForWork(sessionId),
     store: database.subagents,
     messageStore: database.subagentMessages,
     maxConcurrent: () => settings.get(maxConcurrentSubagentsSetting),

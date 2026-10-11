@@ -108,8 +108,8 @@ type ContinuationClaim =
  * startTurn 与 attachTurn 负责真正启动执行并接入事件消费; publish 只同步前端队列状态.
  */
 export interface SessionContinuationQueueDeps {
-  readonly sessions: Pick<SessionStore, 'getSession' | 'sessionExists'>;
-  readonly sessionRunning: Pick<SessionRunningRegistry, 'isRunning' | 'getRunning'>;
+  readonly sessions: Pick<SessionStore, 'getSession' | 'getSessionForWork' | 'sessionExists'>;
+  readonly sessionRunning: Pick<SessionRunningRegistry, 'isRunning' | 'getRunning' | 'isClosed'>;
   readonly goals: Pick<GoalStore, 'getCurrent'>;
   readonly startTurn: (input: StartTurn) => TurnHandle;
   readonly attachTurn: (handle: TurnHandle) => void;
@@ -159,7 +159,7 @@ export class SessionContinuationQueue {
    * 若 Session 当前空闲, requestDrain 会在同一调用栈结束后启动这一条输入的 Turn.
    */
   enqueue(input: EnqueueSessionInput): QueuedSessionInput {
-    this.deps.sessions.getSession(input.sessionId);
+    this.deps.sessions.getSessionForWork(input.sessionId);
     const item: PendingInput = {
       id: randomUUID(),
       sessionId: input.sessionId,
@@ -327,13 +327,17 @@ export class SessionContinuationQueue {
     if (status === 'completed') this.requestDrain(sessionId);
   }
 
-  /** Session 删除流程在数据库删行前调用, 丢弃只属于该 Session 的全部进程内续接状态. */
-  discardSession(sessionId: string): void {
+  /** 删除或归档时取消尚未执行的输入和续接, 已经保存的 Message 不受影响. */
+  clearSession(sessionId: string): void {
+    const items = this.inputs.get(sessionId) ?? [];
     this.inputs.delete(sessionId);
     this.completionNotices.delete(sessionId);
     this.goalEdits.delete(sessionId);
     for (const [turnId, claim] of this.claims) {
       if (claim.sessionId === sessionId) this.claims.delete(turnId);
+    }
+    for (const item of items) {
+      this.deps.publish(sessionId, { type: 'queued_input_removed', id: item.id });
     }
   }
 
@@ -348,7 +352,7 @@ export class SessionContinuationQueue {
 
   /** 同一后台执行只保留一条未交付通知; 已删除的 Session 不再触发模型调用. */
   private addCompletionNotice(sessionId: string, notice: CompletionNotice): void {
-    if (this.stopped || !this.deps.sessions.sessionExists(sessionId)) return;
+    if (!this.acceptsWork(sessionId)) return;
     const notices = this.completionNotices.get(sessionId) ?? [];
     if (!notices.some(existing => existing.key === notice.key)) notices.push(notice);
     this.completionNotices.set(sessionId, notices);
@@ -358,6 +362,7 @@ export class SessionContinuationQueue {
   /** 只请求重新领取消息, 创建/激活 Goal 或手动 Compact 解锁也使用这个入口. */
   requestDrain(sessionId: string): void {
     if (this.stopped || this.draining.has(sessionId) || this.deps.sessionRunning.isRunning(sessionId)) return;
+    if (!this.acceptsWork(sessionId)) return;
     // 推到微任务后再启动, 避免 startTurn 在生产者的终态回调栈内重入.
     this.draining.add(sessionId);
     queueMicrotask(() => {
@@ -368,14 +373,14 @@ export class SessionContinuationQueue {
 
   private drain(sessionId: string): void {
     if (this.stopped || this.draining.has(sessionId) || this.deps.sessionRunning.isRunning(sessionId)) return;
-    if (!this.deps.sessions.sessionExists(sessionId)) return;
+    if (!this.acceptsWork(sessionId)) return;
     this.draining.add(sessionId);
     const turnId = randomUUID();
     try {
       // 先领取再启动, 使同步抛错也能通过 release 把整批内容原样归还.
       const claim = this.claim(sessionId, turnId, false);
       if (!claim) return;
-      const session = this.deps.sessions.getSession(sessionId);
+      const session = this.deps.sessions.getSessionForWork(sessionId);
       // 有用户输入时保持 userMessage 语义; 新 Turn 每次只领取一个 Queue item,
       // 其余输入继续按 guided 优先、普通 after_turn 随后的顺序等待后续安全点或 Turn.
       // 内部通知与 Goal 续接共用 sessionContinuation,
@@ -410,6 +415,7 @@ export class SessionContinuationQueue {
     turnId: string,
     nextIterationOnly: boolean,
   ): ClaimedSessionContinuation | undefined {
+    if (!this.acceptsWork(sessionId)) return undefined;
     if (this.claims.has(turnId)) return undefined;
     const edit = this.goalEdits.get(sessionId);
     if (nextIterationOnly && edit?.turnId === turnId) {
@@ -480,6 +486,12 @@ export class SessionContinuationQueue {
       userInput: publicItem(userInput),
       ...(goal?.status === 'active' ? { continuationText: GOAL_CONTINUATION_TEXT } : {}),
     };
+  }
+  
+  private acceptsWork(sessionId: string): boolean {
+    if (this.stopped || this.deps.sessionRunning.isClosed(sessionId)) return false;
+    if (!this.deps.sessions.sessionExists(sessionId)) return false;
+    return this.deps.sessions.getSession(sessionId).archivedAt === null;
   }
 }
 

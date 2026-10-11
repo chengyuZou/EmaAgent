@@ -276,6 +276,7 @@ export class TurnExecutor {
       });
       tools = prepared.tools;
       this.runningTools.set(turnId, tools);
+      signal.throwIfAborted();
       this.deps.turns.setModel(turnId, prepared.providerId, prepared.modelId, prepared.protocol);
       const characterName = this.deps.characterName();
       this.deps.turns.setCharacterName(turnId, characterName);
@@ -297,6 +298,8 @@ export class TurnExecutor {
         signal,
         emit,
       });
+      // 等待期间可能已归档或删除, 尚未交付的输入不能在停止后写入历史.
+      signal.throwIfAborted();
       handledGoalId = reminderInput.goal?.status === 'active' ? reminderInput.goal.id : undefined;
       this.deps.sessions.appendMessage({
         turnId,
@@ -369,6 +372,7 @@ export class TurnExecutor {
           claim.userInput.input,
           turnSkillPool,
         );
+        signal.throwIfAborted();
 
         const shouldRename = this.deps.sessions.getSession(sessionId).title === DEFAULT_SESSION_TITLE
           && !this.deps.hasNormalUserMessage(sessionId);

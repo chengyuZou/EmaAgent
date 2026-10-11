@@ -7,7 +7,7 @@ import {
   type JSX,
   type RefObject,
 } from 'react';
-import { Popover, PromptDialog } from '@ema-agent/ui';
+import { ConfirmDialog, Popover, PromptDialog } from '@ema-agent/ui';
 import { commandsApi, type CommandDescriptor } from '../../api/commands.js';
 import { skillsApi, type SkillListItem } from '../../api/skills.js';
 import { subscribeSystemEvent } from '../../lib/system-event-dispatcher.js';
@@ -333,6 +333,21 @@ export function useInputCommands(
 ) {
   const [compacting, setCompacting] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
+  const [pendingArchive, setPendingArchive] = useState<Pick<SessionListItem, 'id' | 'title'> | null>(null);
+  const archivePending = useRef(false);
+
+  async function archive(session: Pick<SessionListItem, 'id' | 'title'>): Promise<void> {
+    if (archivePending.current) return;
+    archivePending.current = true;
+    try {
+      await useSessionStore.getState().archiveSession(session.id);
+      removeSessionFromChat(session.id);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '归档失败', { variant: 'danger' });
+    } finally {
+      archivePending.current = false;
+    }
+  }
 
   async function runCompact(): Promise<void> {
     if (
@@ -384,8 +399,7 @@ export function useInputCommands(
     }
     if (name === 'pin') return sessions.pinSession(viewedId, !(viewedSession?.pinned ?? false));
     if (name === 'archive') {
-      await sessions.archiveSession(viewedId);
-      removeSessionFromChat(viewedId);
+      if (viewedSession) setPendingArchive({ id: viewedSession.id, title: viewedSession.title });
       return;
     }
     showToast(`未知命令: /${name}`, { variant: 'warning' });
@@ -408,5 +422,25 @@ export function useInputCommands(
     />
   ) : null;
 
-  return { compacting, runCommand, renameDialog };
+  const commandDialogs = (
+    <>
+      {renameDialog}
+      <ConfirmDialog
+        open={pendingArchive !== null}
+        title="归档会话"
+        message={`确定归档会话"${pendingArchive?.title || '新对话'}"? 如有正在运行的工作, 确认后会立即停止主任务、子代理、命令和语音, 取消 Goal 及排队输入. 历史会保留, 取消归档不会自动恢复执行.`}
+        confirmText="归档"
+        danger={false}
+        onConfirm={() => {
+          if (!pendingArchive) return;
+          const session = pendingArchive;
+          setPendingArchive(null);
+          void archive(session);
+        }}
+        onCancel={() => setPendingArchive(null)}
+      />
+    </>
+  );
+
+  return { compacting, runCommand, commandDialogs };
 }

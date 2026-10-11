@@ -100,6 +100,7 @@ interface Fixture {
 function createFixture(options?: {
   maxConcurrent?: number;
   immediateResultWaitMs?: number;
+  assertSessionWorkAllowed?: (sessionId: string) => void;
 }): Fixture {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ema-bg-runtime-'));
   const db = new Database({ memory: true, kind: 'data' });
@@ -122,6 +123,7 @@ function createFixture(options?: {
   const runner = new FakeRunner();
   const repo = new BackgroundProcessesRepo(db.sqlite);
   const runtime = new BackgroundProcess({
+    assertSessionWorkAllowed: options?.assertSessionWorkAllowed ?? vi.fn(),
     store: repo,
     outputPath: (sessionId, processId) => {
       const relativeDirectory = path.join('sessions', sessionId, 'background-processes', processId);
@@ -196,6 +198,71 @@ function tracked(options?: Parameters<typeof createFixture>[0]): Fixture {
 // ── 测试 ─────────────────────────────────────────────────────────────────────
 
 describe('BackgroundProcess', () => {
+  it('一条命令停止报错时仍等其他命令退出, 再返回失败', async () => {
+    const fixture = tracked();
+    const first = await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true }));
+    await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true }));
+    if (first.kind !== 'processReference') throw new Error('missing process reference');
+    const secondProcess = fixture.runner.processes[1]!;
+    vi.spyOn(secondProcess.handle, 'stop').mockImplementation(() => {
+      secondProcess.stopped = true;
+    });
+    const stop = fixture.runtime.stop.bind(fixture.runtime);
+    vi.spyOn(fixture.runtime, 'stop').mockImplementation(async (sessionId, processId) => {
+      await stop(sessionId, processId);
+      if (processId === first.backgroundProcessId) throw new Error('停止记录读取失败');
+    });
+    let finished = false;
+    const stopping = fixture.runtime.stopForSession(SESSION_ID).finally(() => { finished = true; });
+    const rejected = expect(stopping).rejects.toThrow('停止记录读取失败');
+    try {
+      await tick();
+      expect(finished).toBe(false);
+      expect(secondProcess.stopped).toBe(true);
+    } finally {
+      secondProcess.finishWith(killedResult());
+      await rejected;
+    }
+    expect(fixture.runtime.hasLiveProcesses()).toBe(false);
+  });
+
+  it('会话停止同时停止前台、后台和队列, 保留持久命令日志, 不启动排队项', async () => {
+    const fixture = tracked({ maxConcurrent: 1 });
+    const background = await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true }));
+    const queued = await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true }));
+    const foreground = fixture.runtime.runCommand(makeRequest(fixture));
+    await tick();
+    expect(fixture.runner.processes).toHaveLength(2);
+    for (const process of fixture.runner.processes) process.stopDelayMs = 15;
+    const stopping = fixture.runtime.stopForSession(SESSION_ID);
+    expect(fixture.runner.processes.every(process => process.stopped)).toBe(true);
+    await stopping;
+    await foreground;
+    expect(fixture.runtime.hasLiveProcesses()).toBe(false);
+    expect(fixture.runner.processes).toHaveLength(2);
+    if (background.kind !== 'processReference' || queued.kind !== 'processReference') throw new Error('missing process reference');
+    expect(fixture.repo.findById(background.backgroundProcessId)?.status).toBe('stopped');
+    expect(fixture.repo.findById(queued.backgroundProcessId)?.status).toBe('stopped');
+    expect(fs.existsSync(logDirFor(fixture, background.backgroundProcessId))).toBe(true);
+  });
+
+  it('等待前台坑位时会话开始停止, 放行后仍不能启动新命令', async () => {
+    let closed = false;
+    const fixture = tracked({ assertSessionWorkAllowed: () => {
+      if (closed) throw new Error('session_stopping');
+    } });
+    const foregrounds = Array.from({ length: 4 }, () => fixture.runtime.runCommand(makeRequest(fixture)));
+    await tick();
+    const waiting = fixture.runtime.runCommand(makeRequest(fixture));
+    const rejected = expect(waiting).rejects.toThrow('session_stopping');
+    closed = true;
+    await fixture.runtime.stopForSession(SESSION_ID);
+    await Promise.all(foregrounds);
+    await rejected;
+    expect(fixture.runner.processes).toHaveLength(4);
+    expect(processesRootEmpty(fixture)).toBe(true);
+  });
+
   it('前台等待内完成:返回普通结果,不留 DB 行,日志目录已清理', async () => {
     const fixture = tracked();
     const pending = fixture.runtime.runCommand(makeRequest(fixture));

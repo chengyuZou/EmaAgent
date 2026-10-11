@@ -2,6 +2,8 @@ import type { Goal } from './types.js';
 
 export type GoalErrorCode =
   | 'session_not_found'
+  | 'session_archived'
+  | 'session_stopping'
   | 'goal_not_found'
   | 'goal_version_conflict'
   | 'goal_status_conflict'

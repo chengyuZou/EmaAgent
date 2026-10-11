@@ -103,18 +103,19 @@ export function openDatabases(
 
   const usageRecorder = new UsageRecorder(dataDb);
   const messages = new MessagesRepo(dataDb.sqlite);
+  const sessionRunning = new SessionRunningRegistry();
   const session = new SessionStore({
     db: dataDb,
     // Session 删除提交后清理库外文件（音频、附件、工具结果、scratchpad）。
     onSessionRemoved: sessionId => removeSessionDir(activeDataDir, sessionId),
     onChanged: emitChanged,
+    isWorkClosed: sessionId => sessionRunning.isClosed(sessionId),
   });
   // 启动对账:清掉导入崩溃留下的"有目录无行"尸体目录。
   const orphanDirs = removeOrphanSessionDirectories(activeDataDir, id => session.sessionExists(id));
   if (orphanDirs > 0) {
     console.warn(`[attachments] 清理 ${orphanDirs} 个无 Session 行的残留目录`);
   }
-  const sessionRunning = new SessionRunningRegistry();
   const turns = new TurnStore({
     db: dataDb,
     onTurnRemoved: (sessionId, turnId) => {
@@ -147,7 +148,7 @@ export function openDatabases(
     attachmentImages,
     attachmentPastedTexts,
     tasks: new TaskStore(new TasksRepo(dataDb.sqlite), emitChanged),
-    goals: new GoalStore(dataDb, emitChanged),
+    goals: new GoalStore(dataDb, emitChanged, sessionId => sessionRunning.isClosed(sessionId)),
     subagents: new SubagentStore(dataDb.sqlite, new SubagentsRepo(dataDb.sqlite), new SubagentRunsRepo(dataDb.sqlite)),
     subagentMessages: new SubagentMessagesStore(new SubagentMessagesRepo(dataDb.sqlite)),
     usageRecorder,

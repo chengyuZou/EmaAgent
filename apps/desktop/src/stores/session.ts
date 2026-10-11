@@ -39,7 +39,6 @@ export interface SessionsState {
   pinnedProjects: Project[];
   projects: Project[];
   recent:   SessionListItem[];
-  archived: SessionListItem[];
   byId:     Map<string, SessionListItem>;
 }
 
@@ -62,15 +61,15 @@ export interface SessionStoreState {
   setReasoningEffort(id: string, reasoningEffort: ReasoningEffort): Promise<void>;
   waitForModelSettings(id: string): Promise<void>;
   forkSession(id: string, untilTurnId?: string):                   Promise<string>;
-  archiveSession(id: string):                                     Promise<void>;
+  archiveSession(id: string):                                    Promise<void>;
   unarchiveSession(id: string):                                   Promise<void>;
-  deleteSession(id: string):                                      Promise<void>;
+  deleteSession(id: string):                                     Promise<void>;
 }
 
 // ── 辅助 ───────────────────────────────────────────────────────────────────
 
 function emptySessions(): SessionsState {
-  return { pinned: [], pinnedProjects: [], projects: [], recent: [], archived: [], byId: new Map() };
+  return { pinned: [], pinnedProjects: [], projects: [], recent: [], byId: new Map() };
 }
 
 function rebuildById(s: SessionsState): void {
@@ -87,7 +86,6 @@ function rebuildById(s: SessionsState): void {
     }
   }
   for (const x of s.recent)   s.byId.set(x.id, x);
-  for (const x of s.archived) s.byId.set(x.id, x);
 }
 
 function replaceSession(
@@ -106,11 +104,27 @@ function replaceSession(
     pinnedProjects: sessions.pinnedProjects.map(replaceProjectSession),
     projects: sessions.projects.map(replaceProjectSession),
     recent: sessions.recent.map(replace),
-    archived: sessions.archived.map(replace),
     byId: new Map(sessions.byId),
   };
   next.byId.set(id, replacement);
   return next;
+}
+
+function withoutSession(sessions: SessionsState, id: string): SessionsState {
+  const keep = (session: SessionListItem): boolean => session.id !== id;
+  const removeFromProject = (project: Project): Project => ({
+    ...project,
+    sessions: project.sessions.filter(keep),
+  });
+  const byId = new Map(sessions.byId);
+  byId.delete(id);
+  return {
+    pinned: sessions.pinned.filter(keep),
+    pinnedProjects: sessions.pinnedProjects.map(removeFromProject),
+    projects: sessions.projects.map(removeFromProject),
+    recent: sessions.recent.filter(keep),
+    byId,
+  };
 }
 
 // 同一 Session 的设置写入按点击顺序落库, 发送前的权限保存也要排在先前选择之后.
@@ -135,7 +149,6 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
         pinnedProjects: [...sidebarData.pinnedProjects],
         projects: [...sidebarData.projects],
         recent:   [...sidebarData.recent],
-        archived: [...sidebarData.archived],
         byId:     new Map(),
       };
       rebuildById(sessions);
@@ -276,6 +289,9 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
   async archiveSession(id) {
     try {
       await sessionsApi.archive(id);
+      // 已收到归档成功结果, 后续列表刷新失败也不能再显示这条会话.
+      sessionListRequestId += 1;
+      set(state => ({ sessions: withoutSession(state.sessions, id), loading: false }));
       await get().loadSessions();
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : '归档会话失败' });
@@ -298,6 +314,8 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
       await sessionsApi.delete(id);
       modelSettingsWriteChains.delete(id);
       sessionPreferencesWriteChains.delete(id);
+      sessionListRequestId += 1;
+      set(state => ({ sessions: withoutSession(state.sessions, id), loading: false }));
       await get().loadSessions();
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : '删除会话失败' });

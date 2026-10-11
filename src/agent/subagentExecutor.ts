@@ -59,6 +59,7 @@ interface ActiveSubagent {
 }
 
 export interface SubagentExecutorDeps {
+  readonly assertSessionWorkAllowed: (sessionId: string) => void;
   readonly store: SubagentStore;
   readonly messageStore: SubagentMessagesStore;
   readonly maxConcurrent: () => number;
@@ -103,6 +104,7 @@ export class SubagentExecutor {
   }
 
   start(input: StartSubagent): { readonly subagentId: string; readonly runId: string } {
+    this.deps.assertSessionWorkAllowed(input.sessionId);
     const isNew = input.options.subagentId === undefined;
     const subagentId = input.options.subagentId ?? randomUUID();
     const previous = isNew ? undefined : this.deps.store.get(subagentId);
@@ -276,13 +278,13 @@ export class SubagentExecutor {
     await Promise.allSettled(completions);
   }
 
-  async abortForSession(sessionId: string): Promise<void> {
+  async abortForSession(sessionId: string, reason: string): Promise<void> {
     const completions: Promise<SubagentResult>[] = [];
     for (const active of this.active.values()) {
       if (active.sessionId !== sessionId) {
         continue;
       }
-      active.controller.abort(new Error('Session deleted'));
+      active.controller.abort(new Error(reason));
       completions.push(active.completion);
     }
     await Promise.allSettled(completions);

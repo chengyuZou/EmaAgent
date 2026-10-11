@@ -1,9 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import os from 'node:os';
 import { maxIterationsSetting } from '@ema-agent/agent';
-import type { SubagentMessagesStore, SubagentStore } from '@ema-agent/agent';
+import type { SubagentExecutor } from '@ema-agent/agent';
 import type { AttachmentStore } from '@ema-agent/attachments';
 import type { ProviderModels, Providers } from '@ema-agent/providers';
-import type { SessionStore } from '@ema-agent/session';
+import { SessionRunningRegistry, SessionStore } from '@ema-agent/session';
+import { Database } from '@ema-agent/storage';
 import type { SettingsStore } from '@ema-agent/settings';
 import type { SkillDescriptor } from '@ema-agent/skills';
 import { FileStateCache, ToolRegistry } from '@ema-agent/tools';
@@ -15,6 +17,9 @@ import {
   type PrepareTurnDeps,
 } from '../prepare/prepareTurn.js';
 import type { StartTurn } from '../types.js';
+import { TurnExecutor } from '../turn.js';
+import { TurnStore } from '../turnStore.js';
+import { SessionContinuationQueue } from '../sessionContinuationQueue.js';
 
 const TURN: Turn = {
   id: 't1',
@@ -86,8 +91,9 @@ function makeDeps(overrides: Partial<PrepareTurnDeps> = {}): PrepareTurnDeps {
     fileStateCache: () => cache,
     interactionQueue: new SessionInteractionQueue(null),
     publishInteraction: () => undefined,
-    subagentStore: {} as unknown as SubagentStore,
-    subagentMessagesStore: {} as unknown as SubagentMessagesStore,
+    subagents: {
+      abortForegroundForTurn: vi.fn(async () => undefined),
+    } as unknown as SubagentExecutor,
     ...overrides,
   };
 }
@@ -113,6 +119,89 @@ function makeRuntime(start: StartTurn) {
 }
 
 describe('prepareTurn', () => {
+  it.each(['attachment', 'reminder'] as const)('等待 %s 时归档, 返回后不保存未交付输入或调用模型', async waitingFor => {
+    const db = new Database({ memory: true, kind: 'data' });
+    db.migrate();
+    const running = new SessionRunningRegistry();
+    const sessions = new SessionStore({ db, isWorkClosed: id => running.isClosed(id) });
+    const session = sessions.createSession({ cwd: os.tmpdir(), providerId: 'sess-p', modelId: 'sess-m' });
+    const turns = new TurnStore({ db, sessionRunning: running });
+    const queue = new SessionContinuationQueue({
+      sessions,
+      sessionRunning: running,
+      goals: { getCurrent: () => null },
+      startTurn: () => { throw new Error('停止后不应启动后继 Turn'); },
+      attachTurn: vi.fn(),
+      publish: vi.fn(),
+    });
+    let entered!: () => void;
+    let release!: () => void;
+    const ready = new Promise<void>(resolve => { entered = resolve; });
+    const preparation = new Promise<void>(resolve => { release = resolve; });
+    const callLlm = vi.fn(async function* () {
+      throw new Error('停止后不应调用模型');
+    });
+    const readTurnReminder = vi.fn(async () => {
+      if (waitingFor === 'reminder') {
+        entered();
+        await preparation;
+      }
+      return { currentDate: '2026-10-11', goal: null };
+    });
+    const deps = makeDeps({
+      sessions,
+      createLlmCall: () => callLlm,
+      attachments: {
+        attach: async (_sessionId: string, _turnId: string, blocks: readonly unknown[]) => {
+          if (waitingFor === 'attachment') {
+            entered();
+            await preparation;
+          }
+          return blocks;
+        },
+      } as unknown as AttachmentStore,
+    });
+    const executor = new TurnExecutor({
+      ...deps,
+      sessions,
+      turns,
+      continuations: queue,
+      readTurnReminder,
+      characterName: () => 'test',
+      hasNormalUserMessage: () => false,
+      createCompact: () => async () => { throw new Error('停止后不应压缩'); },
+    });
+    const handle = executor.start(makeStart({
+      sessionId: session.id,
+      input: [{ type: 'attachment', block: { type: 'file_reference', path: '/pending.txt' } }],
+    }));
+    try {
+      await ready;
+      queue.enqueue({ sessionId: session.id, input: [{ type: 'text', text: '未保存排队输入' }] });
+      const stopping = running.runWithSessionClosed(session.id, async () => {
+        sessions.archiveSession(session.id);
+        queue.clearSession(session.id);
+        await handle.completion;
+      });
+      release();
+      await stopping;
+      expect(await handle.completion).toMatchObject({ status: 'aborted' });
+      expect(sessions.loadHistory(session.id)).toEqual([]);
+      expect(queue.list(session.id)).toEqual([]);
+      expect(callLlm).not.toHaveBeenCalled();
+      expect(turns.getTurn(handle.turnId)?.status).toBe('aborted');
+      expect(running.isRunning(session.id)).toBe(false);
+      expect(deps.subagents.abortForegroundForTurn).toHaveBeenCalledWith(handle.turnId);
+      if (waitingFor === 'attachment') expect(readTurnReminder).not.toHaveBeenCalled();
+    } finally {
+      release();
+      handle.abort();
+      await handle.completion;
+      queue.shutdown();
+      db.close();
+    }
+  });
+
   it('Session 的 Plan 权限进入本轮 Prompt, 角色仍保留', async () => {
     const prepared = await prepareTurn(
       makeDeps({ sessions: {

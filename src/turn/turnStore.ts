@@ -12,7 +12,7 @@ import {
   type TurnIdPageCursor,
   type TurnRow,
 } from '@ema-agent/storage';
-import { SessionBusyError, SessionRunningRegistry } from '@ema-agent/session';
+import { SessionBusyError, SessionRunningRegistry, SessionWorkBlockedError } from '@ema-agent/session';
 import type {
   ListTurnIndexInput,
   StartTurnInput,
@@ -39,7 +39,6 @@ export class TurnStore {
   private readonly messagesRepo: MessagesRepo;
   private readonly db:           Database;
   private readonly onTurnRemoved?: (sessionId: string, turnId: string) => void;
-  private readonly deletingSessions = new Set<string>();
   /** 进程内活跃执行表；运行态只用于快速判断和取消，崩溃恢复以 SQLite 终态为准。 */
   private readonly registry: SessionRunningRegistry;
   /** 单调时间戳避免同毫秒写入破坏游标边界。 */
@@ -65,8 +64,13 @@ export class TurnStore {
 
   /** 创建根 Turn，并返回贯穿 LLM 与工具执行的取消信号。 */
   startTurn(input: StartTurnInput): { turn: Turn; signal: AbortSignal } {
-    if (this.deletingSessions.has(input.sessionId)) {
-      throw new Error(`session_deleting: ${input.sessionId}`);
+    this.registry.assertWorkAllowed(input.sessionId);
+    const session = this.sessionsRepo.findById(input.sessionId);
+    if (!session) {
+      throw new Error(`session_not_found: ${input.sessionId}`);
+    }
+    if (session.archived_at !== null) {
+      throw new SessionWorkBlockedError('session_archived', input.sessionId);
     }
     if (this.registry.isRunning(input.sessionId)) {
       throw new SessionBusyError(input.sessionId);
@@ -78,7 +82,6 @@ export class TurnStore {
     // 新 Turn 开始前收口同 Session 的崩溃残留状态。
     this.turnsRepo.abortStale(input.sessionId, now);
 
-    this.requireSessionRow(input.sessionId);
     const turnId = input.turnId ?? crypto.randomUUID();
     this.turnsRepo.insert({
       id:           turnId,
@@ -185,32 +188,9 @@ export class TurnStore {
     return running?.kind === 'turn' ? this.getTurn(running.turnId) : undefined;
   }
 
-  // ── Session 删除守卫 ────────────────────────────────────────────────────────
-
-  /**
-   * 删除协调开始后立刻阻止该 Session 的新 Turn，并向当前根 Turn 发出取消信号。
-   * 活动表只覆盖"正在跑"的 Turn；删除窗口内（运行中 Turn 已中止、数据库行还没删）
-   * 新的用户输入仍可能到达，没有这个守卫就会在被删除的 Session 上再开一轮。
-   */
-  beginSessionDeletion(id: string): void {
-    this.requireSessionRow(id);
-    if (this.deletingSessions.has(id)) {
-      throw new Error(`session_deleting: ${id}`);
-    }
-    this.deletingSessions.add(id);
-    const running = this.registry.getRunning(id);
-    if (running) this.registry.abort(id, running);
-  }
-
-  /** 跨模块准备失败时恢复 Session 的可运行状态。 */
-  cancelSessionDeletion(id: string): void {
-    this.deletingSessions.delete(id);
-  }
-
   /** Session 行删除后丢弃其运行态条目；普通 Turn 终态不得使用该入口。 */
   discardSession(id: string): void {
     this.registry.discardSession(id);
-    this.deletingSessions.delete(id);
   }
 
   // ── 导航查询 ────────────────────────────────────────────────────────────────

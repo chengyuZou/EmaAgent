@@ -113,14 +113,6 @@ export function SessionSidebar(): JSX.Element {
               emptyText="暂无独立对话"
               dropDestination={{ section: 'recent' }}
             />
-            <SessionList
-              label="归档"
-              sessions={sessions.archived}
-              viewedId={viewedId}
-              activityBySession={activityBySession}
-              initiallyCollapsed
-              emptyText="暂无归档"
-            />
           </div>
         </SidebarDragProvider>
       </div>

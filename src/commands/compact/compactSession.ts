@@ -59,7 +59,7 @@ export type ManualCompactResult =
 
 export interface ManualCompactDeps {
   readonly sessions: Pick<SessionStore,
-    'getSession' | 'listProjectFolders' | 'loadHistory' | 'appendHistorySummary'>;
+    'getSessionForWork' | 'listProjectFolders' | 'loadHistory' | 'appendHistorySummary'>;
   /** Assistant 历史的 generatedBy 解析（createGenerationTargetResolver 的事实源）。 */
   readonly turns: Pick<TurnStore, 'getTurn'>;
   readonly sessionRunning: SessionRunningRegistry;
@@ -96,10 +96,11 @@ export async function compactSession(
   deps: ManualCompactDeps,
   sessionId: string,
 ): Promise<ManualCompactResult> {
+  deps.sessionRunning.assertWorkAllowed(sessionId);
+  const session = deps.sessions.getSessionForWork(sessionId);
   if (deps.sessionRunning.isRunning(sessionId)) {
     throw new SessionBusyError(sessionId);
   }
-  const session = deps.sessions.getSession(sessionId);
   // 模型解析与下一根 Turn 同规则：Session 偏好即下一 Turn 的默认值，缓存共享是向前的。
   const providerId = session.providerId;
   const modelId = session.modelId;

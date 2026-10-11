@@ -123,7 +123,7 @@ Shell 的参数包装、权限与沙箱策略仍由各自执行路径负责.
 - 超过等待阈值, 同一进程转交后台并返回 `processReference`. 已捕获与后续输出保存在同一日志目录, 不重新启动命令.
 - `runInBackground=true` 直接进入后台队列, 立即返回引用. `ProcessList`、`ProcessOutput` 和 `ProcessStop` 按 Session 身份访问共享进程记录.
 - 总运行上限来自 `tools.backgroundProcess.maxRuntimeHours` (默认 24 小时, 范围 1–168). 提交命令时读取并固定上限, 设置修改不影响已提交的排队或运行项. 命令指定的 `timeout` 可以更短, 不能超过设置上限. 从实际进程启动开始计时, 包含前台时间, 排队时间不计入.
-- 前台取消会停止进程树. 自动转交后不再绑定原调用的取消信号; 停止后台进程需要显式调用 `ProcessStop`. 删除 Session 或关闭应用会停止所属进程.
+- 前台取消会停止进程树. 自动转交后不再绑定原调用的取消信号; 停止后台进程需要显式调用 `ProcessStop`. 删除或归档 Session 时, `stopForSession` 同时通知所属前台, 后台和排队命令停止, 等退出后再返回; 归档保留已持久化命令的日志与停止记录. 宿主注入 `assertSessionWorkAllowed`, 在接受命令和实际启动进程前检查会话仍可工作, 避免等待调度期间已经归档却仍启动进程. 关闭应用也会停止进程.
 - 完成、失败或总超时先保存日志与终态, 再回调 Server. Server 将轻量完成通知交给 Session 续接队列, 完整输出不复制进通知. 应用重启时记录为 `interrupted`, 不自动重跑.
 
 回归入口: `tests/backgroundProcessRuntime.test.ts`; 真实 Shell 转交与日志验证位于

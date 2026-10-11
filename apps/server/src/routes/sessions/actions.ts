@@ -1,7 +1,6 @@
-// Session 动作：偏好修改、fork、末轮回退、已读、归档与永久删除。
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { SessionPlanGoalConflictError, type SessionStore } from '@ema-agent/session';
+import { SessionPlanGoalConflictError, SessionWorkBlockedError, type SessionStore } from '@ema-agent/session';
 import type { TurnStore } from '@ema-agent/turn';
 import { jsonBody } from '../validate.js';
 
@@ -29,14 +28,13 @@ export interface SessionActionsRouteDeps {
     | 'getSession'
     | 'forkSession'
     | 'setViewedAt'
-    | 'archiveSession'
     | 'unarchiveSession'
   >;
   readonly turns: Pick<TurnStore, 'rewindLastTurn'>;
   /** 回退前先停该 Turn 发起的运行中子代理, 再删除 Turn. */
   readonly abortSubagentsForTurn: (turnId: string) => Promise<void>;
-  readonly cancelSessionSpeech: (sessionId: string) => Promise<void>;
-  /** 跨域删除用例（application/deleteSession）由装配层绑定 composition 后传入。 */
+  readonly assertSessionWorkAllowed: (sessionId: string) => void;
+  readonly archiveSession: (sessionId: string) => Promise<void>;
   readonly deleteSession: (sessionId: string) => Promise<void>;
 }
 
@@ -112,18 +110,42 @@ export const sessionActionsRoute = (deps: SessionActionsRouteDeps) =>
       return context.body(null, 204);
     })
     .post('/:sessionId/archive', async context => {
-      const sessionId = context.req.param('sessionId');
-      await deps.cancelSessionSpeech(sessionId);
-      deps.session.archiveSession(sessionId);
-      return context.body(null, 204);
+      try {
+        await deps.archiveSession(context.req.param('sessionId'));
+        return context.body(null, 204);
+      } catch (error) {
+        if (errorMessageStartsWith(error, 'session_not_found')) {
+          return context.json({ error: 'session_not_found' }, 404);
+        }
+        throw error;
+      }
     })
     .post('/:sessionId/unarchive', context => {
-      deps.session.unarchiveSession(context.req.param('sessionId'));
-      return context.body(null, 204);
+      try {
+        const sessionId = context.req.param('sessionId');
+        deps.assertSessionWorkAllowed(sessionId);
+        deps.session.unarchiveSession(sessionId);
+        return context.body(null, 204);
+      } catch (error) {
+        if (error instanceof SessionWorkBlockedError) {
+          return context.json({ error: error.code, message: '会话正在停止工作, 请等待操作完成后再取消归档.' }, 409);
+        }
+        if (errorMessageStartsWith(error, 'session_not_found')) {
+          return context.json({ error: 'session_not_found' }, 404);
+        }
+        throw error;
+      }
     })
     .delete('/:sessionId', async context => {
-      await deps.deleteSession(context.req.param('sessionId'));
-      return context.body(null, 204);
+      try {
+        await deps.deleteSession(context.req.param('sessionId'));
+        return context.body(null, 204);
+      } catch (error) {
+        if (errorMessageStartsWith(error, 'session_not_found')) {
+          return context.json({ error: 'session_not_found' }, 404);
+        }
+        throw error;
+      }
     });
 
 function errorMessageStartsWith(error: unknown, prefix: string): boolean {

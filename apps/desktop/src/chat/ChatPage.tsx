@@ -1,4 +1,4 @@
-import { useEffect, useMemo, type JSX } from 'react';
+import { useEffect, useMemo, useRef, type JSX } from 'react';
 import { sessionsApi } from '../api/sessions.js';
 import { subscribeSystemEvent } from '../lib/system-event-dispatcher.js';
 import { ErrorBoundary } from '../lib/error-boundary.js';
@@ -7,10 +7,11 @@ import { useSessionStore } from '../stores/session.js';
 import { NewSessionPage } from './NewSessionPage.js';
 import { SessionPage } from './session/SessionPage.js';
 import { SessionSidebar } from './sidebar/SessionSidebar.js';
-import { useMainNavigationStore } from '../layout/navigation.js';
+import { MainView, useMainNavigationStore } from '../layout/navigation.js';
 import { useSessionActivityStore } from '../stores/sessionActivity.js';
 import { useSubagentStore } from '../stores/subagent.js';
 import { useSessionHistoryStore } from '../stores/sessionHistory.js';
+import { removeSessionFromChat } from './session/removeSessionFromChat.js';
 import {
   clearSessionSubscriptions,
   syncSessionSubscriptions,
@@ -19,13 +20,33 @@ import {
 export function ChatPage(): JSX.Element {
   const sessionId = useMainNavigationStore(state => state.viewedSessionId);
   const sessions = useSessionStore(state => state.sessions);
+  const loadingSessions = useSessionStore(state => state.loading);
+  const sessionListError = useSessionStore(state => state.error);
+  const navigationHistory = useMainNavigationStore(state => state.history);
   const activity = useSessionActivityStore(state => state.bySession);
   const progressById = useSubagentStore(state => state.progressById);
   const serverStatus = useServerStore(state => state.status);
   const hasConnected = useServerStore(state => state.lastKnownPort !== null);
+  const previousSessions = useRef(sessions.byId);
   useEffect(() => {
     void useSessionStore.getState().loadSessions();
   }, []);
+  useEffect(() => {
+    const current = useSessionStore.getState();
+    if (current.loading || current.error) return;
+    // 完整侧栏列表不含归档会话, 刷新后消失的会话也要从聊天导航和本地草稿移除.
+    const removed = new Set<string>();
+    for (const id of previousSessions.current.keys()) {
+      if (!sessions.byId.has(id)) removed.add(id);
+    }
+    for (const location of navigationHistory) {
+      if (location.view === MainView.Chat && location.sessionId && !sessions.byId.has(location.sessionId)) {
+        removed.add(location.sessionId);
+      }
+    }
+    for (const id of removed) removeSessionFromChat(id);
+    previousSessions.current = sessions.byId;
+  }, [sessions.byId, loadingSessions, sessionListError, navigationHistory]);
   const listedSessions = useMemo(() => {
     const byId = new Map<string, { id: string; hasActiveTurn: boolean }>();
     for (const session of [
@@ -108,7 +129,7 @@ export function ChatPage(): JSX.Element {
     <ErrorBoundary>
       <div className="relative flex h-full flex-row">
         <SessionSidebar />
-        {sessionId
+        {sessionId && sessions.byId.has(sessionId)
           ? <SessionPage sessionId={sessionId} />
           : <NewSessionPage />}
       </div>

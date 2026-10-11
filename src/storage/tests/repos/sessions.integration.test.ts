@@ -37,14 +37,17 @@ describe('SessionsRepo integration', () => {
     expect(repo.findById('plan-source')?.permission_mode).toBe('plan');
   });
 
-  it('listEnrichedAll 返回带投影的扁平行（分桶归业务层）', () => {
+  it('侧栏 SQL 只返回未归档行, 归档列表单独读取', () => {
     insertSession({ id: 'a', cwd: 'D:/work/a', lastActivityAt: 30 });
     insertSession({ id: 'b', pinned: true, lastActivityAt: 50 });
     insertSession({ id: 'c', archivedAt: 60 });
 
-    const rows = repo.listEnrichedAll();
-    expect(rows.map((row) => row.id)).toEqual(['b', 'a', 'c']);
+    const rows = repo.listEnrichedForSidebar();
+    expect(rows.map((row) => row.id)).toEqual(['b', 'a']);
     expect(rows[0]).toMatchObject({ has_active_turn: 0, last_turn_status: null });
+    expect(repo.listArchived()).toEqual([
+      { id: 'c', title: 'c session', project_id: null, project_name: null, archived_at: 60 },
+    ]);
   });
 
   it('enriched 行返回最新 Turn 状态与活动标记', () => {
@@ -53,7 +56,7 @@ describe('SessionsRepo integration', () => {
     insertTurn({ id: 'turn-z', sessionId: 's1', status: 'failed', createdAt: 100, completedAt: 120 });
     insertTurn({ id: 'turn-r', sessionId: 's1', status: 'running', createdAt: 130 });
 
-    expect(repo.listEnrichedAll()[0]).toMatchObject({
+    expect(repo.listEnrichedForSidebar()[0]).toMatchObject({
       id: 's1',
       last_turn_status: 'running',
       has_active_turn: 1,

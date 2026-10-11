@@ -51,7 +51,7 @@ Session 批准, 收尾只清理等待, 不清批准. 范围与匹配契约见 [P
 - `claimNextIteration` 交付绑定当前根 Turn 的目标正文编辑, 后台完成通知和用户立即引导, 不生成持续 Goal 续接. 普通排队输入和持续 Goal 留到 Turn 收尾后处理. 完整 Assistant 与本批 ToolResult 保存后才领取, 无工具的正文回复也检查.
 - 后台通知与 Goal 续接对 Turn 都是 `type='continuation'` / `continuationText`. Subagent 和后台 Process 的通知仍在队列内部保留执行 ID, 去重键和 claim/acknowledge/release 身份. 模型用 `SubagentAwait` 或 `ProcessOutput` 读取完整结果.
 - 一次性输入/通知在对应 Message 持久化后才 acknowledge, 准备或写入失败则 release. 停止和最终失败向同一 `turnFinished` 入口交付事实, 但不立即重试归还内容; 后续用户入队, Goal 激活或后台完成等明确唤醒仍可交付.
-- Goal 创建/激活事件请求同一队列排水. Session 忙碌时不抢占, 正常 Turn 收尾和手动 Compact 的 finally 解锁后重新选择最新工作. Server 关闭先 shutdown 队列, Session 删除由既有 TurnStore 删除守卫挡住新启动.
+- Goal 创建/激活事件请求同一队列处理. Session 忙碌时不抢占, 正常 Turn 收尾和手动 Compact 的 finally 解锁后重新选择最新工作. Server 关闭先 shutdown 队列. 删除或归档先由 SessionRunningRegistry 关闭这个会话的新工作入口, 再用 `clearSession` 清空未执行的输入, 通知和领取记录; 归档期间忽略迟到的后台完成通知, 取消归档也不重放它们. `TurnStore.startTurn` 拒绝已归档或正在停止的会话.
 - 新 Turn 的 reminder 交付 Goal 身份, version, objective 和 feedback. `goal_edited` 在根 Turn 运行且 Goal active 时标记待交付编辑, 安全点从 SQL 读取最新正文并持久化为隐藏 continuation Message, 不改写初始 reminder 或发用户气泡. 同一安全点前的多次编辑合并为最新事实, feedback 的 `goal_updated` 不生成编辑消息. 空闲, 手动 Compact 或 paused 时编辑只保存, 不启动模型; 未交付编辑在所属 Turn 收尾时清除, 下一 Turn 仍读取新 reminder.
 - 当前 Turn 中关闭 Goal 不直接 abort; Store 拒绝旧版本完成或进度写入, 收尾后不再生成已关闭目标的续接. 不引入第二套 AgentLoop.
 - 当前根 Turn 实际处理的同一个 Goal 仍 active 时, `max_iterations` 表示单 Turn 工作配额已用完: 工具结果完整保存后按 completed 收尾, 解锁后由同一队列选择下一 Turn. completed 只表示这根 Turn 已结束, 不代表 Goal 成功. 无 Goal 和子代理仍保留原有上限处理. 队列仍优先交付已排队的用户输入, 不绕过用户停止, 真正失败或应用关闭.

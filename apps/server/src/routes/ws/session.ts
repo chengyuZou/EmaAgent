@@ -7,6 +7,7 @@ import type { PermissionResponse, PermissionStreamEvent } from '@ema-agent/permi
 import type { ToolExecutionEvent } from '@ema-agent/tools';
 import {
   SessionBusyError,
+  SessionWorkBlockedError,
   type SessionRunning,
   type SessionRunningRegistry,
   type SessionMessage,
@@ -242,7 +243,7 @@ export interface SessionWebSocketRouteDeps {
   readonly subagents: SubagentExecutor;
   readonly continuations: SessionContinuationQueue;
   readonly goals: Pick<GoalStore, 'create'>;
-  readonly sessions: Pick<SessionStore, 'sessionExists' | 'getSession' | 'loadMessagesForTurn'>;
+  readonly sessions: Pick<SessionStore, 'sessionExists' | 'getSessionForWork' | 'loadMessagesForTurn'>;
   readonly turns: Pick<TurnStore, 'getTurn'>;
   readonly sessionRunning: SessionRunningRegistry;
   readonly interactions: SessionInteractionQueue;
@@ -308,6 +309,7 @@ async function handleClientMessage(
   try {
     switch (message.type) {
       case 'send_user_message': {
+        const session = deps.sessions.getSessionForWork(sessionId);
         if (!hasTurnInput(message.payload.input)) {
           throw new SessionRequestError('empty_input', 'Turn 输入为空');
         }
@@ -325,7 +327,7 @@ async function handleClientMessage(
           return;
         }
         // 发送消息只提交内容; 新 Turn 的语音选择从该 Session 的已保存设置读取.
-        const ttsEnabled = deps.sessions.getSession(sessionId).ttsEnabled;
+        const ttsEnabled = session.ttsEnabled;
         const handle = deps.executor.start({
           sessionId,
           triggerType: 'userMessage',
@@ -337,6 +339,7 @@ async function handleClientMessage(
         return;
       }
       case 'queue_user_message': {
+        deps.sessions.getSessionForWork(sessionId);
         if (!hasTurnInput(message.payload.input)) throw new SessionRequestError('empty_input', 'Turn 输入为空');
         if (deps.sessionRunning.getRunning(sessionId)?.kind !== 'turn') {
           throw new SessionRequestError('session_idle', '当前 Session 没有运行中的 Turn');
@@ -355,6 +358,7 @@ async function handleClientMessage(
         sendRequestResult(socket, message.requestId, deps.continuations.remove(sessionId, message.id));
         return;
       case 'guide_queued_input':
+        deps.sessions.getSessionForWork(sessionId);
         sendRequestResult(socket, message.requestId, deps.continuations.guide(sessionId, message.id));
         return;
       case 'start_compaction': {
@@ -428,6 +432,12 @@ function sendRequestResult(socket: SessionSocket, requestId: ClientRequestId, ac
 }
 
 function commandFailure(error: unknown): { code: string; message: string } {
+  if (error instanceof SessionWorkBlockedError) {
+    const message = error.code === 'session_archived'
+      ? '会话已归档, 请先取消归档再发送消息.'
+      : '会话正在删除或归档, 不能开始新的工作.';
+    return { code: error.code, message };
+  }
   if (error instanceof SessionRequestError) return { code: error.code, message: error.message };
   if (error instanceof SessionBusyError) return { code: 'session_busy', message: error.message };
   if (error instanceof CommandsError) return { code: error.code.replace('/', '_'), message: error.message };

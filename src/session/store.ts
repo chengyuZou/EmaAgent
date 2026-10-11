@@ -13,7 +13,7 @@ import {
   type MessagePageCursor,
   type SessionRowEnriched,
 } from '@ema-agent/storage';
-import { SessionOwnershipError, SessionPlanGoalConflictError } from './errors.js';
+import { SessionOwnershipError, SessionPlanGoalConflictError, SessionWorkBlockedError } from './errors.js';
 import type { Database } from '@ema-agent/storage';
 import {
   toMessage,
@@ -25,6 +25,7 @@ import {
 } from './persistence/rowMapping.js';
 import type {
   Session,
+  ArchivedSession,
   SessionListItem,
   SessionMessage,
   Project,
@@ -55,6 +56,8 @@ export interface SessionStoreDeps {
   /** Session 删除后清理数据库外的音频、附件和工具结果文件。 */
   onSessionRemoved?: (sessionId: string) => void;
   onChanged?: (event: SessionEvent) => void;
+  /** 执行宿主正在删除或归档这个会话时, 阻止新增工作, 不阻止最后的消息保存. */
+  isWorkClosed?: (sessionId: string) => boolean;
 }
 
 /** 管理 Session/Project/Message 聚合的规则与读写。 */
@@ -67,10 +70,11 @@ export class SessionStore {
   private readonly db:           Database;
   private readonly onSessionRemoved?: (sessionId: string) => void;
   private readonly onChanged?: (event: SessionEvent) => void;
+  private readonly isWorkClosed?: (sessionId: string) => boolean;
   /** 单调时间戳避免同毫秒写入破坏游标边界。 */
   private lastTs = 0;
 
-  constructor({ db, onSessionRemoved, onChanged }: SessionStoreDeps) {
+  constructor({ db, onSessionRemoved, onChanged, isWorkClosed }: SessionStoreDeps) {
     this.sessionsRepo = new SessionsRepo(db.sqlite);
     this.goalsRepo = new GoalsRepo(db.sqlite);
     this.turnsRepo    = new TurnsRepo(db.sqlite);
@@ -79,6 +83,7 @@ export class SessionStore {
     this.db           = db;
     this.onSessionRemoved = onSessionRemoved;
     this.onChanged = onChanged;
+    this.isWorkClosed = isWorkClosed;
   }
 
   // ── 内部时间 ────────────────────────────────────────────────────────────────
@@ -140,20 +145,40 @@ export class SessionStore {
     return this.requireSession(id);
   }
 
+  getSessionForWork(id: string): Session {
+    if (this.isWorkClosed?.(id)) {
+      throw new SessionWorkBlockedError('session_stopping', id);
+    }
+    const session = this.requireSession(id);
+    if (session.archivedAt !== null) {
+      throw new SessionWorkBlockedError('session_archived', id);
+    }
+    return session;
+  }
+
+  listArchivedSessions(): ArchivedSession[] {
+    return this.sessionsRepo.listArchived().map(row => ({
+      id: row.id,
+      title: row.title,
+      projectId: row.project_id,
+      projectName: row.project_name,
+      archivedAt: row.archived_at,
+    }));
+  }
+
   /** 无异常检查，供调用方识别删库后残留的客户端 Session ID。 */
   sessionExists(id: string): boolean {
     return this.sessionsRepo.findById(id) !== undefined;
   }
 
-  /** 侧栏投影：置顶 Session / 置顶项目 / 其余项目 / 最近 / 已归档。 */
+  /** 正常侧栏只返回未归档会话, 项目成员与独立会话分别展示. */
   listSessionsForSidebar(): {
     pinned:   SessionListItem[];
     pinnedProjects: Project[];
     projects: Project[];
     recent:   SessionListItem[];
-    archived: SessionListItem[];
   } {
-    const all = this.sessionsRepo.listEnrichedAll();
+    const all = this.sessionsRepo.listEnrichedForSidebar();
 
     // 列出所有项目的文件夹 按 project_id 分组。
     const foldersByProject = new Map<string, ReturnType<typeof toProjectFolder>[]>();
@@ -166,12 +191,12 @@ export class SessionStore {
     const membersByProject = new Map<string, SessionRowEnriched[]>();
     const pinned:   SessionListItem[] = [];
     const recent:   SessionListItem[] = [];
-    const archived: SessionListItem[] = [];
 
     for (const row of all) {
-      if (row.archived_at) { archived.push(toSessionListItem(row)); continue; }
-      // 如果一个Session同时有project_id和pinned 则pin的优先级更高
-      if (row.pinned) { pinned.push(toSessionListItem(row)); continue; }
+      if (row.pinned) {
+        pinned.push(toSessionListItem(row));
+        continue;
+      }
       if (row.project_id) {
         const list = membersByProject.get(row.project_id) ?? [];
         list.push(row);
@@ -193,7 +218,7 @@ export class SessionStore {
       else projects.push(project);
     }
 
-    return { pinned, pinnedProjects, projects, recent, archived };
+    return { pinned, pinnedProjects, projects, recent };
   }
 
   searchSessions(input: SearchSessionsInput): SearchSessionsOutput {

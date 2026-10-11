@@ -4,6 +4,7 @@ import { ErrorBoundary } from '../lib/error-boundary.js';
 import { useMainNavigationStore } from '../layout/navigation.js';
 import { CharactersTab } from './character/CharactersTab.js';
 import { StorageTab } from './data/StorageTab.js';
+import { ArchivedChatsTab } from './archive/archivedChatsTab.js';
 import { ThemeTab } from './appearance/themeTab.js';
 import { FontTab } from './appearance/fontTab.js';
 import { WallpaperTab } from './appearance/wallpaperTab.js';
@@ -29,6 +30,7 @@ type SettingsPageId =
   | 'mcp'
   | 'memory'
   | 'storage'
+  | 'archive'
   | 'security'
   | 'parameters'
   | 'appearance';
@@ -93,6 +95,7 @@ const SETTINGS_PAGES: readonly SettingsPage[] = [
   { id: 'mcp', label: 'MCP 服务器', icon: 'i-lucide:plug', subPages: MCP_SUB_PAGES },
   { id: 'memory', label: 'Memory', icon: 'i-lucide:library', subPages: MEMORY_SUB_PAGES },
   { id: 'storage', label: '存储位置', icon: 'i-lucide:hard-drive', fullHeight: true },
+  { id: 'archive', label: '归档聊天', icon: 'i-lucide:archive' },
   { id: 'security', label: '安全', icon: 'i-lucide:shield-check' },
   { id: 'parameters', label: '参数设置', icon: 'i-lucide:sliders-horizontal' },
   { id: 'appearance', label: '外观', icon: 'i-lucide:palette', subPages: APPEARANCE_SUB_PAGES },
@@ -289,6 +292,8 @@ function SettingsContent({ id }: { id: SettingsTabId }): JSX.Element {
       return <MemoryJobsTab />;
     case 'storage':
       return <StorageTab />;
+    case 'archive':
+      return <ArchivedChatsTab />;
     case 'security':
       return <SecurityTab />;
     case 'parameters':

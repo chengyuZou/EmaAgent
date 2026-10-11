@@ -65,6 +65,7 @@ function installBuiltinSkills(sourceRoot: string, targetRoot: string): void {
 }
 
 export interface ToolsDeps {
+  readonly assertSessionWorkAllowed: (sessionId: string) => void;
   readonly profileDb: Database;
   readonly dataDb: Database;
   readonly activeDataDir: string;
@@ -181,6 +182,7 @@ export function openTools(deps: ToolsDeps): ToolsComposition {
 
   // ── 后台进程、执行状态、结果存储 ─────────────────────────────────────────────
   const backgroundProcesses = new BackgroundProcess({
+    assertSessionWorkAllowed: deps.assertSessionWorkAllowed,
     store: new BackgroundProcessesRepo(dataDb.sqlite),
     outputPath: (sessionId, processId) =>
       backgroundProcessOutputDirFor(activeDataDir, sessionId, processId),

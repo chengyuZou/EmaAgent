@@ -28,6 +28,17 @@ export class SessionBusyError extends Error {
   }
 }
 
+/** 归档会话不能开始工作; 删除或归档正在停止工作时也不能补进新执行. */
+export class SessionWorkBlockedError extends Error {
+  constructor(
+    readonly code: 'session_archived' | 'session_stopping',
+    sessionId: string,
+  ) {
+    super(`${code}: ${sessionId}`);
+    this.name = 'SessionWorkBlockedError';
+  }
+}
+
 /** 同一 Session 已有根 Turn 或手动 Compact 时又注册一份工作, 表示调用链重复注册. */
 export class SessionRunningAlreadyRegisteredError extends Error {
   readonly code = 'session_running_already_registered' as const;

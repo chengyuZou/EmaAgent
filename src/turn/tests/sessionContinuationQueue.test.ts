@@ -25,10 +25,12 @@ function createFixture(running = false) {
   const queue = new SessionContinuationQueue({
     sessions: {
       sessionExists: sessionId => sessionId === 'session-a',
-      getSession: () => ({ ttsEnabled: true }) as never,
+      getSession: () => ({ ttsEnabled: true, archivedAt: null }) as never,
+      getSessionForWork: () => ({ ttsEnabled: true, archivedAt: null }) as never,
     },
     sessionRunning: {
       isRunning: () => sessionRunning,
+      isClosed: () => false,
       getRunning: () => sessionRunning ? { kind: 'turn', turnId: 'running-turn' } : undefined,
     },
     goals: { getCurrent: () => null },
@@ -58,10 +60,10 @@ function createGoalFixture() {
   const db = new Database({ memory: true, kind: 'data' });
   db.migrate();
   goalDatabases.push(db);
-  const sessions = new SessionStore({ db });
+  const sessionRunning = new SessionRunningRegistry();
+  const sessions = new SessionStore({ db, isWorkClosed: id => sessionRunning.isClosed(id) });
   const session = sessions.createSession({ cwd: os.tmpdir() });
   const goals = new GoalStore(db);
-  const sessionRunning = new SessionRunningRegistry();
   const starts: StartTurn[] = [];
   const queue = new SessionContinuationQueue({
     sessions, goals, sessionRunning,
@@ -85,6 +87,30 @@ function createGoalFixture() {
 }
 
 describe('SessionContinuationQueue', () => {
+  it('归档取消输入与续接, 忽略迟到的完成通知, 取消归档不重放队列', async () => {
+    const fixture = createGoalFixture();
+    fixture.queue.enqueue({ sessionId: fixture.session.id, input: [{ type: 'text', text: '未执行' }] });
+    fixture.queue.subagentCompleted(fixture.session.id, 'child', 'completed');
+    await fixture.sessionRunning.runWithSessionClosed(fixture.session.id, async () => {
+      expect(() => fixture.queue.enqueue({ sessionId: fixture.session.id, input: [{ type: 'text', text: '迟到输入' }] }))
+        .toThrow('session_stopping');
+      fixture.sessions.archiveSession(fixture.session.id);
+      fixture.queue.clearSession(fixture.session.id);
+      fixture.queue.turnFinished(fixture.session.id, 'completed');
+      fixture.queue.backgroundProcessCompleted(fixture.session.id, 'process', 'completed');
+      fixture.queue.subagentCompleted(fixture.session.id, 'late-child', 'cancelled');
+    });
+    expect(() => fixture.queue.enqueue({ sessionId: fixture.session.id, input: [{ type: 'text', text: '归档输入' }] }))
+      .toThrow('session_archived');
+    expect(fixture.starts).toEqual([]);
+    expect(fixture.queue.list(fixture.session.id)).toEqual([]);
+    fixture.sessions.unarchiveSession(fixture.session.id);
+    fixture.queue.requestDrain(fixture.session.id);
+    await Promise.resolve();
+    expect(fixture.starts).toEqual([]);
+    expect(fixture.queue.claimNextIteration(fixture.session.id, 'next')).toBeUndefined();
+  });
+
   it.each(['idle', 'compact'] as const)('%s 时编辑 active Goal 只保存, 不领取隐藏消息或启动 Turn', async mode => {
     const fixture = createGoalFixture();
     const created = fixture.goals.create(fixture.session.id, '原目标');
@@ -435,7 +461,7 @@ describe('SessionContinuationQueue', () => {
     fixture.queue.requestDrain(fixture.session.id);
     if (action === 'shutdown') fixture.queue.shutdown();
     else {
-      fixture.queue.discardSession(fixture.session.id);
+      fixture.queue.clearSession(fixture.session.id);
       fixture.sessions.deleteSession(fixture.session.id);
     }
     await Promise.resolve();

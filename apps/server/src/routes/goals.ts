@@ -95,6 +95,10 @@ function goalError(context: Context, error: unknown) {
   switch (error.code) {
     case 'session_not_found':
       return context.json({ error: error.code, message: '会话不存在.' }, 404);
+    case 'session_archived':
+      return context.json({ error: error.code, message: '会话已归档, 请先取消归档.' }, 409);
+    case 'session_stopping':
+      return context.json({ error: error.code, message: '会话正在停止工作.' }, 409);
     case 'goal_not_found':
       return context.json({ error: error.code, message: '目标不存在或已删除, 请刷新目标信息.' }, 404);
     case 'goal_version_conflict':

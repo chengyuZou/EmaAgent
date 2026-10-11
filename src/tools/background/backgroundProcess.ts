@@ -57,6 +57,7 @@ interface QueuedProcess {
 }
 
 export interface BackgroundProcessDeps {
+  assertSessionWorkAllowed: (sessionId: string) => void;
   /** 持久化窄端口;SQL 实现由 Core 装配注入。 */
   store: BackgroundProcessStore;
   /** 创建期:按 Session 与进程 id 推导日志位置。 */
@@ -111,6 +112,7 @@ export class BackgroundProcess {
    * 转交后台并解除原调用的取消绑定. 进程仍占原坑位, 后续终态由完成通知链接管.
    */
   async runCommand(request: BackgroundCommandRequest): Promise<BackgroundCommandResult> {
+    this.deps.assertSessionWorkAllowed(request.sessionId);
     if (this.shuttingDown) {
       throw new BackgroundProcessError('shutting_down', 'Background process runtime is shutting down');
     }
@@ -229,9 +231,9 @@ export class BackgroundProcess {
       };
     }
 
-    // 计时器胜出不等于可以转交:竞速期间用户可能已取消,而进程停止慢于计时器。
-    // 已取消的命令绝不能登记为后台进程——等它死透再清理,Windows 句柄不挡删。
-    if (request.waitSignal.aborted) {
+    // 停止请求可能先于计时器到达, 但进程还没有退出.
+    // 此时继续等进程退出再清理日志, 不能转为后台继续运行.
+    if (request.waitSignal.aborted || active.terminalIntent !== undefined) {
       active.handle.stop();
       active.detachWaitAbort?.();
       this.active.delete(id);
@@ -383,6 +385,30 @@ export class BackgroundProcess {
     return this.queued.size > 0 || this.active.size > 0;
   }
 
+  /** 立即通知会话的所有命令停止, 再等待退出; 保留日志和每条命令的停止记录. */
+  async stopForSession(sessionId: string): Promise<void> {
+    const queued = [...this.queued.entries()]
+      .filter(([, process]) => process.request.sessionId === sessionId);
+    const active = [...this.active.entries()]
+      .filter(([, process]) => process.request.sessionId === sessionId);
+    const completions: Promise<unknown>[] = [];
+    for (const [id] of queued) {
+      completions.push(this.stop(sessionId, id));
+    }
+    for (const [id, process] of active) {
+      if (process.persisted) {
+        completions.push(this.stop(sessionId, id));
+      } else {
+        process.terminalIntent = 'stopped';
+        process.handle.stop();
+        completions.push(process.handle.completion);
+      }
+    }
+    const results = await Promise.allSettled(completions);
+    const failure = results.find(result => result.status === 'rejected');
+    if (failure?.status === 'rejected') throw failure.reason;
+  }
+
   /** 角色切换或删除经用户确认后，停止全部普通后台进程；不影响 Memory 自己的 Job 队列。 */
   async stopAll(): Promise<void> {
     const processes = [
@@ -511,6 +537,7 @@ export class BackgroundProcess {
     persisted: boolean,
     bindWaitSignal: boolean,
   ): ActiveProcess {
+    this.deps.assertSessionWorkAllowed(request.sessionId);
     const startedAt = Date.now();
     const handle = request.runner.start(request.command, {
       cwd: request.cwd,

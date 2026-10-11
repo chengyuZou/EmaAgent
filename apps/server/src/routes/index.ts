@@ -4,7 +4,7 @@
 // ReturnType<typeof createRoutes>（AppType）将退化为裸 Hono，Hono RPC 契约直接失效。
 import { ATTACHMENT_RESIDUE_MAX_AGE_MS, readAttachmentCacheSettings } from '@ema-agent/attachments';
 import { Hono } from 'hono';
-import { deleteSession } from '../application/deleteSession.js';
+import { archiveSession, deleteSession } from '../application/sessionActions.js';
 import { activateCharacter, deleteCharacter, runWhenSessionsIdle } from '../application/changeCharacter.js';
 import type { Composition } from '../composition/index.js';
 import { emaAuth, localWebviewCors } from '../platform/auth.js';
@@ -98,8 +98,8 @@ export const createRoutes = (composition: Composition, secret: string) => {
       session: database.session,
       turns: database.turns,
       abortSubagentsForTurn: turnId => turn.subagents.abortForTurn(turnId),
-      cancelSessionSpeech: sessionId => speech.cancelSessionSpeech(sessionId),
-      // 跨域删除用例在 application 层，装配时绑定 composition。
+      assertSessionWorkAllowed: sessionId => database.sessionRunning.assertWorkAllowed(sessionId),
+      archiveSession: sessionId => archiveSession(composition, sessionId),
       deleteSession: sessionId => deleteSession(composition, sessionId),
     }))
     .route('/api/sessions', sessionHistoryRoute({

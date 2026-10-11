@@ -16,7 +16,8 @@
 `SessionStore` 是唯一读写聚合：
 
 - **Session**：createSession（可同时携带 projectId 与显式 cwd；未给 cwd 时取创建当刻的项目主文件夹；项目无主文件夹或无项目时，创建并使用 `~/.ema-agent/workspace`）/ getSession / sessionExists / patchSession（项目成员也可显式改 cwd）/ pin / archive / setViewedAt / updateTitle；
-- **侧栏**：`listSessionsForSidebar()` 五桶（置顶 Session / 置顶项目 / 其余项目 / 最近 / 已归档；Session 同时满足 pinned 与 project 时进置顶桶）；`moveSessionInSidebar` 一次提交归属、置顶与插入位置，拖入置顶会清空 projectId；`moveProjectInSidebar` 一次提交项目分区和插入位置；新 Turn 开始时 Session 回到当前分区顶部；`searchSessions` 不搜归档；
+- **侧栏**: `listSessionsForSidebar()` 只返回未归档会话, 分为置顶 Session, 置顶项目, 其余项目和最近会话. Session 同时满足 pinned 与 project 时进入置顶桶. `moveSessionInSidebar` 一次提交归属、置顶与插入位置, 拖入置顶会清空 projectId; `moveProjectInSidebar` 一次提交项目分区和插入位置; 新 Turn 开始时 Session 回到当前分区顶部. `searchSessions` 不搜归档.
+- **归档概况**: `listArchivedSessions()` 单独返回完整标题, 项目 ID 和名称, 归档时间, 不读取消息正文. Desktop 的 Settings 归档页只按完整标题搜索, 项目另行筛选, 不提供发送入口. 取消归档保留原项目, 置顶和历史, 不自动恢复执行.
 - **Project**：createProject(name, folderPaths, primaryFolderPath?) 在一次事务中创建项目及全部源文件夹；listProjectFolders(projectId) 给 Skills、Permission 读取项目全部源文件夹；rename / delete / pin / 文件夹增删 / 设主 / 拖入拖出。设主、移除文件夹、拖入项目均不改旧 Session 的 cwd；设主只影响以后新建的 Session。
 - **Fork**：forkSession 复制 Turn/Message/Attachment 并重映射 ID，不带 Task、Subagent 或任何在跑的外部副作用；
 - **Message**：appendMessage（turnId 归属校验）/ appendHistorySummary（自动压缩带当前 turnId，手动压缩为 null，且必须带覆盖截止游标）/ loadHistory（最新 summary + 其覆盖游标之后的消息，LLM 可见历史）/ listMessages（UI 正文复合游标页，旧到新）/ listMessagesAround（按 Message 锚点读取有界窗口）/ loadMessagesForTurn（Turn 终态持久收口）/ findToolInteraction（启动恢复）/ markMessageInterrupted / assertMessageOwnership；
@@ -24,7 +25,7 @@
 
 其余出口：
 
-- `SessionRunningRegistry`：同一 Session 只记录一个当前根工作，身份为根 Turn（kind='turn'）或手动 Compact（kind='compact'）；`waitUntilIdle` 供 Session 删除和 Server 关闭等待实际执行者收尾。`SessionBusyError` 是业务拒绝，`SessionRunningAlreadyRegisteredError` 是进程内重复注册错误。
+- `SessionRunningRegistry`: 同一 Session 只记录一个当前根工作, 身份为根 Turn(kind='turn')或手动 Compact(kind='compact'). `runWithSessionClosed` 同步关闭指定会话的新工作入口并取消根工作, 操作结束后解除临时关闭; `waitUntilIdle` 等实际执行者完成清理. `getSessionForWork` 供宿主在排队、启动子代理或命令前取得未归档且没有正在停止的会话, 归档或停止中抛出 `SessionWorkBlockedError`. `getSession` 和消息保存仍可用于查看历史及执行结束前的最后保存.
 - `parseMessageBlocksJson`：blocks_json 的唯一解析点。
 - `collectAttachmentReferenceIds`：一次批量收集消息里全部附件引用 id，供历史重放前批量预取附件。
 - `SessionOwnershipError`：跨 Session 引用的稳定错误。
@@ -45,9 +46,11 @@ active 或 paused 都表示目标未关闭, 拒绝切换并抛出 `SessionPlanGo
 
 ## 边界（本包不负责）
 
-- Turn 生命周期、运行态（取消信号/运行锁）、导航查询、rewind、Session 删除守卫 → `@ema-agent/turn` 的 `TurnStore`；
+- Turn 生命周期, 导航查询和 rewind 由 `@ema-agent/turn` 的 `TurnStore` 负责; 根工作取消信号由 `SessionRunningRegistry` 保存.
 - Wire DTO 不在本包——server/desktop 的协议类型在接线批按真实消费方重建；
-- 跨包删除编排（Permission/工具态级联、文件清理）→ server 侧的 application/deleteSession。
+- 跨包删除和归档流程由 Server 的 `application/sessionActions.ts` 负责.
+
+删除和归档都由界面先显示确认 Dialog, 取消不发送请求. 确认后只发送一次请求, 不附带确认字段; Server 收到请求就同步关闭这个会话的新执行, 同时通知根 Turn/Compact, 前后台子代理, 前后台命令和语音生成停止, 取消待交互, 清空尚未保存为消息的排队输入, 把未完成 Goal 标记为取消. 归档事实先保存, 历史保留; 删除则等待所有执行完成最后的保存, 再删除数据与附件, 成功返回 204. 取消归档期间如果停止流程还没结束, 请求会被拒绝. 停止不会撤销已经完成的文件修改.
 
 ## 依赖方向
 

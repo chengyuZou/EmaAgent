@@ -6,12 +6,14 @@ export { SessionOwnershipError, SessionPlanGoalConflictError } from './errors.js
 export {
   SessionRunningAlreadyRegisteredError,
   SessionBusyError,
+  SessionWorkBlockedError,
 } from './errors.js';
 export { SessionRunningRegistry } from './sessionRunningRegistry.js';
 export type { SessionRunning } from './sessionRunningRegistry.js';
 export { parseMessageBlocksJson } from './message.js';
 export type {
   Session,
+  ArchivedSession,
   SessionListItem,
   Message,
   SessionMessage,

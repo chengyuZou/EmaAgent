@@ -146,7 +146,7 @@ export function ChatInput({
     goal.refreshGoal,
     pickAttachments,
   );
-  const { compacting, runCommand, renameDialog } = useInputCommands(viewedId, viewedSession, () => {
+  const { compacting, runCommand, commandDialogs } = useInputCommands(viewedId, viewedSession, () => {
     if (goal.beginGoal()) textareaRef.current?.el()?.focus();
   });
   const currentProjectId = viewedId
@@ -506,7 +506,7 @@ export function ChatInput({
           </div>
         </div>
       </div>
-      {renameDialog}
+      {commandDialogs}
     </div>
   );
 }

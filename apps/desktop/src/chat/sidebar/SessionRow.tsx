@@ -1,6 +1,5 @@
-// 侧栏单条会话行:状态点、标题、时间与右键菜单操作,含删除/重命名确认。
 import { useState, type JSX } from 'react';
-import { Button, ConfirmDialog, DropdownMenu, IconButton, PromptDialog, type MenuItem } from '@ema-agent/ui';
+import { ConfirmDialog, DropdownMenu, IconButton, PromptDialog, type MenuItem } from '@ema-agent/ui';
 import type { SessionListItem } from '../../api/sessions.js';
 import type { SessionActivity } from '../../stores/sessionActivity.js';
 import { useMainNavigationStore } from '../../layout/navigation.js';
@@ -51,11 +50,12 @@ export function SessionRow({
   dropDestination?: SessionSidebarMoveInput['destination'];
 }): JSX.Element {
   const [pendingDelete, setPendingDelete] = useState(false);
+  const [pendingArchive, setPendingArchive] = useState(false);
+  const [acting, setActing] = useState(false);
   const [promptRename, setPromptRename] = useState(false);
   const [cwdOpen, setCwdOpen] = useState(false);
   const dot = getStatusDot(session, activityBySession);
   const sessionActivity = activityBySession.get(session.id);
-  const isRunning = sessionActivity?.running != null;
   const timeLabel = formatRelativeTime(session.lastActivityAt);
   const drag = useSidebarDrag();
   const dropProps = dropDestination
@@ -94,12 +94,8 @@ export function SessionRow({
       kind:     'item',
       label:    '归档',
       icon:     'i-lucide:archive',
-      onSelect: () => void runWithToast(
-        useSessionStore.getState().archiveSession(session.id).then(() => {
-          removeSessionFromChat(session.id);
-        }),
-        '归档失败',
-      ),
+      disabled: acting,
+      onSelect: () => setPendingArchive(true),
     },
     { kind: 'separator' },
     {
@@ -107,18 +103,29 @@ export function SessionRow({
       label:    '删除',
       icon:     'i-lucide:trash-2',
       danger:   true,
+      disabled: acting,
       onSelect: () => setPendingDelete(true),
     },
   ];
 
   function confirmDelete(): void {
     setPendingDelete(false);
-    void runWithToast(
-      useSessionStore.getState().deleteSession(session.id).then(() => {
-        removeSessionFromChat(session.id);
-      }),
-      '删除失败',
-    );
+    setActing(true);
+    const deletion = useSessionStore.getState().deleteSession(session.id)
+      .then(() => removeSessionFromChat(session.id))
+      .finally(() => setActing(false));
+    void runWithToast(deletion, '删除失败');
+  }
+
+  async function archive(): Promise<void> {
+    if (acting) return;
+    setActing(true);
+    try {
+      await useSessionStore.getState().archiveSession(session.id);
+      removeSessionFromChat(session.id);
+    } finally {
+      setActing(false);
+    }
   }
 
   return (
@@ -141,16 +148,6 @@ export function SessionRow({
       <span className="shrink-0 w-3 flex items-center justify-center">
         {dot ? (
           <span className={`w-1.5 h-1.5 rounded-full ${dot.cls}`} />
-        ) : isRunning ? (
-          <span className="flex gap-px">
-            {[0, 150, 300].map((animationDelayMs) => (
-              <span
-                key={animationDelayMs}
-                className="w-0.5 h-0.5 rounded-full animate-pulse bg-[var(--ema-text-secondary)]"
-                style={{ animationDelay: `${animationDelayMs}ms` }}
-              />
-            ))}
-          </span>
         ) : (
           <span className={`w-1.5 h-1.5 rounded-full border ${isActive ? 'border-[var(--ema-text-tertiary)]' : 'border-[var(--ema-border)]'}`} />
         )}
@@ -205,32 +202,55 @@ export function SessionRow({
 
       </div>
 
-      <ConfirmDialog
-        open={pendingDelete}
-        message={`确定删除会话"${session.title || '新对话'}"？此操作不可撤销。`}
-        confirmText="删除"
-        onConfirm={confirmDelete}
-        onCancel={() => setPendingDelete(false)}
-      />
+      <div
+        className="contents"
+        onClick={event => event.stopPropagation()}
+      >
+        <ConfirmDialog
+          open={pendingDelete}
+          title="删除会话"
+          message={`确定删除会话"${session.title || '新对话'}"? 如有正在运行的工作, 确认后会立即停止主任务、子代理、命令和语音, 取消 Goal 及排队输入. 消息和附件将永久删除, 此操作不可撤销.`}
+          confirmText="删除"
+          onConfirm={confirmDelete}
+          onCancel={() => setPendingDelete(false)}
+        />
 
-      <PromptDialog
-        open={promptRename}
-        title="重命名会话"
-        message="输入新的会话名称"
-        initialValue={session.title}
-        confirmText="重命名"
-        onConfirm={(name) => {
-          setPromptRename(false);
-          if (name) {
-            void runWithToast(
-              useSessionStore.getState().renameSession(session.id, name),
-              '重命名失败',
-            );
-          }
-        }}
-        onCancel={() => setPromptRename(false)}
-      />
-      <SessionCwdDialog sessionId={session.id} open={cwdOpen} onOpenChange={setCwdOpen} />
+        <ConfirmDialog
+          open={pendingArchive}
+          title="归档会话"
+          message={`确定归档会话"${session.title || '新对话'}"? 如有正在运行的工作, 确认后会立即停止主任务、子代理、命令和语音, 取消 Goal 及排队输入. 历史会保留, 取消归档不会自动恢复执行.`}
+          confirmText="归档"
+          danger={false}
+          onConfirm={() => {
+            setPendingArchive(false);
+            void runWithToast(archive(), '归档失败');
+          }}
+          onCancel={() => setPendingArchive(false)}
+        />
+
+        <PromptDialog
+          open={promptRename}
+          title="重命名会话"
+          message="输入新的会话名称"
+          initialValue={session.title}
+          confirmText="重命名"
+          onConfirm={(name) => {
+            setPromptRename(false);
+            if (name) {
+              void runWithToast(
+                useSessionStore.getState().renameSession(session.id, name),
+                '重命名失败',
+              );
+            }
+          }}
+          onCancel={() => setPromptRename(false)}
+        />
+        <SessionCwdDialog
+          sessionId={session.id}
+          open={cwdOpen}
+          onOpenChange={setCwdOpen}
+        />
+      </div>
     </div>
   );
 }

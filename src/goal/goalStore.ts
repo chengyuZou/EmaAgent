@@ -14,6 +14,7 @@ export class GoalStore {
     private readonly db: Database,
     /** 已提交的目标变化, 由装配层接到应用事件和后续工作选择. */
     private readonly emit?: (event: GoalEvent) => void,
+    private readonly isSessionWorkClosed?: (sessionId: string) => boolean,
   ) {
     this.repo = new GoalsRepo(db.sqlite);
     this.sessions = new SessionsRepo(db.sqlite);
@@ -188,8 +189,10 @@ export class GoalStore {
   }
 
   private requireNonPlanSession(sessionId: string): void {
+    if (this.isSessionWorkClosed?.(sessionId)) throw new GoalError('session_stopping');
     const session = this.sessions.findById(sessionId);
     if (!session) throw new GoalError('session_not_found');
+    if (session.archived_at !== null) throw new GoalError('session_archived');
     if (session.permission_mode === 'plan') throw new GoalError('goal_plan_conflict');
   }
 

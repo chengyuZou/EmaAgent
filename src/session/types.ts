@@ -75,6 +75,14 @@ export interface SessionListItem extends Session {
   hasUnread: boolean;
 }
 
+export interface ArchivedSession {
+  id: string;
+  title: string;
+  projectId: string | null;
+  projectName: string | null;
+  archivedAt: number;
+}
+
 export interface Message {
   id: string;
   role: MessageRole;

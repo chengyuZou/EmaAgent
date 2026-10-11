@@ -3,6 +3,38 @@ import { describe, expect, it } from 'vitest';
 import { SessionRunningRegistry } from '../sessionRunningRegistry.js';
 
 describe('SessionRunningRegistry', () => {
+  it('会话停止立即取消根工作, 只禁止该会话的新注册, 等全部重叠操作结束才恢复', async () => {
+    const registry = new SessionRunningRegistry();
+    const signal = registry.register('s1', { kind: 'compact', compactId: 'compact' });
+    const otherSignal = registry.register('s2', { kind: 'turn', turnId: 'other' });
+    let finishFirst!: () => void;
+    let finishSecond!: () => void;
+    const first = registry.runWithSessionClosed('s1', () => new Promise<void>(resolve => {
+      finishFirst = resolve;
+    }));
+    const second = registry.runWithSessionClosed('s1', () => new Promise<void>(resolve => {
+      finishSecond = resolve;
+    }));
+    expect(signal.aborted).toBe(true);
+    expect(otherSignal.aborted).toBe(false);
+    expect(() => registry.register('s1', { kind: 'turn', turnId: 'new' })).toThrow('session_stopping');
+    registry.clear('s1', { kind: 'compact', compactId: 'compact' });
+    finishFirst();
+    await first;
+    expect(registry.isClosed('s1')).toBe(true);
+    finishSecond();
+    await second;
+    expect(registry.register('s1', { kind: 'turn', turnId: 'new' }).aborted).toBe(false);
+  });
+
+  it('停止操作失败后解除临时关闭状态', async () => {
+    const registry = new SessionRunningRegistry();
+    await expect(registry.runWithSessionClosed('s1', async () => {
+      throw new Error('save failed');
+    })).rejects.toThrow('save failed');
+    expect(registry.isClosed('s1')).toBe(false);
+  });
+
   it('注册和清除只发布 session running 当前值变化', () => {
     const registry = new SessionRunningRegistry();
     const changes: unknown[] = [];

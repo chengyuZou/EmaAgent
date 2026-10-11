@@ -25,7 +25,7 @@ const searchQuery = z.object({
 export interface SessionCollectionRouteDeps {
   readonly session: Pick<
     SessionStore,
-    'createSession' | 'getSession' | 'listSessionsForSidebar' | 'searchSessions'
+    'createSession' | 'getSession' | 'listSessionsForSidebar' | 'listArchivedSessions' | 'searchSessions'
   >;
 }
 
@@ -40,6 +40,7 @@ export const sessionCollectionRoute = (deps: SessionCollectionRouteDeps) =>
       }
     })
     .get('/', context => context.json(deps.session.listSessionsForSidebar()))
+    .get('/archived', context => context.json(deps.session.listArchivedSessions()))
     .get('/search', queryValidator(searchQuery), context => {
       const { q, limit } = context.req.valid('query');
       return context.json(deps.session.searchSessions({ query: q, limit }));

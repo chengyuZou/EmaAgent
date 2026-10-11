@@ -88,12 +88,13 @@ function makeInput(toolCallId: string, gate: Promise<void>, parentSignal: AbortS
   };
 }
 
-function createExecutor(store: SubagentStore) {
+function createExecutor(store: SubagentStore, assertSessionWorkAllowed = vi.fn()) {
   const onBackgroundCompleted = vi.fn();
   const onTerminalResultRead = vi.fn();
   const onRunFinished = vi.fn();
   const publish = vi.fn();
   const executor = new SubagentExecutor({
+    assertSessionWorkAllowed,
     store,
     messageStore: messageStores.get(store)!,
     maxConcurrent: () => 4,
@@ -106,6 +107,30 @@ function createExecutor(store: SubagentStore) {
 }
 
 describe('SubagentExecutor', () => {
+  it('会话停止期间拒绝新子代理, 不创建子代理或 Run', () => {
+    const store = makeStore();
+    const check = vi.fn(() => { throw new Error('session_stopping'); });
+    const fixture = createExecutor(store, check);
+    expect(() => fixture.executor.start(makeInput('blocked', Promise.resolve(), new AbortController().signal)))
+      .toThrow('session_stopping');
+    expect(check).toHaveBeenCalledWith('session-1');
+    expect(store.listForSession('session-1').items).toEqual([]);
+  });
+
+  it('会话停止同时取消前台和后台子代理, 等每条 Run 保存取消结果', async () => {
+    const store = makeStore();
+    const fixture = createExecutor(store);
+    const gate = deferred();
+    const foreground = fixture.executor.start(makeInput('front', gate.promise, new AbortController().signal));
+    const background = fixture.executor.start(makeInput('back', gate.promise, new AbortController().signal));
+    fixture.executor.moveToBackground(background.subagentId, 'session-1');
+    const stopping = fixture.executor.abortForSession('session-1', 'Session archived');
+    gate.resolve();
+    await stopping;
+    expect(store.latestRun(foreground.subagentId)?.status).toBe('cancelled');
+    expect(store.latestRun(background.subagentId)?.status).toBe('cancelled');
+  });
+
   it('流式与闭合事件沿用真实 SQL ID, 终态携带具体 Run 的持久结果', async () => {
     const store = makeStore();
     const fixture = createExecutor(store);

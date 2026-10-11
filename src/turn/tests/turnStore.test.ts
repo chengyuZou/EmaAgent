@@ -9,7 +9,8 @@ let seq = 100;
 function makeStore() {
   const db = new Database({ memory: true, kind: 'data' });
   db.migrate();
-  return { store: new TurnStore({ db, sessionRunning: new SessionRunningRegistry() }), db };
+  const registry = new SessionRunningRegistry();
+  return { store: new TurnStore({ db, sessionRunning: registry }), db, registry };
 }
 
 function insertSession(db: Database, id: string): string {
@@ -46,14 +47,17 @@ function insertMessage(
 }
 
 describe('TurnStore — 生命周期与运行锁', () => {
-  it('Session 进入删除守卫后拒绝新 Turn，取消守卫后恢复', () => {
-    const { store, db } = makeStore();
+  it('删除或归档期间拒绝新 Turn, 停止流程结束后只恢复未归档会话', async () => {
+    const { store, db, registry } = makeStore();
     const sessionId = insertSession(db, 's1');
 
-    store.beginSessionDeletion(sessionId);
-    expect(() => startTurn(store, sessionId)).toThrow('session_deleting');
-
-    store.cancelSessionDeletion(sessionId);
+    await registry.runWithSessionClosed(sessionId, async () => {
+      expect(() => startTurn(store, sessionId)).toThrow('session_stopping');
+    });
+    new SessionsRepo(db.sqlite).archive(sessionId, 1);
+    expect(() => startTurn(store, sessionId)).toThrow('session_archived');
+    expect(db.sqlite.prepare('SELECT COUNT(*) AS count FROM turns').get()).toEqual({ count: 0 });
+    new SessionsRepo(db.sqlite).unarchive(sessionId);
     expect(() => startTurn(store, sessionId)).not.toThrow();
   });
 

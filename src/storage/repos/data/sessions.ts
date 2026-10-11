@@ -42,6 +42,14 @@ export interface SessionRowEnriched extends SessionRow {
   has_active_turn:       number;
 }
 
+interface ArchivedSessionRow {
+  id: string;
+  title: string;
+  project_id: string | null;
+  project_name: string | null;
+  archived_at: number;
+}
+
 /** SessionRow 带 JOIN 查询派生的 turn 字段 + 搜索匹配字段 用于查找 session标题/session内Message */
 export interface SessionSearchRow extends SessionRowEnriched {
   match_kind:         'title' | 'message';
@@ -109,10 +117,8 @@ export class SessionsRepo {
       .get(id) as SessionRow | undefined;
   }
 
-  /**
-   * 侧栏四区用的全量 enriched 行（含 archived），分桶由业务层按 project_id 实体完成。
-   */
-  listEnrichedAll(): SessionRowEnriched[] {
+  /** 正常侧栏的会话行, 带运行和最近终态, 不包含归档会话. */
+  listEnrichedForSidebar(): SessionRowEnriched[] {
     return this.db
       .prepare(`
         WITH latest_turn AS (
@@ -142,13 +148,24 @@ export class SessionsRepo {
           ON lt.session_id = s.id
          AND lt.row_number = 1
         LEFT JOIN running_turns rt ON rt.session_id = s.id
+        WHERE s.archived_at IS NULL
         ORDER BY
-          CASE WHEN s.archived_at IS NULL THEN s.pinned ELSE 0 END DESC,
+          s.pinned DESC,
           s.sidebar_order DESC,
           s.last_activity_at DESC,
           s.id DESC
       `)
       .all() as SessionRowEnriched[];
+  }
+
+  listArchived(): ArchivedSessionRow[] {
+    return this.db.prepare(`
+      SELECT s.id, s.title, s.project_id, p.name AS project_name, s.archived_at
+      FROM sessions s
+      LEFT JOIN projects p ON p.id = s.project_id
+      WHERE s.archived_at IS NOT NULL
+      ORDER BY s.archived_at DESC, s.id DESC
+    `).all() as ArchivedSessionRow[];
   }
 
   // ── 项目成员资格 ────────────────────────────────────────────────────────────

@@ -15,6 +15,7 @@ import {
 export type SessionCreateInput = InferRequestType<RpcClient['api']['sessions']['$post']>['json'];
 export type Session = RpcJson<RpcClient['api']['sessions']['$post']>;
 export type SessionSidebarData = RpcJson<RpcClient['api']['sessions']['$get']>;
+export type ArchivedSession = RpcJson<RpcClient['api']['sessions']['archived']['$get']>[number];
 /** 分组列表的会话条目（含 hasActiveTurn/lastTurnStatus/hasUnread 列表投影）。 */
 export type SessionListItem = SessionSidebarData['recent'][number];
 export type Project = SessionSidebarData['projects'][number];
@@ -44,6 +45,10 @@ export const sessionsApi = {
   /** GET /api/sessions — 分组列表（侧栏唯一路径）。 */
   listForSidebar(): Promise<SessionSidebarData> {
     return readRpcJson(rpcClient.api.sessions.$get());
+  },
+
+  listArchived(): Promise<ArchivedSession[]> {
+    return readRpcJson(rpcClient.api.sessions.archived.$get());
   },
 
   /** GET /api/sessions/search — 搜索标题与消息正文。 */
@@ -172,9 +177,10 @@ export const sessionsApi = {
     return readRpcVoid(rpcClient.api.sessions[':sessionId'].viewed.$post({ param: { sessionId: id } }));
   },
 
-  /** POST /api/sessions/:sessionId/archive（204）。 */
   archive(id: string): Promise<void> {
-    return readRpcVoid(rpcClient.api.sessions[':sessionId'].archive.$post({ param: { sessionId: id } }));
+    return readRpcVoid(rpcClient.api.sessions[':sessionId'].archive.$post({
+      param: { sessionId: id },
+    }));
   },
 
   /** POST /api/sessions/:sessionId/unarchive（204）。 */
@@ -182,9 +188,10 @@ export const sessionsApi = {
     return readRpcVoid(rpcClient.api.sessions[':sessionId'].unarchive.$post({ param: { sessionId: id } }));
   },
 
-  /** DELETE /api/sessions/:sessionId（204）。 */
   delete(id: string): Promise<void> {
-    return readRpcVoid(rpcClient.api.sessions[':sessionId'].$delete({ param: { sessionId: id } }));
+    return readRpcVoid(rpcClient.api.sessions[':sessionId'].$delete({
+      param: { sessionId: id },
+    }));
   },
 
   /** POST /api/sessions/:id/export — 流式下载单 Session ZIP（字节流走 requestRaw 逃生口）。 */

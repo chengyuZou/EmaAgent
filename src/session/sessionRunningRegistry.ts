@@ -1,7 +1,7 @@
 // 同一个 Session 只允许一个根 Turn 或一次手动 Compact 运行. 这里保存它的
 // 真实身份和取消信号, 让取消、终态清理与 WebSocket 连接当前值指向同一份工作.
 
-import { SessionBusyError, SessionRunningAlreadyRegisteredError } from './errors.js';
+import { SessionBusyError, SessionRunningAlreadyRegisteredError, SessionWorkBlockedError } from './errors.js';
 
 export type SessionRunning =
   | { readonly kind: 'turn'; readonly turnId: string }
@@ -26,8 +26,10 @@ export class SessionRunningRegistry {
   ) => void>();
   private registrationClosures = 0;
   private registrationClosureTail: Promise<void> = Promise.resolve();
+  private readonly sessionClosures = new Map<string, number>();
 
   register(sessionId: string, running: SessionRunning): AbortSignal {
+    this.assertWorkAllowed(sessionId);
     if (this.registrationClosures > 0) {
       throw new SessionBusyError(sessionId);
     }
@@ -52,6 +54,36 @@ export class SessionRunningRegistry {
   /** 是否已经有根 Turn 或手动 Compact 占用这个 Session. */
   isRunning(sessionId: string): boolean {
     return this.runningBySession.has(sessionId);
+  }
+
+  isClosed(sessionId: string): boolean {
+    return this.sessionClosures.has(sessionId);
+  }
+
+  assertWorkAllowed(sessionId: string): void {
+    if (this.isClosed(sessionId)) {
+      throw new SessionWorkBlockedError('session_stopping', sessionId);
+    }
+  }
+
+  /** 确认删除或归档后同步关闭这个会话的新工作入口, 并取消当前根工作. */
+  runWithSessionClosed<T>(sessionId: string, action: () => Promise<T>): Promise<T> {
+    this.sessionClosures.set(sessionId, (this.sessionClosures.get(sessionId) ?? 0) + 1);
+    this.runningBySession.get(sessionId)?.controller.abort();
+    let result: Promise<T>;
+    try {
+      result = action();
+    } catch (error) {
+      result = Promise.reject(error);
+    }
+    return result.finally(() => {
+      const remaining = this.sessionClosures.get(sessionId)! - 1;
+      if (remaining === 0) {
+        this.sessionClosures.delete(sessionId);
+      } else {
+        this.sessionClosures.set(sessionId, remaining);
+      }
+    });
   }
 
   /** 返回指定 Session 当前运行的根 Turn 或手动 Compact, 不是 Session 实体. */

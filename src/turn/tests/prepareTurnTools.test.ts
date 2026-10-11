@@ -293,6 +293,7 @@ describe('prepareTurnTools', () => {
     const parent = new AbortController();
     const onRunFinished = vi.fn((runId: string) => { queue.cancelForRun(runId); });
     const subagents = new SubagentExecutor({
+      assertSessionWorkAllowed: vi.fn(),
       store, messageStore: new SubagentMessagesStore(new SubagentMessagesRepo(db.sqlite)),
       maxConcurrent: () => 4, publish: vi.fn(), onBackgroundCompleted: vi.fn(),
       onTerminalResultRead: vi.fn(), onRunFinished,
@@ -356,7 +357,7 @@ describe('prepareTurnTools', () => {
         const result = subagents.awaitResult(id, SESSION_ID, new AbortController().signal);
         const rejected = expect(result).rejects.toThrow();
         if (mode === 'shutdown') await subagents.shutdown('application stopped');
-        else await subagents.abortForSession(SESSION_ID);
+        else await subagents.abortForSession(SESSION_ID, 'Session deleted');
         await rejected;
         expect(store.getRun(actualRunId)?.status).toBe('cancelled');
       }

@@ -119,14 +119,30 @@ describe('SessionStore — session', () => {
     expect(() => store.getSession('bad-id')).toThrow('session_not_found');
   });
 
-  it('归档的 Session 进入侧栏归档桶，不再出现在最近桶', () => {
+  it('归档会话不进入正常侧栏, 取消归档保留项目、置顶和历史', () => {
     const { store } = makeStore();
-    const s = store.createSession();
+    const project = store.createProject('项目', [os.tmpdir()], os.tmpdir());
+    const s = store.createSession({ title: '归档标题', projectId: project.id });
+    store.pinSession(s.id);
+    store.appendMessage({ sessionId: s.id, turnId: null, role: 'user', blocks: '历史消息' });
     store.archiveSession(s.id);
 
     const grouped = store.listSessionsForSidebar();
     expect(grouped.recent).toHaveLength(0);
-    expect(grouped.archived.map((item) => item.id)).toEqual([s.id]);
+    expect(grouped.pinned).toEqual([]);
+    expect(grouped.projects.flatMap(item => item.sessions)).toEqual([]);
+    expect(grouped).not.toHaveProperty('archived');
+    expect(store.listArchivedSessions()).toEqual([
+      { id: s.id, title: '归档标题', projectId: project.id, projectName: '项目', archivedAt: expect.any(Number) },
+    ]);
+    expect(store.loadHistory(s.id)).toHaveLength(1);
+    expect(() => store.getSessionForWork(s.id)).toThrow('session_archived');
+
+    store.unarchiveSession(s.id);
+    expect(store.listArchivedSessions()).toEqual([]);
+    expect(store.listSessionsForSidebar().pinned[0]).toMatchObject({ id: s.id, projectId: project.id });
+    expect(store.loadHistory(s.id)).toHaveLength(1);
+    expect(store.getSessionForWork(s.id).id).toBe(s.id);
   });
 
   it('同时属于项目和置顶的 Session 进置顶桶，项目桶不再列出它', () => {

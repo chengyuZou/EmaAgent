@@ -39,6 +39,16 @@ function identity(goal: Goal): GoalIdentity {
 }
 
 describe('GoalStore', () => {
+  it('归档会话不能新建或激活 Goal, 未完成目标仍能取消', () => {
+    const { store, sessions } = makeStore();
+    const goal = store.create('session', '归档前的目标');
+    const paused = store.pause(identity(goal));
+    sessions.archive('session', 10);
+    expect(() => store.activate(identity(paused))).toThrow('session_archived');
+    store.cancel(identity(paused));
+    expect(() => store.create('session', '归档后新目标')).toThrow('session_archived');
+  });
+
   it('完成时一次写入终态和新的累计反馈, 不留下上一轮进度', () => {
     const { db, store, events } = makeStore();
     const earlier = store.reportFeedback(identity(store.create('session', '整理 8 个 README')), '累计已整理 6/8');

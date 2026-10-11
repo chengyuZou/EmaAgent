@@ -49,6 +49,7 @@ export function buildComposition(input: { activeDataDir: string; initializeBuilt
   // 先放空出口打断构造顺序, openTurns 完成后再接到唯一 Session 队列.
   let notifyBackgroundCompletion = (_sessionId: string, _backgroundProcessId: string, _status: BackgroundProcessNotifiableStatus): void => undefined;
   const tools = openTools({
+    assertSessionWorkAllowed: sessionId => database.session.getSessionForWork(sessionId),
     profileDb: database.profileDb,
     dataDb: database.dataDb,
     activeDataDir: input.activeDataDir,
