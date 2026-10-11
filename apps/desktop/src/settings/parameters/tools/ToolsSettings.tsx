@@ -2,6 +2,7 @@
 import { useMemo, type JSX } from 'react';
 import { Callout, Spinner, Switch } from '@ema-agent/ui';
 import { BuiltinTools } from '@ema-agent/tools/identity';
+import { NarrativeToolStatus } from '../../../chat/input/narrativeToolNotice.js';
 import { NumberSetting } from '../controls/NumberSetting.js';
 import { useSettingValues } from '../useSettingValues.js';
 import { SettingsCard, SettingsSection, SettingItem } from '../../shared/SettingItem.js';
@@ -42,19 +43,25 @@ export function ToolsSettings(): JSX.Element {
             const locked = tool.id === BuiltinTools.AskUser.id;
             const enabled = !disabled.includes(tool.id);
             return (
-              <SettingItem 
-                key={tool.id} 
-                title={tool.name} 
-                hint={`${tool.variant} · ${tool.id}`} 
-                apply={settings.apply(DISABLED_KEY)}
-              >
-                <Switch 
-                  checked={enabled} 
-                  disabled={locked} 
-                  label={tool.name} 
-                  onCheckedChange={value => void setEnabled(tool.id, value)} 
-                />
-              </SettingItem>
+              <div key={tool.id}>
+                <SettingItem
+                  title={tool.name}
+                  hint={tool.id === BuiltinTools.NarrativeSearch.id
+                    ? '仅用于游戏剧情角色. 开关保留使用偏好, 实际是否提供由当前角色和模型配置决定.'
+                    : `${tool.variant} · ${tool.id}`}
+                  apply={settings.apply(DISABLED_KEY)}
+                >
+                  <Switch
+                    checked={enabled}
+                    disabled={locked}
+                    label={tool.name}
+                    onCheckedChange={value => void setEnabled(tool.id, value)}
+                  />
+                </SettingItem>
+                {tool.id === BuiltinTools.NarrativeSearch.id && (
+                  <NarrativeToolStatus enabled={enabled} />
+                )}
+              </div>
             );
           })}
         </SettingsCard>

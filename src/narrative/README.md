@@ -26,9 +26,21 @@ for (const [timeline, value] of result) {
 
 `CallEmbed` 必须使用资产原有的 `Pro/bge-m3` 向量空间. 仅维度相同不代表模型可以互换; 包内检查返回维度是否为 1024. `CallLlm` 负责路由与提词, 其绑定、协议必填参数和调用重试由宿主处理. 例如 Anthropic 协议所需的 `maxOutputTokens` 应由传入的调用函数补齐, 本包不另设输出预算.
 
-Server 使用 `narrative-llm` 和 `narrative-embed` 绑定创建这两个调用函数. `NarrativeSearch` 与其他工具共用 `tools.disabled` 开关, 不判断当前角色是否属于游戏, 不自动更改开关. 模型绑定、工具开关和 `narrative.queryMode` 在 Turn 准备时读取, 之后修改设置影响下一 Turn, 不取消当前查询.
+Server 使用 `narrative-llm` 和 `narrative-embed` 绑定创建这两个调用函数. Turn 准备时先用当前角色的 `name` 调用 `isWitchTrialCharacter`. 不在名单中的角色不取得查询函数, 因而本轮工具列表没有 NarrativeSearch. 名单命中后仍需要可用的两项模型绑定, 以及 `tools.disabled` 没有禁用该工具. 角色判断不改写工具开关或模型绑定.
+
+角色, 模型绑定, 工具开关和 `narrative.queryMode` 在 Turn 准备时读取, 之后修改影响下一 Turn, 不取消当前查询. `NarrativeSearch` 查询实现只处理传入的问题, 不自行读取当前角色.
 
 Agent 仅通过工具调用查询剧情, 不在准备 Turn reminder 时预先查询, 也不限制每轮调用次数. Map 只在 `NarrativeSearchTool` 输出时转为可保存的数组结果; 工具调用事件、历史存储和 ToolUI 使用这份普通工具结果, 不增加 Narrative 专用事件.
+
+## 角色识别与桌面提示
+
+`isWitchTrialCharacter(name: string): boolean` 按中, 日, 英文完整姓名识别角色. 它去掉两端空白并忽略英文大小写, 不匹配昵称, 角色描述或包含姓名的任意文本. 同一角色的不同拼写在同一组, 黑部奈叶香与黑部穗乃香是不同组. 日文主要角色姓名可核对[官方角色名单](https://manosaba.com/posts/illustcontest); 中英文同时保留本项目剧情资产和角色卡的全名拼写.
+
+Server 可以从包根入口导入此函数. 浏览器使用 `@ema-agent/narrative/isWitchTrialCharacter`, 仅加载名单, 不加载依赖 Node 的检索实现. 两个入口使用同一份源码.
+
+桌面 Chat 的 `NarrativeToolNotice` 读取现有角色, Provider 和绑定 Store, 并在进入 Chat 或收到 `settings_changed` 时读取工具开关. 手动关闭工具时不提示. 剧情角色缺配置时说明缺少的绑定, 协议或 API Key, 可进入模型绑定页; 非剧情角色且配置完整时说明本轮不会提供剧情工具, 避免引入无关剧情造成 OOC. 剧情角色已配置完成, 或非剧情角色尚未配置时不显示提示. 关闭提示只改变当前页面的显示, 不保存到数据库或修改开关.
+
+Tools 页持续说明当前角色与配置是否允许下一轮使用此工具. 前端判断的是本地配置是否齐全, 不验证供应商 Key 的有效性或网络是否可达; 实际查询失败仍通过普通 Tool 结果展示.
 
 ## 查询流程
 

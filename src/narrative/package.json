@@ -7,6 +7,10 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./isWitchTrialCharacter": {
+      "import": "./dist/isWitchTrialCharacter.js",
+      "types": "./dist/isWitchTrialCharacter.d.ts"
     }
   },
   "main": "./dist/index.js",

@@ -46,6 +46,7 @@ import { DraftReferenceList, useDraftAttachments } from './draftAttachments.js';
 import { ModelPicker, useInputModel } from './controls/ModelPicker.js';
 import { InputGoalBar, useInputGoal } from './controls/goalBar.js';
 import { InputProjectBar } from './inputProjectBar.js';
+import { NarrativeToolNotice } from './narrativeToolNotice.js';
 
 function queuedInputText(input: readonly TurnInputPart[]): string {
   const text = input
@@ -377,6 +378,7 @@ export function ChatInput({
         </div>
         <InputProjectBar sessionId={viewedId} session={viewedSession} projectId={currentProjectId} />
         <InputGoalBar goal={goal} />
+        <NarrativeToolNotice />
         <div className="ema-composer-card relative transition-shadow">
           <SlashCommandMenu
             query={slashFilter}

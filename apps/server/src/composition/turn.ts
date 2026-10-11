@@ -6,6 +6,7 @@ import { mimeForPath, VisionDescriptionCache, type VisionDescriptionProducer } f
 import { buildCharacterPrompt, type CharacterStore } from '@ema-agent/characters';
 import { createCompact } from '@ema-agent/compact';
 import { type LlmTokenUsage } from '@ema-agent/llm';
+import { isWitchTrialCharacter } from '@ema-agent/narrative';
 import {
   buildMemoryGuidance,
   memorySummaryFile,
@@ -306,7 +307,13 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     continuations,
     taskStore: database.tasks,
     goalStore: database.goals,
-    resolveNarrativeSearch: narrative.resolveSearch,
+    resolveNarrativeSearch: () => {
+      // 不改写用户的工具开关. 当前角色不使用游戏剧情时, 本 Turn 不提供查询函数.
+      if (!isWitchTrialCharacter(characters.current().name)) {
+        return undefined;
+      }
+      return narrative.resolveSearch();
+    },
     backgroundProcesses: tools.backgroundProcesses,
     resolveVision: resolveCallVision,
     commandRunner: tools.getCommandRunner,

@@ -14,10 +14,10 @@ function invocation(): ToolInvocation {
 }
 
 describe('NarrativeSearchTool', () => {
-  it('没有可用绑定时拒绝装配, 有查询函数时只取得对应能力', () => {
+  it('没有查询函数时拒绝装配, 有查询函数时只取得对应能力', () => {
     expect(NarrativeSearchTool.validateContext({} as never)).toEqual({
       valid: false,
-      reason: '当前 Turn 未配置可用的 Narrative 模型绑定。',
+      reason: '当前 Turn 未提供可用的 Narrative 查询能力.',
     });
     const narrativeSearch: NonNullable<ToolUseContext['narrativeSearch']> = async () => new Map();
     expect(NarrativeSearchTool.validateContext({ narrativeSearch } as never))

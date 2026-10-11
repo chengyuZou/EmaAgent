@@ -37,6 +37,8 @@ export default defineConfig({
       { find: /^@ema-agent\/ui\/utils$/, replacement: resolve(__dirname, '../../src/ui/utils/index.ts') },
       { find: '@ema-agent/builtin-tools/ui', replacement: resolve(__dirname, '../../src/builtin-tools/ui.ts') },
       { find: '@ema-agent/live2d-react', replacement: resolve(__dirname, '../../src/live2d-react/index.ts') },
+      // 角色名单是纯函数, 浏览器不加载包含 Node 检索实现的 Narrative 根入口.
+      { find: '@ema-agent/narrative/isWitchTrialCharacter', replacement: resolve(__dirname, '../../src/narrative/isWitchTrialCharacter.ts') },
       // 两份外观常量没有 Node 依赖, 前后端共用键名和默认值.
       { find: '@ema-agent/server/settings/themeCatalog.js', replacement: resolve(__dirname, '../../apps/server/src/settings/themeCatalog.ts') },
       { find: '@ema-agent/server/settings/wallpaperCatalog.js', replacement: resolve(__dirname, '../../apps/server/src/settings/wallpaperCatalog.ts') },

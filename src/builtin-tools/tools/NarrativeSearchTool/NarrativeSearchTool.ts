@@ -57,7 +57,7 @@ export const NarrativeSearchTool = buildTool<
 
   validateContext(ctx) {
     if (!ctx.narrativeSearch) {
-      return contextFail('当前 Turn 未配置可用的 Narrative 模型绑定。');
+      return contextFail('当前 Turn 未提供可用的 Narrative 查询能力.');
     }
     return contextOk({ narrativeSearch: ctx.narrativeSearch });
   },
