@@ -70,6 +70,10 @@ export class SubagentStore {
     return row ? runFromRow(row) : undefined;
   }
 
+  listAllForSession(sessionId: string): Subagent[] {
+    return this.subagents.listAllForSession(sessionId).map(fromRow);
+  }
+
   listForSession(sessionId: string, cursor?: SubagentPageCursor, limit?: number) {
     const page = this.subagents.listForSession(sessionId, cursor, limit);
     return { items: page.items.map(fromRow), nextCursor: page.nextCursor };

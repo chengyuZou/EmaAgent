@@ -44,7 +44,6 @@ import {
   type SkillDescriptor,
   type SkillPool,
 } from '@ema-agent/skills';
-import type { SessionMode } from '@ema-agent/session';
 import type { RequestDegradationNotice } from '../types.js';
 import { TurnPreparationError } from '../errors.js';
 import type { TurnStreamEvent } from '../events.js';
@@ -60,7 +59,6 @@ import {
 
 /** 一个根 Turn 的冻结事实；运行期只读取这一份，不再回读 Settings/Registry/Session。 */
 export interface PreparedTurn {
-  readonly sessionMode: SessionMode;
   readonly reasoningEffort: ReasoningEffort;
   readonly scratchpadDir?: string;
   readonly callLlm: CallLlm;
@@ -74,7 +72,7 @@ export interface PreparedTurn {
   readonly supportsImageInput: boolean;
   /** 开启 thinking 时冻结的中立推理配置（enabled + effort），协议 Adapter 各自映射。 */
   readonly thinking?: LlmThinking;
-  /** 本轮已读取的动态输入; 子代理复用数据段, 换成自己的模型和工具, 不传角色与模式. */
+  /** 本轮已读取的动态输入; 子代理复用数据段, 换成自己的模型和工具, 不传根角色人设. */
   readonly DynamicSystemPromptInput: DynamicSystemPromptInput;
   readonly systemPrompt: readonly PromptBlock[];
   /** 持久化用的用户消息块；附件只保存 attachment_ref。 */
@@ -190,9 +188,7 @@ export async function prepareTurn(
     skillPool,
   );
 
-  const scratchpadDir = request.sessionMode === 'work'
-    ? deps.scratchpadDirForTurn?.(request.sessionId, turnId)
-    : undefined;
+  const scratchpadDir = deps.scratchpadDirForTurn?.(request.sessionId, turnId);
 
   const permissionBuckets = loadPermissionRuleBuckets(
     deps.settings,
@@ -203,7 +199,6 @@ export async function prepareTurn(
   const tools = prepareTurnTools(deps, {
     sessionId: request.sessionId,
     turnId,
-    sessionMode: request.sessionMode,
     cwd,
     workspaceRoots,
     ...(scratchpadDir ? { scratchpadDir } : {}),
@@ -225,7 +220,6 @@ export async function prepareTurn(
 
   const dynamicInput: DynamicSystemPromptInput = Object.freeze({
     characterPrompt: deps.characterPrompt,
-    sessionMode: request.sessionMode,
     permissionMode,
     toolNames: tools.toolPool.tools.map(tool => tool.name),
     environment: {
@@ -247,7 +241,6 @@ export async function prepareTurn(
   ]);
 
   return Object.freeze({
-    sessionMode: request.sessionMode,
     reasoningEffort: session.reasoningEffort,
     ...(scratchpadDir ? { scratchpadDir } : {}),
     callLlm,
@@ -269,9 +262,7 @@ export async function prepareTurn(
     compactSettings,
     tools,
     degradations: Object.freeze(degradations),
-    maxIterations: request.sessionMode === 'chat'
-      ? agentSettings.chatMaxIterations
-      : agentSettings.workMaxIterations,
+    maxIterations: agentSettings.maxIterations,
   });
 }
 

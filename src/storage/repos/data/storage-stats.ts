@@ -32,8 +32,6 @@ export interface SessionStats {
   backgroundProcessCount: number;
   totalInputTokens: number;
   totalOutputTokens: number;
-  chatTurns: number;
-  workTurns: number;
   audioTurnCount: number;
   audioTotalBytes: number;
   audioTotalDurationMs: number;
@@ -165,14 +163,10 @@ export class SessionStatsRepo {
 
     // Turn 生命周期指标与物理模型消费分属两本账，各扫描自己的 Session 区间。
     const turns = this.db.prepare(`
-      SELECT COUNT(*) AS turn_count,
-             COALESCE(SUM(session_mode = 'chat'), 0) AS chat_turns,
-             COALESCE(SUM(session_mode = 'work'), 0) AS work_turns
+      SELECT COUNT(*) AS turn_count
         FROM turns WHERE session_id = ?
     `).get(sessionId) as {
       turn_count: number;
-      chat_turns: number;
-      work_turns: number;
     };
     const tokens = this.db.prepare(`
       SELECT COALESCE(SUM(input_tokens), 0) AS input_tokens,
@@ -199,8 +193,6 @@ export class SessionStatsRepo {
       backgroundProcessCount: count('background_processes'),
       totalInputTokens: tokens.input_tokens,
       totalOutputTokens: tokens.output_tokens,
-      chatTurns: turns.chat_turns,
-      workTurns: turns.work_turns,
       audioTurnCount: speechOutputs.c,
       audioTotalBytes: speechOutputs.b,
       audioTotalDurationMs: speechOutputs.d,

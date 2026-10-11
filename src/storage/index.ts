@@ -101,7 +101,6 @@ export type {
   SessionRowEnriched,
   SessionSearchRow,
   SessionInsert,
-  SessionModeRow,
   PermissionModeRow,
 } from './repos/data/sessions.js';
 export type { TurnStatusRow, TurnTriggerTypeRow } from './repos/data/turns.js';

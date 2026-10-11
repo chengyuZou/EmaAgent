@@ -27,11 +27,11 @@ describe('SessionsRepo integration', () => {
     expect(repo.findById('fork')?.permission_mode).toBe('bypassPermissions');
   });
 
-  it('Plan 创建, 修改和 Fork 沿用现有权限列, 不改变 Chat/Work', () => {
-    repo.insert({ id: 'plan-source', title: 'Plan', cwd: 'D:/work', sessionMode: 'work',
+  it('Plan 创建, 修改和 Fork 沿用现有权限列', () => {
+    repo.insert({ id: 'plan-source', title: 'Plan', cwd: 'D:/work', 
       permissionMode: 'plan', createdAt: 1, updatedAt: 1 });
     repo.forkInto('plan-source', 'plan-fork', 'Fork', 2);
-    expect(repo.findById('plan-fork')).toMatchObject({ permission_mode: 'plan', session_mode: 'work' });
+    expect(repo.findById('plan-fork')).toMatchObject({ permission_mode: 'plan' });
     repo.patch('plan-source', { permissionMode: 'default' }, 3);
     repo.patch('plan-source', { permissionMode: 'plan' }, 4);
     expect(repo.findById('plan-source')?.permission_mode).toBe('plan');
@@ -197,9 +197,9 @@ describe('SessionsRepo integration', () => {
   }): void {
     database.db.prepare(`
       INSERT INTO turns
-        (id, session_id, trigger_type, session_mode,
+        (id, session_id, trigger_type,
          status, created_at, completed_at)
-      VALUES (?, ?, 'userMessage', 'chat', ?, ?, ?)
+      VALUES (?, ?, 'userMessage', ?, ?, ?)
     `).run(
       fixture.id,
       fixture.sessionId,

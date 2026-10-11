@@ -135,7 +135,7 @@ export function createPrepareSubagent(deps: PrepareSubagentDeps): PrepareSubagen
       },
     );
     messageIds.push(...history.map(entry => entry.messageId));
-    // 三种历史初始化路径共用 System. 不传父角色和 SessionMode,
+    // 三种历史初始化路径共用 System. 不传父角色,
     // 数据段沿用父调用已读取的文本, 环境模型和能力说明按实际子调用装配.
     const parentInput = prepared.DynamicSystemPromptInput;
     const dynamicInput: DynamicSystemPromptInput = Object.freeze({

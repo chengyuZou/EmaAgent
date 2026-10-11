@@ -1,7 +1,4 @@
-import type {
-  SessionMode,
-  TurnStatus,
-} from '@ema-agent/session';
+import type { TurnStatus } from '@ema-agent/session';
 import type { AttachmentBlock } from '@ema-agent/session';
 import type { TurnFailureCode } from './errors.js';
 import type { TurnStreamEvent } from './events.js';
@@ -16,7 +13,6 @@ export interface Turn {
   readonly sessionId: string;
   readonly status: TurnStatus;
   readonly triggerType: TurnTriggerType;
-  readonly sessionMode: SessionMode;
   /** 本 Turn 启动时冻结的语音选择. 与之后可修改的 Session 偏好不同. */
   readonly ttsEnabled: boolean;
   readonly providerId: string | null;
@@ -39,7 +35,6 @@ export interface StartTurnInput {
   readonly triggerType: TurnTriggerType;
   readonly providerId?: string | null;
   readonly modelId?: string | null;
-  readonly sessionMode: SessionMode;
   readonly ttsEnabled: boolean;
 }
 
@@ -59,7 +54,6 @@ export interface TurnIndexItem {
   completedAt: number | null;
   status: TurnStatus;
   triggerType: TurnTriggerType;
-  sessionMode: SessionMode;
   /** 首条 User Message 的正文预览；用户输入的唯一事实源是 Message。 */
   preview: string;
 }
@@ -115,7 +109,6 @@ export interface StartTurn {
   readonly turnId?: string;
   readonly sessionId: string;
   readonly triggerType: TurnTriggerType;
-  readonly sessionMode: SessionMode;
   readonly input: readonly TurnInputPart[];
   /** 队列交付的内部通知或继续指令, 持久化为 kind='continuation' 的 Message. */
   readonly continuationText?: string;

@@ -7,7 +7,6 @@ import type { PermissionResponse, PermissionStreamEvent } from '@ema-agent/permi
 import type { ToolExecutionEvent } from '@ema-agent/tools';
 import {
   SessionBusyError,
-  type SessionMode,
   type SessionRunning,
   type SessionRunningRegistry,
   type SessionMessage,
@@ -50,7 +49,6 @@ const inputPartSchema = z.discriminatedUnion(
 );
 
 const userMessagePayloadSchema = z.object({
-  sessionMode: z.enum(['chat', 'work']),
   input: z.array(inputPartSchema).min(1).max(REQUEST_VALUE_LIMITS.maxTurnContentParts),
   objective: z.string().refine(text => text.trim().length > 0, '目标正文不能为空').optional(),
 }).superRefine((payload, context) => {
@@ -140,7 +138,6 @@ export type SessionBusinessMessage =
       readonly kind: 'turn';
       readonly turnId: string;
       readonly createdAt: number;
-      readonly sessionMode: SessionMode;
       readonly messages: readonly SessionMessage[];
     }
     | { readonly kind: 'compact'; readonly compactId: string };
@@ -323,9 +320,6 @@ async function handleClientMessage(
           deps.continuations.enqueue({
             sessionId,
             input: message.payload.input,
-            selection: {
-              sessionMode: message.payload.sessionMode,
-            },
           });
           socket.send({ type: 'request_succeeded', requestId: message.requestId });
           return;
@@ -335,7 +329,6 @@ async function handleClientMessage(
         const handle = deps.executor.start({
           sessionId,
           triggerType: 'userMessage',
-          sessionMode: message.payload.sessionMode,
           ttsEnabled,
           input: message.payload.input,
         });
@@ -354,9 +347,6 @@ async function handleClientMessage(
         deps.continuations.enqueue({
           sessionId,
           input: message.payload.input,
-          selection: {
-            sessionMode: message.payload.sessionMode,
-          },
         });
         socket.send({ type: 'request_succeeded', requestId: message.requestId });
         return;
@@ -429,7 +419,6 @@ function readSessionRunningState(deps: SessionWebSocketRouteDeps, sessionId: str
     kind: 'turn',
     turnId: running.turnId,
     createdAt: turn.createdAt,
-    sessionMode: turn.sessionMode,
     messages: deps.sessions.loadMessagesForTurn(running.turnId),
   };
 }

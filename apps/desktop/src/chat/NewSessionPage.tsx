@@ -31,7 +31,6 @@ export function NewSessionPage(): JSX.Element {
       sessionId = await useSessionStore.getState().createSession({
         ...(selectedProjectId ? { projectId: selectedProjectId } : {}),
         ...(explicitCwd ? { cwd: explicitCwd } : {}),
-        sessionMode: submitted.sessionMode,
         permissionMode: submitted.permissionMode,
         ttsEnabled: submitted.ttsEnabled,
         providerId: submitted.providerId!,

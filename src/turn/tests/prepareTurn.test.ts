@@ -1,5 +1,5 @@
-// 测试 prepareTurn 从 Session 冻结模型和推理选择、有序附件、Skill 引用与 Chat/Work 模式分流。
 import { describe, expect, it } from 'vitest';
+import { maxIterationsSetting } from '@ema-agent/agent';
 import type { SubagentMessagesStore, SubagentStore } from '@ema-agent/agent';
 import type { AttachmentStore } from '@ema-agent/attachments';
 import type { ProviderModels, Providers } from '@ema-agent/providers';
@@ -21,7 +21,6 @@ const TURN: Turn = {
   sessionId: 's1',
   status: 'running',
   triggerType: 'userMessage',
-  sessionMode: 'work',
   ttsEnabled: false,
   providerId: null,
   modelId: null,
@@ -42,7 +41,6 @@ function fakeSession(overrides: Record<string, unknown> = {}) {
     providerId: 'sess-p',
     modelId: 'sess-m',
     reasoningEffort: 'off',
-    sessionMode: 'work',
     permissionMode: 'default',
     ttsEnabled: false,
     ...overrides,
@@ -98,7 +96,6 @@ function makeStart(overrides: Partial<StartTurn> = {}): StartTurn {
   return {
     sessionId: 's1',
     triggerType: 'userMessage',
-    sessionMode: 'work',
     ttsEnabled: false,
     input: [{ type: 'text', text: '你好' }],
     ...overrides,
@@ -116,7 +113,7 @@ function makeRuntime(start: StartTurn) {
 }
 
 describe('prepareTurn', () => {
-  it('Session 的 Plan 权限进入本轮 Prompt, 不改 Work 执行方式', async () => {
+  it('Session 的 Plan 权限进入本轮 Prompt, 角色仍保留', async () => {
     const prepared = await prepareTurn(
       makeDeps({ sessions: {
         getSession: () => fakeSession({ permissionMode: 'plan' }),
@@ -124,7 +121,8 @@ describe('prepareTurn', () => {
       } as never }),
       makeRuntime(makeStart()),
     );
-    expect(prepared.sessionMode).toBe('work');
+    expect(prepared.systemPrompt.find(block => block.name === 'character')?.content)
+      .toContain('你是角色');
     expect(prepared.systemPrompt.find(block => block.name === 'permission-mode')?.content)
       .toContain('当前权限: Plan');
   });
@@ -224,7 +222,7 @@ describe('prepareTurn', () => {
     await expect(prepareTurn(disabled, makeRuntime(makeStart()))).rejects.toThrow(/未在该 Provider 下启用/);
   });
 
-  it('Chat 与 Work 都冻结 SkillPool，Chat 也接受已选 Skill', async () => {
+  it('冻结 SkillPool 并接受已选 Skill, 未选择时仍提供目录', async () => {
     const descriptor: SkillDescriptor = {
       name: 'demo',
       path: '/skills/demo/SKILL.md',
@@ -234,19 +232,48 @@ describe('prepareTurn', () => {
     };
     const deps = makeDeps({ skillEntries: () => [descriptor] });
 
-    const chat = await prepareTurn(deps, makeRuntime(makeStart({
-      sessionMode: 'chat',
+    const selected = await prepareTurn(deps, makeRuntime(makeStart({
       input: [{ type: 'skill_reference', name: 'demo', path: descriptor.path }],
     })));
-    expect(chat.skillPool?.getByPath(descriptor.path)).toBeDefined();
-    expect(chat.userMessageBlocks).toEqual([{
+    expect(selected.skillPool?.getByPath(descriptor.path)).toBeDefined();
+    expect(selected.userMessageBlocks).toEqual([{
       type: 'skill_reference',
       name: 'demo',
       path: descriptor.path,
     }]);
 
-    const work = await prepareTurn(deps, makeRuntime(makeStart()));
-    expect(work.skillPool?.getByPath('/skills/demo/SKILL.md')).toBeDefined();
+    const unselected = await prepareTurn(deps, makeRuntime(makeStart()));
+    expect(unselected.skillPool?.getByPath('/skills/demo/SKILL.md')).toBeDefined();
+  });
+
+  it('根 Turn 提供 Scratchpad 并冻结统一迭代上限, 修改设置影响下一次准备', async () => {
+    const directories: Array<[string, string]> = [];
+    const deps = makeDeps({
+      scratchpadDirForTurn: (sessionId, turnId) => {
+        directories.push([sessionId, turnId]);
+        return '/scratchpad';
+      },
+    });
+    const first = await prepareTurn(deps, makeRuntime(makeStart()));
+    expect(first.maxIterations).toBe(50);
+    expect(first.scratchpadDir).toBe('/scratchpad');
+    expect(directories).toEqual([['s1', 't1']]);
+
+    deps.settings.set(maxIterationsSetting, 80);
+    const next = await prepareTurn(deps, makeRuntime(makeStart()));
+    expect(first.maxIterations).toBe(50);
+    expect(next.maxIterations).toBe(80);
+  });
+
+  it('迭代上限接受 30-100 的整数, 默认 50 且下一轮生效', () => {
+    expect(maxIterationsSetting.defaultValue).toBe(50);
+    expect(maxIterationsSetting.apply).toBe('nextTurn');
+    for (const value of [30, 50, 100]) {
+      expect(maxIterationsSetting.schema.safeParse(value).success).toBe(true);
+    }
+    for (const value of [29, 101, 50.5, '50']) {
+      expect(maxIterationsSetting.schema.safeParse(value).success).toBe(false);
+    }
   });
 
   it('选择不存在或被禁用的 Skill 直接准备失败；合法 Skill 只冻结引用', async () => {

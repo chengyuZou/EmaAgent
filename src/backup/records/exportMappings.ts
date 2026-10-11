@@ -48,7 +48,6 @@ export const toSessionRecord = (row: SessionRow): SessionRecord => ({
   providerId: row.provider_id,
   modelId: row.model_id,
   reasoningEffort: row.reasoning_effort,
-  sessionMode: row.session_mode,
   permissionMode: row.permission_mode,
   ttsEnabled: row.tts_enabled === 1,
 });
@@ -58,7 +57,6 @@ export const toTurnRecord = (row: TurnRow): TurnRecord => ({
   sessionId: row.session_id,
   status: row.status,
   triggerType: row.trigger_type,
-  sessionMode: row.session_mode,
   ttsEnabled: row.tts_enabled === 1,
   providerId: row.provider_id,
   modelId: row.model_id,

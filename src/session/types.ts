@@ -4,12 +4,6 @@ import type { ToolResult } from '@ema-agent/tools';
 import type { PermissionMode } from '@ema-agent/permission';
 import type { LlmThinkingEffort } from '@ema-agent/llm';
 
-/**
- * Session 选用 Chat 或 Work 的方式; 输入渠道和连接协议不属于这个选择。
- * Turn 启动时记录当时的模式, 后来切换 Session 模式不会改写旧 Turn。
- */
-export type SessionMode = 'chat' | 'work';
-
 /** Session 的推理选择. off 明确要求协议关闭推理, 不表示沿用模型默认值. */
 export type ReasoningEffort = 'off' | LlmThinkingEffort;
 
@@ -57,7 +51,6 @@ export interface Session {
   /** fork 溯源：来源 Session 与截断点 Turn（完整复制时为 null）。 */
   forkedFromSessionId: string | null;
   forkedFromTurnId: string | null;
-  sessionMode: SessionMode;
   permissionMode: PermissionMode;
   /** 可修改的 Session 偏好. 只决定之后启动的 Turn, 不改变已启动 Turn 的语音选择. */
   ttsEnabled: boolean;
@@ -119,7 +112,6 @@ export interface CreateSessionInput {
   cwd?: string;
   /** 项目新对话的初始 cwd 取创建时的主文件夹；无主文件夹取固定默认目录。 */
   projectId?: string;
-  sessionMode?: SessionMode;
   permissionMode?: PermissionMode;
   ttsEnabled?: boolean;
   providerId?: string;
@@ -132,7 +124,6 @@ export interface PatchSessionInput {
   title?: string;
   pinned?: boolean;
   cwd?: string;
-  sessionMode?: SessionMode;
   permissionMode?: PermissionMode;
   ttsEnabled?: boolean;
   /** 换模型时与 modelId 同传; 只改推理强度时两者都省略. */

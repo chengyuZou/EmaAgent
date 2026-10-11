@@ -95,7 +95,6 @@ function makeInput(options: {
   return {
     sessionId: SESSION_ID,
     turnId: TURN_ID,
-    sessionMode: 'work' as const,
     cwd: '/w',
     workspaceRoots: ['/w'],
     prepareSubagent: async () => { throw new Error('不应派生子 Agent'); },
@@ -448,7 +447,7 @@ describe('prepareTurnTools', () => {
     expect(received).toEqual([{ cwd: '/old', roots: ['/current'] }]);
   });
 
-  it('Chat 和 Work 都保留宿主可用工具, 只读限制由 Plan 权限决定', () => {
+  it('默认权限保留宿主可用工具, 只读限制由 Plan 权限决定', () => {
     const readTool = fakeTool('Read', { id: BuiltinTools.FileRead.id });
     const skillTool = fakeTool('Skill', { id: BuiltinTools.Skill.id });
     const bashTool = fakeTool('Bash', { id: BuiltinTools.Bash.id });
@@ -458,16 +457,13 @@ describe('prepareTurnTools', () => {
       settings: fakeSettings(),
     });
 
-    const chat = prepareTurnTools(deps, makeInput({ events: [], overrides: { sessionMode: 'chat' } }));
-    expect(chat.toolPool.get('Read')).toBeDefined();
-    expect(chat.toolPool.get('Skill')).toBeDefined();
-    expect(chat.toolPool.get('Bash')).toBeDefined();
-
-    const work = prepareTurnTools(deps, makeInput({ events: [] }));
-    expect(work.toolPool.get('Bash')).toBeDefined();
+    const assembly = prepareTurnTools(deps, makeInput({ events: [] }));
+    expect(assembly.toolPool.get('Read')).toBeDefined();
+    expect(assembly.toolPool.get('Skill')).toBeDefined();
+    expect(assembly.toolPool.get('Bash')).toBeDefined();
   });
 
-  it.each(['chat', 'work'] as const)('Plan 在 %s 中只保留指定只读工具, 执行器无法重新找到写工具', async sessionMode => {
+  it('Plan 只保留指定只读工具, 执行器无法重新找到写工具', async () => {
     const tools = Object.values(BuiltinTools).map(identity =>
       fakeTool(identity.name, { id: identity.id }));
     // 即使工具自称只读, 也不能用任意名字或 MCP 声明扩入 Plan 池.
@@ -476,7 +472,6 @@ describe('prepareTurnTools', () => {
     const assembly = prepareTurnTools(deps, makeInput({
       events: [],
       overrides: {
-        sessionMode,
         permission: {
           mode: 'plan',
           buckets: { alwaysAllowRules: { session: ['Write(input:{})', 'Bash(input:{})'] }, alwaysDenyRules: {}, alwaysAskRules: {} },

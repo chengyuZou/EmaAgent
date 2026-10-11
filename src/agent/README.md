@@ -31,6 +31,8 @@ runAgentLoop(input)
 
 另有空转软引导: 连续 3 轮完全相同的工具批次（工具名+参数一致）在迭代边界注入一次提醒消息让模型换方法. 单次循环达到 `maxIterations` 产出 `max_iterations`, 是否失败或另起根 Turn 由调用方决定. 这不提供跨 Turn 的空转判定或总体用量上限.
 
+`agent.limits.maxIterations` 默认 50, 允许 30-100 的整数, 修改从下一根 Turn 生效. Turn 准备时读取一次, 根 Agent 和本轮新建或继续的子代理都使用这个值, 每个循环单独计数. `agent.limits.maxConcurrentSubagents` 仍只限制同时运行的子代理数量, 默认 4, 允许 1-8; 不与迭代次数共用含义.
+
 ## AgentLoop 的真实输入
 
 `types.ts` 只定义会改变循环行为的输入：
@@ -78,7 +80,7 @@ fork 的父前缀由 Turn 在发起调用所属的父 Assistant 完整落库后�
 
 前台等待超过 2 分钟只改变结果所有者和父 Turn 取消关系, 同一条执行不会重启. 自然终态先写 `subagent_runs.final_text`, 再向 Session 队列发送 `subagentId + status`; 完整结果可由 `SubagentAwait` 按稳定 ID 读取当前/最近 Run. 应用启动只把遗留 `running` 收口为失败, 不扫描终态并启动新 Turn.
 
-模型新建时未指定则沿用父模型, 继续时未指定则沿用身份记录最近实际使用的模型; 显式配置无效直接报错. Permission 和 reasoningEffort 每次取父 Turn 当前冻结值, 身份上的最近配置仅供展示. 旧 Role 已移除; 普通/fork/继续共用产品静态规则, 不带角色与 SessionMode, 按实际子模型和子 ToolPool 装配动态 System, 最后补纯工作委派说明.
+模型新建时未指定则沿用父模型, 继续时未指定则沿用身份记录最近实际使用的模型; 显式配置无效直接报错. Permission 和 reasoningEffort 每次取父 Turn 当前冻结值, 身份上的最近配置仅供展示. 普通, fork 与继续共用产品静态规则, 不带根角色人设, 按实际子模型和子 ToolPool 装配动态 System, 最后补委派任务说明. 子代理不接管根 Goal, 不向用户发起 AskUser, 不再次派生子代理.
 
 前后台子工具通过宿主提供的 askPermission 共用 Session FIFO, 不再因子代理身份被视为 headless.
 请求按 subagentId/runId/toolCallId 定位来源与执行, 父 Turn ID 仅保留发起关联.

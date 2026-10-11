@@ -57,7 +57,6 @@ export function toSession(row: SessionRow): Session {
     pinned: row.pinned === 1,
     forkedFromSessionId: row.forked_from_session_id,
     forkedFromTurnId: row.forked_from_turn_id,
-    sessionMode: row.session_mode,
     permissionMode: row.permission_mode,
     ttsEnabled: row.tts_enabled === 1,
     providerId: row.provider_id,

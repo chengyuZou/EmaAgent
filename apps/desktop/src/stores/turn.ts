@@ -3,7 +3,7 @@
 import { create } from 'zustand';
 import type { ContextUsage } from '@ema-agent/context';
 import type { LlmTokenUsage } from '@ema-agent/llm';
-import type { Message, SessionMessage, SessionMode } from '@ema-agent/session';
+import type { Message, SessionMessage } from '@ema-agent/session';
 import type { TurnStreamEvent } from '@ema-agent/turn';
 import type { ToolError } from '@ema-agent/tools';
 
@@ -44,7 +44,6 @@ export interface StreamingMessage {
 
 export interface TurnState {
   readonly turnId: string;
-  readonly sessionMode: SessionMode;
   readonly startedAt: number;
   /** 已确认 Message 与流式 Assistant Message 共用这一份屏幕顺序. */
   readonly messages: readonly (SessionMessage | StreamingMessage)[];
@@ -76,13 +75,11 @@ interface TurnStore {
     sessionId: string,
     turnId: string,
     createdAt: number,
-    sessionMode: SessionMode,
     messages: readonly SessionMessage[],
   ): void;
   begin(
     sessionId: string,
     turnId: string,
-    sessionMode: SessionMode,
   ): void;
   /** 返回 false 表示消息不属于当前 Turn, 调用方应直接交给 History. */
   receiveUserMessage(sessionId: string, message: SessionMessage): boolean;
@@ -448,7 +445,6 @@ export const useTurnStore = create<TurnStore>((set, get) => ({
         turnStore.begin(
           sessionId,
           turnId,
-          event.sessionMode,
         );
         return;
       case 'agent_iteration':
@@ -530,7 +526,6 @@ export const useTurnStore = create<TurnStore>((set, get) => ({
     sessionId,
     turnId,
     createdAt,
-    sessionMode,
     messages
   ) {
     discardBufferedDeltas(sessionId, turnId);
@@ -540,7 +535,6 @@ export const useTurnStore = create<TurnStore>((set, get) => ({
         turnId,
         {
           turnId,
-          sessionMode,
           startedAt: createdAt,
           messages: [...messages],
           thinkingActive: false,
@@ -555,7 +549,6 @@ export const useTurnStore = create<TurnStore>((set, get) => ({
   begin(
     sessionId,
     turnId,
-    sessionMode,
   ) {
     set(state => {
       const currentTurns = state.turnsBySession.get(sessionId);
@@ -567,7 +560,6 @@ export const useTurnStore = create<TurnStore>((set, get) => ({
         turnId,
         {
           turnId,
-          sessionMode,
           startedAt: Date.now(),
           messages: [],
           thinkingActive: false,

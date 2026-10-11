@@ -202,7 +202,6 @@ function TurnRailPreview({ item }: { item: TurnIndexItem }): JSX.Element {
     <div className="w-64 max-w-full">
       <div className="mb-1 flex items-center gap-2 text-[11px] text-[var(--ema-text-tertiary)]">
         <span>{formatTurnTime(item.createdAt)}</span>
-        <span>{item.sessionMode === 'work' ? 'Work' : 'Chat'}</span>
         <span>{formatTurnStatus(item.status)}</span>
       </div>
       <div className="line-clamp-3 text-xs leading-5 text-[var(--ema-text-primary)]">

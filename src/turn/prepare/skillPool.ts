@@ -18,7 +18,6 @@ export interface SkillPoolDeps {
   readonly disabledSkillPaths: () => readonly string[];
 }
 
-/** Chat 与 Work 使用同一份冻结的 Skill 目录 */
 export async function resolveSkillPool(
   deps: SkillPoolDeps,
   cwd: string,

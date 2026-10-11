@@ -36,9 +36,9 @@ function seedSource(dataDir: string): Database {
     VALUES (?, '往返', 'D:/work', 0, 1, 1, 1, 'plan')
   `).run(SESSION_ID);
   db.sqlite.prepare(`
-    INSERT INTO turns (id, session_id, trigger_type, session_mode,
+    INSERT INTO turns (id, session_id, trigger_type,
       tts_enabled, character_name, status, created_at)
-    VALUES ('t1', ?, 'userMessage', 'chat', 1, 'ema', 'completed', 1)
+    VALUES ('t1', ?, 'userMessage', 1, 'ema', 'completed', 1)
   `).run(SESSION_ID);
 
   const imagePath = path.join(dataDir, 'sessions', SESSION_ID, 'attachments', 'images', 'u1.png');
@@ -247,7 +247,7 @@ describe('Session 备份往返', () => {
     targetDb.close();
   });
 
-  it.each([5, 6])('拒绝 v%s 旧归档, 不因旧记录文件抢先报格式错误', async version => {
+  it.each([5, 6, 7, 8])('拒绝 v%s 旧归档, 不因旧记录文件抢先报格式错误', async version => {
     const sourceDir = tempDir('ema-backup-v5-src-');
     const targetDir = tempDir('ema-backup-v5-dst-');
     const workDir = tempDir('ema-backup-v5-work-');

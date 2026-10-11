@@ -12,7 +12,6 @@ const result = await compact({
   providerId,
   modelId,
   usageRecorder,
-  sessionMode,
   messages,
   systemMessages,
   tools,
@@ -56,6 +55,8 @@ Macro 发 `compact_started` 后, 最终只会走 `compact_completed`, `compact_f
 Micro 只清理较旧且成功的 `Read`, `Glob`, `Grep`, `WebFetch`, `WebSearch` 结果, 并保留最近 `keepRecentToolResults` 条可清理结果. 错误结果以及无法确定可重新获取的工具结果保持原文.
 
 Macro 的消息边界是一个切点: 切点左边的消息全部参加摘要, 右边的消息保留原文. `retainRatio` 决定初始近期保留量; 如果原文尾部和摘要放不进最终请求, 切点向右移动, 让更多消息参加摘要. 切点不会把一个 `tool_use` 和对应的 `tool_result` 分到两侧.
+
+摘要同时保留当前请求, 已确认决定, 工作状态, 工具证据, 待验证事项与影响下一次回应的交流上下文. 用户纠正和最新请求优先, 不把助手提案写成已确认决定. `<context-summary>` 只包裹正文, 不携带执行模式标记.
 
 切点计算只估算一次每条消息的 token, 再组成后缀数组. 例如三条消息分别为 `10, 20, 40` Token, 后缀数组就是 `[70, 60, 40, 0]`. 近期原文预算为 `45` 时, 二分找到从第 2 条消息开始的 `40` Token 尾部; 从第 1 条开始则是 `60` Token, 放不下. 摘要分段用同一数组二分寻找预算内最远的结束切点, 然后避开会拆开工具调用与结果的位置.
 

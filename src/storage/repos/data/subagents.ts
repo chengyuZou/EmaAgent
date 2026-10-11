@@ -68,6 +68,15 @@ export class SubagentsRepo {
       .get(subagentId) as SubagentRow | undefined;
   }
 
+  listAllForSession(sessionId: string): SubagentRow[] {
+    return this.db.prepare(`
+      SELECT *
+      FROM subagents
+      WHERE session_id = ?
+      ORDER BY updated_at DESC, id DESC
+    `).all(sessionId) as SubagentRow[];
+  }
+
   listForSession(sessionId: string, cursor?: SubagentPageCursor, limit = 50): SubagentPage {
     const pageSize = Math.min(Math.max(limit, 1), 200);
     const rows = this.db.prepare(`

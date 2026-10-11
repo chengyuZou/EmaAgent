@@ -37,7 +37,7 @@ finally 释放坑位
   `cancel_compact { compactId }`。Registry 只取消身份仍匹配的工作，迟到的按钮不会停掉同一
   Session 后来开始的工作。自动压缩活在根 Turn 内部，与 Turn 共用取消信号，不另建运行记录。
 - 模型解析与下一根 Turn 同规则：`Session.providerId/modelId`，未配置即 `provider/not_configured`；缓存共享是向前的（下一 Turn 读压缩后历史）。
-- 摘要请求形状：同字节 systemMessages + 结构化历史 + 尾部指令（Codex 本地 compact 同款）。`tools` 恒空：根 Turn 的 ToolPool 装配需要 Turn 身份（SubagentSpawner/scratchpad/narrative 事件归因），Turn 外伪造身份被禁止；因此历史边界缓存断点在手动路径架构性不可达，可共享的是静态产品段 + 动态尾到 session-mode 的前缀。手动路径直接读取 Session 的推理强度, 不借用不存在的根 Turn 选择。
+- 摘要请求由同字节的 systemMessages, 结构化历史与尾部摘要指令组成. `tools` 恒空, 因为根 ToolPool 中的子代理, scratchpad 与 Narrative 需要真实 Turn 身份, 手动压缩不能伪造根 Turn. 它与根 Turn 使用相同的静态产品规则, 工作区, Memory, Skill, MCP, 当前角色与权限说明; 能力指引因工具集合不同而不同, 不宣称与根 Turn 共享历史边界的缓存断点. 手动路径直接读取 Session 的模型和推理强度.
 - `micro:false`：Micro 的占位替换从不落库（持久化的只有 Macro 摘要+游标），命令路径只要纯粹的 Macro 摘要。
 - 摘要落库（`appendHistorySummary`）是唯一提交点；手动压缩明确写 `turnId=null`。abort / 失败即历史原样，abort 返回 `{ status: 'cancelled' }` 而非错误。
 - 每次实际发出的摘要请求都有独立调用 ID. 请求进入 Provider 前先写 `running`, 收到完整流、失败或取消后再把同一行更新为终态. 分段和重试不会聚合成一笔, 手动压缩不铸造 `turnId`.

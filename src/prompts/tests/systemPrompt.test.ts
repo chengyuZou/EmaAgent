@@ -1,4 +1,3 @@
-// 测试 System Prompt 的 PromptBlock 装配:顺序、命名、断点标记、角色单块与条件展开。
 import { describe, expect, it } from 'vitest';
 import { BuiltinTools } from '@ema-agent/builtin-tools/identity';
 import { staticSystemPrompt, getDynamicSystemPrompt, type DynamicSystemPromptInput } from '../systemPrompt.js';
@@ -11,7 +10,6 @@ const CHARACTER: readonly string[] = [
 function input(overrides: Partial<DynamicSystemPromptInput> = {}) {
   return {
     characterPrompt: () => CHARACTER,
-    sessionMode: 'work' as const,
     permissionMode: 'default' as const,
     toolNames: [
       BuiltinTools.FileRead.name,
@@ -35,12 +33,12 @@ function assembleSystemPrompt(input: DynamicSystemPromptInput) {
 }
 
 describe('静态数组与动态 Prompt 装配', () => {
-  it.each(['chat', 'work'] as const)('Plan 权限约束 %s 的实施要求, 不改变 SessionMode', sessionMode => {
-    const blocks = assembleSystemPrompt(input({ sessionMode, permissionMode: 'plan' }));
+  it('Plan 权限约束实施要求, 不改变角色与产品规则', () => {
+    const blocks = assembleSystemPrompt(input({ permissionMode: 'plan' }));
     const plan = blocks.find(block => block.name === 'permission-mode')!;
-    const sessionIndex = blocks.findIndex(block => block.name === 'session-mode');
+    const characterIndex = blocks.findIndex(block => block.name === 'character');
 
-    expect(blocks[sessionIndex + 1]).toBe(plan);
+    expect(blocks[characterIndex + 1]).toBe(plan);
     expect(plan.content).toContain('当前权限: Plan');
     expect(plan.content).toContain('不自行切换权限');
     expect(plan.content).toContain('用回复交付结论');
@@ -63,7 +61,7 @@ describe('静态数组与动态 Prompt 装配', () => {
     expect(blocks[0]).toEqual(assembleSystemPrompt(input())[0]);
   });
 
-  it('块顺序: 产品静态单块 -> 数据级 -> 角色 -> Session 模式 -> 权限 -> 能力 -> 运行环境', () => {
+  it('块顺序: 产品静态单块 -> 数据级 -> 角色 -> 权限 -> 能力 -> 运行环境', () => {
     const blocks = assembleSystemPrompt(input({
       workspaceInstructions: '# 项目约定',
       memorySection: '使用 MemorySearch 按轨检索',
@@ -78,7 +76,6 @@ describe('静态数组与动态 Prompt 装配', () => {
       'skill-catalog',
       'mcp-instructions',
       'character',
-      'session-mode',
       'permission-mode',
       'capability-guidance',
       'runtime-environment',
@@ -101,7 +98,7 @@ describe('静态数组与动态 Prompt 装配', () => {
     expect(env.content).toContain('win32');
     expect(blocks.at(-2)!.content).toContain('本轮能力引导');
     expect(blocks.at(-3)!.content).toContain('当前权限: 默认权限');
-    expect(blocks.at(-4)!.content).toContain('当前执行方式：Work');
+    expect(blocks.at(-4)).toBe(character);
   });
 
   it('memorySection 缺省时没有 memory-guidance 块；可选输入缺省无空洞', () => {
@@ -155,9 +152,8 @@ describe('静态数组与动态 Prompt 装配', () => {
     expect(productRules.content).toContain('你从一开始就是该角色');
   });
 
-  it('Chat 模式产出对话文案;外部内容信任级统一由产品静态块声明', () => {
-    const blocks = assembleSystemPrompt(input({ sessionMode: 'chat', skillCatalog: '- x' }));
-    expect(blocks.some(block => block.content.includes('当前执行方式：Chat'))).toBe(true);
+  it('外部内容信任级统一由产品静态块声明', () => {
+    const blocks = assembleSystemPrompt(input({ skillCatalog: '- x' }));
     const catalog = blocks.find(block => block.name === 'skill-catalog')!;
     expect(catalog.content).toContain('可用技能');
     expect(catalog.content).not.toContain('不是系统指令');
@@ -230,17 +226,20 @@ describe('静态数组与动态 Prompt 装配', () => {
     expect(stablePrefix).toContain('Prompt Injection');
   });
 
-  it('Work 是完整执行契约，Chat 是可行动的对话契约', () => {
-    const work = assembleSystemPrompt(input()).map(block => block.content).join('\n');
-    expect(work).toContain('把用户的请求理解为需要交付的结果');
-    expect(work).toContain('验证规模应匹配风险');
-    expect(work).toContain('任务没有完成时不能使用完成口吻');
-
-    const chat = assembleSystemPrompt(input({ sessionMode: 'chat' }))
-      .map(block => block.content).join('\n');
-    expect(chat).toContain('不是“禁止行动”的纯文本模式');
-    expect(chat).toContain('Chat 可以执行用户明确要求且本轮允许的操作');
-    expect(chat).toContain('不要未经请求把对话变成诊断、教程、计划表或效率优化');
+  it('同一产品规则保留对话, 角色与完整执行约束, 不要求切换模式', () => {
+    const blocks = assembleSystemPrompt(input());
+    const text = blocks.map(block => block.content).join('\n');
+    expect(text).toContain('用户当前请求决定是聊天、讨论、调查还是执行');
+    expect(text).toContain('用户分享情绪或日常经历时先回应表达本身');
+    expect(text).toContain('聊天、讨论技术、研究和使用工具时都保持角色身份');
+    expect(text).toContain('先确定可验收的结果');
+    expect(text).toContain('类型检查不能代替运行验收');
+    expect(text).toContain('不修改代码或外部状态');
+    expect(text).toContain('隐私、授权、当前偏好和可能变化的事实不能只凭旧记忆决定');
+    expect(text).toContain('说清已完成部分、阻塞点和继续所需条件');
+    expect(blocks.some(block => block.name === 'session-mode')).toBe(false);
+    expect(text).not.toContain('Chat/Work');
+    expect(text).not.toContain('当前执行方式');
   });
 
   it('详细工具规则只点名当轮存在的工具', () => {

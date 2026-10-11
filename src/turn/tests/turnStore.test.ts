@@ -27,7 +27,6 @@ function startTurn(store: TurnStore, sessionId: string) {
   return store.startTurn({
     sessionId,
     triggerType: 'userMessage',
-    sessionMode: 'chat',
     ttsEnabled: false,
   });
 }
@@ -78,7 +77,6 @@ describe('TurnStore — 生命周期与运行锁', () => {
     const { turn } = store.startTurn({
       sessionId,
       triggerType: 'userMessage',
-      sessionMode: 'chat',
       ttsEnabled: true,
     });
     sessions.patch(sessionId, { ttsEnabled: false }, 3);

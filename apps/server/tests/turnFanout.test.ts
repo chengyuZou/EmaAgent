@@ -8,7 +8,6 @@ const TURN_STARTED = {
   sessionId: 'session-1',
   turnId: 'turn-1',
   triggerType: 'userMessage',
-  sessionMode: 'chat',
   ttsEnabled: false,
 } as const satisfies TurnStreamEvent;
 

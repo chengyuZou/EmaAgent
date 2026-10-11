@@ -84,7 +84,6 @@ export class TurnStore {
       id:           turnId,
       sessionId:    input.sessionId,
       triggerType:  input.triggerType,
-      sessionMode: input.sessionMode,
       ttsEnabled: input.ttsEnabled,
       createdAt:    now,
     });
@@ -239,7 +238,6 @@ export class TurnStore {
         completedAt: row.completed_at,
         status: row.status,
         triggerType: row.trigger_type,
-        sessionMode: row.session_mode,
         preview: formatTurnPreview(row.preview),
       })),
       nextCursor: page.nextCursor ? encodeTurnIndexCursor(page.nextCursor) : undefined,
@@ -320,7 +318,6 @@ function toTurn(row: TurnRow): Turn {
     sessionId: row.session_id,
     status: row.status,
     triggerType: row.trigger_type,
-    sessionMode: row.session_mode,
     ttsEnabled: row.tts_enabled === 1,
     providerId: row.provider_id,
     modelId: row.model_id,

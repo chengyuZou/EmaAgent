@@ -25,7 +25,7 @@ function createFixture(running = false) {
   const queue = new SessionContinuationQueue({
     sessions: {
       sessionExists: sessionId => sessionId === 'session-a',
-      getSession: () => ({ sessionMode: 'chat', ttsEnabled: true }) as never,
+      getSession: () => ({ ttsEnabled: true }) as never,
     },
     sessionRunning: {
       isRunning: () => sessionRunning,
@@ -48,10 +48,6 @@ function createFixture(running = false) {
     setRunning(value: boolean) { sessionRunning = value; },
   };
 }
-
-const workSelection = {
-  sessionMode: 'work' as const,
-};
 
 const goalDatabases: Database[] = [];
 afterEach(() => {
@@ -142,12 +138,10 @@ describe('SessionContinuationQueue', () => {
     const first = fixture.queue.enqueue({
       sessionId: 'session-a',
       input: [{ type: 'text', text: '第一条' }],
-      selection: { sessionMode: 'chat' },
     });
     fixture.queue.enqueue({
       sessionId: 'session-a',
       input: [{ type: 'text', text: '第二条' }],
-      selection: workSelection,
     });
 
     await Promise.resolve();
@@ -155,7 +149,6 @@ describe('SessionContinuationQueue', () => {
     expect(fixture.starts).toHaveLength(1);
     expect(fixture.starts[0]).toMatchObject({
       triggerType: 'userMessage',
-      sessionMode: 'work',
       ttsEnabled: true,
     });
     expect(fixture.starts[0]!.input).toEqual([{ type: 'text', text: '第一条' }]);
@@ -176,10 +169,10 @@ describe('SessionContinuationQueue', () => {
   it('活动 Turn 只领取 next_iteration 输入, 普通输入留到 Turn 清理以后', async () => {
     const fixture = createFixture(true);
     const normal = fixture.queue.enqueue({
-      sessionId: 'session-a', input: [{ type: 'text', text: '稍后' }], selection: workSelection,
+      sessionId: 'session-a', input: [{ type: 'text', text: '稍后' }],
     });
     const guided = fixture.queue.enqueue({
-      sessionId: 'session-a', input: [{ type: 'text', text: '立即' }], selection: workSelection,
+      sessionId: 'session-a', input: [{ type: 'text', text: '立即' }],
     });
     fixture.queue.guide('session-a', guided.id);
 
@@ -198,13 +191,13 @@ describe('SessionContinuationQueue', () => {
   it('多条引导按 guide 成功顺序逐条领取, guided 整体优先于普通排队', async () => {
     const fixture = createFixture(true);
     const first = fixture.queue.enqueue({
-      sessionId: 'session-a', input: [{ type: 'text', text: '第一条' }], selection: workSelection,
+      sessionId: 'session-a', input: [{ type: 'text', text: '第一条' }],
     });
     const second = fixture.queue.enqueue({
-      sessionId: 'session-a', input: [{ type: 'text', text: '第二条' }], selection: workSelection,
+      sessionId: 'session-a', input: [{ type: 'text', text: '第二条' }],
     });
     const third = fixture.queue.enqueue({
-      sessionId: 'session-a', input: [{ type: 'text', text: '第三条' }], selection: workSelection,
+      sessionId: 'session-a', input: [{ type: 'text', text: '第三条' }],
     });
 
     expect(fixture.queue.guide('session-a', second.id)).toBe(true);
@@ -222,7 +215,7 @@ describe('SessionContinuationQueue', () => {
   it('同一 item 只能引导一次, 引导后不能再删除或重复发布事件', () => {
     const fixture = createFixture(true);
     const item = fixture.queue.enqueue({
-      sessionId: 'session-a', input: [{ type: 'text', text: '立即' }], selection: workSelection,
+      sessionId: 'session-a', input: [{ type: 'text', text: '立即' }],
     });
 
     expect(fixture.queue.guide('session-a', item.id)).toBe(true);
@@ -234,10 +227,10 @@ describe('SessionContinuationQueue', () => {
   it('新 Turn 排水优先领取最早成功引导的一条', async () => {
     const fixture = createFixture(true);
     fixture.queue.enqueue({
-      sessionId: 'session-a', input: [{ type: 'text', text: '普通' }], selection: workSelection,
+      sessionId: 'session-a', input: [{ type: 'text', text: '普通' }],
     });
     const guided = fixture.queue.enqueue({
-      sessionId: 'session-a', input: [{ type: 'text', text: '引导' }], selection: workSelection,
+      sessionId: 'session-a', input: [{ type: 'text', text: '引导' }],
     });
     fixture.queue.guide('session-a', guided.id);
 
@@ -251,7 +244,7 @@ describe('SessionContinuationQueue', () => {
   it('acknowledge 只为普通排队项发布 removed, guided 已由 guided 事件离开等待区', async () => {
     const normalFixture = createFixture();
     normalFixture.queue.enqueue({
-      sessionId: 'session-a', input: [{ type: 'text', text: '普通' }], selection: workSelection,
+      sessionId: 'session-a', input: [{ type: 'text', text: '普通' }],
     });
     await Promise.resolve();
     normalFixture.queue.acknowledge(normalFixture.starts[0]!.turnId!);
@@ -259,7 +252,7 @@ describe('SessionContinuationQueue', () => {
 
     const guidedFixture = createFixture(true);
     const guided = guidedFixture.queue.enqueue({
-      sessionId: 'session-a', input: [{ type: 'text', text: '引导' }], selection: workSelection,
+      sessionId: 'session-a', input: [{ type: 'text', text: '引导' }],
     });
     guidedFixture.queue.guide('session-a', guided.id);
     guidedFixture.queue.claimNextIteration('session-a', 'active-turn');
@@ -285,7 +278,7 @@ describe('SessionContinuationQueue', () => {
   it('后台通知和 guided 输入分成两个 claim, 每次确认只消费一条 Message 的来源', () => {
     const fixture = createFixture(true);
     const guided = fixture.queue.enqueue({
-      sessionId: 'session-a', input: [{ type: 'text', text: '立即引导' }], selection: workSelection,
+      sessionId: 'session-a', input: [{ type: 'text', text: '立即引导' }],
     });
     fixture.queue.guide('session-a', guided.id);
     fixture.queue.backgroundProcessCompleted('session-a', 'process-1', 'completed');
@@ -338,7 +331,7 @@ describe('SessionContinuationQueue', () => {
     fixture.goals.create(fixture.session.id, '整理 README');
     fixture.sessionRunning.register(fixture.session.id, { kind: 'compact', compactId: 'compact-a' });
     fixture.queue.enqueue({ sessionId: fixture.session.id,
-      input: [{ type: 'text', text: '先处理用户消息' }], selection: workSelection });
+      input: [{ type: 'text', text: '先处理用户消息' }] });
     fixture.queue.subagentCompleted(fixture.session.id, 'agent-a', 'completed');
     fixture.sessionRunning.clear(fixture.session.id, { kind: 'compact', compactId: 'compact-a' });
     fixture.queue.requestDrain(fixture.session.id);
@@ -359,7 +352,7 @@ describe('SessionContinuationQueue', () => {
     const fixture = createGoalFixture();
     const goal = fixture.goals.create(fixture.session.id, '已撤销的要求');
     fixture.queue.enqueue({ sessionId: fixture.session.id,
-      input: [{ type: 'text', text: '用户消息仍然有效' }], selection: workSelection });
+      input: [{ type: 'text', text: '用户消息仍然有效' }] });
     fixture.goals[action]({ sessionId: fixture.session.id, goalId: goal.id, expectedVersion: goal.version });
     await Promise.resolve();
     expect(fixture.starts).toHaveLength(1);
@@ -372,7 +365,7 @@ describe('SessionContinuationQueue', () => {
     fixture.sessionRunning.register(fixture.session.id, { kind: 'turn', turnId: 'running-turn' });
     fixture.goals.create(fixture.session.id, '持续目标');
     const item = fixture.queue.enqueue({ sessionId: fixture.session.id,
-      input: [{ type: 'text', text: '立即引导' }], selection: workSelection });
+      input: [{ type: 'text', text: '立即引导' }] });
     fixture.queue.guide(fixture.session.id, item.id);
     const claim = fixture.queue.claimNextIteration(fixture.session.id, 'running-turn');
     expect(claim).toMatchObject({ type: 'user_input', userInput: { id: item.id } });
@@ -422,7 +415,7 @@ describe('SessionContinuationQueue', () => {
 
   it.each(['failed', 'aborted'] as const)('%s 不立即重试释放的输入, 下次明确唤醒仍可交付', async status => {
     const fixture = createFixture();
-    fixture.queue.enqueue({ sessionId: 'session-a', input: [{ type: 'text', text: '不能丢' }], selection: workSelection });
+    fixture.queue.enqueue({ sessionId: 'session-a', input: [{ type: 'text', text: '不能丢' }] });
     await Promise.resolve();
     fixture.queue.release(fixture.starts[0]!.turnId!);
     fixture.setRunning(false);

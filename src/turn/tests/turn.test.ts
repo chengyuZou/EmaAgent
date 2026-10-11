@@ -118,7 +118,6 @@ function makeStart(sessionId: string): StartTurn {
   return {
     sessionId,
     triggerType: 'userMessage',
-    sessionMode: 'work',
     ttsEnabled: true,
     input: [{ type: 'text', text: '你好' }],
   };
@@ -128,7 +127,7 @@ function goalContinuationFixture(llm: CallLlm) {
   const db = new Database({ memory: true, kind: 'data' });
   db.migrate();
   const sessions = new SessionStore({ db });
-  const session = sessions.createSession({ cwd: os.tmpdir(), providerId: 'p', modelId: 'm', sessionMode: 'work' });
+  const session = sessions.createSession({ cwd: os.tmpdir(), providerId: 'p', modelId: 'm' });
   const sessionRunning = new SessionRunningRegistry();
   const turns = new TurnStore({ db, sessionRunning });
   const registry = new ToolRegistry();
@@ -415,7 +414,7 @@ describe('TurnExecutor 集成', () => {
     try {
       const goal = fixture.goals.create(fixture.session.id, objective);
       fixture.queue.enqueue({ sessionId: fixture.session.id,
-        input: [{ type: 'text', text: objective }], selection: { sessionMode: 'work' } });
+        input: [{ type: 'text', text: objective }], });
       await vi.waitFor(() => expect(fixture.handles).toHaveLength(1));
       const handle = fixture.handles[0]!;
       expect((await handle.completion).status).toBe('completed');
@@ -658,7 +657,7 @@ describe('TurnExecutor 集成', () => {
       fixture.turns.beginSessionDeletion(fixture.session.id);
       fixture.queue.enqueue({ sessionId: fixture.session.id,
         input: [{ type: 'text', text: '不能在删除期间开新 Turn' }],
-        selection: { sessionMode: 'work' } });
+        });
       releaseCleanup();
       await handle.completion;
       expect(fixture.sessionRunning.isRunning(fixture.session.id)).toBe(false);
@@ -681,7 +680,7 @@ describe('TurnExecutor 集成', () => {
     db.migrate();
     const sessions = new SessionStore({ db });
     const session = sessions.createSession({
-      cwd: os.tmpdir(), providerId: 'p', modelId: 'm', permissionMode: 'plan', sessionMode: 'work',
+      cwd: os.tmpdir(), providerId: 'p', modelId: 'm', permissionMode: 'plan', 
     });
     const read = vi.fn(async () => 'read-ok');
     const write = vi.fn(async () => 'write-ok');

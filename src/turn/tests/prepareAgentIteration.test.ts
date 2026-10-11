@@ -1,9 +1,10 @@
-// 验证完整消息链参与压缩, 以及 Macro 覆盖前缀到 SQL 消息 ID 的映射。
 import { describe, expect, it, vi } from 'vitest';
 import type { CompactRequest, CompactResult } from '@ema-agent/compact';
 import type { Message } from '@ema-agent/llm';
 import type { Message as SessionMessage } from '@ema-agent/session';
 import { ToolPool } from '@ema-agent/tools';
+import { buildCompactPrompt } from '../../compact/compactPrompt.js';
+import { createSummaryMessage } from '../../compact/budget.js';
 import {
   createPrepareAgentIteration,
   type PrepareAgentIterationDeps,
@@ -19,7 +20,6 @@ const MESSAGES: Message[] = [
 
 function makePrepared(overrides: Partial<PreparedTurn> = {}): PreparedTurn {
   return {
-    sessionMode: 'work',
     contextWindow: 100_000,
     maxOutput: 8_000,
     systemPrompt: [{ name: 'static', content: '系统提示词', cacheBreakpoint: true }],
@@ -76,6 +76,18 @@ function makeDeps(overrides: {
 }
 
 describe('prepareAgentIteration', () => {
+  it('压缩统一保留工作状态和交流上下文, 摘要外层不带模式', () => {
+    const prompt = buildCompactPrompt();
+    expect(prompt).toContain('Current Objective and State');
+    expect(prompt).toContain('Interaction Context');
+    expect(prompt).toContain('both task state and interaction context');
+    expect(prompt).not.toContain('Session currently uses');
+    expect(createSummaryMessage('进度与对话')).toEqual({
+      role: 'user',
+      content: '<context-summary>\n进度与对话\n</context-summary>',
+    });
+  });
+
   it('不压缩时原样保留完整消息链, System 只进入本次请求', async () => {
     const seen: CompactRequest[] = [];
     const { deps } = makeDeps({
@@ -91,6 +103,7 @@ describe('prepareAgentIteration', () => {
     });
 
     expect(seen[0]?.messages).toEqual(MESSAGES);
+    expect(seen[0]).not.toHaveProperty('sessionMode');
     expect(result.messages).toEqual(MESSAGES);
     expect(result.request.messages[0]?.role).toBe('system');
     expect(result.request.messages.slice(1).map(message => message.role))

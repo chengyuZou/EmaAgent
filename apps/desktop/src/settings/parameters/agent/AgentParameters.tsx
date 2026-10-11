@@ -4,8 +4,7 @@ import { SettingsCard, SettingsSection } from '../../shared/SettingItem.js';
 import { NumberSetting } from '../controls/NumberSetting.js';
 import { useSettingValues } from '../useSettingValues.js';
 
-const CHAT_MAX_ITERATIONS = 'agent.limits.chatMaxIterations';
-const WORK_MAX_ITERATIONS = 'agent.limits.workMaxIterations';
+const MAX_ITERATIONS = 'agent.limits.maxIterations';
 const MAX_CONCURRENT_SUBAGENTS = 'agent.limits.maxConcurrentSubagents';
 
 export function AgentParameters(): JSX.Element {
@@ -16,23 +15,14 @@ export function AgentParameters(): JSX.Element {
   return (
     <SettingsSection icon="i-lucide:bot" title="Agent" description="Agent 循环和子代理并发">
       <SettingsCard>
-        <NumberSetting 
-          title="Chat 最大迭代次数" 
-          hint="Chat 模式单个 Turn 最多调用模型多少轮." 
-          apply={settings.apply(CHAT_MAX_ITERATIONS)} 
-          value={requiredNumber(settings.values, CHAT_MAX_ITERATIONS)} 
-          unit="轮" 
-          onSave={value => settings.save(CHAT_MAX_ITERATIONS, value)} 
-          onReset={() => settings.reset(CHAT_MAX_ITERATIONS)} 
-        />
-        <NumberSetting 
-          title="Work 最大迭代次数" 
-          hint="Work 模式单个 Turn 最多调用模型多少轮." 
-          apply={settings.apply(WORK_MAX_ITERATIONS)} 
-          value={requiredNumber(settings.values, WORK_MAX_ITERATIONS)} 
-          unit="轮" 
-          onSave={value => settings.save(WORK_MAX_ITERATIONS, value)} 
-          onReset={() => settings.reset(WORK_MAX_ITERATIONS)} 
+        <NumberSetting
+          title="单轮最大迭代次数"
+          hint="根 Agent 与每次子代理执行各自的循环次数上限. 默认 50, 可设为 30-100, 下一轮生效."
+          apply={settings.apply(MAX_ITERATIONS)}
+          value={requiredNumber(settings.values, MAX_ITERATIONS)}
+          unit="次"
+          onSave={value => settings.save(MAX_ITERATIONS, value)}
+          onReset={() => settings.reset(MAX_ITERATIONS)}
         />
         <NumberSetting 
           title="子代理并发数" 

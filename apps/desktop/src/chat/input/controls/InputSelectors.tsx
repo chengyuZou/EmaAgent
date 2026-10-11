@@ -1,21 +1,10 @@
 import type { JSX } from 'react';
 import { Button, DropdownMenu, IconButton, type MenuItem } from '@ema-agent/ui';
-import type { SessionMode } from '@ema-agent/session';
 import type { PermissionMode } from '@ema-agent/permission';
 import { ServerApiError } from '../../../api/client.js';
 import type { ChatDraft } from '../../../stores/chatDraft.js';
 import { useSessionStore } from '../../../stores/session.js';
 import { showToast } from '../../../lib/toast.js';
-
-const SESSION_MODE_LABELS: Record<SessionMode, string> = {
-  chat: 'Chat',
-  work: 'Work',
-};
-
-const SESSION_MODE_ICONS: Record<SessionMode, string> = {
-  chat: 'i-lucide:message-circle',
-  work: 'i-lucide:briefcase-business',
-};
 
 const PERMISSION_MODE_LABELS: Record<PermissionMode, string> = {
   default: '默认权限',
@@ -31,48 +20,13 @@ const PERMISSION_MODE_ICONS: Record<PermissionMode, string> = {
   plan: 'i-lucide:clipboard-list',
 };
 
-/* 菜单第二行解释(安全语义区,光看标题不够):每档说清它实际放行什么。 */
+// 权限菜单同时说明实际允许的操作, 不只展示档位名称.
 const PERMISSION_MODE_DESCRIPTIONS: Record<PermissionMode, string> = {
   default: '编辑文件和使用互联网时始终询问',
   acceptEdits: '仅对检测到的风险操作请求批准',
   bypassPermissions: '可不受限制地访问互联网和电脑上的任何文件',
   plan: '仅使用只读工具调查和规划, 不实施修改; 切换在下一轮生效',
 };
-
-export function SessionModeSelector({
-  value,
-  onChange,
-}: {
-  value: SessionMode;
-  onChange(value: SessionMode): void;
-}): JSX.Element {
-  const items = (): MenuItem[] => (['chat', 'work'] as const).map((mode) => ({
-    kind: 'item',
-    label: SESSION_MODE_LABELS[mode],
-    icon: value === mode
-      ? 'i-lucide:check'
-      : SESSION_MODE_ICONS[mode],
-    onSelect: () => onChange(mode),
-  }));
-
-  return (
-    <DropdownMenu
-      side="top"
-      align="end"
-      widthClass="min-w-36"
-      items={items}
-      trigger={(
-        <Button
-          variant="ghost"
-          className="ema-chat-btn"
-        >
-          {SESSION_MODE_LABELS[value]}
-          <span className="i-lucide:chevron-up text-[10px]" aria-hidden />
-        </Button>
-      )}
-    />
-  );
-}
 
 export function PermissionModeSelector({
   value,
@@ -162,16 +116,6 @@ export function useInputOptions(
     }
   }
 
-  function chooseSessionMode(sessionMode: SessionMode): void {
-    if (viewedId) {
-      void useSessionStore.getState()
-        .setSessionMode(viewedId, sessionMode)
-        .catch(showSessionPreferenceError);
-    } else {
-      patchCurrentDraft({ sessionMode });
-    }
-  }
-
   const plusItems = (): MenuItem[] => [
     {
       kind: 'item',
@@ -182,7 +126,7 @@ export function useInputOptions(
     },
   ];
 
-  return { plusItems, toggleTts, choosePermissionMode, chooseSessionMode };
+  return { plusItems, toggleTts, choosePermissionMode };
 }
 
 export function TtsButton({ enabled, onToggle }: {

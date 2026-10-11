@@ -23,7 +23,6 @@ const callLlm: CallLlm = async function* () {
 function preparedTurn(): PreparedTurn {
   const dynamicInput: DynamicSystemPromptInput = {
     characterPrompt: () => ['根角色人设'],
-    sessionMode: 'work',
     permissionMode: 'default',
     toolNames: [],
     environment: { platform: 'win32', cwd: 'D:/workspace', projectFolderPaths: [], providerId: 'p', modelId: 'm' },
@@ -202,6 +201,8 @@ describe('createPrepareSubagent fork', () => {
     });
 
     expect(createCompact).toHaveBeenCalledTimes(2);
+    expect(first.maxIterations).toBe(10);
+    expect(second.maxIterations).toBe(10);
     expect(first.messages.slice(0, -1)).toEqual(second.messages.slice(0, -1));
     expect(first.messages[1]).toEqual({
       role: 'assistant', content: parent.messages[1]!.blocks,

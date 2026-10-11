@@ -66,7 +66,6 @@ export function createPrepareAgentIteration(deps: PrepareAgentIterationDeps): Pr
       providerId: prepared.providerId,
       modelId: prepared.modelId,
       usageRecorder: deps.usageRecorder,
-      sessionMode: prepared.sessionMode,
       messages,
       systemMessages,
       // 摘要请求复用根 Turn 冻结的 Tool 定义与 thinking 配置, 保持与主请求一致的缓存前缀.

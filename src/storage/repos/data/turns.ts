@@ -1,7 +1,4 @@
-// 管理 Turn 的创建、状态流转、模型冻结、稳定分页和锚点窗口查询。
-// Row 枚举由 storage 自持（SQL CHECK 的映射）；领域词汇归 @ema-agent/turn-terms 叶子，业务包在边界显式映射。
 import type { SqliteDb } from '../../database/database.js';
-import type { SessionModeRow } from './sessions.js';
 
 /** turns.status 的 SQL CHECK 原样。 */
 export type TurnStatusRow = 'running' | 'completed' | 'failed' | 'aborted';
@@ -13,7 +10,6 @@ export interface TurnRow {
   session_id: string;
   status: TurnStatusRow;
   trigger_type: TurnTriggerTypeRow;
-  session_mode: SessionModeRow;
   /** Turn 启动时写入的冻结值. 与 sessions.tts_enabled 的可变偏好不同. */
   tts_enabled: number;
   /** 操作开始冻结的模型选择；prepare 阶段解析成功前为 null。 */
@@ -34,7 +30,6 @@ export interface TurnInsert {
   id: string;
   sessionId: string;
   triggerType: TurnTriggerTypeRow;
-  sessionMode: SessionModeRow;
   ttsEnabled: boolean;
   createdAt: number;
 }
@@ -60,7 +55,6 @@ export interface TurnIndexRow {
   id: string;
   anchor_message_id: string;
   trigger_type: TurnTriggerTypeRow;
-  session_mode: SessionModeRow;
   status: TurnStatusRow;
   /** 首条 User Message 的正文预览；用户输入的唯一事实源是 Message。 */
   preview: string;
@@ -84,14 +78,13 @@ export class TurnsRepo {
       .prepare(
         `INSERT INTO turns
            (id, session_id, status, trigger_type,
-            session_mode, tts_enabled, created_at)
-         VALUES (?, ?, 'running', ?, ?, ?, ?)`,
+            tts_enabled, created_at)
+         VALUES (?, ?, 'running', ?, ?, ?)`,
       )
       .run(
         t.id,
         t.sessionId,
         t.triggerType,
-        t.sessionMode,
         t.ttsEnabled ? 1 : 0,
         t.createdAt,
       );
@@ -156,7 +149,7 @@ export class TurnsRepo {
     const rows = cursor
       ? this.db.prepare(`
           SELECT t.id, anchor.id AS anchor_message_id,
-                 t.trigger_type, t.session_mode, t.status,
+                 t.trigger_type, t.status,
                  COALESCE((
                    SELECT substr(ema_message_search_text(m.blocks_json), 1, 512)
                    FROM messages m
@@ -178,7 +171,7 @@ export class TurnsRepo {
         `).all(sessionId, cursor.createdAt, cursor.createdAt, cursor.id, pageSize + 1)
       : this.db.prepare(`
           SELECT t.id, anchor.id AS anchor_message_id,
-                 t.trigger_type, t.session_mode, t.status,
+                 t.trigger_type, t.status,
                  COALESCE((
                    SELECT substr(ema_message_search_text(m.blocks_json), 1, 512)
                    FROM messages m

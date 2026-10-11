@@ -1,4 +1,4 @@
-// 验证当前 Session 记录协议接受现行字段并拒绝旧备份字段。
+// 验证当前 Session 记录协议接受现行字段并拒绝旧备份字段.
 import { describe, expect, it } from 'vitest';
 import type { TurnRow } from '@ema-agent/storage';
 import { toSessionRecord, toTurnRecord } from '../records/exportMappings.js';
@@ -21,14 +21,16 @@ const currentSession = {
   providerId: null,
   modelId: null,
   reasoningEffort: 'off',
-  sessionMode: 'work',
   permissionMode: 'default',
   ttsEnabled: false,
 } as const;
 
 describe('session records', () => {
   it('接受当前 Session 结构', () => {
-    expect(sessionRecordSchema.parse(currentSession).id).toBe('session-1');
+    const parsed = sessionRecordSchema.parse(currentSession);
+    expect(parsed.id).toBe('session-1');
+    expect(parsed).not.toHaveProperty('sessionMode');
+    expect(restoreSessionRecord(parsed)).not.toHaveProperty('session_mode');
   });
 
   it('Plan 权限在导出, 协议校验和恢复映射中原样保留', () => {
@@ -41,6 +43,8 @@ describe('session records', () => {
   it('拒绝旧协议遗留字段', () => {
     expect(() => sessionRecordSchema.parse({ ...currentSession, provider_config_id: 'old' }))
       .toThrow();
+    expect(() => sessionRecordSchema.parse({ ...currentSession, sessionMode: 'work' }))
+      .toThrow();
   });
 
   it('Turn 记录 protocol 往返（导出 → 校验 → 恢复）', () => {
@@ -49,7 +53,6 @@ describe('session records', () => {
       session_id: 'session-1',
       status: 'completed',
       trigger_type: 'userMessage',
-      session_mode: 'work',
       tts_enabled: 1,
       provider_id: 'openai',
       model_id: 'gpt-5.2',
@@ -64,12 +67,16 @@ describe('session records', () => {
 
     const record = toTurnRecord(turnRow);
     const parsed = turnRecordSchema.parse(record);
+    expect(record).not.toHaveProperty('sessionMode');
     expect(parsed.protocol).toBe('openai-responses-llm');
     expect(parsed.ttsEnabled).toBe(true);
     expect(parsed.characterName).toBe('ema');
-    expect(restoreTurnRecord(parsed, 3).protocol).toBe('openai-responses-llm');
-    expect(restoreTurnRecord(parsed, 3).tts_enabled).toBe(1);
-    expect(restoreTurnRecord(parsed, 3).character_name).toBe('ema');
+    const restored = restoreTurnRecord(parsed, 3);
+    expect(restored.protocol).toBe('openai-responses-llm');
+    expect(restored.tts_enabled).toBe(1);
+    expect(restored.character_name).toBe('ema');
+    expect(restored).not.toHaveProperty('session_mode');
+    expect(() => turnRecordSchema.parse({ ...record, sessionMode: 'chat' })).toThrow();
   });
 
   it('拒绝缺失 protocol 键的旧 Turn 记录（开发期不兼容）', () => {
@@ -78,7 +85,6 @@ describe('session records', () => {
       sessionId: 'session-1',
       status: 'completed',
       triggerType: 'userMessage',
-      sessionMode: 'work',
       providerId: 'openai',
       modelId: 'gpt-5.2',
       characterName: null,

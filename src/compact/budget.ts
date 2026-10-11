@@ -1,5 +1,4 @@
 import type { Message } from '@ema-agent/llm';
-import type { SessionMode } from '@ema-agent/session';
 import { estimateMessagesTokens } from '@ema-agent/token';
 import type { CompactSettings } from './settings.js';
 
@@ -23,19 +22,18 @@ interface FittedCompactMessages {
 export function fitCompactMessages(args: {
   readonly summary: string;
   readonly tail: readonly Message[];
-  readonly sessionMode: SessionMode;
   readonly tokenLimit: number;
   readonly fixedRequestTokens: number;
 }): FittedCompactMessages | null {
-  const messages = [createSummaryMessage(args.summary, args.sessionMode), ...args.tail];
+  const messages = [createSummaryMessage(args.summary), ...args.tail];
   const afterTokens = args.fixedRequestTokens + estimateMessagesTokens(messages);
   if (afterTokens > args.tokenLimit) return null;
   return { messages, summary: args.summary, afterTokens };
 }
 
-export function createSummaryMessage(summary: string, sessionMode: SessionMode): Message {
+export function createSummaryMessage(summary: string): Message {
   return {
     role: 'user',
-    content: `<context-summary mode="${sessionMode}">\n${summary}\n</context-summary>`,
+    content: `<context-summary>\n${summary}\n</context-summary>`,
   };
 }

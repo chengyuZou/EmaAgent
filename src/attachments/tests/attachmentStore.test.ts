@@ -36,9 +36,9 @@ beforeEach(() => {
     VALUES (?, 's', 'D:/work', 0, 1, 1, 1)
   `).run(sessionId);
   database.sqlite.prepare(`
-    INSERT INTO turns (id, session_id, trigger_type, session_mode,
+    INSERT INTO turns (id, session_id, trigger_type,
       status, created_at)
-    VALUES (?, ?, 'userMessage', 'chat', 'completed', 1)
+    VALUES (?, ?, 'userMessage', 'completed', 1)
   `).run(turnId, sessionId);
   imagesRepo = new AttachmentImagesRepo(database.sqlite);
   pastedTextsRepo = new AttachmentPastedTextsRepo(database.sqlite);

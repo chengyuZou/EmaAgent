@@ -13,19 +13,10 @@ import type {
 } from './types.js';
 import { renderGoalEditReminder } from './prepare/turnReminder.js';
 
-/**
- * 自动续接只保留本次输入范围和朗读选择. 模型与推理强度每次从 Session 读取,
- * 否则设置窗口或输入区改过模型后, 内存里的旧选择会覆盖已保存的 Session.
- */
-export interface SessionTurnSelection {
-  readonly sessionMode: StartTurn['sessionMode'];
-}
-
 /** WebSocket queue_user_message 交给队列的完整业务输入. 内容此时只进入进程内存, 尚未写入 Message. */
 export interface EnqueueSessionInput {
   readonly sessionId: string;
   readonly input: readonly TurnInputPart[];
-  readonly selection: SessionTurnSelection;
 }
 
 /**
@@ -135,8 +126,6 @@ const GOAL_CONTINUATION_TEXT = '根据本轮 reminder 和 GoalGet 继续推进�
 export class SessionContinuationQueue {
   /** 每个 Session 尚未确认消费的用户输入. guided 内部按引导成功顺序, 普通项保持入队顺序. */
   private readonly inputs = new Map<string, PendingInput[]>();
-  /** 每个 Session 最近一次输入区选择, 供后续自动 Turn 使用. */
-  private readonly selections = new Map<string, SessionTurnSelection>();
   /** 当前进程产生但尚未交付模型的后台终态通知. */
   private readonly completionNotices = new Map<string, CompletionNotice[]>();
   /** 只绑定编辑发生时的根 Turn, 不唤醒空闲 Session 或留给后来 Turn. */
@@ -166,12 +155,11 @@ export class SessionContinuationQueue {
   }
 
   /**
-   * 入队时冻结输入与选择, 避免前端草稿或调用方对象随后变化影响已经排队的内容.
+   * 入队时复制输入, 避免前端草稿或调用方对象随后变化影响已经排队的内容.
    * 若 Session 当前空闲, requestDrain 会在同一调用栈结束后启动这一条输入的 Turn.
    */
   enqueue(input: EnqueueSessionInput): QueuedSessionInput {
     this.deps.sessions.getSession(input.sessionId);
-    this.selections.set(input.sessionId, structuredClone(input.selection));
     const item: PendingInput = {
       id: randomUUID(),
       sessionId: input.sessionId,
@@ -342,7 +330,6 @@ export class SessionContinuationQueue {
   /** Session 删除流程在数据库删行前调用, 丢弃只属于该 Session 的全部进程内续接状态. */
   discardSession(sessionId: string): void {
     this.inputs.delete(sessionId);
-    this.selections.delete(sessionId);
     this.completionNotices.delete(sessionId);
     this.goalEdits.delete(sessionId);
     for (const [turnId, claim] of this.claims) {
@@ -354,7 +341,6 @@ export class SessionContinuationQueue {
   shutdown(): void {
     this.stopped = true;
     this.inputs.clear();
-    this.selections.clear();
     this.completionNotices.clear();
     this.goalEdits.clear();
     this.claims.clear();
@@ -390,7 +376,6 @@ export class SessionContinuationQueue {
       const claim = this.claim(sessionId, turnId, false);
       if (!claim) return;
       const session = this.deps.sessions.getSession(sessionId);
-      const selection = this.selections.get(sessionId);
       // 有用户输入时保持 userMessage 语义; 新 Turn 每次只领取一个 Queue item,
       // 其余输入继续按 guided 优先、普通 after_turn 随后的顺序等待后续安全点或 Turn.
       // 内部通知与 Goal 续接共用 sessionContinuation,
@@ -400,7 +385,6 @@ export class SessionContinuationQueue {
         turnId,
         sessionId,
         triggerType: claim.type === 'user_input' ? 'userMessage' : 'sessionContinuation',
-        sessionMode: selection?.sessionMode ?? session.sessionMode,
         ttsEnabled: session.ttsEnabled,
         input: claim.type === 'user_input' ? claim.userInput.input : [],
         ...(claim.continuationText

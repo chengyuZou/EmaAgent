@@ -9,7 +9,6 @@ const patchSessionBody = z.object({
   title: z.string().min(1).max(200).optional(),
   pinned: z.boolean().optional(),
   cwd: z.string().min(1).max(500).optional(),
-  sessionMode: z.enum(['chat', 'work']).optional(),
   permissionMode: z.enum(['default', 'acceptEdits', 'bypassPermissions', 'plan']).optional(),
   ttsEnabled: z.boolean().optional(),
   providerId: z.string().min(1).optional(),

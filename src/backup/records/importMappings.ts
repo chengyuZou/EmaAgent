@@ -54,7 +54,6 @@ export function restoreSessionRecord(record: SessionRecord): SessionRow {
     provider_id: record.providerId,
     model_id: record.modelId,
     reasoning_effort: record.reasoningEffort,
-    session_mode: record.sessionMode,
     permission_mode: record.permissionMode,
     tts_enabled: record.ttsEnabled ? 1 : 0,
   };
@@ -67,7 +66,6 @@ export function restoreTurnRecord(record: TurnRecord, importedAt: number): TurnR
     session_id: record.sessionId,
     status: unfinished ? 'aborted' : record.status,
     trigger_type: record.triggerType,
-    session_mode: record.sessionMode,
     tts_enabled: record.ttsEnabled ? 1 : 0,
     provider_id: record.providerId,
     model_id: record.modelId,

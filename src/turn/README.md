@@ -60,7 +60,7 @@ Compact 只认识模型消息数组和 `summarizedMessageCount`，不知道 SQL 
 ## Plan 权限
 
 `session.permissionMode = 'plan'` 在准备阶段收窄本轮 ToolPool, System Prompt 同时声明只读调查与规划约束.
-模型与执行器共用筛选后的池, 显式 allow 规则不会扩入已排除的工具. Chat/Work 不变,
+模型与执行器共用筛选后的池, 显式 allow 规则不会扩入已排除的工具.
 没有 Plan 进入/退出工具和确认状态. 权限在 Turn 开始时冻结, 菜单切换只影响下一根 Turn.
 只读池保留检索与读取, 包括 Task/Scratchpad 读取; 不包含 Shell, 写入, Subagent, AskUser 或 MCP.
 
@@ -76,7 +76,7 @@ Compact 只认识模型消息数组和 `summarizedMessageCount`，不知道 SQL 
 
 Prompt 包提供 `staticSystemPrompt` 数组和 `getDynamicSystemPrompt(input)`. 根 Turn 直接准备输入并拼接, `PreparedTurn.DynamicSystemPromptInput` 保存本轮动态输入, 不再经过完整 System 装配包装函数. 手动 Compact 使用同一数组和动态函数.
 
-普通、fork 和继续旧子代理共用纯工作 System: 复用静态规则与父调用已经读取的工作区/Memory/Skill/MCP 文本, 不传角色和 SessionMode, 按实际子模型与子 ToolPool 生成环境和能力说明, 最后追加 `subagent` 块. 该块说明委派范围、验证、向父交付、不接管父 Goal 与后台任务交接. 普通子代理不等待父 Assistant; fork 仍按原有顺序等待完整父前缀. 未完成后台命令交付 `backgroundProcessId`, 用途和最后已知状态, 由父 Agent 使用 `ProcessOutput` 接手. 等待分叉输入时的子代理取消, 父模型失败或父消息保存失败, 都会结束等待.
+普通, fork 和继续旧子代理共用委派任务 System: 复用静态规则与父调用已经读取的工作区/Memory/Skill/MCP 文本, 不传角色, 按实际子模型与子 ToolPool 生成环境和能力说明, 最后追加 `subagent` 块. 该块说明委派范围, 验证, 向父交付, 不接管父 Goal 与后台任务交接. 普通子代理不等待父 Assistant; fork 按顺序等待完整父前缀. 未完成后台命令交付 `backgroundProcessId`, 用途和最后已知状态, 由父 Agent 使用 `ProcessOutput` 接手. 等待分叉输入时的子代理取消, 父模型失败或父消息保存失败, 都会结束等待.
 
 ## 文件位置
 

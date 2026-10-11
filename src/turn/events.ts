@@ -4,7 +4,7 @@ import type { ContextUsage } from '@ema-agent/context';
 import type { LlmTokenUsage } from '@ema-agent/llm';
 import type { StageStreamEvent } from '@ema-agent/stage';
 import type { ToolExecutionEvent } from '@ema-agent/tools';
-import type { SessionMode, SessionMessage } from '@ema-agent/session';
+import type { SessionMessage } from '@ema-agent/session';
 import type { TurnFailureCode } from './errors.js';
 import type { RequestDegradationNotice, TurnTriggerType } from './types.js';
 
@@ -22,7 +22,6 @@ export type TurnEvent =
     sessionId: string;
     turnId: string;
     triggerType: TurnTriggerType;
-    sessionMode: SessionMode;
     /** 与 Turn 行同源的本轮语音选择, 不代表语音管线已经成功启动. */
     ttsEnabled: boolean;
   }

@@ -31,7 +31,7 @@ import {
   type ToolResultStore,
   type ToolUseContext,
 } from '@ema-agent/tools';
-import type { SessionMode, ReasoningEffort } from '@ema-agent/session';
+import type { ReasoningEffort } from '@ema-agent/session';
 import type { SessionInteractionQueue } from '../interactionQueue.js';
 import type { TurnStreamEvent } from '../events.js';
 
@@ -82,7 +82,6 @@ export interface TurnToolsDeps {
 export interface PrepareTurnToolsInput {
   readonly sessionId: string;
   readonly turnId: string;
-  readonly sessionMode: SessionMode;
   readonly cwd: string;
   readonly workspaceRoots: readonly string[];
   readonly scratchpadDir?: string;

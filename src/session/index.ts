@@ -27,7 +27,6 @@ export type {
   SearchSessionsInput,
   SessionSearchHit,
   SearchSessionsOutput,
-  SessionMode,
   ReasoningEffort,
   TurnStatus,
   SessionSidebarDestination,

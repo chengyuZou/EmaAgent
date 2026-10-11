@@ -65,7 +65,6 @@ export interface TurnReminderScope {
   readonly turnId: string;
   /** 与 Turn 行同一次冻结的角色目录名。 */
   readonly characterName: string;
-  readonly sessionMode: Turn['sessionMode'];
   /** 本 Turn 用户文本. 内部续接触发时可以为空串. */
   readonly userText: string;
   /** Turn 级取消信号；reminder 期的召回随 Turn 中止一并取消。 */
@@ -140,7 +139,6 @@ export class TurnExecutor {
       turnId: input.turnId,
       sessionId: input.sessionId,
       triggerType: input.triggerType,
-      sessionMode: input.sessionMode,
       ttsEnabled: input.ttsEnabled,
     });
     const channel = new TurnEventChannel<TurnStreamEvent>(() => {
@@ -244,7 +242,6 @@ export class TurnExecutor {
         sessionId,
         turnId,
         triggerType: turn.triggerType,
-        sessionMode: turn.sessionMode,
         ttsEnabled: turn.ttsEnabled,
       });
 
@@ -293,7 +290,6 @@ export class TurnExecutor {
         sessionId,
         turnId,
         characterName,
-        sessionMode: turn.sessionMode,
         userText,
         signal,
         emit,

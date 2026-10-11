@@ -27,7 +27,6 @@ export async function submitChatDraft(
     const input = await finalizeDraft(sessionId, submitted);
     const payload = {
       input,
-      sessionMode: submitted.sessionMode,
       ...(objective !== undefined ? { objective } : {}),
     };
 

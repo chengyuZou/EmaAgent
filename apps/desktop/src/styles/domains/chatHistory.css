@@ -300,8 +300,7 @@ button.ema-chat-jump-latest:active:not(:disabled) {
   overflow-x: hidden;
 }
 
-.ema-message-chip,
-.ema-message-mode {
+.ema-message-chip {
   border: 1px solid var(--ema-border);
   border-radius: var(--ema-radius-xs);
   background: transparent;

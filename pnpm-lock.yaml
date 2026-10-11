@@ -663,9 +663,6 @@ importers:
       '@ema-agent/llm':
         specifier: workspace:*
         version: link:../llm
-      '@ema-agent/session':
-        specifier: workspace:*
-        version: link:../session
       '@ema-agent/settings':
         specifier: workspace:*
         version: link:../settings
@@ -1384,9 +1381,6 @@ importers:
       '@ema-agent/context':
         specifier: workspace:*
         version: link:../context
-      '@ema-agent/git':
-        specifier: workspace:*
-        version: link:../git
       '@ema-agent/goal':
         specifier: workspace:*
         version: link:../goal

@@ -5,8 +5,7 @@ import path from 'node:path';
 import { mimeForPath, VisionDescriptionCache, type VisionDescriptionProducer } from '@ema-agent/attachments';
 import { buildCharacterPrompt, type CharacterStore } from '@ema-agent/characters';
 import { createCompact } from '@ema-agent/compact';
-import { gitSummary } from '@ema-agent/git';
-import { createLlmCall, createLlmCompletion, type LlmTokenUsage } from '@ema-agent/llm';
+import { type LlmTokenUsage } from '@ema-agent/llm';
 import {
   buildMemoryGuidance,
   memorySummaryFile,
@@ -18,13 +17,12 @@ import {
 } from '@ema-agent/memory';
 import { permissionAskTimeoutSetting, type PermissionStreamEvent } from '@ema-agent/permission';
 import type { ToolExecutionEvent } from '@ema-agent/tools';
-import { DEFAULT_SESSION_TITLE } from '@ema-agent/session';
 import type { SettingsStore } from '@ema-agent/settings';
 import { workspaceInstructionFilesSetting } from '@ema-agent/skills';
 import type { StageEngine } from '@ema-agent/stage';
-import { AttachmentVisionDescriptionCachesRepo, type SubagentPageCursor } from '@ema-agent/storage';
+import { AttachmentVisionDescriptionCachesRepo  } from '@ema-agent/storage';
 import { formatTaskContextReminder } from '@ema-agent/tasks';
-import { SubagentExecutor, maxConcurrentSubagentsSetting, type SubagentEvent, type Subagent } from '@ema-agent/agent';
+import { SubagentExecutor, maxConcurrentSubagentsSetting, type SubagentEvent } from '@ema-agent/agent';
 import {
   SessionInteractionQueue,
   SessionContinuationQueue,
@@ -238,10 +236,6 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
 
   // ── Reminder 输入（每根 Turn 生产一次；含 currentDate，读取完成即冻结进持久化 reminder） ──
   const readTurnReminder = async (scope: TurnReminderScope): Promise<RenderTurnReminderInput> => {
-    const cwd = database.session.getSession(scope.sessionId).cwd ?? '';
-    const git = scope.sessionMode === 'work' && cwd
-      ? await gitSummary(cwd).catch(() => undefined)
-      : undefined;
     const summaryTokens = MEMORY_SUMMARY_TOKENS;
     const [memoryWork, memoryRelationship] = await Promise.all([
       readMemorySummary(memorySummaryFile(workMemoryDir()), summaryTokens)
@@ -265,20 +259,12 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     const scratchpad = scratchpadNames.length > 0
       ? `本 Turn scratchpad 已有文件：${scratchpadNames.join('、')}`
       : undefined;
-    // 目录没有总条数上限, 不能把 Store 默认的一页当作全部身份.
-    // 连续同步读取, 中间不 await; 同一根 Turn 只在 reminder 生产时读取一次.
-    const subagents: Subagent[] = [];
-    let subagentCursor: SubagentPageCursor | undefined;
-    do {
-      const page = database.subagents.listForSession(scope.sessionId, subagentCursor);
-      subagents.push(...page.items);
-      subagentCursor = page.nextCursor ?? undefined;
-    } while (subagentCursor);
+    const subagents = database.subagents.listAllForSession(scope.sessionId);
     return {
       currentDate: new Date().toISOString().slice(0, 10),
       // Memory 读取结束后再读目标, 不把等待期间的旧状态冻结进 reminder.
       goal: database.goals.getCurrent(scope.sessionId),
-      ...(git ? { gitSummary: git } : {}),
+      subagents,
       ...(memoryWork ? { memoryWork } : {}),
       ...(memoryRelationship ? { memoryRelationship } : {}),
       ...(taskReminder ? { taskReminder } : {}),

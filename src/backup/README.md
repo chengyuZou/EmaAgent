@@ -11,7 +11,7 @@ Backup 只负责导出和导入单个 Session。角色、Provider 配置、MCP�
 - `records/*.jsonl`：Turn、Message、Task、Goal、Subagent 身份、Subagent Run、子 Message、Tool 执行、后台进程、附件、语音和用量记录；
 - `files/`: 附件、正式 WAV 和后台进程输出.
 
-当前格式为 v8, 只接受 v8. 其他版本返回 `unsupported_version`, 不转换旧字段.
+当前格式为 v9, 只接受 v9. 其他版本返回 `unsupported_version`, 不转换旧字段. Session 和 Turn 记录不携带执行模式; Session 的权限, TTS, 模型和推理强度仍按原有业务语义保存.
 
 语音记录保存 `audio/wav`、文件大小和必填毫秒时长, 每个 Turn 一份文件. 正常完成和取消后保留的音频都可以导出; pending 文件没有正式记录, 不进入备份. 恢复时文件位于 `sessions/<sessionId>/audio/<turnId>.wav`, 与 Speech 读取使用同一条路径规则.
 
@@ -19,7 +19,7 @@ Backup 只负责导出和导入单个 Session。角色、Provider 配置、MCP�
 
 导出在一个 SQLite 读取事务中依次读取数据库行并写入临时 JSONL，文件复制在事务结束后进行。最终 ZIP 逐块压缩并写入调用方提供的输出，不把整个 Session 或 ZIP 放进内存。
 
-导入逐块解压到 `<dataDir>/.backup-temp/imports`, 写盘前检查路径越界和重名, 总展开体积限制为 8 GiB. 解包后先校验 manifest 版本, 再检查 v8 文件清单和记录结构, 避免旧记录文件抢先造成格式错误. 子消息的 Run 和摘要覆盖游标必须属于同一个子代理. 记录校验通过后, 文件先排他发布到目标 Session 目录, 数据库随后在一个事务中恢复; 数据库失败时删除本次发布的整个 Session 目录. 根消息和 fork 子消息中的受管附件路径一起改为目标数据目录, 用户外部文件引用不变.
+导入逐块解压到 `<dataDir>/.backup-temp/imports`, 写盘前检查路径越界和重名, 总展开体积限制为 8 GiB. 解包后先校验 manifest 版本, 再检查 v9 文件清单和记录结构, 避免旧记录文件抢先造成格式错误. 子消息的 Run 和摘要覆盖游标必须属于同一个子代理. 记录校验通过后, 文件先排他发布到目标 Session 目录, 数据库随后在一个事务中恢复; 数据库失败时删除本次发布的整个 Session 目录. 根消息和 fork 子消息中的受管附件路径一起改为目标数据目录, 用户外部文件引用不变.
 
 ## 断电与取消
 

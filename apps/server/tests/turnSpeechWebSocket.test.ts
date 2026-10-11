@@ -243,7 +243,7 @@ describe('Speech WAV backup', () => {
     expect(archive.findFinalized('session', 'turn')).toBeNull();
   });
 
-  it('v8 导出正式 WAV 和真实时长, 恢复到同一音频路径规则, 不打包 pending', async () => {
+  it('v9 导出正式 WAV 和真实时长, 恢复到同一音频路径规则, 不打包 pending', async () => {
     const { root, db, archive } = fixture();
     const writer = await archive.openTurn('session', 'turn', FORMAT);
     await writer.write(Buffer.alloc(8000, 1));
@@ -265,7 +265,7 @@ describe('Speech WAV backup', () => {
     await unfinished.finish();
     const bytes = Buffer.concat(chunks);
     const entries = unzipSync(bytes);
-    expect(JSON.parse(strFromU8(entries['manifest.json']!)).version).toBe(8);
+    expect(JSON.parse(strFromU8(entries['manifest.json']!)).version).toBe(9);
     const record = JSON.parse(strFromU8(entries['records/speechOutputs.jsonl']!).trim());
     expect(record).toMatchObject({ mimeType: 'audio/wav', byteSize: HEADER_BYTES + 8000, durationMs: 500 });
     expect(record.segmentCount).toBeUndefined();

@@ -1,20 +1,6 @@
-// 测试 Turn 初始背景消息的段序、目录展示规则、空字段省略与 Git 摘要的凭据防线.
 import { describe, expect, it } from 'vitest';
-import type { GitSummary } from '@ema-agent/git';
 import type { Goal } from '@ema-agent/goal';
 import { renderTurnReminder } from '../prepare/turnReminder.js';
-
-const GIT_OK: GitSummary = {
-  capability: 'ok',
-  repoRoot: 'D:/proj',
-  branch: 'main',
-  headShortSha: null,
-  unstaged: { filesChanged: 2, insertions: 10, deletions: 3 },
-  staged: { filesChanged: 1, insertions: 4, deletions: 0 },
-  untrackedCount: 5,
-  upstream: 'origin/main',
-  originUrl: 'https://token@example.com/repo.git',
-};
 
 describe('renderTurnReminder', () => {
   it('空输入也有日期与"本 Turn 开始"声明', () => {
@@ -29,11 +15,10 @@ describe('renderTurnReminder', () => {
     expect(text).not.toContain('## Git 状态');
   });
 
-  it('段序固定：日期 → Git → Work 摘要 → 当前角色关系记忆 → 任务 → Scratchpad → 子代理 → Goal', () => {
+  it('段序固定: 日期 -> Work 摘要 -> 关系记忆 -> 任务 -> Scratchpad -> 子代理 -> Goal', () => {
     const text = renderTurnReminder({
       currentDate: '2026-08-23',
       goal: null,
-      gitSummary: GIT_OK,
       memoryWork: '工作摘要',
       memoryRelationship: '共享用户记忆与当前角色记忆',
       taskReminder: '任务提醒',
@@ -42,7 +27,6 @@ describe('renderTurnReminder', () => {
     });
     const order = [
       '## 当前日期',
-      '## Git 状态',
       '## Work 记忆摘要',
       '## Relationship 记忆',
       '## 任务提醒',
@@ -90,16 +74,6 @@ describe('renderTurnReminder', () => {
     expect(JSON.parse(lines[2]!).description).toBe('原文\n 保留空格 ');
     expect(renderTurnReminder({ currentDate: '2026-10-03', goal: null, subagents: [] }))
       .not.toContain('## 本 Session 子代理目录');
-  });
-
-  it('Git 摘要不含 originUrl（凭据防线）', () => {
-    const text = renderTurnReminder({
-      currentDate: '2026-08-23',
-      goal: null,
-      gitSummary: GIT_OK,
-    });
-    expect(text).toContain('分支: main');
-    expect(text).not.toContain('token@example.com');
   });
 
   it('active Goal 带身份, 版本, 正文与反馈, 不把反馈当成完成事实', () => {

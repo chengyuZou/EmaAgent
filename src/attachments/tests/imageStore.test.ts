@@ -111,9 +111,9 @@ describe('ImageStore.sweep', () => {
       { path: stamped, session_id: sessionId, name: 't.png', byte_size: 1, created_at: OLD },
     ]);
     database.sqlite.prepare(`
-      INSERT INTO turns (id, session_id, trigger_type, session_mode,
+      INSERT INTO turns (id, session_id, trigger_type,
         status, created_at)
-      VALUES ('t1', ?, 'userMessage', 'chat', 'completed', 1)
+      VALUES ('t1', ?, 'userMessage', 'completed', 1)
     `).run(sessionId);
     store.claimForTurn(sessionId, 't1', [stamped]);
 
@@ -133,9 +133,9 @@ describe('ImageStore.sweep', () => {
       path: rowed, session_id: sessionId, name: 'r.png', byte_size: 1, created_at: OLD,
     }]);
     database.sqlite.prepare(`
-      INSERT INTO turns (id, session_id, trigger_type, session_mode,
+      INSERT INTO turns (id, session_id, trigger_type,
         status, created_at)
-      VALUES ('t1', ?, 'userMessage', 'chat', 'completed', 1)
+      VALUES ('t1', ?, 'userMessage', 'completed', 1)
     `).run(sessionId);
     store.claimForTurn(sessionId, 't1', [rowed]);
 

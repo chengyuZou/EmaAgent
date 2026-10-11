@@ -94,7 +94,6 @@ async function compactMessages(args: {
       providerId: request.providerId,
       modelId: request.modelId,
       usageRecorder: request.usageRecorder,
-      sessionMode: request.sessionMode,
       systemMessages: request.systemMessages,
       tools: request.tools,
       ...(request.thinking ? { thinking: request.thinking } : {}),

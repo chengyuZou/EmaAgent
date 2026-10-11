@@ -165,7 +165,6 @@ function RunningTurnFooter({
   return (
     <div className="ema-message-footer">
       <div className="ema-message-footer-actions">
-        <ModeLabel sessionMode={turn.sessionMode} />
         {playbackStatus && (
           <AudioPlaybackButton status={playbackStatus} onClick={onToggleAudio} />
         )}
@@ -284,21 +283,6 @@ function ForkButton({ turnId }: { readonly turnId: string }): JSX.Element | null
           { variant: 'danger' },
         ))}
     />
-  );
-}
-
-function ModeLabel({
-  sessionMode,
-}: {
-  readonly sessionMode: string;
-}): JSX.Element {
-  const color = sessionMode === 'work'
-    ? 'text-[var(--ema-text-secondary)]'
-    : 'text-[var(--ema-text-tertiary)]';
-  return (
-    <span className={`ema-message-mode px-1.5 py-0.5 font-medium ${color}`}>
-      {sessionMode === 'work' ? 'Work' : 'Chat'}
-    </span>
   );
 }
 

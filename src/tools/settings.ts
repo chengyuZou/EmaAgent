@@ -11,7 +11,7 @@ import { BuiltinTools } from './Tool/BuiltinToolIdentity.js';
  *  身份来自框架层单一事实源 BuiltinToolIdentity, 不与工具实现包重复。 */
 export const ASK_USER_TOOL_ID = BuiltinTools.AskUser.id;
 
-/** 内置工具禁用: 存工具的稳定 id(BuiltinTools.*.id), Chat 与 Work 共用这份设置. */
+/** 内置工具禁用设置保存稳定 id(BuiltinTools.*.id). */
 export const disabledToolsSetting = defineSetting({
   key: 'tools.disabled',
   apply: 'nextTurn',

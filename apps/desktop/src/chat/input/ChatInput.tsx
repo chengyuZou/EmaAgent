@@ -32,7 +32,7 @@ import { useSessionActivityStore } from '../../stores/sessionActivity.js';
 import { useServerStore } from '../../stores/server.js';
 import { useSessionStore } from '../../stores/session.js';
 import { PendingInteractionView } from '../interactions/PendingInteractionView.js';
-import { SessionModeSelector, PermissionModeSelector, TtsButton, useInputOptions } from './controls/InputSelectors.js';
+import { PermissionModeSelector, TtsButton, useInputOptions } from './controls/InputSelectors.js';
 import { ContextMeter } from './controls/ContextMeter.js';
 import {
   activeSlashToken,
@@ -61,7 +61,6 @@ function queuedInputText(input: readonly TurnInputPart[]): string {
 function draftFromSession(session: SessionListItem | undefined): ChatDraft {
   return {
     ...emptyChatDraft(),
-    sessionMode: session?.sessionMode ?? 'chat',
     permissionMode: session?.permissionMode ?? 'default',
     ttsEnabled: session?.ttsEnabled ?? false,
     reasoningEffort: session?.reasoningEffort ?? 'off',
@@ -94,7 +93,6 @@ export function ChatInput({
   const draft: ChatDraft = viewedSession
     ? {
         ...savedDraft,
-        sessionMode: viewedSession.sessionMode,
         permissionMode: viewedSession.permissionMode,
         ttsEnabled: viewedSession.ttsEnabled,
       }
@@ -433,7 +431,6 @@ export function ChatInput({
               sessionId={viewedId}
               contextWindow={selectedModel?.capability === 'llm' ? selectedModel.contextWindow : undefined}
             />
-            <SessionModeSelector value={draft.sessionMode} onChange={options.chooseSessionMode} />
             <ModelPicker
               catalog={catalog}
               providerId={selectedProviderId}

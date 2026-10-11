@@ -13,8 +13,8 @@ describe('Session ownership 数据库约束', () => {
     `).run();
     database.db.prepare(`
       INSERT INTO turns
-        (id, session_id, trigger_type, session_mode, status, created_at)
-      VALUES ('turn-a', 'session-a', 'userMessage', 'chat', 'completed', 1)
+        (id, session_id, trigger_type, status, created_at)
+      VALUES ('turn-a', 'session-a', 'userMessage', 'completed', 1)
     `).run();
   });
 

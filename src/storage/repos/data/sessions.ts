@@ -1,13 +1,9 @@
-// 读写 Session 行、稳定分页、搜索投影、项目分组投影、Fork 和事务性偏好更新。
-// Row 枚举由 storage 自持（SQL CHECK 的映射）；领域词汇归 @ema-agent/turn-terms 叶子，业务包在边界显式映射。
 import type { SqliteDb } from '../../database/database.js';
 import type { TurnStatusRow } from './turns.js';
 import { buildFtsQuery } from '../../search/zh-tokenizer.js';
 import { escapeLikePattern } from '../../search/like-utils.js';
 
-/** sessions/turns 行上的 Chat/Work 模式（SQL CHECK 原样）。 */
-export type SessionModeRow = 'chat' | 'work';
-/** sessions/turns 行上的剧情策略枚举（SQL CHECK 原样）。 */
+/** sessions.permission_mode 的 SQL CHECK 枚举. */
 export type PermissionModeRow = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
 export type ReasoningEffortRow = 'off' | 'low' | 'medium' | 'high' | 'max';
 
@@ -29,7 +25,6 @@ export interface SessionRow {
   /** fork 溯源：来源 Session 与截断点 Turn（完整复制时截断点为 null）。 */
   forked_from_session_id: string | null;
   forked_from_turn_id:    string | null;
-  session_mode: SessionModeRow;
   permission_mode: PermissionModeRow;
   tts_enabled: number;
   /** null 表示尚未选模型, 不能开始 Turn. */
@@ -62,7 +57,6 @@ export interface SessionInsert {
   projectId?: string | null;
   forkedFromSessionId?: string;
   forkedFromTurnId?: string | null;
-  sessionMode?: SessionModeRow;
   permissionMode?: PermissionModeRow;
   ttsEnabled?: boolean;
   providerId?: string;
@@ -82,11 +76,11 @@ export class SessionsRepo {
         `INSERT INTO sessions
            (id, title, cwd, project_id,
             forked_from_session_id, forked_from_turn_id,
-            session_mode, permission_mode, tts_enabled,
+            permission_mode, tts_enabled,
             provider_id, model_id, reasoning_effort,
             created_at, updated_at, last_activity_at, sidebar_order)
          VALUES (
-           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
            (SELECT COALESCE(MAX(sidebar_order), 0) + 1
               FROM sessions
              WHERE archived_at IS NULL
@@ -99,7 +93,6 @@ export class SessionsRepo {
         s.projectId ?? null,
         s.forkedFromSessionId ?? null,
         s.forkedFromTurnId ?? null,
-        s.sessionMode ?? 'chat',
         s.permissionMode ?? 'default',
         s.ttsEnabled ? 1 : 0,
         s.providerId ?? null,
@@ -381,11 +374,11 @@ export class SessionsRepo {
         `INSERT INTO sessions
            (id, title, cwd, project_id,
             forked_from_session_id, forked_from_turn_id,
-            session_mode, permission_mode, tts_enabled,
+            permission_mode, tts_enabled,
             provider_id, model_id, reasoning_effort,
             created_at, updated_at, last_activity_at, sidebar_order)
          VALUES (
-           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+           ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
            (SELECT COALESCE(MAX(sidebar_order), 0) + 1
               FROM sessions
              WHERE archived_at IS NULL
@@ -395,12 +388,11 @@ export class SessionsRepo {
       ).run(newId, title, src.cwd,
         src.project_id,
         srcId, untilTurnId ?? null,
-        src.session_mode, src.permission_mode, src.tts_enabled,
+        src.permission_mode, src.tts_enabled,
         src.provider_id, src.model_id, src.reasoning_effort,
         createdAt, createdAt, createdAt, src.project_id);
 
-      // 2. 构建 old->new turn id 映射。Turn 被复制以使 fork 出的 Session
-      //    保留触发来源、模式、模型冻结与时序。
+      // Turn 身份重新生成, 触发来源, 模型选择与时序随行复制.
       this.db.prepare('CREATE TEMP TABLE _turn_id_map (old_id TEXT PRIMARY KEY, new_id TEXT NOT NULL)').run();
 
       const cutoffTurn = untilTurnId
@@ -435,11 +427,11 @@ export class SessionsRepo {
       this.db.prepare(
         `INSERT INTO turns
            (id, session_id, status, trigger_type,
-            session_mode, provider_id, model_id, protocol,
+            provider_id, model_id, protocol,
             iterations,
             created_at, completed_at, error_code, error_message)
          SELECT m.new_id, ?, t.status, t.trigger_type,
-                 t.session_mode, t.provider_id, t.model_id, t.protocol,
+                 t.provider_id, t.model_id, t.protocol,
                  t.iterations,
                  t.created_at, t.completed_at, t.error_code, t.error_message
          FROM turns t JOIN _turn_id_map m ON m.old_id = t.id
@@ -569,7 +561,6 @@ export class SessionsRepo {
       title?:          string;
       pinned?:         boolean;
       cwd?:  string;
-      sessionMode?: SessionModeRow;
       permissionMode?: PermissionModeRow;
       ttsEnabled?: boolean;
       providerId?: string;
@@ -593,10 +584,6 @@ export class SessionsRepo {
     if (patch.cwd !== undefined) {
       setClauses.push('cwd = ?');
       values.push(patch.cwd);
-    }
-    if (patch.sessionMode !== undefined) {
-      setClauses.push('session_mode = ?');
-      values.push(patch.sessionMode);
     }
     if (patch.permissionMode !== undefined) {
       setClauses.push('permission_mode = ?');

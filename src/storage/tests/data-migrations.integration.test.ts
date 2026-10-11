@@ -39,12 +39,14 @@ describe('data migration v13', () => {
       INSERT INTO tool_executions (call_id, session_id, turn_id, subagent_id, tool_name, status, created_at, updated_at)
         VALUES ('inner-call', 's', 't', 'child', 'Read', 'succeeded', 7, 8);
     `);
-    const sessionsBefore = (database.sqlite.prepare('SELECT * FROM sessions').all() as Array<{ narrative_policy: string }>)
-      .map(({ narrative_policy, ...session }) => session);
+    const sessionsBefore = (database.sqlite.prepare('SELECT * FROM sessions').all() as Array<{
+      narrative_policy: string;
+      session_mode: string;
+    }>).map(({ narrative_policy, session_mode, ...session }) => session);
     const messagesBefore = database.sqlite.prepare('SELECT * FROM messages').all();
     const toolsBefore = database.sqlite.prepare('SELECT * FROM tool_executions').all();
     database.migrate();
-    expect(database.currentVersion()).toBe(15);
+    expect(database.currentVersion()).toBe(16);
     expect(database.sqlite.prepare('SELECT * FROM subagents ORDER BY id').all()).toEqual([
       {
         id: 'child', session_id: 's', title: null, description: 'old description',
@@ -107,7 +109,7 @@ describe('data migration v12', () => {
     `);
     const before = database.sqlite.prepare('SELECT * FROM goals').get();
     database.migrate();
-    expect(database.currentVersion()).toBe(15);
+    expect(database.currentVersion()).toBe(16);
     expect(database.sqlite.prepare('SELECT * FROM goals').get()).toEqual({ ...before as object, feedback: null });
     database.sqlite.prepare('UPDATE goals SET feedback = ? WHERE id = ?').run('已完成第一部分', 'old-goal');
     expect(database.sqlite.prepare('SELECT feedback FROM goals WHERE id = ?').get('old-goal'))
@@ -153,7 +155,7 @@ describe('data migration v2', () => {
 
     database.migrate();
 
-    expect(database.currentVersion()).toBe(15);
+    expect(database.currentVersion()).toBe(16);
     const columns = database.sqlite.pragma('table_info(turns)') as Array<{ name: string }>;
     expect(columns.map(column => column.name)).not.toContain('usage_input_tokens');
     expect(columns.map(column => column.name)).not.toContain('usage_output_tokens');
@@ -197,8 +199,10 @@ describe('data migration v10', () => {
       UPDATE sessions SET forked_from_session_id = 'edits', forked_from_turn_id = 'turn-1'
         WHERE id = 'bypass';
     `);
-    const originalSessions = (database.sqlite.prepare('SELECT * FROM sessions ORDER BY id').all() as Array<{ narrative_policy: string }>)
-      .map(({ narrative_policy, ...session }) => session);
+    const originalSessions = (database.sqlite.prepare('SELECT * FROM sessions ORDER BY id').all() as Array<{
+      narrative_policy: string;
+      session_mode: string;
+    }>).map(({ narrative_policy, session_mode, ...session }) => session);
     database.migrate();
 
     expect(database.sqlite.prepare('SELECT * FROM sessions ORDER BY id').all()).toEqual(originalSessions);
@@ -215,5 +219,71 @@ describe('data migration v10', () => {
       .run('invalid', 'edits')).toThrow(/CHECK constraint failed/);
     expect(() => database!.sqlite.prepare('UPDATE sessions SET id = ? WHERE id = ?')
       .run('renamed', 'edits')).toThrow(/sessions.id is immutable/);
+  });
+});
+
+describe('data migration v16', () => {
+  it('移除两张表的模式列, 会话偏好, 消息和 Turn 其余字段保留', () => {
+    database = new Database({ memory: true, kind: 'data' });
+    const folder = fileURLToPath(new URL('../migrations/data/', import.meta.url));
+    const migrations = fs.readdirSync(folder)
+      .filter(name => name.endsWith('.sql') && Number.parseInt(name, 10) <= 15)
+      .sort();
+    for (const name of migrations) {
+      database.sqlite.exec(fs.readFileSync(new URL(`../migrations/data/${name}`, import.meta.url), 'utf8'));
+    }
+    database.sqlite.pragma('user_version = 15');
+    database.sqlite.exec(`
+      INSERT INTO sessions (id, title, cwd, session_mode, permission_mode, created_at, updated_at)
+        VALUES ('kept', 'Keep', 'D:/work', 'work', 'plan', 1, 2);
+      INSERT INTO turns (id, session_id, status, session_mode, character_name, created_at)
+        VALUES ('kept-turn', 'kept', 'completed', 'chat', 'ema', 3);
+      INSERT INTO messages (id, session_id, turn_id, role, blocks_json, created_at)
+        VALUES ('kept-message', 'kept', 'kept-turn', 'user', '"Keep me"', 4);
+    `);
+    const session = database.sqlite.prepare('SELECT * FROM sessions').get() as { session_mode: string };
+    const turn = database.sqlite.prepare('SELECT * FROM turns').get() as { session_mode: string };
+    const { session_mode: sessionMode, ...expectedSession } = session;
+    const { session_mode: turnMode, ...expectedTurn } = turn;
+    const messages = database.sqlite.prepare('SELECT * FROM messages').all();
+    database.migrate();
+    expect(database.currentVersion()).toBe(16);
+    expect(database.sqlite.prepare('SELECT * FROM sessions').get()).toEqual(expectedSession);
+    expect(database.sqlite.prepare('SELECT * FROM turns').get()).toEqual(expectedTurn);
+    expect(database.sqlite.prepare('SELECT * FROM messages').all()).toEqual(messages);
+    for (const table of ['sessions', 'turns']) {
+      const columns = database.sqlite.pragma(`table_info(${table})`) as Array<{ name: string }>;
+      expect(columns.map(column => column.name)).not.toContain('session_mode');
+    }
+    expect(database.sqlite.pragma('foreign_key_check')).toEqual([]);
+  });
+});
+
+describe('profile migration v7', () => {
+  it.each([null, 30, 80, 100])('采用已有 Work 上限 %s, 不保留两份模式设置', workLimit => {
+    database = new Database({ memory: true, kind: 'profile' });
+    const folder = fileURLToPath(new URL('../migrations/profile/', import.meta.url));
+    const migrations = fs.readdirSync(folder)
+      .filter(name => name.endsWith('.sql') && Number.parseInt(name, 10) <= 6)
+      .sort();
+    for (const name of migrations) {
+      database.sqlite.exec(fs.readFileSync(new URL(`../migrations/profile/${name}`, import.meta.url), 'utf8'));
+    }
+    database.sqlite.pragma('user_version = 6');
+    const insert = database.sqlite.prepare('INSERT INTO settings (key, value_json, updated_at) VALUES (?, ?, ?)');
+    insert.run('agent.limits.chatMaxIterations', '10', 1);
+    insert.run('agent.limits.maxConcurrentSubagents', '4', 2);
+    if (workLimit !== null) {
+      insert.run('agent.limits.workMaxIterations', JSON.stringify(workLimit), 3);
+    }
+    database.migrate();
+    expect(database.currentVersion()).toBe(7);
+    const limit = database.sqlite.prepare('SELECT value_json, updated_at FROM settings WHERE key = ?')
+      .get('agent.limits.maxIterations');
+    expect(limit).toEqual(workLimit === null ? undefined : { value_json: String(workLimit), updated_at: 3 });
+    expect(database.sqlite.prepare("SELECT key FROM settings WHERE key IN ('agent.limits.chatMaxIterations', 'agent.limits.workMaxIterations')").all())
+      .toEqual([]);
+    expect(database.sqlite.prepare('SELECT value_json FROM settings WHERE key = ?').get('agent.limits.maxConcurrentSubagents'))
+      .toEqual({ value_json: '4' });
   });
 });

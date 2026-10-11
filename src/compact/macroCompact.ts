@@ -9,7 +9,6 @@ import type {
 } from '@ema-agent/llm';
 import { createLlmCompletion, llmProviderErrorCode } from '@ema-agent/llm';
 import type { UsageRecorder } from '@ema-agent/usage';
-import type { SessionMode } from '@ema-agent/session';
 import { estimateLlmInputTokens, estimateMessagesTokens } from '@ema-agent/token';
 import { compactTokenLimit, createSummaryMessage, fitCompactMessages } from './budget.js';
 import { buildCompactPrompt, extractCompactSummary } from './compactPrompt.js';
@@ -26,7 +25,6 @@ export interface MacroCompactArgs {
   readonly providerId: string;
   readonly modelId: string;
   readonly usageRecorder?: UsageRecorder;
-  readonly sessionMode: SessionMode;
   readonly systemMessages: readonly Message[];
   readonly tools: readonly LlmTool[];
   readonly thinking?: LlmThinking;
@@ -59,7 +57,7 @@ export async function runMacroCompact(args: MacroCompactArgs): Promise<MacroComp
   const suffix = buildSuffixTokens(args.messages);
   const pairs = collectToolPairs(args.messages);
   const summaryEnvelopeTokens = estimateMessagesTokens([
-    createSummaryMessage('', args.sessionMode),
+    createSummaryMessage(''),
   ]);
 
   // retainStart 左边全部进入摘要, 右边保留原文. 比例只给初始切点,
@@ -92,7 +90,7 @@ export async function runMacroCompact(args: MacroCompactArgs): Promise<MacroComp
     - summaryEnvelopeTokens;
   const instruction: Message = {
     role: 'user',
-    content: buildCompactPrompt({ sessionMode: args.sessionMode }),
+    content: buildCompactPrompt(),
   };
   const toolsTokens = args.tools.length > 0
     ? estimateLlmInputTokens([], {
@@ -118,7 +116,7 @@ export async function runMacroCompact(args: MacroCompactArgs): Promise<MacroComp
       args.signal?.throwIfAborted();
       const previousSummary = summary === undefined
         ? []
-        : [createSummaryMessage(summary, args.sessionMode)];
+        : [createSummaryMessage(summary)];
       const fixedInput = [
         ...args.systemMessages,
         ...previousSummary,
@@ -244,7 +242,6 @@ export async function runMacroCompact(args: MacroCompactArgs): Promise<MacroComp
   const fitted = fitCompactMessages({
     summary: summary!,
     tail,
-    sessionMode: args.sessionMode,
     tokenLimit,
     fixedRequestTokens,
   });

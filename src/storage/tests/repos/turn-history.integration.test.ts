@@ -31,7 +31,6 @@ describe('Turn 历史读取', () => {
         id,
         sessionId,
         triggerType: 'userMessage',
-        sessionMode: 'chat',
         ttsEnabled: false,
         createdAt: 10,
       });
@@ -143,7 +142,6 @@ describe('Turn 历史读取', () => {
       id: 'turn-a',
       sessionId,
       triggerType: 'userMessage',
-      sessionMode: 'chat',
       ttsEnabled: false,
       createdAt: 1,
     });
@@ -177,7 +175,6 @@ describe('Turn 历史读取', () => {
       id: 'turn-b',
       sessionId,
       triggerType: 'sessionContinuation',
-      sessionMode: 'chat',
       ttsEnabled: false,
       createdAt: 3,
     });
@@ -194,7 +191,6 @@ describe('Turn 历史读取', () => {
       id: 'turn-a',
       sessionId,
       triggerType: 'userMessage',
-      sessionMode: 'chat',
       ttsEnabled: false,
       createdAt: 1,
     });
@@ -216,7 +212,6 @@ describe('Turn 历史读取', () => {
       id: 'turn-character',
       sessionId,
       triggerType: 'userMessage',
-      sessionMode: 'chat',
       ttsEnabled: false,
       createdAt: 1,
     });

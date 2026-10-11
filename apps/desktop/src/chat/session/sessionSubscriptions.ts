@@ -82,7 +82,6 @@ function receiveSessionMessage(sessionId: string, message: SessionBusinessMessag
         sessionId,
         message.running.turnId,
         message.running.createdAt,
-        message.running.sessionMode,
         message.running.messages,
       );
     }

@@ -37,9 +37,8 @@ export type {
 export {
   AGENT_LIMITS_SETTINGS,
   DEFAULT_AGENT_SETTINGS,
-  chatMaxIterationsSetting,
   maxConcurrentSubagentsSetting,
   readAgentSettings,
-  workMaxIterationsSetting,
+  maxIterationsSetting,
 } from './settings.js';
 export type { AgentSettings } from './settings.js';

@@ -1,26 +1,14 @@
-// Agent 执行限制:拆细为一字段一 key(独立校验/独立变更事件/独立 UI 控件),
-// 迭代数和子代理并发数按独立 key 保存.
-// 消费方(turnExecution)仍要整组快照,由 readAgentSettings(store) 聚合读取.
-
 import type { SettingsStore } from '@ema-agent/settings';
 import { defineSetting } from '@ema-agent/settings';
 import { z } from 'zod';
 
 export interface AgentSettings {
-  chatMaxIterations: number;
-  workMaxIterations: number;
+  maxIterations: number;
   maxConcurrentSubagents: number;
 }
 
-export const chatMaxIterationsSetting = defineSetting({
-  key: 'agent.limits.chatMaxIterations',
-  apply: 'nextTurn',
-  defaultValue: 20,
-  schema: z.number().int().min(10).max(30),
-});
-
-export const workMaxIterationsSetting = defineSetting({
-  key: 'agent.limits.workMaxIterations',
+export const maxIterationsSetting = defineSetting({
+  key: 'agent.limits.maxIterations',
   apply: 'nextTurn',
   defaultValue: 50,
   schema: z.number().int().min(30).max(100),
@@ -34,21 +22,18 @@ export const maxConcurrentSubagentsSetting = defineSetting({
 });
 
 export const DEFAULT_AGENT_SETTINGS: AgentSettings = {
-  chatMaxIterations: chatMaxIterationsSetting.defaultValue,
-  workMaxIterations: workMaxIterationsSetting.defaultValue,
+  maxIterations: maxIterationsSetting.defaultValue,
   maxConcurrentSubagents: maxConcurrentSubagentsSetting.defaultValue,
 };
 
 export const AGENT_LIMITS_SETTINGS = [
-  chatMaxIterationsSetting,
-  workMaxIterationsSetting,
+  maxIterationsSetting,
   maxConcurrentSubagentsSetting,
 ] as const;
 
 export function readAgentSettings(store: SettingsStore): AgentSettings {
   return {
-    chatMaxIterations: store.get(chatMaxIterationsSetting),
-    workMaxIterations: store.get(workMaxIterationsSetting),
+    maxIterations: store.get(maxIterationsSetting),
     maxConcurrentSubagents: store.get(maxConcurrentSubagentsSetting),
   };
 }

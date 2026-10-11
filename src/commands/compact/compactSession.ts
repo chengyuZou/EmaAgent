@@ -7,7 +7,7 @@
 //
 // tools 为空——根 Turn 的 ToolPool 装配需要 Turn 身份（SubagentSpawner/scratchpad/
 // narrative 事件归因），在 Turn 外伪造身份被禁止，因此历史边界缓存断点在手动路径
-// 架构性不可达；能共享的是静态产品段与动态尾到 session-mode 为止的前缀。
+// 不可达; 能共享的是静态产品段与动态尾到权限说明为止的前缀.
 import { randomUUID } from 'node:crypto';
 import type { VisionDescriptionCache, VisionDescriptionProducer } from '@ema-agent/attachments';
 import {
@@ -186,7 +186,6 @@ export async function compactSession(
       providerId,
       modelId,
       usageRecorder: deps.usageRecorder,
-      sessionMode: session.sessionMode,
       messages: history,
       systemMessages,
       tools: [],
@@ -266,7 +265,6 @@ async function buildCompactSystemMessages(
     ...staticSystemPrompt,
     ...getDynamicSystemPrompt({
       characterPrompt: deps.characterPrompt,
-      sessionMode: session.sessionMode,
       permissionMode: session.permissionMode,
       toolNames: [],
       environment: {

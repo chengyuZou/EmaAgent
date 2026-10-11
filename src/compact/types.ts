@@ -1,5 +1,4 @@
 import type { LlmThinking, LlmTool, Message } from '@ema-agent/llm';
-import type { SessionMode } from '@ema-agent/session';
 import type { UsageRecorder } from '@ema-agent/usage';
 import type { CompactSettings } from './settings.js';
 import type { CompactEvent } from './events.js';
@@ -14,7 +13,6 @@ export interface CompactRequest {
   readonly modelId: string;
   /** Macro 在现有请求的成功与异常出口直接记账, 不装饰 CallLlm. */
   readonly usageRecorder?: UsageRecorder;
-  readonly sessionMode: SessionMode;
   /** 按模型可见顺序排列的工作消息. System Prompt 不在此数组中. */
   readonly messages: readonly Message[];
   /**
