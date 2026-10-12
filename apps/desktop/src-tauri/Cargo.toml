@@ -13,7 +13,8 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2.0", features = [] }
 
 [dependencies]
-tauri               = { version = "2.0", features = ["tray-icon", "unstable"] }
+# with_webview 使用本版本的原生接口, 升级 Tauri 时需要一起核对 WebView2 类型.
+tauri               = { version = "~2.11.2", features = ["tray-icon", "unstable"] }
 portable-pty         = "0.9"
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
@@ -35,6 +36,8 @@ fontdb = "0.24.0"
 # 整个 Job 内 Server 及其派生进程, 不依赖 taskkill /T 进程树完整性.
 [target.'cfg(windows)'.dependencies]
 win32job = "2"
+webview2-com = "0.38.2"
+windows-core = "0.61.2"
 # OpenProcess 从 pid 拿进程 handle，assign 到 Job Object（win32job 只暴露 handle 接口）
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Threading"] }
 

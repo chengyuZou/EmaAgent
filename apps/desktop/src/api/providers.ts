@@ -179,13 +179,14 @@ export const providersApi = {
     audio: Blob;
     mime: string;
     language?: string;
-  }): Promise<TranscribeResult> {
+  }, signal?: AbortSignal): Promise<TranscribeResult> {
     const form = new FormData();
     form.append('file', new File([input.audio], 'input', { type: input.mime || 'application/octet-stream' }));
     if (input.language) form.append('language', input.language);
     const res = await serverClient.requestRaw('/api/providers/transcribe', {
       method: 'POST',
       body: form,
+      signal,
     });
     return res.json();
   },

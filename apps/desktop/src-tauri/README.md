@@ -45,6 +45,8 @@
 
 main 的标题栏和左侧主导航常驻. `layout/navigation.tsx` 保存 `activeView` 和 Chat 的 `sidebarOpen`. Chat 始终挂载; Settings 首次访问时加载, 此后切换 View 只隐藏内容. 折叠按钮仅在 Chat 显示, 不折叠 Settings 导航. 已提交操作继续执行并通过同一个桌面通知根节点显示结果. 已打开的 Dialog 保持原有模态行为, 先处理 Dialog 再点击被它遮挡的导航或窗口按钮.
 
+Windows 在 stage 和 main 创建时, 按应用页面的 origin 将 WebView2 的麦克风, 摄像头和音频 / 视频自动播放权限设为允许. 授权写入 WebView2 profile, 会覆盖该应用 origin 已保存的拒绝记录. 内置浏览器的外部网页不调用此授权入口. 这只允许页面在需要时访问设备, 不会自动录音或打开摄像头, 也不能绕过操作系统的隐私设置或设备不可用问题. 其他平台仍由对应 WebView 和操作系统处理设备授权.
+
 标题栏经 Tauri Window API 处理拖动, 最小化和最大化. 原生外框不绘制标题栏, 主窗口外观由 CSS 和现有主题变量控制, 不使用原生 Acrylic.
 
 桌宠浮动菜单开启 / 关闭 stage 的点击穿透模式. 角色继续显示, 非控制区的点击落到后面的窗口. FloatingDock 按系统坐标命中菜单, 权限提示和通知控制区, 通过 `set_passthrough_controls_hovered` 临时恢复点击; 离开后继续穿透. 模式和置顶独立, 开启穿透时不执行未置顶窗口的失焦自动最小化. 托盘的 "关闭点击穿透" 调用同一模式入口, 解除最小化并显示 / 聚焦 stage. 模式不持久化, 不改变 main 的交互.
@@ -93,6 +95,18 @@ Server 完成数据库初始化并开始监听后从 stdout 输出 JSON-RPC 2.0 
 ```
 
 Rust 保存 Server 的实际端口, WebView 通过具名 Command 读取端口与访问口令. Server 开发重启后再次发 `server.ready`, Rust 更新端口. Narrative 数据库由 Server 初始化到 `~/.ema-agent/narrative/narrative.db`; 查询由普通工具调用进入, 不使用跨进程 attach 消息.
+
+## 启动日志
+
+Rust 将 Server 的 stdout / stderr 写入本次桌面启动日志. Server 的开发和正式入口都是 `main`, 入口先输出 `[server:startup] process entered`, 再动态加载业务模块. 这样能观察模块读取和执行的耗时, 不必等全部依赖加载完才看到首条日志.
+
+`business modules loading` 包含业务依赖的加载和模块顶层代码执行, 开发环境还包含这些依赖的 TS 转换. `started` 表示开始, `pending` 每 5 秒报告仍在等待和已耗秒数, `completed` 报告本阶段耗时, `failed` 后会打印具体错误. 计时器在加载成功或失败后清除, 不参与后续业务阶段. 如果模块顶层同步代码占住了 Node 主线程, `pending` 也可能延迟; 没有周期日志不能单独证明进程退出.
+
+加载完成后, Server 分别记录数据目录准备, 数据目录锁, Composition, 必需的启动恢复, 路由装配和监听的开始与完成耗时, 并记录 ready 消息发布的完成耗时. 最后的 `ready duration_s` 从 main 首次执行算起, 包含模块加载和 `startServer` 执行; Rust 的 `Server ready duration_s` 还包含宿主准备和启动子进程的时间, 两者不能当成同一个测量值.
+
+`tsx watch src/main.ts` 是 pnpm 打印的启动命令, 不是 Server 已进入 main 或已经分配业务端口. 只有命令而没有 `process entered` 时, 还未到可观测的 main 入口. 有 `business modules loading started` 而没有完成日志时, 还未进入 Composition. 模块加载已经完成后, 最后一条有开始而没有完成的阶段日志用于确定下一步检查位置.
+
+这些日志不改变 `server.ready` 控制消息, 也不延长 Rust 的 30 秒就绪等待. 模块加载日志只定位到依赖加载这一阶段, 不声称已经确定哪个具体包造成慢启动.
 
 构建清单里的 Cargo crate 版本与依赖版本是构建工具要求, 不属于上述运行接口.
 

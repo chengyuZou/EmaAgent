@@ -47,6 +47,22 @@ import { ModelPicker, useInputModel } from './controls/ModelPicker.js';
 import { InputGoalBar, useInputGoal } from './controls/goalBar.js';
 import { InputProjectBar } from './inputProjectBar.js';
 import { NarrativeToolNotice } from './narrativeToolNotice.js';
+import { VoiceInputBar, type VoiceInputState } from './voiceInputBar.js';
+
+interface VoiceRecording {
+  readonly sessionId: string | null;
+  readonly abort: AbortController;
+  media: MediaStream | null;
+  recorder: MediaRecorder | null;
+}
+
+function releaseRecording(recording: VoiceRecording): void {
+  recording.abort.abort();
+  if (recording.recorder?.state === 'recording') {
+    recording.recorder.stop();
+  }
+  recording.media?.getTracks().forEach(track => track.stop());
+}
 
 function queuedInputText(input: readonly TurnInputPart[]): string {
   const text = input
@@ -87,15 +103,13 @@ export function ChatInput({
   const ttsModelBound = useProviderStore(state => state.bindings.tts !== undefined);
   const sttModelBound = useProviderStore(state => state.bindings.stt !== undefined);
   const [submitting, setSubmitting] = useState(false);
-  const [recording, setRecording] = useState(false);
+  const [voiceInput, setVoiceInput] = useState<VoiceInputState>({ kind: 'idle' });
   const [slashFilter, setSlashFilter] = useState<string | null>(null);
-  const recorderRef = useRef<MediaRecorder | null>(null);
+  const recordingRef = useRef<VoiceRecording | null>(null);
   const textareaRef = useRef<TextareaHandle>(null);
   const slashMenuRef = useRef<SlashMenuHandle | null>(null);
-  const recordingLabel = recording ? '停止录音' : '语音输入';
-  const recordingTooltip = !recording && !sttModelBound
-    ? '请先配置 STT 模型绑定'
-    : recordingLabel;
+  const voiceActive = voiceInput.kind !== 'idle';
+  const recordingTooltip = sttModelBound ? '语音输入' : '请先配置 STT 模型绑定';
 
   const savedDraft = storedDraft ?? draftFromSession(viewedSession);
   const draft: ChatDraft = viewedSession
@@ -168,6 +182,29 @@ export function ChatInput({
     element.style.height = 'auto';
     element.style.height = `${Math.min(element.scrollHeight, 200)}px`;
   }, [text]);
+
+  useEffect(() => () => {
+    const active = recordingRef.current;
+    recordingRef.current = null;
+    if (active) releaseRecording(active);
+  }, []);
+
+  const cancelRecording = useCallback((): void => {
+    const active = recordingRef.current;
+    // 先取消这次录音的归属, stop 触发的回调才不会把丢弃的音频送去转写.
+    recordingRef.current = null;
+    textareaRef.current?.el()?.focus();
+    setVoiceInput({ kind: 'idle' });
+    if (active) releaseRecording(active);
+  }, []);
+
+  const stopRecording = useCallback((): void => {
+    const recorder = recordingRef.current?.recorder;
+    if (recorder?.state !== 'recording') return;
+    textareaRef.current?.el()?.focus();
+    setVoiceInput({ kind: 'transcribing' });
+    recorder.stop();
+  }, []);
 
   function caret(): number {
     return textareaRef.current?.el()?.selectionStart ?? text.length;
@@ -252,58 +289,85 @@ export function ChatInput({
     }
   }
 
-  async function toggleRecording(): Promise<void> {
-    if (recording) {
-      recorderRef.current?.stop();
-      return;
-    }
+  async function startRecording(): Promise<void> {
+    if (recordingRef.current) return;
     if (!useProviderStore.getState().bindings.stt) {
       showToast('请先配置 STT 模型绑定', { variant: 'warning' });
       return;
     }
+    const active: VoiceRecording = {
+      sessionId: viewedId,
+      abort: new AbortController(),
+      media: null,
+      recorder: null,
+    };
+    recordingRef.current = active;
+    // 工具栏即将隐藏, 把焦点留在始终可编辑的正文里.
+    textareaRef.current?.el()?.focus();
+    setVoiceInput({ kind: 'starting' });
     try {
       const media = await navigator.mediaDevices.getUserMedia({ audio: true });
+      active.media = media;
+      // getUserMedia 不能用 AbortSignal 取消. 用户已取消或组件已卸载时, 立即关闭迟到的麦克风流.
+      if (recordingRef.current !== active) {
+        media.getTracks().forEach(track => track.stop());
+        return;
+      }
       const recorder = new MediaRecorder(media);
-      const recordingSessionId = viewedId;
+      active.recorder = recorder;
       const chunks: Blob[] = [];
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) chunks.push(event.data);
       };
       recorder.onstop = () => {
-        setRecording(false);
-        recorderRef.current = null;
-        media.getTracks().forEach((track) => track.stop());
+        media.getTracks().forEach(track => track.stop());
+        if (recordingRef.current !== active) return;
+        setVoiceInput({ kind: 'transcribing' });
         // 录音期间可以进入 Settings 修改绑定. 提交前读取当前值, 不使用开始录音时的旧值.
         if (!useProviderStore.getState().bindings.stt) {
           showToast('STT 模型已解绑, 本次录音未转写', { variant: 'warning' });
+          recordingRef.current = null;
+          setVoiceInput({ kind: 'idle' });
           return;
         }
         const audio = new Blob(chunks, { type: recorder.mimeType });
-        void providersApi.transcribe({ audio, mime: recorder.mimeType })
+        chunks.length = 0;
+        void providersApi.transcribe({ audio, mime: recorder.mimeType }, active.abort.signal)
           .then((result) => {
+            if (recordingRef.current !== active) return;
             // 转写是异步的. 回来时必须追加到该 Session 的最新草稿, 不能用开始录音时闭包里的旧内容覆盖用户后续输入.
             const drafts = useChatDraftStore.getState();
-            const latest = recordingSessionId
-              ? drafts.bySession.get(recordingSessionId) ?? emptyChatDraft()
+            const latest = active.sessionId
+              ? drafts.bySession.get(active.sessionId) ?? emptyChatDraft()
               : drafts.newSessionDraft;
             const next = {
               ...latest,
               text: `${latest.text}${result.text.trim()}`,
             };
-            if (recordingSessionId) drafts.setForSession(recordingSessionId, next);
+            if (active.sessionId) drafts.setForSession(active.sessionId, next);
             else drafts.setForNewSession(next);
           })
           .catch((error) => {
+            if (recordingRef.current !== active) return;
             showToast(
               error instanceof Error ? error.message : '语音转写失败',
               { variant: 'danger' },
             );
+          })
+          .finally(() => {
+            if (recordingRef.current === active) {
+              recordingRef.current = null;
+              setVoiceInput({ kind: 'idle' });
+            }
           });
       };
-      recorderRef.current = recorder;
       recorder.start();
-      setRecording(true);
+      setVoiceInput({ kind: 'recording', stream: media });
     } catch (error) {
+      if (recordingRef.current !== active) return;
+      recordingRef.current = null;
+      releaseRecording(active);
+      setVoiceInput({ kind: 'idle' });
       showToast(
         error instanceof Error ? error.message : '无法使用麦克风',
         { variant: 'danger' },
@@ -415,69 +479,88 @@ export function ChatInput({
             onPaste={handlePaste}
             disabled={compacting}
           />
-          <div className="flex min-w-0 items-center gap-1 border-t border-[var(--ema-border)] px-2 py-1.5">
-            <DropdownMenu
-              side="top"
-              align="start"
-              widthClass="min-w-48"
-              items={options.plusItems}
-              trigger={(
-                <IconButton
-                  size="sm"
-                  icon="i-lucide:plus"
-                  label="添加内容"
-                  className="ema-chat-icon-btn"
-                />
-              )}
-            />
-            <TtsButton
-              ttsEnabled={draft.ttsEnabled}
-              modelBound={ttsModelBound}
-              onToggle={options.toggleTts}
-            />
-            <PermissionModeSelector
-              value={draft.permissionMode}
-              planUnavailableReason={goal.planUnavailableReason}
-              onChange={options.choosePermissionMode}
-            />
-            {creatingGoal && (
-              <Tooltip content="取消目标标记, 保留输入框文字">
-                <Button size="sm" variant="ghost" className="gap-1.5 rounded-full bg-[var(--ema-surface-2)]"
-                  disabled={submitting} onClick={goal.cancelGoalIntent}>
-                  <span className="i-lucide:circle-x" aria-hidden />
-                  目标
-                </Button>
-              </Tooltip>
-            )}
-            <span className="min-w-2 flex-1" />
-            <ContextMeter
-              sessionId={viewedId}
-              contextWindow={selectedModel?.capability === 'llm' ? selectedModel.contextWindow : undefined}
-            />
-            <ModelPicker
-              catalog={catalog}
-              providerId={selectedProviderId}
-              modelId={selectedModelId}
-              reasoningEffort={selectedReasoningEffort}
-              onModelChange={chooseModel}
-              onEffortChange={chooseReasoningEffort}
-            />
-            <Tooltip content={recordingTooltip} side="top">
-              <span
-                className="inline-flex shrink-0"
-                tabIndex={!recording && !sttModelBound ? 0 : undefined}
+          <div className="ema-composer-toolbar">
+            <div className="ema-composer-tool-slot">
+              <div
+                className="ema-composer-tools"
+                data-voice-active={voiceActive}
+                ref={element => {
+                  if (element) element.inert = voiceActive;
+                }}
               >
-                <IconButton
-                  size="sm"
-                  variant={recording ? 'danger' : 'default'}
-                  icon={recording ? 'i-lucide:square' : 'i-lucide:mic'}
-                  label={recordingLabel}
-                  className={recording ? undefined : 'ema-chat-icon-btn'}
-                  disabled={!recording && !sttModelBound}
-                  onClick={() => void toggleRecording()}
+                <DropdownMenu
+                  side="top"
+                  align="start"
+                  widthClass="min-w-48"
+                  items={options.plusItems}
+                  trigger={(
+                    <IconButton
+                      size="sm"
+                      icon="i-lucide:plus"
+                      label="添加内容"
+                      className="ema-chat-icon-btn"
+                    />
+                  )}
                 />
-              </span>
-            </Tooltip>
+                <TtsButton
+                  ttsEnabled={draft.ttsEnabled}
+                  modelBound={ttsModelBound}
+                  onToggle={options.toggleTts}
+                />
+                <PermissionModeSelector
+                  value={draft.permissionMode}
+                  planUnavailableReason={goal.planUnavailableReason}
+                  onChange={options.choosePermissionMode}
+                />
+                {creatingGoal && (
+                  <Tooltip content="取消目标标记, 保留输入框文字">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="gap-1.5 rounded-full bg-[var(--ema-surface-2)]"
+                      disabled={submitting}
+                      onClick={goal.cancelGoalIntent}
+                    >
+                      <span className="i-lucide:circle-x" aria-hidden />
+                      目标
+                    </Button>
+                  </Tooltip>
+                )}
+                <span className="min-w-2 flex-1" />
+                <ContextMeter
+                  sessionId={viewedId}
+                  contextWindow={selectedModel?.capability === 'llm' ? selectedModel.contextWindow : undefined}
+                />
+                <ModelPicker
+                  catalog={catalog}
+                  providerId={selectedProviderId}
+                  modelId={selectedModelId}
+                  reasoningEffort={selectedReasoningEffort}
+                  onModelChange={chooseModel}
+                  onEffortChange={chooseReasoningEffort}
+                />
+                <Tooltip content={recordingTooltip} side="top">
+                  <span
+                    className="inline-flex shrink-0"
+                    tabIndex={!sttModelBound ? 0 : undefined}
+                  >
+                    <IconButton
+                      size="sm"
+                      icon="i-lucide:mic"
+                      label="语音输入"
+                      className="ema-chat-icon-btn"
+                      disabled={!sttModelBound}
+                      onClick={() => void startRecording()}
+                    />
+                  </span>
+                </Tooltip>
+              </div>
+              <VoiceInputBar
+                state={voiceInput}
+                onCancel={cancelRecording}
+                onStop={stopRecording}
+              />
+            </div>
             {sessionRunning && !hasInput ? (
               <IconButton
                 size="sm"

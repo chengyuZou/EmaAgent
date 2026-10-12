@@ -66,6 +66,11 @@ pub fn run() {
             close_browser,
         ])
         .setup(move |app| {
+            #[cfg(windows)]
+            if let Some(stage) = app.get_webview_window("stage") {
+                desktop::windows::allow_app_media(&stage)?;
+            }
+
             let app_handle = app.handle().clone();
             let processes = processes_for_setup.clone();
             tauri::async_runtime::spawn(async move {

@@ -30,3 +30,128 @@
   padding-left: var(--ema-chat-content-gutter);
   padding-right: calc(var(--ema-chat-content-gutter) + var(--ema-chat-scrollbar-width));
 }
+
+.ema-composer-toolbar {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--ema-space-1);
+  padding: var(--ema-space-2);
+}
+
+.ema-composer-tool-slot {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+
+.ema-composer-tools,
+.ema-voice-input-bar {
+  grid-area: 1 / 1;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  transition: opacity var(--ema-duration-base) var(--ema-ease),
+              visibility var(--ema-duration-base) var(--ema-ease);
+}
+
+.ema-composer-tools {
+  gap: var(--ema-space-1);
+}
+
+.ema-composer-tools[data-voice-active='true'],
+.ema-voice-input-bar[data-active='false'] {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.ema-voice-input-bar {
+  gap: var(--ema-space-3);
+}
+
+.ema-voice-input-bar .ema-voice-action {
+  flex: none;
+  border-color: transparent;
+  border-radius: var(--ema-radius-pill);
+  background: var(--ema-surface-3);
+  color: var(--ema-text-secondary);
+}
+
+.ema-voice-input-bar .ema-voice-action:hover {
+  border-color: transparent;
+  background: var(--ema-surface-4);
+  color: var(--ema-text-primary);
+}
+
+.ema-voice-stop-symbol {
+  display: block;
+  width: var(--ema-space-2);
+  height: var(--ema-space-2);
+  border-radius: calc(var(--ema-radius-xs) / 2);
+  background: currentColor;
+}
+
+.ema-voice-display {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: var(--ema-space-6);
+}
+
+.ema-voice-waveform {
+  --ema-voice-bar-width: var(--ema-space-0_5);
+  --ema-voice-bar-gap: var(--ema-space-1);
+  display: block;
+  width: 100%;
+  height: 100%;
+  color: var(--ema-text-secondary);
+  opacity: 0;
+  transition: opacity var(--ema-duration-fast) var(--ema-ease);
+}
+
+.ema-voice-input-bar[data-recording='true'] .ema-voice-waveform {
+  opacity: 1;
+}
+
+.ema-voice-status {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ema-space-2);
+  overflow: hidden;
+  color: var(--ema-text-tertiary);
+  font-size: 12px;
+  white-space: nowrap;
+  transition: opacity var(--ema-duration-fast) var(--ema-ease);
+}
+
+.ema-voice-input-bar[data-recording='true'] .ema-voice-status,
+.ema-voice-input-bar[data-recording='false'] .ema-voice-stop {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ema-voice-spinner {
+  flex: none;
+  animation: ema-voice-spin 1s linear infinite;
+}
+
+@keyframes ema-voice-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ema-composer-tools,
+  .ema-voice-input-bar,
+  .ema-voice-waveform,
+  .ema-voice-status {
+    transition: none;
+  }
+
+  .ema-voice-spinner {
+    animation: none;
+  }
+}
