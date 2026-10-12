@@ -34,6 +34,8 @@ export function useMessageViewport({
   const navigation = useRef<NavigationTarget | null>(null);
   const initialized = useRef(false);
   const currentWindow = useRef<string | null>(null);
+  const previousFirstMessageId = useRef<string | undefined>(undefined);
+  const restoringPrepend = useRef(false);
   const userScrolling = useRef(false);
   const scrollIdleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const programmaticOffset = useRef<number | null>(null);
@@ -75,6 +77,7 @@ export function useMessageViewport({
 
   function stopUserScroll(): void {
     userScrolling.current = false;
+    restoringPrepend.current = false;
     if (scrollIdleTimer.current !== null) clearTimeout(scrollIdleTimer.current);
     scrollIdleTimer.current = null;
   }
@@ -100,6 +103,7 @@ export function useMessageViewport({
     // 原生滚动条不保证派发 DOM pointerdown. 非导航、非程序定位的 scroll 本身就是阅读输入.
     if (!commanded && navigation.current === null) {
       userScrolling.current = true;
+      restoringPrepend.current = false;
       following.current = bottom && reachesLatest;
       rememberReadingPosition();
     }
@@ -119,11 +123,21 @@ export function useMessageViewport({
       initialized.current = false;
       following.current = !initialMessageId;
       anchor.current = null;
+      previousFirstMessageId.current = messages[0]?.id;
+      restoringPrepend.current = false;
       navigation.current = initialMessageId
         ? { kind: 'message', messageId: initialMessageId }
         : { kind: 'latest', smooth: false, started: false };
     }
     if (!ready || !scroller) return;
+    const previousFirst = previousFirstMessageId.current;
+    const prependedOlderMessages = previousFirst !== undefined
+      && messages[0]?.id !== previousFirst
+      && messages.some(message => message.id === previousFirst);
+    previousFirstMessageId.current = messages[0]?.id;
+    // 新行挂载与测量可能分几次提交. 在用户再次滚动或结束滚动前继续恢复同一锚点,
+    // 不能只补偿新增 ID 的第一次提交, 否则预估行高变成真实行高时仍会跳动.
+    if (prependedOlderMessages) restoringPrepend.current = true;
     if (messages.length === 0) {
       initialized.current = true;
       navigation.current = null;
@@ -131,8 +145,9 @@ export function useMessageViewport({
     }
 
     const target = navigation.current;
-    if (!target && userScrolling.current && !following.current) {
-      // 拖动期间尺寸变化由原生滑块控制位置. 记录新布局中的锚点, 不用旧锚点反向写 scrollTop.
+    if (!target && userScrolling.current && !following.current && !restoringPrepend.current) {
+      // 仅已有内容高度变化时保留拖动位置. 补旧页必须先恢复原消息的位置,
+      // 不能在尚未调整 scrollTop 时记录新顶部, 否则会丢失补页前的阅读锚点.
       rememberReadingPosition();
       setAtBottom(nearEnd());
       return;
