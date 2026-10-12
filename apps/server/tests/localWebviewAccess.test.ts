@@ -55,4 +55,18 @@ describe('Desktop WebView access', () => {
 
     expect(response.status).toBe(200);
   });
+
+  it('accepts a query secret only for the local audio GET, not general file reading or mutations', async () => {
+    const app = createApp()
+      .get('/api/workspaces/files/audio', context => context.text('audio'))
+      .get('/api/workspaces/files/file', context => context.text('file'))
+      .post('/api/workspaces/files/audio', context => context.text('post'));
+    expect((await app.request(`/api/workspaces/files/audio?secret=${SECRET}`)).status).toBe(200);
+    expect((await app.request(`/api/workspaces/files/file?secret=${SECRET}`)).status).toBe(401);
+    expect((await app.request(`/api/workspaces/files/audio?secret=${SECRET}`, { method: 'POST' })).status).toBe(401);
+    expect((await app.request('/api/workspaces/files/audio')).status).toBe(401);
+    expect((await app.request(`/api/workspaces/files/audio?secret=${SECRET}`, {
+      headers: { 'X-Ema-Secret': 'wrong-secret' },
+    })).status).toBe(401);
+  });
 });

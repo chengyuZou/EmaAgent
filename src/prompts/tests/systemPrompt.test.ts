@@ -33,6 +33,14 @@ function assembleSystemPrompt(input: DynamicSystemPromptInput) {
 }
 
 describe('静态数组与动态 Prompt 装配', () => {
+  it('说明正文媒体的 Markdown 引用, 不靠音频标签猜测无后缀地址', () => {
+    const rules = staticSystemPrompt.map(block => block.content).join('\n');
+    expect(rules).toContain('![简短说明](地址)');
+    expect(rules).toContain('地址不加尖括号');
+    expect(rules).toContain('绝对路径和正斜杠');
+    expect(rules).toContain('普通链接，不伪造后缀');
+    expect(rules).toContain('[说明](地址)');
+  });
   it('Plan 权限约束实施要求, 不改变角色与产品规则', () => {
     const blocks = assembleSystemPrompt(input({ permissionMode: 'plan' }));
     const plan = blocks.find(block => block.name === 'permission-mode')!;

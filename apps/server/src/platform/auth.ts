@@ -59,10 +59,11 @@ export function emaAuth(secret: string) {
     // 健康检查不包含用户数据，保留给 Tauri 启动探测使用。
     if (c.req.path === '/health') return next();
 
-    // 原生 audio 不能设置自定义请求头, 仅 Turn 音频和角色参考音频的 GET 接受 URL 中的口令.
+    // 原生 audio 不能设置自定义请求头, 仅这些音频 GET 接受 URL 中的口令; 普通文件接口仍要求请求头.
     const isAudioGet = c.req.method === 'GET' && (
       /^\/api\/turns\/[^/]+\/audio$/.test(c.req.path)
       || /^\/api\/characters\/[^/]+\/voice\/[^/]+\/file$/.test(c.req.path)
+      || c.req.path === '/api/workspaces/files/audio'
     );
     const acceptsQuerySecret = c.req.header('upgrade')?.toLowerCase() === 'websocket'
       || isAudioGet;

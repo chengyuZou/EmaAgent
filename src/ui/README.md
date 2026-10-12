@@ -18,6 +18,8 @@ raw HTML 先经 `rehype-sanitize` 清洗, 然后执行 KaTeX 和代码高亮. Me
 
 链接保留原来的 `href` 与外链行为, 聚焦或悬停时通过 `Tooltip` 显示完整地址. 原文提供的链接说明也显示在提示中, 不使用原生 `title` 提示框. 使用 Markdown 的应用根部需要挂载 `TooltipProvider`.
 
+桌面通过 `MarkdownRendererProvider` 提供图片点击、普通音频卡片和本地文件打开操作. Provider 传入的 components 只覆盖对应标签, urlTransform 必须拒绝脚本等不允许的协议; 其他 HTML 清洗规则保持不变. UI 包不读取本机文件, 也不导入桌面的 Viewer、AudioPlayer 或文件侧栏. 未设置 Provider 的 Markdown 保持默认显示方式.
+
 ## 悬停提示
 
 应用根部挂载 `TooltipProvider`, 默认等待 200ms 后显示鼠标悬停提示. `Tooltip` 未传 `delayDuration` 时使用最近的 Provider 设置; 键盘聚焦可直接查看提示. `label` 用于短操作说明, `card` 用于地址、路径或多行只读预览, 两者共享主题、边框与动画. 长文本在可用窗口宽度内换行.

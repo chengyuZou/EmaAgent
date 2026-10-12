@@ -33,7 +33,7 @@
         "connect-src": "'self' ipc: http://ipc.localhost http: https: ws: wss:",
         "font-src": "'self' data:",
         "img-src": "'self' blob: data:",
-        "media-src": "'self' blob: data: http://127.0.0.1:*",
+        "media-src": "'self' blob: data: http: https:",
         "script-src": "'self' 'wasm-unsafe-eval'",
         "style-src": "'self' 'unsafe-inline'"
       },

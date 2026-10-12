@@ -2,7 +2,8 @@ import { memo, useEffect, useMemo, useState, type JSX } from 'react';
 import { Markdown, ScrollArea, Spinner, highlightFile } from '@ema-agent/ui';
 import { filesApi, type FileContent } from '../../../../api/workspaces.js';
 import { ImagePreview } from '../../../../lib/images/imagePreview.js';
-import { MarkdownImages } from '../../../../lib/images/markdownImages.js';
+import { MarkdownMedia } from '../../../../lib/markdownMedia.js';
+import { AudioPlayer, isAudioSource } from '../../../../lib/audio/audioPlayer.js';
 
 function fmtSize(bytes: number): string {
   if (bytes < 1024) return `${bytes}B`;
@@ -10,7 +11,21 @@ function fmtSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)}M`;
 }
 
-export const FilePreview = memo(function FilePreview({ path }: { path: string }): JSX.Element {
+export const FilePreview = memo(function FilePreview({ path, active }: {
+  readonly path: string;
+  readonly active: boolean;
+}): JSX.Element {
+  if (isAudioSource(path)) {
+    return (
+      <div className="ema-file-preview p-3">
+        <AudioPlayer key={path} filePath={path} title={path.split(/[\\/]/).pop() ?? path} active={active} />
+      </div>
+    );
+  }
+  return <FileContentPreview key={path} path={path} active={active} />;
+});
+
+function FileContentPreview({ path, active }: { readonly path: string; readonly active: boolean }): JSX.Element {
   const [content, setContent] = useState<FileContent | null>(null);
   const [error,  setError]   = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -42,14 +57,14 @@ export const FilePreview = memo(function FilePreview({ path }: { path: string })
           </p>
         )}
         {!loading && !error && content && (
-          <MarkdownImages directory={path.replace(/[\\/][^\\/]+$/, '')}>
+          <MarkdownMedia directory={path.replace(/[\\/][^\\/]+$/, '')} active={active}>
             <ContentBody content={content} ext={ext} fileName={fileName} />
-          </MarkdownImages>
+          </MarkdownMedia>
         )}
       </ScrollArea>
     </div>
   );
-});
+}
 
 function ContentBody({ content, ext, fileName }: { content: FileContent; ext: string; fileName: string }): JSX.Element {
   if ('tooLarge' in content) {

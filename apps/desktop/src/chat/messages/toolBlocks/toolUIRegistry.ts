@@ -50,7 +50,7 @@ import {
 import { BuiltinTools } from '@ema-agent/tools/identity';
 import { Markdown } from '@ema-agent/ui';
 import { ImagePreview } from '../../../lib/images/imagePreview.js';
-import { MarkdownImages } from '../../../lib/images/markdownImages.js';
+import { MarkdownMedia } from '../../../lib/markdownMedia.js';
 import type { ToolDisplayStatus } from './toolBlockHelpers.js';
 
 /** CallView 接管整个展开区时收到的数据. data 是 Tool 返回的 TOutput, progress 是本次调用的进度事件. */
@@ -102,7 +102,7 @@ const TOOL_UI_REGISTRY: Readonly<Record<string, ToolUI>> = {
     ResultView: ({ data }) => createElement(FileReadResultView, {
       data,
       renderImage: image => createElement(ImagePreview, image),
-      renderMarkdown: (source, filePath) => createElement(MarkdownImages, {
+      renderMarkdown: (source, filePath) => createElement(MarkdownMedia, {
         directory: /[\\/]/.test(filePath) ? filePath.replace(/[\\/][^\\/]+$/, '') : undefined,
         children: createElement(Markdown, { source, className: 'ema-file-read-markdown' }),
       }),

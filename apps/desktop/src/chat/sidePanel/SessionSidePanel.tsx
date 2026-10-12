@@ -2,6 +2,7 @@
 import { useEffect, useState, type JSX } from 'react';
 import { nanoid } from 'nanoid';
 import { Tooltip, Button, IconButton } from '@ema-agent/ui';
+import { MarkdownMedia } from '../../lib/markdownMedia.js';
 import { useSessionAttachmentStore } from '../../stores/sessionAttachment.js';
 import { useBackgroundProcessStore } from '../../stores/backgroundProcess.js';
 import { useSessionStore } from '../../stores/session.js';
@@ -316,14 +317,16 @@ export function SessionSidePanel({ sessionId }: { sessionId: string }): JSX.Elem
         {/* 文件标签共用一个浏览器; 首次替换空白标签也不卸载目录模型. */}
         {hasFileTabs && (
           <div className={filesVisible ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}>
-            <FilesPanel key={sessionId} sessionId={sessionId} />
+            <FilesPanel key={sessionId} sessionId={sessionId} active={filesVisible} />
           </div>
         )}
         {tabs.filter(tab => tab.kind !== 'files' && tab.kind !== 'file').map(tab => {
           const visible = Boolean(layout?.open) && !launcherOpen && tab.id === layout?.activeTabId;
           return (
             <div key={tab.id} className={visible ? 'flex min-h-0 flex-1 flex-col' : 'hidden'}>
-              <TabContent sessionId={sessionId} tab={tab} visible={visible} />
+              <MarkdownMedia active={visible}>
+                <TabContent sessionId={sessionId} tab={tab} visible={visible} />
+              </MarkdownMedia>
             </div>
           );
         })}

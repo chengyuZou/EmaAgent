@@ -1,0 +1,104 @@
+.ema-audio-player {
+  width: 100%;
+  max-width: 40rem;
+  min-width: 0;
+  padding: var(--ema-space-3);
+  border: 1px solid var(--ema-border);
+  border-radius: var(--ema-radius-lg);
+  background: var(--ema-surface-1);
+  color: var(--ema-text-primary);
+}
+
+.ema-audio-player .rhap_container {
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  font: inherit;
+}
+
+.ema-audio-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--ema-space-3);
+  margin-bottom: var(--ema-space-2);
+}
+
+.ema-audio-heading > span:first-child {
+  flex-shrink: 0;
+  font-size: 1.5rem;
+  color: var(--ema-primary);
+}
+
+.ema-audio-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.ema-audio-player .rhap_controls-section {
+  justify-content: flex-start;
+  gap: var(--ema-space-2);
+  margin-bottom: var(--ema-space-2);
+}
+
+.ema-audio-player .rhap_volume-controls {
+  margin-left: auto;
+  flex: 0 1 8rem;
+}
+
+.ema-audio-player .rhap_volume-container {
+  flex: 1;
+}
+
+.ema-audio-player .rhap_button-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--ema-text-secondary);
+  border-radius: var(--ema-radius-sm);
+}
+
+.ema-audio-player .rhap_main-controls-button {
+  width: 2rem;
+  height: 2rem;
+  font-size: 1.125rem;
+  color: var(--ema-primary);
+}
+
+.ema-audio-player .rhap_button-clear:focus-visible,
+.ema-audio-player .rhap_progress-container:focus-visible,
+.ema-audio-player .rhap_volume-bar-area:focus-visible {
+  outline: 2px solid var(--ema-border-focus);
+  outline-offset: 2px;
+}
+
+.ema-audio-player .rhap_time {
+  color: var(--ema-text-secondary);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.ema-audio-player .rhap_progress-bar,
+.ema-audio-player .rhap_volume-bar {
+  background: var(--ema-surface-3);
+}
+
+.ema-audio-player .rhap_progress-filled,
+.ema-audio-player .rhap_progress-indicator,
+.ema-audio-player .rhap_volume-indicator {
+  background: var(--ema-primary);
+}
+
+.ema-audio-status {
+  margin-top: var(--ema-space-2);
+  font-size: 0.75rem;
+  color: var(--ema-text-secondary);
+}
+
+.markdown-content .ema-markdown-media-paragraph {
+  margin-block: var(--ema-space-2);
+}

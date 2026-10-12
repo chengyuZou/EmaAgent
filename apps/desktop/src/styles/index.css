@@ -27,3 +27,5 @@
 
 @import './vendors/hljs-theme.css';
 @import 'yet-another-react-lightbox/styles.css';
+@import 'react-h5-audio-player/lib/styles.css';
+@import './vendors/audioPlayer.css';

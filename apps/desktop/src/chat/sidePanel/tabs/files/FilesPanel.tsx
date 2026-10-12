@@ -3,6 +3,7 @@ import { memo, useCallback, useMemo, useState, type JSX } from 'react';
 import { IconButton, Select, Tooltip } from '@ema-agent/ui';
 import { useSessionStore } from '../../../../stores/session.js';
 import { useSessionPanelStore } from '../../../../stores/sessionPanel.js';
+import { MainView, useMainNavigationStore } from '../../../../layout/navigation.js';
 import { FilePreview } from './FilePreview.js';
 import { WorkspaceFileTree } from './workspaceFileTree.js';
 
@@ -10,9 +11,11 @@ function folderName(path: string): string {
   return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
 }
 
-export const FilesPanel = memo(function FilesPanel({ sessionId }: {
+export const FilesPanel = memo(function FilesPanel({ sessionId, active }: {
   sessionId: string;
+  active: boolean;
 }): JSX.Element {
+  const chatActive = useMainNavigationStore(state => state.activeView === MainView.Chat);
   const loading = useSessionStore(state => state.loading);
   const session = useSessionStore(state => state.sessions.byId.get(sessionId));
   const project = useSessionStore(state => {
@@ -44,15 +47,17 @@ export const FilesPanel = memo(function FilesPanel({ sessionId }: {
       projectName={project?.name ?? null}
       roots={roots}
       primaryRoot={primaryRoot}
+      active={active && chatActive}
     />
   );
 });
 
-function WorkspaceFiles({ sessionId, projectName, roots, primaryRoot }: {
+function WorkspaceFiles({ sessionId, projectName, roots, primaryRoot, active }: {
   sessionId: string;
   projectName: string | null;
   roots: readonly string[];
   primaryRoot: string;
+  active: boolean;
 }): JSX.Element {
   const layout = useSessionPanelStore(state => state.layouts[sessionId]);
   const openWorkspaceFile = useSessionPanelStore(state => state.openWorkspaceFile);
@@ -68,8 +73,8 @@ function WorkspaceFiles({ sessionId, projectName, roots, primaryRoot }: {
       return tab?.kind === 'file' ? [tab] : [];
     })
   ), [layout?.tabOrder, layout?.tabsById]);
-  const active = layout?.activeTabId ? layout.tabsById[layout.activeTabId] : undefined;
-  const selectedPath = active?.kind === 'file' ? active.path : null;
+  const activeTab = layout?.activeTabId ? layout.tabsById[layout.activeTabId] : undefined;
+  const selectedPath = activeTab?.kind === 'file' ? activeTab.path : null;
   const rootOptions = useMemo(() => roots.map(path => ({
     value: path,
     label: roots.some(other => other !== path && folderName(other) === folderName(path))
@@ -100,8 +105,8 @@ function WorkspaceFiles({ sessionId, projectName, roots, primaryRoot }: {
       <div className="ema-files-body">
         <div className="ema-files-content">
           {fileTabs.map(tab => (
-            <div key={tab.id} className={tab.id === active?.id ? 'ema-files-preview' : 'hidden'}>
-              <FilePreview path={tab.path} />
+            <div key={tab.id} className={tab.id === activeTab?.id ? 'ema-files-preview' : 'hidden'}>
+              <FilePreview path={tab.path} active={active && tab.id === activeTab?.id} />
             </div>
           ))}
           {!selectedPath && (

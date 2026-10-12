@@ -46,7 +46,7 @@ interface MarkdownRenderers {
 const CustomMarkdownRenderers = createContext<MarkdownRenderers | null>(null);
 
 /**
- * 让 desktop 为 Markdown 提供图片点击和文件链接打开操作, UI 包不导入 desktop 的 Viewer 或文件侧栏.
+ * 让 desktop 为 Markdown 提供图片点击、音频卡片和文件链接打开操作, UI 包不导入桌面的媒体组件或文件侧栏.
  * components 负责显示和点击, urlTransform 负责允许的地址; 文件读取和导航仍由调用方处理.
  * 作用范围内的 Markdown 都使用这些处理方式, 未设置 Provider 的 Markdown 保持默认行为.
  */

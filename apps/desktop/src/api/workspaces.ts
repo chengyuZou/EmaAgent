@@ -1,7 +1,7 @@
 // Workspaces API：/api/workspaces——项目态（projects）与本机文件浏览/预览（files）。
 // 数据目录已单库化(~/.ema-agent/data 固定),不再有注册表面。
 import type { InferRequestType } from 'hono/client';
-import { rpcClient, readRpcJson, type RpcClient, type RpcJson } from './client.js';
+import { rpcClient, readRpcJson, serverClient, type RpcClient, type RpcJson } from './client.js';
 
 // ── Projects ─────────────────────────────────────────────────────────────────
 
@@ -104,5 +104,11 @@ export const filesApi = {
   /** GET /api/workspaces/files/file?path= — 有界预览（文本/图片/过大/二进制四态）。 */
   readFile(filePath: string): Promise<FileContent> {
     return readRpcJson(rpcClient.api.workspaces.files.file.$get({ query: { path: filePath } }));
+  },
+
+  /** 只生成原生 audio 可请求的本机地址, 不读取文件或把音频转成 Blob. */
+  audioUrl(filePath: string): Promise<string> {
+    const query = new URLSearchParams({ path: filePath });
+    return serverClient.audioUrl(`/api/workspaces/files/audio?${query}`);
   },
 };

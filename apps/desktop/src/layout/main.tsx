@@ -6,7 +6,7 @@ import { mountSystemEvents } from '../lib/system-sse.js';
 import { tauriBridge } from '../lib/tauri-bridge.js';
 import { showToast } from '../lib/toast.js';
 import { ImageViewerProvider } from '../lib/images/imageViewer.js';
-import { MarkdownImages } from '../lib/images/markdownImages.js';
+import { MarkdownMedia } from '../lib/markdownMedia.js';
 import { handleBackgroundProcessSystemEvent } from '../stores/backgroundProcess.js';
 import { handleCharacterSystemEvent, useCharacterStore } from '../stores/character.js';
 import { handleMcpSystemEvent, useMcpStore } from '../stores/mcp.js';
@@ -32,7 +32,7 @@ export function MainWindow(): JSX.Element {
   const sessionId = useMainNavigationStore(state => state.viewedSessionId);
   const cwd = useSessionStore(state => state.sessions.byId.get(sessionId ?? '')?.cwd);
   const openWorkspaceFile = useSessionPanelStore(state => state.openWorkspaceFile);
-  const openImageFile = useMemo(() => {
+  const openFile = useMemo(() => {
     if (!sessionId) {
       return undefined;
     }
@@ -255,9 +255,9 @@ export function MainWindow(): JSX.Element {
               switch (view) {
                 case MainView.Chat:
                   content = (
-                    <MarkdownImages directory={cwd} onOpenFile={openImageFile}>
+                    <MarkdownMedia directory={cwd} onOpenFile={openFile} active={visible}>
                       <ChatPage />
-                    </MarkdownImages>
+                    </MarkdownMedia>
                   );
                   break;
                 case MainView.Settings:
