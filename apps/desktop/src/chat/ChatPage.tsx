@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, type JSX } from 'react';
 import { sessionsApi } from '../api/sessions.js';
-import { subscribeSystemEvent } from '../lib/system-event-dispatcher.js';
-import { ErrorBoundary } from '../lib/error-boundary.js';
+import { subscribeSystemEvent } from '../lib/events/systemEventDispatcher.js';
+import { ErrorBoundary } from '../lib/errorBoundary.js';
 import { useServerStore } from '../stores/server.js';
 import { useSessionStore } from '../stores/session.js';
 import { NewSessionPage } from './NewSessionPage.js';

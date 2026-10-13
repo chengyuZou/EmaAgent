@@ -5,7 +5,7 @@ import { Callout, Select } from '@ema-agent/ui';
 
 import { settingsApi, type SettingApply } from '../../api/settings.js';
 import { systemApi, type TerminalShellInfo } from '../../api/system.js';
-import { showToast } from '../../lib/toast.js';
+import { showToast } from '../../lib/notifications/toast.js';
 import {
   SaveStateIndicator,
   SettingItem,

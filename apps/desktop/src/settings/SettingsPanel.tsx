@@ -1,6 +1,6 @@
 import { useEffect, useState, type JSX } from 'react';
 import { Button, Callout } from '@ema-agent/ui';
-import { ErrorBoundary } from '../lib/error-boundary.js';
+import { ErrorBoundary } from '../lib/errorBoundary.js';
 import { useMainNavigationStore } from '../layout/navigation.js';
 import { CharactersTab } from './character/CharactersTab.js';
 import { StorageTab } from './data/StorageTab.js';

@@ -224,7 +224,7 @@ function AgentRow({
         {cancelTarget === 'tool' && turnId && (
           <IconButton
             label="中止子代理工具"
-            icon="i-lucide:circle-stop"
+            icon="i-ema:stop"
             variant="danger"
             size="sm"
             shape="rounded"
@@ -235,7 +235,7 @@ function AgentRow({
         {cancelTarget === 'subagent' && subagentId && (
           <IconButton
             label="中止后台子代理"
-            icon="i-lucide:circle-stop"
+            icon="i-ema:stop"
             variant="danger"
             size="sm"
             shape="rounded"

@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type JSX } from 'react';
 import { Button, IconButton, Textarea, Tooltip } from '@ema-agent/ui';
 import { goalsApi, type Goal } from '../../../../api/goals.js';
 import { ServerApiError } from '../../../../api/client.js';
-import { subscribeSystemEvent } from '../../../../lib/system-event-dispatcher.js';
+import { subscribeSystemEvent } from '../../../../lib/events/systemEventDispatcher.js';
 
 export function GoalPanel({ sessionId, goalId }: {
   sessionId: string;

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type JSX, type ReactNode } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { Tooltip, Button, Dialog, IconButton, Input, Popover } from '@ema-agent/ui';
 import { sessionGitApi, type SessionGitSummary } from '../../api/git.js';
-import { showToast } from '../../lib/toast.js';
+import { showToast } from '../../lib/notifications/toast.js';
 import { useSubagentStore } from '../../stores/subagent.js';
 import { useBackgroundProcessStore } from '../../stores/backgroundProcess.js';
 import { useSessionAttachmentStore } from '../../stores/sessionAttachment.js';
@@ -312,7 +312,7 @@ function SessionSummary({ sessionId, onNavigate }: {
               <IconButton
                 size="sm"
                 variant="danger"
-                icon="i-lucide:square"
+                icon="i-ema:stop"
                 label={`终止 ${process.description ?? process.command}`}
                 loading={stoppingProcessIds.has(process.id)}
                 onClick={() => void stopProcess(process.id)}

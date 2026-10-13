@@ -22,7 +22,7 @@ import {
 } from '../../api/providers.js';
 import { useProviderStore } from '../../stores/provider.js';
 import { PageHeader } from '../shared/PageHeader.js';
-import { showToast } from '../../lib/toast.js';
+import { showToast } from '../../lib/notifications/toast.js';
 import { MODEL_BINDING_CAPABILITIES } from '@ema-agent/providers/types';
 
 // ── Constants ─────────────────────────────────────────────────────────────────

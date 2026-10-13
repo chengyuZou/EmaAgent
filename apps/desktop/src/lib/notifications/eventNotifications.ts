@@ -5,7 +5,7 @@ import type { SessionBusinessMessage } from '@ema-agent/server/routes/ws/session
 import type { TurnStreamEvent } from '@ema-agent/turn';
 import type { PermissionStreamEvent } from '@ema-agent/permission';
 import type { ToolExecutionEvent } from '@ema-agent/tools';
-import type { EventDisplayTable } from '../api/settings.js';
+import type { EventDisplayTable } from '../../api/settings.js';
 import type { ToastOptions } from './toast.js';
 
 export type SessionCompactEvent = Extract<SessionBusinessMessage, {
@@ -17,7 +17,7 @@ export type SessionCompactEvent = Extract<SessionBusinessMessage, {
   | 'compact_failed';
 }>;
 
-/** 通知层可见的全部线上事件：Turn 流、Session 手动压缩与应用级广播。 */
+/** 通知层使用的线上事件: Turn 流、Session 手动压缩与应用级广播. */
 export type NotifiableEvent = TurnStreamEvent | SessionCompactEvent | AppEvent | PermissionStreamEvent
   | Extract<ToolExecutionEvent, { type: 'ask_user_required' | 'ask_user_resolved' }>;
 
@@ -58,7 +58,7 @@ export function describeEventNotification(event: NotifiableEvent): EventNotifica
     case 'compact_failed':
       return { message: `上下文压缩失败：${event.error}`, variant: 'danger' };
     case 'background_process_changed':
-      // 只给失败/超时弹通知;完成、停止与运行状态变化只更新面板(2026-07-30 拍板)。
+      // 失败和超时弹通知; 完成、停止与运行状态变化只更新面板.
       if (event.status === 'failed') {
         return {
           message: `后台进程执行失败${event.terminationReason ? `：${event.terminationReason}` : ''}`,

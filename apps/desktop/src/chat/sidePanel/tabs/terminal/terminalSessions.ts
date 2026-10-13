@@ -3,7 +3,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { Terminal, type ITheme } from '@xterm/xterm';
 
-import { tauriBridge, type TerminalEvent } from '../../../../lib/tauri-bridge.js';
+import { tauriBridge, type TerminalEvent } from '../../../../lib/tauriBridge.js';
 import { settingsApi } from '../../../../api/settings.js';
 import { systemApi } from '../../../../api/system.js';
 

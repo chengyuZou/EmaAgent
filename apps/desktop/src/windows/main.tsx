@@ -3,7 +3,7 @@ import '../styles/index.css';
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { MainWindow } from '../layout/main.js';
-import { ErrorBoundary } from '../lib/error-boundary.js';
+import { ErrorBoundary } from '../lib/errorBoundary.js';
 import { TooltipProvider } from '@ema-agent/ui';
 
 const container = document.getElementById('root');

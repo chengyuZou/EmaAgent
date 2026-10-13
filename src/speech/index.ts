@@ -4,9 +4,13 @@ export type {
   AudioWriter,
   FinalizedAudio,
 } from './audioArchive.js';
-export type { SpeechArchiveEvent, SpeechClientCommand, SpeechGenerateEvent } from './events.js';
+export type {
+  SpeechArchiveEvent,
+  SpeechClientCommand,
+  SpeechGenerateEvent,
+  TurnSpeechGenerateResult,
+} from './events.js';
 export { SentenceSplitter } from './sentenceSplitter.js';
-export type { SentenceChunk } from './sentenceSplitter.js';
 export { SpeechCoordinator } from './speechCoordinator.js';
 export type { SpeechCoordinatorArgs, SpeechGenerationResult } from './speechCoordinator.js';
 export { filterSentenceForTts, TextFilterStream } from './textFilter.js';

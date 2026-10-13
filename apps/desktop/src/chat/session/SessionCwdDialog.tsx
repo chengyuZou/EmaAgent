@@ -1,8 +1,8 @@
 // 修改一条已创建会话的执行目录；项目成员资格和源文件夹清单不随之变化。
 import { useEffect, useState, type JSX } from 'react';
 import { Button, Dialog, IconButton, Input } from '@ema-agent/ui';
-import { tauriBridge } from '../../lib/tauri-bridge.js';
-import { showToast } from '../../lib/toast.js';
+import { tauriBridge } from '../../lib/tauriBridge.js';
+import { showToast } from '../../lib/notifications/toast.js';
 import { useSessionStore } from '../../stores/session.js';
 
 export function SessionCwdDialog({

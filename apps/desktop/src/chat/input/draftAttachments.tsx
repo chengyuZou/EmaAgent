@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useState, type ClipboardEvent as ReactClipboardEvent, type JSX } from 'react';
 import { PASTE_TEXT_MIN_CHARS } from '@ema-agent/attachments/limits';
 import type { ChatDraft, ChatDraftReference } from '../../stores/chatDraft.js';
-import { tauriBridge } from '../../lib/tauri-bridge.js';
+import { tauriBridge } from '../../lib/tauriBridge.js';
 import { ImagePreview } from '../../lib/images/imagePreview.js';
 import { Tooltip } from '@ema-agent/ui';
 

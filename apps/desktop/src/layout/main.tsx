@@ -1,10 +1,10 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type JSX } from 'react';
 import { Button, DropdownMenu, IconButton, Tooltip, type MenuItem } from '@ema-agent/ui';
 import { ChatPage } from '../chat/ChatPage.js';
-import { subscribeSystemEvent } from '../lib/system-event-dispatcher.js';
-import { mountSystemEvents } from '../lib/system-sse.js';
-import { tauriBridge } from '../lib/tauri-bridge.js';
-import { showToast } from '../lib/toast.js';
+import { subscribeSystemEvent } from '../lib/events/systemEventDispatcher.js';
+import { mountSystemEvents } from '../lib/events/systemSse.js';
+import { tauriBridge } from '../lib/tauriBridge.js';
+import { showToast } from '../lib/notifications/toast.js';
 import { ImageViewerProvider } from '../lib/images/imageViewer.js';
 import { MarkdownMedia } from '../lib/markdownMedia.js';
 import { handleBackgroundProcessSystemEvent } from '../stores/backgroundProcess.js';

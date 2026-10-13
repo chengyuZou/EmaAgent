@@ -10,7 +10,7 @@ import {
   COLOR_PALETTES,
   HUE_LADDER_STEPS,
 } from '@ema-agent/server/settings/themeCatalog.js';
-import { hexToOklch } from '../../lib/oklch.js';
+import { hexToOklch } from '../../theme/oklch.js';
 
 type ThemeMode = ThemeSettings['mode'];
 

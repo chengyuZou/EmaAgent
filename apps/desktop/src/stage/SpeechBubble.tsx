@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { tauriBridge } from '../lib/tauri-bridge.js';
+import { tauriBridge } from '../lib/tauriBridge.js';
 import type { WallpaperSettings } from '@ema-agent/server/settings/wallpaperSetting.js';
 import { DEFAULT_WALLPAPER_SETTINGS, WALLPAPER_SETTING_KEY } from '@ema-agent/server/settings/wallpaperCatalog.js';
 import { settingsApi } from '../api/settings.js';
-import { subscribeSystemEvent } from '../lib/system-event-dispatcher.js';
+import { subscribeSystemEvent } from '../lib/events/systemEventDispatcher.js';
 
 const FADE_DELAY_MS = 3000;
 const FADE_OUT_MS   = 600;

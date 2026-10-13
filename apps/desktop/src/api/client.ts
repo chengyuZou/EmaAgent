@@ -11,7 +11,7 @@
 
 import { hc, type ClientResponse } from 'hono/client';
 import type { AppType } from '@ema-agent/server/routes';
-import { tauriBridge } from '../lib/tauri-bridge.js';
+import { tauriBridge } from '../lib/tauriBridge.js';
 
 // ── Public types ─────────────────────────────────────────────────────────────
 
@@ -22,11 +22,8 @@ export interface ServerClient {
   /** Force re-discover the port (e.g. after server restart). */
   refreshPort(): Promise<void>;
 
-  /** Raw request that returns the Response object（SSE/流式/multipart 唯一逃生口）。 */
+  /** 返回原始响应, 用于 SSE、文件字节和 multipart 上传. 非 2xx 抛出 ServerApiError. */
   requestRaw(path: string, init?: RequestInit & { json?: unknown }): Promise<Response>;
-
-  /** Build a full SSE URL with optional lastEventId query param. */
-  streamUrl(path: string, params?: { lastEventId?: number }): Promise<string>;
 
   /** 原生 audio 使用的完整地址; 仅后端允许的音频 GET 路由接受 URL 里的现有口令. */
   audioUrl(path: string): Promise<string>;
@@ -34,8 +31,6 @@ export interface ServerClient {
   /** 构建浏览器 WebSocket URL；浏览器不能设置认证 header，因此密钥只放在 loopback 握手查询串。 */
   webSocketUrl(path: string): Promise<string>;
 
-  /** Returns headers required for authenticated requests (X-Ema-Secret). */
-  getAuthHeaders(): Promise<Record<string, string>>;
 }
 
 export class ServerApiError extends Error {
@@ -123,20 +118,14 @@ async function refreshPortDiscovery(): Promise<void> {
 
 // ── Implementation ───────────────────────────────────────────────────────────
 
-async function buildUrl(path: string, params?: Record<string, string | number | undefined>): Promise<string> {
+async function buildUrl(path: string): Promise<string> {
   const port = await getPortPromise();
-  const url = new URL(path, `http://127.0.0.1:${port}`);
-  if (params) {
-    for (const [key, value] of Object.entries(params)) {
-      if (value !== undefined && value !== null) {
-        url.searchParams.set(key, String(value));
-      }
-    }
-  }
-  return url.toString();
+  return new URL(path, `http://127.0.0.1:${port}`).toString();
 }
 
-async function doRequestRaw(
+// Hono 请求与字节流请求共用认证和端口重试. HTTP 错误响应留给各自的响应读取入口处理,
+// 例如供应商探活需要同时读取 200 和 502 的结果, 不能在这里提前抛掉 502.
+async function sendRequest(
   path: string,
   init?: RequestInit & { json?: unknown },
 ): Promise<Response> {
@@ -148,24 +137,23 @@ async function doRequestRaw(
     res = await fetch(url, requestInit);
   } catch (err: unknown) {
     // 用户取消不是端口失效, 不重新发现端口或重试已取消的试听.
-    if (init?.signal?.aborted) throw err;
+    if (init?.signal?.aborted) {
+      throw err;
+    }
     // server 重启换端口后旧端口连接失败：重新发现端口重试一次，再不行才报不可达。
     try {
       await refreshPortDiscovery();
       const retryUrl = await buildUrl(path);
       res = await fetch(retryUrl, requestInit);
     } catch (retryErr: unknown) {
-      if (init?.signal?.aborted) throw retryErr;
+      if (init?.signal?.aborted) {
+        throw retryErr;
+      }
       const error = new Error(`Server unreachable: ${url}`);
       (error as Error & { cause?: unknown; code?: string }).cause = retryErr;
       (error as Error & { cause?: unknown; code?: string }).code = 'server_unreachable';
       throw error;
     }
-  }
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new ServerApiError(res.status, text);
   }
 
   return res;
@@ -232,30 +220,14 @@ const RPC_HOST_PLACEHOLDER = 'http://ema-server';
 
 export const rpcClient = hc<AppType>(RPC_HOST_PLACEHOLDER, {
   fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
-    const doFetch = async (): Promise<Response> => {
-      const [base, secret] = await Promise.all([
-        getPortPromise().then(port => `http://127.0.0.1:${port}`),
-        getSecretPromise(),
-      ]);
-      const source = input instanceof Request
-        ? input.url
-        : input instanceof URL
-          ? input.toString()
-          : input;
-      const url = source.replace(RPC_HOST_PLACEHOLDER, base);
-
-      const headers = new Headers(init?.headers);
-      if (secret) headers.set('X-Ema-Secret', secret);
-
-      return fetch(url, { ...init, headers });
-    };
-    try {
-      return await doFetch();
-    } catch {
-      // server 重启换端口后旧端口连接失败：重新发现端口重试一次。
-      await refreshPortDiscovery();
-      return doFetch();
+    let source: string;
+    if (input instanceof Request) {
+      source = input.url;
+    } else {
+      source = input.toString();
     }
+    const url = new URL(source);
+    return sendRequest(`${url.pathname}${url.search}`, init);
   },
 });
 
@@ -275,12 +247,12 @@ export const serverClient: ServerClient = {
     await getPortPromise();
   },
 
-  requestRaw(path: string, init?: RequestInit & { json?: unknown }): Promise<Response> {
-    return doRequestRaw(path, init);
-  },
-
-  async streamUrl(path: string, params?: { lastEventId?: number }): Promise<string> {
-    return buildUrl(path, params as Record<string, string | number | undefined>);
+  async requestRaw(path: string, init?: RequestInit & { json?: unknown }): Promise<Response> {
+    const response = await sendRequest(path, init);
+    if (!response.ok) {
+      throw await toServerApiError(response);
+    }
+    return response;
   },
 
   async audioUrl(path: string): Promise<string> {
@@ -296,10 +268,5 @@ export const serverClient: ServerClient = {
     url.protocol = 'ws:';
     if (secret) url.searchParams.set('secret', secret);
     return url.toString();
-  },
-
-  async getAuthHeaders(): Promise<Record<string, string>> {
-    const secret = await getSecretPromise();
-    return secret ? { 'X-Ema-Secret': secret } : {};
   },
 };

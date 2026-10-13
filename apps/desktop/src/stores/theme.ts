@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import { create } from 'zustand';
 import { settingsApi } from '../api/settings.js';
 import { setThemeHue, setThemeRadius } from '@ema-agent/ui/utils';
-import { tauriBridge } from '../lib/tauri-bridge.js';
+import { tauriBridge } from '../lib/tauriBridge.js';
 import type { ThemeSettings } from '@ema-agent/server/settings/themeSetting.js';
 import {
   DEFAULT_THEME_SETTINGS,
@@ -13,7 +13,7 @@ import {
   CODE_FONT_FALLBACK,
 } from '@ema-agent/server/settings/themeCatalog.js';
 import { useCharacterStore } from './character.js';
-import { sampleActiveCharacterHue } from '../lib/dynamicHue.js';
+import { sampleActiveCharacterHue } from '../theme/dynamicHue.js';
 
 const THEME_ATTR  = 'data-theme';
 

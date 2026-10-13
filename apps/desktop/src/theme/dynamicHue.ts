@@ -2,7 +2,7 @@
 // 只在 hueDynamic 开启时被调用; 采样失败一律回退手动色相(返回 null).
 import { useCharacterStore } from '../stores/character.js';
 import { charactersApi } from '../api/characters.js';
-import { fetchServerObjectUrl } from './serverFileUrl.js';
+import { fetchServerObjectUrl } from '../api/serverFileUrl.js';
 import { srgbToOklch } from './oklch.js';
 
 export async function sampleActiveCharacterHue(): Promise<number | null> {
@@ -14,7 +14,12 @@ export async function sampleActiveCharacterHue(): Promise<number | null> {
       charactersApi.illustrationFileUrl(character.name, character.coverResourceName),
     );
     if (!url) return null;
-    return await sampleImageHue(url);
+    try {
+      return await sampleImageHue(url);
+    } finally {
+      // 采样完成后不再展示这张图片, 成功、失败都要释放临时 Object URL.
+      URL.revokeObjectURL(url);
+    }
   } catch {
     return null;
   }

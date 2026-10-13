@@ -10,7 +10,7 @@ import {
   type SkillMarketSourcesStatus,
   type SkillMarketDetailResult,
 } from '../../api/skills.js';
-import { showToast } from '../../lib/toast.js';
+import { showToast } from '../../lib/notifications/toast.js';
 import { Markdown } from '@ema-agent/ui';
 
 type SourceFilter = 'all' | 'skillhub' | 'clawhub';

@@ -15,7 +15,7 @@ import type {
   ProjectSidebarMoveInput,
   SessionSidebarMoveInput,
 } from '../../api/workspaces.js';
-import { runWithToast } from '../../lib/toast.js';
+import { runWithToast } from '../../lib/notifications/toast.js';
 import { useSessionStore } from '../../stores/session.js';
 
 type DraggedItem =

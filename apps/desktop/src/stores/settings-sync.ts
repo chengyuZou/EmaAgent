@@ -1,7 +1,7 @@
 // 在每个桌面窗口加载运行时设置，并接收其他窗口保存后的同步广播。
 import { useEffect } from 'react';
 import { useSettingsStore } from './settings.js';
-import { tauriBridge } from '../lib/tauri-bridge.js';
+import { tauriBridge } from '../lib/tauriBridge.js';
 
 export function useSettingsSync(serverReady: boolean): void {
   useEffect(() => {

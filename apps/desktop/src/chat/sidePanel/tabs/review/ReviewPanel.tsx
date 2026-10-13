@@ -33,7 +33,7 @@ import {
   type SelectOption,
 } from '@ema-agent/ui';
 import type { GitDiffScope } from '../../../../api/git.js';
-import { showToast } from '../../../../lib/toast.js';
+import { showToast } from '../../../../lib/notifications/toast.js';
 import { useSessionStore } from '../../../../stores/session.js';
 import { fileTab, useSessionPanelStore } from '../../../../stores/sessionPanel.js';
 import { ReviewFileTree } from './reviewFileTree.js';

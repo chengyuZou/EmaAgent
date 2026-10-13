@@ -7,7 +7,7 @@ import type { ProviderRecord } from '../../api/providers.js';
 import { settingsApi } from '../../api/settings.js';
 import { useWindowSuspension } from '../../hooks/use-window-suspension.js';
 import { MainView, useMainNavigationStore } from '../../layout/navigation.js';
-import { subscribeSystemEvent } from '../../lib/system-event-dispatcher.js';
+import { subscribeSystemEvent } from '../../lib/events/systemEventDispatcher.js';
 import { useCharacterStore } from '../../stores/character.js';
 import { useProviderStore, type ProviderStoreState } from '../../stores/provider.js';
 import { useServerStore } from '../../stores/server.js';

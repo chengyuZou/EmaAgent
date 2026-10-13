@@ -11,8 +11,8 @@ import {
 } from '@ema-agent/backup';
 
 export interface SessionBackupRouteDeps {
-  readonly backup: SessionBackup;
-  readonly onImported: () => void;
+  readonly backup: Pick<SessionBackup, 'exportSession' | 'importSession'>;
+  readonly onImported: (sessionId: string) => void;
 }
 
 export const sessionBackupRoute = (deps: SessionBackupRouteDeps) =>
@@ -79,7 +79,7 @@ export const sessionBackupRoute = (deps: SessionBackupRouteDeps) =>
     };
     try {
       const result = await deps.backup.importSession(source, context.req.raw.signal);
-      deps.onImported();
+      deps.onImported(result.sessionId);
       return context.json(result, 201);
     } catch (error) {
       if (error instanceof SessionImportError) {

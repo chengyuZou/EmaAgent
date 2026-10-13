@@ -10,7 +10,7 @@ import {
   type ProviderModelInput,
   type ProviderModelRecord,
 } from '../../api/providers.js';
-import { showToast } from '../../lib/toast.js';
+import { showToast } from '../../lib/notifications/toast.js';
 import { useProviderStore } from '../../stores/provider.js';
 import { MainView, useMainNavigationStore } from '../../layout/navigation.js';
 import { AddDashedCard } from './AddDashedCard.js';
@@ -685,7 +685,7 @@ export function ProviderModelManager({ providerId, capability, iconKey, reloadKe
                   iconNode={
                     <span
                       className={playingReference
-                        ? 'i-lucide:square text-[var(--ema-danger)]'
+                        ? 'i-ema:stop text-[var(--ema-danger)]'
                         : 'i-mdi:volume-high'}
                       aria-hidden
                     />

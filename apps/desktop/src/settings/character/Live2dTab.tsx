@@ -10,10 +10,10 @@ import {
 } from '@ema-agent/ui';
 import { ServerApiError } from '../../api/client.js';
 import { charactersApi, type Character } from '../../api/characters.js';
-import { renderLive2dPreview } from '../../lib/live2dPreview.js';
-import { ServerImage } from '../../lib/ServerImage.js';
-import { tauriBridge } from '../../lib/tauri-bridge.js';
-import { showToast } from '../../lib/toast.js';
+import { renderLive2dPreview } from './live2dPreview.js';
+import { ServerImage } from '../../lib/images/serverImage.js';
+import { tauriBridge } from '../../lib/tauriBridge.js';
+import { showToast } from '../../lib/notifications/toast.js';
 import { useCharacterStore } from '../../stores/character.js';
 import { Live2dModelConfiguration } from './Live2dModelConfiguration.js';
 
@@ -135,7 +135,7 @@ function ModelCard({
       icon: 'i-solar:folder-open-bold-duotone',
       onSelect: () => {
         void charactersApi.live2dLocation(character.name, model.name)
-          .then(({ path }) => charactersApi.openDirectory(path))
+          .then(({ path }) => tauriBridge.openPath(path))
           .catch(() => showToast('打开文件夹失败', { variant: 'danger' }));
       },
     },

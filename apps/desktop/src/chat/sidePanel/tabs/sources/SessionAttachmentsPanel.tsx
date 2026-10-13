@@ -1,13 +1,9 @@
-// 展示当前 Session 的全部持久附件(图片/粘贴文本两本账合并),点击打开预览标签。
+// 列表只读取附件信息, 点击后的预览由所在页面打开.
 import { useEffect, type CSSProperties, type JSX } from 'react';
 import { Tooltip, Button, ScrollArea } from '@ema-agent/ui';
 
 import type { SessionAttachmentsResult } from '../../../../api/sessions.js';
 import { useSessionAttachmentStore } from '../../../../stores/sessionAttachment.js';
-import {
-  sessionSourceTab,
-  useSessionPanelStore,
-} from '../../../../stores/sessionPanel.js';
 
 type SessionAttachmentItem = SessionAttachmentsResult['attachments'][number];
 
@@ -21,8 +17,10 @@ function attachmentTitle(item: SessionAttachmentItem): string {
   return item.kind === 'image' ? (item.name ?? '剪贴板图片') : '粘贴文本';
 }
 
-export function SessionAttachmentsPanel({ sessionId }: { sessionId: string | null }): JSX.Element {
-  const openTab = useSessionPanelStore((state) => state.openTab);
+export function SessionAttachmentsPanel({ sessionId, onOpenAttachment }: {
+  readonly sessionId: string | null;
+  readonly onOpenAttachment: (path: string) => void;
+}): JSX.Element {
   const attachments = useSessionAttachmentStore((state) =>
     sessionId ? state.bySession.get(sessionId) ?? EMPTY_ATTACHMENTS : EMPTY_ATTACHMENTS,
   );
@@ -69,7 +67,7 @@ export function SessionAttachmentsPanel({ sessionId }: { sessionId: string | nul
           <div key={attachment.path} className="ema-stagger-in-swift" style={{ '--stagger-i': index } as CSSProperties}>
           <button
             className="flex w-full items-start gap-2.5 border-b border-[var(--ema-border)] px-3 py-2.5 text-left transition-colors hover:bg-[var(--ema-surface-2)]"
-            onClick={() => openTab(sessionId, sessionSourceTab(attachment.path))}
+            onClick={() => onOpenAttachment(attachment.path)}
           >
             <span className={`${attachmentIcon(attachment)} mt-0.5 shrink-0 text-base text-[var(--ema-primary)]`} aria-hidden />
             <span className="min-w-0 flex-1">

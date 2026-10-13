@@ -20,7 +20,7 @@ import type { TurnInputPart } from '@ema-agent/turn';
 import { providersApi } from '../../api/providers.js';
 import type { SessionListItem } from '../../api/sessions.js';
 import { sessionWebSocket } from '../../api/sessionWebSocket.js';
-import { showToast } from '../../lib/toast.js';
+import { showToast } from '../../lib/notifications/toast.js';
 import {
   emptyChatDraft,
   hasDraftContent,
@@ -565,7 +565,7 @@ export function ChatInput({
               <IconButton
                 size="sm"
                 variant="danger"
-                icon="i-lucide:square"
+                icon="i-ema:stop"
                 label="停止生成"
                 onClick={() => {
                   if (!viewedId || !sessionActivity?.running) return;

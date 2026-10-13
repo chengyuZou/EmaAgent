@@ -24,8 +24,8 @@ export interface BashCallViewProps {
   readonly interrupted?: boolean;
   readonly status: BashCallStatus;
   readonly running: boolean;
-  /** 打开后台进程面板；导航动作由前端外壳提供。 */
-  openBackgroundProcesses(): void;
+  /** 只读记录可以省略导航操作, 只展示当时保存的后台进程信息. */
+  openBackgroundProcesses?(): void;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -169,7 +169,7 @@ function BashBackgroundCard({
 }: {
   command: string;
   status: 'queued' | 'running';
-  openBackgroundProcesses(): void;
+  openBackgroundProcesses?(): void;
 }): JSX.Element {
   const statusText = `已转到后台${status === 'queued' ? '排队' : '运行'}`;
   return (
@@ -183,7 +183,7 @@ function BashBackgroundCard({
         <TerminalCopyButton label="复制输出" text={statusText} />
         <div className="ema-terminal-output ema-terminal-background-output">
           <span className="text-[11px] text-[var(--ema-text-tertiary)]">{statusText}</span>
-          <button
+          {openBackgroundProcesses && <button
             className="ml-2 text-[11px] text-[var(--ema-primary)] hover:text-[var(--ema-primary-hover)] transition-colors"
             onClick={(event) => {
               event.stopPropagation();
@@ -191,7 +191,7 @@ function BashBackgroundCard({
             }}
           >
             查看后台进程
-          </button>
+          </button>}
         </div>
       </div>
     </div>

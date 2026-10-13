@@ -6,8 +6,8 @@ import {
 } from '@ema-agent/server/settings/wallpaperCatalog.js';
 import { settingsApi } from '../api/settings.js';
 import { wallpaperApi } from '../api/wallpaper.js';
-import { subscribeSystemEvent } from '../lib/system-event-dispatcher.js';
-import { fetchServerObjectUrl } from '../lib/serverFileUrl.js';
+import { subscribeSystemEvent } from '../lib/events/systemEventDispatcher.js';
+import { fetchServerObjectUrl } from '../api/serverFileUrl.js';
 import { useServerStore } from '../stores/server.js';
 
 interface WallpaperFrame {

@@ -1,5 +1,5 @@
-// Live2D 卡面/角色封面的静态图:导入流程或用户手动重试时,把模型装进一次性离屏
-// Pixi Application,渲一帧、裁透明边、补成 3:4,渲完即毁。不持有第二份活 Canvas。
+// 角色设置中的静态封面: 用一次性的 Pixi Application 渲一帧, 裁掉透明边并补成 3:4.
+// 不使用舞台的持续渲染循环, 完成后销毁模型和 Canvas.
 import * as PIXI from 'pixi.js';
 import { loadLive2DArchive } from '@ema-agent/live2d-react';
 import cropEmptyPixels from '@lemonneko/crop-empty-pixels';

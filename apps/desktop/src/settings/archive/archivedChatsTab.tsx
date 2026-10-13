@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react';
 import { Tooltip, Button, Callout, Input, Select } from '@ema-agent/ui';
 import { sessionsApi, type ArchivedSession } from '../../api/sessions.js';
-import { subscribeSystemEvent } from '../../lib/system-event-dispatcher.js';
-import { runWithToast } from '../../lib/toast.js';
+import { subscribeSystemEvent } from '../../lib/events/systemEventDispatcher.js';
+import { runWithToast } from '../../lib/notifications/toast.js';
 import { formatSessionTitle, useSessionStore } from '../../stores/session.js';
 
 const ALL_PROJECTS = 'all';
@@ -93,7 +93,7 @@ export function ArchivedChatsTab(): JSX.Element {
   }
 
   return (
-    <section className="mx-auto flex w-full max-w-4xl flex-col gap-6">
+    <section className="mx-auto flex w-full  flex-col gap-6">
       <header>
         <h2 className="text-xl font-semibold">归档聊天</h2>
         <p className="mt-2 text-sm text-[var(--ema-text-secondary)]">

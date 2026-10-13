@@ -2,7 +2,7 @@
 import type { Profile } from 'wlipsync';
 import processorUrl from 'wlipsync/audio-processor.js?url';
 import wasmUrl from 'wlipsync/wlipsync.wasm?url';
-import profileJson from './wlipsync-profile.json';
+import profileJson from './wLipSyncProfile.json';
 
 // wLipSync 原始输出为 A/E/I/O/U/S 六个权重
 // Live2D 模型没有各元音嘴型参数(cdi3.json 只有 ParamMouthOpenY + ParamMouthForm 没有 ParamMouthA/E/I/O/U)

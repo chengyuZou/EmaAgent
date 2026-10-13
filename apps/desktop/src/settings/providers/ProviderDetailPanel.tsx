@@ -18,7 +18,7 @@ import {
   type ProviderDetail,
 } from '../../api/providers.js';
 import { PROTOCOLS, PROVIDER_LIMITS, isProtocolForCapability, type Protocol } from '@ema-agent/providers/types';
-import { showToast } from '../../lib/toast.js';
+import { showToast } from '../../lib/notifications/toast.js';
 import { ProviderModelManager } from './ProviderModelManager.js';
 
 export interface ProviderDetailPanelProps {

@@ -14,7 +14,7 @@ import {
 } from '@ema-agent/ui';
 import { useProviderStore } from '../../stores/provider.js';
 import { providersApi, type ProviderRecord, type ProviderDetail, type ModelCapability } from '../../api/providers.js';
-import { showToast } from '../../lib/toast.js';
+import { showToast } from '../../lib/notifications/toast.js';
 import { PageHeader } from '../shared/PageHeader.js';
 import { SettingsSection } from '../shared/SettingItem.js';
 import { ProviderDetailPanel } from './ProviderDetailPanel.js';

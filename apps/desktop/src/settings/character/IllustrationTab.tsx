@@ -12,9 +12,9 @@ import {
 } from '../../api/characters.js';
 import { ServerApiError } from '../../api/client.js';
 import { useCharacterStore } from '../../stores/character.js';
-import { tauriBridge } from '../../lib/tauri-bridge.js';
-import { ServerImage } from '../../lib/ServerImage.js';
-import { showToast } from '../../lib/toast.js';
+import { tauriBridge } from '../../lib/tauriBridge.js';
+import { ServerImage } from '../../lib/images/serverImage.js';
+import { showToast } from '../../lib/notifications/toast.js';
 
 type Illustration = Character['illustrations'][number];
 
@@ -116,7 +116,7 @@ function IllustrationCard({
       icon: 'i-solar:folder-open-bold-duotone',
       onSelect: () => {
         void charactersApi.illustrationLocation(character.name, item.name)
-          .then(({ path }) => charactersApi.revealFile(path))
+          .then(({ path }) => tauriBridge.revealInFolder(path))
           .catch(() => showToast('打开文件夹失败', { variant: 'danger' }));
       },
     },

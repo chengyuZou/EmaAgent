@@ -1,25 +1,16 @@
-/**
- * Error boundary — catch render errors and show fallback UI.
- *
- * Placed at the root of each sub-window (ChatPanel / SettingsPanel / App).
- */
 import { Component, type ReactNode } from 'react';
 import type { ErrorInfo } from 'react';
 import { Button } from '@ema-agent/ui';
 
-// ── Props ─────────────────────────────────────────────────────────────────────
-
 export interface ErrorBoundaryProps {
   children: ReactNode;
-  /** Custom fallback render. Default: red callout + "重新加载" button. */
+  /** reset 只重新渲染这部分 React 内容, 不重新加载窗口文档. */
   fallback?: (error: Error, reset: () => void) => ReactNode;
 }
 
 interface State {
   error: Error | null;
 }
-
-// ── Component ─────────────────────────────────────────────────────────────────
 
 export class ErrorBoundary extends Component<ErrorBoundaryProps, State> {
   constructor(props: ErrorBoundaryProps) {

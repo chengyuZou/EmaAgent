@@ -19,8 +19,8 @@ import {
 } from '@ema-agent/server/settings/wallpaperCatalog.js';
 import { settingsApi } from '../../api/settings.js';
 import { wallpaperApi, type WallpaperImageSummary } from '../../api/wallpaper.js';
-import { ServerImage } from '../../lib/ServerImage.js';
-import { showToast } from '../../lib/toast.js';
+import { ServerImage } from '../../lib/images/serverImage.js';
+import { showToast } from '../../lib/notifications/toast.js';
 
 const FILE_TYPES = '.png,.jpg,.jpeg,.webp';
 

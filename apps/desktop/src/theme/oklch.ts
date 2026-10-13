@@ -1,7 +1,11 @@
 // srgb → oklch 转换: 调色板色块取色相与立绘取色共用.
 // 矩阵为 oklab 标准定义, 不引入第三方色彩库.
 
-export interface Oklch { l: number; c: number; h: number }
+export interface Oklch {
+  l: number;
+  c: number;
+  h: number;
+}
 
 export function hexToOklch(hex: string): Oklch | null {
   const match = /^#?([0-9a-f]{6})$/i.exec(hex.trim());

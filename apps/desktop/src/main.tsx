@@ -4,7 +4,7 @@ import './styles/index.css';
 import 'katex/dist/katex.min.css';
 import { createRoot } from 'react-dom/client';
 import { TooltipProvider } from '@ema-agent/ui';
-import { ErrorBoundary } from './lib/error-boundary.js';
+import { ErrorBoundary } from './lib/errorBoundary.js';
 import { App } from './App.js';
 
 const container = document.getElementById('root');

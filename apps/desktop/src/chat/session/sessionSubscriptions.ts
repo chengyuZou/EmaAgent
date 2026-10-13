@@ -2,16 +2,17 @@ import type { SubagentEvent } from '@ema-agent/agent';
 import type { SessionMessage } from '@ema-agent/session';
 import type { SessionBusinessMessage } from '@ema-agent/server/routes/ws/session.js';
 import { sessionWebSocket } from '../../api/sessionWebSocket.js';
-import { resolveConfiguredEventNotification, type NotifiableEvent } from '../../lib/event-notifications.js';
-import { tauriBridge } from '../../lib/tauri-bridge.js';
-import { showToast } from '../../lib/toast.js';
+import { resolveConfiguredEventNotification, type NotifiableEvent } from '../../lib/notifications/eventNotifications.js';
+import { tauriBridge } from '../../lib/tauriBridge.js';
+import { showToast } from '../../lib/notifications/toast.js';
 import { useSubagentStore } from '../../stores/subagent.js';
 import { useTurnStore, type TurnStoreEvent } from '../../stores/turn.js';
 import { useSessionActivityStore } from '../../stores/sessionActivity.js';
 import { useSessionHistoryStore } from '../../stores/sessionHistory.js';
 import { useSettingsStore } from '../../stores/settings.js';
 import { sessionPresentation } from '../presentation/sessionPresentation.js';
-import { startTurnSpeechPlayback, stopTurnPlayback } from '../speech/turnSpeechPlayback.js';
+import { startPendingSpeechPlayback, startTurnSpeechPlayback, removeTurnPlayback } from '../speech/turnSpeechPlayback.js';
+import { observeTurnSpeechGeneration } from '../speech/turnSpeechGeneration.js';
 import { scheduleTurnHistoryClosure } from './turnHistoryClosure.js';
 
 const subscriptions = new Map<string, () => void>();
@@ -200,6 +201,7 @@ function receiveTurnEvent(sessionId: string, turnId: string, event: TurnStoreEve
   switch (event.type) {
     case 'turn_started':
       if (event.ttsEnabled) {
+        observeTurnSpeechGeneration(sessionId, turnId);
         startTurnSpeechPlayback(sessionId, turnId);
       } else {
         sessionPresentation.claim(sessionId, turnId);
@@ -215,14 +217,12 @@ function receiveTurnEvent(sessionId: string, turnId: string, event: TurnStoreEve
       sessionPresentation.motion(sessionId, turnId, event.motion);
       return;
     case 'turn_completed':
-      sessionPresentation.finishTurn(sessionId, turnId);
+      if (sessionPresentation.finishTurn(sessionId, turnId)) startPendingSpeechPlayback();
       scheduleTurnHistoryClosure(sessionId);
       return;
     case 'turn_failed':
     case 'turn_aborted':
-      // 失败或用户取消后停止本轮语音, 立即释放 owner; 不补播已经开始的其他 Turn.
-      stopTurnPlayback(sessionId, turnId);
-      sessionPresentation.finishTurn(sessionId, turnId);
+      removeTurnPlayback(sessionId, turnId);
       scheduleTurnHistoryClosure(sessionId);
       return;
     case 'compact_completed':

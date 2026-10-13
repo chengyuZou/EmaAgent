@@ -52,6 +52,7 @@ function toTurnStats(
   const llmCalls = usageRecorder.forTurn(turn.id).filter(record => record.capability === 'llm');
   return {
     turnId: turn.id,
+    status: turn.status,
     inputTokens: llmCalls.reduce((sum, record) => sum + (record.inputTokens ?? 0), 0),
     outputTokens: llmCalls.reduce((sum, record) => sum + (record.outputTokens ?? 0), 0),
     durationMs: turn.completedAt === null ? null : turn.completedAt - turn.createdAt,

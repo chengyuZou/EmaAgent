@@ -10,7 +10,7 @@ import {
 import { SpeechBubble } from './stage/SpeechBubble.js';
 import { PermissionToastLayer } from './stage/PermissionToastLayer.js';
 import { FloatingDock } from './stage/FloatingDock.js';
-import { mountSystemEvents } from './lib/system-sse.js';
+import { mountSystemEvents } from './lib/events/systemSse.js';
 import { useCharacterStore } from './stores/character.js';
 import { useServerStore } from './stores/server.js';
 import { useSettingsSync } from './stores/settings-sync.js';
@@ -18,10 +18,10 @@ import { useThemeSync } from './stores/theme.js';
 import type { ServerStatus } from './stores/server.js';
 import { charactersApi } from './api/characters.js';
 import { useWindowSuspension } from './hooks/use-window-suspension.js';
-import { tauriBridge } from './lib/tauri-bridge.js';
-import { subscribeSystemEvent } from './lib/system-event-dispatcher.js';
-import { resolveConfiguredEventNotification } from './lib/event-notifications.js';
-import { showToast } from './lib/toast.js';
+import { tauriBridge } from './lib/tauriBridge.js';
+import { subscribeSystemEvent } from './lib/events/systemEventDispatcher.js';
+import { resolveConfiguredEventNotification } from './lib/notifications/eventNotifications.js';
+import { showToast } from './lib/notifications/toast.js';
 import { handleCharacterSystemEvent } from './stores/character.js';
 import { handleSettingsSystemEvent, useSettingsStore } from './stores/settings.js';
 

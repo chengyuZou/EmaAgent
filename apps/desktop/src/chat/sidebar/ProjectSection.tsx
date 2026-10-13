@@ -12,8 +12,8 @@ import {
 } from '@ema-agent/ui';
 import type { Project, SessionListItem } from '../../api/sessions.js';
 import { projectsApi } from '../../api/workspaces.js';
-import { tauriBridge } from '../../lib/tauri-bridge.js';
-import { runWithToast } from '../../lib/toast.js';
+import { tauriBridge } from '../../lib/tauriBridge.js';
+import { runWithToast } from '../../lib/notifications/toast.js';
 import type { SessionActivity } from '../../stores/sessionActivity.js';
 import { useSessionStore } from '../../stores/session.js';
 import { useMainNavigationStore } from '../../layout/navigation.js';

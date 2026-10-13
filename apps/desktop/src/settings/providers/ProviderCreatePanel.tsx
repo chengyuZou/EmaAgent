@@ -5,7 +5,7 @@ import { isProtocolForCapability, PROTOCOLS, PROVIDER_LIMITS, type Protocol } fr
 import { PROVIDER_ICON_ID_PATTERN } from '@ema-agent/ui';
 import { useProviderStore } from '../../stores/provider.js';
 import { PROTOCOL_LABELS, type ModelCapability } from '../../api/providers.js';
-import { showToast } from '../../lib/toast.js';
+import { showToast } from '../../lib/notifications/toast.js';
 
 /** 该能力支持的协议词表（每个能力词表至少一档，空 = 调用方传了非法能力）。 */
 function protocolsOf(capability: ModelCapability): Protocol[] {

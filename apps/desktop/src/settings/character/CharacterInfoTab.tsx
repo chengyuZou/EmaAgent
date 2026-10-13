@@ -9,7 +9,8 @@ import {
   type CharacterPatchInput,
 } from '../../api/characters.js';
 import { useCharacterStore } from '../../stores/character.js';
-import { showToast } from '../../lib/toast.js';
+import { tauriBridge } from '../../lib/tauriBridge.js';
+import { showToast } from '../../lib/notifications/toast.js';
 
 export function CharacterInfoTab({ character }: { character: Character }): JSX.Element {
   const activeName = useCharacterStore(s => s.activeName);
@@ -78,7 +79,7 @@ export function CharacterInfoTab({ character }: { character: Character }): JSX.E
   async function handleOpenFolder(): Promise<void> {
     try {
       const { path } = await charactersApi.location(character.name);
-      await charactersApi.openDirectory(path);
+      await tauriBridge.openPath(path);
     } catch (error) {
       showToast(error instanceof Error ? error.message : '打开文件夹失败', { variant: 'danger' });
     }

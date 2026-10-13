@@ -21,8 +21,8 @@ import {
   type Live2DStageReadyInfo,
 } from '@ema-agent/live2d-react';
 import { charactersApi } from '../api/characters.js';
-import { fetchServerObjectUrl } from '../lib/serverFileUrl.js';
-import { tauriBridge } from '../lib/tauri-bridge.js';
+import { fetchServerObjectUrl } from '../api/serverFileUrl.js';
+import { tauriBridge } from '../lib/tauriBridge.js';
 
 export interface CharacterStageProps {
   targetCharacterName: string | null;

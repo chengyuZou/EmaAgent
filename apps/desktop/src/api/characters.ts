@@ -9,7 +9,6 @@ import {
   type RpcClient,
   type RpcJson,
 } from './client.js';
-import { tauriBridge } from '../lib/tauri-bridge.js';
 
 // ── 类型（全部从路由契约推导） ────────────────────────────────────────────────
 
@@ -304,14 +303,4 @@ export const charactersApi = {
     );
   },
 
-  async openDirectory(absolutePath: string): Promise<void> {
-    await tauriBridge.openPath(absolutePath);
-  },
-
-  async revealFile(absolutePath: string): Promise<void> {
-    await tauriBridge.revealInFolder(absolutePath);
-  },
-
-  /** 供调用方拿到 server 原始响应的入口。 */
-  requestRaw: serverClient.requestRaw.bind(serverClient),
 };

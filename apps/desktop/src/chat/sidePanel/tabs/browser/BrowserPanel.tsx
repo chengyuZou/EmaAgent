@@ -1,7 +1,7 @@
 // 原生子 WebView 不随 CSS 容器隐藏. 切换 View 和隐藏窗口时必须单独同步显隐.
 import { useCallback, useEffect, useRef, useState, type FormEvent, type JSX } from 'react';
 
-import { tauriBridge, type BrowserBounds } from '../../../../lib/tauri-bridge.js';
+import { tauriBridge, type BrowserBounds } from '../../../../lib/tauriBridge.js';
 import { useSessionPanelStore } from '../../../../stores/sessionPanel.js';
 import { MainView, useMainNavigationStore } from '../../../../layout/navigation.js';
 import { useWindowSuspension } from '../../../../hooks/use-window-suspension.js';

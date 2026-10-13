@@ -1,16 +1,16 @@
 // 管理全应用唯一的系统 SSE 连接，并把事件按顺序广播给各个窗口。
 
-import { serverClient } from '../api/client.js';
+import { serverClient } from '../../api/client.js';
 import type { AppEvent } from '@ema-agent/server/application/appEvents.js';
-import { dispatchSystemEvent } from './system-event-dispatcher.js';
+import { dispatchSystemEvent } from './systemEventDispatcher.js';
 import {
   getSseOutcomeError,
-  sseConsumer,
+  startSseConsumer,
   type SseConnectionOutcome,
   type SseHandle,
-} from './sse-consumer.js';
-import { tauriBridge } from './tauri-bridge.js';
-import { showToast } from './toast.js';
+} from './sseConsumer.js';
+import { tauriBridge } from '../tauriBridge.js';
+import { showToast } from '../notifications/toast.js';
 
 const EOF_RECONNECT_DELAY_MS = 3_000;
 const ERROR_RECONNECT_DELAY_MS = 5_000;
@@ -112,13 +112,12 @@ function publishAcrossWindows(event: AppEvent): void {
 
 const controller = createSystemSseController({
   connect(onEvent) {
-    return sseConsumer.start({
+    return startSseConsumer({
       openResponse: (signal) => serverClient.requestRaw('/api/system/events', {
         signal,
         headers: { Accept: 'text/event-stream' },
       }),
       onEvent,
-      onHeartbeat: () => {},
     });
   },
   publish: publishAcrossWindows,

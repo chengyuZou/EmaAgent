@@ -11,6 +11,7 @@ import { Tooltip, TooltipProvider } from '@ema-agent/ui';
 
 import type { TurnIndexPage } from '../../api/sessions.js';
 import { EMPTY_SESSION_HISTORY, useSessionHistoryStore } from '../../stores/sessionHistory.js';
+import { usePlaybackStore } from '../speech/turnSpeechPlayback.js';
 
 type TurnIndexItem = TurnIndexPage['items'][number];
 
@@ -55,6 +56,8 @@ function turnRailMarkVisual(index: number, hoveredIndex: number | null, isCurren
 }
 
 export function TurnNavigationRail({ sessionId, visibleTurnIds, onSelectTurn }: TurnRailProps): JSX.Element | null {
+  const audioTurnId = usePlaybackStore(state => state.playbackStatus && state.queue[0]?.sessionId === sessionId
+    ? state.queue[0].turnId : null);
   const [railElement, setRailElement] = useState<HTMLDivElement | null>(null);
   const wheelDeltaRef = useRef(0);
   const centeredViewRef = useRef<{ turnId: string; capacity: number } | null>(null);
@@ -161,7 +164,7 @@ export function TurnNavigationRail({ sessionId, visibleTurnIds, onSelectTurn }: 
               sideOffset={8}
               delayDuration={120}
               variant="card"
-              content={<TurnRailPreview item={item} />}
+              content={<TurnRailPreview item={item} playing={item.turnId === audioTurnId} />}
             >
               <button
                 type="button"
@@ -176,6 +179,7 @@ export function TurnNavigationRail({ sessionId, visibleTurnIds, onSelectTurn }: 
                 <span
                   className="ema-turn-rail-mark block h-px w-9 rounded-full"
                   data-emphasis={visual.emphasis}
+                  data-playing={item.turnId === audioTurnId || undefined}
                   style={style}
                 />
               </button>
@@ -197,12 +201,13 @@ export function centeredTurnOffset(
   return Math.min(centered, maximum);
 }
 
-function TurnRailPreview({ item }: { item: TurnIndexItem }): JSX.Element {
+function TurnRailPreview({ item, playing }: { item: TurnIndexItem; playing: boolean }): JSX.Element {
   return (
     <div className="w-64 max-w-full">
       <div className="mb-1 flex items-center gap-2 text-[11px] text-[var(--ema-text-tertiary)]">
         <span>{formatTurnTime(item.createdAt)}</span>
         <span>{formatTurnStatus(item.status)}</span>
+        {playing && <span className="text-[var(--ema-primary)]">正在播放</span>}
       </div>
       <div className="line-clamp-3 text-xs leading-5 text-[var(--ema-text-primary)]">
         {item.preview || '这一轮没有可显示的文本摘要'}

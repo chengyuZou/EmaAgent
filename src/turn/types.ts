@@ -19,7 +19,10 @@ export interface Turn {
   readonly modelId: string | null;
   /** 选择provider-model 的协议 */
   readonly protocol: string | null;
-  /** Prepare 阶段冻结的 Character.name. 与可修改的 displayName 不同. */
+  /**
+   * 本轮参与对话的角色的稳定 Character.name, 在 Prepare 完成时记录.
+   * 后续切换角色或选择其他角色朗读不改变它; 尚未记录角色身份时为 null.
+   */
   readonly characterName: string | null;
   readonly iterations: number;
   readonly createdAt: number;

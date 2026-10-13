@@ -9,8 +9,8 @@ import {
 import { ServerApiError } from '../../api/client.js';
 import { charactersApi, type Character } from '../../api/characters.js';
 import { useCharacterStore } from '../../stores/character.js';
-import { tauriBridge } from '../../lib/tauri-bridge.js';
-import { showToast } from '../../lib/toast.js';
+import { tauriBridge } from '../../lib/tauriBridge.js';
+import { showToast } from '../../lib/notifications/toast.js';
 import { MainView, useMainNavigationStore } from '../../layout/navigation.js';
 
 type VoiceSample = Character['voiceSamples'][number];
@@ -185,7 +185,7 @@ function VoiceRow({ character, sample, index }: {
       icon: 'i-solar:folder-open-bold-duotone',
       onSelect: () => {
         void charactersApi.voiceLocation(character.name, sample.name)
-          .then(({ path }) => charactersApi.revealFile(path))
+          .then(({ path }) => tauriBridge.revealInFolder(path))
           .catch(() => showToast('打开文件夹失败', { variant: 'danger' }));
       },
     },

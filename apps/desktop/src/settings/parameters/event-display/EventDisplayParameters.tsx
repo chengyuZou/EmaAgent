@@ -4,7 +4,7 @@ import { useEffect, useState, type JSX } from 'react';
 import { Badge, Button, Callout, Input, Select, Spinner, Switch } from '@ema-agent/ui';
 import { useSettingsStore, type EventDisplayConfig } from '../../../stores/settings.js';
 import { settingsApi, type SettingApply } from '../../../api/settings.js';
-import { showToast } from '../../../lib/toast.js';
+import { showToast } from '../../../lib/notifications/toast.js';
 import {
   SaveStateIndicator,
   SettingApplyBadge,

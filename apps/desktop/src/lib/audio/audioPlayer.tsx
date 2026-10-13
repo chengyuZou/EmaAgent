@@ -189,7 +189,7 @@ function PlayableAudio({ src, title, className, active = true }: {
           <Tooltip key="stop" content="停止并回到开头">
             <IconButton
               label="停止音频"
-              icon="i-lucide:square"
+              icon="i-ema:stop"
               variant="ghost"
               size="sm"
               onClick={stop}

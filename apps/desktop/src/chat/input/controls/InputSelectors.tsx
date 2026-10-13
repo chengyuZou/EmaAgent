@@ -4,7 +4,7 @@ import type { PermissionMode } from '@ema-agent/permission';
 import { ServerApiError } from '../../../api/client.js';
 import type { ChatDraft } from '../../../stores/chatDraft.js';
 import { useSessionStore } from '../../../stores/session.js';
-import { showToast } from '../../../lib/toast.js';
+import { showToast } from '../../../lib/notifications/toast.js';
 
 const PERMISSION_MODE_LABELS: Record<PermissionMode, string> = {
   default: '默认权限',

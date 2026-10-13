@@ -11,14 +11,14 @@
 // 不改变当前 TTS/Live2D 归属 Session。
 import { useEffect, useState } from 'react';
 import { Button } from '@ema-agent/ui';
-import { tauriBridge } from '../lib/tauri-bridge.js';
+import { tauriBridge } from '../lib/tauriBridge.js';
 import { SessionRequestError, sessionWebSocket } from '../api/sessionWebSocket.js';
 import type { PermissionRequiredEvent, PermissionResponse } from '@ema-agent/permission';
 import type { AskUserRequiredEvent } from '@ema-agent/tools';
 import type { WallpaperSettings } from '@ema-agent/server/settings/wallpaperSetting.js';
 import { DEFAULT_WALLPAPER_SETTINGS, WALLPAPER_SETTING_KEY } from '@ema-agent/server/settings/wallpaperCatalog.js';
 import { settingsApi } from '../api/settings.js';
-import { subscribeSystemEvent } from '../lib/system-event-dispatcher.js';
+import { subscribeSystemEvent } from '../lib/events/systemEventDispatcher.js';
 
 /** decision:push 的载荷来自 Session 交互出口, 不依赖父 Turn 存活. */
 type DecisionPushEvent = PermissionRequiredEvent | AskUserRequiredEvent;

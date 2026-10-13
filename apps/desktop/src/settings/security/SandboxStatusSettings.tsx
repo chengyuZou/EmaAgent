@@ -4,7 +4,7 @@ import { useEffect, useState, type JSX } from 'react';
 import { Button, Callout, Select, Spinner } from '@ema-agent/ui';
 import { settingsApi } from '../../api/settings.js';
 import { systemApi, type SandboxStatus } from '../../api/system.js';
-import { showToast } from '../../lib/toast.js';
+import { showToast } from '../../lib/notifications/toast.js';
 import { SettingsSection } from '../shared/SettingItem.js';
 
 type LoadState =

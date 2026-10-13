@@ -1,6 +1,6 @@
 // 需要鉴权的服务端图片:<img> 直链会被 401,先 fetch 成 blob 再转 objectURL
 import { useEffect, useState, type JSX } from 'react';
-import { fetchServerObjectUrl } from '../lib/serverFileUrl.js';
+import { fetchServerObjectUrl } from '../../api/serverFileUrl.js';
 
 export function ServerImage({
   path, alt, className, contentUpdatedAt, onLoad, onMissing,

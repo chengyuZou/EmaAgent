@@ -78,12 +78,14 @@ describe('Tooltip', () => {
 
   it('keeps dropdown keyboard opening, selection and focus return when the trigger has a tooltip', async () => {
     const select = vi.fn();
+    const onOpenChange = vi.fn();
     act(() => root.render(
       <TooltipProvider>
         <DropdownMenu
           trigger={<button type="button">选择模型</button>}
           triggerTooltip="当前模型的完整名称"
           items={[{ kind: 'item', label: '测试模型', onSelect: select }]}
+          onOpenChange={onOpenChange}
         />
       </TooltipProvider>,
     ));
@@ -96,12 +98,14 @@ describe('Tooltip', () => {
     });
     const item = document.querySelector<HTMLElement>('[role="menuitem"]')!;
     expect(item).not.toBeNull();
+    expect(onOpenChange).toHaveBeenLastCalledWith(true);
     await act(async () => {
       item.click();
       await new Promise(resolve => setTimeout(resolve, 0));
     });
     expect(select).toHaveBeenCalledTimes(1);
     expect(document.querySelector('[role="menu"]')).toBeNull();
+    expect(onOpenChange).toHaveBeenLastCalledWith(false);
     // FocusScope 在浮层卸载后用计时器恢复焦点, 必须先让 React 完成卸载.
     await act(async () => new Promise(resolve => setTimeout(resolve, 0)));
     expect(document.activeElement).toBe(trigger);

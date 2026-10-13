@@ -63,8 +63,8 @@ export interface ToolCallViewProps {
   readonly interrupted?: boolean;
   readonly status: ToolDisplayStatus;
   readonly running: boolean;
-  /** 打开后台进程面板；导航动作由外壳提供，Tool UI 不感知 Dock 实现。 */
-  openBackgroundProcesses(): void;
+  /** 只读记录没有后台进程导航, 省略时 Tool UI 不显示入口. */
+  openBackgroundProcesses?(): void;
 }
 
 export interface ToolUI {

@@ -7,8 +7,8 @@ import type { SessionListItem } from '../../../api/sessions.js';
 import type { ChatDraft } from '../../../stores/chatDraft.js';
 import { useSessionStore } from '../../../stores/session.js';
 import { useTurnStore } from '../../../stores/turn.js';
-import { showToast } from '../../../lib/toast.js';
-import { subscribeSystemEvent } from '../../../lib/system-event-dispatcher.js';
+import { showToast } from '../../../lib/notifications/toast.js';
+import { subscribeSystemEvent } from '../../../lib/events/systemEventDispatcher.js';
 
 export type ModelCatalog =
   | { readonly status: 'loading'; readonly models: AvailableModel[] }

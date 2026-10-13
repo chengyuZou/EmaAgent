@@ -12,8 +12,8 @@ import {
   type CharacterCreateInput,
 } from '../../api/characters.js';
 import { useCharacterStore } from '../../stores/character.js';
-import { ServerImage } from '../../lib/ServerImage.js';
-import { showToast } from '../../lib/toast.js';
+import { ServerImage } from '../../lib/images/serverImage.js';
+import { showToast } from '../../lib/notifications/toast.js';
 import { PageHeader } from '../shared/PageHeader.js';
 
 export function CharacterGridPage({ onOpen }: { onOpen(name: string): void }): JSX.Element {

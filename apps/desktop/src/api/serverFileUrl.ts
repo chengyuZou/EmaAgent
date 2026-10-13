@@ -1,7 +1,6 @@
-// 服务端文件(图片/音频/封面)的统一读取:/api 路由要带共享密钥头,<img>/<audio> 直链会 401,
-// 所以先 fetch 成 blob 再转 objectURL;调用方负责 revoke。
-import { serverClient } from '../api/client.js';
+import { serverClient } from './client.js';
 
+/** 读取受认证保护的文件并创建 Object URL; 调用方在不再使用时负责 revoke. */
 export async function fetchServerObjectUrl(apiPath: string): Promise<string | null> {
   try {
     const response = await serverClient.requestRaw(apiPath);

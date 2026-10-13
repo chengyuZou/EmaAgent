@@ -4,7 +4,7 @@ import {
 } from '@ema-agent/ui';
 import { useMcpStore } from '../../stores/mcp.js';
 import { mcpApi, type McpServerDetail, type McpServerSummary } from '../../api/mcp.js';
-import { showToast } from '../../lib/toast.js';
+import { showToast } from '../../lib/notifications/toast.js';
 import type { McpConnectionStatus } from '@ema-agent/mcp';
 
 const STATUS_BADGE: Record<McpConnectionStatus, { variant: 'success' | 'warn' | 'danger' | 'neutral'; label: string }> = {

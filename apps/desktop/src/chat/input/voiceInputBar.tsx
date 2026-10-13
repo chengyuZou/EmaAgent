@@ -189,7 +189,7 @@ export const VoiceInputBar = memo(function VoiceInputBar({
         <IconButton
           size="sm"
           variant="ghost"
-          iconNode={<span className="ema-voice-stop-symbol" />}
+          icon="i-ema:stop"
           label="停止录音并转写"
           className="ema-voice-action ema-voice-stop"
           disabled={!recording}

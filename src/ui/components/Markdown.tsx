@@ -17,7 +17,7 @@ import rehypeRaw from 'rehype-raw';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import rehypeHighlight from 'rehype-highlight';
 import { MermaidBlock } from './mermaidBlock.js';
-import { Tooltip } from './Tooltip.js';
+import { MarkdownLink } from './markdownLink.js';
 
 declare module 'unified' {
   interface Data {
@@ -152,28 +152,8 @@ const markdownComponents: Components = {
     }
     return <pre {...props}>{children}</pre>;
   },
-  a({ node: _node, href, title, children, ...props }) {
-    const external = typeof href === 'string' && /^https?:\/\//i.test(href);
-    return (
-      <Tooltip
-        variant="card"
-        content={href && (
-          <>
-            {title && <div className="mb-1 font-medium">{title}</div>}
-            <div>{href}</div>
-          </>
-        )}
-      >
-        <a
-          {...props}
-          href={href}
-          target={external ? '_blank' : undefined}
-          rel={external ? 'noopener noreferrer' : undefined}
-        >
-          {children}
-        </a>
-      </Tooltip>
-    );
+  a({ node: _node, ...props }) {
+    return <MarkdownLink {...props} />;
   },
 };
 

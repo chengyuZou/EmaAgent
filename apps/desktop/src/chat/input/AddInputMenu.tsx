@@ -10,7 +10,7 @@ import {
 import { ConfirmDialog, Popover, PromptDialog } from '@ema-agent/ui';
 import { commandsApi, type CommandDescriptor } from '../../api/commands.js';
 import { skillsApi, type SkillListItem } from '../../api/skills.js';
-import { subscribeSystemEvent } from '../../lib/system-event-dispatcher.js';
+import { subscribeSystemEvent } from '../../lib/events/systemEventDispatcher.js';
 
 import { ServerApiError } from '../../api/client.js';
 import type { SessionListItem } from '../../api/sessions.js';
@@ -20,7 +20,7 @@ import { useSessionStore } from '../../stores/session.js';
 import { useSessionActivityStore } from '../../stores/sessionActivity.js';
 import { ensureSessionSubscription } from '../session/sessionSubscriptions.js';
 import { removeSessionFromChat } from '../session/removeSessionFromChat.js';
-import { showToast } from '../../lib/toast.js';
+import { showToast } from '../../lib/notifications/toast.js';
 
 interface LocalCommandDescriptor {
   readonly name: string;

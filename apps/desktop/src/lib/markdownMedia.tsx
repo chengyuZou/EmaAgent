@@ -1,5 +1,5 @@
 import { createContext, useContext, useMemo, type ComponentProps, type JSX, type ReactNode } from 'react';
-import { MarkdownRendererProvider, Tooltip } from '@ema-agent/ui';
+import { MarkdownLink, MarkdownRendererProvider } from '@ema-agent/ui';
 import { AudioPlayer, isAudioSource } from './audio/audioPlayer.js';
 import { MarkdownImage } from './images/markdownImage.js';
 
@@ -108,34 +108,22 @@ const mediaComponents: ComponentProps<typeof MarkdownRendererProvider>['componen
         return <>{linkText}</>;
       }
       const path = href ? localFilePath(href, files?.directory) : undefined;
-      const external = href !== undefined && /^https?:\/\//i.test(href);
       return (
-        <Tooltip
-          variant="card"
-          content={href && (
-            <>
-              {title && <div className="mb-1 font-medium">{title}</div>}
-              <div>{href}</div>
-            </>
-          )}
+        <MarkdownLink
+          {...props}
+          href={href}
+          title={title}
+          onClick={event => {
+            if (!path || !openFile) {
+              return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            openFile(path);
+          }}
         >
-          <a
-            {...props}
-            href={href}
-            target={external ? '_blank' : undefined}
-            rel={external ? 'noopener noreferrer' : undefined}
-            onClick={event => {
-              if (!path || !openFile) {
-                return;
-              }
-              event.preventDefault();
-              event.stopPropagation();
-              openFile(path);
-            }}
-          >
-            {linkText}
-          </a>
-        </Tooltip>
+          {linkText}
+        </MarkdownLink>
       );
     },
 };

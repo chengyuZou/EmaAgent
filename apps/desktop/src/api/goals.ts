@@ -12,8 +12,8 @@ export type GoalEditInput = InferRequestType<RpcClient['api']['goals'][':goalId'
 export type GoalIdentityInput = InferRequestType<RpcClient['api']['goals'][':goalId']['$delete']>['json'];
 
 export const goalsApi = {
-  list(sessionId: string): Promise<GoalListResult> {
-    return readRpcJson(rpcClient.api.goals.$get({ query: { sessionId } }));
+  list(sessionId: string, signal?: AbortSignal): Promise<GoalListResult> {
+    return readRpcJson(rpcClient.api.goals.$get({ query: { sessionId } }, { init: { signal } }));
   },
 
   current(sessionId: string, signal?: AbortSignal): Promise<GoalCurrentResult> {
@@ -23,8 +23,11 @@ export const goalsApi = {
     ));
   },
 
-  get(sessionId: string, goalId: string): Promise<GoalDetailResult> {
-    return readRpcJson(rpcClient.api.goals[':goalId'].$get({ param: { goalId }, query: { sessionId } }));
+  get(sessionId: string, goalId: string, signal?: AbortSignal): Promise<GoalDetailResult> {
+    return readRpcJson(rpcClient.api.goals[':goalId'].$get(
+      { param: { goalId }, query: { sessionId } },
+      { init: { signal } },
+    ));
   },
 
   create(input: GoalCreateInput): Promise<GoalDetailResult> {

@@ -7,8 +7,8 @@ import { SessionRequestError } from '../../../api/sessionWebSocket.js';
 import { useMainNavigationStore } from '../../../layout/navigation.js';
 import { useSessionStore } from '../../../stores/session.js';
 import { useSessionPanelStore } from '../../../stores/sessionPanel.js';
-import { subscribeSystemEvent } from '../../../lib/system-event-dispatcher.js';
-import { showToast } from '../../../lib/toast.js';
+import { subscribeSystemEvent } from '../../../lib/events/systemEventDispatcher.js';
+import { showToast } from '../../../lib/notifications/toast.js';
 
 export function useInputGoal(viewedId: string | null, permissionMode: PermissionMode, serverReady: boolean) {
   const [goalRead, setGoalRead] = useState<{

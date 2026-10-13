@@ -18,6 +18,8 @@ raw HTML 先经 `rehype-sanitize` 清洗, 然后执行 KaTeX 和代码高亮. Me
 
 链接保留原来的 `href` 与外链行为, 聚焦或悬停时通过 `Tooltip` 显示完整地址. 原文提供的链接说明也显示在提示中, 不使用原生 `title` 提示框. 使用 Markdown 的应用根部需要挂载 `TooltipProvider`.
 
+默认链接与桌面自定义链接共用 `MarkdownLink`. 它只负责地址提示和外链属性, 接受原生链接参数; 桌面在 `onClick` 中处理本地文件打开. 它不读取文件, 不决定哪些 URL 可以出现在 Markdown 中, URL 仍由 Markdown 的清洗规则和 Provider 的 `urlTransform` 判断.
+
 桌面通过 `MarkdownRendererProvider` 提供图片点击、普通音频卡片和本地文件打开操作. Provider 传入的 components 只覆盖对应标签, urlTransform 必须拒绝脚本等不允许的协议; 其他 HTML 清洗规则保持不变. UI 包不读取本机文件, 也不导入桌面的 Viewer、AudioPlayer 或文件侧栏. 未设置 Provider 的 Markdown 保持默认显示方式.
 
 ## 悬停提示

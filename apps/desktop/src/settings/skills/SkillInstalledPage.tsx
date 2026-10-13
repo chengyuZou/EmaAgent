@@ -6,7 +6,7 @@ import {
 } from '@ema-agent/ui';
 import { useSkillStore } from '../../stores/skill.js';
 import { skillsApi, type SkillListItem } from '../../api/skills.js';
-import { showToast } from '../../lib/toast.js';
+import { showToast } from '../../lib/notifications/toast.js';
 import { Markdown } from '@ema-agent/ui';
 import { PageHeader } from '../shared/PageHeader.js';
 

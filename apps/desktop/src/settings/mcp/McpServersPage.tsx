@@ -4,7 +4,7 @@ import {
 } from '@ema-agent/ui';
 import { useMcpStore } from '../../stores/mcp.js';
 import type { McpServerSummary } from '../../api/mcp.js';
-import { showToast } from '../../lib/toast.js';
+import { showToast } from '../../lib/notifications/toast.js';
 import { ServerRow } from './McpServerRow.js';
 import { McpImportDialog, McpServerFormDialog } from './McpServerDialogs.js';
 import { PageHeader } from '../shared/PageHeader.js';

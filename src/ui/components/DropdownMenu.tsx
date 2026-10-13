@@ -22,6 +22,8 @@ export interface DropdownMenuProps {
   triggerTooltip?: ReactNode;
   /** 传函数时只在菜单真正展开后生成条目, 避免每次输入文字都重建模型等列表. */
   items:     MenuItem[] | (() => MenuItem[]);
+  /** 通知调用方菜单是否展开, 例如关闭同一行的只读详情提示. */
+  onOpenChange?: (open: boolean) => void;
   side?:     'top' | 'right' | 'bottom' | 'left';
   align?:    'start' | 'center' | 'end';
   widthClass?: string;
@@ -36,6 +38,7 @@ export function DropdownMenu(props: DropdownMenuProps): React.JSX.Element {
     trigger,
     triggerTooltip,
     items,
+    onOpenChange,
     side = 'bottom',
     align = 'start',
     widthClass = 'min-w-48',
@@ -44,7 +47,12 @@ export function DropdownMenu(props: DropdownMenuProps): React.JSX.Element {
   } = props;
   const [openSubId, setOpenSubId] = useState<string | null>(null);
   return (
-    <RadixDropdown.Root onOpenChange={(open) => { if (!open) setOpenSubId(null); }}>
+    <RadixDropdown.Root
+      onOpenChange={open => {
+        if (!open) setOpenSubId(null);
+        onOpenChange?.(open);
+      }}
+    >
       <Tooltip content={triggerTooltip} side={side}>
         <RadixDropdown.Trigger asChild>{trigger}</RadixDropdown.Trigger>
       </Tooltip>

@@ -1,6 +1,6 @@
 // Server 可用状态：端口发现 + 健康轮询。
 import { create } from 'zustand';
-import { tauriBridge } from '../lib/tauri-bridge.js';
+import { tauriBridge } from '../lib/tauriBridge.js';
 import { systemApi } from '../api/system.js';
 
 // ── 类型 ──────────────────────────────────────────────────────────────────────

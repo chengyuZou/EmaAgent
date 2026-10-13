@@ -7,8 +7,8 @@ import { useTurnStore } from '../../stores/turn.js';
 import { useSessionActivityStore } from '../../stores/sessionActivity.js';
 import { useSessionPanelStore } from '../../stores/sessionPanel.js';
 import { useTaskStore } from '../../stores/task.js';
-import { sessionPresentation } from '../presentation/sessionPresentation.js';
 import { removeSessionPlayback } from '../speech/turnSpeechPlayback.js';
+import { removeSessionSpeechGeneration } from '../speech/turnSpeechGeneration.js';
 import { removeSessionSubscription } from './sessionSubscriptions.js';
 
 /**
@@ -19,7 +19,7 @@ import { removeSessionSubscription } from './sessionSubscriptions.js';
 export function removeSessionFromChat(sessionId: string): void {
   removeSessionSubscription(sessionId);
   removeSessionPlayback(sessionId);
-  sessionPresentation.cancelSession(sessionId);
+  removeSessionSpeechGeneration(sessionId);
   useSessionActivityStore.getState().evictSession(sessionId);
   useTurnStore.getState().evictSession(sessionId);
   useSessionHistoryStore.getState().evictSession(sessionId);
