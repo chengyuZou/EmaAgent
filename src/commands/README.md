@@ -22,7 +22,7 @@ listCommandDescriptors(): readonly CommandDescriptor[]
 ```text
 生成 compactId
 → SessionRunningRegistry.register(sessionId, { kind: 'compact', compactId })   // 已有根工作即 SessionBusyError
-→ loadHistory → deriveLlmHistory（generatedBy 解析与根 Turn 共用 createGenerationTargetResolver）
+→ loadHistory → projectMessages（模型来源与对话角色共用 createTurnHistoryResolver）
 → 手动下限闸：历史估算 < 窗口 × settings.manualMinRatio（默认 15%）拒绝 compact_below_threshold
   ——只量可压缩历史本身；高于它用户随时可主动整理，不等 85% 自动触发线
 → staticSystemPrompt + getDynamicSystemPrompt（与下一根 Turn 同事实装配）→ buildPromptMessages → systemMessages
@@ -37,6 +37,7 @@ finally 释放坑位
   `cancel_compact { compactId }`。Registry 只取消身份仍匹配的工作，迟到的按钮不会停掉同一
   Session 后来开始的工作。自动压缩活在根 Turn 内部，与 Turn 共用取消信号，不另建运行记录。
 - 模型解析与下一根 Turn 同规则：`Session.providerId/modelId`，未配置即 `provider/not_configured`；缓存共享是向前的（下一 Turn 读压缩后历史）。
+- 手动压缩使用所属 Turn 保存的角色名字, 给有正文的普通 Assistant 消息标明发言人, 包括当前角色. 每次操作建立一份临时 Map, 与模型来源共用查询结果; 不为压缩创建 Turn, 不查角色是否仍存在或有没有参考音频. 摘要按事实保留必要的发言归属, 不改写原消息.
 - 摘要请求由同字节的 systemMessages, 结构化历史与尾部摘要指令组成. `tools` 恒空, 因为根 ToolPool 中的子代理, scratchpad 与 Narrative 需要真实 Turn 身份, 手动压缩不能伪造根 Turn. 它与根 Turn 使用相同的静态产品规则, 工作区, Memory, Skill, MCP, 当前角色与权限说明; 能力指引因工具集合不同而不同, 不宣称与根 Turn 共享历史边界的缓存断点. 手动路径直接读取 Session 的模型和推理强度.
 - `micro:false`：Micro 的占位替换从不落库（持久化的只有 Macro 摘要+游标），命令路径只要纯粹的 Macro 摘要。
 - 摘要落库（`appendHistorySummary`）是唯一提交点；手动压缩明确写 `turnId=null`。abort / 失败即历史原样，abort 返回 `{ status: 'cancelled' }` 而非错误。

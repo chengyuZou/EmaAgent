@@ -4,10 +4,11 @@ Context 把已保存的 Message 变成模型消息, Session 与子代理共用�
 
 ## 从持久化消息得到模型消息
 
-`projectMessages(messages, resolveGenerationSource, attachmentOptions)` 按传入顺序处理 Message 或其业务扩展, 返回 `ProjectedMessage[]`. 每项都有投影后的 `message` 和原来的 `messageId`. 有些消息或内容块会被丢掉, 因此不能用数组下标反查原消息; 需要对应 SQL 消息时用 `messageId`. 来源回调接收原业务消息: 根 Turn 从该消息所属 Turn 解析, 子代理从 Run 或 fork 保存的父来源解析.
+`projectMessages(messages, resolveGenerationSource, attachmentOptions, resolveCharacter?)` 按传入顺序处理 Message 或其业务扩展, 返回 `ProjectedMessage[]`. 每项都有投影后的 `message` 和原来的 `messageId`. 有些消息或内容块会被丢掉, 因此不能用数组下标反查原消息; 需要对应 SQL 消息时用 `messageId`. 来源回调接收原业务消息: 根 Turn 从该消息所属 Turn 解析, 子代理从 Run 或 fork 保存的父来源解析.
 
 - 空内容和中断的 Assistant 消息不进入模型输入。`tool_use` 与 `tool_result` 必须按 ID 完整配对，且调用在结果之前，才会被保留。
 - Assistant 的推理块会保留；若能查到这条消息当时使用的模型，也会附上生成来源。换模型后能否重放推理块，由 LLM 的协议代码判断。
+- 可选的 `resolveCharacter` 只接收有可见正文的 `role='assistant', kind='normal'` 消息. 返回名字时, 在投影后的第一个文字块前加 `角色全名:\n`, 不改变原消息、推理块、工具块或消息 ID. 根 Turn 只为不同角色返回名字; 子代理不传这个回调. 手动压缩可为所有已知角色返回名字, 让摘要保留发言归属.
 - 图片在模型支持时读取原文件；不支持时可使用传入的 Vision 描述能力，没有描述能力就转成文字提示。文件引用、粘贴文本和 Skill 引用也会转成模型能读的内容。附件处理可能读文件或等待 Vision，所以这个函数是异步的。
 
 这个函数只处理调用方交给它的消息；它不查 Session，也不为 fork 子代理补假的工具结果。

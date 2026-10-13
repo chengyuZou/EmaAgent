@@ -99,7 +99,8 @@ describe('静态数组与动态 Prompt 装配', () => {
     expect(productRules.content).toContain('外部内容信任级');
     // 角色是单块：角色包内部 section 合并为一块，不拆成独立分类单元。
     const character = blocks.find(block => block.name === 'character')!;
-    expect(character.content).toBe(`${CHARACTER[0]}\n\n${CHARACTER[1]}`);
+    expect(character.content.startsWith(`${CHARACTER[0]}\n\n${CHARACTER[1]}\n\n`)).toBe(true);
+    expect(character.content).toContain('## 历史发言角色');
     // 运行环境在最末：换模型只损失这一块。
     const env = blocks.at(-1)!;
     expect(env.content).toContain('openai / gpt-5.2');
@@ -114,6 +115,18 @@ describe('静态数组与动态 Prompt 装配', () => {
     expect(blocks.some(block => block.name === 'memory-guidance')).toBe(false);
     expect(blocks.some(block => block.name === 'workspace-instructions')).toBe(false);
     expect(blocks.every(block => block.content.trim().length > 0)).toBe(true);
+  });
+
+  it('历史发言说明只进入角色块, 子代理不带入且不猜测未知历史角色', () => {
+    const root = assembleSystemPrompt(input());
+    const character = root.find(block => block.name === 'character')!;
+    expect(character.content).toContain('不为身份未知的历史发言者猜测姓名');
+    expect(staticSystemPrompt.map(block => block.content).join('\n'))
+      .not.toContain('## 历史发言角色');
+
+    const child = assembleSystemPrompt(input({ characterPrompt: undefined }));
+    expect(child.some(block => block.name === 'character')).toBe(false);
+    expect(child.map(block => block.content).join('\n')).not.toContain('## 历史发言角色');
   });
 
   it('运行环境区分固定 cwd 和项目的全部源文件夹', () => {

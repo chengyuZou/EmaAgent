@@ -18,6 +18,14 @@ Turn 管一次根 Agent 对话：创建运行记录，准备模型和工具，�
 文件状态由 Server 按 Session 持有, `prepareTurnTools` 只取得同一 `FileStateCache` 并注入根工具与子代理工具.
 Turn 收尾或中断不释放它, Compact 不修改它; 删除 Session 或关闭 Server 才释放.
 
+## 历史发言角色
+
+根 Turn 在准备开始时同步读取角色名字和人设段落, 本轮模型请求始终使用这份人设. 准备完成后把名字写入 `Turn.characterName`, 表示当时参与对话的角色, 不表示后续音频的朗读角色. 运行期间切换角色影响下一根 Turn, 不改变已开始这轮的名字或人设.
+
+`createTurnHistoryResolver(turns)` 提供 `resolveGenerationSource(turnId)` 和 `resolveCharacter(turnId)`. 两项共用一个 Map, 同一 Turn 只查一次, 查不到也不反复查询. 根 Turn 按 `loadHistory` 实际交付的消息按需填充, 运行中追加消息复用本轮解析函数, 不在 Session 或全局保存缓存.
+
+构建模型历史时, 只有其他角色的普通 Assistant 正文才加 `角色全名:\n` 前缀. 与本轮角色相同或没有保存角色身份的正文保持原样. 不查询角色是否仍存在或有没有参考音频, 不修改落盘正文, 不给摘要、用户消息、工具块或原生推理块加名字. 子代理不传角色解析回调; fork 的普通父历史从保存的正文复制, 不复制根请求临时添加的名字.
+
 ## 会话自动命名
 
 初始输入和运行中追加的普通用户输入使用同一规则. 调用 `SessionStore.appendMessage` 前, 先检查标题是否为 `DEFAULT_SESSION_TITLE`, 再通过 Server 注入的 `hasNormalUserMessage` 查询当前 Session 是否已有 `role='user', kind='normal'` 的消息. 查询只返回是否存在, 不读取首条正文或比较 Message ID. 判断和消息保存之间不 await.

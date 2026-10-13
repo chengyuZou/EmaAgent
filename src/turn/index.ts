@@ -21,7 +21,7 @@ export type {
   SessionContinuationEvent,
 } from './sessionContinuationQueue.js';
 export { TurnExecutor, TurnReminderScope } from './turn.js';
-export { createGenerationTargetResolver } from './turn.js';
+export { createTurnHistoryResolver } from './turn.js';
 export {
   resolveSkillPool,
 } from './prepare/skillPool.js';

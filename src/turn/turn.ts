@@ -112,8 +112,8 @@ export interface TurnExecutorDeps extends PrepareTurnDeps {
    */
   readonly stage?: StageEngine;
   /**
-   * Prepare 完成时读取当前激活角色的 Character.name, 回填冻结到 Turn 行.
-   * 与 characterPrompt 同一时点读取, 不使用可修改的 displayName.
+   * Prepare 开始时与 characterPrompt 一起读取当前 Character.name.
+   * Prepare 完成后写入 Turn 行, 不使用可修改的 displayName.
    */
   readonly characterName: () => string;
   /**
@@ -266,7 +266,13 @@ export class TurnExecutor {
         readParentMessages: forkParentMessages.read,
       });
 
-      prepared = await prepareTurn(this.deps, {
+      // 人设和名字在同一次同步读取中固定, 准备期间切换角色不混用两份角色信息.
+      const characterName = this.deps.characterName();
+      const characterPrompt = this.deps.characterPrompt();
+      prepared = await prepareTurn({
+        ...this.deps,
+        characterPrompt: () => characterPrompt,
+      }, {
         request: input,
         turnId,
         prepareSubagent,
@@ -278,7 +284,6 @@ export class TurnExecutor {
       this.runningTools.set(turnId, tools);
       signal.throwIfAborted();
       this.deps.turns.setModel(turnId, prepared.providerId, prepared.modelId, prepared.protocol);
-      const characterName = this.deps.characterName();
       this.deps.turns.setCharacterName(turnId, characterName);
       compact = this.deps.createCompact(prepared.callLlm);
 
@@ -411,9 +416,14 @@ export class TurnExecutor {
       // 历史, reminder 与本 Turn 用户输入按 SQL 顺序投影为同一条模型消息链.
       // 后续 Macro 可以覆盖完整有效前缀, 不再被 Turn 边界截断.
       const persisted = this.deps.sessions.loadHistory(sessionId);
-      // 每条 Assistant 历史关联所属 Turn 冻结的调用目标（providerId/modelId/protocol）；
-      // 解析实现与 /compact Command 共用（createGenerationTargetResolver）。
-      const resolveGenerationTarget = createGenerationTargetResolver(this.deps.turns);
+      const historyResolver = createTurnHistoryResolver(this.deps.turns);
+      const resolveCharacter = (message: SessionMessage): string | undefined => {
+        if (!message.turnId) {
+          return undefined;
+        }
+        const historicalCharacter = historyResolver.resolveCharacter(message.turnId);
+        return historicalCharacter !== characterName ? historicalCharacter : undefined;
+      };
       // 附件投影:图片字节在入库时已规范化,这里只按能力分流(直发/描述/标记)。
       const attachmentOptions = {
         supportsImageInput: prepared.supportsImageInput,
@@ -423,8 +433,9 @@ export class TurnExecutor {
       };
       const projected = await projectMessages(
         persisted,
-        message => message.turnId ? resolveGenerationTarget(message.turnId) : undefined,
+        message => message.turnId ? historyResolver.resolveGenerationSource(message.turnId) : undefined,
         attachmentOptions,
+        resolveCharacter,
       );
       const initialMessages: Message[] = projected.map(entry => entry.message);
       // 未落库的模型专用引导也占消息位置, 但没有 SQL ID.
@@ -469,8 +480,9 @@ export class TurnExecutor {
           const appended = await persistNextIterationMessages();
           const projected = await projectMessages(
             appended,
-            message => message.turnId ? resolveGenerationTarget(message.turnId) : undefined,
+            message => message.turnId ? historyResolver.resolveGenerationSource(message.turnId) : undefined,
             attachmentOptions,
+            resolveCharacter,
           );
           pendingMessageIds.push(...projected.map(entry => entry.messageId));
           return projected.map(entry => entry.message);
@@ -806,22 +818,36 @@ function createSessionTitle(blocks: MessageBlocks): string {
 }
 
 /**
- * Assistant 历史按所属 Turn 冻结的调用目标（providerId/modelId/protocol）挂生成来源：
- * 查不到目标（Turn 缺失或 protocol 不在词表）返回 undefined，不伪造，由目标协议
- * Adapter 依据 generatedBy 裁决 thinking 重放。同一 Turn 的多条 Assistant 共享同一行
- * 冻结目标，按 turnId 缓存避免逐条重复 SQL。根 Turn 泵与 /compact Command 共用。
+ * 一次根 Turn 或手动压缩共用一个 Map, 按需读取历史 Turn 的模型来源和对话角色.
+ * 只读 loadHistory 实际交付的 Turn, 后续追加消息复用这份查询结果.
+ * 角色使用当时保存的名字, 不查当前角色目录或参考音频; 缺失身份不猜测.
  */
-export function createGenerationTargetResolver(
+export function createTurnHistoryResolver(
   turns: Pick<TurnStore, 'getTurn'>,
-): (turnId: string) => LlmGenerationSource | undefined {
-  const cache = new Map<string, LlmGenerationSource | undefined>();
-  return (turnId) => {
-    if (cache.has(turnId)) return cache.get(turnId);
-    const turn = turns.getTurn(turnId);
-    const source = turn?.providerId && turn.modelId && turn.protocol && isLlmProtocol(turn.protocol)
-      ? { providerId: turn.providerId, modelId: turn.modelId, protocol: turn.protocol }
-      : undefined;
-    cache.set(turnId, source);
-    return source;
+) {
+  const cache = new Map<string, Turn | undefined>();
+  const readTurn = (turnId: string): Turn | undefined => {
+    if (!cache.has(turnId)) {
+      cache.set(turnId, turns.getTurn(turnId));
+    }
+    return cache.get(turnId);
+  };
+
+  return {
+    resolveGenerationSource(turnId: string): LlmGenerationSource | undefined {
+      const turn = readTurn(turnId);
+      // 没有完整模型身份时不伪造生成来源, 协议代码据此决定能否重放推理块.
+      if (!turn?.providerId || !turn.modelId || !turn.protocol || !isLlmProtocol(turn.protocol)) {
+        return undefined;
+      }
+      return {
+        providerId: turn.providerId,
+        modelId: turn.modelId,
+        protocol: turn.protocol,
+      };
+    },
+    resolveCharacter(turnId: string): string | undefined {
+      return readTurn(turnId)?.characterName ?? undefined;
+    },
   };
 }

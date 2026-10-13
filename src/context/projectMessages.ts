@@ -27,6 +27,8 @@ export async function projectMessages<T extends Message>(
   sessionMessages: readonly T[],
   resolveGenerationSource: (message: T) => LlmGenerationSource | undefined,
   attachmentOptions: BuildAttachmentMessagesOptions,
+  // 仅对有正文的普通 Assistant 调用. 返回名字时标明发言角色, 不改变保存的正文.
+  resolveCharacter?: (message: T) => string | undefined,
 ): Promise<ProjectedMessage[]> {
   const projectedMessages: ProjectedMessage[] = [];
   const pairedToolIds = collectPairedToolIds(sessionMessages);
@@ -64,6 +66,19 @@ export async function projectMessages<T extends Message>(
         .map((block) => buildAssistantBlock(block, pairedToolIds))
         .filter((block): block is AssistantBlock => block !== undefined);
       if (content.length > 0) {
+        if (message.kind === 'normal' && resolveCharacter) {
+          const textIndex = content.findIndex(block => block.type === 'text');
+          const firstText = content[textIndex];
+          if (firstText?.type === 'text') {
+            const characterName = resolveCharacter(message);
+            if (characterName) {
+              content[textIndex] = {
+                ...firstText,
+                text: `${characterName}:\n${firstText.text}`,
+              };
+            }
+          }
+        }
         const generatedBy = resolveGenerationSource(message);
         projectedMessages.push({
           messageId: message.id,
