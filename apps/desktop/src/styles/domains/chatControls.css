@@ -64,6 +64,55 @@
   opacity: 1;
 }
 
+.ema-session-row-title {
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.ema-session-row-actions {
+  display: flex;
+  flex: 0 0 24px;
+  align-items: center;
+  justify-content: center;
+}
+
+.ema-session-details {
+  width: 20rem;
+  max-width: min(20rem, calc(100vw - 24px), var(--radix-tooltip-content-available-width));
+  white-space: normal;
+}
+
+.ema-session-details-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.ema-session-details-title {
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.ema-session-details-time {
+  flex: none;
+  color: var(--ema-text-tertiary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.ema-session-details-project {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  color: var(--ema-text-secondary);
+}
+
 .ema-chat-bar-btn {
   display: flex;
   align-items: center;

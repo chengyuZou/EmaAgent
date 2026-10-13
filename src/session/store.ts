@@ -137,7 +137,7 @@ export class SessionStore {
       });
     })();
     const session = this.requireSession(id);
-    this.onChanged?.({ type: 'session_list_changed' });
+    this.onChanged?.({ type: 'session_list_changed', sessionId: id });
     return session;
   }
 
@@ -231,14 +231,14 @@ export class SessionStore {
 
   setViewedAt(id: string): void {
     this.sessionsRepo.setViewedAt(id, Date.now());
-    this.onChanged?.({ type: 'session_list_changed' });
+    this.onChanged?.({ type: 'session_list_changed', sessionId: id });
   }
 
   updateTitle(id: string, title: string): void {
     const trimmed = title.trim();
     if (!trimmed) return;
     this.sessionsRepo.updateTitle(id, trimmed, Date.now());
-    this.onChanged?.({ type: 'session_list_changed' });
+    this.onChanged?.({ type: 'session_list_changed', sessionId: id });
   }
 
   /** 自动标题的条件写入：用户已改名（或会话已删）时返回 false，调用方不得发变更事件。 */
@@ -246,7 +246,9 @@ export class SessionStore {
     const trimmed = title.trim();
     if (!trimmed) return false;
     const changed = this.sessionsRepo.updateTitleIfDefault(id, trimmed, DEFAULT_SESSION_TITLE, Date.now());
-    if (changed) this.onChanged?.({ type: 'session_list_changed' });
+    if (changed) {
+      this.onChanged?.({ type: 'session_list_changed', sessionId: id });
+    }
     return changed;
   }
 
@@ -288,31 +290,31 @@ export class SessionStore {
       }
       this.sessionsRepo.patch(id, cleaned, Date.now());
     }).immediate();
-    this.onChanged?.({ type: 'session_list_changed' });
+    this.onChanged?.({ type: 'session_list_changed', sessionId: id });
   }
 
   // ── 置顶 ───────────────────────────────────────────────────────────────────
 
   pinSession(id: string): void {
     this.sessionsRepo.pin(id, Date.now());
-    this.onChanged?.({ type: 'session_list_changed' });
+    this.onChanged?.({ type: 'session_list_changed', sessionId: id });
   }
 
   unpinSession(id: string): void {
     this.sessionsRepo.unpin(id);
-    this.onChanged?.({ type: 'session_list_changed' });
+    this.onChanged?.({ type: 'session_list_changed', sessionId: id });
   }
 
   // ── 归档 ───────────────────────────────────────────────────────────────────
 
   archiveSession(id: string): void {
     this.sessionsRepo.archive(id, Date.now());
-    this.onChanged?.({ type: 'session_list_changed' });
+    this.onChanged?.({ type: 'session_list_changed', sessionId: id });
   }
 
   unarchiveSession(id: string): void {
     this.sessionsRepo.unarchive(id);
-    this.onChanged?.({ type: 'session_list_changed' });
+    this.onChanged?.({ type: 'session_list_changed', sessionId: id });
   }
 
   // ── 项目 ────────────────────────────────────────────────────────────────────
@@ -418,13 +420,13 @@ export class SessionStore {
       throw new Error(`project_not_found: ${projectId}`);
     }
     this.sessionsRepo.assignToProject(sessionId, projectId, Date.now());
-    this.onChanged?.({ type: 'session_list_changed' });
+    this.onChanged?.({ type: 'session_list_changed', sessionId });
   }
 
   /** 拖出项目：解除成员资格，cwd 保留原值恢复自由。 */
   removeSessionFromProject(sessionId: string): void {
     this.sessionsRepo.removeFromProject(sessionId, Date.now());
-    this.onChanged?.({ type: 'session_list_changed' });
+    this.onChanged?.({ type: 'session_list_changed', sessionId });
   }
 
   moveSessionInSidebar(input: MoveSessionInSidebarInput): void {
@@ -446,7 +448,7 @@ export class SessionStore {
       input.beforeSessionId,
       Date.now(),
     );
-    this.onChanged?.({ type: 'session_list_changed' });
+    this.onChanged?.({ type: 'session_list_changed', sessionId: input.sessionId });
   }
 
   // ── 独立 Session Fork ──────────────────────────────────────────────────────
@@ -465,7 +467,7 @@ export class SessionStore {
     const title = `${src.title} (fork)`;
     const now   = this.nextTs();
     const messageCount = this.sessionsRepo.forkInto(srcId, newId, title, now, untilTurnId);
-    this.onChanged?.({ type: 'session_list_changed' });
+    this.onChanged?.({ type: 'session_list_changed', sessionId: newId });
     return { sessionId: newId, messageCount };
   }
 
@@ -481,7 +483,7 @@ export class SessionStore {
     try {
       this.onSessionRemoved?.(id);
     } finally {
-      this.onChanged?.({ type: 'session_list_changed' });
+      this.onChanged?.({ type: 'session_list_changed', sessionId: id });
     }
   }
 

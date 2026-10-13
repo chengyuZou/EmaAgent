@@ -30,7 +30,13 @@
 - `collectAttachmentReferenceIds`：一次批量收集消息里全部附件引用 id，供历史重放前批量预取附件。
 - `SessionOwnershipError`：跨 Session 引用的稳定错误。
 
-`SessionStoreDeps.onChanged` 在对应写入成功后接收 `SessionEvent`：`session_list_changed` 表示侧栏会话或项目投影须重查；`session_messages_changed { sessionId }` 表示该会话新增了持久 Message。流式 Message 块更新不逐次广播，完整正文以 Turn 终态事件为刷新边界。导入备份和末轮回退绕过本 Store 写入口，分别由 Server 导入路由和 TurnStore 清理回调在提交后发相同事件。
+`SessionStoreDeps.onChanged` 在对应写入成功后接收 `SessionEvent`:
+
+- `session_list_changed { sessionId }` 表示指定会话的列表信息变化. 新建, 改名, 归档, 项目归属修改, Fork 和删除都携带受影响的会话 ID; 删除后单查会话返回不存在.
+- 项目操作发不带 `sessionId` 的 `session_list_changed`, 因为项目名称和分组可能影响多个会话. 消费方需要重新读取列表, 不能把它当成某个会话的详情变更.
+- `session_messages_changed { sessionId }` 表示该会话新增了持久 Message. 流式 Message 块更新不逐次广播, 完整正文以 Turn 终态事件为刷新边界.
+
+导入备份和末轮回退绕过本 Store 写入口, 分别由 Server 导入路由和 TurnStore 清理回调在提交后发携带 `sessionId` 的列表事件. SSE 和桌面窗口广播传递完整事件, 不丢弃这个 ID.
 
 `patchSession` 切换 Permission 为 plan 时, 在同一 SQL 事务内检查 Goals 当前事实.
 active 或 paused 都表示目标未关闭, 拒绝切换并抛出 `SessionPlanGoalConflictError`,

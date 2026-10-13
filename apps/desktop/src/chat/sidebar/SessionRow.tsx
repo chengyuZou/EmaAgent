@@ -1,14 +1,16 @@
-import { useState, type JSX } from 'react';
+import { useCallback, useState, type JSX } from 'react';
 import { Tooltip, ConfirmDialog, DropdownMenu, IconButton, PromptDialog, type MenuItem } from '@ema-agent/ui';
 import type { SessionListItem } from '../../api/sessions.js';
 import type { SessionActivity } from '../../stores/sessionActivity.js';
 import { useMainNavigationStore } from '../../layout/navigation.js';
 import { formatSessionTitle, useSessionStore } from '../../stores/session.js';
-import { runWithToast } from '../../lib/toast.js';
+import { runWithToast } from '../../lib/notifications/toast.js';
 import { SessionCwdDialog } from '../session/SessionCwdDialog.js';
 import { removeSessionFromChat } from '../session/removeSessionFromChat.js';
 import type { SessionSidebarMoveInput } from '../../api/workspaces.js';
 import { useSidebarDrag } from './SidebarDragContext.js';
+import { SessionAudioButton } from './sessionAudioButton.js';
+import { stopSessionPlayback } from '../speech/turnSpeechPlayback.js';
 
 type StatusDot = { cls: string } | null;
 
@@ -54,10 +56,19 @@ export function SessionRow({
   const [acting, setActing] = useState(false);
   const [promptRename, setPromptRename] = useState(false);
   const [cwdOpen, setCwdOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const dot = getStatusDot(session, activityBySession);
   const sessionActivity = activityBySession.get(session.id);
+  const title = session.title || '新对话';
   const timeLabel = formatRelativeTime(session.lastActivityAt);
+  const projectName = useSessionStore(state => {
+    if (session.projectId === null) return null;
+    const project = state.sessions.pinnedProjects.find(item => item.id === session.projectId)
+      ?? state.sessions.projects.find(item => item.id === session.projectId);
+    return project?.name ?? null;
+  });
   const drag = useSidebarDrag();
+  const stopPlayback = useCallback(() => stopSessionPlayback(session.id), [session.id]);
   const dropProps = dropDestination
     ? drag.sessionTargetProps(`session-before:${session.id}`, dropDestination, session.id)
     : {};
@@ -153,55 +164,72 @@ export function SessionRow({
         )}
       </span>
 
-      <div className="flex items-center gap-1.5 min-w-0 flex-1">
-        {session.pinned && (
-          <span className={`i-lucide:pin text-[11px] shrink-0 ${isActive ? 'text-[var(--ema-text-secondary)]' : 'text-[var(--ema-text-tertiary)]'}`} aria-hidden />
-        )}
-        <Tooltip content={session.title || '新对话'} variant="card">
-          <span
-            className="truncate min-w-0 leading-snug"
-          >
-            {formatSessionTitle(session.title || '新对话')}
+      <SessionAudioButton sessionId={session.id} onStopPlayback={stopPlayback} />
+
+      <Tooltip
+        content={
+          <>
+            <div className="ema-session-details-header">
+              <span className="ema-session-details-title">{title}</span>
+              <span className="ema-session-details-time">最近活动：{timeLabel}</span>
+            </div>
+            {projectName !== null && (
+              <div className="ema-session-details-project">
+                <span className="i-lucide:folder text-sm shrink-0" aria-hidden />
+                <span>{projectName}</span>
+              </div>
+            )}
+          </>
+        }
+        variant="card"
+        className="ema-session-details"
+        disabled={menuOpen}
+        side="right"
+        align="start"
+        // 越过行尾按钮、间距和内边距, 让卡片从会话行外侧出现.
+        sideOffset={44}
+      >
+        <button
+          type="button"
+          aria-label={title}
+          className="ema-session-row-title flex items-center gap-1.5 min-w-0 flex-1 rounded focus-ring"
+        >
+          {session.pinned && (
+            <span className={`i-lucide:pin text-[11px] shrink-0 ${isActive ? 'text-[var(--ema-text-secondary)]' : 'text-[var(--ema-text-tertiary)]'}`} aria-hidden />
+          )}
+          <span className="truncate min-w-0 flex-1 leading-snug">
+            {formatSessionTitle(title)}
           </span>
-        </Tooltip>
-        {(sessionActivity?.pendingInteractions.length ?? 0) > 0 && (
-          <Tooltip content={`${sessionActivity?.pendingInteractions.length ?? 0} 个待答问题`} variant="card">
-            <span
-              className="shrink-0 text-[10px] font-mono px-1.5 py-0.5 rounded-full ema-scale-in bg-[var(--ema-warning-muted)] text-[var(--ema-warning-text)]"
-            >
-              {sessionActivity?.pendingInteractions.length}
-            </span>
-          </Tooltip>
-        )}
-      </div>
+          {(sessionActivity?.pendingInteractions.length ?? 0) > 0 && (
+            <Tooltip content={`${sessionActivity?.pendingInteractions.length ?? 0} 个待答问题`} variant="card">
+              <span
+                className="shrink-0 text-[10px] font-mono px-1.5 py-0.5 rounded-full ema-scale-in bg-[var(--ema-warning-muted)] text-[var(--ema-warning-text)]"
+              >
+                {sessionActivity?.pendingInteractions.length}
+              </span>
+            </Tooltip>
+          )}
+        </button>
+      </Tooltip>
 
       <div
-        className="relative flex w-12 shrink-0 justify-end"
+        className="ema-session-row-actions"
         onClick={(event) => event.stopPropagation()}
       >
-        <span
-          className={`text-[11px] tabular-nums text-[var(--ema-text-tertiary)] transition-opacity ${
-            isActive ? 'opacity-0' : 'group-hover:opacity-0'
-          }`}
-        >
-          {timeLabel}
-        </span>
         <DropdownMenu
           trigger={
             <IconButton
               size="sm"
               icon="i-lucide:more-horizontal"
-              label={`${session.title || '新对话'} 操作`}
-              className={`ema-chat-row-action absolute inset-y-0 right-0 my-auto ${
-                isActive ? 'opacity-100' : ''
-              }`}
+              label={`${title} 操作`}
+              className={`ema-chat-row-action ${isActive ? 'opacity-100' : ''}`}
             />
           }
           items={menuItems}
+          onOpenChange={setMenuOpen}
           side="right"
           align="start"
         />
-
       </div>
 
       <div

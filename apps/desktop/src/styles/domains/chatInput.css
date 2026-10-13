@@ -84,14 +84,6 @@
   color: var(--ema-text-primary);
 }
 
-.ema-voice-stop-symbol {
-  display: block;
-  width: var(--ema-space-2);
-  height: var(--ema-space-2);
-  border-radius: calc(var(--ema-radius-xs) / 2);
-  background: currentColor;
-}
-
 .ema-voice-display {
   position: relative;
   flex: 1;

@@ -190,7 +190,7 @@ describe('Speech HTTP audio', () => {
     expect(resolved).toBe(false);
     await writer.write(Buffer.from([3, 4]));
     expect(Buffer.from((await next).value!)).toEqual(Buffer.from([3, 4]));
-    await writer.finish();
+    await writer.finish(() => {});
     expect((await reader.read()).done).toBe(true);
     const finalized = await fetch(base + '/api/turns/turn/audio?secret=' + SECRET);
     expect(finalized.headers.get('content-length')).toBe(String(HEADER_BYTES + 4));
@@ -216,7 +216,7 @@ describe('Speech HTTP audio', () => {
     abort.abort();
     await expect(next).rejects.toMatchObject({ name: 'AbortError' });
     await writer.write(Buffer.from([3, 4]));
-    expect((await writer.finish())!.byteSize).toBe(HEADER_BYTES + 4);
+    expect((await writer.finish(() => {}))!.byteSize).toBe(HEADER_BYTES + 4);
     expect((await app.request('/api/turns/turn/audio')).status).toBe(401);
     expect((await app.request('/api/turns/turn/audio?secret=wrong')).status).toBe(401);
     expect((await app.request('/api/sessions?secret=' + SECRET)).status).toBe(401);
@@ -234,7 +234,7 @@ describe('Speech WAV backup', () => {
     for (const turnId of ['turn', 'removed']) {
       const writer = await archive.openTurn('session', turnId, FORMAT);
       await writer.write(Buffer.from([1, 2]));
-      await writer.finish();
+      await writer.finish(() => {});
     }
     expect(sweepOrphanTurnFiles(root, () => new Set(['turn']))).toEqual({ removed: 1 });
     expect(archive.findFinalized('session', 'removed')).toBeNull();
@@ -247,7 +247,7 @@ describe('Speech WAV backup', () => {
     const { root, db, archive } = fixture();
     const writer = await archive.openTurn('session', 'turn', FORMAT);
     await writer.write(Buffer.alloc(8000, 1));
-    const audio = (await writer.finish())!;
+    const audio = (await writer.finish(() => {}))!;
     new SpeechOutputsRepo(db.sqlite).record({ sessionId: 'session', turnId: 'turn', ...audio, createdAt: 2 });
     db.sqlite.prepare('INSERT INTO turns (id, session_id, status, created_at) VALUES (?, ?, ?, ?)')
       .run('waiting', 'session', 'completed', 2);
@@ -262,7 +262,7 @@ describe('Speech WAV backup', () => {
       complete: async () => {},
       fail: async error => { throw error; },
     });
-    await unfinished.finish();
+    await unfinished.finish(() => {});
     const bytes = Buffer.concat(chunks);
     const entries = unzipSync(bytes);
     expect(JSON.parse(strFromU8(entries['manifest.json']!)).version).toBe(9);

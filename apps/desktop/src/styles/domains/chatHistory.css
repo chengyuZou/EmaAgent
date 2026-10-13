@@ -44,6 +44,20 @@
 
 .ema-chat-message-row {
   padding-block: var(--ema-space-2);
+  border-radius: var(--ema-radius-lg);
+  transition: background-color 180ms var(--ema-ease),
+              box-shadow 180ms var(--ema-ease);
+}
+
+.ema-chat-message-row[data-playback-target='true'] {
+  background-color: color-mix(in srgb, var(--ema-primary) 8%, transparent);
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--ema-primary) 8%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ema-chat-message-row {
+    transition: none;
+  }
 }
 
 /* 正文到本轮编辑汇总的距离, 不影响其他消息或统计栏. */
@@ -166,7 +180,7 @@
 button.ema-chat-jump-latest {
   position: absolute;
   z-index: 30;
-  left: calc((100% - var(--ema-chat-scrollbar-width, 0px)) / 2);
+  left: 50%;
   width: 32px;
   height: 32px;
   transform: translate(-50%, 6px) scale(0.96);
@@ -179,6 +193,7 @@ button.ema-chat-jump-latest {
   pointer-events: none;
   transition: opacity 150ms var(--ema-ease),
               transform 150ms var(--ema-ease),
+              left 150ms var(--ema-ease),
               visibility 0ms 150ms,
               background-color var(--ema-duration-fast) var(--ema-ease),
               color var(--ema-duration-fast) var(--ema-ease);
@@ -199,6 +214,70 @@ button.ema-chat-jump-latest:hover:not(:disabled) {
 
 button.ema-chat-jump-latest:active:not(:disabled) {
   transform: translate(-50%, 0) scale(0.94);
+}
+
+button.ema-chat-jump-speech {
+  color: var(--ema-primary);
+}
+
+button.ema-chat-jump-latest[data-paired='true']:not(.ema-chat-jump-speech) {
+  left: calc(50% - 22px);
+}
+
+button.ema-chat-jump-speech[data-paired='true'] {
+  left: calc(50% + 22px);
+}
+
+.ema-session-audio-button {
+  color: var(--ema-primary);
+}
+
+.ema-session-audio-button > span,
+.ema-speech-cancel-generation > span {
+  display: grid;
+  place-items: center;
+}
+
+.ema-session-audio-button > span > span,
+.ema-speech-cancel-generation > span > span {
+  grid-area: 1 / 1;
+}
+
+.ema-session-audio-stop,
+.ema-speech-generation-stop {
+  opacity: 0;
+}
+
+.ema-session-audio-button:is(:hover, :focus-visible) .ema-session-audio-state {
+  opacity: 0;
+}
+
+.ema-session-audio-button:is(:hover, :focus-visible) .ema-session-audio-stop {
+  opacity: 1;
+}
+
+.ema-speech-cancel-generation:is(:hover, :focus-visible):not(:disabled) .ema-speech-generation-icon {
+  opacity: 0;
+}
+
+.ema-speech-cancel-generation:is(:hover, :focus-visible):not(:disabled) .ema-speech-generation-stop {
+  opacity: 1;
+}
+
+.ema-speech-generation-icon,
+.ema-session-audio-state[data-loading='true'] {
+  animation: ema-speech-loading 1s linear infinite;
+}
+
+@keyframes ema-speech-loading {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ema-speech-generation-icon,
+  .ema-session-audio-state[data-loading='true'] {
+    animation: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -270,6 +349,12 @@ button.ema-chat-jump-latest:active:not(:disabled) {
 
 .ema-turn-rail-mark[data-emphasis='current'] {
   background-color: var(--ema-turn-rail-current);
+}
+
+.ema-turn-rail-mark[data-playing='true'] {
+  background-color: var(--ema-primary);
+  box-shadow: 0 0 6px var(--ema-primary-muted);
+  opacity: 1;
 }
 
 @media (prefers-reduced-motion: reduce) {

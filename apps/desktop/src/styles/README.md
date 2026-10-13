@@ -47,7 +47,7 @@ Diff 的 shadow root 是例外: 全局样式无法进入它, ReviewPanel 和内�
 - `domains/main.css` 管理公共标题栏, 左侧主导航和 View 显隐. 隐藏 View 保留尺寸并设置 inert, 不卸载组件. 显隐同时使用 visibility 和 opacity, 防止侧栏子节点的 visibility 覆盖父节点隐藏状态. Chat 会话侧栏由 `workspace.css` 管理折叠动画; Settings 导航保持展开.
 - 主窗口导航由 `layout/navigation.tsx` 保存. 访问记录只存会话 ID 或设置子页 ID, 当前窗口内最多保留 100 条, 不保存消息或表单副本. 返回和前进只移动 historyIndex; 打开新位置会删除当前位置之后的记录, 重复访问当前位置不追加. 新对话创建成功时替换原位置, 会话归档或删除后移除对应记录. 关闭主窗口只隐藏, 保留访问记录与已挂载 View; 退出应用后不保留这份内存记录.
 - 外观导航分为主题, 壁纸和字体. 三个子页分别渲染 ThemeTab, WallpaperTab 和 FontTab, 仍使用原有主题与壁纸设置字段, 不分别保存新的设置副本.
-- 桌面通知通过 `lib/toast.tsx` 挂在同一个窗口的 body 下, 不属于 Chat 或 Settings. `domains/toast.css` 按 `data-variant` 提供颜色和布局, 切换 View 不移动通知根节点或重新计时.
+- 桌面通知通过 `lib/notifications/toast.tsx` 挂在同一个窗口的 body 下, 不属于 Chat 或 Settings. `domains/toast.css` 按 `data-variant` 提供颜色和布局, 切换 View 不移动通知根节点或重新计时.
 - 命名: 工具类 `ema-<动作>`(`ema-fade-in`); 构件类 `ema-<名>`; 域类 `ema-<域>-<件>`(`ema-tool-row`)。
 - 文件按内聚职责组织, 不因行数拆分. 注释说明必要的样式约束与跨组件关系.
 - 颜色, 间距, 圆角, 阴影一律走 `foundation/tokens.css` 的 token, 域文件里不写死色值; 亮暗主题差异只允许靠 token 覆盖, 不写主题分支判断。

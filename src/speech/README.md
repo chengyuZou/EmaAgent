@@ -1,83 +1,109 @@
 # @ema-agent/speech
 
-Speech 旁路接收根 Turn 的文字增量, 清理 Markdown 并切句后按顺序调用 TTS. 每个 Turn 的所有 PCM 块持续写入同一份 WAV, 不保存另一份整轮音频到内存. 文字 Turn 不等待语音生成、播放或文件保存.
+Speech 接收根 Turn 的文字增量, 或已完成 Turn 的完整正文, 清理 Markdown、切句并按顺序调用 TTS. 所有 PCM 持续写入该 Turn 的同一份 WAV, 不在内存里保存另一份整轮音频. 文字 Turn 不等待语音生成、播放或文件保存.
 
-设置页通过 `SpeechVoicePreview` 试听. 实时对话和历史重播由 Desktop 的原生 audio 读取 Turn 音频 URL, 本包只负责生成、文件写入和读取, 不决定哪个 Turn 播放.
+本包负责生成、声音准备、文件写入与读取. Server 负责角色、模型绑定、SQL 记录和 HTTP / WebSocket. Desktop 独立决定播放顺序, 停止播放不取消后台生成.
 
-## 生成与文件
+## 生成入口
 
-`SpeechCoordinator` 接收 `sessionId`、`turnId`、固定的 Provider/模型、准备好的声音、`CallTts`、`FsAudioArchive` 和取消信号. `acceptTextDelta()` 接收文字; `finish()` 等待所有句子并完成文件; `cancel()` 中断合成, 保存已经写入的部分. 后两个入口共用一次完成 Promise, 不重复发布文件.
+`SpeechCoordinator` 接收固定的 Session / Turn、Provider / 模型、声音、`CallTts`、`FsAudioArchive`、取消信号和同步保存记录的回调. `acceptTextDelta()` 接收文字; `finish()` 等待剩余句子并完成保存; `cancel()` 中断生成. 完成与取消共用同一次完成 Promise, 不重复发布文件.
 
-`SentenceSplitter` 每句最多 200 个 UTF-16 code units, 无空白长文本也会切分, 不拆开代理对. 单句合成最多运行 120 秒并交付 16 MiB PCM. 每句单独记录字符数与调用结果到 Usage. 普通供应商单句失败会通知 `onSentenceError` 并继续后面的句子; 文件写入失败或采样率/声道改变则停止追加, 不能把不同格式的 PCM 塞进同一份 WAV.
+`savePartialAudio` 区分两种真实业务:
 
-`FsAudioArchive.openTurn(sessionId, turnId, format)` 创建一个 `AudioWriter`. 调用方必须等 `write(bytes)` 完成后再取下一块, 所以磁盘来不及写时, Speech 会暂停读取这次 TTS 的结果. `finish()` 返回文件路径、`audio/wav`、字节数和毫秒时长; 没有 PCM 时删除空文件并返回 null.
+- 自动生成为 true. 某句供应商失败会通知警告并继续下一句; 取消时保留已经生成的部分.
+- 手动整轮生成为 false. 所有句子成功才替换正式音频; 任一句失败、取消或保存失败都丢弃本次文件, 保留已有音频和记录.
 
-```text
-Turn 文字增量 -> 清理和切句 -> CallTts -> PCM 块
-                                          |
-                                          v
-                    sessions/<sessionId>/audio/<turnId>.wav.pending
-                                          |
-                           完成或取消: 补齐 WAV 头并改名
-                                          v
-                    sessions/<sessionId>/audio/<turnId>.wav
-                                          |
-                           Server 保存 speech_outputs 记录
-                                          |
-                           session_audio_changed 通知
-                                          |
-                           speech_generate_* 终态通知
-```
+文件写入失败或 PCM 采样率、声道改变时不能继续追加. `SentenceSplitter.feed()` / `flush()` 返回可朗读的字符串数组, 每句最多 200 个 UTF-16 code units, 不拆开代理对. 单句最多运行 120 秒并交付 16 MiB PCM.
 
-第一块 PCM 写入成功后只调用一次 `onAudioReady`, 此时 Server 可以发 `speech_generate_started`. 生成期间文件头使用未知长度; 完成或取消后写真实长度, 计算时长并发布正式 WAV. 取消后的正式文件可以少于整轮文字, 但仍是结构完整的 WAV. 文件改名或头部更新失败时不登记音频; 已经保存成功但 SQL 登记失败的文件仍可通过 Turn 路由读取.
+每次真实 TTS 调用使用新的 UUID 记录 Usage, 重试或重新生成不复用 Turn / 句子索引. `quantity` 是清理后实际提交文本的 UTF-16 长度, `unit` 为 `character`; `durationMs` 是调用耗时, 不是音频播放时长.
 
-## 读取与通知
+### 手动生成已完成 Turn
 
-`FsAudioArchive.openRead(sessionId, turnId, signal)` 返回 `AudioRead` 或 null. 正在生成时 `byteSize=null`, 已完成时返回真实大小. 每个读取方持有自己的文件位置, 一次最多取 64 KiB. 读到当前末尾会等下一次写入, 不把句间停顿当成结束; 文件完成且已读取全部 PCM 后结束响应. 关闭读取流或取消读取信号只关闭这个读取方, 不取消合成.
+`POST /api/turns/:turnId/speech` 只需要路径中的 Turn ID, 不接收前端指定的正文、角色或音频路径. Server 从已完成 Turn 读取正常 Assistant 消息里的 text 块, 不朗读 thinking、工具调用或用户消息.
 
-Server 使用既有 `GET /api/turns/:turnId/audio` 提供实时和历史文件流. 路由先从 Turn 查询 Session, 不接受任意本机路径. 原生 audio 不能设置 `X-Ema-Secret`, 所以只有音频 GET 与 WebSocket 允许通过 `secret` 查询参数携带现有进程口令; 其他 HTTP API 仍用请求头认证. 音频响应禁止缓存, 生成中的响应不发送 Content-Length.
+声音使用 Turn 记录的 `characterName` 对应角色, TTS 模型使用当前绑定. 原角色没有记录、角色已不存在、没有参考音频、没有选用主参考音频或文件已丢失时返回具体原因, 不改用当前角色. 未完成 Turn 返回 409, 同轮已有生成任务时也返回 409; 配置问题返回 422.
 
-`SpeechGenerateEvent` 均带 `sessionId` 和 `turnId`, 不带文件路径、URL 或二进制音频. WebSocket 只交付生成开始、单句警告、生成完成/取消/失败、不可用状态, 并接收 `speech_generate_cancel`. 生成终态带 `audioAvailable`, 与浏览器是否播放结束无关. 断开 WebSocket 只结束订阅; 重新连接时, 正在写入的文件可通知开始, 正式文件可通知生成完成.
+响应带 `sessionId`、`turnId` 和最终状态:
 
-文件完成并写入 `speech_outputs` 后, Server 才发送 `SpeechArchiveEvent` 中的 `session_audio_changed`. SQL 只记录正式 WAV, 不记录 pending 文件. Backup 同样只处理有正式记录的文件, 包括取消后保留的部分.
+- `completed`: `audioAvailable=true`, 文件和 SQL 已保存.
+- `cancelled`: `audioAvailable` 表示取消后是否仍有原来的正式音频.
+- `failed`: 带 `code`、`message` 和原有音频是否可用, 不把失败当成生成完成.
 
-## Desktop 播放
+`POST /api/turns/:turnId/speech/cancel` 只取消该轮语音, 等任务退出后返回 204. 手动生成不绑定请求连接的取消信号, 切换页面或断开 HTTP 不自动取消生成. 生成完成只刷新音频事实和通知用户, 不自动播放.
 
-`turnsApi.audioUrl(turnId)` 使用当前 Server 地址和进程口令组装音频地址. `startTurnSpeechPlayback(sessionId, turnId)` 只为取得 owner 的新 Turn 打开生成状态 WebSocket. 收到 `speech_generate_started` 后, 把 URL 交给原生 audio; 收到生成完成后不截断仍在播放的媒体. `replayTurn(sessionId, turnId)` 使用相同 URL, 不订阅生成事件. 两条路径都不先下载完整 Blob, 也不调用 `decodeAudioData` 解码整轮文件.
+## 文件与正式记录
+
+`FsAudioArchive.openTurn()` 返回 `AudioWriter`. 调用方必须等待 `write(bytes)` 完成后再取下一块; 磁盘来不及写时暂停读取 TTS 的后续结果.
+
+`finish(saveRecord)` 补齐 WAV 头、发布正式文件, 然后同步调用 `saveRecord`. 回调必须在返回前完成这一次 SQL 写入; 抛错时恢复之前的正式文件, 或移除第一次生成的文件. 重新生成替换前保留一份临时旧文件, 正式记录写入成功后释放它. `discard()` 删除本次 pending, 不修改原来的正式音频.
 
 ```text
-第一块 PCM 已写入 -> speech_generate_started -> Desktop 设置 audio.src
-                                                       |
-                                                       v
-                 GET /api/turns/:turnId/audio -> 分段读取文件 -> 浏览器缓冲、解码、播放
+文字 -> 清理和切句 -> CallTts -> PCM 块
+                                  |
+                                  v
+        sessions/<sessionId>/audio/<turnId>.wav.pending
+                                  |
+            完成保存: 补齐 WAV 头, 发布正式 WAV
+                                  |
+                       同步写 speech_outputs
+                                  |
+                  成功后 session_audio_changed
+                                  |
+                  speech_generate_* 终态通知
 ```
 
-播放器先设置 `crossOrigin=anonymous`, 再设置 URL. Server 的 CORS 响应允许本机 WebView 源, 因此 `createMediaElementSource` 能把当前媒体的采样接到同一份 AudioContext. 这个音源只接一次输出, 口型分析不额外出声, 也不另读整轮文件.
+没有 PCM 时删除空文件并返回 null. 保存成功的 `FinalizedAudio` 带路径、`audio/wav`、字节数和毫秒时长. SQL 只记录正式 WAV, 不记录 pending; Backup 也只处理正式记录, 包括自动生成取消后保留的部分. 不使用 `segment_count`.
 
-口型使用 wLipSync 包内的独立 Worklet 脚本和 WASM 文件. Vite 输出正式资源地址, 不把 Worklet 内联成 data URL; 桌面 CSP 仅额外允许 `wasm-unsafe-eval` 编译 WASM, 不允许 JavaScript 的 `unsafe-eval`. 加载失败时, 播放继续并改用音量变化驱动口型.
+第一块 PCM 写入成功后只调用一次 `onAudioReady`, 此时初次自动生成的文件已能读取. 生成期间 WAV 头使用未知长度, 保存时更新真实长度和时长.
 
-Footer 在等待音频或读取 URL 时也提供停止按钮. 本地停止先取消媒体事件监听, 暂停 audio 并清除 src, 断开当前音源, 停止口型和释放 owner; 不等网络通知返回才释放. 异步取得 URL、Worklet 和 `play()` 的回调都核对当前播放器身份, 不能接回已经停止的音源或清掉下一轮.
+## 音频读取与生成通知
 
-## 停止与播放归属
+`FsAudioArchive.openRead(sessionId, turnId, signal)` 先读取已有正式文件. 因此重新生成期间的“播放现有”仍播放旧音频, 不播放尚未完成的替代文件. 没有正式文件时可以读取正在写入的初次生成文件.
 
-开启 TTS 的 Turn 不依赖播放器连接或 owner 才能合成, 也不等待播放进度确认. 当前没有三句或 10 秒的生成限制. 播放 owner 由 Desktop 决定, 不影响后端合成.
+生成中 `byteSize=null`, 正式文件返回真实大小. 每个读取方持有自己的文件位置, 每次最多取 64 KiB. 读到当前末尾等待后续写入, 不把句间停顿当成结束; 文件完成并读完 PCM 后结束响应. 关闭读取流只关闭当前读取方, 不取消生成.
 
-TTS 开关在 Turn 开始时决定这一轮是否生成音频. 中途切换开关只影响后续 Turn, 不停止当前生成或播放. Footer 的 `stopTurnPlayback(sessionId, turnId)` 才会停止当前发音, 并在实时生成尚未结束时发送 `speech_generate_cancel`; 已经生成的部分保存为正式 WAV, 文字继续生成.
+`GET /api/turns/:turnId/audio` 先通过 Turn 查 Session, 不接收任意本机路径. 原生 audio 不能设置认证请求头, 所以指定音频 GET 与 WebSocket 通过 `secret` 查询参数携带现有进程口令; 其他 HTTP 仍用 `X-Ema-Secret`. 响应禁止缓存, 生成中的响应不发送 Content-Length.
 
-Desktop 同时只允许一个 owner 驱动桌宠的文字、情绪、动作和口型. 新 Turn 开始时只申请一次: 已有 owner 就不播放, 不保存待播队列. 媒体自然结束、停止或失败都立即释放 owner, 不等待正文结束; 释放后不自动接播已经开始的其他 Turn. 没有本地语音的 owner 随正文结束释放. 用户主动历史重播也只申请空闲 owner, 不抢占正在呈现的 Turn.
+`SpeechGenerateEvent` 带 `sessionId` 和 `turnId`, 不带文件路径、URL 或音频块. WebSocket 交付生成开始、单句警告和生成终态, 也接受明确的生成取消命令. 终态里的 `audioAvailable` 不表示浏览器已经播完. 断开连接仅结束订阅, 后端仍生成并保存.
 
-普通 Session 切换不改变已有 owner. Session 归档或删除成功后, 前端停止属于该 Session 的本地媒体. 生成状态连接意外断开时, 前端停止当前播放并释放 owner, 不把断线当作生成取消; 后端仍独立完成保存.
+Desktop 的 `turnSpeechGeneration.ts` 为自动生成 Turn 独立订阅状态. 没有取得播放资格的 Session 也会显示生成状态与取消入口. 手动生成请求由该共享模块持有, Footer 卸载不会取消它; 最终结果只刷新该轮消息和音频状态.
 
-根 Turn 失败/取消时停止语音. 根 Turn 文字正常完成时, 语音可以继续处理剩余句子. Server 登记声音准备中的任务, 所以 Session 删除、归档和 Server 关闭会取消并等待相关任务完成; 删除数据行或关闭数据库发生在语音保存之后. 只取消语音不会取消文字 Turn, TTS 开关变化也不自动停止当前语音.
+## Desktop 播放队列
 
-没有整轮文字队列上限, 普通 WAV 长度字段也有限制. DashScope 回调队列当前没有独立容量限制. 大文件 Range/定位、几十分钟生成与浏览器播放的内存表现仍需单独验收, 不能据此声称整条链拥有固定内存上限.
+`sessionPresentation` 的队列是有序的 `{ sessionId, turnId }[]`. 首项驱动桌宠与当前播放器, 后续项只保存同 Session 的待播身份, 不预下载整轮音频.
+
+- 新 Turn 只在开始时申请一次. 队列空时立即成为首项; 同 Session 加到末尾; 其他 Session 在入口拒绝, 不进入队列, 后台生成继续.
+- `speech_generate_completed` 不交接播放. 当前 audio 实际触发 `ended` 后才取下一项, 更新 src 并播放.
+- 先前被拒绝的 Turn 不在空闲后补播. 以后新启动的 Turn 可以重新申请.
+- TTS 关闭时, 纯文字 Turn 仍可申请空闲首项驱动桌宠文字、情绪和动作, 正文结束后释放.
+
+`startTurnSpeechPlayback()` 只负责入队和播放, 不拥有生成订阅. `replayTurn()` 主动替换当前播放及全部待播项, 不取消那些 Turn 的生成. `stopTurnPlayback()` / `stopSessionPlayback()` 清空本地播放队列并释放播放器, 不发送生成取消. 根 Turn 失败或取消只移除对应项.
+
+普通 Session 切换不改变播放. Server 完成 Session 归档或删除的任务取消后, 前端清理该 Session 的播放器、生成观察和待播项, 迟到结果不能恢复它.
+
+原生 audio 收到 `turnsApi.audioUrl()` 后边读取边解码, 不先下载完整 Blob 或 `decodeAudioData` 整轮文件. 设置 CORS 后再赋 src, 音源只接一次输出. wLipSync 使用独立 Worklet / WASM; 加载失败时播放继续, 改用音量变化驱动口型.
+
+释放播放器时先撤销媒体监听, 暂停 audio、清空 src、断开音源并停止口型. 迟到的 URL、Worklet 与 `play()` 回调都核对播放器身份, 不能恢复旧音源或清掉下一轮.
+
+### 操作入口
+
+Turn Footer 两项都可用时使用共享 `DropdownMenu` 提供“播放现有语音”和“重新生成整轮语音”. 只有播放可用时直接播放; 没有音频但允许生成时直接生成. 正在播放时显示停止播放, 生成中另外提供取消生成. 重新生成只从待播列表移除目标 Turn, 不停止其他播放.
+
+侧栏的 `SessionAudioButton` 只显示当前播放 Session, 放在标题左边, 不占右侧菜单的位置. 悬停或键盘聚焦显示实心停止图标, 点击不触发行选择. 状态圆点仍保留. 最近活动时间放在标题的悬浮详情卡中, 不与菜单按钮共用行内位置.
+
+聊天消息区底部的喇叭只定位当前播放 Turn, 不改变播放. 点击时固定目标; 未加载该轮索引时查询该轮消息, 再打开有界历史窗口. 同时显示回到最新按钮时, 两个按钮围绕聊天区中线对称排列; 只有一个时居中. 两个按钮共用淡入、上移动画, 位置变化也平滑移动. 定位后的 Turn 短暂高亮 1.8 秒, 不改变行高; 减少动画时不播放过渡. 导航轨另外标出当前播放 Turn.
 
 ## 参考声音与试听
 
-`SpeechVoiceCache.prepare()` 只缓存当前 Node 进程内的 Provider 声音标识, 不写 SQLite. 缓存键包含角色、完整资源名与更新时间、Provider 和模型. Server 决定角色、TTS binding 与协议入口, 本包不读取角色或 Provider Repo.
+`SpeechVoiceCache.prepare()` 只缓存当前 Node 进程内的 Provider 声音标识, 不写 SQLite. 缓存键包含角色、完整资源名与更新时间、Provider 和模型.
 
-`SpeechVoicePreview` 复用相同的声音准备与协议入口, 收集最多 16 MiB PCM 后用 `packPcmWav` 添加完整 WAV 头, 返回 `audio/wav`. 保留实际采样率和声道数, 不重新采样, 不启动转换进程或创建临时文件. 试听结果不进入 Session Storage 或 Backup.
+`SpeechVoicePreview` 复用声音准备和 TTS 协议入口, 收集最多 16 MiB PCM 后包装完整 WAV 头, 返回 `audio/wav`. 不重新采样、不启动转换进程或创建临时文件, 试听不进入 Session Storage 或 Backup. TTS 协议属于 `@ema-agent/tts`, 转写属于 `@ema-agent/stt`.
 
-协议请求和音色注册属于 `@ema-agent/tts`; 转写属于 `@ema-agent/stt`; Session 和 Turn 的文字终态仍由对应业务包管理.
+## 验证与限制
 
-测试入口: `pnpm --filter @ema-agent/speech test`. Server 的 `turnSpeechWebSocket.test.ts` 另外使用真实本机 HTTP/WebSocket、临时 SQLite 和 ZIP 验证传输与备份. Desktop 的 `src/chat/speech/tests/turnSpeechPlayback.test.ts` 验证 URL 入口、owner、停止、断线与迟到回调. 这些测试不代替真实供应商、WebView 播放和口型验收.
+`pnpm --filter @ema-agent/speech test` 验证 WAV 读写、取消、替换失败恢复与逐次用量记录. Server 的 `turnSpeechGeneration.test.ts` 使用真实 HTTP 与临时 SQLite 验证原角色、正文读取、重复调用、取消和保存失败; `turnSpeechWebSocket.test.ts` 验证生成通知、读取和备份.
+
+Desktop 的 `turnSpeechPlayback.test.ts` 验证排队、跨 Session 拒绝、重播、停止与迟到回调; `turnSpeechControls.test.tsx` 验证真实菜单、单动作按钮和侧栏点击; `navigation.test.ts` 验证请求身份与导航取消; `playbackNavigation.test.tsx` 验证定位高亮、旧窗口单次查询和切走会话后的迟到结果. `tests/turnSpeech.html` 使用真实组件与固定数据检查布局和旧 Turn 定位, 不访问用户数据库或模型.
+
+上述测试不代替真实供应商、Tauri WebView 播放和口型验收. 当前没有整轮待合成文字上限, DashScope 回调队列也没有独立容量限制; 普通 WAV 长度字段有限制. 大文件 Range / 定位、几十分钟生成与浏览器缓冲表现仍需单独验收.
+

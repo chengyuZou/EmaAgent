@@ -18,8 +18,10 @@ export interface FinalizedAudio {
 export interface AudioWriter {
   /** 等这一块写入文件后才返回, 调用方必须 await 后再取下一块 PCM. */
   write(bytes: Uint8Array): Promise<void>;
-  /** 完成 WAV 头并发布文件; 未写入 PCM 时删除空文件并返回 null. */
-  finish(): Promise<FinalizedAudio | null>;
+  /** 发布 WAV 后同步保存记录; 保存失败则恢复原文件. 没有 PCM 时返回 null. */
+  finish(saveRecord: (audio: FinalizedAudio) => void): Promise<FinalizedAudio | null>;
+  /** 丢弃本次写入, 不替换已经存在的正式音频. */
+  discard(): Promise<void>;
 }
 
 export interface AudioRead {
@@ -45,6 +47,16 @@ export class FsAudioArchive {
 
   async openRead(sessionId: string, turnId: string, signal: AbortSignal): Promise<AudioRead | null> {
     signal.throwIfAborted();
+    // 重新生成期间, “播放现有”仍读取原来的正式文件, 不读这次尚未完成的替代文件.
+    const found = this.findFinalized(sessionId, turnId);
+    if (found) {
+      const stat = await fs.promises.stat(found.storagePath);
+      return {
+        stream: fs.createReadStream(found.storagePath, { signal, highWaterMark: AUDIO_READ_BYTES }),
+        mimeType: found.mimeType,
+        byteSize: stat.size,
+      };
+    }
     const file = this.writing.get(turnId);
     if (file) {
       const readAbort = new AbortController();
@@ -66,14 +78,7 @@ export class FsAudioArchive {
       };
     }
 
-    const found = this.findFinalized(sessionId, turnId);
-    if (!found) return null;
-    const stat = await fs.promises.stat(found.storagePath);
-    return {
-      stream: fs.createReadStream(found.storagePath, { signal, highWaterMark: AUDIO_READ_BYTES }),
-      mimeType: found.mimeType,
-      byteSize: stat.size,
-    };
+    return null;
   }
 
   findFinalized(
@@ -118,7 +123,7 @@ class AudioFile implements AudioWriter {
     try {
       await this.writeBytes(createPcmWavHeader(this.format, null));
     } catch (error) {
-      await this.finish().catch(() => undefined);
+      await this.discard().catch(() => undefined);
       throw error;
     }
   }
@@ -129,9 +134,14 @@ class AudioFile implements AudioWriter {
     this.notifyReaders();
   }
 
-  finish(): Promise<FinalizedAudio | null> {
-    this.finishPromise ??= this.finishInternal();
+  finish(saveRecord: (audio: FinalizedAudio) => void): Promise<FinalizedAudio | null> {
+    this.finishPromise ??= this.finishInternal(saveRecord);
     return this.finishPromise;
+  }
+
+  async discard(): Promise<void> {
+    this.finishPromise ??= this.finishInternal(null);
+    await this.finishPromise;
   }
 
   async *read(signal: AbortSignal): AsyncGenerator<Uint8Array> {
@@ -174,14 +184,14 @@ class AudioFile implements AudioWriter {
     });
   }
 
-  private async finishInternal(): Promise<FinalizedAudio | null> {
+  private async finishInternal(saveRecord: ((audio: FinalizedAudio) => void) | null): Promise<FinalizedAudio | null> {
     try {
       const closed = finished(this.output, { cleanup: true });
       if (!this.output.destroyed) this.output.end();
       await closed.catch(error => {
         if (!this.writeError) throw error;
       });
-      if (this.pcmByteSize === 0) {
+      if (this.pcmByteSize === 0 || saveRecord === null) {
         await fs.promises.rm(this.pendingPath, { force: true });
         return null;
       }
@@ -194,14 +204,40 @@ class AudioFile implements AudioWriter {
       } finally {
         await handle.close();
       }
-      await fs.promises.rename(this.pendingPath, this.storagePath);
       const frames = this.pcmByteSize / (this.format.channelCount * PCM_SAMPLE_BYTES);
-      return {
+      const audio: FinalizedAudio = {
         storagePath: this.storagePath,
         mimeType: 'audio/wav',
         byteSize: this.headerBytes + this.pcmByteSize,
         durationMs: Math.round(frames / this.format.sampleRate * MILLISECONDS_PER_SECOND),
       };
+      const previousPath = `${this.storagePath}.previous`;
+      const replacing = fs.existsSync(this.storagePath);
+      if (replacing) {
+        await fs.promises.copyFile(this.storagePath, previousPath, fs.constants.COPYFILE_EXCL);
+      }
+      let published = false;
+      let committed = false;
+      try {
+        await fs.promises.rename(this.pendingPath, this.storagePath);
+        published = true;
+        // 记录写入必须同步完成, 失败时 SQL 保留原记录, 文件也恢复原来的版本.
+        saveRecord(audio);
+        committed = true;
+      } catch (error) {
+        if (published) {
+          if (replacing) await fs.promises.rename(previousPath, this.storagePath);
+          else await fs.promises.rm(this.storagePath, { force: true });
+        }
+        throw error;
+      } finally {
+        if (replacing && (committed || !published)) {
+          await fs.promises.rm(previousPath, { force: true }).catch(error => {
+            console.warn('[speech] 无法清除音频替换备份:', error);
+          });
+        }
+      }
+      return audio;
     } catch (error) {
       await fs.promises.rm(this.pendingPath, { force: true }).catch(() => undefined);
       throw error;

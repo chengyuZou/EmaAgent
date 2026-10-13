@@ -1,20 +1,31 @@
-import { tauriBridge } from '../../lib/tauri-bridge.js';
+import { create } from 'zustand';
+import { tauriBridge } from '../../lib/tauriBridge.js';
 
-interface PresentationOwner {
+export interface SpeechTurnKey {
   readonly sessionId: string;
   readonly turnId: string;
-  /** 包含等待音频和加载 URL; 正文结束时不能截断仍在播放的语音. */
-  playbackActive: boolean;
 }
 
-/** 50ms 内合并 owner 的文字 delta, 避免 SpeechBubble 为每个 token 跨 WebView 重绘. */
-const DIALOGUE_FLUSH_MS = 50;
+export type PlaybackStatus = 'loading' | 'playing';
 
-let owner: PresentationOwner | null = null;
+interface PresentationState {
+  /** 首项拥有桌宠和播放器, 其余项是同一 Session 的待播 Turn. */
+  readonly queue: readonly SpeechTurnKey[];
+  /** null 表示没有音频 owner; 纯文字 Turn 仍可占首项驱动桌宠. */
+  readonly playbackStatus: PlaybackStatus | null;
+}
+
+export const usePlaybackStore = create<PresentationState>(() => ({
+  queue: [],
+  playbackStatus: null,
+}));
+
+const DIALOGUE_FLUSH_MS = 50;
 let pendingText = '';
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 
 function owns(sessionId: string, turnId: string): boolean {
+  const owner = usePlaybackStore.getState().queue[0];
   return owner?.sessionId === sessionId && owner.turnId === turnId;
 }
 
@@ -27,32 +38,46 @@ function discardPendingText(): void {
 function flushPendingText(): void {
   if (flushTimer) clearTimeout(flushTimer);
   flushTimer = null;
+  const owner = usePlaybackStore.getState().queue[0];
   if (!owner || pendingText.length === 0) return;
   const text = pendingText;
   pendingText = '';
   void tauriBridge.publishDialogueDelta(owner.sessionId, owner.turnId, text);
 }
 
-function releaseOwner(): void {
-  const previous = owner;
-  if (!previous) return;
-  owner = null;
+function replaceQueue(queue: readonly SpeechTurnKey[]): void {
+  const previous = usePlaybackStore.getState().queue[0];
   discardPendingText();
-  void tauriBridge.publishDialogueEnded(previous.sessionId, previous.turnId);
+  usePlaybackStore.setState({ queue, playbackStatus: queue.length > 0 ? 'loading' : null });
+  if (previous) void tauriBridge.publishDialogueEnded(previous.sessionId, previous.turnId);
 }
 
-/** 同一时刻只有一轮驱动桌宠的文字, 情绪, 动作和口型. 不保存等待接管的 Turn. */
 export const sessionPresentation = {
-  /** 仅在 Turn 开始或用户主动重播时申请; 失败的 Turn 不排队, 也不在以后补播. */
+  /** 纯文字 Turn 只申请空闲 owner, 不进入待播队列. */
   claim(sessionId: string, turnId: string): boolean {
-    if (owner) return false;
-    owner = { sessionId, turnId, playbackActive: false };
+    if (usePlaybackStore.getState().queue.length > 0) return false;
+    usePlaybackStore.setState({ queue: [{ sessionId, turnId }], playbackStatus: null });
     return true;
   },
 
-  /** 取得 owner 后开始本地播放流程, 包括尚未收到第一块音频的等待时间. */
-  playbackStarted(sessionId: string, turnId: string): void {
-    if (owns(sessionId, turnId)) owner!.playbackActive = true;
+  /** 不同 Session 在入口拒绝; 返回 true 表示新首项需要立即建立播放器. */
+  enqueueSpeech(sessionId: string, turnId: string): boolean {
+    const state = usePlaybackStore.getState();
+    if (state.queue[0] && state.queue[0].sessionId !== sessionId) return false;
+    if (state.queue.some(item => item.turnId === turnId && item.sessionId === sessionId)) return false;
+    const startsNow = state.queue.length === 0;
+    usePlaybackStore.setState({
+      queue: [...state.queue, { sessionId, turnId }],
+      playbackStatus: startsNow ? 'loading' : state.playbackStatus,
+    });
+    return startsNow;
+  },
+
+  setPlaybackStatus(sessionId: string, turnId: string, playbackStatus: PlaybackStatus): void {
+    if (!owns(sessionId, turnId)) return;
+    if (usePlaybackStore.getState().playbackStatus !== playbackStatus) {
+      usePlaybackStore.setState({ playbackStatus });
+    }
   },
 
   text(sessionId: string, turnId: string, delta: string): void {
@@ -69,22 +94,44 @@ export const sessionPresentation = {
     if (owns(sessionId, turnId)) void tauriBridge.publishStageMotion(motion);
   },
 
-  /** 没有本地语音时随正文结束释放; 有语音时等待媒体实际结束, 不看 TTS 按钮的当前值. */
-  finishTurn(sessionId: string, turnId: string): void {
-    if (!owns(sessionId, turnId) || owner!.playbackActive) return;
-    // 纯文字 Turn 结束前送出最后一段合并正文, 否则不足 50ms 的部分会随 owner 一起丢弃.
+  /** 有音频时等实际播放结束, 不用生成完成来交接 owner. */
+  finishTurn(sessionId: string, turnId: string): boolean {
+    if (!owns(sessionId, turnId) || usePlaybackStore.getState().playbackStatus !== null) return false;
     flushPendingText();
-    releaseOwner();
+    replaceQueue(usePlaybackStore.getState().queue.slice(1));
+    return true;
   },
 
-  /** 媒体结束, 停止或失败立即释放, 即使这一轮文字还在生成. */
   playbackEnded(sessionId: string, turnId: string): void {
-    if (owns(sessionId, turnId)) releaseOwner();
+    if (owns(sessionId, turnId)) replaceQueue(usePlaybackStore.getState().queue.slice(1));
   },
 
-  /** Session 已归档或删除时只清理它的表现; 本地音频由播放模块单独停止. */
+  clearPlayback(): void {
+    replaceQueue([]);
+  },
+
+  /** 手动重新生成只移除待播项, 不碰正在播放的首项. */
+  removePendingTurn(sessionId: string, turnId: string): void {
+    const state = usePlaybackStore.getState();
+    const queue = state.queue.filter((item, index) => index === 0
+      || item.sessionId !== sessionId || item.turnId !== turnId);
+    if (queue.length !== state.queue.length) usePlaybackStore.setState({ queue });
+  },
+
+  removeTurn(sessionId: string, turnId: string): void {
+    const state = usePlaybackStore.getState();
+    const queue = state.queue.filter(item => item.sessionId !== sessionId || item.turnId !== turnId);
+    if (queue.length === state.queue.length) return;
+    if (owns(sessionId, turnId)) replaceQueue(queue);
+    else usePlaybackStore.setState({ queue });
+  },
+
   cancelSession(sessionId: string): void {
-    if (owner?.sessionId === sessionId) releaseOwner();
+    const state = usePlaybackStore.getState();
+    const queue = state.queue.filter(item => item.sessionId !== sessionId);
+    if (queue.length === state.queue.length) return;
+    if (state.queue[0]?.sessionId === sessionId) replaceQueue(queue);
+    else usePlaybackStore.setState({ queue });
   },
 
   owns,

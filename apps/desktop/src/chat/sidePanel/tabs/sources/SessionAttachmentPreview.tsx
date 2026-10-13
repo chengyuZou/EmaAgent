@@ -1,12 +1,10 @@
-// Session 附件预览:按 path 找条目、经内容端点读内容。
-// 图片显示图(点开原图),粘贴文本显示 txt 全文(截断 50KB),其余显示路径信息。
-import { useCallback, useEffect, useState, type JSX } from 'react';
+import { useEffect, useState, type JSX } from 'react';
 import { ScrollArea, Spinner } from '@ema-agent/ui';
 import { sessionsApi } from '../../../../api/sessions.js';
 import { useSessionAttachmentStore } from '../../../../stores/sessionAttachment.js';
-import { ImagePreview } from '../../../../lib/images/imagePreview.js';
+import { AttachmentImagePreview } from '../../../../lib/images/attachmentImagePreview.js';
 
-const TEXT_PREVIEW_MAX_BYTES = 50 * 1024;
+const TEXT_PREVIEW_MAX_CHARS = 50 * 1024;
 
 export function SessionAttachmentPreview({ sessionId, attachmentPath }: {
   sessionId: string;
@@ -15,60 +13,37 @@ export function SessionAttachmentPreview({ sessionId, attachmentPath }: {
   const entry = useSessionAttachmentStore(state =>
     state.bySession.get(sessionId)?.find(item => item.path === attachmentPath),
   );
-  const [url, setUrl] = useState<string | null>(null);
-  const [text, setText] = useState<string | null>(null);
-  const [failed, setFailed] = useState(false);
+  const loadStatus = useSessionAttachmentStore(state => state.loadStateBySession.get(sessionId)?.status);
 
   useEffect(() => {
-    setUrl(null);
-    setText(null);
-    setFailed(false);
-    let cancelled = false;
-    let objectUrl: string | undefined;
-    void sessionsApi.readAttachmentContent(sessionId, attachmentPath, true)
-      .then(async (response) => {
-        if (cancelled) return;
-        if (!response.ok) {
-          setFailed(true);
-          return;
-        }
-        const contentType = response.headers.get('Content-Type') ?? '';
-        if (contentType.startsWith('image/')) {
-          const blob = await response.blob();
-          if (cancelled) {
-            return;
-          }
-          objectUrl = URL.createObjectURL(blob);
-          setUrl(objectUrl);
-        } else {
-          const raw = await response.text();
-          if (cancelled) {
-            return;
-          }
-          setText(raw.length > TEXT_PREVIEW_MAX_BYTES
-            ? `${raw.slice(0, TEXT_PREVIEW_MAX_BYTES)}\n\n…(已截断,完整内容见文件)`
-            : raw);
-        }
-      })
-      .catch(() => { if (!cancelled) setFailed(true); });
-    return () => {
-      cancelled = true;
-      if (objectUrl) {
-        URL.revokeObjectURL(objectUrl);
-      }
-    };
-  }, [sessionId, attachmentPath]);
+    // 从消息直接打开附件时, 目录可能尚未加载. 复用列表中的 kind, 不再为判断类型先下载一次内容.
+    void useSessionAttachmentStore.getState().loadForSession(sessionId).catch(() => {});
+  }, [sessionId]);
 
-  const loadImage = useCallback(async (): Promise<Blob> => {
-    const response = await sessionsApi.readAttachmentContent(sessionId, attachmentPath);
-    return response.blob();
-  }, [sessionId, attachmentPath]);
+  let title = attachmentPath.split(/[\\/]/).pop() ?? attachmentPath;
+  if (entry?.kind === 'image') {
+    title = entry.name ?? '剪贴板图片';
+  } else if (entry?.kind === 'pasted_text') {
+    title = '粘贴文本';
+  }
 
-  const title = entry?.kind === 'image'
-    ? (entry.name ?? '剪贴板图片')
-    : entry?.kind === 'pasted_text'
-      ? '粘贴文本'
-      : (attachmentPath.split(/[\\/]/).pop() ?? attachmentPath);
+  let content: JSX.Element;
+  if (entry?.kind === 'image') {
+    content = (
+      <AttachmentImagePreview
+        key={attachmentPath}
+        sessionId={sessionId}
+        path={attachmentPath}
+        alt={title}
+      />
+    );
+  } else if (entry?.kind === 'pasted_text') {
+    content = <AttachmentTextPreview key={attachmentPath} sessionId={sessionId} path={attachmentPath} />;
+  } else if (loadStatus === 'ready' || loadStatus === 'error' || loadStatus === 'stale') {
+    content = <MissingAttachment />;
+  } else {
+    content = <div className="flex justify-center py-10"><Spinner size="md" /></div>;
+  }
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -78,20 +53,56 @@ export function SessionAttachmentPreview({ sessionId, attachmentPath }: {
           {attachmentPath}
         </span>
       </div>
-      <ScrollArea className="flex-1 p-3">
-        {failed && (
-          <p className="text-xs text-[var(--ema-text-tertiary)]">附件文件已不存在或无法读取。</p>
-        )}
-        {!failed && !url && !text && (
-          <div className="flex justify-center py-10"><Spinner size="md" /></div>
-        )}
-        {url && <ImagePreview src={url} alt={title} loadImage={loadImage} />}
-        {text !== null && (
-          <pre className="ema-material-reading rounded-lg p-3 text-xs font-mono whitespace-pre-wrap break-all text-[var(--ema-text-secondary)]">
-            {text}
-          </pre>
-        )}
-      </ScrollArea>
+      <ScrollArea className="flex-1 p-3">{content}</ScrollArea>
     </div>
   );
+}
+
+function AttachmentTextPreview({ sessionId, path }: {
+  readonly sessionId: string;
+  readonly path: string;
+}): JSX.Element {
+  const [text, setText] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    setText(null);
+    setFailed(false);
+    let cancelled = false;
+    void sessionsApi.readAttachmentContent(sessionId, path)
+      .then(response => response.text())
+      .then(raw => {
+        if (cancelled) {
+          return;
+        }
+        if (raw.length > TEXT_PREVIEW_MAX_CHARS) {
+          setText(raw.slice(0, TEXT_PREVIEW_MAX_CHARS) + '\n\n…(已截断,完整内容见文件)');
+        } else {
+          setText(raw);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setFailed(true);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId, path]);
+
+  if (failed) {
+    return <MissingAttachment />;
+  }
+  if (text === null) {
+    return <div className="flex justify-center py-10"><Spinner size="md" /></div>;
+  }
+  return (
+    <pre className="ema-material-reading rounded-lg p-3 text-xs font-mono whitespace-pre-wrap break-all text-[var(--ema-text-secondary)]">
+      {text}
+    </pre>
+  );
+}
+
+function MissingAttachment(): JSX.Element {
+  return <p className="text-xs text-[var(--ema-text-tertiary)]">附件文件已不存在或无法读取。</p>;
 }

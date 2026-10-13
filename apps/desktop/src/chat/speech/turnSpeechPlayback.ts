@@ -1,36 +1,21 @@
-import { create } from 'zustand';
 import type { SpeechGenerateEvent } from '@ema-agent/server/routes/ws/speech.js';
-import { openSpeechSocket, type SpeechSocketHandle } from '../../api/speechWebSocket.js';
 import { turnsApi } from '../../api/turns.js';
-import { tauriBridge } from '../../lib/tauri-bridge.js';
-import { showToast } from '../../lib/toast.js';
-import { createEmaLipSync, type EmaLipSync } from '../../lib/wlipsync-lipsync.js';
-import { sessionPresentation } from '../presentation/sessionPresentation.js';
-
-export type PlaybackStatus = 'loading' | 'playing';
-
-interface PlaybackState {
-  playback: {
-    readonly sessionId: string;
-    readonly turnId: string;
-    readonly status: PlaybackStatus;
-  } | null;
-}
-
-export const usePlaybackStore = create<PlaybackState>(() => ({ playback: null }));
+import { tauriBridge } from '../../lib/tauriBridge.js';
+import { showToast } from '../../lib/notifications/toast.js';
+import { createEmaLipSync, type EmaLipSync } from './wLipSync.js';
+import { sessionPresentation, usePlaybackStore, type PlaybackStatus } from '../presentation/sessionPresentation.js';
+import { subscribeSpeechGeneration, useSpeechGenerationStore } from './turnSpeechGeneration.js';
+export { usePlaybackStore } from '../presentation/sessionPresentation.js';
+export type { PlaybackStatus } from '../presentation/sessionPresentation.js';
 
 interface SpeechPlayer {
   readonly sessionId: string;
   readonly turnId: string;
-  readonly origin: 'live' | 'history';
+  readonly followsGeneration: boolean;
   readonly audio: HTMLAudioElement;
   readonly mediaListeners: AbortController;
   source: MediaElementAudioSourceNode | null;
-  socket: SpeechSocketHandle | null;
-  generationFinished: boolean;
   urlRequested: boolean;
-  /** 用户在 WebSocket 握手完成前停止时, 握手成功后仍要把取消命令送给原来的 Turn. */
-  cancelGeneration: boolean;
 }
 
 let currentPlayer: SpeechPlayer | null = null;
@@ -110,16 +95,10 @@ function stopMouthTracking(): void {
 }
 
 function setPlaybackStatus(player: SpeechPlayer, status: PlaybackStatus): void {
-  const previous = usePlaybackStore.getState().playback;
-  if (previous?.sessionId === player.sessionId
-    && previous.turnId === player.turnId
-    && previous.status === status) return;
-  usePlaybackStore.setState({
-    playback: { sessionId: player.sessionId, turnId: player.turnId, status },
-  });
+  sessionPresentation.setPlaybackStatus(player.sessionId, player.turnId, status);
 }
 
-function createPlayer(sessionId: string, turnId: string, origin: SpeechPlayer['origin']): SpeechPlayer {
+function createPlayer(sessionId: string, turnId: string, followsGeneration: boolean): SpeechPlayer {
   const audio = new Audio();
   // 音频走 loopback Server, 与 WebView 页面不同源. 必须先设置 CORS 再赋 src,
   // 否则 MediaElementAudioSourceNode 会播放静音, 口型分析也拿不到采样.
@@ -128,17 +107,13 @@ function createPlayer(sessionId: string, turnId: string, origin: SpeechPlayer['o
   const player: SpeechPlayer = {
     sessionId,
     turnId,
-    origin,
+    followsGeneration,
     audio,
     mediaListeners: new AbortController(),
     source: null,
-    socket: null,
-    generationFinished: origin === 'history',
     urlRequested: false,
-    cancelGeneration: false,
   };
   currentPlayer = player;
-  sessionPresentation.playbackStarted(sessionId, turnId);
   setPlaybackStatus(player, 'loading');
 
   const signal = player.mediaListeners.signal;
@@ -158,52 +133,51 @@ function createPlayer(sessionId: string, turnId: string, origin: SpeechPlayer['o
 }
 
 export function startTurnSpeechPlayback(sessionId: string, turnId: string): void {
-  // 没有 owner 的 Turn 不连接本地播放器. Server 仍会独立完成合成和落盘.
-  if (!sessionPresentation.claim(sessionId, turnId)) return;
-  const player = createPlayer(sessionId, turnId, 'live');
-  void openSpeechSocket(sessionId, turnId, {
-    onControl: event => receiveSpeechControl(player, event),
-    onClosed: () => {
-      if (!player.generationFinished) failPlayer(player, '语音状态连接已断开，播放已停止');
-    },
-  }).then(socket => {
-    if (currentPlayer !== player) {
-      if (player.cancelGeneration) socket.cancel();
-      else socket.close();
-      return;
-    }
-    player.socket = socket;
-  }).catch(error => failPlayer(
-    player,
-    error instanceof Error ? error.message : '语音状态连接失败',
-  ));
+  if (sessionPresentation.enqueueSpeech(sessionId, turnId)) startPendingSpeechPlayback();
 }
 
+/** 首项在上一段媒体实际结束后才建立 Audio; 待播项不预下载整轮文件. */
+export function startPendingSpeechPlayback(): void {
+  const state = usePlaybackStore.getState();
+  const key = state.queue[0];
+  if (currentPlayer || !key || state.playbackStatus === null) return;
+  const generation = useSpeechGenerationStore.getState().active.get(key.turnId);
+  const player = createPlayer(key.sessionId, key.turnId, generation !== undefined);
+  if (!generation || generation.audioReady) void playUrl(player);
+}
+
+subscribeSpeechGeneration(event => {
+  const player = currentPlayer;
+  if (!player || player.sessionId !== event.sessionId || player.turnId !== event.turnId) {
+    if (event.type === 'speech_generate_cancelled' || event.type === 'speech_generate_failed'
+      || event.type === 'speech_generate_unavailable'
+      || (event.type === 'speech_generate_completed' && !event.audioAvailable)) {
+      sessionPresentation.removePendingTurn(event.sessionId, event.turnId);
+    }
+    return;
+  }
+  if (player.followsGeneration) receiveSpeechControl(player, event);
+});
+
 function receiveSpeechControl(player: SpeechPlayer, event: SpeechGenerateEvent): void {
-  if (currentPlayer !== player) return;
   switch (event.type) {
     case 'speech_generate_started':
       void playUrl(player);
       return;
     case 'speech_generate_warning':
-      showToast(`语音合成失败: ${event.message}`, { variant: 'warning' });
       return;
     case 'speech_generate_completed':
       // Server 已写完文件, 不代表浏览器已播完. HTTP 读到文件尾后由 audio 的 ended 释放 owner.
-      player.generationFinished = true;
       if (event.audioAvailable) void playUrl(player);
       else finishPlayer(player);
       return;
     case 'speech_generate_cancelled':
-      player.generationFinished = true;
       finishPlayer(player);
       return;
     case 'speech_generate_failed':
-      player.generationFinished = true;
-      failPlayer(player, `语音生成失败: ${event.message}`);
+      finishPlayer(player);
       return;
     case 'speech_generate_unavailable':
-      player.generationFinished = true;
       failPlayer(player, '该轮没有可播放的语音');
       return;
   }
@@ -230,9 +204,8 @@ async function playUrl(player: SpeechPlayer): Promise<void> {
   }
 }
 
-function finishPlayer(player: SpeechPlayer, cancelGeneration = false): void {
+function disposePlayer(player: SpeechPlayer): void {
   if (currentPlayer !== player) return;
-  player.cancelGeneration = cancelGeneration && player.origin === 'live' && !player.generationFinished;
   // 先取消当前身份和事件监听. pause/load 或迟到的 play() 拒绝不能清掉下一轮播放器.
   currentPlayer = null;
   player.mediaListeners.abort();
@@ -241,12 +214,14 @@ function finishPlayer(player: SpeechPlayer, cancelGeneration = false): void {
   player.audio.load();
   player.source?.disconnect();
   player.source = null;
-  if (player.cancelGeneration) player.socket?.cancel();
-  else player.socket?.close();
-  player.socket = null;
   stopMouthTracking();
-  usePlaybackStore.setState({ playback: null });
+}
+
+function finishPlayer(player: SpeechPlayer): void {
+  if (currentPlayer !== player) return;
+  disposePlayer(player);
   sessionPresentation.playbackEnded(player.sessionId, player.turnId);
+  startPendingSpeechPlayback();
 }
 
 function failPlayer(player: SpeechPlayer, message: string): void {
@@ -269,22 +244,38 @@ function mediaErrorMessage(error: MediaError | null): string {
 }
 
 export function replayTurn(sessionId: string, turnId: string): void {
-  if (!sessionPresentation.claim(sessionId, turnId)) {
-    showToast('当前对话仍在呈现或播放，请结束后再重播', { variant: 'info' });
-    return;
-  }
-  const player = createPlayer(sessionId, turnId, 'history');
+  // 主动播放替换本地队列, 但不取消原队列中任何后台生成任务.
+  if (currentPlayer) disposePlayer(currentPlayer);
+  sessionPresentation.clearPlayback();
+  sessionPresentation.enqueueSpeech(sessionId, turnId);
+  const player = createPlayer(sessionId, turnId, false);
   void playUrl(player);
 }
 
-/** Footer 明确停止本轮播放. 实时生成也停止并保留已生成部分, 正文不受影响. */
+/** 停止当前播放并清空待播项, 不取消后台生成. */
 export function stopTurnPlayback(sessionId: string, turnId: string): void {
+  if (!sessionPresentation.owns(sessionId, turnId)) return;
+  if (currentPlayer) disposePlayer(currentPlayer);
+  sessionPresentation.clearPlayback();
+}
+
+export function stopSessionPlayback(sessionId: string): void {
+  const key = usePlaybackStore.getState().queue[0];
+  if (key?.sessionId === sessionId) stopTurnPlayback(sessionId, key.turnId);
+}
+
+/** 根 Turn 失败或取消只移除该项, 其他已排队 Turn 仍可继续播放. */
+export function removeTurnPlayback(sessionId: string, turnId: string): void {
   const player = currentPlayer;
-  if (player?.sessionId === sessionId && player.turnId === turnId) finishPlayer(player, true);
+  if (player?.sessionId === sessionId && player.turnId === turnId) disposePlayer(player);
+  sessionPresentation.removeTurn(sessionId, turnId);
+  startPendingSpeechPlayback();
 }
 
 /** Server 已完成归档或删除后停止本地读取; 不再发送一次生成取消命令. */
 export function removeSessionPlayback(sessionId: string): void {
   const player = currentPlayer;
-  if (player?.sessionId === sessionId) finishPlayer(player);
+  if (player?.sessionId === sessionId) disposePlayer(player);
+  sessionPresentation.cancelSession(sessionId);
+  startPendingSpeechPlayback();
 }

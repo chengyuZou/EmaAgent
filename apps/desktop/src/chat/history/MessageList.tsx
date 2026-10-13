@@ -1,7 +1,7 @@
 // Store 管历史窗口, 此处管分页与消息展示; 行高由内核测量, 定位交给共用视口逻辑.
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX, type MutableRefObject } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { IconButton } from '@ema-agent/ui';
+import { IconButton, Tooltip } from '@ema-agent/ui';
 import type { SessionMessage } from '@ema-agent/session';
 import { emptyChatDraft, useChatDraftStore } from '../../stores/chatDraft.js';
 import { ConversationStarters } from '../conversationStarters.js';
@@ -14,8 +14,13 @@ import { TurnFooter } from '../messages/TurnFooter.js';
 import { UIMessage, toolResultsForMessages } from '../messages/UIMessage.js';
 import { MessageExpansionContext } from '../messages/messageExpansion.js';
 import { useMessageViewport } from './useMessageViewport.js';
+import { sessionsApi } from '../../api/sessions.js';
+import { MainView, useMainNavigationStore, type TurnNavigationRequest } from '../../layout/navigation.js';
+import { showToast } from '../../lib/notifications/toast.js';
+import { usePlaybackStore } from '../speech/turnSpeechPlayback.js';
 
 const MESSAGE_TOP_INSET = 40;
+const PLAYBACK_TARGET_HIGHLIGHT_MS = 1_800;
 type DisplayMessage = SessionMessage | StreamingMessage;
 
 /** 缺口窗口只更新已有 Message, 不能把最新 Turn 接到旧历史后面. */
@@ -60,6 +65,26 @@ export function MessageList({ sessionId, bottomInset, latestButtonBottom }: {
   const turns = useTurnStore(useShallow(state => new Map(state.turnsBySession.get(sessionId) ?? [])));
   const stopReason = useTurnStore(state => state.stopReasonBySession.get(sessionId));
   const activeCompact = useSessionActivityStore(state => state.bySession.get(sessionId)?.activeCompact ?? null);
+  const handledNavigationRequest = useRef<TurnNavigationRequest | null>(null);
+  const [locatedPlaybackTurnId, setLocatedPlaybackTurnId] = useState<string | null>(null);
+  const highlightTimer = useRef<number | null>(null);
+  const highlightPlaybackTurn = useCallback((turnId: string): void => {
+    if (highlightTimer.current !== null) window.clearTimeout(highlightTimer.current);
+    setLocatedPlaybackTurnId(turnId);
+    highlightTimer.current = window.setTimeout(() => {
+      setLocatedPlaybackTurnId(null);
+      highlightTimer.current = null;
+    }, PLAYBACK_TARGET_HIGHLIGHT_MS);
+  }, []);
+
+  useEffect(() => {
+    setLocatedPlaybackTurnId(null);
+    return () => {
+      if (highlightTimer.current !== null) window.clearTimeout(highlightTimer.current);
+      highlightTimer.current = null;
+    };
+  }, [sessionId]);
+
   useEffect(() => {
     void useSessionHistoryStore.getState().loadLatest(sessionId).then(() => scheduleTurnHistoryClosure(sessionId));
   }, [sessionId]);
@@ -87,13 +112,17 @@ export function MessageList({ sessionId, bottomInset, latestButtonBottom }: {
       toolResults={toolResults} messagesByTurn={messagesByTurn}
       stopReason={turns.size === 0 ? stopReason : undefined}
       activeCompact={activeCompact} bottomInset={bottomInset} latestButtonBottom={latestButtonBottom}
+      handledNavigationRequest={handledNavigationRequest}
+      locatedPlaybackTurnId={locatedPlaybackTurnId}
+      onPlaybackTurnLocated={highlightPlaybackTurn}
     />
   );
 }
 
 function HistoryViewport({
   sessionId, history, messages, turns, toolResults, messagesByTurn,
-  stopReason, activeCompact, bottomInset, latestButtonBottom,
+  stopReason, activeCompact, bottomInset, latestButtonBottom, handledNavigationRequest,
+  locatedPlaybackTurnId, onPlaybackTurnLocated,
 }: {
   readonly sessionId: string;
   readonly history: SessionHistoryState;
@@ -105,8 +134,13 @@ function HistoryViewport({
   readonly activeCompact: ActiveCompact | null;
   readonly bottomInset: number;
   readonly latestButtonBottom: number | null;
+  readonly handledNavigationRequest: MutableRefObject<TurnNavigationRequest | null>;
+  readonly locatedPlaybackTurnId: string | null;
+  readonly onPlaybackTurnLocated: (turnId: string) => void;
 }): JSX.Element {
   const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
+  const playbackKey = usePlaybackStore(state => state.playbackStatus ? state.queue[0] : undefined);
+  const navigationRequest = useMainNavigationStore(state => state.turnNavigationRequest);
   const statusRef = useRef<HTMLDivElement | null>(null);
   const [statusHeight, setStatusHeight] = useState(32);
   const [visibleTurnIds, setVisibleTurnIds] = useState<ReadonlySet<string>>(() => new Set());
@@ -217,15 +251,48 @@ function HistoryViewport({
     if (first) useSessionHistoryStore.getState().setCurrentTurn(sessionId, first);
   }, [scroller, messages, virtualizer, virtualizer.scrollOffset, totalHeight]);
 
-  async function selectTurn(turnId: string): Promise<void> {
+  async function selectTurn(turnId: string, isCurrentRequest: () => boolean = () => true): Promise<void> {
     const store = useSessionHistoryStore.getState();
     const item = store.bySession.get(sessionId)?.turnIndexItems.find(candidate => candidate.turnId === turnId);
-    if (!item?.anchorMessageId) return;
-    if (messages.some(message => message.id === item.anchorMessageId)) {
+    let anchorMessageId = item?.anchorMessageId
+      ?? messagesRef.current.find(message => message.turnId === turnId)?.id;
+    if (!anchorMessageId) {
+      // 不把“索引尚未翻到该轮”当成不存在; 单独查询该轮, 再打开有界消息窗口.
+      const page = await sessionsApi.listTurnMessages(sessionId, turnId);
+      anchorMessageId = page.messages.find(message => message.kind === 'normal')?.id;
+    }
+    if (!isCurrentRequest()) return;
+    if (!anchorMessageId) throw new Error('该轮暂时没有可定位的消息');
+    if (messagesRef.current.some(message => message.id === anchorMessageId)) {
       store.cancelPendingWindowReplace(sessionId);
-      viewport.scrollToMessage(item.anchorMessageId);
-    } else await store.openAround(sessionId, item.anchorMessageId);
+      viewport.scrollToMessage(anchorMessageId);
+    } else await store.openAround(sessionId, anchorMessageId);
   }
+
+  useEffect(() => {
+    if (!navigationRequest || navigationRequest.sessionId !== sessionId || !scroller) return;
+    // 换历史窗口会重新挂载视口, 同一个定位请求不能因此再查一次该轮.
+    if (handledNavigationRequest.current === navigationRequest) return;
+    handledNavigationRequest.current = navigationRequest;
+    const request = navigationRequest;
+    const stillRequested = (): boolean => {
+      const navigation = useMainNavigationStore.getState();
+      return navigation.turnNavigationRequest === request
+        && navigation.activeView === MainView.Chat
+        && navigation.viewedSessionId === sessionId;
+    };
+    void selectTurn(request.turnId, stillRequested)
+      .then(() => {
+        const located = useSessionHistoryStore.getState().bySession.get(sessionId);
+        if (stillRequested() && located?.messages.some(message => message.turnId === request.turnId)) {
+          onPlaybackTurnLocated(request.turnId);
+        }
+      })
+      .catch(error => {
+        if (stillRequested()) showToast(error instanceof Error ? error.message : '无法定位正在播放的回复', { variant: 'warning' });
+      })
+      .finally(() => useMainNavigationStore.getState().finishTurnNavigation(request));
+  }, [navigationRequest, sessionId, scroller, onPlaybackTurnLocated]);
 
   async function returnToLatest(): Promise<void> {
     const store = useSessionHistoryStore.getState();
@@ -238,6 +305,8 @@ function HistoryViewport({
   const empty = messages.length === 0;
   const loadingEmpty = empty && (!history.loaded || Boolean(history.olderCursor || history.newerCursor));
   const showReturnToLatest = latestButtonBottom !== null && (!isAtBottom || Boolean(history.newerCursor));
+  const showLocatePlayback = latestButtonBottom !== null && Boolean(playbackKey);
+  const pairedNavigation = showReturnToLatest && showLocatePlayback;
   return (
     <div className="relative min-h-0 flex-1">
       <TurnNavigationRail sessionId={sessionId} visibleTurnIds={visibleTurnIds} onSelectTurn={selectTurn} />
@@ -272,6 +341,7 @@ function HistoryViewport({
                 style={{ position: 'absolute', top: row.start, width: '100%' }}>
                 <div className="ema-chat-content-column ema-chat-message-row"
                   data-message-id={message.id} data-turn-id={turnId ?? undefined}
+                  data-playback-target={turnId === locatedPlaybackTurnId || undefined}
                   onAnimationEnd={event => {
                     if (event.target === event.currentTarget) {
                       event.currentTarget.classList.remove('ema-chat-message-enter');
@@ -317,10 +387,44 @@ function HistoryViewport({
             : <ChatEmptyState sessionId={sessionId} />}
         </div>
       )}
-      <IconButton label="回到最新消息" icon="i-lucide:arrow-down" variant="ghost" size="sm"
-        className="ema-chat-jump-latest" data-visible={showReturnToLatest} aria-hidden={!showReturnToLatest}
-        tabIndex={showReturnToLatest ? 0 : -1} disabled={!showReturnToLatest}
-        style={{ bottom: latestButtonBottom ?? 0 }} onClick={() => void returnToLatest()} />
+      <Tooltip content="回到最新消息">
+        <IconButton
+          label="回到最新消息"
+          icon="i-lucide:arrow-down"
+          variant="ghost"
+          size="sm"
+          className="ema-chat-jump-latest"
+          data-visible={showReturnToLatest}
+          data-paired={pairedNavigation || undefined}
+          aria-hidden={!showReturnToLatest}
+          tabIndex={showReturnToLatest ? 0 : -1}
+          disabled={!showReturnToLatest}
+          style={{ bottom: latestButtonBottom ?? 0 }}
+          onClick={() => void returnToLatest()}
+        />
+      </Tooltip>
+      <Tooltip content="定位正在播放的回复 (不改变播放)">
+        <IconButton
+          label="定位正在播放的回复"
+          icon="i-lucide:volume-2"
+          variant="ghost"
+          size="sm"
+          className="ema-chat-jump-latest ema-chat-jump-speech"
+          data-visible={showLocatePlayback}
+          data-paired={pairedNavigation || undefined}
+          aria-hidden={!showLocatePlayback}
+          tabIndex={showLocatePlayback ? 0 : -1}
+          disabled={!showLocatePlayback}
+          style={{ bottom: latestButtonBottom ?? 0 }}
+          onClick={() => {
+            const playback = usePlaybackStore.getState();
+            const key = playback.queue[0];
+            if (playback.playbackStatus && key) {
+              useMainNavigationStore.getState().viewTurn(key.sessionId, key.turnId);
+            }
+          }}
+        />
+      </Tooltip>
     </div>
   );
 }

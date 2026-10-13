@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { CallTts, PcmAudioFormat, TtsVoice } from '@ema-agent/tts';
 import type { UsageRecorder } from '@ema-agent/usage';
 import type { AudioWriter, FinalizedAudio, FsAudioArchive } from './audioArchive.js';
@@ -17,6 +18,10 @@ export interface SpeechCoordinatorArgs {
   readonly archive: FsAudioArchive;
   readonly signal: AbortSignal;
   readonly usageRecorder: UsageRecorder;
+  /** 自动生成保留已生成的部分; 手动整轮生成必须全部成功才替换正式音频. */
+  readonly savePartialAudio: boolean;
+  /** 同步写入正式音频记录; 抛错时文件发布也会撤回. */
+  readonly saveAudioRecord: (audio: FinalizedAudio) => void;
   /** 第一块 PCM 写入成功后调用一次; 此时音频 HTTP 路由已可读取. */
   readonly onAudioReady: () => void;
   readonly onSentenceError: (error: {
@@ -63,7 +68,7 @@ export class SpeechCoordinator {
     if (this.state !== 'accepting') return;
     const visible = this.textFilter.feed(delta);
     for (const sentence of this.splitter.feed(visible)) {
-      this.enqueue(sentence.index, sentence.text);
+      this.enqueue(sentence);
     }
   }
 
@@ -77,7 +82,7 @@ export class SpeechCoordinator {
         ...this.splitter.flush(),
       ];
       for (const sentence of tail) {
-        this.enqueue(sentence.index, sentence.text);
+        this.enqueue(sentence);
       }
     }
     this.completion = this.finishInternal();
@@ -97,7 +102,16 @@ export class SpeechCoordinator {
     await this.chain;
     let audio: FinalizedAudio | null = null;
     try {
-      audio = await this.writer?.finish() ?? null;
+      if (this.writer) {
+        if (!this.args.savePartialAudio && (this.failure || this.state === 'cancelled')) {
+          await this.writer.discard();
+        } else {
+          audio = await this.writer.finish(value => {
+            if (!this.args.savePartialAudio) this.abortController.signal.throwIfAborted();
+            this.args.saveAudioRecord(value);
+          });
+        }
+      }
     } catch (error) {
       this.failure = {
         code: 'speech/audio_archive_failed',
@@ -112,9 +126,9 @@ export class SpeechCoordinator {
     return { status: cancelled ? 'cancelled' : 'completed', audio };
   }
 
-  private enqueue(index: number, text: string): void {
+  private enqueue(text: string): void {
     this.chain = this.chain
-      .then(() => this.synthesizeSentence(index, text))
+      .then(() => this.synthesizeSentence(text))
       .catch(error => {
         this.failure = {
           code: 'speech/generate_failed',
@@ -125,11 +139,12 @@ export class SpeechCoordinator {
       });
   }
 
-  private async synthesizeSentence(index: number, sourceText: string): Promise<void> {
+  private async synthesizeSentence(sourceText: string): Promise<void> {
     const text = filterSentenceForTts(sourceText);
     if (!text || (this.state !== 'accepting' && this.state !== 'finishing')) return;
 
     const startedAt = Date.now();
+    const callId = randomUUID();
     const timeoutSignal = AbortSignal.timeout(SENTENCE_TIMEOUT_MS);
     const signal = AbortSignal.any([this.abortController.signal, timeoutSignal]);
     let sentenceBytes = 0;
@@ -172,8 +187,16 @@ export class SpeechCoordinator {
         code: errorCode,
         message: error instanceof Error ? error.message : String(error),
       });
+      if (!this.args.savePartialAudio) {
+        this.failure = {
+          code: errorCode,
+          message: error instanceof Error ? error.message : String(error),
+        };
+        this.state = 'failed';
+        this.abortController.abort(error);
+      }
     } finally {
-      this.recordUsage(`${this.args.turnId}-${index}`, text.length, startedAt, errorCode);
+      this.recordUsage(callId, text.length, startedAt, errorCode);
     }
   }
 

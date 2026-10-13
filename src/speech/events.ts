@@ -32,3 +32,18 @@ export interface SpeechArchiveEvent {
   readonly sessionId: string;
   readonly turnId: string;
 }
+
+/** 手动整轮生成的结果; audioAvailable 也可能指失败后仍保留的旧文件. */
+export type TurnSpeechGenerateResult = {
+  readonly sessionId: string;
+  readonly turnId: string;
+} & (
+  | { readonly status: 'completed'; readonly audioAvailable: true }
+  | { readonly status: 'cancelled'; readonly audioAvailable: boolean }
+  | {
+      readonly status: 'failed';
+      readonly audioAvailable: boolean;
+      readonly code: string;
+      readonly message: string;
+    }
+);

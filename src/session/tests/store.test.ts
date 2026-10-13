@@ -4,11 +4,12 @@ import os from 'node:os';
 import path from 'node:path';
 import { Database, TurnsRepo } from '@ema-agent/storage';
 import { DEFAULT_SESSION_TITLE, SessionStore } from '../store.js';
+import type { SessionEvent } from '../events.js';
 
-function makeStore() {
+function makeStore(onChanged?: (event: SessionEvent) => void) {
   const db = new Database({ memory: true, kind: 'data' });
   db.migrate();
-  return { store: new SessionStore({ db }), db };
+  return { store: new SessionStore({ db, onChanged }), db };
 }
 
 let turnSeq = 0;
@@ -26,6 +27,70 @@ function insertTurnFixture(db: Database, sessionId: string): string {
 }
 
 // ── Session ───────────────────────────────────────────────────────────────────
+
+describe('SessionStore 变更事件的会话身份', () => {
+  it('会话的写入与删除携带对应 ID, Fork 携带新会话 ID', () => {
+    const events: SessionEvent[] = [];
+    const { store, db } = makeStore(event => events.push(event));
+    const session = store.createSession({ cwd: os.tmpdir() });
+    const operations = [
+      () => store.setViewedAt(session.id),
+      () => store.updateTitleIfDefault(session.id, '自动标题'),
+      () => store.updateTitle(session.id, '手动标题'),
+      () => store.patchSession(session.id, { ttsEnabled: true }),
+      () => store.pinSession(session.id),
+      () => store.unpinSession(session.id),
+      () => store.archiveSession(session.id),
+      () => store.unarchiveSession(session.id),
+    ];
+    expect(events.pop()).toEqual({ type: 'session_list_changed', sessionId: session.id });
+    for (const operation of operations) {
+      operation();
+      expect(events.pop()).toEqual({ type: 'session_list_changed', sessionId: session.id });
+    }
+    const project = store.createProject('项目', [os.tmpdir()]);
+    expect(events.pop()).toEqual({ type: 'session_list_changed' });
+    store.assignSessionToProject(session.id, project.id);
+    expect(events.pop()).toEqual({ type: 'session_list_changed', sessionId: session.id });
+    store.removeSessionFromProject(session.id);
+    expect(events.pop()).toEqual({ type: 'session_list_changed', sessionId: session.id });
+    store.moveSessionInSidebar({
+      sessionId: session.id,
+      destination: { section: 'recent' },
+      beforeSessionId: null,
+    });
+    expect(events.pop()).toEqual({ type: 'session_list_changed', sessionId: session.id });
+    const fork = store.forkSession(session.id);
+    expect(events.pop()).toEqual({ type: 'session_list_changed', sessionId: fork.sessionId });
+    store.deleteSession(session.id);
+    expect(events.pop()).toEqual({ type: 'session_list_changed', sessionId: session.id });
+    db.close();
+  });
+
+  it('项目变化不冒充单个会话, 自动改名条件不成立时不发事件', () => {
+    const events: SessionEvent[] = [];
+    const { store, db } = makeStore(event => events.push(event));
+    const session = store.createSession({ title: '已有标题', cwd: os.tmpdir() });
+    events.length = 0;
+    expect(store.updateTitleIfDefault(session.id, '新标题')).toBe(false);
+    expect(events).toEqual([]);
+    const project = store.createProject('项目', []);
+    store.renameProject(project.id, '改名');
+    store.pinProject(project.id, true);
+    store.moveProjectInSidebar({
+      projectId: project.id,
+      section: 'projects',
+      beforeProjectId: null,
+    });
+    store.addProjectFolder(project.id, os.tmpdir());
+    store.setProjectPrimaryFolder(project.id, os.tmpdir());
+    store.removeProjectFolder(project.id, os.tmpdir());
+    store.deleteProject(project.id);
+    expect(events).toHaveLength(8);
+    expect(events.every(event => event.type === 'session_list_changed' && !('sessionId' in event))).toBe(true);
+    db.close();
+  });
+});
 
 describe('SessionStore — session', () => {
   it('搜索预览只使用索引正文,不回读工具结果或完整消息块', () => {

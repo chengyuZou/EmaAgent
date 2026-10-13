@@ -79,6 +79,7 @@ vi.mock(
       label
     ),
     Spinner: () => null,
+    Tooltip: ({ children }: { children: ReactNode }) => children,
   })
 );
 
@@ -254,6 +255,10 @@ describe(
             {
               sessionId: 'session',
               initialDetailId: tab?.kind === 'subagents' ? tab.subagentId : undefined,
+              onReturnToList: () => useSessionPanelStore.getState().openTab('session', {
+                id: 'subagents',
+                kind: 'subagents',
+              }),
             }
           );
         }

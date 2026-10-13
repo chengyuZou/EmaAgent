@@ -30,20 +30,13 @@ const ABBREVIATIONS = new Set<string>([
 const MIN_SENTENCE_LEN = 4;
 const MAX_BUFFER_LEN   = 200;
 
-export interface SentenceChunk {
-  /** 本句在流中的单调递增 0 起索引。 */
-  index: number;
-  text:  string;
-}
-
 export class SentenceSplitter {
-  private buffer    = '';
-  private nextIndex = 0;
+  private buffer = '';
 
   /**
    * 喂入一段流式文本。yield 缓冲中已形成的完整句子。
    */
-  feed(chunk: string): SentenceChunk[] {
+  feed(chunk: string): string[] {
     this.buffer += chunk;
     return this.drain(false);
   }
@@ -51,12 +44,12 @@ export class SentenceSplitter {
   /**
    * 标记流结束。把剩余文本作为最后一句 yield(即使短于 MIN_SENTENCE_LEN)。
    */
-  flush(): SentenceChunk[] {
+  flush(): string[] {
     return this.drain(true);
   }
 
-  private drain(isFinal: boolean): SentenceChunk[] {
-    const out: SentenceChunk[] = [];
+  private drain(isFinal: boolean): string[] {
+    const out: string[] = [];
 
     while (this.buffer.length > 0) {
       const cut = this.findCutIndex(isFinal);
@@ -67,7 +60,7 @@ export class SentenceSplitter {
 
       if (piece.length === 0) continue;
 
-      out.push({ index: this.nextIndex++, text: piece });
+      out.push(piece);
     }
 
     return out;

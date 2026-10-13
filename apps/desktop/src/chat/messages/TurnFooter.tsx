@@ -1,12 +1,12 @@
 // 渲染一轮最后一条可见消息之后的编辑汇总、操作和统计.
 
-import { useEffect, useMemo, useRef, useState, type JSX } from 'react';
+import { useEffect, useMemo, useState, type JSX } from 'react';
 import { IconButton } from '@ema-agent/ui';
 import type { AssistantBlock, LlmTokenUsage } from '@ema-agent/llm';
 import type { SessionMessage } from '@ema-agent/session';
 import { estimateTextTokens } from '@ema-agent/token';
 import type { SessionMessagePage } from '../../api/sessions.js';
-import { showToast } from '../../lib/toast.js';
+import { showToast } from '../../lib/notifications/toast.js';
 import { useMainNavigationStore } from '../../layout/navigation.js';
 import { useSessionStore } from '../../stores/session.js';
 import {
@@ -17,20 +17,13 @@ import {
   type StreamingMessage,
   type TurnState,
 } from '../../stores/turn.js';
-import {
-  replayTurn,
-  stopTurnPlayback,
-  usePlaybackStore,
-  type PlaybackStatus,
-} from '../speech/turnSpeechPlayback.js';
+import { TurnSpeechControls } from './turnSpeechControls.js';
 import { historyAssistantSections } from './assistantSections.js';
 import { toolResultsForMessages } from './UIMessage.js';
 import { EditedFilesCard } from './toolBlocks/EditedFilesCard.js';
 import { editedFiles, formatTurnTime, type ToolDisplayCall } from './toolBlocks/toolGroups.js';
 
 export type SessionTurnStats = SessionMessagePage['turnStats'][number];
-
-const AUDIO_CLICK_THROTTLE_MS = 600;
 
 export function TurnFooter({
   sessionId,
@@ -71,13 +64,6 @@ export function TurnFooter({
   );
   const textContent = useMemo(() => assistantText(messages), [messages]);
   const createdAt = messages.at(-1)?.createdAt ?? Date.now();
-  const playbackStatus = usePlaybackStore(state => {
-    const playback = state.playback;
-    return playback?.sessionId === sessionId && playback.turnId === turnId
-      ? playback.status
-      : null;
-  });
-  const lastAudioClick = useRef(0);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -91,16 +77,14 @@ export function TurnFooter({
     return () => clearInterval(timer);
   }, [turn?.startedAt, turn?.terminal]);
 
-  const toggleAudio = (): void => {
-    if (playbackStatus) {
-      stopTurnPlayback(sessionId, turnId);
-      return;
-    }
-    const now = Date.now();
-    if (now - lastAudioClick.current < AUDIO_CLICK_THROTTLE_MS) return;
-    lastAudioClick.current = now;
-    replayTurn(sessionId, turnId);
-  };
+  const audioControls = (
+    <TurnSpeechControls
+      sessionId={sessionId}
+      turnId={turnId}
+      audioAvailable={turnStats?.audioAvailable === true}
+      canGenerate={turnStats?.status === 'completed' && textContent.length > 0}
+    />
+  );
 
   return (
     <>
@@ -120,8 +104,7 @@ export function TurnFooter({
           turn={turn}
           usage={usage}
           elapsed={elapsed}
-          playbackStatus={playbackStatus}
-          onToggleAudio={toggleAudio}
+          audioControls={audioControls}
         />
       ) : (
         <HistoryTurnFooter
@@ -130,9 +113,8 @@ export function TurnFooter({
           textContent={textContent}
           turnStats={turnStats}
           canFork={canFork}
-          playbackStatus={playbackStatus}
+          audioControls={audioControls}
           copied={copied}
-          onToggleAudio={toggleAudio}
           onCopy={() => void navigator.clipboard.writeText(textContent).then(() => {
             setCopied(true);
             setTimeout(() => setCopied(false), 1000);
@@ -147,14 +129,12 @@ function RunningTurnFooter({
   turn,
   usage,
   elapsed,
-  playbackStatus,
-  onToggleAudio,
+  audioControls,
 }: {
   readonly turn: TurnState;
   readonly usage?: LlmTokenUsage;
   readonly elapsed: number;
-  readonly playbackStatus: PlaybackStatus | null;
-  readonly onToggleAudio: () => void;
+  readonly audioControls: JSX.Element;
 }): JSX.Element {
   const text = assistantOutputBlocks(turn)
     .flatMap(block => block.type === 'text' ? [block.text] : [])
@@ -165,9 +145,7 @@ function RunningTurnFooter({
   return (
     <div className="ema-message-footer">
       <div className="ema-message-footer-actions">
-        {playbackStatus && (
-          <AudioPlaybackButton status={playbackStatus} onClick={onToggleAudio} />
-        )}
+        {audioControls}
       </div>
       <span className="ema-message-footer-stats">
         <span className={turn.terminal
@@ -191,9 +169,8 @@ function HistoryTurnFooter({
   textContent,
   turnStats,
   canFork,
-  playbackStatus,
+  audioControls,
   copied,
-  onToggleAudio,
   onCopy,
 }: {
   readonly turnId: string;
@@ -201,12 +178,10 @@ function HistoryTurnFooter({
   readonly textContent: string;
   readonly turnStats?: SessionTurnStats;
   readonly canFork: boolean;
-  readonly playbackStatus: PlaybackStatus | null;
+  readonly audioControls: JSX.Element;
   readonly copied: boolean;
-  readonly onToggleAudio: () => void;
   readonly onCopy: () => void;
 }): JSX.Element {
-  const showAudio = playbackStatus !== null || turnStats?.audioAvailable === true;
   return (
     <div className="ema-message-footer">
       <div className="ema-message-footer-actions">
@@ -221,9 +196,7 @@ function HistoryTurnFooter({
             onClick={onCopy}
           />
         )}
-        {showAudio && (
-          <AudioPlaybackButton status={playbackStatus} onClick={onToggleAudio} />
-        )}
+        {audioControls}
         {canFork && <ForkButton turnId={turnId} />}
       </div>
       <span className="ema-message-footer-stats tabular-nums">
@@ -236,29 +209,6 @@ function HistoryTurnFooter({
         )}
       </span>
     </div>
-  );
-}
-
-function AudioPlaybackButton({
-  status,
-  onClick,
-}: {
-  readonly status: PlaybackStatus | null;
-  readonly onClick: () => void;
-}): JSX.Element {
-  let label = '重播语音';
-  if (status === 'loading') label = '停止播放 (正在加载)';
-  else if (status === 'playing') label = '停止播放';
-  return (
-    <IconButton
-      size="sm"
-      variant="ghost"
-      shape="rounded"
-      label={label}
-      icon={status ? 'i-lucide:square' : 'i-lucide:volume-2'}
-      className="ema-chat-icon-btn chat-message-action"
-      onClick={onClick}
-    />
   );
 }
 

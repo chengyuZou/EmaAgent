@@ -10,11 +10,18 @@ type MainLocation =
   | { readonly view: MainView.Chat; readonly sessionId: string | null }
   | { readonly view: MainView.Settings; readonly settingsTab: SettingsTabId };
 
+export interface TurnNavigationRequest {
+  readonly sessionId: string;
+  readonly turnId: string;
+}
+
 interface MainNavigationState {
   readonly activeView: MainView;
   // 只控制非 settings 侧栏, Settings 导航始终展开.
   readonly sidebarOpen: boolean;
   readonly viewedSessionId: string | null;
+  /** 点击定位时保存目标, 不随正在播放的 Turn 自动改变. */
+  readonly turnNavigationRequest: TurnNavigationRequest | null;
   // 新对话共享同一份项目和目录选择, 查看已有会话时也保留它们.
   readonly newSessionProjectId: string | null;
   // null 表示使用项目主文件夹或 Ema 默认工作目录.
@@ -28,6 +35,8 @@ interface MainNavigationState {
   goBack(): void;
   goForward(): void;
   viewSession(sessionId: string): void;
+  viewTurn(sessionId: string, turnId: string): void;
+  finishTurnNavigation(request: NonNullable<MainNavigationState['turnNavigationRequest']>): void;
   openNewSession(projectId?: string): void;
   setNewSessionCwd(cwd: string): void;
   promoteNewSession(sessionId: string): void;
@@ -77,6 +86,7 @@ export const useMainNavigationStore = create<MainNavigationState>((set, get) => 
   activeView: MainView.Chat,
   sidebarOpen: true,
   viewedSessionId: null,
+  turnNavigationRequest: null,
   newSessionProjectId: null,
   newSessionCwd: null,
   settingsTab: 'providers',
@@ -91,14 +101,14 @@ export const useMainNavigationStore = create<MainNavigationState>((set, get) => 
       } else {
         location = { view, settingsTab: state.settingsTab };
       }
-      return { ...selectLocation(location), ...appendHistory(state, location) };
+      return { ...selectLocation(location), ...appendHistory(state, location), turnNavigationRequest: null };
     });
   },
 
   setSettingsTab(settingsTab) {
     set(state => {
       const location: MainLocation = { view: MainView.Settings, settingsTab };
-      return { ...selectLocation(location), ...appendHistory(state, location) };
+      return { ...selectLocation(location), ...appendHistory(state, location), turnNavigationRequest: null };
     });
   },
 
@@ -110,7 +120,7 @@ export const useMainNavigationStore = create<MainNavigationState>((set, get) => 
       return;
     }
     const historyIndex = state.historyIndex - 1;
-    set({ ...selectLocation(state.history[historyIndex]!), historyIndex });
+    set({ ...selectLocation(state.history[historyIndex]!), historyIndex, turnNavigationRequest: null });
   },
 
   goForward() {
@@ -119,14 +129,31 @@ export const useMainNavigationStore = create<MainNavigationState>((set, get) => 
       return;
     }
     const historyIndex = state.historyIndex + 1;
-    set({ ...selectLocation(state.history[historyIndex]!), historyIndex });
+    set({ ...selectLocation(state.history[historyIndex]!), historyIndex, turnNavigationRequest: null });
   },
 
   viewSession(sessionId) {
     set(state => {
       const location: MainLocation = { view: MainView.Chat, sessionId };
-      return { ...selectLocation(location), ...appendHistory(state, location) };
+      return { ...selectLocation(location), ...appendHistory(state, location), turnNavigationRequest: null };
     });
+  },
+
+  viewTurn(sessionId, turnId) {
+    set(state => {
+      const location: MainLocation = { view: MainView.Chat, sessionId };
+      return {
+        ...selectLocation(location),
+        ...appendHistory(state, location),
+        turnNavigationRequest: { sessionId, turnId },
+      };
+    });
+  },
+
+  finishTurnNavigation(request) {
+    if (get().turnNavigationRequest === request) {
+      set({ turnNavigationRequest: null });
+    }
   },
 
   openNewSession(projectId) {
@@ -137,6 +164,7 @@ export const useMainNavigationStore = create<MainNavigationState>((set, get) => 
         ...appendHistory(state, location),
         newSessionProjectId: projectId ?? null,
         newSessionCwd: null,
+        turnNavigationRequest: null,
       };
     });
   },
@@ -188,6 +216,7 @@ export const useMainNavigationStore = create<MainNavigationState>((set, get) => 
         history,
         historyIndex,
         viewedSessionId: viewedRemoved ? null : state.viewedSessionId,
+        turnNavigationRequest: state.turnNavigationRequest?.sessionId === sessionId ? null : state.turnNavigationRequest,
       };
     });
   },

@@ -3,18 +3,22 @@ import { useEffect, useMemo, useRef, useState, type JSX } from 'react';
 import { Tooltip, Button, IconButton, Spinner } from '@ema-agent/ui';
 import { isStreamingMessage, useTurnStore } from '../../../../stores/turn.js';
 import { subagentsApi, type SubagentListResult } from '../../../../api/subagents.js';
-import { sessionWebSocket } from '../../../../api/sessionWebSocket.js';
 import { useSubagentStore } from '../../../../stores/subagent.js';
-import { useSessionPanelStore } from '../../../../stores/sessionPanel.js';
 import { SubagentMessages } from './subagentMessages.js';
 
 export interface SubagentPanelProps {
   sessionId: string | null;
   className?: string;
   initialDetailId?: string;
+  /** Chat 返回列表时需要清掉标签的导航目标. 存储页没有标签导航, 可以省略. */
+  onReturnToList?(): void;
+  /** 没有此操作时只读, 不显示中止按钮. */
+  onCancelSubagent?(subagentId: string): void;
 }
 
-export function SubagentPanel({ sessionId, className = '', initialDetailId }: SubagentPanelProps): JSX.Element {
+export function SubagentPanel({
+  sessionId, className = '', initialDetailId, onReturnToList, onCancelSubagent,
+}: SubagentPanelProps): JSX.Element {
   const [detailId, setDetailId] = useState(initialDetailId ?? null);
   const [ids, setIds] = useState<readonly string[]>([]);
   const [cursor, setCursor] = useState<SubagentListResult['nextCursor']>(null);
@@ -102,10 +106,10 @@ export function SubagentPanel({ sessionId, className = '', initialDetailId }: Su
       sessionId={sessionId}
       subagentId={detailId}
       className={className}
+      onCancel={onCancelSubagent}
       onBack={() => {
         setDetailId(null);
-        // 返回列表也清掉标签上的导航目标, 下次点同一子代理的工具卡仍能打开详情.
-        useSessionPanelStore.getState().openTab(sessionId, { id: 'subagents', kind: 'subagents' });
+        onReturnToList?.();
       }}
     />;
   }
@@ -152,11 +156,13 @@ function SubagentDetail({
   subagentId,
   className,
   onBack,
+  onCancel,
 }: {
   sessionId: string;
   subagentId: string;
   className: string;
   onBack(): void;
+  onCancel?(subagentId: string): void;
 }): JSX.Element {
   const record = useSubagentStore(state => state.subagents.get(subagentId));
   const progress = useSubagentStore(state => state.progressById.get(subagentId));
@@ -244,13 +250,13 @@ function SubagentDetail({
           )}
           {record?.reasoningEffort && <span>{record.reasoningEffort}</span>}
         </div>
-        {progress && !foreground && (
+        {progress && !foreground && onCancel && (
           <IconButton
             label="中止后台子代理"
-            icon="i-lucide:circle-stop"
+            icon="i-ema:stop"
             variant="danger"
             size="sm"
-            onClick={() => void sessionWebSocket.cancelSubagent(sessionId, subagentId)}
+            onClick={() => onCancel(subagentId)}
           />
         )}
       </header>

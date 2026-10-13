@@ -6,7 +6,8 @@ import { MarkdownMedia } from '../../lib/markdownMedia.js';
 import { useSessionAttachmentStore } from '../../stores/sessionAttachment.js';
 import { useBackgroundProcessStore } from '../../stores/backgroundProcess.js';
 import { useSessionStore } from '../../stores/session.js';
-import { terminalTab, useSessionPanelStore, type SessionSidePanelTab } from '../../stores/sessionPanel.js';
+import { sessionSourceTab, terminalTab, useSessionPanelStore, type SessionSidePanelTab } from '../../stores/sessionPanel.js';
+import { sessionWebSocket } from '../../api/sessionWebSocket.js';
 import { SubagentPanel } from './tabs/subagents/SubagentPanel.js';
 import { SessionAttachmentPreview } from './tabs/sources/SessionAttachmentPreview.js';
 import { SessionAttachmentsPanel } from './tabs/sources/SessionAttachmentsPanel.js';
@@ -336,6 +337,7 @@ export function SessionSidePanel({ sessionId }: { sessionId: string }): JSX.Elem
 }
 
 function TabContent({ sessionId, tab, visible }: { sessionId: string; tab: SessionSidePanelTab; visible: boolean }): JSX.Element {
+  const openTab = useSessionPanelStore(state => state.openTab);
   switch (tab.kind) {
     case 'review':
       return <ReviewPanel sessionId={sessionId} />;
@@ -347,7 +349,10 @@ function TabContent({ sessionId, tab, visible }: { sessionId: string; tab: Sessi
         <SessionAttachmentPreview sessionId={sessionId} attachmentPath={tab.path} />
       );
     case 'sources':
-      return <SessionAttachmentsPanel sessionId={sessionId} />;
+      return <SessionAttachmentsPanel
+        sessionId={sessionId}
+        onOpenAttachment={path => openTab(sessionId, sessionSourceTab(path))}
+      />;
     case 'tasks':
       return <SessionTasksPanel sessionId={sessionId} />;
     case 'goal':
@@ -360,7 +365,12 @@ function TabContent({ sessionId, tab, visible }: { sessionId: string; tab: Sessi
       );
     case 'subagents':
       return (
-        <SubagentPanel sessionId={sessionId} initialDetailId={tab.subagentId} />
+        <SubagentPanel
+          sessionId={sessionId}
+          initialDetailId={tab.subagentId}
+          onReturnToList={() => openTab(sessionId, { id: 'subagents', kind: 'subagents' })}
+          onCancelSubagent={subagentId => void sessionWebSocket.cancelSubagent(sessionId, subagentId)}
+        />
       );
     case 'terminal':
       return <TerminalPanel terminalId={tab.terminalId} />;
