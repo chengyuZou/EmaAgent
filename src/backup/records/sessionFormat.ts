@@ -31,7 +31,7 @@ function jsonl(name: SessionRecordName): SessionRecordFile {
 }
 
 export const SESSION_MANIFEST_PATH = 'manifest.json';
-export const SESSION_BACKUP_VERSION = 9;
+export const SESSION_BACKUP_VERSION = 10;
 
 export const SESSION_RECORD_FILES: readonly SessionRecordFile[] = Object.freeze([
   json('session'),

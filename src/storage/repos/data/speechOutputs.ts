@@ -1,5 +1,6 @@
 // 保存已完成写入的整轮 WAV, 取消后保留的音频也使用同一份记录.
 import type { SqliteDb } from '../../database/database.js';
+import type { TurnStatusRow } from './turns.js';
 
 export interface SpeechOutputRow {
   turn_id: string;
@@ -24,15 +25,14 @@ export interface SpeechOutputInsert {
 export class SpeechOutputsRepo {
   constructor(private readonly db: SqliteDb) {}
 
-  /** 每个 Turn 对应一份正式音频文件. */
+  /** 每个路径对应一份角色音频; 同路径重新生成时替换记录, 不覆盖该轮的其他角色版本. */
   record(output: SpeechOutputInsert): void {
     this.db.prepare(`
       INSERT INTO speech_outputs (
         turn_id, session_id, storage_path, mime_type,
         byte_size, duration_ms, created_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(turn_id) DO UPDATE SET
-        storage_path = excluded.storage_path,
+      ON CONFLICT(storage_path) DO UPDATE SET
         mime_type = excluded.mime_type,
         byte_size = excluded.byte_size,
         duration_ms = excluded.duration_ms,
@@ -57,24 +57,44 @@ export class SpeechOutputsRepo {
     `).all(sessionId) as SpeechOutputRow[];
   }
 
-  /** 目录读取正式音频的路径和计量值, 供列表展示及文件管理器定位, 不读取音频文件内容. */
+  listForTurn(turnId: string): SpeechOutputRow[] {
+    return this.db.prepare(`
+      SELECT * FROM speech_outputs
+      WHERE turn_id = ?
+      ORDER BY storage_path ASC
+    `).all(turnId) as SpeechOutputRow[];
+  }
+
+  /** 以 Turn 创建时间分页, 重新生成音频不会改变分页位置, 没有音频的轮次也保留. */
   listPage(sessionId: string, cursor: { createdAt: number; id: string } | undefined, limit: number) {
     const rows = this.db.prepare(`
-      SELECT turn_id, storage_path, mime_type, byte_size, duration_ms, created_at
-      FROM speech_outputs
-      WHERE session_id = ?
-        AND (? IS NULL OR created_at < ? OR (created_at = ? AND turn_id < ?))
-      ORDER BY created_at DESC, turn_id DESC LIMIT ?
+      SELECT t.id AS turn_id, t.created_at, t.status,
+        COUNT(s.storage_path) AS audio_count,
+        COALESCE(SUM(s.byte_size), 0) AS total_byte_size,
+        COALESCE(SUM(s.duration_ms), 0) AS total_duration_ms
+      FROM turns t
+      LEFT JOIN speech_outputs s ON s.turn_id = t.id
+      WHERE t.session_id = ?
+        AND (? IS NULL OR t.created_at < ? OR (t.created_at = ? AND t.id < ?))
+      GROUP BY t.id
+      ORDER BY t.created_at DESC, t.id DESC LIMIT ?
     `).all(
       sessionId, cursor?.createdAt ?? null, cursor?.createdAt ?? null,
       cursor?.createdAt ?? null, cursor?.id ?? null, limit + 1,
-    ) as Array<Pick<SpeechOutputRow, 'turn_id' | 'storage_path' | 'mime_type' | 'byte_size' | 'duration_ms' | 'created_at'>>;
+    ) as Array<{
+      turn_id: string;
+      created_at: number;
+      status: TurnStatusRow;
+      audio_count: number;
+      total_byte_size: number;
+      total_duration_ms: number;
+    }>;
     const items = rows.slice(0, limit).map(row => ({
       turnId: row.turn_id,
-      storagePath: row.storage_path,
-      mimeType: row.mime_type,
-      byteSize: row.byte_size,
-      durationMs: row.duration_ms,
+      status: row.status,
+      audioCount: row.audio_count,
+      totalByteSize: row.total_byte_size,
+      totalDurationMs: row.total_duration_ms,
       createdAt: row.created_at,
     }));
     const last = items.at(-1);

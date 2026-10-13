@@ -81,8 +81,6 @@ export function TurnFooter({
     <TurnSpeechControls
       sessionId={sessionId}
       turnId={turnId}
-      audioAvailable={turnStats?.audioAvailable === true}
-      canGenerate={turnStats?.status === 'completed' && textContent.length > 0}
     />
   );
 

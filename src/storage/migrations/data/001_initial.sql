@@ -264,9 +264,9 @@ CREATE TABLE attachment_vision_descriptions_caches (
 
 -- Speech 保存的正式整轮 WAV; 正在写入的文件不进入此表。
 CREATE TABLE speech_outputs (
-  turn_id       TEXT PRIMARY KEY REFERENCES turns(id) ON DELETE CASCADE,
+  turn_id       TEXT NOT NULL REFERENCES turns(id) ON DELETE CASCADE,
   session_id    TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-  storage_path  TEXT NOT NULL,
+  storage_path  TEXT NOT NULL PRIMARY KEY,
   mime_type     TEXT NOT NULL CHECK(mime_type = 'audio/wav'),
   byte_size     INTEGER NOT NULL CHECK(byte_size >= 0),
   duration_ms   INTEGER NOT NULL CHECK(duration_ms >= 0),
@@ -335,6 +335,7 @@ CREATE INDEX idx_attachment_vision_descriptions_caches_lru
   ON attachment_vision_descriptions_caches(last_accessed_at ASC, path ASC);
 
 CREATE INDEX idx_speech_outputs_session ON speech_outputs(session_id, created_at DESC);
+CREATE INDEX idx_speech_outputs_turn ON speech_outputs(turn_id);
 
 CREATE INDEX idx_background_processes_recovery
   ON background_processes(status, created_at, id);

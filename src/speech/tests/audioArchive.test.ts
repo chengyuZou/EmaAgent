@@ -46,7 +46,7 @@ function createCoordinator(callTts: CallTts, onAudioReady = () => {}, onSentence
     modelId: 'model',
     voice: { kind: 'provider', id: 'voice' },
     callTts,
-    archive,
+    openAudio: format => archive.openTurn('s', 't', '艾玛', format),
     signal: new AbortController().signal,
     usageRecorder,
     savePartialAudio: true,
@@ -59,14 +59,34 @@ function createCoordinator(callTts: CallTts, onAudioReady = () => {}, onSentence
 }
 
 describe('FsAudioArchive', () => {
+  it('同轮按完整角色名保存, 只替换选定角色, 读取不会串到其他角色的写入', async () => {
+    const { archive, root } = createArchive();
+    const first = await archive.openTurn('s', 't', '艾玛', FORMAT);
+    await first.write(Buffer.from([1, 2]));
+    const original = (await first.finish(() => {}))!;
+    const other = await archive.openTurn('s', 't', '希罗-测试', FORMAT);
+    await other.write(Buffer.from([3, 4]));
+    expect(await archive.openRead('s', 't', '没有音频', new AbortController().signal)).toBeNull();
+    const otherAudio = (await other.finish(() => {}))!;
+    expect(archive.characterNameFor('t', otherAudio.storagePath)).toBe('希罗-测试');
+    const replacement = await archive.openTurn('s', 't', '艾玛', FORMAT);
+    await replacement.write(Buffer.from([5, 6]));
+    await replacement.finish(() => {});
+    expect(fs.readFileSync(original.storagePath).subarray(HEADER_BYTES)).toEqual(Buffer.from([5, 6]));
+    expect(fs.readFileSync(otherAudio.storagePath).subarray(HEADER_BYTES)).toEqual(Buffer.from([3, 4]));
+    expect(fs.readdirSync(path.join(root, 's', 'audio', 't')).sort()).toEqual([
+      't-希罗-测试.wav', 't-艾玛.wav',
+    ].sort());
+  });
+
   it('连续追加 PCM, 完成后只有一份带真实长度和时长的 WAV', async () => {
     const { archive, root } = createArchive();
-    const writer = await archive.openTurn('s', 't', FORMAT);
+    const writer = await archive.openTurn('s', 't', '艾玛', FORMAT);
     const first = Buffer.alloc(8000, 1);
     const second = Buffer.alloc(4000, 2);
     await writer.write(first);
     await writer.write(second);
-    expect(archive.findFinalized('s', 't')).toBeNull();
+    expect(archive.findFinalized('s', 't', '艾玛')).toBeNull();
 
     const finishing = writer.finish(() => {});
     expect(writer.finish(() => {})).toBe(finishing);
@@ -79,15 +99,15 @@ describe('FsAudioArchive', () => {
     const bytes = fs.readFileSync(audio!.storagePath);
     expect(bytes.subarray(0, HEADER_BYTES)).toEqual(Buffer.from(createPcmWavHeader(FORMAT, 12000)));
     expect(bytes.subarray(HEADER_BYTES)).toEqual(Buffer.concat([first, second]));
-    expect(fs.readdirSync(path.join(root, 's', 'audio'))).toEqual(['t.wav']);
-    expect(archive.findFinalized('s', 't')?.storagePath).toBe(audio!.storagePath);
+    expect(fs.readdirSync(path.join(root, 's', 'audio', 't'))).toEqual(['t-艾玛.wav']);
+    expect(archive.findFinalized('s', 't', '艾玛')?.storagePath).toBe(audio!.storagePath);
   });
 
   it('读取等待下一次写入, 句间停顿不是 EOF, 完成后读取正常结束', async () => {
     const { archive } = createArchive();
-    const writer = await archive.openTurn('s', 't', FORMAT);
+    const writer = await archive.openTurn('s', 't', '艾玛', FORMAT);
     await writer.write(Buffer.from([1, 2]));
-    const audio = await archive.openRead('s', 't', new AbortController().signal);
+    const audio = await archive.openRead('s', 't', '艾玛', new AbortController().signal);
     expect(audio!.byteSize).toBeNull();
     const iterator = audio!.stream[Symbol.asyncIterator]();
     const first = await iterator.next();
@@ -105,7 +125,7 @@ describe('FsAudioArchive', () => {
     await writer.finish(() => {});
     expect((await iterator.next()).done).toBe(true);
 
-    const finalized = await archive.openRead('s', 't', new AbortController().signal);
+    const finalized = await archive.openRead('s', 't', '艾玛', new AbortController().signal);
     expect(finalized!.byteSize).toBe(HEADER_BYTES + 4);
     finalized!.stream.destroy();
     await finished(finalized!.stream).catch(() => undefined);
@@ -113,9 +133,9 @@ describe('FsAudioArchive', () => {
 
   it('关闭读取流解除文件末尾等待, 后续写入仍然完成', async () => {
     const { archive } = createArchive();
-    const writer = await archive.openTurn('s', 't', FORMAT);
+    const writer = await archive.openTurn('s', 't', '艾玛', FORMAT);
     await writer.write(Buffer.from([1, 2]));
-    const audio = await archive.openRead('s', 't', new AbortController().signal);
+    const audio = await archive.openRead('s', 't', '艾玛', new AbortController().signal);
     const iterator = audio!.stream[Symbol.asyncIterator]();
     await iterator.next();
     const closed = once(audio!.stream, 'close');
@@ -128,10 +148,10 @@ describe('FsAudioArchive', () => {
 
   it('请求取消只结束读取, 不取消音频写入', async () => {
     const { archive } = createArchive();
-    const writer = await archive.openTurn('s', 't', FORMAT);
+    const writer = await archive.openTurn('s', 't', '艾玛', FORMAT);
     await writer.write(Buffer.from([1, 2]));
     const abort = new AbortController();
-    const audio = await archive.openRead('s', 't', abort.signal);
+    const audio = await archive.openRead('s', 't', '艾玛', abort.signal);
     audio!.stream.resume();
     const reading = finished(audio!.stream);
     abort.abort();
@@ -142,49 +162,49 @@ describe('FsAudioArchive', () => {
 
   it('没有 PCM 时删除空 pending 文件, 不发布正式音频', async () => {
     const { archive, root } = createArchive();
-    const writer = await archive.openTurn('s', 't', FORMAT);
+    const writer = await archive.openTurn('s', 't', '艾玛', FORMAT);
     expect(await writer.finish(() => {})).toBeNull();
-    expect(archive.findFinalized('s', 't')).toBeNull();
-    expect(fs.readdirSync(path.join(root, 's', 'audio'))).toEqual([]);
-    expect(await archive.openRead('s', 'missing', new AbortController().signal)).toBeNull();
+    expect(archive.findFinalized('s', 't', '艾玛')).toBeNull();
+    expect(fs.readdirSync(path.join(root, 's', 'audio', 't'))).toEqual([]);
+    expect(await archive.openRead('s', 'missing', '艾玛', new AbortController().signal)).toBeNull();
   });
 
   it('替代音频未保存时仍可读取旧文件; 丢弃后旧音频不变', async () => {
     const { archive, root } = createArchive();
-    const first = await archive.openTurn('s', 't', FORMAT);
+    const first = await archive.openTurn('s', 't', '艾玛', FORMAT);
     await first.write(Buffer.from([1, 2]));
     const original = (await first.finish(() => {}))!;
-    const second = await archive.openTurn('s', 't', FORMAT);
+    const second = await archive.openTurn('s', 't', '艾玛', FORMAT);
     await second.write(Buffer.from([3, 4]));
-    const read = (await archive.openRead('s', 't', new AbortController().signal))!;
+    const read = (await archive.openRead('s', 't', '艾玛', new AbortController().signal))!;
     const chunks: Buffer[] = [];
     for await (const chunk of read.stream) chunks.push(Buffer.from(chunk));
     expect(Buffer.concat(chunks).subarray(HEADER_BYTES)).toEqual(Buffer.from([1, 2]));
     await second.discard();
     expect(fs.readFileSync(original.storagePath).subarray(HEADER_BYTES)).toEqual(Buffer.from([1, 2]));
-    expect(fs.readdirSync(path.join(root, 's', 'audio'))).toEqual(['t.wav']);
+    expect(fs.readdirSync(path.join(root, 's', 'audio', 't'))).toEqual(['t-艾玛.wav']);
   });
 
   it('记录保存失败则恢复旧 WAV, 不保留新文件或 pending', async () => {
     const { archive, root } = createArchive();
-    const original = await archive.openTurn('s', 't', FORMAT);
+    const original = await archive.openTurn('s', 't', '艾玛', FORMAT);
     await original.write(Buffer.from([1, 2]));
     const saved = (await original.finish(() => {}))!;
     const bytes = fs.readFileSync(saved.storagePath);
-    const replacement = await archive.openTurn('s', 't', FORMAT);
+    const replacement = await archive.openTurn('s', 't', '艾玛', FORMAT);
     await replacement.write(Buffer.from([3, 4, 5, 6]));
     await expect(replacement.finish(() => { throw new Error('SQL rejected'); })).rejects.toThrow('SQL rejected');
     expect(fs.readFileSync(saved.storagePath)).toEqual(bytes);
-    expect(fs.readdirSync(path.join(root, 's', 'audio'))).toEqual(['t.wav']);
+    expect(fs.readdirSync(path.join(root, 's', 'audio', 't'))).toEqual(['t-艾玛.wav']);
   });
 
   it('首次生成的记录保存失败时也撤回正式文件', async () => {
     const { archive, root } = createArchive();
-    const writer = await archive.openTurn('s', 't', FORMAT);
+    const writer = await archive.openTurn('s', 't', '艾玛', FORMAT);
     await writer.write(Buffer.from([1, 2]));
     await expect(writer.finish(() => { throw new Error('SQL rejected'); })).rejects.toThrow('SQL rejected');
-    expect(archive.findFinalized('s', 't')).toBeNull();
-    expect(fs.readdirSync(path.join(root, 's', 'audio'))).toEqual([]);
+    expect(archive.findFinalized('s', 't', '艾玛')).toBeNull();
+    expect(fs.readdirSync(path.join(root, 's', 'audio', 't'))).toEqual([]);
   });
 });
 
@@ -279,7 +299,10 @@ describe('SpeechCoordinator', () => {
     await coordinator.finish();
     const second = new SpeechCoordinator({
       sessionId: 's', turnId: 't', providerId: 'provider', modelId: 'model',
-      voice: { kind: 'provider', id: 'voice' }, callTts, archive, usageRecorder,
+      voice: { kind: 'provider', id: 'voice' },
+      callTts,
+      openAudio: format => archive.openTurn('s', 't', '艾玛', format),
+      usageRecorder,
       signal: new AbortController().signal,
       savePartialAudio: false,
       saveAudioRecord: () => {},
@@ -307,7 +330,7 @@ describe('SpeechCoordinator', () => {
     expect(await coordinator.finish()).toMatchObject({ status: 'failed', audio: null });
     expect(calls).toBe(2);
     expect(save).not.toHaveBeenCalled();
-    expect(archive.findFinalized('s', 't')).toBeNull();
+    expect(archive.findFinalized('s', 't', '艾玛')).toBeNull();
   });
 
   it('手动生成取消后删除已经写入的部分', async () => {
@@ -325,6 +348,6 @@ describe('SpeechCoordinator', () => {
     await readable;
     await coordinator.cancel();
     expect(await finished).toEqual({ status: 'cancelled', audio: null });
-    expect(archive.findFinalized('s', 't')).toBeNull();
+    expect(archive.findFinalized('s', 't', '艾玛')).toBeNull();
   });
 });

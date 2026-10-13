@@ -179,7 +179,7 @@ export async function importSessionArchive(
             : [];
         }),
         speechOutputs: speechOutputs.flatMap(row => {
-          const filePath = files.speechOutputs.get(row.turnId);
+          const filePath = files.speechOutputs.get(row.filePath);
           return filePath ? [restoreSpeechOutputRecord(row, filePath)] : [];
         }),
         usageRecords: usageRecords.map(restoreUsageRecord),

@@ -90,8 +90,8 @@ export function ensureDataDirLayout(dataDir: string): void {
 //
 // 一个 Session 的全部文件收在 sessions/<sessionId>/ 下，删除 Session 即整目录移除：
 //   {dataDir}/sessions/{sessionId}/
-//     audio/{turnId}.wav
-//     audio/{turnId}.wav.pending
+//     audio/{turnId}/{turnId}-{characterName}.wav
+//     audio/{turnId}/{turnId}-{characterName}.wav.pending
 //     scratchpad/{turnId}/{key}
 //     background-processes/{processId}/
 
@@ -207,13 +207,11 @@ export function removeScratchpadDir(dataDir: string, sessionId: string, turnId: 
 }
 
 /**
- * Turn 数据行删除后清理对应 WAV、未完成写入的文件和 scratchpad.
+ * Turn 数据行删除后清理该轮所有角色音频、未完成写入的文件和 scratchpad.
  */
 export function removeTurnFiles(dataDir: string, sessionId: string, turnId: string): void {
-  const audioDir = path.join(sessionDirFor(dataDir, sessionId), 'audio');
-
-  fs.rmSync(path.join(audioDir, `${turnId}.wav`), { force: true });
-  fs.rmSync(path.join(audioDir, `${turnId}.wav.pending`), { force: true });
+  const audioDir = path.join(sessionDirFor(dataDir, sessionId), 'audio', turnId);
+  fs.rmSync(audioDir, { recursive: true, force: true });
 
   removeScratchpadDir(dataDir, sessionId, turnId);
 }
@@ -221,7 +219,7 @@ export function removeTurnFiles(dataDir: string, sessionId: string, turnId: stri
 /**
  * 启动自检：清理"DB 已删 Turn、磁盘仍残留"的孤儿文件。
  * 删除数据行后进程可能在文件清理途中退出. 本函数只删除数据库中已不存在
- * 的 Turn 对应 WAV、pending 和 scratchpad; 仍存在的 Turn 文件保留.
+ * 的 Turn 对应音频目录和 scratchpad; 仍存在的 Turn 文件保留.
  * liveTurnIdsForSession 由调用方从 DB 提供, 本函数不猜 Session 是否存在.
  */
 export function sweepOrphanTurnFiles(
@@ -241,18 +239,12 @@ export function sweepOrphanTurnFiles(
     const live = liveTurnIdsForSession(sessionId);
 
     if (fs.existsSync(audioDir)) {
-      for (const file of fs.readdirSync(audioDir, { withFileTypes: true })) {
-        if (!file.isFile() || file.isSymbolicLink()) continue;
-        let turnId: string;
-        if (file.name.endsWith('.wav.pending')) {
-          turnId = file.name.slice(0, -'.wav.pending'.length);
-        } else if (file.name.endsWith('.wav')) {
-          turnId = file.name.slice(0, -'.wav'.length);
-        } else {
-          continue;
-        }
-        if (!live.has(turnId)) {
-          fs.rmSync(path.join(audioDir, file.name), { force: true });
+      for (const folder of fs.readdirSync(audioDir, { withFileTypes: true })) {
+        if (!folder.isDirectory() || folder.isSymbolicLink()) continue;
+        // 这里只清理 Turn 目录; merged / segments 的旧资源清理需单独处理.
+        if (folder.name === 'merged' || folder.name === 'segments') continue;
+        if (!live.has(folder.name)) {
+          fs.rmSync(path.join(audioDir, folder.name), { recursive: true, force: true });
           removed++;
         }
       }

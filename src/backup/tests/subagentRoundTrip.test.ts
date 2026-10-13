@@ -116,10 +116,10 @@ async function fixture() {
   return { db, target, targetDir, entries, restore };
 }
 
-describe('v9 子代理三表备份', () => {
+describe('v10 子代理三表备份', () => {
   it('保留各 Run 的配置、原生消息、fork 来源与摘要关系, 未完成 Run 不恢复执行', async () => {
     const { db, target, targetDir, entries, restore } = await fixture();
-    expect(JSON.parse(strFromU8(entries['manifest.json']!)).version).toBe(9);
+    expect(JSON.parse(strFromU8(entries['manifest.json']!)).version).toBe(10);
     expect(entries['records/subagentInvocations.jsonl']).toBeUndefined();
     const identityRecords = strFromU8(entries['records/subagents.jsonl']!).trim().split('\n')
       .map(line => subagentRecordSchema.parse(JSON.parse(line)));

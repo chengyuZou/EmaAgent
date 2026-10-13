@@ -52,6 +52,27 @@ export interface SpeechSocketClient {
   close(): void;
 }
 
+export interface TurnAudioRecord {
+  readonly characterName: string;
+  readonly storagePath: string;
+  readonly byteSize: number;
+  readonly durationMs: number;
+  readonly createdAt: number;
+}
+
+export interface SpeechGenerationChoice {
+  readonly characterName: string;
+  /** null 表示可以生成; 非空时直接向用户说明不能生成的原因. */
+  readonly unavailableReason: string | null;
+}
+
+export interface TurnAudioRecords {
+  readonly records: readonly TurnAudioRecord[];
+  readonly currentCharacter: SpeechGenerationChoice;
+  /** 只列出选用了主参考音频的角色, 不改变全局激活角色. */
+  readonly generationChoices: readonly SpeechGenerationChoice[];
+}
+
 export interface SpeechComposition {
   readonly audioArchive: FsAudioArchive;
   /** TTS 试听, 角色无参考音频或 Provider 不可用时报领域错误 */
@@ -73,7 +94,8 @@ export interface SpeechComposition {
     readonly signal: AbortSignal;
   }): Promise<TurnSpeechHandle | null>;
   /** 从已保存的完整正文生成, 不要求有播放器, 成功后替换正式音频. */
-  generateTurnSpeech(turn: Turn, text: string): Promise<TurnSpeechGenerateResult>;
+  generateTurnSpeech(turn: Turn, text: string, characterName?: string): Promise<TurnSpeechGenerateResult>;
+  turnAudioRecords(turn: Turn, text: string): TurnAudioRecords;
   attachSpeechSocket(sessionId: string, turnId: string, client: SpeechSocketClient): Promise<void>;
   /** 只断开状态通知, 不取消语音生成. */
   detachSpeechSocket(sessionId: string, turnId: string, client: SpeechSocketClient): void;
@@ -131,6 +153,58 @@ export function openSpeech(
     }
   };
 
+  const requireCharacterVoice = (character: Character): TtsVoiceReference => {
+    if (character.voiceSamples.length === 0) {
+      throw new TurnSpeechRequestError('speech/voice_samples_missing', `角色${character.name}没有参考音频`);
+    }
+    if (!character.voiceSamples.some(sample => sample.isPrimary)) {
+      throw new TurnSpeechRequestError('speech/primary_voice_missing', `角色${character.name}没有选用主参考音频`);
+    }
+    const reference = resolveCharacterVoice(character);
+    if (!reference || !statSync(reference.audioPath, { throwIfNoEntry: false })?.isFile()) {
+      throw new TurnSpeechRequestError('speech/voice_file_missing', `角色${character.name}的参考音频文件找不到或无法读取`);
+    }
+    return reference;
+  };
+
+  const requireTts = () => {
+    const binding = modelBindings.get('tts');
+    if (!binding) {
+      throw new TurnSpeechRequestError('speech/tts_unbound', '尚未绑定 TTS 模型, 请先在设置中配置');
+    }
+    try {
+      const connection = providers.resolveConnection(binding.providerId, 'tts');
+      return {
+        binding,
+        ttsVoiceRegistrar: createTtsVoiceRegistrar(connection, binding.modelId),
+        callTts: createTtsCall(connection, binding.modelId),
+      };
+    } catch (error) {
+      if (error instanceof ProviderError || error instanceof TtsError) {
+        throw new TurnSpeechRequestError('speech/tts_unavailable', `当前 TTS 模型不可用: ${error.message}`);
+      }
+      throw error;
+    }
+  };
+
+  const generationChoice = (turn: Turn, text: string, character: Character): SpeechGenerationChoice => {
+    let unavailableReason: string | null = null;
+    if (turn.status !== 'completed') {
+      unavailableReason = '只能为已完成的回复生成完整语音';
+    } else if (!text.trim()) {
+      unavailableReason = '该轮没有可朗读的正文';
+    } else {
+      try {
+        requireCharacterVoice(character);
+        requireTts();
+      } catch (error) {
+        if (!(error instanceof TurnSpeechRequestError)) throw error;
+        unavailableReason = error.message;
+      }
+    }
+    return { characterName: character.name, unavailableReason };
+  };
+
   const voicePreview = new SpeechVoicePreview(
     resolveTts,
     {
@@ -163,7 +237,7 @@ export function openSpeech(
         }
       }
 
-      const audioAvailable = audioArchive.findFinalized(job.sessionId, job.turnId) !== null;
+      const audioAvailable = audioArchive.findFinalized(job.sessionId, job.turnId, job.characterName) !== null;
       let response: TurnSpeechGenerateResult;
       if (result.status === 'failed') {
         response = {
@@ -239,32 +313,8 @@ export function openSpeech(
     if (jobs.has(setup.turnId)) {
       throw new TurnSpeechRequestError('speech/already_generating', '该轮正在生成语音, 请等待完成或先取消生成');
     }
-    const binding = modelBindings.get('tts');
-    if (!binding) throw new TurnSpeechRequestError('speech/tts_unbound', '尚未绑定 TTS 模型, 请先在设置中配置');
-
-    if (character.voiceSamples.length === 0) {
-      throw new TurnSpeechRequestError('speech/voice_samples_missing', `角色“${character.name}”没有参考音频`);
-    }
-    if (!character.voiceSamples.some(sample => sample.isPrimary)) {
-      throw new TurnSpeechRequestError('speech/primary_voice_missing', `角色“${character.name}”没有选用主参考音频`);
-    }
-    const reference = resolveCharacterVoice(character);
-    if (!reference || !statSync(reference.audioPath, { throwIfNoEntry: false })?.isFile()) {
-      throw new TurnSpeechRequestError('speech/voice_file_missing', `角色“${character.name}”的参考音频文件找不到或无法读取`);
-    }
-
-    let callTts;
-    let ttsVoiceRegistrar;
-    try {
-      const connection = providers.resolveConnection(binding.providerId, 'tts');
-      ttsVoiceRegistrar = createTtsVoiceRegistrar(connection, binding.modelId);
-      callTts = createTtsCall(connection, binding.modelId);
-    } catch (error) {
-      if (error instanceof ProviderError || error instanceof TtsError) {
-        throw new TurnSpeechRequestError('speech/tts_unavailable', `当前 TTS 模型不可用: ${error.message}`);
-      }
-      throw error;
-    }
+    const reference = requireCharacterVoice(character);
+    const { binding, callTts, ttsVoiceRegistrar } = requireTts();
 
     const abortController = new AbortController();
     const signal = AbortSignal.any([setup.signal, abortController.signal]);
@@ -283,7 +333,7 @@ export function openSpeech(
       modelId: binding.modelId,
       voice,
       callTts,
-      archive: audioArchive,
+      openAudio: format => audioArchive.openTurn(setup.sessionId, setup.turnId, character.name, format),
       signal,
       usageRecorder,
       savePartialAudio,
@@ -315,6 +365,7 @@ export function openSpeech(
     job = {
       sessionId: setup.sessionId,
       turnId: setup.turnId,
+      characterName: character.name,
       abortController,
       signal,
       preparing,
@@ -419,13 +470,25 @@ export function openSpeech(
     transcribe,
     sttPreview,
     startTurnSpeech,
-    async generateTurnSpeech(turn, text) {
-      if (!turn.characterName) {
-        throw new TurnSpeechRequestError('speech/character_not_recorded', '该轮没有记录角色, 无法确定应使用的参考声音');
-      }
-      const character = characters.get(turn.characterName);
+    turnAudioRecords(turn, text) {
+      return {
+        records: speechOutputs.listForTurn(turn.id).map(row => ({
+          characterName: audioArchive.characterNameFor(turn.id, row.storage_path),
+          storagePath: row.storage_path,
+          byteSize: row.byte_size,
+          durationMs: row.duration_ms,
+          createdAt: row.created_at,
+        })),
+        currentCharacter: generationChoice(turn, text, characters.current()),
+        generationChoices: characters.list()
+          .filter(character => character.voiceSamples.some(sample => sample.isPrimary))
+          .map(character => generationChoice(turn, text, character)),
+      };
+    },
+    async generateTurnSpeech(turn, text, characterName) {
+      const character = characterName === undefined ? characters.current() : characters.get(characterName);
       if (!character) {
-        throw new TurnSpeechRequestError('speech/character_not_found', `该轮的原角色“${turn.characterName}”已不存在`);
+        throw new TurnSpeechRequestError('speech/character_not_found', `角色“${characterName}”已不存在`);
       }
       const job = createJob({
         sessionId: turn.sessionId,
@@ -452,7 +515,7 @@ export function openSpeech(
         return;
       }
 
-      const audioAvailable = audioArchive.findFinalized(sessionId, turnId) !== null;
+      const audioAvailable = audioArchive.findFinalized(sessionId, turnId, characters.current().name) !== null;
       if (audioAvailable) {
         client.sendControl({ type: 'speech_generate_completed', sessionId, turnId, audioAvailable });
       } else {
@@ -512,6 +575,7 @@ function recordSttUsage(
 interface SpeechJob {
   readonly sessionId: string;
   readonly turnId: string;
+  readonly characterName: string;
   readonly abortController: AbortController;
   readonly signal: AbortSignal;
   readonly preparing: Promise<SpeechCoordinator>;

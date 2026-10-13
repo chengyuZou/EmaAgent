@@ -6,6 +6,7 @@ import type { TurnStore } from '@ema-agent/turn';
 export interface AudioRouteDeps {
   readonly audioArchive: Pick<FsAudioArchive, 'openRead'>;
   readonly turns: Pick<TurnStore, 'getTurn'>;
+  readonly currentCharacterName: () => string;
 }
 
 export const turnAudioRoute = (deps: AudioRouteDeps) =>
@@ -15,7 +16,12 @@ export const turnAudioRoute = (deps: AudioRouteDeps) =>
       const turn = deps.turns.getTurn(turnId);
       if (!turn) return context.json({ error: 'turn_not_found' }, 404);
 
-      const audio = await deps.audioArchive.openRead(turn.sessionId, turnId, context.req.raw.signal);
+      const audio = await deps.audioArchive.openRead(
+        turn.sessionId,
+        turnId,
+        deps.currentCharacterName(),
+        context.req.raw.signal,
+      );
       if (!audio) return context.json({ error: 'audio_not_found' }, 404);
 
       const headers = new Headers({

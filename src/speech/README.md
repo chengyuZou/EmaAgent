@@ -6,7 +6,7 @@ Speech 接收根 Turn 的文字增量, 或已完成 Turn 的完整正文, 清理
 
 ## 生成入口
 
-`SpeechCoordinator` 接收固定的 Session / Turn、Provider / 模型、声音、`CallTts`、`FsAudioArchive`、取消信号和同步保存记录的回调. `acceptTextDelta()` 接收文字; `finish()` 等待剩余句子并完成保存; `cancel()` 中断生成. 完成与取消共用同一次完成 Promise, 不重复发布文件.
+`SpeechCoordinator` 接收固定的 Session / Turn、Provider / 模型、声音、`CallTts`、`openAudio(format)` 闭包、取消信号和同步保存记录的回调. 闭包由 Server 绑定本次朗读角色和文件位置, Coordinator 不选择角色或查询角色资源. `acceptTextDelta()` 接收文字; `finish()` 等待剩余句子并完成保存; `cancel()` 中断生成. 完成与取消共用同一次完成 Promise, 不重复发布文件.
 
 `savePartialAudio` 区分两种真实业务:
 
@@ -19,9 +19,9 @@ Speech 接收根 Turn 的文字增量, 或已完成 Turn 的完整正文, 清理
 
 ### 手动生成已完成 Turn
 
-`POST /api/turns/:turnId/speech` 只需要路径中的 Turn ID, 不接收前端指定的正文、角色或音频路径. Server 从已完成 Turn 读取正常 Assistant 消息里的 text 块, 不朗读 thinking、工具调用或用户消息.
+`POST /api/turns/:turnId/speech` 接收 JSON `{ characterName?: string }`, 不接收前端指定的正文或音频路径. Server 从已完成 Turn 读取正常 Assistant 消息里的 text 块, 不朗读 thinking、工具调用或用户消息.
 
-声音使用 Turn 记录的 `characterName` 对应角色, TTS 模型使用当前绑定. 原角色没有记录、角色已不存在、没有参考音频、没有选用主参考音频或文件已丢失时返回具体原因, 不改用当前角色. 未完成 Turn 返回 409, 同轮已有生成任务时也返回 409; 配置问题返回 422.
+省略 `characterName` 时使用当前激活角色, Settings 可以明确选择其他角色, 不改变激活角色. TTS 模型使用当前绑定. 角色已不存在、没有参考音频、没有选用主参考音频或文件已丢失时返回具体原因. Turn 的 `characterName` 仍表示当时参与对话的角色, 不决定后来的朗读声音. 未完成 Turn 返回 409, 同轮已有生成任务时也返回 409; 配置问题返回 422.
 
 响应带 `sessionId`、`turnId` 和最终状态:
 
@@ -33,7 +33,7 @@ Speech 接收根 Turn 的文字增量, 或已完成 Turn 的完整正文, 清理
 
 ## 文件与正式记录
 
-`FsAudioArchive.openTurn()` 返回 `AudioWriter`. 调用方必须等待 `write(bytes)` 完成后再取下一块; 磁盘来不及写时暂停读取 TTS 的后续结果.
+`FsAudioArchive.openTurn(sessionId, turnId, characterName, format)` 返回 `AudioWriter`. 路径为 `sessions/<sessionId>/audio/<turnId>/<turnId>-<characterName>.wav`, 角色名使用稳定的 `Character.name`. 同一轮可保留多个角色版本, 重新生成只替换同一路径. 调用方必须等待 `write(bytes)` 完成后再取下一块; 磁盘来不及写时暂停读取 TTS 的后续结果.
 
 `finish(saveRecord)` 补齐 WAV 头、发布正式文件, 然后同步调用 `saveRecord`. 回调必须在返回前完成这一次 SQL 写入; 抛错时恢复之前的正式文件, 或移除第一次生成的文件. 重新生成替换前保留一份临时旧文件, 正式记录写入成功后释放它. `discard()` 删除本次 pending, 不修改原来的正式音频.
 
@@ -41,7 +41,7 @@ Speech 接收根 Turn 的文字增量, 或已完成 Turn 的完整正文, 清理
 文字 -> 清理和切句 -> CallTts -> PCM 块
                                   |
                                   v
-        sessions/<sessionId>/audio/<turnId>.wav.pending
+ sessions/<sessionId>/audio/<turnId>/<turnId>-<characterName>.wav.pending
                                   |
             完成保存: 补齐 WAV 头, 发布正式 WAV
                                   |
@@ -58,11 +58,13 @@ Speech 接收根 Turn 的文字增量, 或已完成 Turn 的完整正文, 清理
 
 ## 音频读取与生成通知
 
-`FsAudioArchive.openRead(sessionId, turnId, signal)` 先读取已有正式文件. 因此重新生成期间的“播放现有”仍播放旧音频, 不播放尚未完成的替代文件. 没有正式文件时可以读取正在写入的初次生成文件.
+`FsAudioArchive.openRead(sessionId, turnId, characterName, signal)` 先读取该角色已有的正式文件. 因此重新生成期间的“播放音频”仍播放旧音频, 不播放尚未完成的替代文件. 没有正式文件时可以读取该角色正在写入的初次生成文件.
 
 生成中 `byteSize=null`, 正式文件返回真实大小. 每个读取方持有自己的文件位置, 每次最多取 64 KiB. 读到当前末尾等待后续写入, 不把句间停顿当成结束; 文件完成并读完 PCM 后结束响应. 关闭读取流只关闭当前读取方, 不取消生成.
 
-`GET /api/turns/:turnId/audio` 先通过 Turn 查 Session, 不接收任意本机路径. 原生 audio 不能设置认证请求头, 所以指定音频 GET 与 WebSocket 通过 `secret` 查询参数携带现有进程口令; 其他 HTTP 仍用 `X-Ema-Secret`. 响应禁止缓存, 生成中的响应不发送 Content-Length.
+`GET /api/turns/:turnId/audio` 先通过 Turn 查 Session, 只读取当前激活角色的版本, 不接收任意本机路径. 原生 audio 不能设置认证请求头, 所以指定音频 GET 与 WebSocket 通过 `secret` 查询参数携带现有进程口令; 其他 HTTP 仍用 `X-Ema-Secret`. 响应禁止缓存, 生成中的响应不发送 Content-Length.
+
+`GET /api/sessions/:sessionId/audio` 返回 Turn 摘要, 包括没有音频的轮次; `GET /api/turns/:turnId/audio-records` 返回这一轮的角色音频、当前角色的生成资格和已选用主参考音频的角色选项. 前端打开菜单或展开记录时查询, 角色切换、资源变更和音频保存后重新读取.
 
 `SpeechGenerateEvent` 带 `sessionId` 和 `turnId`, 不带文件路径、URL 或音频块. WebSocket 交付生成开始、单句警告和生成终态, 也接受明确的生成取消命令. 终态里的 `audioAvailable` 不表示浏览器已经播完. 断开连接仅结束订阅, 后端仍生成并保存.
 
@@ -87,7 +89,9 @@ Desktop 的 `turnSpeechGeneration.ts` 为自动生成 Turn 独立订阅状态. �
 
 ### 操作入口
 
-Turn Footer 两项都可用时使用共享 `DropdownMenu` 提供“播放现有语音”和“重新生成整轮语音”. 只有播放可用时直接播放; 没有音频但允许生成时直接生成. 正在播放时显示停止播放, 生成中另外提供取消生成. 重新生成只从待播列表移除目标 Turn, 不停止其他播放.
+Turn Footer 使用共享 `DropdownMenu`, 始终显示“播放音频”和“生成音频 / 重新生成音频”. 两项只针对当前激活角色, 不可用时显示具体原因. 已保存音频不因删除参考声音而消失, 仍可播放; 生成需要现有主参考音频和已完成正文. 正在播放时显示停止播放, 生成中另外提供取消生成. 重新生成只从待播列表移除目标 Turn, 不停止其他播放.
+
+Settings 按 Turn 列摘要, 展开一轮才读取各角色记录, 每个版本使用全宽的普通文件播放器. “重新生成音频”菜单列出有主参考音频的角色, 明确选择后保存, 不自动播放. 普通文件播放器不进入 Chat 播放队列, 不驱动 Live2D 口型.
 
 侧栏的 `SessionAudioButton` 只显示当前播放 Session, 放在标题左边, 不占右侧菜单的位置. 悬停或键盘聚焦显示实心停止图标, 点击不触发行选择. 状态圆点仍保留. 最近活动时间放在标题的悬浮详情卡中, 不与菜单按钮共用行内位置.
 
@@ -101,9 +105,9 @@ Turn Footer 两项都可用时使用共享 `DropdownMenu` 提供“播放现有�
 
 ## 验证与限制
 
-`pnpm --filter @ema-agent/speech test` 验证 WAV 读写、取消、替换失败恢复与逐次用量记录. Server 的 `turnSpeechGeneration.test.ts` 使用真实 HTTP 与临时 SQLite 验证原角色、正文读取、重复调用、取消和保存失败; `turnSpeechWebSocket.test.ts` 验证生成通知、读取和备份.
+`pnpm --filter @ema-agent/speech test` 验证 WAV 读写、多角色保存、取消、替换失败恢复与逐次用量记录. Server 的 `turnSpeechGeneration.test.ts` 使用真实 HTTP 与临时 SQLite 验证当前角色、明确选角、正文读取、重复调用、取消和保存失败; `turnSpeechWebSocket.test.ts` 验证生成通知、读取和多角色备份.
 
-Desktop 的 `turnSpeechPlayback.test.ts` 验证排队、跨 Session 拒绝、重播、停止与迟到回调; `turnSpeechControls.test.tsx` 验证真实菜单、单动作按钮和侧栏点击; `navigation.test.ts` 验证请求身份与导航取消; `playbackNavigation.test.tsx` 验证定位高亮、旧窗口单次查询和切走会话后的迟到结果. `tests/turnSpeech.html` 使用真实组件与固定数据检查布局和旧 Turn 定位, 不访问用户数据库或模型.
+Desktop 的 `turnAudioControls.test.tsx` 验证真实菜单、角色切换、资源刷新和逐角色播放器. `tests/turnAudio.html` 使用真实组件与固定数据检查菜单、播放器宽度和窄屏布局, 不访问用户数据库或模型.
 
 上述测试不代替真实供应商、Tauri WebView 播放和口型验收. 当前没有整轮待合成文字上限, DashScope 回调队列也没有独立容量限制; 普通 WAV 长度字段有限制. 大文件 Range / 定位、几十分钟生成与浏览器缓冲表现仍需单独验收.
 

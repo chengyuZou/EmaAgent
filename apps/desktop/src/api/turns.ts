@@ -22,6 +22,7 @@ export type TurnAttachmentBlock =
 
 export type ToolExecutionLog = RpcJson<RpcClient['api']['turns'][':turnId']['tool-executions']['$get']>;
 export type TurnSpeechGenerateResult = RpcJson<RpcClient['api']['turns'][':turnId']['speech']['$post']>;
+export type TurnAudioRecords = RpcJson<RpcClient['api']['turns'][':turnId']['audio-records']['$get']>;
 export type ToolExecutionDetail = RpcJson<RpcClient['api']['turns'][':turnId']['tool-executions'][':callId']['$get']>;
 export type TurnSummaryPage = RpcJson<RpcClient['api']['turns']['$get']>;
 export type TurnSummary = TurnSummaryPage['items'][number];
@@ -30,9 +31,19 @@ export type TurnDetailResult = RpcJson<RpcClient['api']['turns'][':turnId']['$ge
 // ── API ──────────────────────────────────────────────────────────────────────
 
 export const turnsApi = {
-  /** Server 从 Turn 读取完整正文和原角色; 只生成保存, 不控制播放器. */
-  generateSpeech(turnId: string): Promise<TurnSpeechGenerateResult> {
-    return readRpcJson(rpcClient.api.turns[':turnId'].speech.$post({ param: { turnId } }));
+  /** 正文由 Server 读取; 未指定角色时使用当前激活角色, 只生成保存, 不控制播放器. */
+  generateSpeech(turnId: string, characterName?: string): Promise<TurnSpeechGenerateResult> {
+    return readRpcJson(rpcClient.api.turns[':turnId'].speech.$post({
+      param: { turnId },
+      json: { characterName },
+    }));
+  },
+
+  getAudioRecords(turnId: string, signal?: AbortSignal): Promise<TurnAudioRecords> {
+    return readRpcJson(rpcClient.api.turns[':turnId']['audio-records'].$get(
+      { param: { turnId } },
+      { init: { signal } },
+    ));
   },
 
   cancelSpeech(turnId: string): Promise<void> {

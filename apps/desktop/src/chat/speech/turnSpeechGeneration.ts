@@ -93,12 +93,16 @@ export function observeTurnSpeechGeneration(sessionId: string, turnId: string): 
 }
 
 /** 请求由共享模块持有, Footer 卸载不会取消生成, 完成后只刷新事实和通知. */
-export async function generateTurnSpeech(sessionId: string, turnId: string): Promise<void> {
+export async function generateTurnSpeech(
+  sessionId: string,
+  turnId: string,
+  characterName?: string,
+): Promise<void> {
   if (useSpeechGenerationStore.getState().active.has(turnId)) return;
   const generation: TurnSpeechGeneration = { sessionId, turnId, audioReady: false, cancelling: false };
   setGeneration(generation);
   try {
-    const result = await turnsApi.generateSpeech(turnId);
+    const result = await turnsApi.generateSpeech(turnId, characterName);
     if (!useSpeechGenerationStore.getState().active.has(turnId)) return;
     if (result.status === 'completed') showToast('该轮语音已生成, 点击播放即可收听');
     else if (result.status === 'cancelled') showToast('已取消语音生成, 原有音频未被替换', { variant: 'info' });

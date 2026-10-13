@@ -13,6 +13,7 @@ import type { ExtractedSessionArchive } from './archive.js';
 export interface RestoredSessionFiles {
   /** 旧绝对路径 → 新受管路径;消息块内路径重写的事实源。 */
   readonly attachments: ReadonlyMap<string, string>;
+  /** 归档文件路径 -> 恢复后的正式路径, 同轮不同角色不能共用 Turn ID 作为键. */
   readonly speechOutputs: ReadonlyMap<string, string>;
   readonly backgroundDirectories: ReadonlyMap<string, string>;
   commit(): void;
@@ -63,11 +64,19 @@ export function publishSessionFiles(
     }
     for (const record of speechOutputs) {
       throwIfCancelled(signal);
+      const parts = record.filePath.split('/');
+      const fileName = parts[3];
+      const prefix = `${record.turnId}-`;
+      if (parts.length !== 4 || parts[0] !== 'files' || parts[1] !== 'speechOutputs'
+        || parts[2] !== record.turnId || !fileName?.startsWith(prefix)
+        || !fileName.endsWith('.wav') || fileName.length <= prefix.length + '.wav'.length) {
+        throw new SessionImportError('invalid_format', `语音文件名与 Turn 不一致: ${record.filePath}`);
+      }
       const source = archive.get(record.filePath);
       if (!source) continue;
-      const destination = path.join(temporaryRoot, 'audio', `${record.turnId.replace(/[^A-Za-z0-9._-]/g, '_')}.wav`);
+      const destination = path.join(temporaryRoot, 'audio', record.turnId, fileName);
       copy(source.filePath, destination, record.byteSize);
-      speechOutputPaths.set(record.turnId, toFinal(finalRoot, temporaryRoot, destination));
+      speechOutputPaths.set(record.filePath, toFinal(finalRoot, temporaryRoot, destination));
     }
     for (const record of backgroundProcesses) {
       throwIfCancelled(signal);

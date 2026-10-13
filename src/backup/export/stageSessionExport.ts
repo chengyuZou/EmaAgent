@@ -156,7 +156,7 @@ function writeRecords(
   }, signal);
 
   writeJsonl(directory, 'speechOutputs', rows.speechOutputs, row => {
-    const archivePath = `files/speechOutputs/${safeName(row.turn_id)}.wav`;
+    const archivePath = `files/speechOutputs/${safeName(row.turn_id)}/${path.basename(row.storage_path)}`;
     pending.push({ kind: 'speechOutput', id: row.turn_id, sourcePath: row.storage_path, archivePath });
     return toSpeechOutputRecord(row, archivePath);
   }, signal);

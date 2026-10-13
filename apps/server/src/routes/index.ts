@@ -97,7 +97,11 @@ export const createRoutes = (composition: Composition, secret: string) => {
       messages: database.messages,
       subagentMessages: database.subagentMessageRecords,
     }))
-    .route('/api/turns', turnAudioRoute({ audioArchive: speech.audioArchive, turns: database.turns }))
+    .route('/api/turns', turnAudioRoute({
+      audioArchive: speech.audioArchive,
+      turns: database.turns,
+      currentCharacterName: () => characters.store.current().name,
+    }))
     .route('/api/turns', turnSpeechRoute({ speech, turns: database.turns, session: database.session }))
 
     // /summaries 在集合的 /:sessionId 前挂载, 避免被解释成一个 Session ID.
@@ -119,7 +123,6 @@ export const createRoutes = (composition: Composition, secret: string) => {
       session: database.session,
       turns: database.turns,
       usageRecorder: database.usageRecorder,
-      audioArchive: speech.audioArchive,
       providerModels: providers.providerModels,
       onSessionOpened: sessionId => {
         // 附件残留清扫(贴了没发/无行残渣)与 vision 描述缓存驱逐,fire-and-forget。

@@ -36,19 +36,29 @@ export class FsAudioArchive {
 
   constructor(private readonly sessionsRoot: string) {}
 
-  async openTurn(sessionId: string, turnId: string, format: PcmAudioFormat): Promise<AudioWriter> {
-    const storagePath = this.audioPath(sessionId, turnId);
+  async openTurn(
+    sessionId: string,
+    turnId: string,
+    characterName: string,
+    format: PcmAudioFormat,
+  ): Promise<AudioWriter> {
+    const storagePath = this.audioPath(sessionId, turnId, characterName);
     await fs.promises.mkdir(path.dirname(storagePath), { recursive: true });
-    const file = new AudioFile(storagePath, format, () => this.writing.delete(turnId));
+    const file = new AudioFile(storagePath, format, () => this.writing.delete(storagePath));
     await file.initialize();
-    this.writing.set(turnId, file);
+    this.writing.set(storagePath, file);
     return file;
   }
 
-  async openRead(sessionId: string, turnId: string, signal: AbortSignal): Promise<AudioRead | null> {
+  async openRead(
+    sessionId: string,
+    turnId: string,
+    characterName: string,
+    signal: AbortSignal,
+  ): Promise<AudioRead | null> {
     signal.throwIfAborted();
     // 重新生成期间, “播放现有”仍读取原来的正式文件, 不读这次尚未完成的替代文件.
-    const found = this.findFinalized(sessionId, turnId);
+    const found = this.findFinalized(sessionId, turnId, characterName);
     if (found) {
       const stat = await fs.promises.stat(found.storagePath);
       return {
@@ -57,7 +67,7 @@ export class FsAudioArchive {
         byteSize: stat.size,
       };
     }
-    const file = this.writing.get(turnId);
+    const file = this.writing.get(this.audioPath(sessionId, turnId, characterName));
     if (file) {
       const readAbort = new AbortController();
       const readSignal = AbortSignal.any([signal, readAbort.signal]);
@@ -84,13 +94,19 @@ export class FsAudioArchive {
   findFinalized(
     sessionId: string,
     turnId: string,
+    characterName: string,
   ): Pick<FinalizedAudio, 'storagePath' | 'mimeType'> | null {
-    const storagePath = this.audioPath(sessionId, turnId);
+    const storagePath = this.audioPath(sessionId, turnId, characterName);
     return fs.existsSync(storagePath) ? { storagePath, mimeType: 'audio/wav' } : null;
   }
 
-  private audioPath(sessionId: string, turnId: string): string {
-    return path.join(this.sessionsRoot, sessionId, 'audio', `${turnId}.wav`);
+  /** 文件名使用稳定 Character.name, 不能按连字符分割, 角色名本身也可以包含连字符. */
+  characterNameFor(turnId: string, storagePath: string): string {
+    return path.basename(storagePath).slice(`${turnId}-`.length, -'.wav'.length);
+  }
+
+  private audioPath(sessionId: string, turnId: string, characterName: string): string {
+    return path.join(this.sessionsRoot, sessionId, 'audio', turnId, `${turnId}-${characterName}.wav`);
   }
 }
 
