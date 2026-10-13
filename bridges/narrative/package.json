@@ -1,9 +1,0 @@
-{
-  "name": "@ema-agent/narrative-bridge",
-  "version": "0.1.0",
-  "private": true,
-  "scripts": {
-    "dev": "uv run ema-narrative-bridge",
-    "test": "uv run pytest"
-  }
-}
