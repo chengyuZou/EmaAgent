@@ -98,6 +98,27 @@ export class SubagentMessagesRepo {
     return this.db.prepare(`${MESSAGE_SELECT} WHERE m.id = ?`).get(id) as SubagentMessageRow | undefined;
   }
 
+  /** Tool 的完整输入和 UI 结果在消息块中, 目录查询不能提前把它们全部读出. */
+  findToolBlocks(subagentId: string, callId: string): { callJson?: string; resultJson?: string } {
+    const call = this.db.prepare(`
+      SELECT block.value AS value FROM subagent_messages m,
+        json_each(CASE WHEN json_type(m.blocks_json) = 'array' THEN m.blocks_json ELSE '[]' END) block
+      WHERE m.subagent_id = ? AND m.role = 'assistant'
+        AND json_extract(block.value, '$.type') = 'tool_use'
+        AND json_extract(block.value, '$.id') = ?
+      ORDER BY m.created_at ASC, m.id ASC LIMIT 1
+    `).get(subagentId, callId) as { value: string } | undefined;
+    const result = this.db.prepare(`
+      SELECT block.value AS value FROM subagent_messages m,
+        json_each(CASE WHEN json_type(m.blocks_json) = 'array' THEN m.blocks_json ELSE '[]' END) block
+      WHERE m.subagent_id = ? AND m.kind = 'tool_results'
+        AND json_extract(block.value, '$.type') = 'tool_result'
+        AND json_extract(block.value, '$.toolCallId') = ?
+      ORDER BY m.created_at DESC, m.id DESC LIMIT 1
+    `).get(subagentId, callId) as { value: string } | undefined;
+    return { callJson: call?.value, resultJson: result?.value };
+  }
+
   listWindow(
     subagentId: string,
     cursor?: MessagePageCursor,

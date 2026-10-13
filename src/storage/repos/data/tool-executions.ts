@@ -95,6 +95,24 @@ export class ToolExecutionsRepo {
     return rows.map(fromSqlRow);
   }
 
+  listForTurnPage(turnId: string, cursor: { createdAt: number; id: string } | undefined, limit: number) {
+    const rows = this.db.prepare(`
+      SELECT * FROM tool_executions
+      WHERE turn_id = ?
+        AND (? IS NULL OR created_at > ? OR (created_at = ? AND call_id > ?))
+      ORDER BY created_at ASC, call_id ASC LIMIT ?
+    `).all(
+      turnId, cursor?.createdAt ?? null, cursor?.createdAt ?? null,
+      cursor?.createdAt ?? null, cursor?.id ?? null, limit + 1,
+    ) as ToolExecutionSqlRow[];
+    const executions = rows.slice(0, limit).map(fromSqlRow);
+    const last = executions.at(-1);
+    return {
+      executions,
+      nextCursor: rows.length > limit && last ? { createdAt: last.createdAt, id: last.callId } : null,
+    };
+  }
+
   transition(
     callId: string,
     expectedVersion: number,

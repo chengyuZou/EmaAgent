@@ -1,18 +1,3 @@
-// 存储页共用的动画与格式化辅助:延迟卸载让退出动画播完,字节/时长/Token/日期统一口径。
-import { useEffect, useState } from 'react';
-
-// Keeps node mounted for `delay` ms after `visible` goes false so the exit
-// animation plays before React removes the element.
-export function useMountedAnim(visible: boolean, delay = 220): boolean {
-  const [mounted, setMounted] = useState(visible);
-  useEffect(() => {
-    if (visible) { setMounted(true); return; }
-    const t = setTimeout(() => setMounted(false), delay);
-    return () => clearTimeout(t);
-  }, [visible, delay]);
-  return mounted;
-}
-
 export function fmtBytes(n: number): string {
   if (n === 0)           return '0 B';
   if (n < 1_024)         return `${n} B`;
@@ -42,6 +27,6 @@ export function fmtDateShort(ts: number): string {
 export function fmtDateFull(ts: number): string {
   return new Date(ts).toLocaleString('zh-CN', {
     year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
   });
 }

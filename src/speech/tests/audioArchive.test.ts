@@ -3,12 +3,12 @@ import os from 'node:os';
 import path from 'node:path';
 import { once } from 'node:events';
 import { finished } from 'node:stream/promises';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createPcmWavHeader, type CallTts } from '@ema-agent/tts';
 import { UsageRecorder } from '@ema-agent/usage';
 import { Database } from '../../storage/index.js';
 import { FsAudioArchive } from '../audioArchive.js';
-import { SpeechCoordinator } from '../speechCoordinator.js';
+import { SpeechCoordinator, type SpeechCoordinatorArgs } from '../speechCoordinator.js';
 
 const FORMAT = { sampleRate: 8000, channelCount: 1 };
 const HEADER_BYTES = createPcmWavHeader(FORMAT, 0).byteLength;
@@ -29,7 +29,7 @@ function createArchive(): { archive: FsAudioArchive; root: string } {
 function createCoordinator(callTts: CallTts, onAudioReady = () => {}, onSentenceError = (_error: {
   readonly code: string;
   readonly message: string;
-}) => {}) {
+}) => {}, overrides: Partial<SpeechCoordinatorArgs> = {}) {
   const { archive, root } = createArchive();
   const db = new Database({ memory: true, kind: 'data' });
   databases.push(db);
@@ -49,8 +49,11 @@ function createCoordinator(callTts: CallTts, onAudioReady = () => {}, onSentence
     archive,
     signal: new AbortController().signal,
     usageRecorder,
+    savePartialAudio: true,
+    saveAudioRecord: () => {},
     onAudioReady,
     onSentenceError,
+    ...overrides,
   });
   return { archive, root, coordinator, usageRecorder };
 }
@@ -65,8 +68,8 @@ describe('FsAudioArchive', () => {
     await writer.write(second);
     expect(archive.findFinalized('s', 't')).toBeNull();
 
-    const finishing = writer.finish();
-    expect(writer.finish()).toBe(finishing);
+    const finishing = writer.finish(() => {});
+    expect(writer.finish(() => {})).toBe(finishing);
     const audio = await finishing;
     expect(audio).toMatchObject({
       mimeType: 'audio/wav',
@@ -99,7 +102,7 @@ describe('FsAudioArchive', () => {
     expect(received).toBe(false);
     await writer.write(Buffer.from([3, 4]));
     expect(Buffer.from((await next).value)).toEqual(Buffer.from([3, 4]));
-    await writer.finish();
+    await writer.finish(() => {});
     expect((await iterator.next()).done).toBe(true);
 
     const finalized = await archive.openRead('s', 't', new AbortController().signal);
@@ -119,7 +122,7 @@ describe('FsAudioArchive', () => {
     audio!.stream.destroy();
     await closed;
     await writer.write(Buffer.from([3, 4]));
-    const result = await writer.finish();
+    const result = await writer.finish(() => {});
     expect(fs.readFileSync(result!.storagePath).subarray(HEADER_BYTES)).toEqual(Buffer.from([1, 2, 3, 4]));
   });
 
@@ -134,16 +137,54 @@ describe('FsAudioArchive', () => {
     abort.abort();
     await expect(reading).rejects.toMatchObject({ name: 'AbortError' });
     await writer.write(Buffer.from([3, 4]));
-    expect((await writer.finish())!.byteSize).toBe(HEADER_BYTES + 4);
+    expect((await writer.finish(() => {}))!.byteSize).toBe(HEADER_BYTES + 4);
   });
 
   it('没有 PCM 时删除空 pending 文件, 不发布正式音频', async () => {
     const { archive, root } = createArchive();
     const writer = await archive.openTurn('s', 't', FORMAT);
-    expect(await writer.finish()).toBeNull();
+    expect(await writer.finish(() => {})).toBeNull();
     expect(archive.findFinalized('s', 't')).toBeNull();
     expect(fs.readdirSync(path.join(root, 's', 'audio'))).toEqual([]);
     expect(await archive.openRead('s', 'missing', new AbortController().signal)).toBeNull();
+  });
+
+  it('替代音频未保存时仍可读取旧文件; 丢弃后旧音频不变', async () => {
+    const { archive, root } = createArchive();
+    const first = await archive.openTurn('s', 't', FORMAT);
+    await first.write(Buffer.from([1, 2]));
+    const original = (await first.finish(() => {}))!;
+    const second = await archive.openTurn('s', 't', FORMAT);
+    await second.write(Buffer.from([3, 4]));
+    const read = (await archive.openRead('s', 't', new AbortController().signal))!;
+    const chunks: Buffer[] = [];
+    for await (const chunk of read.stream) chunks.push(Buffer.from(chunk));
+    expect(Buffer.concat(chunks).subarray(HEADER_BYTES)).toEqual(Buffer.from([1, 2]));
+    await second.discard();
+    expect(fs.readFileSync(original.storagePath).subarray(HEADER_BYTES)).toEqual(Buffer.from([1, 2]));
+    expect(fs.readdirSync(path.join(root, 's', 'audio'))).toEqual(['t.wav']);
+  });
+
+  it('记录保存失败则恢复旧 WAV, 不保留新文件或 pending', async () => {
+    const { archive, root } = createArchive();
+    const original = await archive.openTurn('s', 't', FORMAT);
+    await original.write(Buffer.from([1, 2]));
+    const saved = (await original.finish(() => {}))!;
+    const bytes = fs.readFileSync(saved.storagePath);
+    const replacement = await archive.openTurn('s', 't', FORMAT);
+    await replacement.write(Buffer.from([3, 4, 5, 6]));
+    await expect(replacement.finish(() => { throw new Error('SQL rejected'); })).rejects.toThrow('SQL rejected');
+    expect(fs.readFileSync(saved.storagePath)).toEqual(bytes);
+    expect(fs.readdirSync(path.join(root, 's', 'audio'))).toEqual(['t.wav']);
+  });
+
+  it('首次生成的记录保存失败时也撤回正式文件', async () => {
+    const { archive, root } = createArchive();
+    const writer = await archive.openTurn('s', 't', FORMAT);
+    await writer.write(Buffer.from([1, 2]));
+    await expect(writer.finish(() => { throw new Error('SQL rejected'); })).rejects.toThrow('SQL rejected');
+    expect(archive.findFinalized('s', 't')).toBeNull();
+    expect(fs.readdirSync(path.join(root, 's', 'audio'))).toEqual([]);
   });
 });
 
@@ -226,5 +267,64 @@ describe('SpeechCoordinator', () => {
     });
     expect(await coordinator.finish()).toEqual({ status: 'completed', audio: null });
     expect(fs.existsSync(path.join(root, 's', 'audio'))).toBe(false);
+  });
+
+  it('同一 Turn 重复生成时, 每次真实 TTS 请求均有独立用量 ID', async () => {
+    const callTts: CallTts = async function* () {
+      yield { type: 'audio_started', ...FORMAT };
+      yield { type: 'audio_chunk', bytes: Buffer.from([1, 2]) };
+    };
+    const { coordinator, archive, usageRecorder } = createCoordinator(callTts);
+    coordinator.acceptTextDelta('第一句。第二句。');
+    await coordinator.finish();
+    const second = new SpeechCoordinator({
+      sessionId: 's', turnId: 't', providerId: 'provider', modelId: 'model',
+      voice: { kind: 'provider', id: 'voice' }, callTts, archive, usageRecorder,
+      signal: new AbortController().signal,
+      savePartialAudio: false,
+      saveAudioRecord: () => {},
+      onAudioReady: () => {},
+      onSentenceError: () => {},
+    });
+    second.acceptTextDelta('第一句。第二句。');
+    await second.finish();
+    const records = usageRecorder.forTurn('t');
+    expect(records).toHaveLength(4);
+    expect(new Set(records.map(record => record.id)).size).toBe(4);
+    expect(records.every(record => record.unit === 'character' && record.quantity === 4)).toBe(true);
+  });
+
+  it('手动整轮生成有一句失败就丢弃本次音频, 不保存半轮文件', async () => {
+    let calls = 0;
+    const save = vi.fn();
+    const { coordinator, archive } = createCoordinator(async function* () {
+      calls += 1;
+      if (calls === 2) throw new Error('second sentence failed');
+      yield { type: 'audio_started', ...FORMAT };
+      yield { type: 'audio_chunk', bytes: Buffer.from([1, 2]) };
+    }, () => {}, () => {}, { savePartialAudio: false, saveAudioRecord: save });
+    coordinator.acceptTextDelta('第一句。第二句。第三句。');
+    expect(await coordinator.finish()).toMatchObject({ status: 'failed', audio: null });
+    expect(calls).toBe(2);
+    expect(save).not.toHaveBeenCalled();
+    expect(archive.findFinalized('s', 't')).toBeNull();
+  });
+
+  it('手动生成取消后删除已经写入的部分', async () => {
+    let ready!: () => void;
+    const readable = new Promise<void>(resolve => { ready = resolve; });
+    const { coordinator, archive } = createCoordinator(async function* (request) {
+      yield { type: 'audio_started', ...FORMAT };
+      yield { type: 'audio_chunk', bytes: Buffer.from([1, 2]) };
+      request.signal!.throwIfAborted();
+      await new Promise<void>(resolve => request.signal!.addEventListener('abort', () => resolve(), { once: true }));
+      request.signal!.throwIfAborted();
+    }, ready, () => {}, { savePartialAudio: false });
+    coordinator.acceptTextDelta('第一句。');
+    const finished = coordinator.finish();
+    await readable;
+    await coordinator.cancel();
+    expect(await finished).toEqual({ status: 'cancelled', audio: null });
+    expect(archive.findFinalized('s', 't')).toBeNull();
   });
 });

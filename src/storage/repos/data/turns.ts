@@ -17,7 +17,7 @@ export interface TurnRow {
   model_id: string | null;
   /** prepare 解析出的实际调用协议（与 provider_id/model_id 同生命周期，setModel 回填前为 null）。 */
   protocol: string | null;
-  /** Prepare 阶段冻结的 Character.name. 与可修改的 displayName 不同. */
+  /** 本轮参与对话的角色的稳定 Character.name; 后续切换角色不改写此列. 未记录时为 null. */
   character_name: string | null;
   iterations: number;
   created_at: number;
@@ -70,6 +70,18 @@ export interface TurnPage {
   nextCursor: TurnIdPageCursor | null;
 }
 
+export interface TurnSummaryRow {
+  id: string;
+  session_id: string;
+  status: TurnStatusRow;
+  trigger_type: TurnTriggerTypeRow;
+  created_at: number;
+  completed_at: number | null;
+  message_count: number;
+  input_tokens: number;
+  output_tokens: number;
+}
+
 export class TurnsRepo {
   constructor(private readonly db: SqliteDb) {}
 
@@ -97,7 +109,7 @@ export class TurnsRepo {
       .run(providerId, modelId, protocol, id);
   }
 
-  /** Prepare 完成时冻结角色身份. Memory relationship 提取经 turnId 回读此列. */
+  /** Prepare 完成时记录本轮参与对话的角色. Memory relationship 提取经 turnId 读取此列. */
   setCharacterName(id: string, characterName: string): void {
     this.db
       .prepare('UPDATE turns SET character_name = ? WHERE id = ?')
@@ -137,6 +149,31 @@ export class TurnsRepo {
     return this.db
       .prepare('SELECT * FROM turns WHERE session_id = ? ORDER BY created_at DESC, id DESC LIMIT ?')
       .all(sessionId, limit) as TurnRow[];
+  }
+
+  /** 存储目录包含没有普通消息的 Turn. Chat 导航索引要求消息锚点, 不能代替这个查询. */
+  listSummaries(sessionId: string, cursor: TurnIdPageCursor | undefined, limit: number) {
+    const rows = this.db.prepare(`
+      SELECT t.id, t.session_id, t.status, t.trigger_type, t.created_at, t.completed_at,
+        (SELECT COUNT(*) FROM messages m WHERE m.turn_id = t.id) AS message_count,
+        COALESCE((SELECT SUM(u.input_tokens) FROM usage_records u
+          WHERE u.turn_id = t.id AND u.capability = 'llm'), 0) AS input_tokens,
+        COALESCE((SELECT SUM(u.output_tokens) FROM usage_records u
+          WHERE u.turn_id = t.id AND u.capability = 'llm'), 0) AS output_tokens
+      FROM turns t
+      WHERE t.session_id = ?
+        AND (? IS NULL OR t.created_at < ? OR (t.created_at = ? AND t.id < ?))
+      ORDER BY t.created_at DESC, t.id DESC LIMIT ?
+    `).all(
+      sessionId, cursor?.createdAt ?? null, cursor?.createdAt ?? null,
+      cursor?.createdAt ?? null, cursor?.id ?? null, limit + 1,
+    ) as TurnSummaryRow[];
+    const pageRows = rows.slice(0, limit);
+    const last = pageRows.at(-1);
+    return {
+      rows: pageRows,
+      nextCursor: rows.length > limit && last ? { createdAt: last.created_at, id: last.id } : null,
+    };
   }
 
   /** 按稳定复合游标读取 Turn 索引页，页面内部保持最新优先。 */

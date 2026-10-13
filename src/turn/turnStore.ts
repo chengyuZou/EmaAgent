@@ -183,6 +183,24 @@ export class TurnStore {
     return row ? toTurn(row) : undefined;
   }
 
+  listSummaries(sessionId: string, cursor: TurnIdPageCursor | undefined, limit: number) {
+    const page = this.turnsRepo.listSummaries(sessionId, cursor, limit);
+    return {
+      items: page.rows.map(row => ({
+        id: row.id,
+        sessionId: row.session_id,
+        status: row.status,
+        triggerType: row.trigger_type,
+        createdAt: row.created_at,
+        completedAt: row.completed_at,
+        messageCount: row.message_count,
+        inputTokens: row.input_tokens,
+        outputTokens: row.output_tokens,
+      })),
+      nextCursor: page.nextCursor,
+    };
+  }
+
   getRunningTurn(sessionId: string): Turn | undefined {
     const running = this.registry.getRunning(sessionId);
     return running?.kind === 'turn' ? this.getTurn(running.turnId) : undefined;

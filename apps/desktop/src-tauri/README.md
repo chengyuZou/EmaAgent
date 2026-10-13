@@ -6,7 +6,7 @@
 
 ## Tauri Command
 
-自有 Command 只允许在 `src/commands` 定义、在 `src/lib.rs` 注册，并由 `apps/desktop/src/lib/tauri-bridge.ts` 的同名语义方法调用。其他前端文件不得直接写 Command 字符串。
+自有 Command 只允许在 `src/commands` 定义、在 `src/lib.rs` 注册，并由 `apps/desktop/src/lib/tauriBridge.ts` 的同名语义方法调用。其他前端文件不得直接写 Command 字符串。
 
 | Command | WebView 参数 | Rust 返回 | 前端方法 | 业务意义 |
 |---|---|---|---|---|
@@ -34,7 +34,7 @@
 | `set_browser_visible` | `{ browserId, visible }` | `Result<(), String>` | `setBrowserVisible(...)` | 标签, Chat View 和 main 窗口显隐共同决定原生页面显隐 |
 | `close_browser` | `{ browserId }` | `Result<(), String>` | `closeBrowser(...)` | 释放一个原生网页视图 |
 
-`plugin:opener|open_url` 和 `plugin:opener|reveal_item_in_dir` 属于 Tauri 插件，不是 Ema Rust Command；它们仍只能出现在 `tauri-bridge.ts` 内。
+`plugin:opener|open_url` 和 `plugin:opener|reveal_item_in_dir` 属于 Tauri 插件，不是 Ema Rust Command；它们仍只能出现在 `tauriBridge.ts` 内。
 
 ## 窗口和前端入口
 
@@ -53,7 +53,7 @@ Windows 在 stage 和 main 创建时, 按应用页面的 origin 将 WebView2 的
 
 ## 系统鼠标与穿透事件
 
-鼠标和穿透事件只发给 stage. 原生生产者是 `desktop/petPointer.rs` 和 `desktop/windows.rs`, WebView 只经 `tauri-bridge.ts` 的具名方法订阅. 窗口显隐事件按原生窗口名称发送给各自 WebView.
+鼠标和穿透事件只发给 stage. 原生生产者是 `desktop/petPointer.rs` 和 `desktop/windows.rs`, WebView 只经 `tauriBridge.ts` 的具名方法订阅. 窗口显隐事件按原生窗口名称发送给各自 WebView.
 
 | 事件 | Payload | 前端方法 | 实际消费者 |
 |---|---|---|---|

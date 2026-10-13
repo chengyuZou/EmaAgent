@@ -10,6 +10,8 @@ import {
   DataDirStatsRepo,
   SessionStatsRepo,
   TasksRepo,
+  SpeechOutputsRepo,
+  ToolExecutionsRepo,
 } from '@ema-agent/storage';
 import { SubagentMessagesStore, SubagentStore } from '@ema-agent/agent';
 import { AttachmentStore, ImageStore, PastedTextStore, type AttachmentEvent } from '@ema-agent/attachments';
@@ -56,6 +58,9 @@ export interface DatabaseComposition {
   readonly usageRecorder: UsageRecorder;
   /** raw 消息只读投影(存储页消息查看器)。 */
   readonly messages: MessagesRepo;
+  readonly subagentMessageRecords: SubagentMessagesRepo;
+  readonly toolExecutions: ToolExecutionsRepo;
+  readonly speechOutputs: SpeechOutputsRepo;
   /** 数据目录/单 Session 的存储统计只读投影。 */
   readonly dataDirStats: DataDirStatsRepo;
   readonly sessionStats: SessionStatsRepo;
@@ -103,6 +108,7 @@ export function openDatabases(
 
   const usageRecorder = new UsageRecorder(dataDb);
   const messages = new MessagesRepo(dataDb.sqlite);
+  const subagentMessageRecords = new SubagentMessagesRepo(dataDb.sqlite);
   const sessionRunning = new SessionRunningRegistry();
   const session = new SessionStore({
     db: dataDb,
@@ -123,7 +129,7 @@ export function openDatabases(
         removeTurnFiles(activeDataDir, sessionId, turnId);
       } finally {
         emitChanged({ type: 'session_messages_changed', sessionId });
-        emitChanged({ type: 'session_list_changed' });
+        emitChanged({ type: 'session_list_changed', sessionId });
       }
     },
     sessionRunning,
@@ -150,9 +156,12 @@ export function openDatabases(
     tasks: new TaskStore(new TasksRepo(dataDb.sqlite), emitChanged),
     goals: new GoalStore(dataDb, emitChanged, sessionId => sessionRunning.isClosed(sessionId)),
     subagents: new SubagentStore(dataDb.sqlite, new SubagentsRepo(dataDb.sqlite), new SubagentRunsRepo(dataDb.sqlite)),
-    subagentMessages: new SubagentMessagesStore(new SubagentMessagesRepo(dataDb.sqlite)),
+    subagentMessages: new SubagentMessagesStore(subagentMessageRecords),
     usageRecorder,
     messages,
+    subagentMessageRecords,
+    toolExecutions: new ToolExecutionsRepo(dataDb.sqlite),
+    speechOutputs: new SpeechOutputsRepo(dataDb.sqlite),
     dataDirStats: new DataDirStatsRepo(dataDb.sqlite),
     sessionStats: new SessionStatsRepo(dataDb.sqlite),
     close() {

@@ -5,33 +5,45 @@ import type { ToolResult } from '@ema-agent/tools';
 import { BuiltinTools } from '@ema-agent/tools/identity';
 import { asFileEditResult, asFileWriteResult } from '@ema-agent/builtin-tools/ui';
 import type { AssistantOutputBlock } from '../../../stores/turn.js';
+import type { ToolExecutionLog } from '../../../api/turns.js';
 
 type ToolUseBlock = Extract<AssistantBlock, { readonly type: 'tool_use' }>;
 type StreamingToolUseItem = Extract<AssistantOutputBlock, { readonly type: 'tool_use' }>;
 
-/** Tool UI 区分持久 Tool Use 和尚未交给 History 的流式 Tool Use. */
+/** 存储目录先只有执行记录, 参数和结果在展开后读取. 不把尚未读取的结果当成执行失败. */
 export type ToolDisplayCall =
   | { readonly source: 'history'; readonly block: ToolUseBlock; readonly result?: ToolResult }
-  | { readonly source: 'streaming'; readonly item: StreamingToolUseItem };
+  | { readonly source: 'streaming'; readonly item: StreamingToolUseItem }
+  | {
+      readonly source: 'execution';
+      readonly record: ToolExecutionLog['executions'][number];
+      readonly block?: ToolUseBlock;
+      readonly result?: ToolResult;
+    };
 
 export function toolName(call: ToolDisplayCall): string {
-  return call.source === 'history' ? call.block.name : call.item.name;
+  if (call.source === 'streaming') return call.item.name;
+  if (call.source === 'execution') return call.record.toolName;
+  return call.block.name;
 }
 
 export function toolArgs(call: ToolDisplayCall): unknown {
-  return call.source === 'history' ? call.block.args : call.item.args;
+  if (call.source === 'streaming') return call.item.args;
+  return call.block?.args;
 }
 
 export function toolCallId(call: ToolDisplayCall): string {
-  return call.source === 'history' ? call.block.id : call.item.callId;
+  if (call.source === 'streaming') return call.item.callId;
+  if (call.source === 'execution') return call.record.callId;
+  return call.block.id;
 }
 
 export function toolOutput(call: ToolDisplayCall): unknown {
-  return call.source === 'history' ? call.result?.data : call.item.output;
+  return call.source === 'streaming' ? call.item.output : call.result?.data;
 }
 
 export function toolFallbackContent(call: ToolDisplayCall): unknown {
-  return call.source === 'history' && call.result?.data === undefined
+  return call.source !== 'streaming' && call.result?.data === undefined
     ? call.result?.content
     : undefined;
 }
@@ -47,7 +59,12 @@ export function toolFailure(call: ToolDisplayCall): { code: string; message: str
 }
 
 export function toolDurationMs(call: ToolDisplayCall): number | undefined {
-  return call.source === 'history' ? call.result?.durationMs : call.item.durationMs;
+  if (call.source === 'streaming') return call.item.durationMs;
+  if (call.result?.durationMs !== undefined) return call.result.durationMs;
+  if (call.source === 'execution' && call.record.startedAt !== undefined && call.record.completedAt !== undefined) {
+    return call.record.completedAt - call.record.startedAt;
+  }
+  return undefined;
 }
 
 export function toolPermissionPending(call: ToolDisplayCall): boolean {

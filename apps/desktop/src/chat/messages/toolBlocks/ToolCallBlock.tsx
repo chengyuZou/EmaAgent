@@ -37,6 +37,12 @@ export interface ToolCallBlockProps {
   readonly turnId?: string;
   /** 取消请求必须发给这一条消息所属 Session, 不从当前页面导航状态猜测. */
   readonly sessionId?: string;
+  /** 存储目录由外层控制单条展开, Chat 省略时沿用消息的展开状态. */
+  readonly expanded?: boolean;
+  readonly onExpandedChange?: (expanded: boolean) => void;
+  readonly readOnly?: boolean;
+  /** 所在页面提供的读取状态与记录时间, 和结果区一起收起. */
+  readonly children?: ReactNode;
 }
 
 const STATUS_META: Record<ToolDisplayStatus, { color: string; label: string; pulse?: boolean }> = {
@@ -47,7 +53,9 @@ const STATUS_META: Record<ToolDisplayStatus, { color: string; label: string; pul
   denied:              { color: 'var(--ema-danger-text)',  label: '已拒绝' },
 };
 
-export function ToolCallBlock({ call, streaming = false, turnId, sessionId }: ToolCallBlockProps): JSX.Element {
+export function ToolCallBlock({
+  call, streaming = false, turnId, sessionId, expanded, onExpandedChange, readOnly = false, children,
+}: ToolCallBlockProps): JSX.Element {
   const name = toolName(call);
   const args = toolArgs(call);
   const failure = toolFailure(call);
@@ -55,7 +63,9 @@ export function ToolCallBlock({ call, streaming = false, turnId, sessionId }: To
   const fallbackContent = toolFallbackContent(call);
   const renderedOutput = output ?? fallbackContent;
   const partialArgs = call.source === 'streaming' ? call.item.partialArgs : undefined;
-  const startedAt = call.source === 'streaming' ? call.item.startedAt : undefined;
+  let startedAt: number | undefined;
+  if (call.source === 'streaming') startedAt = call.item.startedAt;
+  if (call.source === 'execution') startedAt = call.record.startedAt;
   const progress = call.source === 'streaming' ? call.item.progress : undefined;
   const durationMs = toolDurationMs(call);
   const permissionPending = toolPermissionPending(call);
@@ -64,7 +74,9 @@ export function ToolCallBlock({ call, streaming = false, turnId, sessionId }: To
   const historyInterrupted = call.source === 'history' && call.result === undefined;
   const historyCompleted = call.source === 'history' && call.result !== undefined;
   const hasResult = renderedOutput !== undefined;
-  const hasError = failure !== null || historyInterrupted;
+  const executionFailed = call.source === 'execution'
+    && (call.record.status === 'failed' || call.record.status === 'cancelled' || call.record.status === 'outcome_unknown');
+  const hasError = failure !== null || historyInterrupted || executionFailed;
   const showResult = hasResult && !(failure !== null && output === undefined);
 
   let status: ToolDisplayStatus;
@@ -74,6 +86,8 @@ export function ToolCallBlock({ call, streaming = false, turnId, sessionId }: To
     status = 'failed';
   } else if (permissionPending) {
     status = 'awaiting_permission';
+  } else if (call.source === 'execution') {
+    status = call.record.status === 'succeeded' ? 'success' : 'running';
   } else if (call.source === 'streaming') {
     if (call.item.status === 'succeeded') {
       status = 'success';
@@ -91,12 +105,29 @@ export function ToolCallBlock({ call, streaming = false, turnId, sessionId }: To
   }
 
   const toolUI = lookupToolUI(name);
-  const [open, setOpen] = useMessageExpansion(`tool:${toolCallId(call)}`, toolUI?.defaultExpanded ?? false);
+  const [messageOpen, setMessageOpen] = useMessageExpansion(`tool:${toolCallId(call)}`, toolUI?.defaultExpanded ?? false);
+  const open = expanded ?? messageOpen;
   const { containerRef, mounted } = useCollapsibleBody(open);
 
   const statusMeta = STATUS_META[status];
   const customStatusLabel = toolUI?.statusLabel?.(status);
-  const statusLabel = customStatusLabel === undefined ? statusMeta.label : customStatusLabel;
+  let statusLabel = customStatusLabel === undefined ? statusMeta.label : customStatusLabel;
+  if (call.source === 'execution') {
+    switch (call.record.status) {
+      case 'prepared':
+        statusLabel = '准备中';
+        break;
+      case 'authorized':
+        statusLabel = '待执行';
+        break;
+      case 'cancelled':
+        statusLabel = '已取消';
+        break;
+      case 'outcome_unknown':
+        statusLabel = '结果未确认';
+        break;
+    }
+  }
   const running = toolRunning(call, streaming);
   const argsReady = args !== undefined;
 
@@ -114,7 +145,9 @@ export function ToolCallBlock({ call, streaming = false, turnId, sessionId }: To
     ? toolUI.ProgressView({ progress })
     : null;
   // 没有类型化 data 的旧结果不能交给专属组合卡猜结构，回落通用 content 渲染。
-  const CallView = fallbackContent === undefined ? toolUI?.CallView : undefined;
+  const CallView = fallbackContent === undefined && (call.source !== 'execution' || argsReady || hasResult)
+    ? toolUI?.CallView
+    : undefined;
   const resultView = mounted && showResult && renderedOutput !== null ? renderToolResult(renderedOutput) : null;
 
   const openTab = useSessionPanelStore((state) => state.openTab);
@@ -135,7 +168,10 @@ export function ToolCallBlock({ call, streaming = false, turnId, sessionId }: To
         <button
           type="button"
           className="ema-tool-row group min-w-0 flex-1"
-          onClick={() => setOpen((v) => !v)}
+          onClick={() => {
+            if (onExpandedChange) onExpandedChange(!open);
+            else setMessageOpen(value => !value);
+          }}
           aria-expanded={open}
         >
           <span className="ema-tool-row-leading" aria-hidden>
@@ -177,7 +213,7 @@ export function ToolCallBlock({ call, streaming = false, turnId, sessionId }: To
             </span>
           </span>
         </button>
-        {running && turnId && sessionId && (
+        {!readOnly && running && turnId && sessionId && (
           <IconButton
             label="中止该工具"
             iconNode={<span className="ema-tool-stop-square" />}
@@ -210,8 +246,8 @@ export function ToolCallBlock({ call, streaming = false, turnId, sessionId }: To
                   interrupted={historyInterrupted}
                   status={status}
                   running={running}
-                  openBackgroundProcesses={() => {
-                    if (sessionId) openTab(sessionId, { id: 'processes', kind: 'processes' });
+                  openBackgroundProcesses={readOnly || !sessionId ? undefined : () => {
+                    openTab(sessionId, { id: 'processes', kind: 'processes' });
                   }}
                 />
               ) : (
@@ -235,6 +271,7 @@ export function ToolCallBlock({ call, streaming = false, turnId, sessionId }: To
                   )}
                 </div>
               )}
+              {children}
             </div>
           )}
         </div>

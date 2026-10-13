@@ -33,10 +33,56 @@ export type SessionPastedTextResult = RpcJson<RpcClient['api']['sessions'][':ses
 export type SessionImageUploadResult = RpcJson<RpcClient['api']['sessions'][':sessionId']['attachments']['images']['$post']>;
 export type ForkResult = RpcJson<RpcClient['api']['sessions'][':sessionId']['fork']['$post']>;
 export type SessionImportResult = RpcJson<RpcClient['api']['sessions']['import']['$post']>;
+export type SessionSummaries = RpcJson<RpcClient['api']['sessions']['summaries']['$get']>;
+export type SessionSummary = SessionSummaries['sessions'][number];
+export type RawMessagesPage = RpcJson<RpcClient['api']['sessions'][':sessionId']['raw-messages']['$get']>;
+export type RawMessageHeader = RawMessagesPage['messages'][number];
+export type SessionAudioPage = RpcJson<RpcClient['api']['sessions'][':sessionId']['audio']['$get']>;
 
 // ── API ──────────────────────────────────────────────────────────────────────
 
 export const sessionsApi = {
+  listSummaries(signal?: AbortSignal): Promise<SessionSummaries> {
+    return readRpcJson(rpcClient.api.sessions.summaries.$get({}, { init: { signal } }));
+  },
+
+  /** 只读取目录行头; turnId 指定时只列出这一轮, 不读取整轮 blocksJson. */
+  listRawMessages(sessionId: string, input: {
+    before?: NonNullable<RawMessagesPage['nextCursor']>;
+    order?: 'asc' | 'desc';
+    limit?: number;
+    turnId?: string;
+  }, signal?: AbortSignal): Promise<RawMessagesPage> {
+    return readRpcJson(rpcClient.api.sessions[':sessionId']['raw-messages'].$get({
+      param: { sessionId },
+      query: {
+        beforeCreatedAt: input.before ? String(input.before.createdAt) : undefined,
+        beforeId: input.before?.id,
+        order: input.order,
+        limit: input.limit === undefined ? undefined : String(input.limit),
+        turnId: input.turnId,
+      },
+    }, { init: { signal } }));
+  },
+
+  getRawMessage(sessionId: string, messageId: string, signal?: AbortSignal) {
+    return readRpcJson(rpcClient.api.sessions[':sessionId']['raw-messages'][':messageId'].$get(
+      { param: { sessionId, messageId } },
+      { init: { signal } },
+    ));
+  },
+
+  listAudio(sessionId: string, before?: NonNullable<SessionAudioPage['nextCursor']>, signal?: AbortSignal) {
+    return readRpcJson(rpcClient.api.sessions[':sessionId'].audio.$get({
+      param: { sessionId },
+      query: {
+        beforeCreatedAt: before ? String(before.createdAt) : undefined,
+        beforeId: before?.id,
+        limit: '50',
+      },
+    }, { init: { signal } }));
+  },
+
   /** POST /api/sessions — 创建空 Session（body 全 optional，发 {} 即全默认）。 */
   create(input: SessionCreateInput = {}): Promise<Session> {
     return readRpcJson(rpcClient.api.sessions.$post({ json: input }));
@@ -62,8 +108,11 @@ export const sessionsApi = {
   },
 
   /** GET /api/sessions/:sessionId — 单 Session 当前记录。 */
-  get(id: string): Promise<Session> {
-    return readRpcJson(rpcClient.api.sessions[':sessionId'].$get({ param: { sessionId: id } }));
+  get(id: string, signal?: AbortSignal): Promise<Session> {
+    return readRpcJson(rpcClient.api.sessions[':sessionId'].$get(
+      { param: { sessionId: id } },
+      { init: { signal } },
+    ));
   },
 
   /** 当前有效历史的估算, 不读取 usage_records 中可能属于摘要或子代理的调用. */

@@ -3,7 +3,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import type { UsageRecorder } from '@ema-agent/usage';
-import { queryValidator } from '../validate.js';
+import { queryValidator } from './validate.js';
 
 const usageRecordsQuery = z.object({
   sessionId: z.string().min(1).optional(),
@@ -16,9 +16,9 @@ const usageRecordsQuery = z.object({
   { message: 'usage_record_cursor_incomplete' },
 );
 
-export const usageRecordsRoute = (deps: { usageRecorder: UsageRecorder }) =>
+export const usageRoute = (deps: { usageRecorder: UsageRecorder }) =>
   new Hono()
-    .get('/usage-records', queryValidator(usageRecordsQuery), context => {
+    .get('/records', queryValidator(usageRecordsQuery), context => {
       const { sessionId, capability, beforeCreatedAt, beforeId, limit } = context.req.valid('query');
       const page = deps.usageRecorder.list({
         ...(sessionId ? { sessionId } : {}),

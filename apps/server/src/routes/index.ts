@@ -36,20 +36,22 @@ import { sessionActionsRoute } from './sessions/actions.js';
 import { sessionAttachmentsRoute } from './sessions/attachments.js';
 import { sessionCollectionRoute } from './sessions/collection.js';
 import { sessionHistoryRoute } from './sessions/history.js';
+import { sessionRecordsRoute } from './sessions/records.js';
 import { sessionGitRoute } from './sessions/git.js';
 import { settingsEventDisplayRoute } from './settings/eventDisplay.js';
 import { settingsValuesRoute } from './settings/values.js';
 import { wallpaperRoute } from './settings/wallpaper.js';
 import { skillListRoute } from './skills/list.js';
 import { skillMarketRoute } from './skills/market.js';
-import { systemStatsRoute } from './system/stats.js';
-import { usageRecordsRoute } from './system/usageRecords.js';
+import { storageStatsRoute } from './storageStats.js';
+import { usageRoute } from './usage.js';
 import { systemStatusRoute } from './system/status.js';
 import { systemEventsRoute } from './system/events.js';
 import { tasksRoute } from './tasks.js';
 import { goalsRoute } from './goals.js';
 import { turnAudioRoute } from './turns/audio.js';
-import { turnControlRoute } from './turns/control.js';
+import { turnRecordsRoute } from './turns/records.js';
+import { turnSpeechRoute } from './turns/speech.js';
 import { filesRoute } from './workspaces/files.js';
 import { projectsRoute } from './workspaces/projects.js';
 
@@ -70,12 +72,11 @@ export const createRoutes = (composition: Composition, secret: string) => {
     // 探活挂在根路径 /health; 宿主也可用它检查已公布端口, emaAuth 内豁免认证.
     .route('/', systemStatusRoute({ activeDataDir: database.activeDataDir, getSandboxStatus: tools.getSandboxStatus }))
     .route('/api/system', systemEventsRoute(appEvents))
-    .route('/api/system', systemStatsRoute({
+    .route('/api/storage-stats', storageStatsRoute({
       dataDirStats: database.dataDirStats,
       sessionStats: database.sessionStats,
-      messages: database.messages,
     }))
-    .route('/api/system', usageRecordsRoute({ usageRecorder: database.usageRecorder }))
+    .route('/api/usage', usageRoute({ usageRecorder: database.usageRecorder }))
     .route('/api/ws/session', sessionWebSocketRoute({
       connections: sessionConnections,
       executor: turn.turnExecutor,
@@ -90,9 +91,21 @@ export const createRoutes = (composition: Composition, secret: string) => {
       attachTurn: handle => turnFanout.attach(handle),
     }))
     .route('/api/ws/speech', speechWebSocketRoute(speech, database.turns))
-    .route('/api/turns', turnControlRoute({ turns: database.turns, toolExecutionState: tools.toolExecutionState }))
+    .route('/api/turns', turnRecordsRoute({
+      turns: database.turns,
+      toolExecutions: database.toolExecutions,
+      messages: database.messages,
+      subagentMessages: database.subagentMessageRecords,
+    }))
     .route('/api/turns', turnAudioRoute({ audioArchive: speech.audioArchive, turns: database.turns }))
+    .route('/api/turns', turnSpeechRoute({ speech, turns: database.turns, session: database.session }))
 
+    // /summaries 在集合的 /:sessionId 前挂载, 避免被解释成一个 Session ID.
+    .route('/api/sessions', sessionRecordsRoute({
+      sessionStats: database.sessionStats,
+      messages: database.messages,
+      speechOutputs: database.speechOutputs,
+    }))
     .route('/api/sessions', sessionCollectionRoute({ session: database.session }))
     .route('/api/sessions', sessionActionsRoute({
       session: database.session,
@@ -129,7 +142,10 @@ export const createRoutes = (composition: Composition, secret: string) => {
       activeDataDir: database.activeDataDir,
     }))
     // backup 是独立业务域（未来还有角色/设置备份）；Session 支路的 URL 仍在 /api/sessions 下。
-    .route('/api/sessions', sessionBackupRoute({ backup: backup.sessionBackup, onImported: () => appEvents.emit({ type: 'session_list_changed' }) }))
+    .route('/api/sessions', sessionBackupRoute({
+      backup: backup.sessionBackup,
+      onImported: sessionId => appEvents.emit({ type: 'session_list_changed', sessionId }),
+    }))
     .route('/api/commands', commandsCatalogRoute({ listCommandDescriptors: commands.listCommandDescriptors }))
 
     .route('/api/tasks', tasksRoute(database.tasks))

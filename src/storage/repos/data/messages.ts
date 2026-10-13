@@ -57,6 +57,7 @@ export interface MessageRowPage {
 export interface MessageHeaderRow {
   id: string;
   role: MessageRole;
+  kind: MessageKind;
   created_at: number;
 }
 
@@ -148,41 +149,48 @@ export class MessagesRepo {
     cursor: MessagePageCursor | undefined,
     limit: number,
     order: 'asc' | 'desc',
+    turnId?: string,
   ): MessageHeaderPage {
     return this.listProjectedPage<MessageHeaderRow>(
-      'id, role, created_at',
+      'id, role, kind, created_at',
       sessionId,
       cursor,
       limit,
       order,
+      turnId,
     );
   }
 
   /** Message 正文页与轻量目录共用同一套 keyset 方向和游标推进规则。 */
   private listProjectedPage<Row extends { id: string; created_at: number }>(
-    projection: '*' | 'id, role, created_at',
+    projection: '*' | 'id, role, kind, created_at',
     sessionId: string,
     cursor: MessagePageCursor | undefined,
     limit: number,
     order: 'asc' | 'desc',
+    turnId?: string,
   ): { rows: Row[]; nextCursor: MessagePageCursor | null } {
     // 正序取“比游标新”，倒序取“比游标旧”；比较符与 ORDER 同向，分页链不断。
     const direction = order === 'desc' ? 'DESC' : 'ASC';
     const comparator = order === 'desc' ? '<' : '>';
+    const turnFilter = turnId === undefined ? '' : 'AND turn_id = ?';
+    const scope = turnId === undefined ? [sessionId] : [sessionId, turnId];
     const rows = cursor
       ? this.db.prepare(`
           SELECT ${projection} FROM messages
           WHERE session_id = ?
+            ${turnFilter}
             AND (created_at ${comparator} ? OR (created_at = ? AND id ${comparator} ?))
           ORDER BY created_at ${direction}, id ${direction}
           LIMIT ?
-        `).all(sessionId, cursor.createdAt, cursor.createdAt, cursor.id, limit + 1)
+        `).all(...scope, cursor.createdAt, cursor.createdAt, cursor.id, limit + 1)
       : this.db.prepare(`
           SELECT ${projection} FROM messages
           WHERE session_id = ?
+            ${turnFilter}
           ORDER BY created_at ${direction}, id ${direction}
           LIMIT ?
-        `).all(sessionId, limit + 1);
+        `).all(...scope, limit + 1);
     const typedRows = rows as Row[];
     const pageRows = typedRows.slice(0, limit);
     const last = pageRows.at(-1);
@@ -192,6 +200,27 @@ export class MessagesRepo {
         ? { createdAt: last.created_at, id: last.id }
         : null,
     };
+  }
+
+  /** 只读取这次调用的两个块, 不把整轮消息或相邻工具的大结果带到 Node 内存. */
+  findToolBlocks(turnId: string, callId: string): { callJson?: string; resultJson?: string } {
+    const call = this.db.prepare(`
+      SELECT block.value AS value FROM messages m,
+        json_each(CASE WHEN json_type(m.blocks_json) = 'array' THEN m.blocks_json ELSE '[]' END) block
+      WHERE m.turn_id = ? AND m.role = 'assistant'
+        AND json_extract(block.value, '$.type') = 'tool_use'
+        AND json_extract(block.value, '$.id') = ?
+      ORDER BY m.created_at ASC, m.id ASC LIMIT 1
+    `).get(turnId, callId) as { value: string } | undefined;
+    const result = this.db.prepare(`
+      SELECT block.value AS value FROM messages m,
+        json_each(CASE WHEN json_type(m.blocks_json) = 'array' THEN m.blocks_json ELSE '[]' END) block
+      WHERE m.turn_id = ? AND m.kind = 'tool_results'
+        AND json_extract(block.value, '$.type') = 'tool_result'
+        AND json_extract(block.value, '$.toolCallId') = ?
+      ORDER BY m.created_at DESC, m.id DESC LIMIT 1
+    `).get(turnId, callId) as { value: string } | undefined;
+    return { callJson: call?.value, resultJson: result?.value };
   }
 
   /** 围绕一条 Message 读取旧到新的有界窗口，额外一行只用于判断两侧缺口。 */

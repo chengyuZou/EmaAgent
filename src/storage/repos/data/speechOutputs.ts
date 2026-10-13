@@ -56,4 +56,31 @@ export class SpeechOutputsRepo {
       ORDER BY created_at ASC, turn_id ASC
     `).all(sessionId) as SpeechOutputRow[];
   }
+
+  /** 目录读取正式音频的路径和计量值, 供列表展示及文件管理器定位, 不读取音频文件内容. */
+  listPage(sessionId: string, cursor: { createdAt: number; id: string } | undefined, limit: number) {
+    const rows = this.db.prepare(`
+      SELECT turn_id, storage_path, mime_type, byte_size, duration_ms, created_at
+      FROM speech_outputs
+      WHERE session_id = ?
+        AND (? IS NULL OR created_at < ? OR (created_at = ? AND turn_id < ?))
+      ORDER BY created_at DESC, turn_id DESC LIMIT ?
+    `).all(
+      sessionId, cursor?.createdAt ?? null, cursor?.createdAt ?? null,
+      cursor?.createdAt ?? null, cursor?.id ?? null, limit + 1,
+    ) as Array<Pick<SpeechOutputRow, 'turn_id' | 'storage_path' | 'mime_type' | 'byte_size' | 'duration_ms' | 'created_at'>>;
+    const items = rows.slice(0, limit).map(row => ({
+      turnId: row.turn_id,
+      storagePath: row.storage_path,
+      mimeType: row.mime_type,
+      byteSize: row.byte_size,
+      durationMs: row.duration_ms,
+      createdAt: row.created_at,
+    }));
+    const last = items.at(-1);
+    return {
+      items,
+      nextCursor: rows.length > limit && last ? { createdAt: last.createdAt, id: last.turnId } : null,
+    };
+  }
 }

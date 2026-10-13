@@ -110,11 +110,11 @@ describe('Turn 历史读取', () => {
     );
 
     expect(first.rows).toEqual([
-      { id: 'message-a', role: 'assistant', created_at: 10 },
-      { id: 'message-b', role: 'assistant', created_at: 10 },
+      { id: 'message-a', role: 'assistant', kind: 'normal', created_at: 10 },
+      { id: 'message-b', role: 'assistant', kind: 'normal', created_at: 10 },
     ]);
     expect(second.rows).toEqual([
-      { id: 'message-c', role: 'assistant', created_at: 10 },
+      { id: 'message-c', role: 'assistant', kind: 'normal', created_at: 10 },
     ]);
     expect('blocks_json' in first.rows[0]!).toBe(false);
   });
