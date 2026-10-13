@@ -2,17 +2,17 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   AttachmentImagesRepo, Database, SessionBackupReader, SessionBackupRestorer,
   SubagentMessagesRepo, SubagentRunsRepo, SubagentsRepo,
 } from '@ema-agent/storage';
-import { createSessionExport } from '../export/sessionExport.js';
+import { exportSessionArchive } from '../export/sessionExport.js';
 import { importSessionArchive } from '../import/sessionImport.js';
 import {
   subagentMessageRecordSchema, subagentRecordSchema, subagentRunRecordSchema,
 } from '../records/sessionRecords.js';
+import { readZip, writeZip } from './zipFixtures.js';
 
 const roots: string[] = [];
 const databases: Database[] = [];
@@ -101,41 +101,37 @@ async function fixture() {
     { id: 'fork-continuation', subagentId: 'fork', runId: 'fork-2', role: 'user', kind: 'continuation', blocksJson: '"继续"', createdAt: 36 },
     { id: 'ordinary-task', subagentId: 'ordinary', runId: 'ordinary-1', role: 'user', blocksJson: '"普通委派"', createdAt: 12 },
   ]);
-  const chunks: Buffer[] = [];
-  await createSessionExport('session', sourceDir, workDir, new SessionBackupReader(db.sqlite))!.writeTo({
-    write: async chunk => { chunks.push(Buffer.from(chunk)); },
-    complete: async () => {},
-    fail: async error => { throw error; },
-  });
-  const entries = unzipSync(Buffer.concat(chunks));
+  fs.mkdirSync(workDir, { recursive: true });
+  const zipPath = path.join(workDir, 'session.zip');
+  await exportSessionArchive('session', zipPath, sourceDir, workDir, new SessionBackupReader(db.sqlite));
+  const entries = await readZip(zipPath);
   const target = database();
-  const restore = (bytes: Uint8Array) => importSessionArchive(
-    { declaredBytes: bytes.byteLength, async *chunks() { yield bytes; } },
+  const restore = (filePath = zipPath) => importSessionArchive(
+    filePath,
     targetDir, workDir, new SessionBackupReader(target.sqlite), new SessionBackupRestorer(target.sqlite), () => true,
   );
-  return { db, target, targetDir, entries, restore };
+  return { db, target, targetDir, zipPath, entries, restore };
 }
 
-describe('v10 子代理三表备份', () => {
+describe('子代理身份、Run 和消息备份', () => {
   it('保留各 Run 的配置、原生消息、fork 来源与摘要关系, 未完成 Run 不恢复执行', async () => {
     const { db, target, targetDir, entries, restore } = await fixture();
-    expect(JSON.parse(strFromU8(entries['manifest.json']!)).version).toBe(10);
-    expect(entries['records/subagentInvocations.jsonl']).toBeUndefined();
-    const identityRecords = strFromU8(entries['records/subagents.jsonl']!).trim().split('\n')
+    expect(JSON.parse(entries.get('manifest.json')!.toString('utf8'))).toEqual({ sessionId: 'session', omittedFiles: [] });
+    const identityRecords = entries.get('records/subagents.jsonl')!.toString('utf8').trim().split('\n')
       .map(line => subagentRecordSchema.parse(JSON.parse(line)));
     expect(identityRecords.find(record => record.id === 'fork')).toMatchObject({
       title: '继续调查', description: '最终身份说明', providerId: 'provider-b',
       modelId: 'model-b', protocol: 'anthropic-llm', permissionMode: 'acceptEdits', reasoningEffort: 'high',
     });
-    const runRecords = strFromU8(entries['records/subagentRuns.jsonl']!).trim().split('\n')
+    const runRecords = entries.get('records/subagentRuns.jsonl')!.toString('utf8').trim().split('\n')
       .map(line => subagentRunRecordSchema.parse(JSON.parse(line)));
     expect(runRecords).toHaveLength(4);
-    const archivedMessages = strFromU8(entries['records/subagentMessages.jsonl']!).trim().split('\n')
+    const archivedMessages = entries.get('records/subagentMessages.jsonl')!.toString('utf8').trim().split('\n')
       .map(line => subagentMessageRecordSchema.parse(JSON.parse(line)));
     expect(archivedMessages.find(message => message.id === 'fork-output')).toMatchObject({
       runId: 'fork-1', providerId: null, modelId: null, protocol: null,
     });
-    await restore(zipSync(entries));
+    await restore();
     for (const id of ['ordinary', 'fork']) {
       expect(new SubagentsRepo(target.sqlite).findById(id)).toEqual(new SubagentsRepo(db.sqlite).findById(id));
     }
@@ -172,26 +168,44 @@ describe('v10 子代理三表备份', () => {
 
   it.each(['run-child', 'message-child', 'missing-run', 'other-run', 'missing-summary', 'other-summary', 'future-summary', 'unknown-file'])(
     '拒绝错误关联 %s, 不发布文件或留下数据库行', async scenario => {
-      const { target, targetDir, entries, restore } = await fixture();
-      const runs = strFromU8(entries['records/subagentRuns.jsonl']!).trim().split('\n')
+      const { target, targetDir, zipPath, entries, restore } = await fixture();
+      const runs = entries.get('records/subagentRuns.jsonl')!.toString('utf8').trim().split('\n')
         .map(line => subagentRunRecordSchema.parse(JSON.parse(line)));
-      const messages = strFromU8(entries['records/subagentMessages.jsonl']!).trim().split('\n')
+      const messages = entries.get('records/subagentMessages.jsonl')!.toString('utf8').trim().split('\n')
         .map(line => subagentMessageRecordSchema.parse(JSON.parse(line)));
       const output = messages.find(message => message.id === 'fork-output')!;
       const summary = messages.find(message => message.id === 'fork-next-summary')!;
       switch (scenario) {
-        case 'run-child': runs[0]!.subagentId = 'missing'; break;
-        case 'message-child': output.subagentId = 'missing'; break;
-        case 'missing-run': output.runId = 'missing'; break;
-        case 'other-run': output.runId = 'ordinary-1'; break;
-        case 'missing-summary': summary.summarizedThroughMessageId = 'missing'; break;
-        case 'other-summary': summary.summarizedThroughMessageId = 'ordinary-task'; break;
-        case 'future-summary': summary.summarizedThroughMessageId = 'fork-reminder'; break;
-        case 'unknown-file': entries['records/unknown.jsonl'] = strToU8(''); break;
+        case 'run-child':
+          runs[0]!.subagentId = 'missing';
+          break;
+        case 'message-child':
+          output.subagentId = 'missing';
+          break;
+        case 'missing-run':
+          output.runId = 'missing';
+          break;
+        case 'other-run':
+          output.runId = 'ordinary-1';
+          break;
+        case 'missing-summary':
+          summary.summarizedThroughMessageId = 'missing';
+          break;
+        case 'other-summary':
+          summary.summarizedThroughMessageId = 'ordinary-task';
+          break;
+        case 'future-summary':
+          summary.summarizedThroughMessageId = 'fork-reminder';
+          break;
+        case 'unknown-file':
+          entries.set('records/unknown.jsonl', Buffer.from(''));
+          break;
       }
-      entries['records/subagentRuns.jsonl'] = strToU8(runs.map(record => JSON.stringify(record)).join('\n'));
-      entries['records/subagentMessages.jsonl'] = strToU8(messages.map(record => JSON.stringify(record)).join('\n'));
-      await expect(restore(zipSync(entries))).rejects.toMatchObject({ code: 'invalid_format' });
+      entries.set('records/subagentRuns.jsonl', Buffer.from(runs.map(record => JSON.stringify(record)).join('\n')));
+      entries.set('records/subagentMessages.jsonl', Buffer.from(messages.map(record => JSON.stringify(record)).join('\n')));
+      const invalidPath = path.join(path.dirname(zipPath), 'invalid.zip');
+      await writeZip(invalidPath, entries);
+      await expect(restore(invalidPath)).rejects.toMatchObject({ code: 'invalid_format' });
       expect(target.sqlite.prepare('SELECT id FROM sessions').all()).toEqual([]);
       expect(fs.existsSync(path.join(targetDir, 'sessions', 'session'))).toBe(false);
     },

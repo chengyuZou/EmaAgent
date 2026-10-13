@@ -8,7 +8,6 @@ export type RequestBudgetId =
   | 'default-json'
   | 'turn'
   | 'audio-upload'
-  | 'session-import'
   | 'wallpaper-upload';
 
 export interface RequestBudgetPolicy {
@@ -30,11 +29,6 @@ export const REQUEST_BUDGETS = Object.freeze({
     id: 'audio-upload',
     // STT/角色语音的业务上限是 25 MiB；额外空间留给 multipart 元数据。
     maxTransportBytes: 26 * MiB,
-  }),
-  sessionImport: Object.freeze({
-    id: 'session-import',
-    // ZIP 本体由 Backup 侧按 256 MiB 复核。
-    maxTransportBytes: 257 * MiB,
   }),
   wallpaperUpload: Object.freeze({
     id: 'wallpaper-upload',
@@ -66,7 +60,6 @@ export function resolveRequestBudget(
   const normalizedPath = path.length > 1 ? path.replace(/\/$/, '') : path;
   if (normalizedPath === '/api/turns') return REQUEST_BUDGETS.turn;
   if (normalizedPath === '/api/providers/transcribe') return REQUEST_BUDGETS.audioUpload;
-  if (normalizedPath === '/api/sessions/import') return REQUEST_BUDGETS.sessionImport;
   if (normalizedPath === '/api/settings/wallpaper/images') return REQUEST_BUDGETS.wallpaperUpload;
   if (/^\/api\/characters\/[^/]+\/voice\/publish$/.test(normalizedPath)) {
     return REQUEST_BUDGETS.audioUpload;

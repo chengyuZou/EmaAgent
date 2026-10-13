@@ -1,5 +1,4 @@
-// Sessions API：/api/sessions 挂载面——集合/动作/历史/附件 + backup 支路（export/import）
-// 与 compact 命令。export 流式下载与 import multipart 走 requestRaw 逃生口，不进 hc 账本。
+// /api/sessions 的集合、动作、历史、附件和备份请求.
 import type { InferRequestType } from 'hono/client';
 import {
   rpcClient,
@@ -33,6 +32,7 @@ export type SessionPastedTextResult = RpcJson<RpcClient['api']['sessions'][':ses
 export type SessionImageUploadResult = RpcJson<RpcClient['api']['sessions'][':sessionId']['attachments']['images']['$post']>;
 export type ForkResult = RpcJson<RpcClient['api']['sessions'][':sessionId']['fork']['$post']>;
 export type SessionImportResult = RpcJson<RpcClient['api']['sessions']['import']['$post']>;
+export type SessionExportResult = RpcJson<RpcClient['api']['sessions'][':sessionId']['export']['$post']>;
 export type SessionSummaries = RpcJson<RpcClient['api']['sessions']['summaries']['$get']>;
 export type SessionSummary = SessionSummaries['sessions'][number];
 export type RawMessagesPage = RpcJson<RpcClient['api']['sessions'][':sessionId']['raw-messages']['$get']>;
@@ -243,22 +243,18 @@ export const sessionsApi = {
     }));
   },
 
-  /** POST /api/sessions/:id/export — 流式下载单 Session ZIP（字节流走 requestRaw 逃生口）。 */
-  exportSession(id: string, signal?: AbortSignal): Promise<Response> {
-    return serverClient.requestRaw(`/api/sessions/${id}/export`, {
-      method: 'POST',
-      signal,
-    });
+  /** 后端写完指定 ZIP 后返回结果, 前端不再读取 ZIP 字节. */
+  exportSession(sessionId: string, destinationPath: string, signal?: AbortSignal): Promise<SessionExportResult> {
+    return readRpcJson(rpcClient.api.sessions[':sessionId'].export.$post({
+      param: { sessionId },
+      json: { destinationPath },
+    }, { init: { signal } }));
   },
 
-  /** POST /api/sessions/import — multipart 上传 ZIP（file 字段=备份本体）；requestRaw 已归一错误。 */
-  async importSession(file: File): Promise<SessionImportResult> {
-    const form = new FormData();
-    form.append('file', file);
-    const res = await serverClient.requestRaw('/api/sessions/import', {
-      method: 'POST',
-      body: form,
-    });
-    return res.json();
+  /** filePath 来自本机文件选择器, ZIP 由后端从磁盘读取. */
+  importSession(filePath: string, signal?: AbortSignal): Promise<SessionImportResult> {
+    return readRpcJson(rpcClient.api.sessions.import.$post({
+      json: { filePath },
+    }, { init: { signal } }));
   },
 };

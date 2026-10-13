@@ -1,18 +1,16 @@
-// 验证 Session ZIP 的固定记录路径和资源白名单不会出现两份真相。
 import { describe, expect, it } from 'vitest';
 import {
-  SESSION_RECORD_FILES,
+  SESSION_RECORD_PATHS,
   isSessionArchivePath,
-  sessionRecordFile,
 } from '../records/sessionFormat.js';
 
 describe('sessionFormat', () => {
   it('为每类记录提供唯一文件', () => {
-    expect(new Set(SESSION_RECORD_FILES.map(file => file.path)).size)
-      .toBe(SESSION_RECORD_FILES.length);
-    expect(sessionRecordFile('messages').path).toBe('records/messages.jsonl');
-    expect(sessionRecordFile('goals').path).toBe('records/goals.jsonl');
-    expect(sessionRecordFile('subagentRuns').path).toBe('records/subagentRuns.jsonl');
+    const paths = Object.values(SESSION_RECORD_PATHS);
+    expect(new Set(paths).size).toBe(paths.length);
+    expect(SESSION_RECORD_PATHS.messages).toBe('records/messages.jsonl');
+    expect(SESSION_RECORD_PATHS.goals).toBe('records/goals.jsonl');
+    expect(SESSION_RECORD_PATHS.subagentRuns).toBe('records/subagentRuns.jsonl');
   });
 
   it('只接受已登记记录和三类 Session 文件', () => {

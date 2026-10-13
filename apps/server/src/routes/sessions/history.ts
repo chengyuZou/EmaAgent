@@ -7,7 +7,7 @@ import type { Turn, TurnStore } from '@ema-agent/turn';
 import { projectMessages } from '@ema-agent/context';
 import { estimateLlmInputTokens } from '@ema-agent/token';
 import type { ProviderModels } from '@ema-agent/providers';
-import { createGenerationTargetResolver } from '@ema-agent/turn';
+import { createTurnHistoryResolver } from '@ema-agent/turn';
 import { queryValidator } from '../validate.js';
 
 const listMessagesQuery = z.object({
@@ -78,10 +78,10 @@ export const sessionHistoryRoute = (deps: SessionHistoryRouteDeps) =>
         : undefined;
       // 与下一轮 Turn 共用摘要边界和 Message 投影. 此处只估算已保存历史,
       // 不执行尚未开始的 Prompt/Tool 装配, 也不为图片触发额外 Vision 调用.
-      const resolveGenerationTarget = createGenerationTargetResolver(deps.turns);
+      const historyResolver = createTurnHistoryResolver(deps.turns);
       const history = await projectMessages(
         deps.session.loadHistory(sessionId),
-        message => message.turnId ? resolveGenerationTarget(message.turnId) : undefined,
+        message => message.turnId ? historyResolver.resolveGenerationSource(message.turnId) : undefined,
         { supportsImageInput: model?.capability === 'llm' && model.inputImage === true,
           signal: context.req.raw.signal },
       );

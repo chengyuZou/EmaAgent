@@ -16,6 +16,7 @@ interface StorageListProps {
   readonly onRetry: () => void;
   readonly openSessionId: string | null;
   readonly exportingSessionId: string | null;
+  readonly exportDisabled: boolean;
   readonly onToggle: (sessionId: string) => void;
   readonly onExport: (session: SessionSummary) => void;
   readonly onOpenDetail: (target: StorageDetailTarget, source: HTMLElement) => void;
@@ -50,6 +51,7 @@ export function StorageList(props: StorageListProps): JSX.Element {
             index={index}
             open={props.openSessionId === session.id}
             exporting={props.exportingSessionId === session.id}
+            exportDisabled={props.exportDisabled}
             onToggle={props.onToggle}
             onExport={props.onExport}
             onOpenDetail={props.onOpenDetail}
@@ -60,11 +62,21 @@ export function StorageList(props: StorageListProps): JSX.Element {
   );
 }
 
-const SessionRow = memo(function SessionRow({ session, index, open, exporting, onToggle, onExport, onOpenDetail }: {
+const SessionRow = memo(function SessionRow({
+  session,
+  index,
+  open,
+  exporting,
+  exportDisabled,
+  onToggle,
+  onExport,
+  onOpenDetail,
+}: {
   readonly session: SessionSummary;
   readonly index: number;
   readonly open: boolean;
   readonly exporting: boolean;
+  readonly exportDisabled: boolean;
   readonly onToggle: StorageListProps['onToggle'];
   readonly onExport: StorageListProps['onExport'];
   readonly onOpenDetail: StorageListProps['onOpenDetail'];
@@ -103,7 +115,13 @@ const SessionRow = memo(function SessionRow({ session, index, open, exporting, o
           />
         </button>
         <div className="shrink-0 pr-2">
-          <Button variant="ghost" size="sm" loading={exporting} onClick={() => onExport(session)}>
+          <Button
+            variant="ghost"
+            size="sm"
+            loading={exporting}
+            disabled={exportDisabled}
+            onClick={() => onExport(session)}
+          >
             <span className="i-solar:download-minimalistic-bold-duotone" aria-hidden />导出
           </Button>
         </div>

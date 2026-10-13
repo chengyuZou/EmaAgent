@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Database } from '../database/database.js';
+import { SpeechOutputsRepo } from '../repos/data/speechOutputs.js';
 
 let database: Database | undefined;
 
@@ -46,7 +47,7 @@ describe('data migration v13', () => {
     const messagesBefore = database.sqlite.prepare('SELECT * FROM messages').all();
     const toolsBefore = database.sqlite.prepare('SELECT * FROM tool_executions').all();
     database.migrate();
-    expect(database.currentVersion()).toBe(16);
+    expect(database.currentVersion()).toBe(17);
     expect(database.sqlite.prepare('SELECT * FROM subagents ORDER BY id').all()).toEqual([
       {
         id: 'child', session_id: 's', title: null, description: 'old description',
@@ -109,7 +110,7 @@ describe('data migration v12', () => {
     `);
     const before = database.sqlite.prepare('SELECT * FROM goals').get();
     database.migrate();
-    expect(database.currentVersion()).toBe(16);
+    expect(database.currentVersion()).toBe(17);
     expect(database.sqlite.prepare('SELECT * FROM goals').get()).toEqual({ ...before as object, feedback: null });
     database.sqlite.prepare('UPDATE goals SET feedback = ? WHERE id = ?').run('已完成第一部分', 'old-goal');
     expect(database.sqlite.prepare('SELECT feedback FROM goals WHERE id = ?').get('old-goal'))
@@ -155,7 +156,7 @@ describe('data migration v2', () => {
 
     database.migrate();
 
-    expect(database.currentVersion()).toBe(16);
+    expect(database.currentVersion()).toBe(17);
     const columns = database.sqlite.pragma('table_info(turns)') as Array<{ name: string }>;
     expect(columns.map(column => column.name)).not.toContain('usage_input_tokens');
     expect(columns.map(column => column.name)).not.toContain('usage_output_tokens');
@@ -247,7 +248,7 @@ describe('data migration v16', () => {
     const { session_mode: turnMode, ...expectedTurn } = turn;
     const messages = database.sqlite.prepare('SELECT * FROM messages').all();
     database.migrate();
-    expect(database.currentVersion()).toBe(16);
+    expect(database.currentVersion()).toBe(17);
     expect(database.sqlite.prepare('SELECT * FROM sessions').get()).toEqual(expectedSession);
     expect(database.sqlite.prepare('SELECT * FROM turns').get()).toEqual(expectedTurn);
     expect(database.sqlite.prepare('SELECT * FROM messages').all()).toEqual(messages);
@@ -255,6 +256,81 @@ describe('data migration v16', () => {
       const columns = database.sqlite.pragma(`table_info(${table})`) as Array<{ name: string }>;
       expect(columns.map(column => column.name)).not.toContain('session_mode');
     }
+    expect(database.sqlite.pragma('foreign_key_check')).toEqual([]);
+  });
+});
+
+describe('data migration v17', () => {
+  it('已有单轮主键表升级后保留 WAV, 可以新增角色版本和按路径重新生成', () => {
+    database = new Database({ memory: true, kind: 'data' });
+    const folder = fileURLToPath(new URL('../migrations/data/', import.meta.url));
+    const migrations = fs.readdirSync(folder)
+      .filter(name => name.endsWith('.sql') && Number.parseInt(name, 10) <= 16)
+      .sort();
+    for (const name of migrations) {
+      database.sqlite.exec(fs.readFileSync(new URL(`../migrations/data/${name}`, import.meta.url), 'utf8'));
+    }
+    database.sqlite.pragma('user_version = 16');
+    // 当前基线已经按路径建表, 这里还原实际 v16 库的单轮主键才能复现写入错误.
+    database.sqlite.exec(`
+      DROP TABLE speech_outputs;
+      CREATE TABLE speech_outputs (
+        turn_id TEXT PRIMARY KEY REFERENCES turns(id) ON DELETE CASCADE,
+        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        storage_path TEXT NOT NULL,
+        mime_type TEXT NOT NULL,
+        byte_size INTEGER NOT NULL,
+        duration_ms INTEGER,
+        created_at INTEGER NOT NULL
+      );
+      INSERT INTO sessions (id, title, cwd, created_at, updated_at)
+        VALUES ('speech', 'Keep speech', 'D:/work', 1, 2),
+          ('other', 'Other session', 'D:/work', 1, 2);
+      INSERT INTO turns (id, session_id, status, created_at)
+        VALUES ('reply', 'speech', 'completed', 3);
+      INSERT INTO speech_outputs (
+        turn_id, session_id, storage_path, mime_type, byte_size, duration_ms, created_at
+      ) VALUES (
+        'reply', 'speech', 'D:/data/sessions/speech/audio/reply/reply-樱羽艾玛.wav',
+        'audio/wav', 2044, 1000, 4
+      );
+    `);
+    const original = database.sqlite.prepare('SELECT * FROM speech_outputs').get();
+
+    database.migrate();
+
+    expect(database.currentVersion()).toBe(17);
+    expect(database.sqlite.prepare('SELECT * FROM speech_outputs').get()).toEqual(original);
+    const columns = database.sqlite.pragma('table_info(speech_outputs)') as Array<{
+      name: string;
+      pk: number;
+    }>;
+    expect(columns.filter(column => column.pk > 0).map(column => column.name))
+      .toEqual(['storage_path']);
+
+    const outputs = new SpeechOutputsRepo(database.sqlite);
+    const regenerated = {
+      turnId: 'reply',
+      sessionId: 'speech',
+      storagePath: 'D:/data/sessions/speech/audio/reply/reply-希罗.wav',
+      mimeType: 'audio/wav' as const,
+      byteSize: 4044,
+      durationMs: 2000,
+      createdAt: 5,
+    };
+    outputs.record(regenerated);
+    outputs.record({ ...regenerated, byteSize: 6044, durationMs: 3000, createdAt: 6 });
+    const records = outputs.listForTurn('reply');
+    expect(records).toHaveLength(2);
+    expect(records.find(record => record.storage_path.endsWith('-樱羽艾玛.wav')))
+      .toEqual(original);
+    expect(records.find(record => record.storage_path === regenerated.storagePath))
+      .toMatchObject({ byte_size: 6044, duration_ms: 3000, created_at: 6 });
+    expect(() => outputs.record({
+      ...regenerated,
+      sessionId: 'other',
+      storagePath: 'D:/data/sessions/other/audio/reply/reply-希罗.wav',
+    })).toThrow(/ownership_violation/);
     expect(database.sqlite.pragma('foreign_key_check')).toEqual([]);
   });
 });

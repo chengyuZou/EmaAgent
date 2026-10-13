@@ -1,4 +1,4 @@
-// 把 Storage 行转换为 ZIP 记录，数据库列名和来源机文件路径不进入归档协议。
+// 记录中的资源地址指向 ZIP 内部. 附件保留来源路径, 导入时用它重写消息中的引用.
 import type {
   SubagentMessageRow,
   SubagentRow,

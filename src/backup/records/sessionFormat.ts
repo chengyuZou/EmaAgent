@@ -1,75 +1,37 @@
-// 固定 Session ZIP 的记录路径与文件资源目录，导入和导出共同使用。
-
-export type SessionRecordName =
-  | 'session'
-  | 'turns'
-  | 'messages'
-  | 'tasks'
-  | 'goals'
-  | 'subagents'
-  | 'subagentRuns'
-  | 'subagentMessages'
-  | 'toolExecutions'
-  | 'backgroundProcesses'
-  | 'attachmentImages'
-  | 'attachmentPastedTexts'
-  | 'speechOutputs'
-  | 'usageRecords';
-
-export interface SessionRecordFile {
-  readonly name: SessionRecordName;
-  readonly path: string;
-  readonly encoding: 'json' | 'jsonl';
-}
-
-function json(name: SessionRecordName): SessionRecordFile {
-  return { name, path: `records/${name}.json`, encoding: 'json' };
-}
-
-function jsonl(name: SessionRecordName): SessionRecordFile {
-  return { name, path: `records/${name}.jsonl`, encoding: 'jsonl' };
-}
-
 export const SESSION_MANIFEST_PATH = 'manifest.json';
-export const SESSION_BACKUP_VERSION = 10;
 
-export const SESSION_RECORD_FILES: readonly SessionRecordFile[] = Object.freeze([
-  json('session'),
-  jsonl('turns'),
-  jsonl('messages'),
-  jsonl('tasks'),
-  jsonl('goals'),
-  jsonl('subagents'),
-  jsonl('subagentRuns'),
-  jsonl('subagentMessages'),
-  jsonl('toolExecutions'),
-  jsonl('backgroundProcesses'),
-  jsonl('attachmentImages'),
-  jsonl('attachmentPastedTexts'),
-  jsonl('speechOutputs'),
-  jsonl('usageRecords'),
-]);
+export const SESSION_RECORD_PATHS = {
+  session: 'records/session.json',
+  turns: 'records/turns.jsonl',
+  messages: 'records/messages.jsonl',
+  tasks: 'records/tasks.jsonl',
+  goals: 'records/goals.jsonl',
+  subagents: 'records/subagents.jsonl',
+  subagentRuns: 'records/subagentRuns.jsonl',
+  subagentMessages: 'records/subagentMessages.jsonl',
+  toolExecutions: 'records/toolExecutions.jsonl',
+  backgroundProcesses: 'records/backgroundProcesses.jsonl',
+  attachmentImages: 'records/attachmentImages.jsonl',
+  attachmentPastedTexts: 'records/attachmentPastedTexts.jsonl',
+  speechOutputs: 'records/speechOutputs.jsonl',
+  usageRecords: 'records/usageRecords.jsonl',
+} as const;
 
-export const SESSION_RECORD_PATHS: ReadonlySet<string> = new Set(
-  SESSION_RECORD_FILES.map(file => file.path),
-);
+export type SessionRecordName = keyof typeof SESSION_RECORD_PATHS;
 
-export const SESSION_FILE_ROOTS: ReadonlySet<string> = new Set([
+const recordPaths: ReadonlySet<string> = new Set(Object.values(SESSION_RECORD_PATHS));
+const fileRoots: ReadonlySet<string> = new Set([
   'attachments',
   'speechOutputs',
   'backgroundProcesses',
 ]);
 
-export function sessionRecordFile(name: SessionRecordName): SessionRecordFile {
-  const file = SESSION_RECORD_FILES.find(candidate => candidate.name === name);
-  if (!file) throw new Error(`未登记的 Session 记录: ${name}`);
-  return file;
-}
-
 export function isSessionArchivePath(entryPath: string): boolean {
-  if (entryPath === SESSION_MANIFEST_PATH || SESSION_RECORD_PATHS.has(entryPath)) return true;
+  if (entryPath === SESSION_MANIFEST_PATH || recordPaths.has(entryPath)) {
+    return true;
+  }
   const parts = entryPath.split('/');
   return parts.length >= 3
     && parts[0] === 'files'
-    && SESSION_FILE_ROOTS.has(parts[1]!);
+    && fileRoots.has(parts[1]!);
 }

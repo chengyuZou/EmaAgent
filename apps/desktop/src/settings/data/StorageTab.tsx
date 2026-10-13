@@ -4,6 +4,7 @@ import { PageHeader } from '../shared/PageHeader.js';
 import { MainView, useMainNavigationStore } from '../../layout/navigation.js';
 import { sessionsApi, type SessionSummary } from '../../api/sessions.js';
 import { showToast } from '../../lib/notifications/toast.js';
+import { tauriBridge } from '../../lib/tauriBridge.js';
 import { morphTransition, MORPH_NAME } from './viewTransition.js';
 import { StorageList } from './components/list.js';
 import { StorageDetail, type StorageDetailTarget } from './components/detail.js';
@@ -14,7 +15,6 @@ export function StorageTab(): JSX.Element {
   const overview = useStorageOverview();
   const directory = useSessionDirectory();
   const active = useMainNavigationStore(state => state.activeView === MainView.Settings && state.settingsTab === 'storage');
-  const importRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
   const [openSessionId, setOpenSessionId] = useState<string | null>(null);
   const [detail, setDetail] = useState<StorageDetailTarget | null>(null);
@@ -52,12 +52,26 @@ export function StorageTab(): JSX.Element {
     void finished.catch(cause => console.warn('[storage] 关闭详情过渡失败:', cause)).finally(cleanup);
   }, []);
 
-  async function importSession(file: File): Promise<void> {
+  const importSession = useCallback(async (): Promise<void> => {
+    if (!tauriBridge.isTauri()) {
+      showToast('请在桌面窗口中选择会话备份文件', { variant: 'warning' });
+      return;
+    }
     setImporting(true);
     try {
-      const result = await sessionsApi.importSession(file);
+      const filePath = await tauriBridge.openFileDialog({
+        title: '导入会话备份',
+        filters: [{ name: '会话备份 ZIP', extensions: ['zip'] }],
+      });
+      // 取消文件选择不是导入失败, 也不发送请求.
+      if (filePath === null) {
+        return;
+      }
+      const result = await sessionsApi.importSession(filePath);
       showToast(
-        result.warnings.length > 0 ? `会话已导入，但有 ${result.warnings.length} 项内容缺失` : '会话导入成功',
+        result.warnings.length > 0
+          ? `会话已导入，有 ${result.warnings.length} 项提示: ${result.warnings[0]}`
+          : '会话导入成功',
         { variant: result.warnings.length > 0 ? 'warning' : 'success' },
       );
     } catch (cause) {
@@ -65,23 +79,33 @@ export function StorageTab(): JSX.Element {
     } finally {
       setImporting(false);
     }
-  }
+  }, []);
 
   const exportSession = useCallback((session: SessionSummary) => {
+    if (!tauriBridge.isTauri()) {
+      showToast('请在桌面窗口中选择备份保存位置', { variant: 'warning' });
+      return;
+    }
     setExporting(session.id);
     void (async () => {
       try {
-        const response = await sessionsApi.exportSession(session.id);
-        const blob = await response.blob();
-        const url = URL.createObjectURL(blob);
-        try {
-          const anchor = document.createElement('a');
-          anchor.href = url;
-          anchor.download = `${session.title || 'session'}.zip`;
-          anchor.click();
-        } finally {
-          URL.revokeObjectURL(url);
+        const filename = (session.title || 'session').replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_');
+        const destinationPath = await tauriBridge.saveFileDialog({
+          title: '导出会话备份',
+          defaultPath: `${filename}.ema-session.zip`,
+          filters: [{ name: '会话备份 ZIP', extensions: ['zip'] }],
+        });
+        if (destinationPath === null) {
+          return;
         }
+        const result = await sessionsApi.exportSession(session.id, destinationPath);
+        const saved = `会话已保存到 ${result.filePath}`;
+        showToast(
+          result.warnings.length > 0
+            ? `${saved}，有 ${result.warnings.length} 个文件未包含在备份中`
+            : saved,
+          { variant: result.warnings.length > 0 ? 'warning' : 'success', duration: 6000 },
+        );
       } catch (cause) {
         showToast(cause instanceof Error ? `导出失败: ${cause.message}` : '导出失败', { variant: 'danger' });
       } finally {
@@ -109,24 +133,14 @@ export function StorageTab(): JSX.Element {
               variant="secondary"
               size="sm"
               loading={importing}
-              onClick={() => importRef.current?.click()}
+              disabled={exporting !== null}
+              onClick={() => void importSession()}
             >
               <span className="i-solar:upload-minimalistic-bold-duotone" aria-hidden />导入会话
             </Button>
           )}
         />
       </div>
-      <input
-        ref={importRef}
-        type="file"
-        accept=".zip"
-        className="hidden"
-        onChange={event => {
-          const file = event.target.files?.[0];
-          if (file) void importSession(file);
-          event.target.value = '';
-        }}
-      />
       {/* 概览保留滚动位置. 详情只挂载当前类别, 返回后释放详情正文和播放器. */}
       <div
         className={`ema-fade-in min-h-0 flex-1 overflow-y-auto p-6 ${detail ? 'invisible' : ''}`}
@@ -141,6 +155,7 @@ export function StorageTab(): JSX.Element {
           onRetry={retry}
           openSessionId={openSessionId}
           exportingSessionId={exporting}
+          exportDisabled={importing || exporting !== null}
           onToggle={toggleSession}
           onExport={exportSession}
           onOpenDetail={openDetail}

@@ -1,4 +1,4 @@
-// 把已校验的 ZIP 记录转换为 Storage 行，并收口来源机未完成的执行状态。
+// 把已校验的 ZIP 记录转换为数据库行, 并结束来源机尚未完成的执行.
 import type {
   SubagentMessageRow,
   SubagentRow,
@@ -8,7 +8,6 @@ import type {
   BackgroundProcessRow,
   GoalRow,
   MessageRow,
-  SessionBackupRestoreRows,
   SessionBackupTaskRow,
   SessionBackupToolExecutionRow,
   SessionRow,
@@ -32,8 +31,6 @@ import type {
   TurnRecord,
   UsageRecord,
 } from './sessionRecords.js';
-
-export type RestoreRows = SessionBackupRestoreRows;
 
 export function restoreSessionRecord(record: SessionRecord): SessionRow {
   return {
@@ -69,7 +66,7 @@ export function restoreTurnRecord(record: TurnRecord, importedAt: number): TurnR
     tts_enabled: record.ttsEnabled ? 1 : 0,
     provider_id: record.providerId,
     model_id: record.modelId,
-    protocol: record.protocol ?? null,
+    protocol: record.protocol,
     character_name: record.characterName,
     iterations: record.iterations,
     created_at: record.createdAt,
@@ -90,7 +87,7 @@ export const restoreMessageRecord = (record: MessageRecord): MessageRow => ({
   blocks_json: record.blocksJson,
   interrupted: record.interrupted ? 1 : 0,
   created_at: record.createdAt,
-  summarized_through_message_id: record.summarizedThroughMessageId ?? null,
+  summarized_through_message_id: record.summarizedThroughMessageId,
   summary_saved_tokens: record.savedTokens ?? null,
 });
 

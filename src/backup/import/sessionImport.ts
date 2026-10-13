@@ -1,17 +1,16 @@
-// 校验 Session 记录、发布文件并调用 Storage 单事务恢复数据库行。
-//
-// 导入三步, 崩溃语义逐级干净:
-//   1. 解包到 staging(extractSessionArchive)
-//   2. 附件文件写进 sessions/<sid>/attachments/...(uuid 名不变, publishSessionFiles)
-//      —— 此时崩了:SQL 还没碰, 启动对账删掉这个无行目录
-//   3. 单个 SQL 事务:session/turns/messages(块内路径已重写) + 两本账行
-//      —— 此时崩了:事务自动回滚一行不留, 只剩文件夹, 启动对账再扫掉
-// 必须先文件后 SQL:反过来的话事务已提交而文件写挂, 留下"有行没文件"
-// 的半成品, 失败清理就得额外级联删行, 而不是永远只删文件夹一个动作。
+// 文件先发布, 数据库随后在一个事务中恢复. 数据库失败时删除本次发布的目录,
+// 避免留下指向未写完文件的正式记录.
 import fs from 'node:fs';
+import type { ZodType } from 'zod';
 import type { SessionBackupReader, SessionBackupRestorer } from '@ema-agent/storage';
 import { SessionImportError } from '../errors.js';
-import { SESSION_BACKUP_VERSION, SESSION_MANIFEST_PATH, isSessionArchivePath } from '../records/sessionFormat.js';
+import {
+  SESSION_MANIFEST_PATH,
+  SESSION_RECORD_PATHS,
+  isSessionArchivePath,
+  type SessionRecordName,
+} from '../records/sessionFormat.js';
+import { readJsonl } from '../records/jsonl.js';
 import {
   subagentMessageRecordSchema,
   subagentRecordSchema,
@@ -51,13 +50,12 @@ import type {
   SubagentRunRecord,
   SubagentMessageRecord,
 } from '../records/sessionRecords.js';
-import type { BackupArchiveSource, SessionImportResult } from '../types.js';
-import { extractSessionArchive } from './archive.js';
-import { readJsonRecord, readJsonlRecords } from './recordReader.js';
+import type { SessionImportResult } from '../types.js';
+import { extractSessionArchive, type ExtractedSessionArchive } from './archive.js';
 import { publishSessionFiles } from './sessionFiles.js';
 
 export async function importSessionArchive(
-  source: BackupArchiveSource,
+  filePath: string,
   activeDataDir: string,
   temporaryRoot: string,
   reader: SessionBackupReader,
@@ -65,10 +63,9 @@ export async function importSessionArchive(
   modelSelectionExists: (providerId: string, modelId: string) => boolean,
   signal?: AbortSignal,
 ): Promise<SessionImportResult> {
-  const archive = await extractSessionArchive(source, temporaryRoot, signal);
+  const archive = await extractSessionArchive(filePath, temporaryRoot, signal);
   try {
-    const manifest = readManifest(archive.require(SESSION_MANIFEST_PATH).filePath);
-    // 先拒绝旧版本, 再按当前文件清单校验, 不把旧结构误报成未知条目.
+    const manifest = readJsonRecord(archive, SESSION_MANIFEST_PATH, sessionBackupManifestSchema);
     for (const entryPath of archive.paths()) {
       if (!isSessionArchivePath(entryPath)) {
         throw new SessionImportError('invalid_format', `ZIP 包含未知条目: ${entryPath}`);
@@ -78,7 +75,7 @@ export async function importSessionArchive(
       throw new SessionImportError('destination_conflict', '同 id 的 Session 已存在', 409);
     }
 
-    const session = readJsonRecord(archive, 'session', sessionRecordSchema);
+    const session = readJsonRecord(archive, SESSION_RECORD_PATHS.session, sessionRecordSchema);
     if (session.id !== manifest.sessionId) {
       throw new SessionImportError('invalid_format', 'manifest 与 Session id 不一致');
     }
@@ -102,11 +99,17 @@ export async function importSessionArchive(
       readJsonlRecords(archive, 'usageRecords', usageRecordSchema),
     ]);
     throwIfCancelled(signal);
-    assertSessionOwnership(manifest.sessionId, {
-      turns, messages, tasks, goals, subagents, toolExecutions,
-      backgroundProcesses, speechOutputs,
-      usageRecords,
-    });
+    assertSessionOwnership(manifest.sessionId, [
+      ['turns', turns],
+      ['messages', messages],
+      ['tasks', tasks],
+      ['goals', goals],
+      ['subagents', subagents],
+      ['toolExecutions', toolExecutions],
+      ['backgroundProcesses', backgroundProcesses],
+      ['speechOutputs', speechOutputs],
+      ['usageRecords', usageRecords],
+    ]);
     assertSubagentReferences(subagents, subagentRuns, subagentMessages);
     if (session.permissionMode === 'plan' && goals.some(goal => goal.status !== 'completed')) {
       throw new SessionImportError('invalid_format', 'Plan Session 不能包含未完成 Goal');
@@ -129,7 +132,6 @@ export async function importSessionArchive(
       warnings.push('原 Session 的模型在当前安装中不可用，已清除模型选择');
     }
 
-    // 2. 附件文件落位(先文件, 让 SQL 事务成为最后一步)
     const files = publishSessionFiles(
       activeDataDir,
       manifest.sessionId,
@@ -141,8 +143,7 @@ export async function importSessionArchive(
       signal,
     );
     try {
-      // 3. 单个事务写全部行。块内附件路径按 旧path→新path 重写;
-      // uuid 全局唯一, 字符串替换无歧义;file_reference 的用户原路径不动。
+      // 消息块中的受管附件路径随文件一起改变; 用户引用的外部文件路径不动.
       restorer.restoreSession({
         session: restoredSession,
         turns: turns.map(row => restoreTurnRecord(row, importedAt)),
@@ -184,9 +185,9 @@ export async function importSessionArchive(
         }),
         usageRecords: usageRecords.map(restoreUsageRecord),
       });
-      files.commit();
     } catch (error) {
-      files.rollback();
+      // publishSessionFiles 只返回本次新建的目录, 不会返回已有 Session 目录.
+      fs.rmSync(files.directory, { recursive: true, force: true });
       throw new SessionImportError(
         'restore_failed',
         error instanceof Error ? error.message : 'Session 数据库恢复失败',
@@ -205,46 +206,70 @@ function rewriteAttachmentPaths(
 ): string {
   let rewritten = blocksJson;
   for (const [oldPath, newPath] of pathMap) {
-    if (oldPath === newPath) continue;
-    // blocks_json 是 JSON 文本:Windows 反斜杠在里面以转义形态(\\)出现,
-    // 直接按原始字符串替换会漏。统一按 JSON 转义形态重写(POSIX 下两形态相同)。
+    if (oldPath === newPath) {
+      continue;
+    }
+    // blocks_json 中的 Windows 路径已经过 JSON 转义, 原始反斜杠不能直接匹配.
     const escapedOld = JSON.stringify(oldPath).slice(1, -1);
     const escapedNew = JSON.stringify(newPath).slice(1, -1);
-    if (!rewritten.includes(escapedOld)) continue;
     rewritten = rewritten.split(escapedOld).join(escapedNew);
   }
   return rewritten;
 }
 
-function readManifest(filePath: string) {
+function readJsonRecord<T>(
+  archive: ExtractedSessionArchive,
+  entryPath: string,
+  schema: ZodType<T>,
+): T {
+  const entry = archive.require(entryPath);
   try {
-    const value = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-    if (value?.format === 'ema-session' && value.version !== SESSION_BACKUP_VERSION) {
-      throw new SessionImportError('unsupported_version', `不支持的 Session 备份版本: ${String(value.version)}`);
-    }
-    return sessionBackupManifestSchema.parse(value);
+    return schema.parse(JSON.parse(fs.readFileSync(entry.filePath, 'utf8')));
   } catch (error) {
-    if (error instanceof SessionImportError) throw error;
-    throw new SessionImportError(
-      'invalid_format',
-      error instanceof Error ? `manifest 无效: ${error.message}` : 'manifest 无效',
-    );
+    throw invalidRecord(entryPath, error);
   }
 }
 
-function assertSessionOwnership(sessionId: string, groups: Record<string, readonly { sessionId: string }[]>): void {
-  for (const [name, records] of Object.entries(groups)) {
+async function readJsonlRecords<T>(
+  archive: ExtractedSessionArchive,
+  name: Exclude<SessionRecordName, 'session'>,
+  schema: ZodType<T>,
+): Promise<T[]> {
+  const entry = archive.require(SESSION_RECORD_PATHS[name]);
+  const records: T[] = [];
+  try {
+    for await (const record of readJsonl(entry.filePath, value => schema.parse(value))) {
+      records.push(record);
+    }
+    return records;
+  } catch (error) {
+    throw invalidRecord(name, error);
+  }
+}
+
+function invalidRecord(name: string, error: unknown): SessionImportError {
+  const message = error instanceof Error ? error.message : String(error);
+  return new SessionImportError('invalid_format', `${name} 记录无效: ${message}`);
+}
+
+function assertSessionOwnership(
+  sessionId: string,
+  groups: readonly (readonly [name: string, records: readonly { sessionId: string }[]])[],
+): void {
+  for (const [name, records] of groups) {
     if (records.some(record => record.sessionId !== sessionId)) {
       throw new SessionImportError('invalid_format', `${name} 包含其他 Session 的记录`);
     }
   }
 }
 
-/** 每个 Summary 的覆盖截止游标必须指向本次归档中的同 Session 消息。 */
+/** 每个 Summary 的覆盖截止游标必须指向本次归档中的同 Session 消息. */
 function assertSummaryCursors(messages: readonly MessageRecord[]): void {
   const messageIds = new Set(messages.map(message => message.id));
   for (const message of messages) {
-    if (message.kind !== 'summary') continue;
+    if (message.kind !== 'summary') {
+      continue;
+    }
     if (message.summarizedThroughMessageId === null) {
       throw new SessionImportError(
         'invalid_format',
@@ -284,7 +309,9 @@ function assertSubagentReferences(
         throw new SessionImportError('invalid_format', `子消息 ${message.id} 的 Run 不存在或属于其他子代理`);
       }
     }
-    if (message.kind !== 'summary' || message.summarizedThroughMessageId === null) continue;
+    if (message.kind !== 'summary' || message.summarizedThroughMessageId === null) {
+      continue;
+    }
     const through = messagesById.get(message.summarizedThroughMessageId);
     if (!through || through.subagentId !== message.subagentId) {
       throw new SessionImportError('invalid_format', `子摘要 ${message.id} 的覆盖游标不在本子代理归档中`);
@@ -296,10 +323,12 @@ function assertSubagentReferences(
   }
 }
 
-function archiveOutputBytes(archive: { get(path: string): { size: number } | null }, root: string, name: string): number {
+function archiveOutputBytes(archive: ExtractedSessionArchive, root: string, name: string): number {
   return archive.get(`${root}/${name}`)?.size ?? 0;
 }
 
 function throwIfCancelled(signal?: AbortSignal): void {
-  if (signal?.aborted) throw new SessionImportError('import_cancelled', 'Session 导入已取消', 499);
+  if (signal?.aborted) {
+    throw new SessionImportError('import_cancelled', 'Session 导入已取消', 499);
+  }
 }

@@ -1,9 +1,9 @@
-// 提供 Session ZIP 导入导出的唯一业务入口，并在开机时清理上次遗留的临时目录。
+// 构造时清理上次异常退出遗留的备份临时目录, 不删除已发布的会话或 ZIP.
 import fs from 'node:fs';
 import path from 'node:path';
 import type { SessionBackupReader, SessionBackupRestorer } from '@ema-agent/storage';
-import type { BackupArchiveSource, SessionExport, SessionImportResult } from './types.js';
-import { createSessionExport } from './export/sessionExport.js';
+import type { SessionExportResult, SessionImportResult } from './types.js';
+import { exportSessionArchive } from './export/sessionExport.js';
 import { importSessionArchive } from './import/sessionImport.js';
 
 export class SessionBackup {
@@ -24,9 +24,15 @@ export class SessionBackup {
     fs.mkdirSync(this.importTemporaryRoot, { recursive: true });
   }
 
-  exportSession(sessionId: string, signal?: AbortSignal): SessionExport | null {
-    return createSessionExport(
+  /** 路径属于运行后端的本机; 返回结果时 ZIP 已保存, 不是等待前端下载. */
+  exportSession(
+    sessionId: string,
+    destinationPath: string,
+    signal?: AbortSignal,
+  ): Promise<SessionExportResult> {
+    return exportSessionArchive(
       sessionId,
+      destinationPath,
       this.activeDataDir,
       this.exportTemporaryRoot,
       this.reader,
@@ -34,9 +40,9 @@ export class SessionBackup {
     );
   }
 
-  importSession(source: BackupArchiveSource, signal?: AbortSignal): Promise<SessionImportResult> {
+  importSession(filePath: string, signal?: AbortSignal): Promise<SessionImportResult> {
     return importSessionArchive(
-      source,
+      filePath,
       this.activeDataDir,
       this.importTemporaryRoot,
       this.reader,

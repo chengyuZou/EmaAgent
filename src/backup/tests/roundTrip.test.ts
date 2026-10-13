@@ -1,9 +1,6 @@
-// 全链路往返:带附件的 Session 导出 ZIP -> 导入另一个数据目录,
-// 验证文件落位、两本账行(盖章保留)与消息块内路径前缀重写。
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   AttachmentImagesRepo,
@@ -13,9 +10,9 @@ import {
   SessionBackupRestorer,
   UsageRecordsRepo,
 } from '@ema-agent/storage';
-import { createSessionExport } from '../export/sessionExport.js';
+import { exportSessionArchive } from '../export/sessionExport.js';
 import { importSessionArchive } from '../import/sessionImport.js';
-import type { BackupArchiveSource } from '../types.js';
+import { readZip, writeZip } from './zipFixtures.js';
 
 const roots: string[] = [];
 afterEach(() => roots.splice(0).forEach(root => fs.rmSync(root, { recursive: true, force: true })));
@@ -102,36 +99,30 @@ function seedSource(dataDir: string): Database {
 }
 
 describe('Session 备份往返', () => {
-  it('导出再导入:文件落新目录,账本盖章保留,块内路径前缀重写', async () => {
+  it('ZIP 写完后导入:文件落新目录,附件归属保留,块内路径前缀重写', async () => {
     const sourceDir = tempDir('ema-backup-src-');
     const targetDir = tempDir('ema-backup-dst-');
     const workDir = tempDir('ema-backup-work-');
     const sourceDb = seedSource(sourceDir);
 
-    // 导出到内存字节
-    const chunks: Buffer[] = [];
-    const sessionExport = createSessionExport(
-      SESSION_ID, sourceDir, workDir, new SessionBackupReader(sourceDb.sqlite),
+    const zipPath = path.join(workDir, '会话备份.zip');
+    const exported = await exportSessionArchive(
+      SESSION_ID, zipPath, sourceDir, workDir, new SessionBackupReader(sourceDb.sqlite),
     );
-    expect(sessionExport).not.toBeNull();
-    await sessionExport!.writeTo({
-      write: async chunk => { chunks.push(Buffer.from(chunk)); },
-      complete: async () => {},
-      fail: async reason => { throw reason instanceof Error ? reason : new Error(String(reason)); },
-    });
     sourceDb.close();
-    const zipBytes = Buffer.concat(chunks);
-    expect(zipBytes.byteLength).toBeGreaterThan(100);
+    expect(exported).toEqual({ filePath: zipPath, warnings: [] });
+    expect(fs.statSync(zipPath).size).toBeGreaterThan(100);
+    const entries = await readZip(zipPath);
+    expect(JSON.parse(entries.get('manifest.json')!.toString('utf8'))).toEqual({
+      sessionId: SESSION_ID,
+      omittedFiles: [],
+    });
 
     // 导入到另一个数据目录
     const targetDb = new Database({ memory: true, kind: 'data' });
     targetDb.migrate();
-    const source: BackupArchiveSource = {
-      declaredBytes: zipBytes.byteLength,
-      async *chunks() { yield zipBytes; },
-    };
     const result = await importSessionArchive(
-      source,
+      zipPath,
       targetDir,
       workDir,
       new SessionBackupReader(targetDb.sqlite),
@@ -164,7 +155,7 @@ describe('Session 备份往返', () => {
     expect(fs.readFileSync(newImagePath)).toEqual(Buffer.from([1, 2, 3, 4]));
     expect(fs.readFileSync(newPastedPath, 'utf8')).toBe('粘贴全文');
 
-    // 账本行:新 path 主键,盖章保留
+    // 附件记录使用新 path 主键, 保留原 Turn 归属.
     const imageRow = new AttachmentImagesRepo(targetDb.sqlite).listBySession(SESSION_ID)[0];
     expect(imageRow?.path).toBe(newImagePath);
     expect(imageRow?.turn_id).toBe('t1');
@@ -210,23 +201,16 @@ describe('Session 备份往返', () => {
         NULL, NULL, 3, 5, NULL)
     `).run(SESSION_ID);
 
-    const chunks: Buffer[] = [];
-    const sessionExport = createSessionExport(
-      SESSION_ID, sourceDir, workDir, new SessionBackupReader(sourceDb.sqlite),
+    const zipPath = path.join(workDir, 'goal.zip');
+    await exportSessionArchive(
+      SESSION_ID, zipPath, sourceDir, workDir, new SessionBackupReader(sourceDb.sqlite),
     );
-    expect(sessionExport).not.toBeNull();
-    await sessionExport!.writeTo({
-      write: async chunk => { chunks.push(Buffer.from(chunk)); },
-      complete: async () => {},
-      fail: async reason => { throw reason instanceof Error ? reason : new Error(String(reason)); },
-    });
     sourceDb.close();
 
     const targetDb = new Database({ memory: true, kind: 'data' });
     targetDb.migrate();
-    const zipBytes = Buffer.concat(chunks);
     await importSessionArchive(
-      { declaredBytes: zipBytes.byteLength, async *chunks() { yield zipBytes; } },
+      zipPath,
       targetDir,
       workDir,
       new SessionBackupReader(targetDb.sqlite),
@@ -247,42 +231,32 @@ describe('Session 备份往返', () => {
     targetDb.close();
   });
 
-  it.each([5, 6, 7, 8])('拒绝 v%s 旧归档, 不因旧记录文件抢先报格式错误', async version => {
-    const sourceDir = tempDir('ema-backup-v5-src-');
-    const targetDir = tempDir('ema-backup-v5-dst-');
-    const workDir = tempDir('ema-backup-v5-work-');
+  it('缺少当前必需的记录文件时拒绝导入, 不发布文件或留下数据库行', async () => {
+    const sourceDir = tempDir('ema-backup-invalid-src-');
+    const targetDir = tempDir('ema-backup-invalid-dst-');
+    const workDir = tempDir('ema-backup-invalid-work-');
     const sourceDb = seedSource(sourceDir);
-    const chunks: Buffer[] = [];
-    const sessionExport = createSessionExport(
-      SESSION_ID, sourceDir, workDir, new SessionBackupReader(sourceDb.sqlite),
+    const zipPath = path.join(workDir, 'valid.zip');
+    await exportSessionArchive(
+      SESSION_ID, zipPath, sourceDir, workDir, new SessionBackupReader(sourceDb.sqlite),
     );
-    expect(sessionExport).not.toBeNull();
-    await sessionExport!.writeTo({
-      write: async chunk => { chunks.push(Buffer.from(chunk)); },
-      complete: async () => {},
-      fail: async reason => { throw reason instanceof Error ? reason : new Error(String(reason)); },
-    });
     sourceDb.close();
 
-    const entries = unzipSync(Buffer.concat(chunks));
-    const manifest = JSON.parse(strFromU8(entries['manifest.json']!)) as { version: number };
-    manifest.version = version;
-    entries['manifest.json'] = strToU8(JSON.stringify(manifest));
-    delete entries['records/goals.jsonl'];
-    delete entries['records/subagentRuns.jsonl'];
-    entries['records/subagentInvocations.jsonl'] = strToU8('');
-    const zipBytes = Buffer.from(zipSync(entries));
+    const entries = await readZip(zipPath);
+    entries.delete('records/goals.jsonl');
+    const invalidPath = path.join(workDir, 'invalid.zip');
+    await writeZip(invalidPath, entries);
 
     const targetDb = new Database({ memory: true, kind: 'data' });
     targetDb.migrate();
     await expect(importSessionArchive(
-      { declaredBytes: zipBytes.byteLength, async *chunks() { yield zipBytes; } },
+      invalidPath,
       targetDir,
       workDir,
       new SessionBackupReader(targetDb.sqlite),
       new SessionBackupRestorer(targetDb.sqlite),
       () => true,
-    )).rejects.toMatchObject({ code: 'unsupported_version' });
+    )).rejects.toMatchObject({ code: 'invalid_format' });
     expect(targetDb.sqlite.prepare('SELECT id FROM sessions').all())
       .toEqual([]);
     expect(fs.existsSync(path.join(targetDir, 'sessions', SESSION_ID))).toBe(false);

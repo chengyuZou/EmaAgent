@@ -1,17 +1,15 @@
-// 流式解压 Session ZIP, 写盘前检查路径与重名, 写盘时限制总展开体积.
 import fs from 'node:fs';
 import path from 'node:path';
-import { Unzip, UnzipInflate } from 'fflate';
-import type { BackupArchiveSource } from '../types.js';
+import { Transform } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
+import { Open } from 'unzipper';
 import { SessionImportError } from '../errors.js';
 import { normalizeArchivePath, resolveInside } from './pathPolicy.js';
 
-// 单人本地导入的真防线只有一条:总展开体积(防 zip 炸弹撑爆磁盘/内存)。
-// 条目数/压缩比等分项纵深不建——包是用户自己导出的,威胁模型里没有攻击者。
+// 直接读取磁盘上的 ZIP 不限制压缩文件大小, 但解压不能无限占用磁盘.
 const MAX_EXPANDED_BYTES = 8 * 1024 * 1024 * 1024;
 
 export interface ExtractedEntry {
-  readonly path: string;
   readonly filePath: string;
   readonly size: number;
 }
@@ -28,7 +26,9 @@ export class ExtractedSessionArchive {
 
   require(entryPath: string): ExtractedEntry {
     const entry = this.get(entryPath);
-    if (!entry) throw new SessionImportError('invalid_format', `备份缺少 ${entryPath}`);
+    if (!entry) {
+      throw new SessionImportError('invalid_format', `备份缺少 ${entryPath}`);
+    }
     return entry;
   }
 
@@ -42,7 +42,7 @@ export class ExtractedSessionArchive {
 }
 
 export async function extractSessionArchive(
-  source: BackupArchiveSource,
+  filePath: string,
   temporaryRoot: string,
   signal?: AbortSignal,
 ): Promise<ExtractedSessionArchive> {
@@ -50,61 +50,53 @@ export async function extractSessionArchive(
   const directory = fs.mkdtempSync(path.join(temporaryRoot, 'session-'));
   const entries = new Map<string, ExtractedEntry>();
   const portablePaths = new Set<string>();
-  const openFiles = new Set<number>();
-  let archiveBytes = 0;
   let expandedBytes = 0;
 
   try {
-    const unzip = new Unzip(file => {
-      const entryPath = normalizeArchivePath(file.name);
-      // 路径安全在写盘前检查, 记录白名单留给导入流程在版本校验后检查.
+    signal?.throwIfAborted();
+    // Open.file 读取 ZIP 目录和各条目的文件范围, 不把整个 ZIP 读入内存.
+    const zip = await Open.file(filePath);
+    for (const file of zip.files) {
+      signal?.throwIfAborted();
+      const entryPath = normalizeArchivePath(file.path);
+      const destination = resolveInside(directory, entryPath);
+      if (file.type === 'Directory') {
+        continue;
+      }
       const portable = entryPath.toLocaleLowerCase('en-US');
       if (portablePaths.has(portable)) {
         throw new SessionImportError('invalid_format', `ZIP 存在同名路径: ${entryPath}`);
       }
       portablePaths.add(portable);
-      const destination = resolveInside(directory, entryPath);
       fs.mkdirSync(path.dirname(destination), { recursive: true });
-      let descriptor: number | null = fs.openSync(destination, 'wx');
-      openFiles.add(descriptor);
       let entryBytes = 0;
-      file.ondata = (error, chunk, final) => {
-        if (error) throw new SessionImportError('invalid_zip', `ZIP 条目损坏: ${entryPath}`);
-        entryBytes += chunk.byteLength;
-        expandedBytes += chunk.byteLength;
-        if (expandedBytes > MAX_EXPANDED_BYTES) {
-          throw new SessionImportError('archive_bomb', 'ZIP 展开体积异常');
-        }
-        if (descriptor !== null && chunk.byteLength > 0) fs.writeSync(descriptor, chunk);
-        if (!final) return;
-        if (descriptor !== null) {
-          fs.closeSync(descriptor);
-          openFiles.delete(descriptor);
-          descriptor = null;
-        }
-        entries.set(entryPath, { path: entryPath, filePath: destination, size: entryBytes });
-      };
-      file.start();
-    });
-    unzip.register(UnzipInflate);
-
-    for await (const chunk of source.chunks()) {
-      if (signal?.aborted) throw new SessionImportError('import_cancelled', 'Session 导入已取消');
-      archiveBytes += chunk.byteLength;
-      unzip.push(chunk, false);
+      const measure = new Transform({
+        transform(chunk: Buffer, _encoding, callback) {
+          entryBytes += chunk.byteLength;
+          expandedBytes += chunk.byteLength;
+          if (expandedBytes > MAX_EXPANDED_BYTES) {
+            callback(new SessionImportError('archive_bomb', `ZIP 展开体积超过 ${MAX_EXPANDED_BYTES / (1024 * 1024)} GiB`, 413));
+            return;
+          }
+          callback(null, chunk);
+        },
+      });
+      await pipeline(file.stream(), measure, fs.createWriteStream(destination, { flags: 'wx' }), { signal });
+      if (entryBytes !== file.uncompressedSize) {
+        throw new SessionImportError('invalid_zip', `ZIP 条目字节数不完整: ${entryPath}`);
+      }
+      entries.set(entryPath, { filePath: destination, size: entryBytes });
     }
-    unzip.push(new Uint8Array(), true);
-    if (openFiles.size > 0) throw new SessionImportError('invalid_zip', 'ZIP 存在未完成条目');
-    if (source.declaredBytes !== null && source.declaredBytes !== archiveBytes) {
-      throw new SessionImportError('invalid_zip', 'ZIP 实际字节数与声明不一致');
-    }
+    signal?.throwIfAborted();
     return new ExtractedSessionArchive(directory, entries);
   } catch (error) {
-    for (const descriptor of openFiles) {
-      try { fs.closeSync(descriptor); } catch { /* 文件可能已由解压回调关闭。 */ }
-    }
     fs.rmSync(directory, { recursive: true, force: true });
-    if (error instanceof SessionImportError) throw error;
+    if (signal?.aborted) {
+      throw new SessionImportError('import_cancelled', 'Session 导入已取消', 499);
+    }
+    if (error instanceof SessionImportError) {
+      throw error;
+    }
     throw new SessionImportError('invalid_zip', error instanceof Error ? error.message : 'ZIP 无法解压');
   }
 }

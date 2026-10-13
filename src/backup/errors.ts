@@ -18,7 +18,6 @@ export type SessionImportErrorCode =
   | 'import_cancelled'
   | 'invalid_zip'
   | 'invalid_format'
-  | 'unsupported_version'
   | 'unsafe_archive_path'
   | 'archive_bomb'
   | 'destination_conflict'

@@ -1,21 +1,18 @@
-// 定义 Session ZIP 的记录结构，并在导入外部归档时执行基础字段校验。
+// ZIP 来自所选文件, 导入前需要校验字段, 不能只靠编译时的数据库行类型.
 import { z } from 'zod';
-import { SESSION_BACKUP_VERSION } from './sessionFormat.js';
 
 const id = z.string().min(1);
 const nullableId = id.nullable();
 const integer = z.number().int();
 const nonNegativeInteger = integer.nonnegative();
 
-export const omittedSessionFileSchema = z.object({
+const omittedSessionFileSchema = z.object({
   kind: z.enum(['attachment', 'speechOutput', 'backgroundProcessOutput']),
   id,
   reason: z.enum(['missing', 'unreadable']),
 }).strict();
 
 export const sessionBackupManifestSchema = z.object({
-  format: z.literal('ema-session'),
-  version: z.literal(SESSION_BACKUP_VERSION),
   sessionId: id,
   omittedFiles: z.array(omittedSessionFileSchema),
 }).strict();
@@ -51,7 +48,7 @@ export const turnRecordSchema = z.object({
   ttsEnabled: z.boolean(),
   providerId: nullableId,
   modelId: nullableId,
-  // 与 provider_id/model_id 同生命周期：三者同时存在或同时缺省；开发期格式不兼容缺失该键的旧 ZIP。
+  // 模型来源的三个字段同时存在或同时缺省.
   protocol: nullableId,
   characterName: z.string().nullable(),
   iterations: nonNegativeInteger,
@@ -74,7 +71,7 @@ export const messageRecordSchema = z.object({
   blocksJson: z.string(),
   interrupted: z.boolean(),
   createdAt: integer,
-  // summary 必须携带覆盖截止游标，其他 kind 必须为 null；开发期不兼容缺失游标的旧 ZIP。
+  // summary 必须携带覆盖截止游标, 其他 kind 必须为 null.
   summarizedThroughMessageId: nullableId,
   // 与消息正文同属摘要记录; 未记录 Token 减少量的摘要没有此字段.
   savedTokens: nonNegativeInteger.optional(),
@@ -246,8 +243,8 @@ export const backgroundProcessRecordSchema = z.object({
   outputDirectoryPath: z.string(),
 }).strict();
 
-// 附件账本的归档记录。path 即身份(全局唯一):uuid 文件名不变,跨机器导入时
-// 由导入方重写数据根前缀生成新 path。vision 描述缓存不进包(可再生)。
+// path 保留来源附件身份, filePath 指向 ZIP 内文件. 导入时换成目标数据目录中的路径.
+// Vision 描述缓存可重新生成, 不包含在备份中.
 export const attachmentImageRecordSchema = z.object({
   path: id,
   turnId: nullableId,
