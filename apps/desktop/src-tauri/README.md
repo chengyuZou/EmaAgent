@@ -77,12 +77,14 @@ Shell 检测不扫描固定盘符。Windows 使用 `where.exe` 收集 `PATH` 中
 | 名称 | 生产者 | 消费者 | 是否必需 | 业务意义 |
 |---|---|---|---|---|
 | `EMA_SHARED_SECRET` | Rust Host | Server | 是 | 本次 Desktop 生命周期内的 HTTP 访问口令 |
+| `EMA_INITIALIZE_BUILTIN_CHARACTERS` | Rust Host | Server | 首次初始化时设置为 `1` | 宿主先复制内置角色资源, Server 再创建内置角色数据库记录 |
 
 以下名称属于宿主启动位置覆盖，不会传给 WebView 或作为业务状态保存：
 
 | 名称 | 读取者 | 作用 |
 |---|---|---|
 | `EMA_SERVER_EXECUTABLE` | Rust Host | 覆盖正式环境默认的 Server 可执行文件位置 |
+| `EMA_PROFILE_DIR` | Rust Host、Server、Memory、开发重置脚本 | 指定应用数据根目录, 默认是用户主目录下的 `.ema-agent`; 用绝对路径启动应用与重置, 避免读写不同目录 |
 
 新增环境变量前必须同时指出具体生产者和消费者。仅有读取代码、测试注入或“以后可能使用”的名称不进入本表，也不应留在实现中。
 

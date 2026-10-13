@@ -8,6 +8,8 @@
     "dev": "turbo run dev --filter=@ema-agent/desktop",
     "dev:start": "pnpm --filter @ema-agent/desktop tauri:dev",
     "dev:reset": "node scripts/dev-reset.mjs",
+    "test:scripts": "node --test scripts/tests/devReset.test.mjs",
+    "test:first-start": "pnpm --filter @ema-agent/server... build && node --test scripts/tests/firstStart.test.mjs",
     "test": "turbo run test",
     "test:watch": "turbo run test:watch",
     "lint": "turbo run lint",

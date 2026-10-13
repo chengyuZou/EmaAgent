@@ -11,6 +11,8 @@
 
 ## 文件目录
 
+默认保存在用户主目录下的 `.ema-agent/memories`. 设置 `EMA_PROFILE_DIR` 时改用 `<EMA_PROFILE_DIR>/memories`, 与 Desktop 和 Server 的应用数据目录一致.
+
 ```text
 ~/.ema-agent/memories/
 ├─ work/

@@ -247,109 +247,109 @@ importers:
     dependencies:
       '@ema-agent/agent':
         specifier: workspace:*
-        version: link:../../src/agent
+        version: file:src/agent(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)
       '@ema-agent/attachments':
         specifier: workspace:*
-        version: link:../../src/attachments
+        version: file:src/attachments(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)
       '@ema-agent/backup':
         specifier: workspace:*
-        version: link:../../src/backup
+        version: file:src/backup
       '@ema-agent/builtin-tools':
         specifier: workspace:*
-        version: link:../../src/builtin-tools
+        version: file:src/builtin-tools(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(@shikijs/themes@4.4.3)(@types/react-dom@18.3.7(@types/react@18.3.29))(@types/react@18.3.29)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(ws@8.20.1)
       '@ema-agent/characters':
         specifier: workspace:*
-        version: link:../../src/characters
+        version: file:src/characters
       '@ema-agent/commands':
         specifier: workspace:*
-        version: link:../../src/commands
+        version: file:src/commands(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(@shikijs/themes@4.4.3)(@types/react-dom@18.3.7(@types/react@18.3.29))(@types/react@18.3.29)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(ws@8.20.1)(zod@4.4.3)
       '@ema-agent/compact':
         specifier: workspace:*
-        version: link:../../src/compact
+        version: file:src/compact(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)
       '@ema-agent/context':
         specifier: workspace:*
-        version: link:../../src/context
+        version: file:src/context(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(@shikijs/themes@4.4.3)(@types/react-dom@18.3.7(@types/react@18.3.29))(@types/react@18.3.29)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(ws@8.20.1)
       '@ema-agent/embed':
         specifier: workspace:*
-        version: link:../../src/embed
+        version: file:src/embed
       '@ema-agent/git':
         specifier: workspace:*
-        version: link:../../src/git
+        version: file:src/git
       '@ema-agent/goal':
         specifier: workspace:*
-        version: link:../../src/goal
+        version: file:src/goal
       '@ema-agent/llm':
         specifier: workspace:*
-        version: link:../../src/llm
+        version: file:src/llm(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)(zod@4.4.3)
       '@ema-agent/mcp':
         specifier: workspace:*
-        version: link:../../src/mcp
+        version: file:src/mcp(ws@8.20.1)
       '@ema-agent/memory':
         specifier: workspace:*
-        version: link:../../src/memory
+        version: file:src/memory(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)(zod@4.4.3)
       '@ema-agent/narrative':
         specifier: workspace:*
-        version: link:../../src/narrative
+        version: file:src/narrative(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)
       '@ema-agent/permission':
         specifier: workspace:*
-        version: link:../../src/permission
+        version: file:src/permission
       '@ema-agent/prompts':
         specifier: workspace:*
-        version: link:../../src/prompts
+        version: file:src/prompts(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(@shikijs/themes@4.4.3)(@types/react-dom@18.3.7(@types/react@18.3.29))(@types/react@18.3.29)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(ws@8.20.1)(zod@4.4.3)
       '@ema-agent/providers':
         specifier: workspace:*
-        version: link:../../src/providers
+        version: file:src/providers
       '@ema-agent/rerank':
         specifier: workspace:*
-        version: link:../../src/rerank
+        version: file:src/rerank
       '@ema-agent/sandbox':
         specifier: workspace:*
-        version: link:../../src/sandbox
+        version: file:src/sandbox
       '@ema-agent/session':
         specifier: workspace:*
-        version: link:../../src/session
+        version: file:src/session(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)(zod@4.4.3)
       '@ema-agent/settings':
         specifier: workspace:*
-        version: link:../../src/settings
+        version: file:src/settings
       '@ema-agent/skills':
         specifier: workspace:*
-        version: link:../../src/skills
+        version: file:src/skills
       '@ema-agent/speech':
         specifier: workspace:*
-        version: link:../../src/speech
+        version: file:src/speech
       '@ema-agent/stage':
         specifier: workspace:*
-        version: link:../../src/stage
+        version: file:src/stage
       '@ema-agent/storage':
         specifier: workspace:*
-        version: link:../../src/storage
+        version: file:src/storage
       '@ema-agent/stt':
         specifier: workspace:*
-        version: link:../../src/stt
+        version: file:src/stt
       '@ema-agent/system':
         specifier: workspace:*
-        version: link:../../src/system
+        version: file:src/system
       '@ema-agent/tasks':
         specifier: workspace:*
-        version: link:../../src/tasks
+        version: file:src/tasks
       '@ema-agent/token':
         specifier: workspace:*
-        version: link:../../src/token
+        version: file:src/token(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)(zod@4.4.3)
       '@ema-agent/tools':
         specifier: workspace:*
-        version: link:../../src/tools
+        version: file:src/tools(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)
       '@ema-agent/tts':
         specifier: workspace:*
-        version: link:../../src/tts
+        version: file:src/tts
       '@ema-agent/turn':
         specifier: workspace:*
-        version: link:../../src/turn
+        version: file:src/turn(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(@shikijs/themes@4.4.3)(@types/react-dom@18.3.7(@types/react@18.3.29))(@types/react@18.3.29)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(ws@8.20.1)(zod@4.4.3)
       '@ema-agent/usage':
         specifier: workspace:*
-        version: link:../../src/usage
+        version: file:src/usage
       '@ema-agent/vision':
         specifier: workspace:*
-        version: link:../../src/vision
+        version: file:src/vision(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)(zod@4.4.3)
       '@hono/node-server':
         specifier: ^2.1.1
         version: 2.1.1(hono@4.12.18)
@@ -390,6 +390,77 @@ importers:
       vitest:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
+    dependenciesMeta:
+      '@ema-agent/agent':
+        injected: true
+      '@ema-agent/attachments':
+        injected: true
+      '@ema-agent/backup':
+        injected: true
+      '@ema-agent/builtin-tools':
+        injected: true
+      '@ema-agent/characters':
+        injected: true
+      '@ema-agent/commands':
+        injected: true
+      '@ema-agent/compact':
+        injected: true
+      '@ema-agent/context':
+        injected: true
+      '@ema-agent/embed':
+        injected: true
+      '@ema-agent/git':
+        injected: true
+      '@ema-agent/goal':
+        injected: true
+      '@ema-agent/llm':
+        injected: true
+      '@ema-agent/mcp':
+        injected: true
+      '@ema-agent/memory':
+        injected: true
+      '@ema-agent/narrative':
+        injected: true
+      '@ema-agent/permission':
+        injected: true
+      '@ema-agent/prompts':
+        injected: true
+      '@ema-agent/providers':
+        injected: true
+      '@ema-agent/rerank':
+        injected: true
+      '@ema-agent/sandbox':
+        injected: true
+      '@ema-agent/session':
+        injected: true
+      '@ema-agent/settings':
+        injected: true
+      '@ema-agent/skills':
+        injected: true
+      '@ema-agent/speech':
+        injected: true
+      '@ema-agent/stage':
+        injected: true
+      '@ema-agent/storage':
+        injected: true
+      '@ema-agent/stt':
+        injected: true
+      '@ema-agent/system':
+        injected: true
+      '@ema-agent/tasks':
+        injected: true
+      '@ema-agent/token':
+        injected: true
+      '@ema-agent/tools':
+        injected: true
+      '@ema-agent/tts':
+        injected: true
+      '@ema-agent/turn':
+        injected: true
+      '@ema-agent/usage':
+        injected: true
+      '@ema-agent/vision':
+        injected: true
 
   bridges/narrative: {}
 
@@ -1775,6 +1846,119 @@ packages:
   '@csstools/css-tokenizer@3.0.4':
     resolution: {integrity: sha512-Vd/9EVDiu6PPJt9yAh6roZP6El1xHrdvIVGjyBsHR0RYwNHgL7FJPyIIW4fANJNG6FtyZfvlRPpFI4ZM/lubvw==}
     engines: {node: '>=18'}
+
+  '@ema-agent/agent@file:src/agent':
+    resolution: {directory: src/agent, type: directory}
+
+  '@ema-agent/attachments@file:src/attachments':
+    resolution: {directory: src/attachments, type: directory}
+
+  '@ema-agent/backup@file:src/backup':
+    resolution: {directory: src/backup, type: directory}
+
+  '@ema-agent/builtin-tools@file:src/builtin-tools':
+    resolution: {directory: src/builtin-tools, type: directory}
+    peerDependencies:
+      react: ^18.3.0
+
+  '@ema-agent/characters@file:src/characters':
+    resolution: {directory: src/characters, type: directory}
+
+  '@ema-agent/commands@file:src/commands':
+    resolution: {directory: src/commands, type: directory}
+
+  '@ema-agent/compact@file:src/compact':
+    resolution: {directory: src/compact, type: directory}
+
+  '@ema-agent/context@file:src/context':
+    resolution: {directory: src/context, type: directory}
+
+  '@ema-agent/embed@file:src/embed':
+    resolution: {directory: src/embed, type: directory}
+
+  '@ema-agent/git@file:src/git':
+    resolution: {directory: src/git, type: directory}
+
+  '@ema-agent/goal@file:src/goal':
+    resolution: {directory: src/goal, type: directory}
+
+  '@ema-agent/llm@file:src/llm':
+    resolution: {directory: src/llm, type: directory}
+
+  '@ema-agent/mcp@file:src/mcp':
+    resolution: {directory: src/mcp, type: directory}
+
+  '@ema-agent/memory@file:src/memory':
+    resolution: {directory: src/memory, type: directory}
+
+  '@ema-agent/narrative@file:src/narrative':
+    resolution: {directory: src/narrative, type: directory}
+
+  '@ema-agent/permission@file:src/permission':
+    resolution: {directory: src/permission, type: directory}
+
+  '@ema-agent/prompts@file:src/prompts':
+    resolution: {directory: src/prompts, type: directory}
+
+  '@ema-agent/providers@file:src/providers':
+    resolution: {directory: src/providers, type: directory}
+
+  '@ema-agent/rerank@file:src/rerank':
+    resolution: {directory: src/rerank, type: directory}
+
+  '@ema-agent/sandbox@file:src/sandbox':
+    resolution: {directory: src/sandbox, type: directory}
+
+  '@ema-agent/session@file:src/session':
+    resolution: {directory: src/session, type: directory}
+
+  '@ema-agent/settings@file:src/settings':
+    resolution: {directory: src/settings, type: directory}
+
+  '@ema-agent/skills@file:src/skills':
+    resolution: {directory: src/skills, type: directory}
+
+  '@ema-agent/speech@file:src/speech':
+    resolution: {directory: src/speech, type: directory}
+
+  '@ema-agent/stage@file:src/stage':
+    resolution: {directory: src/stage, type: directory}
+
+  '@ema-agent/storage@file:src/storage':
+    resolution: {directory: src/storage, type: directory}
+
+  '@ema-agent/stt@file:src/stt':
+    resolution: {directory: src/stt, type: directory}
+
+  '@ema-agent/system@file:src/system':
+    resolution: {directory: src/system, type: directory}
+
+  '@ema-agent/tasks@file:src/tasks':
+    resolution: {directory: src/tasks, type: directory}
+
+  '@ema-agent/token@file:src/token':
+    resolution: {directory: src/token, type: directory}
+
+  '@ema-agent/tools@file:src/tools':
+    resolution: {directory: src/tools, type: directory}
+
+  '@ema-agent/tts@file:src/tts':
+    resolution: {directory: src/tts, type: directory}
+
+  '@ema-agent/turn@file:src/turn':
+    resolution: {directory: src/turn, type: directory}
+
+  '@ema-agent/ui@file:src/ui':
+    resolution: {directory: src/ui, type: directory}
+    peerDependencies:
+      react: ^18.3.0
+      react-dom: ^18.3.0
+
+  '@ema-agent/usage@file:src/usage':
+    resolution: {directory: src/usage, type: directory}
+
+  '@ema-agent/vision@file:src/vision':
+    resolution: {directory: src/vision, type: directory}
 
   '@emnapi/core@1.10.0':
     resolution: {integrity: sha512-yq6OkJ4p82CAfPl0u9mQebQHKPJkY7WrIuk205cTYnYe+k2Z8YBh11FrbRG/H6ihirqcacOgl2BIO8oyMQLeXw==}
@@ -7731,6 +7915,458 @@ snapshots:
 
   '@csstools/css-tokenizer@3.0.4': {}
 
+  '@ema-agent/agent@file:src/agent(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)':
+    dependencies:
+      '@ema-agent/llm': file:src/llm(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)(zod@4.4.3)
+      '@ema-agent/session': file:src/session(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)(zod@4.4.3)
+      '@ema-agent/settings': file:src/settings
+      '@ema-agent/storage': file:src/storage
+      '@ema-agent/tools': file:src/tools(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)
+      zod: 4.4.3
+    transitivePeerDependencies:
+      - '@modelcontextprotocol/sdk'
+      - bufferutil
+      - encoding
+      - supports-color
+      - utf-8-validate
+      - ws
+
+  '@ema-agent/attachments@file:src/attachments(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)':
+    dependencies:
+      '@ema-agent/session': file:src/session(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)(zod@4.4.3)
+      '@ema-agent/settings': file:src/settings
+      '@ema-agent/storage': file:src/storage
+      sharp: 0.33.5
+      zod: 4.4.3
+    transitivePeerDependencies:
+      - '@modelcontextprotocol/sdk'
+      - bufferutil
+      - encoding
+      - supports-color
+      - utf-8-validate
+      - ws
+
+  '@ema-agent/backup@file:src/backup':
+    dependencies:
+      '@ema-agent/storage': file:src/storage
+      archiver: 8.0.0
+      unzipper: 0.12.5
+      zod: 4.4.3
+    transitivePeerDependencies:
+      - bare-abort-controller
+      - bare-buffer
+      - react-native-b4a
+
+  '@ema-agent/builtin-tools@file:src/builtin-tools(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(@shikijs/themes@4.4.3)(@types/react-dom@18.3.7(@types/react@18.3.29))(@types/react@18.3.29)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(ws@8.20.1)':
+    dependencies:
+      '@ema-agent/goal': file:src/goal
+      '@ema-agent/llm': file:src/llm(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)(zod@4.4.3)
+      '@ema-agent/memory': file:src/memory(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)(zod@4.4.3)
+      '@ema-agent/narrative': file:src/narrative(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)
+      '@ema-agent/permission': file:src/permission
+      '@ema-agent/sandbox': file:src/sandbox
+      '@ema-agent/session': file:src/session(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)(zod@4.4.3)
+      '@ema-agent/skills': file:src/skills
+      '@ema-agent/tasks': file:src/tasks
+      '@ema-agent/token': file:src/token(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)(zod@4.4.3)
+      '@ema-agent/tools': file:src/tools(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)
+      '@ema-agent/ui': file:src/ui(@types/react-dom@18.3.7(@types/react@18.3.29))(@types/react@18.3.29)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@ema-agent/vision': file:src/vision(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)(zod@4.4.3)
+      '@mozilla/readability': 0.6.0
+      '@pierre/diffs': 1.5.1(@shikijs/themes@4.4.3)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      cheerio: 1.0.0
+      diff: 9.0.0
+      glob: 11.1.0
+      jsdom: 26.1.0(canvas@2.11.2)
+      lru-cache: 10.4.3
+      minisearch: 7.2.0
+      pdfjs-dist: 4.10.38
+      react: 18.3.1
+      shell-quote: 1.10.0
+      turndown: 7.2.4
+      zod: 4.4.3
+    optionalDependencies:
+      canvas: 2.11.2
+    transitivePeerDependencies:
+      - '@modelcontextprotocol/sdk'
+      - '@shikijs/themes'
+      - '@types/react'
+      - '@types/react-dom'
+      - bufferutil
+      - encoding
+      - react-dom
+      - supports-color
+      - utf-8-validate
+      - ws
+
+  '@ema-agent/characters@file:src/characters':
+    dependencies:
+      '@ema-agent/storage': file:src/storage
+      fflate: 0.8.3
+      zod: 4.4.3
+
+  '@ema-agent/commands@file:src/commands(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(@shikijs/themes@4.4.3)(@types/react-dom@18.3.7(@types/react@18.3.29))(@types/react@18.3.29)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(ws@8.20.1)(zod@4.4.3)':
+    dependencies:
+      '@ema-agent/attachments': file:src/attachments(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)
+      '@ema-agent/compact': file:src/compact(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)
+      '@ema-agent/context': file:src/context(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(@shikijs/themes@4.4.3)(@types/react-dom@18.3.7(@types/react@18.3.29))(@types/react@18.3.29)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(ws@8.20.1)
+      '@ema-agent/llm': file:src/llm(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)(zod@4.4.3)
+      '@ema-agent/prompts': file:src/prompts(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(@shikijs/themes@4.4.3)(@types/react-dom@18.3.7(@types/react@18.3.29))(@types/react@18.3.29)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(ws@8.20.1)(zod@4.4.3)
+      '@ema-agent/providers': file:src/providers
+      '@ema-agent/session': file:src/session(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)(zod@4.4.3)
+      '@ema-agent/settings': file:src/settings
+      '@ema-agent/skills': file:src/skills
+      '@ema-agent/token': file:src/token(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)(zod@4.4.3)
+      '@ema-agent/turn': file:src/turn(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(@shikijs/themes@4.4.3)(@types/react-dom@18.3.7(@types/react@18.3.29))(@types/react@18.3.29)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(ws@8.20.1)(zod@4.4.3)
+      '@ema-agent/usage': file:src/usage
+    transitivePeerDependencies:
+      - '@modelcontextprotocol/sdk'
+      - '@shikijs/themes'
+      - '@types/react'
+      - '@types/react-dom'
+      - bufferutil
+      - encoding
+      - react
+      - react-dom
+      - supports-color
+      - utf-8-validate
+      - ws
+      - zod
+
+  '@ema-agent/compact@file:src/compact(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)':
+    dependencies:
+      '@ema-agent/llm': file:src/llm(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)(zod@4.4.3)
+      '@ema-agent/settings': file:src/settings
+      '@ema-agent/token': file:src/token(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)(zod@4.4.3)
+      '@ema-agent/usage': file:src/usage
+      zod: 4.4.3
+    transitivePeerDependencies:
+      - '@modelcontextprotocol/sdk'
+      - bufferutil
+      - encoding
+      - supports-color
+      - utf-8-validate
+      - ws
+
+  '@ema-agent/context@file:src/context(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(@shikijs/themes@4.4.3)(@types/react-dom@18.3.7(@types/react@18.3.29))(@types/react@18.3.29)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(ws@8.20.1)':
+    dependencies:
+      '@ema-agent/attachments': file:src/attachments(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)
+      '@ema-agent/git': file:src/git
+      '@ema-agent/llm': file:src/llm(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)(zod@4.4.3)
+      '@ema-agent/prompts': file:src/prompts(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(@shikijs/themes@4.4.3)(@types/react-dom@18.3.7(@types/react@18.3.29))(@types/react@18.3.29)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(ws@8.20.1)(zod@4.4.3)
+      '@ema-agent/session': file:src/session(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)(zod@4.4.3)
+      '@ema-agent/token': file:src/token(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)(zod@4.4.3)
+      '@ema-agent/tools': file:src/tools(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)
+      zod: 4.4.3
+    transitivePeerDependencies:
+      - '@modelcontextprotocol/sdk'
+      - '@shikijs/themes'
+      - '@types/react'
+      - '@types/react-dom'
+      - bufferutil
+      - encoding
+      - react
+      - react-dom
+      - supports-color
+      - utf-8-validate
+      - ws
+
+  '@ema-agent/embed@file:src/embed':
+    dependencies:
+      '@ema-agent/providers': file:src/providers
+
+  '@ema-agent/git@file:src/git': {}
+
+  '@ema-agent/goal@file:src/goal':
+    dependencies:
+      '@ema-agent/storage': file:src/storage
+
+  '@ema-agent/llm@file:src/llm(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)(zod@4.4.3)':
+    dependencies:
+      '@anthropic-ai/sdk': 0.39.0
+      '@ema-agent/providers': file:src/providers
+      '@google/genai': 2.7.0(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))
+      '@google/generative-ai': 0.21.0
+      openai: 4.104.0(ws@8.20.1)(zod@4.4.3)
+    transitivePeerDependencies:
+      - '@modelcontextprotocol/sdk'
+      - bufferutil
+      - encoding
+      - supports-color
+      - utf-8-validate
+      - ws
+      - zod
+
+  '@ema-agent/mcp@file:src/mcp(ws@8.20.1)':
+    dependencies:
+      '@ema-agent/llm': file:src/llm(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)(zod@4.4.3)
+      '@ema-agent/storage': file:src/storage
+      '@ema-agent/tools': file:src/tools(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)
+      '@modelcontextprotocol/sdk': 1.29.0(zod@4.4.3)
+      zod: 4.4.3
+    transitivePeerDependencies:
+      - '@cfworker/json-schema'
+      - bufferutil
+      - encoding
+      - supports-color
+      - utf-8-validate
+      - ws
+
+  '@ema-agent/memory@file:src/memory(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)(zod@4.4.3)':
+    dependencies:
+      '@ema-agent/git': file:src/git
+      '@ema-agent/llm': file:src/llm(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)(zod@4.4.3)
+      '@ema-agent/storage': file:src/storage
+      '@ema-agent/token': file:src/token(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)(zod@4.4.3)
+    transitivePeerDependencies:
+      - '@modelcontextprotocol/sdk'
+      - bufferutil
+      - encoding
+      - supports-color
+      - utf-8-validate
+      - ws
+      - zod
+
+  '@ema-agent/narrative@file:src/narrative(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)':
+    dependencies:
+      '@ema-agent/embed': file:src/embed
+      '@ema-agent/llm': file:src/llm(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)(zod@4.4.3)
+      '@ema-agent/storage': file:src/storage
+      jsonrepair: 3.15.0
+      zod: 4.4.3
+    transitivePeerDependencies:
+      - '@modelcontextprotocol/sdk'
+      - bufferutil
+      - encoding
+      - supports-color
+      - utf-8-validate
+      - ws
+
+  '@ema-agent/permission@file:src/permission':
+    dependencies:
+      '@ema-agent/settings': file:src/settings
+      ignore: 5.3.2
+      zod: 4.4.3
+
+  '@ema-agent/prompts@file:src/prompts(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(@shikijs/themes@4.4.3)(@types/react-dom@18.3.7(@types/react@18.3.29))(@types/react@18.3.29)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(ws@8.20.1)(zod@4.4.3)':
+    dependencies:
+      '@ema-agent/builtin-tools': file:src/builtin-tools(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(@shikijs/themes@4.4.3)(@types/react-dom@18.3.7(@types/react@18.3.29))(@types/react@18.3.29)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(ws@8.20.1)
+      '@ema-agent/characters': file:src/characters
+      '@ema-agent/session': file:src/session(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)(zod@4.4.3)
+    transitivePeerDependencies:
+      - '@modelcontextprotocol/sdk'
+      - '@shikijs/themes'
+      - '@types/react'
+      - '@types/react-dom'
+      - bufferutil
+      - encoding
+      - react
+      - react-dom
+      - supports-color
+      - utf-8-validate
+      - ws
+      - zod
+
+  '@ema-agent/providers@file:src/providers':
+    dependencies:
+      '@ema-agent/storage': file:src/storage
+
+  '@ema-agent/rerank@file:src/rerank':
+    dependencies:
+      '@ema-agent/providers': file:src/providers
+
+  '@ema-agent/sandbox@file:src/sandbox':
+    dependencies:
+      '@ema-agent/settings': file:src/settings
+      zod: 4.4.3
+
+  '@ema-agent/session@file:src/session(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)(zod@4.4.3)':
+    dependencies:
+      '@ema-agent/llm': file:src/llm(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)(zod@4.4.3)
+      '@ema-agent/permission': file:src/permission
+      '@ema-agent/storage': file:src/storage
+      '@ema-agent/tools': file:src/tools(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)
+    transitivePeerDependencies:
+      - '@modelcontextprotocol/sdk'
+      - bufferutil
+      - encoding
+      - supports-color
+      - utf-8-validate
+      - ws
+      - zod
+
+  '@ema-agent/settings@file:src/settings':
+    dependencies:
+      '@ema-agent/storage': file:src/storage
+      zod: 4.4.3
+
+  '@ema-agent/skills@file:src/skills':
+    dependencies:
+      '@ema-agent/settings': file:src/settings
+      '@ema-agent/storage': file:src/storage
+      fflate: 0.8.3
+      gray-matter: 4.0.3
+      zod: 4.4.3
+
+  '@ema-agent/speech@file:src/speech':
+    dependencies:
+      '@ema-agent/tts': file:src/tts
+      '@ema-agent/usage': file:src/usage
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
+
+  '@ema-agent/stage@file:src/stage': {}
+
+  '@ema-agent/storage@file:src/storage':
+    dependencies:
+      '@node-rs/jieba': 2.0.1
+      better-sqlite3: 12.9.0
+
+  '@ema-agent/stt@file:src/stt':
+    dependencies:
+      '@ema-agent/providers': file:src/providers
+
+  '@ema-agent/system@file:src/system':
+    dependencies:
+      '@ema-agent/sandbox': file:src/sandbox
+
+  '@ema-agent/tasks@file:src/tasks':
+    dependencies:
+      '@ema-agent/storage': file:src/storage
+
+  '@ema-agent/token@file:src/token(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)(zod@4.4.3)':
+    dependencies:
+      '@ema-agent/llm': file:src/llm(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)(zod@4.4.3)
+    transitivePeerDependencies:
+      - '@modelcontextprotocol/sdk'
+      - bufferutil
+      - encoding
+      - supports-color
+      - utf-8-validate
+      - ws
+      - zod
+
+  '@ema-agent/tools@file:src/tools(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)':
+    dependencies:
+      '@ema-agent/goal': file:src/goal
+      '@ema-agent/llm': file:src/llm(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)(zod@4.4.3)
+      '@ema-agent/memory': file:src/memory(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)(zod@4.4.3)
+      '@ema-agent/narrative': file:src/narrative(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)
+      '@ema-agent/permission': file:src/permission
+      '@ema-agent/sandbox': file:src/sandbox
+      '@ema-agent/settings': file:src/settings
+      '@ema-agent/skills': file:src/skills
+      '@ema-agent/tasks': file:src/tasks
+      '@ema-agent/token': file:src/token(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)(zod@4.4.3)
+      '@ema-agent/vision': file:src/vision(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)(zod@4.4.3)
+      diff: 9.0.0
+      glob: 11.1.0
+      lru-cache: 10.4.3
+      zod: 4.4.3
+      zod-to-json-schema: 3.25.2(zod@4.4.3)
+    transitivePeerDependencies:
+      - '@modelcontextprotocol/sdk'
+      - bufferutil
+      - encoding
+      - supports-color
+      - utf-8-validate
+      - ws
+
+  '@ema-agent/tts@file:src/tts':
+    dependencies:
+      '@ema-agent/providers': file:src/providers
+      ws: 8.20.1
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
+
+  '@ema-agent/turn@file:src/turn(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(@shikijs/themes@4.4.3)(@types/react-dom@18.3.7(@types/react@18.3.29))(@types/react@18.3.29)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(ws@8.20.1)(zod@4.4.3)':
+    dependencies:
+      '@ema-agent/agent': file:src/agent(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)
+      '@ema-agent/attachments': file:src/attachments(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)
+      '@ema-agent/characters': file:src/characters
+      '@ema-agent/compact': file:src/compact(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)
+      '@ema-agent/context': file:src/context(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(@shikijs/themes@4.4.3)(@types/react-dom@18.3.7(@types/react@18.3.29))(@types/react@18.3.29)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(ws@8.20.1)
+      '@ema-agent/goal': file:src/goal
+      '@ema-agent/llm': file:src/llm(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)(zod@4.4.3)
+      '@ema-agent/permission': file:src/permission
+      '@ema-agent/prompts': file:src/prompts(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(@shikijs/themes@4.4.3)(@types/react-dom@18.3.7(@types/react@18.3.29))(@types/react@18.3.29)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(ws@8.20.1)(zod@4.4.3)
+      '@ema-agent/providers': file:src/providers
+      '@ema-agent/sandbox': file:src/sandbox
+      '@ema-agent/session': file:src/session(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)(zod@4.4.3)
+      '@ema-agent/settings': file:src/settings
+      '@ema-agent/skills': file:src/skills
+      '@ema-agent/stage': file:src/stage
+      '@ema-agent/storage': file:src/storage
+      '@ema-agent/tasks': file:src/tasks
+      '@ema-agent/tools': file:src/tools(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)
+      '@ema-agent/usage': file:src/usage
+      '@ema-agent/vision': file:src/vision(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)(zod@4.4.3)
+    transitivePeerDependencies:
+      - '@modelcontextprotocol/sdk'
+      - '@shikijs/themes'
+      - '@types/react'
+      - '@types/react-dom'
+      - bufferutil
+      - encoding
+      - react
+      - react-dom
+      - supports-color
+      - utf-8-validate
+      - ws
+      - zod
+
+  '@ema-agent/ui@file:src/ui(@types/react-dom@18.3.7(@types/react@18.3.29))(@types/react@18.3.29)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@formkit/auto-animate': 0.8.4
+      '@mermaid-js/layout-elk': 0.2.2(patch_hash=32mzzjxfnebxmcoo6tavgorpuq)(mermaid@11.17.2)
+      '@radix-ui/react-checkbox': 1.3.4(@types/react-dom@18.3.7(@types/react@18.3.29))(@types/react@18.3.29)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@radix-ui/react-dialog': 1.1.15(@types/react-dom@18.3.7(@types/react@18.3.29))(@types/react@18.3.29)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@radix-ui/react-dropdown-menu': 2.1.16(@types/react-dom@18.3.7(@types/react@18.3.29))(@types/react@18.3.29)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@radix-ui/react-popover': 1.1.15(@types/react-dom@18.3.7(@types/react@18.3.29))(@types/react@18.3.29)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@radix-ui/react-scroll-area': 1.2.10(@types/react-dom@18.3.7(@types/react@18.3.29))(@types/react@18.3.29)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@radix-ui/react-select': 2.2.6(@types/react-dom@18.3.7(@types/react@18.3.29))(@types/react@18.3.29)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@radix-ui/react-slider': 1.3.6(@types/react-dom@18.3.7(@types/react@18.3.29))(@types/react@18.3.29)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@radix-ui/react-switch': 1.2.6(@types/react-dom@18.3.7(@types/react@18.3.29))(@types/react@18.3.29)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@radix-ui/react-tabs': 1.1.13(@types/react-dom@18.3.7(@types/react@18.3.29))(@types/react@18.3.29)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@radix-ui/react-tooltip': 1.2.8(@types/react-dom@18.3.7(@types/react@18.3.29))(@types/react@18.3.29)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@unocss/core': 66.7.0
+      clsx: 2.1.1
+      highlight.js: 11.11.1
+      katex: 0.16.47
+      mermaid: 11.17.2
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+      react-markdown: 9.1.0(@types/react@18.3.29)(react@18.3.1)
+      rehype-highlight: 7.0.2
+      rehype-katex: 7.0.1
+      rehype-raw: 7.0.0
+      rehype-sanitize: 6.0.0
+      remark-gfm: 4.0.1
+      remark-math: 6.0.0
+      tailwind-merge: 2.6.1
+    transitivePeerDependencies:
+      - '@types/react'
+      - '@types/react-dom'
+      - supports-color
+
+  '@ema-agent/usage@file:src/usage':
+    dependencies:
+      '@ema-agent/storage': file:src/storage
+
+  '@ema-agent/vision@file:src/vision(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)(zod@4.4.3)':
+    dependencies:
+      '@ema-agent/llm': file:src/llm(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.20.1)(zod@4.4.3)
+    transitivePeerDependencies:
+      - '@modelcontextprotocol/sdk'
+      - bufferutil
+      - encoding
+      - supports-color
+      - utf-8-validate
+      - ws
+      - zod
+
   '@emnapi/core@1.10.0':
     dependencies:
       '@emnapi/wasi-threads': 1.2.1
@@ -11378,20 +12014,20 @@ snapshots:
 
   hast-util-from-dom@5.0.1:
     dependencies:
-      '@types/hast': 3.0.4
+      '@types/hast': 3.0.5
       hastscript: 9.0.1
       web-namespaces: 2.0.1
 
   hast-util-from-html-isomorphic@2.0.0:
     dependencies:
-      '@types/hast': 3.0.4
+      '@types/hast': 3.0.5
       hast-util-from-dom: 5.0.1
       hast-util-from-html: 2.0.3
       unist-util-remove-position: 5.0.0
 
   hast-util-from-html@2.0.3:
     dependencies:
-      '@types/hast': 3.0.4
+      '@types/hast': 3.0.5
       devlop: 1.1.0
       hast-util-from-parse5: 8.0.3
       parse5: 7.3.0
@@ -11400,7 +12036,7 @@ snapshots:
 
   hast-util-from-parse5@8.0.3:
     dependencies:
-      '@types/hast': 3.0.4
+      '@types/hast': 3.0.5
       '@types/unist': 3.0.3
       devlop: 1.1.0
       hastscript: 9.0.1
@@ -11415,15 +12051,15 @@ snapshots:
 
   hast-util-is-element@3.0.0:
     dependencies:
-      '@types/hast': 3.0.4
+      '@types/hast': 3.0.5
 
   hast-util-parse-selector@4.0.0:
     dependencies:
-      '@types/hast': 3.0.4
+      '@types/hast': 3.0.5
 
   hast-util-raw@9.1.0:
     dependencies:
-      '@types/hast': 3.0.4
+      '@types/hast': 3.0.5
       '@types/unist': 3.0.3
       '@ungap/structured-clone': 1.3.1
       hast-util-from-parse5: 8.0.3
@@ -11439,7 +12075,7 @@ snapshots:
 
   hast-util-sanitize@5.0.2:
     dependencies:
-      '@types/hast': 3.0.4
+      '@types/hast': 3.0.5
       '@ungap/structured-clone': 1.3.1
       unist-util-position: 5.0.0
 
@@ -11484,7 +12120,7 @@ snapshots:
 
   hast-util-to-html@9.0.5:
     dependencies:
-      '@types/hast': 3.0.4
+      '@types/hast': 3.0.5
       '@types/unist': 3.0.3
       ccount: 2.0.1
       comma-separated-tokens: 2.0.3
@@ -11499,7 +12135,7 @@ snapshots:
   hast-util-to-jsx-runtime@2.3.6:
     dependencies:
       '@types/estree': 1.0.8
-      '@types/hast': 3.0.4
+      '@types/hast': 3.0.5
       '@types/unist': 3.0.3
       comma-separated-tokens: 2.0.3
       devlop: 1.1.0
@@ -11518,7 +12154,7 @@ snapshots:
 
   hast-util-to-parse5@8.0.1:
     dependencies:
-      '@types/hast': 3.0.4
+      '@types/hast': 3.0.5
       comma-separated-tokens: 2.0.3
       devlop: 1.1.0
       property-information: 7.1.0
@@ -11532,18 +12168,18 @@ snapshots:
 
   hast-util-to-text@4.0.2:
     dependencies:
-      '@types/hast': 3.0.4
+      '@types/hast': 3.0.5
       '@types/unist': 3.0.3
       hast-util-is-element: 3.0.0
       unist-util-find-after: 5.0.0
 
   hast-util-whitespace@3.0.0:
     dependencies:
-      '@types/hast': 3.0.4
+      '@types/hast': 3.0.5
 
   hastscript@9.0.1:
     dependencies:
-      '@types/hast': 3.0.4
+      '@types/hast': 3.0.5
       comma-separated-tokens: 2.0.3
       hast-util-parse-selector: 4.0.0
       property-information: 7.1.0
@@ -11891,7 +12527,7 @@ snapshots:
 
   lowlight@3.3.0:
     dependencies:
-      '@types/hast': 3.0.4
+      '@types/hast': 3.0.5
       devlop: 1.1.0
       highlight.js: 11.11.1
 
@@ -12015,7 +12651,7 @@ snapshots:
 
   mdast-util-math@3.0.0:
     dependencies:
-      '@types/hast': 3.0.4
+      '@types/hast': 3.0.5
       '@types/mdast': 4.0.4
       devlop: 1.1.0
       longest-streak: 3.1.0
@@ -12028,7 +12664,7 @@ snapshots:
   mdast-util-mdx-expression@2.0.1:
     dependencies:
       '@types/estree-jsx': 1.0.5
-      '@types/hast': 3.0.4
+      '@types/hast': 3.0.5
       '@types/mdast': 4.0.4
       devlop: 1.1.0
       mdast-util-from-markdown: 2.0.3
@@ -12039,7 +12675,7 @@ snapshots:
   mdast-util-mdx-jsx@3.2.0:
     dependencies:
       '@types/estree-jsx': 1.0.5
-      '@types/hast': 3.0.4
+      '@types/hast': 3.0.5
       '@types/mdast': 4.0.4
       '@types/unist': 3.0.3
       ccount: 2.0.1
@@ -12066,7 +12702,7 @@ snapshots:
   mdast-util-mdxjs-esm@2.0.1:
     dependencies:
       '@types/estree-jsx': 1.0.5
-      '@types/hast': 3.0.4
+      '@types/hast': 3.0.5
       '@types/mdast': 4.0.4
       devlop: 1.1.0
       mdast-util-from-markdown: 2.0.3
@@ -12081,7 +12717,7 @@ snapshots:
 
   mdast-util-to-hast@13.2.1:
     dependencies:
-      '@types/hast': 3.0.4
+      '@types/hast': 3.0.5
       '@types/mdast': 4.0.4
       '@ungap/structured-clone': 1.3.1
       devlop: 1.1.0
@@ -12911,7 +13547,7 @@ snapshots:
 
   react-markdown@9.1.0(@types/react@18.3.29)(react@18.3.1):
     dependencies:
-      '@types/hast': 3.0.4
+      '@types/hast': 3.0.5
       '@types/mdast': 4.0.4
       '@types/react': 18.3.29
       devlop: 1.1.0
@@ -13047,7 +13683,7 @@ snapshots:
 
   rehype-highlight@7.0.2:
     dependencies:
-      '@types/hast': 3.0.4
+      '@types/hast': 3.0.5
       hast-util-to-text: 4.0.2
       lowlight: 3.3.0
       unist-util-visit: 5.1.0
@@ -13055,7 +13691,7 @@ snapshots:
 
   rehype-katex@7.0.1:
     dependencies:
-      '@types/hast': 3.0.4
+      '@types/hast': 3.0.5
       '@types/katex': 0.16.8
       hast-util-from-html-isomorphic: 2.0.0
       hast-util-to-text: 4.0.2
@@ -13065,7 +13701,7 @@ snapshots:
 
   rehype-raw@7.0.0:
     dependencies:
-      '@types/hast': 3.0.4
+      '@types/hast': 3.0.5
       hast-util-raw: 9.1.0
       vfile: 6.0.3
 
@@ -13079,7 +13715,7 @@ snapshots:
 
   rehype-sanitize@6.0.0:
     dependencies:
-      '@types/hast': 3.0.4
+      '@types/hast': 3.0.5
       hast-util-sanitize: 5.0.2
 
   remark-gfm@4.0.1:
@@ -13120,7 +13756,7 @@ snapshots:
 
   remark-rehype@11.1.2:
     dependencies:
-      '@types/hast': 3.0.4
+      '@types/hast': 3.0.5
       '@types/mdast': 4.0.4
       mdast-util-to-hast: 13.2.1
       unified: 11.0.5

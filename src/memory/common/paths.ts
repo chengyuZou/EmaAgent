@@ -4,7 +4,9 @@ import os from 'node:os';
 import path from 'node:path';
 
 export function memoryRootDir(): string {
-  return path.join(os.homedir(), '.ema-agent', 'memories');
+  // 与 Desktop 和 Server 使用同一个应用数据目录, 隔离运行时不能读取默认目录里的真实记忆.
+  const profileRoot = process.env['EMA_PROFILE_DIR'] ?? path.join(os.homedir(), '.ema-agent');
+  return path.join(profileRoot, 'memories');
 }
 
 export function workMemoryDir(): string {

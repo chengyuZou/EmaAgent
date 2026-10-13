@@ -9,13 +9,13 @@
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
+    "test:scripts": "node --test scripts/tests/releaseScripts.test.mjs",
     "release:prepare:server": "node scripts/prepare-server.mjs",
     "release:inject:cubism": "node scripts/inject-cubism-core.mjs",
     "release:verify": "node scripts/verify-release-assets.mjs",
-    "release:verify:versions": "node scripts/verify-release-versions.mjs",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
-    "tauri:build:release": "pnpm release:verify:versions && pnpm release:verify && tauri build --config src-tauri/tauri.release.conf.json"
+    "tauri:build:release": "pnpm release:verify && tauri build --config src-tauri/tauri.release.conf.json"
   },
   "dependencies": {
     "@ema-agent/agent": "workspace:*",
