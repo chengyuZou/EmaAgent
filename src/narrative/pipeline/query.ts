@@ -1,11 +1,11 @@
 import type {
+  NarrativeChunkRow,
   NarrativeChunksRepo,
   NarrativeGraphRepo,
-  NarrativeKeywords,
   NarrativeTimelineId,
 } from '@ema-agent/storage';
-import type { NarrativeGraphResult, NarrativeQueryMode } from '../types.js';
-import { buildContext, truncateGraph } from './context.js';
+import type { NarrativeGraphResult, NarrativeKeywords, NarrativeQueryMode } from '../types.js';
+import { truncateGraph } from './context.js';
 import { retrieveGlobal } from './retrieval/global.js';
 import { retrieveHybrid } from './retrieval/hybrid.js';
 import { retrieveLocal } from './retrieval/local.js';
@@ -52,17 +52,17 @@ export function queryTimeline(
   chunks: NarrativeChunksRepo,
   graph: NarrativeGraphRepo,
   signal: AbortSignal,
-): string {
+): NarrativeChunkRow[] {
   signal.throwIfAborted();
   const queryEmbedding = embeddings.get(query);
   if (!queryEmbedding) {
     // 图模式没有可用关键词时不会编码子问题, 因此不读剧情资产; 不是一次检索失败.
-    return '';
+    return [];
   }
   const chunkVectors = mode === 'naive' || mode === 'mix' ? chunks.listVectors(timeline) : undefined;
   if (mode === 'naive') {
     const ids = retrieveNaive(queryEmbedding, chunkVectors!, signal);
-    return buildContext({ entities: [], relations: [] }, chunks.findChunksByIds(timeline, ids), true);
+    return chunks.findChunksByIds(timeline, ids);
   }
   const low = embeddings.get(keywords.lowLevelKeywords.join(', '));
   const high = embeddings.get(keywords.highLevelKeywords.join(', '));
@@ -94,5 +94,5 @@ export function queryTimeline(
   ], id => id);
   const selected = chunks.findChunksByIds(timeline, ids);
   signal.throwIfAborted();
-  return buildContext(filtered, selected, false);
+  return selected;
 }

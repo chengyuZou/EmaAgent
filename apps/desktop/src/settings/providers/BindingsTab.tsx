@@ -31,6 +31,7 @@ const MODULES: Array<{ id: BindingModule; label: string; desc: string }> = [
   { id: 'memory-llm',     label: 'Memory',        desc: '记忆提取与整合' },
   { id: 'narrative-embed', label: 'Narrative 嵌入', desc: '剧情检索嵌入, 请绑定 Pro/bge-m3 (1024 维)' },
   { id: 'narrative-llm',   label: 'Narrative LLM',  desc: '剧情路由与关键词提取' },
+  { id: 'narrative-rerank', label: 'Narrative Rerank', desc: '剧情原文相关性重排' },
   { id: 'tts',           label: 'TTS',          desc: '语音合成' },
   { id: 'stt',           label: 'STT',          desc: '语音识别' },
   { id: 'vision',        label: 'Vision',       desc: '图像理解' },

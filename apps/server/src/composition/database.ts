@@ -34,7 +34,7 @@ export interface DatabaseComposition {
   readonly profileDb: Database;
   /** `{activeDataDir}/data.db`：Session/Turn/Message/附件/后台进程。 */
   readonly dataDb: Database;
-  /** 固定剧情资产与关键词缓存, 不随会话数据目录或角色切换. */
+  /** 固定剧情资产, 不随会话数据目录或角色切换. */
   readonly narrativeDb: Database;
   /** 当前活动数据目录绝对路径；文件类存储（附件、音频、后台日志）都落在它下面。 */
   readonly activeDataDir: string;

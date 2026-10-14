@@ -6,7 +6,7 @@ import { StringDecoder } from 'node:string_decoder';
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.join(dirname, '..', 'migrations');
-const NARRATIVE_VERSION = 1;
+const NARRATIVE_VERSION = 2;
 const SEED_READ_BYTES = 64 * 1024;
 const SEED_EXEC_CHARS = 512 * 1024;
 const NARRATIVE_SEED_FILES = [
@@ -21,7 +21,7 @@ const NARRATIVE_SEED_FILES = [
  *   data.db    -> migrations/data/     sessions/turns/messages/音频/agent tasks
  *   narrative.db -> migrations/narrative/ 具名 schema 和固定剧情种子, 初始版本为 1.
  *
- * profile/data 按数字编号逐个迁移, narrative 首次执行两份定义和三份种子 SQL.
+ * profile/data 按数字编号逐个迁移, narrative 首次执行表定义和三份种子 SQL.
  */
 export type DatabaseKind = 'profile' | 'data' | 'narrative';
 
@@ -122,12 +122,16 @@ export class MigrationsRunner {
       throw new Error(`[narrative] 数据库版本 v${current} 高于支持的 v${NARRATIVE_VERSION}`);
     }
 
-    // 三周目和缓存 schema 全部成功才记录版本; 出错时连建表一起回滚.
     this.db.transaction(() => {
-      this.db.exec(fs.readFileSync(path.join(folder, 'narrative.sql'), 'utf8'));
-      this.db.exec(fs.readFileSync(path.join(folder, 'narrative-cache.sql'), 'utf8'));
-      for (const filename of NARRATIVE_SEED_FILES) {
-        this.executeNarrativeSeeds(path.join(folder, filename));
+      if (current === 0) {
+        // 首次安装才导入固定剧情. 已有库升级不重新写入正文、图或向量.
+        this.db.exec(fs.readFileSync(path.join(folder, 'narrative.sql'), 'utf8'));
+        for (const filename of NARRATIVE_SEED_FILES) {
+          this.executeNarrativeSeeds(path.join(folder, filename));
+        }
+      }
+      if (current === 1) {
+        this.db.exec('DROP TABLE IF EXISTS keyword_cache');
       }
       this.db.pragma(`user_version = ${NARRATIVE_VERSION}`);
     })();

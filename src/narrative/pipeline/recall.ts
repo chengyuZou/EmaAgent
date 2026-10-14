@@ -1,13 +1,8 @@
 import { setImmediate } from 'node:timers/promises';
 import type { CallEmbed } from '@ema-agent/embed';
 import type { CallLlm } from '@ema-agent/llm';
-import type {
-  NarrativeChunksRepo,
-  NarrativeGraphRepo,
-  NarrativeKeywordCacheRepo,
-  NarrativeKeywords,
-  NarrativeTimelineId,
-} from '@ema-agent/storage';
+import type { CallRerank } from '@ema-agent/rerank';
+import type { NarrativeChunksRepo, NarrativeGraphRepo, NarrativeTimelineId } from '@ema-agent/storage';
 import { throwIfCancelled } from '../errors.js';
 import type {
   NarrativeQueryMode,
@@ -15,8 +10,8 @@ import type {
   NarrativeTimelineFailure,
   NarrativeTimelineResult,
 } from '../types.js';
-import { EMBEDDING_DIM } from './constants.js';
-import { extractKeywords } from './keywords.js';
+import { CHUNK_TOP_K, EMBEDDING_DIM, MAX_CONTEXT_CHARACTERS, RERANK_TOP_K } from './constants.js';
+import { buildContext } from './context.js';
 import { embeddingTexts, queryTimeline } from './query.js';
 import { routeTimelines } from './router.js';
 
@@ -28,50 +23,30 @@ function timelineFailure(error: unknown): NarrativeTimelineFailure {
 }
 
 export class NarrativeSearch {
-  // 只持有数据库访问入口. 资产向量、查询向量和中间结果都属于一次 search, 不随实例缓存.
+  // 向量及中间结果只属于一次 search, 不随实例缓存.
   constructor(
     private readonly chunks: NarrativeChunksRepo,
     private readonly graph: NarrativeGraphRepo,
-    private readonly keywordCache: NarrativeKeywordCacheRepo,
   ) {}
 
   /**
-   * query 是用户问题, mode 只选择召回算法, 不改变周目路由. 返回背景文本, 不生成最终回答.
-   * callLlm 负责路由/提词; 协议必填参数和重试由宿主配置. callEmbed 必须使用资产的 Pro/bge-m3.
-   * 同为 1024 维的其他模型也不能与这些资产比较. signal 贯穿模型调用和计算, 取消向调用方抛出.
+   * callLlm 一次完成路由和提词. callEmbed 必须使用资产原有的 Pro/bge-m3 向量空间.
+   * 重排比较传入的完整 query 和原文块, 不使用关键词替代 query, 不比较不同周目的分数.
+   * 返回各周目的证据, 不生成最终回答. 宿主负责调用配置及用量记录.
    */
   async search(
     query: string,
     mode: NarrativeQueryMode,
     callLlm: CallLlm,
     callEmbed: CallEmbed,
+    callRerank: CallRerank,
     signal: AbortSignal,
   ): Promise<NarrativeRecallResult> {
-    // 同一人物在不同周目的事件不同, 先路由并拆出子问题; 路由失败无法确定搜索范围, 整次查询抛错.
     const routes = await routeTimelines(query, callLlm, signal);
-    const queries = [...new Set(routes.values())];
-
-    // 相同子问题可能分到多个周目, 只提词一次. Promise.all 等待可重叠的模型请求, 返回顺序不变.
-    const prepared = await Promise.all(queries.map(async subquery => {
-      try {
-        let keywords: NarrativeKeywords = { highLevelKeywords: [], lowLevelKeywords: [] };
-        if (mode !== 'naive') {
-          // naive 直接用子问题搜索文本块, 不消费图关键词, 因此不调用提词模型.
-          keywords = await extractKeywords(subquery, mode, this.keywordCache, callLlm, signal);
-        }
-        return { keywords };
-      } catch (error) {
-        throwIfCancelled(error, signal);
-        return timelineFailure(error);
-      }
-    }));
-    const byQuery = new Map(queries.map((subquery, index) => [subquery, prepared[index]!]));
     const texts = new Set<string>();
-    for (const [subquery, item] of byQuery) {
-      if ('keywords' in item) {
-        for (const text of embeddingTexts(subquery, mode, item.keywords)) {
-          texts.add(text);
-        }
+    for (const route of routes.values()) {
+      for (const text of embeddingTexts(route.query, mode, route)) {
+        texts.add(text);
       }
     }
     const embeddings = new Map<string, Float32Array>();
@@ -80,7 +55,6 @@ export class NarrativeSearch {
       try {
         signal.throwIfAborted();
         const inputs = [...texts];
-        // 所有周目的子问题和关键词合成一次批量编码; 返回数组按输入顺序与文本配对.
         const embedded = await callEmbed({ texts: inputs, signal });
         signal.throwIfAborted();
         if (embedded.dim !== EMBEDDING_DIM) {
@@ -94,26 +68,32 @@ export class NarrativeSearch {
         embeddingFailure = timelineFailure(error);
       }
     }
-    // 各周目独立调度, 单周目失败不拒绝其他任务. Promise.all 保留路由顺序, 不按完成顺序组装 Map.
-    const entries = await Promise.all([...routes].map(async ([timeline, subquery]) => {
+
+    // 各周目各有返回预算, 不让某一周目的高分文档挤掉其他周目.
+    const characterLimit = Math.floor(MAX_CONTEXT_CHARACTERS / routes.size);
+    const entries = await Promise.all([...routes].map(async ([timeline, route]) => {
       signal.throwIfAborted();
-      const item = byQuery.get(subquery)!;
-      if ('code' in item) {
-        return [timeline, item] as const;
-      }
-      if (embeddingFailure && embeddingTexts(subquery, mode, item.keywords).length > 0) {
-        // 一次批量编码失败会影响所有需要它的周目; 没有关键词且不需要编码的周目仍返回空背景.
+      if (embeddingFailure && embeddingTexts(route.query, mode, route).length > 0) {
         return [timeline, embeddingFailure] as const;
       }
       try {
-        // 等待事件循环调度, 让等待中的任务能响应取消. SQL 和向量计算仍在同一线程轮流执行,
-        // 不会多核并行, 也不能在一次同步 queryTimeline 的中途处理新的取消事件.
+        // SQL 和向量计算仍在同一线程轮流执行; 等待调度时可以响应取消.
         await setImmediate(undefined, { signal });
-        const text = queryTimeline(
-          timeline, subquery, mode, item.keywords, embeddings,
-          this.chunks, this.graph, signal,
-        );
-        return [timeline, { text }] as const;
+        const candidates = queryTimeline(
+          timeline, route.query, mode, route, embeddings, this.chunks, this.graph, signal,
+        ).slice(0, CHUNK_TOP_K);
+        if (candidates.length === 0) {
+          return [timeline, { text: '' }] as const;
+        }
+        const ranked = await callRerank({
+          query,
+          documents: candidates.map(chunk => chunk.content),
+          topK: Math.min(RERANK_TOP_K, candidates.length),
+          signal,
+        });
+        signal.throwIfAborted();
+        const selected = ranked.results.map(item => candidates[item.index]!);
+        return [timeline, { text: buildContext(selected, characterLimit) }] as const;
       } catch (error) {
         throwIfCancelled(error, signal);
         return [timeline, timelineFailure(error)] as const;

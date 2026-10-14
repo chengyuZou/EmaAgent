@@ -8,6 +8,7 @@ export const MODEL_BINDING_MODULES = [
   'memory-llm',
   'narrative-embed',
   'narrative-llm',
+  'narrative-rerank',
   'tts',
   'stt',
   'vision',

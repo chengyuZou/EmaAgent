@@ -59,6 +59,7 @@ export const MODEL_BINDING_CAPABILITIES: Readonly<Record<ModelBindingModule, Mod
     'memory-llm': 'llm',
     'narrative-llm': 'llm',
     'narrative-embed': 'embed',
+    'narrative-rerank': 'rerank',
     'tts': 'tts',
     'stt': 'stt',
     'vision': 'vision',

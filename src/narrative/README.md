@@ -1,20 +1,28 @@
 # Narrative
 
-查询固定的三周目剧情资产. 包内保留全剧情摘要路由, 使用 LightRAG 的实体、关系和文本块召回流程, 返回检索背景文本. 不导入新文档、不重新分块、不生成最终回答, 不启动 Python 或 HTTP 服务.
+
+手动真实模型验收入口是 `apps/server/src/composition/tests/narrativeSmoke.ts`. 在仓库根目录运行 `node --import tsx apps/server/src/composition/tests/narrativeSmoke.ts <已启用的 Rerank 模型 ID>`. 它读取当前配置, 在内存副本中绑定指定重排模型, 调用正式 Server 查询函数, 核对单周目结局证据、跨周目结果及 SQL 计量. 另用当前艾玛人设生成一次回答. 运行会产生模型费用, 不更改用户绑定或会话; 不替代原会话中主 Agent 多轮工具调用的验收.
+查询固定的三周目剧情资产. 一次 LLM 调用确定周目、子问题和关键词, 用 LightRAG 的实体、关系及文本块算法召回原文, 再按原问题重排. 返回证据, 最终回答由主 Agent 生成.
 
 ## 使用
 
-`NarrativeSearch` 接收 Storage 的三个 Narrative Repo. 宿主负责打开并初始化 `~/.ema-agent/narrative/narrative.db`, 以及按模型绑定创建 `CallLlm` 和 `CallEmbed`.
+宿主打开剧情数据库, 创建两个 Storage Repo, 并传入已有的三个模型调用类型:
 
 ```ts
 import { NarrativeSearch } from '@ema-agent/narrative';
 
-const narrative = new NarrativeSearch(chunksRepo, graphRepo, keywordCacheRepo);
-const result = await narrative.search(query, 'mix', callLlm, callEmbed, signal);
+const narrative = new NarrativeSearch(chunksRepo, graphRepo);
+const result = await narrative.search(
+  query,
+  'hybrid',
+  callLlm,
+  callEmbed,
+  callRerank,
+  signal,
+);
 
 for (const [timeline, value] of result) {
   if ('text' in value) {
-    // text 为空表示这次查询完成, 但没有找到可返回的剧情背景.
     useContext(timeline, value.text);
   } else {
     showFailure(timeline, value.code, value.message);
@@ -22,75 +30,70 @@ for (const [timeline, value] of result) {
 }
 ```
 
-结果是 `Map<NarrativeTimelineId, NarrativeTimelineResult>`, 仅包含路由选中的周目, 顺序与路由结果一致. 每个周目返回 `{ text }` 或 `{ code: 'timeline_query_failed', message }`. 包还导出结果类型及 `NarrativeQueryMode`, 不接收 Session 或 Turn 身份, 不发送宿主事件.
+三个调用函数均必传. 结果是 `Map<NarrativeTimelineId, NarrativeTimelineResult>`, 只包含路由选中的周目, 顺序与路由结果一致. 每个周目返回 `{ text }` 或 `{ code: 'timeline_query_failed', message }`. 空文本表示没有可返回的证据.
 
-`CallEmbed` 必须使用资产原有的 `Pro/bge-m3` 向量空间. 仅维度相同不代表模型可以互换; 包内检查返回维度是否为 1024. `CallLlm` 负责路由与提词, 其绑定、协议必填参数和调用重试由宿主处理. 例如 Anthropic 协议所需的 `maxOutputTokens` 应由传入的调用函数补齐, 本包不另设输出预算.
+`CallEmbed` 必须使用资产原有的 `Pro/BAAI/bge-m3` 向量空间, 包内检查返回维度为 1024. 同样是 1024 维的其他模型不能直接与这些向量比较. 模型绑定、协议参数及用量记录由宿主负责, Narrative 不接收 Session、Turn 或供应商身份.
 
-Server 使用 `narrative-llm` 和 `narrative-embed` 绑定创建这两个调用函数. Turn 准备时先用当前角色的 `name` 调用 `isWitchTrialCharacter`. 不在名单中的角色不取得查询函数, 因而本轮工具列表没有 NarrativeSearch. 名单命中后仍需要可用的两项模型绑定, 以及 `tools.disabled` 没有禁用该工具. 角色判断不改写工具开关或模型绑定.
+Server 使用 `narrative-llm`、`narrative-embed`、`narrative-rerank` 三项绑定. 在 Turn 准备时解析并固定本轮配置, 后续设置变更影响下一 Turn. Server 的 `complete`、`completeEmbed`、`completeRerank` 分别传入对应的 Call 参数.
 
-角色, 模型绑定, 工具开关和 `narrative.queryMode` 在 Turn 准备时读取, 之后修改影响下一 Turn, 不取消当前查询. `NarrativeSearch` 查询实现只处理传入的问题, 不自行读取当前角色.
-
-Agent 仅通过工具调用查询剧情, 不在准备 Turn reminder 时预先查询, 也不限制每轮调用次数. Map 只在 `NarrativeSearchTool` 输出时转为可保存的数组结果; 工具调用事件、历史存储和 ToolUI 使用这份普通工具结果, 不增加 Narrative 专用事件.
-
-## 角色识别与桌面提示
-
-`isWitchTrialCharacter(name: string): boolean` 按中, 日, 英文完整姓名识别角色. 它去掉两端空白并忽略英文大小写, 不匹配昵称, 角色描述或包含姓名的任意文本. 同一角色的不同拼写在同一组, 黑部奈叶香与黑部穗乃香是不同组. 日文主要角色姓名可核对[官方角色名单](https://manosaba.com/posts/illustcontest); 中英文同时保留本项目剧情资产和角色卡的全名拼写.
-
-Server 可以从包根入口导入此函数. 浏览器使用 `@ema-agent/narrative/isWitchTrialCharacter`, 仅加载名单, 不加载依赖 Node 的检索实现. 两个入口使用同一份源码.
-
-桌面 Chat 的 `NarrativeToolNotice` 读取现有角色, Provider 和绑定 Store, 并在进入 Chat 或收到 `settings_changed` 时读取工具开关. 手动关闭工具时不提示. 剧情角色缺配置时说明缺少的绑定, 协议或 API Key, 可进入模型绑定页; 非剧情角色且配置完整时说明本轮不会提供剧情工具, 避免引入无关剧情造成 OOC. 剧情角色已配置完成, 或非剧情角色尚未配置时不显示提示. 关闭提示只改变当前页面的显示, 不保存到数据库或修改开关.
-
-Tools 页持续说明当前角色与配置是否允许下一轮使用此工具. 前端判断的是本地配置是否齐全, 不验证供应商 Key 的有效性或网络是否可达; 实际查询失败仍通过普通 Tool 结果展示.
+LLM 由 Server 等待 `createLlmCompletion` 完成, 读取最终用量后记一条记录, 再通过现有 CallLlm 事件类型交付正文. 流中途失败时没有完整 completion, Token 字段留空. Embedding 和 Rerank 在请求结束后各记一次. 记录使用本次真实调用的唯一 ID, 并归属发起查询的 Session 和 Turn. Narrative 本身不记账.
 
 ## 查询流程
 
 ```text
 问题
-  → 全剧情摘要路由, 得到周目与各自的子问题
-  → 按子问题查询提词缓存, 未命中时调用 LLM 提词
-  → 合并这次查询需要编码的文本, 一次批量调用 Embedding
-  → 在各周目内按所选模式搜索
-  → 按字符数限制实体和关系长度, 从图中找到来源块并选块
-  → 交替合并、去重, 通过 Repo 批量读取正文
-  → 限制正文长度, 返回各周目的检索背景
+  → 一次 LLM 根据剧情摘要生成周目、子问题和两类关键词
+  → 合并并去重编码文本, 一次批量 Embedding
+  → 各周目按所选算法召回实体、关系及来源原文
+  → 每周目最多二十块候选, 分别调用 Rerank
+  → 每周目最多八块重排后的原文, 分配整次查询的字符预算
+  → 按路由顺序返回各周目证据
 ```
 
-同一个子问题被分到多个周目时, 在这次查询中只提词一次, 相同文本只编码一次. 成功提词后立即写入 SQL 缓存, 不等待召回完成. 路由每次执行; 不缓存路由或最终检索文本.
+路由优先遵守用户指定的周目. 未限定较早阶段而只问最终结果时, 查询第三周目; 明确跨周目比较时才扩大范围. Summary 只帮助确定范围和消除姓名歧义, 不代替证据或把答案预填进子问题.
+
+高层关键词表示主题和事件, 用于查关系; 低层关键词表示具体人物及对象, 用于查实体. 主题短语使用英文, 专名保持原语言, 可按摘要补全确定的中文全名. 两组关键词可以为空, 不为填满字段编造内容. 规划结果每次生成, 不读写关键词缓存.
 
 | 模式 | 查找方式 |
 | --- | --- |
-| `local` | 用具体人物等关键词搜索实体, 再读取它们相邻的关系 |
-| `global` | 用主题、事件等关键词搜索关系, 再读取两端实体 |
-| `hybrid` | 交替合并 local 和 global 的实体与关系, 去掉重复项 |
-| `naive` | 路由后的子问题直接搜索文本块, 不提取关键词或读取图 |
+| `local` | 具体人物等关键词搜索实体, 再读取相邻关系 |
+| `global` | 主题、事件等关键词搜索关系, 再读取两端实体 |
+| `hybrid` | 交替合并 local 与 global, 去掉重复项 |
+| `naive` | 子问题直接搜索文本块, 不消费图关键词 |
 | `mix` | hybrid 加子问题的直接块搜索 |
 
-local 或 global 缺少本侧关键词时, 使用已有的另一侧关键词召回. 提词结果无法解析或两组都为空时, 少于 50 个 Unicode 字符的子问题临时作为具体关键词使用; 长问题返回空背景. 当前 mix 在这种长问题没有关键词的情况下也不执行直接块搜索, 此行为仍待确认. 临时替代词不写入缓存.
+local 或 global 缺少本侧关键词时, 使用另一侧召回. 两类关键词都为空时, 当前图模式和 mix 返回空背景, naive 仍用子问题查询正文. 规划 JSON 无效时整次失败, 不使用临时关键词补救.
 
-实体、关系和直接块搜索使用余弦相似度, 门槛为 0.2. 图中已经找到的来源块只在这组候选内比较相似度, 不再套用该门槛. local 的相邻关系按两端连接数之和、关系 weight 排序. hybrid 按 local、global 交替合并; mix 的正文按直接块、实体来源块、关系来源块交替合并.
+实体、关系及直接文本块搜索采用余弦相似度, 门槛为 0.2. 图已经确定的来源块只在候选组内比较相似度, 不再套用门槛. 实体和关系的初始向量候选各最多 40 条; 来源正文合并去重后取前 20 块进入重排.
 
-实体和关系各自的初始向量搜索最多取 40 条, 图扩展后可能得到更多节点或边; 正文最多 20 块. 每个周目的返回长度按 JavaScript 字符串的 `.length` 计算: 实体部分最多 18000、关系部分最多 24000、完整检索背景最多 90000. 这三个上限取原生 token 数值的三倍, 但不代表实际 token 数. 不安装 tokenizer 或加载词表, 不为生成最终回答预留 Prompt 长度. 超出限制时保留前面的完整项, 不截断块内正文或改变正文内容; JSON 转义、条目间换行和背景格式也计入返回长度.
+Rerank 的 query 是传入 search 的完整问题, documents 是未截断的原文块. 不用关键词替代问题, 不比较不同周目请求的分数. 每个周目独立保留相关证据.
 
-## 数据和缓存
+整次查询的证据预算为 32000 个 JavaScript 字符, 按选中周目数均分. JSON 转义和条目间换行也计入预算. 每周目按重排顺序保留完整前缀块, 第一块超出剩余预算就停止, 不切断块内正文. 图中的实体描述与关系描述只用于确定来源, 不随原文重复返回. 每行原文包含资产的 `chunk_id` 与 `content`, 周目归属由 Map 的键确定.
 
-所有 SQL 读取与提词缓存写入都由 Storage Repo 完成. 包内不执行 SQL, 不修改固定剧情正文、图和向量. 关键词缓存使用原生 `mode:keywords:args_hash` 作为键, 哈希输入是模式、子问题和 `English` 的直接拼接; 结果保存为两组关键词数组. 不按供应商或模型区分缓存.
+## 数据与调度
 
-向量搜索是一次普通函数调用: 传入配对的 ID 与向量, 计算余弦相似度, 返回 Top-K ID. 直接读取 SQL 返回的 Float32 Buffer, 不复制成整库矩阵, 不改写资产向量. 只保存本次计算的 Top-K ID 和分数, 同分保留输入顺序.
+固定正文、图及向量由 Storage Repo 读取. 本包不导入新剧情、不修改资产、不执行 SQL. Narrative 数据库首次安装导入三周目资产; 已有 v1 数据库升级到 v2 只删除关键词缓存表, 不重新导入正文或向量.
 
-local/global/hybrid 读取本周目所需的实体或关系向量, 图确定来源范围后只按候选 ID 批量读取块向量. naive/mix 需要在本周目全部文本块中搜索, 才读取全部块向量; mix 的来源选块复用这次读取的数据, 不再查一遍 SQL. 正文在最终合并 ID 后批量读取.
+local/global/hybrid 只读取所需的实体、关系及来源块向量. naive/mix 在本周目的全部文本块中搜索; mix 的来源选块复用这次读取的数据. 正文在候选 ID 合并后批量读取, 查询结束后不持有整库向量.
 
-`NarrativeSearch` 只持有三个 Repo, 不保存向量或中间结果, 不要求宿主跨 Turn 复用实例. 各周目作为独立异步任务并发调度, 统一等待完成后按路由顺序组装 Map. 每个任务在开始检索前等待事件循环调度, 等待期间可取消; SQL 和向量计算仍在同一个线程轮流执行, 不使用额外线程, 也不能在一次同步检索中途响应新的取消事件. 这不是多核并行计算, 不因此承诺缩短计算耗时. 向量没有跨查询缓存, 与持久化的关键词缓存分开.
-
-返回文本使用 LightRAG 的实体、关系和文本块格式. 固定资产没有文件路径, 因此不生成文件引用编号. 原文中的换行和已有字符保持不变, 不修复旧资产文本或重新编码.
+各周目异步任务独立调度, 重排网络请求可以同时等待. SQL 和向量计算仍在同一线程轮流执行. 每个任务开始计算前让出一次事件循环以响应取消, 同步计算中不能处理新的取消事件.
 
 ## 失败与取消
 
-单个子问题提词失败或某个周目查询失败时, 该周目返回失败结果, 其他周目仍能返回成功结果. 公共批量 Embedding 失败时, 需要这些向量的周目分别返回失败. 所有周目都失败时仍返回 Map, 不丢掉各自原因.
+空问题、路由请求失败、规划结果无法解析或包含未知周目时, 整次查询抛错. 批量 Embedding 失败时, 需要它的周目分别返回失败原因. 某周目本地检索或重排失败时, 其他周目仍能成功, 不自动退回未经重排的结果.
 
-空问题、路由调用失败、路由无法解析或返回未知周目时, 整次查询抛错. `signal` 传到 LLM 与 Embedding, 各阶段也检查取消; 取消直接抛出, 不伪装成查询失败. 已经完成的提词缓存写入不会因后续查询取消而撤销.
+`signal` 传入三个模型调用, 各阶段也检查取消. 取消向调用方抛出, 不伪装成周目检索失败. 没有候选正文时不发起 Rerank 请求, 因而不产生该调用的用量记录.
+
+## 角色与桌面配置
+
+Turn 准备时按当前角色姓名调用 `isWitchTrialCharacter`. 它只识别名单中的中、日、英文完整姓名, 去掉首尾空白并忽略英文大小写. 不匹配昵称或描述. 不在名单中的角色不取得 NarrativeSearch, 不修改工具开关.
+
+名单命中后仍需三个可用模型绑定, 且工具未手动禁用. 桌面绑定页提供 Narrative Rerank 项; Chat 提示读取角色、Provider、绑定和工具开关, 配置缺失时可跳转绑定页. 前端只检查配置, 不验证 Key 有效性或网络.
+
+浏览器使用 `@ema-agent/narrative/isWitchTrialCharacter`, 只加载姓名判断, 不加载 Node 检索实现. Agent 通过普通工具调用查询, 结果由 NarrativeSearchTool 将 Map 转成可持久化数组, 复用历史和工具 UI 的传输形式.
 
 ## 验证与来源
 
-`pnpm --filter @ema-agent/narrative typecheck` 和 `pnpm --filter @ema-agent/narrative test` 仅检查本包. 测试使用真实 SQLite 表和 Repo, 模型调用使用可控的返回结果, 覆盖五种模式、来源选块、块向量读取范围、关键词缓存复用而向量每次读取、长度限制、部分失败和取消.
+`pnpm --filter @ema-agent/narrative typecheck` 和 `pnpm --filter @ema-agent/narrative test` 检查查询包. 测试使用真实 SQLite 表及 Repo, 覆盖一次规划、批量编码去重、五种召回模式、重排输入与顺序、多周目预算、部分失败和取消. Server 装配测试核对最终用量、失败记录及 Session/Turn 归属.
 
-查询算法和提词、上下文 Prompt 来自 LightRAG 1.4.16; 原剧情路由使用固定的全剧情摘要. LightRAG 的 MIT 许可证随包保存在 [LICENSE.lightrag](./LICENSE.lightrag).
+查询算法和关键词分类参考 LightRAG 1.4.16. MIT 许可证保存在 [LICENSE.lightrag](./LICENSE.lightrag).

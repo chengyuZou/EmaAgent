@@ -17,7 +17,7 @@ const inputSchema = z.object({
   mode: z
     .enum(['local', 'global', 'hybrid', 'naive', 'mix'])
     .optional()
-    .describe('Retrieval strategy: local=entity-level facts, global=relationships/themes, hybrid=both (default), naive=plain vector without keyword extraction, mix=knowledge graph + vector combined. Omit unless the question clearly demands a specific strategy.'),
+    .describe('Retrieval strategy: local=entity-level facts, global=relationships/themes, hybrid=both (default), naive=plain vector without graph lookup, mix=knowledge graph + vector combined. Omit unless the question clearly demands a specific strategy.'),
 }).strict();
 
 type NarrativeSearchInput = z.infer<typeof inputSchema>;
@@ -49,8 +49,7 @@ export const NarrativeSearchTool = buildTool<
   getToolUseSummary: (input) => `检索剧情资料：${input.query}`,
   inputSchema,
   isReadOnly: () => true,
-  // 查询会写关键词缓存. 工具调用顺序执行, 但不限制同一 Turn 的调用次数.
-  isConcurrencySafe: () => false,
+  isConcurrencySafe: () => true,
 
   // 只读剧情检索(按需启用), 内置信任放行。
   checkPermissions: async () => ({ behavior: 'allow' }),

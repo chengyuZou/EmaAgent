@@ -33,11 +33,26 @@ export function createCohereRerankProtocol(
 
     const body = await readJson(response) as {
       results?: Array<{ index?: number; relevance_score?: number; score?: number }>;
+      usage?: { total_tokens?: number };
+      meta?: { tokens?: { input_tokens?: number; output_tokens?: number } };
     };
     if (!Array.isArray(body.results)) {
       throw new RerankError('rerank/invalid_response', 'cohere-rerank response is missing results');
     }
+    const inputTokens = body.meta?.tokens?.input_tokens ?? body.usage?.total_tokens;
+    const outputTokens = body.meta?.tokens?.output_tokens;
+    for (const tokens of [inputTokens, outputTokens]) {
+      if (tokens !== undefined && (!Number.isSafeInteger(tokens) || tokens < 0)) {
+        throw new RerankError('rerank/invalid_response', 'cohere-rerank returned invalid token usage');
+      }
+    }
     return {
+      ...(inputTokens !== undefined ? {
+        usage: {
+          inputTokens,
+          ...(outputTokens !== undefined ? { outputTokens } : {}),
+        },
+      } : {}),
       results: body.results.map((item) => {
         const score = item.relevance_score ?? item.score;
         if (typeof item.index !== 'number' || typeof score !== 'number') {

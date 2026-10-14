@@ -27,9 +27,10 @@ export interface RerankItem {
   readonly score: number;
 }
 
-/** Provider 报告的重排用量；只收协议正式返回的 token 数（Jina 的 total_tokens），不读 meta。 */
+/** 供应商报告的处理 Token; 未报告时不估算, 不把 search_units 当 Token. */
 export interface RerankUsage {
-  readonly totalTokens: number;
+  readonly inputTokens: number;
+  readonly outputTokens?: number;
 }
 
 export interface RerankResult {

@@ -1,36 +1,60 @@
-import type { CallLlm } from '@ema-agent/llm';
+import { createLlmCompletion, type CallLlm } from '@ema-agent/llm';
 import type { NarrativeTimelineId } from '@ema-agent/storage';
+import { jsonrepair } from 'jsonrepair';
 import { z } from 'zod';
+import type { NarrativeRoute } from '../types.js';
 import { TIMELINES } from './constants.js';
-import { completeQueryText, parseQueryJson } from './keywords.js';
 import { ROUTER_PROMPT } from './prompts.js';
 
-const timelineSchema = z.enum(TIMELINES);
-const routesSchema = z.record(z.string(), z.unknown());
+const routeSchema = z.object({
+  query: z.string().trim().min(1),
+  high_level_keywords: z.array(z.string().trim().min(1)),
+  low_level_keywords: z.array(z.string().trim().min(1)),
+}).strict();
+const routesSchema = z.partialRecord(z.enum(TIMELINES), routeSchema)
+  .refine(value => Object.keys(value).length > 0, 'Narrative 路由没有生成可执行的子问题');
 
-/** 全剧情摘要只决定查询哪些周目及各自的子问题. 所有模式都先路由, 不用摘要代替召回正文. */
+// 部分文本协议把思考标签放进正文. 这里只修复 JSON 格式, 字段仍由 Schema 检查.
+export function parseQueryJson(text: string): unknown {
+  const withoutThinking = text
+    .replace(/^((?!<think>).)*?<\/think>/s, '')
+    .replace(/<think>.*?<\/think>/gs, '')
+    .trim();
+  return JSON.parse(jsonrepair(withoutThinking)) as unknown;
+}
+
+/** 一次调用同时确定周目、子问题及提词. 摘要只用于定位, 不替代原文证据. */
 export async function routeTimelines(
   query: string,
   callLlm: CallLlm,
   signal: AbortSignal,
-): Promise<Map<NarrativeTimelineId, string>> {
+): Promise<Map<NarrativeTimelineId, NarrativeRoute>> {
   const normalized = query.trim();
   if (!normalized) {
     throw new TypeError('Narrative query must not be empty');
   }
-  const text = await completeQueryText(callLlm, normalized, signal, ROUTER_PROMPT);
+  signal.throwIfAborted();
+  const completion = await createLlmCompletion(callLlm({
+    messages: [
+      { role: 'system', content: ROUTER_PROMPT },
+      { role: 'user', content: normalized },
+    ],
+    temperature: 0.2,
+    signal,
+  }));
+  signal.throwIfAborted();
+  const text = completion.blocks
+    .filter(block => block.type === 'text')
+    .map(block => block.text)
+    .join('');
   const response = routesSchema.parse(parseQueryJson(text));
-  const routes = new Map<NarrativeTimelineId, string>();
-  // 未知周目使整次路由失败, 不静默查询其他周目; 非字符串或空子问题不执行.
-  // Map 保留模型返回的周目顺序, 后续逐周目查询和最终结果沿用这个顺序.
-  for (const [name, subquery] of Object.entries(response)) {
-    const timeline = timelineSchema.parse(name);
-    if (typeof subquery === 'string' && subquery.trim()) {
-      routes.set(timeline, subquery.trim());
-    }
-  }
-  if (routes.size === 0) {
-    throw new Error('Narrative 路由没有生成可执行的子问题');
+  const routes = new Map<NarrativeTimelineId, NarrativeRoute>();
+  for (const [name, route] of Object.entries(response)) {
+    routes.set(name as NarrativeTimelineId, {
+      query: route.query,
+      highLevelKeywords: route.high_level_keywords,
+      lowLevelKeywords: route.low_level_keywords,
+    });
   }
   return routes;
 }

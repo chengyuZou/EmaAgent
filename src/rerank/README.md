@@ -14,3 +14,5 @@ Provider / 接线层
 `score` 保留 Provider 的原始相关度语义。包内只负责有限值、下标、重复项和结果数量校验，以及降序稳定排列；禁止按每批最小值和最大值重新映射分数，否则同一文档的阈值意义会随同批候选变化。
 
 正常请求只执行一次。批处理、限时、重试、降级和 Usage 记录由实际业务调用方处理。
+
+兼容接口从 `meta.tokens.input_tokens` 与 `output_tokens` 读取 Token 用量; 仅提供 `usage.total_tokens` 时作为处理输入量返回. 未报告用量时不估算, 不把 `billed_units.search_units` 写成 Token.

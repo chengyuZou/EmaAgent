@@ -41,6 +41,7 @@ const MODULE_LABELS: Record<string, string> = {
   title: '标题生成',
   'narrative-embed': 'Narrative 嵌入',
   'narrative-llm': 'Narrative LLM',
+  'narrative-rerank': 'Narrative Rerank',
   tts: 'TTS',
   stt: 'STT',
   vision: 'Vision',

@@ -26,6 +26,7 @@
   "dependencies": {
     "@ema-agent/embed": "workspace:*",
     "@ema-agent/llm": "workspace:*",
+    "@ema-agent/rerank": "workspace:*",
     "@ema-agent/storage": "workspace:*",
     "jsonrepair": "^3.13.1",
     "zod": "^4"

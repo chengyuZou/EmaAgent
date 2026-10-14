@@ -27,7 +27,7 @@ export class DatabaseCapabilityError extends Error {
  *   kind: 'data'    - `{activeDataDir}/data.db`
  *     Session / Memory / 音频 等。用户切换数据目录时随之切换。
  *   kind: 'narrative' - `~/.ema-agent/narrative/narrative.db`
- *     固定剧情检索资产与查询缓存.
+ *     固定剧情检索资产.
  *
  * Repo 直接接收 `SqliteDb`,不关心 kind--
  * 由装配层把每个 repo 和正确的 DB 配对。

@@ -14,8 +14,6 @@ export type {
   NarrativeRelationRow,
   NarrativeRelationVectorRow,
 } from './repos/narrative/graph.js';
-export { NarrativeKeywordCacheRepo } from './repos/narrative/keywordCache.js';
-export type { NarrativeKeywords } from './repos/narrative/keywordCache.js';
 export {
   SQLITE_ID_BATCH_HARD_LIMIT,
   SqliteVariableLimitError,

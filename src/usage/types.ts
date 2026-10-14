@@ -13,7 +13,7 @@ export interface UsageRecord {
   capability: UsageCapability;
   /** 请求结束时的结果; 失败或取消也可能已产生用量. */
   status: UsageRecordStatus;
-  /** 供应商报告的输入 Token 总数, 已包含缓存部分. */
+  /** 供应商报告的输入 Token 总数, 已包含缓存部分; Rerank 为报告的查询及文档处理 Token. */
   inputTokens: number | null;
   outputTokens: number | null;
   /** 输入中从缓存读取的 Token 数, 不应再加到 inputTokens. */

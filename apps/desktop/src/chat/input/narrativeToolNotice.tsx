@@ -13,7 +13,7 @@ import { useProviderStore, type ProviderStoreState } from '../../stores/provider
 import { useServerStore } from '../../stores/server.js';
 
 const NON_GAME_CHARACTER_MESSAGE = '当前角色不在游戏剧情角色名单中, 已自动停用 NarrativeSearch, 避免引入无关剧情造成 OOC (角色表现偏离设定). 工具开关保持不变.';
-const NARRATIVE_BINDINGS = ['narrative-llm', 'narrative-embed'] as const;
+const NARRATIVE_BINDINGS = ['narrative-llm', 'narrative-embed', 'narrative-rerank'] as const;
 
 interface NoticeContent {
   readonly kind: 'configuration' | 'character' | 'settings';
