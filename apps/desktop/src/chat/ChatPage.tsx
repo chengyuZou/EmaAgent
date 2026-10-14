@@ -3,7 +3,7 @@ import { sessionsApi } from '../api/sessions.js';
 import { subscribeSystemEvent } from '../lib/events/systemEventDispatcher.js';
 import { ErrorBoundary } from '../lib/errorBoundary.js';
 import { useServerStore } from '../stores/server.js';
-import { useSessionStore } from '../stores/session.js';
+import { forgetDeletedSessions, useSessionStore } from '../stores/session.js';
 import { NewSessionPage } from './NewSessionPage.js';
 import { SessionPage } from './session/SessionPage.js';
 import { SessionSidebar } from './sidebar/SessionSidebar.js';
@@ -85,6 +85,13 @@ export function ChatPage(): JSX.Element {
   useEffect(() => {
     let refreshTimer: ReturnType<typeof setTimeout> | undefined;
     const unsubscribe = subscribeSystemEvent(event => {
+      if (event.type === 'sessions_deleted') {
+        forgetDeletedSessions(event.sessionIds);
+        for (const deletedSessionId of event.sessionIds) {
+          removeSessionFromChat(deletedSessionId);
+        }
+        return;
+      }
       if (event.type === 'session_audio_changed') {
         void useSessionHistoryStore.getState().mergeTurnMessages(event.sessionId, event.turnId);
       }

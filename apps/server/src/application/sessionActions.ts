@@ -1,5 +1,15 @@
 import { clearSessionRules } from '@ema-agent/permission';
 import type { Composition } from '../composition/index.js';
+import { removeSessionDir } from '../platform/paths.js';
+
+export interface ArchivedSessionsDeletionResult {
+  readonly deletedSessionIds: readonly string[];
+  /** SQL 已提交后的清理失败, 不表示数据库删除被回滚. */
+  readonly cleanupFailures: readonly {
+    readonly sessionId: string;
+    readonly message: string;
+  }[];
+}
 
 export async function archiveSession(
   composition: Composition,
@@ -28,6 +38,41 @@ export async function deleteSession(
     database.turns.discardSession(sessionId);
     characters.stage.evictSession(sessionId);
   });
+}
+
+export async function deleteArchivedSessions(
+  composition: Composition,
+): Promise<ArchivedSessionsDeletionResult> {
+  const { database, tools, characters, appEvents } = composition;
+  const deletedSessionIds = database.session.deleteArchivedSessions();
+  const cleanupFailures: Array<{ sessionId: string; message: string }> = [];
+
+  // 这些会话已经完成归档, 不重复停止工作. 磁盘和异步操作不能放进 SQLite 事务.
+  for (const sessionId of deletedSessionIds) {
+    clearSessionRules(sessionId);
+    try {
+      await tools.discardSessionToolState(sessionId);
+    } catch (error) {
+      cleanupFailures.push({
+        sessionId,
+        message: error instanceof Error ? error.message : '工具缓存清理失败',
+      });
+    }
+    database.turns.discardSession(sessionId);
+    characters.stage.evictSession(sessionId);
+    try {
+      removeSessionDir(database.activeDataDir, sessionId);
+    } catch (error) {
+      cleanupFailures.push({
+        sessionId,
+        message: error instanceof Error ? error.message : '会话文件清理失败',
+      });
+    }
+  }
+  if (deletedSessionIds.length > 0) {
+    appEvents.emit({ type: 'sessions_deleted', sessionIds: deletedSessionIds });
+  }
+  return { deletedSessionIds, cleanupFailures };
 }
 
 async function stopSessionWork(

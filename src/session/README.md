@@ -17,11 +17,12 @@
 
 - **Session**：createSession（可同时携带 projectId 与显式 cwd；未给 cwd 时取创建当刻的项目主文件夹；项目无主文件夹或无项目时，创建并使用 `~/.ema-agent/workspace`）/ getSession / sessionExists / patchSession（项目成员也可显式改 cwd）/ pin / archive / setViewedAt / updateTitle；
 - **侧栏**: `listSessionsForSidebar()` 只返回未归档会话, 分为置顶 Session, 置顶项目, 其余项目和最近会话. Session 同时满足 pinned 与 project 时进入置顶桶. `moveSessionInSidebar` 一次提交归属、置顶与插入位置, 拖入置顶会清空 projectId; `moveProjectInSidebar` 一次提交项目分区和插入位置; 新 Turn 开始时 Session 回到当前分区顶部. `searchSessions` 不搜归档.
-- **归档概况**: `listArchivedSessions()` 单独返回完整标题, 项目 ID 和名称, 归档时间, 不读取消息正文. Desktop 的 Settings 归档页只按完整标题搜索, 项目另行筛选, 不提供发送入口. 取消归档保留原项目, 置顶和历史, 不自动恢复执行.
+- **归档概况**: `listArchivedSessions()` 单独返回完整标题, 项目 ID 和名称, 归档时间, 不读取消息正文. Desktop 的 Settings 归档页只按完整标题搜索, 项目另行筛选, 不提供发送入口. 取消归档保留原项目, 置顶和历史, 不自动恢复执行. 单条删除和删除全部归档都先显示确认弹窗; 搜索和项目筛选不缩小全部删除的范围.
 - **Project**：createProject(name, folderPaths, primaryFolderPath?) 在一次事务中创建项目及全部源文件夹；listProjectFolders(projectId) 给 Skills、Permission 读取项目全部源文件夹；rename / delete / pin / 文件夹增删 / 设主 / 拖入拖出。设主、移除文件夹、拖入项目均不改旧 Session 的 cwd；设主只影响以后新建的 Session。
 - **Fork**：forkSession 复制 Turn/Message/Attachment 并重映射 ID，不带 Task、Subagent 或任何在跑的外部副作用；
 - **Message**：appendMessage（turnId 归属校验）/ appendHistorySummary（自动压缩带当前 turnId，手动压缩为 null，且必须带覆盖截止游标）/ loadHistory（最新 summary + 其覆盖游标之后的消息，LLM 可见历史）/ listMessages（UI 正文复合游标页，旧到新）/ listMessagesAround（按 Message 锚点读取有界窗口）/ loadMessagesForTurn（Turn 终态持久收口）/ findToolInteraction（启动恢复）/ markMessageInterrupted / assertMessageOwnership；
 - **删除**：deleteSession 只删本聚合的数据库行并触发 onSessionRemoved 文件清理；活动 Turn 的取消与运行态收口归 TurnStore，由删除用例（Server 编排）先行调用。
+- **批量删除归档**: `deleteArchivedSessions()` 在一个 SQL 事务内读取和删除归档集合, 返回实际删除的 ID. 事务失败时不删除文件、不发事件. Server 在提交后清理这些会话的文件和缓存, 最后发一次批量通知. 这个入口不逐条调用 `deleteSession`, 也不使用单条删除的文件回调.
 
 其余出口：
 
@@ -34,6 +35,7 @@
 
 - `session_list_changed { sessionId }` 表示指定会话的列表信息变化. 新建, 改名, 归档, 项目归属修改, Fork 和删除都携带受影响的会话 ID; 删除后单查会话返回不存在.
 - 项目操作发不带 `sessionId` 的 `session_list_changed`, 因为项目名称和分组可能影响多个会话. 消费方需要重新读取列表, 不能把它当成某个会话的详情变更.
+- `sessions_deleted { sessionIds }` 表示一批会话已被删除. 归档页重新读取一次列表, 聊天和存储目录直接移除对应 ID; 不为每个 ID 再发列表变更事件. SQL 已提交后文件清理失败仍通知删除事实, HTTP 结果中的 `cleanupFailures` 供界面提示, 启动时的孤立会话目录清理可再次移除残留文件.
 - `session_messages_changed { sessionId }` 表示该会话新增了持久 Message. 流式 Message 块更新不逐次广播, 完整正文以 Turn 终态事件为刷新边界.
 
 导入备份和末轮回退绕过本 Store 写入口, 分别由 Server 导入路由和 TurnStore 清理回调在提交后发携带 `sessionId` 的列表事件. SSE 和桌面窗口广播传递完整事件, 不丢弃这个 ID.
@@ -56,7 +58,9 @@ active 或 paused 都表示目标未关闭, 拒绝切换并抛出 `SessionPlanGo
 - Wire DTO 不在本包——server/desktop 的协议类型在接线批按真实消费方重建；
 - 跨包删除和归档流程由 Server 的 `application/sessionActions.ts` 负责.
 
-删除和归档都由界面先显示确认 Dialog, 取消不发送请求. 确认后只发送一次请求, 不附带确认字段; Server 收到请求就同步关闭这个会话的新执行, 同时通知根 Turn/Compact, 前后台子代理, 前后台命令和语音生成停止, 取消待交互, 清空尚未保存为消息的排队输入, 把未完成 Goal 标记为取消. 归档事实先保存, 历史保留; 删除则等待所有执行完成最后的保存, 再删除数据与附件, 成功返回 204. 取消归档期间如果停止流程还没结束, 请求会被拒绝. 停止不会撤销已经完成的文件修改.
+单个会话的删除和归档都由界面先显示确认 Dialog, 取消不发送请求. 确认后只发送一次请求, 不附带确认字段; Server 收到请求就同步关闭这个会话的新执行, 同时通知根 Turn/Compact, 前后台子代理, 前后台命令和语音生成停止, 取消待交互, 清空尚未保存为消息的排队输入, 把未完成 Goal 标记为取消. 归档事实先保存, 历史保留; 删除则等待所有执行完成最后的保存, 再删除数据与附件, 成功返回 204. 取消归档期间如果停止流程还没结束, 请求会被拒绝. 停止不会撤销已经完成的文件修改.
+
+`DELETE /api/sessions/archived` 不接收筛选条件或会话 ID, 删除当前活动数据目录的全部归档. 已完成归档的工作不重复停止; 若某条归档仍在停止, 返回 409 并回滚整批 SQL. 成功返回 200 和 `{ deletedSessionIds, cleanupFailures }`, 没有归档时两个数组都为空且不发事件. 文件清理不属于 SQL 事务, 因此清理失败不会把已经提交的会话行放回数据库. 未归档会话、项目和项目工作目录不作为删除目标.
 
 ## 依赖方向
 

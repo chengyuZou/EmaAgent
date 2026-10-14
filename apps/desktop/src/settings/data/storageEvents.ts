@@ -27,6 +27,13 @@ export function storageEventSessionId(event: AppEvent): string | undefined {
 export function subscribeStorageChanges(sessionId: string | undefined, refresh: () => void): () => void {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const unsubscribe = subscribeSystemEvent(event => {
+    if (event.type === 'sessions_deleted') {
+      if (sessionId === undefined || event.sessionIds.includes(sessionId)) {
+        clearTimeout(timer);
+        timer = setTimeout(refresh, 100);
+      }
+      return;
+    }
     const changedSessionId = storageEventSessionId(event);
     if (changedSessionId === undefined || (sessionId !== undefined && changedSessionId !== sessionId)) {
       return;

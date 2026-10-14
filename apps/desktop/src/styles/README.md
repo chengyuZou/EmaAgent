@@ -35,6 +35,8 @@ Diff 的 shadow root 是例外: 全局样式无法进入它, ReviewPanel 和内�
 
 ## 硬规矩
 
+- Turn 失败使用 `chatHistory.css` 的 `.ema-turn-error`, 在该轮正文与工具内容之后、文件变更与 Footer 之前显示. 只有 failed 显示, 手动停止不显示错误. 错误按纯文本自动换行, 长错误预览最多八行, 展开后显示完整内容; 不受 Tool 输出横向滚动规则影响.
+
 - 审查 Panel 的 `domains/review.css` 只影响工作区变更. 源码与统一/分列布局交给 `@pierre/diffs` CodeView, 默认不自动换行; 每份差异由库提供横滚, 整体视口负责纵滚.
 - 范围选择复用 UI 包的 Select; 工具栏依次为刷新、换行、展开/折叠全部、统一/分列、显示/隐藏文件树. 批量折叠一次提交给 CodeView, 不重查 Git 或改变文件标识.
 - 文件标题整条可点击展开/折叠, 复制路径和打开文件不触发折叠; 仍复用 UI 包的 Button、IconButton 和 Tooltip, 不嵌套按钮. 差异高度不做展开动画, 避免与官方虚拟布局争抢高度.

@@ -1,10 +1,11 @@
 import type { SubagentEvent } from '@ema-agent/agent';
 import type { SessionMessage } from '@ema-agent/session';
+import type { PendingInteraction } from '@ema-agent/turn';
 import type { SessionBusinessMessage } from '@ema-agent/server/routes/ws/session.js';
 import { sessionWebSocket } from '../../api/sessionWebSocket.js';
 import { resolveConfiguredEventNotification, type NotifiableEvent } from '../../lib/notifications/eventNotifications.js';
 import { tauriBridge } from '../../lib/tauriBridge.js';
-import { showToast } from '../../lib/notifications/toast.js';
+import { showToast, type ToastHandle } from '../../lib/notifications/toast.js';
 import { useSubagentStore } from '../../stores/subagent.js';
 import { useTurnStore, type TurnStoreEvent } from '../../stores/turn.js';
 import { useSessionActivityStore } from '../../stores/sessionActivity.js';
@@ -16,6 +17,10 @@ import { observeTurnSpeechGeneration } from '../speech/turnSpeechGeneration.js';
 import { scheduleTurnHistoryClosure } from './turnHistoryClosure.js';
 
 const subscriptions = new Map<string, () => void>();
+const permissionToasts = new Map<string, {
+  readonly sessionId: string;
+  readonly handle: ToastHandle;
+}>();
 
 type SessionCompactEvent = Extract<SessionBusinessMessage, {
   readonly type:
@@ -55,10 +60,11 @@ export function syncSessionSubscriptions(sessionIds: ReadonlySet<string>): void 
   }
 }
 
-/** 只停止这个 Session 的网络观察;删除或归档后的业务状态由 removeSessionFromChat 清理. */
+/** 停止这个 Session 的网络观察并关闭其等待授权提示; 删除或归档后的业务状态由 removeSessionFromChat 清理. */
 export function removeSessionSubscription(sessionId: string): void {
   subscriptions.get(sessionId)?.();
   subscriptions.delete(sessionId);
+  syncPermissionToasts(sessionId, []);
   useSessionActivityStore.getState().setConnection(sessionId, 'disconnected');
   sessionWebSocket.disconnect(sessionId);
 }
@@ -78,6 +84,7 @@ function receiveSessionMessage(sessionId: string, message: SessionBusinessMessag
       message.pendingInteractions,
       message.queuedInputs,
     );
+    syncPermissionToasts(sessionId, message.pendingInteractions);
     if (message.running?.kind === 'turn') {
       useTurnStore.getState().restore(
         sessionId,
@@ -264,13 +271,39 @@ function updateCompactActivity(sessionId: string, event: SessionCompactEvent): v
   }
 }
 
+function dismissPermissionToast(toolCallId: string): void {
+  permissionToasts.get(toolCallId)?.handle.dismiss();
+  permissionToasts.delete(toolCallId);
+}
+
+function syncPermissionToasts(sessionId: string, pendingInteractions: readonly PendingInteraction[]): void {
+  // 重连后按仍在等待的请求校正提示, 补上断线期间错过的 required/resolved 事件.
+  const pendingPermissions = pendingInteractions.filter(item => item.kind === 'permission');
+  const pendingIds = new Set(pendingPermissions.map(item => item.request.toolCallId));
+  for (const [toolCallId, toast] of permissionToasts) {
+    if (toast.sessionId === sessionId && !pendingIds.has(toolCallId)) {
+      dismissPermissionToast(toolCallId);
+    }
+  }
+  for (const pending of pendingPermissions) {
+    presentSessionEvent({ type: 'permission_required', ...pending.request });
+  }
+}
+
 function presentSessionEvent(event: NotifiableEvent): void {
+  // 关闭等待提示不受结果通知开关影响. 取消或超时也会收到 permission_resolved.
+  if (event.type === 'permission_resolved') {
+    dismissPermissionToast(event.toolCallId);
+  }
+  if (event.type === 'permission_required' && permissionToasts.has(event.toolCallId)) {
+    return;
+  }
   const config = useSettingsStore.getState().eventDisplay?.[event.type];
   const notification = resolveConfiguredEventNotification(event, config);
   if (!notification) {
     return;
   }
-  showToast(
+  const handle = showToast(
     notification.message,
     {
       variant: notification.variant,
@@ -278,6 +311,9 @@ function presentSessionEvent(event: NotifiableEvent): void {
       accentColor: notification.accentColor,
     }
   );
+  if (event.type === 'permission_required') {
+    permissionToasts.set(event.toolCallId, { sessionId: event.sessionId, handle });
+  }
 }
 
 function receiveSubagentEvent(sessionId: string, event: SubagentEvent): void {

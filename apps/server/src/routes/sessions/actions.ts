@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { SessionPlanGoalConflictError, SessionWorkBlockedError, type SessionStore } from '@ema-agent/session';
 import type { TurnStore } from '@ema-agent/turn';
 import { jsonBody } from '../validate.js';
+import type { ArchivedSessionsDeletionResult } from '../../application/sessionActions.js';
 
 const patchSessionBody = z.object({
   title: z.string().min(1).max(200).optional(),
@@ -36,10 +37,25 @@ export interface SessionActionsRouteDeps {
   readonly assertSessionWorkAllowed: (sessionId: string) => void;
   readonly archiveSession: (sessionId: string) => Promise<void>;
   readonly deleteSession: (sessionId: string) => Promise<void>;
+  readonly deleteArchivedSessions: () => Promise<ArchivedSessionsDeletionResult>;
 }
 
 export const sessionActionsRoute = (deps: SessionActionsRouteDeps) =>
   new Hono()
+    // 静态路径必须在 /:sessionId 的 DELETE 前注册, archived 不是会话 ID.
+    .delete('/archived', async context => {
+      try {
+        return context.json(await deps.deleteArchivedSessions());
+      } catch (error) {
+        if (error instanceof SessionWorkBlockedError) {
+          return context.json({
+            error: error.code,
+            message: '有归档会话仍在停止工作, 请等待归档完成后再删除.',
+          }, 409);
+        }
+        throw error;
+      }
+    })
     .put('/:sessionId', jsonBody(patchSessionBody), async context => {
       const sessionId = context.req.param('sessionId');
       const patch = context.req.valid('json');

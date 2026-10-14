@@ -110,14 +110,16 @@ function replaceSession(
   return next;
 }
 
-function withoutSession(sessions: SessionsState, id: string): SessionsState {
-  const keep = (session: SessionListItem): boolean => session.id !== id;
+function withoutSessions(sessions: SessionsState, sessionIds: ReadonlySet<string>): SessionsState {
+  const keep = (session: SessionListItem): boolean => !sessionIds.has(session.id);
   const removeFromProject = (project: Project): Project => ({
     ...project,
     sessions: project.sessions.filter(keep),
   });
   const byId = new Map(sessions.byId);
-  byId.delete(id);
+  for (const sessionId of sessionIds) {
+    byId.delete(sessionId);
+  }
   return {
     pinned: sessions.pinned.filter(keep),
     pinnedProjects: sessions.pinnedProjects.map(removeFromProject),
@@ -131,6 +133,7 @@ function withoutSession(sessions: SessionsState, id: string): SessionsState {
 const modelSettingsWriteChains = new Map<string, Promise<void>>();
 const sessionPreferencesWriteChains = new Map<string, Promise<void>>();
 let sessionListRequestId = 0;
+let deletedDuringSessionListRead: Set<string> | null = null;
 
 // ── Store ─────────────────────────────────────────────────────────────────────
 
@@ -141,10 +144,12 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
 
   async loadSessions() {
     const requestId = ++sessionListRequestId;
+    const deletedSessionIds = new Set<string>();
+    deletedDuringSessionListRead = deletedSessionIds;
     set({ loading: true, error: null });
     try {
       const sidebarData = await sessionsApi.listForSidebar();
-      const sessions: SessionsState = {
+      let sessions: SessionsState = {
         pinned:   [...sidebarData.pinned],
         pinnedProjects: [...sidebarData.pinnedProjects],
         projects: [...sidebarData.projects],
@@ -152,10 +157,18 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
         byId:     new Map(),
       };
       rebuildById(sessions);
+      // 批量删除通知可能先于本次列表响应到达, 保留其他行但排除已经被删除的 ID.
+      if (deletedSessionIds.size > 0) {
+        sessions = withoutSessions(sessions, deletedSessionIds);
+      }
       if (requestId === sessionListRequestId) set({ sessions, loading: false });
     } catch (err: unknown) {
       if (requestId === sessionListRequestId) {
         set({ error: err instanceof Error ? err.message : '加载会话列表失败', loading: false });
+      }
+    } finally {
+      if (deletedDuringSessionListRead === deletedSessionIds) {
+        deletedDuringSessionListRead = null;
       }
     }
   },
@@ -291,7 +304,7 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
       await sessionsApi.archive(id);
       // 已收到归档成功结果, 后续列表刷新失败也不能再显示这条会话.
       sessionListRequestId += 1;
-      set(state => ({ sessions: withoutSession(state.sessions, id), loading: false }));
+      set(state => ({ sessions: withoutSessions(state.sessions, new Set([id])), loading: false }));
       await get().loadSessions();
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : '归档会话失败' });
@@ -315,7 +328,7 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
       modelSettingsWriteChains.delete(id);
       sessionPreferencesWriteChains.delete(id);
       sessionListRequestId += 1;
-      set(state => ({ sessions: withoutSession(state.sessions, id), loading: false }));
+      set(state => ({ sessions: withoutSessions(state.sessions, new Set([id])), loading: false }));
       await get().loadSessions();
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : '删除会话失败' });
@@ -323,6 +336,22 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
     }
   },
 }));
+
+/** 后端已提交批量删除; 直接移除这些会话的本地状态, 不逐条重新请求侧栏. */
+export function forgetDeletedSessions(sessionIds: readonly string[]): void {
+  for (const sessionId of sessionIds) {
+    deletedDuringSessionListRead?.add(sessionId);
+    modelSettingsWriteChains.delete(sessionId);
+    sessionPreferencesWriteChains.delete(sessionId);
+  }
+  const current = useSessionStore.getState().sessions;
+  if (!sessionIds.some(sessionId => current.byId.has(sessionId))) {
+    return;
+  }
+  useSessionStore.setState(state => ({
+    sessions: withoutSessions(state.sessions, new Set(sessionIds)),
+  }));
+}
 
 type SessionPreferenceField = 'permissionMode' | 'ttsEnabled';
 

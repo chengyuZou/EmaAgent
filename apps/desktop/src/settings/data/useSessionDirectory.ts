@@ -27,6 +27,7 @@ export function useSessionDirectory() {
     let fullRequest: AbortController | undefined;
     const requests = new Map<string, AbortController>();
     const pending = new Set<string>();
+    const deletedDuringRead = new Set<string>();
     let directory = new Map<string, SessionSummary>();
     const publish = (): void => {
       setSessions([...directory.values()].sort((left, right) => {
@@ -96,6 +97,7 @@ export function useSessionDirectory() {
         return;
       }
       readingAll = true;
+      deletedDuringRead.clear();
       for (const [sessionId, controller] of requests) {
         controller.abort();
         pending.add(sessionId);
@@ -106,7 +108,8 @@ export function useSessionDirectory() {
         if (disposed) {
           return;
         }
-        directory = new Map(result.sessions.map(summary => {
+        // 删除通知可能比旧目录请求的响应先到, 不能把已删除会话重新放回列表.
+        directory = new Map(result.sessions.filter(summary => !deletedDuringRead.has(summary.id)).map(summary => {
           const old = directory.get(summary.id);
           return [summary.id, old && sameSummary(old, summary) ? old : summary];
         }));
@@ -118,6 +121,7 @@ export function useSessionDirectory() {
         }
       } finally {
         readingAll = false;
+        deletedDuringRead.clear();
         if (!disposed) {
           setLoading(false);
           flush();
@@ -126,6 +130,19 @@ export function useSessionDirectory() {
     };
     reload.current = () => { void readAll(); };
     const unsubscribe = subscribeSystemEvent(event => {
+      if (event.type === 'sessions_deleted') {
+        for (const sessionId of event.sessionIds) {
+          requests.get(sessionId)?.abort();
+          requests.delete(sessionId);
+          pending.delete(sessionId);
+          directory.delete(sessionId);
+          if (readingAll) {
+            deletedDuringRead.add(sessionId);
+          }
+        }
+        publish();
+        return;
+      }
       if (event.type === 'session_list_changed' && event.sessionId === undefined) {
         fullPending = true;
       } else if (

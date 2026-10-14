@@ -15,6 +15,7 @@ export type SessionCreateInput = InferRequestType<RpcClient['api']['sessions']['
 export type Session = RpcJson<RpcClient['api']['sessions']['$post']>;
 export type SessionSidebarData = RpcJson<RpcClient['api']['sessions']['$get']>;
 export type ArchivedSession = RpcJson<RpcClient['api']['sessions']['archived']['$get']>[number];
+export type ArchivedSessionsDeletionResult = RpcJson<RpcClient['api']['sessions']['archived']['$delete']>;
 /** 分组列表的会话条目（含 hasActiveTurn/lastTurnStatus/hasUnread 列表投影）。 */
 export type SessionListItem = SessionSidebarData['recent'][number];
 export type Project = SessionSidebarData['projects'][number];
@@ -241,6 +242,10 @@ export const sessionsApi = {
     return readRpcVoid(rpcClient.api.sessions[':sessionId'].$delete({
       param: { sessionId: id },
     }));
+  },
+
+  deleteArchived(): Promise<ArchivedSessionsDeletionResult> {
+    return readRpcJson(rpcClient.api.sessions.archived.$delete());
   },
 
   /** 后端写完指定 ZIP 后返回结果, 前端不再读取 ZIP 字节. */

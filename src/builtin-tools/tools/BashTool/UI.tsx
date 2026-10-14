@@ -175,9 +175,8 @@ function BashBackgroundCard({
   return (
     <div className="ema-terminal-card">
       <div className="ema-terminal-banner">
-        <span className="i-lucide:square-terminal shrink-0 text-sm text-[var(--ema-primary)]" aria-hidden />
-        <CommandPreview command={command} />
         <TerminalCopyButton label="复制命令" text={command} />
+        <CommandPreview command={command} />
       </div>
       <div className="ema-terminal-result">
         <TerminalCopyButton label="复制输出" text={statusText} />
@@ -206,7 +205,7 @@ function CommandPreview({ command }: { command: string }): JSX.Element {
       variant="card"
       content={<pre className="ema-terminal-command-preview">{command}</pre>}
     >
-      <code className="ema-terminal-cmd focus-ring" tabIndex={0}>$ {command}</code>
+      <code className="ema-terminal-cmd" tabIndex={0}>$ {command}</code>
     </Tooltip>
   );
 }

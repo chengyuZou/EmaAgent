@@ -487,6 +487,24 @@ export class SessionStore {
     }
   }
 
+  /**
+   * 归档集合的读取和删除在同一个事务里完成. 返回实际删除的 ID;
+   * Server 提交后清理文件与运行缓存, 最后发一次批量通知, 不逐条调用删除回调.
+   */
+  deleteArchivedSessions(): string[] {
+    return this.db.sqlite.transaction(() => {
+      const sessionIds = this.sessionsRepo.listArchived().map(session => session.id);
+      for (const sessionId of sessionIds) {
+        // 归档或删除请求尚未结束时, 不与它同时执行批量删除, 避免影响最后的数据保存.
+        if (this.isWorkClosed?.(sessionId)) {
+          throw new SessionWorkBlockedError('session_stopping', sessionId);
+        }
+        this.sessionsRepo.delete(sessionId);
+      }
+      return sessionIds;
+    })();
+  }
+
   // ── Message ─────────────────────────────────────────────────────────────────
 
   appendMessage(input: AppendMessageInput): SessionMessage {

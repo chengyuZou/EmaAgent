@@ -3,12 +3,13 @@ import { createRoot } from 'react-dom/client';
 
 export interface ToastOptions {
   variant?: 'info' | 'success' | 'warning' | 'danger';
-  /** null 表示保持显示, 直到用户手动关闭; 默认 3000ms. */
+  /** null 表示不自动消失, 由调用方或用户关闭; 默认 3000ms. */
   duration?: number | null;
   accentColor?: string;
 }
 
 export interface ToastHandle {
+  /** 只关闭本次通知; 同文案合并显示的其他通知仍然保留. */
   dismiss(): void;
 }
 
@@ -17,7 +18,7 @@ interface ToastItem {
   message: string;
   variant: NonNullable<ToastOptions['variant']>;
   accentColor?: string;
-  count: number;
+  notificationIds: readonly number[];
 }
 
 let nextId = 1;
@@ -33,19 +34,37 @@ function subscribe(listener: () => void): () => void {
 
 function addToast(message: string, variant: ToastItem['variant'], accentColor?: string): number {
   // 同文案同类型合并计数, 同时最多显示三条.
+  const id = nextId++;
   const existing = toasts.find(item => item.message === message && item.variant === variant);
   if (existing) {
-    toasts = toasts.map(item => item.id === existing.id ? { ...item, count: item.count + 1 } : item);
+    toasts = toasts.map(item => (
+      item.id === existing.id
+        ? { ...item, notificationIds: [...item.notificationIds, id] }
+        : item
+    ));
     listeners.forEach(listener => listener());
-    return existing.id;
+    return id;
   }
-  const id = nextId++;
-  toasts = [...toasts.slice(-2), { id, message, variant, accentColor, count: 1 }];
+  toasts = [...toasts.slice(-2), { id, message, variant, accentColor, notificationIds: [id] }];
   listeners.forEach(listener => listener());
   return id;
 }
 
 function removeToast(id: number): void {
+  toasts = toasts.flatMap(item => {
+    if (!item.notificationIds.includes(id)) {
+      return [item];
+    }
+    const notificationIds = item.notificationIds.filter(notificationId => notificationId !== id);
+    if (notificationIds.length === 0) {
+      return [];
+    }
+    return [{ ...item, notificationIds }];
+  });
+  listeners.forEach(listener => listener());
+}
+
+function removeToastGroup(id: number): void {
   toasts = toasts.filter(item => item.id !== id);
   listeners.forEach(listener => listener());
 }
@@ -63,14 +82,14 @@ function ToastContainer(): JSX.Element {
           style={item.accentColor ? { borderColor: item.accentColor } as CSSProperties : undefined}
         >
           <span className="ema-toast-message">{item.message}</span>
-          {item.count > 1 && (
-            <span className="ema-toast-count">x{item.count}</span>
+          {item.notificationIds.length > 1 && (
+            <span className="ema-toast-count">x{item.notificationIds.length}</span>
           )}
           <button
             type="button"
             aria-label="关闭通知"
             className="ema-toast-close"
-            onClick={() => removeToast(item.id)}
+            onClick={() => removeToastGroup(item.id)}
           >
             <span className="i-mdi:close" aria-hidden />
           </button>

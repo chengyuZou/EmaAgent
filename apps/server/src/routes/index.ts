@@ -4,7 +4,7 @@
 // ReturnType<typeof createRoutes>（AppType）将退化为裸 Hono，Hono RPC 契约直接失效。
 import { ATTACHMENT_RESIDUE_MAX_AGE_MS, readAttachmentCacheSettings } from '@ema-agent/attachments';
 import { Hono } from 'hono';
-import { archiveSession, deleteSession } from '../application/sessionActions.js';
+import { archiveSession, deleteArchivedSessions, deleteSession } from '../application/sessionActions.js';
 import { activateCharacter, deleteCharacter, runWhenSessionsIdle } from '../application/changeCharacter.js';
 import type { Composition } from '../composition/index.js';
 import { emaAuth, localWebviewCors } from '../platform/auth.js';
@@ -118,6 +118,7 @@ export const createRoutes = (composition: Composition, secret: string) => {
       assertSessionWorkAllowed: sessionId => database.sessionRunning.assertWorkAllowed(sessionId),
       archiveSession: sessionId => archiveSession(composition, sessionId),
       deleteSession: sessionId => deleteSession(composition, sessionId),
+      deleteArchivedSessions: () => deleteArchivedSessions(composition),
     }))
     .route('/api/sessions', sessionHistoryRoute({
       session: database.session,

@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type JSX } from 'react';
+import { useCallback, useEffect, useRef, useState, type JSX } from 'react';
 import { Button } from '@ema-agent/ui';
 import { PageHeader } from '../shared/PageHeader.js';
 import { MainView, useMainNavigationStore } from '../../layout/navigation.js';
@@ -10,6 +10,7 @@ import { StorageList } from './components/list.js';
 import { StorageDetail, type StorageDetailTarget } from './components/detail.js';
 import { useStorageOverview } from './useStorageOverview.js';
 import { useSessionDirectory } from './useSessionDirectory.js';
+import { subscribeSystemEvent } from '../../lib/events/systemEventDispatcher.js';
 
 export function StorageTab(): JSX.Element {
   const overview = useStorageOverview();
@@ -51,6 +52,21 @@ export function StorageTab(): JSX.Element {
     }
     void finished.catch(cause => console.warn('[storage] 关闭详情过渡失败:', cause)).finally(cleanup);
   }, []);
+
+  useEffect(() => subscribeSystemEvent(event => {
+    if (event.type !== 'sessions_deleted') {
+      return;
+    }
+    setOpenSessionId(current => {
+      if (current !== null && event.sessionIds.includes(current)) {
+        return null;
+      }
+      return current;
+    });
+    if (detail && event.sessionIds.includes(detail.sessionId)) {
+      closeDetail();
+    }
+  }), [detail, closeDetail]);
 
   const importSession = useCallback(async (): Promise<void> => {
     if (!tauriBridge.isTauri()) {
