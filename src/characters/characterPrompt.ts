@@ -3,10 +3,7 @@
 import type { Character, CharacterStagePresentation } from './types.js';
 import { CharacterPromptInvalidError } from './errors.js';
 
-/**
- * 装配角色 Prompt：人设提示词（personaPrompt）在前，追加不可由用户编辑的
- * 舞台表达控制协议。这里只守身份硬门——拼起来为空就拒，空人设角色不能启动新 Turn。
- */
+/** 人设正文不必重复姓名, 当前身份由 Character.name 单独写明. */
 export function buildCharacterPrompt(
   character: Character,
   presentation: CharacterStagePresentation,
@@ -18,7 +15,7 @@ export function buildCharacterPrompt(
   if (sections.length === 0) {
     throw new CharacterPromptInvalidError('角色人设提示词不能为空', character.name);
   }
-  return sections;
+  return [`当前角色: ${character.name}`, ...sections];
 }
 
 /** 空人设会让新 Turn 失去身份：非空 + 不允许内嵌 Live2D 控制标签（会被误解析）。 */

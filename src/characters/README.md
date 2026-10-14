@@ -20,6 +20,8 @@ interface Character {
 
 全局只能有一个当前角色。新角色默认 `stageKind='blank'` 且不自动激活。最后一个角色不能删除；删除当前角色后激活最近使用的其他角色。艾玛只是种子角色，没有只读或删除保护。
 
+`buildCharacterPrompt` 按 `当前角色: 全名`、`personaPrompt`、舞台表达协议的顺序提供段落. 全名来自 `Character.name`, 不使用显示昵称; 用户人设正文不必重复姓名. 段落由 prompts 包合成一个角色块, 历史发言人的说明也在该块中追加.
+
 ## 资源
 
 ```text
