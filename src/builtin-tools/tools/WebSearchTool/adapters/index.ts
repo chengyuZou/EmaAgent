@@ -1,5 +1,4 @@
 import { domainToASCII } from 'node:url';
-import { rankSearchResults } from '../rankSearchResults.js';
 import { bingSearch } from './bing.js';
 import { braveSearch } from './brave.js';
 import { SearchHttpStatusError } from './types.js';
@@ -9,7 +8,7 @@ export type { SearchOptions, SearchProgress, SearchResult } from './types.js';
 
 export type SearchProvider = 'brave' | 'bing';
 
-/** 过滤与排序完成后, 返回给模型的结果条数上限. */
+/** 域名筛选和去重后, 返回给模型的结果条数上限. */
 export const RESULT_LIMIT = 10;
 
 interface ResolvedAdapter {
@@ -60,7 +59,7 @@ export async function searchWeb(
   }
   options.signal.throwIfAborted();
   const candidates = filterAndNormalize(raw, options);
-  const results = rankSearchResults(query, candidates)
+  const results = candidates
     .slice(0, RESULT_LIMIT)
     .map(entry => ({
       title: entry.title.slice(0, 500),
@@ -101,9 +100,7 @@ export function formatProviderError(
   return new Error(`${label} 搜索失败: ${message}`);
 }
 
-/**
- * 按实际 URL 核对域名并去重. 保留完整候选项, 让排序先于条数和摘要长度限制.
- */
+/** 按实际 URL 核对域名并去重, 保留搜索引擎返回的相对顺序. */
 export function filterAndNormalize(
   raw: readonly SearchResult[],
   options: Pick<SearchOptions, 'allowedDomains' | 'blockedDomains'>,

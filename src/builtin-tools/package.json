@@ -52,7 +52,6 @@
     "diff": "^9.0.0",
     "glob": "^11.0.0",
     "jsdom": "26.1.0",
-    "minisearch": "7.2.0",
     "pdfjs-dist": "^4.10.38",
     "lru-cache": "^10.4.3",
     "shell-quote": "^1.10.0",

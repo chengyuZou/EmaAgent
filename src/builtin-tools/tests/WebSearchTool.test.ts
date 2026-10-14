@@ -123,7 +123,7 @@ describe('WebSearchTool 模型投影与摘要', () => {
     expect(content).not.toContain('REMINDER');
   });
 
-  it('非空结果输出 Links 列表与 Sources 提醒', () => {
+  it('非空结果输出 Links 列表, 提醒只引用实际支持回答的来源', () => {
     const output: WebSearchResult = {
       query: 'react',
       results: [{ title: 'React', url: 'https://react.dev/', snippet: 'Docs' }],
@@ -131,7 +131,7 @@ describe('WebSearchTool 模型投影与摘要', () => {
     const content = String(WebSearchTool.mapResultToModelContent!(output));
     expect(content).toContain('Links:');
     expect(content).toContain('[React](https://react.dev/): Docs');
-    expect(content).toContain('REMINDER: You MUST include the sources above');
+    expect(content).toContain('REMINDER: Cite only sources that actually support your answer');
   });
 
   it('getToolUseSummary 返回 query', () => {
