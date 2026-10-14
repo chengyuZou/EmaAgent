@@ -63,7 +63,6 @@ export function MessageList({ sessionId, bottomInset, latestButtonBottom }: {
 }): JSX.Element {
   const history = useSessionHistoryStore(state => state.bySession.get(sessionId) ?? EMPTY_SESSION_HISTORY);
   const turns = useTurnStore(useShallow(state => new Map(state.turnsBySession.get(sessionId) ?? [])));
-  const stopReason = useTurnStore(state => state.stopReasonBySession.get(sessionId));
   const activeCompact = useSessionActivityStore(state => state.bySession.get(sessionId)?.activeCompact ?? null);
   const handledNavigationRequest = useRef<TurnNavigationRequest | null>(null);
   const [locatedPlaybackTurnId, setLocatedPlaybackTurnId] = useState<string | null>(null);
@@ -110,7 +109,6 @@ export function MessageList({ sessionId, bottomInset, latestButtonBottom }: {
       key={sessionId + ':' + (history.windowId ?? 'unloaded')}
       sessionId={sessionId} history={history} messages={messages} turns={turns}
       toolResults={toolResults} messagesByTurn={messagesByTurn}
-      stopReason={turns.size === 0 ? stopReason : undefined}
       activeCompact={activeCompact} bottomInset={bottomInset} latestButtonBottom={latestButtonBottom}
       handledNavigationRequest={handledNavigationRequest}
       locatedPlaybackTurnId={locatedPlaybackTurnId}
@@ -121,7 +119,7 @@ export function MessageList({ sessionId, bottomInset, latestButtonBottom }: {
 
 function HistoryViewport({
   sessionId, history, messages, turns, toolResults, messagesByTurn,
-  stopReason, activeCompact, bottomInset, latestButtonBottom, handledNavigationRequest,
+  activeCompact, bottomInset, latestButtonBottom, handledNavigationRequest,
   locatedPlaybackTurnId, onPlaybackTurnLocated,
 }: {
   readonly sessionId: string;
@@ -130,7 +128,6 @@ function HistoryViewport({
   readonly turns: ReadonlyMap<string, TurnState>;
   readonly toolResults: ReturnType<typeof toolResultsForMessages>;
   readonly messagesByTurn: ReadonlyMap<string, readonly DisplayMessage[]>;
-  readonly stopReason?: string;
   readonly activeCompact: ActiveCompact | null;
   readonly bottomInset: number;
   readonly latestButtonBottom: number | null;
@@ -362,7 +359,7 @@ function HistoryViewport({
             style={{ position: 'absolute', top: totalHeight - bottomInset - statusHeight, width: '100%' }}>
             <div className="ema-chat-content-column">
               <MessageListStatus error={history.error} newerError={history.newerError}
-                loadingNewer={history.loadingNewer} stopReason={stopReason} activeCompact={activeCompact}
+                loadingNewer={history.loadingNewer} activeCompact={activeCompact}
                 onRetryNewer={() => void useSessionHistoryStore.getState().loadNewer(sessionId)}
                 onRetryWindow={() => {
                   const store = useSessionHistoryStore.getState();
@@ -380,7 +377,7 @@ function HistoryViewport({
             onClick={() => void useSessionHistoryStore.getState().loadOlder(sessionId)}>重试</button>}
         </div>
       )}
-      {empty && !history.error && !history.olderError && !history.newerError && !stopReason && !activeCompact && (
+      {empty && !history.error && !history.olderError && !history.newerError && !activeCompact && (
         <div className="absolute inset-0 flex flex-col" style={{ paddingBottom: bottomInset }}>
           {loadingEmpty
             ? <div className="flex flex-1 items-center justify-center text-sm text-[var(--ema-text-tertiary)]">正在读取消息…</div>
@@ -430,12 +427,11 @@ function HistoryViewport({
 }
 
 function MessageListStatus({
-  loadingNewer, error, newerError, stopReason, activeCompact, onRetryNewer, onRetryWindow,
+  loadingNewer, error, newerError, activeCompact, onRetryNewer, onRetryWindow,
 }: {
   readonly loadingNewer: boolean;
   readonly error?: string;
   readonly newerError?: string;
-  readonly stopReason?: string;
   readonly activeCompact: ActiveCompact | null;
   readonly onRetryNewer: () => void;
   readonly onRetryWindow: () => void;
@@ -477,9 +473,6 @@ function MessageListStatus({
         <div className="flex items-center gap-2 text-xs text-[var(--ema-danger)]">
           <span>{error}</span><button type="button" onClick={onRetryWindow}>重新读取</button>
         </div>
-      )}
-      {stopReason && (
-        <span className="rounded-full bg-[var(--ema-surface-2)] px-4 py-1.5 text-xs text-[var(--ema-text-tertiary)]">{stopReason}</span>
       )}
     </div>
   );

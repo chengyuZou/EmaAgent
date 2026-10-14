@@ -65,6 +65,59 @@
   margin-top: var(--ema-chat-edited-files-gap, 12px);
 }
 
+.ema-turn-error {
+  min-width: 0;
+  margin-block: var(--ema-space-5) var(--ema-space-4);
+  padding-left: var(--ema-space-4);
+  border-left: 3px solid var(--ema-danger);
+  color: var(--ema-text-primary);
+}
+
+.ema-turn-error-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--ema-space-2);
+  color: var(--ema-danger-text);
+  font-size: 12px;
+}
+
+.ema-turn-error-heading h3 {
+  margin: 0;
+  font: inherit;
+  font-weight: 400;
+}
+
+.ema-turn-error-code,
+.ema-turn-error-message {
+  margin-top: var(--ema-space-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--ema-font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.ema-turn-error-code {
+  color: var(--ema-text-secondary);
+}
+
+.ema-turn-error-message[data-collapsed='true'] {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 8;
+  overflow: hidden;
+}
+
+.ema-turn-error-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ema-space-2);
+  margin-top: var(--ema-space-3);
+  font-size: 12px;
+  color: var(--ema-danger-text);
+}
+
 .ema-edited-files-card {
   overflow: hidden;
   border: 1px solid var(--ema-border);

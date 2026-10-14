@@ -1,4 +1,4 @@
-// 渲染一轮最后一条可见消息之后的编辑汇总、操作和统计.
+// 渲染一轮最后一条可见消息之后的错误、编辑汇总、操作和统计.
 
 import { useEffect, useMemo, useState, type JSX } from 'react';
 import { IconButton } from '@ema-agent/ui';
@@ -18,6 +18,7 @@ import {
   type TurnState,
 } from '../../stores/turn.js';
 import { TurnSpeechControls } from './turnSpeechControls.js';
+import { TurnError } from './turnError.js';
 import { historyAssistantSections } from './assistantSections.js';
 import { toolResultsForMessages } from './UIMessage.js';
 import { EditedFilesCard } from './toolBlocks/EditedFilesCard.js';
@@ -65,6 +66,7 @@ export function TurnFooter({
   const textContent = useMemo(() => assistantText(messages), [messages]);
   const createdAt = messages.at(-1)?.createdAt ?? Date.now();
   const [copied, setCopied] = useState(false);
+  const turnResult = turn ?? (turnStats?.status === 'failed' ? turnStats : undefined);
 
   useEffect(() => {
     if (!turn) return;
@@ -86,6 +88,10 @@ export function TurnFooter({
 
   return (
     <>
+      <TurnError
+        errorCode={turnResult?.errorCode ?? null}
+        errorMessage={turnResult?.errorMessage ?? null}
+      />
       {edited.files.length > 0 && (
         <div className="ema-message-shell ema-turn-edited-files flex">
           <div className="flex min-w-20 w-full max-w-full flex-col">

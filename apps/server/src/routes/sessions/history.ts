@@ -50,6 +50,8 @@ function toTurnStats(
   return {
     turnId: turn.id,
     status: turn.status,
+    errorCode: turn.errorCode,
+    errorMessage: turn.errorMessage,
     inputTokens: llmCalls.reduce((sum, record) => sum + (record.inputTokens ?? 0), 0),
     outputTokens: llmCalls.reduce((sum, record) => sum + (record.outputTokens ?? 0), 0),
     durationMs: turn.completedAt === null ? null : turn.completedAt - turn.createdAt,

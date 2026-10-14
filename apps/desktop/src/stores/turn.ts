@@ -4,7 +4,7 @@ import { create } from 'zustand';
 import type { ContextUsage } from '@ema-agent/context';
 import type { LlmTokenUsage } from '@ema-agent/llm';
 import type { Message, SessionMessage } from '@ema-agent/session';
-import type { TurnStreamEvent } from '@ema-agent/turn';
+import type { Turn, TurnStreamEvent } from '@ema-agent/turn';
 import type { ToolError } from '@ema-agent/tools';
 
 export type TurnStoreEvent = Exclude<TurnStreamEvent, { readonly type: 'user_message_stored' }>;
@@ -42,7 +42,7 @@ export interface StreamingMessage {
   readonly createdAt: number;
 }
 
-export interface TurnState {
+export interface TurnState extends Pick<Turn, 'errorCode' | 'errorMessage'> {
   readonly turnId: string;
   readonly startedAt: number;
   /** 已确认 Message 与流式 Assistant Message 共用这一份屏幕顺序. */
@@ -62,7 +62,6 @@ export type ContextUsageEntry = {
 interface TurnStore {
   /** 每个 Session 内按 turn_started 到达顺序保存尚未被 History 接管的 Turn. */
   readonly turnsBySession: ReadonlyMap<string, ReadonlyMap<string, TurnState>>;
-  readonly stopReasonBySession: ReadonlyMap<string, string>;
   readonly contextUsageBySession: Readonly<Record<string, ContextUsageEntry>>;
   readonly contextEstimateVersionBySession: Readonly<Record<string, number>>;
   readonly rootUsageByTurn: Readonly<Record<string, LlmTokenUsage>>;
@@ -125,7 +124,7 @@ interface TurnStore {
   markTerminal(
     sessionId: string,
     turnId: string,
-    reason?: string
+    event: Extract<TurnStoreEvent, { type: 'turn_completed' | 'turn_failed' | 'turn_aborted' }>,
   ): void;
   removeTurn(sessionId: string, turnId: string): void;
   applyContextUsage(
@@ -424,7 +423,6 @@ function discardBufferedDeltas(sessionId: string, turnId: string): void {
 
 export const useTurnStore = create<TurnStore>((set, get) => ({
   turnsBySession: new Map(),
-  stopReasonBySession: new Map(),
   contextUsageBySession: {},
   contextEstimateVersionBySession: {},
   rootUsageByTurn: {},
@@ -500,13 +498,10 @@ export const useTurnStore = create<TurnStore>((set, get) => ({
       case 'agent_usage_updated':
         turnStore.setRootUsage(turnId, event.usage);
         return;
-        return;
       case 'turn_completed':
-        turnStore.markTerminal(sessionId, turnId);
-        return;
       case 'turn_failed':
       case 'turn_aborted':
-        turnStore.markTerminal(sessionId, turnId, event.type === 'turn_failed' ? event.message : event.reason);
+        turnStore.markTerminal(sessionId, turnId, event);
         return;
       case 'motion_changed':
       case 'emotion_changed':
@@ -540,6 +535,8 @@ export const useTurnStore = create<TurnStore>((set, get) => ({
           thinkingActive: false,
           iteration: null,
           terminal: false,
+          errorCode: null,
+          errorMessage: null,
         }
       );
       return { turnsBySession: new Map(state.turnsBySession).set(sessionId, turns) };
@@ -565,11 +562,12 @@ export const useTurnStore = create<TurnStore>((set, get) => ({
           thinkingActive: false,
           iteration: null,
           terminal: false,
+          errorCode: null,
+          errorMessage: null,
         }
       );
       return {
         turnsBySession: new Map(state.turnsBySession).set(sessionId, turns),
-        stopReasonBySession: new Map([...state.stopReasonBySession].filter(([id]) => id !== sessionId)),
       };
     });
   },
@@ -765,22 +763,16 @@ export const useTurnStore = create<TurnStore>((set, get) => ({
     }));
   },
 
-  markTerminal(sessionId, turnId, reason) {
+  markTerminal(sessionId, turnId, event) {
     flushBufferedDeltas(sessionId, turnId);
-    set(state => ({ turnsBySession: patchTurnState(state.turnsBySession, sessionId, turnId, finishTurnMessages) }));
+    set(state => ({
+      turnsBySession: patchTurnState(state.turnsBySession, sessionId, turnId, turn => ({
+        ...finishTurnMessages(turn),
+        errorCode: event.type === 'turn_failed' ? event.code : null,
+        errorMessage: event.type === 'turn_failed' ? event.message : null,
+      })),
+    }));
     get().clearTurnUsage(turnId);
-    if (!reason) {
-      return;
-    }
-    set(state => ({ stopReasonBySession: new Map(state.stopReasonBySession).set(sessionId, reason) }));
-    setTimeout(
-      () => set(state => {
-        const reasons = new Map(state.stopReasonBySession);
-        reasons.delete(sessionId);
-        return { stopReasonBySession: reasons };
-      }),
-      3000
-    );
   },
 
   removeTurn(sessionId, turnId) {
@@ -852,15 +844,12 @@ export const useTurnStore = create<TurnStore>((set, get) => ({
     set(state => {
       const turnsBySession = new Map(state.turnsBySession);
       turnsBySession.delete(sessionId);
-      const stopReasonBySession = new Map(state.stopReasonBySession);
-      stopReasonBySession.delete(sessionId);
       const contextUsageBySession = { ...state.contextUsageBySession };
       delete contextUsageBySession[sessionId];
       const contextEstimateVersionBySession = { ...state.contextEstimateVersionBySession };
       delete contextEstimateVersionBySession[sessionId];
       return {
         turnsBySession,
-        stopReasonBySession,
         contextUsageBySession,
         contextEstimateVersionBySession,
       };
