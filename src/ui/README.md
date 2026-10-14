@@ -22,6 +22,20 @@ raw HTML 先经 `rehype-sanitize` 清洗, 然后执行 KaTeX 和代码高亮. Me
 
 桌面通过 `MarkdownRendererProvider` 提供图片点击、普通音频卡片和本地文件打开操作. Provider 传入的 components 只覆盖对应标签, urlTransform 必须拒绝脚本等不允许的协议; 其他 HTML 清洗规则保持不变. UI 包不读取本机文件, 也不导入桌面的 Viewer、AudioPlayer 或文件侧栏. 未设置 Provider 的 Markdown 保持默认显示方式.
 
+## 只读文本与 JSON
+
+`CodeViewer` 接收完整的 `source` 文本; `language="json"` 启用 JSON 高亮, 默认 `"text"` 显示纯文本. 当前用于 Data 的原始 Message JSON, 不替代 Markdown、图片、音频或工具专用结果卡片.
+
+```tsx
+<CodeViewer source={formattedJson} language="json" />
+```
+
+CodeMirror 6 在高度不超过 `min(60vh, 36rem)` 的区域中连续滚动, 自动折行, 只把可视区及附近内容放入 DOM. 超长单行也由 CodeMirror 裁剪显示, 不要求调用方切成小段. 可以选中文本, 使用键盘导航, 或点击“复制全文”取得未截断的 `source`. 配色沿用 `--ema-syntax-*`, 材质由外层应用样式控制.
+
+相同文本不会重新创建编辑器或替换文档; 文本变化时更新当前文档, 卸载时销毁编辑器. 调用方应在展开详情时挂载, 收起后卸载, 不把每条已读消息的查看器隐藏后长期留在页面中.
+
+这只减少页面渲染量, 不减少 API 返回、JSON 解析或完整文本本身占用的内存. 数据读取、格式化与落盘由业务调用方负责.
+
 ## 悬停提示
 
 应用根部挂载 `TooltipProvider`, 默认等待 200ms 后显示鼠标悬停提示. `Tooltip` 未传 `delayDuration` 时使用最近的 Provider 设置; 键盘聚焦可直接查看提示. `label` 用于短操作说明, `card` 用于地址、路径或多行只读预览, 两者共享主题、边框与动画. 长文本在可用窗口宽度内换行.
@@ -47,6 +61,7 @@ raw HTML 先经 `rehype-sanitize` 清洗, 然后执行 KaTeX 和代码高亮. Me
 ## 验证
 
 - `pnpm --filter @ema-agent/ui typecheck`
+- `pnpm --filter @ema-agent/ui test -- tests/codeViewer.test.tsx`: 只读文档、长单行、原位更新、卸载及复制失败反馈. JSDOM 不负责验证实际滚动布局.
 - `pnpm --filter @ema-agent/ui test -- tests/Tooltip.test.tsx`: 默认与单独设置的等待时间、只读提示、菜单和面板触发按钮的点击与焦点行为.
 - `pnpm --filter @ema-agent/ui test -- tests/Markdown.test.tsx tests/mermaidRender.test.ts tests/mermaidIntegration.test.ts`
 - `pnpm --filter @ema-agent/ui ladle`: 现有组件预览中的 `Markdown / Mermaid`, 覆盖分支、分组、时序图、错误回退、明暗与宽度切换、流式围栏.

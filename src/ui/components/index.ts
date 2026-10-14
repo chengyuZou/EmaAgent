@@ -6,6 +6,8 @@ export { IconButton } from './IconButton.js';
 export { Input }      from './Input.js';
 export { Textarea }   from './Textarea.js';
 export { Markdown, MarkdownRendererProvider, markdownSanitizeSchema } from './Markdown.js';
+export { CodeViewer } from './codeViewer.js';
+export type { CodeViewerProps } from './codeViewer.js';
 export { MarkdownLink } from './markdownLink.js';
 export { Card }       from './Card.js';
 export { CardButton } from './CardButton.js';

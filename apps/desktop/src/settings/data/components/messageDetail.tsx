@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react';
-import { Button, Markdown, Skeleton } from '@ema-agent/ui';
+import { Button, CodeViewer, Skeleton } from '@ema-agent/ui';
 import { sessionsApi, type RawMessageHeader, type RawMessagesPage } from '../../../api/sessions.js';
 import { subscribeSystemEvent } from '../../../lib/events/systemEventDispatcher.js';
 import { useCollapsibleBody } from '../../../chat/messages/messageExpansion.js';
@@ -197,9 +197,7 @@ function MessageBody({ sessionId, turnId, messageId }: {
         </div>
       )}
       {pretty !== null && (
-        <div className="ema-raw-json overflow-hidden rounded-lg border border-[var(--ema-border)]">
-          <Markdown source={`\`\`\`json\n${pretty}\n\`\`\``} />
-        </div>
+        <CodeViewer source={pretty} language="json" />
       )}
     </div>
   );
