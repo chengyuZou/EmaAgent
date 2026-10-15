@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { readFileSync, statSync } from 'node:fs';
 import process from 'node:process';
+import path from 'node:path';
 
 export function readJson(filePath) {
   return JSON.parse(readFileSync(filePath, 'utf8'));
@@ -46,4 +47,28 @@ export function requireRegularFile(filePath, label) {
   if (!stat.isFile() || stat.size === 0) {
     throw new Error(`${label} 不是普通文件或为空: ${filePath}`);
   }
+}
+
+/** 从部署目录解析 FFmpeg, 并检查真实二进制的截图能力. 不截取发布机器的屏幕. */
+export function verifyCaptureBinary(appRoot, nodeBinary = process.execPath) {
+  const binary = execFileSync(nodeBinary, ['--input-type=module', '--eval', `
+    import { createRequire } from 'node:module';
+    const require = createRequire(import.meta.resolve('@ema-agent/vishot-capture'));
+    process.stdout.write(require('ffmpeg-static') || '');
+  `], { cwd: appRoot, encoding: 'utf8', windowsHide: true, timeout: 10_000 }).trim();
+  const relative = path.relative(appRoot, binary);
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
+    throw new Error(`FFmpeg 没有包含在 Server 发布目录中: ${binary}`);
+  }
+  requireRegularFile(binary, '随包 FFmpeg');
+  requireRegularFile(`${binary}.LICENSE`, 'FFmpeg 许可证');
+  requireRegularFile(`${binary}.README`, 'FFmpeg 构建说明');
+  const devices = execFileSync(binary, ['-hide_banner', '-devices'], {
+    encoding: 'utf8', windowsHide: true, timeout: 10_000,
+  });
+  const device = { win32: 'gdigrab', darwin: 'avfoundation', linux: 'x11grab' }[process.platform];
+  if (!device || !devices.split(/\r?\n/).some(line => new RegExp(`^\\s*D\\s+${device}\\s`).test(line))) {
+    throw new Error(`随包 FFmpeg 缺少 ${device ?? process.platform} 屏幕采集能力, 不能发布为支持截图的安装包.`);
+  }
+  return binary;
 }

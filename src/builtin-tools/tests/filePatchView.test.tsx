@@ -72,7 +72,7 @@ describe('内置 Tool 的官方补丁视图', () => {
     expect(/--diffs-bg-deletion-override:\s*var\(--ema-danger-muted\)/.test(css)).toBe(true);
   });
 
-  it.each(['edit', 'updated', 'created'] as const)('%s 正文不预留复制按钮的右侧空栏, 仅摘要行预留', async (kind) => {
+  it.each(['edit', 'updated', 'created'] as const)('%s 正文和摘要都不预留复制按钮的右侧空栏', async (kind) => {
     const style = document.createElement('style');
     style.textContent = readFileSync(resolve('../../apps/desktop/src/styles/domains/toolRow.css'), 'utf8');
     document.head.append(style);
@@ -94,9 +94,9 @@ describe('内置 Tool 的官方补丁视图', () => {
       expect(getComputedStyle(host).paddingRight).toBe('0px');
       const summary = host.querySelector('.ema-file-change-summary')!;
       expect(summary).not.toBeNull();
-      expect(getComputedStyle(summary).paddingRight).toBe('25px');
+      expect(parseFloat(getComputedStyle(summary).paddingRight) || 0).toBe(0);
       await act(async () => root.render(createElement('div', {}, '普通输出')));
-      expect(getComputedStyle(host).paddingRight).toBe('25px');
+      expect(getComputedStyle(host).paddingRight).toBe('0px');
     } finally {
       style.remove();
     }

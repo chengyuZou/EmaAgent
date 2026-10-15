@@ -16,6 +16,7 @@ import { openSettings, type SettingsComposition } from './settings.js';
 import { openSpeech, type SpeechComposition } from './speech.js';
 import { openTools, type ToolsComposition } from './tools.js';
 import { openTurns, type TurnComposition } from './turn.js';
+import { openVishotCapture } from './vishotCapture.js';
 
 export interface Composition {
   readonly database: DatabaseComposition;
@@ -26,6 +27,7 @@ export interface Composition {
   readonly narrative: NarrativeComposition;
   readonly speech: SpeechComposition;
   readonly turn: TurnComposition;
+  readonly vishotCapture: ReturnType<typeof openVishotCapture>;
   readonly commands: CommandsComposition;
   readonly memory: MemoryComposition;
   readonly backup: BackupComposition;
@@ -120,7 +122,15 @@ export function buildComposition(input: { activeDataDir: string; initializeBuilt
     emitAppEvent: event => appEvents.emit(event),
     startTurnSpeech: speech.startTurnSpeech,
   });
-  const turn = openTurns({
+  // 截图对象创建时没有目标 Session, 不会执行这些队列回调.
+  let turn: TurnComposition;
+  const vishotCapture = openVishotCapture(
+    database, settings.settings, providers,
+    sessionId => turn.continuations.isIdleForVishotCapture(sessionId),
+    input => turn.continuations.enqueueIfIdleForVishotCapture(input),
+    appEvents,
+  );
+  turn = openTurns({
     database,
     settings: settings.settings,
     providers,
@@ -136,6 +146,15 @@ export function buildComposition(input: { activeDataDir: string; initializeBuilt
     publishQueuedInput: (sessionId, event) => sessionConnections.publish(sessionId, event),
     publishInteraction: event => sessionConnections.publish(event.sessionId, event),
     fanout: turnFanout,
+    captureScreen: async (sessionId, turnId, signal) => {
+      const bytes = await vishotCapture.capture.capture(signal);
+      signal.throwIfAborted();
+      database.session.getSessionForWork(sessionId);
+      const image = await database.imageStore.saveImage(sessionId, bytes, '屏幕截图');
+      signal.throwIfAborted();
+      database.imageStore.claimForTurn(sessionId, turnId, [image.path]);
+      return image.path;
+    },
   });
   notifyBackgroundCompletion = (sessionId, backgroundProcessId, status) => {
     turn.continuations.backgroundProcessCompleted(sessionId, backgroundProcessId, status);
@@ -167,12 +186,14 @@ export function buildComposition(input: { activeDataDir: string; initializeBuilt
     speech,
     turn,
     commands,
+    vishotCapture,
     memory,
     backup,
     sessionConnections,
     appEvents,
     turnFanout,
     async close() {
+      await vishotCapture.close();
       // 先封住自动续接, 再中止并等待根 Turn/手动 Compact 清除各自的 Session 运行记录.
       // 否则数据库关闭后, 在执行 Turn 的 finally 仍可能继续落终态或启动下一根 Turn.
       turn.continuations.shutdown();

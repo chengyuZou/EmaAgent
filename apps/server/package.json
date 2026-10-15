@@ -58,6 +58,7 @@
     "@ema-agent/turn": "workspace:*",
     "@ema-agent/usage": "workspace:*",
     "@ema-agent/vision": "workspace:*",
+    "@ema-agent/vishot-capture": "workspace:*",
     "@hono/node-server": "^2.1.1",
     "@hono/zod-validator": "^0.9.0",
     "fflate": "^0.8.2",

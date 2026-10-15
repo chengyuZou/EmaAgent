@@ -91,6 +91,7 @@ async function stopSessionWork(
   // 先向所有执行发出停止请求, 不能等主任务结束后才停子代理或命令.
   const running = database.sessionRunning.getRunning(sessionId);
   const completions = [
+    composition.vishotCapture.capture.cancelSession(sessionId),
     turn.subagents.abortForSession(sessionId, reason),
     tools.backgroundProcesses.stopForSession(sessionId),
     speech.cancelSessionSpeech(sessionId),

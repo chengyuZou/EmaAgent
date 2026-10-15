@@ -16,6 +16,7 @@ export {
   powerShellTitle,
 } from './tools/PowerShellTool/UI.js';
 export { FileReadArgsView, FileReadResultView, fileReadTitle, fileReadResultCopyText } from './tools/FileReadTool/UI.js';
+export { CaptureResultView, captureTitle, captureResultCopyText } from './tools/CaptureTool/UI.js';
 export {
   asFileEditResult,
   FileEditArgsView,

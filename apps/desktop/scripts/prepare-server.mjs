@@ -24,6 +24,7 @@ import {
   readJson,
   requireRegularFile,
   rustHostTarget,
+  verifyCaptureBinary,
 } from './release-utils.mjs';
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -80,6 +81,7 @@ try {
 
   requireRegularFile(path.join(stagingApp, 'dist', 'main.js'), 'Server 入口');
   prepareDependencyLinks(stagingApp);
+  verifyCaptureBinary(stagingApp);
 
   mkdirSync(path.dirname(binaryPath), { recursive: true });
   copyFileSync(process.execPath, temporaryBinary);

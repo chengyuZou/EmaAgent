@@ -13,6 +13,7 @@ export interface BuiltinToolIdentity {
 export const BuiltinTools = Object.freeze({
   FileRead:  Object.freeze({ id: 'builtin.file.read',  name: 'Read', variant: 'read' }),
   DescribeImage: Object.freeze({ id: 'builtin.image.describe', name: 'DescribeImage', variant: 'read' }),
+  Capture: Object.freeze({ id: 'builtin.screen.capture', name: 'Capture', variant: 'read' }),
   FileEdit:  Object.freeze({ id: 'builtin.file.edit',  name: 'Edit', variant: 'edit' }),
   FileWrite: Object.freeze({ id: 'builtin.file.write', name: 'Write', variant: 'edit' }),
   Glob:      Object.freeze({ id: 'builtin.search.glob', name: 'Glob', variant: 'search' }),

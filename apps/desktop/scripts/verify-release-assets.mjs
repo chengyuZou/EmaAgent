@@ -16,6 +16,7 @@ import {
   requireRegularFile,
   rustHostTarget,
   sha256File,
+  verifyCaptureBinary,
 } from './release-utils.mjs';
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -48,6 +49,7 @@ const nodeInfo = JSON.parse(execFileSync(serverBinary, [
 assert.equal(nodeInfo.version, config.nodeVersion, '随包 Node 版本与 release-config 不一致');
 assert.equal(nodeInfo.platform, process.platform, '随包 Node 的操作系统不匹配');
 assert.equal(nodeInfo.arch, process.arch, '随包 Node 的 CPU 架构不匹配');
+verifyCaptureBinary(appRoot, serverBinary);
 
 if (!serverOnly) {
   const cubismPath = path.join(desktopRoot, 'public', 'cubism', config.cubismCore.fileName);

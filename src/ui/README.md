@@ -24,13 +24,16 @@ raw HTML 先经 `rehype-sanitize` 清洗, 然后执行 KaTeX 和代码高亮. Me
 
 ## 只读文本与 JSON
 
-`CodeViewer` 接收完整的 `source` 文本; `language="json"` 启用 JSON 高亮, 默认 `"text"` 显示纯文本. 当前用于 Data 的原始 Message JSON, 不替代 Markdown、图片、音频或工具专用结果卡片.
+`CodeViewer` 接收完整的 `source` 文本; `language="json"` 启用 JSON 高亮, 默认 `"text"` 显示纯文本. 当前用于 Data 的原始 Message JSON, Tool 的默认参数与结果, Narrative 的周目正文与原始输出, 以及 WebFetch 的结果正文. 工具卡仍保留周目分组, 状态和预览切换, 不替代图片、音频或其他专用交互.
 
 ```tsx
 <CodeViewer source={formattedJson} language="json" />
+<CodeViewer source={formattedJson} language="json" embedded />
 ```
 
-CodeMirror 6 在高度不超过 `min(60vh, 36rem)` 的区域中连续滚动, 自动折行, 只把可视区及附近内容放入 DOM. 超长单行也由 CodeMirror 裁剪显示, 不要求调用方切成小段. 可以选中文本, 使用键盘导航, 或点击“复制全文”取得未截断的 `source`. 配色沿用 `--ema-syntax-*`, 材质由外层应用样式控制.
+默认显示独立卡片、文本类型和复制按钮. `embedded` 只显示文本区域, 由外层提供标题与复制操作, 不再套第二层卡片. Tool 使用内嵌展示, Data 使用独立展示.
+
+CodeMirror 6 默认在高度不超过 `min(60vh, 36rem)` 的区域中连续滚动, 自动折行, 只把可视区及附近内容放入 DOM. 超长单行也由 CodeMirror 裁剪显示, 不要求调用方切成小段. 可以选中文本, 使用键盘导航, 或复制未截断的 `source`. 配色沿用 `--ema-syntax-*`, 材质由外层应用样式控制. `--ema-code-max-height`、`--ema-code-font-size` 和 `--ema-code-text` 允许宿主按 Tool 等紧凑区域设置高度、字号和正文颜色.
 
 相同文本不会重新创建编辑器或替换文档; 文本变化时更新当前文档, 卸载时销毁编辑器. 调用方应在展开详情时挂载, 收起后卸载, 不把每条已读消息的查看器隐藏后长期留在页面中.
 

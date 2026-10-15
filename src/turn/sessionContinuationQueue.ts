@@ -175,6 +175,22 @@ export class SessionContinuationQueue {
     return publicItem(item);
   }
 
+  isIdleForVishotCapture(sessionId: string): boolean {
+    return this.acceptsWork(sessionId)
+      && !this.deps.sessionRunning.isRunning(sessionId)
+      && !this.draining.has(sessionId)
+      && (this.inputs.get(sessionId)?.length ?? 0) === 0
+      && (this.completionNotices.get(sessionId)?.length ?? 0) === 0
+      && this.deps.goals.getCurrent(sessionId)?.status !== 'active';
+  }
+
+  enqueueIfIdleForVishotCapture(input: EnqueueSessionInput): boolean {
+    if (!this.isIdleForVishotCapture(input.sessionId)) return false;
+    // 检查与入队之间不能 await, 否则可能出现 检查截屏-用户消息先入队-截屏入队.
+    this.enqueue(input);
+    return true;
+  }
+
   /** 返回未确认消费的公开队列列表. 已领取项仍保留到 Message 落库完成. */
   list(sessionId: string): readonly QueuedSessionInput[] {
     return (this.inputs.get(sessionId) ?? []).map(publicItem);

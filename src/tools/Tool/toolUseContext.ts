@@ -130,6 +130,8 @@ export interface ToolUseContext {
   readonly askUser?: AskUser;
   /** 本 Turn 冻结的 vision 调用（OCR/图注）；缺省时 Read 的 PDF 分支只读文本层。 */
   readonly vision?: CallVision;
+  /** 保存到调用它的 Session, 返回普通图片附件路径. 不经过自动捕获的空闲队列. */
+  readonly captureScreen?: (sessionId: string, turnId: string, signal: AbortSignal) => Promise<string>;
   // ── Memory 工具族的三个只读能力 ────────────────────────────────────────────
   /** MemorySearch 工具的跨两轨关键词搜索能力。 */
   readonly memorySearch?: SearchMemory;

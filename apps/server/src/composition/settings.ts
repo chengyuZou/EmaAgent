@@ -17,6 +17,7 @@ import {
   maxRuntimeHoursBackgroundSetting,
 } from '@ema-agent/tools';
 import { sandboxNetworkSetting } from '@ema-agent/sandbox';
+import { vishotCaptureEnabledSetting, vishotCaptureIntervalSecondsSetting } from '@ema-agent/vishot-capture';
 import { eventDisplaySetting } from '../settings/eventDisplaySetting.js';
 import { narrativeQueryModeSetting } from '../settings/narrativeSetting.js';
 import { terminalShellExecutableSetting } from '../settings/terminalSetting.js';
@@ -46,6 +47,8 @@ export const SETTINGS_DEFINITIONS = [
   terminalShellExecutableSetting,
   wallpaperSetting,
   sandboxNetworkSetting,
+  vishotCaptureEnabledSetting,
+  vishotCaptureIntervalSecondsSetting,
 ] as const;
 
 /**

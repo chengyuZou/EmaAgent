@@ -18,7 +18,7 @@ import {
   workMemoryDir,
 } from '@ema-agent/memory';
 import { permissionAskTimeoutSetting, type PermissionStreamEvent } from '@ema-agent/permission';
-import type { ToolExecutionEvent } from '@ema-agent/tools';
+import type { ToolExecutionEvent, ToolUseContext } from '@ema-agent/tools';
 import type { SettingsStore } from '@ema-agent/settings';
 import { workspaceInstructionFilesSetting } from '@ema-agent/skills';
 import type { StageEngine } from '@ema-agent/stage';
@@ -61,6 +61,7 @@ export interface TurnComposition {
 }
 
 export interface TurnCompositionDeps {
+  readonly captureScreen: NonNullable<ToolUseContext['captureScreen']>;
   readonly database: DatabaseComposition;
   readonly settings: SettingsStore;
   readonly providers: ProvidersComposition;
@@ -283,6 +284,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     },
     backgroundProcesses: tools.backgroundProcesses,
     resolveVision: resolveCallVision,
+    captureScreen: deps.captureScreen,
     commandRunner: tools.getCommandRunner,
     toolResultStore: tools.getSessionToolResultStore,
     toolExecutionState: tools.toolExecutionState,

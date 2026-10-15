@@ -86,6 +86,35 @@ function createGoalFixture() {
 }
 
 describe('SessionContinuationQueue', () => {
+  it('截图仅在空闲时同步入队, 同一间隙第二次提交被拒绝', async () => {
+    const { queue, starts } = createFixture();
+    const input = {
+      sessionId: 'session-a',
+      input: [{ type: 'attachment' as const, block: { type: 'image_reference' as const, path: '/screen.png', name: '屏幕截图' } }],
+    };
+    expect(queue.isIdleForVishotCapture('session-a')).toBe(true);
+    expect(queue.enqueueIfIdleForVishotCapture(input)).toBe(true);
+    expect(queue.enqueueIfIdleForVishotCapture(input)).toBe(false);
+    await Promise.resolve();
+    expect(starts).toHaveLength(1);
+    expect(starts[0]!.input).toEqual(input.input);
+  });
+
+  it.each(['turn', 'compact', 'input', 'notice', 'goal', 'drain', 'closed'] as const)('%s 不允许自动截图插队', async reason => {
+    const f = createGoalFixture();
+    const id = f.session.id;
+    if (reason === 'turn') f.sessionRunning.register(id, { kind: 'turn', turnId: 'busy' });
+    if (reason === 'compact') f.sessionRunning.register(id, { kind: 'compact', compactId: 'busy' });
+    if (reason === 'input') f.queue.enqueue({ sessionId: id, input: [{ type: 'text', text: '先处理用户输入' }] });
+    if (reason === 'notice') f.queue.backgroundProcessCompleted(id, 'p', 'completed');
+    if (reason === 'goal') f.goals.create(id, '未完成目标');
+    if (reason === 'drain') f.queue.requestDrain(id);
+    if (reason === 'closed') f.queue.shutdown();
+    expect(f.queue.isIdleForVishotCapture(id)).toBe(false);
+    expect(f.queue.enqueueIfIdleForVishotCapture({ sessionId: id, input: [] })).toBe(false);
+    f.queue.shutdown();
+  });
+
   it('归档取消输入与续接, 忽略迟到的完成通知, 取消归档不重放队列', async () => {
     const fixture = createGoalFixture();
     fixture.queue.enqueue({ sessionId: fixture.session.id, input: [{ type: 'text', text: '未执行' }] });

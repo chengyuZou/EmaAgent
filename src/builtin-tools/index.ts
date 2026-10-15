@@ -1,6 +1,7 @@
 // 统一导出并注册 EmaAgent 自带的工具,也提供这些工具启动恢复所需的入口.
 import { FileReadTool } from './tools/FileReadTool/FileReadTool.js';
 import { DescribeImageTool } from './tools/DescribeImageTool/describeImageTool.js';
+import { CaptureTool } from './tools/CaptureTool/captureTool.js';
 import { FileWriteTool } from './tools/FileWriteTool/FileWriteTool.js';
 import { cleanupInterruptedFileWriteTemps } from './tools/FileWriteTool/recovery.js';
 import { FileEditTool } from './tools/FileEditTool/FileEditTool.js';
@@ -56,6 +57,7 @@ export {
   BuiltinTools,
   FileReadTool,
   DescribeImageTool,
+  CaptureTool,
   FileWriteTool,
   cleanupInterruptedFileWriteTemps,
   FileEditTool,
@@ -127,6 +129,7 @@ export type { NarrativeSearchResult } from './tools/NarrativeSearchTool/Narrativ
 const ALL_BUILTIN_TOOLS: Tool<any, any, any, any>[] = [
   FileReadTool,
   DescribeImageTool,
+  CaptureTool,
   FileWriteTool,
   FileEditTool,
   GlobTool,

@@ -21,6 +21,7 @@ import { handleTaskSystemEvent } from '../stores/task.js';
 import { useThemeSync } from '../stores/theme.js';
 import { WallpaperLayer } from '../wallpaper/WallpaperLayer.js';
 import { MainView, useMainNavigationStore } from './navigation.js';
+import { setVishotCaptureSession } from '../api/vishotCapture.js';
 
 const SettingsPanel = lazy(async () => {
   const module = await import('../settings/SettingsPanel.js');
@@ -53,6 +54,15 @@ export function MainWindow(): JSX.Element {
 
   useThemeSync();
   useSettingsSync(serverReady);
+  useEffect(() => {
+    if (!serverReady) return;
+    void setVishotCaptureSession(sessionId).catch(error => {
+      showToast(`屏幕捕获目标同步失败: ${error instanceof Error ? error.message : String(error)}`, { variant: 'danger' });
+    });
+  }, [serverReady, sessionId]);
+  useEffect(() => () => {
+    void setVishotCaptureSession(null).catch(() => undefined);
+  }, []);
   useEffect(() => mountSystemEvents({ ownsConnection: false }), []);
   useEffect(() => useServerStore.getState().startPolling(), []);
   useEffect(() => subscribeSystemEvent(event => {

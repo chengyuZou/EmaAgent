@@ -40,6 +40,7 @@ import type { TurnStreamEvent } from '../events.js';
 const PLAN_TOOL_IDS: ReadonlySet<string> = new Set([
   BuiltinTools.FileRead.id,
   BuiltinTools.DescribeImage.id,
+  BuiltinTools.Capture.id,
   BuiltinTools.Glob.id,
   BuiltinTools.Grep.id,
   BuiltinTools.WebFetch.id,
@@ -72,6 +73,7 @@ export interface TurnToolsDeps {
   readonly backgroundProcesses?: BackgroundProcess;
   /** 每 Turn 解析一次 vision 调用闭包: 无绑定时返回 undefined */
   readonly resolveVision?: () => CallVision | undefined;
+  readonly captureScreen?: ToolUseContext['captureScreen'];
   readonly commandRunner?: (
     cwd: string,
     workspaceRoots: readonly string[],
@@ -213,6 +215,7 @@ export function prepareTurnTools(deps: TurnToolsDeps, input: PrepareTurnToolsInp
     platform: process.platform,
     ...(commandRunner ? { commandRunner } : {}),
     ...(vision ? { vision } : {}),
+    ...(deps.captureScreen ? { captureScreen: deps.captureScreen } : {}),
     ...(deps.backgroundProcesses ? { backgroundProcesses: deps.backgroundProcesses } : {}),
     ...(narrativeSearch ? { narrativeSearch } : {}),
     ...(deps.taskStore ? { taskStore: deps.taskStore } : {}),

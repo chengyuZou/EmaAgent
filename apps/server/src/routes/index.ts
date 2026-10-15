@@ -54,6 +54,7 @@ import { turnRecordsRoute } from './turns/records.js';
 import { turnSpeechRoute } from './turns/speech.js';
 import { filesRoute } from './workspaces/files.js';
 import { projectsRoute } from './workspaces/projects.js';
+import { vishotCaptureRoute } from './vishotCapture.js';
 
 export const createRoutes = (composition: Composition, secret: string) => {
   const {
@@ -72,6 +73,7 @@ export const createRoutes = (composition: Composition, secret: string) => {
     // 探活挂在根路径 /health; 宿主也可用它检查已公布端口, emaAuth 内豁免认证.
     .route('/', systemStatusRoute({ activeDataDir: database.activeDataDir, getSandboxStatus: tools.getSandboxStatus }))
     .route('/api/system', systemEventsRoute(appEvents))
+    .route('/api/vishot-capture', vishotCaptureRoute(composition.vishotCapture.capture, database.session))
     .route('/api/storage-stats', storageStatsRoute({
       dataDirStats: database.dataDirStats,
       sessionStats: database.sessionStats,
