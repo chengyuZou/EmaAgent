@@ -19,7 +19,7 @@ describe('assertProtocolInput', () => {
     }));
   });
 
-  it('拒绝 OpenAI 函数结果里的图片', () => {
+  it('允许转换器能完整表达的 OpenAI 工具图片', () => {
     expect(() => assertProtocolInput('openai-responses-llm', [{
       role: 'user',
       content: [{
@@ -27,7 +27,7 @@ describe('assertProtocolInput', () => {
         toolCallId: 'call-1',
         content: [{ type: 'image_url', url: 'https://example.test/a.png' }],
       }],
-    }])).toThrow(expect.objectContaining({ contentType: 'image_url' }));
+    }])).not.toThrow();
   });
 
   it('允许 Gemini 的图片、音频和文件内联输入', () => {

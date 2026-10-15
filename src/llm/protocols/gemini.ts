@@ -216,6 +216,12 @@ function toGeminiContents(
   let system: string | undefined;
   const contents: Content[] = [];
   const toolNames = new Map<string, string>();
+  const toolImages: Part[] = [];
+  const flushToolImages = (): void => {
+    if (toolImages.length === 0) return;
+    appendGeminiUser(contents, [...toolImages]);
+    toolImages.length = 0;
+  };
 
   for (const message of messages) {
     if (message.role !== 'assistant') continue;
@@ -231,6 +237,7 @@ function toGeminiContents(
     }
     if (message.role === 'user') {
       if (typeof message.content === 'string') {
+        flushToolImages();
         appendGeminiUser(contents, [{ text: message.content }]);
         continue;
       }
@@ -244,7 +251,19 @@ function toGeminiContents(
               response: toGeminiToolResponse(toolResult),
             },
           });
+          if (typeof toolResult.content !== 'string') {
+            const images = toolResult.content.filter(part => part.type !== 'text');
+            if (images.length > 0) {
+              toolImages.push({ text: `[工具 ${toolResult.toolCallId} 返回的图片]` });
+              toolImages.push(...images.map(toGeminiPart));
+            }
+          }
         } else {
+          if (parts.length > 0) {
+            appendGeminiUser(contents, [...parts]);
+            parts.length = 0;
+          }
+          flushToolImages();
           parts.push(toGeminiPart(block as ContentPart));
         }
       }
@@ -252,6 +271,7 @@ function toGeminiContents(
       continue;
     }
 
+    flushToolImages();
     const parts: Part[] = [];
     // thought 只随生成它的同一个调用目标重放（thoughtSignature 模型私有）；
     // 无来源、跨协议/跨 Provider/跨模型的 thought 一律删除，text/tool_use 不受影响。
@@ -276,6 +296,8 @@ function toGeminiContents(
     }
     if (parts.length > 0) contents.push({ role: 'model', parts });
   }
+  // functionResponse 的 JSON 不是媒体输入. 整批回复后追加图片块, 保留其工具来源.
+  flushToolImages();
   return { system, contents };
 }
 
@@ -307,7 +329,9 @@ function toGeminiPart(part: ContentPart): Part {
 }
 
 function toGeminiToolResponse(toolResult: ToolResultBlock): Record<string, unknown> {
-  if (typeof toolResult.content !== 'string') return { content: toolResult.content };
+  if (typeof toolResult.content !== 'string') {
+    return { content: toolResult.content.filter(part => part.type === 'text') };
+  }
   try {
     const parsed = JSON.parse(toolResult.content);
     return parsed && typeof parsed === 'object'

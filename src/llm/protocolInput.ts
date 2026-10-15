@@ -76,12 +76,6 @@ function assertToolResult(
   if (typeof content === 'string') return;
 
   for (const part of content) {
-    if (
-      (protocol === 'openai-llm' || protocol === 'openai-responses-llm')
-      && part.type !== 'text'
-    ) {
-      fail(protocol, messageIndex, blockIndex, part.type, '函数结果只接受文本内容');
-    }
     if (protocol === 'anthropic-llm' && part.type === 'image_data'
       && !ANTHROPIC_IMAGE_TYPES.has(part.mimeType)) {
       fail(protocol, messageIndex, blockIndex, part.type, `不支持图片类型 ${part.mimeType}`);

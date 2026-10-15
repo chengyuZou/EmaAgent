@@ -69,10 +69,7 @@ async function* streamOpenAiResponses(
       OpenAI.Responses.ResponseCreateParamsStreaming['tool_choice'];
   }
   if (request.thinking?.enabled === false) {
-    // API 接受 none; 当前安装的 OpenAI SDK 类型尚未列出该值.
-    params.reasoning = { effort: 'none' } as unknown as NonNullable<
-      OpenAI.Responses.ResponseCreateParamsStreaming['reasoning']
-    >;
+    params.reasoning = { effort: 'none' };
   } else if (request.thinking?.enabled === true) {
     // 声明加密推理内容，使 reasoning item 可原样回传以续接 KV（stateless/零保留场景）。
     params.include = ['reasoning.encrypted_content'];
@@ -288,8 +285,8 @@ export function toResponsesInput(
             call_id: toolResult.toolCallId,
             output: typeof toolResult.content === 'string'
               ? toolResult.content
-              : toolResult.content.map((part) => part.type === 'text' ? part.text : '').join('\n'),
-          } as OpenAI.Responses.ResponseInputItem.FunctionCallOutput);
+              : toolResult.content.map(toResponsesContent),
+          });
           continue;
         }
         content.push(toResponsesContent(block as ContentPart));

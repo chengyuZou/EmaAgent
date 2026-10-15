@@ -7,8 +7,8 @@ import {
 import {
   AttachmentStore,
   type VisionDescriptionCache,
-  type VisionDescriptionProducer,
 } from '@ema-agent/attachments';
+import type { DescribeImage } from '@ema-agent/context';
 import {
   readCompactSettings,
   type CompactSettings,
@@ -104,7 +104,7 @@ export interface PrepareTurnDeps extends TurnToolsDeps {
   /** 记忆使用指引（静态模板文本，memory 包 buildMemoryGuidance 产出）；Work 摘要和角色关系记忆经 reminder 注入。 */
   readonly memoryGuidance?: () => Promise<string | null> | string | null;
   /** 模型不支持图片时的 Vision 描述入口。 */
-  readonly describeImage?: VisionDescriptionProducer;
+  readonly describeImage?: DescribeImage;
   /** Vision 描述缓存(path 键);与 describeImage 同时注入才会现做生产。 */
   readonly visionCache?: VisionDescriptionCache;
   readonly scratchpadDirForTurn?: (sessionId: string, turnId: string) => string;

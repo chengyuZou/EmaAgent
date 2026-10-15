@@ -1,4 +1,4 @@
-// 测试每次根 Turn 装配只向模型暴露当前宿主 Context 真正拥有的工具能力。
+// 测试每次根 Turn 装配只向模型暴露当前宿主 Context 真正拥有的工具能力.
 import { describe, expect, it } from 'vitest';
 import type { ToolPermissionContext } from '@ema-agent/permission';
 import {

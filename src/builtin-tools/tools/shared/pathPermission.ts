@@ -1,6 +1,6 @@
-// 文件类 Tool 的共享路径权限判定：read / write 两条固定检查顺序。
-// 各文件 Tool 的 checkPermissions 只负责提取路径，判定逻辑全部收敛在这里，
-// 避免六个文件工具各自重复实现路径安全与规则匹配。
+// 文件类 Tool 的共享路径权限判定:read / write 两条固定检查顺序.
+// 各文件 Tool 的 checkPermissions 只负责提取路径,判定逻辑全部收敛在这里,
+// 避免六个文件工具各自重复实现路径安全与规则匹配.
 
 import {
   checkInternalPath,
@@ -17,30 +17,30 @@ import {
 import os from 'node:os';
 import nodePath from 'node:path';
 
-/** 共享判定的输入：Tool 提取出绝对路径后传入。 */
+/** 共享判定的输入:Tool 提取出绝对路径后传入. */
 export interface PathPermissionInput {
   readonly toolName: string;
-  /** 候选绝对路径（Tool 已按工作区解析）。 */
+  /** 候选绝对路径(Tool 已按工作区解析). */
   readonly path: string;
   readonly cwd?: string;
   readonly permissionContext: ToolPermissionContext;
-  /** 宿主按 Turn 授予的内部工作目录（scratchpad 等），命中则直接放行。 */
+  /** 宿主按 Turn 授予的内部工作目录(scratchpad 等),命中则直接放行. */
   readonly internalRoots?: InternalPathRoots;
 }
 
-/** 写入需要额外拦截的敏感目录（凭据/配置/IDE/内部目录）；依赖与缓存目录不拦。 */
+/** 写入需要额外拦截的敏感目录(凭据/配置/IDE/内部目录);依赖与缓存目录不拦. */
 const WRITE_PROTECTED_DIRS: ReadonlySet<string> = new Set([
   '.git', '.ssh', '.gnupg', '.gpg',
   '.aws', '.azure', '.kube', '.ema-agent',
   '.vscode', '.idea',
 ]);
 
-/** 读取权限：固定检查顺序。 */
+/** 读取权限:固定检查顺序. */
 export function checkReadPathPermission(
   input: PathPermissionInput,
 ): PermissionResult {
   const { toolName, path, cwd, permissionContext, internalRoots } = input;
-  // 原路径与 symlink 真实路径都必须通过全部检查（防符号链接逃逸）。
+  // 原路径与 symlink 真实路径都必须通过全部检查(防符号链接逃逸).
   const isNetworkPath = path.startsWith('\\\\') || path.startsWith('//');
   // 网络路径在批准前不能做 exists/realpath, 这些查询本身就会访问网络.
   const pathsToCheck = isNetworkPath ? [path] : getPathsForPermissionCheck(path);
@@ -71,8 +71,8 @@ export function checkReadPathPermission(
     if (pathToCheck.startsWith('\\\\') || pathToCheck.startsWith('//')) {
       return {
         behavior: 'ask',
-        message: `读取 ${path} 需要确认：UNC 路径可能访问网络资源`,
-        decisionReason: { type: 'other', reason: 'UNC 路径（纵深防御检查）' },
+        message: `读取 ${path} 需要确认:UNC 路径可能访问网络资源`,
+        decisionReason: { type: 'other', reason: 'UNC 路径(纵深防御检查)' },
       };
     }
   }
@@ -82,10 +82,10 @@ export function checkReadPathPermission(
     if (hasSuspiciousWindowsPath(pathToCheck)) {
       return {
         behavior: 'ask',
-        message: `读取 ${path} 需要确认：路径含可疑的 Windows 路径模式`,
+        message: `读取 ${path} 需要确认:路径含可疑的 Windows 路径模式`,
         decisionReason: {
           type: 'other',
-          reason: '路径含可疑 Windows 模式（备用数据流/短名/长前缀/连续点）',
+          reason: '路径含可疑 Windows 模式(备用数据流/短名/长前缀/连续点)',
         },
       };
     }
@@ -146,12 +146,12 @@ export function checkReadPathPermission(
   };
 }
 
-/** 写入权限：固定检查顺序。 */
+/** 写入权限:固定检查顺序. */
 export function checkWritePathPermission(
   input: PathPermissionInput,
 ): PermissionResult {
   const { toolName, path, cwd, permissionContext, internalRoots } = input;
-  // 原路径与 symlink 真实路径都必须通过 deny 规则。
+  // 原路径与 symlink 真实路径都必须通过 deny 规则.
   const isNetworkPath = path.startsWith('\\\\') || path.startsWith('//');
   const pathsToCheck = isNetworkPath ? [path] : getPathsForPermissionCheck(path);
 
@@ -191,7 +191,7 @@ export function checkWritePathPermission(
   if (safetyIssue) {
     return {
       behavior: 'ask',
-      message: `写入 ${path} 需要确认：${safetyIssue}`,
+      message: `写入 ${path} 需要确认:${safetyIssue}`,
       decisionReason: { type: 'safetyCheck', reason: safetyIssue },
     };
   }
@@ -244,7 +244,7 @@ export function checkWritePathPermission(
   };
 }
 
-/** 写入的安全路径检查：UNC、可疑 Windows 模式、危险文件/目录（均大小写归一）。 */
+/** 写入的安全路径检查:UNC,可疑 Windows 模式,危险文件/目录(均大小写归一). */
 function checkWriteSafety(
   path: string,
   pathsToCheck: readonly string[],
@@ -254,13 +254,13 @@ function checkWriteSafety(
       return 'UNC 路径可能访问网络资源';
     }
     if (hasSuspiciousWindowsPath(pathToCheck)) {
-      return '路径含可疑的 Windows 路径模式（备用数据流/短名/长前缀/连续点）';
+      return '路径含可疑的 Windows 路径模式(备用数据流/短名/长前缀/连续点)';
     }
   }
   return dangerousPathReason(path);
 }
 
-/** 命中受保护文件或敏感目录时返回原因，否则 undefined。匹配一律转小写，防 .ENV/.Git 混合大小写绕过。 */
+/** 命中受保护文件或敏感目录时返回原因,否则 undefined.匹配一律转小写,防 .ENV/.Git 混合大小写绕过. */
 function dangerousPathReason(absolutePath: string): string | undefined {
   const segments = absolutePath.split(/[\\/]/).filter(Boolean);
   const fileName = segments.at(-1)?.toLowerCase();

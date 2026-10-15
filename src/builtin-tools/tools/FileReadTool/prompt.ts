@@ -20,7 +20,7 @@ Usage:
 - Notebook files (.ipynb) are parsed into cells with their outputs; oversized outputs are summarized. \`offset\`/\`limit\` do not apply to notebooks.
 - PDF files are parsed by this tool (up to ${MAX_PDF_BYTES / 1024 / 1024} MiB). Use start_page and page_count (1-based pages, defaults to ${DEFAULT_PDF_PAGE_COUNT}, maximum ${MAX_PDF_PAGE_COUNT}); offset/limit are text-line parameters and must not be used for PDF.
 - PDF results include totalPages and nextPage for continuation. Scanned or garbled pages use the configured Vision model for OCR; figures use it for captions. Without Vision, these pages/figures produce explicit warnings rather than complete content.
-- Other binary files, device files, and UNC paths are refused.
+- Audio and video files, archives, executables, and other unsupported binary files are refused. This tool does not transcribe or understand audio. Device files and UNC paths are also refused.
 - Repeated reads of an unchanged file return the requested content from the session cache.`;
 
 /** 图片结果的模型文本说明; 图片本体走 image_data part, 不走这段文本。 */

@@ -1,10 +1,13 @@
 // 验证附件块 → 模型内容的规则表:文件/粘贴文本纯路径投影,图片的支持/降级/读失败分支,
-// 以及取消信号原样上抛不伪装成降级。
+// 以及取消信号原样上抛不伪装成降级.
 
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { VisionDescriptionCache, type VisionDescriptionProducer } from '@ema-agent/attachments';
+import { AttachmentImagesRepo, AttachmentVisionDescriptionCachesRepo, Database } from '@ema-agent/storage';
+import { SessionStore } from '@ema-agent/session';
 import { buildAttachmentMessages } from '../buildAttachmentMessages.js';
 import type { BuildAttachmentMessagesOptions } from '../buildAttachmentMessages.js';
 
@@ -84,8 +87,9 @@ describe('buildAttachmentMessages', () => {
   it('image + 不支持 + 缓存与生产者齐备 → 现做描述', async () => {
     const imagePath = path.join(dir, 'cat.png');
     writeFileSync(imagePath, Buffer.from('abc'));
-    const getOrCreate = vi.fn(async () => '一只粉色的猫');
     const describeImage = vi.fn(async () => '一只粉色的猫');
+    const getOrCreate = vi.fn(async (_path: string, innerSignal: AbortSignal, produce: VisionDescriptionProducer) =>
+      produce(imagePath, innerSignal));
 
     const result = await buildAttachmentMessages(
       { type: 'image_reference', path: imagePath },
@@ -96,9 +100,46 @@ describe('buildAttachmentMessages', () => {
       }),
     );
 
-    expect(getOrCreate).toHaveBeenCalledWith(imagePath, expect.anything(), describeImage);
+    expect(getOrCreate).toHaveBeenCalledWith(imagePath, expect.anything(), expect.any(Function));
+    expect(describeImage).toHaveBeenCalledWith(
+      { type: 'image_data', data: 'YWJj', mimeType: 'image/png' },
+      expect.any(AbortSignal),
+    );
     expect(result[0]).toMatchObject({ type: 'text' });
     expect((result[0] as { text: string }).text).toContain('一只粉色的猫');
+  });
+
+  it('附件描述按真实路径保存, 重建缓存后命中时不再读取图片文件', async () => {
+    const db = new Database({ memory: true, kind: 'data' });
+    db.migrate();
+    try {
+      const imagePath = path.join(dir, 'cached.png');
+      writeFileSync(imagePath, Buffer.from('abc'));
+      const session = new SessionStore({ db }).createSession({ cwd: dir });
+      new AttachmentImagesRepo(db.sqlite).insertMany([{
+        path: imagePath, session_id: session.id, name: 'cached.png', byte_size: 3, created_at: 1,
+      }]);
+      const repo = new AttachmentVisionDescriptionCachesRepo(db.sqlite);
+      const describeImage = vi.fn(async () => '缓存里的猫');
+      const block = { type: 'image_reference', path: imagePath } as const;
+      const first = await buildAttachmentMessages(block, options({
+        supportsImageInput: false,
+        describeImage,
+        visionCache: new VisionDescriptionCache(repo),
+      }));
+      expect(first[0]).toMatchObject({ text: expect.stringContaining('缓存里的猫') });
+      rmSync(imagePath);
+      const second = await buildAttachmentMessages(block, options({
+        supportsImageInput: false,
+        describeImage,
+        visionCache: new VisionDescriptionCache(repo),
+      }));
+      expect(second).toEqual(first);
+      expect(repo.find(imagePath)?.text).toBe('缓存里的猫');
+      expect(describeImage).toHaveBeenCalledTimes(1);
+    } finally {
+      db.close();
+    }
   });
 
   it('image + 不支持 + 未配置 Vision → 系统提示文本', async () => {
@@ -109,7 +150,7 @@ describe('buildAttachmentMessages', () => {
     );
     expect(result).toEqual([{
       type: 'text',
-      text: `[系统提示: 用户附了一张图片, 当前模型不支持图片输入且未配置 Vision 模型, 路径: ${imagePath}]`,
+      text: `[图片: ${imagePath}]\n[系统提示: 当前模型不支持图片输入且未配置 Vision 模型, 未读取图片内容]`,
     }]);
   });
 
@@ -125,7 +166,7 @@ describe('buildAttachmentMessages', () => {
     );
     expect(result).toEqual([{
       type: 'text',
-      text: `[系统提示: 图片描述生成失败, 图片路径: ${imagePath}]`,
+      text: `[图片: ${imagePath}]\n[系统提示: 图片描述生成失败, 未读取图片内容]`,
     }]);
   });
 
@@ -147,6 +188,6 @@ describe('buildAttachmentMessages', () => {
         describeImage: vi.fn(),
         signal: controller.signal,
       },
-    )).rejects.toThrow('aborted');
+    )).rejects.toMatchObject({ name: 'AbortError' });
   });
 });

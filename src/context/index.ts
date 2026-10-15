@@ -6,7 +6,7 @@ export {
 } from './projectMessages.js';
 export type { ProjectedMessage } from './projectMessages.js';
 export { buildAttachmentMessages } from './buildAttachmentMessages.js';
-export type { BuildAttachmentMessagesOptions } from './buildAttachmentMessages.js';
+export type { BuildAttachmentMessagesOptions, DescribeImage } from './buildAttachmentMessages.js';
 export {
   appendEstimatedContextMessages,
   estimatedContextUsage,

@@ -139,6 +139,65 @@ describe('native LLM protocols', () => {
     ]);
   });
 
+  it('Gemini 把工具图片放进真实媒体块, 不把 Base64 当成 JSON 文字', async () => {
+    sdkMocks.geminiStream.mockResolvedValueOnce(streamOf([{
+      candidates: [{ content: { parts: [{ text: 'done' }] }, finishReason: 'STOP' }],
+    }]));
+    const llm = createLlmCall({ providerId: 'test', protocol: 'gemini-llm', apiKey: 'key' }, 'gemini-test');
+    await collectText(llm({ messages: [
+      { role: 'assistant', content: [
+        { type: 'tool_use', id: 'call-1', name: 'Read', args: {} },
+        { type: 'tool_use', id: 'call-2', name: 'Glob', args: {} },
+      ] },
+      { role: 'user', content: [{
+        type: 'tool_result',
+        toolCallId: 'call-1',
+        content: [
+          { type: 'text', text: '已读取 PNG' },
+          { type: 'image_data', data: 'YWJj', mimeType: 'image/png' },
+        ],
+      }] },
+      { role: 'user', content: [{ type: 'tool_result', toolCallId: 'call-2', content: 'second' }] },
+    ] }));
+    expect(sdkMocks.geminiStream.mock.lastCall![0].contents.at(-1).parts).toEqual([
+      { functionResponse: { name: 'Read', response: { content: [{ type: 'text', text: '已读取 PNG' }] } } },
+      { functionResponse: { name: 'Glob', response: { content: 'second' } } },
+      { text: '[工具 call-1 返回的图片]' },
+      { inlineData: { mimeType: 'image/png', data: 'YWJj' } },
+    ]);
+  });
+
+  it('Anthropic 在工具结果里保留原生图片块和调用 ID', async () => {
+    sdkMocks.anthropicStream.mockReturnValueOnce(streamOf([
+      { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 1 } },
+      { type: 'message_stop' },
+    ]));
+    const llm = createLlmCall({ providerId: 'test', protocol: 'anthropic-llm', apiKey: 'key' }, 'claude-test');
+    await collectText(llm({
+      maxOutputTokens: 128,
+      messages: [
+        { role: 'assistant', content: [{ type: 'tool_use', id: 'call-1', name: 'Read', args: {} }] },
+        { role: 'user', content: [{
+          type: 'tool_result',
+          toolCallId: 'call-1',
+          content: [
+            { type: 'text', text: '已读取 PNG' },
+            { type: 'image_data', data: 'YWJj', mimeType: 'image/png' },
+          ],
+        }] },
+      ],
+    }));
+    expect(sdkMocks.anthropicStream.mock.lastCall![0].messages.at(-1).content).toEqual([{
+      type: 'tool_result',
+      tool_use_id: 'call-1',
+      content: [
+        { type: 'text', text: '已读取 PNG' },
+        { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'YWJj' } },
+      ],
+      is_error: undefined,
+    }]);
+  });
+
   it('Gemini Usage 把工具提示计入输入、思考计入输出', async () => {
     sdkMocks.geminiStream.mockResolvedValueOnce(streamOf([{
       candidates: [{

@@ -233,7 +233,7 @@ describe('FileReadTool — 边界与防御', () => {
     const file = path.join(dir, 'app.exe');
     fs.writeFileSync(file, 'MZ');
 
-    await expect(read(file)).rejects.toThrow('Binary');
+    await expect(read(file)).rejects.toThrow('Read does not support .exe files');
   });
 });
 
@@ -285,6 +285,19 @@ describe('FileReadTool — 截断模型可见与回放保留', () => {
 });
 
 describe('FileReadTool — 内容级二进制探测', () => {
+  it.each(['.wav', '.WAV', '.mp3', '.mp4', '.zip'])(
+    '明确拒绝不支持的 %s 文件, 不把它当成损坏的文本',
+    async extension => {
+      const dir = makeDir();
+      const file = path.join(dir, `media${extension}`);
+      fs.writeFileSync(file, Buffer.from('RIFF\0\0\0\0WAVE'));
+
+      await expect(read(file)).rejects.toThrow(
+        `Read does not support ${extension.toLowerCase()} files`,
+      );
+    },
+  );
+
   it('二进制改名 .txt 也被前 8KB 的 NUL 识破', async () => {
     const dir = makeDir();
     const file = path.join(dir, 'fake.txt');

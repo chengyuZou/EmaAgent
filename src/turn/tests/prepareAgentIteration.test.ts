@@ -1,17 +1,19 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { CompactRequest, CompactResult } from '@ema-agent/compact';
-import type { Message } from '@ema-agent/llm';
+import type { LlmRequest, Message as ModelMessage } from '@ema-agent/llm';
 import type { Message as SessionMessage } from '@ema-agent/session';
 import { ToolPool } from '@ema-agent/tools';
 import { buildCompactPrompt } from '../../compact/compactPrompt.js';
 import { createSummaryMessage } from '../../compact/budget.js';
+import { createCompact } from '../../compact/compactMessages.js';
+import { DEFAULT_COMPACT_SETTINGS } from '../../compact/settings.js';
 import {
   createPrepareAgentIteration,
   type PrepareAgentIterationDeps,
 } from '../prepare/prepareAgentIteration.js';
 import type { PreparedTurn } from '../prepare/prepareTurn.js';
 
-const MESSAGES: Message[] = [
+const MESSAGES: ModelMessage[] = [
   { role: 'user', content: '旧问题' },
   { role: 'assistant', content: [{ type: 'text', text: '旧回答' }] },
   { role: 'user', content: '本 Turn 的 reminder' },
@@ -27,11 +29,14 @@ function makePrepared(overrides: Partial<PreparedTurn> = {}): PreparedTurn {
     compactSettings: {},
     providerId: 'p',
     modelId: 'm',
+    protocol: 'openai-llm',
+    supportsImageInput: true,
+    callLlm: async function* () { yield { type: 'done', stopReason: 'end_turn' }; },
     ...overrides,
   } as unknown as PreparedTurn;
 }
 
-function macroResult(messages: readonly Message[], count: number): CompactResult {
+function macroResult(messages: readonly ModelMessage[], count: number): CompactResult {
   return {
     kind: 'macro',
     messages,
@@ -60,7 +65,7 @@ function makeDeps(overrides: {
     sessionId: 's1',
     turnId: 't1',
     prepared: makePrepared(),
-    compact: overrides.compact ?? (async request => ({ kind: 'unchanged', messages: request.messages })),
+    createCompact: () => overrides.compact ?? (async request => ({ kind: 'unchanged', messages: request.messages })),
     emit: vi.fn(),
     ...(overrides.persist === false ? {} : {
       macroPersistence: {
@@ -76,6 +81,72 @@ function makeDeps(overrides: {
 }
 
 describe('prepareAgentIteration', () => {
+  it('Macro 编排保留工具原图, 交给当前 LLM 协议转换', async () => {
+    const requests: LlmRequest[] = [];
+    const messages: readonly ModelMessage[] = [
+      { role: 'assistant', content: [{ type: 'tool_use', id: 'read-1', name: 'Read', args: {} }] },
+      { role: 'user', content: [{
+        type: 'tool_result',
+        toolCallId: 'read-1',
+        content: [{ type: 'image_data', data: 'YWJj', mimeType: 'image/png' }],
+      }] },
+      { role: 'user', content: '历史说明 '.repeat(800) },
+      { role: 'user', content: '最新问题' },
+    ];
+    const { deps } = makeDeps({ persist: false });
+    const prepare = createPrepareAgentIteration({
+      ...deps,
+      prepared: makePrepared({
+        contextWindow: 8_192,
+        maxOutput: 1_000,
+        supportsImageInput: true,
+        compactSettings: DEFAULT_COMPACT_SETTINGS,
+        callLlm: async function* (request) {
+          requests.push(request);
+          yield { type: 'text_delta', blockIndex: 0, delta: '<summary>工具图片未提供</summary>' };
+          yield { type: 'done', stopReason: 'end_turn' };
+        },
+      }),
+      createCompact,
+    });
+
+    const result = await prepare({ llmCallId: 'call-1', messages, recoveryReason: 'context_window_exceeded' });
+
+    expect(requests.length).toBeGreaterThan(0);
+    expect(JSON.stringify(requests)).toContain('"type":"image_data"');
+    expect(JSON.stringify(requests)).not.toContain('工具图片未提供:');
+    expect(result.messages[0]).toMatchObject({ content: expect.stringContaining('工具图片未提供') });
+    expect(messages[1]).toMatchObject({ content: [{ content: [{ type: 'image_data' }] }] });
+  });
+
+  it('新工具图片和后续请求保留原图, 不改 AgentLoop 原始历史', async () => {
+    const messages: readonly ModelMessage[] = [
+      { role: 'assistant', content: [{ type: 'tool_use', id: 'read-1', name: 'Read', args: {} }] },
+      { role: 'user', content: [{
+        type: 'tool_result',
+        toolCallId: 'read-1',
+        content: [{ type: 'image_data', data: 'YWJj', mimeType: 'image/png' }],
+      }] },
+    ];
+    const { deps } = makeDeps({ persist: false });
+    const prepare = createPrepareAgentIteration({
+      ...deps,
+      prepared: makePrepared({ supportsImageInput: false }),
+    });
+
+    const first = await prepare({ llmCallId: 'call-1', messages });
+    const second = await prepare({ llmCallId: 'call-2', messages: first.messages });
+
+    expect(first.messages).toBe(messages);
+    expect(second.messages).toBe(messages);
+    expect(first.request.messages.at(-1)).toMatchObject({ content: [{
+      type: 'tool_result',
+      toolCallId: 'read-1',
+      content: [{ type: 'image_data', data: 'YWJj', mimeType: 'image/png' }],
+    }] });
+    expect(second.request.messages.at(-1)).toEqual(first.request.messages.at(-1));
+  });
+
   it('压缩统一保留工作状态和交流上下文, 摘要外层不带模式', () => {
     const prompt = buildCompactPrompt();
     expect(prompt).toContain('Current Objective and State');
@@ -112,7 +183,7 @@ describe('prepareAgentIteration', () => {
   });
 
   it('Macro 可覆盖本 Turn 输入, 游标指向该输入的 SQL ID', async () => {
-    const summary: Message = { role: 'user', content: '摘要' };
+    const summary: ModelMessage = { role: 'user', content: '摘要' };
     const { deps, messageIds, appendHistorySummary } = makeDeps({
       compact: async request => {
         request.saveMacroSummary?.('摘要', 4, 80);
@@ -138,8 +209,8 @@ describe('prepareAgentIteration', () => {
   });
 
   it('连续 Macro 用上次摘要作为游标, 不按第几条 SQL 行猜测', async () => {
-    const first: Message = { role: 'user', content: '摘要一' };
-    const second: Message = { role: 'user', content: '摘要二' };
+    const first: ModelMessage = { role: 'user', content: '摘要一' };
+    const second: ModelMessage = { role: 'user', content: '摘要二' };
     let call = 0;
     const { deps, messageIds, appendHistorySummary } = makeDeps({
       compact: async request => {
@@ -167,7 +238,7 @@ describe('prepareAgentIteration', () => {
   });
 
   it('模型专用引导没有 SQL 行, 游标回退到覆盖前缀的最后一条已落库消息', async () => {
-    const messages = [...MESSAGES, { role: 'user', content: 'stuck guide' } satisfies Message];
+    const messages = [...MESSAGES, { role: 'user', content: 'stuck guide' } satisfies ModelMessage];
     const { deps, messageIds, appendHistorySummary } = makeDeps({
       messageIds: ['old-1', 'old-2', 'reminder-1', 'input-1', undefined],
       compact: async request => {
@@ -185,7 +256,7 @@ describe('prepareAgentIteration', () => {
   });
 
   it('Micro 原位改写消息, 不写 SQL 摘要', async () => {
-    const changed = [{ role: 'user', content: '压短的旧问题' } satisfies Message, ...MESSAGES.slice(1)];
+    const changed = [{ role: 'user', content: '压短的旧问题' } satisfies ModelMessage, ...MESSAGES.slice(1)];
     const { deps, appendHistorySummary } = makeDeps({
       compact: async () => ({ kind: 'micro', messages: changed }),
     });
@@ -200,7 +271,7 @@ describe('prepareAgentIteration', () => {
   });
 
   it('子 Agent 只改自己的模型消息, 不写根 Session 摘要', async () => {
-    const changed = [{ role: 'user', content: '子 Agent 摘要' } satisfies Message];
+    const changed = [{ role: 'user', content: '子 Agent 摘要' } satisfies ModelMessage];
     const { deps, appendHistorySummary } = makeDeps({
       persist: false,
       compact: async () => macroResult(changed, MESSAGES.length),

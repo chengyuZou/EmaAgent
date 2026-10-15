@@ -1,4 +1,4 @@
-// 根 Turn 的唯一公开执行入口：创建、驱动、唯一终态与取消。
+// 根 Turn 的唯一公开执行入口:创建,驱动,唯一终态与取消.
 import * as fs from 'node:fs';
 import {
   runAgentLoop,
@@ -64,11 +64,11 @@ import type {
 export interface TurnReminderScope {
   readonly sessionId: string;
   readonly turnId: string;
-  /** 与 Turn 行同一次冻结的角色目录名。 */
+  /** 与 Turn 行同一次冻结的角色目录名. */
   readonly characterName: string;
   /** 本 Turn 用户文本. 内部续接触发时可以为空串. */
   readonly userText: string;
-  /** Turn 级取消信号；reminder 期的召回随 Turn 中止一并取消。 */
+  /** Turn 级取消信号;reminder 期的召回随 Turn 中止一并取消. */
   readonly signal: AbortSignal;
   readonly emit: (event: TurnStreamEvent) => void;
 }
@@ -92,23 +92,23 @@ export interface TurnExecutorDeps extends PrepareTurnDeps {
     callLlm: CallLlm,
   ) => (request: CompactRequest) => Promise<CompactResult>;
   /**
-   * 每根 Turn 调用一次，产出 reminder 的完整启动期输入（含 currentDate 等全部字段：
-   * git 探测、Memory 摘要、Task 一次性提醒、Scratchpad 快照）。
-   * 结果即冻结，本 Turn 后续 LLM Call 复用同一份持久化 reminder，不再回读。
+   * 每根 Turn 调用一次,产出 reminder 的完整启动期输入(含 currentDate 等全部字段:
+   * git 探测,Memory 摘要,Task 一次性提醒,Scratchpad 快照).
+   * 结果即冻结,本 Turn 后续 LLM Call 复用同一份持久化 reminder,不再回读.
    */
   readonly readTurnReminder: (
     scope: TurnReminderScope,
   ) => Promise<RenderTurnReminderInput> | RenderTurnReminderInput;
   /**
-   * Task 低频提醒在 reminder Message 成功持久化后提交"已提醒"；只有提醒确实送达
-   * 才推进提醒周期，Turn 准备失败不吞掉周期。没有第二种提交行为，不做通用回调。
+   * Task 低频提醒在 reminder Message 成功持久化后提交"已提醒";只有提醒确实送达
+   * 才推进提醒周期,Turn 准备失败不吞掉周期.没有第二种提交行为,不做通用回调.
    */
   readonly onTaskReminderPersisted?: (sessionId: string) => void;
-  /** 逐次 LLM 调用用量记录；缺省不记账（观测不阻断主链）。 */
+  /** 逐次 LLM 调用用量记录;缺省不记账(观测不阻断主链). */
   readonly usageRecorder?: UsageRecorder;
   /**
-   * 角色舞台：text delta 在落库与发射前经它剥离表现标签（cleaned 是唯一持久化与
-   * 发射形态），emotion_changed/motion_changed 随流发出。缺省时 delta 原样透传。
+   * 角色舞台:text delta 在落库与发射前经它剥离表现标签(cleaned 是唯一持久化与
+   * 发射形态),emotion_changed/motion_changed 随流发出.缺省时 delta 原样透传.
    */
   readonly stage?: StageEngine;
   /**
@@ -117,8 +117,8 @@ export interface TurnExecutorDeps extends PrepareTurnDeps {
    */
   readonly characterName: () => string;
   /**
-   * completed 终态的同事务登记口（Memory 提取入队）。在 completeTurn 的 SQL 事务内
-   * 同步调用：只许入队类写入，禁止在此启动异步工作。Memory 零 import——由装配层注入。
+   * completed 终态的同事务登记口(Memory 提取入队).在 completeTurn 的 SQL 事务内
+   * 同步调用:只许入队类写入,禁止在此启动异步工作.Memory 零 import--由装配层注入.
    */
   readonly onTurnCompletedInTransaction?: (turnId: string) => void;
   /** 用户排队输入, 后台终态和 Goal 的唯一 Session 级续接所有者. */
@@ -126,13 +126,13 @@ export interface TurnExecutorDeps extends PrepareTurnDeps {
 }
 
 /**
- * TurnExecutor 持有跨 Turn 共享的协作者；每个 Turn 的通道、预算、工具层与
- * 事件翻译都在 start() 内按 Turn 创建。Route 只拿这个入口，不接触任何内部件。
+ * TurnExecutor 持有跨 Turn 共享的协作者;每个 Turn 的通道,预算,工具层与
+ * 事件翻译都在 start() 内按 Turn 创建.Route 只拿这个入口,不接触任何内部件.
  */
 export class TurnExecutor {
-  /** 活动 Turn 的工具层快照，供 abortTool/abortSubagent 按 turnId 定位。 */
+  /** 活动 Turn 的工具层快照,供 abortTool/abortSubagent 按 turnId 定位. */
   private readonly runningTools = new Map<string, TurnToolsAssembly>();
-  /** 活动 Turn 的 completion，供 abortAndAwait（Session 删除等编排）等待终态落库。 */
+  /** 活动 Turn 的 completion,供 abortAndAwait(Session 删除等编排)等待终态落库. */
   private readonly runningCompletions = new Map<string, Promise<TurnOutcome>>();
 
   constructor(private readonly deps: TurnExecutorDeps) {}
@@ -154,7 +154,7 @@ export class TurnExecutor {
       resolveCompletion = resolve;
       rejectCompletion = reject;
     });
-    // Server 主要消费 events；预先观察 rejection，避免极端持久化故障形成未处理 Promise。
+    // Server 主要消费 events;预先观察 rejection,避免极端持久化故障形成未处理 Promise.
     void completion.catch(() => undefined);
     this.runningCompletions.set(turn.id, completion);
 
@@ -178,7 +178,7 @@ export class TurnExecutor {
     });
   }
 
-  /** 只取消当前仍活动的指定根 Turn；历史句柄不能误杀后继 Turn。 */
+  /** 只取消当前仍活动的指定根 Turn;历史句柄不能误杀后继 Turn. */
   abort(sessionId: string, turnId: string): boolean {
     const running = this.deps.turns.getRunningTurn(sessionId);
     if (running?.id !== turnId) return false;
@@ -187,8 +187,8 @@ export class TurnExecutor {
   }
 
   /**
-   * 取消并等待该 Turn 终态落库。Session 删除等编排必须先让活动 Turn 走完
-   * finish 链（writer 收口、队列清理），否则删除会与尚未完成的持久化竞争。
+   * 取消并等待该 Turn 终态落库.Session 删除等编排必须先让活动 Turn 走完
+   * finish 链(writer 收口,队列清理),否则删除会与尚未完成的持久化竞争.
    */
   async abortAndAwait(sessionId: string, turnId: string): Promise<void> {
     this.abort(sessionId, turnId);
@@ -248,7 +248,6 @@ export class TurnExecutor {
         ttsEnabled: turn.ttsEnabled,
       });
 
-      let compact: ((request: CompactRequest) => Promise<CompactResult>) | undefined;
       const prepareSubagent = createPrepareSubagent({
         sessionId,
         turnId,
@@ -285,7 +284,6 @@ export class TurnExecutor {
       signal.throwIfAborted();
       this.deps.turns.setModel(turnId, prepared.providerId, prepared.modelId, prepared.protocol);
       this.deps.turns.setCharacterName(turnId, characterName);
-      compact = this.deps.createCompact(prepared.callLlm);
 
       for (const degradation of prepared.degradations) {
         emit({ type: 'request_degraded', sessionId, turnId, ...degradation });
@@ -293,8 +291,8 @@ export class TurnExecutor {
 
       const userText = explicitUserText(prepared.userMessageBlocks);
 
-      // Reminder 先于用户消息落库：同一 Turn 的历史重放顺序即模型看到的顺序。
-      // reminder 表示"本 Turn 开始时的事实"，整 Turn 只有这一条，不随 LLM Call 重建。
+      // Reminder 先于用户消息落库:同一 Turn 的历史重放顺序即模型看到的顺序.
+      // reminder 表示"本 Turn 开始时的事实",整 Turn 只有这一条,不随 LLM Call 重建.
       const reminderInput = await this.deps.readTurnReminder({
         sessionId,
         turnId,
@@ -313,8 +311,8 @@ export class TurnExecutor {
         kind: 'reminder',
         blocks: renderTurnReminder(reminderInput),
       });
-      // reminder 已持久化成功：宿主在此提交"已提醒"（Task reminder 两阶段提交点）。
-      // 放在 appendMessage 之后，保证 Turn 准备失败不会吞掉低频提醒周期。
+      // reminder 已持久化成功:宿主在此提交"已提醒"(Task reminder 两阶段提交点).
+      // 放在 appendMessage 之后,保证 Turn 准备失败不会吞掉低频提醒周期.
       if (reminderInput.taskReminder?.trim()) {
         this.deps.onTaskReminderPersisted?.(sessionId);
       }
@@ -405,7 +403,7 @@ export class TurnExecutor {
           if (!claim) return appended;
           try {
             appended.push(await persistClaim(claim));
-            // 一个 claim 只生成一条 Message；确认后才能领取下一个 claim.
+            // 一个 claim 只生成一条 Message;确认后才能领取下一个 claim.
             this.deps.continuations.acknowledge(turnId);
           } catch (error) {
             this.deps.continuations.release(turnId);
@@ -424,7 +422,7 @@ export class TurnExecutor {
         const historicalCharacter = historyResolver.resolveCharacter(message.turnId);
         return historicalCharacter !== characterName ? historicalCharacter : undefined;
       };
-      // 附件投影:图片字节在入库时已规范化,这里只按能力分流(直发/描述/标记)。
+      // 附件投影:图片字节在入库时已规范化,这里只按能力分流(直发/描述/标记).
       const attachmentOptions = {
         supportsImageInput: prepared.supportsImageInput,
         ...(this.deps.visionCache ? { visionCache: this.deps.visionCache } : {}),
@@ -446,7 +444,7 @@ export class TurnExecutor {
         sessionId,
         turnId,
         prepared,
-        compact: compact,
+        createCompact: this.deps.createCompact,
         usageRecorder: this.deps.usageRecorder,
         emit,
         // 与 AgentLoop 消息按位置对齐; Macro 保存时用被覆盖前缀的 SQL 身份.
@@ -468,7 +466,7 @@ export class TurnExecutor {
 
       let stopped: Extract<AgentLoopEvent, { type: 'loop_stopped' }> | undefined;
       const stage = this.deps.stage;
-      // 新 Turn 重置舞台扫描器；情绪状态跨 Turn 保留。
+      // 新 Turn 重置舞台扫描器;情绪状态跨 Turn 保留.
       stage?.beginTurn(sessionId);
       let lastTextBlockIndex: number | undefined;
       for await (const event of runAgentLoop({
@@ -489,7 +487,7 @@ export class TurnExecutor {
         },
         signal,
         maxIterations: prepared.maxIterations,
-        // 当前 Turn 全部真实调用的生成目标；agentLoop 构造 assistant 时挂载。
+        // 当前 Turn 全部真实调用的生成目标;agentLoop 构造 assistant 时挂载.
         generationSource: {
           providerId: prepared.providerId,
           modelId: prepared.modelId,
@@ -501,7 +499,7 @@ export class TurnExecutor {
           lastTextBlockIndex = event.blockIndex;
           const { cleaned, events: stageEvents } = stage.processChunk(event.delta, turnId, sessionId);
           for (const stageEvent of stageEvents) emit(stageEvent);
-          // 整段都是表现标签：不落库不发 delta（用户可见正文没有这一段）。
+          // 整段都是表现标签:不落库不发 delta(用户可见正文没有这一段).
           if (cleaned.length === 0) continue;
           downstream = { ...event, delta: cleaned };
         }
@@ -594,7 +592,7 @@ export class TurnExecutor {
       const code: TurnFailureCode = stopped.state.stopReason === 'max_iterations'
         ? 'turn/budget_exceeded'
         : 'turn/execution_failed';
-      const outcome = this.failTurn(turn, code, `AgentLoop 终止：${stopped.state.stopReason}`);
+      const outcome = this.failTurn(turn, code, `AgentLoop 终止:${stopped.state.stopReason}`);
       await this.finishSafely(
         channel, writer, terminal, tools, turn, signal, handledGoalId,
         () => resolveCompletion(outcome),
@@ -656,7 +654,7 @@ export class TurnExecutor {
     }
   }
 
-  /** 终态提交后的统一收尾：writer 与工具完成后才发终态事件并关闭通道。 */
+  /** 终态提交后的统一收尾:writer 与工具完成后才发终态事件并关闭通道. */
   private async finishSafely(
     channel: TurnEventChannel<TurnStreamEvent>,
     writer: TurnMessageWriter,
@@ -677,18 +675,18 @@ export class TurnExecutor {
       finishSucceeded = true;
     } catch (error) {
       finishError = error;
-      console.warn('[turn] 消息收口失败，终态事件未广播:', error);
+      console.warn('[turn] 消息收口失败,终态事件未广播:', error);
     }
     try {
       this.deps.interactionQueue.cancelForTurn(turnId, `turn ${terminal}`);
     } catch {
-      // 队列清理失败不能覆盖终态。
+      // 队列清理失败不能覆盖终态.
     }
     if (tools) {
       try {
         await tools.shutdown(terminal);
       } catch {
-        // 工具关闭失败不能覆盖终态。
+        // 工具关闭失败不能覆盖终态.
       }
     }
     try {

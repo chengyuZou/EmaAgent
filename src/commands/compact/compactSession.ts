@@ -1,15 +1,5 @@
-// 手动 /compact: 与根 Turn 共享同一份 Session 运行记录, 两者互斥, 且不创建 Turn.
-// 链: 注册 SessionRunning(kind='compact') → 读历史 → projectMessages 投影 → 触发线下限闸 →
-// 与下一根 Turn 同事实的 systemMessages → compact(force=true) →
-// 游标映射 appendHistorySummary（唯一提交点；abort/失败即历史原样）。
-// 命令路径的压缩终态一定是 macro：低于触发线在调用前拒绝，macro 失败按错误上抛，
-// 不存在 micro/unchanged 等其他结果形态。
-//
-// tools 为空——根 Turn 的 ToolPool 装配需要 Turn 身份（SubagentSpawner/scratchpad/
-// narrative 事件归因），在 Turn 外伪造身份被禁止，因此历史边界缓存断点在手动路径
-// 不可达; 能共享的是静态产品段与动态尾到权限说明为止的前缀.
 import { randomUUID } from 'node:crypto';
-import type { VisionDescriptionCache, VisionDescriptionProducer } from '@ema-agent/attachments';
+import type { VisionDescriptionCache } from '@ema-agent/attachments';
 import {
   compactManualMinRatioSetting,
   readCompactSettings,
@@ -20,6 +10,7 @@ import {
 import {
   projectMessages,
   buildPromptMessages,
+  type DescribeImage,
 } from '@ema-agent/context';
 import {
   type CallLlm,
@@ -48,7 +39,7 @@ import { CommandsError } from '../errors.js';
 export type ManualCompactResult =
   | {
       readonly status: 'completed';
-      /** 本次实际用于压缩的模型窗口；前端据此更新压缩后的 Context Meter。 */
+      /** 本次实际用于压缩的模型窗口;前端据此更新压缩后的 Context Meter. */
       readonly contextWindow: number;
       readonly beforeTokens: number;
       readonly afterTokens: number;
@@ -66,9 +57,9 @@ export interface ManualCompactDeps {
   readonly providers: Providers;
   readonly providerModels: ProviderModels;
   readonly settings: SettingsStore;
-  /** 与根 Turn 共用 CharacterStore 的当前角色与舞台 Presentation。 */
+  /** 与根 Turn 共用 CharacterStore 的当前角色与舞台 Presentation. */
   readonly characterPrompt: () => readonly string[];
-  /** 与根 Turn 同一 Skill 目录来源。 */
+  /** 与根 Turn 同一 Skill 目录来源. */
   readonly skillEntries: (
     cwd: string,
     projectId: string | null,
@@ -77,18 +68,18 @@ export interface ManualCompactDeps {
   readonly disabledSkillPaths: () => readonly string[];
   readonly workspaceInstructions?: (cwd: string) => string | null;
   readonly memoryGuidance?: () => Promise<string | null> | string | null;
-  /** 模型不支持图片输入时的 Vision 描述入口（与根 Turn 同一条降级链）。 */
-  readonly describeImage?: VisionDescriptionProducer;
-  /** Vision 描述缓存(path 键,与根 Turn 同一实例);与 describeImage 同时注入才会现做生产。 */
+  /** 普通图片的 Vision 描述入口; 工具图片不能发送时只占位. */
+  readonly describeImage?: DescribeImage;
+  /** Vision 描述缓存(path 键,与根 Turn 同一实例);与 describeImage 同时注入才会现做生产. */
   readonly visionCache?: VisionDescriptionCache;
   readonly createCompact: (
     callLlm: CallLlm,
   ) => (request: CompactRequest) => Promise<CompactResult>;
-  /** 默认 llm 包的 createLlmCall；测试注入脚本化调用。 */
+  /** 默认 llm 包的 createLlmCall;测试注入脚本化调用. */
   readonly createLlmCall: (connection: LlmConnection, modelId: string) => CallLlm;
-  /** 摘要调用记账；缺省不记账（观测不阻断主链）。 */
+  /** 摘要调用记账;缺省不记账(观测不阻断主链). */
   readonly usageRecorder?: UsageRecorder;
-  /** 手动压缩生命周期由 Compact 管线生产，这里只提供当前 Session 的传输出口。 */
+  /** 手动压缩生命周期由 Compact 管线生产,这里只提供当前 Session 的传输出口. */
   readonly emit: (event: CompactEvent) => void;
 }
 
@@ -101,7 +92,7 @@ export async function compactSession(
   if (deps.sessionRunning.isRunning(sessionId)) {
     throw new SessionBusyError(sessionId);
   }
-  // 模型解析与下一根 Turn 同规则：Session 偏好即下一 Turn 的默认值，缓存共享是向前的。
+  // 模型解析与下一根 Turn 同规则:Session 偏好即下一 Turn 的默认值,缓存共享是向前的.
   const providerId = session.providerId;
   const modelId = session.modelId;
   if (!providerId || !modelId) {
@@ -114,7 +105,7 @@ export async function compactSession(
   if (!providerModel || providerModel.capability !== 'llm') {
     throw new CommandsError(
       'provider/not_configured',
-      `模型未在该 Provider 下启用：${providerId} / ${modelId}`,
+      `模型未在该 Provider 下启用:${providerId} / ${modelId}`,
     );
   }
 
@@ -147,27 +138,27 @@ export async function compactSession(
 
     const compactSettings = readCompactSettings(deps.settings);
     const history = historyWithIds.map(entry => entry.message);
-    // 手动下限只量可压缩的历史本身（System Prompt 是每次请求的固定开销），且先于
-    // Prompt 装配判定——会被直接拒绝的命令不该支付 Skill/Memory 的读取。
-    const historyTokens = estimateMessagesTokens(history);
+    // 手动下限只量可压缩的历史本身(System Prompt 是每次请求的固定开销),且先于
+    // Prompt 装配判定--会被直接拒绝的命令不该支付 Skill/Memory 的读取.
+    const historyTokens = estimateMessagesTokens([...history]);
     const manualMinimum = Math.floor(
       providerModel.contextWindow * deps.settings.get(compactManualMinRatioSetting),
     );
     if (historyTokens < manualMinimum) {
       throw new CommandsError(
         'compact_below_threshold',
-        `当前历史估算约 ${historyTokens} tokens，低于手动压缩下限 ${manualMinimum}，内容太少无需压缩`,
+        `当前历史估算约 ${historyTokens} tokens,低于手动压缩下限 ${manualMinimum},内容太少无需压缩`,
       );
     }
-    // 全部历史都在近期保留线内时 Macro 没有可摘要的旧前缀（retainRatio 与
-    // manualMinRatio 的任意组合都可能撞出这个区间），按没有可压内容拒绝。
+    // 全部历史都在近期保留线内时 Macro 没有可摘要的旧前缀(retainRatio 与
+    // manualMinRatio 的任意组合都可能撞出这个区间),按没有可压内容拒绝.
     const retainTokens = Math.floor(
       providerModel.contextWindow * compactSettings.retainRatio,
     );
     if (historyTokens <= retainTokens) {
       throw new CommandsError(
         'nothing_to_compact',
-        '全部历史都在近期保留范围内，没有可摘要的旧前缀',
+        '全部历史都在近期保留范围内,没有可摘要的旧前缀',
       );
     }
 
@@ -194,7 +185,7 @@ export async function compactSession(
       tools: [],
       estimatedInputTokens,
       force: true,
-      // 命令路径只要纯粹的 Macro：Micro 的占位替换从不落库，跳过它语义更干净。
+      // 命令路径只要纯粹的 Macro:Micro 的占位替换从不落库,跳过它语义更干净.
       micro: false,
       contextWindow: providerModel.contextWindow,
       modelMaxOutput: providerModel.maxOutput,
@@ -230,13 +221,13 @@ export async function compactSession(
         durationMs: result.durationMs,
       };
     }
-    // 命令路径一定是 macro（micro:false）；unchanged 即 macro 失败，micro 形态不可达。
+    // 命令路径一定是 macro(micro:false);unchanged 即 macro 失败,micro 形态不可达.
     throw new CommandsError(
       'compact_failed',
       (result.kind === 'unchanged' ? result.failureDetail : undefined) ?? '压缩失败',
     );
   } catch (error) {
-    // 摘要落库是唯一提交点：abort 时历史原样，返回取消终态而非错误。
+    // 摘要落库是唯一提交点:abort 时历史原样,返回取消终态而非错误.
     if (signal.aborted) return { status: 'cancelled' };
     throw error;
   } finally {
@@ -247,7 +238,7 @@ export async function compactSession(
 /**
  * 摘要请求的系统段: 与根 Turn 使用同一静态数组和动态装配函数,
  * 同样的输入得到同样的正文与顺序, 共享前缀缓存.
- * toolNames 恒空（手动路径不装配 ToolPool，见文件头注释）。
+ * toolNames 恒空(手动路径不装配 ToolPool,见文件头注释).
  */
 async function buildCompactSystemMessages(
   deps: ManualCompactDeps,

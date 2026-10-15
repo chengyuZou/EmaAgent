@@ -28,6 +28,7 @@ import {
 } from '../prepare/prepareTurnTools.js';
 import { FileReadTool } from '../../builtin-tools/tools/FileReadTool/FileReadTool.js';
 import { FileEditTool } from '../../builtin-tools/tools/FileEditTool/FileEditTool.js';
+import { DescribeImageTool } from '../../builtin-tools/tools/DescribeImageTool/describeImageTool.js';
 
 const SESSION_ID = 's1';
 const TURN_ID = 't1';
@@ -113,6 +114,36 @@ function makeInput(options: {
 
 describe('prepareTurnTools', () => {
   beforeEach(() => clearSessionRules(SESSION_ID));
+
+  it('Plan 和子代理都可显式调用 DescribeImage, 复用已有 Vision Context', async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ema-child-image-'));
+    const imagePath = path.join(directory, 'image.png');
+    fs.writeFileSync(imagePath, Buffer.from('abc'));
+    const vision = vi.fn(async () => ({ text: '子代理看到的图片描述', blocks: [] }));
+    try {
+      const deps = makeDeps({ tools: [], queue: new SessionInteractionQueue(null), settings: fakeSettings() });
+      deps.registry.register(DescribeImageTool);
+      const assembly = prepareTurnTools({ ...deps, resolveVision: () => vision }, makeInput({
+        events: [],
+        overrides: {
+          cwd: directory,
+          workspaceRoots: [directory],
+          permission: { mode: 'plan', buckets: { alwaysAllowRules: {}, alwaysDenyRules: {}, alwaysAskRules: {} } },
+        },
+      }));
+      expect(assembly.toolPool.tools.some(tool => tool.name === 'DescribeImage')).toBe(true);
+      const child = assembly.createSubagentExecutor({
+        subagentId: 'image-child', runId: 'image-child-run', toolPool: assembly.toolPool,
+        signal: new AbortController().signal, wake: () => undefined,
+      });
+      child.addTool(0, 'describe-image', 'DescribeImage', { image_path: imagePath });
+      await child.join();
+      expect(child.takeCompletedResults()[0]).toMatchObject({ content: '子代理看到的图片描述' });
+      expect(vision).toHaveBeenCalledTimes(1);
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
 
   it('Narrative 与普通工具共用禁用设置, 不改变已经准备好的 Turn', () => {
     const settings = fakeSettings();
@@ -480,7 +511,7 @@ describe('prepareTurnTools', () => {
       },
     }));
     expect(assembly.toolPool.tools.map(tool => tool.name).sort()).toEqual([
-      'Read', 'Glob', 'Grep', 'WebFetch', 'WebSearch', 'ProcessList', 'ProcessOutput',
+      'Read', 'DescribeImage', 'Glob', 'Grep', 'WebFetch', 'WebSearch', 'ProcessList', 'ProcessOutput',
       'TaskGet', 'TaskList', 'NarrativeSearch', 'MemorySearch', 'MemoryRead',
       'MemoryList', 'Skill', 'ScratchpadRead', 'ScratchpadList',
     ].sort());
@@ -497,7 +528,7 @@ describe('prepareTurnTools', () => {
     ]);
   });
 
-  it('ask 决策经队列等用户；allowSession 沉淀 session 规则并发出 resolved', async () => {
+  it('ask 决策经队列等用户;allowSession 沉淀 session 规则并发出 resolved', async () => {
     const events: PermissionStreamEvent[] = [];
     const queue = new SessionInteractionQueue(null);
     const settings = fakeSettings();
@@ -519,7 +550,7 @@ describe('prepareTurnTools', () => {
     const executor = assembly.createExecutor(() => undefined);
     executor.addTool(0, 'call-1', 'Echo', {});
 
-    // 等权限卡发出后按"本 Session 允许"回答。
+    // 等权限卡发出后按"本 Session 允许"回答.
     await vi.waitFor(() => {
       expect(events.some(e => e.type === 'permission_required')).toBe(true);
     });
@@ -574,7 +605,7 @@ describe('prepareTurnTools', () => {
     expect(set).not.toHaveBeenCalled();
   });
 
-  it('Turn abort 时等待中的权限询问按取消收口（模型见 tool/cancelled）', async () => {
+  it('Turn abort 时等待中的权限询问按取消收口(模型见 tool/cancelled)', async () => {
     const queue = new SessionInteractionQueue(null);
     const controller = new AbortController();
     const deps = makeDeps({

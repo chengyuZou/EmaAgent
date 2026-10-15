@@ -1,6 +1,6 @@
-// 权限判定的唯一中央入口：固定优先级，Tool 自我解释，中央不解释 ruleContent 语义。
-// 模式分工：default/bypassPermissions 由中央处理；acceptEdits 是 Tool 侧语义
-// （"工作区内写入放行"只有文件 Tool 知道怎么判定，归各自的 checkPermissions）。
+// 权限判定的唯一中央入口:固定优先级,Tool 自我解释,中央不解释 ruleContent 语义.
+// 模式分工:default/bypassPermissions 由中央处理;acceptEdits 是 Tool 侧语义
+// ("工作区内写入放行"只有文件 Tool 知道怎么判定,归各自的 checkPermissions).
 import type {
   PermissionBehavior,
   PermissionDecision,
@@ -12,7 +12,7 @@ import type {
 } from './types.js';
 import { matchesWholeTool, permissionRuleValueFromString } from './rules/permissionRuleParser.js';
 
-/** 中央对 Tool 的最小需求：名字 + 自我解释权。 */
+/** 中央对 Tool 的最小需求:名字 + 自我解释权. */
 export interface PermissionCheckableTool {
   readonly name: string;
   checkPermissions(
@@ -28,7 +28,7 @@ export interface HasPermissionsOptions {
 }
 
 /**
- * 外层：无交互通道时把 ask 收口为 deny（headless）。
+ * 外层:无交互通道时把 ask 收口为 deny(headless).
  */
 export async function hasPermissionsToUseTool(
   tool: PermissionCheckableTool,
@@ -106,7 +106,7 @@ async function hasPermissionsToUseToolInner(
     return { ...toolResult, sessionAllowRule };
   }
 
-  // 4. bypassPermissions；显式 deny 与 Tool ask 已在前面拦截。
+  // 4. bypassPermissions;显式 deny 与 Tool ask 已在前面拦截.
   if (permissionContext.mode === 'bypassPermissions') {
     return { behavior: 'allow', decisionReason: { type: 'mode', mode: 'bypassPermissions' } };
   }
@@ -117,7 +117,7 @@ async function hasPermissionsToUseToolInner(
     return { behavior: 'allow', decisionReason: { type: 'rule', rule: allowRule } };
   }
 
-  // 6. Tool 自我放行；passthrough 收口为 ask
+  // 6. Tool 自我放行;passthrough 收口为 ask
   if (toolResult.behavior === 'allow') {
     return toolResult;
   }
@@ -129,7 +129,7 @@ async function hasPermissionsToUseToolInner(
   };
 }
 
-/** source 优先级：session > projectSettings > userSettings（更具体的范围先生效）。 */
+/** source 优先级:session > projectSettings > userSettings(更具体的范围先生效). */
 const SOURCE_PRECEDENCE: readonly PermissionRuleSource[] = ['session', 'projectSettings', 'userSettings'];
 
 function exactInputRuleContent(input: unknown): string {
@@ -162,9 +162,9 @@ function findWholeToolRule(
 }
 
 /**
- * 内容级规则查询：findWholeToolRule 的内容版——该工具全部带 ruleContent 的规则。
- * 只含 ruleContent（整体规则 Bash 不参与）；source 优先级 session > project > user。
- * 精确匹配（域名/路径语义串）用 findContentRule；模式匹配（Bash git *）遍历本数组。
+ * 内容级规则查询:findWholeToolRule 的内容版--该工具全部带 ruleContent 的规则.
+ * 只含 ruleContent(整体规则 Bash 不参与);source 优先级 session > project > user.
+ * 精确匹配(域名/路径语义串)用 findContentRule;模式匹配(Bash git *)遍历本数组.
  */
 export function listContentRules(permissionContext: ToolPermissionContext, toolName: string, behavior: PermissionBehavior): PermissionRule[] {
   const rules: PermissionRule[] = [];
@@ -180,7 +180,7 @@ export function listContentRules(permissionContext: ToolPermissionContext, toolN
   return rules;
 }
 
-/** 单条内容规则精确命中（ruleContent 是 Tool 自转的语义串，如 WebFetch 域名）。 */
+/** 单条内容规则精确命中(ruleContent 是 Tool 自转的语义串,如 WebFetch 域名). */
 export function findContentRule(
   permissionContext: ToolPermissionContext,
   toolName: string,
@@ -196,8 +196,8 @@ export function findContentRule(
 }
 
 /**
- * 谓词匹配：规则内容是模式（Bash `git *`、路径 glob），Tool 传语义匹配谓词。
- * Bash 传 (c) => matchShellRule(c, command)；文件 Tool 传 (c) => matchPathRule(c, path, root)。
+ * 谓词匹配:规则内容是模式(Bash `git *`,路径 glob),Tool 传语义匹配谓词.
+ * Bash 传 (c) => matchShellRule(c, command);文件 Tool 传 (c) => matchPathRule(c, path, root).
  */
 export function findMatchingContentRule(
   permissionContext: ToolPermissionContext,

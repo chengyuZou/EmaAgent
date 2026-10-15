@@ -1,6 +1,7 @@
-// 验证 OpenAI Chat 的用户取消、静默断流和 finish_reason 后 Usage 尾帧收口。
+// 验证 OpenAI Chat 的用户取消,静默断流和 finish_reason 后 Usage 尾帧收口.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type OpenAI from 'openai';
+import { createLlmCall } from '../languageModel.js';
 import { createOpenAiChatProtocol } from '../protocols/openAiChat.js';
 
 const openAiMocks = vi.hoisted(() => ({
@@ -67,10 +68,72 @@ function chunk(input: {
 }
 
 function createCall() {
-  return createOpenAiChatProtocol({ providerId: 'test', apiKey: 'key' }, 'model');
+  return createOpenAiChatProtocol({ providerId: 'test', apiKey: 'key', protocol: 'openai-llm' }, 'model');
 }
 
 describe('OpenAI Chat 流收口', () => {
+  it('工具图片逐块占位, 不补用户图片消息或打断工具配对', async () => {
+    openAiMocks.create.mockResolvedValueOnce((async function* () {
+      yield chunk({ finishReason: 'stop' });
+      yield chunk({ usage: { prompt_tokens: 1, completion_tokens: 1 } });
+    })());
+    const call = createLlmCall(
+      { providerId: 'test', apiKey: 'key', protocol: 'openai-llm' },
+      'model',
+    );
+
+    for await (const _event of call({ messages: [
+      { role: 'assistant', content: [
+        { type: 'tool_use', id: 'call-1', name: 'Read', args: {} },
+        { type: 'tool_use', id: 'call-2', name: 'Glob', args: {} },
+      ] },
+      { role: 'user', content: [{
+        type: 'tool_result',
+        toolCallId: 'call-1',
+        content: [
+          { type: 'text', text: '已读取 PNG' },
+          { type: 'image_data', mimeType: 'image/png', data: 'YWJj' },
+          { type: 'text', text: '第二张图片' },
+          { type: 'image_url', url: 'https://example.com/image.png' },
+        ],
+      }] },
+      { role: 'user', content: [{ type: 'tool_result', toolCallId: 'call-2', content: 'second' }] },
+      { role: 'user', content: '继续看图片' },
+    ] })) {
+      // 检查包含协议校验在内的公开调用入口.
+    }
+
+    expect(openAiMocks.create.mock.calls[0]![0].messages.slice(1)).toEqual([
+      {
+        role: 'tool',
+        tool_call_id: 'call-1',
+        content: expect.stringMatching(/^已读取 PNG\n\[工具图片未提供:.*\]\n第二张图片\n\[工具图片未提供:.*\]$/),
+      },
+      { role: 'tool', tool_call_id: 'call-2', content: 'second' },
+      { role: 'user', content: '继续看图片' },
+    ]);
+    const sdkMessages = JSON.stringify(openAiMocks.create.mock.calls[0]![0].messages);
+    expect(sdkMessages).not.toContain('YWJj');
+    expect(sdkMessages).not.toContain('https://example.com/image.png');
+    expect(sdkMessages).toContain('DescribeImage');
+  });
+
+  it('普通用户图片仍直接发送, 图片工具占位不影响用户图片', async () => {
+    openAiMocks.create.mockResolvedValueOnce((async function* () {
+      yield chunk({ finishReason: 'stop', usage: { prompt_tokens: 1, completion_tokens: 1 } });
+    })());
+    for await (const _event of createCall()({ messages: [{
+      role: 'user',
+      content: [{ type: 'image_data', mimeType: 'image/png', data: 'dXNlcg==' }],
+    }] })) {
+      // 完整消费后检查真正交给 SDK 的用户图片.
+    }
+    expect(openAiMocks.create.mock.calls[0]![0].messages).toEqual([{
+      role: 'user',
+      content: [{ type: 'image_url', image_url: { url: 'data:image/png;base64,dXNlcg==' } }],
+    }]);
+  });
+
   it('独立 ToolResult 各自投影为一条 tool 消息', async () => {
     openAiMocks.create.mockResolvedValueOnce((async function* () {
       yield chunk({ finishReason: 'stop' });
@@ -93,7 +156,7 @@ describe('OpenAI Chat 流收口', () => {
     ]);
   });
 
-  it('流输出正文后卡在下一帧时，用户 AbortSignal 会立即终止消费', async () => {
+  it('流输出正文后卡在下一帧时,用户 AbortSignal 会立即终止消费', async () => {
     openAiMocks.create.mockImplementation(async (_params, options: { signal: AbortSignal }) =>
       abortableStream([chunk({ content: '已输出正文' })], options.signal));
     const controller = new AbortController();

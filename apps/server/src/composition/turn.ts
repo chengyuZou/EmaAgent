@@ -1,10 +1,11 @@
-// Turn 一族：TurnExecutor 全接线——交互队列、reminder 工厂、Vision 降级、工作区指令。
+// Turn 一族:TurnExecutor 全接线--交互队列,reminder 工厂,Vision 降级,工作区指令.
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { mimeForPath, VisionDescriptionCache, type VisionDescriptionProducer } from '@ema-agent/attachments';
+import { VisionDescriptionCache } from '@ema-agent/attachments';
 import { buildCharacterPrompt, type CharacterStore } from '@ema-agent/characters';
 import { createCompact } from '@ema-agent/compact';
+import type { DescribeImage } from '@ema-agent/context';
 import { type LlmTokenUsage } from '@ema-agent/llm';
 import { isWitchTrialCharacter } from '@ema-agent/narrative';
 import {
@@ -42,7 +43,7 @@ import type { ProvidersComposition } from './providers.js';
 import type { ToolsComposition } from './tools.js';
 import type { TurnFanout } from '../application/turnFanout.js';
 
-/** 单个指令文件超过 32KB 截断；工作区指令是上下文数据，不是系统权限。 */
+/** 单个指令文件超过 32KB 截断;工作区指令是上下文数据,不是系统权限. */
 const WORKSPACE_INSTRUCTION_MAX_CHARS = 32 * 1024;
 
 export interface TurnComposition {
@@ -51,11 +52,11 @@ export interface TurnComposition {
   readonly continuations: SessionContinuationQueue;
   /** Permission/AskUser 回答路由与 Session 首条状态读取的入口. */
   readonly interactionQueue: SessionInteractionQueue;
-  /** 模型不支持图片输入时的 Vision 描述链（commands 的手动压缩历史投影同源复用）。 */
-  readonly describeImage: VisionDescriptionProducer;
-  /** Vision 描述缓存(path 键);context 投影直接消费, 生产只在 describeImage 注入时发生。 */
+  /** 模型不支持图片输入时的 Vision 描述链(commands 的手动压缩历史投影同源复用). */
+  readonly describeImage: DescribeImage;
+  /** Vision 描述缓存(path 键);context 投影直接消费, 生产只在 describeImage 注入时发生. */
   readonly visionCache: VisionDescriptionCache;
-  /** 工作区指令读取闭包（commands 装配与下一根 Turn 同字节的 System Prompt 同源复用）。 */
+  /** 工作区指令读取闭包(commands 装配与下一根 Turn 同字节的 System Prompt 同源复用). */
   readonly workspaceInstructions: (cwd: string) => string | null;
 }
 
@@ -66,11 +67,11 @@ export interface TurnCompositionDeps {
   readonly tools: ToolsComposition;
   readonly narrative: NarrativeComposition;
   readonly characters: CharacterStore;
-  /** 角色舞台：Turn 泵内剥离表现标签；实例由 characters 一族持有（词汇随角色切换）。 */
+  /** 角色舞台:Turn 泵内剥离表现标签;实例由 characters 一族持有(词汇随角色切换). */
   readonly stage: StageEngine;
-  /** 应用事件出口。 */
+  /** 应用事件出口. */
   readonly emitAppEvent: (event: AppEvent) => void;
-  /** completed 终态事务内的提取入队（Memory 一族）；事务提交后由它自己安排 drain。 */
+  /** completed 终态事务内的提取入队(Memory 一族);事务提交后由它自己安排 drain. */
   readonly onTurnCompletedInTransaction: (turnId: string) => void;
   readonly publishSubagent: (sessionId: string, event: SubagentEvent) => void;
   readonly publishQueuedInput: (sessionId: string, event: SessionContinuationEvent) => void;
@@ -119,14 +120,14 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     attachTurn: handle => deps.fanout.attach(handle),
     publish: (sessionId, event) => deps.publishQueuedInput(sessionId, event),
   });
-  // 超时设置即改即生效（只影响此后新建的条目，已启动条目保留原超时）。
+  // 超时设置即改即生效(只影响此后新建的条目,已启动条目保留原超时).
   settings.subscribe(({ changedKeys }) => {
     if (changedKeys.includes(permissionAskTimeoutSetting.key)) {
       interactionQueue.setDefaultTimeout(settings.get(permissionAskTimeoutSetting));
     }
   });
 
-  // ── Vision 降级（模型不支持图片输入时的描述链） ──────────────────────────────
+  // ── Vision 降级(模型不支持图片输入时的描述链) ──────────────────────────────
   const visionDescriptions = new VisionDescriptionCache(
     new AttachmentVisionDescriptionCachesRepo(database.dataDb.sqlite),
   );
@@ -140,59 +141,12 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
         vision: createVisionCall(providers.providers.resolveConnection(binding.providerId, 'vision'), binding.modelId),
       };
     } catch {
-      // 绑定存在但能力被禁用/缺 key：降级链缺省，由 prepareTurn 诚实报降级。
+      // 绑定存在但能力被禁用/缺 key:降级链缺省,由 prepareTurn 诚实报降级.
       return undefined;
     }
   };
-  // Vision 生产者:读字节+调 vision+记账;缓存查/写由 context 投影侧的 getOrCreate 负责。
-  const describeImage: VisionDescriptionProducer = async (imagePath, signal) => {
-    const selected = resolveVision();
-    if (!selected) {
-      throw new Error('未配置 vision 模型绑定，无法描述图片');
-    }
-    const bytes = await fs.promises.readFile(imagePath);
-    const startedAt = Date.now();
-    // 描述指令用 vision 包内置的 caption 任务文本，不在装配层另写一份。
-    const callId = randomUUID();
-    const result = await selected.vision({
-      images: [{ kind: 'bytes', bytes: new Uint8Array(bytes), mimeType: mimeForPath(imagePath) as VisionImageMime }],
-      task: 'caption',
-      signal,
-    }).catch(error => {
-      const cancelled = signal?.aborted === true
-        || (error instanceof Error && error.name === 'AbortError');
-      let errorCode = 'vision/call_failed';
-      if (cancelled) {
-        errorCode = 'vision/aborted';
-      } else if (error instanceof VisionError) {
-        errorCode = error.code;
-      }
-      recordVisionUsage(
-        database.usageRecorder,
-        selected.providerId,
-        selected.modelId,
-        callId,
-        startedAt,
-        cancelled ? 'cancelled' : 'failed',
-        undefined,
-        errorCode
-      );
-      throw error;
-    });
-    recordVisionUsage(
-      database.usageRecorder,
-      selected.providerId,
-      selected.modelId,
-      callId,
-      startedAt,
-      'completed',
-      result.usage,
-      null
-    );
-    return result.text;
-  };
-  // Turn 工具面的 vision 闭包（Read 的 PDF 扫描页 OCR 等）：无绑定即 undefined（降级纯文本），
-  // 模型身份在闭包内冻结，usage 从结果记录。
+  // Turn 工具面的 vision 闭包(Read 的 PDF 扫描页 OCR 等):无绑定即 undefined(降级纯文本),
+  // 模型身份在闭包内冻结,usage 从结果记录.
   const resolveCallVision = (): CallVision | undefined => {
     const selected = resolveVision();
     if (!selected) {
@@ -236,7 +190,20 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     };
   };
 
-  // ── Reminder 输入（每根 Turn 生产一次；含 currentDate，读取完成即冻结进持久化 reminder） ──
+  const describeImage: DescribeImage = async (image, signal) => {
+    const vision = resolveCallVision();
+    if (!vision) throw new Error('未配置 vision 模型绑定, 无法描述图片');
+    const result = await vision({
+      images: [image.type === 'image_data'
+        ? { kind: 'base64', data: image.data, mimeType: image.mimeType as VisionImageMime }
+        : { kind: 'url', url: image.url }],
+      task: 'caption',
+      signal,
+    });
+    return result.text;
+  };
+
+  // ── Reminder 输入(每根 Turn 生产一次;含 currentDate,读取完成即冻结进持久化 reminder) ──
   const readTurnReminder = async (scope: TurnReminderScope): Promise<RenderTurnReminderInput> => {
     const summaryTokens = MEMORY_SUMMARY_TOKENS;
     const [memoryWork, memoryRelationship] = await Promise.all([
@@ -245,7 +212,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
       readRelationshipMemoryForTurn(relationshipMemoryDir(), scope.characterName)
         .catch(() => undefined),
     ]);
-    // shouldRemind 只检查不消费；提醒随 reminder 落库成功后由 onTaskReminderPersisted 提交 markReminded。
+    // shouldRemind 只检查不消费;提醒随 reminder 落库成功后由 onTaskReminderPersisted 提交 markReminded.
     const pendingTasks = database.tasks.shouldRemind(scope.sessionId)
       ? database.tasks.list(scope.sessionId).filter(
         (task) => task.status === 'pending' || task.status === 'in_progress',
@@ -259,7 +226,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
       ? fs.readdirSync(scratchpadDir).slice(0, 50)
       : [];
     const scratchpad = scratchpadNames.length > 0
-      ? `本 Turn scratchpad 已有文件：${scratchpadNames.join('、')}`
+      ? `本 Turn scratchpad 已有文件:${scratchpadNames.join(',')}`
       : undefined;
     const subagents = database.subagents.listAllForSession(scope.sessionId);
     return {
@@ -307,12 +274,12 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     continuations,
     taskStore: database.tasks,
     goalStore: database.goals,
-    resolveNarrativeSearch: () => {
+    resolveNarrativeSearch: (sessionId, turnId) => {
       // 不改写用户的工具开关. 当前角色不使用游戏剧情时, 本 Turn 不提供查询函数.
       if (!isWitchTrialCharacter(characters.current().name)) {
         return undefined;
       }
-      return narrative.resolveSearch();
+      return narrative.resolveSearch(sessionId, turnId);
     },
     backgroundProcesses: tools.backgroundProcesses,
     resolveVision: resolveCallVision,
@@ -326,7 +293,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     scratchpadDirForTurn: (sessionId, turnId) =>
       ensureScratchpadDir(activeDataDir, sessionId, turnId),
     readTurnReminder,
-    // 只有 reminder Message 成功持久化才提交"已提醒"，避免 Turn 准备失败吞掉提醒周期。
+    // 只有 reminder Message 成功持久化才提交"已提醒",避免 Turn 准备失败吞掉提醒周期.
     onTaskReminderPersisted: sessionId => {
       database.tasks.markReminded(sessionId);
     },
@@ -348,7 +315,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
   };
 }
 
-/** 按用户多选的文件名读取工作区指令，顺序即拼接顺序；全部缺失返回 null。 */
+/** 按用户多选的文件名读取工作区指令,顺序即拼接顺序;全部缺失返回 null. */
 function readWorkspaceInstructions(cwd: string, fileNames: readonly string[]): string | null {
   const parts: string[] = [];
   for (const name of fileNames) {
@@ -356,7 +323,7 @@ function readWorkspaceInstructions(cwd: string, fileNames: readonly string[]): s
       const filePath = path.join(cwd, name);
       if (!fs.statSync(filePath).isFile()) continue;
       parts.push(fs.readFileSync(filePath, 'utf8').slice(0, WORKSPACE_INSTRUCTION_MAX_CHARS));
-    } catch { /* 读取失败（权限/竞争删除）按无指令处理 */ }
+    } catch { /* 读取失败(权限/竞争删除)按无指令处理 */ }
   }
   return parts.length > 0 ? parts.join('\n\n') : null;
 }

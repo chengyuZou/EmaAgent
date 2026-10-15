@@ -3,12 +3,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CallLlm } from '@ema-agent/llm';
 import type { CompactRequest, CompactResult } from '@ema-agent/compact';
 import type { ProviderModels, Providers } from '@ema-agent/providers';
+import type { DescribeImage } from '@ema-agent/context';
 import { staticSystemPrompt, getDynamicSystemPrompt, type DynamicSystemPromptInput } from '@ema-agent/prompts';
-import { ToolPool } from '@ema-agent/tools';
+import { assembleToolPool, ToolPool, ToolRegistry } from '@ema-agent/tools';
 import { createPrepareSubagent } from '../prepare/prepareSubagent.js';
 import type { PreparedTurn } from '../prepare/prepareTurn.js';
 import { GoalGetTool } from '../../builtin-tools/tools/GoalGetTool/GoalGetTool.js';
 import { GoalUpdateTool } from '../../builtin-tools/tools/GoalUpdateTool/GoalUpdateTool.js';
+import { DescribeImageTool } from '../../builtin-tools/tools/DescribeImageTool/describeImageTool.js';
 
 import { Database, SubagentsRepo, SubagentRunsRepo, SubagentMessagesRepo } from '@ema-agent/storage';
 import { SubagentMessagesStore, type ForkParentMessages, type ForkParentMessage, type PrepareSubagentInput } from '@ema-agent/agent';
@@ -69,6 +71,11 @@ function parentMessages(): ForkParentMessages {
 function fixture(
   readParentMessages: (signal: AbortSignal) => Promise<ForkParentMessages>,
   prepared: PreparedTurn = preparedTurn(),
+  media: {
+    readonly describeImage?: DescribeImage;
+    readonly providers?: Providers;
+    readonly providerModels?: ProviderModels;
+  } = {},
 ) {
   const createCompact = vi.fn((_call: CallLlm): ((request: CompactRequest) => Promise<CompactResult>) => async request => ({
     kind: 'unchanged' as const,
@@ -77,8 +84,9 @@ function fixture(
   const prepareChild = createPrepareSubagent({
     sessionId: 's1', turnId: 't1',
     prepared: () => prepared,
-    providers: {} as Providers,
-    providerModels: {} as ProviderModels,
+    providers: media.providers ?? {} as Providers,
+    providerModels: media.providerModels ?? {} as ProviderModels,
+    describeImage: media.describeImage,
     createCompact,
     emit: () => undefined,
     readParentMessages,
@@ -100,6 +108,70 @@ function fixture(
 }
 
 describe('createPrepareSubagent fork', () => {
+  it.each([true, false])('子代理继承父工具池的 DescribeImage 可见性: Vision=%s', async hasVision => {
+    const registry = new ToolRegistry();
+    registry.register(DescribeImageTool);
+    const vision = vi.fn(async () => ({ text: '描述', blocks: [] }));
+    const toolPool = assembleToolPool(registry, {
+      cwd: '', platform: process.platform,
+      ...(hasVision ? { vision } : {}),
+    });
+    const root = preparedTurn();
+    const { prepare } = fixture(async () => parentMessages(), {
+      ...root,
+      tools: { ...root.tools, toolPool },
+    });
+    const child = await prepare({
+      subagentId: 'image-child', prompt: '必要时描述图片', options: {}, signal: new AbortController().signal,
+    });
+    const result = await child.prepareIteration({ llmCallId: 'child-call', messages: child.messages });
+    expect(result.request.tools?.some(tool => tool.name === 'DescribeImage')).toBe(hasVision);
+    expect(vision).not.toHaveBeenCalled();
+  });
+
+  it.each([true, false])('子代理 inputImage=%s 时仍保留 fork 工具原图, 不自动调用 Vision', async inputImage => {
+    const parent: ForkParentMessages = { messages: [
+      {
+        id: 'parent-call', role: 'assistant', kind: 'normal', interrupted: false, createdAt: 1,
+        summarizedThroughMessageId: null,
+        blocks: [{ type: 'tool_use', id: 'read-image', name: 'Read', args: {} }],
+      },
+      {
+        id: 'parent-image', role: 'user', kind: 'tool_results', interrupted: false, createdAt: 2,
+        summarizedThroughMessageId: null,
+        blocks: [{ type: 'tool_result', toolCallId: 'read-image', content: [
+          { type: 'image_data', data: 'YWJj', mimeType: 'image/png' },
+        ] }],
+      },
+    ] };
+    const describeImage = vi.fn(async () => '子模型需要的图片描述');
+    const { prepare } = fixture(async () => parent, {
+      ...preparedTurn(),
+      protocol: 'openai-responses-llm',
+      supportsImageInput: true,
+    }, {
+      describeImage,
+      providers: {
+        resolveConnection: () => ({ providerId: 'child-provider', protocol: 'openai-llm', apiKey: 'test-key' }),
+      } as unknown as Providers,
+      providerModels: {
+        get: () => ({ capability: 'llm', contextWindow: 100_000, maxOutput: 8_000, inputImage, reasoning: false }),
+      } as unknown as ProviderModels,
+    });
+    const child = await prepare({
+      subagentId: 'child',
+      prompt: '继续查看这张图',
+      options: { contextMode: 'fork', providerId: 'child-provider', modelId: 'child-model' },
+      signal: new AbortController().signal,
+    });
+    const result = await child.prepareIteration({ llmCallId: 'child-call', messages: child.messages });
+
+    expect(JSON.stringify(result.request.messages)).toContain('"type":"image_data"');
+    expect(JSON.stringify(result.request.messages)).not.toContain('工具图片未提供:');
+    expect(JSON.stringify(child.messages)).toContain('"type":"image_data"');
+    expect(describeImage).not.toHaveBeenCalled();
+  });
+
   it('子循环 Macro 将摘要和覆盖 ID 写入本次 Run, 同步更新模型历史的 ID 前缀', async () => {
     const { prepare, createCompact, messages } = fixture(async () => parentMessages());
     createCompact.mockReturnValue(async request => {
@@ -220,7 +292,7 @@ describe('createPrepareSubagent fork', () => {
     expect(request.request.messages[0]).toMatchObject({ role: 'system', content: staticSystemPrompt[0]!.content });
     const system = request.request.messages.filter(message => message.role === 'system');
     expect(JSON.stringify(system)).not.toContain('根角色人设');
-    expect(JSON.stringify(system)).not.toContain('当前执行方式：Work');
+    expect(JSON.stringify(system)).not.toContain('当前执行方式:Work');
     expect(system.at(-1)!.content).toContain('纯工作子代理');
     expect(first.messages.some(message => message.role === 'system')).toBe(false);
   });
@@ -275,7 +347,7 @@ describe('createPrepareSubagent fork', () => {
     const system = request.request.messages.filter(message => message.role === 'system');
     const text = JSON.stringify(system);
     expect(text).not.toContain('根角色人设');
-    expect(text).not.toContain('当前执行方式：Work');
+    expect(text).not.toContain('当前执行方式:Work');
     expect(text).toContain('本工作区约定');
     expect(text).toContain('本轮记忆指引');
     expect(text).toContain('本轮技能目录');

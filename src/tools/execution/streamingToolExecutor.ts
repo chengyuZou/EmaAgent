@@ -1,4 +1,4 @@
-// 调度流式到达的工具调用，维护并发屏障、取消、进度事件和 FIFO 终态。
+// 调度流式到达的工具调用,维护并发屏障,取消,进度事件和 FIFO 终态.
 
 import type { ToolExecutionEvent } from '../events.js';
 import type { ToolResultStore } from '../results/toolResultStore.js';
@@ -20,17 +20,17 @@ interface TrackedTool {
 export type StreamingToolExecutorEvent = ToolExecutionEvent;
 
 export type StreamingToolExecutorOptions = ToolExecutionEnvironment & {
-  /** 写入 Agent 待发送事件队列；实现方同时负责唤醒流式排空循环。 */
+  /** 写入 Agent 待发送事件队列;实现方同时负责唤醒流式排空循环. */
   readonly pushEv: (event: StreamingToolExecutorEvent) => void;
-  /** 工具完成但没有新增进度事件时，唤醒 Agent 重新检查 allDone()。 */
+  /** 工具完成但没有新增进度事件时,唤醒 Agent 重新检查 allDone(). */
   readonly wake: () => void;
 };
 
 /**
- * 流式工具调度器。
+ * 流式工具调度器.
  *
- * 单次调用的准备、权限、校验、审计和执行全部委托给 ToolExecution；本类只处理
- * 流式入队、并发安全工具与独占工具的屏障、取消、等待状态和模型顺序终态。
+ * 单次调用的准备,权限,校验,审计和执行全部委托给 ToolExecution;本类只处理
+ * 流式入队,并发安全工具与独占工具的屏障,取消,等待状态和模型顺序终态.
  */
 export class StreamingToolExecutor {
   private tracked: TrackedTool[] = [];
@@ -58,7 +58,7 @@ export class StreamingToolExecutor {
     }
   }
 
-  /** 等待当前已登记的工具全部退出。 */
+  /** 等待当前已登记的工具全部退出. */
   async join(): Promise<void> {
     await Promise.allSettled(
       this.tracked
@@ -67,7 +67,7 @@ export class StreamingToolExecutor {
     );
   }
 
-  /** Turn 进入终态前统一取消并等待；超时调用由单调用状态机保守关账。 */
+  /** Turn 进入终态前统一取消并等待;超时调用由单调用状态机保守关账. */
   async shutdown(reason: string, timeoutMs = 5_000): Promise<void> {
     this.abortAll(reason);
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -136,8 +136,8 @@ export class StreamingToolExecutor {
 
   /**
    * Tool分为并发安全和独占两类:
-   * - 并发安全工具可以和其他并发安全工具同时执行，但必须等待前一个独占工具完成.
-   * - 独占工具必须等待此前所有已调度工具完成，且后续工具不能越过它.
+   * - 并发安全工具可以和其他并发安全工具同时执行,但必须等待前一个独占工具完成.
+   * - 独占工具必须等待此前所有已调度工具完成,且后续工具不能越过它.
    */
   private schedule(track: TrackedTool): void {
     if (track.promise) {
@@ -177,7 +177,7 @@ export class StreamingToolExecutor {
     ));
   }
 
-  /** 只交付从队首开始连续完成的结果；调用方持久化后必须 acknowledgeResult。 */
+  /** 只交付从队首开始连续完成的结果;调用方持久化后必须 acknowledgeResult. */
   takeCompletedResults(): ToolResult[] {
     const delivered: ToolResult[] = [];
     const ordered = [...this.tracked].sort((left, right) => left.blockIndex - right.blockIndex);
@@ -194,7 +194,7 @@ export class StreamingToolExecutor {
     return delivered;
   }
 
-  /** Message 已持久化后再关执行状态，崩溃时才能保守恢复。 */
+  /** Message 已持久化后再关执行状态,崩溃时才能保守恢复. */
   acknowledgeResult(callId: string): void {
     const track = this.tracked.find(candidate => candidate.execution.id === callId);
     if (!track?.resultDelivered) {
@@ -212,8 +212,8 @@ export class StreamingToolExecutor {
       track.result = completion.result;
       track.terminalEvent = completion.terminalEvent;
     } catch (error) {
-      // ToolExecution 自己会把业务、权限、审计和工具错误转成终态；这里只防止
-      // 调度 Promise 因真正的内部缺陷拒绝后阻断 serialTail。
+      // ToolExecution 自己会把业务,权限,审计和工具错误转成终态;这里只防止
+      // 调度 Promise 因真正的内部缺陷拒绝后阻断 serialTail.
       const message = error instanceof Error ? error.message : String(error);
       track.result = {
         type: 'tool_result',
@@ -238,8 +238,8 @@ export class StreamingToolExecutor {
   }
 
   /**
-   * 后完成的调用不能越过前面的模型 block 发射终态。
-   * 审批和工具进度仍实时发送，只有 tool_result 在此保持 FIFO。
+   * 后完成的调用不能越过前面的模型 block 发射终态.
+   * 审批和工具进度仍实时发送,只有 tool_result 在此保持 FIFO.
    */
   private flushTerminalEvents(): void {
     const ordered = [...this.tracked].sort((left, right) => left.blockIndex - right.blockIndex);

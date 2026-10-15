@@ -39,6 +39,7 @@ import type { TurnStreamEvent } from '../events.js';
 // 不能用于装配筛选; Shell, 子代理和用户交互不作为只读例外放行.
 const PLAN_TOOL_IDS: ReadonlySet<string> = new Set([
   BuiltinTools.FileRead.id,
+  BuiltinTools.DescribeImage.id,
   BuiltinTools.Glob.id,
   BuiltinTools.Grep.id,
   BuiltinTools.WebFetch.id,
@@ -67,7 +68,7 @@ export interface TurnToolsDeps {
   readonly taskStore?: TaskStore;
   readonly goalStore?: GoalStore;
   /** Turn 准备时冻结模型绑定与算法设置. 缺少绑定时不提供剧情工具. */
-  readonly resolveNarrativeSearch?: () => ToolUseContext['narrativeSearch'];
+  readonly resolveNarrativeSearch?: (sessionId: string, turnId: string) => ToolUseContext['narrativeSearch'];
   readonly backgroundProcesses?: BackgroundProcess;
   /** 每 Turn 解析一次 vision 调用闭包: 无绑定时返回 undefined */
   readonly resolveVision?: () => CallVision | undefined;
@@ -119,7 +120,7 @@ export interface TurnToolsAssembly {
   }) => StreamingToolExecutor;
   readonly abortTool: (toolCallId: string) => boolean;
   readonly abortSubagent: (subagentId: string) => boolean;
-  /** 根 Turn 终态前调用：先停工具再停子 Agent；幂等。 */
+  /** 根 Turn 终态前调用:先停工具再停子 Agent;幂等. */
   readonly shutdown: (reason: string) => Promise<void>;
 }
 
@@ -207,7 +208,7 @@ export function prepareTurnTools(deps: TurnToolsDeps, input: PrepareTurnToolsInp
 
   const commandRunner = deps.commandRunner?.(cwd, input.workspaceRoots);
   const vision = deps.resolveVision?.();
-  const narrativeSearch = deps.resolveNarrativeSearch?.();
+  const narrativeSearch = deps.resolveNarrativeSearch?.(sessionId, turnId);
   const toolContext: ToolUseContext = Object.freeze({
     cwd,
     platform: process.platform,
@@ -274,7 +275,7 @@ export function prepareTurnTools(deps: TurnToolsDeps, input: PrepareTurnToolsInp
       toolResultStore,
       ...(deps.toolExecutionState ? { toolExecutionState: deps.toolExecutionState } : {}),
       // 根 Tool 的终态要等 AgentLoop 把 ToolResult Message 落库后再广播
-      // 进度与权限仍实时转发，tool_result 由 TurnExecutor.translate 唯一产出
+      // 进度与权限仍实时转发,tool_result 由 TurnExecutor.translate 唯一产出
       pushEv: event => {
         if (event.type === 'tool_progress') {
           input.emit(event);
@@ -332,8 +333,8 @@ export function prepareTurnTools(deps: TurnToolsDeps, input: PrepareTurnToolsInp
 }
 
 /**
- * 队列条目在 cancel 时会以其默认终态 resolve（permission→deny、askUser→cancelled），
- * 因此这里只需在 abort 时撤销条目并等待同一个 Promise 收尾。
+ * 队列条目在 cancel 时会以其默认终态 resolve(permission→deny,askUser→cancelled),
+ * 因此这里只需在 abort 时撤销条目并等待同一个 Promise 收尾.
  */
 async function awaitInteraction<T>(promise: Promise<T>, signal: AbortSignal, cancel: () => void): Promise<T> {
   if (signal.aborted) {

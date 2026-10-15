@@ -63,7 +63,7 @@ export function buildComposition(input: { activeDataDir: string; initializeBuilt
   const characters = openCharacters(database.profileDb, input.initializeBuiltinCharacters);
   const narrative = openNarrative(
     database.narrativeDb, providers.providers, providers.providerModels,
-    providers.modelBindings, settings.settings,
+    providers.modelBindings, settings.settings, database.usageRecorder,
   );
   const speech = openSpeech(
     database.dataDb,

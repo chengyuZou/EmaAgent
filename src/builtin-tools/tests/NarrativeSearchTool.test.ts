@@ -43,7 +43,7 @@ describe('NarrativeSearchTool', () => {
     expect(narrativeSearchResultCopyText(saved)).toContain('剧情正文');
     const content = String(NarrativeSearchTool.mapResultToModelContent!(saved));
     expect(content).toContain('## 1st_Loop\n剧情正文');
-    expect(content).toContain('检索失败的剧情线：2nd_Loop (检索失败)');
+    expect(content).toContain('检索失败的剧情线:2nd_Loop (检索失败)');
   });
 
   it('同一 Turn 可以继续查询, mode 和取消信号原样传入', async () => {
@@ -85,6 +85,6 @@ describe('NarrativeSearchTool', () => {
       status: 'empty', timelines: [], failures: [],
     }))).toContain('未返回可用剧情资料');
     expect(NarrativeSearchTool.getToolUseSummary?.({ query: '角色过去' }))
-      .toBe('检索剧情资料：角色过去');
+      .toBe('检索剧情资料:角色过去');
   });
 });

@@ -1,4 +1,4 @@
-// 读取单个 Task 的完整字段、依赖与当前活动 Subagent;TaskUpdate 的 expectedVersion 从这里来。
+// 读取单个 Task 的完整字段,依赖与当前活动 Subagent;TaskUpdate 的 expectedVersion 从这里来.
 
 import { z } from 'zod';
 import {
@@ -11,7 +11,7 @@ import type { Task, TaskStore } from '@ema-agent/tasks';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { TASK_GET_DESCRIPTION } from './prompt.js';
 
-/** Task 读取工具的窄 Context:只有持久存储;调用身份由 ToolInvocation 提供。 */
+/** Task 读取工具的窄 Context:只有持久存储;调用身份由 ToolInvocation 提供. */
 interface TaskGetToolContext {
   taskStore: TaskStore;
 }
@@ -36,7 +36,7 @@ export const TaskGetTool = buildTool<TaskGetInput, TaskGetResult, TaskGetToolCon
   isReadOnly: () => true,
   isConcurrencySafe: () => true,
   getToolUseSummary: (input) => `读取任务:${input.taskId.slice(0, 8)}`,
-  // 只读任务查询, 内置信任放行。
+  // 只读任务查询, 内置信任放行.
   checkPermissions: async () => ({ behavior: 'allow' }),
 
   validateContext(ctx: ToolUseContext) {

@@ -1,5 +1,5 @@
 // 按格式读取本地文件, 仅文本分支维护后续编辑需要的文件状态.
-// 模型说明书见 prompt.ts; 结果预算见 limits.ts; 图片分支见 imageReader.ts。
+// 模型说明书见 prompt.ts; 结果预算见 limits.ts; 图片分支见 imageReader.ts.
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
@@ -33,6 +33,7 @@ import {
 } from './limits.js';
 import { FILE_READ_DESCRIPTION, imageResultNotice } from './prompt.js';
 import { readTextInRange, selectTextRange, type TextRangeResult } from './readTextInRange.js';
+import { isUnsupportedBinaryFile } from './binaryExtensions.js';
 
 interface FileReadToolContext {
   fileStateCache: FileStateCache;
@@ -41,7 +42,7 @@ interface FileReadToolContext {
 }
 
 /**
- * 会无限阻塞进程或产生无限输出的设备路径。以这些开头的路径拒绝读取。
+ * 会无限阻塞进程或产生无限输出的设备路径.以这些开头的路径拒绝读取.
  */
 const BLOCKED_DEVICE_PATHS = new Set([
   '/dev/zero',
@@ -55,11 +56,6 @@ const BLOCKED_DEVICE_PATHS = new Set([
   '/dev/console',
   '/proc/kmsg',
   '/proc/kcore',
-]);
-
-const BINARY_EXTENSIONS = new Set([
-  '.exe', '.dll', '.so', '.dylib', '.bin', '.o', '.obj', '.lib',
-  '.a', '.pdb', '.class', '.pyc', '.pyo', '.wasm', '.node',
 ]);
 
 // ── 输入 schema ──────────────────────────────────────────────────────────────
@@ -88,19 +84,19 @@ type FileReadInput = z.infer<typeof inputSchema>;
 
 // ── 输出类型 ───────────────────────────────────────────────────────────────────
 
-/** 文本正文(cat -n); 截断事实模型可见。 */
+/** 文本正文(cat -n); 截断事实模型可见. */
 export interface FileReadTextResult {
   type: 'file_content';
   filePath: string;
   content: string;
   totalLines: number;
-  /** 应用了 offset/limit 时为 true。 */
+  /** 应用了 offset/limit 时为 true. */
   isPartialView: boolean;
   truncated?: true;
   truncationReason?: 'bytes';
-  /** 截断后继续读取的起始行号。 */
+  /** 截断后继续读取的起始行号. */
   nextOffset?: number;
-  /** 给模型的可读说明(英文)。 */
+  /** 给模型的可读说明(英文). */
   notice?: string;
 }
 
@@ -113,7 +109,7 @@ export type FileReadResult =
 // ── 辅助函数 ───────────────────────────────────────────────────────────────────
 
 function isBlockedDevice(p: string): boolean {
-  // 统一分隔符再比较: Windows 的 path.normalize 会把 / 转成 \, 字符串判据不能跟着歪。
+  // 统一分隔符再比较: Windows 的 path.normalize 会把 / 转成 \, 字符串判据不能跟着歪.
   const normalized = path.normalize(p).replace(/\\/g, '/');
   for (const blocked of BLOCKED_DEVICE_PATHS) {
     if (normalized === blocked || normalized.startsWith(blocked + '/')) return true;
@@ -123,18 +119,14 @@ function isBlockedDevice(p: string): boolean {
 
 export { isBlockedDevice };
 
-function isBinaryExtension(p: string): boolean {
-  return BINARY_EXTENSIONS.has(path.extname(p).toLowerCase());
-}
-
-/** Windows UNC 路径(\\server\share)- 跳过以防 SMB 凭证泄露。 */
+/** Windows UNC 路径(\\server\share)- 跳过以防 SMB 凭证泄露. */
 function isUncPath(p: string): boolean {
   return p.startsWith('\\\\');
 }
 
 /**
  * 内容级二进制探测: 读前 8KB, 含 NUL 字节或超过 30% 不可打印控制字符
- * (允许 \t \n \r)即判二进制。UTF-8 多字节字符不受影响。
+ * (允许 \t \n \r)即判二进制.UTF-8 多字节字符不受影响.
  */
 function isBinaryContent(filePath: string): boolean {
   let fd: number;
@@ -158,7 +150,7 @@ function isBinaryContent(filePath: string): boolean {
   }
 }
 
-/** 把内容格式化为 cat -n 输出(1 起行号)。 */
+/** 把内容格式化为 cat -n 输出(1 起行号). */
 function formatWithLineNumbers(lines: string[], startLine: number): string {
   return lines
     .map((line, i) => `${String(startLine + i).padStart(6)}\t${line}`)
@@ -203,10 +195,10 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, FileReadToo
 
   validateContext(ctx) {
     if (!ctx.cwd) {
-      return contextFail('File 读取工具需要明确的工作区。');
+      return contextFail('File 读取工具需要明确的工作区.');
     }
     if (!ctx.fileStateCache) {
-      return contextFail('File 读取工具未装配读取状态。');
+      return contextFail('File 读取工具未装配读取状态.');
     }
     return contextOk({
       fileStateCache: ctx.fileStateCache,
@@ -241,7 +233,7 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, FileReadToo
     invocation: ToolInvocation,
   ): Promise<FileReadResult> {
     const { file_path, offset, limit } = input;
-    // 与 Permission/Write 同一基准: 相对路径按工作区解析, 不借 Core 进程 cwd。
+    // 与 Permission/Write 同一基准: 相对路径按工作区解析, 不借 Core 进程 cwd.
     const fullPath = path.resolve(context.cwd, file_path);
 
     // ── I/O 前校验 ────────────────────────────────────────────────────────────
@@ -251,10 +243,11 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, FileReadToo
     if (isBlockedDevice(fullPath)) {
       throw new Error(`Reading from device file is not allowed: ${fullPath}`);
     }
-    if (isBinaryExtension(fullPath)) {
+    if (isUnsupportedBinaryFile(fullPath)) {
       throw new Error(
-        `Binary files cannot be read as text (${path.extname(fullPath)}). ` +
-          `Use a dedicated tool for binary content.`,
+        `Read does not support ${path.extname(fullPath).toLowerCase()} files. `
+          + 'Supported formats: text, PNG/JPEG/GIF/WebP images, Jupyter notebooks, and PDF. '
+          + 'This is an unsupported binary format, not evidence that the file is damaged.',
       );
     }
 
@@ -318,7 +311,7 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, FileReadToo
     }
 
     // 内容级二进制探测: 扩展名伪装(.exe 改名 .txt)在前 8KB 的 NUL/不可打印
-    // 字符面前无效。
+    // 字符面前无效.
     if (isBinaryContent(fullPath)) {
       throw new Error(`File appears to be binary (NUL or non-printable content): ${fullPath}`);
     }

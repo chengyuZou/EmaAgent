@@ -1,4 +1,4 @@
-// 按需检索 Narrative 剧情资料，并把多时间线结果作为不可信工具资料返回模型。
+// 按需检索 Narrative 剧情资料,并把多时间线结果作为不可信工具资料返回模型.
 import { z } from 'zod';
 import { buildTool, contextFail, contextOk, type ToolInvocation, type ToolUseContext } from '@ema-agent/tools';
 import type { NarrativeTimelineId } from '@ema-agent/storage';
@@ -43,15 +43,15 @@ export const NarrativeSearchTool = buildTool<
   id: BuiltinTools.NarrativeSearch.id,
   name: BuiltinTools.NarrativeSearch.name,
   description: NARRATIVE_SEARCH_DESCRIPTION,
-  // 剧情正文以 CJK 为主, 按 UTF-8 最坏 3 字节/字符折算; 超限仍由结果层外置兜底。
+  // 剧情正文以 CJK 为主, 按 UTF-8 最坏 3 字节/字符折算; 超限仍由结果层外置兜底.
   maxResultBytes: 300_000,
 
-  getToolUseSummary: (input) => `检索剧情资料：${input.query}`,
+  getToolUseSummary: (input) => `检索剧情资料:${input.query}`,
   inputSchema,
   isReadOnly: () => true,
   isConcurrencySafe: () => true,
 
-  // 只读剧情检索(按需启用), 内置信任放行。
+  // 只读剧情检索(按需启用), 内置信任放行.
   checkPermissions: async () => ({ behavior: 'allow' }),
 
   validateContext(ctx) {
@@ -94,7 +94,7 @@ export const NarrativeSearchTool = buildTool<
     };
   },
 
-  // 模型需要正文本身; 状态/失败等事实留在 TOutput 给 UI 与审计。
+  // 模型需要正文本身; 状态/失败等事实留在 TOutput 给 UI 与审计.
   mapResultToModelContent(output) {
     const sections = output.timelines
       .filter((timeline) => timeline.text.trim().length > 0)
@@ -102,13 +102,13 @@ export const NarrativeSearchTool = buildTool<
 
     if (output.failures.length > 0) {
       sections.push(
-        `检索失败的剧情线：${output.failures
+        `检索失败的剧情线:${output.failures
           .map((failure) => `${failure.timeline} (${failure.message})`)
           .join(' ')}`,
       );
     }
     return sections.length > 0
       ? sections.join('\n\n')
-      : 'Narrative 检索未返回可用剧情资料。';
+      : 'Narrative 检索未返回可用剧情资料.';
   },
 });

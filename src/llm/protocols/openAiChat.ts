@@ -1,4 +1,4 @@
-// 把中立请求转换为 OpenAI Chat Completions，并归一化其流事件。
+// 把中立请求转换为 OpenAI Chat Completions,并归一化其流事件.
 import OpenAI from 'openai';
 import {
   LlmStreamProtocolError,
@@ -37,7 +37,7 @@ export function createOpenAiChatProtocol(
   const client = new OpenAI({
     apiKey: connection.apiKey ?? '',
     baseURL: connection.baseUrl,
-    // 重试只能由调用方拥有，避免 SDK 与 Agent 各重试一次形成乘法放大。
+    // 重试只能由调用方拥有,避免 SDK 与 Agent 各重试一次形成乘法放大.
     maxRetries: 0,
   });
   return (request) => streamOpenAiChat(client, modelId, request);
@@ -199,6 +199,7 @@ function toOpenAiMessages(
   messages: readonly Message[],
 ): OpenAI.ChatCompletionMessageParam[] {
   const result: OpenAI.ChatCompletionMessageParam[] = [];
+
   for (const message of messages) {
     if (message.role === 'system') {
       result.push({ role: 'system', content: message.content });
@@ -241,7 +242,7 @@ function toOpenAiMessages(
           function: { name: block.name, arguments: JSON.stringify(block.args) },
         });
       }
-      // 中立 thinking 没有 Chat Completions 往返字段，按产品规则不跨协议重放。
+      // 中立 thinking 没有 Chat Completions 往返字段,按产品规则不跨协议重放.
     }
     result.push({
       role: 'assistant',
@@ -254,9 +255,14 @@ function toOpenAiMessages(
 
 function toOpenAiToolResultContent(toolResult: ToolResultBlock): string {
   if (typeof toolResult.content === 'string') return toolResult.content;
+  // Chat 的 tool 回复只能放文字. 图片在原位置占位, 不另补 user 消息或调用 Vision.
   return toolResult.content
-    .filter(part => part.type === 'text')
-    .map(part => part.text)
+    .map(part => {
+      if (part.type === 'text') return part.text;
+      return '[工具图片未提供: 当前 Chat Completions 工具回复不支持图片, 本次未读取图片内容. '
+        + '如任务需要这张图片, 可使用 DescribeImage 获取文字描述(若工具可用), '
+        + '或建议用户切换到支持工具图片的协议和视觉模型.]';
+    })
     .join('\n');
 }
 

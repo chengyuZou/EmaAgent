@@ -1,5 +1,6 @@
 // 测试 OpenAI Responses 协议的同一调用目标 reasoning 重放裁决，以及流中真实 reasoning item 状态收集。
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createLlmCall } from '../languageModel.js';
 import { createOpenAiResponsesProtocol, toResponsesInput } from '../protocols/openAiResponses.js';
 import type { LlmStreamEvent } from '../types.js';
 
@@ -15,11 +16,52 @@ vi.mock('openai', () => ({
   }),
 }));
 
+afterEach(() => {
+  sdkMocks.responsesCreate.mockReset();
+  sdkMocks.openaiConstructor.mockReset();
+});
+
 async function* streamOf(items: readonly unknown[]): AsyncIterable<unknown> {
   for (const item of items) yield item;
 }
 
 describe('streamOpenAiResponses reasoning item 收集', () => {
+  it('公开调用入口把工具文字和图片原样交给 function_call_output', async () => {
+    sdkMocks.responsesCreate.mockResolvedValueOnce(streamOf([{
+      type: 'response.completed',
+      response: {
+        usage: { input_tokens: 1, output_tokens: 1, input_tokens_details: { cached_tokens: 0 } },
+      },
+    }]));
+    const call = createLlmCall(
+      { providerId: 'openai', protocol: 'openai-responses-llm', apiKey: 'key' },
+      'model',
+    );
+    for await (const _event of call({ messages: [
+      { role: 'assistant', content: [{ type: 'tool_use', id: 'call-image', name: 'Read', args: {} }] },
+      { role: 'user', content: [{
+        type: 'tool_result',
+        toolCallId: 'call-image',
+        content: [
+          { type: 'text', text: '已读取 PNG' },
+          { type: 'image_data', mimeType: 'image/png', data: 'YWJj' },
+          { type: 'image_url', url: 'https://example.com/image.png' },
+        ],
+      }] },
+    ] })) {
+      // 公开入口先检查协议, 再把完整请求交给 SDK.
+    }
+    expect(sdkMocks.responsesCreate.mock.lastCall![0].input.at(-1)).toEqual({
+      type: 'function_call_output',
+      call_id: 'call-image',
+      output: [
+        { type: 'input_text', text: '已读取 PNG' },
+        { type: 'input_image', detail: 'auto', image_url: 'data:image/png;base64,YWJj' },
+        { type: 'input_image', detail: 'auto', image_url: 'https://example.com/image.png' },
+      ],
+    });
+  });
+
   it('从流中收集真实 reasoning item（id + encrypted_content）并在完成时发 thinking_complete', async () => {
     sdkMocks.responsesCreate.mockResolvedValueOnce(streamOf([
       {

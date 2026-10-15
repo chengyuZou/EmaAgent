@@ -1,10 +1,10 @@
-// 测试 V1 内置工具的物理注册门禁、稳定身份和模型可见名称。
+// 测试 V1 内置工具的物理注册门禁,稳定身份和模型可见名称.
 import { describe, expect, it } from 'vitest';
 import { ToolRegistry } from '@ema-agent/tools';
 import { BuiltinTools, registerBuiltinTools } from '../index.js';
 
 describe('V1 内置工具注册边界', () => {
-  it('业务能力工具统一注册，由每次执行的 ToolPool 决定是否可见', () => {
+  it('业务能力工具统一注册,由每次执行的 ToolPool 决定是否可见', () => {
     const registry = new ToolRegistry();
     registerBuiltinTools(registry);
     const names = registry.list().map((tool) => tool.name);
@@ -17,6 +17,7 @@ describe('V1 内置工具注册边界', () => {
       BuiltinTools.TaskList.name,
       BuiltinTools.TaskUpdate.name,
       BuiltinTools.TodoWrite.name,
+      BuiltinTools.DescribeImage.name,
     ]));
   });
 
