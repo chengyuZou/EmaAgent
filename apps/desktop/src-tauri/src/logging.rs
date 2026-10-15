@@ -1,72 +1,57 @@
-// 每次桌面启动写一个日志文件,并把同一批记录继续输出到开发终端。
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, Write};
+use std::io::{self, IsTerminal};
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, MutexGuard};
+use std::sync::Mutex;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use tracing_subscriber::fmt::MakeWriter;
+use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
 
 use crate::desktop::profile::profile_root;
 
 const LOG_RETENTION: Duration = Duration::from_secs(14 * 24 * 60 * 60);
 
-struct TerminalAndFile {
-    file: Mutex<File>,
-}
-
-struct LogWriter<'a> {
-    file: MutexGuard<'a, File>,
-}
-
-impl<'a> MakeWriter<'a> for TerminalAndFile {
-    type Writer = LogWriter<'a>;
-
-    fn make_writer(&'a self) -> Self::Writer {
-        LogWriter {
-            file: self
-                .file
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner()),
-        }
-    }
-}
-
-impl Write for LogWriter<'_> {
-    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-        self.file.write_all(bytes)?;
-        let _ = io::stdout().write_all(bytes);
-        Ok(bytes.len())
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        self.file.flush()
-    }
-}
-
 pub(crate) fn init_logging() {
+    let terminal_ansi = io::stdout().is_terminal()
+        && std::env::var("NO_COLOR").map_or(true, |value| value.is_empty());
     let filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new("info,ema_desktop_lib=debug"));
     match open_launch_log() {
         Ok((path, file)) => {
-            tracing_subscriber::fmt()
-                .with_env_filter(filter)
-                .with_target(false)
-                .with_writer(TerminalAndFile {
-                    file: Mutex::new(file),
-                })
-                .init();
+            launch_subscriber(file, filter, terminal_ansi).init();
             tracing::info!(path = %path.display(), pid = std::process::id(), "desktop launch log opened");
         }
         Err(error) => {
             tracing_subscriber::fmt()
                 .with_env_filter(filter)
                 .with_target(false)
+                .with_ansi(terminal_ansi)
                 .init();
             tracing::error!(%error, "desktop launch log unavailable; terminal output remains active");
         }
     }
+}
+
+fn launch_subscriber(
+    file: File,
+    filter: EnvFilter,
+    terminal_ansi: bool,
+) -> impl tracing::Subscriber + Send + Sync {
+    tracing_subscriber::registry()
+        .with(filter)
+        // 同类型格式层会共用 span 字段缓存, 先生成纯文本, 避免终端颜色进入文件的 span 字段.
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_target(false)
+                .with_ansi(false)
+                .with_writer(Mutex::new(file)),
+        )
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_target(false)
+                .with_ansi(terminal_ansi)
+                .with_writer(io::stdout),
+        )
 }
 
 fn open_launch_log() -> Result<(PathBuf, File), String> {
@@ -118,6 +103,36 @@ fn remove_expired_logs(directory: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn launch_log_preserves_text_without_terminal_escape_codes() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "ema-log-format-test-{}-{unique}.log",
+            std::process::id()
+        ));
+        let file = File::create(&path).expect("create test log");
+        tracing::subscriber::with_default(
+            launch_subscriber(file, EnvFilter::new("info"), true),
+            || {
+                tracing::info_span!("startup", label = "server").in_scope(|| {
+                    tracing::info!(port = 12345, "启动日志测试");
+                });
+            },
+        );
+        let text = fs::read_to_string(&path).expect("read test log");
+        fs::remove_file(&path).expect("remove test log");
+
+        assert!(text.contains("启动日志测试"));
+        assert!(
+            !text.contains('\u{1b}'),
+            "file contains ANSI escapes: {text:?}"
+        );
+        assert!(text.contains("label=\"server\""));
+    }
 
     #[test]
     fn removes_only_expired_launch_logs() {

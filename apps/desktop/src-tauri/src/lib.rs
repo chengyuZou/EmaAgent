@@ -17,7 +17,7 @@ use commands::{
 };
 use desktop::pet_pointer::PetPointerTracking;
 use desktop::terminal::TerminalSessions;
-use desktop::windows::{handle_window_event, show_stage_window};
+use desktop::windows::{destroy_windows_before_exit, handle_window_event, show_stage_window};
 use processes::DesktopProcesses;
 
 pub fn run() {
@@ -89,6 +89,10 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| {
+            if let RunEvent::ExitRequested { api, .. } = &event {
+                app_handle.state::<PetPointerTracking>().stop();
+                destroy_windows_before_exit(app_handle, api);
+            }
             if let RunEvent::Exit = event {
                 app_handle.state::<PetPointerTracking>().stop();
                 // 退出时回收子进程树与全部 PTY 终端.

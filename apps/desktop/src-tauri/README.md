@@ -51,6 +51,8 @@ Windows 在 stage 和 main 创建时, 按应用页面的 origin 将 WebView2 的
 
 桌宠浮动菜单开启 / 关闭 stage 的点击穿透模式. 角色继续显示, 非控制区的点击落到后面的窗口. FloatingDock 按系统坐标命中菜单, 权限提示和通知控制区, 通过 `set_passthrough_controls_hovered` 临时恢复点击; 离开后继续穿透. 模式和置顶独立, 开启穿透时不执行未置顶窗口的失焦自动最小化. 托盘的 "关闭点击穿透" 调用同一模式入口, 解除最小化并显示 / 聚焦 stage. 模式不持久化, 不改变 main 的交互.
 
+退出菜单和托盘退出先停止 Server, 再通过 `app.exit(0)` 请求退出. `ExitRequested` 停止鼠标采样, 请求销毁全部窗口, 并让事件循环继续处理 WebView 释放. 最后一个窗口销毁后, Tauri 再次发出退出请求, 此时允许退出. 这里使用 `destroy`, 不经过日常关闭按钮的 `CloseRequested` 隐藏逻辑.
+
 ## 系统鼠标与穿透事件
 
 鼠标和穿透事件只发给 stage. 原生生产者是 `desktop/petPointer.rs` 和 `desktop/windows.rs`, WebView 只经 `tauriBridge.ts` 的具名方法订阅. 窗口显隐事件按原生窗口名称发送给各自 WebView.
@@ -100,6 +102,8 @@ Rust 保存 Server 的实际端口, WebView 通过具名 Command 读取端口与
 
 ## 启动日志
 
+Rust 日志分别输出到终端和 `<profile>/logs/ema-*.log`. 终端连接到交互控制台且未设置非空 `NO_COLOR` 时启用颜色; 文件格式不添加 ANSI 颜色控制码. 两处使用相同的 `RUST_LOG` 过滤规则, 默认是 `info,ema_desktop_lib=debug`. 历史日志不在启动时改写.
+
 Rust 将 Server 的 stdout / stderr 写入本次桌面启动日志. Server 的开发和正式入口都是 `main`, 入口先输出 `[server:startup] process entered`, 再动态加载业务模块. 这样能观察模块读取和执行的耗时, 不必等全部依赖加载完才看到首条日志.
 
 `business modules loading` 包含业务依赖的加载和模块顶层代码执行, 开发环境还包含这些依赖的 TS 转换. `started` 表示开始, `pending` 每 5 秒报告仍在等待和已耗秒数, `completed` 报告本阶段耗时, `failed` 后会打印具体错误. 计时器在加载成功或失败后清除, 不参与后续业务阶段. 如果模块顶层同步代码占住了 Node 主线程, `pending` 也可能延迟; 没有周期日志不能单独证明进程退出.
@@ -113,6 +117,8 @@ Rust 将 Server 的 stdout / stderr 写入本次桌面启动日志. Server 的�
 构建清单里的 Cargo crate 版本与依赖版本是构建工具要求, 不属于上述运行接口.
 
 ## 验证
+
+在 `apps/desktop/src-tauri` 运行 `cargo test --no-default-features --lib logging::tests`, 检查终端启用颜色时, 文件中的普通日志和 span 字段仍为纯文本.
 
 跨进程接口不能只靠单语言测试确认。正式制品验证必须启动真实 Server, 至少证明：
 

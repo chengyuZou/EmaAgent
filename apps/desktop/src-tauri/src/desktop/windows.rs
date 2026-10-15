@@ -34,6 +34,22 @@ struct WindowVisibilityPayload {
     visible: bool,
 }
 
+pub fn destroy_windows_before_exit(app: &tauri::AppHandle, api: &tauri::ExitRequestApi) {
+    let windows = app.windows();
+    if windows.is_empty() {
+        return;
+    }
+
+    // 让事件循环继续处理窗口销毁和 WebView 释放, 最后一个窗口销毁后 Tauri 会再次请求退出.
+    // destroy 不触发 CloseRequested, 不会被日常关闭按钮的隐藏逻辑拦截.
+    api.prevent_exit();
+    for (label, window) in windows {
+        if let Err(error) = window.destroy() {
+            tracing::error!(%label, %error, "failed to destroy window before exit");
+        }
+    }
+}
+
 pub fn show_window(app: &tauri::AppHandle, label: &str) -> Result<(), String> {
     let window = match app.get_webview_window(label) {
         Some(window) => window,
