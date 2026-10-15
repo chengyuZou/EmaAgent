@@ -1,5 +1,4 @@
 import { domainToASCII } from 'node:url';
-import { bingSearch } from './bing.js';
 import { braveSearch } from './brave.js';
 import { SearchHttpStatusError } from './types.js';
 import type { SearchOptions, SearchProgress, SearchResult } from './types.js';
@@ -31,13 +30,17 @@ function hasBraveApiKey(): boolean {
   );
 }
 
-function resolveAdapter(): ResolvedAdapter {
+async function resolveAdapter(): Promise<ResolvedAdapter> {
   const provider = resolveSearchProvider();
   switch (provider) {
     case 'brave':
       return { provider, search: braveSearch };
-    case 'bing':
+    case 'bing': {
+      // Windows 本地测量: cheerio 独立导入约 0.43s, 实际耗时随环境变化.
+      // 确定使用 Bing 时才加载页面解析依赖, 工具注册和 Brave 搜索不需要它们.
+      const { bingSearch } = await import('./bing.js');
       return { provider, search: bingSearch };
+    }
   }
 }
 
@@ -45,7 +48,9 @@ export async function searchWeb(
   query: string,
   options: SearchOptions,
 ): Promise<SearchResult[]> {
-  const adapter = resolveAdapter();
+  options.signal.throwIfAborted();
+  const adapter = await resolveAdapter();
+  options.signal.throwIfAborted();
   options.onProgress?.({ type: 'query_update', query });
   let raw: SearchResult[];
   try {

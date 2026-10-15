@@ -1,6 +1,5 @@
 import { WebPageCache } from './cache.js';
 import { readWebResponse } from '../readWebResponse.js';
-import { extractPageContent } from './extractPageContent.js';
 
 const MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
 const FETCH_TIMEOUT_MS = 30_000;
@@ -61,6 +60,10 @@ export async function fetchPublicPage(
     throw new Error(`不支持读取二进制内容: ${contentType}`);
   }
   const body = await readWebResponse(response, MAX_RESPONSE_BYTES, requestSignal);
+  // Windows 本地测量: 解析模块及其依赖独立导入约 1.7s, 实际耗时随环境变化.
+  // 收到有效响应后才加载, 避免工具注册时提前承担这段开销; 命中缓存时无需再次导入.
+  const { extractPageContent } = await import('./extractPageContent.js');
+  requestSignal.throwIfAborted();
   const content = await extractPageContent(body, contentType, response.url, options.raw);
   requestSignal.throwIfAborted();
 

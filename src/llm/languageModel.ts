@@ -1,11 +1,8 @@
-// 创建点冻结连接与模型身份的语言模型调用入口；stream 是唯一执行线，
-// createLlmCompletion 是同一条流的无损收集器（要一把拿结果的消费方自行调用）。
+// 创建点固定连接与模型身份, 首次消费流时才加载对应协议和 SDK.
+// createLlmCompletion 收集同一条流, 不另发请求.
+import { throwIfAborted } from './errors.js';
 import type { AssistantBlock } from './message.js';
 import { assertProtocolInput } from './protocolInput.js';
-import { createAnthropicProtocol } from './protocols/anthropic.js';
-import { createGeminiProtocol } from './protocols/gemini.js';
-import { createOpenAiChatProtocol } from './protocols/openAiChat.js';
-import { createOpenAiResponsesProtocol } from './protocols/openAiResponses.js';
 import type {
   CallLlm,
   LlmCompletion,
@@ -17,29 +14,49 @@ import type {
 } from './types.js';
 import { updateLlmCallUsage } from './usage.js';
 
-/** LLM 唯一创建入口；连接与 modelId 在创建时冻结并复用 SDK Client。 */
+/** 连接与 modelId 在创建时固定, 同一 CallLlm 的请求复用 SDK Client. */
 export function createLlmCall(connection: LlmConnection, modelId: string): CallLlm {
   if (!modelId.trim()) throw new TypeError('LLM model must not be empty');
-  const protocolStream = createProtocolStream(connection, modelId);
+  const callConnection: LlmConnection = { ...connection };
+  // 共享初始化 Promise, 避免并发的首次请求各自创建客户端.
+  let protocolStream: Promise<CallLlm> | undefined;
+  async function* stream(request: LlmRequest): AsyncIterable<LlmStreamEvent> {
+    throwIfAborted(request.signal);
+    protocolStream ??= createProtocolStream(callConnection, modelId);
+    const call = await protocolStream;
+    throwIfAborted(request.signal);
+    yield* call(request);
+  }
+
   return (request: LlmRequest): AsyncIterable<LlmStreamEvent> => {
-    assertProtocolInput(connection.protocol, request.messages);
-    return protocolStream(request);
+    assertProtocolInput(callConnection.protocol, request.messages);
+    return stream(request);
   };
 }
 
-function createProtocolStream(
+async function createProtocolStream(
   connection: LlmConnection,
   modelId: string,
-): CallLlm {
+): Promise<CallLlm> {
+  // Windows 本地独立导入: OpenAI SDK 约 0.29s, Anthropic 约 0.18s, Gemini 约 0.22s; 耗时随环境变化.
+  // 按实际协议加载, 避免导入 LLM 包时提前加载全部 SDK.
   switch (connection.protocol) {
-    case 'openai-llm':
+    case 'openai-llm': {
+      const { createOpenAiChatProtocol } = await import('./protocols/openAiChat.js');
       return createOpenAiChatProtocol(connection, modelId);
-    case 'openai-responses-llm':
+    }
+    case 'openai-responses-llm': {
+      const { createOpenAiResponsesProtocol } = await import('./protocols/openAiResponses.js');
       return createOpenAiResponsesProtocol(connection, modelId);
-    case 'anthropic-llm':
+    }
+    case 'anthropic-llm': {
+      const { createAnthropicProtocol } = await import('./protocols/anthropic.js');
       return createAnthropicProtocol(connection, modelId);
-    case 'gemini-llm':
+    }
+    case 'gemini-llm': {
+      const { createGeminiProtocol } = await import('./protocols/gemini.js');
       return createGeminiProtocol(connection, modelId);
+    }
   }
 }
 
