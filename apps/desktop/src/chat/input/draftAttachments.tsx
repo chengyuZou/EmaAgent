@@ -3,9 +3,11 @@ import { PASTE_TEXT_MIN_CHARS } from '@ema-agent/attachments/limits';
 import type { ChatDraft, ChatDraftReference } from '../../stores/chatDraft.js';
 import { tauriBridge } from '../../lib/tauriBridge.js';
 import { ImagePreview } from '../../lib/images/imagePreview.js';
+import { AttachmentImagePreview } from '../../lib/images/attachmentImagePreview.js';
 import { Tooltip } from '@ema-agent/ui';
 
 interface DraftReferenceListProps {
+  readonly sessionId: string | null;
   readonly references: readonly ChatDraftReference[];
   readonly onRemove: (draftId: string) => void;
 }
@@ -13,7 +15,9 @@ interface DraftReferenceListProps {
 function referenceLabel(reference: ChatDraftReference): string {
   if (reference.type === 'skill_reference') return reference.name;
   if (reference.type === 'file_reference') return reference.path.split(/[\\/]/).pop() ?? '';
-  if (reference.type === 'pasted_text') return `粘贴文本: ${reference.preview}`;
+  if (reference.type === 'pasted_text' || reference.type === 'pasted_text_reference') {
+    return `粘贴文本: ${reference.preview}`;
+  }
   return reference.name ?? '图片';
 }
 
@@ -57,15 +61,22 @@ function DraftImagePreview({ reference }: { readonly reference: Extract<ChatDraf
 
 // 改 textarea 文字会重渲染 ChatInput, 但 references 数组没有变;
 // 只在附件增删时重画列表, 不让每次打字都重建图片与删除按钮.
-export const DraftReferenceList = memo(function DraftReferenceList({ references, onRemove }: DraftReferenceListProps): JSX.Element | null {
+export const DraftReferenceList = memo(function DraftReferenceList({ sessionId, references, onRemove }: DraftReferenceListProps): JSX.Element | null {
   if (references.length === 0) return null;
   return (
     <div className="flex flex-wrap items-start gap-1.5 px-3 pb-2 pt-3">
       {references.map(reference => {
-        if (reference.type === 'image') {
+        if (reference.type === 'image' || reference.type === 'image_reference') {
           return (
             <span key={reference.draftId} className="ema-draft-image-reference">
-              <DraftImagePreview reference={reference} />
+              {reference.type === 'image' ? (
+                <DraftImagePreview reference={reference} />
+              ) : (
+                <AttachmentImagePreview
+                  sessionId={sessionId!} path={reference.path}
+                  alt={reference.name ?? '图片'} className="ema-image-preview--attachment"
+                />
+              )}
               <span className="ema-draft-image-name" title={referenceLabel(reference)}>{referenceLabel(reference)}</span>
               <button
                 type="button"
@@ -84,7 +95,10 @@ export const DraftReferenceList = memo(function DraftReferenceList({ references,
             className="inline-flex max-w-52 items-center gap-1.5 rounded-md border border-[var(--ema-border)] bg-[var(--ema-primary-muted)] px-2 py-1 text-[11px] text-[var(--ema-primary-text)]"
           >
             <span className={reference.type === 'skill_reference' ? 'i-lucide:box' : 'i-lucide:paperclip'} aria-hidden />
-            <Tooltip content={reference.type === 'pasted_text' ? reference.preview : undefined} variant="card">
+            <Tooltip
+              content={reference.type === 'pasted_text' || reference.type === 'pasted_text_reference' ? reference.preview : undefined}
+              variant="card"
+            >
               <span className="truncate">
                 {referenceLabel(reference)}
               </span>

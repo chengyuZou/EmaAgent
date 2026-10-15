@@ -1,4 +1,3 @@
-// Commands 一族：/compact 用例与 Command 目录投影的装配；业务规则全部在 @ema-agent/commands。
 import { buildCharacterPrompt } from '@ema-agent/characters';
 import {
   compactSession,
@@ -61,16 +60,12 @@ export function openCommands(deps: {
     createLlmCall,
     usageRecorder: database.usageRecorder,
     emit: deps.publishCompactEvent,
+    onFinished: (sessionId, status) => {
+      turn.continuations.workFinished(sessionId, status === 'cancelled' ? 'aborted' : status);
+    },
   };
   return {
-    compactSession: async sessionId => {
-      try {
-        return await compactSession(compactDeps, sessionId);
-      } finally {
-        // compactSession 已在自身 finally 解除占用, 重新交付期间到来的消息或 Goal.
-        turn.continuations.requestDrain(sessionId);
-      }
-    },
+    compactSession: sessionId => compactSession(compactDeps, sessionId),
     listCommandDescriptors,
   };
 }

@@ -12,7 +12,6 @@ import { useSessionStore } from '../../stores/session.js';
 import {
   assistantOutputBlocks,
   isStreamingMessage,
-  sumTurnUsage,
   useTurnStore,
   type StreamingMessage,
   type TurnState,
@@ -40,7 +39,7 @@ export function TurnFooter({
   readonly canFork: boolean;
 }): JSX.Element {
   const turn = useTurnStore(state => state.turnsBySession.get(sessionId)?.get(turnId));
-  const usage = useTurnStore(state => sumTurnUsage(state, turnId));
+  const usage = useTurnStore(state => state.usageByTurn[turnId]);
   const [elapsed, setElapsed] = useState(() => (
     turn ? Math.round((Date.now() - turn.startedAt) / 1000) : 0
   ));

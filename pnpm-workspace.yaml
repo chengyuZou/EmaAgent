@@ -2,4 +2,3 @@ packages:
   - "src/*"
   - "packages/*"
   - "apps/*"
-  - "bridges/*"

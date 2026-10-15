@@ -1,4 +1,4 @@
-// 定义一次 Turn 自身的生命周期、模型输出投影与请求降级事件。
+// 定义一次 Turn 自身的生命周期 模型输出投影与请求降级事件
 import type { CompactEvent } from '@ema-agent/compact';
 import type { ContextUsage } from '@ema-agent/context';
 import type { LlmTokenUsage } from '@ema-agent/llm';
@@ -16,6 +16,8 @@ export type TurnEvent =
      */
     readonly type: 'user_message_stored';
     readonly message: SessionMessage;
+    /** 这些排队输入已合入 message, 前端用它移除等待显示. 不写入 SQL. */
+    readonly queuedInputIds: readonly string[];
   }
   | {
     type: 'turn_started';
@@ -113,11 +115,11 @@ export type TurnEvent =
     assistantMessageId: string;
   };
 
-/** Compact 事件进入根 Turn 事件流时补上本 Turn 身份；Compact 包自身不感知 Turn。 */
+/** 自动 Compact 事件进入 Turn 事件流时补上本 Turn 身份; Compact 包自身不感知 Turn. */
 export type TurnCompactEvent = CompactEvent & { readonly turnId: string };
 
 /**
- * 根 Turn 事件流的全部成员. Permission 独立走 Session 出口, 不依赖父 Turn.
+ * Turn 事件流的全部成员. Permission 独立走 Session 出口, 不依赖父 Turn.
  * 各域事件由拥有方定义(turn/tools/
  * compact/stage), 这里只做流组合, 不重复声明; AgentLoop 事件经执行器翻译为
  * 带身份的 TurnEvent 成员后入流。Stage 事件由正文标签清洗顺带产出，

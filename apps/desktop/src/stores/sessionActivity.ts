@@ -8,13 +8,13 @@ import type { SessionConnectionState } from '../api/sessionWebSocket.js';
 export interface SessionActivity {
   /** 断线只表示当前值未知, 不等于 Server 已经结束当前工作. */
   readonly connection: SessionConnectionState;
-  /** Server 当前占用 Session 的根 Turn 或手动 Compact; 已收到 session_state 后 null 表示空闲. */
+  /** Server 当前占用 Session 的 Turn 或手动 Compact; 已收到 session_state 后 null 表示空闲. */
   readonly running: SessionRunning | null;
-  /** 当前正在生成摘要的 Compact, 同时覆盖手动命令和根 Turn 自动压缩. */
+  /** 当前正在生成摘要的 Compact, 同时覆盖手动命令和 Turn 内的自动压缩. */
   readonly activeCompact: ActiveCompact | null;
   /** 仍等待用户处理的 Permission 和 AskUser, resolved 事件到达后按 toolCallId 删除. */
   readonly pendingInteractions: readonly PendingInteraction[];
-  /** 这里只显示 after_turn 项; guide 成功后该项立即移入当前 Turn. */
+  /** 尚未保存的用户输入. after_turn 在输入框上方显示, next_iteration 在聊天中等待处理. */
   readonly queuedInputs: readonly QueuedSessionInput[];
 }
 
@@ -25,7 +25,7 @@ export interface ActiveCompact {
 }
 
 interface SessionActivityStore {
-  /** Chat 当前订阅的各 Session 活动事实, 不包含消息正文或 Turn Store 内容. */
+  /** Chat 当前订阅的各 Session 活动事实, 已保存的消息由 History 和 Turn Store 管理. */
   readonly bySession: ReadonlyMap<string, SessionActivity>;
   /** Session WebSocket 状态变化时写入, ChatInput 和 Sidebar 用它显示断线而不是伪造 idle. */
   setConnection(sessionId: string, connection: SessionConnectionState): void;
@@ -51,10 +51,10 @@ interface SessionActivityStore {
     sessionId: string,
     event: PermissionStreamEvent | AskUserRequiredEvent | Extract<ToolExecutionEvent, { type: 'ask_user_resolved' }>
   ): void;
-  /** queued_input_added 到达时按 ID 替换并按创建时间排列, 防止重连事件显示两次. */
+  /** 入队或引导后按 ID 更新, 保留提交顺序. */
   addQueuedInput(sessionId: string, item: QueuedSessionInput): void;
-  /** queued_input_removed 到达时删除队列气泡; guide 后的消息由 Turn Store 接管显示. */
-  removeQueuedInput(sessionId: string, id: string): void;
+  /** 输入被删除, 保存或退回草稿后移除等待显示. */
+  removeQueuedInputs(sessionId: string, ids: readonly string[]): void;
   /** Session 已归档或删除时一次删除连接, 占用, 交互和队列视图. */
   evictSession(sessionId: string): void;
 }
@@ -120,8 +120,7 @@ export const useSessionActivityStore = create<SessionActivityStore>(set => ({
           ? { compactId: running.compactId, startedAt: null }
           : null,
         pendingInteractions: [...pendingInteractions],
-        queuedInputs: [...queuedInputs]
-          .sort((left, right) => left.createdAt - right.createdAt),
+        queuedInputs: [...queuedInputs],
       })
     ));
   },
@@ -211,23 +210,25 @@ export const useSessionActivityStore = create<SessionActivityStore>(set => ({
   },
 
   addQueuedInput(sessionId, item) {
-    set(state => updateSession(
-      state,
-      sessionId,
-      current => ({
-        ...current,
-        queuedInputs: [...current.queuedInputs.filter(candidate => candidate.id !== item.id), item].sort((left, right) => left.createdAt - right.createdAt),
-      })
-    ));
+    set(state => updateSession(state, sessionId, current => {
+      const queuedInputs = [...current.queuedInputs];
+      const index = queuedInputs.findIndex(candidate => candidate.id === item.id);
+      if (index < 0) {
+        queuedInputs.push(item);
+      } else {
+        queuedInputs[index] = item;
+      }
+      return { ...current, queuedInputs };
+    }));
   },
 
-  removeQueuedInput(sessionId, id) {
+  removeQueuedInputs(sessionId, ids) {
     set(state => updateSession(
       state,
       sessionId,
       current => (
-        current.queuedInputs.some(item => item.id === id)
-          ? { ...current, queuedInputs: current.queuedInputs.filter(item => item.id !== id) }
+        current.queuedInputs.some(item => ids.includes(item.id))
+          ? { ...current, queuedInputs: current.queuedInputs.filter(item => !ids.includes(item.id)) }
           : current
       )
     ));

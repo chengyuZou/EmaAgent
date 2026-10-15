@@ -1,4 +1,4 @@
-// 把已持久化的根循环事件投影给前端, 并处理 Context 用量和物理 LLM 调用记账.
+// 把已持久化的 Turn 循环事件投影给前端, 并处理 Context 用量和物理 LLM 调用记账.
 import type { AgentLoopEvent } from '@ema-agent/agent';
 import {
   appendEstimatedContextMessages,
@@ -21,7 +21,7 @@ interface TurnLoopEventsDeps {
   readonly emit: (event: TurnStreamEvent) => void;
 }
 
-/** 每根 Turn 独立维护工具名与 Context 用量. accept 必须在 writer.apply 之后调用. */
+/** 每个 Turn 独立维护工具名与 Context 用量. accept 必须在 writer.apply 之后调用. */
 export function createTurnLoopEvents(deps: TurnLoopEventsDeps) {
   const { sessionId, turnId, writer, emit } = deps;
   const toolNames = new Map<string, string>();

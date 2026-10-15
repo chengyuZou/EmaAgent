@@ -1,4 +1,4 @@
-// 把根 Turn 的输入规范化并冻结：附件、模型、Prompt、Skill、权限桶与工具层，产出不可变 PreparedTurn。
+// 固定本轮使用的附件, 模型, Prompt, Skill, 权限与工具层, 产出 PreparedTurn.
 import {
   readAgentSettings,
   type AgentLoopEvent,
@@ -57,7 +57,7 @@ import {
   resolveSkillPool,
 } from './skillPool.js';
 
-/** 一个根 Turn 的冻结事实；运行期只读取这一份，不再回读 Settings/Registry/Session。 */
+/** 一个 Turn 的冻结事实; 运行期只读取这一份, 不再回读 Settings/Registry/Session. */
 export interface PreparedTurn {
   readonly reasoningEffort: ReasoningEffort;
   readonly scratchpadDir?: string;
@@ -112,7 +112,7 @@ export interface PrepareTurnDeps extends TurnToolsDeps {
 
 export interface PrepareTurnInput {
   readonly request: StartTurn;
-  /** TurnStore 已创建的根 Turn 身份；Session 身份只取 request.sessionId。 */
+  /** TurnStore 已创建的 Turn 身份; Session 身份只取 request.sessionId. */
   readonly turnId: string;
   readonly prepareSubagent: PrepareSubagent;
   /** 事件出口由 turn.ts 绑定到本 Turn 的事件通道（每 Turn 一个）。 */
@@ -129,7 +129,7 @@ export async function prepareTurn(
 ): Promise<PreparedTurn> {
   const { request, turnId, signal } = input;
 
-  // 设置在任何附件写入或媒体降级前读取一次，确保同一根 Turn 不混用新旧上限。
+  // 设置在任何附件写入或媒体降级前读取一次, 确保同一 Turn 不混用新旧上限.
   const agentSettings = readAgentSettings(deps.settings);
   const compactSettings = readCompactSettings(deps.settings);
   const session = deps.sessions.getSession(request.sessionId);

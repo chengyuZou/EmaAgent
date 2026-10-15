@@ -50,7 +50,7 @@ interface SessionFifo {
 // ── SessionInteractionQueue ─────────────────────────────────────────────────
 
 /**
- * 内存交互队列. 根 Turn、子代理 Run 或 Session 结束时清理对应条目, 不持久化待批准请求.
+ * 内存交互队列. Turn, 子代理 Run 或 Session 结束时清理对应条目, 不持久化待批准请求.
  * Session FIFO 在首次入队时创建, 最后一条移出后释放; 软件重启不恢复旧等待.
  * （Permission 以 deny resolve，AskUser 以明确取消终态 resolve，使等待方干净退出）。
  *
@@ -195,7 +195,7 @@ export class SessionInteractionQueue {
     return this.evict(id, { status: 'cancelled', reason });
   }
 
-  /** 只取消根 Turn 自己的交互, 不清理带相同父 turnId 的子代理请求. */
+  /** 只取消 Turn 自己的交互, 不清理带相同父 turnId 的子代理请求. */
   cancelForTurn(turnId: string, reason = 'turn aborted'): number {
     const ids = [...this.index.values()]
       .filter(({ entry }) => entry.request.turnId === turnId

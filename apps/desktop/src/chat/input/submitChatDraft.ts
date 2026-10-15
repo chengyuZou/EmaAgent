@@ -3,7 +3,6 @@ import type { TurnInputPart } from '@ema-agent/turn';
 import { sessionsApi } from '../../api/sessions.js';
 import { SessionRequestError, sessionWebSocket } from '../../api/sessionWebSocket.js';
 import { restoreFailedDraft, useChatDraftStore, type ChatDraft } from '../../stores/chatDraft.js';
-import { useSessionActivityStore } from '../../stores/sessionActivity.js';
 import { useSessionStore } from '../../stores/session.js';
 import { ensureSessionSubscription } from '../session/sessionSubscriptions.js';
 
@@ -30,24 +29,14 @@ export async function submitChatDraft(
       ...(objective !== undefined ? { objective } : {}),
     };
 
-    // 附件上传期间活动状态可能改变, 所以发送前才决定直接提交还是排队.
-    const running = useSessionActivityStore.getState().bySession.get(sessionId)?.running;
-    if (running?.kind === 'compact') {
-      throw new Error('当前会话正在压缩, 请稍后发送');
-    }
     requestStarted = true;
-    if (running?.kind === 'turn') {
-      await sessionWebSocket.queueUserMessage(sessionId, payload);
-    } else {
-      await sessionWebSocket.sendUserMessage(sessionId, payload);
-    }
+    await sessionWebSocket.sendUserMessage(sessionId, payload);
   } catch (error) {
     // 断线时 Server 可能已保存 UserMessage 或排队项, 不能把旧输入放回草稿诱导重复发送.
     const definitelyNotStored = !requestStarted
       || (error instanceof SessionRequestError
         && (
           error.code === 'empty_input'
-          || error.code === 'session_idle'
           || error.code === 'session_busy'
           || error.code === 'session_not_found'
           || error.code === 'goal_already_exists'
@@ -88,6 +77,20 @@ async function finalizeDraft(sessionId: string, draft: ChatDraft): Promise<TurnI
       output.push({
         type: 'attachment',
         block: { type: 'file_reference', path: part.path },
+      });
+      continue;
+    }
+    if (part.type === 'image_reference') {
+      output.push({
+        type: 'attachment',
+        block: { type: 'image_reference', path: part.path, ...(part.name ? { name: part.name } : {}) },
+      });
+      continue;
+    }
+    if (part.type === 'pasted_text_reference') {
+      output.push({
+        type: 'attachment',
+        block: { type: 'pasted_text_reference', path: part.path, preview: part.preview },
       });
       continue;
     }

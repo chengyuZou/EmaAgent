@@ -1,4 +1,4 @@
-// 每次 Agent 模型调用前装配完整消息, 按需压缩, 并保存根 Turn 的摘要.
+// 每次 Agent 模型调用前装配完整消息, 按需压缩, 并保存 Turn 的摘要.
 import type { PrepareAgentIteration } from '@ema-agent/agent';
 import type { CompactRequest, CompactResult } from '@ema-agent/compact';
 import {
@@ -69,7 +69,7 @@ export function createPrepareAgentIteration(deps: PrepareAgentIterationDeps): Pr
       usageRecorder: deps.usageRecorder,
       messages,
       systemMessages,
-      // 摘要请求复用根 Turn 冻结的 Tool 定义与 thinking 配置, 保持与主请求一致的缓存前缀.
+      // 摘要请求复用 Turn 冻结的 Tool 定义与 thinking 配置, 保持与主请求一致的缓存前缀.
       tools: assembled.tools,
       ...(prepared.thinking ? { thinking: prepared.thinking } : {}),
       estimatedInputTokens: assembled.usage.estimatedInputTokens,

@@ -59,7 +59,7 @@ export const createRoutes = (composition: Composition, secret: string) => {
   const {
     database, settings, providers, tools,
     characters, speech, turn, commands, memory, backup,
-    sessionConnections, appEvents, turnFanout,
+    sessionConnections, appEvents,
   } = composition;
   const characterChangeDeps = { characters: characters.store, sessionRunning: database.sessionRunning };
 
@@ -88,7 +88,6 @@ export const createRoutes = (composition: Composition, secret: string) => {
       sessionRunning: database.sessionRunning,
       interactions: turn.interactionQueue,
       compactSession: commands.compactSession,
-      attachTurn: handle => turnFanout.attach(handle),
     }))
     .route('/api/ws/speech', speechWebSocketRoute(speech, database.turns))
     .route('/api/turns', turnRecordsRoute({

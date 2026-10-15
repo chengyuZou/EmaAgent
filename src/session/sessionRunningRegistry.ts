@@ -1,5 +1,5 @@
-// 同一个 Session 只允许一个根 Turn 或一次手动 Compact 运行. 这里保存它的
-// 真实身份和取消信号, 让取消、终态清理与 WebSocket 连接当前值指向同一份工作.
+// 同一个 Session 只允许一个 Turn 或一次手动 Compact 运行. 这里保存它的
+// 真实身份和取消信号, 让取消, 终态清理与 WebSocket 连接当前值指向同一份工作.
 
 import { SessionBusyError, SessionRunningAlreadyRegisteredError, SessionWorkBlockedError } from './errors.js';
 
@@ -12,7 +12,7 @@ interface SessionRunningEntry {
   readonly controller: AbortController;
 }
 
-/** 保存各 Session 当前根工作的真实身份和 AbortController. */
+/** 保存各 Session 当前执行的身份和 AbortController. */
 export class SessionRunningRegistry {
   private readonly runningBySession = new Map<string, SessionRunningEntry>();
   /**
@@ -51,7 +51,7 @@ export class SessionRunningRegistry {
     return true;
   }
 
-  /** 是否已经有根 Turn 或手动 Compact 占用这个 Session. */
+  /** 是否已经有 Turn 或手动 Compact 占用这个 Session. */
   isRunning(sessionId: string): boolean {
     return this.runningBySession.has(sessionId);
   }
@@ -66,7 +66,7 @@ export class SessionRunningRegistry {
     }
   }
 
-  /** 确认删除或归档后同步关闭这个会话的新工作入口, 并取消当前根工作. */
+  /** 确认删除或归档后同步关闭这个会话的新工作入口, 并取消当前执行. */
   runWithSessionClosed<T>(sessionId: string, action: () => Promise<T>): Promise<T> {
     this.sessionClosures.set(sessionId, (this.sessionClosures.get(sessionId) ?? 0) + 1);
     this.runningBySession.get(sessionId)?.controller.abort();
@@ -86,7 +86,7 @@ export class SessionRunningRegistry {
     });
   }
 
-  /** 返回指定 Session 当前运行的根 Turn 或手动 Compact, 不是 Session 实体. */
+  /** 返回指定 Session 当前运行的 Turn 或手动 Compact, 不是 Session 实体. */
   getRunning(sessionId: string): SessionRunning | undefined {
     return this.runningBySession.get(sessionId)?.running;
   }
@@ -110,7 +110,7 @@ export class SessionRunningRegistry {
   }
 
   /**
-   * 等待该 Session 当前的根 Turn 或手动 Compact 通过 clear() 完成自己的收尾.
+   * 等待该 Session 当前的 Turn 或手动 Compact 通过 clear() 完成自己的收尾.
    * Session 删除和 Server 关闭都必须等写入停止后, 才能删除 Session 数据或关闭数据库.
    */
   waitUntilIdle(sessionId: string): Promise<void> {
@@ -122,12 +122,12 @@ export class SessionRunningRegistry {
     });
   }
 
-  /** 返回当前有根工作运行的 Session 数量, 角色切换和视觉服务空闲判断会读取它. */
+  /** 返回当前有 Turn 或手动 Compact 运行的 Session 数量, 角色切换和视觉服务空闲判断会读取它. */
   runningSessionCount(): number {
     return this.runningBySession.size;
   }
 
-  /** 切换全局角色前停止全部根 Turn 与手动 Compact, 并等待各执行所有者完成收尾. */
+  /** 切换全局角色前停止全部 Turn 与手动 Compact, 并等待各执行所有者完成收尾. */
   async abortAll(): Promise<void> {
     const running = [...this.runningBySession.entries()];
     for (const [, entry] of running) entry.controller.abort();

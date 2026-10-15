@@ -89,10 +89,6 @@ class SessionWebSocket {
     return this.request<void>(sessionId, requestId => ({ type: 'send_user_message', requestId, payload }));
   }
 
-  queueUserMessage(sessionId: string, payload: UserMessagePayload): Promise<void> {
-    return this.request<void>(sessionId, requestId => ({ type: 'queue_user_message', requestId, payload }));
-  }
-
   removeQueuedInput(sessionId: string, id: string): Promise<void> {
     return this.request<void>(sessionId, requestId => ({ type: 'remove_queued_input', requestId, id }));
   }

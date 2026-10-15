@@ -1,4 +1,3 @@
-// 渲染已经持久化的用户 Message. Skill 和附件使用 chip, text 使用公共 Markdown.
 import { useState, type JSX } from 'react';
 import { IconButton } from '@ema-agent/ui';
 
@@ -10,13 +9,14 @@ import { AttachmentImagePreview } from '../../lib/images/attachmentImagePreview.
 import { ImagePreview } from '../../lib/images/imagePreview.js';
 
 export interface UserMessageProps {
-  message: Message;
-  sessionId: string;
+  readonly message: Pick<Message, 'blocks' | 'createdAt'>;
+  readonly sessionId: string;
+  readonly pending?: boolean;
 }
 
-export function UserMessage({ message, sessionId }: UserMessageProps): JSX.Element {
+export function UserMessage({ message, sessionId, pending = false }: UserMessageProps): JSX.Element {
   const content = messageText(message);
-  // 附件卡置顶；正文按输入顺序走：text 段与 skill_reference chip 内联混排（用户放置的位置）。
+  // 附件卡置顶; text 段与 skill_reference 按输入顺序混排.
   const attachments = Array.isArray(message.blocks)
     ? message.blocks.filter(
       (block): block is AttachmentBlock | Extract<SessionUserBlock, { type: 'image_data' | 'image_url' }> =>
@@ -141,6 +141,12 @@ export function UserMessage({ message, sessionId }: UserMessageProps): JSX.Eleme
           )
           : null}
 
+        {pending && (
+          <div role="status" className="mt-1.5 flex items-center gap-1.5 text-xs text-[var(--ema-text-tertiary)]">
+            <span className="i-lucide:clock-3" aria-hidden />
+            已提交, 等待处理
+          </div>
+        )}
         <div className="ema-message-footer ema-message-footer-user">
           <span className="ema-message-footer-stats tabular-nums">{formatTurnTime(message.createdAt)}</span>
           {content.trim().length > 0 && (

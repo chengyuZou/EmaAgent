@@ -11,6 +11,8 @@ import { useTurnStore, type TurnStoreEvent } from '../../stores/turn.js';
 import { useSessionActivityStore } from '../../stores/sessionActivity.js';
 import { useSessionHistoryStore } from '../../stores/sessionHistory.js';
 import { useSettingsStore } from '../../stores/settings.js';
+import { emptyChatDraft, restoreQueuedDraft, useChatDraftStore } from '../../stores/chatDraft.js';
+import { useSessionStore } from '../../stores/session.js';
 import { sessionPresentation } from '../presentation/sessionPresentation.js';
 import { startPendingSpeechPlayback, startTurnSpeechPlayback, removeTurnPlayback } from '../speech/turnSpeechPlayback.js';
 import { observeTurnSpeechGeneration } from '../speech/turnSpeechGeneration.js';
@@ -141,15 +143,29 @@ function receiveSessionMessage(sessionId: string, message: SessionBusinessMessag
     return;
   }
   if (message.type === 'queued_input_removed') {
-    activity.removeQueuedInput(sessionId, message.id);
+    activity.removeQueuedInputs(sessionId, [message.id]);
     return;
   }
   if (message.type === 'queued_input_guided') {
-    activity.removeQueuedInput(sessionId, message.item.id);
+    activity.addQueuedInput(sessionId, message.item);
+    return;
+  }
+  if (message.type === 'queued_inputs_returned') {
+    const drafts = useChatDraftStore.getState();
+    const session = useSessionStore.getState().sessions.byId.get(sessionId);
+    const current = drafts.bySession.get(sessionId) ?? {
+      ...emptyChatDraft(),
+      permissionMode: session?.permissionMode ?? 'default',
+      ttsEnabled: session?.ttsEnabled ?? false,
+      reasoningEffort: session?.reasoningEffort ?? 'off',
+    };
+    drafts.setForSession(sessionId, restoreQueuedDraft(message.items, current));
+    activity.removeQueuedInputs(sessionId, message.items.map(item => item.id));
     return;
   }
   if (message.type === 'user_message_stored') {
     receiveStoredUserMessage(sessionId, message.message);
+    activity.removeQueuedInputs(sessionId, message.queuedInputIds);
     return;
   }
   if (isCompactEvent(message)) {

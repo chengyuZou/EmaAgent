@@ -64,7 +64,7 @@ interface TurnStore {
   readonly turnsBySession: ReadonlyMap<string, ReadonlyMap<string, TurnState>>;
   readonly contextUsageBySession: Readonly<Record<string, ContextUsageEntry>>;
   readonly contextEstimateVersionBySession: Readonly<Record<string, number>>;
-  readonly rootUsageByTurn: Readonly<Record<string, LlmTokenUsage>>;
+  readonly usageByTurn: Readonly<Record<string, LlmTokenUsage>>;
   receiveTurnEvent(
     sessionId: string,
     turnId: string,
@@ -133,7 +133,7 @@ interface TurnStore {
     usage: ContextUsage
   ): void;
   invalidateContextUsage(sessionId: string): void;
-  setRootUsage(turnId: string, usage: LlmTokenUsage): void;
+  setTurnUsage(turnId: string, usage: LlmTokenUsage): void;
   clearTurnUsage(turnId: string): void;
   evictSession(sessionId: string): void;
 }
@@ -425,7 +425,7 @@ export const useTurnStore = create<TurnStore>((set, get) => ({
   turnsBySession: new Map(),
   contextUsageBySession: {},
   contextEstimateVersionBySession: {},
-  rootUsageByTurn: {},
+  usageByTurn: {},
 
   receiveTurnEvent(sessionId, turnId, event) {
     if (
@@ -496,7 +496,7 @@ export const useTurnStore = create<TurnStore>((set, get) => ({
         turnStore.applyContextUsage(sessionId, event.llmCallId, event.usage);
         return;
       case 'agent_usage_updated':
-        turnStore.setRootUsage(turnId, event.usage);
+        turnStore.setTurnUsage(turnId, event.usage);
         return;
       case 'turn_completed':
       case 'turn_failed':
@@ -823,15 +823,15 @@ export const useTurnStore = create<TurnStore>((set, get) => ({
     });
   },
 
-  setRootUsage(turnId, usage) {
-    set(state => ({ rootUsageByTurn: { ...state.rootUsageByTurn, [turnId]: usage } }));
+  setTurnUsage(turnId, usage) {
+    set(state => ({ usageByTurn: { ...state.usageByTurn, [turnId]: usage } }));
   },
 
   clearTurnUsage(turnId) {
     set(state => {
-      const rootUsageByTurn = { ...state.rootUsageByTurn };
-      delete rootUsageByTurn[turnId];
-      return { rootUsageByTurn };
+      const usageByTurn = { ...state.usageByTurn };
+      delete usageByTurn[turnId];
+      return { usageByTurn };
     });
   },
 
@@ -857,6 +857,3 @@ export const useTurnStore = create<TurnStore>((set, get) => ({
   },
 }));
 
-export function sumTurnUsage(state: Pick<TurnStore, 'rootUsageByTurn'>, turnId: string): LlmTokenUsage | undefined {
-  return state.rootUsageByTurn[turnId];
-}

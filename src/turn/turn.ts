@@ -1,4 +1,3 @@
-// 根 Turn 的唯一公开执行入口:创建,驱动,唯一终态与取消.
 import * as fs from 'node:fs';
 import {
   runAgentLoop,
@@ -92,7 +91,7 @@ export interface TurnExecutorDeps extends PrepareTurnDeps {
     callLlm: CallLlm,
   ) => (request: CompactRequest) => Promise<CompactResult>;
   /**
-   * 每根 Turn 调用一次,产出 reminder 的完整启动期输入(含 currentDate 等全部字段:
+   * 每个 Turn 调用一次,产出 reminder 的完整启动期输入(含 currentDate 等全部字段:
    * git 探测,Memory 摘要,Task 一次性提醒,Scratchpad 快照).
    * 结果即冻结,本 Turn 后续 LLM Call 复用同一份持久化 reminder,不再回读.
    */
@@ -127,10 +126,10 @@ export interface TurnExecutorDeps extends PrepareTurnDeps {
 
 /**
  * TurnExecutor 持有跨 Turn 共享的协作者;每个 Turn 的通道,预算,工具层与
- * 事件翻译都在 start() 内按 Turn 创建.Route 只拿这个入口,不接触任何内部件.
+ * 事件翻译都在 start() 内按 Turn 创建. SessionContinuationQueue 调用 start 启动执行.
  */
 export class TurnExecutor {
-  /** 活动 Turn 的工具层快照,供 abortTool/abortSubagent 按 turnId 定位. */
+  /** 活动 Turn 的工具执行入口, 供 abortTool 按 turnId 定位. */
   private readonly runningTools = new Map<string, TurnToolsAssembly>();
   /** 活动 Turn 的 completion,供 abortAndAwait(Session 删除等编排)等待终态落库. */
   private readonly runningCompletions = new Map<string, Promise<TurnOutcome>>();
@@ -178,7 +177,7 @@ export class TurnExecutor {
     });
   }
 
-  /** 只取消当前仍活动的指定根 Turn;历史句柄不能误杀后继 Turn. */
+  /** 只取消当前仍活动的指定 Turn; 历史句柄不能误杀后继 Turn. */
   abort(sessionId: string, turnId: string): boolean {
     const running = this.deps.turns.getRunningTurn(sessionId);
     if (running?.id !== turnId) return false;
@@ -188,7 +187,7 @@ export class TurnExecutor {
 
   /**
    * 取消并等待该 Turn 终态落库.Session 删除等编排必须先让活动 Turn 走完
-   * finish 链(writer 收口,队列清理),否则删除会与尚未完成的持久化竞争.
+   * finish 链(保存未完成消息, 清理等待), 否则删除会与尚未完成的持久化竞争.
    */
   async abortAndAwait(sessionId: string, turnId: string): Promise<void> {
     this.abort(sessionId, turnId);
@@ -197,10 +196,6 @@ export class TurnExecutor {
 
   abortTool(turnId: string, toolCallId: string): boolean {
     return this.runningTools.get(turnId)?.abortTool(toolCallId) ?? false;
-  }
-
-  abortSubagent(turnId: string, subagentId: string): boolean {
-    return this.runningTools.get(turnId)?.abortSubagent(subagentId) ?? false;
   }
 
   private async pumpTurn(args: {
@@ -348,10 +343,11 @@ export class TurnExecutor {
             console.warn('[turn] 自动命名会话失败:', error);
           }
         }
-        emit({ type: 'user_message_stored', message: userMessage });
+        const queuedInputIds = this.deps.continuations.acknowledge(turnId);
+        emit({ type: 'user_message_stored', message: userMessage, queuedInputIds });
+      } else {
+        this.deps.continuations.acknowledge(turnId);
       }
-      // 队列项和后台结果只有在对应 Message 全部落库后才确认交付.
-      this.deps.continuations.acknowledge(turnId);
 
       const turnSkillPool = prepared.skillPool;
       const persistClaim = async (
@@ -372,7 +368,7 @@ export class TurnExecutor {
           this.deps.attachments,
           sessionId,
           turnId,
-          claim.userInput.input,
+          claim.input,
           turnSkillPool,
         );
         signal.throwIfAborted();
@@ -392,7 +388,6 @@ export class TurnExecutor {
             console.warn('[turn] 自动命名会话失败:', error);
           }
         }
-        emit({ type: 'user_message_stored', message: userMessage });
         return userMessage;
       };
 
@@ -402,9 +397,12 @@ export class TurnExecutor {
           const claim = this.deps.continuations.claimNextIteration(sessionId, turnId);
           if (!claim) return appended;
           try {
-            appended.push(await persistClaim(claim));
-            // 一个 claim 只生成一条 Message;确认后才能领取下一个 claim.
-            this.deps.continuations.acknowledge(turnId);
+            const message = await persistClaim(claim);
+            appended.push(message);
+            const queuedInputIds = this.deps.continuations.acknowledge(turnId);
+            if (claim.type === 'user_input') {
+              emit({ type: 'user_message_stored', message, queuedInputIds });
+            }
           } catch (error) {
             this.deps.continuations.release(turnId);
             throw error;
@@ -565,7 +563,7 @@ export class TurnExecutor {
 
       const currentGoal = this.deps.goalStore?.getCurrent(sessionId);
       // 单 Turn 配额只切分仍在推进的同一个 Goal. 子代理的 max_iterations
-      // 不经过此根 Turn 分支; 无 Goal 的执行仍以原失败策略结束.
+      // 不经过此 Turn 分支; 无 Goal 的执行仍以原失败策略结束.
       const goalIterationYield = stopped.state.stopReason === 'max_iterations'
         && currentGoal?.status === 'active'
         && currentGoal.id === handledGoalId;
@@ -642,7 +640,7 @@ export class TurnExecutor {
       if (prepared?.scratchpadDir) {
         const scratchpadDir = prepared.scratchpadDir;
         // 后台 Subagent 继续使用父 Turn 的 scratchpad. 清理动作跟随最后一个
-        // 派生运行结束, 但不反向占住已经完成的根 Turn.
+        // 派生运行结束, 但不反向占住已经完成的 Turn.
         void this.deps.subagents.waitForTurnSubagents(turnId).then(() => {
           try {
             fs.rmSync(scratchpadDir, { recursive: true, force: true });
@@ -704,7 +702,7 @@ export class TurnExecutor {
     let continuationStatus = terminal;
     if (!finishSucceeded) continuationStatus = 'failed';
     else if (signal.aborted) continuationStatus = 'aborted';
-    this.deps.continuations.turnFinished(sessionId, continuationStatus);
+    this.deps.continuations.workFinished(sessionId, continuationStatus);
     if (!finishSucceeded) {
       reject(finishError);
       channel.fail(finishError);
@@ -816,7 +814,7 @@ function createSessionTitle(blocks: MessageBlocks): string {
 }
 
 /**
- * 一次根 Turn 或手动压缩共用一个 Map, 按需读取历史 Turn 的模型来源和对话角色.
+ * 一次 Turn 或手动压缩共用一个 Map, 按需读取历史 Turn 的模型来源和对话角色.
  * 只读 loadHistory 实际交付的 Turn, 后续追加消息复用这份查询结果.
  * 角色使用当时保存的名字, 不查当前角色目录或参考音频; 缺失身份不猜测.
  */

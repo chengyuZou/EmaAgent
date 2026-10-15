@@ -56,7 +56,7 @@ export interface TurnComposition {
   readonly describeImage: DescribeImage;
   /** Vision 描述缓存(path 键);context 投影直接消费, 生产只在 describeImage 注入时发生. */
   readonly visionCache: VisionDescriptionCache;
-  /** 工作区指令读取闭包(commands 装配与下一根 Turn 同字节的 System Prompt 同源复用). */
+  /** 工作区指令读取闭包, commands 与 Turn 共用同一份工作区指令. */
   readonly workspaceInstructions: (cwd: string) => string | null;
 }
 
@@ -203,7 +203,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     return result.text;
   };
 
-  // ── Reminder 输入(每根 Turn 生产一次;含 currentDate,读取完成即冻结进持久化 reminder) ──
+  // Reminder 每个 Turn 读取一次, 包含 currentDate, 读取完成后随消息保存.
   const readTurnReminder = async (scope: TurnReminderScope): Promise<RenderTurnReminderInput> => {
     const summaryTokens = MEMORY_SUMMARY_TOKENS;
     const [memoryWork, memoryRelationship] = await Promise.all([

@@ -2,7 +2,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX, type MutableRefObject } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { IconButton, Tooltip } from '@ema-agent/ui';
-import type { SessionMessage } from '@ema-agent/session';
+import type { SessionMessage, SessionUserBlock } from '@ema-agent/session';
+import type { QueuedSessionInput } from '@ema-agent/turn';
 import { emptyChatDraft, useChatDraftStore } from '../../stores/chatDraft.js';
 import { ConversationStarters } from '../conversationStarters.js';
 import { useSessionActivityStore, type ActiveCompact } from '../../stores/sessionActivity.js';
@@ -12,6 +13,7 @@ import { scheduleTurnHistoryClosure } from '../session/turnHistoryClosure.js';
 import { TurnNavigationRail } from './TurnNavigationRail.js';
 import { TurnFooter } from '../messages/TurnFooter.js';
 import { UIMessage, toolResultsForMessages } from '../messages/UIMessage.js';
+import { UserMessage } from '../messages/UserMessage.js';
 import { MessageExpansionContext } from '../messages/messageExpansion.js';
 import { useMessageViewport } from './useMessageViewport.js';
 import { sessionsApi } from '../../api/sessions.js';
@@ -21,15 +23,28 @@ import { usePlaybackStore } from '../speech/turnSpeechPlayback.js';
 
 const MESSAGE_TOP_INSET = 40;
 const PLAYBACK_TARGET_HIGHLIGHT_MS = 1_800;
-type DisplayMessage = SessionMessage | StreamingMessage;
+type OwnedMessage = SessionMessage | StreamingMessage;
+interface PendingInputMessage {
+  readonly type: 'queued_input';
+  readonly id: string;
+  readonly turnId: null;
+  readonly blocks: SessionUserBlock[];
+  readonly createdAt: number;
+}
+type DisplayMessage = OwnedMessage | PendingInputMessage;
+const EMPTY_QUEUED_INPUTS: readonly QueuedSessionInput[] = [];
+
+function isPendingInput(message: DisplayMessage): message is PendingInputMessage {
+  return 'type' in message && message.type === 'queued_input';
+}
 
 /** 缺口窗口只更新已有 Message, 不能把最新 Turn 接到旧历史后面. */
 export function collectOwnedMessages(
   history: readonly SessionMessage[],
   turns: ReadonlyMap<string, TurnState>,
   reachesLatest: boolean,
-): readonly DisplayMessage[] {
-  const byId = new Map<string, DisplayMessage>(history.map(message => [message.id, message]));
+): readonly OwnedMessage[] {
+  const byId = new Map<string, OwnedMessage>(history.map(message => [message.id, message]));
   for (const turn of turns.values()) {
     for (const message of turn.messages) {
       if (reachesLatest || byId.has(message.id)) byId.set(message.id, message);
@@ -38,12 +53,33 @@ export function collectOwnedMessages(
   return [...byId.values()].sort((left, right) => left.createdAt - right.createdAt || left.id.localeCompare(right.id));
 }
 
-function isVisibleMessage(message: DisplayMessage): boolean {
+function isVisibleMessage(message: OwnedMessage): boolean {
   return isStreamingMessage(message) || message.kind === 'normal' || message.kind === 'summary';
 }
 
+export function collectDisplayMessages(
+  ownedMessages: readonly OwnedMessage[],
+  queuedInputs: readonly QueuedSessionInput[],
+  reachesLatest: boolean,
+): readonly DisplayMessage[] {
+  const messages: DisplayMessage[] = ownedMessages.filter(isVisibleMessage);
+  if (reachesLatest) {
+    for (const item of queuedInputs) {
+      if (item.delivery !== 'next_iteration') continue;
+      messages.push({
+        type: 'queued_input',
+        id: item.id,
+        turnId: null,
+        blocks: item.input.map(part => part.type === 'attachment' ? part.block : part),
+        createdAt: item.createdAt,
+      });
+    }
+  }
+  return messages;
+}
+
 function estimateMessageHeight(message: DisplayMessage): number {
-  if (!isStreamingMessage(message) && message.kind === 'summary') return 56;
+  if (!isPendingInput(message) && !isStreamingMessage(message) && message.kind === 'summary') return 56;
   let textLength = 0;
   if (typeof message.blocks === 'string') textLength = message.blocks.length;
   else {
@@ -64,6 +100,7 @@ export function MessageList({ sessionId, bottomInset, latestButtonBottom }: {
   const history = useSessionHistoryStore(state => state.bySession.get(sessionId) ?? EMPTY_SESSION_HISTORY);
   const turns = useTurnStore(useShallow(state => new Map(state.turnsBySession.get(sessionId) ?? [])));
   const activeCompact = useSessionActivityStore(state => state.bySession.get(sessionId)?.activeCompact ?? null);
+  const queuedInputs = useSessionActivityStore(state => state.bySession.get(sessionId)?.queuedInputs ?? EMPTY_QUEUED_INPUTS);
   const handledNavigationRequest = useRef<TurnNavigationRequest | null>(null);
   const [locatedPlaybackTurnId, setLocatedPlaybackTurnId] = useState<string | null>(null);
   const highlightTimer = useRef<number | null>(null);
@@ -91,10 +128,13 @@ export function MessageList({ sessionId, bottomInset, latestButtonBottom }: {
     () => collectOwnedMessages(history.messages, turns, !history.newerCursor),
     [history.messages, history.newerCursor, turns],
   );
-  const messages = useMemo(() => ownedMessages.filter(isVisibleMessage), [ownedMessages]);
+  const messages = useMemo(
+    () => collectDisplayMessages(ownedMessages, queuedInputs, !history.newerCursor),
+    [ownedMessages, queuedInputs, history.newerCursor],
+  );
   const toolResults = useMemo(() => toolResultsForMessages(ownedMessages), [ownedMessages]);
   const messagesByTurn = useMemo(() => {
-    const byTurn = new Map<string, DisplayMessage[]>();
+    const byTurn = new Map<string, OwnedMessage[]>();
     for (const message of ownedMessages) {
       if (!message.turnId) continue;
       const current = byTurn.get(message.turnId);
@@ -127,7 +167,7 @@ function HistoryViewport({
   readonly messages: readonly DisplayMessage[];
   readonly turns: ReadonlyMap<string, TurnState>;
   readonly toolResults: ReturnType<typeof toolResultsForMessages>;
-  readonly messagesByTurn: ReadonlyMap<string, readonly DisplayMessage[]>;
+  readonly messagesByTurn: ReadonlyMap<string, readonly OwnedMessage[]>;
   readonly activeCompact: ActiveCompact | null;
   readonly bottomInset: number;
   readonly latestButtonBottom: number | null;
@@ -168,7 +208,8 @@ function HistoryViewport({
     for (const message of messages) {
       if (knownMessageIds.current.has(message.id) || !followsNewMessages || history.loading) continue;
       const turn = message.turnId ? turns.get(message.turnId) : undefined;
-      if (!turn || turn.terminal || !turn.messages.some(item => item.id === message.id)) continue;
+      if (!isPendingInput(message)
+        && (!turn || turn.terminal || !turn.messages.some(item => item.id === message.id))) continue;
       // 只在新消息到达的这一提交播放. 没挂载的消息不会在后来滚入视口时补播.
       const row = virtualizer.elementsCache.get(message.id)?.querySelector('.ema-chat-message-row');
       row?.classList.add('ema-chat-message-enter');
@@ -338,14 +379,18 @@ function HistoryViewport({
                 style={{ position: 'absolute', top: row.start, width: '100%' }}>
                 <div className="ema-chat-content-column ema-chat-message-row"
                   data-message-id={message.id} data-turn-id={turnId ?? undefined}
-                  data-playback-target={turnId === locatedPlaybackTurnId || undefined}
+                  data-playback-target={turnId !== null && turnId === locatedPlaybackTurnId || undefined}
                   onAnimationEnd={event => {
                     if (event.target === event.currentTarget) {
                       event.currentTarget.classList.remove('ema-chat-message-enter');
                     }
                   }}>
                   <MessageExpansionContext.Provider value={expanded}>
-                    <UIMessage message={message} sessionId={sessionId} toolResults={toolResults} terminal={turn?.terminal ?? true} />
+                    {isPendingInput(message) ? (
+                      <UserMessage message={message} sessionId={sessionId} pending />
+                    ) : (
+                      <UIMessage message={message} sessionId={sessionId} toolResults={toolResults} terminal={turn?.terminal ?? true} />
+                    )}
                   </MessageExpansionContext.Provider>
                   {endsTurn && turnId && (
                     <TurnFooter sessionId={sessionId} turnId={turnId} messages={messagesByTurn.get(turnId) ?? []}

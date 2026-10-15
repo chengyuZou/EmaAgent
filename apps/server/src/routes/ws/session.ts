@@ -21,7 +21,6 @@ import {
   type SessionContinuationQueue,
   type SessionInteractionQueue,
   type TurnExecutor,
-  type TurnHandle,
   type TurnStore,
   type TurnStreamEvent,
 } from '@ema-agent/turn';
@@ -66,7 +65,6 @@ export const sessionClientMessageSchema = z.discriminatedUnion(
   'type',
   [
     z.object({ type: z.literal('send_user_message'), requestId: requestIdSchema, payload: userMessagePayloadSchema }),
-    z.object({ type: z.literal('queue_user_message'), requestId: requestIdSchema, payload: userMessagePayloadSchema }),
     z.object({ type: z.literal('remove_queued_input'), requestId: requestIdSchema, id: z.string().uuid() }),
     z.object({ type: z.literal('guide_queued_input'), requestId: requestIdSchema, id: z.string().uuid() }),
     z.object({ type: z.literal('start_compaction'), requestId: requestIdSchema }),
@@ -110,10 +108,7 @@ export const sessionClientMessageSchema = z.discriminatedUnion(
 export type ClientRequestId = string;
 /** Desktop 可以通过单个 Session WebSocket 发给 Server 的全部 JSON 消息. */
 export type SessionClientMessage = z.infer<typeof sessionClientMessageSchema>;
-/**
- * send_user_message 和 queue_user_message 共用的输入内容. 直接发送或排队由外层消息 type 决定,
- * payload 不再携带 delivery 字段.
- */
+/** 用户提交的有序输入, 由队列决定立即执行还是等待当前工作结束. */
 export type UserMessagePayload = z.infer<typeof userMessagePayloadSchema>;
 
 /** TurnStreamEvent 原样传输. 已落库的 user_message_stored 走 Session 消息分支. */
@@ -146,20 +141,16 @@ export type SessionBusinessMessage =
     readonly queuedInputs: readonly QueuedSessionInput[];
   }
   | {
-    /** 已连接期间根 Turn 或手动 Compact 的注册和清除变化. */
+    /** 已连接期间 Turn 或手动 Compact 的注册和清除变化. */
     readonly type: 'session_running_changed';
     readonly running: SessionRunning | null;
   }
-  | {
-    /** 真实 UserMessage 已写入 History, Desktop 按保存顺序交给当前 Turn 或持久 History. */
-    readonly type: 'user_message_stored';
-    readonly message: SessionMessage;
-  }
+  | Extract<TurnStreamEvent, { readonly type: 'user_message_stored' }>
   | CompactEvent
   | SessionContinuationEvent
   | SessionTurnMessage
   | {
-    /** Subagent 的增量和终态, Desktop 只更新子代理 Store, 不混入根 Turn 的消息投影. */
+    /** Subagent 的增量和终态, Desktop 只更新子代理 Store, 不混入 Session 的聊天消息. */
     readonly type: 'subagent_event';
     readonly event: SubagentEvent;
   };
@@ -248,7 +239,6 @@ export interface SessionWebSocketRouteDeps {
   readonly sessionRunning: SessionRunningRegistry;
   readonly interactions: SessionInteractionQueue;
   readonly compactSession: (sessionId: string) => Promise<ManualCompactResult>;
-  readonly attachTurn: (handle: TurnHandle) => void;
 }
 
 export const sessionWebSocketRoute = (deps: SessionWebSocketRouteDeps) =>
@@ -269,8 +259,7 @@ export const sessionWebSocketRoute = (deps: SessionWebSocketRouteDeps) =>
             type: 'session_state',
             running: readSessionRunningState(deps, sessionId),
             pendingInteractions: deps.interactions.listPending(sessionId),
-            queuedInputs: deps.continuations.list(sessionId)
-              .filter(item => item.delivery === 'after_turn'),
+            queuedInputs: deps.continuations.list(sessionId),
           });
           // TODO: 真实使用若证明断线期间的增量不可接受，再设计按 Turn 游标的有界重放和缺口通知。
         },
@@ -309,7 +298,7 @@ async function handleClientMessage(
   try {
     switch (message.type) {
       case 'send_user_message': {
-        const session = deps.sessions.getSessionForWork(sessionId);
+        deps.sessions.getSessionForWork(sessionId);
         if (!hasTurnInput(message.payload.input)) {
           throw new SessionRequestError('empty_input', 'Turn 输入为空');
         }
@@ -318,33 +307,6 @@ async function handleClientMessage(
             throw new SessionBusyError(sessionId);
           }
           // 创建事件只请求微任务. 同步入队后, 初始用户任务与 Goal 提示才一起领取.
-          deps.goals.create(sessionId, message.payload.objective);
-          deps.continuations.enqueue({
-            sessionId,
-            input: message.payload.input,
-          });
-          socket.send({ type: 'request_succeeded', requestId: message.requestId });
-          return;
-        }
-        // 发送消息只提交内容; 新 Turn 的语音选择从该 Session 的已保存设置读取.
-        const ttsEnabled = session.ttsEnabled;
-        const handle = deps.executor.start({
-          sessionId,
-          triggerType: 'userMessage',
-          ttsEnabled,
-          input: message.payload.input,
-        });
-        deps.attachTurn(handle);
-        socket.send({ type: 'request_succeeded', requestId: message.requestId });
-        return;
-      }
-      case 'queue_user_message': {
-        deps.sessions.getSessionForWork(sessionId);
-        if (!hasTurnInput(message.payload.input)) throw new SessionRequestError('empty_input', 'Turn 输入为空');
-        if (deps.sessionRunning.getRunning(sessionId)?.kind !== 'turn') {
-          throw new SessionRequestError('session_idle', '当前 Session 没有运行中的 Turn');
-        }
-        if (message.payload.objective !== undefined) {
           deps.goals.create(sessionId, message.payload.objective);
         }
         deps.continuations.enqueue({

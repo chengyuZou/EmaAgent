@@ -123,6 +123,7 @@ export function ChatInput({
   const hasInput = hasDraftContent(draft);
   const sessionRunning = sessionActivity?.running != null;
   const turnRunning = sessionActivity?.running?.kind === 'turn';
+  const queuedInputs = sessionActivity?.queuedInputs.filter(item => item.delivery === 'after_turn') ?? [];
   const editCurrentDraft = useCallback((edit: (current: ChatDraft) => ChatDraft): void => {
     const drafts = useChatDraftStore.getState();
     // 文件选择、录音和发送都会异步返回. 写入时重新取这份草稿,
@@ -255,7 +256,7 @@ export function ChatInput({
   }
 
   async function send(): Promise<void> {
-    if (!hasInput || !serverReady || submitting || compacting) return;
+    if (!hasInput || !serverReady || submitting) return;
     const submitted = draft;
     const objective = creatingGoal ? submitted.text : undefined;
     if (objective !== undefined && !objective.trim()) {
@@ -400,18 +401,17 @@ export function ChatInput({
     <div className="ema-composer-dock pointer-events-none shrink-0 px-4 pb-3 pt-6">
       <div className="ema-chat-content-column pointer-events-auto">
         <PendingInteractionView />
-        {/* 整组常驻挂载 + 网格裁剪, 开合双向平滑(动画铁律); 单行入场 fade,
-            单行删除瞬时(由容器平滑收拢兜底, 不为单行再造延迟卸载). */}
+        {/* 容器常驻挂载, 移除排队项后仍可播放收拢动画. */}
         <div
           className="ema-collapsible"
           style={{
-            gridTemplateRows: sessionActivity && sessionActivity.queuedInputs.length > 0 ? '1fr' : '0fr',
-            opacity: sessionActivity && sessionActivity.queuedInputs.length > 0 ? 1 : 0,
+            gridTemplateRows: queuedInputs.length > 0 ? '1fr' : '0fr',
+            opacity: queuedInputs.length > 0 ? 1 : 0,
           }}
         >
           <div>
             <div className="mb-2 flex flex-col gap-1.5">
-              {sessionActivity?.queuedInputs.map((item) => (
+              {queuedInputs.map((item) => (
                 <div
                   key={item.id}
                   className="ema-fade-in flex items-center gap-2 rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-2)] px-3 py-2 text-xs"
@@ -420,7 +420,7 @@ export function ChatInput({
                   <span className="min-w-0 flex-1 truncate text-[var(--ema-text-secondary)]">
                     {queuedInputText(item.input)}
                   </span>
-                  {item.delivery === 'after_turn' && turnRunning && (
+                  {turnRunning && (
                     <button
                       className="text-[var(--ema-primary)] hover:underline"
                       onClick={() => void sessionWebSocket.guideQueuedInput(viewedId!, item.id)}
@@ -456,6 +456,7 @@ export function ChatInput({
             onClose={() => setSlashFilter(null)}
           />
           <DraftReferenceList
+            sessionId={viewedId}
             references={draft.references}
             onRemove={removeReference}
           />
@@ -477,7 +478,6 @@ export function ChatInput({
             }}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
-            disabled={compacting}
           />
           <div className="ema-composer-toolbar">
             <div className="ema-composer-tool-slot">
@@ -581,9 +581,9 @@ export function ChatInput({
                 size="md"
                 variant="primary"
                 icon="i-lucide:arrow-up"
-                label={turnRunning ? '加入队列' : '发送'}
+                label={sessionRunning ? '加入队列' : '发送'}
                 className="rounded-[10px]"
-                disabled={!hasInput || !serverReady || submitting || compacting
+                disabled={!hasInput || !serverReady || submitting
                   || catalog.status !== 'ready' || !selectedModel || shownModelEdit !== null}
                 onClick={() => void send()}
               />

@@ -1,4 +1,4 @@
-// 根 Turn 与手动 Compact 共用的 SkillPool 准备: 读取目录并应用禁用设置.
+// Turn 与手动 Compact 共用的 SkillPool 准备: 读取目录并应用禁用设置.
 import type { SettingsStore } from '@ema-agent/settings';
 import {
   disabledProjectSourcesSetting,

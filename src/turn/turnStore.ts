@@ -1,5 +1,5 @@
 // Turn 生命周期、进程内运行状态(取消信号/运行锁/删除守卫)与导航查询.
-// Session 当前运行的根 Turn 或手动 Compact 由 SessionRunningRegistry 统一记录.
+// Session 当前运行的 Turn 或手动 Compact 由 SessionRunningRegistry 统一记录.
 // AbortSignal 只活在内存, 崩溃恢复以 SQLite 的 turns.status 为事实源.
 
 import crypto from 'node:crypto';
@@ -26,13 +26,13 @@ export interface TurnStoreDeps {
   /** 最后一轮重发成功回滚后，清理该 Turn 派生的音频和临时文件。 */
   onTurnRemoved?: (sessionId: string, turnId: string) => void;
   /**
-   * 记录 Session 当前正在运行的根 Turn 或手动 Compact, 两者不能同时开始.
+   * 记录 Session 当前正在运行的 Turn 或手动 Compact, 两者不能同时开始.
    * 由 Server Composition 构造并与 Commands 共享同一实例; TurnStore 只注册 kind='turn'.
    */
   sessionRunning: SessionRunningRegistry;
 }
 
-/** 管理 Turn 聚合；同一 Session 同一时刻只允许一个根 Turn 运行。 */
+/** 管理 Turn 记录; 同一 Session 同一时刻只允许一个 Turn 运行. */
 export class TurnStore {
   private readonly sessionsRepo: SessionsRepo;
   private readonly turnsRepo:    TurnsRepo;
@@ -62,7 +62,7 @@ export class TurnStore {
 
   // ── 生命周期 ────────────────────────────────────────────────────────────────
 
-  /** 创建根 Turn，并返回贯穿 LLM 与工具执行的取消信号。 */
+  /** 创建 Turn, 并返回贯穿 LLM 与工具执行的取消信号. */
   startTurn(input: StartTurnInput): { turn: Turn; signal: AbortSignal } {
     this.registry.assertWorkAllowed(input.sessionId);
     const session = this.sessionsRepo.findById(input.sessionId);

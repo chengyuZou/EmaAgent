@@ -59,7 +59,7 @@ describe('sessionClientMessageSchema', () => {
       payload,
     }).success).toBe(true);
     expect(sessionClientMessageSchema.safeParse({
-      type: 'queue_user_message',
+      type: 'send_user_message',
       requestId: 'queue-1',
       payload,
     }).success).toBe(true);

@@ -119,8 +119,7 @@ export interface TurnToolsAssembly {
     wake: () => void;
   }) => StreamingToolExecutor;
   readonly abortTool: (toolCallId: string) => boolean;
-  readonly abortSubagent: (subagentId: string) => boolean;
-  /** 根 Turn 终态前调用:先停工具再停子 Agent;幂等. */
+  /** Turn 终态前调用: 先停工具再停子 Agent; 幂等. */
   readonly shutdown: (reason: string) => Promise<void>;
 }
 
@@ -322,7 +321,6 @@ export function prepareTurnTools(deps: TurnToolsDeps, input: PrepareTurnToolsInp
       return executor;
     },
     abortTool: toolCallId => currentExecutor?.abortTool(toolCallId) ?? false,
-    abortSubagent: subagentId => deps.subagents.cancel(subagentId, sessionId),
     shutdown: async reason => {
       if (stopped) return;
       stopped = true;

@@ -10,7 +10,7 @@ interface CompletedAssistant {
   readonly generatedBy: LlmGenerationSource;
 }
 
-/** 每根 Turn 一份. read 绑定调用所属请求, 兄弟 fork 共用一次父前缀构建. */
+/** 每个 Turn 一份. read 绑定调用所属请求, 兄弟 fork 共用一次父前缀构建. */
 export function createForkParentMessages(sessions: Pick<SessionStore, 'getMessage'>) {
   let readCurrentRequest: () => Promise<ForkParentMessages>;
   let resolveAssistant: ((assistant: CompletedAssistant) => void) | undefined;

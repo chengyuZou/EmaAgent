@@ -8,7 +8,9 @@ import { SessionRunningRegistry, SessionStore } from '@ema-agent/session';
 import { Database } from '@ema-agent/storage';
 import type { SettingsStore } from '@ema-agent/settings';
 import type { SkillDescriptor } from '@ema-agent/skills';
-import { FileStateCache, ToolRegistry } from '@ema-agent/tools';
+import { buildTool, contextOk, FileStateCache, ToolRegistry } from '@ema-agent/tools';
+import type { CallLlm, Message } from '@ema-agent/llm';
+import { z } from 'zod';
 import type { Turn } from '@ema-agent/turn';
 import { SessionInteractionQueue } from '../interactionQueue.js';
 import { TurnPreparationError } from '../errors.js';
@@ -16,10 +18,11 @@ import {
   prepareTurn,
   type PrepareTurnDeps,
 } from '../prepare/prepareTurn.js';
-import type { StartTurn } from '../types.js';
+import type { StartTurn, TurnHandle } from '../types.js';
+import type { TurnStreamEvent } from '../events.js';
 import { TurnExecutor } from '../turn.js';
 import { TurnStore } from '../turnStore.js';
-import { SessionContinuationQueue } from '../sessionContinuationQueue.js';
+import { SessionContinuationQueue, type SessionContinuationEvent } from '../sessionContinuationQueue.js';
 
 const TURN: Turn = {
   id: 't1',
@@ -119,6 +122,126 @@ function makeRuntime(start: StartTurn) {
 }
 
 describe('prepareTurn', () => {
+  it.each(['completed', 'failed', 'aborted'] as const)('整批保存与长工具期间引导, %s 只处理仍未保存的排队输入', async ending => {
+    const db = new Database({ memory: true, kind: 'data' });
+    db.migrate();
+    const running = new SessionRunningRegistry();
+    const sessions = new SessionStore({ db });
+    const session = sessions.createSession({ cwd: os.tmpdir(), providerId: 'sess-p', modelId: 'sess-m' });
+    const turns = new TurnStore({ db, sessionRunning: running });
+    const handles: TurnHandle[] = [];
+    const events: TurnStreamEvent[] = [];
+    const queueEvents: SessionContinuationEvent[] = [];
+    const requests: Array<readonly Message[]> = [];
+    let releaseTool!: () => void;
+    const toolWaiting = new Promise<void>(resolve => { releaseTool = resolve; });
+    let releaseReply!: () => void;
+    const replyWaiting = new Promise<void>(resolve => { releaseReply = resolve; });
+    let toolStarted = false;
+    const registry = new ToolRegistry();
+    registry.register(buildTool({
+      name: 'WaitingTool', description: '受控的未完成工具',
+      inputSchema: z.object({}),
+      validateContext: () => contextOk({}),
+      isReadOnly: () => true,
+      isConcurrencySafe: () => true,
+      checkPermissions: async () => ({ behavior: 'allow' }),
+      execute: async () => {
+        toolStarted = true;
+        await toolWaiting;
+        return '工具完成';
+      },
+    }));
+    const callLlm: CallLlm = async function* (request) {
+      requests.push([...request.messages]);
+      if (requests.length === 1) {
+        yield { type: 'tool_use_complete', blockIndex: 0, callId: 'waiting-call', name: 'WaitingTool', args: {} };
+        yield { type: 'done', stopReason: 'tool_use' };
+        return;
+      }
+      if (requests.length === 2) {
+        await replyWaiting;
+        request.signal?.throwIfAborted();
+        if (ending === 'failed') throw new Error('测试失败');
+      }
+      yield { type: 'text_delta', blockIndex: 0, delta: '完成' };
+      yield { type: 'done', stopReason: 'end_turn' };
+    };
+    let executor: TurnExecutor;
+    const queue = new SessionContinuationQueue({
+      sessions, sessionRunning: running, goals: { getCurrent: () => null },
+      startTurn: input => {
+        const handle = executor.start(input);
+        handles.push(handle);
+        return handle;
+      },
+      attachTurn: handle => {
+        void (async () => {
+          for await (const event of handle.events) events.push(event);
+        })();
+      },
+      publish: (_id, event) => queueEvents.push(event),
+    });
+    executor = new TurnExecutor({
+      ...makeDeps({ sessions, registry, createLlmCall: () => callLlm }),
+      sessions, turns, continuations: queue,
+      readTurnReminder: () => ({ currentDate: '2026-10-15', goal: null }),
+      characterName: () => 'test',
+      hasNormalUserMessage: () => false,
+      createCompact: () => async request => ({ kind: 'unchanged', messages: request.messages }),
+    });
+    try {
+      const a = queue.enqueue({ sessionId: session.id, input: [{ type: 'text', text: 'A' }] });
+      const a2 = queue.enqueue({ sessionId: session.id, input: [{ type: 'text', text: '补充 A' }] });
+      await vi.waitFor(() => expect(toolStarted).toBe(true));
+      expect(sessions.loadMessagesForTurn(handles[0]!.turnId).filter(message => message.kind === 'normal' && message.role === 'user'))
+        .toMatchObject([{ blocks: 'A\n\n补充 A' }]);
+      expect(events.find(event => event.type === 'user_message_stored'))
+        .toMatchObject({ queuedInputIds: [a.id, a2.id] });
+
+      const b = queue.enqueue({ sessionId: session.id, input: [{ type: 'text', text: 'B' }] });
+      const c = queue.enqueue({ sessionId: session.id, input: [{ type: 'text', text: 'C' }] });
+      const d = queue.enqueue({ sessionId: session.id, input: [{ type: 'text', text: 'D' }] });
+      queue.guide(session.id, d.id);
+      queue.guide(session.id, c.id);
+      expect(queueEvents.filter(event => event.type === 'queued_input_guided')).toHaveLength(2);
+      expect(events.filter(event => event.type === 'user_message_stored')).toHaveLength(1);
+      expect(requests).toHaveLength(1);
+
+      releaseTool();
+      await vi.waitFor(() => expect(requests).toHaveLength(2));
+      const messages = sessions.loadMessagesForTurn(handles[0]!.turnId);
+      const guidedIndex = messages.findIndex(message => message.blocks === 'C\n\nD');
+      expect(guidedIndex).toBeGreaterThan(messages.findIndex(message => message.kind === 'tool_results'));
+      expect(events.filter(event => event.type === 'user_message_stored'))
+        .toMatchObject([{ queuedInputIds: [a.id, a2.id] }, { queuedInputIds: [c.id, d.id] }]);
+
+      const e = queue.enqueue({ sessionId: session.id, input: [{ type: 'text', text: 'E' }] });
+      if (ending === 'aborted') handles[0]!.abort();
+      releaseReply();
+      expect(await handles[0]!.completion).toMatchObject({ status: ending });
+      if (ending === 'completed') {
+        await vi.waitFor(() => expect(handles).toHaveLength(2));
+        await handles[1]!.completion;
+        expect(sessions.loadMessagesForTurn(handles[1]!.turnId).filter(message => message.kind === 'normal' && message.role === 'user'))
+          .toMatchObject([{ blocks: 'B\n\nE' }]);
+        expect(queueEvents.some(event => event.type === 'queued_inputs_returned')).toBe(false);
+      } else {
+        expect(handles).toHaveLength(1);
+        expect(queueEvents.at(-1)).toEqual({ type: 'queued_inputs_returned', items: [b, e] });
+      }
+      expect(queue.list(session.id)).toEqual([]);
+      expect(sessions.loadMessagesForTurn(handles[0]!.turnId).some(message => message.blocks === 'C\n\nD')).toBe(true);
+    } finally {
+      queue.shutdown();
+      releaseTool();
+      releaseReply();
+      for (const handle of handles) handle.abort();
+      await Promise.all(handles.map(handle => handle.completion));
+      db.close();
+    }
+  });
+
   it.each(['attachment', 'reminder'] as const)('等待 %s 时归档, 返回后不保存未交付输入或调用模型', async waitingFor => {
     const db = new Database({ memory: true, kind: 'data' });
     db.migrate();

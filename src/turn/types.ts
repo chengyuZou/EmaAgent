@@ -32,7 +32,7 @@ export interface Turn {
 }
 
 export interface StartTurnInput {
-  /** Session 续接预先分配身份, 普通请求由 Store 生成. */
+  /** 队列预先分配执行身份; 直接创建记录时可由 Store 生成. */
   readonly turnId?: string;
   readonly sessionId: string;
   readonly triggerType: TurnTriggerType;
@@ -98,17 +98,12 @@ export function hasTurnInput(input: readonly TurnInputPart[]): boolean {
   return input.some(part => part.type !== 'text' || part.text.trim().length > 0);
 }
 
-export interface TurnCreatedResponse {
-  readonly turnId: string;
-  readonly sessionId: string;
-}
-
 /**
- * 启动一个根 Turn 的判别输入。Command/Skill 解析已在调用方完成，
- * Turn 不再解析 '/' 语法，也不接受 prepare 回调——准备工作收归 Turn 内部。
+ * 队列启动一次 Turn 时交付的输入. Command/Skill 解析由调用方完成,
+ * Turn 不解析 '/' 语法, 负责准备模型和工具并执行本轮.
  */
 export interface StartTurn {
-  /** 内部恢复流程可预留稳定身份；公开请求始终由 TurnStore 生成。 */
+  /** 队列在领取输入时分配, 用于确认哪些输入已经保存. */
   readonly turnId?: string;
   readonly sessionId: string;
   readonly triggerType: TurnTriggerType;
@@ -139,7 +134,7 @@ export type TurnOutcome =
       readonly reason: string;
     };
 
-/** 根 Turn 的稳定运行句柄。事件流只允许一个消费者；重复消费会明确失败。 */
+/** Turn 的运行句柄. 事件流只允许一个消费者; 重复消费会明确失败. */
 export interface TurnHandle {
   readonly sessionId: string;
   readonly turnId: string;

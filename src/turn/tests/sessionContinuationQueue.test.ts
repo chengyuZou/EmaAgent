@@ -1,4 +1,3 @@
-// 测试 Session 续接队列的逐条交付、引导顺序、安全领取与后台轻量通知.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import os from 'node:os';
 import { GoalStore } from '@ema-agent/goal';
@@ -81,7 +80,7 @@ function createGoalFixture() {
       const turnId = starts[index]!.turnId!;
       queue.acknowledge(turnId);
       sessionRunning.clear(session.id, { kind: 'turn', turnId });
-      queue.turnFinished(session.id, 'completed');
+      queue.workFinished(session.id, 'completed');
     },
   };
 }
@@ -96,7 +95,7 @@ describe('SessionContinuationQueue', () => {
         .toThrow('session_stopping');
       fixture.sessions.archiveSession(fixture.session.id);
       fixture.queue.clearSession(fixture.session.id);
-      fixture.queue.turnFinished(fixture.session.id, 'completed');
+      fixture.queue.workFinished(fixture.session.id, 'completed');
       fixture.queue.backgroundProcessCompleted(fixture.session.id, 'process', 'completed');
       fixture.queue.subagentCompleted(fixture.session.id, 'late-child', 'cancelled');
     });
@@ -154,18 +153,18 @@ describe('SessionContinuationQueue', () => {
     fixture.queue.goalEdited(edited);
     fixture.goals[action]({ sessionId: edited.sessionId, goalId: edited.id, expectedVersion: edited.version });
     expect(fixture.queue.claimNextIteration(fixture.session.id, 'root')).toBeUndefined();
-    fixture.queue.turnFinished(fixture.session.id, 'aborted');
+    fixture.queue.workFinished(fixture.session.id, 'aborted');
     expect(fixture.queue.claimNextIteration(fixture.session.id, 'root')).toBeUndefined();
     fixture.queue.shutdown();
   });
 
-  it('普通排队输入按入队顺序逐条启动 Turn, 不再合并消息', async () => {
+  it('领取时合并全部已有输入, 后到输入留给下一 Turn', async () => {
     const fixture = createFixture();
     const first = fixture.queue.enqueue({
       sessionId: 'session-a',
       input: [{ type: 'text', text: '第一条' }],
     });
-    fixture.queue.enqueue({
+    const second = fixture.queue.enqueue({
       sessionId: 'session-a',
       input: [{ type: 'text', text: '第二条' }],
     });
@@ -177,19 +176,18 @@ describe('SessionContinuationQueue', () => {
       triggerType: 'userMessage',
       ttsEnabled: true,
     });
-    expect(fixture.starts[0]!.input).toEqual([{ type: 'text', text: '第一条' }]);
+    expect(fixture.starts[0]!.input).toEqual([{ type: 'text', text: '第一条\n\n第二条' }]);
     expect(fixture.attachTurn).toHaveBeenCalledWith(expect.anything());
 
-    fixture.queue.acknowledge(fixture.starts[0]!.turnId!);
+    fixture.queue.enqueue({ sessionId: 'session-a', input: [{ type: 'text', text: '后到' }] });
+    expect(fixture.queue.acknowledge(fixture.starts[0]!.turnId!)).toEqual([first.id, second.id]);
     fixture.setRunning(false);
-    fixture.queue.turnFinished('session-a', 'completed');
+    fixture.queue.workFinished('session-a', 'completed');
     await Promise.resolve();
 
     expect(fixture.starts).toHaveLength(2);
-    expect(fixture.starts[1]!.input).toEqual([{ type: 'text', text: '第二条' }]);
-    expect(fixture.events.filter(({ event }) => (
-      event.type === 'queued_input_removed' && event.id === first.id
-    ))).toHaveLength(1);
+    expect(fixture.starts[1]!.input).toEqual([{ type: 'text', text: '后到' }]);
+    expect(fixture.events.filter(({ event }) => event.type === 'queued_input_removed')).toHaveLength(0);
   });
 
   it('活动 Turn 只领取 next_iteration 输入, 普通输入留到 Turn 清理以后', async () => {
@@ -203,18 +201,18 @@ describe('SessionContinuationQueue', () => {
     fixture.queue.guide('session-a', guided.id);
 
     const claim = fixture.queue.claimNextIteration('session-a', 'active-turn');
-    expect(claim).toMatchObject({ type: 'user_input', userInput: { id: guided.id } });
-    fixture.queue.acknowledge('active-turn');
+    expect(claim).toMatchObject({ type: 'user_input', input: guided.input });
+    expect(fixture.queue.acknowledge('active-turn')).toEqual([guided.id]);
     expect(fixture.queue.list('session-a').map(item => item.id)).toEqual([normal.id]);
 
     fixture.setRunning(false);
-    fixture.queue.turnFinished('session-a', 'completed');
+    fixture.queue.workFinished('session-a', 'completed');
     await Promise.resolve();
     expect(fixture.starts).toHaveLength(1);
     expect(fixture.starts[0]!.input).toEqual([{ type: 'text', text: '稍后' }]);
   });
 
-  it('多条引导按 guide 成功顺序逐条领取, guided 整体优先于普通排队', async () => {
+  it('多条引导按提交顺序合并领取, 普通排队不混入当前迭代', () => {
     const fixture = createFixture(true);
     const first = fixture.queue.enqueue({
       sessionId: 'session-a', input: [{ type: 'text', text: '第一条' }],
@@ -229,13 +227,13 @@ describe('SessionContinuationQueue', () => {
     expect(fixture.queue.guide('session-a', second.id)).toBe(true);
     expect(fixture.queue.guide('session-a', first.id)).toBe(true);
     expect(fixture.queue.claimNextIteration('session-a', 'active-turn'))
-      .toMatchObject({ type: 'user_input', userInput: { id: second.id } });
-    fixture.queue.acknowledge('active-turn');
-    expect(fixture.queue.claimNextIteration('session-a', 'active-turn'))
-      .toMatchObject({ type: 'user_input', userInput: { id: first.id } });
+      .toMatchObject({ type: 'user_input', input: [{ type: 'text', text: '第一条\n\n第二条' }] });
     fixture.queue.release('active-turn');
-    expect(fixture.queue.list('session-a').map(item => item.id)).toEqual([third.id, first.id]);
+    expect(fixture.queue.list('session-a').map(item => item.id)).toEqual([first.id, second.id, third.id]);
     expect(fixture.queue.list('session-a').find(item => item.id === third.id)?.delivery).toBe('after_turn');
+    fixture.queue.claimNextIteration('session-a', 'active-turn');
+    expect(fixture.queue.acknowledge('active-turn')).toEqual([first.id, second.id]);
+    expect(fixture.queue.claimNextIteration('session-a', 'active-turn')).toBeUndefined();
   });
 
   it('同一 item 只能引导一次, 引导后不能再删除或重复发布事件', () => {
@@ -250,7 +248,7 @@ describe('SessionContinuationQueue', () => {
     expect(fixture.events.filter(({ event }) => event.type === 'queued_input_guided')).toHaveLength(1);
   });
 
-  it('新 Turn 排水优先领取最早成功引导的一条', async () => {
+  it('正常结束时未保存的引导与普通排队一起进入下一 Turn', async () => {
     const fixture = createFixture(true);
     fixture.queue.enqueue({
       sessionId: 'session-a', input: [{ type: 'text', text: '普通' }],
@@ -261,20 +259,20 @@ describe('SessionContinuationQueue', () => {
     fixture.queue.guide('session-a', guided.id);
 
     fixture.setRunning(false);
-    fixture.queue.turnFinished('session-a', 'completed');
+    fixture.queue.workFinished('session-a', 'completed');
     await Promise.resolve();
 
-    expect(fixture.starts[0]!.input).toEqual([{ type: 'text', text: '引导' }]);
+    expect(fixture.starts[0]!.input).toEqual([{ type: 'text', text: '普通\n\n引导' }]);
   });
 
-  it('acknowledge 只为普通排队项发布 removed, guided 已由 guided 事件离开等待区', async () => {
+  it('确认保存返回输入 ID, 不额外发送提前移除消息的事件', async () => {
     const normalFixture = createFixture();
-    normalFixture.queue.enqueue({
+    const normal = normalFixture.queue.enqueue({
       sessionId: 'session-a', input: [{ type: 'text', text: '普通' }],
     });
     await Promise.resolve();
-    normalFixture.queue.acknowledge(normalFixture.starts[0]!.turnId!);
-    expect(normalFixture.events.filter(({ event }) => event.type === 'queued_input_removed')).toHaveLength(1);
+    expect(normalFixture.queue.acknowledge(normalFixture.starts[0]!.turnId!)).toEqual([normal.id]);
+    expect(normalFixture.events.filter(({ event }) => event.type === 'queued_input_removed')).toHaveLength(0);
 
     const guidedFixture = createFixture(true);
     const guided = guidedFixture.queue.enqueue({
@@ -282,7 +280,8 @@ describe('SessionContinuationQueue', () => {
     });
     guidedFixture.queue.guide('session-a', guided.id);
     guidedFixture.queue.claimNextIteration('session-a', 'active-turn');
-    guidedFixture.queue.acknowledge('active-turn');
+    expect(guidedFixture.queue.acknowledge('active-turn')).toEqual([guided.id]);
+    expect(guidedFixture.queue.acknowledge('active-turn')).toEqual([]);
     expect(guidedFixture.events.filter(({ event }) => event.type === 'queued_input_removed')).toHaveLength(0);
   });
 
@@ -316,7 +315,7 @@ describe('SessionContinuationQueue', () => {
     const inputClaim = fixture.queue.claimNextIteration('session-a', 'active-turn');
     expect(inputClaim).toMatchObject({
       type: 'user_input',
-      userInput: { id: guided.id },
+      input: guided.input,
     });
     fixture.queue.acknowledge('active-turn');
 
@@ -394,7 +393,7 @@ describe('SessionContinuationQueue', () => {
       input: [{ type: 'text', text: '立即引导' }] });
     fixture.queue.guide(fixture.session.id, item.id);
     const claim = fixture.queue.claimNextIteration(fixture.session.id, 'running-turn');
-    expect(claim).toMatchObject({ type: 'user_input', userInput: { id: item.id } });
+    expect(claim).toMatchObject({ type: 'user_input', input: item.input });
     expect(claim?.continuationText).toBeUndefined();
   });
 
@@ -439,20 +438,25 @@ describe('SessionContinuationQueue', () => {
     expect(fixture.queue.claimNextIteration(fixture.session.id, 'active-turn')).toBeUndefined();
   });
 
-  it.each(['failed', 'aborted'] as const)('%s 不立即重试释放的输入, 下次明确唤醒仍可交付', async status => {
+  it.each(['failed', 'aborted'] as const)('%s 把所有未保存输入按顺序退回, 清空后不重试', async status => {
     const fixture = createFixture();
-    fixture.queue.enqueue({ sessionId: 'session-a', input: [{ type: 'text', text: '不能丢' }] });
+    const first = fixture.queue.enqueue({ sessionId: 'session-a', input: [{ type: 'text', text: '不能丢' }] });
     await Promise.resolve();
+    const second = fixture.queue.enqueue({ sessionId: 'session-a', input: [{ type: 'text', text: '补充' }] });
+    fixture.queue.guide('session-a', second.id);
     fixture.queue.release(fixture.starts[0]!.turnId!);
     fixture.setRunning(false);
-    fixture.queue.turnFinished('session-a', status);
+    fixture.queue.workFinished('session-a', status);
     await Promise.resolve();
     expect(fixture.starts).toHaveLength(1);
-    expect(fixture.queue.list('session-a')).toHaveLength(1);
+    expect(fixture.queue.list('session-a')).toHaveLength(0);
+    expect(fixture.events.at(-1)?.event).toEqual({
+      type: 'queued_inputs_returned',
+      items: [first, { ...second, delivery: 'next_iteration' }],
+    });
     fixture.queue.requestDrain('session-a');
     await Promise.resolve();
-    expect(fixture.starts).toHaveLength(2);
-    expect(fixture.starts[1]!.input).toEqual(fixture.starts[0]!.input);
+    expect(fixture.starts).toHaveLength(1);
   });
 
   it.each(['shutdown', 'deleteSession'] as const)('已有唤醒时 %s, 不再启动 Goal Turn', async action => {

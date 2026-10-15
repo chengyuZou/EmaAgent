@@ -57,20 +57,20 @@ export interface ManualCompactDeps {
   readonly providers: Providers;
   readonly providerModels: ProviderModels;
   readonly settings: SettingsStore;
-  /** 与根 Turn 共用 CharacterStore 的当前角色与舞台 Presentation. */
+  /** 与 Turn 共用 CharacterStore 的当前角色与舞台 Presentation. */
   readonly characterPrompt: () => readonly string[];
-  /** 与根 Turn 同一 Skill 目录来源. */
+  /** 与 Turn 同一 Skill 目录来源. */
   readonly skillEntries: (
     cwd: string,
     projectId: string | null,
   ) => Promise<readonly SkillDescriptor[]>;
-  /** SkillStore 从 skills.enabled 读取当前禁用路径, 与根 Turn 同一来源. */
+  /** SkillStore 从 skills.enabled 读取当前禁用路径, 与 Turn 同一来源. */
   readonly disabledSkillPaths: () => readonly string[];
   readonly workspaceInstructions?: (cwd: string) => string | null;
   readonly memoryGuidance?: () => Promise<string | null> | string | null;
   /** 普通图片的 Vision 描述入口; 工具图片不能发送时只占位. */
   readonly describeImage?: DescribeImage;
-  /** Vision 描述缓存(path 键,与根 Turn 同一实例);与 describeImage 同时注入才会现做生产. */
+  /** Vision 描述缓存(path 键, 与 Turn 同一实例); 与 describeImage 同时注入才会生成描述. */
   readonly visionCache?: VisionDescriptionCache;
   readonly createCompact: (
     callLlm: CallLlm,
@@ -81,6 +81,8 @@ export interface ManualCompactDeps {
   readonly usageRecorder?: UsageRecorder;
   /** 手动压缩生命周期由 Compact 管线生产,这里只提供当前 Session 的传输出口. */
   readonly emit: (event: CompactEvent) => void;
+  /** 只有已登记运行的压缩才通知结束, 并且先解除 Session 占用. */
+  readonly onFinished: (sessionId: string, status: 'completed' | 'cancelled' | 'failed') => void;
 }
 
 export async function compactSession(
@@ -92,7 +94,7 @@ export async function compactSession(
   if (deps.sessionRunning.isRunning(sessionId)) {
     throw new SessionBusyError(sessionId);
   }
-  // 模型解析与下一根 Turn 同规则:Session 偏好即下一 Turn 的默认值,缓存共享是向前的.
+  // 模型解析与下一 Turn 同规则: Session 偏好即下一 Turn 的默认值.
   const providerId = session.providerId;
   const modelId = session.modelId;
   if (!providerId || !modelId) {
@@ -112,6 +114,7 @@ export async function compactSession(
   const compactId = randomUUID();
   const running = { kind: 'compact', compactId } as const;
   const signal = deps.sessionRunning.register(sessionId, running);
+  let status: 'completed' | 'cancelled' | 'failed' = 'failed';
   try {
     const persisted = deps.sessions.loadHistory(sessionId);
     if (persisted.length === 0) {
@@ -212,6 +215,7 @@ export async function compactSession(
     });
 
     if (result.kind === 'macro') {
+      status = 'completed';
       return {
         status: 'completed',
         contextWindow: providerModel.contextWindow,
@@ -228,17 +232,21 @@ export async function compactSession(
     );
   } catch (error) {
     // 摘要落库是唯一提交点:abort 时历史原样,返回取消终态而非错误.
-    if (signal.aborted) return { status: 'cancelled' };
+    if (signal.aborted) {
+      status = 'cancelled';
+      return { status };
+    }
     throw error;
   } finally {
     deps.sessionRunning.clear(sessionId, running);
+    deps.onFinished(sessionId, status);
   }
 }
 
 /**
- * 摘要请求的系统段: 与根 Turn 使用同一静态数组和动态装配函数,
+ * 摘要请求的系统段: 与 Turn 使用同一静态数组和动态装配函数,
  * 同样的输入得到同样的正文与顺序, 共享前缀缓存.
- * toolNames 恒空(手动路径不装配 ToolPool,见文件头注释).
+ * toolNames 恒空, 手动压缩不执行工具.
  */
 async function buildCompactSystemMessages(
   deps: ManualCompactDeps,
