@@ -121,6 +121,7 @@ function actionFixture() {
     turn: { subagents, turnExecutor: executor, interactionQueue: interactions, continuations: fixture.queue },
     tools: { backgroundProcesses: processes, discardSessionToolState: vi.fn(async () => undefined) },
     speech,
+    vishotCapture: { capture: { cancelSession: vi.fn(async () => undefined) } },
     characters: { stage: { evictSession: vi.fn() } },
   } as unknown as Composition;
   const app = new Hono()
@@ -159,6 +160,7 @@ describe('会话归档和删除', () => {
     expect(fixture.subagents.abortForSession).toHaveBeenCalledTimes(1);
     expect(fixture.processes.stopForSession).toHaveBeenCalledTimes(1);
     expect(fixture.speech.cancelSessionSpeech).toHaveBeenCalled();
+    expect(fixture.composition.vishotCapture.capture.cancelSession).toHaveBeenCalledWith(fixture.session.id);
     fixture.queue.shutdown();
   });
 

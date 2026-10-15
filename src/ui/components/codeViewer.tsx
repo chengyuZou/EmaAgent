@@ -5,25 +5,28 @@ import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
 import { Compartment, EditorState } from '@codemirror/state';
 import { EditorView, drawSelection, keymap } from '@codemirror/view';
 import { tags } from '@lezer/highlight';
-import { Button } from './Button.js';
+import { IconButton } from './IconButton.js';
+import { Tooltip } from './Tooltip.js';
 
 export interface CodeViewerProps {
   /** 完整文本. 可视区只显示其中一部分, 复制全文不受可视区限制. */
   readonly source: string;
   readonly language?: 'json' | 'text';
+  /** 外层已经提供标题与复制操作时, 只显示文本区域. */
+  readonly embedded?: boolean;
 }
 
 const appearance = EditorView.theme({
   '&': {
-    color: 'var(--ema-syntax-text, var(--ema-text-primary))',
+    color: 'var(--ema-code-text, var(--ema-syntax-text, var(--ema-text-primary)))',
     backgroundColor: 'transparent',
-    fontSize: '13px',
+    fontSize: 'var(--ema-code-font-size, 13px)',
   },
   '&.cm-focused': { outline: 'none' },
   '.cm-scroller': {
     fontFamily: 'var(--ema-font-mono, monospace)',
     lineHeight: '1.6',
-    maxHeight: 'min(60vh, 36rem)',
+    maxHeight: 'var(--ema-code-max-height, min(60vh, 36rem))',
     overflow: 'auto',
   },
   '.cm-content': { padding: '12px 0' },
@@ -40,7 +43,7 @@ const highlighting = HighlightStyle.define([
   { tag: [tags.bool, tags.null], color: 'var(--ema-syntax-boolean, var(--ema-syntax-text))' },
 ]);
 
-export const CodeViewer = memo(function CodeViewer({ source, language = 'text' }: CodeViewerProps): JSX.Element {
+export const CodeViewer = memo(function CodeViewer({ source, language = 'text', embedded = false }: CodeViewerProps): JSX.Element {
   const host = useRef<HTMLDivElement>(null);
   const editor = useRef<EditorView | null>(null);
   const displayedSource = useRef('');
@@ -105,21 +108,32 @@ export const CodeViewer = memo(function CodeViewer({ source, language = 'text' }
   };
 
   return (
-    <div className="ema-code-viewer ema-material-code min-w-0 overflow-hidden rounded-lg border border-[var(--ema-border)] bg-[var(--ema-syntax-bg)]">
-      <div className="flex items-center justify-between gap-2 border-b border-[var(--ema-border)] px-3 py-1">
-        <span className="text-xs text-[var(--ema-text-tertiary)]">
-          {language === 'json' ? 'JSON' : '文本'} · 只读
-        </span>
-        <div className="flex items-center gap-2">
-          <span role="status" className="text-xs text-[var(--ema-text-secondary)]">
-            {copyStatus === 'copied' && '已复制'}
-            {copyStatus === 'failed' && '复制失败，请重试'}
+    <div className={embedded
+      ? 'ema-code-viewer ema-code-viewer--embedded min-w-0'
+      : 'ema-code-viewer ema-material-code min-w-0 overflow-hidden rounded-lg border border-[var(--ema-border)] bg-[var(--ema-syntax-bg)]'}>
+      {!embedded && (
+        <div className="flex items-center justify-between gap-2 border-b border-[var(--ema-border)] px-3 py-1">
+          <span className="text-xs text-[var(--ema-text-tertiary)]">
+            {language === 'json' ? 'JSON' : '文本'} · 只读
           </span>
-          <Button variant="ghost" size="sm" onClick={() => void copy()}>
-            复制全文
-          </Button>
+          <div className="flex items-center gap-2">
+            <span role="status" className="text-xs text-[var(--ema-text-secondary)]">
+              {copyStatus === 'copied' && '已复制'}
+              {copyStatus === 'failed' && '复制失败，请重试'}
+            </span>
+            <Tooltip content={copyStatus === 'copied' ? '已复制' : '复制全文'}>
+              <IconButton
+                shape="rounded"
+                variant="ghost"
+                size="sm"
+                label="复制全文"
+                icon={copyStatus === 'copied' ? 'i-lucide:check' : 'i-lucide:copy'}
+                onClick={() => void copy()}
+              />
+            </Tooltip>
+          </div>
         </div>
-      </div>
+      )}
       <div ref={host} />
     </div>
   );

@@ -1,6 +1,6 @@
 // 单独展示 Subagent Tool 创建的 Subagent;前台 Tool 与后台 Subagent 只暴露各自正确的停止入口.
 
-import { memo, useEffect, useState, type JSX } from 'react';
+import { memo, useEffect, useMemo, useState, type JSX } from 'react';
 import { subagentsApi, type SubagentRunItem } from '../../../api/subagents.js';
 import { useCollapsibleBody, useMessageExpansion } from '../messageExpansion.js';
 import { IconButton } from '@ema-agent/ui';
@@ -172,7 +172,13 @@ function AgentRow({
   const renderedOutput = output ?? toolFallbackContent(call);
   const toolUI = lookupToolUI(toolName(call));
   const customResult = mounted && output != null ? toolUI?.ResultView?.({ data: output, args }) : null;
-  const genericResult = mounted && renderedOutput != null ? renderToolResult(renderedOutput) : null;
+  const needsGenericResult = mounted && renderedOutput != null && customResult == null;
+  const genericResult = useMemo(() => (
+    needsGenericResult ? renderToolResult(renderedOutput) : null
+  ), [needsGenericResult, renderedOutput]);
+  const inputCopyText = useMemo(() => (
+    mounted && args !== undefined ? formatJson(args) : ''
+  ), [mounted, args]);
   const resultCopyText = mounted && renderedOutput != null
     ? toolUI?.resultCopyText?.(output, args) ?? formatJson(renderedOutput)
     : '';
@@ -254,8 +260,8 @@ function AgentRow({
             <div className="ema-tool-card-body">
               <div className="ema-tool-frame">
                 {args !== undefined && (
-                  <ToolPane label="复制输入" tone="input" copyText={formatJson(args)}>
-                    <ToolArgsView args={args} />
+                  <ToolPane label="复制输入" tone="input" copyText={inputCopyText}>
+                    <ToolArgsView source={inputCopyText} />
                   </ToolPane>
                 )}
                 {(renderedOutput !== undefined || failure) && (

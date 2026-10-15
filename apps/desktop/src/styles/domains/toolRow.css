@@ -16,6 +16,9 @@
 }
 .ema-tool-card {
   min-width: 0;
+  --ema-tool-body-max-height: min(60vh, 24rem);
+  --ema-code-font-size: 11px;
+  --ema-code-text: var(--ema-text-secondary);
 }
 
 .ema-tool-card-header {
@@ -78,7 +81,21 @@
 .ema-tool-pane {
   position: relative;
   min-width: 0;
-  padding: 4px 0 4px 7px;
+  padding: var(--ema-space-2) var(--ema-space-3);
+  color: var(--ema-text-secondary);
+  font-size: 11px;
+  line-height: 1.6;
+  --ema-code-max-height: var(--ema-tool-body-max-height);
+}
+
+.ema-tool-pane-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ema-space-2);
+  margin-bottom: var(--ema-space-1);
+  color: var(--ema-text-tertiary);
+  font-size: 10px;
 }
 
 .ema-tool-pane--input {
@@ -99,7 +116,11 @@
 
 .ema-tool-pane-content {
   min-width: 0;
-  padding-right: 25px;
+  padding: 0;
+}
+
+.ema-tool-pane--input {
+  --ema-code-max-height: 8rem;
 }
 
 .ema-tool-pane--input .ema-tool-pane-content {
@@ -111,25 +132,17 @@
 }
 
 .ema-tool-pane--output .ema-tool-pane-content {
-  max-height: 12rem;
+  max-height: var(--ema-tool-body-max-height);
   overflow: auto;
   white-space: pre;
   overflow-wrap: normal;
   word-break: normal;
 }
 
-.ema-tool-pane > .ema-tool-card-icon {
-  position: absolute;
-  top: 3px;
-  right: 3px;
-  z-index: 1;
-}
-
 .ema-tool-generic-result {
   min-width: 0;
 }
 
-.ema-tool-pane .ema-tool-result-code,
 .ema-tool-pane pre.hljs {
   padding: 0;
   border: 0;
@@ -145,7 +158,6 @@
   margin-top: 0;
 }
 
-.ema-tool-raw-input,
 .ema-tool-error-message {
   margin: 0;
   color: var(--ema-text-secondary);
@@ -155,12 +167,6 @@
   white-space: pre;
   overflow-wrap: normal;
   word-break: normal;
-}
-
-.ema-tool-raw-input {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  word-break: break-word;
 }
 
 .ema-tool-error-code {
@@ -264,10 +270,6 @@
   width: max-content;
 }
 
-.ema-tool-pane--input .ema-tool-field-row {
-  grid-template-columns: 72px minmax(0, 1fr);
-}
-
 .ema-tool-field-row {
   display: grid;
   grid-template-columns: minmax(72px, max-content) minmax(0, 1fr);
@@ -289,57 +291,6 @@
   min-width: 0;
   margin: 0;
   color: var(--ema-text-secondary);
-}
-
-.ema-tool-result-markdown {
-  min-width: 0;
-  color: var(--ema-text-secondary);
-  font-size: 11px;
-  line-height: 1.65;
-}
-
-.ema-tool-result-markdown > :first-child {
-  margin-top: 0;
-}
-
-.ema-tool-result-markdown > :last-child {
-  margin-bottom: 0;
-}
-
-.ema-tool-result-markdown p,
-.ema-tool-result-markdown ul,
-.ema-tool-result-markdown ol,
-.ema-tool-result-markdown pre,
-.ema-tool-result-markdown table {
-  margin-block: var(--ema-space-2);
-}
-
-.ema-tool-result-markdown pre,
-.ema-tool-result-code {
-  max-width: 100%;
-  margin: 0;
-  padding: var(--ema-space-2) var(--ema-space-3);
-  border: 1px solid color-mix(in srgb, var(--ema-border) 70%, transparent);
-  border-radius: var(--ema-radius-xs);
-  background: color-mix(in srgb, var(--ema-surface-2) 58%, transparent);
-  color: var(--ema-text-secondary);
-  font-family: var(--ema-font-mono);
-  font-size: 11px;
-  line-height: 1.65;
-  white-space: pre;
-  overflow-wrap: normal;
-  word-break: normal;
-}
-
-/* 文件 Tool 只在摘要行预留复制按钮的位置, 正文铺满结果滚动区域. */
-.ema-tool-pane-content:has(> .ema-file-read-content),
-.ema-tool-pane-content:has(> .ema-file-change-content) {
-  padding-right: 0;
-}
-
-.ema-tool-pane-content > .ema-file-read-content > .ema-file-read-summary,
-.ema-tool-pane-content > .ema-file-change-content > .ema-file-change-summary {
-  padding-right: 25px;
 }
 
 /* Read 源码与行号共用纵向滚动区域, 只有右侧 Markdown pre 横向滚动. */
@@ -397,13 +348,23 @@
   overflow-x: auto;
 }
 
-/* 周目展开后的高度由聊天列表承载, 不再套一层 12rem 的纵向滚动区.
-   复制按钮的位置由周目标题预留, 正文自己处理横向滚动. */
+/* CodeViewer 自己限制高度并滚动, 外层输入和输出都不再叠加纵向滚动条. */
+.ema-tool-pane .ema-tool-pane-content:has(.ema-code-viewer) {
+  max-height: none;
+  overflow: visible;
+  white-space: normal;
+}
+
+/* 多个周目的总高度由聊天列表承载, 每个展开的周目单独限制文本高度. */
 .ema-tool-pane--output .ema-tool-pane-content:has(> .ema-narrative-results) {
   max-height: none;
   overflow: visible;
-  padding-right: 0;
   white-space: normal;
+}
+
+.ema-tool-pane .ema-code-viewer--embedded .cm-content,
+.ema-tool-pane .ema-code-viewer--embedded .cm-line {
+  padding: 0;
 }
 
 .ema-narrative-results {
@@ -422,7 +383,7 @@
   gap: 8px;
   width: 100%;
   min-height: 34px;
-  padding: 6px 25px 6px 8px;
+  padding: var(--ema-space-1) 0;
   color: var(--ema-text-secondary);
   font-size: 11px;
   text-align: left;
@@ -450,7 +411,7 @@
 
 .ema-narrative-body {
   min-width: 0;
-  padding: 0 8px 10px 30px;
+  padding: var(--ema-space-1) 0 var(--ema-space-2);
 }
 
 .ema-narrative-body-toolbar {
@@ -464,37 +425,10 @@
   font-size: 10px;
 }
 
-.ema-narrative-markdown,
-.ema-narrative-raw,
-.ema-narrative-error-detail {
-  max-width: 100%;
-  overflow-x: auto;
-}
-
-.ema-narrative-raw,
-.ema-narrative-error-detail {
-  margin: 0;
-  color: var(--ema-text-secondary);
-  font-family: var(--ema-font-mono);
-  font-size: 11px;
-  line-height: 1.65;
-  white-space: pre;
-}
-
-.ema-narrative-error-detail {
-  color: var(--ema-danger-text);
-}
-
 .ema-narrative-empty {
   margin: 0;
-  padding: 8px 25px 8px 8px;
+  padding: var(--ema-space-2) 0;
   color: var(--ema-text-tertiary);
-}
-
-@media (max-width: 400px) {
-  .ema-narrative-body {
-    padding-left: 8px;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

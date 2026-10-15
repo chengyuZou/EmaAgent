@@ -1,7 +1,7 @@
 // 一次工具调用的统一行: 状态 参数 进度 结果与复制.
 // 专属 UI 经 tool_use.name 查表 以 TOutput(结果信封 data / 事件 output)渲染.
-import { useState, useEffect, type JSX, type ReactNode } from 'react';
-import { IconButton } from '@ema-agent/ui';
+import { useState, useEffect, useMemo, useRef, type JSX, type ReactNode } from 'react';
+import { CodeViewer, IconButton, Tooltip } from '@ema-agent/ui';
 import { sessionWebSocket } from '../../../api/sessionWebSocket.js';
 import { renderToolError, renderToolResult } from './tool-renderers.js';
 import { lookupToolUI } from './toolUIRegistry.js';
@@ -144,19 +144,25 @@ export function ToolCallBlock({
   const progressView = mounted && running && progress && progress.length > 0 && toolUI?.ProgressView
     ? toolUI.ProgressView({ progress })
     : null;
-  // 没有类型化 data 的旧结果不能交给专属组合卡猜结构，回落通用 content 渲染。
+  // 没有类型化 data 的结果不能交给专属组合卡猜结构, 回落通用 content 渲染.
   const CallView = fallbackContent === undefined && (call.source !== 'execution' || argsReady || hasResult)
     ? toolUI?.CallView
     : undefined;
-  const resultView = mounted && showResult && renderedOutput !== null ? renderToolResult(renderedOutput) : null;
+  const needsGenericResult = mounted && showResult && !CallView && customResult === null;
+  const resultView = useMemo(() => (
+    needsGenericResult ? renderToolResult(renderedOutput) : null
+  ), [needsGenericResult, renderedOutput]);
 
   const openTab = useSessionPanelStore((state) => state.openTab);
 
-  let inputCopyText = '';
-  if (mounted) inputCopyText = argsReady ? formatJson(args) : partialArgs ?? '';
-  const resultCopyText = mounted && showResult
-    ? toolUI?.resultCopyText?.(output, args) ?? formatJson(renderedOutput)
-    : '';
+  const inputCopyText = useMemo(() => {
+    if (!mounted || CallView) return '';
+    return argsReady ? formatJson(args) : partialArgs ?? '';
+  }, [mounted, CallView, argsReady, args, partialArgs]);
+  const resultCopyText = useMemo(() => {
+    if (!mounted || !showResult || CallView) return '';
+    return toolUI?.resultCopyText?.(output, args) ?? resultView?.source ?? formatJson(renderedOutput);
+  }, [mounted, showResult, CallView, toolUI, output, args, resultView, renderedOutput]);
   const failureCopyText = failure
     ? `[${failure.code}] ${failure.message}`
     : historyInterrupted ? '未收到工具结果' : '';
@@ -255,8 +261,8 @@ export function ToolCallBlock({
                   {(argsReady || partialArgs) && (
                     <ToolPane label="复制输入" tone="input" copyText={inputCopyText}>
                       {argsReady
-                        ? customArgs ?? <ToolArgsView args={args} />
-                        : <pre className="ema-tool-raw-input">{partialArgs}</pre>}
+                        ? customArgs ?? <ToolArgsView source={inputCopyText} />
+                        : <CodeViewer source={partialArgs ?? ''} embedded />}
                     </ToolPane>
                   )}
                   {(progressView || customResult !== null || resultView !== null || hasError) && (
@@ -289,31 +295,48 @@ export function ToolPane({ label, tone, copyText, errorOnly = false, children }:
 }): JSX.Element {
   return (
     <section className={`ema-tool-pane ema-tool-pane--${tone} ${errorOnly ? 'ema-tool-pane--error' : ''}`} aria-label={tone === 'input' ? '输入参数' : '执行结果'}>
+      <div className="ema-tool-pane-toolbar">
+        <span>{tone === 'input' ? '输入' : '输出'}</span>
+        <ToolCopyButton label={label} text={copyText} />
+      </div>
       <div className="ema-tool-pane-content">{children}</div>
-      <ToolCopyButton label={label} text={copyText} />
     </section>
   );
 }
 
 function ToolCopyButton({ label, text }: { label: string; text: string }): JSX.Element {
-  const [copied, setCopied] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const timer = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => {
+    setCopyStatus('idle');
+    return () => clearTimeout(timer.current);
+  }, [text]);
+  let tooltip = label;
+  if (copyStatus === 'copied') tooltip = '已复制';
+  if (copyStatus === 'failed') tooltip = '复制失败，请重试';
   return (
-    <IconButton
-      label={copied ? '已复制' : label}
-      icon={copied ? 'i-lucide:check' : 'i-lucide:copy'}
-      variant="ghost"
-      size="sm"
-      shape="rounded"
-      className="ema-tool-card-icon"
-      disabled={!text}
-      onClick={(event) => {
-        event.stopPropagation();
-        void navigator.clipboard.writeText(text).then(() => {
-          setCopied(true);
-          setTimeout(() => setCopied(false), 1500);
-        });
-      }}
-    />
+    <Tooltip content={tooltip}>
+      <IconButton
+        label={tooltip}
+        icon={copyStatus === 'copied' ? 'i-lucide:check' : 'i-lucide:copy'}
+        variant="ghost"
+        size="sm"
+        shape="rounded"
+        className="ema-tool-card-icon"
+        disabled={!text}
+        onClick={(event) => {
+          event.stopPropagation();
+          clearTimeout(timer.current);
+          void navigator.clipboard.writeText(text).then(() => {
+            setCopyStatus('copied');
+          }).catch(() => {
+            setCopyStatus('failed');
+          }).finally(() => {
+            timer.current = setTimeout(() => setCopyStatus('idle'), 1500);
+          });
+        }}
+      />
+    </Tooltip>
   );
 }
 

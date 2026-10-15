@@ -1,5 +1,5 @@
-import { useId, useMemo, useState, type JSX } from 'react';
-import { Button, Markdown } from '@ema-agent/ui';
+import { useId, useLayoutEffect, useMemo, useRef, useState, type JSX } from 'react';
+import { Button, CodeViewer } from '@ema-agent/ui';
 import type { NarrativeTimelineId } from '@ema-agent/storage';
 import type { NarrativeSearchResult } from './NarrativeSearchTool.js';
 
@@ -16,7 +16,6 @@ function NarrativeResultBlock({ result }: { result: NarrativeSearchResult }): JS
   const failures = new Map(result.failures.map(failure => [failure.timeline, failure.message]));
   const names = (Object.keys(TIMELINE_LABELS) as NarrativeTimelineId[])
     .filter(name => texts.has(name) || failures.has(name));
-  const firstContent = names.find(name => texts.has(name) && !failures.has(name));
 
   return (
     <div className="ema-narrative-results">
@@ -28,26 +27,40 @@ function NarrativeResultBlock({ result }: { result: NarrativeSearchResult }): JS
           name={name}
           text={texts.get(name)}
           error={failures.get(name)}
-          initiallyOpen={name === firstContent || names.length === 1}
         />
       ))}
     </div>
   );
 }
 
-function TimelineRow({ name, text, error, initiallyOpen }: {
+function TimelineRow({ name, text, error }: {
   name: NarrativeTimelineId;
   text: string | undefined;
   error: string | undefined;
-  initiallyOpen: boolean;
 }): JSX.Element {
   const bodyId = useId();
-  const [open, setOpen] = useState(initiallyOpen);
-  const [raw, setRaw] = useState(false);
-  // 首次展开才渲染 Markdown. 收起时保留正文完成高度动画, 再次展开也不用重新挂载.
-  // 外层 Tool 收起后会卸载整个结果区, 不跨工具调用保留正文.
-  const [bodyMounted, setBodyMounted] = useState(initiallyOpen);
-  const chunks = useMemo(() => narrativeChunks(text ?? ''), [text]);
+  const [open, setOpen] = useState(false);
+  const [bodyMounted, setBodyMounted] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const container = containerRef.current!;
+    container.inert = !open;
+    if (open || !bodyMounted) return;
+    // 收起动画结束再销毁编辑器, 不让已收起的周目长期保留编辑器实例.
+    const transitions = container.getAnimations().filter(animation => (
+      animation instanceof CSSTransition && animation.transitionProperty === 'grid-template-rows'
+    ));
+    if (transitions.length === 0) {
+      setBodyMounted(false);
+      return;
+    }
+    let cancelled = false;
+    void Promise.allSettled(transitions.map(animation => animation.finished)).then(() => {
+      if (!cancelled) setBodyMounted(false);
+    });
+    return () => { cancelled = true; };
+  }, [open, bodyMounted]);
 
   return (
     <section className="ema-narrative-timeline">
@@ -71,45 +84,45 @@ function TimelineRow({ name, text, error, initiallyOpen }: {
         className="ema-collapsible ema-narrative-collapse"
         style={{ gridTemplateRows: open ? '1fr' : '0fr', opacity: open ? 1 : 0 }}
         aria-hidden={!open}
-        ref={element => {
-          if (element) element.inert = !open;
-        }}
+        ref={containerRef}
       >
         <div>
           {bodyMounted && (
             <div className="ema-narrative-body">
               {error !== undefined ? (
-                <pre className="ema-narrative-error-detail" role="alert">{error}</pre>
+                <div role="alert"><CodeViewer source={error} embedded /></div>
               ) : (
-                <>
-                  {chunks !== null && (
-                    <div className="ema-narrative-body-toolbar">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="ema-narrative-raw-toggle"
-                        aria-pressed={raw}
-                        onClick={() => setRaw(value => !value)}
-                      >
-                        {raw ? '返回正文' : '原始输出'}
-                      </Button>
-                    </div>
-                  )}
-                  {raw ? (
-                    <pre className="ema-narrative-raw">{text}</pre>
-                  ) : (
-                    <Markdown
-                      source={chunks?.join('\n\n') ?? text ?? ''}
-                      className="ema-tool-result-markdown ema-narrative-markdown"
-                    />
-                  )}
-                </>
+                <TimelineContent text={text ?? ''} />
               )}
             </div>
           )}
         </div>
       </div>
     </section>
+  );
+}
+
+function TimelineContent({ text }: { text: string }): JSX.Element {
+  const [raw, setRaw] = useState(false);
+  const body = useMemo(() => narrativeChunks(text)?.join('\n\n') ?? null, [text]);
+
+  return (
+    <>
+      {body !== null && (
+        <div className="ema-narrative-body-toolbar">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="ema-narrative-raw-toggle"
+            aria-pressed={raw}
+            onClick={() => setRaw(value => !value)}
+          >
+            {raw ? '返回正文' : '原始输出'}
+          </Button>
+        </div>
+      )}
+      <CodeViewer source={raw ? text : body ?? text} embedded />
+    </>
   );
 }
 

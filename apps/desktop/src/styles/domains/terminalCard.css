@@ -11,7 +11,7 @@
   display: flex;
   align-items: center;
   gap: var(--ema-space-2);
-  padding: 2px var(--ema-space-2);
+  padding: var(--ema-space-2) var(--ema-space-3);
   border-bottom: 1px solid var(--ema-border);
   background: color-mix(in srgb, var(--ema-primary) 7%, var(--ema-surface-1));
 }
@@ -33,7 +33,7 @@
   word-break: break-word;
   font-family: var(--ema-font-mono, monospace);
   font-size: 11px;
-  color: var(--ema-syntax-prompt);
+  color: var(--ema-text-secondary);
 }
 
 .ema-terminal-command-preview {
@@ -48,36 +48,8 @@
   line-height: 1.6;
 }
 
-.ema-terminal-pill {
-  flex: none;
-  font-size: 10px;
-  padding: 1px 6px;
-  border-radius: var(--ema-radius-pill);
-  border: 1px solid currentcolor;
-  opacity: 0.9;
-}
-
-.ema-terminal-copy {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 19px;
-  height: 19px;
-  border-radius: var(--ema-radius-xs);
-  font-size: 11px;
-  color: var(--ema-text-tertiary);
-  transition: color var(--ema-duration-fast) var(--ema-ease),
-              background-color var(--ema-duration-fast) var(--ema-ease);
-}
-
-.ema-terminal-copy:hover {
-  color: var(--ema-text-primary);
-  background: var(--ema-surface-3);
-}
-
 .ema-terminal-result {
-  position: relative;
+  padding: var(--ema-space-2) var(--ema-space-3);
   background: color-mix(in srgb, var(--ema-surface-2) 76%, var(--ema-surface-1));
 }
 
@@ -86,26 +58,19 @@
 }
 
 .ema-terminal-output {
-  max-height: 16rem;
+  max-height: var(--ema-tool-body-max-height, min(60vh, 24rem));
   overflow: auto;
-  padding: 5px 25px 5px 7px;
+  padding: 0;
   white-space: pre;
   overflow-wrap: normal;
   word-break: normal;
-}
-
-.ema-terminal-result > .ema-terminal-copy {
-  position: absolute;
-  top: 3px;
-  right: 3px;
-  z-index: 1;
 }
 
 .ema-terminal-output pre {
   white-space: pre;
   font-family: var(--ema-font-mono, monospace);
   font-size: 11px;
-  line-height: 1.55;
+  line-height: 1.6;
   color: var(--ema-text-secondary);
   margin: 0;
   background: transparent;

@@ -1,4 +1,4 @@
-// 复杂 Tool 的专属 UI 注册表: 按模型可见名查找, 未注册的工具回落通用平铺渲染。
+// 复杂 Tool 的专属 UI 注册表: 按模型可见名查找, 未提供的输入或结果视图使用通用 CodeViewer.
 // Renderer 来自各 Tool 自己目录的 UI.tsx(经 @ema-agent/builtin-tools/ui 出口);
 // 注册表只做查找与回落, 权限卡、状态条、耗时、错误外壳仍在 ToolCallBlock。
 import { createElement, type JSX } from 'react';
@@ -6,6 +6,9 @@ import {
   AskUserResultView,
   askUserResultCopyText,
   BashCallView,
+  CaptureResultView,
+  captureTitle,
+  captureResultCopyText,
   FileEditArgsView,
   FileEditResultView,
   FileReadArgsView,
@@ -74,7 +77,7 @@ export interface ToolUI {
   readonly title?: (args: unknown) => string | null;
   /** 仅控制行头文字. null 隐藏状态文字和圆点, undefined 沿用默认文案; 不改变执行状态和错误外壳. */
   readonly statusLabel?: (status: ToolDisplayStatus) => string | null | undefined;
-  /** 参数区. 返回 null 表示类型守卫失败, ToolCallBlock 会回落到通用字段表. */
+  /** 参数区. 返回 null 表示类型守卫失败, ToolCallBlock 会回落到通用 JSON 查看器. */
   readonly ArgsView?: (props: { args: unknown }) => JSX.Element | null;
   /** 结果区. data 是 ToolResult.data 或 streaming item.output; args 供按参数高亮(如 Grep 匹配). */
   readonly ResultView?: (props: { data: unknown; args: unknown }) => JSX.Element | null;
@@ -87,6 +90,14 @@ export interface ToolUI {
 }
 
 const TOOL_UI_REGISTRY: Readonly<Record<string, ToolUI>> = {
+  [BuiltinTools.Capture.name]: {
+    title: captureTitle,
+    resultCopyText: captureResultCopyText,
+    ResultView: ({ data }) => createElement(CaptureResultView, {
+      data,
+      renderImage: image => createElement(ImagePreview, image),
+    }),
+  },
   [BuiltinTools.Bash.name]: {
     title: bashTitle,
     CallView: BashCallView,

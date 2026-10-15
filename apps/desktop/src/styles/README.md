@@ -25,11 +25,16 @@ Diff 的 shadow root 是例外: 全局样式无法进入它, ReviewPanel 和内�
 
 伪元素, 遮罩, 动画 calc(如 `var(--stagger-i)*40ms`), 滚动条和第三方类名适配也放到对应样式文件. 桌面通知的变体通过 `data-variant` 选择 `domains/toast.css` 的样式, TSX 只提供状态和内容.
 
-## Tool 内容换行
+## Tool 展示
+
+- `ToolCallBlock` 统一名称、状态、耗时和展开行为. `ToolPane` 统一输入/输出工具栏、复制按钮及两侧间距. `UI.tsx` 只提供工具特有内容, 不给正文预留复制按钮空栏.
+- `ArgsView` 和 `ResultView` 分别选择, 缺省或返回 null 的区域使用通用 CodeViewer. 对象和数组展示完整 JSON, 普通字符串展示纯文本; 需要 Markdown 的工具由专用 UI 明确渲染. `CallView` 保留命令与执行过程放在一起的终端布局.
+- CodeViewer 在 Tool 内使用 `embedded`, 不显示自己的卡片、标题和复制按钮; Data 的独立查看器保留这些操作. Tool 正文使用 11px 等宽字体和弱强调文字颜色, JSON 保留语法色.
 
 - 输入参数和生成中的参数按区域宽度强制折行, 长路径、URL、连续字符不能横向撑开卡片. 保留原文换行和缩进.
-- 输出正文、日志、错误、代码、Diff 和 Markdown 不自动折行. 保留原文换行; 长行在结果区或代码块内横向滚动.
+- 默认 JSON/纯文本输出、Narrative 和 WebFetch 正文通过 CodeViewer 自动折行. 专用终端日志、错误、文件代码、Diff 和 Markdown 保留原文换行, 长行在结果区或代码块内横向滚动.
 - 通用与专属 Tool 都消费 `ToolPane` 的 input/output 规则(`domains/toolRow.css`). Bash/PowerShell 的命令输入和输出在 `domains/terminalCard.css` 保持同一口径.
+- 输入最大高度 8rem, 输出最大高度由 `--ema-tool-body-max-height: min(60vh, 24rem)` 控制. CodeViewer 自己滚动时, 外层不叠加纵向滚动条; Narrative 各周目默认收起, 展开时挂载, 收起动画结束后卸载.
 - 折叠行标题仍使用单行省略. 普通聊天 Markdown 不受 Tool 输出规则影响.
 - Read 源码使用独立行号栏与公共 Markdown 代码块. 行号取自结果里的真实文件编号, 不混入源码高亮或文本选择; 两列共用纵向滚动, 只有源码横向滚动. Markdown 正文与 HTML 沙箱预览不加行号.
 

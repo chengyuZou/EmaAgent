@@ -1,8 +1,8 @@
 // BashTool 的桌面展示：终端卡接管整个展开区（命令 banner + 输出区），
 // 后台转交卡、行头摘要、复制文本与实时输出尾巴也各归本文件。
 // 守卫失败返回 null，由前端回落通用渲染。
-import { useState, type JSX } from 'react';
-import { Tooltip } from '@ema-agent/ui';
+import { useEffect, useRef, useState, type JSX } from 'react';
+import { IconButton, Tooltip } from '@ema-agent/ui';
 import type {
   ShellCommandResult,
   ShellProcessReference,
@@ -141,7 +141,10 @@ export function BashCallView(props: BashCallViewProps): JSX.Element {
       </div>
       {(output !== null || props.running || errorText) && (
         <div className={`ema-terminal-result ${errorText && output === null ? 'ema-terminal-result--error' : ''}`}>
-          <TerminalCopyButton label="复制输出" text={outputCopyText} />
+          <div className="ema-tool-pane-toolbar">
+            <span>输出</span>
+            <TerminalCopyButton label="复制输出" text={outputCopyText} />
+          </div>
           <div className="ema-terminal-output">
             {(output !== '' || props.running) && (
               <pre>
@@ -175,11 +178,14 @@ function BashBackgroundCard({
   return (
     <div className="ema-terminal-card">
       <div className="ema-terminal-banner">
-        <TerminalCopyButton label="复制命令" text={command} />
         <CommandPreview command={command} />
+        <TerminalCopyButton label="复制命令" text={command} />
       </div>
       <div className="ema-terminal-result">
-        <TerminalCopyButton label="复制输出" text={statusText} />
+        <div className="ema-tool-pane-toolbar">
+          <span>输出</span>
+          <TerminalCopyButton label="复制输出" text={statusText} />
+        </div>
         <div className="ema-terminal-output ema-terminal-background-output">
           <span className="text-[11px] text-[var(--ema-text-tertiary)]">{statusText}</span>
           {openBackgroundProcesses && <button
@@ -211,22 +217,37 @@ function CommandPreview({ command }: { command: string }): JSX.Element {
 }
 
 function TerminalCopyButton({ label, text }: { label: string; text: string }): JSX.Element {
-  const [copied, setCopied] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const timer = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => {
+    setCopyStatus('idle');
+    return () => clearTimeout(timer.current);
+  }, [text]);
+  let tooltip = label;
+  if (copyStatus === 'copied') tooltip = '已复制';
+  if (copyStatus === 'failed') tooltip = '复制失败，请重试';
   return (
-    <button
-      type="button"
-      className="ema-terminal-copy"
-      aria-label={copied ? '已复制' : label}
-      disabled={!text}
-      onClick={(event) => {
-        event.stopPropagation();
-        void navigator.clipboard.writeText(text).then(() => {
-          setCopied(true);
-          setTimeout(() => setCopied(false), 1000);
-        });
-      }}
-    >
-      <span className={copied ? 'i-lucide:check' : 'i-lucide:copy'} aria-hidden />
-    </button>
+    <Tooltip content={tooltip}>
+      <IconButton
+        label={tooltip}
+        icon={copyStatus === 'copied' ? 'i-lucide:check' : 'i-lucide:copy'}
+        shape="rounded"
+        variant="ghost"
+        size="sm"
+        className="ema-tool-card-icon"
+        disabled={!text}
+        onClick={(event) => {
+          event.stopPropagation();
+          clearTimeout(timer.current);
+          void navigator.clipboard.writeText(text).then(() => {
+            setCopyStatus('copied');
+          }).catch(() => {
+            setCopyStatus('failed');
+          }).finally(() => {
+            timer.current = setTimeout(() => setCopyStatus('idle'), 1500);
+          });
+        }}
+      />
+    </Tooltip>
   );
 }

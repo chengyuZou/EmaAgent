@@ -1,5 +1,5 @@
 import { useState, type JSX } from 'react';
-import { Tooltip, Badge, Button } from '@ema-agent/ui';
+import { Tooltip, Badge, Button, CodeViewer } from '@ema-agent/ui';
 import type { WebFetchResult } from './WebFetchTool.js';
 
 const PREVIEW_CHARS = 2_000;
@@ -58,8 +58,6 @@ export function WebFetchResultView({ data }: { data: unknown }): JSX.Element | n
 function WebFetchResultCard({ result }: { result: WebFetchResult }): JSX.Element {
   const isHtml = /^\s*(<!doctype\s+html|<html[\s>])/i.test(result.content);
   const [showPreview, setShowPreview] = useState(false);
-  const preview = result.content.slice(0, PREVIEW_CHARS);
-  const omitted = result.content.length - preview.length;
   return (
     <div className="flex flex-col gap-1 text-[11px] leading-relaxed">
       <Tooltip content={result.url} variant="card">
@@ -97,17 +95,12 @@ function WebFetchResultCard({ result }: { result: WebFetchResult }): JSX.Element
         /* sandbox 空属性: 禁脚本禁表单, 公网内容只渲染视觉. */
         <iframe
           sandbox=""
-          srcDoc={preview}
+          srcDoc={result.content.slice(0, PREVIEW_CHARS)}
           title="网页预览"
           className="h-48 w-full rounded-md border border-[var(--ema-border)] bg-white"
         />
       ) : (
-        <div>
-          <pre className="m-0 whitespace-pre bg-transparent p-0 font-mono text-[var(--ema-text-secondary)]">
-            {preview}
-            {omitted > 0 && `\n··· 其余 ${omitted.toLocaleString()} 字符 ···`}
-          </pre>
-        </div>
+        <CodeViewer source={result.content} embedded />
       )}
     </div>
   );
