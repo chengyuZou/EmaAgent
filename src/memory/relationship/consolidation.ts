@@ -1,4 +1,4 @@
-// 定义 Relationship 轨可读写的文件结构，并组装一次 Relationship 整合调用。
+// 定义 Relationship 轨可读写的文件结构,并组装一次 Relationship 整合调用.
 
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
@@ -10,7 +10,7 @@ import {
   toPosixPath,
 } from '../consolidation/consolidation.js';
 import { MEMORY_CONSOLIDATION_INPUT_BYTES } from '../capacity/limits.js';
-import { loadTemplate } from '../templates/loader.js';
+import { RELATIONSHIP_CONSOLIDATION_SYSTEM } from './prompt.js';
 import type { ConsolidateMemory } from '../jobs/runConsolidationJobs.js';
 
 const RELATIONSHIP_ROOT_FILES = [
@@ -18,7 +18,7 @@ const RELATIONSHIP_ROOT_FILES = [
   'character_relations.md',
 ] as const;
 
-/** 枚举 Relationship 轨正式记忆文件（存在才列出；相对路径，posix）。 */
+/** 枚举 Relationship 轨正式记忆文件(存在才列出;相对路径,posix). */
 async function listRelationshipTargetPaths(
   memoryDirectory: string,
   characterNames: readonly string[],
@@ -40,7 +40,7 @@ async function listRelationshipTargetPaths(
   return targets;
 }
 
-/** Relationship 允许为提取结果中的角色目录新建正式文件。 */
+/** Relationship 允许为提取结果中的角色目录新建正式文件. */
 export function createRelationshipTargetPathCheck(
   existingCharacterNames: readonly string[],
   extractedCharacterNames: readonly string[] = [],
@@ -68,21 +68,15 @@ export function createRelationshipTargetPathCheck(
 }
 
 export interface RelationshipConsolidationDeps {
-  /** 应用层的 LLM 调用闭包（两段消息 → 输出纯文本）。 */
+  /** 应用层的 LLM 调用闭包(两段消息 → 输出纯文本). */
   readonly complete: CompleteMemoryLlm;
-  /** 整合 system 模板覆盖（可选）；缺省用内置 md。 */
-  readonly templates?: {
-    readonly consolidationSystem?: string;
-  };
 }
 
-/** 组装 runConsolidationJobs 需要的 Relationship consolidate 闭包。 */
+/** 组装 runConsolidationJobs 需要的 Relationship consolidate 闭包. */
 export function createRelationshipConsolidate(
   deps: RelationshipConsolidationDeps,
 ): ConsolidateMemory {
   return async ({ memoryDirectory, diffFile, unintegrated, signal }) => {
-    const systemTemplate = deps.templates?.consolidationSystem
-      ?? await loadTemplate('relationshipConsolidation');
     const existingCharacterNames = await listCharacterNames(memoryDirectory);
     return runConsolidationLlm({
       memoryDirectory,
@@ -97,7 +91,7 @@ export function createRelationshipConsolidate(
       diffFile,
       unintegrated,
       maxInputBytes: MEMORY_CONSOLIDATION_INPUT_BYTES,
-      systemTemplate,
+      systemTemplate: RELATIONSHIP_CONSOLIDATION_SYSTEM,
       inputTemplate: CONSOLIDATION_INPUT_INSTRUCTION,
       complete: deps.complete,
       signal,

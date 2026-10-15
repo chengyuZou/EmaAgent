@@ -6,13 +6,13 @@ import {
   type MemoryExtractionOutput,
 } from './common/extraction.js';
 import { serializeRelationshipTurn } from './relationship/extraction.js';
-import { loadTemplate, type ExtractionTemplates } from './templates/loader.js';
+import { RELATIONSHIP_EXTRACTION_INPUT, RELATIONSHIP_EXTRACTION_SYSTEM } from './relationship/prompt.js';
 import { serializeWorkTurn } from './work/extraction.js';
+import { WORK_EXTRACTION_INPUT, WORK_EXTRACTION_SYSTEM } from './work/prompt.js';
 
 export interface CreateExtractTurnDeps {
   readonly loadCompletedTurn: (turnId: string) => Promise<CompletedTurnMemoryInput>;
   readonly complete: CompleteMemoryLlm;
-  readonly templates?: Partial<ExtractionTemplates>;
 }
 
 export type ExtractTurn = (input: {
@@ -25,13 +25,9 @@ export function createExtractTurn(deps: CreateExtractTurnDeps): ExtractTurn {
   return async ({ kind, turnId, signal }) => {
     const turn = await deps.loadCompletedTurn(turnId);
     if (kind === 'work_extraction') {
-      const [system, instructions] = await Promise.all([
-        deps.templates?.workSystem ?? loadTemplate('workSystem'),
-        deps.templates?.workInput ?? loadTemplate('workInput'),
-      ]);
       const content = await runTurnExtraction(
-        system,
-        instructions,
+        WORK_EXTRACTION_SYSTEM,
+        WORK_EXTRACTION_INPUT,
         serializeWorkTurn({ messages: turn.messages }),
         deps.complete,
         signal,
@@ -40,13 +36,9 @@ export function createExtractTurn(deps: CreateExtractTurnDeps): ExtractTurn {
     }
 
     if (!turn.characterName) return undefined;
-    const [system, instructions] = await Promise.all([
-      deps.templates?.relationshipSystem ?? loadTemplate('relationshipSystem'),
-      deps.templates?.relationshipInput ?? loadTemplate('relationshipInput'),
-    ]);
     const content = await runTurnExtraction(
-      system,
-      instructions,
+      RELATIONSHIP_EXTRACTION_SYSTEM,
+      RELATIONSHIP_EXTRACTION_INPUT,
       serializeRelationshipTurn({
         characterName: turn.characterName,
         messages: turn.messages,

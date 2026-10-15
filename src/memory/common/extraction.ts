@@ -17,7 +17,7 @@ export type CompleteMemoryLlm = (
   signal?: AbortSignal,
 ) => Promise<string>;
 
-/** Extraction 的 LLM 边界只接受 {} 或 {"content":"..."}。 */
+/** 空对象或空 content 表示没有提取内容, 不产生待保存的记录. */
 export async function runTurnExtraction(
   systemInstructions: string,
   inputInstructions: string,
@@ -31,14 +31,20 @@ export async function runTurnExtraction(
   ], signal);
   const value = parseJsonObject(raw);
   const keys = Object.keys(value);
-  if (keys.length === 0) return undefined;
+  if (keys.length === 0) {
+    return undefined;
+  }
   if (keys.length !== 1 || keys[0] !== 'content') {
     throw new Error('Memory extraction output must be {} or contain only content');
   }
-  if (typeof value.content !== 'string' || value.content.trim().length === 0) {
-    throw new Error('Memory extraction output must be {} or contain non-empty content');
+  const content = value.content;
+  if (content === null || (Array.isArray(content) && content.length === 0)) {
+    return undefined;
   }
-  return value.content.trim();
+  if (typeof content !== 'string') {
+    throw new Error('Memory extraction content must be a string, null or an empty array');
+  }
+  return content.trim() || undefined;
 }
 
 function parseJsonObject(raw: string): Record<string, unknown> {

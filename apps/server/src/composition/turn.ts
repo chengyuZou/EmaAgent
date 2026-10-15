@@ -9,7 +9,7 @@ import type { DescribeImage } from '@ema-agent/context';
 import { type LlmTokenUsage } from '@ema-agent/llm';
 import { isWitchTrialCharacter } from '@ema-agent/narrative';
 import {
-  buildMemoryGuidance,
+  MEMORY_GUIDANCE,
   memorySummaryFile,
   MEMORY_SUMMARY_TOKENS,
   readMemorySummary,
@@ -297,7 +297,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     onTaskReminderPersisted: sessionId => {
       database.tasks.markReminded(sessionId);
     },
-    memoryGuidance: () => buildMemoryGuidance().catch(() => null),
+    memoryGuidance: () => MEMORY_GUIDANCE,
     usageRecorder: database.usageRecorder,
     stage,
     characterName: () => characters.current().name,

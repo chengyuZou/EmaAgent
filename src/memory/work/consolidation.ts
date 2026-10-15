@@ -1,4 +1,4 @@
-// 定义 Work 轨可读写的文件结构，并组装一次 Work 整合调用。
+// 定义 Work 轨可读写的文件结构,并组装一次 Work 整合调用.
 
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
@@ -9,15 +9,15 @@ import {
   runConsolidationLlm,
 } from '../consolidation/consolidation.js';
 import { MEMORY_CONSOLIDATION_INPUT_BYTES } from '../capacity/limits.js';
-import { loadTemplate } from '../templates/loader.js';
+import { WORK_CONSOLIDATION_SYSTEM } from './prompt.js';
 import type { ConsolidateMemory } from '../jobs/runConsolidationJobs.js';
 
 // memory_summary.md 是注入源(Turn 启动时读一次,进持久化 reminder),整合器是唯一写者:
-// 允许 write 是设计使然,但模板强制"基于正式记忆与本次证据重写",防自激。
+// 允许 write 是设计使然,但模板强制"基于正式记忆与本次证据重写",防自激.
 const WORK_ROOT_FILES = ['MEMORY.md', 'memory_summary.md'] as const;
 const WORK_SUBDIRS = ['topics'] as const;
 
-/** 枚举 Work 正式记忆。 */
+/** 枚举 Work 正式记忆. */
 async function listWorkTargetPaths(
   memoryDirectory: string,
 ): Promise<readonly string[]> {
@@ -31,7 +31,7 @@ async function listWorkTargetPaths(
   return targets;
 }
 
-/** Work 只允许维护根文件和 topics。 */
+/** Work 只允许维护根文件和 topics. */
 function createWorkTargetPathCheck(): (relativePath: string) => boolean {
   return (relativePath) => (
     relativePath === 'MEMORY.md'
@@ -41,21 +41,15 @@ function createWorkTargetPathCheck(): (relativePath: string) => boolean {
 }
 
 export interface WorkConsolidationDeps {
-  /** 应用层的 LLM 调用闭包（两段消息 → 输出纯文本）。 */
+  /** 应用层的 LLM 调用闭包(两段消息 → 输出纯文本). */
   readonly complete: CompleteMemoryLlm;
-  /** 整合 system 模板覆盖（可选）；缺省用内置 md。 */
-  readonly templates?: {
-    readonly consolidationSystem?: string;
-  };
 }
 
-/** 组装 runConsolidationJobs 需要的 Work consolidate 闭包。 */
+/** 组装 runConsolidationJobs 需要的 Work consolidate 闭包. */
 export function createWorkConsolidate(
   deps: WorkConsolidationDeps,
 ): ConsolidateMemory {
   return async ({ memoryDirectory, diffFile, unintegrated, signal }) => {
-    const systemTemplate = deps.templates?.consolidationSystem
-      ?? await loadTemplate('workConsolidation');
     return runConsolidationLlm({
       memoryDirectory,
       currentPaths: await listWorkTargetPaths(memoryDirectory),
@@ -63,7 +57,7 @@ export function createWorkConsolidate(
       diffFile,
       unintegrated,
       maxInputBytes: MEMORY_CONSOLIDATION_INPUT_BYTES,
-      systemTemplate,
+      systemTemplate: WORK_CONSOLIDATION_SYSTEM,
       inputTemplate: CONSOLIDATION_INPUT_INSTRUCTION,
       complete: deps.complete,
       signal,

@@ -44,7 +44,6 @@ export {
 } from './jobs/runConsolidationJobs.js';
 export { runMaintenanceJob } from './jobs/runMaintenanceJobs.js';
 export { createExtractTurn, type CreateExtractTurnDeps, type ExtractTurn } from './extractTurn.js';
-export { loadTemplate, type ExtractionTemplates } from './templates/loader.js';
 export {
   applyConsolidationEdits,
   parseConsolidationEdits,
@@ -63,7 +62,7 @@ export {
   type RelationshipConsolidationDeps,
 } from './relationship/consolidation.js';
 export { readRelationshipMemoryForTurn } from './relationship/readForTurn.js';
-export { buildMemoryGuidance } from './prompt.js';
+export { MEMORY_GUIDANCE } from './prompt.js';
 export {
   searchMemoryFiles,
   readMemoryFile,

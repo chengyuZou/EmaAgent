@@ -1,13 +1,16 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   applyConsolidationEdits,
   parseConsolidationEdits,
   runConsolidationLlm,
 } from '../consolidation/consolidation.js';
-import { createRelationshipTargetPathCheck } from '../relationship/consolidation.js';
+import { createRelationshipConsolidate, createRelationshipTargetPathCheck } from '../relationship/consolidation.js';
+import { RELATIONSHIP_CONSOLIDATION_SYSTEM } from '../relationship/prompt.js';
+import { createWorkConsolidate } from '../work/consolidation.js';
+import { WORK_CONSOLIDATION_SYSTEM } from '../work/prompt.js';
 
 describe('Memory Consolidation', () => {
   let root: string;
@@ -20,7 +23,26 @@ describe('Memory Consolidation', () => {
     await fs.rm(root, { recursive: true, force: true });
   });
 
-  it('路径规则允许本批 characterName，不允许模型发明角色', () => {
+  it.each([
+    { track: 'work', create: createWorkConsolidate, prompt: WORK_CONSOLIDATION_SYSTEM },
+    { track: 'relationship', create: createRelationshipConsolidate, prompt: RELATIONSHIP_CONSOLIDATION_SYSTEM },
+  ])('$track 整合直接使用 TS 中的 Prompt', async ({ create, prompt }) => {
+    const complete = vi.fn(async () => '[]');
+    const consolidate = create({ complete });
+    const signal = new AbortController().signal;
+    expect(await consolidate({
+      memoryDirectory: root,
+      diffFile: path.join(root, 'missing.md'),
+      unintegrated: [],
+      signal,
+    })).toEqual({ edits: [], consumedTurnIds: [] });
+    expect(complete).toHaveBeenCalledWith([
+      { role: 'system', content: prompt },
+      { role: 'user', content: expect.any(String) },
+    ], signal);
+  });
+
+  it('路径规则允许本批 characterName,不允许模型发明角色', () => {
     const allowed = createRelationshipTargetPathCheck([], ['艾玛']);
     expect(allowed('characters/艾玛/MEMORY.md')).toBe(true);
     expect(allowed('characters/陌生角色/MEMORY.md')).toBe(false);
@@ -29,7 +51,7 @@ describe('Memory Consolidation', () => {
       .toBe(false);
   });
 
-  it('consumedTurnIds 来自实际装入输入的结果，不由 LLM 返回', async () => {
+  it('consumedTurnIds 来自实际装入输入的结果,不由 LLM 返回', async () => {
     const result = await runConsolidationLlm({
       memoryDirectory: root,
       currentPaths: [],

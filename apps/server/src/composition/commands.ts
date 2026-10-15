@@ -9,7 +9,7 @@ import {
 } from '@ema-agent/commands';
 import { createCompact, type CompactEvent } from '@ema-agent/compact';
 import { createLlmCall } from '@ema-agent/llm';
-import { buildMemoryGuidance } from '@ema-agent/memory';
+import { MEMORY_GUIDANCE } from '@ema-agent/memory';
 import type { CharactersComposition } from './characters.js';
 import type { DatabaseComposition } from './database.js';
 import type { ProvidersComposition } from './providers.js';
@@ -54,7 +54,7 @@ export function openCommands(deps: {
     },
     disabledSkillPaths: () => tools.skillStore.listDisabledPaths(),
     workspaceInstructions: turn.workspaceInstructions,
-    memoryGuidance: () => buildMemoryGuidance().catch(() => null),
+    memoryGuidance: () => MEMORY_GUIDANCE,
     describeImage: turn.describeImage,
     visionCache: turn.visionCache,
     createCompact,

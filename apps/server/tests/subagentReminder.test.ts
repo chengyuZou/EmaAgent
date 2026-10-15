@@ -20,7 +20,7 @@ vi.mock('@ema-agent/turn', () => ({
   },
 }));
 vi.mock('@ema-agent/memory', () => ({
-  buildMemoryGuidance: async () => '',
+  MEMORY_GUIDANCE: '',
   memorySummaryFile: () => '',
   MEMORY_SUMMARY_TOKENS: 100,
   readMemorySummary: async () => '',

@@ -101,7 +101,7 @@ export interface PrepareTurnDeps extends TurnToolsDeps {
   readonly createLlmCall?: (connection: LlmConnection, modelId: string) => CallLlm;
   /** 工作区指令（EMA.md/CLAUDE.md）按本 Turn 的工作区读取；无工作区时不会调用。 */
   readonly workspaceInstructions?: (cwd: string) => string | null;
-  /** 记忆使用指引（静态模板文本，memory 包 buildMemoryGuidance 产出）；Work 摘要和角色关系记忆经 reminder 注入。 */
+  /** 记忆使用指引由 memory 包提供; Work 摘要和角色关系记忆经 reminder 注入. */
   readonly memoryGuidance?: () => Promise<string | null> | string | null;
   /** 模型不支持图片时的 Vision 描述入口。 */
   readonly describeImage?: DescribeImage;
