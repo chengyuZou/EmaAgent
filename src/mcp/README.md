@@ -18,6 +18,10 @@
 
 ## 连接语义
 
+导入本包时不加载 MCP Client 和传输实现. `openConnection()` 才加载 Client, 再按配置加载 stdio 或 Streamable HTTP 传输. 模块加载结果由运行时缓存, 每条连接仍有独立的 Client 和传输实例. 加载期间取消不会继续启动子进程或发送握手请求; 30 秒连接超时从 SDK 握手开始计算.
+
+Server 装配时仍会恢复缓存工具并发起已启用服务器的后台连接, 不等待连接完成. 因此没有启用 MCP 时可以省去连接依赖的加载, 已启用时仍会在后台连接阶段承担首次加载耗时.
+
 ```text
 应用启动
   -> 用 cachedTools 暂时恢复启用服务器的 Tool 描述
@@ -67,3 +71,7 @@
 - `mcp_market_changed`: 某个已接入来源刷新完成，已打开该来源的窗口重读缓存。
 
 Server Route 是 HTTP 契约唯一来源；Desktop API 类型从 Hono RPC 推导，前端不得再定义另一套 MCP wire interface。
+
+## 连接测试
+
+`tests/connectionImport.test.ts` 检查公共入口不提前加载 Client/传输, 按配置选择传输, 以及加载前和加载期间的取消. `tests/connection-cancellation.test.ts` 检查握手取消与超时清理; `tests/connectionLifecycle.test.ts` 检查工具注册、意外断线和重连.
