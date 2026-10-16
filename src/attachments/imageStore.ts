@@ -3,7 +3,6 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import sharp from 'sharp';
 import type { AttachmentImagesRepo } from '@ema-agent/storage';
 import { AttachmentPreparationError } from './errors.js';
 import {
@@ -71,6 +70,8 @@ export class ImageStore {
 
   /** 消息流/附件页封面用的小图:长边 ≤ maxDim 的 JPEG,原图不动 */
   async readThumbnail(imagePath: string, maxDim = 256): Promise<Buffer> {
+    // sharp 本机 Windows 独立导入约 0.05s, 缩略图请求时再加载, 后续复用模块缓存.
+    const { default: sharp } = await import('sharp');
     return sharp(imagePath)
       .resize({ width: maxDim, height: maxDim, fit: 'inside', withoutEnlargement: true })
       .jpeg({ quality: 80 })
@@ -129,6 +130,8 @@ export class ImageStore {
     bytes: Buffer,
     originalName?: string,
   ): Promise<{ bytes: Buffer; extension: string }> {
+    // sharp 本机 Windows 独立导入约 0.05s, 只在处理图片时加载, 避免文本附件和 MIME 查询等待它.
+    const { default: sharp } = await import('sharp');
     let metadata;
     try {
       metadata = await sharp(bytes).metadata();

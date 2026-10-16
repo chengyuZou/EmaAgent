@@ -65,6 +65,9 @@ VisionDescriptionCache
 
 ## 图片规范化
 
+`sharp` 在保存图片或生成缩略图时才加载, 后续调用复用模块缓存. 单独导入本包,
+创建 Store, 判断 MIME, 保存文本, 绑定 Turn 和清理附件都不需要加载图片处理库.
+
 只收 `png / jpeg / gif / webp`, 其余格式拒绝。
 
 | 上限 | 值 | 来源 |
