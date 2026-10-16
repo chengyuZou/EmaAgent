@@ -22,3 +22,17 @@
 [data-line] {
   padding-inline: 0.75ch;
 }
+
+/* Tool 的差异正文自行限高, 横向滚动条始终留在当前可视区底部.
+   ReviewPanel 不使用此标记, 仍由侧栏安排纵向滚动. */
+:host(.ema-tool-diff) [data-code] {
+  max-height: var(--ema-tool-body-max-height, min(60vh, 24rem));
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ema-scrollbar-thumb) transparent;
+}
+
+:host(.ema-tool-diff) [data-code]::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}

@@ -59,37 +59,39 @@ function WebFetchResultCard({ result }: { result: WebFetchResult }): JSX.Element
   const isHtml = /^\s*(<!doctype\s+html|<html[\s>])/i.test(result.content);
   const [showPreview, setShowPreview] = useState(false);
   return (
-    <div className="flex flex-col gap-1 text-[11px] leading-relaxed">
-      <Tooltip content={result.url} variant="card">
-        <a
-          href={result.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="min-w-0 truncate text-[var(--ema-primary)] transition-colors hover:text-[var(--ema-primary-hover)] hover:underline"
-        >
-          {result.url}
-        </a>
-      </Tooltip>
-      <div className="flex items-center gap-2">
-        <span className="text-[var(--ema-text-secondary)]">
-          收到 <span className="font-medium text-[var(--ema-text-primary)]">
-            {formatBytes(result.bytes)}
+    <div className="ema-tool-result-layout flex min-w-0 flex-col text-[11px] leading-relaxed">
+      <div className="ema-tool-result-details flex min-w-0 flex-col gap-1">
+        <Tooltip content={result.url} variant="card">
+          <a
+            href={result.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="min-w-0 truncate text-[var(--ema-primary)] transition-colors hover:text-[var(--ema-primary-hover)] hover:underline"
+          >
+            {result.url}
+          </a>
+        </Tooltip>
+        <div className="flex items-center gap-2">
+          <span className="text-[var(--ema-text-secondary)]">
+            收到 <span className="font-medium text-[var(--ema-text-primary)]">
+              {formatBytes(result.bytes)}
+            </span>
+            <span className="text-[var(--ema-text-tertiary)]">
+              {' '}({result.code} {result.codeText})
+            </span>
           </span>
-          <span className="text-[var(--ema-text-tertiary)]">
-            {' '}({result.code} {result.codeText})
-          </span>
-        </span>
-        {result.truncated && <Badge variant="warn">已截断</Badge>}
-        {isHtml && (
-          <span className="ml-auto flex gap-1">
-            <Button variant={showPreview ? 'ghost' : 'secondary'} size="sm" onClick={() => setShowPreview(false)}>
-              源码
-            </Button>
-            <Button variant={showPreview ? 'secondary' : 'ghost'} size="sm" onClick={() => setShowPreview(true)}>
-              预览
-            </Button>
-          </span>
-        )}
+          {result.truncated && <Badge variant="warn">已截断</Badge>}
+          {isHtml && (
+            <span className="ml-auto flex gap-1">
+              <Button variant={showPreview ? 'ghost' : 'secondary'} size="sm" onClick={() => setShowPreview(false)}>
+                源码
+              </Button>
+              <Button variant={showPreview ? 'secondary' : 'ghost'} size="sm" onClick={() => setShowPreview(true)}>
+                预览
+              </Button>
+            </span>
+          )}
+        </div>
       </div>
       {isHtml && showPreview ? (
         /* sandbox 空属性: 禁脚本禁表单, 公网内容只渲染视觉. */
@@ -97,10 +99,10 @@ function WebFetchResultCard({ result }: { result: WebFetchResult }): JSX.Element
           sandbox=""
           srcDoc={result.content.slice(0, PREVIEW_CHARS)}
           title="网页预览"
-          className="h-48 w-full rounded-md border border-[var(--ema-border)] bg-white"
+          className="h-48 w-full border-0 bg-white"
         />
       ) : (
-        <CodeViewer source={result.content} embedded />
+        <CodeViewer source={result.content} embedded wrapLines={false} />
       )}
     </div>
   );

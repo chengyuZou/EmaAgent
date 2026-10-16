@@ -23,5 +23,5 @@ export function ToolArgsView({ source }: { source: string }): JSX.Element {
 }
 
 export function ToolResultViewBlock({ view }: { view: ToolResultView }): JSX.Element {
-  return <CodeViewer source={view.source} language={view.language} embedded />;
+  return <CodeViewer source={view.source} language={view.language} embedded wrapLines={false} />;
 }

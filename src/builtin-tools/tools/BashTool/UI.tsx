@@ -121,11 +121,12 @@ export function BashCallView(props: BashCallViewProps): JSX.Element {
   }
 
   const result = asBashCommandResult(props.data);
-  const output = result
-    ? bashResultText(result)
-    : props.running && props.progress
-      ? bashProgressTail(props.progress)
-      : null;
+  let output: string | null = null;
+  if (result) {
+    output = bashResultText(result);
+  } else if (props.running && props.progress) {
+    output = bashProgressTail(props.progress);
+  }
   const pill = PILL[props.status];
   const errorText = props.failure
     ? `[${props.failure.code}] ${props.failure.message}`
@@ -146,18 +147,13 @@ export function BashCallView(props: BashCallViewProps): JSX.Element {
             <TerminalCopyButton label="复制输出" text={outputCopyText} />
           </div>
           <div className="ema-terminal-output">
-            {(output !== '' || props.running) && (
+            {(Boolean(output) || props.running) && (
               <pre>
                 {output}
                 {props.running && <span className="text-[var(--ema-text-tertiary)] animate-pulse"> ▌</span>}
               </pre>
             )}
-            {(output === '' || props.running) && (
-              <pre>
-                {"无输出"}
-                {props.running && <span className="text-[var(--ema-text-tertiary)] animate-pulse"> ▌</span>}
-              </pre>
-            )}
+            {output === '' && !props.running && <pre>无输出</pre>}
             {errorText && <pre className="ema-terminal-error">{errorText}</pre>}
           </div>
         </div>

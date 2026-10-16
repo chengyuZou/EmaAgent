@@ -61,14 +61,15 @@ export function DropdownMenu(props: DropdownMenuProps): React.JSX.Element {
           side={side}
           align={align}
           sideOffset={6}
+          collisionPadding={12}
           className={cn(
             'z-[var(--ema-z-overlay)] panel-glass rounded-xl shadow-[var(--ema-shadow-2)]',
             widthClass,
             'ema-anim-menu',
           )}
         >
-          {/* 内容保持自然尺寸, 展开只裁剪外观, 避免边缘避让随动画反复重新定位. */}
-          <div className="p-1">
+          {/* 列表内部限高滚动, 外层动画只裁剪外观, 不随动画反复改变定位尺寸. */}
+          <div className="ema-dropdown-viewport p-1">
             <MenuItems items={items} checkIcon={checkIcon} submenuIcon={submenuIcon} openSubId={openSubId} onOpenSub={setOpenSubId} />
           </div>
         </RadixDropdown.Content>
@@ -164,12 +165,13 @@ function RenderItem({ item, checkIcon, submenuIcon, openSubId, onOpenSub }: {
           </RadixDropdown.SubTrigger>
           <RadixDropdown.Portal>
             <RadixDropdown.SubContent
+              collisionPadding={12}
               className={cn(
                 'z-[var(--ema-z-overlay)] panel-glass rounded-xl shadow-[var(--ema-shadow-2)] min-w-44',
                 'ema-anim-menu',
               )}
             >
-              <div className="p-1">
+              <div className="ema-dropdown-viewport p-1">
                 <MenuItems items={item.items} checkIcon={checkIcon} submenuIcon={submenuIcon} openSubId={openSubId} onOpenSub={onOpenSub} />
               </div>
             </RadixDropdown.SubContent>

@@ -49,7 +49,6 @@
 }
 
 .ema-terminal-result {
-  padding: var(--ema-space-2) var(--ema-space-3);
   background: color-mix(in srgb, var(--ema-surface-2) 76%, var(--ema-surface-1));
 }
 
@@ -60,7 +59,7 @@
 .ema-terminal-output {
   max-height: var(--ema-tool-body-max-height, min(60vh, 24rem));
   overflow: auto;
-  padding: 0;
+  padding: var(--ema-space-2) var(--ema-space-3);
   white-space: pre;
   overflow-wrap: normal;
   word-break: normal;

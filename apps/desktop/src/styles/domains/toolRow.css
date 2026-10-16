@@ -81,7 +81,6 @@
 .ema-tool-pane {
   position: relative;
   min-width: 0;
-  padding: var(--ema-space-2) var(--ema-space-3);
   color: var(--ema-text-secondary);
   font-size: 11px;
   line-height: 1.6;
@@ -93,7 +92,7 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--ema-space-2);
-  margin-bottom: var(--ema-space-1);
+  padding: var(--ema-space-2) var(--ema-space-3) 0;
   color: var(--ema-text-tertiary);
   font-size: 10px;
 }
@@ -116,7 +115,20 @@
 
 .ema-tool-pane-content {
   min-width: 0;
+  padding: var(--ema-space-2) var(--ema-space-3);
+}
+
+/* 滚动区域与外框对齐. 含代码或差异视图的结果由各段正文自行留白. */
+.ema-tool-pane-content:has(> .ema-tool-result-layout) {
   padding: 0;
+}
+
+.ema-tool-result-details {
+  padding: var(--ema-space-2) var(--ema-space-3);
+}
+
+.ema-tool-pane-content:has(> .ema-tool-result-layout, .ema-code-viewer) > .ema-tool-error {
+  padding: var(--ema-space-2) var(--ema-space-3);
 }
 
 .ema-tool-pane--input {
@@ -293,23 +305,20 @@
   color: var(--ema-text-secondary);
 }
 
-/* Read 源码与行号共用纵向滚动区域, 只有右侧 Markdown pre 横向滚动. */
+/* Read 的行号和源码共同撑开正文宽度, 横纵滚动都由外层可视区负责. */
 .ema-file-read-code {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
   align-items: start;
-  min-width: 0;
-  overflow: hidden;
-  border: 1px solid var(--ema-border);
-  border-radius: var(--ema-radius-lg);
-  background: var(--ema-syntax-bg, var(--ema-surface-1));
+  min-width: 100%;
+  width: max-content;
   font-size: 12px;
   line-height: 1.7;
 }
 
 .ema-file-read-code > .ema-file-read-line-numbers {
   margin: 0;
-  padding: var(--ema-space-3) var(--ema-space-2) var(--ema-space-3) var(--ema-space-3);
+  padding: var(--ema-space-2) var(--ema-space-2) var(--ema-space-2) var(--ema-space-3);
   border: 0;
   background: transparent;
   color: var(--ema-syntax-comment);
@@ -321,9 +330,9 @@
   -webkit-user-select: none;
 }
 
-.ema-file-read-code .ema-file-read-markdown pre {
+.ema-tool-pane .ema-file-read-code .ema-file-read-markdown pre {
   margin: 0;
-  padding: var(--ema-space-3) var(--ema-space-3) var(--ema-space-3) var(--ema-space-2);
+  padding: var(--ema-space-2) var(--ema-space-3) var(--ema-space-2) var(--ema-space-2);
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -345,13 +354,20 @@
 }
 
 .ema-tool-pane--output .markdown-content pre {
-  overflow-x: auto;
+  overflow: visible;
+}
+
+/* 差异组件在 shadow root 内同时处理横纵滚动, 外层不再裁剪它的底部滚动条. */
+.ema-tool-pane--output .ema-tool-pane-content:has(.ema-tool-diff) {
+  max-height: none;
+  overflow: visible;
 }
 
 /* CodeViewer 自己限制高度并滚动, 外层输入和输出都不再叠加纵向滚动条. */
 .ema-tool-pane .ema-tool-pane-content:has(.ema-code-viewer) {
   max-height: none;
   overflow: visible;
+  padding: 0;
   white-space: normal;
 }
 
@@ -362,9 +378,12 @@
   white-space: normal;
 }
 
-.ema-tool-pane .ema-code-viewer--embedded .cm-content,
+.ema-tool-pane .ema-code-viewer--embedded .cm-content {
+  padding: var(--ema-space-2) 0;
+}
+
 .ema-tool-pane .ema-code-viewer--embedded .cm-line {
-  padding: 0;
+  padding: 0 var(--ema-space-3);
 }
 
 .ema-narrative-results {
@@ -383,7 +402,7 @@
   gap: 8px;
   width: 100%;
   min-height: 34px;
-  padding: var(--ema-space-1) 0;
+  padding: var(--ema-space-1) var(--ema-space-3);
   color: var(--ema-text-secondary);
   font-size: 11px;
   text-align: left;
@@ -411,13 +430,12 @@
 
 .ema-narrative-body {
   min-width: 0;
-  padding: var(--ema-space-1) 0 var(--ema-space-2);
 }
 
 .ema-narrative-body-toolbar {
   display: flex;
   justify-content: flex-end;
-  margin-bottom: 4px;
+  padding: var(--ema-space-1) var(--ema-space-3) 0;
 }
 
 .ema-narrative-results .ema-narrative-raw-toggle {
@@ -427,7 +445,7 @@
 
 .ema-narrative-empty {
   margin: 0;
-  padding: var(--ema-space-2) 0;
+  padding: var(--ema-space-2) var(--ema-space-3);
   color: var(--ema-text-tertiary);
 }
 

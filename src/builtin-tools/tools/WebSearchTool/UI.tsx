@@ -96,18 +96,19 @@ export function WebSearchResultView({ data }: { data: unknown }): JSX.Element | 
     );
   }
   return (
-    <div className="flex flex-col gap-1.5 text-[11px] leading-relaxed">
+    <div className="flex w-max min-w-full flex-col gap-1.5 text-[11px] leading-relaxed">
       <div className="flex items-center gap-2">
         <span className="text-[var(--ema-text-secondary)]">
           找到 <span className="font-medium text-[var(--ema-text-primary)]">
             {result.results.length.toLocaleString()}
           </span> 条结果
         </span>
-        <span className="truncate text-[var(--ema-text-tertiary)]">
+        <span className="text-[var(--ema-text-tertiary)]">
           “{result.query}”
         </span>
       </div>
-      <ul className="flex flex-col gap-1">
+      {/* TODO: 这里拿Markdown渲染带一个CodeView(要带吗?我更倾向于Markdown渲染) */ }
+      <ul className="m-0 flex list-none flex-col gap-1 p-0">
         {result.results.map((entry) => (
           <li key={entry.url} className="flex min-w-0 items-baseline gap-2">
             <Tooltip content={entry.url} variant="card">
@@ -115,13 +116,13 @@ export function WebSearchResultView({ data }: { data: unknown }): JSX.Element | 
                 href={entry.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="max-w-[65%] shrink-0 truncate text-[var(--ema-primary)] transition-colors hover:text-[var(--ema-primary-hover)] hover:underline"
+                className="shrink-0 text-[var(--ema-primary)] transition-colors hover:text-[var(--ema-primary-hover)] hover:underline"
               >
                 {entry.title || entry.url}
               </a>
             </Tooltip>
             {entry.snippet && (
-              <span className="truncate text-[var(--ema-text-tertiary)]">
+              <span className="text-[var(--ema-text-tertiary)]">
                 {entry.snippet}
               </span>
             )}

@@ -29,11 +29,14 @@ raw HTML 先经 `rehype-sanitize` 清洗, 然后执行 KaTeX 和代码高亮. Me
 ```tsx
 <CodeViewer source={formattedJson} language="json" />
 <CodeViewer source={formattedJson} language="json" embedded />
+<CodeViewer source={toolOutput} embedded wrapLines={false} />
 ```
 
 默认显示独立卡片、文本类型和复制按钮. `embedded` 只显示文本区域, 由外层提供标题与复制操作, 不再套第二层卡片. Tool 使用内嵌展示, Data 使用独立展示.
 
 CodeMirror 6 默认在高度不超过 `min(60vh, 36rem)` 的区域中连续滚动, 自动折行, 只把可视区及附近内容放入 DOM. 超长单行也由 CodeMirror 裁剪显示, 不要求调用方切成小段. 可以选中文本, 使用键盘导航, 或复制未截断的 `source`. 配色沿用 `--ema-syntax-*`, 材质由外层应用样式控制. `--ema-code-max-height`、`--ema-code-font-size` 和 `--ema-code-text` 允许宿主按 Tool 等紧凑区域设置高度、字号和正文颜色.
+
+`wrapLines={false}` 保留原始行宽, 横纵滚动由同一个文本可视区处理, 横向滚动条位于该可视区底部. Tool 的结果正文使用此模式, 输入参数仍自动折行. 切换折行方式不重建编辑器或替换原文.
 
 相同文本不会重新创建编辑器或替换文档; 文本变化时更新当前文档, 卸载时销毁编辑器. 调用方应在展开详情时挂载, 收起后卸载, 不把每条已读消息的查看器隐藏后长期留在页面中.
 
@@ -46,6 +49,10 @@ CodeMirror 6 默认在高度不超过 `min(60vh, 36rem)` 的区域中连续滚�
 `Tooltip` 的子元素需要能接收 DOM ref 和事件. 它不会额外包裹布局元素, 也不改变子元素的点击行为. `content` 为 undefined、null 或空字符串, 或设置 `disabled`, 则保持子元素原样. 使用自定义提示时移除同一元素的原生 `title`, 图标按钮仍需保留 `aria-label`.
 
 下拉菜单与 Popover 的触发按钮需要提示时, 使用它们的 `triggerTooltip`. 提示与点击事件在同一个按钮上组合, 不把 `Tooltip` 放进 `trigger` 来替代按钮. 提示内容保持只读, 含按钮等交互内容使用 Popover.
+
+## 下拉菜单
+
+`DropdownMenu` 的主菜单和子菜单使用内部列表滚动, 最大高度取 `24rem` 与窗口实际可用高度的较小值. 短菜单随内容决定高度, 长菜单保留可拖动的滚动条. 外层负责定位与展开裁剪动画, 不承担列表滚动. 子菜单仍通过点击展开, 模型列表等调用方保留各自的分组与选中标记.
 
 ## Mermaid 与 ELK
 

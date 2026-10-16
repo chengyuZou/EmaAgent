@@ -61,6 +61,20 @@
   pointer-events: none;
   animation: ema-menu-out 200ms cubic-bezier(0, 0, 0.2, 1) both;
 }
+
+/* 长菜单在窗口可用高度内滚动, 短菜单保持内容高度. 动画外壳仍负责圆角裁剪. */
+.ema-dropdown-viewport {
+  max-height: min(24rem, calc(100vh - 24px), var(--radix-dropdown-menu-content-available-height, 100vh));
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: var(--ema-scrollbar-thumb) transparent;
+}
+
+.ema-dropdown-viewport::-webkit-scrollbar-thumb {
+  background: var(--ema-scrollbar-thumb);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .ema-anim-menu[data-state] {
     animation-duration: 1ms;

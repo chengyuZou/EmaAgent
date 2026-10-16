@@ -62,6 +62,13 @@ export function fileReadResultCopyText(data: unknown): string | null {
   }
 }
 
+export function fileReadResultSummary(data: unknown): string | null {
+  const result = asFileReadResult(data);
+  if (result?.type !== 'file_content') return null;
+  const readLines = result.content === '' ? 0 : result.content.split('\n').length;
+  return `读取 ${readLines.toLocaleString()} 行(共 ${result.totalLines.toLocaleString()} 行)`;
+}
+
 // ── 参数视图: 路径 + 分页范围 ─────────────────────────────────────────────────
 
 export function FileReadArgsView({ args }: { args: unknown }): JSX.Element | null {
@@ -193,32 +200,27 @@ function FileReadContentCard({ result, renderMarkdown }: {
     return `${fence}${language}\n${source}\n${fence}`;
   }, [isMarkdown, source, result.filePath]);
 
-  const readLines = result.content === '' ? 0 : result.content.split('\n').length;
   return (
-    <div className="ema-file-read-content flex flex-col gap-1">
-      <div className="ema-file-read-summary flex items-center gap-2 text-[11px] leading-relaxed">
-        <span className="text-[var(--ema-text-secondary)]">
-          读取 <span className="font-medium">{readLines.toLocaleString()}</span> 行
-          <span className="text-[var(--ema-text-tertiary)]">
-            (共 {result.totalLines.toLocaleString()} 行)
-          </span>
-        </span>
-        {result.truncated && (
-          <Badge variant="warn">
-            已截断{result.nextOffset !== undefined ? ` · 从第 ${result.nextOffset} 行继续` : ''}
-          </Badge>
-        )}
-        {isHtml && (
-          <span className="ml-auto flex gap-1">
-            <Button variant={showHtmlPreview ? 'ghost' : 'secondary'} size="sm" onClick={() => setShowHtmlPreview(false)}>
-              源码
-            </Button>
-            <Button variant={showHtmlPreview ? 'secondary' : 'ghost'} size="sm" onClick={() => setShowHtmlPreview(true)}>
-              预览
-            </Button>
-          </span>
-        )}
-      </div>
+    <div className="ema-tool-result-layout ema-file-read-content flex min-w-0 flex-col">
+      {(result.truncated || isHtml) && (
+        <div className="ema-tool-result-details ema-file-read-summary flex flex-wrap items-center gap-2 text-[11px] leading-relaxed">
+          {result.truncated && (
+            <Badge variant="warn">
+              已截断{result.nextOffset !== undefined ? ` · 从第 ${result.nextOffset} 行继续` : ''}
+            </Badge>
+          )}
+          {isHtml && (
+            <span className="ml-auto flex gap-1">
+              <Button variant={showHtmlPreview ? 'ghost' : 'secondary'} size="sm" onClick={() => setShowHtmlPreview(false)}>
+                源码
+              </Button>
+              <Button variant={showHtmlPreview ? 'secondary' : 'ghost'} size="sm" onClick={() => setShowHtmlPreview(true)}>
+                预览
+              </Button>
+            </span>
+          )}
+        </div>
+      )}
 
       {isHtml && showHtmlPreview && (
         /* sandbox 空属性: 禁脚本禁表单, 只渲染视觉; 本地文件与公网抓取同一边界. */
@@ -226,12 +228,12 @@ function FileReadContentCard({ result, renderMarkdown }: {
           sandbox=""
           srcDoc={source}
           title="HTML 预览"
-          className="h-48 w-full rounded-md border border-[var(--ema-border)] bg-white"
+          className="h-48 w-full border-0 bg-white"
         />
       )}
 
       {(!isHtml || !showHtmlPreview) && (
-        <div className={isMarkdown ? 'min-w-0 text-[12px]' : 'ema-file-read-code ema-material-code'}>
+        <div className={isMarkdown ? 'ema-tool-result-details min-w-0 text-[12px]' : 'ema-file-read-code'}>
           {!isMarkdown && (
             <pre className="ema-file-read-line-numbers ema-font-mono" aria-hidden="true">
               {`${lineNumbers.join('\n')}\n`}

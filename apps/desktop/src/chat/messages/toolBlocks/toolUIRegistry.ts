@@ -42,6 +42,7 @@ import {
   fileEditTitle,
   fileReadTitle,
   fileReadResultCopyText,
+  fileReadResultSummary,
   fileWriteTitle,
   globTitle,
   grepTitle,
@@ -87,6 +88,8 @@ export interface ToolUI {
   readonly CallView?: (props: ToolCallViewProps) => JSX.Element | null;
   /** Copy only the result shown in the output pane. */
   readonly resultCopyText?: (data: unknown, args: unknown) => string | null;
+  /** 与输出标题同一行显示的结果摘要, 例如 Read 的读取行数. */
+  readonly resultSummary?: (data: unknown) => string | null;
 }
 
 const TOOL_UI_REGISTRY: Readonly<Record<string, ToolUI>> = {
@@ -109,6 +112,7 @@ const TOOL_UI_REGISTRY: Readonly<Record<string, ToolUI>> = {
   [BuiltinTools.FileRead.name]: {
     title: fileReadTitle,
     resultCopyText: fileReadResultCopyText,
+    resultSummary: fileReadResultSummary,
     ArgsView: FileReadArgsView,
     ResultView: ({ data }) => createElement(FileReadResultView, {
       data,

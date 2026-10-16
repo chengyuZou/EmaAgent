@@ -14,6 +14,8 @@ export interface CodeViewerProps {
   readonly language?: 'json' | 'text';
   /** 外层已经提供标题与复制操作时, 只显示文本区域. */
   readonly embedded?: boolean;
+  /** 默认自动折行. 工具输出关闭折行时, 横向滚动条位于文本可视区底部. */
+  readonly wrapLines?: boolean;
 }
 
 const appearance = EditorView.theme({
@@ -43,11 +45,12 @@ const highlighting = HighlightStyle.define([
   { tag: [tags.bool, tags.null], color: 'var(--ema-syntax-boolean, var(--ema-syntax-text))' },
 ]);
 
-export const CodeViewer = memo(function CodeViewer({ source, language = 'text', embedded = false }: CodeViewerProps): JSX.Element {
+export const CodeViewer = memo(function CodeViewer({ source, language = 'text', embedded = false, wrapLines = true }: CodeViewerProps): JSX.Element {
   const host = useRef<HTMLDivElement>(null);
   const editor = useRef<EditorView | null>(null);
   const displayedSource = useRef('');
   const syntax = useMemo(() => new Compartment(), []);
+  const wrapping = useMemo(() => new Compartment(), []);
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
   const copyTimer = useRef<ReturnType<typeof setTimeout>>();
 
@@ -64,8 +67,8 @@ export const CodeViewer = memo(function CodeViewer({ source, language = 'text', 
         }),
         keymap.of(standardKeymap),
         drawSelection(),
-        // 固定可视区高度后由 CodeMirror 处理滚动, 包括折行后的超长 JSON 字符串.
-        EditorView.lineWrapping,
+        // 横纵滚动由同一个可视区负责, 长文档无需滚到底才能横向查看.
+        wrapping.of([]),
         appearance,
         syntaxHighlighting(highlighting),
         syntax.of([]),
@@ -77,7 +80,7 @@ export const CodeViewer = memo(function CodeViewer({ source, language = 'text', 
       view.destroy();
       editor.current = null;
     };
-  }, [syntax]);
+  }, [syntax, wrapping]);
 
   useLayoutEffect(() => {
     const view = editor.current!;
@@ -90,6 +93,10 @@ export const CodeViewer = memo(function CodeViewer({ source, language = 'text', 
   useLayoutEffect(() => {
     editor.current!.dispatch({ effects: syntax.reconfigure(language === 'json' ? json() : []) });
   }, [language, syntax]);
+
+  useLayoutEffect(() => {
+    editor.current!.dispatch({ effects: wrapping.reconfigure(wrapLines ? EditorView.lineWrapping : []) });
+  }, [wrapLines, wrapping]);
 
   useEffect(() => {
     setCopyStatus('idle');

@@ -266,7 +266,11 @@ export function ToolCallBlock({
                     </ToolPane>
                   )}
                   {(progressView || customResult !== null || resultView !== null || hasError) && (
-                    <ToolPane label="复制输出" tone="output" copyText={outputCopyText} errorOnly={hasError && !showResult}>
+                    <ToolPane
+                      label="复制输出" tone="output" copyText={outputCopyText}
+                      summary={showResult ? toolUI?.resultSummary?.(output) : undefined}
+                      errorOnly={hasError && !showResult}
+                    >
                       {progressView}
                       {customResult ?? (resultView !== null && (
                         <div className="ema-tool-generic-result"><ToolResultViewBlock view={resultView} /></div>
@@ -286,17 +290,21 @@ export function ToolCallBlock({
   );
 }
 
-export function ToolPane({ label, tone, copyText, errorOnly = false, children }: {
+export function ToolPane({ label, tone, copyText, summary, errorOnly = false, children }: {
   label: string;
   tone: 'input' | 'output';
   copyText: string;
+  summary?: string | null;
   errorOnly?: boolean;
   children: ReactNode;
 }): JSX.Element {
   return (
     <section className={`ema-tool-pane ema-tool-pane--${tone} ${errorOnly ? 'ema-tool-pane--error' : ''}`} aria-label={tone === 'input' ? '输入参数' : '执行结果'}>
       <div className="ema-tool-pane-toolbar">
-        <span>{tone === 'input' ? '输入' : '输出'}</span>
+        <span className="min-w-0">
+          {tone === 'input' ? '输入' : '输出'}
+          {summary && <span className="ml-2 text-[var(--ema-text-secondary)]">{summary}</span>}
+        </span>
         <ToolCopyButton label={label} text={copyText} />
       </div>
       <div className="ema-tool-pane-content">{children}</div>

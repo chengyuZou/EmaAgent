@@ -44,10 +44,11 @@ export function FilePatchView({ filePath, hunks }: {
   }), [themeType]);
 
   if (hunks.length === 0) {
-    return <span className="text-[11px] text-[var(--ema-text-tertiary)]">内容未变化</span>;
+    return <span className="ema-tool-result-details text-[11px] text-[var(--ema-text-tertiary)]">内容未变化</span>;
   }
   return (
     <PatchDiff
+      className="ema-tool-diff"
       patch={patch}
       options={options}
       style={{ fontFamily: 'var(--ema-font-mono)', fontSize: '12px' }}

@@ -18,7 +18,7 @@ function NarrativeResultBlock({ result }: { result: NarrativeSearchResult }): JS
     .filter(name => texts.has(name) || failures.has(name));
 
   return (
-    <div className="ema-narrative-results">
+    <div className="ema-tool-result-layout ema-narrative-results">
       {names.length === 0 ? (
         <p className="ema-narrative-empty">未找到相关剧情资料</p>
       ) : names.map(name => (
@@ -90,7 +90,7 @@ function TimelineRow({ name, text, error }: {
           {bodyMounted && (
             <div className="ema-narrative-body">
               {error !== undefined ? (
-                <div role="alert"><CodeViewer source={error} embedded /></div>
+                <div role="alert"><CodeViewer source={error} embedded wrapLines={false} /></div>
               ) : (
                 <TimelineContent text={text ?? ''} />
               )}
@@ -121,7 +121,7 @@ function TimelineContent({ text }: { text: string }): JSX.Element {
           </Button>
         </div>
       )}
-      <CodeViewer source={raw ? text : body ?? text} embedded />
+      <CodeViewer source={raw ? text : body ?? text} embedded wrapLines={false} />
     </>
   );
 }

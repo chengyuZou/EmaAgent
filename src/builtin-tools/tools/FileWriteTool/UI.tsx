@@ -16,8 +16,8 @@ export function FileWriteResultView({ data }: { data: unknown }): JSX.Element | 
   if (!result) return null;
   if (result.type === 'updated') {
     return (
-      <div className="ema-file-change-content flex min-w-0 flex-col gap-1">
-        <div className="ema-file-change-summary flex items-center gap-2 text-[11px] leading-relaxed">
+      <div className="ema-tool-result-layout ema-file-change-content flex min-w-0 flex-col">
+        <div className="ema-tool-result-details ema-file-change-summary flex items-center gap-2 text-[11px] leading-relaxed">
           <span className="text-[var(--ema-text-secondary)]">已覆盖写入</span>
           <span className="text-[var(--ema-success-text)]">+{result.additions}</span>
           <span className="text-[var(--ema-danger-text)]">-{result.deletions}</span>
@@ -32,11 +32,11 @@ export function FileWriteResultView({ data }: { data: unknown }): JSX.Element | 
   const preview = lines.slice(0, CREATED_PREVIEW_LINES);
   const omitted = lines.length - preview.length;
   return (
-    <div className="ema-file-change-content flex min-w-0 flex-col gap-1">
-      <span className="ema-file-change-summary text-[11px] text-[var(--ema-text-secondary)]">
+    <div className="ema-tool-result-layout ema-file-change-content flex min-w-0 flex-col">
+      <span className="ema-tool-result-details ema-file-change-summary text-[11px] text-[var(--ema-text-secondary)]">
         新建文件 · {result.additions.toLocaleString()} 行 · {(result.bytesWritten / 1024).toFixed(1)} KB
       </span>
-      <div className="w-max min-w-full font-mono text-[11px] leading-relaxed">
+      <div className="ema-tool-result-details w-max min-w-full font-mono text-[11px] leading-relaxed">
         {preview.map((line, index) => (
           <div key={index} className="flex text-[var(--ema-text-tertiary)]">
             <span className="w-9 shrink-0 select-none text-right opacity-60">{index + 1}</span>

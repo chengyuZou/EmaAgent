@@ -23,8 +23,8 @@ export function FileEditResultView({ data }: { data: unknown }): JSX.Element | n
   const result = asFileEditResult(data);
   if (!result) return null;
   return (
-    <div className="ema-file-change-content flex min-w-0 flex-col gap-1">
-      <div className="ema-file-change-summary flex items-center gap-2 text-[11px] leading-relaxed">
+    <div className="ema-tool-result-layout ema-file-change-content flex min-w-0 flex-col">
+      <div className="ema-tool-result-details ema-file-change-summary flex items-center gap-2 text-[11px] leading-relaxed">
         <span className="text-[var(--ema-text-secondary)]">
           已编辑 · {result.replacements} 处替换
         </span>
