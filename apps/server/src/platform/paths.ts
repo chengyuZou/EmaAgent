@@ -21,6 +21,10 @@ export function profileDbPath(): string {
   return path.join(profileDir(), 'profile.db');
 }
 
+export function modelsDevCatalogPath(): string {
+  return path.join(profileDir(), 'profile', 'models-dev.json');
+}
+
 export function narrativeDbPath(): string {
   const directory = path.join(profileDir(), 'narrative');
   fs.mkdirSync(directory, { recursive: true });

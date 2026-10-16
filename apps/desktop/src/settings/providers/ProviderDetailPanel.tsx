@@ -62,9 +62,6 @@ export function ProviderDetailPanel({
   );
   const [probeMsg, setProbeMsg] = useState<string | null>(health?.lastError ?? null);
 
-  // ── Ping 成功顺手同步目录模型进池；模型池 reloadKey bump 触发重载。 ────────────
-  const [modelsReloadKey, setModelsReloadKey] = useState(0);
-
   // ── 字段独立提交：失焦/回车即 PATCH，失败 toast 并回置输入框 ──────────────────
 
   /** API Key 三态提交：删光 = 删除 key（key: null）；新值 = 替换；同值/未触碰 = 不写。 */
@@ -131,7 +128,7 @@ export function ProviderDetailPanel({
   /** 眼睛只负责切换遮蔽/明文；keyValue 是凭据边界的全文投影，有 key 时输入框直接展示它（受 eyeOpen 控制形态）。 */
   const displayedKey = apiKey ?? (provider.keyValue ?? '');
 
-  /** Ping = 验证连接；llm/vision 成功后顺手同步目录模型进池。 */
+  /** LLM/Vision 连接验证成功后刷新当前模型范围, 目录失败不改变连接验证结果. */
   async function handleProbe(): Promise<void> {
     if (!PROBEABLE.has(capability)) return;
     setProbing(true);
@@ -143,8 +140,12 @@ export function ProviderDetailPanel({
       setProbeOk(result.ok);
       setProbeMsg(result.ok ? null : result.error);
       if (result.ok && (capability === 'llm' || capability === 'vision')) {
-        await providersApi.refreshModels(provider.id, capability);
-        setModelsReloadKey((k) => k + 1);
+        try {
+          await providersApi.refreshModels(provider.id, capability);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          showToast(`连接验证成功，但模型目录刷新失败：${message}`, { variant: 'warning' });
+        }
       }
     } catch (err) {
       setProbeOk(false);
@@ -394,7 +395,6 @@ export function ProviderDetailPanel({
         providerId={provider.id}
         capability={capability}
         iconKey={resolveProviderIconClass(provider.iconId)}
-        reloadKey={modelsReloadKey}
       />
 
       <ConfirmDialog

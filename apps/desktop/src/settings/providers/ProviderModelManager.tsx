@@ -11,6 +11,7 @@ import {
   type ProviderModelRecord,
 } from '../../api/providers.js';
 import { showToast } from '../../lib/notifications/toast.js';
+import { subscribeSystemEvent } from '../../lib/events/systemEventDispatcher.js';
 import { useProviderStore } from '../../stores/provider.js';
 import { MainView, useMainNavigationStore } from '../../layout/navigation.js';
 import { AddDashedCard } from './AddDashedCard.js';
@@ -262,12 +263,10 @@ interface SttReference {
   promptText: string;
 }
 
-export function ProviderModelManager({ providerId, capability, iconKey, reloadKey }: {
+export function ProviderModelManager({ providerId, capability, iconKey }: {
   providerId: string;
   capability: ModelCapability;
   iconKey?: string;
-  /** Ping 成功/外部同步后 bump，触发模型池重载。 */
-  reloadKey?: number;
 }): JSX.Element {
   const meta = CAPABILITY_META[capability];
   const [models, setModels]   = useState<ProviderModelRecord[]>([]);
@@ -282,6 +281,7 @@ export function ProviderModelManager({ providerId, capability, iconKey, reloadKe
   const [refreshing, setRefreshing] = useState(false);
   const [playingReference, setPlayingReference] = useState(false);
   const previewRef = useRef<AudioPreview | null>(null);
+  const loadRequest = useRef(0);
 
   const stopPreview = useCallback(() => {
     const preview = previewRef.current;
@@ -331,30 +331,44 @@ export function ProviderModelManager({ providerId, capability, iconKey, reloadKe
 
   const canRefresh = capability === 'llm' || capability === 'vision';
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (): Promise<boolean> => {
+    const request = ++loadRequest.current;
     setLoading(true);
     setError(null);
     try {
       const rows = await providersApi.listModels(providerId);
+      if (request !== loadRequest.current) return false;
       setModels(rows.filter((m) => m.capability === capability));
+      return true;
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      if (request === loadRequest.current) setError(err instanceof Error ? err.message : String(err));
+      return false;
     } finally {
-      setLoading(false);
+      if (request === loadRequest.current) setLoading(false);
     }
   }, [providerId, capability]);
 
-  useEffect(() => { void load(); }, [load, reloadKey]);
+  useEffect(() => {
+    void load();
+    return () => {
+      loadRequest.current += 1;
+    };
+  }, [load]);
 
-  /** 刷新 = 目录同步（llm/vision）或重读 SQL（其余能力）；200ms 防抖防连点。 */
+  useEffect(() => subscribeSystemEvent(event => {
+    if (event.type === 'provider_models_changed' && event.providerId === providerId) {
+      void load();
+    }
+  }), [load, providerId]);
+
+  /** 下载完整目录后只同步当前供应商和能力, 其余能力只重新读取已配置的模型. */
   async function refresh(): Promise<void> {
     if (refreshing) return;
     setRefreshing(true);
     try {
       if (canRefresh) {
-        const result = await providersApi.refreshModels(providerId, capability as 'llm' | 'vision');
-        setModels([...result.models]);
-        showToast('目录模型已同步', { variant: 'success' });
+        await providersApi.refreshModels(providerId, capability);
+        if (await load()) showToast('模型目录已刷新并同步', { variant: 'success' });
       } else {
         await load();
       }
@@ -561,7 +575,7 @@ export function ProviderModelManager({ providerId, capability, iconKey, reloadKe
             <p className="text-xs text-[var(--ema-text-tertiary)] mt-0.5">{meta.hint}</p>
           )}
         </div>
-        <Button variant="ghost" size="sm" onClick={() => void refresh()} disabled={refreshing || loading} loading={refreshing}>
+        <Button variant="ghost" size="sm" aria-label="刷新模型列表" onClick={() => void refresh()} disabled={refreshing || loading} loading={refreshing}>
           <span className="i-mdi:refresh text-base" aria-hidden />
         </Button>
       </div>

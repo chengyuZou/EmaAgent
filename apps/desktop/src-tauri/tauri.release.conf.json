@@ -6,7 +6,8 @@
     ],
     "resources": {
       "resources/server/": "server/",
-      "resources/characters/": "characters/"
+      "resources/characters/": "characters/",
+      "resources/models-dev.json": "models-dev.json"
     }
   }
 }

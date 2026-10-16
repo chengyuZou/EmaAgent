@@ -5,7 +5,6 @@ import {
   PROTOCOLS,
   PROVIDER_LIMITS,
   ProviderError,
-  type ProviderModels,
   type Providers,
 } from '@ema-agent/providers';
 import { jsonBody } from '../validate.js';
@@ -41,11 +40,7 @@ const updateProviderBody = z.object({
 
 export interface ProviderConfigsRouteDeps {
   readonly providers: Providers;
-  readonly providerModels: ProviderModels;
   readonly notifyProviderConfigChanged: () => void;
-  readonly notifyProviderModelsChanged: (providerId: string) => void;
-  /** models.dev 目录网络刷新（后台 fire-and-forget 链路用）。 */
-  readonly refreshCatalog: (signal?: AbortSignal) => Promise<boolean>;
 }
 
 export const providerConfigsRoute = (deps: ProviderConfigsRouteDeps) =>
@@ -58,7 +53,6 @@ export const providerConfigsRoute = (deps: ProviderConfigsRouteDeps) =>
       try {
         const created = deps.providers.create(context.req.valid('json'));
         deps.notifyProviderConfigChanged();
-        syncDevModelsAfterConfig(deps, created.id);
         return context.json(created, 201);
       } catch (error) {
         return providerError(context, error);
@@ -75,7 +69,6 @@ export const providerConfigsRoute = (deps: ProviderConfigsRouteDeps) =>
       try {
         const provider = deps.providers.update(context.req.param('providerId'), context.req.valid('json'));
         deps.notifyProviderConfigChanged();
-        syncDevModelsAfterConfig(deps, provider.id);
         return context.json(provider);
       } catch (error) {
         return providerError(context, error);
@@ -108,31 +101,3 @@ export function providerError(context: Context, error: unknown) {
   }
 }
 
-/**
- * 配置保存（create/update）成功后立刻同步一次目录模型：llm/vision 且收录了
- * models.dev 的 Provider 才有目录模型可落库。网络刷新失败不阻塞，快照照样同步。
- */
-function syncDevModelsAfterConfig(deps: ProviderConfigsRouteDeps, providerId: string): void {
-  let provider;
-  try {
-    provider = deps.providers.get(providerId);
-  } catch {
-    return;
-  }
-  const caps = provider.capabilities
-    .filter(c => (c.capability === 'llm' || c.capability === 'vision') && c.modelsDevId !== undefined)
-    .map(c => c.capability as 'llm' | 'vision');
-  if (caps.length === 0) return;
-  void deps.refreshCatalog()
-    .catch(error => console.warn('[providers] models.dev 目录刷新失败:', error))
-    .finally(() => {
-      for (const capability of caps) {
-        try {
-          deps.providerModels.syncDevModels(providerId, capability);
-          deps.notifyProviderModelsChanged(providerId);
-        } catch (error) {
-          console.warn('[providers] 目录模型同步失败:', error);
-        }
-      }
-    });
-}

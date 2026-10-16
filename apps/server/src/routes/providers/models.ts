@@ -8,6 +8,7 @@ import {
   type ModelBindingModule,
   type ModelBindings,
   type ProviderModels,
+  type ProviderModel,
   type Providers,
 } from '@ema-agent/providers';
 import { providerError } from './configs.js';
@@ -74,8 +75,7 @@ export interface ProviderModelsRouteDeps {
   readonly modelBindings: ModelBindings;
   readonly notifyProviderModelsChanged: (providerId: string) => void;
   readonly notifyModelBindingsChanged: () => void;
-  /** models.dev 目录网络刷新；同步到 SQL 由 syncDevModels 负责。 */
-  readonly refreshCatalog: (signal?: AbortSignal) => Promise<boolean>;
+  readonly refreshModels: (providerId: string, capability: 'llm' | 'vision') => Promise<ProviderModel[]>;
 }
 
 export const providerModelsRoute = (deps: ProviderModelsRouteDeps) =>
@@ -98,23 +98,22 @@ export const providerModelsRoute = (deps: ProviderModelsRouteDeps) =>
     })
     // 首次使用判定：provider_models 是否已有任何模型行（静态路径先于 /:providerId 注册）。
     .get('/models/has-any', context => context.json({ hasAny: deps.providerModels.hasAny() }))
-    .get('/:providerId/models', context => {
-      try {
-        return context.json(deps.providerModels.listByProvider(context.req.param('providerId')));
-      } catch (error) {
-        return providerError(context, error);
-      }
-    })
-    // 刷新：网络拉一次 models.dev 目录，再把该能力的目录模型同步进 SQL（新增默认禁用）。
     .post('/:providerId/models/refresh', queryValidator(refreshQuery), async context => {
       const { capability } = context.req.valid('query');
       try {
-        await deps.refreshCatalog()
-          .catch(error => console.warn('[providers] models.dev 目录刷新失败:', error));
-        const providerId = context.req.param('providerId');
-        const models = deps.providerModels.syncDevModels(providerId, capability);
-        deps.notifyProviderModelsChanged(providerId);
+        const models = await deps.refreshModels(context.req.param('providerId'), capability);
         return context.json({ models });
+      } catch (error) {
+        if (error instanceof ProviderError) return providerError(context, error);
+        return context.json({
+          error: 'model_catalog_refresh_failed',
+          message: error instanceof Error ? error.message : '模型目录刷新失败',
+        }, 503);
+      }
+    })
+    .get('/:providerId/models', context => {
+      try {
+        return context.json(deps.providerModels.listByProvider(context.req.param('providerId')));
       } catch (error) {
         return providerError(context, error);
       }

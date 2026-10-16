@@ -13,11 +13,13 @@
  * 对应的 models.dev provider。models.dev 未收录的 provider(本地运行时、
  * 仅 embed/rerank/tts)没有条目,回退到 provider 自己的 `/models` endpoint 或手填。
  *
- * ModelsDevCatalog 是纯解析器；models-dev.json 本地快照的读盘与刷新归本文件底部的
- * getModelsDevCatalog/refreshModelsDevCatalog（快照是拉取产物，gitignored 不入库）。
+ * ModelsDevCatalog 按宿主提供的路径读取用户目录缓存. 刷新保留对象身份,
+ * 已持有目录的模型管理对象立即使用更新后的内容.
  */
-import { readFileSync, writeFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 
 export const MODELS_DEV_API_URL = 'https://models.dev/api.json';
 
@@ -136,31 +138,20 @@ function asBoolean(value: unknown): boolean | undefined {
   return typeof value === 'boolean' ? value : undefined;
 }
 
-// ── 本地快照的加载与刷新 ─────────────────────────────────────────────────────
-// models-dev.json 是 api.json 的本地缓存（gitignored，拉取产物不入库）；
-// get 惰性读盘一次，refresh 有更新才覆写并重载。快照缺失时 get 返回空目录，
-// 模型发现回退到 live fetch 与手填，不阻塞主链路。
-
-const SNAPSHOT_PATH = fileURLToPath(new URL('./models-dev.json', import.meta.url));
-
-let cached: ModelsDevCatalog | undefined;
-
-export function getModelsDevCatalog(): ModelsDevCatalog {
-  if (cached) return cached;
+export function loadModelsDevCatalog(filePath: string): ModelsDevCatalog {
   const catalog = new ModelsDevCatalog();
   try {
-    catalog.loadFromJson(JSON.parse(readFileSync(SNAPSHOT_PATH, 'utf8')));
+    catalog.loadFromJson(JSON.parse(readFileSync(filePath, 'utf8')));
   } catch {
-    // 首次运行或文件损坏：空目录，由 refresh 补齐
+    // 缺失或损坏时仍可读取 SQL 中已有的模型, 联网刷新后再补齐目录.
   }
-  cached = catalog;
   return catalog;
 }
 
-/** 拉取 models.dev 最新目录；内容有变化才覆写快照并重载内存。返回是否有更新。 */
-export async function refreshModelsDevCatalog(signal?: AbortSignal): Promise<boolean> {
+/** 下载完整目录, 保存成功后更新原对象. 文件未变化时也重新装入, SQL 同步由宿主继续执行. */
+export async function refreshModelsDevCatalog(catalog: ModelsDevCatalog, filePath: string): Promise<void> {
   const response = await fetch(MODELS_DEV_API_URL, {
-    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000),
+    signal: AbortSignal.timeout(30_000),
     headers: { Accept: 'application/json' },
   });
   if (!response.ok) {
@@ -171,16 +162,27 @@ export async function refreshModelsDevCatalog(signal?: AbortSignal): Promise<boo
     throw new Error('models.dev 目录响应体超过 8MB 上限');
   }
   const text = Buffer.from(body).toString('utf8');
+  const payload: unknown = JSON.parse(text);
+  const parsed = new ModelsDevCatalog();
+  parsed.loadFromJson(payload);
+  if (parsed.size === 0) {
+    throw new Error('models.dev 返回的目录没有可用模型');
+  }
   let previous = '';
   try {
-    previous = readFileSync(SNAPSHOT_PATH, 'utf8');
-  } catch {
-    // 首次运行：没有旧快照可比，直接写入
+    previous = await readFile(filePath, 'utf8');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
-  if (previous === text) return false;
-  writeFileSync(SNAPSHOT_PATH, text, 'utf8');
-  const catalog = new ModelsDevCatalog();
-  catalog.loadFromJson(JSON.parse(text));
-  cached = catalog;
-  return true;
+  if (previous !== text) {
+    await mkdir(path.dirname(filePath), { recursive: true });
+    const temporaryPath = `${filePath}.${randomUUID()}.tmp`;
+    try {
+      await writeFile(temporaryPath, text, { encoding: 'utf8', flag: 'wx' });
+      await rename(temporaryPath, filePath);
+    } finally {
+      await rm(temporaryPath, { force: true });
+    }
+  }
+  catalog.loadFromJson(payload);
 }

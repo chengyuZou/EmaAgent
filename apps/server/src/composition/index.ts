@@ -42,7 +42,9 @@ export function buildComposition(input: { activeDataDir: string; initializeBuilt
   const appEvents = new AppEvents();
   const database = openDatabases(input.activeDataDir, event => appEvents.emit(event));
   const settings = openSettings(database.profileDb);
-  const providers = openProviders(database.profileDb);
+  const providers = openProviders(database.profileDb, providerId => {
+    appEvents.emit({ type: 'provider_models_changed', providerId });
+  });
   const sessionConnections = new SessionSocketConnections();
   const stopPublishingSessionRunning = database.sessionRunning.subscribe((sessionId, running) => {
     sessionConnections.publish(sessionId, { type: 'session_running_changed', running });

@@ -69,7 +69,7 @@ export class ProviderModels {
   private readonly bindingsRepo: ModelBindingsRepo;
 
   constructor(
-    db: Database,
+    private readonly db: Database,
     private readonly providers: Providers,
     private readonly catalog: ModelsDevCatalog,
   ) {
@@ -146,17 +146,22 @@ export class ProviderModels {
   }
 
   /**
-   * models.dev 同步：把该能力的目录模型写入 SQL——新 spec 默认禁用（enabled=0，source='dev'）；
-   * 已有 dev 行参数以目录为准（enabled 不动）；同 id 手写行（source='user'）不动。目录下架的行保留。
+   * 同一次事务同步指定供应商和能力, 返回该范围的模型记录.
+   * 新模型默认禁用, 已有启用状态和手写参数保留, 目录中消失的模型不自动删除.
    */
   syncDevModels(providerId: string, capability: 'llm' | 'vision'): ProviderModel[] {
     const provider = this.requireProvider(providerId);
-    const modelsDevId = provider.capabilities.find(
-      (entry) => entry.capability === capability,
-    )?.modelsDevId;
+    const modelsDevId = provider.capabilities.find(entry => entry.capability === capability)?.modelsDevId;
     if (!modelsDevId) {
       throw new ProviderError('model_not_found', '该 Provider 未收录 models.dev 目录，模型只能手写');
     }
+    return this.db.sqlite.transaction(() => {
+      this.syncProviderModels(providerId, capability, modelsDevId);
+      return this.repo.listByProvider(providerId, capability).map(fromRow);
+    })();
+  }
+
+  private syncProviderModels(providerId: string, capability: 'llm' | 'vision', modelsDevId: string): void {
     const ids = capability === 'llm'
       ? this.catalog.listLlmModelIds(modelsDevId)
       : this.catalog.listVisionModelIds(modelsDevId);
@@ -180,7 +185,6 @@ export class ProviderModels {
         enabled: existing ? existing.enabled === 1 : false,
       }));
     }
-    return this.repo.listByProvider(providerId, capability).map(fromRow);
   }
 
   private assertModelNotInUse(providerId: string, capability: ModelCapability, modelId: string): void {

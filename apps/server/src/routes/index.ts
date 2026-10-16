@@ -173,16 +173,13 @@ export const createRoutes = (composition: Composition, secret: string) => {
       providers: providers.providers,
       providerModels: providers.providerModels,
       modelBindings: providers.modelBindings,
-      refreshCatalog: providers.refreshCatalog,
+      refreshModels: providers.refreshModels,
       notifyProviderModelsChanged: providerId => appEvents.emit({ type: 'provider_models_changed', providerId }),
       notifyModelBindingsChanged: () => appEvents.emit({ type: 'model_bindings_changed' }),
     }))
     .route('/api/providers', providerConfigsRoute({
       providers: providers.providers,
-      providerModels: providers.providerModels,
-      refreshCatalog: providers.refreshCatalog,
       notifyProviderConfigChanged: () => appEvents.emit({ type: 'provider_config_changed' }),
-      notifyProviderModelsChanged: providerId => appEvents.emit({ type: 'provider_models_changed', providerId }),
     }))
     .route('/api/providers', providerHealthRoute({
       providers: providers.providers,

@@ -12,7 +12,7 @@ use super::child::spawn_server;
 use super::launch::resolve_server_launch;
 use super::platform::NativeProcessTree;
 use super::ready::wait_for_ready;
-use crate::bundled_data::prepare_builtin_characters;
+use crate::bundled_data::{prepare_builtin_characters, prepare_models_catalog};
 
 const READY_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -62,6 +62,9 @@ impl DesktopProcesses {
         *self.0.state.write().await = State::Starting;
         let startup_started = Instant::now();
 
+        if let Err(error) = prepare_models_catalog(&app).await {
+            return self.fail_server_start(error).await;
+        }
         let initialize_builtin_characters = match prepare_builtin_characters(&app).await {
             Ok(value) => value,
             Err(error) => return self.fail_server_start(error).await,

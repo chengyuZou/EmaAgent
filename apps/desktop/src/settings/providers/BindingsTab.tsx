@@ -23,6 +23,7 @@ import {
 import { useProviderStore } from '../../stores/provider.js';
 import { PageHeader } from '../shared/PageHeader.js';
 import { showToast } from '../../lib/notifications/toast.js';
+import { subscribeSystemEvent } from '../../lib/events/systemEventDispatcher.js';
 import { MODEL_BINDING_CAPABILITIES } from '@ema-agent/providers/types';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -145,16 +146,38 @@ export function BindingsTab(): JSX.Element {
   // ── Load pool for the active module ──────────────────────────────────────────
   useEffect(() => {
     if (!activeModule || !requiredCap) return;
-    setLoading(true);
-    void providersApi.listAvailable(requiredCap)
-      .then((result) => {
+    let current = true;
+    let request = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const load = (): void => {
+      const sequence = ++request;
+      setLoading(true);
+      void providersApi.listAvailable(requiredCap).then(result => {
+        if (!current || sequence !== request) return;
         setPool([...result.models]);
-        const ids = [...new Set(result.models.map((m) => m.providerId))];
-        setSelectedProviderId((prev) => prev && ids.includes(prev) ? prev : (ids[0] ?? null));
-      })
-      .catch(() => setPool([]))
-      .finally(() => setLoading(false));
+        const ids = [...new Set(result.models.map(model => model.providerId))];
+        setSelectedProviderId(previous => {
+          if (previous && ids.includes(previous)) return previous;
+          return ids[0] ?? null;
+        });
+      }).catch(() => {
+        if (current && sequence === request) setPool([]);
+      }).finally(() => {
+        if (current && sequence === request) setLoading(false);
+      });
+    };
+    load();
+    const unsubscribe = subscribeSystemEvent(event => {
+      if (event.type !== 'provider_models_changed' && event.type !== 'provider_config_changed') return;
+      clearTimeout(timer);
+      timer = setTimeout(load, 150);
+    });
     setSearchQuery('');
+    return () => {
+      current = false;
+      clearTimeout(timer);
+      unsubscribe();
+    };
   }, [activeModule, requiredCap]);
 
   // ── Actions ────────────────────────────────────────────────────────────────

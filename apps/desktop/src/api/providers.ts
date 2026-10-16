@@ -92,7 +92,7 @@ export const providersApi = {
     return readRpcJson(rpcClient.api.providers.models['has-any'].$get());
   },
 
-  /** 刷新 models.dev 目录并同步该能力的模型到 SQL（新增默认禁用）。 */
+  /** 下载完整目录, 只同步指定供应商和能力. */
   refreshModels(providerId: string, capability: 'llm' | 'vision') {
     return readRpcJson(rpcClient.api.providers[':providerId'].models.refresh.$post({
       param: { providerId },

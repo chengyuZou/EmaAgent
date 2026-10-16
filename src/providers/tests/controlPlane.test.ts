@@ -318,7 +318,8 @@ describe('Provider 控制面', () => {
       reasoning: null, temperature: null, inputImage: null,
     });
 
-    const synced = models.syncDevModels('custom-main', 'llm');
+    models.syncDevModels('custom-main', 'llm');
+    const synced = models.listByProvider('custom-main', 'llm');
     // 手写行（source='user'）不被目录覆盖
     expect(models.get('custom-main', 'llm', 'acme-pro')).toMatchObject({
       source: 'user', enabled: true, contextWindow: 1_000,

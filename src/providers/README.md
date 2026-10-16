@@ -30,7 +30,7 @@
 
 - 进 SQL：协议档与 URL（用户改代理地址）、key、池内模型行、健康、绑定。
 - 不进 SQL：协议词汇（14 个写死协议，`isProtocolForCapability` 把关）、models.dev 参数目录。
-- **models.dev 目录 = 本地快照 + fetch 刷新**：`catalog/models-dev.json` 是 api.json 的本地缓存（gitignored，拉取产物不入库）；`getModelsDevCatalog()` 惰性读盘一次（缺失/损坏返回空目录，不阻塞主链路），`refreshModelsDevCatalog()` 原生 fetch 拉取、内容有变才覆写快照并重载内存。
+- **models.dev 目录**: 随包初始文件为 `apps/desktop/src-tauri/resources/models-dev.json`. Desktop 仅在用户文件不存在时复制到 `<EMA_PROFILE_DIR 或 ~/.ema-agent>/profile/models-dev.json`. Server 通过 `loadModelsDevCatalog(filePath)` 加载一次, 文件缺失或损坏时返回空目录, 已有 SQL 模型仍可使用. `refreshModelsDevCatalog(catalog, filePath)` 下载完整目录, 解析成功后通过临时文件替换缓存, 再更新同一个内存目录对象.
 - **模型不种子**：`provider_models` 行 = 启用集合的载体，全部从 SQL 读取；llm/vision 由 models.dev 目录同步落库（新增默认禁用 `enabled=0`、`source='dev'`），embed/rerank/tts/stt 只能手写（`source='user'`）。目录只是内部拉取来源（快照缓存 + 拉取函数），不公开端点也不直接进表。
 
 ### 3. 模型池：手写与目录同步同表，启停开关是唯一准入
@@ -98,12 +98,19 @@ resolveConnection(providerId, capability)                class Providers 薄编�
 ### 模型发现（llm/vision 目录同步 → SQL 单一来源）
 
 ```text
-启动后台 refreshCatalog（快照缺失/损坏为空目录，不阻塞主链路）
-  → Provider 配置保存成功 or 池页点刷新：再拉一次目录 + syncDevModels 落 SQL
-      新增行 enabled=0 / source='dev'；已有 dev 行参数以目录为准（enabled 不动）
-  → 池页从 SQL 读全量（目录区与手填区同表），启停即拨 enabled 开关
-embed/rerank/tts/stt：无目录覆盖，只能手写（source='user'）。
+Server 启动读取用户目录缓存, 不联网刷新
+  → 在供应商详情页点击模型刷新按钮, 或 LLM/Vision 的 Ping 验证成功
+  → Server 共用一次完整目录下载, 不按 LLM/Vision 分别下载
+  → 保存 JSON 并更新同一个目录对象
+  → syncDevModels(providerId, capability) 在同一次 SQL 事务中只同步指定供应商的当前能力
+      新增行 enabled=0 / source='dev', 保留已有启用状态及手写参数, 不自动删除消失的型号
+  → 提交后发布 provider_models_changed, 当前列表和模型选择器重新读取 SQL
+embed/rerank/tts/stt 无目录覆盖, 只能手写(source='user').
 ```
+
+刷新接口为 `POST /api/providers/:providerId/models/refresh?capability=llm|vision`, 成功返回指定范围的 `{ models }`. 下载的 JSON 和内存目录共享, SQL 只更新请求中的供应商和能力; 其他供应商与其他能力的数据库记录保持原样. 并发请求共用尚未完成的下载, 下载后分别同步各自范围, 不合并或丢弃请求目标.
+
+刷新入口使用供应商详情页已有的模型刷新按钮, LLM/Vision 的 Ping 成功后也刷新当前供应商和能力. SQL 提交后的通知驱动列表重新读取, 无需额外的 reloadKey. Ping 已成功但目录刷新失败时单独提示, 不改变连接验证成功的状态. 打开设置, 打开供应商和保存配置不联网刷新模型目录. 下载或解析失败保留已有缓存和 SQL, 返回 503 并显示原因. SQL 同步失败撤回本次范围的数据库修改, 有效的新目录文件保留供重试; 即使文件内容未变化也会执行 SQL 同步. 模型目录资料不代表供应商当前一定提供该型号, 刷新不会自动改变模型绑定.
 
 ### 类型与主动词
 
@@ -131,7 +138,7 @@ class ProviderModels {
   save(input)                           // 手写 upsert（user 行）；dev 行禁修改
   setEnabled(providerId, capability, modelId, enabled)   // 停用被绑定模型 → model_in_use（带 conflicts）
   delete(providerId, capability, modelId)                // 被绑定 → model_in_use
-  syncDevModels(providerId, 'llm'|'vision')              // 目录同步落 SQL（新增默认禁用）
+  syncDevModels(providerId, 'llm'|'vision')              // 一次事务同步指定范围, 返回该范围的模型
 }
 
 resolveProviderConnection(provider, keyValue, capability)   // 纯函数，实体不带方法
@@ -149,8 +156,7 @@ src/providers/
 ├─ models.ts          ProviderModel 家族（llm/vision 同参数集）+ ProviderModels
 ├─ modelBindings.ts   ModelBinding + ModelBindings（6 个业务位）
 ├─ errors.ts          ProviderError
-├─ catalog/modelsDevCatalog.ts   api.json 纯解析 + getModelsDevCatalog/refreshModelsDevCatalog
-├─ catalog/models-dev.json       models.dev 本地快照（gitignored，拉取产物）
+├─ catalog/modelsDevCatalog.ts   api.json 解析 + loadModelsDevCatalog/refreshModelsDevCatalog
 └─ tests/
 ```
 

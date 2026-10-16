@@ -110,9 +110,6 @@ export async function startServer(secret: string): Promise<ServerLifecycle> {
       })
       .catch(error => console.warn('[tools] 外置 Tool Result 清理跳过:', error));
     running.memory.start();
-    // models.dev 缓存是 gitignored 拉取产物: 启动后台刷一次, 失败只影响模型候选展示.
-    void running.providers.refreshCatalog()
-      .catch(error => console.warn('[providers] models.dev 目录刷新失败:', error));
     return {
       composition: running,
       port,

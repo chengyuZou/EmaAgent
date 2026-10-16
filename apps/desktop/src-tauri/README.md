@@ -127,3 +127,10 @@ Rust 将 Server 的 stdout / stderr 写入本次桌面启动日志. Server 的�
 3. Rust 能取得 Server 端口与口令，WebView 能建立连接；
 4. Server 制品包含 Storage 的 Narrative SQL 定义与种子, 能初始化数据库并查询；
 5. Desktop 退出后 Server 子进程被回收。
+
+## 模型目录资源
+
+`resources/models-dev.json` 随正式安装包提供初始模型资料. 启动 Server 前, Desktop 检查用户目录的 `profile/models-dev.json`, 仅在文件缺失时复制随包版本; 已有 `profile.db` 不影响这一步, 后续安装或升级不覆盖用户下载的目录. `EMA_PROFILE_DIR` 覆盖 Desktop 和 Server 使用的同一个用户根目录.
+
+Server 启动只读取本地目录. 在供应商详情页点击模型刷新按钮, 或 LLM/Vision 的 Ping 验证成功时, 下载完整 models.dev 目录, 只同步该供应商当前能力的模型资料到 SQL. 具体流程见 [Providers](../../../src/providers/README.md).
+
