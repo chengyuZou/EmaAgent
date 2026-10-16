@@ -1,11 +1,10 @@
 // 估算根模型调用的总输入, Provider 回报后只把同一调用的总量校正为实报.
 import type { LlmTokenUsage, LlmTool, Message } from '@ema-agent/llm';
-import { estimateLlmInputTokens, type TokenEstimateAccuracy } from '@ema-agent/token';
+import { estimateMessagesTokens } from '@ema-agent/token';
 
 export interface ContextUsageEstimate {
   readonly contextWindow: number;
   readonly estimatedInputTokens: number;
-  readonly accuracy: TokenEstimateAccuracy;
 }
 
 export interface ContextUsage {
@@ -16,26 +15,15 @@ export interface ContextUsage {
   readonly cacheWriteInputTokens?: number;
 }
 
-/**
- * @param messages 估算的消息数组, 包含 system 消息
- */
+/** messages 包含本次请求的 system 消息. */
 export function estimateContextUsage(input: {
   readonly contextWindow: number;
   readonly tools: readonly LlmTool[];
   readonly messages: readonly Message[];
 }): ContextUsageEstimate {
-  const estimate = estimateLlmInputTokens(
-    input.messages,
-    { tools: input.tools.map(tool => ({
-      name: tool.name,
-      description: tool.description,
-      parameters: tool.inputSchema as Record<string, unknown>,
-    })) },
-  );
   return {
     contextWindow: input.contextWindow,
-    estimatedInputTokens: estimate.totalTokens,
-    accuracy: estimate.accuracy,
+    estimatedInputTokens: estimateMessagesTokens(input.messages, input.tools),
   };
 }
 
@@ -64,7 +52,7 @@ export function appendEstimatedContextMessages(
   current: ContextUsage,
   messages: readonly Message[],
 ): ContextUsage {
-  const addedTokens = estimateLlmInputTokens(messages).totalTokens;
+  const addedTokens = estimateMessagesTokens(messages);
   if (addedTokens === 0) return current;
   return {
     ...current,

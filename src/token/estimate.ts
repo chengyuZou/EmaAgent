@@ -1,201 +1,117 @@
-import type {
-  ContentPart,
-  Message,
-  ToolResultContentPart,
-} from '@ema-agent/llm';
-import type {
-  TokenEstimate,
-  TokenEstimateBreakdown,
-  TokenEstimateOptions,
-  TokenEstimateWarningCode,
-  TokenToolDefinition,
-} from './types.js';
-
-// ── Heuristic token estimate ─────────────────────────────────────────────────
+import type { ContentPart, LlmTool, Message, ToolResultContentPart } from '@ema-agent/llm';
 
 /**
- * Cheap, no-API-call token estimation for compaction trigger checks.
- *
- * Heuristic (Anthropic/OpenAI tokenizers behave similarly enough for our use):
- *   English / code  : ~3.8 chars/token  → use 4
- *   Chinese (CJK)   : ~1.5 chars/token  → CJK weight 2.4
- *
- * We split the string roughly into ASCII + non-ASCII and apply different
- * divisors. Off by ±15% in the worst case — acceptable for "should we compact
- * now?" decisions but not for billing.
- *
- * Replace with Anthropic's `count_tokens` API when accuracy actually matters
- * (e.g. token-bar UI showing exact usage).
+ * 按 UTF-16 码元粗略估算: ASCII 每 4 个计 1 Token, 其余每 1.5 个计 1 Token.
+ * 不区分具体语言或模型, 不保证固定误差范围, 不能用于计费.
  */
 export function estimateTextTokens(text: string): number {
-  if (!text) return 0;
   let ascii = 0;
-  let cjk   = 0;
-  for (let i = 0; i < text.length; i++) {
-    const code = text.charCodeAt(i);
-    // Treat ASCII printable + space as 4-chars-per-token; rest as 1.5-chars
-    if (code < 128) ascii++;
-    else            cjk++;
+  let nonAscii = 0;
+  for (let index = 0; index < text.length; index++) {
+    if (text.charCodeAt(index) < 128) {
+      ascii++;
+    } else {
+      nonAscii++;
+    }
   }
-  return Math.ceil(ascii / 4 + cjk / 1.5);
+  return Math.ceil(ascii / 4 + nonAscii / 1.5);
 }
 
 /**
- * Estimate the input token cost of a full ModelMessage[] array. Each message
- * gets a small per-message overhead (matches what Anthropic / OpenAI add for
- * role markers and message envelopes).
+ * 只估算传入的模型消息与工具定义. 完整输入需由调用方包含 system 消息,
+ * 并先把附件引用转换为模型实际接收的内容; 本函数不读取文件或调用 Vision.
  */
-export function estimateMessagesTokens(messages: Message[]): number {
-  return estimateLlmInputTokens(messages).totalTokens;
-}
-
-/**
- * 对完整 LLM 输入做快速保守估算。返回值只用于上下文预算和界面近似显示，
- * Provider 返回的 usage 才能作为真实消耗与计费事实。
- */
-export function estimateLlmInputTokens(
+export function estimateMessagesTokens(
   messages: readonly Message[],
-  options: TokenEstimateOptions = {},
-): TokenEstimate {
-  const breakdown = emptyBreakdown();
-  const warnings = new Set<TokenEstimateWarningCode>();
-
-  for (const msg of messages) {
-    breakdown.messageEnvelopeTokens += 10;
-
-    if (typeof msg.content === 'string') {
-      breakdown.textTokens += estimateTextTokens(msg.content);
+  tools: readonly LlmTool[] = [],
+): number {
+  let total = 0;
+  for (const message of messages) {
+    // 每条消息预留 10 Token 表示角色等格式开销, 不代表某个协议的精确值.
+    total += 10;
+    if (typeof message.content === 'string') {
+      total += estimateTextTokens(message.content);
       continue;
     }
 
-    for (const block of msg.content) {
-      if (block.type === 'text') {
-        breakdown.textTokens += estimateTextTokens(block.text);
-      } else if (block.type === 'thinking') {
-        breakdown.textTokens += estimateTextTokens(block.thinking);
-      } else if (block.type === 'reasoning') {
-        breakdown.textTokens += estimateTextTokens(block.summaryText ?? '');
-      } else if (block.type === 'gemini_thought') {
-        breakdown.textTokens += estimateTextTokens(block.text);
-      } else if (block.type === 'tool_use') {
-        breakdown.otherTokens += 20 + estimateSerializedValue(block.args);
-      } else if (block.type === 'tool_result') {
-        if (typeof block.content === 'string') {
-          breakdown.textTokens += estimateTextTokens(block.content);
-        } else {
-          for (const part of block.content) {
-            estimateToolResultPart(part, breakdown, warnings);
+    for (const block of message.content) {
+      switch (block.type) {
+        case 'text':
+        case 'gemini_thought':
+          total += estimateTextTokens(block.text);
+          break;
+        case 'thinking':
+          total += estimateTextTokens(block.thinking);
+          break;
+        case 'reasoning':
+          total += estimateTextTokens(block.summaryText ?? '');
+          break;
+        case 'tool_use':
+          total += 20 + estimateSerializedValue(block.args);
+          break;
+        case 'tool_result':
+          if (typeof block.content === 'string') {
+            total += estimateTextTokens(block.content);
+          } else {
+            for (const part of block.content) {
+              total += estimateToolResultPart(part);
+            }
           }
-        }
-      } else {
-        estimateMediaPart(block, breakdown, warnings);
+          break;
+        default:
+          total += estimateMediaPart(block);
       }
     }
   }
 
-  for (const tool of options.tools ?? []) {
-    breakdown.toolDefinitionTokens += estimateToolDefinition(tool, warnings);
+  for (const tool of tools) {
+    total += estimateToolDefinition(tool);
   }
-
-  return {
-    totalTokens: sumBreakdown(breakdown),
-    accuracy: 'heuristic',
-    breakdown,
-    warnings: [...warnings],
-  };
+  return total;
 }
 
-const IMAGE_MAX_FALLBACK_TOKENS = 5_334;
+// 缺少媒体尺寸, 时长或页数时使用固定估算, 不保证一定高于实际用量.
+const IMAGE_FALLBACK_TOKENS = 5_334;
 const AUDIO_UNKNOWN_FALLBACK_TOKENS = 8_000;
 const AUDIO_TOKENS_PER_SECOND = 32;
 const DOCUMENT_UNKNOWN_FALLBACK_TOKENS = 8_000;
 const DOCUMENT_TOKENS_PER_PAGE = 2_000;
 
-function estimateMediaPart(
-  part: ContentPart,
-  breakdown: TokenEstimateBreakdown,
-  warnings: Set<TokenEstimateWarningCode>,
-): void {
+function estimateMediaPart(part: ContentPart): number {
   switch (part.type) {
     case 'image_data':
     case 'image_url':
-      breakdown.imageTokens += estimateImageTokens(part.width, part.height, warnings);
-      return;
+      return estimateImageTokens(part.width, part.height);
     case 'audio_data':
-      breakdown.audioTokens += estimateAudioTokens(part.durationMs, warnings);
-      return;
+      if (!isPositiveFinite(part.durationMs)) return AUDIO_UNKNOWN_FALLBACK_TOKENS;
+      return Math.max(1, Math.ceil((part.durationMs / 1_000) * AUDIO_TOKENS_PER_SECOND));
     case 'file_data':
     case 'file_url':
-      breakdown.documentTokens += estimateDocumentTokens(part.pageCount, warnings);
-      return;
+      if (!isPositiveFinite(part.pageCount)) return DOCUMENT_UNKNOWN_FALLBACK_TOKENS;
+      return Math.ceil(part.pageCount) * DOCUMENT_TOKENS_PER_PAGE;
     case 'text':
-      breakdown.textTokens += estimateTextTokens(part.text);
-      return;
+      return estimateTextTokens(part.text);
   }
 }
 
-function estimateToolResultPart(
-  part: ToolResultContentPart,
-  breakdown: TokenEstimateBreakdown,
-  warnings: Set<TokenEstimateWarningCode>,
-): void {
-  if (part.type === 'text') {
-    breakdown.textTokens += estimateTextTokens(part.text);
-    return;
-  }
-  breakdown.imageTokens += estimateImageTokens(part.width, part.height, warnings);
+function estimateToolResultPart(part: ToolResultContentPart): number {
+  if (part.type === 'text') return estimateTextTokens(part.text);
+  return estimateImageTokens(part.width, part.height);
 }
 
-function estimateImageTokens(
-  width: number | undefined,
-  height: number | undefined,
-  warnings: Set<TokenEstimateWarningCode>,
-): number {
-  if (!isPositiveFinite(width) || !isPositiveFinite(height)) {
-    warnings.add('imageDimensionsUnknown');
-    return IMAGE_MAX_FALLBACK_TOKENS;
-  }
-  return Math.min(
-    IMAGE_MAX_FALLBACK_TOKENS,
-    Math.max(85, Math.ceil((width * height) / 750)),
-  );
+function estimateImageTokens(width: number | undefined, height: number | undefined): number {
+  if (!isPositiveFinite(width) || !isPositiveFinite(height)) return IMAGE_FALLBACK_TOKENS;
+  return Math.min(IMAGE_FALLBACK_TOKENS, Math.max(85, Math.ceil((width * height) / 750)));
 }
 
-function estimateAudioTokens(
-  durationMs: number | undefined,
-  warnings: Set<TokenEstimateWarningCode>,
-): number {
-  if (!isPositiveFinite(durationMs)) {
-    warnings.add('audioDurationUnknown');
-    return AUDIO_UNKNOWN_FALLBACK_TOKENS;
-  }
-  return Math.max(1, Math.ceil((durationMs / 1_000) * AUDIO_TOKENS_PER_SECOND));
-}
-
-function estimateDocumentTokens(
-  pageCount: number | undefined,
-  warnings: Set<TokenEstimateWarningCode>,
-): number {
-  if (!isPositiveFinite(pageCount)) {
-    warnings.add('documentPageCountUnknown');
-    return DOCUMENT_UNKNOWN_FALLBACK_TOKENS;
-  }
-  return Math.ceil(pageCount) * DOCUMENT_TOKENS_PER_PAGE;
-}
-
-// TODO: 改为
-function estimateToolDefinition(
-  tool: TokenToolDefinition,
-  warnings: Set<TokenEstimateWarningCode>,
-): number {
+function estimateToolDefinition(tool: LlmTool): number {
   try {
     return 20 + estimateTextTokens(JSON.stringify({
       name: tool.name,
       description: tool.description,
-      parameters: tool.parameters,
+      parameters: tool.inputSchema,
     }));
   } catch {
-    warnings.add('toolDefinitionSerializationFailed');
     return 1_000;
   }
 }
@@ -206,22 +122,6 @@ function estimateSerializedValue(value: unknown): number {
   } catch {
     return 1_000;
   }
-}
-
-function emptyBreakdown(): TokenEstimateBreakdown {
-  return {
-    textTokens: 0,
-    messageEnvelopeTokens: 0,
-    toolDefinitionTokens: 0,
-    imageTokens: 0,
-    audioTokens: 0,
-    documentTokens: 0,
-    otherTokens: 0,
-  };
-}
-
-function sumBreakdown(breakdown: TokenEstimateBreakdown): number {
-  return Object.values(breakdown).reduce((total, value) => total + value, 0);
 }
 
 function isPositiveFinite(value: number | undefined): value is number {

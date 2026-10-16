@@ -57,7 +57,7 @@ describe('根 Turn 循环事件', () => {
 
   it('估算先交付, Provider 校正后追加历史改回估算, 旧请求的追加不污染当前圆环', () => {
     const { loop, events } = fixture();
-    loop.onContextPrepared('root', { contextWindow: 1000, estimatedInputTokens: 30, accuracy: 'heuristic' });
+    loop.onContextPrepared('root', { contextWindow: 1000, estimatedInputTokens: 30 });
     loop.accept({ type: 'llm_call_usage_updated', llmCallId: 'root',
       usage: { inputTokens: 40, outputTokens: 5, cacheReadInputTokens: 10 } });
     loop.accept({ type: 'model_history_appended', llmCallId: 'root',
@@ -66,7 +66,7 @@ describe('根 Turn 循环事件', () => {
     expect(updates.map(event => event.usage.source)).toEqual(['estimate', 'provider', 'estimate']);
     expect(updates[1]?.usage).toMatchObject({ inputTokens: 40, cacheReadInputTokens: 10 });
     expect(updates[2]?.usage.inputTokens).toBeGreaterThan(40);
-    loop.onContextPrepared('next', { contextWindow: 1000, estimatedInputTokens: 60, accuracy: 'heuristic' });
+    loop.onContextPrepared('next', { contextWindow: 1000, estimatedInputTokens: 60 });
     const count = events.length;
     loop.accept({ type: 'model_history_appended', llmCallId: 'root',
       messages: [{ role: 'user', content: '旧请求结果' }] });

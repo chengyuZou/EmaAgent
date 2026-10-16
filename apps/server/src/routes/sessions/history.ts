@@ -5,7 +5,7 @@ import type { SessionMessage, SessionStore } from '@ema-agent/session';
 import type { UsageRecorder } from '@ema-agent/usage';
 import type { Turn, TurnStore } from '@ema-agent/turn';
 import { projectMessages } from '@ema-agent/context';
-import { estimateLlmInputTokens } from '@ema-agent/token';
+import { estimateMessagesTokens } from '@ema-agent/token';
 import type { ProviderModels } from '@ema-agent/providers';
 import { createTurnHistoryResolver } from '@ema-agent/turn';
 import { queryValidator } from '../validate.js';
@@ -88,7 +88,7 @@ export const sessionHistoryRoute = (deps: SessionHistoryRouteDeps) =>
           signal: context.req.raw.signal },
       );
       return context.json({
-        inputTokens: estimateLlmInputTokens(history.map(entry => entry.message)).totalTokens,
+        inputTokens: estimateMessagesTokens(history.map(entry => entry.message)),
         contextWindow: model?.capability === 'llm' ? model.contextWindow : 0,
       });
     })

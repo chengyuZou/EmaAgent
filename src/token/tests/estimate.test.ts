@@ -1,14 +1,18 @@
-// 测试 LLM 输入预算不会漏掉顶层媒体、工具定义和工具结果中的图片。
 import { describe, expect, it } from 'vitest';
-import type { Message as ModelMessage } from '@ema-agent/llm';
-import {
-  estimateLlmInputTokens,
-  estimateMessagesTokens,
-} from '../index.js';
+import type { LlmTool, Message } from '@ema-agent/llm';
+import { estimateMessagesTokens, estimateTextTokens } from '../index.js';
 
-describe('结构化 Token 估算', () => {
-  it('顶层图片、音频和文件都占用预算，未知媒体信息会留下诊断', () => {
-    const messages: ModelMessage[] = [{
+describe('本地 Token 估算', () => {
+  it('区分纯文本和消息格式开销, 空输入返回零', () => {
+    expect(estimateTextTokens('')).toBe(0);
+    expect(estimateMessagesTokens([])).toBe(0);
+    expect(estimateTextTokens('abcd你好')).toBe(3);
+    expect(estimateTextTokens('😀')).toBe(2);
+    expect(estimateMessagesTokens([{ role: 'user', content: 'abcd你好' }])).toBe(13);
+  });
+
+  it('顶层图片, 音频和文件缺少信息时使用固定估算', () => {
+    const messages: readonly Message[] = [{
       role: 'user',
       content: [
         { type: 'text', text: '请分析附件' },
@@ -17,66 +21,47 @@ describe('结构化 Token 估算', () => {
         { type: 'file_data', data: 'base64', mimeType: 'application/pdf' },
       ],
     }];
-
-    const estimate = estimateLlmInputTokens(messages);
-
-    expect(estimate.breakdown.imageTokens).toBeGreaterThan(0);
-    expect(estimate.breakdown.audioTokens).toBeGreaterThan(0);
-    expect(estimate.breakdown.documentTokens).toBeGreaterThan(0);
-    expect(estimate.warnings).toEqual([
-      'imageDimensionsUnknown',
-      'audioDurationUnknown',
-      'documentPageCountUnknown',
-    ]);
-    expect(estimateMessagesTokens(messages)).toBe(estimate.totalTokens);
+    expect(estimateMessagesTokens(messages)).toBe(
+      10 + estimateTextTokens('请分析附件') + 5_334 + 8_000 + 8_000,
+    );
   });
 
-  it('使用明确媒体信息缩小保守上界', () => {
-    const estimate = estimateLlmInputTokens([{
+  it('按明确的媒体尺寸, 时长和页数估算', () => {
+    expect(estimateMessagesTokens([{
       role: 'user',
       content: [
         { type: 'image_url', url: 'https://example.com/image.png', width: 750, height: 750 },
         { type: 'audio_data', data: 'base64', mimeType: 'audio/wav', durationMs: 10_000 },
         { type: 'file_url', url: 'https://example.com/file.pdf', mimeType: 'application/pdf', pageCount: 3 },
       ],
-    }]);
-
-    expect(estimate.breakdown.imageTokens).toBe(750);
-    expect(estimate.breakdown.audioTokens).toBe(320);
-    expect(estimate.breakdown.documentTokens).toBe(6_000);
-    expect(estimate.warnings).toEqual([]);
+    }])).toBe(10 + 750 + 320 + 6_000);
   });
 
-  it('工具定义和工具结果图片进入同一个输入预算', () => {
-    const withoutTools = estimateLlmInputTokens([{
+  it('工具定义和工具结果图片计入总数, 分开估算后相加与整体估算一致', () => {
+    const messages: readonly Message[] = [{
       role: 'user',
       content: [{
         type: 'tool_result',
         toolCallId: 'call-1',
         content: [{ type: 'image_data', data: 'base64', mimeType: 'image/png' }],
       }],
-    }]);
-    const withTools = estimateLlmInputTokens([{
-      role: 'user',
-      content: [{
-        type: 'tool_result',
-        toolCallId: 'call-1',
-        content: [{ type: 'image_data', data: 'base64', mimeType: 'image/png' }],
-      }],
-    }], {
-      tools: [{
-        name: 'Read',
-        description: '读取指定文件并返回内容',
-        parameters: {
-          type: 'object',
-          properties: { path: { type: 'string' } },
-          required: ['path'],
-        },
-      }],
-    });
-
-    expect(withoutTools.breakdown.imageTokens).toBeGreaterThan(0);
-    expect(withTools.breakdown.toolDefinitionTokens).toBeGreaterThan(0);
-    expect(withTools.totalTokens).toBeGreaterThan(withoutTools.totalTokens);
+    }];
+    const tools: readonly LlmTool[] = [{
+      name: 'Read',
+      description: '读取指定文件并返回内容',
+      inputSchema: {
+        type: 'object',
+        properties: { path: { type: 'string' } },
+        required: ['path'],
+      },
+    }];
+    const toolTokens = 20 + estimateTextTokens(JSON.stringify({
+      name: tools[0]!.name,
+      description: tools[0]!.description,
+      parameters: tools[0]!.inputSchema,
+    }));
+    expect(estimateMessagesTokens(messages)).toBe(10 + 5_334);
+    expect(estimateMessagesTokens([], tools)).toBe(toolTokens);
+    expect(estimateMessagesTokens(messages, tools)).toBe(10 + 5_334 + toolTokens);
   });
 });

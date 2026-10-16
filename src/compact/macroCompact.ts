@@ -9,7 +9,7 @@ import type {
 } from '@ema-agent/llm';
 import { createLlmCompletion, llmProviderErrorCode } from '@ema-agent/llm';
 import type { UsageRecorder } from '@ema-agent/usage';
-import { estimateLlmInputTokens, estimateMessagesTokens } from '@ema-agent/token';
+import { estimateMessagesTokens } from '@ema-agent/token';
 import { compactTokenLimit, createSummaryMessage, fitCompactMessages } from './budget.js';
 import { buildCompactPrompt, extractCompactSummary } from './compactPrompt.js';
 import type { CompactSettings } from './settings.js';
@@ -92,15 +92,7 @@ export async function runMacroCompact(args: MacroCompactArgs): Promise<MacroComp
     role: 'user',
     content: buildCompactPrompt(),
   };
-  const toolsTokens = args.tools.length > 0
-    ? estimateLlmInputTokens([], {
-        tools: args.tools.map(tool => ({
-          name: tool.name,
-          description: tool.description,
-          parameters: tool.inputSchema as Record<string, unknown>,
-        })),
-      }).totalTokens
-    : 0;
+  const toolsTokens = estimateMessagesTokens([], args.tools);
 
   // cursor 指向下一条尚未总结的消息. 每段请求都带上上一段摘要,
   // 因此分段间靠摘要传递事实, 不把已经处理的原文重复发送给模型.
