@@ -14,7 +14,7 @@ use super::platform::NativeProcessTree;
 use super::ready::wait_for_ready;
 use crate::bundled_data::{prepare_builtin_characters, prepare_models_catalog};
 
-const READY_TIMEOUT: Duration = Duration::from_secs(30);
+pub(crate) const SERVER_READY_TIMEOUT: Duration = Duration::from_secs(120);
 
 #[derive(Clone, Debug)]
 pub(crate) struct ServerConnection {
@@ -88,7 +88,7 @@ impl DesktopProcesses {
         *self.0.server.lock().await = Some(server);
         let port = match wait_for_ready(
             "server",
-            READY_TIMEOUT,
+            SERVER_READY_TIMEOUT,
             &self.0.stopping,
             &self.0.server,
             &mut ready,

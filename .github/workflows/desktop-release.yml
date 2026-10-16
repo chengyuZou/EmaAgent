@@ -51,10 +51,15 @@ jobs:
           version: 9.0.0
           run_install: false
 
+      - name: Read release Node version
+        id: release-node
+        shell: bash
+        run: node -e "require('node:fs').appendFileSync(process.env.GITHUB_OUTPUT, 'version=' + require('./apps/desktop/release-config.json').nodeVersion + '\n')"
+
       - name: Install release Node
         uses: actions/setup-node@v4
         with:
-          node-version: 22.14.0
+          node-version: ${{ steps.release-node.outputs.version }}
           cache: pnpm
 
       - name: Install Rust
@@ -69,14 +74,14 @@ jobs:
       - name: Install JavaScript dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Prepare Server
-        run: pnpm --filter @ema-agent/desktop release:prepare:server -- --target ${{ matrix.target }}
+      - name: Test release scripts
+        run: pnpm --filter @ema-agent/desktop test:scripts
 
       - name: Verify Server without licensed Cubism Core
         if: github.event_name != 'workflow_dispatch' || inputs.cubism_core_url == ''
-        run: pnpm --filter @ema-agent/desktop release:verify -- --target ${{ matrix.target }} --server-only
+        run: pnpm release --target ${{ matrix.target }} --server-only
 
-      - name: Inject approved Cubism Core
+      - name: Download licensed Cubism Core
         if: github.event_name == 'workflow_dispatch' && inputs.cubism_core_url != ''
         shell: bash
         env:
@@ -84,21 +89,21 @@ jobs:
           CUBISM_ARTIFACT_TOKEN: ${{ secrets.CUBISM_ARTIFACT_TOKEN }}
         run: |
           curl --fail --location --retry 3 --header "Authorization: Bearer ${CUBISM_ARTIFACT_TOKEN}" "${CUBISM_CORE_URL}" --output "${RUNNER_TEMP}/live2dcubismcore.min.js"
-          pnpm --filter @ema-agent/desktop release:inject:cubism -- --source "${RUNNER_TEMP}/live2dcubismcore.min.js"
 
       - name: Build unsigned Tauri bundle
         if: github.event_name == 'workflow_dispatch' && inputs.cubism_core_url != ''
-        run: pnpm --filter @ema-agent/desktop tauri:build:release -- --target ${{ matrix.target }}
+        run: pnpm release --target ${{ matrix.target }} --cubism-core "${{ runner.temp }}/live2dcubismcore.min.js"
 
       - name: Upload Server assembly
         uses: actions/upload-artifact@v4
         with:
           name: server-${{ matrix.target }}
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 7
           path: |
             apps/desktop/src-tauri/binaries/
-            apps/desktop/src-tauri/resources/server/
+            apps/desktop/src-tauri/.release-staging/server/
 
       - name: Upload unsigned installer
         if: github.event_name == 'workflow_dispatch' && inputs.cubism_core_url != ''

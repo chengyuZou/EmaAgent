@@ -4,21 +4,11 @@ node_modules/
 
 .agents/**
 
-# Memory bench — embedding cache (large, regenerated on demand)
-packages/memory/bench/cache/
-
 # Build outputs
 dist/
 build/
 .next/
 .turbo/
-
-# Testing
-coverage/
-*.log
-work/llm-runtime-smoke-dist/
-work/llm-runtime-smoke.tsbuildinfo
-work/llm-runtime-typecheck.tsbuildinfo
 
 # Environment
 .env
@@ -36,47 +26,24 @@ Thumbs.db
 **/src-tauri/target/
 **/src-tauri/gen/
 
-# Python
-.pytest_cache
-__pycache__/
-ema_narrative_bridge.egg-info
-*.py[cod]
-*$py.class
-*.so
-.Python
-.venv/
-venv/
-
-# 剧情数据本体入库；LightRAG 的 LLM 响应缓存是开发机加速层（旧模型提取回执+关键词缓存），不入库
-bridges/narrative/data/**/kv_store_llm_response_cache.json
-
-src/memory/bench/**
-
 # 忽略 TypeScript 编译产物
 *.js
 *.js.map
 *.d.ts
+!/src/builtin-tools/styleImports.d.ts
 *.d.ts.map
 
-# TTS live-test output (generated audio + voice URIs)
-packages/tts/test-output/
+/docs/**
 
 # Misc
 *.local
 /apps/desktop/src-tauri/binaries/*
 !/apps/desktop/src-tauri/binaries/.gitkeep
 /apps/desktop/src-tauri/.release-staging/
-/apps/desktop/src-tauri/resources/local-host-runtime/*
-!/apps/desktop/src-tauri/resources/local-host-runtime/.gitkeep
-/apps/desktop/src-tauri/resources/bridge-runtime/*
-!/apps/desktop/src-tauri/resources/bridge-runtime/.gitkeep
-/apps/desktop/src-tauri/resources/narrative-seed/*
-!/apps/desktop/src-tauri/resources/narrative-seed/.gitkeep
+/apps/desktop/src-tauri/resources/server/*
+!/apps/desktop/src-tauri/resources/server/.gitkeep
 /apps/desktop/public/cubism/*
 !/apps/desktop/public/cubism/.gitkeep
 
 install.cmd
 .claude
-
-# models.dev 目录本地缓存（启动/手动 refresh 拉取覆写，不入库）
-src/providers/catalog/models-dev.json

@@ -4,7 +4,7 @@
   "version":     "0.1.0",
   "identifier":  "com.emaagent.desktop",
   "build": {
-    "beforeDevCommand":   "pnpm --filter @ema-agent/desktop dev",
+    "beforeDevCommand": "node node_modules/vite/bin/vite.js",
     "beforeBuildCommand": "pnpm --filter @ema-agent/desktop build",
     "devUrl":             "http://127.0.0.1:1420",
     "frontendDist":       "../dist"
@@ -43,7 +43,7 @@
   "bundle": {
     "active":     false,
     "targets":    "all",
-    "icon":       ["icons/icon.png"],
+    "icon":       ["icons/icon.png", "icons/icon.ico", "icons/icon.icns"],
     "category":   "Utility",
     "shortDescription": "Ema desktop pet + agent",
     "longDescription":  "Local-first desktop pet + agent — chat/work modes, character-driven."

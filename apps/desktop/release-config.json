@@ -1,5 +1,5 @@
 {
-  "nodeVersion": "22.14.0",
+  "nodeVersion": "24.13.0",
   "cubismCore": {
     "fileName": "live2dcubismcore.min.js",
     "allowedSha256": [

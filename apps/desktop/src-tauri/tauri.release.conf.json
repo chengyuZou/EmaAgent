@@ -5,7 +5,7 @@
       "binaries/ema-server"
     ],
     "resources": {
-      "resources/server/": "server/",
+      ".release-staging/server/": "server/",
       "resources/characters/": "characters/",
       "resources/models-dev.json": "models-dev.json"
     }
