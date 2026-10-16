@@ -92,6 +92,8 @@ Shell 检测不扫描固定盘符。Windows 使用 `where.exe` 收集 `PATH` 中
 
 ## 控制消息
 
+正式版以安装资源中的 `server/app` 为工作目录, 向随包 Node 传入 `./dist/main.js`. 不把 Windows 资源目录的 `\\?\` 前缀带进主脚本参数: Node 24 在解析这种入口路径时会报 `EISDIR`, 在 Server 初始化之前退出.
+
 Server 完成数据库初始化并开始监听后从 stdout 输出 JSON-RPC 2.0 notification:
 
 ```json
@@ -119,6 +121,8 @@ Rust 将 Server 的 stdout / stderr 写入本次桌面启动日志. Server 的�
 ## 验证
 
 在 `apps/desktop/src-tauri` 运行 `cargo test --no-default-features --lib logging::tests`, 检查终端启用颜色时, 文件中的普通日志和 span 字段仍为纯文本.
+
+运行 `cargo test --lib processes::launch::tests` 验证正式版入口的启动参数. 此测试需要开发环境的 `node` 在 PATH 中, 通过实际启动函数运行临时脚本; 目录包含中文和空格, Windows 下还包含规范化后的 `\\?\` 前缀. 测试不读取用户数据目录.
 
 跨进程接口不能只靠单语言测试确认。正式制品验证必须启动真实 Server, 至少证明：
 

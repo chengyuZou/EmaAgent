@@ -61,7 +61,8 @@ fn server_launch(executable: PathBuf, server_root: PathBuf) -> Result<ChildLaunc
     }
     Ok(ChildLaunch {
         executable,
-        args: vec![entry.to_string_lossy().into_owned()],
+        // 工作目录已固定为 server/app. Node 24 无法用 Windows 的 \\?\ 路径打开主脚本.
+        args: vec!["./dist/main.js".to_string()],
         working_dir: server_root,
     })
 }
@@ -83,3 +84,7 @@ fn locate_workspace_root() -> Result<PathBuf, String> {
         .map(Path::to_path_buf)
         .ok_or_else(|| "workspace root not found".to_string())
 }
+
+#[cfg(test)]
+#[path = "tests/launch.rs"]
+mod tests;

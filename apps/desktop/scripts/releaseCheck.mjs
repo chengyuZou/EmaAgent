@@ -43,7 +43,8 @@ export async function checkReleaseServer(appRoot, nodeBinary, resources, tempora
   const environment = { ...process.env };
   delete environment.NODE_PATH;
   delete environment.NODE_OPTIONS;
-  const server = spawn(nodeBinary, [path.join(appRoot, 'dist', 'main.js')], {
+  // 与 Rust 的 server_launch 一致, 主脚本相对 server/app 启动.
+  const server = spawn(nodeBinary, ['./dist/main.js'], {
     cwd: appRoot,
     windowsHide: true,
     env: {
