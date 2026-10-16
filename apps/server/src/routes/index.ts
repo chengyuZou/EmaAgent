@@ -125,7 +125,7 @@ export const createRoutes = (composition: Composition, secret: string) => {
       session: database.session,
       turns: database.turns,
       usageRecorder: database.usageRecorder,
-      providerModels: providers.providerModels,
+      estimateContext: turn.estimateContext,
       onSessionOpened: sessionId => {
         // 附件残留清扫(贴了没发/无行残渣)与 vision 描述缓存驱逐,fire-and-forget。
         void database.attachments

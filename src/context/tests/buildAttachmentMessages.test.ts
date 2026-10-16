@@ -30,6 +30,45 @@ function options(partial: Partial<BuildAttachmentMessagesOptions>): BuildAttachm
 }
 
 describe('buildAttachmentMessages', () => {
+  it('空闲估算只读已有描述, 与实际缓存命中的内容相同', async () => {
+    const block = { type: 'image_reference', path: '/cached.png' } as const;
+    const describeImage = vi.fn(async () => '不应调用');
+    const onMissing = vi.fn();
+    const preview = await buildAttachmentMessages(block, options({
+      supportsImageInput: false,
+      describeImage,
+      imageDescriptionPreview: { read: () => '一只猫', canDescribe: true, onMissing },
+    }));
+    const actual = await buildAttachmentMessages(block, options({
+      supportsImageInput: false,
+      describeImage,
+      visionCache: { getOrCreate: async () => '一只猫' },
+    }));
+    expect(preview).toEqual(actual);
+    expect(describeImage).not.toHaveBeenCalled();
+    expect(onMissing).not.toHaveBeenCalled();
+  });
+
+  it.each([true, false])('空闲估算缺少描述, Vision 已配置=%s, 不生成描述', async canDescribe => {
+    const onMissing = vi.fn();
+    const describeImage = vi.fn(async () => '不应调用');
+    const result = await buildAttachmentMessages(
+      { type: 'image_reference', path: '/not-read.png' },
+      options({
+        supportsImageInput: false,
+        describeImage,
+        imageDescriptionPreview: { read: () => undefined, canDescribe, onMissing },
+      }),
+    );
+    expect(onMissing).toHaveBeenCalledTimes(canDescribe ? 1 : 0);
+    expect(describeImage).not.toHaveBeenCalled();
+    if (canDescribe) {
+      expect(result).toEqual([{ type: 'text', text: '[图片: /not-read.png]' }]);
+    } else {
+      expect(result[0]).toMatchObject({ text: expect.stringContaining('未配置 Vision') });
+    }
+  });
+
   it('file_reference → basename + 路径文本, 零 IO', async () => {
     const result = await buildAttachmentMessages(
       { type: 'file_reference', path: 'D:/docs/设计稿.pdf' },

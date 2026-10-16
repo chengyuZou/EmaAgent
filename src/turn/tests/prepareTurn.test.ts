@@ -23,6 +23,7 @@ import type { TurnStreamEvent } from '../events.js';
 import { TurnExecutor } from '../turn.js';
 import { TurnStore } from '../turnStore.js';
 import { SessionContinuationQueue, type SessionContinuationEvent } from '../sessionContinuationQueue.js';
+import { prepareContextInput } from '../prepare/prepareContextInput.js';
 
 const TURN: Turn = {
   id: 't1',
@@ -122,6 +123,27 @@ function makeRuntime(start: StartTurn) {
 }
 
 describe('prepareTurn', () => {
+  it('空闲估算与实际 Turn 共用 Prompt 和工具列表, 但不创建执行资源', async () => {
+    const deps = makeDeps();
+    const validateContext = vi.fn(() => contextOk({}));
+    deps.registry.register(buildTool({
+      name: 'Probe', description: '探针工具', inputSchema: z.object({}), validateContext,
+      isReadOnly: () => true, isConcurrencySafe: () => true,
+      checkPermissions: async () => ({ behavior: 'allow' as const }), execute: async () => 'ok',
+    }));
+    const createLlmCall = vi.fn(() => vi.fn() as unknown as CallLlm);
+    const scratchpadDirForTurn = vi.fn(() => '/scratchpad');
+    const configured = { ...deps, createLlmCall, scratchpadDirForTurn };
+    const preview = await prepareContextInput(configured, 's1', new AbortController().signal);
+    expect(createLlmCall).not.toHaveBeenCalled();
+    expect(scratchpadDirForTurn).not.toHaveBeenCalled();
+    expect(validateContext).not.toHaveBeenCalled();
+    const actual = await prepareTurn(configured, makeRuntime(makeStart()));
+    expect(actual.systemPrompt).toEqual(preview.systemPrompt);
+    expect(actual.tools.toolPool.tools).toEqual(preview.toolPool.tools);
+    expect(validateContext).not.toHaveBeenCalled();
+  });
+
   it.each(['completed', 'failed', 'aborted'] as const)('整批保存与长工具期间引导, %s 只处理仍未保存的排队输入', async ending => {
     const db = new Database({ memory: true, kind: 'data' });
     db.migrate();

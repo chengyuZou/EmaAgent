@@ -59,9 +59,8 @@ export interface Tool<TInput, TOutput, TContext, TProgress = never> {
   readonly maxResultBytes: number;
 
   /**
-   * 同一函数同时承担装配可见性和执行前能力投影.
-   * valid:false 时工具不会进入 ToolPool;执行时仍会重新投影,
-   * 防止排队期间文件状态等动态能力已经变化.
+   * 真正调用前检查宿主能力, 并取出该工具需要的执行环境.
+   * valid:false 时返回 tool/context_unavailable, 不进入权限询问和执行.
    */
   readonly validateContext: (context: ToolUseContext) => ToolContextValidation<TContext>;
 

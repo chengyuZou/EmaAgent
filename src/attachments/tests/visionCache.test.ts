@@ -49,6 +49,15 @@ function insertImageRow(target: string): void {
 
 const signal = () => new AbortController().signal;
 
+it('估算只读描述, 不生成或更新数据库访问时间', () => {
+  const cache = new VisionDescriptionCache(repo);
+  expect(cache.get(imagePath)).toBeUndefined();
+  repo.upsert(imagePath, '已有描述', 12, 10);
+  const before = repo.find(imagePath);
+  expect(cache.get(imagePath)).toBe('已有描述');
+  expect(repo.find(imagePath)).toEqual(before);
+});
+
 describe('VisionDescriptionCache', () => {
   it('并发同键只生产一次;重启实例后从 SQLite 复用', async () => {
     const cache = new VisionDescriptionCache(repo);
@@ -61,7 +70,7 @@ describe('VisionDescriptionCache', () => {
     expect(first).toBe('一只粉色的猫');
     expect(concurrent).toBe('一只粉色的猫');
     expect(producer).toHaveBeenCalledTimes(1);
-    expect(producer).toHaveBeenCalledWith(imagePath);
+    expect(producer).toHaveBeenCalledWith(imagePath, expect.any(AbortSignal));
 
     const restarted = new VisionDescriptionCache(repo);
     const disk = await restarted.getOrCreate(imagePath, signal(), producer);
@@ -103,7 +112,7 @@ describe('VisionDescriptionCache.sweepIfIdle', () => {
       isIdle: () => idle,
       maxBytesForSweep: () => 1024 * 1024,
     };
-    expect((await cache.sweepIfIdle(options)).ran).toBe(false);
+    expect((await cache.sweepIfIdle(options)).success).toBe(false);
 
     database.sqlite.prepare(
       'UPDATE attachment_vision_descriptions_caches SET last_accessed_at = 1',
@@ -111,7 +120,7 @@ describe('VisionDescriptionCache.sweepIfIdle', () => {
     idle = true;
     // 越过最小间隔, 确保真正跑一轮
     const report = await cache.sweepIfIdle(options, Date.now() + 7 * 60 * 60 * 1_000);
-    expect(report.ran).toBe(true);
+    expect(report.success).toBe(true);
     expect(report.deletedDescriptions).toBe(1);
     expect(repo.totalBytes()).toBe(0);
   });
@@ -135,7 +144,7 @@ describe('VisionDescriptionCache.sweepIfIdle', () => {
       isIdle: () => true,
       maxBytesForSweep: () => total - 1,
     });
-    expect(report.ran).toBe(true);
+    expect(report.success).toBe(true);
     expect(report.deletedDescriptions).toBe(1);
     expect(repo.find(imagePath)).toBeUndefined();
     expect(repo.find(secondPath)).toBeDefined();

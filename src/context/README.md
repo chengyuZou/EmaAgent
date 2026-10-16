@@ -41,3 +41,5 @@ System Prompt 为空,或传入的模型消息中夹有 system 消息时,装配�
 `assembleContext` 估算本次完整消息和工具的输入 Token 数. 调用前可用 `estimatedContextUsage` 表示估算值; 模型返回用量后, `providerContextUsage` 改用模型报告的输入 Token 数. 若随后又追加了模型可见消息, `appendEstimatedContextMessages` 把新增部分计入, 并将来源重新标为估算.
 
 Context 不创建模型客户端,不写 Summary,不生成 Reminder, 也不选择压缩方式. 附件图片描述通过调用方提供的入口执行, 原有路径缓存保留; 其他执行顺序由 Turn 和 Compact 处理, 厂商协议格式由 LLM 代码处理.
+
+空闲估算可传入 `imageDescriptionPreview`, 只读取已有附件描述, 不调用 Vision. 主模型不支持图片且没有描述时, 已配置 Vision 的图片通过 `onMissing` 通知调用方提示未计入的部分; 未配置 Vision 时保留不可读取的文本提示. 支持图片的主模型仍按原图估算. 运行时不要传这个预览参数, 应使用 `describeImage` 和 `visionCache` 完成实际降级.

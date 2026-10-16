@@ -1,6 +1,5 @@
-// 从进程 Tool 库筛选并稳定排序，建立当前根 Turn 的冻结 ToolPool。
+// 从进程工具库取得稳定顺序, 调用方再按开关和范围筛选.
 import type { Tool } from '../Tool/tool.js';
-import type { ToolUseContext } from '../Tool/toolUseContext.js';
 import { ToolPool } from './toolPool.js';
 import type { ToolRegistry } from './toolRegistry.js';
 
@@ -9,17 +8,15 @@ import type { ToolRegistry } from './toolRegistry.js';
 type AnyTool = Tool<any, any, any, any>;
 
 /**
- * validateContext 是装配可见性与执行前能力复核的唯一规则。
- * Builtin 构成稳定前缀，MCP 按原始 Server/Tool 身份构成稳定后缀。
+ * Builtin 在前, MCP 按原始 Server/Tool 身份排序.
+ * 工具开关和调用范围由调用方筛选, 执行环境在真正调用时检查.
  */
 export function assembleToolPool(
   registry: ToolRegistry,
-  context: ToolUseContext,
 ): ToolPool {
-  const visible = registry.list()
-    .filter((tool) => tool.validateContext(context).valid)
+  const ordered = [...registry.list()]
     .sort(compareTools);
-  return new ToolPool(visible);
+  return new ToolPool(ordered);
 }
 
 function compareTools(left: AnyTool, right: AnyTool): number {

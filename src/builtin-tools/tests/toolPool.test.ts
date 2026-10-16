@@ -1,69 +1,28 @@
-// 测试每次根 Turn 装配只向模型暴露当前宿主 Context 真正拥有的工具能力.
 import { describe, expect, it } from 'vitest';
 import type { ToolPermissionContext } from '@ema-agent/permission';
 import {
-  FileStateCache,
   assembleToolPool,
   ToolRegistry,
   type ToolUseContext,
 } from '@ema-agent/tools';
 import { BuiltinTools, registerBuiltinTools } from '../index.js';
 
-function baseContext(): ToolUseContext {
-  return {
-    cwd: '',
-    platform: process.platform,
-  };
-}
+describe('Builtin ToolPool', () => {
+  it('工具列表不依赖执行环境, 缺少能力由实际调用前检查', () => {
+    const registry = new ToolRegistry();
+    registerBuiltinTools(registry);
+    const pool = assembleToolPool(registry);
+    const context: ToolUseContext = { cwd: '', platform: process.platform };
 
-function visibleNames(context: ToolUseContext): string[] {
-  const registry = new ToolRegistry();
-  registerBuiltinTools(registry);
-  return assembleToolPool(registry, context).tools.map((tool) => tool.name);
-}
-
-describe('Builtin ToolPool 能力装配', () => {
-  it('无工作区和业务端口时隐藏不可执行工具', () => {
-    const names = visibleNames(baseContext());
-
-    expect(names).toContain(BuiltinTools.WebFetch.name);
-    expect(names).toContain(BuiltinTools.WebSearch.name);
-    expect(names).toContain(BuiltinTools.TodoWrite.name);
-    expect(names).not.toContain(BuiltinTools.FileRead.name);
-    expect(names).not.toContain(BuiltinTools.Glob.name);
-    expect(names).not.toContain(BuiltinTools.Bash.name);
-    expect(names).not.toContain(BuiltinTools.TaskList.name);
-    expect(names).not.toContain(BuiltinTools.AskUser.name);
-    expect(names).not.toContain(BuiltinTools.Subagent.name);
-    expect(names).not.toContain(BuiltinTools.NarrativeSearch.name);
-  });
-
-  it('根 Turn 注入能力后只增加对应工具族', () => {
-    const context: ToolUseContext = {
-      ...baseContext(),
-      cwd: 'D:/workspace',
-      fileStateCache: new FileStateCache(),
-      taskStore: {} as never,
-      askUser: async () => ({ answers: {} }),
-      subagents: {} as never,
-      narrativeSearch: async () => new Map(),
-      scratchpad: { dir: 'D:/scratchpad', author: 'main' },
-    };
-
-    const names = visibleNames(context);
-
-    expect(names).toEqual(expect.arrayContaining([
-      BuiltinTools.FileRead.name,
-      BuiltinTools.Glob.name,
-      BuiltinTools.TaskCreate.name,
-      BuiltinTools.AskUser.name,
-      BuiltinTools.Subagent.name,
-      BuiltinTools.NarrativeSearch.name,
-      BuiltinTools.ScratchpadWrite.name,
-      BuiltinTools.TodoWrite.name,
-    ]));
-    expect(names).not.toContain(BuiltinTools.Bash.name);
-    expect(names).not.toContain(BuiltinTools.Skill.name);
+    for (const identity of [
+      BuiltinTools.FileRead, BuiltinTools.AskUser, BuiltinTools.Subagent,
+      BuiltinTools.NarrativeSearch, BuiltinTools.DescribeImage,
+    ]) {
+      const tool = pool.get(identity.name);
+      expect(tool).toBeDefined();
+      expect(tool!.validateContext(context).valid).toBe(false);
+    }
+    expect(pool.get(BuiltinTools.WebSearch.name)).toBeDefined();
   });
 
   it('问询工具固定走 ask(它自己就是询问通道, 不由规则绕过)', async () => {

@@ -116,11 +116,11 @@ export const sessionsApi = {
     ));
   },
 
-  /** 当前有效历史的估算, 不读取 usage_records 中可能属于摘要或子代理的调用. */
-  estimateContext(id: string): Promise<SessionContextEstimate> {
+  /** 当前 Prompt, 工具定义和有效历史的本地估算, 不发起模型请求. */
+  estimateContext(id: string, signal?: AbortSignal): Promise<SessionContextEstimate> {
     return readRpcJson(rpcClient.api.sessions[':sessionId']['context-estimate'].$get({
       param: { sessionId: id },
-    }));
+    }, { init: { signal } }));
   },
 
   /** PUT /api/sessions/:sessionId — 局部更新并返回最新记录。 */

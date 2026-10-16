@@ -1,4 +1,5 @@
 export * from './events.js';
+export { prepareContextInput, type ContextInputDeps } from './prepare/prepareContextInput.js';
 export * from './types.js';
 export { TurnStore } from './turnStore.js';
 export type { TurnStoreDeps } from './turnStore.js';

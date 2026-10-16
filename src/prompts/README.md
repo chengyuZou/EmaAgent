@@ -60,7 +60,7 @@ subagent                 仅子代理, 由 Turn 追加
 
 ## 能力指引
 
-`sessionCapabilityGuidance` 只按真实 ToolPool 的工具名展开专用工具优先, 搜索, 并行, Task, Skill, Scratchpad, 后台进程与 Subagent 的协作说明. 用户禁用的工具, 未配置的宿主能力与 Plan 排除的工具不能由 Prompt 补造.
+`sessionCapabilityGuidance` 只按真实 ToolPool 的工具名展开专用工具优先, 搜索, 并行, Task, Skill, Scratchpad, 后台进程与 Subagent 的协作说明. 用户禁用或 Plan 排除的工具不能由 Prompt 补造. 名字存在表示可以尝试调用, 不保证所需绑定或执行环境已经配置; 缺少条件由实际调用返回错误.
 
 `@ema-agent/builtin-tools/identity` 是纯常量子路径, 避免工具重命名后指引使用错误名称. 本包不导入内置工具实现. Narrative 等能力由实际工具池决定, 不按角色名称自动开关.
 

@@ -1,5 +1,5 @@
 // 内置工具的用户级启用/禁用设置。
-// 禁用设置与能力装配(validateContext)、Plan 只读筛选分别生效.
+// 禁用设置和 Plan 只读筛选决定工具列表; validateContext 在调用时检查执行环境.
 // 工具必须同时满足这些条件才提供给模型. 默认空数组 = 不主动禁用工具.
 
 import type { SettingsStore } from '@ema-agent/settings';

@@ -38,6 +38,11 @@ export class VisionDescriptionCache {
     private readonly maxMemoryEntries = DEFAULT_MEMORY_ENTRIES,
   ) {}
 
+  /** 估算上下文时只读已有描述, 不生成内容或更新数据库访问时间. */
+  get(imagePath: string): string | undefined {
+    return this.cache.get(imagePath) ?? this.repo.find(imagePath)?.text;
+  }
+
   async getOrCreate(
     imagePath: string,
     signal: AbortSignal,

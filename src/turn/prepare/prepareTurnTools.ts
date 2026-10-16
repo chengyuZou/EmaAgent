@@ -16,9 +16,6 @@ import type { SkillPool } from '@ema-agent/skills';
 import type { TaskStore } from '@ema-agent/tasks';
 import type { GoalStore } from '@ema-agent/goal';
 import {
-  assembleToolPool,
-  readToolSettings,
-  BuiltinTools,
   ToolPool,
   type AskUser,
   type AskUserRequiredEvent,
@@ -35,29 +32,6 @@ import type { ReasoningEffort } from '@ema-agent/session';
 import type { SessionInteractionQueue } from '../interactionQueue.js';
 import type { TurnStreamEvent } from '../events.js';
 
-// Plan 只暴露整项能力均只读的工具. isReadOnly(input) 依赖尚未生成的参数,
-// 不能用于装配筛选; Shell, 子代理和用户交互不作为只读例外放行.
-const PLAN_TOOL_IDS: ReadonlySet<string> = new Set([
-  BuiltinTools.FileRead.id,
-  BuiltinTools.DescribeImage.id,
-  BuiltinTools.Capture.id,
-  BuiltinTools.Glob.id,
-  BuiltinTools.Grep.id,
-  BuiltinTools.WebFetch.id,
-  BuiltinTools.WebSearch.id,
-  BuiltinTools.ProcessList.id,
-  BuiltinTools.ProcessOutput.id,
-  BuiltinTools.TaskGet.id,
-  BuiltinTools.TaskList.id,
-  BuiltinTools.NarrativeSearch.id,
-  BuiltinTools.MemorySearch.id,
-  BuiltinTools.MemoryRead.id,
-  BuiltinTools.MemoryList.id,
-  BuiltinTools.Skill.id,
-  BuiltinTools.ScratchpadRead.id,
-  BuiltinTools.ScratchpadList.id,
-]);
-
 export interface TurnToolsDeps {
   readonly fileStateCache: (sessionId: string) => FileStateCache;
   readonly registry: ToolRegistry;
@@ -68,7 +42,7 @@ export interface TurnToolsDeps {
   readonly subagents: SubagentExecutor;
   readonly taskStore?: TaskStore;
   readonly goalStore?: GoalStore;
-  /** Turn 准备时冻结模型绑定与算法设置. 缺少绑定时不提供剧情工具. */
+  /** Turn 准备时冻结模型绑定与算法设置. 缺少绑定时, 调用剧情工具会返回执行环境不可用. */
   readonly resolveNarrativeSearch?: (sessionId: string, turnId: string) => ToolUseContext['narrativeSearch'];
   readonly memorySearch?: ToolUseContext['memorySearch'];
   readonly memoryRead?: ToolUseContext['memoryRead'];
@@ -86,6 +60,7 @@ export interface TurnToolsDeps {
 }
 
 export interface PrepareTurnToolsInput {
+  readonly toolPool: ToolPool;
   readonly sessionId: string;
   readonly turnId: string;
   readonly cwd: string;
@@ -259,13 +234,7 @@ export function prepareTurnTools(deps: TurnToolsDeps, input: PrepareTurnToolsInp
   });
 
   // 禁用设置按 Turn 冻结, 模型和执行器使用同一个筛选结果. 运行中改开关只影响下一 Turn.
-  const disabledToolIds = new Set(readToolSettings(deps.settings).disabledToolIds);
-  const availablePool = assembleToolPool(deps.registry, toolContext)
-    .filter(tool => !disabledToolIds.has(tool.id));
-  // 模型与执行器共用筛选后的池, 历史中的写工具名和 allow 规则不能重新扩入.
-  const toolPool = input.permission.mode === 'plan'
-    ? availablePool.filter(tool => PLAN_TOOL_IDS.has(tool.id))
-    : availablePool;
+  const toolPool = input.toolPool;
 
   const toolResultStore = deps.toolResultStore?.(sessionId);
   // 子代理不直接检索长期记忆, 也不能读取或结束根 Session 的目标.

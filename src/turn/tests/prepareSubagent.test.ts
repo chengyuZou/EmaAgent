@@ -131,14 +131,11 @@ describe('createPrepareSubagent fork', () => {
     expect(root.tools.toolPool.tools).toHaveLength(3);
   });
 
-  it.each([true, false])('子代理继承父工具池的 DescribeImage 可见性: Vision=%s', async hasVision => {
+  it('子代理继承父工具池的 DescribeImage, 装配时不调用 Vision', async () => {
     const registry = new ToolRegistry();
     registry.register(DescribeImageTool);
     const vision = vi.fn(async () => ({ text: '描述', blocks: [] }));
-    const toolPool = assembleToolPool(registry, {
-      cwd: '', platform: process.platform,
-      ...(hasVision ? { vision } : {}),
-    });
+    const toolPool = assembleToolPool(registry);
     const root = preparedTurn();
     const { prepare } = fixture(async () => parentMessages(), {
       ...root,
@@ -148,7 +145,7 @@ describe('createPrepareSubagent fork', () => {
       subagentId: 'image-child', prompt: '必要时描述图片', options: {}, signal: new AbortController().signal,
     });
     const result = await child.prepareIteration({ llmCallId: 'child-call', messages: child.messages });
-    expect(result.request.tools?.some(tool => tool.name === 'DescribeImage')).toBe(hasVision);
+    expect(result.request.tools?.some(tool => tool.name === 'DescribeImage')).toBe(true);
     expect(vision).not.toHaveBeenCalled();
   });
 

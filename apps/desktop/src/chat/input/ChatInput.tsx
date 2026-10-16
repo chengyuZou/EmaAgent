@@ -590,7 +590,7 @@ export function ChatInput({
                 <span className="min-w-2 flex-1" />
                 <ContextMeter
                   sessionId={viewedId}
-                  contextWindow={selectedModel?.capability === 'llm' ? selectedModel.contextWindow : undefined}
+                  modelSelectionPending={shownModelEdit !== null}
                 />
                 <ModelPicker
                   catalog={catalog}

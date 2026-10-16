@@ -22,11 +22,8 @@ import {
 } from '@ema-agent/llm';
 import {
   loadPermissionRuleBuckets,
-  type PermissionRuleBuckets,
 } from '@ema-agent/permission';
 import {
-  staticSystemPrompt,
-  getDynamicSystemPrompt,
   type DynamicSystemPromptInput,
   type PromptBlock,
 } from '@ema-agent/prompts';
@@ -38,9 +35,7 @@ import type {
   SessionStore,
   SessionUserBlock,
 } from '@ema-agent/session';
-import type { SettingsStore } from '@ema-agent/settings';
 import {
-  renderSkillListing,
   type SkillDescriptor,
   type SkillPool,
 } from '@ema-agent/skills';
@@ -54,8 +49,8 @@ import {
   type TurnToolsDeps,
 } from './prepareTurnTools.js';
 import {
-  resolveSkillPool,
-} from './skillPool.js';
+  prepareContextInput,
+} from './prepareContextInput.js';
 
 /** 一个 Turn 的冻结事实; 运行期只读取这一份, 不再回读 Settings/Registry/Session. */
 export interface PreparedTurn {
@@ -132,41 +127,16 @@ export async function prepareTurn(
   // 设置在任何附件写入或媒体降级前读取一次, 确保同一 Turn 不混用新旧上限.
   const agentSettings = readAgentSettings(deps.settings);
   const compactSettings = readCompactSettings(deps.settings);
-  const session = deps.sessions.getSession(request.sessionId);
+  const preparedInput = await prepareContextInput(deps, request.sessionId, signal);
+  const {
+    session, providerId, modelId, modelFacts, cwd, projectId, workspaceRoots,
+    skillPool, toolPool, dynamicInput, systemPrompt,
+  } = preparedInput;
   const permissionMode = session.permissionMode;
-  const cwd = session.cwd;
-  const projectId = session.projectId;
-  const projectFolders = projectId
-    ? deps.sessions.listProjectFolders(projectId).map((folder) => folder.path)
-    : [];
-  const workspaceRoots = projectFolders.length > 0 ? projectFolders : [cwd];
-
-  const providerId = session.providerId;
-  const modelId = session.modelId;
-  if (!providerId || !modelId) {
-    throw new TurnPreparationError(
-      'provider/not_configured',
-      '当前 Session 未指定 providerId/modelId',
-    );
-  }
-  const modelFacts = deps.providerModels.get(providerId, 'llm', modelId);
-  if (!modelFacts || modelFacts.capability !== 'llm') {
-    throw new TurnPreparationError(
-      'provider/not_configured',
-      `模型未在该 Provider 下启用：${providerId} / ${modelId}`,
-    );
-  }
   const connection = deps.providers.resolveConnection(providerId, 'llm');
   const callLlm = (deps.createLlmCall ?? createLlmCall)(connection, modelId);
   const supportsImageInput = modelFacts.inputImage === true;
   const degradations: RequestDegradationNotice[] = [];
-
-  // Skill 目录与 Pool 同步冻结，与 /compact Command 共用同一装配。
-  const skillPool = await resolveSkillPool(
-    { settings: deps.settings, skillEntries: deps.skillEntries, disabledSkillPaths: deps.disabledSkillPaths },
-    cwd,
-    projectId,
-  );
 
   const attachmentBlocks = request.input
     .filter((part): part is Extract<TurnInputPart, { type: 'attachment' }> => part.type === 'attachment')
@@ -197,6 +167,7 @@ export async function prepareTurn(
   );
 
   const tools = prepareTurnTools(deps, {
+    toolPool,
     sessionId: request.sessionId,
     turnId,
     cwd,
@@ -217,28 +188,6 @@ export async function prepareTurn(
     },
     signal,
   });
-
-  const dynamicInput: DynamicSystemPromptInput = Object.freeze({
-    characterPrompt: deps.characterPrompt,
-    permissionMode,
-    toolNames: tools.toolPool.tools.map(tool => tool.name),
-    environment: {
-      platform: process.platform,
-      cwd: cwd || null,
-      projectFolderPaths: projectFolders,
-      providerId,
-      modelId,
-    },
-    workspaceInstructions: cwd ? deps.workspaceInstructions?.(cwd) ?? null : null,
-    memorySection: await deps.memoryGuidance?.() ?? null,
-    skillCatalog: skillPool ? renderSkillListing(skillPool) : null,
-    // MCP 指引尚无生产者, 不自行补正文.
-    mcpInstructions: null,
-  });
-  const systemPrompt = Object.freeze([
-    ...staticSystemPrompt,
-    ...getDynamicSystemPrompt(dynamicInput),
-  ]);
 
   return Object.freeze({
     reasoningEffort: session.reasoningEffort,

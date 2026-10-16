@@ -36,7 +36,7 @@ src/tools/
 │  └─ toolUseContext.ts           宿主能力全集 + Subagent/AskUser/Scratchpad 等入口
 ├─ assembly/                      装配层
 │  ├─ toolRegistry.ts             进程库存;MCP 整批原子注册、来源冲突即错误
-│  ├─ assembleToolPool.ts         validateContext 过滤 + Builtin 前缀/MCP 后缀稳定排序
+│  ├─ assembleToolPool.ts         Builtin 前缀/MCP 后缀稳定排序
 │  └─ toolPool.ts                 冻结集合;filter() 只许收窄不许回读 Registry
 ├─ execution/                     执行层
 │  ├─ toolCallExecution.ts        单次调用状态机(不对外导出)
@@ -85,7 +85,7 @@ src/tools/
 
 1. **ToolPool 即冻结快照。** 根 Turn 冻结后不回读 Registry;MCP 热更新只影响下一根 Turn。不存在独立 Manifest/PreparedToolCall——Provider `tools[]`、缓存诊断、执行查找都从同一个 Pool 取。
 2. **输入解析一次。** `inputSchema.parse` 只在单调用入口做一次，同一个局部 `input` 依次经过 validateInput → checkPermissions → execute。Permission 不修改输入；规范化必须由 Tool 显式返回新输入。
-3. **`validateContext` 一身二任。** 装配时决定可见性，执行前重新投影——不得恢复 `requires` 第二份能力清单。
+3. **工具列表与执行检查分开.** 列表按用户开关, Plan 模式和根/子代理范围筛选. `validateContext` 只在实际调用前检查执行环境, 取出工具需要的宿主能力. 工具出现在列表中不保证宿主已经完成配置; 缺少能力时返回 `tool/context_unavailable`.
 4. **running 是副作用边界。** `ToolExecutionState.start()` 落库成功后才能 `execute()`;running 后断电/取消按 `outcome_unknown` 关账，不伪装干净 cancelled。
 5. **Message 先落，状态后关。** `acknowledgeResult`（写 Message）先于 `commitResult`（推进状态机）——先持久化后关账。
 6. **终态 FIFO。** 完成可乱序，`tool_result` 终态必须按模型 blockIndex 顺序发射；进度事件实时但有界。
@@ -135,7 +135,7 @@ Shell 的参数包装、权限与沙箱策略仍由各自执行路径负责.
 |---|---|
 | 模型幻觉工具名 | `tool/unavailable`（不是权限拒绝） |
 | Schema 解析失败 | `tool/validation_failed`，不产生状态迁移 |
-| validateContext 失败 | `tool/context_unavailable`，不进 Pool |
+| validateContext 失败 | 返回 `tool/context_unavailable`, 不进入权限询问和执行 |
 | 权限拒绝 | `permission/denied`，不越过 running |
 | 执行中用户取消 | 模型见 `tool/cancelled`，审计 `outcome_unknown` |
 | running 后断电 | 启动恢复标 `outcome_unknown`，合成一次结果进 Message |

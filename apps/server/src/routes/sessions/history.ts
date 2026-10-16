@@ -4,10 +4,9 @@ import { z } from 'zod';
 import type { SessionMessage, SessionStore } from '@ema-agent/session';
 import type { UsageRecorder } from '@ema-agent/usage';
 import type { Turn, TurnStore } from '@ema-agent/turn';
-import { projectMessages } from '@ema-agent/context';
-import { estimateMessagesTokens } from '@ema-agent/token';
-import type { ProviderModels } from '@ema-agent/providers';
-import { createTurnHistoryResolver } from '@ema-agent/turn';
+import { TurnPreparationError } from '@ema-agent/turn';
+import { ProviderError } from '@ema-agent/providers';
+import type { TurnComposition } from '../../composition/turn.js';
 import { queryValidator } from '../validate.js';
 
 const listMessagesQuery = z.object({
@@ -37,7 +36,7 @@ export interface SessionHistoryRouteDeps {
   readonly session: Pick<SessionStore, 'getSession' | 'loadHistory' | 'listMessages' | 'listMessagesAround' | 'loadMessagesForTurn'>;
   readonly turns: Pick<TurnStore, 'getTurn' | 'listTurnIndex'>;
   readonly usageRecorder: Pick<UsageRecorder, 'forTurn'>;
-  readonly providerModels: Pick<ProviderModels, 'get'>;
+  readonly estimateContext: TurnComposition['estimateContext'];
   /** Session 被打开(拉历史)时触发一次 fire-and-forget 的附件残留清扫。 */
   readonly onSessionOpened?: (sessionId: string) => void;
 }
@@ -74,23 +73,21 @@ export const sessionHistoryRoute = (deps: SessionHistoryRouteDeps) =>
   new Hono()
     .get('/:sessionId/context-estimate', async context => {
       const sessionId = context.req.param('sessionId');
-      const session = deps.session.getSession(sessionId);
-      const model = session.providerId && session.modelId
-        ? deps.providerModels.get(session.providerId, 'llm', session.modelId)
-        : undefined;
-      // 与下一轮 Turn 共用摘要边界和 Message 投影. 此处只估算已保存历史,
-      // 不执行尚未开始的 Prompt/Tool 装配, 也不为图片触发额外 Vision 调用.
-      const historyResolver = createTurnHistoryResolver(deps.turns);
-      const history = await projectMessages(
-        deps.session.loadHistory(sessionId),
-        message => message.turnId ? historyResolver.resolveGenerationSource(message.turnId) : undefined,
-        { supportsImageInput: model?.capability === 'llm' && model.inputImage === true,
-          signal: context.req.raw.signal },
-      );
-      return context.json({
-        inputTokens: estimateMessagesTokens(history.map(entry => entry.message)),
-        contextWindow: model?.capability === 'llm' ? model.contextWindow : 0,
-      });
+      try {
+        return context.json(await deps.estimateContext(sessionId, context.req.raw.signal));
+      } catch (error) {
+        if (context.req.raw.signal.aborted) return context.json({ error: 'request_cancelled' }, 408);
+        if (error instanceof Error && error.message.startsWith('session_not_found:')) {
+          return context.json({ error: 'session_not_found' }, 404);
+        }
+        if (error instanceof TurnPreparationError && error.code === 'provider/not_configured') {
+          return context.json({ error: error.code }, 409);
+        }
+        if (error instanceof ProviderError && error.code === 'model_not_found') {
+          return context.json({ error: error.code }, 409);
+        }
+        throw error;
+      }
     })
     .get('/:sessionId/messages/around', queryValidator(messagesAroundQuery), context => {
       try {

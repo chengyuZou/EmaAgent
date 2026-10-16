@@ -1,4 +1,3 @@
-// 测试根 Turn ToolPool 的能力筛选、稳定顺序、对象复用和 Registry 热更新隔离。
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { assembleToolPool } from '../assembly/assembleToolPool.js';
@@ -7,10 +6,6 @@ import { buildTool } from '../Tool/buildTool.js';
 import { contextFail, contextOk } from '../Tool/tool.js';
 import type { ToolUseContext } from '../Tool/toolUseContext.js';
 
-const baseContext: ToolUseContext = {
-  cwd: 'D:/workspace',
-  platform: 'win32',
-};
 
 function makeTool(
   id: string,
@@ -45,19 +40,20 @@ function makeTool(
 }
 
 describe('assembleToolPool', () => {
-  it('只保留 Context 投影成功的 Tool，并复用原 Tool 对象', () => {
+  it('装配不检查执行环境, 并复用原 Tool 对象', () => {
     const registry = new ToolRegistry();
     const always = makeTool('builtin.always', 'Always', 'always');
     const workspace = makeTool('builtin.workspace', 'Workspace', 'workspace');
     registry.register(always);
     registry.register(workspace);
-    registry.register(makeTool('builtin.ask', 'Ask', 'askUser'));
+    const ask = makeTool('builtin.ask', 'Ask', 'askUser');
+    registry.register(ask);
 
-    const pool = assembleToolPool(registry, baseContext);
+    const pool = assembleToolPool(registry);
 
-    expect(pool.tools).toEqual([always, workspace]);
+    expect(pool.tools).toEqual([always, ask, workspace]);
     expect(pool.get('Always')).toBe(always);
-    expect(pool.get('Ask')).toBeUndefined();
+    expect(pool.get('Ask')).toBe(ask);
     expect(Object.isFrozen(pool.tools)).toBe(true);
   });
 
@@ -81,7 +77,7 @@ describe('assembleToolPool', () => {
     registry.register(builtinA);
     registry.registerMcpBatch([mcpZ, mcpA]);
 
-    expect(assembleToolPool(registry, baseContext).tools)
+    expect(assembleToolPool(registry).tools)
       .toEqual([builtinA, builtinZ, mcpA, mcpZ]);
   });
 
@@ -94,7 +90,7 @@ describe('assembleToolPool', () => {
       { kind: 'mcp', serverName: 'remote', serverToolName: 'read' },
     );
     registry.registerMcpBatch([first]);
-    const currentTurn = assembleToolPool(registry, baseContext);
+    const currentTurn = assembleToolPool(registry);
 
     const reconnected = makeTool(
       'mcp.remote.read',
@@ -103,7 +99,7 @@ describe('assembleToolPool', () => {
       { kind: 'mcp', serverName: 'remote', serverToolName: 'read' },
     );
     registry.registerMcpBatch([reconnected]);
-    const nextTurn = assembleToolPool(registry, baseContext);
+    const nextTurn = assembleToolPool(registry);
 
     expect(currentTurn.get(first.name)).toBe(first);
     expect(nextTurn.get(first.name)).toBe(reconnected);

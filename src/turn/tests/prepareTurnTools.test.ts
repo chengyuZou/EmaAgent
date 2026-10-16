@@ -23,9 +23,20 @@ import {
 import { SessionInteractionQueue } from '../interactionQueue.js';
 import type { TurnStreamEvent } from '../events.js';
 import {
-  prepareTurnTools,
+  prepareTurnTools as bindTurnTools,
   type TurnToolsDeps,
 } from '../prepare/prepareTurnTools.js';
+import { selectTurnToolPool } from '../prepare/prepareContextInput.js';
+
+function prepareTurnTools(
+  deps: TurnToolsDeps,
+  input: Omit<Parameters<typeof bindTurnTools>[1], 'toolPool'>,
+) {
+  return bindTurnTools(deps, {
+    ...input,
+    toolPool: selectTurnToolPool(deps, input.permission.mode),
+  });
+}
 import { FileReadTool } from '../../builtin-tools/tools/FileReadTool/FileReadTool.js';
 import { FileEditTool } from '../../builtin-tools/tools/FileEditTool/FileEditTool.js';
 import { DescribeImageTool } from '../../builtin-tools/tools/DescribeImageTool/describeImageTool.js';
@@ -132,7 +143,13 @@ describe('prepareTurnTools', () => {
       permission: { mode, buckets: { alwaysAllowRules: {}, alwaysDenyRules: {}, alwaysAskRules: {} } },
     } });
     try {
-      expect(prepareTurnTools(deps, input).toolPool.tools).toEqual([]);
+      const unavailable = prepareTurnTools(deps, input).createExecutor(() => undefined);
+      unavailable.addTool(0, 'missing-memory', 'MemorySearch', { queries: ['简洁'] });
+      await unavailable.join();
+      expect(unavailable.takeCompletedResults()[0]).toMatchObject({
+        isError: true,
+        errorCode: 'tool/context_unavailable',
+      });
       const memoryDeps = {
         ...deps,
         memorySearch: (request: Parameters<typeof searchMemoryFiles>[1]) => searchMemoryFiles(directory, request),
@@ -559,7 +576,7 @@ describe('prepareTurnTools', () => {
       },
     }));
     expect(assembly.toolPool.tools.map(tool => tool.name).sort()).toEqual([
-      'Read', 'DescribeImage', 'Glob', 'Grep', 'WebFetch', 'WebSearch', 'ProcessList', 'ProcessOutput',
+      'Read', 'Capture', 'DescribeImage', 'Glob', 'Grep', 'WebFetch', 'WebSearch', 'ProcessList', 'ProcessOutput',
       'TaskGet', 'TaskList', 'NarrativeSearch', 'MemorySearch', 'MemoryRead',
       'MemoryList', 'Skill', 'ScratchpadRead', 'ScratchpadList',
     ].sort());

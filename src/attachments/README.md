@@ -54,6 +54,7 @@ PastedTextStore
 
 // Vision 描述缓存
 VisionDescriptionCache
+  get(imagePath)                             // 只读已有描述, 缺少时返回 undefined
   getOrCreate(imagePath, signal, produce)      // 命中内存/SQL 直接返回; 否则调 produce 一次
   sweepIfIdle(options)                         // 空闲时按 TTL + 容量预算清扫
   clearCache()                                 // 只清内存, 不动 SQL

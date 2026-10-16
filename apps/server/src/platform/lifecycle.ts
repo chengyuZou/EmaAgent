@@ -1,5 +1,3 @@
-// 进程生命周期: 数据目录决议 → 锁 → Composition → 启动恢复 → 监听 → stdout ready → 后台驱动.
-// 以及对应的优雅关闭. 这里只编排顺序, 业务对象全部来自 Composition.
 import type { Server } from 'node:http';
 import { performance } from 'node:perf_hooks';
 import { serve } from '@hono/node-server';

@@ -17,6 +17,8 @@ import { removeSessionSubscription } from './sessionSubscriptions.js';
  * 移除, 否则再次打开同一会话会看到旧草稿, 侧面板或已断开的运行状态.
  */
 export function removeSessionFromChat(sessionId: string): void {
+  // 先离开已删除的会话, 避免清空估算状态时又为它发起请求.
+  useMainNavigationStore.getState().evictSession(sessionId);
   removeSessionSubscription(sessionId);
   removeSessionPlayback(sessionId);
   removeSessionSpeechGeneration(sessionId);
@@ -24,7 +26,6 @@ export function removeSessionFromChat(sessionId: string): void {
   useTurnStore.getState().evictSession(sessionId);
   useSessionHistoryStore.getState().evictSession(sessionId);
   useChatDraftStore.getState().evictSession(sessionId);
-  useMainNavigationStore.getState().evictSession(sessionId);
   useSessionPanelStore.getState().removeSessionLayout(sessionId);
   useSubagentStore.getState().evictSession(sessionId);
   useTaskStore.getState().evictSession(sessionId);

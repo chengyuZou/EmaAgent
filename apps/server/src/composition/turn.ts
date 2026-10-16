@@ -5,16 +5,20 @@ import path from 'node:path';
 import { VisionDescriptionCache } from '@ema-agent/attachments';
 import { buildCharacterPrompt, type CharacterStore } from '@ema-agent/characters';
 import { createCompact } from '@ema-agent/compact';
-import type { DescribeImage } from '@ema-agent/context';
+import { assembleContext, projectMessages, type DescribeImage } from '@ema-agent/context';
 import { type LlmTokenUsage } from '@ema-agent/llm';
 import { isWitchTrialCharacter } from '@ema-agent/narrative';
 import {
   MEMORY_GUIDANCE,
+  memoryRootDir,
   memorySummaryFile,
   MEMORY_SUMMARY_TOKENS,
+  listMemoryFiles,
+  readMemoryFile,
   readMemorySummary,
   readRelationshipMemoryForTurn,
   relationshipMemoryDir,
+  searchMemoryFiles,
   workMemoryDir,
 } from '@ema-agent/memory';
 import { permissionAskTimeoutSetting, type PermissionStreamEvent } from '@ema-agent/permission';
@@ -29,6 +33,9 @@ import {
   SessionInteractionQueue,
   SessionContinuationQueue,
   TurnExecutor,
+  prepareContextInput,
+  createTurnHistoryResolver,
+  type ContextInputDeps,
   type RenderTurnReminderInput,
   type SessionContinuationEvent,
   type TurnReminderScope,
@@ -47,6 +54,11 @@ import type { TurnFanout } from '../application/turnFanout.js';
 const WORKSPACE_INSTRUCTION_MAX_CHARS = 32 * 1024;
 
 export interface TurnComposition {
+  readonly estimateContext: (sessionId: string, signal: AbortSignal) => Promise<{
+    inputTokens: number;
+    contextWindow: number;
+    pendingImageCount: number;
+  }>;
   readonly turnExecutor: TurnExecutor;
   readonly subagents: SubagentExecutor;
   readonly continuations: SessionContinuationQueue;
@@ -91,6 +103,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     stage
   } = deps;
   const { activeDataDir } = database;
+  const memoryRoot = memoryRootDir();
 
   const interactionQueue = new SessionInteractionQueue(
     settings.get(permissionAskTimeoutSetting),
@@ -245,14 +258,10 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
   const workspaceInstructions = (cwd: string): string | null =>
     readWorkspaceInstructions(cwd, settings.get(workspaceInstructionFilesSetting));
 
-  turnExecutor = new TurnExecutor({
-    turns: database.turns,
+  const contextInputDeps = {
     sessions: database.session,
-    hasNormalUserMessage: sessionId => database.messages.hasNormalUserMessage(sessionId),
-    providers: providers.providers,
     providerModels: providers.providerModels,
     settings,
-    attachments: database.attachments,
     characterPrompt: () => {
       const character = characters.current();
       return buildCharacterPrompt(character, characters.inspectStagePresentation(character.name));
@@ -268,6 +277,55 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     },
     disabledSkillPaths: () => tools.skillStore.listDisabledPaths(),
     registry: tools.registry,
+    workspaceInstructions,
+    memoryGuidance: () => MEMORY_GUIDANCE,
+  } satisfies ContextInputDeps;
+
+  const estimateContext: TurnComposition['estimateContext'] = async (sessionId, signal) => {
+    const prepared = await prepareContextInput(contextInputDeps, sessionId, signal);
+    const historyResolver = createTurnHistoryResolver(database.turns);
+    const characterName = characters.current().name;
+    let pendingImageCount = 0;
+    const history = await projectMessages(
+      database.session.loadHistory(sessionId),
+      message => message.turnId ? historyResolver.resolveGenerationSource(message.turnId) : undefined,
+      {
+        supportsImageInput: prepared.modelFacts.inputImage === true,
+        imageDescriptionPreview: {
+          read: imagePath => visionDescriptions.get(imagePath),
+          canDescribe: resolveCallVision() !== undefined,
+          onMissing: () => { pendingImageCount += 1; },
+        },
+        signal,
+      },
+      message => {
+        if (!message.turnId) return undefined;
+        const historicalCharacter = historyResolver.resolveCharacter(message.turnId);
+        return historicalCharacter !== characterName ? historicalCharacter : undefined;
+      },
+    );
+    signal.throwIfAborted();
+    // 投影可能读取附件文件; 等待期间删除的 Session 不再返回旧估算.
+    database.session.getSession(sessionId);
+    const context = assembleContext({
+      systemPrompt: prepared.systemPrompt,
+      toolPool: prepared.toolPool,
+      messages: history.map(entry => entry.message),
+      contextWindow: prepared.modelFacts.contextWindow,
+    });
+    return {
+      inputTokens: context.usage.estimatedInputTokens,
+      contextWindow: context.usage.contextWindow,
+      pendingImageCount,
+    };
+  };
+
+  turnExecutor = new TurnExecutor({
+    ...contextInputDeps,
+    turns: database.turns,
+    hasNormalUserMessage: sessionId => database.messages.hasNormalUserMessage(sessionId),
+    providers: providers.providers,
+    attachments: database.attachments,
     fileStateCache: tools.getSessionFileStateCache,
     interactionQueue,
     publishInteraction: deps.publishInteraction,
@@ -275,6 +333,9 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     continuations,
     taskStore: database.tasks,
     goalStore: database.goals,
+    memorySearch: request => searchMemoryFiles(memoryRoot, request),
+    memoryRead: request => readMemoryFile(memoryRoot, request),
+    memoryList: request => listMemoryFiles(memoryRoot, request),
     resolveNarrativeSearch: (sessionId, turnId) => {
       // 不改写用户的工具开关. 当前角色不使用游戏剧情时, 本 Turn 不提供查询函数.
       if (!isWitchTrialCharacter(characters.current().name)) {
@@ -289,7 +350,6 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     toolResultStore: tools.getSessionToolResultStore,
     toolExecutionState: tools.toolExecutionState,
     createCompact,
-    workspaceInstructions,
     describeImage,
     visionCache: visionDescriptions,
     scratchpadDirForTurn: (sessionId, turnId) =>
@@ -299,7 +359,6 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     onTaskReminderPersisted: sessionId => {
       database.tasks.markReminded(sessionId);
     },
-    memoryGuidance: () => MEMORY_GUIDANCE,
     usageRecorder: database.usageRecorder,
     stage,
     characterName: () => characters.current().name,
@@ -307,6 +366,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
   });
 
   return {
+    estimateContext,
     turnExecutor,
     subagents,
     continuations,

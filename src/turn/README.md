@@ -9,7 +9,7 @@
 ## 一轮怎样运行
 
 1. `TurnStore.startTurn` 创建运行中的 Turn, 同一 Session 不同时运行两个 Turn.
-2. `prepare/prepareTurn.ts` 读取 Session, 设置和模型事实, 处理输入附件与 Skill, 准备工具和 System Prompt, 返回本轮固定使用的 `PreparedTurn`. `prepare/prepareTurnTools.ts` 管工具池, 权限询问和 AskUser 的执行入口.
+2. `prepare/prepareContextInput.ts` 读取 Session, 设置和模型事实, 确定 Skill, 工具列表和 System Prompt. `prepare/prepareTurn.ts` 复用这份结果, 保存输入附件, 返回本轮固定使用的 `PreparedTurn`. `prepare/prepareTurnTools.ts` 绑定实际执行环境, 权限询问和 AskUser 入口, 不重新选择工具.
 3. Turn 读取一次 reminder, 先写 reminder, 再分别写 `continuationText` 内部续接文本与用户输入. 二者可以在同一 Turn 中同时存在; 前者持久化为 `kind='continuation'`, 不发用户发言事件. 之后调用 `SessionStore.loadHistory`, 由 Context 的 `projectMessages` 把有效 SQL 消息投影为模型消息. 这里不再切 `history/currentTurn`.
 4. 每次模型调用前, `prepare/prepareAgentIteration.ts` 用完整模型消息数组装配 Context, 并把同一数组交给 Compact. Micro 改写消息内容; Macro 用摘要替换被覆盖的前缀, 摘要作为 `kind='summary'` 的 Session Message 落库. System Prompt 只参加本次请求, 不写入 Session Message, 也不参加工作消息压缩.
 5. `AgentLoop` 产出流式事件. `turnMessageWriter.ts` 在首个 Assistant 增量时建行, 后续更新同一行; `tool_use_completed` 先保存调用, AgentLoop 恢复后才启动工具; 每个 `tool_result` 保存为独立 User Message. 写入完成后, `turnLoopEvents.ts` 再把 Turn 循环事件转成前端事件, 更新 Context 用量并记录物理 LLM 调用用量. 子代理调用只复用记账入口, 不改当前 Session Context 用量.
@@ -19,6 +19,14 @@
 Turn 收尾或中断不释放它, Compact 不修改它; 删除 Session 或关闭 Server 才释放.
 
 主对话的长期记忆工具使用 Server 注入的 `memorySearch`, `memoryRead`, `memoryList`, 通过同一个工具池生成模型工具列表与执行入口. 禁用设置和 Plan 筛选仍然生效. 子代理不提供这三个工具, 也不继承对应查询函数; 必要背景由父 Agent 在委派内容中给出. 记忆正文是否已提供以实际 reminder 为准, 使用说明不代表已经读到文件.
+
+## 空闲上下文估算
+
+`prepareContextInput` 也用于 Server 的 `context-estimate` 接口. 空闲估算按当前 Session 模型和权限, 当前角色, 工具开关及 Skill 目录准备 Prompt 与工具列表, 再通过 `projectMessages` 和 `assembleContext` 统计已保存的有效历史. 摘要之前的消息不重复计入; 草稿和下一轮尚未生成的 reminder 不计入.
+
+这条路径不创建 Turn, 执行器或 scratchpad, 不调用模型. 主模型支持图片时按图片估算; 不支持时只读取已有 Vision 描述. 已配置 Vision 但还没有描述的图片只计入标签, 返回 `pendingImageCount` 供前端提示未计入的部分.
+
+圆环运行时显示当前根调用用量, 空闲时重新估算. 分子和模型窗口取自同一份结果; 换会话, 换模型, 配置变化和运行结束会刷新, 旧请求取消且不能覆盖新结果. Session 在估算期间删除时返回 404.
 
 ## 历史发言角色
 

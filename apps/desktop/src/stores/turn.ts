@@ -440,6 +440,7 @@ export const useTurnStore = create<TurnStore>((set, get) => ({
     const turnStore = get();
     switch (event.type) {
       case 'turn_started':
+        turnStore.invalidateContextUsage(sessionId);
         turnStore.begin(
           sessionId,
           turnId,

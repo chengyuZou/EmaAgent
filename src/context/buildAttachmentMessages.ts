@@ -13,6 +13,12 @@ export interface BuildAttachmentMessagesOptions {
   /** 仅附件按真实文件路径缓存描述. 工具图片不写入这个缓存. */
   readonly visionCache?: Pick<VisionDescriptionCache, 'getOrCreate'>;
   readonly describeImage?: DescribeImage;
+  /** 空闲估算只读已有描述; 缺少描述时通知调用方, 不发起 Vision 请求. */
+  readonly imageDescriptionPreview?: {
+    readonly read: (imagePath: string) => string | undefined;
+    readonly canDescribe: boolean;
+    readonly onMissing: () => void;
+  };
   readonly signal: AbortSignal;
 }
 
@@ -65,7 +71,20 @@ async function buildImageMessages(
   try {
     options.signal.throwIfAborted();
     if (!options.supportsImageInput) {
-      if (!describe) {
+      if (options.imageDescriptionPreview) {
+        const description = options.imageDescriptionPreview.read(block.path);
+        if (description !== undefined) {
+          return [{
+            type: 'text',
+            text: `${label}\n[系统提示: 当前模型不支持图片输入, 以下是 Vision 模型生成的描述]\n${description}`,
+          }];
+        }
+        if (options.imageDescriptionPreview.canDescribe) {
+          options.imageDescriptionPreview.onMissing();
+          return [{ type: 'text', text: label }];
+        }
+      }
+      if (!describe || options.imageDescriptionPreview) {
         return [{
           type: 'text',
           text: `${label}\n[系统提示: 当前模型不支持图片输入且未配置 Vision 模型, 未读取图片内容]`,
