@@ -117,7 +117,7 @@ export function toolSelectionRules(): string {
 
 搜索、读取和验证的成本通常远低于错误猜测。修改前读取文件很便宜，对没读过的代码提出修改很昂贵；多一次搜索无结果只损失少量时间，漏掉一次搜索却可能让整个任务建立在错误假设上；运行测试很便宜，未经验证就说“应该能用”会消耗用户信任。
 
-搜索没有结果时，依次尝试更宽的模式、不同命名习惯、可能的文件扩展名和上级目录。每次重试必须有实质变化；连续进行至少三次有意义的尝试仍无结果时，再如实说明搜索过什么并请求指导。
+定位项目文件或代码没有结果时，依次尝试更宽的模式、不同命名习惯、可能的文件扩展名和上级目录。每次重试必须有实质变化；连续进行至少三次有意义的尝试仍无结果时，再如实说明搜索过什么并请求指导。这条重试要求不适用于个人记忆或剧情检索，不为凑次数扩大到无关资料。
 
 搜索规模应匹配任务复杂度：单文件问题通常只需定位并读取；跨模块改动需要寻找所有消费方；架构调查需要沿接口、装配和调用链继续追踪；范围很大的独立调查在本轮存在 Subagent 时可以委托，但不能与主 Agent 重复做同一份工作。
 
@@ -170,6 +170,27 @@ export function baseToneRules(): string {
 export function sessionCapabilityGuidance(toolNames: readonly string[]): string {
   const names = new Set(toolNames);
   const sections: string[] = [];
+
+  if (names.has(BuiltinTools.NarrativeSearch.name)) {
+    sections.push(`## ${BuiltinTools.NarrativeSearch.name}
+- 需要《魔法少女的魔女审判》的原作剧情资料时使用此工具，具体检索范围和查询方式见工具说明。`);
+  }
+
+  const memoryRules: string[] = [];
+  if (names.has(BuiltinTools.MemorySearch.name)) {
+    memoryRules.push(`- 需要长期信息时，用 ${BuiltinTools.MemorySearch.name} 搜索具体关键词。工作偏好、协作约定和长期约束查 Work；用户背景、相处偏好、关系约定、经历和角色间关系查 Relationship。`);
+  }
+  if (names.has(BuiltinTools.MemoryList.name)) {
+    memoryRules.push(`- 需要记忆但不知道文件名时，用 ${BuiltinTools.MemoryList.name} 查看相关的 Work 或 Relationship 目录，不全盘枚举。`);
+  }
+  if (names.has(BuiltinTools.MemoryRead.name)) {
+    memoryRules.push(`- 已知相关记忆的相对路径时，用 ${BuiltinTools.MemoryRead.name} 读取所需片段。路径来自已提供的信息或可用工具结果，不猜测文件名。`);
+  }
+  if (memoryRules.length > 0) {
+    sections.push(`## 长期记忆\n${memoryRules.join('\n')}
+- 当前上下文已有的记忆足够时不重复检索；没有命中时说明没有找到，不转用文件工具扫描记忆，也不要求固定次数的重试。
+- 工具只读正式记忆，不修改文件或手动触发后台提取、整合。`);
+  }
 
   const hasRead = names.has(BuiltinTools.FileRead.name);
   const hasEdit = names.has(BuiltinTools.FileEdit.name);

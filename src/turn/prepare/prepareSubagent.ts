@@ -13,7 +13,7 @@ import type { TurnStreamEvent } from '../events.js';
 import type { PreparedTurn } from './prepareTurn.js';
 import { createPrepareAgentIteration } from './prepareAgentIteration.js';
 
-/** 子 Agent 永不获得的能力:递归派发,Task 读写与用户交互;只从父 Pool 继续收窄. */
+/** 子代理不直接检索长期记忆, 管理根任务或递归派发; 工具只从父 Pool 继续收窄. */
 const SUBAGENT_DENIED_TOOL_NAMES: ReadonlySet<string> = new Set([
   BuiltinTools.Subagent.name,
   BuiltinTools.SubagentAwait.name,
@@ -25,6 +25,9 @@ const SUBAGENT_DENIED_TOOL_NAMES: ReadonlySet<string> = new Set([
   BuiltinTools.GoalUpdate.name,
   BuiltinTools.TodoWrite.name,
   BuiltinTools.AskUser.name,
+  BuiltinTools.MemorySearch.name,
+  BuiltinTools.MemoryRead.name,
+  BuiltinTools.MemoryList.name,
 ]);
 
 /** 放在通用规则之后, 明确它们在纯工作子代理中的身份和交付对象. */

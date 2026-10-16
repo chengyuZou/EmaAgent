@@ -33,6 +33,10 @@ Work 没有 `history/`.Work 的 `memory_summary.md` 供 Turn 开始时注入,不
 
 ## Turn 输入
 
+主对话的 MemorySearch, MemoryRead, MemoryList 由 Server 绑定当前记忆根目录, 分别调用 `searchMemoryFiles`, `readMemoryFile`, `listMemoryFiles`. 它们经过正常工具池筛选和禁用设置, Plan 模式也可使用, 子代理不提供这三个工具. 这些调用不写记忆, 不触发提取或整合.
+
+记忆使用指引与记忆正文分开: 指引说明 Work/Relationship 的用途, 正文由 Turn reminder 按实际读取结果提供. 缺少文件时不宣称正文已提供. 具体工具的调用说明由当前工具池生成, 不向禁用工具或无工具的压缩调用承诺检索能力. Work 保存工作偏好,协作约定和长期约束; Relationship 保存用户背景,相处偏好,用户与角色的约定和经历,以及有对话证据或用户明确设定的角色间关系与共同事件.
+
 Server 从已完成 Turn 投影标准 `@ema-agent/llm` `Message[]`,只保留按原顺序出现的 User 文本和 Assistant 文本.System,Tool Call,Tool Result,AskUser,reasoning,reminder,summary 与附件内容不进入 Memory.
 
 同一份文本分别调用 Work 与 Relationship Extractor.外部 LLM 只允许返回:

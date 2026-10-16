@@ -18,6 +18,8 @@
 文件状态由 Server 按 Session 持有, `prepareTurnTools` 只取得同一 `FileStateCache` 并注入本轮工具与子代理工具.
 Turn 收尾或中断不释放它, Compact 不修改它; 删除 Session 或关闭 Server 才释放.
 
+主对话的长期记忆工具使用 Server 注入的 `memorySearch`, `memoryRead`, `memoryList`, 通过同一个工具池生成模型工具列表与执行入口. 禁用设置和 Plan 筛选仍然生效. 子代理不提供这三个工具, 也不继承对应查询函数; 必要背景由父 Agent 在委派内容中给出. 记忆正文是否已提供以实际 reminder 为准, 使用说明不代表已经读到文件.
+
 ## 历史发言角色
 
 Turn 在准备开始时同步读取角色名字和人设段落, 本轮模型请求始终使用这份人设. 准备完成后把名字写入 `Turn.characterName`, 表示当时参与对话的角色, 不表示后续音频的朗读角色. 运行期间切换角色影响下一 Turn, 不改变已开始这轮的名字或人设.

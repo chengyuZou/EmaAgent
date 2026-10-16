@@ -29,6 +29,10 @@ import {
 import { FileReadTool } from '../../builtin-tools/tools/FileReadTool/FileReadTool.js';
 import { FileEditTool } from '../../builtin-tools/tools/FileEditTool/FileEditTool.js';
 import { DescribeImageTool } from '../../builtin-tools/tools/DescribeImageTool/describeImageTool.js';
+import { MemorySearchTool } from '../../builtin-tools/tools/MemoryTool/MemorySearchTool.js';
+import { MemoryReadTool } from '../../builtin-tools/tools/MemoryTool/MemoryReadTool.js';
+import { MemoryListTool } from '../../builtin-tools/tools/MemoryTool/MemoryListTool.js';
+import { listMemoryFiles, readMemoryFile, searchMemoryFiles } from '../../memory/common/memoryFiles.js';
 
 const SESSION_ID = 's1';
 const TURN_ID = 't1';
@@ -114,6 +118,50 @@ function makeInput(options: {
 
 describe('prepareTurnTools', () => {
   beforeEach(() => clearSessionRules(SESSION_ID));
+
+  it.each(['default', 'plan'] as const)('%s 的真实 Memory 工具通过宿主读取正式记忆, 仍遵守禁用设置', async mode => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ema-turn-memory-'));
+    fs.mkdirSync(path.join(directory, 'work'));
+    fs.writeFileSync(path.join(directory, 'work', 'MEMORY.md'), '用户偏好简洁说明');
+    const settings = fakeSettings();
+    const deps = makeDeps({ tools: [], queue: new SessionInteractionQueue(null), settings });
+    deps.registry.register(MemorySearchTool);
+    deps.registry.register(MemoryReadTool);
+    deps.registry.register(MemoryListTool);
+    const input = makeInput({ events: [], overrides: {
+      permission: { mode, buckets: { alwaysAllowRules: {}, alwaysDenyRules: {}, alwaysAskRules: {} } },
+    } });
+    try {
+      expect(prepareTurnTools(deps, input).toolPool.tools).toEqual([]);
+      const memoryDeps = {
+        ...deps,
+        memorySearch: (request: Parameters<typeof searchMemoryFiles>[1]) => searchMemoryFiles(directory, request),
+        memoryRead: (request: Parameters<typeof readMemoryFile>[1]) => readMemoryFile(directory, request),
+        memoryList: (request: Parameters<typeof listMemoryFiles>[1]) => listMemoryFiles(directory, request),
+      };
+      const assembly = prepareTurnTools(memoryDeps, input);
+      expect(assembly.toolPool.tools.map(tool => tool.name).sort())
+        .toEqual(['MemoryList', 'MemoryRead', 'MemorySearch']);
+      const executor = assembly.createExecutor(() => undefined);
+      executor.addTool(0, 'memory-search', 'MemorySearch', { queries: ['简洁'] });
+      executor.addTool(1, 'memory-read', 'MemoryRead', { path: 'work/MEMORY.md' });
+      executor.addTool(2, 'memory-list', 'MemoryList', { path: 'work' });
+      await executor.join();
+      const results = executor.takeCompletedResults();
+      expect(results).toHaveLength(3);
+      expect(results.every(result => result.isError === false)).toBe(true);
+      expect(results.find(result => result.toolCallId === 'memory-read')?.content).toBe('用户偏好简洁说明');
+      expect(results.find(result => result.toolCallId === 'memory-list')?.content).toContain('work/MEMORY.md');
+      const search = results.find(result => result.toolCallId === 'memory-search');
+      expect(search?.content).toContain('work/MEMORY.md');
+      expect(search?.content).toContain('用户偏好简洁说明');
+      settings.set(disabledToolsSetting, [BuiltinTools.MemorySearch.id]);
+      expect(prepareTurnTools(memoryDeps, input).toolPool.tools.map(tool => tool.name).sort())
+        .toEqual(['MemoryList', 'MemoryRead']);
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
 
   it('Plan 和子代理都可显式调用 DescribeImage, 复用已有 Vision Context', async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ema-child-image-'));

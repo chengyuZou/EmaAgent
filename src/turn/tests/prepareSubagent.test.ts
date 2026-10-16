@@ -11,6 +11,10 @@ import type { PreparedTurn } from '../prepare/prepareTurn.js';
 import { GoalGetTool } from '../../builtin-tools/tools/GoalGetTool/GoalGetTool.js';
 import { GoalUpdateTool } from '../../builtin-tools/tools/GoalUpdateTool/GoalUpdateTool.js';
 import { DescribeImageTool } from '../../builtin-tools/tools/DescribeImageTool/describeImageTool.js';
+import { MemorySearchTool } from '../../builtin-tools/tools/MemoryTool/MemorySearchTool.js';
+import { MemoryReadTool } from '../../builtin-tools/tools/MemoryTool/MemoryReadTool.js';
+import { MemoryListTool } from '../../builtin-tools/tools/MemoryTool/MemoryListTool.js';
+import { MEMORY_GUIDANCE } from '../../memory/prompt.js';
 
 import { Database, SubagentsRepo, SubagentRunsRepo, SubagentMessagesRepo } from '@ema-agent/storage';
 import { SubagentMessagesStore, type ForkParentMessages, type ForkParentMessage, type PrepareSubagentInput } from '@ema-agent/agent';
@@ -108,6 +112,25 @@ function fixture(
 }
 
 describe('createPrepareSubagent fork', () => {
+  it.each(['fork', 'subagent'] as const)('%s 子代理不继承 Memory 工具或对应调用说明', async contextMode => {
+    const base = preparedTurn();
+    const root = {
+      ...base,
+      DynamicSystemPromptInput: { ...base.DynamicSystemPromptInput, memorySection: MEMORY_GUIDANCE },
+      tools: { ...base.tools, toolPool: new ToolPool([MemorySearchTool, MemoryReadTool, MemoryListTool]) },
+    };
+    const { prepare } = fixture(async () => parentMessages(), root);
+    const child = await prepare({
+      subagentId: 'memory-child', prompt: '只处理委派工作', options: { contextMode },
+      signal: new AbortController().signal,
+    });
+    const result = await child.prepareIteration({ llmCallId: 'memory-child-call', messages: child.messages });
+    expect(result.request.tools ?? []).toEqual([]);
+    const system = result.request.messages.filter(message => message.role === 'system');
+    expect(JSON.stringify(system)).not.toMatch(/MemorySearch|MemoryRead|MemoryList/);
+    expect(root.tools.toolPool.tools).toHaveLength(3);
+  });
+
   it.each([true, false])('子代理继承父工具池的 DescribeImage 可见性: Vision=%s', async hasVision => {
     const registry = new ToolRegistry();
     registry.register(DescribeImageTool);

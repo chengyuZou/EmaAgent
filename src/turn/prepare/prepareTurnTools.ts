@@ -70,6 +70,9 @@ export interface TurnToolsDeps {
   readonly goalStore?: GoalStore;
   /** Turn 准备时冻结模型绑定与算法设置. 缺少绑定时不提供剧情工具. */
   readonly resolveNarrativeSearch?: (sessionId: string, turnId: string) => ToolUseContext['narrativeSearch'];
+  readonly memorySearch?: ToolUseContext['memorySearch'];
+  readonly memoryRead?: ToolUseContext['memoryRead'];
+  readonly memoryList?: ToolUseContext['memoryList'];
   readonly backgroundProcesses?: BackgroundProcess;
   /** 每 Turn 解析一次 vision 调用闭包: 无绑定时返回 undefined */
   readonly resolveVision?: () => CallVision | undefined;
@@ -218,6 +221,9 @@ export function prepareTurnTools(deps: TurnToolsDeps, input: PrepareTurnToolsInp
     ...(deps.captureScreen ? { captureScreen: deps.captureScreen } : {}),
     ...(deps.backgroundProcesses ? { backgroundProcesses: deps.backgroundProcesses } : {}),
     ...(narrativeSearch ? { narrativeSearch } : {}),
+    ...(deps.memorySearch ? { memorySearch: deps.memorySearch } : {}),
+    ...(deps.memoryRead ? { memoryRead: deps.memoryRead } : {}),
+    ...(deps.memoryList ? { memoryList: deps.memoryList } : {}),
     ...(deps.taskStore ? { taskStore: deps.taskStore } : {}),
     ...(deps.goalStore ? { goalStore: deps.goalStore } : {}),
     subagents: {
@@ -262,8 +268,14 @@ export function prepareTurnTools(deps: TurnToolsDeps, input: PrepareTurnToolsInp
     : availablePool;
 
   const toolResultStore = deps.toolResultStore?.(sessionId);
-  // 子代理继承其它宿主能力, 但不能读取或结束根 Session 的目标.
-  const { goalStore: _goalStore, ...subagentToolContext } = toolContext;
+  // 子代理不直接检索长期记忆, 也不能读取或结束根 Session 的目标.
+  const {
+    goalStore: _goalStore,
+    memorySearch: _memorySearch,
+    memoryRead: _memoryRead,
+    memoryList: _memoryList,
+    ...subagentToolContext
+  } = toolContext;
   let currentExecutor: StreamingToolExecutor | undefined;
   const createExecutor = (wake: () => void): StreamingToolExecutor => {
     const executor = new StreamingToolExecutor({
