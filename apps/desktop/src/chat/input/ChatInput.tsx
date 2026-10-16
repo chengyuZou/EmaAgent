@@ -48,6 +48,7 @@ import { InputGoalBar, useInputGoal } from './controls/goalBar.js';
 import { InputProjectBar } from './inputProjectBar.js';
 import { NarrativeToolNotice } from './narrativeToolNotice.js';
 import { VoiceInputBar, type VoiceInputState } from './voiceInputBar.js';
+import { AttachmentImagePreview } from '../../lib/images/attachmentImagePreview.js';
 
 interface VoiceRecording {
   readonly sessionId: string | null;
@@ -64,7 +65,10 @@ function releaseRecording(recording: VoiceRecording): void {
   recording.media?.getTracks().forEach(track => track.stop());
 }
 
-function queuedInputText(input: readonly TurnInputPart[]): string {
+function QueuedInputContent({ sessionId, input }: {
+  readonly sessionId: string;
+  readonly input: readonly TurnInputPart[];
+}): JSX.Element {
   const text = input
     .filter((part): part is Extract<TurnInputPart, { type: 'text' }> => (
       part.type === 'text'
@@ -72,8 +76,67 @@ function queuedInputText(input: readonly TurnInputPart[]): string {
     .map((part) => part.text)
     .join('')
     .trim();
-  const references = input.filter((part) => part.type !== 'text').length;
-  return text || `${references} 个附件或技能`;
+  const references = input.filter(part => part.type !== 'text');
+  return (
+    <div className="min-w-0 flex-1">
+      {text && <div className="truncate text-[var(--ema-text-secondary)]" title={text}>{text}</div>}
+      {references.length > 0 && (
+        <div className={`flex flex-wrap items-start gap-1.5 ${text ? 'mt-1.5' : ''}`}>
+          {references.map((reference, index) => (
+            <QueuedInputReference key={index} sessionId={sessionId} reference={reference} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function QueuedInputReference({ sessionId, reference }: {
+  readonly sessionId: string;
+  readonly reference: Exclude<TurnInputPart, { type: 'text' }>;
+}): JSX.Element {
+  let label: string;
+  let detail: string;
+  let icon: string;
+  if (reference.type === 'skill_reference') {
+    label = reference.name;
+    detail = `技能: ${reference.name}\n${reference.path}`;
+    icon = 'i-lucide:box';
+  } else {
+    const attachment = reference.block;
+    switch (attachment.type) {
+      case 'image_reference':
+        return (
+          <AttachmentImagePreview
+            sessionId={sessionId}
+            path={attachment.path}
+            alt={attachment.name ?? '排队图片'}
+            className="ema-image-preview--attachment"
+          />
+        );
+      case 'file_reference':
+        label = attachment.path.split(/[\\/]/).pop() ?? attachment.path;
+        detail = attachment.path;
+        icon = 'i-lucide:paperclip';
+        break;
+      case 'pasted_text_reference':
+        label = `粘贴文本: ${attachment.preview}`;
+        detail = attachment.preview;
+        icon = 'i-lucide:file-text';
+        break;
+    }
+  }
+  return (
+    <Tooltip content={detail} variant="card">
+      <span
+        tabIndex={0}
+        className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-md border border-[var(--ema-border)] bg-[var(--ema-primary-muted)] px-2 py-1 text-[11px] text-[var(--ema-primary-text)]"
+      >
+        <span className={`${icon} shrink-0`} aria-hidden />
+        <span className="max-w-48 truncate">{label}</span>
+      </span>
+    </Tooltip>
+  );
 }
 
 function draftFromSession(session: SessionListItem | undefined): ChatDraft {
@@ -417,12 +480,10 @@ export function ChatInput({
                   className="ema-fade-in flex items-center gap-2 rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-2)] px-3 py-2 text-xs"
                 >
                   <span className="i-lucide:clock-3 text-[var(--ema-text-tertiary)]" aria-hidden />
-                  <span className="min-w-0 flex-1 truncate text-[var(--ema-text-secondary)]">
-                    {queuedInputText(item.input)}
-                  </span>
+                  <QueuedInputContent sessionId={viewedId!} input={item.input} />
                   {turnRunning && (
                     <button
-                      className="text-[var(--ema-primary)] hover:underline"
+                      className="shrink-0 text-[var(--ema-primary)] hover:underline"
                       onClick={() => void sessionWebSocket.guideQueuedInput(viewedId!, item.id)}
                     >
                       立即引导

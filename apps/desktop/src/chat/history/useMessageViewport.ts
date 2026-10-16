@@ -21,6 +21,7 @@ interface MessageViewportInput {
 }
 
 const END_THRESHOLD = 24;
+const END_POSITION_TOLERANCE = 1;
 
 export function useMessageViewport({
   messages, scroller, windowKey, ready, reachesLatest, initialMessageId,
@@ -39,6 +40,7 @@ export function useMessageViewport({
   const userScrolling = useRef(false);
   const scrollIdleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const programmaticOffset = useRef<number | null>(null);
+  const lastScrollTop = useRef(0);
 
   const getItemKey = useCallback((index: number) => messages[index]!.id, [messages]);
   const scrollToFn = useCallback<typeof elementScroll>((offset, options, instance) => {
@@ -95,6 +97,9 @@ export function useMessageViewport({
 
   function onScroll(event: Event): void {
     if (!scroller || event.target !== scroller) return;
+    const scrollTop = scroller.scrollTop;
+    const scrollDelta = scrollTop - lastScrollTop.current;
+    lastScrollTop.current = scrollTop;
     const bottom = nearEnd();
     setAtBottom(bottom);
     const commanded = programmaticOffset.current !== null
@@ -104,7 +109,14 @@ export function useMessageViewport({
     if (!commanded && navigation.current === null) {
       userScrolling.current = true;
       restoringPrepend.current = false;
-      following.current = bottom && reachesLatest;
+      // 靠近底部不等于用户想继续跟随. 上滚后保持阅读位置, 只有向下滚到底才恢复;
+      // 1px 容差只处理滚动位置的取整误差, 没有位移的事件不改变跟随意图.
+      if (scrollDelta < 0) {
+        following.current = false;
+      } else if (scrollDelta > 0) {
+        const reachedEnd = scroller.scrollHeight - scroller.clientHeight - scrollTop <= END_POSITION_TOLERANCE;
+        following.current = reachedEnd && reachesLatest;
+      }
       rememberReadingPosition();
     }
     if (userScrolling.current || navigation.current?.kind === 'latest') {
@@ -211,6 +223,7 @@ export function useMessageViewport({
         virtualizer.scrollToOffset(scroller.scrollTop);
       }
       programmaticOffset.current = null;
+      lastScrollTop.current = scroller.scrollTop;
       userScrolling.current = true;
       rememberReadingPosition();
     };

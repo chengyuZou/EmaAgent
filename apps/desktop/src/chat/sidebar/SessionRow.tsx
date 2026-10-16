@@ -192,7 +192,7 @@ export function SessionRow({
         <button
           type="button"
           aria-label={title}
-          className="ema-session-row-title flex items-center gap-1.5 min-w-0 flex-1 rounded focus-ring"
+          className="ema-session-row-title flex items-center gap-1.5 min-w-0 flex-1 rounded"
         >
           {session.pinned && (
             <span className={`i-lucide:pin text-[11px] shrink-0 ${isActive ? 'text-[var(--ema-text-secondary)]' : 'text-[var(--ema-text-tertiary)]'}`} aria-hidden />
