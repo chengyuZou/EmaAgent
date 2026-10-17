@@ -1,5 +1,3 @@
-// 图片粘贴/拖入时落盘到 sessions/<sid>/attachments/images/
-
 import { randomUUID } from 'node:crypto';
 import { mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -14,10 +12,8 @@ import type { AttachmentEvent } from './events.js';
 
 const SUPPORTED_FORMATS = new Set(['png', 'jpeg', 'gif', 'webp']);
 
-/**
- * @param path 绝对路径
- */
 export interface SavedImage {
+  /** 受管图片副本的绝对路径. */
   readonly path: string;
   readonly byteSize: number;
 }
@@ -29,9 +25,6 @@ export class ImageStore {
     private readonly emit?: (event: AttachmentEvent) => void,
   ) {}
   
-  /**
-   * 粘贴/拖入图片时处理并落盘
-   */
   async saveImage(
     sessionId: string,
     bytes: Buffer,
@@ -60,17 +53,16 @@ export class ImageStore {
   }
 
   /**
-   * 发送前认领本次消息引用的粘贴文本, 将有效条目绑定到当前 Turn.
-   * @param paths 发送消息引用的粘贴文本路径
-   * @returns 无法认领的 path, 例如已被用户删除 未入账或不属于当前 Session.
+   * 将图片记录绑定到当前 Turn, 返回缺失或不属于该 Session 的路径.
+   * 允许重新绑定已使用的副本, 使失败请求可以重用原附件.
    */
   claimForTurn(sessionId: string, turnId: string, paths: readonly string[]): string[] {
     return this.repo.claimForTurn(sessionId, turnId, paths);
   }
 
-  /** 消息流/附件页封面用的小图:长边 ≤ maxDim 的 JPEG,原图不动 */
+  /** 返回长边不超过 maxDim 的 JPEG 缩略图, 不修改原图. */
   async readThumbnail(imagePath: string, maxDim = 256): Promise<Buffer> {
-    // sharp 本机 Windows 独立导入约 0.05s, 缩略图请求时再加载, 后续复用模块缓存.
+    // 缩略图请求时才加载 sharp, 文本附件和普通文件检查不需要等待图片库.
     const { default: sharp } = await import('sharp');
     return sharp(imagePath)
       .resize({ width: maxDim, height: maxDim, fit: 'inside', withoutEnlargement: true })
@@ -78,9 +70,6 @@ export class ImageStore {
       .toBuffer();
   }
 
-  /**
-   * 清扫 Repo 与本地文件系统中过期的图片残留
-   */
   async sweep(sessionId: string, olderThanMs: number, now = Date.now()): Promise<StoreSweepReport> {
     const cutoff = now - olderThanMs;
     let deletedFiles = 0;
@@ -116,21 +105,17 @@ export class ImageStore {
         deletedFiles += 1;
         freedBytes += metadata.size;
       } catch {
-        // 单个文件失败不阻断整轮清扫。
+        // 单个文件失败不阻断其他残留文件的清理.
       }
     }
     return { deletedFiles, freedBytes };
   }
 
-  /**
-   * 各LLM的API对图片大小和总字节数有限制, 需要在入库前规范化:
-   * @param originalName 图片的原始文件名
-   */
   private async normalize(
     bytes: Buffer,
     originalName?: string,
   ): Promise<{ bytes: Buffer; extension: string }> {
-    // sharp 本机 Windows 独立导入约 0.05s, 只在处理图片时加载, 避免文本附件和 MIME 查询等待它.
+    // 按需加载 sharp, 导入附件包或保存文本时不加载图片库.
     const { default: sharp } = await import('sharp');
     let metadata;
     try {
@@ -153,7 +138,7 @@ export class ImageStore {
       return { bytes, extension: format === 'jpeg' ? 'jpg' : format };
     }
 
-    // sharp 不指定 animated 时 如遇到 gif 等动图只处理第一帧
+    // 转换时未开启 animated, 动图只处理第一帧. 阈值内的原文件直接保留全部字节.
     const targetFormat = format === 'jpeg' ? 'jpeg' : 'png';
     let out: Buffer = await sharp(bytes)
       .resize({
@@ -176,6 +161,7 @@ export class ImageStore {
         .toBuffer();
       extension = 'jpg';
     }
+    // 当前只执行这一轮转换, 不保证高噪声图片的最终字节数一定低于目标阈值.
     return { bytes: out, extension };
   }
 }

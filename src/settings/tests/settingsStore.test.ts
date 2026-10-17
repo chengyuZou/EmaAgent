@@ -1,6 +1,3 @@
-// 测试类型化设置的读写顺序:写必须先落库再发事件;读每次过 zod safeParse,
-// 坏值回落默认;有跨字段约束的组在写入时整组 refine。
-
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import {
@@ -10,6 +7,7 @@ import {
   defineSetting,
 } from '../index.js';
 import type { SettingGroup } from '../types.js';
+import type { SettingsStoreOptions } from '../settingsStore.js';
 
 const countSetting = defineSetting({
   key: 'test.count',
@@ -18,7 +16,6 @@ const countSetting = defineSetting({
   schema: z.number().int().min(0),
 });
 
-// 组内跨字段约束示例:maxConcurrentSubagents ≤ maxSubagents
 const maxSubagentsSetting = defineSetting({
   key: 'agent.limits.maxSubagents',
   apply: 'nextTurn',
@@ -52,7 +49,7 @@ const agentLimitsGroup: SettingGroup = {
 
 const memory: Record<string, unknown> = {};
 
-function makeStore(options: { groups?: readonly SettingGroup[] } = {}) {
+function makeStore(options: SettingsStoreOptions = {}) {
   return new SettingsStore(
     {
       read: key => (key in memory ? { status: 'found', value: memory[key] } : { status: 'missing' }),
@@ -121,33 +118,29 @@ describe('SettingsStore', () => {
 
   it('组内改一个 key 时,用组内其余 key 当前值整组 refine;违反跨字段约束则拒绝', () => {
     const store = makeStore({ groups: [agentLimitsGroup] });
-    // 先把 maxConcurrentSubagents 设为 8(默认 maxSubagents=16,8≤16 合法)
     store.set(maxConcurrentSubagentsSetting, 8);
-    // 再把 maxSubagents 改成 4 → 整组 8 ≤ 4 不成立 → 拒绝
+    // 两个字段各自合法, 但组合后并发数会超过总数, 必须拒绝保存.
     expect(() => store.set(maxSubagentsSetting, 4))
       .toThrow(InvalidSettingGroupValueError);
-    // 未落库:仍是默认 16
     expect(store.get(maxSubagentsSetting)).toBe(16);
   });
 
   it('组内合法组合正常通过并落库', () => {
     const store = makeStore({ groups: [agentLimitsGroup] });
     store.set(maxSubagentsSetting, 8);
-    store.set(maxConcurrentSubagentsSetting, 4); // 4 ≤ 8 → 通过
+    store.set(maxConcurrentSubagentsSetting, 4);
     expect(store.get(maxConcurrentSubagentsSetting)).toBe(4);
   });
 
   it('setMany 提交一组时整组校验;组内未改动 key 用当前值', () => {
     const store = makeStore({ groups: [agentLimitsGroup] });
     store.set(maxSubagentsSetting, 16);
-    // 同一批:maxSubagents=2, maxConcurrentSubagents=4 → 4 > 2 拒绝
     expect(() =>
       store.setMany([
         { definition: maxSubagentsSetting, value: 2 },
         { definition: maxConcurrentSubagentsSetting, value: 4 },
       ]),
     ).toThrow(InvalidSettingGroupValueError);
-    // 未落库
     expect(store.get(maxSubagentsSetting)).toBe(16);
   });
 

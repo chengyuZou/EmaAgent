@@ -1,12 +1,3 @@
-// 类型化设置的唯一入口:先 SQLite 落库、再发变更事件;读取每次过 zod safeParse,
-// 坏值回落业务默认并每键告警一次。不持有内存缓存——KV 读是微秒级,
-// 缓存只会引入"内存与库不一致"的心理负担,事件枢纽(revision/订阅)才是真实状态。
-// schema 驱动校验和类型推导;
-// 有跨字段约束的 key 用 SettingGroup 声明,set/setMany 时整组 refine。
-// 同时承担字段目录职能(原 SettingsCatalog 已并入):构造时注册各业务包的
-// listDefinitions/findDefinition 供 API 按已注册 key 读写值.
-// 字段定义(schema/defaultValue/apply)永远在代码,不进 SQL——settings 表
-// 只存"用户改了什么";展示方式归前端业务组件.
 import type { SettingsRepo } from '@ema-agent/storage';
 import {
   InvalidSettingGroupValueError,
@@ -18,22 +9,21 @@ import type {
 } from './events.js';
 import type { SettingDefinition, SettingGroup } from './types.js';
 
-/** Store 只需要 KV 窄口;SQL 与事务归 src/storage。 */
 export type SettingsRepository = Pick<
   SettingsRepo,
   'read' | 'set' | 'setMany' | 'delete'
 >;
 
 export interface SettingsStoreOptions {
-  /** 各业务包公开的设置定义目录;重复 key 启动期 fail-fast。 */
+  /** 业务包提供的设置定义, 重复 key 会在注册时抛错. */
   readonly definitions?: readonly SettingDefinition<unknown>[];
-  /** 有跨字段约束的设置组;set 组内 key 或 setMany 提交一组时整组 refine。 */
+  /** set/setMany 写入组内字段时, 使用整组新值检查跨字段约束. */
   readonly groups?: readonly SettingGroup[];
 }
 
 export class SettingsStore {
   private readonly listeners = new Set<SettingsChangedListener>();
-  /** 坏值告警每键一次:持久值损坏极少见,但读取点可能位于每次操作的边界。 */
+  // 同一个坏值可能被多次读取, 每个实例对每个 key 只告警一次, 避免重复输出.
   private readonly warnedKeys = new Set<string>();
   private readonly definitions = new Map<string, SettingDefinition<unknown>>();
   private readonly groupsById = new Map<string, SettingGroup>();
@@ -51,7 +41,6 @@ export class SettingsStore {
     }
   }
 
-  /** 注册一个设置定义;重复 key 直接抛错(启动期 fail-fast,防止定义冲突)。 */
   register<T>(definition: SettingDefinition<T>): void {
     if (this.definitions.has(definition.key)) {
       throw new Error(`Duplicate setting key: ${definition.key}`);
@@ -62,13 +51,11 @@ export class SettingsStore {
     );
   }
 
-  /** 返回已注册定义,供值 API 枚举和按 key 查找. */
   listDefinitions(): SettingDefinition<unknown>[] {
     return [...this.definitions.values()]
       .sort((left, right) => left.key.localeCompare(right.key));
   }
 
-  /** 按 key 查定义;未注册返回 undefined。 */
   findDefinition(key: string): SettingDefinition<unknown> | undefined {
     return this.definitions.get(key);
   }
@@ -83,7 +70,7 @@ export class SettingsStore {
       this.warnedKeys.add(definition.key);
       console.warn(`[settings] invalid persisted value, using default: ${definition.key}`);
     }
-    // defaultValue 是全进程共享引用,克隆防止调用方改穿默认值。
+    // 默认值由定义对象共享. 返回副本, 避免调用方修改后影响后续读取.
     return structuredClone(definition.defaultValue);
   }
 
@@ -93,7 +80,7 @@ export class SettingsStore {
     if (definition.group) {
       this.assertGroupValid(definition.group, { [definition.key]: parsed.data });
     }
-    // 先落库后发事件:持久化失败时订阅者不得看到未生效的值。
+    // 先保存再通知, 写入失败时不能让订阅者误以为新值已生效.
     this.repository.set(definition.key, parsed.data);
     this.publish([definition.key]);
     return parsed.data;
@@ -108,7 +95,7 @@ export class SettingsStore {
       if (!parsed.success) throw new InvalidSettingValueError(definition.key);
       return { definition, value: parsed.data };
     });
-    // 收集本次改动涉及的组,整组校验(组内未改动的 key 用当前值,坏值用默认兜底)。
+    // 同一批的新值一起校验. 组内未修改的字段使用当前有效值或默认值.
     const changed: Record<string, unknown> = Object.fromEntries(
       normalized.map((entry) => [entry.definition.key, entry.value]),
     );
@@ -126,21 +113,18 @@ export class SettingsStore {
     this.publish(normalized.map((entry) => entry.definition.key));
   }
 
+  /** 删除用户覆盖值, 后续读取使用默认值. 此操作不检查设置组约束. */
   delete(definition: SettingDefinition<unknown>): void {
     this.repository.delete(definition.key);
     this.publish([definition.key]);
   }
 
+  /** 写入成功后同步通知. 监听器抛错会向上传递, 但不会撤销已保存的设置. */
   subscribe(listener: SettingsChangedListener): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   }
 
-  /**
-   * 组级 refine:对组内每个 key 取"本次改动优先,否则当前持久值(坏值用默认兜底)",
-   * 组装成 { [key]: 值 } 后用组 schema 校验(含跨字段约束)。
-   * 失败即拒绝,不落库。
-   */
   private assertGroupValid(
     groupId: string,
     overrides: Readonly<Record<string, unknown>>,

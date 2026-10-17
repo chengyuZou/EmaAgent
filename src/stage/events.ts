@@ -1,4 +1,4 @@
-// 模型正文中的角色表现标签被识别后立即进入 Turn 事件流, 本包不保存当前舞台状态.
+/** 携带 Session 和 Turn 身份, 供 Desktop 判断事件是否应控制当前角色. */
 export type StageStreamEvent =
   | { type: 'emotion_changed'; sessionId: string; turnId: string; emotion: string }
   | { type: 'motion_changed'; sessionId: string; turnId: string; motion: string };

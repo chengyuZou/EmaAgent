@@ -10,7 +10,7 @@ export interface AttachmentStoreDeps {
   readonly pasteStore: PastedTextStore;
 }
 
-/** 两侧清扫各自结算: 一侧炸了另一侧的结果照样收, 不整轮失败 */
+/** 图片与文本分别返回清理结果, 一侧失败不丢弃另一侧的结果. */
 export interface AttachmentSweepReport {
   readonly images: PromiseSettledResult<StoreSweepReport>;
   readonly pasted: PromiseSettledResult<StoreSweepReport>;
@@ -51,7 +51,6 @@ export class AttachmentStore {
     return result;
   }
 
-  /** 并发结算两个 store 各自的残留 */
   async sweep(
     sessionId: string,
     olderThanMs: number,
@@ -65,6 +64,7 @@ export class AttachmentStore {
   }
 
   private async authorizeFile(sourcePath: string): Promise<string> {
+    // 普通文件保存原位置的引用. 发送前解析实际路径并检查文件存在, 不复制到附件目录.
     let canonical: string;
     try {
       canonical = await realpath(sourcePath);

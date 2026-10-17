@@ -1,4 +1,3 @@
-// 从模型正文中移除角色表现标签, 并把已声明的情绪和动作转成流式事件.
 import type { StageStreamEvent } from './events.js';
 import { StreamingCharacterTagScanner } from './parser.js';
 import type { ParsedCharacterTag } from './types.js';
@@ -45,10 +44,6 @@ export class StageEngine {
     this.scanners.delete(sessionId);
   }
 
-  /**
-   * 处理一段流式增量，返回去除表现标签后的正文与需要发出的舞台事件
-   *（`emotion_changed` / `motion_changed`）。
-   */
   processChunk(
     delta:     string,
     turnId:    string,
@@ -80,6 +75,7 @@ export class StageEngine {
     for (const tag of tags) {
       switch (tag.kind) {
         case 'emotion': {
+          // 未声明的名称仍从正文移除, 但不能控制当前角色.
           if (!this.emotions.includes(tag.value)) break;
           events.push({
             type: 'emotion_changed',

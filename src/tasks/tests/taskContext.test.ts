@@ -1,5 +1,3 @@
-// 验证动态 Task 提醒用 Session 短序号表达工作项，不把内部 UUID 暴露给模型。
-
 import { describe, expect, it } from 'vitest';
 import type { Task } from '../types.js';
 import { formatTaskContextReminder } from '../taskContext.js';

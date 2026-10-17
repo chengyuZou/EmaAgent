@@ -1,10 +1,9 @@
-// 验证附件路由:粘贴即落盘两个端点、两本账合并列表、按 path 读内容的边界与 404 语义。
-
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ImageStore, PastedTextStore, PASTE_TEXT_MIN_CHARS } from '@ema-agent/attachments';
+import { PASTE_TEXT_PREVIEW_CHARS } from '@ema-agent/attachments/limits';
 import type { SessionStore } from '@ema-agent/session';
 import {
   AttachmentImagesRepo,
@@ -47,7 +46,7 @@ afterEach(() => {
   for (const dir of temporary.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-// 最小合法 1x1 PNG(不引 sharp,apps/server 无此依赖)。
+// 固定图片字节使路由测试无需先执行图片编码.
 const PNG_1PX_BASE64 =
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
@@ -65,7 +64,7 @@ describe('sessionAttachmentsRoute', () => {
     });
     expect(created.status).toBe(201);
     const saved = await created.json() as { path: string; preview: string; byteSize: number };
-    expect(saved.preview).toBe(content.slice(0, 500));
+    expect(saved.preview).toBe(content.slice(0, PASTE_TEXT_PREVIEW_CHARS));
 
     const imageCreated = await app.request(`/${sessionId}/attachments/images`, {
       method: 'POST',

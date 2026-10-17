@@ -1,5 +1,3 @@
-// 测试粘贴文本落盘:阈值门禁、utf8 落盘与账本写入。
-
 import { mkdtempSync, rmSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -8,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { AttachmentPastedTextsRepo, Database } from '@ema-agent/storage';
 import { PastedTextStore } from '../pasteStore.js';
 import { AttachmentPreparationError } from '../errors.js';
-import { PASTE_TEXT_MIN_CHARS } from '../limits.js';
+import { PASTE_TEXT_MIN_CHARS, PASTE_TEXT_PREVIEW_CHARS } from '../limits.js';
 
 const sessionId = 'session-paste';
 
@@ -44,9 +42,8 @@ describe('PastedTextStore.savePastedText', () => {
     expect(saved.path).toContain(path.join('attachments', 'pasted'));
     expect(await readFile(saved.path, 'utf8')).toBe(content);
     expect(saved.byteSize).toBe(Buffer.byteLength(content, 'utf8'));
-    // 预览是落盘时定格的前若干字符, 供块携带, 组装期零 IO
-    expect(saved.preview).toBe(content.slice(0, 500));
-    expect(saved.preview.length).toBe(500);
+    expect(saved.preview).toBe(content.slice(0, PASTE_TEXT_PREVIEW_CHARS));
+    expect(saved.preview.length).toBe(PASTE_TEXT_PREVIEW_CHARS);
 
     const row = repo.listBySession(sessionId)[0];
     expect(row).toMatchObject({ path: saved.path, byte_size: saved.byteSize });
@@ -56,6 +53,13 @@ describe('PastedTextStore.savePastedText', () => {
     await expect(store.savePastedText(sessionId, '短文本'))
       .rejects.toBeInstanceOf(AttachmentPreparationError);
     expect(repo.listBySession(sessionId)).toHaveLength(0);
+  });
+
+  it('恰好达到阈值时保存完整正文', async () => {
+    const content = 'x'.repeat(PASTE_TEXT_MIN_CHARS);
+    const saved = await store.savePastedText(sessionId, content);
+    expect(await readFile(saved.path, 'utf8')).toBe(content);
+    expect(saved.preview).toBe(content.slice(0, PASTE_TEXT_PREVIEW_CHARS));
   });
 });
 

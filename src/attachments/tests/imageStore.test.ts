@@ -1,5 +1,3 @@
-// 测试图片受管副本:原样保留、超限规范化、格式门禁与账本写入。
-
 import { randomBytes } from 'node:crypto';
 import { mkdtempSync, rmSync, utimesSync } from 'node:fs';
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
@@ -73,7 +71,7 @@ describe('ImageStore.saveImage', () => {
   });
 
   it('字节超 3.75MB 的图被压到阈值内', async () => {
-    // 真随机噪声 PNG 几乎不可压缩, 稳定超过字节阈值。
+    // 使用随机像素让测试图片超过转换阈值, 避免纯色 PNG 被压得很小.
     const noise = randomBytes(1_400 * 1_400 * 4);
     const bytes = await sharp(noise, {
       raw: { width: 1_400, height: 1_400, channels: 4 },

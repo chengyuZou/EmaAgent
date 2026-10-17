@@ -36,6 +36,7 @@ export class UsageRecorder {
     try {
       this.repo.record(row);
     } catch (error) {
+      // 用量保存失败不能将已经完成的模型请求改成失败. 查询错误则交给调用方处理.
       console.warn('[usage] Record write failed:', error);
       return;
     }

@@ -5,6 +5,7 @@ export interface VishotCaptureDeps {
   readonly isIdle: (sessionId: string) => boolean;
   readonly canReadImages: (sessionId: string) => boolean;
   readonly saveImage: (sessionId: string, bytes: Buffer) => Promise<{ readonly path: string }>;
+  /** 检查空闲和入队必须同步完成, false 表示图片未采用, 本次不重试. */
   readonly enqueueIfIdleForVishotCapture: (sessionId: string, imagePath: string) => boolean;
   readonly onError: (error: unknown) => void;
 }
@@ -26,6 +27,7 @@ export class VishotCapture {
     this.configure();
   }
 
+  /** 设置变化后由宿主调用. 取消旧自动操作, 启用时重新等待完整间隔. */
   configure(): void {
     if (this.timer !== null) clearInterval(this.timer);
     this.timer = null;

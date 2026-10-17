@@ -1,20 +1,14 @@
-// ── 角色表现标签类型 ───────────────────────────────────────────────────────────
-
 export type CharacterTagKind = 'emotion' | 'motion';
 
 export interface ParsedCharacterTag {
   kind: CharacterTagKind;
-  /** 当前角色运行配置声明的情绪或动作名称。 */
+  /** 标签中的名称. 是否属于当前角色, 由 StageEngine 检查. */
   value: string;
-  /** 完整原始标签，例如 `<emotion>happy</emotion>`。 */
-  raw: string;
 }
 
-// ── Scanner result ────────────────────────────────────────────────────────────
-
 export interface ScanResult {
-  /** 去除所有完整角色表现标签后的文本。 */
+  /** 去掉完整标签及暂存尾部后, 可以立即交给下游的正文. */
   cleaned: string;
-  /** 在此 delta 中找到的所有完整角色表现标签（按顺序）。 */
+  /** 本次识别到的完整标签, 按出现顺序排列, 可包含上一段暂存的文本. */
   tags: ParsedCharacterTag[];
 }

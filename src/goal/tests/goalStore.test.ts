@@ -1,4 +1,3 @@
-// 验证真实 SQL 上的 Goal 三态、身份版本竞争、提交后事件和重启暂停.
 import { afterEach, describe, expect, it } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';

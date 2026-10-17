@@ -1,5 +1,3 @@
-// TaskStore 把 SQLite 原子操作映射成稳定工作项，并保持 Task 与 Subagent 生命周期独立。
-
 import { randomUUID } from 'node:crypto';
 import type {
   TaskMutationResult as RepoMutationResult,
@@ -106,7 +104,7 @@ export class TaskStore {
     return update;
   }
 
-  /** 只检查是否到了提醒周期（不消费）；提醒随 reminder 落库后由宿主调 markReminded 提交。 */
+  /** 只检查提醒周期. 调用方保存提醒 Message 后才调用 markReminded, 避免准备失败也跳过一次提醒. */
   shouldRemind(
     sessionId: string,
     minimumTurns = DEFAULT_REMINDER_TURNS,
@@ -114,7 +112,7 @@ export class TaskStore {
     return this.repo.shouldRemind(sessionId, minimumTurns);
   }
 
-  /** reminder Message 成功持久化后调用，提交"已提醒"并推进下一提醒周期基准。 */
+  /** 提醒 Message 保存成功后调用, 从这次提醒重新计算间隔. */
   markReminded(sessionId: string): void {
     this.repo.markReminded(sessionId, Date.now());
   }

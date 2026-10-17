@@ -1,7 +1,5 @@
-// 测试调用级用量记录可在同一 Turn 下共存，并保持确定性查询顺序。
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import type { UsageRecord } from '@ema-agent/usage';
-import { UsageRecordsRepo } from '../../repos/data/usage-records.js';
+import { UsageRecordsRepo, type UsageRecordRow } from '../../repos/data/usage-records.js';
 import { createTestDatabase, type TestDatabase } from '../helpers/create-test-database.js';
 
 describe('UsageRecordsRepo', () => {
@@ -12,146 +10,130 @@ describe('UsageRecordsRepo', () => {
     database = createTestDatabase();
     database.db.prepare(`
       INSERT INTO sessions (id, title, cwd, created_at, updated_at)
-      VALUES ('session-a', 'Session A', 'D:/work', 1, 1)
+      VALUES ('session-a', 'Session A', 'D:/work', 1, 1),
+             ('session-b', 'Session B', 'D:/work', 1, 1)
     `).run();
     database.db.prepare(`
-      INSERT INTO turns
-        (id, session_id, trigger_type, status, created_at)
+      INSERT INTO turns (id, session_id, trigger_type, status, created_at)
       VALUES ('turn-a', 'session-a', 'userMessage', 'completed', 1)
-    `).run();
-    database.db.prepare(`
-      INSERT INTO sessions (id, title, cwd, created_at, updated_at)
-      VALUES ('session-b', 'Session B', 'D:/work', 1, 1)
     `).run();
     repo = new UsageRecordsRepo(database.db);
   });
 
   afterEach(() => database.close());
 
-  const record = (id: string, createdAt: number): UsageRecord => ({
-    id, sessionId: 'session-a', turnId: 'turn-a', providerId: 'provider-a', modelId: 'model-a',
-    capability: 'llm', status: 'completed', inputTokens: 10, outputTokens: 20,
-    cacheReadInputTokens: null, cacheWriteInputTokens: null, quantity: null, unit: null,
-    durationMs: 100, errorCode: null, createdAt,
-  });
-
-  it('同一 Turn 的多次调用不会互相覆盖', () => {
-    expect(database.db.pragma('user_version', { simple: true })).toBe(17);
-    repo.record(record('call-b', 10));
-    repo.record(record('call-a', 10));
-    expect(repo.forTurn('turn-a').map((row) => row.id)).toEqual(['call-a', 'call-b']);
-    expect(repo.forSession('session-a')).toHaveLength(2);
-  });
-
-  it('running 记录只能用同一身份收口一次', () => {
-    const running = {
-      ...record('call-running', 10),
-      status: 'running' as const,
-      inputTokens: null,
-      outputTokens: null,
-      durationMs: 0,
-    };
-    repo.record(running);
-    repo.finish({
-      ...running,
+  function record(id: string, createdAt: number): UsageRecordRow {
+    return {
+      id,
+      session_id: 'session-a',
+      turn_id: 'turn-a',
+      provider_id: 'provider-a',
+      model_id: 'model-a',
+      capability: 'llm',
       status: 'completed',
-      inputTokens: 40,
-      outputTokens: 8,
-      durationMs: 25,
-    });
+      input_tokens: 10,
+      output_tokens: 20,
+      cache_read_input_tokens: null,
+      cache_write_input_tokens: null,
+      quantity: null,
+      unit: null,
+      duration_ms: 100,
+      error_code: null,
+      created_at: createdAt,
+    };
+  }
 
-    expect(repo.forTurn('turn-a')).toEqual([
-      expect.objectContaining({
-        id: 'call-running',
-        status: 'completed',
-        input_tokens: 40,
-        output_tokens: 8,
-        duration_ms: 25,
-      }),
-    ]);
-    expect(() => repo.finish({ ...record('call-running', 10), status: 'failed' }))
-      .toThrow(/missing or already terminal/);
+  it('同一 Turn 的多次实际请求不会互相覆盖, 同时按时间和 ID 排序', () => {
+    const a = record('call-a', 10);
+    const b = record('call-b', 10);
+    repo.record(b);
+    repo.record(a);
+    expect(repo.forTurn('turn-a')).toEqual([a, b]);
+    expect(repo.forSession('session-a')).toEqual([a, b]);
   });
 
-  it('重复物理调用身份由唯一键暴露为实现错误', () => {
-    repo.record(record('call-a', 10));
-    expect(() => repo.record({ ...record('call-a', 20), outputTokens: 999 }))
+  it('只插入请求终态, 重复请求 ID 由 SQL 拒绝且不覆盖原记录', () => {
+    const original = record('call-a', 10);
+    repo.record(original);
+    expect(() => repo.record({ ...original, output_tokens: 999 }))
       .toThrow(/UNIQUE constraint failed/);
+    expect(repo.forTurn('turn-a')).toEqual([original]);
   });
 
-  it('失败重试是两次物理调用，分别保留各自终态', () => {
-    repo.record({ ...record('call-failed', 10), status: 'failed', errorCode: 'llm/context_too_large' });
-    repo.record({ ...record('call-retry', 20), status: 'completed', outputTokens: 30 });
-
-    expect(repo.forTurn('turn-a')).toEqual([
-      expect.objectContaining({
-        id: 'call-failed', status: 'failed', error_code: 'llm/context_too_large', created_at: 10,
-      }),
-      expect.objectContaining({
-        id: 'call-retry', status: 'completed', output_tokens: 30, error_code: null, created_at: 20,
-      }),
-    ]);
+  it('失败后的重试保留两个请求各自的终态和用量', () => {
+    const failed: UsageRecordRow = {
+      ...record('call-failed', 10),
+      status: 'failed',
+      error_code: 'llm/context_too_large',
+    };
+    const retry = { ...record('call-retry', 20), output_tokens: 30 };
+    repo.record(failed);
+    repo.record(retry);
+    expect(repo.forTurn('turn-a')).toEqual([failed, retry]);
   });
 
-  it('保存取消终态', () => {
-    repo.record({
+  it('保存取消后的已知用量和未知量 null', () => {
+    const cancelled: UsageRecordRow = {
       ...record('call-cancelled', 10),
       status: 'cancelled',
-      errorCode: 'llm/aborted',
-    });
-
-    expect(repo.forTurn('turn-a')).toEqual([
-      expect.objectContaining({
-        id: 'call-cancelled',
-        status: 'cancelled',
-        output_tokens: 20,
-        error_code: 'llm/aborted',
-        created_at: 10,
-      }),
-    ]);
+      output_tokens: null,
+      error_code: 'llm/aborted',
+    };
+    repo.record(cancelled);
+    expect(repo.forTurn('turn-a')).toEqual([cancelled]);
   });
 
-  it('数据库约束拒绝未知 Usage 终态', () => {
+  it.each(['running', 'aborted'])('SQL 拒绝非用量终态 %s', status => {
     expect(() => database.db.prepare(`
       INSERT INTO usage_records (
-        id, provider_id, model_id, capability, status,
-        duration_ms, created_at
-      ) VALUES ('invalid-status', 'provider-a', 'model-a', 'llm', 'aborted', 1, 1)
-    `).run()).toThrow(/CHECK constraint failed/);
+        id, provider_id, model_id, capability, status, duration_ms, created_at
+      ) VALUES ('invalid-status', 'provider-a', 'model-a', 'llm', ?, 1, 1)
+    `).run(status)).toThrow(/CHECK constraint failed/);
   });
 
   it('拒绝把 Turn 用量归到另一个 Session', () => {
-    expect(() => repo.record({ ...record('cross-session', 10), sessionId: 'session-b' }))
+    expect(() => repo.record({ ...record('cross-session', 10), session_id: 'session-b' }))
       .toThrow(/ownership_violation/);
   });
 
-
-  it('list: sessionId/capability 过滤 + keyset 翻页不重复不遗漏', () => {
-    // 同刻三条(决胜 id)+ 异刻两条 + 别的 session + 别的 capability
-    repo.record({ ...record('r-3', 100), id: 'r-c' });
-    repo.record({ ...record('r-2', 100), id: 'r-b' });
-    repo.record({ ...record('r-1', 100), id: 'r-a' });
+  it('按 Session 和能力筛选, 同一时间的记录可以稳定翻页', () => {
+    repo.record(record('r-c', 100));
+    repo.record(record('r-b', 100));
+    repo.record(record('r-a', 100));
     repo.record(record('r-old', 50));
-    repo.record({ ...record('r-other-session', 90), sessionId: 'session-b', turnId: null });
-    repo.record({ ...record('r-tts', 95), capability: 'tts', inputTokens: null, outputTokens: null });
+    repo.record({
+      ...record('r-other-session', 90),
+      session_id: 'session-b',
+      turn_id: null,
+    });
+    repo.record({
+      ...record('r-tts', 95),
+      capability: 'tts',
+      input_tokens: null,
+      output_tokens: null,
+    });
 
-    // 第一页:倒序最新 3 条(同刻按 id 倒序 r-c > r-b > r-a)
-    const page1 = repo.list({ sessionId: 'session-a', limit: 3 });
-    expect(page1.items.map(row => row.id)).toEqual(['r-c', 'r-b', 'r-a']);
-    expect(page1.nextCursor).not.toBeNull();
+    const first = repo.list({ sessionId: 'session-a', limit: 3 });
+    expect(first.items.map(row => row.id)).toEqual(['r-c', 'r-b', 'r-a']);
+    expect(first.nextCursor).toEqual({ createdAt: 100, id: 'r-a' });
 
-    // 第二页:游标后继续,不重复不遗漏(r-tts 95, r-old 50)
-    const page2 = repo.list({ sessionId: 'session-a', limit: 3, cursor: page1.nextCursor! });
-    expect(page2.items.map(row => row.id)).toEqual(['r-tts', 'r-old']);
-    expect(page2.nextCursor).toBeNull();
-
-    // capability 过滤
-    const tts = repo.list({ sessionId: 'session-a', capability: 'tts' });
-    expect(tts.items.map(row => row.id)).toEqual(['r-tts']);
-
-    // 不传 sessionId = 整库
-    const all = repo.list({ limit: 10 });
-    expect(all.items).toHaveLength(6);
+    const second = repo.list({
+      sessionId: 'session-a',
+      limit: 3,
+      cursor: first.nextCursor!,
+    });
+    expect(second.items.map(row => row.id)).toEqual(['r-tts', 'r-old']);
+    expect(second.nextCursor).toBeNull();
+    expect(repo.list({ sessionId: 'session-a', capability: 'tts' }).items.map(row => row.id))
+      .toEqual(['r-tts']);
+    expect(repo.list({ limit: 10 }).items).toHaveLength(6);
   });
 
+  it('保留清理只删除早于截止时间的记录', () => {
+    const retained = record('at-cutoff', 20);
+    repo.record(record('old', 19));
+    repo.record(retained);
+    expect(repo.deleteOlderThan(20)).toBe(1);
+    expect(repo.forSession('session-a')).toEqual([retained]);
+  });
 });

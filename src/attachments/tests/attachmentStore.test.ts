@@ -1,5 +1,3 @@
-// 测试附件总入口:attach 的 file 权威化与盖章转发, sweep 的并发编排与分侧结算。
-
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';

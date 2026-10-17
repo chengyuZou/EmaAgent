@@ -1,5 +1,3 @@
-// Vision 文本描述缓存:以图片受管副本 path 为键, 同键并发只生产一次;
-
 import type {
   AttachmentVisionDescriptionCachesRepo,
 } from '@ema-agent/storage';
@@ -9,27 +7,16 @@ const DEFAULT_TTL_MS = 30 * 24 * 60 * 60 * 1_000;
 const DEFAULT_MIN_INTERVAL_MS = 6 * 60 * 60 * 1_000;
 const DELETE_BATCH_SIZE = 128;
 
-/**
- * @param imagePath 图片绝对路径
- * @returns 该图片的文本描述
- */
+/** 为受管图片路径生成文字描述, 取消信号由首次发起生成的调用提供. */
 export type VisionDescriptionProducer = (
   imagePath: string,
   signal: AbortSignal,
 ) => Promise<string>;
 
 export class VisionDescriptionCache {
-  /**
-   * 同键正在生产的 Promise
-   * 例如: A,B,C 三个请求同时请求同一张图片的描述, 只会触发一次 Vision 调用,
-   * 其余两个请求共享同一个 Promise 从而避免重复调用 Vision.
-   */
+  // 同一路径共享一次生成及首次调用的取消信号, 后加入的调用不会单独取消等待.
   private readonly inFlight = new Map<string, Promise<string>>();
-  /**
-   * 内存 LRU:delete+set 即刷新热度; 淘汰最久未命中者.
-   * Key: 图片绝对路径
-   * Value: Vision 文本描述
-   */
+  // getOrCreate 命中时移动到 Map 末尾, 超过容量后移除最久未命中的描述.
   private readonly cache = new Map<string, string>();
   private lastSweepAt = 0;
 
@@ -71,10 +58,7 @@ export class VisionDescriptionCache {
     this.cache.clear();
   }
 
-  /**
-   * 系统空闲时 清理 Repo 库中过期的 Vision 描述缓存
-   * 并在必要时清理 Repo 库中超过最大字节数的最旧缓存.
-   */
+  /** 仅清理 SQL 描述, 不清空内存描述. 开始时检查空闲状态和最小清理间隔. */
   async sweepIfIdle(
     options: VisionDescriptionCacheSweepOptions,
     now = Date.now(),
@@ -147,11 +131,12 @@ export class VisionDescriptionCache {
 
 export interface VisionDescriptionCacheSweepOptions {
   readonly isIdle: () => boolean;
-  /** 每次真正清理时读取一次;运行中的清理不被设置变更打断。 */
+  /** 每次真正清理时读取一次, 运行中的清理不被设置变更打断. */
   readonly maxBytesForSweep: () => number;
 }
 
 export interface VisionDescriptionCacheSweepReport {
+  /** true 表示执行过清理, false 表示因忙碌或间隔不足跳过. */
   readonly success: boolean;
   readonly deletedDescriptions: number;
   readonly freedBytes: number;

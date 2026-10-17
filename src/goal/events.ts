@@ -1,6 +1,6 @@
 import type { Goal } from './types.js';
 
-// 只在 SQL 提交后发事件. 删除没有完整记录, 仍明确指出被删除的目标身份.
+/** 事务提交后发布. 删除事件只携带身份, 其他事件携带提交后的完整目标. */
 export type GoalEvent =
   | {
     readonly type:

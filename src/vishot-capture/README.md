@@ -1,22 +1,48 @@
-# 屏幕捕获
+# Screen capture
 
-`captureScreen(signal)` 使用随包 FFmpeg 捕获一帧 PNG, 经 stdout 返回 Buffer. 不录音, 不启动可见终端, 不要求用户安装 FFmpeg. Windows 使用 gdigrab, macOS 使用 AVFoundation 的屏幕设备, Linux/X11 使用 DISPLAY. macOS 与 X11 为测试版, 需要在对应桌面环境验证授权和图像; Wayland 明确拒绝, 不使用 XWayland 代替完整桌面.
+[中文](README-zh.md)
 
-`VishotCapture` 在 Server 启动时创建一个实例. `setSessionId` 跟随 Desktop 当前聊天, 重复设置同一 ID 不重启计时, 变更时内部调用 `configure`. `configure` 读取启用状态和间隔, 取消旧结果, 等完整间隔后再尝试. Session, 定时器和当前自动捕获的取消控制器初始为 null.
+This package captures one PNG screenshot with the bundled FFmpeg and manages optional automatic screenshots for the current chat. `captureScreen(signal)` returns PNG bytes. `VishotCapture` coordinates automatic capture and tool requests so they share one capture process at a time.
 
-一次自动捕获的顺序:
+## Automatic capture
 
-1. 确认 Session 空闲, 队列无待处理工作, 并且主模型或 Vision 能读取图片.
-2. 捕获屏幕, 然后再次确认空闲和图片能力.
-3. 通过 ImageStore 保存为普通图片附件, 注册附件记录.
-4. 确认操作未取消, 调用队列的 `enqueueIfIdleForVishotCapture`. 队列同步检查并入队, 不在检查与写入之间等待.
+Server creates one `VishotCapture` with callbacks for reading settings, checking Session availability and image support, saving images, queueing input and reporting errors. Desktop synchronizes its viewed Session through `PUT /api/vishot-capture/session`, including after Server reconnects. Passing null clears the target.
 
-入队内容只有 image_reference, 不附加可见提示文字. Session 切换, 设置变更和关闭会取消旧操作; 即使 A -> B -> A, 旧图片也不会重新生效. 已保存但未采用的图片留给附件残留清理, 不立即删除. 会话删除通过 `cancelSession` 等待正在进行的保存结束.
+`setSessionId` restarts the timer only when the target changes. `configure` rereads settings, cancels the previous automatic operation and waits a full interval before the next attempt. Automatic capture defaults to off. `vishotCapture.intervalSeconds` defaults to 30 seconds and accepts integers from 10 through 86,400.
 
-`capture(signal)` 供 CaptureTool 使用, 不受自动开关或当前查看的 Session 约束. 自动捕获与工具调用共用单个截图进程, 取消后等待进程实际关闭才开始下一次. 工具授权由现有工具框架处理; 系统屏幕录制权限仍须系统允许. 工具结果保存到调用方 Session 并由该 Turn 认领, 不进入自动捕获队列.
+```text
+timer -> check idle Session and image support -> capture PNG
+    -> recheck -> ImageStore saves attachment
+        -> queue atomically checks idle state and accepts image_reference
+```
 
-Settings 的 `vishotCapture.enabled` 默认 false, `vishotCapture.intervalSeconds` 默认 30 秒. 停止生成不修改这两个值. 当前聊天通过 Desktop 的 API 同步, 首次进入和 Server 重连时重新发送; 截图本身不经过前端或 Rust 转发.
+Image support includes either native image input on the Session's configured model or an available Vision binding. Server supplies that check. Busy Sessions, unavailable image handling, or an already running capture cause that timer tick to be skipped.
 
-发布脚本会从独立部署目录解析 FFmpeg, 检查二进制, 许可证, 构建说明和对应平台的采集设备. 安装包必须包含这些文件, 不能回退到开发机器 PATH. 系统拒绝授权, 缺少采集设备或进程超时都会报告失败, 不把空结果作为图片提交.
+The queue receives only an image attachment, with no added visible prompt text. Image saving can overlap new user input, so the final idle check and enqueue happen together inside the queue. A refused image is not retried. Saved but unused images remain for attachment residue cleanup.
 
-测试位于 `tests/`: 覆盖定时, 切换, 取消, 保存期间变忙, 删除会话和工具与自动截图互斥; 平台参数测试不实际读取屏幕. 实际屏幕与系统授权需要各平台另行验收.
+## Tools, cancellation and shutdown
+
+`capture(signal)` returns bytes even when automatic capture is disabled or no current Session is selected. CaptureTool uses it through Server, which saves the image in the calling Session and binds it to that Turn. Tool permission checks remain in the tool call path.
+
+Automatic and direct captures wait for any existing capture process to finish before starting another. Cancelling FFmpeg requests process termination, but the Promise settles only after the process closes.
+
+Switching Sessions, changing capture settings and closing the service cancel the previous automatic result. Even switching A to B and back to A cannot submit the first A capture. `cancelSession` waits for any automatic image save for that Session to finish before the application deletes its files. `close` cancels work, clears the timer and waits for automatic work and the active capture process.
+
+Automatic failures call `onError` unless cancelled. Server publishes a `system_warning`; later timer ticks may try again. Direct capture failures reject the caller's Promise.
+
+## Platform behavior
+
+| Platform | Capture input |
+| --- | --- |
+| Windows | gdigrab desktop. |
+| macOS | First AVFoundation device listed as Capture screen, not camera device 0. |
+| Linux/X11 | x11grab using DISPLAY. |
+| Linux/Wayland | Rejected; XWayland is not used as a full-desktop substitute. |
+
+Capture excludes audio and cursor output. FFmpeg comes from `ffmpeg-static`; the code does not search PATH or open a visible terminal. Each FFmpeg invocation has a 15-second timeout. macOS device discovery is a separate invocation before capture. Operating-system screen-recording permission and the required capture device must be available.
+
+## Code and checks
+
+[vishotCapture.ts](vishotCapture.ts) contains timer, cancellation and queue coordination. [captureScreen.ts](captureScreen.ts) selects platform input and manages FFmpeg. [Server composition](../../apps/server/src/composition/vishotCapture.ts) supplies the callbacks, and [CaptureTool](../builtin-tools/tools/CaptureTool/captureTool.ts) requests direct captures.
+
+Run `pnpm --filter @ema-agent/vishot-capture test`. Tests mock processes and time to check platform arguments, cancellation, Session switching, saving races and shared capture ordering. They do not read the actual screen. macOS and Linux/X11 permissions and images still require testing on their respective desktop environments.

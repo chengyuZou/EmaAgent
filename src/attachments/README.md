@@ -1,129 +1,55 @@
-# @ema-agent/attachments
+# Attachments
 
-用户消息里的图片和长文本粘贴, 落盘并写入 SQL 账本, 发送时盖章
-归属到 Turn, 超龄残留定期清扫. 另外提供图片的 Vision 文本描述缓存.
+[中文](README-zh.md)
 
-## 文件与账本
+`@ema-agent/attachments` saves image copies and long pasted text, associates them with Turns, and cleans up old unused files. It also caches Vision descriptions for images that a chat model cannot receive directly.
 
-落盘与 `{dataDir}/sessions/{sessionId}/attachments/` 下:
+## Save and send
 
-```text
-images/{uuid}.{ext}   图片(png/jpg/gif/webp)
-pasted/{uuid}.txt     长文本粘贴(UTF-8, 0600 权限)
-```
+Server constructs `ImageStore` and `PastedTextStore` with their Storage repositories, the active data directory, and an optional event callback. `AttachmentStore` receives those two stores.
 
-`path`(受管副本绝对路径)是全局主键。每个文件对应一条 SQL 账本行, 行生命周期:
-
-```text
-粘贴/拖入       写文件 + 写账本行(turn_id = NULL)
-                粘贴那一刻 Turn 还不存在, 所以 turn_id 只能以后盖
-发送时          claimForTurn 盖章, 行归属到本次发送的 Turn
-Turn/Session 删除   SQL 外键级联删行
-无行的文件      磁盘侧清扫按修改时间回收(写一半崩溃留下的残渣)
-```
-
-**claim 是重新绑定, 不是一次性盖章**: UPDATE 不带 `turn_id IS NULL` 条件。同一 path
-可以先后盖到不同 Turn——Turn 崩溃或失败后, 续接队列会拿同一份已上传的输入重发,
-第二次盖章必须成功, 否则消息永久发不出去。给这个 UPDATE 加 NULL 守卫会打断重试链。
-
-## 公共入口
+| Input | Saved form | On send |
+| --- | --- | --- |
+| PNG, JPEG, GIF, WebP | `sessions/<sessionId>/attachments/images/<uuid>.<ext>` and an image row. | Bind the path to the current Turn. |
+| Pasted text with length >=1000 | UTF-8 file under `attachments/pasted/` and a text row. | Bind the path and keep its saved preview. |
+| Ordinary file | Original local path. | Resolve its real path and verify it is a regular file. |
 
 ```ts
-// 发送登记: Turn 准备(初始输入与立即引导)时调用
-AttachmentStore
-  attach(sessionId, turnId, blocks)
-    // 图片/粘贴文本盖章; file_reference 走 realpath + stat 权威化
-    // 返回的块就是写进消息 blocks_json 的最终形态(路径已替换为 canonical path)
-    // 缺账本行、跨 Session 或已被删除 => 抛错, 整条消息不发送
-  sweep(sessionId, olderThanMs)
-    // 账本侧 + 磁盘侧双轨清扫, 两侧各自结算(一侧失败不连累另一侧)
-
-// 图片
-ImageStore
-  saveImage(sessionId, bytes, originalName?)   // 服务器粘贴/上传端点调用; 规范化后落盘
-  claimForTurn(sessionId, turnId, paths)
-    // 返回没盖上的 path(未入账或不属于该 Session), 调用方据此硬失败
-  readThumbnail(imagePath, maxDim = 256)       // 封面小图: 长边 ≤256 的 JPEG, 原图不动
-  sweep(...)
-
-// 长文本粘贴
-PastedTextStore
-  savePastedText(sessionId, content)
-    // 少于 1000 字符直接拒绝——前端此时也不会调上传(见"粘贴文本"一节)
-  claimForTurn / sweep 同图片
-
-// Vision 描述缓存
-VisionDescriptionCache
-  get(imagePath)                             // 只读已有描述, 缺少时返回 undefined
-  getOrCreate(imagePath, signal, produce)      // 命中内存/SQL 直接返回; 否则调 produce 一次
-  sweepIfIdle(options)                         // 空闲时按 TTL + 容量预算清扫
-  clearCache()                                 // 只清内存, 不动 SQL
+const saved = await imageStore.saveImage(sessionId, bytes, originalName);
+const blocks = await attachments.attach(sessionId, turnId, [
+  { type: 'image_reference', path: saved.path },
+]);
 ```
 
-其他导出: `isLLMImagePath`/`mimeForPath`(投影判断用)、五个具名常量(见下)、
-`attachmentCacheMaxBytesSetting` 与 `readAttachmentCacheSettings`、
-`AttachmentPreparationError`(带 cause)、`AttachmentEvent`。
+The desktop keeps new images and pasted text in its draft, then uploads them in [submitChatDraft](../../apps/desktop/src/chat/input/submitChatDraft.ts) before sending. The [attachment routes](../../apps/server/src/routes/sessions/attachments.ts) call the stores. `attach` binds existing image/text rows and returns the blocks to save in the message. Missing or cross-Session rows reject the send. Binding may replace an earlier Turn association so a failed input can reuse its uploaded files. The image and text bindings and ordinary-file checks are separate operations, not one rollback transaction.
 
-## 图片规范化
+`file_reference` keeps the original file location. Moving or deleting that file can make it unreadable later. [Context](../context/buildAttachmentMessages.ts) reads image bytes for image-capable models or uses a Vision description, while ordinary files and pasted text become path/preview text for the model to read as needed.
 
-`sharp` 在保存图片或生成缩略图时才加载, 后续调用复用模块缓存. 单独导入本包,
-创建 Store, 判断 MIME, 保存文本, 绑定 Turn 和清理附件都不需要加载图片处理库.
+## Images and pasted text
 
-只收 `png / jpeg / gif / webp`, 其余格式拒绝。
+Image bytes are decoded and checked for a supported format. `sharp` loads only when processing an image or thumbnail. Files within 3,932,160 bytes and 8000 pixels per edge keep their original bytes. Larger images are resized, then non-JPEG output may be converted to JPEG at quality 85. This is one conversion pass, not a guaranteed final byte limit. Converted animations use the first frame; unchanged files retain their original bytes. `readThumbnail` returns a JPEG up to 256 pixels by default without modifying the original.
 
-| 上限 | 值 | 来源 |
-|---|---|---|
-| 字节数 | 3,932,160(3.75MB) | Anthropic 图片 5MB 上限按 base64 编码(膨胀 4/3)换算回原始字节: 5×1024×1024×3/4 |
-| 边长 | 8000px | Anthropic 硬限 |
+Text thresholds and previews use JavaScript string length, measured in UTF-16 code units. `savePastedText` accepts length >= `PASTE_TEXT_MIN_CHARS` and returns the first `PASTE_TEXT_PREVIEW_CHARS` units, currently 100. It writes the original full text to disk.
 
-超限时: 先缩到 8000px 内; 字节数仍超且当前不是 jpeg, 再转 jpeg q85。
-gif 只处理第一帧(sharp 默认行为)。不剥 EXIF/元数据——原图直发是当前接受项。
+## Vision cache and cleanup
 
-## 粘贴文本
+`VisionDescriptionCache.get(path)` only reads an existing description. `getOrCreate(path, signal, produce)` checks memory, then SQL, then generates a description. Paths are the cache keys; changing the Vision model does not invalidate an existing description. Memory keeps up to 256 entries by default.
 
-- 超过 1000 字符才落成文件。低于阈值前端直接拼进输入, 不会走上传接口; 后端
-  `savePastedText` 对低于阈值的输入直接拒绝——两侧契约一致。
-- 预览定格 100 字符随消息块持久化, 让模型和 UI 判断值不值得整读, 组装零 IO。
-- 直接写最终路径, 不先写临时文件再搬; 写一半崩溃留下的残渣由磁盘侧清扫回收。
+Concurrent generation for the same path shares one Promise and the first caller's signal. Later callers do not get independent cancellation. Cached hits return without running generation cancellation checks. A new generation checks cancellation before and after `produce`, trims the result, and rejects empty text.
 
-## 清扫与回收
+`sweepIfIdle` checks the supplied idle predicate and a six-hour minimum interval. It removes SQL descriptions last accessed more than 30 days ago, then removes oldest SQL descriptions until the configured size budget is met. The default budget is 64 MiB, configurable from 4 MiB to 1 GiB. This does not clear memory entries. `clearCache()` clears only memory.
 
-触发点: 打开 Session 历史路由时 fire-and-forget 跑一轮; 单个文件失败不阻断整轮。
-所有清扫共用同一个 30 天年龄线(`ATTACHMENT_RESIDUE_MAX_AGE_MS`)——这是草稿保护窗:
-贴了没发的附件 30 天内不删。
+`AttachmentStore.sweep` runs image and text cleanup independently and returns both settled results. Each removes old unbound rows and their files, then old files without rows. The default residue age is 30 days. File-removal errors for recorded files are ignored while their rows are removed, so `deletedFiles` and `freedBytes` describe cleanup accounting, not confirmed disk space recovery.
 
-三种清扫, 各管各的:
+Successful saves and removal of old unbound rows emit `attachments_changed` for the Session. Server uses this to refresh attachment views. Vision cache maintenance does not emit this event.
 
-1. **账本侧**(图片/粘贴文本各一轮): 删除 `turn_id IS NULL` 且超龄的行, 连带删文件。
-2. **磁盘侧**: 目录里有文件、账本里没有行的(崩溃残渣), 按文件修改时间超龄即删。
-3. **Vision 描述缓存**(sweepIfIdle): 最后访问超过 30 天的删除; 之后若总字节仍超过
-   容量预算, 从最久未访问的开始删。每 6 小时最多跑一次, 且只在没有任何 Session
-   在跑的时候执行。容量预算来自设置 `attachments.cache.maxBytes`(默认 64MB,
-   可调 4MB–1GB), 每次清扫开始时现读——清扫中途改设置不影响这一轮。
+## Verify
 
-## Vision 描述缓存
+[attachmentStore.ts](attachmentStore.ts) handles send preparation, [imageStore.ts](imageStore.ts) and [pasteStore.ts](pasteStore.ts) handle saved files, and [visionCache.ts](visionCache.ts) handles description reuse.
 
-解决的是"模型不支持图片输入时, 把图转成一段文字"的重复劳动:
+```sh
+pnpm --filter @ema-agent/attachments test
+pnpm --filter @ema-agent/attachments typecheck
+```
 
-- 同一张图同时来多个请求, 只调一次 Vision, 其余请求等同一个结果(进程内存内去重)。
-- 内存里最多留 256 条描述, 最近用过的留下, 满了丢最旧的(Map 的"删除再加"即刷新热度)。
-- SQL 表以图片 path 为主键, 图片行删除时描述行跟着级联删除——描述绝不比图活得久。
-- 描述可再生: 清扫删掉后, 下次用到时重新生成。
-- 取消不是失败: abort 信号原样上抛终止 Turn, 不把"取消"降级成一段说明文本。
-
-## 事件
-
-`attachments_changed { sessionId }`: 保存附件成功、或清扫确实删了东西时发出,
-经应用 SSE 广播; 消费方据此重查该 Session 的附件列表与统计。
-
-## 消费方与依赖方向
-
-- 装配: `apps/server` composition 构造 ImageStore/PastedTextStore/AttachmentStore
-  (账本 repo 与事件出口在此注入)。
-- 上传端点: `routes/sessions/attachments.ts` 直接调 saveImage/savePastedText。
-- 发送链: Turn 准备(`src/turn`)经 `attach` 盖章; 桌面每次发送前经
-  finalizeDraft 重新上传, 拿到新 path 再发送(所以正常路径不会重复盖章)。
-- 展示与投影: 消息块只存 path; UserMessage 附件 chips、附件面板读两本账,
-  `context/buildAttachmentMessages` 用 path 组装模型输入。
-- 依赖方向: attachments → storage(repo 类型)、session(块类型)、settings;
-  不依赖 server、desktop、turn。
+Tests use temporary directories and SQLite to check files, records, image conversion, binding, cache reuse, and cleanup.

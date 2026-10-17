@@ -1,5 +1,3 @@
-// 从 LLM 流式文本中提取角色表现 XML 标签，并把控制标签从用户可见正文中移除。
-
 import type {
   CharacterTagKind,
   ParsedCharacterTag,
@@ -8,9 +6,10 @@ import type {
 
 const COMPLETE_TAG_RE = /<(emotion|motion)>\s*([a-z][a-z0-9_]*)\s*<\/\1>/gu;
 const TAG_OPENINGS = ['<emotion>', '<motion>'] as const;
+// 模型一直不闭合标签时, 不能让后续正文全部留在缓冲区.
 const MAX_BUFFERED_TAG_LENGTH = 128;
 
-/** 处理被多个 text delta 拆开的 `<emotion>` 与 `<motion>` 标签。 */
+/** 保留尚未完整的标签片段, 等下一段文本到达后继续识别. */
 export class StreamingCharacterTagScanner {
   private tail = '';
 
@@ -27,7 +26,6 @@ export class StreamingCharacterTagScanner {
       tags.push({
         kind: match[1] as CharacterTagKind,
         value: match[2]!,
-        raw: match[0],
       });
       lastEnd = match.index + match[0].length;
     }
@@ -45,7 +43,7 @@ export class StreamingCharacterTagScanner {
     return { cleaned: cleanedParts.join(''), tags };
   }
 
-  /** 流结束时，未闭合标签按普通正文释放，避免吞掉模型输出。 */
+  /** 流结束时将未闭合标签按普通正文返回, 避免丢掉模型输出. */
   flush(): ScanResult {
     const cleaned = this.tail;
     this.tail = '';
@@ -66,7 +64,7 @@ function findPartialTagStart(text: string): number {
       return index;
     }
 
-    // lastIndexOf 的负 position 会被夹到 0；单独推进搜索上界，保证索引 0 只检查一次。
+    // lastIndexOf 的负 position 会被夹到 0; 单独推进搜索上界, 保证索引 0 只检查一次.
     searchFrom = index - 1;
   }
   return -1;

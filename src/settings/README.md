@@ -1,48 +1,48 @@
-# @ema-agent/settings
+# Settings
 
-本包只负责类型化 Setting 的定义, SQLite 读写, 单字段校验, 真实跨字段校验和变更事件. 具体 Setting 由业务包拥有并在 Server Composition 注册.
+[中文](README-zh.md)
 
-## 公共入口
+Settings reads and saves typed application settings. Business packages declare each key, default, Zod schema and application time. Server registers those definitions and any groups with cross-field rules when constructing `SettingsStore`.
+
+## Define and use a setting
 
 ```ts
-defineSetting({ key, apply, defaultValue, schema })
+import { z } from 'zod';
+import { defineSetting, SettingsStore } from '@ema-agent/settings';
+import { SettingsRepo } from '@ema-agent/storage';
 
-new SettingsStore(repository, {
-  definitions,
-  groups,
-})
-
-settings.get(definition)
-settings.set(definition, value)
-settings.setMany(entries)
-settings.delete(definition)
-settings.findDefinition(key)
-settings.listDefinitions()
-settings.subscribe(listener)
+const enabledSetting = defineSetting({
+  key: 'example.enabled',
+  apply: 'nextTurn',
+  defaultValue: false,
+  schema: z.boolean(),
+});
+const settings = new SettingsStore(new SettingsRepo(profileDb.sqlite), {
+  definitions: [enabledSetting],
+});
+const enabled = settings.get(enabledSetting);
+settings.set(enabledSetting, true);
+settings.delete(enabledSetting);
 ```
 
-`SettingsStore.subscribe` 的进程内通知保留 `changedKeys` 供即时设置消费；跨窗口 `SettingsEvent` 只有 `settings_changed`，窗口据此重查设置，不传无人消费的修订号或设置值。
+SQL stores user overrides as JSON. Definitions and defaults remain in code. `get` reads the repository and validates the value on every call. A missing or invalid value returns a clone of the default; invalid persisted values produce at most one warning per key per Store instance. Reading does not repair the saved value.
 
-`SettingDefinition` 只有这些字段:
+`register` rejects duplicate keys. `listDefinitions` returns registered definitions sorted by key; `findDefinition` returns undefined for an unknown key. Server uses this directory to resolve settings submitted through its [value routes](../../apps/server/src/routes/settings/values.ts).
 
-- `key`: SQLite 主键和业务身份.
-- `apply`: 消费方何时读取新值.
-- `defaultValue`: 未覆盖或持久值损坏时的值.
-- `schema`: 单字段输入校验.
-- `group`: 仅在多个字段存在真实联合约束时使用.
+## Saving and notifications
 
-## 规则
+`set` validates one value. `setMany` validates all proposed values before saving them in one repository transaction. If a changed definition names a `group`, the Store validates the whole group using proposed values plus the other keys' current valid values or defaults. A missing group or invalid combination rejects the write.
 
-- 后端不保存 label、description、单位、控件类型或其他 UI 元数据.
-- Desktop 为每个设置编写明确展示, 单位换算只发生在前端.
-- `delete` 删除用户覆盖, 下次 `get` 直接得到默认值.
-- `get` 不缓存, 每次读取 SQLite 并通过 schema.
-- `set` 与 `setMany` 先校验, 再提交 SQLite, 提交成功后才发布变更事件.
-- `apply` 不是调度器. `nextTurn` 等语义由真实消费方在对应时点读取来兑现.
-- 输入限制或资源预算若不属于用户可调产品行为, 放在所属包 `limits.ts` 中作为全大写具名常量, 不注册为 Setting.
+`delete` removes an override, so subsequent reads use its default. It does not validate group constraints.
 
-## 不负责
+The order is validation, database write, then synchronous listener notification. A failed write sends no notification. A listener error propagates but does not undo the saved settings. `subscribe` returns an unsubscribe function.
 
-- Provider、角色卡、模型绑定等关系数据.
-- 参数页面目录和通用表单生成.
-- 前端标题、说明、单位、选项文案和布局.
+In-process `SettingsChangedEvent` carries changed keys and a sequence number local to that Store instance. Server consumers use the keys to apply immediate changes. The separate cross-window `settings_changed` event asks Desktop to reload settings and carries no values or sequence number.
+
+`apply` declares when a business consumer should read a new value: immediately, at the next operation, at the next Turn, or after restart. The Store does not schedule those reads; the consuming package implements that timing.
+
+## Code and checks
+
+[types.ts](types.ts) defines setting and group contracts, [settingsStore.ts](settingsStore.ts) handles validation and notifications, and [Storage](../storage/repos/profile/settings.ts) handles SQL. [Server composition](../../apps/server/src/composition/settings.ts) registers the real business definitions. Desktop parameter components provide their own labels, controls and unit conversions.
+
+Run `pnpm --filter @ema-agent/settings test`. Tests cover fallback reads, validation, write-before-notify order, group rules and definition registration.

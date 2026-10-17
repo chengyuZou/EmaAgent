@@ -14,6 +14,7 @@ export class GoalStore {
     private readonly db: Database,
     /** 已提交的目标变化, 由装配层接到应用事件和后续工作选择. */
     private readonly emit?: (event: GoalEvent) => void,
+    /** Server 正在停止这个 Session 时, 拒绝创建或激活目标, 避免重新触发工作. */
     private readonly isSessionWorkClosed?: (sessionId: string) => boolean,
   ) {
     this.repo = new GoalsRepo(db.sqlite);

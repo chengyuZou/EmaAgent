@@ -1,5 +1,3 @@
-// 测试 Vision 描述缓存:path 键的两层命中、同键并发去重、空描述拒绝与空闲维护。
-
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -118,7 +116,6 @@ describe('VisionDescriptionCache.sweepIfIdle', () => {
       'UPDATE attachment_vision_descriptions_caches SET last_accessed_at = 1',
     ).run();
     idle = true;
-    // 越过最小间隔, 确保真正跑一轮
     const report = await cache.sweepIfIdle(options, Date.now() + 7 * 60 * 60 * 1_000);
     expect(report.success).toBe(true);
     expect(report.deletedDescriptions).toBe(1);
@@ -139,7 +136,6 @@ describe('VisionDescriptionCache.sweepIfIdle', () => {
     ).run(Date.now(), secondPath);
 
     const total = repo.totalBytes();
-    // 预算设为低于总量 => 驱逐最旧的一条
     const report = await cache.sweepIfIdle({
       isIdle: () => true,
       maxBytesForSweep: () => total - 1,
