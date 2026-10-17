@@ -1,9 +1,9 @@
 // 测试 SpeechVoiceCache.prepare 的 get-or-register 语义：本地直通、云端复用与资源版本隔离。
 import { describe, expect, it } from 'vitest';
-import type { TtsProviderVoice, TtsVoiceReference } from '@ema-agent/tts';
+import type { TTSProviderVoice, TTSVoiceReference } from '@ema-agent/tts';
 import { SpeechVoiceCache } from '../voiceHandleCache.js';
 
-const REFERENCE: TtsVoiceReference = {
+const REFERENCE: TTSVoiceReference = {
   kind: 'reference',
   resourceName: 'main.wav',
   resourceUpdatedAt: 1,
@@ -20,7 +20,7 @@ const REQUEST = {
   modelId: 'model-1',
 } as const;
 
-function registrarReturning(voice: TtsProviderVoice) {
+function registrarReturning(voice: TTSProviderVoice) {
   let calls = 0;
   return {
     calls: () => calls,

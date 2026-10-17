@@ -1,6 +1,3 @@
-// 模型池事实：provider_models 行 = 启用集合的载体。手写行（source='user'）可编辑/启停/删除；
-// dev 行（source='dev'）由 models.dev 同步落库，禁修改参数、可启停/删除，刷新时参数以目录为准（enabled 不动）。
-// enabled=1 是绑定、/available 与探活的唯一准入；目录只是内部拉取来源，不直接进表也不公开。
 import { ProviderError } from './errors.js';
 import type { ModelsDevCatalog } from './catalog/modelsDevCatalog.js';
 import type { ModelCapability } from './types.js';
@@ -18,11 +15,11 @@ interface ProviderModelIdentity<TCapability extends ModelCapability> {
   providerId: string;
   capability: TCapability;
   modelId: string;
-  /** 显示名快照（目录同步时自带）；undefined = 前端回退显示 modelId。 */
+  /** undefined 时界面显示 modelId. models.dev 同步会保存目录中的显示名. */
   name?: string;
 }
 
-export interface LlmProviderModel extends ProviderModelIdentity<'llm'> {
+export interface LLMProviderModel extends ProviderModelIdentity<'llm'> {
   contextWindow: number;
   maxOutput: number | null;
   toolCall: boolean | null;
@@ -39,7 +36,7 @@ export interface RerankProviderModel extends ProviderModelIdentity<'rerank'> {
   maxChunks: number | null;
 }
 
-/** Vision 模型是支持视觉输入的 LLM：与 LLM 同参数集，capability 判别供绑定与探活分流。 */
+/** Vision 保留独立模型记录和绑定, 参数与 LLM 相同. */
 export interface VisionProviderModel extends ProviderModelIdentity<'vision'> {
   contextWindow: number;
   maxOutput: number | null;
@@ -49,16 +46,16 @@ export interface VisionProviderModel extends ProviderModelIdentity<'vision'> {
   inputImage: boolean | null;
 }
 
-export type TtsProviderModel = ProviderModelIdentity<'tts'>;
-export type SttProviderModel = ProviderModelIdentity<'stt'>;
+export type TTSProviderModel = ProviderModelIdentity<'tts'>;
+export type STTProviderModel = ProviderModelIdentity<'stt'>;
 
 type ProviderModelParams =
-  | LlmProviderModel
+  | LLMProviderModel
   | EmbedProviderModel
   | RerankProviderModel
   | VisionProviderModel
-  | TtsProviderModel
-  | SttProviderModel;
+  | TTSProviderModel
+  | STTProviderModel;
 
 export type ProviderModelInput = ProviderModelParams;
 
@@ -86,7 +83,7 @@ export class ProviderModels {
     return this.repo.listByCapability(capability).map(fromRow);
   }
 
-  /** 首次使用判定：表里有没有任何模型行（目录同步落库或手写都算"用过"）。 */
+  /** 设置页据此判断是否需要显示首次配置提示, 已禁用的模型也计入. */
   hasAny(): boolean {
     return this.repo.hasAny();
   }
@@ -97,7 +94,7 @@ export class ProviderModels {
     return fromRow(found);
   }
 
-  /** 手写保存：新增行 source='user' 且默认启用；已有行保留 source 与 enabled。dev 行禁修改。 */
+  /** 手填模型首次保存时启用, 再次保存保留启用状态. 目录模型的参数由同步更新. */
   save(model: ProviderModelInput): ProviderModel {
     const provider = this.requireProvider(model.providerId);
     const configured = provider.capabilities.find(
@@ -122,7 +119,7 @@ export class ProviderModels {
     return this.get(model.providerId, model.capability, model.modelId);
   }
 
-  /** 启停开关；停用正被业务模块绑定的模型拒绝（前端拿 conflicts 弹窗引导解绑）。 */
+  /** 停用已绑定的模型会返回 conflicts, 让设置页提示先解绑. */
   setEnabled(
     providerId: string,
     capability: ModelCapability,
@@ -163,7 +160,7 @@ export class ProviderModels {
 
   private syncProviderModels(providerId: string, capability: 'llm' | 'vision', modelsDevId: string): void {
     const ids = capability === 'llm'
-      ? this.catalog.listLlmModelIds(modelsDevId)
+      ? this.catalog.listLLMModelIds(modelsDevId)
       : this.catalog.listVisionModelIds(modelsDevId);
     for (const id of ids) {
       const spec = this.catalog.get(modelsDevId, id);

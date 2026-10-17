@@ -1,6 +1,6 @@
 import type { Readable } from 'node:stream';
-import { TtsError } from '../errors.js';
-import type { PcmAudioFormat, TtsStreamEvent } from '../types.js';
+import { TTSError } from '../errors.js';
+import type { PcmAudioFormat, TTSStreamEvent } from '../types.js';
 import { pcmEvents, PCM_SAMPLE_BYTES } from './pcm.js';
 
 const RIFF_HEADER_BYTES = 12;
@@ -17,10 +17,10 @@ export async function* gptSoVitsWavEvents(
   input: Readable,
   startedAt: number,
   signal?: AbortSignal,
-): AsyncGenerator<TtsStreamEvent> {
+): AsyncGenerator<TTSStreamEvent> {
   const reader = new WavReader(input);
   const abort = (): void => {
-    input.destroy(new TtsError('tts/aborted', 'TTS WAV request was aborted', signal?.reason));
+    input.destroy(new TTSError('tts/aborted', 'TTS WAV request was aborted', signal?.reason));
   };
 
   try {
@@ -28,7 +28,7 @@ export async function* gptSoVitsWavEvents(
     signal?.addEventListener('abort', abort, { once: true });
     const header = await reader.read(RIFF_HEADER_BYTES);
     if (header.toString('ascii', 0, 4) !== 'RIFF' || header.toString('ascii', 8, 12) !== 'WAVE') {
-      throw new TtsError('tts/invalid_response', 'TTS response is not a RIFF WAV');
+      throw new TTSError('tts/invalid_response', 'TTS response is not a RIFF WAV');
     }
 
     let format: PcmAudioFormat | undefined;
@@ -38,13 +38,13 @@ export async function* gptSoVitsWavEvents(
       const chunkLength = chunkHeader.readUInt32LE(4);
       if (chunkId === 'fmt ') {
         if (chunkLength < PCM_FORMAT_BYTES) {
-          throw new TtsError('tts/invalid_response', 'TTS WAV has an incomplete PCM format');
+          throw new TTSError('tts/invalid_response', 'TTS WAV has an incomplete PCM format');
         }
         format = readPcmFormat(await reader.read(PCM_FORMAT_BYTES));
         await reader.skip(chunkLength - PCM_FORMAT_BYTES + chunkLength % 2);
       } else if (chunkId === 'data') {
         if (!format) {
-          throw new TtsError('tts/invalid_response', 'TTS WAV audio precedes its format');
+          throw new TTSError('tts/invalid_response', 'TTS WAV audio precedes its format');
         }
         yield* pcmEvents(readAudioChunks(reader, chunkLength), format, startedAt);
         return;
@@ -55,12 +55,12 @@ export async function* gptSoVitsWavEvents(
     }
   } catch (error) {
     if (signal?.aborted) {
-      throw new TtsError('tts/aborted', 'TTS WAV request was aborted', error);
+      throw new TTSError('tts/aborted', 'TTS WAV request was aborted', error);
     }
     throw error;
   } finally {
     signal?.removeEventListener('abort', abort);
-    // 成功、失败和调用方提前停止迭代都会结束输入, 不再继续下载这次合成结果.
+    // 成功, 失败和调用方提前停止迭代都会结束输入, 不再继续下载这次合成结果.
     input.destroy();
     await reader.close();
   }
@@ -111,11 +111,11 @@ function readPcmFormat(bytes: Buffer): PcmAudioFormat {
   const frameBytes = bytes.readUInt16LE(12);
   const bitsPerSample = bytes.readUInt16LE(14);
   if (formatCode !== PCM_FORMAT_CODE || bitsPerSample !== PCM_BITS_PER_SAMPLE) {
-    throw new TtsError('tts/invalid_response', 'TTS WAV must contain signed PCM16LE samples');
+    throw new TTSError('tts/invalid_response', 'TTS WAV must contain signed PCM16LE samples');
   }
   if ((channelCount !== 1 && channelCount !== 2) || sampleRate === 0
     || frameBytes !== channelCount * PCM_SAMPLE_BYTES || byteRate !== sampleRate * frameBytes) {
-    throw new TtsError('tts/invalid_response', 'TTS WAV has an invalid PCM format');
+    throw new TTSError('tts/invalid_response', 'TTS WAV has an invalid PCM format');
   }
   return { sampleRate, channelCount };
 }
@@ -131,7 +131,7 @@ async function* readAudioChunks(reader: WavReader, dataBytes: number): AsyncGene
       if (untilEnd) {
         return;
       }
-      throw new TtsError('tts/invalid_response', 'TTS WAV audio ended before its declared length');
+      throw new TTSError('tts/invalid_response', 'TTS WAV audio ended before its declared length');
     }
     remaining -= bytes.byteLength;
     yield bytes;
@@ -153,7 +153,7 @@ class WavReader {
     while (offset < length) {
       const bytes = await this.take(length - offset);
       if (!bytes) {
-        throw new TtsError('tts/invalid_response', 'TTS WAV header ended unexpectedly');
+        throw new TTSError('tts/invalid_response', 'TTS WAV header ended unexpectedly');
       }
       result.set(bytes, offset);
       offset += bytes.byteLength;
@@ -166,7 +166,7 @@ class WavReader {
     while (remaining > 0) {
       const bytes = await this.take(remaining);
       if (!bytes) {
-        throw new TtsError('tts/invalid_response', 'TTS WAV metadata ended unexpectedly');
+        throw new TTSError('tts/invalid_response', 'TTS WAV metadata ended unexpectedly');
       }
       remaining -= bytes.byteLength;
     }

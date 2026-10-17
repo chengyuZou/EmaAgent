@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { CallTts, PcmAudioFormat, TtsVoice } from '@ema-agent/tts';
+import type { CallTTS, PcmAudioFormat, TTSVoice } from '@ema-agent/tts';
 import type { UsageRecorder } from '@ema-agent/usage';
 import type { AudioWriter, FinalizedAudio } from './audioArchive.js';
 import { SentenceSplitter } from './sentenceSplitter.js';
@@ -13,8 +13,8 @@ export interface SpeechCoordinatorArgs {
   readonly turnId: string;
   readonly providerId: string;
   readonly modelId: string;
-  readonly voice: TtsVoice;
-  readonly callTts: CallTts;
+  readonly voice: TTSVoice;
+  readonly callTTS: CallTTS;
   /** 调用方绑定 Session, Turn 和朗读角色, Coordinator 只负责向返回的文件追加 PCM. */
   readonly openAudio: (format: PcmAudioFormat) => Promise<AudioWriter>;
   readonly signal: AbortSignal;
@@ -153,7 +153,7 @@ export class SpeechCoordinator {
     let fileFailed = false;
     let errorCode: string | null = null;
     try {
-      for await (const event of this.args.callTts({
+      for await (const event of this.args.callTTS({
         text,
         voice: this.args.voice,
         signal,

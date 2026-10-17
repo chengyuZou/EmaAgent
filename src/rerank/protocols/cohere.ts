@@ -1,9 +1,9 @@
-// 把中立 Rerank 请求转换为 Cohere 兼容的 /rerank 调用。
 import { RerankError } from '../errors.js';
 import type { RerankConnection, RerankRequest, RerankResult } from '../types.js';
 
 export function createCohereRerankProtocol(
-  connection: RerankConnection, modelId: string,
+  connection: RerankConnection,
+  modelId: string,
 ): (request: RerankRequest & { readonly topK: number }) => Promise<RerankResult> {
   const baseUrl = (connection.baseUrl ?? 'https://api.cohere.com/v2').replace(/\/+$/, '');
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -39,6 +39,7 @@ export function createCohereRerankProtocol(
     if (!Array.isArray(body.results)) {
       throw new RerankError('rerank/invalid_response', 'cohere-rerank response is missing results');
     }
+    // 部分兼容接口只报告 total_tokens. search_units 是计费次数, 不能记成 Token.
     const inputTokens = body.meta?.tokens?.input_tokens ?? body.usage?.total_tokens;
     const outputTokens = body.meta?.tokens?.output_tokens;
     for (const tokens of [inputTokens, outputTokens]) {

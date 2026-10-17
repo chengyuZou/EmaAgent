@@ -1,14 +1,13 @@
-export type SttErrorCode =
+export type STTErrorCode =
   | 'stt/invalid_request'
   | 'stt/http_error'
   | 'stt/invalid_response';
 
-/** STT 对真实请求和外部响应的稳定错误。 */
-export class SttError extends Error {
-  readonly name = 'SttError';
+export class STTError extends Error {
+  readonly name = 'STTError';
 
   constructor(
-    readonly code: SttErrorCode,
+    readonly code: STTErrorCode,
     message: string,
     readonly status?: number,
     cause?: unknown,
@@ -17,6 +16,6 @@ export class SttError extends Error {
   }
 }
 
-export function isSttError(error: unknown): error is SttError {
-  return error instanceof SttError;
+export function isSTTError(error: unknown): error is STTError {
+  return error instanceof STTError;
 }

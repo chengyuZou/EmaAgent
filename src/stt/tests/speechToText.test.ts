@@ -1,6 +1,5 @@
-// 测试 STT 公共入口的 multipart 请求、响应映射、输入校验和单次调用语义。
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createSttCall } from '../speechToText.js';
+import { createSTTCall } from '../speechToText.js';
 
 const fetchMock = vi.fn<typeof fetch>();
 
@@ -11,13 +10,13 @@ beforeEach(() => {
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe('CallStt', () => {
+describe('CallSTT', () => {
   it('发送 OpenAI multipart 请求并把秒转换为毫秒', async () => {
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
       text: '你好',
       segments: [{ start: 0.25, end: 1.5, text: '你好' }],
     }), { status: 200 }));
-    const transcribe = createSttCall({
+    const transcribe = createSTTCall({
       protocol: 'openai-stt',
       apiKey: 'secret',
       baseUrl: 'https://example.test/v1/',
@@ -46,7 +45,7 @@ describe('CallStt', () => {
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({
       text: '你好',
     }), { status: 200 }));
-    const transcribe = createSttCall({
+    const transcribe = createSTTCall({
       protocol: 'openai-stt',
       baseUrl: 'https://api.siliconflow.cn/v1',
     }, 'Qwen/Qwen3-ASR-1.7B');
@@ -64,7 +63,7 @@ describe('CallStt', () => {
   });
 
   it('空音频在访问 Provider 前失败', async () => {
-    const transcribe = createSttCall({ protocol: 'openai-stt' }, 'whisper-1');
+    const transcribe = createSTTCall({ protocol: 'openai-stt' }, 'whisper-1');
     await expect(transcribe({
       audio: new Uint8Array(), mimeType: 'audio/wav',
     })).rejects.toMatchObject({ code: 'stt/invalid_request' });
@@ -76,7 +75,7 @@ describe('CallStt', () => {
       text: 'bad',
       segments: [{ start: 2, end: 1, text: 'bad' }],
     }), { status: 200 }));
-    const transcribe = createSttCall({ protocol: 'openai-stt' }, 'whisper-1');
+    const transcribe = createSTTCall({ protocol: 'openai-stt' }, 'whisper-1');
 
     await expect(transcribe({
       audio: new Uint8Array([1]), mimeType: 'audio/wav',
@@ -85,7 +84,7 @@ describe('CallStt', () => {
 
   it('429 原样失败，不在包内重试', async () => {
     fetchMock.mockResolvedValueOnce(new Response('slow down', { status: 429 }));
-    const transcribe = createSttCall({ protocol: 'openai-stt' }, 'whisper-1');
+    const transcribe = createSTTCall({ protocol: 'openai-stt' }, 'whisper-1');
 
     await expect(transcribe({
       audio: new Uint8Array([1]), mimeType: 'audio/wav',
@@ -94,7 +93,7 @@ describe('CallStt', () => {
   });
 
   it('空模型身份在创建点失败', () => {
-    expect(() => createSttCall({ protocol: 'openai-stt' }, '  '))
+    expect(() => createSTTCall({ protocol: 'openai-stt' }, '  '))
       .toThrowError(expect.objectContaining({ code: 'stt/invalid_request' }));
   });
 });

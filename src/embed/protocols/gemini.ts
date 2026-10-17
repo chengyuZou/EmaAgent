@@ -1,4 +1,3 @@
-// 把中立 Embedding 请求转换为 Gemini batchEmbedContents 调用。
 import { EmbeddingError } from '../errors.js';
 import type {
   EmbeddingConnection,
@@ -7,7 +6,8 @@ import type {
 } from '../types.js';
 
 export function createGeminiEmbeddingProtocol(
-  connection: EmbeddingConnection, modelId: string,
+  connection: EmbeddingConnection,
+  modelId: string,
 ): (request: EmbeddingRequest) => Promise<RawEmbeddingResult> {
   const baseUrl = (
     connection.baseUrl ?? 'https://generativelanguage.googleapis.com/v1beta'

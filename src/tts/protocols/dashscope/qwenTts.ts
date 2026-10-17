@@ -1,22 +1,21 @@
-// 执行 DashScope Qwen TTS Realtime 协议, 音频 delta 到达后即可交付 PCM.
 import WebSocket from 'ws';
 
-import { TtsError } from '../../errors.js';
-import type { PcmAudioFormat, TtsRequest, TtsStreamEvent } from '../../types.js';
+import { TTSError } from '../../errors.js';
+import type { PcmAudioFormat, TTSRequest, TTSStreamEvent } from '../../types.js';
 import { SocketEventQueue } from './socketEventQueue.js';
 import { pcmEvents } from '../../audio/pcm.js';
 
 const MAX_PCM_BYTES = 16 * 1024 * 1024;
 const QWEN_TTS_PCM_FORMAT: PcmAudioFormat = { sampleRate: 24_000, channelCount: 1 };
 
-export async function* synthesizeQwenTts(
+export async function* synthesizeQwenTTS(
   webSocketBaseUrl: string,
   apiKey: string,
   modelId: string,
-  request: TtsRequest,
-): AsyncGenerator<TtsStreamEvent> {
+  request: TTSRequest,
+): AsyncGenerator<TTSStreamEvent> {
   if (request.voice.kind !== 'provider') {
-    throw new TtsError('tts/unsupported_voice', 'DashScope Qwen TTS requires a prepared provider voice');
+    throw new TTSError('tts/unsupported_voice', 'DashScope Qwen TTS requires a prepared provider voice');
   }
 
   request.signal?.throwIfAborted();
@@ -31,12 +30,12 @@ export async function* synthesizeQwenTts(
   try {
     socket = new WebSocket(url, { headers: { Authorization: `Bearer ${apiKey}` } });
   } catch (error) {
-    throw new TtsError('tts/network', 'Unable to open DashScope Qwen TTS WebSocket', error);
+    throw new TTSError('tts/network', 'Unable to open DashScope Qwen TTS WebSocket', error);
   }
 
   const onAbort = (): void => {
     aborted = true;
-    queue.fail(new TtsError('tts/aborted', 'DashScope Qwen TTS request was aborted'));
+    queue.fail(new TTSError('tts/aborted', 'DashScope Qwen TTS request was aborted'));
     socket.close(1000, 'aborted');
   };
   request.signal?.addEventListener('abort', onAbort, { once: true });
@@ -48,7 +47,7 @@ export async function* synthesizeQwenTts(
       session: {
         voice: request.voice.kind === 'provider' ? request.voice.id : '',
         response_format: 'pcm',
-        // TODO: 扩展模型族时核对限制. Qwen-TTS-Realtime 只支持 24 kHz; 此处明确指定, 与输出的 PCM 声明一致.
+        // 裸 PCM 没有采样率信息, 请求值必须与交付给播放器的格式一致.
         sample_rate: QWEN_TTS_PCM_FORMAT.sampleRate,
         mode: 'commit',
       },
@@ -74,13 +73,14 @@ export async function* synthesizeQwenTts(
       pcmBytes += chunk.byteLength;
       if (pcmBytes > MAX_PCM_BYTES) {
         completed = true;
-        queue.fail(new TtsError('tts/resource_exhausted', 'DashScope Qwen TTS PCM exceeds 16 MiB'));
+        queue.fail(new TTSError('tts/resource_exhausted', 'DashScope Qwen TTS PCM exceeds 16 MiB'));
         socket.close(1009, 'audio too large');
         return;
       }
       queue.push(chunk);
       return;
     }
+    // response.done 只表示本次输出完成, 还需等待 session.finished 才能结束音频流.
     if (message.type === 'response.done') {
       socket.send(JSON.stringify({ type: 'session.finish', event_id: eventId() }));
       return;
@@ -94,7 +94,7 @@ export async function* synthesizeQwenTts(
     if (message.type === 'error') {
       completed = true;
       const detail = message.error?.message ?? 'DashScope Qwen TTS failed';
-      queue.fail(new TtsError(
+      queue.fail(new TTSError(
         detail.toLowerCase().includes('auth') ? 'tts/credentials' : 'tts/provider_error',
         detail,
       ));
@@ -103,11 +103,11 @@ export async function* synthesizeQwenTts(
   });
 
   socket.on('error', (error) => {
-    if (!aborted && !completed) queue.fail(new TtsError('tts/network', error.message, error));
+    if (!aborted && !completed) queue.fail(new TTSError('tts/network', error.message, error));
   });
   socket.on('close', (code) => {
     if (!aborted && !completed) {
-      queue.fail(new TtsError('tts/network', `DashScope Qwen TTS WebSocket closed (${code})`));
+      queue.fail(new TTSError('tts/network', `DashScope Qwen TTS WebSocket closed (${code})`));
     }
   });
 

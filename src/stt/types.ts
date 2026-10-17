@@ -1,25 +1,24 @@
-import type { SttProtocol } from '@ema-agent/providers';
+import type { STTProtocol } from '@ema-agent/providers';
 
-export type { SttProtocol } from '@ema-agent/providers';
+export type { STTProtocol } from '@ema-agent/providers';
 
-/** Provider 已解析好的 STT 协议连接。 */
-export interface SttConnection {
-  readonly protocol: SttProtocol;
-  /** 本地或受信网关可以不需要凭据。 */
+export interface STTConnection {
+  readonly protocol: STTProtocol;
+  /** 本地服务或网关可以不需要凭据. */
   readonly apiKey?: string;
   readonly baseUrl?: string;
 }
 
-/** 单次整段音频转录请求；上传体积策略由接收文件的上层入口拥有；模型身份在创建点冻结。 */
 export interface TranscriptionRequest {
+  /** 已读入内存的一整段音频, mimeType 描述其文件格式. */
   readonly audio: Uint8Array;
   readonly mimeType: string;
   readonly language?: string;
   readonly signal?: AbortSignal;
 }
 
-/** 创建点冻结连接与模型身份的单次转录调用；超时和重试由调用方通过 signal 控制。 */
-export type CallStt = (request: TranscriptionRequest) => Promise<TranscriptionResult>;
+/** 模型和协议在 createSTTCall 时选定, signal 控制本次请求的取消和超时. */
+export type CallSTT = (request: TranscriptionRequest) => Promise<TranscriptionResult>;
 
 export interface TranscriptionSegment {
   readonly startMs: number;

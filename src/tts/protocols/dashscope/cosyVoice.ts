@@ -1,9 +1,8 @@
-// 执行 DashScope CosyVoice 的 run-task/continue-task/finish-task WebSocket 协议。
 import { randomUUID } from 'node:crypto';
 import WebSocket from 'ws';
 
-import { TtsError } from '../../errors.js';
-import type { PcmAudioFormat, TtsRequest, TtsStreamEvent } from '../../types.js';
+import { TTSError } from '../../errors.js';
+import type { PcmAudioFormat, TTSRequest, TTSStreamEvent } from '../../types.js';
 import { pcmEvents } from '../../audio/pcm.js';
 import { SocketEventQueue } from './socketEventQueue.js';
 
@@ -13,10 +12,10 @@ export async function* synthesizeCosyVoice(
   webSocketBaseUrl: string,
   apiKey: string,
   modelId: string,
-  request: TtsRequest,
-): AsyncGenerator<TtsStreamEvent> {
+  request: TTSRequest,
+): AsyncGenerator<TTSStreamEvent> {
   if (request.voice.kind !== 'provider') {
-    throw new TtsError('tts/unsupported_voice', 'DashScope CosyVoice requires a prepared provider voice');
+    throw new TTSError('tts/unsupported_voice', 'DashScope CosyVoice requires a prepared provider voice');
   }
 
   const url = `${webSocketBaseUrl.replace(/\/$/, '')}/api-ws/v1/inference/`;
@@ -36,13 +35,13 @@ export async function* synthesizeCosyVoice(
       },
     });
   } catch (error) {
-    throw new TtsError('tts/network', 'Unable to open DashScope CosyVoice WebSocket', error);
+    throw new TTSError('tts/network', 'Unable to open DashScope CosyVoice WebSocket', error);
   }
   socket.binaryType = 'nodebuffer';
 
   const onAbort = (): void => {
     aborted = true;
-    queue.fail(new TtsError('tts/aborted', 'DashScope CosyVoice request was aborted'));
+    queue.fail(new TTSError('tts/aborted', 'DashScope CosyVoice request was aborted'));
     socket.close(1000, 'aborted');
   };
   request.signal?.addEventListener('abort', onAbort, { once: true });
@@ -59,7 +58,7 @@ export async function* synthesizeCosyVoice(
           text_type: 'PlainText',
           voice: request.voice.kind === 'provider' ? request.voice.id : '',
           format: 'pcm',
-          // TODO: 新增模型时核对支持的采样率. 明确请求此值, 返回的裸 PCM 没有文件头可再读取采样率.
+          // 返回的裸 PCM 没有文件头, 请求采样率必须与交付的音频格式一致.
           sample_rate: COSY_VOICE_PCM_FORMAT.sampleRate,
           volume: 50,
           rate: request.speed ?? 1,
@@ -85,6 +84,7 @@ export async function* synthesizeCosyVoice(
     } catch {
       return;
     }
+    // 等供应商确认任务已创建再发送文本和结束输入, 两条消息共用同一个 taskId.
     if (message.header?.event === 'task-started') {
       socket.send(JSON.stringify({
         header: { action: 'continue-task', task_id: taskId, streaming: 'duplex' },
@@ -105,7 +105,7 @@ export async function* synthesizeCosyVoice(
     if (message.header?.event === 'task-failed') {
       completed = true;
       const detail = message.header.error_message ?? 'DashScope CosyVoice task failed';
-      queue.fail(new TtsError(
+      queue.fail(new TTSError(
         detail.toLowerCase().includes('auth') ? 'tts/credentials' : 'tts/provider_error',
         detail,
       ));
@@ -114,11 +114,11 @@ export async function* synthesizeCosyVoice(
   });
 
   socket.on('error', (error) => {
-    if (!aborted && !completed) queue.fail(new TtsError('tts/network', error.message, error));
+    if (!aborted && !completed) queue.fail(new TTSError('tts/network', error.message, error));
   });
   socket.on('close', (code) => {
     if (!aborted && !completed) {
-      queue.fail(new TtsError('tts/network', `DashScope CosyVoice WebSocket closed (${code})`));
+      queue.fail(new TTSError('tts/network', `DashScope CosyVoice WebSocket closed (${code})`));
     }
   });
 

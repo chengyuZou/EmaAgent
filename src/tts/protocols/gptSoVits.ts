@@ -1,11 +1,11 @@
 import { Readable } from 'node:stream';
 import type { ReadableStream } from 'node:stream/web';
-import { TtsError, ttsErrorFromHttp, ttsErrorFromNetwork } from '../errors.js';
+import { TTSError, ttsErrorFromHttp, ttsErrorFromNetwork } from '../errors.js';
 import type {
-  TtsConnection,
-  TtsProtocolImplementation,
-  TtsRequest,
-  TtsStreamEvent,
+  TTSConnection,
+  TTSProtocolImplementation,
+  TTSRequest,
+  TTSStreamEvent,
 } from '../types.js';
 import { safeReadText } from '../utils.js';
 import { gptSoVitsWavEvents } from '../audio/wav.js';
@@ -13,10 +13,10 @@ import { gptSoVitsWavEvents } from '../audio/wav.js';
 const DEFAULT_BASE_URL = 'http://127.0.0.1:9880';
 
 // GPT-SoVITS 使用服务已经加载的权重, /tts 请求中不传 modelId.
-export function createGptSoVitsTtsProtocol(
-  connection: TtsConnection,
+export function createGptSoVitsTTSProtocol(
+  connection: TTSConnection,
   _modelId: string,
-): TtsProtocolImplementation {
+): TTSProtocolImplementation {
   const baseUrl = (connection.baseUrl ?? DEFAULT_BASE_URL).replace(/\/$/, '');
   return {
     async prepareVoice(reference) {
@@ -30,10 +30,10 @@ export function createGptSoVitsTtsProtocol(
 
 async function* synthesizeGptSoVits(
   baseUrl: string,
-  request: TtsRequest,
-): AsyncGenerator<TtsStreamEvent> {
+  request: TTSRequest,
+): AsyncGenerator<TTSStreamEvent> {
   if (request.voice.kind !== 'reference') {
-    throw new TtsError('tts/unsupported_voice', 'GPT-SoVITS requires a local reference voice');
+    throw new TTSError('tts/unsupported_voice', 'GPT-SoVITS requires a local reference voice');
   }
   const startedAt = Date.now();
   let response: Response;
@@ -60,18 +60,18 @@ async function* synthesizeGptSoVits(
   if (!response.ok) {
     const body = await safeReadText(response);
     if (looksLikeMissingReference(body)) {
-      throw new TtsError('tts/reference_audio_missing', body);
+      throw new TTSError('tts/reference_audio_missing', body);
     }
     throw ttsErrorFromHttp(response.status, body);
   }
   if (!response.body) {
-    throw new TtsError('tts/invalid_response', 'GPT-SoVITS response has no body');
+    throw new TTSError('tts/invalid_response', 'GPT-SoVITS response has no body');
   }
   const input = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
   try {
     yield* gptSoVitsWavEvents(input, startedAt, request.signal);
   } catch (error) {
-    if (error instanceof TtsError) {
+    if (error instanceof TTSError) {
       throw error;
     }
     throw ttsErrorFromNetwork(error, request.signal);

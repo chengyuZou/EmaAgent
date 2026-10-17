@@ -1,16 +1,16 @@
-export { createTtsCall, createTtsVoiceRegistrar } from './textToSpeech.js';
-export { isTtsError, TtsError } from './errors.js';
-export type { TtsErrorCode } from './errors.js';
+export { createTTSCall, createTTSVoiceRegistrar } from './textToSpeech.js';
+export { isTTSError, TTSError } from './errors.js';
+export type { TTSErrorCode } from './errors.js';
 export type {
-  CallTts,
+  CallTTS,
   PcmAudioFormat,
-  TtsConnection,
-  TtsProtocol,
-  TtsRequest,
-  TtsStreamEvent,
-  TtsVoice,
-  TtsVoiceReference,
-  TtsProviderVoice,
-  TtsVoiceRegistrar,
+  TTSConnection,
+  TTSProtocol,
+  TTSRequest,
+  TTSStreamEvent,
+  TTSVoice,
+  TTSVoiceReference,
+  TTSProviderVoice,
+  TTSVoiceRegistrar,
 } from './types.js';
 export { createPcmWavHeader, packPcmWav } from './audio/wav.js';

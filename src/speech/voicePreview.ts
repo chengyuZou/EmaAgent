@@ -2,11 +2,11 @@
 import { randomUUID } from 'node:crypto';
 import {
   packPcmWav,
-  TtsError,
-  type CallTts,
+  TTSError,
+  type CallTTS,
   type PcmAudioFormat,
-  type TtsVoiceReference,
-  type TtsVoiceRegistrar,
+  type TTSVoiceReference,
+  type TTSVoiceRegistrar,
 } from '@ema-agent/tts';
 import type { UsageRecorder } from '@ema-agent/usage';
 import { SpeechVoiceCache } from './voiceHandleCache.js';
@@ -31,13 +31,13 @@ export class SpeechVoicePreviewError extends Error {
 }
 
 export interface SpeechVoicePreviewSource {
-  current(): { readonly characterName: string; readonly voice: TtsVoiceReference } | null;
+  current(): { readonly characterName: string; readonly voice: TTSVoiceReference } | null;
 }
 
 /** 试听所需的 TTS 入口对：Provider 连接与模型由装配层按请求即时冻结。 */
 export interface SpeechVoicePreviewTts {
-  readonly ttsVoiceRegistrar: TtsVoiceRegistrar;
-  readonly callTts: CallTts;
+  readonly ttsVoiceRegistrar: TTSVoiceRegistrar;
+  readonly callTTS: CallTTS;
 }
 
 export interface SpeechVoicePreviewResult {
@@ -86,7 +86,7 @@ export class SpeechVoicePreview {
       const chunks: Uint8Array[] = [];
       let format: PcmAudioFormat | undefined;
       let totalBytes = 0;
-      for await (const event of tts.callTts({
+      for await (const event of tts.callTTS({
         text,
         voice,
         ...(signal === undefined ? {} : { signal }),
@@ -96,7 +96,7 @@ export class SpeechVoicePreview {
         } else if (event.type === 'audio_chunk') {
           totalBytes += event.bytes.byteLength;
           if (totalBytes > MAX_PREVIEW_PCM_BYTES) {
-            throw new TtsError('tts/resource_exhausted', 'TTS preview exceeds 16 MiB of PCM');
+            throw new TTSError('tts/resource_exhausted', 'TTS preview exceeds 16 MiB of PCM');
           }
           chunks.push(event.bytes);
         }
@@ -109,10 +109,10 @@ export class SpeechVoicePreview {
     } catch (error) {
       const cancelled = signal?.aborted === true
         || (error instanceof Error && error.name === 'AbortError')
-        || (error instanceof TtsError && error.code === 'tts/aborted');
+        || (error instanceof TTSError && error.code === 'tts/aborted');
       status = cancelled ? 'cancelled' : 'failed';
       if (cancelled) errorCode = 'tts/aborted';
-      else if (error instanceof TtsError || error instanceof SpeechVoicePreviewError) errorCode = error.code;
+      else if (error instanceof TTSError || error instanceof SpeechVoicePreviewError) errorCode = error.code;
       else errorCode = 'tts/preview_failed';
       if (error instanceof SpeechVoicePreviewError) throw error;
       throw new SpeechVoicePreviewError(

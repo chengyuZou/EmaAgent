@@ -1,19 +1,19 @@
-// 在 DashScope 协议族内部按模型选择 CosyVoice 或 Qwen TTS；无法识别的模型在创建点即失败。
-import { TtsError } from '../../errors.js';
+import { TTSError } from '../../errors.js';
 import type {
-  TtsConnection,
-  TtsProtocolImplementation,
+  TTSConnection,
+  TTSProtocolImplementation,
 } from '../../types.js';
 import { synthesizeCosyVoice } from './cosyVoice.js';
-import { synthesizeQwenTts } from './qwenTts.js';
+import { synthesizeQwenTTS } from './qwenTTS.js';
 import { enrollDashscopeVoice } from './voiceEnrollment.js';
 
-type DashscopeTtsFamily = 'cosyvoice' | 'qwen-tts';
+type DashscopeTTSFamily = 'cosyvoice' | 'qwen-tts';
 
-export function createDashscopeTtsProtocol(
-  connection: TtsConnection,
+export function createDashscopeTTSProtocol(
+  connection: TTSConnection,
   modelId: string,
-): TtsProtocolImplementation {
+): TTSProtocolImplementation {
+  // 两个模型族的 WebSocket 消息不同, 在创建时选好, 合成过程中不再切换.
   const family = dashscopeFamily(modelId);
   const baseUrl = connection.baseUrl ?? 'https://dashscope.aliyuncs.com';
   const httpBaseUrl = toHttpBaseUrl(baseUrl);
@@ -34,15 +34,15 @@ export function createDashscopeTtsProtocol(
     synthesize(request) {
       return family === 'cosyvoice'
         ? synthesizeCosyVoice(webSocketBaseUrl, apiKey, modelId, request)
-        : synthesizeQwenTts(webSocketBaseUrl, apiKey, modelId, request);
+        : synthesizeQwenTTS(webSocketBaseUrl, apiKey, modelId, request);
     },
   };
 }
 
-function dashscopeFamily(modelId: string): DashscopeTtsFamily {
+function dashscopeFamily(modelId: string): DashscopeTTSFamily {
   if (modelId.startsWith('cosyvoice')) return 'cosyvoice';
   if (modelId.startsWith('qwen') && modelId.includes('tts')) return 'qwen-tts';
-  throw new TtsError(
+  throw new TTSError(
     'tts/unsupported_model',
     `DashScope does not recognize TTS model "${modelId}"`,
   );

@@ -1,8 +1,8 @@
-import type { LlmProtocol } from '@ema-agent/providers';
+import type { LLMProtocol } from '@ema-agent/providers';
 import type { AssistantBlock, Message } from './message.js';
 import type { LlmTokenUsage } from './usage.js';
 
-export type { LlmProtocol } from '@ema-agent/providers';
+export type { LLMProtocol } from '@ema-agent/providers';
 export type { LlmTokenUsage } from './usage.js';
 export type {
   AssistantBlock,
@@ -17,7 +17,7 @@ export type {
 export interface LlmConnection {
   /** 连接归属的 Provider 身份；Adapter 用它做生成来源三元匹配（providerId+modelId+protocol）。 */
   readonly providerId: string;
-  readonly protocol: LlmProtocol;
+  readonly protocol: LLMProtocol;
   /** 本地或受信网关可以不需要凭据，因此凭据允许缺省。 */
   readonly apiKey?: string;
   readonly baseUrl?: string;
@@ -37,7 +37,7 @@ export type LlmThinkingState =
 export interface LlmGenerationSource {
   readonly providerId: string;
   readonly modelId: string;
-  readonly protocol: LlmProtocol;
+  readonly protocol: LLMProtocol;
 }
 
 /** 一次物理 LLM 调用已经确定的终态。 */

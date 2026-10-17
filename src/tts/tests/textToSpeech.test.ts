@@ -5,13 +5,13 @@ import { join } from 'node:path';
 import { PassThrough, Readable } from 'node:stream';
 import WebSocket, { WebSocketServer } from 'ws';
 import { describe, expect, it } from 'vitest';
-import { TtsError } from '../errors.js';
-import { createTtsCall, createTtsVoiceRegistrar } from '../textToSpeech.js';
-import type { TtsStreamEvent, TtsVoice, TtsVoiceReference } from '../types.js';
+import { TTSError } from '../errors.js';
+import { createTTSCall, createTTSVoiceRegistrar } from '../textToSpeech.js';
+import type { TTSStreamEvent, TTSVoice, TTSVoiceReference } from '../types.js';
 import { gptSoVitsWavEvents, packPcmWav } from '../audio/wav.js';
 import { pcmEvents } from '../audio/pcm.js';
 
-const REFERENCE: TtsVoiceReference = {
+const REFERENCE: TTSVoiceReference = {
   kind: 'reference',
   resourceName: 'main.wav',
   resourceUpdatedAt: 1,
@@ -21,7 +21,7 @@ const REFERENCE: TtsVoiceReference = {
   promptLanguage: 'zh',
 };
 
-const PROVIDER_VOICE: TtsVoice = { kind: 'provider', id: 'voice-1' };
+const PROVIDER_VOICE: TTSVoice = { kind: 'provider', id: 'voice-1' };
 
 function wavFixture(pcm: Buffer, sampleRate: number, channelCount = 1): Buffer {
   const header = Buffer.alloc(44);
@@ -44,7 +44,6 @@ interface CapturedRequest {
   readonly body: string;
 }
 
-/** 起 127.0.0.1 随机端口的捕获服务器：记录请求体，按 handler 流式回包。 */
 async function withServer(
   handler: (body: string, response: http.ServerResponse) => void,
   run: (baseUrl: string, captured: readonly CapturedRequest[]) => Promise<void>,
@@ -68,15 +67,15 @@ async function withServer(
   }
 }
 
-async function collect(stream: AsyncIterable<TtsStreamEvent>): Promise<TtsStreamEvent[]> {
-  const events: TtsStreamEvent[] = [];
+async function collect(stream: AsyncIterable<TTSStreamEvent>): Promise<TTSStreamEvent[]> {
+  const events: TTSStreamEvent[] = [];
   for await (const event of stream) {
     events.push(event);
   }
   return events;
 }
 
-function audioBytes(events: readonly TtsStreamEvent[]): Buffer {
+function audioBytes(events: readonly TTSStreamEvent[]): Buffer {
   const chunks = events.filter(event => event.type === 'audio_chunk');
   return Buffer.concat(chunks.map(event => Buffer.from(event.bytes)));
 }
@@ -84,30 +83,30 @@ function audioBytes(events: readonly TtsStreamEvent[]): Buffer {
 describe('创建点冻结校验', () => {
   it('空 modelId 在两个创建点都直接抛 TypeError', () => {
     const connection = { protocol: 'siliconflow-tts', apiKey: 'k' } as const;
-    expect(() => createTtsCall(connection, '  ')).toThrow(TypeError);
-    expect(() => createTtsVoiceRegistrar(connection, '')).toThrow(TypeError);
+    expect(() => createTTSCall(connection, '  ')).toThrow(TypeError);
+    expect(() => createTTSVoiceRegistrar(connection, '')).toThrow(TypeError);
   });
 
   it('DashScope 无法识别的模型在创建点抛 unsupported_model', () => {
     const connection = { protocol: 'dashscope-tts', apiKey: 'k' } as const;
     try {
-      createTtsCall(connection, 'gpt-4o');
+      createTTSCall(connection, 'gpt-4o');
       expect.unreachable();
     } catch (error) {
-      expect(error).toBeInstanceOf(TtsError);
-      expect((error as TtsError).code).toBe('tts/unsupported_model');
+      expect(error).toBeInstanceOf(TTSError);
+      expect((error as TTSError).code).toBe('tts/unsupported_model');
     }
   });
 
   it('DashScope 两个模型族都能正常创建', () => {
     const connection = { protocol: 'dashscope-tts', apiKey: 'k' } as const;
-    expect(typeof createTtsCall(connection, 'cosyvoice-v2')).toBe('function');
-    expect(typeof createTtsVoiceRegistrar(connection, 'qwen3-tts-flash')).toBe('function');
+    expect(typeof createTTSCall(connection, 'cosyvoice-v2')).toBe('function');
+    expect(typeof createTTSVoiceRegistrar(connection, 'qwen3-tts-flash')).toBe('function');
   });
 });
 
 describe('请求校验', () => {
-  const call = createTtsCall({ protocol: 'gpt-sovits-tts', baseUrl: 'http://127.0.0.1:1' }, 'local');
+  const call = createTTSCall({ protocol: 'gpt-sovits-tts', baseUrl: 'http://127.0.0.1:1' }, 'local');
 
   it('空文本抛 invalid_request', () => {
     expect(() => call({ text: '  ', voice: REFERENCE })).toThrow(/text must not be empty/);
@@ -118,19 +117,19 @@ describe('请求校验', () => {
   });
 
   it('registrar 拒绝空参考音频路径', () => {
-    const registrar = createTtsVoiceRegistrar({ protocol: 'gpt-sovits-tts' }, 'local');
+    const registrar = createTTSVoiceRegistrar({ protocol: 'gpt-sovits-tts' }, 'local');
     expect(() => registrar({ ...REFERENCE, audioPath: ' ' })).toThrow(/reference audio path/);
   });
 });
 
 describe('音色注册', () => {
   it('GPT-SoVITS 原样直通本地参考音频', async () => {
-    const registrar = createTtsVoiceRegistrar({ protocol: 'gpt-sovits-tts', baseUrl: 'http://127.0.0.1:1' }, 'local');
+    const registrar = createTTSVoiceRegistrar({ protocol: 'gpt-sovits-tts', baseUrl: 'http://127.0.0.1:1' }, 'local');
     await expect(registrar(REFERENCE)).resolves.toEqual(REFERENCE);
   });
 
   it('SiliconFlow 注册在参考音频不可读时抛 reference_audio_missing（不发起网络请求）', async () => {
-    const registrar = createTtsVoiceRegistrar(
+    const registrar = createTTSVoiceRegistrar(
       { protocol: 'siliconflow-tts', apiKey: 'k', baseUrl: 'http://127.0.0.1:1' },
       'tts-model',
     );
@@ -149,7 +148,7 @@ describe('音色注册', () => {
           response.end(JSON.stringify({ uri: 'speech:ema-2d3a9570-8e68-4c15-a11f-9fa58f38a912:test' }));
         },
         async (baseUrl, captured) => {
-          const registrar = createTtsVoiceRegistrar(
+          const registrar = createTTSVoiceRegistrar(
             { protocol: 'siliconflow-tts', apiKey: 'k', baseUrl },
             'IndexTeam/IndexTTS-2',
           );
@@ -177,8 +176,8 @@ describe('合成流', () => {
         response.end(Buffer.alloc(100, 2));
       },
       async (baseUrl, captured) => {
-        const callTts = createTtsCall({ protocol: 'siliconflow-tts', apiKey: 'k', baseUrl }, 'tts-model-x');
-        const events = await collect(callTts({ text: '你好呀', voice: PROVIDER_VOICE }));
+        const callTTS = createTTSCall({ protocol: 'siliconflow-tts', apiKey: 'k', baseUrl }, 'tts-model-x');
+        const events = await collect(callTTS({ text: '你好呀', voice: PROVIDER_VOICE }));
 
         const payload: unknown = JSON.parse(captured[0]?.body ?? '{}');
         expect(payload).toMatchObject({
@@ -215,8 +214,8 @@ describe('合成流', () => {
         response.end(wavFixture(pcm, 32_000, 2));
       },
       async (baseUrl, captured) => {
-        const callTts = createTtsCall({ protocol: 'gpt-sovits-tts', baseUrl }, 'local-unused');
-        const events = await collect(callTts({ text: '本地合成一句', voice: REFERENCE }));
+        const callTTS = createTTSCall({ protocol: 'gpt-sovits-tts', baseUrl }, 'local-unused');
+        const events = await collect(callTTS({ text: '本地合成一句', voice: REFERENCE }));
 
         const payload: unknown = JSON.parse(captured[0]?.body ?? '{}');
         expect(payload).toMatchObject({
@@ -235,15 +234,15 @@ describe('合成流', () => {
     );
   });
 
-  it('协议响应失败统一映射为 TtsError', async () => {
+  it('协议响应失败统一映射为 TTSError', async () => {
     await withServer(
       (_body, response) => {
         response.writeHead(401, { 'content-type': 'text/plain' });
         response.end('bad key');
       },
       async (baseUrl) => {
-        const callTts = createTtsCall({ protocol: 'siliconflow-tts', apiKey: 'bad', baseUrl }, 'tts-model-x');
-        await expect(collect(callTts({ text: '你好', voice: PROVIDER_VOICE })))
+        const callTTS = createTTSCall({ protocol: 'siliconflow-tts', apiKey: 'bad', baseUrl }, 'tts-model-x');
+        await expect(collect(callTTS({ text: '你好', voice: PROVIDER_VOICE })))
           .rejects.toMatchObject({ code: 'tts/credentials' });
       },
     );
@@ -470,7 +469,7 @@ describe('DashScope PCM', () => {
         socket.send(JSON.stringify({ header: { event: 'task-finished' } }));
       }
     }, async (baseUrl, captured) => {
-      const call = createTtsCall({ protocol: 'dashscope-tts', baseUrl, apiKey: 'test' }, 'cosyvoice-v2');
+      const call = createTTSCall({ protocol: 'dashscope-tts', baseUrl, apiKey: 'test' }, 'cosyvoice-v2');
       const events = await collect(call({ text: '测试语音', voice: PROVIDER_VOICE }));
       expect(captured[0]?.payload?.parameters).toMatchObject({ format: 'pcm', sample_rate: 24_000 });
       expect(events[1]).toEqual({ type: 'audio_chunk', bytes: Buffer.from([1, 2, 3, 4]) });
@@ -485,7 +484,7 @@ describe('DashScope PCM', () => {
       }
       if (request.type === 'session.finish') socket.send(JSON.stringify({ type: 'session.finished' }));
     }, async (baseUrl, captured) => {
-      const call = createTtsCall({ protocol: 'dashscope-tts', baseUrl, apiKey: 'test' }, 'qwen3-tts-flash-realtime');
+      const call = createTTSCall({ protocol: 'dashscope-tts', baseUrl, apiKey: 'test' }, 'qwen3-tts-flash-realtime');
       const iterator = call({ text: '测试语音', voice: PROVIDER_VOICE })[Symbol.asyncIterator]();
       expect((await iterator.next()).value).toMatchObject({ type: 'audio_started', sampleRate: 24_000 });
       expect((await iterator.next()).value).toEqual({ type: 'audio_chunk', bytes: Buffer.from([1, 2, 3, 4]) });

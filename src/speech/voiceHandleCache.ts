@@ -1,15 +1,15 @@
 // 在当前进程内缓存云端声音标识，避免每句话重复上传参考音频。
 import type {
-  TtsProviderVoice,
-  TtsVoice,
-  TtsVoiceReference,
-  TtsVoiceRegistrar,
+  TTSProviderVoice,
+  TTSVoice,
+  TTSVoiceReference,
+  TTSVoiceRegistrar,
 } from '@ema-agent/tts';
 
 /** get-or-register 的输入；registrar 的连接与模型已在装配层创建点冻结。 */
 export interface PrepareSpeechVoiceRequest {
-  readonly reference: TtsVoiceReference;
-  readonly ttsVoiceRegistrar: TtsVoiceRegistrar;
+  readonly reference: TTSVoiceReference;
+  readonly ttsVoiceRegistrar: TTSVoiceRegistrar;
   readonly characterName: string;
   readonly providerId: string;
   /** 缓存键组成：同一 Provider 换模型必须重新注册（云端注册绑定目标模型）。 */
@@ -18,10 +18,10 @@ export interface PrepareSpeechVoiceRequest {
 }
 
 export class SpeechVoiceCache {
-  private readonly entries = new Map<string, TtsProviderVoice>();
+  private readonly entries = new Map<string, TTSProviderVoice>();
 
   /** 本地声音直接使用；云端声音按参考资源版本、Provider 和模型在当前进程复用。 */
-  async prepare(request: PrepareSpeechVoiceRequest): Promise<TtsVoice> {
+  async prepare(request: PrepareSpeechVoiceRequest): Promise<TTSVoice> {
     const key = voiceKey(request);
     const cached = this.entries.get(key);
     if (cached) return { ...cached };

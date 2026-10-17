@@ -13,7 +13,6 @@ import type {
 } from './types.js';
 import { isProtocolForCapability, PROVIDER_LIMITS } from './types.js';
 
-/** 能力下已配置的一档协议及其地址。 */
 export interface ProviderProtocol {
   protocol: Protocol;
   baseUrl: string;
@@ -21,32 +20,32 @@ export interface ProviderProtocol {
 
 export interface ProviderCapability {
   capability: ModelCapability;
-  /** 当前使用的协议；undefined = 该能力停用（已配协议保留）。 */
+  /** undefined 表示该能力停用, 已配置的协议和地址仍保留. */
   activeProtocol?: Protocol;
-  /** 该能力的 models.dev 源 id；undefined = 不用 models.dev 预填模型参数。 */
+  /** models.dev 的供应商 ID, 用于查找该能力可同步的目录条目. */
   modelsDevId?: string;
-  /** 该能力已配置的协议；同一能力可配多档（如 DeepSeek LLM 的 openai/anthropic 双协议）。 */
+  /** 同一能力可保存多个协议和地址, 切换时不用重新填写. */
   protocols: readonly ProviderProtocol[];
-  /** 读出时注入：该能力的模型行数（none 类型的"已配置"判定用它；写入输入不含）。 */
+  /** 读取时附带模型数量, 设置页据此判断无需凭据的能力是否已配置. */
   modelCount?: number;
 }
 
 export interface ProviderHealth {
   capability: ModelCapability;
   status: 'ok' | 'failed' | 'unknown';
+  /** Unix 毫秒时间戳, null 表示还没有记录探活时间. */
   lastProbedAt: number | null;
   latencyMs: number | null;
   lastError: string | null;
 }
 
-/** providers 行的领域投影：配置、能力与按能力健康一次 join 拼好，读不拆壳。 */
 export interface Provider {
   id: string;
   name: string;
-  /** UI 图标注册表 key；undefined = 前端不渲染图标。 */
+  /** undefined 时界面不显示供应商图标. */
   iconId?: string;
   authType: 'none' | 'bearer';
-  /** 全文 key；掩码展示（取头尾拼接）是前端渲染规则，后端不参与。 */
+  /** 完整凭据. 设置页负责掩码显示, 列表路由只返回 hasKey. */
   keyValue?: string;
   capabilities: readonly ProviderCapability[];
   health: readonly ProviderHealth[];
@@ -54,33 +53,33 @@ export interface Provider {
 
 export interface ProviderCapabilityInput {
   capability: ModelCapability;
-  /** 缺省时：该能力尚未配置协议则报错；已有协议则只改其余字段。 */
+  /** 新建能力时必填. 更新时省略表示保留已有协议, 只修改其他字段. */
   protocol?: Protocol;
   baseUrl?: string;
-  /** true = 设为该能力当前协议；false = 停用该能力（已配协议保留）；缺省 = 未启用时激活这条协议。 */
+  /** true 激活传入的协议, false 停用能力. 省略时仅在能力未启用的情况下激活传入协议. */
   active?: boolean;
   modelsDevId?: string;
-  /** 本次要从该能力移除的协议档；剩最后一档时拒绝（不能把能力删成无协议）。 */
+  /** 删除当前协议后切换到剩余第一项, 删除全部协议会报错. */
   removedProtocols?: readonly Protocol[];
 }
 
 export interface CreateProvider {
-  /** 用户显式给定的语义 slug（如 deepseek / company-gateway）；创建后不可改，不能与已有行（含内置种子）重复。 */
+  /** 用户填写的供应商 ID, 如 company-gateway. 已有 ID 可追加能力, 同一能力不能重复创建. */
   id: string;
   name: string;
   iconId?: string;
   authType: 'none' | 'bearer';
-  /** 一把 key；bearer 未提供时先建行，配置动作补。 */
+  /** 同一供应商的能力共用凭据. 可先创建配置, 调用需要凭据的接口前再补全. */
   key?: string;
-  /** 创建动作按能力分区发起：一次创建只带一个能力。 */
+  /** 一次创建配置一个能力. */
   capability: ProviderCapabilityInput;
 }
 
 export interface UpdateProvider {
   name?: string;
-  /** null = 清空图标。 */
+  /** null 清空图标, undefined 保留现值. */
   iconId?: string | null;
-  /** null = 清空 key；undefined = 不动现有 key。 */
+  /** null 清空凭据, undefined 保留现值. */
   key?: string | null;
   capability?: ProviderCapabilityInput;
 }
@@ -111,8 +110,7 @@ export class Providers {
     return this.requireProvider(id);
   }
 
-  /** 只服务自建 provider；内置 19 个是种子行，配置动作走 update。按能力分区创建：单档协议即激活。
-   *  判重按 (id, capability)：id 存在但无此能力 → 追加能力档（同 key 共享）；id+能力都有 → already_exists。 */
+  /** 已有 ID 只追加缺少的能力, 保留供应商名称和认证方式; 传入 key 时更新共享凭据. */
   create(input: CreateProvider): Provider {
     assertValidId(input.id);
     const existing = this.repo.get(input.id);
@@ -172,7 +170,7 @@ export class Providers {
         if (protocols.length === 0) {
           throw invalid(`${requested.capability} 至少要保留一档协议`);
         }
-        // 激活档被删时自动切到剩余第一档，不留悬空指针。
+        // 删除当前协议后立即选择剩余第一项, 否则连接解析会找不到协议地址.
         if (activeProtocol !== undefined
           && !protocols.some((entry) => entry.protocol === activeProtocol)) {
           activeProtocol = protocols[0]!.protocol;
@@ -193,13 +191,20 @@ export class Providers {
       ];
     }
 
+    const name = input.name === undefined ? existing.name : normalizeName(input.name);
+    let keyValue = existing.keyValue;
+    if (input.key === null) {
+      keyValue = undefined;
+    } else if (input.key !== undefined) {
+      keyValue = normalizeKeyValue(input.key);
+    }
+
     this.save({
       id,
-      name: input.name === undefined ? existing.name : normalizeName(input.name),
+      name,
       iconId: input.iconId === undefined ? existing.iconId : (input.iconId ?? undefined),
       authType: existing.authType,
-      keyValue: input.key === undefined ? existing.keyValue
-        : input.key === null ? undefined : normalizeKeyValue(input.key),
+      keyValue,
       capabilities,
     });
     return this.requireProvider(id);
@@ -320,7 +325,7 @@ export class Providers {
   }
 }
 
-/** 解析是 Provider 自己的事：输入全部是 provider 行的事实 + 凭据，无任何外部状态。 */
+/** 使用当前能力选中的协议和地址. 能力停用或 bearer 凭据缺失时抛 ProviderError. */
 export function resolveProviderConnection<TCapability extends ModelCapability>(
   provider: Provider,
   keyValue: string | null,

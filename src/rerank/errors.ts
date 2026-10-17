@@ -3,7 +3,6 @@ export type RerankErrorCode =
   | 'rerank/http_error'
   | 'rerank/invalid_response';
 
-/** Rerank 对真实请求和外部响应的稳定错误。 */
 export class RerankError extends Error {
   readonly name = 'RerankError';
 

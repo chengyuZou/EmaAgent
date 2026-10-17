@@ -1,4 +1,3 @@
-// 测试 Rerank 公共入口的协议转换、结果校验、稳定排序和单次调用语义。
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRerankCall } from '../reranker.js';
 
@@ -63,7 +62,7 @@ describe('CallRerank', () => {
     const callRerank = createRerankCall({ protocol: 'cohere-rerank' }, 'rerank-v1');
 
     await expect(callRerank({
-query: 'query', documents: ['a', 'b'], topK: 2,
+      query: 'query', documents: ['a', 'b'], topK: 2,
     })).rejects.toMatchObject({ code: 'rerank/invalid_response' });
   });
 
@@ -72,7 +71,7 @@ query: 'query', documents: ['a', 'b'], topK: 2,
     const callRerank = createRerankCall({ protocol: 'cohere-rerank' }, 'rerank-v1');
 
     await expect(callRerank({
-query: 'query', documents: ['a'], topK: 1,
+      query: 'query', documents: ['a'], topK: 1,
     })).rejects.toMatchObject({ code: 'rerank/http_error', status: 429 });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
@@ -80,7 +79,7 @@ query: 'query', documents: ['a'], topK: 1,
   it('空文档集不访问远端', async () => {
     const callRerank = createRerankCall({ protocol: 'cohere-rerank' }, 'rerank-v1');
     await expect(callRerank({
-query: 'query', documents: [],
+      query: 'query', documents: [],
     })).resolves.toEqual({ results: [] });
     expect(fetchMock).not.toHaveBeenCalled();
   });

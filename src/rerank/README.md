@@ -1,18 +1,47 @@
 # Rerank
 
-`src/rerank` 是 Ema 的重排执行面：接收已经解析好的协议连接、查询和候选文本，调用远端协议并返回指向原候选下标的相关度结果。
+[中文](README-zh.md)
 
-它不拥有 Provider 配置、模型选择、热刷新、重试、Probe、Usage、Session 或 Turn。
+`@ema-agent/rerank` sends a query and candidate texts to a Rerank API. It returns document indices and provider scores, sorted from highest to lowest score.
 
-```text
-Provider / 接线层
-  └─ createRerankCall({ protocol, apiKey, baseUrl }, modelId)   // 连接与模型在创建点冻结
-       └─ CallRerank({ query, documents, topK, signal })
-            └─ { results: [{ index, score }], usage? }
+## Use
+
+```ts
+import { createRerankCall } from '@ema-agent/rerank';
+
+const rerank = createRerankCall({
+  protocol: 'cohere-rerank',
+  baseUrl: 'http://127.0.0.1:8080/v2',
+}, 'rerank-model');
+
+const result = await rerank({
+  query: 'How does the story end?',
+  documents: ['First candidate', 'Second candidate'],
+  topK: 2,
+});
+// Each result.index points into the original documents array.
 ```
 
-`score` 保留 Provider 的原始相关度语义。包内只负责有限值、下标、重复项和结果数量校验，以及降序稳定排列；禁止按每批最小值和最大值重新映射分数，否则同一文档的阈值意义会随同批候选变化。
+The factory selects the model and protocol. Calls accept `query`, `documents`, optional `topK`, and optional `signal`. `topK` defaults to at most 5 documents and is capped at the number of candidates. An empty candidate list returns `{ results: [] }` without a request. The query must still be nonblank.
 
-正常请求只执行一次。批处理、限时、重试、降级和 Usage 记录由实际业务调用方处理。
+`cohere-rerank` sends `POST /rerank` with `model`, `query`, `documents`, and `top_n`. Its default base URL is `https://api.cohere.com/v2`; callers can supply a compatible server instead. Authentication uses a Bearer header when an API key is present.
 
-兼容接口从 `meta.tokens.input_tokens` 与 `output_tokens` 读取 Token 用量; 仅提供 `usage.total_tokens` 时作为处理输入量返回. 未报告用量时不估算, 不把 `billed_units.search_units` 写成 Token.
+The response accepts `relevance_score` or `score`. Indices must be unique and within the original candidate array, scores must be finite, and the result count cannot exceed the requested limit. Equal scores are ordered by original document index.
+
+Scores keep the provider's original scale. Rescaling each batch between its lowest and highest score would make a threshold depend on the other candidates in that batch.
+
+## Usage, failures, and application calls
+
+Token usage comes from `meta.tokens.input_tokens` and optional `output_tokens`. A compatible response's `usage.total_tokens` is a fallback for the input amount. Missing usage remains absent; `billed_units.search_units` is not a Token count.
+
+Each call sends one request. The caller passes cancellation or a timeout through `signal` and decides whether to retry. HTTP errors and malformed responses raise `RerankError`, carrying a code, optional HTTP status, and optional cause. Network and cancellation errors from `fetch` propagate as received. HTTP error messages include at most 500 characters of the provider's response body.
+
+Server [composition/narrative.ts](../../apps/server/src/composition/narrative.ts) creates the call from the `narrative-rerank` binding and records usage. [Narrative recall](../narrative/pipeline/recall.ts) sends the original query and candidate passage contents, then uses the returned indices to select passages. Provider health checks also use `createRerankCall`.
+
+Read [reranker.ts](reranker.ts) for input checks, sorting, and result checks, and [protocols/cohere.ts](protocols/cohere.ts) for the HTTP format.
+
+```sh
+pnpm --filter @ema-agent/rerank test
+```
+
+Tests replace `fetch` to check scores, tie ordering, duplicate-index rejection, empty candidates, and a single failed request without automatic retry.

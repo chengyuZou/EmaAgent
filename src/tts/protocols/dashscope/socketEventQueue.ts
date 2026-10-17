@@ -1,4 +1,3 @@
-// 把 WebSocket 回调转换为可等待的异步事件流，并保留真实失败原因。
 type QueueEntry<T> =
   | { readonly kind: 'value'; readonly value: T }
   | { readonly kind: 'error'; readonly error: unknown }
@@ -19,7 +18,7 @@ export class SocketEventQueue<T> {
 
   fail(error: unknown): void {
     if (this.closed) return;
-    // 失败或取消后不继续交付已积压的音频, 错误优先于尚未消费的回调结果.
+    // 失败或取消后丢弃尚未消费的音频, 下一次读取直接收到错误.
     this.entries.length = 0;
     this.enqueue({ kind: 'error', error });
   }

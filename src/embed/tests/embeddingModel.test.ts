@@ -1,7 +1,5 @@
-// 测试 Embedding 公共入口的协议转换、向量校验、归一化和空间身份。
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEmbedCall } from '../embeddingModel.js';
-import { createEmbeddingSpace } from '../embeddingSpace.js';
 
 const fetchMock = vi.fn<typeof fetch>();
 
@@ -71,21 +69,3 @@ describe('CallEmbed', () => {
   });
 });
 
-describe('EmbeddingSpace', () => {
-  it('相同事实生成相同 ID，provider/模型/维度任一变化都生成不同 ID', () => {
-    const base = {
-      providerId: 'provider-a',
-      model: 'bge-m3',
-      dim: 1024,
-    };
-    expect(createEmbeddingSpace(base)).toEqual(createEmbeddingSpace(base));
-    expect(createEmbeddingSpace(base).id).toMatch(/^[a-f0-9]{64}$/);
-    // providerId 承担"同名不同权重"的隔离：不同 provider 的同名模型永不混写
-    expect(createEmbeddingSpace({ ...base, providerId: 'provider-b' }).id)
-      .not.toBe(createEmbeddingSpace(base).id);
-    expect(createEmbeddingSpace({ ...base, model: 'other' }).id)
-      .not.toBe(createEmbeddingSpace(base).id);
-    expect(createEmbeddingSpace({ ...base, dim: 768 }).id)
-      .not.toBe(createEmbeddingSpace(base).id);
-  });
-});

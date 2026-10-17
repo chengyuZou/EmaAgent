@@ -1,5 +1,5 @@
 // 在中立消息跨入具体协议前拒绝无法无损表达的内容。
-import type { LlmProtocol } from '@ema-agent/providers';
+import type { LLMProtocol } from '@ema-agent/providers';
 import { LlmProtocolInputError } from './errors.js';
 import type {
   ContentPart,
@@ -16,7 +16,7 @@ const ANTHROPIC_IMAGE_TYPES = new Set([
 ]);
 
 export function assertProtocolInput(
-  protocol: LlmProtocol,
+  protocol: LLMProtocol,
   messages: readonly Message[],
 ): void {
   for (let messageIndex = 0; messageIndex < messages.length; messageIndex += 1) {
@@ -35,7 +35,7 @@ export function assertProtocolInput(
 }
 
 function assertContentPart(
-  protocol: LlmProtocol,
+  protocol: LLMProtocol,
   part: ContentPart,
   messageIndex: number,
   blockIndex: number,
@@ -68,7 +68,7 @@ function assertContentPart(
 }
 
 function assertToolResult(
-  protocol: LlmProtocol,
+  protocol: LLMProtocol,
   content: string | readonly ToolResultContentPart[],
   messageIndex: number,
   blockIndex: number,
@@ -90,7 +90,7 @@ function isOpenAiAudio(mimeType: string): boolean {
 }
 
 function fail(
-  protocol: LlmProtocol,
+  protocol: LLMProtocol,
   messageIndex: number,
   blockIndex: number,
   contentType: UserBlock['type'],

@@ -1,23 +1,21 @@
-// TTS 的两个创建入口：音色注册与逐句合成，协议连接与模型在创建点冻结。
-import { TtsError } from './errors.js';
-import { createDashscopeTtsProtocol } from './protocols/dashscope/index.js';
-import { createGptSoVitsTtsProtocol } from './protocols/gptSoVits.js';
-import { createSiliconFlowTtsProtocol } from './protocols/siliconFlow.js';
+import { TTSError } from './errors.js';
+import { createDashscopeTTSProtocol } from './protocols/dashscope/index.js';
+import { createGptSoVitsTTSProtocol } from './protocols/gptSoVits.js';
+import { createSiliconFlowTTSProtocol } from './protocols/siliconFlow.js';
 import type {
-  CallTts,
-  TtsConnection,
-  TtsProtocolImplementation,
-  TtsRequest,
-  TtsStreamEvent,
-  TtsVoiceReference,
-  TtsVoiceRegistrar,
+  CallTTS,
+  TTSConnection,
+  TTSProtocolImplementation,
+  TTSRequest,
+  TTSStreamEvent,
+  TTSVoiceReference,
+  TTSVoiceRegistrar,
 } from './types.js';
 
-/** 音色注册创建入口；不保存 Provider Map、Session、Usage 或重试状态。 */
-export function createTtsVoiceRegistrar(
-  connection: TtsConnection,
+export function createTTSVoiceRegistrar(
+  connection: TTSConnection,
   modelId: string,
-): TtsVoiceRegistrar {
+): TTSVoiceRegistrar {
   const implementation = createProtocol(connection, requireModelId(modelId));
   return (reference, signal) => {
     validateReference(reference);
@@ -25,8 +23,7 @@ export function createTtsVoiceRegistrar(
   };
 }
 
-/** 逐句合成创建入口；返回的音频流必须经公共校验以唯一 done 结束。 */
-export function createTtsCall(connection: TtsConnection, modelId: string): CallTts {
+export function createTTSCall(connection: TTSConnection, modelId: string): CallTTS {
   const implementation = createProtocol(connection, requireModelId(modelId));
   return request => {
     validateRequest(request);
@@ -34,11 +31,11 @@ export function createTtsCall(connection: TtsConnection, modelId: string): CallT
   };
 }
 
-function createProtocol(connection: TtsConnection, modelId: string): TtsProtocolImplementation {
+function createProtocol(connection: TTSConnection, modelId: string): TTSProtocolImplementation {
   switch (connection.protocol) {
-    case 'siliconflow-tts': return createSiliconFlowTtsProtocol(connection, modelId);
-    case 'gpt-sovits-tts': return createGptSoVitsTtsProtocol(connection, modelId);
-    case 'dashscope-tts': return createDashscopeTtsProtocol(connection, modelId);
+    case 'siliconflow-tts': return createSiliconFlowTTSProtocol(connection, modelId);
+    case 'gpt-sovits-tts': return createGptSoVitsTTSProtocol(connection, modelId);
+    case 'dashscope-tts': return createDashscopeTTSProtocol(connection, modelId);
   }
 }
 
@@ -47,55 +44,56 @@ function requireModelId(modelId: string): string {
   return modelId;
 }
 
-function validateReference(reference: TtsVoiceReference): void {
+function validateReference(reference: TTSVoiceReference): void {
   if (!reference.audioPath.trim()) {
-    throw new TtsError('tts/invalid_request', 'TTS reference audio path must not be empty');
+    throw new TTSError('tts/invalid_request', 'TTS reference audio path must not be empty');
   }
 }
 
-function validateRequest(request: TtsRequest): void {
+function validateRequest(request: TTSRequest): void {
   if (!request.text.trim()) {
-    throw new TtsError('tts/invalid_request', 'TTS text must not be empty');
+    throw new TTSError('tts/invalid_request', 'TTS text must not be empty');
   }
   if (request.speed !== undefined && (!Number.isFinite(request.speed) || request.speed <= 0)) {
-    throw new TtsError('tts/invalid_request', 'TTS speed must be positive');
+    throw new TTSError('tts/invalid_request', 'TTS speed must be positive');
   }
 }
 
 async function* validateStream(
-  stream: AsyncIterable<TtsStreamEvent>,
-): AsyncGenerator<TtsStreamEvent> {
+  stream: AsyncIterable<TTSStreamEvent>,
+): AsyncGenerator<TTSStreamEvent> {
+  // 所有协议都需满足同一播放顺序, 避免播放器先收到样本却还不知道如何解释它们.
   let terminal = false;
   let countedBytes = 0;
   let blockAlign = 0;
   for await (const event of stream) {
     if (terminal) {
-      throw new TtsError('tts/invalid_response', 'TTS protocol emitted data after done');
+      throw new TTSError('tts/invalid_response', 'TTS protocol emitted data after done');
     }
     if (event.type === 'audio_started') {
       if (blockAlign !== 0 || !Number.isSafeInteger(event.sampleRate)
         || event.sampleRate < 8_000 || event.sampleRate > 192_000
         || (event.channelCount !== 1 && event.channelCount !== 2)) {
-        throw new TtsError('tts/invalid_response', 'TTS protocol emitted invalid or duplicate PCM format');
+        throw new TTSError('tts/invalid_response', 'TTS protocol emitted invalid or duplicate PCM format');
       }
       blockAlign = event.channelCount * 2;
     } else if (event.type === 'audio_chunk') {
       if (blockAlign === 0 || event.bytes.byteLength === 0 || event.bytes.byteLength % blockAlign !== 0) {
-        throw new TtsError('tts/invalid_response', 'TTS protocol emitted invalid PCM frames or no format');
+        throw new TTSError('tts/invalid_response', 'TTS protocol emitted invalid PCM frames or no format');
       }
       countedBytes += event.bytes.byteLength;
     } else {
       terminal = true;
       if (countedBytes === 0 || countedBytes % blockAlign !== 0) {
-        throw new TtsError('tts/invalid_response', 'TTS protocol completed without audio');
+        throw new TTSError('tts/invalid_response', 'TTS protocol completed without audio');
       }
       if (event.totalBytes !== countedBytes) {
-        throw new TtsError('tts/invalid_response', 'TTS protocol reported inconsistent byte count');
+        throw new TTSError('tts/invalid_response', 'TTS protocol reported inconsistent byte count');
       }
     }
     yield event;
   }
   if (!terminal) {
-    throw new TtsError('tts/invalid_response', 'TTS protocol ended without done');
+    throw new TTSError('tts/invalid_response', 'TTS protocol ended without done');
   }
 }

@@ -1,13 +1,12 @@
-// 把中立转录请求转换为 OpenAI 兼容的 /audio/transcriptions 调用。
-import { SttError } from '../errors.js';
+import { STTError } from '../errors.js';
 import type {
-  SttConnection,
+  STTConnection,
   TranscriptionRequest,
   TranscriptionResult,
 } from '../types.js';
 
-export function createOpenAiSttProtocol(
-  connection: SttConnection,
+export function createOpenAiSTTProtocol(
+  connection: STTConnection,
   modelId: string,
 ): (request: TranscriptionRequest) => Promise<TranscriptionResult> {
   const baseUrl = (connection.baseUrl ?? 'https://api.openai.com/v1').replace(/\/+$/, '');
@@ -35,7 +34,7 @@ export function createOpenAiSttProtocol(
 
     if (!response.ok) {
       const excerpt = (await response.text().catch(() => '')).slice(0, 500);
-      throw new SttError(
+      throw new STTError(
         'stt/http_error',
         `openai-stt returned HTTP ${response.status}${excerpt ? `: ${excerpt}` : ''}`,
         response.status,
@@ -47,10 +46,10 @@ export function createOpenAiSttProtocol(
       segments?: Array<{ start?: unknown; end?: unknown; text?: unknown }>;
     };
     if (typeof body.text !== 'string') {
-      throw new SttError('stt/invalid_response', 'openai-stt response is missing text');
+      throw new STTError('stt/invalid_response', 'openai-stt response is missing text');
     }
     if (body.segments !== undefined && !Array.isArray(body.segments)) {
-      throw new SttError('stt/invalid_response', 'openai-stt segments must be an array');
+      throw new STTError('stt/invalid_response', 'openai-stt segments must be an array');
     }
     const segments = body.segments?.map((segment) => {
       if (
@@ -58,7 +57,7 @@ export function createOpenAiSttProtocol(
         || typeof segment.end !== 'number'
         || typeof segment.text !== 'string'
       ) {
-        throw new SttError('stt/invalid_response', 'openai-stt returned malformed segment');
+        throw new STTError('stt/invalid_response', 'openai-stt returned malformed segment');
       }
       return {
         startMs: Math.round(segment.start * 1_000),
@@ -77,7 +76,7 @@ async function readJson(response: Response): Promise<unknown> {
   try {
     return await response.json();
   } catch (error) {
-    throw new SttError(
+    throw new STTError(
       'stt/invalid_response',
       'openai-stt returned invalid JSON',
       response.status,

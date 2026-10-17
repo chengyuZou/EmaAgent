@@ -1,4 +1,3 @@
-// 测试 models.dev 只提供带三态能力的模型建议，不承担网络刷新或运行时回退。
 import { describe, expect, it } from 'vitest';
 import { ModelsDevCatalog } from '../index.js';
 
@@ -62,7 +61,7 @@ describe('ModelsDevCatalog', () => {
     });
     catalog.loadFromJson(null);
 
-    expect(catalog.listLlmModelIds('providerA')).toEqual(['modelA']);
+    expect(catalog.listLLMModelIds('providerA')).toEqual(['modelA']);
     expect(catalog.size).toBe(1);
   });
 });

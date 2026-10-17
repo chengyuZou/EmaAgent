@@ -1,8 +1,7 @@
-// 让每个业务模块只绑定一个已启用模型，不在 Provider 内触发业务副作用。
 import { ProviderError } from './errors.js';
 import { ModelBindingsRepo, type Database, type ModelBindingRow } from '@ema-agent/storage';
 import type { ProviderModels } from './models.js';
-import  { type ModelCapability, type ModelBindingModule, MODEL_BINDING_CAPABILITIES } from './types.js';
+import { type ModelCapability, type ModelBindingModule, MODEL_BINDING_CAPABILITIES } from './types.js';
 
 export const MODEL_BINDING_MODULES = [
   'memory-llm',
@@ -13,8 +12,6 @@ export const MODEL_BINDING_MODULES = [
   'stt',
   'vision',
 ] as const;
-
-
 
 export interface ModelBindingInput {
   module: ModelBindingModule;
@@ -46,6 +43,7 @@ export class ModelBindings {
     return this.repo.listByProvider(providerId).map((row) => this.toBinding(row));
   }
 
+  /** 能力由 module 确定. HTTP 入口还需先确认该供应商的连接可解析. */
   set(input: ModelBindingInput): ModelBinding {
     const capability = MODEL_BINDING_CAPABILITIES[input.module];
     const model = this.models.get(input.providerId, capability, input.modelId);

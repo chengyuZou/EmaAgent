@@ -1,4 +1,4 @@
-export type TtsErrorCode =
+export type TTSErrorCode =
   | 'tts/invalid_request'
   | 'tts/invalid_response'
   | 'tts/unsupported_model'
@@ -10,42 +10,42 @@ export type TtsErrorCode =
   | 'tts/aborted'
   | 'tts/resource_exhausted';
 
-export class TtsError extends Error {
+export class TTSError extends Error {
   constructor(
-    readonly code: TtsErrorCode,
+    readonly code: TTSErrorCode,
     message: string,
     readonly cause?: unknown,
   ) {
     super(message);
-    this.name = 'TtsError';
+    this.name = 'TTSError';
   }
 }
 
-export function isTtsError(error: unknown): error is TtsError {
-  return error instanceof TtsError;
+export function isTTSError(error: unknown): error is TTSError {
+  return error instanceof TTSError;
 }
 
-export function ttsErrorFromHttp(status: number, message: string): TtsError {
+export function ttsErrorFromHttp(status: number, message: string): TTSError {
   if (status === 401 || status === 403) {
-    return new TtsError('tts/credentials', message);
+    return new TTSError('tts/credentials', message);
   }
   if (status === 404) {
-    return new TtsError('tts/unsupported_model', message);
+    return new TTSError('tts/unsupported_model', message);
   }
   if (status === 413) {
-    return new TtsError('tts/resource_exhausted', message);
+    return new TTSError('tts/resource_exhausted', message);
   }
   if (status === 400 || status === 422) {
-    return new TtsError('tts/invalid_request', message);
+    return new TTSError('tts/invalid_request', message);
   }
-  return new TtsError('tts/provider_error', message);
+  return new TTSError('tts/provider_error', message);
 }
 
-export function ttsErrorFromNetwork(error: unknown, signal?: AbortSignal): TtsError {
+export function ttsErrorFromNetwork(error: unknown, signal?: AbortSignal): TTSError {
   if (signal?.aborted || (error as { name?: string }).name === 'AbortError') {
-    return new TtsError('tts/aborted', 'TTS request was aborted', error);
+    return new TTSError('tts/aborted', 'TTS request was aborted', error);
   }
-  return new TtsError(
+  return new TTSError(
     'tts/network',
     error instanceof Error ? error.message : 'TTS network request failed',
     error,

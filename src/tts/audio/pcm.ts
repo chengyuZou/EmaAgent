@@ -1,5 +1,5 @@
-import { TtsError } from '../errors.js';
-import type { PcmAudioFormat, TtsStreamEvent } from '../types.js';
+import { TTSError } from '../errors.js';
+import type { PcmAudioFormat, TTSStreamEvent } from '../types.js';
 
 export const PCM_SAMPLE_BYTES = 2;
 const PCM_CHUNK_BYTES = 8 * 1024;
@@ -9,7 +9,7 @@ export async function* pcmEvents(
   source: AsyncIterable<Uint8Array>,
   format: PcmAudioFormat,
   startedAt: number,
-): AsyncGenerator<TtsStreamEvent> {
+): AsyncGenerator<TTSStreamEvent> {
   yield { type: 'audio_started', sampleRate: format.sampleRate, channelCount: format.channelCount };
   const frameBytes = format.channelCount * PCM_SAMPLE_BYTES;
   const chunkBytes = PCM_CHUNK_BYTES - PCM_CHUNK_BYTES % frameBytes;
@@ -35,7 +35,7 @@ export async function* pcmEvents(
     tail = Uint8Array.from(bytes.subarray(alignedLength));
   }
   if (tail.byteLength > 0) {
-    throw new TtsError('tts/invalid_response', 'TTS PCM ended with an incomplete sample');
+    throw new TTSError('tts/invalid_response', 'TTS PCM ended with an incomplete sample');
   }
   yield { type: 'done', totalBytes, firstByteMs: firstByteMs ?? 0 };
 }

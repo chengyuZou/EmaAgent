@@ -1,28 +1,27 @@
-// 按 DashScope 模型族注册参考音频，并返回只允许进程内缓存的声音标识。
 import { readFile, stat } from 'node:fs/promises';
 import { extname } from 'node:path';
 
-import { TtsError, ttsErrorFromHttp, ttsErrorFromNetwork } from '../../errors.js';
-import type { TtsProviderVoice, TtsVoiceReference } from '../../types.js';
+import { TTSError, ttsErrorFromHttp, ttsErrorFromNetwork } from '../../errors.js';
+import type { TTSProviderVoice, TTSVoiceReference } from '../../types.js';
 import { safeReadText } from '../../utils.js';
 
 const MAX_REFERENCE_AUDIO_BYTES = 25 * 1024 * 1024;
-// DashScope 的 prefix/preferred_name 只接受短 ASCII；角色语义保留在本地缓存身份中。
+// 远端注册名称使用短 ASCII, 角色和参考资源的对应关系由 Speech 的本地缓存保存.
 const DASHSCOPE_VOICE_PREFIX = 'emaagent';
 
 export async function enrollDashscopeVoice(
   httpBaseUrl: string,
   apiKey: string,
   family: 'cosyvoice' | 'qwen-tts',
-  reference: TtsVoiceReference,
+  reference: TTSVoiceReference,
   model: string,
   signal?: AbortSignal,
-): Promise<TtsProviderVoice> {
+): Promise<TTSProviderVoice> {
   const fileStat = await stat(reference.audioPath).catch((error: unknown) => {
-    throw new TtsError('tts/reference_audio_missing', 'TTS reference audio is not readable', error);
+    throw new TTSError('tts/reference_audio_missing', 'TTS reference audio is not readable', error);
   });
   if (fileStat.size > MAX_REFERENCE_AUDIO_BYTES) {
-    throw new TtsError(
+    throw new TTSError(
       'tts/resource_exhausted',
       `TTS reference audio exceeds ${MAX_REFERENCE_AUDIO_BYTES} bytes`,
     );
@@ -30,9 +29,14 @@ export async function enrollDashscopeVoice(
 
   const audio = await readFile(reference.audioPath);
   const extension = extname(reference.audioPath).slice(1).toLowerCase() || 'wav';
-  const mime = extension === 'mp3'
-    ? 'audio/mpeg'
-    : extension === 'm4a' ? 'audio/mp4' : `audio/${extension}`;
+  let mime: string;
+  if (extension === 'mp3') {
+    mime = 'audio/mpeg';
+  } else if (extension === 'm4a') {
+    mime = 'audio/mp4';
+  } else {
+    mime = `audio/${extension}`;
+  }
   const dataUri = `data:${mime};base64,${audio.toString('base64')}`;
   const body = family === 'cosyvoice'
     ? {
@@ -79,7 +83,7 @@ export async function enrollDashscopeVoice(
   };
   const voiceId = payload.output?.voice_id ?? payload.output?.voice;
   if (!voiceId) {
-    throw new TtsError('tts/invalid_response', 'DashScope voice enrollment response is missing voice id');
+    throw new TTSError('tts/invalid_response', 'DashScope voice enrollment response is missing voice id');
   }
   return { kind: 'provider', id: voiceId };
 }

@@ -1,4 +1,3 @@
-// 把中立 Embedding 请求转换为 OpenAI 兼容的 /embeddings 调用。
 import { EmbeddingError } from '../errors.js';
 import type {
   EmbeddingConnection,
@@ -7,7 +6,8 @@ import type {
 } from '../types.js';
 
 export function createOpenAiEmbeddingProtocol(
-  connection: EmbeddingConnection, modelId: string,
+  connection: EmbeddingConnection,
+  modelId: string,
 ): (request: EmbeddingRequest) => Promise<RawEmbeddingResult> {
   const baseUrl = (connection.baseUrl ?? 'https://api.openai.com/v1').replace(/\/+$/, '');
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -33,6 +33,7 @@ export function createOpenAiEmbeddingProtocol(
     if (!Array.isArray(body.data)) {
       throw new EmbeddingError('embed/invalid_response', 'openai-embed response is missing data');
     }
+    // 供应商可以乱序返回, index 才是向量对应的输入位置.
     const ordered: Array<number[] | undefined> = new Array(request.texts.length);
     for (const item of body.data) {
       if (

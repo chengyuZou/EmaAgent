@@ -14,14 +14,14 @@ Provider / 接线层
                  └─ createLlmCompletion(stream) → LlmCompletion   // 同一条流的无损收集器,无第二条线路
 ```
 
-支持的协议由 `@ema-agent/providers` 的 `LlmProtocol` 定义:
+支持的协议由 `@ema-agent/providers` 的 `LLMProtocol` 定义:
 
 - `openai-llm`:OpenAI Chat Completions 及兼容网关;
 - `openai-responses-llm`:OpenAI Responses API;
 - `anthropic-llm`:Anthropic Messages;
 - `gemini-llm`:Gemini 原生 generateContent.
 
-Provider 是协议词汇和连接配置的唯一所有者.LLM 只消费 `LlmProtocol`,不得复制一份协议联合或按 Provider 品牌分发.
+Provider 是协议词汇和连接配置的唯一所有者.LLM 只消费 `LLMProtocol`,不得复制一份协议联合或按 Provider 品牌分发.
 
 ## 公共接口
 

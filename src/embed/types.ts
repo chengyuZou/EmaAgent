@@ -2,36 +2,35 @@ import type { EmbedProtocol } from '@ema-agent/providers';
 
 export type { EmbedProtocol } from '@ema-agent/providers';
 
-/** Provider 已解析好的 Embedding 协议连接。 */
 export interface EmbeddingConnection {
   readonly protocol: EmbedProtocol;
-  /** 本地或受信网关可以不需要凭据。 */
+  /** 本地服务或网关可以不需要凭据. */
   readonly apiKey?: string;
   readonly baseUrl?: string;
 }
 
-/** 单次 Embedding 请求；模型身份在创建点冻结（CallEmbed 创建时钉死），重试和 Usage 归上层。 */
 export interface EmbeddingRequest {
   readonly texts: readonly string[];
   readonly signal?: AbortSignal;
 }
 
-/** 创建点冻结连接与模型身份的单次 embed 调用。 */
+/** 模型和协议在 createEmbedCall 时选定, 每次调用提交一批文本. */
 export type CallEmbed = (request: EmbeddingRequest) => Promise<EmbeddingResult>;
 
-/** Provider 报告的嵌入用量；不是所有协议都返回（Gemini 无 usage）。 */
+/** 供应商报告的输入 Token 数量. 当前 Gemini 实现不返回此项. */
 export interface EmbeddingUsage {
   readonly inputTokens: number;
 }
 
-/** 向量已执行 L2 归一化，顺序与请求 texts 严格一致。 */
 export interface EmbeddingResult {
+  /** 顺序与 texts 一致. 范数为有限非零值时做 L2 归一化, 其余向量保持原值. */
   readonly embeddings: readonly (readonly number[])[];
+  /** 空批次为 0, 非空结果中的每个向量都使用此维度. */
   readonly dim: number;
   readonly usage?: EmbeddingUsage;
 }
 
-/** 协议实现返回的未校验向量，不从包入口导出。 */
+/** 协议原始结果, 由公共入口校验数量和维度后归一化. */
 export interface RawEmbeddingResult {
   readonly embeddings: readonly (readonly number[])[];
   readonly dim: number;

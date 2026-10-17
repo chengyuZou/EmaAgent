@@ -1,4 +1,4 @@
-// Provider 配置、模型池、业务绑定和探活写入后的跨窗口变更通知。
+/** 宿主保存配置或状态后发布, 让各窗口重新读取对应数据. */
 export type ProviderEvent =
   | { readonly type: 'provider_config_changed' }
   | { readonly type: 'provider_models_changed'; readonly providerId: string }

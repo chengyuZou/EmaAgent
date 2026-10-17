@@ -4,7 +4,7 @@ import path from 'node:path';
 import { once } from 'node:events';
 import { finished } from 'node:stream/promises';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createPcmWavHeader, type CallTts } from '@ema-agent/tts';
+import { createPcmWavHeader, type CallTTS } from '@ema-agent/tts';
 import { UsageRecorder } from '@ema-agent/usage';
 import { Database } from '../../storage/index.js';
 import { FsAudioArchive } from '../audioArchive.js';
@@ -26,7 +26,7 @@ function createArchive(): { archive: FsAudioArchive; root: string } {
   return { archive: new FsAudioArchive(root), root };
 }
 
-function createCoordinator(callTts: CallTts, onAudioReady = () => {}, onSentenceError = (_error: {
+function createCoordinator(callTTS: CallTTS, onAudioReady = () => {}, onSentenceError = (_error: {
   readonly code: string;
   readonly message: string;
 }) => {}, overrides: Partial<SpeechCoordinatorArgs> = {}) {
@@ -45,7 +45,7 @@ function createCoordinator(callTts: CallTts, onAudioReady = () => {}, onSentence
     providerId: 'provider',
     modelId: 'model',
     voice: { kind: 'provider', id: 'voice' },
-    callTts,
+    callTTS,
     openAudio: format => archive.openTurn('s', 't', '艾玛', format),
     signal: new AbortController().signal,
     usageRecorder,
@@ -290,17 +290,17 @@ describe('SpeechCoordinator', () => {
   });
 
   it('同一 Turn 重复生成时, 每次真实 TTS 请求均有独立用量 ID', async () => {
-    const callTts: CallTts = async function* () {
+    const callTTS: CallTTS = async function* () {
       yield { type: 'audio_started', ...FORMAT };
       yield { type: 'audio_chunk', bytes: Buffer.from([1, 2]) };
     };
-    const { coordinator, archive, usageRecorder } = createCoordinator(callTts);
+    const { coordinator, archive, usageRecorder } = createCoordinator(callTTS);
     coordinator.acceptTextDelta('第一句。第二句。');
     await coordinator.finish();
     const second = new SpeechCoordinator({
       sessionId: 's', turnId: 't', providerId: 'provider', modelId: 'model',
       voice: { kind: 'provider', id: 'voice' },
-      callTts,
+      callTTS,
       openAudio: format => archive.openTurn('s', 't', '艾玛', format),
       usageRecorder,
       signal: new AbortController().signal,

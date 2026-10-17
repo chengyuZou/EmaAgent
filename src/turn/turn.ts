@@ -12,7 +12,7 @@ import type {
   LlmGenerationSource,
   Message,
 } from '@ema-agent/llm';
-import { isLlmProtocol } from '@ema-agent/providers';
+import { isLLMProtocol } from '@ema-agent/providers';
 import {
   DEFAULT_SESSION_TITLE,
   type MessageBlocks,
@@ -833,7 +833,7 @@ export function createTurnHistoryResolver(
     resolveGenerationSource(turnId: string): LlmGenerationSource | undefined {
       const turn = readTurn(turnId);
       // 没有完整模型身份时不伪造生成来源, 协议代码据此决定能否重放推理块.
-      if (!turn?.providerId || !turn.modelId || !turn.protocol || !isLlmProtocol(turn.protocol)) {
+      if (!turn?.providerId || !turn.modelId || !turn.protocol || !isLLMProtocol(turn.protocol)) {
         return undefined;
       }
       return {

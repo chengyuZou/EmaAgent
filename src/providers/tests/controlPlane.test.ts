@@ -1,4 +1,3 @@
-// 测试自建 Provider 创建（按能力分区、id 缺省生成）、一把 key 解析连接、update 的能力 delta 与目录落行。
 import { afterEach, describe, expect, it } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { Database } from '@ema-agent/storage';
@@ -27,7 +26,7 @@ function createProviders(database: TestProfileDatabase) {
   return new Providers(database);
 }
 
-/** 测试目录：acme-pro 参数齐全；acme-nolimit 缺 contextWindow（不可落行）。 */
+// 一个条目参数齐全, 另一个缺少同步到数据库时必需的 contextWindow.
 function createTestCatalog(): ModelsDevCatalog {
   const catalog = new ModelsDevCatalog();
   catalog.loadFromJson({
@@ -45,7 +44,6 @@ function createTestCatalog(): ModelsDevCatalog {
   return catalog;
 }
 
-/** Exercise the business mapping against the real profile schema. */
 function createModelStack(database: TestProfileDatabase) {
   const providers = new Providers(database);
   const models = new ProviderModels(database, providers, createTestCatalog());
@@ -138,7 +136,6 @@ describe('Provider 控制面', () => {
       },
     });
 
-    // 同 id 同能力 → already_exists
     expect(() => providers.create({
       id: 'my-gateway',
       name: 'My Gateway',
@@ -150,7 +147,6 @@ describe('Provider 控制面', () => {
       },
     })).toThrow(/已存在/);
 
-    // 同 id 不同能力 → 追加能力档（key 共享）
     providers.create({
       id: 'my-gateway',
       name: 'My Gateway',
@@ -206,7 +202,6 @@ describe('Provider 控制面', () => {
         baseUrl: 'https://api.siliconflow.cn/v1',
       },
     });
-    // 第二个能力走 update 追加（后端保留路径；不接 UI）
     providers.update('siliconflow-copy', {
       capability: { capability: 'tts', protocol: 'siliconflow-tts', baseUrl: 'https://api.siliconflow.cn/v1' },
     });
@@ -266,7 +261,7 @@ describe('Provider 控制面', () => {
     expect(() => bindings.set({ module: 'vision', providerId: 'custom-main', modelId: 'model-a' }))
       .toThrow(/不存在/);
 
-    // 先解绑，再停用，之后新绑定被拒绝（只绑已启用）
+    // 先解除现有绑定才能停用, 随后不能再绑定已停用的模型.
     bindings.delete('memory-llm');
     models.setEnabled('custom-main', 'llm', 'model-a', false);
     expect(() => bindings.set({ module: 'memory-llm', providerId: 'custom-main', modelId: 'model-a' }))
@@ -320,13 +315,13 @@ describe('Provider 控制面', () => {
 
     models.syncDevModels('custom-main', 'llm');
     const synced = models.listByProvider('custom-main', 'llm');
-    // 手写行（source='user'）不被目录覆盖
+    // 同 ID 的手填模型保留用户参数, 不由目录覆盖.
     expect(models.get('custom-main', 'llm', 'acme-pro')).toMatchObject({
       source: 'user', enabled: true, contextWindow: 1_000,
     });
     expect(synced.every((m) => m.modelId !== 'acme-nolimit')).toBe(true);
 
-    // 删掉手写行再同步：落为 dev 行且默认禁用
+    // 删除手填记录后再同步, 才会创建默认禁用的目录模型.
     models.delete('custom-main', 'llm', 'acme-pro');
     models.syncDevModels('custom-main', 'llm');
     const devRow = models.get('custom-main', 'llm', 'acme-pro');
@@ -335,7 +330,7 @@ describe('Provider 控制面', () => {
       contextWindow: 128_000, maxOutput: 8_000, reasoning: true, toolCall: true,
     });
 
-    // 启用后再同步：enabled 保留，参数以目录为准
+    // 再次同步更新目录参数, 不改变用户选定的启用状态.
     models.setEnabled('custom-main', 'llm', 'acme-pro', true);
     models.syncDevModels('custom-main', 'llm');
     expect(models.get('custom-main', 'llm', 'acme-pro')).toMatchObject({ enabled: true, contextWindow: 128_000 });
@@ -358,7 +353,6 @@ describe('Provider 控制面', () => {
       },
     });
 
-    // 双档时删除激活档 openai-llm → 自动切到 anthropic-llm
     providers.update('deepseek-copy', {
       capability: { capability: 'llm', removedProtocols: ['openai-llm'] },
     });
@@ -368,7 +362,6 @@ describe('Provider 控制面', () => {
       { protocol: 'anthropic-llm', baseUrl: 'https://api.deepseek.com/anthropic' },
     ]);
 
-    // 只剩一档时不许删
     expect(() => providers.update('deepseek-copy', {
       capability: { capability: 'llm', removedProtocols: ['anthropic-llm'] },
     })).toThrow(/至少/);
@@ -407,6 +400,10 @@ describe('Provider 控制面', () => {
 });
 
 function captureError(fn: () => unknown): unknown {
-  try { fn(); } catch (error) { return error; }
+  try {
+    fn();
+  } catch (error) {
+    return error;
+  }
   throw new Error('expected to throw');
 }

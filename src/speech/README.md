@@ -6,7 +6,7 @@ Speech 接收根 Turn 的文字增量, 或已完成 Turn 的完整正文, 清理
 
 ## 生成入口
 
-`SpeechCoordinator` 接收固定的 Session / Turn、Provider / 模型、声音、`CallTts`、`openAudio(format)` 闭包、取消信号和同步保存记录的回调. 闭包由 Server 绑定本次朗读角色和文件位置, Coordinator 不选择角色或查询角色资源. `acceptTextDelta()` 接收文字; `finish()` 等待剩余句子并完成保存; `cancel()` 中断生成. 完成与取消共用同一次完成 Promise, 不重复发布文件.
+`SpeechCoordinator` 接收固定的 Session / Turn、Provider / 模型、声音、`CallTTS`、`openAudio(format)` 闭包、取消信号和同步保存记录的回调. 闭包由 Server 绑定本次朗读角色和文件位置, Coordinator 不选择角色或查询角色资源. `acceptTextDelta()` 接收文字; `finish()` 等待剩余句子并完成保存; `cancel()` 中断生成. 完成与取消共用同一次完成 Promise, 不重复发布文件.
 
 `savePartialAudio` 区分两种真实业务:
 
@@ -38,7 +38,7 @@ Speech 接收根 Turn 的文字增量, 或已完成 Turn 的完整正文, 清理
 `finish(saveRecord)` 补齐 WAV 头、发布正式文件, 然后同步调用 `saveRecord`. 回调必须在返回前完成这一次 SQL 写入; 抛错时恢复之前的正式文件, 或移除第一次生成的文件. 重新生成替换前保留一份临时旧文件, 正式记录写入成功后释放它. `discard()` 删除本次 pending, 不修改原来的正式音频.
 
 ```text
-文字 -> 清理和切句 -> CallTts -> PCM 块
+文字 -> 清理和切句 -> CallTTS -> PCM 块
                                   |
                                   v
  sessions/<sessionId>/audio/<turnId>/<turnId>-<characterName>.wav.pending

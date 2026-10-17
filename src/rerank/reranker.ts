@@ -1,4 +1,3 @@
-// 创建点冻结连接与模型身份的 Rerank 调用入口，并统一校验下标、分数和结果数量。
 import { RerankError } from './errors.js';
 import { createCohereRerankProtocol } from './protocols/cohere.js';
 import type {
@@ -8,7 +7,6 @@ import type {
   RerankResult,
 } from './types.js';
 
-/** Rerank 唯一创建入口；连接与 modelId 在创建时冻结，请求只执行一次，不在包内重试。 */
 export function createRerankCall(connection: RerankConnection, modelId: string): CallRerank {
   if (!modelId.trim()) throw new RerankError('rerank/invalid_request', 'Rerank model must not be empty');
   const protocolRerank = createProtocolRerank(connection, modelId);
@@ -18,6 +16,7 @@ export function createRerankCall(connection: RerankConnection, modelId: string):
     const topK = resolveTopK(request.topK, request.documents.length);
     const result = await protocolRerank({ ...request, topK });
     validateResponse(result, request.documents.length, topK);
+    // 分数相同时按原输入位置排列, 避免结果顺序取决于供应商的返回顺序.
     return {
       results: [...result.results]
         .sort((left, right) => right.score - left.score || left.index - right.index)

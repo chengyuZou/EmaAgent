@@ -1,22 +1,50 @@
 # STT
 
-`src/stt` 接收供应商连接、模型 ID 和音频字节, 调用语音转文字接口, 返回文本和可选的时间分段.
+[中文](README-zh.md)
 
-Server 负责读取 Provider 配置和模型绑定, 再创建调用函数. STT 包不保存 Session 或 Turn 状态.
+`@ema-agent/stt` uploads a complete audio recording to a speech-to-text API and returns text with optional time segments.
 
-```text
-Server
-  └─ createSttCall({ protocol, apiKey, baseUrl }, modelId)
-       └─ transcribe({ audio, mimeType, language?, signal? })
-            └─ { text, segments? }
+## Use
+
+The caller supplies audio bytes read from a file or recording.
+
+```ts
+import { createSTTCall } from '@ema-agent/stt';
+
+const transcribe = createSTTCall({
+  protocol: 'openai-stt',
+  baseUrl: 'http://127.0.0.1:8080/v1',
+}, 'transcription-model');
+
+const result = await transcribe({
+  audio: audioBytes,
+  mimeType: 'audio/wav',
+  language: 'en',
+  signal: AbortSignal.timeout(30_000),
+});
+// result.text and optional result.segments
 ```
 
-模型 ID 在 `createSttCall` 时确定, 后续调用只传音频及本次请求的语言和取消信号.
+`createSTTCall(connection, modelId)` selects the protocol and model. A call accepts `audio`, `mimeType`, optional `language`, and optional `signal`. Empty audio, a blank MIME type, and a blank model ID are rejected.
 
-目前支持 `openai-stt`, 它表示兼容 `/audio/transcriptions` 的请求格式, 不限定供应商为 OpenAI. 请求使用 multipart 上传 `file`、`model` 和可选的 `language`, 不指定 `response_format`, 读取接口默认返回的 JSON `text`. 部分兼容模型不接受 `verbose_json`, 不能为了取得时间分段而对所有模型强制发送它.
+## Request and response
 
-当前转写与试听入口只需要 `text`. 如果供应商还返回 `segments`, 包会检查内容, 并把开始和结束时间从秒换为毫秒; 没有分段时不补造分段数据.
+`openai-stt` means an OpenAI-compatible `POST /audio/transcriptions` format, not a restriction to one supplier. The default base URL is `https://api.openai.com/v1`.
 
-STT 接收的是已经读入内存的音频字节. HTTP 上传的体积限制由接收上传的 Server 处理, 不在此包重复配置.
+The request is multipart with `file`, `model`, and a nonblank `language` if supplied. It leaves `response_format` unset and reads the default JSON response. Requiring `verbose_json` would reject compatible models that only accept ordinary JSON responses.
 
-每次调用只发起一次请求, 不在包内重试. 调用方通过 `signal` 控制取消和超时, 并负责模型测试与 Usage 记录. HTTP 请求失败时保留状态码和最多 500 字符的供应商错误正文; 正文为空时只能返回状态码.
+A successful response must contain a string `text`. If `segments` is present, each segment must have text and finite, nonnegative times with end at or after start. The protocol converts seconds to rounded milliseconds, returned as `startMs` and `endMs`. A response without segments stays without segments.
+
+HTTP errors and malformed responses raise `STTError`, which carries a code, optional HTTP status, and optional cause. HTTP error messages include at most 500 characters of the provider's response body. Network and cancellation errors from `fetch` propagate as received. Each call makes one request; cancellation and timeout come from the caller's `signal`.
+
+## Application calls and checks
+
+Server [composition/speech.ts](../../apps/server/src/composition/speech.ts) reads the `stt` binding for voice input, or uses an explicitly chosen provider/model for the settings-page test. It resolves the connection, creates `CallSTT`, and records usage. [routes/providers/capabilities.ts](../../apps/server/src/routes/providers/capabilities.ts) reads uploaded audio or requests a transcription of the current character's reference recording. Upload size limits are applied by the Server before audio reaches this package.
+
+Read [speechToText.ts](speechToText.ts) for input and result checks, and [protocols/openAi.ts](protocols/openAi.ts) for multipart fields and response conversion.
+
+```sh
+pnpm --filter @ema-agent/stt test
+```
+
+Tests replace `fetch` to inspect multipart fields, optional segments, time conversion, invalid inputs, and single-request failures. They do not send audio to a paid provider.

@@ -25,7 +25,7 @@ export type {
   LlmConnection,
   ContentPart,
   LlmGenerationSource,
-  LlmProtocol,
+  LLMProtocol,
   LlmRequest,
   LlmStopReason,
   LlmStreamEvent,

@@ -23,12 +23,12 @@ import {
   SpeechOutputsRepo,
   type Database,
 } from '@ema-agent/storage';
-import { createSttCall, SttError, type TranscriptionRequest, type TranscriptionResult } from '@ema-agent/stt';
+import { createSTTCall, STTError, type TranscriptionRequest, type TranscriptionResult } from '@ema-agent/stt';
 import {
-  createTtsCall,
-  createTtsVoiceRegistrar,
-  TtsError,
-  type TtsVoiceReference,
+  createTTSCall,
+  createTTSVoiceRegistrar,
+  TTSError,
+  type TTSVoiceReference,
 } from '@ema-agent/tts';
 import type { UsageRecorder } from '@ema-agent/usage';
 import type { Turn } from '@ema-agent/turn';
@@ -120,7 +120,7 @@ export function openSpeech(
   let closed = false;
 
   /** 获取当前角色的主参考音频 */
-  const resolveCharacterVoice = (character: Character): TtsVoiceReference | null => {
+  const resolveCharacterVoice = (character: Character): TTSVoiceReference | null => {
     const reference = character.voiceSamples.find(value => value.isPrimary);
     if (!reference) return null;
     try {
@@ -145,15 +145,15 @@ export function openSpeech(
     try {
       const connection = providers.resolveConnection(providerId, 'tts');
       return {
-        ttsVoiceRegistrar: createTtsVoiceRegistrar(connection, modelId),
-        callTts: createTtsCall(connection, modelId),
+        ttsVoiceRegistrar: createTTSVoiceRegistrar(connection, modelId),
+        callTTS: createTTSCall(connection, modelId),
       };
     } catch {
       return undefined;
     }
   };
 
-  const requireCharacterVoice = (character: Character): TtsVoiceReference => {
+  const requireCharacterVoice = (character: Character): TTSVoiceReference => {
     if (character.voiceSamples.length === 0) {
       throw new TurnSpeechRequestError('speech/voice_samples_missing', `角色${character.name}没有参考音频`);
     }
@@ -176,11 +176,11 @@ export function openSpeech(
       const connection = providers.resolveConnection(binding.providerId, 'tts');
       return {
         binding,
-        ttsVoiceRegistrar: createTtsVoiceRegistrar(connection, binding.modelId),
-        callTts: createTtsCall(connection, binding.modelId),
+        ttsVoiceRegistrar: createTTSVoiceRegistrar(connection, binding.modelId),
+        callTTS: createTTSCall(connection, binding.modelId),
       };
     } catch (error) {
-      if (error instanceof ProviderError || error instanceof TtsError) {
+      if (error instanceof ProviderError || error instanceof TTSError) {
         throw new TurnSpeechRequestError('speech/tts_unavailable', `当前 TTS 模型不可用: ${error.message}`);
       }
       throw error;
@@ -314,7 +314,7 @@ export function openSpeech(
       throw new TurnSpeechRequestError('speech/already_generating', '该轮正在生成语音, 请等待完成或先取消生成');
     }
     const reference = requireCharacterVoice(character);
-    const { binding, callTts, ttsVoiceRegistrar } = requireTts();
+    const { binding, callTTS, ttsVoiceRegistrar } = requireTts();
 
     const abortController = new AbortController();
     const signal = AbortSignal.any([setup.signal, abortController.signal]);
@@ -332,7 +332,7 @@ export function openSpeech(
       providerId: binding.providerId,
       modelId: binding.modelId,
       voice,
-      callTts,
+      callTTS,
       openAudio: format => audioArchive.openTurn(setup.sessionId, setup.turnId, character.name, format),
       signal,
       usageRecorder,
@@ -411,7 +411,7 @@ export function openSpeech(
   const transcribe: SpeechComposition['transcribe'] = async request => {
     const binding = modelBindings.get('stt');
     if (!binding) return undefined;
-    const callStt = createSttCall(
+    const callStt = createSTTCall(
       providers.resolveConnection(binding.providerId, 'stt'),
       binding.modelId,
     );
@@ -421,7 +421,7 @@ export function openSpeech(
       const cancelled = request.signal?.aborted === true || (error instanceof Error && error.name === 'AbortError');
       let errorCode = 'stt/call_failed';
       if (cancelled) errorCode = 'stt/aborted';
-      else if (error instanceof SttError) errorCode = error.code;
+      else if (error instanceof STTError) errorCode = error.code;
       recordSttUsage(usageRecorder, callId, binding.providerId, binding.modelId, startedAt,
         cancelled ? 'cancelled' : 'failed', null, errorCode);
       throw error;
@@ -442,7 +442,7 @@ export function openSpeech(
     }
     const audioPath = characters.resolveVoiceSampleFile(character.name, sample.name);
     const audio = await readFile(audioPath);
-    const callStt = createSttCall(connection, modelId);
+    const callStt = createSTTCall(connection, modelId);
     const startedAt = Date.now();
     const callId = randomUUID();
     const result = await callStt({
@@ -453,7 +453,7 @@ export function openSpeech(
       const cancelled = signal?.aborted === true || (error instanceof Error && error.name === 'AbortError');
       let errorCode = 'stt/call_failed';
       if (cancelled) errorCode = 'stt/aborted';
-      else if (error instanceof SttError) errorCode = error.code;
+      else if (error instanceof STTError) errorCode = error.code;
       recordSttUsage(usageRecorder, callId, providerId, modelId, startedAt,
         cancelled ? 'cancelled' : 'failed', null, errorCode);
       throw error;

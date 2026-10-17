@@ -1,5 +1,5 @@
 // 把协议输入错误、Provider 失败、取消和不完整流归一成稳定错误。
-import type { LlmProtocol } from '@ema-agent/providers';
+import type { LLMProtocol } from '@ema-agent/providers';
 
 export type LlmErrorCode =
   | 'provider/context_too_long'
@@ -20,7 +20,7 @@ export class LlmProtocolInputError extends Error {
   readonly code = 'provider/input_unsupported' as const;
 
   constructor(
-    readonly protocol: LlmProtocol,
+    readonly protocol: LLMProtocol,
     readonly messageIndex: number,
     readonly blockIndex: number,
     readonly contentType: string,
@@ -49,7 +49,7 @@ export class LlmProviderResponseError extends Error {
 
   constructor(
     message: string,
-    readonly protocol: LlmProtocol,
+    readonly protocol: LLMProtocol,
     readonly providerCode: string | null,
     readonly status: number,
     cause?: unknown,
@@ -66,7 +66,7 @@ export class LlmToolArgumentsParseError extends Error {
   readonly rawArgumentsExcerpt: string;
 
   constructor(
-    readonly protocol: LlmProtocol,
+    readonly protocol: LLMProtocol,
     readonly callId: string,
     readonly toolName: string,
     rawArguments: string,
@@ -83,7 +83,7 @@ export class LlmToolArgumentsParseError extends Error {
 export class LlmStreamProtocolError extends Error {
   readonly code = 'provider/incomplete_stream' as const;
 
-  constructor(readonly protocol: LlmProtocol) {
+  constructor(readonly protocol: LLMProtocol) {
     super(`${protocol} stream ended without an explicit terminal event`);
     this.name = 'LlmStreamProtocolError';
   }
@@ -106,7 +106,7 @@ export function normalizeLlmProviderError(error: unknown): Error {
 }
 
 export function createLlmProviderResponseError(input: {
-  protocol: LlmProtocol;
+  protocol: LLMProtocol;
   message: string;
   providerCode?: string | null;
   cause?: unknown;

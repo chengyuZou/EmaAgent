@@ -17,7 +17,7 @@ import {
   createLlmCall,
   type CallLlm,
   type LlmConnection,
-  type LlmProtocol,
+  type LLMProtocol,
   type LlmThinking,
 } from '@ema-agent/llm';
 import {
@@ -60,7 +60,7 @@ export interface PreparedTurn {
   readonly providerId: string;
   readonly modelId: string;
   /** prepare 解析出的实际调用协议（resolveConnection().protocol 冻结，与模型身份同时回填 Turn）。 */
-  readonly protocol: LlmProtocol;
+  readonly protocol: LLMProtocol;
   readonly contextWindow: number;
   /** 模型单次输出上限（null = 未知，仅按预算裁剪）。 */
   readonly maxOutput: number | null;

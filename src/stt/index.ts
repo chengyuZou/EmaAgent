@@ -1,10 +1,10 @@
-export { createSttCall } from './speechToText.js';
-export { isSttError, SttError } from './errors.js';
-export type { SttErrorCode } from './errors.js';
+export { createSTTCall } from './speechToText.js';
+export { isSTTError, STTError } from './errors.js';
+export type { STTErrorCode } from './errors.js';
 export type {
-  CallStt,
-  SttConnection,
-  SttProtocol,
+  CallSTT,
+  STTConnection,
+  STTProtocol,
   TranscriptionRequest,
   TranscriptionResult,
   TranscriptionSegment,

@@ -1,10 +1,10 @@
-import type { TtsProtocol } from '@ema-agent/providers';
+import type { TTSProtocol } from '@ema-agent/providers';
 
-export type { TtsProtocol } from '@ema-agent/providers';
+export type { TTSProtocol } from '@ema-agent/providers';
 
-export interface TtsConnection {
-  readonly protocol: TtsProtocol;
-  /** 本地 GPT-SoVITS 可以不需要凭据 */
+export interface TTSConnection {
+  readonly protocol: TTSProtocol;
+  /** 本地 GPT-SoVITS 可以不需要凭据. */
   readonly apiKey?: string;
   readonly baseUrl?: string;
 }
@@ -13,12 +13,12 @@ export interface TtsConnection {
 export interface PcmAudioFormat {
   /** 每秒每声道的采样数, 单位 Hz. 描述实际输出, 不要求所有协议使用相同数值. */
   readonly sampleRate: number;
-  /** 1 表示一份声音; 2 表示左右两份声音, 每一帧依次存放左、右各一个采样. */
+  /** 只接受 1 或 2. 双声道每帧依次保存左, 右各一个采样. */
   readonly channelCount: number;
 }
 
 /** 当前角色选用的参考音频及对应文本, 用于本地合成或云端音色注册. */
-export interface TtsVoiceReference {
+export interface TTSVoiceReference {
   readonly kind: 'reference';
   /** 角色资源的完整文件名, 与更新时间共同标识当前参考音频版本. */
   readonly resourceName: string;
@@ -30,38 +30,38 @@ export interface TtsVoiceReference {
   readonly promptLanguage: string;
 }
 
-/** 云端协议注册参考音频后返回的声音标识 */
-export interface TtsProviderVoice {
+/** 云端注册返回的声音 ID, 合成时必须使用对应供应商和目标模型. */
+export interface TTSProviderVoice {
   readonly kind: 'provider';
   readonly id: string;
 }
 
-export type TtsVoice = TtsVoiceReference | TtsProviderVoice;
+export type TTSVoice = TTSVoiceReference | TTSProviderVoice;
 
-/** 单次文本转语音请求. 参考音频注册由 TtsVoiceRegistrar 单独完成. */
-export interface TtsRequest {
+/** 单次文本转语音请求. 参考音频注册由 TTSVoiceRegistrar 单独完成. */
+export interface TTSRequest {
   readonly text: string;
-  readonly voice: TtsVoice;
+  readonly voice: TTSVoice;
   readonly speed?: number;
   readonly signal?: AbortSignal;
 }
 
 /**
- * 执行一次协议合成, 返回 PCM 格式、音频块和最终的 done.
- * createTtsCall 固定连接与模型; voice 由 TtsVoiceRegistrar 提供, 随请求传入.
+ * 执行一次协议合成, 返回 PCM 格式, 音频块和最终的 done.
+ * createTTSCall 固定连接与模型; voice 由 TTSVoiceRegistrar 提供, 随请求传入.
  */
-export type CallTts = (request: TtsRequest) => AsyncIterable<TtsStreamEvent>;
+export type CallTTS = (request: TTSRequest) => AsyncIterable<TTSStreamEvent>;
 
 /**
  * 本地协议直接返回参考音频, 云端协议上传注册并返回声音标识.
- * createTtsVoiceRegistrar 固定连接与目标模型, 不执行文本合成.
+ * createTTSVoiceRegistrar 固定连接与目标模型, 不执行文本合成.
  */
-export type TtsVoiceRegistrar = (
-  reference: TtsVoiceReference,
+export type TTSVoiceRegistrar = (
+  reference: TTSVoiceReference,
   signal?: AbortSignal,
-) => Promise<TtsVoice>;
+) => Promise<TTSVoice>;
 
-export type TtsStreamEvent =
+export type TTSStreamEvent =
   | ({ readonly type: 'audio_started' } & PcmAudioFormat)
   | {
       readonly type: 'audio_chunk';
@@ -76,10 +76,10 @@ export type TtsStreamEvent =
     };
 
 /** 两个创建入口使用的内部协议实现, 模型由创建点固定. */
-export interface TtsProtocolImplementation {
+export interface TTSProtocolImplementation {
   prepareVoice(
-    reference: TtsVoiceReference,
+    reference: TTSVoiceReference,
     signal?: AbortSignal,
-  ): Promise<TtsVoice>;
-  synthesize(request: TtsRequest): AsyncIterable<TtsStreamEvent>;
+  ): Promise<TTSVoice>;
+  synthesize(request: TTSRequest): AsyncIterable<TTSStreamEvent>;
 }

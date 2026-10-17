@@ -19,33 +19,32 @@ export const PROTOCOLS = [
 ] as const;
 
 export type Protocol = typeof PROTOCOLS[number];
-export type LlmProtocol = Extract<Protocol, `${string}-llm`>;
+export type LLMProtocol = Extract<Protocol, `${string}-llm`>;
 export type EmbedProtocol = Extract<Protocol, `${string}-embed`>;
 export type RerankProtocol = Extract<Protocol, `${string}-rerank`>;
-export type TtsProtocol = Extract<Protocol, `${string}-tts`>;
-export type SttProtocol = Extract<Protocol, `${string}-stt`>;
+export type TTSProtocol = Extract<Protocol, `${string}-tts`>;
+export type STTProtocol = Extract<Protocol, `${string}-stt`>;
 
-/** 存储层只存普通 string；词表守卫：不在 LlmProtocol 词表内返回 false（不伪造来源）。 */
-export function isLlmProtocol(value: string): value is LlmProtocol {
+/** 存储层的协议字段是 string, 读取后先检查它是否属于支持的 LLM 协议. */
+export function isLLMProtocol(value: string): value is LLMProtocol {
   return (PROTOCOLS as readonly string[]).includes(value) && value.endsWith('-llm');
 }
 
 export interface ModelCapabilityProtocolMap {
-  llm: LlmProtocol;
+  llm: LLMProtocol;
   embed: EmbedProtocol;
   rerank: RerankProtocol;
-  /** Vision 是一次无 Tool 的多模态 LLM 调用，直接复用已经实现的 LLM 协议。 */
-  vision: LlmProtocol;
-  tts: TtsProtocol;
-  stt: SttProtocol;
+  /** Vision 使用同一组 LLM 协议, 但单独保存连接和模型绑定. */
+  vision: LLMProtocol;
+  tts: TTSProtocol;
+  stt: STTProtocol;
 }
 
 export type ModelCapabilityProtocol<TModelCapability extends ModelCapability> =
   ModelCapabilityProtocolMap[TModelCapability];
 
-/** Provider 解析出的连接可直接传给对应 API 包，不包含请求执行状态。 */
 export interface ProviderConnection<TModelCapability extends ModelCapability> {
-  /** 连接归属的 Provider 身份；Adapter 用它做生成来源三元匹配（providerId+modelId+protocol）。 */
+  /** 与 modelId 和 protocol 一起确定生成来源, 用于判断历史内容能否原样回传. */
   providerId: string;
   protocol: ModelCapabilityProtocol<TModelCapability>;
   baseUrl: string;

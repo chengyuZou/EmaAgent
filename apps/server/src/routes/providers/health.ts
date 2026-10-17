@@ -106,7 +106,7 @@ function firstPingSubject(
     .find(c => c.capability === capability)?.modelsDevId;
   if (!modelsDevId) return undefined;
   return capability === 'llm'
-    ? deps.modelCatalog.listLlmModelIds(modelsDevId)[0]
+    ? deps.modelCatalog.listLLMModelIds(modelsDevId)[0]
     : deps.modelCatalog.listVisionModelIds(modelsDevId)[0];
 }
 
