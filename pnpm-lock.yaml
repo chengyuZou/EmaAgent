@@ -725,9 +725,6 @@ importers:
       '@ema-agent/attachments':
         specifier: workspace:*
         version: link:../attachments
-      '@ema-agent/git':
-        specifier: workspace:*
-        version: link:../git
       '@ema-agent/llm':
         specifier: workspace:*
         version: link:../llm

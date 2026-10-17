@@ -1,4 +1,3 @@
-// 验证轻量摘要的 shortstat 统计和逐文件未跟踪计数.
 import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -58,7 +57,7 @@ describe.skipIf(!HAS_GIT)('gitSummary(真实临时仓库)', () => {
 
   it('非仓库目录裁决为 not-a-repo', async () => {
     expect(await findRepoRoot(outside)).toBeNull();
-    expect(await gitSummary(outside)).toEqual({ capability: 'not-a-repo' });
+    expect(await gitSummary(outside)).toEqual({ status: 'not-a-repo' });
   });
 
   it('子目录向上找到仓库根', async () => {
@@ -67,10 +66,9 @@ describe.skipIf(!HAS_GIT)('gitSummary(真实临时仓库)', () => {
     expect(await findRepoRoot(nested)).toBe(root);
   });
 
-  it('干净仓库返回 ok 与零统计', async () => {
+  it('干净仓库直接返回摘要和零统计', async () => {
     const summary = await gitSummary(root);
     expect(summary).toEqual({
-      capability: 'ok',
       repoRoot: root,
       branch: 'main',
       headShortSha: null,
@@ -86,8 +84,8 @@ describe.skipIf(!HAS_GIT)('gitSummary(真实临时仓库)', () => {
     git(root, ['remote', 'add', 'origin', 'https://example.com/ema/repo.git']);
     try {
       const summary = await gitSummary(root);
-      expect(summary.capability).toBe('ok');
-      if (summary.capability !== 'ok') return;
+      expect(summary).not.toHaveProperty('status');
+      if ('status' in summary) return;
       expect(summary.originUrl).toBe('https://example.com/ema/repo.git');
     } finally {
       git(root, ['remote', 'remove', 'origin']);
@@ -101,8 +99,8 @@ describe.skipIf(!HAS_GIT)('gitSummary(真实临时仓库)', () => {
     await fs.writeFile(path.join(root, 'loose.txt'), 'untracked\n');
 
     const summary = await gitSummary(root);
-    expect(summary.capability).toBe('ok');
-    if (summary.capability !== 'ok') return;
+    expect(summary).not.toHaveProperty('status');
+    if ('status' in summary) return;
     expect(summary.unstaged).toEqual({ filesChanged: 1, insertions: 1, deletions: 0 });
     expect(summary.staged).toEqual({ filesChanged: 1, insertions: 1, deletions: 0 });
     expect(summary.untrackedCount).toBe(1);
@@ -115,7 +113,7 @@ describe.skipIf(!HAS_GIT)('gitSummary(真实临时仓库)', () => {
     await fs.writeFile(path.join(nested, 'second.txt'), 'two\n');
     try {
       const summary = await gitSummary(root);
-      expect(summary).toMatchObject({ capability: 'ok', untrackedCount: 3 });
+      expect(summary).toMatchObject({ untrackedCount: 3 });
     } finally {
       await fs.rm(path.join(root, 'new-directory'), { recursive: true, force: true });
     }

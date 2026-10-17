@@ -1,23 +1,17 @@
-// gitSummary:能力裁决 → 并行只读查询 → 组装对外摘要;任何失败都归入明确 capability,不抛出。
 import { findRepoRoot } from './repoDetection.js';
-import { mapGitError } from './errors.js';
+import { toGitQueryFailure } from './errors.js';
 import { queryBranch } from './queries/branch.js';
 import { queryChangeStats } from './queries/changeStats.js';
 import { listUntrackedFiles } from './queries/status.js';
 import { queryUpstream } from './queries/upstream.js';
 import { queryOriginUrl } from './queries/remote.js';
-import type {
-  GitSummary,
-  GitSummaryUnavailable,
-  GitSummaryError,
-} from './types.js';
+import type { GitSummaryResult } from './types.js';
 
-export async function gitSummary(cwd: string): Promise<GitSummary> {
+export async function gitSummary(cwd: string): Promise<GitSummaryResult> {
   const repoRoot = await findRepoRoot(cwd);
-  if (!repoRoot) return { capability: 'not-a-repo' };
+  if (!repoRoot) return { status: 'not-a-repo' };
 
   try {
-    // 先确认仓库,再并行全部只读查询。
     const [branchInfo, unstaged, staged, untracked, upstream, originUrl] = await Promise.all([
       queryBranch(repoRoot),
       queryChangeStats(repoRoot, 'unstaged'),
@@ -27,7 +21,6 @@ export async function gitSummary(cwd: string): Promise<GitSummary> {
       queryOriginUrl(repoRoot),
     ]);
     return {
-      capability: 'ok',
       repoRoot,
       ...branchInfo,
       unstaged,
@@ -37,9 +30,6 @@ export async function gitSummary(cwd: string): Promise<GitSummary> {
       originUrl,
     };
   } catch (error) {
-    return mapGitError(error, (kind, message): GitSummaryUnavailable | GitSummaryError =>
-      kind === 'unavailable'
-        ? { capability: 'git-unavailable' }
-        : { capability: 'error', message });
+    return toGitQueryFailure(error);
   }
 }

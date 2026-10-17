@@ -271,7 +271,7 @@ function SessionSummary({ sessionId, onNavigate }: {
           <GitChanges />
         </SummaryRow>
         <SummaryRow icon="i-lucide:monitor" label="本地" title={cwd ?? undefined} />
-        <SummaryRow icon="i-lucide:git-branch" label={git?.capability === 'ok' ? git.branch ?? '未命名分支' : '分支不可用'} />
+        <SummaryRow icon="i-lucide:git-branch" label={git && !('status' in git) ? git.branch ?? '未命名分支' : '分支不可用'} />
       </SummarySection>
 
       <SummarySection
@@ -443,7 +443,7 @@ function GitChanges(): JSX.Element {
   if (!data) {
     return <span className="text-[var(--ema-text-tertiary)]">{error ? '不可用' : '…'}</span>;
   }
-  if (data.result.capability !== 'ok') {
+  if ('status' in data.result) {
     return <span className="text-[var(--ema-text-tertiary)]">不可用</span>;
   }
   return (

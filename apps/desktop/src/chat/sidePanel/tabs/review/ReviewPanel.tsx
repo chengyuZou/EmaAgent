@@ -1,4 +1,3 @@
-// Git 返回原生 patch; 官方 CodeView 管理 diff 虚拟化、行内高亮和文件布局.
 import {
   memo,
   useCallback,
@@ -224,7 +223,7 @@ function ReviewWorkspace({
     });
   }, [scope, syncAllCollapsed]);
 
-  const repoRoot = result?.capability === 'ok' ? result.repoRoot : null;
+  const repoRoot = result && !('status' in result) ? result.repoRoot : null;
   const openFile = useCallback((filePath: string) => {
     if (repoRoot) {
       openTab(sessionId, fileTab(`${repoRoot.replace(/[\\/]$/, '')}/${filePath}`));
@@ -254,14 +253,21 @@ function ReviewWorkspace({
 
   let message: string | null = requestError;
   if (!message && result) {
-    if (result.capability === 'diff-too-large') {
-      message = '差异过大, 暂不展示. 缩小工作区变更范围后可以刷新重试.';
-    } else if (result.capability === 'not-a-repo') {
-      message = '当前 Session 的执行目录不在 Git 仓库中';
-    } else if (result.capability === 'git-unavailable') {
-      message = '本机没有可用的 Git';
-    } else if (result.capability === 'error') {
-      message = 'Git 差异读取失败';
+    if ('status' in result) {
+      switch (result.status) {
+        case 'diff-too-large':
+          message = '差异过大, 暂不展示. 缩小工作区变更范围后可以刷新重试.';
+          break;
+        case 'not-a-repo':
+          message = '当前 Session 的执行目录不在 Git 仓库中';
+          break;
+        case 'git-unavailable':
+          message = '本机没有可用的 Git';
+          break;
+        case 'error':
+          message = 'Git 差异读取失败';
+          break;
+      }
     } else if (files.length === 0 && result.omittedFiles > 0) {
       message = `有 ${result.omittedFiles} 个文件未能读取`;
     } else if (files.length === 0) {
@@ -285,7 +291,7 @@ function ReviewWorkspace({
             checkIcon="i-lucide:check"
             onChange={value => onScope(value as GitDiffScope)}
           />
-          {result?.capability === 'ok' && (
+          {result && !('status' in result) && (
             <>
               <span className="text-[var(--ema-text-secondary)]">{files.length} 项变更</span>
               <span className="text-[var(--ema-success-text)]">+{counts.additions}</span>
@@ -367,7 +373,7 @@ function ReviewWorkspace({
           刷新失败: {requestError}
         </p>
       )}
-      {result?.capability === 'ok' && result.omittedFiles > 0 && files.length > 0 && (
+      {result && !('status' in result) && result.omittedFiles > 0 && files.length > 0 && (
         <p className="ema-review-notice" role="status">
           有 {result.omittedFiles} 个文件未能读取
         </p>

@@ -1,4 +1,3 @@
-// 当前 Session 的顶部和审查共享全部未提交差异, 不建立全局查询缓存.
 import {
   createContext,
   useCallback,
@@ -153,9 +152,9 @@ function useWorkspaceDiffRead(
         }
         const previousData = accepted.current?.data;
         let data: GitDiffData;
-        if (result.capability !== 'ok') {
+        if ('status' in result) {
           data = { result, files: [], additions: 0, deletions: 0 };
-        } else if (previousData?.result.capability === 'ok' && previousData.result.patch === result.patch) {
+        } else if (previousData && !('status' in previousData.result) && previousData.result.patch === result.patch) {
           data = { ...previousData, result };
         } else {
           const prefix = `${instanceId}:${++patchRevision.current}`;

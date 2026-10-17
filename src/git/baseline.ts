@@ -1,21 +1,16 @@
-// 内部目录的可重置 diff 机制
-// 用系统 git 实现"单 commit 基线":ensure → init + 首次提交;reset → add + amend 折叠为单 commit。
-// 差异读取与审查共用, 基线写入只供内部 Memory 目录.
 import { StringDecoder } from 'node:string_decoder';
-import { GitError } from './errors.js';
+import { GitCommandError, GitOutputTooLargeError } from './errors.js';
 import { runGit } from './gitProcess.js';
 import { readWorkspacePatches } from './diff.js';
 import { listUntrackedFiles } from './queries/status.js';
-import {
-  GIT_BASELINE_MAX_CHANGES_FOR_UNIFIED,
-  GIT_BASELINE_MAX_DIFF_BYTES,
-  GIT_WRITE_TIMEOUT_MS,
-} from './limits.js';
 
-const BASELINE_COMMIT_MESSAGE = 'EmaAgent memory baseline';
+const GIT_WRITE_TIMEOUT_MS = 30_000;
+const GIT_BASELINE_MAX_DIFF_BYTES = 4 * 1024 * 1024;
+const GIT_BASELINE_MAX_CHANGES_FOR_UNIFIED = 200;
+const BASELINE_COMMIT_MESSAGE = 'EmaAgent baseline';
 /**
- * 内部目录用固定作者,不读用户 git 配置;同时禁用 gpg 签名(防用户全局配置拖慢/挂起)、
- * 关闭 quotePath(保证路径原文可解析)、保持原样换行(autocrlf 会让 md 文件 diff 出现无意义 CRLF 变化)。
+ * 固定作者并关闭提交签名, 让内部提交无需用户配置身份或提供签名凭据.
+ * 保留可读路径和原始换行, 避免 Markdown diff 混入自动换行转换产生的变化.
  */
 const BASELINE_GIT_CONFIG: readonly string[] = [
   'user.name=EmaAgent',
@@ -29,48 +24,50 @@ export type BaselineChangeStatus = 'added' | 'modified' | 'deleted';
 
 export interface BaselineChange {
   readonly status: BaselineChangeStatus;
-  /** 仓库相对 POSIX 路径。 */
+  /** 相对仓库根目录的路径, 目录分隔符为 /. */
   readonly path: string;
 }
 
 export interface BaselineDiff {
-  /** 文件级变化清单(永远完整,不受 unified diff 截断/跳过影响)。 */
+  /** 单独查询的文件清单, 不随 unifiedDiff 的截断或跳过而裁剪. */
   readonly changes: readonly BaselineChange[];
-  /** 合并的 unified diff;超过 maxDiffBytes 按 UTF-8 字符边界截断;快探跳过时为空串。 */
+  /** 超过 maxDiffBytes 时在完整 UTF-8 字符处截断, unifiedSkipped 时为空字符串. */
   readonly unifiedDiff: string;
-  /** unifiedDiff 是否因超过 maxDiffBytes 被截断。 */
+  /** 正文是否因 maxDiffBytes 或单次 Git 输出限制而不完整. */
   readonly truncated: boolean;
-  /** 变化文件过多时按快探跳过 unified diff 渲染(claude fetchGitDiff 同款策略),changes 仍完整。 */
+  /** 超过 GIT_BASELINE_MAX_CHANGES_FOR_UNIFIED 时只返回文件清单, 跳过正文. */
   readonly unifiedSkipped: boolean;
   /** 查询期间未能读取的文件数, 给 Memory 整合输入明确提示. */
   readonly omittedFiles: number;
 }
 
 export interface BaselineOptions {
-  /** unified diff 上限,覆盖 settings 的 git.baseline.maxDiffBytes。 */
+  /** 正文的 UTF-8 字节上限, 缺省使用 GIT_BASELINE_MAX_DIFF_BYTES. */
   readonly maxDiffBytes?: number;
 }
 
-/** .git 存在且 HEAD 可解析 → 基线可用。 */
+/** 在 root 执行 Git 能否解析 HEAD. Git 会向上查找仓库, 调用方须传入独立仓库根目录. */
 export async function hasUsableBaseline(root: string): Promise<boolean> {
   try {
     await runGit(root, ['rev-parse', '--verify', 'HEAD'], { extraConfig: BASELINE_GIT_CONFIG });
     return true;
   } catch (error) {
-    if (error instanceof GitError && error.code === 'git/command-failed') return false;
+    if (error instanceof GitCommandError) return false;
     throw error;
   }
 }
 
-/** 确保 root 有可用的单 commit 基线;已有可用 .git 保留,缺失/损坏则重建。 */
+/** 保留已有的可解析 HEAD, 否则调用 resetBaseline. root 需满足该函数的目录要求. */
 export async function ensureBaseline(root: string): Promise<void> {
   if (await hasUsableBaseline(root)) return;
   await resetBaseline(root);
 }
 
 /**
- * 把 root 重置为新的单 commit 基线(当前目录内容成为新的"上次")。
- * 首次:init + add + commit;之后:add + commit --amend 折叠历史为单 commit。
+ * 接受当前目录内容作为下一次比较的基线.
+ * root 必须是业务独占的仓库根目录, 传入普通子目录可能让 Git 修改父仓库.
+ * 首次初始化并提交, 后续 add -A 再 amend 最后一次提交, 正常的单提交基线因此保持一条提交.
+ * 这会改变索引和 HEAD, 并保留当前磁盘内容; 调用方需要串行执行同一目录的读写任务.
  */
 export async function resetBaseline(root: string): Promise<void> {
   if (!(await hasUsableBaseline(root))) {
@@ -90,8 +87,8 @@ export async function resetBaseline(root: string): Promise<void> {
 }
 
 /**
- * 释放单提交基线因反复 amend 留下的旧对象。
- * 只供拥有整个内部仓库的业务调用；普通用户仓库不能使用这个操作。
+ * 清理反复 amend 留下的旧对象, 减少 Memory 内部仓库占用的磁盘空间.
+ * 调用方必须独占该仓库且没有 Git 任务正在执行, 过期 reflog 与旧对象会被立即清理.
  */
 export async function compactBaselineStorage(root: string): Promise<void> {
   if (!(await hasUsableBaseline(root))) return;
@@ -106,9 +103,8 @@ export async function compactBaselineStorage(root: string): Promise<void> {
 }
 
 /**
- * 返回自上次基线以来的变化:文件级清单(完整)+ unified diff(有界)。
- * 文件分类交给 Git, patch 读取与审查共用.
- * 变化文件过多时跳过 unified diff 渲染(快探),changes 仍完整。
+ * 比较当前 HEAD 与磁盘内容, 并加入未跟踪文件. 重命名表示为删除和新增.
+ * 文件清单先单独读取, 正文过大或文件过多时仍可用清单选择需要检查的文件.
  */
 export async function diffSinceBaseline(
   root: string,
@@ -130,7 +126,7 @@ export async function diffSinceBaseline(
   ];
   changes.sort((left, right) => left.path.localeCompare(right.path));
 
-  // 快探:变化文件过多时不渲染 unified diff(claude fetchGitDiff 同款),避免拖慢整合。
+  // 文件过多时整合任务先读取清单, 避免为全部文件生成大段 patch.
   if (changes.length > GIT_BASELINE_MAX_CHANGES_FOR_UNIFIED) {
     return { changes, unifiedDiff: '', truncated: false, unifiedSkipped: true, omittedFiles: 0 };
   }
@@ -156,7 +152,7 @@ export async function diffSinceBaseline(
       const buffer = Buffer.from(patch, 'utf8');
       const remaining = maxDiffBytes - bytes;
       if (buffer.length > remaining) {
-        // Node 原生解码器保留完整字符, 不逐字符回退扫描整份正文.
+        // 截点可能落在中文等多字节字符中间, 解码器会暂存不完整字节, 不输出半个字符.
         chunks.push(new StringDecoder('utf8').write(buffer.subarray(0, remaining)));
         truncated = true;
         break;
@@ -165,7 +161,7 @@ export async function diffSinceBaseline(
       bytes += buffer.length;
     }
   } catch (error) {
-    if (!(error instanceof GitError) || error.code !== 'git/output-too-large') {
+    if (!(error instanceof GitOutputTooLargeError)) {
       throw error;
     }
     // 单次 Git 输出也有上限, 正文不完整时仍交付完整文件清单.

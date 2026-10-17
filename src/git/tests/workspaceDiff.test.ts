@@ -1,11 +1,9 @@
-// 验证真实 Git 的三个比较范围, 原生 patch, 初始空树和查询体积限制.
 import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { gitCompareDiff, gitWorkspaceDiff } from '../index.js';
-import { GIT_DIFF_MAX_TOTAL_CHARS } from '../limits.js';
 
 let hasGit = true;
 try {
@@ -50,10 +48,10 @@ describe.skipIf(!hasGit)('原生工作区差异', () => {
       gitWorkspaceDiff(root, 'staged'),
       gitWorkspaceDiff(root, 'unstaged'),
     ]);
-    expect(all.capability).toBe('ok');
-    expect(staged.capability).toBe('ok');
-    expect(unstaged.capability).toBe('ok');
-    if (all.capability !== 'ok' || staged.capability !== 'ok' || unstaged.capability !== 'ok') {
+    expect(all).not.toHaveProperty('status');
+    expect(staged).not.toHaveProperty('status');
+    expect(unstaged).not.toHaveProperty('status');
+    if ('status' in all || 'status' in staged || 'status' in unstaged) {
       throw Error('Git query failed');
     }
     expect(all.patch).not.toContain('tracked.txt');
@@ -71,7 +69,7 @@ describe.skipIf(!hasGit)('原生工作区差异', () => {
     await fs.writeFile(path.join(root, 'binary.bin'), Buffer.from([0, 1, 2]));
     git(root, ['add', '-A']);
     const result = await gitWorkspaceDiff(root, 'staged');
-    if (result.capability !== 'ok') {
+    if ('status' in result) {
       throw Error('Git query failed');
     }
     expect(result.patch).toContain('rename from tracked.txt\nrename to renamed.txt');
@@ -79,7 +77,7 @@ describe.skipIf(!hasGit)('原生工作区差异', () => {
     expect(result.patch).toContain('Binary files');
     git(root, ['update-index', '--chmod=+x', 'renamed.txt']);
     const mode = await gitWorkspaceDiff(root, 'staged');
-    if (mode.capability !== 'ok') {
+    if ('status' in mode) {
       throw Error('Git query failed');
     }
     expect(mode.patch).toContain('new mode 100755');
@@ -90,7 +88,7 @@ describe.skipIf(!hasGit)('原生工作区差异', () => {
     await fs.writeFile(path.join(root, '中文.txt'), '内容\n');
     await fs.writeFile(path.join(root, 'empty.txt'), '');
     const result = await gitWorkspaceDiff(root, 'unstaged');
-    if (result.capability !== 'ok') {
+    if ('status' in result) {
       throw Error('Git query failed');
     }
     expect(result.omittedFiles).toBe(0);
@@ -110,14 +108,12 @@ describe.skipIf(!hasGit)('原生工作区差异', () => {
       const all = await gitWorkspaceDiff(initial, 'uncommitted');
       const staged = await gitWorkspaceDiff(initial, 'staged');
       expect(all).toMatchObject({
-        capability: 'ok',
         omittedFiles: 0,
       });
       expect(staged).toMatchObject({
-        capability: 'ok',
         omittedFiles: 0,
       });
-      if (all.capability !== 'ok' || staged.capability !== 'ok') {
+      if ('status' in all || 'status' in staged) {
         throw Error('Git query failed');
       }
       expect(all.patch).toContain('+final');
@@ -130,19 +126,19 @@ describe.skipIf(!hasGit)('原生工作区差异', () => {
   it('不再逐文件截断, 原生总体输出超限才返回 diff-too-large', async () => {
     await fs.writeFile(path.join(root, 'large.txt'), 'x'.repeat(210_000) + '\n');
     const accepted = await gitWorkspaceDiff(root, 'unstaged');
-    expect(accepted.capability).toBe('ok');
-    if (accepted.capability !== 'ok') {
+    expect(accepted).not.toHaveProperty('status');
+    if ('status' in accepted) {
       throw Error('Git query failed');
     }
     expect(accepted.patch).not.toContain('diff 已截断');
-    await fs.writeFile(path.join(root, 'large.txt'), 'x'.repeat(GIT_DIFF_MAX_TOTAL_CHARS + 1) + '\n');
-    expect(await gitWorkspaceDiff(root, 'unstaged')).toEqual({ capability: 'diff-too-large' });
+    await fs.writeFile(path.join(root, 'large.txt'), 'x'.repeat(2_000_001) + '\n');
+    expect(await gitWorkspaceDiff(root, 'unstaged')).toEqual({ status: 'diff-too-large' });
   });
 
   it('compare 同样返回原生 patch, 不保留旧文件模型', async () => {
     const result = await gitCompareDiff(root, { kind: 'commit', sha: 'HEAD' });
-    expect(result.capability).toBe('ok');
-    if (result.capability !== 'ok') {
+    expect(result).not.toHaveProperty('status');
+    if ('status' in result) {
       throw Error('Git query failed');
     }
     expect(result.patch).toContain('+original');
@@ -151,13 +147,12 @@ describe.skipIf(!hasGit)('原生工作区差异', () => {
 
   it('干净范围返回空 patch, 非仓库返回 not-a-repo', async () => {
     expect(await gitWorkspaceDiff(root, 'uncommitted')).toMatchObject({
-      capability: 'ok',
       patch: '',
       omittedFiles: 0,
     });
     const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'ema-git-outside-'));
     try {
-      expect(await gitWorkspaceDiff(outside, 'uncommitted')).toEqual({ capability: 'not-a-repo' });
+      expect(await gitWorkspaceDiff(outside, 'uncommitted')).toEqual({ status: 'not-a-repo' });
     } finally {
       await fs.rm(outside, { recursive: true, force: true });
     }

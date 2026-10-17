@@ -1,5 +1,4 @@
-// 当前分支查询:正常分支给名字,detached HEAD 退回短 SHA,空仓库两者皆为 null。
-import { GitError } from '../errors.js';
+import { GitCommandError } from '../errors.js';
 import { runGit } from '../gitProcess.js';
 
 export interface BranchInfo {
@@ -14,8 +13,8 @@ export async function queryBranch(repoRoot: string): Promise<BranchInfo> {
     const sha = (await runGit(repoRoot, ['rev-parse', '--short', 'HEAD'])).stdout.trim();
     return { branch: null, headShortSha: sha || null };
   } catch (error) {
-    // 空仓库(尚无任何提交)rev-parse HEAD 必失败,属正常状态而非查询错误。
-    if (error instanceof GitError && error.code === 'git/command-failed') {
+    // 尚无提交时 HEAD 无法解析, 允许返回没有短 SHA 的结果.
+    if (error instanceof GitCommandError) {
       return { branch: null, headShortSha: null };
     }
     throw error;

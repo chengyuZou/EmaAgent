@@ -1,19 +1,14 @@
-// 最近提交查询:sha + 标题,供"提交记录"比较选择器;空仓库返回空数组。
-import { GitError } from '../errors.js';
+import { GitCommandError } from '../errors.js';
 import { runGit } from '../gitProcess.js';
-
-export interface GitCommitEntry {
-  readonly sha: string;
-  readonly subject: string;
-}
+import type { GitCommits } from '../types.js';
 
 export async function queryRecentCommits(
   repoRoot: string,
   limit = 50,
-): Promise<readonly GitCommitEntry[]> {
+): Promise<GitCommits> {
   try {
     const { stdout } = await runGit(repoRoot, ['log', `-${limit}`, '--format=%H%x00%s']);
-    const commits: GitCommitEntry[] = [];
+    const commits: GitCommits[number][] = [];
     for (const line of stdout.split('\n')) {
       const sep = line.indexOf('\0');
       if (sep <= 0) continue;
@@ -21,8 +16,8 @@ export async function queryRecentCommits(
     }
     return commits;
   } catch (error) {
-    // 空仓库(尚无任何提交)log 必失败,属正常状态而非查询错误。
-    if (error instanceof GitError && error.code === 'git/command-failed') return [];
+    // 尚无提交时 log 会失败, 允许引用列表返回空提交数组.
+    if (error instanceof GitCommandError) return [];
     throw error;
   }
 }

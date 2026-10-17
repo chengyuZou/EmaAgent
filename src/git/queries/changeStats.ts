@@ -1,4 +1,3 @@
-// 未暂存/已暂存变更统计:解析 git diff --shortstat 的单行汇总。
 import { runGit } from '../gitProcess.js';
 import type { GitChangeStats } from '../types.js';
 
@@ -15,7 +14,7 @@ export async function queryChangeStats(
 
 /**
  * shortstat 形如 " 3 files changed, 10 insertions(+), 2 deletions(-)",
- * 三个部分都可能缺省(无变更时整行为空);单数形式没有 s。
+ * 三个部分都可能缺省(无变更时整行为空), 单数形式没有 s.
  */
 export function parseShortStat(output: string): GitChangeStats {
   return {

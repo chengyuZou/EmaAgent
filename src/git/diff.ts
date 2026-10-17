@@ -1,18 +1,23 @@
-// Git 查询只返回原生 patch, 文件/hunk/行的解析由审查使用的 diff 包负责.
-import { GitError, mapGitError } from './errors.js';
+import {
+  GitCommandError,
+  GitDiffTooLargeError,
+  GitOutputTooLargeError,
+  toGitQueryFailure,
+} from './errors.js';
 import { runGit } from './gitProcess.js';
 import { findRepoRoot } from './repoDetection.js';
 import { listUntrackedFiles } from './queries/status.js';
-import {
-  GIT_DIFF_CONTEXT_LINES,
-  GIT_DIFF_MAX_TOTAL_CHARS,
-  GIT_DIFF_MAX_UNTRACKED_FILES,
-  GIT_DIFF_PROCESS_OUTPUT_BYTES,
-  GIT_DIFF_UNTRACKED_CONCURRENCY,
-} from './limits.js';
 import type { GitCompareResult, GitDiffScope, GitWorkspaceDiffResult } from './types.js';
 
+const GIT_DIFF_CONTEXT_LINES = 3;
+// 审查限制按 JavaScript 字符串长度计数, 与基线 diff 的 UTF-8 字节限制分开.
+const GIT_DIFF_MAX_TOTAL_CHARS = 2_000_000;
+const GIT_DIFF_MAX_UNTRACKED_FILES = 500;
+const GIT_DIFF_UNTRACKED_CONCURRENCY = 8;
+const GIT_DIFF_PROCESS_OUTPUT_BYTES = 8 * 1024 * 1024;
 const NULL_DEVICE = process.platform === 'win32' ? 'NUL' : '/dev/null';
+// UI 需要原生 patch 的文件头, 包括二进制, 空文件, 权限和重命名信息.
+// 禁用颜色与外部 diff/textconv 程序, 保持可解析的 Git 输出.
 const DIFF_FLAGS = [
   `-U${GIT_DIFF_CONTEXT_LINES}`,
   '--no-color',
@@ -27,14 +32,14 @@ const DIFF_FLAGS = [
 export async function gitWorkspaceDiff(cwd: string, scope: GitDiffScope): Promise<GitWorkspaceDiffResult> {
   const repoRoot = await findRepoRoot(cwd);
   if (!repoRoot) {
-    return { capability: 'not-a-repo' };
+    return { status: 'not-a-repo' };
   }
 
   try {
     const overrides = await filterDriverOverrides(repoRoot);
     const paths = scope === 'staged' ? [] : await listUntrackedFiles(repoRoot, overrides);
     if (paths.length > GIT_DIFF_MAX_UNTRACKED_FILES) {
-      throw new GitError('git/diff-too-large', '未跟踪文件数量超出审查上限');
+      throw new GitDiffTooLargeError(`more than ${GIT_DIFF_MAX_UNTRACKED_FILES} untracked files`);
     }
     const chunks: string[] = [];
     let totalChars = 0;
@@ -56,7 +61,6 @@ export async function gitWorkspaceDiff(cwd: string, scope: GitDiffScope): Promis
       chunks.push(patch);
     }
     return {
-      capability: 'ok',
       repoRoot,
       patch: chunks.join(''),
       omittedFiles,
@@ -66,6 +70,7 @@ export async function gitWorkspaceDiff(cwd: string, scope: GitDiffScope): Promis
   }
 }
 
+/** commit 读取该提交本身的 patch; branch 比较与该分支的共同祖先到当前磁盘的变化. */
 export type GitCompareTarget =
   | { readonly kind: 'commit'; readonly sha: string }
   | { readonly kind: 'branch'; readonly branch: string };
@@ -73,7 +78,7 @@ export type GitCompareTarget =
 export async function gitCompareDiff(cwd: string, target: GitCompareTarget): Promise<GitCompareResult> {
   const repoRoot = await findRepoRoot(cwd);
   if (!repoRoot) {
-    return { capability: 'not-a-repo' };
+    return { status: 'not-a-repo' };
   }
   try {
     const overrides = await filterDriverOverrides(repoRoot);
@@ -85,7 +90,6 @@ export async function gitCompareDiff(cwd: string, target: GitCompareTarget): Pro
       args = ['diff', ...DIFF_FLAGS, base, '--'];
     }
     return {
-      capability: 'ok',
       repoRoot,
       patch: await readPatch(repoRoot, args, overrides),
     };
@@ -105,26 +109,21 @@ async function readPatch(repoRoot: string, args: readonly string[], extraConfig:
 
 function assertPatchSize(chars: number): void {
   if (chars > GIT_DIFF_MAX_TOTAL_CHARS) {
-    throw new GitError('git/diff-too-large', 'Git 原始差异超出审查上限');
+    throw new GitDiffTooLargeError(`patch exceeds ${GIT_DIFF_MAX_TOTAL_CHARS} string code units`);
   }
 }
 
-function diffFailure(error: unknown): Exclude<GitWorkspaceDiffResult, { capability: 'ok' }> {
+function diffFailure(error: unknown): Exclude<GitWorkspaceDiffResult, { readonly patch: string }> {
   if (
-    error instanceof GitError
-    && (error.code === 'git/output-too-large' || error.code === 'git/diff-too-large')
+    error instanceof GitOutputTooLargeError
+    || error instanceof GitDiffTooLargeError
   ) {
-    return { capability: 'diff-too-large' };
+    return { status: 'diff-too-large' };
   }
-  return mapGitError(error, (kind, message) => {
-    if (kind === 'unavailable') {
-      return { capability: 'git-unavailable' } as const;
-    }
-    return { capability: 'error', message } as const;
-  });
+  return toGitQueryFailure(error);
 }
 
-// 工作区 diff 可能触发仓库的 clean/process helper, 延续已有禁用策略.
+// 比较磁盘内容时 Git 可能执行 clean/process 程序, 查询时清空这些配置以免启动它们.
 async function filterDriverOverrides(repoRoot: string): Promise<readonly string[]> {
   const { stdout } = await runGit(repoRoot, [
     'config',
@@ -145,7 +144,11 @@ async function filterDriverOverrides(repoRoot: string): Promise<readonly string[
   return [...drivers].flatMap(driver => [`${driver}.clean=`, `${driver}.process=`]);
 }
 
-// 审查和 Memory 共用读取顺序, 各调用方决定总体预算和超限行为.
+/**
+ * 先返回已跟踪文件的 patch, 再按输入顺序分批读取未跟踪文件.
+ * 未跟踪文件不能通过普通 git diff 读到, 因此逐个与空设备比较, 不写入用户索引.
+ * null 表示某个未跟踪文件的 Git 命令失败, 让调用方计数并提示读取遗漏.
+ */
 export async function* readWorkspacePatches(input: {
   repoRoot: string;
   scope: GitDiffScope;
@@ -168,7 +171,7 @@ export async function* readWorkspacePatches(input: {
     });
     let base = 'HEAD';
     if (!head.stdout) {
-      // 由 Git 计算空树, 不硬编码 SHA-1 对象 ID.
+      // 首次提交前以空树为起点, 让 Git 计算对象 ID 以同时支持 SHA-1 和 SHA-256 仓库.
       base = (await runGit(repoRoot, ['hash-object', '-t', 'tree', '--', NULL_DEVICE], {
         extraConfig,
       })).stdout.trim();
@@ -180,9 +183,10 @@ export async function* readWorkspacePatches(input: {
 
   for (let index = 0; index < untrackedFiles.length; index += GIT_DIFF_UNTRACKED_CONCURRENCY) {
     const batch = untrackedFiles.slice(index, index + GIT_DIFF_UNTRACKED_CONCURRENCY);
+    // 每批最多启动固定数量的 Git 进程, Promise.all 保留输入路径的顺序.
     const patches = await Promise.all(batch.map(file => (
       diffUntrackedFile(repoRoot, extraConfig, file, maxOutputBytes).catch((error: unknown) => {
-        if (error instanceof GitError && error.code === 'git/command-failed') {
+        if (error instanceof GitCommandError) {
           return null;
         }
         throw error;

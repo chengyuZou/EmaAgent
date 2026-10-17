@@ -1,5 +1,4 @@
-// upstream 引用查询:未配置 upstream 是正常状态,返回 null 而非错误。
-import { GitError } from '../errors.js';
+import { GitCommandError } from '../errors.js';
 import { runGit } from '../gitProcess.js';
 
 export async function queryUpstream(repoRoot: string): Promise<string | null> {
@@ -10,8 +9,8 @@ export async function queryUpstream(repoRoot: string): Promise<string | null> {
     )).stdout.trim();
     return name || null;
   } catch (error) {
-    // 无 upstream 时 git 以非零退出并提示 no upstream configured,按 null 处理。
-    if (error instanceof GitError && error.code === 'git/command-failed') return null;
+    // 未配置 upstream 也会非零退出, 查询结果用 null 表示引用不可用.
+    if (error instanceof GitCommandError) return null;
     throw error;
   }
 }

@@ -1,10 +1,15 @@
-// 统一封装 git CLI 调用:不经过 shell、超时即杀、输出有界,并屏蔽仓库自定义 hook 与索引锁。
-// 只读查询绝不能触发仓库配置的 hook,也不抢 .git/index.lock。
 import { execFile } from 'node:child_process';
-import { GitError } from './errors.js';
-import { GIT_MAX_OUTPUT_BYTES, GIT_READ_TIMEOUT_MS } from './limits.js';
+import {
+  GitCommandError,
+  GitOutputTooLargeError,
+  GitTimeoutError,
+  GitUnavailableError,
+} from './errors.js';
 
-/** 让内部查询绕过仓库 hooksPath;Windows 空设备为 NUL,其余为 /dev/null。 */
+const GIT_READ_TIMEOUT_MS = 100_000;
+const GIT_MAX_OUTPUT_BYTES = 16 * 1024 * 1024;
+
+// 将 hooksPath 指向空设备, 避免后台命令执行仓库配置的 hook.
 const DISABLED_HOOKS_PATH = process.platform === 'win32' ? 'NUL' : '/dev/null';
 
 export interface GitResult {
@@ -13,13 +18,13 @@ export interface GitResult {
 }
 
 export interface RunGitOptions {
-  /** 视为成功的额外退出码;git diff --no-index 有差异时以 1 退出,属正常输出。 */
+  /** 额外接受的退出码. git diff --no-index 用 1 表示有差异, 仍有可用输出. */
   readonly allowedExitCodes?: readonly number[];
-  /** 单次输出上限,默认 16MiB;工作区 diff 单独限制为 8MiB。 */
+  /** 每个输出流的缓冲上限, 单位为字节. 缺省使用 GIT_MAX_OUTPUT_BYTES. */
   readonly maxOutputBytes?: number;
-  /** 额外全局配置(-c key=value),注入到内置安全配置之后、子命令之前。用于 commit 等需要作者/签名配置的写操作。 */
+  /** -c key=value 配置, 放在内置配置之后生效. 基线写入用它指定作者和关闭签名. */
   readonly extraConfig?: readonly string[];
-  /** 超时(ms),默认 settings 的 git.timeout.readMs(5s);写操作(init/add/commit/apply)应显式传 git.timeout.writeMs。 */
+  /** 毫秒数, 缺省使用 GIT_READ_TIMEOUT_MS. 基线写入另行指定超时. */
   readonly timeoutMs?: number;
 }
 
@@ -33,7 +38,7 @@ export function runGit(
       'git',
       [
         '-c', `core.hooksPath=${DISABLED_HOOKS_PATH}`,
-        // 仓库可配置任意 fsmonitor 可执行 helper,内部查询一律禁用
+        // fsmonitor 可以指向外部程序, 后台查询关闭它以免执行仓库配置的程序.
         '-c', 'core.fsmonitor=false',
         ...(options.extraConfig?.flatMap((cfg) => ['-c', cfg]) ?? []),
         ...args,
@@ -45,9 +50,9 @@ export function runGit(
         windowsHide: true,
         env: {
           ...process.env,
-          // 只读命令不获取可选锁,避免与用户的 git 操作互相阻塞。
+          // 跳过只读命令可省略的索引刷新锁. add/commit 等写入仍使用正常的 Git 锁.
           GIT_OPTIONAL_LOCKS: '0',
-          // 禁止 git 因凭据等问题弹出终端交互,查询必须当场失败而不是挂起。
+          // 后台调用没有可供用户输入的终端, 禁用 Git 的终端凭据提问.
           GIT_TERMINAL_PROMPT: '0',
         },
       },
@@ -58,25 +63,25 @@ export function runGit(
         }
         const err = error as NodeJS.ErrnoException & { killed?: boolean };
         if (err.code === 'ENOENT') {
-          reject(new GitError('git/unavailable', 'git: executable not found on PATH'));
+          reject(new GitUnavailableError());
           return;
         }
         if (err.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER') {
-          reject(new GitError('git/output-too-large', `git ${args.join(' ')}: output exceeded ${options.maxOutputBytes ?? GIT_MAX_OUTPUT_BYTES} bytes`));
+          reject(new GitOutputTooLargeError(args.join(' '), options.maxOutputBytes ?? GIT_MAX_OUTPUT_BYTES));
           return;
         }
         if (err.killed) {
-          reject(new GitError('git/timeout', `git ${args.join(' ')}: timed out after ${options.timeoutMs ?? GIT_READ_TIMEOUT_MS}ms`));
+          reject(new GitTimeoutError(args.join(' '), options.timeoutMs ?? GIT_READ_TIMEOUT_MS));
           return;
         }
         if (typeof err.code === 'number' && options.allowedExitCodes?.includes(err.code)) {
           resolve({ stdout, stderr });
           return;
         }
-        reject(new GitError(
-          'git/command-failed',
-          `git ${args.join(' ')}: exit ${err.code ?? 'unknown'}`,
-          stderr.trim() || undefined,
+        reject(new GitCommandError(
+          args.join(' '),
+          err.code ?? 'unknown',
+          stderr,
         ));
       },
     );

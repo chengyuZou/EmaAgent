@@ -1,23 +1,23 @@
-// Git 包的公共出口:只读查询(gitSummary/gitWorkspaceDiff/gitCompareDiff/gitRefs)、
-// 基线机制(baseline,内部目录的可重置 diff)、patch 应用(apply);错误与类型不穿透进程细节。
 export { gitSummary } from './summary.js';
 export { gitWorkspaceDiff, gitCompareDiff } from './diff.js';
 export type { GitCompareTarget } from './diff.js';
 export { gitRefs } from './refs.js';
-export { GitError } from './errors.js';
-export type { GitErrorCode } from './errors.js';
+export {
+  GitCommandError,
+  GitDiffTooLargeError,
+  GitOutputTooLargeError,
+  GitTimeoutError,
+  GitUnavailableError,
+} from './errors.js';
 export type {
-  GitSummary,
-  GitSummaryOk,
+  GitSummaryResult,
   GitChangeStats,
   GitWorkspaceDiffResult,
   GitCompareResult,
+  GitCommits,
   GitRefsResult,
-  GitDiffOk,
-  GitDiffTooLarge,
   GitDiffScope,
 } from './types.js';
-
 
 export {
   hasUsableBaseline,
@@ -32,7 +32,3 @@ export type {
   BaselineDiff,
   BaselineOptions,
 } from './baseline.js';
-
-// ── patch 应用:unified diff → git apply ──
-export { applyPatch, extractPathsFromDiff } from './apply.js';
-export type { ApplyRequest, ApplyResult } from './apply.js';

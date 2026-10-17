@@ -1,4 +1,3 @@
-// baseline 基线机制:ensure/reset/diff 在真实临时仓库上的行为。
 import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -71,16 +70,12 @@ describe.skipIf(!HAS_GIT)('baseline', () => {
     await fs.writeFile(path.join(root, 'a.md'), 'hello', 'utf8');
     await ensureBaseline(root);
 
-    // modified: tracked 文件
     await fs.writeFile(path.join(root, 'a.md'), 'hello2', 'utf8');
-    // added: untracked 文件
     await fs.writeFile(path.join(root, 'new.md'), 'brand new', 'utf8');
-    // deleted: 基线里没有这个文件,先建再删一个 tracked 的
+    // 先将 gone.md 提交到当前 HEAD, 再删除, 验证比较起点会随 HEAD 更新.
     await fs.writeFile(path.join(root, 'gone.md'), 'bye', 'utf8');
     await git(root, ['add', 'gone.md']);
     await git(root, ['commit', '-q', '-m', 'add gone']);
-    // 基线已含 gone.md?没有——基线在 ensureBaseline 时建的,之后 commit 是用户动作,不属于基线。
-    // 为保证"deleted"出现:把当前 HEAD 作为新基线前先删一个文件并走 diff。
     await fs.rm(path.join(root, 'gone.md'));
 
     const diff = await diffSinceBaseline(root);
@@ -109,7 +104,6 @@ describe.skipIf(!HAS_GIT)('baseline', () => {
     expect(after.changes).toEqual([]);
     expect(after.unifiedDiff.trim()).toBe('');
 
-    // 单 commit:git log 只有 1 条(amend 折叠)
     const count = Number(
       execFileSync('git', ['rev-list', '--count', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(),
     );
@@ -135,7 +129,6 @@ describe.skipIf(!HAS_GIT)('baseline', () => {
     await fs.writeFile(path.join(root, 'a.md'), 'hello', 'utf8');
     await ensureBaseline(root);
 
-    // 201 个 untracked 文件 → 超过 MAX_CHANGES_FOR_UNIFIED(200)
     for (let i = 0; i < 201; i++) {
       await fs.writeFile(path.join(root, `f${String(i).padStart(3, '0')}.md`), `content-${i}`, 'utf8');
     }
@@ -188,5 +181,15 @@ describe.skipIf(!HAS_GIT)('baseline', () => {
     expect(limited.unifiedDiff).not.toContain('\uFFFD');
     expect(Buffer.byteLength(limited.unifiedDiff, 'utf8')).toBeLessThanOrEqual(257);
     expect(limited.changes).toHaveLength(2);
+  });
+
+  it('Git 输出超过进程缓冲时, 基线保留文件清单并标记正文不完整', async () => {
+    const root = await tempRepo();
+    await ensureBaseline(root);
+    await fs.writeFile(path.join(root, 'large.md'), 'x'.repeat(9 * 1024 * 1024));
+    const diff = await diffSinceBaseline(root, { maxDiffBytes: 1_024 });
+    expect(diff.changes).toEqual([{ status: 'added', path: 'large.md' }]);
+    expect(diff.truncated).toBe(true);
+    expect(diff.unifiedSkipped).toBe(false);
   });
 });

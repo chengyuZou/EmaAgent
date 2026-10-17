@@ -1,18 +1,13 @@
-// gitRefs:分支列表 + 最近提交 + 当前分支的一次性组装,供比较范围选择器。
 import { findRepoRoot } from './repoDetection.js';
-import { mapGitError } from './errors.js';
+import { toGitQueryFailure } from './errors.js';
 import { queryBranch } from './queries/branch.js';
 import { queryBranches } from './queries/branches.js';
 import { queryRecentCommits } from './queries/commits.js';
-import type {
-  GitRefsResult,
-  GitSummaryUnavailable,
-  GitSummaryError,
-} from './types.js';
+import type { GitRefsResult } from './types.js';
 
 export async function gitRefs(cwd: string): Promise<GitRefsResult> {
   const repoRoot = await findRepoRoot(cwd);
-  if (!repoRoot) return { capability: 'not-a-repo' };
+  if (!repoRoot) return { status: 'not-a-repo' };
 
   try {
     const [branchInfo, branches, commits] = await Promise.all([
@@ -21,15 +16,11 @@ export async function gitRefs(cwd: string): Promise<GitRefsResult> {
       queryRecentCommits(repoRoot),
     ]);
     return {
-      capability: 'ok',
       current: branchInfo.branch,
       branches,
       commits,
     };
   } catch (error) {
-    return mapGitError(error, (kind, message): GitSummaryUnavailable | GitSummaryError =>
-      kind === 'unavailable'
-        ? { capability: 'git-unavailable' }
-        : { capability: 'error', message });
+    return toGitQueryFailure(error);
   }
 }
