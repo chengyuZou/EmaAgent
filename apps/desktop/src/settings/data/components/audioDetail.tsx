@@ -10,7 +10,7 @@ import {
 import { useCollapsibleBody } from '../../../chat/messages/messageExpansion.js';
 import { useCharacterStore } from '../../../stores/character.js';
 import { AudioPlayer } from '../../../lib/audio/audioPlayer.js';
-import { tauriBridge } from '../../../lib/tauriBridge.js';
+import { tauriBridge } from '../../../lib/tauri/tauriBridge.js';
 import { showToast } from '../../../lib/notifications/toast.js';
 import { subscribeSystemEvent } from '../../../lib/events/systemEventDispatcher.js';
 import { fmtBytes, fmtDateFull, fmtDuration } from '../storageFormat.js';

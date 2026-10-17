@@ -1,5 +1,5 @@
 // 提供主窗口显示, 舞台交互模式与应用退出命令.
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tauri::Manager;
 
 use crate::desktop::pet_pointer::PetPointerTracking;
@@ -131,3 +131,25 @@ pub async fn read_draft_image(path: String) -> Result<Vec<u8>, String> {
         .await
         .map_err(|error| error.to_string())
 }
+
+#[derive(Serialize)]
+pub struct AttachmentPaths {
+    files: Vec<String>,
+    rejected: Vec<String>,
+}
+
+#[tauri::command]
+pub async fn inspect_attachment_paths(paths: Vec<String>) -> AttachmentPaths {
+    let mut result = AttachmentPaths {
+        files: Vec::new(),
+        rejected: Vec::new(),
+    };
+    for path in paths {
+        match tokio::fs::metadata(&path).await {
+            Ok(metadata) if metadata.is_file() => result.files.push(path),
+            _ => result.rejected.push(path),
+        }
+    }
+    result
+}
+

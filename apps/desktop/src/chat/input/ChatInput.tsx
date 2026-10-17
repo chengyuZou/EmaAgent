@@ -18,7 +18,6 @@ import {
 } from '@ema-agent/ui';
 import type { TurnInputPart } from '@ema-agent/turn';
 import { providersApi } from '../../api/providers.js';
-import type { SessionListItem } from '../../api/sessions.js';
 import { sessionWebSocket } from '../../api/sessionWebSocket.js';
 import { showToast } from '../../lib/notifications/toast.js';
 import {
@@ -43,6 +42,7 @@ import {
   type SlashSelection,
 } from './AddInputMenu.js';
 import { DraftReferenceList, useDraftAttachments } from './draftAttachments.js';
+import { draftFromSession, editChatDraft } from './editChatDraft.js';
 import { ModelPicker, useInputModel } from './controls/ModelPicker.js';
 import { InputGoalBar, useInputGoal } from './controls/goalBar.js';
 import { InputProjectBar } from './inputProjectBar.js';
@@ -139,15 +139,6 @@ function QueuedInputReference({ sessionId, reference }: {
   );
 }
 
-function draftFromSession(session: SessionListItem | undefined): ChatDraft {
-  return {
-    ...emptyChatDraft(),
-    permissionMode: session?.permissionMode ?? 'default',
-    ttsEnabled: session?.ttsEnabled ?? false,
-    reasoningEffort: session?.reasoningEffort ?? 'off',
-  };
-}
-
 export function ChatInput({
   onSubmit,
 }: {
@@ -188,16 +179,7 @@ export function ChatInput({
   const turnRunning = sessionActivity?.running?.kind === 'turn';
   const queuedInputs = sessionActivity?.queuedInputs.filter(item => item.delivery === 'after_turn') ?? [];
   const editCurrentDraft = useCallback((edit: (current: ChatDraft) => ChatDraft): void => {
-    const drafts = useChatDraftStore.getState();
-    // 文件选择、录音和发送都会异步返回. 写入时重新取这份草稿,
-    // 避免一个较早的回调把用户刚输入的文字或胶囊覆盖掉.
-    const current = viewedId
-      ? drafts.bySession.get(viewedId)
-        ?? draftFromSession(useSessionStore.getState().sessions.byId.get(viewedId))
-      : drafts.newSessionDraft;
-    const next = edit(current);
-    if (viewedId) drafts.setForSession(viewedId, next);
-    else drafts.setForNewSession(next);
+    editChatDraft(viewedId, edit);
   }, [viewedId]);
 
   function patchCurrentDraft(patch: Partial<ChatDraft>): void {

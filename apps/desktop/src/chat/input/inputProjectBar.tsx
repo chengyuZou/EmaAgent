@@ -4,7 +4,7 @@ import { projectsApi } from '../../api/workspaces.js';
 import type { SessionListItem } from '../../api/sessions.js';
 import { useMainNavigationStore } from '../../layout/navigation.js';
 import { useSessionStore } from '../../stores/session.js';
-import { tauriBridge } from '../../lib/tauriBridge.js';
+import { tauriBridge } from '../../lib/tauri/tauriBridge.js';
 import { showToast } from '../../lib/notifications/toast.js';
 
 export function InputProjectBar({ sessionId: viewedId, session: viewedSession, projectId: currentProjectId }: {

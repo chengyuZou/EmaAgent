@@ -8,6 +8,7 @@ mod processes;
 use tauri::{Manager, RunEvent};
 
 use commands::{
+    inspect_attachment_paths,
     browser_back, browser_forward, close_browser, close_session_terminals, close_terminal,
     get_passthrough, get_server_port, get_server_secret, hide_main_window, list_system_fonts,
     navigate_browser, open_browser, open_main_window, open_path, open_terminal, quit_app,
@@ -17,7 +18,9 @@ use commands::{
 };
 use desktop::pet_pointer::PetPointerTracking;
 use desktop::terminal::TerminalSessions;
-use desktop::windows::{destroy_windows_before_exit, handle_window_event, show_stage_window};
+use desktop::windows::{
+    destroy_windows_before_exit, handle_window_event, show_stage_window,
+};
 use processes::DesktopProcesses;
 
 pub fn run() {
@@ -37,6 +40,7 @@ pub fn run() {
         .manage(TerminalSessions::new())
         .manage(PetPointerTracking::default())
         .invoke_handler(tauri::generate_handler![
+            inspect_attachment_paths,
             get_server_secret,
             get_server_port,
             report_live2d_diagnostic,

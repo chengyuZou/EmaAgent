@@ -4,80 +4,21 @@
  * 所有 `@tauri-apps/api/*` 的导入都集中在这里.
  * 普通浏览器不加载 Tauri 模块, 需要原生能力的操作由具名方法处理.
  */
-import type { PermissionRequiredEvent } from '@ema-agent/permission';
-import type { AskUserRequiredEvent } from '@ema-agent/tools';
 import type { AppEvent } from '@ema-agent/server/application/appEvents.js';
 import type { ThemeSettings } from '@ema-agent/server/settings/themeSetting.js';
-import type { EventDisplayTable } from '../api/settings.js';
 
-// ── 对外类型 ────────────────────────────────────────────────────────────────
-
-export type PetPointerEvent =
-  | { readonly type: 'position'; readonly clientX: number; readonly clientY: number; readonly inside: boolean }
-  | { readonly type: 'error'; readonly message: string };
-
-export interface DesktopSettingsPayload {
-  readonly permissionTimeoutMs: number | null;
-  readonly eventDisplay: EventDisplayTable | null;
-}
-
-type DecisionRequiredEvent = PermissionRequiredEvent | AskUserRequiredEvent;
-
-export type TerminalEvent =
-  | { readonly type: 'output'; readonly data: readonly number[] }
-  | { readonly type: 'exit'; readonly exitCode: number | null };
-
-export interface OpenTerminalInput {
-  readonly terminalId: string;
-  readonly sessionId: string;
-  readonly cwd?: string;
-  // kind 决定启动参数(如 PowerShell 补 -NoLogo), path 是 Shell 可执行文件的实际路径.
-  readonly shell?: { readonly kind: string; readonly path: string };
-  readonly columns: number;
-  readonly rows: number;
-  readonly onEvent: (event: TerminalEvent) => void;
-}
-
-export interface BrowserBounds {
-  readonly x: number;
-  readonly y: number;
-  readonly width: number;
-  readonly height: number;
-}
-
-export type BrowserEvent =
-  | { readonly type: 'loading'; readonly browserId: string; readonly loading: boolean }
-  | { readonly type: 'locationChanged'; readonly browserId: string; readonly url: string }
-  | { readonly type: 'titleChanged'; readonly browserId: string; readonly title: string };
-
-export type Live2dPreviewCommand =
-  | { readonly type: 'expression'; readonly expression: string }
-  | { readonly type: 'motion'; readonly group: string; readonly index: number }
-  | {
-      readonly type: 'placement';
-      readonly stageScale: number;
-      readonly stageOffsetX: number;
-      readonly stageOffsetY: number;
-    };
-
-export type Live2dDiagnosticEvent =
-  | 'presentation_loading'
-  | 'presentation_loaded'
-  | 'presentation_failed'
-  | 'archive_loading'
-  | 'archive_loaded'
-  | 'archive_failed'
-  | 'canvas_created'
-  | 'ticker_started'
-  | 'ticker_stopped'
-  | 'model_loading'
-  | 'model_ready'
-  | 'model_failed'
-  | 'first_tick'
-  | 'preview_expression'
-  | 'preview_motion'
-  | 'preview_placement'
-  | 'preview_ignored';
+import type {
+  AttachmentDragEvent,
+  BrowserBounds,
+  BrowserEvent,
+  DecisionRequiredEvent,
+  DesktopSettingsPayload,
+  Live2dDiagnosticEvent,
+  Live2dPreviewCommand,
+  OpenTerminalInput,
+  PetPointerEvent,
+  TerminalEvent,
+} from './types.js';
 
 // ── Tauri 环境检测 ─────────────────────────────────────────────────────────
 
@@ -197,6 +138,31 @@ async function listenTauri<T>(
 
 export const tauriBridge = {
   isTauri: detectTauri,
+
+  async listenAttachmentDrag(handler: (event: AttachmentDragEvent) => void): Promise<() => void> {
+    if (!detectTauri()) return () => {};
+    const { getCurrentWebview } = await import('@tauri-apps/api/webview');
+    const webview = getCurrentWebview();
+    return webview.onDragDropEvent(({ payload }) => {
+      if (payload.type === 'leave') {
+        handler({ type: 'leave' });
+        return;
+      }
+      const x = payload.position.x / window.devicePixelRatio;
+      const y = payload.position.y / window.devicePixelRatio;
+      if (payload.type === 'drop') {
+        handler({ type: 'drop', x, y, paths: payload.paths });
+      } else {
+        handler({ type: payload.type, x, y });
+      }
+    });
+  },
+
+  async inspectAttachmentPaths(paths: readonly string[]): Promise<{ files: string[]; rejected: string[] }> {
+    const core = await getCore();
+    if (!core) throw new Error('当前环境无法读取本机附件');
+    return core.invoke('inspect_attachment_paths', { paths });
+  },
 
   async setWindowTheme(mode: 'light' | 'dark'): Promise<void> {
     const winMod = await getWindow();

@@ -3,7 +3,8 @@
 import { create } from 'zustand';
 import type { AppEvent } from '@ema-agent/server/application/appEvents.js';
 import { settingsApi, type EventDisplayTable } from '../api/settings.js';
-import { tauriBridge, type DesktopSettingsPayload } from '../lib/tauriBridge.js';
+import { tauriBridge } from '../lib/tauri/tauriBridge.js';
+import type { DesktopSettingsPayload } from '../lib/tauri/types.js';
 
 /** 单个事件类型的展示配置（生效表 = 默认表 + 用户覆盖合并）。 */
 export type EventDisplayConfig = EventDisplayTable[string];

@@ -8,8 +8,10 @@ import { SessionSidePanel } from '../sidePanel/SessionSidePanel.js';
 import { useSessionPanelStore } from '../../stores/sessionPanel.js';
 import { submitChatDraft } from '../input/submitChatDraft.js';
 import { SessionGitDiffProvider } from './gitDiffContext.js';
+import { AttachmentDropOverlay, useAttachmentDrop } from '../input/attachmentDrop.js';
 
 export function SessionPage({ sessionId }: { sessionId: string }): JSX.Element {
+  const { dropAreaRef, overlayWidth } = useAttachmentDrop(sessionId);
   const serverStatus = useServerStore(state => state.status);
   const layout = useSessionPanelStore((state) => state.layouts[sessionId]);
   const rightPanelPercent = useSessionPanelStore((state) => state.rightPanelPercent);
@@ -82,6 +84,7 @@ export function SessionPage({ sessionId }: { sessionId: string }): JSX.Element {
   return (
     <SessionGitDiffProvider sessionId={sessionId}>
       <main
+        ref={dropAreaRef}
         className="ema-chat-main relative z-10 flex min-h-0 min-w-0 flex-1 flex-col"
         onClick={openWebLink}
       >
@@ -100,6 +103,7 @@ export function SessionPage({ sessionId }: { sessionId: string }): JSX.Element {
         )}
         <Group
           orientation="horizontal"
+          disableCursor
           className="ema-session-workspace-group min-h-0 min-w-0 flex-1"
           defaultLayout={!panelOpen ? { chat: 100, workspace: 0 } : { chat: 100 - rightPanelPercent, workspace: rightPanelPercent }}
           onLayoutChanged={(sizes, detail) => {
@@ -137,6 +141,7 @@ export function SessionPage({ sessionId }: { sessionId: string }): JSX.Element {
             </div>
           </Panel>
         </Group>
+        <AttachmentDropOverlay width={overlayWidth} />
       </main>
     </SessionGitDiffProvider>
   );

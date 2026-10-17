@@ -9,7 +9,7 @@ import {
   type SseConnectionOutcome,
   type SseHandle,
 } from './sseConsumer.js';
-import { tauriBridge } from '../tauriBridge.js';
+import { tauriBridge } from '../tauri/tauriBridge.js';
 import { showToast } from '../notifications/toast.js';
 
 const EOF_RECONNECT_DELAY_MS = 3_000;

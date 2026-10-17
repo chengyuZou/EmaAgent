@@ -11,7 +11,7 @@
 
 import { hc, type ClientResponse } from 'hono/client';
 import type { AppType } from '@ema-agent/server/routes';
-import { tauriBridge } from '../lib/tauriBridge.js';
+import { tauriBridge } from '../lib/tauri/tauriBridge.js';
 
 // ── Public types ─────────────────────────────────────────────────────────────
 

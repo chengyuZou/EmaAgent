@@ -6,12 +6,13 @@
 
 ## Tauri Command
 
-自有 Command 只允许在 `src/commands` 定义、在 `src/lib.rs` 注册，并由 `apps/desktop/src/lib/tauriBridge.ts` 的同名语义方法调用。其他前端文件不得直接写 Command 字符串。
+自有 Command 只允许在 `src/commands` 定义、在 `src/lib.rs` 注册，并由 `apps/desktop/src/lib/tauri/tauriBridge.ts` 的同名语义方法调用。桥接层自有类型放在同目录的 `types.ts`. 其他前端文件不得直接写 Command 字符串。
 
 | Command | WebView 参数 | Rust 返回 | 前端方法 | 业务意义 |
 |---|---|---|---|---|
 | `get_server_secret` | 无 | `Result<String, String>` | `getServerSecret()` | 取得本次 Desktop 启动生成的 Server 访问口令 |
 | `get_server_port` | 无 | `Result<u16, String>` | `getServerPort()` | 取得本次 Desktop 启动的本机 Server 端口 |
+| `inspect_attachment_paths` | `{ paths }` | `{ files, rejected }` | `inspectAttachmentPaths()` | 拖放后区分可读文件与目录或失效路径, 不复制文件 |
 | `open_main_window` | 无 | `Result<(), String>` | `openMainWindow()` | 首次创建 main, 或显示, 解除最小化并聚焦已有 main |
 | `hide_main_window` | 无 | `Result<(), String>` | `hideMainWindow()` | 隐藏 main, 不销毁 WebView 或停止任务 |
 | `quit_app` | 无 | `()` | `quit()` | 关闭子进程后退出 Desktop |
@@ -131,6 +132,18 @@ Rust 将 Server 的 stdout / stderr 写入本次桌面启动日志. Server 的�
 3. Rust 能取得 Server 端口与口令，WebView 能建立连接；
 4. Server 制品包含 Storage 的 Narrative SQL 定义与种子, 能初始化数据库并查询；
 5. Desktop 退出后 Server 子进程被回收。
+
+## 会话附件拖放
+
+已有会话和新对话仅在中间聊天区域接收文件, 包含该列上方标题栏, 不包括左侧导航或右侧工作区. 拖放只追加草稿; 图片和普通文件使用与文件选择器相同的分类函数, 发送时仍由 `submitChatDraft` 处理.
+
+main 窗口启用 Tauri 原生文件拖放. `tauriBridge.listenAttachmentDrag` 通过当前 Webview 接收文件路径和位置, 将物理坐标转换为网页坐标, 页面再按中间聊天列的范围判断是否接收. Webview 的文件拖放不发给 Window 事件监听器. 普通浏览器不提供本机路径拖入能力.
+
+侧栏内部移动使用 Pointer Events, 不依赖 HTML 拖放. 鼠标移动达到 6 像素后开始拖动, 根据当前位置显示目标位置, 松开后调用已有的会话或项目移动接口. 轻点仍打开会话或展开项目; 菜单等操作按钮不启动拖动. Esc、窗口失焦或指针取消时不提交移动. 拖动到侧栏滚动区上下边缘时滚动列表.
+
+拖动时只更新提示, 松手且命中聊天区域后才检查文件路径. 文件夹或失效路径提示拒绝, 有效文件继续添加. 路径异步返回后更新原会话的最新草稿, 不覆盖后输入的文字, 已删除的会话不重新创建草稿.
+
+交互回归测试: `pnpm --filter @ema-agent/desktop exec vitest run src/chat/input/tests/attachmentDrop.test.tsx src/chat/sidebar/tests/sidebarDrag.test.tsx src/lib/tauri/tests/attachmentDrag.test.ts`. 原生文件检查: `cargo test --lib attachment_paths_tests`. Windows 的资源管理器真实拖入和侧栏排序需要在启动了当前 Rust 宿主的桌面窗口中验收; 修改原生拖放设置后必须重启桌面程序, 仅前端热更新不会生效.
 
 ## 模型目录资源
 

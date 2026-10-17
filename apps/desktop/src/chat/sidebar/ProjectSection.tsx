@@ -12,7 +12,7 @@ import {
 } from '@ema-agent/ui';
 import type { Project, SessionListItem } from '../../api/sessions.js';
 import { projectsApi } from '../../api/workspaces.js';
-import { tauriBridge } from '../../lib/tauriBridge.js';
+import { tauriBridge } from '../../lib/tauri/tauriBridge.js';
 import { runWithToast } from '../../lib/notifications/toast.js';
 import type { SessionActivity } from '../../stores/sessionActivity.js';
 import { useSessionStore } from '../../stores/session.js';
@@ -413,11 +413,10 @@ function ProjectRow({
   return (
     <div>
       <div
-        draggable
+        data-sidebar-draggable
         data-dragging={drag.dragged?.kind === 'project' && drag.dragged.id === project.id || undefined}
         className={`ema-sidebar-item ema-project-row ${drag.dragged?.kind === 'session' ? 'ema-drop-inside' : 'ema-drop-before'} group flex h-[34px] w-full items-center gap-1 rounded-lg border border-transparent px-1 text-sm font-normal text-[var(--ema-text-secondary)] hover:bg-[var(--ema-surface-2)]`}
-        onDragStart={(event) => drag.startProject(event, project.id)}
-        onDragEnd={drag.endDrag}
+        onPointerDown={event => drag.startProject(event, project.id, project.name)}
         {...rowDropProps}
       >
         <button
@@ -425,6 +424,7 @@ function ProjectRow({
           className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-md px-1 text-left focus:outline-none"
           onClick={() => setCollapsed((value) => !value)}
           aria-expanded={!collapsed}
+          data-sidebar-drag-handle
         >
           <span
             className={`text-base text-[var(--ema-warning)] ${

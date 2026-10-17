@@ -1,6 +1,6 @@
 // 拖拽调栏宽的统一手柄：pointer capture 跟随单元素、rAF 节流写尺寸；
 // 每次手势以起手时的渲染尺寸为基准（快速反复起手不回弹）。
-import { useCallback, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 
 export interface DragResizeOptions {
   /** 尺寸沿哪个轴变化：'x' 调宽、'y' 调高。 */
@@ -25,8 +25,13 @@ export function useDragResize({
 }: DragResizeOptions): DragResizeHandle {
   const [resizing, setResizing] = useState(false);
   const rafRef = useRef(0);
+  const stopRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => () => stopRef.current?.(), []);
 
   const onPointerDown = useCallback((event: ReactPointerEvent<HTMLElement>): void => {
+    if (event.button !== 0 || !event.isPrimary) return;
+    stopRef.current?.();
     event.preventDefault();
     const el = event.currentTarget;
     el.setPointerCapture(event.pointerId);
@@ -44,18 +49,28 @@ export function useDragResize({
         setSize(Math.max(min, Math.min(max, next)));
       });
     };
-    const onUp = (ev: PointerEvent): void => {
-      el.releasePointerCapture(ev.pointerId);
+    const onUp = (): void => {
       el.removeEventListener('pointermove', onMove);
       el.removeEventListener('pointerup', onUp);
+      el.removeEventListener('pointercancel', onUp);
+      el.removeEventListener('lostpointercapture', onUp);
+      window.removeEventListener('blur', onUp);
+      if (el.hasPointerCapture(event.pointerId)) {
+        el.releasePointerCapture(event.pointerId);
+      }
       if (rafRef.current !== 0) {
         cancelAnimationFrame(rafRef.current);
         rafRef.current = 0;
       }
       setResizing(false);
+      stopRef.current = null;
     };
+    stopRef.current = onUp;
     el.addEventListener('pointermove', onMove);
     el.addEventListener('pointerup', onUp);
+    el.addEventListener('pointercancel', onUp);
+    el.addEventListener('lostpointercapture', onUp);
+    window.addEventListener('blur', onUp);
   }, [axis, sign, getSize, setSize, min, max]);
 
   return { resizing, handleProps: { onPointerDown } };

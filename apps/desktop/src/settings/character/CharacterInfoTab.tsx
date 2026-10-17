@@ -9,7 +9,7 @@ import {
   type CharacterPatchInput,
 } from '../../api/characters.js';
 import { useCharacterStore } from '../../stores/character.js';
-import { tauriBridge } from '../../lib/tauriBridge.js';
+import { tauriBridge } from '../../lib/tauri/tauriBridge.js';
 import { showToast } from '../../lib/notifications/toast.js';
 
 export function CharacterInfoTab({ character }: { character: Character }): JSX.Element {

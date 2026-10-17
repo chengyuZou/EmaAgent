@@ -1,7 +1,7 @@
 // 提供角色舞台的主窗口, 置顶, 点击穿透, 表情, 拖动与退出入口.
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { IconButton, Popover, ScrollArea, Tooltip } from '@ema-agent/ui';
-import { tauriBridge } from '../lib/tauriBridge.js';
+import { tauriBridge } from '../lib/tauri/tauriBridge.js';
 import { showToast } from '../lib/notifications/toast.js';
 import type { WallpaperSettings } from '@ema-agent/server/settings/wallpaperSetting.js';
 import { DEFAULT_WALLPAPER_SETTINGS, WALLPAPER_SETTING_KEY } from '@ema-agent/server/settings/wallpaperCatalog.js';

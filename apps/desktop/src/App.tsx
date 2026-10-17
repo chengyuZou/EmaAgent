@@ -18,7 +18,7 @@ import { useThemeSync } from './stores/theme.js';
 import type { ServerStatus } from './stores/server.js';
 import { charactersApi } from './api/characters.js';
 import { useWindowSuspension } from './hooks/use-window-suspension.js';
-import { tauriBridge } from './lib/tauriBridge.js';
+import { tauriBridge } from './lib/tauri/tauriBridge.js';
 import { subscribeSystemEvent } from './lib/events/systemEventDispatcher.js';
 import { resolveConfiguredEventNotification } from './lib/notifications/eventNotifications.js';
 import { showToast } from './lib/notifications/toast.js';

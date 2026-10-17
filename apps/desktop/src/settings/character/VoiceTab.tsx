@@ -9,7 +9,7 @@ import {
 import { ServerApiError } from '../../api/client.js';
 import { charactersApi, type Character } from '../../api/characters.js';
 import { useCharacterStore } from '../../stores/character.js';
-import { tauriBridge } from '../../lib/tauriBridge.js';
+import { tauriBridge } from '../../lib/tauri/tauriBridge.js';
 import { showToast } from '../../lib/notifications/toast.js';
 import { MainView, useMainNavigationStore } from '../../layout/navigation.js';
 

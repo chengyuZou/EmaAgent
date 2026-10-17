@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useState, type ClipboardEvent as ReactClipboardEvent, type JSX } from 'react';
 import { PASTE_TEXT_MIN_CHARS } from '@ema-agent/attachments/limits';
 import type { ChatDraft, ChatDraftReference } from '../../stores/chatDraft.js';
-import { tauriBridge } from '../../lib/tauriBridge.js';
+import { tauriBridge } from '../../lib/tauri/tauriBridge.js';
 import { ImagePreview } from '../../lib/images/imagePreview.js';
 import { AttachmentImagePreview } from '../../lib/images/attachmentImagePreview.js';
 import { Tooltip } from '@ema-agent/ui';
@@ -120,6 +120,31 @@ function isLlmImagePath(filePath: string): boolean {
   return ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(filePath.split('.').pop()?.toLowerCase() ?? '');
 }
 
+export function appendAttachmentPaths(
+  draft: ChatDraft,
+  paths: readonly string[],
+): ChatDraft {
+  const references = paths.map((sourcePath): ChatDraftReference => {
+    if (isLlmImagePath(sourcePath)) {
+      return {
+        draftId: crypto.randomUUID(),
+        type: 'image',
+        sourcePath,
+        name: sourcePath.split(/[\\/]/).pop(),
+      };
+    }
+    return {
+      draftId: crypto.randomUUID(),
+      type: 'file_reference',
+      path: sourcePath,
+    };
+  });
+  return {
+    ...draft,
+    references: [...draft.references, ...references],
+  };
+}
+
 export function useDraftAttachments(editCurrentDraft: (edit: (current: ChatDraft) => ChatDraft) => void) {
   function appendReferences(items: readonly ChatDraftReference[]): void {
     editCurrentDraft(current => ({
@@ -137,11 +162,7 @@ export function useDraftAttachments(editCurrentDraft: (edit: (current: ChatDraft
 
   async function pickAttachments(): Promise<void> {
     const paths = await tauriBridge.openFileDialogMultiple();
-    appendReferences(paths.map(sourcePath => (
-      isLlmImagePath(sourcePath)
-        ? { draftId: crypto.randomUUID(), type: 'image' as const, sourcePath, name: sourcePath.split(/[\\/]/).pop() }
-        : { draftId: crypto.randomUUID(), type: 'file_reference' as const, path: sourcePath }
-    )));
+    editCurrentDraft(current => appendAttachmentPaths(current, paths));
   }
 
   function handlePaste(event: ReactClipboardEvent<HTMLTextAreaElement>): void {

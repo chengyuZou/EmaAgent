@@ -1,6 +1,6 @@
 import type { SpeechGenerateEvent } from '@ema-agent/server/routes/ws/speech.js';
 import { turnsApi } from '../../api/turns.js';
-import { tauriBridge } from '../../lib/tauriBridge.js';
+import { tauriBridge } from '../../lib/tauri/tauriBridge.js';
 import { showToast } from '../../lib/notifications/toast.js';
 import { createEmaLipSync, type EmaLipSync } from './wLipSync.js';
 import { sessionPresentation, usePlaybackStore, type PlaybackStatus } from '../presentation/sessionPresentation.js';

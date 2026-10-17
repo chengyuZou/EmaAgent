@@ -11,7 +11,7 @@
 // 不改变当前 TTS/Live2D 归属 Session。
 import { useEffect, useState } from 'react';
 import { Button } from '@ema-agent/ui';
-import { tauriBridge } from '../lib/tauriBridge.js';
+import { tauriBridge } from '../lib/tauri/tauriBridge.js';
 import { SessionRequestError, sessionWebSocket } from '../api/sessionWebSocket.js';
 import type { PermissionRequiredEvent, PermissionResponse } from '@ema-agent/permission';
 import type { AskUserRequiredEvent } from '@ema-agent/tools';

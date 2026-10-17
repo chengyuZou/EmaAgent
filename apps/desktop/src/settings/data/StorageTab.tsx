@@ -4,7 +4,7 @@ import { PageHeader } from '../shared/PageHeader.js';
 import { MainView, useMainNavigationStore } from '../../layout/navigation.js';
 import { sessionsApi, type SessionSummary } from '../../api/sessions.js';
 import { showToast } from '../../lib/notifications/toast.js';
-import { tauriBridge } from '../../lib/tauriBridge.js';
+import { tauriBridge } from '../../lib/tauri/tauriBridge.js';
 import { morphTransition, MORPH_NAME } from './viewTransition.js';
 import { StorageList } from './components/list.js';
 import { StorageDetail, type StorageDetailTarget } from './components/detail.js';

@@ -12,7 +12,7 @@ import {
 } from '../../api/characters.js';
 import { ServerApiError } from '../../api/client.js';
 import { useCharacterStore } from '../../stores/character.js';
-import { tauriBridge } from '../../lib/tauriBridge.js';
+import { tauriBridge } from '../../lib/tauri/tauriBridge.js';
 import { ServerImage } from '../../lib/images/serverImage.js';
 import { showToast } from '../../lib/notifications/toast.js';
 

@@ -141,7 +141,7 @@ export function SessionRow({
 
   return (
     <div
-      draggable={dropDestination !== undefined}
+      data-sidebar-draggable={dropDestination !== undefined || undefined}
       data-dragging={drag.dragged?.kind === 'session' && drag.dragged.id === session.id || undefined}
       data-selected={isActive || undefined}
       className={`ema-sidebar-item ema-drop-before group relative flex h-[34px] items-center gap-1.5 rounded-lg pr-2 text-sm cursor-pointer transition-[background-color,color,box-shadow,opacity,transform] duration-[var(--ema-duration-fast)] ease-[var(--ema-ease)] ${
@@ -151,8 +151,9 @@ export function SessionRow({
           ? 'ema-selectable'
           : 'text-[var(--ema-text-secondary)] hover:bg-[var(--ema-surface-2)] hover:text-[var(--ema-text-primary)]'
       }`}
-      onDragStart={(event) => drag.startSession(event, session.id)}
-      onDragEnd={drag.endDrag}
+      onPointerDown={event => {
+        if (dropDestination) drag.startSession(event, session.id, title);
+      }}
       {...dropProps}
       onClick={() => useMainNavigationStore.getState().viewSession(session.id)}
     >
@@ -192,6 +193,7 @@ export function SessionRow({
         <button
           type="button"
           aria-label={title}
+          data-sidebar-drag-handle
           className="ema-session-row-title flex items-center gap-1.5 min-w-0 flex-1 rounded"
         >
           {session.pinned && (

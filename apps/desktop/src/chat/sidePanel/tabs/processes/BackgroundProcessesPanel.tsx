@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState, type JSX } from 'react';
 import { Tooltip, Badge, Button, Spinner, type BadgeVariant } from '@ema-agent/ui';
 import type { BackgroundProcessStatus, BackgroundProcessSummary } from '../../../../api/backgroundProcesses.js';
-import { tauriBridge } from '../../../../lib/tauriBridge.js';
+import { tauriBridge } from '../../../../lib/tauri/tauriBridge.js';
 import { showToast } from '../../../../lib/notifications/toast.js';
 import { useBackgroundProcessStore } from '../../../../stores/backgroundProcess.js';
 

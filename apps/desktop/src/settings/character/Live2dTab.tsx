@@ -12,7 +12,7 @@ import { ServerApiError } from '../../api/client.js';
 import { charactersApi, type Character } from '../../api/characters.js';
 import { renderLive2dPreview } from './live2dPreview.js';
 import { ServerImage } from '../../lib/images/serverImage.js';
-import { tauriBridge } from '../../lib/tauriBridge.js';
+import { tauriBridge } from '../../lib/tauri/tauriBridge.js';
 import { showToast } from '../../lib/notifications/toast.js';
 import { useCharacterStore } from '../../stores/character.js';
 import { Live2dModelConfiguration } from './Live2dModelConfiguration.js';

@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 import { create } from 'zustand';
 import { settingsApi } from '../api/settings.js';
 import { setThemeHue, setThemeRadius } from '@ema-agent/ui/utils';
-import { tauriBridge } from '../lib/tauriBridge.js';
+import { tauriBridge } from '../lib/tauri/tauriBridge.js';
 import type { ThemeSettings } from '@ema-agent/server/settings/themeSetting.js';
 import {
   DEFAULT_THEME_SETTINGS,

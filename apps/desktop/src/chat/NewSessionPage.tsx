@@ -5,6 +5,7 @@ import { restoreFailedDraft, useChatDraftStore, type ChatDraft } from '../stores
 import { useMainNavigationStore } from '../layout/navigation.js';
 import { submitChatDraft } from './input/submitChatDraft.js';
 import { ConversationStarters } from './conversationStarters.js';
+import { AttachmentDropOverlay, useAttachmentDrop } from './input/attachmentDrop.js';
 
 function fillQuickPrompt(prompt: string): void {
   const drafts = useChatDraftStore.getState();
@@ -13,6 +14,7 @@ function fillQuickPrompt(prompt: string): void {
 }
 
 export function NewSessionPage(): JSX.Element {
+  const { dropAreaRef, overlayWidth } = useAttachmentDrop(null);
   const projectId = useMainNavigationStore(state => state.newSessionProjectId);
   const pinnedProjects = useSessionStore(state => state.sessions.pinnedProjects);
   const projects = useSessionStore(state => state.sessions.projects);
@@ -50,7 +52,10 @@ export function NewSessionPage(): JSX.Element {
   }
 
   return (
-    <main className="ema-chat-main ema-chat-content-surface relative z-10 flex min-h-0 min-w-0 flex-1 flex-col">
+    <main
+      ref={dropAreaRef}
+      className="ema-chat-main ema-chat-content-surface relative z-10 flex min-h-0 min-w-0 flex-1 flex-col"
+    >
       {/* TODO: 新对话侧栏待接入；有项目时提供浏览器和文件，无项目时仅提供浏览器。 */}
       <header className="ema-chat-header flex shrink-0 items-center border-b border-[var(--ema-border)] px-4 py-2">
         <span className="text-sm font-medium text-[var(--ema-text-secondary)]">
@@ -59,6 +64,7 @@ export function NewSessionPage(): JSX.Element {
       </header>
       <ConversationStarters onChoose={fillQuickPrompt} />
       <ChatInput onSubmit={submitNewSession} />
+      <AttachmentDropOverlay width={overlayWidth} />
     </main>
   );
 }

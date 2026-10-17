@@ -93,7 +93,7 @@ export function SessionSidebar(): JSX.Element {
               <span>搜索</span>
             </Button>
           </div>
-          <div className="flex-1 overflow-y-auto py-1.5">
+          <div className="flex-1 overflow-y-auto py-1.5" data-sidebar-scroll>
             <PinnedSection
               projects={sessions.pinnedProjects}
               sessions={sessions.pinned}

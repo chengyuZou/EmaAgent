@@ -15,7 +15,8 @@ import {
   type Character,
   type Live2dConfiguration,
 } from '../../api/characters.js';
-import { tauriBridge, type Live2dPreviewCommand } from '../../lib/tauriBridge.js';
+import { tauriBridge } from '../../lib/tauri/tauriBridge.js';
+import type { Live2dPreviewCommand } from '../../lib/tauri/types.js';
 import { showToast } from '../../lib/notifications/toast.js';
 import { useCharacterStore } from '../../stores/character.js';
 

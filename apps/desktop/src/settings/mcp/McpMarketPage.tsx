@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Badge, Button, Callout, Dialog, EmptyState, Field, Input, MarketCard, SearchField, Spinner } from '@ema-agent/ui';
 import { mcpApi, type McpMarketDetail, type McpMarketEntry } from '../../api/mcp.js';
 import { showToast } from '../../lib/notifications/toast.js';
-import { tauriBridge } from '../../lib/tauriBridge.js';
+import { tauriBridge } from '../../lib/tauri/tauriBridge.js';
 import { useMcpStore } from '../../stores/mcp.js';
 import { PageHeader } from '../shared/PageHeader.js';
 

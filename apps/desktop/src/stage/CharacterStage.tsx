@@ -22,7 +22,7 @@ import {
 } from '@ema-agent/live2d-react';
 import { charactersApi } from '../api/characters.js';
 import { fetchServerObjectUrl } from '../api/serverFileUrl.js';
-import { tauriBridge } from '../lib/tauriBridge.js';
+import { tauriBridge } from '../lib/tauri/tauriBridge.js';
 
 export interface CharacterStageProps {
   targetCharacterName: string | null;

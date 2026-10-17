@@ -4,7 +4,7 @@ import type { PendingInteraction } from '@ema-agent/turn';
 import type { SessionBusinessMessage } from '@ema-agent/server/routes/ws/session.js';
 import { sessionWebSocket } from '../../api/sessionWebSocket.js';
 import { resolveConfiguredEventNotification, type NotifiableEvent } from '../../lib/notifications/eventNotifications.js';
-import { tauriBridge } from '../../lib/tauriBridge.js';
+import { tauriBridge } from '../../lib/tauri/tauriBridge.js';
 import { showToast, type ToastHandle } from '../../lib/notifications/toast.js';
 import { useSubagentStore } from '../../stores/subagent.js';
 import { useTurnStore, type TurnStoreEvent } from '../../stores/turn.js';

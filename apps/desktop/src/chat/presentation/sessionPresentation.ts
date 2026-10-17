@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { tauriBridge } from '../../lib/tauriBridge.js';
+import { tauriBridge } from '../../lib/tauri/tauriBridge.js';
 
 export interface SpeechTurnKey {
   readonly sessionId: string;

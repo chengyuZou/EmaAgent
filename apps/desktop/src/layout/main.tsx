@@ -3,7 +3,7 @@ import { Button, DropdownMenu, IconButton, Tooltip, type MenuItem } from '@ema-a
 import { ChatPage } from '../chat/ChatPage.js';
 import { subscribeSystemEvent } from '../lib/events/systemEventDispatcher.js';
 import { mountSystemEvents } from '../lib/events/systemSse.js';
-import { tauriBridge } from '../lib/tauriBridge.js';
+import { tauriBridge } from '../lib/tauri/tauriBridge.js';
 import { showToast } from '../lib/notifications/toast.js';
 import { ImageViewerProvider } from '../lib/images/imageViewer.js';
 import { MarkdownMedia } from '../lib/markdownMedia.js';

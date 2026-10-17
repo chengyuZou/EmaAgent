@@ -2,7 +2,7 @@
 import { memo, useCallback, useEffect, useRef, useState, type JSX } from 'react';
 import { Button, Callout, EmptyState, IconButton, Markdown, SearchField, Spinner, Tooltip } from '@ema-agent/ui';
 import { memoryApi, type MemoryFileContent, type MemorySearchResult } from '../../api/memory.js';
-import { tauriBridge } from '../../lib/tauriBridge.js';
+import { tauriBridge } from '../../lib/tauri/tauriBridge.js';
 import { PageHeader } from '../shared/PageHeader.js';
 import { MemoryFileTree } from './memoryFileTree.js';
 

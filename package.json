@@ -1,8 +1,8 @@
 {
   "name": "ema-agent",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "private": true,
-  "description": "EmaAgent V1 — local-first anime companion + desktop agent",
+  "description": "EmaAgent — local-first anime companion + desktop agent",
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev --filter=@ema-agent/desktop",

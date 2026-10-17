@@ -78,20 +78,23 @@ fn create_window(app: &tauri::AppHandle, label: &str) -> Result<WebviewWindow, S
             .additional_browser_args(SHARED_BROWSER_ARGS)
             .build()
             .map_err(|error| format!("failed to create stage webview: {error}"))?,
-        "main" => WebviewWindowBuilder::new(app, "main", WebviewUrl::App("main.html".into()))
-            .title("Ema")
-            .inner_size(1420.0, 880.0)
-            .min_inner_size(800.0, 600.0)
-            .center()
-            .visible(false)
-            .resizable(true)
-            .decorations(false)
-            .transparent(false)
-            .always_on_top(false)
-            .disable_drag_drop_handler()
-            .additional_browser_args(SHARED_BROWSER_ARGS)
-            .build()
-            .map_err(|error| format!("failed to create main webview: {error}"))?,
+        "main" => {
+            let builder =
+                WebviewWindowBuilder::new(app, "main", WebviewUrl::App("main.html".into()))
+                    .title("Ema")
+                    .inner_size(1420.0, 880.0)
+                    .min_inner_size(800.0, 600.0)
+                    .center()
+                    .visible(false)
+                    .resizable(true)
+                    .decorations(false)
+                    .transparent(false)
+                    .always_on_top(false)
+                    .additional_browser_args(SHARED_BROWSER_ARGS);
+            builder
+                .build()
+                .map_err(|error| format!("failed to create main webview: {error}"))?
+        }
         _ => return Err(format!("unknown window label: {label}")),
     };
 

@@ -1,4 +1,3 @@
-// 管理 Sidebar 原生拖放手势，并把一次落点提交为服务端持久顺序。
 import {
   createContext,
   useContext,
@@ -6,11 +5,11 @@ import {
   useMemo,
   useRef,
   useState,
-  type DragEvent,
-  type DragEventHandler,
+  type PointerEvent as ReactPointerEvent,
   type JSX,
   type ReactNode,
 } from 'react';
+import { createPortal } from 'react-dom';
 import type {
   ProjectSidebarMoveInput,
   SessionSidebarMoveInput,
@@ -22,19 +21,35 @@ type DraggedItem =
   | { kind: 'session'; id: string }
   | { kind: 'project'; id: string };
 
+interface DropTarget {
+  key: string;
+  acceptedKind: DraggedItem['kind'];
+  rejectedId: string | null;
+  move(id: string): Promise<void>;
+}
+
 interface DropTargetProps {
-  onDragOver?: DragEventHandler<HTMLElement>;
-  onDragLeave?: DragEventHandler<HTMLElement>;
-  onDrop?: DragEventHandler<HTMLElement>;
+  ref(element: HTMLElement | null): void;
   'data-drop-active'?: true;
   'data-drop-complete'?: true;
 }
 
+interface PointerDrag {
+  item: DraggedItem;
+  label: string;
+  pointerId: number;
+  source: HTMLElement;
+  startX: number;
+  startY: number;
+  x: number;
+  y: number;
+  active: boolean;
+}
+
 interface SidebarDragValue {
   dragged: DraggedItem | null;
-  startSession(event: DragEvent<HTMLElement>, sessionId: string): void;
-  startProject(event: DragEvent<HTMLElement>, projectId: string): void;
-  endDrag(): void;
+  startSession(event: ReactPointerEvent<HTMLElement>, sessionId: string, label: string): void;
+  startProject(event: ReactPointerEvent<HTMLElement>, projectId: string, label: string): void;
   sessionTargetProps(
     key: string,
     destination: SessionSidebarMoveInput['destination'],
@@ -51,115 +66,216 @@ const SidebarDragContext = createContext<SidebarDragValue | null>(null);
 
 export function SidebarDragProvider({ children }: { children: ReactNode }): JSX.Element {
   const [dragged, setDragged] = useState<DraggedItem | null>(null);
+  const [preview, setPreview] = useState<{ label: string; x: number; y: number } | null>(null);
   const [targetKey, setTargetKey] = useState<string | null>(null);
   const [completedKey, setCompletedKey] = useState<string | null>(null);
-  const draggedItem = useRef<DraggedItem | null>(null);
-  const dragVisualFrame = useRef<number | null>(null);
+  const gesture = useRef<PointerDrag | null>(null);
+  const targets = useRef(new Map<HTMLElement, DropTarget>());
+  const scrollFrame = useRef<number | null>(null);
   const completedTimer = useRef<number | null>(null);
+  const suppressClick = useRef(false);
 
-  useEffect(() => () => {
-    if (dragVisualFrame.current !== null) window.cancelAnimationFrame(dragVisualFrame.current);
-    if (completedTimer.current !== null) window.clearTimeout(completedTimer.current);
-  }, []);
-
-  function begin(event: DragEvent<HTMLElement>, item: DraggedItem): void {
-    draggedItem.current = item;
-    setTargetKey(null);
-    setCompletedKey(null);
-    event.dataTransfer.effectAllowed = 'move';
-    event.dataTransfer.setData('text/plain', `${item.kind}:${item.id}`);
-    if (dragVisualFrame.current !== null) window.cancelAnimationFrame(dragVisualFrame.current);
-    dragVisualFrame.current = window.requestAnimationFrame(() => {
-      setDragged(item);
-      dragVisualFrame.current = null;
-    });
+  function targetAt(x: number, y: number, item: DraggedItem): DropTarget | null {
+    let element = document.elementFromPoint(x, y);
+    while (element) {
+      const target = targets.current.get(element as HTMLElement);
+      if (target) {
+        if (target.acceptedKind === item.kind && target.rejectedId !== item.id) return target;
+        return null;
+      }
+      element = element.parentElement;
+    }
+    return null;
   }
 
   function endDrag(): void {
-    draggedItem.current = null;
-    if (dragVisualFrame.current !== null) {
-      window.cancelAnimationFrame(dragVisualFrame.current);
-      dragVisualFrame.current = null;
+    const current = gesture.current;
+    gesture.current = null;
+    if (scrollFrame.current !== null) {
+      window.cancelAnimationFrame(scrollFrame.current);
+      scrollFrame.current = null;
+    }
+    if (current?.source.hasPointerCapture(current.pointerId)) {
+      current.source.releasePointerCapture(current.pointerId);
     }
     setDragged(null);
+    setPreview(null);
     setTargetKey(null);
   }
 
-  function complete(key: string): void {
-    setCompletedKey(key);
-    if (completedTimer.current !== null) window.clearTimeout(completedTimer.current);
-    completedTimer.current = window.setTimeout(() => {
-      setCompletedKey(null);
-      completedTimer.current = null;
-    }, 320);
+  function scrollDuringDrag(): void {
+    const current = gesture.current;
+    if (!current?.active) return;
+    const scroll = current.source.closest<HTMLElement>('[data-sidebar-scroll]');
+    if (scroll) {
+      const bounds = scroll.getBoundingClientRect();
+      let delta = 0;
+      if (current.x >= bounds.left && current.x < bounds.right) {
+        if (current.y >= bounds.top && current.y < bounds.top + 32) delta = -8;
+        else if (current.y < bounds.bottom && current.y > bounds.bottom - 32) delta = 8;
+      }
+      if (delta !== 0) {
+        scroll.scrollTop += delta;
+        setTargetKey(targetAt(current.x, current.y, current.item)?.key ?? null);
+      }
+    }
+    scrollFrame.current = window.requestAnimationFrame(scrollDuringDrag);
   }
 
-  function commonTarget(
-    key: string,
-    acceptedKind: DraggedItem['kind'],
-    rejectedId: string | null,
-    move: (id: string) => Promise<void>,
-  ): DropTargetProps {
-    return {
-      onDragOver(event) {
-        const current = draggedItem.current;
-        if (current?.kind !== acceptedKind || current.id === rejectedId) return;
-        event.preventDefault();
-        event.stopPropagation();
-        event.dataTransfer.dropEffect = 'move';
-        setTargetKey(key);
-      },
-      onDragLeave(event) {
-        const current = draggedItem.current;
-        if (current?.kind !== acceptedKind || current.id === rejectedId) return;
-        if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
-        setTargetKey((current) => current === key ? null : current);
-      },
-      onDrop(event) {
-        const current = draggedItem.current;
-        if (current?.kind !== acceptedKind || current.id === rejectedId) return;
-        event.preventDefault();
-        event.stopPropagation();
-        const movedId = current.id;
+  function begin(event: ReactPointerEvent<HTMLElement>, item: DraggedItem, label: string): void {
+    if (event.button !== 0 || !event.isPrimary) return;
+    const target = event.target as Element;
+    const control = target.closest('button, a, input, textarea, select, [role="button"]');
+    if (control && !control.hasAttribute('data-sidebar-drag-handle')) return;
+    endDrag();
+    setCompletedKey(null);
+    gesture.current = {
+      item,
+      label,
+      pointerId: event.pointerId,
+      source: event.currentTarget,
+      startX: event.clientX,
+      startY: event.clientY,
+      x: event.clientX,
+      y: event.clientY,
+      active: false,
+    };
+  }
+
+  useEffect(() => {
+    function move(event: PointerEvent): void {
+      const current = gesture.current;
+      if (!current || event.pointerId !== current.pointerId) return;
+      if ((event.buttons & 1) === 0) {
         endDrag();
-        void runWithToast(
-          move(movedId).then(() => complete(key)),
-          acceptedKind === 'session' ? '移动对话失败' : '移动项目失败',
-        );
+        return;
+      }
+      current.x = event.clientX;
+      current.y = event.clientY;
+      if (!current.active) {
+        if (Math.hypot(current.x - current.startX, current.y - current.startY) < 6) return;
+        current.active = true;
+        suppressClick.current = true;
+        current.source.setPointerCapture(current.pointerId);
+        setDragged(current.item);
+        scrollFrame.current = window.requestAnimationFrame(scrollDuringDrag);
+      }
+      event.preventDefault();
+      setPreview({ label: current.label, x: current.x, y: current.y });
+      setTargetKey(targetAt(current.x, current.y, current.item)?.key ?? null);
+    }
+
+    function finish(event: PointerEvent): void {
+      const current = gesture.current;
+      if (!current || event.pointerId !== current.pointerId) return;
+      const target = current.active ? targetAt(event.clientX, event.clientY, current.item) : null;
+      endDrag();
+      if (!target) return;
+      void runWithToast(
+        target.move(current.item.id).then(() => {
+          setCompletedKey(target.key);
+          if (completedTimer.current !== null) window.clearTimeout(completedTimer.current);
+          completedTimer.current = window.setTimeout(() => {
+            setCompletedKey(null);
+            completedTimer.current = null;
+          }, 320);
+        }),
+        current.item.kind === 'session' ? '移动对话失败' : '移动项目失败',
+      );
+    }
+
+    function cancelPointer(event: PointerEvent): void {
+      if (gesture.current?.pointerId === event.pointerId) endDrag();
+    }
+
+    function cancelKey(event: KeyboardEvent): void {
+      if (event.key === 'Escape') endDrag();
+    }
+
+    function preventDragClick(event: MouseEvent): void {
+      if (!suppressClick.current || event.detail === 0) return;
+      suppressClick.current = false;
+      event.preventDefault();
+      event.stopPropagation();
+    }
+
+    function resetClick(): void {
+      suppressClick.current = false;
+    }
+
+    // 超过移动阈值才拦截点击, 保留轻点打开会话和按钮的键盘操作.
+    document.addEventListener('pointerdown', resetClick, true);
+    window.addEventListener('pointermove', move, { passive: false });
+    window.addEventListener('pointerup', finish);
+    window.addEventListener('pointercancel', cancelPointer);
+    window.addEventListener('lostpointercapture', cancelPointer);
+    window.addEventListener('blur', endDrag);
+    window.addEventListener('keydown', cancelKey);
+    document.addEventListener('click', preventDragClick, true);
+    return () => {
+      document.removeEventListener('pointerdown', resetClick, true);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', finish);
+      window.removeEventListener('pointercancel', cancelPointer);
+      window.removeEventListener('lostpointercapture', cancelPointer);
+      window.removeEventListener('blur', endDrag);
+      window.removeEventListener('keydown', cancelKey);
+      document.removeEventListener('click', preventDragClick, true);
+      endDrag();
+      if (completedTimer.current !== null) window.clearTimeout(completedTimer.current);
+    };
+  }, []);
+
+  function commonTarget(target: DropTarget): DropTargetProps {
+    let registered: HTMLElement | null = null;
+    return {
+      ref(element) {
+        if (registered) targets.current.delete(registered);
+        registered = element;
+        if (element) targets.current.set(element, target);
       },
-      ...(targetKey === key ? { 'data-drop-active': true as const } : {}),
-      ...(completedKey === key ? { 'data-drop-complete': true as const } : {}),
+      ...(targetKey === target.key ? { 'data-drop-active': true as const } : {}),
+      ...(completedKey === target.key ? { 'data-drop-complete': true as const } : {}),
     };
   }
 
   const value = useMemo<SidebarDragValue>(() => ({
     dragged,
-    startSession: (event, sessionId) => begin(event, { kind: 'session', id: sessionId }),
-    startProject: (event, projectId) => begin(event, { kind: 'project', id: projectId }),
-    endDrag,
-    sessionTargetProps: (key, destination, beforeSessionId) => commonTarget(
+    startSession: (event, id, label) => begin(event, { kind: 'session', id }, label),
+    startProject: (event, id, label) => begin(event, { kind: 'project', id }, label),
+    sessionTargetProps: (key, destination, beforeSessionId) => commonTarget({
       key,
-      'session',
-      beforeSessionId,
-      (sessionId) => useSessionStore.getState().moveSessionInSidebar(sessionId, {
+      acceptedKind: 'session',
+      rejectedId: beforeSessionId,
+      move: sessionId => useSessionStore.getState().moveSessionInSidebar(sessionId, {
         destination,
         beforeSessionId,
       }),
-    ),
-    projectTargetProps: (key, section, beforeProjectId) => commonTarget(
+    }),
+    projectTargetProps: (key, section, beforeProjectId) => commonTarget({
       key,
-      'project',
-      beforeProjectId,
-      (projectId) => useSessionStore.getState().moveProjectInSidebar(projectId, {
+      acceptedKind: 'project',
+      rejectedId: beforeProjectId,
+      move: projectId => useSessionStore.getState().moveProjectInSidebar(projectId, {
         section,
         beforeProjectId,
       }),
-    ),
+    }),
   }), [completedKey, dragged, targetKey]);
 
   return (
     <SidebarDragContext.Provider value={value}>
       {children}
+      {preview && createPortal(
+        <div
+          className="ema-sidebar-drag-preview"
+          style={{ left: preview.x + 12, top: preview.y + 12 }}
+          aria-hidden="true"
+        >
+          {preview.label}
+        </div>,
+        document.body,
+      )}
     </SidebarDragContext.Provider>
   );
 }

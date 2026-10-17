@@ -148,8 +148,38 @@ input.ema-session-search-input:focus-visible {
 .ema-resize-handle:hover { background: var(--ema-primary); }
 .ema-resize-handle:active { background: var(--ema-primary); }
 
+/* 调整尺寸时鼠标会离开分隔线, 仍保持与色条相同的左右调整光标. */
+body:has(.ema-session-sidebar[data-resizing='true']),
+body:has(.ema-session-sidebar[data-resizing='true']) *,
+body:has(.ema-workspace-separator[data-separator='active']),
+body:has(.ema-workspace-separator[data-separator='active']) * {
+  cursor: col-resize !important;
+}
+
 .ema-sidebar-item {
   position: relative;
+}
+
+.ema-sidebar-item[data-sidebar-draggable] {
+  user-select: none;
+  touch-action: none;
+}
+
+.ema-sidebar-drag-preview {
+  position: fixed;
+  z-index: 1000;
+  pointer-events: none;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 8px 12px;
+  border: 1px solid var(--ema-border);
+  border-radius: 8px;
+  background: var(--ema-surface-2);
+  color: var(--ema-text-primary);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 18%);
+  font-size: 13px;
 }
 
 .ema-sidebar-item[data-dragging='true'] {
