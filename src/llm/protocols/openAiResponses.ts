@@ -1,34 +1,34 @@
-// 把中立请求转换为 OpenAI Responses API，并使用其显式终态归一化流。
 import OpenAI from 'openai';
 import {
-  createLlmProviderResponseError,
-  LlmStreamProtocolError,
-  LlmToolArgumentsParseError,
-  normalizeLlmProviderError,
+  createLLMProviderResponseError,
+  LLMStreamProtocolError,
+  LLMToolArgumentsParseError,
+  normalizeLLMProviderError,
   throwIfAborted,
   throwIfAbortError,
 } from '../errors.js';
 import type { ContentPart, ToolResultBlock } from '../message.js';
 import type {
   AssistantBlock,
-  LlmConnection,
-  LlmGenerationSource,
-  LlmRequest,
-  LlmStopReason,
-  LlmStreamEvent,
-  LlmTool,
+  CompleteLLM,
+  LLMConnection,
+  LLMGenerationSource,
+  LLMRequest,
+  LLMStopReason,
+  LLMStreamEvent,
+  LLMTool,
   Message,
   UserBlock,
 } from '../types.js';
-import { createLlmTokenUsage } from '../usage.js';
+import { createLLMTokenUsage } from '../usage.js';
 
 type ResponseInput = OpenAI.Responses.ResponseInput;
 type ResponseInputItem = OpenAI.Responses.ResponseInputItem;
 type ResponseStreamEvent = OpenAI.Responses.ResponseStreamEvent;
 
-/** 只重放同一调用目标生成的 reasoning：reasoning 状态模型私有，无来源/跨协议/跨 Provider/跨模型都删除。 */
+/** 仅向原生成目标回传 reasoning ID 和加密内容, 不把其他模型的状态发给当前模型. */
 function shouldReplayOpenAiReasoning(
-  generatedBy: LlmGenerationSource | undefined,
+  generatedBy: LLMGenerationSource | undefined,
   providerId: string,
   modelId: string,
 ): boolean {
@@ -38,27 +38,102 @@ function shouldReplayOpenAiReasoning(
 }
 
 export function createOpenAiResponsesProtocol(
-  connection: LlmConnection, modelId: string,
-): (request: LlmRequest) => AsyncIterable<LlmStreamEvent> {
-  const client = new OpenAI({
+  connection: LLMConnection,
+  modelId: string,
+): (request: LLMRequest) => AsyncIterable<LLMStreamEvent> {
+  const client = createOpenAiResponsesClient(connection);
+  return (request) => streamOpenAiResponses(client, connection.providerId, modelId, request);
+}
+
+export function createOpenAiResponsesCompletion(
+  connection: LLMConnection,
+  modelId: string,
+): CompleteLLM {
+  const client = createOpenAiResponsesClient(connection);
+  return async (request) => {
+    try {
+      const response = await client.responses.create(
+        buildOpenAiResponsesParams(connection.providerId, modelId, request),
+        { signal: request.signal },
+      );
+      throwIfAborted(request.signal);
+      if (response.status !== 'completed' && response.status !== 'incomplete') {
+        throw createLLMProviderResponseError({
+          protocol: 'openai-responses-llm',
+          providerCode: response.error?.code,
+          message: response.error?.message ?? `Responses returned status ${response.status}`,
+          cause: response,
+        });
+      }
+      const blocks: AssistantBlock[] = [];
+      let stopReason: LLMStopReason = 'end_turn';
+      // output 可以交错出现思考, 正文和函数调用, 不能只读取 output_text.
+      for (const item of response.output) {
+        if (item.type === 'reasoning') {
+          const summaryText = item.summary.map(part => part.text).join('');
+          blocks.push({
+            type: 'reasoning',
+            id: item.id,
+            ...(summaryText ? { summaryText } : {}),
+            ...(item.encrypted_content ? { encryptedContent: item.encrypted_content } : {}),
+          });
+        } else if (item.type === 'message') {
+          for (const part of item.content) {
+            if (part.type === 'output_text') blocks.push({ type: 'text', text: part.text });
+            if (part.type === 'refusal') blocks.push({ type: 'text', text: part.refusal });
+          }
+        } else if (item.type === 'function_call') {
+          let args: unknown;
+          try {
+            args = JSON.parse(item.arguments);
+          } catch (error) {
+            throw new LLMToolArgumentsParseError(
+              'openai-responses-llm', item.call_id, item.name, error,
+            );
+          }
+          blocks.push({ type: 'tool_use', id: item.call_id, name: item.name, args });
+          stopReason = 'tool_use';
+        }
+      }
+      if (response.status === 'incomplete' && stopReason === 'end_turn') {
+        stopReason = response.incomplete_details?.reason === 'max_output_tokens'
+          ? 'max_tokens'
+          : 'stop_sequence';
+      }
+      return {
+        blocks,
+        stopReason,
+        usage: createLLMTokenUsage({
+          inputTokens: response.usage?.input_tokens ?? 0,
+          outputTokens: response.usage?.output_tokens ?? 0,
+          cacheReadInputTokens: response.usage?.input_tokens_details.cached_tokens,
+        }),
+      };
+    } catch (error) {
+      throwIfAbortError(error, request.signal);
+      throw normalizeLLMProviderError(error);
+    }
+  };
+}
+
+function createOpenAiResponsesClient(connection: LLMConnection): OpenAI {
+  return new OpenAI({
     apiKey: connection.apiKey ?? '',
     baseURL: connection.baseUrl,
     maxRetries: 0,
   });
-  return (request) => streamOpenAiResponses(client, connection.providerId, modelId, request);
 }
 
-async function* streamOpenAiResponses(
-  client: OpenAI,
+function buildOpenAiResponsesParams(
   providerId: string,
   modelId: string,
-  request: LlmRequest,
-): AsyncIterable<LlmStreamEvent> {
+  request: LLMRequest,
+): OpenAI.Responses.ResponseCreateParamsNonStreaming {
   const { instructions, input } = toResponsesInput(request.messages, providerId, modelId);
-  const params: OpenAI.Responses.ResponseCreateParamsStreaming = {
+  const params: OpenAI.Responses.ResponseCreateParamsNonStreaming = {
     model: modelId,
     input,
-    stream: true,
+    stream: false,
     max_output_tokens: request.maxOutputTokens,
     temperature: request.temperature,
   };
@@ -66,29 +141,42 @@ async function* streamOpenAiResponses(
   if (request.tools?.length && request.toolChoice !== 'none') {
     params.tools = request.tools.map(toResponsesTool);
     params.tool_choice = toResponsesToolChoice(request.toolChoice) as
-      OpenAI.Responses.ResponseCreateParamsStreaming['tool_choice'];
+      OpenAI.Responses.ResponseCreateParamsNonStreaming['tool_choice'];
   }
   if (request.thinking?.enabled === false) {
     params.reasoning = { effort: 'none' };
   } else if (request.thinking?.enabled === true) {
-    // 声明加密推理内容，使 reasoning item 可原样回传以续接 KV（stateless/零保留场景）。
+    // 请求供应商交付加密推理内容, 后续无需服务端会话也能回传原生 reasoning 状态.
     params.include = ['reasoning.encrypted_content'];
     if (request.thinking?.effort) {
       params.reasoning = {
         effort: request.thinking.effort,
-      } as OpenAI.Responses.ResponseCreateParamsStreaming['reasoning'];
+      } as OpenAI.Responses.ResponseCreateParamsNonStreaming['reasoning'];
     }
   }
 
+  return params;
+}
+
+async function* streamOpenAiResponses(
+  client: OpenAI,
+  providerId: string,
+  modelId: string,
+  request: LLMRequest,
+): AsyncIterable<LLMStreamEvent> {
+  const params = {
+    ...buildOpenAiResponsesParams(providerId, modelId, request),
+    stream: true as const,
+  };
   let stream: AsyncIterable<ResponseStreamEvent>;
   try {
     stream = await client.responses.create(params, { signal: request.signal });
   } catch (error) {
     throwIfAbortError(error, request.signal);
-    throw normalizeLlmProviderError(error);
+    throw normalizeLLMProviderError(error);
   }
 
-  let stopReason: LlmStopReason = 'end_turn';
+  let stopReason: LLMStopReason = 'end_turn';
   let nextBlockIndex = 0;
   let reasoningBlockIndex: number | undefined;
   let textBlockIndex: number | undefined;
@@ -97,7 +185,7 @@ async function* streamOpenAiResponses(
     callId: string;
     blockIndex: number;
   }>();
-  // output_index → 原生 reasoning item 状态（id/encryptedContent），供 thinking_complete 与后续重放。
+  // 按 output_index 保存供应商的 reasoning ID 和加密内容, 完成时交给历史消息保存.
   const reasoningItems = new Map<number, {
     id: string;
     encryptedContent?: string;
@@ -163,11 +251,10 @@ async function* streamOpenAiResponses(
             try {
               args = JSON.parse(event.arguments);
             } catch (error) {
-              throw new LlmToolArgumentsParseError(
+              throw new LLMToolArgumentsParseError(
                 'openai-responses-llm',
                 toolCall.callId,
                 toolCall.name,
-                event.arguments,
                 error,
               );
             }
@@ -186,17 +273,14 @@ async function* streamOpenAiResponses(
         case 'response.output_item.done': {
           const item = reasoningItems.get(event.output_index);
           if (item && event.item.type === 'reasoning') {
+            const encryptedContent = event.item.encrypted_content || item.encryptedContent;
             yield {
               type: 'thinking_complete',
               blockIndex: item.blockIndex,
               state: {
                 kind: 'openai',
                 id: event.item.id,
-                ...(event.item.encrypted_content
-                  ? { encryptedContent: event.item.encrypted_content }
-                  : item.encryptedContent
-                    ? { encryptedContent: item.encryptedContent }
-                    : {}),
+                ...(encryptedContent ? { encryptedContent } : {}),
               },
             };
             reasoningItems.delete(event.output_index);
@@ -209,7 +293,7 @@ async function* streamOpenAiResponses(
           if (usage) {
             yield {
               type: 'usage',
-              ...createLlmTokenUsage({
+              ...createLLMTokenUsage({
                 inputTokens: usage.input_tokens,
                 outputTokens: usage.output_tokens,
                 cacheReadInputTokens: usage.input_tokens_details.cached_tokens,
@@ -225,7 +309,7 @@ async function* streamOpenAiResponses(
           return;
         }
         case 'response.failed':
-          throw createLlmProviderResponseError({
+          throw createLLMProviderResponseError({
             protocol: 'openai-responses-llm',
             providerCode: event.response.error?.code,
             message: event.response.error?.message
@@ -233,7 +317,7 @@ async function* streamOpenAiResponses(
             cause: event,
           });
         case 'error':
-          throw createLlmProviderResponseError({
+          throw createLLMProviderResponseError({
             protocol: 'openai-responses-llm',
             providerCode: event.code,
             message: event.message,
@@ -245,11 +329,11 @@ async function* streamOpenAiResponses(
     }
   } catch (error) {
     throwIfAbortError(error, request.signal);
-    throw normalizeLlmProviderError(error);
+    throw normalizeLLMProviderError(error);
   }
 
   throwIfAborted(request.signal);
-  throw new LlmStreamProtocolError('openai-responses-llm');
+  throw new LLMStreamProtocolError('openai-responses-llm');
 }
 
 export function toResponsesInput(
@@ -298,9 +382,7 @@ export function toResponsesInput(
     let text = '';
     const calls: OpenAI.Responses.ResponseFunctionToolCall[] = [];
     const reasoning: ResponseInputItem[] = [];
-    // reasoning 只随生成它的同一个调用目标重放（reasoning 状态模型私有）；无来源、跨协议/
-    // 跨 Provider/跨模型的历史 thinking 一律删除。重放的是 Provider 返回的真实 item
-    // （id + encrypted_content 原样回传），不本地伪造 reasoning。
+    // 原生状态只回传给原生成目标, 正文和工具调用照常发送.
     const replayReasoning = shouldReplayOpenAiReasoning(message.generatedBy, providerId, modelId);
     for (const block of message.content as readonly AssistantBlock[]) {
       if (block.type === 'text') text += block.text;
@@ -361,7 +443,7 @@ function toResponsesContent(part: ContentPart): OpenAI.Responses.ResponseInputCo
   }
 }
 
-function toResponsesTool(tool: LlmTool): OpenAI.Responses.FunctionTool {
+function toResponsesTool(tool: LLMTool): OpenAI.Responses.FunctionTool {
   return {
     type: 'function',
     name: tool.name,
@@ -372,7 +454,7 @@ function toResponsesTool(tool: LlmTool): OpenAI.Responses.FunctionTool {
 }
 
 function toResponsesToolChoice(
-  choice: LlmRequest['toolChoice'],
+  choice: LLMRequest['toolChoice'],
 ): OpenAI.Responses.ToolChoiceOptions | OpenAI.Responses.ToolChoiceFunction | undefined {
   if (choice === undefined) return undefined;
   if (choice === 'auto' || choice === 'none') return choice;

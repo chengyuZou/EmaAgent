@@ -1,7 +1,7 @@
 import type { MemoryExtractionJobKind } from '@ema-agent/storage';
 import {
   runTurnExtraction,
-  type CompleteMemoryLlm,
+  type CompleteMemoryLLM,
   type CompletedTurnMemoryInput,
   type MemoryExtractionOutput,
 } from './common/extraction.js';
@@ -12,7 +12,7 @@ import { WORK_EXTRACTION_INPUT, WORK_EXTRACTION_SYSTEM } from './work/prompt.js'
 
 export interface CreateExtractTurnDeps {
   readonly loadCompletedTurn: (turnId: string) => Promise<CompletedTurnMemoryInput>;
-  readonly complete: CompleteMemoryLlm;
+  readonly complete: CompleteMemoryLLM;
 }
 
 export type ExtractTurn = (input: {

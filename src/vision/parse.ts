@@ -1,4 +1,3 @@
-// 将模型文本尽力解析成结构化视觉结果；普通文本本身也是合法的降级结果。
 import type { VisionBlock, VisionBlockKind } from './types.js';
 
 interface ParsedVisionResult {
@@ -19,6 +18,7 @@ const BLOCK_KINDS = new Set<VisionBlockKind>([
 export function parseVisionResult(raw: string): ParsedVisionResult {
   const text = raw.trim();
   const candidate = extractJsonCandidate(text);
+  // 普通文本也能用于图片描述和 OCR, 格式不符时保留正文, 不丢掉整次识别结果.
   if (!candidate) return fallbackResult(text);
 
   let parsed: unknown;

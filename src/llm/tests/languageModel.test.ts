@@ -1,6 +1,6 @@
-// 测试 LLM 公共入口只执行一次协议请求，并从同一条流收集完整结果。
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createLlmCompletion, createLlmCall } from '../languageModel.js';
+import { createLLMCompletion, createLLMCall } from '../languageModel.js';
+import type { LLMConnection, LLMRequest, LLMStreamEvent } from '../types.js';
 
 const openAiMock = vi.hoisted(() => ({
   constructor: vi.fn(),
@@ -17,104 +17,193 @@ vi.mock('openai', () => ({
   }),
 }));
 
+const connection: LLMConnection = {
+  providerId: 'test',
+  protocol: 'openai-llm',
+  apiKey: 'key',
+  baseUrl: 'https://example.test/v1',
+};
+const request: LLMRequest = { messages: [{ role: 'user', content: 'hello' }] };
+
 async function* streamOf(items: readonly unknown[]): AsyncIterable<unknown> {
-  for (const item of items) yield item;
+  yield* items;
 }
 
-describe('createLlmCall', () => {
-  beforeEach(() => {
-    openAiMock.constructor.mockClear();
-    openAiMock.create.mockReset();
-  });
+async function readEvents(stream: AsyncIterable<LLMStreamEvent>): Promise<LLMStreamEvent[]> {
+  const events: LLMStreamEvent[] = [];
+  for await (const event of stream) events.push(event);
+  return events;
+}
 
-  it('创建时冻结连接并关闭 SDK 内建重试', () => {
-    createLlmCall({
-      protocol: 'openai-llm',
-      apiKey: 'key',
-      baseUrl: 'https://example.test/v1',
-    }, 'test-model');
+beforeEach(() => {
+  openAiMock.constructor.mockReset();
+  openAiMock.create.mockReset();
+});
 
+describe('createLLMCall', () => {
+  it('首次消费才创建客户端, 固定连接并让并发和后续请求复用客户端', async () => {
+    const mutableConnection = { ...connection };
+    const call = createLLMCall(mutableConnection, 'test-model');
+    const stream = call(request);
+    expect(openAiMock.constructor).not.toHaveBeenCalled();
+    expect(openAiMock.create).not.toHaveBeenCalled();
+
+    Object.assign(mutableConnection, { apiKey: 'changed', baseUrl: 'https://changed.test/v1' });
+    openAiMock.create.mockImplementation(() => Promise.resolve(streamOf([
+      { choices: [{ delta: { content: 'ok' }, finish_reason: 'stop' }] },
+    ])));
+    await Promise.all([readEvents(stream), readEvents(call(request))]);
+    await readEvents(call(request));
+
+    expect(openAiMock.constructor).toHaveBeenCalledTimes(1);
     expect(openAiMock.constructor).toHaveBeenCalledWith({
-      apiKey: 'key',
-      baseURL: 'https://example.test/v1',
-      maxRetries: 0,
+      apiKey: 'key', baseURL: 'https://example.test/v1', maxRetries: 0,
     });
+    expect(openAiMock.create).toHaveBeenCalledTimes(3);
+    expect(openAiMock.create.mock.calls.every(([params]) => params.model === 'test-model' && params.stream === true))
+      .toBe(true);
   });
 
-  it('空模型身份在创建点失败', () => {
-    expect(() => createLlmCall({ protocol: 'openai-llm', apiKey: 'key' }, ' '))
-      .toThrow(TypeError);
-  });
-
-  it('collect 收集 text、tool、usage 和显式终态', async () => {
-    openAiMock.create.mockResolvedValueOnce(streamOf([
-      { choices: [{ delta: { content: '先读' }, finish_reason: null }] },
-      {
-        choices: [{
-          delta: {
-            tool_calls: [{
-              index: 0,
-              id: 'call-1',
-              function: { name: 'Read', arguments: '{"path":"a.txt"}' },
-            }],
-          },
-          finish_reason: null,
-        }],
-      },
-      { choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
-      {
-        choices: [],
-        usage: { prompt_tokens: 10, completion_tokens: 4 },
-      },
-    ]));
-    const call = createLlmCall({ protocol: 'openai-llm', apiKey: 'key' }, 'test-model');
-
-    await expect(createLlmCompletion(call({
-      messages: [{ role: 'user', content: 'hello' }],
-    }))).resolves.toEqual({
-      blocks: [
-        { type: 'text', text: '先读' },
-        { type: 'tool_use', id: 'call-1', name: 'Read', args: { path: 'a.txt' } },
-      ],
-      stopReason: 'tool_use',
-      usage: { inputTokens: 10, outputTokens: 4 },
-    });
-    expect(openAiMock.create).toHaveBeenCalledTimes(1);
-  });
-
-  it('没有协议终态的自然断流不得生成完成结果', async () => {
+  it('自然断流没有结束原因时仍然报流协议错误', async () => {
     openAiMock.create.mockResolvedValueOnce(streamOf([
       { choices: [{ delta: { content: 'partial' }, finish_reason: null }] },
     ]));
-    const call = createLlmCall({ protocol: 'openai-llm', apiKey: 'key' }, 'test-model');
-
-    await expect(createLlmCompletion(call({
-      messages: [{ role: 'user', content: 'hello' }],
-    }))).rejects.toMatchObject({
-      name: 'LlmStreamProtocolError',
-      protocol: 'openai-llm',
-    });
+    await expect(readEvents(createLLMCall(connection, 'model')(request)))
+      .rejects.toMatchObject({ name: 'LLMStreamProtocolError', protocol: 'openai-llm' });
   });
+});
 
-  it('OpenAI Responses 使用相同公共入口和显式 completed 终态', async () => {
-    openAiMock.create.mockResolvedValueOnce(streamOf([{
-      type: 'response.output_text.delta',
-      delta: 'ok',
-    }, {
-      type: 'response.completed',
-      response: { usage: null, incomplete_details: null },
-    }]));
-    const call = createLlmCall({
-      protocol: 'openai-responses-llm',
-      apiKey: 'key',
-    }, 'gpt-test');
+describe('createLLMCompletion', () => {
+  it('创建时固定连接, 首次请求才初始化, 并发和后续请求复用非流式客户端', async () => {
+    const mutableConnection = { ...connection };
+    const complete = createLLMCompletion(mutableConnection, 'test-model');
+    expect(openAiMock.constructor).not.toHaveBeenCalled();
+    Object.assign(mutableConnection, { apiKey: 'changed', protocol: 'openai-responses-llm' });
+    openAiMock.create.mockResolvedValue({
+      choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }],
+    });
 
-    await expect(createLlmCompletion(call({
-      messages: [{ role: 'user', content: 'hello' }],
-    }))).resolves.toEqual({
+    const results = await Promise.all([complete(request), complete(request)]);
+    await complete(request);
+    expect(results[0]).toEqual({
       blocks: [{ type: 'text', text: 'ok' }],
       stopReason: 'end_turn',
       usage: { inputTokens: 0, outputTokens: 0 },
     });
+    expect(openAiMock.constructor).toHaveBeenCalledTimes(1);
+    expect(openAiMock.constructor).toHaveBeenCalledWith({
+      apiKey: 'key', baseURL: 'https://example.test/v1', maxRetries: 0,
+    });
+    expect(openAiMock.create).toHaveBeenCalledTimes(3);
+    expect(openAiMock.create.mock.calls.every(([params]) => params.model === 'test-model' && params.stream === false))
+      .toBe(true);
   });
+
+  it('只发一次非流式请求, 保留思考, 正文, 工具参数和缓存用量', async () => {
+    openAiMock.create.mockResolvedValueOnce({
+      choices: [{
+        message: {
+          reasoning_content: 'reason',
+          content: 'answer',
+          tool_calls: [{
+            id: 'call-1',
+            type: 'function',
+            function: { name: 'Read', arguments: '{"path":"a.txt"}' },
+          }],
+        },
+        finish_reason: 'tool_calls',
+      }],
+      usage: {
+        prompt_tokens: 10,
+        completion_tokens: 4,
+        prompt_tokens_details: { cached_tokens: 3 },
+      },
+    });
+    const signal = new AbortController().signal;
+    const tools = [{ name: 'Read', description: 'Read a file', inputSchema: { type: 'object' } }];
+    await expect(createLLMCompletion(connection, 'model')({
+      ...request, tools, thinking: { enabled: true, effort: 'high' },
+      maxOutputTokens: 200, temperature: 0.2, signal,
+    })).resolves.toEqual({
+      blocks: [
+        { type: 'thinking', thinking: 'reason' },
+        { type: 'text', text: 'answer' },
+        { type: 'tool_use', id: 'call-1', name: 'Read', args: { path: 'a.txt' } },
+      ],
+      stopReason: 'tool_use',
+      usage: { inputTokens: 10, outputTokens: 4, cacheReadInputTokens: 3 },
+    });
+    expect(openAiMock.create).toHaveBeenCalledTimes(1);
+    const [params, options] = openAiMock.create.mock.calls[0]!;
+    expect(params).toMatchObject({
+      messages: request.messages,
+      stream: false,
+      max_tokens: 200,
+      temperature: 0.2,
+      thinking: { type: 'enabled' },
+      reasoning_effort: 'high',
+      tools: [{ type: 'function', function: { name: 'Read', parameters: { type: 'object' } } }],
+    });
+    expect(params.stream_options).toBeUndefined();
+    expect(options.signal).toBe(signal);
+  });
+
+  it('SDK 错误原样拒绝, 不补发请求', async () => {
+    const failure = new Error('request failed');
+    openAiMock.create.mockRejectedValueOnce(failure);
+    await expect(createLLMCompletion(connection, 'model')(request)).rejects.toBe(failure);
+    expect(openAiMock.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('非法工具参数拒绝整个结果', async () => {
+    openAiMock.create.mockResolvedValueOnce({
+      choices: [{
+        message: { tool_calls: [{ id: 'call-1', type: 'function', function: { name: 'Read', arguments: '{' } }] },
+        finish_reason: 'tool_calls',
+      }],
+    });
+    await expect(createLLMCompletion(connection, 'model')(request))
+      .rejects.toMatchObject({ name: 'LLMToolArgumentsParseError', callId: 'call-1', toolName: 'Read' });
+  });
+
+  it('没有 choice 或结束原因时不假装请求成功', async () => {
+    openAiMock.create.mockResolvedValueOnce({ choices: [] });
+    await expect(createLLMCompletion(connection, 'model')(request))
+      .rejects.toMatchObject({ name: 'LLMProviderResponseError', protocol: 'openai-llm' });
+  });
+
+  it('不支持的输入在 SDK 初始化前拒绝', async () => {
+    await expect(createLLMCompletion(connection, 'model')({
+      messages: [{ role: 'user', content: [{ type: 'file_data', data: 'YQ==', mimeType: 'text/plain' }] }],
+    })).rejects.toMatchObject({ name: 'LLMProtocolInputError' });
+    expect(openAiMock.constructor).not.toHaveBeenCalled();
+    expect(openAiMock.create).not.toHaveBeenCalled();
+  });
+
+  it('调用前已经取消时不初始化 SDK', async () => {
+    const controller = new AbortController();
+    const reason = new Error('cancelled');
+    controller.abort(reason);
+    await expect(createLLMCompletion(connection, 'model')({ ...request, signal: controller.signal }))
+      .rejects.toBe(reason);
+    expect(openAiMock.constructor).not.toHaveBeenCalled();
+    expect(openAiMock.create).not.toHaveBeenCalled();
+  });
+
+  it('共享初始化期间取消一个请求, 其他请求仍可执行', async () => {
+    const controller = new AbortController();
+    const reason = new Error('cancel during initialization');
+    const complete = createLLMCompletion(connection, 'model');
+    openAiMock.constructor.mockImplementationOnce(() => controller.abort(reason));
+    openAiMock.create.mockResolvedValueOnce({ choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }] });
+    await expect(complete({ ...request, signal: controller.signal })).rejects.toBe(reason);
+    expect(openAiMock.create).not.toHaveBeenCalled();
+    await expect(complete(request)).resolves.toMatchObject({ blocks: [{ type: 'text', text: 'ok' }] });
+    expect(openAiMock.constructor).toHaveBeenCalledTimes(1);
+    expect(openAiMock.create).toHaveBeenCalledTimes(1);
+  });
+});
+
+it.each([createLLMCall, createLLMCompletion])('空模型名在创建点失败', create => {
+  expect(() => create(connection, ' ')).toThrow(TypeError);
 });

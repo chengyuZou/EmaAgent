@@ -6,7 +6,7 @@ import { VisionDescriptionCache } from '@ema-agent/attachments';
 import { buildCharacterPrompt, type CharacterStore } from '@ema-agent/characters';
 import { createCompact } from '@ema-agent/compact';
 import { assembleContext, projectMessages, type DescribeImage } from '@ema-agent/context';
-import { type LlmTokenUsage } from '@ema-agent/llm';
+import { type LLMTokenUsage } from '@ema-agent/llm';
 import { isWitchTrialCharacter } from '@ema-agent/narrative';
 import {
   MEMORY_GUIDANCE,
@@ -398,7 +398,7 @@ function recordVisionUsage(
   callId: string,
   startedAt: number,
   status: 'completed' | 'failed' | 'cancelled',
-  usage: LlmTokenUsage | undefined,
+  usage: LLMTokenUsage | undefined,
   errorCode: string | null,
 ): void {
   recorder.record({

@@ -1,4 +1,3 @@
-// 测试协议转换前会拒绝真实的不兼容输入，而不是静默删除内容。
 import { describe, expect, it } from 'vitest';
 import { assertProtocolInput } from '../protocolInput.js';
 
@@ -12,7 +11,7 @@ describe('assertProtocolInput', () => {
         mimeType: 'application/pdf',
       }],
     }])).toThrow(expect.objectContaining({
-      name: 'LlmProtocolInputError',
+      name: 'LLMProtocolInputError',
       messageIndex: 0,
       blockIndex: 0,
       contentType: 'file_data',

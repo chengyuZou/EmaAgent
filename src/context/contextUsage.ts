@@ -1,5 +1,5 @@
 // 估算根模型调用的总输入, Provider 回报后只把同一调用的总量校正为实报.
-import type { LlmTokenUsage, LlmTool, Message } from '@ema-agent/llm';
+import type { LLMTokenUsage, LLMTool, Message } from '@ema-agent/llm';
 import { estimateMessagesTokens } from '@ema-agent/token';
 
 export interface ContextUsageEstimate {
@@ -18,7 +18,7 @@ export interface ContextUsage {
 /** messages 包含本次请求的 system 消息. */
 export function estimateContextUsage(input: {
   readonly contextWindow: number;
-  readonly tools: readonly LlmTool[];
+  readonly tools: readonly LLMTool[];
   readonly messages: readonly Message[];
 }): ContextUsageEstimate {
   return {
@@ -35,7 +35,7 @@ export function estimatedContextUsage(estimate: ContextUsageEstimate): ContextUs
   };
 }
 
-export function providerContextUsage(estimate: ContextUsageEstimate, usage: LlmTokenUsage): ContextUsage {
+export function providerContextUsage(estimate: ContextUsageEstimate, usage: LLMTokenUsage): ContextUsage {
   return {
     contextWindow: estimate.contextWindow,
     inputTokens: usage.inputTokens,

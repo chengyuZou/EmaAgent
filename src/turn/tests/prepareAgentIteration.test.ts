@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { CompactRequest, CompactResult } from '@ema-agent/compact';
-import type { LlmRequest, Message as ModelMessage } from '@ema-agent/llm';
+import type { LLMRequest, Message as ModelMessage } from '@ema-agent/llm';
 import type { Message as SessionMessage } from '@ema-agent/session';
 import { ToolPool } from '@ema-agent/tools';
 import { buildCompactPrompt } from '../../compact/compactPrompt.js';
@@ -31,7 +31,12 @@ function makePrepared(overrides: Partial<PreparedTurn> = {}): PreparedTurn {
     modelId: 'm',
     protocol: 'openai-llm',
     supportsImageInput: true,
-    callLlm: async function* () { yield { type: 'done', stopReason: 'end_turn' }; },
+    callLLM: async function* () { yield { type: 'done', stopReason: 'end_turn' }; },
+    completeLLM: async () => ({
+      blocks: [],
+      stopReason: 'end_turn',
+      usage: { inputTokens: 0, outputTokens: 0 },
+    }),
     ...overrides,
   } as unknown as PreparedTurn;
 }
@@ -82,7 +87,7 @@ function makeDeps(overrides: {
 
 describe('prepareAgentIteration', () => {
   it('Macro 编排保留工具原图, 交给当前 LLM 协议转换', async () => {
-    const requests: LlmRequest[] = [];
+    const requests: LLMRequest[] = [];
     const messages: readonly ModelMessage[] = [
       { role: 'assistant', content: [{ type: 'tool_use', id: 'read-1', name: 'Read', args: {} }] },
       { role: 'user', content: [{
@@ -101,10 +106,13 @@ describe('prepareAgentIteration', () => {
         maxOutput: 1_000,
         supportsImageInput: true,
         compactSettings: DEFAULT_COMPACT_SETTINGS,
-        callLlm: async function* (request) {
+        completeLLM: async (request) => {
           requests.push(request);
-          yield { type: 'text_delta', blockIndex: 0, delta: '<summary>工具图片未提供</summary>' };
-          yield { type: 'done', stopReason: 'end_turn' };
+          return {
+            blocks: [{ type: 'text', text: '<summary>工具图片未提供</summary>' }],
+            stopReason: 'end_turn',
+            usage: { inputTokens: 0, outputTokens: 0 },
+          };
         },
       }),
       createCompact,

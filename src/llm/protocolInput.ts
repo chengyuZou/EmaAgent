@@ -1,6 +1,5 @@
-// 在中立消息跨入具体协议前拒绝无法无损表达的内容。
 import type { LLMProtocol } from '@ema-agent/providers';
-import { LlmProtocolInputError } from './errors.js';
+import { LLMProtocolInputError } from './errors.js';
 import type {
   ContentPart,
   Message,
@@ -96,7 +95,7 @@ function fail(
   contentType: UserBlock['type'],
   detail: string,
 ): never {
-  throw new LlmProtocolInputError(
+  throw new LLMProtocolInputError(
     protocol,
     messageIndex,
     blockIndex,

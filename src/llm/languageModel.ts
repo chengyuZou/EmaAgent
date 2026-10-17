@@ -1,26 +1,22 @@
-// 创建点固定连接与模型身份, 首次消费流时才加载对应协议和 SDK.
-// createLlmCompletion 收集同一条流, 不另发请求.
 import { throwIfAborted } from './errors.js';
 import type { AssistantBlock } from './message.js';
 import { assertProtocolInput } from './protocolInput.js';
 import type {
-  CallLlm,
-  LlmCompletion,
-  LlmConnection,
-  LlmRequest,
-  LlmStreamEvent,
-  LlmThinkingState,
-  LlmTokenUsage,
+  CallLLM,
+  CompleteLLM,
+  LLMConnection,
+  LLMRequest,
+  LLMStreamEvent,
+  LLMThinkingState,
 } from './types.js';
-import { updateLlmCallUsage } from './usage.js';
 
-/** 连接与 modelId 在创建时固定, 同一 CallLlm 的请求复用 SDK Client. */
-export function createLlmCall(connection: LlmConnection, modelId: string): CallLlm {
+/** 连接与 modelId 在创建时固定, 同一 CallLLM 的请求复用 SDK Client. */
+export function createLLMCall(connection: LLMConnection, modelId: string): CallLLM {
   if (!modelId.trim()) throw new TypeError('LLM model must not be empty');
-  const callConnection: LlmConnection = { ...connection };
+  const callConnection: LLMConnection = { ...connection };
   // 共享初始化 Promise, 避免并发的首次请求各自创建客户端.
-  let protocolStream: Promise<CallLlm> | undefined;
-  async function* stream(request: LlmRequest): AsyncIterable<LlmStreamEvent> {
+  let protocolStream: Promise<CallLLM> | undefined;
+  async function* stream(request: LLMRequest): AsyncIterable<LLMStreamEvent> {
     throwIfAborted(request.signal);
     protocolStream ??= createProtocolStream(callConnection, modelId);
     const call = await protocolStream;
@@ -28,18 +24,17 @@ export function createLlmCall(connection: LlmConnection, modelId: string): CallL
     yield* call(request);
   }
 
-  return (request: LlmRequest): AsyncIterable<LlmStreamEvent> => {
+  return (request: LLMRequest): AsyncIterable<LLMStreamEvent> => {
     assertProtocolInput(callConnection.protocol, request.messages);
     return stream(request);
   };
 }
 
 async function createProtocolStream(
-  connection: LlmConnection,
+  connection: LLMConnection,
   modelId: string,
-): Promise<CallLlm> {
-  // Windows 本地独立导入: OpenAI SDK 约 0.29s, Anthropic 约 0.18s, Gemini 约 0.22s; 耗时随环境变化.
-  // 按实际协议加载, 避免导入 LLM 包时提前加载全部 SDK.
+): Promise<CallLLM> {
+  // 只加载实际使用的协议, 避免启动时加载全部 SDK. 同一调用函数复用初始化结果.
   switch (connection.protocol) {
     case 'openai-llm': {
       const { createOpenAiChatProtocol } = await import('./protocols/openAiChat.js');
@@ -60,14 +55,54 @@ async function createProtocolStream(
   }
 }
 
+/** 与流式入口使用相同的连接固定和延迟初始化规则, 通过 SDK 非流式请求取得完整结果. */
+export function createLLMCompletion(connection: LLMConnection, modelId: string): CompleteLLM {
+  if (!modelId.trim()) throw new TypeError('LLM model must not be empty');
+  const callConnection: LLMConnection = { ...connection };
+  let protocolCompletion: Promise<CompleteLLM> | undefined;
+
+  return async (request) => {
+    throwIfAborted(request.signal);
+    assertProtocolInput(callConnection.protocol, request.messages);
+    protocolCompletion ??= createProtocolCompletion(callConnection, modelId);
+    const complete = await protocolCompletion;
+    throwIfAborted(request.signal);
+    return complete(request);
+  };
+}
+
+async function createProtocolCompletion(
+  connection: LLMConnection,
+  modelId: string,
+): Promise<CompleteLLM> {
+  switch (connection.protocol) {
+    case 'openai-llm': {
+      const { createOpenAiChatCompletion } = await import('./protocols/openAiChat.js');
+      return createOpenAiChatCompletion(connection, modelId);
+    }
+    case 'openai-responses-llm': {
+      const { createOpenAiResponsesCompletion } = await import('./protocols/openAiResponses.js');
+      return createOpenAiResponsesCompletion(connection, modelId);
+    }
+    case 'anthropic-llm': {
+      const { createAnthropicCompletion } = await import('./protocols/anthropic.js');
+      return createAnthropicCompletion(connection, modelId);
+    }
+    case 'gemini-llm': {
+      const { createGeminiCompletion } = await import('./protocols/gemini.js');
+      return createGeminiCompletion(connection, modelId);
+    }
+  }
+}
+
 /**
- * 把流式 thinking 文本与协议原生状态合成可重放的 Assistant Block。
- * OpenAI reasoning 的摘要文本可缺省，但 item id/encryptedContent 本身仍必须保留；
- * Anthropic 与 Gemini 没有思考文本时不制造空内容块。
+ * 将思考文本和原生状态合成历史消息中的内容块.
+ * OpenAI 可以只返回 reasoning ID 而没有摘要文本, 此时仍保留原生状态.
+ * Anthropic 和 Gemini 没有思考文本时不创建空内容块.
  */
 export function createAssistantThinkingBlock(
   thinking: string | undefined,
-  state: LlmThinkingState | undefined,
+  state: LLMThinkingState | undefined,
 ): AssistantBlock | undefined {
   if (state?.kind === 'openai') {
     return {
@@ -94,61 +129,3 @@ export function createAssistantThinkingBlock(
   };
 }
 
-/** 对一条 stream 的无损收集：块按原始 blockIndex 顺序聚合，usage 取末次快照差，stopReason 来自 done。 */
-export async function createLlmCompletion(
-  stream: AsyncIterable<LlmStreamEvent>,
-): Promise<LlmCompletion> {
-  const blocks = new Map<number, AssistantBlock>();
-  let usage: LlmTokenUsage = { inputTokens: 0, outputTokens: 0 };
-  let stopReason: LlmCompletion['stopReason'] = 'end_turn';
-
-  for await (const event of stream) {
-    switch (event.type) {
-      case 'text_delta': {
-        const current = blocks.get(event.blockIndex);
-        const text = current?.type === 'text' ? current.text : '';
-        blocks.set(event.blockIndex, { type: 'text', text: text + event.delta });
-        break;
-      }
-      case 'thinking_delta': {
-        const current = blocks.get(event.blockIndex);
-        const thinking = current?.type === 'thinking' ? current.thinking : '';
-        blocks.set(event.blockIndex, { type: 'thinking', thinking: thinking + event.delta });
-        break;
-      }
-      case 'thinking_complete': {
-        const current = blocks.get(event.blockIndex);
-        const block = createAssistantThinkingBlock(
-          current?.type === 'thinking' ? current.thinking : undefined,
-          event.state,
-        );
-        if (block) blocks.set(event.blockIndex, block);
-        break;
-      }
-      case 'tool_use_delta':
-        break;
-      case 'tool_use_complete':
-        blocks.set(event.blockIndex, {
-          type: 'tool_use',
-          id: event.callId,
-          name: event.name,
-          args: event.args,
-        });
-        break;
-      case 'usage':
-        usage = updateLlmCallUsage(usage, event).usage;
-        break;
-      case 'done':
-        stopReason = event.stopReason;
-        break;
-    }
-  }
-
-  return {
-    blocks: [...blocks.entries()]
-      .sort(([left], [right]) => left - right)
-      .map(([, block]) => block),
-    stopReason,
-    usage,
-  };
-}

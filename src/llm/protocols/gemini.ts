@@ -1,4 +1,3 @@
-// 把中立请求转换为 Gemini generateContent，并归一化 Part 与停止原因。
 import {
   FunctionCallingConfigMode,
   GoogleGenAI,
@@ -7,6 +6,7 @@ import type {
   Content,
   FunctionDeclaration,
   GenerateContentConfig,
+  GenerateContentParameters,
   GenerateContentResponse,
   Part,
   ThinkingConfig,
@@ -14,30 +14,32 @@ import type {
 } from '@google/genai';
 import { randomUUID } from 'node:crypto';
 import {
-  LlmStreamProtocolError,
-  normalizeLlmProviderError,
+  createLLMProviderResponseError,
+  LLMStreamProtocolError,
+  normalizeLLMProviderError,
   throwIfAborted,
   throwIfAbortError,
 } from '../errors.js';
 import type { ContentPart, ToolResultBlock } from '../message.js';
 import type {
   AssistantBlock,
-  LlmConnection,
-  LlmGenerationSource,
-  LlmRequest,
-  LlmStopReason,
-  LlmStreamEvent,
-  LlmThinking,
-  LlmThinkingEffort,
-  LlmTool,
+  CompleteLLM,
+  LLMConnection,
+  LLMGenerationSource,
+  LLMRequest,
+  LLMStopReason,
+  LLMStreamEvent,
+  LLMThinking,
+  LLMThinkingEffort,
+  LLMTool,
   Message,
   UserBlock,
 } from '../types.js';
-import { createLlmTokenUsage } from '../usage.js';
+import { createLLMTokenUsage } from '../usage.js';
 
-/** 只重放同一调用目标生成的 thought：thoughtSignature 模型私有，无来源/跨协议/跨 Provider/跨模型都删除。 */
+/** 仅向生成签名的同一供应商, 模型和协议回传思考状态. */
 function shouldReplayGeminiThought(
-  generatedBy: LlmGenerationSource | undefined,
+  generatedBy: LLMGenerationSource | undefined,
   providerId: string,
   modelId: string,
 ): boolean {
@@ -47,8 +49,8 @@ function shouldReplayGeminiThought(
 }
 
 const DEFAULT_THINKING_BUDGET_TOKENS = 8_000;
-/** 中立强度档 → thinkingBudget 的产品取值（非官方对照；Google 只给每模型范围）。 */
-const EFFORT_BUDGET_TOKENS: Record<LlmThinkingEffort, number> = {
+// 本项目将强度换算为预算的取值, 不表示与其他供应商的同名档位等效.
+const EFFORT_BUDGET_TOKENS: Record<LLMThinkingEffort, number> = {
   low: 2_000,
   medium: 8_000,
   high: 16_000,
@@ -56,12 +58,11 @@ const EFFORT_BUDGET_TOKENS: Record<LlmThinkingEffort, number> = {
 };
 
 /**
- * 构造 Gemini thinkingConfig：enabled=false 显式关闭（thinkingBudget 0）；
- * enabled=true 时 budgetTokens 显式值 > effort 映射表 > 默认 8K，
- * 预算 clamp 到 maxOutputTokens - 1（thinking 计入输出）。
+ * 关闭时发送 thinkingBudget: 0. 开启时优先使用 budgetTokens, 其次 effort, 最后默认预算.
+ * 给出输出上限时, 思考预算至多为 maxOutputTokens - 1, 为正文留出输出空间.
  */
 export function buildGeminiThinkingConfig(
-  thinking: LlmThinking | undefined,
+  thinking: LLMThinking | undefined,
   maxOutputTokens: number | undefined,
 ): ThinkingConfig | undefined {
   if (thinking?.enabled === false) return { thinkingBudget: 0 };
@@ -77,22 +78,83 @@ export function buildGeminiThinkingConfig(
 }
 
 export function createGeminiProtocol(
-  connection: LlmConnection, modelId: string,
-): (request: LlmRequest) => AsyncIterable<LlmStreamEvent> {
-  const baseUrl = normalizeGeminiBaseUrl(connection.baseUrl);
-  const client = new GoogleGenAI({
-    apiKey: connection.apiKey ?? '',
-    ...(baseUrl ? { httpOptions: { baseUrl } } : {}),
-  });
+  connection: LLMConnection,
+  modelId: string,
+): (request: LLMRequest) => AsyncIterable<LLMStreamEvent> {
+  const client = createGeminiClient(connection);
   return (request) => streamGemini(client, connection.providerId, modelId, request);
 }
 
-async function* streamGemini(
-  client: GoogleGenAI,
+export function createGeminiCompletion(
+  connection: LLMConnection,
+  modelId: string,
+): CompleteLLM {
+  const client = createGeminiClient(connection);
+  return async (request) => {
+    try {
+      const response = await client.models.generateContent(
+        buildGeminiRequest(connection.providerId, modelId, request),
+      );
+      throwIfAborted(request.signal);
+      const candidate = response.candidates?.[0];
+      const finishReason = candidate?.finishReason;
+      if (!finishReason || String(finishReason) === 'FINISH_REASON_UNSPECIFIED') {
+        throw createLLMProviderResponseError({
+          protocol: 'gemini-llm',
+          message: 'Gemini returned no candidate with a finish reason',
+          cause: response,
+        });
+      }
+      const blocks: AssistantBlock[] = [];
+      let stopReason = mapStopReason(String(finishReason));
+      for (const part of candidate.content?.parts ?? []) {
+        if (part.thought && part.text) {
+          blocks.push({
+            type: 'gemini_thought',
+            text: part.text,
+            ...(part.thoughtSignature ? { thoughtSignature: part.thoughtSignature } : {}),
+          });
+          continue;
+        }
+        if (part.text) blocks.push({ type: 'text', text: part.text });
+        if (part.functionCall) {
+          if (!part.functionCall.name) {
+            throw new Error('gemini-llm returned a functionCall without name');
+          }
+          blocks.push({
+            type: 'tool_use',
+            id: part.functionCall.id ?? `gemini-${randomUUID()}`,
+            name: part.functionCall.name,
+            args: part.functionCall.args ?? {},
+          });
+          stopReason = 'tool_use';
+        }
+      }
+      return {
+        blocks,
+        stopReason,
+        usage: createGeminiUsage(response.usageMetadata),
+      };
+    } catch (error) {
+      throwIfAbortError(error, request.signal);
+      throw normalizeLLMProviderError(error);
+    }
+  };
+}
+
+function createGeminiClient(connection: LLMConnection): GoogleGenAI {
+  const baseUrl = normalizeGeminiBaseUrl(connection.baseUrl);
+  return new GoogleGenAI({
+    apiKey: connection.apiKey ?? '',
+    ...(baseUrl ? { httpOptions: { baseUrl } } : {}),
+  });
+}
+
+function buildGeminiRequest(
   providerId: string,
   modelId: string,
-  request: LlmRequest,
-): AsyncIterable<LlmStreamEvent> {
+  request: LLMRequest,
+): GenerateContentParameters {
   const { system, contents } = toGeminiContents(request.messages, providerId, modelId);
   const config: GenerateContentConfig = {
     maxOutputTokens: request.maxOutputTokens,
@@ -108,27 +170,31 @@ async function* streamGemini(
   }
   const thinkingConfig = buildGeminiThinkingConfig(request.thinking, request.maxOutputTokens);
   if (thinkingConfig) config.thinkingConfig = thinkingConfig;
+  return { model: modelId, contents, config };
+}
 
+async function* streamGemini(
+  client: GoogleGenAI,
+  providerId: string,
+  modelId: string,
+  request: LLMRequest,
+): AsyncIterable<LLMStreamEvent> {
   let stream: AsyncGenerator<GenerateContentResponse>;
   try {
-    stream = await client.models.generateContentStream({
-      model: modelId,
-      contents,
-      config,
-    });
+    stream = await client.models.generateContentStream(buildGeminiRequest(providerId, modelId, request));
   } catch (error) {
     throwIfAbortError(error, request.signal);
-    throw normalizeLlmProviderError(error);
+    throw normalizeLLMProviderError(error);
   }
 
-  let stopReason: LlmStopReason = 'end_turn';
+  let stopReason: LLMStopReason = 'end_turn';
   let receivedFinishReason = false;
   let nextBlockIndex = 0;
   let thinkingBlockIndex: number | undefined;
   let thinkingCompleted = false;
   const thinkingSignatures = new Map<number, string>();
   let textBlockIndex: number | undefined;
-  let lastUsage: Extract<LlmStreamEvent, { type: 'usage' }> | undefined;
+  let lastUsage: Extract<LLMStreamEvent, { type: 'usage' }> | undefined;
 
   try {
     for await (const chunk of stream) {
@@ -175,23 +241,17 @@ async function* streamGemini(
       if (chunk.usageMetadata) {
         lastUsage = {
           type: 'usage',
-          ...createLlmTokenUsage({
-            inputTokens: (chunk.usageMetadata.promptTokenCount ?? 0)
-              + (chunk.usageMetadata.toolUsePromptTokenCount ?? 0),
-            outputTokens: (chunk.usageMetadata.candidatesTokenCount ?? 0)
-              + (chunk.usageMetadata.thoughtsTokenCount ?? 0),
-            cacheReadInputTokens: chunk.usageMetadata.cachedContentTokenCount,
-          }),
+          ...createGeminiUsage(chunk.usageMetadata),
         };
       }
     }
   } catch (error) {
     throwIfAbortError(error, request.signal);
-    throw normalizeLlmProviderError(error);
+    throw normalizeLLMProviderError(error);
   }
 
   throwIfAborted(request.signal);
-  // Gemini 没有 per-block 完成事件：流收口时统一发一次 thinking_complete（带 thoughtSignature）。
+  // 当前读取的 Gemini 响应没有逐块结束事件, 迭代结束后交付思考块的最终状态.
   if (thinkingBlockIndex !== undefined && !thinkingCompleted) {
     thinkingCompleted = true;
     const thoughtSignature = thinkingSignatures.get(thinkingBlockIndex);
@@ -203,9 +263,17 @@ async function* streamGemini(
         : {}),
     };
   }
-  if (!receivedFinishReason) throw new LlmStreamProtocolError('gemini-llm');
+  if (!receivedFinishReason) throw new LLMStreamProtocolError('gemini-llm');
   if (lastUsage) yield lastUsage;
   yield { type: 'done', stopReason };
+}
+
+function createGeminiUsage(usage: GenerateContentResponse['usageMetadata']) {
+  return createLLMTokenUsage({
+    inputTokens: (usage?.promptTokenCount ?? 0) + (usage?.toolUsePromptTokenCount ?? 0),
+    outputTokens: (usage?.candidatesTokenCount ?? 0) + (usage?.thoughtsTokenCount ?? 0),
+    cacheReadInputTokens: usage?.cachedContentTokenCount,
+  });
 }
 
 function toGeminiContents(
@@ -273,8 +341,7 @@ function toGeminiContents(
 
     flushToolImages();
     const parts: Part[] = [];
-    // thought 只随生成它的同一个调用目标重放（thoughtSignature 模型私有）；
-    // 无来源、跨协议/跨 Provider/跨模型的 thought 一律删除，text/tool_use 不受影响。
+    // 签名只回传给原生成目标, 正文和工具调用不受此检查影响.
     const replayThought = shouldReplayGeminiThought(message.generatedBy, providerId, modelId);
     for (const block of message.content as readonly AssistantBlock[]) {
       if (block.type === 'text') parts.push({ text: block.text });
@@ -342,7 +409,7 @@ function toGeminiToolResponse(toolResult: ToolResultBlock): Record<string, unkno
   }
 }
 
-function toGeminiFunctionDeclaration(tool: LlmTool): FunctionDeclaration {
+function toGeminiFunctionDeclaration(tool: LLMTool): FunctionDeclaration {
   const { $schema, ...inputSchema } = tool.inputSchema;
   void $schema;
   return {
@@ -352,7 +419,7 @@ function toGeminiFunctionDeclaration(tool: LlmTool): FunctionDeclaration {
   };
 }
 
-function toGeminiToolConfig(choice: LlmRequest['toolChoice']): ToolConfig {
+function toGeminiToolConfig(choice: LLMRequest['toolChoice']): ToolConfig {
   if (choice === undefined || choice === 'auto') {
     return { functionCallingConfig: { mode: FunctionCallingConfigMode.AUTO } };
   }
@@ -381,7 +448,7 @@ function mimeFromUri(uri: string): string {
   try {
     path = new URL(uri).pathname;
   } catch {
-    // gs:// URI 不能被所有 Node URL 版本一致解析，直接检查原字符串即可。
+    // 地址无法解析时按原字符串检查扩展名, 不在这里下载或读取文件.
   }
   const lower = path.toLowerCase();
   if (lower.endsWith('.png')) return 'image/png';
@@ -392,7 +459,7 @@ function mimeFromUri(uri: string): string {
   return 'application/octet-stream';
 }
 
-function mapStopReason(reason: string): LlmStopReason {
+function mapStopReason(reason: string): LLMStopReason {
   if (reason === 'MAX_TOKENS') return 'max_tokens';
   if (reason === 'STOP') return 'end_turn';
   return 'stop_sequence';

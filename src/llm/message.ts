@@ -1,7 +1,6 @@
-// 定义单次语言模型调用使用的不可变消息，不承载 Session 持久化或界面展示字段。
-import type { LlmGenerationSource } from './types.js';
+import type { LLMGenerationSource } from './types.js';
 
-/** Provider 可以接收的用户输入内容。 */
+/** 用户输入的文本和媒体. 具体协议能否表达这些内容由 protocolInput 检查. */
 export type ContentPart =
   | { type: 'text'; text: string }
   | { type: 'image_url'; url: string; name?: string; width?: number; height?: number }
@@ -11,10 +10,8 @@ export type ContentPart =
   | { type: 'file_url'; url: string; mimeType: string; filename?: string; pageCount?: number };
 
 /**
- * Provider 返回并可能在下一次调用中继续使用的助手内容。推理内容按协议判别联合：
- * thinking（Anthropic signature）、reasoning（OpenAI Responses item id/encrypted）、
- * gemini_thought（Gemini thoughtSignature）各自携带原生续接状态；Adapter 只重放
- * 与自身协议匹配的变体，跨协议一律忽略。
+ * 原生思考状态分别保存在 thinking, reasoning 和 gemini_thought 中.
+ * 协议转换时还会检查 generatedBy, 不向不同生成目标回传这些状态.
  */
 export type AssistantBlock =
   | { type: 'text'; text: string }
@@ -23,13 +20,12 @@ export type AssistantBlock =
   | { type: 'reasoning'; id: string; summaryText?: string; encryptedContent?: string }
   | { type: 'gemini_thought'; text: string; thoughtSignature?: string };
 
-/** Tool Result 能回传给模型的媒体范围比普通用户输入更窄。 */
+/** 工具结果包含文本或图片, 不接受普通用户输入中的音频和文件块. */
 export type ToolResultContentPart =
   | { type: 'text'; text: string }
   | { type: 'image_data'; data: string; mimeType: string; width?: number; height?: number }
   | { type: 'image_url'; url: string; width?: number; height?: number };
 
-/** 只描述模型可见的 Tool Result，不包含 UI presentation、耗时或持久化元数据。 */
 export interface ToolResultBlock {
   type: 'tool_result';
   toolCallId: string;
@@ -40,10 +36,8 @@ export interface ToolResultBlock {
 export type UserBlock = ContentPart | ToolResultBlock;
 
 /**
- * LLM 模块的标准消息。
- *
- * Adapter 只能把该结构翻译为 Provider SDK 请求，不能接收 Session Message 或前端 Wire。
- * Tool Result 采用 user 内容块，避免把某一家 Provider 的 `role: tool` 变成领域模型。
+ * 工具回复放在 user 内容中, 协议实现再转换成各供应商要求的角色和结构.
+ * cacheBreakpoint 只在 Anthropic 请求中转换为缓存标记, 其他协议忽略它.
  */
 export type Message =
   | { role: 'system'; content: string; cacheBreakpoint?: true }
@@ -53,9 +47,8 @@ export type Message =
       content: readonly AssistantBlock[];
       cacheBreakpoint?: true;
       /**
-       * 用于区分这条 Assistant 历史由哪个provider的哪个模型,以及使用的协议生成
-       * 避免发生跨模型/跨协议的续接, 例如 Anthropic 的 thinking 不能被 OpenAI 的 Responses item id/encrypted 续接
-       * 在构建上下文时跳过所有不属于当前模型/协议的 Assistant 历史
+       * 缺失或与当前 providerId, modelId, protocol 不一致时, 不回传原生思考状态.
+       * 普通正文和工具调用仍保留, 不因此删除整条助手消息.
        */
-      generatedBy?: LlmGenerationSource;
+      generatedBy?: LLMGenerationSource;
     };

@@ -1,10 +1,10 @@
 // 验证 fork 固定前缀交接, 当前 Assistant 的落库边界和等待取消.
 import { describe, expect, it, vi } from 'vitest';
-import type { LlmGenerationSource } from '@ema-agent/llm';
+import type { LLMGenerationSource } from '@ema-agent/llm';
 import type { SessionMessage } from '@ema-agent/session';
 import { createForkParentMessages } from '../forkParentMessages.js';
 
-const source: LlmGenerationSource = { providerId: 'p', modelId: 'm', protocol: 'openai-llm' };
+const source: LLMGenerationSource = { providerId: 'p', modelId: 'm', protocol: 'openai-llm' };
 
 function storedMessage(id: string, blocks: SessionMessage['blocks']): SessionMessage {
   return {

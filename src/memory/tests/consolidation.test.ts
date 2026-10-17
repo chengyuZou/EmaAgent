@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   applyConsolidationEdits,
   parseConsolidationEdits,
-  runConsolidationLlm,
+  runConsolidationLLM,
 } from '../consolidation/consolidation.js';
 import { createRelationshipConsolidate, createRelationshipTargetPathCheck } from '../relationship/consolidation.js';
 import { RELATIONSHIP_CONSOLIDATION_SYSTEM } from '../relationship/prompt.js';
@@ -52,7 +52,7 @@ describe('Memory Consolidation', () => {
   });
 
   it('consumedTurnIds 来自实际装入输入的结果,不由 LLM 返回', async () => {
-    const result = await runConsolidationLlm({
+    const result = await runConsolidationLLM({
       memoryDirectory: root,
       currentPaths: [],
       isAllowedTargetPath: path => path === 'MEMORY.md',

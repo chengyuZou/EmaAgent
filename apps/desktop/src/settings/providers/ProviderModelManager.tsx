@@ -787,7 +787,7 @@ function ManualAddModelForm({ meta, capability, existing, onAdd }: {
   const [inputImage, setInputImage] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const withLlmParams = capability === 'llm' || capability === 'vision';
+  const withLLMParams = capability === 'llm' || capability === 'vision';
 
   async function add(): Promise<void> {
     const model = query.trim();
@@ -816,9 +816,9 @@ function ManualAddModelForm({ meta, capability, existing, onAdd }: {
         modelId: model,
         numeric: parsed,
         maxOutput: parsedMaxOutput,
-        reasoning: withLlmParams ? reasoning : null,
-        toolCall: withLlmParams ? toolCall : null,
-        inputImage: withLlmParams ? inputImage : null,
+        reasoning: withLLMParams ? reasoning : null,
+        toolCall: withLLMParams ? toolCall : null,
+        inputImage: withLLMParams ? inputImage : null,
       });
     } finally {
       setSubmitting(false);
@@ -848,7 +848,7 @@ function ManualAddModelForm({ meta, capability, existing, onAdd }: {
           />
         </div>
       )}
-      {withLlmParams && (
+      {withLLMParams && (
         <>
           <div className="flex flex-col gap-2">
             <div className="text-sm font-medium text-[var(--ema-text-secondary)]">maxOutput(可空)</div>

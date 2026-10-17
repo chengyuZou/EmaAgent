@@ -412,7 +412,7 @@ describe('prepareTurnTools', () => {
           return {
             messages: [{ role: 'user', content: '委派任务' }],
             prepareIteration: async ({ messages }) => ({ messages, request: { messages } }),
-            callLlm: async function* () {
+            callLLM: async function* () {
               if (calls++ === 0) {
                 yield { type: 'tool_use_complete', blockIndex: 0, callId: 'child-call', name: 'Echo', args: {} };
                 yield { type: 'done', stopReason: 'tool_use' };

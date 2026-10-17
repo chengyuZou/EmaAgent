@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import BetterSqlite3 from 'better-sqlite3';
 import type { CallEmbed } from '@ema-agent/embed';
-import type { CallLlm } from '@ema-agent/llm';
+import type { CompleteLLM } from '@ema-agent/llm';
 import type { CallRerank } from '@ema-agent/rerank';
 import { buildContext } from '../pipeline/context.js';
 import { MAX_CONTEXT_CHARACTERS } from '../pipeline/constants.js';
@@ -32,11 +32,14 @@ function vector(first: number, second = 0, third = 0): number[] {
 function blob(values: number[]): Buffer {
   return Buffer.from(Float32Array.from(values).buffer);
 }
-const callLlm = vi.fn<CallLlm>(async function* () {
-  yield { type: 'thinking_delta', blockIndex: 0, delta: '这不是 JSON 结果' };
-  yield { type: 'text_delta', blockIndex: 1, delta: routerResponse };
-  yield { type: 'done', stopReason: 'end_turn' };
-});
+const completeLLM = vi.fn<CompleteLLM>(async () => ({
+  blocks: [
+    { type: 'thinking', thinking: '这不是 JSON 结果' },
+    { type: 'text', text: routerResponse },
+  ],
+  stopReason: 'end_turn',
+  usage: { inputTokens: 0, outputTokens: 0 },
+}));
 const callRerank = vi.fn<CallRerank>(async request => ({
   results: request.documents.slice(0, request.topK).map((_, index) => ({ index, score: 1 - index / 100 })),
 }));
@@ -98,17 +101,17 @@ beforeEach(() => {
 afterEach(() => db.close());
 
 function run(query = '剧情问题', mode: Parameters<NarrativeSearch['search']>[1] = 'hybrid', signal = new AbortController().signal) {
-  return search.search(query, mode, callLlm, callEmbed, callRerank, signal);
+  return search.search(query, mode, completeLLM, callEmbed, callRerank, signal);
 }
 
 it('路由和三个周目的提词只调用一次 LLM, 重复文本只编码一次', async () => {
   await run();
-  expect(callLlm).toHaveBeenCalledTimes(1);
+  expect(completeLLM).toHaveBeenCalledTimes(1);
   expect(callEmbed).toHaveBeenCalledTimes(1);
   expect(callEmbed.mock.calls[0]![0].texts).toEqual(['剧情问题', '人物', '关系']);
   expect(callRerank).toHaveBeenCalledTimes(3);
   await run();
-  expect(callLlm).toHaveBeenCalledTimes(2);
+  expect(completeLLM).toHaveBeenCalledTimes(2);
   expect(callEmbed).toHaveBeenCalledTimes(2);
 });
 

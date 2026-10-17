@@ -6,7 +6,7 @@ import {
   type ContextUsageEstimate,
   type PreparedContext,
 } from '@ema-agent/context';
-import type { CallLlm, Message } from '@ema-agent/llm';
+import type { CompleteLLM, Message } from '@ema-agent/llm';
 import type { UsageRecorder } from '@ema-agent/usage';
 import type { TurnStreamEvent } from '../events.js';
 import type { PreparedTurn } from './prepareTurn.js';
@@ -15,7 +15,7 @@ export interface PrepareAgentIterationDeps {
   readonly sessionId: string;
   readonly turnId: string;
   readonly prepared: PreparedTurn;
-  readonly createCompact: (callLlm: CallLlm) => (request: CompactRequest) => Promise<CompactResult>;
+  readonly createCompact: (completeLLM: CompleteLLM) => (request: CompactRequest) => Promise<CompactResult>;
   readonly usageRecorder?: UsageRecorder;
   readonly emit: (event: TurnStreamEvent) => void;
   /**
@@ -42,7 +42,7 @@ export interface PrepareAgentIterationDeps {
  */
 export function createPrepareAgentIteration(deps: PrepareAgentIterationDeps): PrepareAgentIteration {
   const { prepared, macroPersistence } = deps;
-  const compact = deps.createCompact(prepared.callLlm);
+  const compact = deps.createCompact(prepared.completeLLM);
 
   return async ({ llmCallId, messages, recoveryReason }) => {
     const assemble = (currentMessages: readonly Message[]): PreparedContext =>

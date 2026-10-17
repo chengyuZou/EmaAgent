@@ -2,11 +2,11 @@
 
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import type { CompleteMemoryLlm } from '../common/extraction.js';
+import type { CompleteMemoryLLM } from '../common/extraction.js';
 import {
   CONSOLIDATION_INPUT_INSTRUCTION,
   listMarkdownFiles,
-  runConsolidationLlm,
+  runConsolidationLLM,
   toPosixPath,
 } from '../consolidation/consolidation.js';
 import { MEMORY_CONSOLIDATION_INPUT_BYTES } from '../capacity/limits.js';
@@ -69,7 +69,7 @@ export function createRelationshipTargetPathCheck(
 
 export interface RelationshipConsolidationDeps {
   /** 应用层的 LLM 调用闭包(两段消息 → 输出纯文本). */
-  readonly complete: CompleteMemoryLlm;
+  readonly complete: CompleteMemoryLLM;
 }
 
 /** 组装 runConsolidationJobs 需要的 Relationship consolidate 闭包. */
@@ -78,7 +78,7 @@ export function createRelationshipConsolidate(
 ): ConsolidateMemory {
   return async ({ memoryDirectory, diffFile, unintegrated, signal }) => {
     const existingCharacterNames = await listCharacterNames(memoryDirectory);
-    return runConsolidationLlm({
+    return runConsolidationLLM({
       memoryDirectory,
       currentPaths: await listRelationshipTargetPaths(
         memoryDirectory,

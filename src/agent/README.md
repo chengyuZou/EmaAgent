@@ -11,8 +11,8 @@
 ```text
 runAgentLoop(input)
   ├─ prepareIteration({ messages })
-  │    └─ 外层返回中立 LlmRequest 与可能被 Compact 改写的工作历史
-  ├─ CallLlm(request)                  // 模型身份在装配层创建点冻结
+  │    └─ 外层返回中立 LLMRequest 与可能被 Compact 改写的工作历史
+  ├─ CallLLM(request)                  // 模型身份在装配层创建点冻结
   ├─ 持续发出内容事件、单次调用 Usage 与 AgentLoop 累计 Usage
   ├─ tool_use 完整事件被消费并持久化
   ├─ generator 恢复后才启动 StreamingToolExecutor
@@ -38,8 +38,8 @@ runAgentLoop(input)
 `types.ts` 只定义会改变循环行为的输入：
 
 - `AgentLoopInput.messages`：单一工作历史（持久基线 + 本轮种子消息），循环在其上追加；`prepareIteration` 每次返回的版本可能已被 Compact 改写，循环整体替换继续使用；
-- `PrepareAgentIteration` 闭包：为下一次迭代准备 `LlmRequest`。装配（assembleContext → Compact → Macro 落库 → 再装配）涉及持久化与 Context 知识，全归外层实现；ToolPool 也由实现闭包冻结捕获，故输入里没有显式 tools 字段——工具定义经返回的 `LlmRequest.tools` 到达 Provider；
-- `ToolExecutorFactory`：每次 LlmCall 创建全新执行器。创建时机是外层绑定工具进度、Permission 与 AskUser 事件出口的唯一位置，故必须是工厂；`wake` 是执行器→循环的唤醒针，没有它循环只能轮询。
+- `PrepareAgentIteration` 闭包：为下一次迭代准备 `LLMRequest`。装配（assembleContext → Compact → Macro 落库 → 再装配）涉及持久化与 Context 知识，全归外层实现；ToolPool 也由实现闭包冻结捕获，故输入里没有显式 tools 字段——工具定义经返回的 `LLMRequest.tools` 到达 Provider；
+- `ToolExecutorFactory`：每次 LLMCall 创建全新执行器。创建时机是外层绑定工具进度、Permission 与 AskUser 事件出口的唯一位置，故必须是工厂；`wake` 是执行器→循环的唤醒针，没有它循环只能轮询。
 - `takeNextIterationMessages`: 完整 Assistant 和本批 ToolResult 已保存后才调用, 无工具的最终正文也检查. Turn 用它领取目标编辑, 立即引导和后台完成通知, 不取消在途请求或切开 tool_use/tool_result 配对.
 
 `runAgentLoop()` 不接收 `sessionId/turnId/providerId/modelId`, 也不导入 Context、Compact、Permission、Sandbox 或 BuiltinTools. 失败不是循环相位: Provider/执行错误以异常逃出 generator, 终态由根 Turn 或进程级 `SubagentExecutor` 收口.

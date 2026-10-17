@@ -16,6 +16,3 @@ export class VisionError extends Error {
   }
 }
 
-export function isVisionError(error: unknown): error is VisionError {
-  return error instanceof VisionError;
-}

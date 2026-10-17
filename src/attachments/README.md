@@ -60,7 +60,7 @@ VisionDescriptionCache
   clearCache()                                 // 只清内存, 不动 SQL
 ```
 
-其他导出: `isLlmImagePath`/`mimeForPath`(投影判断用)、五个具名常量(见下)、
+其他导出: `isLLMImagePath`/`mimeForPath`(投影判断用)、五个具名常量(见下)、
 `attachmentCacheMaxBytesSetting` 与 `readAttachmentCacheSettings`、
 `AttachmentPreparationError`(带 cause)、`AttachmentEvent`。
 

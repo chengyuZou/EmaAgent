@@ -1,8 +1,7 @@
 // 准备子 Agent 的模型调用, fork 分叉消息与执行工具.
 import type { ForkParentMessages, PrepareSubagent } from '@ema-agent/agent';
 import { projectMessages, type DescribeImage } from '@ema-agent/context';
-import { createLlmCall } from '@ema-agent/llm';
-import type { CallLlm } from '@ema-agent/llm';
+import { createLLMCall, createLLMCompletion, type CompleteLLM } from '@ema-agent/llm';
 import type { CompactRequest, CompactResult } from '@ema-agent/compact';
 import type { ProviderModels, Providers } from '@ema-agent/providers';
 import { staticSystemPrompt, getDynamicSystemPrompt, type DynamicSystemPromptInput, type PromptBlock } from '@ema-agent/prompts';
@@ -62,8 +61,8 @@ export interface PrepareSubagentDeps {
   readonly providers: Providers;
   /** 子 Agent 覆盖模型时解析子模型上下文预算(contextWindow/maxOutput). */
   readonly providerModels: ProviderModels;
-  /** compact 工厂:覆盖模型时用子模型 callLlm 创建独立闭包(独立失败熔断). */
-  readonly createCompact: (callLlm: CallLlm) => (request: CompactRequest) => Promise<CompactResult>;
+  /** 每个子代理独立保存压缩失败次数, 摘要请求使用子代理选定的模型. */
+  readonly createCompact: (completeLLM: CompleteLLM) => (request: CompactRequest) => Promise<CompactResult>;
   readonly usageRecorder?: UsageRecorder;
   readonly visionCache?: VisionDescriptionCache;
   readonly describeImage?: DescribeImage;
@@ -81,7 +80,7 @@ export function createPrepareSubagent(deps: PrepareSubagentDeps): PrepareSubagen
 
     // 覆盖模型时解析子模型自己的上下文预算并冻结进 subPrepared;thinking 意图
     // 继承根,由协议 Adapter 映射.模型调用可以复用,但每个循环的 Compact 状态独立.
-    let callLlm = prepared.callLlm;
+    let callLLM = prepared.callLLM;
     let subPrepared: PreparedTurn = prepared;
     if (overridden) {
       const facts = deps.providerModels.get(providerId, 'llm', modelId);
@@ -89,7 +88,7 @@ export function createPrepareSubagent(deps: PrepareSubagentDeps): PrepareSubagen
         throw new Error(`子 Agent 覆盖目标不是 LLM 模型:${providerId} / ${modelId}`);
       }
       const connection = deps.providers.resolveConnection(providerId, 'llm');
-      callLlm = createLlmCall(connection, modelId);
+      callLLM = createLLMCall(connection, modelId);
       let thinking: PreparedTurn['thinking'];
       if (facts.reasoning === true) {
         if (prepared.reasoningEffort === 'off') {
@@ -102,7 +101,8 @@ export function createPrepareSubagent(deps: PrepareSubagentDeps): PrepareSubagen
         ...prepared,
         providerId,
         modelId,
-        callLlm,
+        callLLM,
+        completeLLM: createLLMCompletion(connection, modelId),
         protocol: connection.protocol,
         contextWindow: facts.contextWindow,
         maxOutput: facts.maxOutput,
@@ -181,7 +181,7 @@ export function createPrepareSubagent(deps: PrepareSubagentDeps): PrepareSubagen
     return {
       messages: history.map(entry => entry.message),
       prepareIteration,
-      callLlm,
+      callLLM,
       createToolExecutor: wake => prepared.tools.createSubagentExecutor({ subagentId, runId, toolPool: subPool, signal, wake }),
       signal,
       maxIterations: prepared.maxIterations,

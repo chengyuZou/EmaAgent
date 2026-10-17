@@ -1,4 +1,4 @@
-import type { LlmTool, Message } from '@ema-agent/llm';
+import type { LLMTool, Message } from '@ema-agent/llm';
 import type { PromptBlock } from '@ema-agent/prompts';
 import type { Tool, ToolPool } from '@ema-agent/tools';
 import { toJSONSchema } from 'zod';
@@ -84,8 +84,8 @@ function assertNoSystemMessages(messages: readonly Message[]): void {
 
 type AnyTool = Tool<any, any, any, any>;
 
-function projectToolPool(toolPool: ToolPool): LlmTool[] {
-  return toolPool.tools.map((tool: AnyTool): LlmTool => ({
+function projectToolPool(toolPool: ToolPool): LLMTool[] {
+  return toolPool.tools.map((tool: AnyTool): LLMTool => ({
     name: tool.name,
     description: tool.description,
     inputSchema: tool.inputJsonSchemaOverride

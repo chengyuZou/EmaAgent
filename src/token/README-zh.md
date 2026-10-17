@@ -7,14 +7,14 @@
 ## 使用
 
 ```ts
-import type { LlmTool, Message } from '@ema-agent/llm';
+import type { LLMTool, Message } from '@ema-agent/llm';
 import { estimateMessagesTokens, estimateTextTokens } from '@ema-agent/token';
 
 const messages: readonly Message[] = [
   { role: 'system', content: 'Answer briefly.' },
   { role: 'user', content: 'Hello.' },
 ];
-const tools: readonly LlmTool[] = [{
+const tools: readonly LLMTool[] = [{
   name: 'Read',
   description: 'Read a file at the given path.',
   inputSchema: {
@@ -32,7 +32,7 @@ const toolsTokens = estimateMessagesTokens([], tools);
 | 函数 | 输入 | 返回值 |
 | --- | --- | --- |
 | `estimateTextTokens(text)` | 字符串. | 文本的估算 Token 数. |
-| `estimateMessagesTokens(messages, tools?)` | `@ema-agent/llm` 的 `Message[]` 和可选的 `LlmTool[]`. 两个数组都支持只读形式. | 所有传入消息和工具定义的估算 Token 总数. |
+| `estimateMessagesTokens(messages, tools?)` | `@ema-agent/llm` 的 `Message[]` 和可选的 `LLMTool[]`. 两个数组都支持只读形式. | 所有传入消息和工具定义的估算 Token 总数. |
 
 估算完整请求时, 传入系统提示词, 当前有效历史, 新消息和可用的工具定义. 工具返回内容已经包含在消息里, 每份结果计算一次即可. 空字符串返回 `0`. 消息与工具数组都为空时返回 `0`.
 
@@ -41,7 +41,7 @@ const toolsTokens = estimateMessagesTokens([], tools);
 普通模型调用按以下顺序处理:
 
 1. 调用方准备模型消息. 保存的附件路径在估算前转换成图片, 文本或其他模型内容块. 图片通过 Vision 处理时, 计入的是描述文本.
-2. [`assembleContext`](../context/assembleContext.ts) 把 Prompt 块转换成 system 消息, 放在工作消息前面, 并将当前工具池转换成 `LlmTool[]`.
+2. [`assembleContext`](../context/assembleContext.ts) 把 Prompt 块转换成 system 消息, 放在工作消息前面, 并将当前工具池转换成 `LLMTool[]`.
 3. [`estimateContextUsage`](../context/contextUsage.ts) 把这些消息和工具传给 `estimateMessagesTokens`. 返回的数字成为 `estimatedInputTokens`.
 4. [`prepareAgentIteration`](../turn/prepare/prepareAgentIteration.ts) 把估算值交给 Compact 检查请求预算. Compact 用同一个函数估算候选历史和摘要请求. 装配得到的上下文用量也用于桌面的上下文球. Provider 回报某次调用的用量后, Context 可以使用该次调用的实报输入数.
 

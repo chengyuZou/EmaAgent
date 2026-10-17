@@ -1,7 +1,6 @@
-// 验证 OpenAI Chat 的用户取消,静默断流和 finish_reason 后 Usage 尾帧收口.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type OpenAI from 'openai';
-import { createLlmCall } from '../languageModel.js';
+import { createLLMCall } from '../languageModel.js';
 import { createOpenAiChatProtocol } from '../protocols/openAiChat.js';
 
 const openAiMocks = vi.hoisted(() => ({
@@ -71,13 +70,13 @@ function createCall() {
   return createOpenAiChatProtocol({ providerId: 'test', apiKey: 'key', protocol: 'openai-llm' }, 'model');
 }
 
-describe('OpenAI Chat 流收口', () => {
+describe('OpenAI Chat 流结束与取消', () => {
   it('工具图片逐块占位, 不补用户图片消息或打断工具配对', async () => {
     openAiMocks.create.mockResolvedValueOnce((async function* () {
       yield chunk({ finishReason: 'stop' });
       yield chunk({ usage: { prompt_tokens: 1, completion_tokens: 1 } });
     })());
-    const call = createLlmCall(
+    const call = createLLMCall(
       { providerId: 'test', apiKey: 'key', protocol: 'openai-llm' },
       'model',
     );
@@ -183,7 +182,7 @@ describe('OpenAI Chat 流收口', () => {
       messages: [{ role: 'user', content: 'hello' }],
     })[Symbol.asyncIterator]().next();
     const rejected = expect(pending).rejects.toMatchObject({
-      name: 'LlmStreamProtocolError',
+      name: 'LLMStreamProtocolError',
       code: 'provider/incomplete_stream',
     });
 

@@ -3,7 +3,7 @@
 import type {
   AssistantBlock,
   ContentPart,
-  LlmGenerationSource,
+  LLMGenerationSource,
   Message as ModelMessage,
   ToolResultContentPart,
   UserBlock,
@@ -25,7 +25,7 @@ export interface ProjectedMessage {
 
 export async function projectMessages<T extends Message>(
   sessionMessages: readonly T[],
-  resolveGenerationSource: (message: T) => LlmGenerationSource | undefined,
+  resolveGenerationSource: (message: T) => LLMGenerationSource | undefined,
   attachmentOptions: BuildAttachmentMessagesOptions,
   // 仅对有正文的普通 Assistant 调用. 返回名字时标明发言角色, 不改变保存的正文.
   resolveCharacter?: (message: T) => string | undefined,

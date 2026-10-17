@@ -1,9 +1,7 @@
-import type { LlmConnection, LlmTokenUsage } from '@ema-agent/llm';
+import type { LLMConnection, LLMTokenUsage } from '@ema-agent/llm';
 
-/** Provider 已解析好的 Vision 协议连接. */
-export type VisionConnection = LlmConnection;
+export type VisionConnection = LLMConnection;
 
-/** 单次视觉请求希望模型完成的任务. */
 export type VisionTask = 'auto' | 'caption' | 'ocr' | 'layout' | 'table';
 
 export type VisionImageMime = 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif';
@@ -32,29 +30,29 @@ export interface VisionBlock {
   readonly kind: VisionBlockKind;
   readonly text: string;
   readonly markdown?: string;
-  /** 归一化阅读坐标:[x, y, width, height]. */
+  /** 模型报告的 [x, y, width, height]. Prompt 要求归一化坐标, 解析时只检查四个数值有限. */
   readonly bbox?: readonly [number, number, number, number];
+  /** 模型自报的置信度, 解析时只检查数值有限. */
   readonly confidence?: number;
 }
 
-/** 单次协议请求;模型身份在创建点冻结,载荷限制,并发,重试和持久化均由上层拥有. */
 export interface VisionRequest {
   readonly images: readonly VisionImage[];
   readonly task?: VisionTask;
   readonly language?: string;
-  /** 只描述本次视觉任务,不应携带对话历史. */
+  /** 本次识别任务的补充指令, 会放进发给模型的 Prompt. */
   readonly instruction?: string;
   readonly maxOutputTokens?: number;
   readonly temperature?: number;
   readonly signal?: AbortSignal;
 }
 
-/** 创建点冻结连接与模型身份的单次视觉调用. */
+/** 协议和模型在 createVisionCall 时选定, 每次调用提交一组图片任务. */
 export type CallVision = (request: VisionRequest) => Promise<VisionResult>;
 
 export interface VisionResult {
   readonly text: string;
   readonly markdown?: string;
   readonly blocks: readonly VisionBlock[];
-  readonly usage?: LlmTokenUsage;
+  readonly usage?: LLMTokenUsage;
 }

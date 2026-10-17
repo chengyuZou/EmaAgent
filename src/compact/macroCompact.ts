@@ -2,12 +2,12 @@
 import { randomUUID } from 'node:crypto';
 import type {
   AssistantBlock,
-  CallLlm,
-  LlmThinking,
-  LlmTool,
+  CompleteLLM,
+  LLMThinking,
+  LLMTool,
   Message,
 } from '@ema-agent/llm';
-import { createLlmCompletion, llmProviderErrorCode } from '@ema-agent/llm';
+import { llmProviderErrorCode } from '@ema-agent/llm';
 import type { UsageRecorder } from '@ema-agent/usage';
 import { estimateMessagesTokens } from '@ema-agent/token';
 import { compactTokenLimit, createSummaryMessage, fitCompactMessages } from './budget.js';
@@ -19,15 +19,15 @@ const RETRY_BUDGET_SCALE = 0.8;
 const MIN_SUMMARY_BUDGET_TOKENS = 256;
 
 export interface MacroCompactArgs {
-  readonly callLlm: CallLlm;
+  readonly completeLLM: CompleteLLM;
   readonly sessionId: string;
   readonly turnId?: string;
   readonly providerId: string;
   readonly modelId: string;
   readonly usageRecorder?: UsageRecorder;
   readonly systemMessages: readonly Message[];
-  readonly tools: readonly LlmTool[];
-  readonly thinking?: LlmThinking;
+  readonly tools: readonly LLMTool[];
+  readonly thinking?: LLMThinking;
   readonly messages: readonly Message[];
   readonly estimatedInputTokens: number;
   readonly settings: Readonly<CompactSettings>;
@@ -150,14 +150,14 @@ export async function runMacroCompact(args: MacroCompactArgs): Promise<MacroComp
       const callId = randomUUID();
       const callStartedAt = Date.now();
       try {
-        const completion = await createLlmCompletion(args.callLlm({
+        const completion = await args.completeLLM({
           messages: requestMessages,
           tools: args.tools,
           ...(args.thinking ? { thinking: args.thinking } : {}),
           maxOutputTokens,
           temperature: 0.2,
           signal: args.signal,
-        }));
+        });
         args.usageRecorder?.record({
           id: callId,
           sessionId: args.sessionId,

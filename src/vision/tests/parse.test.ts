@@ -1,4 +1,3 @@
-// 测试视觉 JSON 解析与普通文本降级，不把格式偏差误判为整次识别失败。
 import { describe, expect, it } from 'vitest';
 import { parseVisionResult } from '../parse.js';
 

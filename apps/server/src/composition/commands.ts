@@ -7,7 +7,7 @@ import {
   type CommandDescriptor,
 } from '@ema-agent/commands';
 import { createCompact, type CompactEvent } from '@ema-agent/compact';
-import { createLlmCall } from '@ema-agent/llm';
+import { createLLMCompletion } from '@ema-agent/llm';
 import { MEMORY_GUIDANCE } from '@ema-agent/memory';
 import type { CharactersComposition } from './characters.js';
 import type { DatabaseComposition } from './database.js';
@@ -57,7 +57,7 @@ export function openCommands(deps: {
     describeImage: turn.describeImage,
     visionCache: turn.visionCache,
     createCompact,
-    createLlmCall,
+    createLLMCompletion,
     usageRecorder: database.usageRecorder,
     emit: deps.publishCompactEvent,
     onFinished: (sessionId, status) => {

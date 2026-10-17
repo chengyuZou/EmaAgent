@@ -1,4 +1,3 @@
-// 测试中立强度档在 Anthropic/Gemini 两个 adapter 的预算映射与 clamp。
 import { describe, expect, it } from 'vitest';
 import { buildAnthropicThinking } from '../protocols/anthropic.js';
 import { buildGeminiThinkingConfig } from '../protocols/gemini.js';
@@ -9,7 +8,6 @@ describe('buildAnthropicThinking', () => {
       .toEqual({ type: 'enabled', budget_tokens: 2_000 });
     expect(buildAnthropicThinking({ enabled: true, effort: 'max' }, 100_000))
       .toEqual({ type: 'enabled', budget_tokens: 32_000 });
-    // 显式 budgetTokens 覆盖 effort 映射。
     expect(buildAnthropicThinking({ enabled: true, budgetTokens: 12_000, effort: 'low' }, 100_000))
       .toEqual({ type: 'enabled', budget_tokens: 12_000 });
     expect(buildAnthropicThinking({ enabled: true, effort: 'max' }, 10_000))

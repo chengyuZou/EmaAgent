@@ -1,4 +1,4 @@
-import type { LlmTool, Message } from '@ema-agent/llm';
+import type { LLMTool, Message } from '@ema-agent/llm';
 import type { PromptBlock } from '@ema-agent/prompts';
 import type { ToolPool } from '@ema-agent/tools';
 import type { ContextUsageEstimate } from './contextUsage.js';
@@ -18,6 +18,6 @@ export interface AssembleContextInput {
 /** 一次 LLM Call 真正发送前的最终 Provider 中立输出 */
 export interface PreparedContext {
   readonly messages: readonly Message[];
-  readonly tools: readonly LlmTool[];
+  readonly tools: readonly LLMTool[];
   readonly usage: ContextUsageEstimate;
 }

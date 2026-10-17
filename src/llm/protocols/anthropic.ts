@@ -1,9 +1,9 @@
-// 把中立请求转换为 Anthropic Messages，并保留原生 block 顺序与缓存断点。
 import Anthropic from '@anthropic-ai/sdk';
 import {
-  LlmStreamProtocolError,
-  LlmToolArgumentsParseError,
-  normalizeLlmProviderError,
+  createLLMProviderResponseError,
+  LLMStreamProtocolError,
+  LLMToolArgumentsParseError,
+  normalizeLLMProviderError,
   throwIfAborted,
   throwIfAbortError,
 } from '../errors.js';
@@ -15,23 +15,23 @@ import type {
 } from '../message.js';
 import type {
   AssistantBlock,
-  LlmConnection,
-  LlmGenerationSource,
-  LlmRequest,
-  LlmStopReason,
-  LlmStreamEvent,
-  LlmThinking,
-  LlmThinkingEffort,
-  LlmTokenUsage,
-  LlmTool,
+  CompleteLLM,
+  LLMConnection,
+  LLMGenerationSource,
+  LLMRequest,
+  LLMStopReason,
+  LLMStreamEvent,
+  LLMThinking,
+  LLMThinkingEffort,
+  LLMTokenUsage,
+  LLMTool,
   Message,
 } from '../types.js';
-import { createLlmTokenUsage } from '../usage.js';
+import { createLLMTokenUsage } from '../usage.js';
 
-/** Anthropic 扩展思考的 budget_tokens 下限（协议硬约束，且必须小于 max_tokens）。 */
-/** 只重放同一调用目标生成的 thinking：signature 模型私有，无来源/跨协议/跨 Provider/跨模型都删除。 */
+/** 仅向生成签名的同一供应商, 模型和协议回传思考状态. */
 function shouldReplayAnthropicThinking(
-  generatedBy: LlmGenerationSource | undefined,
+  generatedBy: LLMGenerationSource | undefined,
   providerId: string,
   modelId: string,
 ): boolean {
@@ -40,10 +40,11 @@ function shouldReplayAnthropicThinking(
     && generatedBy.modelId === modelId;
 }
 
+// 当前实现使用 budget_tokens 格式, 预算至少为 1024, 且必须小于 max_tokens.
 const MIN_THINKING_BUDGET_TOKENS = 1_024;
 const DEFAULT_THINKING_BUDGET_TOKENS = 8_000;
-/** 中立强度档 → budget_tokens 的产品取值（非官方对照；官方只给下限与 max_tokens 约束）。 */
-const EFFORT_BUDGET_TOKENS: Record<LlmThinkingEffort, number> = {
+// 本项目将强度换算为预算的取值, 不表示与其他供应商的同名档位等效.
+const EFFORT_BUDGET_TOKENS: Record<LLMThinkingEffort, number> = {
   low: 2_000,
   medium: 8_000,
   high: 16_000,
@@ -51,11 +52,11 @@ const EFFORT_BUDGET_TOKENS: Record<LlmThinkingEffort, number> = {
 };
 
 /**
- * 构造 Anthropic thinking 参数：budgetTokens 显式值 > effort 映射表 > 默认 8K；
- * 预算 clamp 到 max_tokens - 1（协议硬约束）；输出上限连下限都放不下时直接拒绝。
+ * 优先使用显式 budgetTokens, 其次按 effort 换算, 都没有时使用默认预算.
+ * 预算限制在 1024 到 max_tokens - 1, 输出上限无法容纳最小预算时拒绝请求.
  */
 export function buildAnthropicThinking(
-  thinking: LlmThinking | undefined,
+  thinking: LLMThinking | undefined,
   maxOutputTokens: number,
 ): { type: 'enabled'; budget_tokens: number } | undefined {
   if (thinking?.enabled !== true) return undefined;
@@ -76,22 +77,81 @@ export function buildAnthropicThinking(
 }
 
 export function createAnthropicProtocol(
-  connection: LlmConnection, modelId: string,
-): (request: LlmRequest) => AsyncIterable<LlmStreamEvent> {
-  const client = new Anthropic({
+  connection: LLMConnection,
+  modelId: string,
+): (request: LLMRequest) => AsyncIterable<LLMStreamEvent> {
+  const client = createAnthropicClient(connection);
+  return (request) => streamAnthropic(client, connection.providerId, modelId, request);
+}
+
+export function createAnthropicCompletion(
+  connection: LLMConnection,
+  modelId: string,
+): CompleteLLM {
+  const client = createAnthropicClient(connection);
+  return async (request) => {
+    try {
+      const response = await client.messages.create({
+        ...buildAnthropicBody(connection.providerId, modelId, request),
+        stream: false,
+      }, {
+        signal: request.signal,
+        headers: request.thinking?.enabled === true
+          ? { 'anthropic-beta': 'interleaved-thinking-2025-05-14' }
+          : undefined,
+      });
+      throwIfAborted(request.signal);
+      if (!response.stop_reason) {
+        throw createLLMProviderResponseError({
+          protocol: 'anthropic-llm',
+          message: 'Anthropic returned no stop reason',
+          cause: response,
+        });
+      }
+      const blocks: AssistantBlock[] = [];
+      for (const block of response.content) {
+        if (block.type === 'text') {
+          blocks.push({ type: 'text', text: block.text });
+        } else if (block.type === 'thinking') {
+          blocks.push({
+            type: 'thinking',
+            thinking: block.thinking,
+            ...(block.signature ? { signature: block.signature } : {}),
+          });
+        } else if (block.type === 'tool_use') {
+          blocks.push({ type: 'tool_use', id: block.id, name: block.name, args: block.input });
+        }
+      }
+      return {
+        blocks,
+        stopReason: mapStopReason(response.stop_reason),
+        usage: createAnthropicUsage(
+          response.usage.input_tokens,
+          response.usage.output_tokens,
+          response.usage.cache_read_input_tokens,
+          response.usage.cache_creation_input_tokens,
+        ),
+      };
+    } catch (error) {
+      throwIfAbortError(error, request.signal);
+      throw normalizeLLMProviderError(error);
+    }
+  };
+}
+
+function createAnthropicClient(connection: LLMConnection): Anthropic {
+  return new Anthropic({
     apiKey: connection.apiKey ?? '',
     baseURL: connection.baseUrl,
     maxRetries: 0,
   });
-  return (request) => streamAnthropic(client, connection.providerId, modelId, request);
 }
 
-async function* streamAnthropic(
-  client: Anthropic,
+function buildAnthropicBody(
   providerId: string,
   modelId: string,
-  request: LlmRequest,
-): AsyncIterable<LlmStreamEvent> {
+  request: LLMRequest,
+): Anthropic.Messages.MessageCreateParamsNonStreaming {
   if (request.maxOutputTokens === undefined) {
     throw new TypeError('anthropic-llm requires maxOutputTokens');
   }
@@ -101,7 +161,7 @@ async function* streamAnthropic(
     : request.tools?.map(toAnthropicTool);
   const thinkingEnabled = request.thinking?.enabled === true;
   const thinking = buildAnthropicThinking(request.thinking, request.maxOutputTokens);
-  const body: Anthropic.Messages.MessageStreamParams = {
+  return {
     model: modelId,
     messages,
     max_tokens: request.maxOutputTokens,
@@ -112,7 +172,16 @@ async function* streamAnthropic(
       : {}),
     ...(thinking ? { thinking } : {}),
   };
+}
 
+async function* streamAnthropic(
+  client: Anthropic,
+  providerId: string,
+  modelId: string,
+  request: LLMRequest,
+): AsyncIterable<LLMStreamEvent> {
+  const body = buildAnthropicBody(providerId, modelId, request);
+  const thinkingEnabled = request.thinking?.enabled === true;
   let stream: AsyncIterable<Anthropic.MessageStreamEvent>;
   try {
     stream = client.messages.stream(body, {
@@ -123,7 +192,7 @@ async function* streamAnthropic(
     });
   } catch (error) {
     throwIfAbortError(error, request.signal);
-    throw normalizeLlmProviderError(error);
+    throw normalizeLLMProviderError(error);
   }
 
   const toolBlocks = new Map<number, { id: string; name: string; argsJson: string }>();
@@ -132,7 +201,7 @@ async function* streamAnthropic(
   let outputTokens = 0;
   let cacheReadInputTokens: number | null | undefined;
   let cacheWriteInputTokens: number | null | undefined;
-  let stopReason: LlmStopReason = 'end_turn';
+  let stopReason: LLMStopReason = 'end_turn';
   let receivedMessageStop = false;
 
   try {
@@ -198,11 +267,10 @@ async function* streamAnthropic(
             try {
               args = JSON.parse(toolBlock.argsJson);
             } catch (error) {
-              throw new LlmToolArgumentsParseError(
+              throw new LLMToolArgumentsParseError(
                 'anthropic-llm',
                 toolBlock.id,
                 toolBlock.name,
-                toolBlock.argsJson,
                 error,
               );
             }
@@ -250,11 +318,11 @@ async function* streamAnthropic(
     }
   } catch (error) {
     throwIfAbortError(error, request.signal);
-    throw normalizeLlmProviderError(error);
+    throw normalizeLLMProviderError(error);
   }
 
   throwIfAborted(request.signal);
-  if (!receivedMessageStop) throw new LlmStreamProtocolError('anthropic-llm');
+  if (!receivedMessageStop) throw new LLMStreamProtocolError('anthropic-llm');
   yield {
     type: 'usage',
     ...createAnthropicUsage(
@@ -324,8 +392,7 @@ export function toAnthropicMessages(
     }
 
     const content: Anthropic.ContentBlockParam[] = [];
-    // thinking 只随生成它的同一个调用目标重放（signature 模型私有）；
-    // 无来源、跨协议/跨 Provider/跨模型的历史 thinking 一律删除，text/tool_use 不受影响。
+    // 签名只回传给原生成目标, 正文和工具调用不受此检查影响.
     const replayThinking = shouldReplayAnthropicThinking(message.generatedBy, providerId, modelId);
     for (const block of message.content as readonly AssistantBlock[]) {
       if (block.type === 'text') content.push({ type: 'text', text: block.text });
@@ -355,6 +422,7 @@ function appendAnthropicUser(
   messages: Anthropic.MessageParam[],
   content: string | Anthropic.ContentBlockParam[],
 ): void {
+  // 工具结果可分别保存成消息, 发送时合并相邻 user 消息以保持工具回复在同一批次.
   const previous = messages.at(-1);
   if (previous?.role !== 'user') {
     messages.push({ role: 'user', content });
@@ -431,7 +499,7 @@ function setLastCacheBreakpoint(
   } as Anthropic.ContentBlockParam);
 }
 
-function toAnthropicTool(tool: LlmTool): Anthropic.Tool {
+function toAnthropicTool(tool: LLMTool): Anthropic.Tool {
   return {
     name: tool.name,
     description: tool.description,
@@ -440,7 +508,7 @@ function toAnthropicTool(tool: LlmTool): Anthropic.Tool {
 }
 
 function toAnthropicToolChoice(
-  choice: LlmRequest['toolChoice'],
+  choice: LLMRequest['toolChoice'],
 ): Anthropic.ToolChoiceAuto | Anthropic.ToolChoiceAny | Anthropic.ToolChoiceTool | undefined {
   if (choice === undefined || choice === 'auto') return { type: 'auto' };
   if (choice === 'none') return undefined;
@@ -452,11 +520,11 @@ function createAnthropicUsage(
   outputTokens: number,
   cacheReadInputTokens: number | null | undefined,
   cacheWriteInputTokens: number | null | undefined,
-): LlmTokenUsage {
+): LLMTokenUsage {
   const inputTokens = uncachedInputTokens
     + (cacheReadInputTokens ?? 0)
     + (cacheWriteInputTokens ?? 0);
-  return createLlmTokenUsage({
+  return createLLMTokenUsage({
     inputTokens,
     outputTokens,
     cacheReadInputTokens,
@@ -464,7 +532,7 @@ function createAnthropicUsage(
   });
 }
 
-function mapStopReason(reason: string | null | undefined): LlmStopReason {
+function mapStopReason(reason: string | null | undefined): LLMStopReason {
   if (reason === 'tool_use') return 'tool_use';
   if (reason === 'max_tokens') return 'max_tokens';
   if (reason === 'stop_sequence') return 'stop_sequence';

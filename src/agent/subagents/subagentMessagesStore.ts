@@ -1,7 +1,7 @@
 // 子代理消息与普通 Message 共用正文; fork 初始化、Run 写入和历史恢复在这里收口.
 import { randomUUID } from 'node:crypto';
 import { createAssistantThinkingBlock } from '@ema-agent/llm';
-import type { AssistantBlock, LlmGenerationSource, LlmThinkingState } from '@ema-agent/llm';
+import type { AssistantBlock, LLMGenerationSource, LLMThinkingState } from '@ema-agent/llm';
 import { parseMessageBlocksJson } from '@ema-agent/session';
 import type { MessageBlocks } from '@ema-agent/session';
 import type { MessagePageCursor, SubagentMessageInsert, SubagentMessageRow, SubagentMessagesRepo } from '@ema-agent/storage';
@@ -16,7 +16,7 @@ interface ActiveAssistant {
   stored: boolean;
   readonly text: Map<number, string>;
   readonly thinking: Map<number, string>;
-  readonly thinkingStates: Map<number, LlmThinkingState>;
+  readonly thinkingStates: Map<number, LLMThinkingState>;
   readonly toolUses: Map<number, ToolUseBlock>;
 }
 
@@ -330,12 +330,12 @@ export class SubagentMessagesStore {
 }
 
 function toMessage(row: SubagentMessageRow): SubagentMessage {
-  let generatedBy: LlmGenerationSource | undefined;
+  let generatedBy: LLMGenerationSource | undefined;
   if (row.role === 'assistant' && row.provider_id && row.model_id && row.protocol) {
     generatedBy = {
       providerId: row.provider_id,
       modelId: row.model_id,
-      protocol: row.protocol as LlmGenerationSource['protocol'],
+      protocol: row.protocol as LLMGenerationSource['protocol'],
     };
   }
   return {

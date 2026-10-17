@@ -1,11 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { createEmbedCall, type CallEmbed, type EmbeddingResult } from '@ema-agent/embed';
 import {
-  createLlmCall,
-  createLlmCompletion,
+  createLLMCompletion,
   llmProviderErrorCode,
-  type CallLlm,
-  type LlmCompletion,
+  type CompleteLLM,
+  type LLMCompletion,
 } from '@ema-agent/llm';
 import { NarrativeSearch } from '@ema-agent/narrative';
 import { ProviderError, type ModelBindings, type ProviderModels, type Providers } from '@ema-agent/providers';
@@ -51,24 +50,24 @@ export function openNarrative(
         if (model.capability !== 'llm' || !model.enabled || !embedModel.enabled || !rerankModel.enabled) {
           return undefined;
         }
-        const callLlm = createLlmCall(providers.resolveConnection(llm.providerId, 'llm'), llm.modelId);
+        const completeLLM = createLLMCompletion(providers.resolveConnection(llm.providerId, 'llm'), llm.modelId);
         const callEmbed = createEmbedCall(providers.resolveConnection(embed.providerId, 'embed'), embed.modelId);
         const callRerank = createRerankCall(providers.resolveConnection(rerank.providerId, 'rerank'), rerank.modelId);
         const maxOutputTokens = model.maxOutput ?? DEFAULT_NARRATIVE_MAX_OUTPUT_TOKENS;
         const queryMode = settings.get(narrativeQueryModeSetting);
 
-        const complete: CallLlm = async function* (request) {
+        const complete: CompleteLLM = async (request) => {
           request.signal?.throwIfAborted();
           const callId = randomUUID();
           const startedAt = Date.now();
-          let completion: LlmCompletion | undefined;
+          let completion: LLMCompletion | undefined;
           let status: UsageRecordStatus = 'completed';
           let errorCode: string | null = null;
           try {
-            completion = await createLlmCompletion(callLlm({
+            completion = await completeLLM({
               ...request,
               maxOutputTokens,
-            }));
+            });
             if (completion.stopReason === 'max_tokens') {
               throw new Error('Narrative 路由输出达到上限, 结果未完整返回');
             }
@@ -99,14 +98,7 @@ export function openNarrative(
               createdAt: startedAt,
             });
           }
-          // 完整请求结束并记账后, 按 CallLlm 的现有事件类型交付最终正文.
-          const text = completion.blocks
-            .filter(block => block.type === 'text')
-            .map(block => block.text)
-            .join('');
-          yield { type: 'text_delta', blockIndex: 0, delta: text };
-          yield { type: 'usage', ...completion.usage };
-          yield { type: 'done', stopReason: completion.stopReason };
+          return completion;
         };
 
         const completeEmbed: CallEmbed = async request => {

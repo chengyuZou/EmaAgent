@@ -1,4 +1,4 @@
-import type { LlmTokenUsage } from '@ema-agent/llm';
+import type { LLMTokenUsage } from '@ema-agent/llm';
 
 export type AgentLoopPhase =
   | 'thinking'
@@ -18,7 +18,7 @@ export interface AgentLoopState {
   // 当前的迭代次数
   readonly iterations: number;
   /** 当前 AgentLoop 内全部 LLM 调用的 Token 累计用量 */
-  readonly usage: LlmTokenUsage;
+  readonly usage: LLMTokenUsage;
   readonly stopReason?: AgentLoopStopReason;
 }
 
@@ -39,7 +39,7 @@ export function updateAgentLoopState(
 
 export function addAgentUsage(
   state: AgentLoopState,
-  delta: LlmTokenUsage,
+  delta: LLMTokenUsage,
 ): AgentLoopState {
   const cacheReadInputTokens = sumOptional(
     state.usage.cacheReadInputTokens,

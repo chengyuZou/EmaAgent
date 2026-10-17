@@ -7,14 +7,14 @@ Estimate how many tokens a string or a model request contains. Both public funct
 ## Usage
 
 ```ts
-import type { LlmTool, Message } from '@ema-agent/llm';
+import type { LLMTool, Message } from '@ema-agent/llm';
 import { estimateMessagesTokens, estimateTextTokens } from '@ema-agent/token';
 
 const messages: readonly Message[] = [
   { role: 'system', content: 'Answer briefly.' },
   { role: 'user', content: 'Hello.' },
 ];
-const tools: readonly LlmTool[] = [{
+const tools: readonly LLMTool[] = [{
   name: 'Read',
   description: 'Read a file at the given path.',
   inputSchema: {
@@ -32,7 +32,7 @@ const toolsTokens = estimateMessagesTokens([], tools);
 | Function | Input | Result |
 | --- | --- | --- |
 | `estimateTextTokens(text)` | A string. | Estimated text tokens. |
-| `estimateMessagesTokens(messages, tools?)` | `Message[]` and optional `LlmTool[]` from `@ema-agent/llm`. Both arrays may be readonly. | Estimated tokens for all supplied messages and tool definitions. |
+| `estimateMessagesTokens(messages, tools?)` | `Message[]` and optional `LLMTool[]` from `@ema-agent/llm`. Both arrays may be readonly. | Estimated tokens for all supplied messages and tool definitions. |
 
 For a complete request estimate, include the system prompt, current effective history, new messages, and available tool definitions. Tool results already belong to the messages. Count each result once. An empty string returns `0`. Empty message and tool arrays return `0`.
 
@@ -41,7 +41,7 @@ For a complete request estimate, include the system prompt, current effective hi
 For a normal model call:
 
 1. The caller prepares model messages. Saved attachment paths become image, text, or other model content blocks before estimation. For images handled through Vision, the description text is what gets counted.
-2. [`assembleContext`](../context/assembleContext.ts) builds system messages from prompt blocks, places them before the working messages, and converts the current tool pool to `LlmTool[]`.
+2. [`assembleContext`](../context/assembleContext.ts) builds system messages from prompt blocks, places them before the working messages, and converts the current tool pool to `LLMTool[]`.
 3. [`estimateContextUsage`](../context/contextUsage.ts) passes these messages and tools to `estimateMessagesTokens`. The returned number becomes `estimatedInputTokens`.
 4. [`prepareAgentIteration`](../turn/prepare/prepareAgentIteration.ts) passes that estimate to Compact to check the request budget. Compact estimates candidate histories and summary requests with the same function. The prepared context usage also feeds the desktop context meter. When a provider reports usage for a call, Context can use its input count for that call.
 

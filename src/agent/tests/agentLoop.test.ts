@@ -1,7 +1,7 @@
 // 验证 AgentLoop 的调用准备、输出续写恢复、空转软引导与工具持久化握手。
 
 import { describe, expect, it, vi } from 'vitest';
-import type { CallLlm, LlmRequest, Message } from '@ema-agent/llm';
+import type { CallLLM, LLMRequest, Message } from '@ema-agent/llm';
 import { ContextWindowExceededError } from '@ema-agent/llm';
 import type { StreamingToolExecutor, ToolResult } from '@ema-agent/tools';
 import { runAgentLoop } from '../agentLoop.js';
@@ -9,8 +9,8 @@ import type { AgentLoopEvent } from '../events.js';
 import type { AgentLoopInput, PrepareAgentIterationInput } from '../types.js';
 
 function model(
-  stream: CallLlm,
-): CallLlm {
+  stream: CallLLM,
+): CallLLM {
   return stream;
 }
 
@@ -48,7 +48,7 @@ function baseInput(overrides: Partial<AgentLoopInput>): AgentLoopInput {
       request: { messages },
       messages,
     }),
-    callLlm: model(() => (async function* () {
+    callLLM: model(() => (async function* () {
       yield { type: 'text_delta' as const, blockIndex: 0, delta: 'done' };
       yield { type: 'done' as const, stopReason: 'end_turn' as const };
     })()),
@@ -83,13 +83,13 @@ describe('runAgentLoop', () => {
   it('最终文本生成期间收到追加输入, 先保存完整 Assistant 再交付并继续当前 Turn', async () => {
     const requests: Message[][] = [];
     let pending = true;
-    const stream: CallLlm = async function* (request) {
+    const stream: CallLLM = async function* (request) {
       requests.push([...request.messages]);
       yield { type: 'text_delta', blockIndex: 0, delta: requests.length === 1 ? '旧答案' : '更新后的答案' };
       yield { type: 'done', stopReason: 'end_turn' };
     };
     const events = await collect(baseInput({
-      callLlm: stream,
+      callLLM: stream,
       takeNextIterationMessages: async () => {
         if (!pending) return [];
         pending = false;
@@ -105,7 +105,7 @@ describe('runAgentLoop', () => {
   });
 
   it('每次迭代都经 prepareIteration，请求透传其输出上限并累计 Usage 差值', async () => {
-    const stream = vi.fn((_request: LlmRequest) => (async function* () {
+    const stream = vi.fn((_request: LLMRequest) => (async function* () {
       yield { type: 'usage' as const, inputTokens: 10, outputTokens: 0 };
       yield { type: 'usage' as const, inputTokens: 10, outputTokens: 4 };
       yield { type: 'text_delta' as const, blockIndex: 0, delta: 'ok' };
@@ -121,7 +121,7 @@ describe('runAgentLoop', () => {
 
     const result = await collect(baseInput({
       prepareIteration,
-      callLlm: model(stream),
+      callLLM: model(stream),
     }));
 
     expect(prepareIteration).toHaveBeenCalledTimes(1);
@@ -168,7 +168,7 @@ describe('runAgentLoop', () => {
       };
     });
 
-    await collect(baseInput({ prepareIteration, callLlm: model(stream) }));
+    await collect(baseInput({ prepareIteration, callLLM: model(stream) }));
 
     expect(recoveryReasons).toEqual([undefined, 'context_window_exceeded']);
     expect(callIds[0]).not.toBe(callIds[1]);
@@ -176,14 +176,14 @@ describe('runAgentLoop', () => {
 
   it('取消前已经收到的 Provider Usage 仍进入调用终态', async () => {
     const controller = new AbortController();
-    const stream: CallLlm = () => (async function* () {
+    const stream: CallLLM = () => (async function* () {
       yield { type: 'usage' as const, inputTokens: 12, outputTokens: 3 };
       controller.abort();
       throw new Error('cancelled by user');
     })();
 
     const events = await collect(baseInput({
-      callLlm: stream,
+      callLLM: stream,
       signal: controller.signal,
     }));
 
@@ -240,7 +240,7 @@ describe('runAgentLoop', () => {
 
     const observations: Array<[string, boolean, boolean]> = [];
     const collected = await collect(baseInput({
-      callLlm: model(stream),
+      callLLM: model(stream),
       createToolExecutor: () => llmCall === 0 ? executor : idleExecutor(),
     }), event => observations.push([event.type, started, acknowledged]));
 
@@ -278,7 +278,7 @@ describe('runAgentLoop', () => {
       acknowledgeResult: vi.fn(),
     } as unknown as StreamingToolExecutor;
     let llmCall = 0;
-    const stream: CallLlm = () => (async function* () {
+    const stream: CallLLM = () => (async function* () {
       llmCall += 1;
       if (llmCall === 1) {
         yield { type: 'tool_use_complete' as const, blockIndex: 0, callId: 'call-1', name: 'Read', args: {} };
@@ -294,7 +294,7 @@ describe('runAgentLoop', () => {
         seenMessages.push([...messages]);
         return { request: { messages }, messages };
       },
-      callLlm: stream,
+      callLLM: stream,
       createToolExecutor: () => executor,
     }));
 
@@ -313,13 +313,13 @@ describe('runAgentLoop', () => {
       allDone: () => !running,
       shutdown: vi.fn(async () => { running = false; }),
     } as unknown as StreamingToolExecutor;
-    const stream: CallLlm = () => (async function* () {
+    const stream: CallLLM = () => (async function* () {
       yield { type: 'tool_use_complete' as const, blockIndex: 0, callId: 'call-1', name: 'Read', args: {} };
       throw new Error('provider stream failed');
     })();
 
     await expect(collect(baseInput({
-      callLlm: stream,
+      callLLM: stream,
       createToolExecutor: () => executor,
     }))).rejects.toThrow('provider stream failed');
     expect(executor.addTool).toHaveBeenCalledOnce();
@@ -333,14 +333,14 @@ describe('runAgentLoop', () => {
       allDone: () => !running,
       shutdown: vi.fn(async () => { running = false; }),
     } as unknown as StreamingToolExecutor;
-    const stream: CallLlm = () => (async function* () {
+    const stream: CallLLM = () => (async function* () {
       yield { type: 'tool_use_complete' as const, blockIndex: 0, callId: 'call-1', name: 'Read', args: {} };
       yield { type: 'text_delta' as const, blockIndex: 1, delta: '继续生成' };
       yield { type: 'done' as const, stopReason: 'tool_use' as const };
     })();
 
     for await (const event of runAgentLoop(baseInput({
-      callLlm: stream,
+      callLLM: stream,
       createToolExecutor: () => executor,
     }))) {
       if (event.type === 'text_delta') break;
@@ -368,7 +368,7 @@ describe('runAgentLoop', () => {
       yield { type: 'done' as const, stopReason: 'end_turn' as const };
     })());
 
-    const events = await collect(baseInput({ prepareIteration, callLlm: model(stream) }));
+    const events = await collect(baseInput({ prepareIteration, callLLM: model(stream) }));
 
     const secondIteration = seenMessages[1]!;
     expect(secondIteration.some((message) => (
@@ -383,7 +383,7 @@ describe('runAgentLoop', () => {
       yield { type: 'done' as const, stopReason: 'max_tokens' as const };
     })());
 
-    const events = await collect(baseInput({ callLlm: model(stream) }));
+    const events = await collect(baseInput({ callLLM: model(stream) }));
 
     expect(terminalEvent(events)?.state.stopReason).toBe('output_recovery_failed');
     expect(terminalEvent(events)?.finalText).toBe('xx');
@@ -430,7 +430,7 @@ describe('runAgentLoop', () => {
 
     await collect(baseInput({
       prepareIteration,
-      callLlm: model(stream),
+      callLLM: model(stream),
       createToolExecutor: () => oneShotExecutor(toolResult),
       generationSource: {
         providerId: 'test-provider',
@@ -486,7 +486,7 @@ describe('runAgentLoop', () => {
 
     await collect(baseInput({
       prepareIteration,
-      callLlm: model(stream),
+      callLLM: model(stream),
       createToolExecutor: () => oneShotExecutor({
         type: 'tool_result',
         toolCallId: 'call-1',
@@ -533,7 +533,7 @@ describe('runAgentLoop', () => {
 
     const events = await collect(baseInput({
       prepareIteration,
-      callLlm: model(stream),
+      callLLM: model(stream),
       createToolExecutor: () => oneShotExecutor(toolResult),
       maxIterations: 6,
     }));

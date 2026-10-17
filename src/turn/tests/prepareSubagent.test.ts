@@ -1,6 +1,6 @@
 // 验证 fork 的固定父前缀与工具配对; 各子代理按自身能力装配纯工作 System.
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { CallLlm } from '@ema-agent/llm';
+import type { CallLLM, CompleteLLM } from '@ema-agent/llm';
 import type { CompactRequest, CompactResult } from '@ema-agent/compact';
 import type { ProviderModels, Providers } from '@ema-agent/providers';
 import type { DescribeImage } from '@ema-agent/context';
@@ -22,7 +22,7 @@ import { SubagentMessagesStore, type ForkParentMessages, type ForkParentMessage,
 const databases: Database[] = [];
 afterEach(() => { for (const db of databases.splice(0)) db.close(); });
 
-const callLlm: CallLlm = async function* () {
+const callLLM: CallLLM = async function* () {
   yield { type: 'done', stopReason: 'end_turn' };
 };
 
@@ -40,7 +40,12 @@ function preparedTurn(): PreparedTurn {
     providerId: 'p',
     modelId: 'm',
     protocol: 'openai-llm',
-    callLlm,
+    callLLM,
+    completeLLM: async () => ({
+      blocks: [],
+      stopReason: 'end_turn',
+      usage: { inputTokens: 0, outputTokens: 0 },
+    }),
     contextWindow: 100_000,
     maxOutput: 8_000,
     DynamicSystemPromptInput: dynamicInput,
@@ -81,7 +86,7 @@ function fixture(
     readonly providerModels?: ProviderModels;
   } = {},
 ) {
-  const createCompact = vi.fn((_call: CallLlm): ((request: CompactRequest) => Promise<CompactResult>) => async request => ({
+  const createCompact = vi.fn((_complete: CompleteLLM): ((request: CompactRequest) => Promise<CompactResult>) => async request => ({
     kind: 'unchanged' as const,
     messages: request.messages,
   }));

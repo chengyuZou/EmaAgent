@@ -2,10 +2,10 @@ import type { MessageKind, MessageRole } from '@ema-agent/storage';
 import type { MessageBlocks } from './message.js';
 import type { ToolResult } from '@ema-agent/tools';
 import type { PermissionMode } from '@ema-agent/permission';
-import type { LlmThinkingEffort } from '@ema-agent/llm';
+import type { LLMThinkingEffort } from '@ema-agent/llm';
 
 /** Session 的推理选择. off 明确要求协议关闭推理, 不表示沿用模型默认值. */
-export type ReasoningEffort = 'off' | LlmThinkingEffort;
+export type ReasoningEffort = 'off' | LLMThinkingEffort;
 
 /**
  * Turn 的持久化生命周期状态：创建即 running，没有持久化的 pending；

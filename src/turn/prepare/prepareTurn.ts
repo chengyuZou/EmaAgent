@@ -14,11 +14,13 @@ import {
   type CompactSettings,
 } from '@ema-agent/compact';
 import {
-  createLlmCall,
-  type CallLlm,
-  type LlmConnection,
+  createLLMCall,
+  createLLMCompletion,
+  type CallLLM,
+  type CompleteLLM,
+  type LLMConnection,
   type LLMProtocol,
-  type LlmThinking,
+  type LLMThinking,
 } from '@ema-agent/llm';
 import {
   loadPermissionRuleBuckets,
@@ -56,7 +58,8 @@ import {
 export interface PreparedTurn {
   readonly reasoningEffort: ReasoningEffort;
   readonly scratchpadDir?: string;
-  readonly callLlm: CallLlm;
+  readonly callLLM: CallLLM;
+  readonly completeLLM: CompleteLLM;
   readonly providerId: string;
   readonly modelId: string;
   /** prepare 解析出的实际调用协议（resolveConnection().protocol 冻结，与模型身份同时回填 Turn）。 */
@@ -66,7 +69,7 @@ export interface PreparedTurn {
   readonly maxOutput: number | null;
   readonly supportsImageInput: boolean;
   /** 开启 thinking 时冻结的中立推理配置（enabled + effort），协议 Adapter 各自映射。 */
-  readonly thinking?: LlmThinking;
+  readonly thinking?: LLMThinking;
   /** 本轮已读取的动态输入; 子代理复用数据段, 换成自己的模型和工具, 不传根角色人设. */
   readonly DynamicSystemPromptInput: DynamicSystemPromptInput;
   readonly systemPrompt: readonly PromptBlock[];
@@ -92,8 +95,8 @@ export interface PrepareTurnDeps extends TurnToolsDeps {
   ) => Promise<readonly SkillDescriptor[]>;
   /** SkillStore 从 skills.enabled 读取当前禁用路径, 覆盖 builtin/user. */
   readonly disabledSkillPaths: () => readonly string[];
-  /** 默认 llm 包的 createLlmCall；测试注入脚本化调用。 */
-  readonly createLlmCall?: (connection: LlmConnection, modelId: string) => CallLlm;
+  /** 缺省时使用 llm 包的 createLLMCall, 测试可注入预先安排好事件的调用函数. */
+  readonly createLLMCall?: (connection: LLMConnection, modelId: string) => CallLLM;
   /** 工作区指令（EMA.md/CLAUDE.md）按本 Turn 的工作区读取；无工作区时不会调用。 */
   readonly workspaceInstructions?: (cwd: string) => string | null;
   /** 记忆使用指引由 memory 包提供; Work 摘要和角色关系记忆经 reminder 注入. */
@@ -112,7 +115,7 @@ export interface PrepareTurnInput {
   readonly prepareSubagent: PrepareSubagent;
   /** 事件出口由 turn.ts 绑定到本 Turn 的事件通道（每 Turn 一个）。 */
   readonly emit: (event: TurnStreamEvent) => void;
-  readonly onSubagentLlmCallFinished?: (
+  readonly onSubagentLLMCallFinished?: (
     event: Extract<AgentLoopEvent, { type: 'llm_call_finished' }>,
   ) => void;
   readonly signal: AbortSignal;
@@ -134,7 +137,8 @@ export async function prepareTurn(
   } = preparedInput;
   const permissionMode = session.permissionMode;
   const connection = deps.providers.resolveConnection(providerId, 'llm');
-  const callLlm = (deps.createLlmCall ?? createLlmCall)(connection, modelId);
+  const callLLM = (deps.createLLMCall ?? createLLMCall)(connection, modelId);
+  const completeLLM = createLLMCompletion(connection, modelId);
   const supportsImageInput = modelFacts.inputImage === true;
   const degradations: RequestDegradationNotice[] = [];
 
@@ -179,8 +183,8 @@ export async function prepareTurn(
     modelId,
     reasoningEffort: session.reasoningEffort,
     emit: input.emit,
-    ...(input.onSubagentLlmCallFinished
-      ? { onSubagentLlmCallFinished: input.onSubagentLlmCallFinished }
+    ...(input.onSubagentLLMCallFinished
+      ? { onSubagentLLMCallFinished: input.onSubagentLLMCallFinished }
       : {}),
     permission: {
       mode: permissionMode,
@@ -192,7 +196,8 @@ export async function prepareTurn(
   return Object.freeze({
     reasoningEffort: session.reasoningEffort,
     ...(scratchpadDir ? { scratchpadDir } : {}),
-    callLlm,
+    callLLM,
+    completeLLM,
     providerId,
     modelId,
     protocol: connection.protocol,

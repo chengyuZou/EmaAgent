@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { createEmbedCall } from '@ema-agent/embed';
-import { createLlmCall } from '@ema-agent/llm';
+import { createLLMCall } from '@ema-agent/llm';
 import {
   ProviderError,
   type ModelsDevCatalog,
@@ -121,9 +121,9 @@ async function runProbe(
   // 每个分支用字面量能力解析连接，泛型收窄到该能力的连接类型。
   switch (capability) {
     case 'llm': {
-      const callLlm = createLlmCall(providers.resolveConnection(providerId, 'llm'), modelId);
+      const callLLM = createLLMCall(providers.resolveConnection(providerId, 'llm'), modelId);
       // 消费至流自然结束；任何协议层错误都在迭代中抛出。
-      for await (const event of callLlm({
+      for await (const event of callLLM({
         messages: [{ role: 'user', content: [{ type: 'text', text: 'ping' }] }],
         maxOutputTokens: 1,
         signal,
@@ -134,8 +134,8 @@ async function runProbe(
     }
     case 'vision': {
       // vision 是带图片输入的 LLM：复用 LLM 协议族发文本 ping，但解析 vision 能力自己的档位。
-      const callLlm = createLlmCall(providers.resolveConnection(providerId, 'vision'), modelId);
-      for await (const event of callLlm({
+      const callLLM = createLLMCall(providers.resolveConnection(providerId, 'vision'), modelId);
+      for await (const event of callLLM({
         messages: [{ role: 'user', content: [{ type: 'text', text: 'ping' }] }],
         maxOutputTokens: 1,
         signal,

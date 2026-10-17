@@ -1,4 +1,3 @@
-// 配置 Vision 模块的 Vitest 运行环境。
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({

@@ -1,13 +1,13 @@
 // 固定父请求的消息与 ID, 真实 fork 领取后才构建父前缀; 不负责写子代理消息表.
 import type { ForkParentMessage, ForkParentMessages } from '@ema-agent/agent';
-import type { LlmGenerationSource, Message } from '@ema-agent/llm';
+import type { LLMGenerationSource, Message } from '@ema-agent/llm';
 import type { MessageBlocks, SessionStore } from '@ema-agent/session';
 import type { ToolResult } from '@ema-agent/tools';
 
 /** 父 Assistant 完整落库后的身份. 领取者据此读取正文, 空回复没有 Message ID. */
 interface CompletedAssistant {
   readonly messageId: string | undefined;
-  readonly generatedBy: LlmGenerationSource;
+  readonly generatedBy: LLMGenerationSource;
 }
 
 /** 每个 Turn 一份. read 绑定调用所属请求, 兄弟 fork 共用一次父前缀构建. */
@@ -58,7 +58,7 @@ export function createForkParentMessages(sessions: Pick<SessionStore, 'getMessag
     });
   }
 
-  function completeAssistant(messageId: string | undefined, generatedBy: LlmGenerationSource): void {
+  function completeAssistant(messageId: string | undefined, generatedBy: LLMGenerationSource): void {
     // writer 已保存完整父 Assistant. 这里只交付身份, 没有 fork 时不读取正文.
     resolveAssistant?.({ messageId, generatedBy });
   }

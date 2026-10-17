@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import type { CompleteMemoryLlm } from '../common/extraction.js';
+import type { CompleteMemoryLLM } from '../common/extraction.js';
 import { MemoryConsolidationError } from '../errors.js';
 
 export const CONSOLIDATION_INPUT_INSTRUCTION =
@@ -16,7 +16,7 @@ export interface ConsolidationSource {
   readonly characterName?: string;
 }
 
-export interface RunConsolidationLlmInput {
+export interface RunConsolidationLLMInput {
   readonly memoryDirectory: string;
   readonly currentPaths: readonly string[];
   readonly isAllowedTargetPath: (relativePath: string) => boolean;
@@ -25,7 +25,7 @@ export interface RunConsolidationLlmInput {
   readonly maxInputBytes: number;
   readonly systemTemplate: string;
   readonly inputTemplate: string;
-  readonly complete: CompleteMemoryLlm;
+  readonly complete: CompleteMemoryLLM;
   readonly signal?: AbortSignal;
 }
 
@@ -35,8 +35,8 @@ export interface MemoryConsolidationResult {
   readonly consumedTurnIds: readonly string[];
 }
 
-export async function runConsolidationLlm(
-  input: RunConsolidationLlmInput,
+export async function runConsolidationLLM(
+  input: RunConsolidationLLMInput,
 ): Promise<MemoryConsolidationResult> {
   const rendered = await buildConsolidationInput(input);
   const raw = await input.complete([
@@ -124,7 +124,7 @@ interface RenderedConsolidationInput {
 }
 
 async function buildConsolidationInput(
-  input: RunConsolidationLlmInput,
+  input: RunConsolidationLLMInput,
 ): Promise<RenderedConsolidationInput> {
   const files: RenderedFile[] = [];
   for (const relativePath of input.currentPaths) {

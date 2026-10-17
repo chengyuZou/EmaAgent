@@ -9,7 +9,7 @@ import { Database } from '@ema-agent/storage';
 import type { SettingsStore } from '@ema-agent/settings';
 import type { SkillDescriptor } from '@ema-agent/skills';
 import { buildTool, contextOk, FileStateCache, ToolRegistry } from '@ema-agent/tools';
-import type { CallLlm, Message } from '@ema-agent/llm';
+import type { CallLLM, Message } from '@ema-agent/llm';
 import { z } from 'zod';
 import type { Turn } from '@ema-agent/turn';
 import { SessionInteractionQueue } from '../interactionQueue.js';
@@ -131,11 +131,11 @@ describe('prepareTurn', () => {
       isReadOnly: () => true, isConcurrencySafe: () => true,
       checkPermissions: async () => ({ behavior: 'allow' as const }), execute: async () => 'ok',
     }));
-    const createLlmCall = vi.fn(() => vi.fn() as unknown as CallLlm);
+    const createLLMCall = vi.fn(() => vi.fn() as unknown as CallLLM);
     const scratchpadDirForTurn = vi.fn(() => '/scratchpad');
-    const configured = { ...deps, createLlmCall, scratchpadDirForTurn };
+    const configured = { ...deps, createLLMCall, scratchpadDirForTurn };
     const preview = await prepareContextInput(configured, 's1', new AbortController().signal);
-    expect(createLlmCall).not.toHaveBeenCalled();
+    expect(createLLMCall).not.toHaveBeenCalled();
     expect(scratchpadDirForTurn).not.toHaveBeenCalled();
     expect(validateContext).not.toHaveBeenCalled();
     const actual = await prepareTurn(configured, makeRuntime(makeStart()));
@@ -174,7 +174,7 @@ describe('prepareTurn', () => {
         return '工具完成';
       },
     }));
-    const callLlm: CallLlm = async function* (request) {
+    const callLLM: CallLLM = async function* (request) {
       requests.push([...request.messages]);
       if (requests.length === 1) {
         yield { type: 'tool_use_complete', blockIndex: 0, callId: 'waiting-call', name: 'WaitingTool', args: {} };
@@ -205,7 +205,7 @@ describe('prepareTurn', () => {
       publish: (_id, event) => queueEvents.push(event),
     });
     executor = new TurnExecutor({
-      ...makeDeps({ sessions, registry, createLlmCall: () => callLlm }),
+      ...makeDeps({ sessions, registry, createLLMCall: () => callLLM }),
       sessions, turns, continuations: queue,
       readTurnReminder: () => ({ currentDate: '2026-10-15', goal: null }),
       characterName: () => 'test',
@@ -283,7 +283,7 @@ describe('prepareTurn', () => {
     let release!: () => void;
     const ready = new Promise<void>(resolve => { entered = resolve; });
     const preparation = new Promise<void>(resolve => { release = resolve; });
-    const callLlm = vi.fn(async function* () {
+    const callLLM = vi.fn(async function* () {
       throw new Error('停止后不应调用模型');
     });
     const readTurnReminder = vi.fn(async () => {
@@ -295,7 +295,7 @@ describe('prepareTurn', () => {
     });
     const deps = makeDeps({
       sessions,
-      createLlmCall: () => callLlm,
+      createLLMCall: () => callLLM,
       attachments: {
         attach: async (_sessionId: string, _turnId: string, blocks: readonly unknown[]) => {
           if (waitingFor === 'attachment') {
@@ -333,7 +333,7 @@ describe('prepareTurn', () => {
       expect(await handle.completion).toMatchObject({ status: 'aborted' });
       expect(sessions.loadHistory(session.id)).toEqual([]);
       expect(queue.list(session.id)).toEqual([]);
-      expect(callLlm).not.toHaveBeenCalled();
+      expect(callLLM).not.toHaveBeenCalled();
       expect(turns.getTurn(handle.turnId)?.status).toBe('aborted');
       expect(running.isRunning(session.id)).toBe(false);
       expect(deps.subagents.abortForegroundForTurn).toHaveBeenCalledWith(handle.turnId);

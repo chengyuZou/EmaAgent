@@ -1,5 +1,3 @@
-// 构造视觉提取 Prompt，并按任务类型给出默认输出 Token 上限。
-
 import type { VisionTask } from './types.js';
 
 const TASK_INSTRUCTIONS: Record<VisionTask, string> = {
@@ -54,8 +52,7 @@ export function buildVisionExtractionPrompt(args: BuildVisionExtractionPromptArg
     '      "bbox": [0.0, 0.0, 1.0, 1.0],',
     '      "confidence": 0.0',
     '    }',
-    '  ],',
-    '  "warnings": ["optional warnings when text is unclear or layout is uncertain"]',
+    '  ]',
     '}',
     '',
     'Rules:',

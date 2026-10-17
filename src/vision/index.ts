@@ -1,5 +1,5 @@
 export { createVisionCall } from './visionModel.js';
-export { VisionError, isVisionError } from './errors.js';
+export { VisionError } from './errors.js';
 export type { VisionErrorCode } from './errors.js';
 export type {
   CallVision,

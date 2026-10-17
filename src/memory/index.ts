@@ -27,7 +27,7 @@ export {
 export { MemoryConsolidationError } from './errors.js';
 export {
   runTurnExtraction,
-  type CompleteMemoryLlm,
+  type CompleteMemoryLLM,
   type CompletedTurnMemoryInput,
   type MemoryExtractionOutput,
 } from './common/extraction.js';
@@ -47,11 +47,11 @@ export { createExtractTurn, type CreateExtractTurnDeps, type ExtractTurn } from 
 export {
   applyConsolidationEdits,
   parseConsolidationEdits,
-  runConsolidationLlm,
+  runConsolidationLLM,
   type ConsolidationEdit,
   type ConsolidationSource,
   type MemoryConsolidationResult,
-  type RunConsolidationLlmInput,
+  type RunConsolidationLLMInput,
 } from './consolidation/consolidation.js';
 export {
   createWorkConsolidate,

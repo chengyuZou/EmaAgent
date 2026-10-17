@@ -12,7 +12,7 @@ export interface MemoryExtractionOutput {
   readonly content: string;
 }
 
-export type CompleteMemoryLlm = (
+export type CompleteMemoryLLM = (
   messages: readonly Message[],
   signal?: AbortSignal,
 ) => Promise<string>;
@@ -22,7 +22,7 @@ export async function runTurnExtraction(
   systemInstructions: string,
   inputInstructions: string,
   turnText: string,
-  complete: CompleteMemoryLlm,
+  complete: CompleteMemoryLLM,
   signal?: AbortSignal,
 ): Promise<string | undefined> {
   const raw = await complete([

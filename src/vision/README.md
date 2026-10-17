@@ -1,39 +1,67 @@
-# @ema-agent/vision
+# Vision
 
-`src/vision` 是一次性视觉任务模块：接收已经解析好的模型连接、若干图片和任务指令，复用 `@ema-agent/llm` 的唯一协议执行链，返回中立文本、结构化块与 Provider Usage。
+[中文](README-zh.md)
 
-它不拥有 Session、Turn、历史消息、Provider 配置、模型绑定、附件文件、描述缓存、并发队列、重试或 Usage 写库。
+`@ema-agent/vision` extracts text, descriptions, document layout, or tables from images. A call submits the current images and task instructions through [LLM](../llm/README.md), then returns text, optional markdown, content blocks, and model-reported Token usage.
 
-```text
-Provider / 装配层
-  └─ createVisionCall(connection, modelId)
-       └─ callVision({ images, task?, language?, instruction?, signal? })
-            ├─ 构造视觉任务 Prompt + 中立图片块
-            ├─ createLlmCall() + createLlmCompletion()
-            └─ { text, markdown?, blocks, usage? }
-```
-
-## 公共入口
+## Use
 
 ```ts
+import { createVisionCall } from '@ema-agent/vision';
+
 const callVision = createVisionCall({
-  providerId: 'openai',
+  providerId: 'my-provider',
   protocol: 'openai-responses-llm',
   apiKey,
-  baseUrl: 'https://api.openai.com/v1',
-}, 'gpt-4.1-mini');
+  baseUrl,
+}, modelId);
 
 const result = await callVision({
   task: 'ocr',
   images: [{ kind: 'bytes', bytes, mimeType: 'image/png' }],
   signal,
 });
+
+// result.text, result.markdown, result.blocks, result.usage
 ```
 
-`task` 缺省为 `auto`。Vision 要求模型返回 JSON；模型只返回普通文本时，普通文本会降级为一个 `text` block，不会因为缺少 JSON 外壳丢失可用结果。
+`VisionConnection` uses the LLM connection type. All four implemented LLM protocols can be selected, with a model that accepts images. The call function reuses one `CompleteLLM` for subsequent image tasks.
 
-Vision 没有自己的 Provider protocol。`vision` capability 直接使用 LLM 已实现的 `openai-llm`、`openai-responses-llm`、`anthropic-llm` 或 `gemini-llm`，因此协议请求、流收口、Usage 和取消只有一套实现。
+Images can be bytes, Base64, or URLs. Byte and Base64 inputs include a MIME type: PNG, JPEG, WebP, or GIF. Base64 inputs may contain a data-URL prefix or whitespace, which is removed before sending. Gemini rejects ordinary HTTP(S) image URLs here. Callers should pass downloaded bytes or use a Gemini Files/Cloud Storage URI supported by the selected service.
 
-当前聊天模型支持图片时，附件直接进入根 LLM，不调用独立 Vision。独立 Vision 只用于不支持图片的聊天模型降级描述，以及 PDF 的 OCR、图注、布局与表格提取。附件描述缓存属于 `@ema-agent/attachments`，不进入本模块。
+## Task and result
 
-普通 HTTP 图片 URL 不能直接交给 Gemini Files 接口；调用方需要先下载为受管字节。图片数量、单图大小、归一化、EXIF 清理和并发上限属于附件接收与调用编排，不在 Vision 重复定义。
+| Task | Requested output | Default maximum output Tokens |
+| --- | --- | --- |
+| `auto` | Readable text, or a short description when there is no readable text. | 2048 |
+| `caption` | Scene, objects, UI state, and relevant visible details. | 1024 |
+| `ocr` | Readable text in reading order, with useful line breaks. | 2048 |
+| `layout` | Text and layout regions, headings, tables, and figures. | 4096 |
+| `table` | Tables reconstructed as markdown where possible. | 4096 |
+
+The default task is `auto`. `language` and `instruction` add guidance to the prompt. `maxOutputTokens` overrides the task default; `temperature` is forwarded when provided.
+
+Each request contains one user message with the extraction prompt and images. It disables thinking and includes no conversation history or tool definitions. `createVisionCall` creates `completeLLM` through `createLLMCompletion(connection, modelId)`. Each `completeLLM(request)` sends one non-streaming SDK request and returns the full model result for Vision to parse.
+
+The prompt requests JSON with `text`, optional `markdown`, and `blocks`. Block kinds include text, table, image, layout, formula, and caption. The parser accepts JSON, fenced JSON, or a JSON object surrounded by text. Invalid JSON and plain text are preserved as a text block. Missing block IDs are generated, unknown kinds become `text`, and blocks without text or markdown are discarded. If no valid blocks remain, the parser builds a text block from the top-level text or raw response.
+
+`bbox` means `[x, y, width, height]`. The prompt requests normalized coordinates, but parsing only verifies four finite numbers. `confidence` is also only checked for a finite number. Neither field is a verified measurement or a guaranteed 0..1 value.
+
+## Failures and cancellation
+
+Empty model IDs, empty image lists or payloads, invalid output limits, and non-finite temperatures produce `VisionError` with `vision/invalid_request`. Unsupported Gemini URLs produce `vision/unsupported_input` before the LLM request. An empty visible response produces `vision/invalid_response`.
+
+Other LLM failures are wrapped as `vision/call_failed`, preserving the original cause and numeric HTTP status when available. Cancellation through `signal` is propagated without wrapping it as a provider failure. Retry decisions stay with the caller; Vision executes one request.
+
+## Integration and tests
+
+The server's [turn wiring](../../apps/server/src/composition/turn.ts) supplies Vision for attachment descriptions when the chat model cannot receive images. A chat model that supports images receives them directly. [DescribeImage](../builtin-tools/tools/DescribeImageTool/describeImageTool.ts) and the [PDF reader](../builtin-tools/tools/FileReadTool/pdfReader.ts) use Vision for explicit image and document tasks. Attachment descriptions are cached by the attachment flow.
+
+Start with [visionModel.ts](visionModel.ts) for request creation, [prompts.ts](prompts.ts) for task instructions and default budgets, and [parse.ts](parse.ts) for response handling.
+
+```sh
+pnpm --filter @ema-agent/vision test
+pnpm --filter @ema-agent/vision typecheck
+```
+
+Tests cover single-request construction, protocol selection, invalid inputs, cancellation, JSON/text handling, task budgets, and the fixed prompt. Caller-provided language and instructions are kept as supplied rather than having their punctuation rewritten.

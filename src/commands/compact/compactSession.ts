@@ -13,8 +13,8 @@ import {
   type DescribeImage,
 } from '@ema-agent/context';
 import {
-  type CallLlm,
-  type LlmConnection,
+  type CompleteLLM,
+  type LLMConnection,
   type Message,
 } from '@ema-agent/llm';
 import type { ProviderModels, Providers } from '@ema-agent/providers';
@@ -73,10 +73,9 @@ export interface ManualCompactDeps {
   /** Vision 描述缓存(path 键, 与 Turn 同一实例); 与 describeImage 同时注入才会生成描述. */
   readonly visionCache?: VisionDescriptionCache;
   readonly createCompact: (
-    callLlm: CallLlm,
+    completeLLM: CompleteLLM,
   ) => (request: CompactRequest) => Promise<CompactResult>;
-  /** 默认 llm 包的 createLlmCall;测试注入脚本化调用. */
-  readonly createLlmCall: (connection: LlmConnection, modelId: string) => CallLlm;
+  readonly createLLMCompletion: (connection: LLMConnection, modelId: string) => CompleteLLM;
   /** 摘要调用记账;缺省不记账(观测不阻断主链). */
   readonly usageRecorder?: UsageRecorder;
   /** 手动压缩生命周期由 Compact 管线生产,这里只提供当前 Session 的传输出口. */
@@ -174,8 +173,8 @@ export async function compactSession(
     const estimatedInputTokens = estimateMessagesTokens([...systemMessages, ...history]);
 
     const connection = deps.providers.resolveConnection(providerId, 'llm');
-    const callLlm = deps.createLlmCall(connection, modelId);
-    const compact = deps.createCompact(callLlm);
+    const completeLLM = deps.createLLMCompletion(connection, modelId);
+    const compact = deps.createCompact(completeLLM);
 
     const result = await compact({
       compactId,

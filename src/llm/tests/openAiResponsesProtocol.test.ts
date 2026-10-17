@@ -1,8 +1,7 @@
-// 测试 OpenAI Responses 协议的同一调用目标 reasoning 重放裁决，以及流中真实 reasoning item 状态收集。
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createLlmCall } from '../languageModel.js';
+import { createLLMCall } from '../languageModel.js';
 import { createOpenAiResponsesProtocol, toResponsesInput } from '../protocols/openAiResponses.js';
-import type { LlmStreamEvent } from '../types.js';
+import type { LLMStreamEvent } from '../types.js';
 
 const sdkMocks = vi.hoisted(() => ({
   openaiConstructor: vi.fn(),
@@ -33,7 +32,7 @@ describe('streamOpenAiResponses reasoning item 收集', () => {
         usage: { input_tokens: 1, output_tokens: 1, input_tokens_details: { cached_tokens: 0 } },
       },
     }]));
-    const call = createLlmCall(
+    const call = createLLMCall(
       { providerId: 'openai', protocol: 'openai-responses-llm', apiKey: 'key' },
       'model',
     );
@@ -93,7 +92,7 @@ describe('streamOpenAiResponses reasoning item 收集', () => {
       { providerId: 'openai', protocol: 'openai-responses-llm', apiKey: 'key' },
       'gpt-5.2',
     );
-    const events: LlmStreamEvent[] = [];
+    const events: LLMStreamEvent[] = [];
     for await (const event of llm({
       messages: [{ role: 'user', content: 'hello' }],
       maxOutputTokens: 128,
@@ -128,7 +127,7 @@ describe('streamOpenAiResponses reasoning item 收集', () => {
       maxOutputTokens: 128,
       thinking: { enabled: true, effort: 'medium' },
     })) {
-      // 消费完整个流
+      // 读取到结束事件, 再检查实际发送给 SDK 的参数.
     }
 
     expect(sdkMocks.responsesCreate).toHaveBeenCalledWith(

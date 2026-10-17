@@ -45,6 +45,6 @@ export function mimeForPath(filePath: string): string {
   return EXTENSION_MIME[filePath.slice(dot).toLowerCase()] ?? 'application/octet-stream';
 }
 
-export function isLlmImagePath(filePath: string): boolean {
+export function isLLMImagePath(filePath: string): boolean {
   return LLM_IMAGE_MIMES.has(mimeForPath(filePath));
 }

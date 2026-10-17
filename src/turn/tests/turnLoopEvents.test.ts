@@ -78,10 +78,10 @@ describe('根 Turn 循环事件', () => {
   it('根与子调用分别记录实际来源, 子调用不发根 Context 事件, 无用量的失败保存空值', () => {
     const { loop, records, events } = fixture();
     loop.accept(finished('root'));
-    loop.recordLlmCall({ ...finished('child'),
+    loop.recordLLMCall({ ...finished('child'),
       source: { providerId: 'child-provider', modelId: 'child-model', protocol: 'anthropic-llm' } });
     const { usage: _usage, ...failure } = finished('failed');
-    loop.recordLlmCall({ ...failure, status: 'failed', errorCode: 'llm/failed' });
+    loop.recordLLMCall({ ...failure, status: 'failed', errorCode: 'llm/failed' });
     expect(records).toHaveLength(3);
     expect(records[0]).toMatchObject({ id: 'root', sessionId: 'session', turnId: 'turn',
       providerId: 'p', modelId: 'm', capability: 'llm', inputTokens: 10, outputTokens: 5,

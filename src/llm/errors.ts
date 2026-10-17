@@ -1,7 +1,6 @@
-// 把协议输入错误、Provider 失败、取消和不完整流归一成稳定错误。
 import type { LLMProtocol } from '@ema-agent/providers';
 
-export type LlmErrorCode =
+export type LLMErrorCode =
   | 'provider/context_too_long'
   | 'provider/input_unsupported'
   | 'provider/server_error'
@@ -15,8 +14,8 @@ interface ProviderErrorShape {
   error?: { code?: unknown; message?: unknown } | null;
 }
 
-/** 中立消息含有目标协议无法表达的内容，禁止协议实现静默丢弃。 */
-export class LlmProtocolInputError extends Error {
+/** 输入内容无法转换为目标协议时报告具体位置, 不静默丢弃该内容. */
+export class LLMProtocolInputError extends Error {
   readonly code = 'provider/input_unsupported' as const;
 
   constructor(
@@ -30,11 +29,11 @@ export class LlmProtocolInputError extends Error {
       `${protocol} cannot encode ${contentType} at messages[${messageIndex}]`
       + `[${blockIndex}]: ${detail}`,
     );
-    this.name = 'LlmProtocolInputError';
+    this.name = 'LLMProtocolInputError';
   }
 }
 
-/** Provider 因上下文超限拒绝请求；上层可据此执行一次响应式压缩。 */
+/** 供应商报告上下文过长, Agent 可据此压缩后重试. */
 export class ContextWindowExceededError extends Error {
   constructor(message = 'Context window exceeded', cause?: unknown) {
     super(message);
@@ -43,8 +42,8 @@ export class ContextWindowExceededError extends Error {
   }
 }
 
-/** Provider 通过流终态显式报告失败。 */
-export class LlmProviderResponseError extends Error {
+/** 供应商在响应或事件流中明确报告失败. */
+export class LLMProviderResponseError extends Error {
   readonly code = 'provider/response_failed' as const;
 
   constructor(
@@ -55,64 +54,61 @@ export class LlmProviderResponseError extends Error {
     cause?: unknown,
   ) {
     super(message);
-    this.name = 'LlmProviderResponseError';
+    this.name = 'LLMProviderResponseError';
     if (cause !== undefined) this.cause = cause;
   }
 }
 
-/** Provider 返回损坏的 Tool 参数；该调用不得进入 Permission 或 Sandbox。 */
-export class LlmToolArgumentsParseError extends Error {
+/** 工具参数无法解析为 JSON, 不交给后续权限检查和工具执行. */
+export class LLMToolArgumentsParseError extends Error {
   readonly code = 'provider/tool_arguments_invalid_json' as const;
-  readonly rawArgumentsExcerpt: string;
 
   constructor(
     readonly protocol: LLMProtocol,
     readonly callId: string,
     readonly toolName: string,
-    rawArguments: string,
     cause?: unknown,
   ) {
     super(`${protocol} returned invalid JSON arguments for tool "${toolName}" (call "${callId}")`);
-    this.name = 'LlmToolArgumentsParseError';
-    this.rawArgumentsExcerpt = rawArguments.slice(0, 500);
+    this.name = 'LLMToolArgumentsParseError';
     if (cause !== undefined) this.cause = cause;
   }
 }
 
-/** SDK 流没有给出协议规定的结束事件，不能把网络断流伪装成正常完成。 */
-export class LlmStreamProtocolError extends Error {
+/** 没有收到协议结束事件就断流, 不能当作请求成功. */
+export class LLMStreamProtocolError extends Error {
   readonly code = 'provider/incomplete_stream' as const;
 
   constructor(readonly protocol: LLMProtocol) {
     super(`${protocol} stream ended without an explicit terminal event`);
-    this.name = 'LlmStreamProtocolError';
+    this.name = 'LLMStreamProtocolError';
   }
 }
 
-export function normalizeLlmProviderError(error: unknown): Error {
+export function normalizeLLMProviderError(error: unknown): Error {
   if (error instanceof ContextWindowExceededError) return error;
   if (isContextWindowExceeded(error)) {
     return new ContextWindowExceededError(errorMessage(error), error);
   }
   if (
-    error instanceof LlmProtocolInputError
-    || error instanceof LlmProviderResponseError
-    || error instanceof LlmToolArgumentsParseError
-    || error instanceof LlmStreamProtocolError
+    error instanceof LLMProtocolInputError
+    || error instanceof LLMProviderResponseError
+    || error instanceof LLMToolArgumentsParseError
+    || error instanceof LLMStreamProtocolError
   ) {
     return error;
   }
   return error instanceof Error ? error : new Error(String(error));
 }
 
-export function createLlmProviderResponseError(input: {
+export function createLLMProviderResponseError(input: {
   protocol: LLMProtocol;
   message: string;
   providerCode?: string | null;
   cause?: unknown;
 }): Error {
   const providerCode = input.providerCode ?? null;
-  return normalizeLlmProviderError(new LlmProviderResponseError(
+  return normalizeLLMProviderError(new LLMProviderResponseError(
     input.message,
     input.protocol,
     providerCode,
@@ -121,11 +117,11 @@ export function createLlmProviderResponseError(input: {
   ));
 }
 
-/** Turn 只消费稳定错误码，不解析任何 SDK 私有错误对象。 */
-export function llmProviderErrorCode(error: unknown): LlmErrorCode {
+/** Turn 和用量记录通过此处取得业务错误码, 不各自解析 SDK 错误. */
+export function llmProviderErrorCode(error: unknown): LLMErrorCode {
   if (error instanceof ContextWindowExceededError) return 'provider/context_too_long';
-  if (error instanceof LlmProtocolInputError) return error.code;
-  if (error instanceof LlmToolArgumentsParseError) return error.code;
+  if (error instanceof LLMProtocolInputError) return error.code;
+  if (error instanceof LLMToolArgumentsParseError) return error.code;
   return 'provider/server_error';
 }
 

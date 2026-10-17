@@ -116,7 +116,7 @@ export const DraftReferenceList = memo(function DraftReferenceList({ sessionId, 
   );
 });
 
-function isLlmImagePath(filePath: string): boolean {
+function isLLMImagePath(filePath: string): boolean {
   return ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(filePath.split('.').pop()?.toLowerCase() ?? '');
 }
 
@@ -125,7 +125,7 @@ export function appendAttachmentPaths(
   paths: readonly string[],
 ): ChatDraft {
   const references = paths.map((sourcePath): ChatDraftReference => {
-    if (isLlmImagePath(sourcePath)) {
+    if (isLLMImagePath(sourcePath)) {
       return {
         draftId: crypto.randomUUID(),
         type: 'image',

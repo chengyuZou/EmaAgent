@@ -1,7 +1,7 @@
 // 判断压缩时机, 先尝试 Micro, 再调用 Macro 并保存最终摘要.
 
 import { randomUUID } from 'node:crypto';
-import type { CallLlm, Message } from '@ema-agent/llm';
+import type { CompleteLLM, Message } from '@ema-agent/llm';
 import { estimateMessagesTokens } from '@ema-agent/token';
 import { compactTokenLimit } from './budget.js';
 import { runMacroCompact } from './macroCompact.js';
@@ -16,7 +16,7 @@ import type {
 } from './types.js';
 
 export function createCompact(
-  callLlm: CallLlm,
+  completeLLM: CompleteLLM,
   overrides: Partial<CompactSettings> = {},
 ): (request: CompactRequest) => Promise<CompactResult> {
   const defaults = { ...DEFAULT_COMPACT_SETTINGS, ...overrides };
@@ -24,7 +24,7 @@ export function createCompact(
 
   return (request) => compactMessages({
     request,
-    callLlm,
+    completeLLM,
     defaults,
     consecutiveFailures,
   });
@@ -32,7 +32,7 @@ export function createCompact(
 
 async function compactMessages(args: {
   readonly request: CompactRequest;
-  readonly callLlm: CallLlm;
+  readonly completeLLM: CompleteLLM;
   readonly defaults: Readonly<CompactSettings>;
   readonly consecutiveFailures: Map<string, number>;
 }): Promise<CompactResult> {
@@ -88,7 +88,7 @@ async function compactMessages(args: {
   let macro: Awaited<ReturnType<typeof runMacroCompact>>;
   try {
     macro = await runMacroCompact({
-      callLlm: args.callLlm,
+      completeLLM: args.completeLLM,
       sessionId: request.sessionId,
       turnId: request.turnId,
       providerId: request.providerId,

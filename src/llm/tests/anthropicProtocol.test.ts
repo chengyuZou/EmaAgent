@@ -1,4 +1,3 @@
-// 测试中立缓存断点只在 Anthropic 协议投影为 cache_control，以及 thinking 同模型重放。
 import { describe, expect, it } from 'vitest';
 import { toAnthropicMessages } from '../protocols/anthropic.js';
 

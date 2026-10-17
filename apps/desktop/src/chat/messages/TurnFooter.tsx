@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, type JSX } from 'react';
 import { IconButton } from '@ema-agent/ui';
-import type { AssistantBlock, LlmTokenUsage } from '@ema-agent/llm';
+import type { AssistantBlock, LLMTokenUsage } from '@ema-agent/llm';
 import type { SessionMessage } from '@ema-agent/session';
 import { estimateTextTokens } from '@ema-agent/token';
 import type { SessionMessagePage } from '../../api/sessions.js';
@@ -135,7 +135,7 @@ function RunningTurnFooter({
   audioControls,
 }: {
   readonly turn: TurnState;
-  readonly usage?: LlmTokenUsage;
+  readonly usage?: LLMTokenUsage;
   readonly elapsed: number;
   readonly audioControls: JSX.Element;
 }): JSX.Element {

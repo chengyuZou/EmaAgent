@@ -1,4 +1,4 @@
-import type { LlmGenerationSource } from '@ema-agent/llm';
+import type { LLMGenerationSource } from '@ema-agent/llm';
 import type { Message, ReasoningEffort } from '@ema-agent/session';
 import type { PermissionModeRow, SubagentRunCompletion, SubagentStatusRow } from '@ema-agent/storage';
 import type { SubagentContextMode, ToolResult } from '@ema-agent/tools';
@@ -63,14 +63,14 @@ export interface SubagentMessage extends Message {
   readonly runId: string | null;
   readonly summarizedThroughMessageId: string | null;
   readonly savedTokens?: number;
-  readonly generatedBy?: LlmGenerationSource;
+  readonly generatedBy?: LLMGenerationSource;
 }
 
 /** Turn 只交付本次请求的固定前缀. 复制、补工具配对和 ID 映射由 Agent 处理. */
 export interface ForkParentMessage extends Message {
   readonly summarizedThroughMessageId: string | null;
   readonly savedTokens?: number;
-  readonly generatedBy?: LlmGenerationSource;
+  readonly generatedBy?: LLMGenerationSource;
 }
 
 export interface ForkParentMessages {

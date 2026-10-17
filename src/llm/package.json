@@ -2,6 +2,9 @@
   "name": "@ema-agent/llm",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "type": "module",
   "exports": {
     ".": {
@@ -22,11 +25,10 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.39.0",
+    "@anthropic-ai/sdk": "^0.135.0",
     "@ema-agent/providers": "workspace:*",
-    "@google/genai": "^2.7.0",
-    "@google/generative-ai": "^0.21.0",
-    "openai": "^6.49.0"
+    "@google/genai": "^2.30.0",
+    "openai": "^7.36.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

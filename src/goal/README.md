@@ -1,6 +1,6 @@
 # Goal
 
-`@ema-agent/goal` 负责 Session 目标的持久业务规则. GoalStore 导入 Storage 并在本包内映射行, SQL 和 Row 类型留在 Storage, 不装饰 CallLlm 或实现另一套 AgentLoop.
+`@ema-agent/goal` 负责 Session 目标的持久业务规则. GoalStore 导入 Storage 并在本包内映射行, SQL 和 Row 类型留在 Storage, 不装饰 CallLLM 或实现另一套 AgentLoop.
 
 ## 已实现的领域事实
 

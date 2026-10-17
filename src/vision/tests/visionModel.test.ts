@@ -1,33 +1,28 @@
-// 测试 Vision 把图片任务交给唯一 LLM 执行链，并保留输入校验、解析、Usage 与取消语义。
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { LlmRequest, LlmStreamEvent } from '@ema-agent/llm';
+import type { LLMRequest } from '@ema-agent/llm';
 import { createVisionCall } from '../visionModel.js';
 
 const llmMocks = vi.hoisted(() => ({
-  createLlmCall: vi.fn(),
-  requests: [] as LlmRequest[],
+  createLLMCompletion: vi.fn(),
+  requests: [] as LLMRequest[],
 }));
 
 vi.mock('@ema-agent/llm', async importOriginal => ({
   ...(await importOriginal<typeof import('@ema-agent/llm')>()),
-  createLlmCall: llmMocks.createLlmCall,
+  createLLMCompletion: llmMocks.createLLMCompletion,
 }));
-
-function stream(events: readonly LlmStreamEvent[]): AsyncIterable<LlmStreamEvent> {
-  return (async function* () { yield* events; })();
-}
 
 describe('createVisionCall', () => {
   beforeEach(() => {
     llmMocks.requests.length = 0;
-    llmMocks.createLlmCall.mockReset();
-    llmMocks.createLlmCall.mockImplementation(() => (request: LlmRequest) => {
+    llmMocks.createLLMCompletion.mockReset();
+    llmMocks.createLLMCompletion.mockImplementation(() => async (request: LLMRequest) => {
       llmMocks.requests.push(request);
-      return stream([
-        { type: 'text_delta', blockIndex: 0, delta: '{"text":"cat","blocks":[]}' },
-        { type: 'usage', inputTokens: 12, outputTokens: 4 },
-        { type: 'done', stopReason: 'end_turn' },
-      ]);
+      return {
+        blocks: [{ type: 'text', text: '{"text":"cat","blocks":[]}' }],
+        usage: { inputTokens: 12, outputTokens: 4 },
+        stopReason: 'end_turn',
+      };
     });
   });
 
@@ -49,7 +44,7 @@ describe('createVisionCall', () => {
       usage: { inputTokens: 12, outputTokens: 4 },
     });
 
-    expect(llmMocks.createLlmCall).toHaveBeenCalledWith(connection, 'vision-model');
+    expect(llmMocks.createLLMCompletion).toHaveBeenCalledWith(connection, 'vision-model');
     expect(llmMocks.requests).toHaveLength(1);
     expect(llmMocks.requests[0]).toMatchObject({
       thinking: { enabled: false },
@@ -69,7 +64,7 @@ describe('createVisionCall', () => {
     createVisionCall({ providerId: 'p', protocol: 'anthropic-llm' }, 'claude-test');
     createVisionCall({ providerId: 'p', protocol: 'openai-responses-llm' }, 'gpt-test');
 
-    expect(llmMocks.createLlmCall.mock.calls.map(call => call[0].protocol))
+    expect(llmMocks.createLLMCompletion.mock.calls.map(call => call[0].protocol))
       .toEqual(['anthropic-llm', 'openai-responses-llm']);
   });
 
@@ -100,10 +95,10 @@ describe('createVisionCall', () => {
   it('取消继续向上抛出，不包装成 Vision Provider 失败', async () => {
     const controller = new AbortController();
     const abortError = new Error('stop');
-    llmMocks.createLlmCall.mockImplementationOnce(() => () => (async function* () {
+    llmMocks.createLLMCompletion.mockImplementationOnce(() => async () => {
       controller.abort(abortError);
       throw abortError;
-    })());
+    });
     const vision = createVisionCall({ providerId: 'p', protocol: 'openai-llm' }, 'model');
 
     await expect(vision({

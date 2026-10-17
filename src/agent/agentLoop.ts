@@ -1,18 +1,18 @@
 import { randomUUID } from 'node:crypto';
 import type {
   AssistantBlock,
-  LlmStopReason,
-  LlmThinkingState,
-  LlmTokenUsage,
+  LLMStopReason,
+  LLMThinkingState,
+  LLMTokenUsage,
   Message,
   ToolResultBlock,
 } from '@ema-agent/llm';
 import {
   createAssistantThinkingBlock,
   ContextWindowExceededError,
-  hasLlmTokenUsage,
+  hasLLMTokenUsage,
   llmProviderErrorCode,
-  updateLlmCallUsage,
+  updateLLMCallUsage,
 } from '@ema-agent/llm';
 import type { StreamingToolExecutor, ToolResult } from '@ema-agent/tools';
 import {
@@ -33,13 +33,13 @@ const STUCK_BATCH_STREAK = 3;
 interface IterationResponse {
   readonly textByIndex: ReadonlyMap<number, string>;
   readonly thinkingByIndex: ReadonlyMap<number, string>;
-  readonly thinkingStateByIndex: ReadonlyMap<number, LlmThinkingState>;
+  readonly thinkingStateByIndex: ReadonlyMap<number, LLMThinkingState>;
   readonly completedThinkingIndexes: ReadonlySet<number>;
   readonly toolUseByIndex: ReadonlyMap<
     number,
     AssistantBlock & { type: 'tool_use' }
   >;
-  readonly stopReason: LlmStopReason;
+  readonly stopReason: LLMStopReason;
 }
 
 export async function* runAgentLoop(
@@ -111,14 +111,14 @@ export async function* runAgentLoop(
         const callStartedAt = Date.now();
         const textByIndex = new Map<number, string>();
         const thinkingByIndex = new Map<number, string>();
-        const thinkingStateByIndex = new Map<number, LlmThinkingState>();
+        const thinkingStateByIndex = new Map<number, LLMThinkingState>();
         const completedThinkingIndexes = new Set<number>();
         const toolUseByIndex = new Map<
           number,
           AssistantBlock & { type: 'tool_use' }
         >();
-        let stopReason: LlmStopReason = 'end_turn';
-        let usage: LlmTokenUsage = { inputTokens: 0, outputTokens: 0 };
+        let stopReason: LLMStopReason = 'end_turn';
+        let usage: LLMTokenUsage = { inputTokens: 0, outputTokens: 0 };
         let receivedResponseEvent = false;
 
         const request = {
@@ -127,7 +127,7 @@ export async function* runAgentLoop(
         };
 
         try {
-          for await (const event of input.callLlm(request)) {
+          for await (const event of input.callLLM(request)) {
             receivedResponseEvent = true;
             switch (event.type) {
               case 'text_delta':
@@ -195,9 +195,9 @@ export async function* runAgentLoop(
                 break;
 
               case 'usage': {
-                const updated = updateLlmCallUsage(usage, event);
+                const updated = updateLLMCallUsage(usage, event);
                 usage = updated.usage;
-                if (hasLlmTokenUsage(updated.delta)) {
+                if (hasLLMTokenUsage(updated.delta)) {
                   state = addAgentUsage(state, updated.delta);
                   yield { type: 'llm_call_usage_updated', llmCallId, usage };
                   yield { type: 'agent_usage_updated', usage: state.usage };
@@ -216,7 +216,7 @@ export async function* runAgentLoop(
             llmCallId,
             source: input.generationSource,
             status: 'completed',
-            ...(hasLlmTokenUsage(usage) ? { usage } : {}),
+            ...(hasLLMTokenUsage(usage) ? { usage } : {}),
             startedAt: callStartedAt,
             durationMs,
           };
@@ -236,7 +236,7 @@ export async function* runAgentLoop(
             llmCallId,
             source: input.generationSource,
             status: cancelled ? 'cancelled' : 'failed',
-            ...(hasLlmTokenUsage(usage) ? { usage } : {}),
+            ...(hasLLMTokenUsage(usage) ? { usage } : {}),
             startedAt: callStartedAt,
             durationMs: Date.now() - callStartedAt,
             ...(!cancelled ? { errorCode: llmProviderErrorCode(error) } : {}),
@@ -451,7 +451,7 @@ function orderedText(textByIndex: ReadonlyMap<number, string>): string {
 function buildAssistantBlocks(
   textByIndex: ReadonlyMap<number, string>,
   thinkingByIndex: ReadonlyMap<number, string>,
-  thinkingStateByIndex: ReadonlyMap<number, LlmThinkingState>,
+  thinkingStateByIndex: ReadonlyMap<number, LLMThinkingState>,
   toolUseByIndex: ReadonlyMap<number, AssistantBlock & { type: 'tool_use' }>,
 ): AssistantBlock[] {
   const blocks = new Map<number, AssistantBlock>();

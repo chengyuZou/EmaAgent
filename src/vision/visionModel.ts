@@ -1,9 +1,7 @@
-// 把一次视觉任务转换为无 Tool、无历史的 LLM 调用，并把模型文本解析为视觉结果。
 import {
-  createLlmCall,
-  createLlmCompletion,
+  createLLMCompletion,
   type ContentPart,
-  type LlmCompletion,
+  type LLMCompletion,
   type UserBlock,
 } from '@ema-agent/llm';
 import { VisionError } from './errors.js';
@@ -20,12 +18,11 @@ import type {
   VisionResult,
 } from './types.js';
 
-/** Vision 唯一创建入口；连接与模型身份在创建点冻结，每次调用只执行一次 LLM 请求。 */
 export function createVisionCall(connection: VisionConnection, modelId: string): CallVision {
   if (!modelId.trim()) {
     throw new VisionError('vision/invalid_request', 'Vision model must not be empty');
   }
-  const callLlm = createLlmCall(connection, modelId);
+  const completeLLM = createLLMCompletion(connection, modelId);
 
   return async (request) => {
     validateRequest(request);
@@ -40,18 +37,19 @@ export function createVisionCall(connection: VisionConnection, modelId: string):
           instruction: request.instruction,
         }),
       },
-      ...request.images.map(image => toLlmImage(image, connection.protocol)),
+      ...request.images.map(image => toLLMImage(image, connection.protocol)),
     ];
 
-    let completion: LlmCompletion;
+    let completion: LLMCompletion;
     try {
-      completion = await createLlmCompletion(callLlm({
+      // 独立识别只提交当前图片和任务说明, 不附带聊天历史或工具定义.
+      completion = await completeLLM({
         messages: [{ role: 'user', content }],
         thinking: { enabled: false },
         maxOutputTokens: request.maxOutputTokens ?? defaultMaxTokensForVisionTask(task),
         ...(request.temperature === undefined ? {} : { temperature: request.temperature }),
         signal: request.signal,
-      }));
+      });
     } catch (error) {
       if (request.signal?.aborted) throw error;
       if (error instanceof VisionError) throw error;
@@ -69,7 +67,7 @@ export function createVisionCall(connection: VisionConnection, modelId: string):
   };
 }
 
-function toLlmImage(
+function toLLMImage(
   image: VisionImage,
   protocol: VisionConnection['protocol'],
 ): ContentPart {
@@ -91,7 +89,7 @@ function toLlmImage(
   };
 }
 
-function resultFromCompletion(completion: LlmCompletion): VisionResult {
+function resultFromCompletion(completion: LLMCompletion): VisionResult {
   const raw = completion.blocks
     .filter((block): block is Extract<typeof block, { type: 'text' }> => block.type === 'text')
     .map(block => block.text)

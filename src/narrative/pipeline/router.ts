@@ -1,4 +1,4 @@
-import { createLlmCompletion, type CallLlm } from '@ema-agent/llm';
+import type { CompleteLLM } from '@ema-agent/llm';
 import type { NarrativeTimelineId } from '@ema-agent/storage';
 import { jsonrepair } from 'jsonrepair';
 import { z } from 'zod';
@@ -26,7 +26,7 @@ export function parseQueryJson(text: string): unknown {
 /** 一次调用同时确定周目、子问题及提词. 摘要只用于定位, 不替代原文证据. */
 export async function routeTimelines(
   query: string,
-  callLlm: CallLlm,
+  completeLLM: CompleteLLM,
   signal: AbortSignal,
 ): Promise<Map<NarrativeTimelineId, NarrativeRoute>> {
   const normalized = query.trim();
@@ -34,14 +34,14 @@ export async function routeTimelines(
     throw new TypeError('Narrative query must not be empty');
   }
   signal.throwIfAborted();
-  const completion = await createLlmCompletion(callLlm({
+  const completion = await completeLLM({
     messages: [
       { role: 'system', content: ROUTER_PROMPT },
       { role: 'user', content: normalized },
     ],
     temperature: 0.2,
     signal,
-  }));
+  });
   signal.throwIfAborted();
   const text = completion.blocks
     .filter(block => block.type === 'text')

@@ -268,7 +268,7 @@ function capabilityLabel(capability: Capability): string {
 }
 
 /**
- * 后端 LlmTokenUsage 已统一为 inputTokens 包含缓存子集，因此单次调用命中率是
+ * 后端 LLMTokenUsage 已统一为 inputTokens 包含缓存子集，因此单次调用命中率是
  * cacheReadInputTokens / inputTokens，不能再把 cacheRead 加进分母，也不能跨调用聚合。
  */
 function usageCacheText(record: UsageRecord): string | null {

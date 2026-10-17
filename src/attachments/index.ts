@@ -11,7 +11,7 @@ export type {
   VisionDescriptionCacheSweepOptions,
   VisionDescriptionCacheSweepReport,
 } from './visionCache.js';
-export { isLlmImagePath, mimeForPath } from './types.js';
+export { isLLMImagePath, mimeForPath } from './types.js';
 export type { StoreSweepReport } from './types.js';
 export {
   ATTACHMENT_RESIDUE_MAX_AGE_MS,

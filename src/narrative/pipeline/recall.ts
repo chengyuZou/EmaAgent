@@ -1,6 +1,6 @@
 import { setImmediate } from 'node:timers/promises';
 import type { CallEmbed } from '@ema-agent/embed';
-import type { CallLlm } from '@ema-agent/llm';
+import type { CompleteLLM } from '@ema-agent/llm';
 import type { CallRerank } from '@ema-agent/rerank';
 import type { NarrativeChunksRepo, NarrativeGraphRepo, NarrativeTimelineId } from '@ema-agent/storage';
 import { throwIfCancelled } from '../errors.js';
@@ -30,19 +30,19 @@ export class NarrativeSearch {
   ) {}
 
   /**
-   * callLlm 一次完成路由和提词. callEmbed 必须使用资产原有的 Pro/bge-m3 向量空间.
+   * completeLLM 一次完成路由和提词. callEmbed 必须使用资产原有的 Pro/bge-m3 向量空间.
    * 重排比较传入的完整 query 和原文块, 不使用关键词替代 query, 不比较不同周目的分数.
    * 返回各周目的证据, 不生成最终回答. 宿主负责调用配置及用量记录.
    */
   async search(
     query: string,
     mode: NarrativeQueryMode,
-    callLlm: CallLlm,
+    completeLLM: CompleteLLM,
     callEmbed: CallEmbed,
     callRerank: CallRerank,
     signal: AbortSignal,
   ): Promise<NarrativeRecallResult> {
-    const routes = await routeTimelines(query, callLlm, signal);
+    const routes = await routeTimelines(query, completeLLM, signal);
     const texts = new Set<string>();
     for (const route of routes.values()) {
       for (const text of embeddingTexts(route.query, mode, route)) {

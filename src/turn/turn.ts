@@ -8,8 +8,8 @@ import type { VisionDescriptionCache } from '@ema-agent/attachments';
 import { projectMessages } from '@ema-agent/context';
 import type { CompactRequest, CompactResult } from '@ema-agent/compact';
 import type {
-  CallLlm,
-  LlmGenerationSource,
+  CompleteLLM,
+  LLMGenerationSource,
   Message,
 } from '@ema-agent/llm';
 import { isLLMProtocol } from '@ema-agent/providers';
@@ -88,7 +88,7 @@ export interface TurnExecutorDeps extends PrepareTurnDeps {
   >;
   readonly hasNormalUserMessage: (sessionId: string) => boolean;
   readonly createCompact: (
-    callLlm: CallLlm,
+    completeLLM: CompleteLLM,
   ) => (request: CompactRequest) => Promise<CompactResult>;
   /**
    * 每个 Turn 调用一次,产出 reminder 的完整启动期输入(含 currentDate 等全部字段:
@@ -271,7 +271,7 @@ export class TurnExecutor {
         turnId,
         prepareSubagent,
         emit,
-        onSubagentLlmCallFinished: loopEvents.recordLlmCall,
+        onSubagentLLMCallFinished: loopEvents.recordLLMCall,
         signal,
       });
       tools = prepared.tools;
@@ -470,7 +470,7 @@ export class TurnExecutor {
       for await (const event of runAgentLoop({
         messages: initialMessages,
         prepareIteration,
-        callLlm: prepared.callLlm,
+        callLLM: prepared.callLLM,
         createToolExecutor: tools.createExecutor,
         takeNextIterationMessages: async () => {
           const appended = await persistNextIterationMessages();
@@ -830,7 +830,7 @@ export function createTurnHistoryResolver(
   };
 
   return {
-    resolveGenerationSource(turnId: string): LlmGenerationSource | undefined {
+    resolveGenerationSource(turnId: string): LLMGenerationSource | undefined {
       const turn = readTurn(turnId);
       // 没有完整模型身份时不伪造生成来源, 协议代码据此决定能否重放推理块.
       if (!turn?.providerId || !turn.modelId || !turn.protocol || !isLLMProtocol(turn.protocol)) {

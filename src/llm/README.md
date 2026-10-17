@@ -1,126 +1,111 @@
 # LLM
 
-`src/llm` 是 Ema 的语言模型执行面:接收已经解析好的协议连接与中立请求,把请求翻译给 Provider SDK,再返回统一流事件.
+[中文](README-zh.md)
 
-它不拥有 Provider 配置,模型目录,能力选择,Session/Turn,Context/Compact,重试策略或 Usage 持久化.
+`@ema-agent/llm` sends model requests through OpenAI, Anthropic, or Gemini SDKs. It accepts shared messages and tool definitions, then returns stream events or a complete result with content blocks, stop reason, and Token usage.
 
-## 唯一调用链
+## Use
 
-```text
-Provider / 接线层
-  └─ 解析 provider config + model capability
-       └─ createLlmCall({ providerId, protocol, apiKey, baseUrl }, modelId) // 连接与模型在创建点冻结
-            └─ CallLlm(LlmRequest) → AsyncIterable<LlmStreamEvent>
-                 └─ createLlmCompletion(stream) → LlmCompletion   // 同一条流的无损收集器,无第二条线路
-```
-
-支持的协议由 `@ema-agent/providers` 的 `LLMProtocol` 定义:
-
-- `openai-llm`:OpenAI Chat Completions 及兼容网关;
-- `openai-responses-llm`:OpenAI Responses API;
-- `anthropic-llm`:Anthropic Messages;
-- `gemini-llm`:Gemini 原生 generateContent.
-
-Provider 是协议词汇和连接配置的唯一所有者.LLM 只消费 `LLMProtocol`,不得复制一份协议联合或按 Provider 品牌分发.
-
-## 公共接口
+Create a call function for a resolved connection and model. Choose how to receive each request's result.
 
 ```ts
-const callLlm = createLlmCall({
-  providerId,
-  protocol: 'openai-llm',
+import {
+  createLLMCall,
+  createLLMCompletion,
+  type LLMConnection,
+  type LLMRequest,
+} from '@ema-agent/llm';
+
+const connection: LLMConnection = {
+  providerId: 'my-provider',
+  protocol: 'openai-responses-llm',
   apiKey,
   baseUrl,
-}, modelId);
+};
+const completeLLM = createLLMCompletion(connection, modelId);
 
-for await (const event of callLlm({
-  messages,
-  tools,
-  maxOutputTokens,
+const request: LLMRequest = {
+  messages: [{ role: 'user', content: 'Hello' }],
   signal,
-})) {
-  // Agent 处理 delta,Tool 调用,Usage 快照和 done.
+};
+
+const completion = await completeLLM(request);
+// completion.blocks, completion.stopReason, completion.usage
+```
+
+For incremental output, use this instead of `createLLMCompletion`:
+
+```ts
+const callLLM = createLLMCall(connection, modelId);
+
+for await (const event of callLLM(request)) {
+  // Handle text, thinking, tool calls, usage, and done events.
 }
-
-// 要一把拿结果(标题生成,摘要等):收集同一条流.
-const completion = await createLlmCompletion(callLlm({ messages, signal }));
 ```
 
-`LlmConnection` 只含调用目标身份以及建立 SDK Client 所需的协议,凭据和地址.`providerId + modelId + protocol` 用于判断历史原生推理状态能否安全重放;`LlmRequest` 只含一次调用变化的消息,Tool 定义,生成参数与取消信号.
+Both factories take a connection and model ID, then return a function that accepts `LLMRequest`. `CallLLM` returns events; `CompleteLLM` returns a Promise of `LLMCompletion`. Each invocation executes one model request. Running both executes two requests.
 
-导入本包或调用 `createLlmCall` 不加载厂商 SDK. `createLlmCall` 同步返回调用函数, 并保存创建时的连接值. 第一次消费返回的流时, 才加载所选协议并创建 SDK Client. 同一个 `CallLlm` 的并发和后续请求共用一次初始化; 不同调用对象不共用客户端. 协议模块由 Node 缓存, 未使用的协议不提前加载.
+The completion function sends a native non-streaming SDK request. Chat, Responses, and Anthropic use `create` with `stream: false`; Gemini uses `generateContent`. Request conversion is shared with the streaming implementation, but final results are read directly from the SDK response, not collected from events.
 
-空模型名仍在创建时拒绝, 不支持的消息仍在调用 `CallLlm(request)` 时同步拒绝. 模块加载和客户端创建错误从流中抛出. 请求开始消费前已经取消时不初始化; 加载期间取消则在加载完成后停止该请求, 不发送网络请求, 也不取消其他请求共用的初始化. 首次请求承担对应 SDK 的加载时间, 不影响流事件与 Usage 的含义.
+Both factories copy the connection at creation. Changing the original object later does not change that function. Protocol and SDK initialization happen on the first request, or the first consumed stream for `CallLLM`. Concurrent and later requests through the same function share its initialization and client. Independently created functions have separate clients.
 
-以下字段明确不属于本包:
+The current SDK dependencies require Node >=22. See [package.json](package.json) for versions. The desktop release uses the Node version in [release-config.json](../../apps/desktop/release-config.json).
 
-- `modelsDevId`:Provider Catalog 身份;
-- `sessionId/turnId/llmCallId`:Turn/Agent 调用身份;
-- `usageContext`:Usage 记录归属;
-- retry/circuit/fallback:上层调用策略;
-- 模型能力与图片是否转成描述: Provider + Context 决策;
-- SQL,事件总线和前端 DTO.
-
-## 流协议
-
-每条正常流必须以一个显式 `done` 结束.SDK 自然断流,取消或 Provider 失败不会伪装成 `done`.
+## Request path
 
 ```text
-(text_delta
- | thinking_delta
- | thinking_complete
- | tool_use_delta
- | tool_use_complete
- | usage)*
-→ done
+Resolved connection + modelId
+    -> createLLMCall -> callLLM(request)
+        -> one streaming SDK request -> events consumed by Agent
+    OR
+    -> createLLMCompletion -> completeLLM(request)
+        -> one non-streaming SDK request -> LLMCompletion
 ```
 
-承载内容的事件带 `blockIndex`,上层用它恢复 text,thinking 与 tool_use 的交错顺序.`usage` 是 Provider 对当前调用给出的累计快照;`updateLlmCallUsage()` 负责把重复或倒退快照归一为当前已知用量和新增量.
+[types.ts](types.ts) defines connection, request, result, and event types. [message.ts](message.ts) defines messages: system text, user text/media/tool results, and assistant content blocks. Tool definitions use `LLMTool.inputSchema`. Tool replies are user `tool_result` blocks paired through `toolCallId`.
 
-## 输入与协议边界
+The protocol is selected using `LLMProtocol` from [providers](../providers/README.md):
 
-`Message` 是中立模型消息, 不是 Session SQL 行, 也不含 UI 字段. 协议转换前会检查真实的表达限制: 例如 Chat Completions 不接受文件块, Anthropic 不接受音频. 无法表达且没有明确转换规则时抛出 `LlmProtocolInputError`, 不静默删除内容. Chat 工具图片有明确的文字占位规则, 可以进入转换.
+| Protocol | API | Tool-result images |
+| --- | --- | --- |
+| `openai-llm` | Chat Completions | Each image becomes an explicit text placeholder. It states that the image was not read and suggests DescribeImage when available. |
+| `openai-responses-llm` | Responses | Native text/image content in `function_call_output.output`, with the original `call_id`. |
+| `anthropic-llm` | Messages | Images inside `tool_result.content`. |
+| `gemini-llm` | generateContent | Text/JSON in `functionResponse`, followed by images labeled with their source after the tool-result batch. |
 
-工具图片仍是 `tool_result.content` 中的 `image_data` / `image_url`, 保留原始调用 ID. Chat 转换时按原顺序将工具图片换成明确的文字占位, 告知本次没有读取图片内容, 并提示可用时调用 DescribeImage 或选择合适的协议与视觉模型. 原有文字与工具配对保留, 不增加用户图片消息或修改保存的结果.
+These conversions produce SDK input without changing stored messages. Chat does not append a user image to work around its tool-message format. Gemini does not put image Base64 into ordinary JSON.
 
-LLM 不选择模型能力,不调用 Vision,不读文件, 也不保存工具图片描述缓存. 当前 SDK 转换方式如下:
+[protocolInput.ts](protocolInput.ts) checks supported content before the SDK runs. The Chat implementation rejects file blocks and accepts only WAV/MP3 audio. Responses and Anthropic reject audio blocks. Anthropic inline images must be JPEG, PNG, GIF, or WebP. These checks describe the implemented conversions; individual models and gateways can impose further limits.
 
-| 协议 | 工具图片传递方式 |
-| --- | --- |
-| OpenAI Chat Completions | `tool` 回复只放文字; 每个图片块原地换成明确占位, 不追加用户图片消息. |
-| OpenAI Responses | `function_call_output.output` 使用原生文字/图片数组, `call_id` 不变. 字符串结果仍传字符串. |
-| Anthropic Messages | 图片放在原生 `tool_result.content` 内. |
-| Gemini generateContent | `functionResponse.response` 只放文字/JSON; 整批回复之后追加标明来源的 `inlineData` / `fileData` 图片内容, 不把 Base64 放进普通 JSON. |
+Assistant text and tool calls remain usable when the model changes. Native thinking state is replayed only when `generatedBy.providerId`, `modelId`, and `protocol` match the current target. This includes Anthropic signatures, Responses reasoning items, and Gemini thought signatures. `cacheBreakpoint` becomes an Anthropic cache marker; other protocols ignore it.
 
-协议转换只影响 SDK 请求, 不增加 Session 消息,附件或持久化记录. 普通用户图片的转换保持现有行为, 附件描述由 Context 处理. DescribeImage 是单独的内置工具, 由主模型显式调用, 与 LLM 协议转换无关.
+`thinking.enabled: 'auto'` leaves the provider default unchanged. OpenAI receives the effort name. Anthropic and Gemini convert effort to Token budgets in their protocol files. These project mappings do not imply equivalent reasoning across providers. Anthropic's enabled thinking also needs an output budget large enough for its minimum thinking budget.
 
-OpenAI SDK 使用支持 Node 20 的 6.x 版本, 其 Responses 类型已经包含图片工具输出. `tests/openAiChat.test.ts`, `tests/openAiResponsesProtocol.test.ts` 和 `tests/nativeProtocols.test.ts` 使用 SDK 测试替身检查工具图片请求与流事件. `tests/languageModelImport.test.ts` 检查按需加载, 并发初始化和取消, `tests/languageModel.test.ts` 检查连接固定, 客户端复用和完整结果收集; 不访问真实模型服务.
+## Events, usage, and failures
 
-thinking 历史是唯一有意不跨调用目标重放的内容.不同 Provider,模型和协议的原生状态不兼容;只有 `providerId + modelId + protocol` 与当前目标完全一致时,Anthropic 才重放 signature,OpenAI Responses 才重放 reasoning item,Gemini 才重放 thoughtSignature.OpenAI Chat 没有统一的原生续接状态,只保留协议能够表达的普通 Assistant 内容.
+Content events carry `blockIndex`. Use it to join deltas and preserve the final order of text, thinking, and tool calls. `tool_use_complete` supplies parsed arguments. A successful protocol stream ends with an explicit `done`. An unexpected disconnect throws `LLMStreamProtocolError`.
 
-Anthropic 的 `cache_control` 是协议专属投影:中立 Message 只携带 `cacheBreakpoint: true`,其他协议忽略该提示.
+`CompleteLLM` converts the response's text, thinking state, and tool calls into ordered blocks. Its result is the full `LLMCompletion`, not just visible text. Responses preserves the order of its `output` items; Anthropic preserves content order; Gemini preserves part order. Chat supplies separate thinking, text, and tool-call fields, which are placed in that order.
 
-## 重试所有权
+Usage events report cumulative counts for one request. `updateLLMCallUsage` returns the greatest known counts and the increase since the previous report. Adding raw usage events would count repeated reports twice. Cache-read and cache-write counts are already included in `inputTokens`.
 
-OpenAI 与 Anthropic SDK 的内建重试在创建 Client 时关闭.LLM 本包不重试:它不知道这次请求属于交互聊天,Macro Compact,Memory 提取还是后台任务,也无权决定是否重复计费或重新执行.
+An empty model ID fails at factory creation. Unsupported message content fails synchronously in `callLLM(request)` and rejects the Promise in `completeLLM(request)`. SDK initialization and network failures propagate through the selected return type. Invalid tool-argument JSON throws `LLMToolArgumentsParseError`. Context-length errors become `ContextWindowExceededError`, allowing the caller to decide whether to compact and retry.
 
-若上层确实需要重试,只能由一个调用边界拥有,并复用同一次业务调用身份;LLM 仍只执行一次协议请求.
+Non-streaming Responses accepts `completed` and `incomplete` results. Output limits map to `max_tokens`; content-filter stops map to `stop_sequence`. Failed or non-final responses throw `LLMProviderResponseError`, without polling or falling back to streaming. Chat and Gemini require a choice/candidate with a finish reason; Anthropic requires a stop reason.
 
-## 文件职责
+Pass `request.signal` to cancel. A request already cancelled when it starts does not initialize the SDK. Cancellation during shared initialization stops that request after initialization finishes, without cancelling other requests. Cancellation and failures do not produce a successful `done` or a completion result.
 
-```text
-src/llm/
-├─ languageModel.ts      唯一创建入口,统一 thinking block 合成与 complete 流收集
-├─ types.ts              请求,连接,Tool 投影和统一流事件
-├─ message.ts            Provider 中立消息
-├─ protocolInput.ts      真实协议输入限制,防止静默丢内容
-├─ errors.ts             SDK 错误,取消与终态归一化
-├─ usage.ts              调用级 Token 快照归一化
-└─ protocols/
-   ├─ openAiChat.ts
-   ├─ openAiResponses.ts
-   ├─ anthropic.ts
-   └─ gemini.ts
+OpenAI and Anthropic clients disable built-in retries. Gemini is called without retry options. This package does not automatically repeat failed requests. Streaming Chat waits up to 60 seconds for the next chunk and up to 2 seconds for trailing usage after a finish reason, so a gateway that never closes its stream does not keep the caller waiting indefinitely.
+
+## Read and verify
+
+Start with [languageModel.ts](languageModel.ts) for both factories and their lazy initialization. Follow [protocols/](protocols/) for shared request conversion, streaming events, and non-streaming result conversion. [usage.ts](usage.ts) and [errors.ts](errors.ts) contain shared counting and failure rules.
+
+Consumers include [Agent](../agent/agentLoop.ts), [Compact](../compact/macroCompact.ts), [Vision](../vision/visionModel.ts), and the server's [Memory](../../apps/server/src/composition/memory.ts) and [Narrative](../../apps/server/src/composition/narrative.ts) wiring.
+
+```sh
+pnpm --filter @ema-agent/llm test
+pnpm --filter @ema-agent/llm typecheck
 ```
 
-协议文件只做三件事:创建并复用对应 SDK Client,转换请求,转换响应.它们不是公共 Adapter 注册表,也不拥有 Provider 热更新.
+[tests/languageModel.test.ts](tests/languageModel.test.ts) covers initialization, client reuse, request parameters, failures, and cancellation. Protocol tests check message conversion, stream events, and [non-streaming results](tests/completionProtocols.test.ts). [tests/sdkRequests.test.ts](tests/sdkRequests.test.ts) runs the installed SDKs against a local HTTP/SSE server to check streaming and non-streaming endpoints, single-request execution, rate-limit failures without retry, and cancellation. These tests do not call paid model services.

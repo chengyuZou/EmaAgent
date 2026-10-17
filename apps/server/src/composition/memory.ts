@@ -1,9 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import {
-  createLlmCall,
-  createLlmCompletion,
+  createLLMCompletion,
   llmProviderErrorCode,
-  type LlmCompletion,
+  type LLMCompletion,
   type Message,
 } from '@ema-agent/llm';
 import {
@@ -69,20 +68,20 @@ export function openMemory(deps: {
   ): Promise<string> => {
     const binding = deps.modelBindings.get('memory-llm');
     if (!binding) throw new Error('未配置 memory-llm 模型绑定');
-    const callLlm = createLlmCall(
+    const completeLLM = createLLMCompletion(
       deps.providers.resolveConnection(binding.providerId, 'llm'),
       binding.modelId,
     );
     const startedAt = Date.now();
     const callId = randomUUID();
-    let completion: LlmCompletion | undefined;
+    let completion: LLMCompletion | undefined;
     try {
-      completion = await createLlmCompletion(callLlm({
+      completion = await completeLLM({
         messages,
         // Anthropic 要求调用方明确给出输出上限. 提取和整合使用各自的任务预算.
         maxOutputTokens,
         ...(signal ? { signal } : {}),
-      }));
+      });
       if (completion.stopReason === 'max_tokens') {
         throw new Error('Memory 输出达到上限, 结果未完整返回');
       }

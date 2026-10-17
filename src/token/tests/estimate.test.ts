@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { LlmTool, Message } from '@ema-agent/llm';
+import type { LLMTool, Message } from '@ema-agent/llm';
 import { estimateMessagesTokens, estimateTextTokens } from '../index.js';
 
 describe('本地 Token 估算', () => {
@@ -46,7 +46,7 @@ describe('本地 Token 估算', () => {
         content: [{ type: 'image_data', data: 'base64', mimeType: 'image/png' }],
       }],
     }];
-    const tools: readonly LlmTool[] = [{
+    const tools: readonly LLMTool[] = [{
       name: 'Read',
       description: '读取指定文件并返回内容',
       inputSchema: {

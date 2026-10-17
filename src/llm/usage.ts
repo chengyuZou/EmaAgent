@@ -1,7 +1,5 @@
-// 归一化 Provider 用量，并把同一次物理调用的累计快照转换为聚合增量。
-
-/** Provider 对一次物理 LLM 调用报告的累计 Token；缓存字段是 inputTokens 的子集。 */
-export interface LlmTokenUsage {
+/** 一次请求的累计 Token 用量. 缓存读取和写入数量已包含在 inputTokens 中. */
+export interface LLMTokenUsage {
   readonly inputTokens: number;
   readonly outputTokens: number;
   readonly cacheReadInputTokens?: number;
@@ -15,7 +13,7 @@ export interface ProviderUsageInput {
   readonly cacheWriteInputTokens?: number | null;
 }
 
-export function createLlmTokenUsage(input: ProviderUsageInput): LlmTokenUsage {
+export function createLLMTokenUsage(input: ProviderUsageInput): LLMTokenUsage {
   const cacheReadInputTokens = optionalNonNegative(input.cacheReadInputTokens);
   const cacheWriteInputTokens = optionalNonNegative(input.cacheWriteInputTokens);
   return {
@@ -27,13 +25,13 @@ export function createLlmTokenUsage(input: ProviderUsageInput): LlmTokenUsage {
 }
 
 /**
- * Provider Usage 是累计快照。返回本次调用当前已知用量和相对上一快照的新增量；
- * Provider 偶发回退计数时保留已确认上界，不产生负增量。
+ * 返回当前已知累计用量, 以及相对上次记录新增的用量.
+ * 供应商重复或回退计数时保留已记录的最大值, 避免重复累计或出现负增量.
  */
-export function updateLlmCallUsage(
-  current: LlmTokenUsage,
-  reported: LlmTokenUsage,
-): { usage: LlmTokenUsage; delta: LlmTokenUsage } {
+export function updateLLMCallUsage(
+  current: LLMTokenUsage,
+  reported: LLMTokenUsage,
+): { usage: LLMTokenUsage; delta: LLMTokenUsage } {
   const inputTokens = Math.max(
     nonNegative(current.inputTokens),
     nonNegative(reported.inputTokens),
@@ -71,7 +69,7 @@ export function updateLlmCallUsage(
   };
 }
 
-export function hasLlmTokenUsage(usage: LlmTokenUsage): boolean {
+export function hasLLMTokenUsage(usage: LLMTokenUsage): boolean {
   return usage.inputTokens > 0
     || usage.outputTokens > 0
     || (usage.cacheReadInputTokens ?? 0) > 0

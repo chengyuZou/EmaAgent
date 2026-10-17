@@ -5,7 +5,8 @@ Compact 在模型输入接近窗口上限时, 把模型可见的工作消息 `Me
 ## 公共入口
 
 ```ts
-const compact = createCompact(callLlm, defaultSettings);
+const completeLLM = createLLMCompletion(connection, modelId);
+const compact = createCompact(completeLLM, defaultSettings);
 const result = await compact({
   sessionId,
   turnId,
@@ -42,7 +43,7 @@ const result = await compact({
 
 - `unchanged`: 未触发, 被熔断, 或 Macro 失败. Macro 失败时仍返回原输入消息, 并带 `failureDetail`; 不会交付只压缩了一半的数组.
 - `micro`: 只替换了可重新获取的旧 Tool Result 内容. 消息数量和顺序不变.
-- `macro`: 第一条消息是 `<context-summary>` 包裹的摘要, 后面是保留原文的近期消息. 附带 `beforeTokens`, `afterTokens`, `savedTokens`, `durationMs` 和 `summarizedMessageCount`. Macro 在分段请求的现有 `try/catch` 中直接调用 Recorder, 每次物理调用独立记账, 不包装 `CallLlm`, 不把多次请求合成一笔调用.
+- `macro`: 第一条消息是 `<context-summary>` 包裹的摘要, 后面是保留原文的近期消息. 附带 `beforeTokens`, `afterTokens`, `savedTokens`, `durationMs` 和 `summarizedMessageCount`. Macro 调用 `CompleteLLM` 取得最终结果, 每次物理请求独立记账, 不把多次请求合成一笔调用.
 
 `summarizedMessageCount` 表示输入 `messages` 从头起有多少条被最终摘要覆盖. 若前缀中已有一条旧摘要, 它也算一条输入消息. 该值不是 SQL 自增 ID, 也不是被直接丢弃的消息数.
 

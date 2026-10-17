@@ -69,7 +69,7 @@ function makeInput(toolCallId: string, gate: Promise<void>, parentSignal: AbortS
       return ({
       messages: [{ role: 'user', content: '检查实现' }],
       prepareIteration: async ({ messages }) => ({ request: { messages }, messages }),
-      callLlm: () => (async function* () {
+      callLLM: () => (async function* () {
         await gate;
         if (signal.aborted) throw signal.reason;
         yield { type: 'text_delta' as const, blockIndex: 0, delta: '完成' };
@@ -198,7 +198,7 @@ describe('SubagentExecutor', () => {
       prepareSubagent: async args => ({
         ...await prepare(args),
         createToolExecutor: () => toolExecutor,
-        callLlm: () => (async function* () {
+        callLLM: () => (async function* () {
           if (iteration++ === 0) {
             yield {
               type: 'tool_use_complete' as const,

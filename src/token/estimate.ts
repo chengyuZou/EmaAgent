@@ -1,4 +1,4 @@
-import type { ContentPart, LlmTool, Message, ToolResultContentPart } from '@ema-agent/llm';
+import type { ContentPart, LLMTool, Message, ToolResultContentPart } from '@ema-agent/llm';
 
 /**
  * 按 UTF-16 码元粗略估算: ASCII 每 4 个计 1 Token, 其余每 1.5 个计 1 Token.
@@ -23,7 +23,7 @@ export function estimateTextTokens(text: string): number {
  */
 export function estimateMessagesTokens(
   messages: readonly Message[],
-  tools: readonly LlmTool[] = [],
+  tools: readonly LLMTool[] = [],
 ): number {
   let total = 0;
   for (const message of messages) {
@@ -104,7 +104,7 @@ function estimateImageTokens(width: number | undefined, height: number | undefin
   return Math.min(IMAGE_FALLBACK_TOKENS, Math.max(85, Math.ceil((width * height) / 750)));
 }
 
-function estimateToolDefinition(tool: LlmTool): number {
+function estimateToolDefinition(tool: LLMTool): number {
   try {
     return 20 + estimateTextTokens(JSON.stringify({
       name: tool.name,

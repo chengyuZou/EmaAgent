@@ -1,4 +1,4 @@
-import type { LlmThinking, LlmTool, Message } from '@ema-agent/llm';
+import type { LLMThinking, LLMTool, Message } from '@ema-agent/llm';
 import type { UsageRecorder } from '@ema-agent/usage';
 import type { CompactSettings } from './settings.js';
 import type { CompactEvent } from './events.js';
@@ -11,7 +11,7 @@ export interface CompactRequest {
   readonly turnId?: string;
   readonly providerId: string;
   readonly modelId: string;
-  /** Macro 在现有请求的成功与异常出口直接记账, 不装饰 CallLlm. */
+  /** Macro 在每次摘要请求的成功和异常出口直接记账. */
   readonly usageRecorder?: UsageRecorder;
   /** 按模型可见顺序排列的工作消息. System Prompt 不在此数组中. */
   readonly messages: readonly Message[];
@@ -21,9 +21,9 @@ export interface CompactRequest {
    */
   readonly systemMessages: readonly Message[];
   /** 摘要请求复用的 Tool 定义(同内容同顺序), 模型不得真正调用. */
-  readonly tools: readonly LlmTool[];
+  readonly tools: readonly LLMTool[];
   /** 摘要请求复用的 thinking 配置. */
-  readonly thinking?: LlmThinking;
+  readonly thinking?: LLMThinking;
   /** 完整候选请求的本地估算, 包含工作消息以外的 System Prompt 和 Tool 定义. */
   readonly estimatedInputTokens: number;
   /** Provider 已明确报告超限时跳过阈值判断. */

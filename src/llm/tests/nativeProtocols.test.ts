@@ -1,7 +1,6 @@
-// 测试 Anthropic 与 Gemini 原生协议都经公共入口产生显式完成流。
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { createLlmCall } from '../languageModel.js';
-import type { LlmStreamEvent } from '../types.js';
+import { createLLMCall } from '../languageModel.js';
+import type { LLMStreamEvent } from '../types.js';
 
 const sdkMocks = vi.hoisted(() => ({
   anthropicConstructor: vi.fn(),
@@ -56,7 +55,7 @@ describe('native LLM protocols', () => {
       },
       { type: 'message_stop' },
     ]));
-    const llm = createLlmCall({ providerId: 'test', protocol: 'anthropic-llm', apiKey: 'key' }, 'claude-test');
+    const llm = createLLMCall({ providerId: 'test', protocol: 'anthropic-llm', apiKey: 'key' }, 'claude-test');
 
     await expect(collectText(llm({
       messages: [{ role: 'user', content: 'hello' }],
@@ -81,9 +80,9 @@ describe('native LLM protocols', () => {
         }],
       },
     ]));
-    const llm = createLlmCall({ providerId: 'test', protocol: 'gemini-llm', apiKey: 'key' }, 'gemini-test');
+    const llm = createLLMCall({ providerId: 'test', protocol: 'gemini-llm', apiKey: 'key' }, 'gemini-test');
 
-    const events: LlmStreamEvent[] = [];
+    const events: LLMStreamEvent[] = [];
     for await (const event of llm({
       messages: [{ role: 'user', content: 'hello' }],
       maxOutputTokens: 128,
@@ -107,7 +106,7 @@ describe('native LLM protocols', () => {
         finishReason: 'STOP',
       }],
     }]));
-    const llm = createLlmCall({ providerId: 'test', protocol: 'gemini-llm', apiKey: 'key' }, 'gemini-test');
+    const llm = createLLMCall({ providerId: 'test', protocol: 'gemini-llm', apiKey: 'key' }, 'gemini-test');
 
     await expect(collectText(llm({
       messages: [{ role: 'user', content: 'hello' }],
@@ -119,7 +118,7 @@ describe('native LLM protocols', () => {
     sdkMocks.geminiStream.mockResolvedValueOnce(streamOf([{
       candidates: [{ content: { parts: [{ text: 'done' }] }, finishReason: 'STOP' }],
     }]));
-    const llm = createLlmCall({ providerId: 'test', protocol: 'gemini-llm', apiKey: 'key' }, 'gemini-test');
+    const llm = createLLMCall({ providerId: 'test', protocol: 'gemini-llm', apiKey: 'key' }, 'gemini-test');
 
     await collectText(llm({ messages: [
       { role: 'assistant', content: [
@@ -143,7 +142,7 @@ describe('native LLM protocols', () => {
     sdkMocks.geminiStream.mockResolvedValueOnce(streamOf([{
       candidates: [{ content: { parts: [{ text: 'done' }] }, finishReason: 'STOP' }],
     }]));
-    const llm = createLlmCall({ providerId: 'test', protocol: 'gemini-llm', apiKey: 'key' }, 'gemini-test');
+    const llm = createLLMCall({ providerId: 'test', protocol: 'gemini-llm', apiKey: 'key' }, 'gemini-test');
     await collectText(llm({ messages: [
       { role: 'assistant', content: [
         { type: 'tool_use', id: 'call-1', name: 'Read', args: {} },
@@ -172,7 +171,7 @@ describe('native LLM protocols', () => {
       { type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 1 } },
       { type: 'message_stop' },
     ]));
-    const llm = createLlmCall({ providerId: 'test', protocol: 'anthropic-llm', apiKey: 'key' }, 'claude-test');
+    const llm = createLLMCall({ providerId: 'test', protocol: 'anthropic-llm', apiKey: 'key' }, 'claude-test');
     await collectText(llm({
       maxOutputTokens: 128,
       messages: [
@@ -212,12 +211,12 @@ describe('native LLM protocols', () => {
         cachedContentTokenCount: 80,
       },
     }]));
-    const llm = createLlmCall(
+    const llm = createLLMCall(
       { providerId: 'test', protocol: 'gemini-llm', apiKey: 'key' },
       'gemini-test',
     );
 
-    const events: LlmStreamEvent[] = [];
+    const events: LLMStreamEvent[] = [];
     for await (const event of llm({ messages: [{ role: 'user', content: 'hello' }] })) {
       events.push(event);
     }

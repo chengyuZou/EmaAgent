@@ -73,7 +73,7 @@ export interface PrepareTurnToolsInput {
   readonly reasoningEffort: ReasoningEffort;
   readonly emit: (event: TurnStreamEvent) => void;
   /** 子 Agent 的物理调用不经过根 AgentLoop, 由 Turn 注入同一本账的终态出口 */
-  readonly onSubagentLlmCallFinished?: (
+  readonly onSubagentLLMCallFinished?: (
     event: Extract<AgentLoopEvent, { type: 'llm_call_finished' }>,
   ) => void;
   readonly permission: {
@@ -219,7 +219,7 @@ export function prepareTurnTools(deps: TurnToolsDeps, input: PrepareTurnToolsInp
         prepareSubagent: input.prepareSubagent,
         parentSignal: signal,
         runInBackground,
-        ...(input.onSubagentLlmCallFinished ? { onLlmCallFinished: input.onSubagentLlmCallFinished } : {}),
+        ...(input.onSubagentLLMCallFinished ? { onLLMCallFinished: input.onSubagentLLMCallFinished } : {}),
       }),
       waitForInitialResult: (subagentId, signal) =>
         deps.subagents.waitForInitialResult(subagentId, sessionId, signal),

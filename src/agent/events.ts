@@ -1,9 +1,9 @@
 import type {
-  LlmGenerationSource,
-  LlmCallStatus,
-  LlmStopReason,
-  LlmThinkingState,
-  LlmTokenUsage,
+  LLMGenerationSource,
+  LLMCallStatus,
+  LLMStopReason,
+  LLMThinkingState,
+  LLMTokenUsage,
   AssistantBlock,
   Message,
 } from '@ema-agent/llm';
@@ -28,7 +28,7 @@ export type AgentLoopEvent =
     readonly type: 'thinking_completed';
     readonly blockIndex: number;
     /** 协议原生推理状态(signature/id/thoughtSignature)缺失 = 无续接状态 */
-    readonly state?: LlmThinkingState;
+    readonly state?: LLMThinkingState;
   }
   | {
     readonly type: 'tool_use_partial';
@@ -47,15 +47,15 @@ export type AgentLoopEvent =
   | {
     readonly type: 'llm_call_usage_updated';
     readonly llmCallId: string;
-    readonly usage: LlmTokenUsage;
+    readonly usage: LLMTokenUsage;
   }
-  | { readonly type: 'agent_usage_updated'; readonly usage: LlmTokenUsage }
+  | { readonly type: 'agent_usage_updated'; readonly usage: LLMTokenUsage }
   | {
     readonly type: 'llm_call_finished';
     readonly llmCallId: string;
-    readonly source: LlmGenerationSource;
-    readonly status: LlmCallStatus;
-    readonly usage?: LlmTokenUsage;
+    readonly source: LLMGenerationSource;
+    readonly status: LLMCallStatus;
+    readonly usage?: LLMTokenUsage;
     readonly startedAt: number;
     readonly durationMs: number;
     readonly errorCode?: string;
@@ -64,7 +64,7 @@ export type AgentLoopEvent =
     readonly type: 'assistant_message_completed';
     readonly iteration: number;
     readonly llmCallId: string;
-    readonly stopReason: LlmStopReason;
+    readonly stopReason: LLMStopReason;
     /** Provider 本轮闭合后的完整消息块. 持久化方以此为边界, 不自行拼接流式 delta. */
     readonly content: readonly AssistantBlock[];
   }

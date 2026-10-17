@@ -35,7 +35,7 @@ export interface StartSubagent {
   readonly prepareSubagent: PrepareSubagent;
   readonly parentSignal: AbortSignal;
   readonly runInBackground: boolean;
-  readonly onLlmCallFinished?: (event: Extract<AgentLoopEvent, { type: 'llm_call_finished' }>) => void;
+  readonly onLLMCallFinished?: (event: Extract<AgentLoopEvent, { type: 'llm_call_finished' }>) => void;
 }
 
 /** 
@@ -435,7 +435,7 @@ export class SubagentExecutor {
           );
         }
         if (event.type === 'llm_call_finished') {
-          input.onLlmCallFinished?.(event);
+          input.onLLMCallFinished?.(event);
         }
         if (event.type === 'loop_stopped') {
           terminal = event;

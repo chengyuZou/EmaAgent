@@ -1,6 +1,6 @@
 // 事件驱动的流式落库：首个 delta 建 block、tool_use 先落库再执行、tool_result 落库再关账。
 import type { AgentLoopEvent } from '@ema-agent/agent';
-import type { AssistantBlock, LlmThinkingState } from '@ema-agent/llm';
+import type { AssistantBlock, LLMThinkingState } from '@ema-agent/llm';
 import { createAssistantThinkingBlock } from '@ema-agent/llm';
 import type { ToolResult } from '@ema-agent/tools';
 import type {
@@ -25,7 +25,7 @@ export class TurnMessageWriter {
   private assistantStored = false;
   private textByIndex = new Map<number, string>();
   private thinkingByIndex = new Map<number, string>();
-  private thinkingStates = new Map<number, LlmThinkingState>();
+  private thinkingStates = new Map<number, LLMThinkingState>();
   private toolUseByIndex = new Map<number, ToolUseBlock>();
   /** 已落库但尚未等到 tool_result 的调用；Turn 终态时合成取消结果补配对。 */
   private readonly pendingToolUses = new Map<string, ToolUseBlock>();
@@ -104,9 +104,8 @@ export class TurnMessageWriter {
   }
 
   /**
-   * Turn 终态收口：非 completed 时把未完成的 assistant 标 interrupted；
-   * 没有等到 tool_result 的 tool_use 合成取消结果补配对（下一轮 deriveLlmHistory
-   * 的配对过滤器需要完整配对才重放）。
+   * Turn 非 completed 时将未完成的 assistant 标为 interrupted.
+   * 为没有回复的工具调用补上取消结果, 使下一轮 Context 可以保留完整的调用和回复配对.
    */
   async finish(terminal: 'completed' | 'failed' | 'aborted'): Promise<void> {
     if (this.assistantStored && this.assistantMessageId && terminal !== 'completed') {

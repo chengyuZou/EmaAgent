@@ -1,15 +1,14 @@
-// 测试 Provider 累计 Usage 倒退时不会产生负增量或重复计费。
 import { describe, expect, it } from 'vitest';
-import { createLlmTokenUsage, updateLlmCallUsage } from '../usage.js';
+import { createLLMTokenUsage, updateLLMCallUsage } from '../usage.js';
 
 describe('LLM usage', () => {
   it('保持累计快照单调并只返回新增量', () => {
-    const first = createLlmTokenUsage({
+    const first = createLLMTokenUsage({
       inputTokens: 100,
       outputTokens: 10,
       cacheReadInputTokens: 40,
     });
-    const updated = updateLlmCallUsage(first, {
+    const updated = updateLLMCallUsage(first, {
       inputTokens: 90,
       outputTokens: 20,
       cacheReadInputTokens: 35,

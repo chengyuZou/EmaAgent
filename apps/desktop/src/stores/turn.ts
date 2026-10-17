@@ -2,7 +2,7 @@
 
 import { create } from 'zustand';
 import type { ContextUsage } from '@ema-agent/context';
-import type { LlmTokenUsage } from '@ema-agent/llm';
+import type { LLMTokenUsage } from '@ema-agent/llm';
 import type { Message, SessionMessage } from '@ema-agent/session';
 import type { Turn, TurnStreamEvent } from '@ema-agent/turn';
 import type { ToolError } from '@ema-agent/tools';
@@ -64,7 +64,7 @@ interface TurnStore {
   readonly turnsBySession: ReadonlyMap<string, ReadonlyMap<string, TurnState>>;
   readonly contextUsageBySession: Readonly<Record<string, ContextUsageEntry>>;
   readonly contextEstimateVersionBySession: Readonly<Record<string, number>>;
-  readonly usageByTurn: Readonly<Record<string, LlmTokenUsage>>;
+  readonly usageByTurn: Readonly<Record<string, LLMTokenUsage>>;
   receiveTurnEvent(
     sessionId: string,
     turnId: string,
@@ -133,7 +133,7 @@ interface TurnStore {
     usage: ContextUsage
   ): void;
   invalidateContextUsage(sessionId: string): void;
-  setTurnUsage(turnId: string, usage: LlmTokenUsage): void;
+  setTurnUsage(turnId: string, usage: LLMTokenUsage): void;
   clearTurnUsage(turnId: string): void;
   evictSession(sessionId: string): void;
 }

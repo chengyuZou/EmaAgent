@@ -15,7 +15,7 @@ const narrative = new NarrativeSearch(chunksRepo, graphRepo);
 const result = await narrative.search(
   query,
   'hybrid',
-  callLlm,
+  completeLLM,
   callEmbed,
   callRerank,
   signal,
@@ -36,7 +36,7 @@ for (const [timeline, value] of result) {
 
 Server 使用 `narrative-llm`、`narrative-embed`、`narrative-rerank` 三项绑定. 在 Turn 准备时解析并固定本轮配置, 后续设置变更影响下一 Turn. Server 的 `complete`、`completeEmbed`、`completeRerank` 分别传入对应的 Call 参数.
 
-LLM 由 Server 等待 `createLlmCompletion` 完成, 读取最终用量后记一条记录, 再通过现有 CallLlm 事件类型交付正文. 流中途失败时没有完整 completion, Token 字段留空. Embedding 和 Rerank 在请求结束后各记一次. 记录使用本次真实调用的唯一 ID, 并归属发起查询的 Session 和 Turn. Narrative 本身不记账.
+Server 通过 `createLLMCompletion(connection, modelId)` 创建最终结果函数. 每次路由等待非流式请求完成, 读取最终用量后记一条记录, 直接将 completion 交给 Narrative 解析. 请求失败且没有完整结果时, Token 字段留空. Embedding 和 Rerank 在请求结束后各记一次. 记录使用本次真实调用的唯一 ID, 并归属发起查询的 Session 和 Turn. Narrative 本身不记账.
 
 ## 查询流程
 
