@@ -1,42 +1,83 @@
 # @ema-agent/token
 
-本地同步估算文本, 模型消息和工具定义的大致 Token 数. 两个公开函数都只返回数字, 不调用模型, 不读取文件, 不保存会话状态或缓存.
+[中文](./README-zh.md)
 
-估算用于上下文预算, 自动压缩和界面的近似用量显示. 它不按模型选择分词器, 不保证固定误差范围; 调用消耗与计费使用 Provider 返回的 usage.
+Estimate how many tokens a string or a model request contains. Both public functions run synchronously and return a number. Ema uses these estimates to budget context, decide when to compact history, limit returned text, and show approximate output usage while a reply streams.
 
-## 使用
+## Usage
 
 ```ts
-import { estimateTextTokens, estimateMessagesTokens } from '@ema-agent/token';
+import type { LlmTool, Message } from '@ema-agent/llm';
+import { estimateMessagesTokens, estimateTextTokens } from '@ema-agent/token';
 
-const textTokens = estimateTextTokens('需要估算的正文');
+const messages: readonly Message[] = [
+  { role: 'system', content: 'Answer briefly.' },
+  { role: 'user', content: 'Hello.' },
+];
+const tools: readonly LlmTool[] = [{
+  name: 'Read',
+  description: 'Read a file at the given path.',
+  inputSchema: {
+    type: 'object',
+    properties: { path: { type: 'string' } },
+    required: ['path'],
+  },
+}];
+
+const textTokens = estimateTextTokens('abcd'); // 1
 const inputTokens = estimateMessagesTokens(messages, tools);
-
+const toolsTokens = estimateMessagesTokens([], tools);
 ```
 
-- `estimateTextTokens(text: string): number`: 只计算文本, 不加消息格式开销. Memory 的正文裁剪, Scratchpad 的内容估算和聊天流式输出显示使用它.
-- `estimateMessagesTokens(messages: readonly Message[], tools?: readonly LlmTool[]): number`: 计算传入的消息及工具定义. Context 和 Compact 使用它估算请求预算. 类型直接使用 `@ema-agent/llm` 的 Message 和 LlmTool.
+| Function | Input | Result |
+| --- | --- | --- |
+| `estimateTextTokens(text)` | A string. | Estimated text tokens. |
+| `estimateMessagesTokens(messages, tools?)` | `Message[]` and optional `LlmTool[]` from `@ema-agent/llm`. Both arrays may be readonly. | Estimated tokens for all supplied messages and tool definitions. |
 
-完整请求应传入 system 消息, 有效历史和本次可用的工具定义. 函数不会自行补充这些内容. 工具返回内容已在消息中计算, 不要再额外累加一次. 只计算工具定义时可以传入空消息数组.
+For a complete request estimate, include the system prompt, current effective history, new messages, and available tool definitions. Tool results already belong to the messages. Count each result once. An empty string returns `0`. Empty message and tool arrays return `0`.
 
-附件引用应先转换成主模型实际接收的图片或描述文本. 本包不决定使用原图还是 Vision 描述, 也不判断哪些历史被摘要替代, 或哪些推理块会被目标协议移除. 调用方负责提供需要计算的内容.
+## How data reaches the estimate
 
-## 计算规则
+For a normal model call:
 
-| 内容 | 当前估算方式 |
-|---|---|
-| 文本 | ASCII UTF-16 码元数除以 4, 其余码元数除以 1.5, 相加后向上取整 |
-| 消息格式 | 每条消息加 10 |
-| 图片 | 像素数除以 750 后向上取整, 限制在 85 到 5,334; 尺寸缺失或无效时取 5,334 |
-| 音频 | 每秒 32, 向上取整且至少为 1; 时长缺失或无效时取 8,000 |
-| 文档 | 页数向上取整后乘以 2,000; 页数缺失或无效时取 8,000 |
-| 工具调用 | 参数 JSON 的文本估算加 20; 参数无法序列化时参数部分取 1,000 |
-| 工具定义 | 名称, 描述和参数结构的 JSON 文本估算加 20; 无法序列化时整项取 1,000 |
+1. The caller prepares model messages. Saved attachment paths become image, text, or other model content blocks before estimation. For images handled through Vision, the description text is what gets counted.
+2. [`assembleContext`](../context/assembleContext.ts) builds system messages from prompt blocks, places them before the working messages, and converts the current tool pool to `LlmTool[]`.
+3. [`estimateContextUsage`](../context/contextUsage.ts) passes these messages and tools to `estimateMessagesTokens`. The returned number becomes `estimatedInputTokens`.
+4. [`prepareAgentIteration`](../turn/prepare/prepareAgentIteration.ts) passes that estimate to Compact to check the request budget. Compact estimates candidate histories and summary requests with the same function. The prepared context usage also feeds the desktop context meter. When a provider reports usage for a call, Context can use its input count for that call.
 
-文本算法统计的是 UTF-16 码元, 不专门识别汉字; 表情等字符也按实际码元计算. 消息格式开销和媒体默认值是近似数, 不保证一定高于真实用量.
+The returned number describes the supplied input. The caller compares it with the selected model's context window and budgets any output separately. The estimate is made before provider-specific request conversion, so it can differ from the provider's count.
 
-空文本返回 0; 消息与工具数组均为空时返回 0. 推理文本, 工具返回的文本与图片都会计入消息总数, 图片等媒体不按 Base64 字符串长度估算.
+Other callers use the same two functions:
 
-## 验证入口
+- [Manual compaction](../commands/compact/compactSession.ts) measures history before accepting `/compact`, then includes the system messages in the compaction request estimate.
+- [Memory summaries](../memory/common/memorySummary.ts) and [Memory file reads](../memory/common/memoryFiles.ts) use text estimates to fit content within their budgets.
+- [Scratchpad tools](../builtin-tools/tools/ScratchpadTool/ScratchpadTools.ts) return estimated token counts with entry contents.
+- The desktop [reply footer](../../apps/desktop/src/chat/messages/TurnFooter.tsx) estimates visible reply text while output usage is unavailable.
 
-`tests/estimate.test.ts` 检查文本与消息格式开销, 媒体默认值和已知尺寸, 以及工具定义与工具结果是否计入总数. 这些检查验证计算规则, 不代表与任一模型的真实分词结果相同.
+## Counting rules
+
+Text is counted in UTF-16 code units, the units used by JavaScript string indexing. For each string, the estimate is `ceil(ASCII units / 4 + other units / 1.5)`. For example, `abcd` gives `1`, `abcd你好` gives `3`, and `😀` gives `2` because that emoji occupies two code units.
+
+| Content | Calculation |
+| --- | --- |
+| Message format | Add `10` per message, including a message with empty content. |
+| Text and visible reasoning text | Apply the text rule to each string or content block, then add the results. For `reasoning`, count `summaryText` when present. |
+| Image, including an image in a tool result | With positive finite dimensions, use `ceil(width * height / 750)`, limited to `85` through `5,334`. Otherwise use `5,334`. |
+| Audio | With a positive finite `durationMs`, use `ceil(durationMs / 1,000 * 32)`, with a minimum of `1`. Otherwise use `8,000`. |
+| Document | With a positive finite `pageCount`, use `ceil(pageCount) * 2,000`. Otherwise use `8,000`. |
+| Tool call | Add `20` to the text estimate of its JSON-serialized arguments. If serialization throws, the arguments contribute `1,000`, for a total of `1,020`. |
+| Tool definition | Add `20` to the text estimate of JSON containing `name`, `description`, and `parameters` from `inputSchema`. If serialization throws, the entire definition contributes `1,000`. |
+| Tool result | Count its text or each of its text and image parts. |
+
+Rounding happens for each text string or block. Splitting the same text across more blocks can change the total. Media estimates use dimensions, duration, or page count rather than the length of a URL or Base64 string.
+
+These rules are local approximations shared across models. Format allowances and media defaults can be lower or higher than actual usage. Use provider usage for reported consumption and billing.
+
+## checking the code
+
+From the repository root:
+
+```sh
+pnpm --filter @ema-agent/token test
+pnpm --filter @ema-agent/token typecheck
+```

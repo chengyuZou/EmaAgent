@@ -2,7 +2,7 @@ import type { ContentPart, LlmTool, Message, ToolResultContentPart } from '@ema-
 
 /**
  * 按 UTF-16 码元粗略估算: ASCII 每 4 个计 1 Token, 其余每 1.5 个计 1 Token.
- * 不区分具体语言或模型, 不保证固定误差范围, 不能用于计费.
+ * 用于预算和近似显示, 实际用量与计费应使用 Provider 返回的 usage.
  */
 export function estimateTextTokens(text: string): number {
   let ascii = 0;
@@ -18,8 +18,8 @@ export function estimateTextTokens(text: string): number {
 }
 
 /**
- * 只估算传入的模型消息与工具定义. 完整输入需由调用方包含 system 消息,
- * 并先把附件引用转换为模型实际接收的内容; 本函数不读取文件或调用 Vision.
+ * 调用方传入本次请求的完整模型消息(含 system)与工具定义.
+ * 附件引用应先转换成发送给模型的图片, 文本或其他内容块.
  */
 export function estimateMessagesTokens(
   messages: readonly Message[],
