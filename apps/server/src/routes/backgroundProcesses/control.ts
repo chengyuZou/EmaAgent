@@ -1,4 +1,3 @@
-// 后台进程停止：排队中的同步落终态，运行中的等退出后返回真实终态快照。
 import { Hono } from 'hono';
 import { z } from 'zod';
 import type { BackgroundProcess } from '@ema-agent/tools';

@@ -1,6 +1,4 @@
-// 外观常量注册表: 前端只消费, 不另行定义这些数据.
-// 字体族名以操作系统注册名为准; 中文系统上部分字体注册中文名, 探测不到时用户可改输注册名.
-// 本文件必须保持零运行时依赖: 它是唯一允许打进桌面浏览器图的后端文件(见 desktop vite.config alias).
+// Desktop 通过 Vite alias 直接加载本文件, 不得引入 Node 运行依赖.
 import type { ThemeSettings } from './themeSetting.js';
 
 export const THEME_SETTING_KEY = 'frontend.theme';
@@ -43,7 +41,7 @@ export const SYNTAX_THEME_OPTIONS: Array<{ value: ThemeSettings['syntaxTheme']; 
   { value: 'mono', label: '单色护眼' },
 ];
 
-/* 命名调色板: 每套一组策展色, 点色块取其色相; 只作快选, 值不落库. */
+/* 点色块只保存所选颜色的色相, 不保存整个色板. */
 export const COLOR_PALETTES: Array<{ id: string; label: string; description: string; colors: string[] }> = [
   {
     id: 'morandi', label: '莫兰迪', description: '低饱和灰调, 安静不抢戏',

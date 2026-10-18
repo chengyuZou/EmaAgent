@@ -1,4 +1,3 @@
-// server 进程唯一入口：共享密钥 → 生命周期 → 信号驱动的优雅关闭。
 import { performance } from 'node:perf_hooks';
 import { MissingSharedSecretError, requireSharedSecret } from './platform/auth.js';
 import { startServer } from './platform/lifecycle.js';
@@ -17,7 +16,7 @@ async function main(): Promise<void> {
   const shutdown = (signal: string): void => {
     if (closing) return;
     closing = true;
-    console.log(`[server] 收到 ${signal}，即将关闭`);
+    console.log(`[server] 收到 ${signal},即将关闭`);
     void lifecycle.shutdown()
       .catch(error => console.warn('[server] 关闭异常:', error))
       .finally(() => process.exit(0));
@@ -28,7 +27,7 @@ async function main(): Promise<void> {
 
 main().catch(error => {
   if (error instanceof MissingSharedSecretError) {
-    console.error('[server] 拒绝启动: EMA_SHARED_SECRET 未配置或长度不足（≥32）');
+    console.error('[server] 拒绝启动: EMA_SHARED_SECRET 未配置或长度不足(≥32)');
   } else {
     console.error('[server] 启动失败:', error);
   }

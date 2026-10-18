@@ -75,7 +75,7 @@ export const sessionActionsRoute = (deps: SessionActionsRouteDeps) =>
         throw error;
       }
     })
-    // fork 到最新也要显式发 {}：契约一律声明，不吞真空 body。
+    // 不指定回退位置时也要发送 {}, 空请求体不符合 JSON 契约.
     .post('/:sessionId/fork', jsonBody(forkBody), async context => {
       try {
         return context.json(
@@ -92,7 +92,7 @@ export const sessionActionsRoute = (deps: SessionActionsRouteDeps) =>
         throw error;
       }
     })
-    // TODO: 当前 Desktop 禁止消息回退。此接口删除整 Turn，未来不能直接复用为单条 Message 编辑。
+    // 回退删除整个 Turn, 不是编辑单条 Message. Desktop 当前不提供回退操作.
     .post('/:sessionId/turns/:turnId/rewind', async context => {
       try {
         await deps.abortSubagentsForTurn(context.req.param('turnId'));
@@ -111,7 +111,7 @@ export const sessionActionsRoute = (deps: SessionActionsRouteDeps) =>
           return context.json({ error: 'turn_not_rewindable' }, 409);
         }
         if (error instanceof Error && error.message.includes('FOREIGN KEY constraint failed')) {
-          // 含 Task 的 Turn 受删除保护（RESTRICT），回退必须整体回滚。
+          // 含 Task 的 Turn 受删除保护(RESTRICT),回退必须整体回滚.
           return context.json({ error: 'turn_has_persistent_task' }, 409);
         }
         throw error;
@@ -121,7 +121,7 @@ export const sessionActionsRoute = (deps: SessionActionsRouteDeps) =>
       try {
         deps.session.setViewedAt(context.req.param('sessionId'));
       } catch {
-        // 已删除的 Session 不值得让前端"已读"请求失败。
+        // 已删除的 Session 不值得让前端"已读"请求失败.
       }
       return context.body(null, 204);
     })

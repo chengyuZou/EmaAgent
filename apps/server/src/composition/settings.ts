@@ -1,4 +1,3 @@
-// SettingsStore 构造时注册全部业务包的设置定义与分组.
 import { AGENT_LIMITS_SETTINGS } from '@ema-agent/agent';
 import {
   attachmentCacheMaxBytesSetting,

@@ -1,4 +1,4 @@
-// 项目管理与 Sidebar 排序：项目 CRUD、文件夹、Session 归属及跨分区拖放。
+// 项目管理与 Sidebar 排序:项目 CRUD, 文件夹, Session 归属及跨分区拖放.
 import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import { SessionOwnershipError, type SessionStore } from '@ema-agent/session';
@@ -96,7 +96,7 @@ export const projectsRoute = (deps: ProjectsRouteDeps) =>
       deps.session.renameProject(context.req.param('id'), context.req.valid('json').name);
       return context.json({ ok: true });
     })
-    // 删除项目：成员 Session 由外键 SET NULL 掉到非项目区，cwd 保留。
+    // 删除项目:成员 Session 由外键 SET NULL 掉到非项目区,cwd 保留.
     .delete('/projects/:id', context => {
       deps.session.deleteProject(context.req.param('id'));
       return context.json({ ok: true });
@@ -109,7 +109,7 @@ export const projectsRoute = (deps: ProjectsRouteDeps) =>
       deps.session.addProjectFolder(context.req.param('id'), context.req.valid('json').path);
       return context.json({ ok: true });
     })
-    // 移除主文件夹仅影响项目以后新建 Session 的默认 cwd。
+    // 移除主文件夹仅影响项目以后新建 Session 的默认 cwd.
     .delete('/projects/:id/folders', jsonBody(folderBody), async context => {
       deps.session.removeProjectFolder(context.req.param('id'), context.req.valid('json').path);
       return context.json({ ok: true });
@@ -118,7 +118,7 @@ export const projectsRoute = (deps: ProjectsRouteDeps) =>
       deps.session.setProjectPrimaryFolder(context.req.param('id'), context.req.valid('json').path);
       return context.json({ ok: true });
     })
-    // 拖入项目只改变归属，保留已有 Session 的 cwd。
+    // 拖入项目只改变归属,保留已有 Session 的 cwd.
     .post('/projects/:id/sessions', jsonBody(assignBody), async context => {
       const { sessionId } = context.req.valid('json');
       try {
@@ -131,7 +131,7 @@ export const projectsRoute = (deps: ProjectsRouteDeps) =>
         return projectError(context, error);
       }
     })
-    // 拖出项目：解除成员资格，cwd 保留原值。
+    // 拖出项目:解除成员资格,cwd 保留原值.
     .delete('/projects/:id/sessions/:sessionId', context => {
       deps.session.removeSessionFromProject(context.req.param('sessionId'));
       return context.json({ ok: true });

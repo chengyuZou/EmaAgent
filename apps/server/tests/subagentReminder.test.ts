@@ -1,4 +1,3 @@
-// 验证真实 Server reminder 生产方读完身份分页、隔离 Session, 不读取 Run 或子消息.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -21,6 +20,7 @@ vi.mock('@ema-agent/turn', () => ({
 }));
 vi.mock('@ema-agent/memory', () => ({
   MEMORY_GUIDANCE: '',
+  memoryRootDir: () => '',
   memorySummaryFile: () => '',
   MEMORY_SUMMARY_TOKENS: 100,
   readMemorySummary: async () => '',
@@ -54,7 +54,7 @@ describe('Server 子代理 reminder 目录', () => {
     }
     repo.insert({ id: 'other-agent', sessionId: 'other', title: '别的 Session', description: '不应出现', createdAt: 1000 });
     const store = new SubagentStore(db.sqlite, repo, new SubagentRunsRepo(db.sqlite));
-    const list = vi.spyOn(store, 'listForSession');
+    const list = vi.spyOn(store, 'listAllForSession');
     const listRuns = vi.spyOn(store, 'listRuns');
     const readMessages = vi.fn();
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ema-subagent-reminder-'));
@@ -77,8 +77,8 @@ describe('Server 子代理 reminder 目录', () => {
     };
     const first = await captured.readTurnReminder!(scope);
     expect(first.subagents?.map(subagent => subagent.id)).toEqual([...ids].reverse());
-    expect(list).toHaveBeenCalledTimes(6);
-    expect(list.mock.calls.every(call => call[0] === 'session')).toBe(true);
+    expect(list).toHaveBeenCalledOnce();
+    expect(list).toHaveBeenCalledWith('session');
     const rendered = renderTurnReminder(first);
     const lines = rendered.split('## 本 Session 子代理目录\n')[1]!.split('\n\n## Goal')[0]!.split('\n');
     expect(lines).toHaveLength(251);

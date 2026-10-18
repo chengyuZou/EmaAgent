@@ -13,7 +13,7 @@ afterEach(() => {
 });
 
 describe('Goal HTTP 编辑交付', () => {
-  it.each(['idle', 'turn', 'compact'] as const)('%s 的 PUT 保存最新目标, 只有运行中根 Turn 领取隐藏消息', async mode => {
+  it.each(['idle', 'turn', 'compact'] as const)('%s 的 PUT 保存最新目标, 只有运行中 Turn 领取隐藏消息', async mode => {
     const db = new Database({ memory: true, kind: 'data' });
     db.migrate();
     databases.push(db);

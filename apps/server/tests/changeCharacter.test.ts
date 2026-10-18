@@ -1,4 +1,3 @@
-// 测试活跃 Session 对角色切换、删除和指定设置写入的统一门禁。
 import { describe, expect, it, vi } from 'vitest';
 import {
   CharacterLastDeleteError,

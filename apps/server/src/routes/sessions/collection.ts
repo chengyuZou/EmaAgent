@@ -1,4 +1,3 @@
-// Session 集合：创建、分组列表（侧栏唯一路径）、搜索、详情。
 import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import type { SessionStore } from '@ema-agent/session';
@@ -31,7 +30,7 @@ export interface SessionCollectionRouteDeps {
 
 export const sessionCollectionRoute = (deps: SessionCollectionRouteDeps) =>
   new Hono()
-    // 创建会话必须显式发 JSON（空对象即全默认）：契约一律声明，不吞真空 body。
+    // 使用默认值也要发送 {}, 空请求体不符合 JSON 契约.
     .post('/', jsonBody(createSessionBody), context => {
       try {
         return context.json(deps.session.createSession(context.req.valid('json')), 201);

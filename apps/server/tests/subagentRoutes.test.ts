@@ -1,4 +1,3 @@
-// 真实 SQLite + HTTP 验证身份/Run 的路径边界与按 Message Cursor 定位, 不伪造存储结果.
 import {
   afterEach,
   describe,

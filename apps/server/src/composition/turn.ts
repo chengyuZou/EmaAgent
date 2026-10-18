@@ -1,4 +1,3 @@
-// Turn 一族:TurnExecutor 全接线--交互队列,reminder 工厂,Vision 降级,工作区指令.
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -50,7 +49,7 @@ import type { ProvidersComposition } from './providers.js';
 import type { ToolsComposition } from './tools.js';
 import type { TurnFanout } from '../application/turnFanout.js';
 
-/** 单个指令文件超过 32KB 截断;工作区指令是上下文数据,不是系统权限. */
+/** 单个文件只取前 32768 个 UTF-16 码元, 不是按字节截断. 工作区指令不改变工具权限. */
 const WORKSPACE_INSTRUCTION_MAX_CHARS = 32 * 1024;
 
 export interface TurnComposition {
@@ -80,11 +79,11 @@ export interface TurnCompositionDeps {
   readonly tools: ToolsComposition;
   readonly narrative: NarrativeComposition;
   readonly characters: CharacterStore;
-  /** 角色舞台:Turn 泵内剥离表现标签;实例由 characters 一族持有(词汇随角色切换). */
+  /** 处理模型输出时提取演出标签, 词汇随当前角色切换. */
   readonly stage: StageEngine;
   /** 应用事件出口. */
   readonly emitAppEvent: (event: AppEvent) => void;
-  /** completed 终态事务内的提取入队(Memory 一族);事务提交后由它自己安排 drain. */
+  /** 在 completed 事务内写入 Memory 提取任务, 由 Memory 调度后续执行. */
   readonly onTurnCompletedInTransaction: (turnId: string) => void;
   readonly publishSubagent: (sessionId: string, event: SubagentEvent) => void;
   readonly publishQueuedInput: (sessionId: string, event: SessionContinuationEvent) => void;
@@ -141,7 +140,6 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     }
   });
 
-  // ── Vision 降级(模型不支持图片输入时的描述链) ──────────────────────────────
   const visionDescriptions = new VisionDescriptionCache(
     new AttachmentVisionDescriptionCachesRepo(database.dataDb.sqlite),
   );

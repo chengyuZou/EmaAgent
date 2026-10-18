@@ -1,4 +1,3 @@
-// 消费每个 Turn 的唯一事件流, 并定向发布给 AgentChannel 与可选语音管线
 import type { TurnHandle, TurnStreamEvent } from '@ema-agent/turn';
 import type { TurnSpeechHandle } from '../composition/speech.js';
 
@@ -41,7 +40,7 @@ export class TurnFanout {
             turnId,
             signal: speechAbort.signal,
           }).catch(error => {
-            console.warn('[speech] 启动失败，本 Turn 无语音输出:', error);
+            console.warn('[speech] 启动失败,本 Turn 无语音输出:', error);
             return null;
           });
         }

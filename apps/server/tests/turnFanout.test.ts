@@ -1,4 +1,3 @@
-// 验证 TurnFanout 把本轮真实 TTS 选择随事件发布, 且关闭 TTS 时不启动 Speech 管线.
 import { describe, expect, it, vi } from 'vitest';
 import type { TurnHandle, TurnStreamEvent } from '@ema-agent/turn';
 import { TurnFanout } from '../src/application/turnFanout.js';

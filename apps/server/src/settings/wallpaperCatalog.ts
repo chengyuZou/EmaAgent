@@ -1,5 +1,4 @@
-// 壁纸常量注册表: 前端只消费, 不另行定义这些数据.
-// 本文件必须保持零运行时依赖: 它允许打进桌面浏览器图(见 desktop vite.config alias).
+// Desktop 通过 Vite alias 直接加载本文件, 不得引入 Node 运行依赖.
 import type { WallpaperSettings, WallpaperImageParams } from './wallpaperSetting.js';
 
 export const WALLPAPER_SETTING_KEY = 'frontend.wallpaper';

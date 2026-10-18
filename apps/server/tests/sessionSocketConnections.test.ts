@@ -1,4 +1,3 @@
-// 验证 Session WebSocket 按 Session 隔离, 且同一 Session 可同时发布给多个观察窗口.
 import { describe, expect, it } from 'vitest';
 import {
   SessionSocketConnections,

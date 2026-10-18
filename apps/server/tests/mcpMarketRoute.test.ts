@@ -1,5 +1,3 @@
-// 验证 MCP 市场 Route 把来源和带斜杠的外部条目身份完整交给领域服务.
-
 import { describe, expect, it, vi } from 'vitest';
 import { hc } from 'hono/client';
 import type { McpMarketService } from '@ema-agent/mcp';

@@ -1,5 +1,3 @@
-// 唯一装配点：全部业务对象在此一次成型，族间依赖经 Composition 字段单向传递。
-// routes/application/platform 只消费 Composition，不构造业务对象。
 import { characterStageVocabulary } from '@ema-agent/characters';
 import type { BackgroundProcessNotifiableStatus } from '@ema-agent/tools';
 import { AppEvents } from '../application/appEvents.js';
@@ -33,7 +31,6 @@ export interface Composition {
   readonly backup: BackupComposition;
   readonly sessionConnections: SessionSocketConnections;
   readonly appEvents: AppEvents;
-  readonly turnFanout: TurnFanout;
   /** 先停执行对象和后台工作, 最后关闭数据库. */
   close(): Promise<void>;
 }
@@ -79,9 +76,8 @@ export function buildComposition(input: { activeDataDir: string; initializeBuilt
     event => appEvents.emit(event),
   );
 
-  // ── 跨族胶合（只允许在这里出现） ────────────────────────────────────────────
-  // 换角色：舞台词汇（情绪+动作）跟随 + 各 Session 舞台状态整体重置 + 应用事件广播。
-  // 旧角色的情绪语义名在新角色映射下无意义，不重置会把旧情绪补发给新角色。
+  // 换角色:舞台词汇(情绪+动作)跟随 + 各 Session 舞台状态整体重置 + 应用事件广播.
+  // 旧角色的情绪语义名在新角色映射下无意义,不重置会把旧情绪补发给新角色.
   characters.store.onSwitched((next, presentation) => {
     const vocabulary = characterStageVocabulary(presentation);
     characters.stage.updateVocabulary(vocabulary.emotions, vocabulary.motions);
@@ -98,13 +94,13 @@ export function buildComposition(input: { activeDataDir: string; initializeBuilt
     }
     appEvents.emit({ type: 'character_presentation_changed', characterName: character.name });
   });
-  // 设置变更：前端设置页以外的视图据此刷新。
+  // 设置变更:前端设置页以外的视图据此刷新.
   settings.settings.subscribe(() => {
     appEvents.emit({ type: 'settings_changed' });
   });
 
-  // Memory 只依赖 database 层的 TurnStore/SessionStore，必须先于 openTurns 创建：
-  // Turn completed 终态事务内的提取入队闭包由它提供。
+  // Memory 只依赖 database 层的 TurnStore/SessionStore,必须先于 openTurns 创建:
+  // Turn completed 终态事务内的提取入队闭包由它提供.
   const memory = openMemory({
     dataDb: database.dataDb,
     providers: providers.providers,
@@ -193,11 +189,10 @@ export function buildComposition(input: { activeDataDir: string; initializeBuilt
     backup,
     sessionConnections,
     appEvents,
-    turnFanout,
     async close() {
       await vishotCapture.close();
-      // 先封住自动续接, 再中止并等待根 Turn/手动 Compact 清除各自的 Session 运行记录.
-      // 否则数据库关闭后, 在执行 Turn 的 finally 仍可能继续落终态或启动下一根 Turn.
+      // 先停止自动续接, 再中止并等待 Turn 和手动 Compact 清除运行记录.
+      // 否则数据库关闭后, Turn 的 finally 仍可能保存结果或启动下一次执行.
       turn.continuations.shutdown();
       stopGoalContinuation();
       await database.sessionRunning.abortAll();

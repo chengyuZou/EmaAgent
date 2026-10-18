@@ -1,5 +1,3 @@
-// 验证 Session WebSocket 打开后的首条业务消息包含同一连接边界下的运行身份和已保存 Message.
-
 import type { Server } from 'node:http';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
@@ -379,7 +377,7 @@ describe('Session WebSocket Route', () => {
     fixture.queue.shutdown();
   });
 
-  it('正常发送携带原始 objective 时先建 Goal 再入队, 创建事件不会提前开第二根 Turn', async () => {
+  it('正常发送携带原始 objective 时先建 Goal 再入队, 创建事件不会提前开始第二个 Turn', async () => {
     const fixture = goalFixture();
     const { socket, waitForMessage } = await connect(fixture.deps, fixture.session.id);
     const objective = ' \r\n任务正文\n  ';

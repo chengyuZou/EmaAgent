@@ -1,5 +1,3 @@
-// Session 附件:两本账的列表、按 path 的内容读取,以及粘贴即落盘的两个上传端点。
-// path 可以下发——消息块里本来就带 path(chip 靠它渲染),不再做按 id 的间接层。
 import fs from 'node:fs';
 import path from 'node:path';
 import { Readable } from 'node:stream';
@@ -59,8 +57,8 @@ export const sessionAttachmentsRoute = (deps: SessionAttachmentsRouteDeps) =>
         .sort((a, b) => b.createdAt - a.createdAt);
       return context.json({ attachments });
     })
-    // 内容按 path 读:chip 点开预览与附件页查看共用。边界=必须在该 Session 受管目录内。
-    // ?thumb=1 时图片走 256px JPEG 缩略图(消息流封面不拉原图)。
+    // 内容按 path 读:chip 点开预览与附件页查看共用.边界=必须在该 Session 受管目录内.
+    // ?thumb=1 时图片走 256px JPEG 缩略图(消息流封面不拉原图).
     .get('/:sessionId/attachments/content', async context => {
       const sessionId = context.req.param('sessionId');
       if (sessionMissing(deps, sessionId)) {
@@ -85,7 +83,7 @@ export const sessionAttachmentsRoute = (deps: SessionAttachmentsRouteDeps) =>
         stat = await fs.promises.stat(target);
         if (!stat.isFile()) throw new Error('not a file');
       } catch {
-        // 行还在但文件没了(手动删除等)如实 404, 不建对账。
+        // 行还在但文件没了(手动删除等)如实 404, 不建对账.
         return context.json({ error: 'attachment_file_gone' }, 404);
       }
       return new Response(
@@ -99,7 +97,7 @@ export const sessionAttachmentsRoute = (deps: SessionAttachmentsRouteDeps) =>
         },
       );
     })
-    // 粘贴大段文本:粘贴那一刻落 txt 入账,输入框立刻出 chip。
+    // 粘贴大段文本:粘贴那一刻落 txt 入账,输入框立刻出 chip.
     .post('/:sessionId/attachments/pasted', jsonBody(pastedTextBody), async context => {
       const sessionId = context.req.param('sessionId');
       if (sessionMissing(deps, sessionId)) {
@@ -111,7 +109,7 @@ export const sessionAttachmentsRoute = (deps: SessionAttachmentsRouteDeps) =>
       );
       return context.json(saved, 201);
     })
-    // 粘贴/拖入图片:剪贴板给字节,拖入给路径由 server 读盘;落盘即规范化入账。
+    // 粘贴/拖入图片:剪贴板给字节,拖入给路径由 server 读盘;落盘即规范化入账.
     .post('/:sessionId/attachments/images', jsonBody(imageBody), async context => {
       const sessionId = context.req.param('sessionId');
       if (sessionMissing(deps, sessionId)) {

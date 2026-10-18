@@ -4,7 +4,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { buildComposition, type Composition } from '../src/composition/index.js';
 import { createRoutes } from '../src/routes/index.js';
-import { ensureDataDirLayout, ensureProfileLayout } from '../src/platform/paths.js';
+import { ensureDataDirLayout } from '../src/platform/paths.js';
 
 describe('KB 全链路移除', () => {
   it('真实路由返回 KB 404, 保留 Session/设置并不创建默认 KB', async () => {
@@ -13,7 +13,6 @@ describe('KB 全链路移除', () => {
     process.env['EMA_PROFILE_DIR'] = profile;
     let composition: Composition | undefined;
     try {
-      ensureProfileLayout();
       ensureDataDirLayout(path.join(profile, 'data'));
       composition = buildComposition({
         activeDataDir: path.join(profile, 'data'),

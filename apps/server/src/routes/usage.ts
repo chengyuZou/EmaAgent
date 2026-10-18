@@ -1,5 +1,3 @@
-// 用量明细查询(Token 明细页): sessionId/capability 可选过滤 + keyset 游标.
-// 查询使用 Server 装配的 Recorder, SQL Row 映射留在 Usage 包内.
 import { Hono } from 'hono';
 import { z } from 'zod';
 import type { UsageRecorder } from '@ema-agent/usage';

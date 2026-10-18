@@ -1,4 +1,3 @@
-// 模型池与业务绑定：provider_models 行读写、启停开关、目录同步、绑定选择器的可用清单、model_bindings 读写。
 import { Hono } from 'hono';
 import { z } from 'zod';
 import {
@@ -20,7 +19,7 @@ const availableParams = z.object({
   capability: capabilityEnum,
 });
 
-/** modelId 跨能力不唯一，按行寻址的端点都要带 capability 判别。 */
+/** modelId 跨能力不唯一,按行寻址的端点都要带 capability 判别. */
 const modelQuery = z.object({
   capability: capabilityEnum,
 });
@@ -42,7 +41,7 @@ const llmParams = {
   inputImage: z.boolean().nullable().default(null),
 };
 
-/** 能力判别联合：参数形状按能力分流，llm/vision 同参数集；name 不经 API 修改。 */
+/** 能力判别联合:参数形状按能力分流,llm/vision 同参数集;name 不经 API 修改. */
 const providerModelBody = z.discriminatedUnion('capability', [
   z.object({ capability: z.literal('llm'), modelId: z.string().min(1), ...llmParams }),
   z.object({ capability: z.literal('vision'), modelId: z.string().min(1), ...llmParams }),
@@ -80,7 +79,7 @@ export interface ProviderModelsRouteDeps {
 
 export const providerModelsRoute = (deps: ProviderModelsRouteDeps) =>
   new Hono()
-    // 绑定选择器的可用清单：连接可解析（协议档在位、bearer 有 key）且已启用的 Provider 池行。
+    // 绑定选择器的可用清单:连接可解析(协议档在位, bearer 有 key)且已启用的 Provider 池行.
     .get('/available/:capability', paramValidator(availableParams), context => {
       const { capability } = context.req.valid('param');
       const usable = new Set<string>();
@@ -96,7 +95,7 @@ export const providerModelsRoute = (deps: ProviderModelsRouteDeps) =>
         .filter(model => model.enabled && usable.has(model.providerId));
       return context.json({ models });
     })
-    // 首次使用判定：provider_models 是否已有任何模型行（静态路径先于 /:providerId 注册）。
+    // 首次使用判定:provider_models 是否已有任何模型行(静态路径先于 /:providerId 注册).
     .get('/models/has-any', context => context.json({ hasAny: deps.providerModels.hasAny() }))
     .post('/:providerId/models/refresh', queryValidator(refreshQuery), async context => {
       const { capability } = context.req.valid('query');
@@ -159,7 +158,6 @@ export const providerModelsRoute = (deps: ProviderModelsRouteDeps) =>
         return providerError(context, error);
       }
     })
-    // ── 业务绑定（一个业务位一条绑定） ────────────────────────────────────────────
     .get('/bindings', context => context.json(deps.modelBindings.list()))
     .put('/bindings/:module', paramValidator(bindingParams), jsonBody(bindingBody), async context => {
       const { module } = context.req.valid('param');

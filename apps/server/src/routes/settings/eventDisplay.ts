@@ -1,5 +1,3 @@
-// 返回事件提示条的生效展示表.
-
 import { Hono } from 'hono';
 import type { SettingsStore } from '@ema-agent/settings';
 import {

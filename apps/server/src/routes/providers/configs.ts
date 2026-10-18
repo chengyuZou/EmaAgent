@@ -1,4 +1,3 @@
-// Provider 控制面：内置种子与自建同表同构的 CRUD；能力档位经 update 的 capability 单量修改。
 import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import {
@@ -13,10 +12,10 @@ const capabilityInputSchema = z.object({
   capability: z.enum(['llm', 'embed', 'rerank', 'vision', 'tts', 'stt']),
   protocol: z.enum(PROTOCOLS).optional(),
   baseUrl: z.string().min(1).max(PROVIDER_LIMITS.baseUrlChars).optional(),
-  /** true = 设为当前协议；false = 停用该能力（已配协议保留）。 */
+  /** true = 设为当前协议;false = 停用该能力(已配协议保留). */
   active: z.boolean().optional(),
   modelsDevId: z.string().optional(),
-  /** 本次要从该能力移除的协议档；删到最后一档会报错。 */
+  /** 本次要从该能力移除的协议档;删到最后一档会报错. */
   removedProtocols: z.array(z.enum(PROTOCOLS)).optional(),
 });
 
@@ -25,7 +24,7 @@ const createProviderBody = z.object({
   name: z.string().min(1).max(PROVIDER_LIMITS.nameChars),
   iconId: z.string().optional(),
   authType: z.enum(['none', 'bearer']),
-  /** one key per provider；bearer 未提供时先建行。 */
+  /** one key per provider;bearer 未提供时先建行. */
   key: z.string().max(PROVIDER_LIMITS.apiKeyChars).optional(),
   capability: capabilityInputSchema,
 });
@@ -33,7 +32,7 @@ const createProviderBody = z.object({
 const updateProviderBody = z.object({
   name: z.string().min(1).max(PROVIDER_LIMITS.nameChars).optional(),
   iconId: z.string().nullable().optional(),
-  /** null = 清空 key；缺省 = 不动现有 key。 */
+  /** null = 清空 key;缺省 = 不动现有 key. */
   key: z.string().min(1).max(PROVIDER_LIMITS.apiKeyChars).nullable().optional(),
   capability: capabilityInputSchema.optional(),
 });
@@ -84,7 +83,7 @@ export const providerConfigsRoute = (deps: ProviderConfigsRouteDeps) =>
       }
     });
 
-/** ProviderError 的稳定 HTTP 映射；非领域错误继续上抛。 */
+/** ProviderError 的稳定 HTTP 映射;非领域错误继续上抛. */
 export function providerError(context: Context, error: unknown) {
   if (!(error instanceof ProviderError)) throw error;
   switch (error.code) {

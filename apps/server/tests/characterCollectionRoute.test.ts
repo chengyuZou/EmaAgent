@@ -1,4 +1,3 @@
-// 验证角色资料只在修改舞台类型时使用 Session 门禁。
 import { describe, expect, it, vi } from 'vitest';
 import {
   characterCollectionRoute,

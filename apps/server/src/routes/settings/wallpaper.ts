@@ -1,4 +1,3 @@
-// 对浏览器提供壁纸上传, 摘要列表, 缩略图和原图读取接口.
 import fs from 'node:fs';
 import { Readable } from 'node:stream';
 import { Hono } from 'hono';

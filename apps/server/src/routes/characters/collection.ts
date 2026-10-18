@@ -1,4 +1,3 @@
-// 角色集合 API：名称是稳定身份，切换与删除由应用层协调正在运行的工作。
 import { Hono } from 'hono';
 import { z } from 'zod';
 import type { CharacterStore } from '@ema-agent/characters';

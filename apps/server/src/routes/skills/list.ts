@@ -1,4 +1,3 @@
-// 技能目录与正文: 列表, 详情, 文件预览, skills.enabled 启停, 重扫和 builtin/user 分开删除.
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { Hono } from 'hono';
@@ -25,9 +24,9 @@ export interface SkillListRouteDeps {
   readonly skills: Pick<SkillRegistry, 'list' | 'getByPath' | 'refreshCore' | 'refreshProjectFolders'>;
   readonly skillStore: Pick<SkillStore, 'deleteUserSkill' | 'deleteBuiltinSkill' | 'listDisabledPaths' | 'setEnabled'>;
   readonly settings: Pick<SettingsStore, 'get'>;
-  /** 按 Session 或 Project 取得技能扫描文件夹；无上下文只见 builtin/user。 */
+  /** 按 Session 或 Project 取得技能扫描文件夹;无上下文只见 builtin/user. */
   readonly sessions: Pick<SessionStore, 'getSession' | 'listProjectFolders'>;
-  /** 启停/删除/重扫后广播 skills_changed,让其他窗口重读。 */
+  /** 启停/删除/重扫后广播 skills_changed,让其他窗口重读. */
   readonly emitApp: (event: AppEvent) => void;
 }
 
@@ -39,7 +38,7 @@ const listQuery = z.object({
   'sessionId 与 projectId 不能同时提供',
 );
 
-/** 绝对路径放在 query 中,不进入 URL 路径段。 */
+/** 绝对路径放在 query 中,不进入 URL 路径段. */
 const skillQuery = z.object({
   skillPath: z.string().min(1),
   sessionId: z.string().min(1).optional(),
@@ -110,7 +109,7 @@ export const skillListRoute = (deps: SkillListRouteDeps) => {
       const content = await readFile(entry.path, 'utf8');
       return context.json({ path: entry.path, content });
     })
-    // 技能目录的文件清单与预览:dotfiles 不进(藏住 .ema-market.json 这类内部文件)。
+    // 技能目录的文件清单与预览:dotfiles 不进(藏住 .ema-market.json 这类内部文件).
     .get('/files', queryValidator(skillQuery), async context => {
       const { skillPath, sessionId } = context.req.valid('query');
       const entry = await deps.skills.getByPath(skillPath, folderPathsOf(sessionId, undefined));
@@ -144,7 +143,7 @@ export const skillListRoute = (deps: SkillListRouteDeps) => {
       deps.emitApp({ type: 'skills_changed' });
       return context.json(toWire(entry, readEnablement()));
     })
-    // 真实重扫 builtin+user 目录：手放目录的技能在此之后可见。
+    // 真实重扫 builtin+user 目录:手放目录的技能在此之后可见.
     .post('/rescan', queryValidator(z.object({ sessionId: z.string().min(1).optional() })), async context => {
       await deps.skills.refreshCore();
       const { sessionId } = context.req.valid('query');
@@ -184,7 +183,7 @@ function toWire(entry: SkillDescriptor, enablement: SkillEnablement) {
   return { ...entry, enabled: isSkillEnabled(entry, enablement) };
 }
 
-/** 递归列技能目录文件(POSIX 相对路径 + 大小),dotfiles 不进,深度 4 与总数上限防失控。 */
+/** 递归列技能目录文件(POSIX 相对路径 + 大小),dotfiles 不进,深度 4 与总数上限防失控. */
 async function listSkillFiles(root: string): Promise<{ path: string; size: number }[]> {
   const found: { path: string; size: number }[] = [];
   async function walk(dir: string, rel: string, depth: number): Promise<void> {

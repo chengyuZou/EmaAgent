@@ -1,9 +1,8 @@
-// Profile 锁文件：防止两个 server 进程同时持有同一个数据目录。
 import fs from 'node:fs';
 import os from 'node:os';
 import { lockfilePath } from './paths.js';
 
-const STALE_MS = 5 * 60 * 1000;     // updatedAt 超过此时长视为已崩溃
+const STALE_MS = 5 * 60 * 1000;     // 超过此时长允许重新认领, 不代表已经证明旧进程退出
 const HEARTBEAT_MS = 60 * 1000;     // 运行期间每分钟刷新一次
 
 export interface LockInfo {
@@ -18,15 +17,14 @@ export type LockAcquireResult =
   | { acquired: true;  release: () => void }
   | {
       acquired: false;
-      /** 挡住我们的现存活锁；调用方可展示给用户。 */
+      /** 当前阻止启动的锁记录, 用于报告占用进程. */
       conflict: LockInfo;
     };
 
 /**
- * 为当前（进程, dataDir）认领 `~/.ema-agent/lockfile.json`。
- * 规则：无锁或锁已过期 → 认领；活锁指向不同 dataDir → 认领（不同目录互不干扰）；
- * 活锁同 dataDir 且 pid 不同 → 拒绝并返回冲突；同 pid → 幂等重认领。
- * 成功时返回 release()，优雅关闭时调用；心跳每分钟刷新 updatedAt。
+ * 锁记录放在当前 Profile 的 lockfile.json. 未过期且持有者未退出时,
+ * 同一 dataDir 的其他进程会被拒绝; 其余情况写入当前进程记录.
+ * 每分钟刷新 updatedAt, 关闭时调用 release(); 文件已被别的进程接管时不删除它.
  */
 export function acquireLock(dataDir: string): LockAcquireResult {
   const fp = lockfilePath();
@@ -77,7 +75,6 @@ export function acquireLock(dataDir: string): LockAcquireResult {
   return { acquired: true, release };
 }
 
-// ── 内部 ─────────────────────────────────────────────────────────────────────
 
 function readLockfile(fp: string): LockInfo | null {
   try {
@@ -97,9 +94,9 @@ function isStale(info: LockInfo, now: number): boolean {
 }
 
 /**
- * 持有者进程是否可证明已退出。`process.kill(pid, 0)` 不发信号只探活，
- * ESRCH = 进程已死。仅同主机有效，跨主机锁回退到时间过期判断。
- * 这让热重载（旧 pid 已死）不必等满 5 分钟过期窗口即可回收锁。
+ * 持有者进程是否可证明已退出.`process.kill(pid, 0)` 不发信号只探活,
+ * ESRCH = 进程已死.仅同主机有效,跨主机锁回退到时间过期判断.
+ * 这让热重载(旧 pid 已死)不必等满 5 分钟过期窗口即可回收锁.
  */
 function isHolderDead(info: LockInfo): boolean {
   if (info.hostname !== os.hostname()) return false;

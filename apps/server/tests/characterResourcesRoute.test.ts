@@ -1,4 +1,3 @@
-// 验证角色资源路由只对会替换正式主资源的写入和删除启用 Session 门禁。
 import { Readable } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
 import {

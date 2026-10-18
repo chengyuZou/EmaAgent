@@ -1,4 +1,3 @@
-// 验证 System SSE 建连即产生首字节，并能由消费者取消响应体。
 import { describe, expect, it } from 'vitest';
 import { AppEvents } from '../src/application/appEvents.js';
 import { systemEventsRoute } from '../src/routes/system/events.js';

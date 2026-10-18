@@ -1,4 +1,3 @@
-// 角色切换、删除与会改变正式演出对象的设置写入，在无活跃 Session 时才能提交。
 import { CharacterNotFoundError, type CharacterStore } from '@ema-agent/characters';
 import type { SessionRunningRegistry } from '@ema-agent/session';
 
@@ -29,7 +28,7 @@ export function runWhenSessionsIdle<T>(
   deps: CharacterChangeDeps,
   action: () => T | Promise<T>,
 ): Promise<T> {
-  // 检查和写入必须处于同一个注册关闭期，避免两者之间启动新 Turn 或 Compact。
+  // 检查和写入必须处于同一个注册关闭期,避免两者之间启动新 Turn 或 Compact.
   return deps.sessionRunning.runWithRegistrationsClosed(() => {
     if (deps.sessionRunning.runningSessionCount() > 0) {
       throw new CharacterWorkRunningError();

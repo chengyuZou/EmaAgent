@@ -1,7 +1,4 @@
-// HTTP 路由总装：唯一挂载表。文件夹按业务域划分，挂载前缀即 URL；
-// Route 只做传输解析与协议转换，业务入口全部来自 Composition，这里不构造业务对象。
-// 顶层必须整链（.use/.route/.notFound/.onError 同链）：语句式 app.route(...) 会丢类型账本，
-// ReturnType<typeof createRoutes>（AppType）将退化为裸 Hono，Hono RPC 契约直接失效。
+// 路由链的返回类型由 Desktop 的 hc<AppType> 读取. 拆成不返回结果的 app.route() 调用会丢失新增路径的类型.
 import { ATTACHMENT_RESIDUE_MAX_AGE_MS, readAttachmentCacheSettings } from '@ema-agent/attachments';
 import { Hono } from 'hono';
 import { archiveSession, deleteArchivedSessions, deleteSession } from '../application/sessionActions.js';
@@ -64,7 +61,7 @@ export const createRoutes = (composition: Composition, secret: string) => {
   } = composition;
   const characterChangeDeps = { characters: characters.store, sessionRunning: database.sessionRunning };
 
-  // CORS 必须先处理不携带业务密钥的 OPTIONS 预检，真正请求再进入认证和预算。
+  // CORS 必须先处理不携带业务密钥的 OPTIONS 预检,真正请求再进入认证和预算.
   return new Hono()
     .use('*', localWebviewCors())
     .use('*', emaAuth(secret))
@@ -127,7 +124,7 @@ export const createRoutes = (composition: Composition, secret: string) => {
       usageRecorder: database.usageRecorder,
       estimateContext: turn.estimateContext,
       onSessionOpened: sessionId => {
-        // 附件残留清扫(贴了没发/无行残渣)与 vision 描述缓存驱逐,fire-and-forget。
+        // 附件残留清扫(贴了没发/无行残渣)与 vision 描述缓存驱逐,fire-and-forget.
         void database.attachments
           .sweep(sessionId, ATTACHMENT_RESIDUE_MAX_AGE_MS)
           .catch(error => console.warn('[attachments] 残留清扫失败:', error));
@@ -146,7 +143,6 @@ export const createRoutes = (composition: Composition, secret: string) => {
       pasteStore: database.pasteStore,
       activeDataDir: database.activeDataDir,
     }))
-    // backup 是独立业务域（未来还有角色/设置备份）；Session 支路的 URL 仍在 /api/sessions 下。
     .route('/api/sessions', sessionBackupRoute({
       backup: backup.sessionBackup,
       onImported: sessionId => appEvents.emit({ type: 'session_list_changed', sessionId }),
@@ -168,7 +164,7 @@ export const createRoutes = (composition: Composition, secret: string) => {
     .route('/api/mcp', mcpEnvironmentRoute({ environment: tools.mcpEnvironment }))
     .route('/api/mcp', mcpMarketRoute({ market: tools.mcpMarket }))
 
-    // 静态 /bindings、/available 路由必须先于 configs 的 /:providerId，避免被当作 Provider id。
+    // 静态 /bindings, /available 路由必须先于 configs 的 /:providerId,避免被当作 Provider id.
     .route('/api/providers', providerModelsRoute({
       providers: providers.providers,
       providerModels: providers.providerModels,
@@ -232,5 +228,5 @@ export const createRoutes = (composition: Composition, secret: string) => {
     });
 };
 
-/** 路由定义即契约：desktop 经 `hc<AppType>` 获得路径/请求/响应全类型；纯类型零运行时。 */
+/** Desktop 仅导入类型, 不把 Server 的运行代码打进浏览器. */
 export type AppType = ReturnType<typeof createRoutes>;

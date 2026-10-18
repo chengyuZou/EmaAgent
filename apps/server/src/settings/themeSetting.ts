@@ -8,7 +8,7 @@ const themeSettingsSchema = z.object({
   mode: z.enum(['light', 'dark', 'system']),
   /** 正文字体族名; 空串 = 跟随系统. 限制长度与字符集, 防止注入 CSS. */
   readingFont: z.string().max(80).regex(/^[\p{L}\p{N} _.-]*$/u),
-  /** 等宽字体族名(代码/JSON/终端/工具行); 空串 = 跟随系统等宽; .default 兼容缺字段的旧库. */
+  /** 等宽字体族名; 空串使用系统回退, 未提供时默认 Consolas. */
   codeFont: z.string().max(80).regex(/^[\p{L}\p{N} _.-]*$/u).default('Consolas'),
   /** 语法高亮配色; 每套自带代码块底色, 不跟随明暗模式. */
   syntaxTheme: z.enum([

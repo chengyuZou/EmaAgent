@@ -1,4 +1,3 @@
-// 启动恢复：崩溃残留的终态收口（ready 前置）、孤儿文件清理（可降级）与权限项目规则对账。
 import type { SubagentMessagesStore, SubagentStore } from '@ema-agent/agent';
 import { cleanupInterruptedFileWriteTemps } from '@ema-agent/builtin-tools';
 import { reconcileProjectRules } from '@ema-agent/permission';
@@ -34,9 +33,9 @@ export interface StartupRecoveryDeps {
 }
 
 /**
- * Tool/Turn/Subagent/后台进程的终态恢复与项目规则对账是 ready 前置条件：
- * 失败必须向上传播，不能把旧 running 状态留给新进程。
- * Memory 的启动恢复归 Sol 的 Memory 包收口后接入。
+ * Tool/Turn/Subagent/后台进程的终态恢复与项目规则对账是 ready 前置条件:
+ * 失败必须向上传播,不能把旧 running 状态留给新进程.
+ * Memory 的任务恢复由 openMemory 返回的 start() 在 ready 后执行.
  */
 export function runRequiredRecovery(deps: StartupRecoveryDeps): void {
   deps.goals.pauseActiveOnStartup();
@@ -47,21 +46,21 @@ export function runRequiredRecovery(deps: StartupRecoveryDeps): void {
   }
   const { healed } = deps.turns.recoverStuckTurns();
   if (healed > 0) {
-    console.warn(`[recovery] 收口 ${healed} 个崩溃残留 Turn`);
+    console.warn(`[recovery] 将 ${healed} 个异常退出时仍在运行的 Turn 标记为结束`);
   }
   const interruptedRuns = deps.subagents.recoverInterrupted();
   if (interruptedRuns.length > 0) {
     console.warn(`[recovery] 标记 ${interruptedRuns.length} 个中断 Subagent`);
   }
 
-  // 项目规则对账：剔除已删除项目的规则键，防止 settings 里长孤儿。
+  // 项目规则对账:剔除已删除项目的规则键,防止 settings 里长孤儿.
   const projectIds = new ProjectsRepo(deps.dataDb.sqlite).list().map(row => row.id);
   reconcileProjectRules(deps.settings, projectIds);
 }
 
 /**
- * 中断的工具调用：缺 tool_result 的按状态合成终态消息补配对（running→outcome_unknown，
- * 其余→cancelled），再关账执行日志；FileWrite 的临时文件随调用清单清理。
+ * 中断的工具调用:缺 tool_result 的按状态合成终态消息补配对(running→outcome_unknown,
+ * 其余→cancelled),再关账执行日志;FileWrite 的临时文件随调用清单清理.
  */
 function recoverToolExecutions(deps: StartupRecoveryDeps): void {
   const interrupted = deps.toolExecutionState.listInterrupted();
@@ -72,7 +71,7 @@ function recoverToolExecutions(deps: StartupRecoveryDeps): void {
     outcomeUnknown: boolean;
   }> = [];
   for (const execution of interrupted) {
-    // 根工具从 Session History 找调用, 子 Agent 工具从独立 Subagent 转录找.
+    // 主 Agent 工具从 Session 历史查调用, 子 Agent 工具从各自转录查调用.
     // 两条链都先写 Message 再关执行状态, 所以恢复时可能已经存在 ToolResult.
     const childInteraction = execution.subagentId
       ? deps.subagentMessages.findToolInteraction(execution.subagentId, execution.callId)
@@ -87,8 +86,8 @@ function recoverToolExecutions(deps: StartupRecoveryDeps): void {
       type: 'tool_result' as const,
       toolCallId: execution.callId,
       content: execution.status === 'running'
-        ? '软件异常退出时工具仍在运行，实际副作用未知。请先检查当前状态，不要直接重复执行。'
-        : '软件异常退出前工具尚未开始执行，本次调用已取消。',
+        ? '软件异常退出时工具仍在运行,实际副作用未知.请先检查当前状态,不要直接重复执行.'
+        : '软件异常退出前工具尚未开始执行,本次调用已取消.',
       isError: true,
       errorCode: execution.status === 'running' ? 'tool/outcome_unknown' : 'tool/cancelled',
     };
@@ -118,19 +117,19 @@ function recoverToolExecutions(deps: StartupRecoveryDeps): void {
     if (interrupted.length > 0) {
       const unknownCount = fileWriteCalls.filter(call => call.outcomeUnknown).length;
       console.warn(
-        `[recovery] 恢复 ${interrupted.length} 个中断工具调用；${unknownCount} 个副作用未知`,
+        `[recovery] 恢复 ${interrupted.length} 个中断工具调用;${unknownCount} 个副作用未知`,
       );
     }
     if (fileWriteRecovery.failed.length > 0) {
       console.warn(`[recovery] ${fileWriteRecovery.failed.length} 个 FileWrite 临时文件清理失败`);
     }
   } catch (error) {
-    // 终态已经恢复；临时文件清理属于可重试维护，不阻止启动。
+    // 终态已经恢复;临时文件清理属于可重试维护,不阻止启动.
     console.warn('[recovery] FileWrite 临时文件清理跳过:', error);
   }
 }
 
-/** 孤儿文件清理失败只降级本轮清理，不阻断 ready。 */
+/** 孤儿文件清理失败只降级本轮清理,不阻断 ready. */
 export function runFileMaintenance(deps: StartupRecoveryDeps): void {
   try {
     const { removed, failed } = sweepOrphanSessionDirectories(

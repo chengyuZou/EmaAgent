@@ -1,5 +1,5 @@
-// 前端 Files 面板的本机文件浏览：列目录与有界文件预览（文本/图片/base64 分流）。
-// 本机单人桌面应用，用户即机器所有者，任意路径读取是有意设计。
+// 前端 Files 面板的本机文件浏览:列目录与有界文件预览(文本/图片/base64 分流).
+// 本机单人桌面应用,用户即机器所有者,任意路径读取是有意设计.
 import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import * as fsP from 'node:fs/promises';
@@ -11,7 +11,7 @@ const pathQuery = z.object({
   path: z.string().min(1).max(2000),
 });
 
-/** 文件预览体积上限；超出只回尺寸让前端降级。 */
+/** 文件预览体积上限;超出只回尺寸让前端降级. */
 const MAX_PREVIEW_BYTES = 10 * 1024 * 1024;
 
 const TEXT_EXTS = new Set([
@@ -85,10 +85,10 @@ function audioByteRange(header: string | undefined, size: number): AudioByteRang
 
 interface FileEntry {
   name: string;
-  /** 正斜杠归一的绝对路径。 */
+  /** 正斜杠归一的绝对路径. */
   path: string;
   type: 'file' | 'dir';
-  /** 字节数；目录不带。 */
+  /** 字节数;目录不带. */
   size?: number;
 }
 
@@ -108,7 +108,7 @@ export const filesRoute = () =>
               try {
                 size = (await fsP.stat(nodePath.join(dirPath, entry.name))).size;
               } catch {
-                // 单文件 stat 失败只丢尺寸，不拖垮整列。
+                // 单文件 stat 失败只丢尺寸,不拖垮整列.
               }
             }
             return {
@@ -119,7 +119,7 @@ export const filesRoute = () =>
             };
           }),
         );
-        // 目录在前，组内按名称（大小写不敏感）。
+        // 目录在前,组内按名称(大小写不敏感).
         entries.sort((left, right) => {
           if (left.type !== right.type) return left.type === 'dir' ? -1 : 1;
           return left.name.localeCompare(right.name, undefined, { sensitivity: 'base' });
@@ -153,7 +153,7 @@ export const filesRoute = () =>
           const content = await fsP.readFile(filePath, 'utf8');
           return context.json({ content, encoding: 'text' as const, mimeType: 'text/plain', size: stat.size });
         }
-        // 未知扩展名按 utf8 试读（大量配置/日志无扩展名）；替换字符占比高则判二进制。
+        // 未知扩展名按 utf8 试读(大量配置/日志无扩展名);替换字符占比高则判二进制.
         try {
           const content = await fsP.readFile(filePath, 'utf8');
           const sample = content.slice(0, 1000);

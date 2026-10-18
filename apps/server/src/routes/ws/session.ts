@@ -156,8 +156,8 @@ export type SessionBusinessMessage =
   };
 
 /**
- * Server 可以通过 Session WebSocket 发给 Desktop 的全部 JSON 消息: Session 主动推送、
- * 请求成功或失败结果、手动 Compact 结果和心跳 pong.
+ * Server 可以通过 Session WebSocket 发给 Desktop 的全部 JSON 消息: Session 主动推送, 
+ * 请求成功或失败结果, 手动 Compact 结果和心跳 pong.
  */
 export type SessionServerMessage =
   | SessionBusinessMessage
@@ -261,7 +261,7 @@ export const sessionWebSocketRoute = (deps: SessionWebSocketRouteDeps) =>
             pendingInteractions: deps.interactions.listPending(sessionId),
             queuedInputs: deps.continuations.list(sessionId),
           });
-          // TODO: 真实使用若证明断线期间的增量不可接受，再设计按 Turn 游标的有界重放和缺口通知。
+          // 重连只发送当前状态, 不重放断线期间的增量; 历史正文通过 HTTP 重新读取.
         },
         async onMessage(event, socket) {
           if (typeof event.data !== 'string') return;

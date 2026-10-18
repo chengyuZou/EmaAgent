@@ -1,4 +1,3 @@
-// Provider 一族：控制面三类（Providers/ProviderModels/ModelBindings）+ models.dev 目录。
 import type { Database } from '@ema-agent/storage';
 import {
   ModelBindings,
@@ -15,7 +14,7 @@ export interface ProvidersComposition {
   readonly providers: Providers;
   readonly providerModels: ProviderModels;
   readonly modelBindings: ModelBindings;
-  /** models.dev 本地快照目录（缺失/损坏时为空目录，不阻塞主链路）。 */
+  /** models.dev 本地快照目录(缺失/损坏时为空目录,不阻塞主链路). */
   readonly modelCatalog: ModelsDevCatalog;
   /** 并发请求共用完整目录下载, 分别同步各自供应商和能力的 SQL, 提交后通知. */
   refreshModels(providerId: string, capability: 'llm' | 'vision'): Promise<ProviderModel[]>;

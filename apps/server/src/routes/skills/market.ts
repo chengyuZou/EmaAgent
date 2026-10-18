@@ -1,4 +1,3 @@
-// 技能市场：聚合浏览/详情/文件预览/安装/卸载。来源固定 SkillHub + ClawHub,用户不能加源。
 import { Hono } from 'hono';
 import { z } from 'zod';
 import {
@@ -15,7 +14,7 @@ import type { AppEvent } from '../../application/appEvents.js';
 export interface SkillMarketRouteDeps {
   readonly market: MarketService;
   readonly installer: MarketInstaller;
-  /** 安装/卸载后重扫 builtin+user,让目录变化进索引。 */
+  /** 安装/卸载后重扫 builtin+user,让目录变化进索引. */
   readonly skills: Pick<SkillRegistry, 'refreshCore'>;
   readonly emitApp: (event: AppEvent) => void;
 }
@@ -102,7 +101,7 @@ export const skillMarketRoute = (deps: SkillMarketRouteDeps) =>
       }
     });
 
-/** 市场错误映射：保留业务码与 HTTP 语义（上游 502、冲突 409、不可装 422）。 */
+/** 市场错误映射:保留业务码与 HTTP 语义(上游 502, 冲突 409, 不可装 422). */
 function toMarketError(error: unknown): {
   body: { error: string; message: string };
   status: 400 | 409 | 422 | 500 | 502;

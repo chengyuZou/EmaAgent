@@ -14,21 +14,18 @@ import { dataDirPath, ensureDataDirLayout } from './paths.js';
 import { HTTP_SERVER_TIMEOUTS } from './requestBudget.js';
 
 export interface ServerLifecycle {
-  readonly composition: Composition;
-  /** 实际监听端口（宿主经 stdout 控制消息读取）。 */
+  /** 实际监听端口(宿主经 stdout 控制消息读取). */
   readonly port: number;
   shutdown(): Promise<void>;
 }
 
 /**
- * 唯一启动序列。失败即抛：入口负责打印并非零退出。
- * 启动恢复是 ready 前置(不能把旧 running 状态留给新进程); ready 之后的文件维护和
- * Memory 等后台任务允许降级. 启动不会续跑旧 Turn 或后台工作.
+ * 必须先恢复异常退出时的运行记录, 再公布 ready, 避免界面等待已经不存在的执行.
+ * 文件维护和 Memory 调度在公布端口后开始, 不重新执行中断的 Turn 或后台命令.
  */
 export async function startServer(secret: string): Promise<ServerLifecycle> {
   let phaseStartedAt = performance.now();
   console.info('[server:startup] data directory preparation started');
-  // 单一数据目录:~/.ema-agent/data 固定,不再有库注册表。
   const activeDataDir = dataDirPath();
   ensureDataDirLayout(activeDataDir);
   logStartupDuration('data directory preparation', phaseStartedAt);
@@ -38,7 +35,7 @@ export async function startServer(secret: string): Promise<ServerLifecycle> {
   const lock = acquireLock(activeDataDir);
   if (!lock.acquired) {
     throw new Error(
-      `数据目录已被另一个 server 进程占用: ${activeDataDir}（持有者 pid=${lock.conflict.pid}）`,
+      `数据目录已被另一个 server 进程占用: ${activeDataDir}(持有者 pid=${lock.conflict.pid})`,
     );
   }
   logStartupDuration('data directory lock', phaseStartedAt);
@@ -77,13 +74,13 @@ export async function startServer(secret: string): Promise<ServerLifecycle> {
     const app = createRoutes(running, secret);
     const channelWebSocketServer = new WebSocketServer({ noServer: true });
     webSocketServer = channelWebSocketServer;
-    // 端口由 OS 分配（loopback ephemeral），实际端口经 stdout 控制消息报告宿主；
-    // 没有任何需要用户或宿主配置的端口项。未传自定义 createServer 时 serve
-    // 恒为 http1 Server（headersTimeout/requestTimeout 只在 http1 上存在）。
+    // 端口由 OS 分配(loopback ephemeral),实际端口经 stdout 控制消息报告宿主;
+    // 没有任何需要用户或宿主配置的端口项.未传自定义 createServer 时 serve
+    // 恒为 http1 Server(headersTimeout/requestTimeout 只在 http1 上存在).
     const httpServer = serve({
       fetch: app.fetch,
       port: 0,
-      // loopback 是全部信任边界；绝不绑外部接口。
+      // 只监听本机; 业务请求仍需要共享密钥.
       hostname: '127.0.0.1',
       websocket: { server: channelWebSocketServer },
     }) as Server;
@@ -98,7 +95,6 @@ export async function startServer(secret: string): Promise<ServerLifecycle> {
     process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'server.ready', params: { port } })}\n`);
     logStartupDuration('ready publication', phaseStartedAt);
 
-    // ── ready 之后的后台驱动 ──────────────────────────────────────────────
     runFileMaintenance(recoveryDeps);
     void running.tools.toolResultCleaner.sweep()
       .then(({ deleted, freedBytes }) => {
@@ -111,14 +107,13 @@ export async function startServer(secret: string): Promise<ServerLifecycle> {
       .catch(error => console.warn('[tools] 外置 Tool Result 清理跳过:', error));
     running.memory.start();
     return {
-      composition: running,
       port,
       async shutdown() {
         for (const socket of channelWebSocketServer.clients) socket.terminate();
         channelWebSocketServer.close();
         await new Promise<void>(resolve => {
           httpServer.close(() => resolve());
-          // SSE 是长连接，close() 不会自然结束；本地桌面进程直接断开。
+          // SSE 是长连接,close() 不会自然结束;本地桌面进程直接断开.
           httpServer.closeAllConnections();
         });
         await running.close();

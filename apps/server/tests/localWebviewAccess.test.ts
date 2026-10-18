@@ -1,4 +1,3 @@
-// 验证 Desktop WebView 的 CORS 预检可达，而真正的 Server 请求仍受共享密钥保护。
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import { emaAuth, localWebviewCors } from '../src/platform/auth.js';

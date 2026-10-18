@@ -293,9 +293,6 @@ importers:
       '@ema-agent/permission':
         specifier: workspace:*
         version: link:../../src/permission
-      '@ema-agent/prompts':
-        specifier: workspace:*
-        version: link:../../src/prompts
       '@ema-agent/providers':
         specifier: workspace:*
         version: link:../../src/providers
@@ -332,9 +329,6 @@ importers:
       '@ema-agent/tasks':
         specifier: workspace:*
         version: link:../../src/tasks
-      '@ema-agent/token':
-        specifier: workspace:*
-        version: link:../../src/token
       '@ema-agent/tools':
         specifier: workspace:*
         version: link:../../src/tools
@@ -359,9 +353,6 @@ importers:
       '@hono/zod-validator':
         specifier: ^0.9.0
         version: 0.9.0(hono@4.12.18)(zod@4.4.3)
-      fflate:
-        specifier: ^0.8.2
-        version: 0.8.3
       hono:
         specifier: ^4.7.10
         version: 4.12.18

@@ -1,5 +1,3 @@
-// 测试 RuntimePaths 的数据库文件集合、启动清理和资源路径边界。
-
 import { describe, expect, it } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';

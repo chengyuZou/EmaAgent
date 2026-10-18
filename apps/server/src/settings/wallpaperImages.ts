@@ -1,4 +1,3 @@
-// 管理主窗口的壁纸文件, 列表只返回文件摘要并按需生成缩略图.
 import fs from 'node:fs';
 import path from 'node:path';
 import sharp from 'sharp';

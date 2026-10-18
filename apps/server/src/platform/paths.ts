@@ -1,5 +1,3 @@
-// 统一计算 EmaAgent 的 Profile、数据目录、Session 与资源文件路径。
-
 import fs   from 'node:fs';
 import os   from 'node:os';
 import path from 'node:path';
@@ -8,9 +6,8 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..', '..', '..', '..');
 
-// ── Profile（跨数据目录共享） ─────────────────────────────────────────────────
 
-/** 永远 `~/.ema-agent/`：profile.db、lockfile.json、characters/。registry.json 与库注册表已随单库化整体拆除。测试用 EMA_PROFILE_DIR 覆盖。 */
+/** 默认 ~/.ema-agent; EMA_PROFILE_DIR 可以覆盖整个 Profile 的位置. 读取时会创建目录. */
 export function profileDir(): string {
   const dir = process.env['EMA_PROFILE_DIR'] ?? path.join(os.homedir(), '.ema-agent');
   fs.mkdirSync(dir, { recursive: true });
@@ -31,7 +28,7 @@ export function narrativeDbPath(): string {
   return path.join(directory, 'narrative.db');
 }
 
-/** 返回 SQLite 主文件及其 WAL/SHM 辅助文件。 */
+/** 返回 SQLite 主文件及其 WAL/SHM 辅助文件. */
 export function sqliteFileSet(databasePath: string): string[] {
   return [databasePath, `${databasePath}-wal`, `${databasePath}-shm`];
 }
@@ -40,19 +37,18 @@ export function lockfilePath(): string {
   return path.join(profileDir(), 'lockfile.json');
 }
 
-/** 唯一数据目录:`~/.ema-agent/data`。固定,不再有库注册表。 */
+/** 会话数据库和文件放在当前 Profile 的 data 子目录. */
 export function dataDirPath(): string {
   return path.join(profileDir(), 'data');
 }
 
-// ── 角色资源包 ────────────────────────────────────────────────────────────────
 
-/** 所有角色的唯一资源根：`<profileDir>/characters/<characterName>/{live2d,illustration,voice}/`。 */
+/** 所有角色的唯一资源根:`<profileDir>/characters/<characterName>/{live2d,illustration,voice}/`. */
 export function charactersDir(): string {
   return path.join(profileDir(), 'characters');
 }
 
-/** 内置技能目录：`<profileDir>/resources/skills`，由宿主（Tauri release 资源）在启动时铺好；skills 域不感知打包。 */
+/** Server 将内置种子复制到这个位置; 目录已存在时保留用户磁盘上的内容. */
 export function builtinSkillsDir(): string {
   return path.join(profileDir(), 'resources', 'skills');
 }
@@ -62,19 +58,12 @@ export function wallpapersDir(): string {
   return path.join(profileDir(), 'wallpapers');
 }
 
-/** 内置技能种子来源；只在启动铺设阶段读取，正式包由环境变量传入。 */
+/** 优先读 EMA_BUNDLED_SKILLS_DIR; 未设置时使用源码仓库中的资源路径. */
 export function bundledSkillsSource(): string {
   return process.env['EMA_BUNDLED_SKILLS_DIR']
     ?? path.join(REPO_ROOT, 'apps', 'desktop', 'src-tauri', 'resources', 'skills');
 }
 
-/** 创建 profile 侧不属于 profile.db 本身的目录。 */
-export function ensureProfileLayout(): void {
-  fs.mkdirSync(charactersDir(), { recursive: true });
-  fs.mkdirSync(wallpapersDir(), { recursive: true });
-}
-
-// ── 数据目录顶层 ──────────────────────────────────────────────────────────────
 
 export function dataDbPathFor(dataDir: string): string {
   return path.join(dataDir, 'data.db');
@@ -84,15 +73,13 @@ export function trashDirFor(dataDir: string): string {
   return path.join(dataDir, '.trash');
 }
 
-/** 创建数据目录顶层布局；audio 等子目录由各自业务懒建。 */
+/** 创建数据目录顶层布局;audio 等子目录由各自业务懒建. */
 export function ensureDataDirLayout(dataDir: string): void {
   fs.mkdirSync(dataDir, { recursive: true });
   fs.mkdirSync(trashDirFor(dataDir), { recursive: true });
 }
 
-// ── Session 级目录 ────────────────────────────────────────────────────────────
-//
-// 一个 Session 的全部文件收在 sessions/<sessionId>/ 下，删除 Session 即整目录移除：
+// 一个 Session 的全部文件收在 sessions/<sessionId>/ 下,删除 Session 即整目录移除:
 //   {dataDir}/sessions/{sessionId}/
 //     audio/{turnId}/{turnId}-{characterName}.wav
 //     audio/{turnId}/{turnId}-{characterName}.wav.pending
@@ -104,8 +91,8 @@ export function sessionDirFor(dataDir: string, sessionId: string): string {
 }
 
 /**
- * 启动自检：删除数据库中已不存在的整棵 Session 目录。
- * 数据库是事实源；逐目录隔离删除失败，避免一个被占用的 Windows 文件阻断其余恢复。
+ * 启动自检:删除数据库中已不存在的整棵 Session 目录.
+ * 数据库是事实源;逐目录隔离删除失败,避免一个被占用的 Windows 文件阻断其余恢复.
  */
 export function sweepOrphanSessionDirectories(
   dataDir: string,
@@ -117,7 +104,7 @@ export function sweepOrphanSessionDirectories(
   let removed = 0;
   let failed = 0;
   for (const entry of fs.readdirSync(sessionsRoot, { withFileTypes: true })) {
-    // 不跟随符号链接或 Junction，避免清理越出 active dataDir。
+    // 不跟随符号链接或 Junction,避免清理越出 active dataDir.
     if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
     if (sessionExists(entry.name)) continue;
 
@@ -131,7 +118,7 @@ export function sweepOrphanSessionDirectories(
   return { removed, failed };
 }
 
-/** 后台进程日志跟随 Session 生命周期，但不属于某个短命 Turn。 */
+/** 后台进程日志跟随 Session 生命周期,但不属于某个短命 Turn. */
 export function backgroundProcessOutputDirFor(
   dataDir: string,
   sessionId: string,
@@ -146,13 +133,8 @@ export function backgroundProcessOutputDirFor(
   return { absoluteDirectory: path.join(dataDir, relativeDirectory), relativeDirectory };
 }
 
-export function sessionAudioDirFor(dataDir: string, sessionId: string): string {
-  return path.join(sessionDirFor(dataDir, sessionId), 'audio');
-}
-
 /**
- * Artifact 数据表已由迁移删除，但迁移触不到旧 Session 的物理目录。
- * 启动恢复只删除这个已废弃的固定子目录，不扫描或改动 audio、scratchpad 等现行业务文件。
+ * 只删除 Session 下的 artifacts 子目录, 保留 audio, scratchpad 等仍在使用的文件.
  */
 export function removeLegacyArtifactDirectories(dataDir: string): number {
   const sessionsRoot = path.join(dataDir, 'sessions');
@@ -170,9 +152,8 @@ export function removeLegacyArtifactDirectories(dataDir: string): number {
 }
 
 /**
- * 启动对账:删除有目录无 Session 行的尸体(导入在文件落位后、事务提交前
- * 崩溃留下的半截目录;SQL 事务天然回滚不会留行,所以只剩这一种形态)。
- * 点开头的是导入 staging 目录,不碰;启动时无导入在进行,不会误删活人。
+ * 删除没有对应 Session 数据行的目录, 包括导入在文件落位后, SQL 提交前中断的残留.
+ * 点开头的暂存目录保留. 删除失败会向上传播, 与 ready 后逐项容错的清理不同.
  */
 export function removeOrphanSessionDirectories(
   dataDir: string,
@@ -191,7 +172,6 @@ export function removeOrphanSessionDirectories(
   return removed;
 }
 
-// ── Turn 级 scratchpad ────────────────────────────────────────────────────────
 
 export function scratchpadTurnDir(dataDir: string, sessionId: string, turnId: string): string {
   return path.join(sessionDirFor(dataDir, sessionId), 'scratchpad', turnId);
@@ -211,7 +191,7 @@ export function removeScratchpadDir(dataDir: string, sessionId: string, turnId: 
 }
 
 /**
- * Turn 数据行删除后清理该轮所有角色音频、未完成写入的文件和 scratchpad.
+ * Turn 数据行删除后清理该轮所有角色音频, 未完成写入的文件和 scratchpad.
  */
 export function removeTurnFiles(dataDir: string, sessionId: string, turnId: string): void {
   const audioDir = path.join(sessionDirFor(dataDir, sessionId), 'audio', turnId);
@@ -221,7 +201,7 @@ export function removeTurnFiles(dataDir: string, sessionId: string, turnId: stri
 }
 
 /**
- * 启动自检：清理"DB 已删 Turn、磁盘仍残留"的孤儿文件。
+ * 启动自检:清理"DB 已删 Turn, 磁盘仍残留"的孤儿文件.
  * 删除数据行后进程可能在文件清理途中退出. 本函数只删除数据库中已不存在
  * 的 Turn 对应音频目录和 scratchpad; 仍存在的 Turn 文件保留.
  * liveTurnIdsForSession 由调用方从 DB 提供, 本函数不猜 Session 是否存在.
@@ -266,7 +246,7 @@ export function sweepOrphanTurnFiles(
   return { removed };
 }
 
-/** 永久删除 Session 时移除整棵目录树。 */
+/** 永久删除 Session 时移除整棵目录树. */
 export function removeSessionDir(dataDir: string, sessionId: string): void {
   const dir = sessionDirFor(dataDir, sessionId);
   if (fs.existsSync(dir)) {

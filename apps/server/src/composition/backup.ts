@@ -1,4 +1,3 @@
-// 备份一族：Session 便携 ZIP 导入导出的唯一业务入口装配。
 import { SessionBackup } from '@ema-agent/backup';
 import type { ProviderModels } from '@ema-agent/providers';
 import { SessionBackupReader, SessionBackupRestorer, type Database } from '@ema-agent/storage';
@@ -17,7 +16,7 @@ export function openBackup(
       activeDataDir,
       new SessionBackupReader(dataDb.sqlite),
       new SessionBackupRestorer(dataDb.sqlite),
-      // 跨机语义：目标侧存在同 Provider + 模型的已启用行才恢复模型偏好，否则清空并提示。
+      // 导入时按目标机器的 Provider 和 LLM 模型记录检查偏好, 不直接信任备份里的身份.
       (providerId, modelId) => {
         const facts = providerModels.get(providerId, 'llm', modelId);
         return facts !== undefined && facts !== null && facts.capability === 'llm';

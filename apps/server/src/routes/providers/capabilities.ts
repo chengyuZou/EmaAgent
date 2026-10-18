@@ -1,4 +1,3 @@
-// 能力执行端点：STT 转写（语音输入）与 TTS 试听（设置页）。绑定解析与记账归 composition/speech。
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { ProviderError } from '@ema-agent/providers';
@@ -11,11 +10,11 @@ import { REQUEST_VALUE_LIMITS } from '../../platform/requestBudget.js';
 import { providerError } from './configs.js';
 import { jsonBody } from '../validate.js';
 
-const DEFAULT_PREVIEW_TEXT = '你好呀，很高兴见到你。';
+const DEFAULT_PREVIEW_TEXT = '你好呀,很高兴见到你.';
 
 const ttsPreviewBody = z.object({
   modelId: z.string().min(1),
-  text: z.string().max(REQUEST_VALUE_LIMITS.maxTtsTestTextChars).optional(),
+  text: z.string().max(REQUEST_VALUE_LIMITS.maxTTSPreviewTextChars).optional(),
 });
 
 const sttPreviewBody = z.object({
@@ -24,11 +23,11 @@ const sttPreviewBody = z.object({
 
 export interface ProviderCapabilitiesRouteDeps {
   readonly voicePreview: SpeechVoicePreview;
-  /** STT 转写（装配层解析绑定并记账）；未绑定返回 undefined。 */
+  /** STT 转写(装配层解析绑定并记账);未绑定返回 undefined. */
   readonly transcribe: (
     request: Omit<TranscriptionRequest, 'model'>,
   ) => Promise<TranscriptionResult | undefined>;
-  /** STT 试听：用当前角色主参考音频到指定 Provider 模型转写。 */
+  /** STT 试听:用当前角色主参考音频到指定 Provider 模型转写. */
   readonly sttPreview: (
     providerId: string,
     modelId: string,
@@ -38,7 +37,7 @@ export interface ProviderCapabilitiesRouteDeps {
 
 export const providerCapabilitiesRoute = (deps: ProviderCapabilitiesRouteDeps) =>
   new Hono()
-    // 语音输入：multipart 的 file 字段是音频字节；STT 绑定缺失时如实 503。
+    // 语音输入:multipart 的 file 字段是音频字节;STT 绑定缺失时如实 503.
     .post('/transcribe', async context => {
       const form = await context.req.formData().catch(() => null);
       const file = form?.get('file');
@@ -63,7 +62,7 @@ export const providerCapabilitiesRoute = (deps: ProviderCapabilitiesRouteDeps) =
         return context.json({ error: 'transcribe_failed', message }, 502);
       }
     })
-    // TTS 试听：用当前角色的参考音频对指定 Provider 模型发一句测试。
+    // TTS 试听:用当前角色的参考音频对指定 Provider 模型发一句测试.
     .post('/:providerId/tts-preview', jsonBody(ttsPreviewBody), async context => {
       const { modelId, text } = context.req.valid('json');
       try {
@@ -85,7 +84,7 @@ export const providerCapabilitiesRoute = (deps: ProviderCapabilitiesRouteDeps) =
         return context.json({ error: error.code, message: error.message }, status);
       }
     })
-    // STT 试听：当前角色主参考音频到指定 Provider 模型转写，返回转写文本与参考文本对照。
+    // STT 试听:当前角色主参考音频到指定 Provider 模型转写,返回转写文本与参考文本对照.
     .post('/:providerId/stt-preview', jsonBody(sttPreviewBody), async context => {
       try {
         const result = await deps.sttPreview(

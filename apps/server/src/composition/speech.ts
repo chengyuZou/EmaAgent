@@ -15,7 +15,7 @@ import {
   SpeechVoicePreview,
   type SpeechGenerateEvent,
   type SpeechGenerationResult,
-  type SpeechVoicePreviewTts,
+  type SpeechVoicePreviewTTS,
   type SpeechArchiveEvent,
   type TurnSpeechGenerateResult,
 } from '@ema-agent/speech';
@@ -87,7 +87,7 @@ export interface SpeechComposition {
     modelId: string,
     signal?: AbortSignal,
   ) => Promise<{ text: string; referenceText: string }>;
-  /** 为一个根 Turn 启动语音输出 */
+  /** 为一个 Turn 启动语音输出 */
   startTurnSpeech(setup: {
     readonly sessionId: string;
     readonly turnId: string;
@@ -119,7 +119,6 @@ export function openSpeech(
   const jobs = new Map<string, SpeechJob>();
   let closed = false;
 
-  /** 获取当前角色的主参考音频 */
   const resolveCharacterVoice = (character: Character): TTSVoiceReference | null => {
     const reference = character.voiceSamples.find(value => value.isPrimary);
     if (!reference) return null;
@@ -136,12 +135,12 @@ export function openSpeech(
         promptLanguage: reference.promptLang,
       };
     } catch {
-      // 参考音频损坏只降级声音能力，不阻断文字对话。
+      // 参考音频损坏只降级声音能力,不阻断文字对话.
       return null;
     }
   };
 
-  const resolveTts = (providerId: string, modelId: string): SpeechVoicePreviewTts | undefined => {
+  const resolveTTS = (providerId: string, modelId: string): SpeechVoicePreviewTTS | undefined => {
     try {
       const connection = providers.resolveConnection(providerId, 'tts');
       return {
@@ -167,7 +166,7 @@ export function openSpeech(
     return reference;
   };
 
-  const requireTts = () => {
+  const requireTTS = () => {
     const binding = modelBindings.get('tts');
     if (!binding) {
       throw new TurnSpeechRequestError('speech/tts_unbound', '尚未绑定 TTS 模型, 请先在设置中配置');
@@ -196,7 +195,7 @@ export function openSpeech(
     } else {
       try {
         requireCharacterVoice(character);
-        requireTts();
+        requireTTS();
       } catch (error) {
         if (!(error instanceof TurnSpeechRequestError)) throw error;
         unavailableReason = error.message;
@@ -206,7 +205,7 @@ export function openSpeech(
   };
 
   const voicePreview = new SpeechVoicePreview(
-    resolveTts,
+    resolveTTS,
     {
       current: () => {
         const character = characters.current();
@@ -314,7 +313,7 @@ export function openSpeech(
       throw new TurnSpeechRequestError('speech/already_generating', '该轮正在生成语音, 请等待完成或先取消生成');
     }
     const reference = requireCharacterVoice(character);
-    const { binding, callTTS, ttsVoiceRegistrar } = requireTts();
+    const { binding, callTTS, ttsVoiceRegistrar } = requireTTS();
 
     const abortController = new AbortController();
     const signal = AbortSignal.any([setup.signal, abortController.signal]);
@@ -411,41 +410,40 @@ export function openSpeech(
   const transcribe: SpeechComposition['transcribe'] = async request => {
     const binding = modelBindings.get('stt');
     if (!binding) return undefined;
-    const callStt = createSTTCall(
+    const callSTT = createSTTCall(
       providers.resolveConnection(binding.providerId, 'stt'),
       binding.modelId,
     );
     const startedAt = Date.now();
     const callId = randomUUID();
-    const result = await callStt(request).catch(error => {
+    const result = await callSTT(request).catch(error => {
       const cancelled = request.signal?.aborted === true || (error instanceof Error && error.name === 'AbortError');
       let errorCode = 'stt/call_failed';
       if (cancelled) errorCode = 'stt/aborted';
       else if (error instanceof STTError) errorCode = error.code;
-      recordSttUsage(usageRecorder, callId, binding.providerId, binding.modelId, startedAt,
+      recordSTTUsage(usageRecorder, callId, binding.providerId, binding.modelId, startedAt,
         cancelled ? 'cancelled' : 'failed', null, errorCode);
       throw error;
     });
     const lastEndMs = result.segments?.reduce((max, s) => Math.max(max, s.endMs), 0) ?? 0;
-    recordSttUsage(usageRecorder, callId, binding.providerId, binding.modelId, startedAt, 'completed',
+    recordSTTUsage(usageRecorder, callId, binding.providerId, binding.modelId, startedAt, 'completed',
       lastEndMs > 0 ? lastEndMs / 1000 : null, null);
     return result;
   };
 
-  /** STT 试听 当前角色主参考音频 -> 指定 Provider 模型转写 */
   const sttPreview: SpeechComposition['sttPreview'] = async (providerId, modelId, signal) => {
     const connection = providers.resolveConnection(providerId, 'stt');
     const character = characters.current();
     const sample = character.voiceSamples.find(value => value.isPrimary);
     if (!sample) {
-      throw new ProviderError('invalid_configuration', '当前角色未配置参考音频，请先在角色卡添加');
+      throw new ProviderError('invalid_configuration', '当前角色未配置参考音频,请先在角色卡添加');
     }
     const audioPath = characters.resolveVoiceSampleFile(character.name, sample.name);
     const audio = await readFile(audioPath);
-    const callStt = createSTTCall(connection, modelId);
+    const callSTT = createSTTCall(connection, modelId);
     const startedAt = Date.now();
     const callId = randomUUID();
-    const result = await callStt({
+    const result = await callSTT({
       audio: new Uint8Array(audio),
       mimeType: sample.mimeType,
       ...(signal ? { signal } : {}),
@@ -454,12 +452,12 @@ export function openSpeech(
       let errorCode = 'stt/call_failed';
       if (cancelled) errorCode = 'stt/aborted';
       else if (error instanceof STTError) errorCode = error.code;
-      recordSttUsage(usageRecorder, callId, providerId, modelId, startedAt,
+      recordSTTUsage(usageRecorder, callId, providerId, modelId, startedAt,
         cancelled ? 'cancelled' : 'failed', null, errorCode);
       throw error;
     });
     const lastEndMs = result.segments?.reduce((max, segment) => Math.max(max, segment.endMs), 0) ?? 0;
-    recordSttUsage(usageRecorder, callId, providerId, modelId, startedAt, 'completed',
+    recordSTTUsage(usageRecorder, callId, providerId, modelId, startedAt, 'completed',
       lastEndMs > 0 ? lastEndMs / 1000 : null, null);
     return { text: result.text, referenceText: sample.promptText };
   };
@@ -488,7 +486,7 @@ export function openSpeech(
     async generateTurnSpeech(turn, text, characterName) {
       const character = characterName === undefined ? characters.current() : characters.get(characterName);
       if (!character) {
-        throw new TurnSpeechRequestError('speech/character_not_found', `角色“${characterName}”已不存在`);
+        throw new TurnSpeechRequestError('speech/character_not_found', `角色"${characterName}"已不存在`);
       }
       const job = createJob({
         sessionId: turn.sessionId,
@@ -542,7 +540,7 @@ export function openSpeech(
   };
 }
 
-function recordSttUsage(
+function recordSTTUsage(
   recorder: UsageRecorder,
   id: string,
   providerId: string,

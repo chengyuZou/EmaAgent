@@ -1,6 +1,4 @@
-// 统一 body 校验入口：400 形状保持 {error:'invalid_request', details:flattenError()}，与现状一致。
-// schema 永远留在原路由文件；这里只提供"校验前置"的共享中间件工厂。
-// 泛型必须流出去：S 擦成 ZodType 会让所有 req.valid() 退化为 unknown。
+// 保留具体 Schema 泛型, Hono 的 req.valid() 和 Desktop RPC 才能推导实际请求字段.
 import { zValidator } from '@hono/zod-validator';
 import { z, type ZodType } from 'zod';
 

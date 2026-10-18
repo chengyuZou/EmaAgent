@@ -1,5 +1,3 @@
-// 提供 Task 重启恢复所需的只读快照，修改仍统一经过根 Turn 的 Task 工具。
-
 import { Hono } from 'hono';
 import { z } from 'zod';
 import type { TaskStore } from '@ema-agent/tasks';

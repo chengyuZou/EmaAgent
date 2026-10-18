@@ -1,4 +1,3 @@
-// 角色三类资源（Live2D/立绘/参考音频）的管理与文件服务。
 import fs from 'node:fs';
 import path from 'node:path';
 import { Readable } from 'node:stream';
@@ -65,7 +64,7 @@ const commitLive2dImportBody = z.object({
 }).strict();
 
 const previewBody = z.object({
-  // 离屏渲出的封面 PNG(base64);预览图很小,4M 字符上限只是基础边界。
+  // 离屏渲出的封面 PNG(base64);预览图很小,4M 字符上限只是基础边界.
   dataBase64: z.string().min(1).max(4_000_000),
 });
 
@@ -108,7 +107,7 @@ const MIME_BY_EXT: Record<string, string> = {
   '.flac': 'audio/flac',
 };
 
-/** 角色资源文件流式返回；路径一律由 CharacterStore 解析，前端不传路径。 */
+/** 角色资源文件流式返回;路径一律由 CharacterStore 解析,前端不传路径. */
 async function serveFile(context: Context, filePath: string): Promise<Response> {
   const stat = await fs.promises.stat(filePath).catch(() => null);
   if (!stat?.isFile()) {
@@ -123,7 +122,7 @@ async function serveFile(context: Context, filePath: string): Promise<Response> 
 }
 
 export const characterResourcesRoute = (deps: CharacterResourcesRouteDeps) => {
-  // 泛型必须流出：标成 Promise<Response> 会把所有经 run 的 JSON 响应擦成 unknown。
+  // 泛型必须流出:标成 Promise<Response> 会把所有经 run 的 JSON 响应擦成 unknown.
   const run = async <T extends {}>(
     context: Context,
     action: () => T | undefined | Promise<T | undefined>,
@@ -149,9 +148,8 @@ export const characterResourcesRoute = (deps: CharacterResourcesRouteDeps) => {
       run(context, () => ({
         path: deps.characters.resolveCharacterDirectory(context.req.param('characterName')),
       })))
-    // ── Live2D ─────────────────────────────────────────────────────────────────
-    // 暂存导入必须写在 `:live2dName` 路由之前,否则 imports 会被当成已安装模型名。
-    // prepare 只校验和暂存,commit 才让数据库、模型目录与封面同时对其他窗口可见。
+    // 暂存导入必须写在 `:live2dName` 路由之前,否则 imports 会被当成已安装模型名.
+    // prepare 只校验和暂存,commit 才让数据库, 模型目录与封面同时对其他窗口可见.
     .post('/:characterName/live2d/imports', jsonBody(prepareLive2dImportBody), context =>
       run(context, () => deps.characters.prepareLive2dImport(
         context.req.param('characterName'),
@@ -219,7 +217,7 @@ export const characterResourcesRoute = (deps: CharacterResourcesRouteDeps) => {
         );
         return deleted ? { ok: true as const } : undefined;
       }))
-    // 用户手改 runtime-config.json 后显式校验并广播演出变化。
+    // 用户手改 runtime-config.json 后显式校验并广播演出变化.
     .post('/:characterName/live2d/:live2dName/reload-config', context =>
       run(context, () => deps.characters.reloadLive2dConfiguration(
         context.req.param('characterName'),
@@ -257,7 +255,7 @@ export const characterResourcesRoute = (deps: CharacterResourcesRouteDeps) => {
         context.req.param('live2dName'),
         context.req.valid('json'),
       )))
-    // Live2D 静态封面:PUT 收离屏渲染的 PNG,GET 读字节;与模型目录分离(不污染用户模型包)。
+    // Live2D 静态封面:PUT 收离屏渲染的 PNG,GET 读字节;与模型目录分离(不污染用户模型包).
     .put('/:characterName/live2d/:live2dName/preview', jsonBody(previewBody), context => {
       const png = Buffer.from(context.req.valid('json').dataBase64, 'base64');
       return run(context, async () => {
@@ -281,7 +279,6 @@ export const characterResourcesRoute = (deps: CharacterResourcesRouteDeps) => {
       }
       return serveFile(context, filePath);
     })
-    // ── 立绘 ───────────────────────────────────────────────────────────────────
     .post('/:characterName/illustrations/:illustrationName/primary', context =>
       run(context, async () => ({
         ok: await deps.characters.setPrimaryIllustration(
@@ -333,7 +330,6 @@ export const characterResourcesRoute = (deps: CharacterResourcesRouteDeps) => {
           context.req.param('illustrationName'),
         ),
       })))
-    // ── 参考音频 ───────────────────────────────────────────────────────────────
     .post('/:characterName/voice/:voiceName/primary', context =>
       whenSessionsIdle(context, async () => ({
         ok: await deps.characters.setPrimaryVoiceSample(

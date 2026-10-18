@@ -1,4 +1,3 @@
-// 身份下的执行记录查询, 统计与结果只属于选中的 Run.
 import { Hono } from 'hono';
 import { z } from 'zod';
 import type { SubagentStore } from '@ema-agent/agent';

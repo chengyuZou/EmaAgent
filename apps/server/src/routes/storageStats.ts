@@ -9,7 +9,7 @@ export interface StorageStatsRouteDeps {
   readonly sessionStats: Pick<SessionStatsRepo, 'getStats'>;
 }
 
-/** 只返回数量和合计值. 目录、消息正文和媒体内容由各自的读取路由提供. */
+/** 只返回数量和合计值. 目录, 消息正文和媒体内容由各自的读取路由提供. */
 export const storageStatsRoute = (deps: StorageStatsRouteDeps) =>
   new Hono()
     .get('/', context => context.json(deps.dataDirStats.getStats()))

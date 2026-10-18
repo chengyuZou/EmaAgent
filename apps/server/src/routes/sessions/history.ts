@@ -1,4 +1,3 @@
-// Session 历史读取：Message 正文分页、Message 锚点窗口、Turn 导航索引与终态收口。
 import { Hono } from 'hono';
 import { z } from 'zod';
 import type { SessionMessage, SessionStore } from '@ema-agent/session';
@@ -37,7 +36,7 @@ export interface SessionHistoryRouteDeps {
   readonly turns: Pick<TurnStore, 'getTurn' | 'listTurnIndex'>;
   readonly usageRecorder: Pick<UsageRecorder, 'forTurn'>;
   readonly estimateContext: TurnComposition['estimateContext'];
-  /** Session 被打开(拉历史)时触发一次 fire-and-forget 的附件残留清扫。 */
+  /** Session 被打开(拉历史)时触发一次 fire-and-forget 的附件残留清扫. */
   readonly onSessionOpened?: (sessionId: string) => void;
 }
 

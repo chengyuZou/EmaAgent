@@ -1,4 +1,3 @@
-// Subagent 只读查询：按 Session 列表与单条详情；终态清理归 Session 生命周期，不开写端点。
 import { Hono } from 'hono';
 import { z } from 'zod';
 import type { SubagentStore } from '@ema-agent/agent';

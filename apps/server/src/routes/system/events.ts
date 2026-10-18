@@ -1,4 +1,3 @@
-// 应用事件 SSE：只发送跨 Turn 的提示事件，查询型状态由各业务 Route 返回。
 import { Hono } from 'hono';
 import type { AppEvents } from '../../application/appEvents.js';
 
@@ -28,7 +27,7 @@ export const systemEventsRoute = (events: AppEvents) =>
           try {
             controller.close();
           } catch {
-            // Response body 已由消费者取消。
+            // Response body 已由消费者取消.
           }
         };
         closeStream = close;

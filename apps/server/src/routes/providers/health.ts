@@ -13,7 +13,7 @@ import { providerError } from './configs.js';
 import { jsonBody, paramValidator } from '../validate.js';
 
 const PROBE_TIMEOUT_MS = 15_000;
-/** 探活只支持有无输入即可验证连通性的能力；vision 与 llm 同协议族，文本 ping 即可。 */
+/** 探活只支持有无输入即可验证连通性的能力;vision 与 llm 同协议族,文本 ping 即可. */
 const PROBE_CAPABILITIES = ['llm', 'embed', 'rerank', 'vision'] as const;
 type ProbeCapability = typeof PROBE_CAPABILITIES[number];
 
@@ -35,7 +35,7 @@ export interface ProviderHealthRouteDeps {
 
 export const providerHealthRoute = (deps: ProviderHealthRouteDeps) =>
   new Hono()
-    // tts/stt 没有无输入的诚实探活——它们的功能验证是 capabilities.ts 的试听与转写
+    // TTS 和 STT 需要实际音频或正文, 通过 capabilities.ts 的试听与转写验证.
     .post('/:providerId/probe/:capability', paramValidator(probeParams), jsonBody(probeBody), async context => {
       const { providerId, capability } = context.req.valid('param');
       const { modelId: requestedModelId } = context.req.valid('json');
@@ -71,8 +71,8 @@ export const providerHealthRoute = (deps: ProviderHealthRouteDeps) =>
     });
 
 /**
- * 探活错误归一：上游 SDK 的错误消息常带完整响应体（`401 {"error":{"message":"..."}}`），
- * 能提取人话就只留"状态 · 人话"；提取不出用原文（不截断，排查要全文）。
+ * 探活错误归一:上游 SDK 的错误消息常带完整响应体(`401 {"error":{"message":"..."}}`),
+ * 能提取人话就只留"状态 · 人话";提取不出用原文(不截断,排查要全文).
  */
 function probeErrorMessage(error: unknown): string {
   const raw = error instanceof Error ? error.message : String(error);
@@ -85,14 +85,14 @@ function probeErrorMessage(error: unknown): string {
         return status ? `${status} ${body.error.message}` : body.error.message;
       }
     } catch {
-      // 不是 JSON 响应体，用原文
+      // 不是 JSON 响应体,用原文
     }
   }
   return raw;
 }
 
-/** Ping 主体：池内第一行；llm/vision 池空时用目录第一个模型 id（不落行，纯连通性验证）。
- * embed/rerank 无目录覆盖：池空必须手填，如实 no_model。
+/** Ping 主体:池内第一行;llm/vision 池空时用目录第一个模型 id(不落行,纯连通性验证).
+ * embed/rerank 无目录覆盖:池空必须手填,如实 no_model.
  */
 function firstPingSubject(
   deps: ProviderHealthRouteDeps,
@@ -110,7 +110,7 @@ function firstPingSubject(
     : deps.modelCatalog.listVisionModelIds(modelsDevId)[0];
 }
 
-/** 一次真实最小调用：任何协议错误都上抛给 recordHealth，不做假成功。 */
+/** 一次真实最小调用:任何协议错误都上抛给 recordHealth,不做假成功. */
 async function runProbe(
   providers: Providers,
   providerId: string,
@@ -118,11 +118,11 @@ async function runProbe(
   modelId: string,
   signal: AbortSignal,
 ): Promise<void> {
-  // 每个分支用字面量能力解析连接，泛型收窄到该能力的连接类型。
+  // 每个分支用字面量能力解析连接,泛型收窄到该能力的连接类型.
   switch (capability) {
     case 'llm': {
       const callLLM = createLLMCall(providers.resolveConnection(providerId, 'llm'), modelId);
-      // 消费至流自然结束；任何协议层错误都在迭代中抛出。
+      // 消费至流自然结束;任何协议层错误都在迭代中抛出.
       for await (const event of callLLM({
         messages: [{ role: 'user', content: [{ type: 'text', text: 'ping' }] }],
         maxOutputTokens: 1,
@@ -133,7 +133,7 @@ async function runProbe(
       return;
     }
     case 'vision': {
-      // vision 是带图片输入的 LLM：复用 LLM 协议族发文本 ping，但解析 vision 能力自己的档位。
+      // vision 是带图片输入的 LLM:复用 LLM 协议族发文本 ping,但解析 vision 能力自己的档位.
       const callLLM = createLLMCall(providers.resolveConnection(providerId, 'vision'), modelId);
       for await (const event of callLLM({
         messages: [{ role: 'user', content: [{ type: 'text', text: 'ping' }] }],

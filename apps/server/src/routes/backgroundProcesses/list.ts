@@ -1,4 +1,3 @@
-// 后台进程读取：Session 隔离的列表与增量输出（游标 + 长轮询 waitMs）。
 import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import { BackgroundProcessError, type BackgroundProcess } from '@ema-agent/tools';

@@ -1,4 +1,3 @@
-// 持久化一族：profile/data/narrative 三个 Database 的打开、迁移与全部存储层 Store 构造。
 import {
   SubagentMessagesRepo,
   SubagentsRepo,
@@ -30,24 +29,24 @@ import {
 } from '../platform/paths.js';
 
 export interface DatabaseComposition {
-  /** `~/.ema-agent/profile.db`：Provider 配置、模型绑定、角色卡、设置。跨数据目录共享。 */
+  /** 当前 Profile 的配置库, 保存 Provider, 模型绑定, 角色和设置. */
   readonly profileDb: Database;
-  /** `{activeDataDir}/data.db`：Session/Turn/Message/附件/后台进程。 */
+  /** `{activeDataDir}/data.db`:Session/Turn/Message/附件/后台进程. */
   readonly dataDb: Database;
   /** 固定剧情资产, 不随会话数据目录或角色切换. */
   readonly narrativeDb: Database;
-  /** 当前活动数据目录绝对路径；文件类存储（附件、音频、后台日志）都落在它下面。 */
+  /** 当前活动数据目录绝对路径;文件类存储(附件, 音频, 后台日志)都落在它下面. */
   readonly activeDataDir: string;
 
   readonly session: SessionStore;
   readonly turns: TurnStore;
-  /** 根 Turn 与手动 Compact 共享的 Session 运行记录; Commands、Route 和 TurnStore 均使用这一实例. */
+  /** Turn 与手动 Compact 共用, 用于阻止同一 Session 同时开始两项工作. */
   readonly sessionRunning: SessionRunningRegistry;
   readonly attachments: AttachmentStore;
-  /** 粘贴端点直接调用;attachmentStore 内部共享同一实例。 */
+  /** 粘贴端点直接调用;attachmentStore 内部共享同一实例. */
   readonly imageStore: ImageStore;
   readonly pasteStore: PastedTextStore;
-  /** 附件页路由直接查询的两本账。 */
+  /** 附件页路由直接查询的两本账. */
   readonly attachmentImages: AttachmentImagesRepo;
   readonly attachmentPastedTexts: AttachmentPastedTextsRepo;
   readonly tasks: TaskStore;
@@ -56,22 +55,22 @@ export interface DatabaseComposition {
   readonly subagentMessages: SubagentMessagesStore;
   /** 全部能力调用与用量查询共享的 Recorder, 不发应用事件. */
   readonly usageRecorder: UsageRecorder;
-  /** raw 消息只读投影(存储页消息查看器)。 */
+  /** raw 消息只读投影(存储页消息查看器). */
   readonly messages: MessagesRepo;
   readonly subagentMessageRecords: SubagentMessagesRepo;
   readonly toolExecutions: ToolExecutionsRepo;
   readonly speechOutputs: SpeechOutputsRepo;
-  /** 数据目录/单 Session 的存储统计只读投影。 */
+  /** 数据目录/单 Session 的存储统计只读投影. */
   readonly dataDirStats: DataDirStatsRepo;
   readonly sessionStats: SessionStatsRepo;
 
-  /** 关闭三个数据库；进程关闭序列的最后一步。 */
+  /** 关闭三个数据库;进程关闭序列的最后一步. */
   close(): void;
 }
 
 /**
- * 打开并迁移三个数据库，构造全部存储层 Store。
- * activeDataDir 由 lifecycle 经 profile.db 的 data_dirs 表决议后传入——本函数不决定"用哪个目录"。
+ * 打开并迁移三个数据库,构造全部存储层 Store.
+ * activeDataDir 由 lifecycle 按当前 Profile 路径传入.
  */
 export function openDatabases(
   activeDataDir: string,
@@ -112,12 +111,12 @@ export function openDatabases(
   const sessionRunning = new SessionRunningRegistry();
   const session = new SessionStore({
     db: dataDb,
-    // Session 删除提交后清理库外文件（音频、附件、工具结果、scratchpad）。
+    // Session 删除提交后清理库外文件(音频, 附件, 工具结果, scratchpad).
     onSessionRemoved: sessionId => removeSessionDir(activeDataDir, sessionId),
     onChanged: emitChanged,
     isWorkClosed: sessionId => sessionRunning.isClosed(sessionId),
   });
-  // 启动对账:清掉导入崩溃留下的"有目录无行"尸体目录。
+  // 导入可能在文件已落位, SQL 尚未提交时退出; 开始接收请求前清理这些残留.
   const orphanDirs = removeOrphanSessionDirectories(activeDataDir, id => session.sessionExists(id));
   if (orphanDirs > 0) {
     console.warn(`[attachments] 清理 ${orphanDirs} 个无 Session 行的残留目录`);

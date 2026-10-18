@@ -1,4 +1,3 @@
-// 角色域与角色切换编排错误在 HTTP 边界统一映射。
 import type { Context } from 'hono';
 import {
   CharacterDirectoryConflictError,

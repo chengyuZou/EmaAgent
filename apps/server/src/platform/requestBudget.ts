@@ -1,4 +1,3 @@
-// HTTP 入口的传输预算：在 Hono 解析 JSON/multipart/Base64 前挡住无界请求体。
 import { bodyLimit } from 'hono/body-limit';
 import type { MiddlewareHandler } from 'hono';
 
@@ -15,7 +14,7 @@ export interface RequestBudgetPolicy {
   readonly maxTransportBytes: number;
 }
 
-/** 业务包仍须校验解码后的真实数据；这里只管传输层体积。 */
+/** 业务包仍须校验解码后的真实数据;这里只管传输层体积. */
 export const REQUEST_BUDGETS = Object.freeze({
   defaultJson: Object.freeze({
     id: 'default-json',
@@ -27,7 +26,7 @@ export const REQUEST_BUDGETS = Object.freeze({
   }),
   audioUpload: Object.freeze({
     id: 'audio-upload',
-    // STT/角色语音的业务上限是 25 MiB；额外空间留给 multipart 元数据。
+    // STT/角色语音的业务上限是 25 MiB;额外空间留给 multipart 元数据.
     maxTransportBytes: 26 * MiB,
   }),
   wallpaperUpload: Object.freeze({
@@ -36,12 +35,12 @@ export const REQUEST_BUDGETS = Object.freeze({
   }),
 } satisfies Record<string, RequestBudgetPolicy>);
 
-/** 解析后的集合与文本预算；路由只引用命名字段，不各自保存匿名数字。 */
+/** 解析后的集合与文本预算;路由只引用命名字段,不各自保存匿名数字. */
 export const REQUEST_VALUE_LIMITS = Object.freeze({
   maxTurnTextChars: 1_000_000,
   maxTurnContentParts: 64,
   maxTurnAttachments: 64,
-  maxTtsTestTextChars: 2_000,
+  maxTTSPreviewTextChars: 2_000,
 });
 
 export const HTTP_SERVER_TIMEOUTS = Object.freeze({
@@ -67,7 +66,7 @@ export function resolveRequestBudget(
   return REQUEST_BUDGETS.defaultJson;
 }
 
-/** 全局安装一次；路由不各自保存 byte 常量。 */
+/** 全局安装一次;路由不各自保存 byte 常量. */
 export function requestBudgetMiddleware(): MiddlewareHandler {
   return async (context, next) => {
     const policy = resolveRequestBudget(context.req.method, context.req.path);

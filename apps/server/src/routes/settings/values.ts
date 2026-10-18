@@ -1,4 +1,3 @@
-// 设置值读写：全量一次读取、单值 GET/PUT/DELETE（删即恢复默认）与批量保存（任一键非法整批拒绝）。
 import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import {
@@ -28,7 +27,7 @@ const batchBody = z.object({
 
 export const settingsValuesRoute = (deps: SettingsValuesRouteDeps) =>
   new Hono()
-    // 首开设置页一次拿全量生效值（覆盖值或默认值），不按 key 逐条请求。
+    // 首开设置页一次拿全量生效值(覆盖值或默认值),不按 key 逐条请求.
     .get('/values', context => {
       const items = deps.settings.listDefinitions().map(definition => ({
         key: definition.key,
@@ -53,7 +52,7 @@ export const settingsValuesRoute = (deps: SettingsValuesRouteDeps) =>
         return writeError(context, error, definition.key);
       }
     })
-    // 批量保存：任一键未知或值非法即整批拒绝（Store 内原子落库）。
+    // 批量保存:任一键未知或值非法即整批拒绝(Store 内原子落库).
     .put('/values', jsonBody(batchBody), async context => {
       const { entries: rawEntries } = context.req.valid('json');
       const entries = [];
@@ -78,7 +77,7 @@ export const settingsValuesRoute = (deps: SettingsValuesRouteDeps) =>
       return context.json({ ok: true });
     });
 
-/** 单字段与跨字段约束的写错误分开映射；组错误带 groupId 供前端定位同组字段。 */
+/** 单字段与跨字段约束的写错误分开映射;组错误带 groupId 供前端定位同组字段. */
 function writeError(context: Context, error: unknown, key: string) {
   if (error instanceof InvalidSettingGroupValueError) {
     return context.json({ error: 'invalid_setting_group', groupId: error.groupId }, 400);

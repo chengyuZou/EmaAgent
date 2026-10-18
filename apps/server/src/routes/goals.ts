@@ -1,4 +1,3 @@
-// 用户管理入口只调用 GoalStore, 续接由提交后的事件唤醒现有消息队列.
 import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import { GoalError, type GoalStore } from '@ema-agent/goal';

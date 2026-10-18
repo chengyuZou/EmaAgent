@@ -1,18 +1,17 @@
-// 前端事件提示条的外观设置：默认表 + 用户覆盖合并（frontend.* 例外，托管于 server，见 src/settings/README）。
 import { z } from 'zod';
 import { defineSetting } from '@ema-agent/settings';
 
 const eventDisplayConfigSchema = z.object({
   enabled: z.boolean(),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
-  /** null = 常驻不自动消失。 */
+  /** null = 常驻不自动消失. */
   durationMs: z.number().int().min(0).max(600_000).nullable(),
   truncateChars: z.number().int().min(1).max(10_000).optional(),
 });
 
 export type EventDisplayConfig = z.infer<typeof eventDisplayConfigSchema>;
 
-/** 用户覆盖表：key 是传输层事件类型名；未列出的类型走默认表。 */
+/** 用户覆盖表:key 是传输层事件类型名;未列出的类型走默认表. */
 export const eventDisplaySetting = defineSetting({
   key: 'frontend.eventDisplay',
   apply: 'immediate',
@@ -21,7 +20,7 @@ export const eventDisplaySetting = defineSetting({
 });
 
 /**
- * 默认展示表只列当前应用广播的事件类型, 前端设置页据此列出可配置项.
+ * 默认展示表包含 Session 连接和应用 SSE 的提示类型, 前端设置页据此列出可配置项.
  */
 export const DEFAULT_EVENT_DISPLAY: Record<string, EventDisplayConfig> = {
   tool_call_complete:           { enabled: true,  color: '#3b82f6', durationMs: 4000 },
@@ -42,7 +41,7 @@ export const DEFAULT_EVENT_DISPLAY: Record<string, EventDisplayConfig> = {
   agent_iteration:              { enabled: false, color: '#64748b', durationMs: 1000 },
 };
 
-/** 合并默认表与用户覆盖，产出前端消费的生效表。 */
+/** 合并默认表与用户覆盖,产出前端消费的生效表. */
 export function resolveEventDisplay(
   overrides: Record<string, EventDisplayConfig>,
 ): Record<string, EventDisplayConfig> {

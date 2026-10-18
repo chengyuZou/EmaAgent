@@ -57,7 +57,7 @@ import {
   sqliteFileSet,
 } from '../platform/paths.js';
 
-/** 内置技能铺设：目标目录不存在才整目录复制；已存在即不动（内置内容由宿主升级时整批替换）。 */
+/** 目标目录不存在才复制种子, 已存在时保留磁盘内容, 不覆盖用户修改. */
 function installBuiltinSkills(sourceRoot: string, targetRoot: string): void {
   if (!fs.existsSync(sourceRoot) || fs.existsSync(targetRoot)) return;
   fs.mkdirSync(path.dirname(targetRoot), { recursive: true });
@@ -85,15 +85,13 @@ export interface ToolsComposition {
   readonly toolExecutionState: ToolExecutionState;
   readonly toolResultCleaner: ToolResultCleaner;
   readonly mcp: McpRegistry;
-  readonly mcpServers: McpServerStore;
   readonly mcpMarket: McpMarketService;
   readonly mcpEnvironment: McpLocalCommandEnvironment;
   readonly skills: SkillRegistry;
   readonly skillStore: SkillStore;
-  /** 技能市场聚合服务与安装器（SkillHub/ClawHub 真实 Adapter）。 */
+  /** 技能市场聚合服务与安装器(SkillHub/ClawHub 真实 Adapter). */
   readonly skillMarket: MarketService;
   readonly skillMarketInstaller: MarketInstaller;
-  readonly skillUserRoot: string;
   /** 状态查询读取当前网络设置, 不复用某次 Turn 的值. */
   getSandboxStatus(): SandboxStatus;
   /** 等待 Bash 探测后, 使用本 Turn 的 cwd 与 Project folders 构造命令运行器. */
@@ -101,13 +99,13 @@ export interface ToolsComposition {
     cwd: string,
     workspaceRoots: readonly string[],
   ): Promise<CommandRunner | undefined>;
-  /** Session 级外置工具结果存储（按 Session 缓存目录句柄）。 */
+  /** Session 级外置工具结果存储(按 Session 缓存目录句柄). */
   getSessionToolResultStore(sessionId: string): ToolResultStore;
   getSessionFileStateCache(sessionId: string): FileStateCache;
   clearFileStateCaches(): void;
   /**
-   * Session 删除时清理其工具侧进程内状态：停掉该 Session 的后台进程、
-   * 释放文件状态与外置工具结果存储缓存。
+   * Session 删除时清理其工具侧进程内状态:停掉该 Session 的后台进程, 
+   * 释放文件状态与外置工具结果存储缓存.
    */
   discardSessionToolState(sessionId: string): Promise<void>;
 }
@@ -120,7 +118,7 @@ export interface SandboxStatus {
   readonly warning?: string;
 }
 
-/** 不安全开关只服务本地开发；正式构建发现任一开关直接拒绝启动。 */
+/** NODE_ENV=production 时拒绝 Bash 沙箱绕过开关, 避免安装版以开发配置执行命令. */
 function readUnsafeOverrides(env: NodeJS.ProcessEnv): { shell: boolean } {
   const overrides = {
     shell: env.AGEN_UNSAFE_SHELL === '1',
@@ -190,11 +188,9 @@ export function openTools(deps: ToolsDeps): ToolsComposition {
     }, shell);
   };
 
-  // ── 工具注册表与内置目录 ────────────────────────────────────────────────────
   const registry = new ToolRegistry();
   registerBuiltinTools(registry, { disableExecuteTools });
 
-  // ── 后台进程、执行状态、结果存储 ─────────────────────────────────────────────
   const backgroundProcesses = new BackgroundProcess({
     assertSessionWorkAllowed: deps.assertSessionWorkAllowed,
     store: new BackgroundProcessesRepo(dataDb.sqlite),
@@ -230,7 +226,7 @@ export function openTools(deps: ToolsDeps): ToolsComposition {
     return store;
   };
 
-  // ── MCP：缓存预填后并发连接启用项；市场缓存独立于已安装 Server。 ─────────────
+  // 先用已保存的工具目录注册入口, 再后台连接启用的 MCP Server.
   const mcpServers = new McpServerStore(
     new McpServersRepo(profileDb.sqlite),
     event => deps.emitMcpEvent(event),
@@ -250,19 +246,18 @@ export function openTools(deps: ToolsDeps): ToolsComposition {
   );
   const mcpEnvironment = new McpLocalCommandEnvironment();
 
-  // ── Skill：目录是事实源，SQL 只是索引与溯源 ─────────────────────────────────
-  // 内置技能由宿主打包资源提供；开发期从仓库种子目录铺到 profile，目标已存在即不动。
+  // 内置技能由宿主打包资源提供;开发期从仓库种子目录铺到 profile,目标已存在即不动.
   installBuiltinSkills(bundledSkillsSource(), builtinSkillsDir());
   const skillUserRoot = path.join(profileDir(), 'skills');
   const skillStore = new SkillStore(profileDb, skillUserRoot, builtinSkillsDir());
   const skills = createSkillRegistry({ store: skillStore });
-  // builtin+user 启动时装载一次；project 技能按工作区在 list() 时现扫。
-  // 装载前先清掉安装中途死掉留下的孤儿 staging 目录。
+  // builtin+user 启动时装载一次;project 技能按工作区在 list() 时现扫.
+  // 装载前先清掉安装中途死掉留下的孤儿 staging 目录.
   // 首次 Turn 准备时的 list() 会等待这次装载, 无需在此阻塞装配.
   void skillStore.sweepOrphanStaging()
     .then(() => skills.refreshCore())
     .catch(error => {
-      console.warn('[skills] 启动装载失败（Skill 目录本轮为空）:', error);
+      console.warn('[skills] 启动装载失败:', error);
     });
   const skillMarket = createMarketService({ userRoot: skillUserRoot });
   const skillMarketInstaller = createMarketInstaller({
@@ -277,14 +272,12 @@ export function openTools(deps: ToolsDeps): ToolsComposition {
     toolExecutionState,
     toolResultCleaner: new ToolResultCleaner(sessionsDir),
     mcp,
-    mcpServers,
     mcpMarket,
     mcpEnvironment,
     skills,
     skillStore,
     skillMarket,
     skillMarketInstaller,
-    skillUserRoot,
     getSandboxStatus,
     getCommandRunner,
     getSessionToolResultStore,
