@@ -168,6 +168,47 @@ describe('音色注册', () => {
 });
 
 describe('合成流', () => {
+  it.each([
+    { scenario: 'Chinese', text: '今天也一起加油吧.', promptLanguage: 'zh' },
+    { scenario: 'English', text: 'Let us work together today.', promptLanguage: 'zh' },
+    {
+      scenario: 'Chinese with more English letters',
+      text: '请运行 npm install, 然后检查 package.json 和 TypeScript 配置.',
+      promptLanguage: 'zh',
+    },
+    { scenario: 'Japanese', text: '今日も一緒に頑張ろう.', promptLanguage: 'ja' },
+    {
+      scenario: 'Japanese mixed with English',
+      text: 'TypeScript の package.json を確認してください.',
+      promptLanguage: 'ja',
+    },
+  ])('GPT-SoVITS uses auto for $scenario and preserves the reference language', async ({ text, promptLanguage }) => {
+    const reference: TTSVoiceReference = {
+      ...REFERENCE,
+      promptLanguage,
+      promptText: promptLanguage === 'ja' ? '参考音声です.' : REFERENCE.promptText,
+    };
+    await withServer(
+      (_body, response) => {
+        response.writeHead(200, { 'content-type': 'audio/wav' });
+        response.end(wavFixture(Buffer.alloc(100), 32_000));
+      },
+      async (baseUrl, captured) => {
+        const callTTS = createTTSCall({ protocol: 'gpt-sovits-tts', baseUrl }, 'local');
+        await collect(callTTS({ text, voice: reference }));
+
+        expect(captured).toHaveLength(1);
+        expect(JSON.parse(captured[0]!.body)).toMatchObject({
+          text,
+          text_lang: 'auto',
+          prompt_text: reference.promptText,
+          prompt_lang: promptLanguage,
+          ref_audio_path: reference.audioPath,
+        });
+      },
+    );
+  });
+
   it('SiliconFlow 载荷使用冻结模型和注册声音，并请求流式响应', async () => {
     await withServer(
       (_body, response) => {

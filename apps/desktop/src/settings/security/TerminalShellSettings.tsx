@@ -1,5 +1,3 @@
-// 集成终端 Shell 选择:偏好存 kind(绿色版工具路径会搬家,存 path 会失效),
-// 下拉按 kind 折叠(同 kind 多候选只显示首选),开终端时再解析成当前 path.
 import { useEffect, useMemo, useState, type JSX } from 'react';
 import { Callout, Select } from '@ema-agent/ui';
 
@@ -15,16 +13,6 @@ import {
 
 const SETTING_KEY = 'frontend.terminal.shellExecutable';
 const AUTO_SHELL_VALUE = '__ema_auto_shell__';
-const SHELL_KIND_LABELS: Readonly<Record<TerminalShellInfo['kind'], string>> = {
-  powershell: 'PowerShell',
-  cmd: 'Command Prompt',
-  bash: 'Bash',
-  zsh: 'Zsh',
-  fish: 'Fish',
-  wsl: 'WSL',
-  sh: 'POSIX Shell',
-};
-
 type LoadState = 'loading' | 'ready' | 'failed';
 type SaveState = 'idle' | 'saving' | 'saved' | 'failed';
 
@@ -74,7 +62,7 @@ export function TerminalShellSettings(): JSX.Element {
     return [
       {
         value: AUTO_SHELL_VALUE,
-        label: collapsed[0] ? `自动选择（${collapsed[0].label}）` : '自动选择',
+        label: '自动选择',
       },
       ...detectedOptions,
     ];
@@ -93,29 +81,33 @@ export function TerminalShellSettings(): JSX.Element {
     }
   }
 
-  const selectedShell = collapsed.find((shell) => shell.kind === selected);
+  const selectedShell = selected ? collapsed.find(shell => shell.kind === selected) : collapsed[0];
+  const selectedLabel = options.find(option => option.value === (selected || AUTO_SHELL_VALUE))?.label;
+  let hint = '从检测结果中自动选择, 已有终端不受更改影响.';
+  if (selectedShell) {
+    hint = `${selected ? '' : '自动选择: '}${selectedShell.label} - ${selectedShell.path}`;
+  } else if (selected) {
+    hint = `先前选择的 Shell 当前不可用: ${selected}`;
+  }
   return (
     <SettingsSection
       icon="i-lucide:terminal"
       title="集成终端"
-      description="检测本机可用 Shell，并决定以后新建的终端使用哪一个。"
+      description="检测本机可用 Shell, 并决定以后新建的终端使用哪一个."
       trailing={<SaveStateIndicator state={saveState} />}
     >
       {loadState === 'failed' ? (
-        <Callout variant="danger">无法读取本机 Shell。</Callout>
+        <Callout variant="danger">无法读取本机 Shell.</Callout>
       ) : (
         <SettingsCard>
           <SettingItem
             title="Shell"
             apply={apply ?? undefined}
-            hint={selectedShell
-              ? `${SHELL_KIND_LABELS[selectedShell.kind]} · ${selectedShell.path}`
-              : selected
-                ? `先前选择的 Shell 当前不可用：${selected}`
-                : '从检测结果中自动选择；已有终端不受更改影响。'}
+            hint={hint}
           >
             <Select
-              className="w-72"
+              className="w-60 max-w-full whitespace-nowrap"
+              trigger={<span className="min-w-0 flex-1 truncate text-left">{selectedLabel}</span>}
               value={selected || AUTO_SHELL_VALUE}
               disabled={loadState === 'loading' || saveState === 'saving'}
               options={options}

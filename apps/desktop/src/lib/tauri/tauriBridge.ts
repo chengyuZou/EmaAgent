@@ -2,7 +2,7 @@ import type { AppEvent } from '@ema-agent/server/application/appEvents.js';
 import type { ThemeSettings } from '@ema-agent/server/settings/themeSetting.js';
 
 import type {
-  AttachmentDragEvent,
+  FileDragEvent,
   BrowserBounds,
   BrowserEvent,
   DecisionRequiredEvent,
@@ -127,7 +127,7 @@ async function listenTauri<T>(
 export const tauriBridge = {
   isTauri: detectTauri,
 
-  async listenAttachmentDrag(handler: (event: AttachmentDragEvent) => void): Promise<() => void> {
+  async listenFileDrag(handler: (event: FileDragEvent) => void): Promise<() => void> {
     if (!detectTauri()) return () => {};
     const { getCurrentWebview } = await import('@tauri-apps/api/webview');
     const webview = getCurrentWebview();
@@ -575,11 +575,11 @@ export const tauriBridge = {
     }
   },
 
-  /** 已选择的本机图片只供草稿胶囊预览; 正式附件仍由发送流程上传到 Session. */
-  async readDraftImage(path: string): Promise<number[]> {
+  /** 读取原生选择或拖入的图片字节. 预览和上传共用此入口, 此处不保存文件. */
+  async readLocalImage(path: string): Promise<number[]> {
     const core = await getCore();
-    if (!core) throw new Error('当前环境无法预览本机图片');
-    return core.invoke<number[]>('read_draft_image', { path });
+    if (!core) throw new Error('当前环境无法读取本机图片');
+    return core.invoke<number[]>('read_local_image', { path });
   },
 
   async closeBrowser(browserId: string): Promise<void> {

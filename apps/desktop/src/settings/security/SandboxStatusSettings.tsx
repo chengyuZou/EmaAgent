@@ -1,4 +1,4 @@
-import { useEffect, useState, type JSX } from 'react';
+import { useEffect, useId, useState, type JSX } from 'react';
 import { Button, Callout, Select, Spinner } from '@ema-agent/ui';
 import { settingsApi } from '../../api/settings.js';
 import { systemApi, type SandboxStatus } from '../../api/system.js';
@@ -110,7 +110,7 @@ export function SandboxStatusSettings(): JSX.Element {
             原生 PowerShell 不经过此沙箱, 仍按命令进行权限检查.
           </p>
           {status.warning && (
-            <Callout variant="warn" className="mt-3">{status.warning}</Callout>
+            <SandboxWarning message={status.warning} details={status.warningDetails} />
           )}
           {status.bashMode === 'unsandboxed' && (
             <Callout variant="danger" className="mt-3">
@@ -125,6 +125,47 @@ export function SandboxStatusSettings(): JSX.Element {
         </>
       )}
     </SettingsSection>
+  );
+}
+
+function SandboxWarning({ message, details }: { message: string; details?: string }): JSX.Element {
+  const [open, setOpen] = useState(false);
+  const detailsId = useId();
+
+  return (
+    <Callout variant="warn" className="mt-3">
+      <p>{message}</p>
+      {details && (
+        <>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="mt-2 h-auto px-0 py-1 text-xs"
+            aria-expanded={open}
+            aria-controls={detailsId}
+            onClick={() => setOpen(current => !current)}
+          >
+            <span>{open ? '收起详情' : '查看详情'}</span>
+            <span
+              className={`i-lucide:chevron-down transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+              aria-hidden="true"
+            />
+          </Button>
+          <div
+            id={detailsId}
+            className="ema-collapsible motion-reduce:transition-none"
+            style={{ gridTemplateRows: open ? '1fr' : '0fr', opacity: open ? 1 : 0 }}
+            aria-hidden={!open}
+          >
+            <div className="min-h-0 overflow-hidden">
+              <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-[var(--ema-surface-2)] p-3 font-mono text-xs text-[var(--ema-text-secondary)]">
+                {details}
+              </pre>
+            </div>
+          </div>
+        </>
+      )}
+    </Callout>
   );
 }
 

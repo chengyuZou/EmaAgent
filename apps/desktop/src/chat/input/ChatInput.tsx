@@ -482,7 +482,7 @@ export function ChatInput({
             </div>
           </div>
         </div>
-        <InputProjectBar sessionId={viewedId} session={viewedSession} projectId={currentProjectId} />
+        {viewedId === null && <InputProjectBar projectId={currentProjectId} />}
         <InputGoalBar goal={goal} />
         <NarrativeToolNotice />
         <div className="ema-composer-card relative transition-shadow">

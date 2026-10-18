@@ -6,7 +6,10 @@ describe('system sandbox status response', () => {
   const statuses: SandboxStatus[] = [
     { backend: 'bubblewrap', bashMode: 'sandboxed', networkAccess: 'none' },
     { backend: 'sandbox-exec', bashMode: 'sandboxed', networkAccess: 'full' },
-    { backend: 'unisolated', bashMode: 'disabled', networkAccess: 'none', warning: 'backend unavailable' },
+    {
+      backend: 'unisolated', bashMode: 'disabled', networkAccess: 'none',
+      warning: 'backend unavailable', warningDetails: 'Decoded process output\nSecond line',
+    },
     { backend: 'unisolated', bashMode: 'unsandboxed', networkAccess: 'full' },
   ];
 

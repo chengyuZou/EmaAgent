@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type JSX } from 'react';
+import { witchTrialCharacterNames } from '@ema-agent/narrative/isWitchTrialCharacter';
 import {
   Tooltip,
   Button, CursorFloating, Dialog, IconButton, Input, ScrollArea, SearchField, Skeleton,
@@ -20,6 +21,7 @@ export function CharacterGridPage({ onOpen }: { onOpen(name: string): void }): J
   const loading = useCharacterStore(s => s.loading);
   const [search, setSearch] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
+  const [namesOpen, setNamesOpen] = useState(false);
 
   useEffect(() => {
     void useCharacterStore.getState().load();
@@ -84,7 +86,17 @@ export function CharacterGridPage({ onOpen }: { onOpen(name: string): void }): J
           )}
         />
         <p className="mt-2 text-xs text-[var(--ema-text-tertiary)]">
-          不在魔法少女的魔女审判角色全名名单中的角色会自动停用 NarrativeSearch, 避免引入无关剧情造成 OOC. 不会改变你的工具开关.
+          不在
+          <Button
+            variant="ghost"
+            size="sm"
+            className="mx-0.5 h-auto rounded-sm border-0 px-0 py-0 align-baseline font-normal text-[var(--ema-primary-text)] underline decoration-[var(--ema-primary)]/40 underline-offset-4 hover:decoration-[var(--ema-primary)]"
+            aria-haspopup="dialog"
+            onClick={() => setNamesOpen(true)}
+          >
+            魔法少女的魔女审判角色全名名单
+          </Button>
+          中的角色不会提供 NarrativeSearch, 避免引入无关剧情造成 OOC. 不会改变你的工具开关.
         </p>
       </div>
 
@@ -128,6 +140,33 @@ export function CharacterGridPage({ onOpen }: { onOpen(name: string): void }): J
       </ScrollArea>
 
       <CreateCharacterDialog open={createOpen} onOpenChange={setCreateOpen} onCreated={onOpen} />
+
+      <Dialog
+        open={namesOpen}
+        onOpenChange={setNamesOpen}
+        title="剧情角色全名名单"
+        description="按角色的永久 name 匹配, 不使用显示昵称. 下表中的完整姓名均可识别."
+        widthClass="max-w-3xl"
+      >
+        <div className="max-h-[60vh] overflow-auto rounded-lg border border-[var(--ema-border)]">
+          <table className="w-full border-collapse text-left text-sm">
+            <thead className="sticky top-0 bg-[var(--ema-surface-4)] text-[var(--ema-text-secondary)]">
+              <tr>
+                <th scope="col" className="whitespace-nowrap px-4 py-3 font-medium">角色全名</th>
+                <th scope="col" className="px-4 py-3 font-medium">其他可识别全名</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--ema-border)]">
+              {witchTrialCharacterNames.map(([name, ...aliases]) => (
+                <tr key={name} className="transition-colors hover:bg-[var(--ema-surface-2)]">
+                  <th scope="row" className="whitespace-nowrap px-4 py-3 align-top font-medium">{name}</th>
+                  <td className="px-4 py-3 leading-relaxed text-[var(--ema-text-secondary)]">{aliases.join(', ')}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Dialog>
 
       <Dialog
         open={pendingDelete !== null}

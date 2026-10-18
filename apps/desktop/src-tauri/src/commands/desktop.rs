@@ -81,9 +81,9 @@ pub fn open_path(app: tauri::AppHandle, path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn read_draft_image(path: String) -> Result<Vec<u8>, String> {
-    // 文件选择器只返回路径, WebView 无法直接显示本机文件. 这里仅为草稿预览读取字节,
-    // 不创建 Session 附件; 点击发送后仍由原有上传接口负责正式落盘.
+pub async fn read_local_image(path: String) -> Result<Vec<u8>, String> {
+    // 原生选择和拖放只提供路径. WebView 读取字节后用于预览或上传,
+    // 正式图片校验与保存仍由对应的 Server 导入接口处理.
     tokio::fs::read(path)
         .await
         .map_err(|error| error.to_string())

@@ -11,7 +11,7 @@ use commands::{
     browser_back, browser_forward, close_browser, close_session_terminals, close_terminal,
     get_passthrough, get_server_port, get_server_secret, hide_main_window, list_system_fonts,
     navigate_browser, open_browser, open_main_window, open_path, open_terminal, quit_app,
-    read_draft_image, reload_browser, resize_terminal, set_always_on_top,
+    read_local_image, reload_browser, resize_terminal, set_always_on_top,
     set_browser_bounds, set_browser_visible, set_passthrough, set_passthrough_controls_hovered,
     start_pet_pointer, write_terminal,
 };
@@ -52,7 +52,7 @@ pub fn run() {
             open_main_window,
             hide_main_window,
             open_path,
-            read_draft_image,
+            read_local_image,
             open_terminal,
             write_terminal,
             resize_terminal,

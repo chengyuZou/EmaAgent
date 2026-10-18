@@ -55,7 +55,7 @@ An empty capability cwd is rejected. An omitted command cwd uses the Session cwd
 | Windows | Start bwrap through the default WSL distribution. |
 | WSL1 | Report unisolated. |
 
-Failure reports `unisolated` and includes the actual startup error, stderr or missing-marker explanation. Server normally omits Bash from tool registration in this case. Development can opt in with `AGEN_UNSAFE_SHELL=1`; production rejects that override.
+Failure reports `unisolated`, a short `degradeReason`, and `degradeDetails` containing the startup error, stderr, stdout, or missing-marker explanation. Windows launcher output is read as bytes: a UTF-16LE BOM or NUL bytes select UTF-16LE decoding, while ordinary UTF-8 output from Linux commands stays UTF-8. Server normally omits Bash from tool registration after a failed check. Development can opt in with `AGEN_UNSAFE_SHELL=1`; production rejects that override.
 
 Bubblewrap starts with a read-only root, overlays writable directories, then applies read-only and hidden paths. macOS starts with deny-default rules, allows reads and required process operations, then grants selected writes and applies explicit denials.
 
@@ -65,7 +65,7 @@ Network settings are `none` or `full`, defaulting to none. Unisolated execution 
 
 Windows drive paths use the default WSL `/mnt/<drive>/...` layout. Custom mount layouts are not discovered, and UNC paths are not mapped to WSL mounts.
 
-Server owns the settings-page response type `SandboxStatus`: `backend`, `bashMode`, `networkAccess` and an optional warning. `bashMode` describes the Bash enablement policy, not executable readiness or PowerShell isolation. The frontend obtains this type from the HTTP Route.
+Server owns the settings-page response type `SandboxStatus`: `backend`, `bashMode`, `networkAccess`, an optional short `warning`, and optional decoded `warningDetails` for expansion. `bashMode` describes the Bash enablement policy, not executable readiness or PowerShell isolation. The frontend obtains this type from the HTTP Route.
 
 ## Output, cancellation and failure
 

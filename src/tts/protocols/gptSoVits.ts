@@ -43,7 +43,8 @@ async function* synthesizeGptSoVits(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         text: request.text,
-        text_lang: detectLanguage(request.text, request.voice.promptLanguage),
+        // 混合文本交给服务识别语言, 不按字符数量强制整句使用中文或英文.
+        text_lang: 'auto',
         ref_audio_path: request.voice.audioPath,
         prompt_text: request.voice.promptText,
         prompt_lang: request.voice.promptLanguage,
@@ -85,10 +86,3 @@ function looksLikeMissingReference(body: string): boolean {
   return lower.includes('ref_audio_path') && (lower.includes('not exist') || lower.includes('not found'));
 }
 
-function detectLanguage(text: string, fallback: string): string {
-  const cjk = (text.match(/[一-鿿぀-ヿ]/g) ?? []).length;
-  const ascii = (text.match(/[A-Za-z]/g) ?? []).length;
-  if (cjk > ascii) return 'zh';
-  if (ascii > cjk * 2) return 'en';
-  return fallback;
-}

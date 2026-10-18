@@ -53,7 +53,13 @@ The main window keeps Chat and Settings mounted when switching views. Hidden vie
 
 Switching sessions keeps each session's draft, workspace layout, and manual terminals. Archiving or deleting a session removes its chat state, releases its terminal views, requests PTY closure, and evicts its attachment list. Deleting one session does not clear another session's state.
 
-File selection and native file drops share the draft attachment flow. Drop coordinates are checked against the middle chat area, including a new conversation page, not the session sidebar or right workspace. Images use the image branch and get a local preview. Images and pasted text are saved to a session when submitted; ordinary files remain local path references. Dropping a file does not send the message.
+Native file drops check the active page as well as pointer coordinates. Chat accepts paths only in its middle area, including a new conversation page, not the session sidebar or right workspace. A mounted but hidden Chat cannot accept a Settings drop. File selection and Chat drops share the draft attachment flow: images get a local preview, images and pasted text are saved when submitted, and ordinary files remain local path references. Dropping a file does not send the message.
+
+The Wallpaper settings card is a separate drop target. It accepts PNG, JPEG, and WebP paths and sends their bytes through the same upload API as the file picker. Server checks the actual image format before saving. Rejected files stay rejected; they are not redirected to Chat. Other settings pages do not accept these file drops.
+
+Project and cwd selection above the composer appears only for a new conversation. Existing sessions change project membership from the Header menu; this keeps their cwd unchanged. The title and cwd retain their separate edit actions.
+
+The character-name link opens the shared Dialog and displays Narrative's exported full names in a table. Security settings show a short sandbox startup warning, with decoded process output in an expandable area. Expanding and collapsing use the shared transition styles.
 
 Speech generation and playback are separate. Stopping playback does not cancel generation. Saved audio can be played from storage details without driving the character's mouth.
 

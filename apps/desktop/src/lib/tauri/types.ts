@@ -50,7 +50,7 @@ export type Live2dPreviewCommand =
       readonly stageOffsetY: number;
     };
 
-export type AttachmentDragEvent =
+export type FileDragEvent =
   | { readonly type: 'leave' }
   | { readonly type: 'enter' | 'over'; readonly x: number; readonly y: number }
   | { readonly type: 'drop'; readonly x: number; readonly y: number; readonly paths: readonly string[] };

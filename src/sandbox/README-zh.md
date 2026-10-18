@@ -55,7 +55,7 @@ Server 提前查找 Bash
 | Windows | 通过默认 WSL 发行版启动 bwrap. |
 | WSL1 | 返回 unisolated. |
 
-启动失败时返回 `unisolated`, 并保留实际启动错误, stderr 或缺少标记的说明. Server 此时默认不注册 Bash 工具. 开发环境可以用 `AGEN_UNSAFE_SHELL=1` 启用无沙箱 Bash, 正式环境拒绝这个开关.
+启动失败时返回 `unisolated`, `degradeReason` 为简短原因, `degradeDetails` 保留启动错误, stderr, stdout 或缺少标记的说明. Windows 启动器输出先按字节读取: 有 UTF-16LE BOM 或 NUL 字节时按 UTF-16LE 解码, Linux 命令正常的 UTF-8 输出仍按 UTF-8 解码. Server 此时默认不注册 Bash 工具. 开发环境可以用 `AGEN_UNSAFE_SHELL=1` 启用无沙箱 Bash, 正式环境拒绝这个开关.
 
 Bubblewrap 先把根文件系统设为只读, 再叠加可写目录, 只读路径和隐藏路径. macOS 从默认拒绝开始, 允许读取和必要的进程操作, 然后开放指定写入并覆盖明确禁止的路径.
 
@@ -65,7 +65,7 @@ Bubblewrap 先把根文件系统设为只读, 再叠加可写目录, 只读路�
 
 Windows 盘符路径按 WSL 默认 `/mnt/<drive>/...` 布局转换. 不查找自定义挂载位置, 不将 UNC 路径挂载到 WSL.
 
-设置页的 `SandboxStatus` 由 Server 定义, 包含 `backend`, `bashMode`, `networkAccess` 和可选 warning. `bashMode` 表示 Bash 的启用策略, 不是可执行文件的就绪状态, 也不表示 PowerShell 已隔离. 前端通过 HTTP Route 推导这个类型.
+设置页的 `SandboxStatus` 由 Server 定义, 包含 `backend`, `bashMode`, `networkAccess`, 可选的简短 `warning` 和供展开查看的 `warningDetails`. `bashMode` 表示 Bash 的启用策略, 不是可执行文件的就绪状态, 也不表示 PowerShell 已隔离. 前端通过 HTTP Route 推导这个类型.
 
 ## 输出, 取消与失败
 

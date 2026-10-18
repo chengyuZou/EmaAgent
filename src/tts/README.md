@@ -33,6 +33,8 @@ async function synthesize(reference: TTSVoiceReference, text: string) {
 
 The example requires a running GPT-SoVITS service that can read the reference path. That service uses its loaded weights; its `/tts` request does not include the model ID. All factories still require a nonblank model ID.
 
+GPT-SoVITS requests always use `text_lang: "auto"`, leaving text language detection to the service, including mixed-language text. `prompt_lang` separately preserves the reference recording's configured language. Automatic detection does not translate the input text.
+
 For cloud protocols, registration uploads the reference recording and returns a provider voice ID for the target model. GPT-SoVITS returns the local reference itself. Pass that result as `voice` on each synthesis request, alongside `text`, optional `speed`, and optional `signal`. Text must be nonblank and speed must be positive and finite.
 
 ## Protocols

@@ -44,14 +44,14 @@ Server 自行选择本机端口. 宿主最多等待 120 秒收到就绪通知, �
 | --- | --- |
 | 读取 Server 连接信息 | `get_server_port`, `get_server_secret` |
 | 显隐聊天, 退出, 舞台置顶和点击穿透 | `open_main_window`, `hide_main_window`, `quit_app`, `set_always_on_top`, 鼠标与穿透命令 |
-| 预览草稿图片和检查拖入路径 | `read_draft_image`, `inspect_attachment_paths` |
+| 读取本地图片字节用于草稿预览或壁纸上传; 检查附件路径 | `read_local_image`, `inspect_attachment_paths` |
 | 打开本机路径和枚举字体 | `open_path`, `list_system_fonts` |
 | 创建和控制浏览器面板 | `commands/browser.rs` 中的命令 |
 | 打开, 写入, 调整和关闭 PTY 终端 | `commands/terminal.rs` 中的命令 |
 
 终端的 Shell 候选由 Server 的 System API 探测, 不是 Tauri 命令. `open_terminal` 接收选中的 `shell: { kind, path }`, 终端尺寸, 工作目录和输出用的 IPC Channel. Rust 根据 `kind` 决定启动参数. 归档或删除会话会请求关闭它的 PTY, 普通切换会话则保留运行. 退出应用会关闭全部 PTY.
 
-文件拖入使用 Tauri 的 WebView 拖放事件. 前端先把物理坐标换成页面坐标, 检查是否位于中间聊天区, 再复用草稿附件流程接收路径. 侧栏 Session 排序是另一套页面交互.
+文件拖入使用 Tauri 的 WebView 拖放事件. 前端先把物理坐标换成页面坐标, 再检查当前页面和目标区域. 可见 Chat 的中间聊天区走草稿附件流程, 壁纸设置卡片走图片上传接口并由 Server 检查图片内容. 隐藏的 Chat 和其他设置页面不接收这些拖放. 侧栏 Session 排序是另一套页面交互.
 
 ## 退出与日志
 

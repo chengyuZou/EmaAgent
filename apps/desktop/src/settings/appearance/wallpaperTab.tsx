@@ -14,14 +14,17 @@ import type { MaterialMode, WallpaperSettings } from '@ema-agent/server/settings
 import {
   DEFAULT_WALLPAPER_IMAGE_PARAMS,
   DEFAULT_WALLPAPER_SETTINGS,
+  WALLPAPER_IMAGE_EXTENSIONS,
   WALLPAPER_SETTING_KEY,
 } from '@ema-agent/server/settings/wallpaperCatalog.js';
 import { settingsApi } from '../../api/settings.js';
 import { wallpaperApi, type WallpaperImageSummary } from '../../api/wallpaper.js';
 import { ServerImage } from '../../lib/images/serverImage.js';
 import { showToast } from '../../lib/notifications/toast.js';
+import { useFileDrop } from '../../lib/fileDrop.js';
+import { tauriBridge } from '../../lib/tauri/tauriBridge.js';
 
-const FILE_TYPES = '.png,.jpg,.jpeg,.webp';
+const FILE_TYPES = WALLPAPER_IMAGE_EXTENSIONS.join(',');
 
 const MATERIAL_TABS = [
   { value: 'translucent', label: '通透', content: null },
@@ -80,6 +83,7 @@ export function WallpaperTab(): JSX.Element {
   const selected = items.find(item => item.name === selectedName);
   const active = settings.activeImage === selectedName;
   const controlsDisabled = busy || loading;
+  const { dropAreaRef, overlayWidth } = useFileDrop('settings-wallpaper', importPaths, !controlsDisabled);
   const materialDisabled = controlsDisabled || !settings.enabled
     || !items.some(item => item.name === settings.activeImage);
   const materialHintVisible = !controlsDisabled && materialDisabled;
@@ -106,37 +110,63 @@ export function WallpaperTab(): JSX.Element {
   }
 
   function importFiles(files: File[]): void {
-    void withBusy(async () => {
-      const imported: WallpaperImageSummary[] = [];
-      const failed: string[] = [];
-      for (const file of files) {
+    void withBusy(() => importImages(files), '壁纸导入完成');
+  }
+
+  async function importPaths(paths: readonly string[]): Promise<void> {
+    await withBusy(async () => {
+      const supported = paths.filter(path => (
+        WALLPAPER_IMAGE_EXTENSIONS.some(extension => path.toLowerCase().endsWith(extension))
+      ));
+      if (supported.length === 0) {
+        throw new Error('壁纸只支持 PNG, JPG, JPEG 和 WebP 图片');
+      }
+      const files: File[] = [];
+      const failed = paths.filter(path => !supported.includes(path))
+        .map(path => path.split(/[\\/]/).pop() ?? path);
+      for (const path of supported) {
+        const name = path.split(/[\\/]/).pop() ?? path;
         try {
-          imported.push(await wallpaperApi.uploadImage(file));
+          const bytes = await tauriBridge.readLocalImage(path);
+          files.push(new File([new Uint8Array(bytes)], name));
         } catch {
-          failed.push(file.name);
+          failed.push(name);
         }
       }
-      const catalog = await wallpaperApi.listImages();
-      setItems(catalog.items);
-      if (imported.length === 0) {
-        throw new Error(`图片导入失败: ${failed.join(', ')}`);
-      }
-      const images = { ...settings.images };
-      for (const image of imported) {
-        images[image.name] = DEFAULT_WALLPAPER_IMAGE_PARAMS;
-      }
-      const firstImport = settings.activeImage === '';
-      await saveSettings({
-        ...settings,
-        images,
-        activeImage: firstImport ? imported[0]!.name : settings.activeImage,
-        enabled: firstImport ? true : settings.enabled,
-      });
-      setSelectedName(imported[0]!.name);
-      if (failed.length > 0) {
-        throw new Error(`已导入 ${imported.length} 张, 部分图片导入失败: ${failed.join(', ')}`);
-      }
+      await importImages(files, failed);
     }, '壁纸导入完成');
+  }
+
+  async function importImages(files: readonly File[], rejected: readonly string[] = []): Promise<void> {
+    const imported: WallpaperImageSummary[] = [];
+    const failed = [...rejected];
+    for (const file of files) {
+      try {
+        imported.push(await wallpaperApi.uploadImage(file));
+      } catch {
+        failed.push(file.name);
+      }
+    }
+    const catalog = await wallpaperApi.listImages();
+    setItems(catalog.items);
+    if (imported.length === 0) {
+      throw new Error(`图片导入失败: ${failed.join(', ')}`);
+    }
+    const images = { ...settings.images };
+    for (const image of imported) {
+      images[image.name] = DEFAULT_WALLPAPER_IMAGE_PARAMS;
+    }
+    const firstImport = settings.activeImage === '';
+    await saveSettings({
+      ...settings,
+      images,
+      activeImage: firstImport ? imported[0]!.name : settings.activeImage,
+      enabled: firstImport ? true : settings.enabled,
+    });
+    setSelectedName(imported[0]!.name);
+    if (failed.length > 0) {
+      throw new Error(`已导入 ${imported.length} 张, 部分图片导入失败: ${failed.join(', ')}`);
+    }
   }
 
   function setEnabled(enabled: boolean): void {
@@ -228,7 +258,10 @@ export function WallpaperTab(): JSX.Element {
 
   return (
     <section
-      className="ema-material-section ema-wallpaper-controls space-y-5 rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] p-5"
+      ref={dropAreaRef}
+      data-file-drop-target="settings-wallpaper"
+      data-drag-active={overlayWidth !== null}
+      className="ema-material-section ema-wallpaper-controls relative space-y-5 rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] p-5"
       onPointerDownCapture={event => { event.currentTarget.dataset.pointerFocus = 'true'; }}
       onKeyDownCapture={event => { delete event.currentTarget.dataset.pointerFocus; }}
       onBlurCapture={event => {
@@ -237,6 +270,15 @@ export function WallpaperTab(): JSX.Element {
         }
       }}
     >
+      {overlayWidth !== null && (
+        <div className="ema-wallpaper-drop-overlay" aria-hidden="true">
+          <div className="ema-wallpaper-drop-label">
+            <span className="i-lucide:image-plus text-2xl" />
+            <span>松开即可导入壁纸</span>
+            <span className="text-xs font-normal">PNG, JPG, JPEG, WebP</span>
+          </div>
+        </div>
+      )}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="text-sm font-medium text-[var(--ema-text-secondary)]">窗口壁纸</h2>
@@ -300,7 +342,7 @@ export function WallpaperTab(): JSX.Element {
       {!loading && items.length === 0 && (
         <div className="flex h-48 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[var(--ema-border)] text-[var(--ema-text-tertiary)]">
           <span className="i-lucide:image-plus text-3xl" aria-hidden />
-          <span className="text-sm">还没有壁纸. 导入 PNG, JPG 或 WebP 图片开始.</span>
+          <span className="text-sm">还没有壁纸. 拖入或选择 PNG, JPG 或 WebP 图片开始.</span>
         </div>
       )}
       {selected && (

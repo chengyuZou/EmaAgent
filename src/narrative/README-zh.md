@@ -66,6 +66,8 @@ local 或 global 缺少本侧关键词时可以使用另一侧. 两类都为空�
 
 Turn 准备先用 `isWitchTrialCharacter` 检查当前角色完整姓名, 名单命中且模型配置可用时才提供查询函数. 名字匹配支持固定的中日英完整姓名, 去掉首尾空白并忽略英文大小写, 不改用户工具开关. 浏览器使用单独的 `@ema-agent/narrative/isWitchTrialCharacter` 入口, 避免加载 Node 检索代码.
 
+该入口还导出 `witchTrialCharacterNames`, 与判定函数共用同一份分组姓名. 每组第一项是中文全名, 后面是其他可识别的完整姓名. 角色设置表格直接渲染这些分组, 不另外维护一份名单.
+
 `NarrativeSearchTool` 把 Map 转为可持久化和传输的数组, 根据正文和失败情况计算 found/partial/empty/unavailable, 再把证据及失败文字交给模型和 UI.
 
 固定正文, 实体, 关系, 来源映射和向量由 Storage 读取. 图模式只读候选来源向量, naive 和 mix 读取本周目的全部正文向量. mix 的来源选块复用该次读取. 合并候选 ID 后再读正文, 查询结束后不保留向量或中间结果.

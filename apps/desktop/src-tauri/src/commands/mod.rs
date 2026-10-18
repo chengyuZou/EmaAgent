@@ -10,7 +10,7 @@ pub use browser::{
 };
 pub use desktop::{
     inspect_attachment_paths,
-    get_passthrough, hide_main_window, open_main_window, open_path, quit_app, read_draft_image,
+    get_passthrough, hide_main_window, open_main_window, open_path, quit_app, read_local_image,
     set_always_on_top, set_passthrough, set_passthrough_controls_hovered,
     start_pet_pointer,
 };

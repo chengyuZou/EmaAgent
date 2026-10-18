@@ -116,6 +116,7 @@ export interface SandboxStatus {
   readonly bashMode: 'sandboxed' | 'disabled' | 'unsandboxed';
   readonly networkAccess: SandboxNetwork;
   readonly warning?: string;
+  readonly warningDetails?: string;
 }
 
 /** NODE_ENV=production 时拒绝 Bash 沙箱绕过开关, 避免安装版以开发配置执行命令. */
@@ -157,6 +158,7 @@ export function openTools(deps: ToolsDeps): ToolsComposition {
       bashMode,
       networkAccess: network,
       ...(warnings.length > 0 ? { warning: warnings.join(' ') } : {}),
+      ...(detection.degradeDetails ? { warningDetails: detection.degradeDetails } : {}),
     });
   };
   // 提前查找 Bash, Turn 准备阶段仍会等待同一次探测, 不依赖它恰好已经完成.

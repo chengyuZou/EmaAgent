@@ -33,6 +33,8 @@ async function synthesize(reference: TTSVoiceReference, text: string) {
 
 示例要求 GPT-SoVITS 服务已启动, 并且能读取参考音频路径. 服务使用已经加载的权重, `/tts` 请求不包含模型 ID. 所有创建入口仍要求模型 ID 非空白.
 
+GPT-SoVITS 请求固定使用 `text_lang: "auto"`, 包括混合语言文本, 由服务识别文本语言. `prompt_lang` 独立保留参考录音配置的真实语言. 自动识别不会翻译输入文本.
+
 云端协议上传参考录音, 返回用于目标模型的供应商声音 ID. GPT-SoVITS 直接返回本地参考音频. 每次合成把这个结果作为 `voice`, 连同 `text`, 可选的 `speed` 和 `signal` 传入. 文本不能是空白, 速度必须为有限正数.
 
 ## 协议

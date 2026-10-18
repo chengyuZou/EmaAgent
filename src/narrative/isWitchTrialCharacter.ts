@@ -1,5 +1,5 @@
 // [官方角色名单](https://manosaba.com/posts/illustcontest)
-const characterNames = [
+export const witchTrialCharacterNames = [
   ['樱羽艾玛', '桜羽エマ', 'Sakuraba Ema', 'Sakuraba Emma', 'Ema Sakuraba', 'Emma Sakuraba'],
   ['二阶堂希罗', '二階堂ヒロ', 'Nikaido Hiro', 'Hiro Nikaido'],
   ['夏目安安', '夏目アンアン', 'Natsume An-An', 'An-An Natsume'],
@@ -18,7 +18,7 @@ const characterNames = [
 ] as const;
 
 const fullNames = new Set<string>(
-  characterNames.flatMap(names => names.map(name => name.toLowerCase())),
+  witchTrialCharacterNames.flatMap(names => names.map(name => name.toLowerCase())),
 );
 
 /** 只匹配完整姓名, 不把昵称, 角色描述或包含姓名的任意文本当作剧情角色. */

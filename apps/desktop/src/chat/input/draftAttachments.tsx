@@ -35,7 +35,7 @@ function DraftImagePreview({ reference }: { readonly reference: Extract<ChatDraf
       setUrl(objectUrl);
     } else if (reference.sourcePath) {
       // 本机路径来自文件选择器. 预览只读入浏览器内存, 不提前上传或落盘到 Session.
-      void tauriBridge.readDraftImage(reference.sourcePath).then((bytes) => {
+      void tauriBridge.readLocalImage(reference.sourcePath).then((bytes) => {
         if (cancelled) return;
         const extension = reference.sourcePath?.split('.').pop()?.toLowerCase();
         const mimeType = extension === 'jpg' ? 'image/jpeg' : `image/${extension ?? 'png'}`;

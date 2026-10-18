@@ -44,14 +44,14 @@ Command handlers live in `src/commands`. Their implementations use the correspon
 | --- | --- |
 | Read Server connection information | `get_server_port`, `get_server_secret` |
 | Show or hide chat, exit, pin stage, control click-through | `open_main_window`, `hide_main_window`, `quit_app`, `set_always_on_top`, pointer and passthrough commands |
-| Preview a draft image or inspect dropped paths | `read_draft_image`, `inspect_attachment_paths` |
+| Read local image bytes for a draft preview or wallpaper upload; inspect attachment paths | `read_local_image`, `inspect_attachment_paths` |
 | Open a local path or enumerate fonts | `open_path`, `list_system_fonts` |
 | Create and control browser panels | Commands in `commands/browser.rs` |
 | Open, write, resize, and close PTY terminals | Commands in `commands/terminal.rs` |
 
 Terminal shell candidates come from the Server's system API, not a Tauri command. `open_terminal` accepts a selected `shell: { kind, path }`, dimensions, a working directory, and an IPC Channel for output. Rust chooses launch arguments from `kind`. Archiving or deleting a session requests closure of its PTYs; ordinary session switching keeps them running. Application exit closes all PTYs.
 
-File drops use Tauri's WebView drag events. The frontend converts physical coordinates to page coordinates, checks the middle chat area, and appends accepted paths through the existing draft attachment flow. Sidebar session reordering is a separate page interaction.
+File drops use Tauri's WebView drag events. The frontend converts physical coordinates to page coordinates and checks the active page and target bounds. Visible Chat uses the middle chat area and the draft attachment flow. Wallpaper settings use the wallpaper card and the image upload API, whose Server implementation validates image content. Hidden Chat and other settings pages do not accept these drops. Sidebar session reordering is a separate page interaction.
 
 ## Exit and logs
 

@@ -90,6 +90,8 @@ Server composition in `apps/server/src/composition/narrative.ts` resolves narrat
 
 Turn preparation supplies the search function only when the current character's name matches `isWitchTrialCharacter` and model configuration is available. The name check uses a fixed list of complete Chinese, Japanese, and English names, trims whitespace, and ignores English case. It does not change the user's tool toggles. Browser code imports the separate `@ema-agent/narrative/isWitchTrialCharacter` entry to avoid loading Node retrieval code.
 
+That entry also exports `witchTrialCharacterNames`, the same grouped names used by the predicate. Each group starts with the Chinese full name, followed by accepted alternate full names. The character settings table renders these groups directly instead of maintaining a second list.
+
 `NarrativeSearchTool` converts the Map into arrays for tool-result persistence and transport, derives found/partial/empty/unavailable, and exposes evidence and failure text to the model and UI.
 
 Storage owns the fixed chunks, entities, relations, their source links, and vectors. Graph-only modes read candidate source vectors; naive and mix search all passage vectors for their timeline. Mix reuses that read for source selection. Passage text is loaded after candidate IDs are merged. Vectors and intermediate results are not retained between searches.
