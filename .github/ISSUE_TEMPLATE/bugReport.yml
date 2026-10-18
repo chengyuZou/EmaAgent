@@ -1,0 +1,68 @@
+name: Bug report
+description: Report a problem with Ema.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        You can write in English or Chinese.
+        Please Remove API keys, passwords, and private information before sharing text, logs, or recordings. Do not upload profile.db or your whole .ema-agent directory.
+
+  - type: input
+    id: version
+    attributes:
+      label: Exact Ema version
+      description: Include the full version, including any alpha or beta suffix.
+      placeholder: 0.1.0-alpha.1
+    validations:
+      required: true
+
+  - type: input
+    id: system
+    attributes:
+      label: Operating system and CPU architecture
+      description: Include your operating system version and CPU architecture.
+      placeholder: Windows 11 x64, macOS 15 arm64, or Ubuntu 22.04 x64
+    validations:
+      required: true
+
+  - type: dropdown
+    id: installation
+    attributes:
+      label: How do you run Ema?
+      options:
+        - Installed release package
+        - Run from source
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Steps and problem
+      description: Describe what you did, step by step, and what went wrong.
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Error text, screenshots, or video
+      description: If available, paste the error text or attach screenshots or a recording.
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: If available, paste or attach the relevant logs after removing private information.
+    validations:
+      required: false
+
+  - type: input
+    id: model
+    attributes:
+      label: Model protocol and model name
+      description: If the problem involves a model, provide its protocol and model name. Do not include your API key.
+    validations:
+      required: false

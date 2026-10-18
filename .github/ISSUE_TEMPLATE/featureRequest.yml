@@ -1,0 +1,30 @@
+name: Feature request
+description: Suggest an improvement to Ema.
+body:
+  - type: markdown
+    attributes:
+      value: You can write in English or Chinese.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is inconvenient or missing today?
+      description: Describe the problem you want to solve.
+    validations:
+      required: true
+
+  - type: textarea
+    id: usage
+    attributes:
+      label: How would you like to use it?
+      description: Describe how you would like Ema to work in this situation.
+    validations:
+      required: true
+
+  - type: textarea
+    id: examples
+    attributes:
+      label: Examples or reference images
+      description: If available, share a concrete example or attach reference images.
+    validations:
+      required: false
