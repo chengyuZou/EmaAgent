@@ -1,5 +1,3 @@
-// 测试口型绑定只采用 model3.json 登记且 Cubism Core 真实存在的 Parameter。
-
 import type { Cubism4InternalModel } from 'pixi-live2d-display/cubism4';
 import { describe, expect, it } from 'vitest';
 import { resolveLive2DLipSyncParameters } from '../modelBindings.js';
@@ -22,7 +20,7 @@ function internalModel(
 }
 
 describe('resolveLive2DLipSyncParameters', () => {
-  it('使用模型 LipSync group，并映射到参数真实范围', () => {
+  it('使用模型 LipSync group, 并映射到参数真实范围', () => {
     const resolved = resolveLive2DLipSyncParameters(
       internalModel(['ParamMouthOpenY'], ['ParamMouthOpenY']),
     );

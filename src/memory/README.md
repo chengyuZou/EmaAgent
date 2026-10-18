@@ -1,180 +1,80 @@
-# @ema-agent/memory
+# Memory
 
-`@ema-agent/memory` 负责 EmaAgent 的本地文件式长期记忆.它不保存 Turn 副本,也不允许 Agent 或前端直接写正式记忆;原始对话事实保留在 Session/Turn SQL,Memory 只保存自动提取和整合后的长期内容.
+[中文](./README-zh.md)
 
-## 两条独立轨道
+Memory keeps long-term user information in local Markdown. Work stores stable working preferences and collaboration rules. Relationship stores shared user background, character-specific preferences, agreements and meaningful experiences. Both tracks use the `memory-llm` model binding and separate extraction, consolidation and maintenance jobs.
 
-- Work:全局共享,记录稳定的工作偏好,习惯,协作方式和长期约束.
-- Relationship:全局共享用户关系信息,并按 `character_name` 保存角色关系信息.
+## Files and Turn input
 
-两轨共用 `memory-llm` 模型绑定,但各自拥有独立的 Extraction,Consolidation,Maintenance Job,SQL 提取结果和文件目录.Relationship Turn 没有 `character_name` 时不创建提取任务.
-
-## 文件目录
-
-默认保存在用户主目录下的 `.ema-agent/memories`. 设置 `EMA_PROFILE_DIR` 时改用 `<EMA_PROFILE_DIR>/memories`, 与 Desktop 和 Server 的应用数据目录一致.
+The default root is `~/.ema-agent/memories`, or `<EMA_PROFILE_DIR>/memories`.
 
 ```text
-~/.ema-agent/memories/
-├─ work/
-│  ├─ MEMORY.md
-│  ├─ memory_summary.md
-│  ├─ topics/
-│  └─ .git/
-└─ relationship/
-   ├─ shared_user_memory.md
-   ├─ character_relations.md
-   ├─ characters/<character_name>/
-   │  ├─ MEMORY.md
-   │  └─ history/
-   └─ .git/
+memories/
+  work/
+    MEMORY.md
+    memory_summary.md
+    topics/*.md
+    .git/
+  relationship/
+    shared_user_memory.md
+    character_relations.md
+    characters/<character_name>/
+      MEMORY.md
+      history/*.md
+    .git/
 ```
 
-Work 没有 `history/`.Work 的 `memory_summary.md` 供 Turn 开始时注入,不进入 Memory List/Search/Read 的可读文件集合.Relationship 不生成摘要;Turn 读取 `shared_user_memory.md`,当前角色的 `MEMORY.md` 全文,以及 `character_relations.md` 中标题或正文含当前角色名的完整 `##` 段落.Relationship history 仅按需读取.正式 Markdown 可由用户在文件管理器中直接修改;下一次整合通过各轨 Git diff 读取这些修改.
+At Turn preparation, the Server reads the Work summary within its 2,500-token estimate budget. It reads shared user memory and the current character's MEMORY file, plus complete level-two sections in `character_relations.md` whose heading or body contains that character name. Missing/empty files contribute nothing. These texts enter the Turn reminder; `MEMORY_GUIDANCE` separately explains how to use them.
 
-## Turn 输入
+The main Agent's MemorySearch, MemoryRead and MemoryList tools use functions bound to this root by the Server. Search uses literal substrings, optionally case-insensitive or slash-normalized. `all_within_lines` checks five consecutive lines starting at each candidate line. Read supports one-based offsets and line limits, returning whole lines up to an estimated 20,000 tokens. Search/list cursors are numeric offsets, not stable positions if files change between requests.
 
-主对话的 MemorySearch, MemoryRead, MemoryList 由 Server 绑定当前记忆根目录, 分别调用 `searchMemoryFiles`, `readMemoryFile`, `listMemoryFiles`. 它们经过正常工具池筛选和禁用设置, Plan 模式也可使用, 子代理不提供这三个工具. 这些调用不写记忆, 不触发提取或整合.
+Search and previews enumerate nonhidden Markdown, excluding the injected summary and generated Git diff. List returns visible immediate children. Read resolves a requested file within the root and applies the same hidden/internal exclusions. The overview takes up to five recently modified nonempty Markdown files and reads at most 2 KiB from each, without splitting a UTF-8 character.
 
-记忆使用指引与记忆正文分开: 指引说明 Work/Relationship 的用途, 正文由 Turn reminder 按实际读取结果提供. 缺少文件时不宣称正文已提供. 具体工具的调用说明由当前工具池生成, 不向禁用工具或无工具的压缩调用承诺检索能力. Work 保存工作偏好,协作约定和长期约束; Relationship 保存用户背景,相处偏好,用户与角色的约定和经历,以及有对话证据或用户明确设定的角色间关系与共同事件.
+## From completed Turn to Markdown
 
-Server 从已完成 Turn 投影标准 `@ema-agent/llm` `Message[]`,只保留按原顺序出现的 User 文本和 Assistant 文本.System,Tool Call,Tool Result,AskUser,reasoning,reminder,summary 与附件内容不进入 Memory.
-
-同一份文本分别调用 Work 与 Relationship Extractor.外部 LLM 只允许返回:
-
-```json
-{}
+```mermaid
+sequenceDiagram
+  participant Server
+  participant Jobs as MemoryRepo
+  participant Extraction
+  participant Consolidation
+  participant Files as Markdown and Git
+  Server->>Jobs: Enqueue Work and eligible Relationship jobs
+  Extraction->>Jobs: Claim pending jobs
+  Extraction->>Extraction: Extract durable information with LLM
+  Extraction->>Jobs: Save nonempty output and complete job
+  Server->>Jobs: Schedule consolidation when ready
+  Consolidation->>Jobs: Claim job and read unintegrated results
+  Consolidation->>Files: Read user edits and current files
+  Consolidation->>Consolidation: Request and validate file edits
+  Consolidation->>Files: Apply edits, then update Git baseline
+  Consolidation->>Jobs: Mark consumed results integrated and finish
 ```
 
-或:
+[Server composition](../../apps/server/src/composition/memory.ts) projects ordered user/assistant text from completed Turns. Tool calls/results, reasoning, reminders, summaries and attachments are omitted. Relationship extraction requires a character name. Each track has two extraction workers.
 
-```json
-{ "content": "本轨待整合内容" }
+Extraction accepts `{}` or an object containing only string `content`. Empty strings, null and empty arrays are also treated as no content. Other shapes fail. Empty output completes the job without an extraction record.
+
+Consolidation becomes ready at eight unintegrated results or after the oldest waits six hours. One run selects at most 256 results. Input packing uses a 16 MiB budget: complete extraction results first, then Git diff and current files as space allows. Only locally collected `consumedTurnIds` are marked integrated.
+
+The model returns `write` with full file content or `delete`. Work targets are MEMORY.md, memory_summary.md and single-level topics Markdown. Relationship targets are its two shared files and MEMORY/history files for existing or newly extracted character names. Paths and output fields are checked before applying edits.
+
+File edits execute sequentially, then Git establishes the new baseline, then SQL marks integration complete. This is not an atomic transaction across files and SQL: a later failure does not roll back earlier file writes. Cancellation leaves claimed work unfinished for startup recovery rather than marking it failed.
+
+The Server starts scheduling after HTTP readiness, requeues interrupted jobs, checks consolidation hourly, and attempts maintenance every 12 hours. Consolidation and maintenance are serialized per track; the two tracks can run independently. Shutdown aborts model work and stops taking new jobs. Model output limits and usage recording are provided by Server composition.
+
+## Maintenance and capacity
+
+Work maintenance removes the temporary diff and compacts Git baseline storage. Relationship also removes history older than the most recent 180 distinct active dates per character, using dates parsed from filenames rather than elapsed calendar days.
+
+Storage measurement includes Git data and the byte size of symbolic links themselves. Capacity is normal below 80% of 1 GiB, warning from 80%, and limitExceeded at 1 GiB. This is a display status, not an automatic deletion or execution block.
+
+## Reading and checking
+
+Start with [extractTurn.ts](./extractTurn.ts) and `jobs/` for execution. [consolidation.ts](./consolidation/consolidation.ts) handles model edits and input packing; track-specific files define allowed targets. [memoryFiles.ts](./common/memoryFiles.ts) serves read/search/list/preview consumers. [Server Memory routes](../../apps/server/src/routes/memory) expose files, previews, job details and capacity; SQL job storage belongs to [Storage](../storage/README.md).
+
+```sh
+pnpm --filter @ema-agent/memory test
 ```
 
-`{}` 只完成 Extraction Job, 不写提取结果. 为接受模型返回的空值, `{"content":""}`,全空白字符串,`{"content":null}` 和 `{"content":[]}` 也按没有内容处理. `runTurnExtraction` 统一返回 `undefined`, 不把空字符串写进提取结果表. 非空数组,对象,数字,布尔值,多余字段和无效 JSON 仍然失败.
-
-## 内置 Prompt
-
-Prompt 直接定义为 TS 常量, 由 TypeScript 编译到 JS, 调用时直接导入:
-
-- `work/prompt.ts`: Work 提取的 System,输入说明和整合 System.
-- `relationship/prompt.ts`: Relationship 对应的三份文本.
-- `prompt.ts`: `MEMORY_GUIDANCE`, 供 Turn 和手动压缩注入记忆使用指引.
-
-提取 Prompt 要求没有内容时只返回 `{}`, 有内容时只返回非空字符串字段 `content`. 代码接受上述几种空值, 但不要求模型使用这些写法. 提取和整合入口使用对应的内置常量, 不提供没有调用方的模板覆盖参数. 构建只运行 TypeScript 编译, 不额外复制模板文件; 运行时不单独读取 Prompt 资产.
-
-## SQL 与任务
-
-Storage 提供 `MemoryRepo`.提取结果分表保存:
-
-- `memory_work_extractions`:`turn_id`,`job_id`,`session_id`,`content`,`integrated_at`.
-- `memory_relationship_extractions`:在 Work 字段之外增加 `character_name`.
-
-`memory_jobs.kind` 固定为:
-
-```text
-work_extraction
-relationship_extraction
-work_consolidation
-relationship_consolidation
-work_maintenance
-relationship_maintenance
-```
-
-状态固定为 `pending | running | completed | failed`. 没有手动启动或重试 Job 的接口. `memory_jobs.reminder_ignored` 只记录失败提醒是否被用户忽略, 不改变任务状态,错误或提取内容. 新失败任务默认未忽略.
-
-任务完成与写入正式记忆是不同的事实:
-
-| 后端结果 | 展示含义 |
-| --- | --- |
-| Extraction 完成, 没有提取表记录 | 没有可保存内容 |
-| 有提取记录, `integrated_at` 为空 | 提取内容已保存, 等待整理 |
-| 有提取记录, `integrated_at` 非空 | 提取内容已参与整合, 不表示每句话都写入正式记忆 |
-| Consolidation 完成 | 整合完成 |
-| Maintenance 完成 | 维护完成 |
-
-列表只读取状态,结果标签,时间,角色名和忽略标记. 错误与提取正文在展开详情时单独读取, 不随每次列表刷新传输.
-
-## 调度
-
-- Turn 完成后立即创建两轨 Extraction Job;每轨并发为 2,互不等待.
-- 单轨未整合结果达到 8 条,或最老结果等待 6 小时,创建该轨 Consolidation Job.
-- Consolidation 一次最多冻结 256 条结果;成功后只把实际送入 LLM 的 `consumedTurnIds` 标为已整合.
-- Server 每小时检查少量待整合结果是否超时.
-- Server 每 12 小时尝试一次两轨 Maintenance;同轨正在等待或执行 Consolidation 时跳过,不创建空 Job.
-- 同轨 Consolidation 与 Maintenance 串行;不同轨可以并行;Extraction 只写 SQL,可与文件任务并行.
-
-Server HTTP ready 后调用 Memory Composition 的 `start()`,恢复上次遗留的 `running` Job 为 `pending`,再启动现有队列和定时器.关闭时一个 `AbortSignal` 停止领取新任务并中止在途 LLM;不恢复已断开的网络请求,也不建立额外恢复协议.
-
-## Consolidation 输出
-
-整合 LLM 返回文件操作数组:
-
-```json
-[
-  { "path": "MEMORY.md", "operation": "write", "content": "..." },
-  { "path": "topics/old.md", "operation": "delete" }
-]
-```
-
-Memory 包在真实外部边界校验 JSON,操作类型和轨道内路径.Work 只能修改 `MEMORY.md`,`memory_summary.md` 与 `topics/*.md`;Relationship 只能修改 `shared_user_memory.md`,`character_relations.md` 和当前批次已有 `character_name` 对应的目录,不接受 `memory_summary.md`.
-
-`consumedTurnIds` 由本地输入打包过程产生,不由 LLM 返回.文件修改,Git 基线更新和 SQL 整合标记按此顺序执行,避免先丢掉尚未写入文件的结果.
-
-Server 调用 LLM 时, Extraction 的输出上限为 4,096 tokens, 两轨 Consolidation 为 16,384 tokens. Anthropic 和 OpenAI 兼容协议都收到明确的 `maxOutputTokens`. 若模型以 `max_tokens` 结束, 本次调用失败, 不把截断内容交给后续提取或文件操作解析. 有响应的失败调用仍记录其真实用量.
-
-## Maintenance 与容量
-
-- Work Maintenance:移除临时 diff 文件并压缩本轨 Git 基线存储.
-- Relationship Maintenance:另外按每个角色最近 180 个活跃日期保留 history.
-- 容量状态由 `evaluateMemoryCapacity` 返回;上限 1 GiB,80% 起进入 warning.
-
-达到上限不会猜测用户愿意删除哪份正式记忆.当前容量只展示,不阻断 Memory 运行.
-
-## Server HTTP 边界
-
-```text
-GET  /api/memory/files
-GET  /api/memory/files/content
-POST /api/memory/files/search
-GET  /api/memory/overview
-GET  /api/memory/jobs
-GET  /api/memory/jobs/recent
-GET  /api/memory/jobs/:id
-POST /api/memory/jobs/:id/ignore
-POST /api/memory/jobs/ignore-all
-GET  /api/memory/stats
-```
-
-Files 与 Overview 只读. `/overview` 返回最近修改的 5 份非空正式 Markdown 文件的开头, 不限定轨道或当前角色. 选择文件时只读取目录和文件属性; 每份正文最多读取 2 KiB 就关闭文件, 不先加载完整正文. 返回 `path`,`content` 和 `truncated`, UTF-8 截断不会产生半个字符. `.git`,临时 diff 和 Work 的注入摘要不作为正式预览.
-
-`/jobs/recent` 返回最新 3 条 SQL 任务记录, 不按 Turn 合并. `/jobs` 按 `created_at`,`id` 排序, 每页 6 条, 支持:
-
-- `startAt`,`endAt`: 毫秒时间戳, 范围包含起点,不包含终点.
-- `order`: `asc` 或 `desc`.
-- `page`: 从 1 开始. 请求超出最后一页时返回最后一页.
-- `cursorCreatedAt`,`cursorId`,`cursorDirection`: 三个字段一起传入, 用于相邻的 `next` 或 `previous` 翻页. SQL 表不保存游标列.
-
-直接跳到尚未访问的页时, 先查询该页前一条记录的排序键, 再读取当页任务. 此时仍需要跳过前面的索引项, 但不加载这些任务的正文. 相邻翻页使用返回的 `previousCursor`,`nextCursor`. `unignoredFailureCount` 针对全部失败提醒, 不受日期或当前页限制.
-
-忽略接口成功返回 HTTP 204. Desktop 随后重新读取列表; 单项忽略只接受失败任务, 全部忽略只更新当时尚未忽略的失败记录. 它们不删除任务,不自动重试, 后续的新失败仍需提醒.
-
-`/stats` 另外返回 `rootPath`, 供 Desktop 文件栏的打开文件夹操作消费; `/files/content` 返回所读文件的 `absolutePath`, 供 Tauri 在文件管理器中定位. Memory Tool 仍只拿相对路径和正文.
-
-## Desktop 展示与刷新
-
-Memory 保留概览,文件和后台任务三个入口. 概览的正式预览,最近任务和容量是独立请求, 哪一项返回就先显示哪一项. 预览和容量每 30 秒刷新, 最近任务与后台任务列表每 5 秒刷新. 一次请求结束后才安排下一次, 慢查询不会重复并行发出.
-
-离开对应 Memory 页面,回到聊天,隐藏或最小化 main 时, 停止页面读取与定时器. 返回时重新读取. 已提交的忽略操作继续完成, 不因离开页面取消. 页面状态只留在组件中, 不建立 Memory 全局 Store; 正文与容量的相同字段不会因为任务列表刷新而重复渲染.
-
-后台任务默认今天,最新在前. 日期选项还包括昨天,近 7 天,近 30 天,本月,上月与全部, 由浏览器本地日历计算范围. 相邻分页使用游标, 页码按钮或输入页码支持直接跳转. 时间显示到 `YYYY/MM/DD HH:mm`. 展开详情与容量变化有局部过渡, 定时刷新不重复播放列表入场动画; 减少动态效果设置会关闭这些动画.
-
-## 验证入口
-
-- `src/memory/tests/memoryFiles.test.ts`: 有界预览,UTF-8 截断,目录筛选与取消.
-- `src/storage/tests/repos/memory.integration.test.ts`: 结果标签,忽略持久化,日期与游标分页.
-- `apps/server/tests/memoryRoutes.test.ts`: 真实临时数据库上的 HTTP 请求, 以及两种 LLM 协议的实际输出上限和截断响应.
-
-## Agent 能力边界
-
-根 Agent 只获得 Memory List,Search,Read 三种工具.子 Agent 不获得 Memory 能力.Memory Note,文件写入,手动提取,手动整合,手动维护和清空接口均不存在.
+Local tests cover extraction shapes, consolidation paths/input packing, Git diff, Turn relationship input, previews and cancellation. SQL jobs and actual HTTP/model request handling have additional tests in Storage and Server.

@@ -1,5 +1,3 @@
-// 根据模型未缩放边界计算 Live2D 在当前舞台中的默认半身构图。
-
 export interface Live2DModelBounds {
   x: number;
   y: number;

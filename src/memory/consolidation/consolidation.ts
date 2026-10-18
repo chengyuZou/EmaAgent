@@ -4,7 +4,7 @@ import type { CompleteMemoryLLM } from '../common/extraction.js';
 import { MemoryConsolidationError } from '../errors.js';
 
 export const CONSOLIDATION_INPUT_INSTRUCTION =
-  '以下是本批未整合提取结果、盘上差异和正式记忆。按 system 指令只输出 JSON 数组；没有文件改动时输出 []。';
+  '以下是本批未整合提取结果, 盘上差异和正式记忆. 按 system 指令只输出 JSON 数组; 没有文件改动时输出 [].';
 
 export type ConsolidationEdit =
   | { readonly path: string; readonly operation: 'write'; readonly content: string }
@@ -31,7 +31,7 @@ export interface RunConsolidationLLMInput {
 
 export interface MemoryConsolidationResult {
   readonly edits: readonly ConsolidationEdit[];
-  /** 程序实际装入本次 LLM 输入的结果；只有这些 Turn 才能在 SQL 标记为已整合。 */
+  /** 实际装入本次 LLM 输入的结果, 只有这些 Turn 才能在 SQL 标记为已整合. */
   readonly consumedTurnIds: readonly string[];
 }
 
@@ -98,6 +98,7 @@ export async function applyConsolidationEdits(
   signal: AbortSignal,
 ): Promise<void> {
   const root = path.resolve(memoryDirectory);
+  // 按顺序直接写文件, 不是整批原子替换. 中途失败时已写的文件不会自动回滚.
   for (const edit of edits) {
     if (signal.aborted) throw signal.reason;
     const full = path.resolve(root, edit.path);

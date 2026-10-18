@@ -1,4 +1,3 @@
-// 子代理消息与普通 Message 共用正文; fork 初始化、Run 写入和历史恢复在这里收口.
 import { randomUUID } from 'node:crypto';
 import { createAssistantThinkingBlock } from '@ema-agent/llm';
 import type { AssistantBlock, LLMGenerationSource, LLMThinkingState } from '@ema-agent/llm';
@@ -23,7 +22,7 @@ interface ActiveAssistant {
 const SUBAGENT_REMINDER =
   '你是子 Agent, 只完成本次委派任务并向父 Agent 交付结果. 父历史中的调用属于父 Agent, 不要重新执行. '
   + '父会话的 Goal 不属于你的任务, 不要持续推进父 Goal. '
-  + '若命令转为尚未完成的后台任务, 交付 backgroundProcessId、任务用途和最后已知状态, '
+  + '若命令转为尚未完成的后台任务, 交付 backgroundProcessId, 任务用途和最后已知状态, '
   + '供父 Agent 使用 ProcessOutput 接手. 不要用操作系统 PID 替代 backgroundProcessId, 不要把已启动说成已完成.';
 
 export class SubagentMessagesStore {
@@ -228,10 +227,10 @@ export class SubagentMessagesStore {
     return { items: page.rows.map(toMessage), olderCursor: page.olderCursor, newerCursor: page.newerCursor };
   }
 
-  // TODO: 这个接口没有注释说明要干什么
+  /** 启动恢复按工具调用 ID 读取已保存参数和结果, 跳过 fork 继承的父消息. */
   findToolInteraction(subagentId: string, toolCallId: string): SubagentToolInteraction | undefined {
     let interaction: SubagentToolInteraction | undefined;
-    // TODO: 这个效率有点太低了, 不如放到SQL里面要么Index优化要么专门找
+    // TODO: 当前会读取并解析整个子代理历史, 长历史的启动恢复应改成按调用 ID 查询.
     for (const message of this.repo.listAllForSubagent(subagentId).map(toMessage)) {
       if (!message.runId || !Array.isArray(message.blocks)) {
         continue;

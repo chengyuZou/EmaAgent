@@ -1,5 +1,3 @@
-// 验证 Memory 摘要的读取空闸门和 Token 裁剪.
-
 import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';

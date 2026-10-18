@@ -1,4 +1,3 @@
-// 文件先复制到新目录, 全部完成后再重命名为正式 Session 目录.
 import fs from 'node:fs';
 import path from 'node:path';
 import { SessionImportError } from '../errors.js';
@@ -102,6 +101,7 @@ export function publishSessionFiles(
         path.relative(activeDataDir, toFinal(finalRoot, temporaryRoot, destinationRoot)),
       );
     }
+    // 文件全部复制并检查完后再发布, 避免正式目录留下半份导入内容.
     fs.renameSync(temporaryRoot, finalRoot);
   } catch (error) {
     fs.rmSync(temporaryRoot, { recursive: true, force: true });

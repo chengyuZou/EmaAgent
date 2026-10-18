@@ -1,5 +1,3 @@
-// Message → 模型历史的转换入口: Session 和子代理共用正文投影, 各自解析模型来源.
-// 只保留完整配对的 Tool 配对;thinking 作为协议原生推理状态保留并携带生成来源
 import type {
   AssistantBlock,
   ContentPart,
@@ -60,7 +58,7 @@ export async function projectMessages<T extends Message>(
       continue;
     }
 
-    // 中断的 Assistant 是流式恢复事实，不是已经完成的模型回复。
+    // 中断回复保留在界面历史中, 但不能作为已完成的回复发给模型.
     if (!message.interrupted && Array.isArray(message.blocks)) {
       const content = message.blocks
         .map((block) => buildAssistantBlock(block, pairedToolIds))
@@ -111,7 +109,7 @@ function buildAssistantBlock(
   if (candidate.type === 'text' && typeof candidate.text === 'string' && candidate.text.trim()) {
     return { type: 'text', text: candidate.text };
   }
-  // 原生推理状态按协议判别联合透传；是否重放由目标协议 Adapter 依据 generatedBy 裁决。
+  // 保留原生推理块和签名, 由 Adapter 根据 generatedBy 判断能否重放.
   if (
     candidate.type === 'thinking'
     && typeof candidate.thinking === 'string'
@@ -154,7 +152,7 @@ function buildAssistantBlock(
         : {}),
     };
   }
-  // 只有完整配对的 tool_use 才能进入下一次请求。
+  // 未完成或重复的工具调用不能进入下一次请求.
   if (
     candidate.type === 'tool_use'
     && typeof candidate.id === 'string'
@@ -187,13 +185,14 @@ async function buildUserBlocks(
       if (typeof candidate.toolCallId !== 'string' || !pairedToolIds.has(candidate.toolCallId)) {
         return undefined;
       }
-      const content = typeof candidate.content === 'string'
-        ? candidate.content
-        : Array.isArray(candidate.content)
-          ? candidate.content
-              .map(buildToolResultContentPart)
-              .filter((part): part is ToolResultContentPart => part !== undefined)
-          : undefined;
+      let content: string | ToolResultContentPart[] | undefined;
+      if (typeof candidate.content === 'string') {
+        content = candidate.content;
+      } else if (Array.isArray(candidate.content)) {
+        content = candidate.content
+          .map(buildToolResultContentPart)
+          .filter((part): part is ToolResultContentPart => part !== undefined);
+      }
       if (content === undefined) return undefined;
       return [{
         type: 'tool_result',
@@ -207,7 +206,7 @@ async function buildUserBlocks(
       || candidate.type === 'pasted_text_reference'
       || candidate.type === 'file_reference'
     ) {
-      // 块的字段合法性在入库校验(message.parseMessageBlocksJson)已保证。
+      // 附件字段已由 Session 的消息解析检查, 这里只转换模型输入.
       return buildAttachmentMessages(block as AttachmentBlock, attachmentOptions);
     }
     if (candidate.type === 'skill_reference') {
@@ -226,14 +225,13 @@ async function buildUserBlocks(
 }
 
 /**
- * 当前 Turn 与历史重放共用同一文案：只陈述"用户当时选择过"这个事实。
- * 当前可用性由本 Turn 冻结的 Skill Pool 判定——技能已删/已禁用时,
- * Skill 工具会返回明确的不可用错误,这里不预先承诺它仍可调用。
+ * 当前输入与历史重放只记录用户当时的选择.
+ * Skill 是否可加载由本次 ToolPool 判断, 历史引用不保证技能仍存在或启用.
  */
 export function renderSkillReferenceForModel(reference: SkillReferenceBlock): string {
   return [
     `[用户选择的 Skill: ${reference.name} (${reference.path})]`,
-    '这是用户的选择记录。若该技能当前可用,可调用 Skill 工具加载它的完整指令;若已被删除或禁用,Skill 工具会返回不可用,忽略即可。',
+    '这是用户的选择记录. 若该技能当前可用, 可调用 Skill 工具加载它的完整指令; 若已被删除或禁用, Skill 工具会返回不可用, 忽略即可.',
   ].join('\n');
 }
 
@@ -248,8 +246,7 @@ function buildToolResultContentPart(block: unknown): ToolResultContentPart | und
 }
 
 /**
- * 收集配对的工具 ID
- * 确保 tool_use 与 tool_result 都只出现一次,且 tool_use 在前
+ * 只接受调用和结果各出现一次, 且调用在前的工具 ID.
  */
 function collectPairedToolIds(sessionMessages: readonly Message[]): ReadonlySet<string> {
   const calls = new Map<string, { count: number; position: number }>();

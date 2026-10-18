@@ -69,7 +69,7 @@ export type AgentLoopEvent =
     readonly content: readonly AssistantBlock[];
   }
   | {
-    /** AgentLoop 已把这些消息追加进下一次调用会读取的工作历史。 */
+    /** AgentLoop 已把这些消息追加进下一次调用会读取的工作历史. */
     readonly type: 'model_history_appended';
     readonly llmCallId: string;
     readonly messages: readonly Message[];

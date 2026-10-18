@@ -1,4 +1,3 @@
-// 使用当前角色参考声音沿正式协议入口生成一段有界试听音频
 import { randomUUID } from 'node:crypto';
 import {
   packPcmWav,
@@ -34,8 +33,8 @@ export interface SpeechVoicePreviewSource {
   current(): { readonly characterName: string; readonly voice: TTSVoiceReference } | null;
 }
 
-/** 试听所需的 TTS 入口对：Provider 连接与模型由装配层按请求即时冻结。 */
-export interface SpeechVoicePreviewTts {
+/** 调用方为指定 Provider 和模型创建的声音注册与合成入口. */
+export interface SpeechVoicePreviewTTS {
   readonly ttsVoiceRegistrar: TTSVoiceRegistrar;
   readonly callTTS: CallTTS;
 }
@@ -47,10 +46,10 @@ export interface SpeechVoicePreviewResult {
 
 export class SpeechVoicePreview {
   constructor(
-    private readonly resolveTts: (
+    private readonly resolveTTS: (
       providerId: string,
       modelId: string,
-    ) => SpeechVoicePreviewTts | undefined,
+    ) => SpeechVoicePreviewTTS | undefined,
     private readonly voices: SpeechVoicePreviewSource,
     private readonly voiceCache: SpeechVoiceCache,
     private readonly usageRecorder: UsageRecorder,
@@ -65,7 +64,7 @@ export class SpeechVoicePreview {
     const startedAt = Date.now();
     let errorCode: string | null = null;
     let status: 'completed' | 'failed' | 'cancelled' = 'completed';
-    const tts = this.resolveTts(providerId, modelId);
+    const tts = this.resolveTTS(providerId, modelId);
     if (!tts) {
       throw new SpeechVoicePreviewError('client_unavailable', 'TTS Provider 运行时不可用');
     }

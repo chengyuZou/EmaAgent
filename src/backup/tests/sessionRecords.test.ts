@@ -1,4 +1,3 @@
-// 验证当前 Session 记录协议接受现行字段并拒绝旧备份字段.
 import { describe, expect, it } from 'vitest';
 import type { TurnRow } from '@ema-agent/storage';
 import { toSessionRecord, toTurnRecord } from '../records/exportMappings.js';
@@ -47,7 +46,7 @@ describe('session records', () => {
       .toThrow();
   });
 
-  it('Turn 记录 protocol 往返（导出 → 校验 → 恢复）', () => {
+  it('Turn 记录 protocol 往返(导出, 校验, 恢复)', () => {
     const turnRow = {
       id: 'turn-1',
       session_id: 'session-1',
@@ -79,7 +78,7 @@ describe('session records', () => {
     expect(() => turnRecordSchema.parse({ ...record, sessionMode: 'chat' })).toThrow();
   });
 
-  it('拒绝缺失 protocol 键的旧 Turn 记录（开发期不兼容）', () => {
+  it('拒绝缺失 protocol 键的 Turn 记录', () => {
     expect(() => turnRecordSchema.parse({
       id: 'turn-1',
       sessionId: 'session-1',

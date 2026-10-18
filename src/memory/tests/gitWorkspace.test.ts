@@ -1,5 +1,3 @@
-// 验证 Memory Git 变更文件的状态表达和字节裁剪.
-
 import { Buffer } from 'node:buffer';
 import { mkdtemp, mkdir, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';

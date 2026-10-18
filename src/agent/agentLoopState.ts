@@ -15,7 +15,6 @@ export type AgentLoopStopReason =
 
 export interface AgentLoopState {
   readonly phase: AgentLoopPhase;
-  // 当前的迭代次数
   readonly iterations: number;
   /** 当前 AgentLoop 内全部 LLM 调用的 Token 累计用量 */
   readonly usage: LLMTokenUsage;

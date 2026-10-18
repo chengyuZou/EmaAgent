@@ -1,5 +1,3 @@
-// 搜索、读取和列举用户可见的正式 Memory 文件。
-
 import { promises as fs } from 'node:fs';
 import type { Dirent } from 'node:fs';
 import path from 'node:path';
@@ -20,52 +18,45 @@ export interface MemoryPreview {
   readonly truncated: boolean;
 }
 
-// ── 公开请求与响应 ────────────────────────────────────────
-
 /**
- * 关键词匹配
- * - any：任一关键词命中即算；
- * - all_on_same_line：全部关键词必须落在同一行；
- * - all_within_lines：全部关键词必须落在同一邻近行窗口（readWindow 行数）内。
+ * any 接受任一关键词, all_on_same_line 要求同一行含全部关键词.
+ * all_within_lines 检查从当前行开始的连续 5 行, 不是前后各 5 行.
  */
 export type MemorySearchMatchMode =
   | 'any'
   | 'all_on_same_line'
   | 'all_within_lines';
 
-/** 一条命中：文件路径、命中行号、片段起始行号与片段正文。 */
 export interface MemorySearchMatch {
-  /** 相对记忆根的 posix 路径。 */
+  /** 相对记忆根的路径, 使用 '/'. */
   readonly path: string;
-  /** 命中行号（1-based）。 */
+  /** 从 1 开始的命中行号. */
   readonly matchLineNumber: number;
-  /** 返回片段的首行号（contextLines > 0 时早于命中行）。 */
+  /** 片段首行号, 包含前文时可能早于命中行. */
   readonly contentStartLineNumber: number;
-  /** 命中片段正文（含上下文行）。 */
   readonly content: string;
-  /** 本次实际命中的关键词（原始大小写）。 */
+  /** 实际命中的关键词, 保留原大小写. */
   readonly matchedQueries: readonly string[];
 }
 
-/** 搜索请求；queries 为子串关键词，其余字段全部可选。 */
 export interface MemorySearchRequest {
-  /** 要搜索的关键词（子串匹配；去空白后为空的全被忽略）。 */
+  /** 子串关键词, 去掉首尾空白后为空的项被忽略. */
   readonly queries: readonly string[];
-  /** 匹配模式，缺省 any。 */
+  /** 缺省 any. */
   readonly matchMode?: MemorySearchMatchMode;
-  /** 限定搜索的相对子目录（如 work、relationship/characters/ema）。 */
+  /** 相对记忆根的搜索目录, 例如 work 或 relationship/characters/ema. */
   readonly path?: string;
-  /** 分页游标（来自上次结果的 next_cursor）。 */
+  /** 上次结果的 nextCursor, 表示跳过多少条命中. */
   readonly cursor?: string;
-  /** 命中片段带多少上下文行（默认 0）。 */
+  /** 前后各保留的上下文行数, 默认 0. */
   readonly contextLines?: number;
-  /** 大小写敏感（默认 true）。 */
+  /** 默认 true. */
   readonly caseSensitive?: boolean;
-  /** 分隔符归一后匹配（默认 false）。 */
+  /** 默认 false; 开启后将反斜杠和连续斜杠统一成 '/'. */
   readonly normalized?: boolean;
-  /** 结果上限（默认 200）。 */
+  /** 默认 200, 最多 200. */
   readonly maxResults?: number;
-  /** 工具执行取消信号；中止时抛出 signal.reason。 */
+  /** 取消时抛出 signal.reason. */
   readonly signal?: AbortSignal;
 }
 
@@ -87,7 +78,7 @@ export interface MemoryListRequest {
   readonly path?: string;
   readonly cursor?: string;
   readonly maxResults?: number;
-  /** 工具执行取消信号；中止时抛出 signal.reason。 */
+  /** 取消时抛出 signal.reason. */
   readonly signal?: AbortSignal;
 }
 
@@ -102,7 +93,7 @@ export interface MemoryReadRequest {
   readonly path: string;
   readonly lineOffset?: number;
   readonly maxLines?: number;
-  /** 工具执行取消信号；中止时底层读抛出，由执行框架收口。 */
+  /** 取消会中止文件读取并抛出, 由工具执行器处理. */
   readonly signal?: AbortSignal;
 }
 
@@ -113,21 +104,16 @@ export interface MemoryReadResponse {
   readonly truncated: boolean;
 }
 
-// ── 窄能力类型（宿主注入已绑定 memoryRoot 后供 ToolUseContext 引用） ──────────
-
 export type SearchMemory = (request: MemorySearchRequest) => Promise<MemorySearchResponse>;
 
 export type ReadMemory = (request: MemoryReadRequest) => Promise<MemoryReadResponse | undefined>;
 
 export type ListMemory = (request: MemoryListRequest) => Promise<MemoryListResponse>;
 
-// ── search ─────────────────────────────────────────────────────────────────────
-
 export async function searchMemoryFiles(
   memoryRoot: string,
   request: MemorySearchRequest,
 ): Promise<MemorySearchResponse> {
-  // 已中止则立即返回，避免先枚举全部可读文件白做工；循环内另有逐文件检查。
   throwIfAborted(request.signal);
   const queries = request.queries
     .map((query) => query.trim())
@@ -274,7 +260,6 @@ function matchQueriesOnLine(
     }
   }
 }
-/** all_within_lines 的邻近行窗口行数（固定 5，跨文件一致）。 */
 function readWindow(): number {
   return 5;
 }
@@ -285,8 +270,6 @@ function normalizeText(value: string, caseSensitive: boolean, normalized: boolea
   if (normalized) result = result.replace(/[\\/]+/g, '/');
   return result;
 }
-
-// ── read ───────────────────────────────────────────────────────────────────────
 
 export async function readMemoryFile(
   memoryRoot: string,
@@ -379,8 +362,6 @@ async function readPreviewPrefix(
   }
 }
 
-// ── list ───────────────────────────────────────────────────────────────────────
-
 export async function listMemoryFiles(
   memoryRoot: string,
   request: MemoryListRequest = {},
@@ -425,12 +406,8 @@ export async function listMemoryFiles(
   };
 }
 
-// ── 可读范围（正式记忆白名单） ─────────────────────────────────────────────────
-
 /**
- * 枚举 memory 根下允许模型读取的文件（相对路径，posix）。
- * 排除隐藏项、Git 工作文件与注入用的 memory_summary.md。
- * scopePath 可选：限定在某轨/某子目录下。
+ * 搜索与预览只枚举非隐藏 Markdown, 排除 Git 工作文件和注入用摘要.
  */
 async function listReadableFiles(memoryRoot: string, scopePath?: string): Promise<string[]> {
   const start = scopePath ? path.join(memoryRoot, scopePath) : memoryRoot;
@@ -475,12 +452,10 @@ async function isReadableFile(memoryRoot: string, relativePath: string): Promise
   }
 }
 
-/** 隐藏项（.git / .xxx / 以 . 开头目录）。 */
 function isHiddenRelative(rel: string): boolean {
   return rel.split('/').some((segment) => segment.startsWith('.'));
 }
 
-/** 派生/内部文件不进入模型可读范围。 */
 function isExcludedRelative(rel: string): boolean {
   if (
     rel === 'memory_summary.md'
@@ -490,8 +465,6 @@ function isExcludedRelative(rel: string): boolean {
   ) return true;
   return false;
 }
-
-// ── 工具 ──────────────────────────────────────────────────────────────────────
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));

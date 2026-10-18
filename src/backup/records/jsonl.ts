@@ -1,4 +1,3 @@
-// 逐行编解码 JSONL，避免把整份记录文件一次性读入内存。
 import fs from 'node:fs';
 
 const MAX_LINE_BYTES = 16 * 1024 * 1024;
@@ -19,8 +18,7 @@ export async function* readJsonl<T>(
   for await (const rawChunk of fs.createReadStream(filePath)) {
     const chunk = rawChunk as Buffer;
     pendingBytes += chunk.byteLength;
-    // 10 是换行符的字节值(`\n`):pending 已超限而本块仍无换行,说明单行超长,提前止损,
-    // 不等缓冲区继续长大(无换行的恶意文件会把 pending 撑爆)。
+    // 超过单行限制且本块没有换行时立即拒绝, 不继续把无换行的文件读入内存.
     if (pendingBytes > MAX_LINE_BYTES && !chunk.includes(10)) {
       throw new Error(`JSONL 单行超过 ${MAX_LINE_BYTES} 字节`);
     }
@@ -41,7 +39,7 @@ export async function* readJsonl<T>(
 
   pending += decoder.decode();
   if (pending.length > 0) {
-    throw new Error('JSONL 最后一行缺少换行符，文件可能未写完整');
+    throw new Error('JSONL 最后一行缺少换行符, 文件可能未写完整');
   }
 }
 

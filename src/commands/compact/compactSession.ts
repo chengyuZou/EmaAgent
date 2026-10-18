@@ -76,7 +76,7 @@ export interface ManualCompactDeps {
     completeLLM: CompleteLLM,
   ) => (request: CompactRequest) => Promise<CompactResult>;
   readonly createLLMCompletion: (connection: LLMConnection, modelId: string) => CompleteLLM;
-  /** 摘要调用记账;缺省不记账(观测不阻断主链). */
+  /** 记录每次摘要模型请求的用量, 缺省时不记账. */
   readonly usageRecorder?: UsageRecorder;
   /** 手动压缩生命周期由 Compact 管线生产,这里只提供当前 Session 的传输出口. */
   readonly emit: (event: CompactEvent) => void;
@@ -187,7 +187,7 @@ export async function compactSession(
       tools: [],
       estimatedInputTokens,
       force: true,
-      // 命令路径只要纯粹的 Macro:Micro 的占位替换从不落库,跳过它语义更干净.
+      // 手动压缩需要保存摘要, 而 Micro 只改变内存中的工作消息.
       micro: false,
       contextWindow: providerModel.contextWindow,
       modelMaxOutput: providerModel.maxOutput,
@@ -224,13 +224,13 @@ export async function compactSession(
         durationMs: result.durationMs,
       };
     }
-    // 命令路径一定是 macro(micro:false);unchanged 即 macro 失败,micro 形态不可达.
+    // 手动请求禁用了 Micro, 只有 Macro 成功才算完成.
     throw new CommandsError(
       'compact_failed',
       (result.kind === 'unchanged' ? result.failureDetail : undefined) ?? '压缩失败',
     );
   } catch (error) {
-    // 摘要落库是唯一提交点:abort 时历史原样,返回取消终态而非错误.
+    // 取消作为正常终态返回, 运行登记仍由 finally 解除.
     if (signal.aborted) {
       status = 'cancelled';
       return { status };
@@ -243,9 +243,8 @@ export async function compactSession(
 }
 
 /**
- * 摘要请求的系统段: 与 Turn 使用同一静态数组和动态装配函数,
- * 同样的输入得到同样的正文与顺序, 共享前缀缓存.
- * toolNames 恒空, 手动压缩不执行工具.
+ * 与 Turn 使用同一 Prompt 装配入口, 但读取当前设置和角色.
+ * 手动压缩不提供工具, 因此工具说明列表为空.
  */
 async function buildCompactSystemMessages(
   deps: ManualCompactDeps,

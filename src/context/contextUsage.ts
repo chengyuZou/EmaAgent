@@ -1,4 +1,3 @@
-// 估算根模型调用的总输入, Provider 回报后只把同一调用的总量校正为实报.
 import type { LLMTokenUsage, LLMTool, Message } from '@ema-agent/llm';
 import { estimateMessagesTokens } from '@ema-agent/token';
 
@@ -47,7 +46,7 @@ export function providerContextUsage(estimate: ContextUsageEstimate, usage: LLMT
   };
 }
 
-/** 实报锚点后又有模型可见消息时, 圆环重新成为估算而非伪称 Provider 实报. */
+/** Provider 回报后又追加消息时, 总数包含新增估算, 因此来源改为 estimate. */
 export function appendEstimatedContextMessages(
   current: ContextUsage,
   messages: readonly Message[],

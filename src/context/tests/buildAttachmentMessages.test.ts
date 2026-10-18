@@ -1,5 +1,3 @@
-// 验证附件块 → 模型内容的规则表:文件/粘贴文本纯路径投影,图片的支持/降级/读失败分支,
-// 以及取消信号原样上抛不伪装成降级.
 
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';

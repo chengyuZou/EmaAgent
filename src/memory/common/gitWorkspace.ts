@@ -1,5 +1,3 @@
-// 管理一条 Memory 轨道的 Git 基线和整合输入文件.
-
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import {
@@ -22,7 +20,7 @@ export async function prepareMemoryGitWorkspace(
 ): Promise<void> {
   await fs.mkdir(memoryDirectory, { recursive: true });
   await removeMemoryGitDiff(memoryDirectory);
-  // 同轨文件任务已经互斥；这里的 lock 只能来自上次进程中断，需在下一次 Git 写入前清掉。
+  // 调用方须串行执行同一轨道的文件任务, 才能在下一次 Git 写入前清理遗留锁.
   await fs.rm(path.join(memoryDirectory, GIT_INDEX_LOCK_FILE), { force: true });
   await ensureBaseline(memoryDirectory);
 }

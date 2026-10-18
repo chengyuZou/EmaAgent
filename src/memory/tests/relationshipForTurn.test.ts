@@ -1,4 +1,3 @@
-// 验证一根 Turn 只读取共享记忆、当前角色记忆和涉及该角色的完整关系段落。
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';

@@ -1,5 +1,3 @@
-// 定义文件式 Memory 的固定目录结构.
-
 import os from 'node:os';
 import path from 'node:path';
 

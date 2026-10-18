@@ -1,8 +1,7 @@
-// 测试 TTS 文本过滤状态机、跨 Chunk 边界和行内 Markdown 清洗。
 import { describe, it, expect } from 'vitest';
-import { TextFilterStream, filterSentenceForTts } from '../textFilter.js';
+import { TextFilterStream, filterSentenceForTTS } from '../textFilter.js';
 
-// 辅助:把一段文本按 chunk 列表喂进去,返回拼接结果 + flush 尾部。
+// 辅助:把一段文本按 chunk 列表喂进去,返回拼接结果 + flush 尾部.
 function runChunks(chunks: string[]): { streamed: string; flushed: string } {
   const f = new TextFilterStream();
   let streamed = '';
@@ -11,13 +10,12 @@ function runChunks(chunks: string[]): { streamed: string; flushed: string } {
   return { streamed, flushed };
 }
 
-// 辅助:一次性喂完整文本(不分块)。
+// 辅助:一次性喂完整文本(不分块).
 function runOnce(text: string): string {
   const { streamed, flushed } = runChunks([text]);
   return streamed + flushed;
 }
 
-// ── normal 状态:普通文本原样通过 ──────────────────────────────────────────────
 
 describe('TextFilterStream normal 状态', () => {
   it('纯文本原样输出', () => {
@@ -38,7 +36,6 @@ describe('TextFilterStream normal 状态', () => {
   });
 });
 
-// ── fenced_code:``` 代码块 ────────────────────────────────────────────────────
 
 describe('TextFilterStream 代码块(```)', () => {
   it('完整代码块:内容丢弃,关闭时吐(代码)替换词', () => {
@@ -74,7 +71,6 @@ describe('TextFilterStream 代码块(```)', () => {
   });
 });
 
-// ── math_block:$$ 数学块 ──────────────────────────────────────────────────────
 
 describe('TextFilterStream 数学块($$)', () => {
   it('完整数学块:内容丢弃,关闭时吐(数学公式)', () => {
@@ -90,7 +86,6 @@ describe('TextFilterStream 数学块($$)', () => {
   });
 });
 
-// ── 跨 chunk 状态保留(流式核心)──────────────────────────────────────────────
 
 describe('TextFilterStream 跨 chunk 状态保留', () => {
   it('fence 开头被拆到两个 chunk:``` 在 chunk1,python 在 chunk2', () => {
@@ -125,7 +120,6 @@ describe('TextFilterStream 跨 chunk 状态保留', () => {
   });
 });
 
-// ── flush 兜底:未闭合块 ──────────────────────────────────────────────────────
 
 describe('TextFilterStream flush 兜底', () => {
   it('未闭合代码块:flush 吐替换词', () => {
@@ -136,7 +130,7 @@ describe('TextFilterStream flush 兜底', () => {
 
   it('未闭合数学块:flush 也吐(代码)(flush 走 codeReplacement,不分 math/code)', () => {
     // 源码行为:flush 对 fenced_code/math_block/in_opener 都调 codeReplacement(),
-    // 只有正常关闭的 math 才吐 (数学公式);flush 兜底的 math 吐 (代码)。
+    // 只有正常关闭的 math 才吐 (数学公式);flush 兜底的 math 吐 (代码).
     const { streamed, flushed } = runChunks(['$$\nx = 1']);
     expect(streamed).toBe('');
     expect(flushed).toBe(' (代码) ');
@@ -165,7 +159,6 @@ describe('TextFilterStream flush 兜底', () => {
   });
 });
 
-// ── 关闭启发式:数量不精确匹配 ─────────────────────────────────────────────────
 
 describe('TextFilterStream 关闭符启发式', () => {
   it('代码块 closer 数量多于 3 也能关(4 个 `)', () => {
@@ -187,80 +180,79 @@ describe('TextFilterStream 关闭符启发式', () => {
   });
 });
 
-// ── filterSentenceForTts:行内清洗(无状态)──────────────────────────────────
 
-describe('filterSentenceForTts 行内清洗', () => {
+describe('filterSentenceForTTS 行内清洗', () => {
   it('纯文本快速路径:无特征字符直接返回', () => {
-    expect(filterSentenceForTts('今天天气真好')).toBe('今天天气真好');
+    expect(filterSentenceForTTS('今天天气真好')).toBe('今天天气真好');
   });
 
   it('粗体 **text** -> text', () => {
-    expect(filterSentenceForTts('这是 **重点** 内容')).toBe('这是 重点 内容');
+    expect(filterSentenceForTTS('这是 **重点** 内容')).toBe('这是 重点 内容');
   });
 
   it('斜体 *text* -> text', () => {
-    expect(filterSentenceForTts('这是 *斜体* 内容')).toBe('这是 斜体 内容');
+    expect(filterSentenceForTTS('这是 *斜体* 内容')).toBe('这是 斜体 内容');
   });
 
   it('删除线 ~~text~~ -> text', () => {
-    expect(filterSentenceForTts('~~旧~~新')).toBe('旧新');
+    expect(filterSentenceForTTS('~~旧~~新')).toBe('旧新');
   });
 
   it('行内代码 `code` -> code', () => {
-    expect(filterSentenceForTts('用 `npm install` 安装')).toBe('用 npm install 安装');
+    expect(filterSentenceForTTS('用 `npm install` 安装')).toBe('用 npm install 安装');
   });
 
   it('图片 ![alt](url) -> (图片)', () => {
-    expect(filterSentenceForTts('看这张 ![示意图](http://x/y.png) 图')).toBe('看这张 (图片) 图');
+    expect(filterSentenceForTTS('看这张 ![示意图](http://x/y.png) 图')).toBe('看这张 (图片) 图');
   });
 
   it('链接 [text](url) -> text', () => {
-    expect(filterSentenceForTts('参见 [文档](http://x) 了解')).toBe('参见 文档 了解');
+    expect(filterSentenceForTTS('参见 [文档](http://x) 了解')).toBe('参见 文档 了解');
   });
 
   it('网址 -> 链接', () => {
-    expect(filterSentenceForTts('访问 https://example.com 看看')).toBe('访问 链接 看看');
+    expect(filterSentenceForTTS('访问 https://example.com 看看')).toBe('访问 链接 看看');
   });
 
   it('Windows 路径 -> 路径', () => {
-    expect(filterSentenceForTts('文件在 C:\\Users\\test\\file.txt')).toBe('文件在 路径');
+    expect(filterSentenceForTTS('文件在 C:\\Users\\test\\file.txt')).toBe('文件在 路径');
   });
 
   it('行内数学 $x$ -> (公式)', () => {
-    expect(filterSentenceForTts('计算 $a+b$ 的值')).toBe('计算 (公式) 的值');
+    expect(filterSentenceForTTS('计算 $a+b$ 的值')).toBe('计算 (公式) 的值');
   });
 
   it('标题前缀 # -> 去掉(# 是特征字符,触发 replace 链)', () => {
-    expect(filterSentenceForTts('## 标题')).toBe('标题');
+    expect(filterSentenceForTTS('## 标题')).toBe('标题');
   });
 
   it('列表前缀 - / * -> 去掉(含特征字符 - 或 *)', () => {
-    expect(filterSentenceForTts('- 列表项')).toBe('列表项');
-    expect(filterSentenceForTts('* 列表项')).toBe('列表项');
+    expect(filterSentenceForTTS('- 列表项')).toBe('列表项');
+    expect(filterSentenceForTTS('* 列表项')).toBe('列表项');
   });
 
   it('有序列表 1. 前缀:纯数字句不含特征字符走快速路径,不剥', () => {
     // "1. 第一项" 不含 [<![\]*_`$#>\-~|:\\/] 任何字符,走快速路径直接 trim 返回,
-    // 所以 1. 前缀不剥。这是 filterSentenceForTts 的已知行为(快速路径优先)。
-    expect(filterSentenceForTts('1. 第一项')).toBe('1. 第一项');
+    // 所以 1. 前缀不剥.这是 filterSentenceForTTS 的已知行为(快速路径优先).
+    expect(filterSentenceForTTS('1. 第一项')).toBe('1. 第一项');
   });
 
   it('HTML 标签 -> 去掉', () => {
-    expect(filterSentenceForTts('<b>粗</b>文本')).toBe('粗文本');
+    expect(filterSentenceForTTS('<b>粗</b>文本')).toBe('粗文本');
   });
 
   it('多空格:纯空格句不含特征字符,走快速路径不合并', () => {
-    // "a    b     c" 不含特征字符,快速路径直接 trim 返回,空格不合并。
-    // 含特征字符的文本才进 replace 链触发 [ \t]+ -> ' ' 合并。
-    expect(filterSentenceForTts('a    b     c')).toBe('a    b     c');
+    // "a    b     c" 不含特征字符,快速路径直接 trim 返回,空格不合并.
+    // 含特征字符的文本才进 replace 链触发 [ \t]+ -> ' ' 合并.
+    expect(filterSentenceForTTS('a    b     c')).toBe('a    b     c');
   });
 
   it('多空格合并:含特征字符时触发 replace 链', () => {
     // 含 * 触发 replace 链,末尾 [ \t]+ -> ' ' 把多空格合并
-    expect(filterSentenceForTts('a    *b*     c')).toBe('a b c');
+    expect(filterSentenceForTTS('a    *b*     c')).toBe('a b c');
   });
 
   it('trim 首尾空白', () => {
-    expect(filterSentenceForTts('  中间  ')).toBe('中间');
+    expect(filterSentenceForTTS('  中间  ')).toBe('中间');
   });
 });

@@ -13,7 +13,7 @@ export type {
 export { SentenceSplitter } from './sentenceSplitter.js';
 export { SpeechCoordinator } from './speechCoordinator.js';
 export type { SpeechCoordinatorArgs, SpeechGenerationResult } from './speechCoordinator.js';
-export { filterSentenceForTts, TextFilterStream } from './textFilter.js';
+export { filterSentenceForTTS, TextFilterStream } from './textFilter.js';
 export { SpeechVoiceCache } from './voiceHandleCache.js';
 export type {
   PrepareSpeechVoiceRequest,
@@ -23,5 +23,5 @@ export type {
   SpeechVoicePreviewErrorCode,
   SpeechVoicePreviewResult,
   SpeechVoicePreviewSource,
-  SpeechVoicePreviewTts,
+  SpeechVoicePreviewTTS,
 } from './voicePreview.js';

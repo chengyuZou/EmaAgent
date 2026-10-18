@@ -3,19 +3,16 @@ import type { PromptBlock } from '@ema-agent/prompts';
 import type { ToolPool } from '@ema-agent/tools';
 import type { ContextUsageEstimate } from './contextUsage.js';
 
-/**
- * @param systemPrompt 调用方拼接的静态与动态有序块; 数组顺序即发送顺序, 断点只来自块自身标记
- * @param toolPool 与执行器共享的同一个根 Turn 冻结 ToolPool
- * @param messages 当前的全部有效工作消息, 不包含 system 消息.
-*/
 export interface AssembleContextInput {
+  /** 静态与动态 Prompt 块, 按数组顺序发送并保留块自身的缓存标记. */
   readonly systemPrompt: readonly PromptBlock[];
+  /** 与本次执行器共用的 ToolPool, 保持模型可见工具与可执行工具一致. */
   readonly toolPool: ToolPool;
+  /** 全部有效工作消息, 不包含 system 消息. */
   readonly messages: readonly Message[];
   readonly contextWindow: number;
 }
 
-/** 一次 LLM Call 真正发送前的最终 Provider 中立输出 */
 export interface PreparedContext {
   readonly messages: readonly Message[];
   readonly tools: readonly LLMTool[];

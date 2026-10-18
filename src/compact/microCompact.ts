@@ -1,9 +1,8 @@
-// 执行零模型调用的微压缩, 保留近期工具结果
 import type {
   Message as ModelMessage, AssistantBlock, UserBlock, ToolResultBlock,
 } from '@ema-agent/llm';
 
-const CLEARED_PLACEHOLDER = '[Old tool result content cleared — call the tool again if needed]';
+const CLEARED_PLACEHOLDER = '[Old tool result content cleared - call the tool again if needed]';
 
 // Message 只保存模型可见的 Tool 名称, 因此按名称识别可重新获取的只读结果.
 // AskUser, Skill, MCP, Shell 和写入类工具不在集合中, 避免清掉不可重放的事实.
@@ -16,10 +15,7 @@ const COMPACTABLE_TOOLS = new Set<string>([
 ]);
 
 /**
- * 遍历消息数组, 将过时的 tool_result 内容替换为简短占位符, 无需调用 LLM.
- * 仅对其来源工具在 COMPACTABLE_TOOLS 中的 tool_result 块进行操作(可重新获取的输出)
- * 保留最近的 `keepRecentToolResults` 个可压缩的 tool_results 不变
- * 超过最近窗口的所有内容都将其内容替换为占位符
+ * 仅替换较早的可重新读取的成功工具结果, 不修改持久化历史.
  */
 export function microCompact(
   messages: readonly ModelMessage[],

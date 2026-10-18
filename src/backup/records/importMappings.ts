@@ -1,4 +1,3 @@
-// 把已校验的 ZIP 记录转换为数据库行, 并结束来源机尚未完成的执行.
 import type {
   SubagentMessageRow,
   SubagentRow,
@@ -73,7 +72,7 @@ export function restoreTurnRecord(record: TurnRecord, importedAt: number): TurnR
     completed_at: unfinished ? record.completedAt ?? importedAt : record.completedAt,
     error_code: unfinished ? 'backup/import_interrupted' : record.errorCode,
     error_message: unfinished
-      ? 'Turn 导出时尚未完成，导入后不会继续执行'
+      ? 'Turn 导出时尚未完成, 导入后不会继续执行'
       : record.errorMessage,
   };
 }
@@ -159,7 +158,7 @@ export function restoreSubagentRunRecord(record: SubagentRunRecord, importedAt: 
     permission_mode: record.permissionMode,
     reasoning_effort: record.reasoningEffort,
     status: unfinished ? 'cancelled' : record.status,
-    error: unfinished ? 'Subagent 导出时尚未完成，导入后不会继续执行' : record.error,
+    error: unfinished ? 'Subagent 导出时尚未完成, 导入后不会继续执行' : record.error,
     iterations: record.iterations,
     tool_call_count: record.toolCallCount,
     input_tokens: record.inputTokens,
@@ -237,7 +236,7 @@ export function restoreBackgroundProcessRecord(
     completed_at: unfinished ? record.completedAt ?? importedAt : record.completedAt,
     exit_code: record.exitCode,
     termination_reason: unfinished
-      ? '后台进程导出时尚未完成，导入后不会重新启动'
+      ? '后台进程导出时尚未完成, 导入后不会重新启动'
       : record.terminationReason,
     stdout_bytes: stdoutBytes,
     stderr_bytes: stderrBytes,

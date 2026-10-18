@@ -1,4 +1,3 @@
-// Commands 包公共出口：确定性命令用例与目录投影。
 export { compactSession } from './compact/compactSession.js';
 export type {
   ManualCompactDeps,

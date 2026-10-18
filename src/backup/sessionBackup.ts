@@ -1,4 +1,3 @@
-// 构造时清理上次异常退出遗留的备份临时目录, 不删除已发布的会话或 ZIP.
 import fs from 'node:fs';
 import path from 'node:path';
 import type { SessionBackupReader, SessionBackupRestorer } from '@ema-agent/storage';
@@ -17,6 +16,7 @@ export class SessionBackup {
     private readonly modelSelectionExists: (providerId: string, modelId: string) => boolean,
   ) {
     const temporaryRoot = path.join(activeDataDir, '.backup-temp');
+    // 一个数据目录只创建一个实例. 此处清理上次异常退出遗留的临时文件.
     fs.rmSync(temporaryRoot, { recursive: true, force: true });
     this.exportTemporaryRoot = path.join(temporaryRoot, 'exports');
     this.importTemporaryRoot = path.join(temporaryRoot, 'imports');

@@ -1,5 +1,3 @@
-// 把 Character 返回的模型 ZIP 交给 pixi-live2d-display 的文件加载链。
-
 import JSZip from 'jszip';
 import {
   Cubism4InternalModel,

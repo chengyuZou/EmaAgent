@@ -1,5 +1,3 @@
-// 测试待机视线只在宿主判定无交互时写入归一化注视点，且范围受限。
-
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { startLive2DIdleGaze } from '../idleGaze.js';
 
@@ -15,7 +13,7 @@ describe('startLive2DIdleGaze', () => {
     const setFocus = vi.fn();
     const stop = startLive2DIdleGaze(setFocus, () => true);
 
-    vi.advanceTimersByTime(2_750); // 0.5 随机 → 1000 + 1750
+    vi.advanceTimersByTime(2_750);
     expect(setFocus).toHaveBeenCalledOnce();
     const [x, y] = setFocus.mock.calls[0]!;
     expect(x).toBeGreaterThanOrEqual(-0.9);
@@ -25,7 +23,7 @@ describe('startLive2DIdleGaze', () => {
     stop();
   });
 
-  it('宿主有鼠标活动时跳过本轮，恢复后继续游移', () => {
+  it('宿主有鼠标活动时跳过本轮, 恢复后继续游移', () => {
     vi.useFakeTimers();
     vi.spyOn(Math, 'random').mockReturnValue(0);
     const setFocus = vi.fn();

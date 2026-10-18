@@ -1,9 +1,3 @@
-// 在 Cubism 完成 Motion、Expression、Physics 后的唯一帧写入点平滑驱动口型。
-//
-// 说话才占有嘴参数：宿主停止说话后进入约 700ms 的 hold（先平滑闭嘴、再按住，
-// 防止 Motion 曲线的非零残值立刻把嘴顶开），hold 耗尽后彻底停笔。Cubism 每帧会
-// 把参数回滚到 Motion 快照，停笔即交还，带嘴曲线的 Motion/Expression 此后正常生效。
-
 import type { Cubism4InternalModel } from 'pixi-live2d-display/cubism4';
 import type { ResolvedLive2DLipSyncParameter } from './modelBindings.js';
 
@@ -24,7 +18,7 @@ export function attachLive2DLipSync(
   internalModel: Cubism4InternalModel,
   parameters: readonly ResolvedLive2DLipSyncParameter[],
 ): Live2DLipSync {
-  // 0.5.0-beta 运行时继承 EventEmitter，但打包后的 d.ts 丢失了 on/off 成员。
+  // 当前依赖的运行时提供 on/off, 但发布的声明未包含这两个成员.
   const frameEvents = internalModel as Cubism4InternalModel & {
     on(event: 'beforeModelUpdate', listener: () => void): void;
     off(event: 'beforeModelUpdate', listener: () => void): void;
@@ -45,8 +39,10 @@ export function attachLive2DLipSync(
     if (phase === 'handoff') return;
 
     if (phase === 'hold') {
+      // 说完后先平滑闭嘴并维持 700ms, 避免动作曲线立刻把嘴重新顶开.
       holdRemainingMs -= deltaMs;
       if (holdRemainingMs <= 0) {
+        // 此后不写嘴参数, 让模型自身的 Motion 和 Expression 决定口型.
         phase = 'handoff';
         current = 0;
         return;

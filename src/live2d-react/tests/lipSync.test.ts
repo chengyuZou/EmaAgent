@@ -1,5 +1,3 @@
-// 测试口型在说话期间平滑写入，停止说话经 hold 后彻底交还参数控制权。
-
 import type { Cubism4InternalModel } from 'pixi-live2d-display/cubism4';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { attachLive2DLipSync } from '../lipSync.js';
@@ -43,13 +41,13 @@ describe('attachLive2DLipSync', () => {
 
     lipSync.set(true, 2); // 输入被钳制到 1
     frame();
-    expect(writes[0]).toBeCloseTo(0.4); // -1 + 4 × (1 × 0.35)
+    expect(writes[0]).toBeCloseTo(0.4); // -1 + 4 * (1 * 0.35)
 
     frame();
     expect(writes[1]!).toBeGreaterThan(writes[0]!);
   });
 
-  it('停止说话后先衰减写入，hold 耗尽后彻底停笔交还', () => {
+  it('停止说话后先衰减写入, hold 耗尽后停止控制嘴参数', () => {
     const { lipSync, writes, frame } = setup();
 
     lipSync.set(true, 1);
@@ -60,18 +58,18 @@ describe('attachLive2DLipSync', () => {
     frame();
     expect(writes.at(-1)!).toBeLessThan(speakingLast); // 衰减中
 
-    // 700ms hold 内持续写入（按住闭嘴）
+    // hold 期间继续写入闭嘴值, 不让模型动作提前重新打开嘴.
     for (let i = 0; i < 20; i++) frame();
     expect(writes.length).toBeGreaterThan(32);
 
-    // hold 耗尽：此后不再写任何值，嘴参数交还 Motion/Expression
+    // hold 结束后不再写值, 由模型的 Motion 和 Expression 控制.
     for (let i = 0; i < 60; i++) frame();
     const countAfterHandoff = writes.length;
     for (let i = 0; i < 10; i++) frame();
     expect(writes.length).toBe(countAfterHandoff);
   });
 
-  it('hold 期间重新说话立即恢复接管，停笔后再次说话从 0 续起', () => {
+  it('hold 期间重新说话立即恢复口型, handoff 后再次说话从 0 续起', () => {
     const { lipSync, writes, frame } = setup();
 
     lipSync.set(true, 1);
@@ -82,7 +80,7 @@ describe('attachLive2DLipSync', () => {
 
     lipSync.set(true, 1);
     frame();
-    expect(writes.at(-1)!).toBeGreaterThan(duringHold); // 从 hold 中的值回升，不跳变
+    expect(writes.at(-1)!).toBeGreaterThan(duringHold);
 
     lipSync.set(false, 0);
     for (let i = 0; i < 60; i++) frame(); // 走完 hold 进入 handoff

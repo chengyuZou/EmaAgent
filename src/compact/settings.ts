@@ -2,16 +2,14 @@ import type { SettingsStore, SettingGroup } from '@ema-agent/settings';
 import { defineSetting } from '@ema-agent/settings';
 import { z } from 'zod';
 
-/**
- * @param bufferRatio 估算达到窗口的 (1 - bufferRatio) % 即压缩;
- * @param keepRecentToolResults 压缩时保留最近的 ToolResult 条数
- * @param maximumConsecutiveFailures 连续失败次数上限, 超过则不再尝试调用 API 生成摘要
- * @param retainRatio 近期原文保留比例 保留约 (retainRatio * contextWindow) Token硬预算不足时 Compact 会继续扩大摘要范围
- */
 export interface CompactSettings {
+  /** 输入估算超过 contextWindow * (1 - bufferRatio) 时尝试压缩. */
   readonly bufferRatio: number;
+  /** Micro 保留最近多少条可压缩的成功工具结果. */
   readonly keepRecentToolResults: number;
+  /** 同一压缩函数中, Session 连续失败达到此次数后暂停自动压缩. */
   readonly maximumConsecutiveFailures: number;
+  /** 近期原文目标为 contextWindow * retainRatio; 放不下摘要时会继续扩大摘要范围. */
   readonly retainRatio: number;
 }
 

@@ -1,5 +1,3 @@
-// 测试 Live2D 始终按模型真实边界计算稳定的默认半身构图。
-
 import { describe, expect, it } from 'vitest';
 import { calculateLive2DPlacement } from '../framing.js';
 

@@ -26,7 +26,7 @@ export interface CompactRequest {
   readonly thinking?: LLMThinking;
   /** 完整候选请求的本地估算, 包含工作消息以外的 System Prompt 和 Tool 定义. */
   readonly estimatedInputTokens: number;
-  /** Provider 已明确报告超限时跳过阈值判断. */
+  /** 手动压缩或 Provider 已报告超限时, 跳过触发阈值和连续失败限制. */
   readonly force?: boolean;
   /**
    * 是否先跑 Micro. 手动 /compact 传 false, 因为 Micro 的替换不落库.
@@ -39,7 +39,7 @@ export interface CompactRequest {
   /** 过程事件出口. 事件属于 Session, 调用方负责补充 Turn 身份. */
   readonly emit?: (event: CompactEvent) => void;
   /**
-   * 根 Turn 和手动 /compact 用它保存摘要
+   * Turn 和手动 /compact 用它保存摘要.
    * 保存成功后才发 compact_completed. 保存失败则发 compact_failed 并上抛.
    */
   readonly saveMacroSummary?: (
@@ -51,14 +51,11 @@ export interface CompactRequest {
   readonly settings?: Readonly<CompactSettings>;
 }
 
-/**
- * Compact 的唯一返回值
- */
 export type CompactResult =
   | {
       readonly kind: 'unchanged';
       readonly messages: readonly Message[];
-      /** 仅 Macro 尝试失败时携带, 未尝试的 unchanged 没有这个字段 */
+      /** 仅 Macro 尝试失败时携带, 未尝试的 unchanged 没有这个字段. */
       readonly failureDetail?: string;
     }
   | {

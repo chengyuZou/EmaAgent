@@ -1,5 +1,3 @@
-// 为一次 Turn 读取当前角色可见的正式关系记忆
-
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 

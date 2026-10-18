@@ -1,5 +1,3 @@
-// 文件先发布, 数据库随后在一个事务中恢复. 数据库失败时删除本次发布的目录,
-// 避免留下指向未写完文件的正式记录.
 import fs from 'node:fs';
 import type { ZodType } from 'zod';
 import type { SessionBackupReader, SessionBackupRestorer } from '@ema-agent/storage';
@@ -129,9 +127,10 @@ export async function importSessionArchive(
     ) {
       restoredSession.provider_id = null;
       restoredSession.model_id = null;
-      warnings.push('原 Session 的模型在当前安装中不可用，已清除模型选择');
+      warnings.push('原 Session 的模型在当前安装中不可用, 已清除模型选择');
     }
 
+    // 先发布完整文件, 再恢复数据库. 数据库失败时只删除本次新建的目录.
     const files = publishSessionFiles(
       activeDataDir,
       manifest.sessionId,

@@ -1,4 +1,3 @@
-// 管理稳定子代理身份与每次 Run, 首次创建的外层事务归本业务层.
 import type {
   SqliteDb, SubagentPageCursor, SubagentRow, SubagentRunConfiguration,
   SubagentRunPageCursor, SubagentRunRow, SubagentRunsRepo, SubagentsRepo,

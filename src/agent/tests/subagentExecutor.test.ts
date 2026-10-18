@@ -1,5 +1,3 @@
-// 验证进程级 Subagent 的结果归属: 前台直接返回, 转后台后通知 Session, 持久终态可重复读取.
-
 import type { StreamingToolExecutor, ToolResult } from '@ema-agent/tools';
 import { BuiltinTools } from '@ema-agent/tools/identity';
 import { afterEach, describe, expect, it, vi } from 'vitest';

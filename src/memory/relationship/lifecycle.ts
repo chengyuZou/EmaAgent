@@ -1,5 +1,3 @@
-// 按每个角色真正出现过的活跃日期清理 Relationship 历史。
-
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
@@ -9,8 +7,7 @@ interface RelationshipHistoryFile {
 }
 
 /**
- * 每个角色只保留最近 activeDays 个有历史记录的日期。
- * 用户离线不会产生日期，也就不会推进这条生命周期。
+ * 每个角色保留最近 activeDays 个有历史文件的日期, 不是最近多少个自然日.
  */
 export async function listExpiredRelationshipHistoryFiles(
   memoryRoot: string,

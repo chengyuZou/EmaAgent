@@ -1,5 +1,3 @@
-// 在一个稳定的 Pixi Canvas 中加载 Character 模型包,并执行表情、动作和口型命令。
-
 import {
   forwardRef,
   useEffect,
@@ -29,7 +27,7 @@ import type {
 
 type Cubism4Model = Live2DModel<Cubism4InternalModel>;
 
-/** 鼠标静止超过该时长后,视线输入从鼠标切换为待机游移。 */
+/** 鼠标静止超过该时长后允许待机视线移动. */
 const POINTER_IDLE_GAZE_MS = 1_000;
 
 export interface Live2DStageProps {
@@ -137,7 +135,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
       if (!host) return;
       if (typeof window.Live2DCubismCore === 'undefined') {
         callbacksRef.current.onError?.(
-          new Error('未加载 Live2D Cubism Core,无法创建模型。'),
+          new Error('未加载 Live2D Cubism Core, 无法创建模型.'),
         );
         return;
       }
@@ -193,7 +191,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
         app.ticker.stop();
         callbacksRef.current.onDiagnostic?.('ticker_stopped', null);
       } else {
-        // WebView 恢复可见后的首个动画帧可能要等输入事件;先画一帧再重启 ticker。
+        // 恢复时先画一帧, 再重启 ticker, 避免首帧等待后续输入事件.
         app.render();
         app.ticker.start();
         callbacksRef.current.onDiagnostic?.('ticker_started', null);
@@ -225,7 +223,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
           return;
         }
 
-        // ZIP 可在旧模型仍显示时完成解析;只有新模型可用后才原子替换舞台内容.
+        // 新模型加载完成后再移除旧模型, 加载期间仍显示原角色.
         modelCleanupRef.current?.();
         const cleanupModel = mountModel(app, model, {
           interactiveRef,
@@ -338,7 +336,7 @@ function mountModel(
   );
   refs.applyFramingRef.current = fit;
   fit();
-  // Pixi 的 resizeTo 在窗口 resize 之后才更新 renderer;构图必须等 renderer 的尺寸落定。
+  // 等 renderer 更新尺寸后再计算构图, 避免使用 resize 前的宽高.
   app.renderer.on('resize', fit);
   cleanups.push(() => app.renderer.off('resize', fit));
 

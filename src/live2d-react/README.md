@@ -1,20 +1,8 @@
-# @ema-agent/live2d-react
+# Live2D React
 
-`live2d-react` 只负责把 Character 的 Cubism 4 模型 ZIP 加载到 PIXI 舞台,并执行模型原生表情、动作、视线和口型。
+[中文](./README-zh.md)
 
-角色选择、资源降级、emotion/motion 语义、音频播放和跨窗口事件均由宿主负责。本包不读 Character Store，不保存数据，不解压资源，不猜作者的 Parameter 语义。
-
-## 公共契约
-
-```ts
-interface Live2DStageHandle {
-  setExpression(name: string | null): void;
-  playMotion(group: string, index: number): void;
-  setPlacement(stageScale: number, stageOffsetX: number, stageOffsetY: number): void;
-  setLipSync(speaking: boolean, mouthOpen: number): void;
-  setPointerPosition(clientX: number, clientY: number): void;
-}
-```
+This package loads a Character's Cubism 4 model ZIP into a React/PIXI stage. The host supplies the archive, placement, pointer input and normalized mouth opening, then uses the stage handle to select expressions and play motions.
 
 ```tsx
 <Live2DStage
@@ -24,55 +12,35 @@ interface Live2DStageHandle {
   stageOffsetX={resource.stageOffsetX}
   stageOffsetY={resource.stageOffsetY}
   suspended={windowHidden}
-  onReady={({ hasExpressions }) => {}}
+  onReady={handleReady}
   onError={handleLoadFailure}
 />
 ```
 
-`mouthOpen` 是宿主已换算的 `0..1` 开口度,本包不理解音频分析或某个 TTS 协议。嘴部 Parameter 只从 `.model3.json` 的 `LipSync` Group 读取,模型没有登记时不驱动口型。
+Load the licensed Cubism Core into `window.Live2DCubismCore` before mounting. The desktop host is [CharacterStage.tsx](../../apps/desktop/src/stage/CharacterStage.tsx). Model configuration previews also use `loadLive2DArchive`.
 
-`setPointerPosition` 接收窗口内 CSS 逻辑坐标, 鼠标位于窗口外时可以为负或超出窗口尺寸. 本包按 Canvas 的实际位置和尺寸换算为 PIXI 世界坐标, 交给 `model.focus`, 不把窗口外坐标截到画布边缘.
+## Loading and lifetime
 
-`pointerSource` 默认为 `window`, 使用当前页面的 `mousemove`; 桌宠设置为 `host`, 由宿主收到系统坐标事件后调用 `setPointerPosition`, 不同时消费页面鼠标移动. 本包不读取系统鼠标, 不订阅 Tauri 事件, 不处理菜单显隐或点击穿透.
+The component keeps one PIXI application and canvas for its mounted lifetime. `live2dArchive.ts` registers the JSZip callbacks used by the library's ZipLoader. Internal paths become blob URLs, allowing the model settings to load textures, motions and expressions from the archive.
 
-相同坐标的重复采样不刷新鼠标活动时间, 保留静止 1s 后的待机游移. 该判断属于当前模型的视线输入, 不按角色身份缓存坐标, 不排队或补发旧坐标. 暂停或不交互时不执行跟随.
+A new model loads while the current one remains visible. Only the latest completed load is mounted; stale completions are destroyed. Switching models removes old listeners and lip-sync bindings. Unmounting destroys the application and model resources.
 
-待机动作交给 Cubism MotionManager,它从 `.model3.json` 的 `Idle` Group 自动选择并在 Motion 结束后继续播放。手动 Motion 使用更高优先级,播放完成后自然回到原生待机链。
+The application's ticker drives model updates. `suspended` stops it; resuming renders a frame and restarts it. Render failures stop the ticker and are logged. Loading failures reach `onError`; individual expression/motion failures are logged without discarding the model. The optional `onDiagnostic` callback reports canvas, loading and ticker events to the host.
 
-## 播放流水线
+## Placement and controls
 
-```text
-Character ZIP Blob
-  -> JSZip 保留包内目录关系
-  -> pixi-live2d-display ZipLoader/FileLoader 建立 blob URL
-  -> .model3.json
-  -> pixi-live2d-display/cubism4 加载 moc3/纹理/physics/motion/expression
-  -> Live2DModel 加入 PIXI stage
-  -> PIXI.Application.ticker 驱动 Cubism 单一帧循环
-  -> Motion -> Expression -> EyeBlink/Focus/Breath -> Physics/Pose
-  -> beforeModelUpdate 写入已绑定口型（仅说话期间与说完后约 0.7s 内）
-  -> Cubism Core update -> PIXI/WebGL 绘制
-```
+The default framing uses model bounds to show the upper body. Scale multiplies the base fit. X/Y offsets are fractions of stage width/height applied to the full model; they can move initially cropped content into view.
 
-呼吸、摇头、眼睛、表情混合、Physics 和 Motion 优先级均由 Cubism 原生流水线负责。本包不额外生成正弦参数 Effect。
+The ref handle exposes `setExpression(name | null)`, `playMotion(group, index)`, `setPlacement`, `setLipSync` and `setPointerPosition`. Null expression resets to the model's default. Manual motions use the library's FORCE priority; native idle playback is handled by its MotionManager.
 
-口型实行三态占有：`speaking`（宿主持续传入开口度，EMA 平滑写入）→ `hold`（说完后约 700ms，先平滑闭嘴再按住，防 Motion 残值顶开）→ `handoff`（彻底停笔；Cubism 每帧回滚到 Motion 快照，嘴参数控制权天然交还）。因此带嘴曲线的 Motion/Expression 在无语音时正常生效。
+`pointerSource` defaults to `window` mouse events. With `host`, the host calls `setPointerPosition` using CSS coordinates relative to the window content, including coordinates outside its bounds. The stage converts through the canvas rectangle without clamping to its edges. Repeated identical coordinates do not count as activity. After 1 second without movement, an independent timer may update the same FocusController target for idle gaze. Suspended or noninteractive stages skip pointer/idle updates.
 
-视线有两个输入源：鼠标活动（`model.focus`，世界坐标）与待机游移（`idleGaze.ts`，无鼠标活动 1s 后随机挑选归一化注视点写 `FocusController`）。二者写同一个 FocusController 目标，鼠标一动即覆盖，无需互斥状态。
+## Lip sync
 
-## 文件责职
+`mouthOpen` is a host-supplied value from 0 to 1. Only IDs registered in the model's LipSync group and present in Cubism Core are bound, using each parameter's actual range.
 
-- `Live2DStage.tsx`：React/PIXI/Cubism 生命周期和公开句柄。
-- `live2dArchive.ts`：把完整 ZIP 目录树接入 pixi-live2d-display 的 Zip/File Loader。
-- `modelBindings.ts`：把模型登记的口型 ID 投影到 Cubism Core 的真实 Parameter 范围。
-- `lipSync.ts`：说话期间在唯一帧更新点平滑写入口型，说完经 hold 交还控制权。
-- `idleGaze.ts`：无鼠标活动时随机游移注视点。
-- `framing.ts`：纯函数计算默认半身构图。
-- `types.ts`：宿主真正消费的公共类型。
+The `beforeModelUpdate` listener smooths values while speaking. After speech stops, it closes and holds the mouth for about 700 ms of frame updates, then stops writing parameters so Motion and Expression can control them again. The host owns audio playback and analysis.
 
-## 边界
+## Checking
 
-- 舞台默认构图固定为上半身；`stageScale/stageOffsetX/stageOffsetY` 在 PIXI 模型坐标中改变构图，因此位移可以把默认裁切在画布外的身体部分移入视野。
-- `onError` 只报告无法建立舞台的加载错误；单次表情或 Motion 失败不踢出已可用模型。
-- 本包直接使用 `Cubism4InternalModel` 与它的 `coreModel` / `motionManager`，不复制第二套内部协议。
-- 调用方只从 `index.ts` 进入，内部解析类型不对外暴露。
+`tests/` covers framing, real parameter binding, lip-sync transitions and idle gaze. Run `pnpm --filter @ema-agent/live2d-react test`. These tests do not render WebGL or load a real model; canvas lifetime, archive loading and visual motion still need desktop checks.

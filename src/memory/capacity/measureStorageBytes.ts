@@ -1,5 +1,3 @@
-// 统计整个 Memory 目录中文件与符号链接的字节总量.
-
 import { promises as fs, Dir, Stats } from 'node:fs';
 import path from 'node:path';
 
@@ -23,6 +21,7 @@ export async function measureMemoryStorageBytes(
         continue;
       }
 
+      // lstat 统计链接本身, 不沿链接读取目录外的数据; .git 也计入实际占用.
       const stat = await readEntryStat(entryPath);
       if (stat !== undefined) {
         bytes += stat.size;

@@ -14,11 +14,12 @@ export interface MemoryCapacity {
 }
 
 export function evaluateMemoryCapacity(usedBytes: number): MemoryCapacity {
-  const level: MemoryCapacityLevel = usedBytes >= MEMORY_STORAGE_MAX_BYTES
-    ? 'limitExceeded'
-    : usedBytes >= MEMORY_STORAGE_WARNING_BYTES
-      ? 'warning'
-      : 'normal';
+  let level: MemoryCapacityLevel = 'normal';
+  if (usedBytes >= MEMORY_STORAGE_MAX_BYTES) {
+    level = 'limitExceeded';
+  } else if (usedBytes >= MEMORY_STORAGE_WARNING_BYTES) {
+    level = 'warning';
+  }
   return {
     level,
     usedBytes,

@@ -1,25 +1,7 @@
-// 将增量文本按可朗读边界切句，并避开缩写、小数点和过短片段。
-
-// 把自由文本切成 utterance 大小的块,供流式 TTS 使用。设计为在 LLM
-// 文本流入时调用 - 调用方喂入部分文本,切分器持有缓冲,一旦形成完整
-// 句子就 yield 出来。
-//
-// 规则(故意严格 - 切太碎会产生断续的 TTS):
-//   - 句子终止符:. ! ? 。！？  + 中文「」『』闭引号收尾。
-//   - "..."(三个连续点)是终止符;单个 "…" 不是——它是停顿不是边界,
-//     中文省略号总成对 "……",累积到下一个真正的终止符。
-//   - "." 不终止的情况:
-//       * 前是数字且后是数字  (1.5、3.14)
-//       * 前是已知缩写         (Mr. Dr. e.g. i.e. etc.)
-//       * 紧跟字母/数字        (file.txt - 防御性)
-//   - 最小句子长度:4 字符(trim 后)- 避免 "Ok." "?!" 单独 yield;
-//     它们会累积到下一句。
-//   - 每句最多 200 个 UTF-16 code units, 优先在空白处切分, 否则硬切且不拆开代理对.
-
 const TERMINATORS = new Set<string>([
   '.', '!', '?', '。', '！', '？',
-  // 故意省略 '…' - 单个省略号是停顿,不是句子边界。中文省略号总是成对
-  // "……",应累积到下一个真正的终止符。
+  // 故意省略 '…' - 单个省略号是停顿,不是句子边界.中文省略号总是成对
+  // "……",应累积到下一个真正的终止符.
 ]);
 
 const ABBREVIATIONS = new Set<string>([
@@ -33,17 +15,13 @@ const MAX_BUFFER_LEN   = 200;
 export class SentenceSplitter {
   private buffer = '';
 
-  /**
-   * 喂入一段流式文本。yield 缓冲中已形成的完整句子。
-   */
+  /** 返回已形成的句子; 不足 4 个 UTF-16 码元的片段会继续等待. */
   feed(chunk: string): string[] {
     this.buffer += chunk;
     return this.drain(false);
   }
 
-  /**
-   * 标记流结束。把剩余文本作为最后一句 yield(即使短于 MIN_SENTENCE_LEN)。
-   */
+  /** 流结束时返回剩余内容, 不再受最小句长限制. 每段仍最多 200 个 UTF-16 码元. */
   flush(): string[] {
     return this.drain(true);
   }
@@ -67,8 +45,8 @@ export class SentenceSplitter {
   }
 
   /**
-   * 找 `this.buffer` 中下一个有效终止符的索引。
-   * 还没有有效终止符时返回 -1。
+   * 找 `this.buffer` 中下一个有效终止符的索引.
+   * 还没有有效终止符时返回 -1.
    *
    * 流结束或达到单句上限时必须交付, 没有空白也不能超过上限.
    */
@@ -105,14 +83,13 @@ export class SentenceSplitter {
   }
 
   /**
-   * 判断 `this.buffer[i]` 是否是有效的句子终止符。
+   * 判断 `this.buffer[i]` 是否是有效的句子终止符.
    * 判断规则为
    * - "." 不终止的情况:
-   *     * 前是数字且后是数字  (1.5、3.14)
+   *     * 前是数字且后是数字  (1.5,3.14)
    *     * 前是已知缩写         (Mr. Dr. e.g. i.e. etc.)
    *     * 紧跟字母/数字        (file.txt - 防御性)
-   * - 终止符后必须是空白、缓冲末尾或闭引号。
-   *   否则我们在一个 token 内(URL、版本号等)。
+   * - 英文终止符后要有空白, 缓冲末尾或闭引号, 避免拆开 URL 和版本号.
    */
   private isValidTerminator(i: number): boolean {
     const ch   = this.buffer[i];
@@ -131,14 +108,12 @@ export class SentenceSplitter {
         if (ABBREVIATIONS.has(word)) return false;
       }
 
-      // file.txt - 字母 . 字母(防御性;聊天文本少见)
+      // 不拆开 file.txt 这类文件名.
       if (prev && /[A-Za-z]/.test(prev) && next && /[A-Za-z]/.test(next)) return false;
     }
 
-    // 终止符后必须是空白、缓冲末尾或闭引号。
-    // 否则我们在一个 token 内(URL、版本号等)。
+    // 中文句号, 叹号和问号不要求后接空白.
     if (next && !/[\s"')\]}」』]/.test(next) && next !== undefined) {
-      // 中文终止符后不要求空白
       if (ch === '。' || ch === '！' || ch === '？') return true;
       return false;
     }

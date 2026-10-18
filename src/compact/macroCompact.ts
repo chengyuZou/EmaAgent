@@ -1,4 +1,3 @@
-// 按时间顺序总结全部旧消息, 保留近期原文, 不直接丢弃未总结的前缀.
 import { randomUUID } from 'node:crypto';
 import type {
   AssistantBlock,
@@ -217,7 +216,7 @@ export async function runMacroCompact(args: MacroCompactArgs): Promise<MacroComp
         if (!isPromptTooLong(lastFailure)) {
           return { succeeded: false, detail: lastFailure };
         }
-        // Provider 判超时缩短当前分段, 下一段仍从原 cursor 接着读, 不丢前缀.
+        // Provider 报告输入过长时缩短当前分段, 仍从原 cursor 重试, 不跳过旧消息.
         chunkInputScale *= RETRY_BUDGET_SCALE;
       }
     }

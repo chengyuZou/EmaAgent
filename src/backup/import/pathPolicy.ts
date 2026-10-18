@@ -1,4 +1,3 @@
-// 规范 ZIP 内部路径，并保证解压目标始终位于本次临时目录内。
 import path from 'node:path';
 import { SessionImportError } from '../errors.js';
 

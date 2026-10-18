@@ -1,4 +1,3 @@
-// 验证 JSONL 增量读取能跨 UTF-8 分块，并拒绝没有完整落盘的末行。
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -24,7 +23,9 @@ describe('jsonl', () => {
     const file = temporaryFile();
     fs.writeFileSync(file, '{"id":1}', 'utf8');
     await expect(async () => {
-      for await (const _ of readJsonl(file, input => input)) { /* 消费生成器。 */ }
+      for await (const _ of readJsonl(file, input => input)) {
+        // 读取到文件结束, 让生成器检查末行完整性.
+      }
     }).rejects.toThrow('最后一行缺少换行符');
   });
 });

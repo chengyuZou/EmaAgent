@@ -1,4 +1,3 @@
-// 验证稳定身份、多次 Run、事务回滚、忙碌拒绝和终态配置同步.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Database, SubagentsRepo, SubagentRunsRepo } from '@ema-agent/storage';
 import { SubagentStore } from '../subagents/subagentStore.js';

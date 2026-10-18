@@ -1,5 +1,3 @@
-// 定义 Work 轨可读写的文件结构,并组装一次 Work 整合调用.
-
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import type { CompleteMemoryLLM } from '../common/extraction.js';
@@ -12,12 +10,11 @@ import { MEMORY_CONSOLIDATION_INPUT_BYTES } from '../capacity/limits.js';
 import { WORK_CONSOLIDATION_SYSTEM } from './prompt.js';
 import type { ConsolidateMemory } from '../jobs/runConsolidationJobs.js';
 
-// memory_summary.md 是注入源(Turn 启动时读一次,进持久化 reminder),整合器是唯一写者:
-// 允许 write 是设计使然,但模板强制"基于正式记忆与本次证据重写",防自激.
+// 摘要用于 Turn reminder. 整合 Prompt 要求从正式记忆与新证据重写,
+// 避免旧摘要被反复当作新证据复制.
 const WORK_ROOT_FILES = ['MEMORY.md', 'memory_summary.md'] as const;
 const WORK_SUBDIRS = ['topics'] as const;
 
-/** 枚举 Work 正式记忆. */
 async function listWorkTargetPaths(
   memoryDirectory: string,
 ): Promise<readonly string[]> {
@@ -31,7 +28,6 @@ async function listWorkTargetPaths(
   return targets;
 }
 
-/** Work 只允许维护根文件和 topics. */
 function createWorkTargetPathCheck(): (relativePath: string) => boolean {
   return (relativePath) => (
     relativePath === 'MEMORY.md'
@@ -41,11 +37,9 @@ function createWorkTargetPathCheck(): (relativePath: string) => boolean {
 }
 
 export interface WorkConsolidationDeps {
-  /** 应用层的 LLM 调用闭包(两段消息 → 输出纯文本). */
   readonly complete: CompleteMemoryLLM;
 }
 
-/** 组装 runConsolidationJobs 需要的 Work consolidate 闭包. */
 export function createWorkConsolidate(
   deps: WorkConsolidationDeps,
 ): ConsolidateMemory {

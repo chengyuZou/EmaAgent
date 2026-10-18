@@ -75,7 +75,7 @@ export async function extractSessionArchive(
           entryBytes += chunk.byteLength;
           expandedBytes += chunk.byteLength;
           if (expandedBytes > MAX_EXPANDED_BYTES) {
-            callback(new SessionImportError('archive_bomb', `ZIP 展开体积超过 ${MAX_EXPANDED_BYTES / (1024 * 1024)} GiB`, 413));
+            callback(new SessionImportError('archive_bomb', `ZIP 展开体积超过 ${MAX_EXPANDED_BYTES / (1024 ** 3)} GiB`, 413));
             return;
           }
           callback(null, chunk);

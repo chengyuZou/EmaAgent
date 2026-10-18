@@ -1,5 +1,3 @@
-// 判断压缩时机, 先尝试 Micro, 再调用 Macro 并保存最终摘要.
-
 import { randomUUID } from 'node:crypto';
 import type { CompleteLLM, Message } from '@ema-agent/llm';
 import { estimateMessagesTokens } from '@ema-agent/token';

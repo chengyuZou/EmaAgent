@@ -1,5 +1,3 @@
-// 读取一条 Memory 轨道的摘要并裁剪到本轮注入预算.
-
 import { promises as fs } from 'node:fs';
 import { estimateTextTokens } from '@ema-agent/token';
 

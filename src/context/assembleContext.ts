@@ -35,7 +35,7 @@ export function buildPromptMessages(systemPrompt: readonly PromptBlock[]): Promp
   if (blocks.length === 0) {
     throw new ContextAssemblyError(
       'context/empty-system-prompt',
-      'System Prompt 不能为空。',
+      'System Prompt 不能为空.',
     );
   }
 
@@ -52,7 +52,7 @@ function markFinalCacheBreakpoint(messages: readonly Message[]): Message[] {
   const result = [...messages];
   for (let index = result.length - 1; index >= 0; index -= 1) {
     const message = result[index];
-    // 空消息(空串或零块)不打断点
+    // 最后一个缓存标记随本次工作消息更新, 不沿用历史中的位置.
     if (!message || message.content.length === 0) continue;
     if (!message.cacheBreakpoint) result[index] = { ...message, cacheBreakpoint: true };
     break;
@@ -65,7 +65,7 @@ function stripCacheBreakpoints(messages: readonly Message[]): Message[] {
     if (!message.cacheBreakpoint) return message;
     if (message.role === 'system') return { role: 'system', content: message.content };
     if (message.role === 'user') return { role: 'user', content: message.content };
-    // generatedBy 是中立执行元数据, 必须随工作历史保留到下一次 Adapter 裁决
+    // 保留生成来源, 让 Adapter 判断当前模型能否重放这条回复的推理内容.
     return {
       role: 'assistant',
       content: message.content,

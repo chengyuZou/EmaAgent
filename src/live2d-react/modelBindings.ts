@@ -1,5 +1,3 @@
-// 把 model3.json 的 LipSync Parameter 绑定到当前 Cubism 模型的真实参数范围。
-
 import type { Cubism4InternalModel } from 'pixi-live2d-display/cubism4';
 
 export interface ResolvedLive2DLipSyncParameter {
@@ -9,7 +7,7 @@ export interface ResolvedLive2DLipSyncParameter {
 }
 
 /**
- * Cubism `getParameterIndex()` 会为未知 ID 创建虚拟参数，所以先用 Core 真实 ID 过滤。
+ * Cubism getParameterIndex() 会为未知 ID 创建虚拟参数, 因此先按模型真实 ID 过滤.
  */
 export function resolveLive2DLipSyncParameters(
   internalModel: Cubism4InternalModel,

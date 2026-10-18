@@ -1,5 +1,3 @@
-// 进程级持有子 Agent 的执行、结果归属与取消关系，使后台运行不再依附父 Turn。
-
 import { randomUUID } from 'node:crypto';
 import type { ReasoningEffort } from '@ema-agent/session';
 import type { PermissionModeRow } from '@ema-agent/storage';
@@ -71,7 +69,7 @@ export interface SubagentExecutorDeps {
   ) => void;
   readonly onTerminalResultRead: (sessionId: string, subagentId: string) => void;
   /**
-   * 本次 Run 完成、失败或取消后的针对该RunId的permission收尾通知.
+   * 本次 Run 完成, 失败或取消后, 通知宿主清理这个 Run 的批准请求.
    * 宿主用 runId 清理这次执行尚未解决的批准请求.
    * 不按父 Turn 清理, 不影响同一子代理后续的 Run; 执行异常退出也会通知.
    */
@@ -204,7 +202,7 @@ export class SubagentExecutor {
   }
 
   /**
-   * 单等待者是一次 SubagentAwait Tool 调用。sessionId 只校验 Subagent 归属当前 Session，
+   * 单等待者是一次 SubagentAwait Tool 调用.sessionId 只校验 Subagent 归属当前 Session,
    * signal 也只取消这次 Tool 等待. 后台执行仍由 SubagentExecutor 持有.
    */
   async awaitResult(subagentId: string, sessionId: string, signal: AbortSignal): Promise<SubagentResult | null> {

@@ -1,5 +1,3 @@
-// 定义 Relationship 轨可读写的文件结构,并组装一次 Relationship 整合调用.
-
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import type { CompleteMemoryLLM } from '../common/extraction.js';
@@ -18,7 +16,6 @@ const RELATIONSHIP_ROOT_FILES = [
   'character_relations.md',
 ] as const;
 
-/** 枚举 Relationship 轨正式记忆文件(存在才列出;相对路径,posix). */
 async function listRelationshipTargetPaths(
   memoryDirectory: string,
   characterNames: readonly string[],
@@ -68,11 +65,9 @@ export function createRelationshipTargetPathCheck(
 }
 
 export interface RelationshipConsolidationDeps {
-  /** 应用层的 LLM 调用闭包(两段消息 → 输出纯文本). */
   readonly complete: CompleteMemoryLLM;
 }
 
-/** 组装 runConsolidationJobs 需要的 Relationship consolidate 闭包. */
 export function createRelationshipConsolidate(
   deps: RelationshipConsolidationDeps,
 ): ConsolidateMemory {

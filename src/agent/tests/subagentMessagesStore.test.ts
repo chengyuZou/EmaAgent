@@ -1,4 +1,3 @@
-// 验证 fork 固定前缀、摘要映射、Run 消息流、原生来源和恢复归属.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Database, SubagentMessagesRepo, SubagentsRepo, SubagentRunsRepo } from '@ema-agent/storage';
 import { SubagentMessagesStore } from '../subagents/subagentMessagesStore.js';
@@ -35,7 +34,7 @@ describe('SubagentMessagesStore', () => {
     ] };
   }
 
-  it('范围外覆盖 ID 清空但摘要入库; 新 ID、父来源和工具占位只在副本中', () => {
+  it('范围外覆盖 ID 清空但摘要入库; 新 ID,父来源和工具占位只在副本中', () => {
     const source = parent();
     const original = JSON.stringify(source);
     store.initialize('child', 'r1', '  实际任务\n原文  ', source);

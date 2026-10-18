@@ -25,9 +25,9 @@ import type { AgentLoopInput } from './types.js';
 
 
 const CONTINUE_OUTPUT_MESSAGE =
-  '[系统] 你的输出被截断，请从中断处继续输出剩余内容，不要重复已输出的部分。';
+  '[系统] 你的输出被截断, 请从中断处继续输出剩余内容, 不要重复已输出的部分.';
 const STUCK_GUIDE_MESSAGE =
-  '[系统] 你已连续多轮以完全相同的参数调用相同的工具，没有获得新的信息。请换一个方法、缩小范围，或直接向用户说明当前阻碍。';
+  '[系统] 你已连续多轮以完全相同的参数调用相同的工具, 没有获得新的信息. 请换一个方法, 缩小范围, 或直接向用户说明当前阻碍.';
 const STUCK_BATCH_STREAK = 3;
 
 interface IterationResponse {
@@ -58,7 +58,7 @@ export async function* runAgentLoop(
   let stuckGuideInjected = false;
 
   // AgentLoop 同一时刻最多等待一个工具批次 ToolExecutor 状态变化时调用
-  // signalWake 唤醒这个 waiter; 唤醒后立即清空，避免旧回调误唤醒下一次等待.
+  // signalWake 唤醒这个 waiter; 唤醒后立即清空,避免旧回调误唤醒下一次等待.
   let wake: (() => void) | undefined;
   const signalWake = (): void => {
     wake?.();
@@ -298,7 +298,7 @@ export async function* runAgentLoop(
       };
 
       if (stopReason === 'max_tokens' && toolUseByIndex.size === 0) {
-        // 输出被模型上限截断：注入续写提示接着写；只允许续一次，再撞判恢复失败。
+        // 输出被模型上限截断:注入续写提示接着写;只允许续一次,再撞判恢复失败.
         continuedOutput.push(callText);
         if (!injectedContinuation) {
           const appended: Message[] = [];
@@ -334,7 +334,7 @@ export async function* runAgentLoop(
           messages: [assistantMessage],
         };
         // 没有工具的最终回复也可能与运行中修改交错. 先保存完整 Assistant,
-        // 再领取安全点输入, 避免目标编辑只在工具轮生效或丢到下一根 Turn.
+        // 再领取追加输入, 避免目标编辑只在有工具调用时生效或留到下一个 Turn.
         const nextIterationMessages = await input.takeNextIterationMessages?.() ?? [];
         if (nextIterationMessages.length > 0) {
           messages.push(...nextIterationMessages);
@@ -360,7 +360,7 @@ export async function* runAgentLoop(
         for (const result of executor.takeCompletedResults()) {
           results.push(result);
           yield { type: 'tool_result', result };
-          // yield 恢复代表外层已经保存 ToolResult，执行状态此时才能关账。
+          // 消费方保存 ToolResult 后再恢复循环, 此时才确认结果已处理.
           executor.acknowledgeResult(result.toolCallId);
         }
         if (executor.allDone()) break;
@@ -386,8 +386,8 @@ export async function* runAgentLoop(
         executor.acknowledgeResult(result.toolCallId);
       }
 
-      // 连续多轮完全相同的工具批次视为原地空转：注入一次软引导让模型换方法，
-      // 不立即硬停（轮询类合法重复不能误杀）, 单次循环由 maxIterations 限制.
+      // 连续多轮完全相同的工具批次视为原地空转:注入一次软引导让模型换方法,
+      // 不立即硬停(轮询类合法重复不能误杀), 单次循环由 maxIterations 限制.
       const batchSignature = [...toolUseByIndex.values()]
         .map((use) => `${use.name}:${JSON.stringify(use.args)}`)
         .sort()
@@ -401,8 +401,8 @@ export async function* runAgentLoop(
       const injectStuckGuide = sameBatchStreak >= STUCK_BATCH_STREAK && !stuckGuideInjected;
       if (injectStuckGuide) stuckGuideInjected = true;
 
-      // 完整 assistant 块（含原生推理状态）随 generatedBy 进入下一次迭代：
-      // Tool Loop 不剥除 thinking，由目标协议 Adapter 按生成来源裁决重放/删除。
+      // 完整 assistant 块(含原生推理状态)随 generatedBy 进入下一次迭代:
+      // Tool Loop 不剥除 thinking,由目标协议 Adapter 按生成来源裁决重放/删除.
       // 每个结果保留独立 Message, 与 Session/子代理逐条落库的顺序一致;
       // 是否在 Provider 请求里合并相邻 user 消息只由对应协议决定.
       const toolResultMessages: Message[] = results.map(result => ({

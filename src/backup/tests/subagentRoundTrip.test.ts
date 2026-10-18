@@ -1,4 +1,3 @@
-// 通过真实 ZIP 和 SQLite 验证身份、多次 Run、fork 消息及外部归档关联校验.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -201,8 +200,8 @@ describe('子代理身份、Run 和消息备份', () => {
           entries.set('records/unknown.jsonl', Buffer.from(''));
           break;
       }
-      entries.set('records/subagentRuns.jsonl', Buffer.from(runs.map(record => JSON.stringify(record)).join('\n')));
-      entries.set('records/subagentMessages.jsonl', Buffer.from(messages.map(record => JSON.stringify(record)).join('\n')));
+      entries.set('records/subagentRuns.jsonl', Buffer.from(`${runs.map(record => JSON.stringify(record)).join('\n')}\n`));
+      entries.set('records/subagentMessages.jsonl', Buffer.from(`${messages.map(record => JSON.stringify(record)).join('\n')}\n`));
       const invalidPath = path.join(path.dirname(zipPath), 'invalid.zip');
       await writeZip(invalidPath, entries);
       await expect(restore(invalidPath)).rejects.toMatchObject({ code: 'invalid_format' });

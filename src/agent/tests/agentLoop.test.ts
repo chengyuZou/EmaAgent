@@ -1,5 +1,3 @@
-// 验证 AgentLoop 的调用准备、输出续写恢复、空转软引导与工具持久化握手。
-
 import { describe, expect, it, vi } from 'vitest';
 import type { CallLLM, LLMRequest, Message } from '@ema-agent/llm';
 import { ContextWindowExceededError } from '@ema-agent/llm';
@@ -24,7 +22,7 @@ function idleExecutor(): StreamingToolExecutor {
   } as unknown as StreamingToolExecutor;
 }
 
-/** 单个工具：登记后第一次取结果时交付，随后枯竭。 */
+/** 单个工具:登记后第一次取结果时交付,随后枯竭. */
 function oneShotExecutor(result: ToolResult): StreamingToolExecutor {
   let registered = false;
   let delivered = false;
@@ -104,7 +102,7 @@ describe('runAgentLoop', () => {
     expect(terminalEvent(events)?.state.stopReason).toBe('completed');
   });
 
-  it('每次迭代都经 prepareIteration，请求透传其输出上限并累计 Usage 差值', async () => {
+  it('每次迭代都经 prepareIteration,请求透传其输出上限并累计 Usage 差值', async () => {
     const stream = vi.fn((_request: LLMRequest) => (async function* () {
       yield { type: 'usage' as const, inputTokens: 10, outputTokens: 0 };
       yield { type: 'usage' as const, inputTokens: 10, outputTokens: 4 };
@@ -389,7 +387,7 @@ describe('runAgentLoop', () => {
     expect(terminalEvent(events)?.finalText).toBe('xx');
   });
 
-  it('Tool Loop 保留 thinking（含原生状态）并挂载生成来源供下一轮重放裁决', async () => {
+  it('Tool Loop 保留 thinking(含原生状态)并挂载生成来源供下一轮重放裁决', async () => {
     const seenMessages: Message[][] = [];
     const prepareIteration = vi.fn(async ({ messages }: PrepareAgentIterationInput) => {
       seenMessages.push([...messages]);
@@ -544,7 +542,7 @@ describe('runAgentLoop', () => {
       && typeof message.content === 'string'
       && message.content.includes('已连续多轮以完全相同的参数')
     ))).toBe(true);
-    // 软引导只注入一次：最终工作历史里恰好一条。
+    // 软引导只注入一次:最终工作历史里恰好一条.
     const finalHistory = seenMessages.at(-1)!;
     expect(finalHistory.filter((message) => (
       typeof message.content === 'string' && message.content.includes('已连续多轮以完全相同的参数')

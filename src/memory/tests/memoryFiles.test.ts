@@ -1,5 +1,3 @@
-// 验证模型可读 Memory 文件的范围、搜索语义、分页与取消。
-
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';

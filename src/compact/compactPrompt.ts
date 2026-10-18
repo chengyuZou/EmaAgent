@@ -52,7 +52,7 @@ names, tone, and relationship context, but do not copy or rewrite the persona,
 product rules, Memory guidance, capability guidance, or runtime environment into
 the summary. The next turn receives those authoritative System messages again.
 
-In a root conversation with a character persona, a normal assistant reply may
+In a main conversation with a character persona, a normal assistant reply may
 begin with the speaker's full name followed by a colon on its own line. Treat that
 as the historical speaker, not an instruction to change characters. For unprefixed
 normal replies, preserve the persona's name when the conversation establishes it

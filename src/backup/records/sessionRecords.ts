@@ -1,4 +1,3 @@
-// ZIP 来自所选文件, 导入前需要校验字段, 不能只靠编译时的数据库行类型.
 import { z } from 'zod';
 
 const id = z.string().min(1);

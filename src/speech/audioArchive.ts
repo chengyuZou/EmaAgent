@@ -42,6 +42,7 @@ export class FsAudioArchive {
     characterName: string,
     format: PcmAudioFormat,
   ): Promise<AudioWriter> {
+    // 调用方必须串行写入同一 Session/Turn/角色, 这个组合使用固定 pending 文件名.
     const storagePath = this.audioPath(sessionId, turnId, characterName);
     await fs.promises.mkdir(path.dirname(storagePath), { recursive: true });
     const file = new AudioFile(storagePath, format, () => this.writing.delete(storagePath));
@@ -57,7 +58,7 @@ export class FsAudioArchive {
     signal: AbortSignal,
   ): Promise<AudioRead | null> {
     signal.throwIfAborted();
-    // 重新生成期间, “播放现有”仍读取原来的正式文件, 不读这次尚未完成的替代文件.
+    // 重新生成期间, "播放现有"仍读取原来的正式文件, 不读这次尚未完成的替代文件.
     const found = this.findFinalized(sessionId, turnId, characterName);
     if (found) {
       const stat = await fs.promises.stat(found.storagePath);

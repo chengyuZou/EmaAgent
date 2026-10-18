@@ -1,4 +1,3 @@
-// 测试 SpeechVoiceCache.prepare 的 get-or-register 语义：本地直通、云端复用与资源版本隔离。
 import { describe, expect, it } from 'vitest';
 import type { TTSProviderVoice, TTSVoiceReference } from '@ema-agent/tts';
 import { SpeechVoiceCache } from '../voiceHandleCache.js';
@@ -32,7 +31,7 @@ function registrarReturning(voice: TTSProviderVoice) {
 }
 
 describe('SpeechVoiceCache.prepare', () => {
-  it('本地参考声音原样直通，不进入缓存', async () => {
+  it('本地参考声音原样直通, 不进入缓存', async () => {
     const cache = new SpeechVoiceCache();
     let calls = 0;
     const voice = await cache.prepare({
@@ -82,7 +81,7 @@ describe('SpeechVoiceCache.prepare', () => {
     expect(source.calls()).toBe(2);
   });
 
-  it('换模型使用独立缓存键，必须重新注册', async () => {
+  it('换模型使用独立缓存键, 必须重新注册', async () => {
     const cache = new SpeechVoiceCache();
     const source = registrarReturning({ kind: 'provider', id: 'voice-1' });
 

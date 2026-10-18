@@ -3,7 +3,7 @@ import type { CallTTS, PcmAudioFormat, TTSVoice } from '@ema-agent/tts';
 import type { UsageRecorder } from '@ema-agent/usage';
 import type { AudioWriter, FinalizedAudio } from './audioArchive.js';
 import { SentenceSplitter } from './sentenceSplitter.js';
-import { filterSentenceForTts, TextFilterStream } from './textFilter.js';
+import { filterSentenceForTTS, TextFilterStream } from './textFilter.js';
 
 const MAX_BYTES_PER_SENTENCE = 16 * 1024 * 1024;
 const SENTENCE_TIMEOUT_MS = 120_000;
@@ -141,7 +141,7 @@ export class SpeechCoordinator {
   }
 
   private async synthesizeSentence(sourceText: string): Promise<void> {
-    const text = filterSentenceForTts(sourceText);
+    const text = filterSentenceForTTS(sourceText);
     if (!text || (this.state !== 'accepting' && this.state !== 'finishing')) return;
 
     const startedAt = Date.now();
