@@ -1,6 +1,3 @@
-// 一次向用户提出一个或多个结构化问题，并等待统一回答。
-// 模型说明书见 prompt.ts。问询通道由 AskUser 抽象:
-// 事件发射(ask_user_required/resolved)归 port 实现, Tool 不触碰事件总线。
 import { z } from 'zod';
 import {
   buildTool,
@@ -13,12 +10,12 @@ import type { AskUserQuestionSpec } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { ASK_USER_DESCRIPTION } from './prompt.js';
 
-/** AskUser 工具的窄 Context：只取问询解析器;身份与取消走 ToolInvocation。 */
+
 interface AskUserToolContext {
   askUser: AskUser;
 }
 
-// ── 输入 schema ──────────────────────────────────────────────────────────────
+
 
 const inputSchema = z.object({
   questions: z
@@ -39,8 +36,8 @@ const inputSchema = z.object({
           .min(2)
           .max(4)
           .describe(
-            'Multiple-choice options (2–4, required). Users always get an "Other" '
-            + 'free-text escape hatch automatically — do not add one yourself.',
+            'Multiple-choice options (2-4, required). Users always get an "Other" '
+            + 'free-text escape hatch automatically  -  do not add one yourself.',
           ),
         multiSelect: z
           .boolean()
@@ -50,9 +47,9 @@ const inputSchema = z.object({
     )
     .min(1)
     .max(4)
-    .describe('Questions to ask (1–4).'),
+    .describe('Questions to ask (1-4).'),
 }).superRefine((value, ctx) => {
-  // 问题文本不可重复;同题内选项 label 不可重复。
+  // 问题文本不可重复;同题内选项 label 不可重复.
   const seen = new Set<string>();
   value.questions.forEach((q, qi) => {
     if (seen.has(q.question)) {
@@ -71,14 +68,14 @@ const inputSchema = z.object({
 
 type AskUserInput = z.infer<typeof inputSchema>;
 
-// ── 输出类型 ───────────────────────────────────────────────────────────────────
 
-/** 答案以问题文本为键(模型可读);前端卡片按 spec id 回答, Tool 负责映射。 */
+
+/** 答案以问题文本为键(模型可读);前端卡片按 spec id 回答, Tool 负责映射. */
 export interface AskUserResult {
   answers: Record<string, string>;
 }
 
-// ── 工具定义 ───────────────────────────────────────────────────────────────────
+
 
 export const AskUserTool = buildTool<AskUserInput, AskUserResult, AskUserToolContext>({
   id: BuiltinTools.AskUser.id,
@@ -90,15 +87,15 @@ export const AskUserTool = buildTool<AskUserInput, AskUserResult, AskUserToolCon
   isConcurrencySafe: () => false,
   requiresUserInteraction: () => true,
 
-  // 没有问询通道的宿主不暴露此工具(桌面宠物没有 stdin 兜底)。
+  // 没有问询通道的宿主不暴露此工具(桌面宠物没有 stdin 兜底).
   validateContext(ctx) {
     if (!ctx.askUser) {
-      return contextFail('当前宿主没有 AskUser 问询通道。');
+      return contextFail('当前宿主没有 AskUser 问询通道.');
     }
     return contextOk({ askUser: ctx.askUser });
   },
 
-  // AskUser 本身即用户交互: 必须经过批准, 不由规则绕过。
+  // AskUser 本身即用户交互: 必须经过批准, 不由规则绕过.
   checkPermissions: async () => ({ behavior: 'ask', message: 'AskUser 需要用户交互' }),
 
   async execute(
@@ -114,8 +111,8 @@ export const AskUserTool = buildTool<AskUserInput, AskUserResult, AskUserToolCon
       multiSelect: q.multiSelect,
     }));
 
-    // 问询锚点 = 本次 toolCallId；事件发射（required/resolved）归 port。
-    // port 返回答案以 spec id 为键；模型看到的是问题文本键。
+    // 问询锚点 = 本次 toolCallId;事件发射(required/resolved)归 port.
+    // port 返回答案以 spec id 为键;模型看到的是问题文本键.
     const result = await context.askUser(invocation.toolCallId, specs, invocation.signal);
     const answers: Record<string, string> = {};
     for (const spec of specs) {

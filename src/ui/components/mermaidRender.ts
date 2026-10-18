@@ -1,4 +1,3 @@
-// 官方 Mermaid/ELK 负责绘图; 这里集中管理主题、串行测量与有限缓存.
 import type { LayoutLoaderDefinition, MermaidConfig } from 'mermaid';
 
 export interface MermaidAppearance {
@@ -94,7 +93,7 @@ function styledElk(layout: LayoutLoaderDefinition): LayoutLoaderDefinition {
           await elk.render(data, svg, helpers, options);
           if (!flowchart) return;
 
-          // 只调整普通箭头的外观, 不改变圆头、交叉头或官方 ELK 的连线路径.
+          // 只调整普通箭头的外观, 不改变圆头, 交叉头或官方 ELK 的连线路径.
           for (const [end, path] of [[true, 'M 2 1 L 7 5 L 2 9'], [false, 'M 8 1 L 3 5 L 8 9']] as const) {
             const suffix = end ? 'pointEnd' : 'pointStart';
             const markers = svg.selectAll<SVGMarkerElement, unknown>(`marker[id$="${suffix}"], marker[id*="-${suffix}_"]`);
@@ -128,7 +127,7 @@ function diagramConfig(theme: MermaidAppearance): MermaidConfig {
     theme: 'base',
     darkMode: theme.dark,
     fontFamily: theme.fontFamily,
-    // 文件与模型不能用图内指令改掉安全边界、布局或应用主题.
+    // 文件与模型不能用图内指令改掉安全边界, 布局或应用主题.
     secure: [
       'secure', 'securityLevel', 'startOnLoad', 'maxTextSize', 'maxEdges',
       'suppressErrorRendering', 'htmlLabels', 'dompurifyConfig', 'themeCSS',

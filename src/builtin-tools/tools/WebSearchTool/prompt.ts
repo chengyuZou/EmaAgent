@@ -1,4 +1,4 @@
-// 当前年月在模块加载时计算, 进程内保持稳定, 避免每轮改变工具说明.
+/** 当前年月在模块加载时计算, 进程内保持稳定, 避免每轮改变工具说明. */
 export const WEB_SEARCH_DESCRIPTION = buildWebSearchDescription();
 
 function buildWebSearchDescription(): string {
@@ -27,7 +27,7 @@ Example format:
 Usage notes:
 - allowed_domains restricts results to the given domains (exact or any subdomain); blocked_domains excludes them. Do not pass both at once.
 - Keep the query focused and specific.
-- Local ranking compares the query with titles and snippets. It cannot find a page the search provider did not return, or verify that a page is correct.
+- Results retain the search provider's order after domain filtering and URL deduplication. Search cannot verify that a page is correct.
 - The current month is ${currentMonthYear}. Include dates or versions when they matter to the question. Do not replace an explicitly requested historical date or software version with the current year.
 `;
 }

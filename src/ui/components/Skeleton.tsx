@@ -1,9 +1,5 @@
 import { cn } from '../utils/cn.js';
 
-// ── Skeleton ────────────────────────────────────────────────────────────────
-// 加载占位:动画类 ema-skeleton-pulse/wave 定义在 desktop-ui styles,
-// 与设计系统保持一致;尺寸用 width/height prop 或 className 覆盖。
-
 export type SkeletonAnimation = 'pulse' | 'wave' | 'none';
 
 export interface SkeletonProps {

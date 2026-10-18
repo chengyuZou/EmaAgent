@@ -2,13 +2,6 @@ import { forwardRef } from 'react';
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 import { cn } from '../utils/cn.js';
 
-// ── IconButton ──────────────────────────────────────────────────────────────
-//
-// 纯图标按钮(FloatingDock / 聊天输入框内嵌发送 / 工具栏附件 / 消息动作).
-// 与 Button 的差异: 内容用 icon 类或 iconNode, label 必填(无障碍), 不渲染可见文本,
-// tooltip 由调用方负责.
-// 外壳两档: circle(默认, 工具栏/发送) / rounded(圆角小芯片, 消息动作/行内弱操作).
-
 export type IconButtonVariant = 'default' | 'primary' | 'danger' | 'ghost';
 export type IconButtonSize    = 'sm' | 'md' | 'lg';
 export type IconButtonShape   = 'circle' | 'rounded';
@@ -24,7 +17,7 @@ export interface IconButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonEle
   size?:      IconButtonSize;
   /** 外壳: circle=正圆(默认), rounded=圆角小芯片(半径绑尺寸档, 消息动作/行内弱操作用). */
   shape?:     IconButtonShape;
-  /** Visual "on" state — highlighted background + glow. */
+  /** Visual "on" state - highlighted background + glow. */
   toggled?:   boolean;
   loading?:   boolean;
   /** UnoCSS icon class for the loading spinner. Defaults to a ring spinner. */
@@ -32,15 +25,13 @@ export interface IconButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonEle
   type?:      'button' | 'submit' | 'reset';
 }
 
-// ── Style tables ────────────────────────────────────────────────────────────
-
 const VARIANT_CLASSES: Record<IconButtonVariant, { idle: string; toggled: string }> = {
   default: {
     idle:    'bg-[var(--ema-surface-3)] hover:bg-[var(--ema-primary-muted)] hover:border-[var(--ema-primary)]/40 text-[var(--ema-text-primary)] border-[var(--ema-border)]',
     toggled: 'bg-[var(--ema-primary-muted)] border-[var(--ema-primary)]/70 text-[var(--ema-primary-text)] shadow-[var(--ema-shadow-focus)]',
   },
   primary: {
-    // 签名级动作(发送等):实心主色 + 同色系柔影常驻,hover 只提亮抬影。
+    // 签名级动作(发送等):实心主色 + 同色系柔影常驻,hover 只提亮抬影.
     idle:    'bg-[var(--ema-primary)] text-[var(--ema-text-inverse)] border-[var(--ema-primary)]/80 shadow-[var(--ema-shadow-cta)] hover:brightness-105 hover:shadow-[var(--ema-shadow-cta-hover)]',
     toggled: 'bg-[var(--ema-primary)] border-[var(--ema-primary)]/80 text-[var(--ema-text-inverse)] shadow-[var(--ema-shadow-cta)]',
   },
@@ -48,7 +39,7 @@ const VARIANT_CLASSES: Record<IconButtonVariant, { idle: string; toggled: string
     idle:    'bg-[var(--ema-surface-3)] hover:bg-[var(--ema-danger)]/60 hover:border-[var(--ema-danger)]/60 text-[var(--ema-text-primary)] hover:text-[var(--ema-text-inverse)] border-[var(--ema-border)]',
     toggled: 'bg-[var(--ema-danger)]/60 border-[var(--ema-danger)]/70 text-[var(--ema-text-inverse)]',
   },
-  // 裸态小图标钮(聊天工具栏/标签关闭/行内动作):默认透明, hover 才显底, 与 ema-chat-icon-btn 同语言。
+  // 裸态小图标钮(聊天工具栏/标签关闭/行内动作):默认透明, hover 才显底, 与 ema-chat-icon-btn 同语言.
   ghost: {
     idle:    'bg-transparent border-transparent text-[var(--ema-text-tertiary)] hover:bg-[var(--ema-surface-2)] hover:text-[var(--ema-text-primary)]',
     toggled: 'bg-[var(--ema-primary-muted)] border-[color-mix(in_srgb,var(--ema-primary)_40%,transparent)] text-[var(--ema-primary-text)]',
@@ -73,8 +64,6 @@ const BASE_CLASSES =
   'transition-ema cursor-pointer select-none ' +
   'active:scale-92 ' +
   'disabled:cursor-not-allowed disabled:opacity-40 ';
-
-// ── Component ───────────────────────────────────────────────────────────────
 
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
   function IconButton(props, ref) {

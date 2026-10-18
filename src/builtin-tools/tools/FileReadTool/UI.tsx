@@ -1,19 +1,15 @@
-// FileReadTool 的桌面展示: 参数(路径+分页范围)与结果卡.
-// 结果按类型分流: 图片使用调用方提供的显示组件, 文本内容按扩展名走
-// Markdown 正文 / Markdown 代码块 / HTML 沙箱预览三态.
-// 只消费本 Tool 的类型化 data; 类型守卫失败一律返回 null, 由前端回落通用渲染。
 import { useMemo, useState, type JSX } from 'react';
 import { Badge, Button, Markdown, languageForPath, Tooltip } from '@ema-agent/ui';
 import type { FileReadResult } from './FileReadTool.js';
 import { PdfContentView } from './pdfContentView.js';
 
-// ── 类型守卫(消费 unknown data 的唯一入口) ────────────────────────────────────
+// 类型守卫(消费 unknown data 的唯一入口)
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** 行头摘要：读取路径。 */
+/** 行头摘要:读取路径. */
 export function fileReadTitle(args: unknown): string | null {
   return isRecord(args) && typeof args['file_path'] === 'string' ? args['file_path'] : null;
 }
@@ -69,7 +65,7 @@ export function fileReadResultSummary(data: unknown): string | null {
   return `读取 ${readLines.toLocaleString()} 行(共 ${result.totalLines.toLocaleString()} 行)`;
 }
 
-// ── 参数视图: 路径 + 分页范围 ─────────────────────────────────────────────────
+// 参数视图: 路径 + 分页范围
 
 export function FileReadArgsView({ args }: { args: unknown }): JSX.Element | null {
   if (!isRecord(args) || typeof args['file_path'] !== 'string') return null;
@@ -81,12 +77,12 @@ export function FileReadArgsView({ args }: { args: unknown }): JSX.Element | nul
   let range: string | null = null;
   if (offset !== undefined || limit !== undefined) {
     const start = offset ?? 1;
-    range = limit !== undefined ? `第 ${start}–${start + limit - 1} 行` : `从第 ${start} 行起`;
+    range = limit !== undefined ? `第 ${start}-${start + limit - 1} 行` : `从第 ${start} 行起`;
   }
 
   if (startPage !== undefined || pageCount !== undefined) {
     const start = startPage ?? 1;
-    range = pageCount !== undefined ? `第 ${start}–${start + pageCount - 1} 页` : `从第 ${start} 页起`;
+    range = pageCount !== undefined ? `第 ${start}-${start + pageCount - 1} 页` : `从第 ${start} 页起`;
   }
 
   return (
@@ -100,7 +96,7 @@ export function FileReadArgsView({ args }: { args: unknown }): JSX.Element | nul
   );
 }
 
-// ── 结果视图: 按文件格式展示 ──────────────────────────────────────────────────
+// 结果视图: 按文件格式展示
 
 export function FileReadResultView({ data, renderImage, renderMarkdown }: {
   readonly data: unknown;
@@ -128,7 +124,7 @@ export function FileReadResultView({ data, renderImage, renderMarkdown }: {
       );
 
     case 'notebook_content': {
-      // 摘要 + 每 cell 一行轻量 chrome(类型/语言/字符数/输出数), 不渲染 source 内容。
+      // 摘要 + 每 cell 一行轻量 chrome(类型/语言/字符数/输出数), 不渲染 source 内容.
       if (result.totalCells < 1) {
         return <Badge variant="danger">Notebook 没有 cell</Badge>;
       }
@@ -166,7 +162,7 @@ export function FileReadResultView({ data, renderImage, renderMarkdown }: {
   }
 }
 
-// ── 文本内容卡: 按扩展名分流渲染 ─────────────────────────────────────────────
+// 文本内容卡: 按扩展名分流渲染
 
 type FileContentResult = Extract<FileReadResult, { type: 'file_content' }>;
 

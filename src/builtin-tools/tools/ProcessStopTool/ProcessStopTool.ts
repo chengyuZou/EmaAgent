@@ -1,4 +1,3 @@
-// 终止当前 Session 的一个后台进程，实际停止仍由 Sandbox 杀整棵进程树。
 import { z } from 'zod';
 import {
   buildTool,
@@ -10,7 +9,6 @@ import {
 } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 
-/** Process 工具族的窄 Context：只取后台进程端口; Session 身份走 ToolInvocation。 */
 interface ProcessStopToolContext {
   backgroundProcesses: BackgroundProcess;
 }
@@ -35,12 +33,12 @@ export const ProcessStopTool = buildTool<
   maxResultBytes: 50_000,
   isReadOnly: () => false,
   isConcurrencySafe: () => false,
-  // 终止后台进程有副作用, 交给中央规则与模式收口(默认询问)。
+  // 终止后台进程有副作用, 交给工具权限规则和模式决定是否询问.
   checkPermissions: async () => ({ behavior: 'passthrough', message: '停止后台进程需要用户确认' }),
 
   validateContext(ctx) {
     if (!ctx.backgroundProcesses) {
-      return contextFail('当前执行环境没有后台进程能力。');
+      return contextFail('当前执行环境没有后台进程能力.');
     }
     return contextOk({ backgroundProcesses: ctx.backgroundProcesses });
   },
@@ -56,7 +54,7 @@ export const ProcessStopTool = buildTool<
     );
   },
 
-  // 停止请求返回真实终态快照, 投影只给模型确认信息。
+  // 结果中的状态来自后台进程记录, 不把已提交停止请求直接当作停止成功.
   mapResultToModelContent(output) {
     return `后台进程 ${output.command} 最终状态: ${output.status}`
       + (output.exitCode !== undefined ? ` (exit ${output.exitCode})` : '');

@@ -7,7 +7,7 @@ export interface PatchLineCounts {
   readonly deletions: number;
 }
 
-/** 由编辑前后全文生成 hunks; 不生成文件头,上下文行数用 diff 包默认(3 行)。 */
+/** 只返回 hunks, 上下文行数使用 diff 包默认值. */
 export function buildStructuredPatch(
   filePath: string,
   oldContent: string,

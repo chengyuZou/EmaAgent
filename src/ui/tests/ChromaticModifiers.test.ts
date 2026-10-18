@@ -1,4 +1,3 @@
-// 测试 Chromatic 亮度与饱和度修饰符的单项、组合和非法语法。
 import { describe, expect, it } from 'vitest';
 import { parseChromaticModifiers } from '../uno-preset-chromatic.js';
 

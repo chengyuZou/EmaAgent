@@ -1,11 +1,6 @@
-// 提供带焦点管理、遮罩和强制无障碍名称的模态对话框。
 import * as RadixDialog from '@radix-ui/react-dialog';
 import type { ReactNode } from 'react';
 import { cn } from '../utils/cn.js';
-
-// ── Dialog ──────────────────────────────────────────────────────────────────
-// 模态对话框:确认/输入/危险操作门禁。
-// 基于 Radix,自带焦点陷阱、Esc 关闭、滚动锁定与无障碍关联。
 
 interface DialogBaseProps {
   open:         boolean;
@@ -16,8 +11,8 @@ interface DialogBaseProps {
   /** UnoCSS icon class for the close button. Defaults to "i-mdi:close". */
   closeIcon?:   string;
   children:     ReactNode;
-  /** Override max width. Must be a static UnoCSS class (e.g. 'max-w-lg', 'max-w-2xl').
-   *  Do NOT pass dynamic bracket values like 'w-[500px]' — UnoCSS cannot scan them. */
+  /** 完整类名必须出现在 UnoCSS 扫描范围或 safelist 中. 静态的 w-[500px] 可以扫描,
+   *  用运行时变量拼出的类名则需要调用方自行提供样式. */
   widthClass?:  string;
   className?:   string;
 }

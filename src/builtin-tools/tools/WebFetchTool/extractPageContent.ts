@@ -79,7 +79,7 @@ function extractHtmlBody(html: string, finalUrl: string): string {
   }
 
   page('script, style, template, noscript, iframe, object, embed, nav, [role="navigation"], [hidden], [aria-hidden="true"]').remove();
-  // 不删除正文内部的 header/aside, 它们可能是标题、文档警告或补充说明.
+  // 不删除正文内部的 header/aside, 它们可能是标题, 文档警告或补充说明.
   page('body > header, body > footer, body > aside').remove();
   for (const element of page('pre').toArray()) {
     const block = page(element);

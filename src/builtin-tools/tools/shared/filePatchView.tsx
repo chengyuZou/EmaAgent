@@ -1,4 +1,3 @@
-// Edit 和覆盖 Write 共用补丁显示; 差异解析、高亮、行号与排版由 @pierre/diffs 负责.
 import { useEffect, useMemo, useState, type JSX } from 'react';
 import { formatPatch, type StructuredPatchHunk } from 'diff';
 import { PatchDiff, type PatchDiffProps } from '@pierre/diffs/react';

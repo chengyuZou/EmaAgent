@@ -1,11 +1,6 @@
 import * as RadixCheckbox from '@radix-ui/react-checkbox';
 import { cn } from '../utils/cn.js';
 
-// ── Checkbox ────────────────────────────────────────────────────────────────
-// 支持三态: 未选中 / 选中 / 不确定(indeterminate);
-// showLabel 时用 <label> 包裹, 点击文字可切换.
-// 选中语言与 Switch/RadioDot 同族: 实心主色 + 反色标记, 标记入场挂 check-pop 弹入.
-
 export interface CheckboxProps {
   checked?:        boolean | 'indeterminate';
   defaultChecked?: boolean;

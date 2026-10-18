@@ -1,4 +1,3 @@
-// AskUserTool 的桌面展示: 结果区把 answers 渲染为 Q→A 对。
 import type { JSX } from 'react';
 import type { AskUserResult } from './AskUserTool.js';
 

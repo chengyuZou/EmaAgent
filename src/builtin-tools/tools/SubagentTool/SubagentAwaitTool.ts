@@ -1,9 +1,8 @@
-// 阻塞等待后台子 Agent 完成并取回最终输出。
 import { z } from 'zod';
 import { buildTool, contextFail, contextOk, type SubagentControl } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 
-/** 窄 Context：启动器自带等待端口;身份与取消走 ToolInvocation。 */
+
 interface SubagentAwaitContext {
   subagents: SubagentControl;
 }
@@ -30,7 +29,7 @@ export const SubagentAwaitTool = buildTool<
   name: BuiltinTools.SubagentAwait.name,
   description: `Wait for a background sub-agent to finish and return its final output.
 Use it when you need the result before you can continue the current turn.
-If you do not need the result yet, continue with other work — you will be notified when it completes; do not poll.
+If you do not need the result yet, continue with other work  -  you will be notified when it completes; do not poll.
 Terminal results remain readable by id, including after an application restart.
 Returns output:null only when the subagentId is unknown or the run is still active elsewhere.`,
 
@@ -38,12 +37,12 @@ Returns output:null only when the subagentId is unknown or the run is still acti
   isReadOnly: () => false,
   isConcurrencySafe: () => true,
 
-  // 等待本会话子 Agent 结果, 内置信任放行。
+  // 等待本会话子 Agent 结果, 内置信任放行.
   checkPermissions: async () => ({ behavior: 'allow' }),
 
   validateContext(ctx) {
     if (!ctx.subagents) {
-      return contextFail('子 Agent 启动器未装配（子 Agent 无此能力）。');
+      return contextFail('子 Agent 启动器未装配(子 Agent 无此能力).');
     }
     return contextOk({ subagents: ctx.subagents });
   },
@@ -58,7 +57,7 @@ Returns output:null only when the subagentId is unknown or the run is still acti
 
   mapResultToModelContent(output) {
     if (output.output === null) {
-      return 'No result available — the subagentId is unknown or the run is still active elsewhere.';
+      return 'No result available  -  the subagentId is unknown or the run is still active elsewhere.';
     }
     return output.output;
   },

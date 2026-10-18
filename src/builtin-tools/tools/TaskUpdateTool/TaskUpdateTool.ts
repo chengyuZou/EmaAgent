@@ -1,5 +1,3 @@
-// 使用 expectedVersion 原子更新 Task 字段、状态和依赖,拒绝陈旧写与依赖环;
-// task_updated/task_deleted 事件由 wiring 侧的 store 装饰器发出,Tool 不直接发射。
 
 import { z } from 'zod';
 import {
@@ -12,7 +10,7 @@ import type { Task, TaskStore, TaskMutationFailure } from '@ema-agent/tasks';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { TASK_UPDATE_DESCRIPTION } from './prompt.js';
 
-/** Task 更新工具的窄 Context:只有持久存储;调用身份由 ToolInvocation 提供。 */
+
 interface TaskUpdateToolContext {
   taskStore: TaskStore;
 }
@@ -87,12 +85,12 @@ export const TaskUpdateTool = buildTool<TaskUpdateInput, TaskUpdateResult, TaskU
     const operation = input.action ?? input.status ?? '更新字段';
     return `更新任务:${input.taskId.slice(0, 8)} → ${operation}`;
   },
-  // 更新任务有副作用, 交给中央规则与模式收口(默认询问)。
+  // 更新任务有副作用, 交给工具权限规则和模式决定是否询问.
   checkPermissions: async () => ({ behavior: 'passthrough', message: '更新任务需要用户确认' }),
 
   validateContext(ctx: ToolUseContext) {
     if (!ctx.taskStore) {
-      return contextFail('Task tools are available only in the root Work Turn.');
+      return contextFail('Task tools are available only in the main Agent Turn.');
     }
     return contextOk({ taskStore: ctx.taskStore });
   },

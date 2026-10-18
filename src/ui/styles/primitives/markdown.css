@@ -1,8 +1,3 @@
-/* Markdown 排版体系:标题刻度/段落节奏/列表/发丝线表格/inline code 芯片/pre 容器。
-   消费者: chat 助手消息(assistantSections)、FilePreview、SkillMarket、MessageDetail、
-   MemoryFiles 等 5+ 域共用, 按 README 归 primitives。全部走 token, 间距走 --ema-space-*。
-   chat 气泡内的 pre 换行例外(不换行改 pre-wrap)在 domains/chatHistory.css。 */
-
 .markdown-content {
   min-width: 0;
   font-family: var(--ema-font-content);
@@ -11,12 +6,11 @@
   word-break: break-word;
 }
 
-/* 首末元素贴边, 气泡/卡片不叠双份间距。 */
+/* 首末元素贴边, 气泡/卡片不叠双份间距. */
 .markdown-content > :first-child { margin-top: 0; }
 .markdown-content > :last-child { margin-bottom: 0; }
 
-/* 标题刻度: 聊天正文里 h1 罕见, h2 是最大锚点; 正文结构靠 strong 粗体引领句,
-   不堆小标题(codex 手法)。 */
+/* 标题使用固定字号层级, 间距由共享变量控制. */
 .markdown-content h1,
 .markdown-content h2,
 .markdown-content h3,
@@ -46,7 +40,7 @@
 .markdown-content li > ul,
 .markdown-content li > ol { margin-block: var(--ema-space-0_5); }
 
-/* inline code 芯片(灰族); 链接内的 code 自动升级主色 tint = 可点引用族(codex 两族手法)。 */
+/* 普通行内代码使用中性底色, 链接里的代码使用主题色以提示可点击. */
 .markdown-content :not(pre) > code {
   font-family: var(--ema-font-mono);
   font-size: 0.9em;
@@ -82,7 +76,7 @@
   color: inherit;
 }
 
-/* 表格: 列宽按内容分配(auto), 发丝线分组不堆框; th 左对齐与 td 同一轴线。 */
+/* 表格: 列宽按内容分配(auto), 发丝线分组不堆框; th 左对齐与 td 同一轴线. */
 .markdown-content table {
   table-layout: auto;
   border-collapse: collapse;
@@ -123,7 +117,7 @@
   border-radius: var(--ema-radius-md);
 }
 
-/* renderer.tsx catch 分支的兜底 pre: 无高亮也要可换行可读, 不横向撑破气泡。 */
+/* Markdown 渲染失败时显示可换行的原文, 避免长行撑破容器. */
 .markdown-fallback {
   white-space: pre-wrap;
   overflow-wrap: anywhere;

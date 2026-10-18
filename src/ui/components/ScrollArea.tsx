@@ -2,10 +2,6 @@ import * as RadixScrollArea from '@radix-ui/react-scroll-area';
 import type { ReactNode } from 'react';
 import { cn } from '../utils/cn.js';
 
-// ── ScrollArea ──────────────────────────────────────────────────────────────
-//
-// 自定义滚动条(更细、悬停才显示),用于原生滚动条与暗色玻璃质感冲突的场合。
-
 export interface ScrollAreaProps {
   /** 'vertical' (default), 'horizontal', or 'both'. */
   orientation?: 'vertical' | 'horizontal' | 'both';

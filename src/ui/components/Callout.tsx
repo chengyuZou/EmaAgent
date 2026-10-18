@@ -1,10 +1,6 @@
 import type { ReactNode } from 'react';
 import { cn } from '../utils/cn.js';
 
-// ── Callout ─────────────────────────────────────────────────────────────────
-// 横幅提示: 四种语义色, 左侧强调色条(::before inset 实现).
-// 描边与 Toast 同语言(语义色/30), 入场动画内置.
-
 export type CalloutVariant = 'info' | 'success' | 'warn' | 'danger';
 
 export interface CalloutProps {

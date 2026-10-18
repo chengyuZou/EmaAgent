@@ -1,8 +1,3 @@
-/* ── 语法高亮配色预设 ─────────────────────────────────────────────────────────
- * <html data-syntax-theme> 由 theme store 写入, 色板只放 CSS(TS 不碰颜色)。
- * 每套主题自带代码块底色与基础文字色, 不跟随明暗模式; mono 单色档随应用底色走。
- */
-
 :root {
   --ema-syntax-bg: var(--ema-surface-1);
   --ema-syntax-text: var(--ema-text-primary);

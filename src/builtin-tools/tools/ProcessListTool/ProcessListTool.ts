@@ -1,4 +1,3 @@
-// 列出当前 Session 的后台 Shell，模型不能枚举其他 Session 的进程。
 import { z } from 'zod';
 import {
   buildTool,
@@ -11,7 +10,6 @@ import {
 } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 
-/** Process 工具族的窄 Context：只取后台进程端口; Session 身份走 ToolInvocation。 */
 interface ProcessListToolContext {
   backgroundProcesses: BackgroundProcess;
 }
@@ -49,7 +47,7 @@ export const ProcessListTool = buildTool<
   maxResultBytes: 100_000,
   isReadOnly: () => true,
   isConcurrencySafe: () => true,
-  // 只读查询本 Session 后台进程, 内置信任放行。
+  // Session 身份由调用方提供, 查询不能指定其他 Session.
   checkPermissions: async () => ({ behavior: 'allow' }),
   getToolUseSummary: (input) => input.status
     ? `列出 ${input.status} 后台进程`
@@ -57,7 +55,7 @@ export const ProcessListTool = buildTool<
 
   validateContext(ctx) {
     if (!ctx.backgroundProcesses) {
-      return contextFail('当前执行环境没有后台进程能力。');
+      return contextFail('当前执行环境没有后台进程能力.');
     }
     return contextOk({ backgroundProcesses: ctx.backgroundProcesses });
   },
@@ -75,9 +73,9 @@ export const ProcessListTool = buildTool<
     };
   },
 
-  // 模型只需要紧凑列表; outputDir 等前端事实留在 TOutput。
+  // 模型只需要进程列表; 日志目录等信息保留在结构化结果中供 UI 读取.
   mapResultToModelContent(output) {
-    if (output.processes.length === 0) return '当前没有后台进程。';
+    if (output.processes.length === 0) return '当前没有后台进程.';
     return output.processes.map((process) =>
       `- ${process.id} [${process.status}] ${process.command}`
       + (process.exitCode !== undefined ? ` (exit ${process.exitCode})` : ''),

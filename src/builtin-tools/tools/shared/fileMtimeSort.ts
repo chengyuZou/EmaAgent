@@ -1,4 +1,3 @@
-// 为文件搜索工具按修改时间稳定排序，并把扫描期间消失的文件安全排到末尾。
 import fs from 'node:fs/promises';
 
 interface FileMtimeEntry {
@@ -6,7 +5,7 @@ interface FileMtimeEntry {
   mtimeMs: number;
 }
 
-/** 按 mtime 降序排序；相同时间按路径决胜，stat 失败的文件排到末尾。 */
+/** 按 mtime 降序排序;相同时间按路径决胜,stat 失败的文件排到末尾. */
 export async function sortPathsByMtimeDesc(
   paths: readonly string[],
 ): Promise<string[]> {

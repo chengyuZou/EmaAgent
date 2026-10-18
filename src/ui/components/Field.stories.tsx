@@ -1,11 +1,8 @@
-// 展示并目测验证 Field 与不同表单控件的关联和错误状态。
 import { useState } from 'react';
 import { Field } from './Field.js';
 import { Input } from './Input.js';
 import { Textarea } from './Textarea.js';
 import { Select } from './Select.js';
-
-// ── Field stories ───────────────────────────────────────────────────────────
 
 export default { title: 'Atoms / Field' };
 
@@ -50,7 +47,7 @@ export const WithTextarea = (): React.JSX.Element => {
     <Frame>
       <h2 className="text-sm uppercase tracking-wider text-[var(--ema-text-tertiary)]">Field + Textarea</h2>
       <Field label="角色简介" description="对你的 AI 角色的简短描述">
-        <Textarea value={bio} onChange={(e) => setBio(e.target.value)} placeholder="Ema 是一个……" maxRows={5} minRows={2} />
+        <Textarea value={bio} onChange={(e) => setBio(e.target.value)} placeholder="Ema 是一个......" maxRows={5} minRows={2} />
       </Field>
     </Frame>
   );
@@ -80,7 +77,7 @@ export const Minimal = (): React.JSX.Element => (
   <Frame>
     <h2 className="text-sm uppercase tracking-wider text-[var(--ema-text-tertiary)]">minimal (no label / desc)</h2>
     <Field>
-      <Input placeholder="只有输入框，没有 label..." />
+      <Input placeholder="只有输入框,没有 label..." />
     </Field>
   </Frame>
 );

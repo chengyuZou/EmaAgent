@@ -1,15 +1,6 @@
-// 提供不会为未知值或空集合伪造激活项的选项卡组件。
 import * as RadixTabs from '@radix-ui/react-tabs';
 import type { ReactNode, CSSProperties } from 'react';
 import { cn } from '../utils/cn.js';
-
-// ── Tabs ────────────────────────────────────────────────────────────────────
-//
-// 水平/垂直标签页,基于 Radix 的薄封装,自带触发器样式与内容面板。
-//
-// horizontal underline/pill 用滑动指示器:List ::before 滑块
-// 按 --tab-active-index/--tab-count calc 平滑滑动,trigger 等宽(flex-1)。
-// vertical sidebar 保留各自 active bg(无横向滑块)。
 
 export interface TabItem {
   value:    string;
@@ -92,7 +83,7 @@ export function Tabs(props: TabsProps): React.JSX.Element {
               ),
               variant === 'sidebar' && cn(
                 'ema-selectable rounded-lg justify-start text-left w-full',
-                // 选中三件套(色条+渐变+内描边+主色字)由 ema-selectable 承担
+                // 竖向标签使用各自的选中背景, 不使用横向滑块.
               ),
             )}
           >

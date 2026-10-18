@@ -1,4 +1,3 @@
-// 展示并目测验证基础原子组件在产品主题下的组合状态。
 
 import { useState } from 'react';
 import { Input }      from './Input.js';
@@ -67,10 +66,10 @@ export const SpinnerDemo = (): React.JSX.Element => (
 export const CalloutDemo = (): React.JSX.Element => (
   <Frame label="Callout variants">
     <div className="max-w-md space-y-3">
-      <Callout variant="info"    title="信息">  这是一条提示信息。</Callout>
-      <Callout variant="success" title="成功">  操作已完成。</Callout>
-      <Callout variant="warn"    title="警告">  注意可能的副作用。</Callout>
-      <Callout variant="danger"  title="危险">  此操作不可撤销。</Callout>
+      <Callout variant="info"    title="信息">  这是一条提示信息.</Callout>
+      <Callout variant="success" title="成功">  操作已完成.</Callout>
+      <Callout variant="warn"    title="警告">  注意可能的副作用.</Callout>
+      <Callout variant="danger"  title="危险">  此操作不可撤销.</Callout>
     </div>
   </Frame>
 );
@@ -183,7 +182,7 @@ export const ScrollAreaDemo = (): React.JSX.Element => (
     <ScrollArea className="h-48 max-w-md rounded-md border border-[var(--ema-border)] bg-[var(--ema-surface-1)]">
       <div className="p-4 space-y-2">
         {Array.from({ length: 30 }, (_, i) => (
-          <div key={i} className="text-sm text-[var(--ema-text-secondary)]">行 {i + 1} —— 这是滚动区域里的一行内容</div>
+          <div key={i} className="text-sm text-[var(--ema-text-secondary)]">行 {i + 1}  -  -  这是滚动区域里的一行内容</div>
         ))}
       </div>
     </ScrollArea>

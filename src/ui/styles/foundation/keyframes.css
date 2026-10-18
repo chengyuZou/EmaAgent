@@ -1,8 +1,3 @@
-/* ── Keyframe library ──────────────────────────────────────────────────────
- * 按 入场/状态/骨架/退场 分组。消费者: animations.css 工具类与 radix.css 状态适配。
- */
-
-/* ── 入场 ───────────────────────────────────────────────────────────────────*/
 @keyframes ema-fade-in {
   from { opacity: 0; }
   to   { opacity: 1; }
@@ -32,7 +27,7 @@
   from { opacity: 0; transform: translateY(8px) scale(0.97); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
-/* 密卡网格(市场页)专用:去掉 scale 轴。几十张卡接连 scale 生长会被读成"卡片自动拓宽"。 */
+/* 密卡网格(市场页)专用:去掉 scale 轴.几十张卡接连 scale 生长会被读成"卡片自动拓宽". */
 @keyframes ema-card-in-flat {
   from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -94,7 +89,7 @@
   to   { opacity: 0; clip-path: var(--ema-menu-collapsed-clip); }
 }
 
-/* ── 状态(循环)──────────────────────────────────────────────────────────*/
+/* 状态(循环)*/
 @keyframes ema-pulse-bar {
   0%, 100% { opacity: 1; }
   50%       { opacity: 0.45; }
@@ -117,7 +112,7 @@
   80%       { transform: translateX(3px); }
 }
 
-/* ── 骨架/微光 ──────────────────────────────────────────────────────────────*/
+/* 骨架/微光*/
 @keyframes ema-skeleton-pulse {
   0%   { opacity: 0.4; }
   50%  { opacity: 0.8; }
@@ -132,7 +127,7 @@
   to   { transform: translateX(200%); }
 }
 
-/* ── 退场 ───────────────────────────────────────────────────────────────────*/
+/* 退场*/
 @keyframes ema-fade-out {
   from { opacity: 1; }
   to   { opacity: 0; }

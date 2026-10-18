@@ -1,4 +1,3 @@
-// 创建持久 Task,把同一份结构化快照返回模型;task_created 事件由 wiring 侧的 store 装饰器发出。
 
 import { z } from 'zod';
 import {
@@ -11,7 +10,7 @@ import type { Task, TaskStore } from '@ema-agent/tasks';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { TASK_CREATE_DESCRIPTION } from './prompt.js';
 
-/** Task 写入工具的窄 Context:只有持久存储;调用身份由 ToolInvocation 提供。 */
+
 interface TaskCreateToolContext {
   taskStore: TaskStore;
 }
@@ -54,12 +53,12 @@ export const TaskCreateTool = buildTool<TaskCreateInput, TaskCreateResult, TaskC
   isReadOnly: () => false,
   isConcurrencySafe: () => true,
   getToolUseSummary: (input) => `创建任务:${input.subject}`,
-  // 创建任务有副作用, 交给中央规则与模式收口(默认询问)。
+  // 创建任务有副作用, 交给工具权限规则和模式决定是否询问.
   checkPermissions: async () => ({ behavior: 'passthrough', message: '创建任务需要用户确认' }),
 
   validateContext(ctx: ToolUseContext) {
     if (!ctx.taskStore) {
-      return contextFail('Task tools are available only in the root Work Turn.');
+      return contextFail('Task tools are available only in the main Agent Turn.');
     }
     return contextOk({ taskStore: ctx.taskStore });
   },

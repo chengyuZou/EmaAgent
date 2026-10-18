@@ -166,7 +166,7 @@ function asNarrativeSearchResult(data: unknown): NarrativeSearchResult | null {
 export function narrativeSearchResultCopyText(data: unknown): string | null {
   const result = asNarrativeSearchResult(data);
   if (!result) return null;
-  // 阅读视图可能只显示正文, 复制仍保留工具返回的图背景、所有正文和失败说明.
+  // 阅读视图可能只显示正文, 复制仍保留工具返回的图背景, 所有正文和失败说明.
   const timelines = result.timelines.map(timeline => `${timeline.name}\n${timeline.text}`);
   const failures = result.failures.map(failure => `${failure.timeline}\n${failure.message}`);
   return [...timelines, ...failures].join('\n\n') || '未找到相关剧情资料';

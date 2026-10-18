@@ -1,4 +1,3 @@
-// 公共 Markdown 的 Mermaid 代码块: 官方库负责语法、布局和 SVG 清洗, 这里只管理 React 生命周期.
 import { memo, useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type JSX } from 'react';
 import { Button } from './Button.js';
 import { Spinner } from './Spinner.js';
@@ -82,7 +81,7 @@ export const MermaidBlock = memo(function MermaidBlock({ source, pending }: { so
         <span>Mermaid</span>
         {loading && (
           <span className="markdown-mermaid-status" role="status">
-            <Spinner size="sm" />{pending ? '等待图表生成完整…' : '正在渲染图表…'}
+            <Spinner size="sm" />{pending ? '等待图表生成完整...' : '正在渲染图表...'}
           </span>
         )}
         {svg && (

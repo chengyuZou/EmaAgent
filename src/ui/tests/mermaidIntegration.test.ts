@@ -8,7 +8,7 @@ const theme: MermaidAppearance = {
 };
 
 beforeAll(() => {
-  // 不用这些假尺寸声称视觉布局或性能通过, 只验证真实库能完成解析、ELK 布局与 SVG 输出.
+  // 不用这些假尺寸声称视觉布局或性能通过, 只验证真实库能完成解析, ELK 布局与 SVG 输出.
   Object.defineProperty(SVGElement.prototype, 'getBBox', {
     configurable: true,
     value: () => ({ x: 0, y: 0, width: 100, height: 20 }),

@@ -1,11 +1,9 @@
-// FileReadTool 的 Notebook 分支: 解析 .ipynb 为 cells(含输出), 大输出截断,
-// 投影为模型可见文本 + 输出图片块。
 import fs from 'node:fs';
 import path from 'node:path';
 import type { ToolResultContentPart } from '@ema-agent/llm';
 import { NOTEBOOK_SIZE_LIMIT } from './limits.js';
 
-/** .ipynb 扩展名判定(大小写不敏感)。 */
+/** .ipynb 扩展名判定(大小写不敏感). */
 export function isNotebookPath(filePath: string): boolean {
   return path.extname(filePath).toLowerCase() === '.ipynb';
 }
@@ -57,7 +55,7 @@ interface RawNotebook {
   metadata?: { language_info?: { name?: string } };
 }
 
-/** 输出过大判定阈值: 单个 cell 输出累计超 10K 字符则整体替换为提示。 */
+/** 输出过大判定阈值: 单个 cell 输出累计超 10K 字符则整体替换为提示. */
 const LARGE_OUTPUT_THRESHOLD = 10_000;
 
 function isLargeOutputs(outputs: (NotebookCellSourceOutput | undefined)[]): boolean {
@@ -70,7 +68,7 @@ function isLargeOutputs(outputs: (NotebookCellSourceOutput | undefined)[]): bool
   return false;
 }
 
-/** 输出文本: 数组拼平; 单块超阈值就地截断, 防止单条输出撑爆上下文。 */
+/** 输出文本: 数组拼平; 单块超阈值就地截断, 防止单条输出撑爆上下文. */
 function processOutputText(text: string | string[] | undefined): string {
   if (!text) return '';
   const raw = Array.isArray(text) ? text.join('') : text;
@@ -141,7 +139,7 @@ function processCell(cell: RawCell, index: number, language: string): NotebookCe
   return result;
 }
 
-/** 读取并解析 .ipynb 为 cells。体积超限 / JSON 损坏 / 无 cells 抛可读错误。 */
+/** 读取并解析 .ipynb 为 cells.体积超限 / JSON 损坏 / 无 cells 抛可读错误. */
 export async function readNotebookFile(options: {
   fullPath: string;
   displayPath: string;
@@ -173,7 +171,7 @@ export async function readNotebookFile(options: {
   };
 }
 
-/** 投影: cells → 模型可见文本块 + 输出图片块(相邻文本合并)。 */
+/** 投影: cells → 模型可见文本块 + 输出图片块(相邻文本合并). */
 export function renderNotebookCells(cells: NotebookCellSource[]): ToolResultContentPart[] {
   const parts: ToolResultContentPart[] = [];
   for (const cell of cells) {

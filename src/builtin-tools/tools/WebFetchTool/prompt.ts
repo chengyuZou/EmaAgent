@@ -1,4 +1,3 @@
-// 文案保持静态, 不随运行时能力变化, 避免重复生成工具说明影响模型侧 Prompt Cache.
 export const WEB_FETCH_DESCRIPTION = `Fetch content from a specified URL. HTML pages return their main content as Markdown; other supported text formats retain their original text. raw: true returns decoded source text without extraction or conversion.
 
 Use WebFetch when you need to read a known page: documentation, source code, articles, or any URL the user or a search result points to. This tool is read-only.

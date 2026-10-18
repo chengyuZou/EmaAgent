@@ -1,4 +1,3 @@
-// 按相对记忆根的路径读取正式记忆文件，支持行偏移/行数分页。
 import { z } from 'zod';
 import {
   buildTool,
@@ -14,12 +13,12 @@ import type {
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { MEMORY_READ_DESCRIPTION } from './prompt.js';
 
-/** MemoryRead 工具的窄 Context：只取读取端口；取消与调用身份走 ToolInvocation。 */
+
 interface MemoryReadToolContext {
   readonly memoryRead: ReadMemory;
 }
 
-// ── 输入 schema ──────────────────────────────────────────────────────────────
+
 
 const inputSchema = z.object({
   path: z
@@ -42,13 +41,13 @@ const inputSchema = z.object({
 
 type MemoryReadInput = z.infer<typeof inputSchema>;
 
-// ── 输出类型 ───────────────────────────────────────────────────────────────────
+
 
 export type MemoryReadToolResult =
   | MemoryReadResponse
   | { readonly path: string; readonly notFound: true };
 
-// ── 工具定义 ───────────────────────────────────────────────────────────────────
+
 
 export const MemoryReadTool = buildTool<
   MemoryReadInput,
@@ -63,12 +62,12 @@ export const MemoryReadTool = buildTool<
   isReadOnly: () => true,
   isConcurrencySafe: () => true,
   getToolUseSummary: (input) => `读取记忆文件: ${input.path}`,
-  // 只读已固化的正式记忆，内置信任放行。
+  // 只读已固化的正式记忆,内置信任放行.
   checkPermissions: async () => ({ behavior: 'allow' }),
 
   validateContext(ctx) {
     if (!ctx.memoryRead) {
-      return contextFail('当前未装配记忆读取能力。');
+      return contextFail('当前未装配记忆读取能力.');
     }
     return contextOk({ memoryRead: ctx.memoryRead });
   },
@@ -91,7 +90,7 @@ export const MemoryReadTool = buildTool<
     return result;
   },
 
-  // 模型需要文件正文本身；行号/截断等事实留在 TOutput 给 UI 与审计。
+  // 模型需要文件正文本身;行号/截断等事实留在 TOutput 给 UI 与审计.
   mapResultToModelContent(output) {
     if ('notFound' in output) {
       return `记忆文件不存在: ${output.path}`;

@@ -1,6 +1,3 @@
-// 文件类 Tool 的共享路径权限判定:read / write 两条固定检查顺序.
-// 各文件 Tool 的 checkPermissions 只负责提取路径,判定逻辑全部收敛在这里,
-// 避免六个文件工具各自重复实现路径安全与规则匹配.
 
 import {
   checkInternalPath,

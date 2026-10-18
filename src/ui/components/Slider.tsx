@@ -1,11 +1,5 @@
-// 提供能显式处理空步骤、未知值和非法数字步骤的离散滑块。
 import * as RadixSlider from '@radix-ui/react-slider';
 import { cn } from '../utils/cn.js';
-
-// ── Slider ──────────────────────────────────────────────────────────────────
-//
-// 离散步进滑杆(如 LLM Effort 的 Low/Medium/High/Max);
-// steps 定义全部有效档位及其标签,标签渲染在轨道下方。
 
 export interface SliderStep<T = number> {
   value: T;

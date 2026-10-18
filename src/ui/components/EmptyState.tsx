@@ -1,9 +1,6 @@
 import type { JSX } from 'react';
 import { cn } from '../utils/cn.js';
 
-// ── EmptyState ───────────────────────────────────────────────────────────────
-// 居中图标 + 标题 + 可选提示,用于空态/加载兜底,替代设置页散落的裸 div 空态。
-
 export interface EmptyStateProps {
   /** UnoCSS icon class, e.g. "i-mdi:store-outline". */
   icon?:     string;

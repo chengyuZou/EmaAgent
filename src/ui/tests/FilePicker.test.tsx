@@ -1,4 +1,3 @@
-// 测试 FilePicker 的按钮组合、禁用态和文件选择回调。
 import { act, type MouseEvent } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

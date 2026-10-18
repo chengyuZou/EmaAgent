@@ -6,7 +6,7 @@ import {
 
 /**
  * 本机执行不使用 Bash 沙箱包装, 权限由 PowerShell 的 AST 与中央裁决决定.
- * 编码包装发生在权限裁决后, 进程输出、超时和整棵进程树停止由共享执行层处理.
+ * 编码包装发生在权限裁决后, 进程输出, 超时和整棵进程树停止由共享执行层处理.
  */
 export function startPowerShellCommand(
   shellPath: string,

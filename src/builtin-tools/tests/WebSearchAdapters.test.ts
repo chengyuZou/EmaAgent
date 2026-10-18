@@ -1,5 +1,5 @@
 // 验证搜索适配层: 后端选择、共享过滤/归一/去重、Bing HTML 解析与错误映射, 不发起网络请求。
-import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   extractBingResults,
   resolveBingUrl,
@@ -10,6 +10,7 @@ import {
   normalizeDomains,
   resolveSearchProvider,
   RESULT_LIMIT,
+  searchWeb,
 } from '../tools/WebSearchTool/adapters/index.js';
 import { SearchHttpStatusError } from '../tools/WebSearchTool/adapters/types.js';
 
@@ -41,7 +42,7 @@ describe('resolveSearchProvider', () => {
     expect(resolveSearchProvider()).toBe('brave');
   });
 
-  it('BRAVE_API_KEY 别名同样生效(Claude 同款双环境变量)', () => {
+  it('BRAVE_API_KEY 别名同样生效', () => {
     delete process.env['BRAVE_SEARCH_API_KEY'];
     process.env['BRAVE_API_KEY'] = 'k';
     expect(resolveSearchProvider()).toBe('brave');
@@ -90,7 +91,7 @@ describe('filterAndNormalize', () => {
     expect(results.map((r) => r.url)).toEqual(['https://a.com/x']);
   });
 
-  it('title/snippet 截断且结果数不超过 RESULT_LIMIT', () => {
+  it('searchWeb 在过滤后截断 title/snippet 和结果数', async () => {
     const longTitle = 't'.repeat(600);
     const longSnippet = 's'.repeat(400);
     const many = Array.from({ length: 12 }, (_, i) => ({
@@ -98,7 +99,19 @@ describe('filterAndNormalize', () => {
       url: `https://a.com/${i}`,
       snippet: i === 0 ? longSnippet : '',
     }));
-    const results = filterAndNormalize(many, {});
+    vi.stubEnv('BRAVE_SEARCH_API_KEY', '');
+    vi.stubEnv('BRAVE_API_KEY', '');
+    const items = many.map(item => `<li class="b_algo"><h2><a href="${item.url}">${item.title}</a></h2><p class="b_lineclamp">${item.snippet}</p></li>`).join('');
+    const response = new Response(`<ol id="b_results">${items}</ol>`, { headers: { 'content-type': 'text/html' } });
+    Object.defineProperty(response, 'url', { value: 'https://www.bing.com/search?q=test' });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response));
+    let results;
+    try {
+      results = await searchWeb('test', { signal: new AbortController().signal });
+    } finally {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+    }
     expect(results).toHaveLength(RESULT_LIMIT);
     expect(results[0]!.title).toHaveLength(500);
     expect(results[0]!.snippet).toHaveLength(300);

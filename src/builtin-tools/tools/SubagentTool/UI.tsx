@@ -1,5 +1,3 @@
-// SubagentTool 的桌面展示: 完成结果摘要与后台引用卡。
-// 完成输出是子 Agent 写的报告(大概率为 Markdown), 走共享 Markdown 渲染器.
 import type { JSX } from 'react';
 import { Badge, Markdown } from '@ema-agent/ui';
 import type { SubagentResult } from './SubagentTool.js';
@@ -36,7 +34,7 @@ export function SubagentResultView({ data }: { data: unknown }): JSX.Element | n
         <Badge variant={result.via === 'auto' ? 'warn' : 'primary'}>
           {result.via === 'auto' ? '超时自动转后台' : '后台'}
         </Badge>
-        <span className="font-mono text-[var(--ema-text-tertiary)]">{result.subagentId.slice(0, 8)}…</span>
+        <span className="font-mono text-[var(--ema-text-tertiary)]">{result.subagentId.slice(0, 8)}...</span>
       </div>
     );
   }

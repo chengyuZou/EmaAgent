@@ -2,8 +2,6 @@ import * as RadixSwitch from '@radix-ui/react-switch';
 import { forwardRef } from 'react';
 import { cn } from '../utils/cn.js';
 
-// ── Switch ──────────────────────────────────────────────────────────────────
-
 export interface SwitchProps {
   checked?:        boolean;
   defaultChecked?: boolean;

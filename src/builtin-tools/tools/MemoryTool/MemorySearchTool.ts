@@ -1,5 +1,3 @@
-// 跨两轨关键词搜索正式记忆，返回命中的路径、行号与片段。
-// 能力从 ToolUseContext.memorySearch 取（根 Turn 装配注入，子 Agent 不注入）。
 import { z } from 'zod';
 import {
   buildTool,
@@ -15,12 +13,12 @@ import type {
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { MEMORY_SEARCH_DESCRIPTION } from './prompt.js';
 
-/** MemorySearch 工具的窄 Context：只取搜索端口；取消与调用身份走 ToolInvocation。 */
+
 interface MemorySearchToolContext {
   readonly memorySearch: SearchMemory;
 }
 
-// ── 输入 schema ──────────────────────────────────────────────────────────────
+
 
 const inputSchema = z.object({
   queries: z
@@ -72,11 +70,11 @@ const inputSchema = z.object({
 
 type MemorySearchInput = z.infer<typeof inputSchema>;
 
-// ── 输出类型 ───────────────────────────────────────────────────────────────────
+
 
 export type { MemorySearchResponse };
 
-// ── 工具定义 ───────────────────────────────────────────────────────────────────
+
 
 export const MemorySearchTool = buildTool<
   MemorySearchInput,
@@ -91,12 +89,12 @@ export const MemorySearchTool = buildTool<
   isReadOnly: () => true,
   isConcurrencySafe: () => true,
   getToolUseSummary: (input) => `搜索记忆: ${input.queries.join(' ')}`,
-  // 只读检索已固化的正式记忆，内置信任放行。
+  // 只读检索已固化的正式记忆,内置信任放行.
   checkPermissions: async () => ({ behavior: 'allow' }),
 
   validateContext(ctx) {
     if (!ctx.memorySearch) {
-      return contextFail('当前未装配记忆检索能力。');
+      return contextFail('当前未装配记忆检索能力.');
     }
     return contextOk({ memorySearch: ctx.memorySearch });
   },
@@ -120,10 +118,10 @@ export const MemorySearchTool = buildTool<
     return context.memorySearch(request);
   },
 
-  // 模型需要命中片段本身；truncated/nextCursor 等事实留在 TOutput 给 UI 与审计。
+  // 模型需要命中片段本身;truncated/nextCursor 等事实留在 TOutput 给 UI 与审计.
   mapResultToModelContent(output) {
     if (output.matches.length === 0) {
-      return `记忆中没有找到与 [${output.queries.join(', ')}] 相关的内容。`;
+      return `记忆中没有找到与 [${output.queries.join(', ')}] 相关的内容.`;
     }
     const lines = output.matches.map((match) => {
       const header = `${match.path}:${match.matchLineNumber}`;
@@ -133,7 +131,7 @@ export const MemorySearchTool = buildTool<
     });
     return (
       lines.join('\n') +
-      (output.truncated ? '\n(结果已截断，可用 next_cursor 继续翻页。)' : '')
+      (output.truncated ? '\n(结果已截断,可用 next_cursor 继续翻页.)' : '')
     );
   },
 });

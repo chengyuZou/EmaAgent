@@ -1,8 +1,5 @@
 import { cn } from '../utils/cn.js';
 
-// ── Spinner ─────────────────────────────────────────────────────────────────
-// 独立加载指示器;按钮内加载态请用 Button/IconButton 的 loading prop。
-
 export type SpinnerSize = 'sm' | 'md' | 'lg';
 
 export interface SpinnerProps {

@@ -1,16 +1,14 @@
-// GrepTool 的桌面展示: 参数(pattern+path+模式)与三态结果(文件列表/计数/匹配行)。
-// 只消费本 Tool 的类型化 data; 类型守卫失败一律返回 null, 由前端回落通用渲染。
 import type { JSX } from 'react';
 import { Badge } from '@ema-agent/ui';
 import type { GrepResult } from './GrepTool.js';
 
-// ── 类型守卫(消费 unknown data 的唯一入口) ────────────────────────────────────
+// 类型守卫(消费 unknown data 的唯一入口)
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** 行头摘要：pattern，限定目录时带 path。 */
+/** 行头摘要:pattern,限定目录时带 path. */
 export function grepTitle(args: unknown): string | null {
   if (!isRecord(args) || typeof args['pattern'] !== 'string') return null;
   const path = typeof args['path'] === 'string' ? args['path'] : '';
@@ -47,7 +45,7 @@ export function grepResultCopyText(data: unknown): string | null {
   }
 }
 
-// ── 参数视图: pattern + 可选 path/模式 ─────────────────────────────────────────
+// 参数视图: pattern + 可选 path/模式
 
 export function GrepArgsView({ args }: { args: unknown }): JSX.Element | null {
   if (!isRecord(args) || typeof args['pattern'] !== 'string') return null;
@@ -67,7 +65,7 @@ export function GrepArgsView({ args }: { args: unknown }): JSX.Element | null {
   );
 }
 
-// ── 结果视图: 三态语义 ────────────────────────────────────────────────────────
+// 结果视图: 三态语义
 
 export function GrepResultView({ data, args }: { data: unknown; args?: unknown }): JSX.Element | null {
   const result = asGrepResult(data);

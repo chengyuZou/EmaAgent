@@ -1,38 +1,21 @@
-// 为 UnoCSS 生成可运行时换色的色阶与亮度、饱和度修饰符。
-//
-// 生成由 CSS 自定义属性驱动的 OKLCH 色阶,运行时改一个 hue 变量,
-// primary + violet 两套色板整体跟随。
-//
-// Runtime contract:
-//   --chromatic-hue      base hue in degrees (user-settable)
-//   --chromatic-bri      brightness multiplier (default 1)
-//   --chromatic-sat      saturation multiplier (default 1)
-//   --chromatic-chroma-* per-shade chroma derived from base chroma
-//
-// Usage in uno.config.ts:
-//   import { createPresetChromatic, EMA_PRIMARY_HUE, EMA_VIOLET_OFFSET } from './uno-preset-chromatic.js';
-//   const chromatic = createPresetChromatic();
-//   chromatic({ baseHue: EMA_PRIMARY_HUE, colors: { primary: 0, violet: EMA_VIOLET_OFFSET } })
-
-// Import from @unocss/core, NOT the `unocss` aggregate: this file is reached
-// at runtime by utils/theme.ts (browser graph), and the aggregate entry drags
-// every transformer — including oxc-parser's wasm binding — into the bundle.
+// theme.ts 会把本文件带入浏览器模块, 因此从 @unocss/core 导入而非 unocss 总入口.
+// 总入口会连同不需要的 transformer 和 oxc-parser 的 WASM 依赖一起加载.
 import type { CSSEntries, VariantObject } from '@unocss/core';
 import { definePreset, LAYER_PREFLIGHTS } from '@unocss/core';
 
-// ── EmaAgent default hues ─────────────────────────────────────────────────────
+// EmaAgent default hues
 
 /** Ema's default water-blue (cyan). Change this to shift the whole theme. */
 export const EMA_PRIMARY_HUE = 200;
 
 /**
  * Violet secondary hue offset from primary.
- * 200 + 85 = 285° ≈ violet/purple — stays ~85° "ahead" of primary.
+ * 200 + 85 = 285° ≈ violet/purple - stays ~85° "ahead" of primary.
  * Matches tokens.css --ema-violet (285° at the default hue).
  */
 export const EMA_VIOLET_OFFSET = 85;
 
-// ── CSS variable names ────────────────────────────────────────────────────────
+// CSS variable names
 
 export const VAR_HUE        = '--chromatic-hue';
 export const VAR_BRIGHTNESS = '--chromatic-bri';
@@ -57,19 +40,19 @@ export const VAR_CHROMA_SHADES = {
   950:     '--chromatic-chroma-950',
 } as const satisfies Record<Shade, string>;
 
-// ── Preset options ────────────────────────────────────────────────────────────
+// Preset options
 
 export interface PresetChromaticOptions {
   baseHue: number;
   /** color name → hue offset in degrees from baseHue. */
   colors:  Record<string, number>;
-  /** Bake colors to static HEX at build time. Default false (use CSS vars). */
+  /** 固定构建时的色相和彩度基值, 亮度和饱和度倍率仍由 CSS 变量控制. */
   bakeColors?: boolean;
   modifierUtilityPrefixes?: string[];
   modifierVariantName?:     string;
 }
 
-// ── Internal helpers ──────────────────────────────────────────────────────────
+// Internal helpers
 
 const DEFAULT_MODIFIER_UTILITY_PREFIXES = ['bg', 'text', 'border', 'ring', 'fill', 'stroke'];
 const percentRE = /^\d{1,3}(?:\.\d+)?$/;
@@ -163,7 +146,7 @@ function variantChromaticAdjustments(
   };
 }
 
-// ── Color shade generators ────────────────────────────────────────────────────
+// Color shade generators
 
 function lightness(level: number): string {
   return `clamp(0%, calc(${level}% * var(${VAR_BRIGHTNESS})), 100%)`;
@@ -196,8 +179,8 @@ export function createVarBasedColorShades(hueOffset: number): Record<Shade, stri
 }
 
 /**
- * Statically baked color shades. Hue is fixed at build time.
- * Use when CSS variable runtime switching is not needed (e.g. SSR, extensions).
+ * 色相和彩度基值在构建时确定, 不跟随运行时色相变化.
+ * 生成的颜色仍引用亮度和饱和度倍率变量, 不是完全静态的 HEX 颜色.
  */
 export function createBakedColorShades(baseHue: number, hueOffset: number): Record<Shade, string> {
   const defaultChroma = 0.18 + Math.cos(baseHue * Math.PI / 180) * 0.04;
@@ -218,7 +201,7 @@ export function createBakedColorShades(baseHue: number, hueOffset: number): Reco
   };
 }
 
-// ── Preset factory ────────────────────────────────────────────────────────────
+// Preset factory
 
 export function createPresetChromatic(calledFromExtension = false) {
   return definePreset<PresetChromaticOptions>((options) => ({

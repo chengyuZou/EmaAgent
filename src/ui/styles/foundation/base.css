@@ -1,5 +1,3 @@
-/* ── Base reset + element defaults ──────────────────────────────────────────*/
-
 html, body {
   overflow: hidden;
   margin: 0;
@@ -16,24 +14,24 @@ html, body {
   box-sizing: border-box;
 }
 
-/* 表单控件字体跟随文档:浏览器对 textarea 等默认等宽且无中文字形,会掉衬线怪样。 */
+/* 表单控件字体跟随文档:浏览器对 textarea 等默认等宽且无中文字形,会掉衬线怪样. */
 input, textarea, select, button {
   font-family: inherit;
 }
 
 /* 表单控件的原生焦点框一律关闭:焦点反馈由控件皮肤的"主色边+光晕"统一负责,
-   否则 Chromium 原生黑环与我们的光晕同时渲染,一道控件两层框。
-   按钮不在此列——裸 button(未挂 focus-ring 的页面散件)键盘焦点只剩原生框,不能剥夺。 */
+   否则 Chromium 原生黑环与我们的光晕同时渲染,一道控件两层框.
+   按钮不在此列 - 裸 button(未挂 focus-ring 的页面散件)键盘焦点只剩原生框,不能剥夺. */
 input, textarea, select {
   outline: none;
 }
 
-/* Edge/WebView2 对 password 输入框自带的 reveal 按钮一律隐藏——密钥显示切换由我们的眼睛按钮统一负责。 */
+/* Edge/WebView2 对 password 输入框自带的 reveal 按钮一律隐藏 - 密钥显示切换由我们的眼睛按钮统一负责. */
 input[type='password']::-ms-reveal {
   display: none;
 }
 
-/* 内容默认可选(chat/settings 文本要能复制)。UI chrome 用 .ema-no-select opt-out */
+/* 内容默认可选(chat/settings 文本要能复制).UI chrome 用 .ema-no-select opt-out */
 button, [role="button"], [data-tauri-drag-region], .ema-no-select, .ema-no-select * {
   user-select: none;
   -webkit-user-select: none;
@@ -43,7 +41,7 @@ button, [role="button"], [data-tauri-drag-region], .ema-no-select, .ema-no-selec
   -webkit-user-select: text !important;
 }
 
-/* ── Scrollbar（跟指针：栏内才画，离开延迟淡出） ────────────────────────────*/
+/* Scrollbar(跟指针: 栏内才画, 离开延迟淡出)*/
 ::-webkit-scrollbar {
   width:  6px;
   height: 6px;
@@ -58,7 +56,7 @@ button, [role="button"], [data-tauri-drag-region], .ema-no-select, .ema-no-selec
   transition:    background var(--ema-duration-base) var(--ema-ease) 1.8s,
                  width     var(--ema-duration-base) var(--ema-ease);
 }
-/* 指针悬在滚动容器（含其任意子元素）上时立即显色；离开后按上面 1.8s 延迟淡出。 */
+/* 指针悬在滚动容器(含其任意子元素)上时立即显色; 离开后按上面 1.8s 延迟淡出. */
 *:hover::-webkit-scrollbar-thumb,
 ::-webkit-scrollbar-thumb:hover {
   background: var(--ema-scrollbar-thumb, rgba(255, 255, 255, 0.15));
@@ -71,7 +69,7 @@ button, [role="button"], [data-tauri-drag-region], .ema-no-select, .ema-no-selec
   background: transparent;
 }
 
-/* Firefox 走 scrollbar-color（离散切换，无过渡）。 */
+/* Firefox 走 scrollbar-color(离散切换, 无过渡). */
 * {
   scrollbar-width: thin;
   scrollbar-color: transparent transparent;
@@ -80,19 +78,19 @@ button, [role="button"], [data-tauri-drag-region], .ema-no-select, .ema-no-selec
   scrollbar-color: var(--ema-scrollbar-thumb, rgba(255, 255, 255, 0.15)) transparent;
 }
 
-/* ── Selection ──────────────────────────────────────────────────────────────*/
+/* Selection*/
 ::selection {
   background: color-mix(in srgb, var(--ema-primary) 35%, transparent) !important;
   color: inherit !important;
 }
 
-/* ── Placeholder ────────────────────────────────────────────────────────────*/
+/* Placeholder*/
 ::placeholder {
   color:   var(--ema-text-tertiary);
   opacity: 1;
 }
 
-/* ── 动效降级：系统要求减少动态效果时，全局动画/过渡即时化、平滑滚动关闭 ── */
+/* 动效降级: 系统要求减少动态效果时, 全局动画/过渡即时化, 平滑滚动关闭 */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

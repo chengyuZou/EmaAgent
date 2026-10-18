@@ -1,7 +1,5 @@
 import { cn } from '../utils/cn.js';
 
-// ── Divider ─────────────────────────────────────────────────────────────────
-
 export interface DividerProps {
   orientation?: 'horizontal' | 'vertical';
   /** Add extra inner margin in flow direction. */

@@ -1,5 +1,3 @@
-// TaskGetTool 的模型说明书:description 是唯一模型可见说明,独立成文件单点维护。
-
 export const TASK_GET_DESCRIPTION = `Use this tool to retrieve one task from the current Session by its stable taskId (UUID).
 
 ## When to Use This Tool
@@ -19,4 +17,4 @@ Returns full task details:
 ## Tips
 
 - Use TaskList for a compact view of the whole Session
-- A missing task returns null rather than an error — it may have been deleted`;
+- A missing task returns null rather than an error  -  it may have been deleted`;

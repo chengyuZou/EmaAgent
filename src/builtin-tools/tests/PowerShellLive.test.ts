@@ -1,11 +1,10 @@
-// PowerShell 解析链真机冒烟:默认跳过,EMA_LIVE_PWSH=1 时启用。
-// 覆盖:探测结算、AST 解析(JSON 链路)、命令执行(含 5.1/7 编码包装)。
+// 默认跳过; EMA_LIVE_PWSH=1 时使用本机 PowerShell 验证解析, 编码与超时终止.
 import { describe, expect, it } from 'vitest';
 import {
   detectPowerShell,
   peekPowerShellDetection,
 } from '../tools/PowerShellTool/powershellDetection.js';
-import { parsePowerShellCommand } from '../tools/PowerShellTool/psParser.js';
+import { getAllCommandNames, parsePowerShellCommand } from '../tools/PowerShellTool/psParser.js';
 import { startPowerShellCommand } from '../tools/PowerShellTool/powershellRunner.js';
 
 const LIVE = process.env['EMA_LIVE_PWSH'] === '1';
@@ -34,6 +33,20 @@ describe.skipIf(!LIVE)('PowerShell 真机冒烟(EMA_LIVE_PWSH=1)', () => {
     const names = parsed.statements.flatMap((s) => s.commands.map((c) => c.name.toLowerCase()));
     expect(names).toContain('invoke-webrequest');
     expect(names).toContain('invoke-expression');
+  });
+
+  it.each([
+    ['if ($true) { Get-Process }', ['get-process']],
+    ['Write-Output first; if ($true) { Get-Process }', ['write-output', 'get-process']],
+    ['foreach ($item in 1, 2) { Write-Output $item }', ['write-output']],
+    ['try { Get-Content missing.txt } catch { Write-Output caught }', ['get-content', 'write-output']],
+    ['Write-Output $(Get-Process; Get-Service)', ['write-output', 'get-process', 'get-service']],
+  ])('控制流返回自身的嵌套命令: %s', async (command, expectedNames) => {
+    // 只调用原生 Parser, 不执行语句里的读文件或进程命令.
+    const parsed = await parsePowerShellCommand(command as string);
+
+    expect(parsed.valid).toBe(true);
+    expect(getAllCommandNames(parsed)).toEqual(expect.arrayContaining(expectedNames));
   });
 
   it('执行:中文输出按 UTF-8 解码不乱码', async () => {

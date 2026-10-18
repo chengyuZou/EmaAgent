@@ -1,7 +1,4 @@
-// 检测潜在破坏性 PowerShell 命令,返回供权限对话框展示的警告文案。
-// 纯信息提示——不影响权限判定与自动批准。
-// 对照 Claude packages/builtin-tools/src/tools/PowerShellTool/destructiveCommandWarning.ts 逐行移植;
-// warning 文案保留英文(模型/开发者可见,UI 本地化是展示层的事)。
+// 警告匹配参考 Claude packages/builtin-tools/src/tools/PowerShellTool/destructiveCommandWarning.ts.
 
 type DestructivePattern = {
   pattern: RegExp;
@@ -9,14 +6,14 @@ type DestructivePattern = {
 };
 
 const DESTRUCTIVE_PATTERNS: DestructivePattern[] = [
-  // Remove-Item 带 -Recurse 和/或 -Force(含常见别名)。
-  // 锚定在语句起点(^、|、;、&、换行、{、(),这样 `git rm --force`
-  // 不会误配——\b 会在任何词边界后匹配到 `rm`。`{(` 两个字符兜住
-  // scriptblock/分组体:`{ rm -Force ./x }`。stopper 字符类只加 `}`
-  // (不加 `)`)——`}` 结束一个块,块后的 flag 属于另一条语句
+  // Remove-Item 带 -Recurse 和/或 -Force(含常见别名).
+  // 锚定在语句起点(^, |, ;, &, 换行, {, (),这样 `git rm --force`
+  // 不会误配 - \b 会在任何词边界后匹配到 `rm`.`{(` 两个字符兜住
+  // scriptblock/分组体:`{ rm -Force ./x }`.stopper 字符类只加 `}`
+  // (不加 `)`) - `}` 结束一个块,块后的 flag 属于另一条语句
   // (`if {rm} else {... -Force}`);而 `)` 只是闭合路径分组,其后的
   // flag 仍是本命令的 flag:
-  // `Remove-Item (Join-Path $r "tmp") -Recurse -Force` 必须仍然告警。
+  // `Remove-Item (Join-Path $r "tmp") -Recurse -Force` 必须仍然告警.
   {
     pattern:
       /(?:^|[|;&\n({])\s*(Remove-Item|rm|del|rd|rmdir|ri)\b[^|;&\n}]*-Recurse\b[^|;&\n}]*-Force\b/i,
@@ -95,8 +92,8 @@ const DESTRUCTIVE_PATTERNS: DestructivePattern[] = [
 ];
 
 /**
- * 检查 PowerShell 命令是否命中已知破坏性模式。
- * 返回人类可读的警告文案;未命中任何破坏性模式时返回 null。
+ * 检查 PowerShell 命令是否命中已知破坏性模式.
+ * 返回人类可读的警告文案;未命中任何破坏性模式时返回 null.
  */
 export function getDestructiveCommandWarning(command: string): string | null {
   for (const { pattern, warning } of DESTRUCTIVE_PATTERNS) {

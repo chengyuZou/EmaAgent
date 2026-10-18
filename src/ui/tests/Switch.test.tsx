@@ -1,4 +1,4 @@
-// 测试 Switch 点击后同步更新语义状态，并把滑块移动到轨道右侧。
+import { readFileSync } from 'node:fs';
 import { act, createRef } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -7,17 +7,22 @@ import { Tooltip, TooltipProvider } from '../components/Tooltip.js';
 
 let container: HTMLDivElement;
 let root: Root;
+let stylesheet: HTMLStyleElement;
 
 beforeEach(() => {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
+  stylesheet = document.createElement('style');
+  stylesheet.textContent = readFileSync('styles/primitives/radix.css', 'utf8');
+  document.head.appendChild(stylesheet);
 });
 
 afterEach(() => {
   act(() => root.unmount());
   container.remove();
+  stylesheet.remove();
 });
 
 describe('Switch', () => {
@@ -30,12 +35,19 @@ describe('Switch', () => {
     const thumb = control.firstElementChild as HTMLSpanElement;
     expect(control.dataset.state).toBe('unchecked');
     expect(thumb.dataset.state).toBe('unchecked');
+    expect(getComputedStyle(thumb).transform).toBe('translateX(2px) scale(1)');
 
     act(() => control.click());
 
     expect(control.dataset.state).toBe('checked');
     expect(thumb.dataset.state).toBe('checked');
-    expect(thumb.className).toContain('data-[state=checked]:translate-x-full');
+    expect(getComputedStyle(thumb).transform).toBe('translateX(24px) scale(1)');
+
+    act(() => control.click());
+
+    expect(control.dataset.state).toBe('unchecked');
+    expect(thumb.dataset.state).toBe('unchecked');
+    expect(getComputedStyle(thumb).transform).toBe('translateX(2px) scale(1)');
   });
 
   it('forwards the tooltip trigger ref to its button', () => {

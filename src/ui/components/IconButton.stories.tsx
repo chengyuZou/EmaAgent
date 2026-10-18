@@ -1,9 +1,6 @@
-// 展示并目测验证 IconButton 的外观、尺寸和交互状态。
 import { useState } from 'react';
 import { IconButton } from './IconButton.js';
 import type { IconButtonVariant, IconButtonSize } from './IconButton.js';
-
-// ── IconButton stories ──────────────────────────────────────────────────────
 
 export default {
   title: 'Atoms / IconButton',
@@ -104,7 +101,7 @@ export const InTextareaSlot = (): React.JSX.Element => (
     </h2>
     <div className="relative max-w-lg rounded-lg border border-[var(--ema-border)] bg-[var(--ema-surface-2)] p-3">
       <textarea
-        placeholder="输入消息…"
+        placeholder="输入消息..."
         rows={4}
         className="w-full resize-none bg-transparent text-[var(--ema-text-primary)] outline-none pb-10 pr-10"
       />
@@ -118,7 +115,7 @@ export const InTextareaSlot = (): React.JSX.Element => (
       </div>
     </div>
     <p className="mt-4 text-xs text-[var(--ema-text-tertiary)]">
-      圆形发送按钮内嵌 textarea 右下角，符合 frontend-skeleton.md §5 规范。
+      圆形发送按钮内嵌 textarea 右下角.
     </p>
   </Frame>
 );

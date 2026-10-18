@@ -1,4 +1,3 @@
-// 测试只读预览卡片通过键盘聚焦打开到 Portal, 且不沿用短标签的反色和箭头.
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

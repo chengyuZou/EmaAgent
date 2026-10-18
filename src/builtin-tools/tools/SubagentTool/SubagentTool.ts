@@ -1,6 +1,3 @@
-// 启动子 Agent: 默认同步等待完成, runInBackground 立即返回引用;
-// 同步等待超限时自动转交后台.
-// 模型说明书见 prompt.ts。
 import { z } from 'zod';
 import {
   buildTool,
@@ -14,18 +11,18 @@ import {
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { SUBAGENT_DESCRIPTION } from './prompt.js';
 
-/** Subagent 工具的窄 Context：子 Agent 启动器;取消与身份走 ToolInvocation。 */
+
 interface SubagentToolContext {
   subagents: SubagentControl;
 }
 
 /**
- * 同步等待的转交阈值: 超过即把 Subagent 转交后台并返回引用。
+ * 同步等待的转交阈值: 超过即把 Subagent 转交后台并返回引用.
  * 子 Agent 按独立的等待阈值转交, 不使用 Shell 命令的前台等待时间.
  */
 const AUTO_BACKGROUND_WAIT_MS = 120_000;
 
-// ── 输入 schema ──────────────────────────────────────────────────────────────
+
 
 const inputSchema = z.object({
   subagentId: z.string().min(1).optional()
@@ -43,7 +40,7 @@ const inputSchema = z.object({
     .string()
     .optional()
     .describe(
-      'Provider of the model override. Must be given together with modelId — ' +
+      'Provider of the model override. Must be given together with modelId  -  ' +
       'a modelId alone is not unique across providers. New agents inherit the parent; continued agents keep their last model.',
     ),
   modelId: z
@@ -75,7 +72,7 @@ const inputSchema = z.object({
 
 type SubagentInput = z.infer<typeof inputSchema>;
 
-// ── 输出类型 ───────────────────────────────────────────────────────────────────
+
 
 export interface SubagentCompletedResult {
   kind: 'completed';
@@ -89,13 +86,13 @@ export interface SubagentBackgroundReference {
   kind: 'background';
   subagentId: string;
   runId: string;
-  /** requested=模型显式要求后台; auto=同步等待超限自动转交。 */
+  /** requested=模型显式要求后台; auto=同步等待超限自动转交. */
   via: 'requested' | 'auto';
 }
 
 export type SubagentResult = SubagentCompletedResult | SubagentBackgroundReference;
 
-// ── 限时等待(单次结算 + 对称清理) ─────────────────────────────────────────────
+// 限时等待(单次结算 + 对称清理)
 
 type WaitOutcome<T> =
   | { kind: 'result'; result: T }
@@ -133,7 +130,7 @@ function raceWithAbort<T>(promise: Promise<T>, timeoutMs: number, signal: AbortS
   });
 }
 
-// ── 工具定义 ───────────────────────────────────────────────────────────────────
+
 
 export const SubagentTool = buildTool<SubagentInput, SubagentResult, SubagentToolContext>({
   id: BuiltinTools.Subagent.id,
@@ -144,12 +141,12 @@ export const SubagentTool = buildTool<SubagentInput, SubagentResult, SubagentToo
   isReadOnly: () => false,
   isConcurrencySafe: () => true,
 
-  // 启动子 Agent 有副作用与成本, 交给中央规则与模式收口(默认询问)。
+  // 启动子 Agent 有副作用与成本, 交给工具权限规则和模式决定是否询问.
   checkPermissions: async () => ({ behavior: 'passthrough', message: '启动子 Agent 需要用户确认' }),
 
   validateContext(ctx) {
     if (!ctx.subagents) {
-      return contextFail('子 Agent 不能再启动子 Agent（深度限制: 1）。');
+      return contextFail('子 Agent 不能再启动子 Agent(深度限制: 1).');
     }
     return contextOk({ subagents: ctx.subagents });
   },
@@ -159,12 +156,12 @@ export const SubagentTool = buildTool<SubagentInput, SubagentResult, SubagentToo
       throw new Error('Creating a sub-agent requires title and description.');
     }
     const { modelId, providerId } = input;
-    // modelId 跨 provider 不唯一（同名可能是不同权重/量化/托管）；
-    // 只给 modelId 不给 providerId = 让编排层猜，直接拒绝。
+    // modelId 跨 provider 不唯一(同名可能是不同权重/量化/托管);
+    // 只给 modelId 不给 providerId = 让编排层猜,直接拒绝.
     if ((modelId === undefined) !== (providerId === undefined)) {
       throw new Error(
         'Sub-agent model override requires both providerId and modelId. ' +
-        'A modelId alone is ambiguous — the same model id can exist on multiple providers.',
+        'A modelId alone is ambiguous  -  the same model id can exist on multiple providers.',
       );
     }
     const options: SubagentSpawnOptions = {
@@ -187,7 +184,7 @@ export const SubagentTool = buildTool<SubagentInput, SubagentResult, SubagentToo
       return { kind: 'background', ...reference, via: 'requested' };
     }
 
-    // 同步路径: 后台拉起 + 限时等待，超时自动转交后台。
+    // 同步路径: 后台拉起 + 限时等待,超时自动转交后台.
     const reference = context.subagents.start(
       input.prompt,
       options,
@@ -207,7 +204,7 @@ export const SubagentTool = buildTool<SubagentInput, SubagentResult, SubagentToo
         return { kind: 'background', ...reference, via: 'auto' };
       }
       if (outcome.kind === 'aborted') {
-        // 同步等待被取消: 取消子 Agent 再抛,不留孤儿运行。
+        // 同步等待被取消: 取消子 Agent 再抛,不留孤儿运行.
         context.subagents.cancel(subagentId);
         throw outcome.reason instanceof Error
           ? outcome.reason
@@ -233,7 +230,7 @@ export const SubagentTool = buildTool<SubagentInput, SubagentResult, SubagentToo
         ? 'transferred to background after 120s'
         : 'started in the background';
       return `Sub-agent ${output.subagentId} is ${via}. `
-        + 'You will be notified when it completes — do not poll or sleep. '
+        + 'You will be notified when it completes  -  do not poll or sleep. '
         + 'Use SubagentAwait to collect the result within this turn.';
     }
     return `Sub-agent ${output.subagentId} completed.\n${output.output}`;

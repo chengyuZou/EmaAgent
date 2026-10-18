@@ -3,9 +3,6 @@ import { cn } from '../utils/cn.js';
 import { Badge } from './Badge.js';
 import { Button } from './Button.js';
 
-// ── MarketCard ───────────────────────────────────────────────────────────────
-// 市场条目卡: 左侧内容(children) + 右侧安装/已安装按钮.
-
 export interface MarketCardProps {
   decorate?:       string;
   index?:          number;

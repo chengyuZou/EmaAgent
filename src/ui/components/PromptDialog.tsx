@@ -3,9 +3,6 @@ import { Dialog } from './Dialog.js';
 import { Input } from './Input.js';
 import { Button } from './Button.js';
 
-// ── PromptDialog ─────────────────────────────────────────────────────────────
-// 单行输入弹窗:替代原生 prompt();Esc/遮罩点击 = 取消,Enter = 确认。
-
 export interface PromptDialogProps {
   open:         boolean;
   /** Dialog title. Defaults to "请输入". */
@@ -29,7 +26,7 @@ export function PromptDialog(props: PromptDialogProps): React.JSX.Element {
   } = props;
   const [value, setValue] = useState(initialValue);
 
-  // 每次打开时重置回 initialValue。
+  // 每次打开时重置回 initialValue.
   useEffect(() => { if (open) setValue(initialValue); }, [open, initialValue]);
 
   return (

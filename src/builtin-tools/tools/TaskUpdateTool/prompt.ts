@@ -1,10 +1,8 @@
-// TaskUpdateTool 的模型说明书:description 是唯一模型可见说明,独立成文件单点维护。
-
 export const TASK_UPDATE_DESCRIPTION = `Use this tool to update a persistent task in the current Session.
 
 ## Optimistic Concurrency
 
-Read the latest state with TaskGet or TaskList first, and pass its \`version\` as \`expectedVersion\`. A stale write is rejected with \`version_conflict\` instead of overwriting newer work — re-read and retry.
+Read the latest state with TaskGet or TaskList first, and pass its \`version\` as \`expectedVersion\`. A stale write is rejected with \`version_conflict\` instead of overwriting newer work  -  re-read and retry.
 
 ## Status Workflow
 
@@ -17,10 +15,10 @@ Status progresses: \`pending\` → \`in_progress\` → \`completed\`.
 
 ## Destructive Actions
 
-- \`action: "cancel"\` — work intentionally abandoned; history remains
-- \`action: "delete"\` — only for duplicates or mistakenly created tasks; removes the task permanently
+- \`action: "cancel"\`  -  work intentionally abandoned; history remains
+- \`action: "delete"\`  -  only for duplicates or mistakenly created tasks; removes the task permanently
 
-An action must be submitted alone — it cannot be combined with any other mutation in the same call.
+An action must be submitted alone  -  it cannot be combined with any other mutation in the same call.
 
 ## Examples
 

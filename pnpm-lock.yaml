@@ -1325,21 +1325,12 @@ importers:
       '@ema-agent/vision':
         specifier: workspace:*
         version: link:../vision
-      diff:
-        specifier: ^9.0.0
-        version: 9.0.0
-      glob:
-        specifier: ^11.0.0
-        version: 11.1.0
       lru-cache:
         specifier: ^10.4.3
         version: 10.4.3
       zod:
         specifier: ^4.4.3
         version: 4.4.3
-      zod-to-json-schema:
-        specifier: ^3.23.0
-        version: 3.25.2(zod@4.4.3)
     devDependencies:
       '@ema-agent/storage':
         specifier: workspace:*
@@ -1475,9 +1466,6 @@ importers:
       '@codemirror/view':
         specifier: 6.43.14
         version: 6.43.14
-      '@formkit/auto-animate':
-        specifier: ^0.8.2
-        version: 0.8.4
       '@lezer/highlight':
         specifier: 1.2.5
         version: 1.2.5
@@ -2302,9 +2290,6 @@ packages:
 
   '@floating-ui/utils@0.2.11':
     resolution: {integrity: sha512-RiB/yIh78pcIxl6lLMG0CgBXAZ2Y0eVHqMPYugu+9U0AeT6YBeiJpf7lbdJNIugFP5SIjwNRgo4DhR1Qxi26Gg==}
-
-  '@formkit/auto-animate@0.8.4':
-    resolution: {integrity: sha512-DHHC01EJ1p70Q0z/ZFRBIY8NDnmfKccQoyoM84Tgb6omLMat6jivCdf272Y8k3nf4Lzdin/Y4R9q8uFtU0GbnA==}
 
   '@google/genai@2.30.0':
     resolution: {integrity: sha512-Gkv1ix8iZey/V3WF4lHaRS8C71P533jenDT/lA+fdPTCfXYfmCVHvo+0H5jTgzonqsmROQG7QpzLJkpoP/x7bg==}
@@ -8116,8 +8101,6 @@ snapshots:
       react-dom: 18.3.1(react@18.3.1)
 
   '@floating-ui/utils@0.2.11': {}
-
-  '@formkit/auto-animate@0.8.4': {}
 
   '@google/genai@2.30.0(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))':
     dependencies:

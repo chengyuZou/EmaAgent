@@ -1,23 +1,21 @@
-// 按行范围读取文本文件: 小文件快路径整读, 大文件流式只保留选中行。
-// 内存占用由选中范围决定, 不由文件大小决定——读 100 GB 文件的第 1 行不会爆 RSS。
 import fs from 'node:fs';
 import { SELECTED_BYTES_LIMIT, TEXT_WHOLE_READ_LIMIT } from './limits.js';
 
 export interface TextRangeResult {
-  /** 选中行(已剥 BOM 与行尾 \r)。 */
+  /** 选中行(已剥 BOM 与行尾 \r). */
   lines: string[];
-  /** 文件总行数(与 split('\n') 口径一致: 换行数 + 1)。 */
+  /** 文件总行数(与 split('\n') 口径一致: 换行数 + 1). */
   totalLines: number;
-  /** 选中内容超过字节预算被截断。 */
+  /** 选中内容超过字节预算被截断. */
   truncated: boolean;
-  /** 快路径的完整原文(未剥 BOM/\r, 供 FileEdit 防覆盖精确比对); 流式路径无。 */
+  /** 快路径的完整原文(未剥 BOM/\r, 供 FileEdit 防覆盖精确比对); 流式路径无. */
   raw?: string;
 }
 
 /**
- * 读取 [offset, offset+limit) 行(1 起行号)。
+ * 读取 [offset, offset+limit) 行(1 起行号).
  * stat 由调用方提供(避免重复 stat); 大文件或设备类走 createReadStream,
- * signal 可取消流。
+ * signal 可取消流.
  */
 export async function readTextInRange(
   filePath: string,
@@ -32,7 +30,7 @@ export async function readTextInRange(
   return readStreaming(filePath, offset, limit, signal);
 }
 
-// ── 快路径: 整读 + 内存切片(小文件快约 2 倍) ──────────────────────────────────
+
 
 async function readFast(
   filePath: string,
@@ -54,14 +52,17 @@ export function selectTextRange(raw: string, offset: number, limit: number | und
   let truncated = false;
   for (const line of selected) {
     const next = bytes + (lines.length > 0 ? 1 : 0) + Buffer.byteLength(line);
-    if (next > SELECTED_BYTES_LIMIT) { truncated = true; break; }
+    if (next > SELECTED_BYTES_LIMIT) {
+      truncated = true;
+      break;
+    }
     bytes = next;
     lines.push(line);
   }
   return { lines, totalLines: all.length, truncated, raw };
 }
 
-// ── 流式路径: 只累计选中行, 其余只数 \n ────────────────────────────────────────
+// 大文件仍扫描到末尾以统计 totalLines, 但只保留预算内的选中行.
 
 function readStreaming(
   filePath: string,
@@ -84,7 +85,7 @@ function readStreaming(
     let partial = '';        // 跨 chunk 的行碎片
     let isFirstChunk = true;
 
-    // 选中一行: 预算内才落袋, 超出即截断且不再累计(行数照常统计)。
+    // 超出正文预算后不再保存选中行, 但继续扫描以统计文件总行数.
     const pushSelected = (line: string): void => {
       if (truncated) return;
       const next = selectedBytes + (lines.length > 0 ? 1 : 0) + Buffer.byteLength(line);
@@ -114,13 +115,13 @@ function readStreaming(
         lineIndex++;
         startPos = newlinePos + 1;
       }
-      // 未完成的行尾碎片: 只有落在选中范围才值得留。
+      // 未完成的行尾碎片: 只有落在选中范围才值得留.
       if (startPos < data.length && lineIndex >= offset - 1 && lineIndex < endLine) {
         const fragment = data.slice(startPos);
         if (selectedBytes + Buffer.byteLength(fragment) <= SELECTED_BYTES_LIMIT) {
           partial = fragment;
         } else {
-          // 巨行碎片: 截断并收缩选中范围, 防止无换行大文件把 partial 撑爆。
+          // 巨行碎片: 截断并收缩选中范围, 防止无换行大文件把 partial 撑爆.
           truncated = true;
           endLine = lineIndex;
         }
@@ -128,7 +129,7 @@ function readStreaming(
     });
 
     stream.once('end', () => {
-      // 与 split('\n') 口径一致: 末尾片段(含空串)也算一行, 在范围内才落袋。
+      // 与 split('\n') 口径一致: 末尾片段包含空串也算一行, 在范围内才保存.
       if (lineIndex >= offset - 1 && lineIndex < endLine) {
         pushSelected(stripCr(partial));
       }

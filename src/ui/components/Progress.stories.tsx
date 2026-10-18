@@ -1,8 +1,5 @@
-// 展示并目测验证 Progress 的进行中、完成、静态和危险状态。
 import { useState, useEffect } from 'react';
 import { Progress } from './Progress.js';
-
-// ── Progress stories ────────────────────────────────────────────────────────
 
 export default { title: 'Atoms / Progress' };
 
@@ -37,7 +34,7 @@ export const IndeterminateHint = (): React.JSX.Element => (
     <h2 className="text-sm uppercase tracking-wider text-[var(--ema-text-tertiary)]">animated=false for indeterminate-like</h2>
     <Progress progress={70} animated={false} />
     <p className="text-xs text-[var(--ema-text-tertiary)]">
-      使用 animated=false 时无 shine。真正的 indeterminate 模式走 <code>Spinner</code>。
+      使用 animated=false 时无 shine.真正的 indeterminate 模式走 <code>Spinner</code>.
     </p>
   </Frame>
 );

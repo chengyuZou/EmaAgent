@@ -1,8 +1,5 @@
-// PowerShell 命令执行工具:无沙箱 Windows 的"AST 分析 + 逐条权限"路线。
-// 安全链:validateInput(长度闸门 + AST 硬拦 deny 档) → checkPermissions(内容规则 +
-// 默认询问) → 中央裁决 → 共享后台管理 → 本机 PowerShell 执行.
-// 与 BashTool 的分工:Bash 走 OS 沙箱(bwrap/WSL),无沙箱时整体隐藏;
-// 本工具专为无沙箱 Windows 存在,安全性不依赖 OS 隔离。
+// 使用本机 PowerShell, 不套用 Bash 的操作系统沙箱.
+// AST 禁止检查与权限确认发生在执行前; 共享执行层管理输出, 超时和停止.
 
 import { z } from 'zod';
 import {
@@ -37,7 +34,7 @@ import {
   type ShellResult,
 } from '../shared/shellExecution.js';
 
-// ── 输入输出 ───────────────────────────────────────────────────────────────────
+
 
 const inputSchema = z.object({
   command: z.string().min(1).describe('The PowerShell command to execute.'),
@@ -53,7 +50,7 @@ interface PowerShellToolContext {
   backgroundProcesses: BackgroundProcess;
 }
 
-// ── 工具定义 ───────────────────────────────────────────────────────────────────
+
 
 export const PowerShellTool = buildTool<PowerShellInput, ShellResult, PowerShellToolContext, ShellProgress>({
   id: BuiltinTools.PowerShell.id,
@@ -62,7 +59,7 @@ export const PowerShellTool = buildTool<PowerShellInput, ShellResult, PowerShell
 
   inputSchema,
   getToolUseSummary: input => input.description,
-  // 静态只读证明需要 AST,而 isReadOnly 是同步钩子;保守报 false。
+  // 静态只读证明需要 AST,而 isReadOnly 是同步钩子;保守报 false.
   isReadOnly: () => false,
   isConcurrencySafe: () => false,
 
@@ -85,22 +82,22 @@ export const PowerShellTool = buildTool<PowerShellInput, ShellResult, PowerShell
   },
 
   validateContext(ctx: ToolUseContext) {
-    // 探测在模块加载时已预热;此处只读已结算的缓存。未结算按不可用处理
-    // (fail-closed:该 Turn 不可见,下个 Turn 探测早已完成)。
+    // 探测在模块加载时已预热;此处只读已结算的缓存.未结算按不可用处理
+    // 未结算时本次调用返回不可用, 后续调用会读取结算后的探测结果.
     if (!peekPowerShellDetection()?.path) {
-      return contextFail('当前环境未探测到 PowerShell(pwsh/powershell.exe)。');
+      return contextFail('当前环境未探测到 PowerShell(pwsh/powershell.exe).');
     }
     if (!ctx.cwd) {
-      return contextFail('PowerShell 需要先选择工作区。');
+      return contextFail('PowerShell 需要先选择工作区.');
     }
     if (!ctx.backgroundProcesses) {
-      return contextFail('当前执行环境没有后台进程能力。');
+      return contextFail('当前执行环境没有后台进程能力.');
     }
     return contextOk({ cwd: ctx.cwd, backgroundProcesses: ctx.backgroundProcesses });
   },
 
   async validateInput(input) {
-    // argv 预算是 UTF-8 字节数;超限命令无法交给 AST 分析,确定性拒绝。
+    // argv 预算是 UTF-8 字节数;超限命令无法交给 AST 分析,确定性拒绝.
     const commandBytes = Buffer.byteLength(input.command, 'utf8');
     if (commandBytes > MAX_COMMAND_LENGTH) {
       return {
@@ -112,7 +109,7 @@ export const PowerShellTool = buildTool<PowerShellInput, ShellResult, PowerShell
     }
     const parsed = await parsePowerShellCommand(input.command);
     const verdict = powershellCommandIsSafe(input.command, parsed);
-    // deny 档(下载摇篮/混淆载荷):对 Agent 无合法用途,任何权限模式都不放行。
+    // deny 是工具的禁止模式, 在权限规则前拒绝, 不由 allow 规则跳过.
     if (verdict.behavior === 'deny') {
       return {
         valid: false,
@@ -151,7 +148,7 @@ export const PowerShellTool = buildTool<PowerShellInput, ShellResult, PowerShell
       onOutput: createShellOutputCallback(onProgress),
     });
     if (result.kind === 'processReference') return result;
-    // 退出码语义只作补充说明,不改写真实退出状态(robocopy 1 仍是 1)。
+    // 退出码语义只作补充说明,不改写真实退出状态(robocopy 1 仍是 1).
     const interpretation = interpretCommandResult(
       input.command,
       result.result.exitCode,

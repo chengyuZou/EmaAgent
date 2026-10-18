@@ -126,7 +126,7 @@ export const CodeViewer = memo(function CodeViewer({ source, language = 'text', 
           <div className="flex items-center gap-2">
             <span role="status" className="text-xs text-[var(--ema-text-secondary)]">
               {copyStatus === 'copied' && '已复制'}
-              {copyStatus === 'failed' && '复制失败，请重试'}
+              {copyStatus === 'failed' && '复制失败,请重试'}
             </span>
             <Tooltip content={copyStatus === 'copied' ? '已复制' : '复制全文'}>
               <IconButton

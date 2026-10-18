@@ -1,4 +1,3 @@
-// 将统一按钮连接到原生文件选择框，并把选中的文件交给业务层。
 import {
   Children,
   cloneElement,
@@ -10,16 +9,12 @@ import {
 } from 'react';
 import { cn } from '../utils/cn.js';
 
-// ── FilePicker ───────────────────────────────────────────────────────────────
-// 隐藏原生 file input,由触发按钮唤起系统文件对话框;
-// 目录选择或 Tauri 托管对话框请直接用 tauriBridge.openFileDialog。
-
 export interface FilePickerProps {
   /** accept attribute, e.g. "image/*", ".json,.csv". */
   accept?:    string;
   multiple?:  boolean;
   onSelect:   (files: File[]) => void;
-  /** 单个按钮元素；FilePicker 只增强它，不会再额外包裹 button。 */
+  /** 单个按钮元素;FilePicker 只增强它,不会再额外包裹 button. */
   children:   ReactElement<ButtonHTMLAttributes<HTMLButtonElement>>;
   className?: string;
   disabled?:  boolean;
@@ -34,6 +29,7 @@ export function FilePicker(props: FilePickerProps): React.JSX.Element {
   const onChange = (e: ChangeEvent<HTMLInputElement>): void => {
     const files = Array.from(e.target.files ?? []);
     if (files.length > 0) onSelect(files);
+    // 选择完成后清空原生值, 下次选择同一个文件也能触发 change.
     e.target.value = '';
   };
 

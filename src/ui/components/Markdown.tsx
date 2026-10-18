@@ -1,11 +1,5 @@
-/**
- * 聊天、文件预览、Memory 和 Tool UI 共用的安全 Markdown, 支持公式、代码高亮和 Mermaid.
- * 流程: Markdown -> raw HTML -> 安全清洗 -> KaTeX/highlight -> React/Mermaid.
- *
- * 位于 ui 包的原因: desktop 聊天/文件预览与 builtin-tools 的 Tool UI 都要渲染
- * Markdown, 而 Tool UI 只允许消费 @ema-agent/ui. 排版样式是全局 .markdown-content
- * (src/ui/styles/primitives/markdown.css), KaTeX 样式由桌面入口引入.
- */
+// 聊天, 文件预览与工具结果共用此入口. raw HTML 先清洗, 再交给 KaTeX 和高亮器.
+// 自定义 URL 处理会接管 href/src 的协议判断, 调用方必须拒绝脚本等不允许的协议.
 import ReactMarkdown, { type Components, type UrlTransform } from 'react-markdown';
 import { createContext, memo, useContext, type ReactNode } from 'react';
 import type { Extension } from 'mdast-util-from-markdown';
@@ -46,7 +40,7 @@ interface MarkdownRenderers {
 const CustomMarkdownRenderers = createContext<MarkdownRenderers | null>(null);
 
 /**
- * 让 desktop 为 Markdown 提供图片点击、音频卡片和文件链接打开操作, UI 包不导入桌面的媒体组件或文件侧栏.
+ * 让 desktop 为 Markdown 提供图片点击, 音频卡片和文件链接打开操作, UI 包不导入桌面的媒体组件或文件侧栏.
  * components 负责显示和点击, urlTransform 负责允许的地址; 文件读取和导航仍由调用方处理.
  * 作用范围内的 Markdown 都使用这些处理方式, 未设置 Provider 的 Markdown 保持默认行为.
  */
@@ -78,7 +72,7 @@ const remarkMermaidFences: Plugin = function () {
   extensions.push(mermaidFences);
 };
 
-// ── raw HTML 安全边界: 剥离布局类属性, 模型/Skill/文件内容都不可信 ────────────
+// raw HTML 安全边界: 剥离布局类属性, 模型/Skill/文件内容都不可信
 
 type SanitizeAttribute = string | [string, ...Array<unknown>];
 

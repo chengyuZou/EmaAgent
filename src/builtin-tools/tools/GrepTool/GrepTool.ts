@@ -1,5 +1,3 @@
-// 通过 ripgrep 在时间、输出和结果数量预算内搜索文件内容。
-// 模型说明书见 prompt.ts; rg 是外部二进制(缺失时给明确错误); 结果按模式三形态返回。
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
@@ -11,7 +9,7 @@ import { runBoundedProcess } from '../shared/BoundedProcess.js';
 import { sortPathsByMtimeDesc } from '../shared/fileMtimeSort.js';
 import { GREP_DESCRIPTION } from './prompt.js';
 
-/** Grep 工具的窄 Context：只取工作区根；取消信号走 ToolInvocation。 */
+
 interface GrepToolContext {
   cwd: string;
 }
@@ -20,10 +18,10 @@ const MAX_ENUMERATED_RECORDS = 20_000;
 const MAX_OFFSET = 19_000;
 const MAX_OUTPUT_BYTES = 2 * 1024 * 1024;
 const SEARCH_TIMEOUT_MS = 15_000;
-/** 版本控制元数据目录自动排除, 避免搜索结果噪声。 */
+/** 版本控制元数据目录自动排除, 避免搜索结果噪声. */
 const VCS_DIRECTORIES_TO_EXCLUDE = ['.git', '.svn', '.hg', '.bzr', '.jj', '.sl'];
 
-// ── 输入 schema ──────────────────────────────────────────────────────────────
+
 
 const inputSchema = z.object({
   pattern: z.string().min(1).describe(
@@ -96,26 +94,26 @@ type GrepInput = z.infer<typeof inputSchema>;
 export type GrepResult =
   | {
       type: 'files_with_matches';
-      /** 匹配的文件路径(相对搜索根, '/' 分隔), 按 mtime 降序。 */
+      /** 匹配的文件路径(相对搜索根, '/' 分隔), 按 mtime 降序. */
       files: string[];
       truncated: boolean;
-      /** 仅 truncated=true 时存在。给模型的人类可读提示。 */
+      /** 仅 truncated=true 时存在.给模型的人类可读提示. */
       notice?: string;
     }
   | {
       type: 'count';
-      /** 分页后的 "文件:计数" 行。 */
+      /** 分页后的 "文件:计数" 行. */
       entries: string[];
-      /** 有界全集内累计的匹配总数(截断时为下限)。 */
+      /** 有界全集内累计的匹配总数(截断时为下限). */
       totalMatches: number;
-      /** 参与统计的文件数。 */
+      /** 参与统计的文件数. */
       fileCount: number;
       truncated: boolean;
       notice?: string;
     }
   | {
       type: 'content';
-      /** 匹配行(含行号与上下文), 已剥 ./ 前缀。 */
+      /** 匹配行(含行号与上下文), 已剥 ./ 前缀. */
       output: string;
       numLines: number;
       truncated: boolean;
@@ -133,14 +131,14 @@ export const GrepTool = buildTool<GrepInput, GrepResult, GrepToolContext>({
 
   validateContext(ctx) {
     if (!ctx.cwd) {
-      return contextFail('Grep 工具需要明确的工作区，禁止回退到 Sidecar 进程目录。');
+      return contextFail('Grep 工具需要明确的工作区,禁止回退到 Sidecar 进程目录.');
     }
     return contextOk({ cwd: ctx.cwd });
   },
 
   validateInput(input, context) {
     if (!input.path) return { valid: true };
-    // UNC 跳过 stat: stat 本身会触发 SMB 认证, NTLM 凭据泄露; Permission 层会拦。
+    // UNC 跳过 stat: stat 本身会触发 SMB 认证, NTLM 凭据泄露; Permission 层会拦.
     if (input.path.startsWith('\\\\') || input.path.startsWith('//')) return { valid: true };
     const resolved = path.resolve(context.cwd, input.path);
     try {
@@ -188,7 +186,7 @@ export const GrepTool = buildTool<GrepInput, GrepResult, GrepToolContext>({
     invocation: ToolInvocation,
   ): Promise<GrepResult> {
     const cwd = context.cwd;
-    // cwd 内搜索: 输出相对路径(省 token 且更易读); 目标是文件时以其所在目录为 cwd。
+    // cwd 内搜索: 输出相对路径(省 token 且更易读); 目标是文件时以其所在目录为 cwd.
     const resolvedTarget = input.path
       ? path.resolve(cwd, input.path)
       : cwd;
@@ -200,13 +198,13 @@ export const GrepTool = buildTool<GrepInput, GrepResult, GrepToolContext>({
         searchTarget = path.basename(resolvedTarget);
       }
     } catch {
-      // 路径不存在: 交给 rg 自己的错误输出(经下方 stderr 透传)。
+      // 路径不存在: 交给 rg 自己的错误输出(经下方 stderr 透传).
     }
 
     let result;
     try {
-      // 文件列表和计数必须先取得有界全集, 才能诚实排序、分页和统计;
-      // content 仍按 offset + head_limit 流式早停, 避免无谓收集大量正文。
+      // 文件列表和计数必须先取得有界全集, 才能诚实排序, 分页和统计;
+      // content 仍按 offset + head_limit 流式早停, 避免无谓收集大量正文.
       const maxRecords = input.output_mode === 'content'
         ? input.offset + input.head_limit
         : MAX_ENUMERATED_RECORDS;
@@ -220,7 +218,7 @@ export const GrepTool = buildTool<GrepInput, GrepResult, GrepToolContext>({
         allowedExitCodes: [0, 1],
       });
     } catch (err: unknown) {
-      // rg 是外部二进制: 缺失时给模型可执行的明确错误, 不抛裸 spawn ENOENT。
+      // rg 是外部二进制: 缺失时给模型可执行的明确错误, 不抛裸 spawn ENOENT.
       if (err instanceof Error && 'code' in err && (err as NodeJS.ErrnoException).code === 'ENOENT') {
         throw new Error(
           'ripgrep (rg) is not installed or not on PATH. Grep requires the rg binary; install ripgrep and retry.',
@@ -229,7 +227,7 @@ export const GrepTool = buildTool<GrepInput, GrepResult, GrepToolContext>({
       throw err;
     }
 
-    // rg 用 cwd+相对目标输出的路径带 ./ 前缀, 剥掉再展示。
+    // rg 用 cwd+相对目标输出的路径带 ./ 前缀, 剥掉再展示.
     const records = result.records.map((r) => (r.startsWith('./') ? r.slice(2) : r));
     const pageStart = input.offset;
     const pageEnd = input.offset + input.head_limit;
@@ -240,8 +238,8 @@ export const GrepTool = buildTool<GrepInput, GrepResult, GrepToolContext>({
 
     switch (input.output_mode) {
       case 'files_with_matches': {
-        // 按 mtime 降序(与 Glob 的 newest-first 对齐); 排序在切片前, 否则拿到的是遍历序。
-        // path.relative 在 Windows 返回反斜杠, 统一 '/' 与 rg 原始输出口径一致(模型可回填)。
+        // 按 mtime 降序(与 Glob 的 newest-first 对齐); 排序在切片前, 否则拿到的是遍历序.
+        // path.relative 在 Windows 返回反斜杠, 统一 '/' 与 rg 原始输出口径一致(模型可回填).
         const sorted = await sortPathsByMtimeDesc(
           records.map((record) => path.resolve(searchCwd, record)),
         );
@@ -255,7 +253,7 @@ export const GrepTool = buildTool<GrepInput, GrepResult, GrepToolContext>({
         };
       }
       case 'count': {
-        // 统计基于有界全集(截断时 "at least"); 展示按分页切片。
+        // 统计基于有界全集(截断时 "at least"); 展示按分页切片.
         let totalMatches = 0;
         for (const line of records) {
           const idx = line.lastIndexOf(':');
@@ -308,15 +306,15 @@ export const GrepTool = buildTool<GrepInput, GrepResult, GrepToolContext>({
 
 
 /**
- * 把输入翻译成 rg 参数。`--` 把模式与搜索目标同 rg 自身选项隔开,
- * 防止以 `-` 开头的模式被当成选项; --color=never 防配置强制上色污染记录。
+ * 把输入翻译成 rg 参数.`--` 把模式与搜索目标同 rg 自身选项隔开,
+ * 防止以 `-` 开头的模式被当成选项; --color=never 防配置强制上色污染记录.
  */
 function buildRgArgs(input: GrepInput, searchTarget: string): string[] {
   const args: string[] = ['--hidden'];
-  // 排除 VCS 元数据目录, 避免搜索历史/引用噪声。
+  // 排除 VCS 元数据目录, 避免搜索历史/引用噪声.
   for (const dir of VCS_DIRECTORIES_TO_EXCLUDE) args.push('--glob', `!${dir}`);
 
-  // 防止 base64/minified 单行巨行吃掉输出行数与字节预算。
+  // 防止 base64/minified 单行巨行吃掉输出行数与字节预算.
   args.push('--max-columns', '500');
 
   if (input.output_mode === 'files_with_matches') args.push('--files-with-matches');
@@ -326,7 +324,7 @@ function buildRgArgs(input: GrepInput, searchTarget: string): string[] {
   if (input.case_insensitive) args.push('--ignore-case');
 
   if (input.output_mode === 'content') {
-    // -C 优先; 否则独立 -B/-A。
+    // -C 优先; 否则独立 -B/-A.
     if (input.context !== undefined) {
       args.push('-C', String(input.context));
     } else {

@@ -1,6 +1,3 @@
-/* 卡片与对话框的背景纹饰:card-decorate 基座(hover 扫光+点阵)与各业务变体。
-   变体只覆盖 ::after 的 background-image;新增变体沿用 --<名> 后缀。 */
-
 .ema-card-decorate {
   position: relative;
   overflow: hidden;
@@ -42,10 +39,10 @@
   pointer-events: none;
   transition: background-size 400ms ease-in-out, opacity 400ms ease-in-out;
 }
-/* 只缩基座的辉光层; 两个值必须写全, 单值会按层重复, 把点阵 tile 从 10px 炸成整卡单斑。
-   变体(--plus/--mesh 等多层纹理)不受此规则影响。 */
+/* 只缩基座的辉光层; 两个值必须写全, 单值会按层重复, 把点阵 tile 从 10px 炸成整卡单斑.
+   变体(--plus/--mesh 等多层纹理)不受此规则影响. */
 .ema-card-decorate:not([class*='--']):hover::after { background-size: 108% 108%, 10px 10px; }
-/* 点阵 hover 变主色(第二层扫感); 变体的纹理层自带配色, 不覆盖。 */
+/* 点阵 hover 变主色(第二层扫感); 变体的纹理层自带配色, 不覆盖. */
 .ema-card-decorate:not([class*='--']):hover::after {
   background-image:
     radial-gradient(circle at 50% 0%, color-mix(in srgb, var(--ema-primary) 25%, transparent), transparent 60%),
@@ -71,9 +68,9 @@
 }
 
 
-/* ── 细几何纹理变体: 单色低透明 + 渐隐 mask, 每域一种, 禁大色块 ─────────────
-   background-size 必须显式给(基座是两值列表, 不覆盖会错配层数)。
-   --cross 用角落 radial mask 替代基座 165°, 其余沿用基座 mask。 */
+/* 细几何纹理变体: 单色低透明 + 渐隐 mask, 每域一种, 禁大色块 
+   background-size 必须显式给(基座是两值列表, 不覆盖会错配层数).
+   --cross 用角落 radial mask 替代基座 165°, 其余沿用基座 mask. */
 
 /* 细网格: providers / bindings / settings */
 .ema-card-decorate--grid::after {

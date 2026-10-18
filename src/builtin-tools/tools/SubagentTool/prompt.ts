@@ -1,10 +1,7 @@
-// SubagentTool 的模型说明书, 单点维护。
-// 子 Agent 的上下文策略、委派边界与结果责任由这份模型说明明确表达。
-
 export const SUBAGENT_DESCRIPTION = `Launch a sub-agent to handle a complex, multi-step task autonomously. The sub-agent runs its own think→act loop with the same workspace and permission boundaries as you, and reports back when done.
 
 When NOT to use this tool:
-- If you want to read a specific file, use Read instead — it is much faster.
+- If you want to read a specific file, use Read instead  -  it is much faster.
 - If you are searching for a specific file or class definition, use Glob or Grep instead.
 - If the task takes you only a few tool calls, do it yourself instead of delegating.
 
@@ -14,31 +11,31 @@ Usage notes:
 - Continuing loads that sub-agent's own history and adds your new prompt. It never forks the parent history again. A running sub-agent returns a busy error; continuation is not queued.
 - New sub-agents without a model override use the parent model. Continuing without an override keeps the sub-agent's latest model. Explicit overrides require both providerId and modelId; invalid configuration is an error, not a fallback.
 - To launch multiple agents in parallel, emit multiple tool calls in a single message.
-- The agent's final report is returned to you but is NOT shown to the user — summarize it for the user yourself.
+- The agent's final report is returned to you but is NOT shown to the user  -  summarize it for the user yourself.
 - The agent's report is input to your own conclusion. Integrate its findings and verify consequential claims or changes in proportion to risk before reporting completion.
-- Clearly tell the agent whether you expect it to write code or just do research (search, file reads, web fetches) — it is not aware of the user's intent.
-- Foreground (default) blocks until the agent finishes — use it when you need the results before you can proceed. A synchronous wait longer than 2 minutes transfers to background automatically and returns the same reference shape.
-- runInBackground=true returns the subagentId immediately. You will be notified when the agent completes — do NOT sleep, poll, or proactively check on its progress. Use SubagentAwait only when the current turn truly depends on the result.
+- Clearly tell the agent whether you expect it to write code or just do research (search, file reads, web fetches)  -  it is not aware of the user's intent.
+- Foreground (default) blocks until the agent finishes  -  use it when you need the results before you can proceed. A synchronous wait longer than 2 minutes transfers to background automatically and returns the same reference shape.
+- runInBackground=true returns the subagentId immediately. You will be notified when the agent completes  -  do NOT sleep, poll, or proactively check on its progress. Use SubagentAwait only when the current turn truly depends on the result.
 - Aborting the parent turn cancels foreground sub-agents, not agents already running in the background.
 
 ## Choosing contextMode
 
 Use contextMode="subagent" by default. The worker starts with your task prompt, not the parent conversation history, so include the goal, scope, known facts, relevant constraints, and expected result. Use contextMode="fork" only when the worker needs the parent conversation history. Even then, state its specific task and boundaries.
 
-**Don't peek.** Do not read the agent's intermediate output or transcript while it runs — wait for its completion notification. Reading mid-flight pulls the agent's tool noise into your context, which defeats the point of delegating.
+**Don't peek.** Do not read the agent's intermediate output or transcript while it runs  -  wait for its completion notification. Reading mid-flight pulls the agent's tool noise into your context, which defeats the point of delegating.
 
-**Don't race.** After launching, you know nothing about what the agent found. Never fabricate or predict its results in any format — not as prose, summary, or structured output. The completion notification arrives as a message in a later turn; it is never something you write yourself. If the user asks a follow-up before the notification lands, give the agent's status, not a guess.
+**Don't race.** After launching, you know nothing about what the agent found. Never fabricate or predict its results in any format  -  not as prose, summary, or structured output. The completion notification arrives as a message in a later turn; it is never something you write yourself. If the user asks a follow-up before the notification lands, give the agent's status, not a guess.
 
 ## Writing the prompt
 
-Brief the agent like a smart colleague who just walked into the room — in the default "subagent" mode it hasn't seen this conversation, doesn't know what you've tried, doesn't understand why this task matters.
+Brief the agent like a smart colleague who just walked into the room  -  in the default "subagent" mode it hasn't seen this conversation, doesn't know what you've tried, doesn't understand why this task matters.
 - Explain what you're trying to accomplish and why.
 - Describe what you've already learned or ruled out.
 - Give enough context about the surrounding problem that the agent can make judgment calls rather than just following a narrow instruction.
 - If you need a short response, say so ("report in under 200 words").
-- Lookups: hand over the exact command. Investigations: hand over the question — prescribed steps become dead weight when the premise is wrong.
+- Lookups: hand over the exact command. Investigations: hand over the question  -  prescribed steps become dead weight when the premise is wrong.
 - Terse command-style prompts produce shallow, generic work.
-- For a fork, the prompt is a *directive* — what to do, not what the situation is. Be specific about scope: what's in, what's out. Don't re-explain background it already has.
+- For a fork, the prompt is a *directive*  -  what to do, not what the situation is. Be specific about scope: what's in, what's out. Don't re-explain background it already has.
 
 Do not delegate an undefined outcome such as "figure it out and fix everything." For implementation, specify the owned boundary and the expected result. The parent remains responsible for integration and verification.
 
@@ -46,22 +43,22 @@ Do not delegate an undefined outcome such as "figure it out and fix everything."
 
 <example>
 user: "这个分支上线前还差什么?"
-assistant: <thinking>这是独立盘点,提供自包含目标即可。</thinking>
+assistant: <thinking>这是独立盘点,提供自包含目标即可.</thinking>
 Subagent({ title: "Ship-readiness audit", description: "Branch ship-readiness audit", contextMode: "subagent", runInBackground: true,
-  prompt: "Audit what's left before this branch can ship. Check: uncommitted changes, commits ahead of main, whether tests exist, whether CI-relevant files changed. Report a punch list — done vs. missing. Under 200 words. This is research only — do not modify files." })
-assistant: 审计已在后台运行,结果回来我告诉你。
-<commentary>Turn 在这里结束。完成通知会以消息形式在后面的 Turn 到达,不是你自己写的。</commentary>
+  prompt: "Audit what's left before this branch can ship. Check: uncommitted changes, commits ahead of main, whether tests exist, whether CI-relevant files changed. Report a punch list  -  done vs. missing. Under 200 words. This is research only  -  do not modify files." })
+assistant: 审计已在后台运行,结果回来我告诉你.
+<commentary>Turn 在这里结束.完成通知会以消息形式在后面的 Turn 到达,不是你自己写的.</commentary>
 </example>
 
 <example>
 user: "所以那个开关到底接了没"
-<commentary>用户在等待期间追问。审计 Agent 正是为了回答这个问题而启动的,但它还没回来。给状态,不要编结果。</commentary>
-assistant: 审计还在跑——"开关接线"正是它在查的项之一,应该快了。
+<commentary>用户在等待期间追问.审计 Agent 正是为了回答这个问题而启动的,但它还没回来.给状态,不要编结果.</commentary>
+assistant: 审计还在跑 - "开关接线"正是它在查的项之一,应该快了.
 </example>
 
 <example>
 user: "找个第二意见看看这个迁移安不安全"
-assistant: <thinking>子 Agent 看不到我的分析,正好给出独立判断。它需要完整上下文。</thinking>
+assistant: <thinking>子 Agent 看不到我的分析,正好给出独立判断.它需要完整上下文.</thinking>
 Subagent({ title: "Migration review", description: "Independent migration review", contextMode: "subagent",
-  prompt: "Review migration 0042_user_schema.sql for safety. Context: we're adding a NOT NULL column to a 50M-row table with a backfill default. I want a second opinion on whether the backfill approach is safe under concurrent writes — I've checked locking behavior but want independent verification. Report: is this safe, and if not, what specifically breaks? This is research only — do not modify files." })
+  prompt: "Review migration 0042_user_schema.sql for safety. Context: we're adding a NOT NULL column to a 50M-row table with a backfill default. I want a second opinion on whether the backfill approach is safe under concurrent writes  -  I've checked locking behavior but want independent verification. Report: is this safe, and if not, what specifically breaks? This is research only  -  do not modify files." })
 </example>`;

@@ -1,4 +1,3 @@
-// 读取单个 Task 的完整字段,依赖与当前活动 Subagent;TaskUpdate 的 expectedVersion 从这里来.
 
 import { z } from 'zod';
 import {
@@ -11,7 +10,7 @@ import type { Task, TaskStore } from '@ema-agent/tasks';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { TASK_GET_DESCRIPTION } from './prompt.js';
 
-/** Task 读取工具的窄 Context:只有持久存储;调用身份由 ToolInvocation 提供. */
+
 interface TaskGetToolContext {
   taskStore: TaskStore;
 }
@@ -41,7 +40,7 @@ export const TaskGetTool = buildTool<TaskGetInput, TaskGetResult, TaskGetToolCon
 
   validateContext(ctx: ToolUseContext) {
     if (!ctx.taskStore) {
-      return contextFail('Task tools are available only in the root Work Turn.');
+      return contextFail('Task tools are available only in the main Agent Turn.');
     }
     return contextOk({ taskStore: ctx.taskStore });
   },

@@ -1,5 +1,5 @@
 /* Radix 组件的 data-state 入场/退场适配, DropdownMenu 的稳定尺寸裁剪动画, 与 Tabs 滑块定位.
-   横向 Tabs 的 trigger 必须等宽,滑块才能按索引准确定位。 */
+   横向 Tabs 的 trigger 必须等宽,滑块才能按索引准确定位. */
 
 .ema-tooltip-surface {
   z-index: var(--ema-z-tooltip);

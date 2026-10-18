@@ -4,12 +4,6 @@ import { cn } from '../utils/cn.js';
 import { overlayItemCn, overlayItemDangerCn } from './overlayItem.js';
 import { Tooltip } from './Tooltip.js';
 
-// ── DropdownMenu ────────────────────────────────────────────────────────────
-//
-// 点击触发的菜单(聊天模式切换, 历史操作等).
-// 条目类型: item / separator / submenu(递归) / checkbox.
-// 子菜单只允许点击展开(禁 hover 自动展开): Sub 受控 + SubTrigger 拦截 pointermove.
-
 export type MenuItem =
   | { kind: 'item';      id?: string; label: string; icon?: string; danger?: boolean; disabled?: boolean; shortcut?: string; description?: string; onSelect(): void }
   | { kind: 'separator' }
@@ -153,8 +147,12 @@ function RenderItem({ item, checkIcon, submenuIcon, openSubId, onOpenSub }: {
         <RadixDropdown.Sub open={subOpen} onOpenChange={(open) => onOpenSub(open ? subId : null)}>
           <RadixDropdown.SubTrigger
             className={overlayItemCn}
+            // 阻止 Radix 悬停展开, 子菜单只响应点击切换.
             onPointerMove={(event) => event.preventDefault()}
-            onClick={(event) => { event.preventDefault(); onOpenSub(subOpen ? null : subId); }}
+            onClick={(event) => {
+              event.preventDefault();
+              onOpenSub(subOpen ? null : subId);
+            }}
           >
             {item.icon && <span className={cn(item.icon, 'text-base')} aria-hidden />}
             <span className="flex-1">{item.label}</span>

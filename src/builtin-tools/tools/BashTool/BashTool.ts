@@ -22,23 +22,23 @@ import {
   type ShellResult,
 } from '../shared/shellExecution.js';
 
-/** Bash 工具的窄 Context：命令执行器与后台进程入口;身份与取消走 ToolInvocation。 */
+
 interface BashToolContext {
   runner: CommandRunner;
   backgroundProcesses: BackgroundProcess;
   cwd: string;
 }
 
-// ── 常量 ─────────────────────────────────────────────────────────────────────
+
 
 /**
  * 命令字符串上限: 压 Windows CreateProcess 的 32,767 字符硬上限以下
- * (WSL 路径转义最坏 4 倍膨胀),超限给模型可读错误而不是平台 EINVAL。
- * 与防卡死无关——字符串不存在卡死路径,超限 spawn 本就诚实失败。
+ * (WSL 路径转义最坏 4 倍膨胀),超限给模型可读错误而不是平台 EINVAL.
+ * 与防卡死无关 - 字符串不存在卡死路径,超限 spawn 本就诚实失败.
  */
 const MAX_COMMAND_CHARS = 30_000;
 
-// ── 输入 schema ──────────────────────────────────────────────────────────────
+
 
 const inputSchema = z.object({
   command: z
@@ -56,7 +56,7 @@ const inputSchema = z.object({
 
 type BashInput = z.infer<typeof inputSchema>;
 
-// ── 工具定义 ───────────────────────────────────────────────────────────────────
+
 
 export const BashTool = buildTool<BashInput, ShellResult, BashToolContext, ShellProgress>({
   id: BuiltinTools.Bash.id,
@@ -67,8 +67,8 @@ export const BashTool = buildTool<BashInput, ShellResult, BashToolContext, Shell
 
   inputSchema,
   isReadOnly: (input) => {
-    // 结构化只读证明: 无重定向写入且每段都在只读白名单内。
-    // 供并发安全判定说真话; 权限放行仍由 Permission 决定。
+    // 结构化只读证明: 无重定向写入且每段都在只读白名单内.
+    // 供并发安全判定说真话; 权限放行仍由 Permission 决定.
     const verdict = analyzeBashCommand(input.command);
     return verdict.kind === 'ok' && verdict.readOnly;
   },
@@ -76,10 +76,10 @@ export const BashTool = buildTool<BashInput, ShellResult, BashToolContext, Shell
 
   validateContext(ctx) {
     if (!ctx.cwd) {
-      return contextFail('Shell 工具需要明确的工作区。');
+      return contextFail('Shell 工具需要明确的工作区.');
     }
     if (!ctx.commandRunner || !ctx.backgroundProcesses) {
-      return contextFail('当前执行环境没有 Shell 能力，请先选择工作区并检查 Sandbox 状态。');
+      return contextFail('当前执行环境没有 Shell 能力,请先选择工作区并检查 Sandbox 状态.');
     }
     return contextOk({
       runner: ctx.commandRunner,
@@ -116,7 +116,7 @@ export const BashTool = buildTool<BashInput, ShellResult, BashToolContext, Shell
   ): Promise<ShellResult> {
     const { command, timeout, runInBackground } = input;
 
-    // 执行前复查: 直接分发(未过 Permission)时硬拦依然生效。
+    // 执行前复查: 直接分发(未过 Permission)时硬拦依然生效.
     const verdict = analyzeBashCommand(command);
     if (verdict.kind === 'deny') {
       throw new Error(`Command blocked by safety policy: ${verdict.reason ?? command}`);
@@ -153,7 +153,7 @@ export const BashTool = buildTool<BashInput, ShellResult, BashToolContext, Shell
       );
     }
 
-    // 退出码语义与静态安全提醒只作为补充说明，不改变真实退出状态。
+    // 退出码语义与静态安全提醒只作为补充说明,不改变真实退出状态.
     const notes: string[] = [];
     if (interpretation.note) notes.push(interpretation.note);
     for (const warning of verdict.warnings) notes.push(warning);

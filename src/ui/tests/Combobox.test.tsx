@@ -1,4 +1,3 @@
-// 测试 Combobox 的禁用项导航、筛选状态与 ARIA 关联。
 import type { ReactNode } from 'react';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';

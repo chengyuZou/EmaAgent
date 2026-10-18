@@ -1,4 +1,3 @@
-// 测试 Textarea 自动增高的内容测量、宽度观察与帧合并行为。
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

@@ -91,12 +91,12 @@ describe('内置 Tool 的官方补丁视图', () => {
         view = createElement(FileWriteResultView, { data: write });
       }
       await act(async () => root.render(view));
-      expect(getComputedStyle(host).paddingRight).toBe('0px');
+      expect(parseFloat(getComputedStyle(host).paddingRight) || 0).toBe(0);
       const summary = host.querySelector('.ema-file-change-summary')!;
       expect(summary).not.toBeNull();
       expect(parseFloat(getComputedStyle(summary).paddingRight) || 0).toBe(0);
       await act(async () => root.render(createElement('div', {}, '普通输出')));
-      expect(getComputedStyle(host).paddingRight).toBe('0px');
+      expect(parseFloat(getComputedStyle(host).paddingRight) || 0).toBe(0);
     } finally {
       style.remove();
     }

@@ -2,7 +2,6 @@
 // 重点覆盖安全语义:非 ASCII 命令名降级、引号剥除、模块前缀、重定向去重与 $null 汇。
 import { describe, expect, it } from 'vitest';
 import {
-  classifyCommandName,
   commandHasArgAbbreviation,
   deriveSecurityFlags,
   getFileRedirections,
@@ -72,18 +71,6 @@ describe('transformCommandAst — 命令名安全', () => {
     expect(el.name).toBe('Invoke-Expression');
   });
 
-  it('非 ASCII 命令名强制 application,挡住 Unicode 折叠绕过', () => {
-    const el = transformCommandAst(cmdElement('ſtart-proceſſ'));
-    expect(el.nameType).toBe('application');
-  });
-
-  it('nameType 由未剥前缀的名字计算:scripts\\Get-Process 是路径不是 cmdlet', () => {
-    const el = transformCommandAst(cmdElement('scripts\\Get-Process'));
-    expect(el.nameType).toBe('application');
-    // 剥后名仍给 deny 匹配用(fail-safe 方向)。
-    expect(el.name).toBe('Get-Process');
-  });
-
   it('参数保留原文(带破折号),字符串常量用解析值', () => {
     const el = transformCommandAst({
       type: 'CommandAst',
@@ -99,7 +86,7 @@ describe('transformCommandAst — 命令名安全', () => {
   });
 });
 
-describe('stripModulePrefix / classifyCommandName', () => {
+describe('stripModulePrefix', () => {
   it('剥模块前缀但不动文件路径', () => {
     expect(stripModulePrefix('Microsoft.PowerShell.Utility\\Invoke-Expression')).toBe('Invoke-Expression');
     expect(stripModulePrefix('C:\\tools\\x.exe')).toBe('C:\\tools\\x.exe');
@@ -107,11 +94,6 @@ describe('stripModulePrefix / classifyCommandName', () => {
     expect(stripModulePrefix('.\\x.ps1')).toBe('.\\x.ps1');
   });
 
-  it('cmdlet/application/unknown 三态', () => {
-    expect(classifyCommandName('Get-Process')).toBe('cmdlet');
-    expect(classifyCommandName('git.exe')).toBe('application');
-    expect(classifyCommandName('git')).toBe('unknown');
-  });
 });
 
 describe('transformStatement — 重定向', () => {

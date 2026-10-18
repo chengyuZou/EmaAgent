@@ -1,8 +1,5 @@
 import type { JSX } from 'react';
 
-// ── ToolSpecItem ─────────────────────────────────────────────────────────────
-// MCP 工具规格行:名称 + 参数 + 描述 + 可选 schema。
-
 export interface ToolSpecItemProps {
   name:         string;
   params?:      string[];

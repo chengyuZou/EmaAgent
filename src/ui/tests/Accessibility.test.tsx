@@ -1,4 +1,3 @@
-// 测试 Dialog 与 Field 的名称、说明、必填状态和错误关联。
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

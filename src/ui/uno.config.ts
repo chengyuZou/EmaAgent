@@ -1,25 +1,4 @@
-// ── EmaAgent 共享 UnoCSS preset ─────────────────────────────────────────────
-//
-// 设计 token 单一事实源。消费方:
-//   - src/ui            (组件库 + Ladle stories)
-//   - packages/desktop-ui    (业务组件)
-//   - apps/desktop           (主窗口 + 子窗口)
-//
-// 下游 uno.config.ts 用法:
-//
-//   import { defineConfig } from 'unocss';
-//   import { emaSharedPreset } from '@ema-agent/ui/uno.config';
-//   export default defineConfig({
-//     presets: [...emaSharedPreset()],
-//     content: { pipeline: { include: [/src\/.*\.(t|j)sx?$/] } },
-//   });
-//
-// 注意:不要在这里加应用专属 safelist 或 content 通配——本文件全工作区共享,
-// 应用专属内容属于各应用自己的 uno.config.ts。
-
-// preset 要从各自的包导入,不走 `unocss` 聚合入口——聚合入口会 re-export 全部
-// transformer,而 transformer-attributify-jsx 会把 oxc-parser 的 wasm binding
-// 拖进 Vite 的浏览器模块图(unocss vite 插件会把本配置文件注入该图做 HMR)。
+// 按子包导入 preset, 避免 unocss 总入口把 oxc-parser 的 WASM 依赖带入浏览器模块.
 import type { Preset, UserConfig } from '@unocss/core';
 import presetAttributify from '@unocss/preset-attributify';
 import presetIcons from '@unocss/preset-icons';
@@ -33,34 +12,34 @@ import {
 } from './uno-preset-chromatic.js';
 
 /**
- * 通用圆角刻度——引用 tokens.css 的 --ema-radius-* 变量,
- * Uno rounded-* 与手写 CSS 吃同一个 --ema-radius 倍率。pill/full 固定不缩放。
+ * 通用圆角刻度 - 引用 tokens.css 的 --ema-radius-* 变量,
+ * Uno rounded-* 与手写 CSS 吃同一个 --ema-radius 倍率.pill/full 固定不缩放.
  */
 export const RADIUS_SCALE = {
-  sm:      'var(--ema-radius-sm)',    // 标签、圆点徽标、小 chip
+  sm:      'var(--ema-radius-sm)',    // 标签, 圆点徽标, 小 chip
   DEFAULT: 'var(--ema-radius-xs)',    // 裸 rounded - 最小默认圆角
   md:      'var(--ema-radius-md)',    // 居中档,排版组件(pre 等)与散件用
   lg:      'var(--ema-radius-lg)',    // 按钮与小浮件
-  xl:      'var(--ema-radius-xl)',    // 卡片、对话框、浮层、主窗口
+  xl:      'var(--ema-radius-xl)',    // 卡片, 对话框, 浮层, 主窗口
   pill:    'var(--ema-radius-pill)',  // pill 按钮 - 固定 999px
 } as const;
 
 /**
- * 文本字体栈——引用 tokens.css 变量,Uno font-mono/font-sans
- * 与 CSS var(--ema-font-*) 解析到同一组字。
+ * 文本字体栈 - 引用 tokens.css 变量,Uno font-mono/font-sans
+ * 与 CSS var(--ema-font-*) 解析到同一组字.
  */
 export const FONT_FAMILY = {
   sans: 'var(--ema-font-ui)',
   mono: 'var(--ema-font-mono)',
 } as const;
 
-// ── Safelist ────────────────────────────────────────────────────────────────
+// Safelist
 
 /**
- * 静态扫描推不出来的动态颜色类在这里强制生成。没有它,运行时拼出来的类
- * (如 `bg-primary-${level}`)不会出现在最终 CSS 里。
+ * 静态扫描推不出来的动态颜色类在这里强制生成.没有它,运行时拼出来的类
+ * (如 `bg-primary-${level}`)不会出现在最终 CSS 里.
  *
- * 保持克制——这里每加一条都会增加 CSS 体积。
+ * 保持克制 - 这里每加一条都会增加 CSS 体积.
  */
 function buildSafelist(): string[] {
   const out: string[] = [];
@@ -92,14 +71,13 @@ function buildSafelist(): string[] {
   return out;
 }
 
-// ── preset 本体 ─────────────────────────────────────────────────────────────
+// preset 本体
 
 /**
- * 返回 preset 数组 + theme + safelist + shortcuts,供下游 defineConfig 展开。
- * 返回工厂而非成品配置,是为了让每个消费方能加自己的 content 通配与额外 preset。
+ * 应用可以补充自己的图标集; 扫描目录, theme, shortcuts 和 safelist 分别接入.
  */
 export interface EmaSharedPresetOptions {
-  /** 额外图标集(如 lobe-icons 经 createExternalPackageIconLoader)。 */
+  /** 额外图标集(如 lobe-icons 经 createExternalPackageIconLoader). */
   iconCollections?: Record<string, unknown>;
 }
 
@@ -107,12 +85,12 @@ export function emaSharedPreset(options: EmaSharedPresetOptions = {}): Preset[] 
   const chromatic = createPresetChromatic();
   return [
     presetWind3({
-      // Tailwind v3 兼容。不开 prefersColor: 'media',
-      // 暗色模式由 class 驱动(根元素 .dark 切换)。
+      // Tailwind v3 兼容.不开 prefersColor: 'media',
+      // 暗色模式由 class 驱动(根元素 .dark 切换).
       dark: 'class',
     }),
-    // OKLCH 动态色板——主色(water-blue)与 violet 都由同一个 hue 变量派生,
-    // 运行时修改 --chromatic-hue 同时驱动两套色阶。
+    // OKLCH 动态色板 - 主色(water-blue)与 violet 都由同一个 hue 变量派生,
+    // 运行时修改 --chromatic-hue 同时驱动两套色阶.
     chromatic({
       baseHue: EMA_PRIMARY_HUE,
       colors: {
@@ -120,7 +98,7 @@ export function emaSharedPreset(options: EmaSharedPresetOptions = {}): Preset[] 
         violet:  EMA_VIOLET_OFFSET, // 200 + 85 = 285 = violet
       },
     }) as unknown as Preset,
-    // 仅识别 un-* 属性,避免把 React 的 icon/items/options props 误判成工具类。
+    // 仅识别 un-* 属性,避免把 React 的 icon/items/options props 误判成工具类.
     presetAttributify({ prefixedOnly: true, prefix: 'un-' }),
     presetIcons({
       scale: 1.2,
@@ -139,13 +117,7 @@ export function emaSharedPreset(options: EmaSharedPresetOptions = {}): Preset[] 
         'code': { 'border-radius': RADIUS_SCALE.sm },
       },
     }),
-    // -- 通用 box-sizing reset --
-    //
-    // UnoCSS(与 Tailwind 的 `@tailwind base` 不同)不会自动注入这条。
-    // 没有它,表单元素(textarea/input/select/button)回落到 UA 样式表的
-    // content-box,w-full + px-* 内边距会加在声明宽度之外——元素悄悄比父级宽。
-    // 当年追了一整个下午的"幽灵圆角框"(ChatInput textarea 旁)就是这个溢出
-    // (见 2026-06-16 聊天记录)。
+    // 缺少 border-box 时, w-full 控件的内边距会额外增加宽度. UnoCSS 不自动提供这条 reset.
     {
       name: 'ema-reset',
       preflights: [
@@ -154,9 +126,7 @@ export function emaSharedPreset(options: EmaSharedPresetOptions = {}): Preset[] 
         },
       ],
     },
-    // -- 形状系统:--ema-radius 运行时缩放所有 rounded-* --
-    // 事实源在 tokens.css;这个 preflight 只保证变量在不加载 desktop-ui
-    // 样式的环境(如 Ladle)里也存在。
+    // 未加载共享 CSS 时也给圆角倍率一个默认值; 完整变量定义见 styles/foundation/tokens.css.
     {
       name: 'ema-shape',
       preflights: [
@@ -165,7 +135,7 @@ export function emaSharedPreset(options: EmaSharedPresetOptions = {}): Preset[] 
         },
       ],
     },
-    // -- Progress 流光(组件专用, keyframes 不进 styles/keyframes.css) --
+    // Progress 的流光动画随对应 UnoCSS 类生成.
     {
       name: 'ema-animations',
       theme: {
@@ -188,20 +158,20 @@ export function emaSharedPreset(options: EmaSharedPresetOptions = {}): Preset[] 
 }
 
 /**
- * 共享 theme 对象——`colors`、`borderRadius`、`fontFamily`。
- * 展开到消费方的 defineConfig({ theme: { ... } })。
+ * 共享 theme 对象 - `colors`, `borderRadius`, `fontFamily`.
+ * 展开到消费方的 defineConfig({ theme: { ... } }).
  */
 export function emaSharedTheme() {
   return {
-    // primary + violet 色板由 emaSharedPreset() 的 chromatic preset 注入。
-    // 不要在这里重复声明——UnoCSS 里显式 theme key 会覆盖 preset theme key,
-    // 会把基于 CSS 变量的 oklch() 表达式屏蔽掉。
+    // primary + violet 色板由 emaSharedPreset() 的 chromatic preset 注入.
+    // 不要在这里重复声明 - UnoCSS 里显式 theme key 会覆盖 preset theme key,
+    // 会把基于 CSS 变量的 oklch() 表达式屏蔽掉.
     borderRadius: RADIUS_SCALE,
     fontFamily:   FONT_FAMILY,
   };
 }
 
-/** 全局可用的快捷方式类。 */
+/** 全局可用的快捷方式类. */
 export function emaSharedShortcuts() {
   return {
     // 毛玻璃面板: popover / dialog / 浮层. 影子由消费方显式挂, 不内置(双影拼顺序的教训).
@@ -216,10 +186,10 @@ export function emaSharedShortcuts() {
   };
 }
 
-/** safelist 导出——原因见 buildSafelist 注释。 */
+/** safelist 导出 - 原因见 buildSafelist 注释. */
 export const emaSharedSafelist = buildSafelist();
 
-// ── 本包自用配置(Ladle 预览用) ──────────────────────────────────────────────
+// 本包自用配置(Ladle 预览用)
 
 const config: UserConfig = {
   presets:   emaSharedPreset(),

@@ -1,4 +1,3 @@
-// 统一导出并注册 EmaAgent 自带的工具,也提供这些工具启动恢复所需的入口.
 import { FileReadTool } from './tools/FileReadTool/FileReadTool.js';
 import { DescribeImageTool } from './tools/DescribeImageTool/describeImageTool.js';
 import { CaptureTool } from './tools/CaptureTool/captureTool.js';
@@ -39,7 +38,6 @@ import {
 import { BuiltinTools } from './BuiltinToolIdentity.js';
 import type { ToolRegistry, Tool } from '@ema-agent/tools';
 
-// ── 宿主 Context 与装配 ──────────────────────────────────────────────────────
 export type {
   AskUser,
   ToolUseContext,
@@ -51,7 +49,6 @@ export type {
 } from '@ema-agent/tools';
 export { contextOk, contextFail } from '@ema-agent/tools';
 
-// ── 单个工具导出 ──────────────────────────────────────────────────────────────
 
 export {
   BuiltinTools,
@@ -123,7 +120,6 @@ export type { AskUserResult } from './tools/AskUserTool/AskUserTool.js';
 export type { MemoryReadToolResult } from './tools/MemoryTool/MemoryReadTool.js';
 export type { SkillToolResult } from './tools/SkillTool/SkillTool.js';
 export type { NarrativeSearchResult } from './tools/NarrativeSearchTool/NarrativeSearchTool.js';
-// ── 注册 ──────────────────────────────────────────────────────────────────────
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const ALL_BUILTIN_TOOLS: Tool<any, any, any, any>[] = [
@@ -167,15 +163,13 @@ const ALL_BUILTIN_TOOLS: Tool<any, any, any, any>[] = [
 const EXECUTE_TOOL_IDS: ReadonlySet<string> = new Set([
   BuiltinTools.Bash.id,
 ]);
-// PowerShell 刻意不在此列:它的安全由 AST 静态分析 + 逐条权限提供,正是为
-// 无沙箱 Windows 准备的执行面(TODO #8 的放行路线);可用性由 validateContext
-// 按 pwsh/powershell 探测结果门控,与沙箱后端无关.
+// PowerShell 使用本机进程, 不套用 Bash 的操作系统沙箱.
+// 每次调用仍检查 PowerShell 可用性, 分析命令并执行权限规则.
 
 export interface RegisterOptions {
   /**
-   * true 时,Shell 执行工具 Bash 从注册表省略.
-   * 后端探测为 `unisolated`(即无物理沙箱)时由 Server 设置.
-   * 开发时可设 AGEN_UNSAFE_SHELL=1 重新启用.
+   * true 时不注册 Bash. Server 根据沙箱探测结果和开发开关决定此值.
+   * PowerShell 不受此选项影响.
    */
   disableExecuteTools?: boolean;
 }
@@ -183,9 +177,8 @@ export interface RegisterOptions {
 /**
  * 把所有内置工具注册进 ToolRegistry.
  *
- * apps/server 在应用启动时调一次.当前 sandbox 后端为 `unisolated`
- * (无 OS 级隔离)时传 `disableExecuteTools: true`,防止 LLM 在无物理
- * 沙箱时调 shell 工具.
+ * apps/server 在应用启动时调用. 模型可见范围由 ToolPool 决定,
+ * 缺少宿主能力时在实际调用前由 validateContext 返回错误.
  */
 export function registerBuiltinTools(registry: ToolRegistry, opts: RegisterOptions = {}): void {
   for (const tool of ALL_BUILTIN_TOOLS) {

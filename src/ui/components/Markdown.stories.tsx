@@ -1,4 +1,3 @@
-// 使用生产 Markdown 验收 ELK 分支、长文本、主题切换和未闭合流式代码块.
 import { useEffect, useState } from 'react';
 import { Button } from './Button.js';
 import { Markdown } from './Markdown.js';

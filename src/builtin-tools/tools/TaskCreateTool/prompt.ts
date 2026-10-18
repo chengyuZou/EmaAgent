@@ -1,5 +1,3 @@
-// TaskCreateTool 的模型说明书:description 是唯一模型可见说明,独立成文件单点维护。
-
 export const TASK_CREATE_DESCRIPTION = `Create a persistent task in the current Session's structured task list. Tasks survive across Turns and app restarts so unfinished work can continue later.
 
 ## When to Use This Tool
@@ -19,7 +17,7 @@ Skip this tool when:
 ## Task Fields
 
 - **subject**: A brief, actionable title in imperative form (e.g., "Fix authentication bug in login flow")
-- **description**: Complete requirements and context. Write enough detail for a future Turn — possibly after compaction or an app restart — to resume the work without re-asking the user.
+- **description**: Complete requirements and context. Write enough detail for a future Turn  -  possibly after compaction or an app restart  -  to resume the work without re-asking the user.
 - **activeForm** (optional): Present-continuous label shown while the task is in_progress (e.g., "Fixing authentication bug"). If omitted, the subject is shown.
 
 All tasks are created with status \`pending\`.

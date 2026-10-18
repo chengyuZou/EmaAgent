@@ -1,5 +1,3 @@
-// SkillTool 的桌面展示:技能名与绝对路径参数行,以及元信息和指令预览结果卡。
-// 指令全文在 data 槽的 TOutput 里;指令本体是 Markdown, 走共享 Markdown 渲染器。
 import type { JSX } from 'react';
 import { Markdown } from '@ema-agent/ui';
 import type { SkillToolResult } from './SkillTool.js';

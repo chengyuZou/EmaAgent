@@ -1,6 +1,3 @@
-// SearchField: 一体式搜索杆, 外层 pill 统一承担边框与焦点环, input 自身无框无背景.
-// 传 onSubmit 才内嵌搜索按钮(固定宽度不参与压缩, 避免文字被挤成两行);
-// 不传则为纯即时筛选. Enter 提交; 有内容才出现 × 清除.
 import { forwardRef, type JSX } from 'react';
 import { cn } from '../utils/cn.js';
 import { Button } from './Button.js';
@@ -9,9 +6,9 @@ import { Tooltip } from './Tooltip.js';
 export interface SearchFieldProps {
   value:            string;
   onChange:         (value: string) => void;
-  /** 传入即显示内嵌提交按钮;Enter 总是触发它。 */
+  /** 传入即显示内嵌提交按钮;Enter 总是触发它. */
   onSubmit?:        () => void;
-  /** 提交按钮内的 spinner 与禁用态。 */
+  /** 提交按钮内的 spinner 与禁用态. */
   loading?:         boolean;
   disabled?:        boolean;
   placeholder?:     string;

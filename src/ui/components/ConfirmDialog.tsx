@@ -2,10 +2,6 @@ import { Dialog } from './Dialog.js';
 import { Callout } from './Callout.js';
 import { Button } from './Button.js';
 
-// ── ConfirmDialog ───────────────────────────────────────────────────────────
-// 确认弹窗:替代原生 confirm(),由 Dialog + Callout + Button 组成;
-// Esc / 点击遮罩 = 取消。
-
 export interface ConfirmDialogProps {
   open:         boolean;
   /** Dialog title. Defaults to "请确认". */

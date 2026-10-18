@@ -1,4 +1,3 @@
-// 列出当前 Session 的 Task 摘要,让模型看到整体进度与可启动的工作。
 
 import { z } from 'zod';
 import {
@@ -11,7 +10,7 @@ import type { TaskStatus, TaskStore } from '@ema-agent/tasks';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { TASK_LIST_DESCRIPTION } from './prompt.js';
 
-/** Task 列表工具的窄 Context:只有持久存储;调用身份由 ToolInvocation 提供。 */
+
 interface TaskListToolContext {
   taskStore: TaskStore;
 }
@@ -40,12 +39,12 @@ export const TaskListTool = buildTool<TaskListInput, TaskListResult, TaskListToo
   inputSchema,
   isReadOnly: () => true,
   isConcurrencySafe: () => true,
-  // 只读任务查询, 内置信任放行。
+  // 只读任务查询, 内置信任放行.
   checkPermissions: async () => ({ behavior: 'allow' }),
 
   validateContext(ctx: ToolUseContext) {
     if (!ctx.taskStore) {
-      return contextFail('Task tools are available only in the root Work Turn.');
+      return contextFail('Task tools are available only in the main Agent Turn.');
     }
     return contextOk({ taskStore: ctx.taskStore });
   },

@@ -44,7 +44,7 @@ export const GoalUpdateTool = buildTool<z.infer<typeof inputSchema>, Goal, { goa
     + 'approvals and individual tool errors do not mean final Goal failure. Specify the exact Goal ID '
     + 'and expected version. Conflicts are errors: read GoalGet and reassess the latest objective, never '
     + 'blindly retry an old completion judgment with a new version. This tool cannot create, edit the objective, cancel, delete, '
-    + 'pause or reactivate Goals. Completing a Goal does not abort the current Turn. Root Agent only.',
+    + 'pause or reactivate Goals. Completing a Goal does not abort the current Turn. Main Agent only.',
   inputSchema,
   isReadOnly: () => false,
   isConcurrencySafe: () => false,
@@ -55,7 +55,7 @@ export const GoalUpdateTool = buildTool<z.infer<typeof inputSchema>, Goal, { goa
   // 只报告用户已建立目标的进度或终态, 不扩大权限或重新开启持续工作.
   checkPermissions: async () => ({ behavior: 'allow' }),
   validateContext(context) {
-    if (!context.goalStore) return contextFail('Goal tools are available only to the root Agent.');
+    if (!context.goalStore) return contextFail('Goal tools are available only to the main Agent.');
     return contextOk({ goalStore: context.goalStore });
   },
   async execute(input, context, invocation) {

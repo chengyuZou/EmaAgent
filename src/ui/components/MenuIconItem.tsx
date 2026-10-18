@@ -1,12 +1,6 @@
 import type { ButtonHTMLAttributes } from 'react';
 import { cn } from '../utils/cn.js';
 
-// ── MenuIconItem ─────────────────────────────────────────────────────────────
-//
-// 设置菜单大卡: 标题+描述在左, 超大半透图标从右缘探出;
-// hover 时主题色描边, 文字与图标回色, 扫光从左侧淡入.
-// 装饰统一走 ema-card-decorate primitive, 不在组件里手写伪元素.
-
 export interface MenuIconItemProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'title'> {
   title:       string;
   description: string;

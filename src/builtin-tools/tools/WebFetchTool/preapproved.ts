@@ -1,7 +1,5 @@
-// 对一份与代码相关的预批准域名列表做了例外处理。
-// 安全警告：这些预批准域名仅适用于 WebFetch（仅限 GET 请求）。
-// 沙箱系统故意不继承此列表以进行网络限制，因为对这些域的任意网络访问（POST、上传等）可能会导致数据外泄。
-// 一些域名，如 huggingface.co、kaggle.com 和 nuget.org，允许文件上传，对于不受限制的网络访问来说是危险的。
+// 这里只预批准 WebFetch 的 GET 请求. 用户的 deny/ask 规则仍优先.
+// 不把这些域名用于沙箱网络放行, 因为上传和其他请求具有不同影响.
 export const PREAPPROVED_HOSTS = new Set([
   'modelcontextprotocol.io',
   'agentskills.io',
@@ -117,8 +115,7 @@ export const PREAPPROVED_HOSTS = new Set([
   'httpd.apache.org', // Apache HTTP Server
 ])
 
-// 在模块加载时进行一次拆分，以便在常见的仅主机名情况下进行 O(1) Set.has() 查找，
-// 对于少数路径范围的条目（例如 "github.com/anthropics"），回退到每个主机的小型路径前缀列表。
+// 纯域名直接查 Set, vercel.com/docs 这样的条目还要匹配路径边界.
 const { HOSTNAME_ONLY, PATH_PREFIXES } = (() => {
   const hosts = new Set<string>()
   const paths = new Map<string, string[]>()

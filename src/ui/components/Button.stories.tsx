@@ -1,8 +1,5 @@
-// 展示并目测验证 Button 的变体、尺寸、形状和状态矩阵。
 import { Button } from './Button.js';
 import type { ButtonVariant, ButtonSize, ButtonShape } from './Button.js';
-
-// ── Button stories ──────────────────────────────────────────────────────────
 
 export default {
   title: 'Atoms / Button',

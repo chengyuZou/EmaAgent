@@ -9,7 +9,7 @@ export const GoalGetTool = buildTool<Record<string, never>, Goal | null, { goalS
 
   description: 'Read the current Session Goal from storage, including its ID, version, status, objective and latest progress feedback. '
     + 'Returns null when there is no unfinished Goal. Historical goal text does not authorize creating or '
-    + 'reactivating a Goal. Only the user can create or activate Goals. Available only to the root Agent.',
+    + 'reactivating a Goal. Only the user can create or activate Goals. Available only to the main Agent.',
     
   inputSchema: z.object({}).strict(),
   isReadOnly: () => true,
@@ -17,7 +17,7 @@ export const GoalGetTool = buildTool<Record<string, never>, Goal | null, { goalS
   getToolUseSummary: () => '读取当前目标',
   checkPermissions: async () => ({ behavior: 'allow' }),
   validateContext(context) {
-    if (!context.goalStore) return contextFail('Goal tools are available only to the root Agent.');
+    if (!context.goalStore) return contextFail('Goal tools are available only to the main Agent.');
     return contextOk({ goalStore: context.goalStore });
   },
   async execute(_input, context, invocation) {

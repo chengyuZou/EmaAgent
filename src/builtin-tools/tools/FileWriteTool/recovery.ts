@@ -1,4 +1,3 @@
-// 根据 Message 中的 FileWrite 调用参数，清理由中断调用留下的临时文件。
 import fs from 'node:fs';
 import path from 'node:path';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
@@ -22,11 +21,7 @@ export function cleanupInterruptedFileWriteTemps(
   const result: FileWriteRecoveryResult = { removed: [], failed: [] };
 
   for (const execution of executions) {
-    if (
-      execution.toolName !== BuiltinTools.FileWrite.id
-      // 兼容升级前尚未完成的旧 journal 记录。
-      && execution.toolName !== 'fs_write'
-    ) continue;
+    if (execution.toolName !== BuiltinTools.FileWrite.id) continue;
     if (!execution.outcomeUnknown) continue;
     const targetPath = readTargetPath(execution.args);
     if (!targetPath) continue;

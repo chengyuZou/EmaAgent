@@ -2,10 +2,6 @@ import { forwardRef } from 'react';
 import type { ButtonHTMLAttributes } from 'react';
 import { cn } from '../utils/cn.js';
 
-// ── CardButton ───────────────────────────────────────────────────────────────
-// 可点击卡片: 供应商选择/模型网格/会话行等"整卡即按钮"场景,
-// 自带 selected 状态(主色描边 + muted 底色).
-
 export type CardButtonPadding = 'none' | 'sm' | 'md' | 'lg';
 
 export interface CardButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'type'> {

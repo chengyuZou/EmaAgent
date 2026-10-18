@@ -2,8 +2,6 @@ import { forwardRef } from 'react';
 import type { HTMLAttributes } from 'react';
 import { cn } from '../utils/cn.js';
 
-// ── Card ────────────────────────────────────────────────────────────────────
-
 export type CardVariant = 'default' | 'elevated' | 'glass';
 export type CardPadding = 'none' | 'sm' | 'md' | 'lg';
 

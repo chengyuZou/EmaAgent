@@ -2,7 +2,6 @@
 // 验证 deny/ask/passthrough 三档判定与 Unicode/缩写/别名等绕过面的覆盖。
 import { describe, expect, it } from 'vitest';
 import {
-  classifyCommandName,
   type ParsedCommandElement,
   type ParsedPowerShellCommand,
   type ParsedVariable,
@@ -16,7 +15,6 @@ function cmd(
 ): ParsedCommandElement {
   return {
     name,
-    nameType: classifyCommandName(name),
     elementType: 'CommandAst',
     args,
     text: [name, ...args].join(' '),

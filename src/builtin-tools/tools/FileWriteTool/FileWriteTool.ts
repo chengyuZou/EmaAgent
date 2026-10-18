@@ -1,5 +1,3 @@
-// 把完整文本安全地写入文件，并同步后续编辑所需的文件状态。
-// 模型说明书见 prompt.ts; 补丁生成复用 FileEditTool/patch.ts。
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
@@ -29,7 +27,7 @@ interface FileWriteToolContext {
   cwd: string;
 }
 
-// ── 输入 schema ──────────────────────────────────────────────────────────────
+
 
 const inputSchema = z.object({
   file_path: z.string().min(1).describe('Absolute path to write. Created if it does not exist.'),
@@ -42,11 +40,11 @@ export interface FileWriteResult {
   type: 'created' | 'updated';
   filePath: string;
   bytesWritten: number;
-  /** 写入全文;created 形态的 UI 展示与审计基准。 */
+  /** 写入全文;created 形态的 UI 展示与审计基准. */
   content: string;
-  /** updated 的前文;created 为 null。 */
+  /** updated 的前文;created 为 null. */
   originalFile: string | null;
-  /** updated 的 diff;created 为空数组(UI 用 content 直接展示,不合成假 diff)。 */
+  /** updated 的 diff;created 为空数组(UI 用 content 直接展示,不合成假 diff). */
   structuredPatch: StructuredPatchHunk[];
   /** 本次 Tool 调用新增的行数. created 表示新文件实际文本行数. */
   additions: number;
@@ -54,7 +52,7 @@ export interface FileWriteResult {
   deletions: number;
 }
 
-// ── 工具定义 ───────────────────────────────────────────────────────────────────
+
 
 export const FileWriteTool = buildTool<FileWriteInput, FileWriteResult, FileWriteToolContext>({
   id: BuiltinTools.FileWrite.id,
@@ -67,10 +65,10 @@ export const FileWriteTool = buildTool<FileWriteInput, FileWriteResult, FileWrit
 
   validateContext(ctx) {
     if (!ctx.cwd) {
-      return contextFail('File 写入工具需要明确的工作区。');
+      return contextFail('File 写入工具需要明确的工作区.');
     }
     if (!ctx.fileStateCache) {
-      return contextFail('File 写入工具未装配读取状态。');
+      return contextFail('File 写入工具未装配读取状态.');
     }
     return contextOk({
       fileStateCache: ctx.fileStateCache,
@@ -104,11 +102,11 @@ export const FileWriteTool = buildTool<FileWriteInput, FileWriteResult, FileWrit
     invocation: ToolInvocation,
   ): Promise<FileWriteResult> {
     const { file_path, content } = input;
-    // 与 Permission/Read 同一基准: 相对路径按工作区解析, 不借 Core 进程 cwd——
-    // 否则审批查的是工作区路径, 实际写的却是 Core 启动目录(P1 路径分裂)。
+    // 与 Permission/Read 同一基准: 相对路径按工作区解析, 不借 Core 进程 cwd - 
+    // 否则审批查的是工作区路径, 实际写的却是 Core 启动目录(P1 路径分裂).
     const fullPath = path.resolve(context.cwd, file_path);
 
-    // ── I/O 前守卫(与 Read 对称, 写比读更危险) ────────────────────────────────
+    // I/O 前守卫(与 Read 对称, 写比读更危险)
     if (fullPath.startsWith('\\\\')) {
       throw new Error(`UNC paths are not supported: ${fullPath}`);
     }

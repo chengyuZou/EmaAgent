@@ -1,11 +1,5 @@
-/* ── Design Tokens ──────────────────────────────────────────────────────────
- * Dark-first(透明窗口坐桌面),Surface 半透明深色玻璃,OKLCH 感知均匀,阴影暖暗晕。
- * 命名:--ema-<category>[-variant]。
- * 亮色覆盖走 [data-theme="light"]（主题 store 切 <html data-theme>）。
- */
-
 :root {
-  /* 字体分层：界面、Markdown 正文和代码互不串改。 */
+  /* 界面, Markdown 正文和代码分别使用字体变量, 避免修改正文偏好时影响其他区域. */
   --ema-font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Microsoft YaHei', sans-serif;
   --ema-font-content-system: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Microsoft YaHei', sans-serif;
   --ema-font-content: var(--ema-font-content-system);
@@ -13,7 +7,7 @@
 
   /* Easing */
   --ema-ease:   cubic-bezier(0.23, 1, 0.32, 1);
-  /* 过冲回弹(easeOutBack):块/卡入场的"小跳动"用,比平 ease 多一拍俏皮。 */
+  /* 过冲回弹(easeOutBack):块/卡入场的"小跳动"用,比平 ease 多一拍俏皮. */
   --ema-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   --ema-ease-in: cubic-bezier(0.4, 0, 1, 1);
   --ema-duration-fast:   120ms;
@@ -23,8 +17,7 @@
   /* 功能性填充(Progress 宽度)缓动, 比入场慢才读得出"进度在走". */
   --ema-duration-fill:   500ms;
 
-  /* z-index 刻度(theme 无关单一定义): overlay > dialog(对话框里的下拉必须压对话框),
-     toast 最高(任何操作反馈不可被盖). 不允许刻度外的裸 z-index. */
+  /* 浮层高于对话框, 提示与操作反馈高于普通内容, 使对话框中的菜单仍能显示. */
   --ema-z-sticky:  20;
   --ema-z-nav:     30;
   --ema-z-mask:    40;
@@ -35,7 +28,7 @@
 
   /* Border radius */
   /* 基础值随 --ema-radius 乘数(0-3)缩放,uno rounded-* 与 styles 内部统一引用;
-     pill 固定不缩放。--ema-radius 的事实源在本文件。 */
+     pill 固定不缩放.--ema-radius 的事实源在本文件. */
   --ema-radius:        1;
   --ema-radius-xs:    calc(4px  * var(--ema-radius, 1));
   --ema-radius-sm:    calc(6px  * var(--ema-radius, 1));
@@ -45,8 +38,7 @@
   --ema-radius-panel: calc(16px * var(--ema-radius, 1));
   --ema-radius-pill:  999px;
 
-  /* Spacing - 4 倍数刻度(README 硬规矩: 间距走 token; 0_5 档只给发丝级场景,
-     组件内微调用 0_5/1, 块间距用 3 以上, 不许再出现 5/7/9/10/14px) */
+  /* 默认间距刻度, 由组件和应用样式按实际布局引用. */
   --ema-space-0_5: 2px;
   --ema-space-1:   4px;
   --ema-space-2:   8px;
@@ -55,7 +47,7 @@
   --ema-space-5:   24px;
   --ema-space-6:   32px;
 
-  /* Shadows - 暖暗晕(任意桌面背景都好看)*/
+  /* 阴影使用半透明颜色, 与应用的表面层级配合.*/
   --ema-shadow-1:  0 1px 2px rgba(0,0,0,0.18), 0 0px 1px rgba(0,0,0,0.12);
   --ema-shadow-2:  0 2px 4px rgba(0,0,0,0.22), 0 4px 10px rgba(0,0,0,0.16), 0 1px 2px rgba(0,0,0,0.10);
   --ema-shadow-3:  0 4px 8px rgba(0,0,0,0.28), 0 8px 20px rgba(0,0,0,0.20), 0 16px 40px rgba(0,0,0,0.14), 0 1px 2px rgba(0,0,0,0.10);
@@ -76,8 +68,8 @@
   /* 拖放文件悬停高亮(ChatInput,primary 描边 + glow 光晕,两 var 均随主题) */
   --ema-shadow-dragover: 0 0 0 2px var(--ema-primary), 0 0 24px var(--ema-glow);
 
-  /* Surface layers - 半透明中性深灰玻璃(保留半透明供桌宠玻璃感)。
-     0=最深背景,4=浮层最亮。中性灰非紫黑*/
+  /* Surface layers - 半透明中性深灰玻璃(保留半透明供桌宠玻璃感).
+     0=最深背景,4=浮层最亮.中性灰非紫黑*/
   --ema-surface-0:  rgba(20, 20, 24, 0.92);
   --ema-surface-1:  rgba(28, 28, 32, 0.88);
   --ema-surface-2:  rgba(36, 36, 40, 0.82);
@@ -93,20 +85,20 @@
   /* Mask 用暗灰非纯黑(暗色遮罩用 background 色非黑,视觉更协调) */
   --ema-mask: rgba(18, 18, 22, 0.65);
 
-  /* 构件级背景: 侧栏与 composer 是独立角色, 亮暗分开映射。
+  /* 构件级背景: 侧栏与 composer 是独立角色, 亮暗分开映射.
      深色侧栏比页面再深半档 + 一缕用户色相 tint: 不设壁纸时与主区(=surface-0)拉开层次,
-     设壁纸时侧栏透得更多, 成为壁纸的"取景框"。 */
+     设壁纸时侧栏透得更多, 成为壁纸的"取景框". */
   --ema-sidebar-bg: oklch(0.15 0.010 var(--chromatic-hue, 200) / 0.95);
   --ema-composer-bg: var(--ema-surface-2);
 
-  /* ── 语义色(暗色)── Ema 签名色,跟随 --chromatic-hue(跟 UnoCSS bg-primary 对齐)── */
+  /* 语义色(暗色) Ema 签名色,跟随 --chromatic-hue(跟 UnoCSS bg-primary 对齐) */
   /* 彩度余弦调制: 显艳的色相区间自动收, 显闷的区间自动抬, 色轮手感均匀. */
   --ema-chroma: calc(0.18 + cos(var(--chromatic-hue, 200) * 1deg) * 0.04);
   --ema-primary:        oklch(0.72 var(--ema-chroma) var(--chromatic-hue, 200));
   --ema-primary-hover:  oklch(0.76 0.16 var(--chromatic-hue, 200));
   --ema-primary-active: oklch(0.65 0.20 var(--chromatic-hue, 200));
   --ema-primary-muted:  oklch(0.72 0.18 var(--chromatic-hue, 200) / 0.20);
-  /* 暗色下也要"主色调过的可读色",不能近白,否则 muted 底上的字/勾/高亮全不显色。 */
+  /* 暗色下也要"主色调过的可读色",不能近白,否则 muted 底上的字/勾/高亮全不显色. */
   --ema-primary-text:   oklch(0.85 0.09 var(--chromatic-hue, 200));
 
   /* Success - 绿 */
@@ -158,40 +150,40 @@
   --ema-info-muted:     oklch(0.68 0.13 240 / 0.18);
   --ema-info-text:      oklch(0.88 0.08 240);
 
-  /* ── 文本(暗色:浅字深底)── */
+  /* 文本(暗色:浅字深底) */
   --ema-text-primary:   oklch(0.94 0.01 280);
   --ema-text-secondary: oklch(0.72 0.01 280);
   --ema-text-tertiary:  oklch(0.52 0.01 280);
   --ema-text-inverse:   oklch(0.10 0.01 280);
   --ema-text-code:      oklch(0.85 0.04 280);
 
-  /* Turn 快速导航沿用主题语义色，亮暗主题无需维护第二套组件常量。 */
+  /* Turn 快速导航沿用主题语义色, 亮暗主题无需维护第二套组件常量. */
   --ema-turn-rail-idle:   var(--ema-text-tertiary);
   --ema-turn-rail-nearby: var(--ema-text-secondary);
   --ema-turn-rail-active: var(--ema-primary);
   --ema-turn-rail-current: var(--ema-primary-hover);
 
-  /* ── Border(暗色:浅描边,加浓 0.12 暗底 border 要更明显)── */
+  /* Border(暗色:浅描边,加浓 0.12 暗底 border 要更明显) */
   --ema-border:         rgba(255, 255, 255, 0.12);
   --ema-border-hover:   rgba(255, 255, 255, 0.14);
   --ema-border-focus:   var(--ema-primary);
   --ema-border-strong:  rgba(255, 255, 255, 0.18);
   --ema-border-error:   var(--ema-danger);
 
-  /* 控件皮肤(Input/Select/Textarea/SearchField 统一):引用语义层,亮暗主题自动跟随。
-     "厚"靠微阴影垫底+大圆角,不靠加粗边框;圆角走组件类 rounded-xl(随形状系统缩放)。
-     focus 不换底色,避免焦点时整个输入框跳亮;焦点反馈=主题色边+同色光晕。 */
+  /* 控件皮肤(Input/Select/Textarea/SearchField 统一):引用语义层,亮暗主题自动跟随.
+     "厚"靠微阴影垫底+大圆角,不靠加粗边框;圆角走组件类 rounded-xl(随形状系统缩放).
+     focus 不换底色,避免焦点时整个输入框跳亮;焦点反馈=主题色边+同色光晕. */
   --ema-control-bg:           var(--ema-surface-2);
   --ema-control-bg-hover:     var(--ema-surface-3);
   --ema-control-bg-focus:     var(--ema-surface-2);
   --ema-control-border:       var(--ema-border);
   --ema-control-border-hover: var(--ema-border-hover);
-  /* 清晰的一根主题色边界,但不拉满饱和。 */
+  /* 清晰的一根主题色边界,但不拉满饱和. */
   --ema-control-border-focus: color-mix(in srgb, var(--ema-primary) 72%, transparent);
   --ema-control-shadow:       var(--ema-shadow-1);
   --ema-control-shadow-focus: 0 0 0 3px color-mix(in srgb, var(--ema-primary) 12%, transparent);
 
-  /* ── Glow(发光环,拖放悬停等主题色光晕,随用户色相走)── */
+  /* Glow(发光环,拖放悬停等主题色光晕,随用户色相走) */
   --ema-glow:        oklch(0.72 0.18 var(--chromatic-hue, 200) / 0.15);
   --ema-glow-strong: oklch(0.72 0.18 var(--chromatic-hue, 200) / 0.35);
 
@@ -199,25 +191,24 @@
   --ema-pet-glow:        oklch(0.88 0.10 var(--chromatic-hue, 200) / 0.55);
   --ema-pet-glow-bright: oklch(0.86 0.14 var(--chromatic-hue, 200) / 0.85);
 
-  /* ── Scrollbar(暗色:跟 primary 联动,滚动条 token 化)── */
+  /* Scrollbar(暗色:跟 primary 联动,滚动条 token 化) */
   --ema-scrollbar-thumb: oklch(0.72 0.18 var(--chromatic-hue, 200) / 0.50);
   --ema-scrollbar-thumb-hover: oklch(0.72 0.18 var(--chromatic-hue, 200) / 0.72);
 }
 
-/* ── Light-mode overrides ──────────────────────────────────────────────────
- * [data-theme="light"] on <html> by theme store。翻转 text/surface/border/
- * mask/shadow/semantic-text,primary/secondary hue 不变。
+/* Light-mode overrides 
+ * [data-theme="light"] on <html> by theme store.翻转 text/surface/border/
+ * mask/shadow/semantic-text,primary/secondary hue 不变.
  */
 [data-theme="light"] {
-  /* Text: 翻深字浅底,字重重。tertiary 加深一档(L 0.48->0.42),亮色模式下
-     小线性图标 + 描述文字在浅背景上更清晰(对比度 ~3:1 -> ~3.5:1)。 */
+  /* 浅色主题使用深色文字, 小图标和辅助说明也保持可见. */
   --ema-text-primary:   oklch(0.15 0.01 280);
   --ema-text-secondary: oklch(0.35 0.01 280);
   --ema-text-tertiary:  oklch(0.42 0.01 280);
   --ema-text-code:      oklch(0.22 0.04 280);
 
-  /* Surface: 不透明暖白。页面退后半档(234)卡片纯白(255)浮起, 控件内凹(226)
-     active 再深一档(216); 每档差值拉开, 层次靠明度差不靠阴影堆叠。 */
+  /* Surface: 不透明暖白.页面退后半档(234)卡片纯白(255)浮起, 控件内凹(226)
+     active 再深一档(216); 每档差值拉开, 层次靠明度差不靠阴影堆叠. */
   --ema-surface-0:  rgba(234, 233, 241, 1);
   --ema-surface-1:  rgba(255, 255, 255, 1);
   --ema-surface-2:  rgba(226, 224, 236, 1);
@@ -227,7 +218,7 @@
   --ema-material-fill: rgb(244, 248, 253);
   --ema-material-tint: rgb(191, 208, 226);
 
-  /* 侧栏独立 tint(比页面深半档, 导航后退); composer 浅色换白卡。 */
+  /* 侧栏独立 tint(比页面深半档, 导航后退); composer 浅色换白卡. */
   --ema-sidebar-bg:   rgba(228, 227, 236, 1);
   --ema-composer-bg:  var(--ema-surface-1);
 

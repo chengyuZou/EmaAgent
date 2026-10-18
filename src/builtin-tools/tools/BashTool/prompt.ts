@@ -1,4 +1,3 @@
-// BashTool 的模型说明书, 单点维护。条目主体为完整模型说明书,
 import { FOREGROUND_COMMAND_WAIT_SECONDS } from '../shared/shellExecution.js';
 
 export const BASH_DESCRIPTION = `Execute a bash/sh shell command inside the workspace sandbox and return stdout, stderr, and exit code.
@@ -18,7 +17,7 @@ While the Bash tool can do similar things, it's better to use the built-in tools
 - Always quote file paths that contain spaces with double quotes (e.g., cd "path with spaces/file.txt").
 - Each command starts in the session workspace; shell state and the working directory do NOT persist between commands. Prefer absolute or workspace-relative paths instead of relying on \`cd\`.
 - Avoid interactive commands that read from stdin (they will hang).
-- Commands that finish within ${FOREGROUND_COMMAND_WAIT_SECONDS} seconds (3 minutes) return their result directly. Slower commands keep running as background processes without being restarted — you will be notified when they complete; do not poll.
+- Commands that finish within ${FOREGROUND_COMMAND_WAIT_SECONDS} seconds (3 minutes) return their result directly. Slower commands keep running as background processes without being restarted  -  you will be notified when they complete; do not poll.
 - Set runInBackground=true when the command is expected to be long-running. Use ProcessOutput to read incremental output and ProcessStop to terminate it; the full log file path is included in the background reference, so you can also Read it.
 - timeout is the total runtime limit in milliseconds, including foreground time. When omitted, the user's background-process setting applies. A supplied timeout cannot exceed that setting; reaching it kills the process rather than transferring it.
 - Output redirects (> and >>) may only target paths inside the workspace or the system temp directory.
@@ -41,7 +40,7 @@ Git Safety Protocol:
 - NEVER run destructive git commands (push --force, reset --hard, checkout ., restore ., clean -f, branch -D) unless the user explicitly requests these actions. Taking unauthorized destructive actions is unhelpful and can result in lost work, so it's best to ONLY run these commands when given direct instructions
 - NEVER skip hooks (--no-verify, --no-gpg-sign, etc) unless the user explicitly requests it
 - NEVER run force push to main/master, warn the user if they request it
-- CRITICAL: Always create NEW commits rather than amending, unless the user explicitly requests a git amend. When a pre-commit hook fails, the commit did NOT happen — so --amend would modify the PREVIOUS commit, which may result in destroying work or losing previous changes. Instead, after hook failure, fix the issue, re-stage, and create a NEW commit
+- CRITICAL: Always create NEW commits rather than amending, unless the user explicitly requests a git amend. When a pre-commit hook fails, the commit did NOT happen  -  so --amend would modify the PREVIOUS commit, which may result in destroying work or losing previous changes. Instead, after hook failure, fix the issue, re-stage, and create a NEW commit
 - When staging files, prefer adding specific files by name rather than using "git add -A" or "git add .", which can accidentally include sensitive files (.env, credentials) or large binaries
 - NEVER commit changes unless the user explicitly asks you to. It is VERY IMPORTANT to only commit when explicitly asked, otherwise the user will feel that you are being too proactive
 
@@ -111,9 +110,9 @@ Important:
 - View comments on a Github PR: gh api repos/foo/bar/pulls/123/comments
 
 # Avoid unnecessary sleep
-- Do not sleep between commands that can run immediately — just run them.
-- If your command is long running and you would like to be notified when it finishes — use runInBackground. No sleep needed.
-- Do not retry failing commands in a sleep loop — diagnose the root cause.
-- If waiting for a background task you started, you will be notified when it completes — do not poll.
+- Do not sleep between commands that can run immediately  -  just run them.
+- If your command is long running and you would like to be notified when it finishes  -  use runInBackground. No sleep needed.
+- Do not retry failing commands in a sleep loop  -  diagnose the root cause.
+- If waiting for a background task you started, you will be notified when it completes  -  do not poll.
 - If you must poll an external process, use a check command (e.g. \`gh run view\`) rather than sleeping first.
 - If you must sleep, keep the duration short (1-5 seconds) to avoid blocking the user.`;

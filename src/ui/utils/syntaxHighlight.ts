@@ -1,4 +1,3 @@
-// 为文件预览, 逐行差异和 Tool UI 提供同一套基于文件扩展名的 highlight.js 语法高亮.
 import hljs from 'highlight.js';
 
 const LANGUAGE_BY_EXTENSION: Readonly<Record<string, string>> = {

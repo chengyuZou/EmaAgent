@@ -1,14 +1,6 @@
 import type { ButtonHTMLAttributes } from 'react';
 import { cn } from '../utils/cn.js';
 
-// ── MenuStatusItem ───────────────────────────────────────────────────────────
-//
-// Provider 网格卡: 标题+描述, 灰度图标从右缘探出(hover 回色), 左上角配置状态点.
-// 装饰(hover 扫光+纹理)统一走 ema-card-decorate primitive, 不在组件里手写伪元素.
-//
-// 结构保持扁平: icon 直接放在 button 里, 只有一层 overflow-hidden 裁剪,
-// 右缘探出效果与主菜单卡一致.
-
 export interface MenuStatusItemProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'title'> {
   title:        string;
   description?: string;
@@ -47,7 +39,7 @@ export function MenuStatusItem(props: MenuStatusItemProps): React.JSX.Element {
         </div>
       </div>
 
-      {/* Icon — same strategy as MenuIconItem: peeks from right edge, centred vertically */}
+      {/* Icon - same strategy as MenuIconItem: peeks from right edge, centred vertically */}
       {icon && (
         <div
           aria-hidden
@@ -61,7 +53,7 @@ export function MenuStatusItem(props: MenuStatusItemProps): React.JSX.Element {
         />
       )}
 
-      {/* Status dot — 左上角 */}
+      {/* Status dot - 左上角 */}
       <div className="absolute left-2 top-2 z-1">
         {configured
           ? <div className="size-3.5 rounded-full bg-[var(--ema-success)] shadow-[var(--ema-shadow-1)]" />

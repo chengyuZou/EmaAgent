@@ -1,5 +1,3 @@
-// FileWriteTool 的模型说明书, 单点维护。
-
 export const FILE_WRITE_DESCRIPTION = `Write full content to a file, creating it if it does not exist.
 
 - Replaces the entire file - for targeted in-place edits use \`Edit\` instead.

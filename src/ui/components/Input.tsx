@@ -2,7 +2,6 @@ import { forwardRef } from 'react';
 import type { InputHTMLAttributes } from 'react';
 import { cn } from '../utils/cn.js';
 
-// ── Input ───────────────────────────────────────────────────────────────────
 export type InputSize = 'sm' | 'md' | 'lg';
 
 export interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size'> {
@@ -35,8 +34,8 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           'transition-ema',
           'disabled:cursor-not-allowed disabled:opacity-50',
           SIZE_CLASSES[inputSize],
-          // 去掉原生数字步进箭头(↕)——暗色 UI 里格格不入,
-          // 数值直接手输。
+          // 去掉原生数字步进箭头(↕) - 暗色 UI 里格格不入,
+          // 数值直接手输.
           type === 'number' &&
             '[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none',
           error

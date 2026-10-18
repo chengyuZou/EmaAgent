@@ -1,16 +1,14 @@
-// GlobTool 的桌面展示: 参数(pattern+path)与结果(文件列表+截断徽标)。
-// 只消费本 Tool 的类型化 data; 类型守卫失败一律返回 null, 由前端回落通用渲染。
 import type { JSX } from 'react';
 import { Badge } from '@ema-agent/ui';
 import type { GlobResult } from './GlobTool.js';
 
-// ── 类型守卫(消费 unknown data 的唯一入口) ────────────────────────────────────
+// 类型守卫(消费 unknown data 的唯一入口)
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** 行头摘要：匹配模式。 */
+/** 行头摘要:匹配模式. */
 export function globTitle(args: unknown): string | null {
   return isRecord(args) && typeof args['pattern'] === 'string' ? args['pattern'] : null;
 }
@@ -25,7 +23,7 @@ export function globResultCopyText(data: unknown): string | null {
   return asGlobResult(data)?.files.join('\n') ?? null;
 }
 
-// ── 参数视图: pattern + 可选 path ──────────────────────────────────────────────
+// 参数视图: pattern + 可选 path
 
 export function GlobArgsView({ args }: { args: unknown }): JSX.Element | null {
   if (!isRecord(args) || typeof args['pattern'] !== 'string') return null;
@@ -41,7 +39,7 @@ export function GlobArgsView({ args }: { args: unknown }): JSX.Element | null {
   );
 }
 
-// ── 结果视图: 数量 + 文件列表 + 截断徽标 ───────────────────────────────────────
+// 结果视图: 数量 + 文件列表 + 截断徽标
 
 export function GlobResultView({ data }: { data: unknown }): JSX.Element | null {
   const result = asGlobResult(data);

@@ -1,5 +1,3 @@
-// 在明确的目录和结果预算内按文件名模式查找文件。
-// 模型说明书见 prompt.ts; rg --files 枚举, node glob 兜底; 结果相对工作区返回。
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
@@ -12,12 +10,12 @@ import { runBoundedProcess } from '../shared/BoundedProcess.js';
 import { sortPathsByMtimeDesc } from '../shared/fileMtimeSort.js';
 import { GLOB_DESCRIPTION } from './prompt.js';
 
-/** Glob 工具的窄 Context：只取工作区根；取消信号走 ToolInvocation。 */
+
 interface GlobToolContext {
   cwd: string;
 }
 
-// ── 输入 schema ──────────────────────────────────────────────────────────────
+
 
 const inputSchema = z.object({
   pattern: z.string().min(1).describe(
@@ -29,35 +27,35 @@ const inputSchema = z.object({
     .optional()
     .describe(
       'Directory to search in. Defaults to the workspace root. ' +
-        'Omit this field to use the default directory — do not enter "undefined" or "null".',
+        'Omit this field to use the default directory  -  do not enter "undefined" or "null".',
     ),
 });
 
 type GlobInput = z.infer<typeof inputSchema>;
 
-// ── 输出类型 ───────────────────────────────────────────────────────────────────
+
 
 export interface GlobResult {
-  /** 匹配的文件路径(相对工作区, '/' 分隔),按 mtime 降序(最近修改的在前)。 */
+  /** 匹配的文件路径(相对工作区, '/' 分隔),按 mtime 降序(最近修改的在前). */
   files: string[];
-  /** 枚举或结果超限时为 true。 */
+  /** 枚举或结果超限时为 true. */
   truncated: boolean;
-  /** 仅 truncated=true 时存在。给模型的人类可读提示。 */
+  /** 仅 truncated=true 时存在.给模型的人类可读提示. */
   notice?: string;
 }
 
-// ── 结果预算 ──────────────────────────────────────────────────────────────────
 
-/** 模型可见条数上限: "最近修改的前 N 个"。 */
+
+/** 模型可见条数上限: "最近修改的前 N 个". */
 const MAX_RESULTS = 100;
-/** 枚举上限: 先枚举再按 mtime 排序, 不能只取遍历序前 100(大目录下会漏掉真正的新文件)。 */
+/** 枚举上限: 先枚举再按 mtime 排序, 不能只取遍历序前 100(大目录下会漏掉真正的新文件). */
 const MAX_ENUMERATION = 20_000;
-/** 单次搜索超时: 防失控目录拖死 Turn。 */
+/** 单次搜索超时: 防失控目录拖死 Turn. */
 const SEARCH_TIMEOUT_MS = 10_000;
-/** rg 输出解析字节预算: 有界读取, 超限即截断。 */
+/** rg 输出解析字节预算: 有界读取, 超限即截断. */
 const MAX_OUTPUT_BYTES = 2 * 1024 * 1024;
 
-// ── 工具定义 ───────────────────────────────────────────────────────────────────
+
 
 export const GlobTool = buildTool<GlobInput, GlobResult, GlobToolContext>({
   id: BuiltinTools.Glob.id,
@@ -70,14 +68,14 @@ export const GlobTool = buildTool<GlobInput, GlobResult, GlobToolContext>({
 
   validateContext(ctx) {
     if (!ctx.cwd) {
-      return contextFail('Glob 工具需要明确的工作区，禁止回退到 Sidecar 进程目录。');
+      return contextFail('Glob 工具需要明确的工作区,禁止回退到 Sidecar 进程目录.');
     }
     return contextOk({ cwd: ctx.cwd });
   },
 
   validateInput(input, context) {
     if (!input.path) return { valid: true };
-    // UNC 跳过 stat: stat 本身会触发 SMB 认证, NTLM 凭据泄露; Permission 层会拦。
+    // UNC 跳过 stat: stat 本身会触发 SMB 认证, NTLM 凭据泄露; Permission 层会拦.
     if (input.path.startsWith('\\\\') || input.path.startsWith('//')) return { valid: true };
     const resolved = path.resolve(context.cwd, input.path);
     try {
@@ -125,7 +123,7 @@ export const GlobTool = buildTool<GlobInput, GlobResult, GlobToolContext>({
       ? path.resolve(cwd, input.path)
       : cwd;
 
-    // 优先 rg; Node glob 兜底(机器无 rg 或 rg 出错时)。
+    // 优先 rg; Node glob 兜底(机器无 rg 或 rg 出错时).
     let found: { paths: string[]; enumTruncated: boolean };
     try {
       found = await rgGlob(input.pattern, searchDir, invocation.signal);
@@ -135,7 +133,7 @@ export const GlobTool = buildTool<GlobInput, GlobResult, GlobToolContext>({
     }
 
     // 枚举后才排序截取
-    // 不能取遍历序再排序(大目录下不是真正的新文件)。
+    // 不能取遍历序再排序(大目录下不是真正的新文件).
     const sorted = await sortPathsByMtimeDesc(found.paths);
     const files = sorted.slice(0, MAX_RESULTS);
     const truncated = sorted.length > MAX_RESULTS || found.enumTruncated;
@@ -143,7 +141,7 @@ export const GlobTool = buildTool<GlobInput, GlobResult, GlobToolContext>({
       ? `[Showing the ${MAX_RESULTS} most recently modified of ${found.paths.length}${found.enumTruncated ? '+' : ''} matches. Narrow the pattern or path to continue.]`
       : undefined;
 
-    // 相对化到工作区省 token; 与 Read/Edit 的 file_path 回填口径一致(两者都按工作区解析)。
+    // 相对化到工作区省 token; 与 Read/Edit 的 file_path 回填口径一致(两者都按工作区解析).
     return {
       files: files.map((p) => toWorkspaceRelative(cwd, p)),
       truncated,
@@ -162,15 +160,15 @@ export const GlobTool = buildTool<GlobInput, GlobResult, GlobToolContext>({
   },
 });
 
-// ── 后端 ──────────────────────────────────────────────────────────────────────
 
-/** 把工作区内的绝对路径转成相对路径('/' 分隔), 供模型直接回填 Read/Edit。 */
+
+/** 把工作区内的绝对路径转成相对路径('/' 分隔), 供模型直接回填 Read/Edit. */
 function toWorkspaceRelative(cwd: string, absolutePath: string): string {
   const rel = path.relative(cwd, absolutePath);
   return rel ? rel.replace(/\\/g, '/') : path.basename(absolutePath);
 }
 
-/** rg --files 枚举: 文件名模式, 不读内容; --color=never 防配置强制上色污染记录。 */
+/** rg --files 枚举: 文件名模式, 不读内容; --color=never 防配置强制上色污染记录. */
 async function rgGlob(
   pattern: string,
   searchDir: string,
@@ -194,7 +192,7 @@ async function rgGlob(
   };
 }
 
-/** Node glob 兜底: 无 rg 时的枚举, 同样受条数与超时有界。 */
+/** Node glob 兜底: 无 rg 时的枚举, 同样受条数与超时有界. */
 async function nodeGlob(
   pattern: string,
   searchDir: string,

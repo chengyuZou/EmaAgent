@@ -69,17 +69,17 @@ const HEADING_SCALE = 1.25;
 // image-only (scanned) and routed to OCR. Decided PER PAGE so mixed documents
 // (some digital pages, some scanned) don't silently lose the scanned pages.
 const MIN_PAGE_TEXT_CHARS = 30;
-// Render scale for OCR rasterization — higher = better OCR, slower.
+// Render scale for OCR rasterization - higher = better OCR, slower.
 const OCR_RENDER_SCALE = 2.0;
 // 单张图像面积达到该像素值才视为"显著图"(约 224x224): 滤掉图标/项目符号/页眉
-// logo, 避免给每张装饰性小图都烧一次 Vision 调用; 真正的图表/截图/流程图都远大于此。
+// logo, 避免给每张装饰性小图都烧一次 Vision 调用; 真正的图表/截图/流程图都远大于此.
 const MIN_SIGNIFICANT_IMAGE_PIXELS = 50_000;
-// 文本层乱码率(私有区/未映射码点占比)达到该值时不再信任文本层。
+// 文本层乱码率(私有区/未映射码点占比)达到该值时不再信任文本层.
 const GARBLED_RATIO_THRESHOLD = 0.5;
 
 // 图像绘制算子集合按 pdfjs 版本防御式构建: 只收集当前版本实际定义的 op id
-// (v4 已把 paintJpegXObject 合并进 paintImageXObject, 老版本的 id 可能不存在)。
-// 掩码类算子(paintImageMask*)是模板小图, 不参与显著图判断。
+// (v4 已把 paintJpegXObject 合并进 paintImageXObject, 老版本的 id 可能不存在).
+// 掩码类算子(paintImageMask*)是模板小图, 不参与显著图判断.
 const OPS_MAP: Record<string, number | undefined> = pdfjs.OPS;
 const IMAGE_OPS = new Set<number>(
   [
@@ -92,7 +92,7 @@ const IMAGE_OPS = new Set<number>(
     .map(name => OPS_MAP[name])
     .filter((op): op is number => typeof op === 'number'),
 );
-// 内联图像算子: 图像数据直接挂在 args 上, 不需要回 page.objs 解析。
+// 内联图像算子: 图像数据直接挂在 args 上, 不需要回 page.objs 解析.
 const INLINE_IMAGE_OPS = new Set<number>(
   ['paintInlineImageXObject', 'paintInlineImageXObjectGroup']
     .map(name => OPS_MAP[name])
@@ -100,11 +100,11 @@ const INLINE_IMAGE_OPS = new Set<number>(
 );
 
 // 乱码字符: 私有使用区(BMP + 两个补充平面), U+FFFD 替换符, 非常用控制符,
-// 未分配/代理区码点。判定范围对齐 RAGFlow 的 _is_garbled_char。
+// 未分配/代理区码点.判定范围对齐 RAGFlow 的 _is_garbled_char.
 const GARBLED_CHAR_RE =
   /[\uE000-\uF8FF\uFFFD\u0080-\u009F\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\p{Cn}\p{Cs}]|[\u{F0000}-\u{FFFFF}]|[\u{100000}-\u{10FFFF}]/u;
 const WHITESPACE_RE = /\s/;
-// CJK/假名/谚文码点范围, 用于识别"中文文档被错乱映射成全 ASCII"的字体编码事故。
+// CJK/假名/谚文码点范围, 用于识别"中文文档被错乱映射成全 ASCII"的字体编码事故.
 const CJK_RE = /[\u2E80-\u9FFF\uF900-\uFAFF\uAC00-\uD7AF\u3040-\u30FF]|[\u{20000}-\u{2FA1F}]/u;
 const ASCII_PUNCT_RE = /[\x21-\x2F\x3A-\x40\x5B-\x60\x7B-\x7E]/;
 const ASCII_ALNUM_RE = /[A-Za-z0-9]/;
@@ -117,14 +117,14 @@ export interface PdfItem {
 
 /** PDF 解析范围, 页码从 1 开始并包含结束页. */
 export interface PdfReadRange {
-  /** 1-based 起始页；缺省从第 1 页开始。 */
+  /** 1-based 起始页;缺省从第 1 页开始. */
   startPage?: number;
-  /** 1-based 结束页且包含该页；缺省读到文档末尾。 */
+  /** 1-based 结束页且包含该页;缺省读到文档末尾. */
   endPage?: number;
   signal?: AbortSignal;
 }
 
-/** pdfjs 页面上本文件用到的最小结构(算子表 + 图像对象存储)。 */
+/** pdfjs 页面上本文件用到的最小结构(算子表 + 图像对象存储). */
 interface PdfPageOps {
   getOperatorList: () => Promise<{
     fnArray: ArrayLike<number>;
@@ -134,7 +134,7 @@ interface PdfPageOps {
   commonObjs: { has(id: string): boolean; get(id: string): unknown };
 }
 
-/** 文本的乱码字符占比(忽略空白; 空文本返回 0)。 */
+/** 文本的乱码字符占比(忽略空白; 空文本返回 0). */
 export function garbledCharRatio(text: string): number {
   let total = 0;
   let garbled = 0;
@@ -146,17 +146,17 @@ export function garbledCharRatio(text: string): number {
   return total === 0 ? 0 : garbled / total;
 }
 
-// 子集字体名前缀: PDF 子集嵌入字体的名字形如 "ABCDEF+RealFont"(2~6 位大写tag+加号)。
+// 子集字体名前缀: PDF 子集嵌入字体的名字形如 "ABCDEF+RealFont"(2~6 位大写tag+加号).
 const SUBSET_FONT_PREFIX_RE = /^[A-Z0-9]{2,6}\+/;
 
 /**
- * 判定整页文本层是否因字体编码错乱而不可用。判据分两层:
+ * 判定整页文本层是否因字体编码错乱而不可用.判据分两层:
  * 1) 乱码码点占比 >= 阈值(私有区/替换符, pdfjs 对无 ToUnicode 字体的典型输出);
  * 2) "子集字体 ASCII 化"(CJK 被映射到 ASCII 标点区), 对齐 RAGFlow 的
  *    _is_garbled_by_font_encoding: 子集字体字符占比 >= 0.3 + 几乎无 CJK +
- *    标点占比 > 0.4; 另加字母数字下限保护代码/公式页(代码字母多, 编码垃圾字母少)。
+ *    标点占比 > 0.4; 另加字母数字下限保护代码/公式页(代码字母多, 编码垃圾字母少).
  *    pdfjs 文本项只带内部字体 id, 原始字体名需经 commonObjs/objs 再解析一层;
- *    一个字体都解析不出来时退回纯文本统计(字体门缺失的兜底, 已在上文声明)。
+ *    一个字体都解析不出来时退回纯文本统计(字体门缺失的兜底, 已在上文声明).
  * 误判代价不对称: 误判为乱码最多给该页多烧一次 Vision 调用,
  * 漏判会把乱码当作正文返回给模型, 所以阈值偏敏感.
  */
@@ -167,7 +167,7 @@ export function isPageTextGarbled(
   const joined = items.map(it => it.str).join('');
   if (garbledCharRatio(joined) >= GARBLED_RATIO_THRESHOLD) return true;
 
-  // 按字体 id 去重解析子集前缀(同页同一字体会出现在大量文本项上)。
+  // 按字体 id 去重解析子集前缀(同页同一字体会出现在大量文本项上).
   const subsetByFont = new Map<string, boolean>();
   if (resolveFont) {
     for (const it of items) {
@@ -201,7 +201,7 @@ export function isPageTextGarbled(
   return mangledStats && subsetChars / total >= 0.3;
 }
 
-/** 从 commonObjs/objs 解析字体原始名(形如 "ABCDEF+RealFont"); 未加载或无名返回 undefined。 */
+/** 从 commonObjs/objs 解析字体原始名(形如 "ABCDEF+RealFont"); 未加载或无名返回 undefined. */
 function resolveOriginalFontName(page: PdfPageOps, fontId: string): string | undefined {
   for (const store of [page.commonObjs, page.objs]) {
     if (!store.has(fontId)) continue;
@@ -209,7 +209,7 @@ function resolveOriginalFontName(page: PdfPageOps, fontId: string): string | und
       const font = store.get(fontId) as { name?: unknown } | undefined;
       if (font && typeof font.name === 'string' && font.name.length > 0) return font.name;
     } catch {
-      // 对象未解析完成时 get 会抛错, 当作不可用继续找下一个存储。
+      // 对象未解析完成时 get 会抛错, 当作不可用继续找下一个存储.
     }
   }
   return undefined;
@@ -225,7 +225,7 @@ export class PdfParser {
 
   /**
    * 只解析指定页范围, 交互式 Read 使用有界范围,
-   * 避免为了读取两页而依次解析整份 PDF。
+   * 避免为了读取两页而依次解析整份 PDF.
    */
   async readRange(data: Uint8Array, range: PdfReadRange = {}): Promise<PdfParsedContent> {
     range.signal?.throwIfAborted();
@@ -250,7 +250,7 @@ export class PdfParser {
 
       for (let p = startPage; p <= endPage; p++) {
         range.signal?.throwIfAborted();
-        // 单页损坏不能让整份文档失败，错误会作为明确的页级 failure 返回。
+        // 单页损坏不能让整份文档失败,错误会作为明确的页级 failure 返回.
         let page;
         try {
           page = await pdf.getPage(p);
@@ -277,7 +277,7 @@ export class PdfParser {
         }
 
         const pageTextLen = items.reduce((n, it) => n + it.str.replace(/\s/g, '').length, 0);
-        // 文本层可用性的两个维度: 长度够 + 不是乱码。乱码页(烂编码字体)与扫描页
+        // 文本层可用性的两个维度: 长度够 + 不是乱码.乱码页(烂编码字体)与扫描页
         // 一样降级到整页 OCR, 不把乱码文本作为正文返回.
         const textUsable =
           pageTextLen >= MIN_PAGE_TEXT_CHARS &&
@@ -286,19 +286,19 @@ export class PdfParser {
             fontId => resolveOriginalFontName(page as unknown as PdfPageOps, fontId),
           );
 
-        // ── 文本层可用: 先用文本层; 页面含显著图时追加 Vision 读图 ────────────
+        // 文本层可用: 先用文本层; 页面含显著图时追加 Vision 读图
         if (textUsable) {
           const median   = medianHeight(items);
           const pageBlks = itemsToBlocks(items, median, p);
           blocks.push(...pageBlks);
 
           // 文本层可能只含图表标题和说明, 只返回文字会遗漏图表内容.
-          // 图像存在性用页面算子表判断(零重渲染成本), 不再拿文本长度当代理。
+          // 图像存在性用页面算子表判断(零重渲染成本), 不再拿文本长度当代理.
           const figurePresent = await pageHasSignificantImage(page as unknown as PdfPageOps);
           if (figurePresent && this.imageReader) {
             await this.appendFigureDescription(page as unknown as RenderablePage, p, blocks, failures);
           } else if (figurePresent) {
-            // 未配置 Vision 时诚实记账: 图存在但没解析, 不伪装成完整处理。
+            // 未配置 Vision 时诚实记账: 图存在但没解析, 不伪装成完整处理.
             failures.push(pageFailure(
               p,
               'pdf/figure-unavailable',
@@ -309,7 +309,7 @@ export class PdfParser {
           continue;
         }
 
-        // ── 扫描页/乱码页: 整页光栅化 Vision OCR ───────────────────────────
+        // 扫描页/乱码页: 整页光栅化 Vision OCR
         if (this.imageReader) {
           try {
             const png = await renderPageToPng(page as unknown as RenderablePage, OCR_RENDER_SCALE);
@@ -406,10 +406,10 @@ export class PdfParser {
   }
 }
 
-// ── Page image detection (operator-list based, no rasterization) ───────────────
+// Page image detection (operator-list based, no rasterization)
 
 /**
- * 用页面算子表判断本页是否存在"显著图"。只解析不重渲染, 每页一次遍历。
+ * 用页面算子表判断本页是否存在"显著图".只解析不重渲染, 每页一次遍历.
  * 已知盲区: 纯矢量绘制的图表(只有 path 算子没有图像算子)检测不到,
  * TODO: 纯矢量图表需要额外的版面检测, 当前不会触发图注.
  */
@@ -418,7 +418,7 @@ async function pageHasSignificantImage(page: PdfPageOps): Promise<boolean> {
   try {
     opList = await page.getOperatorList();
   } catch {
-    // 算子表解析失败时图像信号缺失, 本页文本已在处理, 静默跳过不额外记账。
+    // 算子表解析失败时图像信号缺失, 本页文本已在处理, 静默跳过不额外记账.
     return false;
   }
   for (let i = 0; i < opList.fnArray.length; i++) {
@@ -427,14 +427,14 @@ async function pageHasSignificantImage(page: PdfPageOps): Promise<boolean> {
     const dims = INLINE_IMAGE_OPS.has(fn)
       ? readImageDims(opList.argsArray[i]?.[0])
       : readXObjectDims(page, opList.argsArray[i]?.[0]);
-    // 尺寸解析不出来时保守按有图处理: 最多多烧一次 Vision 调用, 好过漏掉真正的图。
+    // 尺寸解析不出来时保守按有图处理: 最多多烧一次 Vision 调用, 好过漏掉真正的图.
     if (!dims) return true;
     if (dims.width * dims.height >= MIN_SIGNIFICANT_IMAGE_PIXELS) return true;
   }
   return false;
 }
 
-/** 从 page.objs/commonObjs 解析 XObject 图像的像素尺寸; 未解析完成返回 undefined。 */
+/** 从 page.objs/commonObjs 解析 XObject 图像的像素尺寸; 未解析完成返回 undefined. */
 function readXObjectDims(
   page: PdfPageOps,
   objId: unknown,
@@ -462,7 +462,7 @@ function readImageDims(value: unknown): { width: number; height: number } | unde
   return { width: w, height: h };
 }
 
-// ── Page rasterization (for OCR) ────────────────────────────────────────────────
+// Page rasterization (for OCR)
 
 interface RenderablePage {
   getViewport: (o: { scale: number }) => { width: number; height: number };
@@ -480,13 +480,13 @@ async function renderPageToPng(page: RenderablePage, scale: number): Promise<Uin
     }).promise;
     return new Uint8Array(canvas.toBuffer('image/png'));
   } catch {
-    // `canvas` native module unavailable or render failed — caller falls back.
+    // `canvas` native module unavailable or render failed - caller falls back.
     return undefined;
   }
 }
 
 function scannedPlaceholder(page: number): PdfBlock {
-  return { kind: 'image', text: `[Scanned page ${page} — OCR unavailable]`, page };
+  return { kind: 'image', text: `[Scanned page ${page}  -  OCR unavailable]`, page };
 }
 function brokenPageBlock(page: number): PdfBlock {
   return { kind: 'image', text: `[Page ${page} could not be read]`, page };
@@ -506,7 +506,7 @@ function pageFailure(
   };
 }
 
-// ── Text-layer → blocks ─────────────────────────────────────────────────────────
+// Text-layer → blocks
 
 function medianHeight(items: PdfItem[]): number {
   const hs = items.map(it => it.height).filter(h => h > 0).sort((a, b) => a - b);
@@ -558,7 +558,7 @@ function hToLevel(h: number, median: number): number {
   return 4;
 }
 
-/** 调用方取消在 vision 协议边界保持原始 AbortError;取消必须中断整篇解析。 */
+/** 调用方取消在 vision 协议边界保持原始 AbortError;取消必须中断整篇解析. */
 function isAbort(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError';
 }

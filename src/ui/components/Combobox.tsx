@@ -1,15 +1,6 @@
-// 提供支持筛选、键盘导航和读屏状态同步的可搜索单选组件。
 import { useState, useRef, useEffect, useCallback, useId } from 'react';
 import { cn } from '../utils/cn.js';
 import { Popover } from './Popover.js';
-
-// ── Combobox ────────────────────────────────────────────────────────────────
-//
-// 基于 Popover 的可搜索单选: 输入过滤, ↓↑ 只在可用项间循环(Enter 选择/Esc 关闭),
-// 高亮不落在禁用项, 点击外部关闭. 输入框即 trigger.
-// allowFreeText=true 时输入即值(选项只负责回填), 用于"词表提示但允许自由新词"
-// 的场景(如插画 expression); 默认仍是"值来自选项".
-// 适用 V1 场景(模型选择约 10 项, 会话切换约 50 项); 超过 500 项需虚拟列表.
 
 export interface ComboboxOption {
   value:    string;
@@ -20,14 +11,14 @@ export interface ComboboxOption {
   separatorAbove?: boolean;
 }
 
-// ── 键盘导航决策(纯函数, 供组件与测试共用; F-037) ────────────────────────────
+// 键盘导航只在可用选项之间移动, 筛选后重新检查高亮位置.
 
-/** 第一个未禁用选项的下标; 没有可用项返回 -1。 */
+/** 第一个未禁用选项的下标; 没有可用项返回 -1. */
 export function firstEnabledIndex(options: ComboboxOption[]): number {
   return options.findIndex((o) => !o.disabled);
 }
 
-/** 最后一个未禁用选项的下标; 没有可用项返回 -1。 */
+/** 最后一个未禁用选项的下标; 没有可用项返回 -1. */
 export function lastEnabledIndex(options: ComboboxOption[]): number {
   for (let index = options.length - 1; index >= 0; index -= 1) {
     if (!options[index]!.disabled) return index;
@@ -35,7 +26,7 @@ export function lastEnabledIndex(options: ComboboxOption[]): number {
   return -1;
 }
 
-/** 从 fromIdx 沿 dir(1|-1) 环形移动到下一个未禁用选项; 没有可用项返回 -1。 */
+/** 从 fromIdx 沿 dir(1|-1) 环形移动到下一个未禁用选项; 没有可用项返回 -1. */
 export function nextEnabledIndex(options: ComboboxOption[], fromIdx: number, dir: 1 | -1): number {
   const n = options.length;
   if (n === 0) return -1;
@@ -47,7 +38,7 @@ export function nextEnabledIndex(options: ComboboxOption[], fromIdx: number, dir
   return -1;
 }
 
-/** 高亮下标的唯一口径: 越界或指向 disabled 时回退第一个可用项; 全禁用返回 -1。 */
+/** 高亮下标的唯一口径: 越界或指向 disabled 时回退第一个可用项; 全禁用返回 -1. */
 export function deriveActiveIndex(options: ComboboxOption[], activeIdx: number): number {
   const opt = options[activeIdx];
   return opt !== undefined && !opt.disabled ? activeIdx : firstEnabledIndex(options);
@@ -60,7 +51,7 @@ export interface ComboboxProps {
   placeholder?: string;
   disabled?:    boolean;
   filter?:      (query: string, option: ComboboxOption) => boolean;
-  /** 输入即值:打字实时写回 onChange,关闭时输入框显示 value 本身(不要求命中选项)。 */
+  /** 输入即值:打字实时写回 onChange,关闭时输入框显示 value 本身(不要求命中选项). */
   allowFreeText?: boolean;
   width?:       number;
   className?:   string;
@@ -70,7 +61,7 @@ export function Combobox({
   options,
   value,
   onChange,
-  placeholder = '搜索…',
+  placeholder = '搜索...',
   disabled = false,
   filter: customFilter,
   allowFreeText = false,
@@ -182,7 +173,7 @@ export function Combobox({
       }
       disabled={disabled}
       value={open ? query : selectedLabel}
-      placeholder={open ? '输入筛选…' : placeholder}
+      placeholder={open ? '输入筛选...' : placeholder}
       onFocus={openList}
       onChange={(e) => {
         const nextQuery = e.target.value;

@@ -1,5 +1,3 @@
-// 提供当前 Turn 内主 Agent 和子 Agent 共用的临时 KV 读写工具。
-// 五件套共享同一窄 Context 与 key 约束,体量微小,按家族单文件内聚,不拆碎文件。
 
 import { z } from 'zod';
 import {
@@ -27,31 +25,31 @@ import {
   SCRATCHPAD_WRITE_DESCRIPTION,
 } from './prompt.js';
 
-// ── 约束与窄 Context ───────────────────────────────────────────────────────────
 
-/** key 必须在所有平台(Windows + POSIX)作文件名安全。 */
+
+/** key 必须在所有平台(Windows + POSIX)作文件名安全. */
 const KEY_SCHEMA = z.string().regex(
   SCRATCHPAD_KEY_RE,
-  'Key must be 1–64 characters: letters, digits, _ or -',
+  'Key must be 1-64 characters: letters, digits, _ or -',
 );
 
-/** Scratchpad 工具族的窄 Context:只有 Turn 级存储位置;取消信号由 ToolInvocation 提供。 */
+
 interface ScratchpadToolContext {
   scratchpad: Scratchpad;
 }
 
-/** 五件套共用:scratchpad 必须装配(仅 work Turn),否则工具不可见。 */
+/** 缺少 Turn 临时目录时调用失败; 主 Agent 与子 Agent 共享这份目录. */
 function validateScratchpad(ctx: ToolUseContext) {
   if (!ctx.scratchpad) {
-    return contextFail('Scratchpad 未装配(仅 work Turn 可用)。');
+    return contextFail('Scratchpad 未装配, 当前 Turn 没有临时目录.');
   }
   return contextOk<ScratchpadToolContext>({ scratchpad: ctx.scratchpad });
 }
 
-// Turn 内部目录, 无用户授权对象: key 受 KEY_SCHEMA 约束, 落在 scratchpad.dir 内, 直接放行。
+// Turn 内部目录, 无用户授权对象: key 受 KEY_SCHEMA 约束, 落在 scratchpad.dir 内, 直接放行.
 const scratchpadAllow: () => Promise<{ behavior: 'allow' }> = async () => ({ behavior: 'allow' });
 
-// ── ScratchpadWrite ───────────────────────────────────────────────────────────
+
 
 const writeSchema = z.object({
   key: KEY_SCHEMA.describe(
@@ -96,7 +94,7 @@ export const ScratchpadWriteTool = buildTool<
   },
 });
 
-// ── ScratchpadRead ────────────────────────────────────────────────────────────
+
 
 const readSchema = z.object({
   key: KEY_SCHEMA.describe('Identifier of the entry to read.'),
@@ -130,7 +128,7 @@ export const ScratchpadReadTool = buildTool<
   },
 });
 
-// ── ScratchpadList ────────────────────────────────────────────────────────────
+
 
 export const ScratchpadListTool = buildTool<
   Record<never, never>,
@@ -154,7 +152,7 @@ export const ScratchpadListTool = buildTool<
     const keys = entries.map(({ key, bytes, author }) => ({
       key,
       bytes,
-      // 基于字节估算;读取单个 key 时再计算精确文本 token。
+      // 列表不读取正文, 这里只按字节近似; 读取单个 key 时再按文本估算.
       estimatedTokens: Math.ceil(bytes / 4),
       author,
     }));
@@ -164,7 +162,7 @@ export const ScratchpadListTool = buildTool<
   },
 });
 
-// ── ScratchpadDelete ──────────────────────────────────────────────────────────
+
 
 const deleteSchema = z.object({
   key: KEY_SCHEMA.describe('Key to delete. No-op if the key does not exist.'),
@@ -192,7 +190,7 @@ export const ScratchpadDeleteTool = buildTool<
   },
 });
 
-// ── ScratchpadClear ───────────────────────────────────────────────────────────
+
 
 export const ScratchpadClearTool = buildTool<
   Record<never, never>,

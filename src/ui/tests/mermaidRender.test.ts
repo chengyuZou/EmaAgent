@@ -1,4 +1,3 @@
-// 验证绘图按需加载、串行主题初始化、50 项缓存与测量节点清理, 不在 JSDOM 模拟 ELK 算法.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MermaidAppearance } from '../components/mermaidRender.js';
 import type { LayoutLoaderDefinition } from 'mermaid';

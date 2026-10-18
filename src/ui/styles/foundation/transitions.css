@@ -1,27 +1,22 @@
-/* ── Transition utility classes ─────────────────────────────────────────────
- * 宽度/高度/文本展开/折叠过渡 + collapsible grid + press 按压。
- */
-
-/* 宽度过渡(Inspector 面板/sidebar 展开/收起)。配 w-0 ↔ w-72/w-[560px] + overflow-hidden */
 .ema-transition-width {
   transition: width var(--ema-duration-panel) var(--ema-ease);
 }
 
-/* 高度过渡(BottomDock 展开/收起)。配 h-0 ↔ 具体高度 + overflow-hidden,拖拽中禁过渡跟手。 */
+/* 高度过渡(BottomDock 展开/收起).配 h-0 ↔ 具体高度 + overflow-hidden,拖拽中禁过渡跟手. */
 .ema-transition-height {
   transition: height var(--ema-duration-panel) var(--ema-ease);
 }
 
-/* 文本展开/收起(narrative 检索块"展开全文/收起全文")。配 max-h-[preview] ↔ max-h-[full]
-   + overflow-hidden。DOM 常驻,双向:展开高度增长+淡入,收起收缩+淡出。*/
+/* 文本展开/收起(narrative 检索块"展开全文/收起全文").配 max-h-[preview] ↔ max-h-[full]
+   + overflow-hidden.DOM 常驻,双向:展开高度增长+淡入,收起收缩+淡出.*/
 .ema-transition-text-expand {
   transition: max-height var(--ema-duration-base) var(--ema-ease),
               opacity    var(--ema-duration-base) var(--ema-ease);
 }
 
-/* 平滑折叠:grid-template-rows 0fr ↔ 1fr。grid-rows 用 280ms ease-out-expo(快出慢收),
-   opacity 180ms(其他用处用,SettingsPanel 折叠不设 opacity 避免先消失再收缩的僵硬感)。
-   内层 > * overflow:hidden 裁剪,内容随高度自然渐显/渐隐。*/
+/* 平滑折叠:grid-template-rows 0fr ↔ 1fr.grid-rows 用 280ms ease-out-expo(快出慢收),
+   opacity 180ms(其他用处用,SettingsPanel 折叠不设 opacity 避免先消失再收缩的僵硬感).
+   内层 > * overflow:hidden 裁剪,内容随高度自然渐显/渐隐.*/
 .ema-collapsible {
   display:    grid;
   transition: grid-template-rows 280ms cubic-bezier(0.16, 1, 0.3, 1),
@@ -37,9 +32,9 @@
   transform: scale(0.97);
 }
 
-/* 主题切换双向动画(亮↔暗)。applyMode 切 data-theme 前给 <html> 加此类,
-   触发全局 color/background/border 过渡,过渡完移除。只过渡颜色,不过渡
-   transform/layout(防性能问题 + 防动画错位)。*/
+/* 主题切换双向动画(亮↔暗).applyMode 切 data-theme 前给 <html> 加此类,
+   触发全局 color/background/border 过渡,过渡完移除.只过渡颜色,不过渡
+   transform/layout(防性能问题 + 防动画错位).*/
 .ema-theme-transition,
 .ema-theme-transition *,
 .ema-theme-transition *::before,

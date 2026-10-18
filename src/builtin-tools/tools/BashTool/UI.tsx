@@ -1,6 +1,3 @@
-// BashTool 的桌面展示：终端卡接管整个展开区（命令 banner + 输出区），
-// 后台转交卡、行头摘要、复制文本与实时输出尾巴也各归本文件。
-// 守卫失败返回 null，由前端回落通用渲染。
 import { useEffect, useRef, useState, type JSX } from 'react';
 import { IconButton, Tooltip } from '@ema-agent/ui';
 import type {
@@ -9,16 +6,16 @@ import type {
   ShellProgress,
 } from '../shared/shellExecution.js';
 
-// ── 入参与守卫 ────────────────────────────────────────────────────────────────
+// 入参与守卫
 
-/** 终端卡展示状态：pill 的渲染语汇，由前端外壳从执行事实推导。 */
+/** 终端卡展示状态:pill 的渲染语汇,由前端外壳从执行事实推导. */
 export type BashCallStatus = 'running' | 'awaiting_permission' | 'success' | 'failed' | 'denied';
 
 export interface BashCallViewProps {
   readonly args: unknown;
   readonly partialArgs?: string;
   readonly data?: unknown;
-  /** 原始 ShellProgress 事件序列（至多保留尾部若干条，由前端外壳截断）。 */
+  /** 原始 ShellProgress 事件序列(至多保留尾部若干条,由前端外壳截断). */
   readonly progress?: readonly unknown[];
   readonly failure?: { readonly code: string; readonly message: string };
   readonly interrupted?: boolean;
@@ -58,9 +55,9 @@ function commandFromArgs(args: unknown): string {
   return args['command'];
 }
 
-// ── 外壳钩子 ──────────────────────────────────────────────────────────────────
+// 外壳钩子
 
-/** 行头摘要：命令首行，最多 60 字。 */
+/** 行头摘要:命令首行,最多 60 字. */
 export function bashTitle(args: unknown): string | null {
   const command = commandFromArgs(args);
   if (!command) return null;
@@ -68,7 +65,7 @@ export function bashTitle(args: unknown): string | null {
   return firstLine.length > 60 ? firstLine.slice(0, 60) + "..." : firstLine;
 }
 
-/** 命令结果 → 终端文本：stdout、stderr 与 note 依序拼接。 */
+/** 命令结果 → 终端文本:stdout, stderr 与 note 依序拼接. */
 export function bashResultText(result: ShellCommandResult): string {
   const parts: string[] = [];
   if (result.stdout.trim()) parts.push(result.stdout.trimEnd());
@@ -77,7 +74,7 @@ export function bashResultText(result: ShellCommandResult): string {
   return parts.join('\n');
 }
 
-/** 复制文本：`$ 命令` + 输出；后台转交引用没有可复制输出。 */
+/** 复制文本:`$ 命令` + 输出;后台转交引用没有可复制输出. */
 export function bashCopyText(args: unknown, data: unknown): string | null {
   const command = commandFromArgs(args);
   if (!command) return null;
@@ -86,7 +83,7 @@ export function bashCopyText(args: unknown, data: unknown): string | null {
   return [`$ ${command}`, ...(output ? ['', output] : [])].join('\n');
 }
 
-/** 实时输出尾巴：拼接进度事件的文本增量，只留末尾一段。 */
+/** 实时输出尾巴:拼接进度事件的文本增量,只留末尾一段. */
 function bashProgressTail(progress: readonly unknown[]): string {
   let text = '';
   for (const entry of progress) {
@@ -97,7 +94,7 @@ function bashProgressTail(progress: readonly unknown[]): string {
   return text.length > TAIL_MAX ? text.slice(-TAIL_MAX) : text;
 }
 
-// ── 展开区（终端卡 + 后台转交卡） ─────────────────────────────────────────────
+// 展开区(终端卡 + 后台转交卡)
 
 const PILL: Readonly<Record<BashCallStatus, { label: string; color: string }>> = {
   running: { label: '运行中', color: 'var(--ema-warning-text)' },
@@ -162,7 +159,7 @@ export function BashCallView(props: BashCallViewProps): JSX.Element {
   );
 }
 
-/** 已转交后台的入口卡：块当场终结，卡片只给面板入口，不持续刷新。 */
+/** 已转交后台的入口卡:块当场终结,卡片只给面板入口,不持续刷新. */
 function BashBackgroundCard({
   command, status, openBackgroundProcesses,
 }: {
@@ -221,7 +218,7 @@ function TerminalCopyButton({ label, text }: { label: string; text: string }): J
   }, [text]);
   let tooltip = label;
   if (copyStatus === 'copied') tooltip = '已复制';
-  if (copyStatus === 'failed') tooltip = '复制失败，请重试';
+  if (copyStatus === 'failed') tooltip = '复制失败,请重试';
   return (
     <Tooltip content={tooltip}>
       <IconButton

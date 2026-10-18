@@ -1,4 +1,3 @@
-// 这里负责串行化共享便笺操作，并用原子文件替换保证配额和内容不会被并发写坏。
 import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
@@ -28,7 +27,7 @@ export interface WriteScratchpadEntryInput {
   signal?: AbortSignal;
 }
 
-/** 在目录级锁内重新读取真实状态、检查配额并提交完整的新值。 */
+/** 在目录级锁内重新读取真实状态, 检查配额并提交完整的新值. */
 export async function writeScratchpadEntry(
   input: WriteScratchpadEntryInput,
 ): Promise<{ value: string; bytes: number }> {
@@ -67,14 +66,14 @@ export async function writeScratchpadEntry(
     throwIfAborted(input.signal);
     await atomicWriteUtf8(keyPath(input.dir, input.key), finalValue);
 
-    // 作者信息只用于展示，不影响内容正确性。内容已提交后元数据写入失败时，
-    // 保留完整内容并让读取端回退到 main，避免把成功副作用误报成可安全重试。
+    // 作者信息只用于展示,不影响内容正确性.内容已提交后元数据写入失败时,
+    // 保留完整内容并让读取端回退到 main,避免把成功副作用误报成可安全重试.
     try {
       const meta = await readMeta(input.dir);
       meta[input.key] = { author: input.author };
       await atomicWriteUtf8(path.join(input.dir, META_FILE), JSON.stringify(meta));
     } catch {
-      // 元数据是非关键投影，下一次成功写入会重新生成。
+      // 元数据是非关键投影,下一次成功写入会重新生成.
     }
 
     return { value: finalValue, bytes: finalBytes };
@@ -109,7 +108,7 @@ export async function deleteScratchpadEntry(dir: string, key: string): Promise<b
         await atomicWriteUtf8(path.join(dir, META_FILE), JSON.stringify(meta));
       }
     } catch {
-      // 删除内容已经成功，陈旧作者信息不会被列表返回。
+      // 删除内容已经成功,陈旧作者信息不会被列表返回.
     }
     return true;
   });
@@ -124,7 +123,7 @@ export async function clearScratchpad(dir: string): Promise<number> {
         await fs.rm(keyPath(dir, entry.key), { force: true });
         cleared++;
       } catch {
-        // 继续清理其他 key，返回实际成功数量。
+        // 继续清理其他 key,返回实际成功数量.
       }
     }
     await fs.rm(path.join(dir, META_FILE), { force: true }).catch(() => undefined);

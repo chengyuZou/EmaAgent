@@ -1,8 +1,7 @@
-// 将稳定的 Provider 图标身份映射到 UI 图标库，业务定义无需感知 UnoCSS 或具体图标实现。
 
 const FALLBACK_PROVIDER_ICON = 'i-solar:box-bold-duotone';
 
-/** 手写图标类名的合法形态（uno icon class，如 i-lobe-icons:qwen）；emoji/任意文本天然不匹配。 */
+/** 手写图标类名的合法形态(uno icon class,如 i-lobe-icons:qwen);emoji/任意文本天然不匹配. */
 export const PROVIDER_ICON_ID_PATTERN = /^i-[a-z0-9-]+:[a-z0-9-]+$/i;
 
 export const PROVIDER_ICONS: Readonly<Record<string, string>> = Object.freeze({
@@ -31,13 +30,13 @@ export function resolveProviderIconClass(iconId: string | undefined): string {
   if (!iconId) return FALLBACK_PROVIDER_ICON;
   const registered = PROVIDER_ICONS[iconId];
   if (registered) return registered;
-  // 注册表外允许手写 uno 图标类名（如 i-lobe-icons:qwen）；其余形态回退默认。
+  // 注册表外允许手写 uno 图标类名(如 i-lobe-icons:qwen);其余形态回退默认.
   return PROVIDER_ICON_ID_PATTERN.test(iconId) ? iconId : FALLBACK_PROVIDER_ICON;
 }
 
 /**
- * 注册表涉及的全部图标类名。iconKey 是运行时字符串（来自 Server API），静态扫描
- * 看不到，UnoCSS safelist 必须从这里同源推导，不得在消费方另抄一份。
+ * 注册表涉及的全部图标类名.iconKey 是运行时字符串(来自 Server API),静态扫描
+ * 看不到,UnoCSS safelist 必须从这里同源推导,不得在消费方另抄一份.
  */
 export const PROVIDER_ICON_CLASS_SAFELIST: readonly string[] = Object.freeze([
   FALLBACK_PROVIDER_ICON,

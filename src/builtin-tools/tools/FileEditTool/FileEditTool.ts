@@ -1,5 +1,3 @@
-// 在已读取的文件中执行受保护的精确文本替换。
-// 模型说明书见 prompt.ts; 文本匹配见 textMatch.ts; 补丁生成见 patch.ts。
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
@@ -30,10 +28,10 @@ interface FileEditToolContext {
   cwd: string;
 }
 
-/** 编辑文件大小上限,防 V8 字符串长度限制(~2^30)导致 OOM。 */
+/** 整份文件会参与匹配和 Diff, 先限制读取体积; 这不保证编辑时的内存上限. */
 const MAX_EDIT_FILE_SIZE = 1024 * 1024 * 1024; // 1 GiB
 
-// ── 输入 schema ──────────────────────────────────────────────────────────────
+
 
 const inputSchema = z.object({
   file_path: z
@@ -56,7 +54,7 @@ export interface FileEditResult {
   oldString: string;
   /** 实际写入的子串 */
   newString: string;
-  /** 编辑前全文,审计与重算的基准。 */
+  /** 编辑前全文,审计与重算的基准. */
   originalFile: string;
   structuredPatch: StructuredPatchHunk[];
   /** 本次 Tool 调用在 structuredPatch 中新增的行数. */
@@ -67,7 +65,7 @@ export interface FileEditResult {
   replacements: number;
 }
 
-// ── 工具定义 ───────────────────────────────────────────────────────────────────
+
 
 export const FileEditTool = buildTool<FileEditInput, FileEditResult, FileEditToolContext>({
   id: BuiltinTools.FileEdit.id,
@@ -80,10 +78,10 @@ export const FileEditTool = buildTool<FileEditInput, FileEditResult, FileEditToo
 
   validateContext(ctx) {
     if (!ctx.cwd) {
-      return contextFail('File 编辑工具需要明确的工作区。');
+      return contextFail('File 编辑工具需要明确的工作区.');
     }
     if (!ctx.fileStateCache) {
-      return contextFail('File 编辑工具未装配读取状态。');
+      return contextFail('File 编辑工具未装配读取状态.');
     }
     return contextOk({
       fileStateCache: ctx.fileStateCache,
@@ -92,11 +90,11 @@ export const FileEditTool = buildTool<FileEditInput, FileEditResult, FileEditToo
   },
 
   validateInput(input) {
-    // 空操作 edit 在准备阶段直接拒绝,避免产生假变更。
+    // 空操作 edit 在准备阶段直接拒绝,避免产生假变更.
     if (input.old_string === input.new_string) {
       return {
         valid: false,
-        message: 'old_string 与 new_string 相同;空编辑不允许。若要查看文件用 Read,若要改请给出不同的 new_string。',
+        message: 'old_string 与 new_string 相同;空编辑不允许.若要查看文件用 Read,若要改请给出不同的 new_string.',
         code: 'edit/empty',
         retryable: true,
       };
@@ -130,10 +128,10 @@ export const FileEditTool = buildTool<FileEditInput, FileEditResult, FileEditToo
     invocation: ToolInvocation,
   ): Promise<FileEditResult> {
     const { file_path, old_string, replace_all } = input;
-    // 与 FileRead/Permission 同一基准: 相对路径按工作区解析, 不借宿主进程 cwd。
+    // 与 FileRead/Permission 同一基准: 相对路径按工作区解析, 不借宿主进程 cwd.
     const fullPath = path.resolve(context.cwd, file_path);
 
-    // ── 文件大小上限(防 V8 字符串长度 OOM)─────────────────────────────────
+    // 文件大小上限(防 V8 字符串长度 OOM)
     let stat: fs.Stats;
     try {
       stat = fs.statSync(fullPath);
@@ -146,7 +144,7 @@ export const FileEditTool = buildTool<FileEditInput, FileEditResult, FileEditToo
       );
     }
 
-    // ── 必须先读守卫 ─────────────────────────────────────────────────────────
+    // 必须先读守卫
     const cached = context.fileStateCache.get(fullPath);
     if (!cached) {
       throw new Error(
@@ -154,7 +152,7 @@ export const FileEditTool = buildTool<FileEditInput, FileEditResult, FileEditToo
       );
     }
 
-    // ── new_string 预处理:尾部空白裁剪(Markdown 保留硬换行)─────────────────
+    // new_string 预处理:尾部空白裁剪(Markdown 保留硬换行)
     const isMarkdown = /\.(md|mdx)$/i.test(file_path);
     const normalizedNew = input.new_string.replace(/\r\n/g, '\n');
     const newString = isMarkdown ? normalizedNew : stripTrailingWhitespace(normalizedNew);
@@ -215,7 +213,7 @@ export const FileEditTool = buildTool<FileEditInput, FileEditResult, FileEditToo
       false,
     );
 
-    // 用编辑后内容更新缓存,后续 Read/Edit 命中新版本。
+    // 用编辑后内容更新缓存,后续 Read/Edit 命中新版本.
     context.fileStateCache.set(fullPath, {
       content: written.content,
       timestamp: written.mtimeMs,

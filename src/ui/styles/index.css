@@ -1,6 +1,4 @@
-/* ── 设计系统层样式入口(ui 包自携带)─────────────────────────────────────────
- * foundation(token/动画) → primitives(跨域构件). 顺序即规矩.
- * 应用专属的业务域样式(domains/vendors)留在 apps/desktop/src/styles, 不在此列.
+/* 先加载主题变量和基础样式, 再加载依赖这些变量的公共构件样式.
  */
 @import './foundation/tokens.css';
 @import './foundation/syntax-themes.css';

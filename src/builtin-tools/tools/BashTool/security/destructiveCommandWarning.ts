@@ -1,7 +1,3 @@
-/**
- * 检测破坏性 bash 命令, 返回展示用警告文案(纯信息层, 不影响权限判定
- * 与自动放行)。
- */
 
 type DestructivePattern = {
   pattern: RegExp
@@ -9,7 +5,7 @@ type DestructivePattern = {
 }
 
 const DESTRUCTIVE_PATTERNS: DestructivePattern[] = [
-  // Git — 数据丢失 / 难以回退
+  // Git - 数据丢失 / 难以回退
   {
     pattern: /\bgit\s+reset\s+--hard\b/,
     warning: '可能丢弃未提交修改',
@@ -41,7 +37,7 @@ const DESTRUCTIVE_PATTERNS: DestructivePattern[] = [
     warning: '可能强制删除分支',
   },
 
-  // Git — 安全旁路
+  // Git - 安全旁路
   {
     pattern: /\bgit\s+(commit|push|merge)\b[^;&|\n]*--no-verify\b/,
     warning: '可能跳过安全钩子',

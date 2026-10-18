@@ -1,11 +1,7 @@
-// 提供可由 Field 注入无障碍关联信息的单选下拉组件。
 import * as RadixSelect from '@radix-ui/react-select';
 import type { AriaAttributes, ReactNode } from 'react';
 import { cn } from '../utils/cn.js';
 import { overlayItemCn } from './overlayItem.js';
-
-// ── Select ──────────────────────────────────────────────────────────────────
-// 单选下拉, 用于表单字段(供应商选择/简单模型绑定); 临时菜单请用 <DropdownMenu/>.
 
 export interface SelectOption {
   value:     string;
@@ -26,7 +22,7 @@ export interface SelectProps extends Pick<
   options:       SelectOption[];
   placeholder?:  string;
   disabled?:     boolean;
-  /** 应用到 trigger 元素上的样式类。 */
+  /** 应用到 trigger 元素上的样式类. */
   className?:    string;
   /** Trigger element override (e.g. ghost-styled in tight UIs). */
   trigger?:      ReactNode;
@@ -41,7 +37,7 @@ export function Select(props: SelectProps): React.JSX.Element {
     value,
     onChange,
     options,
-    placeholder = '请选择…',
+    placeholder = '请选择...',
     disabled,
     className,
     trigger,

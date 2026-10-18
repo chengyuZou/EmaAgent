@@ -1,5 +1,3 @@
-// WebSearchTool 的桌面展示: 参数行(query + 域名过滤)、结果摘要(条数)与两态进度。
-// 只消费本 Tool 的类型化 data; 类型守卫失败返回 null, 由前端回落通用渲染。
 import type { JSX } from 'react';
 import { Tooltip, Badge } from '@ema-agent/ui';
 import type { WebSearchResult } from './WebSearchTool.js';
@@ -44,20 +42,20 @@ function asSearchProgress(progress: unknown): SearchProgress | null {
   return null;
 }
 
-/** 行头摘要：查询词。 */
+/** 行头摘要:查询词. */
 export function webSearchTitle(args: unknown): string | null {
   return isRecord(args) && typeof args['query'] === 'string' ? args['query'] : null;
 }
 
-/** 进度行：取最近一条有效进度事件，展示当前阶段。 */
+/** 进度行:取最近一条有效进度事件,展示当前阶段. */
 export function WebSearchProgressView({ progress }: { progress: readonly unknown[] }): JSX.Element | null {
   const latest = [...progress].reverse().map(asSearchProgress).find((entry) => entry !== null);
   if (!latest) return null;
   return (
     <span className="text-[11px] text-[var(--ema-text-tertiary)]">
       {latest.type === 'query_update'
-        ? `正在搜索“${latest.query}”…`
-        : `已收到 ${latest.resultCount} 条结果，正在整理…`}
+        ? `正在搜索"${latest.query}"...`
+        : `已收到 ${latest.resultCount} 条结果,正在整理...`}
     </span>
   );
 }
@@ -104,10 +102,9 @@ export function WebSearchResultView({ data }: { data: unknown }): JSX.Element | 
           </span> 条结果
         </span>
         <span className="text-[var(--ema-text-tertiary)]">
-          “{result.query}”
+          "{result.query}"
         </span>
       </div>
-      {/* TODO: 这里拿Markdown渲染带一个CodeView(要带吗?我更倾向于Markdown渲染) */ }
       <ul className="m-0 flex list-none flex-col gap-1 p-0">
         {result.results.map((entry) => (
           <li key={entry.url} className="flex min-w-0 items-baseline gap-2">

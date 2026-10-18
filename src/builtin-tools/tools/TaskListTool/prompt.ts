@@ -1,5 +1,3 @@
-// TaskListTool 的模型说明书:description 是唯一模型可见说明,独立成文件单点维护。
-
 export const TASK_LIST_DESCRIPTION = `Use this tool to list all persistent tasks in the current Session.
 
 ## When to Use This Tool
@@ -20,5 +18,5 @@ Returns a compact summary of each task:
 ## Tips
 
 - A task is available to work on when it is \`pending\`
-- Prefer lower display numbers when several tasks are available — earlier tasks often establish context for later work
+- Prefer lower display numbers when several tasks are available  -  earlier tasks often establish context for later work
 - Use TaskGet for the complete description before starting a task`;

@@ -1,6 +1,3 @@
-// ── @ema-agent/ui component barrel ──────────────────────────────────────────
-
-// Primitives
 export { Button }     from './Button.js';
 export { IconButton } from './IconButton.js';
 export { Input }      from './Input.js';

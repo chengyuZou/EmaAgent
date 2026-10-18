@@ -1,4 +1,3 @@
-// 为单个表单控件统一关联标签, 说明, 必填状态和错误信息.
 import {
   Children,
   cloneElement,
@@ -8,12 +7,6 @@ import {
   type ReactNode,
 } from 'react';
 import { cn } from '../utils/cn.js';
-
-// ── Field ───────────────────────────────────────────────────────────────────
-//
-// 表单字段包装:统一的 标签 → 描述 → 输入 → 错误 布局块。
-// inputId 连接 label 与输入控件,实现无障碍点击聚焦;
-// 控件由调用方以 children 传入,不强制包裹。
 
 export interface FieldProps {
   /** Label text, or ReactNode for rich content. */
@@ -27,6 +20,7 @@ export interface FieldProps {
   /** id of the controlled input, used for <label htmlFor>. */
   inputId?:     string;
   className?:   string;
+  /** 只接受一个控件, 且该控件必须把 id 和 aria-* 属性传给实际可聚焦元素. */
   children:     ReactElement<FieldControlProps>;
 }
 

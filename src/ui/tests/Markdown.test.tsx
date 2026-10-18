@@ -1,4 +1,3 @@
-// 验证 Mermaid 使用官方围栏 token 识别流式闭合, 保持绘图身份与原有 Markdown 安全边界.
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';

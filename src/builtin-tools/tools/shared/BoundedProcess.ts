@@ -1,4 +1,3 @@
-// 这里负责流式读取搜索子进程，并在记录数、字节数、时间或取消信号达到边界时终止它。
 import { spawn } from 'node:child_process';
 
 export type BoundedProcessStopReason = 'records' | 'bytes' | 'timeout';

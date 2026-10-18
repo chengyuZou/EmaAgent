@@ -11,7 +11,7 @@ export function PdfContentView({ result }: { result: PdfReadResult }): JSX.Eleme
     <div className="flex flex-col gap-1 text-[11px] leading-relaxed">
       <div className="flex items-center gap-2">
         <span className="text-[var(--ema-text-secondary)]">
-          第 {result.startPage}–{result.endPage} 页 · 共 {result.totalPages} 页
+          第 {result.startPage}-{result.endPage} 页 · 共 {result.totalPages} 页
         </span>
         {result.nextPage !== undefined && (
           <Badge variant="warn">可继续读取第 {result.nextPage} 页</Badge>

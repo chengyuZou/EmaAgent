@@ -1,4 +1,3 @@
-// TodoWriteTool 的桌面展示。清单事实来自 tool_use input，结果文本只确认更新成功。
 import type { JSX } from 'react';
 import type { TodoItem } from './TodoWriteTool.js';
 
@@ -30,7 +29,7 @@ export function TodoWriteArgsView({ args }: { args: unknown }): JSX.Element | nu
   );
 }
 
-/** 输入框上方的折叠摘要；完整清单仍复用 TodoWriteArgsView。 */
+/** 输入框上方的折叠摘要;完整清单仍复用 TodoWriteArgsView. */
 export function TodoWriteActivitySummary({
   args,
   open,

@@ -1,4 +1,3 @@
-// 提供 UI 边界使用的有限数值回退与区间限制函数。
 export function finiteOr(value: number, fallback: number): number {
   return Number.isFinite(value) ? value : fallback;
 }

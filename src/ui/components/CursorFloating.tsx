@@ -1,5 +1,5 @@
-// 光标跟随的 3D 倾斜全息卡: mousemove 直写行内 transform 与 CSS 变量,
-// 不经过 React 状态, 高频手势下零重渲染. 入场动画类(如 ema-stagger-in)必须挂在
+// mousemove 直接更新 DOM 的 transform 和 CSS 变量, 不为每次鼠标移动设置 React 状态.
+// 入场动画类(如 ema-stagger-in)必须挂在
 // 外层元素上: CSS 动画的 fill 会压住行内 transform, 同元素倾斜会失效.
 import { useRef, type CSSProperties, type HTMLAttributes, type MouseEvent, type ReactNode } from 'react';
 import { cn } from '../utils/cn.js';

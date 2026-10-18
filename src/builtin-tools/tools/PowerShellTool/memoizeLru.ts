@@ -1,4 +1,3 @@
-// 基于 lru-cache 的函数记忆化:LRU 淘汰防止无界增长;peek 只观察不提升热度。
 import { LRUCache } from 'lru-cache';
 
 export interface LruMemoized<Args extends unknown[], Result> {
@@ -7,7 +6,7 @@ export interface LruMemoized<Args extends unknown[], Result> {
     clear(): void;
     size(): number;
     delete(key: string): boolean;
-    /** peek 不更新 recency——只想观察缓存,不想把它刷成热数据。 */
+    /** peek 不更新 recency - 只想观察缓存,不想把它刷成热数据. */
     get(key: string): Result | undefined;
     has(key: string): boolean;
   };

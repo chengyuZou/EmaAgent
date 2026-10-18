@@ -1,7 +1,6 @@
-// TodoWriteTool 的模型说明书。TODO 只跟踪当前根 Turn，不承担持久 Task 业务。
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 
-export const TODO_WRITE_DESCRIPTION = `Update the execution checklist for the current root Turn.
+export const TODO_WRITE_DESCRIPTION = `Update the execution checklist for the current Turn.
 
 Use this tool to keep a complex request organized and to make current progress visible. Each call
 replaces the complete checklist; it does not patch or append individual items.

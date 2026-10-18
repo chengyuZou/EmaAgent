@@ -71,7 +71,7 @@ export const WebFetchTool = buildTool<WebFetchInput, WebFetchResult, undefined>(
       return {
         valid: false,
         code: 'web_fetch/invalid_url',
-        message: 'URL 必须是合法的 http/https 地址。',
+        message: 'URL 必须是合法的 http/https 地址.',
         retryable: false,
       };
     }

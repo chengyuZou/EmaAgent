@@ -1,21 +1,20 @@
-// 读写经过有限数值校验的全局主题色相与圆角倍率。
 import { VAR_HUE, VAR_RADIUS, EMA_PRIMARY_HUE } from '../uno-preset-chromatic.js';
 import { clampFinite, finiteOr } from './number.js';
 
-/** Default radius multiplier — matches the :root preflight. */
+/** Default radius multiplier - matches the :root preflight. */
 const DEFAULT_RADIUS = 1;
 
-// ── Runtime theme hue control ─────────────────────────────────────────────────
+// Runtime theme hue control
 //
 // The chromatic preset injects --chromatic-hue into :root at build time.
 // These helpers let callers update it at runtime (e.g. from a settings slider).
 //
-// Persistence is the caller's responsibility — store the value in profile.db
+// Persistence is the caller's responsibility - store the value in profile.db
 // and call setThemeHue() on app startup to restore it.
 
 /**
- * Set the global primary hue (0–360). Updates both `primary` and `violet`
- * palettes immediately — no page reload needed.
+ * 色相按 360 度循环到 [0, 360), 非有限数值使用默认色相.
+ * 只修改文档根元素上的 CSS 变量; 保存和启动恢复由调用方处理.
  */
 export function setThemeHue(hue: number): void {
   const safeHue = finiteOr(hue, EMA_PRIMARY_HUE);
@@ -42,12 +41,12 @@ export function resetThemeHue(): void {
   document.documentElement.style.removeProperty(VAR_HUE);
 }
 
-// ── Runtime shape / radius control ───────────────────────────────────────────
+// Runtime shape / radius control
 
 /**
  * Set the global border-radius multiplier.
  * 0 = sharp corners, 1 = default, 1.5 = softer, 2 = very round.
- * pill/full radii are unaffected — they stay 9999px / 50%.
+ * 固定的 pill/full 圆角不随该倍率缩放.
  */
 export function setThemeRadius(multiplier: number): void {
   const clamped = clampFinite(multiplier, 0, 3, DEFAULT_RADIUS);

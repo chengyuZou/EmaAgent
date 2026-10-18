@@ -1,4 +1,3 @@
-// 测试进度、选项卡、滑块和主题设置面对非法数字与空集合的行为。
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

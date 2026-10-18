@@ -1,4 +1,3 @@
-// FileEditTool 的参数与结果展示; 官方 Diff 组件消费 Tool 保存的补丁.
 import type { JSX } from 'react';
 import type { StructuredPatchHunk } from 'diff';
 import { Tooltip, Badge } from '@ema-agent/ui';
@@ -6,7 +5,7 @@ import type { FileEditResult } from './FileEditTool.js';
 import { patchToUnifiedText } from './patch.js';
 import { FilePatchView } from '../shared/filePatchView.js';
 
-// ── 类型守卫(消费 unknown data 的唯一入口) ────────────────────────────────────
+// 类型守卫(消费 unknown data 的唯一入口)
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -37,7 +36,7 @@ export function FileEditResultView({ data }: { data: unknown }): JSX.Element | n
   );
 }
 
-/** 失败结果(字符串等)与旧消息都没有这个形状,返回 null 让前端回落通用渲染。 */
+/** 失败结果(字符串等)与旧消息都没有这个形状,返回 null 让前端回落通用渲染. */
 export function asFileEditResult(data: unknown): FileEditResult | null {
   if (!isRecord(data)) return null;
   if (
@@ -55,18 +54,18 @@ export function asFileEditResult(data: unknown): FileEditResult | null {
   return null;
 }
 
-/** 行头摘要：编辑目标路径。 */
+/** 行头摘要:编辑目标路径. */
 export function fileEditTitle(args: unknown): string | null {
   return isRecord(args) && typeof args['file_path'] === 'string' ? args['file_path'] : null;
 }
 
-/** 复制文本：权威结构化 diff 的 unified 文本；结果未落地时由前端回落默认复制。 */
+/** 复制文本:权威结构化 diff 的 unified 文本;结果未落地时由前端回落默认复制. */
 export function fileEditCopyText(args: unknown, data: unknown): string | null {
   const result = asFileEditResult(data);
   return result ? patchToUnifiedText(result.structuredPatch) : null;
 }
 
-// ── 参数视图: 只给路径; old/new 的正文由结果区 diff 表达,不重复展示 ────────────
+// 参数视图: 只给路径; old/new 的正文由结果区 diff 表达,不重复展示
 
 export function FileEditArgsView({ args }: { args: unknown }): JSX.Element | null {
   if (!isRecord(args) || typeof args['file_path'] !== 'string') return null;

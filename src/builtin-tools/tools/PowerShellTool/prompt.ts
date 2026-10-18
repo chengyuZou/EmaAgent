@@ -12,9 +12,9 @@ IMPORTANT: This tool is for terminal operations via PowerShell: git, npm, docker
 - Write files: use Write (NOT Set-Content/Out-File)
 
 PowerShell edition notes (this machine runs either Windows PowerShell 5.1 or PowerShell 7+):
-- Pipeline chain operators \`&&\` and \`||\` only work on PowerShell 7+. On 5.1 they are a parser error — if a command fails with a parse error, rewrite \`A && B\` as \`A; if ($?) { B }\`. To chain unconditionally: \`A; B\`.
+- Pipeline chain operators \`&&\` and \`||\` only work on PowerShell 7+. On 5.1 they are a parser error  -  if a command fails with a parse error, rewrite \`A && B\` as \`A; if ($?) { B }\`. To chain unconditionally: \`A; B\`.
 - Ternary (\`?:\`), null-coalescing (\`??\`), and null-conditional (\`?.\`) operators are 7+ only. Use \`if/else\` and explicit \`$null -eq\` checks for compatibility.
-- Avoid \`2>&1\` on native executables under 5.1: it wraps each stderr line in an ErrorRecord and sets \`$?\` to \`$false\` even when the exe returned 0. stderr is already captured for you — don't redirect it.
+- Avoid \`2>&1\` on native executables under 5.1: it wraps each stderr line in an ErrorRecord and sets \`$?\` to \`$false\` even when the exe returned 0. stderr is already captured for you  -  don't redirect it.
 - On 5.1 the default file encoding is UTF-16 LE with BOM. When writing files other tools will read, pass \`-Encoding utf8\` to \`Out-File\`/\`Set-Content\`.
 - On 5.1, \`ConvertFrom-Json\` returns a PSCustomObject, not a hashtable; \`-AsHashtable\` is not available.
 
@@ -34,17 +34,17 @@ PowerShell syntax notes:
 - Common aliases: ls (Get-ChildItem), cd (Set-Location), cat (Get-Content), rm (Remove-Item)
 - Pipe operator | passes objects, not text; use Select-Object, Where-Object, ForEach-Object for filtering
 - String interpolation: "Hello $name" or "Hello $($obj.Property)"
-- Registry access uses PSDrive prefixes: \`HKLM:\\SOFTWARE\\...\`, \`HKCU:\\...\` — NOT raw \`HKEY_LOCAL_MACHINE\\...\`
+- Registry access uses PSDrive prefixes: \`HKLM:\\SOFTWARE\\...\`, \`HKCU:\\...\`  -  NOT raw \`HKEY_LOCAL_MACHINE\\...\`
 - Environment variables: read with \`$env:NAME\`, set with \`$env:NAME = "value"\` (NOT bash \`export\`)
 - Call native exe with spaces in path via the call operator: \`& "C:\\Program Files\\App\\app.exe" arg1 arg2\`
 
-Interactive and blocking commands (will hang — this tool runs with -NonInteractive):
+Interactive and blocking commands (will hang  -  this tool runs with -NonInteractive):
 - NEVER use \`Read-Host\`, \`Get-Credential\`, \`Out-GridView\`, \`$Host.UI.PromptForChoice\`, or \`pause\`
 - Destructive cmdlets (\`Remove-Item\`, \`Stop-Process\`, \`Clear-Content\`) may prompt for confirmation. Add \`-Confirm:$false\` when you intend the action to proceed. Use \`-Force\` for read-only/hidden items.
 - Never use \`git rebase -i\`, \`git add -i\`, or other commands that open an interactive editor
 
 Passing multiline strings (commit messages, file content) to native executables:
-- Use a single-quoted here-string so PowerShell does not expand \`$\` or backticks inside. The closing \`'@\` MUST be at column 0 on its own line — indenting it is a parse error:
+- Use a single-quoted here-string so PowerShell does not expand \`$\` or backticks inside. The closing \`'@\` MUST be at column 0 on its own line  -  indenting it is a parse error:
 <example>
 git commit -m @'
 Commit message here.
@@ -55,13 +55,13 @@ Second line with $literal dollar signs.
 
 Usage notes:
 - The command argument is required.
-- Commands that finish within ${FOREGROUND_COMMAND_WAIT_SECONDS} seconds (3 minutes) return their result directly. Slower commands keep running as background processes without being restarted — you will be notified when they complete; do not poll.
+- Commands that finish within ${FOREGROUND_COMMAND_WAIT_SECONDS} seconds (3 minutes) return their result directly. Slower commands keep running as background processes without being restarted  -  you will be notified when they complete; do not poll.
 - Set runInBackground=true to start a long-running command in the background immediately. Use ProcessOutput for incremental output, ProcessStop to terminate it, or Read the logs in the directory included in the background reference.
 - timeout is the total runtime limit in milliseconds, including foreground time. When omitted, the user's background-process setting applies. A supplied timeout cannot exceed that setting; reaching it kills the process rather than transferring it.
-- Do NOT prefix commands with \`cd\` or \`Set-Location\` — the working directory is already the workspace root.
+- Do NOT prefix commands with \`cd\` or \`Set-Location\`  -  the working directory is already the workspace root.
 - When issuing multiple commands: independent commands can be separate parallel tool calls; dependent commands must be chained in one call using the edition-appropriate syntax above.
 - Do NOT use newlines to separate commands (newlines are fine inside quoted strings and here-strings).
-- Avoid unnecessary \`Start-Sleep\`: do not sleep between commands that can run immediately; do not retry failing commands in a sleep loop — diagnose the root cause instead; if you must poll an external process, use a check command rather than sleeping first.
+- Avoid unnecessary \`Start-Sleep\`: do not sleep between commands that can run immediately; do not retry failing commands in a sleep loop  -  diagnose the root cause instead; if you must poll an external process, use a check command rather than sleeping first.
 
 For git commands:
 - Prefer creating a new commit over amending an existing one.

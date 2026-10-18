@@ -69,7 +69,7 @@ describe('Process 工具 validateContext', () => {
   ])('%s 没有后台进程端口时拒绝执行', (_name, tool) => {
     expect(tool.validateContext({} as never)).toEqual({
       valid: false,
-      reason: '当前执行环境没有后台进程能力。',
+      reason: '当前执行环境没有后台进程能力.',
     });
   });
 
@@ -116,7 +116,7 @@ describe('ProcessListTool', () => {
       invocation(),
     );
     expect(String(ProcessListTool.mapResultToModelContent!(result)))
-      .toBe('当前没有后台进程。');
+      .toBe('当前没有后台进程.');
   });
 
   it('schema 拒绝未知字段与超限 limit', () => {

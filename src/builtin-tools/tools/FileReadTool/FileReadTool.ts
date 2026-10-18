@@ -1,5 +1,3 @@
-// 按格式读取本地文件, 仅文本分支维护后续编辑需要的文件状态.
-// 模型说明书见 prompt.ts; 结果预算见 limits.ts; 图片分支见 imageReader.ts.
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
@@ -58,7 +56,7 @@ const BLOCKED_DEVICE_PATHS = new Set([
   '/proc/kcore',
 ]);
 
-// ── 输入 schema ──────────────────────────────────────────────────────────────
+
 
 const inputSchema = z.object({
   file_path: z.string().min(1).describe('Absolute path to the file to read.'),
@@ -82,7 +80,7 @@ const inputSchema = z.object({
 
 type FileReadInput = z.infer<typeof inputSchema>;
 
-// ── 输出类型 ───────────────────────────────────────────────────────────────────
+
 
 /** 文本正文(cat -n); 截断事实模型可见. */
 export interface FileReadTextResult {
@@ -106,7 +104,7 @@ export type FileReadResult =
   | FileReadNotebookResult
   | PdfReadResult;
 
-// ── 辅助函数 ───────────────────────────────────────────────────────────────────
+
 
 function isBlockedDevice(p: string): boolean {
   // 统一分隔符再比较: Windows 的 path.normalize 会把 / 转成 \, 字符串判据不能跟着歪.
@@ -181,7 +179,7 @@ function textReadResult(
   };
 }
 
-// ── 工具定义 ───────────────────────────────────────────────────────────────────
+
 
 export const FileReadTool = buildTool<FileReadInput, FileReadResult, FileReadToolContext>({
   id: BuiltinTools.FileRead.id,
@@ -236,7 +234,7 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, FileReadToo
     // 与 Permission/Write 同一基准: 相对路径按工作区解析, 不借 Core 进程 cwd.
     const fullPath = path.resolve(context.cwd, file_path);
 
-    // ── I/O 前校验 ────────────────────────────────────────────────────────────
+    // I/O 前校验
     if (isUncPath(fullPath)) {
       throw new Error(`UNC paths are not supported: ${fullPath}`);
     }
@@ -251,7 +249,7 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, FileReadToo
       );
     }
 
-    // ── Stat + 存在性检查 ────────────────────────────────────────────────────
+    // Stat + 存在性检查
     let stat: fs.Stats;
     try {
       stat = fs.statSync(fullPath);
@@ -282,7 +280,7 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, FileReadToo
       throw new Error('start_page/page_count only apply to PDF files.');
     }
 
-    // ── 图片分支: 扩展名单点判定, 分页参数对图片无意义 ─────────────────────────
+    // 图片分支: 扩展名单点判定, 分页参数对图片无意义
     const imageMediaType = imageMediaTypeFor(fullPath);
     if (imageMediaType) {
       if (offset !== undefined || limit !== undefined) {
@@ -297,7 +295,7 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, FileReadToo
       });
     }
 
-    // ── Notebook 分支: .ipynb 是 JSON, 映射为 cells(含输出), 不走文本分支 ──
+    // Notebook 分支: .ipynb 是 JSON, 映射为 cells(含输出), 不走文本分支
     if (isNotebookPath(fullPath)) {
       if (offset !== undefined || limit !== undefined) {
         throw new Error('offset/limit do not apply to notebook files.');
@@ -348,7 +346,7 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, FileReadToo
       }, startLine, true);
     }
 
-    // ── 读文件(小文件快路径整读, 大文件流式只留选中行) ─────────────────────────
+    // 读文件(小文件快路径整读, 大文件流式只留选中行)
     const result = await readTextInRange(fullPath, stat, startLine, limit, invocation.signal);
 
     if (result.totalLines === 0 || startLine > result.totalLines) {
@@ -400,7 +398,7 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, FileReadToo
   },
 });
 
-// ── findSimilarFile ───────────────────────────────────────────────────────────
+
 
 function findSimilarFile(filePath: string): string | undefined {
   const dir = path.dirname(filePath);

@@ -1,10 +1,6 @@
 import type { CSSProperties, JSX } from 'react';
 import { cn } from '../utils/cn.js';
 
-// ── StatCard ─────────────────────────────────────────────────────────────────
-// 紧凑统计卡: 图标 + 标签 + 数值 + 可选副文案.
-// size=lg 大数字(memory 概览), md 紧凑(storage 统计).
-
 export interface StatCardProps {
   label:     string;
   value:     string | number;

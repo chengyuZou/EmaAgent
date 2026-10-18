@@ -1,6 +1,3 @@
-// 展示并目测验证 Dialog、Popover、Tooltip、DropdownMenu 与 Select 浮层。
-// Radix overlays all rendered into portals. One stories file keeps the Ladle
-// sidebar cleaner since each only needs 1-2 examples.
 
 import { useState } from 'react';
 import { Button } from './Button.js';
@@ -28,8 +25,8 @@ export const DialogExample = (): React.JSX.Element => {
       <Dialog
         open={open}
         onOpenChange={setOpen}
-        title="确认删除？"
-        description="此操作不可撤销，确定要继续吗？"
+        title="确认删除?"
+        description="此操作不可撤销,确定要继续吗?"
       >
         <div className="mt-2 flex justify-end gap-2">
           <Button variant="ghost"  onClick={() => setOpen(false)}>取消</Button>
@@ -48,11 +45,11 @@ export const PopoverExample = (): React.JSX.Element => (
       trigger={<Button variant="secondary" icon="i-mdi:chevron-down">点开 popover</Button>}
     >
       <div className="p-2">
-        <p className="text-sm">这是一个 popover 面板。可以放任何内容。</p>
+        <p className="text-sm">这是一个 popover 面板.可以放任何内容.</p>
         <ul className="mt-2 text-xs text-[var(--ema-text-tertiary)] space-y-0.5">
           <li>• 鼠标点外部自动关</li>
           <li>• Esc 也能关</li>
-          <li>• Radix 处理 focus trap</li>
+          <li>• Radix 管理焦点</li>
         </ul>
       </div>
     </Popover>

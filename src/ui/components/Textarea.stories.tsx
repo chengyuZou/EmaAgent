@@ -1,9 +1,6 @@
-// 展示并目测验证 Textarea 的自动增高、错误态和内嵌操作按钮。
 import { useState } from 'react';
 import { Textarea } from './Textarea.js';
 import { IconButton } from './IconButton.js';
-
-// ── Textarea stories ────────────────────────────────────────────────────────
 
 export default { title: 'Atoms / Textarea' };
 
@@ -19,9 +16,9 @@ export const Basic = (): React.JSX.Element => {
       <Textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
-        placeholder="输入消息…"
+        placeholder="输入消息..."
       />
-      <p className="mt-2 text-xs text-[var(--ema-text-tertiary)]">高度跟着内容长，达到 maxRows=8 后内部滚动。</p>
+      <p className="mt-2 text-xs text-[var(--ema-text-tertiary)]">高度跟着内容长,达到 maxRows=8 后内部滚动.</p>
     </Frame>
   );
 };
@@ -40,12 +37,12 @@ export const WithEmbeddedSend = (): React.JSX.Element => {
   return (
     <Frame>
       <h2 className="mb-3 text-sm uppercase tracking-wider text-[var(--ema-text-tertiary)]">
-        circular send button (frontend-skeleton §5)
+        circular send button
       </h2>
       <Textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
-        placeholder="输入消息… 按 Ctrl+Enter 发送"
+        placeholder="输入消息... 按 Ctrl+Enter 发送"
         onKeyDown={(e) => {
           if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
             e.preventDefault();
@@ -64,7 +61,7 @@ export const WithEmbeddedSend = (): React.JSX.Element => {
         }
       />
       <p className="mt-2 text-xs text-[var(--ema-text-tertiary)]">
-        圆形按钮位于 textarea 内部右下角。空文本时按钮变 default；有内容时变 primary 高亮。
+        圆形按钮位于 textarea 内部右下角.空文本时按钮变 default;有内容时变 primary 高亮.
       </p>
     </Frame>
   );
