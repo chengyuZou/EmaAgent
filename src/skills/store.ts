@@ -53,7 +53,6 @@ export class SkillStore {
     for (const row of rows) {
       if (!present.has(row.dir_path)) this.repo.deleteByPath(row.path);
     }
-    this.repo.migrateEnablement();
     return results.flatMap(entry => entry ? [entry] : []);
   }
 
@@ -90,7 +89,6 @@ export class SkillStore {
     for (const row of rows) {
       if (!present.has(row.dir_path)) this.repo.deleteByPath(row.path);
     }
-    this.repo.migrateEnablement();
     return results.flatMap(entry => entry ? [entry] : []);
   }
 

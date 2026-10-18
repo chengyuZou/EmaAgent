@@ -24,7 +24,7 @@ Create the parent directory before opening a file. Tests can use `{ memory: true
 | Kind | Usual location | Stored data |
 | --- | --- | --- |
 | `profile` | `~/.ema-agent/profile.db` | Providers, models and bindings, settings, characters and resource metadata, Skills, MCP configuration and market cache |
-| `data` | `<activeDataDir>/data.db` | Sessions, Turns, Messages, Tasks, Goals, subagents and Runs, tool executions, background commands, attachment and speech records, usage, Memory jobs and extraction results |
+| `data` | `~/.ema-agent/data/data.db` | Sessions, Turns, Messages, Tasks, Goals, subagents and Runs, tool executions, background commands, attachment and speech records, usage, Memory jobs and extraction results |
 | `narrative` | `~/.ema-agent/narrative/narrative.db` | Fixed story chunks, entities, relations and their vectors for three timelines |
 
 These are host conventions, not paths chosen by `Database`. Attachment bodies, audio, character assets and formal Memory text remain files. Repositories record the paths, indexes and execution state needed to find or manage them.
@@ -66,13 +66,13 @@ Forked prefix messages have `run_id = null`. Their original generation source is
 
 ## Migrations
 
-Profile and data migrations are consecutive numbered SQL files in `migrations/profile` and `migrations/data`. Each migration and its `user_version` update run in one transaction. Missing numbers and databases newer than the available migrations cause an error. A migration marked `-- ema:migration foreign_keys=off` temporarily disables foreign keys outside the transaction and checks them before committing.
+Profile and Data each have one initialization file, `001_initial.sql`, and start at database version 1. Application versions such as `0.1.0` do not determine database versions. Do not edit a migration after releasing it; add `002_<change>.sql`, then `003_<change>.sql` for subsequent changes. These files are consecutive numbered SQL files in `migrations/profile` and `migrations/data`. Each migration and its `user_version` update run in one transaction. The runner skips applied versions and runs only the remaining files. A failure rolls back that file's SQL and version update, not previously committed migrations or changes to other database files. Missing numbers and databases newer than the available migrations cause an error. There is no automatic downgrade; use a matching application and a full pre-upgrade backup if a release must be undone. A migration marked `-- ema:migration foreign_keys=off` temporarily disables foreign keys outside the transaction and checks them before committing.
 
 Narrative initialization installs the schema and three seed datasets in a transaction. The seed reader executes SQL incrementally instead of loading every seed file into one string. Narrative repositories read the fixed timeline IDs and return vector buffers or source text as requested. See [Narrative](../narrative/README.md) for retrieval.
 
 `build` copies SQL resources into `dist/migrations`. Shipping only compiled JavaScript is insufficient for a fresh installation.
 
-The optional migration CLI targets `~/.ema-agent/profile.db` and `~/.ema-agent/data/data.db`. `--data-dir <directory>` changes only the latter. It does not read the application's active directory setting. Even `--status` creates directories and opens the databases. Confirm the target and back up real data before running it.
+The optional migration CLI uses `EMA_PROFILE_DIR`, or `~/.ema-agent` when unset, just like the host. It opens `<profile>/profile.db` and `<profile>/data/data.db`. `--data-dir <directory>` changes only the latter. Even `--status` creates directories and opens the databases. Confirm the target and back up real data before running it.
 
 ## Read and verify
 

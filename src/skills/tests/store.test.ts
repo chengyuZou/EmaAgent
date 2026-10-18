@@ -1,5 +1,5 @@
 import {
-  existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync,
+  existsSync, mkdirSync, mkdtempSync, readdirSync,
   renameSync, rmSync, writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -232,54 +232,5 @@ describe('SkillStore 安装与删除', () => {
     await store.sweepOrphanStaging();
 
     expect(readdirSync(root)).toEqual(['alpha']);
-  });
-});
-
-describe('profile 004 开关迁移', () => {
-  it('保留 user 数据和全部旧开关, builtin 修复后搬入, 搬完删除迁移表', async () => {
-    const db = makeDatabase();
-    for (const file of ['001_initial.sql', '002_provider_seeds.sql', '003_remove_compact_output_tokens.sql']) {
-      db.sqlite.exec(readFileSync(new URL(`../../storage/migrations/profile/${file}`, import.meta.url), 'utf8'));
-    }
-    db.sqlite.pragma('user_version = 3');
-    const userRoot = makeRoot();
-    const builtinRoot = makeRoot();
-    const userDir = writeSkill(userRoot, 'custom', 'custom');
-    const userPath = join(userDir, 'SKILL.md');
-    const builtinPath = join(writeSkill(builtinRoot, 'review', 'review'), 'SKILL.md');
-    const brokenDir = join(builtinRoot, 'broken');
-    mkdirSync(brokenDir);
-    const brokenPath = join(brokenDir, 'SKILL.md');
-    db.sqlite.prepare(`
-      INSERT INTO skills (path, name, version, description, dir_path, size_bytes, installed_at)
-      VALUES (?, 'custom', '1.0.0', 'custom desc', ?, 100, 123)
-    `).run(userPath, userDir);
-    const oldToggle = db.sqlite.prepare('INSERT INTO skill_enablement (skill_path, enabled) VALUES (?, ?)');
-    oldToggle.run(userPath, 0);
-    oldToggle.run(builtinPath, 0);
-    oldToggle.run(brokenPath, 0);
-    db.sqlite.prepare("INSERT INTO settings (key, value_json, updated_at) VALUES ('keep-me', '42', 1)").run();
-
-    db.migrate();
-    const repo = new SkillsRepo(db.sqlite);
-    expect(db.currentVersion()).toBeGreaterThanOrEqual(4);
-    expect(repo.findByPath(userPath)).toMatchObject({ scope: 'user', enabled: 0, installed_at: 123 });
-    expect(db.sqlite.prepare("SELECT value_json FROM settings WHERE key = 'keep-me'").pluck().get()).toBe('42');
-    expect(db.sqlite.prepare("SELECT name FROM sqlite_master WHERE name = 'skill_enablement'").get()).toBeUndefined();
-
-    const store = new SkillStore(db, userRoot, builtinRoot);
-    await Promise.all([store.reconcileUserRoot(), store.reconcileBuiltinRoot()]);
-    expect(store.listDisabledPaths().sort()).toEqual([userPath, builtinPath].sort());
-    expect(db.sqlite.prepare('SELECT skill_path FROM skill_enablement_migration').pluck().all()).toEqual([brokenPath]);
-
-    // 搬完的开关不再从旧记录恢复, 后续用户的新选择优先.
-    store.setEnabled(builtinPath, true);
-    writeFileSync(brokenPath, SKILL_MD('broken'));
-    await store.reconcileBuiltinRoot();
-    expect(store.listDisabledPaths().sort()).toEqual([userPath, brokenPath].sort());
-    expect(db.sqlite.prepare("SELECT name FROM sqlite_master WHERE name = 'skill_enablement_migration'").get()).toBeUndefined();
-    await store.reconcileUserRoot();
-    await store.reconcileBuiltinRoot();
-    expect(repo.findByPath(builtinPath)?.enabled).toBe(1);
   });
 });

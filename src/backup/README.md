@@ -26,7 +26,7 @@ The archive contains:
 - `records/session.json` and JSONL files: Session, Turns, messages, Tasks, Goals, subagent identities/Runs/messages, tool executions, background processes, attachments, speech outputs and usage.
 - `files/`: managed attachments, recorded WAV files and background-process output. External file references remain paths.
 
-Records must match the current schemas in [sessionRecords.ts](./records/sessionRecords.ts). There is no archive-version conversion. Older exports may stop being importable when required fields change.
+Records must match the current schemas in [sessionRecords.ts](./records/sessionRecords.ts). The archive does not carry a SQLite database version and does not migrate a database. Imports insert validated records into the target database after Storage has initialized or migrated it. Task, Goal, tool, and process `version` fields are update counters, not database or application versions. There is no archive-version conversion. Older exports may stop being importable when required fields change.
 
 ## Export and import order
 
@@ -79,4 +79,4 @@ Start with [sessionBackup.ts](./sessionBackup.ts), then follow export/import orc
 pnpm --filter @ema-agent/backup test
 ```
 
-HTTP tests live in [Server backup tests](../../apps/server/src/routes/backup/tests), and desktop controls in [data settings tests](../../apps/desktop/src/settings/data/tests). Native dialogs still need desktop verification.
+HTTP tests live in [Server backup tests](../../apps/server/src/routes/backup/tests). Desktop import and export controls are in [StorageTab.tsx](../../apps/desktop/src/settings/data/StorageTab.tsx). Native dialogs still need desktop verification.

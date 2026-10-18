@@ -55,32 +55,6 @@ export class SkillsRepo {
     return rows.map(row => row.path);
   }
 
-  /** 004 的一次性数据搬运, 等 Skills 建立真实索引后才消费旧开关. */
-  migrateEnablement(): void {
-    const pending = this.db.prepare(
-      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'skill_enablement_migration'",
-    ).get();
-    if (!pending) return;
-
-    this.db.transaction(() => {
-      this.db.exec(`
-        UPDATE skills
-        SET enabled = (
-          SELECT enabled FROM skill_enablement_migration WHERE skill_path = skills.path
-        )
-        WHERE path IN (SELECT skill_path FROM skill_enablement_migration);
-
-        DELETE FROM skill_enablement_migration
-        WHERE skill_path IN (SELECT path FROM skills);
-      `);
-      const remaining = this.db.prepare(
-        'SELECT COUNT(*) FROM skill_enablement_migration',
-      ).pluck().get() as number;
-      // 无法解析或暂时缺失的目录仍保留待搬记录, 修复后重扫继续搬运.
-      if (remaining === 0) this.db.exec('DROP TABLE skill_enablement_migration');
-    })();
-  }
-
   deleteByPath(path: string): void {
     this.db.prepare('DELETE FROM skills WHERE path = ?').run(path);
   }

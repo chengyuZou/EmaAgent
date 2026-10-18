@@ -11,11 +11,11 @@ const requestedRoot = path.resolve(
 const workspaceRoot = fs.realpathSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'));
 const profileRoot = fs.existsSync(requestedRoot) ? fs.realpathSync(requestedRoot) : requestedRoot;
 
-// 环境变量可能填错, 或指向一个目录链接. 删除前按实际路径排除根目录、用户主目录和仓库.
+// 环境变量可能填错, 或指向一个目录链接. 删除前按实际路径排除根目录, 用户主目录和仓库.
 for (const protectedRoot of [path.parse(profileRoot).root, fs.realpathSync(os.homedir()), workspaceRoot]) {
   const relative = path.relative(profileRoot, protectedRoot);
   if (!relative || (!relative.startsWith('..') && !path.isAbsolute(relative))) {
-    throw new Error(`拒绝重置根目录、用户主目录、仓库或它们的上级目录: ${profileRoot}`);
+    throw new Error(`拒绝重置根目录, 用户主目录, 仓库或它们的上级目录: ${profileRoot}`);
   }
 }
 if (!fs.existsSync(profileRoot)) {
@@ -43,13 +43,9 @@ if (fs.existsSync(lockPath)) {
 }
 
 console.log(`将重置应用数据: ${profileRoot}`);
-console.log('会删除会话、附件、音频、角色、记忆、技能、壁纸、Provider 和设置; 不保留自定义内容');
+console.log('会删除整个目录的内容, 包括会话, 附件, 音频, 角色, 记忆, 技能, 壁纸, Provider, 设置, 日志和 workspace 工作文件; 不保留备份');
 // 首次启动由 profile.db 是否存在决定. 整体清理应用状态, 避免只删数据库却继承文件状态.
-// logs 和 workspace 不决定初始化; 保留日志和其中的用户工作文件.
 for (const entry of fs.readdirSync(profileRoot, { withFileTypes: true })) {
-  if (entry.name === 'logs' || entry.name === 'workspace') {
-    continue;
-  }
   const target = path.join(profileRoot, entry.name);
   if (path.dirname(target) !== profileRoot) {
     throw new Error(`重置目标超出应用数据目录: ${target}`);
@@ -63,5 +59,5 @@ for (const entry of fs.readdirSync(profileRoot, { withFileTypes: true })) {
   console.log(`已删除: ${target}`);
 }
 
-console.log('已保留 logs/ 与 workspace/');
-console.log('重置完成。下次启动将重新初始化数据库和内置资源; 自定义内容需从备份恢复');
+console.log('应用数据目录已清空, 包括 logs/ 和 workspace/');
+console.log('重置完成. 下次启动将重新初始化数据库和内置资源; 自定义内容需从备份恢复');

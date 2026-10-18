@@ -46,4 +46,4 @@ Server 路由在安装或删除后刷新注册表, 然后发出 `skills_changed`
 
 目录生命周期和 Turn 选择看 `registry.ts`, `skillPool.ts`; 文件和索引写入看 `store.ts`; 项目扫描看 `sources/project.ts`. 市场浏览在 `sources/market/marketService.ts`, 安装在 `installService.ts`. HTTP 调用方在 `apps/server/src/routes/skills`, 模型调用方在 `src/builtin-tools/tools/SkillTool`.
 
-运行 `pnpm --filter @ema-agent/skills test`. 测试使用临时目录和真实 profile SQLite 验证扫描, 启停, 本地安装删除, 注册表刷新和开关迁移. 项目测试覆盖多文件夹, 隐藏目录, 深度和系统允许创建的符号链接. 市场测试使用模拟来源检查重复身份和本地安装标记, 不验证真实上游下载或完整远程安装.
+运行 `pnpm --filter @ema-agent/skills test`. 测试使用临时目录和真实 profile SQLite 验证扫描, 启停, 本地安装删除和注册表刷新. 项目测试覆盖多文件夹, 隐藏目录, 深度和系统允许创建的符号链接. 市场测试使用模拟来源检查重复身份和本地安装标记, 不验证真实上游下载或完整远程安装.

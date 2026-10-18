@@ -4,16 +4,15 @@ import path from 'node:path';
 import os   from 'node:os';
 import fs   from 'node:fs';
 
-// CLI 不读取应用当前选择的数据目录, 迁移其他目录时必须传 --data-dir.
 // --status 也会创建目录并打开数据库, 但不执行迁移.
 
-const HOME = os.homedir();
+const profileRoot = path.resolve(process.env['EMA_PROFILE_DIR'] ?? path.join(os.homedir(), '.ema-agent'));
 
 const dataDir    = process.argv.includes('--data-dir')
-  ? process.argv[process.argv.indexOf('--data-dir') + 1] ?? path.join(HOME, '.ema-agent', 'data')
-  : path.join(HOME, '.ema-agent', 'data');
+  ? process.argv[process.argv.indexOf('--data-dir') + 1] ?? path.join(profileRoot, 'data')
+  : path.join(profileRoot, 'data');
 
-const profilePath = path.join(HOME, '.ema-agent', 'profile.db');
+const profilePath = path.join(profileRoot, 'profile.db');
 const dataPath    = path.join(dataDir, 'data.db');
 
 fs.mkdirSync(path.dirname(profilePath), { recursive: true });

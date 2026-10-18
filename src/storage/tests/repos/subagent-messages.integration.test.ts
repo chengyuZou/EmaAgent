@@ -1,6 +1,4 @@
-import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { Database } from '../../database/database.js';
 import { SubagentMessagesRepo } from '../../repos/data/subagent-messages.js';
 import { SubagentRunsRepo } from '../../repos/data/subagentRuns.js';
 import { SubagentsRepo } from '../../repos/data/subagents.js';
@@ -163,48 +161,5 @@ describe('SubagentMessagesRepo', () => {
       id: 'wrong', subagentId: 'subagent-a', runId: 'run-b', role: 'user', blocksJson: '"任务"', createdAt: 3,
     })).toThrow(/ownership_violation/);
     expect(repo.listAllForSubagent('subagent-a')).toEqual([]);
-  });
-});
-
-describe('003 子代理消息迁移', () => {
-  it('旧 Assistant 与独立 ToolResult 保留身份和顺序并变为 Message blocks', () => {
-    const database = new Database({ memory: true, kind: 'data' });
-    try {
-      database.sqlite.exec(readFileSync(new URL('../../migrations/data/001_initial.sql', import.meta.url), 'utf8'));
-      database.sqlite.exec(readFileSync(new URL('../../migrations/data/002_move_turn_usage_to_records.sql', import.meta.url), 'utf8'));
-      database.sqlite.pragma('user_version = 2');
-      database.sqlite.prepare(`
-        INSERT INTO sessions (id, title, cwd, created_at, updated_at)
-        VALUES ('session-a', 'Session A', 'D:/work', 1, 1)
-      `).run();
-      database.sqlite.prepare(`
-        INSERT INTO turns (id, session_id, status, created_at)
-        VALUES ('turn-a', 'session-a', 'running', 1)
-      `).run();
-      database.sqlite.prepare(`
-        INSERT INTO agent_runs (id, session_id, parent_turn_id, context_mode, created_at, updated_at)
-        VALUES ('subagent-a', 'session-a', 'turn-a', 'subagent', 1, 1)
-      `).run();
-      database.sqlite.prepare(`
-        INSERT INTO agent_run_messages (id, agent_run_id, role, content_json, sequence, created_at)
-        VALUES (?, 'subagent-a', ?, ?, ?, ?)
-      `).run('assistant', 'assistant', '[{"type":"text","text":"hello"}]', 1, 2);
-      database.sqlite.prepare(`
-        INSERT INTO agent_run_messages (id, agent_run_id, role, content_json, sequence, created_at)
-        VALUES (?, 'subagent-a', ?, ?, ?, ?)
-      `).run('result', 'tool_result', '{"type":"tool_result","content":"ok"}', 2, 3);
-
-      database.migrate();
-
-      const rows = new SubagentMessagesRepo(database.sqlite).listAllForSubagent('subagent-a');
-      expect(rows.map(row => [row.id, row.role, row.kind])).toEqual([
-        ['assistant', 'assistant', 'normal'],
-        ['result', 'user', 'tool_results'],
-      ]);
-      expect(JSON.parse(rows[0]!.blocks_json)).toEqual([{ type: 'text', text: 'hello' }]);
-      expect(JSON.parse(rows[1]!.blocks_json)).toEqual([{ type: 'tool_result', content: 'ok' }]);
-    } finally {
-      database.close();
-    }
   });
 });

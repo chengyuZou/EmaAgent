@@ -32,8 +32,8 @@ export class MigrationsRunner {
   ) {}
 
   /**
-   * 应用 `migrations/{kind}/` 下每个 pending 迁移.每个迁移与 `user_version` bump 在单个事务内,
-   * 不留半成品.幂等:已应用的跳过,崩溃后重跑从下一条开始.
+   * 已提交的版本跳过. 每份 SQL 与其 user_version 更新处于同一事务,
+   * 失败只回滚当前文件, 下次启动从未提交的版本继续.
    */
   run(): void {
     const folder = path.join(MIGRATIONS_DIR, this.kind);
@@ -50,8 +50,7 @@ export class MigrationsRunner {
       );
     }
 
-    // 从文件名前缀解析版本号(001_xxx.sql -> 1),取最大值.不靠 entries.length,
-    // 避免 squash(编号回退)或跳号时 latest 算错.
+    // 取文件编号的最大值, 不用文件数量, 才能发现中间缺失的编号.
     const versions = entries
       .map(f => parseInt(f.slice(0, 3), 10))
       .filter(n => Number.isInteger(n) && n > 0);
@@ -59,8 +58,7 @@ export class MigrationsRunner {
 
     const current = this.db.pragma('user_version', { simple: true }) as number;
 
-    // compatibility gate:老库 user_version 高于本包最新,说明用了更新版本的应用,
-    // 本包无法降级迁移.fail-closed,防静默跳过致 schema 不一致.
+    // 旧应用不能把较新结构当作自己的表使用, 也不能靠改版本号撤销迁移.
     if (current > latest) {
       throw new Error(
         `[${this.kind}] 数据库版本 v${current} 高于本包最新 v${latest}. 请使用支持该版本的应用, 或由使用者备份后重建开发数据库`,

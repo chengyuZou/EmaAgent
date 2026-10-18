@@ -26,7 +26,7 @@ const imported = await backup.importSession(zipFilePath, signal);
 - `records/session.json` 和 JSONL 文件: Session, Turn, Message, Task, Goal, 子代理身份/Run/消息, 工具执行, 后台进程, 附件, 语音和用量.
 - `files/`: 受管附件, 已记录的 WAV 和后台进程输出. 外部文件引用仍为原路径.
 
-记录必须符合 [sessionRecords.ts](./records/sessionRecords.ts) 的当前字段校验. 没有备份版本转换. 必填字段变化后, 以前导出的归档可能无法导入.
+记录必须符合 [sessionRecords.ts](./records/sessionRecords.ts) 的当前字段校验. 归档没有 SQLite 数据库版本, 也不执行数据库迁移. 导入前由 Storage 初始化或迁移目标数据库, 然后向其中写入通过校验的记录. Task, Goal, 工具和进程记录中的 `version` 是更新计数, 不是数据库版本或应用版本. 没有备份版本转换, 必填字段变化后, 以前导出的归档可能无法导入.
 
 ## 导出与导入顺序
 
@@ -69,4 +69,4 @@ flowchart TD
 pnpm --filter @ema-agent/backup test
 ```
 
-HTTP 测试在 [Server backup tests](../../apps/server/src/routes/backup/tests), 桌面控件测试在 [data settings tests](../../apps/desktop/src/settings/data/tests). 原生文件对话框仍需桌面验收.
+HTTP 测试在 [Server backup tests](../../apps/server/src/routes/backup/tests). 桌面导入和导出控件在 [StorageTab.tsx](../../apps/desktop/src/settings/data/StorageTab.tsx). 原生文件对话框仍需桌面验收.

@@ -24,7 +24,7 @@ try {
 | Kind | 常用位置 | 保存内容 |
 | --- | --- | --- |
 | `profile` | `~/.ema-agent/profile.db` | Provider, 模型及绑定, 设置, 角色和资源信息, Skills, MCP 配置和市场缓存 |
-| `data` | `<activeDataDir>/data.db` | Session, Turn, Message, Task, Goal, 子 Agent 和 Run, 工具执行, 后台命令, 附件和语音记录, 用量, Memory 任务及提取结果 |
+| `data` | `~/.ema-agent/data/data.db` | Session, Turn, Message, Task, Goal, 子 Agent 和 Run, 工具执行, 后台命令, 附件和语音记录, 用量, Memory 任务及提取结果 |
 | `narrative` | `~/.ema-agent/narrative/narrative.db` | 三个固定周目的剧情块, 实体, 关系及向量 |
 
 这些路径由宿主约定, 不是 `Database` 自行选择. 附件正文, 音频, 角色资源和正式 Memory 正文保存在文件中, Repository 记录查找和管理它们需要的路径, 索引及状态.
@@ -66,13 +66,13 @@ fork 前缀消息的 `run_id` 为 null, 保留原始生成来源. 子 Agent 自�
 
 ## 数据迁移
 
-profile 和 data 从 `migrations/profile` 与 `migrations/data` 读取连续编号的 SQL. 每次迁移和 `user_version` 更新处于同一事务. 编号缺失或数据库版本比当前文件更新时直接报错. 标有 `-- ema:migration foreign_keys=off` 的迁移在事务外临时关闭外键, 提交前检查关联关系.
+Profile 与 Data 分别用自己的 `001_initial.sql` 初始化, 数据库初始版本均为 1. 应用的 `0.1.0` 等版本号不决定数据库版本. 已发布的迁移文件不再修改; 后续变化依次追加 `002_<change>.sql`, `003_<change>.sql`. 两种数据库从 `migrations/profile` 与 `migrations/data` 读取连续编号的 SQL. 每次迁移和 `user_version` 更新处于同一事务. 已执行的版本会跳过, 只执行后面的文件. 失败只回滚本文件的 SQL 和版本更新, 不撤销此前已提交的迁移或其他数据库文件的变化. 编号缺失或数据库版本比当前文件更新时直接报错. 不执行自动降级; 撤回发布时需要匹配的应用及升级前的完整备份. 标有 `-- ema:migration foreign_keys=off` 的迁移在事务外临时关闭外键, 提交前检查关联关系.
 
 Narrative 初始化在事务内安装表结构和三份剧情数据. 读取器分批执行种子 SQL, 不把所有种子文件读进一个字符串. Narrative Repository 按固定周目 ID 返回向量 Buffer 或原文, 检索流程见 [Narrative](../narrative/README-zh.md).
 
 `build` 会把 SQL 复制到 `dist/migrations`, 正式发布不能只带编译后的 JavaScript.
 
-可选迁移 CLI 默认打开 `~/.ema-agent/profile.db` 和 `~/.ema-agent/data/data.db`. `--data-dir <directory>` 只改变后者, 不读取应用当前选中的数据目录. 即使 `--status` 也会创建目录和打开数据库. 对真实数据运行前先确认目标并备份.
+可选迁移 CLI 与宿主一样读取 `EMA_PROFILE_DIR`, 未设置时使用 `~/.ema-agent`. 它打开 `<profile>/profile.db` 和 `<profile>/data/data.db`. `--data-dir <directory>` 只改变后者. 即使 `--status` 也会创建目录和打开数据库. 对真实数据运行前先确认目标并备份.
 
 ## 阅读和验证
 
