@@ -1,6 +1,5 @@
 import type { SqliteDb } from '../../database/database.js';
 
-// ── 原始 DB 行 ────────────────────────────────────────────────────────────────
 
 export interface McpServerRow {
   id:           string;
@@ -13,7 +12,7 @@ export interface McpServerRow {
   installed_at: number;
 }
 
-/** 已安装 Server 列表投影；Tool 缓存只在 SQLite 内计数，不把 Schema 文本带入 Node。 */
+/** 已安装 Server 列表投影;Tool 缓存只在 SQLite 内计数,不把 Schema 文本带入 Node. */
 export interface McpServerSettingsRow {
   name:              string;
   install_source:    'manual' | 'import' | 'official';
@@ -23,9 +22,8 @@ export interface McpServerSettingsRow {
   cached_tool_count: number;
 }
 
-// ── McpServersRepo ─────────────────────────────────────────────────────────────
 //
-// 纯 SQL,不 import @ema-agent/mcp(避免循环依赖)。
+// 纯 SQL,不 import @ema-agent/mcp(避免循环依赖).
 // config_json 按字符串存取, 由 McpServerStore 解析校验. env 和 headers 以明文保存.
 
 export class McpServersRepo {

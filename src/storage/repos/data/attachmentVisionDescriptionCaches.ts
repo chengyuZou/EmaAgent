@@ -46,7 +46,7 @@ export class AttachmentVisionDescriptionCachesRepo {
     `).all(cutoff, limit) as AttachmentVisionDescriptionCacheRow[];
   }
 
-  /** 超预算清理:最久未访问优先。 */
+  /** 超预算清理:最久未访问优先. */
   listOldest(limit: number): AttachmentVisionDescriptionCacheRow[] {
     return this.db.prepare(`
       SELECT * FROM attachment_vision_descriptions_caches

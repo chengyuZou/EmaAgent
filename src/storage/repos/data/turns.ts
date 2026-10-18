@@ -1,8 +1,8 @@
 import type { SqliteDb } from '../../database/database.js';
 
-/** turns.status 的 SQL CHECK 原样。 */
+/** turns.status 的 SQL CHECK 原样. */
 export type TurnStatusRow = 'running' | 'completed' | 'failed' | 'aborted';
-/** turns.trigger_type 的 SQL CHECK 原样。 */
+/** turns.trigger_type 的 SQL CHECK 原样. */
 export type TurnTriggerTypeRow = 'userMessage' | 'sessionContinuation';
 
 export interface TurnRow {
@@ -12,10 +12,10 @@ export interface TurnRow {
   trigger_type: TurnTriggerTypeRow;
   /** Turn 启动时写入的冻结值. 与 sessions.tts_enabled 的可变偏好不同. */
   tts_enabled: number;
-  /** 操作开始冻结的模型选择；prepare 阶段解析成功前为 null。 */
+  /** 操作开始冻结的模型选择;prepare 阶段解析成功前为 null. */
   provider_id: string | null;
   model_id: string | null;
-  /** prepare 解析出的实际调用协议（与 provider_id/model_id 同生命周期，setModel 回填前为 null）。 */
+  /** prepare 解析出的实际调用协议(与 provider_id/model_id 同生命周期,setModel 回填前为 null). */
   protocol: string | null;
   /** 本轮参与对话的角色的稳定 Character.name; 后续切换角色不改写此列. 未记录时为 null. */
   character_name: string | null;
@@ -56,7 +56,7 @@ export interface TurnIndexRow {
   anchor_message_id: string;
   trigger_type: TurnTriggerTypeRow;
   status: TurnStatusRow;
-  /** 首条 User Message 的正文预览；用户输入的唯一事实源是 Message。 */
+  /** 首条 User Message 的正文预览;用户输入的唯一事实源是 Message. */
   preview: string;
   provider_id: string | null;
   model_id: string | null;
@@ -102,7 +102,7 @@ export class TurnsRepo {
       );
   }
 
-  /** 操作开始冻结模型选择与实际调用协议；prepare 解析成功后一次写入，整轮不再变。 */
+  /** 操作开始冻结模型选择与实际调用协议;prepare 解析成功后一次写入,整轮不再变. */
   setModel(id: string, providerId: string, modelId: string, protocol: string): void {
     this.db
       .prepare('UPDATE turns SET provider_id = ?, model_id = ?, protocol = ? WHERE id = ?')
@@ -116,7 +116,7 @@ export class TurnsRepo {
       .run(characterName, id);
   }
 
-  /** 根 AgentLoop 开始新迭代时立即保存，失败和取消也保留已经发生的次数。 */
+  /** 主 AgentLoop 开始新迭代时立即保存,失败和取消也保留已经发生的次数. */
   setIterations(id: string, iterations: number): void {
     this.db.prepare('UPDATE turns SET iterations = ? WHERE id = ?').run(iterations, id);
   }
@@ -176,7 +176,7 @@ export class TurnsRepo {
     };
   }
 
-  /** 按稳定复合游标读取 Turn 索引页，页面内部保持最新优先。 */
+  /** 按稳定复合游标读取 Turn 索引页,页面内部保持最新优先. */
   listForSessionPage(
     sessionId: string,
     cursor?: TurnIdPageCursor,
@@ -238,7 +238,7 @@ export class TurnsRepo {
     };
   }
 
-  /** 启动恢复等内部任务只读取 ID 与游标列，避免加载用户正文。 */
+  /** 启动恢复等内部任务只读取 ID 与游标列,避免加载用户正文. */
   listIdsForSessionPage(
     sessionId: string,
     cursor?: TurnIdPageCursor,
@@ -285,7 +285,7 @@ export class TurnsRepo {
       .run(now, sessionId);
   }
 
-  /** 进程崩溃恢复:把所有 session 中仍在运行的 turn 标记为 aborted。 */
+  /** 进程崩溃恢复:把所有 session 中仍在运行的 turn 标记为 aborted. */
   abortAllStale(now: number): number {
     const result = this.db
       .prepare(

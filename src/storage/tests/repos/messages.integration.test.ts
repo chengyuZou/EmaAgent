@@ -70,7 +70,7 @@ describe('MessagesRepo 历史加载集成测试', () => {
     expect(repo.updateBlocks('missing', '{}')).toBe(0);
   });
 
-  it('没有 summary 时返回最新 N 条，并按稳定正序输出', () => {
+  it('没有 summary 时返回最新 N 条,并按稳定正序输出', () => {
     insertMessage('message-a', 100);
     insertMessage('message-b', 100);
     insertMessage('message-c', 100);
@@ -80,7 +80,7 @@ describe('MessagesRepo 历史加载集成测试', () => {
       .toEqual(['message-c', 'message-d']);
   });
 
-  it('始终保留最新 summary，并只返回它之后最新的剩余消息', () => {
+  it('始终保留最新 summary,并只返回它之后最新的剩余消息', () => {
     insertMessage('old-before-summary', 90);
     insertMessage('latest-summary', 100, 'summary');
     insertMessage('post-summary-old', 110);

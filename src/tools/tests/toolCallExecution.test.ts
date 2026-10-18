@@ -1,4 +1,3 @@
-// 测试单次 Tool 调用管线:查找、Schema、Context、业务校验、权限、执行与取消语义。
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import type {
@@ -34,7 +33,7 @@ const PERMISSION_CONTEXT: ToolPermissionContext = {
   workspaceRoots: [],
 };
 
-/** 内存版原子存储:与 SQL 实现同语义(version CAS + from 集合)。 */
+/** 内存版原子存储:与 SQL 实现同语义(version CAS + from 集合). */
 class InMemoryStore implements ToolExecutionStateStore {
   private readonly rows = new Map<string, ToolExecutionRecord>();
 
@@ -87,7 +86,7 @@ class InMemoryStore implements ToolExecutionStateStore {
   }
 }
 
-/** 真实状态机 + 内存 store;测试直接断言持久记录而非迁移录音。 */
+/** 真实状态机 + 内存 store;测试直接断言持久记录而非迁移录音. */
 function makeState() {
   const store = new InMemoryStore();
   return { state: new ToolExecutionState(store), store };
@@ -316,7 +315,7 @@ describe('ToolCallExecution', () => {
     expect(result.errorCode).toBe('permission/denied');
   });
 
-  it('成功执行:结果规范化、终态事件齐备、commitResult 后落 succeeded', async () => {
+  it('成功执行:结果规范化,终态事件齐备,commitResult 后落 succeeded', async () => {
     const { state, store } = makeState();
     const { execution, events } = makeCall(
       makeEnv({ tools: [echoTool()], state }),
@@ -403,7 +402,7 @@ describe('ToolCallExecution', () => {
 
     expect(result.isError).toBe(true);
     expect(result.errorCode).toBe('tool/cancelled');
-    // 模型看到的是取消;审计按 outcome_unknown 关账——running 后的取消无法证明干净。
+    // 模型看到的是取消;审计按 outcome_unknown 记录终态——running 后的取消无法证明干净.
     expect(store.findByCallId('call-1')?.status).toBe('outcome_unknown');
     expect(terminalEvent).toMatchObject({
       error: { code: 'tool/cancelled' },

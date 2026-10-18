@@ -1,4 +1,3 @@
-// 测试 Session、项目、消息读写与独立 Fork 的领域规则。
 import { describe, it, expect } from 'vitest';
 import os from 'node:os';
 import path from 'node:path';
@@ -13,7 +12,7 @@ function makeStore(onChanged?: (event: SessionEvent) => void) {
 }
 
 let turnSeq = 0;
-/** 消息夹具需要的 Turn 行；Turn 生命周期本身由 TurnStore 的测试覆盖。 */
+/** 消息夹具需要的 Turn 行;Turn 生命周期本身由 TurnStore 的测试覆盖. */
 function insertTurnFixture(db: Database, sessionId: string): string {
   const turnId = `turn-${++turnSeq}`;
   new TurnsRepo(db.sqlite).insert({
@@ -25,8 +24,6 @@ function insertTurnFixture(db: Database, sessionId: string): string {
   });
   return turnId;
 }
-
-// ── Session ───────────────────────────────────────────────────────────────────
 
 describe('SessionStore 变更事件的会话身份', () => {
   it('会话的写入与删除携带对应 ID, Fork 携带新会话 ID', () => {
@@ -138,7 +135,7 @@ describe('SessionStore — session', () => {
     expect(s.cwd).toBe(os.tmpdir());
   });
 
-  it('Session 权限模式创建后可修改，Fork 继承当前选择', () => {
+  it('Session 权限模式创建后可修改,Fork 继承当前选择', () => {
     const { store } = makeStore();
     const session = store.createSession({ permissionMode: 'acceptEdits' });
     expect(session.permissionMode).toBe('acceptEdits');
@@ -184,7 +181,7 @@ describe('SessionStore — session', () => {
     expect(() => store.getSession('bad-id')).toThrow('session_not_found');
   });
 
-  it('归档会话不进入正常侧栏, 取消归档保留项目、置顶和历史', () => {
+  it('归档会话不进入正常侧栏, 取消归档保留项目,置顶和历史', () => {
     const { store } = makeStore();
     const project = store.createProject('项目', [os.tmpdir()], os.tmpdir());
     const s = store.createSession({ title: '归档标题', projectId: project.id });
@@ -210,7 +207,7 @@ describe('SessionStore — session', () => {
     expect(store.getSessionForWork(s.id).id).toBe(s.id);
   });
 
-  it('同时属于项目和置顶的 Session 进置顶桶，项目桶不再列出它', () => {
+  it('同时属于项目和置顶的 Session 进置顶桶,项目桶不再列出它', () => {
     const { store } = makeStore();
     const project = store.createProject('Demo', ['D:/main'], 'D:/main');
     const s = store.createSession();
@@ -308,7 +305,7 @@ describe('SessionStore — 项目', () => {
     expect(store.createSession({ projectId: project.id }).cwd).toBe('D:/main');
   });
 
-  it('拖入项目保留原 cwd，并允许成员显式修改 cwd', () => {
+  it('拖入项目保留原 cwd,并允许成员显式修改 cwd', () => {
     const { store } = makeStore();
     const session = store.createSession();
     const project = store.createProject('Demo', ['D:/main'], 'D:/main');
@@ -338,7 +335,7 @@ describe('SessionStore — 项目', () => {
     expect(store.getSession(session.id).cwd).toBe('D:/loose');
   });
 
-  it('更换或移除主文件夹不改旧 Session cwd，只改变后续新 Session 的起点', () => {
+  it('更换或移除主文件夹不改旧 Session cwd,只改变后续新 Session 的起点', () => {
     const { store } = makeStore();
     const project = store.createProject('Demo', ['D:/main'], 'D:/main');
     const session = store.createSession({ projectId: project.id });
@@ -354,7 +351,7 @@ describe('SessionStore — 项目', () => {
     expect(projectInSidebar.folders[0]!.path).toBe('D:/second');
   });
 
-  it('零文件夹项目可建 Session，之后添加或移除最后一个文件夹也不改旧 cwd', () => {
+  it('零文件夹项目可建 Session,之后添加或移除最后一个文件夹也不改旧 cwd', () => {
     const { store } = makeStore();
     const project = store.createProject('Empty', []);
     const session = store.createSession({ projectId: project.id });
@@ -368,8 +365,6 @@ describe('SessionStore — 项目', () => {
     expect(store.listProjectFolders(project.id)).toEqual([]);
   });
 });
-
-// ── Message ───────────────────────────────────────────────────────────────────
 
 describe('SessionStore — message', () => {
   it('appendMessage stores and returns a message', () => {
@@ -426,7 +421,7 @@ describe('SessionStore — message', () => {
     expect(msg.blocks).toEqual(blocks);
   });
 
-  it('updateMessageBlocks 整体替换消息的 blocks（流式续写/追加 tool_use）', () => {
+  it('updateMessageBlocks 整体替换消息的 blocks(流式续写/追加 tool_use)', () => {
     const { store, db } = makeStore();
     const s = store.createSession();
     const turnId = insertTurnFixture(db, s.id);
@@ -483,7 +478,7 @@ describe('SessionStore — message', () => {
       .toEqual(['third', 'fourth']);
   });
 
-  it('loadHistory 保留 summary，并从其后选择最新消息', () => {
+  it('loadHistory 保留 summary,并从其后选择最新消息', () => {
     const { store, db } = makeStore();
     const s = store.createSession();
     const turnId = insertTurnFixture(db, s.id);
@@ -498,14 +493,14 @@ describe('SessionStore — message', () => {
       .toEqual(['summary', 'post-new-a', 'post-new-b']);
   });
 
-  it('appendHistorySummary 按覆盖游标切边界：先于摘要落库但未覆盖的消息不被吞掉', () => {
+  it('appendHistorySummary 按覆盖游标切边界:先于摘要落库但未覆盖的消息不被吞掉', () => {
     const { store, db } = makeStore();
     const s = store.createSession();
     const turnId = insertTurnFixture(db, s.id);
 
     store.appendMessage({ sessionId: s.id, turnId, role: 'user', blocks: 'covered-a' });
     const through = store.appendMessage({ sessionId: s.id, turnId, role: 'user', blocks: 'covered-b' });
-    // 摘要生成期间活跃 Turn 写入的消息：先于摘要落库，但不在覆盖范围内。
+    // 摘要生成期间活跃 Turn 写入的消息:先于摘要落库,但不在覆盖范围内.
     store.appendMessage({ sessionId: s.id, turnId, role: 'user', kind: 'reminder', blocks: 'current-reminder' });
     store.appendHistorySummary({
       sessionId: s.id,
@@ -516,7 +511,7 @@ describe('SessionStore — message', () => {
     });
     store.appendMessage({ sessionId: s.id, turnId, role: 'user', blocks: 'after' });
 
-    // summary 顶替最旧段排第一；未覆盖的 reminder 早于摘要落库也必须存活。
+    // summary 顶替最旧段排第一;未覆盖的 reminder 早于摘要落库也必须存活.
     expect(store.loadHistory(s.id).map((message) => message.blocks))
       .toEqual(['summary', 'current-reminder', 'after']);
     expect(store.listMessages(s.id).messages.find(message => message.kind === 'summary')?.savedTokens)

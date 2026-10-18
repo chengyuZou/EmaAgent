@@ -1,20 +1,19 @@
-// 保存进程已经提供的 Tool，并按 Tool 自有来源完成 MCP 原子更新与注销。
 import {
   ToolRegistrationConflictError,
   ToolRegistryError,
 } from '../errors.js';
 import type { Tool, ToolOrigin } from '../Tool/tool.js';
 
-// Registry 需要容纳输入、输出、窄 Context 和进度类型各不相同的 Tool。
+// Registry 需要容纳输入,输出,窄 Context 和进度类型各不相同的 Tool.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyTool = Tool<any, any, any, any>;
 type McpToolOrigin = Extract<ToolOrigin, { readonly kind: 'mcp' }>;
 
 /**
- * ToolRegistry 是进程级可变库存。
+ * ToolRegistry 是进程级可变库存.
  *
- * Builtin 在启动装配时注册，MCP 在连接或重连时原子替换自己的实现。当前根
- * Turn 已经持有的 ToolPool 不会回读 Registry，因此热更新只影响下一根 Turn。
+ * Builtin 在启动装配时注册,MCP 在连接或重连时原子替换自己的实现.当前根
+ * Turn 已经持有的 ToolPool 不会回读 Registry,因此热更新只影响下一Turn.
  */
 export class ToolRegistry {
   private readonly tools = new Map<string, AnyTool>();
@@ -31,10 +30,10 @@ export class ToolRegistry {
   }
 
   /**
-   * 原子注册一次 MCP 工具清单。
+   * 原子注册一次 MCP 工具清单.
    *
-   * 整批先完成名称、稳定 ID 和原始 Server/Tool 来源校验，再统一替换。清洗后
-   * 同名的不同 MCP 工具、内置工具和其他 Server 的实现都不能被覆盖。
+   * 整批先完成名称,稳定 ID 和原始 Server/Tool 来源校验,再统一替换.清洗后
+   * 同名的不同 MCP 工具,内置工具和其他 Server 的实现都不能被覆盖.
    */
   registerMcpBatch(tools: readonly AnyTool[]): void {
     const batchByName = new Map<string, AnyTool>();
@@ -79,7 +78,7 @@ export class ToolRegistry {
     }
   }
 
-  /** 只注销与原始 MCP Server/Tool 身份完全一致的实现。 */
+  /** 只注销与原始 MCP Server/Tool 身份完全一致的实现. */
   unregisterMcp(serverName: string, serverToolName: string): boolean {
     for (const [name, tool] of this.tools) {
       if (

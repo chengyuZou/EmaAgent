@@ -1,5 +1,3 @@
-// 项目实体与其源文件夹的 SQL 层：CRUD、置顶和主文件夹继位。
-
 import type { SqliteDb } from '../../database/database.js';
 
 export interface ProjectRow {
@@ -16,7 +14,7 @@ export interface ProjectFolderRow {
   path: string;
   is_primary: number;
   created_at: number;
-  /** 只在"设为主要"时写入；NULL = 从未当过主，排序时沉底。 */
+  /** 只在"设为主要"时写入;NULL = 从未当过主,排序时沉底. */
   updated_at: number | null;
 }
 
@@ -99,7 +97,7 @@ export class ProjectsRepo {
     })();
   }
 
-  /** 删除项目；成员 Session 由外键 SET NULL 掉到非项目区。 */
+  /** 删除项目;成员 Session 由外键 SET NULL 掉到非项目区. */
   remove(id: string): void {
     this.db.prepare('DELETE FROM projects WHERE id = ?').run(id);
   }
@@ -124,7 +122,7 @@ export class ProjectsRepo {
       .pluck().get(projectId) as string | undefined;
   }
 
-  /** 追加文件夹；项目内的第一个文件夹自动成为主文件夹。 */
+  /** 追加文件夹;项目内的第一个文件夹自动成为主文件夹. */
   addFolder(projectId: string, path: string): void {
     const now = Date.now();
     const primary = this.primaryFolderPath(projectId);
@@ -138,8 +136,8 @@ export class ProjectsRepo {
   }
 
   /**
-   * 移除文件夹。移除主文件夹时由排序首位者继位（最近为主者，或全空时最早添加者），
-   * 已有 Session 的 cwd 与项目主文件夹独立，不在这里改写。
+   * 移除文件夹.移除主文件夹时由排序首位者继位(最近为主者,或全空时最早添加者),
+   * 已有 Session 的 cwd 与项目主文件夹独立,不在这里改写.
    */
   removeFolder(projectId: string, path: string): void {
     const folders = this.listFolders(projectId);
@@ -155,7 +153,7 @@ export class ProjectsRepo {
       .run(Date.now(), projectId, successor.path);
   }
 
-  /** 更换主文件夹只改变以后新建 Session 的默认 cwd。 */
+  /** 更换主文件夹只改变以后新建 Session 的默认 cwd. */
   setPrimaryFolder(projectId: string, path: string): void {
     const folders = this.listFolders(projectId);
     if (!folders.some((folder) => folder.path === path)) {

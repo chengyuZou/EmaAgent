@@ -103,7 +103,7 @@ export interface TurnExecutorDeps extends PrepareTurnDeps {
    * 才推进提醒周期,Turn 准备失败不吞掉周期.没有第二种提交行为,不做通用回调.
    */
   readonly onTaskReminderPersisted?: (sessionId: string) => void;
-  /** 逐次 LLM 调用用量记录;缺省不记账(观测不阻断主链). */
+  /** 逐次记录真实 LLM 调用; 未注入时不记录, 注入实现抛错会使当前执行失败. */
   readonly usageRecorder?: UsageRecorder;
   /**
    * 角色舞台:text delta 在落库与发射前经它剥离表现标签(cleaned 是唯一持久化与
@@ -673,7 +673,7 @@ export class TurnExecutor {
       finishSucceeded = true;
     } catch (error) {
       finishError = error;
-      console.warn('[turn] 消息收口失败,终态事件未广播:', error);
+console.warn('[turn] 消息保存失败, 终态事件未广播:', error);
     }
     try {
       this.deps.interactionQueue.cancelForTurn(turnId, `turn ${terminal}`);

@@ -17,9 +17,9 @@ const NARRATIVE_SEED_FILES = [
 
 /**
  * 各个数据库使用独立的 `user_version`:
- *   profile.db -> migrations/profile/  Provider 配置/模型绑定/角色卡/设置/全局记忆
+ *   profile.db -> migrations/profile/  Provider 配置, 模型绑定, 角色和设置
  *   data.db    -> migrations/data/     sessions/turns/messages/音频/agent tasks
- *   narrative.db -> migrations/narrative/ 具名 schema 和固定剧情种子, 初始版本为 1.
+ *   narrative.db -> migrations/narrative/ 表定义与固定剧情种子, 版本由 NARRATIVE_VERSION 控制.
  *
  * profile/data 按数字编号逐个迁移, narrative 首次执行表定义和三份种子 SQL.
  */
@@ -32,8 +32,8 @@ export class MigrationsRunner {
   ) {}
 
   /**
-   * 应用 `migrations/{kind}/` 下每个 pending 迁移。每个迁移与 `user_version` bump 在单个事务内,
-   * 不留半成品。幂等:已应用的跳过,崩溃后重跑从下一条开始。
+   * 应用 `migrations/{kind}/` 下每个 pending 迁移.每个迁移与 `user_version` bump 在单个事务内,
+   * 不留半成品.幂等:已应用的跳过,崩溃后重跑从下一条开始.
    */
   run(): void {
     const folder = path.join(MIGRATIONS_DIR, this.kind);
@@ -50,8 +50,8 @@ export class MigrationsRunner {
       );
     }
 
-    // 从文件名前缀解析版本号(001_xxx.sql -> 1),取最大值。不靠 entries.length,
-    // 避免 squash(编号回退)或跳号时 latest 算错。
+    // 从文件名前缀解析版本号(001_xxx.sql -> 1),取最大值.不靠 entries.length,
+    // 避免 squash(编号回退)或跳号时 latest 算错.
     const versions = entries
       .map(f => parseInt(f.slice(0, 3), 10))
       .filter(n => Number.isInteger(n) && n > 0);
@@ -60,10 +60,10 @@ export class MigrationsRunner {
     const current = this.db.pragma('user_version', { simple: true }) as number;
 
     // compatibility gate:老库 user_version 高于本包最新,说明用了更新版本的应用,
-    // 本包无法降级迁移。fail-closed,防静默跳过致 schema 不一致。
+    // 本包无法降级迁移.fail-closed,防静默跳过致 schema 不一致.
     if (current > latest) {
       throw new Error(
-        `[${this.kind}] 数据库版本 v${current} 高于本包最新 v${latest}。可能使用了更新版本，或仍是基线重置前的开发库；请升级应用，或备份后重建开发数据库`,
+        `[${this.kind}] 数据库版本 v${current} 高于本包最新 v${latest}. 请使用支持该版本的应用, 或由使用者备份后重建开发数据库`,
       );
     }
 
@@ -74,7 +74,7 @@ export class MigrationsRunner {
       const prefix   = String(v).padStart(3, '0') + '_';
       const filename = entries.find(f => f.startsWith(prefix));
       if (!filename) {
-        // 跳号(如 001/002/004 缺 003):明确报错,不静默跳过。
+        // 跳号(如 001/002/004 缺 003):明确报错,不静默跳过.
         throw new Error(
           `[${this.kind}] 迁移 ${v} 缺失(目录 ${folder} 有跳号),expected file ${prefix}*.sql`,
         );
@@ -84,8 +84,8 @@ export class MigrationsRunner {
         '-- ema:migration foreign_keys=off',
       );
       if (rebuildsReferencedTable) {
-        // SQLite 在外键开启时会把子表引用同步改名到临时表。重建被引用表必须在
-        // 事务外临时关闭外键，再在提交前用 foreign_key_check 验证最终关系。
+        // SQLite 在外键开启时会把子表引用同步改名到临时表.重建被引用表必须在
+        // 事务外临时关闭外键,再在提交前用 foreign_key_check 验证最终关系.
         this.db.pragma('foreign_keys = OFF');
       }
       try {
@@ -124,7 +124,7 @@ export class MigrationsRunner {
 
     this.db.transaction(() => {
       if (current === 0) {
-        // 首次安装才导入固定剧情. 已有库升级不重新写入正文、图或向量.
+        // 首次安装才导入固定剧情. 已有库升级不重新写入正文,图或向量.
         this.db.exec(fs.readFileSync(path.join(folder, 'narrative.sql'), 'utf8'));
         for (const filename of NARRATIVE_SEED_FILES) {
           this.executeNarrativeSeeds(path.join(folder, filename));

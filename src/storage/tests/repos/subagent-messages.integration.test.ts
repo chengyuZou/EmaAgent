@@ -1,4 +1,3 @@
-// 验证子代理与主 Message 相同的内容字段、时间/ID Cursor、摘要边界与 fork 来源.
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Database } from '../../database/database.js';
@@ -48,7 +47,7 @@ describe('SubagentMessagesRepo', () => {
     expect(repo.listAllForSubagent('subagent-a')[0]).not.toHaveProperty('sequence');
   });
 
-  it('保留完整 Assistant blocks、User 工具结果和 Summary 覆盖游标', () => {
+  it('保留完整 Assistant blocks,User 工具结果和 Summary 覆盖游标', () => {
     const assistantBlocks = [
       { type: 'thinking', thinking: '分析', signature: 'native-signature' },
       { type: 'tool_use', id: 'call-a', name: 'Read', args: { path: 'a.ts' } },

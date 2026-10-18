@@ -1,4 +1,3 @@
-// 子代理与普通 Message 共用内容字段、时间/ID Cursor 和摘要边界, 只增加归属与 fork 来源.
 import type { SqliteDb } from '../../database/database.js';
 import type { MessageInsert, MessagePageCursor, MessageRow } from './messages.js';
 
@@ -12,7 +11,7 @@ export interface SubagentMessageRow extends Omit<MessageRow, 'session_id' | 'tur
   /**
    * 普通 Session 消息能通过 turnId 查到生成它的模型, 子代理自己生成的消息则通过 runId 查.
    * 但 fork 复制来的 Assistant 没有 runId, 而且可能来自多轮 Turn, 用过不同模型.
-   * 所以这三列只为它们保存原来的供应商、模型和协议, 不能套用子代理本次 Run 的配置.
+   * 所以这三列只为它们保存原来的供应商,模型和协议, 不能套用子代理本次 Run 的配置.
    * 子代理自己生成的消息不填写这三列, 查询时从所属 Run 取值; 备份只保存表里实际写入的值.
    */
   provider_id: string | null;

@@ -11,7 +11,7 @@ export {
   TurnPreparationError,
   TurnEventChannelClosedError,
 } from './errors.js';
-export type { TurnFailureCode, TurnFailurePhase } from './errors.js';
+export type { TurnFailureCode } from './errors.js';
 export { SessionInteractionQueue } from './interactionQueue.js';
 export type { PendingInteraction } from './interactionQueue.js';
 export { SessionContinuationQueue } from './sessionContinuationQueue.js';

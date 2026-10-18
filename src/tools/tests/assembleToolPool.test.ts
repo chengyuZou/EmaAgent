@@ -57,7 +57,7 @@ describe('assembleToolPool', () => {
     expect(Object.isFrozen(pool.tools)).toBe(true);
   });
 
-  it('Builtin 是稳定前缀，MCP 按原始来源形成稳定后缀', () => {
+  it('Builtin 是稳定前缀,MCP 按原始来源形成稳定后缀', () => {
     const registry = new ToolRegistry();
     const mcpZ = makeTool(
       'mcp.z',
@@ -81,7 +81,7 @@ describe('assembleToolPool', () => {
       .toEqual([builtinA, builtinZ, mcpA, mcpZ]);
   });
 
-  it('Registry 热更新不改变已建立的根 Turn ToolPool', () => {
+  it('Registry 热更新不改变已建立的Turn ToolPool', () => {
     const registry = new ToolRegistry();
     const first = makeTool(
       'mcp.remote.read',

@@ -1,4 +1,3 @@
-// 测试工具结果按 UTF-8 单项预算异步外置, 同时保持磁盘失败时不丢正文。
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';

@@ -18,7 +18,7 @@ export type BackgroundProcessNotifiableStatus =
   | 'failed'
   | 'timedOut';
 
-// BackgroundProcessSettings 已移入 settings.ts(设置接口统一在 settings 文件)。
+
 
 export interface BackgroundProcessSummary {
   id: string;
@@ -38,7 +38,7 @@ export interface BackgroundProcessSummary {
   stdoutBytes: number;
   stderrBytes: number;
   outputTruncated: boolean;
-  /** 日志目录绝对路径(stdout.log/stderr.log 所在),供前端"在文件管理器中显示"。 */
+  /** 日志目录绝对路径(stdout.log/stderr.log 所在),供前端"在文件管理器中显示". */
   outputDir: string;
 }
 
@@ -80,7 +80,7 @@ export type BackgroundCommandResult =
       backgroundProcessId: string;
       status: 'queued' | 'running';
       outputPreview: string;
-      /** 日志落盘位置(相对数据目录), 供模型后续 Read 完整输出。 */
+      /** 日志落盘位置(相对数据目录), 供模型后续 Read 完整输出. */
       outputRelativePath: string;
     };
 
@@ -104,7 +104,7 @@ export type BackgroundProcessOutputPathFactory = (
   processId: string,
 ) => BackgroundProcessOutputLocation;
 
-/** 读取期把行内存储的相对路径解析为当前数据目录下的绝对位置。 */
+/** 读取期把行内存储的相对路径解析为当前数据目录下的绝对位置. */
 export type BackgroundProcessOutputLocationResolver = (
   relativeDirectory: string,
 ) => BackgroundProcessOutputLocation;

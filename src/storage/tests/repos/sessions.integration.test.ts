@@ -1,4 +1,3 @@
-// 测试 Session 行新形状（fork 溯源/无 group 与 pinned_at）、项目分组投影、搜索投影与 Fork 重映射。
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SessionsRepo } from '../../repos/data/sessions.js';
 import { createTestDatabase, type TestDatabase } from '../helpers/create-test-database.js';
@@ -16,7 +15,7 @@ describe('SessionsRepo integration', () => {
     database.close();
   });
 
-  it('Session 权限模式默认 default，修改与 Fork 均保留所选模式', () => {
+  it('Session 权限模式默认 default,修改与 Fork 均保留所选模式', () => {
     repo.insert({ id: 'source', title: 'Source', cwd: 'D:/work', createdAt: 1, updatedAt: 1 });
     expect(repo.findById('source')?.permission_mode).toBe('default');
 
@@ -72,7 +71,7 @@ describe('SessionsRepo integration', () => {
     expect(repo.search('可删除搜索正文', 10)).toHaveLength(0);
   });
 
-  it('fork 截断复制并写入 forked_from 双列，消息归属重映射', () => {
+  it('fork 截断复制并写入 forked_from 双列,消息归属重映射', () => {
     insertSession({ id: 'source' });
     insertTurn({ id: 'turn-1', sessionId: 'source', status: 'completed', createdAt: 100, completedAt: 110 });
     insertTurn({ id: 'turn-2', sessionId: 'source', status: 'completed', createdAt: 200, completedAt: 210 });
@@ -155,10 +154,10 @@ describe('SessionsRepo integration', () => {
       .all('fork') as Array<{ id: string; kind: string; summarized_through_message_id: string | null }>;
     expect(forkMessages).toHaveLength(3);
 
-    // 所有消息都重新生成 ID，不与源冲突。
+    // 所有消息都重新生成 ID,不与源冲突.
     expect(forkMessages.every((m) => !['message-a', 'message-summary', 'message-b'].includes(m.id))).toBe(true);
 
-    // summary 游标指向 fork 中的新 A（normal 消息），而不是 NULL。
+    // summary 游标指向 fork 中的新 A(normal 消息),而不是 NULL.
     const summary = forkMessages.find((m) => m.kind === 'summary')!;
     expect(summary.summarized_through_message_id).not.toBeNull();
     const cursorTarget = forkMessages.find((m) => m.id === summary.summarized_through_message_id)!;

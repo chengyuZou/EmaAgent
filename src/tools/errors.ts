@@ -2,7 +2,6 @@ import { ZodError } from 'zod';
 import type { ToolOrigin } from './Tool/tool.js';
 import type { ToolExecutionStatus } from './execution/toolExecutionState.js';
 
-// ── 工具注册与输入准备 ───────────────────────────────────────────────────────
 
 export class ToolRegistryError extends Error {
   constructor(message: string) {
@@ -44,7 +43,6 @@ export class ToolInputError extends Error {
   }
 }
 
-// ── 工具执行状态 ─────────────────────────────────────────────────────────────
 
 /** 执行失败时仍有业务结果, 如已建立的子代理 Run 引用. 执行器分别保存 output 与错误. */
 export class ToolExecutionError extends Error {
@@ -75,7 +73,6 @@ export class ToolExecutionStateConflictError extends Error {
   }
 }
 
-// ── 工具定义装配 ─────────────────────────────────────────────────────────────
 
 /** buildTool() 收到的 Tool 声明不满足运行时不变量. */
 export class ToolDefinitionError extends RangeError {
@@ -85,7 +82,6 @@ export class ToolDefinitionError extends RangeError {
   }
 }
 
-// ── Tool Result 存储 ─────────────────────────────────────────────────────────
 
 /** ToolResultStore 收到非法参数. */
 export class ToolResultStoreError extends RangeError {
@@ -95,11 +91,9 @@ export class ToolResultStoreError extends RangeError {
   }
 }
 
-// ── 后台进程 ─────────────────────────────────────────────────────────────────
 
 export type BackgroundProcessErrorCode =
   | 'shutting_down'
-  | 'starts_closed'
   | 'stopped_before_start'
   | 'state_changed_before_stop'
   | 'not_attached'

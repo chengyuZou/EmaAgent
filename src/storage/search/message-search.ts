@@ -6,10 +6,10 @@ interface UnknownBlock {
 }
 
 /**
- * 从 blocks_json 提取用户在会话界面可见的正文。
+ * 从 blocks_json 提取用户在会话界面可见的正文.
  *
- * 只收录字符串消息与 `type=text` block；thinking、tool_use、tool_result、
- * 图片/音频/base64、内部 context 和 metadata 均不会进入通用会话搜索索引。
+ * 只收录字符串消息与 `type=text` block;thinking,tool_use,tool_result,
+ * 图片/音频/base64,内部 context 和 metadata 均不会进入通用会话搜索索引.
  */
 export function extractMessageSearchText(blocksJson: string): string {
   try {
@@ -25,7 +25,7 @@ export function extractMessageSearchText(blocksJson: string): string {
     }
     return normalize(text.join(' '));
   } catch {
-    // 损坏 JSON 不应污染全文索引，也不能阻断消息写入事务。
+    // 损坏 JSON 不应污染全文索引,也不能阻断消息写入事务.
     return '';
   }
 }

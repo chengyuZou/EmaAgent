@@ -42,7 +42,7 @@ describe('MemoryRepo', () => {
     });
   });
 
-  it('同轨 Consolidation 与 Maintenance 串行，不同轨可并行', () => {
+  it('同轨 Consolidation 与 Maintenance 串行,不同轨可并行', () => {
     repo.enqueueConsolidationIfAbsent('work-c', 'work_consolidation', 1);
     expect(repo.claimNext('work_consolidation', 2)?.id).toBe('work-c');
     expect(repo.startMaintenanceIfIdle('work-m', 'work_maintenance', 3)).toBeUndefined();
@@ -128,7 +128,7 @@ describe('MemoryRepo', () => {
     expect(first.items[0]).not.toHaveProperty('error');
   });
 
-  it('完成但无内容、等待整理和已经参与整合分别来自真实提取表', () => {
+  it('完成但无内容,等待整理和已经参与整合分别来自真实提取表', () => {
     repo.enqueueExtraction('empty', 'work_extraction', 'turn-a', 10);
     repo.claimNext('work_extraction', 11);
     repo.complete('empty', 12);

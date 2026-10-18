@@ -1,4 +1,3 @@
-// 验证 fork 固定前缀交接, 当前 Assistant 的落库边界和等待取消.
 import { describe, expect, it, vi } from 'vitest';
 import type { LLMGenerationSource } from '@ema-agent/llm';
 import type { SessionMessage } from '@ema-agent/session';
@@ -20,7 +19,7 @@ function fixture(messages: SessionMessage[]) {
 }
 
 describe('fork 父消息交接', () => {
-  it('没有 fork 领取时, 请求开始、Assistant 完成及失败都不读取 SQL', async () => {
+  it('没有 fork 领取时, 请求开始,Assistant 完成及失败都不读取 SQL', async () => {
     const user = storedMessage('user', '任务');
     const assistant = { ...storedMessage('assistant', [{ type: 'text' as const, text: '回复' }]),
       role: 'assistant' as const };

@@ -1,4 +1,3 @@
-// 测试流式调度器的并发屏障、模型顺序 FIFO、交付/关账握手与取消。
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import type { ToolPermissionContext } from '@ema-agent/permission';
@@ -26,7 +25,7 @@ const PERMISSION_CONTEXT: ToolPermissionContext = {
 
 type AnyTestTool = Tool<{ value: number }, unknown, Record<string, never>, never>;
 
-/** 执行体被门闩控制的假工具;started 在 execute 被调用时兑现。 */
+/** 执行体被门闩控制的假工具;started 在 execute 被调用时兑现. */
 function gatedTool(name: string, concurrencySafe: boolean): {
   tool: AnyTestTool;
   release: () => void;
@@ -47,7 +46,7 @@ function gatedTool(name: string, concurrencySafe: boolean): {
     execute: async (_input, _context, invocation) => {
       markStarted();
       await gate;
-      // 模仿真实 Tool:被中止时以拒绝收场,而不是无视信号照常完成。
+      // 模仿真实 Tool:被中止时以拒绝收场,而不是无视信号照常完成.
       if (invocation.signal.aborted) throw invocation.signal.reason;
       return { name };
     },
@@ -163,7 +162,7 @@ describe('StreamingToolExecutor', () => {
     expect(terminalNames(events)).toEqual(['Slow', 'Fast']);
   });
 
-  it('takeCompletedResults 只交队首连续完成;acknowledgeResult 关账', async () => {
+  it('takeCompletedResults 只交队首连续完成;acknowledgeResult 记录终态', async () => {
     const first = gatedTool('A', true);
     const second = gatedTool('B', true);
     const { executor } = makeExecutor([first.tool, second.tool]);
@@ -181,7 +180,7 @@ describe('StreamingToolExecutor', () => {
     const delivered = executor.takeCompletedResults();
     expect(delivered.map(result => result.toolCallId)).toEqual(['c1', 'c2']);
     expect(() => executor.acknowledgeResult('c1')).not.toThrow();
-    // 重复关账由状态机幂等吸收;未交付的关账才报错。
+    // 重复记录终态由状态机幂等吸收;未交付的记录终态才报错.
     expect(() => executor.acknowledgeResult('c1')).not.toThrow();
     expect(() => executor.acknowledgeResult('c-unknown')).toThrow('tool_result_not_delivered');
   });
@@ -196,7 +195,7 @@ describe('StreamingToolExecutor', () => {
     await Promise.all([victim.started, sibling.started]);
 
     expect(executor.abortTool('c1')).toBe(true);
-    // 模拟进程随取消死亡:门闩放行后,执行体按中止拒绝。
+    // 模拟进程随取消死亡:门闩放行后,执行体按中止拒绝.
     victim.release();
     sibling.release();
     await executor.join();
@@ -218,7 +217,7 @@ describe('StreamingToolExecutor', () => {
 
     await shutdown;
     expect(executor.allDone()).toBe(true);
-    // shutdown 后登记的调用被拒绝,终态只有 c1 一个。
+    // shutdown 后登记的调用被拒绝,终态只有 c1 一个.
     expect(executor.takeCompletedResults().map(r => r.toolCallId)).toEqual(['c1']);
   });
 });

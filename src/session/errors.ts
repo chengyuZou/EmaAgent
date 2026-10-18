@@ -18,7 +18,7 @@ export class SessionPlanGoalConflictError extends Error {
   }
 }
 
-/** 同一 Session 已有根 Turn 或手动 Compact 时拒绝启动另一份根工作. */
+/** 同一 Session 已有 Turn 或手动 Compact 时拒绝启动另一份工作. */
 export class SessionBusyError extends Error {
   readonly code = 'session_busy' as const;
 
@@ -39,7 +39,7 @@ export class SessionWorkBlockedError extends Error {
   }
 }
 
-/** 同一 Session 已有根 Turn 或手动 Compact 时又注册一份工作, 表示调用链重复注册. */
+/** 同一 Session 的工作被重复登记. */
 export class SessionRunningAlreadyRegisteredError extends Error {
   readonly code = 'session_running_already_registered' as const;
 

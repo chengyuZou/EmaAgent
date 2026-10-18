@@ -1,17 +1,17 @@
 import type { SqliteDb } from './database.js';
 
 /**
- * 即使当前 SQLite 构建支持数万个变量，也限制单批 ID 数量，避免生成巨型 SQL。
- * 400 同时兼容传统 999 变量上限下“每个 ID 使用两次”的查询。
+ * 即使当前 SQLite 构建支持数万个变量,也限制单批 ID 数量,避免生成巨型 SQL.
+ * 400 同时兼容传统 999 变量上限下"每个 ID 使用两次"的查询.
  */
 export const SQLITE_ID_BATCH_HARD_LIMIT = 400;
 const SQLITE_FALLBACK_VARIABLE_LIMIT = 999;
 const variableLimitCache = new WeakMap<SqliteDb, number>();
 
 export interface SqliteIdBatchOptions {
-  /** 同一个 ID 在 SQL 中重复绑定的次数。 */
+  /** 同一个 ID 在 SQL 中重复绑定的次数. */
   occurrencesPerId?: number;
-  /** 除 ID 外，SQL 还需要绑定的固定参数数量。 */
+  /** 除 ID 外,SQL 还需要绑定的固定参数数量. */
   fixedParameterCount?: number;
 }
 
@@ -27,7 +27,7 @@ export class SqliteVariableLimitError extends Error {
 }
 
 /**
- * 去重并分批，单批大小同时受 SQLite 实际变量上限和固定 400 ID 上限约束。
+ * 去重并分批,单批大小同时受 SQLite 实际变量上限和固定 400 ID 上限约束.
  */
 export function createSqliteIdBatches(
   db: SqliteDb,

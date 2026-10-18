@@ -8,7 +8,7 @@ import {
 } from '../../index.js';
 
 describe('Character resource persistence', () => {
-  it('只保存资源事实，并在更换主要资源时更新旧主要资源时间', () => {
+  it('只保存资源事实,并在更换主要资源时更新旧主要资源时间', () => {
     const database = new Database({ memory: true, kind: 'profile' });
     database.migrate();
     try {

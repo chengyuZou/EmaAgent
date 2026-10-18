@@ -1,4 +1,3 @@
-// 测试 ToolRegistry 单一库存、稳定 ID 约束和 MCP 原子更新与来源注销。
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { ToolRegistry } from '../assembly/toolRegistry.js';

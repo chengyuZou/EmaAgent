@@ -19,7 +19,7 @@ function withDatabase<T>(kind: TestDatabaseKind, run: (database: Database) => T)
 }
 
 describe('N-003 Settings JSON 防御', () => {
-  it('区分有效、缺失和损坏设置，get 对损坏值安全回退', () => {
+  it('区分有效,缺失和损坏设置,get 对损坏值安全回退', () => {
     withDatabase('profile', (database) => {
       const repo = new SettingsRepo(database.sqlite);
       repo.set('valid', { enabled: true }, 1);

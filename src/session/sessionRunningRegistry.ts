@@ -1,6 +1,3 @@
-// 同一个 Session 只允许一个 Turn 或一次手动 Compact 运行. 这里保存它的
-// 真实身份和取消信号, 让取消, 终态清理与 WebSocket 连接当前值指向同一份工作.
-
 import { SessionBusyError, SessionRunningAlreadyRegisteredError, SessionWorkBlockedError } from './errors.js';
 
 export type SessionRunning =

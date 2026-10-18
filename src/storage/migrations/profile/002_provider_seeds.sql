@@ -1,11 +1,8 @@
--- Provider 种子：19 个内置供应商的能力与协议档。
--- 全部 INSERT OR IGNORE；providers 无启停列，能力可用性 = active_protocol + key。
--- created_at 1..19 即设置页卡片顺序（providers 列表按 created_at ASC 排序）。
--- 演进规则（写进施工单）：后续新增 provider/协议只追加新迁移；
--- 协议演进必须 WHERE EXISTS 对应 providers / provider_capabilities 行，
--- 尊重用户删除；永不 UPDATE/DELETE 用户行。
--- 模型不种子：llm/vision 候选来自 models.dev 内存目录，其余能力手填；
--- provider_models 行 = 用户动过的模型（手填或目录选中落行）。
+-- Provider 种子:19 个内置供应商的能力与协议档.
+-- 全部 INSERT OR IGNORE;providers 无启停列,能力可用性 = active_protocol + key.
+-- created_at 1..19 即设置页卡片顺序(providers 列表按 created_at ASC 排序).
+-- 模型不种子:llm/vision 候选来自 models.dev 内存目录,其余能力手填;
+-- provider_models 行 = 用户动过的模型(手填或目录选中落行).
 
 INSERT OR IGNORE INTO providers (id, name, icon_id, auth_type, created_at, updated_at) VALUES
   ('openai',      'OpenAI',               'openai',      'bearer',  1,  1),

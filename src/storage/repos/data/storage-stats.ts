@@ -1,5 +1,3 @@
-// 汇总 data.db 与单个 Session 的可展示统计，不承担备份、恢复或业务写入。
-// 同表指标一次扫描取全(条件聚合),不做"每指标一次子查询"的重复扫描。
 import type { SqliteDb } from '../../database/database.js';
 
 export interface DataDirStats {
@@ -13,7 +11,7 @@ export interface DataDirStats {
   backgroundProcessCount: number;
   totalInputTokens: number;
   totalOutputTokens: number;
-  /** attachment_images + attachment_pasted_texts 两本账合计。 */
+  /** attachment_images + attachment_pasted_texts 两本账合计. */
   attachmentCount: number;
   attachmentTotalBytes: number;
   visionDescriptionCount: number;
@@ -46,7 +44,7 @@ export class DataDirStatsRepo {
   constructor(private readonly db: SqliteDb) {}
 
   getStats(): DataDirStats {
-    // 不同表各一次 COUNT 是物理下限;COUNT(*) 走 OP_Count 只数条目不解码行。
+    // 表名由下面的固定调用给出, 不是用户输入. 同表的数量和体积在一次聚合中读取.
     const count = (table: string): number =>
       (this.db.prepare(`SELECT COUNT(*) AS c FROM ${table}`).get() as CountRow).c;
     const countBytes = (table: string): CountBytesRow =>
@@ -95,7 +93,7 @@ export interface SessionSummary {
   totalOutputTokens: number;
 }
 
-/** 存储页 Session 手风琴的行投影:身份+最后活跃+消息数+Token 合计,一条 SQL 取全。 */
+/** 存储页 Session 手风琴的行投影:身份+最后活跃+消息数+Token 合计,一条 SQL 取全. */
 export interface SessionListSummary {
   id: string;
   title: string;
@@ -108,7 +106,7 @@ export interface SessionListSummary {
 export class SessionStatsRepo {
   constructor(private readonly db: SqliteDb) {}
 
-  /** 存储页 Session 列表:按最后活跃倒序,一行带摘要。 */
+  /** 存储页 Session 列表:按最后活跃倒序,一行带摘要. */
   listSummaries(): SessionListSummary[] {
     const rows = this.db.prepare(`
       SELECT s.id, s.title, s.last_activity_at,
@@ -133,7 +131,7 @@ export class SessionStatsRepo {
     }));
   }
 
-  /** 全部 Session 的消息数与 Token 合计:L2 折叠态行的数字源,一次 GROUP BY 取全。 */
+  /** 返回每个 Session 的消息数与 LLM Token 合计, 正文和调用明细不进入列表. */
   summariesBySession(): Map<string, SessionSummary> {
     const rows = this.db.prepare(`
       SELECT s.id AS session_id,
@@ -161,7 +159,7 @@ export class SessionStatsRepo {
            FROM ${table} WHERE session_id = ?`,
       ).get(sessionId) as CountBytesRow;
 
-    // Turn 生命周期指标与物理模型消费分属两本账，各扫描自己的 Session 区间。
+    // Turn 生命周期指标与物理模型消费分属两本账,各扫描自己的 Session 区间.
     const turns = this.db.prepare(`
       SELECT COUNT(*) AS turn_count
         FROM turns WHERE session_id = ?

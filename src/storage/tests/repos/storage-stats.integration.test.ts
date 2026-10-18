@@ -1,4 +1,3 @@
-// 存储统计按 Turn 生命周期与调用级 Usage 两本事实账汇总，并合并附件账本。
 import { beforeEach, afterEach, describe, expect, it } from 'vitest';
 import { Database } from '../../database/database.js';
 import { DataDirStatsRepo, SessionStatsRepo } from '../../repos/data/storage-stats.js';

@@ -1,4 +1,3 @@
-// 统一导出 Storage 数据库、迁移和各业务 Repo。
 export { Database, DatabaseCapabilityError } from './database/database.js';
 export { MigrationsRunner } from './database/migrationsRunner.js';
 export { NarrativeChunksRepo } from './repos/narrative/chunks.js';
@@ -153,7 +152,6 @@ export type {
   RelationshipMemoryExtraction,
   WorkMemoryExtraction,
 } from './repos/data/memory.js';
-// ── Subagent 存储 ─────────────────────────────────────────────────────────────
 export { SubagentsRepo } from './repos/data/subagents.js';
 export { SubagentRunsRepo } from './repos/data/subagentRuns.js';
 export {

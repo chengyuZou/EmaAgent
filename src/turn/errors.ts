@@ -13,14 +13,6 @@ export type TurnFailureCode =
   | 'turn/setup_failed'
   | 'turn/execution_failed';
 
-/** Turn 失败发生的业务阶段; 用于诊断, 不参与执行控制. */
-export type TurnFailurePhase =
-  | 'setup'
-  | 'provider'
-  | 'persistence'
-  | 'tool'
-  | 'unknown';
-
 /** 业务层发现跨 Session 引用 Turn 时抛出的稳定错误. */
 export class TurnOwnershipError extends Error {
   readonly code = 'turn_ownership_violation' as const;
@@ -50,7 +42,6 @@ export class TurnEventChannelClosedError extends Error {
   }
 }
 
-// ── 失败终态的错误码映射 ─────────────────────────────────────────────────────
 
 const PROVIDER_FAILURE_CODES: ReadonlySet<string> = new Set([
   'auth/api_key_invalid',

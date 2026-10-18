@@ -1,7 +1,3 @@
-// 集中声明内置工具稳定身份和模型可见名称,避免权限,恢复与展示继续共用一个字符串.
-// 身份定义放在工具框架层(tools):框架层的规则系统/设置/目录投影都需要引用工具
-// 身份;具体工具实现包(builtinTools)从本包导入再导出,保持既有消费路径不变.
-// variant 是工具的职责分组(前端展示分组的唯一事实源),逐工具名映射不归消费方维护.
 export type BuiltinToolVariant = 'read' | 'search' | 'shell' | 'edit' | 'ask' | 'task' | 'skill' | 'agent';
 
 export interface BuiltinToolIdentity {

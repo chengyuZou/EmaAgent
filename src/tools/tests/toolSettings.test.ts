@@ -1,4 +1,3 @@
-// tools.disabled 设置: 默认全开、存值读取、AskUser 不可禁(单一事实源)。
 import { describe, expect, it } from 'vitest';
 import { SettingsStore, InvalidSettingValueError } from '@ema-agent/settings';
 import type { SettingsRepository } from '@ema-agent/settings';

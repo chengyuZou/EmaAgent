@@ -1,4 +1,3 @@
-// 配置 Storage Repository 与 Migration 集成测试。
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({

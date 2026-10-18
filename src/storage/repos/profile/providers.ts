@@ -111,7 +111,7 @@ export class ProvidersRepo {
           now,
           now,
         );
-        // 协议全量替换：协议+地址的记忆以本次保存为准；能力行保留则模型事实不丢。
+        // 协议全量替换:协议+地址的记忆以本次保存为准;能力行保留则模型事实不丢.
         this.db.prepare(
           `DELETE FROM provider_protocols
            WHERE provider_id = ? AND capability = ?`,
@@ -126,7 +126,7 @@ export class ProvidersRepo {
       const retained = new Set(input.capabilities.map((entry) => entry.capability));
       for (const existing of this.listCapabilities(provider.id)) {
         if (retained.has(existing.capability)) continue;
-        // 能力行删除经 FK 级联清理协议与模型事实。
+        // 能力行删除经 FK 级联清理协议与模型事实.
         this.db.prepare(
           `DELETE FROM provider_capabilities
            WHERE provider_id = ? AND capability = ?`,

@@ -9,7 +9,7 @@ export interface AttachmentImageRow {
   created_at: number;
 }
 
-/** 入账时 Turn 还不存在(粘贴即落盘),turn_id 由发送时盖章,不在插入列里 */
+/** 图片保存时 Turn 可能尚未创建, 发送时再写入 turn_id. */
 export type AttachmentImageInsertRow = Omit<AttachmentImageRow, 'turn_id'>;
 
 export class AttachmentImagesRepo {

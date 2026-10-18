@@ -1,4 +1,3 @@
-// 测试流式落库：首个 delta 建消息、tool_use 先落库、孤儿 tool_use 终态合成。
 import { describe, expect, it } from 'vitest';
 import type { AgentLoopEvent } from '@ema-agent/agent';
 import type {
@@ -42,7 +41,7 @@ async function startIteration(writer: TurnMessageWriter, iteration = 1): Promise
 }
 
 describe('TurnMessageWriter', () => {
-  it('首个 delta 创建 assistant 消息，后续 delta 续写同一消息', async () => {
+  it('首个 delta 创建 assistant 消息,后续 delta 续写同一消息', async () => {
     const fake = fakeSessions();
     const writer = makeWriter(fake);
     await startIteration(writer);
@@ -57,7 +56,7 @@ describe('TurnMessageWriter', () => {
     expect(fake.updates[0]!.blocks).toEqual([{ type: 'text', text: '你好' }]);
   });
 
-  it('tool_use_completed 落库并登记孤儿；tool_result 落库后解除', async () => {
+  it('tool_use_completed 落库并登记孤儿;tool_result 落库后解除', async () => {
     const fake = fakeSessions();
     const writer = makeWriter(fake);
     await startIteration(writer);
@@ -95,12 +94,12 @@ describe('TurnMessageWriter', () => {
     ]);
 
     await writer.finish('completed');
-    // completed 且无孤儿：不再补 interrupted，也不合成取消结果。
+    // completed 且无孤儿:不再补 interrupted,也不合成取消结果.
     expect(fake.interrupted).toHaveLength(0);
     expect(fake.appends.filter(a => a.kind === 'tool_results')).toHaveLength(1);
   });
 
-  it('aborted 终态：assistant 标 interrupted，孤儿 tool_use 合成取消结果', async () => {
+  it('aborted 终态:assistant 标 interrupted,孤儿 tool_use 合成取消结果', async () => {
     const fake = fakeSessions();
     const writer = makeWriter(fake);
     await startIteration(writer);
@@ -123,14 +122,14 @@ describe('TurnMessageWriter', () => {
       {
         type: 'tool_result',
         toolCallId: 'c1',
-        content: '[Turn 中断，工具调用未产生结果]',
+        content: '[Turn 中断, 工具调用未产生结果]',
         isError: true,
         errorCode: 'tool/cancelled',
       },
     ]);
   });
 
-  it('iteration_started 重置本轮累积，新迭代另起消息', async () => {
+  it('iteration_started 重置本轮累积,新迭代另起消息', async () => {
     const fake = fakeSessions();
     const writer = makeWriter(fake);
     await startIteration(writer);

@@ -1,4 +1,3 @@
-// 验证身份与 Run 的事务同步、单运行约束、Cursor 和不携带统计的身份列表.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Database } from '../../database/database.js';
 import { SubagentMessagesRepo } from '../../repos/data/subagent-messages.js';
@@ -174,7 +173,7 @@ describe('Subagent 身份与 Run', () => {
     expect(runs.findById('run-b')).toBeUndefined();
   });
 
-  it('身份写入失败时配置、终态和开始执行的 Run 写入一起回滚', () => {
+  it('身份写入失败时配置,终态和开始执行的 Run 写入一起回滚', () => {
     const beforeRun = runs.findById('run-a');
     const beforeIdentity = identities.findById(subagentId);
     database.db.exec(`
@@ -199,7 +198,7 @@ describe('Subagent 身份与 Run', () => {
     expect(identities.findById(subagentId)).toMatchObject({ status: 'cancelled', updated_at: 4 });
   });
 
-  it('异常退出只收口 running Run, 并同步身份, 无父调用不伪造 ToolCallId', () => {
+  it('异常退出只更新 running Run, 并同步身份, 无父调用不伪造 ToolCallId', () => {
     runs.failRun('run-a', 'prepare failed', 4);
     runs.startRun({ id: 'run-b', subagentId, contextMode: 'subagent', createdAt: 5 });
     expect(runs.listRunningRuns().map(row => row.id)).toEqual(['run-b']);

@@ -1,4 +1,3 @@
-// Store model rows without interpreting capability-specific business fields.
 import type { SqliteDb } from '../../database/database.js';
 import type { ModelCapabilityRow } from './providers.js';
 
@@ -60,6 +59,7 @@ export class ProviderModelsRepo {
 
   save(model: ProviderModelRow): void {
     const now = Date.now();
+    // 刷新模型信息时保留用户已有的 enabled 选择; 启停通过 setEnabled 单独修改.
     this.db.prepare(
       `INSERT INTO provider_models
          (provider_id, capability, model_id, name, source, enabled, context_window, max_output,

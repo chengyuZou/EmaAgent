@@ -1,4 +1,3 @@
-// 把工具作者声明补齐并冻结为唯一的 Tool 形态。
 import type { Tool } from './tool.js';
 import { ToolDefinitionError } from '../errors.js';
 
@@ -17,8 +16,8 @@ type ToolDefinition<TInput, TOutput, TContext, TProgress> =
   & Partial<Pick<Tool<TInput, TOutput, TContext, TProgress>, DefaultedToolFields>>;
 
 /**
- * buildTool 只提供安全默认值，不创建第二套 BuiltTool 或公开 unsafe 方法。
- * 类型擦除属于 ToolPool；MCP 自报风险只升不降由 MCP Tool 自己的 checkPermissions 保证。
+ * 未声明并发安全的工具默认独占执行, 避免同时修改共享状态.
+ * MCP 的风险提示由其 checkPermissions 解释, 此处不根据来源降低权限要求.
  */
 export function buildTool<TInput, TOutput, TContext, TProgress = never>(
   definition: ToolDefinition<TInput, TOutput, TContext, TProgress>,
@@ -46,7 +45,7 @@ export function buildTool<TInput, TOutput, TContext, TProgress = never>(
     id: definition.id ?? definition.name,
     origin,
     maxResultBytes,
-    // 工具必须主动声明并发安全；忘记声明只会更保守，不会并发写坏共享状态。
+    // 工具必须主动声明并发安全;忘记声明只会更保守,不会并发写坏共享状态.
     isReadOnly: definition.isReadOnly ?? (() => false),
     isConcurrencySafe: definition.isConcurrencySafe ?? (() => false),
     requiresUserInteraction: definition.requiresUserInteraction ?? (() => false),

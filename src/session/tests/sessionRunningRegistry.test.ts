@@ -1,9 +1,8 @@
-// 测试 SessionRunningRegistry 的身份匹配取消、清理等待和注册关闭窗口.
 import { describe, expect, it } from 'vitest';
 import { SessionRunningRegistry } from '../sessionRunningRegistry.js';
 
 describe('SessionRunningRegistry', () => {
-  it('会话停止立即取消根工作, 只禁止该会话的新注册, 等全部重叠操作结束才恢复', async () => {
+  it('会话停止立即取消当前工作, 只禁止该会话的新注册, 等全部重叠操作结束才恢复', async () => {
     const registry = new SessionRunningRegistry();
     const signal = registry.register('s1', { kind: 'compact', compactId: 'compact' });
     const otherSignal = registry.register('s2', { kind: 'turn', turnId: 'other' });
@@ -54,7 +53,7 @@ describe('SessionRunningRegistry', () => {
     ]);
   });
 
-  it('register 记录根 Turn 或手动 Compact 的真实身份', () => {
+  it('register 记录 Turn 或手动 Compact 的真实身份', () => {
     const registry = new SessionRunningRegistry();
     registry.register('s1', { kind: 'compact', compactId: 'compact-1' });
     expect(registry.getRunning('s1')).toEqual({
@@ -97,7 +96,7 @@ describe('SessionRunningRegistry', () => {
     await pending;
   });
 
-  it('abortAll 通知全部根 Turn 与手动 Compact, 并等待执行所有者清理', async () => {
+  it('abortAll 通知全部 Turn 与手动 Compact, 并等待执行所有者清理', async () => {
     const registry = new SessionRunningRegistry();
     const turn = { kind: 'turn', turnId: 'turn-1' } as const;
     const compact = { kind: 'compact', compactId: 'compact-1' } as const;

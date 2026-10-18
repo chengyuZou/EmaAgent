@@ -1,4 +1,3 @@
-// 测试 Tool 执行状态机的合法迁移、CAS 冲突防护与从 Message 事实推终态。
 import { describe, expect, it } from 'vitest';
 import {
   ToolExecutionState,
@@ -11,7 +10,7 @@ import {
 const SESSION_ID = '00000000-0000-4000-8000-0000000000a1';
 const TURN_ID = '00000000-0000-4000-8000-0000000000b1';
 
-/** 内存版原子存储:与 SQL 实现同语义(version CAS + from 集合)。 */
+/** 内存版原子存储:与 SQL 实现同语义(version CAS + from 集合). */
 class InMemoryStore implements ToolExecutionStateStore {
   private readonly rows = new Map<string, ToolExecutionRecord>();
 
@@ -97,7 +96,7 @@ describe('ToolExecutionState', () => {
     expect(() => state.outcomeUnknown(callId)).toThrow(ToolExecutionStateConflictError);
   });
 
-  it('running 中取消按 outcome_unknown 关账而非 cancelled', () => {
+  it('running 中取消按 outcome_unknown 记录终态而非 cancelled', () => {
     const { state, callId } = createState();
     state.authorize(callId);
     state.start(callId);

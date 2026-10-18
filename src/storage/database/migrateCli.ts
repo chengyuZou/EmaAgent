@@ -4,16 +4,8 @@ import path from 'node:path';
 import os   from 'node:os';
 import fs   from 'node:fs';
 
-// ── CLI:迁移 profile + data DB ───────────────────────────────────────────────
-//
-// 用法:
-//   tsx database/migrateCli.ts                      # 两者都执行
-//   tsx database/migrateCli.ts --status             # 查看版本
-//   tsx database/migrateCli.ts --data-dir D:\X      # 覆盖激活的 dataDir
-//
-// 默认路径:
-//   profile.db  -> ~/.ema-agent/profile.db
-//   data.db     -> ~/.ema-agent/data/data.db  (默认数据目录;UI 允许用户移动)
+// CLI 不读取应用当前选择的数据目录, 迁移其他目录时必须传 --data-dir.
+// --status 也会创建目录并打开数据库, 但不执行迁移.
 
 const HOME = os.homedir();
 

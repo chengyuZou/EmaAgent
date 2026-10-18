@@ -1,4 +1,3 @@
-// 固定父请求的消息与 ID, 真实 fork 领取后才构建父前缀; 不负责写子代理消息表.
 import type { ForkParentMessage, ForkParentMessages } from '@ema-agent/agent';
 import type { LLMGenerationSource, Message } from '@ema-agent/llm';
 import type { MessageBlocks, SessionStore } from '@ema-agent/session';

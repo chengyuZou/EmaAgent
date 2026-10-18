@@ -1,5 +1,3 @@
-// 按 Session 串联排队输入, 后台终态与 Goal, 在既有迭代边界或 Turn 收尾后交付.
-
 import { randomUUID } from 'node:crypto';
 import type { SubagentStatus } from '@ema-agent/agent';
 import type { Goal, GoalStore } from '@ema-agent/goal';

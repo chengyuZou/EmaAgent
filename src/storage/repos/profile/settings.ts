@@ -34,8 +34,8 @@ export class SettingsRepo {
   }
 
   /**
-   * 读取设置并保留“缺失”和“数据损坏”的区别。
-   * 普通业务可继续使用 get() 回退默认值，诊断工具则使用本方法定位坏数据。
+   * 读取设置并保留"缺失"和"数据损坏"的区别.
+   * SettingsStore 读取此结果, 再按具体设置定义决定默认值; 此层不判断业务取值范围.
    */
   read(key: string): SettingReadResult {
     const row = this.db
@@ -62,7 +62,7 @@ export class SettingsRepo {
   }
 
   /**
-   * 同一设置页面保存多个相关字段时统一提交，断电只会得到整批旧值或整批新值。
+   * 同一设置页面保存多个相关字段时统一提交,断电只会得到整批旧值或整批新值.
    */
   setMany(entries: readonly SettingWrite[], updatedAt = Date.now()): void {
     if (entries.length === 0) return;

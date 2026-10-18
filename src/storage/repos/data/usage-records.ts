@@ -1,4 +1,3 @@
-// 持久化各类模型的调用级用量，并按 Turn 或 Session 提供确定性查询。
 import type { SqliteDb } from '../../database/database.js';
 import type { ModelCapabilityRow } from '../profile/providers.js';
 
@@ -23,7 +22,7 @@ export interface UsageRecordRow {
   created_at: number;
 }
 
-/** keyset 游标:created_at 主序,id 同刻决胜(与 messages 分页同款,新数据插入不位移)。 */
+/** 按 created_at 和 id 定位下一页, 不使用会随新增记录改变的行偏移. */
 export interface UsageRecordPageCursor {
   readonly createdAt: number;
   readonly id: string;
@@ -77,7 +76,7 @@ export class UsageRecordsRepo {
 
   /**
    * 库级明细查询:参数在才过滤(sessionId/capability 可空),
-   * created_at DESC 倒序 + keyset 游标向回翻。供存储库浏览与未来的用量统计页共用。
+   * 按 created_at DESC, id DESC 返回明细, 游标继续读取更早记录.
    */
   list(filter: UsageRecordListFilter): UsageRecordPage {
     const limit = Math.min(Math.max(filter.limit ?? 100, 1), 500);
@@ -111,7 +110,7 @@ export class UsageRecordsRepo {
     };
   }
 
-  /** 删除早于 cutoffMs 的记录，返回删除行数；由启动一次性保留清理调用。 */
+  /** 删除早于 cutoffMs 的记录,返回删除行数;由启动一次性保留清理调用. */
   deleteOlderThan(cutoffMs: number): number {
     const result = this.db.prepare(
       'DELETE FROM usage_records WHERE created_at < ?',

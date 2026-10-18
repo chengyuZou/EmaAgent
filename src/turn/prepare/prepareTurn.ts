@@ -1,4 +1,3 @@
-// 固定本轮使用的附件, 模型, Prompt, Skill, 权限与工具层, 产出 PreparedTurn.
 import {
   readAgentSettings,
   type AgentLoopEvent,
@@ -62,18 +61,18 @@ export interface PreparedTurn {
   readonly completeLLM: CompleteLLM;
   readonly providerId: string;
   readonly modelId: string;
-  /** prepare 解析出的实际调用协议（resolveConnection().protocol 冻结，与模型身份同时回填 Turn）。 */
+  /** prepare 解析出的实际调用协议(resolveConnection().protocol 冻结,与模型身份同时回填 Turn). */
   readonly protocol: LLMProtocol;
   readonly contextWindow: number;
-  /** 模型单次输出上限（null = 未知，仅按预算裁剪）。 */
+  /** 模型单次输出上限(null = 未知,仅按预算裁剪). */
   readonly maxOutput: number | null;
   readonly supportsImageInput: boolean;
-  /** 开启 thinking 时冻结的中立推理配置（enabled + effort），协议 Adapter 各自映射。 */
+  /** 开启 thinking 时冻结的中立推理配置(enabled + effort),协议 Adapter 各自映射. */
   readonly thinking?: LLMThinking;
   /** 本轮已读取的动态输入; 子代理复用数据段, 换成自己的模型和工具, 不传根角色人设. */
   readonly DynamicSystemPromptInput: DynamicSystemPromptInput;
   readonly systemPrompt: readonly PromptBlock[];
-  /** 持久化用的用户消息块；附件只保存 attachment_ref。 */
+  /** 按输入顺序持久化的消息块, 附件保存 image/file/pasted_text_reference. */
   readonly userMessageBlocks: MessageBlocks;
   readonly skillPool?: SkillPool;
   readonly compactSettings: CompactSettings;
@@ -88,7 +87,7 @@ export interface PrepareTurnDeps extends TurnToolsDeps {
   readonly providerModels: ProviderModels;
   readonly attachments: AttachmentStore;
   readonly characterPrompt: () => readonly string[];
-  /** SkillRegistry 当前全量条目（含本 Turn 工作区的 project 技能）；冻结在 Pool 之前读取一次。 */
+  /** SkillRegistry 当前全量条目(含本 Turn 工作区的 project 技能);冻结在 Pool 之前读取一次. */
   readonly skillEntries: (
     cwd: string,
     projectId: string | null,
@@ -97,13 +96,13 @@ export interface PrepareTurnDeps extends TurnToolsDeps {
   readonly disabledSkillPaths: () => readonly string[];
   /** 缺省时使用 llm 包的 createLLMCall, 测试可注入预先安排好事件的调用函数. */
   readonly createLLMCall?: (connection: LLMConnection, modelId: string) => CallLLM;
-  /** 工作区指令（EMA.md/CLAUDE.md）按本 Turn 的工作区读取；无工作区时不会调用。 */
+  /** 工作区指令(EMA.md/CLAUDE.md)按本 Turn 的工作区读取;无工作区时不会调用. */
   readonly workspaceInstructions?: (cwd: string) => string | null;
   /** 记忆使用指引由 memory 包提供; Work 摘要和角色关系记忆经 reminder 注入. */
   readonly memoryGuidance?: () => Promise<string | null> | string | null;
-  /** 模型不支持图片时的 Vision 描述入口。 */
+  /** 模型不支持图片时的 Vision 描述入口. */
   readonly describeImage?: DescribeImage;
-  /** Vision 描述缓存(path 键);与 describeImage 同时注入才会现做生产。 */
+  /** Vision 描述缓存(path 键);与 describeImage 同时注入才会现做生产. */
   readonly visionCache?: VisionDescriptionCache;
   readonly scratchpadDirForTurn?: (sessionId: string, turnId: string) => string;
 }
@@ -113,7 +112,7 @@ export interface PrepareTurnInput {
   /** TurnStore 已创建的 Turn 身份; Session 身份只取 request.sessionId. */
   readonly turnId: string;
   readonly prepareSubagent: PrepareSubagent;
-  /** 事件出口由 turn.ts 绑定到本 Turn 的事件通道（每 Turn 一个）。 */
+  /** 事件出口由 turn.ts 绑定到本 Turn 的事件通道(每 Turn 一个). */
   readonly emit: (event: TurnStreamEvent) => void;
   readonly onSubagentLLMCallFinished?: (
     event: Extract<AgentLoopEvent, { type: 'llm_call_finished' }>,
@@ -148,7 +147,7 @@ export async function prepareTurn(
   if (!supportsImageInput && attachmentBlocks.some(b => b.type === 'image_reference')) {
     degradations.push({
       attempt: 1,
-      reason: '当前 LLM 不支持图片输入，附件图片已转换为文本',
+      reason: '当前 LLM 不支持图片输入, 附件图片将按可用描述或标签交付',
       removed: ['image'],
       replacements: ['description'],
     });
@@ -220,7 +219,6 @@ export async function prepareTurn(
   });
 }
 
-/** 把输入数组逐项映射为同序的 Session 块；模型内容统一从该持久形态派生。 */
 /**
  * 初始输入和运行中立即引导共用这一条解析链. Skill 必须先确认存在,
  * 然后附件才登记到 Turn, 避免无效 Skill 留下孤立附件记录.
@@ -288,7 +286,7 @@ function prepareOrderedInput(
     : sessionBlocks;
 }
 
-/** Skill Chip 提交绝对 SKILL.md path;准备期解析成当前 Pool 中已经冻结的描述符。 */
+/** Skill Chip 提交绝对 SKILL.md path;准备期解析成当前 Pool 中已经冻结的描述符. */
 function resolveSelectedSkills(
   input: readonly TurnInputPart[],
   skillPool: SkillPool | undefined,
@@ -300,7 +298,7 @@ function resolveSelectedSkills(
     if (!descriptor) {
       throw new TurnPreparationError(
         'turn/setup_failed',
-        `选择的 Skill 不存在或已被禁用：${part.path}`,
+        `选择的 Skill 不存在或已被禁用: ${part.path}`,
       );
     }
     selected.set(part.path, descriptor);

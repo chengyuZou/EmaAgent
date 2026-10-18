@@ -1,71 +1,58 @@
 # Session
 
-`src/session` 拥有持久会话、项目与消息历史的**业务规则**：什么能写、怎么写、写完联动什么。SQL 归 storage，协议归 server，Turn 执行归 turn 包。
+[中文](./README-zh.md)
 
-## 领域事实
+Session manages conversations, projects, message history and the current running-work registration. `SessionStore` applies business rules using Storage repositories; `SessionRunningRegistry` holds in-process Turn/compaction identities and cancellation signals.
 
-- **Session**: 标题, 非空 `cwd`, projectId, createdAt/updatedAt/lastActivityAt, archivedAt, pinned, fork 溯源双列, permissionMode, ttsEnabled, 当前模型(providerId/modelId), 推理强度(reasoningEffort)与 lastViewedAt. 模型身份成对保存, `'off'` 表示关闭推理; 普通消息不携带本轮覆盖值. `ttsEnabled` 是每个 Session 自己的语音选择, 创建时从新对话草稿写入, 后续由 Session patch 修改; 直接发送和排队续接都在 Turn 启动时读取它, 不从消息请求或队列选项读取. `cwd` 是命令和相对路径的起点, 新建时选定, 此后只由用户显式修改. Storage 的 `sidebar_order` 只表达所在侧栏分区内的顺序, 不进入 Session API; 拖放与新 Turn 开始会更新它.
-- **SessionListItem** = Session + 列表投影三字段（hasActiveTurn / lastTurnStatus / hasUnread）。三字段只由列表/搜索 SQL 的 CTE 算出；单查路径返回裸 Session，不允许伪造投影。
-- **Project**：id、name、pinned、createdAt、updatedAt、folders[]、sessions[]。可以没有源文件夹；有文件夹时其中一个为主。侧栏 Project 的 sessions[] 只包含当前在项目区显示的成员，置顶 Session 单独进入置顶桶。Storage 的 `sidebar_order` 独立保存 Project 在置顶/普通项目区的顺序。
-- **Message**：sessionId、可空 turnId（null = /compact summary 等 Session 级消息）、role、kind（normal / reminder / tool_results / summary）、blocks、interrupted、createdAt。用户块允许 `attachment_ref` 与 `skill_ref`，只保存稳定引用，不复制附件正文或 SKILL.md。
+## Conversations and projects
 
-## 公共入口
+Create a store with a data `Database`, optional change/file-cleanup callbacks and `isWorkClosed` supplied by the running registry. `createSession` chooses cwd once: explicit input, then the project's primary folder, then `~/.ema-agent/workspace`. The fallback is created if needed. Project membership and later folder changes do not rewrite existing Session cwd.
 
-压缩摘要的 `SessionMessage.savedTokens` 是压缩前后完整请求 Token 估算的减少量, 由 Compact 计算并与摘要一起保存到 `messages.summary_saved_tokens`. 手动和自动压缩使用同一字段, Fork 和备份保留它. 未记录该值的历史摘要不补造数字. 聊天只显示压缩提示与减少量, 正文仍保存在 `blocks` 中供设置页查看.
+Provider/model selection is stored as a pair; reasoning `off` explicitly disables reasoning. Permission mode and TTS selection affect subsequent Turns. Changing permission to Plan checks for an unfinished Goal in the same SQL transaction; a conflict leaves every field unchanged.
 
-`SessionStore` 是唯一读写聚合：
+Sidebar queries return unarchived conversations in pinned Sessions, pinned projects, other projects and recents. Pinned project members appear only in the pinned bucket. `moveSessionInSidebar` changes membership, pinning and insertion position together; moving into pinned clears project membership. List/search items derive running, latest-Turn and unread fields from database facts. Plain `getSession` returns only the Session itself.
 
-- **Session**：createSession（可同时携带 projectId 与显式 cwd；未给 cwd 时取创建当刻的项目主文件夹；项目无主文件夹或无项目时，创建并使用 `~/.ema-agent/workspace`）/ getSession / sessionExists / patchSession（项目成员也可显式改 cwd）/ pin / archive / setViewedAt / updateTitle；
-- **侧栏**: `listSessionsForSidebar()` 只返回未归档会话, 分为置顶 Session, 置顶项目, 其余项目和最近会话. Session 同时满足 pinned 与 project 时进入置顶桶. `moveSessionInSidebar` 一次提交归属、置顶与插入位置, 拖入置顶会清空 projectId; `moveProjectInSidebar` 一次提交项目分区和插入位置; 新 Turn 开始时 Session 回到当前分区顶部. `searchSessions` 不搜归档.
-- **归档概况**: `listArchivedSessions()` 单独返回完整标题, 项目 ID 和名称, 归档时间, 不读取消息正文. Desktop 的 Settings 归档页只按完整标题搜索, 项目另行筛选, 不提供发送入口. 取消归档保留原项目, 置顶和历史, 不自动恢复执行. 单条删除和删除全部归档都先显示确认弹窗; 搜索和项目筛选不缩小全部删除的范围.
-- **Project**：createProject(name, folderPaths, primaryFolderPath?) 在一次事务中创建项目及全部源文件夹；listProjectFolders(projectId) 给 Skills、Permission 读取项目全部源文件夹；rename / delete / pin / 文件夹增删 / 设主 / 拖入拖出。设主、移除文件夹、拖入项目均不改旧 Session 的 cwd；设主只影响以后新建的 Session。
-- **Fork**：forkSession 复制 Turn/Message/Attachment 并重映射 ID，不带 Task、Subagent 或任何在跑的外部副作用；
-- **Message**：appendMessage（turnId 归属校验）/ appendHistorySummary（自动压缩带当前 turnId，手动压缩为 null，且必须带覆盖截止游标）/ loadHistory（最新 summary + 其覆盖游标之后的消息，LLM 可见历史）/ listMessages（UI 正文复合游标页，旧到新）/ listMessagesAround（按 Message 锚点读取有界窗口）/ loadMessagesForTurn（Turn 终态持久收口）/ findToolInteraction（启动恢复）/ markMessageInterrupted / assertMessageOwnership；
-- **删除**：deleteSession 只删本聚合的数据库行并触发 onSessionRemoved 文件清理；活动 Turn 的取消与运行态收口归 TurnStore，由删除用例（Server 编排）先行调用。
-- **批量删除归档**: `deleteArchivedSessions()` 在一个 SQL 事务内读取和删除归档集合, 返回实际删除的 ID. 事务失败时不删除文件、不发事件. Server 在提交后清理这些会话的文件和缓存, 最后发一次批量通知. 这个入口不逐条调用 `deleteSession`, 也不使用单条删除的文件回调.
+`updateTitleIfDefault` conditionally replaces the default title in SQL, so automatic naming cannot overwrite a saved user title. Archived conversations have a separate metadata list. `getSessionForWork` rejects archived/stopping Sessions; history reads and final message writes remain available.
 
-其余出口：
+## Messages and summaries
 
-- `SessionRunningRegistry`: 同一 Session 只记录一个当前根工作, 身份为根 Turn(kind='turn')或手动 Compact(kind='compact'). `runWithSessionClosed` 同步关闭指定会话的新工作入口并取消根工作, 操作结束后解除临时关闭; `waitUntilIdle` 等实际执行者完成清理. `getSessionForWork` 供宿主在排队、启动子代理或命令前取得未归档且没有正在停止的会话, 归档或停止中抛出 `SessionWorkBlockedError`. `getSession` 和消息保存仍可用于查看历史及执行结束前的最后保存.
-- `parseMessageBlocksJson`：blocks_json 的唯一解析点。
-- `collectAttachmentReferenceIds`：一次批量收集消息里全部附件引用 id，供历史重放前批量预取附件。
-- `SessionOwnershipError`：跨 Session 引用的稳定错误。
+`appendMessage` checks Turn ownership, serializes blocks and emits a message-change event after insertion. It does not generate titles. `updateMessageBlocks` replaces the stored blocks under the same Message ID without sending an event for every delta.
 
-`SessionStoreDeps.onChanged` 在对应写入成功后接收 `SessionEvent`:
+Stored user messages can contain text/media, tool results, `image_reference`, `pasted_text_reference`, `file_reference` and `skill_reference`. Assistant messages preserve native block order. `parseMessageBlocksJson` checks database JSON by role and returns a readable placeholder for invalid content. [Context](../context/README.md) converts stored references into model input.
 
-- `session_list_changed { sessionId }` 表示指定会话的列表信息变化. 新建, 改名, 归档, 项目归属修改, Fork 和删除都携带受影响的会话 ID; 删除后单查会话返回不存在.
-- 项目操作发不带 `sessionId` 的 `session_list_changed`, 因为项目名称和分组可能影响多个会话. 消费方需要重新读取列表, 不能把它当成某个会话的详情变更.
-- `sessions_deleted { sessionIds }` 表示一批会话已被删除. 归档页重新读取一次列表, 聊天和存储目录直接移除对应 ID; 不为每个 ID 再发列表变更事件. SQL 已提交后文件清理失败仍通知删除事实, HTTP 结果中的 `cleanupFailures` 供界面提示, 启动时的孤立会话目录清理可再次移除残留文件.
-- `session_messages_changed { sessionId }` 表示该会话新增了持久 Message. 流式 Message 块更新不逐次广播, 完整正文以 Turn 终态事件为刷新边界.
-
-导入备份和末轮回退绕过本 Store 写入口, 分别由 Server 导入路由和 TurnStore 清理回调在提交后发携带 `sessionId` 的列表事件. SSE 和桌面窗口广播传递完整事件, 不丢弃这个 ID.
-
-`patchSession` 切换 Permission 为 plan 时, 在同一 SQL 事务内检查 Goals 当前事实.
-active 或 paused 都表示目标未关闭, 拒绝切换并抛出 `SessionPlanGoalConflictError`,
-其 `goalId` 指出需要用户关闭的目标. 同请求的其它字段也不写入, 不发成功事件.
-完成或删除目标后才允许切 Plan. SessionStore 只读取 Storage 的 GoalRow,
-不导入 Goal 业务包, 不代替用户取消目标. 反方向的新建/激活检查由 GoalStore 负责.
-
-## 会话标题
-
-`DEFAULT_SESSION_TITLE` 是新建时未指定标题的默认值. `appendMessage` 只保存消息, 不生成或修改标题. 自动命名由 [Turn 的发送流程](../turn/README.md#会话自动命名) 判断, 用户手动改名使用 `updateTitle`.
-
-`updateTitleIfDefault(sessionId, title)` 在 SQL 更新时检查当前标题仍为默认值, 避免自动命名覆盖用户已经保存的标题. 更新成功后发 `session_list_changed`, Desktop 重新读取完整标题. Session 不保存截短显示值, 搜索与备份使用完整标题.
-
-## 边界（本包不负责）
-
-- Turn 生命周期, 导航查询和 rewind 由 `@ema-agent/turn` 的 `TurnStore` 负责; 根工作取消信号由 `SessionRunningRegistry` 保存.
-- Wire DTO 不在本包——server/desktop 的协议类型在接线批按真实消费方重建；
-- 跨包删除和归档流程由 Server 的 `application/sessionActions.ts` 负责.
-
-单个会话的删除和归档都由界面先显示确认 Dialog, 取消不发送请求. 确认后只发送一次请求, 不附带确认字段; Server 收到请求就同步关闭这个会话的新执行, 同时通知根 Turn/Compact, 前后台子代理, 前后台命令和语音生成停止, 取消待交互, 清空尚未保存为消息的排队输入, 把未完成 Goal 标记为取消. 归档事实先保存, 历史保留; 删除则等待所有执行完成最后的保存, 再删除数据与附件, 成功返回 204. 取消归档期间如果停止流程还没结束, 请求会被拒绝. 停止不会撤销已经完成的文件修改.
-
-`DELETE /api/sessions/archived` 不接收筛选条件或会话 ID, 删除当前活动数据目录的全部归档. 已完成归档的工作不重复停止; 若某条归档仍在停止, 返回 409 并回滚整批 SQL. 成功返回 200 和 `{ deletedSessionIds, cleanupFailures }`, 没有归档时两个数组都为空且不发事件. 文件清理不属于 SQL 事务, 因此清理失败不会把已经提交的会话行放回数据库. 未归档会话、项目和项目工作目录不作为删除目标.
-
-## 依赖方向
+`appendHistorySummary` requires a last-covered Message ID from the same Session and saves the reduction estimate with the summary. Automatic summaries use the current Turn ID; manual summaries use null. Original messages remain stored.
 
 ```text
-session ──> storage / llm（类型）/ tools（ToolResult 类型）/ permission（PermissionMode 类型）
+Stored:       covered A, covered B, retained C, summary S, later D
+S covers:     through B
+loadHistory:  S, C, D
 ```
 
-不 import turn 业务实现、agent、context、compact、memory 或应用 Route。
+The summary's insertion time is not its coverage boundary. `loadHistory` returns the latest summary and newer uncovered messages in model order, limited to 500 messages by default. UI queries use `listMessages` or `listMessagesAround` instead: pages are always chronological, with opaque createdAt/ID cursors. Default page size is 50, maximum 200; an around-window defaults to 20 before and 30 after, with at most 100 surrounding messages.
+
+## Fork and deletion
+
+`forkSession` copies all history or history through an inclusive Turn, remapping Turn, Message and summary-cursor IDs in one transaction. Managed attachment paths still reference source files rather than independent copies. Deleting the source can therefore make those attachments unreadable in the fork.
+
+The Server coordinates stopping work before deletion. `deleteSession` deletes database rows, then invokes file cleanup, and emits the list change even if cleanup fails. `deleteArchivedSessions` deletes the archived set in one transaction and returns actual IDs. The Server then handles files/caches and one batch event; a file-cleanup failure does not roll SQL back. See [sessionActions.ts](../../apps/server/src/application/sessionActions.ts).
+
+## Running-work registration
+
+Register either `{ kind: 'turn', turnId }` or `{ kind: 'compact', compactId }`. Abort and clear require the same identity, so a late request cannot affect newer work. Abort only signals cancellation; the execution owner must finish saving and call `clear`. `waitUntilIdle` waits for that removal.
+
+`runWithSessionClosed` immediately blocks new work for one Session and aborts its current registration. Overlapping actions keep it closed until all finish. `runWithRegistrationsClosed` blocks registrations globally and serializes its callbacks, used for character changes. These registrations are process state, not persisted history.
+
+## Notifications and checks
+
+| Event | Consumer action |
+| --- | --- |
+| `session_list_changed` with Session ID | Refresh that Session's metadata/list entry. |
+| Same event without ID | Refresh project/grouped lists. |
+| `session_messages_changed` | Read newly stored messages for the Session. |
+| `sessions_deleted` | Remove the listed IDs and refresh affected lists. |
+
+Start with [store.ts](./store.ts), then the specific Storage query. [sessionRunningRegistry.ts](./sessionRunningRegistry.ts) explains cancellation and cleanup ordering. Tests use SQLite for history, ownership, summary boundaries, sidebar rules and preferences, plus isolated registry tests.
+
+```sh
+pnpm --filter @ema-agent/session test
+```

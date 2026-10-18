@@ -63,7 +63,7 @@ export async function prepareContextInput(
   if (!modelFacts || modelFacts.capability !== 'llm') {
     throw new TurnPreparationError(
       'provider/not_configured',
-      `模型未在该 Provider 下启用：${providerId} / ${modelId}`,
+      `模型未在该 Provider 下启用: ${providerId} / ${modelId}`,
     );
   }
 

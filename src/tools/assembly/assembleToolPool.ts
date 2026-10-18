@@ -1,9 +1,8 @@
-// 从进程工具库取得稳定顺序, 调用方再按开关和范围筛选.
 import type { Tool } from '../Tool/tool.js';
 import { ToolPool } from './toolPool.js';
 import type { ToolRegistry } from './toolRegistry.js';
 
-// 根 Pool 同时容纳不同泛型实参的 Tool。
+// 根 Pool 同时容纳不同泛型实参的 Tool.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyTool = Tool<any, any, any, any>;
 
@@ -33,5 +32,7 @@ function compareTools(left: AnyTool, right: AnyTool): number {
 }
 
 function compareText(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
 }

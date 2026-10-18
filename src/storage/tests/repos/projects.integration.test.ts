@@ -1,4 +1,3 @@
-// 测试项目实体：文件夹主从语义、零文件夹，以及成员 cwd 独立性。
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ProjectsRepo } from '../../repos/data/projects.js';
 import { SessionsRepo } from '../../repos/data/sessions.js';
@@ -17,7 +16,7 @@ describe('ProjectsRepo', () => {
 
   afterEach(() => database.close());
 
-  it('首个文件夹自动为主；设为主要后按 updated_at 排在首位', () => {
+  it('首个文件夹自动为主;设为主要后按 updated_at 排在首位', () => {
     projects.insert({ id: 'p1', name: 'Demo', now: 1 });
     projects.addFolder('p1', 'D:/a');
     expect(projects.primaryFolderPath('p1')).toBe('D:/a');
@@ -30,7 +29,7 @@ describe('ProjectsRepo', () => {
     expect(projects.listFolders('p1')[0]!.path).toBe('D:/b');
   });
 
-  it('移除主文件夹后继位，但旧成员 cwd 不变', () => {
+  it('移除主文件夹后继位,但旧成员 cwd 不变', () => {
     projects.insert({ id: 'p1', name: 'Demo', now: 1 });
     projects.addFolder('p1', 'D:/a');
     projects.addFolder('p1', 'D:/b');
@@ -44,7 +43,7 @@ describe('ProjectsRepo', () => {
     expect(sessions.findById('s1')?.cwd).toBe('D:/a');
   });
 
-  it('最后一个文件夹可以移除，此时项目没有主文件夹', () => {
+  it('最后一个文件夹可以移除,此时项目没有主文件夹', () => {
     projects.insert({ id: 'p1', name: 'Demo', now: 1 });
     projects.addFolder('p1', 'D:/a');
     projects.removeFolder('p1', 'D:/a');
@@ -52,7 +51,7 @@ describe('ProjectsRepo', () => {
     expect(projects.primaryFolderPath('p1')).toBeUndefined();
   });
 
-  it('拖入、拖出、删除项目都不改写成员 cwd', () => {
+  it('拖入,拖出,删除项目都不改写成员 cwd', () => {
     projects.insert({ id: 'p1', name: 'Demo', now: 1 });
     projects.addFolder('p1', 'D:/main');
     sessions.insert({ id: 's1', title: 's', cwd: 'D:/original', createdAt: 1, updatedAt: 1 });

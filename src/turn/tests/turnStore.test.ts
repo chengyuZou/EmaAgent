@@ -1,4 +1,3 @@
-// 测试 Turn 生命周期、单 Session 运行锁、取消信号、删除守卫、导航查询与最后一轮回滚。
 import { describe, expect, it } from 'vitest';
 import { Database, MessagesRepo, SessionsRepo } from '@ema-agent/storage';
 import { SessionRunningRegistry } from '@ema-agent/session';
@@ -91,7 +90,7 @@ describe('TurnStore — 生命周期与运行锁', () => {
       .toMatchObject({ tts_enabled: 1 });
   });
 
-  it('同一 Session 已有运行中 Turn 时拒绝第二个（session_busy）', () => {
+  it('同一 Session 已有运行中 Turn 时拒绝第二个(session_busy)', () => {
     const { store, db } = makeStore();
     const sessionId = insertSession(db, 's1');
     startTurn(store, sessionId);
@@ -140,7 +139,7 @@ describe('TurnStore — 生命周期与运行锁', () => {
     expect(() => startTurn(store, sessionId)).not.toThrow();
   });
 
-  it('requestAbort 只触发信号，不提前写 Turn 终态', () => {
+  it('requestAbort 只触发信号,不提前写 Turn 终态', () => {
     const { store, db } = makeStore();
     const sessionId = insertSession(db, 's1');
 
@@ -224,7 +223,7 @@ describe('TurnStore — 导航查询', () => {
     expect(actual).toHaveLength(expected.size);
   });
 
-  it('Turn 索引使用不透明游标分页，预览取自首条 User Message', () => {
+  it('Turn 索引使用不透明游标分页,预览取自首条 User Message', () => {
     const { store, db } = makeStore();
     const sessionId = insertSession(db, 's1');
     for (let index = 0; index < 3; index++) {
@@ -256,7 +255,7 @@ describe('TurnStore — 导航查询', () => {
 });
 
 describe('TurnStore — 回滚', () => {
-  it('只允许回滚最后一轮，并同步删除该轮消息', () => {
+  it('只允许回滚最后一轮,并同步删除该轮消息', () => {
     const { store, db } = makeStore();
     const sessionId = insertSession(db, 's1');
     const { turn: t1 } = startTurn(store, sessionId);
@@ -276,7 +275,7 @@ describe('TurnStore — 回滚', () => {
     expect(new MessagesRepo(db.sqlite).listForTurn(t2.id)).toHaveLength(0);
   });
 
-  it('回滚运行中、跨 Session 和不存在的 Turn 会被拒绝', () => {
+  it('回滚运行中,跨 Session 和不存在的 Turn 会被拒绝', () => {
     const { store, db } = makeStore();
     const s1 = insertSession(db, 's1');
     const s2 = insertSession(db, 's2');

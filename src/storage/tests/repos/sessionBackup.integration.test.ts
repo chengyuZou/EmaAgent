@@ -1,4 +1,3 @@
-// 验证 Session 备份读取器在单次事务内完整流出记录，并对不存在的 Session 返回 null。
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   MessagesRepo,
@@ -63,7 +62,7 @@ describe('SessionBackupReader', () => {
     ).toBeNull();
   });
 
-  it('导出→恢复保留 summary 覆盖游标，按游标切边界得到 [Summary, B]', () => {
+  it('导出→恢复保留 summary 覆盖游标,按游标切边界得到 [Summary, B]', () => {
     database = createTestDatabase();
     const sessions = new SessionsRepo(database.db);
     sessions.insert({
@@ -84,7 +83,7 @@ describe('SessionBackupReader', () => {
         (id, session_id, turn_id, role, kind, blocks_json, created_at, summarized_through_message_id)
       VALUES (?, ?, ?, 'user', ?, ?, ?, ?)
     `);
-    // 旧消息 A、Summary(cursor=A)、未覆盖消息 B。
+    // 旧消息 A,Summary(cursor=A),未覆盖消息 B.
     insertMessage.run('msg-a', 'session-cursor', 'turn-1', 'normal', '"old A"', 10, null);
     insertMessage.run('msg-summary', 'session-cursor', 'turn-1', 'summary', '"summary"', 30, 'msg-a');
     database.db.prepare('UPDATE messages SET summary_saved_tokens = ? WHERE id = ?')
@@ -154,11 +153,11 @@ describe('SessionBackupReader', () => {
     );
     expect(restored).not.toBeNull();
 
-    // restorer 保留 turn/message 原 id（只换 session_id），先删源 Session 避免 UNIQUE 冲突。
+    // restorer 保留 turn/message 原 id(只换 session_id),先删源 Session 避免 UNIQUE 冲突.
     database.db.prepare('DELETE FROM sessions WHERE id = ?').run('session-cursor');
     new SessionBackupRestorer(database.db).restoreSession(restored!);
 
-    // 恢复后游标保留：按游标切边界得到 [Summary, B]。
+    // 恢复后游标保留:按游标切边界得到 [Summary, B].
     const history = new MessagesRepo(database.db)
       .listForSessionFromSummary('session-restored');
     expect(history.map((message) => message.id)).toEqual(['msg-summary', 'msg-b']);

@@ -90,7 +90,7 @@ function renderGoal(goal: Goal | null): string {
     lines.push(`最近累计进度(模型自报, 不是完成判定):\n${goal.feedback}`);
   }
   lines.push(
-    '仅根 Agent 管理 Goal. 子代理只执行父 Agent 派发的子任务, 不自行持续推进或报告根 Goal 状态.',
+    '仅主 Agent 管理 Goal. 子代理只执行父 Agent 派发的子任务, 不自行持续推进或报告主会话 Goal 状态.',
     '通过 GoalGet 读取最新事实. 完成一段实际工作或本轮结束时仍未完成, 使用 GoalUpdate(status=active, feedback=累计进度概况)报告进度, 不必每个 loop 更新.',
     '只有整个目标已完成或最终无法完成时才报告 completed/succeeded 或 completed/failed, 同时提交新的简要累计 feedback. 全部成果的详细总结写在本轮最终回复, 不塞进 feedback. 使用工具返回的最新 version, 不因暂时困难或单次工具报错结束目标.',
     '报告 succeeded 前, 从最新目标正文和其引用的要求逐项核对交付物, 测试, 验收条件和必须保持的约束. 对每项找到当前成果或实际验证结果作为证据, 区分已证明, 不满足, 未验证或证据不足; 仍有未满足或不确定项时继续工作, 不以计划, 意图, 历史记忆或没有发现明显问题代替完成证据. 在收尾 feedback 中简要记录验证依据和覆盖结果.',

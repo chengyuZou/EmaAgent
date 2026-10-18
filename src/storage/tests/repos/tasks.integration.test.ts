@@ -1,5 +1,3 @@
-// 验证持久 Task 的 CAS 更新与低频提醒两阶段提交。
-
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { TasksRepo } from '../../repos/data/tasks.js';
 import { createTestDatabase, type TestDatabase } from '../helpers/create-test-database.js';
@@ -33,7 +31,7 @@ describe('Task 持久化边界', () => {
 
   afterEach(() => database.close());
 
-  it('为 Session 分配短序号，并拒绝陈旧 version 覆盖新值', () => {
+  it('为 Session 分配短序号,并拒绝陈旧 version 覆盖新值', () => {
     expect(tasks.listForSession(sessionId).map((task) => task.display_number))
       .toEqual([1, 2]);
 
@@ -53,7 +51,7 @@ describe('Task 持久化边界', () => {
     });
   });
 
-  it('完成/取消任务写入 completed 字段，幂等写不重复 bump version', () => {
+  it('完成/取消任务写入 completed 字段,幂等写不重复 bump version', () => {
     expect(tasks.mutate(mutation(taskB, 0, {
       patch: { status: 'completed', completedByTurnId: turnId, completedAt: 6 },
     }))).toMatchObject({
@@ -66,7 +64,7 @@ describe('Task 持久化边界', () => {
     }))).toMatchObject({ ok: true, changed: false, row: { version: 1 } });
   });
 
-  it('低频提醒先只检查不消费，markReminded 后才推进周期', () => {
+  it('低频提醒先只检查不消费,markReminded 后才推进周期', () => {
     for (let index = 0; index < 10; index += 1) {
       database.db.prepare(`
         INSERT INTO turns (
@@ -76,11 +74,11 @@ describe('Task 持久化边界', () => {
       `).run(`turn-reminder-${index}`, sessionId, 5 + index);
     }
 
-    // 达到周期：只检查不写状态，重复检查仍通过（不消费）。
+    // 达到周期:只检查不写状态,重复检查仍通过(不消费).
     expect(tasks.shouldRemind(sessionId, 10)).toBe(true);
     expect(tasks.shouldRemind(sessionId, 10)).toBe(true);
 
-    // 显式提交已提醒：周期推进，后续不再提醒。
+    // 显式提交已提醒:周期推进,后续不再提醒.
     tasks.markReminded(sessionId, 20);
     expect(tasks.shouldRemind(sessionId, 10)).toBe(false);
   });

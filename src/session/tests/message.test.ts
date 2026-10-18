@@ -1,4 +1,3 @@
-// 测试数据库消息 JSON 的角色校验与损坏内容安全降级。
 import { describe, expect, it } from 'vitest';
 import { parseMessageBlocksJson } from '../message.js';
 
@@ -13,7 +12,7 @@ describe('parseMessageBlocksJson', () => {
       {
         type: 'pasted_text_reference',
         path: 'D:/data/sessions/s1/attachments/pasted/b.txt',
-        preview: '前五百字符的定格预览',
+        preview: '粘贴时保存的预览',
       },
       { type: 'file_reference',        path: 'D:/docs/map.pdf' },
     ];

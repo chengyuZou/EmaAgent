@@ -11,18 +11,18 @@ export interface SessionRow {
   id: string;
   title: string;
   cwd:     string;
-  /** 项目成员资格；cwd 不随项目文件夹变化自动改写。 */
+  /** 项目成员资格;cwd 不随项目文件夹变化自动改写. */
   project_id:         string | null;
   created_at: number;
-  /** 行元数据更新时间：标题、置顶、cwd 或 Profile 编辑。不用于 UI 侧栏排序。 */
+  /** 行元数据更新时间:标题,置顶,cwd 或 Profile 编辑.不用于 UI 侧栏排序. */
   updated_at: number;
-  /** 对话活动时间:新 Turn 开始时推进，用于时间展示与未读判断。 */
+  /** 对话活动时间:新 Turn 开始时推进,用于时间展示与未读判断. */
   last_activity_at: number;
-  /** 侧栏内的显式顺序；拖放与新 Turn 开始会推进它。 */
+  /** 侧栏内的显式顺序;拖放与新 Turn 开始会推进它. */
   sidebar_order: number;
   archived_at: number | null;
   pinned:        number;        // 0 | 1
-  /** fork 溯源：来源 Session 与截断点 Turn（完整复制时截断点为 null）。 */
+  /** fork 溯源:来源 Session 与截断点 Turn(完整复制时截断点为 null). */
   forked_from_session_id: string | null;
   forked_from_turn_id:    string | null;
   permission_mode: PermissionModeRow;
@@ -35,7 +35,7 @@ export interface SessionRow {
   last_viewed_at:   number | null;
 }
 
-/** SessionRow 带 JOIN 查询派生的 turn 字段。 */
+/** SessionRow 带 JOIN 查询派生的 turn 字段. */
 export interface SessionRowEnriched extends SessionRow {
   last_turn_status:       TurnStatusRow | null;
   last_turn_completed_at: number | null;
@@ -168,9 +168,8 @@ export class SessionsRepo {
     `).all() as ArchivedSessionRow[];
   }
 
-  // ── 项目成员资格 ────────────────────────────────────────────────────────────
 
-  /** 拖入项目只改变成员资格。 */
+  /** 拖入项目只改变成员资格. */
   assignToProject(id: string, projectId: string, now: number): void {
     this.db.transaction(() => {
       this.db
@@ -180,7 +179,7 @@ export class SessionsRepo {
     })();
   }
 
-  /** 拖出项目：只解除成员资格，cwd 保留原值恢复自由。 */
+  /** 拖出项目:只解除成员资格,cwd 保留原值恢复自由. */
   removeFromProject(id: string, now: number): void {
     this.db.transaction(() => {
       this.db
@@ -275,7 +274,7 @@ export class SessionsRepo {
       .run(title, updatedAt, id);
   }
 
-  /** 自动标题的条件写入：仅当前标题仍是默认值才覆盖；返回是否写入（0 = 用户已改名或行不存在）。 */
+  /** 自动标题的条件写入:仅当前标题仍是默认值才覆盖;返回是否写入(0 = 用户已改名或行不存在). */
   updateTitleIfDefault(id: string, title: string, defaultTitle: string, updatedAt: number): boolean {
     return this.db
       .prepare('UPDATE sessions SET title = ?, updated_at = ? WHERE id = ? AND title = ?')
@@ -292,7 +291,6 @@ export class SessionsRepo {
     })();
   }
 
-  // ── 置顶 / 取消置顶 ────────────────────────────────────────────────────────
 
   pin(id: string, now: number): void {
     this.db.transaction(() => {
@@ -313,7 +311,6 @@ export class SessionsRepo {
     })();
   }
 
-  // ── 归档 / 取消归档 ────────────────────────────────────────────────────────────
 
   archive(id: string, archivedAt: number): void {
     this.db.transaction(() => {
@@ -363,16 +360,15 @@ export class SessionsRepo {
     })();
   }
 
-  // ── Fork ──────────────────────────────────────────────────────────────────────
 
   /**
-   * 把一个 Session 的 Turn、Message 和 Attachment 克隆为独立 Session。
+   * 复制 Session, 选定 Turn, Message 和 Turn 用量行, 不复制附件文件或附件登记.
    *
-   * 所有实体重新生成 ID，Message 与 Attachment 通过临时映射表指向新 Turn。
-   * `untilTurnId` 提供时只复制到该 Turn（含）为止并记为 forked_from_turn_id，
-   * 不能把同毫秒的后续 Turn 或无归属消息误带进新 Session。
+   * 临时映射表生成新的 Turn 和 Message ID, 同时转换摘要覆盖 ID.
+   * `untilTurnId` 提供时只复制到该 Turn(含)为止并记为 forked_from_turn_id,
+   * 不能把同毫秒的后续 Turn 或无归属消息误带进新 Session.
    *
-   * 返回复制的 message 数量。
+   * 返回复制的 message 数量.
    */
   forkInto(
     srcId:       string,
@@ -385,8 +381,8 @@ export class SessionsRepo {
     if (!src) throw new Error(`Source session not found: ${srcId}`);
 
     this.db.transaction(() => {
-      // 1. 新 Session 行复制 Workspace、项目成员、执行偏好和当前模型选择。
-      //    forked_from_* 指回来源 Session 与截断 Turn，用于 Fork 溯源。
+      // 1. 新 Session 行复制 Workspace,项目成员,执行偏好和当前模型选择.
+      //    forked_from_* 指回来源 Session 与截断 Turn,用于 Fork 溯源.
       this.db.prepare(
         `INSERT INTO sessions
            (id, title, cwd, project_id,
@@ -440,7 +436,7 @@ export class SessionsRepo {
         ? [cutoffTurn.created_at, cutoffTurn.created_at, cutoffTurn.id]
         : []));
 
-      // 3. 复制 Turn，并重新生成 ID。
+      // 3. 复制 Turn,并重新生成 ID.
       this.db.prepare(
         `INSERT INTO turns
            (id, session_id, status, trigger_type,
@@ -455,8 +451,8 @@ export class SessionsRepo {
          ORDER BY t.created_at ASC`,
       ).run(newId);
 
-      // 历史 Turn 的用量明细随 Turn 身份一起复制，Session 级手动 Compact 不属于
-      // 任何 Turn，不进入 fork 后 Session 的历史消费。
+      // 历史 Turn 的用量明细随 Turn 身份一起复制,Session 级手动 Compact 不属于
+      // 任何 Turn,不进入 fork 后 Session 的历史消费.
       this.db.prepare(`
         INSERT INTO usage_records (
           id, session_id, turn_id, provider_id, model_id, capability, status,
@@ -473,11 +469,11 @@ export class SessionsRepo {
         ORDER BY usage.created_at ASC, usage.id ASC
       `).run(newId);
 
-      // 4. 复制 message。带 turn_id 的消息严格跟随已选 Turn 集合，不能只按
-      //    created_at 截断，否则相同时间戳的后续 Turn 会混入 fork。
-      //    无 turn_id 的 session 级消息优先按目标 Turn 最后一条消息的稳定复合边界复制。
-      //    目标 Turn 没有消息时，已完成 Turn 回退到 completed_at，否则回退到
-      //    created_at，避免合法的 session 级系统上下文被整批丢弃。
+      // 4. 复制 message.带 turn_id 的消息严格跟随已选 Turn 集合,不能只按
+      //    created_at 截断,否则相同时间戳的后续 Turn 会混入 fork.
+      //    无 turn_id 的 session 级消息优先按目标 Turn 最后一条消息的稳定复合边界复制.
+      //    目标 Turn 没有消息时,已完成 Turn 回退到 completed_at,否则回退到
+      //    created_at,避免合法的 session 级系统上下文被整批丢弃.
       const messageCutoff = untilTurnId
         ? this.db.prepare(`
             SELECT created_at, id
@@ -496,10 +492,10 @@ export class SessionsRepo {
         ?? cutoffTurn?.created_at;
       const messageCutoffId = messageCutoff?.id;
 
-      // 4. 复制 message。先为将被复制的消息生成新 ID 写入 _message_id_map，再执行
-      //    复制：turn_id 经 _turn_id_map、summarized_through_message_id 经
-      //    _message_id_map 转换。不能在 INSERT SELECT 中临时 randomblob()，否则
-      //    Summary 无法知道游标目标的新 ID。
+      // 4. 复制 message.先为将被复制的消息生成新 ID 写入 _message_id_map,再执行
+      //    复制:turn_id 经 _turn_id_map,summarized_through_message_id 经
+      //    _message_id_map 转换.不能在 INSERT SELECT 中临时 randomblob(),否则
+      //    Summary 无法知道游标目标的新 ID.
       this.db.prepare('CREATE TEMP TABLE _message_id_map (old_id TEXT PRIMARY KEY, new_id TEXT NOT NULL)').run();
       this.db.prepare(
         untilTurnId
@@ -548,8 +544,7 @@ export class SessionsRepo {
          ORDER BY source.created_at ASC, source.id ASC`,
       ).run(newId);
 
-      // 附件账本不复制:消息块里的 path 是全局主键,fork 的消息引用源 Session
-      // 的同一批受管文件;源 Session 删除后这些 path 失效,投影自会降级。
+      // 附件登记和文件不复制. 新消息仍引用源 Session 文件, 删除源 Session 后这些路径可能失效.
       this.db.prepare('DROP TABLE _message_id_map').run();
       this.db.prepare('DROP TABLE _turn_id_map').run();
     })();
@@ -560,17 +555,15 @@ export class SessionsRepo {
     return count.cnt;
   }
 
-  // ── 删除 ──────────────────────────────────────────────────────────────────────
 
   delete(id: string): void {
     this.db.prepare('DELETE FROM sessions WHERE id = ?').run(id);
   }
 
-  // ── Patch(事务性部分更新)──────────────────────────────────────────────────────
 
   /**
-   * 原子地应用部分更新。所有子更新在单个 SQLite 事务内执行;
-   * 任何失败回滚整个 patch,行不会处于半改状态。
+   * 原子地应用部分更新.所有子更新在单个 SQLite 事务内执行;
+   * 任何失败回滚整个 patch,行不会处于半改状态.
    */
   patch(
     id: string,

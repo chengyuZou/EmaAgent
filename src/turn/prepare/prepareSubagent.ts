@@ -1,4 +1,3 @@
-// 准备子 Agent 的模型调用, fork 分叉消息与执行工具.
 import type { ForkParentMessages, PrepareSubagent } from '@ema-agent/agent';
 import { projectMessages, type DescribeImage } from '@ema-agent/context';
 import { createLLMCall, createLLMCompletion, type CompleteLLM } from '@ema-agent/llm';

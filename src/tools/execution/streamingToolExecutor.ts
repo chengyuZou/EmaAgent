@@ -1,5 +1,3 @@
-// 调度流式到达的工具调用,维护并发屏障,取消,进度事件和 FIFO 终态.
-
 import type { ToolExecutionEvent } from '../events.js';
 import type { ToolResultStore } from '../results/toolResultStore.js';
 import { ToolCallExecution, type ToolExecutionEnvironment } from './toolCallExecution.js';
@@ -29,7 +27,7 @@ export type StreamingToolExecutorOptions = ToolExecutionEnvironment & {
 /**
  * 流式工具调度器.
  *
- * 单次调用的准备,权限,校验,审计和执行全部委托给 ToolExecution;本类只处理
+ * 单次调用的准备,权限,校验,审计和执行全部委托给 ToolCallExecution;本类只处理
  * 流式入队,并发安全工具与独占工具的屏障,取消,等待状态和模型顺序终态.
  */
 export class StreamingToolExecutor {
@@ -67,7 +65,7 @@ export class StreamingToolExecutor {
     );
   }
 
-  /** Turn 进入终态前统一取消并等待;超时调用由单调用状态机保守关账. */
+  /** 取消并等待已登记调用; 超时后禁止迟到事件, 并记录尚未结束的执行状态. */
   async shutdown(reason: string, timeoutMs = 5_000): Promise<void> {
     this.abortAll(reason);
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -212,8 +210,8 @@ export class StreamingToolExecutor {
       track.result = completion.result;
       track.terminalEvent = completion.terminalEvent;
     } catch (error) {
-      // ToolExecution 自己会把业务,权限,审计和工具错误转成终态;这里只防止
-      // 调度 Promise 因真正的内部缺陷拒绝后阻断 serialTail.
+      // 单次执行会把业务错误转为结果. 此处处理执行器本身的异常,
+      // 仍生成失败结果, 让后续独占调用能够继续.
       const message = error instanceof Error ? error.message : String(error);
       track.result = {
         type: 'tool_result',

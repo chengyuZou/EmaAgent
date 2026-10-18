@@ -36,28 +36,25 @@ export interface StartTurnInput {
   readonly turnId?: string;
   readonly sessionId: string;
   readonly triggerType: TurnTriggerType;
-  readonly providerId?: string | null;
-  readonly modelId?: string | null;
   readonly ttsEnabled: boolean;
 }
 
-// ── Turn 导航查询的输入输出（TurnStore 的读取面） ─────────────────────────────
 
 export interface ListTurnIndexInput {
-  /** 上一页返回的不透明游标，只能原样回传。 */
+  /** 上一页返回的不透明游标,只能原样回传. */
   cursor?: string;
   limit?: number;
 }
 
 export interface TurnIndexItem {
   turnId: string;
-  /** 本 Turn 第一条可展示 Message，供 History 导航直接定位正文。 */
+  /** 本 Turn 第一条可展示 Message,供 History 导航直接定位正文. */
   anchorMessageId: string;
   createdAt: number;
   completedAt: number | null;
   status: TurnStatus;
   triggerType: TurnTriggerType;
-  /** 首条 User Message 的正文预览；用户输入的唯一事实源是 Message。 */
+  /** 首条 User Message 的正文预览;用户输入的唯一事实源是 Message. */
   preview: string;
 }
 
@@ -66,7 +63,6 @@ export interface TurnIndexPage {
   nextCursor?: string;
 }
 
-// ── 请求在调用 Provider 前执行的可观测兼容降级（词汇，非事件） ────────────────
 
 export interface RequestDegradationNotice {
   attempt: number;
@@ -75,9 +71,9 @@ export interface RequestDegradationNotice {
   replacements: Array<'description' | 'placeholder' | 'parameter_omitted'>;
 }
 
-// Turn 失败终态的错误码/阶段定义归 errors.ts（错误语义）；此处只消费。
 
-/** 用户消息的唯一有序输入；数组顺序就是持久化、模型读取和历史展示顺序。 */
+
+/** 用户消息的唯一有序输入;数组顺序就是持久化,模型读取和历史展示顺序. */
 export type TurnInputPart =
   | {
       readonly type: 'text';
@@ -93,7 +89,7 @@ export type TurnInputPart =
       readonly path: string;
     };
 
-/** 空白文本不是输入；附件或 Skill 引用本身就是有效输入。 */
+/** 空白文本不是输入;附件或 Skill 引用本身就是有效输入. */
 export function hasTurnInput(input: readonly TurnInputPart[]): boolean {
   return input.some(part => part.type !== 'text' || part.text.trim().length > 0);
 }
@@ -113,7 +109,7 @@ export interface StartTurn {
   readonly ttsEnabled: boolean;
 }
 
-/** Turn 对外只有一个明确终态，完成 Promise 与终态事件使用同一份数据。 */
+/** Turn 对外只有一个明确终态,完成 Promise 与终态事件使用同一份数据. */
 export type TurnOutcome =
   | {
       readonly status: 'completed';

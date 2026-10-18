@@ -56,11 +56,11 @@ interface QueuedProcess {
 
 export interface BackgroundProcessDeps {
   assertSessionWorkAllowed: (sessionId: string) => void;
-  /** 持久化窄端口;SQL 实现由 Core 装配注入。 */
+  /** 持久化窄端口;SQL 实现由 Core 装配注入. */
   store: BackgroundProcessStore;
-  /** 创建期:按 Session 与进程 id 推导日志位置。 */
+  /** 创建期:按 Session 与进程 id 推导日志位置. */
   outputPath: BackgroundProcessOutputPathFactory;
-  /** 读取期:以行内存储的相对路径为唯一事实源解析绝对位置。 */
+  /** 读取期:以行内存储的相对路径为唯一事实源解析绝对位置. */
   resolveOutputLocation: BackgroundProcessOutputLocationResolver;
   settings: () => Readonly<BackgroundProcessSettings>;
   emit?: (event: BackgroundProcessEvent) => void;
@@ -78,13 +78,12 @@ export class BackgroundProcess {
   private readonly output: BackgroundProcessOutputStore;
   /** 前台启动命令的独立坑位池, 转后台后仍占用直到进程退出. */
   private readonly interactiveScheduler: BackgroundProcessScheduler;
-  /** 持久后台任务的坑位池,上限来自用户设置。 */
+  /** 持久后台任务的坑位池,上限来自用户设置. */
   private readonly backgroundScheduler: BackgroundProcessScheduler;
   private readonly active = new Map<string, ActiveProcess>();
   private readonly queued = new Map<string, QueuedProcess>();
   private readonly changeWaiters = new Map<string, Set<() => void>>();
   private shuttingDown = false;
-  private processStartClosures = 0;
 
   constructor(private readonly deps: BackgroundProcessDeps) {
     this.output = new BackgroundProcessOutputStore(deps.outputPath);
@@ -104,7 +103,7 @@ export class BackgroundProcess {
   }
 
   /**
-   * 执行一条命令。两条路径:
+   * 执行一条命令.两条路径:
    * runInBackground=true → 直接落库排队,立即返回 processReference;
    * 否则先占交互坑位 spawn, 3 分钟内完成则返回普通结果, 等待结束则把结果所有权
    * 转交后台并解除原调用的取消绑定. 进程仍占原坑位, 后续终态由完成通知链接管.
@@ -114,14 +113,11 @@ export class BackgroundProcess {
     if (this.shuttingDown) {
       throw new BackgroundProcessError('shutting_down', 'Background process runtime is shutting down');
     }
-    if (this.processStartClosures > 0) {
-      throw new BackgroundProcessError('starts_closed', 'Background process starts are temporarily closed');
-    }
     const id = crypto.randomUUID();
     const writer = this.output.create(request.sessionId, id);
     const timeoutMs = this.resolveTimeout(request.timeoutMs);
     // 进度透传只在调用存活期有效:本函数一旦返回/抛出(包括转交后台),
-    // 调用方的 onProgress 通道随之关闭,进程后续输出只进日志。
+    // 调用方的 onProgress 通道随之关闭,进程后续输出只进日志.
     let forwardToCaller = true;
     const callerOutput = request.onOutput;
     const frozenRequest = Object.freeze({
@@ -249,7 +245,7 @@ export class BackgroundProcess {
       throw createBackgroundProcessAbortError();
     }
 
-    // 结果所有权已转交后台:从此不再响应原 Turn 的取消信号。
+    // 结果所有权已转交后台:从此不再响应原 Turn 的取消信号.
     // 这里只解除父 Turn 的等待和取消绑定. 真实进程仍占原 interactive 坑位,
     // 否则每次转交都会让一批长进程逃离全部并发统计.
     active.detachWaitAbort?.();
@@ -322,8 +318,8 @@ export class BackgroundProcess {
   }
 
   /**
-   * 停止指定进程。排队中的同步落终态;运行中的等待进程退出后再返回,
-   * 调用方拿到的始终是真实终态快照,不是"停止前的 running"。
+   * 停止指定进程.排队中的同步落终态;运行中的等待进程退出后再返回,
+   * 调用方拿到的始终是真实终态快照,不是"停止前的 running".
    */
   async stop(sessionId: string, id: string): Promise<BackgroundProcessSummary> {
     const record = this.requireOwned(sessionId, id);
@@ -355,15 +351,15 @@ export class BackgroundProcess {
     active.terminalIntent = 'stopped';
     active.handle.stop();
     // finishActive 的 await 注册早于本调用,进程死亡后它先完成终态落库,
-    // 这里再读到的就是真实终态。
+    // 这里再读到的就是真实终态.
     await active.handle.completion.catch(() => undefined);
     return this.toSummary(this.requireOwned(sessionId, id));
   }
 
   /**
-   * Session 永久删除前关闭日志句柄、停止进程树并等待退出,
-   * 避免 Windows 因子进程仍持有日志句柄而无法删除 Session 目录。
-   * 数据库行随后由 Session 外键级联删除。
+   * Session 永久删除前关闭日志句柄,停止进程树并等待退出,
+   * 避免 Windows 因子进程仍持有日志句柄而无法删除 Session 目录.
+   * 数据库行随后由 Session 外键级联删除.
    */
   async discardSession(sessionId: string): Promise<void> {
     for (const [id, queued] of this.queued) {
@@ -411,25 +407,6 @@ export class BackgroundProcess {
     const results = await Promise.allSettled(completions);
     const failure = results.find(result => result.status === 'rejected');
     if (failure?.status === 'rejected') throw failure.reason;
-  }
-
-  /** 角色切换或删除经用户确认后，停止全部普通后台进程；不影响 Memory 自己的 Job 队列。 */
-  async stopAll(): Promise<void> {
-    const processes = [
-      ...[...this.queued.entries()].map(([id, queued]) => ({ id, sessionId: queued.request.sessionId })),
-      ...[...this.active.entries()].map(([id, active]) => ({ id, sessionId: active.request.sessionId })),
-    ];
-    await Promise.all(processes.map(process => this.stop(process.sessionId, process.id)));
-  }
-
-  /** 角色全局变更期间先关闭新进程入口，再停止当前快照，避免停止过程中补进新任务。 */
-  async runWithProcessStartsClosed<T>(action: () => T | Promise<T>): Promise<T> {
-    this.processStartClosures += 1;
-    try {
-      return await action();
-    } finally {
-      this.processStartClosures -= 1;
-    }
   }
 
   async shutdown(): Promise<void> {
@@ -503,7 +480,7 @@ export class BackgroundProcess {
           this.notifyChanged(id);
         }
       },
-      // 持久队列项的取消清理由调用方(stop/discardSession/shutdown)各自完成,此处无需动作。
+      // 持久队列项的取消清理由调用方(stop/discardSession/shutdown)各自完成,此处无需动作.
       cancel: () => undefined,
     });
   }
@@ -548,7 +525,7 @@ export class BackgroundProcess {
       timeoutMs: request.timeoutMs,
       onOutput: chunk => {
         writer.append(chunk);
-        // 交互期把增量透传给调用方(进度展示);转交后台后由调用方关闭通道。
+        // 交互期把增量透传给调用方(进度展示);转交后台后由调用方关闭通道.
         request.onOutput?.(chunk);
         this.notifyChanged(id);
       },
@@ -565,7 +542,7 @@ export class BackgroundProcess {
       handle,
       persisted,
       startedAt,
-      // 占位空操作;调用方按坑位来源(交互池/后台池)覆盖为真正的归还函数。
+      // 占位空操作;调用方按坑位来源(交互池/后台池)覆盖为真正的归还函数.
       releaseSlot: () => undefined,
       ...(detachWaitAbort ? { detachWaitAbort } : {}),
     };
@@ -630,7 +607,7 @@ export class BackgroundProcess {
     return record;
   }
 
-  /** 日志位置以行内存储的相对路径为唯一事实源,解析到当前数据目录。 */
+  /** 日志位置以行内存储的相对路径为唯一事实源,解析到当前数据目录. */
   private locationFor(record: BackgroundProcessRecord) {
     return this.deps.resolveOutputLocation(record.outputRelativePath);
   }
@@ -649,7 +626,7 @@ export class BackgroundProcess {
       createdAt: record.createdAt,
       ...(record.startedAt !== undefined ? { startedAt: record.startedAt } : {}),
       ...(record.completedAt !== undefined ? { completedAt: record.completedAt } : {}),
-      // 时长只计运行期;排队等待不计(queued 尚无 startedAt,时长为 0)。
+      // 时长只计运行期;排队等待不计(queued 尚无 startedAt,时长为 0).
       durationMs: record.startedAt === undefined
         ? 0
         : Math.max(0, end - record.startedAt),

@@ -1,6 +1,6 @@
--- profile.db 当前开发基线。
--- 由压缩前完整迁移链生成最终 Schema 后规范化导出。
--- 后续结构变更从 002_*.sql 开始追加。
+-- profile.db 当前开发基线.
+-- 由压缩前完整迁移链生成最终 Schema 后规范化导出.
+-- 后续结构变更从 002_*.sql 开始追加.
 CREATE TABLE characters (
   name                  TEXT PRIMARY KEY,
   display_name          TEXT,
@@ -80,7 +80,7 @@ CREATE TABLE mcp_market_entries (
   PRIMARY KEY(source, external_id)
 );
 
--- 非空 cursor 表示该来源只有部分缓存;NULL 表示已经消费完上游分页。
+-- 非空 cursor 表示该来源只有部分缓存;NULL 表示已经消费完上游分页.
 CREATE TABLE mcp_market_fetch_state (
   source      TEXT PRIMARY KEY,
   next_cursor TEXT
@@ -92,10 +92,10 @@ CREATE INDEX idx_mcp_market_entries_page
 CREATE TABLE providers (
   id         TEXT PRIMARY KEY,
   name       TEXT NOT NULL,
-  -- UI 图标注册表 key；NULL = 不显示图标（自建 provider 可以没有品牌图标）
+  -- UI 图标注册表 key;NULL = 不显示图标(自建 provider 可以没有品牌图标)
   icon_id    TEXT,
   auth_type  TEXT NOT NULL CHECK(auth_type IN ('none','bearer')),
-  -- 一个 Provider 一把 key（V1 明文入库）；NULL = 未配置
+  -- 一个 Provider 一把 key(V1 明文入库);NULL = 未配置
   key_value  TEXT,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
@@ -104,17 +104,17 @@ CREATE TABLE providers (
 CREATE TABLE provider_capabilities (
   provider_id     TEXT NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
   capability      TEXT NOT NULL CHECK(capability IN ('llm','embed','rerank','vision','tts','stt')),
-  -- 当前使用的协议；NULL = 该能力停用（已配协议保留在 protocols 表）
+  -- 当前使用的协议;NULL = 该能力停用(已配协议保留在 protocols 表)
   active_protocol TEXT,
-  -- 该能力的 models.dev 源 id（加模型时的参数预填来源）
+  -- 该能力的 models.dev 源 id(加模型时的参数预填来源)
   models_dev_id   TEXT,
   created_at      INTEGER NOT NULL,
   updated_at      INTEGER NOT NULL,
   PRIMARY KEY (provider_id, capability)
 );
 
--- 同一能力允许配置多档协议（如 DeepSeek LLM 的 openai/anthropic 双协议），
--- 切换激活协议不丢另一档的自定义地址。
+-- 同一能力允许配置多档协议(如 DeepSeek LLM 的 openai/anthropic 双协议),
+-- 切换激活协议不丢另一档的自定义地址.
 CREATE TABLE provider_protocols (
   provider_id TEXT NOT NULL,
   capability  TEXT NOT NULL,
@@ -141,11 +141,11 @@ CREATE TABLE provider_models (
   provider_id        TEXT    NOT NULL,
   capability         TEXT    NOT NULL CHECK(capability IN ('llm','embed','rerank','vision','tts','stt')),
   model_id           TEXT    NOT NULL,
-  -- 显示名快照（目录落行时自带）；NULL = 前端回退显示 model_id
+  -- 显示名快照(目录落行时自带);NULL = 前端回退显示 model_id
   name               TEXT,
-  -- 'user' = 手写（可编辑/启停/删除）；'dev' = models.dev 同步（禁修改，可启停/删除）
+  -- 'user' = 手写(可编辑/启停/删除);'dev' = models.dev 同步(禁修改,可启停/删除)
   source             TEXT    NOT NULL DEFAULT 'user' CHECK(source IN ('user','dev')),
-  -- 启停开关：1 = 启用（绑定/available/探活准入）；新增 dev 行默认 0
+  -- 启停开关:1 = 启用(绑定/available/探活准入);新增 dev 行默认 0
   enabled            INTEGER NOT NULL DEFAULT 0 CHECK(enabled IN (0,1)),
   context_window     INTEGER,
   max_output         INTEGER,
@@ -180,9 +180,9 @@ CREATE TABLE provider_models (
   CHECK(rerank_max_chunks IS NULL OR rerank_max_chunks > 0)
 );
 
--- 模型绑定:每个业务模块只绑定一个已启用模型；绑定与选中入口断言连接可解析。
+-- 模型绑定:每个业务模块只绑定一个已启用模型;绑定与选中入口断言连接可解析.
 -- module 枚举与 providers/modelBindings.ts 的 MODEL_BINDING_MODULES 保持一致;
--- 命名统一为 <域>-<能力>(memory-llm/lightrag-embed/...);memory 只消费 llm(双轨重构后)。
+-- 命名统一为 <域>-<能力>(memory-llm/lightrag-embed/...);memory 只消费 llm(双轨重构后).
 CREATE TABLE model_bindings (
   module      TEXT PRIMARY KEY CHECK(module IN (
                 'memory-llm',
@@ -210,8 +210,8 @@ CREATE TABLE settings (
   updated_at INTEGER NOT NULL
 );
 
--- skills: 目录是事实源,本表只是索引;SKILL.md 绝对路径是身份。
--- 市场安装溯源是目录里的 .market-meta.json,不进 SQL。
+-- skills: 目录是事实源,本表只是索引;SKILL.md 绝对路径是身份.
+-- 市场安装溯源是目录里的 .ema-market.json,不进 SQL.
 CREATE TABLE skills (
   path          TEXT PRIMARY KEY,
   name          TEXT NOT NULL,
@@ -222,8 +222,8 @@ CREATE TABLE skills (
   installed_at  INTEGER NOT NULL
 );
 
--- skill_enablement: builtin/user 逐技能启停;无行 = 默认启用。
--- project 技能不进表(跟随工作区),其来源级开关在 Settings skill.disabledProjectSources。
+-- skill_enablement: builtin/user 逐技能启停;无行 = 默认启用.
+-- project 技能不进表(跟随工作区),其来源级开关在 Settings skill.disabledProjectSources.
 CREATE TABLE skill_enablement (
   skill_path TEXT PRIMARY KEY,
   enabled   INTEGER NOT NULL

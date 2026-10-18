@@ -1,4 +1,3 @@
-// 验证根循环事件的前端投影, Context 校正及根/子物理调用记账.
 import { describe, expect, it, vi } from 'vitest';
 import type { AgentLoopEvent } from '@ema-agent/agent';
 import type { UsageRecord } from '@ema-agent/usage';
@@ -27,7 +26,7 @@ function finished(llmCallId: string): Extract<AgentLoopEvent, { type: 'llm_call_
   };
 }
 
-describe('根 Turn 循环事件', () => {
+describe('Turn 循环事件', () => {
   it('事件读取 writer 已落库的 Assistant ID, 工具结果沿用对应工具名', () => {
     const { loop, events, writer, setIterations } = fixture();
     loop.accept({ type: 'iteration_started', iteration: 2, continuesOutput: false,

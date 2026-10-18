@@ -1,4 +1,3 @@
-// 以 CAS 保存 Tool 调用的副作用边界，供崩溃恢复判断是否可以安全重试。
 import { ToolExecutionStateConflictError } from '../errors.js';
 
 export type ToolExecutionStatus =
@@ -10,7 +9,7 @@ export type ToolExecutionStatus =
   | 'cancelled'
   | 'outcome_unknown';
 
-/** 一次 Tool 调用的薄执行状态；完整输入和结果都由 Message 保存。 */
+/** 一次 Tool 调用的薄执行状态;完整输入和结果都由 Message 保存. */
 export interface ToolExecutionRecord {
   callId: string;
   sessionId: string;
@@ -34,7 +33,7 @@ export interface ToolExecutionPrepareRecord {
   createdAt: number;
 }
 
-/** Storage 实现原子读写，Tools 保留状态转换和恢复语义。 */
+/** Storage 实现原子读写,Tools 保留状态转换和恢复语义. */
 export interface ToolExecutionStateStore {
   insertPrepared(value: ToolExecutionPrepareRecord): ToolExecutionRecord | undefined;
   findByCallId(callId: string): ToolExecutionRecord | undefined;
@@ -51,10 +50,10 @@ export interface ToolExecutionStateStore {
 }
 
 /**
- * 工具执行状态机，执行链与恢复器共同依赖的具体入口。
+ * 工具执行状态机,执行链与恢复器共同依赖的具体入口.
  *
- * 执行器只能通过该入口推进状态；每一步使用 version CAS，防止取消流程、
- * 迟到的工具 Promise 和崩溃恢复互相覆盖。
+ * 执行器只能通过该入口推进状态;每一步使用 version CAS,防止取消流程,
+ * 迟到的工具 Promise 和崩溃恢复互相覆盖.
  */
 export class ToolExecutionState {
   constructor(private readonly store: ToolExecutionStateStore) {}
@@ -131,13 +130,14 @@ export class ToolExecutionState {
     callId: string,
     result: { isError?: boolean; errorCode?: string },
   ): ToolExecutionRecord {
-    const terminal = result.errorCode === 'tool/outcome_unknown'
-      ? 'outcome_unknown'
-      : result.errorCode === 'tool/cancelled'
-        ? 'cancelled'
-        : result.isError
-          ? 'failed'
-          : 'succeeded';
+    let terminal: ToolExecutionStatus = 'succeeded';
+    if (result.errorCode === 'tool/outcome_unknown') {
+      terminal = 'outcome_unknown';
+    } else if (result.errorCode === 'tool/cancelled') {
+      terminal = 'cancelled';
+    } else if (result.isError) {
+      terminal = 'failed';
+    }
     return this.move(
       callId,
       ['prepared', 'authorized', 'running'],

@@ -1,4 +1,3 @@
-// Store model binding rows; model deletion cascades through the foreign key.
 import type { ModelCapabilityRow } from './providers.js';
 import type { SqliteDb } from '../../database/database.js';
 

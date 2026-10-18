@@ -1,109 +1,87 @@
-# @ema-agent/storage
+# Storage
 
-EmaAgent 的 SQLite 数据访问层。使用 `better-sqlite3` 和手写参数化 SQL，不承载业务编排、HTTP Route、模型调用或文件资源生命周期。
+[中文](./README-zh.md)
 
-## 目录
+This package opens the application's SQLite databases and provides repositories for reading and saving their rows. The host supplies database paths, runs migrations, then passes the matching connection to each repository.
 
-```text
-src/storage/
-├─ database/                  SQLite 连接、迁移执行器、迁移 CLI 与批量 ID 工具
-├─ migrations/
-│  ├─ profile/               全局配置与用户资产表结构
-│  └─ data/                  Session 与运行记录表结构
-├─ repos/
-│  ├─ profile/               只访问 profile.db 的 Repo
-│  └─ data/                  只访问 data.db 的 Repo
-├─ search/                   FTS、中文分词与 LIKE 转义
-├─ tests/                    迁移、Repo 与数据库行为测试
-└─ index.ts                  对其他业务包提供的统一公共出口
+## Open a database
+
+```ts
+import { Database, SessionsRepo } from '@ema-agent/storage';
+
+const database = new Database({ path: dataDatabasePath, kind: 'data' });
+try {
+  database.migrate();
+  const sessions = new SessionsRepo(database.sqlite);
+  const session = sessions.findById(sessionId);
+} finally {
+  database.close();
+}
 ```
 
-目录按数据库归属分组，而不是为每张表建立一层文件夹。开发者看到 Repo 的路径，就能先判断它应由哪个数据库实例装配。
+Create the parent directory before opening a file. Tests can use `{ memory: true, kind: 'data' }`. `migrate()` runs once per instance after a successful migration; `close()` can be called more than once.
 
-## 两个数据库
+| Kind | Usual location | Stored data |
+| --- | --- | --- |
+| `profile` | `~/.ema-agent/profile.db` | Providers, models and bindings, settings, characters and resource metadata, Skills, MCP configuration and market cache |
+| `data` | `<activeDataDir>/data.db` | Sessions, Turns, Messages, Tasks, Goals, subagents and Runs, tool executions, background commands, attachment and speech records, usage, Memory jobs and extraction results |
+| `narrative` | `~/.ema-agent/narrative/narrative.db` | Fixed story chunks, entities, relations and their vectors for three timelines |
 
-| 数据库 | 默认位置 | 负责内容 |
-|---|---|---|
-| `profile.db` | `~/.ema-agent/profile.db` | Provider、模型绑定、角色、设置、Skill、权限规则、全局 Memory |
-| `data.db` | `~/.ema-agent/data/data.db`，也可切换数据目录 | Session、Turn、Message、附件索引、Task、Goal、Subagent、ToolExecution、后台进程与 Session 级状态 |
+These are host conventions, not paths chosen by `Database`. Attachment bodies, audio, character assets and formal Memory text remain files. Repositories record the paths, indexes and execution state needed to find or manage them.
 
-`Database` 只负责打开某一个 SQLite 文件、设置 pragma、执行对应迁移和暴露受控句柄。业务装配层负责把正确的数据库实例交给正确的 Repo。
+File connections use WAL, foreign keys, a 5-second busy timeout and `synchronous = NORMAL`. NORMAL can lose recently committed transactions after a power failure. Data connections require FTS5 and register the text extraction and segmentation functions used by search triggers.
 
-## 数据访问边界
+## Reads, writes and ownership
 
-- Repo 只做 SQL 查询、行映射和数据库自身能保证的约束，不调用 LLM、Tool、Memory Pipeline 或 HTTP。
-- 已知字段使用明确 SQL column 和 TypeScript 类型；不能用万能 JSON 隐藏稳定业务字段。
-- SQL 参数必须使用占位符绑定，不能把用户输入拼进 SQL 字符串。
-- 涉及多张表且要求“要么全成功、要么全失败”的操作使用单个 SQLite transaction。
-- 文件正文、Live2D、图片、音频和大型结果不写入 SQLite；数据库只保存受控路径、摘要、状态或索引。
-- 业务包默认从 `@ema-agent/storage` 根出口导入，避免依赖内部目录结构。Storage 自己的测试可以直接导入具体 Repo。
-- `MessagesRepo.listPage()` 返回 History 所需的完整 Message；只做目录展示时使用
-  `listHeadersPage()`，正文由明确的 Message id 再经 `findById()` 读取，不能让大块
-  `blocks_json` 跟随折叠目录批量穿过 HTTP 边界。
-- `GoalsRepo.listSummariesForSession()` 只选择 Goal 历史列表的身份, 正文, 状态, 终态原因和时间列, 不批量读取 feedback/error/version. 完整详情通过 `findById()` 读取, Row 到业务 Goal/GoalSummary 的映射由 GoalStore 负责.
+Repositories use bound SQL parameters and explicit row types. Many rows keep SQL names such as `session_id` and nullable columns; domain stores convert them to their public types. Import repositories and shared row types from the package root.
 
-## 语音文件记录
+Foreign keys, unique indexes and ownership triggers reject invalid associations. Operations spanning several related rows use transactions where the method promises an all-or-nothing change. This is a database guarantee, not a transaction covering files written by other packages.
 
-`speech_outputs` 按正式文件路径保存 Session、Turn、`audio/wav`、字节数、毫秒时长和创建时间. 一个 Turn 可以有多个角色版本, 同路径重新生成只替换对应记录. 朗读角色由规范文件名取得, 不另设角色列. 正常完成和自动生成取消后保留的文件使用同一结构, 不记录逐句片段或 pending 文件. Speech 完成文件后由 Server 写入记录, Storage 不负责写音频或等待播放; 统计和 Session Backup 读取这些正式记录.
+- `ProvidersRepo.save()` replaces a provider's capability and protocol configuration in a transaction. Removing a capability also removes its dependent model rows. `ProviderModelsRepo.save()` refreshes model facts without changing an existing enabled selection; `setEnabled()` changes that selection.
+- `SettingsRepo.read()` distinguishes missing, valid and corrupt JSON. `setMany()` serializes every value before starting its write transaction.
+- Task, tool execution and background process mutations use their stored versions or current states to reject outdated updates. A late result must not overwrite a newer execution.
+- `createSqliteIdBatches()` deduplicates IDs and divides queries according to the connection's parameter limit, reserved parameters and the package's batch cap.
 
-`SpeechOutputsRepo.listPage()` 按 Turn 创建时间分页, 返回音频数量、总大小和总时长, 包括尚无音频的 Turn. 展开一轮时用 `listForTurn()` 读取它的全部角色版本, 不在目录里批量读取文件路径.
+## History and search
 
-语音表以文件路径为主键, 要求真实时长, 没有分段计数字段. 数据迁移 `017_speech_output_versions.sql` 重建此表并保留已有的合法 WAV 记录, 同时重建 Session / Turn 索引和所属关系触发器. 非 WAV 或缺少时长的记录不能写入该结构, 使用者需先备份并明确清理这些记录; 迁移不静默删除它们, 不补假时长, 也不删除磁盘文件.
+`MessagesRepo.listPage()` loads complete messages. Use `listHeadersPage()` for a message directory and `findById()` when opening a specific body. Pages use `(createdAt, id)` cursors rather than message sequence numbers. Methods document their own ordering.
 
-## 子代理持久化
+Effective model history starts at the latest saved summary. Summary coverage is followed back to its original boundary, and later messages are appended without rewriting the stored originals. Main Session history has a bounded read; subagent history has its own query methods and limits.
 
-子代理使用三张表, 分别由三个 Repo 负责:
+Normal messages are indexed through SQLite triggers. Chinese segmentation uses the native Jieba dependency when available and a portable character/word fallback otherwise. FTS terms are quoted and joined with OR. Title and fallback text searches escape LIKE wildcards, so user text is not treated as a SQL pattern.
 
-- `subagents` 保存稳定身份: `id`、所属 `session_id`、Title、description、创建/更新时间、最近实际 Permission、Provider/Model/协议、思考强度和状态. 不保存角色 Prompt、`latest_run_id`、执行统计或最终结果. 新建必须提供 Title 和 description, 旧行缺失的配置保持 null.
-- `subagent_runs` 保存一次执行: 独立 RunId、所属子代理、父 `parent_tool_call_id`、`context_mode`、描述、实际配置、状态、结果和本次统计. 耗时由 `completed_at - created_at` 取得, 不另存 `duration_ms`. `context_mode` 仅为 `subagent` 或 `fork`; 继续历史不是第三种模式.
-- `subagent_messages` 复用普通 Message 的正文、kind、role、中断标记与摘要字段. 按 `created_at, id` 排序和游标分页, 不使用 sequence. fork 从父 Session 复制来的消息不属于子代理自己的任何一次 Run, 所以 `run_id` 为 null; 其中 Assistant 另存原生成来源, 自身 Assistant 则从所属 Run 查询来源.
+`SessionsRepo.fork()` copies the selected conversation rows and remaps their IDs. It does not copy attachment files or indexes. Copied message blocks can still refer to files under the source Session, so deleting those files can break the references. See [Session](../session/README.md) for the user-facing flow.
 
-首次新建使用 `SubagentsRepo.insert(subagent)` 和 `SubagentRunsRepo.insert(run)`, 两者各自只插入本表, 返回插入行, 不持有事务或相互调用; SQL 约束错误直接抛出. `SubagentStore.start()` 在业务层用同一 SQLite 连接的外层事务组合它们, 防止只留下身份而没有首个 Run.
+## Subagents, jobs and stored files
 
-复用已有身份不走首次两个 insert, 使用 `SubagentRunsRepo.startRun()`. 它持有一次内部事务, 新增 Run 并更新身份状态/时间, 仅显式提供时修改 Title/description. SQL 唯一索引限制同一子代理最多一个 running Run, 忙碌时返回 undefined 且不改身份, 其他约束错误不吞掉. 实际配置和状态更新与身份行在同一事务内提交. 完成、失败、取消均按 RunId 修改仍为 running 的记录, 不会把旧执行的迟到结果写入新执行. 最近配置如何选用由执行装配方决定, Repo 不替调用方指定默认配置.
+A subagent identity and one execution are separate rows in `subagents` and `subagent_runs`. The first identity and Run are inserted by the caller inside one transaction. `SubagentRunsRepo.startRun()` starts later executions and updates the identity in its own transaction. A unique index permits only one running Run per identity. Completion updates only the matching running Run.
 
-`SubagentsRepo.listForSession()` 直接返回身份行, 按 `updated_at DESC, id DESC` 游标分页, 不派生 Summary 或加载 Run 统计. `SubagentRunsRepo.listForSubagent()` 返回 `{ items, nextCursor }`, 按 `created_at DESC, id DESC` 游标分页; Run Cursor 为 `{ createdAt, id }`. `findById()` 读取单次完整执行. `findLatestRun()` 则按创建时间和实际插入顺序判断最近一次执行, 不用随机 ID 大小推断先后.
+Forked prefix messages have `run_id = null`. Their original generation source is retained; a subagent's own assistant message obtains that source from its Run. Run history, identity lists and message pages have separate queries, so opening a list does not load every message or execution result.
 
-`SubagentMessagesRepo.insertMany()` 原子写入首次前缀与任务; `listAllForSubagent()` 用于完整历史, `listPage()` 用于分页展示, `listForSubagentFromSummary()` 返回最新摘要与覆盖截止点之后的有效消息, 用于继续会话.
+`MemoryRepo` stores extraction and consolidation jobs in the data database. Claiming, completion and marking explicitly consumed extraction results use SQL transactions. Formal Memory file updates are performed by [Memory](../memory/README.md).
 
-fork 只复制父请求的有效固定前缀, 为每条消息生成子代理内的新 ID. 摘要覆盖 ID 在副本内时重新映射, 不在时保存 null, 重放以该摘要自身位置为边界; 不为补齐覆盖 ID 额外复制已压缩的旧历史. 摘要正文和 savedTokens 始终保留.
+`speech_outputs` records completed WAV files by path, with required byte size and duration in milliseconds. A Turn can have several character versions. Regenerating the same path replaces only that record. `listPage()` returns Turn-level totals, including Turns without audio; `listForTurn()` loads the individual files. Attachment records similarly point to separately managed files.
 
-`SessionBackupReader/Restorer` 导出和恢复身份、Run 与原始消息行, 不把查询派生的模型来源重复写入消息. Run 依创建时间和插入顺序导出, 恢复时先写 Run 再写 Message, 保持外键与同毫秒执行顺序. 外部 Backup 包的归档协议由该包另行接线.
+`SessionBackupReader` exposes row iterables during one synchronous transaction. Consume them inside its callback. `SessionBackupRestorer` inserts related rows in dependency order, checks foreign keys and clears references to unavailable projects or source Sessions. Archive validation, ID replacement and file placement belong to [Backup](../backup/README.md).
 
-## 迁移规则
+## Migrations
 
-两个数据库分别读取 `migrations/profile` 和 `migrations/data`，各自使用 SQLite `user_version` 推进。
+Profile and data migrations are consecutive numbered SQL files in `migrations/profile` and `migrations/data`. Each migration and its `user_version` update run in one transaction. Missing numbers and databases newer than the available migrations cause an error. A migration marked `-- ema:migration foreign_keys=off` temporarily disables foreign keys outside the transaction and checks them before committing.
 
-```text
-001_initial.sql
-002_add_xxx.sql
-003_remove_yyy.sql
-```
+Narrative initialization installs the schema and three seed datasets in a transaction. The seed reader executes SQL incrementally instead of loading every seed file into one string. Narrative repositories read the fixed timeline IDs and return vector buffers or source text as requested. See [Narrative](../narrative/README.md) for retrieval.
 
-- 迁移按三位数字连续编号；缺号会直接报错。
-- 每个迁移和 `user_version` 更新处于同一事务，断电后不会留下已改表但未记版本的半状态。
-- 当前 `001_initial.sql` 是开发基线; 修改基线不会自动升级已经初始化的开发库, 需要重建时先备份并由使用者决定执行时间.
-- 已经发布的迁移只追加, 不修改历史文件, 也不重新编号.
-- 未来若再次压缩迁移历史，应单独建立 baseline/checksum 方案，不能直接删除旧文件让已有数据库静默漂移。
-- 数据库版本高于当前代码支持的最新版本时 fail-closed，防止旧程序误读新 Schema。
+`build` copies SQL resources into `dist/migrations`. Shipping only compiled JavaScript is insufficient for a fresh installation.
 
-常用命令：
+The optional migration CLI targets `~/.ema-agent/profile.db` and `~/.ema-agent/data/data.db`. `--data-dir <directory>` changes only the latter. It does not read the application's active directory setting. Even `--status` creates directories and opens the databases. Confirm the target and back up real data before running it.
+
+## Read and verify
+
+Start with `database/database.ts` and `database/migrationsRunner.ts`, then follow the relevant repository under `repos/profile`, `repos/data` or `repos/narrative`. The corresponding domain package explains when its writes occur. `search/` contains message indexing and query preparation.
 
 ```bash
-pnpm --filter @ema-agent/storage migrate
-pnpm --filter @ema-agent/storage migrate:status
 pnpm --filter @ema-agent/storage test
+pnpm --filter @ema-agent/storage typecheck
 pnpm --filter @ema-agent/storage build
 ```
 
-`--data-dir` 只覆盖 `data.db` 所在目录；`profile.db` 仍位于用户的 `.ema-agent` 目录。
-
-## 新增或修改 Repo
-
-1. 先确认字段属于 `profile` 还是 `data`，再选择对应迁移目录与 Repo 目录。
-2. Schema 变化新增迁移文件；不要依赖 Repo 在运行时偷偷补列。
-3. Repo 返回稳定、明确的行类型，数据库命名与业务命名的转换集中在 Repo 内。
-4. 更新根 `index.ts` 的必要公共出口；不要把仅供 Storage 内部使用的 helper 暴露出去。
-5. 验证至少覆盖迁移可执行、关键约束和本次修改的查询行为。
-
-Storage 是持久化地基，不是业务服务层。是否允许删除、何时重试、怎样恢复 Turn、怎样展示错误等规则由对应业务模块决定；Storage 只提供足够清晰且可事务化的数据操作。
+Tests use temporary or in-memory databases and check migrations, row ownership, paging, search, state updates and related-row restoration.

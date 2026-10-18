@@ -1,4 +1,4 @@
--- 子代理归 Session 所有；删除首次调用所在的 Turn 不应删除子代理及其消息。
+-- 子代理归 Session 所有;删除首次调用所在的 Turn 不应删除子代理及其消息.
 DROP TRIGGER trg_subagents_owner_insert;
 DROP TRIGGER trg_subagents_owner_update;
 DROP INDEX idx_subagents_parent_turn;

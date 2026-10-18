@@ -8,7 +8,7 @@ export interface AttachmentPastedTextRow {
   created_at: number;
 }
 
-/** 粘贴到输入框时 Turn 还不存在(粘贴即落盘),turn_id 由发送时盖章,不在插入列里 */
+/** 粘贴时先保存文件, 发送时再写入 turn_id. */
 export type AttachmentPastedTextInsertRow = Omit<AttachmentPastedTextRow, 'turn_id'>;
 
 export class AttachmentPastedTextsRepo {

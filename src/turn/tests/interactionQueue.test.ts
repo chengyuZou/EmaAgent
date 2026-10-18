@@ -1,4 +1,3 @@
-// 测试统一交互队列的 per-Session FIFO、Permission/AskUser 混合排队、跨 Session 并行与队首超时。
 import { describe, expect, it, vi } from 'vitest';
 import type { PermissionRequest } from '@ema-agent/permission';
 import type { AskUserRequiredEvent } from '@ema-agent/tools';
@@ -7,7 +6,7 @@ import {
   type PendingInteraction,
 } from '../interactionQueue.js';
 
-/** 快照定位锚：两种交互都锚定触发它的 toolCallId（含于请求本体内）。 */
+/** 快照定位锚:两种交互都锚定触发它的 toolCallId(含于请求本体内). */
 const idOf = (p: PendingInteraction): string => p.request.toolCallId;
 
 function makeQueue(timeoutMs: number | null = 60_000): SessionInteractionQueue {
@@ -120,7 +119,7 @@ describe('SessionInteractionQueue AskUser FIFO', () => {
     expect(q.respondAskUser('p1', { q0: 'yes' })).toBe(false);
   });
 
-  it('拒绝重复交互 id，避免覆盖索引后遗留永不结束的等待项', () => {
+  it('拒绝重复交互 id,避免覆盖索引后遗留永不结束的等待项', () => {
     const q = makeQueue();
     q.enqueueAskUser(makeAskUserRequest('duplicate'));
 
@@ -141,7 +140,7 @@ describe('SessionInteractionQueue AskUser FIFO', () => {
 });
 
 describe('SessionInteractionQueue Permission 与 AskUser 混合 FIFO', () => {
-  it('根 Turn 收尾不取消子代理, Run 收尾只清自己, 空队列之后可以重新入队', async () => {
+  it('Turn 收尾不取消子代理, Run 收尾只清自己, 空队列之后可以重新入队', async () => {
     const q = makeQueue(null);
     const root = q.enqueuePermission(makePermissionRequest('root'));
     const child = q.enqueuePermission({
@@ -186,7 +185,7 @@ describe('SessionInteractionQueue Permission 与 AskUser 混合 FIFO', () => {
     expect(q.size()).toBe(0);
   });
 
-  it('Session 删除同时取消根请求、子请求和问询, 不影响另一 Session', async () => {
+  it('Session 删除同时取消根请求,子请求和问询, 不影响另一 Session', async () => {
     const q = makeQueue(null);
     const root = q.enqueuePermission(makePermissionRequest('root'));
     const child = q.enqueuePermission({
@@ -316,7 +315,7 @@ describe('SessionInteractionQueue Permission 与 AskUser 混合 FIFO', () => {
     }
   });
 
-  it('超时为 null 时一直等待，直到用户响应或生命周期取消', async () => {
+  it('超时为 null 时一直等待,直到用户响应或生命周期取消', async () => {
     vi.useFakeTimers();
     try {
       const q = makeQueue(null);

@@ -1,4 +1,3 @@
-// 定义工具作者,注册表与执行器共同遵守的唯一 Tool 契约.
 import type { ToolResultContentPart } from '@ema-agent/llm';
 import type {
   PermissionResult,

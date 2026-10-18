@@ -1,4 +1,3 @@
-// 保存每次子代理执行的事实, 状态和实际配置与身份行在同一事务内提交.
 import type { SqliteDb } from '../../database/database.js';
 import type { PermissionModeRow, ReasoningEffortRow } from './sessions.js';
 import type { SubagentDetailsUpdate, SubagentStatusRow } from './subagents.js';
@@ -80,7 +79,7 @@ export class SubagentRunsRepo {
     ) as SubagentRunRow;
   }
 
-  /** 忙碌不改 Title、description 或身份状态; 其他约束错误仍然抛出. */
+  /** 忙碌不改 Title,description 或身份状态; 其他约束错误仍然抛出. */
   startRun(run: SubagentRunInsert, details?: SubagentDetailsUpdate): SubagentRunRow | undefined {
     return this.db.transaction(() => {
       const inserted = this.insertRun(run);

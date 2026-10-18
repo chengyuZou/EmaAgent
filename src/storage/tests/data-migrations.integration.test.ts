@@ -1,4 +1,3 @@
-// 验证 data v2 把旧 Turn Token 汇总迁入调用账本，并从 Turn 表删除重复事实。
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -13,7 +12,7 @@ afterEach(() => {
 });
 
 describe('data migration v13', () => {
-  it('旧身份、结果、ToolCall 关联和消息游标完整搬入新三表, 不补造来源或历史', () => {
+  it('旧身份,结果,ToolCall 关联和消息游标完整搬入新三表, 不补造来源或历史', () => {
     database = new Database({ memory: true, kind: 'data' });
     const folder = fileURLToPath(new URL('../migrations/data/', import.meta.url));
     for (const name of fs.readdirSync(folder).filter(name => name.endsWith('.sql') && Number.parseInt(name.slice(0, 3), 10) <= 12).sort()) {
@@ -353,7 +352,7 @@ describe('profile migration v7', () => {
       insert.run('agent.limits.workMaxIterations', JSON.stringify(workLimit), 3);
     }
     database.migrate();
-    expect(database.currentVersion()).toBe(7);
+    expect(database.currentVersion()).toBe(8);
     const limit = database.sqlite.prepare('SELECT value_json, updated_at FROM settings WHERE key = ?')
       .get('agent.limits.maxIterations');
     expect(limit).toEqual(workLimit === null ? undefined : { value_json: String(workLimit), updated_at: 3 });

@@ -1,5 +1,3 @@
-// 把 Storage 数据库行显式映射为 Session 领域对象和列表/搜索投影。
-// Row 枚举（storage 自持）→ 领域词汇（turn 叶子）在此逐字段过界，恒等也写出来。
 import type {
   MessageRow,
   ProjectFolderRow,
@@ -66,7 +64,7 @@ export function toSession(row: SessionRow): Session {
   };
 }
 
-/** 仅列表/搜索路径使用：投影三字段来自 enriched 行的 CTE 计算结果。 */
+/** 仅列表/搜索路径使用:投影三字段来自 enriched 行的 CTE 计算结果. */
 export function toSessionListItem(row: SessionRowEnriched): SessionListItem {
   const lastTurnStatus: TurnStatus | null = row.last_turn_status;
   return {

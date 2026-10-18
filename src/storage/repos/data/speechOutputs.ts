@@ -1,4 +1,3 @@
-// 保存已完成写入的整轮 WAV, 取消后保留的音频也使用同一份记录.
 import type { SqliteDb } from '../../database/database.js';
 import type { TurnStatusRow } from './turns.js';
 

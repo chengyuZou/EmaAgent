@@ -1,7 +1,6 @@
-// 后台进程持久化的窄端口:Tools 拥有状态语义,Storage 以原子操作实现它。
 import type { BackgroundProcessListOptions, BackgroundProcessStatus } from './types.js';
 
-/** 持久化一行的领域形状;不出现 SQL 列名与 null。 */
+/** 持久化一行的领域形状;不出现 SQL 列名与 null. */
 export interface BackgroundProcessRecord {
   id: string;
   sessionId: string;
@@ -21,7 +20,7 @@ export interface BackgroundProcessRecord {
   stdoutBytes: number;
   stderrBytes: number;
   outputTruncated: boolean;
-  /** 日志目录的相对路径(相对数据目录),是日志位置的唯一事实源。 */
+  /** 日志目录的相对路径(相对数据目录),是日志位置的唯一事实源. */
   outputRelativePath: string;
 }
 

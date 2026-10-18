@@ -1,4 +1,3 @@
-// 持久化 Tool 副作用边界；完整输入与结果只存在于 Message。
 import type { SqliteDb } from '../../database/database.js';
 
 type PersistedToolExecutionStatus =
@@ -10,7 +9,7 @@ type PersistedToolExecutionStatus =
   | 'cancelled'
   | 'outcome_unknown';
 
-/** SQLite 行结构，只在 Storage 内部存在。 */
+/** SQLite 行结构,只在 Storage 内部存在. */
 interface ToolExecutionSqlRow {
   call_id: string;
   session_id: string;
@@ -25,7 +24,7 @@ interface ToolExecutionSqlRow {
   updated_at: number;
 }
 
-/** 提供给 Tool 执行状态端口的领域形状，不泄露 SQL 列名和 null。 */
+/** 提供给 Tool 执行状态端口的领域形状,不泄露 SQL 列名和 null. */
 interface StoredToolExecution {
   callId: string;
   sessionId: string;
@@ -54,8 +53,8 @@ interface ToolExecutionTerminalUpdate {
 }
 
 /**
- * 工具执行状态的原子数据库操作；合法转换与恢复语义由 Tools 管理。
- * 记录随 Session/Turn 外键级联删除。
+ * 工具执行状态的原子数据库操作;合法转换与恢复语义由 Tools 管理.
+ * 记录随 Session/Turn 外键级联删除.
  */
 export class ToolExecutionsRepo {
   constructor(private readonly db: SqliteDb) {}
@@ -147,7 +146,7 @@ export class ToolExecutionsRepo {
     return row ? fromSqlRow(row) : undefined;
   }
 
-  /** 启动恢复先读取非终态调用，再由恢复器写 Message 并推进终态。 */
+  /** 启动恢复先读取非终态调用,再由恢复器写 Message 并推进终态. */
   listInterrupted(): StoredToolExecution[] {
     const rows = this.db.prepare(
       `SELECT * FROM tool_executions

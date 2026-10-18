@@ -1,4 +1,3 @@
-// 测试移除 Branch 后，Session 与 Turn 的核心归属仍不可被原地篡改。
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createTestDatabase, type TestDatabase } from '../helpers/create-test-database.js';
 

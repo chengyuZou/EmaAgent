@@ -1,9 +1,8 @@
-// 持久化 Session 消息，并提供 Turn 归属读取与压缩边界查询。
 import type { SqliteDb } from '../../database/database.js';
 
 export type MessageRole = 'user' | 'assistant';
 
-/** messages.kind 的数据库稳定枚举。 */
+/** messages.kind 的数据库稳定枚举. */
 export type MessageKind =
   | 'normal'
   | 'tool_results'
@@ -17,11 +16,11 @@ export interface MessageRow {
   turn_id:     string | null;
   role:        MessageRole;
   kind:        MessageKind;
-  /** JSON 编码的 MessageBlocks—字符串字面量、AssistantBlock[] 或 UserBlock[]。 */
+  /** JSON 编码的 MessageBlocks—字符串字面量,AssistantBlock[] 或 UserBlock[]. */
   blocks_json: string;
   interrupted: number;
   created_at:  number;
-  /** 仅 summary 行非空：摘要覆盖截止点（含该消息）。 */
+  /** 仅 summary 行非空:摘要覆盖截止点(含该消息). */
   summarized_through_message_id: string | null;
   /** 压缩前后请求 Token 估算的减少量; 非摘要和未记录该数值的摘要为 null. */
   summary_saved_tokens: number | null;
@@ -33,11 +32,11 @@ export interface MessageInsert {
   turnId?:    string;
   role:       MessageRole;
   kind?:      MessageKind;
-  /** 预序列化的 JSON 字符串（传入前调 JSON.stringify(blocks)）。 */
+  /** 预序列化的 JSON 字符串(传入前调 JSON.stringify(blocks)). */
   blocksJson: string;
   interrupted?: boolean;
   createdAt:  number;
-  /** 仅 kind='summary'：摘要覆盖截止消息 id。 */
+  /** 仅 kind='summary':摘要覆盖截止消息 id. */
   summarizedThroughMessageId?: string;
   /** 仅 summary 保存压缩管线计算的 Token 减少量. */
   savedTokens?: number;
@@ -53,7 +52,7 @@ export interface MessageRowPage {
   nextCursor: MessagePageCursor | null;
 }
 
-/** 只供消息目录使用；正文必须按单条 Message 身份另取。 */
+/** 只供消息目录使用;正文必须按单条 Message 身份另取. */
 export interface MessageHeaderRow {
   id: string;
   role: MessageRole;
@@ -119,7 +118,7 @@ export class MessagesRepo {
     this.db.prepare('UPDATE messages SET interrupted = 1 WHERE id = ?').run(id);
   }
 
-  /** 覆盖整条消息的 blocks_json（流式续写/追加 tool_use 用）。返回受影响行数。 */
+  /** 覆盖整条消息的 blocks_json(流式续写/追加 tool_use 用).返回受影响行数. */
   updateBlocks(id: string, blocksJson: string): number {
     return this.db
       .prepare('UPDATE messages SET blocks_json = ? WHERE id = ?')
@@ -130,7 +129,7 @@ export class MessagesRepo {
     this.db.prepare('DELETE FROM messages WHERE turn_id = ?').run(turnId);
   }
 
-  /** 按稳定复合游标读取一页，Repo 内部保持最新优先。 */
+  /** 按稳定复合游标读取一页,Repo 内部保持最新优先. */
   listPage(
     sessionId: string,
     cursor: MessagePageCursor | undefined,
@@ -141,8 +140,8 @@ export class MessagesRepo {
   }
 
   /**
-   * 原始消息目录只读身份、角色和时间。`blocks_json` 可能很大，只有用户展开
-   * 某一条时才经 `findById` 读取，不能跟随折叠目录批量下发。
+   * 原始消息目录只读身份,角色和时间.`blocks_json` 可能很大,只有用户展开
+   * 某一条时才经 `findById` 读取,不能跟随折叠目录批量下发.
    */
   listHeadersPage(
     sessionId: string,
@@ -161,7 +160,7 @@ export class MessagesRepo {
     );
   }
 
-  /** Message 正文页与轻量目录共用同一套 keyset 方向和游标推进规则。 */
+  /** Message 正文页与轻量目录共用同一套 keyset 方向和游标推进规则. */
   private listProjectedPage<Row extends { id: string; created_at: number }>(
     projection: '*' | 'id, role, kind, created_at',
     sessionId: string,
@@ -170,7 +169,7 @@ export class MessagesRepo {
     order: 'asc' | 'desc',
     turnId?: string,
   ): { rows: Row[]; nextCursor: MessagePageCursor | null } {
-    // 正序取“比游标新”，倒序取“比游标旧”；比较符与 ORDER 同向，分页链不断。
+    // 正序取"比游标新",倒序取"比游标旧";比较符与 ORDER 同向,分页链不断.
     const direction = order === 'desc' ? 'DESC' : 'ASC';
     const comparator = order === 'desc' ? '<' : '>';
     const turnFilter = turnId === undefined ? '' : 'AND turn_id = ?';
@@ -223,7 +222,7 @@ export class MessagesRepo {
     return { callJson: call?.value, resultJson: result?.value };
   }
 
-  /** 围绕一条 Message 读取旧到新的有界窗口，额外一行只用于判断两侧缺口。 */
+  /** 围绕一条 Message 读取旧到新的有界窗口,额外一行只用于判断两侧缺口. */
   listWindowAround(
     sessionId: string,
     anchorMessageId: string,
@@ -280,9 +279,8 @@ export class MessagesRepo {
     return row.n;
   }
 
-  // ── Summary / compaction 边界辅助 ──────────────────────────────────
 
-  /** 该 session 中最近一条 kind='summary' 的 message（若有）。 */
+  /** 该 session 中最近一条 kind='summary' 的 message(若有). */
   findLastSummary(sessionId: string): MessageRow | undefined {
     return this.db
       .prepare(
@@ -295,9 +293,9 @@ export class MessagesRepo {
   }
 
   /**
-   * 加载面向 LLM 的有界历史，最终按时间正序返回。
+   * 加载面向 LLM 的有界历史,最终按时间正序返回.
    *
-   * - 无 summary：返回最新 `limit` 条消息。
+   * - 无 summary:返回最新 `limit` 条消息.
    * - 有 summary: 保留最新 summary, 返回覆盖截止游标之后最新的非 summary 消息.
    *   游标若指向旧 summary, 沿其覆盖游标追到原始消息; 不能用旧 summary 的
    *   写入时间切边界, 否则会吞掉在旧摘要前写入但未被它覆盖的消息.

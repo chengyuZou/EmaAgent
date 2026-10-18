@@ -72,7 +72,7 @@ export interface PrepareTurnToolsInput {
   readonly modelId: string;
   readonly reasoningEffort: ReasoningEffort;
   readonly emit: (event: TurnStreamEvent) => void;
-  /** 子 Agent 的物理调用不经过根 AgentLoop, 由 Turn 注入同一本账的终态出口 */
+  /** 子 Agent 的物理调用不经过主 AgentLoop, 由 Turn 注入同一本账的终态出口 */
   readonly onSubagentLLMCallFinished?: (
     event: Extract<AgentLoopEvent, { type: 'llm_call_finished' }>,
   ) => void;
@@ -99,7 +99,7 @@ export interface TurnToolsAssembly {
     wake: () => void;
   }) => StreamingToolExecutor;
   readonly abortTool: (toolCallId: string) => boolean;
-  /** Turn 终态前调用: 先停工具再停子 Agent; 幂等. */
+  /** 结束执行时调用, 先关闭当前工具执行器再取消前台子代理; 重复调用不再执行. */
   readonly shutdown: (reason: string) => Promise<void>;
 }
 
@@ -120,7 +120,7 @@ export async function prepareTurnTools(deps: TurnToolsDeps, input: PrepareTurnTo
     workspaceRoots: input.workspaceRoots,
   };
 
-  // 根 Agent 与前后台子代理共用这条 Session 交互通道.
+  // 主 Agent 与前后台子代理共用这条 Session 交互通道.
   const askPermission = async (
     request: PermissionRequest,
     signal: AbortSignal,
@@ -261,8 +261,8 @@ export async function prepareTurnTools(deps: TurnToolsDeps, input: PrepareTurnTo
       toolContext,
       toolResultStore,
       ...(deps.toolExecutionState ? { toolExecutionState: deps.toolExecutionState } : {}),
-      // 根 Tool 的终态要等 AgentLoop 把 ToolResult Message 落库后再广播
-      // 进度与权限仍实时转发,tool_result 由 TurnExecutor.translate 唯一产出
+      // 工具结果要等 Message 保存后再发布. 此处只转发进度,
+      // tool_result 由 turnLoopEvents 读取已保存的 AgentLoop 事件生成.
       pushEv: event => {
         if (event.type === 'tool_progress') {
           input.emit(event);

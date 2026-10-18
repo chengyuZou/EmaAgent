@@ -153,7 +153,7 @@ describe('SessionContinuationQueue', () => {
     fixture.queue.shutdown();
   });
 
-  it('Goal 编辑领取可重试, 后到编辑不被旧确认删除, 只绑定原根 Turn', () => {
+  it('Goal 编辑领取可重试, 后到编辑不被旧确认删除, 只绑定原Turn', () => {
     const fixture = createGoalFixture();
     fixture.sessionRunning.register(fixture.session.id, { kind: 'turn', turnId: 'root' });
     const original = fixture.goals.create(fixture.session.id, '原目标');

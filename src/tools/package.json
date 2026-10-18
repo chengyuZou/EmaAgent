@@ -37,11 +37,9 @@
       "@ema-agent/skills":  "workspace:*",
       "@ema-agent/tasks":  "workspace:*",
       "@ema-agent/token":  "workspace:*",
-      "diff":  "^9.0.0",
-      "glob":  "^11.0.0",
+
       "lru-cache":  "^10.4.3",
-      "zod":  "^4.4.3",
-      "zod-to-json-schema":  "^3.23.0"
+      "zod":  "^4.4.3"
     },
     "devDependencies":  {
       "@ema-agent/storage":  "workspace:*",

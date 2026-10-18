@@ -1,5 +1,3 @@
-// Task 数据库操作在单个事务内完成 CAS 更新与短序号分配。
-
 import type { SqliteDb } from '../../database/database.js';
 
 export type TaskRowStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
@@ -176,7 +174,7 @@ export class TasksRepo {
     })();
   }
 
-  /** 只检查是否到了提醒周期，不写任何状态；调用方在提醒落库成功后调 markReminded 提交。 */
+  /** 只检查是否到了提醒周期,不写任何状态;调用方在提醒落库成功后调 markReminded 提交. */
   shouldRemind(
     sessionId: string,
     minimumTurns: number,
@@ -202,7 +200,7 @@ export class TasksRepo {
     return turnCount >= minimumTurns;
   }
 
-  /** reminder Message 成功持久化后显式提交"已提醒"，避免 Turn 准备失败吞掉提醒周期。 */
+  /** reminder Message 成功持久化后显式提交"已提醒",避免 Turn 准备失败吞掉提醒周期. */
   markReminded(sessionId: string, now: number): void {
     this.db.prepare(
       `INSERT INTO task_context_state (session_id, last_reminded_at)

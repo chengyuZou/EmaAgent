@@ -1,4 +1,3 @@
-// 把已持久化的 Turn 循环事件投影给前端, 并处理 Context 用量和物理 LLM 调用记账.
 import type { AgentLoopEvent } from '@ema-agent/agent';
 import {
   appendEstimatedContextMessages,

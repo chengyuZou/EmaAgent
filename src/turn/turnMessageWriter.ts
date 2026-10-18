@@ -1,4 +1,3 @@
-// 事件驱动的流式落库：首个 delta 建 block、tool_use 先落库再执行、tool_result 落库再关账。
 import type { AgentLoopEvent } from '@ema-agent/agent';
 import type { AssistantBlock, LLMThinkingState } from '@ema-agent/llm';
 import { createAssistantThinkingBlock } from '@ema-agent/llm';
@@ -16,7 +15,7 @@ type WriterSessions = Pick<
 >;
 
 /**
- * 把一次根 AgentLoop 的事件流转成持久化事实。yield 恢复 = 已保存：
+ * 把一次主 AgentLoop 的事件流转成持久化事实.yield 恢复 = 已保存:
  * tool_use_completed 落库后 AgentLoop 才登记并启动调用;
  * 完整 Assistant 闭合后才交付 ToolResult, ToolResult 落库后才关执行状态.
  */
@@ -27,7 +26,7 @@ export class TurnMessageWriter {
   private thinkingByIndex = new Map<number, string>();
   private thinkingStates = new Map<number, LLMThinkingState>();
   private toolUseByIndex = new Map<number, ToolUseBlock>();
-  /** 已落库但尚未等到 tool_result 的调用；Turn 终态时合成取消结果补配对。 */
+  /** 已落库但尚未等到 tool_result 的调用;Turn 终态时合成取消结果补配对. */
   private readonly pendingToolUses = new Map<string, ToolUseBlock>();
 
   constructor(
@@ -79,7 +78,7 @@ export class TurnMessageWriter {
         };
         this.toolUseByIndex.set(event.blockIndex, block);
         this.pendingToolUses.set(event.toolCallId, block);
-        // 先落库，AgentLoop 恢复后才会 executor.addTool——副作用边界之前必有持久事实。
+        // 先落库,AgentLoop 恢复后才会 executor.addTool——副作用边界之前必有持久事实.
         await this.persistAssistant();
         return;
       }
@@ -123,7 +122,7 @@ export class TurnMessageWriter {
       blocks: orphans.map(use => ({
         type: 'tool_result' as const,
         toolCallId: use.id,
-        content: '[Turn 中断，工具调用未产生结果]',
+        content: '[Turn 中断, 工具调用未产生结果]',
         isError: true,
         errorCode: 'tool/cancelled',
       })),

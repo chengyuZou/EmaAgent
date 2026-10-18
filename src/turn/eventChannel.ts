@@ -1,4 +1,3 @@
-// 为单个 Turn 提供单消费者的进程内临时事件队列。
 import { TurnEventChannelClosedError } from './errors.js';
 
 interface PendingRead<T> {
@@ -7,8 +6,9 @@ interface PendingRead<T> {
 }
 
 /**
- * Turn 事件是顺序敏感的增量流，不能让多个消费者争抢同一个 Iterator。
- * 固定容量只吸收生产和消费的短暂速度差；调用方停止消费后会立即通知执行器取消。
+ * Turn 事件是顺序敏感的增量流,不能让多个消费者争抢同一个 Iterator.
+ * 消费方暂时来不及读取时, 事件保存在内存数组中, 当前没有容量上限.
+ * 消费方调用 return 停止读取时通知执行器取消; 仅暂停读取不会自动取消.
  */
 export class TurnEventChannel<T> implements AsyncIterable<T>, AsyncIterator<T> {
   private readonly buffer: T[] = [];

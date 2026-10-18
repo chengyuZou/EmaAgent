@@ -1,6 +1,6 @@
--- data.db 当前开发基线。
--- 由压缩前完整迁移链生成最终 Schema 后规范化导出。
--- 后续结构变更从 002_*.sql 开始追加。
+-- data.db 当前开发基线.
+-- 由压缩前完整迁移链生成最终 Schema 后规范化导出.
+-- 后续结构变更从 002_*.sql 开始追加.
 CREATE TABLE agent_run_messages (
   id           TEXT    PRIMARY KEY,
   agent_run_id TEXT    NOT NULL REFERENCES agent_runs(id) ON DELETE CASCADE,
@@ -125,7 +125,7 @@ CREATE TABLE messages (
   blocks_json TEXT NOT NULL,
   interrupted INTEGER NOT NULL DEFAULT 0,
   created_at  INTEGER NOT NULL,
-  -- 仅 kind='summary' 行非空：摘要覆盖截止点（含该消息），历史边界按它切。
+  -- 仅 kind='summary' 行非空:摘要覆盖截止点(含该消息),历史边界按它切.
   summarized_through_message_id TEXT);
 
 CREATE TABLE sessions (
@@ -160,7 +160,7 @@ CREATE TABLE task_context_state (
   last_reminded_at INTEGER NOT NULL
 );
 
--- 项目是实体：可编辑名称、多源文件夹；无文件夹时没有主文件夹。
+-- 项目是实体:可编辑名称,多源文件夹;无文件夹时没有主文件夹.
 CREATE TABLE projects (
   id         TEXT PRIMARY KEY,
   name       TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 100),
@@ -170,7 +170,7 @@ CREATE TABLE projects (
   updated_at INTEGER NOT NULL
 );
 
--- updated_at 只在"设为主要"时写入（NULL=从未当过主），按 updated_at DESC 排序主文件夹永远第一。
+-- updated_at 只在"设为主要"时写入(NULL=从未当过主),按 updated_at DESC 排序主文件夹永远第一.
 CREATE TABLE project_folders (
   project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   path       TEXT NOT NULL,
@@ -180,7 +180,7 @@ CREATE TABLE project_folders (
   PRIMARY KEY (project_id, path)
 );
 
--- 至多一个主文件夹。
+-- 至多一个主文件夹.
 CREATE UNIQUE INDEX idx_project_folders_primary
   ON project_folders(project_id) WHERE is_primary = 1;
 
@@ -232,14 +232,14 @@ CREATE TABLE tool_executions (
   updated_at     INTEGER NOT NULL
 , agent_run_id TEXT REFERENCES agent_runs(id) ON DELETE SET NULL);
 
--- 附件账本:只有 Ema 落盘的东西入库(图片受管副本、粘贴文本 txt)。
--- 拖入的用户文件不入库,消息块只记它的原路径。
--- turn_id NULL = 粘贴时已落盘入账但还没被任何已发 Turn 消费;发送时盖章。
+-- 附件账本:只有 Ema 落盘的东西入库(图片受管副本,粘贴文本 txt).
+-- 拖入的用户文件不入库,消息块只记它的原路径.
+-- turn_id NULL = 粘贴时已落盘入账但还没被任何已发 Turn 消费;发送时写入 Turn ID.
 CREATE TABLE attachment_images (
   path       TEXT PRIMARY KEY,
   session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   turn_id    TEXT          REFERENCES turns(id)    ON DELETE CASCADE,
-  -- 拖入图片的原文件名,供 UI 展示;剪贴板图片没有原生名存 NULL。
+  -- 拖入图片的原文件名,供 UI 展示;剪贴板图片没有原生名存 NULL.
   name       TEXT,
   byte_size  INTEGER NOT NULL CHECK(byte_size >= 0),
   created_at INTEGER NOT NULL
@@ -253,7 +253,7 @@ CREATE TABLE attachment_pasted_texts (
   created_at INTEGER NOT NULL
 );
 
--- Vision 描述缓存:path 即图片受管副本路径,可再生,按 LRU 与容量预算清扫。
+-- Vision 描述缓存:path 即图片受管副本路径,可再生,按 LRU 与容量预算清扫.
 CREATE TABLE attachment_vision_descriptions_caches (
   path             TEXT PRIMARY KEY REFERENCES attachment_images(path) ON DELETE CASCADE,
   text             TEXT NOT NULL,
@@ -262,7 +262,7 @@ CREATE TABLE attachment_vision_descriptions_caches (
   last_accessed_at INTEGER NOT NULL
 );
 
--- Speech 保存的正式整轮 WAV; 正在写入的文件不进入此表。
+-- Speech 保存的正式整轮 WAV; 正在写入的文件不进入此表.
 CREATE TABLE speech_outputs (
   turn_id       TEXT NOT NULL REFERENCES turns(id) ON DELETE CASCADE,
   session_id    TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
@@ -273,7 +273,7 @@ CREATE TABLE speech_outputs (
   created_at    INTEGER NOT NULL
 );
 
--- Turn 排序、分页、时长与 fork 截断一律使用 created_at（创建即启动，无独立 pending 态）。
+-- Turn 排序,分页,时长与 fork 截断一律使用 created_at(创建即启动,无独立 pending 态).
 CREATE TABLE turns (
   id                   TEXT PRIMARY KEY,
   session_id           TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
@@ -286,9 +286,9 @@ CREATE TABLE turns (
                        CHECK(narrative_policy IN ('auto','always','off')),
   provider_id   TEXT,
   model_id             TEXT,
-  -- prepare 解析出的实际调用协议（与 provider_id/model_id 同生命周期，setModel 回填前为 null）。
+  -- prepare 解析出的实际调用协议(与 provider_id/model_id 同生命周期,setModel 回填前为 null).
   protocol             TEXT,
-  -- 本 Turn 激活角色的磁盘目录名（Character.directoryName 快照）；Memory relationship 提取经 turnId 回读。
+  -- 本 Turn 激活角色的磁盘目录名(Character.name);Memory relationship 提取经 turnId 回读.
   character_directory_name TEXT,
   iterations           INTEGER NOT NULL DEFAULT 0,
   usage_input_tokens   INTEGER NOT NULL DEFAULT 0,
@@ -382,7 +382,7 @@ CREATE INDEX idx_messages_session_latest_summary
 
 CREATE INDEX idx_messages_turn    ON messages(turn_id);
 
--- 摘要覆盖截止游标：loadHistory 按游标反查消息、Fork/Backup 重映射游标都用它。
+-- 摘要覆盖截止游标:loadHistory 按游标反查消息,Fork/Backup 重映射游标都用它.
 CREATE INDEX idx_messages_summary_cursor
   ON messages(summarized_through_message_id)
   WHERE summarized_through_message_id IS NOT NULL;
@@ -422,7 +422,7 @@ CREATE INDEX idx_tool_executions_turn
 CREATE INDEX idx_attachment_images_session
   ON attachment_images(session_id, created_at DESC);
 
--- 孤儿清扫:贴了没发的残留按 Session 维度一条查询。
+-- 孤儿清扫:贴了没发的残留按 Session 维度一条查询.
 CREATE INDEX idx_attachment_images_unsent
   ON attachment_images(session_id, created_at) WHERE turn_id IS NULL;
 

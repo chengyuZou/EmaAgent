@@ -1,11 +1,10 @@
-// 定义工具调用、原始结果与用户询问产生的业务事件。
 export interface ToolError {
   code: string;
   message: string;
 }
 
 export interface AskUserQuestionSpec {
-  /** 回答键（q0/q1…）；模型看到的最终答案以问题文本为键，Tool 负责映射。 */
+  /** 回答键(q0/q1...);模型看到的最终答案以问题文本为键,Tool 负责映射. */
   id: string;
   question: string;
   header: string;
@@ -20,7 +19,7 @@ export type ToolStreamEvent =
       turnId: string;
       callId: string;
       name: string;
-      /** 不同 Tool 的进度形状由自己的 TProgress 定义，Agent 事件通道只负责透明传输。 */
+      /** 不同 Tool 的进度形状由自己的 TProgress 定义,Agent 事件通道只负责透明传输. */
       progress: unknown;
     }
   | { type: 'tool_result'; sessionId: string; callId: string; name: string; output?: unknown; error?: ToolError; durationMs: number }
@@ -28,7 +27,7 @@ export type ToolStreamEvent =
       type: 'ask_user_required';
       sessionId: string;
       turnId: string;
-      /** 问询锚点 = 发起它的那次 Tool 调用；一个交互只可能属于一次 toolCall，不再另设 promptId。 */
+      /** 问询锚点 = 发起它的那次 Tool 调用;一个交互只可能属于一次 toolCall,不再另设 promptId. */
       toolCallId: string;
       questions: AskUserQuestionSpec[];
       humanDescription?: string;
@@ -40,7 +39,7 @@ export type ToolStreamEvent =
       answers: Record<string, string>;
     };
 
-/** 工具执行上下文允许业务工具向外发出的领域事件。 */
+/** 工具执行上下文允许业务工具向外发出的领域事件. */
 export type ToolExecutionEvent = ToolStreamEvent;
 
 export type AskUserRequiredEvent = Extract<ToolStreamEvent, { type: 'ask_user_required' }>;

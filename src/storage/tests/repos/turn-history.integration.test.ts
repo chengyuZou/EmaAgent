@@ -1,4 +1,3 @@
-// 测试 Turn 导航与 Message 正文各自按稳定游标读取，并用 Message 锚点连接两者。
 import { describe, expect, it } from 'vitest';
 import { Database } from '../../database/database.js';
 import { MessagesRepo } from '../../repos/data/messages.js';
@@ -89,7 +88,7 @@ describe('Turn 历史读取', () => {
     expect(second.rows.map((row) => row.id)).toEqual(['message-c']);
   });
 
-  it('Message 目录分页不读取正文，仍按正序游标完整续翻', () => {
+  it('Message 目录分页不读取正文,仍按正序游标完整续翻', () => {
     const { messages, sessionId } = createFixture();
     for (const id of ['message-a', 'message-b', 'message-c']) {
       messages.insert({
@@ -136,7 +135,7 @@ describe('Turn 历史读取', () => {
     expect(window).toMatchObject({ hasOlder: true, hasNewer: true });
   });
 
-  it('Turn 索引带首条 Message 锚点，并排除没有 Message 的 Turn', () => {
+  it('Turn 索引带首条 Message 锚点,并排除没有 Message 的 Turn', () => {
     const { turns, messages, sessionId } = createFixture();
     turns.insert({
       id: 'turn-a',
@@ -185,7 +184,7 @@ describe('Turn 历史读取', () => {
     ]);
   });
 
-  it('模型冻结成对写入（含调用协议），残缺写入被数据库拒绝', () => {
+  it('模型冻结成对写入(含调用协议),残缺写入被数据库拒绝', () => {
     const { database, turns, sessionId } = createFixture();
     turns.insert({
       id: 'turn-a',

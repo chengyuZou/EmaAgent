@@ -20,7 +20,6 @@ const SESSION_ID = '00000000-0000-4000-8000-0000000000a1';
 const TURN_ID = '00000000-0000-4000-8000-0000000000b1';
 const TOOL_CALL_ID = 'call-1';
 
-// ── 可控假进程 ───────────────────────────────────────────────────────────────
 
 class FakeProcess {
   readonly handle: CommandProcessHandle;
@@ -81,7 +80,6 @@ class FakeRunner {
 
 }
 
-// ── 夹具 ─────────────────────────────────────────────────────────────────────
 
 interface Fixture {
   runtime: BackgroundProcess;
@@ -108,7 +106,7 @@ function createFixture(options?: {
     `INSERT INTO turns (id, session_id, status, created_at)
      VALUES (?, ?, 'running', 1)`,
   ).run(TURN_ID, SESSION_ID);
-  // background_processes.tool_call_id 有归属触发器,必须指向真实 tool_executions.call_id。
+  // background_processes.tool_call_id 有归属触发器,必须指向真实 tool_executions.call_id.
   db.sqlite.prepare(
     `INSERT INTO tool_executions (call_id, session_id, turn_id, tool_name, status, created_at, updated_at)
      VALUES (?, ?, ?, 'bash', 'running', 1, 1)`,
@@ -165,13 +163,13 @@ function logDirFor(fixture: Fixture, processId: string): string {
   return path.join(fixture.dataDir, 'sessions', SESSION_ID, 'background-processes', processId);
 }
 
-/** 交互快速路径清理后,进程根目录要么不存在要么为空。 */
+/** 交互快速路径清理后,进程根目录要么不存在要么为空. */
 function processesRootEmpty(fixture: Fixture): boolean {
   const root = path.join(fixture.dataDir, 'sessions', SESSION_ID, 'background-processes');
   return !fs.existsSync(root) || fs.readdirSync(root).length === 0;
 }
 
-/** 交互路径的坑位放行是微任务;等一个宏任务确保已 spawn 再操作假进程。 */
+/** 交互路径的坑位放行是微任务;等一个宏任务确保已 spawn 再操作假进程. */
 function tick(): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, 0));
 }
@@ -191,7 +189,6 @@ function tracked(options?: Parameters<typeof createFixture>[0]): Fixture {
   return fixture;
 }
 
-// ── 测试 ─────────────────────────────────────────────────────────────────────
 
 describe('BackgroundProcess', () => {
   it('界面进度通知失败不影响日志写入和命令完成', async () => {
@@ -281,7 +278,7 @@ describe('BackgroundProcess', () => {
     expect(fixture.runtime.hasLiveProcesses()).toBe(false);
   });
 
-  it('会话停止同时停止前台、后台和队列, 保留持久命令日志, 不启动排队项', async () => {
+  it('会话停止同时停止前台,后台和队列, 保留持久命令日志, 不启动排队项', async () => {
     const fixture = tracked({ maxConcurrent: 1 });
     const background = await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true }));
     const queued = await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true }));
@@ -421,7 +418,7 @@ describe('BackgroundProcess', () => {
       waitSignal: controller.signal,
     }));
     await tick();
-    // 进程停止较慢(取消后 100ms 才死),计时器必然先胜出。
+    // 进程停止较慢(取消后 100ms 才死),计时器必然先胜出.
     fixture.runner.processes[0]!.stopDelayMs = 100;
     setTimeout(() => controller.abort(new Error('user stop')), 30);
 
@@ -464,7 +461,7 @@ describe('BackgroundProcess', () => {
   it('后台池被长任务占满时,交互命令仍能从独立小池立即执行', async () => {
     const fixture = tracked({ maxConcurrent: 1 });
     await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true }));
-    // 长任务永不完成,后台池已满。
+    // 长任务永不完成,后台池已满.
 
     const pending = fixture.runtime.runCommand(makeRequest(fixture));
     await tick();
@@ -482,37 +479,6 @@ describe('BackgroundProcess', () => {
     await fixture.runtime.discardSession(SESSION_ID);
 
     expect(fixture.runner.processes.map(p => p.stopped)).toEqual([true, true]);
-  });
-
-  it('stopAll 并发停止全部普通后台进程', async () => {
-    const fixture = tracked({ maxConcurrent: 2 });
-    await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true }));
-    await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true, command: 'b' }));
-
-    expect(fixture.runtime.hasLiveProcesses()).toBe(true);
-    await fixture.runtime.stopAll();
-
-    expect(fixture.runner.processes.map(process => process.stopped)).toEqual([true, true]);
-    expect(fixture.runtime.hasLiveProcesses()).toBe(false);
-  });
-
-  it('关闭新进程入口期间拒绝后来请求，窗口结束后恢复', async () => {
-    const fixture = tracked();
-    let release!: () => void;
-    const closed = fixture.runtime.runWithProcessStartsClosed(
-      () => new Promise<void>(resolve => { release = resolve; }),
-    );
-
-    await expect(fixture.runtime.runCommand(makeRequest(fixture))).rejects.toMatchObject({
-      code: 'starts_closed',
-    });
-    release();
-    await closed;
-
-    const pending = fixture.runtime.runCommand(makeRequest(fixture));
-    await tick();
-    fixture.runner.processes[0]!.finishWith(okResult());
-    await expect(pending).resolves.toMatchObject({ kind: 'commandResult' });
   });
 
   it('recoverInterrupted 把 queued 与 running 全部收为 interrupted 并发事件', async () => {

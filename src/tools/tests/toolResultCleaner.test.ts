@@ -1,4 +1,3 @@
-// 测试外置工具结果按文件年龄异步回收。
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';

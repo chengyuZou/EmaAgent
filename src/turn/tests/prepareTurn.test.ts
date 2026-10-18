@@ -360,7 +360,7 @@ describe('prepareTurn', () => {
       .toContain('当前权限: Plan');
   });
 
-  it('将 Session 的 projectId 交给技能目录装载，并按项目文件夹冻结授权目录', async () => {
+  it('将 Session 的 projectId 交给技能目录装载,并按项目文件夹冻结授权目录', async () => {
     const requested: Array<[string, string | null]> = [];
     const runnerDirectories: Array<[string, readonly string[]]> = [];
     const registry = new ToolRegistry();
@@ -394,7 +394,7 @@ describe('prepareTurn', () => {
     expect(runnerDirectories).toEqual([['/w', ['/w']]]);
   });
 
-  it('项目全部源文件夹进入 Prompt，而工作区指令仍从 Session cwd 读取', async () => {
+  it('项目全部源文件夹进入 Prompt,而工作区指令仍从 Session cwd 读取', async () => {
     const instructionDirectories: string[] = [];
     const prepared = await prepareTurn(
       makeDeps({
@@ -418,7 +418,7 @@ describe('prepareTurn', () => {
       .toContain('主目录约定');
   });
 
-  it('Session 未指定模型时准备失败（provider/not_configured）', async () => {
+  it('Session 未指定模型时准备失败(provider/not_configured)', async () => {
     const deps = makeDeps({
       sessions: {
         getSession: () => fakeSession({ providerId: null, modelId: null }),
@@ -428,7 +428,7 @@ describe('prepareTurn', () => {
     await expect(prepareTurn(deps, makeRuntime(makeStart()))).rejects.toThrow(TurnPreparationError);
   });
 
-  it('从 Session 冻结模型与推理强度，模型未启用时报错', async () => {
+  it('从 Session 冻结模型与推理强度,模型未启用时报错', async () => {
     const seen: string[] = [];
     const deps = makeDeps({
       providers: {
@@ -453,7 +453,7 @@ describe('prepareTurn', () => {
     expect(prepared.providerId).toBe('req-p');
     expect(prepared.contextWindow).toBe(128_000);
     expect(prepared.supportsImageInput).toBe(false);
-    // resolveConnection().protocol 在 prepare 时冻结为实际调用协议。
+    // resolveConnection().protocol 在 prepare 时冻结为实际调用协议.
     expect(prepared.protocol).toBe('openai-chat');
     expect(prepared.thinking).toEqual({ enabled: true, effort: 'high' });
     expect(seen).toEqual(['req-p']);
@@ -492,7 +492,7 @@ describe('prepareTurn', () => {
     expect(unselected.skillPool?.getByPath('/skills/demo/SKILL.md')).toBeDefined();
   });
 
-  it('根 Turn 提供 Scratchpad 并冻结统一迭代上限, 修改设置影响下一次准备', async () => {
+  it('Turn 提供 Scratchpad 并冻结统一迭代上限, 修改设置影响下一次准备', async () => {
     const directories: Array<[string, string]> = [];
     const deps = makeDeps({
       scratchpadDirForTurn: (sessionId, turnId) => {
@@ -522,7 +522,7 @@ describe('prepareTurn', () => {
     }
   });
 
-  it('选择不存在或被禁用的 Skill 直接准备失败；合法 Skill 只冻结引用', async () => {
+  it('选择不存在或被禁用的 Skill 直接准备失败;合法 Skill 只冻结引用', async () => {
     const descriptor: SkillDescriptor = {
       name: 'demo',
       path: '/skills/demo/SKILL.md',

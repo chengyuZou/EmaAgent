@@ -1,4 +1,3 @@
-// 工具执行完成后把超大正文异步外置，并生成进入模型上下文的短预览。
 import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import * as path from 'node:path';

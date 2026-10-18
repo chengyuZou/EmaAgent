@@ -1,4 +1,3 @@
-// 在同一 SQLite 读取事务中提供 Session 全量行，并在单一写事务中恢复它们。
 import type { SqliteDb } from '../../database/database.js';
 import type { SubagentMessageRow } from './subagent-messages.js';
 import type { SubagentRow } from './subagents.js';
@@ -37,7 +36,7 @@ export interface SessionBackupToolExecutionRow {
 
 export type SessionBackupTaskRow = TaskRow;
 
-/** Iterable 只允许在 readSession 回调期间消费，不能把 SQLite 游标带出事务。 */
+/** Iterable 只允许在 readSession 回调期间消费,不能把 SQLite 游标带出事务. */
 export interface SessionBackupRows {
   readonly session: SessionRow;
   readonly turns: Iterable<TurnRow>;
@@ -55,7 +54,7 @@ export interface SessionBackupRows {
   readonly usageRecords: Iterable<UsageRecordRow>;
 }
 
-/** Backup 已完成文件落位和状态收口后交给 Storage 的数据库行。 */
+/** Backup 完成文件保存和未完成状态转换后传入的数据库行. */
 export interface SessionBackupRestoreRows extends SessionBackupRows {}
 
 export class SessionBackupRestoreError extends Error {

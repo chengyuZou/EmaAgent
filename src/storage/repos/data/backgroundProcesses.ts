@@ -1,5 +1,3 @@
-// 持久化后台 Shell 状态, 并在应用重启时把遗留运行态收口为 interrupted.
-
 import type { SqliteDb } from '../../database/database.js';
 
 export type BackgroundProcessStatus =
@@ -11,7 +9,7 @@ export type BackgroundProcessStatus =
   | 'stopped'
   | 'interrupted';
 
-/** SQLite 原始行结构;备份链路按列名消费,不进入 Tools 运行态。 */
+/** SQLite 原始行结构;备份链路按列名消费,不进入 Tools 运行态. */
 export interface BackgroundProcessRow {
   id: string;
   session_id: string;
@@ -34,7 +32,7 @@ export interface BackgroundProcessRow {
   output_relative_path: string;
 }
 
-/** 提供给 Tools 端口的领域形状,不泄露 SQL 列名与 null。 */
+/** 提供给 Tools 端口的领域形状,不泄露 SQL 列名与 null. */
 interface StoredBackgroundProcess {
   id: string;
   sessionId: string;
@@ -85,7 +83,7 @@ export interface BackgroundProcessTerminal {
   outputTruncated: boolean;
 }
 
-/** Storage 只实现原子状态转换；调度、公平队列和进程树生命周期由 Tools 管理。 */
+/** Storage 只实现原子状态转换;调度,公平队列和进程树生命周期由 Tools 管理. */
 export class BackgroundProcessesRepo {
   constructor(private readonly db: SqliteDb) {}
 

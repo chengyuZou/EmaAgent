@@ -1,14 +1,3 @@
-// FTS5 中文分词(RAGFlow 风格:先分词,再对词做 BM25)。
-//
-// jieba 的通用 dict(@node-rs/jieba/dict)是 RAGFlow trie dict 的可移植等价物。
-// 索引时将 chunk 文本分词为空格连接的 `tokens` 字符串,FTS5 按词索引;
-// 查询时同样分词,使 2 字中文词能命中(trigram 的 3 字窗口做不到)。
-// Latin/ASCII 连续段由 jieba 原样保留。
-//
-// native module + dict 在首次使用时懒加载并缓存。使用 createRequire 而不是
-// 顶层静态 import，确保某个平台缺少 native 二进制时错误能被 catch，随后
-// 降级到 unicode61 可处理的原始文本，不阻塞 Windows/macOS/Linux 启动。
-
 import { createRequire } from 'node:module';
 
 interface JiebaLike {
@@ -20,6 +9,7 @@ let _jieba: JiebaLike | null | undefined;
 
 function getJieba(): JiebaLike | null {
   if (_jieba !== undefined) return _jieba;
+  // 延迟 require 使缺少平台二进制时可以使用后备分词, 不阻断数据库启动.
   try {
     const { Jieba } = require('@node-rs/jieba') as {
       Jieba: { withDict(dictionary: Uint8Array): JiebaLike };
@@ -35,8 +25,8 @@ function getJieba(): JiebaLike | null {
 }
 
 /**
- * 将文本分词为空格连接的 token 字符串,供 FTS 索引/查询。
- * jieba 不可用时返回原始文本(仅做空格归一化)。
+ * 将文本分词为空格连接的 token 字符串,供 FTS 索引/查询.
+ * jieba 不可用时使用 portableSegment, 为汉字生成单字和双字词, 为其他字母和数字保留连续段.
  */
 export function segmentForFts(text: string): string {
   if (!text.trim()) return '';
@@ -45,7 +35,7 @@ export function segmentForFts(text: string): string {
   return j.cut(text, true).filter(t => t.trim()).join(' ');
 }
 
-/** 将用户查询转换为安全的 FTS5 OR phrase，避免标点被解释成查询操作符。 */
+/** 将用户查询转换为安全的 FTS5 OR phrase,避免标点被解释成查询操作符. */
 export function buildFtsQuery(text: string): string | null {
   const terms = segmentForFts(text)
     .split(/\s+/)
@@ -55,9 +45,9 @@ export function buildFtsQuery(text: string): string | null {
 }
 
 /**
- * 无 native 依赖的跨平台后备分词器。
- * 汉字连续段生成单字和双字 token，拉丁/数字连续段保留为词；因此中文短词
- * 仍能召回，不会退化成“必须整句完全一致”才能命中。
+ * 无 native 依赖的跨平台后备分词器.
+ * 汉字连续段生成单字和双字 token,拉丁/数字连续段保留为词;因此中文短词
+ * 仍能召回,不会退化成"必须整句完全一致"才能命中.
  */
 function portableSegment(text: string): string {
   const tokens: string[] = [];

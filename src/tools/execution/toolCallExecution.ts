@@ -1,4 +1,3 @@
-// 完成单次 Tool 调用的解析、校验、授权、执行与审计终态。
 import type { ToolResultContentPart } from '@ema-agent/llm';
 import {
   hasPermissionsToUseTool,
@@ -18,11 +17,11 @@ import type { ToolExecutionState, ToolExecutionStatus } from './toolExecutionSta
 import type { ToolResultStore } from '../results/toolResultStore.js';
 import type { ToolResult } from '../results/toolResult.js';
 
-// ToolPool 是 Tool 泛型的唯一擦除边界；单调用内的同一对象负责全程。
+// ToolPool 是 Tool 泛型的唯一擦除边界;单调用内的同一对象负责全程.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyTool = Tool<any, any, any, any>;
 
-/** 一次根 Turn 或子代理 Run 内的工具调用共用执行环境. */
+/** 一次Turn 或子代理 Run 内的工具调用共用执行环境. */
 export type ToolExecutionEnvironment = {
   readonly sessionId: string;
   readonly turnId: string;
@@ -30,13 +29,13 @@ export type ToolExecutionEnvironment = {
   readonly abortSignal: AbortSignal;
   /** 本次执行已经筛选并冻结的工具池. */
   readonly toolPool: ToolPool;
-  /** Turn 准备期冻结的权限判定上下文（模式 + 三桶规则 + 工作区）。 */
+  /** Turn 准备期冻结的权限判定上下文(模式 + 三桶规则 + 工作区). */
   readonly permissionContext: ToolPermissionContext;
   /**
-   * 权限交互通道：存在即 interactive，ask 决策经它等用户回答；
-   * 缺失时中央把 ask 收口为 deny(headless); 前后台子代理可共用 Session 通道.
-   * 由宿主实现（交互队列 + permission_required/resolved 事件 +
-   * allowSession 的规则沉淀），执行链只消费最终回答。
+   * 权限交互通道:存在即 interactive,ask 决策经它等用户回答;
+   * 缺失时中央把 ask 处理为 deny(headless); 前后台子代理可共用 Session 通道.
+   * 由宿主实现(交互队列 + permission_required/resolved 事件 +
+   * allowSession 的规则沉淀),执行链只消费最终回答.
    */
   readonly askPermission?: (
     request: PermissionRequest,
@@ -63,7 +62,7 @@ export interface ToolExecutionCall {
 
 export interface ToolExecutionCompletion {
   readonly result: ToolResult;
-  /** Runtime 按模型输出顺序发射终态；进度和审批事件不经过该缓冲。 */
+  /** StreamingToolExecutor 按模型输出顺序发射终态;进度和审批事件不经过该缓冲. */
   readonly terminalEvent: ToolExecutionEvent;
 }
 
@@ -75,10 +74,10 @@ interface ToolFailure {
 type ResultDisposition = 'succeeded' | 'failed' | 'cancelled' | 'outcome_unknown';
 
 /**
- * 单次工具调用的执行状态机。
+ * 单次工具调用的执行状态机.
  *
- * Runtime 只决定何时 run()；本对象从当前 ToolPool 取得唯一 Tool，
- * 对模型参数只 parse 一次，然后让校验、Permission 和 execute 共用该局部输入。
+ * StreamingToolExecutor 只决定何时 run();本对象从当前 ToolPool 取得唯一 Tool,
+ * 对模型参数只 parse 一次,然后让校验,Permission 和 execute 共用该局部输入.
  */
 export class ToolCallExecution {
   readonly id: string;
@@ -126,14 +125,14 @@ export class ToolCallExecution {
     }
   }
 
-  /** 取消当前调用，不影响同 Turn 的其他工具。 */
+  /** 取消当前调用,不影响同 Turn 的其他工具. */
   abort(reason = 'user_abort'): void {
     this.abortController.abort(reason);
   }
 
   /**
-   * Runtime 停止等待后关闭审计状态。
-   * running 已越过副作用边界，只能标记 outcome_unknown；尚未运行则安全取消。
+   * StreamingToolExecutor 停止等待后关闭审计状态.
+   * running 已越过副作用边界,只能标记 outcome_unknown;尚未运行则安全取消.
    */
   closeAfterShutdown(): void {
     if (this.executionStatus === 'running') {
@@ -147,18 +146,18 @@ export class ToolCallExecution {
           this.executionStatus = 'cancelled';
         }
       } catch {
-        // 启动恢复会清理尚未越过副作用边界的记录。
+        // 启动恢复会清理尚未越过副作用边界的记录.
       }
     }
   }
 
-  /** 同一个调用对象无论被等待几次，都只会越过一次副作用边界。 */
+  /** 同一个调用对象无论被等待几次,都只会越过一次副作用边界. */
   run(): Promise<ToolExecutionCompletion> {
     this.runPromise ??= this.runOnce();
     return this.runPromise;
   }
 
-  /** Tool Result 已写入 Message 后，才把薄执行状态推进到终态。 */
+  /** Tool Result 已写入 Message 后,才把薄执行状态推进到终态. */
   commitResult(): void {
     if (!this.result || !this.resultDisposition) {
       throw new Error(`tool_result_not_ready: ${this.id}`);
@@ -174,7 +173,7 @@ export class ToolCallExecution {
       }
       return;
     }
-    // 越过副作用边界(running)后的取消无法证明干净,只能按 outcome_unknown 关账。
+    // 越过副作用边界(running)后的取消无法证明干净,只能按 outcome_unknown 记录终态.
     if (
       this.resultDisposition === 'outcome_unknown'
       || (this.executionStatus === 'running' && this.resultDisposition === 'cancelled')
@@ -238,7 +237,7 @@ export class ToolCallExecution {
       return;
     }
 
-    // 构造器只有在 Tool 存在且 Schema 解析成功时才不会设置 preflightFailure。
+    // 构造器只有在 Tool 存在且 Schema 解析成功时才不会设置 preflightFailure.
     const tool = this.tool!;
     const invocation = this.invocation(signal);
     const contextProjection = tool.validateContext(this.environment.toolContext);
@@ -315,9 +314,9 @@ export class ToolCallExecution {
   }
 
   /**
-   * 中央固定优先级判定 → allow 放行 / deny 失败 / ask 走交互通道。
-   * 规则沉淀（allowSession → PermissionUpdate）由 askPermission 的实现方
-   * 在等回答时完成，执行链不接触 settings。
+   * 中央固定优先级判定 → allow 放行 / deny 失败 / ask 走交互通道.
+   * 规则沉淀(allowSession → PermissionUpdate)由 askPermission 的实现方
+   * 在等回答时完成,执行链不接触 settings.
    */
   private async requestPermission(tool: AnyTool, input: unknown, narrowedContext: unknown): Promise<boolean> {
     const {
@@ -344,7 +343,7 @@ export class ToolCallExecution {
         return false;
       }
 
-      // ask：无交互通道时中央已收口 deny，能到这里 askPermission 必然存在。
+      // ask:无交互通道时中央已返回 deny,能到这里 askPermission 必然存在.
       const summary = tool.getToolUseSummary?.(input);
       const requestFields = {
         toolName: tool.name,
@@ -390,7 +389,7 @@ export class ToolCallExecution {
     let output: unknown;
 
     try {
-      // running 是副作用边界；该状态持久化成功后才能调用具体工具。
+      // running 是副作用边界;该状态持久化成功后才能调用具体工具.
       this.environment.toolExecutionState?.start(this.id);
       if (this.environment.toolExecutionState) {
         this.executionStatus = 'running';
@@ -484,9 +483,9 @@ export class ToolCallExecution {
   }
 
   /**
-   * 模型可见内容 = Tool 自定义投影,缺省按"string 原样、其余 JSON 化"。
+   * 模型可见内容 = Tool 自定义投影,缺省按"string 原样,其余 JSON 化".
    * 文本走统一单项预算(超限外置);多模态 parts 不做文本外置,
-   * 由 Tool 业务层自限尺寸(结果层没有语义能安全裁切它们)。
+   * 由 Tool 业务层自限尺寸(结果层没有语义能安全裁切它们).
    */
   private async normalizeResult(tool: AnyTool, output: unknown): Promise<string | ToolResultContentPart[]> {
     const modelContent = tool.mapResultToModelContent?.(output) ?? serializeToolOutput(output);
@@ -528,7 +527,7 @@ export class ToolCallExecution {
         this.executionStatus = 'outcome_unknown';
       }
     } catch {
-      // 数据库不可用时保留 running，下一次启动恢复会转换为 outcome_unknown。
+      // 数据库不可用时保留 running,下一次启动恢复会转换为 outcome_unknown.
     }
   }
 
@@ -546,7 +545,7 @@ export class ToolCallExecution {
   }
 }
 
-/** 模型幻觉或收窄后不在 Pool 中的工具名；这是查找失败，不是权限拒绝。 */
+/** 模型幻觉或收窄后不在 Pool 中的工具名;这是查找失败,不是权限拒绝. */
 function toolUnavailable(name: string): ToolFailure {
   return {
     code: 'tool/unavailable',

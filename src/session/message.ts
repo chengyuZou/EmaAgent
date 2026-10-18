@@ -1,4 +1,3 @@
-// 定义 Session 持久化消息结构，并在数据库 JSON 进入业务层时完成校验。
 import type {
   AssistantBlock,
   ContentPart,
@@ -9,19 +8,19 @@ import type { ToolResult } from '@ema-agent/tools';
 
 /**
  * 附件块只保存落盘事实的绝对路径:图片=受管规范化副本,粘贴文本=落盘 txt,
- * 其他文件=用户原路径。path 是模型与文件之间的唯一桥。
+ * 其他文件为用户原路径. Context 根据引用生成模型消息.
  */
 export interface ImageReferenceBlock {
   type: 'image_reference';
   path: string;
-  /** 拖入图片的原文件名;剪贴板图片没有原生名,缺省。 */
+  /** 拖入图片的原文件名;剪贴板图片没有原生名,缺省. */
   name?: string;
 }
 
 export interface PastedTextReferenceBlock {
   type: 'pasted_text_reference';
   path: string;
-  /** 粘贴落盘时定格的前若干字符,让模型不盲读;组装零 IO。 */
+  /** 粘贴落盘时定格的前若干字符,让模型不盲读;组装零 IO. */
   preview: string;
 }
 
@@ -36,7 +35,7 @@ export type AttachmentBlock =
   | FileReferenceBlock;
 
 /**
- * 用户显式选中的 Skill;绝对 SKILL.md path 是身份,name 用于历史展示。
+ * 用户显式选中的 Skill;绝对 SKILL.md path 是身份,name 用于历史展示.
  */
 export interface SkillReferenceBlock {
   type: 'skill_reference';
@@ -46,15 +45,14 @@ export interface SkillReferenceBlock {
 
 /**
  * 落盘的用户消息块:线上格式(llm UserBlock)的超集,多附件与 Skill 两种
- * 引用块——它们必须先经投影才能下发模型。ToolResult 信封即持久块,
- * data/durationMs/errorCode 都在信封上,不再重复投影。
+ * 引用块. Context 将引用转换为模型输入, 并去掉 ToolResult 里的界面字段.
  */
 export type SessionUserBlock = ContentPart | ToolResult | AttachmentBlock | SkillReferenceBlock;
 export type MessageBlocks = string | AssistantBlock[] | SessionUserBlock[];
 
 const INVALID_MESSAGE_PLACEHOLDER = '[消息内容无法读取]';
 
-/** 数据库中的未知 JSON 只能在这里转换为 Session MessageBlocks。 */
+/** 数据库中的未知 JSON 只能在这里转换为 Session MessageBlocks. */
 export function parseMessageBlocksJson(
   raw: string,
   role: MessageRole,

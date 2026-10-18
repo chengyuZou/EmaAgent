@@ -1,4 +1,3 @@
-// 后台按 TTL、单 Session 配额和全局配额回收已经外置落盘的工具结果文件。
 import { readdir, rm, stat } from 'node:fs/promises';
 import * as path from 'node:path';
 

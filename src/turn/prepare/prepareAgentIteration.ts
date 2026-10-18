@@ -1,4 +1,3 @@
-// 每次 Agent 模型调用前装配完整消息, 按需压缩, 并保存 Turn 的摘要.
 import type { PrepareAgentIteration } from '@ema-agent/agent';
 import type { CompactRequest, CompactResult } from '@ema-agent/compact';
 import {
@@ -29,7 +28,7 @@ export interface PrepareAgentIterationDeps {
     readonly messageIds: (string | undefined)[];
   };
   readonly signal: AbortSignal;
-  /** 根 Agent 的最终请求装配完成后发布; 子 Agent 省略, 因此不会更新 Session Context. */
+  /** 主 Agent 的最终请求装配完成后发布; 子 Agent 省略, 因此不会更新 Session Context. */
   readonly onContextPrepared?: (
     llmCallId: string,
     estimate: ContextUsageEstimate,
@@ -54,7 +53,7 @@ export function createPrepareAgentIteration(deps: PrepareAgentIterationDeps): Pr
       });
 
     let assembled = assemble(messages);
-    // 摘要请求复用本轮装配的系统消息段(同字节, 含缓存断点), 与主对话共享 KV 前缀.
+    // 摘要请求复用本轮系统消息和缓存断点. 是否命中 Provider 缓存由实际协议和服务决定.
     const systemEnd = assembled.messages.findIndex(message => message.role !== 'system');
     const systemMessages = assembled.messages.slice(
       0,
@@ -69,7 +68,7 @@ export function createPrepareAgentIteration(deps: PrepareAgentIterationDeps): Pr
       usageRecorder: deps.usageRecorder,
       messages,
       systemMessages,
-      // 摘要请求复用 Turn 冻结的 Tool 定义与 thinking 配置, 保持与主请求一致的缓存前缀.
+      // 复用 Turn 已确定的 Tool 定义和 thinking, 不为摘要重新选择执行环境.
       tools: assembled.tools,
       ...(prepared.thinking ? { thinking: prepared.thinking } : {}),
       estimatedInputTokens: assembled.usage.estimatedInputTokens,

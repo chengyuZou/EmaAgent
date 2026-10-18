@@ -1,4 +1,3 @@
-// 保存子代理身份和最近配置, 列表只读取身份行, 不加载 Run 的结果或统计.
 import type { SqliteDb } from '../../database/database.js';
 import type { PermissionModeRow, ReasoningEffortRow } from './sessions.js';
 

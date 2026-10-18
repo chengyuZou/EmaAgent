@@ -1,4 +1,3 @@
-// 工具目录投影: 只暴露静态契约事实, builtin/mcp 来源正确, inputSchema 转 JSON Schema。
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { buildTool } from '../Tool/buildTool.js';

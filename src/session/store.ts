@@ -1,5 +1,3 @@
-// 集中管理 Session、项目与消息读写的领域规则：什么能写、怎么写、写完联动什么。
-// Turn 生命周期、运行态与导航由 turn 包的 TurnStore 承担；本包只经 storage repo 读取归属。
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -46,21 +44,18 @@ import type {
 import type { MessageBlocks } from './message.js';
 import type { SessionEvent } from './events.js';
 
-// ── Session 聚合 ─────────────────────────────────────────────────────────────
-
-/** 新会话默认标题；自动标题生成只覆盖这个值（用户改名后以用户为准）。 */
+/** 新会话默认标题;自动标题生成只覆盖这个值(用户改名后以用户为准). */
 export const DEFAULT_SESSION_TITLE = '新对话';
 
 export interface SessionStoreDeps {
   db: Database;
-  /** Session 删除后清理数据库外的音频、附件和工具结果文件。 */
+  /** Session 删除后清理数据库外的音频,附件和工具结果文件. */
   onSessionRemoved?: (sessionId: string) => void;
   onChanged?: (event: SessionEvent) => void;
   /** 执行宿主正在删除或归档这个会话时, 阻止新增工作, 不阻止最后的消息保存. */
   isWorkClosed?: (sessionId: string) => boolean;
 }
 
-/** 管理 Session/Project/Message 聚合的规则与读写。 */
 export class SessionStore {
   private readonly sessionsRepo: SessionsRepo;
   private readonly goalsRepo: GoalsRepo;
@@ -71,7 +66,7 @@ export class SessionStore {
   private readonly onSessionRemoved?: (sessionId: string) => void;
   private readonly onChanged?: (event: SessionEvent) => void;
   private readonly isWorkClosed?: (sessionId: string) => boolean;
-  /** 单调时间戳避免同毫秒写入破坏游标边界。 */
+  /** 单调时间戳避免同毫秒写入破坏游标边界. */
   private lastTs = 0;
 
   constructor({ db, onSessionRemoved, onChanged, isWorkClosed }: SessionStoreDeps) {
@@ -86,16 +81,12 @@ export class SessionStore {
     this.isWorkClosed = isWorkClosed;
   }
 
-  // ── 内部时间 ────────────────────────────────────────────────────────────────
-
-  /** 返回严格递增的进程内时间戳。 */
+  /** 返回严格递增的进程内时间戳. */
   private nextTs(): number {
     const now = Date.now();
     this.lastTs = now > this.lastTs ? now : this.lastTs + 1;
     return this.lastTs;
   }
-
-  // ── Session ─────────────────────────────────────────────────────────────────
 
   createSession(input: CreateSessionInput = {}): Session {
     if ((input.providerId === undefined) !== (input.modelId === undefined)) {
@@ -166,7 +157,7 @@ export class SessionStore {
     }));
   }
 
-  /** 无异常检查，供调用方识别删库后残留的客户端 Session ID。 */
+  /** 无异常检查,供调用方识别删库后残留的客户端 Session ID. */
   sessionExists(id: string): boolean {
     return this.sessionsRepo.findById(id) !== undefined;
   }
@@ -180,7 +171,6 @@ export class SessionStore {
   } {
     const all = this.sessionsRepo.listEnrichedForSidebar();
 
-    // 列出所有项目的文件夹 按 project_id 分组。
     const foldersByProject = new Map<string, ReturnType<typeof toProjectFolder>[]>();
     for (const folder of this.projectsRepo.listAllFolders()) {
       const list = foldersByProject.get(folder.project_id) ?? [];
@@ -241,7 +231,7 @@ export class SessionStore {
     this.onChanged?.({ type: 'session_list_changed', sessionId: id });
   }
 
-  /** 自动标题的条件写入：用户已改名（或会话已删）时返回 false，调用方不得发变更事件。 */
+  /** 自动标题的条件写入:用户已改名(或会话已删)时返回 false,调用方不得发变更事件. */
   updateTitleIfDefault(id: string, title: string): boolean {
     const trimmed = title.trim();
     if (!trimmed) return false;
@@ -253,8 +243,8 @@ export class SessionStore {
   }
 
   /**
-   * 在一个事务内更新 Session 偏好。
-   * cwd 是每条 Session 自己的执行目录；项目文件夹变化不回写它。
+   * 在一个事务内更新 Session 偏好.
+   * cwd 是每条 Session 自己的执行目录;项目文件夹变化不回写它.
    */
   patchSession(
     id: string,
@@ -293,8 +283,6 @@ export class SessionStore {
     this.onChanged?.({ type: 'session_list_changed', sessionId: id });
   }
 
-  // ── 置顶 ───────────────────────────────────────────────────────────────────
-
   pinSession(id: string): void {
     this.sessionsRepo.pin(id, Date.now());
     this.onChanged?.({ type: 'session_list_changed', sessionId: id });
@@ -305,8 +293,6 @@ export class SessionStore {
     this.onChanged?.({ type: 'session_list_changed', sessionId: id });
   }
 
-  // ── 归档 ───────────────────────────────────────────────────────────────────
-
   archiveSession(id: string): void {
     this.sessionsRepo.archive(id, Date.now());
     this.onChanged?.({ type: 'session_list_changed', sessionId: id });
@@ -316,8 +302,6 @@ export class SessionStore {
     this.sessionsRepo.unarchive(id);
     this.onChanged?.({ type: 'session_list_changed', sessionId: id });
   }
-
-  // ── 项目 ────────────────────────────────────────────────────────────────────
 
   listProjectFolders(projectId: string): ProjectFolder[] {
     if (!this.projectsRepo.findById(projectId)) {
@@ -370,7 +354,7 @@ export class SessionStore {
     this.onChanged?.({ type: 'session_list_changed' });
   }
 
-  /** 删除项目：成员 Session 由外键 SET NULL 掉到非项目区，cwd 保留。 */
+  /** 删除项目:成员 Session 由外键 SET NULL 掉到非项目区,cwd 保留. */
   deleteProject(id: string): void {
     this.projectsRepo.remove(id);
     this.onChanged?.({ type: 'session_list_changed' });
@@ -396,20 +380,20 @@ export class SessionStore {
     this.onChanged?.({ type: 'session_list_changed' });
   }
 
-  /** 移除文件夹只更新项目清单；已有 Session 的 cwd 是自己的历史选择。 */
+  /** 移除文件夹只更新项目清单;已有 Session 的 cwd 是自己的历史选择. */
   removeProjectFolder(projectId: string, path: string): void {
     this.projectsRepo.removeFolder(projectId, path);
     this.onChanged?.({ type: 'session_list_changed' });
   }
 
-  /** 更换主文件夹只影响未来新建 Session 的初始 cwd。 */
+  /** 更换主文件夹只影响未来新建 Session 的初始 cwd. */
   setProjectPrimaryFolder(projectId: string, path: string): void {
     this.projectsRepo.setPrimaryFolder(projectId, path);
     this.onChanged?.({ type: 'session_list_changed' });
   }
 
   /**
-   * 拖入项目只改成员资格，不把原 cwd 加入项目文件夹清单。
+   * 拖入项目只改成员资格,不把原 cwd 加入项目文件夹清单.
    */
   assignSessionToProject(
     sessionId: string,
@@ -423,7 +407,7 @@ export class SessionStore {
     this.onChanged?.({ type: 'session_list_changed', sessionId });
   }
 
-  /** 拖出项目：解除成员资格，cwd 保留原值恢复自由。 */
+  /** 拖出项目:解除成员资格,cwd 保留原值恢复自由. */
   removeSessionFromProject(sessionId: string): void {
     this.sessionsRepo.removeFromProject(sessionId, Date.now());
     this.onChanged?.({ type: 'session_list_changed', sessionId });
@@ -451,12 +435,10 @@ export class SessionStore {
     this.onChanged?.({ type: 'session_list_changed', sessionId: input.sessionId });
   }
 
-  // ── 独立 Session Fork ──────────────────────────────────────────────────────
-
   /**
-   * 创建独立 Session 副本；`untilTurnId` 为空时完整复制，否则复制到该 Turn（含）。
-   * 新 Session 重新生成 Turn 与 Message ID；附件块按原 path 引用源 Session 的
-   * 受管文件。不继承 Task、Subagent 或正在运行的外部副作用。
+   * 创建独立 Session 副本;`untilTurnId` 为空时完整复制,否则复制到该 Turn(含).
+   * 新 Session 重新生成 Turn 与 Message ID;附件块按原 path 引用源 Session 的
+   * 受管文件.不继承 Task,Subagent 或正在运行的外部副作用.
    */
   forkSession(
     srcId:        string,
@@ -471,15 +453,12 @@ export class SessionStore {
     return { sessionId: newId, messageCount };
   }
 
-  // ── 删除 ───────────────────────────────────────────────────────────────────
-
   /**
-   * 删除本聚合的数据库行并触发文件清理。活动 Turn 的取消与运行态收口
-   * 归 TurnStore，由删除用例（Server 编排）先行调用。
+   * 调用方须先停止并等待该 Session 的工作结束, 再删除行和文件.
    */
   deleteSession(id: string): void {
     this.sessionsRepo.delete(id);
-    // 数据库行由外键级联；文件目录需要显式清理。
+    // 数据库行由外键级联;文件目录需要显式清理.
     try {
       this.onSessionRemoved?.(id);
     } finally {
@@ -504,8 +483,6 @@ export class SessionStore {
       return sessionIds;
     })();
   }
-
-  // ── Message ─────────────────────────────────────────────────────────────────
 
   appendMessage(input: AppendMessageInput): SessionMessage {
     if (input.turnId) {
@@ -536,7 +513,7 @@ export class SessionStore {
   }
 
   /**
-   * 写入压缩摘要. 根 Turn 内自动压缩必须带当前 turnId, 这样 Turn terminal 后按轮读取
+   * 写入压缩摘要. Turn 内自动压缩必须带当前 turnId, 这样 Turn 结束后按轮读取
    * Message 时能把摘要一并交给 History; 手动压缩传 null, 因为它不属于任何运行中的 Turn.
    * summarizedThroughMessageId 是覆盖截止游标, 必须属于同一个 Session.
    */
@@ -586,9 +563,9 @@ export class SessionStore {
   }
 
   /**
-   * 流式落库的 block 级更新口：调用方持有 messageId，整体替换 blocks。
-   * 序列化在业务层，storage 只收 JSON 串（与 appendMessage 分工一致）。
-   * 消息不存在时抛错，防止流式续写写进已删消息而静默丢失。
+   * 流式落库的 block 级更新口:调用方持有 messageId,整体替换 blocks.
+   * 序列化在业务层,storage 只收 JSON 串(与 appendMessage 分工一致).
+   * 消息不存在时抛错,防止流式续写写进已删消息而静默丢失.
    */
   updateMessageBlocks(messageId: string, blocks: MessageBlocks): void {
     const changed = this.messagesRepo.updateBlocks(
@@ -598,18 +575,18 @@ export class SessionStore {
     if (changed === 0) throw new Error(`message_not_found: ${messageId}`);
   }
 
-  /** 加载 LLM 可见历史；从最近 Summary 开始并保持时间正序。 */
+  /** 加载 LLM 可见历史;从最近 Summary 开始并保持时间正序. */
   loadHistory(sessionId: string, limit = DEFAULT_HISTORY_LIMIT): SessionMessage[] {
     this.requireSession(sessionId);
     return this.messagesRepo.listForSessionFromSummary(sessionId, limit).map(toMessage);
   }
 
-  /** 加载一个 Turn 的全部消息，供 Turn 后处理使用。 */
+  /** 加载一个 Turn 的全部消息,供 Turn 后处理使用. */
   loadMessagesForTurn(turnId: string): SessionMessage[] {
     return this.messagesRepo.listForTurn(turnId).map(toMessage);
   }
 
-  /** 启动恢复按 Tool Call ID 找回模型原始调用与已经落库的结果。 */
+  /** 启动恢复按 Tool Call ID 找回模型原始调用与已经落库的结果. */
   findToolInteraction(
     turnId: string,
     callId: string,
@@ -658,17 +635,21 @@ export class SessionStore {
       limit,
       readsNewer ? 'asc' : 'desc',
     );
+    const cursors: Pick<MessagePage, 'olderCursor' | 'newerCursor'> = {};
+    if (page.nextCursor) {
+      if (readsNewer) {
+        cursors.newerCursor = encodeMessageCursor(page.nextCursor);
+      } else {
+        cursors.olderCursor = encodeMessageCursor(page.nextCursor);
+      }
+    }
     return {
       messages: (readsNewer ? page.rows : [...page.rows].reverse()).map(toMessage),
-      ...(page.nextCursor
-        ? readsNewer
-          ? { newerCursor: encodeMessageCursor(page.nextCursor) }
-          : { olderCursor: encodeMessageCursor(page.nextCursor) }
-        : {}),
+      ...cursors,
     };
   }
 
-  /** UI 跳转：按 Message 身份读取锚点两侧，不把 History 重新按 Turn 分页。 */
+  /** UI 跳转:按 Message 身份读取锚点两侧,不把 History 重新按 Turn 分页. */
   listMessagesAround(
     sessionId: string,
     input: ListMessagesAroundInput,
@@ -698,7 +679,7 @@ export class SessionStore {
     };
   }
 
-  /** 校验 message 属于指定 session；不向调用方暴露仓储。 */
+  /** 校验 message 属于指定 session;不向调用方暴露仓储. */
   assertMessageOwnership(sessionId: string, messageId: string): void {
     const message = this.getMessage(messageId);
     if (message.sessionId !== sessionId) {
@@ -707,8 +688,6 @@ export class SessionStore {
       );
     }
   }
-
-  // ── 归属读取 ────────────────────────────────────────────────────────────────
 
   private requireSession(id: string): Session {
     const row = this.sessionsRepo.findById(id);
@@ -767,7 +746,7 @@ function decodeMessageCursor(value: string): MessagePageCursor {
       return { createdAt: parsed.createdAt as number, id: parsed.id };
     }
   } catch {
-    // 外部游标不是本服务生成的值。
+    // 外部游标不是本服务生成的值.
   }
   throw new Error('invalid_message_cursor');
 }
