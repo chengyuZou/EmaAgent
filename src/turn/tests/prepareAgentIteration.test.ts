@@ -24,7 +24,7 @@ function makePrepared(overrides: Partial<PreparedTurn> = {}): PreparedTurn {
   return {
     contextWindow: 100_000,
     maxOutput: 8_000,
-    systemPrompt: [{ name: 'static', content: '系统提示词', cacheBreakpoint: true }],
+    systemPrompt: [{ content: '系统提示词', cacheBreakpoint: true }],
     tools: { toolPool: new ToolPool([]) },
     compactSettings: {},
     providerId: 'p',

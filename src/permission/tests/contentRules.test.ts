@@ -1,4 +1,3 @@
-// 测试内容级规则查询：Tool 把 input 转成 ruleContent 后查 deny/ask/allow。
 import { describe, expect, it } from 'vitest';
 import {
   findContentRule,
@@ -12,6 +11,7 @@ function makeContext(overrides: Partial<ToolPermissionContext> = {}): ToolPermis
     alwaysAllowRules: {},
     alwaysDenyRules: {},
     alwaysAskRules: {},
+    workspaceRoots: [],
     ...overrides,
   };
 }
@@ -23,7 +23,7 @@ describe('findContentRule', () => {
     });
     const rule = findContentRule(context, 'Bash', 'deny', 'rm -rf /');
     expect(rule).toMatchObject({ source: 'userSettings', ruleBehavior: 'deny' });
-    // 'Bash' 是整体规则，按内容查不到。
+    // 'Bash' 是整体规则, 按内容查不到.
     expect(findContentRule(context, 'Bash', 'deny', 'rm -rf /x')).toBeUndefined();
   });
 

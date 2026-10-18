@@ -1004,9 +1004,6 @@ importers:
       '@ema-agent/builtin-tools':
         specifier: workspace:*
         version: link:../builtin-tools
-      '@ema-agent/characters':
-        specifier: workspace:*
-        version: link:../characters
       '@ema-agent/session':
         specifier: workspace:*
         version: link:../session

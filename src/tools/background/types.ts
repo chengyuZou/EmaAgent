@@ -63,8 +63,8 @@ export interface BackgroundCommandRequest {
   waitSignal: AbortSignal;
   isSuccessfulExitCode(exitCode: number): boolean;
   /**
-   * 交互等待期内的原始输出增量(转交后台后不再回调——
-   * 此后输出归日志与 ProcessOutput 游标, 原调用的进度通道已随结果返回关闭)。
+   * 交互等待期内的界面进度通知, 抛错只关闭通知, 不影响命令日志.
+   * 转交后台后不再回调, 后续输出通过 ProcessOutput 读取.
    */
   onOutput?: (chunk: CommandOutputChunk) => void;
 }

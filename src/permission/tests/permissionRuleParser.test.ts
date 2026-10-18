@@ -1,4 +1,3 @@
-// 测试规则字符串与 PermissionRuleValue 的双向转换（转义敏感）与整体 Tool 匹配。
 import { describe, expect, it } from 'vitest';
 import {
   escapeRuleContent,

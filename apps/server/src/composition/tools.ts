@@ -1,4 +1,3 @@
-// 工具一族：沙箱策略、ToolRegistry、内置/MCP/Skill 注册表、后台进程、执行状态与结果存储。
 import os from 'node:os';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -17,7 +16,8 @@ import {
   detectBackend,
   probeBash,
   sandboxNetworkSetting,
-  type SandboxStatus,
+  type BackendKind,
+  type SandboxNetwork,
 } from '@ema-agent/sandbox';
 import type { SettingsStore } from '@ema-agent/settings';
 import {
@@ -94,13 +94,13 @@ export interface ToolsComposition {
   readonly skillMarket: MarketService;
   readonly skillMarketInstaller: MarketInstaller;
   readonly skillUserRoot: string;
-  /** 沙箱状态实时读:网络档位是设置键,运行期可改,冻结快照会陈旧。 */
+  /** 状态查询读取当前网络设置, 不复用某次 Turn 的值. */
   getSandboxStatus(): SandboxStatus;
-  /** 使用本 Turn 已冻结的 cwd 与 Project folders 构造命令运行器。 */
+  /** 等待 Bash 探测后, 使用本 Turn 的 cwd 与 Project folders 构造命令运行器. */
   getCommandRunner(
     cwd: string,
     workspaceRoots: readonly string[],
-  ): CommandRunner;
+  ): Promise<CommandRunner | undefined>;
   /** Session 级外置工具结果存储（按 Session 缓存目录句柄）。 */
   getSessionToolResultStore(sessionId: string): ToolResultStore;
   getSessionFileStateCache(sessionId: string): FileStateCache;
@@ -110,6 +110,14 @@ export interface ToolsComposition {
    * 释放文件状态与外置工具结果存储缓存。
    */
   discardSessionToolState(sessionId: string): Promise<void>;
+}
+
+export interface SandboxStatus {
+  readonly backend: BackendKind;
+  /** Bash 的启用策略, 不代表 Bash 探测结果或 PowerShell 的隔离能力. */
+  readonly bashMode: 'sandboxed' | 'disabled' | 'unsandboxed';
+  readonly networkAccess: SandboxNetwork;
+  readonly warning?: string;
 }
 
 /** 不安全开关只服务本地开发；正式构建发现任一开关直接拒绝启动。 */
@@ -126,7 +134,6 @@ function readUnsafeOverrides(env: NodeJS.ProcessEnv): { shell: boolean } {
 export function openTools(deps: ToolsDeps): ToolsComposition {
   const { profileDb, dataDb, activeDataDir, settings } = deps;
 
-  // ── 沙箱策略（本机能力探测 + 显式开发开关收敛） ──────────────────────────────
   const detection = detectBackend();
   const overrides = readUnsafeOverrides(process.env);
   const disableExecuteTools = detection.backend === 'unisolated' && !overrides.shell;
@@ -135,36 +142,43 @@ export function openTools(deps: ToolsDeps): ToolsComposition {
     const warnings = [
       detection.degradeReason,
       detection.backend === 'unisolated' && overrides.shell
-        ? 'Shell 正在以无 OS 隔离运行（AGEN_UNSAFE_SHELL=1）。'
+        ? 'Bash 未使用操作系统沙箱(AGEN_UNSAFE_SHELL=1).'
         : undefined,
-      network === 'full'
-        ? '沙箱内 Shell 命令具有完全网络访问（设置 → 安全 → 沙箱网络）。'
+      network === 'full' && !disableExecuteTools
+        ? 'Bash 命令允许完全网络访问.'
         : undefined,
     ].filter((message): message is string => Boolean(message));
+    let bashMode: SandboxStatus['bashMode'] = 'sandboxed';
+    if (disableExecuteTools) {
+      bashMode = 'disabled';
+    } else if (detection.backend === 'unisolated') {
+      bashMode = 'unsandboxed';
+    }
     return Object.freeze({
-      kind: detection.backend,
-      isolation: detection.backend === 'unisolated' ? 'application-only' : 'os',
-      shellExecution: disableExecuteTools
-        ? 'disabled'
-        : detection.backend === 'unisolated'
-          ? 'unsafe-override'
-          : 'isolated',
-      sandboxNetwork: network,
+      backend: detection.backend,
+      bashMode,
+      networkAccess: network,
       ...(warnings.length > 0 ? { warning: warnings.join(' ') } : {}),
     });
   };
-  // 启动预热 bash 探测：首个 Shell 命令到达时同步 peek 直接命中。
-  void probeBash();
+  // 提前查找 Bash, Turn 准备阶段仍会等待同一次探测, 不依赖它恰好已经完成.
+  if (!disableExecuteTools) void probeBash();
 
-  // Sandbox 必须永远禁止读写 Profile/Data 的 SQLite 文件族。
+  // 有隔离能力的后端禁止命令直接读写这些 SQLite 文件, 避免绕过 Server 修改数据库.
   const forbiddenPaths = Object.freeze([
     ...sqliteFileSet(profileDbPath()),
     ...sqliteFileSet(dataDbPathFor(activeDataDir)),
   ]);
-  const getCommandRunner = (
+  const getCommandRunner = async (
     cwd: string,
     workspaceRoots: readonly string[],
-  ): CommandRunner => {
+  ): Promise<CommandRunner | undefined> => {
+    if (disableExecuteTools) return undefined;
+    const bash = await probeBash();
+    if (!bash.available) return undefined;
+    const shell = bash.source === 'wsl'
+      ? { kind: 'wsl' as const }
+      : { kind: 'native' as const, path: bash.path };
     const temporaryWritePaths = process.platform === 'darwin'
       ? [os.tmpdir(), '/tmp', '/private/tmp']
       : [os.tmpdir()];
@@ -173,7 +187,7 @@ export function openTools(deps: ToolsDeps): ToolsComposition {
       writablePaths: [...workspaceRoots, ...temporaryWritePaths],
       forbiddenPaths,
       networkAccess: settings.get(sandboxNetworkSetting),
-    });
+    }, shell);
   };
 
   // ── 工具注册表与内置目录 ────────────────────────────────────────────────────
@@ -244,7 +258,7 @@ export function openTools(deps: ToolsDeps): ToolsComposition {
   const skills = createSkillRegistry({ store: skillStore });
   // builtin+user 启动时装载一次；project 技能按工作区在 list() 时现扫。
   // 装载前先清掉安装中途死掉留下的孤儿 staging 目录。
-  // 首根 Turn 的 list() 会等待这次装载，无需在此阻塞装配。
+  // 首次 Turn 准备时的 list() 会等待这次装载, 无需在此阻塞装配.
   void skillStore.sweepOrphanStaging()
     .then(() => skills.refreshCore())
     .catch(error => {

@@ -1,5 +1,3 @@
-// PermissionUpdate 应用：session → 内存 per-session 表（本 Turn 即效）；
-// userSettings/projectSettings → settings KV（次 Turn 生效）。
 import type { SettingsStore } from '@ema-agent/settings';
 import type {
   PermissionBehavior,
@@ -19,8 +17,7 @@ import {
   permissionRulesUserDenySetting,
 } from '../settings.js';
 
-// ── session 内存表（本 Turn 即效；进程退出即消失 ───────────
-
+// 会话批准只保存在当前进程. 已创建的规则桶通过 getter 读取这里的最新数组.
 const sessionAllowRules = new Map<string, string[]>();
 
 export function getSessionAllowRules(sessionId: string): readonly string[] {
@@ -30,8 +27,6 @@ export function getSessionAllowRules(sessionId: string): readonly string[] {
 export function clearSessionRules(sessionId: string): void {
   sessionAllowRules.delete(sessionId);
 }
-
-// ── PermissionUpdate 应用 ──────────────────────────────────────────────────────
 
 export function applyPermissionUpdate(
   store: SettingsStore,
@@ -67,8 +62,6 @@ export function applyPermissionUpdate(
     }
   }
 }
-
-// ── settings 读写（destination + behavior 选 key） ─────────────────────────────
 
 function writeRules(
   store: SettingsStore,
@@ -111,11 +104,11 @@ function merge(
   operation: 'add' | 'remove',
 ): string[] {
   if (operation === 'add') {
-    // 统一存规范形，等价写法（Bash / Bash() / Bash(*)）只保留一条。
+    // 统一存规范形, 等价写法(Bash / Bash() / Bash(*))只保留一条.
     return [...new Set([...current, ...ruleStrings].map(normalizeRuleString))];
   }
   const remove = new Set(ruleStrings.map(normalizeRuleString));
-  // 按规范形比较：remove 'Bash' 能删掉存储里手写的 'Bash()'。
+  // 按规范形比较: remove 'Bash' 能删掉存储里手写的 'Bash()'.
   return current.filter((rule) => !remove.has(normalizeRuleString(rule)));
 }
 

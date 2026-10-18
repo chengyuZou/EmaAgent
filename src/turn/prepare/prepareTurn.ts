@@ -170,7 +170,7 @@ export async function prepareTurn(
     projectId ?? undefined,
   );
 
-  const tools = prepareTurnTools(deps, {
+  const tools = await prepareTurnTools(deps, {
     toolPool,
     sessionId: request.sessionId,
     turnId,

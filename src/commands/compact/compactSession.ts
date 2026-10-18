@@ -278,7 +278,6 @@ async function buildCompactSystemMessages(
       workspaceInstructions: cwd ? deps.workspaceInstructions?.(cwd) ?? null : null,
       memorySection: await deps.memoryGuidance?.() ?? null,
       skillCatalog: skillPool ? renderSkillListing(skillPool) : null,
-      mcpInstructions: null,
     }),
   ];
   return buildPromptMessages(blocks).messages;

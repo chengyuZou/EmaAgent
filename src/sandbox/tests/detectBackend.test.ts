@@ -1,50 +1,45 @@
-// 测试平台 -> 沙箱后端的纯映射逻辑，覆盖所有平台分支与降级原因。
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { detectBackend, resetDetectCache } from '../backends/detectBackend.js';
 
-import { describe, expect, it } from 'vitest';
-import { selectBackendForPlatform } from '../detectBackend.js';
+const boundary = vi.hoisted(() => ({ spawnSync: vi.fn() }));
+vi.mock('node:child_process', () => boundary);
 
-describe('selectBackendForPlatform', () => {
-  it('macos 直接选 sandbox-exec', () => {
-    expect(selectBackendForPlatform('macos')).toEqual({ kind: 'sandbox-exec' });
+beforeEach(() => {
+  boundary.spawnSync.mockReset();
+  resetDetectCache();
+});
+
+function failProbe(result: { status: number | null; stderr: string; error?: Error }): void {
+  boundary.spawnSync.mockImplementation((_executable: string, args: string[]) => {
+    if (args.includes('--list')) return { status: 0, stdout: '', stderr: '' };
+    return { stdout: '', ...result };
+  });
+}
+
+describe('detectBackend startup check', () => {
+  it('adopts a backend only after the wrapped command returns the expected marker', () => {
+    boundary.spawnSync.mockReturnValue({ status: 0, stdout: 'ema-sandbox-ok\n', stderr: '' });
+    expect(detectBackend().backend).toBe(process.platform === 'darwin' ? 'sandbox-exec' : 'bubblewrap');
   });
 
-  it('原生 Linux 走直接 bwrap 探测，失败时给出安装提示', () => {
-    const result = selectBackendForPlatform('linux');
-    expect(result.kind).toBe('bwrap-direct');
-    if (result.kind === 'bwrap-direct') {
-      expect(result.degradeReason).toContain('bubblewrap');
-    }
+  it('reports the actual startup error instead of claiming the backend is not installed', () => {
+    failProbe({ status: 1, stderr: 'creating namespace failed: Operation not permitted' });
+    const result = detectBackend();
+    expect(result.backend).toBe('unisolated');
+    expect(result.degradeReason).toContain('Operation not permitted');
+    expect(result.degradeReason).not.toContain('未安装');
   });
 
-  it('WSL2 与原生 Linux 同样走直接 bwrap 探测', () => {
-    expect(selectBackendForPlatform('wsl2').kind).toBe('bwrap-direct');
+  it('does not adopt a backend when a successful process omits the marker', () => {
+    failProbe({ status: 0, stderr: '' });
+    expect(detectBackend()).toMatchObject({
+      backend: 'unisolated',
+      degradeReason: expect.stringContaining('ema-sandbox-ok'),
+    });
   });
 
-  it('WSL1 无 namespace，直接降级 unisolated 并提示升级', () => {
-    const result = selectBackendForPlatform('wsl1');
-    expect(result.kind).toBe('unisolated');
-    if (result.kind === 'unisolated') {
-      expect(result.degradeReason).toContain('WSL1');
-      expect(result.degradeReason).toContain('WSL2');
-    }
-  });
-
-  it('Windows 走 WSL 间接探测路径', () => {
-    const result = selectBackendForPlatform('windows');
-    expect(result.kind).toBe('bwrap-via-wsl');
-    if (result.kind === 'bwrap-via-wsl') {
-      expect(result.degradeReason).toContain('bubblewrap');
-    }
-  });
-
-  it('每个平台分支都返回非空 degradeReason（除 sandbox-exec 外）', () => {
-    // 穷举 SandboxPlatform 联合，确保降级路径都有原因可展示给用户。
-    const platforms = ['macos', 'linux', 'wsl2', 'wsl1', 'windows'] as const;
-    for (const p of platforms) {
-      const result = selectBackendForPlatform(p);
-      if (result.kind !== 'sandbox-exec') {
-        expect(result.degradeReason.length).toBeGreaterThan(0);
-      }
-    }
+  it('includes process startup errors when the executable cannot be launched', () => {
+    failProbe({ status: null, stderr: '', error: new Error('spawn EACCES') });
+    expect(detectBackend().degradeReason).toContain('spawn EACCES');
   });
 });

@@ -20,7 +20,6 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@ema-agent/characters": "workspace:*",
     "@ema-agent/builtin-tools": "workspace:*",
     "@ema-agent/session": "workspace:*"
   },

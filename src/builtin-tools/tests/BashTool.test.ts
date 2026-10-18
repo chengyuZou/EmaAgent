@@ -19,7 +19,7 @@ function makeHost(runCommand: ReturnType<typeof vi.fn>) {
   return {
     host: {
       cwd: 'D:/workspace',
-      commandRunner: { start: vi.fn(), run: vi.fn() },
+      commandRunner: { start: vi.fn() },
       backgroundProcesses: { runCommand, list: vi.fn(), readOutput: vi.fn(), stop: vi.fn() },
     },
   };

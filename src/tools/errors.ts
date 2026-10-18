@@ -1,4 +1,3 @@
-// 集中定义 src/tools 模块的错误类、错误码与取消错误构造助手。
 import { ZodError } from 'zod';
 import type { ToolOrigin } from './Tool/tool.js';
 import type { ToolExecutionStatus } from './execution/toolExecutionState.js';
@@ -34,7 +33,7 @@ function describeOrigin(origin: ToolOrigin): string {
     : `MCP tool "${origin.serverName}/${origin.serverToolName}"`;
 }
 
-/** 模型提交的工具参数无法通过该工具的输入 Schema 解析。 */
+/** 模型提交的工具参数无法通过该工具的输入 Schema 解析. */
 export class ToolInputError extends Error {
   constructor(
     public readonly toolName: string,
@@ -59,7 +58,7 @@ export class ToolExecutionError extends Error {
   }
 }
 
-/** 工具执行状态机发生非法迁移（CAS 冲突或调用不存在）。 */
+/** 工具执行状态机发生非法迁移(CAS 冲突或调用不存在). */
 export class ToolExecutionStateConflictError extends Error {
   constructor(
     readonly callId: string,
@@ -69,7 +68,7 @@ export class ToolExecutionStateConflictError extends Error {
   ) {
     super(
       actual
-        ? `工具调用 ${callId} 状态冲突：期望 ${expected.join('/')}，实际 ${actual}`
+        ? `工具调用 ${callId} 状态冲突: 期望 ${expected.join('/')}, 实际 ${actual}`
         : `工具调用 ${callId} 不存在`,
     );
     this.name = 'ToolExecutionStateConflictError';
@@ -78,7 +77,7 @@ export class ToolExecutionStateConflictError extends Error {
 
 // ── 工具定义装配 ─────────────────────────────────────────────────────────────
 
-/** buildTool() 收到的 Tool 声明不满足运行时不变量。 */
+/** buildTool() 收到的 Tool 声明不满足运行时不变量. */
 export class ToolDefinitionError extends RangeError {
   constructor(message: string) {
     super(message);
@@ -88,7 +87,7 @@ export class ToolDefinitionError extends RangeError {
 
 // ── Tool Result 存储 ─────────────────────────────────────────────────────────
 
-/** ToolResultStore 收到非法参数。 */
+/** ToolResultStore 收到非法参数. */
 export class ToolResultStoreError extends RangeError {
   constructor(message: string) {
     super(message);
@@ -110,7 +109,7 @@ export type BackgroundProcessErrorCode =
   | 'invalid_cursor'
   | 'cancelled_before_start';
 
-/** 后台进程运行时的状态与归属错误；message 保持稳定供终止原因与路由诊断使用。 */
+/** 后台进程的状态与归属错误; message 用于保存终止原因和返回路由错误. */
 export class BackgroundProcessError extends Error {
   constructor(
     readonly code: BackgroundProcessErrorCode,
@@ -121,7 +120,7 @@ export class BackgroundProcessError extends Error {
   }
 }
 
-/** 命令在真正启动前被取消；保持 name=AbortError 供统一取消判断识别。 */
+/** 命令在真正启动前被取消; 保持 name=AbortError 供统一取消判断识别. */
 export function createBackgroundProcessAbortError(): Error {
   return Object.assign(new Error('Command cancelled before start'), { name: 'AbortError' });
 }

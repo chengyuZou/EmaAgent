@@ -1,5 +1,3 @@
-// 安全与隔离:展示当前机器真实启用的沙箱等级,沙箱网络档位可直接在此切换。
-// 保护性禁用(裸 Windows 默认)不是故障,不用危险色;红只留给不安全覆盖。
 import { useEffect, useState, type JSX } from 'react';
 import { Button, Callout, Select, Spinner } from '@ema-agent/ui';
 import { settingsApi } from '../../api/settings.js';
@@ -10,22 +8,20 @@ import { SettingsSection } from '../shared/SettingItem.js';
 type LoadState =
   | { kind: 'loading' }
   | { kind: 'error'; message: string }
-  | { kind: 'ready'; status: SandboxStatus; network: SandboxNetwork };
+  | { kind: 'ready'; status: SandboxStatus };
 
-type SandboxNetwork = SandboxStatus['sandboxNetwork'];
 type SaveState = 'idle' | 'saving' | 'failed';
 
-const BACKEND_LABEL: Record<SandboxStatus['kind'], string> = {
-  'bubblewrap':  'bubblewrap(Linux 系统沙箱)',
+const BACKEND_LABEL: Record<SandboxStatus['backend'], string> = {
+  bubblewrap: 'bubblewrap(Linux 系统沙箱)',
   'sandbox-exec': 'sandbox-exec(macOS 系统沙箱)',
-  'unisolated':  '应用层(无操作系统沙箱)',
+  unisolated: '无操作系统沙箱',
 };
 
-/** 命令执行行的人话映射:disabled 只摘了 Bash 工具,PowerShell 逐条授权照常。 */
-const EXECUTION_LABEL: Record<SandboxStatus['shellExecution'], string> = {
-  'isolated':        '已隔离',
-  'disabled':        'Bash 保护性关闭 · PowerShell 逐条授权可用',
-  'unsafe-override': '不安全覆盖',
+const EXECUTION_LABEL: Record<SandboxStatus['bashMode'], string> = {
+  sandboxed: '使用操作系统沙箱',
+  disabled: '已禁用',
+  unsandboxed: '已启用, 无操作系统沙箱',
 };
 
 const NETWORK_OPTIONS = [
@@ -38,16 +34,12 @@ export function SandboxStatusSettings(): JSX.Element {
   const [saveState, setSaveState] = useState<SaveState>('idle');
 
   const load = (): void => {
-    void Promise.all([
-      systemApi.getSandboxStatus(),
-      settingsApi.getValue('sandbox.network'),
-    ]).then(([status, setting]) => {
-      const network: SandboxNetwork = setting.value === 'full' ? 'full' : 'none';
-      setState({ kind: 'ready', status, network });
-    }).catch((error: unknown) => setState({
-      kind: 'error',
-      message: error instanceof Error ? error.message : '读取沙箱状态失败',
-    }));
+    void systemApi.getSandboxStatus()
+      .then(status => setState({ kind: 'ready', status }))
+      .catch((error: unknown) => setState({
+        kind: 'error',
+        message: error instanceof Error ? error.message : '读取沙箱状态失败',
+      }));
   };
 
   useEffect(load, []);
@@ -58,7 +50,6 @@ export function SandboxStatusSettings(): JSX.Element {
     settingsApi.putValue('sandbox.network', value)
       .then(() => {
         setSaveState('idle');
-        // 服务端警告文案随档位变化,重拉状态保持同步。
         load();
       })
       .catch((error: unknown) => {
@@ -68,72 +59,67 @@ export function SandboxStatusSettings(): JSX.Element {
   };
 
   const status = state.kind === 'ready' ? state.status : null;
-  const unsafe = status?.shellExecution === 'unsafe-override';
-  const appOnly = status !== null && status.isolation === 'application-only';
+  let executionTone: 'ok' | 'bad' | undefined;
+  if (status?.bashMode === 'sandboxed') {
+    executionTone = 'ok';
+  } else if (status?.bashMode === 'unsandboxed') {
+    executionTone = 'bad';
+  }
 
   return (
     <SettingsSection
-      icon={unsafe
-        ? 'i-lucide:shield-off'
-        : appOnly
-          ? 'i-lucide:shield-alert'
-          : 'i-lucide:shield-check'}
-      iconClassName={unsafe
-        ? 'text-[var(--ema-danger)]'
-        : appOnly
-          ? 'text-[var(--ema-warning)]'
-          : 'text-[var(--ema-success)]'}
-      title="安全与隔离"
-      description="AI 在本机执行命令与访问网络时的真实隔离等级"
+      icon="i-lucide:terminal"
+      title="命令执行"
+      description="Bash 的沙箱后端与网络设置"
     >
       {state.kind === 'loading' && (
-        <div className="flex justify-center py-4"><Spinner size="sm" /></div>
+        <div className="flex justify-center py-4">
+          <Spinner size="sm" />
+        </div>
       )}
       {state.kind === 'error' && (
         <div className="flex flex-col gap-3">
           <Callout variant="danger">{state.message}</Callout>
-          <Button variant="secondary" size="sm" className="self-start" onClick={load}>重新加载</Button>
+          <Button variant="secondary" size="sm" className="self-start" onClick={load}>
+            重新加载
+          </Button>
         </div>
       )}
-
       {state.kind === 'ready' && status && (
         <>
-          <div className="ema-glass-weak grid grid-cols-1 gap-x-6 gap-y-3 rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] px-4 py-4 ">
-            <StatusRow label="隔离后端" value={BACKEND_LABEL[status.kind] ?? status.kind} />
+          <div className="ema-glass-weak grid grid-cols-1 gap-x-6 gap-y-3 rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] px-4 py-4">
+            <StatusRow label="Bash 沙箱后端" value={BACKEND_LABEL[status.backend]} />
             <StatusRow
-              label="命令执行"
-              value={EXECUTION_LABEL[status.shellExecution] ?? status.shellExecution}
-              tone={status.shellExecution === 'isolated'
-                ? 'ok'
-                : status.shellExecution === 'unsafe-override'
-                  ? 'bad'
-                  : undefined}
+              label="Bash 执行"
+              value={EXECUTION_LABEL[status.bashMode]}
+              tone={executionTone}
             />
             <div className="flex items-center justify-between gap-3">
-              <span className="text-sm text-[var(--ema-text-tertiary)]">沙箱网络</span>
+              <span className="text-sm text-[var(--ema-text-tertiary)]">Bash 沙箱网络</span>
               <Select
                 className="w-40"
-                value={state.network}
-                disabled={saveState === 'saving'}
+                value={status.networkAccess}
+                disabled={saveState === 'saving' || status.bashMode !== 'sandboxed'}
                 options={NETWORK_OPTIONS}
                 onChange={saveNetwork}
               />
             </div>
           </div>
           <p className="mt-2 text-xs text-[var(--ema-text-tertiary)]">
-            沙箱网络是全有或全无;按域名放行要等沙箱网络策略上线。
+            网络设置只对操作系统沙箱中的 Bash 生效. 修改后从下一次 Turn 开始使用.
+            原生 PowerShell 不经过此沙箱, 仍按命令进行权限检查.
           </p>
           {status.warning && (
             <Callout variant="warn" className="mt-3">{status.warning}</Callout>
           )}
-          {unsafe && (
+          {status.bashMode === 'unsandboxed' && (
             <Callout variant="danger" className="mt-3">
-              沙箱已被手动关闭(不安全覆盖),AI 执行的命令将直接运行在你的系统中,请确认你了解风险。
+              开发开关允许 Bash 在没有操作系统沙箱的情况下运行, 文件和网络限制不会由沙箱实施.
             </Callout>
           )}
-          {!unsafe && appOnly && (
+          {status.bashMode === 'disabled' && (
             <Callout variant="warn" className="mt-3">
-              当前系统不支持系统级沙箱,AI 执行的命令仅在应用层隔离下运行,请留意每一次权限确认。
+              当前没有可用的操作系统沙箱, Bash 工具已禁用. 这不影响原生 PowerShell 的独立权限流程.
             </Callout>
           )}
         </>
@@ -150,21 +136,20 @@ function StatusRow({
   label: string;
   value: string;
   tone?: 'ok' | 'bad';
-}) {
+}): JSX.Element {
+  let color = 'text-[var(--ema-text-primary)]';
+  if (tone === 'ok') {
+    color = 'text-[var(--ema-success)]';
+  } else if (tone === 'bad') {
+    color = 'text-[var(--ema-danger)]';
+  }
+
   return (
     <div className="flex min-h-10 items-center justify-between gap-6">
       <span className="shrink-0 text-sm text-[var(--ema-text-tertiary)]">
         {label}
       </span>
-      <span
-        className={`text-right text-sm font-medium ${
-          tone === 'ok'
-            ? 'text-[var(--ema-success)]'
-            : tone === 'bad'
-              ? 'text-[var(--ema-danger)]'
-              : 'text-[var(--ema-text-primary)]'
-        }`}
-      >
+      <span className={`text-right text-sm font-medium ${color}`}>
         {value}
       </span>
     </div>

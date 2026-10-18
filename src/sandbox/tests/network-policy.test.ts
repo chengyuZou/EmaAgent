@@ -1,8 +1,7 @@
-// 这里测试 Linux、WSL 和 macOS 沙箱是否严格执行 none/full 两档网络策略。
 
 import { describe, expect, it } from 'vitest';
 import { BubblewrapBackend } from '../backends/bubblewrap.js';
-import { SandboxExecBackend } from '../backends/sandbox-exec.js';
+import { SandboxExecBackend } from '../backends/sandboxExec.js';
 import type { SandboxConfig, ShellSpec } from '../types.js';
 
 function config(access: 'none' | 'full'): SandboxConfig {
@@ -36,7 +35,7 @@ describe('Sandbox V1 网络策略', () => {
     expect(deniedProfile).toContain('(deny network-outbound)');
     expect(deniedProfile).toContain('(deny network-inbound)');
     expect(deniedProfile).not.toContain('localhost');
-    // full: deny default 起手, 必须显式 allow 才是真的开放(P1 回归)
+    // deny default 已拒绝网络, full 必须补上明确的 allow.
     expect(fullProfile).toContain('(allow network-outbound)');
     expect(fullProfile).toContain('(allow network-inbound)');
     expect(fullProfile).not.toContain('(deny network-outbound)');

@@ -1,6 +1,5 @@
-// 子进程环境净化测试: 白名单重建, 凭据与注入变量默认不存在。
 import { describe, expect, it } from 'vitest';
-import { buildProcessEnvironment } from '../processEnvironment.js';
+import { buildProcessEnvironment } from '../process/processEnvironment.js';
 
 describe('buildProcessEnvironment', () => {
   it('保留命令查找/用户目录/临时目录/区域变量', () => {

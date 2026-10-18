@@ -1,15 +1,15 @@
-/** 沙箱内进程可以或禁止访问的文件路径。 */
 export interface SandboxFilesystemConfig {
   allowWrite: string[];
   denyWrite: string[];
   denyRead: string[];
 }
 
-/** 沙箱内进程的网络访问策略。 */
 export interface SandboxNetworkConfig {
-  /** V1 只支持完全断网或全网访问，不声称支持域名白名单。 */
-  access: 'none' | 'full';
+  /** none 请求后端断网, full 不限制网络. unisolated 后端不实施这项限制. */
+  access: SandboxNetwork;
 }
+
+export type SandboxNetwork = 'none' | 'full';
 
 export interface SandboxConfig {
   filesystem: SandboxFilesystemConfig;
@@ -18,25 +18,16 @@ export interface SandboxConfig {
 
 export type BackendKind = 'bubblewrap' | 'sandbox-exec' | 'unisolated';
 
-/** 系统接口与设置页展示的沙箱状态；宿主组合事实，不是 Sandbox 执行器自己的类型。 */
-export interface SandboxStatus {
-  readonly kind: BackendKind;
-  readonly isolation: 'os' | 'application-only';
-  readonly shellExecution: 'isolated' | 'disabled' | 'unsafe-override';
-  readonly sandboxNetwork: 'none' | 'full';
-  readonly warning?: string;
-}
-
 /**
  * 后端真正启动的 Shell 形态:
- * - native: 本机可执行文件, path 是真实文件路径(如 /bin/bash、Git bash.exe);
- * - wsl:    bash 在 WSL 虚拟机内, 命令经 wsl.exe 路由, 没有本机路径。
+ * - native: 本机可执行文件, path 是真实文件路径(如 /bin/bash, Git bash.exe);
+ * - wsl:    bash 在 WSL 虚拟机内, 命令经 wsl.exe 路由, 没有本机路径.
  */
 export type ShellSpec =
   | { readonly kind: 'native'; readonly path: string }
   | { readonly kind: 'wsl' };
 
-/** 后端包装命令后真正要启动的程序和参数。 */
+/** 后端包装命令后真正要启动的程序和参数. */
 export interface WrappedCommand {
   executable: string;
   args: string[];
@@ -54,26 +45,25 @@ export interface ProcessCommand {
 }
 
 export interface SandboxBackend {
-  readonly kind: BackendKind;
   wrap(command: string, shell: ShellSpec, config: SandboxConfig): WrappedCommand;
 }
 
-/** 为一个 Session 冻结的命令执行能力；Sandbox 不从 Permission 规则反推。 */
+/** Server 在 Turn 准备时提供的执行范围, CommandRunner 构造后保持不变. */
 export interface SandboxCapability {
-  /** 必填;空串直接拒绝,不允许回退到宿主进程工作目录。 */
+  /** 必填; 空串直接拒绝, 不允许回退到宿主进程工作目录. */
   cwd: string;
-  /** 绝对路径;cwd 之外的附加可写根,构造时统一规范化,不含空项。 */
+  /** 完整可写根列表, 通常包含工作区与临时目录; 不会自动加入 cwd. */
   writablePaths: readonly string[];
-  /** 绝对路径;同时禁止读取与写入(protected 表达不出这个强度,故名 forbidden)。 */
+  /** 后端配置同时禁止读取和写入的绝对路径. */
   forbiddenPaths: readonly string[];
-  networkAccess: 'none' | 'full';
+  networkAccess: SandboxNetwork;
 }
 
 export interface CommandRunOptions {
   cwd?: string;
   timeoutMs?: number;
   signal?: AbortSignal;
-  /** 原始输出增量只供受控日志存储使用；最终结果仍保持有界。 */
+  /** 原始输出保存入口, 不受最终文本长度限制. 抛错会停止命令并使 completion 拒绝. */
   onOutput?: (chunk: CommandOutputChunk) => void;
 }
 
@@ -85,16 +75,16 @@ export interface CommandOutputChunk {
 export interface CommandRunResult {
   stdout: string;
   stderr: string;
-  /** 进程自身退出码;被信号杀死或预检取消时为 -1。spawn 启动失败不走这里——Promise 直接 reject。 */
+  /** 进程退出码, 无退出码或启动前已取消时为 -1. 启动失败则 completion 直接拒绝. */
   exitCode: number;
   timedOut: boolean;
-  /** 仅表示内存中累计的 stdout/stderr 文本被截断,不代表 onOutput 原始流被截。 */
+  /** 仅表示内存中累计的 stdout/stderr 文本被截断,不代表 onOutput 原始流被截. */
   truncated: boolean;
-  /** 与 timedOut 互斥:超时优先记 timedOut,不计 aborted。 */
+  /** 与 timedOut 互斥:超时优先记 timedOut,不计 aborted. */
   aborted: boolean;
 }
 
-/** 已启动进程的稳定句柄；stop 终止整棵进程树，completion 只结算一次。 */
+/** stop 请求终止进程树, 已结束时不再发送请求. completion 等待子进程结束或启动失败. */
 export interface CommandProcessHandle {
   readonly completion: Promise<CommandRunResult>;
   stop(): void;

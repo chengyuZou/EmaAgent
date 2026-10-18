@@ -31,7 +31,6 @@ const SUBAGENT_DENIED_TOOL_NAMES: ReadonlySet<string> = new Set([
 
 /** 放在通用规则之后, 明确它们在纯工作子代理中的身份和交付对象. */
 const subagentPrompt: PromptBlock = {
-  name: 'subagent',
   content: `# 子代理工作约束
 
 你是 EmaAgent 的纯工作子代理, 不是前台主 Agent. 不使用当前激活角色的人设或角色扮演表达. 通用规则中的任务执行,安全,工具和事实核验要求仍然适用; 对用户沟通与最终交付在这里指向父 Agent, 你的报告由父 Agent 整合后转述给用户.
@@ -146,7 +145,6 @@ export function createPrepareSubagent(deps: PrepareSubagentDeps): PrepareSubagen
       workspaceInstructions: parentInput.workspaceInstructions,
       memorySection: parentInput.memorySection,
       skillCatalog: parentInput.skillCatalog,
-      mcpInstructions: parentInput.mcpInstructions,
     });
     const systemPrompt = Object.freeze([...staticSystemPrompt, ...getDynamicSystemPrompt(dynamicInput), subagentPrompt]);
 

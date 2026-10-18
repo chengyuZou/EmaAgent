@@ -1,10 +1,9 @@
-// 这里测试 Sandbox 只保护 Server 传入的真实私有路径，不再自行猜旧设置文件位置。
 
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { buildSandboxConfig } from '../buildSandboxConfig.js';
+import { buildSandboxConfig } from '../command/commandPaths.js';
 
 describe('buildSandboxConfig 私有路径', () => {
   it('只采用 Server 明确注入的可写路径', () => {

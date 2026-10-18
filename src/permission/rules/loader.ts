@@ -1,4 +1,3 @@
-// 从 settings 读出规则并按 source 装配判定桶；开机对账项目规则（崩溃收敛）。
 import type { SettingsStore } from '@ema-agent/settings';
 import type { ToolPermissionRulesBySource } from '../types.js';
 import {
@@ -11,7 +10,7 @@ import {
 } from '../settings.js';
 import { getSessionAllowRules } from './update.js';
 
-/** hasPermissionsToUseTool 的三桶规则（原始字符串，解析推迟到 Tool match 时）。 */
+/** hasPermissionsToUseTool 的三桶规则(原始字符串, 解析推迟到 Tool match 时). */
 export interface PermissionRuleBuckets {
   readonly alwaysAllowRules: ToolPermissionRulesBySource;
   readonly alwaysDenyRules: ToolPermissionRulesBySource;
@@ -19,15 +18,14 @@ export interface PermissionRuleBuckets {
 }
 
 /**
- * Turn 准备时调用：settings 源规则冻结装配（user + 当前项目）；
- * session 源（本 Turn 即效）并入 allow 桶。
+ * Turn 准备时调用: settings 源规则冻结装配(user + 当前项目);
+ * session 源(本 Turn 即效)并入 allow 桶.
  */
 export function loadPermissionRuleBuckets(
   store: SettingsStore,
   sessionId: string,
   projectId?: string,
 ): PermissionRuleBuckets {
-  // 与 session 桶一致：无规则时省略键，不出现空数组（空数组 truthy 会误带键）。
   const project = <T extends Record<string, string[]>>(record: T, projectId?: string) =>
     projectId && (record[projectId]?.length ?? 0) > 0 ? record[projectId] : undefined;
 
@@ -57,8 +55,8 @@ export function loadPermissionRuleBuckets(
 }
 
 /**
- * 开机对账：三张 record 的键 ∩ 现存项目 id 过滤，有差集才写回（幂等）。
- * 兜"删除项目后停电没来得及清"的底；调用方（装配层）从 session 公开入口取项目列表传入。
+ * 启动时移除已不存在项目的 allow/deny/ask 配置, 只在发现多余项目 ID 时写回.
+ * 调用方传入当前项目列表, 避免删除项目中途退出后遗留规则.
  */
 export function reconcileProjectRules(
   store: SettingsStore,

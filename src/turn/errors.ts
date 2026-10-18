@@ -1,6 +1,6 @@
 import { llmProviderErrorCode } from '@ema-agent/llm';
 
-/** Turn 失败终态对前端公开的稳定错误码；领域内部错误在进入终态时映射到这里。 */
+/** Turn 失败终态对前端公开的稳定错误码; 业务内部错误在进入终态时映射到这里. */
 export type TurnFailureCode =
   | 'auth/api_key_invalid'
   | 'provider/context_too_long'
@@ -13,7 +13,7 @@ export type TurnFailureCode =
   | 'turn/setup_failed'
   | 'turn/execution_failed';
 
-/** Turn 失败发生的业务阶段；用于诊断，不参与执行控制。 */
+/** Turn 失败发生的业务阶段; 用于诊断, 不参与执行控制. */
 export type TurnFailurePhase =
   | 'setup'
   | 'provider'
@@ -21,7 +21,7 @@ export type TurnFailurePhase =
   | 'tool'
   | 'unknown';
 
-/** 业务层发现跨 Session 引用 Turn 时抛出的稳定错误。 */
+/** 业务层发现跨 Session 引用 Turn 时抛出的稳定错误. */
 export class TurnOwnershipError extends Error {
   readonly code = 'turn_ownership_violation' as const;
 
@@ -31,7 +31,7 @@ export class TurnOwnershipError extends Error {
   }
 }
 
-/** 输入准备阶段已完成领域错误映射，TurnExecutor 只负责提交统一失败终态。 */
+/** 输入准备阶段已完成业务错误映射, TurnExecutor 只负责提交统一失败终态. */
 export class TurnPreparationError extends Error {
   constructor(
     readonly code: TurnFailureCode,
@@ -65,11 +65,11 @@ const PROVIDER_FAILURE_CODES: ReadonlySet<string> = new Set([
 export function failureCodeOf(error: unknown): TurnFailureCode {
   if (error instanceof TurnPreparationError) return error.code;
   const code: string = llmProviderErrorCode(error);
-  // llm 错误码并集比 TurnFailureCode 宽；不在 Turn 失败词表的归为执行失败。
+  // LLM 错误码比 TurnFailureCode 多, 不在 Turn 失败词表中的归为执行失败.
   return PROVIDER_FAILURE_CODES.has(code) ? code as TurnFailureCode : 'turn/execution_failed';
 }
 
-/** 任意异常 → 面向用户的失败消息。 */
+/** 转换为展示给用户的失败消息. */
 export function failureMessageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }

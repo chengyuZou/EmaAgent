@@ -1,4 +1,3 @@
-// 测试 Turn 冻结工具池的 Plan 收窄, 权限交互回路和子代理事件顺序.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import fs from 'node:fs';
@@ -8,7 +7,7 @@ import { SubagentExecutor, SubagentStore, SubagentMessagesStore } from '@ema-age
 import { Database, SubagentsRepo, SubagentRunsRepo, SubagentMessagesRepo } from '@ema-agent/storage';
 import {
   clearSessionRules, findMatchingContentRule, getSessionAllowRules, loadPermissionRuleBuckets,
-  matchShellRule, shellCommandToRuleContent, type PermissionStreamEvent,
+  matchShellRule, shellCommandToRuleContent,
 } from '@ema-agent/permission';
 import type { SettingsStore } from '@ema-agent/settings';
 import {
@@ -143,7 +142,7 @@ describe('prepareTurnTools', () => {
       permission: { mode, buckets: { alwaysAllowRules: {}, alwaysDenyRules: {}, alwaysAskRules: {} } },
     } });
     try {
-      const unavailable = prepareTurnTools(deps, input).createExecutor(() => undefined);
+      const unavailable = (await prepareTurnTools(deps, input)).createExecutor(() => undefined);
       unavailable.addTool(0, 'missing-memory', 'MemorySearch', { queries: ['简洁'] });
       await unavailable.join();
       expect(unavailable.takeCompletedResults()[0]).toMatchObject({
@@ -156,7 +155,7 @@ describe('prepareTurnTools', () => {
         memoryRead: (request: Parameters<typeof readMemoryFile>[1]) => readMemoryFile(directory, request),
         memoryList: (request: Parameters<typeof listMemoryFiles>[1]) => listMemoryFiles(directory, request),
       };
-      const assembly = prepareTurnTools(memoryDeps, input);
+      const assembly = await prepareTurnTools(memoryDeps, input);
       expect(assembly.toolPool.tools.map(tool => tool.name).sort())
         .toEqual(['MemoryList', 'MemoryRead', 'MemorySearch']);
       const executor = assembly.createExecutor(() => undefined);
@@ -173,7 +172,7 @@ describe('prepareTurnTools', () => {
       expect(search?.content).toContain('work/MEMORY.md');
       expect(search?.content).toContain('用户偏好简洁说明');
       settings.set(disabledToolsSetting, [BuiltinTools.MemorySearch.id]);
-      expect(prepareTurnTools(memoryDeps, input).toolPool.tools.map(tool => tool.name).sort())
+      expect((await prepareTurnTools(memoryDeps, input)).toolPool.tools.map(tool => tool.name).sort())
         .toEqual(['MemoryList', 'MemoryRead']);
     } finally {
       fs.rmSync(directory, { recursive: true, force: true });
@@ -188,7 +187,7 @@ describe('prepareTurnTools', () => {
     try {
       const deps = makeDeps({ tools: [], queue: new SessionInteractionQueue(null), settings: fakeSettings() });
       deps.registry.register(DescribeImageTool);
-      const assembly = prepareTurnTools({ ...deps, resolveVision: () => vision }, makeInput({
+      const assembly = await prepareTurnTools({ ...deps, resolveVision: () => vision }, makeInput({
         events: [],
         overrides: {
           cwd: directory,
@@ -210,22 +209,22 @@ describe('prepareTurnTools', () => {
     }
   });
 
-  it('Narrative 与普通工具共用禁用设置, 不改变已经准备好的 Turn', () => {
+  it('Narrative 与普通工具共用禁用设置, 不改变已经准备好的 Turn', async () => {
     const settings = fakeSettings();
     const narrative = fakeTool('NarrativeSearch', { id: BuiltinTools.NarrativeSearch.id });
     const other = fakeTool('Other');
     const deps = makeDeps({ tools: [narrative, other], queue: new SessionInteractionQueue(null), settings });
-    const first = prepareTurnTools(deps, makeInput({ events: [] }));
+    const first = await prepareTurnTools(deps, makeInput({ events: [] }));
     settings.set(disabledToolsSetting, [narrative.id, other.id]);
-    const second = prepareTurnTools(deps, makeInput({ events: [], overrides: { turnId: 't2' } }));
+    const second = await prepareTurnTools(deps, makeInput({ events: [], overrides: { turnId: 't2' } }));
     expect(first.toolPool.tools.map(tool => tool.name)).toEqual(['Other', 'NarrativeSearch']);
     expect(second.toolPool.tools).toEqual([]);
     settings.set(disabledToolsSetting, []);
-    const third = prepareTurnTools(deps, makeInput({ events: [], overrides: { turnId: 't3' } }));
+    const third = await prepareTurnTools(deps, makeInput({ events: [], overrides: { turnId: 't3' } }));
     expect(third.toolPool.tools.map(tool => tool.name)).toEqual(['Other', 'NarrativeSearch']);
   });
 
-  it('根 Turn 结束或中断后复用 Session 文件状态, 子代理共享, 别的 Session 隔离', async () => {
+  it('Turn 结束或中断后复用 Session 文件状态, 子代理共享, 别的 Session 隔离', async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ema-session-file-state-'));
     const target = path.join(directory, 'file.txt');
     fs.writeFileSync(target, 'a\nb');
@@ -247,7 +246,7 @@ describe('prepareTurnTools', () => {
       },
     });
     try {
-      const first = prepareTurnTools(deps, {
+      const first = await prepareTurnTools(deps, {
         ...input('turn-1'), signal: controller.signal,
       });
       const reader = first.createExecutor(() => undefined);
@@ -257,7 +256,7 @@ describe('prepareTurnTools', () => {
       controller.abort();
       await first.shutdown('interrupted');
 
-      const second = prepareTurnTools(deps, input('turn-2'));
+      const second = await prepareTurnTools(deps, input('turn-2'));
       const editor = second.createExecutor(() => undefined);
       editor.addTool(0, 'edit', 'Edit', { file_path: target, old_string: 'b', new_string: 'root' });
       await editor.join();
@@ -271,14 +270,14 @@ describe('prepareTurnTools', () => {
       expect(child.takeCompletedResults()[0]?.isError).toBe(false);
       await second.shutdown('completed');
 
-      const third = prepareTurnTools(deps, input('turn-3'));
+      const third = await prepareTurnTools(deps, input('turn-3'));
       const next = third.createExecutor(() => undefined);
       next.addTool(0, 'next-edit', 'Edit', { file_path: target, old_string: 'child', new_string: 'final' });
       await next.join();
       expect(next.takeCompletedResults()[0]?.isError).toBe(false);
       await third.shutdown('completed');
 
-      const other = prepareTurnTools(deps, input('other-turn', 'other-session'));
+      const other = await prepareTurnTools(deps, input('other-turn', 'other-session'));
       const denied = other.createExecutor(() => undefined);
       denied.addTool(0, 'unread-edit', 'Edit', { file_path: target, old_string: 'final', new_string: 'wrong' });
       await denied.join();
@@ -318,7 +317,7 @@ describe('prepareTurnTools', () => {
     });
     const deps = makeDeps({ tools: [], queue, settings });
     deps.registry.register(tool);
-    const assembly = prepareTurnTools(deps, makeInput({ events: [], overrides: {
+    const assembly = await prepareTurnTools(deps, makeInput({ events: [], overrides: {
       permission: { mode: 'default', buckets: loadPermissionRuleBuckets(settings, SESSION_ID) },
     } }));
     const child = assembly.createSubagentExecutor({
@@ -348,7 +347,7 @@ describe('prepareTurnTools', () => {
     await changed.join();
     expect(changed.takeCompletedResults()[0]?.isError).toBe(true);
 
-    const later = prepareTurnTools(deps, makeInput({ events: [], overrides: {
+    const later = await prepareTurnTools(deps, makeInput({ events: [], overrides: {
       turnId: 'later-turn',
       permission: { mode: 'default', buckets: loadPermissionRuleBuckets(settings, SESSION_ID) },
     } }));
@@ -358,7 +357,7 @@ describe('prepareTurnTools', () => {
     expect(laterExecutor.takeCompletedResults()[0]?.isError).toBe(false);
     expect(queue.size()).toBe(0);
 
-    const other = prepareTurnTools(deps, makeInput({ events: [], overrides: {
+    const other = await prepareTurnTools(deps, makeInput({ events: [], overrides: {
       sessionId: 'other-session', turnId: 'other-turn',
       permission: { mode: 'default', buckets: loadPermissionRuleBuckets(settings, 'other-session') },
     } }));
@@ -385,7 +384,7 @@ describe('prepareTurnTools', () => {
     db.sqlite.prepare("INSERT INTO sessions (id,title,cwd,created_at,updated_at) VALUES ('s1','测试','',1,1)").run();
     const store = new SubagentStore(db.sqlite, new SubagentsRepo(db.sqlite), new SubagentRunsRepo(db.sqlite));
     const queue = new SessionInteractionQueue(null);
-    const events: PermissionStreamEvent[] = [];
+    const events: Array<Parameters<TurnToolsDeps['publishInteraction']>[0]> = [];
     const parent = new AbortController();
     const onRunFinished = vi.fn((runId: string) => { queue.cancelForRun(runId); });
     const subagents = new SubagentExecutor({
@@ -394,7 +393,7 @@ describe('prepareTurnTools', () => {
       maxConcurrent: () => 4, publish: vi.fn(), onBackgroundCompleted: vi.fn(),
       onTerminalResultRead: vi.fn(), onRunFinished,
     });
-    const assembly = prepareTurnTools({
+    const assembly = await prepareTurnTools({
       ...makeDeps({ tools: [fakeTool('Echo', { ask: true })], queue, settings: fakeSettings() }),
       subagents, publishInteraction: event => { events.push(event); },
     }, makeInput({ events: [], overrides: { signal: parent.signal } }));
@@ -468,13 +467,13 @@ describe('prepareTurnTools', () => {
   });
 
   it('根与两个子代理共用 FIFO, 父 Turn 停止后子代理仍可批准原工具', async () => {
-    const events: PermissionStreamEvent[] = [];
+    const events: Array<Parameters<TurnToolsDeps['publishInteraction']>[0]> = [];
     const turnEvents: TurnStreamEvent[] = [];
     const queue = new SessionInteractionQueue(null);
     const parent = new AbortController();
     const childController = new AbortController();
     const otherController = new AbortController();
-    const assembly = prepareTurnTools({
+    const assembly = await prepareTurnTools({
       ...makeDeps({ tools: [fakeTool('Echo', { ask: true })], queue, settings: fakeSettings() }),
       publishInteraction: event => { events.push(event); },
     }, makeInput({ events: turnEvents, overrides: { signal: parent.signal } }));
@@ -522,21 +521,85 @@ describe('prepareTurnTools', () => {
     }));
   });
 
-  it('Shell 工厂使用本 Turn 冻结的工作目录与授权目录', () => {
-    const received: Array<{ cwd: string; roots: readonly string[] }> = [];
+  it('Bash 准备未完成时等待, 不提前提供一个尚不可用的执行器', async () => {
+    let release!: () => void;
+    const ready = new Promise<void>(resolve => { release = resolve; });
     const deps: TurnToolsDeps = {
+      ...makeDeps({
+        tools: [fakeTool('Bash', { id: BuiltinTools.Bash.id })],
+        queue: new SessionInteractionQueue(null),
+        settings: fakeSettings(),
+      }),
+      commandRunner: async () => {
+        await ready;
+        return undefined;
+      },
+    };
+    let prepared = false;
+    const pending = prepareTurnTools(deps, makeInput({ events: [] }));
+    void pending.then(() => { prepared = true; });
+    await Promise.resolve();
+    expect(prepared).toBe(false);
+    release();
+    await pending;
+    expect(prepared).toBe(true);
+  });
+
+  it('工具池没有 Bash 时不等待 Bash 工厂, Plan 也不等待', async () => {
+    const commandRunner = vi.fn(async () => undefined);
+    const deps = {
       ...makeDeps({
         tools: [],
         queue: new SessionInteractionQueue(null),
         settings: fakeSettings(),
       }),
-      commandRunner: (cwd, roots) => {
+      commandRunner,
+    };
+    await prepareTurnTools(deps, makeInput({ events: [] }));
+    deps.registry.register(fakeTool('Bash', { id: BuiltinTools.Bash.id }));
+    await prepareTurnTools(deps, makeInput({ events: [], overrides: {
+      permission: { mode: 'plan', buckets: { alwaysAllowRules: {}, alwaysDenyRules: {}, alwaysAskRules: {} } },
+    } }));
+    expect(commandRunner).not.toHaveBeenCalled();
+  });
+
+  it('等待 Bash 期间取消 Turn, 探测结束后不再继续组装工具', async () => {
+    let release!: () => void;
+    const ready = new Promise<void>(resolve => { release = resolve; });
+    const controller = new AbortController();
+    const deps: TurnToolsDeps = {
+      ...makeDeps({
+        tools: [fakeTool('Bash', { id: BuiltinTools.Bash.id })],
+        queue: new SessionInteractionQueue(null),
+        settings: fakeSettings(),
+      }),
+      commandRunner: async () => {
+        await ready;
+        return undefined;
+      },
+    };
+    const pending = prepareTurnTools(deps, makeInput({ events: [], overrides: { signal: controller.signal } }));
+    const rejected = expect(pending).rejects.toThrow('cancelled during Bash discovery');
+    controller.abort(new Error('cancelled during Bash discovery'));
+    release();
+    await rejected;
+  });
+
+  it('Bash 工厂使用本 Turn 的工作目录与授权目录', async () => {
+    const received: Array<{ cwd: string; roots: readonly string[] }> = [];
+    const deps: TurnToolsDeps = {
+      ...makeDeps({
+        tools: [fakeTool('Bash', { id: BuiltinTools.Bash.id })],
+        queue: new SessionInteractionQueue(null),
+        settings: fakeSettings(),
+      }),
+      commandRunner: async (cwd, roots) => {
         received.push({ cwd, roots });
         return undefined;
       },
     };
 
-    prepareTurnTools(deps, makeInput({
+    await prepareTurnTools(deps, makeInput({
       events: [],
       overrides: { cwd: '/old', workspaceRoots: ['/current'] },
     }));
@@ -544,7 +607,7 @@ describe('prepareTurnTools', () => {
     expect(received).toEqual([{ cwd: '/old', roots: ['/current'] }]);
   });
 
-  it('默认权限保留宿主可用工具, 只读限制由 Plan 权限决定', () => {
+  it('默认权限保留宿主可用工具, 只读限制由 Plan 权限决定', async () => {
     const readTool = fakeTool('Read', { id: BuiltinTools.FileRead.id });
     const skillTool = fakeTool('Skill', { id: BuiltinTools.Skill.id });
     const bashTool = fakeTool('Bash', { id: BuiltinTools.Bash.id });
@@ -554,7 +617,7 @@ describe('prepareTurnTools', () => {
       settings: fakeSettings(),
     });
 
-    const assembly = prepareTurnTools(deps, makeInput({ events: [] }));
+    const assembly = await prepareTurnTools(deps, makeInput({ events: [] }));
     expect(assembly.toolPool.get('Read')).toBeDefined();
     expect(assembly.toolPool.get('Skill')).toBeDefined();
     expect(assembly.toolPool.get('Bash')).toBeDefined();
@@ -566,7 +629,7 @@ describe('prepareTurnTools', () => {
     // 即使工具自称只读, 也不能用任意名字或 MCP 声明扩入 Plan 池.
     tools.push(fakeTool('mcp__demo__read', { id: 'mcp:demo:read' }));
     const deps = makeDeps({ tools, queue: new SessionInteractionQueue(null), settings: fakeSettings() });
-    const assembly = prepareTurnTools(deps, makeInput({
+    const assembly = await prepareTurnTools(deps, makeInput({
       events: [],
       overrides: {
         permission: {
@@ -594,7 +657,7 @@ describe('prepareTurnTools', () => {
   });
 
   it('ask 决策经队列等用户;allowSession 沉淀 session 规则并发出 resolved', async () => {
-    const events: PermissionStreamEvent[] = [];
+    const events: Array<Parameters<TurnToolsDeps['publishInteraction']>[0]> = [];
     const queue = new SessionInteractionQueue(null);
     const settings = fakeSettings();
     const deps = makeDeps({
@@ -602,7 +665,7 @@ describe('prepareTurnTools', () => {
       queue,
       settings,
     });
-    const assembly = prepareTurnTools({
+    const assembly = await prepareTurnTools({
       ...deps,
       publishInteraction: event => {
         expect(queue.listPending(SESSION_ID)).toHaveLength(event.type === 'permission_required' ? 1 : 0);
@@ -636,7 +699,7 @@ describe('prepareTurnTools', () => {
       queue: new SessionInteractionQueue(null),
       settings: fakeSettings(),
     });
-    const assembly = prepareTurnTools(deps, makeInput({ events }));
+    const assembly = await prepareTurnTools(deps, makeInput({ events }));
     const executor = assembly.createSubagentExecutor({
       subagentId: 'subagent-1',
       runId: 'run-1',
@@ -656,7 +719,7 @@ describe('prepareTurnTools', () => {
     const queue = new SessionInteractionQueue(null);
     const settings = fakeSettings();
     const set = vi.spyOn(settings, 'set');
-    const assembly = prepareTurnTools(
+    const assembly = await prepareTurnTools(
       makeDeps({ tools: [fakeTool('Echo', { ask: true })], queue, settings }),
       makeInput({ events: [] }),
     );
@@ -678,7 +741,7 @@ describe('prepareTurnTools', () => {
       queue,
       settings: fakeSettings(),
     });
-    const assembly = prepareTurnTools(deps, makeInput({
+    const assembly = await prepareTurnTools(deps, makeInput({
       events: [],
       overrides: { signal: controller.signal },
     }));

@@ -1,4 +1,3 @@
-// 测试路径规则（gitignore 语义）在工作区相对与绝对形态下的命中与越界拒绝。
 import { describe, expect, it } from 'vitest';
 import { directoryPathToRuleContent, filePathToRuleContent, matchPathRule } from '../rules/pathRuleMatching.js';
 

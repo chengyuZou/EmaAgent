@@ -5,5 +5,5 @@
     "outDir": "dist",
     "types": ["node"]
   },
-  "include": ["*.ts", "backends"]
+  "include": ["*.ts", "command", "process", "backends", "discovery"]
 }

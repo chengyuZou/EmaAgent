@@ -1,4 +1,3 @@
-// 测试规则桶装配（user + project + session 并入）与开机项目规则对账。
 import { describe, expect, it } from 'vitest';
 import { SettingsStore, type SettingsRepository } from '@ema-agent/settings';
 import {
@@ -109,7 +108,7 @@ describe('loadPermissionRuleBuckets', () => {
     expect(buckets.alwaysDenyRules.userSettings).toEqual(['Bash(rm -rf)']);
     expect(buckets.alwaysDenyRules.projectSettings).toBeUndefined();
     expect(buckets.alwaysAskRules.projectSettings).toEqual(['Read(./.env)']);
-    // session 只进 allow 桶，deny/ask 桶没有 session 键。
+    // session 只进 allow 桶, deny/ask 桶没有 session 键.
     expect(buckets.alwaysAllowRules.session).toEqual(['Bash(git status)']);
     expect(buckets.alwaysDenyRules.session).toBeUndefined();
     expect(buckets.alwaysAskRules.session).toBeUndefined();
@@ -152,7 +151,7 @@ describe('loadPermissionRuleBuckets', () => {
     expect(store.get(permissionRulesProjectAllowSetting)).toEqual({
       'proj-alive': ['Bash(a)'],
     });
-    // 幂等：再跑零变化
+    // 幂等: 再跑零变化
     reconcileProjectRules(store, ['proj-alive']);
     expect(store.get(permissionRulesProjectAllowSetting)).toEqual({
       'proj-alive': ['Bash(a)'],

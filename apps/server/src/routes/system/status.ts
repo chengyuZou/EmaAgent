@@ -1,15 +1,15 @@
-// 系统只读状态：健康探针（无认证）、版本、磁盘与数据目录、沙箱隔离等级。
 import { readFileSync } from 'node:fs';
 import { Hono } from 'hono';
 import { getDisksInfo } from '@ema-agent/system';
-import { detectTerminalShells, type SandboxStatus } from '@ema-agent/sandbox';
+import { detectTerminalShells } from '@ema-agent/sandbox';
+import type { SandboxStatus } from '../../composition/tools.js';
 
 export interface SystemStatusRouteDeps {
   readonly activeDataDir: string;
   readonly getSandboxStatus: () => SandboxStatus;
 }
 
-/** 包版本在模块加载时读一次；运行期不变。 */
+/** 包版本在模块加载时读一次, 运行期不变. */
 const SERVER_VERSION = (
   JSON.parse(readFileSync(new URL('../../../package.json', import.meta.url), 'utf8')) as { version: string }
 ).version;
@@ -26,9 +26,9 @@ export const systemStatusRoute = (deps: SystemStatusRouteDeps) =>
     .get('/disks', context => {
       return context.json({ disks: getDisksInfo(), dataDir: deps.activeDataDir });
     })
-    // 当前机器真正启用的隔离等级（裸 Windows 无 OS 沙箱时如实降级）。
+    // Server 将后端探测与 Bash 启用策略组合, 前端不重新推断这些状态.
     .get('/sandbox', context => context.json(deps.getSandboxStatus()))
-    // 集成终端可选 Shell 探测（检测统一在 Node；Rust 只按 path 起 PTY）。
+    // Node 查找可选 Shell, Rust 根据返回的 path 启动 PTY.
     .get('/api/system/find-terminal-shells', async context => {
       return context.json({ shells: await detectTerminalShells() });
     });

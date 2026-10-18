@@ -1,4 +1,3 @@
-// 测试 shell 规则三形态（exact / `:*` 前缀 / wildcard）与 matchShellRule 判定。
 import { describe, expect, it } from 'vitest';
 import {
   hasWildcards,

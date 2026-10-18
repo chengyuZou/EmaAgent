@@ -1,5 +1,3 @@
-// Shell 规则支持完整命令, `:*` 前缀和 wildcard; 完整命令中的模式字符必须转义.
-
 const ESCAPED_STAR_PLACEHOLDER = '\x00ESCAPED_STAR\x00';
 const ESCAPED_BACKSLASH_PLACEHOLDER = '\x00ESCAPED_BACKSLASH\x00';
 const ESCAPED_STAR_PLACEHOLDER_RE = new RegExp(ESCAPED_STAR_PLACEHOLDER, 'g');
@@ -10,17 +8,18 @@ export type ShellPermissionRule =
   | { readonly type: 'prefix'; readonly prefix: string }
   | { readonly type: 'wildcard'; readonly pattern: string };
 
+/** 保存单次批准的完整命令时转义模式字符, 避免下次匹配扩大批准范围. */
 export function shellCommandToRuleContent(command: string): string {
   return command.replace(/\\/g, '\\\\').replace(/\*/g, '\\*');
 }
 
-/** `npm:*` → `npm`；不是前缀形态返回 null。 */
+/** `npm:*` → `npm`; 不是前缀形态返回 null. */
 export function permissionRuleExtractPrefix(permissionRule: string): string | null {
   const match = permissionRule.match(/^(.+):\*$/);
   return match?.[1] ?? null;
 }
 
-/** 模式是否含未转义通配符（末尾 `:*` 前缀形态不算 wildcard）。 */
+/** 模式是否含未转义通配符(末尾 `:*` 前缀形态不算 wildcard). */
 export function hasWildcards(pattern: string): boolean {
   if (pattern.endsWith(':*')) return false;
   for (let i = 0; i < pattern.length; i++) {
@@ -38,9 +37,9 @@ export function hasWildcards(pattern: string): boolean {
 }
 
 /**
- * wildcard 匹配：`*` 匹配任意序列；`\*` 匹配字面星号；`\\` 匹配字面反斜杠。
- * 末尾 `' *'`（空格+唯一通配符）可选化，使 'git *' 同时匹配 'git add' 与裸 'git'，
- * 与前缀规则 `git:*` 语义对齐；dotAll 让通配覆盖内嵌换行（heredoc 等）。
+ * wildcard 匹配: `*` 匹配任意序列; `\*` 匹配字面星号; `\\` 匹配字面反斜杠.
+ * 末尾 `' *'`(空格+唯一通配符)可选化, 使 'git *' 同时匹配 'git add' 与裸 'git',
+ * 与前缀规则 `git:*` 语义对齐; dotAll 让通配覆盖内嵌换行(heredoc 等).
  */
 export function matchWildcardPattern(
   pattern: string,
@@ -85,7 +84,6 @@ export function matchWildcardPattern(
   return new RegExp(`^${regexPattern}$`, flags).test(command);
 }
 
-/** 规则文本 → 三形态判别。 */
 export function parsePermissionRule(permissionRule: string): ShellPermissionRule {
   const prefix = permissionRuleExtractPrefix(permissionRule);
   if (prefix !== null) {
@@ -97,7 +95,6 @@ export function parsePermissionRule(permissionRule: string): ShellPermissionRule
   return { type: 'exact', command: permissionRule.replace(/\\([\\*])/g, '$1') };
 }
 
-/** 命令是否命中规则内容（shell 家族 checkPermissions 的单条判定）。 */
 export function matchShellRule(ruleContent: string, command: string): boolean {
   const rule = parsePermissionRule(ruleContent);
   switch (rule.type) {

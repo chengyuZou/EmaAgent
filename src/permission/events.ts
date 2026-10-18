@@ -1,4 +1,3 @@
-// 定义权限等待与决策结果进入统一事件流时使用的稳定协议。
 import type { PermissionRequest } from './types.js';
 
 export type PermissionRequiredEvent = PermissionRequest & { readonly type: 'permission_required' };

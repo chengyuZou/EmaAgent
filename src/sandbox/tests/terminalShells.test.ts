@@ -1,9 +1,8 @@
-// 终端 Shell 探测的纯函数测试:kind 判别、标签文案与旧 Rust 实现的平移对拍。
 import { describe, expect, it } from 'vitest';
-import { detectTerminalShells, terminalShellKind, terminalShellLabel } from '../terminalShells.js';
+import { detectTerminalShells, terminalShellKind, terminalShellLabel } from '../discovery/terminalShells.js';
 
 describe('terminalShellKind', () => {
-  it('按可执行文件名判别,与旧 Rust shell_kind 一致', () => {
+  it('按可执行文件名判断 Shell 种类', () => {
     expect(terminalShellKind('C:\\Program Files\\PowerShell\\7\\pwsh.exe')).toBe('powershell');
     expect(terminalShellKind('C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe')).toBe('powershell');
     expect(terminalShellKind('/usr/bin/pwsh')).toBe('powershell');

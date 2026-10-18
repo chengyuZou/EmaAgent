@@ -1,4 +1,3 @@
-// 测试 PermissionUpdate 应用: session 内存表与 settings KV 读写.
 import { describe, expect, it } from 'vitest';
 import { SettingsStore, type SettingsRepository } from '@ema-agent/settings';
 import {
@@ -103,10 +102,10 @@ describe('applyPermissionUpdate', () => {
       rules: [{ toolName: 'Bash', ruleContent: '*' }],
     }, context);
 
-    // 三种写法归一为一条 'Bash'。
+    // 三种写法归一为一条 'Bash'.
     expect(store.get(permissionRulesUserAllowSetting)).toEqual(['Bash']);
 
-    // 删除：按规范化比较，remove 'Bash()' 能删掉存储里的规范形 'Bash'。
+    // 删除: 按规范化比较, remove 'Bash()' 能删掉存储里的规范形 'Bash'.
     applyPermissionUpdate(store, {
       type: 'removeRules', destination: 'userSettings', behavior: 'allow',
       rules: [{ toolName: 'Bash', ruleContent: '' }],

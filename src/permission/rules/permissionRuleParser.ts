@@ -1,9 +1,8 @@
-// 'Tool(content)' 规则字符串与 PermissionRuleValue 的双向转换（转义敏感）。
-// 整文件照抄 Claude utils/permissions/permissionRuleParser.ts（去掉 legacy 别名表）。
+// 规则解析实现来源: Claude utils/permissions/permissionRuleParser.ts.
 import type { PermissionRuleValue } from '../types.js';
 
 /**
- * 转义规则内容以便安全存储。顺序敏感：先转义反斜杠，再转义括号。
+ * 转义规则内容以便保存. 顺序敏感: 先转义反斜杠, 再转义括号.
  * escapeRuleContent('psycopg2.connect()') // => 'psycopg2.connect\\(\\)'
  */
 export function escapeRuleContent(content: string): string {
@@ -13,7 +12,7 @@ export function escapeRuleContent(content: string): string {
     .replace(/\)/g, '\\)');
 }
 
-/** unescapeRuleContent 是 escapeRuleContent 的逆序：先括号，后反斜杠。 */
+/** unescapeRuleContent 是 escapeRuleContent 的逆序: 先括号, 后反斜杠. */
 export function unescapeRuleContent(content: string): string {
   return content
     .replace(/\\\(/g, '(')
@@ -22,8 +21,8 @@ export function unescapeRuleContent(content: string): string {
 }
 
 /**
- * 解析规则字符串。"ToolName" 或 "ToolName(content)"；
- * 空内容（'Bash()'）与通配（'Bash(*)'）视为整体 Tool 规则。
+ * 解析 ToolName 或 ToolName(content). 空内容和单独的星号视为整个工具的规则.
+ * 括号不完整或闭括号后仍有文本时, 整个字符串作为工具名, 不猜测批准范围.
  */
 export function permissionRuleValueFromString(ruleString: string): PermissionRuleValue {
   const openParenIndex = findFirstUnescapedChar(ruleString, '(');
@@ -58,12 +57,11 @@ export function permissionRuleValueToString(ruleValue: PermissionRuleValue): str
   return `${ruleValue.toolName}(${escapeRuleContent(ruleValue.ruleContent)})`;
 }
 
-/** 整体 Tool 匹配：ruleContent 为空 + toolName 相等。中央唯一懂的规则语义。 */
 export function matchesWholeTool(ruleValue: PermissionRuleValue, toolName: string): boolean {
   return ruleValue.ruleContent === undefined && ruleValue.toolName === toolName;
 }
 
-/** 第一个未转义字符的位置；前面有奇数个反斜杠视为转义。 */
+/** 前面有奇数个反斜杠时, 当前括号属于内容, 不是规则分隔符. */
 function findFirstUnescapedChar(str: string, char: string): number {
   for (let i = 0; i < str.length; i++) {
     if (str[i] === char) {
@@ -81,7 +79,6 @@ function findFirstUnescapedChar(str: string, char: string): number {
   return -1;
 }
 
-/** 最后一个未转义字符的位置；前面有奇数个反斜杠视为转义。 */
 function findLastUnescapedChar(str: string, char: string): number {
   for (let i = str.length - 1; i >= 0; i--) {
     if (str[i] === char) {

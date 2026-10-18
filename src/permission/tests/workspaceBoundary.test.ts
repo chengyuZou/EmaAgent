@@ -1,4 +1,3 @@
-// 测试 Session cwd 与项目授权目录分离后的多根路径判定。
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';

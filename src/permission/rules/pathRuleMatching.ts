@@ -1,10 +1,8 @@
-// 路径规则（gitignore 语义）与候选路径的匹配；文件 Tool 家族的 checkPermissions 消费。
-// 规则形态：'./src/**'（工作区相对）、'src/**'（同义）、'//abs/path/**'（绝对路径，双斜杠前缀）。
 import { createRequire } from 'node:module';
 import type { Ignore } from 'ignore';
 import { normalizeCaseForComparison } from '../paths/pathSafety.js';
 
-// ignore 是 CJS 包；NodeNext ESM 下经 createRequire 取工厂函数。
+// ignore 是 CJS 包; NodeNext ESM 下经 createRequire 取工厂函数.
 const require = createRequire(import.meta.url);
 const ignore = require('ignore') as (options?: { ignorecase?: boolean }) => Ignore;
 
@@ -28,19 +26,16 @@ function matcherFor(ruleContent: string): Ignore {
 }
 
 /**
- * 单条路径规则命中判定。
- * 绝对路径规则（'//' 前缀）与工作区相对规则分开处理：
- * - '//abs/path/**'：规则与候选统一归一为无冒号 POSIX 盘符形（X:/ → /x/，
- *   候选再剥前导 '/' 折算为相对路径——
- *   ignore 包只接受相对路径，Windows 盘符直接喂库必炸；
- * - './src/**' 或 'src/**'：候选先折算为相对 cwd 的路径；无 cwd 不命中。
+ * file:/directory: 按字面路径匹配, 不展开文件名中的模式字符.
+ * 其他规则使用 gitignore 语义: // 开头按绝对路径匹配, 其余相对 cwd 匹配.
+ * ignore 只接收相对候选路径, 因此绝对路径先转换盘符并移除候选的前导斜杠.
  */
 export function matchPathRule(
   ruleContent: string,
   candidatePath: string,
   cwd?: string,
 ): boolean {
-  // 本会话批准保存字面路径, 不把文件名中的 *、[] 等解释成目录模式.
+  // 本会话批准保存字面路径, 不把文件名中的模式字符解释成更大范围.
   if (ruleContent.startsWith('file:')) {
     return normalizeCaseForComparison(toPosixDrive(ruleContent.slice(5)))
       === normalizeCaseForComparison(toPosixDrive(candidatePath));
@@ -70,9 +65,8 @@ export function matchPathRule(
 }
 
 /**
- * 归一为 POSIX 形式：反斜杠转正，Windows 盘符 X:/ 或 X:\ 转 /x/（无冒号）。
- * ignore 包的绝对路径校验按宿主 path.isAbsolute 判定，Windows 下带盘符必炸；
- * /x/ 形式在任意宿主上都不是"盘符绝对路径"。
+ * 统一分隔符, 将 Windows 盘符改为 /x/ 形式.
+ * 调用方再移除根或前导斜杠, 避免将带盘符的绝对路径直接交给 ignore.
  */
 function toPosixDrive(candidate: string): string {
   const posix = candidate.replace(/\\/g, '/');

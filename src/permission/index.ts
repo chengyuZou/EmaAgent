@@ -29,7 +29,6 @@ export {
   type PermissionRuleBuckets,
 } from './rules/loader.js';
 export {
-  DANGEROUS_DIRS,
   DANGEROUS_FILES,
   getPathsForPermissionCheck,
   hasSuspiciousWindowsPath,

@@ -8,12 +8,13 @@ import type {
   CommandStarter,
   CommandRunResult,
 } from '@ema-agent/sandbox';
+import { startProcess } from '@ema-agent/sandbox';
 import { Database, BackgroundProcessesRepo } from '@ema-agent/storage';
 import { BackgroundProcess } from '../background/backgroundProcess.js';
 import type {
   BackgroundCommandRequest,
-  BackgroundProcessEvent,
 } from '../background/types.js';
+import type { BackgroundProcessEvent } from '../background/events.js';
 
 const SESSION_ID = '00000000-0000-4000-8000-0000000000a1';
 const TURN_ID = '00000000-0000-4000-8000-0000000000b1';
@@ -25,14 +26,14 @@ class FakeProcess {
   readonly handle: CommandProcessHandle;
   stopDelayMs = 0;
   stopped = false;
-  private readonly resolveCompletion!: (result: CommandRunResult) => void;
+  private readonly resolveCompletion: (result: CommandRunResult) => void;
   private options?: Parameters<CommandStarter['start']>[1];
   readonly completion: Promise<CommandRunResult>;
 
   constructor() {
     let resolve!: (result: CommandRunResult) => void;
     this.completion = new Promise(r => { resolve = r; });
-    (this as { resolveCompletion: (result: CommandRunResult) => void }).resolveCompletion = resolve;
+    this.resolveCompletion = resolve;
     this.handle = {
       completion: this.completion,
       stop: () => {
@@ -78,11 +79,6 @@ class FakeRunner {
     return process.handle;
   }
 
-  async run(): Promise<CommandRunResult> {
-    return okResult();
-  }
-
-  cleanup(): void { /* no-op */ }
 }
 
 // ── 夹具 ─────────────────────────────────────────────────────────────────────
@@ -198,6 +194,64 @@ function tracked(options?: Parameters<typeof createFixture>[0]): Fixture {
 // ── 测试 ─────────────────────────────────────────────────────────────────────
 
 describe('BackgroundProcess', () => {
+  it('界面进度通知失败不影响日志写入和命令完成', async () => {
+    const fixture = tracked({ immediateResultWaitMs: 40 });
+    const onOutput = vi.fn(() => { throw new Error('progress unavailable'); });
+    const pending = fixture.runtime.runCommand(makeRequest(fixture, { onOutput }));
+    await tick();
+    const process = fixture.runner.processes[0]!;
+    process.emit('first');
+    process.emit('second');
+    const reference = await pending;
+    if (reference.kind !== 'processReference') throw new Error('missing process reference');
+    process.finishWith(okResult('firstsecond'));
+    await tick();
+
+    const output = await fixture.runtime.readOutput(SESSION_ID, reference.backgroundProcessId);
+    expect(output.stdout).toBe('firstsecond');
+    expect(output.process.status).toBe('completed');
+    expect(onOutput).toHaveBeenCalledTimes(1);
+    expect(process.stopped).toBe(false);
+  });
+
+  it.each([false, true])('日志写入失败会停止真实进程并报告失败, background=%s', async runInBackground => {
+    const fixture = tracked();
+    let completion: Promise<CommandRunResult> | undefined;
+    const runner: CommandStarter = {
+      start: (_command, options) => {
+        const handle = startProcess({
+          executable: process.execPath,
+          args: ['-e', "process.stdout.write('command-output'); setInterval(() => {}, 1000)"],
+          cwd: fixture.dataDir,
+          environment: process.env,
+        }, options.timeoutMs, options.signal, options.onOutput);
+        completion = handle.completion;
+        return handle;
+      },
+    };
+    const write = vi.spyOn(fs, 'writeSync').mockImplementationOnce(() => {
+      throw new Error('disk full');
+    });
+    try {
+      const pending = fixture.runtime.runCommand(makeRequest(fixture, { runner, runInBackground }));
+      if (runInBackground) {
+        const reference = await pending;
+        if (reference.kind !== 'processReference') throw new Error('missing process reference');
+        await expect(completion).rejects.toThrow('disk full');
+        await tick();
+        const output = await fixture.runtime.readOutput(SESSION_ID, reference.backgroundProcessId);
+        expect(output.process.status).toBe('failed');
+        expect(output.process.terminationReason).toContain('disk full');
+      } else {
+        await expect(pending).rejects.toThrow('disk full');
+      }
+      expect(fixture.runtime.hasLiveProcesses()).toBe(false);
+    } finally {
+      write.mockRestore();
+      await fixture.runtime.shutdown();
+    }
+  });
+
   it('一条命令停止报错时仍等其他命令退出, 再返回失败', async () => {
     const fixture = tracked();
     const first = await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true }));
@@ -209,8 +263,9 @@ describe('BackgroundProcess', () => {
     });
     const stop = fixture.runtime.stop.bind(fixture.runtime);
     vi.spyOn(fixture.runtime, 'stop').mockImplementation(async (sessionId, processId) => {
-      await stop(sessionId, processId);
+      const summary = await stop(sessionId, processId);
       if (processId === first.backgroundProcessId) throw new Error('停止记录读取失败');
+      return summary;
     });
     let finished = false;
     const stopping = fixture.runtime.stopForSession(SESSION_ID).finally(() => { finished = true; });

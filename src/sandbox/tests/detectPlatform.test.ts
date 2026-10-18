@@ -1,7 +1,6 @@
-// 测试 Linux 内核 release 字符串的平台分类逻辑，覆盖原生 Linux、WSL1、WSL2 与大小写。
 
 import { describe, expect, it } from 'vitest';
-import { classifyLinuxRelease } from '../detectPlatform.js';
+import { classifyLinuxRelease } from '../discovery/platform.js';
 
 describe('classifyLinuxRelease', () => {
   it('原生 Linux release 不含 microsoft，归为 linux', () => {

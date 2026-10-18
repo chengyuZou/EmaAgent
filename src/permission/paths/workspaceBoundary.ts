@@ -1,5 +1,3 @@
-// 判断原路径与真实路径是否完整落在本次请求声明的工作区内.
-
 import path, { posix } from 'node:path';
 import { normalizeCaseForComparison, normalizeMacOsSymlinks, getPathsForPermissionCheck } from './pathSafety.js';
 import { getPlatform, toPortablePath } from './platformPaths.js';

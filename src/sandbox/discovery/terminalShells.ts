@@ -1,9 +1,6 @@
-// 终端 Shell 探测:从 Rust 桌面宿主搬回 Node。检测统一在 Node 完成,Rust 只按 path 起 PTY。
-// 扫描顺序、标签文案与 kind 优先级均与旧 Rust 实现一致;bash 额外吃 bashProbe 的
-// git 反推/注册表/WSL 兜底,绿色版 Git(无注册表项)也能进终端下拉。
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import { getPlatform } from './detectPlatform.js';
+import { getPlatform } from './platform.js';
 import { probeBash, runCapture } from './bashProbe.js';
 
 export type TerminalShellKind =
@@ -21,7 +18,7 @@ export interface TerminalShellInfo {
   readonly path: string;
 }
 
-// 与旧 Rust 实现同序逐个 where/which:首条结果即"自动选择"的落点。
+// 依次查找各 Shell 的所有 PATH 结果, 最后按种类优先级排序.
 const WINDOWS_PROBE_NAMES = ['pwsh.exe', 'powershell.exe', 'cmd.exe', 'bash.exe', 'wsl.exe'] as const;
 const POSIX_PROBE_NAMES = ['bash', 'zsh', 'fish', 'sh'] as const;
 const PROBE_TIMEOUT_MS = 3_000;
@@ -44,7 +41,7 @@ async function discoverWindowsShellPaths(): Promise<string[]> {
     found.push(...splitLines(result.stdout));
   }
   // where 找不到 bash 时走 bashProbe 的完整兜底链(git 反推/注册表/WSL);
-  // WSL 分支无独立 path(wsl.exe 已由上面的逐名扫描覆盖),只收带 path 的分支。
+  // WSL 分支无独立 path(wsl.exe 已由上面的逐名扫描覆盖),只收带 path 的分支.
   if (!found.some(candidate => terminalShellKind(candidate) === 'bash')) {
     const probe = await probeBash();
     if (probe.available && 'path' in probe && probe.path) found.push(probe.path);
@@ -70,7 +67,7 @@ function splitLines(output: string): string[] {
   return output.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
 }
 
-// Windows 文件系统大小写不敏感,按小写归一去重;POSIX 按原样去重。
+// Windows 文件系统大小写不敏感,按小写归一去重;POSIX 按原样去重.
 function dedupePaths(paths: readonly string[]): string[] {
   const seen = new Set<string>();
   return paths.filter(candidate => {
@@ -127,7 +124,7 @@ export function terminalShellLabel(kind: TerminalShellKind, shellPath: string): 
   }
 }
 
-// 与旧 Rust shell_priority 一致:决定"自动选择"与下拉排序。
+// 第一项用于终端自动选择, 其余项目按此顺序展示.
 function shellPriority(kind: TerminalShellKind): number {
   switch (kind) {
     case 'powershell': return 0;

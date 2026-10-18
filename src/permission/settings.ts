@@ -1,8 +1,7 @@
-// Permission 的用户设置：三档规则（全局/按项目）+ 批准等待超时。
-// session 源规则是纯内存（rules/update.ts），不是设置。
 import { defineSetting } from '@ema-agent/settings';
 import { z } from 'zod';
 
+/** null 表示不因等待时长自动拒绝, Turn/Run 取消或 Session 删除仍会结束等待. */
 export const DEFAULT_PERMISSION_ASK_TIMEOUT_MS: null = null;
 export const MIN_PERMISSION_ASK_TIMEOUT_MS = 200_000;
 export const MAX_PERMISSION_ASK_TIMEOUT_MS = 600_000;
@@ -61,7 +60,6 @@ export const permissionAskTimeoutSetting = defineSetting({
   ]),
 });
 
-/** permission 包全部设置定义（供 SettingsStore 注册）。 */
 export const PERMISSION_SETTINGS = [
   permissionRulesUserAllowSetting,
   permissionRulesUserDenySetting,

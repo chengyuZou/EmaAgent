@@ -1,4 +1,3 @@
-// 测试中央判定的固定优先级：整体规则 → Tool 自检 → bypass → allow 规则 → passthrough。
 import { describe, expect, it, vi } from 'vitest';
 import {
   hasPermissionsToUseTool,

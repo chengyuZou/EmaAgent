@@ -89,8 +89,6 @@ export async function prepareContextInput(
     workspaceInstructions: cwd ? deps.workspaceInstructions?.(cwd) ?? null : null,
     memorySection: await deps.memoryGuidance?.() ?? null,
     skillCatalog: skillPool ? renderSkillListing(skillPool) : null,
-    // MCP 指引尚无生产者, 不自行补正文.
-    mcpInstructions: null,
   });
   const systemPrompt = Object.freeze([
     ...staticSystemPrompt,

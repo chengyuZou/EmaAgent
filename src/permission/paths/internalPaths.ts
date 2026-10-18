@@ -1,9 +1,7 @@
-// 检查一个路径是否位于 Core 传进来的内部工作目录中。
-
 import path from 'node:path';
 import { normalizeCaseForComparison } from './pathSafety.js';
 
-/** 宿主按 Turn 授予的内部工作目录（如 scratchpad）；键为能力名，值为目录绝对路径。 */
+/** 宿主按 Turn 授予的内部工作目录(如 scratchpad); 键为能力名, 值为目录绝对路径. */
 export interface InternalPathRoots {
   readonly internalPaths?: Readonly<Record<string, string | undefined>>;
 }
@@ -24,6 +22,7 @@ function grantedRoots(context: InternalPathRoots): string[] {
   );
 }
 
+/** 按路径文本匹配宿主授予的目录, 不解析符号链接; 目标检查由调用工具完成. */
 export function checkInternalPath(
   absolutePath: string,
   context: InternalPathRoots,

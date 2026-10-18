@@ -1,28 +1,22 @@
-// Sandbox 的公共出口:命令运行器、平台/后端探测与 Bash 可用性。
+export { CommandRunner } from './command/commandRunner.js';
+export { startProcess } from './process/processRunner.js';
 
-export { CommandRunner } from './commandRunner.js';
-export { startProcess } from './processRunner.js';
+export { probeBash } from './discovery/bashProbe.js';
+export type { BashProbeResult } from './discovery/bashProbe.js';
 
-export { probeBash, probeBashSettled, resetBashProbeCache } from './bashProbe.js';
-export type { BashProbeResult } from './bashProbe.js';
-
-export { detectTerminalShells } from './terminalShells.js';
-export type { TerminalShellInfo, TerminalShellKind } from './terminalShells.js';
+export { detectTerminalShells } from './discovery/terminalShells.js';
+export type { TerminalShellInfo, TerminalShellKind } from './discovery/terminalShells.js';
 
 export { sandboxNetworkSetting } from './settings.js';
 
-export { detectBackend } from './detectBackend.js';
-export type { DetectResult, BackendKind }  from './detectBackend.js';
+export { detectBackend } from './backends/detectBackend.js';
+export type { DetectResult } from './backends/detectBackend.js';
 
 export type {
-  SandboxConfig,
   SandboxCapability,
-  SandboxFilesystemConfig,
-  SandboxNetworkConfig,
-  SandboxBackend,
-  SandboxStatus,
+  SandboxNetwork,
+  BackendKind,
   ShellSpec,
-  WrappedCommand,
   ProcessCommand,
   CommandStarter,
   CommandRunOptions,

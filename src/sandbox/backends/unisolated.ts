@@ -1,15 +1,11 @@
-// 无 OS 沙箱时原样包装命令；调用方必须先完成安全策略判定（隐藏或显式不安全覆盖）。
-
 import type { SandboxBackend, ShellSpec, WrappedCommand } from '../types.js';
 
 /**
- * 命令原样交给 Shell 执行，不提供任何物理隔离。
- * 后端探测只是如实报告"当前没有 OS 级隔离"，是否允许执行由
- * Server 的安全策略决定（默认隐藏执行类工具）。
+ * 直接交给 Shell, 不实施文件或网络隔离.
+ * Server 默认不注册无 OS 隔离的 Bash 工具, 开发开关可覆盖该决定.
+ * 原生 PowerShell 使用单独的执行与权限路径, 不经过这个后端.
  */
 export class UnisolatedBackend implements SandboxBackend {
-  readonly kind = 'unisolated';
-
   wrap(command: string, shell: ShellSpec): WrappedCommand {
     if (shell.kind === 'wsl') {
       return { executable: 'wsl.exe', args: ['bash', '-c', command] };

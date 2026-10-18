@@ -8,7 +8,7 @@ import { SessionRunningRegistry, SessionStore } from '@ema-agent/session';
 import { Database } from '@ema-agent/storage';
 import type { SettingsStore } from '@ema-agent/settings';
 import type { SkillDescriptor } from '@ema-agent/skills';
-import { buildTool, contextOk, FileStateCache, ToolRegistry } from '@ema-agent/tools';
+import { buildTool, BuiltinTools, contextOk, FileStateCache, ToolRegistry } from '@ema-agent/tools';
 import type { CallLLM, Message } from '@ema-agent/llm';
 import { z } from 'zod';
 import type { Turn } from '@ema-agent/turn';
@@ -89,7 +89,7 @@ function makeDeps(overrides: Partial<PrepareTurnDeps> = {}): PrepareTurnDeps {
       set: (def: { key: string }, value: unknown) => { settingsValues.set(def.key, value); },
     } as unknown as SettingsStore,
     characterPrompt: () => ['你是角色'],
-    skillEntries: () => [],
+    skillEntries: async () => [],
     disabledSkillPaths: () => [],
     registry: new ToolRegistry(),
     fileStateCache: () => cache,
@@ -336,7 +336,6 @@ describe('prepareTurn', () => {
       expect(callLLM).not.toHaveBeenCalled();
       expect(turns.getTurn(handle.turnId)?.status).toBe('aborted');
       expect(running.isRunning(session.id)).toBe(false);
-      expect(deps.subagents.abortForegroundForTurn).toHaveBeenCalledWith(handle.turnId);
       if (waitingFor === 'attachment') expect(readTurnReminder).not.toHaveBeenCalled();
     } finally {
       release();
@@ -355,22 +354,35 @@ describe('prepareTurn', () => {
       } as never }),
       makeRuntime(makeStart()),
     );
-    expect(prepared.systemPrompt.find(block => block.name === 'character')?.content)
+    expect(prepared.systemPrompt.find(block => block.content.includes('你是角色'))?.content)
       .toContain('你是角色');
-    expect(prepared.systemPrompt.find(block => block.name === 'permission-mode')?.content)
+    expect(prepared.systemPrompt.find(block => block.content.startsWith('# 当前权限:'))?.content)
       .toContain('当前权限: Plan');
   });
 
   it('将 Session 的 projectId 交给技能目录装载，并按项目文件夹冻结授权目录', async () => {
     const requested: Array<[string, string | null]> = [];
     const runnerDirectories: Array<[string, readonly string[]]> = [];
+    const registry = new ToolRegistry();
+    registry.register(buildTool({
+      id: BuiltinTools.Bash.id,
+      name: BuiltinTools.Bash.name,
+      description: 'Bash',
+      inputSchema: z.object({}),
+      validateContext: () => contextOk({}),
+      isReadOnly: () => false,
+      isConcurrencySafe: () => false,
+      checkPermissions: async () => ({ behavior: 'allow' }),
+      execute: async () => 'ok',
+    }));
     await prepareTurn(
       makeDeps({
+        registry,
         skillEntries: async (cwd, projectId) => {
           requested.push([cwd, projectId]);
           return [];
         },
-        commandRunner: (cwd, workspaceRoots) => {
+        commandRunner: async (cwd, workspaceRoots) => {
           runnerDirectories.push([cwd, workspaceRoots]);
           return undefined;
         },
@@ -397,12 +409,12 @@ describe('prepareTurn', () => {
       }),
       makeRuntime(makeStart()),
     );
-    const environment = prepared.systemPrompt.find(block => block.name === 'runtime-environment')!;
+    const environment = prepared.systemPrompt.find(block => block.content.startsWith('# 本轮运行环境'))!;
 
     expect(instructionDirectories).toEqual(['/w']);
     expect(environment.content).toContain('当前执行目录(cwd): /w');
-    expect(environment.content).toContain('项目源文件夹：\n  - /w\n  - /other');
-    expect(prepared.systemPrompt.find(block => block.name === 'workspace-instructions')?.content)
+    expect(environment.content).toContain('项目源文件夹:\n  - /w\n  - /other');
+    expect(prepared.systemPrompt.find(block => block.content.startsWith('# 工作区指令'))?.content)
       .toContain('主目录约定');
   });
 
@@ -464,7 +476,7 @@ describe('prepareTurn', () => {
       description: 'd',
       scope: 'user',
     };
-    const deps = makeDeps({ skillEntries: () => [descriptor] });
+    const deps = makeDeps({ skillEntries: async () => [descriptor] });
 
     const selected = await prepareTurn(deps, makeRuntime(makeStart({
       input: [{ type: 'skill_reference', name: 'demo', path: descriptor.path }],
@@ -520,7 +532,7 @@ describe('prepareTurn', () => {
     };
     let attachmentWrites = 0;
     const deps = makeDeps({
-      skillEntries: () => [descriptor],
+      skillEntries: async () => [descriptor],
       attachments: {
         attach: async () => {
           attachmentWrites += 1;

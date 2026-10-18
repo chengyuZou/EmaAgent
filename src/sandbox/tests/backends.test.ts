@@ -1,9 +1,8 @@
-// 后端启动形态测试: macOS 不多加引号; bwrap 直启 argv 不拼串; WSL 路径翻译。
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { SandboxExecBackend } from '../backends/sandbox-exec.js';
+import { SandboxExecBackend } from '../backends/sandboxExec.js';
 import { buildBubblewrapCommand } from '../backends/bubblewrap.js';
 import { UnisolatedBackend } from '../backends/unisolated.js';
 import type { SandboxConfig, ShellSpec } from '../types.js';
@@ -27,7 +26,7 @@ describe('SandboxExecBackend', () => {
     expect(wrapped.args[0]).toBe('-p');
     expect(wrapped.args[2]).toBe('/bin/bash');
     expect(wrapped.args[3]).toBe('-c');
-    // 关键回归: 原实现把命令包成 '...' 导致 bash -c 收到带引号的"命令名"
+    // argv 已保留参数边界, 再包引号会让 Bash 将整段当作一个命令名.
     expect(wrapped.args[4]).toBe('ls -la "My Documents"');
   });
 

@@ -1,12 +1,11 @@
-// bashProbe Windows 回退链测试: mock spawn 逐层放行/失败,验证探测顺序、短路与判别联合形状。
-// 仅 Windows 可跑(非 Windows 平台探测恒为 native /bin/bash,不经过此链)。
+// 这些测试仅在 Windows 运行, 因为其他平台不使用 where, 注册表和 WSL 回退链.
 
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getPlatform } from '../detectPlatform.js';
-import { probeBash, probeBashSettled, resetBashProbeCache } from '../bashProbe.js';
+import { getPlatform } from '../discovery/platform.js';
+import { probeBash, resetBashProbeCache } from '../discovery/bashProbe.js';
 
 interface Behavior {
   code: number | null;
@@ -25,8 +24,8 @@ vi.mock('node:child_process', async () => {
       state.calls.push({ exe, args: [...args] });
       const found = state.behaviors.find((b) => b.match(exe, args));
       const behavior: Behavior = found?.behavior ?? { code: 1 };
-      const proc = new EventEmitter() as EventEmitter & {
-        stdout: EventEmitter;
+      const proc = new EventEmitter() as InstanceType<typeof EventEmitter> & {
+        stdout: InstanceType<typeof EventEmitter>;
         kill: () => void;
       };
       proc.stdout = new EventEmitter();
@@ -47,7 +46,7 @@ function called(exe: string, ...argsPrefix: string[]): boolean {
     c.exe === exe && argsPrefix.every((a, i) => c.args[i] === a));
 }
 
-/** 造一个 <root>/cmd/git.exe + <root>/usr/bin/bash.exe 的 Git 安装目录夹具。 */
+/** 造一个 <root>/cmd/git.exe + <root>/usr/bin/bash.exe 的 Git 安装目录夹具. */
 function makeGitRoot(): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ema-bashprobe-'));
   fs.mkdirSync(path.join(root, 'cmd'), { recursive: true });
@@ -78,7 +77,7 @@ describe.skipIf(!onWindows)('probeBash Windows 回退链', () => {
     expect(called('where', 'git')).toBe(false);
     expect(called('reg')).toBe(false);
     expect(called('wsl.exe')).toBe(false);
-    expect(probeBashSettled()).toEqual(result);
+    await expect(probeBash()).resolves.toEqual(result);
   });
 
   it('PATH 失败时从 where git 反推同安装根的 bash.exe', async () => {
@@ -125,33 +124,26 @@ describe.skipIf(!onWindows)('probeBash Windows 回退链', () => {
     expect('path' in result).toBe(false);
   });
 
-  it('全部失败时并行报告 winget/wsl 可用性', async () => {
-    state.behaviors.push(
-      { match: (exe) => exe === 'winget', behavior: { code: 0, stdout: 'v1.7' } },
-      { match: (exe) => exe === 'wsl', behavior: { code: 1 } },
-    );
-
+  it('全部失败时只报告 Bash 不可用, 不额外检测安装工具', async () => {
     const result = await probeBash();
 
-    expect(result).toEqual({ available: false, wingetAvailable: true, wslAvailable: false });
-    expect(called('winget', '--version')).toBe(true);
-    expect(called('wsl', '--status')).toBe(true);
+    expect(result).toEqual({ available: false });
+    expect(called('wsl.exe', 'bash')).toBe(true);
+    expect(called('winget')).toBe(false);
+    expect(called('wsl', '--status')).toBe(false);
   });
 
-  it('fresh 强制重探, 且重探途中旧 settled 被清空', async () => {
+  it('fresh 重新探测, 后续调用共用新的结果', async () => {
     state.behaviors.push({
       match: (exe, args) => exe === 'where' && args[0] === 'bash',
       behavior: { code: 0, stdout: 'C:\\Git\\usr\\bin\\bash.exe\r\n' },
     });
-    await probeBash();
-    expect(probeBashSettled()?.available).toBe(true);
+    expect((await probeBash()).available).toBe(true);
 
-    // 重探未结算期间(mock 经 setImmediate 才回包),peek 必须是 undefined 而不是过期旧值。
     state.behaviors.length = 0;
     state.behaviors.push({ match: () => true, behavior: { code: 1 } });
     const pending = probeBash({ fresh: true });
-    expect(probeBashSettled()).toBeUndefined();
-    await pending;
-    expect(probeBashSettled()?.available).toBe(false);
+    expect(probeBash()).toBe(pending);
+    expect((await pending).available).toBe(false);
   });
 });

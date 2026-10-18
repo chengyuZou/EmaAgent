@@ -1,5 +1,3 @@
-// 统一管理命令的前台等待、后台队列、日志与终态.
-
 import crypto from 'node:crypto';
 import type {
   CommandProcessHandle,
@@ -131,7 +129,13 @@ export class BackgroundProcess {
       timeoutMs,
       ...(callerOutput
         ? { onOutput: (chunk: Parameters<NonNullable<typeof callerOutput>>[0]) => {
-            if (forwardToCaller) callerOutput(chunk);
+            if (!forwardToCaller) return;
+            try {
+              callerOutput(chunk);
+            } catch {
+              // 界面进度不是命令日志. 通知失败只关闭这个通知出口, 日志仍继续写入.
+              forwardToCaller = false;
+            }
           } }
         : {}),
     });
@@ -571,12 +575,14 @@ export class BackgroundProcess {
 
   private async finishActive(id: string, active: ActiveProcess): Promise<void> {
     let result: CommandRunResult;
+    let failureReason: string | undefined;
     try {
       result = await active.handle.completion;
     } catch (error) {
+      failureReason = error instanceof Error ? error.message : String(error);
       result = {
         stdout: '',
-        stderr: error instanceof Error ? error.message : String(error),
+        stderr: failureReason,
         exitCode: -1,
         timedOut: false,
         truncated: false,
@@ -592,12 +598,12 @@ export class BackgroundProcess {
       this.notifyChanged(id);
       return;
     }
-    const status = terminalStatus(active, result);
+    const status = failureReason === undefined ? terminalStatus(active, result) : 'failed';
     const record = this.deps.store.finish(id, active.version, {
       status,
       completedAt: Date.now(),
       exitCode: result.exitCode,
-      terminationReason: terminalReason(active, result),
+      terminationReason: failureReason ?? terminalReason(active, result),
       stdoutBytes: active.writer.stdoutBytes,
       stderrBytes: active.writer.stderrBytes,
       outputTruncated: active.writer.truncated,

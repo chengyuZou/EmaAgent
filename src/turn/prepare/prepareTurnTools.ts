@@ -1,4 +1,3 @@
-// 为一次 Turn 冻结工具层: ToolPool 宿主能力上下文 权限判定上下文与两类交互口子
 import type { SubagentExecutor, AgentLoopEvent, PrepareSubagent } from '@ema-agent/agent';
 import type { CallVision } from '@ema-agent/vision';
 import {
@@ -17,6 +16,7 @@ import type { TaskStore } from '@ema-agent/tasks';
 import type { GoalStore } from '@ema-agent/goal';
 import {
   ToolPool,
+  BuiltinTools,
   type AskUser,
   type AskUserRequiredEvent,
   type BackgroundProcess,
@@ -54,7 +54,7 @@ export interface TurnToolsDeps {
   readonly commandRunner?: (
     cwd: string,
     workspaceRoots: readonly string[],
-  ) => CommandRunner | undefined;
+  ) => Promise<CommandRunner | undefined>;
   readonly toolResultStore?: (sessionId: string) => ToolResultStore;
   readonly toolExecutionState?: ToolExecutionState;
 }
@@ -103,7 +103,7 @@ export interface TurnToolsAssembly {
   readonly shutdown: (reason: string) => Promise<void>;
 }
 
-export function prepareTurnTools(deps: TurnToolsDeps, input: PrepareTurnToolsInput): TurnToolsAssembly {
+export async function prepareTurnTools(deps: TurnToolsDeps, input: PrepareTurnToolsInput): Promise<TurnToolsAssembly> {
   const {
     sessionId,
     turnId,
@@ -185,7 +185,11 @@ export function prepareTurnTools(deps: TurnToolsDeps, input: PrepareTurnToolsInp
     throw new Error(`AskUser ${outcome.status}: ${outcome.reason}`);
   };
 
-  const commandRunner = deps.commandRunner?.(cwd, input.workspaceRoots);
+  // Plan 或未启用 Bash 时不等待 Shell 探测. start 只负责启动已经准备好的命令.
+  const commandRunner = input.toolPool.get(BuiltinTools.Bash.name)
+    ? await deps.commandRunner?.(cwd, input.workspaceRoots)
+    : undefined;
+  input.signal.throwIfAborted();
   const vision = deps.resolveVision?.();
   const narrativeSearch = deps.resolveNarrativeSearch?.(sessionId, turnId);
   const toolContext: ToolUseContext = Object.freeze({

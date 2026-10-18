@@ -1,6 +1,3 @@
-// 权限判定的唯一中央入口:固定优先级,Tool 自我解释,中央不解释 ruleContent 语义.
-// 模式分工:default/bypassPermissions 由中央处理;acceptEdits 是 Tool 侧语义
-// ("工作区内写入放行"只有文件 Tool 知道怎么判定,归各自的 checkPermissions).
 import type {
   PermissionBehavior,
   PermissionDecision,
@@ -12,7 +9,6 @@ import type {
 } from './types.js';
 import { matchesWholeTool, permissionRuleValueFromString } from './rules/permissionRuleParser.js';
 
-/** 中央对 Tool 的最小需求:名字 + 自我解释权. */
 export interface PermissionCheckableTool {
   readonly name: string;
   checkPermissions(
@@ -27,9 +23,7 @@ export interface HasPermissionsOptions {
   readonly interactive: boolean;
 }
 
-/**
- * 外层:无交互通道时把 ask 收口为 deny(headless).
- */
+/** 输入应已通过工具校验. 没有交互通道时, 需要询问的结果转为 headless 拒绝. */
 export async function hasPermissionsToUseTool(
   tool: PermissionCheckableTool,
   input: unknown,
@@ -55,7 +49,7 @@ async function hasPermissionsToUseToolInner(
   context: unknown,
   permissionContext: ToolPermissionContext,
 ): Promise<PermissionDecision> {
-  // 1. 整体 Tool deny 规则
+  // 整个工具的拒绝规则先于工具自检, 会话批准和模式判断.
   const denyRule = findWholeToolRule(permissionContext.alwaysDenyRules, tool.name, 'deny');
   if (denyRule) {
     return {
@@ -106,18 +100,17 @@ async function hasPermissionsToUseToolInner(
     return { ...toolResult, sessionAllowRule };
   }
 
-  // 4. bypassPermissions;显式 deny 与 Tool ask 已在前面拦截.
+  // bypass 只放行未被明确拒绝或要求确认的调用.
   if (permissionContext.mode === 'bypassPermissions') {
     return { behavior: 'allow', decisionReason: { type: 'mode', mode: 'bypassPermissions' } };
   }
 
-  // 5. 整体 Tool allow 规则
   const allowRule = findWholeToolRule(permissionContext.alwaysAllowRules, tool.name, 'allow');
   if (allowRule) {
     return { behavior: 'allow', decisionReason: { type: 'rule', rule: allowRule } };
   }
 
-  // 6. Tool 自我放行;passthrough 收口为 ask
+  // 没有配置或工具提供放行理由时, passthrough 仍需要用户回答.
   if (toolResult.behavior === 'allow') {
     return toolResult;
   }
@@ -162,9 +155,8 @@ function findWholeToolRule(
 }
 
 /**
- * 内容级规则查询:findWholeToolRule 的内容版--该工具全部带 ruleContent 的规则.
- * 只含 ruleContent(整体规则 Bash 不参与);source 优先级 session > project > user.
- * 精确匹配(域名/路径语义串)用 findContentRule;模式匹配(Bash git *)遍历本数组.
+ * 只返回当前工具带内容的规则, 不包含整个工具的规则.
+ * 同一行为内按 Session, 项目, 用户顺序查询; allow 不会覆盖其他阶段的 deny/ask.
  */
 export function listContentRules(permissionContext: ToolPermissionContext, toolName: string, behavior: PermissionBehavior): PermissionRule[] {
   const rules: PermissionRule[] = [];

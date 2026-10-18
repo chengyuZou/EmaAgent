@@ -1,6 +1,3 @@
-// 执行已准备的进程参数, 统一处理输出上限、超时和取消.
-// 环境和权限由调用方决定, 此处不读取 process.env 或应用沙箱策略.
-
 import { spawn, spawnSync } from 'node:child_process';
 import { StringDecoder } from 'node:string_decoder';
 import type {
@@ -8,8 +5,9 @@ import type {
   CommandProcessHandle,
   CommandRunResult,
   ProcessCommand,
-} from './types.js';
+} from '../types.js';
 
+// 字符串预算按 UTF-16 码元计算, 不是字节数. stdout/stderr 各占一半.
 const MAX_OUTPUT_CHARS = 200_000;
 const MAX_STREAM_CHARS = MAX_OUTPUT_CHARS / 2;
 const FORCE_KILL_DELAY_MS = 3_000;
@@ -22,7 +20,7 @@ export function startProcess(
 ): CommandProcessHandle {
   let stopProcess = (): void => undefined;
   const completion = new Promise<CommandRunResult>((resolve, reject) => {
-    // 已取消的 signal 不启动进程, 诚实返回取消结果而不是"先启动再杀"。
+    // 已取消时不启动进程, 即使可执行文件不存在也直接返回取消结果.
     if (signal?.aborted) {
       resolve({
         stdout: '', stderr: '', exitCode: -1,
@@ -36,7 +34,7 @@ export function startProcess(
       stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...command.environment },
       windowsHide: true,
-      // POSIX: 独立进程组, 终止时整组(SIGTERM→SIGKILL)而不是只杀包装进程。
+      // POSIX 使用独立进程组, 终止时先发 SIGTERM, 必要时再发 SIGKILL, 不只停止包装进程.
       detached: process.platform !== 'win32',
     });
 
@@ -49,28 +47,29 @@ export function startProcess(
     let settled = false;
 
     // 多字节字符(如中文)可能被切在两个 chunk 边界: 按块 toString 会碎成 �,
-    // StringDecoder 把不完整的尾部字节扣留到下一块拼齐, close 时 end() 收尾。
+    // StringDecoder 把不完整的尾部字节扣留到下一块拼齐, close 时 end() 收尾.
     const stdoutDecoder = new StringDecoder('utf8');
     const stderrDecoder = new StringDecoder('utf8');
 
-    // onOutput 是外部注入的消费回调(日志落盘): 它抛错不该杀死命令本身——
-    // 捕获后记一笔并停止转发, 命令继续跑完, 内存留存不受影响。
-    let onOutputFailed = false;
+    // 原始输出由调用方保存为命令日志. 保存失败时停止命令, 等 close 后报告失败.
+    // 等待退出期间仍读取管道, 但不再调用已经失败的日志写入函数.
+    let outputError: Error | undefined;
     const emitOutput = (chunk: CommandOutputChunk): void => {
-      if (onOutput === undefined || onOutputFailed) return;
+      if (onOutput === undefined || outputError !== undefined) return;
       try {
         onOutput(chunk);
       } catch (error) {
-        onOutputFailed = true;
-        console.warn('[sandbox] onOutput 消费方抛错, 后续原始输出不再转发:', error);
+        const message = error instanceof Error ? error.message : String(error);
+        outputError = new Error(`Command output storage failed: ${message}`, { cause: error });
+        clearTimeout(timeout);
+        terminate();
       }
     };
 
     /**
-     * 终止整棵进程树。Windows 无 POSIX 进程组: taskkill /T /F 是唯一真实的
-     * 树终止(立即, 不伪装宽限期); spawnSync 会阻塞事件循环几十到几百毫秒,
-     * 用它换"stop 返回时树已确认死亡"的确定性, 是知情取舍不是疏忽。
-     * POSIX: 负 pid 打整个进程组, TERM 宽限后 KILL。
+     * Windows 同步请求 taskkill /T /F, POSIX 向整个进程组发送终止信号.
+     * 终止命令本身可能失败; completion 仍以子进程 close/error 事件结束,
+     * stop 返回不代表已经确认所有后代进程退出.
      */
     const terminateTree = (force: boolean): void => {
       if (process.platform === 'win32') {
@@ -78,19 +77,19 @@ export function startProcess(
         try {
           spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
         } catch {
-          // 进程可能已经退出。
+          // 进程可能已经退出.
         }
         return;
       }
       try {
         process.kill(-child.pid!, force ? 'SIGKILL' : 'SIGTERM');
       } catch {
-        // 进程组已经退出。
+        // 进程组已经退出.
       }
     };
 
-    // 终止流程只进一次; 延迟强杀定时器在 close/error 时统一清除——
-    // 进程提前退出后 PGID 可能被系统复用, 迟到的 SIGKILL 会误杀无关进程。
+    // 终止流程只进一次; 延迟强杀定时器在 close/error 时统一清除:
+    // 进程提前退出后 PGID 可能被系统复用, 迟到的 SIGKILL 会误杀无关进程.
     let terminating = false;
     let forceKillTimer: ReturnType<typeof setTimeout> | undefined;
     const clearForceKillTimer = (): void => {
@@ -100,16 +99,17 @@ export function startProcess(
       }
     };
     const terminate = (): void => {
-      if (terminating) return;
+      if (settled || terminating) return;
       terminating = true;
       terminateTree(false);
-      // Windows 的 taskkill /T /F 第一次已是强杀, 补枪定时器只服务 POSIX。
+      // Windows 已请求强制终止; POSIX 才需要延迟发送 SIGKILL.
       if (process.platform !== 'win32') {
         forceKillTimer = setTimeout(() => terminateTree(true), FORCE_KILL_DELAY_MS);
         forceKillTimer.unref?.();
       }
     };
     stopProcess = (): void => {
+      if (settled) return;
       stopped = true;
       clearTimeout(timeout);
       terminate();
@@ -145,7 +145,7 @@ export function startProcess(
       clearTimeout(timeout);
       clearForceKillTimer();
       signal?.removeEventListener('abort', onAbort);
-      reject(error);
+      reject(outputError ?? error);
     });
 
     child.on('close', (code) => {
@@ -155,7 +155,12 @@ export function startProcess(
       clearForceKillTimer();
       signal?.removeEventListener('abort', onAbort);
 
-      // 收尾解码: 输出真在字符中间结束(进程被截断)时 end() 给出 U+FFFD, 如实呈现。
+      if (outputError !== undefined) {
+        reject(outputError);
+        return;
+      }
+
+      // 收尾解码: 输出真在字符中间结束(进程被截断)时 end() 给出 U+FFFD, 如实呈现.
       const stdoutTail = stdoutDecoder.end();
       if (stdoutTail.length > 0) {
         stdoutChars += stdoutTail.length;
@@ -201,14 +206,13 @@ function appendBounded(current: string, incoming: string): string {
   return safeHead(combined, headChars) + safeTail(combined, tailChars);
 }
 
-/** 截断通知按流各自计数, 不报合并总数(读 stdout 的人不关心 stderr 的量)。 */
+/** 截断通知按流各自计数, 不报合并总数(读 stdout 的人不关心 stderr 的量). */
 function truncationNotice(originalChars: number): string {
-  return `\n[输出已截断：原始 ${originalChars.toLocaleString()} 字符，仅保留开头与结尾。请缩小命令范围。]`;
+  return `\n[输出已截断: 原始 ${originalChars.toLocaleString()} 字符, 仅保留开头与结尾. 请缩小命令范围.]`;
 }
 
 /**
- * 拼接截断通知且不破坏流上限: 超长时从保留窗口头部再弃等长字符,
- * 通知固定留在末尾(用户最先看到的位置)。
+ * 通知也占用输出预算. 必要时从已保留文本的开头移除字符, 将通知放在末尾.
  */
 function appendNoticeBounded(retained: string, notice: string): string {
   const combined = retained + notice;
@@ -216,7 +220,7 @@ function appendNoticeBounded(retained: string, notice: string): string {
   return safeTail(combined, MAX_STREAM_CHARS);
 }
 
-// 按 UTF-16 code unit 切割可能劈开代理对(emoji 等): 边界各退一步, 不留半个字符。
+// 按 UTF-16 位置截断可能劈开 emoji 的代理对, 截断边界需要避开代理对中间.
 function isHighSurrogate(code: number): boolean {
   return code >= 0xd800 && code <= 0xdbff;
 }
@@ -225,14 +229,14 @@ function isLowSurrogate(code: number): boolean {
   return code >= 0xdc00 && code <= 0xdfff;
 }
 
-/** 取前 n 个 code unit; 结尾若恰是高位代理则少取一个, 避免半截代理对。 */
+/** 取前 n 个 UTF-16 码元; 边界在代理对中间时少取一个. */
 function safeHead(s: string, n: number): string {
   let end = Math.min(n, s.length);
   if (end > 0 && end < s.length && isHighSurrogate(s.charCodeAt(end - 1))) end -= 1;
   return s.slice(0, end);
 }
 
-/** 取后 n 个 code unit; 开头若恰是低位代理则少取一个, 避免半截代理对。 */
+/** 取后 n 个 UTF-16 码元; 边界在代理对中间时少取一个. */
 function safeTail(s: string, n: number): string {
   let start = Math.max(0, s.length - n);
   if (start > 0 && isLowSurrogate(s.charCodeAt(start))) start += 1;
