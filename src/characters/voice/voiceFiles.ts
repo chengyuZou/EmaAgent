@@ -1,4 +1,3 @@
-// 按源文件名保存参考音频，并把文件复制、字节写入、导出和删除收在音频子域。
 
 import { MAX_CHARACTER_VOICE_BYTES } from './limits.js';
 import { sourceBaseName, sourceFileName } from '../resources/resourcePaths.js';

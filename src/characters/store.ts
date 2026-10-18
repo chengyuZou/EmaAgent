@@ -103,7 +103,7 @@ export class CharacterStore {
   private readonly presentationChangedListeners = new Set<CharacterPresentationChangedListener>();
   private readonly resourcesChangedListeners = new Set<CharacterResourcesChangedListener>();
   private readonly preparedLive2dImports = new Map<string, PreparedLive2dImportEntry>();
-  // Promise 尾链只按稳定角色名分组，避免同一角色的文件操作与 SQL 提交互相覆盖。
+  // Promise 尾链只按稳定角色名分组,避免同一角色的文件操作与 SQL 提交互相覆盖.
   private readonly mutationTails = new Map<string, Promise<void>>();
 
   constructor(db: Database, charactersRoot: string) {
@@ -113,7 +113,7 @@ export class CharacterStore {
     this.illustrations = new CharacterIllustrationRepository(new CharacterIllustrationRepo(db.sqlite));
     this.voiceSamples = new CharacterVoiceSampleRepository(new CharacterVoiceSampleRepo(db.sqlite));
     this.paths = new CharacterResourcePaths(charactersRoot);
-    // `.staging` 只存尚未提交的操作；Server 重启后没有任何任务能继续使用其中内容。
+    // 每个资源根目录只能有一个 Store. 重启后暂存操作无法继续, 构造时清除未提交的文件.
     fs.rmSync(this.paths.stagingRoot(), { recursive: true, force: true });
     this.backfillLive2dByteSizes();
   }
@@ -133,7 +133,7 @@ export class CharacterStore {
     return () => this.resourcesChangedListeners.delete(handler);
   }
 
-  /** 只在 Desktop Host 判定 `profile.db` 尚未创建时调用。 */
+  /** 只在 Desktop Host 判定 `profile.db` 尚未创建时调用. */
   initializeBuiltinCharacters(): void {
     for (const seed of BUILTIN_CHARACTERS) {
       const input = normalizeCharacterInput(seed.card);
@@ -218,7 +218,7 @@ export class CharacterStore {
     if (fs.existsSync(directory) || this.repository.findByName(normalized.name)) {
       throw new CharacterDirectoryConflictError(normalized.name);
     }
-    // 先占住稳定目录名；SQL 创建失败时撤销目录，不能留下无法再次创建的幽灵角色。
+    // 先占用稳定目录名, SQL 创建失败时撤销目录, 避免残留目录阻止再次创建同名角色.
     fs.mkdirSync(directory, { recursive: false });
     try {
       return this.withResources(this.repository.insert(normalized));
@@ -269,8 +269,8 @@ export class CharacterStore {
       this.getRequiredCharacterOnly(name);
       const operationDirectory = this.createStagingOperation();
       const characterDirectory = this.paths.characterDirectory(name);
-      // 目录先移入本次操作的暂存区，SQL 拒绝删除或抛错时再原位恢复。
-      // 当前角色的替代激活与角色删除由 Repository 在同一事务中完成。
+      // 目录先移入本次操作的暂存区,SQL 拒绝删除或抛错时再原位恢复.
+      // 当前角色的替代激活与角色删除由 Repository 在同一事务中完成.
       const staged = await this.stageExistingPath(characterDirectory, operationDirectory);
       try {
         const result = this.repository.delete(name, replacementName);
@@ -330,8 +330,8 @@ export class CharacterStore {
   ): Promise<PreparedLive2dImport> {
     return this.mutate(characterName, async () => {
       this.getRequiredCharacterOnly(characterName);
-      // Server 能校验本地模型,但封面必须由 Desktop 的 WebGL 生成。这里先只写暂存区,
-      // 避免 Desktop 生成 PNG 期间其他窗口看到一个尚未完成的模型。
+      // Server 能校验本地模型,但封面必须由 Desktop 的 WebGL 生成.这里先只写暂存区,
+      // 避免 Desktop 生成 PNG 期间其他窗口看到一个尚未完成的模型.
       const importId = crypto.randomUUID();
       const operationDirectory = this.paths.stagingOperationDirectory(importId);
       fs.mkdirSync(operationDirectory, { recursive: true });
@@ -383,8 +383,8 @@ export class CharacterStore {
       await fs.promises.mkdir(this.paths.live2dRoot(characterName), { recursive: true });
       await fs.promises.mkdir(this.paths.previewRoot(characterName), { recursive: true });
 
-      // 模型目录和封面都准备好后才写数据库。角色列表以数据库为准,因此其他窗口
-      // 不会在封面仍不存在时提前看到这张模型卡片。
+      // 模型目录和封面都准备好后才写数据库.角色列表以数据库为准,因此其他窗口
+      // 不会在封面仍不存在时提前看到这张模型卡片.
       await fs.promises.rename(prepared.resourceDirectory, destination);
       await fs.promises.rename(stagedPreview, previewTarget);
       let resource: CharacterLive2dModel;
@@ -660,8 +660,8 @@ export class CharacterStore {
   }
 
   inspectStagePresentation(characterName: string): CharacterStagePresentation {
-    // Prompt、StageEngine 初始化和角色事件仍是同步消费方，因此这里只读取已提交资源，
-    // 不触发导入、修复或异步补全，也不缓存另一份可能过期的舞台事实。
+    // Prompt,StageEngine 初始化和角色事件仍是同步消费方,因此这里只读取已提交资源,
+    // 不触发导入,修复或异步补全,也不缓存另一份可能过期的舞台事实.
     const character = this.repository.findByName(characterName);
     if (!character) throw new CharacterNotFoundError(characterName);
     if (character.stageKind === 'blank') {
@@ -734,7 +734,7 @@ export class CharacterStore {
     return createLive2dArchiveStream(directory);
   }
 
-  /** Live2D 静态封面(导入时离屏渲染生成):同存在性校验,落点归 .previews 小区。 */
+  /** 返回 .previews 中已存在的封面文件, 缺失时不自动渲染. */
   resolveLive2dPreviewFile(characterName: string, live2dName: string): string {
     this.getRequiredCharacterOnly(characterName);
     if (!this.live2dModels.find(characterName, live2dName)) {
@@ -743,13 +743,13 @@ export class CharacterStore {
     return this.paths.live2dPreviewFile(characterName, live2dName);
   }
 
-  /** 写入 Live2D 静态封面(前端导入/补票时离屏渲一帧的 PNG)。 */
+  /** 保存前端离屏渲染的 PNG, 不修改模型目录和舞台配置. */
   async saveLive2dPreview(characterName: string, live2dName: string, png: Buffer): Promise<void> {
     return this.mutate(characterName, async () => {
       const target = this.resolveLive2dPreviewFile(characterName, live2dName);
       await fs.promises.mkdir(path.dirname(target), { recursive: true });
       await fs.promises.writeFile(target, png);
-      // 手动重做封面不会改变主舞台,只通知角色资源页面重新读取这张图片。
+      // 手动重做封面不会改变主舞台,只通知角色资源页面重新读取这张图片.
       this.resourcesChanged(characterName);
     });
   }
@@ -841,7 +841,7 @@ export class CharacterStore {
   }
 
   private getRequiredCharacterOnly(name: string): Character {
-    // 只需确认身份时不加载三类资源，避免一次资源操作先额外查询完整角色聚合。
+    // 只需确认身份时不加载三类资源,避免一次资源操作先额外查询完整角色聚合.
     const character = this.repository.findByName(name);
     if (!character) throw new CharacterNotFoundError(name);
     return character;
@@ -857,7 +857,7 @@ export class CharacterStore {
   }
   private assertExpressionCapacity(characterName: string, expression: string | null | undefined, excludingName?: string): void {
     if (!expression) return;
-    // 编辑已有立绘时排除自身，否则把不改变 expression 的保存误判为超额。
+    // 编辑已有立绘时排除自身,否则把不改变 expression 的保存误判为超额.
     const count = this.illustrations.list(characterName)
       .filter(resource => resource.name !== excludingName && resource.expression === expression).length;
     if (count >= ILLUSTRATION_EXPRESSION_POOL_MAX) {
@@ -865,7 +865,7 @@ export class CharacterStore {
     }
   }
 
-  /** 同一角色的文件与 SQL 修改串行；不同角色仍可并发导入和编辑。 */
+  /** 同一角色的文件与 SQL 修改串行;不同角色仍可并发导入和编辑. */
   private mutate<T>(characterName: string, action: () => T | Promise<T>): Promise<T> {
     const previous = this.mutationTails.get(characterName) ?? Promise.resolve();
     const result = previous.then(action);
@@ -887,7 +887,7 @@ export class CharacterStore {
 
   private async stageExistingPath(source: string, operationDirectory: string): Promise<string | null> {
     if (!await fs.promises.stat(source).catch(() => null)) return null;
-    // 每次操作拥有独立 UUID 目录，因此固定使用 `deleted` 不会与其他角色操作冲突。
+    // 每次操作拥有独立 UUID 目录,因此固定使用 `deleted` 不会与其他角色操作冲突.
     const staged = path.join(operationDirectory, 'deleted');
     await fs.promises.rename(source, staged);
     return staged;
@@ -895,7 +895,7 @@ export class CharacterStore {
 
   private resourcesChanged(characterName: string): void {
     // 角色卡用 Character.updatedAt 判断服务端图片是否已经换代,所以资源文件完成后
-    // 必须与资源列表通知一起推进这个时间。
+    // 必须与资源列表通知一起推进这个时间.
     this.repository.touch(characterName);
     const character = this.get(characterName);
     if (!character) return;

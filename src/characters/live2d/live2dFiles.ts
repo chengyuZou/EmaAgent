@@ -1,4 +1,3 @@
-// 把 Live2D ZIP 直接解压到稳定目录，或把已展开目录流式导出为 ZIP。
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -43,7 +42,7 @@ export async function findLive2dFiles(directory: string): Promise<Live2dFiles> {
   return selectLive2dFiles(await listFiles(directory));
 }
 
-// Presentation 与 Prompt 当前是同步契约，只在这条读取路径保留同步目录扫描。
+// Presentation 与 Prompt 当前是同步契约,只在这条读取路径保留同步目录扫描.
 export function findLive2dFilesSync(directory: string): Live2dFiles {
   const stat = fs.statSync(directory, { throwIfNoEntry: false });
   if (!stat?.isDirectory()) {
@@ -83,7 +82,7 @@ export async function importLive2dFiles(
   }
   await fs.promises.mkdir(path.dirname(destination), { recursive: true });
 
-  // 目录名在导入时就成为资源身份；失败必须移除半成品，不能留下占用同名身份的目录。
+  // 目录名在导入时就成为资源身份;失败必须移除半成品,不能留下占用同名身份的目录.
   try {
     const byteSize = source.isDirectory()
       ? await copyDirectory(sourcePath, destination)
@@ -114,7 +113,7 @@ export async function exportLive2dZip(
   }
   const target = path.join(destinationDirectory, `${physicalName(displayName.trim())}.zip`);
   let descriptor: number;
-  // fflate 逐文件消费流，避免导出大型模型时把整个目录或 ZIP 一次性放进内存。
+  // fflate 逐文件消费流,避免导出大型模型时把整个目录或 ZIP 一次性放进内存.
   try {
     descriptor = fs.openSync(target, 'wx');
   } catch (error) {

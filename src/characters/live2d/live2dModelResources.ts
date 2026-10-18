@@ -1,4 +1,3 @@
-// 从 model3.json 提取正式资源身份，并列出模型目录中未登记的表情与动作文件。
 import fs from 'node:fs';
 import path from 'node:path';
 import { CharacterResourceValidationError } from '../errors.js';
@@ -179,7 +178,7 @@ async function readModel(modelPath: string): Promise<Record<string, unknown>> {
 }
 
 async function assertReferenceFile(modelPath: string, reference: string): Promise<void> {
-  // model3.json 的引用以模型文件所在目录为根，不能借绝对路径或 .. 指向资源包外部。
+  // model3.json 的引用以模型文件所在目录为根,不能借绝对路径或 .. 指向资源包外部.
   const normalized = reference.replace(/\\/gu, '/');
   const segments = normalized.split('/');
   if (normalized.startsWith('/')

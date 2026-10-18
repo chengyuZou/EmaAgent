@@ -1,4 +1,3 @@
-// 这是 Character 包的统一出口，外部代码从这里使用角色存储和内置种子。
 
 export { CharacterStore } from './store.js';
 export type {

@@ -1,4 +1,3 @@
-// 只用数据库中的稳定物理名定位角色资源；可编辑显示名与随机 ID 不参与路径。
 
 import path from 'node:path';
 import { CharacterResourcePathError } from '../errors.js';
@@ -18,8 +17,7 @@ export class CharacterResourcePaths {
     return path.join(this.stagingRoot(), physicalName(operationId));
   }
 
-  // Live2D 卡面/角色卡的静态封面:导入时前端离屏渲一帧生成,住角色目录的
-  // .previews 小区,不进模型目录(不污染用户模型包,导出重导互不影响)。
+  // 封面单独保存在 .previews, 不进入模型目录, 因而不会混入导出的模型 ZIP.
   previewRoot(characterName: string): string {
     return path.join(this.characterDirectory(characterName), '.previews');
   }
@@ -66,17 +64,7 @@ export class CharacterResourcePaths {
   }
 }
 
-/**
- * 物理名是一层目录或一个文件名 不允许携带路径
- * 将会进行以下检查
- * - 不能是空字符串
- * - 不能超过 100 个字符
- * - 不能是 . 或 ..
- * - 不能以 . 或 空格结尾
- * - 不能包含 \ / : * ? " < > | 或 ASCII 控制字符
- * - 不能是 Windows 保留设备名 CON PRN AUX NUL COM1-COM9 LPT1-LPT9
- * - 会进行 NFC Unicode 正规化
- */
+/** 名称同时用于 SQL 和文件系统. 统一为 NFC 并按 Windows 文件名限制校验, 使资源可以跨平台搬移. */
 export function physicalName(value: string): string {
   const normalized = value.normalize('NFC');
   const stem = normalized.split('.')[0] ?? normalized;

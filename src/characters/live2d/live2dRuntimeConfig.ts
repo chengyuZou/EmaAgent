@@ -112,7 +112,7 @@ function readEmotionMap(value: unknown): Record<string, { expression: string }> 
   for (const [name, target] of Object.entries(value)) {
     assertVocabularyName(name);
     if (!isRecord(target)) invalidRuntimeConfig();
-    // 空对象表示作者主动禁用该语义；有其他内容却没有 expression 才是格式错误。
+    // 空对象表示作者主动禁用该语义;有其他内容却没有 expression 才是格式错误.
     if (target.expression === undefined) {
       if (Object.keys(target).length === 0) continue;
       invalidRuntimeConfig();
@@ -129,7 +129,7 @@ function readMotionMap(value: unknown): Record<string, Live2dMotion> {
   for (const [name, target] of Object.entries(value)) {
     assertVocabularyName(name);
     if (!isRecord(target)) invalidRuntimeConfig();
-    // Motion 的空对象同样表示主动置空，不进入 Presentation 词汇。
+    // Motion 的空对象同样表示主动置空,不进入 Presentation 词汇.
     if (Object.keys(target).length === 0) continue;
     map[name] = readMotion(target);
   }

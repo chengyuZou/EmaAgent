@@ -1,21 +1,16 @@
-/**
- * 某个角色的单个Live2D模型
- * @param name 模型名 唯一标识符 落盘时作为目录名使用且不允许修改
- * @param characterName 模型所属的角色标识符 对应为 Character.name
- * @param displayName 模型的显示名称
- * @param stageScale 主窗口中的缩放倍率 1 表示模型原始显示大小 有效范围为 0.1～5
- * @param stageOffsetX 相对舞台中心的水平偏移 -1 为最左侧 0 为居中 1 为最右侧
- * @param stageOffsetY 相对舞台中心的垂直偏移 -1 为最上方 0 为居中 1 为最下方
- * @param isPrimary 是否为角色的主要Live2D模型 主要模型会在角色首次登场时使用
- */
+
 export interface CharacterLive2dModel {
   name: string;
   characterName: string;
   displayName: string;
+  /** 对默认构图的缩放倍率, 范围 0.1 到 5. */
   stageScale: number;
+  /** 相对舞台宽度的水平偏移比例, 范围 -1 到 1. */
   stageOffsetX: number;
+  /** 相对舞台高度的垂直偏移比例, 范围 -1 到 1. */
   stageOffsetY: number;
   isPrimary: boolean;
+  /** null 表示尚未取得资源目录的总字节数. */
   byteSize: number | null;
   createdAt: number;
   updatedAt: number;
@@ -49,25 +44,18 @@ export interface PreparedLive2dImport {
   byteSize: number;
 }
 
-/** 语义情绪名到模型原生 Expression 的映射。 */
+/** 语义情绪名到模型原生 Expression 的映射. */
 export interface Live2dExpression {
   expression: string;
 }
 
-/** 指向 `.model3.json` 中真实存在的一个 Motion。 */
+/** 指向 `.model3.json` 中真实存在的一个 Motion. */
 export interface Live2dMotion {
   group: string;
   index: number;
 }
 
-/**
- * Live2D 模型的运行时配置
- * Live2D 有 .expression3.json/ .exp.json  .motion3.json 等配置文件用于描述模型的表情和动作
- * 但这些配置文件的内容是模型原生的 无法直接用于运行时控制
- * 因此需要在这里提供一个映射关系 将语义化的标签映射到模型原生的表情和动作上
- * 形成类似于 "sad" : { expression: "sad" } 的映射关系
- * 以便于通过LLM生成的<emotion> <motion>等标签来控制运行时Live2D模型的表情和动作
- */
+/** 把 LLM 标签中的情绪和动作名称映射到 .model3.json 登记的 Expression 和 Motion. */
 export interface Live2dRuntimeConfig {
   emotionMap?: Record<string, Live2dExpression>;
   motionMap?: Record<string, Live2dMotion>;

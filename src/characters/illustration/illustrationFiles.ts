@@ -1,4 +1,3 @@
-// 按源文件名保存立绘原图，只检查文件大小与常见图片文件头，不改写图片内容。
 
 import fs from 'node:fs';
 import { CharacterResourceValidationError } from '../errors.js';

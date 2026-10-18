@@ -1,4 +1,3 @@
-// 提供三类角色资源共享的排他复制、缺失容忍删除和按显示名导出文件操作。
 
 import fs from 'node:fs';
 import path from 'node:path';

@@ -1,4 +1,3 @@
-// 汇总首次初始化时写入数据库的内置角色卡与表现资源行。
 
 import type { CharacterInput } from '../types.js';
 import type { CharacterLive2dModelInput } from '../live2d/types.js';
@@ -26,7 +25,7 @@ export interface BuiltinCharacterSeed {
   voiceSamples: readonly CharacterVoiceSampleInput[];
 }
 
-/** 所有内置角色。物理资源由 Desktop Host 在 Server 启动前铺入同名角色目录。 */
+/** 所有内置角色.物理资源由 Desktop Host 在 Server 启动前铺入同名角色目录. */
 export const BUILTIN_CHARACTERS: readonly BuiltinCharacterSeed[] = [
   {
     card: EMA_CHARACTER_INPUT,

@@ -1,12 +1,11 @@
-// 测试 Character 新身份、切换删除、明确舞台类型与文件名资源契约。
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { unzipSync } from 'fflate';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Database } from '@ema-agent/storage';
-import { characterStageVocabulary } from '../characterPrompt.js';
-import { EMA_CHARACTER_NAME } from '../seed/index.js';
+import { buildCharacterPrompt, characterStageVocabulary } from '../characterPrompt.js';
+import { EMA_CHARACTER_INPUT, EMA_CHARACTER_NAME } from '../seed/index.js';
 import { CharacterStore } from '../store.js';
 
 describe('CharacterStore', () => {
@@ -25,6 +24,56 @@ describe('CharacterStore', () => {
   afterEach(() => {
     database.close();
     fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  it('首次初始化保存完整的艾玛人设, 并将原文传入角色 Prompt', () => {
+    const character = store.current();
+
+    expect(character.name).toBe(EMA_CHARACTER_NAME);
+    expect(character.personaPrompt).toBe(EMA_CHARACTER_INPUT.personaPrompt);
+    expect(character.description).toBe(EMA_CHARACTER_INPUT.description);
+    expect(buildCharacterPrompt(character, {
+      status: 'blank',
+      characterName: EMA_CHARACTER_NAME,
+    })).toEqual([
+      `当前角色: ${EMA_CHARACTER_NAME}`,
+      EMA_CHARACTER_INPUT.personaPrompt,
+    ]);
+  });
+
+  it('内置人设明确岛上人员和设施规则, 并区分不同周目的经历', () => {
+    const prompt = EMA_CHARACTER_INPUT.personaPrompt;
+
+    expect(prompt).toContain('岛上除了典狱长, 看守, 囚犯和剧情明确出现的相关角色外, 没有其他人类存在.');
+    expect(prompt).toContain('有食堂不代表有食堂阿姨, 有图书室不代表有图书管理员, 有医务室也不代表有医护人员.');
+    expect(prompt).toContain('过去的食堂在规定时间供餐, 采用自助取餐的方式.');
+    expect(prompt).toContain('魔女杀手');
+    expect(prompt).toContain('不同周目的事件与人物状态不能混成同一次经历.');
+    expect(prompt).not.toMatch(/[，。；：！？（）【】「」『』“”‘’、…—]/u);
+    expect(EMA_CHARACTER_INPUT.description).not.toMatch(/[，。；：！？（）【】「」『』“”‘’、…—]/u);
+  });
+
+  it('内置人设默认处于全部剧情结束后, 不把监禁与未和解状态延续到现在', () => {
+    const prompt = EMA_CHARACTER_INPUT.personaPrompt;
+
+    expect(prompt).toContain('默认时间线是全部剧情结束之后, 包括最终审判以及艾玛与希罗在告别时的和解.');
+    expect(prompt).toContain('以下是回忆监禁时期时使用的背景, 不是结局后每天仍需执行的作息.');
+    expect(prompt).toContain('两人重新选择继续相处');
+    expect(prompt).toContain('结局后, 冷冻保存的少女们和看守也陆续从诅咒中苏醒.');
+    expect(prompt).toContain('不据此断言结局后仍能随时施展魔法或再次魔女化.');
+    expect(prompt).toContain('结尾仍有其他监狱岛和魔女因子持续扩散的消息');
+    expect(prompt).toContain('此外称呼月代雪为"小雪".');
+    expect(prompt).not.toContain('不意味着在所有时间点都已经知道真相');
+    expect(EMA_CHARACTER_INPUT.description).toContain('全部剧情结束后');
+  });
+
+  it('再次初始化不会用内置人设覆盖用户已经编辑的角色卡', async () => {
+    const personaPrompt = '我是用户编辑后的艾玛.';
+    await store.update(EMA_CHARACTER_NAME, { personaPrompt });
+
+    store.initializeBuiltinCharacters();
+
+    expect(store.current().personaPrompt).toBe(personaPrompt);
   });
 
   it('以不可变 name 作为数据库和目录身份，displayName 只负责展示', async () => {
