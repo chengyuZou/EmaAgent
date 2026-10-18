@@ -1,9 +1,3 @@
-// ClawHub Adapter(https://clawhub.ai)
-//   GET /api/v1/skills?limit=&cursor=&sort=downloads → {items, nextCursor}
-//   GET /api/v1/search?q=                            → {results}(无分页)
-//   GET /api/v1/skills/{slug}                        → {skill, latestVersion, owner}
-//   GET /api/v1/skills/{slug}/versions/{v}           → {version:{license, files[], security}}
-//   GET /api/v1/skills/{slug}/file?path=             → 文件原文
 import {
   detectMarketLanguage,
   MARKET_ERROR_CODES,
@@ -49,8 +43,7 @@ type ClawhubVersionDetail = {
   };
 };
 
-// ClawHub 的 slug 跨作者不唯一:歧义 slug 返回 409 AMBIGUOUS_SKILL_SLUG 带候选作者,
-// 用 ?owner= 消歧(取首个候选)并记住解析结果。
+// 接口返回 AMBIGUOUS_SKILL_SLUG 时使用第一个候选作者重试, 后续请求复用该作者.
 const ownerCache = new Map<string, string>();
 
 async function clawhubFetch(url: URL): Promise<Response> {
@@ -151,7 +144,7 @@ export const clawhubAdapter: MarketAdapter = {
     if (!Array.isArray(data.results)) {
       throw new MarketUpstreamError('clawhub', MARKET_ERROR_CODES.upstreamBadResponse, 'clawhub 搜索缺少 results');
     }
-    // ClawHub 搜索无分页——截断即穷尽。
+    // 搜索结果没有下一页 cursor, 截取 limit 条后结束分页.
     return { items: data.results.filter((r) => r?.slug).slice(0, limit).map(normalizeSearchResult) };
   },
 
@@ -175,13 +168,13 @@ export const clawhubAdapter: MarketAdapter = {
         files = versionDetail.version?.files ?? [];
         license = versionDetail.version?.license || license;
         const scan = versionDetail.version?.security?.status;
-        if (scan) securityNote = `ClawHub 扫描：${scan}`;
+        if (scan) securityNote = `ClawHub 扫描: ${scan}`;
       } catch {
-        // 版本详情尽力而为;没有文件清单的详情仍然可读。
+        // 版本详情尽力而为;没有文件清单的详情仍然可读.
       }
     }
 
-    // ClawHub 的 description 就是 SKILL.md 原文(含 frontmatter),剥掉头部只留正文。
+    // 去掉 description 中的 frontmatter, 文档页只展示正文.
     const raw = data.skill.description || '';
     const item = normalizeListItem(data.skill);
     return {

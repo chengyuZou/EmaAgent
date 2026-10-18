@@ -1,4 +1,3 @@
-// MCP 工具调用的协议出口:超时、取消、结果限界与模型投影的唯一实现。
 import { CallToolResultSchema } from '@modelcontextprotocol/sdk/types.js';
 import type { Client }          from '@modelcontextprotocol/sdk/client/index.js';
 import type { ToolResultContentPart } from '@ema-agent/llm';
@@ -6,7 +5,7 @@ import { Buffer }               from 'node:buffer';
 import { McpToolCallError }     from './errors.js';
 import { linkedAbortController, waitForPromise, withTimeout } from './utils.js';
 
-const DEFAULT_TOOL_TIMEOUT_MS = 120_000; // 2 分钟 - 同 bash 默认;可被 server 配置 toolTimeoutSec 覆盖
+const DEFAULT_TOOL_TIMEOUT_MS = 120_000;
 const MAX_RESULT_BYTES = 1024 * 1024;
 const MAX_BINARY_DATA_BYTES = 256 * 1024;
 const MAX_CONTENT_BLOCKS = 100;
@@ -14,14 +13,12 @@ const RESULT_NOTICE_RESERVE_BYTES = 512;
 const MAX_ERROR_MESSAGE_BYTES = 4 * 1024;
 
 /**
- * MCP 工具的类型化真实结果(执行信封 data 槽事实)。
- * content 是协议层限界后的原始块;structuredContent 与 _meta 分槽存放,
- * 模型投影只消费前两者,_meta 绝不发给模型。
+ * 工具执行结果保存的内容. content 和 structuredContent 分别限制大小,
+ * 随后由 projectMcpToolOutput 转换成模型可读取的内容块.
  */
 export interface McpToolOutput {
   readonly content: readonly unknown[];
   readonly structuredContent?: unknown;
-  readonly meta?: Record<string, unknown>;
 }
 
 export interface CallToolOptions {
@@ -34,14 +31,12 @@ export interface CallToolOptions {
 }
 
 /**
- * 在已连接的 MCP 服务器 client 上调一个工具。
- * 返回限界后的 McpToolOutput;isError 结果转成 McpToolCallError 抛出。
+ * 使用已连接的 Client 执行工具. isError 结果转为 McpToolCallError.
+ * 调用取消或超时时, 同时取消 SDK 请求.
  */
 export async function callMcpTool(opts: CallToolOptions): Promise<McpToolOutput> {
   const { client, serverName, toolName, args, signal, timeoutMs } = opts;
   const ms = timeoutMs ?? DEFAULT_TOOL_TIMEOUT_MS;
-  // 外部取消经 linked controller 透传给 SDK;本地超时同时 abort 在途调用,
-  // 不能让外层 Promise 提前返回而调用仍在 Server 侧悬挂。
   const linked = linkedAbortController(signal);
 
   try {
@@ -78,8 +73,7 @@ export async function callMcpTool(opts: CallToolOptions): Promise<McpToolOutput>
       Array.isArray(result.content) ? result.content : [],
     );
 
-    // structuredContent 与 content 共用 1MB 预算;超限整体丢弃并追加说明块,
-    // 结构不可部分截断。
+    // structuredContent 有独立的 1 MiB 限制. 对象不能像文本一样截断, 超限时整体丢弃.
     let structuredContent: unknown = result.structuredContent;
     if (structuredContent !== undefined && jsonBytes(structuredContent) > MAX_RESULT_BYTES) {
       structuredContent = undefined;
@@ -92,23 +86,11 @@ export async function callMcpTool(opts: CallToolOptions): Promise<McpToolOutput>
     return {
       content,
       ...(structuredContent !== undefined ? { structuredContent } : {}),
-      ...(isRecord(result._meta) ? { meta: result._meta } : {}),
     };
   } finally {
     linked.dispose();
   }
 }
-
-// ── 模型投影(Tool.mapResultToModelContent 的唯一实现)──────────────────────────
-//
-// 规则(CLAUDE.md MCP Adapter 约定):
-//   text              → 文本块原样
-//   image             → image_data 内容块
-//   resource(text)    → 带来源前缀的文本块
-//   resource(blob)    → 图片 mime 转 image_data;其他 mime 给说明文本
-//   audio/未知块      → 说明文本(V1 不落盘:没有模型/UI 消费方)
-//   structuredContent → 稳定 JSON 文本,追加在 content 之后
-//   _meta             → 不投影,只留在 TOutput 供宿主消费
 
 export function projectMcpToolOutput(output: McpToolOutput): ToolResultContentPart[] {
   const parts: ToolResultContentPart[] = [];
@@ -197,9 +179,8 @@ function safePreview(value: unknown): string {
   }
 }
 
-// ── 协议层安全阀(1MB / 100 块 / 256KB 二进制,防异常 Server 消耗资源)────────────
-
 function boundMcpContent(content: readonly unknown[]): unknown[] {
+  // 为删减说明留出空间, 防止说明本身使 content 超过大小限制.
   const bounded: unknown[] = [];
   const contentBudget = MAX_RESULT_BYTES - RESULT_NOTICE_RESERVE_BYTES;
   let usedBytes = 2;

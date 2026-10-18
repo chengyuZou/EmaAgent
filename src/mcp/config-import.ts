@@ -1,20 +1,6 @@
-// 这里把常见 MCP JSON 配置归一化为 Ema 支持的 stdio 或 Streamable HTTP 配置。
 import { McpServerConfigSchema } from './types.js';
 import type { McpServerConfig } from './types.js';
 import { McpUnsupportedTransportError } from './errors.js';
-
-// ── 配置导入 / 互操作 ───────────────────────────────────────────────────────────
-//
-// 用户从 mcp.so、Claude Desktop 或 README 复制粘贴 JSON 获取 MCP 服务器。
-// 这些形态不带我们的 `type` 判别字段,且常嵌在 `mcpServers` / `servers` map 下。
-// 本解析器把常见形态归一化成已校验的 McpServerConfig[],让粘贴的配置"直接能用",
-// 而非校验失败。
-//
-// 接受输入(任一):
-//   { "mcpServers": { "<name>": { command, args, env } | { url, headers } } }   // Claude Desktop / mcp.so
-//   { "servers":    { "<name>": { ... } } }                                     // VS Code
-//   { "<name>":     { command|url, ... } }                                      // 裸 map
-//   { command|url, ... }                                                        // 单服务器(name 可选)
 
 export interface ImportedServer {
   name:   string;
@@ -29,7 +15,6 @@ export function parseImportedMcpServers(input: unknown, fallbackName = 'mcp-serv
   const root = coerceObject(input);
   if (!root) throw new Error('Invalid MCP config: expected a JSON object.');
 
-  // 解开常见包装键。
   const map =
     coerceObject(root['mcpServers']) ??
     coerceObject(root['servers']) ??
@@ -44,7 +29,7 @@ export function parseImportedMcpServers(input: unknown, fallbackName = 'mcp-serv
     return out;
   }
 
-  // 可能是 name -> server 的裸 map(启发式:每个值都是带 command|url 的对象)。
+  // 没有包装键时, 只有所有值都是服务器配置才按名字映射处理.
   const entries = Object.entries(root);
   const looksLikeMap = entries.length > 0 && entries.every(([, v]) => {
     const o = coerceObject(v);
@@ -54,19 +39,15 @@ export function parseImportedMcpServers(input: unknown, fallbackName = 'mcp-serv
     return entries.map(([name, raw]) => ({ name, config: normalizeOne(raw, name) }));
   }
 
-  // 单服务器对象。
   const name = typeof root['name'] === 'string' ? root['name'] : fallbackName;
   return [{ name, config: normalizeOne(root, name) }];
 }
-
-// ── 把一个裸服务器对象归一化成已校验的 McpServerConfig ───
 
 function normalizeOne(raw: unknown, name: string): McpServerConfig {
   const o = coerceObject(raw);
   if (!o) throw new Error(`Invalid MCP server "${name}": expected an object.`);
 
-  // 判别键兼容:Claude Desktop/mcp.so 用 type,ModelScope/AstrBot 用 transport。
-  // 取值统一成小写连字符形(streamable_http → streamable-http)。
+  // 导入配置可能使用 type 或 transport, 同时接受 streamable_http 和 streamable-http.
   const rawDiscriminator = o['type'] ?? o['transport'];
   const explicit = typeof rawDiscriminator === 'string'
     ? rawDiscriminator.toLowerCase().replace(/_/g, '-')
@@ -122,8 +103,6 @@ function looksLikeLegacySseEndpoint(value: string): boolean {
     return false;
   }
 }
-
-// ── 辅助函数 ────────────────────────────────────────────────────────────────────
 
 function coerceObject(v: unknown): Record<string, unknown> | null {
   return v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null;

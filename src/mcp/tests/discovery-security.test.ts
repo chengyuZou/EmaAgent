@@ -1,4 +1,3 @@
-// 测试 MCP Server 的动态 Schema、结果预算和自报 annotations 都受 Ema Tool 契约约束。
 import { describe, expect, it, vi } from 'vitest';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { hasPermissionsToUseTool, permissionRuleValueToString, type ToolPermissionContext } from '@ema-agent/permission';
@@ -29,7 +28,7 @@ describe('MCP 工具发现安全边界', () => {
     expect(listTools).toHaveBeenCalledWith(undefined, { signal: controller.signal });
   });
 
-  it('工具发现失败时上抛，不能伪装成已连接的空工具 Server', async () => {
+  it('工具发现失败时上抛, 不能伪装成已连接的空工具 Server', async () => {
     const client = {
       listTools: vi.fn(async () => { throw new Error('list tools failed'); }),
     } as unknown as Client;
@@ -70,7 +69,7 @@ describe('MCP 工具发现安全边界', () => {
     );
   });
 
-  it('保留远端 annotations 供展示，但明确标记为 reported hints', async () => {
+  it('保留破坏性提示, 不保存没有消费方的只读提示', async () => {
     const client = {
       listTools: async () => ({
         tools: [{
@@ -82,18 +81,20 @@ describe('MCP 工具发现安全边界', () => {
       }),
     } as unknown as Client;
 
-    await expect(discoverServerTools('malicious', client)).resolves.toEqual([
-      expect.objectContaining({
-        reportedReadOnly: true,
-        reportedDestructive: false,
-      }),
-    ]);
+    const tools = await discoverServerTools('malicious', client);
+    expect(tools[0]).toMatchObject({ reportedDestructive: false });
+    expect(tools[0]).not.toHaveProperty('reportedReadOnly');
   });
 
-  it('readOnlyHint 不能让工具自我放行，也不能开放并发', async () => {
-    const tool = buildMcpBuiltTool(toolInfo({ reportedReadOnly: true }), registryStub());
+  it('readOnlyHint 不能让工具自我放行, 也不能开放并发', async () => {
+    const client = {
+      listTools: async () => ({
+        tools: [{ name: 'search', inputSchema: { type: 'object' }, annotations: { readOnlyHint: true } }],
+      }),
+    } as unknown as Client;
+    const [info] = await discoverServerTools('test', client);
+    const tool = buildMcpBuiltTool(info!, registryStub());
 
-    // passthrough = "我没有放行理由,交中央收口"——远端自报 readOnly 换不来 allow。
     await expect(tool.checkPermissions({}, {}, PERMISSION_CONTEXT))
       .resolves.toMatchObject({ behavior: 'passthrough' });
     expect(tool.isReadOnly({})).toBe(false);
@@ -118,13 +119,20 @@ describe('MCP 工具发现安全边界', () => {
     expect(tool.requiresUserInteraction({})).toBe(false);
   });
 
-  it('destructiveHint 单向升级为强制询问，和 readOnlyHint 冲突时仍升级', async () => {
-    const destructive = buildMcpBuiltTool(
-      toolInfo({ reportedReadOnly: true, reportedDestructive: true }),
-      registryStub(),
-    );
+  it('destructiveHint 要求批准, 和 readOnlyHint 冲突时仍要求批准', async () => {
+    const client = {
+      listTools: async () => ({
+        tools: [{
+          name: 'search',
+          inputSchema: { type: 'object' },
+          annotations: { readOnlyHint: true, destructiveHint: true },
+        }],
+      }),
+    } as unknown as Client;
+    const [info] = await discoverServerTools('test', client);
+    const destructive = buildMcpBuiltTool(info!, registryStub());
 
-    // ask 在中央优先级里先于 bypassPermissions——远端自报破坏性无法被模式跳过。
+    // Permission 先处理 ask, 所以 bypassPermissions 也不能跳过这一提示.
     await expect(destructive.checkPermissions({}, {}, PERMISSION_CONTEXT))
       .resolves.toMatchObject({
         behavior: 'ask',
@@ -168,7 +176,6 @@ function toolInfo(overrides: Partial<McpToolInfo> = {}): McpToolInfo {
     originalServerName: 'test',
     description: 'test tool',
     inputSchema: { type: 'object', properties: {} },
-    reportedReadOnly: false,
     reportedDestructive: false,
     ...overrides,
   };

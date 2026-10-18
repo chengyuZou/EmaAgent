@@ -1,4 +1,3 @@
-// 这里统一导出 MCP 注册表、存储、配置导入和公开业务类型。
 export { McpRegistry }               from './registry.js';
 export type { McpEvent } from './events.js';
 export { McpServerStore }            from './store.js';

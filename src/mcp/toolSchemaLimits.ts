@@ -1,11 +1,9 @@
-// MCP 工具发现结果在进入注册表和持久缓存前统一执行数量与总字节限制。
-
 import { Buffer } from 'node:buffer';
 import { McpToolSchemaLimitError } from './errors.js';
 
-/** 单个 MCP Server 暴露过多工具时，Schema 本身已经不适合直接进入模型窗口。 */
+/** 工具发现和缓存写入使用同一数量限制, 超限时整批拒绝. */
 export const MAX_MCP_TOOLS_PER_SERVER = 256;
-/** 该上限约束工具名称、描述、annotations 与 input schema 的序列化总量。 */
+/** 按工具名称, 描述, annotations 和 input schema 的序列化总字节数检查. */
 export const MAX_MCP_TOOL_SCHEMA_BYTES = 1024 * 1024;
 
 export function assertMcpToolSchemaLimits(

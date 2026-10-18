@@ -152,7 +152,7 @@ it('一个周目重排失败不丢掉其他周目, 保留路由顺序', async ()
   callRerank.mockRejectedValueOnce(new Error('重排请求失败'));
   const result = await run();
   expect([...result.keys()]).toEqual(['2nd_Loop', '1st_Loop']);
-  expect(result.get('2nd_Loop')).toEqual({ code: 'timeline_query_failed', message: '重排请求失败' });
+  expect(result.get('2nd_Loop')).toEqual({ message: '重排请求失败' });
   expect(textOf(result, '1st_Loop')).toContain('1st_Loop:entity');
 });
 
@@ -196,7 +196,7 @@ it('编码返回错误维度时各周目失败且不重排', async () => {
   callEmbed.mockResolvedValueOnce({ dim: 3, embeddings: [] });
   const result = await run();
   expect([...result.values()]).toEqual(timelines.map(() => ({
-    code: 'timeline_query_failed', message: 'Narrative 需要 1024 维向量, 当前返回 3 维',
+    message: 'Narrative 需要 1024 维向量, 当前返回 3 维',
   })));
   expect(callRerank).not.toHaveBeenCalled();
 });

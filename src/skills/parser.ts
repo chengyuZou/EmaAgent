@@ -1,4 +1,3 @@
-// 解析 SKILL.md frontmatter,只产出技能目录需要的字段。
 import matter from 'gray-matter';
 import {
   SkillFrontmatterSchema,

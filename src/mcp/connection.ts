@@ -26,7 +26,7 @@ async function buildTransport(
   config: McpServerConfig,
   signal?: AbortSignal,
 ): Promise<StdioClientTransport | StreamableHTTPClientTransport> {
-  // Windows 本地两种传输独立导入各约 0.19s, 含共享依赖且随环境变化; 只加载实际使用的一种.
+  // 只加载实际使用的传输, 避免启动时加载未配置的传输及其依赖.
   if (config.type === 'stdio') {
     assertSafeStdioConfig(config.command, config.args);
     const { StdioClientTransport, getDefaultEnvironment } = await import('@modelcontextprotocol/sdk/client/stdio.js');
@@ -77,7 +77,6 @@ export async function openConnection(
   signal?:    AbortSignal,
 ): Promise<OpenedConnection> {
   signal?.throwIfAborted();
-  // Windows 本地 Client 及其依赖独立导入约 0.40s, 实际耗时随环境变化.
   // 无连接需求时不加载 Client; 模块由 import 缓存, 每次连接仍创建独立实例.
   const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
   signal?.throwIfAborted();

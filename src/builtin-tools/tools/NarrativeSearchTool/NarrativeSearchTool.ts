@@ -1,4 +1,3 @@
-// 按需检索 Narrative 剧情资料,并把多时间线结果作为不可信工具资料返回模型.
 import { z } from 'zod';
 import { buildTool, contextFail, contextOk, type ToolInvocation, type ToolUseContext } from '@ema-agent/tools';
 import type { NarrativeTimelineId } from '@ema-agent/storage';
@@ -43,7 +42,7 @@ export const NarrativeSearchTool = buildTool<
   id: BuiltinTools.NarrativeSearch.id,
   name: BuiltinTools.NarrativeSearch.name,
   description: NARRATIVE_SEARCH_DESCRIPTION,
-  // 剧情正文以 CJK 为主, 按 UTF-8 最坏 3 字节/字符折算; 超限仍由结果层外置兜底.
+  // 多周目原文及失败说明需要较大的结果预算, 超限时由工具结果层外置保存.
   maxResultBytes: 300_000,
 
   getToolUseSummary: (input) => `检索剧情资料:${input.query}`,

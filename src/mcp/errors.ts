@@ -12,7 +12,7 @@ export class McpToolCallError extends Error {
   }
 }
 
-/** 远端工具目录超过本地模型与持久化边界时，整批拒绝而不是部分注册。 */
+/** 工具数量或定义大小超限时整批拒绝, 避免注册不完整的工具列表. */
 export class McpToolSchemaLimitError extends Error {
   constructor(serverName: string, detail: string) {
     super(`[MCP:${serverName}] Tool schema limit exceeded: ${detail}`);
@@ -34,7 +34,7 @@ export class McpServerNotFoundError extends Error {
   }
 }
 
-/** 连接期间发生了断开或配置替换，旧任务不得再提交连接和工具。 */
+/** 连接期间发生断开或配置替换, 旧任务不能再保存连接和注册工具. */
 export class McpConnectionSupersededError extends Error {
   constructor(serverName: string) {
     super(`MCP server "${serverName}" connection was superseded by a newer lifecycle operation`);
@@ -42,7 +42,7 @@ export class McpConnectionSupersededError extends Error {
   }
 }
 
-/** 旧 SSE transport 已退出 MCP 当前协议，必须由用户提供新的 HTTP endpoint。 */
+/** SSE 地址不能直接当作 Streamable HTTP 地址使用, 需要用户提供对应端点. */
 export class McpUnsupportedTransportError extends Error {
   constructor(serverName: string, transport: string) {
     super(

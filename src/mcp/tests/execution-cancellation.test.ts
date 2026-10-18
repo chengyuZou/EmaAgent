@@ -1,5 +1,3 @@
-// 这里测试 MCP 工具调用在 Turn 取消或超时时真正取消 SDK 请求。
-
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Buffer } from 'node:buffer';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -45,7 +43,7 @@ describe('MCP 工具执行取消', () => {
     expect(sdkSignal.aborted).toBe(true);
   });
 
-  it('工具调用超时会 abort SDK 请求，而不是只结束外层 Promise', async () => {
+  it('工具调用超时会 abort SDK 请求, 而不是只结束外层 Promise', async () => {
     vi.useFakeTimers();
     const { client, callTool } = cancellingClient();
     const pending = callMcpTool({

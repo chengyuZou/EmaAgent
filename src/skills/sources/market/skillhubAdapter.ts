@@ -1,9 +1,3 @@
-// SkillHub Adapter(https://api.skillhub.cn)
-//   GET /api/skills?page=&pageSize=&keyword=   → {code, data:{skills[], total}, message}
-//     分页参数必须是 pageSize(limit 被静默忽略);搜索参数必须是 keyword(q 被静默忽略)
-//   GET /api/v1/skills/{slug}                  → {skill, owner, latestVersion, securityReports}
-//   GET /api/v1/skills/{slug}/files            → {count, files:[{path, sha256, size}]}
-//   GET /api/v1/skills/{slug}/file?path=       → 302 跳腾讯 COS(fetch 跟随)
 import {
   detectMarketLanguage,
   MARKET_ERROR_CODES,
@@ -60,13 +54,13 @@ function normalizeListItem(item: SkillhubListItem): MarketSkill {
     downloads: item.downloads ?? 0,
     tags,
     ...(item.iconUrl ? { iconUrl: item.iconUrl } : {}),
-    ...(item.verified ? { securityNote: 'SkillHub：发布者已认证' } : {}),
+    ...(item.verified ? { securityNote: 'SkillHub: 发布者已认证' } : {}),
     ...upstreamOf(item),
     installState: 'installable',
   };
 }
 
-/** SkillHub 部分条目镜像 ClawHub(source='clawhub' + upstream_url 末段是原始 slug)。 */
+/** SkillHub 部分条目镜像 ClawHub(source='clawhub' + upstream_url 末段是原始 slug). */
 function upstreamOf(item: SkillhubListItem): Pick<MarketSkill, 'upstream'> {
   if (item.source !== 'clawhub' || !item.upstream_url) return {};
   try {
@@ -74,7 +68,7 @@ function upstreamOf(item: SkillhubListItem): Pick<MarketSkill, 'upstream'> {
     const slug = segments[segments.length - 1];
     if (slug) return { upstream: { source: 'clawhub', slug } };
   } catch {
-    // 上游 URL 畸形就当原生条目。
+    // 上游 URL 畸形就当原生条目.
   }
   return {};
 }
@@ -82,6 +76,7 @@ function upstreamOf(item: SkillhubListItem): Pick<MarketSkill, 'upstream'> {
 async function fetchPage(params: { keyword?: string; page: number; pageSize: number }): Promise<AdapterListPage> {
   const url = new URL('/api/skills', MARKET_SOURCE_BASES.skillhub);
   url.searchParams.set('page', String(params.page));
+  // SkillHub 使用 pageSize 和 keyword, 不能直接沿用 ClawHub 的 limit 和 q.
   url.searchParams.set('pageSize', String(params.pageSize));
   if (params.keyword) url.searchParams.set('keyword', params.keyword);
 
@@ -132,10 +127,10 @@ export const skillhubAdapter: MarketAdapter = {
     try {
       files = await skillhubAdapter.listFiles(slug);
     } catch {
-      // 详情页的文件清单尽力而为;安装时会重新拉取。
+      // 详情页的文件清单尽力而为;安装时会重新拉取.
     }
 
-    // SkillHub 详情没有 SKILL.md 全文——单独拉一份给文档标签。
+    // 详情响应没有 SKILL.md 全文, 另取文件供文档页展示.
     let description = '';
     if (files.some((f) => f.path === 'SKILL.md')) {
       try {

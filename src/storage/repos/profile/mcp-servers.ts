@@ -26,7 +26,7 @@ export interface McpServerSettingsRow {
 // ── McpServersRepo ─────────────────────────────────────────────────────────────
 //
 // 纯 SQL,不 import @ema-agent/mcp(避免循环依赖)。
-// config_json 以原始字符串存取,结构校验与凭据加解密都在 src/mcp 的 McpServerStore。
+// config_json 按字符串存取, 由 McpServerStore 解析校验. env 和 headers 以明文保存.
 
 export class McpServersRepo {
   constructor(private readonly db: SqliteDb) {}

@@ -1,6 +1,4 @@
-// 同一行是同一角色的中日英完整姓名. 
-// 日文主要角色姓名可核对[官方角色名单](https://manosaba.com/posts/illustcontest), 顺手补上了奈姐
-// 不要看了没有典狱长
+// [官方角色名单](https://manosaba.com/posts/illustcontest)
 const characterNames = [
   ['樱羽艾玛', '桜羽エマ', 'Sakuraba Ema', 'Sakuraba Emma', 'Ema Sakuraba', 'Emma Sakuraba'],
   ['二阶堂希罗', '二階堂ヒロ', 'Nikaido Hiro', 'Hiro Nikaido'],

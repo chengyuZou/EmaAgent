@@ -1,4 +1,3 @@
-// builtin/user 的目录对账, 安装, 删除和启停; project 目录不由此 Store 管理.
 import { mkdir, readdir, readFile, rename, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { SkillsRepo, type Database, type SkillRow } from '@ema-agent/storage';
@@ -95,6 +94,7 @@ export class SkillStore {
     return results.flatMap(entry => entry ? [entry] : []);
   }
 
+  /** stagingDir 来自 userRoot 内的安装临时目录, dirName 必须由安装器校验. */
   async finalizeInstall(stagingDir: string, dirName: string): Promise<SkillDescriptor> {
     const skillFile = await resolveSkillFile(stagingDir);
     const parsed = parseSkillMd(await readFile(skillFile, 'utf8'));

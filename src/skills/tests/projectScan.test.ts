@@ -1,4 +1,3 @@
-// project 扫描测试:多个源文件夹、生态目录发现、dotfiles/symlink 与深度边界。
 import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -91,7 +90,7 @@ describe('scanProjectSkills', () => {
     try {
       symlinkSync(join(outside, 'real-skill'), join(ws, '.agents/skills', 'linked'), 'dir');
     } catch {
-      // Windows 无开发者模式/提权时不能创建 symlink;该环境跳过。
+      // Windows 无开发者模式/提权时不能创建 symlink;该环境跳过.
       ctx.skip();
     }
 

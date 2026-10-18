@@ -1,6 +1,6 @@
 /**
  * 按各组的排名交替取项, 如 [a1,a2] 与 [b1,b2] 得到 a1,b1,a2,b2, 不把第一组全部排在前面.
- * identify 返回实体名、关系 ID 或块 ID; 重复身份只保留首次出现的项, 不比较正文是否相同.
+ * identify 返回实体名, 关系 ID 或块 ID; 重复身份只保留首次出现的项, 不比较正文是否相同.
  */
 export function mergeAlternating<T, K>(
   groups: readonly (readonly T[])[],

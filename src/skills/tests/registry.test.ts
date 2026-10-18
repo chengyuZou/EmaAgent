@@ -1,4 +1,3 @@
-// 验证真实 SkillStore 的 core 装载, project 缓存隔离, 串行刷新及首装等待.
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -37,7 +36,7 @@ function makeWorkspace(skillName: string): string {
 }
 
 describe('SkillRegistry', () => {
-  it('refreshCore 装载 builtin+user；list 按工作区附带 project', async () => {
+  it('refreshCore 装载 builtin+user; list 按工作区附带 project', async () => {
     const builtinRoot = makeDir();
     mkdirSync(join(builtinRoot, 'code-review'), { recursive: true });
     writeFileSync(join(builtinRoot, 'code-review', 'SKILL.md'), SKILL_MD('code-review'));
@@ -50,11 +49,11 @@ describe('SkillRegistry', () => {
     const registry = createSkillRegistry({ store });
 
     await registry.refreshCore();
-    // 不带工作区：只有 builtin+user
+    // 不带工作区: 只有 builtin+user
     const corePaths = (await registry.list()).map(d => d.path);
     expect(corePaths).toContain(join(builtinRoot, 'code-review', 'SKILL.md'));
     expect((await registry.list()).some(entry => entry.scope === 'project')).toBe(false);
-    // 带工作区：合成 project
+    // 带工作区: 合成 project
     const project = (await registry.list([workspace])).find(entry => entry.scope === 'project');
     expect(project?.projectSourceId).toBe('agents');
     expect((await registry.getByPath(join(builtinRoot, 'code-review', 'SKILL.md')))?.name).toBe('code-review');
@@ -77,7 +76,7 @@ describe('SkillRegistry', () => {
     expect(keysB).not.toContain('skill-a');
   });
 
-  it('多文件夹目录可见全部技能，详情只接受当前清单内的路径', async () => {
+  it('多文件夹目录可见全部技能, 详情只接受当前清单内的路径', async () => {
     const userRoot = makeDir();
     const first = makeWorkspace('alpha');
     const second = makeWorkspace('beta');
@@ -128,7 +127,7 @@ describe('SkillRegistry', () => {
     expect((await registry.list()).map((d) => d.name)).toEqual(['only']);
   });
 
-  it('list 等待进行中的首次装载，不读到空目录', async () => {
+  it('list 等待进行中的首次装载, 不读到空目录', async () => {
     const userRoot = makeDir();
     mkdirSync(join(userRoot, 'late'), { recursive: true });
     writeFileSync(join(userRoot, 'late', 'SKILL.md'), SKILL_MD('late'));
@@ -137,7 +136,7 @@ describe('SkillRegistry', () => {
       store: makeStore(userRoot),
     });
 
-    // 不 await refreshCore，直接 list：必须等到首装完成。
+    // 不 await refreshCore, 直接 list: 必须等到首装完成.
     const pending = registry.refreshCore();
     const names = (await registry.list()).map((d) => d.name);
     await pending;

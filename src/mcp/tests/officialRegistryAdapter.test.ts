@@ -1,5 +1,3 @@
-// 验证 Official Registry 单页分页与当前 camelCase 安装字段映射.
-
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { OfficialRegistryAdapter } from '../market/officialRegistryAdapter.js';
 

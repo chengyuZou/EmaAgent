@@ -1,10 +1,12 @@
-// 这里提供 MCP 连接使用的超时、取消和状态辅助函数。
-
 import type { OpenedConnection } from './connection.js';
 import type { McpConnection, McpToolInfo } from './types.js';
 
 export async function cleanupQuietly(connection: OpenedConnection): Promise<void> {
-  try { await connection.cleanup(); } catch { /* ignore cleanup failure */ }
+  try {
+    await connection.cleanup();
+  } catch {
+    // 清理失败不能盖过调用方正在处理的连接错误或取消原因.
+  }
 }
 
 export function connectionInfo(

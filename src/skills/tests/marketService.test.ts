@@ -1,5 +1,7 @@
-// 验证市场聚合结果不会把同一正式技能身份重复交给前端。
 import { describe, expect, it } from 'vitest';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createMarketService } from '../sources/market/marketService.js';
 import {
   marketSkillId,
@@ -22,6 +24,34 @@ describe('market service list', () => {
     const result = await service.list({ source: 'all', limit: 24 });
 
     expect(result.items.map(item => item.id)).toEqual(['skillhub:smart-charts']);
+  });
+
+  it('使用来源身份标记识别已安装技能, 不要求版本或统计字段', async () => {
+    const userRoot = await mkdtemp(join(tmpdir(), 'ema-skill-market-'));
+    try {
+      const item = skill('skillhub', 'identity-marker');
+      const directory = join(userRoot, item.slug);
+      await mkdir(directory);
+      await writeFile(join(directory, '.ema-market.json'), JSON.stringify({
+        id: item.id,
+        source: item.source,
+        slug: item.slug,
+      }));
+      await writeFile(join(directory, 'SKILL.md'), '---\nname: identity-marker\n---\nInstructions');
+      const service = createMarketService({
+        userRoot,
+        adapters: {
+          skillhub: adapter('skillhub', [item]),
+          clawhub: adapter('clawhub', []),
+        },
+      });
+
+      const result = await service.list({ source: 'skillhub', q: item.slug, limit: 24 });
+
+      expect(result.items).toEqual([{ ...item, installState: 'installed' }]);
+    } finally {
+      await rm(userRoot, { recursive: true, force: true });
+    }
   });
 });
 

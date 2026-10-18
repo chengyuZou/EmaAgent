@@ -1,5 +1,3 @@
-// MCP 服务器注册表管理连接、工具发现、调用和断线重试。
-
 import { randomUUID }       from 'node:crypto';
 import { ToolListChangedNotificationSchema } from '@modelcontextprotocol/sdk/types.js';
 import type { Tool, ToolRegistry } from '@ema-agent/tools';
@@ -37,32 +35,27 @@ import {
 const TOOL_DISCOVERY_TIMEOUT_MS = 15_000;
 
 interface McpServer {
-  /** 代际令牌:每次生命周期操作递增;迟到任务据此识别自己已被取代,不得复活旧连接。 */
+  /** 断开或替换连接时递增. 旧异步任务只能清理自身, 不能再改写连接和工具. */
   generation: number;
-  /** 当前配置的 JSON:同配置的并发调用共享同一条连接管道,配置变化触发重连。 */
+  /** 相同配置的并发请求共用 connectTask, 配置改变时重新连接. */
   configJson?: string;
-  /** 对外状态投影(UI/路由只读):状态、已知工具与最近错误。 */
   info: McpConnection;
-  /** 已提交的实时连接;undefined = 连接中/已断开/已失败。 */
+  /** 只有握手和初次工具发现都完成后才保存连接. */
   opened?: OpenedConnection;
-  /** 在建连接 Promise:并发 connect/callTool 共享同一管道,避免重复拉起进程与重复权限询问。 */
   connectTask?: Promise<McpConnection>;
-  /** 中止本代在建连接与刷新循环的执行手柄;disconnect/被新一代取代时触发。 */
+  /** 断开或替换连接时取消握手和工具刷新. */
   lifecycleAbort?: AbortController;
-  /** 工具刷新循环 Promise:防止 list_changed 连发产生多个并发刷新。 */
+  /** 同一连接最多运行一个工具刷新循环. */
   refreshTask?: Promise<void>;
-  /** 脏标志:连接期间或循环中途收到的 list_changed 合并为一次刷新。 */
+  /** 连接或刷新期间收到的 list_changed 合并到下一次刷新. */
   refreshRequested?: boolean;
   retryTimer?: ReturnType<typeof setTimeout>;
   retryAttempt?: number;
 }
 
-// ── McpRegistry ───────────────────────────────────────────────────────────────
-
 export class McpRegistry {
-  /** 每个 Server 只有一个生命周期槽，generation 阻止迟到任务复活旧连接。 */
   private servers = new Map<string, McpServer>();
-  /** 从缓存注册的工具(服务器尚未连接)。按服务器名索引。 */
+  /** 尚未被在线工具替换的启动缓存, 用于失败或断开时注销工具. */
   private primed = new Map<string, McpToolInfo[]>();
 
   constructor(
@@ -71,12 +64,9 @@ export class McpRegistry {
     private readonly connectionChanged: (connection: McpConnection) => void = () => {},
   ) {}
 
-  // ── 连接管理 ─────────────────────────────────────────────────────────────
-
   async connect(serverName: string): Promise<McpConnection> {
     const record = this.store.findByName(serverName);
     if (!record) throw new McpServerNotFoundError(serverName);
-    // 禁用即不可连接:不拉进程、不发请求,与 setEnabled(false) 的断开配对。
     if (!record.enabled) {
       throw new McpConnectionError(serverName, 'server is disabled');
     }
@@ -87,7 +77,7 @@ export class McpRegistry {
     const server = this.serverFor(serverName);
     const configJson = JSON.stringify(config);
 
-    // 相同配置的启动、手动连接和首次工具调用共享同一条连接流水线。
+    // 后台连接尚未完成时, 首次工具调用等待同一任务, 避免重复启动子进程.
     if (server.configJson === configJson) {
       if (server.connectTask) return server.connectTask;
       if (server.opened && server.info.status === 'connected') {
@@ -107,8 +97,8 @@ export class McpRegistry {
   }
 
   /**
-   * 为所有启用的服务器注册缓存工具。装配点紧接着并发连接全部启用服务器,
-   * 缓存只覆盖连接完成前的启动窗口。
+   * 启动时先注册已启用服务器的缓存工具, 随后由宿主启动后台连接.
+   * 缓存工具被调用时仍需等待实时连接和工具发现完成.
    */
   primeFromCache(): number {
     const tools: AnyMcpTool[] = [];
@@ -132,10 +122,9 @@ export class McpRegistry {
     return tools.length;
   }
 
-  /** 可预填则返回缓存工具;已在线/连接中或无缓存时返回 null。 */
   private primableTools(record: McpServerRecord): McpToolInfo[] | null {
     const server = this.servers.get(record.name);
-    if (server?.opened || server?.connectTask) return null;    // 已在线或正在连接
+    if (server?.opened || server?.connectTask) return null;
     const cached = record.cachedTools;
     return cached && cached.length > 0 ? cached : null;
   }
@@ -159,7 +148,6 @@ export class McpRegistry {
     server.info = connectionInfo(serverName, 'disconnected', []);
     this.publish(server.info);
 
-    // 注销缓存 primed 的工具(无实时连接时注册的)。
     const primedTools = this.primed.get(serverName);
     if (primedTools) {
       unregisterTools(this.toolRegistry, primedTools);
@@ -179,42 +167,28 @@ export class McpRegistry {
     await Promise.allSettled(pendingTasks);
   }
 
-  // ── 工具调用 ─────────────────────────────────────────────────────────────
-
   async callTool(
     serverName: string,
     toolName:   string,
     args:       Record<string, unknown>,
     signal?:    AbortSignal,
   ): Promise<McpToolOutput> {
-    // per-server toolTimeoutSec 覆盖默认 120s;记录只在此处查一次(SQLite µs 级)。
     const record = this.store.findByName(serverName);
     if (!record) throw new McpServerNotFoundError(serverName);
-    // 禁用服务器的工具可能仍冻结在运行中的旧 ToolPool 里;不得为它拉起进程。
+    // 运行中的 Turn 可能仍持有该服务器的工具, 禁用后不能因旧引用重新连接.
     if (!record.enabled) {
       throw new McpConnectionError(serverName, 'server is disabled');
     }
     const timeoutMs = record.config.toolTimeoutSec !== undefined
       ? record.config.toolTimeoutSec * 1000
       : undefined;
-    // Tool 调用兜底重连与后台连接共用同一条管道。
+    // 单次调用取消只结束自身等待, 不取消其他调用共享的连接任务.
     await waitForPromise(this.connectConfig(serverName, record.config), signal);
     const conn = this.servers.get(serverName)?.opened;
     if (!conn) {
       throw new McpServerNotFoundError(`${serverName} (not connected)`);
     }
     return callMcpTool({ client: conn.client, serverName, toolName, args, signal, timeoutMs });
-  }
-
-  // ── 自省 ─────────────────────────────────────────────────────────────────
-
-  getConnection(serverName: string): McpConnection | null {
-    const info = this.servers.get(serverName)?.info;
-    return info ? copyConnection(info) : null;
-  }
-
-  getTools(serverName: string): McpToolInfo[] {
-    return [...(this.servers.get(serverName)?.info.tools ?? [])];
   }
 
   listServers(): McpServerSummary[] {
@@ -253,16 +227,6 @@ export class McpRegistry {
     };
   }
 
-  // ── 服务器 CRUD(委托 store)─────────────────────────────────────────────
-
-  register(
-    name: string,
-    config: McpServerConfig,
-    provenance?: McpInstallProvenance,
-  ): string {
-    return this.store.register(name, config, provenance);
-  }
-
   async save(
     name: string,
     config: McpServerConfig,
@@ -275,8 +239,7 @@ export class McpRegistry {
   }
 
   /**
-   * 启用/禁用与连接生命周期配对,不变量收在领域内而不是交给调用方:
-   * 禁用 = 断开并摘除全部工具;启用 = 立即后台连接。
+   * 禁用后断开连接并注销工具; 启用后开始后台连接.
    */
   async setEnabled(name: string, enabled: boolean): Promise<void> {
     this.store.setEnabled(name, enabled);
@@ -287,14 +250,13 @@ export class McpRegistry {
     this.connectInBackground(name);
   }
 
-  /** 删除即先断开:不得留下运行中的子进程或仍注册的工具。 */
+  /** 先断开并注销工具, 再删除配置, 避免留下仍在运行的子进程. */
   async remove(name: string): Promise<void> {
     await this.disconnect(name);
     this.store.remove(name);
   }
 
-  // ── 探测 ────────────────────────────────────────────────────────────────
-
+  /** 临时连接并发现工具, 最后关闭连接. 不保存配置或注册工具. */
   async probe(
     serverName: string,
     config: McpServerConfig,
@@ -318,7 +280,7 @@ export class McpRegistry {
     } finally {
       linked.dispose();
       if (connection) {
-        try { await connection.cleanup(); } catch { /* ignore cleanup failure */ }
+        await cleanupQuietly(connection);
       }
     }
   }
@@ -393,9 +355,8 @@ export class McpRegistry {
       opened = await openConnection(serverName, config, lifecycleAbort.signal);
       this.assertCurrent(serverName, server, generation);
 
-      // SDK 的 onerror 可能是可恢复协议错误，因此只记住诊断；只有 onclose
-      // 才表示当前 Client 已不可继续使用。显式 disconnect/reconnect 会先推进
-      // generation，迟到的 close 回调不能覆盖新一代状态。
+      // onerror 不一定导致连接关闭, 此时先保存错误供 onclose 使用.
+      // 显式断开先增加 generation, 避免关闭回调把新状态改为 failed.
       const previousOnError = opened.client.onerror;
       const previousOnClose = opened.client.onclose;
       opened.client.onerror = (error) => {
@@ -413,8 +374,7 @@ export class McpRegistry {
         previousOnClose?.();
       };
 
-      // 先监听变化，再做初次 listTools。连接阶段收到的通知会先记账，
-      // 初次提交完成后立即刷新，避免 handler 安装窗口丢失变化事件。
+      // 先监听再读取工具, 连接期间收到的变化在初次注册完成后刷新, 避免漏掉通知.
       opened.client.setNotificationHandler(ToolListChangedNotificationSchema, () => {
         this.requestToolRefresh(serverName, server, generation, opened?.client);
       });
@@ -428,7 +388,7 @@ export class McpRegistry {
       this.assertCurrent(serverName, server, generation);
       if (closedError) throw closedError;
 
-      // 新批次先整体校验并提交，再移除缓存中已经消失的旧工具，避免半注册。
+      // 批量注册先校验整批工具, 成功后再移除缓存里已经消失的工具.
       this.toolRegistry.registerMcpBatch(toTools(tools, this));
       const primedTools = this.primed.get(serverName) ?? [];
       const liveNames = new Set(tools.map((tool) => tool.qualifiedName));
@@ -446,8 +406,11 @@ export class McpRegistry {
       retained = true;
       connectionCommitted = true;
 
-      // 工具缓存失败不能破坏已经建立的实时连接。
-      try { this.store.cacheTools(serverName, tools); } catch { /* ignore */ }
+      try {
+        this.store.cacheTools(serverName, tools);
+      } catch {
+        // 缓存写入失败时保留已经建立的实时连接.
+      }
       this.startRequestedToolRefresh(serverName, server, generation, opened.client);
       return copyConnection(info);
     } catch (err) {
@@ -582,7 +545,11 @@ export class McpRegistry {
             tools,
           );
           this.publish(server.info);
-          try { this.store.cacheTools(serverName, tools); } catch { /* ignore */ }
+          try {
+            this.store.cacheTools(serverName, tools);
+          } catch {
+            // 在线工具已替换成功, 缓存写入失败不撤销刷新.
+          }
         } finally {
           linked.dispose();
         }
@@ -603,7 +570,7 @@ export class McpRegistry {
     previousTools: readonly McpToolInfo[],
     nextTools: readonly McpToolInfo[],
   ): void {
-    // registerMcpBatch 会先验证整批再同步提交；随后在同一事件循环片段移除旧工具。
+    // 验证整批并同步注册, 然后在同一段同步代码里移除旧工具.
     this.toolRegistry.registerMcpBatch(toTools(nextTools, this));
     const nextNames = new Set(nextTools.map((tool) => tool.qualifiedName));
     unregisterTools(
@@ -638,7 +605,7 @@ export class McpRegistry {
   }
 }
 
-// ToolRegistry 保存类型各异的 Tool;MCP 侧统一由 buildMcpBuiltTool 产生。
+// ToolRegistry 保存不同输入和结果类型的工具, MCP 工具由 buildMcpBuiltTool 创建.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyMcpTool = Tool<any, any, any, any>;
 

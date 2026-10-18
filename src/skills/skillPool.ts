@@ -1,7 +1,3 @@
-// SkillPool:根 Turn 冻结的技能集合(镜像 ToolPool)。
-// 冻结 = 取 Registry 当前全量 -> 过滤禁用(skills.enabled + project 来源级) ->
-// 排序 → path 索引。Pool 是本 Turn Prompt 目录与 SkillCall 查找的唯一事实源;
-// Turn 内的安装/禁用变化只影响下一根 Turn。
 import {
   SKILL_LISTING_BUDGET_BYTES,
   SKILL_LISTING_ENTRY_MAX_CHARS,
@@ -16,12 +12,12 @@ export interface SkillPoolFreezeInput {
   readonly disabledProjectSources: readonly string[];
 }
 
-/** 启用判定的输入：逐技能 deny 列表与 project 来源 deny 列表的当前值。 */
+/** builtin/user 的禁用路径, 以及 project 的禁用来源. */
 export type SkillEnablement = Omit<SkillPoolFreezeInput, 'entries'>;
 
 const SCOPE_RANK: Record<SkillScope, number> = { builtin: 0, user: 1, project: 2 };
 
-/** 单条启用判定：逐技能 deny → project 来源禁用；Pool 冻结与 UI 投影共用。 */
+/** Turn 准备和设置列表共用此判定, 避免展示状态与实际启用状态不同. */
 export function isSkillEnabled(entry: SkillDescriptor, input: SkillEnablement): boolean {
   if (input.disabledPaths.includes(entry.path)) return false;
   if (entry.scope === 'project') {
@@ -30,7 +26,7 @@ export function isSkillEnabled(entry: SkillDescriptor, input: SkillEnablement): 
   return true;
 }
 
-/** 根 Turn 冻结:deny 过滤 + 确定性排序 + path 索引。 */
+/** 过滤禁用项后按作用域, 名称, 路径排序. 后续启停或安装在下一 Turn 生效. */
 export function freezeSkillPool(input: SkillPoolFreezeInput): SkillPool {
   const visible = input.entries.filter((entry) => isSkillEnabled(entry, input));
 
@@ -49,8 +45,8 @@ export function freezeSkillPool(input: SkillPoolFreezeInput): SkillPool {
 }
 
 /**
- * Prompt 常驻目录:单遍截断,超出总预算即省略并计数提示;单条描述 ≤ 250 字符。
- * 只放 name/path/description/whenToUse;SKILL.md 全文由 SkillTool 返回。
+ * Prompt 只放名称, 路径, 描述和使用条件, 正文由 Skill 工具读取.
+ * 描述最多 250 个 UTF-16 码元; 超出条目预算时省略该条, 最后追加省略数量.
  */
 export function renderSkillListing(pool: SkillPool): string {
   const lines: string[] = [];
@@ -59,7 +55,7 @@ export function renderSkillListing(pool: SkillPool): string {
 
   for (const entry of pool.entries) {
     const description = entry.description.length > SKILL_LISTING_ENTRY_MAX_CHARS
-      ? entry.description.slice(0, SKILL_LISTING_ENTRY_MAX_CHARS - 1) + '…'
+      ? entry.description.slice(0, SKILL_LISTING_ENTRY_MAX_CHARS - 3) + '...'
       : entry.description;
     const parts = [`- ${entry.name} (${entry.path}): ${description}`];
     if (entry.whenToUse) parts.push(`  when: ${entry.whenToUse}`);
@@ -73,6 +69,6 @@ export function renderSkillListing(pool: SkillPool): string {
     lines.push(line);
   }
 
-  if (omitted > 0) lines.push(`…以及另外 ${omitted} 个技能(超出目录预算,未列出)`);
+  if (omitted > 0) lines.push(`...以及另外 ${omitted} 个技能(超出目录预算, 未列出)`);
   return lines.join('\n');
 }

@@ -4,7 +4,7 @@ import { EMBEDDING_DIM } from './constants.js';
  * 比较已读取的向量, 按相似度降序返回最多 topK 个 ID; 同分保留输入顺序.
  * ids[i] 必须对应 vectors[i]. Buffer 是资产的 1024 维小端 Float32, 不修改或复制其内容.
  * minimumScore 为 undefined 时只排名, 用于图已找到的来源块; 直接搜索由调用方传入门槛.
- * 只保留本次计算的 Top-K, 不持有 Repo、向量矩阵或跨查询缓存.
+ * 只保留本次计算的 Top-K, 不保存跨查询缓存.
  */
 export function rankVectors<K extends string | number>(
   ids: readonly K[],

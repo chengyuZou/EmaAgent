@@ -1,5 +1,3 @@
-// 测试 Official MCP Registry 缓存读取, 刷新失败保留旧值和安装配置生成.
-
 import { describe, expect, it, vi } from 'vitest';
 import { McpMarketService } from '../market/marketService.js';
 import type { McpMarketCatalog, McpMarketEntry } from '../market/types.js';

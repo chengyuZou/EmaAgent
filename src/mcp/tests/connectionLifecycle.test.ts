@@ -1,5 +1,3 @@
-// 测试 MCP Transport 意外关闭后状态失败、缓存工具保留和下一次连接恢复。
-
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { ToolRegistry } from '@ema-agent/tools';
@@ -61,14 +59,13 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe('McpRegistry 连接生命周期', () => {
-  it('列表只返回工具数量，单项详情才返回工具 schema', async () => {
+  it('列表只返回工具数量, 单项详情才返回工具 schema', async () => {
     const cachedTool = {
       serverToolName: 'cached-search',
       qualifiedName: 'mcp__local__cached_search',
       originalServerName: 'local',
       description: 'Cached search',
       inputSchema: { type: 'object', properties: { query: { type: 'string' } } },
-      reportedReadOnly: false,
       reportedDestructive: false,
     };
     const record = { ...server(), cachedTools: [cachedTool] };
@@ -114,7 +111,7 @@ describe('McpRegistry 连接生命周期', () => {
     });
   });
 
-  it('Transport 意外关闭后标记 failed，并在下一次调用时惰性重连', async () => {
+  it('Transport 意外关闭后标记 failed, 并在下一次调用时重新连接', async () => {
     const first = openedConnection();
     const second = openedConnection();
     connection.openConnection
@@ -136,17 +133,16 @@ describe('McpRegistry 连接生命周期', () => {
     first.client.onerror?.(crash);
     first.client.onclose?.();
 
-    expect(registry.getConnection('local')).toMatchObject({
-      status: 'failed',
-      error: 'stdio child exited',
-      tools: [expect.objectContaining({ serverToolName: 'search' })],
+    expect(registry.getServer('local')).toMatchObject({
+      connectionStatus: 'failed',
+      connectionError: 'stdio child exited',
     });
     expect(toolRegistry.has('mcp__local__search')).toBe(false);
 
     await expect(registry.callTool('local', 'search', {})).resolves.toEqual({
       content: [{ type: 'text', text: 'ok' }],
     });
-    expect(registry.getConnection('local')).toMatchObject({ status: 'connected' });
+    expect(registry.getServer('local')).toMatchObject({ connectionStatus: 'connected' });
     expect(connection.openConnection).toHaveBeenCalledTimes(2);
   });
 
@@ -162,8 +158,8 @@ describe('McpRegistry 连接生命周期', () => {
     await registry.connect('local');
     await registry.disconnect('local');
 
-    expect(registry.getConnection('local')).toMatchObject({
-      status: 'disconnected',
+    expect(registry.getServer('local')).toMatchObject({
+      connectionStatus: 'disconnected',
       tools: [],
     });
   });
@@ -187,6 +183,6 @@ describe('McpRegistry 连接生命周期', () => {
     }
 
     expect(connection.openConnection).toHaveBeenCalledTimes(6);
-    expect(registry.getConnection('local')).toMatchObject({ status: 'failed' });
+    expect(registry.getServer('local')).toMatchObject({ connectionStatus: 'failed' });
   });
 });

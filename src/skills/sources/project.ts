@@ -1,10 +1,8 @@
-// 在项目源文件夹的技能目录中限量扫描并解析 SKILL.md。
 import { readFile, readdir, realpath } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseSkillMd } from '../parser.js';
 import type { SkillDescriptor } from '../types.js';
 
-/** 生态声明表:sourceId 只负责来源级启停。 */
 export interface ProjectEcosystem {
   readonly sourceId: string;
   /** 工作区下的相对目录, 如 '.agents/skills'. */
@@ -75,7 +73,7 @@ export async function scanProjectSkills(
   return descriptors.flatMap(entry => entry ? [entry as SkillDescriptor] : []);
 }
 
-/** 在生态根下找 SKILL.md；目录上限按遍历过的目录计算，不按 Skill 文件数计算。 */
+/** 每个生态根最多遍历 2,000 个目录, 按目录而不是 SKILL.md 数量计数. */
 async function collectSkillFiles(
   ecoRoot: string,
 ): Promise<string[]> {

@@ -24,7 +24,6 @@
   "dependencies": {
     "@ema-agent/settings": "workspace:*",
     "@ema-agent/storage": "workspace:*",
-    "fflate": "^0.8.2",
     "gray-matter": "^4.0.3",
     "zod": "^4.4.3"
   },

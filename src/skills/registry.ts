@@ -1,9 +1,3 @@
-// SkillRegistry:活注册表,持有全量技能的当前事实(镜像 ToolRegistry)。
-// 不产出中间 snapshot——冻结只发生在 SkillPool(镜像 ToolPool)。
-//
-// 装载模型：
-// - builtin + user 与工作区无关，合并为 core；启动时、安装/卸载后由 refreshCore() 重扫；
-// - project 技能按源文件夹清单首次读取并缓存,显式 refreshProjectFolders() 时重扫。
 import type { SkillStore } from './store.js';
 import { scanProjectSkills } from './sources/project.js';
 import type { SkillDescriptor } from './types.js';
@@ -13,22 +7,18 @@ export interface SkillRegistryDeps {
 }
 
 export interface SkillRegistry {
-  /** builtin+user 重扫；串行接棒,并发调用不交错。启动、安装、卸载后调用。 */
+  /** 启动, 安装, 删除或手动重扫时调用. 多次调用按顺序执行, 避免索引更新交错. */
   refreshCore(): Promise<void>;
-  /** 重扫当前文件夹清单的 project 技能并替换该清单缓存。 */
+  /** 重扫指定文件夹清单, 只替换该清单的 project 技能缓存. */
   refreshProjectFolders(folderPaths: readonly string[]): Promise<void>;
   /**
-   * 当前全量(含禁用项);禁用过滤是 Pool 冻结时的事。
-   * 传入源文件夹清单时附带对应的 project 技能；首次读取会扫描。
-   * 调用会等待进行中的首次 core 装载，避免启动竞态下读到空目录。
+   * 返回包含禁用项的目录. 传入文件夹清单时附带对应 project 技能, 首次读取会扫描.
+   * 宿主必须先调用 refreshCore; list 会等待首次装载, 但不会等待后续重扫.
    */
   list(folderPaths?: readonly string[]): Promise<readonly SkillDescriptor[]>;
   getByPath(path: string, folderPaths?: readonly string[]): Promise<SkillDescriptor | undefined>;
 }
 
-/**
- * builtin/user 各自对账自己的索引, 合成 core 全量; project 仍只来自工作区扫描.
- */
 export function createSkillRegistry(deps: SkillRegistryDeps): SkillRegistry {
   let core: readonly SkillDescriptor[] = [];
   const coreByPath = new Map<string, SkillDescriptor>();
@@ -63,7 +53,7 @@ export function createSkillRegistry(deps: SkillRegistryDeps): SkillRegistry {
   }
 
   async function list(folderPaths: readonly string[] = []): Promise<readonly SkillDescriptor[]> {
-    // 首次装载尚未完成时等待它，而不是把空目录交给调用方；首装失败降级为当前 core。
+    // 启动装载尚未完成时等待它, 避免第一次读取拿到空目录.
     if (coreReady) await coreReady.catch(() => undefined);
     let project: readonly SkillDescriptor[] = [];
     if (folderPaths.length > 0) {

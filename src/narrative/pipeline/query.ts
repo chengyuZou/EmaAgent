@@ -35,7 +35,7 @@ export function embeddingTexts(
   if (mode === 'global' && high) {
     return [query, high];
   }
-  // local/global 缺少本侧关键词时, 原生会进入双路分支; 这里只编码实际使用的词.
+  // local/global 缺少本侧关键词时使用另一侧, 这里只编码实际要用的文本.
   return [query, low, high].filter(text => text.length > 0);
 }
 

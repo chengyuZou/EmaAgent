@@ -16,7 +16,6 @@ export interface NarrativeRoute extends NarrativeKeywords {
 export type NarrativeQueryMode = 'local' | 'global' | 'hybrid' | 'naive' | 'mix';
 
 export interface NarrativeTimelineFailure {
-  readonly code: 'timeline_query_failed';
   readonly message: string;
 }
 

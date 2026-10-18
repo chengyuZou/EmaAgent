@@ -8,8 +8,8 @@ import { RELATED_CHUNK_NUMBER } from '../constants.js';
 import { rankVectors } from '../vectors.js';
 
 /**
- * 模拟 Python 的 `round` 
- * 保持和LightRAG的原 Python 算法一致, 避免 `.5` 时分配数量发生偏移
+ * .5 时取最近的偶数, 与 LightRAG 的 Python round 一致.
+ * Math.round 在此处会改变部分来源组分到的块数.
  */
 function roundLikePython(value: number): number {
   const floor = Math.floor(value);
@@ -25,14 +25,10 @@ function pickByWeight(groups: readonly (readonly string[])[]): string[] {
     return groups[0]!.slice(0, RELATED_CHUNK_NUMBER);
   }
   const selected: string[] = [];
-  // 第 index 个组已经分配的块数
   const used: number[] = [];
   let remaining = 0;
   for (let index = 0; index < groups.length; index++) {
-    // 第 index 个组期望分到的块数
-    // 从第一组的 R 个 线性递减到最后一组的 1 个
-    // 例如 5 组时, 期望分配数量为 [5, 4, 3, 2, 1]
-    // 例如 3 组时, 期望分配数量为 [5, 3, 1]
+    // 第一组到最后一组的份额从 5 递减到 1, 例如三组分配 [5, 3, 1].
     const expected = roundLikePython(
       RELATED_CHUNK_NUMBER - index / (groups.length - 1) * (RELATED_CHUNK_NUMBER - 1),
     );
@@ -42,15 +38,10 @@ function pickByWeight(groups: readonly (readonly string[])[]): string[] {
     remaining += expected - count;
   }
   for (let allocation = 0; allocation < remaining; allocation++) {
-    // 从前往后找第一个还有剩余块的组
-    // used[position] 是该组已取数量 group.length 是该组总数量
-    // used[position] < group.length 就说明这个组还有块没取
     const index = groups.findIndex((group, position) => used[position]! < group.length);
     if (index === -1) {
       break;
     }
-    // groups[index][used[index]] 就是该组下一个未取块
-    // used[index] 既是已取数量 也是下一个待取下标
     selected.push(groups[index]![used[index]!]!);
     used[index] = used[index]! + 1;
   }
@@ -72,7 +63,6 @@ function selectGroups(
   vectorsById: ReadonlyMap<string, Buffer>,
   signal: AbortSignal,
 ): string[] {
-  // 过滤空块 统计频次并去重
   const original = [...sources].filter(group => group.length > 0);
   const frequency = new Map<string, number>();
   const seen = new Set(excluded);
@@ -100,7 +90,7 @@ function selectGroups(
   for (const group of groups) {
     group.sort((left, right) => frequency.get(right)! - frequency.get(left)!);
   }
-  // 原生来源选块数量随组数增加; 最终正文另受 CHUNK_TOP_K 和字符长度限制.
+  // 来源候选数随组数增加, 最终交给重排的正文另受 CHUNK_TOP_K 限制.
   const count = Math.floor(RELATED_CHUNK_NUMBER * groups.length / 2);
   const ids: string[] = [];
   const vectors: Buffer[] = [];
@@ -146,7 +136,7 @@ export function retrieveSourceChunks(
   const entityChunks = selectGroups(
     entities.values(), new Set(), false, embedding, vectorsById, signal,
   );
-  // 原生关系选块先排除已选实体块, 然后去掉空组; 实体选块则保留去重后的空组.
+  // 关系侧排除实体侧已选块后移除空组; 实体侧保留空组, 组数会影响候选数量.
   const relationChunks = selectGroups(
     relations.values(), new Set(entityChunks), true, embedding, vectorsById, signal,
   );

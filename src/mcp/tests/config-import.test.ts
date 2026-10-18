@@ -1,4 +1,3 @@
-// 测试 MCP 配置粘贴导入:常见包装形态、transport 键别名、SSE 拒绝与裸 URL。
 import { describe, expect, it } from 'vitest';
 import { McpUnsupportedTransportError } from '../errors.js';
 import { parseImportedMcpServers } from '../config-import.js';
@@ -26,7 +25,7 @@ describe('MCP 配置导入', () => {
     }).map((s) => s.name)).toEqual(['b', 'c']);
   });
 
-  it('transport 键参与判别:streamable_http 归一、sse 拒绝、矛盾拒绝', () => {
+  it('transport 键参与判别: streamable_http 归一, sse 拒绝, 矛盾拒绝', () => {
     expect(parseImportedMcpServers({
       mcpServers: {
         remote: { transport: 'streamable_http', url: 'https://example.com/mcp' },

@@ -23,7 +23,7 @@ export function parseQueryJson(text: string): unknown {
   return JSON.parse(jsonrepair(withoutThinking)) as unknown;
 }
 
-/** 一次调用同时确定周目、子问题及提词. 摘要只用于定位, 不替代原文证据. */
+/** 一次调用确定周目, 子问题和关键词. 摘要只用于定位, 不替代原文证据. */
 export async function routeTimelines(
   query: string,
   completeLLM: CompleteLLM,

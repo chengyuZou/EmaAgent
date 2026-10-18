@@ -1,5 +1,3 @@
-// 市场聚合服务:选 Adapter、两源合并分页、跨源去重、安装状态标注、文件预览。
-// 缓存与来源健康在 cache.ts;安装业务在 installService.ts;本文件不解析任一市场的私有字段。
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { getSourceHealth, marketCache, MARKET_TTL } from './cache.js';
@@ -29,9 +27,9 @@ const defaultAdapters: Record<MarketSource, MarketAdapter> = {
 };
 
 export interface MarketServiceDeps {
-  /** 用户技能根目录;安装状态标注按它现查(不缓存)。 */
+  /** 用户技能根目录;安装状态标注按它现查(不缓存). */
   readonly userRoot: string;
-  /** 默认真实 Adapter;测试注入替身。 */
+  /** 默认真实 Adapter;测试注入替身. */
   readonly adapters?: Record<MarketSource, MarketAdapter>;
 }
 
@@ -51,8 +49,7 @@ export interface MarketService {
   adapterFor(source: MarketSource): MarketAdapter;
 }
 
-// ── 合并游标(两源各自分页的不透明合并) ────────────────────────────────────────
-
+// 每个来源保留自己的下一页位置, 响应将它们编码成一个 cursor.
 type MergedCursor = Partial<Record<MarketSource, string>>;
 
 function encodeCursor(cursor: MergedCursor): string | null {
@@ -76,9 +73,7 @@ function decodeCursor(raw: string | undefined): MergedCursor | undefined {
   }
 }
 
-// ── 安装状态标注(读目录里的 .ema-market.json) ─────────────────────────────────
-
-/** 读技能目录里的市场溯源标记;没有或非法返回 null。 */
+/** 读技能目录里的市场溯源标记;没有或非法返回 null. */
 export async function readMarketMeta(dir: string): Promise<ReturnType<typeof parseMarketMeta>> {
   try {
     return parseMarketMeta(JSON.parse(await readFile(join(dir, MARKET_META_FILENAME), 'utf8')));
@@ -95,8 +90,6 @@ async function dirExists(dirPath: string): Promise<boolean> {
   }
 }
 
-// ── 跨源去重:SkillHub 镜像条目并入 ClawHub 原始条目 ──────────────────────────
-
 function dedupeSkills(items: MarketSkill[]): MarketSkill[] {
   const uniqueItems = Array.from(
     new Map(items.map(item => [item.id, item] as const)).values(),
@@ -112,8 +105,7 @@ function dedupeSkills(items: MarketSkill[]): MarketSkill[] {
       if (original) {
         byClawhubSlug.set(item.upstream.slug, {
           ...original,
-          mirrors: [...(original.mirrors ?? []), item.id],
-          // 用 SkillHub 独有的字段富化原始条目。
+          // 当前页包含原条目时, 合并镜像提供的图标, 来源说明和标签.
           ...(!original.iconUrl && item.iconUrl ? { iconUrl: item.iconUrl } : {}),
           ...(!original.securityNote && item.securityNote ? { securityNote: item.securityNote } : {}),
           ...(original.tags.length === 0 && item.tags.length > 0 ? { tags: item.tags } : {}),
@@ -123,7 +115,7 @@ function dedupeSkills(items: MarketSkill[]): MarketSkill[] {
     }
     result.push(item);
   }
-  // 被富化过的原始条目替换回结果序列(保持原顺序)。
+  // 替换合并后的原条目, 保持结果的顺序.
   return result.map((item) =>
     item.source === 'clawhub' ? (byClawhubSlug.get(item.slug) ?? item) : item,
   );
@@ -146,14 +138,13 @@ export function createMarketService(deps: MarketServiceDeps): MarketService {
       return {
         ...skill,
         installState: 'installed',
-        installedInfo: { version: meta.version, installedAt: meta.installedAt, dirName },
       };
     }
-    // 目录存在但不是市场装的(或属于同名其他技能)——拒绝覆盖。
+    // 已存在的目录只有安装来源匹配才算已安装, 其余视为名字冲突并阻止覆盖.
     return { ...skill, installState: 'not-installable', notInstallableReason: 'name-conflict' };
   }
 
-  /** 文件级可安装检查:拿到文件清单才可能判定。 */
+  /** 文件级可安装检查:拿到文件清单才可能判定. */
   function applyFileLimits(detail: MarketSkillDetail): MarketSkillDetail {
     if (detail.installState !== 'installable') return detail;
     if (detail.files.length === 0 || !detail.files.some((f) => f.path === 'SKILL.md')) {
@@ -193,7 +184,7 @@ export function createMarketService(deps: MarketServiceDeps): MarketService {
       return { page, status: { status: 'ok', fetchedAt: Date.now(), fromCache: false } };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      // 过期缓存兜底:上游挂了也能看到旧数据。
+      // 请求失败时返回已有旧页, 同时保留错误供响应说明来源状态.
       const stale = marketCache.getStale<AdapterListPage>(cacheKey);
       if (stale) {
         return {
@@ -216,7 +207,7 @@ export function createMarketService(deps: MarketServiceDeps): MarketService {
       const outcomes = new Map<MarketSource, AdapterOutcome>();
       await Promise.all(
         activeSources.map(async (source) => {
-          // 非首页游标里缺的来源 = 已穷尽。
+          // 非首页游标里缺的来源 = 已穷尽.
           const adapterCursor = cursor?.[source];
           if (!isFirstPage && !adapterCursor) {
             outcomes.set(source, { page: { items: [] }, status: { status: 'ok', fromCache: true } });

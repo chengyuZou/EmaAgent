@@ -1,5 +1,3 @@
-// 市场内存缓存:TTL + 过期兜底(stale-while-error) + 按来源健康记录。
-// 只存归一化后的上游数据;安装状态每请求现算,永不进缓存。
 import type { MarketSource, SourceHealthStatus, SourceStatusInfo } from './types.js';
 
 type CacheEntry = {
@@ -24,13 +22,13 @@ class MarketCache {
     const entry = this.entries.get(key);
     if (!entry) return undefined;
     if (Date.now() > entry.expiresAt) return undefined;
-    // LRU touch
+    // 成功读取后移到末尾, 超过条目上限时淘汰最久没有读取的项.
     this.entries.delete(key);
     this.entries.set(key, entry);
     return entry.value as T;
   }
 
-  /** 过期也返回——上游失败时拿旧数据兜底。 */
+  /** 请求失败时允许返回过期值, 调用方同时向页面报告错误. */
   getStale<T>(key: string): { value: T; storedAt: number } | undefined {
     const entry = this.entries.get(key);
     if (!entry) return undefined;
@@ -53,8 +51,6 @@ class MarketCache {
 
 export const marketCache = new MarketCache();
 
-// ── 来源健康(市场窗口的状态行) ──────────────────────────────────────────────
-
 type HealthRecord = {
   status: SourceHealthStatus;
   lastOkAt?: number;
@@ -70,7 +66,7 @@ export function recordSourceSuccess(source: MarketSource): void {
 export function recordSourceFailure(source: MarketSource, error: string): void {
   const prev = sourceHealth.get(source);
   sourceHealth.set(source, {
-    // 刚成功过 → 降级;连续失败 → failed。
+    // 首次失败标记 degraded, 连续失败标记 failed.
     status: prev?.status === 'ok' && prev.lastOkAt ? 'degraded' : 'failed',
     lastOkAt: prev?.lastOkAt,
     lastError: error,

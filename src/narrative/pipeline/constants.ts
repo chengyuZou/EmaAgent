@@ -1,12 +1,12 @@
 export const TIMELINES = ['1st_Loop', '2nd_Loop', '3rd_Loop'] as const;
-// 构建剧情数据时用的 Pro/bge-m3 维度为1024
+// 固定剧情资产使用 Pro/BAAI/bge-m3 的 1024 维向量, 查询必须使用相同向量空间.
 export const EMBEDDING_DIM = 1024;
 /** 实体/关系各自的初始向量候选数, 图扩展之后可能得到更多节点或边. */
 export const TOP_K = 40;
 /** 每周目进入重排的正文候选数. */
 export const CHUNK_TOP_K = 20;
 // 图限制用于来源选块; MAX_CONTEXT_CHARACTERS 是整次查询原文的预算, 各周目均分.
-// 单位是 JavaScript 字符串 .length, 不是 token.
+// 单位是 字符串长度, 不是 token.
 export const MAX_ENTITY_CHARACTERS = 18_000;
 export const MAX_RELATION_CHARACTERS = 24_000;
 export const MAX_CONTEXT_CHARACTERS = 32_000;

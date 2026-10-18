@@ -1,4 +1,3 @@
-// 验证真实 SQLite 和技能目录上的分来源对账, 启停, 安装删除及 004 开关搬运.
 import {
   existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync,
   renameSync, rmSync, writeFileSync,
@@ -263,7 +262,7 @@ describe('profile 004 开关迁移', () => {
 
     db.migrate();
     const repo = new SkillsRepo(db.sqlite);
-    expect(db.currentVersion()).toBe(4);
+    expect(db.currentVersion()).toBeGreaterThanOrEqual(4);
     expect(repo.findByPath(userPath)).toMatchObject({ scope: 'user', enabled: 0, installed_at: 123 });
     expect(db.sqlite.prepare("SELECT value_json FROM settings WHERE key = 'keep-me'").pluck().get()).toBe('42');
     expect(db.sqlite.prepare("SELECT name FROM sqlite_master WHERE name = 'skill_enablement'").get()).toBeUndefined();

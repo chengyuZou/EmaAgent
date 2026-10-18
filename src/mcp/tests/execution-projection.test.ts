@@ -1,6 +1,6 @@
-// 测试 MCP 结果投影:text/image/resource/audio/structuredContent/_meta 各归其位。
 import { describe, expect, it } from 'vitest';
-import { projectMcpToolOutput } from '../execution.js';
+import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { callMcpTool, projectMcpToolOutput } from '../execution.js';
 
 describe('MCP 结果模型投影', () => {
   it('text 块原样通过', () => {
@@ -53,12 +53,21 @@ describe('MCP 结果模型投影', () => {
     });
   });
 
-  it('_meta 绝不进入模型投影', () => {
-    const parts = projectMcpToolOutput({
-      content: [{ type: 'text', text: 'visible' }],
-      meta: { 'io.example/secret': 'do-not-send' },
+  it('调用结果不保留远端 _meta', async () => {
+    const client = {
+      callTool: async () => ({
+        content: [{ type: 'text', text: 'visible' }],
+        _meta: { 'io.example/secret': 'do-not-send' },
+      }),
+    } as unknown as Client;
+    const output = await callMcpTool({
+      client,
+      serverName: 'remote',
+      toolName: 'search',
+      args: {},
     });
-    expect(JSON.stringify(parts)).not.toContain('do-not-send');
+    expect(output).toEqual({ content: [{ type: 'text', text: 'visible' }] });
+    expect(projectMcpToolOutput(output)).toEqual([{ type: 'text', text: 'visible' }]);
   });
 
   it('空结果给出显式占位文本', () => {

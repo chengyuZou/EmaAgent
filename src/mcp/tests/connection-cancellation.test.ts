@@ -1,5 +1,3 @@
-// 这里测试 MCP SDK 握手在取消或超时时真正中止，并关闭已创建的 transport。
-
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const sdk = vi.hoisted(() => {
@@ -92,6 +90,8 @@ describe('MCP 底层连接取消', () => {
       url: 'https://example.com/mcp',
     });
     const rejected = expect(pending).rejects.toThrow(/timed out after 30000ms/i);
+    // SDK 采用异步导入, 等握手开始后再推进它的超时计时器.
+    await vi.waitFor(() => expect(sdk.connect).toHaveBeenCalledTimes(1));
     const sdkSignal = sdk.connect.mock.calls[0]?.[1]?.signal as AbortSignal;
     await vi.advanceTimersByTimeAsync(30_000);
 

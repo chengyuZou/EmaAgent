@@ -1,5 +1,3 @@
-// Skill 调用工具:从本根 Turn 冻结的 SkillPool 按绝对路径读取完整 SKILL.md。
-// 激活态不持久化——模型忘了技能内容就再调一次(目录常驻),这是 V1 拍板的简化。
 import { dirname } from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { z } from 'zod';
@@ -15,7 +13,7 @@ import {
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { SKILL_DESCRIPTION } from './prompt.js';
 
-/** Skill 工具的窄 Context:本 Turn 冻结技能池。 */
+/** 只接受当前 Turn 准备好的技能池. */
 interface SkillToolContext {
   skillPool: SkillPool;
 }
@@ -37,7 +35,7 @@ export interface SkillToolResult {
   version?: string;
   description: string;
   whenToUse?: string;
-  /** 完整 SKILL.md,包含 frontmatter 和正文。 */
+  /** 完整 SKILL.md, 包含 frontmatter 和正文. */
   instructions: string;
 }
 
@@ -50,13 +48,11 @@ export const SkillTool = buildTool<SkillInput, SkillToolResult, SkillToolContext
   isReadOnly: () => true,
   isConcurrencySafe: () => true,
 
-  // 技能只读执行(目录由根 Turn 冻结), 内置信任放行。
   checkPermissions: async () => ({ behavior: 'allow' }),
 
   validateContext(ctx: ToolUseContext) {
-    // Pool 由根 Turn 装配;没有技能池的调用上下文不可见。
     if (!ctx.skillPool) {
-      return contextFail('Skill 工具仅在带技能池的根 Turn 可用。');
+      return contextFail('Skill 工具仅在带技能池的 Turn 可用.');
     }
     return contextOk({ skillPool: ctx.skillPool });
   },

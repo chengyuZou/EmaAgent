@@ -27,7 +27,7 @@ describe('NarrativeSearchTool', () => {
   it('Map 转为可保存的 Tool 结果, 前端和模型能读到相同正文与失败说明', async () => {
     const narrativeSearch = vi.fn(async (): Promise<NarrativeRecallResult> => new Map([
       ['1st_Loop', { text: '剧情正文' }],
-      ['2nd_Loop', { code: 'timeline_query_failed', message: '检索失败' }],
+      ['2nd_Loop', { message: '检索失败' }],
     ]));
     const input = NarrativeSearchTool.inputSchema.parse({ query: '  查询角色过去  ' });
     const current = invocation();
@@ -60,7 +60,7 @@ describe('NarrativeSearchTool', () => {
     const narrativeSearch = vi.fn<NonNullable<ToolUseContext['narrativeSearch']>>()
       .mockResolvedValueOnce(new Map([['2nd_Loop', { text: '' }]]))
       .mockResolvedValueOnce(new Map([
-        ['1st_Loop', { code: 'timeline_query_failed', message: '检索失败' }],
+        ['1st_Loop', { message: '检索失败' }],
       ]))
       .mockResolvedValueOnce(new Map([['3rd_Loop', { text: '正文' }]]));
     const context = { narrativeSearch };

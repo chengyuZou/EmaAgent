@@ -1,4 +1,3 @@
-// 市场上游 HTTP 边界的公共行为:10s 超时、429/5xx 重试一次、限长读、来源健康记账。
 import { recordSourceFailure, recordSourceSuccess } from './cache.js';
 import {
   MARKET_ERROR_CODES,
@@ -21,7 +20,7 @@ function responseTooLarge(source: MarketSource, label: string, maxBytes: number)
   );
 }
 
-/** 读响应文本并在超过上限时中止;content-length 虚报时按实际累计拦截。 */
+/** 同时检查 content-length 和实际读取字节, 避免只相信服务器声明的大小. */
 export async function readResponseTextWithLimit(
   source: MarketSource,
   response: Response,

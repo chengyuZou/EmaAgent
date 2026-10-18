@@ -1,4 +1,3 @@
-// 测试 McpServerStore 对 env/headers 的明文持久化与读取(V1 不做凭据加密)。
 import { describe, expect, it } from 'vitest';
 import { McpServerStore } from '../store.js';
 
@@ -12,7 +11,7 @@ function memoryRepo() {
       const row = rows.get(id);
       if (!row) return;
       for (const [key, value] of Object.entries(patch)) {
-        // repo.update 的 camelCase patch 键 ↔ snake_case 列
+        // 模拟 Repo 将 camelCase 字段映射到 snake_case 列.
         const col = key.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
         row[col] = value;
       }
@@ -45,7 +44,6 @@ describe('McpServerStore 凭据边界', () => {
     });
 
     const persisted = JSON.parse(repo.findByName('github')!.config_json as string);
-    // V1 明文直存,不加密
     expect(persisted.env.GITHUB_TOKEN).toBe('ghp_secret');
     expect(persisted.env.DEBUG).toBe('1');
 

@@ -137,7 +137,7 @@ export function SkillMarketPage(): JSX.Element {
     setInstalling(prev => new Set(prev).add(id));
     try {
       const result = await skillsApi.marketInstall({ source: src as 'skillhub' | 'clawhub', slug });
-      showToast(`已安装 ${result.name},下一根对话 Turn 起生效`, { variant: 'success' });
+      showToast(`已安装 ${result.name}, 下一 Turn 起生效`, { variant: 'success' });
       await reload();
       if (detail?.id === id) await openDetail(detail);
     } catch (err) {
@@ -319,7 +319,7 @@ export function SkillMarketPage(): JSX.Element {
         {pendingInstall && (
           <div className="flex flex-col gap-3">
             <Callout variant="warn" className="text-xs">
-              技能来自第三方市场,可能包含指令与脚本。安装后进用户技能目录,下一根对话 Turn 起生效。
+              技能来自第三方市场, 可能包含指令与脚本. 安装后进入用户技能目录, 下一 Turn 起生效.
             </Callout>
             <p className="text-xs text-[var(--ema-text-tertiary)]">
               来源 {SOURCE_LABEL[pendingInstall.source] ?? pendingInstall.source}

@@ -17,7 +17,6 @@ import { routeTimelines } from './router.js';
 
 function timelineFailure(error: unknown): NarrativeTimelineFailure {
   return {
-    code: 'timeline_query_failed',
     message: error instanceof Error ? error.message : String(error),
   };
 }

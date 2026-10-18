@@ -1,6 +1,3 @@
-// 市场安装/卸载业务:逐文件下载校验 → staging → 同卷 rename 落位 → 写溯源标记。
-// Adapter 负责取详情与文件;落位与索引归 user 域 store;staging 目录在 userRoot 内
-// (rename 同卷约束),进程中途死亡留下的孤儿 staging 由启动清扫回收。
 import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
@@ -24,7 +21,6 @@ export interface MarketInstallerDeps {
   readonly market: Pick<MarketService, 'detail' | 'adapterFor'>;
 }
 
-/** 安装结果:落位后的 user 域描述符。 */
 export interface MarketInstallResult {
   readonly path: string;
   readonly dirName: string;
@@ -32,7 +28,6 @@ export interface MarketInstallResult {
   readonly version?: string;
 }
 
-/** 安装失败:带业务码与 preserves 来源的错误。 */
 export class MarketInstallError extends Error {
   constructor(
     public readonly code: string,
@@ -44,7 +39,7 @@ export class MarketInstallError extends Error {
   }
 }
 
-// 同一 slug 同时只允许一个安装。
+// 同一来源和 slug 同时只允许一个安装, 其他技能仍可并发下载.
 const inFlight = new Map<string, Promise<unknown>>();
 
 function sha256Hex(content: string): string {
@@ -96,7 +91,7 @@ export function createMarketInstaller(deps: MarketInstallerDeps) {
       );
     }
 
-    // 安装时重新拉文件清单——详情可能是缓存,清单必须新鲜。
+    // 详情可能来自缓存, 安装前重新读取文件清单并检查下载限制.
     let files;
     try {
       files = await deps.market.adapterFor(source).listFiles(slug, detail.version);
@@ -114,6 +109,7 @@ export function createMarketInstaller(deps: MarketInstallerDeps) {
       throw new MarketInstallError(MARKET_ERROR_CODES.notInstallable, `技能文件体积超限: ${slug}`);
     }
 
+    // 临时目录放在 userRoot 中, 最后 rename 时保持在同一个文件系统内.
     const staging = await mkdtemp(join(deps.userRoot, `${STAGING_PREFIX}${source}-`));
     try {
       let actualTotalSize = 0;
@@ -151,9 +147,6 @@ export function createMarketInstaller(deps: MarketInstallerDeps) {
         id: marketSkillId(source, slug),
         source,
         slug,
-        ...(detail.version ? { version: detail.version } : {}),
-        installedAt: new Date().toISOString(),
-        fileCount: files.length,
       };
       await writeFile(join(staging, MARKET_META_FILENAME), `${JSON.stringify(meta, null, 2)}\n`, 'utf-8');
 
@@ -169,7 +162,7 @@ export function createMarketInstaller(deps: MarketInstallerDeps) {
     }
   }
 
-  /** 卸载只删市场装的目录(溯源标记三项对上);手放的目录市场绝不碰。 */
+  /** 安装标记必须与来源和 slug 一致, 防止按同名目录删除手动放入的技能. */
   async function uninstall(source: MarketSource, slug: string): Promise<void> {
     const dirName = sanitizeDirName(slug);
     if (!dirName) {

@@ -1,4 +1,3 @@
-// MCP 存储入口负责服务器配置与工具缓存的持久化转换和读取校验。
 import { Buffer }                from 'node:buffer';
 import { randomUUID }            from 'node:crypto';
 import type { McpServersRepo, McpServerRow, McpServerSettingsRow } from '@ema-agent/storage';
@@ -19,17 +18,6 @@ interface McpServerSettings {
   cachedToolCount: number;
 }
 
-// ── McpServerStore ────────────────────────────────────────────────────────────
-//
-// McpServersRepo 之上的业务逻辑层。
-//
-// 职责:
-//   - 解析/序列化 McpServerConfig(JSON Schema 校验)
-//   - env/headers 明文直存直读(V1 暂不做凭据加密,后续在此收口)
-//   - 用领域类型(非裸 DB 行)表达 CRUD
-//
-// 不管连接 - 那是 McpRegistry 的事。
-
 export class McpServerStore {
   constructor(
     private readonly repo: McpServersRepo,
@@ -43,8 +31,9 @@ export class McpServerStore {
   ): string {
     const trustedProvenance = McpInstallProvenanceSchema.parse(provenance);
     const existing = this.repo.findByName(name);
-    // 更新沿用既有 id,保持记录身份稳定。
+    // 同名更新沿用记录 id, 市场来源随本次保存一起更新.
     const id = existing?.id ?? randomUUID();
+    // env 和 headers 的值会以明文保存在配置 JSON 中.
     const configJson = JSON.stringify(config);
     if (existing) {
       this.repo.update(existing.id, {
@@ -70,7 +59,7 @@ export class McpServerStore {
     return id;
   }
 
-  /** 持久化成功连接时发现的工具列表(快速/离线启动)。 */
+  /** 缓存成功发现的工具, 供下次启动注册和离线展示使用. */
   cacheTools(name: string, tools: McpToolInfo[]): void {
     const row = this.repo.findByName(name);
     if (!row) return;

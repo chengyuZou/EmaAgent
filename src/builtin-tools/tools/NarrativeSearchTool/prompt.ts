@@ -1,4 +1,3 @@
-// NarrativeSearch 的模型说明书: 何时检索、结果可信度边界与空结果语义。
 export const NARRATIVE_SEARCH_DESCRIPTION = `Search the curated Narrative database for 魔法少女的魔女审判 (魔法少女ノ魔女裁判). This tool is provided to characters from that work and retrieves its canon plot, character relationships and history, loop differences, endings, and world-state details.
 
 Use this tool when an answer needs source material from this game's story. The database provides story references, not a record of prior conversations or user-defined relationship developments. Retrieve those separately when the user's question requires them. Do not scan unrelated local files to locate this game's story database.
