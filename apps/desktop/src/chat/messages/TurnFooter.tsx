@@ -1,5 +1,3 @@
-// 渲染一轮最后一条可见消息之后的错误、编辑汇总、操作和统计.
-
 import { useEffect, useMemo, useState, type JSX } from 'react';
 import { IconButton } from '@ema-agent/ui';
 import type { AssistantBlock, LLMTokenUsage } from '@ema-agent/llm';

@@ -1,4 +1,3 @@
-// 启动 Server 子进程并转发标准输出与错误日志.
 use std::process::Stdio;
 
 use serde::Deserialize;

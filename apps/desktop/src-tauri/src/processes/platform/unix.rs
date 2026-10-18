@@ -1,4 +1,4 @@
-// 为 macOS 与 Linux 提供独立进程组、TERM/KILL 升级和子进程回收。
+// 为 macOS 与 Linux 提供独立进程组, TERM/KILL 升级和子进程回收.
 use std::time::Duration;
 
 use tokio::process::{Child, Command};

@@ -1,4 +1,3 @@
-// 展示当前 Session 的队首 Permission 或 AskUser, 后续交互继续留在服务端单队列中.
 import { useEffect, useRef, useState, type CSSProperties, type JSX } from 'react';
 import { Tooltip, Button, Card, CardButton, IconButton, Textarea } from '@ema-agent/ui';
 import type { PermissionRequest, PermissionResponse } from '@ema-agent/permission';
@@ -29,7 +28,7 @@ function useSubmission(): {
       try {
         await operation();
       } catch (cause) {
-        // 另一窗口(可执行窗口为main与chat)可能已经处理了同一队首. 此时服务端恢复消息会移除卡片, 不把过期回答显示成失败.
+        // 舞台或聊天窗口可能已经处理了同一队首. Server 会移除过期卡片, 不把重复回答显示成失败.
         if (!(cause instanceof SessionRequestError && cause.code === 'not_found_or_expired')) {
           setError(cause instanceof Error ? cause.message : '提交失败, 请重试');
         }
@@ -122,7 +121,7 @@ function PermissionView({ sessionId, request }: { sessionId: string; request: Pe
       onToggle={() => setCollapsed((value) => !value)}
     >
       <>
-        {/* 工具名走正文字体(mono 拉丁+雅黑中文混排显扎眼); JSON 本体保留 mono。 */}
+        {/* 工具说明使用正文字体, 原始 JSON 使用等宽字体. */}
         <div className="overflow-hidden rounded-md border border-[var(--ema-border)]">
           <div className="flex items-center gap-2 bg-[color-mix(in_srgb,var(--ema-primary)_7%,var(--ema-surface-1))] px-2 py-1">
             <span className="min-w-0 flex-1 truncate text-xs font-semibold text-[var(--ema-primary-text)]">{request.toolName}</span>

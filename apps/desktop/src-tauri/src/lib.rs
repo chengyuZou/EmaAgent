@@ -1,4 +1,3 @@
-// 组装 Tauri 插件 桌面能力 共享状态和应用生命周期
 mod bundled_data;
 mod commands;
 mod desktop;
@@ -12,7 +11,7 @@ use commands::{
     browser_back, browser_forward, close_browser, close_session_terminals, close_terminal,
     get_passthrough, get_server_port, get_server_secret, hide_main_window, list_system_fonts,
     navigate_browser, open_browser, open_main_window, open_path, open_terminal, quit_app,
-    read_draft_image, reload_browser, report_live2d_diagnostic, resize_terminal, set_always_on_top,
+    read_draft_image, reload_browser, resize_terminal, set_always_on_top,
     set_browser_bounds, set_browser_visible, set_passthrough, set_passthrough_controls_hovered,
     start_pet_pointer, write_terminal,
 };
@@ -43,7 +42,6 @@ pub fn run() {
             inspect_attachment_paths,
             get_server_secret,
             get_server_port,
-            report_live2d_diagnostic,
             list_system_fonts,
             set_always_on_top,
             set_passthrough,

@@ -11,8 +11,8 @@ const container = document.getElementById('root');
 if (!container) throw new Error('root element missing in index.html');
 
 createRoot(container).render(
-  // 主窗口持有 Pixi/WebGL 的命令式生命周期。开发期双挂载会并发创建两套模型,
-  // 第一套异步清理可能破坏第二套仍在使用的 Live2D 资源。
+  // 舞台持有 Pixi/WebGL 对象. 此入口不使用 StrictMode 双挂载,
+  // 避免第一套模型的异步清理影响第二套仍在使用的资源.
   <ErrorBoundary fallback={(err, reset) => (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 9999,

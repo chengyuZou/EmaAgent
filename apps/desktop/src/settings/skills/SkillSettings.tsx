@@ -1,4 +1,3 @@
-// 编辑 Skill 来源级开关, 逐技能开关仍由已安装列表负责.
 import { useEffect, useState, type JSX } from 'react';
 import { Callout, Spinner } from '@ema-agent/ui';
 import { skillsApi, type SkillProjectSourceList } from '../../api/skills.js';

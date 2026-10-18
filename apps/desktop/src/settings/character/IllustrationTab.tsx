@@ -1,9 +1,7 @@
-// 插图 Tab:上资源列表(真缩略图)下单张配置,点列表切换;右上[导入图片]。
-// expression 是自由文本(词法 [a-z][a-z0-9_]*),纯 Input 手写新词。
-import { useCallback, useEffect, useMemo, useState, type JSX } from 'react';
+import { useMemo, useState, type JSX } from 'react';
 import {
   Tooltip,
-  Button, CursorFloating, DropdownMenu, IconButton, Input, ScrollArea, Slider, Spinner,
+  Button, CursorFloating, DropdownMenu, Input, ScrollArea, Slider,
   type MenuItem,
 } from '@ema-agent/ui';
 import {
@@ -85,7 +83,6 @@ export function IllustrationTab({ character }: { character: Character }): JSX.El
   );
 }
 
-// ── 资源卡 ────────────────────────────────────────────────────────────────────
 
 function IllustrationCard({
   character, item, index, selected, onSelect,
@@ -204,7 +201,6 @@ function IllustrationCard({
   );
 }
 
-// ── 单张配置区 ────────────────────────────────────────────────────────────────
 
 function IllustrationConfig({ character, item }: {
   character: Character;

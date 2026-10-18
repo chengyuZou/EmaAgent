@@ -1,5 +1,3 @@
-// 读取显式参数页面需要的后端值, 并收口保存和恢复默认动作.
-
 import { useCallback, useEffect, useState } from 'react';
 import { settingsApi, type SettingApply } from '../../api/settings.js';
 

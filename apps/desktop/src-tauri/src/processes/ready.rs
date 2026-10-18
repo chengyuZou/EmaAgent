@@ -1,4 +1,4 @@
-// 等待子进程在实际监听后通过 stdout 报告端口。
+// 等待子进程在实际监听后通过 stdout 报告端口.
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 

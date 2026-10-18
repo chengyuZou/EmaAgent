@@ -1,5 +1,3 @@
-// 渲染保存为 boolean 的开关参数.
-
 import { useState, type JSX } from 'react';
 import { Tooltip, Button, Switch } from '@ema-agent/ui';
 import type { SettingApply } from '../../../api/settings.js';

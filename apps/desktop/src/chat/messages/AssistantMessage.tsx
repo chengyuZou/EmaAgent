@@ -1,5 +1,3 @@
-// 用同一个渲染身份承接 Assistant Message 的流式阶段与持久 History 阶段.
-
 import { memo, useMemo, type JSX } from 'react';
 import type { SessionMessage } from '@ema-agent/session';
 import type { SubagentMessage } from '@ema-agent/agent';
@@ -22,7 +20,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   readonly sessionId: string;
   readonly toolResults: ReadonlyMap<string, ToolResult>;
   readonly terminal: boolean;
-  /** 子代理原生 Message 的实时屏幕块, 不伪造根 Turn 的 StreamingMessage. */
+  /** 子代理 Message 的实时显示块, 不改变其持久化消息身份. */
   readonly streamingBlocks?: readonly AssistantOutputBlock[];
 }): JSX.Element | null {
   const rootStreaming = isStreamingMessage(message);

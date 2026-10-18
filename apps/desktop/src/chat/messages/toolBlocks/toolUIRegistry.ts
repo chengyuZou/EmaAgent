@@ -1,6 +1,3 @@
-// 复杂 Tool 的专属 UI 注册表: 按模型可见名查找, 未提供的输入或结果视图使用通用 CodeViewer.
-// Renderer 来自各 Tool 自己目录的 UI.tsx(经 @ema-agent/builtin-tools/ui 出口);
-// 注册表只做查找与回落, 权限卡、状态条、耗时、错误外壳仍在 ToolCallBlock。
 import { createElement, type JSX } from 'react';
 import {
   AskUserResultView,

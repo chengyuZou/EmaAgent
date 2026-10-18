@@ -1,5 +1,3 @@
-// 管理全应用唯一的系统 SSE 连接，并把事件按顺序广播给各个窗口。
-
 import { serverClient } from '../../api/client.js';
 import type { AppEvent } from '@ema-agent/server/application/appEvents.js';
 import { dispatchSystemEvent } from './systemEventDispatcher.js';
@@ -27,13 +25,13 @@ export interface SystemSseController {
 }
 
 export interface SystemEventWindowOptions {
-  /** 主桌宠窗口设为 true；其他窗口只订阅主窗口广播。 */
+  /** 主桌宠窗口设为 true; 其他窗口只订阅主窗口广播. */
   ownsConnection: boolean;
 }
 
 /**
- * 创建带 generation 防护的连接控制器。
- * stop 后，旧连接的完成回调和旧重连 timer 都无权启动下一代连接。
+ * 创建带 generation 防护的连接控制器.
+ * stop 后, 旧连接的完成回调和旧重连 timer 都无权启动下一代连接.
  */
 export function createSystemSseController(
   options: SystemSseControllerOptions,
@@ -102,7 +100,7 @@ function publishAcrossWindows(event: AppEvent): void {
     return;
   }
 
-  // 串行广播，避免 progress/completed 等相邻事件在跨窗口时发生乱序。
+  // 串行广播, 避免 progress/completed 等相邻事件在跨窗口时发生乱序.
   publishChain = publishChain
     .then(() => tauriBridge.publishSystemEvent(event))
     .catch((error: unknown) => {
@@ -165,8 +163,8 @@ function acquireSubscriber(): () => void {
 }
 
 /**
- * 挂载一个窗口的系统事件连接，返回同步 disposer 供 React effect 使用。
- * Tauri 中只有主窗持有连接；普通浏览器页面会自行连接，便于独立开发。
+ * 挂载一个窗口的系统事件连接, 返回同步 disposer 供 React effect 使用.
+ * Tauri 中由 stage 持有连接, main 只接收广播; 普通浏览器页面自行连接.
  */
 export function mountSystemEvents(options: SystemEventWindowOptions): () => void {
   const releaseSubscriber = acquireSubscriber();
@@ -179,7 +177,7 @@ export function mountSystemEvents(options: SystemEventWindowOptions): () => void
       const expectedOwnerGeneration = ownerGeneration;
       const subscriberReady = unlistenPromise;
       if (subscriberReady) {
-        // 先装好本窗 listener，再打开 SSE，避免启动瞬间丢失第一批事件。
+        // 先装好本窗 listener, 再打开 SSE, 避免启动瞬间丢失第一批事件.
         void subscriberReady.then(() => {
           if (ownerLeases > 0 && ownerGeneration === expectedOwnerGeneration) {
             controller.start();

@@ -1,4 +1,3 @@
-// 共享身份与实时执行事实. 普通 Run/历史查询由面板局部状态持有.
 import { create } from 'zustand';
 import type { SubagentEvent, SubagentMessage } from '@ema-agent/agent';
 import { subagentsApi, type SubagentRecord, type SubagentRunItem } from '../api/subagents.js';

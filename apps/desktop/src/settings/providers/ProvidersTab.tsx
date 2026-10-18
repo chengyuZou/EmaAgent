@@ -1,4 +1,3 @@
-/** 服务来源总览：六个能力分区 × Provider 卡片（删除垃圾桶悬停浮现、配置状态点）+ 分区末 ⊕ 创建卡。 */
 import React, { useEffect, useState } from 'react';
 import {
   Button,
@@ -62,7 +61,7 @@ function capabilityHost(record: ProviderRecord, capability: ModelCapability): st
   return hostOf((active ?? row?.protocols[0])?.baseUrl);
 }
 
-/** 已配置：bearer = 激活协议+key 齐；none = 该能力已有模型行（目录同步落库或手写，启停不论）。 */
+/** 已配置: bearer = 激活协议+key 齐; none = 该能力已有模型行(目录同步落库或手写, 启停不论). */
 function isConfigured(record: ProviderRecord, capability: ModelCapability): boolean {
   const row = capabilityOf(record, capability);
   if (row?.activeProtocol === undefined) return false;
@@ -73,7 +72,7 @@ function isConfigured(record: ProviderRecord, capability: ModelCapability): bool
 
 export function ProvidersTab(): JSX.Element {
   const providers = useProviderStore((s) => s.providers);
-  // 首次提示判定：provider_models 空表 = 第一次使用（目录同步落库或手写都算"用过"）。
+  // 首次提示判定: provider_models 空表 = 第一次使用(目录同步落库或手写都算"用过").
   const [hasAnyModels, setHasAnyModels] = useState<boolean | null>(null);
   useEffect(() => {
     providersApi.hasAnyModels()
@@ -117,11 +116,10 @@ export function ProvidersTab(): JSX.Element {
     );
   }
 
-  // 首次提示：provider_models 空表才算没用过（种子协议档不算）。
+  // 首次提示: provider_models 空表才算没用过(种子协议档不算).
   const anyConfigured = hasAnyModels !== false;
   let cardIdx = 0;
 
-  // 目前要删除的provider有哪些binding在用
   const deletingBindings = deleting
     ? Object.values(useProviderStore.getState().bindings)
         .filter((binding) => binding !== undefined && binding.providerId === deleting.id)
@@ -133,7 +131,7 @@ export function ProvidersTab(): JSX.Element {
     if (!target) return;
     setDeleting(null);
     try {
-      // 先逐个解绑冲突模块，再删 Provider（后端 provider_in_use 守卫兜底）。
+      // 先逐个解绑冲突模块, 再删 Provider(后端 provider_in_use 守卫兜底).
       for (const module of deletingBindings) {
         await useProviderStore.getState().deleteBinding(module as never);
       }
@@ -209,7 +207,6 @@ export function ProvidersTab(): JSX.Element {
   );
 }
 
-// ── Provider 配置页（L2）──────────────────────────────────────────────────────
 function ProviderConfigPanel({
   provider, capability, onBack,
 }: {
@@ -246,7 +243,7 @@ function ProviderConfigPanel({
   const customIconTrimmed = customIcon.trim();
   const customIconValid = PROVIDER_ICON_ID_PATTERN.test(customIconTrimmed);
 
-  /** 图标编辑：注册表内选 id，或 null 清除（前端不渲染图标）。 */
+  // null 清除自选图标; 显示时仍按 resolveProviderIconClass 的默认图标处理.
   async function pickIcon(iconId: string | null): Promise<void> {
     if (iconBusy) return;
     setIconBusy(true);
@@ -301,14 +298,12 @@ function ProviderConfigPanel({
       {detailError && <Callout variant="danger">{detailError}</Callout>}
       {!detail && !detailError && <p className="text-sm text-[var(--ema-text-tertiary)]">正在读取服务来源...</p>}
 
-      {/* 图标选择：注册表全量品牌图标 + 手写类名 + 无图标（清除）。 */}
       <Dialog
         open={editingIcon}
         onOpenChange={(open) => { if (!open) setEditingIcon(false); }}
         title="选择图标"
       >
         <div className="flex flex-col gap-4">
-          {/* 手写 uno 图标类名（lobe-icons 全量可渲染；emoji/文本形态非法）。 */}
           <div className="flex items-end gap-2">
             <div className="flex-1 flex flex-col gap-1.5">
               <div className="text-sm font-medium text-[var(--ema-text-secondary)]">手写图标类名</div>

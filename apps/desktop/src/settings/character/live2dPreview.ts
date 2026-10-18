@@ -4,7 +4,7 @@ import * as PIXI from 'pixi.js';
 import { loadLive2DArchive } from '@ema-agent/live2d-react';
 import cropEmptyPixels from '@lemonneko/crop-empty-pixels';
 
-/** 用模型 ZIP 离屏渲一帧,返回 3:4 的 PNG base64(不带 dataURL 前缀)。 */
+/** 用模型 ZIP 离屏渲一帧,返回 3:4 的 PNG base64(不带 dataURL 前缀). */
 export async function renderLive2dPreview(modelArchive: Blob): Promise<string> {
   const width = 480;
   const height = 640;
@@ -19,17 +19,13 @@ export async function renderLive2dPreview(modelArchive: Blob): Promise<string> {
   let app: PIXI.Application | null = null;
   let model: Awaited<ReturnType<typeof loadLive2DArchive>> | null = null;
   try {
-    // 手工建一个 canvas 元素挂进 DOM
-    // 它在页面上"存在但不可见"
     app = new PIXI.Application({
       view: canvas,
       width,
       height,
-      // 背景全透明
       backgroundAlpha: 0,
-      // 不开渲染循环
       autoStart: false,
-      // 默认渲完 WebGL 缓冲区就清
+      // 截图在 render 后读取 Canvas, 需要保留这一帧的 WebGL 缓冲区.
       preserveDrawingBuffer: true,
     });
     model = await loadLive2DArchive(modelArchive, {
@@ -40,7 +36,6 @@ export async function renderLive2dPreview(modelArchive: Blob): Promise<string> {
       // 封面只抓固定初始化帧;若启动模型 Idle,抓图结果会随随机 Motion 和时机变化.
       idleMotionGroup: '__ema_idle_disabled__',
     });
-    // 摆位:模型居中铺满高度
     const bounds = model.getBounds();
     const scale = Math.min(width / bounds.width, height / bounds.height) * 0.9;
     model.scale.set(scale);
@@ -50,8 +45,8 @@ export async function renderLive2dPreview(modelArchive: Blob): Promise<string> {
       height / 2 - (bounds.y + bounds.height / 2) * scale,
     );
     app.stage.addChild(model);
-    // autoUpdate 关闭后等待不会推进模型。必须先注入一帧时间,让 Cubism Pose 初始化
-    // 互斥部件的透明度;否则带备用手臂/服装的模型会把所有部件一起画进封面。
+    // autoUpdate 关闭后等待不会推进模型.必须先注入一帧时间,让 Cubism Pose 初始化
+    // 互斥部件的透明度;否则带备用手臂/服装的模型会把所有部件一起画进封面.
     model.update(1000 / 60);
     app.renderer.render(app.stage);
 
@@ -63,7 +58,7 @@ export async function renderLive2dPreview(modelArchive: Blob): Promise<string> {
     if (app && model) {
       app.stage.removeChild(model);
       // Pixi 会先销毁 Application ticker,再销毁 stage 子节点;Live2D 模型销毁时还要
-      // 从 ticker 解绑。顺序倒置会让 Ticker.remove() 读取已清空的链表头并抛出 .next 错误。
+      // 从 ticker 解绑.顺序倒置会让 Ticker.remove() 读取已清空的链表头并抛出 .next 错误.
       model.destroy({ children: true, texture: true, baseTexture: true });
     }
     app?.destroy(true);
@@ -72,10 +67,10 @@ export async function renderLive2dPreview(modelArchive: Blob): Promise<string> {
 }
 
 /**
- * 把渲出的帧裁成 3:4 卡面图。
+ * 把渲出的帧裁成 3:4 卡面图.
  * 帧的角色四周是一圈透明像素:cropEmptyPixels 按 alpha 找到内容包围盒裁掉,
- * 然后我们把内容等比放大、居中画进干净的 3:4 画布。
- * 源帧全透明时(模型没渲出来)原样返回——宁可给空帧也不给错位的图。
+ * 然后我们把内容等比放大, 居中画进干净的 3:4 画布.
+ * 裁剪结果为空或与原帧相同时直接返回原图.
  */
 async function cropToAspect(dataUrl: string, width: number, height: number): Promise<string> {
   const image = await new Promise<HTMLImageElement>((resolve, reject) => {

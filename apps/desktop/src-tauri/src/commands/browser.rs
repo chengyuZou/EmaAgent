@@ -1,4 +1,3 @@
-// 暴露原生浏览器页面的创建、导航、尺寸、显隐和关闭操作。
 use tauri::Window;
 
 use crate::desktop::browser::{self, BrowserBounds};

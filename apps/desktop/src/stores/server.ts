@@ -1,9 +1,7 @@
-// Server 可用状态：端口发现 + 健康轮询。
 import { create } from 'zustand';
 import { tauriBridge } from '../lib/tauri/tauriBridge.js';
 import { systemApi } from '../api/system.js';
 
-// ── 类型 ──────────────────────────────────────────────────────────────────────
 
 export type ServerStatus =
   | { kind: 'unknown' }
@@ -19,7 +17,6 @@ export interface ServerStoreState {
   startPolling(intervalMs?: number): () => void;
 }
 
-// ── Store ─────────────────────────────────────────────────────────────────────
 
 let refreshInFlight: Promise<void> | null = null;
 
@@ -33,7 +30,7 @@ export const useServerStore = create<ServerStoreState>((set, get) => ({
     const run = async (): Promise<void> => {
       const currentStatus = get().status;
       set({
-        // pending 只表示首次连接；已建立连接后的复检不卸载任何业务 UI。
+        // pending 只表示首次连接; 已建立连接后的复检不卸载任何业务 UI.
         ...(currentStatus.kind === 'unknown' ? { status: { kind: 'pending' } as ServerStatus } : {}),
       });
 
@@ -70,7 +67,7 @@ export const useServerStore = create<ServerStoreState>((set, get) => ({
     const tick = () => {
       void get().refresh().then(() => {
         const s = get().status;
-        // 健康后降到 30s 慢轮询；出错回到 5s 快轮询。
+        // 健康后降到 30s 慢轮询; 出错回到 5s 快轮询.
         if (s.kind === 'ok' && fastMode) {
           fastMode = false;
           if (timer) clearInterval(timer);
@@ -85,7 +82,7 @@ export const useServerStore = create<ServerStoreState>((set, get) => ({
     };
 
     timer = setInterval(tick, intervalMs);
-    // 立即执行第一轮。
+    // 立即执行第一轮.
     void get().refresh();
 
     return () => {

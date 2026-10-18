@@ -1,5 +1,3 @@
-/* Bash/PowerShell 工具调用展示: 输入命令按宽度折行, 输出区保留原始行结构并独立滚动. */
-
 .ema-terminal-card {
   border-radius: var(--ema-radius-sm);
   border: 1px solid var(--ema-border);

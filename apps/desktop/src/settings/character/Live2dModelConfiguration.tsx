@@ -1,4 +1,3 @@
-// 编辑单个 Live2D 模型的舞台位置、原生资源清单与语义映射。
 import { useCallback, useEffect, useMemo, useState, type JSX } from 'react';
 import {
   Tooltip,
@@ -310,8 +309,8 @@ function StagePositionSection({
         />
         <SliderRow
           label="X 偏移"
-        min={-1}
-        max={1}
+          min={-1}
+          max={1}
           step={0.01}
           value={offsetX}
           onChange={onOffsetXChange}
@@ -319,8 +318,8 @@ function StagePositionSection({
         />
         <SliderRow
           label="Y 偏移"
-        min={-1}
-        max={1}
+          min={-1}
+          max={1}
           step={0.01}
           value={offsetY}
           onChange={onOffsetYChange}

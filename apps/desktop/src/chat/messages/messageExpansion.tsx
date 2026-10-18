@@ -1,4 +1,3 @@
-// 根消息窗口和子代理虚拟列表保留展开选择; 未提供 Context 的独立渲染使用本地状态.
 import { createContext, useContext, useLayoutEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 
 export const MessageExpansionContext = createContext<Map<string, boolean> | null>(null);

@@ -1,4 +1,3 @@
-// 安全页:沙箱隔离状态与集成终端配置,原"通知与环境"页更名(通知早已迁入参数设置)。
 import type { JSX } from 'react';
 import { PageHeader } from '../shared/PageHeader.js';
 import { SandboxStatusSettings } from './SandboxStatusSettings.js';

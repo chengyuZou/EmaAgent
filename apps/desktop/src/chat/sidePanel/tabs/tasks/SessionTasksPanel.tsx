@@ -1,4 +1,3 @@
-// 展示当前 Session 的持久 Task；修改仍由根 Agent 的 Task Tool 完成。
 import { useEffect, useMemo, type CSSProperties, type JSX } from 'react';
 import { Badge, Button, Spinner, type BadgeVariant } from '@ema-agent/ui';
 

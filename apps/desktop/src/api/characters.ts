@@ -1,6 +1,3 @@
-// Characters API：/api/characters——角色 CRUD/激活、Live2D/插图/参考音频资源管理与舞台呈现。
-// 全部身份为稳定 name:characterName 是角色身份,live2dName/illustrationName/voiceName
-// 只是路径段名,资源对象的稳定字段统一叫 name。不存在 id/resourceId/enabled/Duplicate。
 import type { InferRequestType } from 'hono/client';
 import {
   rpcClient,
@@ -10,7 +7,6 @@ import {
   type RpcJson,
 } from './client.js';
 
-// ── 类型（全部从路由契约推导） ────────────────────────────────────────────────
 
 export type CharacterList = RpcJson<RpcClient['api']['characters']['$get']>;
 export type CharacterSummary = CharacterList['items'][number];
@@ -28,7 +24,6 @@ export type ResourcePatchInput = InferRequestType<RpcClient['api']['characters']
 export type IllustrationPatchInput = InferRequestType<RpcClient['api']['characters'][':characterName']['illustrations'][':illustrationName']['$patch']>['json'];
 export type VoicePatchInput = InferRequestType<RpcClient['api']['characters'][':characterName']['voice'][':voiceName']['$patch']>['json'];
 
-// ── API ──────────────────────────────────────────────────────────────────────
 
 export const charactersApi = {
   list(): Promise<CharacterList> {
@@ -62,7 +57,7 @@ export const charactersApi = {
     }));
   },
 
-  /** 永久删除角色;删除当前角色后自动激活最近使用的其他角色。 */
+  /** 永久删除角色;删除当前角色后自动激活最近使用的其他角色. */
   async remove(name: string): Promise<void> {
     await readRpcJson(rpcClient.api.characters[':characterName'].$delete({
       param: { characterName: name },
@@ -81,7 +76,6 @@ export const charactersApi = {
     }));
   },
 
-  // ── Live2D ─────────────────────────────────────────────────────────────────
 
   prepareLive2dImport(characterName: string, input: Live2dImportInput): Promise<PreparedLive2dImport> {
     return readRpcJson(rpcClient.api.characters[':characterName'].live2d.imports.$post({
@@ -175,7 +169,7 @@ export const charactersApi = {
     );
   },
 
-  /** Live2D 静态封面:导入或用户重试时前端离屏渲一帧的 PNG 上传;读取走同源 URL。 */
+  /** Live2D 静态封面:导入或用户重试时前端离屏渲一帧的 PNG 上传;读取走同源 URL. */
   async uploadLive2dPreview(characterName: string, live2dName: string, dataBase64: string): Promise<void> {
     await readRpcJson(
       rpcClient.api.characters[':characterName'].live2d[':live2dName'].preview.$put({
@@ -189,7 +183,7 @@ export const charactersApi = {
     return `/api/characters/${encodeURIComponent(characterName)}/live2d/${encodeURIComponent(live2dName)}/preview`;
   },
 
-  /** 模型目录以一个受认证的 ZIP 读取,包内相对引用由 Live2D 渲染器解析。 */
+  /** 模型目录以一个受认证的 ZIP 读取,包内相对引用由 Live2D 渲染器解析. */
   async live2dArchive(characterName: string, live2dName: string): Promise<Blob> {
     const response = await serverClient.requestRaw(
       `/api/characters/${encodeURIComponent(characterName)}/live2d/${encodeURIComponent(live2dName)}/archive`,
@@ -197,7 +191,6 @@ export const charactersApi = {
     return response.blob();
   },
 
-  // ── 插图 ───────────────────────────────────────────────────────────────────
 
   importIllustration(characterName: string, input: IllustrationImportInput) {
     return readRpcJson(rpcClient.api.characters[':characterName'].illustrations.import.$post({
@@ -238,7 +231,7 @@ export const charactersApi = {
     }));
   },
 
-  /** 单张插图原始文件是字节流,不进入 JSON RPC;设置页预览原图直接用它。 */
+  /** 单张插图原始文件是字节流,不进入 JSON RPC;设置页预览原图直接用它. */
   illustrationFileUrl(characterName: string, illustrationName: string): string {
     return `/api/characters/${encodeURIComponent(characterName)}/illustrations/${encodeURIComponent(illustrationName)}/file`;
   },
@@ -251,7 +244,6 @@ export const charactersApi = {
     );
   },
 
-  // ── 参考音频 ───────────────────────────────────────────────────────────────
 
   importVoice(characterName: string, input: VoiceImportInput) {
     return readRpcJson(rpcClient.api.characters[':characterName'].voice.import.$post({

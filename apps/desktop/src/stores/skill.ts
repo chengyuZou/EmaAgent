@@ -1,4 +1,3 @@
-// 管理已安装 Skill 目录与 enabled 投影; 启停走 skills 端点, 市场安装在独立窗口.
 import { create } from 'zustand';
 import type { AppEvent } from '@ema-agent/server/application/appEvents.js';
 import {
@@ -6,20 +5,19 @@ import {
   type SkillListItem,
 } from '../api/skills.js';
 
-// ── Store interface ───────────────────────────────────────────────────────────
 
 export interface SkillStoreState {
   skills:   SkillListItem[];
-  /** 是否已装载过（skills_changed 事件的自刷新门槛：没装载过的窗口不预取）。 */
+  /** 是否已装载过(skills_changed 事件的自刷新门槛: 没装载过的窗口不预取). */
   loaded:   boolean;
   loading:  boolean;
   error:    string | null;
 
-  /** 装载全部已安装技能。幂等——已装载则跳过。 */
+  /** 已加载过的窗口不重复请求, 后续变化由事件触发刷新. */
   load(): Promise<void>;
-  /** 重读技能目录投影（不重扫文件）。 */
+  /** 重读技能目录投影(不重扫文件). */
   refresh(): Promise<void>;
-  /** 真实重扫 builtin+user 目录后重读（手放目录即时生效）。 */
+  /** 真实重扫 builtin+user 目录后重读(手放目录即时生效). */
   rescan(): Promise<void>;
 
   /** 逐技能启停: 写 skills.enabled 后用返回投影原位更新. */
@@ -29,7 +27,6 @@ export interface SkillStoreState {
   remove(skill: SkillListItem): Promise<void>;
 }
 
-// ── Store ─────────────────────────────────────────────────────────────────────
 
 export const useSkillStore = create<SkillStoreState>((set, get) => ({
   skills:  [],

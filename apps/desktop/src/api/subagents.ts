@@ -1,4 +1,3 @@
-// 身份、Run 和 Message 独立读取, 类型直接来自 Server Route.
 import { rpcClient, readRpcJson, type RpcClient, type RpcJson } from './client.js';
 
 export type SubagentListResult = RpcJson<RpcClient['api']['subagents']['$get']>;
@@ -6,7 +5,6 @@ export type SubagentRecord = SubagentListResult['items'][number];
 export type SubagentRunPage = RpcJson<RpcClient['api']['subagents'][':subagentId']['runs']['$get']>;
 export type SubagentRunItem = SubagentRunPage['items'][number];
 export type SubagentMessagesResult = RpcJson<RpcClient['api']['subagents'][':subagentId']['messages']['$get']>;
-export type SubagentMessageItem = SubagentMessagesResult['items'][number];
 export type SubagentMessageCursor = NonNullable<SubagentMessagesResult['olderCursor']>;
 
 export const subagentsApi = {

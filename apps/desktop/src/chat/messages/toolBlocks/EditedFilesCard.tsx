@@ -1,5 +1,3 @@
-// 显示当前 Assistant 气泡从 FileEdit/FileWrite 结果整理出的文件清单和增删行数.
-// 这里只负责展示, 不重新读取 Git, 也不提供没有后端实现的撤销按钮.
 import { useId, useState, type JSX } from 'react';
 import { useCollapsibleBody } from '../messageExpansion.js';
 

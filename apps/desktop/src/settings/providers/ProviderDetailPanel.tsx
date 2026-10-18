@@ -1,4 +1,3 @@
-/** ProviderDetailPanel — provider 单能力档位的控制面板：凭据/连接(Base URL)/探活/协议档/模型池；所有控件独立立即提交。 */
 import { useState, type JSX, type KeyboardEvent } from 'react';
 import {
   Button,
@@ -26,7 +25,7 @@ export interface ProviderDetailPanelProps {
   capability: ModelCapability;
 }
 
-/** 探活只支持有无输入即可验证连通性的能力（tts/stt 的功能验证是试听与转写）。 */
+// TTS/STT 通过生成试听和参考音频转写验证, 不使用通用 Ping 按钮.
 const PROBEABLE: ReadonlySet<ModelCapability> = new Set(['llm', 'embed', 'rerank', 'vision']);
 
 function isHttpUrl(value: string): boolean {
@@ -41,7 +40,7 @@ function isHttpUrl(value: string): boolean {
 export function ProviderDetailPanel({
   provider, capability,
 }: ProviderDetailPanelProps): JSX.Element {
-  /** null = 未触碰（显示现有 key）；'' = 用户删光（视为删除 key）；非空 = 新 key 草稿。 */
+  /** null = 未触碰(显示现有 key); '' = 用户删光(视为删除 key); 非空 = 新 key 草稿. */
   const [apiKey,       setApiKey]       = useState<string | null>(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [probing,      setProbing]      = useState(false);
@@ -49,7 +48,6 @@ export function ProviderDetailPanel({
 
   const capabilityRow = provider.capabilities.find((c) => c.capability === capability);
   const requiresCredentials = provider.authType === 'bearer';
-  /** 眼睛开关：开=明文（type text），关=浏览器原生遮蔽（圆点长度=真实 key 长度）。 */
   const [eyeOpen, setEyeOpen] = useState(false);
 
   const activeProtocol = capabilityRow?.activeProtocol ?? '';
@@ -62,9 +60,8 @@ export function ProviderDetailPanel({
   );
   const [probeMsg, setProbeMsg] = useState<string | null>(health?.lastError ?? null);
 
-  // ── 字段独立提交：失焦/回车即 PATCH，失败 toast 并回置输入框 ──────────────────
 
-  /** API Key 三态提交：删光 = 删除 key（key: null）；新值 = 替换；同值/未触碰 = 不写。 */
+  /** API Key 三态提交: 删光 = 删除 key(key: null); 新值 = 替换; 同值/未触碰 = 不写. */
   async function commitApiKey(): Promise<void> {
     if (apiKey === null || fieldBusy) return;
     const value = apiKey.trim();
@@ -97,7 +94,7 @@ export function ProviderDetailPanel({
     }
   }
 
-  /** Base URL：仅当前激活档的地址；非法地址不提交并提示。 */
+  /** Base URL: 仅当前激活档的地址; 非法地址不提交并提示. */
   async function commitBaseUrl(): Promise<void> {
     const value = baseUrl.trim();
     if (fieldBusy || !activeProtocol || value === activeBaseUrl) return;
@@ -125,7 +122,7 @@ export function ProviderDetailPanel({
     if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
   }
 
-  /** 眼睛只负责切换遮蔽/明文；keyValue 是凭据边界的全文投影，有 key 时输入框直接展示它（受 eyeOpen 控制形态）。 */
+  // 输入框收到的是完整密钥; password 只遮蔽显示, 不是脱敏后的占位值.
   const displayedKey = apiKey ?? (provider.keyValue ?? '');
 
   /** LLM/Vision 连接验证成功后刷新当前模型范围, 目录失败不改变连接验证结果. */
@@ -155,7 +152,6 @@ export function ProviderDetailPanel({
     }
   }
 
-  // ── 协议档管理：切换/删除/新增都立即写后端 ──────────────────────────────────
 
   const [protocolBusy, setProtocolBusy] = useState(false);
   const [removingProtocol, setRemovingProtocol] = useState<string | null>(null);
@@ -198,7 +194,7 @@ export function ProviderDetailPanel({
     }
   }
 
-  /** 可新增的档：词表 ∩ 该能力支持 ∩ 该 Provider 未存档。 */
+  /** 可新增的档: 词表 ∩ 该能力支持 ∩ 该 Provider 未存档. */
   const addableProtocols = PROTOCOLS.filter(
     (proto) => isProtocolForCapability(capability, proto)
       && !(capabilityRow?.protocols.some((entry) => entry.protocol === proto) ?? false),
@@ -230,7 +226,6 @@ export function ProviderDetailPanel({
   return (
     <div className="flex flex-col gap-8 pb-6">
 
-      {/* ── 基础配置 ──────────────────────────────────────────────────────── */}
       <section className="flex flex-col gap-6 max-w-lg">
         <div>
           <h2 className="text-2xl text-[var(--ema-text-primary)]">基础配置</h2>
@@ -269,7 +264,6 @@ export function ProviderDetailPanel({
         </div>}
       </section>
 
-      {/* ── 高级配置（协议档与地址一体，默认折叠） ────────────────────────── */}
       <section className="flex flex-col gap-4 max-w-lg">
         <button
           type="button"
@@ -288,7 +282,7 @@ export function ProviderDetailPanel({
 
         <div className="ema-collapsible" style={{ gridTemplateRows: advancedOpen ? '1fr' : '0fr', opacity: advancedOpen ? 1 : 0 }}>
           <div className="overflow-hidden min-h-0 flex flex-col gap-4 mt-1">
-            {/* 协议档：当前档下拉切换；垃圾桶删除当前档（剩一档禁删）；＋新增弹窗。 */}
+            {/* 协议档: 当前档下拉切换; 垃圾桶删除当前档(剩一档禁删); ＋新增弹窗. */}
             <div className="flex flex-col gap-2">
               <div className="text-sm font-medium text-[var(--ema-text-secondary)]">协议</div>
               <div className="flex items-center gap-2">
@@ -345,7 +339,6 @@ export function ProviderDetailPanel({
         </div>
       </section>
 
-      {/* ── 验证状态条（错误全文换行铺开，不截断；Ping 按钮固定右侧） ──────── */}
       {probeOk === false && probeMsg && (
         <div className="flex items-center justify-between gap-3 rounded-lg
                         bg-[var(--ema-danger-muted)] border border-[var(--ema-danger)]
@@ -389,7 +382,6 @@ export function ProviderDetailPanel({
         </Callout>
       )}
 
-      {/* ── 模型池 ───────────────────────────────────────────────────────────── */}
       <div className="border-t border-[var(--ema-border)]" />
       <ProviderModelManager
         providerId={provider.id}
@@ -407,7 +399,7 @@ export function ProviderDetailPanel({
         onCancel={() => setRemovingProtocol(null)}
       />
 
-      {/* 增加新协议档：只允许词表内、该能力支持且该 Provider 未存档的协议。 */}
+      {/* 增加新协议档: 只允许词表内, 该能力支持且该 Provider 未存档的协议. */}
       <Dialog
         open={addingProtocol}
         onOpenChange={(open) => { if (!open) { setAddingProtocol(false); setNewProtocol(''); setNewBaseUrl(''); } }}

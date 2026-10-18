@@ -1,4 +1,3 @@
-// 创建系统托盘, 提供角色舞台显示, 点击穿透恢复与可靠退出操作.
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::Manager;
 

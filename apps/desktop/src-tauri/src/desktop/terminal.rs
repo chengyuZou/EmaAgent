@@ -1,4 +1,3 @@
-// 持有用户直接操作的 PTY 会话，并把 Shell 输出送回对应的 Desktop 终端。
 use std::{
     collections::HashMap,
     io::{Read, Write},
@@ -23,7 +22,7 @@ struct TerminalSession {
     child: Box<dyn Child + Send + Sync>,
 }
 
-// kind 是 Node 探测给出的全小写 key,经 IPC 传入;Rust 只用它决定启动参数(如 PowerShell 补 -NoLogo)。
+// kind 是 Node 探测给出的全小写 key, 经 IPC 传入; Rust 只用它决定启动参数(如 PowerShell 补 -NoLogo).
 #[derive(Clone, Copy, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum TerminalShellKind {
@@ -36,7 +35,7 @@ pub enum TerminalShellKind {
     Sh,
 }
 
-// Shell 探测在 Node;Rust 只收"启动什么(path)+怎么启动(kind)"。
+// Shell 探测在 Node; Rust 只收"启动什么(path)+怎么启动(kind)".
 #[derive(Clone, Deserialize)]
 pub struct TerminalShellSpec {
     pub kind: TerminalShellKind,
@@ -176,8 +175,8 @@ impl TerminalSessions {
 
     fn finish(&self, terminal_id: &str) -> Option<u32> {
         let mut session = self.sessions.lock().unwrap().remove(terminal_id)?;
-        // 走到这里说明 Channel 已断开（WebView 刷新/崩溃），终端没有观众：
-        // 先尝试收割，仍在运行则直接终止，不让 shell 成为孤儿。
+        // 输出结束, 读取失败或 Channel 断开都会到这里. 先读取退出状态,
+        // Shell 仍在运行时终止并等待它退出, 不留下失去输出通道的进程.
         match session.child.try_wait() {
             Ok(Some(status)) => Some(status.exit_code()),
             _ => {
@@ -187,7 +186,7 @@ impl TerminalSessions {
         }
     }
 
-    /// 应用退出时回收全部 PTY 会话；Desktop 的进程树只管 Server。
+    /// 应用退出时回收全部 PTY 会话; Desktop 的进程树只管 Server.
     pub fn close_all(&self) {
         let sessions = std::mem::take(&mut *self.sessions.lock().unwrap());
         for (_, mut session) in sessions {
@@ -245,7 +244,7 @@ fn shell_command(shell: Option<TerminalShellSpec>) -> Result<CommandBuilder, Str
             }
             (path, Some(spec.kind))
         }
-        // 仅在 Node 探测结果为空时走到这:平台默认 shell(cmd.exe 或 /bin/sh)无需补参数。
+        // 仅在 Node 探测结果为空时走到这: 平台默认 shell(cmd.exe 或 /bin/sh)无需补参数.
         None => (platform_shell_fallback(), None),
     };
     let mut command = CommandBuilder::new(path);

@@ -1,4 +1,3 @@
-// /api/sessions 的集合、动作、历史、附件和备份请求.
 import type { InferRequestType } from 'hono/client';
 import {
   rpcClient,
@@ -9,21 +8,18 @@ import {
   type RpcJson,
 } from './client.js';
 
-// ── 类型（全部从路由契约推导） ────────────────────────────────────────────────
 
 export type SessionCreateInput = InferRequestType<RpcClient['api']['sessions']['$post']>['json'];
 export type Session = RpcJson<RpcClient['api']['sessions']['$post']>;
 export type SessionSidebarData = RpcJson<RpcClient['api']['sessions']['$get']>;
 export type ArchivedSession = RpcJson<RpcClient['api']['sessions']['archived']['$get']>[number];
 export type ArchivedSessionsDeletionResult = RpcJson<RpcClient['api']['sessions']['archived']['$delete']>;
-/** 分组列表的会话条目（含 hasActiveTurn/lastTurnStatus/hasUnread 列表投影）。 */
+/** 分组列表的会话条目(含 hasActiveTurn/lastTurnStatus/hasUnread 列表投影). */
 export type SessionListItem = SessionSidebarData['recent'][number];
 export type Project = SessionSidebarData['projects'][number];
 export type SessionSearchResult = RpcJson<RpcClient['api']['sessions']['search']['$get']>;
 export type SessionPatchInput = InferRequestType<RpcClient['api']['sessions'][':sessionId']['$put']>['json'];
 export type SessionMessagePage = RpcJson<RpcClient['api']['sessions'][':sessionId']['messages']['$get']>;
-/** 历史接口的单条消息（user 消息可能附带 attachments 投影）。 */
-export type SessionHistoryMessage = SessionMessagePage['messages'][number];
 export type TurnIndexPage = RpcJson<RpcClient['api']['sessions'][':sessionId']['turn-index']['$get']>;
 export type SessionMessageWindow = RpcJson<RpcClient['api']['sessions'][':sessionId']['messages']['around']['$get']>;
 export type SessionTurnMessages = RpcJson<RpcClient['api']['sessions'][':sessionId']['turns'][':turnId']['messages']['$get']>;
@@ -40,7 +36,6 @@ export type RawMessagesPage = RpcJson<RpcClient['api']['sessions'][':sessionId']
 export type RawMessageHeader = RawMessagesPage['messages'][number];
 export type SessionAudioPage = RpcJson<RpcClient['api']['sessions'][':sessionId']['audio']['$get']>;
 
-// ── API ──────────────────────────────────────────────────────────────────────
 
 export const sessionsApi = {
   listSummaries(signal?: AbortSignal): Promise<SessionSummaries> {
@@ -84,12 +79,12 @@ export const sessionsApi = {
     }, { init: { signal } }));
   },
 
-  /** POST /api/sessions — 创建空 Session（body 全 optional，发 {} 即全默认）。 */
+  /** 不传字段时使用 Server 的新会话默认设置. */
   create(input: SessionCreateInput = {}): Promise<Session> {
     return readRpcJson(rpcClient.api.sessions.$post({ json: input }));
   },
 
-  /** GET /api/sessions — 分组列表（侧栏唯一路径）。 */
+  /** GET /api/sessions  -  分组列表(侧栏唯一路径). */
   listForSidebar(): Promise<SessionSidebarData> {
     return readRpcJson(rpcClient.api.sessions.$get());
   },
@@ -98,7 +93,7 @@ export const sessionsApi = {
     return readRpcJson(rpcClient.api.sessions.archived.$get());
   },
 
-  /** GET /api/sessions/search — 搜索标题与消息正文。 */
+  /** GET /api/sessions/search  -  搜索标题与消息正文. */
   search(opts: { q: string; limit?: number }): Promise<SessionSearchResult> {
     return readRpcJson(rpcClient.api.sessions.search.$get({
       query: {
@@ -108,7 +103,7 @@ export const sessionsApi = {
     }));
   },
 
-  /** GET /api/sessions/:sessionId — 单 Session 当前记录。 */
+  /** GET /api/sessions/:sessionId  -  单 Session 当前记录. */
   get(id: string, signal?: AbortSignal): Promise<Session> {
     return readRpcJson(rpcClient.api.sessions[':sessionId'].$get(
       { param: { sessionId: id } },
@@ -123,14 +118,14 @@ export const sessionsApi = {
     }, { init: { signal } }));
   },
 
-  /** PUT /api/sessions/:sessionId — 局部更新并返回最新记录。 */
+  /** PUT /api/sessions/:sessionId  -  局部更新并返回最新记录. */
   patch(id: string, patch: SessionPatchInput): Promise<Session> {
     return readRpcJson(
       rpcClient.api.sessions[':sessionId'].$put({ json: patch, param: { sessionId: id } }),
     );
   },
 
-  /** GET /api/sessions/:sessionId/messages — Message 正文游标页。 */
+  /** GET /api/sessions/:sessionId/messages  -  Message 正文游标页. */
   listMessages(
     id: string,
     opts?: { before?: string; after?: string; limit?: number },
@@ -145,7 +140,7 @@ export const sessionsApi = {
     }));
   },
 
-  /** GET /api/sessions/:sessionId/turn-index — 轻量 Turn 导航索引。 */
+  /** GET /api/sessions/:sessionId/turn-index  -  轻量 Turn 导航索引. */
   listTurnIndex(
     id: string,
     opts?: { cursor?: string; limit?: number },
@@ -159,7 +154,7 @@ export const sessionsApi = {
     }));
   },
 
-  /** GET /api/sessions/:sessionId/messages/around — Message 锚点有界历史窗口。 */
+  /** 只读取锚点附近的消息, 用于跳转到尚未加载的历史位置. */
   listMessagesAround(
     id: string,
     opts: { anchorMessageId: string; before?: number; after?: number },
@@ -174,21 +169,21 @@ export const sessionsApi = {
     }));
   },
 
-  /** GET /api/sessions/:sessionId/turns/:turnId/messages — Turn 终态持久收口。 */
+  /** Turn 结束后读取已保存的消息, 替换界面上的流式内容. */
   listTurnMessages(sessionId: string, turnId: string): Promise<SessionTurnMessages> {
     return readRpcJson(rpcClient.api.sessions[':sessionId'].turns[':turnId'].messages.$get({
       param: { sessionId, turnId },
     }));
   },
 
-  /** GET /api/sessions/:sessionId/attachments — 当前会话的全部附件(两本账合并)。 */
+  /** 合并 Session 管理的附件与消息中引用的本机文件. */
   listAttachments(id: string): Promise<SessionAttachmentsResult> {
     return readRpcJson(
       rpcClient.api.sessions[':sessionId'].attachments.$get({ param: { sessionId: id } }),
     );
   },
 
-  /** 粘贴大段文本:粘贴那一刻落盘入账,返回 chip 所需的 path/preview。 */
+  /** 把文本保存为附件并返回 path/preview, 供发送后的附件胶囊使用. */
   createPastedText(id: string, content: string): Promise<SessionPastedTextResult> {
     return readRpcJson(rpcClient.api.sessions[':sessionId'].attachments.pasted.$post({
       param: { sessionId: id },
@@ -196,7 +191,7 @@ export const sessionsApi = {
     }));
   },
 
-  /** 粘贴/拖入图片:剪贴板给 dataBase64,拖入文件给 sourcePath;name 是拖入时的原文件名。 */
+  /** 剪贴板图片传 dataBase64, 本机图片传 sourcePath; name 保留原文件名. */
   uploadImage(
     id: string,
     input: { dataBase64: string; name?: string } | { sourcePath: string; name?: string },
@@ -207,14 +202,14 @@ export const sessionsApi = {
     }));
   },
 
-  /** 附件内容是字节流，不进入 JSON RPC。按受管 path 读,thumb=1 取 256px 缩略图。 */
+  /** 读取附件字节, thumb=true 时读取 256px 缩略图. */
   readAttachmentContent(sessionId: string, attachmentPath: string, thumb = false): Promise<Response> {
     return serverClient.requestRaw(
       `/api/sessions/${encodeURIComponent(sessionId)}/attachments/content?path=${encodeURIComponent(attachmentPath)}${thumb ? '&thumb=1' : ''}`,
     );
   },
 
-  /** POST /api/sessions/:sessionId/fork — 复制完整或到指定 Turn（fork 到最新发 {}）。 */
+  /** 未指定 untilTurnId 时复制到最新 Turn. */
   fork(id: string, untilTurnId?: string): Promise<ForkResult> {
     return readRpcJson(rpcClient.api.sessions[':sessionId'].fork.$post({
       json: untilTurnId ? { untilTurnId } : {},
@@ -222,7 +217,7 @@ export const sessionsApi = {
     }));
   },
 
-  /** POST /api/sessions/:sessionId/viewed — 标记已读（204）。 */
+  /** POST /api/sessions/:sessionId/viewed  -  标记已读(204). */
   markViewed(id: string): Promise<void> {
     return readRpcVoid(rpcClient.api.sessions[':sessionId'].viewed.$post({ param: { sessionId: id } }));
   },
@@ -233,7 +228,7 @@ export const sessionsApi = {
     }));
   },
 
-  /** POST /api/sessions/:sessionId/unarchive（204）。 */
+  /** POST /api/sessions/:sessionId/unarchive(204). */
   unarchive(id: string): Promise<void> {
     return readRpcVoid(rpcClient.api.sessions[':sessionId'].unarchive.$post({ param: { sessionId: id } }));
   },

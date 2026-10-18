@@ -1,4 +1,3 @@
-// 后台进程面板:列表到终端风格的只读详情；终止入口统一留在 Header 置顶摘要。
 import { useEffect, useMemo, useState, type JSX } from 'react';
 import { Tooltip, Badge, Button, Spinner, type BadgeVariant } from '@ema-agent/ui';
 import type { BackgroundProcessStatus, BackgroundProcessSummary } from '../../../../api/backgroundProcesses.js';
@@ -69,7 +68,7 @@ export function BackgroundProcessesPanel({
     ? processes.find((p) => p.id === selectedProcessId)
     : undefined;
 
-  // 列表重拉后进程消失(Session 删除/重启恢复),回列表不展示假详情。
+  // 列表重拉后进程消失(Session 删除/重启恢复),回列表不展示假详情.
   useEffect(() => {
     if (!backgroundProcessId && detailId && list?.status === 'ready' && !detailProcess) {
       setDetailId(null);
@@ -179,7 +178,6 @@ function ProcessRow({
   );
 }
 
-// ── 详情 ──────────────────────────────────────────────────────────────────────
 
 function ProcessDetail({
   sessionId, process, className, onBack,
@@ -231,7 +229,7 @@ function ProcessDetail({
         </Badge>
       </div>
 
-      {/* 事实行:命令/目录/退出码/时长/输出量,全部来自持久记录。 */}
+      {/* 事实行:命令/目录/退出码/时长/输出量,全部来自持久记录. */}
       <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-0.5 border-b border-[var(--ema-border)] px-3 py-1.5 text-[11px] text-[var(--ema-text-tertiary)]">
         <Tooltip content={process.command} variant="card">
           <span className="max-w-full truncate font-mono">{process.command}</span>
@@ -252,7 +250,7 @@ function ProcessDetail({
         </p>
       )}
 
-      {/* 输出:只渲染有界缓冲,上游更多时如实提示并给文件管理器入口。 */}
+      {/* 输出:只渲染有界缓冲,上游更多时如实提示并给文件管理器入口. */}
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="flex shrink-0 items-center gap-1 px-2 py-1">
           <span className="text-[11px] text-[var(--ema-text-tertiary)]">

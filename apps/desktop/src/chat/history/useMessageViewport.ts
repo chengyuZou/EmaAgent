@@ -1,4 +1,3 @@
-// 根历史与子代理消息共用定位: 内核保存行高, 此处统一阅读锚点、显式导航和底部跟随.
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { elementScroll, useVirtualizer } from '@tanstack/react-virtual';
 
@@ -56,7 +55,7 @@ export function useMessageViewport({
     estimateSize,
     scrollToFn,
     overscan: 5,
-    // 不让内核的尺寸补偿、前插锚定和回底与下面的定位再执行一遍.
+    // 不让内核的尺寸补偿, 前插锚定和回底与下面的定位再执行一遍.
     anchorTo: 'start',
     followOnAppend: false,
     paddingStart,
@@ -105,7 +104,7 @@ export function useMessageViewport({
     const commanded = programmaticOffset.current !== null
       && Math.abs(scroller.scrollTop - programmaticOffset.current) <= 1;
     if (commanded) programmaticOffset.current = null;
-    // 原生滚动条不保证派发 DOM pointerdown. 非导航、非程序定位的 scroll 本身就是阅读输入.
+    // 原生滚动条不保证派发 DOM pointerdown. 非导航, 非程序定位的 scroll 本身就是阅读输入.
     if (!commanded && navigation.current === null) {
       userScrolling.current = true;
       restoringPrepend.current = false;

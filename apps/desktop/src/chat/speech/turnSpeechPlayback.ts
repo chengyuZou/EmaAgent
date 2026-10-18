@@ -264,7 +264,7 @@ export function stopSessionPlayback(sessionId: string): void {
   if (key?.sessionId === sessionId) stopTurnPlayback(sessionId, key.turnId);
 }
 
-/** 根 Turn 失败或取消只移除该项, 其他已排队 Turn 仍可继续播放. */
+/** Turn 失败或取消只移除该项, 其他已排队 Turn 仍可继续播放. */
 export function removeTurnPlayback(sessionId: string, turnId: string): void {
   const player = currentPlayer;
   if (player?.sessionId === sessionId && player.turnId === turnId) disposePlayer(player);

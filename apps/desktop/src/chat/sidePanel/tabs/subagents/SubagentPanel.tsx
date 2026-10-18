@@ -1,4 +1,3 @@
-// 子代理身份入口与聊天 Header. 同一身份的全部 Run 在连续消息视口中阅读.
 import { useEffect, useMemo, useRef, useState, type JSX } from 'react';
 import { Tooltip, Button, IconButton, Spinner } from '@ema-agent/ui';
 import { isStreamingMessage, useTurnStore } from '../../../../stores/turn.js';

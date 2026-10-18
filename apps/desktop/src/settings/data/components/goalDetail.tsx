@@ -1,4 +1,3 @@
-// 设置页只读展示一个 Session 的 Goal 历史; 长条读摘要, 展开后才读完整记录.
 import { memo, useCallback, useEffect, useState, type CSSProperties, type JSX } from 'react';
 import { Button, Skeleton } from '@ema-agent/ui';
 import { goalsApi, type Goal, type GoalSummary } from '../../../api/goals.js';

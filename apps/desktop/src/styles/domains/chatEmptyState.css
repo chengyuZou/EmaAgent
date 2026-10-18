@@ -1,5 +1,3 @@
-/* ConversationStarters 在新对话和无消息的会话里居中展示四个快捷条. */
-
 .ema-empty-state {
   position: relative;
   flex: 1;

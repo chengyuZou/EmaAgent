@@ -1,4 +1,3 @@
-// 让 xterm 实例跨 Dock 重挂与 Session 切换继续存在，并把输入输出接到同一个 PTY。
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { Terminal, type ITheme } from '@xterm/xterm';
@@ -69,7 +68,7 @@ export interface StartTerminalInput {
 export async function startTerminal(input: StartTerminalInput): Promise<void> {
   if (entries.has(input.terminalId)) return;
   // 偏好存 kind:解不出(未设/该 kind 已消失)回退探测首条,与设置页"自动选择"同义;
-  // 探测全空则不传 shell,由 Rust 落平台默认 shell。
+  // 探测全空则不传 shell,由 Rust 落平台默认 shell.
   const shellSetting = await settingsApi.getValue('frontend.terminal.shellExecutable');
   const preferredKind = typeof shellSetting.value === 'string' ? shellSetting.value.trim() : '';
   const { shells } = await systemApi.findTerminalShells();

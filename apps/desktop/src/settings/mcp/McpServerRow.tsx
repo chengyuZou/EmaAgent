@@ -101,12 +101,10 @@ export function ServerRow({
   return (
     <Card variant="elevated" padding="sm" className="active:scale-[0.97] transition-all duration-[var(--ema-duration-base)] ema-card-decorate ema-card-decorate--nodes">
       <div className="group flex items-start gap-3">
-        {/* Status dot */}
         <div className="pt-0.5 shrink-0">
           <Badge variant={st.variant} dot />
         </div>
 
-        {/* Info */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-sm font-semibold text-[var(--ema-text-primary)]">{server.name}</span>
@@ -139,7 +137,7 @@ export function ServerRow({
             </p>
           )}
 
-          {/* Inline expanded tool list — quick glance at names + params
+          {/* Inline expanded tool list  -  quick glance at names + params
               展开过的内容常驻 DOM: 收起时 0fr 网格负责裁剪, 动画才能双向跑. */}
           <div
             className="ema-collapsible"
@@ -167,7 +165,6 @@ export function ServerRow({
           </div>
         </div>
 
-        {/* Controls */}
         <div className="flex items-center gap-2 shrink-0 pt-0.5">
           <Tooltip content={server.enabled ? '禁用(下次启动不自动连接)' : '启用'}>
             <Switch
@@ -176,7 +173,6 @@ export function ServerRow({
               onCheckedChange={onToggleEnabled}
             />
           </Tooltip>
-          {/* DropdownMenu hover 显隐(抄 session 列表 opacity-0 group-hover:opacity-100) */}
           <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-150">
             <DropdownMenu
               trigger={
@@ -191,7 +187,6 @@ export function ServerRow({
         </div>
       </div>
 
-      {/* Detail dialog — full config + every tool's parameter schema */}
       <Dialog
         open={detailOpen}
         onOpenChange={setDetailOpen}
@@ -200,7 +195,6 @@ export function ServerRow({
         widthClass="max-w-2xl"
       >
         <div className="flex flex-col gap-4 max-h-[65vh] overflow-auto">
-          {/* Config */}
           <div>
             <p className="text-xs font-medium text-[var(--ema-text-secondary)] mb-1">连接配置</p>
             <pre className="text-xs font-mono whitespace-pre-wrap break-words rounded-lg p-2.5
@@ -209,7 +203,6 @@ export function ServerRow({
             </pre>
           </div>
 
-          {/* Tools */}
           <div>
             <p className="text-xs font-medium text-[var(--ema-text-secondary)] mb-1">
               工具 ({detail?.toolCount ?? server.toolCount})

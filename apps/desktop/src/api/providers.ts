@@ -1,5 +1,3 @@
-// Providers API：/api/providers——CRUD、模型池与业务绑定（bindings）、探活、能力执行。
-// TTS 试听（音频字节流）与 STT 转写（multipart）都走 requestRaw 逃生口。
 import type { InferRequestType } from 'hono/client';
 import {
   rpcClient,
@@ -11,7 +9,6 @@ import {
   type RpcJson,
 } from './client.js';
 
-// ── 类型（全部从路由契约推导） ────────────────────────────────────────────────
 
 export type ProviderList = RpcJson<RpcClient['api']['providers']['$get']>;
 export type ProviderRecord = ProviderList[number];
@@ -19,7 +16,7 @@ export type ProviderDetail = RpcJson<RpcClient['api']['providers'][':providerId'
 export type ProviderConfigInput = InferRequestType<RpcClient['api']['providers']['$post']>['json'];
 export type ProviderPatchInput = InferRequestType<RpcClient['api']['providers'][':providerId']['$patch']>['json'];
 
-/** 模型能力枚举：与路由 paramValidator/queryValidator 同源。 */
+/** 模型能力枚举: 与路由 paramValidator/queryValidator 同源. */
 export type ModelCapability = InferRequestType<
   RpcClient['api']['providers']['available'][':capability']['$get']
 >['param']['capability'];
@@ -46,14 +43,12 @@ export type ProviderProbeInput = InferRequestType<
 
 export type TranscribeResult = RpcJson<RpcClient['api']['providers']['transcribe']['$post']>;
 
-// ── API ──────────────────────────────────────────────────────────────────────
 
 export const providersApi = {
   list(): Promise<ProviderList> {
     return readRpcJson(rpcClient.api.providers.$get());
   },
 
-  /** 创建（自建与内置种子同构）。 */
   create(body: ProviderConfigInput) {
     return readRpcJson(rpcClient.api.providers.$post({ json: body }));
   },
@@ -62,7 +57,6 @@ export const providersApi = {
     return readRpcJson(rpcClient.api.providers[':providerId'].$get({ param: { providerId } }));
   },
 
-  /** 名称/图标/key/能力档位。 */
   patch(providerId: string, patch: ProviderPatchInput) {
     return readRpcJson(rpcClient.api.providers[':providerId'].$patch({
       json: patch,
@@ -74,7 +68,7 @@ export const providersApi = {
     return readRpcVoid(rpcClient.api.providers[':providerId'].$delete({ param: { providerId } }));
   },
 
-  /** 绑定选择器的可用模型池（连接可解析 Provider 的已启用 SQL 行）。 */
+  /** 选择器只显示已启用且 Provider 配置可用的模型. */
   listAvailable(capability: ModelCapability): Promise<AvailableModelsResult> {
     return readRpcJson(rpcClient.api.providers.available[':capability'].$get({
       param: { capability },
@@ -87,7 +81,7 @@ export const providersApi = {
     }));
   },
 
-  /** 首次使用判定：provider_models 是否已有任何模型行。 */
+  /** 首次使用判定: provider_models 是否已有任何模型行. */
   hasAnyModels() {
     return readRpcJson(rpcClient.api.providers.models['has-any'].$get());
   },
@@ -100,7 +94,6 @@ export const providersApi = {
     }));
   },
 
-  /** 保存/启用一条模型记录。 */
   saveModel(providerId: string, body: ProviderModelInput) {
     return readRpcJson(rpcClient.api.providers[':providerId'].models.$put({
       json: body,
@@ -115,7 +108,7 @@ export const providersApi = {
     }));
   },
 
-  /** 启停模型池中的一行；停用被绑定模型时 Route 以 409 model_in_use 拒绝（带 conflicts）。 */
+  /** 启停模型池中的一行; 停用被绑定模型时 Route 以 409 model_in_use 拒绝(带 conflicts). */
   setModelEnabled(providerId: string, modelId: string, capability: ModelCapability, enabled: boolean) {
     return readRpcJson(rpcClient.api.providers[':providerId'].models[':modelId'].$patch({
       param: { providerId, modelId: encodeURIComponent(modelId) },
@@ -124,13 +117,11 @@ export const providersApi = {
     }));
   },
 
-  // ── 业务绑定（一个业务位一条绑定） ──────────────────────────────────────────
 
   listBindings(): Promise<BindingsList> {
     return readRpcJson(rpcClient.api.providers.bindings.$get());
   },
 
-  /** upsert 一条绑定并返回该模块绑定。 */
   setBinding(module: BindingModule, body: BindingUpsertInput): Promise<BindingRecord> {
     return readRpcJson(rpcClient.api.providers.bindings[':module'].$put({
       json: body,
@@ -142,11 +133,10 @@ export const providersApi = {
     return readRpcVoid(rpcClient.api.providers.bindings[':module'].$delete({ param: { module } }));
   },
 
-  // ── 探活与试听 ──────────────────────────────────────────────────────────────
 
   /**
-   * 探活：200 连通 / 502 失败都是正常结论（UI 都要展示），不走 readRpcJson 的异常归一；
-   * 其余状态码才抛 ServerApiError。缺省 modelId 时也必须显式发 {}。
+   * 探活: 200 连通 / 502 失败都是正常结论(UI 都要展示), 不走 readRpcJson 的异常归一; 
+   * 其余状态码才抛 ServerApiError. 缺省 modelId 时也必须显式发 {}.
    */
   async probe(providerId: string, capability: ProbeCapability, body: ProviderProbeInput = {}) {
     const res = await rpcClient.api.providers[':providerId'].probe[':capability'].$post({
@@ -157,7 +147,7 @@ export const providersApi = {
     throw await toServerApiError(res);
   },
 
-  /** TTS 试听：音频字节流，走 requestRaw 逃生口。 */
+  /** TTS 试听返回音频字节流, 由调用方决定如何播放. */
   ttsPreview(providerId: string, modelId: string, text?: string, signal?: AbortSignal): Promise<Response> {
     return serverClient.requestRaw(`/api/providers/${encodeURIComponent(providerId)}/tts-preview`, {
       method: 'POST',
@@ -166,7 +156,7 @@ export const providersApi = {
     });
   },
 
-  /** STT 试听：用当前角色主参考音频到该 Provider 模型转写，返回转写文本与参考文本。 */
+  /** STT 试听: 用当前角色主参考音频到该 Provider 模型转写, 返回转写文本与参考文本. */
   sttPreview(providerId: string, modelId: string) {
     return readRpcJson(rpcClient.api.providers[':providerId']['stt-preview'].$post({
       param: { providerId },
@@ -174,7 +164,7 @@ export const providersApi = {
     }));
   },
 
-  /** 音频字节转写为文本分段；STT 未绑定时服务端如实 503。 */
+  /** 音频字节转写为文本分段; STT 未绑定时服务端如实 503. */
   async transcribe(input: {
     audio: Blob;
     mime: string;
@@ -192,10 +182,7 @@ export const providersApi = {
   },
 };
 
-/** 探活结果：200 的 `{ ok: true, latencyMs }` 与 502 的 `{ ok: false, error }` 判别联合。 */
-export type ProbeResult = Awaited<ReturnType<typeof providersApi.probe>>;
-
-/** 协议展示名映射（配置页/创建页共用）。 */
+/** 协议展示名映射(配置页/创建页共用). */
 export const PROTOCOL_LABELS: Record<string, string> = {
   'openai-llm':           'OpenAI 兼容',
   'openai-responses-llm': 'OpenAI Responses',
@@ -210,7 +197,7 @@ export const PROTOCOL_LABELS: Record<string, string> = {
   'openai-stt':           'OpenAI 兼容',
 };
 
-/** 按 providerId + modelId 在可用目录里精确查找模型。 */
+/** 按 providerId + modelId 在可用目录里精确查找模型. */
 export function findAvailableModel(
   models: AvailableModel[],
   providerId: string | null | undefined,

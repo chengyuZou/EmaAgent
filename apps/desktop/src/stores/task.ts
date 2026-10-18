@@ -1,5 +1,3 @@
-// 保存各 Session 的持久 Task；修改统一经过根 Turn 的 Task 工具，
-// 持久 Task 变更事件与 Turn 终态都可触发会话任务重查。
 import { create } from 'zustand';
 
 import { tasksApi, type TaskItem } from '../api/tasks.js';

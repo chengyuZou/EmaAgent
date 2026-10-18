@@ -1,4 +1,3 @@
-// 浏览器通过文件上传接口管理图库, 原图和缩略图由独立资源接口读取.
 import { rpcClient, readRpcJson, serverClient, type RpcClient, type RpcJson } from './client.js';
 
 export type WallpaperImageSummary = RpcJson<RpcClient['api']['settings']['wallpaper']['images']['$get']>['items'][number];

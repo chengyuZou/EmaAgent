@@ -109,7 +109,7 @@ function verifyVersion() {
   const section = cargo.split(/^\[/mu).find(value => value.startsWith('package]'));
   const cargoVersion = section?.match(/^version\s*=\s*"([^"]+)"/mu)?.[1];
   if (!packageVersion || packageVersion !== tauriVersion || packageVersion !== cargoVersion) {
-    throw new Error('Desktop package.json、tauri.conf.json 和 Cargo.toml 的版本不一致');
+    throw new Error('Desktop package.json, tauri.conf.json 和 Cargo.toml 的版本不一致');
   }
 }
 

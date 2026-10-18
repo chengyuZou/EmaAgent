@@ -1,4 +1,3 @@
-// 只把官方 diff 的真实路径/状态接入官方 Trees, 不构建或递归渲染自己的树.
 import {
   memo,
   useCallback,

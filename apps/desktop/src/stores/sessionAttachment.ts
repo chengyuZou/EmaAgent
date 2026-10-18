@@ -1,9 +1,8 @@
-// 管理按 Session 隔离的附件列表、刷新状态与异步响应竞态。
 import { create } from 'zustand';
 
 import { sessionsApi, type SessionAttachmentsResult } from '../api/sessions.js';
 
-/** 附件面板条目：路径不进传输层，内容经 attachments content 端点读取。 */
+/** 路径来自 Server 返回的附件清单, 读取内容时连同 Session ID 一起发送. */
 export type SessionAttachmentEntry = SessionAttachmentsResult['attachments'][number];
 
 export type SessionAttachmentLoadState =

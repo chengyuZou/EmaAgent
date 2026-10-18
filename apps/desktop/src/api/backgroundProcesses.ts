@@ -1,4 +1,3 @@
-// Background Processes API：/api/background-processes——Session 隔离的列表、增量输出与停止。
 import { rpcClient, readRpcJson, type RpcClient, type RpcJson } from './client.js';
 import type { InferRequestType } from 'hono/client';
 
@@ -15,7 +14,7 @@ export type BackgroundProcessStopResult = RpcJson<
 >;
 
 export const backgroundProcessesApi = {
-  /** GET /api/background-processes?sessionId=&status=&limit=。 */
+  /** GET /api/background-processes?sessionId=&status=&limit=. */
   list(
     sessionId: string,
     opts?: { status?: BackgroundProcessStatus; limit?: number },
@@ -29,7 +28,7 @@ export const backgroundProcessesApi = {
     }));
   },
 
-  /** GET /api/background-processes/:backgroundProcessId/output（cursor/waitMs 长轮询）。 */
+  /** GET /api/background-processes/:backgroundProcessId/output(cursor/waitMs 长轮询). */
   readOutput(
     sessionId: string,
     backgroundProcessId: string,
@@ -45,7 +44,7 @@ export const backgroundProcessesApi = {
     }));
   },
 
-  /** POST /api/background-processes/:backgroundProcessId/stop — body `{ sessionId }`。 */
+  /** POST /api/background-processes/:backgroundProcessId/stop  -  body `{ sessionId }`. */
   stop(
     sessionId: string,
     backgroundProcessId: string,

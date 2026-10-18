@@ -50,25 +50,6 @@ export type Live2dPreviewCommand =
       readonly stageOffsetY: number;
     };
 
-export type Live2dDiagnosticEvent =
-  | 'presentation_loading'
-  | 'presentation_loaded'
-  | 'presentation_failed'
-  | 'archive_loading'
-  | 'archive_loaded'
-  | 'archive_failed'
-  | 'canvas_created'
-  | 'ticker_started'
-  | 'ticker_stopped'
-  | 'model_loading'
-  | 'model_ready'
-  | 'model_failed'
-  | 'first_tick'
-  | 'preview_expression'
-  | 'preview_motion'
-  | 'preview_placement'
-  | 'preview_ignored';
-
 export type AttachmentDragEvent =
   | { readonly type: 'leave' }
   | { readonly type: 'enter' | 'over'; readonly x: number; readonly y: number }

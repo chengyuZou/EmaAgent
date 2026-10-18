@@ -1,5 +1,3 @@
-// 按 Turn 开始顺序把同一 Session 的终态消息合入持久 History, 成功一条才删除一条.
-
 import { useTurnStore } from '../../stores/turn.js';
 import { useSessionHistoryStore } from '../../stores/sessionHistory.js';
 import { useSessionStore } from '../../stores/session.js';
@@ -18,7 +16,7 @@ export function scheduleTurnHistoryClosure(sessionId: string): void {
 
 /**
  * 每次只读取内层 Map 的第一条. 后一轮即使先结束, 也不能越过仍在运行或读取失败的前一轮,
- * 否则页面会变成 History T2 在前、当前 T1 在尾. HTTP 失败时保留原消息供后续重试.
+ * 否则页面会变成 History T2 在前, 当前 T1 在尾. HTTP 失败时保留原消息供后续重试.
  */
 export async function closeTerminalTurnsInOrder(sessionId: string): Promise<void> {
   while (true) {
@@ -29,7 +27,7 @@ export async function closeTerminalTurnsInOrder(sessionId: string): Promise<void
     try {
       await useSessionHistoryStore.getState().mergeTurnMessages(sessionId, turnId);
     } catch (error) {
-      console.warn(`[session] Turn ${turnId} History 收口失败:`, error);
+      console.warn(`[session] Turn ${turnId} 历史消息合入失败:`, error);
       useSessionHistoryStore.getState().reportError(
         sessionId,
         error instanceof Error ? error.message : `Turn ${turnId} 消息合入失败`,

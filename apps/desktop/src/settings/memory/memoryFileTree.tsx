@@ -12,13 +12,11 @@ type DirectoryRead =
 
 interface MemoryFileTreeProps {
   selectedPath: string | null;
-  refreshVersion: number;
   onOpen: (path: string) => void;
 }
 
 export const MemoryFileTree = memo(function MemoryFileTree({
   selectedPath,
-  refreshVersion,
   onOpen,
 }: MemoryFileTreeProps): JSX.Element {
   const [filter, setFilter] = useState('');
@@ -71,7 +69,7 @@ export const MemoryFileTree = memo(function MemoryFileTree({
       const oldPaths = new Set(previousPaths);
       const newPaths = new Set(paths);
       directoryReads.current.set(path, { state: 'loaded', paths });
-      // 局部增删保留未变化目录的展开、选择和滚动, 不 reset 整棵树.
+      // 局部增删保留未变化目录的展开, 选择和滚动, 不 reset 整棵树.
       model.batch([
         ...previousPaths.filter(item => !newPaths.has(item)).map(item => ({
           type: 'remove' as const,
@@ -143,7 +141,7 @@ export const MemoryFileTree = memo(function MemoryFileTree({
       }
       setPendingCount(0);
     };
-  }, [model, loadDirectory, refreshVersion]);
+  }, [model, loadDirectory]);
 
   useEffect(() => model.setSearch(filter || null), [model, filter]);
 

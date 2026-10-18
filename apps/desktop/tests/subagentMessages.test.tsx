@@ -1,5 +1,4 @@
 // @vitest-environment jsdom
-// 连续消息窗口按真实 MessageId 合并、分页和切换; 布局由浏览器夹具验证.
 import {
   act,
   createElement,

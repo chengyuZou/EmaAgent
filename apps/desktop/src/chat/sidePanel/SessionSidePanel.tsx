@@ -1,4 +1,3 @@
-// 组装当前 Session 的右侧标签页, 标签生命周期由 sessionPanel Store 维护.
 import { useEffect, useState, type JSX } from 'react';
 import { nanoid } from 'nanoid';
 import { Tooltip, Button, IconButton } from '@ema-agent/ui';

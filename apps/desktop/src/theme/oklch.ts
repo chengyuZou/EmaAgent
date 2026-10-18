@@ -1,6 +1,3 @@
-// srgb → oklch 转换: 调色板色块取色相与立绘取色共用.
-// 矩阵为 oklab 标准定义, 不引入第三方色彩库.
-
 export interface Oklch {
   l: number;
   c: number;

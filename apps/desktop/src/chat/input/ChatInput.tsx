@@ -1,4 +1,3 @@
-// 编辑当前草稿并处理输入区交互; Session 创建、附件落盘和发送由 onSubmit 负责.
 import {
   useCallback,
   useEffect,
@@ -32,7 +31,7 @@ import { useSessionActivityStore } from '../../stores/sessionActivity.js';
 import { useServerStore } from '../../stores/server.js';
 import { useSessionStore } from '../../stores/session.js';
 import { PendingInteractionView } from '../interactions/PendingInteractionView.js';
-import { PermissionModeSelector, TtsButton, useInputOptions } from './controls/InputSelectors.js';
+import { PermissionModeSelector, TTSButton, useInputOptions } from './controls/InputSelectors.js';
 import { ContextMeter } from './controls/ContextMeter.js';
 import {
   activeSlashToken,
@@ -545,10 +544,10 @@ export function ChatInput({
                     />
                   )}
                 />
-                <TtsButton
+                <TTSButton
                   ttsEnabled={draft.ttsEnabled}
                   modelBound={ttsModelBound}
-                  onToggle={options.toggleTts}
+                  onToggle={options.toggleTTS}
                 />
                 <PermissionModeSelector
                   value={draft.permissionMode}

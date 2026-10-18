@@ -1,5 +1,3 @@
-// 把一条持久或流式消息交给对应的具体渲染组件.
-
 import type { JSX } from 'react';
 import type { SessionMessage } from '@ema-agent/session';
 import type { SubagentMessage } from '@ema-agent/agent';

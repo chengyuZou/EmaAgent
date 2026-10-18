@@ -1,4 +1,3 @@
-// 渲染普通/归档 Session 分区, 并提供只在用户搜索时请求的会话搜索层.
 import {
   useCallback,
   useEffect,

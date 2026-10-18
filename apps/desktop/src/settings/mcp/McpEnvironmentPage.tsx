@@ -68,7 +68,7 @@ export function McpEnvironmentPage(): JSX.Element {
                   未在当前 Server PATH 中发现 {inspection.command}.
                 </p>}
               </div>
-              {/* TODO: 找到稳定的跨平台方案后,重新设计运行环境安装业务. */}
+              {/* TODO: 补充缺失运行环境的安装入口, 当前页面只能检测命令. */}
             </EntityRow>;
           })}
         </div>
@@ -81,7 +81,6 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** 次要候选路径折叠:与 AdvancedSettings 同款 chevron 旋转 + ema-collapsible 展开动画,不加框。 */
 function CandidatePaths({ paths }: { paths: readonly string[] }): JSX.Element {
   const [open, setOpen] = useState(false);
   return (

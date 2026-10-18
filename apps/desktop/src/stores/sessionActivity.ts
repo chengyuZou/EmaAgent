@@ -29,7 +29,7 @@ interface SessionActivityStore {
   readonly bySession: ReadonlyMap<string, SessionActivity>;
   /** Session WebSocket 状态变化时写入, ChatInput 和 Sidebar 用它显示断线而不是伪造 idle. */
   setConnection(sessionId: string, connection: SessionConnectionState): void;
-  /** Socket 打开后一次替换 Server 给出的运行、交互和队列当前值, 不暴露三轮中间状态. */
+  /** Socket 打开后一次替换 Server 给出的运行, 交互和队列当前值, 不暴露三轮中间状态. */
   replaceSessionState(
     sessionId: string,
     running: SessionRunning | null,

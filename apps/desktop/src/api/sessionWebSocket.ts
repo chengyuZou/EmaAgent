@@ -41,7 +41,7 @@ interface SessionConnection {
    * 每一项对应 Desktop 已经创建, 但 Promise 还没有成功或失败的一次 Session 请求.
    * 请求可能仍在 outgoing 中等待连接, 也可能已经发出并等待 Server 结果. 收到同一个
    * requestId 的结果后立即结束 Promise 并删除; 已发送请求遇到断线时按结果未知失败结束.
-   * 这里不保存聊天消息、Turn 或 Queue 投影.
+   * 这里不保存聊天消息, Turn 或 Queue 投影.
    */
   readonly pendingRequests: Map<ClientRequestId, PendingRequest>;
   state: SessionConnectionState;

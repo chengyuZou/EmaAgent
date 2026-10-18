@@ -1,7 +1,3 @@
-/* MessageList 与 ChatInput 的共享内容列, 以及历史滚动边缘、消息内部块、TurnRail 和思考块.
-   .markdown-content 排版体系在 primitives/markdown.css; 本文件保留
-   chat 气泡内的换行例外(气泡窄, 代码与长路径 pre-wrap 不横向滚动). */
-
 [data-ema-chat-column] {
   --ema-chat-content-max-width: 56rem;
   --ema-chat-content-gutter: 3.5rem;
@@ -378,7 +374,7 @@ button.ema-chat-jump-speech[data-paired='true'] {
   margin: 0;
 }
 
-/* TurnRail 只响应指针邻域状态，不持续播放装饰动画。移动与离开会沿同一曲线双向回落。 */
+/* TurnRail 只响应指针邻域状态, 不持续播放装饰动画.移动与离开会沿同一曲线双向回落. */
 .ema-turn-rail-mark {
   background-color: var(--ema-turn-rail-idle);
   opacity: var(--ema-turn-rail-opacity, 0.44);
@@ -416,7 +412,7 @@ button.ema-chat-jump-speech[data-paired='true'] {
   }
 }
 
-/* Chat Message 的正文、代码、表格和长路径都在气泡宽度内换行。 */
+/* Chat Message 的正文, 代码, 表格和长路径都在气泡宽度内换行. */
 .ema-message-content {
   min-width: 0;
   max-width: 100%;
@@ -425,7 +421,7 @@ button.ema-chat-jump-speech[data-paired='true'] {
 }
 
 /* chat 域内例外: 气泡内 pre/code 一律 pre-wrap + 隐藏横滚
-   (primitives/markdown.css 的标准是 overflow-x:auto)。 */
+   (primitives/markdown.css 的标准是 overflow-x:auto). */
 .ema-message-content .markdown-content pre,
 .ema-message-content .markdown-content code {
   max-width: 100%;
@@ -478,8 +474,6 @@ button.ema-chat-jump-speech[data-paired='true'] {
   pointer-events: auto;
 }
 
-/* 思考永远可见但弱两档(图鉴结论): 无底盒无粗轨, 与工具行同 24px 行高,
-   图标落同一 16px 槽位, 展开内容与工具展开体共用 12+12 竖轨语汇。 */
 .ema-thinking-block {
   min-width: 0;
 }
@@ -503,7 +497,7 @@ button.ema-chat-jump-speech[data-paired='true'] {
               color var(--ema-duration-fast) var(--ema-ease);
 }
 
-/* 与 .ema-tool-row-leading 同一 16px 槽位, 左轴线对齐。 */
+/* 与 .ema-tool-row-leading 同一 16px 槽位, 左轴线对齐. */
 .ema-thinking-summary > span:first-child {
   width: 16px;
   flex: none;

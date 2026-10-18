@@ -1,4 +1,3 @@
-// 展示一个既有的 xterm 会话，并把 Dock 尺寸变化同步给 PTY。
 import { useEffect, useRef, useState, type JSX } from 'react';
 import '@xterm/xterm/css/xterm.css';
 

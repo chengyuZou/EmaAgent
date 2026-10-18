@@ -56,7 +56,7 @@ export function NewSessionPage(): JSX.Element {
       ref={dropAreaRef}
       className="ema-chat-main ema-chat-content-surface relative z-10 flex min-h-0 min-w-0 flex-1 flex-col"
     >
-      {/* TODO: 新对话侧栏待接入；有项目时提供浏览器和文件，无项目时仅提供浏览器。 */}
+      {/* TODO: 新对话侧栏待接入; 有项目时提供浏览器和文件, 无项目时仅提供浏览器. */}
       <header className="ema-chat-header flex shrink-0 items-center border-b border-[var(--ema-border)] px-4 py-2">
         <span className="text-sm font-medium text-[var(--ema-text-secondary)]">
           新对话{project ? ` · ${project.name}` : ''}

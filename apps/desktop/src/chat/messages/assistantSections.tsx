@@ -1,5 +1,3 @@
-// 按 Server 给出的块顺序渲染正文, Thinking, 普通 Tool Group 和 Agent Group.
-
 import { memo, useRef, type JSX } from 'react';
 import { useCollapsibleBody, useMessageExpansion } from './messageExpansion.js';
 import type { AssistantBlock } from '@ema-agent/llm';

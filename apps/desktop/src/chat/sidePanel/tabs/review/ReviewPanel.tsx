@@ -155,7 +155,7 @@ function ReviewWorkspace({
         collapsed: previous?.collapsed ?? false,
       };
     });
-    // 原生 id 的协调、布局缓存和实例回收交给 CodeView, 不维护第二份 item Map.
+    // 原生 id 的协调, 布局缓存和实例回收交给 CodeView, 不维护第二份 item Map.
     viewer?.getInstance()?.setItems(items);
     setAllCollapsed(items.length > 0 && items.every(item => item.collapsed));
   }, [files, scope]);

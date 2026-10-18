@@ -1,11 +1,9 @@
-// 设置页共用骨架:SettingItem 行(标题 + 大白话副标题 + 控件)、分组卡片、节头与高级项折叠。
-import { useState, type JSX, type ReactNode } from 'react';
+import type { JSX, ReactNode } from 'react';
 import type { SettingApply } from '../../api/settings.js';
 
-/** 即存反馈状态（纯 UI 状态；useObjectSetting 对象镜像已删除）。 */
 type SettingSaveState = 'idle' | 'saving' | 'saved' | 'failed';
 
-/** 即存反馈:保存中转圈、成功 ✓ 淡入、失败红点;idle 不占位。 */
+/** 即存反馈:保存中转圈, 成功 ✓ 淡入, 失败红点;idle 不占位. */
 export function SaveStateIndicator({ state }: { state: SettingSaveState }): JSX.Element | null {
   if (state === 'idle') return null;
   if (state === 'saving') {
@@ -40,7 +38,7 @@ export function SettingItem({
   );
 }
 
-/** 一组 SettingItem 的容器卡片,行间细分隔线。 */
+/** 一组 SettingItem 的容器卡片,行间细分隔线. */
 export function SettingsCard({ children }: { children: ReactNode }): JSX.Element {
   return (
     <div className="ema-material-section ema-glass-weak ema-stagger-in divide-y divide-[var(--ema-border)] overflow-hidden rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-1)] transition-ema hover:border-[var(--ema-primary)]/30">
@@ -102,33 +100,5 @@ export function SettingsSection({
       </div>
       {children}
     </section>
-  );
-}
-
-/** 高级项折叠:默认收起,展开有动画 */
-export function AdvancedSettings({ children }: { children: ReactNode }): JSX.Element {
-  const [open, setOpen] = useState(false);
-  return (
-    <div>
-      <button
-        className="flex w-full items-center gap-1.5 px-4 py-2.5 text-[11px] transition-colors text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)]"
-        onClick={() => setOpen((value) => !value)}
-      >
-        <span
-          className="i-lucide:chevron-down text-xs transition-transform duration-[var(--ema-duration-base)]"
-          style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}
-          aria-hidden
-        />
-        高级设置
-      </button>
-      <div
-        className="ema-collapsible"
-        style={{ gridTemplateRows: open ? '1fr' : '0fr', opacity: open ? 1 : 0 }}
-      >
-        <div className="divide-y divide-[var(--ema-border)] border-t border-[var(--ema-border)]">
-          {children}
-        </div>
-      </div>
-    </div>
   );
 }

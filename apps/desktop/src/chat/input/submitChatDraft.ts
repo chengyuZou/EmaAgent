@@ -1,4 +1,3 @@
-// 将一份草稿提交到已经存在的 Session; 新对话必须先取得真实 Session ID.
 import type { TurnInputPart } from '@ema-agent/turn';
 import { sessionsApi } from '../../api/sessions.js';
 import { SessionRequestError, sessionWebSocket } from '../../api/sessionWebSocket.js';

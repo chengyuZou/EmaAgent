@@ -1,5 +1,4 @@
-// 提供主窗口显示, 舞台交互模式与应用退出命令.
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use tauri::Manager;
 
 use crate::desktop::pet_pointer::PetPointerTracking;
@@ -8,48 +7,6 @@ use crate::desktop::windows::{
     show_window, stage_passthrough_enabled,
 };
 use crate::processes::DesktopProcesses;
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Live2dDiagnosticEvent {
-    PresentationLoading,
-    PresentationLoaded,
-    PresentationFailed,
-    ArchiveLoading,
-    ArchiveLoaded,
-    ArchiveFailed,
-    CanvasCreated,
-    TickerStarted,
-    TickerStopped,
-    ModelLoading,
-    ModelReady,
-    ModelFailed,
-    FirstTick,
-    PreviewExpression,
-    PreviewMotion,
-    PreviewPlacement,
-    PreviewIgnored,
-}
-
-#[tauri::command]
-pub fn report_live2d_diagnostic(
-    window: tauri::Window,
-    event: Live2dDiagnosticEvent,
-    character_name: Option<String>,
-    model_name: Option<String>,
-    duration_s: Option<f64>,
-    error_message: Option<String>,
-) {
-    tracing::info!(
-        window = window.label(),
-        ?event,
-        ?character_name,
-        ?model_name,
-        ?duration_s,
-        ?error_message,
-        "Live2D stage diagnostic"
-    );
-}
 
 #[tauri::command]
 pub fn set_always_on_top(window: tauri::Window, value: bool) -> Result<(), String> {

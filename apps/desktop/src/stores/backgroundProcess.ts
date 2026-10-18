@@ -1,4 +1,3 @@
-// 后台进程面板状态:每 Session 列表、每进程有界输出缓存、SSE 事件原位更新、Session 删除清理。
 import { create } from 'zustand';
 import type { AppEvent } from '@ema-agent/server/application/appEvents.js';
 import type {
@@ -10,7 +9,7 @@ import {
   type BackgroundProcessSummary,
 } from '../api/backgroundProcesses.js';
 
-/** 前端渲染缓冲封顶:与后端单次读取同量级,日志再大也不在前端堆内存。 */
+/** 前端渲染缓冲封顶:与后端单次读取同量级,日志再大也不在前端堆内存. */
 const MAX_RENDERED_CHARS = 64 * 1024;
 const FOLLOW_WAIT_MS = 3_000;
 
@@ -24,8 +23,8 @@ export interface ProcessOutputState {
   readonly stdout: string;
   readonly stderr: string;
   readonly cursor: string;
+  /** 本次读取后仍有尚未读取的输出, 与前端是否裁掉早期内容无关. */
   readonly hasMore: boolean;
-  /** 上游还有更多字节(后端 hasMore 或日志截断)——如实提示"只显示开头"。 */
   readonly loading: boolean;
   readonly followTail: boolean;
 }
@@ -41,7 +40,7 @@ interface BackgroundProcessStore {
   clearSession(sessionId: string): void;
 }
 
-/** 跟随尾部的长轮询循环不进 zustand 状态，避免把 timer 句柄放进可观察状态。 */
+/** 跟随尾部的长轮询循环不进 zustand 状态, 避免把 timer 句柄放进可观察状态. */
 const followTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 function cancelFollow(processId: string): void {
@@ -96,11 +95,11 @@ export const useBackgroundProcessStore = create<BackgroundProcessStore>()((set, 
   applyEvent(event) {
     const sessionId = event.sessionId;
     const list = get().listsBySession.get(sessionId);
-    if (!list) return; // 面板未加载该 Session 时不预取,等打开再拉。
+    if (!list) return; // 面板未加载该 Session 时不预取,等打开再拉.
     const processId = event.backgroundProcessId;
     const existing = list.processes.find((p) => p.id === processId);
     if (!existing) {
-      // 新进程没有完整 summary,直接重拉列表。
+      // 新进程没有完整 summary,直接重拉列表.
       void get().loadForSession(sessionId);
       return;
     }
@@ -154,7 +153,7 @@ export const useBackgroundProcessStore = create<BackgroundProcessStore>()((set, 
           followTail: current?.followTail ?? false,
         }),
       }));
-      // 进程终态后停掉跟随循环。
+      // 进程终态后停掉跟随循环.
       if (!isLive(result.process.status)) cancelFollow(processId);
     } catch {
       set((state) => ({

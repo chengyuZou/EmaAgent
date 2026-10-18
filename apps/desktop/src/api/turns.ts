@@ -1,4 +1,3 @@
-// Turn 的持久执行审计与音频地址. 运行态请求走 Session WebSocket.
 import type { UserMessagePayload } from '@ema-agent/server/routes/ws/session.js';
 import {
   rpcClient,
@@ -9,16 +8,11 @@ import {
   type RpcJson,
 } from './client.js';
 
-// ── 类型（全部从路由契约推导） ────────────────────────────────────────────────
 
 export type TurnCreateInput = UserMessagePayload & {
   readonly sessionId?: string;
   readonly projectId?: string;
 };
-
-/** 附件输入 part 的块载荷(composer 草稿与发送共用同一形状)。 */
-export type TurnAttachmentBlock =
-  Extract<TurnCreateInput['input'][number], { type: 'attachment' }>['block'];
 
 export type ToolExecutionLog = RpcJson<RpcClient['api']['turns'][':turnId']['tool-executions']['$get']>;
 export type TurnSpeechGenerateResult = RpcJson<RpcClient['api']['turns'][':turnId']['speech']['$post']>;
@@ -28,7 +22,6 @@ export type TurnSummaryPage = RpcJson<RpcClient['api']['turns']['$get']>;
 export type TurnSummary = TurnSummaryPage['items'][number];
 export type TurnDetailResult = RpcJson<RpcClient['api']['turns'][':turnId']['$get']>;
 
-// ── API ──────────────────────────────────────────────────────────────────────
 
 export const turnsApi = {
   /** 正文由 Server 读取; 未指定角色时使用当前激活角色, 只生成保存, 不控制播放器. */
@@ -68,7 +61,7 @@ export const turnsApi = {
     ));
   },
 
-  /** GET /api/turns/:turnId/tool-executions — 持久工具执行审计. */
+  /** GET /api/turns/:turnId/tool-executions  -  持久工具执行审计. */
   listToolExecutions(turnId: string, before?: NonNullable<ToolExecutionLog['nextCursor']>, signal?: AbortSignal): Promise<ToolExecutionLog> {
     return readRpcJson(rpcClient.api.turns[':turnId']['tool-executions'].$get({
       param: { turnId },

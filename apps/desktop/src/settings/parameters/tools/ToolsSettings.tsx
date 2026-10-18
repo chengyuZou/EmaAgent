@@ -1,4 +1,3 @@
-// 展示内置 Tool 身份并保存逐工具禁用项和后台进程参数.
 import { useMemo, type JSX } from 'react';
 import { Callout, Spinner, Switch } from '@ema-agent/ui';
 import { BuiltinTools } from '@ema-agent/tools/identity';

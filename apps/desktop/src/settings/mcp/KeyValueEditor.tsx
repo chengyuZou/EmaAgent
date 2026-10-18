@@ -1,8 +1,7 @@
-// 键值对行编辑器（MCP env/headers 表单用）：secret 模式遮蔽值显示。
 import { useState } from 'react';
 import { Button, IconButton, Input } from '@ema-agent/ui';
 
-/** 表单里的一条键值对；提交时由对话框转换为 Record。 */
+/** 表单里的一条键值对; 提交时由对话框转换为 Record. */
 export interface McpKeyValuePair {
   key: string;
   value: string;

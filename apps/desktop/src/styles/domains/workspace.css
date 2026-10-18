@@ -1,6 +1,3 @@
-/* 会话侧栏的拖拽反馈, 以及右侧工作区的标签栏, 工具入口和文件树.
-   选中态在 primitives/selectable.css, Chat 控件皮肤在 chatControls.css. */
-
 .ema-session-sidebar {
   transition: width var(--ema-duration-panel) var(--ema-ease),
               background-color 340ms var(--ema-ease),
@@ -363,7 +360,7 @@ button.ema-workspace-launcher-action:hover:not(:disabled) {
   word-break: break-word;
 }
 
-/* Header 置顶摘要:五类 Session 工作状态共用同一套可折叠行。 */
+/* Header 置顶摘要:五类 Session 工作状态共用同一套可折叠行. */
 .ema-session-summary {
   max-height: min(680px, calc(100vh - 72px));
   overflow-y: auto;
@@ -429,7 +426,7 @@ button.ema-summary-row:focus-visible {
   background: transparent;
 }
 
-/* react-resizable-panels 把比例写在直属 Panel 上；这里只过渡该比例，不替换它的拖拽。 */
+/* react-resizable-panels 把比例写在直属 Panel 上; 这里只过渡该比例, 不替换它的拖拽. */
 .ema-session-workspace-group > [data-panel] {
   transition: flex-grow var(--ema-duration-panel) var(--ema-ease);
 }

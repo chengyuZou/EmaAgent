@@ -1,4 +1,3 @@
-// Store 管历史窗口, 此处管分页与消息展示; 行高由内核测量, 定位交给共用视口逻辑.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX, type MutableRefObject } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { IconButton, Tooltip } from '@ema-agent/ui';
@@ -295,7 +294,7 @@ function HistoryViewport({
     let anchorMessageId = item?.anchorMessageId
       ?? messagesRef.current.find(message => message.turnId === turnId)?.id;
     if (!anchorMessageId) {
-      // 不把“索引尚未翻到该轮”当成不存在; 单独查询该轮, 再打开有界消息窗口.
+      // 不把"索引尚未翻到该轮"当成不存在; 单独查询该轮, 再打开有界消息窗口.
       const page = await sessionsApi.listTurnMessages(sessionId, turnId);
       anchorMessageId = page.messages.find(message => message.kind === 'normal')?.id;
     }

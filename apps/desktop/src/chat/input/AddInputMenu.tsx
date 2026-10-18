@@ -40,33 +40,26 @@ export interface SlashToken {
   /** `/` 在整段输入中的下标 */
   readonly start: number;
   /** 这个 `/词` 的末尾下标, 用于整体删除
-   * 注意 end 和光标位置不一定相同：光标可能停在词中间
+   * 注意 end 和光标位置不一定相同: 光标可能停在词中间
    * (如 /comp|act), 但删除时要删掉整个 /compact
   */
   readonly end: number;
-  /** `/` 与光标之间的文字，用来过滤菜单. */
+  /** `/` 与光标之间的文字, 用来过滤菜单. */
   readonly query: string;
 }
 
-/** 判断光标当前是否正处在一个 `/搜索词` 里
- * 如果是, 就返回这个词的范围和查询内容
- * 供上层弹出 `/` 过滤命令菜单用。
-*/
 export function activeSlashToken(
   text: string,
-  // 默认光标在末尾
   caret = text.length,
 ): SlashToken | null {
   if (caret < 0 || caret > text.length) return null;
 
-  // 从光标往前找最后一个 `/`
   const beforeCaret = text.slice(0, caret);
   const slash = beforeCaret.lastIndexOf('/');
   if (slash < 0) return null;
 
-  // 取出 `/` 到光标之间的内容作为 query
   const token = beforeCaret.slice(slash + 1);
-  // 如果 `/` 和光标之间出现了空白(空格、换行等), 说明这个 `/` 是普通文本的一部分(比如 1/2 3), 不是命令, 直接放弃.
+  // 不把已经结束的斜杠词重新当成菜单输入, 例如光标前的 /compact 后已有空格.
   if (/\s/.test(token)) return null;
 
   const atStart = slash === 0;
@@ -255,14 +248,13 @@ export function SlashCommandMenu({
         setActiveIndex((current) => (current + direction + items.length) % items.length);
         return true;
       }
-      // Enter：有激活项即选中；空列表消费掉免得误发送一个裸 '/xxx'。
+      // Enter: 有激活项即选中; 空列表消费掉免得误发送一个裸 '/xxx'.
       const active = items[activeIndex];
       if (active) onSelect(active.selection);
       return true;
     },
   }), [open, items, activeIndex, onSelect]);
 
-  // 激活项滚进可视区。
   useEffect(() => {
     listRef.current
       ?.querySelector(`[data-index="${activeIndex}"]`)

@@ -1,5 +1,3 @@
-// 把后端 0 到 1 的比例以百分数展示和编辑.
-
 import type { JSX } from 'react';
 import type { SettingApply } from '../../../api/settings.js';
 import { NumberSetting } from './NumberSetting.js';

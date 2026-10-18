@@ -1,5 +1,3 @@
-// 渲染固定候选项的字符串多选参数.
-
 import { useState, type JSX } from 'react';
 import { Tooltip, Button, Switch } from '@ema-agent/ui';
 import type { SettingApply } from '../../../api/settings.js';

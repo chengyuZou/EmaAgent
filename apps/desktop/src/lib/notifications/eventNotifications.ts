@@ -1,5 +1,3 @@
-// 把结构化实时事件转换为受用户设置控制的本地通知。
-
 import type { AppEvent } from '@ema-agent/server/application/appEvents.js';
 import type { SessionBusinessMessage } from '@ema-agent/server/routes/ws/session.js';
 import type { TurnStreamEvent } from '@ema-agent/turn';
@@ -17,7 +15,7 @@ export type SessionCompactEvent = Extract<SessionBusinessMessage, {
   | 'compact_failed';
 }>;
 
-/** 通知层使用的线上事件: Turn 流、Session 手动压缩与应用级广播. */
+/** 通知层使用的线上事件: Turn 流, Session 手动压缩与应用级广播. */
 export type NotifiableEvent = TurnStreamEvent | SessionCompactEvent | AppEvent | PermissionStreamEvent
   | Extract<ToolExecutionEvent, { type: 'ask_user_required' | 'ask_user_resolved' }>;
 
@@ -37,7 +35,7 @@ export function describeEventNotification(event: NotifiableEvent): EventNotifica
       return { message: `准备执行工具：${event.name}`, variant: 'info' };
     case 'tool_result':
       // 成功不弹通知: 聊天区工具行自带"成功 · Xs"终态, 成功 Toast 是纯噪音(还会刷屏);
-      // 设置项 tool_result 因此只管失败通知。
+      // 设置项 tool_result 因此只管失败通知.
       return event.error
         ? { message: `工具 ${event.name} 执行失败：${event.error.message}`, variant: 'danger' }
         : null;
@@ -58,7 +56,7 @@ export function describeEventNotification(event: NotifiableEvent): EventNotifica
     case 'compact_failed':
       return { message: `上下文压缩失败：${event.error}`, variant: 'danger' };
     case 'background_process_changed':
-      // 失败和超时弹通知; 完成、停止与运行状态变化只更新面板.
+      // 失败和超时弹通知; 完成, 停止与运行状态变化只更新面板.
       if (event.status === 'failed') {
         return {
           message: `后台进程执行失败${event.terminationReason ? `：${event.terminationReason}` : ''}`,

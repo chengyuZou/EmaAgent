@@ -1,5 +1,3 @@
-// 一次工具调用的统一行: 状态 参数 进度 结果与复制.
-// 专属 UI 经 tool_use.name 查表 以 TOutput(结果信封 data / 事件 output)渲染.
 import { useState, useEffect, useMemo, useRef, type JSX, type ReactNode } from 'react';
 import { CodeViewer, IconButton, Tooltip } from '@ema-agent/ui';
 import { sessionWebSocket } from '../../../api/sessionWebSocket.js';
@@ -359,7 +357,6 @@ export function ToolFailure({ code, message }: { code: string; message: string }
 }
 
 
-// ── StatusDuration（实时耗时 hook）────────────────────────────────────────────
 
 function StatusDuration({
   status, durationMs, startedAt, separated,
@@ -369,7 +366,6 @@ function StatusDuration({
   startedAt?: number;
   separated: boolean;
 }): JSX.Element | null {
-  // 运行中：用 startedAt 实时算
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (status !== 'running' || !startedAt) return;
@@ -383,6 +379,6 @@ function StatusDuration({
   if (durationMs != null && (status === 'success' || status === 'failed' || status === 'denied')) {
     return <span className="tabular-nums">{separated ? '· ' : ''}{fmtDuration(durationMs)}</span>;
   }
-  // awaiting_permission / 无耗时的 failed / denied（durationMs 为 0 也不显示）
+  // 等待授权时暂停显示计时; 已结束但没有 durationMs 时不猜测耗时.
   return null;
 }

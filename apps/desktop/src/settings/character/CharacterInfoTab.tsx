@@ -1,5 +1,3 @@
-// 角色信息:name 只读,展示名/描述/舞台显示草稿制,Persona Prompt 随输入增高。
-// [设为当前][打开文件夹][删除角色] 放右上;当前角色有工作在跑时后端 409,前端拒绝。
 import { useEffect, useState, type JSX } from 'react';
 import { Button, Input, Select, Textarea } from '@ema-agent/ui';
 import { ServerApiError } from '../../api/client.js';

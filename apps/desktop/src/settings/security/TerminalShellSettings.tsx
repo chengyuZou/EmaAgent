@@ -1,5 +1,5 @@
 // 集成终端 Shell 选择:偏好存 kind(绿色版工具路径会搬家,存 path 会失效),
-// 下拉按 kind 折叠(同 kind 多候选只显示首选),开终端时再解析成当前 path。
+// 下拉按 kind 折叠(同 kind 多候选只显示首选),开终端时再解析成当前 path.
 import { useEffect, useMemo, useState, type JSX } from 'react';
 import { Callout, Select } from '@ema-agent/ui';
 
@@ -54,7 +54,7 @@ export function TerminalShellSettings(): JSX.Element {
     return () => { active = false; };
   }, []);
 
-  // 同 kind 多候选(如 Git 的 bin 与 usr/bin 双 bash)折叠为一项,首选即探测排序首条。
+  // 同 kind 多候选(如 Git 的 bin 与 usr/bin 双 bash)折叠为一项,首选即探测排序首条.
   const collapsed = useMemo(() => {
     const byKind = new Map<TerminalShellInfo['kind'], TerminalShellInfo>();
     for (const shell of shells) {

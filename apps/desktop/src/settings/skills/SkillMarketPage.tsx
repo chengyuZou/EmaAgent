@@ -1,8 +1,6 @@
-// 技能市场子页:聚合 SkillHub/ClawHub 浏览(搜索/来源/安装状态筛选 + 游标翻页)、
-// 详情(文档/文件)、并发安装(按卡片各自转圈)与卸载。页面自持状态,不走全局 Store。
 import { useCallback, useEffect, useRef, useState, type JSX } from 'react';
 import {
-  Badge, Button, Callout, Dialog, EmptyState, Input, MarketCard, ScrollArea, SearchField, Select, Spinner,
+  Badge, Button, Callout, Dialog, EmptyState, MarketCard, SearchField, Select, Spinner,
 } from '@ema-agent/ui';
 import {
   skillsApi,
@@ -49,7 +47,7 @@ export function SkillMarketPage(): JSX.Element {
   const [fileView, setFileView] = useState<{ path: string; content: string; truncated: boolean } | null>(null);
   const [fileLoading, setFileLoading] = useState(false);
   const [pendingInstall, setPendingInstall] = useState<SkillMarketItem | null>(null);
-  /** 按技能 id 各自安装中:确认弹窗关掉后安装继续,不阻塞其他卡片。 */
+  /** 按技能 id 各自安装中:确认弹窗关掉后安装继续,不阻塞其他卡片. */
   const [installing, setInstalling] = useState<ReadonlySet<string>>(new Set());
   const [uninstalling, setUninstalling] = useState(false);
 
@@ -88,7 +86,7 @@ export function SkillMarketPage(): JSX.Element {
 
   useEffect(() => { void reload(); }, [reload]);
 
-  // 游标翻页:哨兵进入视口且还有下一页时追加。
+  // 游标翻页:哨兵进入视口且还有下一页时追加.
   useEffect(() => {
     const sentinel = sentinelRef.current;
     if (!sentinel) return;
@@ -129,7 +127,7 @@ export function SkillMarketPage(): JSX.Element {
     }
   }
 
-  // 安装:确认后立即返回,后台完成;该卡转圈,其他卡片不受影响。
+  // 安装:确认后立即返回,后台完成;该卡转圈,其他卡片不受影响.
   async function confirmInstall(): Promise<void> {
     if (!pendingInstall) return;
     const { source: src, slug, id } = pendingInstall;
@@ -168,7 +166,6 @@ export function SkillMarketPage(): JSX.Element {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* 页头:标题 + 来源状态 + 刷新 */}
       <div className="flex items-start justify-between shrink-0">
         <div>
           <h1 className="text-base font-semibold text-[var(--ema-text-primary)]">技能市场</h1>
@@ -200,7 +197,6 @@ export function SkillMarketPage(): JSX.Element {
         技能来自社区第三方市场,本应用不对内容做安全审计。安装前请在详情里查看 SKILL.md 与配套文件。
       </Callout>
 
-      {/* 筛选区:两个选择器一行, 搜索杆独占一行, 同一容器内上下排 */}
       <div className="flex shrink-0 flex-col gap-2">
         <div className="flex items-center gap-2">
           <Select
@@ -232,7 +228,6 @@ export function SkillMarketPage(): JSX.Element {
         />
       </div>
 
-      {/* 卡片网格 */}
       {error ? (
         <div>
           <Callout variant="danger">{error}</Callout>
@@ -285,7 +280,6 @@ export function SkillMarketPage(): JSX.Element {
         </>
       )}
 
-      {/* 详情弹窗 */}
       <Dialog
         open={detail !== null || detailLoading}
         onOpenChange={(open) => { if (!open) { setDetail(null); setFileView(null); } }}
@@ -309,7 +303,6 @@ export function SkillMarketPage(): JSX.Element {
         )}
       </Dialog>
 
-      {/* 安装确认 */}
       <Dialog
         open={pendingInstall !== null}
         onOpenChange={(open) => { if (!open) setPendingInstall(null); }}

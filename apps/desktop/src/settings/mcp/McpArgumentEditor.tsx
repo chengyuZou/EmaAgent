@@ -1,4 +1,3 @@
-// 提供 MCP stdio 参数的逐项编辑、排序与删除界面，始终保持 argv 数组语义。
 import { Button, IconButton, Input } from '@ema-agent/ui';
 
 export interface McpArgumentEditorProps {

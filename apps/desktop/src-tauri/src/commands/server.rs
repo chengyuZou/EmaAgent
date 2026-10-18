@@ -1,4 +1,3 @@
-// 提供 WebView 查询 Server 连接信息的命令。
 use crate::processes::{DesktopProcesses, SERVER_READY_TIMEOUT};
 
 #[tauri::command]

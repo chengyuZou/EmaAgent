@@ -1,5 +1,3 @@
-// 单独展示 Subagent Tool 创建的 Subagent;前台 Tool 与后台 Subagent 只暴露各自正确的停止入口.
-
 import { memo, useEffect, useMemo, useState, type JSX } from 'react';
 import { subagentsApi, type SubagentRunItem } from '../../../api/subagents.js';
 import { useCollapsibleBody, useMessageExpansion } from '../messageExpansion.js';
@@ -296,7 +294,7 @@ function resultReference(call: ToolDisplayCall): { subagentId: string; runId: st
   return { subagentId: output.subagentId, runId: output.runId };
 }
 
-/** 前台 Tool 仍在执行时取消 Tool；转入后台后用独立的 SubagentId 取消子代理. */
+/** 前台 Tool 仍在执行时取消 Tool; 转入后台后用独立的 SubagentId 取消子代理. */
 export function agentCancelTarget(call: ToolDisplayCall, streaming: boolean, subagentRunning: boolean): 'tool' | 'subagent' | null {
   if (toolRunning(call, streaming)) {
     return 'tool';

@@ -1,4 +1,3 @@
-// Settings API: 设置值读写与 eventDisplay 合并投影.
 import type { InferRequestType } from 'hono/client';
 import { rpcClient, readRpcJson, type RpcClient, type RpcJson } from './client.js';
 
@@ -10,7 +9,7 @@ export type SettingsBatchEntries = InferRequestType<RpcClient['api']['settings']
 export type EventDisplayTable = RpcJson<RpcClient['api']['settings']['event-display']['$get']>;
 
 export const settingsApi = {
-  /** GET /api/settings/values — 全量生效值（覆盖值或默认值）。 */
+  /** 返回用户覆盖后的生效值, 未覆盖项使用默认值. */
   listValues(): Promise<SettingsValues> {
     return readRpcJson(rpcClient.api.settings.values.$get());
   },
@@ -19,7 +18,7 @@ export const settingsApi = {
     return readRpcJson(rpcClient.api.settings.values[':key'].$get({ param: { key } }));
   },
 
-  /** PUT /api/settings/values/:key — body `{ value }`。 */
+  /** PUT /api/settings/values/:key  -  body `{ value }`. */
   putValue<T>(key: string, value: T): Promise<SettingValueResult> {
     return readRpcJson(rpcClient.api.settings.values[':key'].$put({
       json: { value },
@@ -27,17 +26,17 @@ export const settingsApi = {
     }));
   },
 
-  /** PUT /api/settings/values — 批量写入（任一键非法整批拒绝）。 */
+  /** 任一键非法时整批拒绝, 不保存部分设置. */
   putValues(entries: SettingsBatchEntries) {
     return readRpcJson(rpcClient.api.settings.values.$put({ json: { entries } }));
   },
 
-  /** DELETE /api/settings/values/:key — 删即恢复默认。 */
+  /** 删除覆盖值后恢复默认设置. */
   deleteValue(key: string) {
     return readRpcJson(rpcClient.api.settings.values[':key'].$delete({ param: { key } }));
   },
 
-  /** GET /api/settings/event-display — 事件展示合并投影（默认表 + 用户覆盖，只读）。 */
+  /** 返回默认表与用户覆盖合并后的事件展示设置. */
   getEventDisplay(): Promise<EventDisplayTable> {
     return readRpcJson(rpcClient.api.settings['event-display'].$get());
   },

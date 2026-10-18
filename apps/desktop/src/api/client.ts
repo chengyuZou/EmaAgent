@@ -1,19 +1,7 @@
-/**
- * Server HTTP client — port discovery + fetch wrapper + error normalisation.
- *
- * Every `api/*.ts` module MUST route through this file. Direct `fetch()`
- * calls or hard-coded `http://127.0.0.1:3421` are forbidden.
- *
- * `rpcClient` is the Hono RPC client (`hc<AppType>`): route definitions are
- * the contract; the server implementation never enters the webview bundle
- * (`import type` evaporates at compile time).
- */
-
 import { hc, type ClientResponse } from 'hono/client';
 import type { AppType } from '@ema-agent/server/routes';
 import { tauriBridge } from '../lib/tauri/tauriBridge.js';
 
-// ── Public types ─────────────────────────────────────────────────────────────
 
 export interface ServerClient {
   /** Resolve the server base URL (`http://127.0.0.1:<port>`). */
@@ -22,13 +10,13 @@ export interface ServerClient {
   /** Force re-discover the port (e.g. after server restart). */
   refreshPort(): Promise<void>;
 
-  /** 返回原始响应, 用于 SSE、文件字节和 multipart 上传. 非 2xx 抛出 ServerApiError. */
+  /** 返回原始响应, 用于 SSE, 文件字节和 multipart 上传. 非 2xx 抛出 ServerApiError. */
   requestRaw(path: string, init?: RequestInit & { json?: unknown }): Promise<Response>;
 
   /** 原生 audio 使用的完整地址; 仅后端允许的音频 GET 路由接受 URL 里的现有口令. */
   audioUrl(path: string): Promise<string>;
 
-  /** 构建浏览器 WebSocket URL；浏览器不能设置认证 header，因此密钥只放在 loopback 握手查询串。 */
+  /** 构建浏览器 WebSocket URL; 浏览器不能设置认证 header, 因此密钥只放在 loopback 握手查询串. */
   webSocketUrl(path: string): Promise<string>;
 
 }
@@ -36,10 +24,10 @@ export interface ServerClient {
 export class ServerApiError extends Error {
   status: number;
   code?: string;
-  /** 领域错误的细分原因(如 CharacterResourceValidationError 的 reason)。 */
+  /** 领域错误的细分原因(如 CharacterResourceValidationError 的 reason). */
   reason?: string;
   details?: unknown;
-  /** 409 冲突类错误的具体冲突列表(如 model_in_use 的 ProviderBindingConflict[])。 */
+  /** 409 冲突类错误的具体冲突列表(如 model_in_use 的 ProviderBindingConflict[]). */
   conflicts?: unknown[];
 
   constructor(status: number, body: string) {
@@ -55,16 +43,16 @@ export class ServerApiError extends Error {
       reason = typeof parsed.reason === 'string' ? parsed.reason : undefined;
       details = parsed.details;
       conflicts = Array.isArray(parsed.conflicts) ? parsed.conflicts : undefined;
-      // Ema 路由约定 error 字段即机器错误码(如 character_not_found),用它兜底 code。
+      // Ema 路由约定 error 字段即机器错误码(如 character_not_found),用它兜底 code.
       if (!code && typeof parsed.error === 'string' && /^[a-z0-9_/-]+$/i.test(parsed.error)) {
         code = parsed.error;
       }
-      // 展示文案优先取后端人话 message，机器码只作兜底。
-      message = typeof parsed.message === 'string' && parsed.message.length > 0
-        ? parsed.message
-        : typeof parsed.error === 'string'
-          ? parsed.error
-          : message;
+      // 展示文案优先取后端人话 message, 机器码只作兜底.
+      if (typeof parsed.message === 'string' && parsed.message.length > 0) {
+        message = parsed.message;
+      } else if (typeof parsed.error === 'string') {
+        message = parsed.error;
+      }
     } catch {
       message = body.length > 200
         ? `${body.slice(0, 200)}…`
@@ -81,8 +69,8 @@ export class ServerApiError extends Error {
   }
 }
 
-// ── Port + secret discovery ───────────────────────────────────────────────────
 
+// Tauri 从宿主读取动态端口; 普通浏览器预览仍使用 3421.
 const DEFAULT_PORT = 3421;
 let portPromise:   Promise<number>      | null = null;
 let secretPromise: Promise<string|null> | null = null;
@@ -110,13 +98,12 @@ function getSecretPromise(): Promise<string | null> {
   return secretPromise;
 }
 
-/** server 重启换端口后清掉端口缓存，下次请求重新发现（tsx watch 每次重启都换端口）。 */
+/** server 重启换端口后清掉端口缓存, 下次请求重新发现(tsx watch 每次重启都换端口). */
 async function refreshPortDiscovery(): Promise<void> {
   portPromise = null;
   await getPortPromise();
 }
 
-// ── Implementation ───────────────────────────────────────────────────────────
 
 async function buildUrl(path: string): Promise<string> {
   const port = await getPortPromise();
@@ -140,7 +127,7 @@ async function sendRequest(
     if (init?.signal?.aborted) {
       throw err;
     }
-    // server 重启换端口后旧端口连接失败：重新发现端口重试一次，再不行才报不可达。
+    // server 重启换端口后旧端口连接失败: 重新发现端口重试一次, 再不行才报不可达.
     try {
       await refreshPortDiscovery();
       const retryUrl = await buildUrl(path);
@@ -172,32 +159,24 @@ function prepareRequestInit(init?: RequestInit & { json?: unknown }, secret?: st
   return { ...init, headers, body };
 }
 
-// ── RPC error helper ─────────────────────────────────────────────────────────
-//
-// hc 客户端返回 Response；域层薄封装把非 2xx 统一归一为 ServerApiError，
-// 保证调用方只处理一种错误形状。参数取最小结构，兼容真 Response 与 hc ClientResponse。
+// 这里只要求状态和正文读取方法, Hono ClientResponse 和原生 Response 都能传入.
 
 export async function toServerApiError(res: { status: number; text(): Promise<string> }): Promise<ServerApiError> {
   const text = await res.text().catch(() => '');
   return new ServerApiError(res.status, text);
 }
 
-// ── RPC 解包 ─────────────────────────────────────────────────────────────────
-//
-// hono 的 ClientResponse 按状态字面量给 ok 标类型（ok: U extends 2xx ? true : ...），
-// 成功分支不带显式状态码时 U=ContentfulStatusCode、ok 是 boolean——所以不能用
-// `{ok:true}` 提取成功成员（会塌成 never），必须反向排除 `ok:false` 的错误成员。
-// 同理 InferResponseType<T, 200> 对 ContentfulStatusCode 成员过滤结果也是 never，
-// 域层一律改用 RpcJson 提取成功载荷。
+// Hono 的成功响应可能把 ok 推导为 boolean, 直接提取 { ok: true } 会漏掉它.
+// 因此只排除明确的 { ok: false } 成员, 保留其余响应的 JSON 类型.
 
 type SuccessfulJson<T> = T extends { readonly ok: false }
   ? never
   : T extends { json(): Promise<infer Body> } ? Body : never;
 
-/** 从 hc 端点方法类型提取成功响应载荷（排除错误状态成员）。 */
+/** 从 hc 端点方法类型提取成功响应载荷(排除错误状态成员). */
 export type RpcJson<T extends (...args: never) => unknown> = SuccessfulJson<Awaited<ReturnType<T>>>;
 
-/** 调用 hc 端点并解包成功 JSON；非 2xx 统一抛 ServerApiError。全仓唯一断言点。 */
+/** 读取成功 JSON; 非 2xx 统一抛 ServerApiError. */
 export async function readRpcJson<T extends ClientResponse<unknown, number, 'json'>>(
   request: Promise<T>,
 ): Promise<SuccessfulJson<T>> {
@@ -206,18 +185,17 @@ export async function readRpcJson<T extends ClientResponse<unknown, number, 'jso
   return response.json() as Promise<SuccessfulJson<T>>;
 }
 
-/** 204/无内容端点：只验状态，不读 body。 */
+/** 204/无内容端点: 只验状态, 不读 body. */
 export async function readRpcVoid(request: Promise<ClientResponse<unknown>>): Promise<void> {
   const response = await request;
   if (!response.ok) throw await toServerApiError(response);
 }
 
-// ── RPC client ───────────────────────────────────────────────────────────────
-//
-// hc<AppType> 需要静态 baseUrl；端口是运行时发现（Tauri get_server_port），
-// 因此用占位 host 打底，在自定义 fetch 包装里换成真实 origin，并注入共享密钥头。
+// hc<AppType> 需要静态 baseUrl, 但实际端口从 Tauri get_server_port 读取.
+// 因此用占位 host 打底, 在自定义 fetch 包装里换成真实 origin, 并注入共享密钥头.
 const RPC_HOST_PLACEHOLDER = 'http://ema-server';
 
+// 这里只导入路由类型, Server 实现不会进入 WebView 的构建产物.
 export const rpcClient = hc<AppType>(RPC_HOST_PLACEHOLDER, {
   fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
     let source: string;
@@ -233,7 +211,6 @@ export const rpcClient = hc<AppType>(RPC_HOST_PLACEHOLDER, {
 
 export type RpcClient = typeof rpcClient;
 
-// ── Exported singleton ───────────────────────────────────────────────────────
 
 export const serverClient: ServerClient = {
   async baseUrl(): Promise<string> {

@@ -1,5 +1,3 @@
-// Token 明细查看器:库级 usage_records 按 Session 过滤,chips 按数据动态生成。
-// KV 命中属于单次 LLM/Vision 调用，只在对应记录行按后端统一口径计算。
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type JSX } from 'react';
 import { Badge, Button, Skeleton } from '@ema-agent/ui';
 import { usageApi, type UsageRecordsPage } from '../../../api/usage.js';
@@ -54,7 +52,7 @@ export function TokenDetail({ sessionId }: { sessionId: string }): JSX.Element {
     );
   }, [chip]);
 
-  // chips 跟着已加载数据长: distinct(capability) 保持 SQL 枚举顺序。
+  // 只显示已加载记录中出现的能力, 按固定顺序排列.
   const chips = useMemo(() => {
     const present = new Set(records.map(r => r.capability));
     return (['llm', 'vision', 'embed', 'rerank', 'stt', 'tts'] as const)
@@ -66,7 +64,7 @@ export function TokenDetail({ sessionId }: { sessionId: string }): JSX.Element {
     [records, chip],
   );
 
-  // 聚合只展示 Token 总量；不同物理调用的 KV 命中率没有合并语义。
+  // 聚合只展示 Token 总量; 不同物理调用的 KV 命中率没有合并语义.
   const tokenAggregate = useMemo(() => {
     if (chip !== 'llm' && chip !== 'vision') {
       return null;
@@ -268,8 +266,8 @@ function capabilityLabel(capability: Capability): string {
 }
 
 /**
- * 后端 LLMTokenUsage 已统一为 inputTokens 包含缓存子集，因此单次调用命中率是
- * cacheReadInputTokens / inputTokens，不能再把 cacheRead 加进分母，也不能跨调用聚合。
+ * LLMTokenUsage 的 inputTokens 包含缓存部分, 单次调用命中率是
+ * cacheReadInputTokens / inputTokens, 不能再把 cacheRead 加进分母, 也不能跨调用聚合.
  */
 function usageCacheText(record: UsageRecord): string | null {
   if (record.capability !== 'llm' && record.capability !== 'vision') {

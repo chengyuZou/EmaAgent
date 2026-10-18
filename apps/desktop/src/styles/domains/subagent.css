@@ -1,5 +1,3 @@
-/* 子代理身份列表. 详情正文复用根聊天的 Message 虚拟视口和样式. */
-
 .ema-subagent-view {
   display: flex;
   min-height: 0;

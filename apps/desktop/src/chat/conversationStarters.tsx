@@ -1,4 +1,3 @@
-// 新对话与尚无消息的会话共用四个快捷动作, 只回填草稿, 不直接发送.
 import type { CSSProperties, JSX } from 'react';
 
 const QUICK_PROMPTS = [

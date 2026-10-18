@@ -1,5 +1,3 @@
-// 渲染保存为有限字符串选项的参数.
-
 import { useState, type JSX } from 'react';
 import { Tooltip, Button, Select, type SelectOption } from '@ema-agent/ui';
 import type { SettingApply } from '../../../api/settings.js';

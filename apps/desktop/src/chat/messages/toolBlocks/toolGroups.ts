@@ -1,5 +1,3 @@
-// 统一 History 与 Tool 的显示字段, 并计算连续 Tool Group 摘要和已编辑文件统计.
-
 import type { AssistantBlock } from '@ema-agent/llm';
 import type { ToolResult } from '@ema-agent/tools';
 import { BuiltinTools } from '@ema-agent/tools/identity';

@@ -9,7 +9,6 @@
 }
 
 .ema-memory-files > header,
-.ema-memory-toolbar,
 .ema-memory-browser-header,
 .ema-memory-list-header,
 .ema-memory-tree-filter,
@@ -17,7 +16,6 @@
   flex: none;
 }
 
-.ema-memory-toolbar,
 .ema-memory-browser-header,
 .ema-memory-list-header,
 .ema-memory-document-actions {
@@ -154,38 +152,12 @@
   margin-inline: auto;
 }
 
-.ema-memory-search-results {
-  flex: 1;
-  min-width: 160px;
-  min-height: 0;
-  overflow: auto;
-  padding: var(--ema-space-2);
-}
-
-.ema-memory-search-match {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  width: 100%;
-  height: auto;
-  margin-bottom: var(--ema-space-2);
-  padding: var(--ema-space-2);
-  text-align: left;
-  white-space: normal;
-}
-
-.ema-memory-search-match[data-selected="true"] {
-  background: var(--ema-primary-muted);
-  color: var(--ema-primary-text);
-}
-
 @media (prefers-reduced-motion: reduce) {
   .ema-memory-tree-pane {
     transition: none;
   }
 }
 
-/* 文件树面板:淡彩纵向渐变底(面板有气色,不是死白)。 */
 .ema-memory-explorer-bg {
   background-image: linear-gradient(
     180deg,
@@ -194,8 +166,7 @@
   );
 }
 
-/* 读者面板:顶部淡点阵(38% 高度内渐隐完,素材同款克制) + 右上径向光晕。
-   纹理在伪元素背景层:mask 只咬纹理不咬正文,空态/文档态都吃得到。 */
+/* 遮罩只作用于伪元素中的背景纹理, 不遮住正文或空态提示. */
 .ema-memory-reader-bg {
   position: relative;
 }

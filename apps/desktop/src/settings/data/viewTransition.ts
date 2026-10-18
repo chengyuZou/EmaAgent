@@ -14,6 +14,6 @@ export function morphTransition(update: () => void): Promise<void> | undefined {
     update();
     return undefined;
   }
-  // React 18 的自动批处理会把状态更新挤到过渡快照之后,flushSync 保证新旧两帧正确。
+  // React 18 的自动批处理会把状态更新挤到过渡快照之后,flushSync 保证新旧两帧正确.
   return doc.startViewTransition(() => flushSync(update)).finished;
 }

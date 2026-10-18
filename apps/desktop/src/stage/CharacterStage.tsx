@@ -1,5 +1,3 @@
-// 把 Character 的单一舞台呈现加载为 Live2D、立绘或空白占位。
-
 import {
   useCallback,
   useEffect,
@@ -17,7 +15,6 @@ import type {
 import {
   Live2DStage,
   type Live2DStageHandle,
-  type Live2DStageProps,
   type Live2DStageReadyInfo,
 } from '@ema-agent/live2d-react';
 import { charactersApi } from '../api/characters.js';
@@ -33,8 +30,6 @@ export interface CharacterStageProps {
 }
 
 export interface ActiveLive2DStage {
-  characterName: string;
-  modelName: string;
   handle: Live2DStageHandle;
   hasExpressions: boolean;
   expressions: readonly string[];
@@ -67,12 +62,6 @@ export function CharacterStage({
     }
 
     let cancelled = false;
-    const archiveStartedAt = performance.now();
-    void tauriBridge.reportLive2dDiagnostic(
-      'archive_loading',
-      live2dCharacterName,
-      live2dName,
-    );
     setLoadedLive2dArchive(current => (
       current?.characterName === live2dCharacterName && current.live2dName === live2dName
         ? current
@@ -81,12 +70,6 @@ export function CharacterStage({
     void charactersApi.live2dArchive(live2dCharacterName, live2dName)
       .then((archive) => {
         if (!cancelled) {
-          void tauriBridge.reportLive2dDiagnostic(
-            'archive_loaded',
-            live2dCharacterName,
-            live2dName,
-            (performance.now() - archiveStartedAt) / 1000,
-          );
           setLoadedLive2dArchive({
             characterName: live2dCharacterName,
             live2dName,
@@ -96,13 +79,6 @@ export function CharacterStage({
       })
       .catch((error: unknown) => {
         if (!cancelled) {
-          void tauriBridge.reportLive2dDiagnostic(
-            'archive_failed',
-            live2dCharacterName,
-            live2dName,
-            (performance.now() - archiveStartedAt) / 1000,
-            String(error),
-          );
           console.error('[stage] Live2D 模型包读取失败', live2dCharacterName, live2dName, error);
         }
       });
@@ -118,8 +94,6 @@ export function CharacterStage({
   ): void => {
     if (!live2dCharacterName || !live2dName) return;
     onStageChanged?.({
-      characterName: live2dCharacterName,
-      modelName: live2dName,
       handle,
       hasExpressions: info.hasExpressions,
       expressions: info.expressions,
@@ -149,22 +123,7 @@ export function CharacterStage({
           suspended={suspended}
           onReady={ready}
           onExpressionChanged={onExpressionChanged}
-          onDiagnostic={(event, durationS) => {
-            void tauriBridge.reportLive2dDiagnostic(
-              event,
-              presentation.characterName,
-              presentation.resource.name,
-              durationS,
-            );
-          }}
           onError={(error) => {
-            void tauriBridge.reportLive2dDiagnostic(
-              'model_failed',
-              presentation.characterName,
-              presentation.resource.name,
-              null,
-              error.message,
-            );
             console.error('[stage] Live2D 模型加载失败', presentation.resource.name, error);
             onStageChanged?.(null);
           }}
@@ -187,7 +146,6 @@ function Live2dResource({
   suspended,
   onReady,
   onExpressionChanged,
-  onDiagnostic,
   onError,
 }: {
   archive: Blob;
@@ -195,7 +153,6 @@ function Live2dResource({
   suspended: boolean;
   onReady(handle: Live2DStageHandle, info: Live2DStageReadyInfo): void;
   onExpressionChanged?: (expression: string | null) => void;
-  onDiagnostic?: Live2DStageProps['onDiagnostic'];
   onError(error: Error): void;
 }): JSX.Element {
   const handleRef = useRef<Live2DStageHandle | null>(null);
@@ -245,7 +202,6 @@ function Live2dResource({
         stageOffsetY={resource.stageOffsetY}
         suspended={suspended}
         pointerSource={tauriBridge.isTauri() ? 'host' : 'window'}
-        onDiagnostic={onDiagnostic}
         onReady={(info) => {
           if (handleRef.current) onReady(handleRef.current, info);
         }}

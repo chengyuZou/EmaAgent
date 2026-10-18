@@ -1,4 +1,3 @@
-// 同一子代理的全部消息连续阅读. HTTP 与实时消息按 SQL MessageId 合并, 不按 Run 切换窗口.
 import { useEffect, useMemo, useRef, useState, type JSX } from 'react';
 import type { SubagentMessage } from '@ema-agent/agent';
 import type { ToolResult } from '@ema-agent/tools';

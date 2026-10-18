@@ -1,4 +1,3 @@
-/** ProviderCreatePanel — 按能力分区的自建 Provider 创建（id/名称/连接方式/协议/Base URL/Key）。 */
 import { useState, type FormEvent, type JSX } from 'react';
 import { Button, Field, IconButton, Input, Select } from '@ema-agent/ui';
 import { isProtocolForCapability, PROTOCOLS, PROVIDER_LIMITS, type Protocol } from '@ema-agent/providers/types';
@@ -7,7 +6,7 @@ import { useProviderStore } from '../../stores/provider.js';
 import { PROTOCOL_LABELS, type ModelCapability } from '../../api/providers.js';
 import { showToast } from '../../lib/notifications/toast.js';
 
-/** 该能力支持的协议词表（每个能力词表至少一档，空 = 调用方传了非法能力）。 */
+/** 该能力支持的协议词表(每个能力词表至少一档, 空 = 调用方传了非法能力). */
 function protocolsOf(capability: ModelCapability): Protocol[] {
   const protocols = PROTOCOLS.filter((p) => isProtocolForCapability(capability, p));
   if (protocols.length === 0) throw new Error(`能力 ${capability} 没有可用协议`);

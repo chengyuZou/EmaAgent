@@ -1,4 +1,4 @@
-// 文件系统按需读目录; 官方 Trees 管理路径、展开、搜索、选择和虚拟行, 滚动修复共用依赖 patch.
+// 文件系统按需读目录; 官方 Trees 管理路径, 展开, 搜索, 选择和虚拟行, 滚动修复共用依赖 patch.
 import { memo, useCallback, useEffect, useRef, useState, type JSX } from 'react';
 import { FileTree, useFileTree } from '@pierre/trees/react';
 import { Button, Input } from '@ema-agent/ui';

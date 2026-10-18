@@ -1,4 +1,3 @@
-// 在 Server 启动前准备随包角色和模型目录.
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -31,8 +30,7 @@ fn install_models_catalog(source: &Path, destination: &Path) -> Result<(), Strin
 }
 
 /// 返回是否需要由 Server 初始化内置角色数据库行.
-/// `profile.db` 是角色配置的事实源 它已经存在时不再复制或补种内置角色
-/// 因而用户主动删除艾玛后 后续启动不会把她恢复出来
+/// `profile.db` 已存在时不再复制或补种内置角色, 避免恢复用户主动删除的角色.
 pub async fn prepare_builtin_characters(app: &AppHandle) -> Result<bool, String> {
     let profile_root = profile_root()?;
     if profile_root.join("profile.db").exists() {

@@ -1,6 +1,3 @@
-/* 工具行统一 chrome：24px 单行、leading 16px 槽（variant 图标 ↔ chevron hover 渐变、
-   终态点替换）、摘要截断、运行中整行扫光（复用 .ema-shimmer）。 */
-
 .ema-tool-row {
   display: flex;
   align-items: center;
@@ -10,7 +7,6 @@
   text-align: left;
   position: relative;
   border-radius: var(--ema-radius-sm);
-  /* 行级 hover:整行浅底 + 文字提一档(与 leading 槽 chevron 显现配套)。 */
   transition: background-color var(--ema-duration-fast) var(--ema-ease),
               color var(--ema-duration-fast) var(--ema-ease);
 }
@@ -238,7 +234,7 @@
 .ema-tool-row:hover .ema-tool-row-icon { opacity: 0; }
 .ema-tool-row:hover .ema-tool-row-chevron { opacity: 1; }
 
-/* 展开态保持 chevron（比 hover 更优先） */
+/* 展开态保持 chevron(比 hover 更优先) */
 .ema-tool-row[aria-expanded="true"] .ema-tool-row-icon { opacity: 0; }
 .ema-tool-row[aria-expanded="true"] .ema-tool-row-chevron { opacity: 1; }
 
@@ -266,7 +262,7 @@
   }
 }
 
-/* 通用 Tool 内容比正文更紧凑, 但沿用同一套内容字体、代码字体和语法色. */
+/* 通用 Tool 内容比正文更紧凑, 但沿用同一套内容字体, 代码字体和语法色. */
 .ema-tool-field-list {
   display: grid;
   gap: var(--ema-space-0_5);

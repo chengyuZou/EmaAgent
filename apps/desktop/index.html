@@ -17,14 +17,13 @@
         color:            #f5f5f5;
         -webkit-font-smoothing: antialiased;
       }
-      /* Disable right-click context menu in production app */
+      /* 舞台按角色表面交互, 不选择页面文字. */
       body { user-select: none; }
     </style>
   </head>
   <body>
-    <!-- Cubism Core: closed-source Live2D runtime. MUST load before any
-         pixi-live2d-display import so the module finds window.Live2DCubismCore.
-         Vendored at public/cubism/ since the official CDN is rate-limited. -->
+    <!-- Cubism Core 必须早于 Live2D 模块加载, 模块初始化时读取 window.Live2DCubismCore.
+         文件由本地 public/cubism 提供, 发布时检查许可运行库的哈希, 不从 CDN 加载. -->
     <script src="/cubism/live2dcubismcore.min.js"></script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>

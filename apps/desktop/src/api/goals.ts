@@ -1,4 +1,3 @@
-// Goal 管理与 Data 历史查询共用 Route 契约, 不镜像目标状态或自动重试旧版本操作.
 import type { InferRequestType } from 'hono/client';
 import { rpcClient, readRpcJson, readRpcVoid, type RpcClient, type RpcJson } from './client.js';
 

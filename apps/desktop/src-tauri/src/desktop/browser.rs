@@ -1,4 +1,3 @@
-// 创建附着于聊天窗口的原生网页视图，并处理导航、尺寸和显隐。
 use serde::{Deserialize, Serialize};
 use tauri::{
     webview::{NewWindowResponse, PageLoadEvent, WebviewBuilder},
@@ -40,7 +39,7 @@ pub fn open(
     let parsed = parse_url(&url)?;
     let label = browser_label(&browser_id);
     if let Some(_webview) = window.app_handle().get_webview(&label) {
-        // 显隐由前端 set_browser_visible 单点同步，open 不碰。
+        // 显隐由前端 set_browser_visible 单点同步,open 不碰.
         set_bounds(&window, &browser_id, bounds)?;
         return Ok(());
     }
@@ -91,8 +90,8 @@ pub fn open(
             LogicalSize::new(bounds.width.max(1.0), bounds.height.max(1.0)),
         )
         .map_err(|error| error.to_string())?;
-    // 子 WebView 创建即默认可见；显隐由前端 set_browser_visible 单点同步，
-    // 先隐藏避免非激活标签被恢复时在窗口上闪现一帧。
+    // 子 WebView 创建即默认可见; 显隐由前端 set_browser_visible 单点同步,
+    // 先隐藏避免非激活标签被恢复时在窗口上闪现一帧.
     webview.hide().map_err(|error| error.to_string())?;
     Ok(())
 }

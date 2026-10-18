@@ -1,4 +1,3 @@
-// 运行时展示当前调用用量, 空闲时估算当前配置下的 Prompt, 工具与有效历史.
 import { useEffect, useMemo, useState, type JSX } from 'react';
 import { Tooltip } from '@ema-agent/ui';
 import { sessionsApi, type SessionContextEstimate } from '../../../api/sessions.js';

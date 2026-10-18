@@ -1,5 +1,3 @@
-// 渲染直接以数字保存的参数, 不承担单位换算或业务范围定义.
-
 import { useEffect, useState, type JSX } from 'react';
 import { Tooltip, Button, Input } from '@ema-agent/ui';
 import type { SettingApply } from '../../../api/settings.js';

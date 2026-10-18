@@ -1,4 +1,3 @@
-// SessionSidePanel 按 Goal ID 打开的编辑页. 正文草稿独立于事件更新的 Goal 事实.
 import { useEffect, useRef, useState, type JSX } from 'react';
 import { Button, IconButton, Textarea, Tooltip } from '@ema-agent/ui';
 import { goalsApi, type Goal } from '../../../../api/goals.js';

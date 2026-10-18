@@ -1,8 +1,6 @@
-// 组装角色舞台窗口, Live2D, 权限提示与桌面交互入口.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CharacterStagePresentation } from '@ema-agent/characters';
 import { Tooltip } from '@ema-agent/ui';
-import './styles/index.css';
 import {
   CharacterStage,
   type ActiveLive2DStage,
@@ -24,8 +22,6 @@ import { resolveConfiguredEventNotification } from './lib/notifications/eventNot
 import { showToast } from './lib/notifications/toast.js';
 import { handleCharacterSystemEvent } from './stores/character.js';
 import { handleSettingsSystemEvent, useSettingsStore } from './stores/settings.js';
-
-// 系统鼠标驱动视线与 Dock, 点击穿透不会切断跟随或隐藏角色.
 
 export function App(): React.JSX.Element {
   const stageSuspended = useWindowSuspension();
@@ -87,33 +83,14 @@ export function App(): React.JSX.Element {
     setStagePresentation((current) => (
       current?.characterName === activeCharacterName ? current : null
     ));
-    const presentationStartedAt = performance.now();
-    void tauriBridge.reportLive2dDiagnostic(
-      'presentation_loading',
-      activeCharacterName,
-      null,
-    );
     void charactersApi.presentation(activeCharacterName)
       .then((presentation) => {
         if (requestSequence === stageRequestSequence.current) {
-          void tauriBridge.reportLive2dDiagnostic(
-            'presentation_loaded',
-            activeCharacterName,
-            presentation.status === 'live2d' ? presentation.resource.name : null,
-            (performance.now() - presentationStartedAt) / 1000,
-          );
           setStagePresentation(presentation);
         }
       })
       .catch((error: unknown) => {
         if (requestSequence === stageRequestSequence.current) {
-          void tauriBridge.reportLive2dDiagnostic(
-            'presentation_failed',
-            activeCharacterName,
-            null,
-            (performance.now() - presentationStartedAt) / 1000,
-            String(error),
-          );
           console.error('[stage] 角色呈现读取失败', activeCharacterName, error);
         }
       });
@@ -133,34 +110,14 @@ export function App(): React.JSX.Element {
     const unlistenPreview = tauriBridge.listenLive2dPreview((command) => {
       const stage = activeStage.current;
       if (!stage) {
-        void tauriBridge.reportLive2dDiagnostic(
-          'preview_ignored',
-          useCharacterStore.getState().activeName,
-          null,
-        );
         return;
       }
       if (command.type === 'expression') {
-        void tauriBridge.reportLive2dDiagnostic(
-          'preview_expression',
-          stage.characterName,
-          stage.modelName,
-        );
         stage.handle.setExpression(command.expression);
         setSelectedExpression(command.expression);
       } else if (command.type === 'motion') {
-        void tauriBridge.reportLive2dDiagnostic(
-          'preview_motion',
-          stage.characterName,
-          stage.modelName,
-        );
         stage.handle.playMotion(command.group, command.index);
       } else {
-        void tauriBridge.reportLive2dDiagnostic(
-          'preview_placement',
-          stage.characterName,
-          stage.modelName,
-        );
         stage.handle.setPlacement(
           command.stageScale,
           command.stageOffsetX,
@@ -215,8 +172,6 @@ export function App(): React.JSX.Element {
     </>
   );
 }
-
-// 视觉全部归 styles 的 .ema-pet-glow-border, 颜色 token 跟随当前生效 hue, 呼吸节奏不变.
 
 function GlowBorder(): React.JSX.Element {
   return <div className="ema-pet-glow-border" />;

@@ -1,9 +1,3 @@
-/**
- * BindingsTab — grid of module cards → detail view per module (AIRI-style).
- *
- * Level 1: 2-column card grid (one card per BindingModule).
- * Level 2: single-select — provider cards (horizontal scroll) → model grid (2-col).
- */
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Button,
@@ -18,7 +12,6 @@ import {
   providersApi,
   type AvailableModel,
   type BindingModule,
-  type ModelCapability,
 } from '../../api/providers.js';
 import { useProviderStore } from '../../stores/provider.js';
 import { PageHeader } from '../shared/PageHeader.js';
@@ -26,7 +19,6 @@ import { showToast } from '../../lib/notifications/toast.js';
 import { subscribeSystemEvent } from '../../lib/events/systemEventDispatcher.js';
 import { MODEL_BINDING_CAPABILITIES } from '@ema-agent/providers/types';
 
-// ── Constants ─────────────────────────────────────────────────────────────────
 
 const MODULES: Array<{ id: BindingModule; label: string; desc: string }> = [
   { id: 'memory-llm',     label: 'Memory',        desc: '记忆提取与整合' },
@@ -42,7 +34,6 @@ const CAP_LABELS: Record<string, string> = {
   llm: 'LLM', embed: 'Embed', rerank: 'Rerank', tts: 'TTS', stt: 'STT', vision: 'Vision',
 };
 
-// Capability icons — mirror the ProvidersTab section icons.
 const CAP_ICON: Record<string, string> = {
   llm:      'i-solar:chat-square-like-bold-duotone',
   embed:    'i-solar:structure-bold-duotone',
@@ -62,7 +53,6 @@ function modelBadge(m: AvailableModel): string {
   return '';
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────────
 
 function ProviderCardRow({
   providerIds,
@@ -89,7 +79,6 @@ function ProviderCardRow({
             className={`group flex-shrink-0 rounded-xl border-2 min-w-[180px] ema-material-card ema-glass-weak ema-card-decorate ema-card-decorate--grid hover:border-[var(--ema-primary)] ${isSel ? 'shadow-[var(--ema-shadow-2)]' : 'hover:shadow-[var(--ema-shadow-2)]'}`}
             onClick={() => onSelect(pcId)}
           >
-            {/* Radio dot */}
             <div className="flex items-center gap-2 mb-2">
               <RadioDot selected={isSel} />
               <span className={`text-sm font-medium truncate ${
@@ -114,17 +103,15 @@ function ProviderCardRow({
   );
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
 
 export function BindingsTab(): JSX.Element {
   const [view, setView] = useState<'grid' | 'detail'>('grid');
-  // 未进入 detail 前没有选中模块（grid 视图不读它），不挂假值。
+  // 未进入 detail 前没有选中模块(grid 视图不读它), 不挂假值.
   const [activeModule, setActiveModule] = useState<BindingModule | null>(null);
   const [pool, setPool] = useState<AvailableModel[]>([]);
   const [loading, setLoading] = useState(false);
   const [savingKey, setSavingKey] = useState<string | null>(null);
 
-  // Detail-only state
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -137,13 +124,11 @@ export function BindingsTab(): JSX.Element {
     return record ? resolveProviderIconClass(record.iconId) : undefined;
   }, [allProviders]);
 
-  // Providers that have models in the pool
   const poolProviderIds = useMemo(
     () => [...new Set(pool.map((m) => m.providerId))],
     [pool],
   );
 
-  // ── Load pool for the active module ──────────────────────────────────────────
   useEffect(() => {
     if (!activeModule || !requiredCap) return;
     let current = true;
@@ -180,7 +165,6 @@ export function BindingsTab(): JSX.Element {
     };
   }, [activeModule, requiredCap]);
 
-  // ── Actions ────────────────────────────────────────────────────────────────
 
   const goDetail = useCallback((mod: BindingModule) => {
     setActiveModule(mod);
@@ -218,7 +202,6 @@ export function BindingsTab(): JSX.Element {
     }
   }, [activeModule]);
 
-  // ── Filtered models ────────────────────────────────────────────────────────
   const visibleModels = useMemo(() => {
     let list = pool;
     if (selectedProviderId) list = list.filter((m) => m.providerId === selectedProviderId);
@@ -232,7 +215,6 @@ export function BindingsTab(): JSX.Element {
   const currentBinding = activeModule ? (allBindings[activeModule] ?? null) : null;
   const boundKey = currentBinding ? `${currentBinding.providerId}|${currentBinding.modelId}` : null;
 
-  // ── Grid view ──────────────────────────────────────────────────────────────
   if (view === 'grid') {
     return (
       <div className="flex flex-col gap-6">
@@ -250,7 +232,6 @@ export function BindingsTab(): JSX.Element {
                 style={{ '--stagger-i': i } as React.CSSProperties}
                 onClick={() => goDetail(m.id)}
               >
-                {/* Bound status dot (top-right) — mirrors the provider card dot */}
                 {isBound && (
                   <span
                     className="absolute top-3 right-3 size-2 rounded-full bg-[var(--ema-success)]"
@@ -273,15 +254,12 @@ export function BindingsTab(): JSX.Element {
     );
   }
 
-  // ── Detail view ────────────────────────────────────────────────────────────
-  // detail 只能由 goDetail 进入（必然带模块），空值只是类型上的不可能分支。
   if (!activeModule || !requiredCap) return <></>;
   const moduleLabel = MODULES.find((m) => m.id === activeModule)?.label ?? activeModule;
   const cap = requiredCap;
 
   return (
     <div className="flex flex-col gap-6 ema-slide-right">
-      {/* Header */}
       <div className="flex items-center gap-4">
         <IconButton
           label="返回模型绑定"
@@ -311,7 +289,6 @@ export function BindingsTab(): JSX.Element {
         <div className="text-[var(--ema-text-tertiary)] text-sm">加载中...</div>
       ) : (
         <>
-          {/* ── Current binding ──────────────────────────────────────────── */}
           <section className="flex flex-col gap-2">
             <h3 className="text-sm text-[var(--ema-text-tertiary)]">已绑定</h3>
             {currentBinding ? (
@@ -342,7 +319,6 @@ export function BindingsTab(): JSX.Element {
             )}
           </section>
 
-          {/* ── Pool area ────────────────────────────────────────────────── */}
           {pool.length === 0 ? (
             <div className="bg-[var(--ema-surface-1)] border border-[var(--ema-border)] rounded-xl px-4 py-6 text-center">
               <p className="text-[var(--ema-text-tertiary)] text-sm">暂无可用的 {CAP_LABELS[cap] ?? cap} 模型</p>
@@ -352,7 +328,6 @@ export function BindingsTab(): JSX.Element {
             </div>
           ) : (
             <>
-              {/* Provider cards */}
               <section className="flex flex-col gap-3">
                 <h3 className="text-sm text-[var(--ema-text-tertiary)]">服务来源</h3>
                 <ProviderCardRow
@@ -363,7 +338,6 @@ export function BindingsTab(): JSX.Element {
                 />
               </section>
 
-              {/* Model grid with search */}
               <section className="flex flex-col gap-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm text-[var(--ema-text-tertiary)]">模型</h3>
@@ -372,7 +346,6 @@ export function BindingsTab(): JSX.Element {
                   </span>
                 </div>
 
-                {/* Search */}
                 <div className="relative w-full">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2
                                    i-solar:magnifer-line-duotone w-4 h-4
@@ -386,7 +359,6 @@ export function BindingsTab(): JSX.Element {
                   />
                 </div>
 
-                {/* 2-column model grid */}
                 <div className="grid grid-cols-2 gap-3">
                   {visibleModels.map((m) => {
                     const key = `${m.providerId}|${m.modelId}`;
@@ -405,7 +377,6 @@ export function BindingsTab(): JSX.Element {
                         onClick={() => void handleSelect(m.providerId, m.modelId)}
                       >
                         <div className="flex items-start gap-2.5">
-                          {/* Radio dot */}
                           <RadioDot selected={isBound} className="mt-0.5" />
                           <div className="min-w-0 flex flex-col gap-0.5">
                             <span className={`text-sm truncate ${

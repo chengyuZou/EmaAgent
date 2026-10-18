@@ -1,5 +1,3 @@
-// 角色与资源的展示状态:name 是唯一身份,不存在 id/enabled/isBuiltin。
-// 每次写操作成功后整体重读列表(角色数据量小,重读比分片合并简单且不会漂)。
 import { create } from 'zustand';
 import type { AppEvent } from '@ema-agent/server/application/appEvents.js';
 import {
@@ -17,13 +15,13 @@ import {
 
 export interface CharacterStoreState {
   characters:        CharacterSummary[];
-  /** 当前角色的稳定 name;全局恰好一个。 */
+  /** 当前角色的稳定 name;全局恰好一个. */
   activeName:        string | null;
   loading:           boolean;
   error:             string | null;
 
   load(): Promise<void>;
-  /** 切换当前角色;活跃 Session 期间的 409 原样上抛。 */
+  /** 切换当前角色;活跃 Session 期间的 409 原样上抛. */
   activate(name: string): Promise<void>;
   create(input: CharacterCreateInput): Promise<Character>;
   patch(name: string, input: CharacterPatchInput): Promise<void>;
@@ -46,7 +44,7 @@ export interface CharacterStoreState {
 }
 
 export const useCharacterStore = create<CharacterStoreState>((set, get) => {
-  /** 写操作统一节拍:成功后重读列表,失败把错误留给页面,409 原样上抛给确认流。 */
+  // 保存成功后重新读取列表; 保存失败时把错误交给页面, 包括需要用户确认的 409.
   const mutate = async <T>(
     errorLabel: string,
     action: () => Promise<T>,
@@ -102,7 +100,6 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => {
       await mutate('删除角色失败', () => charactersApi.remove(name));
     },
 
-    // ── Live2D ────────────────────────────────────────────────────────────
 
     async setPrimaryLive2d(characterName, live2dName) {
       await mutate('设置主要模型失败', () => charactersApi.setPrimaryLive2d(characterName, live2dName));
@@ -120,7 +117,6 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => {
       await mutate('删除模型失败', () => charactersApi.deleteLive2d(characterName, live2dName));
     },
 
-    // ── 插图 ──────────────────────────────────────────────────────────────
 
     async setPrimaryIllustration(characterName, illustrationName) {
       await mutate('设置主要插图失败', () => charactersApi.setPrimaryIllustration(characterName, illustrationName));
@@ -139,7 +135,6 @@ export const useCharacterStore = create<CharacterStoreState>((set, get) => {
       await mutate('删除插图失败', () => charactersApi.deleteIllustration(characterName, illustrationName));
     },
 
-    // ── 参考音频 ──────────────────────────────────────────────────────────
 
     async setPrimaryVoice(characterName, voiceName) {
       await mutate('设置主要参考音频失败', () => charactersApi.setPrimaryVoice(characterName, voiceName));

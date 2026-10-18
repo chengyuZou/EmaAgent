@@ -1,5 +1,3 @@
-// 把后端字节值以 MiB 展示和编辑.
-
 import type { JSX } from 'react';
 import type { SettingApply } from '../../../api/settings.js';
 import { NumberSetting } from './NumberSetting.js';

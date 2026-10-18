@@ -1,6 +1,5 @@
-/* 桌宠主窗口边缘呼吸光(App.tsx GlowBorder), 不参与鼠标命中。
-   辉光放 ::before 常跑呼吸, 元素只管 hover 透明度: 否则 animation 首帧压过
-   transition, 入场从 0 硬跳到 0.35。 */
+/* 呼吸动画只改伪元素, 外层控制鼠标进入时的透明度过渡.
+   两者若同时写同一元素的 opacity, 动画首帧会覆盖淡入过程. */
 
 .ema-pet-glow-border {
   position: fixed;
@@ -52,7 +51,7 @@ body[data-pet-pointer-inside='true'] .ema-server-status {
   pointer-events: auto;
 }
 
-/* 平时不可见但可被键盘聚焦: focus 时强制可见并给焦点环。 */
+/* 平时不可见但可被键盘聚焦: focus 时强制可见并给焦点环. */
 .ema-server-status:focus-visible {
   opacity: 1;
   pointer-events: auto;

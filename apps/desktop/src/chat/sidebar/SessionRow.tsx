@@ -187,7 +187,7 @@ export function SessionRow({
         disabled={menuOpen}
         side="right"
         align="start"
-        // 越过行尾按钮、间距和内边距, 让卡片从会话行外侧出现.
+        // 越过行尾按钮, 间距和内边距, 让卡片从会话行外侧出现.
         sideOffset={44}
       >
         <button

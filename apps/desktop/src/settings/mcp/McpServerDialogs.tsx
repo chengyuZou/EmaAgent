@@ -1,4 +1,3 @@
-// MCP 的 JSON 导入对话框与添加/编辑服务器对话框:状态自包含,主装配只负责开关。
 import { useState, type CSSProperties, type JSX } from 'react';
 import {
   Badge, Button, Callout, Dialog, Divider, Field, Input, Select, Textarea, ToolSpecItem,
@@ -16,7 +15,6 @@ const TRANSPORT_OPTIONS = [
   { value: 'http',  label: 'Streamable HTTP'  },
 ];
 
-// ── 表单 ↔ 后端配置的无损双向转换（仅本文件消费） ──────────────────────────────
 
 type McpTransportType = NonNullable<McpServerConfig['type']>;
 
@@ -71,7 +69,7 @@ function buildMcpServerConfig(form: McpServerFormState): McpServerConfig {
     return {
       type: 'stdio',
       command: form.command.trim(),
-      // argv 的每个元素都有独立语义，空格、引号、反斜杠与空字符串均原样保留。
+      // argv 的每个元素都有独立语义, 空格, 引号, 反斜杠与空字符串均原样保留.
       args: [...form.args],
       env: mcpPairsToRecord(form.env),
       ...(form.envPassthrough.trim() ? { envPassthrough: form.envPassthrough.split(',').map(value => value.trim()).filter(Boolean) } : {}),
@@ -92,7 +90,7 @@ function mcpServerConfigToForm(
   name: string,
   config: McpServerConfig,
 ): McpServerFormState {
-  // http 变体的 type 是必填字面量,用它做判别;stdio 的 type 在输入侧可缺省。
+  // http 变体的 type 是必填字面量,用它做判别;stdio 的 type 在输入侧可缺省.
   if (config.type === 'http') {
     return {
       name,
@@ -122,7 +120,6 @@ function mcpServerConfigToForm(
   };
 }
 
-// ── Import from JSON dialog ───────────────────────────────────────────────────
 
 export function McpImportDialog({
   open,
@@ -234,7 +231,6 @@ export function McpImportDialog({
   );
 }
 
-// ── Add / edit-server dialog ──────────────────────────────────────────────────
 
 export function McpServerFormDialog({
   open,
@@ -242,7 +238,7 @@ export function McpServerFormDialog({
   onOpenChange,
 }: {
   open: boolean;
-  /** 编辑目标;null 表示新建。父级以 key 区分实例,切换时整体重挂重置表单。 */
+  /** 编辑目标;null 表示新建.父级以 key 区分实例,切换时整体重挂重置表单. */
   editing: McpServerSummary | null;
   onOpenChange(open: boolean): void;
 }): JSX.Element {
@@ -286,8 +282,7 @@ export function McpServerFormDialog({
     setAdding(true);
     setAddError(null);
     try {
-      // register() upserts by name; editing re-registers + connects so the new
-      // env/headers (API keys, Bearer token) take effect immediately.
+      // 保存后 Server 重新连接, 新的环境变量和请求头随这次连接生效.
       await useMcpStore.getState().save(form.name.trim(), buildMcpServerConfig(form), editing?.provenance);
       showToast(editing ? `已更新 ${form.name}` : `已注册 ${form.name}`, { variant: 'success' });
       closeAdd();

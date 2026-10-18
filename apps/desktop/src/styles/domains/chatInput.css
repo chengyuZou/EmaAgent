@@ -1,6 +1,3 @@
-/* ChatInput 输入卡与 dock 的列对齐, 不在输入区上方添加底色渐变.
-   token 全部走语义层, 亮暗主题零覆写. */
-
 .ema-composer-card {
   border: 1px solid var(--ema-border);
   border-radius: var(--ema-radius-xl);
@@ -10,13 +7,12 @@
               box-shadow var(--ema-duration-fast) var(--ema-ease);
 }
 
-/* 悬停=聚焦的降档预告: 边 35% + 3px 同色 3.5% 光晕; 写在 :focus-within 前, 聚焦仍是最亮一档. */
+/* hover 写在 focus-within 前, 键盘聚焦时仍使用更明显的边框与光晕. */
 .ema-composer-card:hover {
   border-color: color-mix(in srgb, var(--ema-primary) 35%, transparent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--ema-primary) 3.5%, transparent), var(--ema-shadow-2);
 }
 
-/* 聚焦=主题色边 + 3px 同色 6% 光晕,保留原影(比只换边色更有"激活感"). */
 .ema-composer-card:focus-within {
   border-color: color-mix(in srgb, var(--ema-primary) 60%, transparent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--ema-primary) 6%, transparent), var(--ema-shadow-2);

@@ -1,4 +1,3 @@
-// 列表只读取附件信息, 点击后的预览由所在页面打开.
 import { useEffect, type CSSProperties, type JSX } from 'react';
 import { Tooltip, Button, ScrollArea } from '@ema-agent/ui';
 

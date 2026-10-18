@@ -1,6 +1,3 @@
-/* CharacterStage.tsx 使用: Live2D/立绘资源层, 立绘 crossfade 层, 加载占位环。
-   (气泡样式不归本文件, 见 SpeechBubble.tsx 与 stage.css。) */
-
 .ema-character-stage-resource,
 .ema-character-stage-placeholder {
   position: absolute;
@@ -19,7 +16,7 @@
   transition: opacity var(--ema-duration-slow) var(--ema-ease);
 }
 
-/* 消费方只写 data-state='active', transition 无触发源; 上台入场改挂 animation。 */
+/* 资源挂载时已经是 active, 没有先前状态可供 transition 过渡, 因此使用入场动画. */
 .ema-character-stage-resource[data-state='active'] {
   opacity: 1;
   pointer-events: auto;
@@ -34,7 +31,7 @@
   transition: opacity var(--ema-duration-slow) var(--ema-ease);
 }
 
-/* crossfade 要双向: 旧图淡出, 新图淡入(动画只挂 active, 加到基类会覆盖 outgoing 的 0)。 */
+/* crossfade 要双向: 旧图淡出, 新图淡入(动画只挂 active, 加到基类会覆盖 outgoing 的 0). */
 .ema-character-stage-illustration-layer[data-state='active'] {
   animation: ema-fade-in var(--ema-duration-slow) var(--ema-ease) both;
 }
@@ -62,7 +59,7 @@
   width: 42%;
   aspect-ratio: 1;
   border-radius: 50%;
-  /* 压暗放子环: 父级 fade-in 的 fill:both 会把同属性声明钉成终值 1, 0.58 写父级是死代码。 */
+  /* 父层的淡入动画最终保持 opacity: 1, 占位环的半透明效果必须写在子层. */
   opacity: 0.58;
   border: 1px solid var(--ema-border);
   background: radial-gradient(

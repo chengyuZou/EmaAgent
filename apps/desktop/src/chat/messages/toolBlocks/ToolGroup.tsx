@@ -1,5 +1,3 @@
-// 单个普通 Tool 直接显示调用卡片, 多个连续 Tool 才折叠成一行摘要.
-
 import { memo, type JSX } from 'react';
 import { ToolCallBlock } from './ToolCallBlock.js';
 import { useCollapsibleBody, useMessageExpansion } from '../messageExpansion.js';

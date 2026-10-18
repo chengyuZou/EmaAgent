@@ -1,9 +1,7 @@
-// L1 角色卡网格:封面=当前舞台资源的真图(Live2D preview.png/主立绘/blank 素底),
-// ●○切换、悬停删除、新建卡收尾。当前角色有工作在跑时拒绝切换/删除(先停再来)。
 import { useEffect, useMemo, useState, type JSX } from 'react';
 import {
   Tooltip,
-  Button, Callout, CursorFloating, Dialog, IconButton, Input, ScrollArea, SearchField, Skeleton,
+  Button, CursorFloating, Dialog, IconButton, Input, ScrollArea, SearchField, Skeleton,
 } from '@ema-agent/ui';
 import { ServerApiError } from '../../api/client.js';
 import {
@@ -27,7 +25,6 @@ export function CharacterGridPage({ onOpen }: { onOpen(name: string): void }): J
     void useCharacterStore.getState().load();
   }, []);
 
-  // 搜索角色
   const filtered = useMemo(() => {
     const keyword = search.trim().toLowerCase();
     if (!keyword) return characters;
@@ -37,8 +34,7 @@ export function CharacterGridPage({ onOpen }: { onOpen(name: string): void }): J
     );
   }, [characters, search]);
 
-  // 如果当前角色有Session在跑 或者 TTS 仍在生成则拒绝激活
-  // 但 Memory 后台清理不会阻塞删除
+  // 是否允许切换由 Server 按当前角色的 Turn 和语音生成状态判断.
   async function handleActivate(name: string): Promise<void> {
     try {
       await useCharacterStore.getState().activate(name);
@@ -54,8 +50,7 @@ export function CharacterGridPage({ onOpen }: { onOpen(name: string): void }): J
 
   const [pendingDelete, setPendingDelete] = useState<CharacterSummary | null>(null);
 
-  // 如果当前角色有Session在跑 或者 TTS 仍在生成则删除拒绝
-  // 但 Memory 后台清理不会阻塞删除
+  // 删除同样由 Server 检查角色是否仍在使用, Relationship Memory 单独保留.
   async function confirmDelete(): Promise<void> {
     const character = pendingDelete;
     if (!character) return;
@@ -150,7 +145,6 @@ export function CharacterGridPage({ onOpen }: { onOpen(name: string): void }): J
   );
 }
 
-// ── 单张角色卡 ────────────────────────────────────────────────────────────────
 
 function CharacterCard({
   character, index, isActive, canDelete, onOpen, onActivate, onDelete,
@@ -248,7 +242,6 @@ function CharacterCover({ character }: { character: CharacterSummary }): JSX.Ele
   );
 }
 
-// ── 新建 ─────────────────────────────────────────────────────────────────────
 
 function CreateCharacterDialog({
   open, onOpenChange, onCreated,

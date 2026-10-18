@@ -1,4 +1,3 @@
-// 启动和监控 Server 子进程, 向 WebView 提供当前端口和认证信息.
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};

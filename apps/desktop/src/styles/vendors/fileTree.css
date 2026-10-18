@@ -1,4 +1,4 @@
-/* Review、工作区和 Memory 共用官方树主题; 横滚只属于整个树视口, 尺寸修复在依赖 patch. */
+/* Review, 工作区和 Memory 共用官方树主题; 横滚只属于整个树视口, 尺寸修复在依赖 patch. */
 :host {
   --trees-bg-override: transparent;
   --trees-fg-override: var(--ema-text-secondary);

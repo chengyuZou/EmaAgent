@@ -1,4 +1,3 @@
-// 管理前端 Session 列表, 执行目录, 权限与下一轮模型偏好.
 import { create } from 'zustand';
 import {
   sessionsApi,
@@ -32,7 +31,6 @@ export function formatSessionTitle(title: string): string {
   return visible;
 }
 
-// ── 类型 ──────────────────────────────────────────────────────────────────────
 
 export interface SessionsState {
   pinned:   SessionListItem[];
@@ -55,7 +53,7 @@ export interface SessionStoreState {
   moveProjectInSidebar(id: string, input: ProjectSidebarMoveInput): Promise<void>;
   setCwd(id: string, cwd: string):                                  Promise<void>;
   setPermissionMode(id: string, permissionMode: PermissionMode): Promise<void>;
-  setTtsEnabled(id: string, ttsEnabled: boolean): Promise<void>;
+  setTTSEnabled(id: string, ttsEnabled: boolean): Promise<void>;
   /** 模型身份成对保存; 不支持推理的模型在同一请求里把强度设为 off. */
   setModel(id: string, providerId: string, modelId: string, reasoningEffort?: ReasoningEffort): Promise<void>;
   setReasoningEffort(id: string, reasoningEffort: ReasoningEffort): Promise<void>;
@@ -66,7 +64,6 @@ export interface SessionStoreState {
   deleteSession(id: string):                                     Promise<void>;
 }
 
-// ── 辅助 ───────────────────────────────────────────────────────────────────
 
 function emptySessions(): SessionsState {
   return { pinned: [], pinnedProjects: [], projects: [], recent: [], byId: new Map() };
@@ -135,7 +132,6 @@ const sessionPreferencesWriteChains = new Map<string, Promise<void>>();
 let sessionListRequestId = 0;
 let deletedDuringSessionListRead: Set<string> | null = null;
 
-// ── Store ─────────────────────────────────────────────────────────────────────
 
 export const useSessionStore = create<SessionStoreState>((set, get) => ({
   sessions:     emptySessions(),
@@ -234,7 +230,7 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
           };
         });
       } catch {
-        // 断线期间不猜测服务端是否保存成功；原显示值保持不动。
+        // 断线期间不猜测服务端是否保存成功; 原显示值保持不动.
       }
       set({ error: err instanceof Error ? err.message : '设置执行目录失败' });
       throw err;
@@ -268,7 +264,7 @@ export const useSessionStore = create<SessionStoreState>((set, get) => ({
     return writeSessionPreference(id, 'permissionMode', permissionMode);
   },
 
-  setTtsEnabled(id, ttsEnabled) {
+  setTTSEnabled(id, ttsEnabled) {
     return writeSessionPreference(id, 'ttsEnabled', ttsEnabled);
   },
 

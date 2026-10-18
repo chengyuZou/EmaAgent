@@ -1,5 +1,3 @@
-// 持久化主题配置, 并在所有桌面窗口间同步应用.
-// 主题是 frontend.theme 设置值: 字段范围由 server 侧 zod schema 校验, 类型直接引用拥有方.
 import { useEffect } from 'react';
 import { create } from 'zustand';
 import { settingsApi } from '../api/settings.js';
@@ -25,17 +23,6 @@ export function normalizeLocalFontName(value: string): string {
 function resolveFontStack(family: string, fallback: string): string {
   const normalized = normalizeLocalFontName(family);
   return normalized ? `'${normalized}', ${fallback}` : fallback;
-}
-
-/** canvas 测量法探测字体是否真实安装, 用于设置页提示"未安装会回落" */
-export function isFontInstalled(family: string): boolean {
-  const ctx = document.createElement('canvas').getContext('2d');
-  if (!ctx) return true;
-  const probe = 'mmmmmmmmmmlli';
-  ctx.font = '72px monospace';
-  const baseline = ctx.measureText(probe).width;
-  ctx.font = `72px '${family}', monospace`;
-  return ctx.measureText(probe).width !== baseline;
 }
 
 function applyReadingFont(family: string): void {
@@ -149,7 +136,7 @@ export interface ThemeStoreState extends ThemeSettings {
   ready:  boolean;
 
   init(): Promise<void>;
-  /** 懒加载本机字体清单: 仅在用户点开字体选择器时拉取一次, 之后 memo; 取不到时保持空表(策展清单兜底). */
+  /** 打开字体选择器时才读取本机字体; 取不到时保留空表, 页面仍可显示内置推荐项. */
   ensureSystemFonts(): Promise<void>;
   setHue(hue: number): Promise<void>;
   setRadius(radius: number): Promise<void>;

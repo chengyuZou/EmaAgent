@@ -1,14 +1,3 @@
-// 在桌宠窗口显示不阻塞其他 Session 的精简 Permission 决策卡。
-//
-// 监听聊天窗口经 Tauri 中继的跨窗事件：
-//   decision:push    — 原始 permission_required / ask_user_required 事件 → 弹出精简卡
-//   decision:dismiss — 交互已决（toolCallId 锚）→ 卡片退场
-//
-// 只有 Permission 在桌宠窗口显示非阻塞 Toast；AskUser 是成批问答，桌宠窗口没有
-// viewedSessionId 无法渲染阻塞式卡片，由聊天窗口的 DecisionLayer 处理。
-//
-// 多个 Session 可以同时堆叠卡片. 按钮经 Session WebSocket 回答队首,
-// 不改变当前 TTS/Live2D 归属 Session。
 import { useEffect, useState } from 'react';
 import { Button } from '@ema-agent/ui';
 import { tauriBridge } from '../lib/tauri/tauriBridge.js';
@@ -20,10 +9,9 @@ import { DEFAULT_WALLPAPER_SETTINGS, WALLPAPER_SETTING_KEY } from '@ema-agent/se
 import { settingsApi } from '../api/settings.js';
 import { subscribeSystemEvent } from '../lib/events/systemEventDispatcher.js';
 
-/** decision:push 的载荷来自 Session 交互出口, 不依赖父 Turn 存活. */
+// 跨窗事件来自 Session 交互队列. AskUser 不显示卡片, 但仍参与队首排序.
 type DecisionPushEvent = PermissionRequiredEvent | AskUserRequiredEvent;
 
-// ── 根组件 ───────────────────────────────────────────────────────────────────
 
 export function PermissionToastLayer(): React.JSX.Element {
   const [wallpaper, setWallpaper] = useState<Pick<WallpaperSettings, 'enabled' | 'materialMode'>>({
@@ -63,7 +51,7 @@ export function PermissionToastLayer(): React.JSX.Element {
 
   useEffect(() => {
     const unlistenPush = tauriBridge.listenDecisionRequired((p: DecisionPushEvent) => {
-      // AskUser 只在聊天窗口处理；桌宠窗口不显示阻塞式问答。
+      // AskUser 只在聊天窗口处理; 桌宠窗口不显示阻塞式问答.
       setToasts((prev) => {
         if (prev.some((t) => t.toolCallId === p.toolCallId)) {
           return prev;
@@ -110,7 +98,6 @@ export function PermissionToastLayer(): React.JSX.Element {
   );
 }
 
-// ── 单张权限卡 ────────────────────────────────────────────────────────────────
 
 function PermissionCard({ toast, onDismiss }: {
   toast: PermissionRequiredEvent;
@@ -173,7 +160,6 @@ function PermissionCard({ toast, onDismiss }: {
   );
 }
 
-// ── 卡片外壳 ──────────────────────────────────────────────────────────────────
 
 function ToastCard({ sessionId, label, children }: { sessionId?: string; label: string; children: React.ReactNode }): React.JSX.Element {
   return (

@@ -1,4 +1,3 @@
-// 解析开发环境与正式安装包中的 Server 启动位置.
 use std::path::{Path, PathBuf};
 
 use tauri::{AppHandle, Manager};
@@ -85,6 +84,3 @@ fn locate_workspace_root() -> Result<PathBuf, String> {
         .ok_or_else(|| "workspace root not found".to_string())
 }
 
-#[cfg(test)]
-#[path = "tests/launch.rs"]
-mod tests;

@@ -1,5 +1,3 @@
-// 编辑结构化事件通知的开关、强调色、停留时间和文本截断长度。
-// 与其它参数页同章法:改动即存(用户覆盖表整表替换写回),行尾"恢复默认"=删该事件的覆盖键。
 import { useEffect, useState, type JSX } from 'react';
 import { Badge, Button, Callout, Input, Select, Spinner, Switch } from '@ema-agent/ui';
 import { useSettingsStore, type EventDisplayConfig } from '../../../stores/settings.js';
@@ -31,7 +29,7 @@ const DURATION_OPTIONS = [
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'failed';
 
-/** 原始覆盖表只接受对象;损坏形状当空表编辑。 */
+/** 原始覆盖表只接受对象;损坏形状当空表编辑. */
 function readOverrides(value: unknown): Record<string, EventDisplayConfig> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return {};
   return value as Record<string, EventDisplayConfig>;
@@ -85,7 +83,7 @@ export function EventDisplayParameters(): JSX.Element {
   const effective = eventDisplay;
   const current = overrides;
 
-  /** 整表替换写回:恢复默认的删除语义只有整表能表达。 */
+  /** 整表替换写回:恢复默认的删除语义只有整表能表达. */
   async function persist(next: Record<string, EventDisplayConfig>): Promise<void> {
     setSaveState('saving');
     try {
@@ -238,7 +236,7 @@ function EventRow(props: {
   );
 }
 
-/** 文本上限:本地草稿,失焦/回车提交;非法值回退并提示,不产生半保存状态。 */
+/** 文本上限:本地草稿,失焦/回车提交;非法值回退并提示,不产生半保存状态. */
 function TruncateField({
   disabled, value, onCommit,
 }: {

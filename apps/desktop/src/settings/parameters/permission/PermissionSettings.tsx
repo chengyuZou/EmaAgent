@@ -1,4 +1,3 @@
-// 编辑全局与已有项目的权限规则, 以及交互等待时间.
 import { useEffect, useState, type JSX } from 'react';
 import { Tooltip, Button, Callout, Input, Select, Spinner, Textarea } from '@ema-agent/ui';
 import { sessionsApi, type Project } from '../../../api/sessions.js';

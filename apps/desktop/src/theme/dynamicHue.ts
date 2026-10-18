@@ -1,5 +1,3 @@
-// 动态取色: 从当前角色封面立绘采样主色, 提取 oklch 色相.
-// 只在 hueDynamic 开启时被调用; 采样失败一律回退手动色相(返回 null).
 import { useCharacterStore } from '../stores/character.js';
 import { charactersApi } from '../api/characters.js';
 import { fetchServerObjectUrl } from '../api/serverFileUrl.js';
@@ -17,7 +15,7 @@ export async function sampleActiveCharacterHue(): Promise<number | null> {
     try {
       return await sampleImageHue(url);
     } finally {
-      // 采样完成后不再展示这张图片, 成功、失败都要释放临时 Object URL.
+      // 采样完成后不再展示这张图片, 成功, 失败都要释放临时 Object URL.
       URL.revokeObjectURL(url);
     }
   } catch {

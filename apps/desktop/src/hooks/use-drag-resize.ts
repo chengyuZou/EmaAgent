@@ -1,11 +1,11 @@
-// 拖拽调栏宽的统一手柄：pointer capture 跟随单元素、rAF 节流写尺寸；
-// 每次手势以起手时的渲染尺寸为基准（快速反复起手不回弹）。
+// 拖拽调栏宽的统一手柄: pointer capture 跟随单元素, rAF 节流写尺寸; 
+// 每次手势以起手时的渲染尺寸为基准(快速反复起手不回弹).
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 
 export interface DragResizeOptions {
-  /** 尺寸沿哪个轴变化：'x' 调宽、'y' 调高。 */
+  /** 尺寸沿哪个轴变化: 'x' 调宽, 'y' 调高. */
   axis: 'x' | 'y';
-  /** +1 = 指针正向移动增大尺寸；-1 = 反向（手柄在对侧边缘）。 */
+  /** +1 = 指针正向移动增大尺寸; -1 = 反向(手柄在对侧边缘). */
   sign: 1 | -1;
   getSize(): number;
   setSize(size: number): void;

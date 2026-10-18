@@ -1,5 +1,3 @@
-// 参考音频 Tab:行式列表(●主项/播放/展示名/时长/体积/⋯菜单);右上导入音频。
-// 导入后只允许改展示名;promptText/promptLang/时长/体积都是导入事实,不重传。
 import { useEffect, useState, type JSX } from 'react';
 import {
   Tooltip,
@@ -74,7 +72,6 @@ function usePlayingKey(): string | null {
 export function VoiceTab({ character }: { character: Character }): JSX.Element {
   const samples = character.voiceSamples;
   const [importOpen, setImportOpen] = useState(false);
-  const store = useCharacterStore();
 
   useEffect(() => {
     const unsubscribe = useMainNavigationStore.subscribe((state, previous) => {
@@ -216,7 +213,7 @@ function VoiceRow({ character, sample, index }: {
 
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  /** 本页正在试听的文件不能同时删除。 */
+  /** 本页正在试听的文件不能同时删除. */
   function handleDelete(): void {
     if (isThisPlaying) {
       showToast('这条正在试听中,停止后才能删除', { variant: 'warning' });
@@ -319,7 +316,6 @@ function VoiceRow({ character, sample, index }: {
   );
 }
 
-// ── 导入(必填 promptText/promptLang,是注册/克隆的事实输入) ───────────────────
 
 function ImportVoiceDialog({ character, open, onOpenChange }: {
   character: Character;

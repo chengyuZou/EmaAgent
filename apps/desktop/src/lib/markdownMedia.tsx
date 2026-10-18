@@ -130,7 +130,7 @@ const mediaComponents: ComponentProps<typeof MarkdownRendererProvider>['componen
 
 /**
  * 读取 Markdown 已解析的 img/a 标签, 不扫描普通文字或代码块中的路径.
- * 图片显示和音频播放各自负责; 此处只选组件, 提供文件目录、打开操作和页面是否启用.
+ * 图片显示和音频播放各自负责; 此处只选组件, 提供文件目录, 打开操作和页面是否启用.
  * 未提供的目录和文件打开操作从外层继承, 内层不能重新启用已隐藏页面的音频.
  */
 export function MarkdownMedia({ children, directory, onOpenFile, active = true }: MarkdownMediaProps): JSX.Element {

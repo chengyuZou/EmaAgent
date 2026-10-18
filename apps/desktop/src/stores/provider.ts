@@ -1,5 +1,3 @@
-// Provider 事实族单一入口：Provider 配置与业务位模型绑定。
-// 只存同窗口多组件订阅的两份共享状态；可用模型目录这类查询由各消费方直接调 API。
 import { create } from 'zustand';
 import type { AppEvent } from '@ema-agent/server/application/appEvents.js';
 import {

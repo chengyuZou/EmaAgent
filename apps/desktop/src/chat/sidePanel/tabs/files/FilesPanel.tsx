@@ -1,4 +1,3 @@
-// 同一个 Session 的文件标签共用浏览器和目录模型, 每个文件预览按资源 ID 保留.
 import { memo, useCallback, useMemo, useState, type JSX } from 'react';
 import { IconButton, Select, Tooltip } from '@ema-agent/ui';
 import { useSessionStore } from '../../../../stores/session.js';

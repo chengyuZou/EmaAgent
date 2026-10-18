@@ -1,9 +1,3 @@
-/**
- * Tauri 桥接层, 集中调用 IPC 与原生窗口 API.
- *
- * 所有 `@tauri-apps/api/*` 的导入都集中在这里.
- * 普通浏览器不加载 Tauri 模块, 需要原生能力的操作由具名方法处理.
- */
 import type { AppEvent } from '@ema-agent/server/application/appEvents.js';
 import type { ThemeSettings } from '@ema-agent/server/settings/themeSetting.js';
 
@@ -13,14 +7,12 @@ import type {
   BrowserEvent,
   DecisionRequiredEvent,
   DesktopSettingsPayload,
-  Live2dDiagnosticEvent,
   Live2dPreviewCommand,
   OpenTerminalInput,
   PetPointerEvent,
   TerminalEvent,
 } from './types.js';
 
-// ── Tauri 环境检测 ─────────────────────────────────────────────────────────
 
 let _detected: boolean | null = null;
 
@@ -31,14 +23,11 @@ function detectTauri(): boolean {
   } catch {
     _detected = false;
   }
-  if (!_detected) {
-    console.debug('[tauri-bridge] plain browser mode');
-  }
   return _detected;
 }
 
-// ── 懒加载导入 ──────────────────────────────────────────────────────────────
 
+// 普通浏览器不能使用原生 IPC, 只有检测到 Tauri 后才加载这些模块.
 type TauriCore   = typeof import('@tauri-apps/api/core');
 type TauriEvent  = typeof import('@tauri-apps/api/event');
 type TauriDialog = typeof import('@tauri-apps/plugin-dialog');
@@ -75,7 +64,7 @@ async function getCore(): Promise<TauriCore | null> {
     _core = await import('@tauri-apps/api/core');
     return _core;
   } catch (cause) {
-    throw new Error('Tauri Core 加载失败，桌面命令不可用', { cause });
+    throw new Error('Tauri Core 加载失败, 桌面命令不可用', { cause });
   }
 }
 
@@ -86,7 +75,7 @@ async function getEvent(): Promise<TauriEvent | null> {
     _event = await import('@tauri-apps/api/event');
     return _event;
   } catch (cause) {
-    throw new Error('Tauri Event 加载失败，跨窗口事件不可用', { cause });
+    throw new Error('Tauri Event 加载失败, 跨窗口事件不可用', { cause });
   }
 }
 
@@ -134,7 +123,6 @@ async function listenTauri<T>(
   return () => unlisten();
 }
 
-// ── 具体实现 ────────────────────────────────────────────────────────────────
 
 export const tauriBridge = {
   isTauri: detectTauri,
@@ -314,26 +302,6 @@ export const tauriBridge = {
     return listenTauri<Live2dPreviewCommand>(STAGE_LIVE2D_PREVIEW_EVENT, handler);
   },
 
-  async reportLive2dDiagnostic(
-    event: Live2dDiagnosticEvent,
-    characterName: string | null,
-    modelName: string | null,
-    durationS: number | null = null,
-    errorMessage: string | null = null,
-  ): Promise<void> {
-    try {
-      await invokeTauri('report_live2d_diagnostic', {
-        event,
-        characterName,
-        modelName,
-        durationS,
-        errorMessage,
-      });
-    } catch (error) {
-      console.warn('[stage] Live2D 诊断记录失败', event, error);
-    }
-  },
-
   async openMainWindow(): Promise<void> {
     await invokeTauri('open_main_window');
   },
@@ -436,7 +404,7 @@ export const tauriBridge = {
     return invokeTauri<number>('get_server_port');
   },
 
-  /** 本机字体族名列表(每次运行只枚举一次, 取不到时返回空数组, 消费方用策展清单兜底). */
+  /** 本机字体每次运行只枚举一次; 取不到时返回空数组, 页面仍可显示内置推荐项. */
   async listSystemFonts(): Promise<string[]> {
     return (await invokeTauri<string[]>('list_system_fonts')) ?? [];
   },

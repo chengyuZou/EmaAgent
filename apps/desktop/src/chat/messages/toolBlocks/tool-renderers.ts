@@ -1,7 +1,7 @@
 export interface ToolArgRow {
   key: string;
   value: string;
-  /** 对象、数组、数字和布尔值按代码值显示, 普通说明文字继续使用内容字体. */
+  /** 对象, 数组, 数字和布尔值按代码值显示, 普通说明文字继续使用内容字体. */
   mono?: boolean;
 }
 

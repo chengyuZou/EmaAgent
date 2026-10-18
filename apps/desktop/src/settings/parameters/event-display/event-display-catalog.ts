@@ -1,4 +1,3 @@
-// 为事件展示设置提供稳定的中文名称和业务分组，未知事件仍可回退展示协议名。
 export type EventDisplayGroupId =
   | 'tool'
   | 'context'

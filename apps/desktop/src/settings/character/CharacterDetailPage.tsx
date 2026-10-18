@@ -1,4 +1,3 @@
-// L2 角色详情壳:顶部 58px 只有返回 + Tab 条,无 Hero 区;Tab 内容各自成文件。
 import { useEffect, useState, type JSX } from 'react';
 import { Callout, Spinner } from '@ema-agent/ui';
 import { charactersApi, type Character } from '../../api/characters.js';

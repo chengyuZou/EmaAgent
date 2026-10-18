@@ -1,5 +1,4 @@
-// 管理主窗口的壁纸图库, 选图和单图参数.
-import { useEffect, useLayoutEffect, useRef, useState, type JSX, type KeyboardEvent, type PointerEvent, type CSSProperties } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type JSX, type KeyboardEvent, type PointerEvent } from 'react';
 import {
   Tooltip,
   Badge,

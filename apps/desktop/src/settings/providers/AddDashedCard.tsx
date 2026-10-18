@@ -1,10 +1,9 @@
-/** 虚线"添加"占位卡：网格末尾的新建入口（服务来源卡 / 模型卡共用）。 */
 import type { JSX } from 'react';
 
 export function AddDashedCard({ label, onClick, compact }: {
   label:    string;
   onClick(): void;
-  /** 小尺寸（模型池网格）；默认与 Provider 卡（MenuStatusItem）同高。 */
+  /** 小尺寸(模型池网格); 默认与 Provider 卡(MenuStatusItem)同高. */
   compact?: boolean;
 }): JSX.Element {
   return (
@@ -19,7 +18,7 @@ export function AddDashedCard({ label, onClick, compact }: {
                  hover:text-[var(--ema-primary)] active:scale-[0.97]
                  ${compact ? 'rounded-lg min-h-[72px] gap-1.5' : 'gap-1.5 py-3.5'}`}
     >
-      <span className={`i-solar:add-circle-bold-duotone ${compact ? 'text-2xl' : 'text-2xl'}`} aria-hidden />
+      <span className="i-solar:add-circle-bold-duotone text-2xl" aria-hidden />
       <span className={`font-medium ${compact ? 'text-[11px]' : 'text-xs'}`}>{label}</span>
     </button>
   );

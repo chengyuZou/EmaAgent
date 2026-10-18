@@ -1,8 +1,6 @@
-// 已安装技能子页:搜索过滤 + 卡片网格(启停/卸载) + 详情弹窗(SKILL.md 文档 + 目录文件)。
-// 视觉与市场卡同语言;真扫刷新在页头。
 import { useMemo, useState, type JSX } from 'react';
 import {
-  Badge, Button, Callout, Dialog, EmptyState, SearchField, IconButton, Input, Spinner, Switch, Tooltip,
+  Badge, Button, Callout, Dialog, EmptyState, SearchField, IconButton, Spinner, Switch, Tooltip,
 } from '@ema-agent/ui';
 import { useSkillStore } from '../../stores/skill.js';
 import { skillsApi, type SkillListItem } from '../../api/skills.js';
@@ -76,7 +74,7 @@ export function SkillInstalledPage(): JSX.Element {
     <div className="flex flex-col gap-4">
       <PageHeader
         title="已安装"
-        description="内置与用户技能；启停下一根对话 Turn 生效。去「技能市场」安装新技能"
+        description="管理内置和用户技能. 启停从下一 Turn 生效, 新技能可在技能市场安装."
         action={(
           <IconButton
             icon="i-lucide:refresh-cw"
@@ -120,7 +118,6 @@ export function SkillInstalledPage(): JSX.Element {
               <div className="flex items-start gap-3">
                 <button type="button" className="flex-1 min-w-0 text-left" onClick={() => setDetail(sk)}>
                   <div className="flex items-center gap-2 flex-wrap">
-                    {/* 启停状态点:实心=启用,空心环=禁用 */}
                     <span
                       className={`size-2.5 rounded-full shrink-0 ${sk.enabled
                         ? 'bg-[var(--ema-success)]'
@@ -208,7 +205,7 @@ function SkillDetailDialog(props: {
   const [fileView, setFileView] = useState<{ path: string; content: string; truncated: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // 打开详情时一次性取文档与文件清单;切换技能或关闭时复位。
+  // 打开详情时一次性取文档与文件清单;切换技能或关闭时复位.
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   if (skill && skill.path !== loadedKey) {
     setLoadedKey(skill.path);

@@ -1,5 +1,3 @@
-// Provider 模型池：池内行 = SQL 事实（启用集合），卡片整卡点击 = 启停开关；
-// llm/vision 提供目录刷新（models.dev 拉取并同步，新增默认禁用）；卡片按能力特化参数行与来源标记。
 import { useState, useEffect, useCallback, useRef, type JSX, type ReactNode } from 'react';
 import { Tooltip, Button, Callout, ConfirmDialog, Dialog, IconButton, Input, Spinner, Switch } from '@ema-agent/ui';
 import { ServerApiError } from '../../api/client.js';
@@ -16,19 +14,19 @@ import { useProviderStore } from '../../stores/provider.js';
 import { MainView, useMainNavigationStore } from '../../layout/navigation.js';
 import { AddDashedCard } from './AddDashedCard.js';
 
-/** 模型卡：左上启停点（空心=禁用/绿点=启用）、整卡点击=启停、右上垃圾桶（角标不触发启停）。 */
+/** 模型卡: 左上启停点(空心=禁用/绿点=启用), 整卡点击=启停, 右上垃圾桶(角标不触发启停). */
 function ModelCard({ title, hint, lines, chips, enabled, onToggle, logo, action }: {
-  /** 显示名（name 回退 modelId）。 */
+  /** 显示名(name 回退 modelId). */
   title:    string;
-  /** 悬停提示（模型 id；与显示名不同才给）。 */
+  /** 悬停提示(模型 id; 与显示名不同才给). */
   hint?:    string;
-  /** 参数行（按能力特化）：如 "128K ctx" / "1024d"。 */
+  /** 参数行(按能力特化): 如 "128K ctx" / "1024d". */
   lines:    string[];
-  /** 能力标记：推理/图片/工具调用（llm/vision）。 */
+  /** 能力标记: 推理/图片/工具调用(llm/vision). */
   chips?:   ReactNode;
   enabled:  boolean;
   onToggle(): void;
-  /** Provider 品牌图标类名，右缘淡显。 */
+  /** Provider 品牌图标类名, 右缘淡显. */
   logo?:    string;
   action?:  ReactNode;
 }): JSX.Element {
@@ -95,7 +93,7 @@ const MODULE_LABELS: Record<string, string> = {
   vision: 'Vision',
 };
 
-// 各能力的页面文案与"添加模型"数字字段；Record 穷尽检查，capability 联合新增成员时编译报错。
+// 各能力的页面文案与"添加模型"数字字段; Record 穷尽检查, capability 联合新增成员时编译报错.
 const CAPABILITY_META: Record<ModelCapability, {
   title: string;
   hint?: string;
@@ -142,7 +140,7 @@ const CAPABILITY_META: Record<ModelCapability, {
   },
 };
 
-/** 参数行按能力分流；来源标识为独立徽标（不进参数行）。 */
+/** 参数行按能力分流; 来源标识为独立徽标(不进参数行). */
 function linesOf(model: ProviderModelRecord): string[] {
   switch (model.capability) {
     case 'llm':
@@ -160,7 +158,7 @@ function linesOf(model: ProviderModelRecord): string[] {
   }
 }
 
-/** 能力徽标在前（推理/工具调用/图片），来源徽标（目录/手写）放最后。 */
+/** 能力徽标在前(推理/工具调用/图片), 来源徽标(目录/手写)放最后. */
 function chipsOf(model: ProviderModelRecord): JSX.Element {
   const chips: JSX.Element[] = [];
   if (model.capability === 'llm' || model.capability === 'vision') {
@@ -199,7 +197,7 @@ function formatContextWindow(tokens: number): string {
     : `${(tokens / 1_000).toFixed(0)}K`;
 }
 
-/** 添加表单提交 → Route 输入联合；需要数字参数的 capability 缺数时返回 null（表单已拦截）。 */
+/** 添加表单提交 → Route 输入联合; 需要数字参数的 capability 缺数时返回 null(表单已拦截). */
 function buildModelInput(input: {
   capability: ModelCapability;
   modelId: string;
@@ -257,7 +255,7 @@ interface AudioPreview {
   objectUrl: string | null;
 }
 
-interface SttReference {
+interface STTReference {
   characterName: string;
   voiceName: string;
   promptText: string;
@@ -392,7 +390,7 @@ export function ProviderModelManager({ providerId, capability, iconKey }: {
     }
   }
 
-  /** 卡片点击 = 拨开关；停用前先查本地绑定，被绑直接弹窗（确认才发请求），未被绑直接执行。 */
+  /** 卡片点击 = 拨开关; 停用前先查本地绑定, 被绑直接弹窗(确认才发请求), 未被绑直接执行. */
   async function toggle(model: ProviderModelRecord): Promise<void> {
     if (model.enabled) {
       const conflicts = localConflicts(model.modelId);
@@ -422,7 +420,7 @@ export function ProviderModelManager({ providerId, capability, iconKey }: {
     setModels((ms) => ms.map((m) => (m.modelId === model.modelId ? updated : m)));
   }
 
-  /** 垃圾桶点击：先查本地绑定——被绑直接弹"已绑定"框，无辜才弹普通移除框。 */
+  // 已绑定模型先确认解绑; 未绑定模型只确认删除.
   function askRemove(model: ProviderModelRecord): void {
     const conflicts = localConflicts(model.modelId);
     if (conflicts.length > 0) {
@@ -446,7 +444,7 @@ export function ProviderModelManager({ providerId, capability, iconKey }: {
     }
   }
 
-  /** 本地绑定预检：该 (provider, capability, modelId) 当前被哪些模块绑定（store 同源事实）。 */
+  // Provider, 能力和模型 ID 一起匹配, 避免同名模型误判成正在被使用.
   function localConflicts(modelId: string): BindingConflict[] {
     return Object.values(useProviderStore.getState().bindings)
       .filter((binding) => binding !== undefined
@@ -456,7 +454,7 @@ export function ProviderModelManager({ providerId, capability, iconKey }: {
       .map((binding) => ({ module: binding.module, modelId: binding.modelId, capability: binding.capability }));
   }
 
-  /** 冲突弹窗确认：逐个解绑冲突模块，然后重放原动作（禁用或删除）。 */
+  /** 冲突弹窗确认: 逐个解绑冲突模块, 然后重放原动作(禁用或删除). */
   async function resolveConflict(): Promise<void> {
     const pending = pendingConflict;
     if (!pending) return;
@@ -478,7 +476,7 @@ export function ProviderModelManager({ providerId, capability, iconKey }: {
     }
   }
 
-  /** TTS 试听仍使用 POST 生成音频, 不将生成请求作为 audio.src. */
+  // TTS 试听先 POST 生成音频, 再将响应交给播放器.
   async function handleTest(modelId: string): Promise<void> {
     const preview = startPreview();
     setTesting(modelId);
@@ -500,9 +498,9 @@ export function ProviderModelManager({ providerId, capability, iconKey }: {
     }
   }
 
-  const [sttReference, setSttReference] = useState<SttReference | null>(null);
-  const [sttTesting, setSttTesting] = useState<string | null>(null);
-  const [sttResult, setSttResult] = useState<{ modelId: string; text: string; referenceText: string } | null>(null);
+  const [sttReference, setSTTReference] = useState<STTReference | null>(null);
+  const [sttTesting, setSTTTesting] = useState<string | null>(null);
+  const [sttResult, setSTTResult] = useState<{ modelId: string; text: string; referenceText: string } | null>(null);
 
   useEffect(() => {
     if (capability !== 'stt') return;
@@ -512,7 +510,7 @@ export function ProviderModelManager({ providerId, capability, iconKey }: {
         // STT 试听优先取主要参考音频, 没有主项时取第一条.
         const sample = character.voiceSamples.find((v) => v.isPrimary)
           ?? character.voiceSamples[0];
-        setSttReference(sample
+        setSTTReference(sample
           ? {
               characterName: character.name,
               voiceName: sample.name,
@@ -520,22 +518,22 @@ export function ProviderModelManager({ providerId, capability, iconKey }: {
             }
           : null);
       } catch {
-        setSttReference(null);
+        setSTTReference(null);
       }
     })();
   }, [capability]);
 
-  /** 模型 STT 试听：参考音频到该模型转写，结果与参考文本对照展示。 */
-  async function handleSttTest(modelId: string): Promise<void> {
-    setSttTesting(modelId);
-    setSttResult(null);
+  /** 模型 STT 试听: 参考音频到该模型转写, 结果与参考文本对照展示. */
+  async function handleSTTTest(modelId: string): Promise<void> {
+    setSTTTesting(modelId);
+    setSTTResult(null);
     try {
       const result = await providersApi.sttPreview(providerId, modelId);
-      setSttResult({ modelId, text: result.text, referenceText: result.referenceText });
+      setSTTResult({ modelId, text: result.text, referenceText: result.referenceText });
     } catch (err) {
       showToast(`转写失败: ${err instanceof Error ? err.message : '未知错误'}`, { variant: 'danger' });
     } finally {
-      setSttTesting(null);
+      setSTTTesting(null);
     }
   }
 
@@ -644,7 +642,7 @@ export function ProviderModelManager({ providerId, capability, iconKey }: {
                       variant="default"
                       size="sm"
                       type="button"
-                      onClick={() => void handleSttTest(m.modelId)}
+                      onClick={() => void handleSTTTest(m.modelId)}
                     />
                   )}
                   <IconButton
@@ -678,7 +676,6 @@ export function ProviderModelManager({ providerId, capability, iconKey }: {
         </div>
       )}
 
-      {/* STT 参考音频块：当前角色主参考音频（可播放/终止）+ 转写结果对照。 */}
       {capability === 'stt' && (
         <div className="flex flex-col gap-2 mt-4">
           <h3 className="text-base font-semibold text-[var(--ema-text-primary)]">参考音频</h3>
@@ -735,7 +732,6 @@ export function ProviderModelManager({ providerId, capability, iconKey }: {
         </div>
       )}
 
-      {/* 手写添加：按能力特化字段（llm/vision 要窗口、embed 要维度、可选能力开关）。 */}
       <Dialog
         open={adding}
         onOpenChange={(open) => { if (!open) setAdding(false); }}
@@ -771,7 +767,6 @@ export function ProviderModelManager({ providerId, capability, iconKey }: {
   );
 }
 
-// ── 手写添加（弹窗内表单） ────────────────────────────────────────────────────
 
 function ManualAddModelForm({ meta, capability, existing, onAdd }: {
   meta: typeof CAPABILITY_META[ModelCapability];

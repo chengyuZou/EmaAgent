@@ -1,4 +1,3 @@
-// 展示轻量 Turn 索引，并把悬停位置转换成可快速跳转的声波式导航刻度。
 import {
   useEffect,
   useMemo,
@@ -113,7 +112,7 @@ export function TurnNavigationRail({ sessionId, visibleTurnIds, onSelectTurn }: 
       });
     };
 
-    // React 在 Chromium 根节点委托的 wheel 监听是 passive；导航轨需要独占这次滚轮。
+    // React 在 Chromium 根节点委托的 wheel 监听是 passive; 导航轨需要独占这次滚轮.
     railElement.addEventListener('wheel', handleWheel, { passive: false });
     return () => railElement.removeEventListener('wheel', handleWheel);
   }, [capacity, history.turnIndexItems.length, history.turnIndexNextCursor, railElement, sessionId]);

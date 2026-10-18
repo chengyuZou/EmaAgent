@@ -1,4 +1,3 @@
-// 把 Desktop 终端的打开、输入、改尺寸和关闭操作交给 PTY 会话表。
 use tauri::{ipc::Channel, State};
 
 use crate::desktop::terminal::{TerminalEvent, TerminalSessions, TerminalShellSpec};

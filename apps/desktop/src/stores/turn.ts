@@ -1,5 +1,3 @@
-// 保存尚未交给 History 的 Turn 及其屏幕消息顺序.
-
 import { create } from 'zustand';
 import type { ContextUsage } from '@ema-agent/context';
 import type { LLMTokenUsage } from '@ema-agent/llm';

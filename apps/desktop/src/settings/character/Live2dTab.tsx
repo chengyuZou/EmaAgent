@@ -1,4 +1,3 @@
-// 展示角色的 Live2D 模型卡片，并承接导入、封面和资源级操作。
 import { useState, type JSX } from 'react';
 import {
   Tooltip,
@@ -262,7 +261,7 @@ function ImportMenu({ character }: { character: Character }): JSX.Element {
     setImporting('prepare');
     try {
       // 新模型必须等封面生成成功后再进入资源列表,否则其他窗口会先请求到不存在的图片,
-      // 并把一次正常的导入过程显示成缺失封面。
+      // 并把一次正常的导入过程显示成缺失封面.
       const prepared = await charactersApi.prepareLive2dImport(character.name, { source });
       const preparedImportId = prepared.importId;
       importId = preparedImportId;

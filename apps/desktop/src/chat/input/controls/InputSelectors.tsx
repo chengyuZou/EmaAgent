@@ -92,10 +92,10 @@ export function useInputOptions(
     );
   }
 
-  function toggleTts(): void {
+  function toggleTTS(): void {
     if (viewedId) {
       void useSessionStore.getState()
-        .setTtsEnabled(viewedId, !draft.ttsEnabled)
+        .setTTSEnabled(viewedId, !draft.ttsEnabled)
         .catch(showSessionPreferenceError);
     } else {
       patchCurrentDraft({ ttsEnabled: !draft.ttsEnabled });
@@ -126,10 +126,10 @@ export function useInputOptions(
     },
   ];
 
-  return { plusItems, toggleTts, choosePermissionMode };
+  return { plusItems, toggleTTS, choosePermissionMode };
 }
 
-export function TtsButton({
+export function TTSButton({
   ttsEnabled,
   modelBound,
   onToggle,
