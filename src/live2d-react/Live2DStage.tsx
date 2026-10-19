@@ -37,9 +37,9 @@ export interface Live2DStageProps {
   stageScale?: number;
   stageOffsetX?: number;
   stageOffsetY?: number;
-  suspended?: boolean;
   interactive?: boolean;
   pointerSource?: 'window' | 'host';
+  /** 模型挂载并成功绘制首帧后通知宿主, 不表示归档刚下载完成. */
   onReady?: (info: Live2DStageReadyInfo) => void;
   onError?: (error: Error) => void;
   onDiagnostic?: (
@@ -61,7 +61,6 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
     stageScale = 1,
     stageOffsetX = 0,
     stageOffsetY = 0,
-    suspended = false,
     interactive = true,
     pointerSource = 'window',
     onReady,
@@ -81,14 +80,12 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
     const stageOffsetXRef = useRef(stageOffsetX);
     const stageOffsetYRef = useRef(stageOffsetY);
     const applyFramingRef = useRef<() => void>(() => {});
-    const suspendedRef = useRef(suspended);
     const interactiveRef = useRef(interactive);
     const pointerSourceRef = useRef(pointerSource);
     const focusPointerRef = useRef<(clientX: number, clientY: number) => void>(() => {});
     const lastPointerActivityAtRef = useRef(0);
     const callbacksRef = useRef({ onReady, onError, onDiagnostic });
 
-    suspendedRef.current = suspended;
     interactiveRef.current = interactive;
     pointerSourceRef.current = pointerSource;
     callbacksRef.current = { onReady, onError, onDiagnostic };
@@ -168,6 +165,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
         } catch (error) {
           renderFailed = true;
           app.ticker.stop();
+          callbacksRef.current.onDiagnostic?.('ticker_stopped', null);
           callbacksRef.current.onError?.(asError(error));
           return false;
         }
@@ -179,10 +177,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
       appRef.current = app;
       host.appendChild(app.view as HTMLCanvasElement);
       callbacksRef.current.onDiagnostic?.('canvas_created', null);
-      if (suspendedRef.current) {
-        app.ticker.stop();
-        callbacksRef.current.onDiagnostic?.('ticker_stopped', null);
-      }
+      callbacksRef.current.onDiagnostic?.('ticker_started', null);
 
       return () => {
         loadGenerationRef.current += 1;
@@ -193,21 +188,6 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
         app.destroy(true, { children: true, texture: true, baseTexture: true });
       };
     }, []);
-
-    useEffect(() => {
-      const app = appRef.current;
-      if (!app) return;
-      if (suspended) {
-        app.ticker.stop();
-        callbacksRef.current.onDiagnostic?.('ticker_stopped', null);
-      } else {
-        // 恢复时先画一帧, 再重启 ticker, 避免首帧等待后续输入事件.
-        if (renderRef.current()) {
-          app.ticker.start();
-          callbacksRef.current.onDiagnostic?.('ticker_started', null);
-        }
-      }
-    }, [suspended]);
 
     useEffect(() => {
       stageScaleRef.current = stageScale;
@@ -240,7 +220,6 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
           interactiveRef,
           pointerSourceRef,
           focusPointerRef,
-          suspendedRef,
           lastPointerActivityAtRef,
           modelRef,
           lipSyncRef,
@@ -265,6 +244,8 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
           'model_ready',
           (performance.now() - loadStartedAt) / 1000,
         );
+        // 先绘制首帧再让宿主撤下加载提示. 渲染失败由 guardedRender 报告.
+        if (!renderRef.current()) return;
         callbacksRef.current.onReady?.({
           hasExpressions: expressionsRef.current.length > 0,
           expressions: expressionsRef.current,
@@ -296,7 +277,6 @@ interface MountedModelRefs {
   readonly interactiveRef: MutableRefObject<boolean>;
   readonly pointerSourceRef: MutableRefObject<'window' | 'host'>;
   readonly focusPointerRef: MutableRefObject<(clientX: number, clientY: number) => void>;
-  readonly suspendedRef: MutableRefObject<boolean>;
   readonly lastPointerActivityAtRef: MutableRefObject<number>;
   readonly modelRef: MutableRefObject<Cubism4Model | null>;
   readonly lipSyncRef: MutableRefObject<Live2DLipSync | null>;
@@ -326,7 +306,6 @@ function mountModel(
   cleanups.push(startLive2DIdleGaze(
     (x, y) => focusController.focus(x, y),
     () => refs.interactiveRef.current
-      && !refs.suspendedRef.current
       && performance.now() - refs.lastPointerActivityAtRef.current > POINTER_IDLE_GAZE_MS,
   ));
 
@@ -354,7 +333,7 @@ function mountModel(
   let previousPointerX: number | null = null;
   let previousPointerY: number | null = null;
   refs.focusPointerRef.current = (clientX, clientY): void => {
-    if (!refs.interactiveRef.current || refs.suspendedRef.current) return;
+    if (!refs.interactiveRef.current) return;
     // 系统每帧采样, 静止坐标不算新活动, 保留原有待机视线.
     if (clientX === previousPointerX && clientY === previousPointerY) return;
     const rect = (app.view as HTMLCanvasElement).getBoundingClientRect();

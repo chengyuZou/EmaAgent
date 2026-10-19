@@ -269,7 +269,7 @@ pub fn handle_window_event(window: &tauri::Window, event: &WindowEvent) {
             );
         }
         WindowEvent::Resized(_) => {
-            // 最小化前通知 stage 动画与 main 原生浏览器隐藏, 恢复后按真实状态显示.
+            // 通知所属窗口收起浮动控件或隐藏原生浏览器, 不控制 Live2D 绘制.
             if let (Ok(visible), Ok(minimized)) = (window.is_visible(), window.is_minimized()) {
                 let _ = window.emit_to(
                     EventTarget::window(window.label()),

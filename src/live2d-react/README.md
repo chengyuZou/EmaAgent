@@ -11,7 +11,6 @@ This package loads a Character's Cubism 4 model ZIP into a React/PIXI stage. The
   stageScale={resource.stageScale}
   stageOffsetX={resource.stageOffsetX}
   stageOffsetY={resource.stageOffsetY}
-  suspended={windowHidden}
   onReady={handleReady}
   onError={handleLoadFailure}
 />
@@ -27,7 +26,9 @@ The stage imports `@pixi/unsafe-eval`, which replaces Pixi's generated shader-un
 
 A new model loads while the current one remains visible. Only the latest completed load is mounted; stale completions are destroyed. Switching models removes old listeners and lip-sync bindings. Unmounting destroys the application and model resources.
 
-The application's ticker drives model updates. `suspended` stops it; resuming renders a frame and restarts it. Loading and render failures reach `onError`. A render failure stops the ticker until the host remounts the stage; showing the window again does not restart a failed renderer. Individual expression/motion failures are logged without discarding the model. The optional `onDiagnostic` callback reports canvas, loading and ticker events to the host.
+`onReady` runs after the mounted model's first successful render. The host can keep its loading indicator visible until then.
+
+The application's ticker drives model updates. Window visibility and minimization do not stop it in application code. The WebView and operating system may still throttle background frame delivery. Loading and render failures reach `onError`. A render failure stops the ticker until the host remounts the stage; showing the window again does not restart a failed renderer. Individual expression/motion failures are logged without discarding the model. The optional `onDiagnostic` callback reports canvas, loading and ticker events to the host.
 
 ## Placement and controls
 
@@ -35,7 +36,7 @@ The default framing uses model bounds to show the upper body. Scale multiplies t
 
 The ref handle exposes `setExpression(name | null)`, `playMotion(group, index)`, `setPlacement`, `setLipSync` and `setPointerPosition`. Null expression resets to the model's default. Manual motions use the library's FORCE priority; native idle playback is handled by its MotionManager.
 
-`pointerSource` defaults to `window` mouse events. With `host`, the host calls `setPointerPosition` using CSS coordinates relative to the window content, including coordinates outside its bounds. The stage converts through the canvas rectangle without clamping to its edges. Repeated identical coordinates do not count as activity. After 1 second without movement, an independent timer may update the same FocusController target for idle gaze. Suspended or noninteractive stages skip pointer/idle updates.
+`pointerSource` defaults to `window` mouse events. With `host`, the host calls `setPointerPosition` using CSS coordinates relative to the window content, including coordinates outside its bounds. The stage converts through the canvas rectangle without clamping to its edges. Repeated identical coordinates do not count as activity. After 1 second without movement, an independent timer may update the same FocusController target for idle gaze. Noninteractive stages skip pointer/idle updates.
 
 ## Lip sync
 

@@ -1,5 +1,5 @@
 .ema-character-stage-resource,
-.ema-character-stage-placeholder {
+.ema-character-stage-loading {
   position: absolute;
   inset: 0;
 }
@@ -16,7 +16,12 @@
   transition: opacity var(--ema-duration-slow) var(--ema-ease);
 }
 
-/* 资源挂载时已经是 active, 没有先前状态可供 transition 过渡, 因此使用入场动画. */
+.ema-character-stage-resource[data-state='loading'] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* 模型首帧完成后才入场, 插图则在浏览器解码完成后挂载. */
 .ema-character-stage-resource[data-state='active'] {
   opacity: 1;
   pointer-events: auto;
@@ -49,25 +54,38 @@
   -webkit-user-drag: none;
 }
 
-.ema-character-stage-placeholder {
+.ema-character-stage-loading {
   display: grid;
   place-items: center;
-  animation: ema-fade-in var(--ema-duration-base) var(--ema-ease) both;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 1;
+  visibility: visible;
+  transition: opacity var(--ema-duration-slow) var(--ema-ease), visibility 0s;
 }
 
-.ema-character-stage-placeholder-ring {
-  width: 42%;
-  aspect-ratio: 1;
-  border-radius: 50%;
-  /* 父层的淡入动画最终保持 opacity: 1, 占位环的半透明效果必须写在子层. */
-  opacity: 0.58;
+.ema-character-stage-loading[data-visible='false'] {
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--ema-duration-slow) var(--ema-ease), visibility 0s var(--ema-duration-slow);
+}
+
+.ema-character-stage-loading-panel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100% - 32px);
+  padding: 14px 18px;
   border: 1px solid var(--ema-border);
-  background: radial-gradient(
-    circle,
-    color-mix(in srgb, var(--ema-primary) 10%, transparent),
-    transparent 68%
-  );
-  box-shadow: 0 0 42px color-mix(in srgb, var(--ema-primary) 14%, transparent);
+  border-radius: var(--ema-radius-xl);
+  background: color-mix(in srgb, var(--ema-surface-1) 85%, transparent);
+  color: var(--ema-text-primary);
+  font-size: 13px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 8%);
+}
+
+.ema-character-stage-loading[data-visible='true'] .ema-character-stage-loading-panel {
+  animation: ema-fade-in var(--ema-duration-base) var(--ema-ease) both;
 }
 
 .ema-character-stage-error {
@@ -90,11 +108,15 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ema-character-stage-resource {
+  .ema-character-stage-resource,
+  .ema-character-stage-loading,
+  .ema-character-stage-loading[data-visible='false'] {
     transition-duration: 0ms;
+    transition-delay: 0ms;
   }
 
-  .ema-character-stage-placeholder {
+  .ema-character-stage-resource[data-state='active'],
+  .ema-character-stage-loading[data-visible='true'] .ema-character-stage-loading-panel {
     animation: none;
   }
 }

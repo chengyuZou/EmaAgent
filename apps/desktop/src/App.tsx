@@ -3,6 +3,8 @@ import type { CharacterStagePresentation } from '@ema-agent/characters';
 import { Tooltip } from '@ema-agent/ui';
 import {
   CharacterStage,
+  StageFailure,
+  StageLoading,
   type ActiveLive2DStage,
 } from './stage/CharacterStage.js';
 import { SpeechBubble } from './stage/SpeechBubble.js';
@@ -24,14 +26,21 @@ import { handleCharacterSystemEvent } from './stores/character.js';
 import { handleSettingsSystemEvent, useSettingsStore } from './stores/settings.js';
 
 export function App(): React.JSX.Element {
-  const stageSuspended = useWindowSuspension();
+  const stageControlsHidden = useWindowSuspension();
   const serverStatus = useServerStore((s) => s.status);
   const activeCharacterName = useCharacterStore((s) => s.activeName);
+  const charactersLoading = useCharacterStore((s) => s.loading);
+  const charactersError = useCharacterStore((s) => s.error);
+  const [charactersLoaded, setCharactersLoaded] = useState(false);
   const activeStage = useRef<ActiveLive2DStage | null>(null);
   const [expressionAvailable, setExpressionAvailable] = useState(false);
   const [expressions, setExpressions] = useState<readonly string[]>([]);
   const [selectedExpression, setSelectedExpression] = useState<string | null>(null);
   const [stagePresentation, setStagePresentation] = useState<CharacterStagePresentation | null>(null);
+  const [presentationError, setPresentationError] = useState<{
+    characterName: string;
+    message: string;
+  } | null>(null);
   const [presentationChangeCount, setPresentationChangeCount] = useState(0);
   const stageRequestSequence = useRef(0);
   const handleStageChanged = useCallback((stage: ActiveLive2DStage | null): void => {
@@ -41,10 +50,14 @@ export function App(): React.JSX.Element {
     setSelectedExpression(null);
   }, []);
 
-  // 应用服务器首次可用及角色切换事件都会刷新角色 Store, 舞台只订阅稳定角色字段.
+  // 首次读取结束前不能把空角色列表当成用户主动选择的空白舞台.
   useEffect(() => {
     if (serverStatus.kind !== 'ok') return;
-    void useCharacterStore.getState().load();
+    let cancelled = false;
+    void useCharacterStore.getState().load().then(() => {
+      if (!cancelled) setCharactersLoaded(true);
+    });
+    return () => { cancelled = true; };
   }, [serverStatus.kind]);
 
   useEffect(() => subscribeSystemEvent((event) => {
@@ -74,6 +87,7 @@ export function App(): React.JSX.Element {
   // 普通资源导入只刷新 Settings 列表, 不让当前模型因为封面变化而重新加载.
   useEffect(() => {
     const requestSequence = ++stageRequestSequence.current;
+    setPresentationError(null);
 
     if (!activeCharacterName) {
       setStagePresentation(null);
@@ -92,6 +106,10 @@ export function App(): React.JSX.Element {
       .catch((error: unknown) => {
         if (requestSequence === stageRequestSequence.current) {
           console.error('[stage] 角色呈现读取失败', activeCharacterName, error);
+          setPresentationError({
+            characterName: activeCharacterName,
+            message: error instanceof Error ? error.message : String(error),
+          });
         }
       });
 
@@ -136,6 +154,36 @@ export function App(): React.JSX.Element {
     return stop;
   }, []);
 
+  const retryPresentation = (): void => setPresentationChangeCount(count => count + 1);
+  const hasPresentation = stagePresentation !== null
+    && stagePresentation.characterName === activeCharacterName;
+  let setupFeedback: React.JSX.Element | null = null;
+  if (presentationError?.characterName === activeCharacterName) {
+    setupFeedback = <StageFailure
+      title="角色读取失败"
+      message={presentationError.message}
+      onRetry={retryPresentation}
+    />;
+  } else if (!hasPresentation) {
+    if (serverStatus.kind === 'error') {
+      setupFeedback = <StageFailure
+        title="无法连接 Ema"
+        message={serverStatus.reason}
+        onRetry={() => { void useServerStore.getState().refresh(); }}
+      />;
+    } else if (serverStatus.kind !== 'ok') {
+      setupFeedback = <StageLoading message="正在启动 Ema..." />;
+    } else if (charactersError) {
+      setupFeedback = <StageFailure
+        title="角色列表读取失败"
+        message={charactersError}
+        onRetry={() => { void useCharacterStore.getState().load(); }}
+      />;
+    } else if (!charactersLoaded || charactersLoading || activeCharacterName) {
+      setupFeedback = <StageLoading message="正在加载角色..." />;
+    }
+  }
+
   return (
     <>
 
@@ -144,18 +192,21 @@ export function App(): React.JSX.Element {
 
       <GlowBorder />
 
-      <CharacterStage
-        targetCharacterName={activeCharacterName}
-        presentation={stagePresentation}
-        suspended={stageSuspended}
-        onStageChanged={handleStageChanged}
-        onExpressionChanged={setSelectedExpression}
-      />
+      {hasPresentation && (
+        <CharacterStage
+          targetCharacterName={activeCharacterName}
+          presentation={stagePresentation}
+          onStageChanged={handleStageChanged}
+          onExpressionChanged={setSelectedExpression}
+          onRetryPresentation={retryPresentation}
+        />
+      )}
+      {setupFeedback && <div className="ema-character-stage">{setupFeedback}</div>}
 
       <SpeechBubble />
 
       <FloatingDock
-        suspended={stageSuspended}
+        suspended={stageControlsHidden}
         expressionAvailable={expressionAvailable}
         expressions={expressions}
         selectedExpression={selectedExpression}
@@ -191,10 +242,10 @@ function ServerBadge({ status }: { status: ServerStatus }): React.JSX.Element {
       detail = `服务器 @ port ${status.port}`;
       break;
     case 'pending':
-      detail = '等待服务器启动 …';
+      detail = '等待服务器启动...';
       break;
     case 'error':
-      detail = `服务器错误：${status.reason}`;
+      detail = `服务器错误: ${status.reason}`;
       break;
     default:
       detail = '服务器状态未知';

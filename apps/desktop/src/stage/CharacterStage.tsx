@@ -17,7 +17,7 @@ import {
   type Live2DStageHandle,
   type Live2DStageReadyInfo,
 } from '@ema-agent/live2d-react';
-import { Button, Callout } from '@ema-agent/ui';
+import { Button, Callout, Spinner } from '@ema-agent/ui';
 import { charactersApi } from '../api/characters.js';
 import { fetchServerObjectUrl } from '../api/serverFileUrl.js';
 import { tauriBridge } from '../lib/tauri/tauriBridge.js';
@@ -25,9 +25,9 @@ import { tauriBridge } from '../lib/tauri/tauriBridge.js';
 export interface CharacterStageProps {
   targetCharacterName: string | null;
   presentation: CharacterStagePresentation | null;
-  suspended: boolean;
   onStageChanged?: (stage: ActiveLive2DStage | null) => void;
   onExpressionChanged?: (expression: string | null) => void;
+  onRetryPresentation?: () => void;
 }
 
 export interface ActiveLive2DStage {
@@ -51,11 +51,12 @@ interface Live2dFailure {
 export function CharacterStage({
   targetCharacterName,
   presentation,
-  suspended,
   onStageChanged,
   onExpressionChanged,
+  onRetryPresentation,
 }: CharacterStageProps): JSX.Element {
   const [loadedLive2dArchive, setLoadedLive2dArchive] = useState<LoadedLive2dArchive | null>(null);
+  const [readyArchive, setReadyArchive] = useState<Blob | null>(null);
   const [failure, setFailure] = useState<Live2dFailure | null>(null);
   const [retryCount, setRetryCount] = useState(0);
   const showsLive2d = presentation?.status === 'live2d'
@@ -65,9 +66,10 @@ export function CharacterStage({
 
   useEffect(() => {
     setFailure(null);
+    setReadyArchive(null);
+    onStageChanged?.(null);
     if (!live2dCharacterName || !live2dName) {
       setLoadedLive2dArchive(null);
-      onStageChanged?.(null);
       return;
     }
 
@@ -101,6 +103,7 @@ export function CharacterStage({
 
     return () => {
       cancelled = true;
+      onStageChanged?.(null);
     };
   }, [live2dCharacterName, live2dName, onStageChanged, retryCount]);
 
@@ -108,13 +111,14 @@ export function CharacterStage({
     handle: Live2DStageHandle,
     info: Live2DStageReadyInfo,
   ): void => {
-    if (!live2dCharacterName || !live2dName) return;
+    if (!loadedLive2dArchive) return;
+    setReadyArchive(loadedLive2dArchive.archive);
     onStageChanged?.({
       handle,
       hasExpressions: info.hasExpressions,
       expressions: info.expressions,
     });
-  }, [live2dCharacterName, live2dName, onStageChanged]);
+  }, [loadedLive2dArchive, onStageChanged]);
 
   const live2dMatchesTarget = showsLive2d
     && loadedLive2dArchive?.characterName === presentation.characterName
@@ -127,13 +131,16 @@ export function CharacterStage({
     && presentation.characterName === targetCharacterName
     ? presentation
     : null;
+  const unavailable = presentation?.status === 'unavailable'
+    && presentation.characterName === targetCharacterName
+    ? presentation
+    : null;
+  const modelReady = live2dMatchesTarget && readyArchive === loadedLive2dArchive?.archive;
 
   return (
     <div className="ema-character-stage" data-tauri-drag-region={false}>
-      {!live2dMatchesTarget && !illustration && !currentFailure && (
-        <div className="ema-character-stage-placeholder" aria-label="角色舞台占位">
-          <span className="ema-character-stage-placeholder-ring" />
-        </div>
+      {showsLive2d && !currentFailure && (
+        <StageLoading message="正在加载角色..." visible={!modelReady} />
       )}
 
       {live2dMatchesTarget && loadedLive2dArchive && (
@@ -141,7 +148,7 @@ export function CharacterStage({
           key={JSON.stringify([live2dCharacterName, live2dName, retryCount])}
           archive={loadedLive2dArchive.archive}
           resource={presentation.resource}
-          suspended={suspended}
+          ready={modelReady}
           onReady={ready}
           onExpressionChanged={onExpressionChanged}
           onError={(error) => {
@@ -157,22 +164,24 @@ export function CharacterStage({
       )}
 
       {currentFailure && (
-        <div className="ema-character-stage-error" role="alert" data-pet-interactive>
-          <Callout variant="danger" title="Live2D 加载失败">
-            <p className="ema-character-stage-error-message">{currentFailure.message}</p>
-            <Button
-              size="sm"
-              className="mt-3"
-              onClick={() => {
-                setFailure(null);
-                setLoadedLive2dArchive(null);
-                setRetryCount(count => count + 1);
-              }}
-            >
-              重新加载
-            </Button>
-          </Callout>
-        </div>
+        <StageFailure
+          title="Live2D 加载失败"
+          message={currentFailure.message}
+          onRetry={() => {
+            setFailure(null);
+            setLoadedLive2dArchive(null);
+            setReadyArchive(null);
+            setRetryCount(count => count + 1);
+          }}
+        />
+      )}
+
+      {unavailable && (
+        <StageFailure
+          title="角色资源不可用"
+          message={UNAVAILABLE_REASON[unavailable.reason]}
+          onRetry={onRetryPresentation}
+        />
       )}
 
       {illustration && (
@@ -185,17 +194,61 @@ export function CharacterStage({
   );
 }
 
+const UNAVAILABLE_REASON = {
+  primary_resource_missing: '尚未选择舞台资源. 请在角色卡中选择 Live2D 模型或插图.',
+  resource_file_missing: '舞台资源文件不存在. 请在角色卡中重新导入或选择其他资源.',
+  resource_invalid: '舞台资源无法读取. 请在角色卡中检查资源或重新导入.',
+} as const;
+
+export function StageLoading({ message, visible = true }: {
+  message: string;
+  visible?: boolean;
+}): JSX.Element {
+  return (
+    <div
+      className="ema-character-stage-loading"
+      data-visible={visible}
+      role="status"
+      aria-hidden={!visible}
+    >
+      <div className="ema-character-stage-loading-panel">
+        <Spinner size="sm" label={message} />
+        <span>{message}</span>
+      </div>
+    </div>
+  );
+}
+
+export function StageFailure({ title, message, onRetry }: {
+  title: string;
+  message: string;
+  onRetry?: () => void;
+}): JSX.Element {
+  return (
+    <div className="ema-character-stage-error" role="alert" data-pet-interactive>
+      <Callout variant="danger" title={title}>
+        <p className="ema-character-stage-error-message">{message}</p>
+        {onRetry && (
+          <Button size="sm" className="mt-3" onClick={onRetry}>
+            重新加载
+          </Button>
+        )}
+      </Callout>
+    </div>
+  );
+}
+
 function Live2dResource({
   archive,
   resource,
-  suspended,
+  ready,
   onReady,
   onExpressionChanged,
   onError,
 }: {
   archive: Blob;
   resource: CharacterLive2dStageEntry;
-  suspended: boolean;
+  ready: boolean;
   onReady(handle: Live2DStageHandle, info: Live2DStageReadyInfo): void;
   onExpressionChanged?: (expression: string | null) => void;
   onError(error: Error): void;
@@ -238,14 +291,13 @@ function Live2dResource({
   }, [onExpressionChanged, runtimeConfig]);
 
   return (
-    <div className="ema-character-stage-resource" data-state="active">
+    <div className="ema-character-stage-resource" data-state={ready ? 'active' : 'loading'}>
       <Live2DStage
         ref={handleRef}
         modelArchive={archive}
         stageScale={resource.stageScale}
         stageOffsetX={resource.stageOffsetX}
         stageOffsetY={resource.stageOffsetY}
-        suspended={suspended}
         pointerSource={tauriBridge.isTauri() ? 'host' : 'window'}
         onReady={(info) => {
           if (handleRef.current) onReady(handleRef.current, info);

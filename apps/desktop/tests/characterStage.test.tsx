@@ -8,6 +8,7 @@ import { CharacterStage } from '../src/stage/CharacterStage.js';
 const mocks = vi.hoisted(() => ({
   archive: vi.fn(),
   modelError: undefined as ((error: Error) => void) | undefined,
+  modelReady: undefined as (() => void) | undefined,
 }));
 vi.mock('../src/api/characters.js', () => ({ charactersApi: { live2dArchive: mocks.archive } }));
 vi.mock('../src/lib/tauri/tauriBridge.js', () => ({ tauriBridge: {
@@ -17,9 +18,14 @@ vi.mock('../src/lib/tauri/tauriBridge.js', () => ({ tauriBridge: {
   listenStageLipSync: async () => () => {},
 } }));
 vi.mock('@ema-agent/live2d-react', async () => {
-  const { forwardRef } = await import('react');
-  return { Live2DStage: forwardRef(function Stage(props: { onError(error: Error): void }, _ref) {
+  const { forwardRef, useImperativeHandle } = await import('react');
+  return { Live2DStage: forwardRef(function Stage(props: {
+    onError(error: Error): void;
+    onReady(info: { hasExpressions: boolean; expressions: string[] }): void;
+  }, ref) {
+    useImperativeHandle(ref, () => ({}));
     mocks.modelError = props.onError;
+    mocks.modelReady = () => props.onReady({ hasExpressions: false, expressions: [] });
     return <canvas />;
   }) };
 });
@@ -42,7 +48,6 @@ async function render(name = 'ema'): Promise<void> {
   await act(async () => root.render(<CharacterStage
     targetCharacterName={name}
     presentation={presentation(name)}
-    suspended={false}
     onStageChanged={stageChanged}
   />));
 }
@@ -61,11 +66,31 @@ afterEach(async () => {
   host.remove();
   mocks.archive.mockReset();
   mocks.modelError = undefined;
+  mocks.modelReady = undefined;
   stageChanged.mockClear();
   vi.restoreAllMocks();
 });
 
 describe('stage failure feedback', () => {
+  it('keeps loading feedback after the archive arrives until the renderer is ready', async () => {
+    await render();
+    expect(host.querySelector('canvas')).not.toBeNull();
+    expect(host.querySelector('[role="status"]')?.textContent).toContain('正在加载角色...');
+    expect(host.querySelector('[role="status"]')?.getAttribute('aria-hidden')).not.toBe('true');
+    await act(async () => mocks.modelReady!());
+    expect(host.querySelector('[role="status"]')?.getAttribute('aria-hidden')).toBe('true');
+    expect(host.querySelector('.ema-character-stage-resource')?.getAttribute('data-state')).toBe('active');
+  });
+
+  it('does not show loading feedback for an intentionally blank stage', async () => {
+    await act(async () => root.render(<CharacterStage
+      targetCharacterName="ema"
+      presentation={{ status: 'blank', characterName: 'ema' }}
+    />));
+    expect(host.querySelector('[role="status"]')).toBeNull();
+    expect(host.querySelector('.ema-character-stage-placeholder')).toBeNull();
+  });
+
   it('shows an archive error and retries through the same API', async () => {
     mocks.archive.mockRejectedValueOnce(new Error('Model archive is missing.'));
     await render();

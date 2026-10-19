@@ -11,7 +11,6 @@
   stageScale={resource.stageScale}
   stageOffsetX={resource.stageOffsetX}
   stageOffsetY={resource.stageOffsetY}
-  suspended={windowHidden}
   onReady={handleReady}
   onError={handleLoadFailure}
 />
@@ -27,7 +26,9 @@
 
 加载新模型时继续显示当前模型. 只有最后一次加载结果会挂到舞台, 过时结果会销毁. 切换时解除旧模型的事件和口型绑定, 卸载组件时销毁 application 与模型资源.
 
-application 的 ticker 驱动模型更新. `suspended` 会停止更新, 恢复时先画一帧再启动 ticker. 加载和渲染失败都会调用 `onError`. 渲染失败后停止 ticker, 直到宿主重新挂载舞台; 再次显示窗口不会重启已失败的渲染器. 单次表情或动作失败只记日志, 不移除已可用模型. 可选 `onDiagnostic` 向宿主报告 canvas, 加载和 ticker 事件.
+`onReady` 在模型挂载并成功绘制首帧后调用, 宿主可以保留加载提示直到这一刻.
+
+application 的 ticker 驱动模型更新. 应用代码不会因为窗口隐藏或最小化而停止 ticker. WebView 和操作系统仍可能限制后台帧回调频率. 加载和渲染失败都会调用 `onError`. 渲染失败后停止 ticker, 直到宿主重新挂载舞台; 再次显示窗口不会重启已失败的渲染器. 单次表情或动作失败只记日志, 不移除已可用模型. 可选 `onDiagnostic` 向宿主报告 canvas, 加载和 ticker 事件.
 
 ## 构图与控制
 
@@ -35,7 +36,7 @@ application 的 ticker 驱动模型更新. `suspended` 会停止更新, 恢复�
 
 ref 句柄提供 `setExpression(name | null)`, `playMotion(group, index)`, `setPlacement`, `setLipSync` 和 `setPointerPosition`. 表情传 null 时重置. 手动动作使用库的 FORCE 优先级, 原生待机由 MotionManager 继续播放.
 
-`pointerSource` 默认使用 `window` 的鼠标事件. 设为 `host` 时由宿主调用 `setPointerPosition`, 传入相对窗口内容区的 CSS 坐标, 可以在窗口外. 舞台根据 canvas 位置换算坐标, 不截到边缘. 相同坐标不算新活动. 鼠标静止 1 秒后, 独立定时器可以改变同一个 FocusController 目标, 产生待机视线. 暂停或不可交互时跳过鼠标和待机更新.
+`pointerSource` 默认使用 `window` 的鼠标事件. 设为 `host` 时由宿主调用 `setPointerPosition`, 传入相对窗口内容区的 CSS 坐标, 可以在窗口外. 舞台根据 canvas 位置换算坐标, 不截到边缘. 相同坐标不算新活动. 鼠标静止 1 秒后, 独立定时器可以改变同一个 FocusController 目标, 产生待机视线. 不可交互时跳过鼠标和待机更新.
 
 ## 口型
 

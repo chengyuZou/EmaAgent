@@ -1,21 +1,15 @@
 import { memo, type JSX } from 'react';
 import { Callout, Markdown, Spinner } from '@ema-agent/ui';
-import { memoryApi, type MemoryPreview, type MemoryStats } from '../../api/memory.js';
+import { memoryApi, type MemoryPreview } from '../../api/memory.js';
 import { useWindowSuspension } from '../../hooks/use-window-suspension.js';
 import { MainView, useMainNavigationStore } from '../../layout/navigation.js';
 import { PageHeader } from '../shared/PageHeader.js';
 import { MemoryJobRow } from './memoryJobRow.js';
-import { formatMemoryBytes } from './memoryLabels.js';
+import { MemoryStorageUsage } from './MemoryStorageUsage.js';
 import { useMemoryQuery } from './useMemoryQuery.js';
 
 const OVERVIEW_REFRESH_INTERVAL_MS = 30_000;
 const RECENT_JOBS_REFRESH_INTERVAL_MS = 5_000;
-
-const LEVEL_LABEL = {
-  normal: '正常',
-  warning: '接近上限',
-  limitExceeded: '已超限',
-} as const;
 
 export function MemoryOverviewTab(): JSX.Element {
   const view = useMainNavigationStore(state => state.activeView);
@@ -27,7 +21,6 @@ export function MemoryOverviewTab(): JSX.Element {
 
   const previews = useMemoryQuery(active, OVERVIEW_REFRESH_INTERVAL_MS, memoryApi.overview);
   const recent = useMemoryQuery(active, RECENT_JOBS_REFRESH_INTERVAL_MS, memoryApi.recentJobs);
-  const capacity = useMemoryQuery(active, OVERVIEW_REFRESH_INTERVAL_MS, memoryApi.stats);
 
   return (
     <div className="ema-memory-overview">
@@ -37,19 +30,7 @@ export function MemoryOverviewTab(): JSX.Element {
           description="查看已保存的记忆, 以及最近几条处理结果."
         />
 
-        <div className="ema-memory-capacity-region" aria-label="Memory 存储容量">
-          {!capacity.value && capacity.loading && (
-            <Spinner size="sm" />
-          )}
-          {capacity.error && (
-            <p className="ema-memory-inline-error" role="alert">
-              {capacity.error}
-            </p>
-          )}
-          {capacity.value && (
-            <MemoryCapacity stats={capacity.value} />
-          )}
-        </div>
+        <MemoryStorageUsage active={active} />
       </div>
 
       <div className="ema-memory-overview-columns">
@@ -137,46 +118,3 @@ const MemoryPreviewCard = memo(function MemoryPreviewCard({
   );
 });
 
-const MemoryCapacity = memo(function MemoryCapacity({ stats }: {
-  readonly stats: MemoryStats;
-}): JSX.Element {
-  const percent = stats.usedBytes / stats.maxBytes * 100;
-  const progress = Math.min(100, percent);
-
-  return (
-    <div className="ema-memory-capacity" data-level={stats.level}>
-      <div
-        className="ema-memory-capacity-ring"
-        role="progressbar"
-        aria-label="Memory 已用空间"
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={Number(progress.toFixed(1))}
-        aria-valuetext={`${formatMemoryBytes(stats.usedBytes)} / ${formatMemoryBytes(stats.maxBytes)}`}
-      >
-        <svg viewBox="0 0 88 88" aria-hidden>
-          <circle className="ema-memory-ring-track" cx="44" cy="44" r="36" />
-          <circle
-            className="ema-memory-ring-value"
-            cx="44"
-            cy="44"
-            r="36"
-            pathLength="100"
-            strokeDasharray={`${progress} 100`}
-          />
-        </svg>
-        <span>{percent.toFixed(1)}%</span>
-      </div>
-
-      <div className="ema-memory-capacity-text">
-        <span>Memory 存储</span>
-        <strong>{formatMemoryBytes(stats.usedBytes)} / {formatMemoryBytes(stats.maxBytes)}</strong>
-        <span>{LEVEL_LABEL[stats.level]}</span>
-      </div>
-    </div>
-  );
-}, (previous, next) => (
-  previous.stats.usedBytes === next.stats.usedBytes
-  && previous.stats.maxBytes === next.stats.maxBytes
-  && previous.stats.level === next.stats.level
-));

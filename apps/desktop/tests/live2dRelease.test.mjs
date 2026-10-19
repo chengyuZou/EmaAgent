@@ -85,7 +85,7 @@ test('the real model renders under the packaged CSP without JavaScript eval', { 
     assert.equal(await page.locator('canvas').count(), 1);
     assert.deepEqual(errors, []);
 
-    // onReady can fire before drawing. Inspect the captured frame so a blank canvas cannot pass.
+    // Inspect the captured frame as well as readiness so an empty canvas cannot pass.
     const screenshot = await page.screenshot();
     const coloredPixels = await page.evaluate(async base64 => {
       const image = new Image();

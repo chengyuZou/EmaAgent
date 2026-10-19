@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Ema</title>
     <style>
-      /* Transparent root — the Tauri window itself is transparent, so the
+      /* Transparent root: the Tauri window itself is transparent, so the
          html/body need to match or you'll see opaque rectangles. */
       html, body, #root {
         margin:           0;
@@ -19,13 +19,29 @@
       }
       /* 舞台按角色表面交互, 不选择页面文字. */
       body { user-select: none; }
+      .ema-stage-startup {
+        height: 100%;
+        display: grid;
+        place-items: center;
+      }
+      .ema-stage-startup > span {
+        padding: 14px 18px;
+        border: 1px solid rgb(255 255 255 / 16%);
+        border-radius: 16px;
+        background: rgb(32 34 40 / 85%);
+        box-shadow: 0 8px 24px rgb(0 0 0 / 8%);
+        font-size: 13px;
+      }
     </style>
   </head>
   <body>
+    <!-- React 和 Cubism 加载前也显示启动提示. React 接管 root 后替换此内容. -->
+    <div id="root">
+      <div class="ema-stage-startup" role="status"><span>正在启动 Ema...</span></div>
+    </div>
     <!-- Cubism Core 必须早于 Live2D 模块加载, 模块初始化时读取 window.Live2DCubismCore.
          文件由本地 public/cubism 提供, 发布时检查许可运行库的哈希, 不从 CDN 加载. -->
     <script src="/cubism/live2dcubismcore.min.js"></script>
-    <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
