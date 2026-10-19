@@ -94,6 +94,8 @@ pnpm release --server-only
 
 The default bundle is Windows NSIS, macOS DMG, or Linux DEB. Windows installers are written to `apps/desktop/src-tauri/target/release/bundle/nsis/`.
 
+The repository root `package.json` defines the release version. Before checking build tools or preparing files, `release.mjs` requires the Desktop `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml` package version to match it. A mismatch stops the command and lists all four values without rewriting files. Release notes and bug records follow the [docs conventions](../../docs/README.md).
+
 `--cubism-core` or `EMA_CUBISM_CORE_PATH` supplies a Cubism Core file that you have permission to distribute. Without either, the script uses `public/cubism/`. Its SHA-256 must match the approved value in `release-config.json`; the script does not download this licensed file.
 
 `--target` must match the current Rust host because Node, SQLite, Sharp, and FFmpeg contain platform-specific files. An explicit target places bundles under `src-tauri/target/<target>/release/bundle/`. This is not a cross-compilation workflow.
@@ -102,7 +104,7 @@ The four release scripts have these roles:
 
 1. `release.mjs` checks versions and assets, builds the current Server and its workspace dependencies, and runs the remaining steps.
 2. `releaseWorkspace.mjs` prepares a temporary dependency workspace, installs locked production dependencies with a hoisted layout, and assembles ordinary files into `server/app`. It preserves required nested dependency versions and excludes pnpm's links and development command entries.
-3. `releaseCheck.mjs` checks the assembled files and starts the bundled Node after the temporary dependency workspace has been removed. A fresh temporary profile verifies startup, authentication, character initialization, empty sessions, and Memory paths.
+3. `releaseCheck.mjs` checks release versions and assembled files, then starts the bundled Node after the temporary dependency workspace has been removed. A fresh temporary profile verifies startup, authentication, character initialization, empty sessions, and Memory paths.
 4. `releaseNativeCheck.mjs` checks SQLite story initialization, Sharp, and FFmpeg in the assembled application.
 
 Successful checks are copied to `src-tauri/.release-staging/server/app` and `src-tauri/binaries/ema-server-<target>`. Tauri maps them into the installed resources, including the required `server` directory. These generated files should be rebuilt, not edited by hand. The repository's development dependencies and lockfile are not rewritten by release preparation.
@@ -118,6 +120,7 @@ From the repository root:
 ```sh
 pnpm --filter @ema-agent/desktop typecheck
 pnpm --filter @ema-agent/desktop test
+pnpm --filter @ema-agent/desktop test:scripts
 pnpm --filter @ema-agent/desktop test:live2d-release
 pnpm --filter @ema-agent/desktop build
 cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --lib

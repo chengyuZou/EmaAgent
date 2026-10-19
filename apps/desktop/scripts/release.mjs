@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { copyReleaseWorkspace, assembleReleaseApp } from './releaseWorkspace.mjs';
-import { checkReleaseFiles, checkReleaseServer } from './releaseCheck.mjs';
+import { checkReleaseFiles, checkReleaseServer, checkReleaseVersions } from './releaseCheck.mjs';
 
 const desktop = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const repository = path.resolve(desktop, '../..');
@@ -27,6 +27,7 @@ if (args.help) {
   console.log('pnpm release [--bundles nsis|msi|dmg|app|deb|rpm|appimage] [--target <host>] [--cubism-core <file>] [--server-only]');
   process.exit(0);
 }
+checkReleaseVersions(repository);
 const pnpm = process.env.npm_execpath;
 if (!pnpm) {
   throw new Error('请从仓库根目录运行 pnpm release');
@@ -39,7 +40,6 @@ const target = args.target ?? process.env.TAURI_ENV_TARGET_TRIPLE ?? host;
 if (!host || target !== host) {
   throw new Error(`原生依赖必须在目标平台构建: target=${target}, host=${host}`);
 }
-verifyVersion();
 verifyAssets(!args['server-only']);
 const temporary = mkdtempSync(path.join(os.tmpdir(), 'ema-release-'));
 const workspace = path.join(temporary, 'workspace');
@@ -100,17 +100,6 @@ function stage(label, action) {
   console.log(`\n[发布] ${label}`);
   action();
   console.log(`[发布] ${label}完成 (${((performance.now() - start) / 1000).toFixed(1)} 秒)`);
-}
-
-function verifyVersion() {
-  const packageVersion = readJson(path.join(desktop, 'package.json')).version;
-  const tauriVersion = readJson(path.join(tauri, 'tauri.conf.json')).version;
-  const cargo = readFileSync(path.join(tauri, 'Cargo.toml'), 'utf8');
-  const section = cargo.split(/^\[/mu).find(value => value.startsWith('package]'));
-  const cargoVersion = section?.match(/^version\s*=\s*"([^"]+)"/mu)?.[1];
-  if (!packageVersion || packageVersion !== tauriVersion || packageVersion !== cargoVersion) {
-    throw new Error('Desktop package.json, tauri.conf.json 和 Cargo.toml 的版本不一致');
-  }
 }
 
 function verifyAssets(includeDesktop) {

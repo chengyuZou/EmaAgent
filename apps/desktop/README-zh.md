@@ -94,6 +94,8 @@ pnpm release --server-only
 
 默认生成 Windows NSIS, macOS DMG 或 Linux DEB. Windows 安装包输出在 `apps/desktop/src-tauri/target/release/bundle/nsis/`.
 
+根目录 `package.json` 确定发布版本. `release.mjs` 在检查构建工具和准备文件之前, 要求 Desktop `package.json`, `src-tauri/tauri.conf.json` 和 `src-tauri/Cargo.toml` 中的 package 版本与它一致. 不一致时停止并列出四处的值, 不自动改写文件. 版本变化和 Bug 记录的写法见 [docs](../../docs/README-zh.md).
+
 通过 `--cubism-core` 或 `EMA_CUBISM_CORE_PATH` 指定有权分发的 Cubism Core. 未指定时使用 `public/cubism/` 中的文件. SHA-256 必须符合 `release-config.json` 的批准值, 脚本不会自动下载这个许可文件.
 
 `--target` 必须与当前 Rust host 相同, 因为 Node, SQLite, Sharp 和 FFmpeg 包含平台相关文件. 显式指定 target 后, 安装包输出在 `src-tauri/target/<target>/release/bundle/`. 这不是跨平台交叉构建流程.
@@ -102,7 +104,7 @@ pnpm release --server-only
 
 1. `release.mjs` 检查版本和资源, 构建当前 Server 及工作区依赖, 执行后续发布步骤.
 2. `releaseWorkspace.mjs` 准备临时依赖工作区, 用 hoisted 布局安装锁定的生产依赖, 再组装由普通文件组成的 `server/app`. 必需的嵌套依赖版本保留, pnpm 链接和开发命令入口不进入安装包.
-3. `releaseCheck.mjs` 检查文件, 删除临时依赖工作区后用随包 Node 启动 Server. 使用全新临时用户目录验证启动, 认证, 角色初始化, 空会话和 Memory 路径.
+3. `releaseCheck.mjs` 检查发布版本和文件, 删除临时依赖工作区后用随包 Node 启动 Server. 使用全新临时用户目录验证启动, 认证, 角色初始化, 空会话和 Memory 路径.
 4. `releaseNativeCheck.mjs` 检查组装结果中的 SQLite 剧情初始化, Sharp 和 FFmpeg.
 
 验证成功后, 文件写入 `src-tauri/.release-staging/server/app` 和 `src-tauri/binaries/ema-server-<target>`. Tauri 将它们映射到安装资源, 包括运行必需的 `server` 目录. 这些生成文件应重新构建, 不手动修改. 发布准备不会改写开发仓库的依赖目录和锁文件.
@@ -118,6 +120,7 @@ pnpm release --server-only
 ```sh
 pnpm --filter @ema-agent/desktop typecheck
 pnpm --filter @ema-agent/desktop test
+pnpm --filter @ema-agent/desktop test:scripts
 pnpm --filter @ema-agent/desktop test:live2d-release
 pnpm --filter @ema-agent/desktop build
 cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --lib

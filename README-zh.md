@@ -102,7 +102,9 @@ pnpm release --server-only
 
 发布版本使用三段数字 `MAJOR.MINOR.PATCH`, 例如 `0.1.0`, `0.1.1` 和 `0.2.0`. Patch 用于同一版本线的问题修复. Minor 用于功能增加, 项目在 1.0 之前也可能在 Minor 中调整已有行为. `0.1.11` 是有效的补丁版本, `0.1.1.1` 不是本项目的发布格式.
 
-Desktop package, Tauri 配置和 Cargo package 中的应用版本需要一致, 发布脚本会检查这三处.
+Alpha 使用预发布后缀, 例如 `0.1.0-alpha.1`. 根目录 `package.json` 确定应用发布版本, Desktop package, Tauri 配置和 Cargo package 必须与它完全一致. 发布脚本在构建之前检查这四处, 不一致时列出各自的值, 不自动修改版本.
+
+版本变化和 Bug 修复记录放在 [docs](docs/README-zh.md), [每个版本一份变更文档](docs/changes/).
 
 数据库版本是独立整数, 不是应用版本号. Profile 和 Data 分别从自己的 `001_initial.sql` 开始, 初始数据库版本均为 1. 以后修改表结构时追加下一份 SQL, 不改已经发布的迁移文件. 启动时先执行待迁移 SQL, 成功后才接受业务请求. 某一步失败会回滚这一步, 旧应用也会拒绝打开超出自己支持版本的数据库. 没有自动降级迁移.
 

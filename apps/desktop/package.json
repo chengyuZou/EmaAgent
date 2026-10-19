@@ -1,6 +1,6 @@
 {
   "name": "@ema-agent/desktop",
-  "version": "0.1.0",
+  "version": "0.1.0-alpha.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
+    "test:scripts": "node --test tests/releaseVersions.test.mjs",
     "test:live2d-release": "node --test tests/live2dRelease.test.mjs",
     "release": "node scripts/release.mjs",
     "tauri:dev": "tauri dev",

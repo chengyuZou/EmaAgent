@@ -1,10 +1,37 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { cpSync, mkdirSync, readdirSync, statSync } from 'node:fs';
+import { cpSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
+
+export function checkReleaseVersions(repository) {
+  const manifests = [
+    'package.json',
+    'apps/desktop/package.json',
+    'apps/desktop/src-tauri/tauri.conf.json',
+  ];
+  const versions = manifests.map(file => ({
+    file,
+    version: JSON.parse(readFileSync(path.join(repository, file), 'utf8')).version,
+  }));
+  const cargoFile = 'apps/desktop/src-tauri/Cargo.toml';
+  const cargo = readFileSync(path.join(repository, cargoFile), 'utf8');
+  const section = cargo.split(/^\[/mu).find(value => value.startsWith('package]'));
+  versions.push({
+    file: cargoFile,
+    version: section?.match(/^version\s*=\s*"([^"]+)"/mu)?.[1],
+  });
+  const rootVersion = versions[0].version;
+  if (typeof rootVersion !== 'string' || rootVersion.trim().length === 0
+    || versions.some(entry => entry.version !== rootVersion)) {
+    const details = versions
+      .map(entry => `${entry.file}: ${JSON.stringify(entry.version) ?? '(missing)'}`)
+      .join('\n');
+    throw new Error(`发布版本必须与根目录 package.json 一致, 且不能为空. 请手动同步:\n${details}`);
+  }
+}
 
 export function checkReleaseFiles(directory, windowsPaths = process.platform === 'win32') {
   let files = 0;

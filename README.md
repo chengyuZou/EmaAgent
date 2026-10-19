@@ -102,7 +102,9 @@ See [Desktop build and release](apps/desktop/README.md) for prerequisites, resou
 
 Release versions use three numbers: `MAJOR.MINOR.PATCH`, for example `0.1.0`, `0.1.1`, and `0.2.0`. Patch releases fix problems within a release line. Minor releases add capabilities and, while the project is below 1.0, may also change existing behavior. `0.1.11` is a valid patch number; `0.1.1.1` is not the release format used here.
 
-The desktop package, Tauri configuration, and Cargo package must agree on the application version; the release script checks them.
+Alpha builds use a prerelease suffix, such as `0.1.0-alpha.1`. The root `package.json` sets the application release version. The Desktop package, Tauri configuration, and Cargo package must match it exactly. The release script checks all four before building and reports their values on a mismatch; it does not update versions automatically.
+
+Release notes and bug-fix records are kept in [docs](docs/README.md), with one [change document per version](docs/changes/).
 
 Database versions are separate integers, not application release numbers. Profile and Data each start from their own `001_initial.sql` at database version 1. Future changes add the next SQL file instead of editing a released migration. Startup applies pending migrations before serving requests. A failed migration rolls back that migration, and an older application refuses a database newer than it supports. There is no automatic database downgrade.
 
