@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import type { z } from 'zod';
 
 export type SettingApplyPolicy =
   | 'immediate'
@@ -6,9 +6,9 @@ export type SettingApplyPolicy =
   | 'nextTurn'
   | 'restart';
 
-export interface SettingDefinition<T> {
+export interface SettingDefinition<T, K extends string = string> {
   /** SQLite settings 表的业务键. 点号前缀用于组织同类设置. */
-  readonly key: string;
+  readonly key: K;
   /** 声明新值何时使用, 由业务调用方在相应时点读取, Store 不负责调度. */
   readonly apply: SettingApplyPolicy;
   /** 同时检查写入值和数据库读出的值, 并推导业务类型. */
@@ -27,6 +27,8 @@ export interface SettingGroup {
   readonly schema: z.ZodType<Record<string, unknown>, unknown>;
 }
 
-export function defineSetting<T>(definition: SettingDefinition<T>): SettingDefinition<T> {
+export function defineSetting<T, const K extends string = string>(
+  definition: Omit<SettingDefinition<T, K>, 'defaultValue'> & { readonly defaultValue: NoInfer<T> },
+): SettingDefinition<T, K> {
   return definition;
 }

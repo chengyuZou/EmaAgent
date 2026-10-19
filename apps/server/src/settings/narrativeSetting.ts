@@ -1,4 +1,4 @@
-import { defineSetting } from '@ema-agent/settings';
+import { defineSetting } from '@ema-agent/settings/definition';
 import type { NarrativeQueryMode } from '@ema-agent/narrative';
 import { z } from 'zod';
 

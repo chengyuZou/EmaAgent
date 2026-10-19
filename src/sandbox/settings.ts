@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { defineSetting } from '@ema-agent/settings';
+import { defineSetting } from '@ema-agent/settings/definition';
 import type { SandboxNetwork } from './types.js';
 
 // 状态查询立即读取新值. 已创建的 CommandRunner 保留构造时的网络档位.

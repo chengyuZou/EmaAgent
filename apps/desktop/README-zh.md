@@ -47,6 +47,8 @@ sequenceDiagram
 
 Server 保存消息, 设置和资源. 前端 Store 保存当前导航, 草稿, 已加载历史, 运行中的任务等共享页面状态. 历史消息按窗口加载; 实时 Turn 要等对应的持久化历史读取成功后才从实时状态中移除.
 
+设置页面从 `@ema-agent/server/settings` 导入定义, 对应 [definitions.ts](../server/src/settings/definitions.ts). Server 注册同一批对象. `settingsApi.getValue(definition)` 和 `putValue(definition, value)` 从定义取得 key 和值类型, 并按同一 Schema 检查响应. 标题和控件留在 Desktop. 共享控件与 `useSettingValues` 放在 `src/settings/shared`; 屏幕捕获是侧栏中的独立页面, 不再放在参数设置中.
+
 ## 会话和窗口行为
 
 主窗口在 Chat 和 Settings 之间切换时保留两个页面, 隐藏页面保留尺寸且不能获得焦点. 关闭主窗口只是隐藏; 退出应用才停止本地 Server 和原生终端.

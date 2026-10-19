@@ -2,7 +2,7 @@ import { useEffect, useState, type JSX } from 'react';
 import { Tooltip, Button, Input } from '@ema-agent/ui';
 import type { SettingApply } from '../../../api/settings.js';
 import { showToast } from '../../../lib/notifications/toast.js';
-import { SaveStateIndicator, SettingItem } from '../../shared/SettingItem.js';
+import { SaveStateIndicator, SettingItem } from '../SettingItem.js';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'failed';
 

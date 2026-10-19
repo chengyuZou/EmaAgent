@@ -29,7 +29,19 @@ fn base_command(launch: ChildLaunch, secret: &str) -> Command {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .stdin(Stdio::null())
-        .env("EMA_SHARED_SECRET", secret);
+        .env("EMA_SHARED_SECRET", secret)
+        .env(
+            "NODE_ENV",
+            if cfg!(debug_assertions) {
+                "development"
+            } else {
+                "production"
+            },
+        );
+    // Installed builds must not inherit Node loaders or search paths from a developer's shell.
+    if !cfg!(debug_assertions) {
+        command.env_remove("NODE_OPTIONS").env_remove("NODE_PATH");
+    }
     command
 }
 
@@ -108,3 +120,4 @@ fn pipe_stderr(stderr: Option<tokio::process::ChildStderr>, label: &'static str)
         }
     });
 }
+

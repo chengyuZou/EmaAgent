@@ -16,7 +16,7 @@ sequenceDiagram
     participant Server as Local Server
     participant Stage as stage WebView
     Host->>Host: Prepare bundled resources
-    Host->>Server: Start with EMA_SERVER_SECRET
+    Host->>Server: Start with EMA_SHARED_SECRET
     Server->>Server: Initialize data and listen
     Server-->>Host: server.ready notification with port
     Stage->>Host: get_server_port / get_server_secret
@@ -27,6 +27,14 @@ sequenceDiagram
 Server chooses a local port. The host waits up to 120 seconds for its ready notification and also detects early process exit. In development, `tsx watch` may restart Server with a different port; subsequent ready notifications update the connection information returned to the frontend.
 
 Development launches `pnpm --filter @ema-agent/server dev` from the repository. A release launches the bundled `ema-server` executable, which is Node renamed for distribution, with `server/app` as its working directory and `./dist/main.js` as its entry. Keep the installed `server` directory beside the application resources; it contains required code and dependencies.
+
+The host sets `NODE_ENV=development` for debug builds and `NODE_ENV=production` for release builds. Release children do not inherit `NODE_OPTIONS` or `NODE_PATH`. This matches the release preparation check and prevents shell-level Node settings from changing the installed Server.
+
+## Page content policy
+
+`tauri.conf.json` permits HTTP and HTTPS images and audio for Markdown, plus local and Blob media used by the application. JavaScript `unsafe-eval` stays disabled; Cubism's WebAssembly permission is separate.
+
+Tauri's automatic CSP modification is disabled only for `style-src`. File trees, Diff views and xterm create style elements at runtime. Adding a nonce to that directive would make the browser ignore its `unsafe-inline` permission and reject those elements. Other directives retain normal Tauri processing. Both application window capabilities separately grant `core:window:allow-set-theme` for native theme changes.
 
 ## Windows and events
 

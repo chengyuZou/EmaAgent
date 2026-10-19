@@ -1,3 +1,4 @@
+import { permissionAskTimeoutSetting, eventDisplaySetting } from '@ema-agent/server/settings';
 import { create } from 'zustand';
 import type { AppEvent } from '@ema-agent/server/application/appEvents.js';
 import { settingsApi, type EventDisplayTable } from '../api/settings.js';
@@ -7,8 +8,6 @@ import type { DesktopSettingsPayload } from '../lib/tauri/types.js';
 /** 单个事件类型的展示配置(生效表 = 默认表 + 用户覆盖合并). */
 export type EventDisplayConfig = EventDisplayTable[string];
 
-const PERMISSION_ASK_TIMEOUT_KEY = 'permission.askTimeoutMs';
-const EVENT_DISPLAY_SETTING_KEY = 'frontend.eventDisplay';
 
 export interface SettingsStoreState {
   permissionTimeoutMs: number | null;
@@ -32,7 +31,7 @@ export const useSettingsStore = create<SettingsStoreState>((set, get) => ({
 
   async putPermissionTimeout(ms) {
     try {
-      await settingsApi.putValue(PERMISSION_ASK_TIMEOUT_KEY, ms);
+      await settingsApi.putValue(permissionAskTimeoutSetting, ms);
       set({ permissionTimeoutMs: ms, error: null });
       broadcastDesktopSettings(get());
     } catch (err: unknown) {
@@ -44,11 +43,11 @@ export const useSettingsStore = create<SettingsStoreState>((set, get) => ({
   async refreshDesktopSettings() {
     try {
       const [permission, eventDisplay] = await Promise.all([
-        settingsApi.getValue(PERMISSION_ASK_TIMEOUT_KEY),
+        settingsApi.getValue(permissionAskTimeoutSetting),
         settingsApi.getEventDisplay(),
       ]);
       set({
-        permissionTimeoutMs: readTimeoutValue(permission.value),
+        permissionTimeoutMs: permission.value,
         eventDisplay,
         error: null,
       });
@@ -72,9 +71,9 @@ export const useSettingsStore = create<SettingsStoreState>((set, get) => ({
     try {
       // 合并必须发生在用户覆盖表上: getEventDisplay 返回的是含默认表的生效投影, 
       // 直接回写会把默认值冻结成用户覆盖.
-      const current = await settingsApi.getValue(EVENT_DISPLAY_SETTING_KEY);
-      const base = readOverridesValue(current.value);
-      await settingsApi.putValue(EVENT_DISPLAY_SETTING_KEY, { ...base, ...overrides });
+      const current = await settingsApi.getValue(eventDisplaySetting);
+      const base = current.value;
+      await settingsApi.putValue(eventDisplaySetting, { ...base, ...overrides });
       await get().refreshEventDisplay();
       broadcastDesktopSettings(get());
     } catch (err: unknown) {
@@ -83,17 +82,6 @@ export const useSettingsStore = create<SettingsStoreState>((set, get) => ({
     }
   },
 }));
-
-/** 值键解码: number 或 null(一直等待); 其他形状按 null 处理. */
-function readTimeoutValue(value: unknown): number | null {
-  return typeof value === 'number' ? value : null;
-}
-
-/** 用户覆盖表只接受对象; 损坏形状当空表合并. */
-function readOverridesValue(value: unknown): Record<string, EventDisplayConfig> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return {};
-  return value as Record<string, EventDisplayConfig>;
-}
 
 function broadcastDesktopSettings(state: SettingsStoreState): void {
   const payload: DesktopSettingsPayload = {

@@ -33,6 +33,18 @@ export default defineConfig({
   // 后端实现只允许类型导入, 避免把 Node 代码打进浏览器.
   resolve: {
     alias: [
+      // Shared setting definitions must use current source in both Dev and Release.
+      { find: /^@ema-agent\/server\/settings$/, replacement: resolve(__dirname, '../server/src/settings/definitions.ts') },
+      { find: /^@ema-agent\/settings\/definition$/, replacement: resolve(__dirname, '../../src/settings/types.ts') },
+      { find: /^@ema-agent\/agent\/settings$/, replacement: resolve(__dirname, '../../src/agent/settings.ts') },
+      { find: /^@ema-agent\/attachments\/settings$/, replacement: resolve(__dirname, '../../src/attachments/settings.ts') },
+      { find: /^@ema-agent\/compact\/settings$/, replacement: resolve(__dirname, '../../src/compact/settings.ts') },
+      { find: /^@ema-agent\/permission\/settings$/, replacement: resolve(__dirname, '../../src/permission/settings.ts') },
+      { find: /^@ema-agent\/skills\/settings$/, replacement: resolve(__dirname, '../../src/skills/settings.ts') },
+      { find: /^@ema-agent\/tools\/settings$/, replacement: resolve(__dirname, '../../src/tools/settings.ts') },
+      { find: /^@ema-agent\/sandbox\/settings$/, replacement: resolve(__dirname, '../../src/sandbox/settings.ts') },
+      { find: /^@ema-agent\/vishot-capture\/settings$/, replacement: resolve(__dirname, '../../src/vishot-capture/settings.ts') },
+      { find: /^@ema-agent\/tools\/background\/settings$/, replacement: resolve(__dirname, '../../src/tools/background/settings.ts') },
       { find: /^@ema-agent\/ui$/, replacement: resolve(__dirname, '../../src/ui/index.ts') },
       { find: /^@ema-agent\/ui\/utils$/, replacement: resolve(__dirname, '../../src/ui/utils/index.ts') },
       { find: '@ema-agent/builtin-tools/ui', replacement: resolve(__dirname, '../../src/builtin-tools/ui.ts') },

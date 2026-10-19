@@ -43,6 +43,8 @@ SQL 将用户覆盖值保存为 JSON, 定义和默认值留在代码中. `get` �
 
 ## 代码与验证
 
+业务定义文件可以从 `@ema-agent/settings/definition` 导入 `defineSetting`, 不加载 Store. 这个函数保留 key 的字面量类型, 按 Schema 推导值类型, 并要求默认值符合该类型. Server 通过 `@ema-agent/server/settings` 向 Desktop 提供实际注册的定义, 前端使用同一个 key, Schema, 默认值和生效时机. Store 的读写仍在后端执行.
+
 [types.ts](types.ts) 定义设置与组的契约, [settingsStore.ts](settingsStore.ts) 处理校验和通知, [Storage](../storage/repos/profile/settings.ts) 实现 SQL 读写. [Server 装配](../../apps/server/src/composition/settings.ts) 注册实际业务定义. Desktop 参数组件提供标题, 控件及单位转换.
 
 运行 `pnpm --filter @ema-agent/settings test`. 测试覆盖默认值回退, 值校验, 先保存后通知, 组约束和定义注册.

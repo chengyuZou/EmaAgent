@@ -75,7 +75,10 @@ export function startProcess(
       if (process.platform === 'win32') {
         if (child.pid === undefined) return;
         try {
-          spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+          spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], {
+            stdio: 'ignore',
+            windowsHide: true,
+          });
         } catch {
           // 进程可能已经退出.
         }

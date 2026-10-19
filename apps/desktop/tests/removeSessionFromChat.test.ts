@@ -16,7 +16,7 @@ const native = vi.hoisted(() => ({
 
 vi.mock('../src/lib/tauri/tauriBridge.js', () => ({ tauriBridge: native }));
 vi.mock('../src/api/settings.js', () => ({
-  settingsApi: { getValue: vi.fn(async () => ({ value: null })) },
+  settingsApi: { getValue: vi.fn(async () => ({ value: '' })) },
 }));
 vi.mock('../src/api/system.js', () => ({
   systemApi: { findTerminalShells: vi.fn(async () => ({ shells: [] })) },

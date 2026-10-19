@@ -1,3 +1,4 @@
+import { terminalShellExecutableSetting } from '@ema-agent/server/settings';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { Terminal, type ITheme } from '@xterm/xterm';
@@ -69,8 +70,8 @@ export async function startTerminal(input: StartTerminalInput): Promise<void> {
   if (entries.has(input.terminalId)) return;
   // 偏好存 kind:解不出(未设/该 kind 已消失)回退探测首条,与设置页"自动选择"同义;
   // 探测全空则不传 shell,由 Rust 落平台默认 shell.
-  const shellSetting = await settingsApi.getValue('frontend.terminal.shellExecutable');
-  const preferredKind = typeof shellSetting.value === 'string' ? shellSetting.value.trim() : '';
+  const shellSetting = await settingsApi.getValue(terminalShellExecutableSetting);
+  const preferredKind = shellSetting.value.trim();
   const { shells } = await systemApi.findTerminalShells();
   const shell = (preferredKind
     ? shells.find(candidate => candidate.kind === preferredKind)

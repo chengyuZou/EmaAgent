@@ -11,7 +11,7 @@
 | [changes/](./changes/) | 每个应用版本一个 Markdown 文件, 说明用户能得到什么, 修复了什么, 以及升级前需要知道的事项. |
 | [logs/](./logs/) | 按问题命名的 Bug 修复记录. 在文件中用一级标题标明修复所属的应用版本. |
 
-当前版本见 [0.1.0-alpha.1 草稿](./changes/0.1.0-alpha.1.md). 已记录的问题包括 [Live2D 发布版渲染](./logs/live2dReleaseRendering.md)和 [Windows 退出时弹出控制台](./logs/windowsExitConsole.md).
+当前版本见 [0.1.0-alpha.1 草稿](./changes/0.1.0-alpha.1.md). 问题记录包括 [Live2D 发布版渲染](./logs/live2dReleaseRendering.md), [发布版样式和 Markdown 媒体](./logs/releaseUiStyles.md), [原生权限和 Server 启动环境](./logs/releasePermissionsAndEnvironment.md), 以及 [Windows 退出时弹出控制台](./logs/windowsExitConsole.md).
 
 ## 如何写版本变化
 

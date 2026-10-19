@@ -1,3 +1,4 @@
+import { wallpaperSetting } from '@ema-agent/server/settings';
 import { useEffect, useLayoutEffect, useRef, useState, type JSX, type KeyboardEvent, type PointerEvent } from 'react';
 import {
   Tooltip,
@@ -15,7 +16,6 @@ import {
   DEFAULT_WALLPAPER_IMAGE_PARAMS,
   DEFAULT_WALLPAPER_SETTINGS,
   WALLPAPER_IMAGE_EXTENSIONS,
-  WALLPAPER_SETTING_KEY,
 } from '@ema-agent/server/settings/wallpaperCatalog.js';
 import { settingsApi } from '../../api/settings.js';
 import { wallpaperApi, type WallpaperImageSummary } from '../../api/wallpaper.js';
@@ -58,10 +58,10 @@ export function WallpaperTab(): JSX.Element {
     setError(null);
     void Promise.all([
       wallpaperApi.listImages(),
-      settingsApi.getValue(WALLPAPER_SETTING_KEY),
+      settingsApi.getValue(wallpaperSetting),
     ]).then(([catalog, setting]) => {
       if (!mounted) return;
-      const value = setting.value as WallpaperSettings;
+      const value = setting.value;
       setItems(catalog.items);
       setSettings(value);
       const active = catalog.items.find(item => item.name === value.activeImage);
@@ -90,8 +90,8 @@ export function WallpaperTab(): JSX.Element {
   const filenameBase = selected ? selected.name.slice(0, selected.name.lastIndexOf('.')) : '';
 
   async function saveSettings(next: WallpaperSettings): Promise<void> {
-    const saved = await settingsApi.putValue(WALLPAPER_SETTING_KEY, next);
-    setSettings(saved.value as WallpaperSettings);
+    const saved = await settingsApi.putValue(wallpaperSetting, next);
+    setSettings(saved.value);
   }
 
   async function withBusy(action: () => Promise<void>, message: string): Promise<void> {

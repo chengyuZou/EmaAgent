@@ -43,6 +43,8 @@ In-process `SettingsChangedEvent` carries changed keys and a sequence number loc
 
 ## Code and checks
 
+Business definition files can import `defineSetting` from `@ema-agent/settings/definition` without loading the Store. The helper preserves literal keys and infers the value from the schema; defaults must match that value type. Server exposes the registered definitions to Desktop through `@ema-agent/server/settings`, so browser callers use the same key, schema, default and apply policy. The Store itself remains a backend operation.
+
 [types.ts](types.ts) defines setting and group contracts, [settingsStore.ts](settingsStore.ts) handles validation and notifications, and [Storage](../storage/repos/profile/settings.ts) handles SQL. [Server composition](../../apps/server/src/composition/settings.ts) registers the real business definitions. Desktop parameter components provide their own labels, controls and unit conversions.
 
 Run `pnpm --filter @ema-agent/settings test`. Tests cover fallback reads, validation, write-before-notify order, group rules and definition registration.

@@ -6,6 +6,7 @@ import { useAttachmentDrop } from '../src/chat/input/attachmentDrop.js';
 import { MainView, useMainNavigationStore } from '../src/layout/navigation.js';
 import { WallpaperTab } from '../src/settings/appearance/wallpaperTab.js';
 import { DEFAULT_WALLPAPER_SETTINGS } from '../../server/src/settings/wallpaperCatalog.js';
+import { wallpaperSetting } from '@ema-agent/server/settings';
 import type { FileDragEvent } from '../src/lib/tauri/types.js';
 
 const boundary = vi.hoisted(() => ({
@@ -150,7 +151,7 @@ describe('native chat file drops', () => {
     expect(boundary.upload).toHaveBeenCalledOnce();
     expect(boundary.upload.mock.calls[0]![0]).toBeInstanceOf(File);
     expect(boundary.upload.mock.calls[0]![0].name).toBe('wallpaper.png');
-    expect(boundary.saveSettings).toHaveBeenCalledWith('frontend.wallpaper', expect.objectContaining({
+    expect(boundary.saveSettings).toHaveBeenCalledWith(wallpaperSetting, expect.objectContaining({
       activeImage: 'wallpaper.png', enabled: true,
     }));
     expect(boundary.edit).not.toHaveBeenCalled();

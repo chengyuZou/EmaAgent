@@ -1,4 +1,4 @@
-import { defineSetting } from '@ema-agent/settings';
+import { defineSetting } from '@ema-agent/settings/definition';
 import { z } from 'zod';
 
 /** null 表示不因等待时长自动拒绝, Turn/Run 取消或 Session 删除仍会结束等待. */

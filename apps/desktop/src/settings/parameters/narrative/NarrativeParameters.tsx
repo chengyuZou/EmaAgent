@@ -1,10 +1,9 @@
+import { narrativeQueryModeSetting } from '@ema-agent/server/settings';
 import type { JSX } from 'react';
 import { Callout, Spinner } from '@ema-agent/ui';
 import { SettingsCard, SettingsSection } from '../../shared/SettingItem.js';
-import { SelectSetting } from '../controls/SelectSetting.js';
-import { useSettingValues } from '../useSettingValues.js';
-
-const QUERY_MODE = 'narrative.queryMode';
+import { SelectSetting } from '../../shared/controls/SelectSetting.js';
+import { useSettingValues } from '../../shared/useSettingValues.js';
 
 export function NarrativeParameters(): JSX.Element {
   const settings = useSettingValues();
@@ -14,10 +13,7 @@ export function NarrativeParameters(): JSX.Element {
   if (settings.error) {
     return <Callout variant="danger">Narrative 参数读取失败: {settings.error}</Callout>;
   }
-  const mode = settings.values.get(QUERY_MODE);
-  if (typeof mode !== 'string') {
-    throw new Error('Narrative 检索模式没有返回字符串值');
-  }
+  const mode = settings.get(narrativeQueryModeSetting);
 
   return (
     <SettingsSection icon="i-lucide:book-open" title="Narrative" description="剧情检索算法; 工具的启用和禁用在工具设置中选择">
@@ -25,7 +21,7 @@ export function NarrativeParameters(): JSX.Element {
         <SelectSetting
           title="剧情检索模式"
           hint="自动允许模型选择算法, 未指定时使用混合检索. 其他选项固定每次查询使用的算法, 不会自动发起检索."
-          apply={settings.apply(QUERY_MODE)}
+          apply={settings.apply(narrativeQueryModeSetting)}
           value={mode}
           options={[
             { value: 'auto', label: '自动' },
@@ -35,8 +31,8 @@ export function NarrativeParameters(): JSX.Element {
             { value: 'naive', label: '直接检索' },
             { value: 'mix', label: 'Mix' },
           ]}
-          onSave={value => settings.save(QUERY_MODE, value)}
-          onReset={() => settings.reset(QUERY_MODE)}
+          onSave={value => settings.save(narrativeQueryModeSetting, narrativeQueryModeSetting.schema.parse(value))}
+          onReset={() => settings.reset(narrativeQueryModeSetting)}
         />
       </SettingsCard>
     </SettingsSection>

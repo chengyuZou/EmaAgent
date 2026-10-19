@@ -152,10 +152,11 @@ export const tauriBridge = {
     return core.invoke('inspect_attachment_paths', { paths });
   },
 
-  async setWindowTheme(mode: 'light' | 'dark'): Promise<void> {
+  /** null 解除窗口的颜色覆盖, 让原生窗口和 WebView 重新跟随系统. */
+  async setWindowTheme(mode: 'light' | 'dark' | null): Promise<void> {
     const winMod = await getWindow();
     if (!winMod) return;
-    await winMod.getCurrentWindow().setTheme(mode).catch(() => {});
+    await winMod.getCurrentWindow().setTheme(mode);
   },
 
   async isWindowVisible(): Promise<boolean | null> {

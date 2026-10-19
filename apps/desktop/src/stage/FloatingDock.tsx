@@ -1,9 +1,10 @@
+import { wallpaperSetting } from '@ema-agent/server/settings';
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { IconButton, Popover, ScrollArea, Tooltip } from '@ema-agent/ui';
 import { tauriBridge } from '../lib/tauri/tauriBridge.js';
 import { showToast } from '../lib/notifications/toast.js';
 import type { WallpaperSettings } from '@ema-agent/server/settings/wallpaperSetting.js';
-import { DEFAULT_WALLPAPER_SETTINGS, WALLPAPER_SETTING_KEY } from '@ema-agent/server/settings/wallpaperCatalog.js';
+import { DEFAULT_WALLPAPER_SETTINGS } from '@ema-agent/server/settings/wallpaperCatalog.js';
 import { settingsApi } from '../api/settings.js';
 import { subscribeSystemEvent } from '../lib/events/systemEventDispatcher.js';
 
@@ -35,9 +36,9 @@ export function FloatingDock({
     async function refresh(): Promise<void> {
       const requestSequence = ++sequence;
       try {
-        const response = await settingsApi.getValue(WALLPAPER_SETTING_KEY);
+        const response = await settingsApi.getValue(wallpaperSetting);
         if (disposed || requestSequence !== sequence) return;
-        const value = response.value as WallpaperSettings;
+        const value = response.value;
         setWallpaper({ enabled: value.enabled, materialMode: value.materialMode });
       } catch (error) {
         console.warn('[floating-dock] 读取浮层外观设置失败:', error);

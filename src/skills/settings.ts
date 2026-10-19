@@ -1,4 +1,4 @@
-import { defineSetting } from '@ema-agent/settings';
+import { defineSetting } from '@ema-agent/settings/definition';
 import { z } from 'zod';
 
 const SOURCE_ID = /^[a-z][a-z0-9-]*$/;

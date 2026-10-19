@@ -1,3 +1,4 @@
+import { sandboxNetworkSetting } from '@ema-agent/server/settings';
 import { useEffect, useId, useState, type JSX } from 'react';
 import { Button, Callout, Select, Spinner } from '@ema-agent/ui';
 import { settingsApi } from '../../api/settings.js';
@@ -47,7 +48,7 @@ export function SandboxStatusSettings(): JSX.Element {
   const saveNetwork = (value: string): void => {
     if (value !== 'none' && value !== 'full') return;
     setSaveState('saving');
-    settingsApi.putValue('sandbox.network', value)
+    settingsApi.putValue(sandboxNetworkSetting, value)
       .then(() => {
         setSaveState('idle');
         load();

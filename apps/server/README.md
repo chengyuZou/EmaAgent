@@ -106,7 +106,9 @@ Validation failures return `400` with `error: "invalid_request"` and flattened d
 
 Start at `main.ts` and `platform/lifecycle.ts`, then follow `composition/index.ts` into the business being checked. `routes/index.ts` gives its URL; the route file defines the wire shape. `application/` contains operations that coordinate several packages, such as Session deletion and character changes.
 
-Character activation, deletion and selected presentation changes temporarily block new work registration while checking that Sessions are idle. The setting catalogs are a deliberate browser-facing exception: Desktop loads `themeCatalog.ts` and `wallpaperCatalog.ts` as values, so those files must not acquire Node dependencies.
+Character activation, deletion and selected presentation changes temporarily block new work registration while checking that Sessions are idle.
+
+`@ema-agent/server/settings` exports [shared setting definitions](./src/settings/definitions.ts). Business packages own their keys, schemas, defaults and apply policies; this entry collects them without importing Server startup, SQL or file access. `composition/settings.ts` registers the same definitions with `SettingsStore`. Desktop passes these definitions to its settings API instead of repeating key strings or value shapes. The appearance catalogs are also browser-safe imports. Keep Node dependencies out of these shared entries.
 
 ```bash
 pnpm --filter @ema-agent/server typecheck

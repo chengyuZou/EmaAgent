@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { defineSetting } from '@ema-agent/settings';
+import { defineSetting } from '@ema-agent/settings/definition';
 import { DEFAULT_WALLPAPER_SETTINGS, WALLPAPER_SETTING_KEY } from './wallpaperCatalog.js';
 
 const wallpaperImageParamsSchema = z.object({

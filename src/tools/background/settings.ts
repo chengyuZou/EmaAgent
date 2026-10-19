@@ -1,5 +1,5 @@
 import type { SettingsStore } from '@ema-agent/settings';
-import { defineSetting } from '@ema-agent/settings';
+import { defineSetting } from '@ema-agent/settings/definition';
 import { z } from 'zod';
 
 /** 后台 Shell 后续新进程采用的并发数与最长运行时间. */

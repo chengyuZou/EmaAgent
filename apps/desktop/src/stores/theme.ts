@@ -1,12 +1,13 @@
+import { themeSetting } from '@ema-agent/server/settings';
 import { useEffect } from 'react';
 import { create } from 'zustand';
 import { settingsApi } from '../api/settings.js';
 import { setThemeHue, setThemeRadius } from '@ema-agent/ui/utils';
 import { tauriBridge } from '../lib/tauri/tauriBridge.js';
+import { showToast } from '../lib/notifications/toast.js';
 import type { ThemeSettings } from '@ema-agent/server/settings/themeSetting.js';
 import {
   DEFAULT_THEME_SETTINGS,
-  THEME_SETTING_KEY,
   READING_FONT_FALLBACK,
   CODE_FONT_FALLBACK,
 } from '@ema-agent/server/settings/themeCatalog.js';
@@ -99,20 +100,31 @@ function applyThemeChanges(previous: ThemeSettings, next: ThemeSettings): void {
 }
 
 function applyMode(mode: ThemeSettings['mode']): void {
+  if (mode !== 'system') applyPageMode(mode);
+
+  // 原生主题会影响 WebView 的 matchMedia. 跟随系统必须先解除覆盖,
+  // 不能把上一次窗口颜色当作系统颜色再写回原生窗口.
+  void tauriBridge.setWindowTheme(mode === 'system' ? null : mode).then(() => {
+    if (mode === 'system' && useThemeStore.getState().mode === 'system') {
+      applyPageMode(resolveMode('system'));
+    }
+  }).catch(error => {
+    const reason = error instanceof Error ? error.message : String(error);
+    showToast(`原生窗口主题设置失败: ${reason}`, { variant: 'warning' });
+  });
+}
+
+function applyPageMode(resolved: 'light' | 'dark'): void {
   // 切换双向动画:切前给 <html> 加 .ema-theme-transition 触发全局 color 过渡,
   // 过渡完(400ms)移除 只过渡颜色不过渡 transform/layout(见 transitions.css)
   const html = document.documentElement;
   html.classList.add('ema-theme-transition');
 
-  const resolved = resolveMode(mode);
   if (resolved === 'dark') {
     document.documentElement.removeAttribute(THEME_ATTR);
   } else {
     document.documentElement.setAttribute(THEME_ATTR, resolved);
   }
-
-  // 同步原生标题栏配色(Tauri 窗口)
-  void tauriBridge.setWindowTheme(resolved);
 
   // 过渡完移除 class(过渡时长 base 200ms + buffer 200ms = 400ms)
   window.setTimeout(() => html.classList.remove('ema-theme-transition'), 400);
@@ -125,9 +137,9 @@ function resolveMode(mode: ThemeSettings['mode']): 'light' | 'dark' {
   return mode;
 }
 
-// system 档跟随 OS: 系统明暗变化时重应用当前主题, 不写库不广播.
+// WebView 更新系统颜色时只重绘页面, 不再设置原生主题, 也不写库或广播.
 prefersDarkQuery.addEventListener('change', () => {
-  if (useThemeStore.getState().mode === 'system') applyMode('system');
+  if (useThemeStore.getState().mode === 'system') applyPageMode(resolveMode('system'));
 });
 
 export interface ThemeStoreState extends ThemeSettings {
@@ -157,7 +169,7 @@ export const useThemeStore = create<ThemeStoreState>((set, get) => ({
 
   async init() {
     try {
-      const { value } = await settingsApi.getValue(THEME_SETTING_KEY);
+      const { value } = await settingsApi.getValue(themeSetting);
       const resolved = readThemeValue(value);
       applyResolvedTheme(resolved);
       set({ ...resolved, ready: true });
@@ -271,7 +283,7 @@ async function persistThemeChange(
   applyThemeChanges(previous, next);
   updateState(next);
   try {
-    const { value } = await settingsApi.putValue(THEME_SETTING_KEY, next);
+    const { value } = await settingsApi.putValue(themeSetting, next);
     const saved = readThemeValue(value);
     applyThemeChanges(next, saved);
     updateState(saved);

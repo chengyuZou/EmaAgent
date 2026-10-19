@@ -11,6 +11,7 @@
     "resolveJsonModule": true,
     "paths": {
       "@ema-agent/server": ["../server/src"],
+      "@ema-agent/server/settings": ["../server/src/settings/definitions.ts"],
       "@ema-agent/server/*": ["../server/src/*"]
     }
   },

@@ -9,6 +9,10 @@
     ".": {
       "import": "./dist/main.js",
       "types": "./dist/main.d.ts"
+    },
+    "./settings": {
+      "types": "./dist/settings/definitions.d.ts",
+      "import": "./dist/settings/definitions.js"
     }
   },
   "files": [

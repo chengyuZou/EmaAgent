@@ -1,3 +1,4 @@
+import { terminalShellExecutableSetting } from '@ema-agent/server/settings';
 import { useEffect, useMemo, useState, type JSX } from 'react';
 import { Callout, Select } from '@ema-agent/ui';
 
@@ -11,7 +12,6 @@ import {
   SettingsSection,
 } from '../shared/SettingItem.js';
 
-const SETTING_KEY = 'frontend.terminal.shellExecutable';
 const AUTO_SHELL_VALUE = '__ema_auto_shell__';
 type LoadState = 'loading' | 'ready' | 'failed';
 type SaveState = 'idle' | 'saving' | 'saved' | 'failed';
@@ -27,11 +27,11 @@ export function TerminalShellSettings(): JSX.Element {
     let active = true;
     void Promise.all([
       systemApi.findTerminalShells(),
-      settingsApi.getValue(SETTING_KEY),
+      settingsApi.getValue(terminalShellExecutableSetting),
     ]).then(([detected, setting]) => {
       if (!active) return;
       setShells(detected.shells);
-      setSelected(typeof setting.value === 'string' ? setting.value : '');
+      setSelected(setting.value);
       setApply(setting.apply);
       setLoadState('ready');
     }).catch((cause: unknown) => {
@@ -57,7 +57,7 @@ export function TerminalShellSettings(): JSX.Element {
       label: shell.label,
     }));
     if (selected && !collapsed.some((shell) => shell.kind === selected)) {
-      detectedOptions.push({ value: selected, label: `不可用 — ${selected}` });
+      detectedOptions.push({ value: selected, label: `不可用 - ${selected}` });
     }
     return [
       {
@@ -71,8 +71,8 @@ export function TerminalShellSettings(): JSX.Element {
   async function save(value: string): Promise<void> {
     setSaveState('saving');
     try {
-      const result = await settingsApi.putValue(SETTING_KEY, value);
-      setSelected(typeof result.value === 'string' ? result.value : '');
+      const result = await settingsApi.putValue(terminalShellExecutableSetting, value);
+      setSelected(result.value);
       setSaveState('saved');
       window.setTimeout(() => setSaveState('idle'), 1_200);
     } catch (cause: unknown) {

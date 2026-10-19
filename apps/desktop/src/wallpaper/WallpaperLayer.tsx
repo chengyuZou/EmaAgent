@@ -1,8 +1,8 @@
+import { wallpaperSetting } from '@ema-agent/server/settings';
 import { useEffect, useLayoutEffect, useRef, useState, type JSX } from 'react';
 import type { WallpaperSettings } from '@ema-agent/server/settings/wallpaperSetting.js';
 import {
   DEFAULT_WALLPAPER_IMAGE_PARAMS,
-  WALLPAPER_SETTING_KEY,
 } from '@ema-agent/server/settings/wallpaperCatalog.js';
 import { settingsApi } from '../api/settings.js';
 import { wallpaperApi } from '../api/wallpaper.js';
@@ -74,9 +74,9 @@ export function WallpaperLayer(): JSX.Element {
     async function refresh(): Promise<void> {
       const currentSequence = ++sequence;
       try {
-        const response = await settingsApi.getValue(WALLPAPER_SETTING_KEY);
+        const response = await settingsApi.getValue(wallpaperSetting);
         if (disposed || currentSequence !== sequence) return;
-        let value = response.value as WallpaperSettings;
+        let value = response.value;
         if (!value.enabled || !value.activeImage) {
           setSettings(value);
           retireActiveFrames();
@@ -95,7 +95,7 @@ export function WallpaperLayer(): JSX.Element {
             ?? catalog.items[0]?.name
             ?? '';
           value = { ...value, activeImage: nextName };
-          await settingsApi.putValue(WALLPAPER_SETTING_KEY, value);
+          await settingsApi.putValue(wallpaperSetting, value);
           if (nextName) url = await fetchServerObjectUrl(wallpaperApi.imagePath(nextName));
         }
         if (url) {

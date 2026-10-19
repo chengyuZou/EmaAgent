@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { defineSetting } from '@ema-agent/settings';
+import { defineSetting } from '@ema-agent/settings/definition';
 
 const eventDisplayConfigSchema = z.object({
   enabled: z.boolean(),

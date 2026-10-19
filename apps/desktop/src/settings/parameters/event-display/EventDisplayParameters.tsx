@@ -1,3 +1,4 @@
+import { eventDisplaySetting } from '@ema-agent/server/settings';
 import { useEffect, useState, type JSX } from 'react';
 import { Badge, Button, Callout, Input, Select, Spinner, Switch } from '@ema-agent/ui';
 import { useSettingsStore, type EventDisplayConfig } from '../../../stores/settings.js';
@@ -15,7 +16,6 @@ import {
   eventDisplayLabel,
 } from './event-display-catalog.js';
 
-const EVENT_DISPLAY_SETTING_KEY = 'frontend.eventDisplay';
 
 const DURATION_OPTIONS = [
   { value: '1000', label: '1 秒' },
@@ -29,12 +29,6 @@ const DURATION_OPTIONS = [
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'failed';
 
-/** 原始覆盖表只接受对象;损坏形状当空表编辑. */
-function readOverrides(value: unknown): Record<string, EventDisplayConfig> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return {};
-  return value as Record<string, EventDisplayConfig>;
-}
-
 export function EventDisplayParameters(): JSX.Element {
   const eventDisplay = useSettingsStore((state) => state.eventDisplay);
   const storeError = useSettingsStore((state) => state.error);
@@ -45,8 +39,8 @@ export function EventDisplayParameters(): JSX.Element {
   useEffect(() => {
     void (async () => {
       try {
-        const result = await settingsApi.getValue(EVENT_DISPLAY_SETTING_KEY);
-        setOverrides(readOverrides(result.value));
+        const result = await settingsApi.getValue(eventDisplaySetting);
+        setOverrides(result.value);
         setApply(result.apply);
       } catch {
         setOverrides(null);
@@ -64,7 +58,7 @@ export function EventDisplayParameters(): JSX.Element {
       <div className="flex flex-col items-center justify-center gap-3 py-12 text-sm text-[var(--ema-text-tertiary)]">
         {storeError ? (
           <>
-            <Callout variant="danger">事件设置加载失败:{storeError}</Callout>
+            <Callout variant="danger">事件设置加载失败: {storeError}</Callout>
             <Button
               variant="secondary"
               size="sm"
@@ -74,7 +68,7 @@ export function EventDisplayParameters(): JSX.Element {
             </Button>
           </>
         ) : (
-          <><Spinner size="sm" /> 正在加载事件设置…</>
+          <><Spinner size="sm" /> 正在加载事件设置...</>
         )}
       </div>
     );
@@ -87,7 +81,7 @@ export function EventDisplayParameters(): JSX.Element {
   async function persist(next: Record<string, EventDisplayConfig>): Promise<void> {
     setSaveState('saving');
     try {
-      await settingsApi.putValue(EVENT_DISPLAY_SETTING_KEY, next);
+      await settingsApi.putValue(eventDisplaySetting, next);
       setOverrides(next);
       await useSettingsStore.getState().refreshEventDisplay();
       setSaveState('saved');
@@ -115,7 +109,7 @@ export function EventDisplayParameters(): JSX.Element {
     <SettingsSection
       icon="i-lucide:bell"
       title="事件通知"
-      description="控制工具、记忆和系统事件是否显示为本地通知。"
+      description="控制工具, 记忆和系统事件是否显示为本地通知."
       trailing={(
         <div className="flex items-center gap-2">
           {apply && <SettingApplyBadge apply={apply} />}
@@ -124,7 +118,7 @@ export function EventDisplayParameters(): JSX.Element {
       )}
     >
       <Callout variant="info" className="mb-4">
-        “保持显示”的通知需要手动关闭。语音数据块和子 Agent 详情流属于高频内部事件，不列入通知设置。
+        "保持显示"的通知需要手动关闭. 语音数据块和子 Agent 详情流属于高频内部事件, 不列入通知设置.
       </Callout>
 
       <div className="flex flex-col gap-4">

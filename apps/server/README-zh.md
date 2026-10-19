@@ -106,7 +106,9 @@ CORS 在认证前处理, 让 WebView 的预检请求通过. 除 `/health` 外, �
 
 先看 `main.ts` 和 `platform/lifecycle.ts`, 再从 `composition/index.ts` 进入所查业务. `routes/index.ts` 给出 URL, 具体路由定义传输形状. `application/` 保存跨业务协调, 如删除 Session 和切换角色.
 
-角色切换, 删除和指定演出设置修改, 会在暂停新工作注册期间检查所有 Session 是否空闲. 两份设置常量是有意开放的浏览器入口: Desktop 直接加载 `themeCatalog.ts` 与 `wallpaperCatalog.ts`, 这些文件不能引入 Node 依赖.
+角色切换, 删除和指定演出设置修改, 会在暂停新工作注册期间检查所有 Session 是否空闲.
+
+`@ema-agent/server/settings` 导出[共享设置定义](./src/settings/definitions.ts). key, Schema, 默认值和生效时机仍由业务包持有; 这个入口只汇总定义, 不引入 Server 启动, SQL 或文件操作. `composition/settings.ts` 把同一批定义注册到 `SettingsStore`. Desktop 将定义传给设置 API, 不再重复写 key 和值类型. 外观常量也是可供浏览器使用的入口. 这些共享入口不能引入 Node 依赖.
 
 ```bash
 pnpm --filter @ema-agent/server typecheck

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { defineSetting } from '@ema-agent/settings';
+import { defineSetting } from '@ema-agent/settings/definition';
 
 export const terminalShellExecutableSetting = defineSetting({
   key: 'frontend.terminal.shellExecutable',

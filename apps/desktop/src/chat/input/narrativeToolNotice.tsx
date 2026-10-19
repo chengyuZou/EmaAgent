@@ -1,3 +1,4 @@
+import { disabledToolsSetting } from '@ema-agent/server/settings';
 import {
   memo, useEffect, useMemo, useState, type JSX } from 'react';
 import { isWitchTrialCharacter } from '@ema-agent/narrative/isWitchTrialCharacter';
@@ -115,11 +116,8 @@ export const NarrativeToolNotice = memo(function NarrativeToolNotice(): JSX.Elem
     const readEnabled = async (): Promise<void> => {
       const currentRequest = ++request;
       try {
-        const result = await settingsApi.getValue('tools.disabled');
+        const result = await settingsApi.getValue(disabledToolsSetting);
         const disabled = result.value;
-        if (!Array.isArray(disabled) || disabled.some(id => typeof id !== 'string')) {
-          throw new Error('tools.disabled 没有返回字符串数组');
-        }
         // 返回 Settings 或隐藏窗口后, 不让迟到响应更新当前提示; 重叠请求只使用最后一次.
         if (disposed || currentRequest !== request) {
           return;

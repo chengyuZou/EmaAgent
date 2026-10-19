@@ -1,3 +1,4 @@
+import { wallpaperSetting } from '@ema-agent/server/settings';
 import { useEffect, useState } from 'react';
 import { Button } from '@ema-agent/ui';
 import { tauriBridge } from '../lib/tauri/tauriBridge.js';
@@ -5,7 +6,7 @@ import { SessionRequestError, sessionWebSocket } from '../api/sessionWebSocket.j
 import type { PermissionRequiredEvent, PermissionResponse } from '@ema-agent/permission';
 import type { AskUserRequiredEvent } from '@ema-agent/tools';
 import type { WallpaperSettings } from '@ema-agent/server/settings/wallpaperSetting.js';
-import { DEFAULT_WALLPAPER_SETTINGS, WALLPAPER_SETTING_KEY } from '@ema-agent/server/settings/wallpaperCatalog.js';
+import { DEFAULT_WALLPAPER_SETTINGS } from '@ema-agent/server/settings/wallpaperCatalog.js';
 import { settingsApi } from '../api/settings.js';
 import { subscribeSystemEvent } from '../lib/events/systemEventDispatcher.js';
 
@@ -27,9 +28,9 @@ export function PermissionToastLayer(): React.JSX.Element {
     async function refresh(): Promise<void> {
       const requestSequence = ++sequence;
       try {
-        const response = await settingsApi.getValue(WALLPAPER_SETTING_KEY);
+        const response = await settingsApi.getValue(wallpaperSetting);
         if (disposed || requestSequence !== sequence) return;
-        const value = response.value as WallpaperSettings;
+        const value = response.value;
         setWallpaper({ enabled: value.enabled, materialMode: value.materialMode });
       } catch (error) {
         console.warn('[permission-toast] 读取浮层外观设置失败:', error);

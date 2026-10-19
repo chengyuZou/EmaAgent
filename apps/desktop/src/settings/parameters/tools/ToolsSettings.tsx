@@ -1,12 +1,15 @@
+import {
+  disabledToolsSetting,
+  maxConcurrentBackgroundSetting,
+  maxRuntimeHoursBackgroundSetting,
+} from '@ema-agent/server/settings';
 import { useMemo, type JSX } from 'react';
 import { Callout, Spinner, Switch } from '@ema-agent/ui';
 import { BuiltinTools } from '@ema-agent/tools/identity';
 import { NarrativeToolStatus } from '../../../chat/input/narrativeToolNotice.js';
-import { NumberSetting } from '../controls/NumberSetting.js';
-import { useSettingValues } from '../useSettingValues.js';
+import { NumberSetting } from '../../shared/controls/NumberSetting.js';
+import { useSettingValues } from '../../shared/useSettingValues.js';
 import { SettingsCard, SettingsSection, SettingItem } from '../../shared/SettingItem.js';
-
-const DISABLED_KEY = 'tools.disabled';
 
 export function ToolsSettings(): JSX.Element {
   const settings = useSettingValues();
@@ -23,11 +26,11 @@ export function ToolsSettings(): JSX.Element {
     </Callout>
   );
 
-  const disabled = readStringArray(settings.values, DISABLED_KEY);
+  const disabled = settings.get(disabledToolsSetting);
 
   const setEnabled = async (id: string, enabled: boolean): Promise<void> => {
     const next = enabled ? disabled.filter(item => item !== id) : [...new Set([...disabled, id])];
-    await settings.save(DISABLED_KEY, next);
+    await settings.save(disabledToolsSetting, next);
   };
 
   return (
@@ -48,7 +51,7 @@ export function ToolsSettings(): JSX.Element {
                   hint={tool.id === BuiltinTools.NarrativeSearch.id
                     ? '仅用于游戏剧情角色. 开关保留使用偏好, 实际是否提供由当前角色和模型配置决定.'
                     : `${tool.variant} · ${tool.id}`}
-                  apply={settings.apply(DISABLED_KEY)}
+                  apply={settings.apply(disabledToolsSetting)}
                 >
                   <Switch
                     checked={enabled}
@@ -67,38 +70,26 @@ export function ToolsSettings(): JSX.Element {
       </SettingsSection>
       <SettingsSection icon="i-lucide:terminal-square" title="后台进程" description="Shell 后台任务采用的进程约束">
         <SettingsCard>
-          <NumberSetting 
-            title="最大并发数" 
-            hint="同一时间最多保留多少个后台进程." 
-            apply={settings.apply('tools.backgroundProcess.maxConcurrent')} 
-            value={readNumber(settings.values, 'tools.backgroundProcess.maxConcurrent')} 
-            unit="个" 
-            onSave={value => settings.save('tools.backgroundProcess.maxConcurrent', value)} 
-            onReset={() => settings.reset('tools.backgroundProcess.maxConcurrent')} 
+          <NumberSetting
+            title="最大并发数"
+            hint="同一时间最多保留多少个后台进程."
+            apply={settings.apply(maxConcurrentBackgroundSetting)}
+            value={settings.get(maxConcurrentBackgroundSetting)}
+            unit="个"
+            onSave={value => settings.save(maxConcurrentBackgroundSetting, value)}
+            onReset={() => settings.reset(maxConcurrentBackgroundSetting)}
           />
-          <NumberSetting 
-            title="最长运行小时" 
-            hint="Bash 和 PowerShell 从进程启动起计算, 包含前台等待时间. 超过上限会停止; 修改只影响新提交的命令." 
-            apply={settings.apply('tools.backgroundProcess.maxRuntimeHours')} 
-            value={readNumber(settings.values, 'tools.backgroundProcess.maxRuntimeHours')} 
-            unit="小时" 
-            onSave={value => settings.save('tools.backgroundProcess.maxRuntimeHours', value)} 
-            onReset={() => settings.reset('tools.backgroundProcess.maxRuntimeHours')} 
+          <NumberSetting
+            title="最长运行小时"
+            hint="Bash 和 PowerShell 从进程启动起计算, 包含前台等待时间. 超过上限会停止; 修改只影响新提交的命令."
+            apply={settings.apply(maxRuntimeHoursBackgroundSetting)}
+            value={settings.get(maxRuntimeHoursBackgroundSetting)}
+            unit="小时"
+            onSave={value => settings.save(maxRuntimeHoursBackgroundSetting, value)}
+            onReset={() => settings.reset(maxRuntimeHoursBackgroundSetting)}
           />
         </SettingsCard>
       </SettingsSection>
     </div>
   );
-}
-
-function readStringArray(values: ReadonlyMap<string, unknown>, key: string): string[] {
-  const value = values.get(key);
-  if (!Array.isArray(value) || value.some(item => typeof item !== 'string')) throw new Error(`设置 ${key} 没有返回字符串数组`);
-  return value;
-}
-
-function readNumber(values: ReadonlyMap<string, unknown>, key: string): number {
-  const value = values.get(key);
-  if (typeof value !== 'number') throw new Error(`设置 ${key} 没有返回数字`);
-  return value;
 }

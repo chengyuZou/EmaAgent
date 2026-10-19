@@ -11,7 +11,7 @@ This directory keeps release notes for users and bug-fix records for people main
 | [changes/](./changes/) | One Markdown file per application version, describing what users gain, what was fixed, and anything they need to know before upgrading. |
 | [logs/](./logs/) | Bug-fix records named after the problem. Each record uses a level-one heading to identify the application version containing the fix. |
 
-Start with the [0.1.0-alpha.1 draft](./changes/0.1.0-alpha.1.md). The current bug records cover [Live2D release rendering](./logs/live2dReleaseRendering.md) and the [Windows exit console](./logs/windowsExitConsole.md).
+Start with the [0.1.0-alpha.1 draft](./changes/0.1.0-alpha.1.md). Bug records cover [Live2D release rendering](./logs/live2dReleaseRendering.md), [release UI styles and Markdown media](./logs/releaseUiStyles.md), [native permissions and Server environment](./logs/releasePermissionsAndEnvironment.md), and the [Windows exit console](./logs/windowsExitConsole.md).
 
 ## Writing release notes
 

@@ -11,6 +11,10 @@
     "./limits": {
       "import": "./dist/limits.js",
       "types": "./dist/limits.d.ts"
+    },
+    "./settings": {
+      "types": "./dist/settings.d.ts",
+      "import": "./dist/settings.js"
     }
   },
   "main": "./dist/index.js",

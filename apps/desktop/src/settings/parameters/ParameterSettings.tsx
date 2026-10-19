@@ -9,9 +9,8 @@ import { NarrativeParameters } from './narrative/NarrativeParameters.js';
 import { PermissionSettings } from './permission/PermissionSettings.js';
 import { ToolsSettings } from './tools/ToolsSettings.js';
 import { WorkspaceParameters } from './workspace/WorkspaceParameters.js';
-import { VishotCaptureParameters } from './vishotCapture/vishotCaptureParameters.js';
 
-type ParameterDomain = 'attachments' | 'agent' | 'context' | 'event-display' | 'narrative' | 'permission' | 'tools' | 'workspace' | 'vishotCapture';
+type ParameterDomain = 'attachments' | 'agent' | 'context' | 'event-display' | 'narrative' | 'permission' | 'tools' | 'workspace';
 
 const DOMAINS: readonly {
   id: ParameterDomain;
@@ -20,10 +19,9 @@ const DOMAINS: readonly {
   icon: string;
 }[] = [
   { id: 'attachments', title: '附件', description: 'Vision 描述缓存容量.', icon: 'i-lucide:paperclip' },
-  { id: 'vishotCapture', title: '屏幕捕获', description: '自动截图开关和捕获间隔.', icon: 'i-lucide:scan' },
   { id: 'agent', title: 'Agent', description: 'Chat, Work 和子代理执行限制.', icon: 'i-lucide:bot' },
   { id: 'context', title: '上下文', description: '自动压缩和手动压缩策略.', icon: 'i-lucide:gauge' },
-  { id: 'event-display', title: '事件通知', description: '桌面事件提示条的开关、强调色与停留时间.', icon: 'i-lucide:bell' },
+  { id: 'event-display', title: '事件通知', description: '桌面事件提示条的开关, 强调色与停留时间.', icon: 'i-lucide:bell' },
   { id: 'narrative', title: 'Narrative', description: '剧情检索算法.', icon: 'i-lucide:book-open' },
   { id: 'permission', title: '权限规则', description: 'Tool 执行模式与规则.', icon: 'i-lucide:shield-check' },
   { id: 'tools', title: 'Tools', description: '内置工具与后台进程参数.', icon: 'i-lucide:wrench' },
@@ -68,7 +66,6 @@ export function ParameterSettings(): JSX.Element {
 function ParameterDomainPage({ domain }: { domain: ParameterDomain }): JSX.Element {
   switch (domain) {
     case 'attachments': return <AttachmentParameters />;
-    case 'vishotCapture': return <VishotCaptureParameters />;
     case 'agent': return <AgentParameters />;
     case 'context': return <ContextParameters />;
     case 'event-display': return <EventDisplayParameters />;

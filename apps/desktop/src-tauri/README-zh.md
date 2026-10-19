@@ -16,7 +16,7 @@ sequenceDiagram
     participant Server as 本地 Server
     participant Stage as stage WebView
     Host->>Host: 准备随包资源
-    Host->>Server: 带 EMA_SERVER_SECRET 启动
+    Host->>Server: 带 EMA_SHARED_SECRET 启动
     Server->>Server: 初始化数据并监听
     Server-->>Host: server.ready 通知端口
     Stage->>Host: get_server_port / get_server_secret
@@ -27,6 +27,14 @@ sequenceDiagram
 Server 自行选择本机端口. 宿主最多等待 120 秒收到就绪通知, 同时检查进程是否提前退出. 开发时 `tsx watch` 重启 Server 可能换端口, 后续就绪通知会更新宿主保存的连接信息.
 
 开发版从仓库启动 `pnpm --filter @ema-agent/server dev`. 正式版启动随包的 `ema-server`, 它是为发布重命名的 Node, 工作目录为 `server/app`, 入口参数为 `./dist/main.js`. 安装目录里的 `server` 包含运行所需代码与依赖, 不能删除.
+
+宿主为 debug 构建设置 `NODE_ENV=development`, 为 release 构建设置 `NODE_ENV=production`. Release 子进程不继承 `NODE_OPTIONS` 和 `NODE_PATH`. 这与发布准备检查一致, 避免终端中的 Node 设置改变安装版 Server 的启动方式.
+
+## 页面内容策略
+
+`tauri.conf.json` 允许 Markdown 的 HTTP 和 HTTPS 图片与音频, 以及应用需要的本地和 Blob 媒体. JavaScript 的 `unsafe-eval` 仍然关闭; Cubism 使用的 WebAssembly 权限单独保留.
+
+只有 `style-src` 关闭 Tauri 的自动 CSP 加工. 文件树, Diff 和 xterm 会在运行时创建 style 元素. 向该指令加入 nonce 后, 浏览器会忽略其中的 `unsafe-inline`, 导致这些元素被拒绝. 其他指令仍由 Tauri 正常加工. 两个应用窗口的 capability 另外授予 `core:window:allow-set-theme`, 用于修改原生窗口主题.
 
 ## 窗口与事件
 

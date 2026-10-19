@@ -16,6 +16,7 @@ import { MemoryFilesTab } from './memory/MemoryFilesTab.js';
 import { MemoryJobsTab } from './memory/MemoryJobsTab.js';
 import { MemoryOverviewTab } from './memory/MemoryOverviewTab.js';
 import { ParameterSettings } from './parameters/ParameterSettings.js';
+import { ScreenCaptureSettings } from './capture/ScreenCaptureSettings.js';
 import { BindingsTab } from './providers/BindingsTab.js';
 import { ProvidersTab } from './providers/ProvidersTab.js';
 import { SkillInstalledPage } from './skills/SkillInstalledPage.js';
@@ -32,6 +33,7 @@ type SettingsPageId =
   | 'storage'
   | 'archive'
   | 'security'
+  | 'capture'
   | 'parameters'
   | 'appearance';
 
@@ -97,6 +99,7 @@ const SETTINGS_PAGES: readonly SettingsPage[] = [
   { id: 'storage', label: '存储位置', icon: 'i-lucide:hard-drive', fullHeight: true },
   { id: 'archive', label: '归档聊天', icon: 'i-lucide:archive' },
   { id: 'security', label: '安全', icon: 'i-lucide:shield-check' },
+  { id: 'capture', label: '屏幕捕获', icon: 'i-lucide:scan' },
   { id: 'parameters', label: '参数设置', icon: 'i-lucide:sliders-horizontal' },
   { id: 'appearance', label: '外观', icon: 'i-lucide:palette', subPages: APPEARANCE_SUB_PAGES },
 ];
@@ -298,6 +301,8 @@ function SettingsContent({ id }: { id: SettingsTabId }): JSX.Element {
       return <SecurityTab />;
     case 'parameters':
       return <ParameterSettings />;
+    case 'capture':
+      return <ScreenCaptureSettings />;
     case 'appearance':
     case 'appearance-theme':
       return <ThemeTab />;

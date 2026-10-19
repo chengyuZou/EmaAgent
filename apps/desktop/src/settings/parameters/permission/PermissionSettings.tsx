@@ -1,23 +1,31 @@
+import {
+  permissionAskTimeoutSetting,
+  permissionRulesUserAllowSetting,
+  permissionRulesUserDenySetting,
+  permissionRulesUserAskSetting,
+  permissionRulesProjectAllowSetting,
+  permissionRulesProjectDenySetting,
+  permissionRulesProjectAskSetting,
+} from '@ema-agent/server/settings';
 import { useEffect, useState, type JSX } from 'react';
 import { Tooltip, Button, Callout, Input, Select, Spinner, Textarea } from '@ema-agent/ui';
 import { sessionsApi, type Project } from '../../../api/sessions.js';
 import type { SettingApply } from '../../../api/settings.js';
 import { SettingsCard, SettingsSection, SettingItem } from '../../shared/SettingItem.js';
-import { useSettingValues } from '../useSettingValues.js';
+import { useSettingValues } from '../../shared/useSettingValues.js';
 
-const TIMEOUT_KEY = 'permission.askTimeoutMs';
-const USER_RULE_KEYS = {
-  allow: 'permission.rules.user.allow',
-  deny: 'permission.rules.user.deny',
-  ask: 'permission.rules.user.ask',
+const USER_RULE_SETTINGS = {
+  allow: permissionRulesUserAllowSetting,
+  deny: permissionRulesUserDenySetting,
+  ask: permissionRulesUserAskSetting,
 } as const;
-const PROJECT_RULE_KEYS = {
-  allow: 'permission.rules.project.allow',
-  deny: 'permission.rules.project.deny',
-  ask: 'permission.rules.project.ask',
+const PROJECT_RULE_SETTINGS = {
+  allow: permissionRulesProjectAllowSetting,
+  deny: permissionRulesProjectDenySetting,
+  ask: permissionRulesProjectAskSetting,
 } as const;
 
-type RuleBehavior = keyof typeof USER_RULE_KEYS;
+type RuleBehavior = keyof typeof USER_RULE_SETTINGS;
 
 export function PermissionSettings(): JSX.Element {
   const settings = useSettingValues();
@@ -33,11 +41,11 @@ export function PermissionSettings(): JSX.Element {
 
       <SettingsSection icon="i-lucide:shield-check" title="用户确认" description="Tool 需要询问时的等待时间">
         <SettingsCard>
-          <PermissionTimeout 
-            apply={settings.apply(TIMEOUT_KEY)} 
-            value={readNullableNumber(settings.values, TIMEOUT_KEY)} 
-            onSave={value => settings.save(TIMEOUT_KEY, value)} 
-            onReset={() => settings.reset(TIMEOUT_KEY)} 
+          <PermissionTimeout
+            apply={settings.apply(permissionAskTimeoutSetting)}
+            value={settings.get(permissionAskTimeoutSetting)}
+            onSave={value => settings.save(permissionAskTimeoutSetting, value)}
+            onReset={() => settings.reset(permissionAskTimeoutSetting)}
           />
         </SettingsCard>
       </SettingsSection>
@@ -48,37 +56,36 @@ export function PermissionSettings(): JSX.Element {
             <RuleListEditor
               key={behavior}
               behavior={behavior}
-              apply={settings.apply(USER_RULE_KEYS[behavior])}
-              value={readStringArray(settings.values, USER_RULE_KEYS[behavior])}
-              onSave={value => settings.save(USER_RULE_KEYS[behavior], value)}
+              apply={settings.apply(USER_RULE_SETTINGS[behavior])}
+              value={settings.get(USER_RULE_SETTINGS[behavior])}
+              onSave={value => settings.save(USER_RULE_SETTINGS[behavior], value)}
             />
           ))}
         </SettingsCard>
       </SettingsSection>
 
-      <ProjectRules values={settings.values} apply={settings.apply} save={settings.save} />
+      <ProjectRules get={settings.get} apply={settings.apply} save={settings.save} />
     </div>
   );
 }
 
-function PermissionTimeout(props: { 
-    apply: SettingApply; 
-    value: number | null; 
-    onSave(value: number | null): 
-    Promise<void>; 
-    onReset(): Promise<void> 
-  }): JSX.Element {
+function PermissionTimeout(props: {
+  apply: SettingApply;
+  value: number | null;
+  onSave(value: number | null): Promise<void>;
+  onReset(): Promise<void>;
+}): JSX.Element {
   const [draft, setDraft] = useState(props.value === null ? '' : String(props.value / 1000));
   useEffect(() => setDraft(props.value === null ? '' : String(props.value / 1000)), [props.value]);
   return (
     <SettingItem title="等待用户确认" hint="留空表示一直等待. 填写秒数后, 超时自动拒绝本次操作." apply={props.apply}>
-      <Input 
-        className="w-28" 
-        inputSize="sm" 
-        type="number" 
-        value={draft} 
-        placeholder="一直等待" 
-        onChange={event => setDraft(event.target.value)} 
+      <Input
+        className="w-28"
+        inputSize="sm"
+        type="number"
+        value={draft}
+        placeholder="一直等待"
+        onChange={event => setDraft(event.target.value)}
         onBlur={() => {
           const trimmed = draft.trim();
           if (!trimmed) void props.onSave(null);
@@ -86,7 +93,7 @@ function PermissionTimeout(props: {
             const seconds = Number(trimmed);
             if (Number.isFinite(seconds)) void props.onSave(seconds * 1000);
           }
-        }} 
+        }}
       />
       <span className="text-xs text-[var(--ema-text-tertiary)]">秒</span>
       <Tooltip content="恢复默认值">
@@ -105,28 +112,28 @@ function PermissionTimeout(props: {
 
 function RuleListEditor(props: { behavior: RuleBehavior; apply: SettingApply; value: readonly string[]; onSave(value: string[]): Promise<void> }): JSX.Element {
   const [draft, setDraft] = useState(props.value.join('\n'));
-  useEffect(() => { 
+  useEffect(() => {
     setDraft(props.value.join('\n'))
   }, [props.value]);
 
   const label = { allow: '允许', deny: '拒绝', ask: '每次询问' }[props.behavior];
   return (
     <SettingItem title={`${label}规则`} hint="例如 Bash(pnpm test:*), Read(./src/**)." apply={props.apply}>
-      <Textarea 
-        className="h-24 w-[30rem] max-w-[45vw] font-mono text-xs resize-none border-none" 
-        value={draft} 
-        onChange={event => setDraft(event.target.value)} 
-        onBlur={() => void props.onSave(parseRules(draft))} 
+      <Textarea
+        className="h-24 w-[30rem] max-w-[45vw] font-mono text-xs resize-none border-none"
+        value={draft}
+        onChange={event => setDraft(event.target.value)}
+        onBlur={() => void props.onSave(parseRules(draft))}
       />
     </SettingItem>
   );
 }
 
-function ProjectRules(props: { values: ReadonlyMap<string, unknown>; apply(key: string): SettingApply; save(key: string, value: unknown): Promise<void> }): JSX.Element {
+function ProjectRules(props: Pick<ReturnType<typeof useSettingValues>, 'get' | 'apply' | 'save'>): JSX.Element {
   const records = {
-    allow: readRuleRecord(props.values, PROJECT_RULE_KEYS.allow),
-    deny: readRuleRecord(props.values, PROJECT_RULE_KEYS.deny),
-    ask: readRuleRecord(props.values, PROJECT_RULE_KEYS.ask),
+    allow: props.get(PROJECT_RULE_SETTINGS.allow),
+    deny: props.get(PROJECT_RULE_SETTINGS.deny),
+    ask: props.get(PROJECT_RULE_SETTINGS.ask),
   };
   const [projects, setProjects] = useState<Project[]>([]);
   const [selected, setSelected] = useState('');
@@ -148,7 +155,7 @@ function ProjectRules(props: { values: ReadonlyMap<string, unknown>; apply(key: 
     const next = { ...current };
     if (rules.length === 0) delete next[selected];
     else next[selected] = rules;
-    await props.save(PROJECT_RULE_KEYS[behavior], next);
+    await props.save(PROJECT_RULE_SETTINGS[behavior], next);
   };
 
   return (
@@ -167,12 +174,12 @@ function ProjectRules(props: { values: ReadonlyMap<string, unknown>; apply(key: 
           </SettingItem>
         )}
         {selected && (['deny', 'ask', 'allow'] as const).map(behavior => (
-          <RuleListEditor 
-            key={`${selected}:${behavior}`} 
-            behavior={behavior} 
-            apply={props.apply(PROJECT_RULE_KEYS[behavior])} 
-            value={records[behavior][selected] ?? []} 
-            onSave={value => saveRules(behavior, value)} 
+          <RuleListEditor
+            key={`${selected}:${behavior}`}
+            behavior={behavior}
+            apply={props.apply(PROJECT_RULE_SETTINGS[behavior])}
+            value={records[behavior][selected] ?? []}
+            onSave={value => saveRules(behavior, value)}
           />
         ))}
       </SettingsCard>
@@ -182,22 +189,4 @@ function ProjectRules(props: { values: ReadonlyMap<string, unknown>; apply(key: 
 
 function parseRules(value: string): string[] {
   return [...new Set(value.split(/\r?\n/).map(line => line.trim()).filter(Boolean))];
-}
-
-function readNullableNumber(values: ReadonlyMap<string, unknown>, key: string): number | null {
-  const value = values.get(key);
-  if (value !== null && typeof value !== 'number') throw new Error(`设置 ${key} 没有返回数字或 null`);
-  return value;
-}
-
-function readStringArray(values: ReadonlyMap<string, unknown>, key: string): string[] {
-  const value = values.get(key);
-  if (!Array.isArray(value) || value.some(item => typeof item !== 'string')) throw new Error(`设置 ${key} 没有返回字符串数组`);
-  return value;
-}
-
-function readRuleRecord(values: ReadonlyMap<string, unknown>, key: string): Record<string, string[]> {
-  const value = values.get(key);
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error(`设置 ${key} 没有返回项目规则`);
-  return value as Record<string, string[]>;
 }

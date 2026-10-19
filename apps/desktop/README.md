@@ -47,6 +47,8 @@ sequenceDiagram
 
 The Server saves messages, settings, and resources. Frontend stores hold current navigation, drafts, loaded history, active work, and other shared page state. History is loaded in windows; live Turn data is removed only after the corresponding saved history has been loaded.
 
+Settings pages import definitions from `@ema-agent/server/settings`, backed by [definitions.ts](../server/src/settings/definitions.ts). Server registers those same objects. `settingsApi.getValue(definition)` and `putValue(definition, value)` use the definition's key and value type, and check responses with its schema. Labels and controls stay in Desktop. Shared controls and `useSettingValues` live in `src/settings/shared`; screen capture has its own sidebar page, outside Parameter Settings.
+
 ## Session and window behavior
 
 The main window keeps Chat and Settings mounted when switching views. Hidden views retain their dimensions and cannot receive focus. Closing the main window hides it; quitting the application stops the local Server and native terminals.

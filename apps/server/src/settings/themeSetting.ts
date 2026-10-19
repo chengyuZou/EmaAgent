@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { defineSetting } from '@ema-agent/settings';
+import { defineSetting } from '@ema-agent/settings/definition';
 import { DEFAULT_THEME_SETTINGS, THEME_SETTING_KEY } from './themeCatalog.js';
 
 const themeSettingsSchema = z.object({

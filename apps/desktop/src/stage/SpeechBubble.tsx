@@ -1,7 +1,8 @@
+import { wallpaperSetting } from '@ema-agent/server/settings';
 import { useEffect, useRef, useState } from 'react';
 import { tauriBridge } from '../lib/tauri/tauriBridge.js';
 import type { WallpaperSettings } from '@ema-agent/server/settings/wallpaperSetting.js';
-import { DEFAULT_WALLPAPER_SETTINGS, WALLPAPER_SETTING_KEY } from '@ema-agent/server/settings/wallpaperCatalog.js';
+import { DEFAULT_WALLPAPER_SETTINGS } from '@ema-agent/server/settings/wallpaperCatalog.js';
 import { settingsApi } from '../api/settings.js';
 import { subscribeSystemEvent } from '../lib/events/systemEventDispatcher.js';
 
@@ -41,9 +42,9 @@ export function SpeechBubble(): React.JSX.Element | null {
     async function refresh(): Promise<void> {
       const requestSequence = ++sequence;
       try {
-        const response = await settingsApi.getValue(WALLPAPER_SETTING_KEY);
+        const response = await settingsApi.getValue(wallpaperSetting);
         if (disposed || requestSequence !== sequence) return;
-        const value = response.value as WallpaperSettings;
+        const value = response.value;
         setWallpaper({ enabled: value.enabled, materialMode: value.materialMode });
       } catch (error) {
         console.warn('[speech-bubble] 读取浮层外观设置失败:', error);

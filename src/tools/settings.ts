@@ -1,5 +1,5 @@
 import type { SettingsStore } from '@ema-agent/settings';
-import { defineSetting } from '@ema-agent/settings';
+import { defineSetting } from '@ema-agent/settings/definition';
 import { z } from 'zod';
 import { BuiltinTools } from './Tool/BuiltinToolIdentity.js';
 
