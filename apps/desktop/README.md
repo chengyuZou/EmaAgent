@@ -63,6 +63,8 @@ The character-name link opens the shared Dialog and displays Narrative's exporte
 
 Speech generation and playback are separate. Stopping playback does not cancel generation. Saved audio can be played from storage details without driving the character's mouth.
 
+Live2D archive, initialization, and render failures appear on the stage with a reload button. Reloading fetches the current model again and creates a new renderer. Failures from an old archive request do not replace the current character's stage.
+
 The default profile is `~/.ema-agent`, unless `EMA_PROFILE_DIR` selects another directory. Development and installed builds can use the same profile. Installation does not provide a separate empty data directory. See the [native host documentation](./src-tauri/README.md) for resource initialization, process shutdown, logs, and platform details.
 
 ## Find the implementation
@@ -116,8 +118,11 @@ From the repository root:
 ```sh
 pnpm --filter @ema-agent/desktop typecheck
 pnpm --filter @ema-agent/desktop test
+pnpm --filter @ema-agent/desktop test:live2d-release
 pnpm --filter @ema-agent/desktop build
 cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --lib
 ```
 
-Frontend tests use mocks for native IPC. Rust's inline tests cover resource preparation and launch logs. Neither replaces testing real WebViews and native processes. Restart the Tauri host after Rust changes; frontend HMR does not reload native code.
+`test:live2d-release` builds the actual stage, loads the bundled model and local Cubism Core under `tauri.conf.json`'s CSP, and checks the first tick and visible pixels. It uses headless Edge on Windows. On other platforms, install Playwright's Chromium first with `pnpm --filter @ema-agent/desktop exec playwright install chromium`. The test uses a temporary directory and a local HTTP server, not a user profile.
+
+Other frontend tests use mocks for native IPC. Rust's inline tests cover resource preparation, launch logs, and Windows process termination. These checks do not replace installed-app testing. Restart the Tauri host after Rust changes; frontend HMR does not reload native code.

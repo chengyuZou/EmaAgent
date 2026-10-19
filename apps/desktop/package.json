@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
+    "test:live2d-release": "node --test tests/live2dRelease.test.mjs",
     "release": "node scripts/release.mjs",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build"
@@ -77,6 +78,8 @@
     "@unocss/preset-icons": "^66.7.0",
     "@unocss/preset-uno": "^66.7.0",
     "@vitejs/plugin-react": "^4.3.3",
+    "jszip": "^3.10.1",
+    "playwright": "1.62.1",
     "typescript": "^5.9.3",
     "vite": "^5.4.10",
     "vitest": "^2.0.0"

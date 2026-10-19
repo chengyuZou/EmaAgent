@@ -5,6 +5,7 @@ use std::time::Duration;
 use tokio::process::{Child, Command};
 use tokio::time::timeout;
 use win32job::{ExtendedLimitInfo, Job};
+use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
 
 #[derive(Clone)]
 pub struct NativeProcessTree {
@@ -21,7 +22,7 @@ impl NativeProcessTree {
     }
 
     pub fn prepare_command(&self, command: &mut Command) {
-        command.creation_flags(0x08000000);
+        command.creation_flags(CREATE_NO_WINDOW);
     }
 
     pub fn attach(&self, pid: u32) -> Result<(), String> {
@@ -44,7 +45,10 @@ impl NativeProcessTree {
 
     pub async fn terminate(&self, child: &mut Child, label: &str) {
         if let Some(pid) = child.id() {
-            let result = Command::new("taskkill")
+            let mut command = Command::new("taskkill");
+            // GUI 发布版没有可继承的控制台, 清理命令也必须禁止创建控制台窗口.
+            self.prepare_command(&mut command);
+            let result = command
                 .args(["/F", "/T", "/PID", &pid.to_string()])
                 .output()
                 .await;
@@ -54,5 +58,33 @@ impl NativeProcessTree {
         }
         let _ = child.kill().await;
         let _ = timeout(Duration::from_secs(3), child.wait()).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::process::Stdio;
+
+    #[tokio::test]
+    async fn termination_reaps_a_running_windows_process() {
+        let tree = NativeProcessTree::new().unwrap();
+        let mut command = Command::new("cmd.exe");
+        // 保持 stdin 打开让进程等待输入, 不依赖网络或机器上安装的开发工具.
+        command.args(["/D", "/C", "set /p EMA_TEST_INPUT="]);
+        command.stdin(Stdio::piped());
+        command.stdout(Stdio::null());
+        command.stderr(Stdio::null());
+        command.kill_on_drop(true);
+        tree.prepare_command(&mut command);
+        let mut child = command.spawn().unwrap();
+        tree.attach(child.id().unwrap()).unwrap();
+        assert!(child.try_wait().unwrap().is_none());
+
+        timeout(Duration::from_secs(10), tree.terminate(&mut child, "test"))
+            .await
+            .expect("process termination timed out");
+        assert!(child.try_wait().unwrap().is_some());
+        tree.terminate(&mut child, "test-already-exited").await;
     }
 }

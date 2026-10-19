@@ -63,6 +63,8 @@ Server 保存消息, 设置和资源. 前端 Store 保存当前导航, 草稿, �
 
 语音生成与播放分开处理. 停止播放不等于取消生成. 存储详情中的已保存音频可以独立试听, 不驱动角色口型.
 
+Live2D 模型包读取, 初始化和渲染失败会在舞台上显示原因及重新加载按钮. 重新加载会再次获取当前模型并创建新的渲染器. 旧模型请求的失败不会覆盖当前角色的舞台.
+
 默认用户目录是 `~/.ema-agent`, 可用 `EMA_PROFILE_DIR` 改选. 开发版和安装版可以使用同一目录, 安装不会自动建立一套空白用户数据. 资源初始化, 退出清理, 日志和平台行为见[原生宿主文档](./src-tauri/README-zh.md).
 
 ## 从哪里看代码
@@ -116,8 +118,11 @@ pnpm release --server-only
 ```sh
 pnpm --filter @ema-agent/desktop typecheck
 pnpm --filter @ema-agent/desktop test
+pnpm --filter @ema-agent/desktop test:live2d-release
 pnpm --filter @ema-agent/desktop build
 cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --lib
 ```
 
-前端测试会模拟原生 IPC, Rust 内联测试覆盖资源准备和启动日志. 两者都不能替代真实 WebView 和原生进程验收. 修改 Rust 后需要重启 Tauri 宿主, 前端 HMR 不会更新原生代码.
+`test:live2d-release` 构建实际舞台, 按 `tauri.conf.json` 的 CSP 加载随包模型和本地 Cubism Core, 检查首帧更新及实际像素. Windows 使用无界面的 Edge. 其他平台先运行 `pnpm --filter @ema-agent/desktop exec playwright install chromium` 安装测试浏览器. 测试使用临时目录和本地 HTTP 服务, 不读取用户目录.
+
+其他前端测试会模拟原生 IPC, Rust 内联测试覆盖资源准备, 启动日志和 Windows 进程退出. 这些检查不能替代安装版验收. 修改 Rust 后需要重启 Tauri 宿主, 前端 HMR 不会更新原生代码.

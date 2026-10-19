@@ -23,9 +23,11 @@ Load the licensed Cubism Core into `window.Live2DCubismCore` before mounting. Th
 
 The component keeps one PIXI application and canvas for its mounted lifetime. `live2dArchive.ts` registers the JSZip callbacks used by the library's ZipLoader. Internal paths become blob URLs, allowing the model settings to load textures, motions and expressions from the archive.
 
+The stage imports `@pixi/unsafe-eval`, which replaces Pixi's generated shader-uniform functions so JavaScript `unsafe-eval` is not needed. Keep this module aligned with the Pixi version. The host's Content Security Policy must allow `blob:` in `connect-src` for archive resources and in `img-src` for textures, as well as WebAssembly compilation for Cubism Core.
+
 A new model loads while the current one remains visible. Only the latest completed load is mounted; stale completions are destroyed. Switching models removes old listeners and lip-sync bindings. Unmounting destroys the application and model resources.
 
-The application's ticker drives model updates. `suspended` stops it; resuming renders a frame and restarts it. Render failures stop the ticker and are logged. Loading failures reach `onError`; individual expression/motion failures are logged without discarding the model. The optional `onDiagnostic` callback reports canvas, loading and ticker events to the host.
+The application's ticker drives model updates. `suspended` stops it; resuming renders a frame and restarts it. Loading and render failures reach `onError`. A render failure stops the ticker until the host remounts the stage; showing the window again does not restart a failed renderer. Individual expression/motion failures are logged without discarding the model. The optional `onDiagnostic` callback reports canvas, loading and ticker events to the host.
 
 ## Placement and controls
 
@@ -43,4 +45,4 @@ The `beforeModelUpdate` listener smooths values while speaking. After speech sto
 
 ## Checking
 
-`tests/` covers framing, real parameter binding, lip-sync transitions and idle gaze. Run `pnpm --filter @ema-agent/live2d-react test`. These tests do not render WebGL or load a real model; canvas lifetime, archive loading and visual motion still need desktop checks.
+`tests/` covers framing, real parameter binding, lip-sync transitions and idle gaze. Run `pnpm --filter @ema-agent/live2d-react test`. The [Desktop browser regression](../../apps/desktop/README.md#verify-changes) also loads the bundled model under the release CSP and checks for a visible frame. Native window interaction and visual motion still need desktop checks.

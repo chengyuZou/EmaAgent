@@ -70,6 +70,25 @@
   box-shadow: 0 0 42px color-mix(in srgb, var(--ema-primary) 14%, transparent);
 }
 
+.ema-character-stage-error {
+  position: absolute;
+  top: 25%;
+  left: 16px;
+  right: 16px;
+  z-index: 1;
+  max-height: 60%;
+  overflow: auto;
+  pointer-events: auto;
+  border-radius: var(--ema-radius-xl);
+  background: var(--ema-surface-1);
+}
+
+.ema-character-stage-error-message {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .ema-character-stage-resource {
     transition-duration: 0ms;

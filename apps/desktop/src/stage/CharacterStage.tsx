@@ -17,6 +17,7 @@ import {
   type Live2DStageHandle,
   type Live2DStageReadyInfo,
 } from '@ema-agent/live2d-react';
+import { Button, Callout } from '@ema-agent/ui';
 import { charactersApi } from '../api/characters.js';
 import { fetchServerObjectUrl } from '../api/serverFileUrl.js';
 import { tauriBridge } from '../lib/tauri/tauriBridge.js';
@@ -41,6 +42,12 @@ interface LoadedLive2dArchive {
   readonly archive: Blob;
 }
 
+interface Live2dFailure {
+  readonly characterName: string;
+  readonly live2dName: string;
+  readonly message: string;
+}
+
 export function CharacterStage({
   targetCharacterName,
   presentation,
@@ -49,12 +56,15 @@ export function CharacterStage({
   onExpressionChanged,
 }: CharacterStageProps): JSX.Element {
   const [loadedLive2dArchive, setLoadedLive2dArchive] = useState<LoadedLive2dArchive | null>(null);
+  const [failure, setFailure] = useState<Live2dFailure | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
   const showsLive2d = presentation?.status === 'live2d'
     && presentation.characterName === targetCharacterName;
   const live2dCharacterName = showsLive2d ? presentation.characterName : null;
   const live2dName = showsLive2d ? presentation.resource.name : null;
 
   useEffect(() => {
+    setFailure(null);
     if (!live2dCharacterName || !live2dName) {
       setLoadedLive2dArchive(null);
       onStageChanged?.(null);
@@ -80,13 +90,19 @@ export function CharacterStage({
       .catch((error: unknown) => {
         if (!cancelled) {
           console.error('[stage] Live2D 模型包读取失败', live2dCharacterName, live2dName, error);
+          onStageChanged?.(null);
+          setFailure({
+            characterName: live2dCharacterName,
+            live2dName,
+            message: error instanceof Error ? error.message : String(error),
+          });
         }
       });
 
     return () => {
       cancelled = true;
     };
-  }, [live2dCharacterName, live2dName, onStageChanged]);
+  }, [live2dCharacterName, live2dName, onStageChanged, retryCount]);
 
   const ready = useCallback((
     handle: Live2DStageHandle,
@@ -103,6 +119,10 @@ export function CharacterStage({
   const live2dMatchesTarget = showsLive2d
     && loadedLive2dArchive?.characterName === presentation.characterName
     && loadedLive2dArchive.live2dName === presentation.resource.name;
+  const currentFailure = failure?.characterName === live2dCharacterName
+    && failure?.live2dName === live2dName
+    ? failure
+    : null;
   const illustration = presentation?.status === 'illustration'
     && presentation.characterName === targetCharacterName
     ? presentation
@@ -110,7 +130,7 @@ export function CharacterStage({
 
   return (
     <div className="ema-character-stage" data-tauri-drag-region={false}>
-      {!live2dMatchesTarget && !illustration && (
+      {!live2dMatchesTarget && !illustration && !currentFailure && (
         <div className="ema-character-stage-placeholder" aria-label="角色舞台占位">
           <span className="ema-character-stage-placeholder-ring" />
         </div>
@@ -118,6 +138,7 @@ export function CharacterStage({
 
       {live2dMatchesTarget && loadedLive2dArchive && (
         <Live2dResource
+          key={JSON.stringify([live2dCharacterName, live2dName, retryCount])}
           archive={loadedLive2dArchive.archive}
           resource={presentation.resource}
           suspended={suspended}
@@ -126,8 +147,32 @@ export function CharacterStage({
           onError={(error) => {
             console.error('[stage] Live2D 模型加载失败', presentation.resource.name, error);
             onStageChanged?.(null);
+            setFailure({
+              characterName: presentation.characterName,
+              live2dName: presentation.resource.name,
+              message: error.message,
+            });
           }}
         />
+      )}
+
+      {currentFailure && (
+        <div className="ema-character-stage-error" role="alert" data-pet-interactive>
+          <Callout variant="danger" title="Live2D 加载失败">
+            <p className="ema-character-stage-error-message">{currentFailure.message}</p>
+            <Button
+              size="sm"
+              className="mt-3"
+              onClick={() => {
+                setFailure(null);
+                setLoadedLive2dArchive(null);
+                setRetryCount(count => count + 1);
+              }}
+            >
+              重新加载
+            </Button>
+          </Callout>
+        </div>
       )}
 
       {illustration && (

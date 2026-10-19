@@ -7,6 +7,8 @@ import {
   type MutableRefObject,
 } from 'react';
 import * as PIXI from 'pixi.js';
+// 发布版禁止 JavaScript eval. 此模块让 Pixi 同步 Shader uniform 时不再生成函数.
+import '@pixi/unsafe-eval';
 import {
   Cubism4InternalModel,
   Live2DModel,
@@ -69,6 +71,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
   }, ref): JSX.Element {
     const hostRef = useRef<HTMLDivElement | null>(null);
     const appRef = useRef<PIXI.Application | null>(null);
+    const renderRef = useRef<() => boolean>(() => false);
     const modelRef = useRef<Cubism4Model | null>(null);
     const modelCleanupRef = useRef<(() => void) | null>(null);
     const loadGenerationRef = useRef(0);
@@ -155,15 +158,21 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
         return;
       }
 
-      // 单帧渲染抛错不能杀死整个循环: 出错停 ticker, 等下一次挂载重建舞台.
-      const guardedRender = (): void => {
+      // 渲染失败后停止, 并让宿主展示错误. 恢复窗口不能重新启动已失败的舞台.
+      let renderFailed = false;
+      const guardedRender = (): boolean => {
+        if (renderFailed) return false;
         try {
           app.render();
+          return true;
         } catch (error) {
-          console.error('[live2d] Pixi render failed, ticker stopped.', error);
+          renderFailed = true;
           app.ticker.stop();
+          callbacksRef.current.onError?.(asError(error));
+          return false;
         }
       };
+      renderRef.current = guardedRender;
       app.ticker.remove(app.render, app);
       app.ticker.add(guardedRender);
 
@@ -180,6 +189,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
         modelCleanupRef.current?.();
         modelCleanupRef.current = null;
         appRef.current = null;
+        renderRef.current = () => false;
         app.destroy(true, { children: true, texture: true, baseTexture: true });
       };
     }, []);
@@ -192,9 +202,10 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
         callbacksRef.current.onDiagnostic?.('ticker_stopped', null);
       } else {
         // 恢复时先画一帧, 再重启 ticker, 避免首帧等待后续输入事件.
-        app.render();
-        app.ticker.start();
-        callbacksRef.current.onDiagnostic?.('ticker_started', null);
+        if (renderRef.current()) {
+          app.ticker.start();
+          callbacksRef.current.onDiagnostic?.('ticker_started', null);
+        }
       }
     }, [suspended]);
 
