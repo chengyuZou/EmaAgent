@@ -9,7 +9,7 @@ import remarkGfm from 'remark-gfm';
 import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
-import rehypeHighlight from 'rehype-highlight';
+import { CodeViewer } from './codeViewer.js';
 import { MermaidBlock } from './mermaidBlock.js';
 import { MarkdownLink } from './markdownLink.js';
 
@@ -129,22 +129,32 @@ const markdownComponents: Components = {
   pre({ node, children, ...props }) {
     const streaming = useContext(StreamingMarkdown);
     const code = node?.children[0];
-    if (code?.type === 'element' && code.tagName === 'code'
-      && Array.isArray(code.properties.className)
-      && code.properties.className.includes('language-mermaid')) {
-      const source = code.children
-        .filter(child => child.type === 'text')
-        .map(child => child.value)
-        .join('')
-        .replace(/\n$/, '');
-      return (
-        <MermaidBlock
-          source={source}
-          pending={streaming && code.properties.dataMermaidClosed !== 'true'}
-        />
-      );
+    if (!node) return <pre {...props}>{children}</pre>;
+
+    function readText(child: NonNullable<typeof node>['children'][number]): string {
+      if (child.type === 'text') return child.value;
+      if (child.type === 'element') return child.children.map(readText).join('');
+      return '';
     }
-    return <pre {...props}>{children}</pre>;
+
+    const source = node.children.map(readText).join('').replace(/\n$/, '');
+    let language = 'text';
+    if (code?.type === 'element' && code.tagName === 'code') {
+      const classes = code.properties.className;
+      if (Array.isArray(classes)) {
+        const languageClass = classes.find(value => String(value).startsWith('language-'));
+        if (languageClass) language = String(languageClass).slice('language-'.length);
+      }
+      if (language === 'mermaid') {
+        return (
+          <MermaidBlock
+            source={source}
+            pending={streaming && code.properties.dataMermaidClosed !== 'true'}
+          />
+        );
+      }
+    }
+    return <CodeViewer source={source} language={language} />;
   },
   a({ node: _node, ...props }) {
     return <MarkdownLink {...props} />;
@@ -164,10 +174,9 @@ export const Markdown = memo(function Markdown({ source, className, streaming = 
           remarkPlugins={[remarkMath, remarkGfm, remarkMermaidFences]}
           rehypePlugins={[
             rehypeRaw,
-            // 先清洗 raw HTML, 再运行可信渲染器(KaTeX/highlight).
+            // 先清洗 raw HTML, 再运行可信渲染器. 代码高亮由 CodeViewer 负责.
             [rehypeSanitize, renderers ? customUrlSanitizeSchema : markdownSanitizeSchema],
             rehypeKatex,
-            [rehypeHighlight, { plainText: ['mermaid'] }],
           ]}
           components={renderers ? { ...markdownComponents, ...renderers.components } : markdownComponents}
           urlTransform={renderers?.urlTransform}

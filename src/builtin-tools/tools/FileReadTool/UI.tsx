@@ -1,5 +1,5 @@
 import { useMemo, useState, type JSX } from 'react';
-import { Badge, Button, Markdown, languageForPath, Tooltip } from '@ema-agent/ui';
+import { Badge, Button, CodeViewer, HtmlPreview, languageForPath, Tooltip } from '@ema-agent/ui';
 import type { FileReadResult } from './FileReadTool.js';
 import { PdfContentView } from './pdfContentView.js';
 
@@ -184,18 +184,6 @@ function FileReadContentCard({ result, renderMarkdown }: {
     });
     return { source, lineNumbers };
   }, [result.content]);
-  const markdownSource = useMemo(() => {
-    if (isMarkdown) return source;
-    // 文件可能含 Markdown 围栏, 外层围栏比原文里的反引号串长, 保证源码只作为代码显示.
-    let fenceLength = 3;
-    for (const match of source.matchAll(/`+/g)) {
-      fenceLength = Math.max(fenceLength, match[0].length + 1);
-    }
-    const fence = '`'.repeat(fenceLength);
-    const language = languageForPath(result.filePath) ?? 'text';
-    return `${fence}${language}\n${source}\n${fence}`;
-  }, [isMarkdown, source, result.filePath]);
-
   return (
     <div className="ema-tool-result-layout ema-file-read-content flex min-w-0 flex-col">
       {(result.truncated || isHtml) && (
@@ -219,25 +207,22 @@ function FileReadContentCard({ result, renderMarkdown }: {
       )}
 
       {isHtml && showHtmlPreview && (
-        /* sandbox 空属性: 禁脚本禁表单, 只渲染视觉; 本地文件与公网抓取同一边界. */
-        <iframe
-          sandbox=""
-          srcDoc={source}
-          title="HTML 预览"
-          className="h-48 w-full border-0 bg-white"
-        />
+        <HtmlPreview source={source} title="HTML 预览" />
       )}
 
       {(!isHtml || !showHtmlPreview) && (
-        <div className={isMarkdown ? 'ema-tool-result-details min-w-0 text-[12px]' : 'ema-file-read-code'}>
-          {!isMarkdown && (
-            <pre className="ema-file-read-line-numbers ema-font-mono" aria-hidden="true">
-              {`${lineNumbers.join('\n')}\n`}
-            </pre>
-          )}
+        <div className={isMarkdown ? 'ema-tool-result-details min-w-0 text-[12px]' : 'ema-file-read-code ema-material-code'}>
           {isMarkdown
-            ? renderMarkdown(markdownSource, result.filePath)
-            : <Markdown source={markdownSource} className="ema-file-read-markdown" />}
+            ? renderMarkdown(source, result.filePath)
+            : (
+              <CodeViewer
+                source={source}
+                language={languageForPath(result.filePath) ?? 'text'}
+                lineNumbers={lineNumbers}
+                embedded
+                wrapLines={false}
+              />
+            )}
         </div>
       )}
     </div>

@@ -76,6 +76,10 @@
   color: inherit;
 }
 
+.markdown-content :where(.ema-code-viewer) {
+  margin-block: var(--ema-space-3);
+}
+
 /* 表格: 列宽按内容分配(auto), 发丝线分组不堆框; th 左对齐与 td 同一轴线. */
 .markdown-content table {
   table-layout: auto;
@@ -103,10 +107,16 @@
 
 .markdown-content blockquote {
   margin-block: var(--ema-space-2);
-  padding-left: var(--ema-space-3);
-  border-left: 2px solid var(--ema-border-strong);
+  margin-inline: 0;
+  padding-inline-start: var(--ema-space-3);
+  border-inline-start: 2px solid var(--ema-border-strong);
   color: var(--ema-text-secondary);
 }
+.markdown-content li > blockquote {
+  margin-block: var(--ema-space-1);
+}
+.markdown-content blockquote > :first-child { margin-top: 0; }
+.markdown-content blockquote > :last-child { margin-bottom: 0; }
 .markdown-content hr {
   border: 0;
   border-top: 1px solid var(--ema-border);

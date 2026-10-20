@@ -1,5 +1,5 @@
 import { useState, type JSX } from 'react';
-import { Tooltip, Badge, Button, CodeViewer } from '@ema-agent/ui';
+import { Tooltip, Badge, Button, CodeViewer, HtmlPreview } from '@ema-agent/ui';
 import type { WebFetchResult } from './WebFetchTool.js';
 
 const PREVIEW_CHARS = 2_000;
@@ -94,13 +94,7 @@ function WebFetchResultCard({ result }: { result: WebFetchResult }): JSX.Element
         </div>
       </div>
       {isHtml && showPreview ? (
-        /* sandbox 空属性: 禁脚本禁表单, 公网内容只渲染视觉. */
-        <iframe
-          sandbox=""
-          srcDoc={result.content.slice(0, PREVIEW_CHARS)}
-          title="网页预览"
-          className="h-48 w-full border-0 bg-white"
-        />
+        <HtmlPreview source={result.content.slice(0, PREVIEW_CHARS)} title="网页预览" />
       ) : (
         <CodeViewer source={result.content} embedded wrapLines={false} />
       )}

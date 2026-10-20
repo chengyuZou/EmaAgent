@@ -2,16 +2,20 @@ import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type JSX }
 import { standardKeymap } from '@codemirror/commands';
 import { json } from '@codemirror/lang-json';
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
-import { Compartment, EditorState } from '@codemirror/state';
-import { EditorView, drawSelection, keymap } from '@codemirror/view';
+import { Compartment, EditorState, type Extension, type Range } from '@codemirror/state';
+import { Decoration, EditorView, drawSelection, keymap, lineNumbers as codeLineNumbers } from '@codemirror/view';
 import { tags } from '@lezer/highlight';
+import hljs from 'highlight.js/lib/common';
 import { IconButton } from './IconButton.js';
 import { Tooltip } from './Tooltip.js';
 
 export interface CodeViewerProps {
   /** 完整文本. 可视区只显示其中一部分, 复制全文不受可视区限制. */
   readonly source: string;
-  readonly language?: 'json' | 'text';
+  /** 使用代码围栏的语言名, 未识别的语言按纯文本显示. */
+  readonly language?: string;
+  /** 文件读取结果中的原始行号, 与 source 的行逐项对应. */
+  readonly lineNumbers?: readonly string[];
   /** 外层已经提供标题与复制操作时, 只显示文本区域. */
   readonly embedded?: boolean;
   /** 默认自动折行. 工具输出关闭折行时, 横向滚动条位于文本可视区底部. */
@@ -27,12 +31,18 @@ const appearance = EditorView.theme({
   '&.cm-focused': { outline: 'none' },
   '.cm-scroller': {
     fontFamily: 'var(--ema-font-mono, monospace)',
-    lineHeight: '1.6',
+    lineHeight: 'var(--ema-code-line-height, 1.6)',
     maxHeight: 'var(--ema-code-max-height, min(60vh, 36rem))',
     overflow: 'auto',
   },
   '.cm-content': { padding: '12px 0' },
   '.cm-line': { padding: '0 12px' },
+  '.cm-gutters': {
+    backgroundColor: 'transparent',
+    color: 'var(--ema-syntax-comment, var(--ema-text-tertiary))',
+    border: 'none',
+  },
+  '.cm-lineNumbers .cm-gutterElement': { padding: '0 8px 0 12px' },
   '.cm-selectionBackground, &.cm-focused .cm-selectionBackground': {
     backgroundColor: 'var(--ema-primary-muted)',
   },
@@ -45,12 +55,46 @@ const highlighting = HighlightStyle.define([
   { tag: [tags.bool, tags.null], color: 'var(--ema-syntax-boolean, var(--ema-syntax-text))' },
 ]);
 
-export const CodeViewer = memo(function CodeViewer({ source, language = 'text', embedded = false, wrapLines = true }: CodeViewerProps): JSX.Element {
+function codeSyntax(source: string, language: string): Extension {
+  if (language === 'json') return json();
+  if (language === 'text' || !hljs.getLanguage(language)) return [];
+
+  // 只解析高亮器生成的转义文本和 span, 不把原始代码作为 HTML 放入页面.
+  // 装饰保留 CodeMirror 的单一滚动区域和可视区渲染.
+  const template = document.createElement('template');
+  template.innerHTML = hljs.highlight(source, { language, ignoreIllegals: true }).value;
+  const ranges: Range<Decoration>[] = [];
+  let offset = 0;
+
+  function visit(node: Node): void {
+    if (node.nodeType === Node.TEXT_NODE) {
+      offset += node.textContent?.length ?? 0;
+      return;
+    }
+    const start = offset;
+    for (const child of node.childNodes) visit(child);
+    if (node instanceof HTMLElement && node.className && start < offset) {
+      ranges.push(Decoration.mark({ class: node.className }).range(start, offset));
+    }
+  }
+
+  visit(template.content);
+  return EditorView.decorations.of(Decoration.set(ranges, true));
+}
+
+export const CodeViewer = memo(function CodeViewer({
+  source,
+  language = 'text',
+  lineNumbers,
+  embedded = false,
+  wrapLines = true,
+}: CodeViewerProps): JSX.Element {
   const host = useRef<HTMLDivElement>(null);
   const editor = useRef<EditorView | null>(null);
   const displayedSource = useRef('');
   const syntax = useMemo(() => new Compartment(), []);
   const wrapping = useMemo(() => new Compartment(), []);
+  const gutter = useMemo(() => new Compartment(), []);
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
   const copyTimer = useRef<ReturnType<typeof setTimeout>>();
 
@@ -72,6 +116,7 @@ export const CodeViewer = memo(function CodeViewer({ source, language = 'text', 
         appearance,
         syntaxHighlighting(highlighting),
         syntax.of([]),
+        gutter.of([]),
       ],
     });
     editor.current = view;
@@ -80,19 +125,29 @@ export const CodeViewer = memo(function CodeViewer({ source, language = 'text', 
       view.destroy();
       editor.current = null;
     };
-  }, [syntax, wrapping]);
+  }, [syntax, wrapping, gutter]);
 
   useLayoutEffect(() => {
     const view = editor.current!;
+    const effects = syntax.reconfigure(codeSyntax(source, language));
     if (displayedSource.current !== source) {
-      view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: source } });
+      view.dispatch({
+        changes: { from: 0, to: view.state.doc.length, insert: source },
+        effects,
+      });
       displayedSource.current = source;
+    } else {
+      view.dispatch({ effects });
     }
-  }, [source]);
+  }, [source, language, syntax]);
 
   useLayoutEffect(() => {
-    editor.current!.dispatch({ effects: syntax.reconfigure(language === 'json' ? json() : []) });
-  }, [language, syntax]);
+    editor.current!.dispatch({
+      effects: gutter.reconfigure(lineNumbers ? codeLineNumbers({
+        formatNumber: number => lineNumbers[number - 1] ?? '',
+      }) : []),
+    });
+  }, [lineNumbers, gutter]);
 
   useLayoutEffect(() => {
     editor.current!.dispatch({ effects: wrapping.reconfigure(wrapLines ? EditorView.lineWrapping : []) });
@@ -121,7 +176,7 @@ export const CodeViewer = memo(function CodeViewer({ source, language = 'text', 
       {!embedded && (
         <div className="flex items-center justify-between gap-2 border-b border-[var(--ema-border)] px-3 py-1">
           <span className="text-xs text-[var(--ema-text-tertiary)]">
-            {language === 'json' ? 'JSON' : '文本'} · 只读
+            {language === 'text' ? '文本' : language.toUpperCase()} · 只读
           </span>
           <div className="flex items-center gap-2">
             <span role="status" className="text-xs text-[var(--ema-text-secondary)]">

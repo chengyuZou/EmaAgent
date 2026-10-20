@@ -420,7 +420,7 @@ function ProjectRow({
       >
         <button
           type="button"
-          className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-md px-1 text-left focus:outline-none"
+          className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-md px-1 text-left text-[var(--ema-text-primary)]"
           onClick={() => setCollapsed((value) => !value)}
           aria-expanded={!collapsed}
           data-sidebar-drag-handle
@@ -651,7 +651,7 @@ export function SectionButton({
     <div className="group mx-1.5 mb-0.5 flex h-7 items-center text-[var(--ema-text-tertiary)]">
       <button
         type="button"
-        className="flex h-full min-w-0 flex-1 items-center gap-1.5 px-2 text-left text-xs focus:outline-none"
+        className="flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-md px-2 text-left text-xs text-[var(--ema-text-secondary)] hover:text-[var(--ema-text-primary)] focus-ring"
         onClick={onClick}
         aria-expanded={!collapsed}
       >

@@ -301,37 +301,11 @@
   color: var(--ema-text-secondary);
 }
 
-/* Read 的行号和源码共同撑开正文宽度, 横纵滚动都由外层可视区负责. */
+/* Read 的行号和源码共用 CodeViewer 的可视区, 不再给行号单独叠加滚动. */
 .ema-file-read-code {
-  display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  align-items: start;
-  min-width: 100%;
-  width: max-content;
-  font-size: 12px;
-  line-height: 1.7;
-}
-
-.ema-file-read-code > .ema-file-read-line-numbers {
-  margin: 0;
-  padding: var(--ema-space-2) var(--ema-space-2) var(--ema-space-2) var(--ema-space-3);
-  border: 0;
-  background: transparent;
-  color: var(--ema-syntax-comment);
-  font-size: inherit;
-  line-height: inherit;
-  text-align: right;
-  white-space: pre;
-  user-select: none;
-  -webkit-user-select: none;
-}
-
-.ema-tool-pane .ema-file-read-code .ema-file-read-markdown pre {
-  margin: 0;
-  padding: var(--ema-space-2) var(--ema-space-3) var(--ema-space-2) var(--ema-space-2);
-  border: 0;
-  border-radius: 0;
-  background: transparent;
+  min-width: 0;
+  --ema-code-font-size: 12px;
+  --ema-code-line-height: 1.7;
 }
 
 /* Tool 输出保留原始换行, 不按卡片宽度折行. Markdown 覆盖聊天正文的换行规则,
