@@ -1,7 +1,7 @@
 import { domainToASCII } from 'node:url';
 import { ToolExecutionError } from '@ema-agent/tools';
 import { braveSearch } from './brave.js';
-import { WebHttpError, webRequestFailure } from '../../../webRequests.js';
+import { WebHttpError, webRequestFailure } from '../../WebFetchTool/network/webRequests.js';
 import type { SearchOptions, SearchProgress, SearchResult } from './types.js';
 
 export type { SearchOptions, SearchProgress, SearchResult } from './types.js';

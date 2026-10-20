@@ -1,14 +1,38 @@
 import { Agent, Pool, ProxyAgent } from 'undici';
-import { ToolExecutionError, type WebRequest } from '@ema-agent/tools';
+import { ToolExecutionError } from '@ema-agent/tools';
 import { readWebProxy } from './webProxy.js';
 
-export interface WebRequests {
+export type WebRequest = (
+  url: string,
+  init: {
+    readonly signal: AbortSignal;
+    readonly headers?: HeadersInit;
+    readonly redirect: 'follow' | 'manual';
+  },
+) => Promise<Response>;
+
+interface WebRequests {
   readonly request: WebRequest;
   close(): Promise<void>;
 }
 
-/** Each Server owns these connections. No global dispatcher or model-provider setting is changed. */
-export function createWebRequests(env: NodeJS.ProcessEnv = process.env): WebRequests {
+let connections: WebRequests | undefined;
+
+/** Main Agents and subagents share connections in this Server process, not the global fetch dispatcher. */
+export const requestWeb: WebRequest = async (url, init) => {
+  init.signal.throwIfAborted();
+  connections ??= createWebRequests(process.env);
+  return connections.request(url, init);
+};
+
+/** Server stops Turns and subagents before releasing their connections. */
+export async function closeWebRequests(): Promise<void> {
+  const current = connections;
+  connections = undefined;
+  await current?.close();
+}
+
+function createWebRequests(env: NodeJS.ProcessEnv): WebRequests {
   let proxy: ReturnType<typeof readWebProxy> | undefined;
   let configurationError: unknown;
   try {
@@ -194,9 +218,14 @@ async function errorExcerpt(response: Response, signal: AbortSignal): Promise<st
     await reader.cancel().catch(() => undefined);
     reader.releaseLock();
   }
-  return Buffer.concat(chunks).toString('utf8')
-    .replace(/<(script|style)\b[^>]*>[\s\S]*?(?:<\/\1>|$)/giu, '')
-    .replace(/<[^>]*>/gu, ' ')
+  let excerpt = Buffer.concat(chunks).toString('utf8');
+  if (/html|xml/iu.test(type)) {
+    // The byte limit can cut a tag before its closing >. Discard that unfinished tag too.
+    excerpt = excerpt
+      .replace(/<(script|style)\b[^>]*>[\s\S]*?(?:<\/\1>|$)/giu, '')
+      .replace(/<[^>]*(?:>|$)/gu, ' ');
+  }
+  return excerpt
     .replace(/[\u0000-\u001f\u007f-\u009f]/gu, ' ')
     .replace(/\s+/gu, ' ')
     .trim();

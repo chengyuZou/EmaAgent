@@ -1,5 +1,5 @@
 import { load, loadBuffer, type CheerioAPI } from 'cheerio';
-import { readWebResponse } from '../../readWebResponse.js';
+import { readWebResponse } from '../../WebFetchTool/network/readWebResponse.js';
 import type { SearchOptions, SearchResult, WebSearchAdapter } from './types.js';
 
 const SEARCH_TIMEOUT_MS = 30_000;

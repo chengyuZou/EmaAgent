@@ -1,5 +1,5 @@
 // 验证搜索适配层: 后端选择、共享过滤/归一/去重、Bing HTML 解析与错误映射, 不发起网络请求。
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   extractBingResults,
   resolveBingUrl,
@@ -12,10 +12,19 @@ import {
   RESULT_LIMIT,
   searchWeb,
 } from '../tools/WebSearchTool/adapters/index.js';
-import { createWebRequests, WebHttpError } from '../webRequests.js';
+import { closeWebRequests, requestWeb, WebHttpError } from '../tools/WebFetchTool/network/webRequests.js';
 
-const webRequests = createWebRequests({});
-afterAll(() => webRequests.close());
+beforeEach(() => {
+  for (const name of ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY', 'EMA_WEB_SYSTEM_PROXY']) {
+    vi.stubEnv(name, '');
+    vi.stubEnv(name.toLowerCase(), '');
+  }
+});
+
+afterEach(async () => {
+  await closeWebRequests();
+  vi.unstubAllEnvs();
+});
 
 const ENV_KEYS = ['BRAVE_SEARCH_API_KEY', 'BRAVE_API_KEY'] as const;
 const originalEnv = new Map<string, string | undefined>();
@@ -111,7 +120,7 @@ describe('filterAndNormalize', () => {
     let results;
     try {
       results = await searchWeb('test', {
-        request: webRequests.request,
+        request: requestWeb,
         signal: new AbortController().signal,
       });
     } finally {

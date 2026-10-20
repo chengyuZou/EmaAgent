@@ -51,15 +51,13 @@ fn windows_web_fetch_reaches_public_site() {
         .arg(
             r#"
             import { pathToFileURL } from 'node:url';
-            const { createWebRequests } = await import(pathToFileURL(process.argv[1]));
+            const { closeWebRequests } = await import(pathToFileURL(process.argv[1]));
             const { fetchPublicPage } = await import(pathToFileURL(process.argv[2]));
-            const client = createWebRequests();
             try {
                 const page = await fetchPublicPage(
                     'https://search.brave.com/',
                     AbortSignal.timeout(15000),
                     { raw: true },
-                    client.request,
                 );
                 console.log(JSON.stringify({ receivedHTTP: true, status: page.status, bytes: page.bytes }));
             } catch (error) {
@@ -67,12 +65,12 @@ fn windows_web_fetch_reaches_public_site() {
                 console.log(JSON.stringify({ receivedHTTP: Boolean(match), code: error.code ?? error.name }));
                 if (!match) process.exitCode = 1;
             } finally {
-                await client.close();
+                await closeWebRequests();
             }
             "#,
         )
-        .arg(workspace.join("src/builtin-tools/dist/webRequests.js"))
-        .arg(workspace.join("src/builtin-tools/dist/tools/WebFetchTool/httpClient.js"));
+        .arg(workspace.join("src/builtin-tools/dist/tools/WebFetchTool/network/webRequests.js"))
+        .arg(workspace.join("src/builtin-tools/dist/tools/WebFetchTool/network/httpClient.js"));
     // Exercise the native system settings, not an explicit proxy inherited by the test runner.
     for name in [
         "HTTP_PROXY",

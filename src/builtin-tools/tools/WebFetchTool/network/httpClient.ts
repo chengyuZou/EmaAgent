@@ -1,18 +1,21 @@
-import { WebPageCache } from './cache.js';
-import type { WebRequest } from '@ema-agent/tools';
-import { readWebResponse } from '../readWebResponse.js';
+import { stat } from 'node:fs/promises';
+import { requestWeb } from './webRequests.js';
+import { WebPageCache } from '../storage/cache.js';
+import { readWebResponse } from './readWebResponse.js';
+import { getWebDownloadsDir, saveWebDownload, webDownloadNotice, type WebDownload } from '../storage/webDownloads.js';
 
 const MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
 const FETCH_TIMEOUT_MS = 30_000;
 
 export interface FetchedPage {
   finalUrl: string;
-  /** HTML 主体转为 Markdown, 非 HTML 文本或 raw 模式保留解码后的原文. */
+  /** HTML 主体转为 Markdown, 其他文本保留解码后的原文, 二进制返回下载说明. */
   content: string;
   contentType: string;
   bytes: number;
   status: number;
   statusText: string;
+  download?: WebDownload;
 }
 
 export interface FetchPageOptions {
@@ -24,12 +27,24 @@ export async function fetchPublicPage(
   rawUrl: string,
   signal: AbortSignal,
   options: FetchPageOptions,
-  request: WebRequest,
 ): Promise<FetchedPage> {
   signal.throwIfAborted();
-  // 缓存按调用方原始 URL 区分 raw/markdown, 命中后不再下载也不再转换.
+  const downloadsDir = getWebDownloadsDir();
+  // 文本缓存区分 raw/markdown; 下载缓存与数据目录绑定, 不受文本分页方式影响.
   const cacheKey = `${options.raw ? 'raw:' : 'md:'}${rawUrl}`;
-  const cached = WebPageCache.get(cacheKey);
+  const downloadKey = downloadsDir ? `file:${JSON.stringify([downloadsDir, rawUrl])}` : undefined;
+  let cached = WebPageCache.get(cacheKey);
+  if (!cached && downloadKey) {
+    cached = WebPageCache.get(downloadKey);
+    if (cached?.download) {
+      const file = await stat(cached.download.filePath).catch(() => undefined);
+      if (!file?.isFile() || file.size !== cached.bytes) {
+        WebPageCache.delete(downloadKey);
+        cached = undefined;
+      }
+    }
+  }
+  signal.throwIfAborted();
   if (cached) {
     return {
       finalUrl: cached.finalUrl,
@@ -38,26 +53,51 @@ export async function fetchPublicPage(
       bytes: cached.bytes,
       status: cached.code,
       statusText: cached.codeText,
+      ...(cached.download ? { download: cached.download } : {}),
     };
   }
 
   const requestSignal = AbortSignal.any([signal, AbortSignal.timeout(FETCH_TIMEOUT_MS)]);
-  const response = await request(upgradeToHttps(rawUrl), {
+  const response = await requestWeb(upgradeToHttps(rawUrl), {
     signal: requestSignal,
     headers: {
-      Accept: 'text/markdown, text/html, text/plain, application/json, application/xml',
+      Accept: 'text/markdown, text/html, text/plain, application/json, application/xml, */*;q=0.5',
     },
     redirect: 'follow',
   });
   const contentType = (response.headers.get('content-type') ?? 'application/octet-stream').toLowerCase();
-  if (!isTextContent(contentType)) {
+  const binary = !isTextContent(contentType);
+  if (binary && !downloadsDir) {
     await response.body?.cancel();
-    throw new Error(`不支持读取二进制内容: ${contentType}`);
+    throw new Error('Web downloads are not configured by the host.');
   }
   const body = await readWebResponse(response, MAX_RESPONSE_BYTES, requestSignal);
+  if (binary) {
+    const download = await saveWebDownload(downloadsDir!, body, contentType, requestSignal);
+    const content = webDownloadNotice(download, body.byteLength);
+    const entry = {
+      finalUrl: response.url,
+      content,
+      contentType: download.contentType,
+      bytes: body.byteLength,
+      code: response.status,
+      codeText: response.statusText,
+      download,
+    };
+    WebPageCache.set(downloadKey!, entry, { size: Buffer.byteLength(content) });
+    return {
+      finalUrl: entry.finalUrl,
+      content,
+      contentType: entry.contentType,
+      bytes: entry.bytes,
+      status: entry.code,
+      statusText: entry.codeText,
+      download,
+    };
+  }
   // Windows 本地测量: 解析模块及其依赖独立导入约 1.7s, 实际耗时随环境变化.
   // 收到有效响应后才加载, 避免工具注册时提前承担这段开销; 命中缓存时无需再次导入.
-  const { extractPageContent } = await import('./extractPageContent.js');
+  const { extractPageContent } = await import('../content/extractPageContent.js');
   requestSignal.throwIfAborted();
   const content = await extractPageContent(body, contentType, response.url, options.raw);
   requestSignal.throwIfAborted();
@@ -96,7 +136,9 @@ function upgradeToHttps(rawUrl: string): string {
 function isTextContent(contentType: string): boolean {
   const normalized = contentType.split(';')[0]!.trim().toLowerCase();
   return normalized.startsWith('text/')
-    || normalized.includes('json')
-    || normalized.includes('xml')
-    || normalized.includes('javascript');
+    || normalized === 'application/json' || normalized.endsWith('+json')
+    || normalized === 'application/xml' || normalized.endsWith('+xml')
+    || normalized === 'application/javascript'
+    || normalized === 'application/x-javascript'
+    || normalized === 'application/x-www-form-urlencoded';
 }

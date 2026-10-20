@@ -1,4 +1,5 @@
 import { characterStageVocabulary } from '@ema-agent/characters';
+import { closeWebRequests } from '@ema-agent/builtin-tools';
 import type { BackgroundProcessNotifiableStatus } from '@ema-agent/tools';
 import { AppEvents } from '../application/appEvents.js';
 import { SessionSocketConnections } from '../routes/ws/session.js';
@@ -200,7 +201,7 @@ export function buildComposition(input: { activeDataDir: string; initializeBuilt
       stopPublishingSessionRunning();
       await turn.subagents.shutdown('Application is shutting down');
       await tools.backgroundProcesses.shutdown();
-      await tools.webRequests.close();
+      await closeWebRequests();
       tools.clearFileStateCaches();
       memory.shutdown();
       database.close();

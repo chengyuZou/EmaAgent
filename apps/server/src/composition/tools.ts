@@ -1,7 +1,7 @@
 import os from 'node:os';
 import fs from 'node:fs';
 import path from 'node:path';
-import { createWebRequests, registerBuiltinTools, type WebRequests } from '@ema-agent/builtin-tools';
+import { configureWebDownloads, registerBuiltinTools } from '@ema-agent/builtin-tools';
 import {
   McpMarketService,
   McpMarketStore,
@@ -80,7 +80,6 @@ export interface ToolsDeps {
 }
 
 export interface ToolsComposition {
-  readonly webRequests: WebRequests;
   readonly registry: ToolRegistry;
   readonly backgroundProcesses: BackgroundProcess;
   readonly toolExecutionState: ToolExecutionState;
@@ -133,6 +132,7 @@ function readUnsafeOverrides(env: NodeJS.ProcessEnv): { shell: boolean } {
 
 export function openTools(deps: ToolsDeps): ToolsComposition {
   const { profileDb, dataDb, activeDataDir, settings } = deps;
+  configureWebDownloads(activeDataDir);
 
   const detection = detectBackend();
   const overrides = readUnsafeOverrides(process.env);
@@ -270,7 +270,6 @@ export function openTools(deps: ToolsDeps): ToolsComposition {
   });
 
   return {
-    webRequests: createWebRequests(),
     registry,
     backgroundProcesses,
     toolExecutionState,

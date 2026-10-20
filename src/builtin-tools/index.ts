@@ -48,7 +48,8 @@ export type {
   SubagentControl,
 } from '@ema-agent/tools';
 export { contextOk, contextFail } from '@ema-agent/tools';
-export { createWebRequests, type WebRequests } from './webRequests.js';
+export { closeWebRequests } from './tools/WebFetchTool/network/webRequests.js';
+export { configureWebDownloads } from './tools/WebFetchTool/storage/webDownloads.js';
 
 
 export {

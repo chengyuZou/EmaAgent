@@ -17,7 +17,6 @@ export type {
   SubagentSpawnOptions,
   SubagentControl,
   ToolUseContext,
-  WebRequest,
 } from './Tool/toolUseContext.js';
 export type {
   AskUserQuestionSpec,

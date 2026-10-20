@@ -54,6 +54,7 @@ SIGINT and SIGTERM close WebSocket and HTTP connections, stop automatic continua
 | `resources/skills/`, `skills/` | Built-in and user Skills. |
 | `memories/` | Formal Work and Relationship Memory files. |
 | `data/sessions/<sessionId>/` | Managed attachments, Turn audio, scratchpads, background-command logs and external tool results. |
+| `data/web-fetch/` | WebFetch binary downloads shared by main Agents and subagents. Retained until manually removed, independently of Sessions and the page cache. |
 
 [paths.ts](./src/platform/paths.ts) defines Server-managed locations. Each business package creates its own subdirectories when needed. Built-in Skill seeds use `EMA_BUNDLED_SKILLS_DIR` when supplied, otherwise a source-tree resource path; an existing destination is not overwritten.
 

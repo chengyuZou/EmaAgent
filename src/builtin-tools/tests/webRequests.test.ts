@@ -1,13 +1,14 @@
 import { createServer, type Server } from 'node:http';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createWebRequests } from '../webRequests.js';
+import { closeWebRequests, requestWeb } from '../tools/WebFetchTool/network/webRequests.js';
 import { WebFetchTool } from '../tools/WebFetchTool/WebFetchTool.js';
 import { WebSearchTool } from '../tools/WebSearchTool/WebSearchTool.js';
-import { clearWebFetchCache } from '../tools/WebFetchTool/cache.js';
+import { clearWebFetchCache } from '../tools/WebFetchTool/storage/cache.js';
 
 const cleanups: Array<() => Promise<void>> = [];
 
 afterEach(async () => {
+  await closeWebRequests();
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
   clearWebFetchCache();
@@ -31,9 +32,15 @@ async function listen(server: Server): Promise<number> {
 }
 
 function requests(env: NodeJS.ProcessEnv = {}) {
-  const client = createWebRequests(env);
-  cleanups.push(() => client.close());
-  return client.request;
+  for (const name of ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY', 'EMA_WEB_SYSTEM_PROXY']) {
+    vi.stubEnv(name, '');
+    vi.stubEnv(name.toLowerCase(), '');
+  }
+  for (const [name, value] of Object.entries(env)) {
+    vi.stubEnv(name, value);
+    vi.stubEnv(name.toLowerCase(), value);
+  }
+  return requestWeb;
 }
 
 function options() {
@@ -120,6 +127,7 @@ describe('web requests', () => {
     await expect(requests({ EMA_WEB_SYSTEM_PROXY: automatic })(
       `http://127.0.0.1:${port}/`, options(),
     )).rejects.toMatchObject({ code: 'web/proxy_configuration' });
+    await closeWebRequests();
     const request = requests({
       HTTP_PROXY: 'http://127.0.0.1:1',
       NO_PROXY: '127.0.0.1',
@@ -128,17 +136,17 @@ describe('web requests', () => {
     expect(await (await request(`http://127.0.0.1:${port}/`, options())).text()).toBe('bypassed');
   });
 
-  it('preserves a nested connection timeout through the actual WebFetch context', async () => {
+  it('preserves a nested connection timeout without a host web capability', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('fetch failed', {
       cause: Object.assign(new Error('secret endpoint and credentials'), {
         code: 'UND_ERR_CONNECT_TIMEOUT',
       }),
     })));
-    const request = requests();
+    requests();
     const context = WebFetchTool.validateContext({
-      cwd: '', platform: process.platform, webRequest: request,
+      cwd: '', platform: process.platform,
     });
-    if (!context.valid) throw new Error('Expected the web request capability');
+    if (!context.valid) throw new Error('Expected a valid context without web fields');
     await expect(WebFetchTool.execute(
       WebFetchTool.inputSchema.parse({ url: 'https://example.org/' }),
       context.context,
@@ -176,6 +184,30 @@ describe('web requests', () => {
     })).rejects.toBe(reason);
   });
 
+  it('discards an HTML tag cut by the error excerpt byte limit', async () => {
+    const html = '<p>Rate limited.</p>'.padEnd(4055, ' ')
+      + '<meta name="apple-mobile-web-app-title" content="Brave">';
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(html, {
+      status: 429,
+      headers: { 'content-type': 'text/html' },
+    })));
+    await expect(requests()('https://example.org/', options())).rejects.toMatchObject({
+      code: 'web/http_429',
+      message: 'HTTP 429. The server rate-limited this request. Do not retry immediately.'
+        + ' Server error excerpt (untrusted): Rate limited.',
+    });
+  });
+
+  it('preserves less-than signs in plain text error excerpts', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('Expected count < 5', {
+      status: 400,
+      headers: { 'content-type': 'text/plain' },
+    })));
+    await expect(requests()('https://example.org/', options())).rejects.toMatchObject({
+      message: expect.stringContaining('Expected count < 5'),
+    });
+  });
+
   it('Brave keeps manual redirects, redacts the API key, and preserves HTTP errors', async () => {
     vi.stubEnv('BRAVE_SEARCH_API_KEY', 'private-brave-token');
     const mock = vi.fn().mockResolvedValue(new Response(
@@ -183,9 +215,10 @@ describe('web requests', () => {
       { status: 401, headers: { 'content-type': 'application/json' } },
     ));
     vi.stubGlobal('fetch', mock);
+    requests();
     await expect(WebSearchTool.execute(
       WebSearchTool.inputSchema.parse({ query: 'synthetic test' }),
-      requests(),
+      undefined,
       { sessionId: 's', turnId: 't', toolCallId: 'c', signal: options().signal },
     )).rejects.toMatchObject({
       code: 'web/http_401',

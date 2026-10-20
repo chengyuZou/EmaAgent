@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -28,6 +28,18 @@ import {
 } from '../prepare/prepareTurnTools.js';
 import { selectTurnToolPool } from '../prepare/prepareContextInput.js';
 
+import { FileReadTool } from '../../builtin-tools/tools/FileReadTool/FileReadTool.js';
+import { FileEditTool } from '../../builtin-tools/tools/FileEditTool/FileEditTool.js';
+import { DescribeImageTool } from '../../builtin-tools/tools/DescribeImageTool/describeImageTool.js';
+import { MemorySearchTool } from '../../builtin-tools/tools/MemoryTool/MemorySearchTool.js';
+import { MemoryReadTool } from '../../builtin-tools/tools/MemoryTool/MemoryReadTool.js';
+import { MemoryListTool } from '../../builtin-tools/tools/MemoryTool/MemoryListTool.js';
+import { WebFetchTool } from '../../builtin-tools/tools/WebFetchTool/WebFetchTool.js';
+import { clearWebFetchCache } from '../../builtin-tools/tools/WebFetchTool/storage/cache.js';
+import { closeWebRequests } from '../../builtin-tools/tools/WebFetchTool/network/webRequests.js';
+import { configureWebDownloads } from '../../builtin-tools/tools/WebFetchTool/storage/webDownloads.js';
+import { listMemoryFiles, readMemoryFile, searchMemoryFiles } from '../../memory/common/memoryFiles.js';
+
 function prepareTurnTools(
   deps: TurnToolsDeps,
   input: Omit<Parameters<typeof bindTurnTools>[1], 'toolPool'>,
@@ -37,15 +49,6 @@ function prepareTurnTools(
     toolPool: selectTurnToolPool(deps, input.permission.mode),
   });
 }
-import { FileReadTool } from '../../builtin-tools/tools/FileReadTool/FileReadTool.js';
-import { FileEditTool } from '../../builtin-tools/tools/FileEditTool/FileEditTool.js';
-import { DescribeImageTool } from '../../builtin-tools/tools/DescribeImageTool/describeImageTool.js';
-import { MemorySearchTool } from '../../builtin-tools/tools/MemoryTool/MemorySearchTool.js';
-import { MemoryReadTool } from '../../builtin-tools/tools/MemoryTool/MemoryReadTool.js';
-import { MemoryListTool } from '../../builtin-tools/tools/MemoryTool/MemoryListTool.js';
-import { WebFetchTool } from '../../builtin-tools/tools/WebFetchTool/WebFetchTool.js';
-import { clearWebFetchCache } from '../../builtin-tools/tools/WebFetchTool/cache.js';
-import { listMemoryFiles, readMemoryFile, searchMemoryFiles } from '../../memory/common/memoryFiles.js';
 
 const SESSION_ID = 's1';
 const TURN_ID = 't1';
@@ -132,8 +135,72 @@ function makeInput(options: {
 describe('prepareTurnTools', () => {
   beforeEach(() => clearSessionRules(SESSION_ID));
 
-  it('main Agent and subagents use the same web request capability and preserve network error codes', async () => {
+  afterEach(async () => {
+    await closeWebRequests();
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it('main Agent and subagents download without web fields in Turn dependencies', async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ema-turn-web-'));
+    const downloadsDir = path.join(directory, 'data', 'web-fetch');
+    configureWebDownloads(path.join(directory, 'data'));
+    for (const name of ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY', 'EMA_WEB_SYSTEM_PROXY']) {
+      vi.stubEnv(name, '');
+      vi.stubEnv(name.toLowerCase(), '');
+    }
+    const request = vi.fn(async () => {
+      const response = new Response(new Uint8Array([0x50, 0x4b, 0, 1]), {
+        headers: { 'content-type': 'application/zip' },
+      });
+      Object.defineProperty(response, 'url', { value: 'https://example.test/archive' });
+      return response;
+    });
+    const deps = makeDeps({
+      tools: [], queue: new SessionInteractionQueue(null), settings: fakeSettings(),
+    });
+    deps.registry.register(WebFetchTool);
+    try {
+      clearWebFetchCache();
+      vi.stubGlobal('fetch', request);
+      const assembly = await prepareTurnTools(deps, makeInput({
+        events: [],
+        overrides: {
+          permission: {
+            mode: 'bypassPermissions',
+            buckets: { alwaysAllowRules: {}, alwaysDenyRules: {}, alwaysAskRules: {} },
+          },
+        },
+      }));
+      const executors = [
+        assembly.createExecutor(() => undefined),
+        assembly.createSubagentExecutor({
+          subagentId: 'download-child', runId: 'download-run', toolPool: assembly.toolPool,
+          signal: new AbortController().signal, wake: () => undefined,
+        }),
+      ];
+      for (const [index, executor] of executors.entries()) {
+        executor.addTool(0, `download-${index}`, 'WebFetch', { url: 'https://example.test/archive' });
+        await executor.join();
+        expect(executor.takeCompletedResults()[0]).toMatchObject({
+          isError: false,
+          content: expect.stringContaining(downloadsDir),
+        });
+      }
+      expect(fs.readdirSync(downloadsDir)).toHaveLength(1);
+      expect(request).toHaveBeenCalledTimes(1);
+    } finally {
+      clearWebFetchCache();
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('main Agent and subagents preserve web error codes without host request injection', async () => {
     clearWebFetchCache();
+    for (const name of ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY', 'EMA_WEB_SYSTEM_PROXY']) {
+      vi.stubEnv(name, '');
+      vi.stubEnv(name.toLowerCase(), '');
+    }
     const request = vi.fn(async () => {
       throw new ToolExecutionError(undefined, 'Connection timed out.', 'web/connect_timeout');
     });
@@ -141,7 +208,8 @@ describe('prepareTurnTools', () => {
       tools: [], queue: new SessionInteractionQueue(null), settings: fakeSettings(),
     });
     deps.registry.register(WebFetchTool);
-    const assembly = await prepareTurnTools({ ...deps, webRequest: request }, makeInput({
+    vi.stubGlobal('fetch', request);
+    const assembly = await prepareTurnTools(deps, makeInput({
       events: [],
       overrides: {
         permission: {

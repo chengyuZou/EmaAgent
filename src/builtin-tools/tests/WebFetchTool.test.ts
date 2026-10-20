@@ -1,17 +1,25 @@
-import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ToolPermissionContext } from '@ema-agent/permission';
 import {
   WebFetchTool,
   type WebFetchResult,
 } from '../tools/WebFetchTool/WebFetchTool.js';
-import { WebPageCache, clearWebFetchCache } from '../tools/WebFetchTool/cache.js';
-import { htmlToMarkdown } from '../tools/WebFetchTool/htmlToMarkdown.js';
+import { WebPageCache, clearWebFetchCache } from '../tools/WebFetchTool/storage/cache.js';
+import { htmlToMarkdown } from '../tools/WebFetchTool/content/htmlToMarkdown.js';
 import { isPreapprovedHost } from '../tools/WebFetchTool/preapproved.js';
-import { createWebRequests } from '../webRequests.js';
+import { closeWebRequests } from '../tools/WebFetchTool/network/webRequests.js';
 
-const webRequests = createWebRequests({});
-const request = webRequests.request;
-afterAll(() => webRequests.close());
+beforeEach(() => {
+  for (const name of ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY', 'EMA_WEB_SYSTEM_PROXY']) {
+    vi.stubEnv(name, '');
+    vi.stubEnv(name.toLowerCase(), '');
+  }
+});
+
+afterEach(async () => {
+  await closeWebRequests();
+  vi.unstubAllEnvs();
+});
 
 describe('WebFetchTool schema', () => {
   it('接受 url 并给出分页/raw 默认值', () => {
@@ -61,7 +69,7 @@ describe('WebFetchTool 权限判定', () => {
   it('预批准域名放行', async () => {
     const decision = await WebFetchTool.checkPermissions(
       { url: 'https://docs.python.org/3/reference/' },
-      request,
+      undefined,
       makePermissionContext(),
     );
     expect(decision.behavior).toBe('allow');
@@ -70,7 +78,7 @@ describe('WebFetchTool 权限判定', () => {
   it('其他域名交给中央(默认询问)', async () => {
     const decision = await WebFetchTool.checkPermissions(
       { url: 'https://example.com/page' },
-      request,
+      undefined,
       makePermissionContext(),
     );
     expect(decision.behavior).toBe('passthrough');
@@ -82,19 +90,19 @@ describe('WebFetchTool 权限判定', () => {
     context.alwaysAskRules.userSettings = ['WebFetch(domain:example.test)'];
     for (const url of ['https://example.test/a', 'http://example.test:8443/b?q=1']) {
       const result = await WebFetchTool.checkPermissions(
-        WebFetchTool.inputSchema.parse({ url }), request, context,
+        WebFetchTool.inputSchema.parse({ url }), undefined, context,
       );
       expect(result.behavior).toBe('allow');
     }
     for (const url of ['https://other.test/a', 'https://sub.example.test/a']) {
       const result = await WebFetchTool.checkPermissions(
-        WebFetchTool.inputSchema.parse({ url }), request, context,
+        WebFetchTool.inputSchema.parse({ url }), undefined, context,
       );
       expect(result.behavior).toBe('passthrough');
     }
     context.alwaysDenyRules.userSettings = ['WebFetch(domain:example.test)'];
     expect((await WebFetchTool.checkPermissions(
-      WebFetchTool.inputSchema.parse({ url: 'https://example.test/a' }), request, context,
+      WebFetchTool.inputSchema.parse({ url: 'https://example.test/a' }), undefined, context,
     )).behavior).toBe('deny');
   });
 });
@@ -156,7 +164,7 @@ describe('WebFetchTool 读取网页', () => {
     const input = WebFetchTool.inputSchema.parse({ url, raw });
 
     for (let attempt = 0; attempt < 2; attempt += 1) {
-      await expect(WebFetchTool.execute(input, request, invocation))
+      await expect(WebFetchTool.execute(input, undefined, invocation))
         .rejects.toMatchObject({
           code: `web/http_${status}`,
           message: expect.stringContaining('Error page'),
@@ -180,7 +188,7 @@ describe('WebFetchTool 读取网页', () => {
 
     const first = await WebFetchTool.execute(
       WebFetchTool.inputSchema.parse({ url, max_length: 3 }),
-      request,
+      undefined,
       invocation,
     );
     expect(first).toMatchObject({
@@ -196,7 +204,7 @@ describe('WebFetchTool 读取网页', () => {
 
     const second = await WebFetchTool.execute(
       WebFetchTool.inputSchema.parse({ url, start_index: 3, max_length: 5 }),
-      request,
+      undefined,
       invocation,
     );
     expect(second.content).toBe('defgh');
@@ -219,16 +227,47 @@ describe('WebFetchTool 读取网页', () => {
     const url = 'https://example.com/page';
 
     const markdown = await WebFetchTool.execute(
-      WebFetchTool.inputSchema.parse({ url }), request, invocation,
+      WebFetchTool.inputSchema.parse({ url }), undefined, invocation,
     );
     const raw = await WebFetchTool.execute(
-      WebFetchTool.inputSchema.parse({ url, raw: true }), request, invocation,
+      WebFetchTool.inputSchema.parse({ url, raw: true }), undefined, invocation,
     );
 
     expect(markdown.content).toBe('# Hello');
     expect(raw.content).toBe(html);
     expect(WebPageCache.size).toBe(2);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('reports missing static content without inventing text, while raw retains the server response', async () => {
+    const html = '<html><head><title>App</title></head><body><div id="root"></div><script>renderApp()</script></body></html>';
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      const response = new Response(html, { headers: { 'content-type': 'text/html' } });
+      Object.defineProperty(response, 'url', { value: 'https://example.com/app' });
+      return response;
+    }));
+    const input = WebFetchTool.inputSchema.parse({ url: 'https://example.com/app' });
+    await expect(WebFetchTool.execute(input, undefined, invocation)).rejects.toThrow('没有读到静态正文');
+    expect(WebPageCache.size).toBe(0);
+    const raw = await WebFetchTool.execute({ ...input, raw: true }, undefined, invocation);
+    expect(raw.content).toBe(html);
+  });
+
+  it('retains short static content, code, table cells and resolved links', async () => {
+    const html = '<html><head><title>Reference</title></head><body><nav>Menu only</nav>'
+      + '<main><p>Actual body.</p><pre>count &lt; 5</pre><table><tr><th>Field</th><th>Value</th></tr>'
+      + '<tr><td>limit</td><td>42</td></tr></table><a href="../next">Next</a></main></body></html>';
+    const response = new Response(html, { headers: { 'content-type': 'text/html' } });
+    Object.defineProperty(response, 'url', { value: 'https://example.com/docs/start' });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response));
+    const result = await WebFetchTool.execute(
+      WebFetchTool.inputSchema.parse({ url: 'https://example.com/docs/start' }), undefined, invocation,
+    );
+    expect(result.content).toContain('Actual body.');
+    expect(result.content).toContain('count < 5');
+    expect(result.content).toContain('<td>limit</td><td>42</td>');
+    expect(result.content).toContain('https://example.com/next');
+    expect(result.content).not.toContain('Menu only');
   });
 });
 

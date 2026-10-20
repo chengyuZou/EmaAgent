@@ -1,11 +1,12 @@
 import { z } from 'zod';
 import { findContentRule, findMatchingContentRule } from '@ema-agent/permission';
-import { buildTool, contextFail, contextOk, type ToolInvocation, type WebRequest } from '@ema-agent/tools';
+import { buildTool, contextOk, type ToolInvocation } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
-import { fetchPublicPage } from './httpClient.js';
+import { fetchPublicPage } from './network/httpClient.js';
 import { isPreapprovedHost } from './preapproved.js';
 import { WEB_FETCH_DESCRIPTION } from './prompt.js';
-import { webRequestFailure } from '../../webRequests.js';
+import { webRequestFailure } from './network/webRequests.js';
+import type { WebDownload } from './storage/webDownloads.js';
 
 const MAX_RESPONSE_CHARS = 100_000;
 
@@ -18,14 +19,14 @@ const inputSchema = z.object({
     .max(MAX_RESPONSE_CHARS)
     .optional()
     .default(MAX_RESPONSE_CHARS)
-    .describe('Maximum characters of response body to return.'),
+    .describe('Maximum characters of text content to return. Does not truncate binary downloads or their notices.'),
   start_index: z
     .number()
     .int()
     .min(0)
     .optional()
     .default(0)
-    .describe('Character offset to start reading from (for pagination).'),
+    .describe('Character offset to start reading text from (for pagination). Does not apply to binary downloads.'),
   raw: z
     .boolean()
     .default(false)
@@ -41,13 +42,14 @@ export interface WebFetchResult {
   bytes: number;
   code: number;
   codeText: string;
-  /** 分页后的正文 Markdown 或解码后的原始文本. */
+  /** 分页后的正文或完整的下载说明. 下载说明不受正文分页参数影响. */
   content: string;
   truncated: boolean;
   totalLength: number;
+  download?: WebDownload;
 }
 
-export const WebFetchTool = buildTool<WebFetchInput, WebFetchResult, WebRequest>({
+export const WebFetchTool = buildTool<WebFetchInput, WebFetchResult, void>({
   id: BuiltinTools.WebFetch.id,
   name: BuiltinTools.WebFetch.name,
   description: WEB_FETCH_DESCRIPTION,
@@ -130,31 +132,32 @@ export const WebFetchTool = buildTool<WebFetchInput, WebFetchResult, WebRequest>
     return { behavior: 'passthrough', message: '获取网页需要用户确认', sessionAllowRule };
   },
 
-  validateContext(context) {
-    return context.webRequest
-      ? contextOk(context.webRequest)
-      : contextFail('Web requests are not configured by the host.');
+  validateContext() {
+    return contextOk(undefined);
   },
 
   async execute(
     input: WebFetchInput,
-    request: WebRequest,
+    _context: void,
     invocation: ToolInvocation,
   ): Promise<WebFetchResult> {
     const { url, max_length, start_index, raw } = input;
     let page;
     try {
-      page = await fetchPublicPage(url, invocation.signal, { raw }, request);
+      page = await fetchPublicPage(url, invocation.signal, { raw });
     } catch (error) {
       throw webRequestFailure(error, invocation.signal);
     }
 
     const totalLength = page.content.length;
-    const truncated = start_index + max_length < totalLength;
-    const content = truncated
-      ? page.content.slice(start_index, start_index + max_length)
-        + `\n[Output truncated: ${totalLength.toLocaleString()} chars -> ${max_length.toLocaleString()} chars shown. Use start_index to paginate.]`
-      : page.content.slice(start_index, start_index + max_length);
+    const truncated = !page.download && start_index + max_length < totalLength;
+    let content = page.content;
+    if (!page.download) {
+      content = page.content.slice(start_index, start_index + max_length);
+      if (truncated) {
+        content += `\n[Output truncated: ${totalLength.toLocaleString()} chars -> ${max_length.toLocaleString()} chars shown. Use start_index to paginate.]`;
+      }
+    }
 
     return {
       url: page.finalUrl,
@@ -164,10 +167,11 @@ export const WebFetchTool = buildTool<WebFetchInput, WebFetchResult, WebRequest>
       content,
       truncated,
       totalLength,
+      ...(page.download ? { download: page.download } : {}),
     };
   },
 
-  // 模型只接收正文, HTTP 状态和体积由工具卡消费.
+  // 模型接收正文或下载说明, HTTP 状态和体积由工具卡消费.
   mapResultToModelContent(output) {
     return output.content;
   },

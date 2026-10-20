@@ -1,4 +1,4 @@
-import type { WebRequest } from '@ema-agent/tools';
+import type { WebRequest } from '../../WebFetchTool/network/webRequests.js';
 
 export interface SearchResult {
   readonly title: string;

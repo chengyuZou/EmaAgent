@@ -3,7 +3,7 @@ import path from 'node:path';
 import { z } from 'zod';
 import type { CallVision } from '@ema-agent/vision';
 import { readPdfFile, renderPdfContent, type PdfReadResult } from './pdfReader.js';
-import { filePathToRuleContent } from '@ema-agent/permission';
+import { checkInternalPath, filePathToRuleContent, getPathsForPermissionCheck } from '@ema-agent/permission';
 import {
   buildTool,
   contextFail,
@@ -32,6 +32,7 @@ import {
 import { FILE_READ_DESCRIPTION, imageResultNotice } from './prompt.js';
 import { readTextInRange, selectTextRange, type TextRangeResult } from './readTextInRange.js';
 import { isUnsupportedBinaryFile } from './binaryExtensions.js';
+import { getWebDownloadsDir } from '../WebFetchTool/storage/webDownloads.js';
 
 interface FileReadToolContext {
   fileStateCache: FileStateCache;
@@ -207,11 +208,32 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, FileReadToo
 
   async checkPermissions(input, context, permissionContext) {
     const filePath = path.resolve(context.cwd, input.file_path);
+    const downloadsDir = getWebDownloadsDir();
+    let internalRoots;
+    if (downloadsDir && !isUncPath(filePath) && !filePath.startsWith('//')) {
+      let resolvedDownloadsDir = downloadsDir;
+      try {
+        resolvedDownloadsDir = fs.realpathSync(downloadsDir);
+      } catch {
+        // A not-yet-created downloads directory grants no additional real path.
+      }
+      const roots = {
+        internalPaths: {
+          webDownloads: downloadsDir,
+          resolvedDownloads: resolvedDownloadsDir,
+        },
+      };
+      // A symlink inside downloads must not grant access to another directory.
+      if (getPathsForPermissionCheck(filePath).every(candidate => checkInternalPath(candidate, roots) === 'allow')) {
+        internalRoots = roots;
+      }
+    }
     const result = checkReadPathPermission({
       toolName: BuiltinTools.FileRead.name,
       path: filePath,
       cwd: context.cwd,
       permissionContext,
+      internalRoots,
     });
     if (result.behavior === 'deny') {
       return result;

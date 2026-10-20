@@ -86,6 +86,7 @@ function WebFetchResultCard({ result, toolbarContainer }: {
             </span>
           </span>
           {result.truncated && <Badge variant="warn">已截断</Badge>}
+          {result.download && <Badge variant="success">已下载文件</Badge>}
         </div>
       </div>
       {isHtml ? (

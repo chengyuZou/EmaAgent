@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { readWebResponse } from '../../readWebResponse.js';
+import { readWebResponse } from '../../WebFetchTool/network/readWebResponse.js';
 import type { SearchOptions, SearchResult, WebSearchAdapter } from './types.js';
 
 const SEARCH_TIMEOUT_MS = 20_000;

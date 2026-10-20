@@ -54,6 +54,7 @@ pnpm --filter @ema-agent/server dev
 | `resources/skills/`, `skills/` | 内置技能和用户技能. |
 | `memories/` | 正式 Work 与 Relationship 记忆文件. |
 | `data/sessions/<sessionId>/` | 受管附件, Turn 音频, scratchpad, 后台命令日志和外置工具结果. |
+| `data/web-fetch/` | 主 Agent 和子代理共用的 WebFetch 二进制下载. 独立于 Session 和网页缓存保留, 直到手动清理. |
 
 [paths.ts](./src/platform/paths.ts) 定义 Server 管理的路径, 具体业务按需创建自己的子目录. 内置技能种子优先使用 `EMA_BUNDLED_SKILLS_DIR`, 否则使用源码目录中的资源路径; 目标目录存在时不覆盖.
 

@@ -52,11 +52,15 @@ Bash 使用同步语法及模式检查, 另外通过 AST 提取子命令匹配�
 
 WebSearch 有支持的 Brave API-key 环境变量时使用 Brave, 否则读取 Bing HTML. 按返回 URL 过滤域名并去重, 保留服务端顺序, 最多返回 10 项. 不筛域名时只去掉查询首尾空白; 筛域名时追加搜索操作符, 返回后仍检查 URL. 搜索摘要不是网页正文.
 
-WebFetch 把 HTTP 改为 HTTPS 并跟随重定向, 文本响应最多 10 MiB, 网络部分超时为 30 秒. 静态 HTML 提取后转为 Markdown, 不执行页面脚本或复用浏览器登录. 原始文本和转换结果分别缓存, TTL 为 15 分钟, 内容总额为 50 MiB. 预批准 GET 域名仍服从用户的权限规则. HTML 预览 iframe 使用空 sandbox 属性.
+WebFetch 把 HTTP 改为 HTTPS 并跟随重定向, 响应最多 10 MiB, 网络部分超时为 30 秒. 静态 HTML 提取后转为 Markdown, 不执行页面脚本或复用浏览器登录. 原始文本和转换结果分别缓存, TTL 为 15 分钟, 内容总额为 50 MiB. 预批准 GET 域名仍服从用户的权限规则. HTML 预览 iframe 使用空 sandbox 属性.
 
-两个网页工具都需要 `ToolUseContext.webRequest`. Server 用 `createWebRequests` 创建它, 主 Agent 和子代理共用, 退出时先取消运行中的工作再关闭连接. 请求使用独立 dispatcher, 不修改模型, MCP 或其他全局 `fetch` 请求. Bing 和 WebFetch 跟随重定向, 每个目标重新检查代理例外规则. Brave API 保持手动重定向, 不把 API 凭据转发到另一个 URL.
+Server 启动时调用一次 `configureWebDownloads(activeDataDir)`. WebFetch 和 Read 共用由此确定的 `<activeDataDir>/web-fetch` 目录, 不经 Turn 上下文传递. WebFetch 用生成的文件名保存原始字节, 写完后才发布文件, 在 `download` 中返回绝对路径和 MIME 类型, 同时给模型返回下载说明. 不使用远端文件名, 不覆盖用户文件, 不对下载应用文本分页. Read 负责读取保存的 PDF 和支持的图片; 保存成功不代表其他格式也能读取. 只有 Read 获得这个受管目录的默认读取权限, 仍服从显式 deny/ask 规则并检查符号链接逃逸, 不放开其他数据目录.
 
-代理配置在 Server 启动时固定. 小写环境变量优先于同名大写变量. HTTP 依次选择 `HTTP_PROXY`, `ALL_PROXY`; HTTPS 依次选择 `HTTPS_PROXY`, `HTTP_PROXY`, `ALL_PROXY`. `NO_PROXY` 支持精确主机, 以 `.` 或 `*` 开头的后缀, 可选端口, 以及表示全部绕过的 `*`. 没有显式代理地址时, Windows 桌面宿主提供当前用户的固定系统代理与例外列表, 包括 `<local>` 和主机名通配符. PAC/WPAD, SOCKS, 无效配置或读取系统设置失败会明确报配置错误, 不悄悄直连. macOS, Linux 及单独启动的 Server 当前只读取环境变量配置. 修改代理后需要重启 Ema.
+下载缓存按目标目录隔离, raw 与普通调用共用, 只有文件仍存在且体积相符才复用. 内存缓存只保存说明, 不保存文件字节. 文件跨 Turn, Session 删除, 重启和缓存过期保留, 直到手动清理; 当前没有自动磁盘配额或过期删除. 它们不是 Session 附件, 不随 Session 导出. 取消或写入错误会移除当前未完成文件; 进程异常退出可能留下 `.pending` 文件.
+
+两个网页工具直接调用共用的 Web 请求实现. 连接在首次使用时创建, Server 进程中的主 Agent 和子代理共用. Server 退出时先取消运行中的工作, 再调用 `closeWebRequests()` 关闭连接. 请求使用独立 dispatcher, 不修改模型, MCP 或其他全局 `fetch` 请求. Bing 和 WebFetch 跟随重定向, 每个目标重新检查代理例外规则. Brave API 保持手动重定向, 不把 API 凭据转发到另一个 URL.
+
+代理配置在首次创建 Web 连接时读取, 保持到连接关闭为止. 小写环境变量优先于同名大写变量. HTTP 依次选择 `HTTP_PROXY`, `ALL_PROXY`; HTTPS 依次选择 `HTTPS_PROXY`, `HTTP_PROXY`, `ALL_PROXY`. `NO_PROXY` 支持精确主机, 以 `.` 或 `*` 开头的后缀, 可选端口, 以及表示全部绕过的 `*`. 没有显式代理地址时, Windows 桌面宿主提供当前用户的固定系统代理与例外列表, 包括 `<local>` 和主机名通配符. PAC/WPAD, SOCKS, 无效配置或读取系统设置失败会明确报配置错误, 不悄悄直连. macOS, Linux 及单独启动的 Server 当前只读取环境变量配置. 修改代理后需要重启 Ema.
 
 代理失败后不自动重试或回退直连. 网络错误通过 `ToolResult.errorCode` 保留安全的 DNS, 连接, 超时和 TLS 分类. 非 2xx 响应保留 HTTP 状态及有效的 `Retry-After`. 错误摘要最多读取 4 KiB, 等待至多一秒, 去掉标记和已知请求凭据后返回最多 500 字符的不可信文本, 不作为网页正文缓存. 用户取消仍按取消处理. 代理可用不代表获得网站访问权限, HTTP 读取也不等于交互式浏览器.
 
@@ -66,7 +70,7 @@ Subagent 前台等待超过 120 秒转到后台. 取消前台等待会取消该�
 
 ## 阅读和验证
 
-从 `index.ts` 看注册及导出, 再看具体工具的实现, `prompt.ts`, 可选的 `UI.tsx` 和测试. `tools/shared` 保存共用路径及 Shell 权限检查, AST 和命令模式检查位于对应 Shell 工具旁.
+从 `index.ts` 看注册及导出, 再看具体工具的实现, `prompt.ts`, 可选的 `UI.tsx` 和测试. 网页请求, 正文提取和缓存/下载保存分别位于 `tools/WebFetchTool/network`, `content`, `storage`, WebSearch 复用请求实现. `tools/shared` 保存共用路径及 Shell 权限检查, AST 和命令模式检查位于对应 Shell 工具旁.
 
 ```bash
 pnpm --filter @ema-agent/builtin-tools typecheck
