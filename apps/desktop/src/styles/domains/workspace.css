@@ -258,10 +258,21 @@ body:has(.ema-workspace-separator[data-separator='active']) * {
 }
 
 /* 标签栏属于工作区表面, 只有活动标签有浅底和描边, 不再嵌套胶囊轨道. */
-.ema-tab-slot {
+.ema-workspace-tab-bar {
   display: flex;
+  min-width: 0;
   align-items: center;
   gap: var(--ema-space-1);
+}
+
+.ema-tab-slot {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: var(--ema-space-1);
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 .ema-slot-tab {
   display: flex;

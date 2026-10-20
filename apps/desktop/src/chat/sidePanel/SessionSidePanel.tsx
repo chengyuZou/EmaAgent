@@ -1,4 +1,4 @@
-import { useEffect, useState, type JSX } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type JSX } from 'react';
 import { nanoid } from 'nanoid';
 import { Tooltip, Button, IconButton } from '@ema-agent/ui';
 import { MarkdownMedia } from '../../lib/markdownMedia.js';
@@ -82,7 +82,13 @@ function baseLabel(tab: SessionSidePanelTab): string {
   }
 }
 
-function TabLabel({ sessionId, tab }: { sessionId: string; tab: SessionSidePanelTab }): JSX.Element {
+function WorkspaceTab({ sessionId, tab, active, onActivate, onClose }: {
+  sessionId: string;
+  tab: SessionSidePanelTab;
+  active: boolean;
+  onActivate(tabId: string): void;
+  onClose(tab: SessionSidePanelTab): void;
+}): JSX.Element {
   const sourceTitle = useSessionAttachmentStore((state) => {
     if (tab.kind !== 'source') {
       return undefined;
@@ -100,12 +106,41 @@ function TabLabel({ sessionId, tab }: { sessionId: string; tab: SessionSidePanel
     if (tab.kind !== 'process') {
       return undefined;
     }
-    return state.listsBySession.get(sessionId)?.processes
-      .find((process) => process.id === tab.backgroundProcessId)?.description
-      ?? state.listsBySession.get(sessionId)?.processes
-        .find((process) => process.id === tab.backgroundProcessId)?.command;
+    const process = state.listsBySession.get(sessionId)?.processes
+      .find(item => item.id === tab.backgroundProcessId);
+    return process?.description ?? process?.command;
   });
-  return <>{sourceTitle ?? processTitle ?? baseLabel(tab)}</>;
+  const title = sourceTitle ?? processTitle ?? baseLabel(tab);
+
+  return (
+    <div data-selected={active || undefined} className="ema-slot-tab group">
+      <Tooltip content={title}>
+        <button
+          type="button"
+          className="ema-slot-tab-trigger"
+          aria-label={title}
+          onClick={() => onActivate(tab.id)}
+        >
+          <span
+            className={`${tabIcon(tab)} shrink-0 text-[16px]`}
+            aria-hidden
+          />
+          <span className="min-w-0 flex-1 truncate text-[12px]">
+            {title}
+          </span>
+        </button>
+      </Tooltip>
+      <IconButton
+        size="sm"
+        variant="ghost"
+        shape="rounded"
+        label={`关闭${title}`}
+        icon="i-lucide:x"
+        className="ema-slot-tab-close"
+        onClick={() => onClose(tab)}
+      />
+    </div>
+  );
 }
 
 function TabBar({
@@ -122,6 +157,37 @@ function TabBar({
   onAdd(): void;
 }): JSX.Element {
   const closeTab = useSessionPanelStore((state) => state.closeTab);
+  const tabListRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const list = tabListRef.current;
+    const activeTab = list?.querySelector<HTMLElement>('[data-selected="true"]');
+    if (!list || !activeTab) return;
+
+    const revealActiveTab = (): void => {
+      if (list.clientWidth === 0) return;
+
+      const listBounds = list.getBoundingClientRect();
+      const tabBounds = activeTab.getBoundingClientRect();
+      const visibleLeft = listBounds.left + list.clientLeft;
+      const leftOverflow = tabBounds.left - visibleLeft;
+      const rightOverflow = tabBounds.right - visibleLeft - list.clientWidth;
+
+      // 只移动标签栏, 避免 scrollIntoView 同时滚动外层页面.
+      if (leftOverflow < 0) {
+        list.scrollLeft += leftOverflow;
+      } else if (rightOverflow > 0) {
+        list.scrollLeft += Math.min(leftOverflow, rightOverflow);
+      }
+    };
+
+    revealActiveTab();
+    // 侧栏展开或调整宽度后, 当前标签不变也需要重新检查可视位置.
+    const observer = new ResizeObserver(revealActiveTab);
+    observer.observe(list);
+    observer.observe(activeTab);
+    return () => observer.disconnect();
+  }, [sessionId, activeTabId, tabs.length]);
 
   function close(tab: SessionSidePanelTab): void {
     if (tab.kind === 'terminal') {
@@ -132,45 +198,27 @@ function TabBar({
 
   return (
     <div className="ema-workspace-tab-bar shrink-0 border-b border-[var(--ema-border)] px-2 py-1.5">
-      <div className="ema-tab-slot min-w-0 overflow-x-auto">
+      <div ref={tabListRef} className="ema-tab-slot">
         {tabs.map((tab) => (
-          <div key={tab.id} data-selected={tab.id === activeTabId || undefined} className="ema-slot-tab group">
-            <Tooltip content={baseLabel(tab)}>
-              <button
-                type="button"
-                className="ema-slot-tab-trigger"
-                aria-label={baseLabel(tab)}
-                onClick={() => onActivate(tab.id)}
-              >
-                <span
-                  className={`${tabIcon(tab)} shrink-0 text-[16px]`}
-                  aria-hidden
-                />
-                <span className="min-w-0 flex-1 truncate text-[12px]">
-                  <TabLabel sessionId={sessionId} tab={tab} />
-                </span>
-              </button>
-            </Tooltip>
-            <IconButton
-              size="sm"
-              variant="ghost"
-              shape="rounded"
-              label={`关闭${baseLabel(tab)}`}
-              icon="i-lucide:x"
-              className="ema-slot-tab-close"
-              onClick={() => close(tab)}
-            />
-          </div>
+          <WorkspaceTab
+            key={tab.id}
+            sessionId={sessionId}
+            tab={tab}
+            active={tab.id === activeTabId}
+            onActivate={onActivate}
+            onClose={close}
+          />
         ))}
-        <IconButton
-          size="sm"
-          variant="ghost"
-          shape="rounded"
-          label="新建标签"
-          icon="i-lucide:plus"
-          onClick={onAdd}
-        />
       </div>
+      <IconButton
+        size="sm"
+        variant="ghost"
+        shape="rounded"
+        label="新建标签"
+        icon="i-lucide:plus"
+        className="shrink-0"
+        onClick={onAdd}
+      />
     </div>
   );
 }
