@@ -76,8 +76,50 @@
   color: inherit;
 }
 
-.markdown-content :where(.ema-code-viewer) {
+.markdown-content :where(.ema-code-viewer, .ema-html-block--standalone) {
   margin-block: var(--ema-space-3);
+}
+
+.ema-html-block {
+  min-width: 0;
+}
+
+.ema-html-block--standalone {
+  overflow: hidden;
+  border: 1px solid var(--ema-border);
+  border-radius: var(--ema-radius-lg);
+}
+
+.ema-html-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ema-space-2);
+  padding: var(--ema-space-2) var(--ema-space-3);
+  color: var(--ema-text-tertiary);
+  font-size: 12px;
+}
+
+.ema-html-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--ema-space-2);
+}
+
+.ema-html-source {
+  background: var(--ema-syntax-bg, var(--ema-surface-1));
+}
+
+.ema-html-source > .ema-code-viewer {
+  margin: 0;
+}
+
+.ema-html-preview {
+  display: block;
+  width: 100%;
+  height: var(--ema-html-preview-height, clamp(20rem, 50vh, 40rem));
+  border: 0;
+  background: white;
 }
 
 /* 表格: 列宽按内容分配(auto), 发丝线分组不堆框; th 左对齐与 td 同一轴线. */

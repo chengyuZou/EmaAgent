@@ -93,6 +93,13 @@
   font-size: 10px;
 }
 
+.ema-tool-pane-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--ema-space-2);
+}
+
 .ema-tool-pane--input {
   background: color-mix(in srgb, var(--ema-primary) 7%, var(--ema-surface-1));
 }
@@ -333,8 +340,8 @@
   overflow: visible;
 }
 
-/* CodeViewer 自己限制高度并滚动, 外层输入和输出都不再叠加纵向滚动条. */
-.ema-tool-pane .ema-tool-pane-content:has(.ema-code-viewer) {
+/* 源码与 HTML 预览各自限制高度并滚动, 外层不再叠加纵向滚动条. */
+.ema-tool-pane .ema-tool-pane-content:has(.ema-code-viewer, .ema-html-block) {
   max-height: none;
   overflow: visible;
   padding: 0;

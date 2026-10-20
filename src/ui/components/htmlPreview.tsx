@@ -52,7 +52,7 @@ export function HtmlPreview({ source, title }: HtmlPreviewProps): JSX.Element {
       sandbox=""
       srcDoc={preview}
       title={title}
-      className="block h-48 w-full border-0 bg-white"
+      className="ema-html-preview"
     />
   );
 }

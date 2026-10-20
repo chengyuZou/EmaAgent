@@ -1,5 +1,5 @@
-import { useState, type JSX } from 'react';
-import { Tooltip, Badge, Button, CodeViewer, HtmlPreview } from '@ema-agent/ui';
+import type { JSX } from 'react';
+import { Tooltip, Badge, CodeViewer, HtmlBlock } from '@ema-agent/ui';
 import type { WebFetchResult } from './WebFetchTool.js';
 
 const PREVIEW_CHARS = 2_000;
@@ -49,15 +49,20 @@ export function WebFetchArgsView({ args }: { args: unknown }): JSX.Element | nul
   );
 }
 
-export function WebFetchResultView({ data }: { data: unknown }): JSX.Element | null {
+export function WebFetchResultView({ data, toolbarContainer }: {
+  readonly data: unknown;
+  readonly toolbarContainer?: HTMLElement | null;
+}): JSX.Element | null {
   const result = asWebFetchResult(data);
   if (!result) return null;
-  return <WebFetchResultCard result={result} />;
+  return <WebFetchResultCard result={result} toolbarContainer={toolbarContainer} />;
 }
 
-function WebFetchResultCard({ result }: { result: WebFetchResult }): JSX.Element {
+function WebFetchResultCard({ result, toolbarContainer }: {
+  readonly result: WebFetchResult;
+  readonly toolbarContainer?: HTMLElement | null;
+}): JSX.Element {
   const isHtml = /^\s*(<!doctype\s+html|<html[\s>])/i.test(result.content);
-  const [showPreview, setShowPreview] = useState(false);
   return (
     <div className="ema-tool-result-layout flex min-w-0 flex-col text-[11px] leading-relaxed">
       <div className="ema-tool-result-details flex min-w-0 flex-col gap-1">
@@ -81,20 +86,15 @@ function WebFetchResultCard({ result }: { result: WebFetchResult }): JSX.Element
             </span>
           </span>
           {result.truncated && <Badge variant="warn">已截断</Badge>}
-          {isHtml && (
-            <span className="ml-auto flex gap-1">
-              <Button variant={showPreview ? 'ghost' : 'secondary'} size="sm" onClick={() => setShowPreview(false)}>
-                源码
-              </Button>
-              <Button variant={showPreview ? 'secondary' : 'ghost'} size="sm" onClick={() => setShowPreview(true)}>
-                预览
-              </Button>
-            </span>
-          )}
         </div>
       </div>
-      {isHtml && showPreview ? (
-        <HtmlPreview source={result.content.slice(0, PREVIEW_CHARS)} title="网页预览" />
+      {isHtml ? (
+        <HtmlBlock
+          source={result.content}
+          previewSource={result.content.slice(0, PREVIEW_CHARS)}
+          wrapLines={false}
+          toolbarContainer={toolbarContainer}
+        />
       ) : (
         <CodeViewer source={result.content} embedded wrapLines={false} />
       )}

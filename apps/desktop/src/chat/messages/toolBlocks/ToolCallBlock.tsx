@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, type JSX, type ReactNode } from 'react';
+import { useState, useEffect, useMemo, useRef, type JSX, type ReactNode, type Ref } from 'react';
 import { CodeViewer, IconButton, Tooltip } from '@ema-agent/ui';
 import { sessionWebSocket } from '../../../api/sessionWebSocket.js';
 import { renderToolError, renderToolResult } from './tool-renderers.js';
@@ -103,6 +103,7 @@ export function ToolCallBlock({
   }
 
   const toolUI = lookupToolUI(name);
+  const [outputToolbarContainer, setOutputToolbarContainer] = useState<HTMLDivElement | null>(null);
   const [messageOpen, setMessageOpen] = useMessageExpansion(`tool:${toolCallId(call)}`, toolUI?.defaultExpanded ?? false);
   const open = expanded ?? messageOpen;
   const { containerRef, mounted } = useCollapsibleBody(open);
@@ -137,7 +138,7 @@ export function ToolCallBlock({
   // ArgsView/ResultView/ProgressView 只渲染一个区域; 类型守卫失败返回 null 后使用通用视图.
   const customArgs = mounted && toolUI?.ArgsView && argsReady ? toolUI.ArgsView({ args }) : null;
   const customResult = mounted && toolUI?.ResultView && output != null
-    ? toolUI.ResultView({ data: output, args })
+    ? toolUI.ResultView({ data: output, args, toolbarContainer: outputToolbarContainer })
     : null;
   const progressView = mounted && running && progress && progress.length > 0 && toolUI?.ProgressView
     ? toolUI.ProgressView({ progress })
@@ -268,6 +269,7 @@ export function ToolCallBlock({
                       label="复制输出" tone="output" copyText={outputCopyText}
                       summary={showResult ? toolUI?.resultSummary?.(output) : undefined}
                       errorOnly={hasError && !showResult}
+                      actionsRef={setOutputToolbarContainer}
                     >
                       {progressView}
                       {customResult ?? (resultView !== null && (
@@ -288,12 +290,13 @@ export function ToolCallBlock({
   );
 }
 
-export function ToolPane({ label, tone, copyText, summary, errorOnly = false, children }: {
+export function ToolPane({ label, tone, copyText, summary, errorOnly = false, actionsRef, children }: {
   label: string;
   tone: 'input' | 'output';
   copyText: string;
   summary?: string | null;
   errorOnly?: boolean;
+  actionsRef?: Ref<HTMLDivElement>;
   children: ReactNode;
 }): JSX.Element {
   return (
@@ -303,7 +306,10 @@ export function ToolPane({ label, tone, copyText, summary, errorOnly = false, ch
           {tone === 'input' ? '输入' : '输出'}
           {summary && <span className="ml-2 text-[var(--ema-text-secondary)]">{summary}</span>}
         </span>
-        <ToolCopyButton label={label} text={copyText} />
+        <div className="ema-tool-pane-actions">
+          {actionsRef && <div ref={actionsRef} className="ema-tool-pane-actions" />}
+          <ToolCopyButton label={label} text={copyText} />
+        </div>
       </div>
       <div className="ema-tool-pane-content">{children}</div>
     </section>

@@ -78,7 +78,12 @@ export interface ToolUI {
   /** 参数区. 返回 null 表示类型守卫失败, ToolCallBlock 会回落到通用 JSON 查看器. */
   readonly ArgsView?: (props: { args: unknown }) => JSX.Element | null;
   /** 结果区. data 是 ToolResult.data 或 streaming item.output; args 供按参数高亮(如 Grep 匹配). */
-  readonly ResultView?: (props: { data: unknown; args: unknown }) => JSX.Element | null;
+  readonly ResultView?: (props: {
+    data: unknown;
+    args: unknown;
+    /** 复制按钮之前的操作容器, null 表示输出栏尚未挂载. */
+    toolbarContainer?: HTMLElement | null;
+  }) => JSX.Element | null;
   /** 运行中的进度区. 没有真实 progress 结构的 Tool 不注册这个入口. */
   readonly ProgressView?: (props: { progress: readonly unknown[] }) => JSX.Element | null;
   /** 接管整个展开区, 供终端卡等需要一起处理参数, 进度和结果的 UI 使用. */
@@ -111,8 +116,9 @@ const TOOL_UI_REGISTRY: Readonly<Record<string, ToolUI>> = {
     resultCopyText: fileReadResultCopyText,
     resultSummary: fileReadResultSummary,
     ArgsView: FileReadArgsView,
-    ResultView: ({ data }) => createElement(FileReadResultView, {
+    ResultView: ({ data, toolbarContainer }) => createElement(FileReadResultView, {
       data,
+      toolbarContainer,
       renderImage: image => createElement(ImagePreview, image),
       renderMarkdown: (source, filePath) => createElement(MarkdownMedia, {
         directory: /[\\/]/.test(filePath) ? filePath.replace(/[\\/][^\\/]+$/, '') : undefined,

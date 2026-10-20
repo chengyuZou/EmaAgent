@@ -10,6 +10,7 @@ import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import { CodeViewer } from './codeViewer.js';
+import { HtmlBlock } from './htmlBlock.js';
 import { MermaidBlock } from './mermaidBlock.js';
 import { MarkdownLink } from './markdownLink.js';
 
@@ -24,7 +25,7 @@ export interface MarkdownProps {
   source: string;
   /** 追加到外层 div 的 class. */
   className?: string;
-  /** 流式内容中的未闭合 Mermaid 代码块只显示等待状态, 不尝试绘图. */
+  /** 流式内容中的未闭合代码围栏不触发 Mermaid 绘图或 HTML 预览. */
   streaming?: boolean;
 }
 
@@ -55,21 +56,21 @@ export function MarkdownRendererProvider({ children, components, urlTransform }:
 }
 
 // 使用现有 micromark 的围栏 token, 不重复解析 Markdown 或用正则猜测闭合状态.
-const mermaidFences: Extension = {
+const codeFences: Extension = {
   exit: {
     codeFencedFenceSequence() {
       const top = this.stack.at(-1)!;
       const code = top.type === 'code' ? top : this.stack.at(-2);
       if (code?.type !== 'code') return;
       const properties = (code.data ??= {}).hProperties ??= {};
-      properties.dataMermaidClosed = properties.dataMermaidClosed === 'false' ? 'true' : 'false';
+      properties.dataCodeFenceClosed = properties.dataCodeFenceClosed === 'false' ? 'true' : 'false';
     },
   },
 };
 
-const remarkMermaidFences: Plugin = function () {
+const remarkCodeFences: Plugin = function () {
   const extensions = this.data().fromMarkdownExtensions ??= [];
-  extensions.push(mermaidFences);
+  extensions.push(codeFences);
 };
 
 // raw HTML 安全边界: 剥离布局类属性, 模型/Skill/文件内容都不可信
@@ -103,7 +104,7 @@ export const markdownSanitizeSchema = {
     code: [
       ...removeLayoutAttributes(defaultSchema.attributes?.code as SanitizeAttribute[] | undefined),
       ['className', /^language-[\w-]+$/],
-      'dataMermaidClosed',
+      'dataCodeFenceClosed',
     ],
     // raw span/div 不接受任何布局属性; KaTeX 在清洗后运行, 不受影响.
     span: [],
@@ -143,13 +144,21 @@ const markdownComponents: Components = {
       const classes = code.properties.className;
       if (Array.isArray(classes)) {
         const languageClass = classes.find(value => String(value).startsWith('language-'));
-        if (languageClass) language = String(languageClass).slice('language-'.length);
+        if (languageClass) language = String(languageClass).slice('language-'.length).toLowerCase();
       }
       if (language === 'mermaid') {
         return (
           <MermaidBlock
             source={source}
-            pending={streaming && code.properties.dataMermaidClosed !== 'true'}
+            pending={streaming && code.properties.dataCodeFenceClosed !== 'true'}
+          />
+        );
+      }
+      if (language === 'html' || language === 'htm') {
+        return (
+          <HtmlBlock
+            source={source}
+            pending={streaming && code.properties.dataCodeFenceClosed !== 'true'}
           />
         );
       }
@@ -171,7 +180,7 @@ export const Markdown = memo(function Markdown({ source, className, streaming = 
     return (
       <StreamingMarkdown.Provider value={streaming}>
         <ReactMarkdown
-          remarkPlugins={[remarkMath, remarkGfm, remarkMermaidFences]}
+          remarkPlugins={[remarkMath, remarkGfm, remarkCodeFences]}
           rehypePlugins={[
             rehypeRaw,
             // 先清洗 raw HTML, 再运行可信渲染器. 代码高亮由 CodeViewer 负责.

@@ -1,5 +1,5 @@
-import { useMemo, useState, type JSX } from 'react';
-import { Badge, Button, CodeViewer, HtmlPreview, languageForPath, Tooltip } from '@ema-agent/ui';
+import { useMemo, type JSX } from 'react';
+import { Badge, CodeViewer, HtmlBlock, languageForPath, Tooltip } from '@ema-agent/ui';
 import type { FileReadResult } from './FileReadTool.js';
 import { PdfContentView } from './pdfContentView.js';
 
@@ -98,10 +98,11 @@ export function FileReadArgsView({ args }: { args: unknown }): JSX.Element | nul
 
 // 结果视图: 按文件格式展示
 
-export function FileReadResultView({ data, renderImage, renderMarkdown }: {
+export function FileReadResultView({ data, renderImage, renderMarkdown, toolbarContainer }: {
   readonly data: unknown;
   readonly renderImage: (image: { readonly src: string; readonly alt: string }) => JSX.Element;
   readonly renderMarkdown: (source: string, filePath: string) => JSX.Element;
+  readonly toolbarContainer?: HTMLElement | null;
 }): JSX.Element | null {
   const result = asFileReadResult(data);
   if (!result) return null;
@@ -158,7 +159,13 @@ export function FileReadResultView({ data, renderImage, renderMarkdown }: {
     }
 
     case 'file_content':
-      return <FileReadContentCard result={result} renderMarkdown={renderMarkdown} />;
+      return (
+        <FileReadContentCard
+          result={result}
+          renderMarkdown={renderMarkdown}
+          toolbarContainer={toolbarContainer}
+        />
+      );
   }
 }
 
@@ -166,14 +173,14 @@ export function FileReadResultView({ data, renderImage, renderMarkdown }: {
 
 type FileContentResult = Extract<FileReadResult, { type: 'file_content' }>;
 
-function FileReadContentCard({ result, renderMarkdown }: {
+function FileReadContentCard({ result, renderMarkdown, toolbarContainer }: {
   readonly result: FileContentResult;
   readonly renderMarkdown: (source: string, filePath: string) => JSX.Element;
+  readonly toolbarContainer?: HTMLElement | null;
 }): JSX.Element {
   const extension = result.filePath.split(/[\\/]/).pop()?.split('.').pop()?.toLowerCase() ?? '';
   const isMarkdown = ['md', 'markdown', 'mdx'].includes(extension);
   const isHtml = ['html', 'htm'].includes(extension);
-  const [showHtmlPreview, setShowHtmlPreview] = useState(false);
 
   // 编号单独展示, Markdown 只消费原文; 结果信封与外层复制仍保留模型定位编号.
   const { source, lineNumbers } = useMemo(() => {
@@ -184,47 +191,49 @@ function FileReadContentCard({ result, renderMarkdown }: {
     });
     return { source, lineNumbers };
   }, [result.content]);
+
+  let content: JSX.Element;
+  if (isHtml) {
+    content = (
+      <div className="ema-file-read-code">
+        <HtmlBlock
+          source={source}
+          lineNumbers={lineNumbers}
+          wrapLines={false}
+          toolbarContainer={toolbarContainer}
+        />
+      </div>
+    );
+  } else if (isMarkdown) {
+    content = (
+      <div className="ema-tool-result-details min-w-0 text-[12px]">
+        {renderMarkdown(source, result.filePath)}
+      </div>
+    );
+  } else {
+    content = (
+      <div className="ema-file-read-code ema-material-code">
+        <CodeViewer
+          source={source}
+          language={languageForPath(result.filePath) ?? 'text'}
+          lineNumbers={lineNumbers}
+          embedded
+          wrapLines={false}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="ema-tool-result-layout ema-file-read-content flex min-w-0 flex-col">
-      {(result.truncated || isHtml) && (
+      {result.truncated && (
         <div className="ema-tool-result-details ema-file-read-summary flex flex-wrap items-center gap-2 text-[11px] leading-relaxed">
-          {result.truncated && (
-            <Badge variant="warn">
-              已截断{result.nextOffset !== undefined ? ` · 从第 ${result.nextOffset} 行继续` : ''}
-            </Badge>
-          )}
-          {isHtml && (
-            <span className="ml-auto flex gap-1">
-              <Button variant={showHtmlPreview ? 'ghost' : 'secondary'} size="sm" onClick={() => setShowHtmlPreview(false)}>
-                源码
-              </Button>
-              <Button variant={showHtmlPreview ? 'secondary' : 'ghost'} size="sm" onClick={() => setShowHtmlPreview(true)}>
-                预览
-              </Button>
-            </span>
-          )}
+          <Badge variant="warn">
+            已截断{result.nextOffset !== undefined ? ` · 从第 ${result.nextOffset} 行继续` : ''}
+          </Badge>
         </div>
       )}
-
-      {isHtml && showHtmlPreview && (
-        <HtmlPreview source={source} title="HTML 预览" />
-      )}
-
-      {(!isHtml || !showHtmlPreview) && (
-        <div className={isMarkdown ? 'ema-tool-result-details min-w-0 text-[12px]' : 'ema-file-read-code ema-material-code'}>
-          {isMarkdown
-            ? renderMarkdown(source, result.filePath)
-            : (
-              <CodeViewer
-                source={source}
-                language={languageForPath(result.filePath) ?? 'text'}
-                lineNumbers={lineNumbers}
-                embedded
-                wrapLines={false}
-              />
-            )}
-        </div>
-      )}
+      {content}
     </div>
   );
 }
