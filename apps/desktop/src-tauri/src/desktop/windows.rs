@@ -246,6 +246,16 @@ pub fn set_stage_passthrough_controls_hovered(
 }
 
 pub fn handle_window_event(window: &tauri::Window, event: &WindowEvent) {
+    if window.label() == "main"
+        && matches!(event, WindowEvent::Focused(_) | WindowEvent::Resized(_))
+    {
+        if let Some(notifications) = window
+            .app_handle()
+            .try_state::<super::interaction_notifications::InteractionNotifications>(
+        ) {
+            notifications.refresh();
+        }
+    }
     // 可见性通知只发给所属窗口, main 的隐藏不能暂停 stage 动画.
     match event {
         // 保留两个 WebView, 已提交操作和会话订阅不随窗口隐藏停止.

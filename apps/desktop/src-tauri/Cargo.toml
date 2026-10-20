@@ -35,6 +35,16 @@ fontdb = "0.24.0"
 win32job = "2"
 webview2-com = "0.38.2"
 windows-core = "0.61.2"
+windows = { version = "0.61.3", features = [
+    "Data_Xml_Dom",
+    "UI_Notifications",
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_Com",
+    "Win32_System_Registry",
+    "Win32_UI_Notifications",
+    "Win32_UI_WindowsAndMessaging",
+] }
 # OpenProcess 从 pid 拿进程 handle, assign 到 Job Object(win32job 只暴露 handle 接口)
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Threading"] }
 

@@ -1,5 +1,5 @@
-import type { PermissionRequiredEvent } from '@ema-agent/permission';
-import type { AskUserRequiredEvent } from '@ema-agent/tools';
+import type { PermissionResponse } from '@ema-agent/permission';
+import type { PendingInteraction } from '@ema-agent/turn';
 import type { EventDisplayTable } from '../../api/settings.js';
 
 export interface SelectPathsOptions {
@@ -21,7 +21,27 @@ export interface DesktopSettingsPayload {
   readonly eventDisplay: EventDisplayTable | null;
 }
 
-export type DecisionRequiredEvent = PermissionRequiredEvent | AskUserRequiredEvent;
+export interface InteractionNotification {
+  readonly sessionId: string;
+  readonly turnId: string;
+  readonly toolCallId: string;
+  readonly kind: PendingInteraction['kind'];
+  readonly title: string;
+  readonly body: string;
+}
+
+export interface InteractionNotificationUpdate {
+  /** null means main is not displaying a Session, including while Settings is open. */
+  readonly viewedSessionId: string | null;
+  readonly notifications: readonly InteractionNotification[];
+}
+
+export interface InteractionNotificationAction {
+  readonly sessionId: string;
+  readonly turnId: string;
+  readonly toolCallId: string;
+  readonly action: 'openSession' | PermissionResponse['action'];
+}
 
 export type TerminalEvent =
   | { readonly type: 'output'; readonly data: readonly number[] }

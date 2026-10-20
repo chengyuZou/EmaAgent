@@ -875,6 +875,7 @@ dependencies = [
  "webview2-com",
  "which",
  "win32job",
+ "windows",
  "windows-core 0.61.2",
  "windows-sys 0.59.0",
 ]

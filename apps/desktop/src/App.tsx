@@ -8,7 +8,6 @@ import {
   type ActiveLive2DStage,
 } from './stage/CharacterStage.js';
 import { SpeechBubble } from './stage/SpeechBubble.js';
-import { PermissionToastLayer } from './stage/PermissionToastLayer.js';
 import { FloatingDock } from './stage/FloatingDock.js';
 import { mountSystemEvents } from './lib/events/systemSse.js';
 import { useCharacterStore } from './stores/character.js';
@@ -218,8 +217,6 @@ export function App(): React.JSX.Element {
 
       <ServerBadge status={serverStatus} />
 
-      {/* stage 只显示非阻塞授权提示, AskUser 由 main 的 Session 队列处理. */}
-      <PermissionToastLayer />
     </>
   );
 }

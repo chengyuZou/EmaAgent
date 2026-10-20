@@ -44,6 +44,18 @@ Server 自行选择本机端口. 宿主最多等待 120 秒收到就绪通知, �
 - 外部浏览器面板是独立的子 WebView, 由前端控制位置和显隐. 网页请求新窗口时交给系统浏览器.
 - 自有应用窗口使用 `desktop/windows.rs` 配置的 Windows WebView2 媒体设置. 不为外部浏览器面板授予这些应用权限.
 
+## Windows 交互通知
+
+主 WebView 观察现有 Session 交互队列, 只把各队列的队首通过 `sync_interaction_notifications` 交给宿主. `connect_interaction_notifications` 建立原生点击回传的 IPC Channel. 两个命令只接受 `main` 调用. 原生实现在 `desktop/interactionNotifications.rs`, 使用 Windows Toast API 和 COM 激活回调, 不创建另一套 WebView 或 CSS 页面.
+
+Rust 将 main 的句柄与 Windows 前台窗口比较. 只有 main 在前台, 且 Chat 正显示请求所属 Session 时, 才不弹通知. 查看其他 Session, Settings, 隐藏 main 或前台是其他应用时都可以收到通知. 已经展示过的通知不会因为普通 Store 刷新或被关闭而重复弹出.
+
+Permission 提供允许, 本会话允许和拒绝. main 再次检查交互队首, 通过与聊天卡片相同的 Session WebSocket 入口提交. AskUser 只有关闭按钮, 答案仍在 Chat 中填写. 点击两种通知的正文都会打开原 Session 的 Chat. 关闭按钮和系统 X 只关闭通知, 不回答, 不拒绝, 也不取消等待中的请求.
+
+已回答, 取消或超时的请求离开前端队列后, 对应 Windows 通知和通知中心记录也会移除. 断线时点击批准会返回 Chat, 不暗中排队提交答案. 原生通知失败不影响聊天卡片继续处理. Windows 通知设置和勿扰模式可能抑制横幅, 这不是一个始终置顶的应用窗口.
+
+独立 MTA 线程负责原生注册, 展示与移除. 建立通道时传入 main 窗口句柄, UI 线程等待退出时, 通知线程不会再调用 Tauri 窗口 getter. Debug 与 release 使用不同通知身份. 注册只使用当前用户 `Software\Classes` 下本应用专用的易失注册表键, 图标放在应用缓存中. 正常退出移除通知与注册键; 启动时清理遗留通知, 因为后端交互等待不能跨进程重启恢复. 不修改系统通知偏好, 也不需要管理员注册. macOS 和 Linux 保留应用内交互 UI, 不启用这条 Windows 通知通道.
+
 ## 原生命令
 
 命令入口放在 `src/commands`, 具体实现使用 `src/desktop` 和 `src/processes` 中的模块.
@@ -54,6 +66,7 @@ Server 自行选择本机端口. 宿主最多等待 120 秒收到就绪通知, �
 | 显隐聊天, 退出, 舞台置顶和点击穿透 | `open_main_window`, `hide_main_window`, `quit_app`, `set_always_on_top`, 鼠标与穿透命令 |
 | 读取本地图片字节用于草稿预览或壁纸上传; 检查附件路径 | `read_local_image`, `inspect_attachment_paths` |
 | 选择聊天附件, 壁纸或角色资源路径 | `select_paths` |
+| 连接原生交互点击回调, 同步待处理通知 | `connect_interaction_notifications`, `sync_interaction_notifications` |
 | 打开本机路径和枚举字体 | `open_path`, `list_system_fonts` |
 | 创建和控制浏览器面板 | `commands/browser.rs` 中的命令 |
 | 打开, 写入, 调整和关闭 PTY 终端 | `commands/terminal.rs` 中的命令 |
@@ -68,7 +81,7 @@ Server 自行选择本机端口. 宿主最多等待 120 秒收到就绪通知, �
 
 ## 退出与日志
 
-正常退出时先关闭全部 PTY, 再停止 Server 及其子进程. Windows 使用 Job Object 和进程树终止. macOS 与 Linux 使用独立进程组, 先发 TERM, 超时后再发 KILL.
+正常退出时先移除交互通知及原生注册, 再销毁窗口, 关闭全部 PTY 并停止 Server 及其子进程. Windows 使用 Job Object 和进程树终止. macOS 与 Linux 使用独立进程组, 先发 TERM, 超时后再发 KILL.
 
 启动日志写入用户目录的 `logs` 下. `logging.rs` 同时输出到终端, 并清理过期启动日志. Server stdout 同时包含启动消息和就绪通知, 由 `processes/child.rs` 区分协议消息与普通日志.
 
@@ -83,4 +96,12 @@ cargo check --locked --manifest-path apps/desktop/src-tauri/Cargo.toml
 cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --lib
 ```
 
-Rust 测试覆盖资源准备, 启动日志内容和过期日志清理, 以及路径选择状态. 它们不能代替真实 WebView 输入, 原生选择框交互, 文件拖入, 浏览器显隐和 PTY 交互验收. 这些操作用 `pnpm --filter @ema-agent/desktop tauri:dev` 检查. 原生窗口行为改动需要重启宿主, 只靠前端 HMR 不会生效. 发布准备和安装包命令见 [Desktop README](../README.md).
+默认 Rust 测试覆盖资源准备, 启动日志内容和过期清理, 路径选择状态, 通知 XML 和动作校验, 以及不展示通知的 Windows COM 点击回调往返. Windows 另有需要显式开启的投递检查:
+
+```sh
+cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --lib windows_accepts_a_real_notification -- --ignored --nocapture
+```
+
+该检查使用真实注册和发送函数, 配合临时通知身份和图标. 它展示约三秒的无业务效果通知, 检查通知历史及异步失败, 然后清理自己的通知和注册. 任何按钮都不批准真实工具. `ToastNotifier.Setting()` 不作为投递前提: 对 `Show` 能接受的桌面通知身份, 该查询仍可能返回 `ERROR_NOT_FOUND`. Windows 在发送时依然应用系统通知偏好.
+
+这些检查不能代替前台切换, 完整 UI 答复, WebView 输入, 原生选择框交互, 文件拖入, 浏览器显隐和 PTY 交互验收. 这些操作用 `pnpm --filter @ema-agent/desktop tauri:dev` 检查. 原生窗口行为改动需要重启宿主, 只靠前端 HMR 不会生效. 发布准备和安装包命令见 [Desktop README](../README.md).

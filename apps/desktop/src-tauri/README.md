@@ -44,6 +44,18 @@ Tauri's automatic CSP modification is disabled only for `style-src`. File trees,
 - External browser panels are separate child WebViews. The frontend controls their bounds and visibility. New-window requests open through the system browser.
 - Own application WebViews receive the Windows WebView2 media settings configured in `desktop/windows.rs`. External browser panels do not receive those application permissions.
 
+## Windows interaction notifications
+
+The main WebView observes the existing Session interaction queues and sends only each queue's head through `sync_interaction_notifications`. `connect_interaction_notifications` establishes an IPC Channel for native clicks. Both commands accept calls only from `main`. The native implementation is in `desktop/interactionNotifications.rs`; it uses Windows toast APIs and COM activation, not a separate WebView or CSS.
+
+Rust compares the main window's handle with the Windows foreground window. It suppresses a notification only when main is foreground and Chat displays that request's Session. Another Session, Settings, a hidden main window, or another foreground application can receive notifications. A notification already presented is not posted again on ordinary Store refreshes or after dismissal.
+
+Permission offers Allow, Allow for session, and Deny. Main rechecks the pending queue head and submits through the same Session WebSocket entry as the chat card. AskUser offers only Close; answers stay in Chat. Clicking either notification's body opens Chat at the originating Session. Close and the system X only dismiss the notification. They do not answer, deny, or cancel the pending request.
+
+Resolved, cancelled, and timed-out requests leave the frontend queue and are then removed from Windows notification history. An offline approval returns the user to Chat without queueing a hidden answer. Native delivery failures leave the chat card available. Windows notification settings and Do not disturb can suppress banners; this is not an always-on-top application window.
+
+A dedicated MTA thread owns native registration, presentation, and removal. It receives the main window handle when the channel connects and does not call Tauri window getters while the UI thread waits for shutdown. Debug and release builds have separate notification identities. Registration uses application-specific, volatile keys under the current user's `Software\Classes`, plus an icon in the application cache. Normal exit removes the notifications and those keys; startup clears stale notifications because backend interaction waits do not survive process restart. It does not change system notification preferences or require administrator registration. macOS and Linux keep the in-app interaction UI without this Windows notification channel.
+
 ## Native commands
 
 Command handlers live in `src/commands`. Their implementations use the corresponding modules in `src/desktop` and `src/processes`.
@@ -54,6 +66,7 @@ Command handlers live in `src/commands`. Their implementations use the correspon
 | Show or hide chat, exit, pin stage, control click-through | `open_main_window`, `hide_main_window`, `quit_app`, `set_always_on_top`, pointer and passthrough commands |
 | Read local image bytes for a draft preview or wallpaper upload; inspect attachment paths | `read_local_image`, `inspect_attachment_paths` |
 | Select paths for chat attachments, wallpapers, or character resources | `select_paths` |
+| Connect native interaction clicks and reconcile pending notifications | `connect_interaction_notifications`, `sync_interaction_notifications` |
 | Open a local path or enumerate fonts | `open_path`, `list_system_fonts` |
 | Create and control browser panels | Commands in `commands/browser.rs` |
 | Open, write, resize, and close PTY terminals | Commands in `commands/terminal.rs` |
@@ -68,7 +81,7 @@ Callers retain the destination chosen when opening the picker. Chat appends to t
 
 ## Exit and logs
 
-Normal application exit closes all PTYs and stops Server and its child processes. Windows uses a Job Object and process-tree termination. macOS and Linux use a process group, try TERM, and use KILL if the group does not exit in time.
+Normal application exit removes interaction notifications and their native registration before destroying windows, then closes all PTYs and stops Server and its child processes. Windows uses a Job Object and process-tree termination. macOS and Linux use a process group, try TERM, and use KILL if the group does not exit in time.
 
 Launch logs are written below the profile's `logs` directory. `logging.rs` also writes to the terminal and removes expired launch logs. Server stdout carries both startup messages and ready notifications; `processes/child.rs` separates the ready protocol from ordinary log output.
 
@@ -83,5 +96,13 @@ cargo check --locked --manifest-path apps/desktop/src-tauri/Cargo.toml
 cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --lib
 ```
 
-The Rust tests cover resource preparation, launch-log output and retention, and path-picker state. They do not verify real WebView input, native picker interaction, file dragging, browser visibility, or PTY interaction. Run `pnpm --filter @ema-agent/desktop tauri:dev` for those checks. Native window changes require restarting the host; frontend HMR is not sufficient. Release preparation and installer commands are documented in the [Desktop README](../README.md).
+The default Rust tests cover resource preparation, launch-log output and retention, path-picker state, notification XML and action validation, and a Windows COM callback round trip without showing a toast. Windows also has an opt-in delivery check:
+
+```sh
+cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --lib windows_accepts_a_real_notification -- --ignored --nocapture
+```
+
+This check uses the actual registration and sending functions with a temporary identity and icon. It shows a harmless notification for about three seconds, checks notification history and asynchronous failure, and cleans up its notification and registration. No button approves a real tool. `ToastNotifier.Setting()` is not a delivery precondition: it can return `ERROR_NOT_FOUND` for a desktop identity that `Show` accepts. Windows still applies notification preferences when sending.
+
+These checks do not verify foreground switching, complete UI responses, real WebView input, native picker interaction, file dragging, browser visibility, or PTY interaction. Run `pnpm --filter @ema-agent/desktop tauri:dev` for those checks. Native window changes require restarting the host; frontend HMR is not sufficient. Release preparation and installer commands are documented in the [Desktop README](../README.md).
 

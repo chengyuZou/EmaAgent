@@ -4,7 +4,6 @@ import type { PendingInteraction } from '@ema-agent/turn';
 import type { SessionBusinessMessage } from '@ema-agent/server/routes/ws/session.js';
 import { sessionWebSocket } from '../../api/sessionWebSocket.js';
 import { resolveConfiguredEventNotification, type NotifiableEvent } from '../../lib/notifications/eventNotifications.js';
-import { tauriBridge } from '../../lib/tauri/tauriBridge.js';
 import { showToast, type ToastHandle } from '../../lib/notifications/toast.js';
 import { useSubagentStore } from '../../stores/subagent.js';
 import { useTurnStore, type TurnStoreEvent } from '../../stores/turn.js';
@@ -97,7 +96,6 @@ function receiveSessionMessage(sessionId: string, message: SessionBusinessMessag
     }
     for (const pending of message.pendingInteractions) {
       if (pending.kind === 'permission') {
-        void tauriBridge.publishDecisionRequired({ type: 'permission_required', ...pending.request });
         if (!pending.request.subagentId) {
           useTurnStore.getState().setToolPermissionPending(
             sessionId,
@@ -106,8 +104,6 @@ function receiveSessionMessage(sessionId: string, message: SessionBusinessMessag
             true
           );
         }
-      } else {
-        void tauriBridge.publishDecisionRequired(pending.request);
       }
     }
     return;
@@ -130,11 +126,6 @@ function receiveSessionMessage(sessionId: string, message: SessionBusinessMessag
           message.type === 'permission_required'
         );
       }
-    }
-    if (message.type === 'permission_required' || message.type === 'ask_user_required') {
-      void tauriBridge.publishDecisionRequired(message);
-    } else {
-      void tauriBridge.publishDecisionDismissed(message.toolCallId);
     }
     return;
   }

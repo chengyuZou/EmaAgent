@@ -55,6 +55,8 @@ Server 保存消息, 设置和资源. 前端 Store 保存当前导航, 草稿, �
 
 普通切换会话会保留各会话的草稿, 工作区布局和手动终端. 归档或删除会话后, 清除它的聊天状态, 释放终端视图, 请求关闭宿主 PTY, 并清掉附件列表缓存. 不影响其他会话.
 
+Permission 和 AskUser 共用各 Session 已有的交互队列. Windows 上, main 将各队首同步给原生宿主, 再由宿主判断前台 Chat 是否正在显示请求所属 Session, 是则不弹通知. Permission 按钮复用聊天的答复 API, AskUser 通知只负责打开 Chat 或关闭提示. 关闭通知不结束请求. `src/lib/notifications/interactionNotifications.ts` 中的主窗口订阅在 main 隐藏时仍保留. 原生注册, 前台判断与平台限制见[宿主文档](./src-tauri/README-zh.md#windows-交互通知).
+
 原生文件拖放同时检查当前页面和指针位置. Chat 只接收中间聊天区的路径, 包括新对话页面, 不包含会话侧栏和右侧工作区. 已挂载但隐藏的 Chat 不接收设置页的拖放. 手动选择文件和 Chat 拖入共用草稿附件流程: 图片显示本地预览, 图片和粘贴文本在发送时保存到会话, 普通文件保留本地路径引用. 拖入文件不会自动发送消息.
 
 壁纸设置卡片是独立的拖放目标. 它接收 PNG, JPEG 和 WebP 路径, 读取图片后复用文件选择的上传接口. Server 检查实际图片格式后才保存. 被拒绝的文件不会转交 Chat, 其他设置页面不接收这类文件拖放.
@@ -140,4 +142,4 @@ cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --lib
 
 `test:live2d-release` 构建实际舞台, 按 `tauri.conf.json` 的 CSP 加载随包模型和本地 Cubism Core, 检查首帧更新及实际像素. Windows 使用无界面的 Edge. 其他平台先运行 `pnpm --filter @ema-agent/desktop exec playwright install chromium` 安装测试浏览器. 测试使用临时目录和本地 HTTP 服务, 不读取用户目录.
 
-其他前端测试会模拟原生 IPC, Rust 内联测试覆盖资源准备, 启动日志和 Windows 进程退出. 这些检查不能替代安装版验收. 修改 Rust 后需要重启 Tauri 宿主, 前端 HMR 不会更新原生代码.
+其他前端测试会模拟原生 IPC. 默认 Rust 测试覆盖资源准备, 启动日志, Windows 进程退出, 通知载荷和 Windows COM 点击回调往返, 不展示或点击真实通知横幅. 显式开启的 Windows 投递检查见[宿主文档](./src-tauri/README-zh.md#从哪里看与如何验证). 这些检查不能替代安装版验收. 修改 Rust 后需要重启 Tauri 宿主, 前端 HMR 不会更新原生代码.

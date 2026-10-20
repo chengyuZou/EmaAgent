@@ -15,6 +15,7 @@
 - 配置 LLM, Vision, Embedding, Rerank, TTS 和 STT 模型, 通过 Skills 和 MCP 扩充工具.
 - 使用文件形式的长期 Memory, 并通过独立的 Narrative 检索内置故事设定.
 - 导出和导入单个对话及其可用的托管文件.
+- 未在前台查看对应 Chat 时, 通过 Windows 原生通知处理 Permission 并提醒 AskUser. 自动化检查通过, 原生 UI 与安装版验收待完成. [实现与验证](./logs/zh/interactionNotifications.md).
 
 ## 已包含的修复
 
@@ -45,6 +46,7 @@
 - [切换 Session 时的 STT 语音输入](./logs/zh/sttSessionNavigation.md)
 - [Provider 目录, 设置反馈与请求预算](./logs/zh/providerCatalogAndRequests.md)
 - [AskUser 提问前的额外审批](./logs/zh/askUserApproval.md)
+- [Windows Permission 和 AskUser 通知](./logs/zh/interactionNotifications.md)
 - [发布版 Live2D 渲染](./logs/zh/live2dReleaseRendering.md)
 - [发布版界面样式与 Markdown 媒体](./logs/zh/releaseUiStyles.md)
 - [原生主题权限与 Server 环境](./logs/zh/releasePermissionsAndEnvironment.md)

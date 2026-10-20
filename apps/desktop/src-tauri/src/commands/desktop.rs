@@ -1,13 +1,40 @@
 use serde::Serialize;
 use tauri::Manager;
 
+use crate::desktop::file_dialog::{FileDialogState, SelectPathsOptions};
+use crate::desktop::interaction_notifications::{
+    InteractionNotificationAction, InteractionNotificationUpdate, InteractionNotifications,
+};
 use crate::desktop::pet_pointer::PetPointerTracking;
 use crate::desktop::windows::{
     begin_stage_focus_settling, set_stage_passthrough, set_stage_passthrough_controls_hovered,
     show_window, stage_passthrough_enabled,
 };
 use crate::processes::DesktopProcesses;
-use crate::desktop::file_dialog::{FileDialogState, SelectPathsOptions};
+
+#[tauri::command]
+pub async fn connect_interaction_notifications(
+    window: tauri::WebviewWindow,
+    notifications: tauri::State<'_, InteractionNotifications>,
+    on_action: tauri::ipc::Channel<InteractionNotificationAction>,
+) -> Result<bool, String> {
+    if window.label() != "main" {
+        return Err("Interaction notifications belong to the main window".into());
+    }
+    notifications.connect(&window, on_action).await
+}
+
+#[tauri::command]
+pub async fn sync_interaction_notifications(
+    window: tauri::WebviewWindow,
+    notifications: tauri::State<'_, InteractionNotifications>,
+    update: InteractionNotificationUpdate,
+) -> Result<(), String> {
+    if window.label() != "main" {
+        return Err("Interaction notifications belong to the main window".into());
+    }
+    notifications.update(update).await
+}
 
 #[tauri::command]
 pub async fn select_paths(
@@ -119,4 +146,3 @@ pub async fn inspect_attachment_paths(paths: Vec<String>) -> AttachmentPaths {
     }
     result
 }
-

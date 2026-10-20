@@ -15,6 +15,7 @@ This Alpha brings character conversation and local Agent work together in one de
 - Configure LLM, Vision, Embedding, Rerank, TTS, and STT models, and add tools through Skills and MCP.
 - Keep file-based long-term Memory and use separate Narrative retrieval for the bundled story setting.
 - Export and import individual conversations with their available managed files.
+- Receive Windows native Permission and AskUser notifications when not viewing the relevant Chat in the foreground. Automated checks passed; native UI and installed-build acceptance remain pending. [Implementation and verification](./logs/en/interactionNotifications.md).
 
 ## Included fixes
 
@@ -45,6 +46,7 @@ These records keep the evidence and remaining checks separate from the release s
 - [STT voice input across Session navigation](./logs/en/sttSessionNavigation.md)
 - [Provider catalogs, settings feedback and request budgets](./logs/en/providerCatalogAndRequests.md)
 - [AskUser approval before questions](./logs/en/askUserApproval.md)
+- [Windows Permission and AskUser notifications](./logs/en/interactionNotifications.md)
 - [Live2D rendering in release builds](./logs/en/live2dReleaseRendering.md)
 - [Release UI styles and Markdown media](./logs/en/releaseUiStyles.md)
 - [Native theme permissions and Server environment](./logs/en/releasePermissionsAndEnvironment.md)

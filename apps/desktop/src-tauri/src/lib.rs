@@ -7,20 +7,18 @@ mod processes;
 use tauri::{Manager, RunEvent};
 
 use commands::{
-    select_paths,
-    inspect_attachment_paths,
     browser_back, browser_forward, close_browser, close_session_terminals, close_terminal,
-    get_passthrough, get_server_port, get_server_secret, hide_main_window, list_system_fonts,
-    navigate_browser, open_browser, open_main_window, open_path, open_terminal, quit_app,
-    read_local_image, reload_browser, resize_terminal, set_always_on_top,
-    set_browser_bounds, set_browser_visible, set_passthrough, set_passthrough_controls_hovered,
-    start_pet_pointer, write_terminal,
+    connect_interaction_notifications, get_passthrough, get_server_port, get_server_secret,
+    hide_main_window, inspect_attachment_paths, list_system_fonts, navigate_browser, open_browser,
+    open_main_window, open_path, open_terminal, quit_app, read_local_image, reload_browser,
+    resize_terminal, select_paths, set_always_on_top, set_browser_bounds, set_browser_visible,
+    set_passthrough, set_passthrough_controls_hovered, start_pet_pointer,
+    sync_interaction_notifications, write_terminal,
 };
+use desktop::interaction_notifications::InteractionNotifications;
 use desktop::pet_pointer::PetPointerTracking;
 use desktop::terminal::TerminalSessions;
-use desktop::windows::{
-    destroy_windows_before_exit, handle_window_event, show_stage_window,
-};
+use desktop::windows::{destroy_windows_before_exit, handle_window_event, show_stage_window};
 use processes::DesktopProcesses;
 
 pub fn run() {
@@ -41,6 +39,8 @@ pub fn run() {
         .manage(TerminalSessions::new())
         .manage(PetPointerTracking::default())
         .invoke_handler(tauri::generate_handler![
+            connect_interaction_notifications,
+            sync_interaction_notifications,
             select_paths,
             inspect_attachment_paths,
             get_server_secret,
@@ -71,6 +71,7 @@ pub fn run() {
             close_browser,
         ])
         .setup(move |app| {
+            app.manage(InteractionNotifications::start(app.handle().clone()));
             #[cfg(windows)]
             if let Some(stage) = app.get_webview_window("stage") {
                 desktop::windows::allow_app_media(&stage)?;
@@ -95,6 +96,7 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|app_handle, event| {
             if let RunEvent::ExitRequested { api, .. } = &event {
+                app_handle.state::<InteractionNotifications>().shutdown();
                 app_handle.state::<PetPointerTracking>().stop();
                 destroy_windows_before_exit(app_handle, api);
             }

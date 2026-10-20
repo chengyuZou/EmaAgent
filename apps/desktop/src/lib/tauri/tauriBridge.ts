@@ -5,7 +5,8 @@ import type {
   FileDragEvent,
   BrowserBounds,
   BrowserEvent,
-  DecisionRequiredEvent,
+  InteractionNotificationAction,
+  InteractionNotificationUpdate,
   DesktopSettingsPayload,
   Live2dPreviewCommand,
   OpenTerminalInput,
@@ -41,6 +42,8 @@ let _window: TauriWindow | null = null;
 const terminalChannels = new Map<string, object>();
 const pendingBrowserOpens = new Map<string, Promise<void>>();
 const pendingBrowserVisibility = new Map<string, Promise<void>>();
+let interactionNotificationConnection: Promise<boolean> | null = null;
+let interactionNotificationHandler: ((action: InteractionNotificationAction) => void) | null = null;
 
 const WINDOW_VISIBILITY_EVENT = 'ema://window-visibility';
 const PET_PASSTHROUGH_EVENT = 'ema://pet-passthrough';
@@ -50,8 +53,6 @@ const THEME_CHANGED_EVENT = 'theme:changed';
 const DESKTOP_SETTINGS_CHANGED_EVENT = 'settings:desktop-changed';
 const DIALOGUE_DELTA_EVENT = 'dialogue:delta';
 const DIALOGUE_ENDED_EVENT = 'dialogue:end';
-const DECISION_REQUIRED_EVENT = 'decision:push';
-const DECISION_DISMISSED_EVENT = 'decision:dismiss';
 const STAGE_EMOTION_EVENT = 'stage:emotion-changed';
 const STAGE_MOTION_EVENT = 'stage:motion-changed';
 const STAGE_LIP_SYNC_EVENT = 'stage:lip-sync';
@@ -236,25 +237,30 @@ export const tauriBridge = {
     );
   },
 
-  async publishDecisionRequired(event: DecisionRequiredEvent): Promise<void> {
-    await emitTauri(DECISION_REQUIRED_EVENT, event);
+  async connectInteractionNotifications(
+    handler: (action: InteractionNotificationAction) => void,
+  ): Promise<boolean> {
+    // React can remount main's effects. Keep one native channel and replace its
+    // current consumer rather than letting an older IPC replace the new listener.
+    interactionNotificationHandler = handler;
+    if (!interactionNotificationConnection) {
+      interactionNotificationConnection = (async () => {
+        const core = await getCore();
+        if (!core) return false;
+        const onAction = new core.Channel<InteractionNotificationAction>(action => {
+          interactionNotificationHandler?.(action);
+        });
+        return core.invoke<boolean>('connect_interaction_notifications', { onAction });
+      })().catch(error => {
+        interactionNotificationConnection = null;
+        throw error;
+      });
+    }
+    return interactionNotificationConnection;
   },
 
-  async publishDecisionDismissed(toolCallId: string): Promise<void> {
-    await emitTauri(DECISION_DISMISSED_EVENT, { toolCallId });
-  },
-
-  async listenDecisionRequired(
-    handler: (event: DecisionRequiredEvent) => void,
-  ): Promise<() => void> {
-    return listenTauri(DECISION_REQUIRED_EVENT, handler);
-  },
-
-  async listenDecisionDismissed(handler: (toolCallId: string) => void): Promise<() => void> {
-    return listenTauri<{ toolCallId: string }>(
-      DECISION_DISMISSED_EVENT,
-      ({ toolCallId }) => handler(toolCallId),
-    );
+  async syncInteractionNotifications(update: InteractionNotificationUpdate): Promise<void> {
+    await invokeTauri('sync_interaction_notifications', { update });
   },
 
   async publishStageEmotion(emotion: string): Promise<void> {
