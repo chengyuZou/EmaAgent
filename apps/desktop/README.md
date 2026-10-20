@@ -47,7 +47,9 @@ sequenceDiagram
 
 The Server saves messages, settings, and resources. Frontend stores hold current navigation, drafts, loaded history, active work, and other shared page state. History is loaded in windows; live Turn data is removed only after the corresponding saved history has been loaded.
 
-Settings pages import definitions from `@ema-agent/server/settings`, backed by [definitions.ts](../server/src/settings/definitions.ts). Server registers those same objects. `settingsApi.getValue(definition)` and `putValue(definition, value)` use the definition's key and value type, and check responses with its schema. Labels and controls stay in Desktop. Shared controls and `useSettingValues` live in `src/settings/shared`; screen capture has its own sidebar page, outside Parameter Settings.
+Settings pages import definitions from `@ema-agent/server/settings`, backed by [definitions.ts](../server/src/settings/definitions.ts). Server registers those same objects. `settingsApi.getValue(definition)` and `putValue(definition, value)` use the definition's key and value type, and check responses with its schema. Labels and controls stay in Desktop. Shared controls and `useSettingValues` live in `src/settings/shared`. Permissions, Events, and Screen Capture have separate sidebar pages, outside Parameter Settings. Permissions contains confirmation timeout and global/project rules; Events contains notification display controls. Security retains sandbox and terminal settings.
+
+Within Parameter Settings, Tools controls built-in tool availability. Background Processes is a separate page for Shell concurrency and runtime limits, using the same settings definitions and save APIs.
 
 ## Session and window behavior
 

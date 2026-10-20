@@ -65,7 +65,7 @@ export const MemoryJobRow = memo(function MemoryJobRow({
     >
       <div className="ema-memory-job-heading">
         <span
-          className={relationship ? 'i-lucide:heart' : 'i-lucide:briefcase-business'}
+          className={relationship ? 'i-lucide:user-round' : 'i-lucide:briefcase-business'}
           aria-hidden
         />
         <h3>

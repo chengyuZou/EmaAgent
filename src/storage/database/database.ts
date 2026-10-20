@@ -67,7 +67,6 @@ export class Database {
     this.migrations = new MigrationsRunner(this.sqlite, this.kind);
   }
 
-  /** 应用该 DB kind 的待执行迁移.启动时调用一次;幂等,重复调 no-op. */
   migrate(): void {
     if (this.closed)   throw new Error('Database already closed');
     if (this.migrated) return;

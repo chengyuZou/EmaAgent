@@ -26,10 +26,10 @@ This Alpha brings character conversation and local Agent work together in one de
 - Selecting "Follow system" releases the previous light or dark window override instead of treating that override as the system preference. [Bug record](./logs/en/releasePermissionsAndEnvironment.md#follow-system-theme-regression).
 - Windows process cleanup now suppresses the cleanup command's console window. The user confirmed full exit without the reported flash in the tested Windows installer. [Bug record](./logs/en/windowsExitConsole.md).
 - Skills installations and MCP market additions keep their in-progress state when switching settings pages, including concurrent operations. Source checks and Dev acceptance passed; installed-build acceptance remains pending. [Bug record](./logs/en/marketOperationNavigation.md).
-- Switching Sessions stops the old STT recording and releases the microphone while transcription continues into the original draft. Recording and transcription feedback is separate for each Session. Automated checks passed; real-microphone Dev and installed-build acceptance remain pending. [Bug record](./logs/en/sttSessionNavigation.md).
+- Switching Sessions stops the old STT recording and releases the microphone while transcription continues into the original draft. Recording and transcription feedback is separate for each Session. Automated checks and user Dev acceptance passed; installed-build acceptance remains pending. [Bug record](./logs/en/sttSessionNavigation.md).
 - Domestic Provider IDs and catalog associations are aligned, LLM/Vision settings expose the catalog ID, and model updates preserve the visible card list. Ping prefers enabled models; Narrative keeps non-streaming requests with an 8192-Token output budget. Provider workflows passed user testing. Profile/Data now each use one initialization SQL, and DeepSeek is also available in Vision; fresh-start and consolidated installed acceptance remain pending. [Bug record](./logs/en/providerCatalogAndRequests.md).
 
-Screen capture settings have a dedicated sidebar page with the existing automatic-capture switch, interval and privacy notice.
+Permissions, Events, and Screen Capture have dedicated sidebar pages. Permissions retains confirmation timeout and global/project rules. Events retains notification switches, colors, durations, and text limits. Screen Capture retains its automatic-capture switch, interval and privacy notice. These pages use the existing settings and save APIs.
 
 ## Before using this Alpha
 

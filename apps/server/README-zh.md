@@ -25,7 +25,7 @@ pnpm --filter @ema-agent/server dev
 [main.ts](./src/main.ts) 先检查密钥, 再进入 [lifecycle.ts](./src/platform/lifecycle.ts). 启动顺序是:
 
 1. 创建数据目录, 检查 Profile 锁文件.
-2. 打开并迁移配置库, 会话库和 Narrative 剧情库.
+2. 依次打开并迁移配置库, 会话库和 Narrative 剧情库. 会话库迁移接收已迁移的 Profile, 用于更新 Provider 引用. 见 [Storage 数据迁移](../../src/storage/README-zh.md#数据迁移).
 3. 创建各业务对象并连接回调.
 4. 暂停活动 Goal, 将中断的工具, 后台进程, Turn 和子 Agent 执行记录标记为结束. 不续跑其中的命令.
 5. 挂载路由, 开始监听, 向 stdout 写入一行 JSON:

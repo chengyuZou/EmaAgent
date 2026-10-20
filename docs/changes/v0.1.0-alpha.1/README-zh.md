@@ -26,10 +26,10 @@
 - 选择跟随系统时, 解除此前的亮色或暗色窗口覆盖, 不再把该覆盖误认为系统偏好. [问题记录](./logs/zh/releasePermissionsAndEnvironment.md#跟随系统主题回归).
 - Windows 进程清理不再让清理命令显示控制台窗口. 用户确认测试过的 Windows 安装版能够完整退出, 没有此前报告的闪现. [问题记录](./logs/zh/windowsExitConsole.md).
 - Skills 安装和 MCP 市场添加在切换设置页后保留进行中状态, 支持同时操作多个目标. 源码检查和 Dev 验收通过, 安装版仍待验收. [问题记录](./logs/zh/marketOperationNavigation.md).
-- 切换 Session 时停止原 STT 录音并释放麦克风, 已录音频继续转写到原草稿. 各 Session 分别显示自己的录音和转写状态. 自动化检查通过, 真实麦克风 Dev 实测和安装版验收仍待完成. [问题记录](./logs/zh/sttSessionNavigation.md).
+- 切换 Session 时停止原 STT 录音并释放麦克风, 已录音频继续转写到原草稿. 各 Session 分别显示自己的录音和转写状态. 自动化检查和用户 Dev 验收通过, 安装版验收仍待完成. [问题记录](./logs/zh/sttSessionNavigation.md).
 - 国内站 Provider ID 与目录关联对齐, LLM/Vision 设置提供目录 ID, 模型更新保留当前卡片列表. Ping 优先使用启用模型, Narrative 保持非流式并使用 8192 Token 输出预算. Provider 实际流程已由用户测试通过. Profile/Data 现各保留一个初始化 SQL, Vision 补充 DeepSeek 预置; 全新启动及统一安装版验收待完成. [问题记录](./logs/zh/providerCatalogAndRequests.md).
 
-屏幕捕获设置已有独立侧栏页面, 包含原有的自动捕获开关, 间隔和隐私提示.
+权限, 事件和屏幕捕获各有独立侧栏页面. 权限页保留确认超时和全局/项目规则, 事件页保留通知开关, 强调色, 停留时间和文本上限, 屏幕捕获保留自动捕获开关, 间隔和隐私提示. 这些页面沿用现有配置与保存接口.
 
 ## 使用这个 Alpha 前
 

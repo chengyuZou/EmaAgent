@@ -4,7 +4,7 @@
 
 ## Status
 
-Source fix and automated checks passed on 2026-10-20. Real-microphone testing in the Tauri development application and consolidated installed-build acceptance remain pending. No installer was built, no real microphone was opened, and no model request was made during these tests.
+Source fix and automated checks passed on 2026-10-20. The user subsequently confirmed Dev acceptance. Consolidated installed-build acceptance remains pending. The automated tests did not build an installer, open a real microphone, or make a model request.
 
 ## Problem and cause
 
@@ -37,4 +37,4 @@ Tests 75 passed (75)
 
 Desktop type checking passed. A separate TypeScript check also included the new test file, which the default Desktop configuration does not include.
 
-Remaining Dev check: record a short phrase in A, switch to B before stopping, confirm the microphone indicator stops, and start recording in B while A is still transcribing. A must receive only A's transcription, B only B's, without replacing text typed during the wait. Real STT requests require a configured binding and may incur provider charges.
+Repeat during installed-build acceptance: record a short phrase in A, switch to B before stopping, confirm the microphone indicator stops, and start recording in B while A is still transcribing. A must receive only A's transcription, B only B's, without replacing text typed during the wait. Real STT requests require a configured binding and may incur provider charges.

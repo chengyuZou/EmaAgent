@@ -47,7 +47,9 @@ sequenceDiagram
 
 Server 保存消息, 设置和资源. 前端 Store 保存当前导航, 草稿, 已加载历史, 运行中的任务等共享页面状态. 历史消息按窗口加载; 实时 Turn 要等对应的持久化历史读取成功后才从实时状态中移除.
 
-设置页面从 `@ema-agent/server/settings` 导入定义, 对应 [definitions.ts](../server/src/settings/definitions.ts). Server 注册同一批对象. `settingsApi.getValue(definition)` 和 `putValue(definition, value)` 从定义取得 key 和值类型, 并按同一 Schema 检查响应. 标题和控件留在 Desktop. 共享控件与 `useSettingValues` 放在 `src/settings/shared`; 屏幕捕获是侧栏中的独立页面, 不再放在参数设置中.
+设置页面从 `@ema-agent/server/settings` 导入定义, 对应 [definitions.ts](../server/src/settings/definitions.ts). Server 注册同一批对象. `settingsApi.getValue(definition)` 和 `putValue(definition, value)` 从定义取得 key 和值类型, 并按同一 Schema 检查响应. 标题和控件留在 Desktop. 共享控件与 `useSettingValues` 放在 `src/settings/shared`. 权限, 事件和屏幕捕获各有独立侧栏页面, 不放在参数设置中. 权限页包含确认超时和全局/项目规则, 事件页包含通知展示控制. 安全页保留沙箱和终端设置.
+
+参数设置中的 Tools 管理内置工具启用状态. 后台进程是独立页面, 管理 Shell 并发数和运行时间限制, 沿用同一批配置定义与保存接口.
 
 ## 会话和窗口行为
 

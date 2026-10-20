@@ -25,7 +25,7 @@ pnpm --filter @ema-agent/server dev
 [main.ts](./src/main.ts) checks the secret before starting [lifecycle.ts](./src/platform/lifecycle.ts). Startup then:
 
 1. Creates the data directory and checks the Profile lockfile.
-2. Opens and migrates the Profile, conversation and Narrative databases.
+2. Opens and migrates the Profile, conversation and Narrative databases in that order. Conversation migration receives the migrated Profile to update Provider references. See [Storage migrations](../../src/storage/README.md#migrations).
 3. Constructs the business objects and connects their callbacks.
 4. Pauses active Goals and records interrupted tools, background processes, Turns and subagent runs as ended. It does not resume their commands.
 5. Builds the routes, listens, and writes one newline-terminated JSON message to stdout:
