@@ -13,6 +13,7 @@ import { removeSessionPlayback } from '../speech/turnSpeechPlayback.js';
 import { removeSessionSpeechGeneration } from '../speech/turnSpeechGeneration.js';
 import { removeSessionSubscription } from './sessionSubscriptions.js';
 import { closeSessionTerminals } from '../sidePanel/tabs/terminal/terminalSessions.js';
+import { cancelVoiceInput } from '../input/voiceInput.js';
 
 /**
  * 会话已经在服务端归档或删除后, 聊天界面才会调用这个入口.
@@ -20,6 +21,7 @@ import { closeSessionTerminals } from '../sidePanel/tabs/terminal/terminalSessio
  * 移除, 否则再次打开同一会话会看到旧草稿, 侧面板或已断开的运行状态.
  */
 export function removeSessionFromChat(sessionId: string): void {
+  cancelVoiceInput(sessionId);
   // 先离开已删除的会话, 避免清空估算状态时又为它发起请求.
   useMainNavigationStore.getState().evictSession(sessionId);
   removeSessionSubscription(sessionId);

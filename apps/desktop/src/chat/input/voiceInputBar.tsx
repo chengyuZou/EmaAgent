@@ -1,11 +1,6 @@
 import { memo, useEffect, useRef, type JSX } from 'react';
 import { IconButton, Tooltip } from '@ema-agent/ui';
-
-export type VoiceInputState =
-  | { readonly kind: 'idle' }
-  | { readonly kind: 'starting' }
-  | { readonly kind: 'recording'; readonly stream: MediaStream }
-  | { readonly kind: 'transcribing' };
+import type { VoiceInputState } from './voiceInput.js';
 
 const VOLUME_SAMPLE_INTERVAL_MS = 40;
 

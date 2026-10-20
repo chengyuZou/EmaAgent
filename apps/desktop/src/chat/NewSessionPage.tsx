@@ -6,6 +6,7 @@ import { useMainNavigationStore } from '../layout/navigation.js';
 import { submitChatDraft } from './input/submitChatDraft.js';
 import { ConversationStarters } from './conversationStarters.js';
 import { AttachmentDropOverlay, useAttachmentDrop } from './input/attachmentDrop.js';
+import { promoteNewSessionVoiceInput } from './input/voiceInput.js';
 
 function fillQuickPrompt(prompt: string): void {
   const drafts = useChatDraftStore.getState();
@@ -47,6 +48,7 @@ export function NewSessionPage(): JSX.Element {
 
     // 新 Session 已存在, 才能把后来输入的草稿迁过去并上传属于该 Session 的附件.
     useChatDraftStore.getState().promoteNewSession(sessionId);
+    promoteNewSessionVoiceInput(sessionId);
     navigation.promoteNewSession(sessionId);
     await submitChatDraft(sessionId, submitted);
   }

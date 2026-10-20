@@ -65,6 +65,8 @@ The character-name link opens the shared Dialog and displays Narrative's exporte
 
 Speech generation and playback are separate. Stopping playback does not cancel generation. Saved audio can be played from storage details without driving the character's mouth.
 
+STT voice input belongs to its draft, not the currently displayed input component. Switching Sessions stops the old recording and releases its microphone immediately; the recorded audio still goes through STT and appends to that Session's latest draft. The new Session can record independently while earlier transcriptions finish. Returning to a Session shows its pending transcription and cancel action. A pending microphone permission request is discarded on switching; a late stream is closed without recording. Explicit cancellation, archiving or deletion discards that Session's voice operation. New-conversation dictation moves with its draft when the first submission creates a Session. These operations live in main-window memory, not restart-persistent storage. See [voiceInput.ts](./src/chat/input/voiceInput.ts).
+
 Live2D archive, initialization, and render failures appear on the stage with a reload button. Reloading fetches the current model again and creates a new renderer. Failures from an old archive request do not replace the current character's stage.
 
 The stage shows startup feedback before React loads, then distinguishes Server startup from character loading. The Live2D loading indicator fades out only after the first successful render. Server and presentation failures have retry actions; missing resources show a reason, while an intentionally blank stage stays blank.

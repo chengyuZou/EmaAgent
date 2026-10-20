@@ -25,6 +25,7 @@
 - 选择跟随系统时, 解除此前的亮色或暗色窗口覆盖, 不再把该覆盖误认为系统偏好. [问题记录](./logs/zh/releasePermissionsAndEnvironment.md#跟随系统主题回归).
 - Windows 进程清理不再让清理命令显示控制台窗口. 用户确认测试过的 Windows 安装版能够完整退出, 没有此前报告的闪现. [问题记录](./logs/zh/windowsExitConsole.md).
 - Skills 安装和 MCP 市场添加在切换设置页后保留进行中状态, 支持同时操作多个目标. 源码检查和 Dev 验收通过, 安装版仍待验收. [问题记录](./logs/zh/marketOperationNavigation.md).
+- 切换 Session 时停止原 STT 录音并释放麦克风, 已录音频继续转写到原草稿. 各 Session 分别显示自己的录音和转写状态. 自动化检查通过, 真实麦克风 Dev 实测和安装版验收仍待完成. [问题记录](./logs/zh/sttSessionNavigation.md).
 
 屏幕捕获设置已有独立侧栏页面, 包含原有的自动捕获开关, 间隔和隐私提示.
 
@@ -40,6 +41,7 @@
 这些记录将证据和剩余检查与版本摘要分开保存. 先前安装包的准确构建标识未记录, Dev 通过不能代替统一的安装版回归.
 
 - [设置切页后的市场操作状态](./logs/zh/marketOperationNavigation.md)
+- [切换 Session 时的 STT 语音输入](./logs/zh/sttSessionNavigation.md)
 - [AskUser 提问前的额外审批](./logs/zh/askUserApproval.md)
 - [发布版 Live2D 渲染](./logs/zh/live2dReleaseRendering.md)
 - [发布版界面样式与 Markdown 媒体](./logs/zh/releaseUiStyles.md)

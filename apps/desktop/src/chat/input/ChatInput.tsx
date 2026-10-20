@@ -16,11 +16,9 @@ import {
   type TextareaHandle,
 } from '@ema-agent/ui';
 import type { TurnInputPart } from '@ema-agent/turn';
-import { providersApi } from '../../api/providers.js';
 import { sessionWebSocket } from '../../api/sessionWebSocket.js';
 import { showToast } from '../../lib/notifications/toast.js';
 import {
-  emptyChatDraft,
   hasDraftContent,
   useChatDraftStore,
   type ChatDraft,
@@ -46,23 +44,9 @@ import { ModelPicker, useInputModel } from './controls/ModelPicker.js';
 import { InputGoalBar, useInputGoal } from './controls/goalBar.js';
 import { InputProjectBar } from './inputProjectBar.js';
 import { NarrativeToolNotice } from './narrativeToolNotice.js';
-import { VoiceInputBar, type VoiceInputState } from './voiceInputBar.js';
+import { VoiceInputBar } from './voiceInputBar.js';
+import { cancelVoiceInput, startVoiceInput, stopVoiceInput, useVoiceInput } from './voiceInput.js';
 import { AttachmentImagePreview } from '../../lib/images/attachmentImagePreview.js';
-
-interface VoiceRecording {
-  readonly sessionId: string | null;
-  readonly abort: AbortController;
-  media: MediaStream | null;
-  recorder: MediaRecorder | null;
-}
-
-function releaseRecording(recording: VoiceRecording): void {
-  recording.abort.abort();
-  if (recording.recorder?.state === 'recording') {
-    recording.recorder.stop();
-  }
-  recording.media?.getTracks().forEach(track => track.stop());
-}
 
 function QueuedInputContent({ sessionId, input }: {
   readonly sessionId: string;
@@ -156,9 +140,8 @@ export function ChatInput({
   const ttsModelBound = useProviderStore(state => state.bindings.tts !== undefined);
   const sttModelBound = useProviderStore(state => state.bindings.stt !== undefined);
   const [submitting, setSubmitting] = useState(false);
-  const [voiceInput, setVoiceInput] = useState<VoiceInputState>({ kind: 'idle' });
+  const voiceInput = useVoiceInput(viewedId);
   const [slashFilter, setSlashFilter] = useState<string | null>(null);
-  const recordingRef = useRef<VoiceRecording | null>(null);
   const textareaRef = useRef<TextareaHandle>(null);
   const slashMenuRef = useRef<SlashMenuHandle | null>(null);
   const voiceActive = voiceInput.kind !== 'idle';
@@ -228,28 +211,15 @@ export function ChatInput({
     element.style.height = `${Math.min(element.scrollHeight, 200)}px`;
   }, [text]);
 
-  useEffect(() => () => {
-    const active = recordingRef.current;
-    recordingRef.current = null;
-    if (active) releaseRecording(active);
-  }, []);
-
-  const cancelRecording = useCallback((): void => {
-    const active = recordingRef.current;
-    // 先取消这次录音的归属, stop 触发的回调才不会把丢弃的音频送去转写.
-    recordingRef.current = null;
+  function cancelRecording(): void {
     textareaRef.current?.el()?.focus();
-    setVoiceInput({ kind: 'idle' });
-    if (active) releaseRecording(active);
-  }, []);
+    cancelVoiceInput(viewedId);
+  }
 
-  const stopRecording = useCallback((): void => {
-    const recorder = recordingRef.current?.recorder;
-    if (recorder?.state !== 'recording') return;
+  function stopRecording(): void {
     textareaRef.current?.el()?.focus();
-    setVoiceInput({ kind: 'transcribing' });
-    recorder.stop();
-  }, []);
+    stopVoiceInput(viewedId);
+  }
 
   function caret(): number {
     return textareaRef.current?.el()?.selectionStart ?? text.length;
@@ -334,90 +304,10 @@ export function ChatInput({
     }
   }
 
-  async function startRecording(): Promise<void> {
-    if (recordingRef.current) return;
-    if (!useProviderStore.getState().bindings.stt) {
-      showToast('请先配置 STT 模型绑定', { variant: 'warning' });
-      return;
-    }
-    const active: VoiceRecording = {
-      sessionId: viewedId,
-      abort: new AbortController(),
-      media: null,
-      recorder: null,
-    };
-    recordingRef.current = active;
+  function startRecording(): void {
     // 工具栏即将隐藏, 把焦点留在始终可编辑的正文里.
     textareaRef.current?.el()?.focus();
-    setVoiceInput({ kind: 'starting' });
-    try {
-      const media = await navigator.mediaDevices.getUserMedia({ audio: true });
-      active.media = media;
-      // getUserMedia 不能用 AbortSignal 取消. 用户已取消或组件已卸载时, 立即关闭迟到的麦克风流.
-      if (recordingRef.current !== active) {
-        media.getTracks().forEach(track => track.stop());
-        return;
-      }
-      const recorder = new MediaRecorder(media);
-      active.recorder = recorder;
-      const chunks: Blob[] = [];
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) chunks.push(event.data);
-      };
-      recorder.onstop = () => {
-        media.getTracks().forEach(track => track.stop());
-        if (recordingRef.current !== active) return;
-        setVoiceInput({ kind: 'transcribing' });
-        // 录音期间可以进入 Settings 修改绑定. 提交前读取当前值, 不使用开始录音时的旧值.
-        if (!useProviderStore.getState().bindings.stt) {
-          showToast('STT 模型已解绑, 本次录音未转写', { variant: 'warning' });
-          recordingRef.current = null;
-          setVoiceInput({ kind: 'idle' });
-          return;
-        }
-        const audio = new Blob(chunks, { type: recorder.mimeType });
-        chunks.length = 0;
-        void providersApi.transcribe({ audio, mime: recorder.mimeType }, active.abort.signal)
-          .then((result) => {
-            if (recordingRef.current !== active) return;
-            // 转写是异步的. 回来时必须追加到该 Session 的最新草稿, 不能用开始录音时闭包里的旧内容覆盖用户后续输入.
-            const drafts = useChatDraftStore.getState();
-            const latest = active.sessionId
-              ? drafts.bySession.get(active.sessionId) ?? emptyChatDraft()
-              : drafts.newSessionDraft;
-            const next = {
-              ...latest,
-              text: `${latest.text}${result.text.trim()}`,
-            };
-            if (active.sessionId) drafts.setForSession(active.sessionId, next);
-            else drafts.setForNewSession(next);
-          })
-          .catch((error) => {
-            if (recordingRef.current !== active) return;
-            showToast(
-              error instanceof Error ? error.message : '语音转写失败',
-              { variant: 'danger' },
-            );
-          })
-          .finally(() => {
-            if (recordingRef.current === active) {
-              recordingRef.current = null;
-              setVoiceInput({ kind: 'idle' });
-            }
-          });
-      };
-      recorder.start();
-      setVoiceInput({ kind: 'recording', stream: media });
-    } catch (error) {
-      if (recordingRef.current !== active) return;
-      recordingRef.current = null;
-      releaseRecording(active);
-      setVoiceInput({ kind: 'idle' });
-      showToast(
-        error instanceof Error ? error.message : '无法使用麦克风',
-        { variant: 'danger' },
-      );
-    }
+    void startVoiceInput(viewedId);
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>): void {
@@ -592,7 +482,7 @@ export function ChatInput({
                       label="语音输入"
                       className="ema-chat-icon-btn"
                       disabled={!sttModelBound}
-                      onClick={() => void startRecording()}
+                      onClick={startRecording}
                     />
                   </span>
                 </Tooltip>
