@@ -5,8 +5,8 @@ import { restoreFailedDraft, useChatDraftStore, type ChatDraft } from '../stores
 import { useMainNavigationStore } from '../layout/navigation.js';
 import { submitChatDraft } from './input/submitChatDraft.js';
 import { ConversationStarters } from './conversationStarters.js';
-import { AttachmentDropOverlay, useAttachmentDrop } from './input/attachmentDrop.js';
-import { promoteNewSessionVoiceInput } from './input/voiceInput.js';
+import { AttachmentDropOverlay, useAttachmentDrop } from './input/attachments/attachmentDrop.js';
+import { promoteNewSessionVoiceInput } from './input/voice/voiceInput.js';
 
 function fillQuickPrompt(prompt: string): void {
   const drafts = useChatDraftStore.getState();

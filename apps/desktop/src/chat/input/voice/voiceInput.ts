@@ -1,10 +1,10 @@
 import { useEffect } from 'react';
 import { create } from 'zustand';
-import { providersApi } from '../../api/providers.js';
-import { useMainNavigationStore } from '../../layout/navigation.js';
-import { showToast } from '../../lib/notifications/toast.js';
-import { useProviderStore } from '../../stores/provider.js';
-import { editChatDraft } from './editChatDraft.js';
+import { providersApi } from '../../../api/providers.js';
+import { useMainNavigationStore } from '../../../layout/navigation.js';
+import { showToast } from '../../../lib/notifications/toast.js';
+import { useProviderStore } from '../../../stores/provider.js';
+import { editChatDraft } from '../editChatDraft.js';
 
 export type VoiceInputState =
   | { readonly kind: 'idle' }

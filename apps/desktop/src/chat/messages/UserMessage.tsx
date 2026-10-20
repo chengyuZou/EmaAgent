@@ -1,12 +1,12 @@
 import { useState, type JSX } from 'react';
-import { IconButton } from '@ema-agent/ui';
-
-import { Markdown } from '@ema-agent/ui';
-import type { AttachmentBlock, Message, MessageBlocks, SkillReferenceBlock, SessionUserBlock } from '@ema-agent/session';
+import { Button, IconButton, Markdown, Tooltip } from '@ema-agent/ui';
+import type { Message, MessageBlocks, SessionUserBlock } from '@ema-agent/session';
 import { formatTurnTime } from './toolBlocks/toolGroups.js';
 import { sessionSourceTab, useSessionPanelStore } from '../../stores/sessionPanel.js';
 import { AttachmentImagePreview } from '../../lib/images/attachmentImagePreview.js';
 import { ImagePreview } from '../../lib/images/imagePreview.js';
+import { AttachmentGroup } from '../attachments/attachmentGroup.js';
+import { attachmentLabel } from '../attachments/attachmentLabel.js';
 
 export interface UserMessageProps {
   readonly message: Pick<Message, 'blocks' | 'createdAt'>;
@@ -16,21 +16,25 @@ export interface UserMessageProps {
 
 export function UserMessage({ message, sessionId, pending = false }: UserMessageProps): JSX.Element {
   const content = messageText(message);
-  // 附件卡置顶; text 段与 skill_reference 按输入顺序混排.
-  const attachments = Array.isArray(message.blocks)
+  const images = Array.isArray(message.blocks)
     ? message.blocks.filter(
-      (block): block is AttachmentBlock | Extract<SessionUserBlock, { type: 'image_data' | 'image_url' }> =>
+      (block): block is Extract<SessionUserBlock, { type: 'image_reference' | 'image_data' | 'image_url' }> =>
         block.type === 'image_reference'
         || block.type === 'image_data'
-        || block.type === 'image_url'
-        || block.type === 'pasted_text_reference'
-        || block.type === 'file_reference',
+        || block.type === 'image_url',
+    )
+    : [];
+  const references = Array.isArray(message.blocks)
+    ? message.blocks.filter(
+      (block): block is Extract<SessionUserBlock, { type: 'pasted_text_reference' | 'file_reference' | 'skill_reference' }> =>
+        block.type === 'pasted_text_reference'
+        || block.type === 'file_reference'
+        || block.type === 'skill_reference',
     )
     : [];
   const segments = Array.isArray(message.blocks)
     ? message.blocks.filter(
-      (block): block is Extract<SessionUserBlock, { type: 'text' }> | SkillReferenceBlock =>
-        block.type === 'text' || block.type === 'skill_reference',
+      (block): block is Extract<SessionUserBlock, { type: 'text' }> => block.type === 'text',
     )
     : [{ type: 'text' as const, text: content }];
 
@@ -45,14 +49,14 @@ export function UserMessage({ message, sessionId, pending = false }: UserMessage
 
   return (
     <div className="ema-message-shell flex flex-row-reverse">
-      <div className="flex flex-col min-w-20 max-w-full items-end">
-        {attachments.length > 0 && (
-          <div className="flex flex-wrap items-start justify-end gap-1.5 mb-1.5 max-w-full">
-            {attachments.map((block, index) => {
+      <div className="ema-user-message">
+        {images.length > 0 && (
+          <AttachmentGroup label="图片">
+            {images.map((block, index) => {
               if (block.type === 'image_reference') {
                 return (
                   <AttachmentImagePreview
-                    key={block.path}
+                    key={`${block.path}-${index}`}
                     sessionId={sessionId}
                     path={block.path}
                     alt={block.name ?? '剪贴板图片'}
@@ -70,76 +74,57 @@ export function UserMessage({ message, sessionId, pending = false }: UserMessage
                   />
                 );
               }
-              if (block.type === 'image_url') {
-                return (
-                  <ImagePreview
-                    key={block.url}
-                    src={block.url}
-                    alt={block.name ?? '图片'}
-                    className="ema-image-preview--attachment"
-                  />
-                );
-              }
-              const chip = chipDisplay(block);
-              // 文件引用只显示名称, 粘贴文本继续打开附件面板.
-              const openable = block.type !== 'file_reference';
               return (
-                <button
-                  type="button"
-                  key={block.path}
-                  className={`ema-message-chip inline-flex items-center gap-1 border px-2 py-0.5 text-[11px] text-[var(--ema-text-tertiary)] ${openable
-                    ? 'hover:border-[var(--ema-border-strong)] hover:text-[var(--ema-text-primary)]'
-                    : 'cursor-default'
-                    }`}
-                  onClick={() => {
-                    if (openable) {
-                      useSessionPanelStore
-                        .getState()
-                        .openTab(
-                          sessionId,
-                          sessionSourceTab(block.path)
-                        );
-                    }
-                  }}
-                >
-                  <span
-                    className={`${chip.icon} text-[10px]`}
-                    style={{ color: chip.color }}
-                    aria-hidden
-                  />
-                  {chip.label}
-                </button>
+                <ImagePreview
+                  key={`${block.url}-${index}`}
+                  src={block.url}
+                  alt={block.name ?? '图片'}
+                  className="ema-image-preview--attachment"
+                />
               );
             })}
-          </div>
+          </AttachmentGroup>
+        )}
+        {references.length > 0 && (
+          <AttachmentGroup label="附件">
+            {references.map((block, index) => {
+              const display = attachmentLabel(block);
+              const label = (
+                <>
+                  <span className={display.icon} style={{ color: display.color }} aria-hidden />
+                  <span className="ema-attachment-chip-label">{display.label}</span>
+                </>
+              );
+              // 文件和 Skill 只显示引用, 粘贴文本沿用现有附件面板入口.
+              return (
+                <Tooltip key={`${block.type}-${block.path}-${index}`} content={display.detail} variant="card">
+                  {block.type === 'pasted_text_reference' ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="ema-attachment-chip"
+                      onClick={() => useSessionPanelStore.getState().openTab(sessionId, sessionSourceTab(block.path))}
+                    >
+                      {label}
+                    </Button>
+                  ) : (
+                    <span className="ema-attachment-chip" tabIndex={0}>{label}</span>
+                  )}
+                </Tooltip>
+              );
+            })}
+          </AttachmentGroup>
         )}
 
-        {content.trim().length > 0 || segments.some((s) => s.type === 'skill_reference')
-          ? (
-            <div className="ema-message-content rounded-2xl rounded-br-md px-5 py-3 border text-sm bg-[var(--ema-surface-2)] border-[var(--ema-border)] text-[var(--ema-text-secondary)]">
-              {segments.map((segment, index) =>
-                segment.type === 'skill_reference'
-                  ? (
-                    <span
-                      key={`skill-${segment.path}-${index}`}
-                      className="ema-message-chip mx-0.5 inline-flex items-center gap-1 px-1.5 py-0.5 align-baseline text-[11px] text-[var(--ema-text-secondary)]"
-                    >
-                      <span className="i-lucide:sparkles text-[10px]" aria-hidden />
-                      {segment.name}
-                    </span>
-                  )
-                  : (
-                    <span
-                      key={`text-${index}`}
-                      className="ema-md-inline"
-                    >
-                      <Markdown source={segment.text} />
-                    </span>
-                  ),
-              )}
-            </div>
-          )
-          : null}
+        {content.trim().length > 0 && (
+          <div className="ema-message-content rounded-2xl rounded-br-md px-5 py-3 border text-sm bg-[var(--ema-surface-2)] border-[var(--ema-border)] text-[var(--ema-text-secondary)]">
+            {segments.map((segment, index) => (
+              <span key={`text-${index}`} className="ema-md-inline">
+                <Markdown source={segment.text} />
+              </span>
+            ))}
+          </div>
+        )}
 
         {pending && (
           <div role="status" className="mt-1.5 flex items-center gap-1.5 text-xs text-[var(--ema-text-tertiary)]">
@@ -179,32 +164,3 @@ function messageText(message: { readonly blocks: MessageBlocks }): string {
     .join('');
 }
 
-function chipDisplay(block: AttachmentBlock): { icon: string; color: string; label: string } {
-  if (block.type === 'image_reference') {
-    return { icon: 'i-mdi:image-outline', color: 'var(--ema-file-image)', label: block.name ?? '剪贴板图片' };
-  }
-  if (block.type === 'pasted_text_reference') {
-    return { icon: 'i-lucide:clipboard-paste', color: 'var(--ema-warning)', label: '粘贴文本' };
-  }
-  const name = block.path.split(/[\\/]/).pop() ?? block.path;
-  const extension = name.split('.').pop()?.toLowerCase() ?? '';
-  if (['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(extension)) {
-    return { icon: 'i-mdi:image-outline', color: 'var(--ema-file-image)', label: name };
-  }
-  if (extension === 'pdf') {
-    return { icon: 'i-mdi:file-pdf-box', color: 'var(--ema-file-pdf)', label: name };
-  }
-  if (['doc', 'docx'].includes(extension)) {
-    return { icon: 'i-mdi:file-word', color: 'var(--ema-file-word)', label: name };
-  }
-  if (['ppt', 'pptx'].includes(extension)) {
-    return { icon: 'i-mdi:file-powerpoint', color: 'var(--ema-file-ppt)', label: name };
-  }
-  if (['xls', 'xlsx'].includes(extension)) {
-    return { icon: 'i-mdi:file-excel', color: 'var(--ema-file-excel)', label: name };
-  }
-  if (/^(ts|tsx|js|jsx|py|rs|go|cpp|c|java|rb|php|sh|yaml|yml|toml|sql)$/.test(extension)) {
-    return { icon: 'i-mdi:file-code-outline', color: 'var(--ema-file-code)', label: name };
-  }
-  return { icon: 'i-lucide:paperclip', color: 'var(--ema-file-other)', label: name };
-}

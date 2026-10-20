@@ -43,11 +43,11 @@ export const MermaidBlock = memo(function MermaidBlock({ source, pending }: { so
   const host = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
   const [result, setResult] = useState<DiagramResult | null>(null);
-  const [showSource, setShowSource] = useState(false);
+  const [showSource, setShowSource] = useState(true);
   const theme = useMemo(() => visible ? readMermaidAppearance(stamp) : null, [visible, stamp]);
   const key = useMemo(() => JSON.stringify([source, theme]), [source, theme]);
   const current = result?.key === key ? result : null;
-  const loading = pending || current === null;
+  const loading = !showSource && (pending || current === null);
   const svg = current?.svg;
   const toggleSource = useCallback(() => setShowSource(value => !value), []);
 
@@ -67,13 +67,13 @@ export const MermaidBlock = memo(function MermaidBlock({ source, pending }: { so
   }, []);
 
   useEffect(() => {
-    if (pending || !theme) return;
+    if (showSource || pending || !theme || current) return;
     let disposed = false;
     void renderMermaid(id, source, theme).then(svg => {
       if (!disposed) setResult({ key, svg });
     });
     return () => { disposed = true; };
-  }, [id, source, theme, pending, key]);
+  }, [id, source, theme, pending, key, showSource, current]);
 
   return (
     <div ref={host} className="markdown-mermaid" aria-busy={loading}>
@@ -84,11 +84,16 @@ export const MermaidBlock = memo(function MermaidBlock({ source, pending }: { so
             <Spinner size="sm" />{pending ? '等待图表生成完整...' : '正在渲染图表...'}
           </span>
         )}
-        {svg && (
-          <Button variant="ghost" size="sm" onClick={toggleSource} aria-pressed={showSource}>
-            {showSource ? '查看图表' : '查看源码'}
-          </Button>
-        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={pending}
+          title={pending ? '等待图表生成完整后可预览' : undefined}
+          onClick={toggleSource}
+          aria-pressed={!showSource}
+        >
+          {showSource ? '查看图表' : '查看源码'}
+        </Button>
       </div>
       {svg && (
         <div
@@ -101,7 +106,7 @@ export const MermaidBlock = memo(function MermaidBlock({ source, pending }: { so
         />
       )}
       {(!svg || showSource) && <pre><code className="language-mermaid">{source}</code></pre>}
-      {!loading && !svg && <p className="markdown-mermaid-error" role="status">图表暂时无法渲染, 显示源码. 请检查语法.</p>}
+      {!showSource && !loading && !svg && <p className="markdown-mermaid-error" role="status">图表暂时无法渲染, 显示源码. 请检查语法.</p>}
     </div>
   );
 });

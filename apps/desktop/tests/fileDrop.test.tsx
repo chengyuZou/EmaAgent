@@ -3,7 +3,7 @@ import { act, type JSX } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TooltipProvider } from '@ema-agent/ui';
-import { useAttachmentDrop } from '../src/chat/input/attachmentDrop.js';
+import { useAttachmentDrop } from '../src/chat/input/attachments/attachmentDrop.js';
 import { MainView, useMainNavigationStore } from '../src/layout/navigation.js';
 import { WallpaperTab } from '../src/settings/appearance/wallpaperTab.js';
 import { DEFAULT_WALLPAPER_SETTINGS } from '../../server/src/settings/wallpaperCatalog.js';
@@ -40,7 +40,7 @@ vi.mock('../src/lib/tauri/tauriBridge.js', () => {
   };
 });
 vi.mock('../src/chat/input/editChatDraft.js', () => ({ editChatDraft: boundary.edit }));
-vi.mock('../src/chat/input/draftAttachments.js', () => ({
+vi.mock('../src/chat/input/attachments/draftAttachments.js', () => ({
   appendAttachmentPaths: (draft: object, paths: string[]) => ({ ...draft, paths }),
 }));
 vi.mock('../src/lib/notifications/toast.js', () => ({ showToast: boundary.toast }));

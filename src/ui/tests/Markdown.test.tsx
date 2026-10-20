@@ -76,8 +76,11 @@ describe('Markdown links', () => {
 });
 
 describe('Markdown Mermaid', () => {
-  it('renders static Mermaid without syntax highlighting its source', async () => {
+  it('shows static Mermaid source and only renders after the user requests the graph', async () => {
     await show(closed);
+    expect(drawing.render).not.toHaveBeenCalled();
+    expect(container.querySelector('pre code')?.textContent).toBe(graph);
+    await act(async () => container.querySelector('button')!.click());
     expect(drawing.render).toHaveBeenCalledTimes(1);
     expect(drawing.render.mock.calls[0][1]).toBe(graph);
     expect(container.querySelector('svg')).not.toBeNull();
@@ -87,8 +90,10 @@ describe('Markdown Mermaid', () => {
   it('waits for the closing fence, then keeps the completed graph while later text streams', async () => {
     await show(`\`\`\`mermaid\n${graph}`, true);
     expect(drawing.render).not.toHaveBeenCalled();
-    expect(container.textContent).toContain('等待图表生成完整');
+    expect(container.querySelector('button')?.disabled).toBe(true);
     await show(closed, true);
+    expect(drawing.render).not.toHaveBeenCalled();
+    await act(async () => container.querySelector('button')!.click());
     expect(drawing.render).toHaveBeenCalledTimes(1);
     await show(`${closed}\n\n后续正文继续生成`, true);
     await show(`${closed}\n\n后续正文继续生成完成`, false);
@@ -101,6 +106,7 @@ describe('Markdown Mermaid', () => {
     ['long fence', '````mermaid\nflowchart TD\nA --> B\n````'],
   ])('recognizes closed %s fences through the parser', async (_name, source) => {
     await show(source, true);
+    await act(async () => container.querySelector('button')!.click());
     expect(drawing.render).toHaveBeenCalledTimes(1);
   });
 
@@ -113,11 +119,13 @@ describe('Markdown Mermaid', () => {
 
   it('still renders an EOF-terminated graph once the message is no longer streaming', async () => {
     await show(`\`\`\`mermaid\n${graph}`, false);
+    await act(async () => container.querySelector('button')!.click());
     expect(drawing.render).toHaveBeenCalledTimes(1);
   });
 
   it('uses the shared source toggle without redrawing the graph', async () => {
     await show(closed);
+    await act(async () => container.querySelector('button')!.click());
     await act(async () => container.querySelector('button')!.click());
     expect(container.querySelector('pre code')?.textContent).toBe(graph);
     expect(container.querySelector('.markdown-mermaid-diagram')?.hasAttribute('hidden')).toBe(true);
@@ -129,6 +137,7 @@ describe('Markdown Mermaid', () => {
   it('shows readable source when official rendering fails', async () => {
     drawing.render.mockResolvedValue(null);
     await show(closed);
+    await act(async () => container.querySelector('button')!.click());
     expect(container.querySelector('pre code')?.textContent).toBe(graph);
     expect(container.textContent).toContain('请检查语法');
     expect(container.querySelector('.markdown-mermaid')?.getAttribute('aria-busy')).toBe('false');
@@ -140,6 +149,7 @@ describe('Markdown Mermaid', () => {
       disconnect() {}
     });
     await show(closed);
+    await act(async () => container.querySelector('button')!.click());
     expect(drawing.render).not.toHaveBeenCalled();
   });
 
@@ -147,6 +157,7 @@ describe('Markdown Mermaid', () => {
     let finishOld!: (svg: string) => void;
     drawing.render.mockImplementationOnce(() => new Promise<string>(resolve => { finishOld = resolve; }));
     await show(closed);
+    await act(async () => container.querySelector('button')!.click());
     await show(closed.replace('结束', '新终点'));
     await act(async () => finishOld('<svg><text>过时的图</text></svg>'));
     expect(container.textContent).toContain('已渲染');

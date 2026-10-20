@@ -1,0 +1,257 @@
+.ema-draft-references,
+.ema-user-message,
+.ema-queued-input-content {
+  --ema-attachment-gap: 8px;
+  --ema-attachment-visible-rows: 2;
+  --ema-attachment-image-width: 120px;
+  --ema-attachment-image-height: 120px;
+  --ema-attachment-chip-height: 32px;
+}
+
+.ema-draft-references {
+  --ema-draft-attachment-height: 120px;
+  --ema-draft-attachment-width: 176px;
+  min-width: 0;
+  padding: 12px 12px 4px;
+}
+
+.ema-draft-attachment-count {
+  margin-bottom: 6px;
+  color: var(--ema-text-tertiary);
+  font-size: 11px;
+}
+
+.ema-draft-attachment-tray,
+.ema-draft-skill-tray {
+  display: flex;
+  min-width: 0;
+  gap: var(--ema-attachment-gap);
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 2px 2px 8px;
+  scrollbar-color: var(--ema-scrollbar-thumb) var(--ema-surface-2);
+}
+
+/* 附件可能超出可视区, 滚动条不能随鼠标离开而隐藏. */
+.ema-draft-attachment-tray::-webkit-scrollbar-thumb,
+.ema-draft-skill-tray::-webkit-scrollbar-thumb {
+  background: var(--ema-scrollbar-thumb);
+  transition: none;
+}
+
+.ema-draft-attachment-tray::-webkit-scrollbar-track,
+.ema-draft-skill-tray::-webkit-scrollbar-track {
+  background: var(--ema-surface-2);
+}
+
+.ema-draft-attachment-card {
+  position: relative;
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: var(--ema-draft-attachment-width);
+  height: var(--ema-draft-attachment-height);
+  overflow: hidden;
+  border: 1px solid var(--ema-border);
+  border-radius: var(--ema-radius-lg);
+  background: var(--ema-surface-1);
+}
+
+.ema-draft-attachment-card[data-image='true'] {
+  width: var(--ema-draft-attachment-height);
+}
+
+.ema-draft-attachment-preview {
+  flex: 1;
+  min-height: 0;
+}
+
+.ema-draft-attachment-preview .ema-attachment-image-preview,
+.ema-draft-attachment-preview .ema-image-preview,
+.ema-draft-attachment-preview .ema-attachment-image-placeholder {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+}
+
+.ema-draft-file-preview {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 24px;
+}
+
+.ema-draft-file-preview > [aria-hidden] {
+  flex: none;
+  font-size: 26px;
+}
+
+.ema-draft-text-excerpt {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
+  color: var(--ema-text-tertiary);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.ema-draft-attachment-name {
+  display: flex;
+  flex: none;
+  height: 28px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  background: var(--ema-surface-2);
+  color: var(--ema-text-secondary);
+  font-size: 11px;
+}
+
+.ema-draft-attachment-name > [aria-hidden] {
+  flex: none;
+}
+
+.ema-draft-attachment-name > span:last-child,
+.ema-attachment-chip-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+button.ema-draft-attachment-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 24px;
+  height: 24px;
+  background: var(--ema-material-tint);
+  color: var(--ema-text-secondary);
+  box-shadow: var(--ema-shadow-1);
+}
+
+.ema-draft-skill-tray {
+  margin-top: 4px;
+}
+
+button.ema-attachment-chip,
+span.ema-attachment-chip {
+  display: inline-flex;
+  flex: none;
+  min-width: 0;
+  max-width: min(100%, 260px);
+  height: var(--ema-attachment-chip-height);
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 1px solid var(--ema-border);
+  border-radius: var(--ema-radius-pill);
+  background: var(--ema-surface-2);
+  color: var(--ema-text-secondary);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.ema-attachment-chip > [aria-hidden] {
+  flex: none;
+  font-size: 14px;
+}
+
+button.ema-draft-skill-remove {
+  flex: none;
+  width: 22px;
+  height: 22px;
+}
+
+.ema-user-message {
+  display: flex;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--ema-attachment-gap);
+}
+
+.ema-user-message > .ema-message-content {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.ema-attachment-group {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.ema-attachment-group-viewport {
+  width: 100%;
+  overflow: hidden;
+}
+
+.ema-attachment-group-list {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: var(--ema-attachment-gap);
+}
+
+.ema-attachment-group-item {
+  display: flex;
+  flex: none;
+  max-width: 100%;
+}
+
+.ema-attachment-group-item[data-collapsed='true'] {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.ema-attachment-group .ema-image-preview--attachment,
+.ema-attachment-group .ema-attachment-image-placeholder {
+  width: var(--ema-attachment-image-width);
+  height: var(--ema-attachment-image-height);
+  max-width: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.ema-attachment-group-toggle {
+  flex: none;
+}
+
+.ema-queued-input-content {
+  --ema-attachment-image-width: 64px;
+  --ema-attachment-image-height: 64px;
+  min-width: 0;
+  flex: 1;
+}
+
+.ema-queued-input-content .ema-attachment-group {
+  margin-top: 6px;
+}
+
+.ema-queued-input-content .ema-attachment-group-list {
+  justify-content: flex-start;
+}
+
+.ema-attachment-chip:focus-visible,
+.ema-draft-attachment-name:focus-visible,
+.ema-draft-attachment-remove:focus-visible,
+.ema-draft-skill-remove:focus-visible {
+  outline: 2px solid var(--ema-primary);
+  outline-offset: -2px;
+}

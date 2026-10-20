@@ -15,7 +15,6 @@ import {
   Tooltip,
   type TextareaHandle,
 } from '@ema-agent/ui';
-import type { TurnInputPart } from '@ema-agent/turn';
 import { sessionWebSocket } from '../../api/sessionWebSocket.js';
 import { showToast } from '../../lib/notifications/toast.js';
 import {
@@ -34,93 +33,20 @@ import { ContextMeter } from './controls/ContextMeter.js';
 import {
   activeSlashToken,
   SlashCommandMenu,
-  useInputCommands,
   type SlashMenuHandle,
   type SlashSelection,
-} from './AddInputMenu.js';
-import { DraftReferenceList, invalidateAttachmentSelections, useDraftAttachments } from './draftAttachments.js';
+} from './commands/slashCommandMenu.js';
+import { useInputCommands } from './commands/inputCommands.js';
+import { DraftReferenceList } from './attachments/draftReferenceList.js';
+import { invalidateAttachmentSelections, useDraftAttachments } from './attachments/draftAttachments.js';
 import { draftFromSession, editChatDraft } from './editChatDraft.js';
 import { ModelPicker, useInputModel } from './controls/ModelPicker.js';
 import { InputGoalBar, useInputGoal } from './controls/goalBar.js';
-import { InputProjectBar } from './inputProjectBar.js';
+import { InputProjectBar } from './controls/inputProjectBar.js';
 import { NarrativeToolNotice } from './narrativeToolNotice.js';
-import { VoiceInputBar } from './voiceInputBar.js';
-import { cancelVoiceInput, startVoiceInput, stopVoiceInput, useVoiceInput } from './voiceInput.js';
-import { AttachmentImagePreview } from '../../lib/images/attachmentImagePreview.js';
-
-function QueuedInputContent({ sessionId, input }: {
-  readonly sessionId: string;
-  readonly input: readonly TurnInputPart[];
-}): JSX.Element {
-  const text = input
-    .filter((part): part is Extract<TurnInputPart, { type: 'text' }> => (
-      part.type === 'text'
-    ))
-    .map((part) => part.text)
-    .join('')
-    .trim();
-  const references = input.filter(part => part.type !== 'text');
-  return (
-    <div className="min-w-0 flex-1">
-      {text && <div className="truncate text-[var(--ema-text-secondary)]" title={text}>{text}</div>}
-      {references.length > 0 && (
-        <div className={`flex flex-wrap items-start gap-1.5 ${text ? 'mt-1.5' : ''}`}>
-          {references.map((reference, index) => (
-            <QueuedInputReference key={index} sessionId={sessionId} reference={reference} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function QueuedInputReference({ sessionId, reference }: {
-  readonly sessionId: string;
-  readonly reference: Exclude<TurnInputPart, { type: 'text' }>;
-}): JSX.Element {
-  let label: string;
-  let detail: string;
-  let icon: string;
-  if (reference.type === 'skill_reference') {
-    label = reference.name;
-    detail = `技能: ${reference.name}\n${reference.path}`;
-    icon = 'i-lucide:box';
-  } else {
-    const attachment = reference.block;
-    switch (attachment.type) {
-      case 'image_reference':
-        return (
-          <AttachmentImagePreview
-            sessionId={sessionId}
-            path={attachment.path}
-            alt={attachment.name ?? '排队图片'}
-            className="ema-image-preview--attachment"
-          />
-        );
-      case 'file_reference':
-        label = attachment.path.split(/[\\/]/).pop() ?? attachment.path;
-        detail = attachment.path;
-        icon = 'i-lucide:paperclip';
-        break;
-      case 'pasted_text_reference':
-        label = `粘贴文本: ${attachment.preview}`;
-        detail = attachment.preview;
-        icon = 'i-lucide:file-text';
-        break;
-    }
-  }
-  return (
-    <Tooltip content={detail} variant="card">
-      <span
-        tabIndex={0}
-        className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-md border border-[var(--ema-border)] bg-[var(--ema-primary-muted)] px-2 py-1 text-[11px] text-[var(--ema-primary-text)]"
-      >
-        <span className={`${icon} shrink-0`} aria-hidden />
-        <span className="max-w-48 truncate">{label}</span>
-      </span>
-    </Tooltip>
-  );
-}
+import { VoiceInputBar } from './voice/voiceInputBar.js';
+import { cancelVoiceInput, startVoiceInput, stopVoiceInput, useVoiceInput } from './voice/voiceInput.js';
+import { QueuedInputs } from './queuedInputs.js';
 
 export function ChatInput({
   onSubmit,
@@ -158,8 +84,6 @@ export function ChatInput({
   const text = draft.text;
   const hasInput = hasDraftContent(draft);
   const sessionRunning = sessionActivity?.running != null;
-  const turnRunning = sessionActivity?.running?.kind === 'turn';
-  const queuedInputs = sessionActivity?.queuedInputs.filter(item => item.delivery === 'after_turn') ?? [];
   const editCurrentDraft = useCallback((edit: (current: ChatDraft) => ChatDraft): void => {
     editChatDraft(viewedId, edit);
   }, [viewedId]);
@@ -336,43 +260,7 @@ export function ChatInput({
     <div className="ema-composer-dock pointer-events-none shrink-0 px-4 pb-3 pt-6">
       <div className="ema-chat-content-column pointer-events-auto">
         <PendingInteractionView />
-        {/* 容器常驻挂载, 移除排队项后仍可播放收拢动画. */}
-        <div
-          className="ema-collapsible"
-          style={{
-            gridTemplateRows: queuedInputs.length > 0 ? '1fr' : '0fr',
-            opacity: queuedInputs.length > 0 ? 1 : 0,
-          }}
-        >
-          <div>
-            <div className="mb-2 flex flex-col gap-1.5">
-              {queuedInputs.map((item) => (
-                <div
-                  key={item.id}
-                  className="ema-fade-in flex items-center gap-2 rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-2)] px-3 py-2 text-xs"
-                >
-                  <span className="i-lucide:clock-3 text-[var(--ema-text-tertiary)]" aria-hidden />
-                  <QueuedInputContent sessionId={viewedId!} input={item.input} />
-                  {turnRunning && (
-                    <button
-                      className="shrink-0 text-[var(--ema-primary)] hover:underline"
-                      onClick={() => void sessionWebSocket.guideQueuedInput(viewedId!, item.id)}
-                    >
-                      立即引导
-                    </button>
-                  )}
-                  <IconButton
-                    size="sm"
-                    variant="ghost"
-                    icon="i-lucide:x"
-                    label="删除排队输入"
-                    onClick={() => void sessionWebSocket.removeQueuedInput(viewedId!, item.id)}
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+        <QueuedInputs sessionId={viewedId} />
         {viewedId === null && <InputProjectBar projectId={currentProjectId} />}
         <InputGoalBar goal={goal} />
         <NarrativeToolNotice />

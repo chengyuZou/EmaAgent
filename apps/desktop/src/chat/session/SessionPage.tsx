@@ -8,7 +8,7 @@ import { SessionSidePanel } from '../sidePanel/SessionSidePanel.js';
 import { useSessionPanelStore } from '../../stores/sessionPanel.js';
 import { submitChatDraft } from '../input/submitChatDraft.js';
 import { SessionGitDiffProvider } from './gitDiffContext.js';
-import { AttachmentDropOverlay, useAttachmentDrop } from '../input/attachmentDrop.js';
+import { AttachmentDropOverlay, useAttachmentDrop } from '../input/attachments/attachmentDrop.js';
 
 export function SessionPage({ sessionId }: { sessionId: string }): JSX.Element {
   const { dropAreaRef, overlayWidth } = useAttachmentDrop(sessionId);

@@ -1,9 +1,9 @@
 import type { JSX } from 'react';
 import { Button, DropdownMenu, IconButton, Input, Tooltip, type MenuItem } from '@ema-agent/ui';
-import { useMainNavigationStore } from '../../layout/navigation.js';
-import { useSessionStore } from '../../stores/session.js';
-import { tauriBridge } from '../../lib/tauri/tauriBridge.js';
-import { showToast } from '../../lib/notifications/toast.js';
+import { useMainNavigationStore } from '../../../layout/navigation.js';
+import { useSessionStore } from '../../../stores/session.js';
+import { tauriBridge } from '../../../lib/tauri/tauriBridge.js';
+import { showToast } from '../../../lib/notifications/toast.js';
 
 export function InputProjectBar({ projectId: currentProjectId }: {
   projectId: string | null;

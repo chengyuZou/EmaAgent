@@ -13,7 +13,7 @@ import { removeSessionPlayback } from '../speech/turnSpeechPlayback.js';
 import { removeSessionSpeechGeneration } from '../speech/turnSpeechGeneration.js';
 import { removeSessionSubscription } from './sessionSubscriptions.js';
 import { closeSessionTerminals } from '../sidePanel/tabs/terminal/terminalSessions.js';
-import { cancelVoiceInput } from '../input/voiceInput.js';
+import { cancelVoiceInput } from '../input/voice/voiceInput.js';
 
 /**
  * 会话已经在服务端归档或删除后, 聊天界面才会调用这个入口.

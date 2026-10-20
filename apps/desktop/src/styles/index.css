@@ -19,6 +19,7 @@
 @import './domains/chatControls.css';
 @import './domains/subagent.css';
 @import './domains/chatInput.css';
+@import './domains/attachments.css';
 @import './domains/toolRow.css';
 @import './domains/terminalCard.css';
 @import './domains/chatEmptyState.css';

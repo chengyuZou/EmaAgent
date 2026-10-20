@@ -434,13 +434,6 @@ button.ema-chat-jump-speech[data-paired='true'] {
   overflow-x: hidden;
 }
 
-.ema-message-chip {
-  border: 1px solid var(--ema-border);
-  border-radius: var(--ema-radius-xs);
-  background: transparent;
-  box-shadow: none;
-}
-
 .ema-chat-icon-btn.chat-message-action {
   width: 28px;
   height: 28px;

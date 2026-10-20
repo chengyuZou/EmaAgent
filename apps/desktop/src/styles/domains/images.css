@@ -93,42 +93,6 @@ button.ema-image-preview--attachment {
   font-size: 11px;
 }
 
-.ema-draft-image-reference {
-  position: relative;
-  display: inline-flex;
-  width: 112px;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.ema-draft-image-name {
-  overflow: hidden;
-  padding-inline: 4px;
-  color: var(--ema-text-secondary);
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-button.ema-draft-image-remove {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  display: flex;
-  width: 22px;
-  height: 22px;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  background: var(--ema-material-tint);
-  color: var(--ema-text-secondary);
-  box-shadow: var(--ema-shadow-1);
-}
-
-.ema-draft-image-remove:focus-visible {
-  outline: 2px solid var(--ema-primary);
-}
-
 /* 查看器不能继承壁纸材质的透明底色, 图片自身有透明像素时也必须盖住聊天页. */
 .ema-image-viewer.yarl__root,
 .ema-image-viewer .yarl__container {

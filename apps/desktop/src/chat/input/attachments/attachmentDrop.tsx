@@ -1,9 +1,9 @@
 import type { JSX } from 'react';
-import { tauriBridge } from '../../lib/tauri/tauriBridge.js';
-import { showToast } from '../../lib/notifications/toast.js';
+import { tauriBridge } from '../../../lib/tauri/tauriBridge.js';
+import { showToast } from '../../../lib/notifications/toast.js';
 import { appendAttachmentPaths } from './draftAttachments.js';
-import { editChatDraft } from './editChatDraft.js';
-import { useFileDrop } from '../../lib/fileDrop.js';
+import { editChatDraft } from '../editChatDraft.js';
+import { useFileDrop } from '../../../lib/fileDrop.js';
 
 export function useAttachmentDrop(sessionId: string | null) {
   async function addPaths(paths: readonly string[]): Promise<void> {

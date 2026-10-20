@@ -119,7 +119,7 @@ function RecordingWaveform({ stream }: { readonly stream: MediaStream | null }):
       themeObserver.disconnect();
       source.disconnect();
       analyser.disconnect();
-      // 麦克风流由 ChatInput 的录音流程关闭, 绘图组件只释放自己的分析资源.
+      // 麦克风流由 voiceInput 的录音流程关闭, 绘图组件只释放自己的分析资源.
       void audio.close().catch(error => console.warn('[voice-input] 释放音量分析失败', error));
     };
   }, [stream]);

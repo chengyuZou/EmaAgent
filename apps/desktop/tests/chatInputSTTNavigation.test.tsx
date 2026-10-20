@@ -4,7 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { TooltipProvider } from '@ema-agent/ui';
 import { ChatInput } from '../src/chat/input/ChatInput.js';
-import { cancelVoiceInput, promoteNewSessionVoiceInput } from '../src/chat/input/voiceInput.js';
+import { cancelVoiceInput, promoteNewSessionVoiceInput } from '../src/chat/input/voice/voiceInput.js';
 import { removeSessionFromChat } from '../src/chat/session/removeSessionFromChat.js';
 import { MainView, useMainNavigationStore } from '../src/layout/navigation.js';
 import { emptyChatDraft, useChatDraftStore } from '../src/stores/chatDraft.js';
@@ -28,7 +28,7 @@ vi.mock('../src/chat/sidePanel/tabs/terminal/terminalSessions.js', () => ({
 }));
 vi.mock('../src/chat/interactions/PendingInteractionView.js', () => ({ PendingInteractionView: () => null }));
 vi.mock('../src/chat/input/controls/ContextMeter.js', () => ({ ContextMeter: () => null }));
-vi.mock('../src/chat/input/inputProjectBar.js', () => ({ InputProjectBar: () => null }));
+vi.mock('../src/chat/input/controls/inputProjectBar.js', () => ({ InputProjectBar: () => null }));
 vi.mock('../src/chat/input/narrativeToolNotice.js', () => ({ NarrativeToolNotice: () => null }));
 vi.mock('../src/chat/input/controls/InputSelectors.js', () => ({
   PermissionModeSelector: () => null,
@@ -43,13 +43,17 @@ vi.mock('../src/chat/input/controls/goalBar.js', () => ({
   InputGoalBar: () => null,
   useInputGoal: () => ({ creatingGoal: false, goalAvailable: false }),
 }));
-vi.mock('../src/chat/input/draftAttachments.js', () => ({
+vi.mock('../src/chat/input/attachments/draftReferenceList.js', () => ({
   DraftReferenceList: () => null,
+}));
+vi.mock('../src/chat/input/attachments/draftAttachments.js', () => ({
   useDraftAttachments: () => ({}),
 }));
-vi.mock('../src/chat/input/AddInputMenu.js', () => ({
+vi.mock('../src/chat/input/commands/slashCommandMenu.js', () => ({
   SlashCommandMenu: () => null,
   activeSlashToken: () => null,
+}));
+vi.mock('../src/chat/input/commands/inputCommands.js', () => ({
   useInputCommands: () => ({ compacting: false, commandDialogs: null }),
 }));
 

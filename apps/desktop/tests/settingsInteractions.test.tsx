@@ -8,7 +8,7 @@ import { SandboxStatusSettings } from '../src/settings/security/SandboxStatusSet
 import { TerminalShellSettings } from '../src/settings/security/TerminalShellSettings.js';
 import { CharacterGridPage } from '../src/settings/character/CharacterGridPage.js';
 import { SessionProjectMenu } from '../src/chat/session/sessionProjectMenu.js';
-import { InputProjectBar } from '../src/chat/input/inputProjectBar.js';
+import { InputProjectBar } from '../src/chat/input/controls/inputProjectBar.js';
 import { useCharacterStore } from '../src/stores/character.js';
 import { useSessionStore } from '../src/stores/session.js';
 import { useMainNavigationStore } from '../src/layout/navigation.js';
