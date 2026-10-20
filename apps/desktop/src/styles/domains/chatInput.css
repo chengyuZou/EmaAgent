@@ -27,6 +27,23 @@
   padding-right: calc(var(--ema-chat-content-gutter) + var(--ema-chat-scrollbar-width));
 }
 
+.ema-queued-input-list {
+  --ema-queued-input-max-height: min(240px, 30dvh);
+  min-width: 0;
+  max-height: var(--ema-queued-input-max-height);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+  scrollbar-color: var(--ema-scrollbar-thumb) transparent;
+}
+
+/* 队列可能超出可视区, 滚动条不能随鼠标离开而隐藏. */
+.ema-queued-input-list::-webkit-scrollbar-thumb {
+  background: var(--ema-scrollbar-thumb);
+  transition: none;
+}
+
 .ema-composer-toolbar {
   display: flex;
   min-width: 0;
