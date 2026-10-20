@@ -81,6 +81,16 @@ export interface Scratchpad {
   readonly author: string;
 }
 
+/** Web tools share host-configured GET requests. Non-2xx responses reject with ToolExecutionError. */
+export type WebRequest = (
+  url: string,
+  init: {
+    readonly signal: AbortSignal;
+    readonly headers?: HeadersInit;
+    readonly redirect: 'follow' | 'manual';
+  },
+) => Promise<Response>;
+
 /**
  * Ema 工具宿主能力全集.
  *
@@ -96,6 +106,8 @@ export interface ToolUseContext {
   */
   readonly platform: NodeJS.Platform;
 
+  /** Proxy configuration belongs to the host, never to model-supplied tool arguments. */
+  readonly webRequest?: WebRequest;
   /** Bash 工具的受控命令执行器(per-session 缓存). */
   readonly commandRunner?: CommandRunner;
   /** Bash 与 Process 工具族共享的持久后台进程入口. */

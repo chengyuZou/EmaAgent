@@ -15,6 +15,7 @@ pub async fn spawn_server(
     process_tree: &NativeProcessTree,
 ) -> Result<(Child, mpsc::UnboundedReceiver<u16>), String> {
     let mut command = base_command(launch, secret);
+    super::web_proxy::configure_web_proxy(&mut command);
     if initialize_builtin_characters {
         command.env("EMA_INITIALIZE_BUILTIN_CHARACTERS", "1");
     }

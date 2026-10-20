@@ -1,6 +1,5 @@
 import { load, loadBuffer, type CheerioAPI } from 'cheerio';
 import { readWebResponse } from '../../readWebResponse.js';
-import { SearchHttpStatusError } from './types.js';
 import type { SearchOptions, SearchResult, WebSearchAdapter } from './types.js';
 
 const SEARCH_TIMEOUT_MS = 30_000;
@@ -30,17 +29,12 @@ export const bingSearch: WebSearchAdapter = async (
 ): Promise<SearchResult[]> => {
   const url = `https://www.bing.com/search?q=${encodeURIComponent(query)}&setmkt=en-US`;
   const signal = AbortSignal.any([options.signal, AbortSignal.timeout(SEARCH_TIMEOUT_MS)]);
-  const res = await fetch(url, {
+  const res = await options.request(url, {
     signal,
     // Bing 会跳转到地区站点. 此请求不携带 API Key 或 Cookie, 跟随后再核对最终页面.
     redirect: 'follow',
     headers: BROWSER_HEADERS,
   });
-  if (res.status !== 200) {
-    // 不使用的响应停止下载, 让 HTTP 连接及时释放.
-    await res.body?.cancel();
-    throw new SearchHttpStatusError(res.status);
-  }
   const contentType = (res.headers.get('content-type') ?? '').split(';')[0]!.trim().toLowerCase();
   if (contentType !== 'text/html' && contentType !== 'application/xhtml+xml') {
     await res.body?.cancel();

@@ -1,4 +1,5 @@
 import { WebPageCache } from './cache.js';
+import type { WebRequest } from '@ema-agent/tools';
 import { readWebResponse } from '../readWebResponse.js';
 
 const MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
@@ -23,6 +24,7 @@ export async function fetchPublicPage(
   rawUrl: string,
   signal: AbortSignal,
   options: FetchPageOptions,
+  request: WebRequest,
 ): Promise<FetchedPage> {
   signal.throwIfAborted();
   // 缓存按调用方原始 URL 区分 raw/markdown, 命中后不再下载也不再转换.
@@ -40,20 +42,13 @@ export async function fetchPublicPage(
   }
 
   const requestSignal = AbortSignal.any([signal, AbortSignal.timeout(FETCH_TIMEOUT_MS)]);
-  const response = await fetch(upgradeToHttps(rawUrl), {
+  const response = await request(upgradeToHttps(rawUrl), {
     signal: requestSignal,
     headers: {
       Accept: 'text/markdown, text/html, text/plain, application/json, application/xml',
     },
     redirect: 'follow',
   });
-  if (!response.ok) {
-    // 错误页面不能作为网页正文或写入缓存; 取消未读取的响应体, 不继续下载它.
-    await response.body?.cancel();
-    const statusText = response.statusText ? ` ${response.statusText}` : '';
-    throw new Error(`网页读取失败: HTTP ${response.status}${statusText}`);
-  }
-
   const contentType = (response.headers.get('content-type') ?? 'application/octet-stream').toLowerCase();
   if (!isTextContent(contentType)) {
     await response.body?.cancel();

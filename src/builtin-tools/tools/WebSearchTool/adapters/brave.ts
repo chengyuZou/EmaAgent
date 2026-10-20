@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import { readWebResponse } from '../../readWebResponse.js';
-import { SearchHttpStatusError } from './types.js';
 import type { SearchOptions, SearchResult, WebSearchAdapter } from './types.js';
 
 const SEARCH_TIMEOUT_MS = 20_000;
@@ -29,15 +28,11 @@ export const braveSearch: WebSearchAdapter = async (
   const url =
     `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=20`;
   const signal = AbortSignal.any([options.signal, AbortSignal.timeout(SEARCH_TIMEOUT_MS)]);
-  const res = await fetch(url, {
+  const res = await options.request(url, {
     signal,
     redirect: 'manual',
     headers: { Accept: 'application/json', 'X-Subscription-Token': apiKey },
   });
-  if (res.status !== 200) {
-    await res.body?.cancel();
-    throw new SearchHttpStatusError(res.status);
-  }
   const body = await readWebResponse(res, API_RESPONSE_LIMIT, signal);
   const data = braveResponseSchema.parse(parseJsonBody(body));
   return (data.web?.results ?? []).map((r) => ({

@@ -342,6 +342,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
       return narrative.resolveSearch(sessionId, turnId);
     },
     backgroundProcesses: tools.backgroundProcesses,
+    webRequest: tools.webRequests.request,
     resolveVision: resolveCallVision,
     captureScreen: deps.captureScreen,
     commandRunner: tools.getCommandRunner,

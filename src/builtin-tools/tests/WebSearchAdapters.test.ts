@@ -1,5 +1,5 @@
 // 验证搜索适配层: 后端选择、共享过滤/归一/去重、Bing HTML 解析与错误映射, 不发起网络请求。
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   extractBingResults,
   resolveBingUrl,
@@ -12,7 +12,10 @@ import {
   RESULT_LIMIT,
   searchWeb,
 } from '../tools/WebSearchTool/adapters/index.js';
-import { SearchHttpStatusError } from '../tools/WebSearchTool/adapters/types.js';
+import { createWebRequests, WebHttpError } from '../webRequests.js';
+
+const webRequests = createWebRequests({});
+afterAll(() => webRequests.close());
 
 const ENV_KEYS = ['BRAVE_SEARCH_API_KEY', 'BRAVE_API_KEY'] as const;
 const originalEnv = new Map<string, string | undefined>();
@@ -107,7 +110,10 @@ describe('filterAndNormalize', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response));
     let results;
     try {
-      results = await searchWeb('test', { signal: new AbortController().signal });
+      results = await searchWeb('test', {
+        request: webRequests.request,
+        signal: new AbortController().signal,
+      });
     } finally {
       vi.unstubAllGlobals();
       vi.unstubAllEnvs();
@@ -185,7 +191,7 @@ describe('formatProviderError', () => {
   it('Brave 401/403 提示检查 API key', () => {
     const error = formatProviderError(
       'brave',
-      new SearchHttpStatusError(401),
+      new WebHttpError(401, 'HTTP 401.'),
     );
     expect(error.message).toContain('Brave 搜索失败(401)');
     expect(error.message).toContain('API key');
@@ -194,18 +200,20 @@ describe('formatProviderError', () => {
   it('Bing 401 不提示 API key(无 key 后端)', () => {
     const error = formatProviderError(
       'bing',
-      new SearchHttpStatusError(401),
+      new WebHttpError(401, 'HTTP 401.'),
     );
-    expect(error.message).toBe('Bing 搜索失败(401)');
+    expect(error.message).toBe('Bing 搜索失败(401). HTTP 401.');
+    expect(error).toMatchObject({ code: 'web/http_401' });
   });
 
   it('429 提示限流', () => {
     const error = formatProviderError(
       'bing',
-      new SearchHttpStatusError(429),
+      new WebHttpError(429, 'HTTP 429. Retry-After: 120 seconds.'),
     );
     expect(error.message).toContain('Bing 搜索失败(429)');
     expect(error.message).toContain('限流');
+    expect(error.message).toContain('Retry-After: 120 seconds.');
   });
 
   it('超时给出明确提示', () => {

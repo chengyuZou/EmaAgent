@@ -17,6 +17,7 @@ import {
   disabledToolsSetting,
   FileStateCache,
   ToolRegistry,
+  ToolExecutionError,
   type ToolUseContext,
 } from '@ema-agent/tools';
 import { SessionInteractionQueue } from '../interactionQueue.js';
@@ -42,6 +43,8 @@ import { DescribeImageTool } from '../../builtin-tools/tools/DescribeImageTool/d
 import { MemorySearchTool } from '../../builtin-tools/tools/MemoryTool/MemorySearchTool.js';
 import { MemoryReadTool } from '../../builtin-tools/tools/MemoryTool/MemoryReadTool.js';
 import { MemoryListTool } from '../../builtin-tools/tools/MemoryTool/MemoryListTool.js';
+import { WebFetchTool } from '../../builtin-tools/tools/WebFetchTool/WebFetchTool.js';
+import { clearWebFetchCache } from '../../builtin-tools/tools/WebFetchTool/cache.js';
 import { listMemoryFiles, readMemoryFile, searchMemoryFiles } from '../../memory/common/memoryFiles.js';
 
 const SESSION_ID = 's1';
@@ -128,6 +131,43 @@ function makeInput(options: {
 
 describe('prepareTurnTools', () => {
   beforeEach(() => clearSessionRules(SESSION_ID));
+
+  it('main Agent and subagents use the same web request capability and preserve network error codes', async () => {
+    clearWebFetchCache();
+    const request = vi.fn(async () => {
+      throw new ToolExecutionError(undefined, 'Connection timed out.', 'web/connect_timeout');
+    });
+    const deps = makeDeps({
+      tools: [], queue: new SessionInteractionQueue(null), settings: fakeSettings(),
+    });
+    deps.registry.register(WebFetchTool);
+    const assembly = await prepareTurnTools({ ...deps, webRequest: request }, makeInput({
+      events: [],
+      overrides: {
+        permission: {
+          mode: 'bypassPermissions',
+          buckets: { alwaysAllowRules: {}, alwaysDenyRules: {}, alwaysAskRules: {} },
+        },
+      },
+    }));
+    const executors = [
+      assembly.createExecutor(() => undefined),
+      assembly.createSubagentExecutor({
+        subagentId: 'web-child', runId: 'web-run', toolPool: assembly.toolPool,
+        signal: new AbortController().signal, wake: () => undefined,
+      }),
+    ];
+    for (const [index, executor] of executors.entries()) {
+      executor.addTool(0, `web-${index}`, 'WebFetch', { url: 'https://example.org/' });
+      await executor.join();
+      expect(executor.takeCompletedResults()[0]).toMatchObject({
+        isError: true,
+        errorCode: 'web/connect_timeout',
+        content: expect.stringContaining('Connection timed out.'),
+      });
+    }
+    expect(request).toHaveBeenCalledTimes(2);
+  });
 
   it.each(['default', 'plan'] as const)('%s 的真实 Memory 工具通过宿主读取正式记忆, 仍遵守禁用设置', async mode => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ema-turn-memory-'));

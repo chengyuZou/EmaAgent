@@ -1,10 +1,4 @@
-/** 搜索后端的 HTTP 状态错误, 由搜索入口转换为可操作的提示. */
-export class SearchHttpStatusError extends Error {
-  constructor(readonly status: number) {
-    super(`HTTP ${status}`);
-    this.name = 'SearchHttpStatusError';
-  }
-}
+import type { WebRequest } from '@ema-agent/tools';
 
 export interface SearchResult {
   readonly title: string;
@@ -13,6 +7,7 @@ export interface SearchResult {
 }
 
 export interface SearchOptions {
+  readonly request: WebRequest;
   readonly allowedDomains?: readonly string[];
   readonly blockedDomains?: readonly string[];
   readonly signal: AbortSignal;

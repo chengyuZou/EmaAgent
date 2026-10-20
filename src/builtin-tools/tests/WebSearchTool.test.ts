@@ -1,10 +1,14 @@
 // 验证 WebSearchTool 的 schema、输入校验与模型投影, 不发起任何网络请求。
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 import { permissionRuleValueToString, type ToolPermissionContext } from '@ema-agent/permission';
 import {
   WebSearchTool,
   type WebSearchResult,
 } from '../tools/WebSearchTool/WebSearchTool.js';
+import { createWebRequests } from '../webRequests.js';
+
+const webRequests = createWebRequests({});
+afterAll(() => webRequests.close());
 
 describe('WebSearchTool schema', () => {
   it('接受 query 与域名过滤字段', () => {
@@ -38,7 +42,7 @@ describe('WebSearchTool 会话批准范围', () => {
     const first = await WebSearchTool.checkPermissions({
       query: '  Node.js stream  ',
       allowed_domains: ['NODEJS.ORG', 'github.com', 'nodejs.org'],
-    }, undefined, permissions);
+    }, webRequests.request, permissions);
     expect(first.behavior).toBe('passthrough');
     if (first.behavior === 'deny' || !first.sessionAllowRule) throw new Error('expected rule');
     expect(first.sessionAllowRule.ruleContent).toBe(
@@ -48,32 +52,32 @@ describe('WebSearchTool 会话批准范围', () => {
     permissions.alwaysAskRules.userSettings = [...permissions.alwaysAllowRules.session];
     expect((await WebSearchTool.checkPermissions({
       query: 'Node.js stream', allowed_domains: ['nodejs.org', 'github.com'],
-    }, undefined, permissions)).behavior).toBe('allow');
+    }, webRequests.request, permissions)).behavior).toBe('allow');
     for (const input of [
       { query: 'Node.js errors', allowed_domains: ['nodejs.org', 'github.com'] },
       { query: 'Node.js stream', allowed_domains: ['nodejs.org'] },
       { query: 'Node.js stream' },
       { query: 'Node.js stream', blocked_domains: ['nodejs.org'] },
     ]) {
-      expect((await WebSearchTool.checkPermissions(input, undefined, permissions)).behavior).toBe('passthrough');
+      expect((await WebSearchTool.checkPermissions(input, webRequests.request, permissions)).behavior).toBe('passthrough');
     }
     permissions.alwaysDenyRules.userSettings = [...permissions.alwaysAllowRules.session];
     expect((await WebSearchTool.checkPermissions({
       query: 'Node.js stream', allowed_domains: ['nodejs.org', 'github.com'],
-    }, undefined, permissions)).behavior).toBe('deny');
+    }, webRequests.request, permissions)).behavior).toBe('deny');
   });
 
   it('缺省域名列表与显式空列表相同, 排除域名变化不是同一次搜索', async () => {
     const permissions = context();
-    const first = await WebSearchTool.checkPermissions({ query: 'x' }, undefined, permissions);
+    const first = await WebSearchTool.checkPermissions({ query: 'x' }, webRequests.request, permissions);
     if (first.behavior === 'deny' || !first.sessionAllowRule) throw new Error('expected rule');
     permissions.alwaysAllowRules.session = [permissionRuleValueToString(first.sessionAllowRule)];
     expect((await WebSearchTool.checkPermissions({
       query: 'x', allowed_domains: [], blocked_domains: [],
-    }, undefined, permissions)).behavior).toBe('allow');
+    }, webRequests.request, permissions)).behavior).toBe('allow');
     expect((await WebSearchTool.checkPermissions({
       query: 'x', blocked_domains: ['example.test'],
-    }, undefined, permissions)).behavior).toBe('passthrough');
+    }, webRequests.request, permissions)).behavior).toBe('passthrough');
   });
 });
 

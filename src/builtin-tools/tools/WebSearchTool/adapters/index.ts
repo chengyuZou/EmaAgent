@@ -1,6 +1,7 @@
 import { domainToASCII } from 'node:url';
+import { ToolExecutionError } from '@ema-agent/tools';
 import { braveSearch } from './brave.js';
-import { SearchHttpStatusError } from './types.js';
+import { WebHttpError, webRequestFailure } from '../../../webRequests.js';
 import type { SearchOptions, SearchProgress, SearchResult } from './types.js';
 
 export type { SearchOptions, SearchProgress, SearchResult } from './types.js';
@@ -60,7 +61,7 @@ export async function searchWeb(
     if (options.signal.aborted) {
       throw error;
     }
-    throw formatProviderError(adapter.provider, error);
+    throw formatProviderError(adapter.provider, webRequestFailure(error, options.signal));
   }
   options.signal.throwIfAborted();
   const candidates = filterAndNormalize(raw, options);
@@ -89,17 +90,20 @@ export function formatProviderError(
   error: unknown,
 ): Error {
   const label = PROVIDER_LABELS[provider];
-  if (error instanceof SearchHttpStatusError) {
+  if (error instanceof WebHttpError) {
     let keyHint = '';
     if (provider === 'brave' && (error.status === 401 || error.status === 403)) {
       keyHint = ', 请检查 API key';
     } else if (error.status === 429) {
       keyHint = ', 请求被限流, 稍后重试';
     }
-    return new Error(`${label} 搜索失败(${error.status})${keyHint}`);
+    return new ToolExecutionError(undefined, `${label} 搜索失败(${error.status})${keyHint}. ${error.message}`, error.code);
+  }
+  if (error instanceof ToolExecutionError) {
+    return new ToolExecutionError(undefined, `${label} 搜索失败: ${error.message}`, error.code);
   }
   if (error instanceof Error && error.name === 'TimeoutError') {
-    return new Error(`${label} 搜索超时`);
+    return new ToolExecutionError(undefined, `${label} 搜索超时`, 'web/timeout');
   }
   const message = error instanceof Error ? error.message : String(error);
   return new Error(`${label} 搜索失败: ${message}`);

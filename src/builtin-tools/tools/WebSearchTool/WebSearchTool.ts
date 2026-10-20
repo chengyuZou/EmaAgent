@@ -1,7 +1,7 @@
 import { domainToASCII } from 'node:url';
 import { z } from 'zod';
 import { findContentRule, findMatchingContentRule } from '@ema-agent/permission';
-import { buildTool, contextOk, type ToolInvocation } from '@ema-agent/tools';
+import { buildTool, contextFail, contextOk, type ToolInvocation, type WebRequest } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { normalizeDomains, searchWeb, type SearchProgress, type SearchResult } from './adapters/index.js';
 import { WEB_SEARCH_DESCRIPTION } from './prompt.js';
@@ -33,7 +33,7 @@ export interface WebSearchResult {
   results: SearchResult[];
 }
 
-export const WebSearchTool = buildTool<WebSearchInput, WebSearchResult, undefined, SearchProgress>({
+export const WebSearchTool = buildTool<WebSearchInput, WebSearchResult, WebRequest, SearchProgress>({
   id: BuiltinTools.WebSearch.id,
   name: BuiltinTools.WebSearch.name,
   description: WEB_SEARCH_DESCRIPTION,
@@ -79,8 +79,10 @@ export const WebSearchTool = buildTool<WebSearchInput, WebSearchResult, undefine
     return { behavior: 'passthrough', message: 'Web 搜索需要用户确认', sessionAllowRule };
   },
 
-  validateContext() {
-    return contextOk(undefined);
+  validateContext(context) {
+    return context.webRequest
+      ? contextOk(context.webRequest)
+      : contextFail('Web requests are not configured by the host.');
   },
 
   validateInput(input) {
@@ -107,12 +109,13 @@ export const WebSearchTool = buildTool<WebSearchInput, WebSearchResult, undefine
 
   async execute(
     input: WebSearchInput,
-    _context: undefined,
+    request: WebRequest,
     invocation: ToolInvocation,
     onProgress?: (progress: SearchProgress) => void,
   ): Promise<WebSearchResult> {
     const query = input.query.trim();
     const results = await searchWeb(query, {
+      request,
       signal: invocation.signal,
       allowedDomains: input.allowed_domains,
       blockedDomains: input.blocked_domains,

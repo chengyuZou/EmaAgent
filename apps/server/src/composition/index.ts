@@ -200,6 +200,7 @@ export function buildComposition(input: { activeDataDir: string; initializeBuilt
       stopPublishingSessionRunning();
       await turn.subagents.shutdown('Application is shutting down');
       await tools.backgroundProcesses.shutdown();
+      await tools.webRequests.close();
       tools.clearFileStateCaches();
       memory.shutdown();
       database.close();

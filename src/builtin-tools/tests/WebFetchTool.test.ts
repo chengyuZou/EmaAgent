@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ToolPermissionContext } from '@ema-agent/permission';
 import {
   WebFetchTool,
@@ -7,6 +7,11 @@ import {
 import { WebPageCache, clearWebFetchCache } from '../tools/WebFetchTool/cache.js';
 import { htmlToMarkdown } from '../tools/WebFetchTool/htmlToMarkdown.js';
 import { isPreapprovedHost } from '../tools/WebFetchTool/preapproved.js';
+import { createWebRequests } from '../webRequests.js';
+
+const webRequests = createWebRequests({});
+const request = webRequests.request;
+afterAll(() => webRequests.close());
 
 describe('WebFetchTool schema', () => {
   it('接受 url 并给出分页/raw 默认值', () => {
@@ -56,7 +61,7 @@ describe('WebFetchTool 权限判定', () => {
   it('预批准域名放行', async () => {
     const decision = await WebFetchTool.checkPermissions(
       { url: 'https://docs.python.org/3/reference/' },
-      undefined,
+      request,
       makePermissionContext(),
     );
     expect(decision.behavior).toBe('allow');
@@ -65,7 +70,7 @@ describe('WebFetchTool 权限判定', () => {
   it('其他域名交给中央(默认询问)', async () => {
     const decision = await WebFetchTool.checkPermissions(
       { url: 'https://example.com/page' },
-      undefined,
+      request,
       makePermissionContext(),
     );
     expect(decision.behavior).toBe('passthrough');
@@ -77,19 +82,19 @@ describe('WebFetchTool 权限判定', () => {
     context.alwaysAskRules.userSettings = ['WebFetch(domain:example.test)'];
     for (const url of ['https://example.test/a', 'http://example.test:8443/b?q=1']) {
       const result = await WebFetchTool.checkPermissions(
-        WebFetchTool.inputSchema.parse({ url }), undefined, context,
+        WebFetchTool.inputSchema.parse({ url }), request, context,
       );
       expect(result.behavior).toBe('allow');
     }
     for (const url of ['https://other.test/a', 'https://sub.example.test/a']) {
       const result = await WebFetchTool.checkPermissions(
-        WebFetchTool.inputSchema.parse({ url }), undefined, context,
+        WebFetchTool.inputSchema.parse({ url }), request, context,
       );
       expect(result.behavior).toBe('passthrough');
     }
     context.alwaysDenyRules.userSettings = ['WebFetch(domain:example.test)'];
     expect((await WebFetchTool.checkPermissions(
-      WebFetchTool.inputSchema.parse({ url: 'https://example.test/a' }), undefined, context,
+      WebFetchTool.inputSchema.parse({ url: 'https://example.test/a' }), request, context,
     )).behavior).toBe('deny');
   });
 });
@@ -137,19 +142,13 @@ describe('WebFetchTool 读取网页', () => {
     { status: 404, statusText: 'Not Found', raw: false },
     { status: 403, statusText: 'Forbidden', raw: true },
     { status: 404, statusText: 'Not Found', raw: true },
-  ])('HTTP $status, raw=$raw 时不读取或缓存错误正文', async ({ status, statusText, raw }) => {
+  ])('HTTP $status, raw=$raw 时错误摘要不作为正文缓存', async ({ status, statusText, raw }) => {
     const url = 'https://example.com/error';
-    const readBodies = vi.fn();
     const fetchMock = vi.fn(() => {
       const response = new Response('<h1>Error page</h1>', {
         status,
         statusText,
         headers: { 'content-type': 'text/html' },
-      });
-      const readBody = response.arrayBuffer.bind(response);
-      vi.spyOn(response, 'arrayBuffer').mockImplementation(() => {
-        readBodies();
-        return readBody();
       });
       return Promise.resolve(response);
     });
@@ -157,11 +156,13 @@ describe('WebFetchTool 读取网页', () => {
     const input = WebFetchTool.inputSchema.parse({ url, raw });
 
     for (let attempt = 0; attempt < 2; attempt += 1) {
-      await expect(WebFetchTool.execute(input, undefined, invocation))
-        .rejects.toThrow(`网页读取失败: HTTP ${status} ${statusText}`);
+      await expect(WebFetchTool.execute(input, request, invocation))
+        .rejects.toMatchObject({
+          code: `web/http_${status}`,
+          message: expect.stringContaining('Error page'),
+        });
     }
 
-    expect(readBodies).not.toHaveBeenCalled();
     expect(WebPageCache.size).toBe(0);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
@@ -179,7 +180,7 @@ describe('WebFetchTool 读取网页', () => {
 
     const first = await WebFetchTool.execute(
       WebFetchTool.inputSchema.parse({ url, max_length: 3 }),
-      undefined,
+      request,
       invocation,
     );
     expect(first).toMatchObject({
@@ -195,7 +196,7 @@ describe('WebFetchTool 读取网页', () => {
 
     const second = await WebFetchTool.execute(
       WebFetchTool.inputSchema.parse({ url, start_index: 3, max_length: 5 }),
-      undefined,
+      request,
       invocation,
     );
     expect(second.content).toBe('defgh');
@@ -218,10 +219,10 @@ describe('WebFetchTool 读取网页', () => {
     const url = 'https://example.com/page';
 
     const markdown = await WebFetchTool.execute(
-      WebFetchTool.inputSchema.parse({ url }), undefined, invocation,
+      WebFetchTool.inputSchema.parse({ url }), request, invocation,
     );
     const raw = await WebFetchTool.execute(
-      WebFetchTool.inputSchema.parse({ url, raw: true }), undefined, invocation,
+      WebFetchTool.inputSchema.parse({ url, raw: true }), request, invocation,
     );
 
     expect(markdown.content).toBe('# Hello');

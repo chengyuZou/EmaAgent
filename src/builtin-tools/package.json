@@ -55,6 +55,7 @@
     "lru-cache": "^10.4.3",
     "shell-quote": "^1.10.0",
     "turndown": "^7.2.4",
+    "undici": "6.29.0",
     "zod": "^4.4.3"
   },
   "optionalDependencies": {

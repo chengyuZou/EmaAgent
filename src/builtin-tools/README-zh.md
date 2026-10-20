@@ -54,6 +54,12 @@ WebSearch 有支持的 Brave API-key 环境变量时使用 Brave, 否则读取 B
 
 WebFetch 把 HTTP 改为 HTTPS 并跟随重定向, 文本响应最多 10 MiB, 网络部分超时为 30 秒. 静态 HTML 提取后转为 Markdown, 不执行页面脚本或复用浏览器登录. 原始文本和转换结果分别缓存, TTL 为 15 分钟, 内容总额为 50 MiB. 预批准 GET 域名仍服从用户的权限规则. HTML 预览 iframe 使用空 sandbox 属性.
 
+两个网页工具都需要 `ToolUseContext.webRequest`. Server 用 `createWebRequests` 创建它, 主 Agent 和子代理共用, 退出时先取消运行中的工作再关闭连接. 请求使用独立 dispatcher, 不修改模型, MCP 或其他全局 `fetch` 请求. Bing 和 WebFetch 跟随重定向, 每个目标重新检查代理例外规则. Brave API 保持手动重定向, 不把 API 凭据转发到另一个 URL.
+
+代理配置在 Server 启动时固定. 小写环境变量优先于同名大写变量. HTTP 依次选择 `HTTP_PROXY`, `ALL_PROXY`; HTTPS 依次选择 `HTTPS_PROXY`, `HTTP_PROXY`, `ALL_PROXY`. `NO_PROXY` 支持精确主机, 以 `.` 或 `*` 开头的后缀, 可选端口, 以及表示全部绕过的 `*`. 没有显式代理地址时, Windows 桌面宿主提供当前用户的固定系统代理与例外列表, 包括 `<local>` 和主机名通配符. PAC/WPAD, SOCKS, 无效配置或读取系统设置失败会明确报配置错误, 不悄悄直连. macOS, Linux 及单独启动的 Server 当前只读取环境变量配置. 修改代理后需要重启 Ema.
+
+代理失败后不自动重试或回退直连. 网络错误通过 `ToolResult.errorCode` 保留安全的 DNS, 连接, 超时和 TLS 分类. 非 2xx 响应保留 HTTP 状态及有效的 `Retry-After`. 错误摘要最多读取 4 KiB, 等待至多一秒, 去掉标记和已知请求凭据后返回最多 500 字符的不可信文本, 不作为网页正文缓存. 用户取消仍按取消处理. 代理可用不代表获得网站访问权限, HTTP 读取也不等于交互式浏览器.
+
 Memory 返回 Work 和 Relationship 中与用户有关的资料. NarrativeSearch 返回按可能相关周目分组的原作剧情及单独的失败说明, 不是对话记忆. 实际存储和检索由宿主查询函数决定. 工具结果对象与发给模型的文本可能不同, 改输出时既要看 `execute`, 也要看 `mapResultToModelContent`.
 
 Subagent 前台等待超过 120 秒转到后台. 取消前台等待会取消该子 Agent, 已在后台的执行有自己的生命周期. Scratchpad 按目录串行写入, 最多 64 个 key, 每项 256 KiB, 合计 8 MiB. 它是 Turn 临时文件, 不能替代持久 Task 或最终交付文件.

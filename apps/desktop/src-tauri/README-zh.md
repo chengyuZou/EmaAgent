@@ -30,6 +30,8 @@ Server 自行选择本机端口. 宿主最多等待 120 秒收到就绪通知, �
 
 宿主为 debug 构建设置 `NODE_ENV=development`, 为 release 构建设置 `NODE_ENV=production`. Release 子进程不继承 `NODE_OPTIONS` 和 `NODE_PATH`. 这与发布准备检查一致, 避免终端中的 Node 设置改变安装版 Server 的启动方式.
 
+Windows 上, `processes/webProxy.rs` 在启动 Server 前读取当前用户的 WinHTTP/Internet Options 代理配置. 固定代理地址, 例外规则及自动配置/读取失败标记通过 `EMA_WEB_SYSTEM_PROXY` 交给 Server, 只有网页工具消费. 宿主不设置 `HTTP_PROXY`, 也不修改系统设置. 代理选择和支持范围见 [Builtin Tools](../../../src/builtin-tools/README-zh.md#网页-已有资料与子-agent). 原生宿主修改需要重新构建并重启.
+
 ## 页面内容策略
 
 `tauri.conf.json` 允许 Markdown 的 HTTP 和 HTTPS 图片与音频, 以及应用需要的本地和 Blob 媒体. JavaScript 的 `unsafe-eval` 仍然关闭; Cubism 使用的 WebAssembly 权限单独保留.
@@ -95,6 +97,8 @@ Permission 提供允许, 本会话允许和拒绝. main 再次检查交互队首
 cargo check --locked --manifest-path apps/desktop/src-tauri/Cargo.toml
 cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --lib
 ```
+
+代理测试在 `tests/processes/webProxy.rs`. 默认测试检查 JSON 契约. 被忽略的 `windows_proxy_is_passed_only_to_web_tools` 只读取当前用户设置, 不修改配置. 构建 Builtin Tools 后, 被忽略的 `windows_web_fetch_reaches_public_site` 把这些设置传给 Node 并请求公开的 Brave 首页. 它只报告 HTTP 状态, 不输出页面正文或代理凭据, 区分 HTTP 错误和连接失败. 两个测试都不启动 Server 或打开用户数据库.
 
 默认 Rust 测试覆盖资源准备, 启动日志内容和过期清理, 路径选择状态, 通知 XML 和动作校验, 以及不展示通知的 Windows COM 点击回调往返. Windows 另有需要显式开启的投递检查:
 

@@ -1,10 +1,11 @@
 import { z } from 'zod';
 import { findContentRule, findMatchingContentRule } from '@ema-agent/permission';
-import { buildTool, contextOk, type ToolInvocation } from '@ema-agent/tools';
+import { buildTool, contextFail, contextOk, type ToolInvocation, type WebRequest } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { fetchPublicPage } from './httpClient.js';
 import { isPreapprovedHost } from './preapproved.js';
 import { WEB_FETCH_DESCRIPTION } from './prompt.js';
+import { webRequestFailure } from '../../webRequests.js';
 
 const MAX_RESPONSE_CHARS = 100_000;
 
@@ -46,7 +47,7 @@ export interface WebFetchResult {
   totalLength: number;
 }
 
-export const WebFetchTool = buildTool<WebFetchInput, WebFetchResult, undefined>({
+export const WebFetchTool = buildTool<WebFetchInput, WebFetchResult, WebRequest>({
   id: BuiltinTools.WebFetch.id,
   name: BuiltinTools.WebFetch.name,
   description: WEB_FETCH_DESCRIPTION,
@@ -129,17 +130,24 @@ export const WebFetchTool = buildTool<WebFetchInput, WebFetchResult, undefined>(
     return { behavior: 'passthrough', message: '获取网页需要用户确认', sessionAllowRule };
   },
 
-  validateContext() {
-    return contextOk(undefined);
+  validateContext(context) {
+    return context.webRequest
+      ? contextOk(context.webRequest)
+      : contextFail('Web requests are not configured by the host.');
   },
 
   async execute(
     input: WebFetchInput,
-    _context: undefined,
+    request: WebRequest,
     invocation: ToolInvocation,
   ): Promise<WebFetchResult> {
     const { url, max_length, start_index, raw } = input;
-    const page = await fetchPublicPage(url, invocation.signal, { raw });
+    let page;
+    try {
+      page = await fetchPublicPage(url, invocation.signal, { raw }, request);
+    } catch (error) {
+      throw webRequestFailure(error, invocation.signal);
+    }
 
     const totalLength = page.content.length;
     const truncated = start_index + max_length < totalLength;

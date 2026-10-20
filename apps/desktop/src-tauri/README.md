@@ -30,6 +30,8 @@ Development launches `pnpm --filter @ema-agent/server dev` from the repository. 
 
 The host sets `NODE_ENV=development` for debug builds and `NODE_ENV=production` for release builds. Release children do not inherit `NODE_OPTIONS` or `NODE_PATH`. This matches the release preparation check and prevents shell-level Node settings from changing the installed Server.
 
+On Windows, `processes/webProxy.rs` reads the current user's WinHTTP/Internet Options proxy configuration before starting Server. It sends fixed proxy addresses, bypass rules, and automatic-configuration/read-failure indicators through `EMA_WEB_SYSTEM_PROXY`. This value is consumed only by web tools; the host does not set `HTTP_PROXY` or change system settings. Proxy selection and supported configurations are described in [Builtin Tools](../../../src/builtin-tools/README.md#web-stored-references-and-delegation). Native host changes require a rebuild and restart.
+
 ## Page content policy
 
 `tauri.conf.json` permits HTTP and HTTPS images and audio for Markdown, plus local and Blob media used by the application. JavaScript `unsafe-eval` stays disabled; Cubism's WebAssembly permission is separate.
@@ -95,6 +97,8 @@ From the repository root:
 cargo check --locked --manifest-path apps/desktop/src-tauri/Cargo.toml
 cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --lib
 ```
+
+Proxy tests live in `tests/processes/webProxy.rs`. The default test checks the JSON contract. The ignored `windows_proxy_is_passed_only_to_web_tools` test reads current-user settings without changing them. After building Builtin Tools, the ignored `windows_web_fetch_reaches_public_site` test passes those settings to Node and requests the public Brave homepage. It reports only HTTP status, not page contents or proxy credentials, and considers an HTTP error distinct from a connection failure. Neither test starts Server or opens a user database.
 
 The default Rust tests cover resource preparation, launch-log output and retention, path-picker state, notification XML and action validation, and a Windows COM callback round trip without showing a toast. Windows also has an opt-in delivery check:
 

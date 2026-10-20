@@ -51,6 +51,7 @@ export interface TurnToolsDeps {
   /** 每 Turn 解析一次 vision 调用闭包: 无绑定时返回 undefined */
   readonly resolveVision?: () => CallVision | undefined;
   readonly captureScreen?: ToolUseContext['captureScreen'];
+  readonly webRequest?: ToolUseContext['webRequest'];
   readonly commandRunner?: (
     cwd: string,
     workspaceRoots: readonly string[],
@@ -197,6 +198,7 @@ export async function prepareTurnTools(deps: TurnToolsDeps, input: PrepareTurnTo
     platform: process.platform,
     ...(commandRunner ? { commandRunner } : {}),
     ...(vision ? { vision } : {}),
+    ...(deps.webRequest ? { webRequest: deps.webRequest } : {}),
     ...(deps.captureScreen ? { captureScreen: deps.captureScreen } : {}),
     ...(deps.backgroundProcesses ? { backgroundProcesses: deps.backgroundProcesses } : {}),
     ...(narrativeSearch ? { narrativeSearch } : {}),
