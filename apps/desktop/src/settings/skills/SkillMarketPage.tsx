@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useRef, useState, type JSX } from 'react';
 import {
-  Badge, Button, Callout, Dialog, EmptyState, MarketCard, SearchField, Select, Spinner,
+  Badge,
+  Button,
+  Callout,
+  Dialog,
+  EmptyState,
+  Markdown,
+  MarketCard,
+  SearchField,
+  Select,
+  Spinner,
 } from '@ema-agent/ui';
 import {
   skillsApi,
@@ -9,7 +18,8 @@ import {
   type SkillMarketDetailResult,
 } from '../../api/skills.js';
 import { showToast } from '../../lib/notifications/toast.js';
-import { Markdown } from '@ema-agent/ui';
+import { subscribeSystemEvent } from '../../lib/events/systemEventDispatcher.js';
+import { useSkillStore } from '../../stores/skill.js';
 
 type SourceFilter = 'all' | 'skillhub' | 'clawhub';
 type InstalledFilter = 'all' | 'installed' | 'installable';
@@ -43,48 +53,70 @@ export function SkillMarketPage(): JSX.Element {
   const [installed, setInstalled] = useState<InstalledFilter>('all');
 
   const [detail, setDetail] = useState<MarketDetail | null>(null);
+  const [detailTarget, setDetailTarget] = useState<Pick<SkillMarketItem, 'source' | 'slug'> | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
   const [fileView, setFileView] = useState<{ path: string; content: string; truncated: boolean } | null>(null);
   const [fileLoading, setFileLoading] = useState(false);
   const [pendingInstall, setPendingInstall] = useState<SkillMarketItem | null>(null);
-  /** 按技能 id 各自安装中:确认弹窗关掉后安装继续,不阻塞其他卡片. */
-  const [installing, setInstalling] = useState<ReadonlySet<string>>(new Set());
+  const installingMarketIds = useSkillStore(state => state.installingMarketIds);
   const [uninstalling, setUninstalling] = useState(false);
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const listRequest = useRef(0);
+  const fileRequest = useRef(0);
   const stateRef = useRef({ nextCursor, loadingMore, loading });
   stateRef.current = { nextCursor, loadingMore, loading };
 
-  const load = useCallback(async (cursor?: string) => {
-    const result = await skillsApi.marketList({
-      ...(keyword ? { q: keyword } : {}),
-      source,
-      installed,
-      ...(cursor ? { cursor } : {}),
-      limit: PAGE_SIZE,
-    });
+  const loadPage = useCallback(async (cursor?: string): Promise<void> => {
+    const request = ++listRequest.current;
     if (cursor) {
-      setItems(prev => [...prev, ...result.items]);
+      setLoadingMore(true);
     } else {
-      setItems(result.items);
+      setLoading(true);
+      setLoadingMore(false);
     }
-    setNextCursor(result.nextCursor);
-    setSources(result.sources);
-  }, [keyword, source, installed]);
-
-  const reload = useCallback(async () => {
-    setLoading(true);
     setError(null);
+
     try {
-      await load();
+      const result = await skillsApi.marketList({
+        ...(keyword ? { q: keyword } : {}),
+        source,
+        installed,
+        ...(cursor ? { cursor } : {}),
+        limit: PAGE_SIZE,
+      });
+      if (request !== listRequest.current) return;
+
+      if (cursor) {
+        setItems(current => [...current, ...result.items]);
+      } else {
+        setItems(result.items);
+      }
+      setNextCursor(result.nextCursor);
+      setSources(result.sources);
     } catch (err) {
+      if (request !== listRequest.current) return;
       setError(err instanceof Error ? err.message : '市场加载失败');
     } finally {
-      setLoading(false);
+      if (request === listRequest.current) {
+        setLoading(false);
+        setLoadingMore(false);
+      }
     }
-  }, [load]);
+  }, [keyword, source, installed]);
 
-  useEffect(() => { void reload(); }, [reload]);
+  useEffect(() => {
+    void loadPage();
+    const unsubscribe = subscribeSystemEvent(event => {
+      if (event.type === 'skills_changed') void loadPage();
+    });
+    return () => {
+      unsubscribe();
+      // 筛选改变或页面离开后, 旧查询不能覆盖新列表或追加旧游标的数据.
+      listRequest.current += 1;
+    };
+  }, [loadPage]);
 
   // 游标翻页:哨兵进入视口且还有下一页时追加.
   useEffect(() => {
@@ -94,59 +126,72 @@ export function SkillMarketPage(): JSX.Element {
       if (!entries.some(e => e.isIntersecting)) return;
       const { nextCursor: cursor, loadingMore: more, loading: first } = stateRef.current;
       if (!cursor || more || first) return;
-      setLoadingMore(true);
-      void load(cursor).catch(() => {}).finally(() => setLoadingMore(false));
+      void loadPage(cursor);
     });
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [load, items.length]);
+  }, [loadPage, items.length]);
 
-  async function openDetail(item: Pick<SkillMarketItem, 'source' | 'slug'>): Promise<void> {
-    setDetailLoading(true);
+  useEffect(() => {
+    setDetail(null);
+    setDetailError(null);
     setFileView(null);
-    try {
-      const result = await skillsApi.marketDetail(item.source, item.slug);
-      setDetail(result.skill);
-    } catch (err) {
-      showToast(`详情加载失败: ${err instanceof Error ? err.message : String(err)}`, { variant: 'danger' });
-    } finally {
+    setFileLoading(false);
+    fileRequest.current += 1;
+    if (!detailTarget) {
       setDetailLoading(false);
+      return;
     }
-  }
+
+    let request = 0;
+    const refreshDetail = async (): Promise<void> => {
+      const current = ++request;
+      setDetailLoading(true);
+      setDetailError(null);
+      try {
+        const result = await skillsApi.marketDetail(detailTarget.source, detailTarget.slug);
+        if (current === request) setDetail(result.skill);
+      } catch (err) {
+        if (current !== request) return;
+        const message = err instanceof Error ? err.message : String(err);
+        setDetailError(`详情加载失败: ${message}`);
+      } finally {
+        if (current === request) setDetailLoading(false);
+      }
+    };
+
+    void refreshDetail();
+    const unsubscribe = subscribeSystemEvent(event => {
+      if (event.type === 'skills_changed') void refreshDetail();
+    });
+    return () => {
+      unsubscribe();
+      request += 1;
+      fileRequest.current += 1;
+    };
+  }, [detailTarget]);
 
   async function openFile(path: string): Promise<void> {
     if (!detail) return;
+    const request = ++fileRequest.current;
     setFileLoading(true);
     try {
       const result = await skillsApi.marketFileContent(detail.source, detail.slug, path);
+      if (request !== fileRequest.current) return;
       setFileView({ path, content: result.content, truncated: result.truncated });
     } catch (err) {
+      if (request !== fileRequest.current) return;
       showToast(`文件读取失败: ${err instanceof Error ? err.message : String(err)}`, { variant: 'danger' });
     } finally {
-      setFileLoading(false);
+      if (request === fileRequest.current) setFileLoading(false);
     }
   }
 
-  // 安装:确认后立即返回,后台完成;该卡转圈,其他卡片不受影响.
-  async function confirmInstall(): Promise<void> {
+  function confirmInstall(): void {
     if (!pendingInstall) return;
-    const { source: src, slug, id } = pendingInstall;
+    const { source, slug } = pendingInstall;
     setPendingInstall(null);
-    setInstalling(prev => new Set(prev).add(id));
-    try {
-      const result = await skillsApi.marketInstall({ source: src as 'skillhub' | 'clawhub', slug });
-      showToast(`已安装 ${result.name}, 下一 Turn 起生效`, { variant: 'success' });
-      await reload();
-      if (detail?.id === id) await openDetail(detail);
-    } catch (err) {
-      showToast(`安装失败: ${err instanceof Error ? err.message : String(err)}`, { variant: 'danger' });
-    } finally {
-      setInstalling(prev => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
-    }
+    void useSkillStore.getState().installFromMarket({ source, slug });
   }
 
   async function uninstallCurrent(): Promise<void> {
@@ -155,8 +200,6 @@ export function SkillMarketPage(): JSX.Element {
     try {
       await skillsApi.marketUninstall({ source: detail.source, slug: detail.slug });
       showToast(`已卸载 ${detail.name}`, { variant: 'success' });
-      await reload();
-      await openDetail(detail);
     } catch (err) {
       showToast(`卸载失败: ${err instanceof Error ? err.message : String(err)}`, { variant: 'danger' });
     } finally {
@@ -184,7 +227,7 @@ export function SkillMarketPage(): JSX.Element {
           })}
           <button
             type="button"
-            onClick={() => void reload()}
+            onClick={() => void loadPage()}
             className="text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-primary)] transition-colors"
             aria-label="刷新市场"
           >
@@ -194,7 +237,7 @@ export function SkillMarketPage(): JSX.Element {
       </div>
 
       <Callout variant="warn" className="text-xs shrink-0">
-        技能来自社区第三方市场,本应用不对内容做安全审计。安装前请在详情里查看 SKILL.md 与配套文件。
+        技能来自社区第三方市场, 本应用不对内容做安全审计. 安装前请在详情里查看 SKILL.md 与配套文件.
       </Callout>
 
       <div className="flex shrink-0 flex-col gap-2">
@@ -223,7 +266,7 @@ export function SkillMarketPage(): JSX.Element {
           onChange={setQ}
           onSubmit={() => setKeyword(q.trim())}
           loading={loading}
-          placeholder="按名称、关键词搜索技能…"
+          placeholder="按名称, 关键词搜索技能..."
           aria-label="搜索技能"
         />
       </div>
@@ -231,9 +274,9 @@ export function SkillMarketPage(): JSX.Element {
       {error ? (
         <div>
           <Callout variant="danger">{error}</Callout>
-          <Button variant="secondary" size="sm" className="mt-2" onClick={() => void reload()}>重试</Button>
+          <Button variant="secondary" size="sm" className="mt-2" onClick={() => void loadPage()}>重试</Button>
         </div>
-      ) : loading ? (
+      ) : loading && items.length === 0 ? (
         <div className="flex items-center justify-center py-16"><Spinner size="lg" /></div>
       ) : items.length === 0 ? (
         <EmptyState icon="i-mdi:store-outline" title="没有符合条件的技能" hint="换个关键词或筛选条件" className="py-16" />
@@ -246,12 +289,12 @@ export function SkillMarketPage(): JSX.Element {
                 index={i % PAGE_SIZE}
                 decorate="ema-card-decorate--diamond"
                 installed={item.installState === 'installed'}
-                installing={installing.has(item.id)}
+                installing={installingMarketIds.has(item.id)}
                 installDisabled={item.installState === 'not-installable'}
                 installLabel={item.installState === 'not-installable' ? '不可安装' : '安装'}
                 onInstall={() => setPendingInstall(item)}
               >
-                <button type="button" className="w-full text-left" onClick={() => void openDetail(item)}>
+                <button type="button" className="w-full text-left" onClick={() => setDetailTarget(item)}>
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-semibold text-[var(--ema-text-primary)]">{item.name}</span>
                     {item.version && <Badge variant="neutral">v{item.version}</Badge>}
@@ -281,19 +324,23 @@ export function SkillMarketPage(): JSX.Element {
       )}
 
       <Dialog
-        open={detail !== null || detailLoading}
-        onOpenChange={(open) => { if (!open) { setDetail(null); setFileView(null); } }}
-        title={detail ? detail.name : '加载中…'}
+        open={detailTarget !== null}
+        onOpenChange={open => {
+          if (!open) setDetailTarget(null);
+        }}
+        title={detail ? detail.name : '加载中...'}
         widthClass="max-w-3xl"
       >
-        {detailLoading || !detail ? (
+        {detailError && <Callout variant="danger">{detailError}</Callout>}
+        {detailLoading && (
           <div className="flex justify-center py-12"><Spinner size="md" /></div>
-        ) : (
+        )}
+        {!detailLoading && detail && (
           <DetailBody
             detail={detail}
             fileView={fileView}
             fileLoading={fileLoading}
-            installing={installing.has(detail.id)}
+            installing={installingMarketIds.has(detail.id)}
             uninstalling={uninstalling}
             onOpenFile={openFile}
             onCloseFile={() => setFileView(null)}
@@ -320,7 +367,7 @@ export function SkillMarketPage(): JSX.Element {
             </p>
             <div className="flex justify-end gap-2">
               <Button variant="ghost" size="sm" onClick={() => setPendingInstall(null)}>取消</Button>
-              <Button variant="primary" size="sm" onClick={() => void confirmInstall()}>安装</Button>
+              <Button variant="primary" size="sm" onClick={confirmInstall}>安装</Button>
             </div>
           </div>
         )}
@@ -354,10 +401,10 @@ function DetailBody(props: {
         </span>
       </div>
       {detail.securityNote && (
-        <p className="text-xs text-[var(--ema-text-tertiary)]">{detail.securityNote}（来源方声明，非本应用审计）</p>
+        <p className="text-xs text-[var(--ema-text-tertiary)]">{detail.securityNote} (来源方声明, 非本应用审计)</p>
       )}
       {detail.notInstallableReason && detail.installState === 'not-installable' && (
-        <Callout variant="warn" className="text-xs">该技能不可安装：{detail.notInstallableReason}</Callout>
+        <Callout variant="warn" className="text-xs">该技能不可安装: {detail.notInstallableReason}</Callout>
       )}
 
       <div className="flex gap-2 border-b border-[var(--ema-border)]">
@@ -377,7 +424,7 @@ function DetailBody(props: {
 
       {tab === 'doc' ? (
         <div className="max-h-[46vh] overflow-auto rounded-lg p-3 bg-[var(--ema-surface-0)] border border-[var(--ema-border)]">
-          <Markdown source={detail.description || detail.summary || '（无描述）'} />
+          <Markdown source={detail.description || detail.summary || '(无描述)'} />
         </div>
       ) : (
         <div className="max-h-[46vh] overflow-auto rounded-lg bg-[var(--ema-surface-0)] border border-[var(--ema-border)]">
@@ -389,7 +436,7 @@ function DetailBody(props: {
               </div>
               <pre className="p-3 text-[11px] font-mono whitespace-pre-wrap break-all text-[var(--ema-text-secondary)]">
                 {fileView.content}
-                {fileView.truncated && '\n…(内容过大已截断)'}
+                {fileView.truncated && '\n...(内容过大已截断)'}
               </pre>
             </div>
           ) : (

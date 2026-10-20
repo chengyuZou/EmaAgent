@@ -1,4 +1,6 @@
-# 0.1.0-alpha.1
+# Release UI styles and Markdown media
+
+[中文](../zh/releaseUiStyles.md)
 
 ## Problem
 
@@ -12,7 +14,7 @@ The application allowed inline styles, but Tauri added a nonce to `style-src` an
 
 ## Change
 
-[tauri.conf.json](../../apps/desktop/src-tauri/tauri.conf.json) disables automatic asset CSP modification only for `style-src`. The explicit `style-src 'self' 'unsafe-inline'` remains in effect for the renderers' dynamic styles. Other directives still receive Tauri's normal processing.
+[tauri.conf.json](../../../../../apps/desktop/src-tauri/tauri.conf.json) disables automatic asset CSP modification only for `style-src`. The explicit `style-src 'self' 'unsafe-inline'` remains in effect for the renderers' dynamic styles. Other directives still receive Tauri's normal processing.
 
 JavaScript `unsafe-eval` remains disabled. The existing Live2D workaround and `wasm-unsafe-eval` permission remain unchanged. This is not a global CSP disable and does not grant file tools additional permissions.
 
@@ -24,4 +26,4 @@ The temporary production browser check passed with the corrected policy. It veri
 
 The temporary check was removed after diagnosis and verification. It is not a persistent release gate. An expanded fixture containing the complete Settings panel did not complete because it omitted Cubism Core, which the normal application HTML loads. That attempt is not counted as a successful Settings-page check.
 
-Still to verify with a rebuilt native application: both themes in the installed file, Memory and review trees; terminal and Diff appearance; real Markdown media sources; and the standalone screen-capture sidebar page. No new installer was built or launched during this pass.
+The user subsequently confirmed file preview/Diff highlighting, the Memory file page and the dedicated screen-capture sidebar entry in the Windows installed application. This supplements the earlier fixture checks without turning them into a complete media acceptance result. Real Markdown media and all related release styles still require verification. The exact installed build identifier was not recorded. Later reports of low-contrast chat-sidebar text and a native-looking HTML-preview scrollbar remain separate issues; these checks do not close them.

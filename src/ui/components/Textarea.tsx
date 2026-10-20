@@ -146,6 +146,7 @@ export const Textarea = forwardRef<TextareaHandle, TextareaProps>(
           // 为右下角操作按钮预留内边距, 避免文字与按钮重叠.
           !containerless && embeddedAction && 'pr-[52px] pb-[48px]',
           className,
+          'border-none'
         )}
         style={style}
         {...rest}

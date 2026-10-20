@@ -22,10 +22,10 @@ export function McpMarketPage(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [installing, setInstalling] = useState<ReadonlySet<string>>(new Set());
   const [pending, setPending] = useState<McpMarketDetail | null>(null);
   const requestSequence = useRef(0);
   const servers = useMcpStore(state => state.servers);
+  const addingMarketEntryIds = useMcpStore(state => state.addingMarketEntryIds);
   const installed = useMemo(() => new Set(servers.flatMap(server =>
     server.provenance.sourceKind === 'official' ? [server.provenance.marketEntryId] : [])), [servers]);
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -107,33 +107,19 @@ export function McpMarketPage(): JSX.Element {
       if ('error' in detail) throw new Error('市场条目不存在.');
       if (!detail.config) throw new Error(detail.unavailableReason ?? '该条目不可安装.');
       if (detail.requiredInputs.length) setPending(detail);
-      else void install(detail);
+      else addFromMarket(detail);
     } catch (error) {
       showToast(messageOf(error), { variant: 'danger' });
     }
   }
 
-  async function install(entry: McpMarketDetail, inputs?: Record<string, string>): Promise<void> {
+  function addFromMarket(entry: McpMarketDetail, inputs?: Record<string, string>): void {
     if ('error' in entry) return;
-    const key = entry.externalId;
-    setInstalling(current => new Set(current).add(key));
-    try {
-      await mcpApi.installFromMarket(entry.source, {
-        externalId: entry.externalId,
-        name: serverName(entry.name),
-        ...(inputs ? { inputs } : {}),
-      });
-      await useMcpStore.getState().refresh();
-      showToast(`已添加 ${entry.name}, 正在后台连接.`, { variant: 'success' });
-    } catch (error) {
-      showToast(`安装失败: ${messageOf(error)}`, { variant: 'danger' });
-    } finally {
-      setInstalling(current => {
-        const next = new Set(current);
-        next.delete(key);
-        return next;
-      });
-    }
+    void useMcpStore.getState().addFromMarket(entry.source, {
+      externalId: entry.externalId,
+      name: serverName(entry.name),
+      ...(inputs ? { inputs } : {}),
+    });
   }
 
   return (
@@ -173,7 +159,7 @@ export function McpMarketPage(): JSX.Element {
                     index={index}
                     decorate="ema-card-decorate--nodes"
                     installed={installed.has(entry.externalId)}
-                    installing={installing.has(key)}
+                    installing={addingMarketEntryIds.has(key)}
                     installedLabel="已添加"
                     installLabel="添加"
                     onInstall={() => void inspect(entry)}
@@ -242,12 +228,12 @@ export function McpMarketPage(): JSX.Element {
       )}
       <InstallDialog
         detail={pending}
-        busy={pending && !('error' in pending) ? installing.has(pending.externalId) : false}
+        busy={pending && !('error' in pending) ? addingMarketEntryIds.has(pending.externalId) : false}
         onCancel={() => setPending(null)}
         onInstall={inputs => {
           const detail = pending;
           setPending(null);
-          if (detail) void install(detail, inputs);
+          if (detail) addFromMarket(detail, inputs);
         }}
       />
     </div>

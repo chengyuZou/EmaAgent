@@ -104,7 +104,7 @@ Release versions use three numbers: `MAJOR.MINOR.PATCH`, for example `0.1.0`, `0
 
 Alpha builds use a prerelease suffix, such as `0.1.0-alpha.1`. The root `package.json` sets the application release version. The Desktop package, Tauri configuration, and Cargo package must match it exactly. The release script checks all four before building and reports their values on a mismatch; it does not update versions automatically.
 
-Release notes and bug-fix records are kept in [docs](docs/README.md), with one [change document per version](docs/changes/).
+Release notes and bug-fix records are kept in [docs](docs/README.md), with one [directory per version](docs/changes/) containing bilingual notes and investigation records.
 
 Database versions are separate integers, not application release numbers. Profile and Data each start from their own `001_initial.sql` at database version 1. Future changes add the next SQL file instead of editing a released migration. Startup applies pending migrations before serving requests. A failed migration rolls back that migration, and an older application refuses a database newer than it supports. There is no automatic database downgrade.
 

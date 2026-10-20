@@ -104,7 +104,7 @@ pnpm release --server-only
 
 Alpha 使用预发布后缀, 例如 `0.1.0-alpha.1`. 根目录 `package.json` 确定应用发布版本, Desktop package, Tauri 配置和 Cargo package 必须与它完全一致. 发布脚本在构建之前检查这四处, 不一致时列出各自的值, 不自动修改版本.
 
-版本变化和 Bug 修复记录放在 [docs](docs/README-zh.md), [每个版本一份变更文档](docs/changes/).
+版本变化和 Bug 修复记录放在 [docs](docs/README-zh.md), [每个版本一个目录](docs/changes/), 保存双语版本说明和排查记录.
 
 数据库版本是独立整数, 不是应用版本号. Profile 和 Data 分别从自己的 `001_initial.sql` 开始, 初始数据库版本均为 1. 以后修改表结构时追加下一份 SQL, 不改已经发布的迁移文件. 启动时先执行待迁移 SQL, 成功后才接受业务请求. 某一步失败会回滚这一步, 旧应用也会拒绝打开超出自己支持版本的数据库. 没有自动降级迁移.
 

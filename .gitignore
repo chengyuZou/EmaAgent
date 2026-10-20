@@ -33,6 +33,8 @@ Thumbs.db
 !/src/builtin-tools/styleImports.d.ts
 *.d.ts.map
 
+/docs/testing/**
+
 # Misc
 *.local
 /apps/desktop/src-tauri/binaries/*

@@ -95,8 +95,8 @@ export const AskUserTool = buildTool<AskUserInput, AskUserResult, AskUserToolCon
     return contextOk({ askUser: ctx.askUser });
   },
 
-  // AskUser 本身即用户交互: 必须经过批准, 不由规则绕过.
-  checkPermissions: async () => ({ behavior: 'ask', message: 'AskUser 需要用户交互' }),
+  // 问题由 askUser 通道等待回答, 默认不额外要求权限审批.
+  checkPermissions: async () => ({ behavior: 'allow', message: 'AskUser 需要用户交互' }),
 
   async execute(
     input: AskUserInput,

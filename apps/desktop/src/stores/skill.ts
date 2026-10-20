@@ -3,7 +3,10 @@ import type { AppEvent } from '@ema-agent/server/application/appEvents.js';
 import {
   skillsApi,
   type SkillListItem,
+  type SkillMarketInstallBody,
+  type SkillMarketItem,
 } from '../api/skills.js';
+import { showToast } from '../lib/notifications/toast.js';
 
 
 export interface SkillStoreState {
@@ -12,6 +15,8 @@ export interface SkillStoreState {
   loaded:   boolean;
   loading:  boolean;
   error:    string | null;
+  /** 市场 id 为 source:slug. 页面卸载不结束已经提交的安装. */
+  installingMarketIds: ReadonlySet<SkillMarketItem['id']>;
 
   /** 已加载过的窗口不重复请求, 后续变化由事件触发刷新. */
   load(): Promise<void>;
@@ -25,6 +30,8 @@ export interface SkillStoreState {
 
   /** 按来源调用 builtin/user 删除入口, project 不由应用删除. */
   remove(skill: SkillListItem): Promise<void>;
+
+  installFromMarket(input: SkillMarketInstallBody): Promise<void>;
 }
 
 
@@ -33,6 +40,7 @@ export const useSkillStore = create<SkillStoreState>((set, get) => ({
   loaded:  false,
   loading: false,
   error:   null,
+  installingMarketIds: new Set(),
 
   async load() {
     if (get().loaded) return;
@@ -82,6 +90,29 @@ export const useSkillStore = create<SkillStoreState>((set, get) => ({
     } catch (err: unknown) {
       set({ error: err instanceof Error ? err.message : '卸载技能失败' });
       throw err;
+    }
+  },
+
+  async installFromMarket(input) {
+    const id = `${input.source}:${input.slug}`;
+    if (get().installingMarketIds.has(id)) return;
+
+    set(state => ({
+      installingMarketIds: new Set(state.installingMarketIds).add(id),
+    }));
+
+    try {
+      const result = await skillsApi.marketInstall(input);
+      showToast(`已安装 ${result.name}, 下一 Turn 起生效`, { variant: 'success' });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      showToast(`安装失败: ${message}`, { variant: 'danger' });
+    } finally {
+      set(state => {
+        const installingMarketIds = new Set(state.installingMarketIds);
+        installingMarketIds.delete(id);
+        return { installingMarketIds };
+      });
     }
   },
 }));

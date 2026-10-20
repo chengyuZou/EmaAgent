@@ -2,32 +2,56 @@
 
 [中文](./README-zh.md)
 
-This directory keeps release notes for users and bug-fix records for people maintaining Ema. Module usage and implementation details stay in the corresponding package READMEs.
+This directory keeps release notes for users and bug-fix records for maintainers. Module usage and implementation details stay in the corresponding package READMEs.
 
-## Directories
+## Directory structure
 
-| Directory | Contents |
-| --- | --- |
-| [changes/](./changes/) | One Markdown file per application version, describing what users gain, what was fixed, and anything they need to know before upgrading. |
-| [logs/](./logs/) | Bug-fix records named after the problem. Each record uses a level-one heading to identify the application version containing the fix. |
+```text
+docs/
+  README.md
+  README-zh.md
+  changes/
+    v0.1.0-alpha.1/
+      README.md
+      README-zh.md
+      logs/
+        en/
+          askUserApproval.md
+          marketOperationNavigation.md
+          ...
+        zh/
+          askUserApproval.md
+          marketOperationNavigation.md
+          ...
+```
 
-Start with the [0.1.0-alpha.1 draft](./changes/0.1.0-alpha.1.md). Bug records cover [Live2D release rendering](./logs/live2dReleaseRendering.md), [release UI styles and Markdown media](./logs/releaseUiStyles.md), [native permissions and Server environment](./logs/releasePermissionsAndEnvironment.md), and the [Windows exit console](./logs/windowsExitConsole.md).
+[changes/](./changes/) contains only version directories at its first level. Each directory holds English and Chinese release notes plus that version's investigation records. Describe the concrete behavior checked, identify the tested build when known, and distinguish passed, failed, untested and inapplicable cases. A related passing check does not close an unresolved exception.
+
+## Versions
+
+- [0.1.0-alpha.1](./changes/v0.1.0-alpha.1/README.md): draft release notes and the investigation index.
+
+Each issue's evidence, current status and remaining checks belong in its log, not in a second status table here. Source checks, Dev acceptance and installed-build acceptance are different results.
 
 ## Writing release notes
 
-Name the file after the exact application version, such as `0.1.0-alpha.1.md`, and start with `# 0.1.0-alpha.1`. Keep one file per version. Mark it as a draft until that version is published, then record the release date.
+Name the directory after the exact application version with a `v` prefix, such as `v0.1.0-alpha.1`. Put English release notes in `README.md` and Chinese notes in `README-zh.md`, starting with `# 0.1.0-alpha.1`. Link the two files. Mark both as drafts until that version is published, then record the release date.
 
 Describe changes in terms of what someone using Ema will notice. Include upgrade requirements and known problems when they matter. Internal refactors do not need an entry unless they affect users. For the first release, describe the available capabilities instead of inventing an earlier version to compare against.
 
-Use the same notes for the GitHub Release. Link to a bug record when the diagnosis is useful; keep the detailed investigation out of the release notes.
+Use the same notes for the GitHub Release. Link to a bug record when the diagnosis is useful; keep the detailed investigation out of the release notes. The English README links to `logs/en/`, and the Chinese README links to `logs/zh/`.
 
 ## Writing bug-fix records
 
-Use a descriptive filename, such as `live2dReleaseRendering.md`, rather than a version filename or a separate version directory. Start each version's account with a heading such as `# 0.1.0-alpha.1`. If the same problem returns in a later version, add another version heading to the same file.
+Place each record under its version's `logs/en/` and `logs/zh/`, using the same descriptive camelCase filename, such as `live2dReleaseRendering.md`. The language directory replaces a filename suffix. Start with the issue title, not another version heading; the directory already identifies the version. Add a language link to the matching file in `../zh/` or `../en/`.
+
+Keep both languages aligned on symptoms, conclusions, verification and remaining work. If the same problem returns in a later version, create a record under that version and link back to the earlier evidence rather than rewriting the older version's account.
+
+Published documentation must stand on its own. Describe verification in words instead of using private checklist IDs, and do not link to ignored local testing records or screenshots that readers cannot access.
 
 Explain the symptom, how it was reproduced, the confirmed cause, the code change, and what was verified. Short records can use a few paragraphs. Separate a suspected cause from a confirmed one, and automated checks from installed-app checks. A code change alone is not proof that the original problem is gone.
 
-Keep only useful error excerpts. Do not commit API keys, access secrets, user conversations, full runtime logs, or copies of a user's database. `docs/logs/` contains written bug records; the running application writes its own logs under the selected user data directory.
+Keep only useful error excerpts. Do not commit API keys, access secrets, user conversations, full runtime logs, or copies of a user's database. The version's `logs/` contains written bug records; the running application writes its own logs under the selected user data directory.
 
 Use plain language and ASCII punctuation in both English and Chinese text. `README.md` is English, with its Chinese counterpart in `README-zh.md`.
 
