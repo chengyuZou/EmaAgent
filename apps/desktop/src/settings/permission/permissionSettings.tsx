@@ -9,10 +9,11 @@ import {
 } from '@ema-agent/server/settings';
 import { useEffect, useState, type JSX } from 'react';
 import { Tooltip, Button, Callout, Input, Select, Spinner, Textarea } from '@ema-agent/ui';
-import { sessionsApi, type Project } from '../../../api/sessions.js';
-import type { SettingApply } from '../../../api/settings.js';
-import { SettingsCard, SettingsSection, SettingItem } from '../../shared/SettingItem.js';
-import { useSettingValues } from '../../shared/useSettingValues.js';
+import { sessionsApi, type Project } from '../../api/sessions.js';
+import type { SettingApply } from '../../api/settings.js';
+import { PageHeader } from '../shared/PageHeader.js';
+import { SettingsCard, SettingsSection, SettingItem } from '../shared/SettingItem.js';
+import { useSettingValues } from '../shared/useSettingValues.js';
 
 const USER_RULE_SETTINGS = {
   allow: permissionRulesUserAllowSetting,
@@ -33,11 +34,8 @@ export function PermissionSettings(): JSX.Element {
   if (settings.error) return <Callout variant="danger">权限设置读取失败: {settings.error}</Callout>;
 
   return (
-    <div className="flex w-full flex-col gap-8 pb-10">
-      <header>
-        <h1 className="text-xl font-semibold text-[var(--ema-text-primary)]">权限规则</h1>
-        <p className="mt-1 text-sm text-[var(--ema-text-tertiary)]">控制 Tool 在执行前是直接允许, 直接拒绝还是询问.</p>
-      </header>
+    <div className="mx-auto flex w-full flex-col gap-8 pb-10">
+      <PageHeader title="权限" description="控制 Tool 在执行前是直接允许, 直接拒绝还是询问." />
 
       <SettingsSection icon="i-lucide:shield-check" title="用户确认" description="Tool 需要询问时的等待时间">
         <SettingsCard>

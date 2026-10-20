@@ -1,20 +1,20 @@
 import { eventDisplaySetting } from '@ema-agent/server/settings';
 import { useEffect, useState, type JSX } from 'react';
 import { Badge, Button, Callout, Input, Select, Spinner, Switch } from '@ema-agent/ui';
-import { useSettingsStore, type EventDisplayConfig } from '../../../stores/settings.js';
-import { settingsApi, type SettingApply } from '../../../api/settings.js';
-import { showToast } from '../../../lib/notifications/toast.js';
+import { useSettingsStore, type EventDisplayConfig } from '../../stores/settings.js';
+import { settingsApi, type SettingApply } from '../../api/settings.js';
+import { showToast } from '../../lib/notifications/toast.js';
+import { PageHeader } from '../shared/PageHeader.js';
 import {
   SaveStateIndicator,
   SettingApplyBadge,
   SettingsCard,
-  SettingsSection,
-} from '../../shared/SettingItem.js';
+} from '../shared/SettingItem.js';
 import {
   EVENT_DISPLAY_GROUPS,
   eventDisplayGroup,
   eventDisplayLabel,
-} from './event-display-catalog.js';
+} from './eventDisplayCatalog.js';
 
 
 const DURATION_OPTIONS = [
@@ -29,7 +29,7 @@ const DURATION_OPTIONS = [
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'failed';
 
-export function EventDisplayParameters(): JSX.Element {
+export function EventSettings(): JSX.Element {
   const eventDisplay = useSettingsStore((state) => state.eventDisplay);
   const storeError = useSettingsStore((state) => state.error);
   const [overrides, setOverrides] = useState<Record<string, EventDisplayConfig> | null>(null);
@@ -106,18 +106,18 @@ export function EventDisplayParameters(): JSX.Element {
   }
 
   return (
-    <SettingsSection
-      icon="i-lucide:bell"
-      title="事件通知"
-      description="控制工具, 记忆和系统事件是否显示为本地通知."
-      trailing={(
-        <div className="flex items-center gap-2">
-          {apply && <SettingApplyBadge apply={apply} />}
-          <SaveStateIndicator state={saveState} />
-        </div>
-      )}
-    >
-      <Callout variant="info" className="mb-4">
+    <div className="mx-auto flex w-full flex-col gap-8 pb-10">
+      <PageHeader
+        title="事件"
+        description="控制工具, 记忆和系统事件是否显示为本地通知."
+        action={(
+          <div className="flex items-center gap-2">
+            {apply && <SettingApplyBadge apply={apply} />}
+            <SaveStateIndicator state={saveState} />
+          </div>
+        )}
+      />
+      <Callout variant="info">
         "保持显示"的通知需要手动关闭. 语音数据块和子 Agent 详情流属于高频内部事件, 不列入通知设置.
       </Callout>
 
@@ -152,7 +152,7 @@ export function EventDisplayParameters(): JSX.Element {
           );
         })}
       </div>
-    </SettingsSection>
+    </div>
   );
 }
 
