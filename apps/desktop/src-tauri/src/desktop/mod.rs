@@ -1,4 +1,6 @@
 pub mod browser;
+#[path = "fileDialog.rs"]
+pub mod file_dialog;
 #[path = "petPointer.rs"]
 pub mod pet_pointer;
 pub mod profile;

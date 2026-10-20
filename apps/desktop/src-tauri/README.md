@@ -53,6 +53,7 @@ Command handlers live in `src/commands`. Their implementations use the correspon
 | Read Server connection information | `get_server_port`, `get_server_secret` |
 | Show or hide chat, exit, pin stage, control click-through | `open_main_window`, `hide_main_window`, `quit_app`, `set_always_on_top`, pointer and passthrough commands |
 | Read local image bytes for a draft preview or wallpaper upload; inspect attachment paths | `read_local_image`, `inspect_attachment_paths` |
+| Select paths for chat attachments, wallpapers, or character resources | `select_paths` |
 | Open a local path or enumerate fonts | `open_path`, `list_system_fonts` |
 | Create and control browser panels | Commands in `commands/browser.rs` |
 | Open, write, resize, and close PTY terminals | Commands in `commands/terminal.rs` |
@@ -60,6 +61,10 @@ Command handlers live in `src/commands`. Their implementations use the correspon
 Terminal shell candidates come from the Server's system API, not a Tauri command. `open_terminal` accepts a selected `shell: { kind, path }`, dimensions, a working directory, and an IPC Channel for output. Rust chooses launch arguments from `kind`. Archiving or deleting a session requests closure of its PTYs; ordinary session switching keeps them running. Application exit closes all PTYs.
 
 File drops use Tauri's WebView drag events. The frontend converts physical coordinates to page coordinates and checks the active page and target bounds. Visible Chat uses the middle chat area and the draft attachment flow. Wallpaper settings use the wallpaper card and the image upload API, whose Server implementation validates image content. Hidden Chat and other settings pages do not accept these drops. Sidebar session reordering is a separate page interaction.
+
+`select_paths` returns selected paths, or an empty array on cancellation. On Windows it opens the picker without an owner so the main window remains interactive. macOS and Linux retain the parent window. Only one picker through this entry may be pending; dropping the awaiting receiver does not release that slot before the native callback finishes. Working-directory, project, and Data backup dialogs keep their existing entry points.
+
+Callers retain the destination chosen when opening the picker. Chat appends to the originating Session's latest draft, but discards a late result after that draft enters submission. Reference-audio selection is ignored after its form closes, changes character, or submits. Wallpaper changes are queued only after an operation is requested, not while a picker waits; imports read current saved settings before merging new images.
 
 ## Exit and logs
 
@@ -78,5 +83,5 @@ cargo check --locked --manifest-path apps/desktop/src-tauri/Cargo.toml
 cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --lib
 ```
 
-The inline tests cover resource preparation and launch-log output and retention. They do not verify real WebView input, file dragging, browser visibility, or PTY interaction. Run `pnpm --filter @ema-agent/desktop tauri:dev` for those checks. Release preparation and installer commands are documented in the [Desktop README](../README.md).
+The Rust tests cover resource preparation, launch-log output and retention, and path-picker state. They do not verify real WebView input, native picker interaction, file dragging, browser visibility, or PTY interaction. Run `pnpm --filter @ema-agent/desktop tauri:dev` for those checks. Native window changes require restarting the host; frontend HMR is not sufficient. Release preparation and installer commands are documented in the [Desktop README](../README.md).
 

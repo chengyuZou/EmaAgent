@@ -7,6 +7,16 @@ use crate::desktop::windows::{
     show_window, stage_passthrough_enabled,
 };
 use crate::processes::DesktopProcesses;
+use crate::desktop::file_dialog::{FileDialogState, SelectPathsOptions};
+
+#[tauri::command]
+pub async fn select_paths(
+    window: tauri::Window,
+    state: tauri::State<'_, FileDialogState>,
+    options: SelectPathsOptions,
+) -> Result<Vec<String>, String> {
+    crate::desktop::file_dialog::select_paths(window, &state, options).await
+}
 
 #[tauri::command]
 pub fn set_always_on_top(window: tauri::Window, value: bool) -> Result<(), String> {

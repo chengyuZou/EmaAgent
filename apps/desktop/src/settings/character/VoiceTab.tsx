@@ -1,4 +1,4 @@
-import { useEffect, useState, type JSX } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type JSX } from 'react';
 import {
   Tooltip,
   Button, Dialog, DropdownMenu, IconButton, Input, ScrollArea, Select, Textarea,
@@ -192,9 +192,9 @@ function VoiceRow({ character, sample, index }: {
       icon: 'i-solar:download-minimalistic-bold-duotone',
       onSelect: () => {
         void (async () => {
-          const destination = await tauriBridge.openFileDialog({ directory: true });
-          if (!destination) return;
           try {
+            const [destination] = await tauriBridge.selectPaths({ directory: true });
+            if (!destination) return;
             await charactersApi.exportVoice(character.name, sample.name, destination);
             showToast('已导出', { variant: 'success' });
           } catch (error) {
@@ -327,9 +327,39 @@ function ImportVoiceDialog({ character, open, onOpenChange }: {
   const [promptText, setPromptText] = useState('');
   const [promptLang, setPromptLang] = useState('zh');
   const [saving, setSaving] = useState(false);
+  const pendingSelection = useRef<symbol | null>(null);
+
+  useLayoutEffect(() => () => {
+    pendingSelection.current = null;
+  }, [open, character.name]);
+
+  function changeOpen(next: boolean): void {
+    if (!next) pendingSelection.current = null;
+    onOpenChange(next);
+  }
+
+  async function selectAudio(): Promise<void> {
+    if (pendingSelection.current !== null) return;
+    const selection = Symbol();
+    pendingSelection.current = selection;
+    try {
+      const [source] = await tauriBridge.selectPaths({
+        title: `选择 ${character.name} 的参考音频`,
+        filters: [{ name: '音频', extensions: ['wav', 'mp3', 'flac', 'm4a', 'ogg'] }],
+      });
+      if (source && pendingSelection.current === selection) setSourceFile(source);
+    } catch (error) {
+      if (pendingSelection.current === selection) {
+        showToast(error instanceof Error ? error.message : String(error), { variant: 'danger' });
+      }
+    } finally {
+      if (pendingSelection.current === selection) pendingSelection.current = null;
+    }
+  }
 
   async function handleImport(): Promise<void> {
     if (!sourceFile || !promptText.trim()) return;
+    pendingSelection.current = null;
     setSaving(true);
     try {
       await store.importVoice(character.name, {
@@ -339,7 +369,7 @@ function ImportVoiceDialog({ character, open, onOpenChange }: {
       });
       showToast('已导入参考音频', { variant: 'success' });
       setSourceFile(''); setPromptText('');
-      onOpenChange(false);
+      changeOpen(false);
     } catch (error) {
       if (error instanceof ServerApiError && error.code === 'character_work_running') {
         showToast('当前角色有正在执行的任务,请先停止或等其结束后再导入', { variant: 'warning' });
@@ -354,7 +384,7 @@ function ImportVoiceDialog({ character, open, onOpenChange }: {
   return (
     <Dialog
       open={open}
-      onOpenChange={onOpenChange}
+      onOpenChange={changeOpen}
       title="导入参考音频"
       description="从本机选择音频文件;promptText/promptLang 是音色注册与克隆的事实输入,导入后不可改。"
       widthClass="max-w-md"
@@ -367,11 +397,7 @@ function ImportVoiceDialog({ character, open, onOpenChange }: {
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => {
-                void tauriBridge.openFileDialog({
-                  filters: [{ name: '音频', extensions: ['wav', 'mp3', 'flac', 'm4a', 'ogg'] }],
-                }).then(result => { if (result) setSourceFile(result); });
-              }}
+              onClick={() => void selectAudio()}
             >
               浏览
             </Button>
@@ -400,7 +426,7 @@ function ImportVoiceDialog({ character, open, onOpenChange }: {
           />
         </label>
         <div className="flex justify-end gap-2">
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>取消</Button>
+          <Button variant="ghost" onClick={() => changeOpen(false)}>取消</Button>
           <Button
             variant="primary"
             loading={saving}

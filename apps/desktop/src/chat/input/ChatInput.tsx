@@ -38,7 +38,7 @@ import {
   type SlashMenuHandle,
   type SlashSelection,
 } from './AddInputMenu.js';
-import { DraftReferenceList, useDraftAttachments } from './draftAttachments.js';
+import { DraftReferenceList, invalidateAttachmentSelections, useDraftAttachments } from './draftAttachments.js';
 import { draftFromSession, editChatDraft } from './editChatDraft.js';
 import { ModelPicker, useInputModel } from './controls/ModelPicker.js';
 import { InputGoalBar, useInputGoal } from './controls/goalBar.js';
@@ -180,7 +180,7 @@ export function ChatInput({
   } = useInputModel(viewedId, viewedSession, draft, patchCurrentDraft);
   const goal = useInputGoal(viewedId, draft.permissionMode, serverReady);
   const { creatingGoal, goalAvailable } = goal;
-  const { pickAttachments, handlePaste, removeReference } = useDraftAttachments(editCurrentDraft);
+  const { pickAttachments, handlePaste, removeReference } = useDraftAttachments(viewedId, editCurrentDraft);
   const options = useInputOptions(
     viewedId,
     draft,
@@ -290,6 +290,7 @@ export function ChatInput({
       return;
     }
     setSubmitting(true);
+    invalidateAttachmentSelections(viewedId);
     // 点击发送时先移走这份文字和胶囊. 创建 Session 与附件上传期间新输入仍留在草稿里.
     editCurrentDraft(current => ({ ...current, text: '', references: [] }));
     setSlashFilter(null);

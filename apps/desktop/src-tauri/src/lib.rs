@@ -7,6 +7,7 @@ mod processes;
 use tauri::{Manager, RunEvent};
 
 use commands::{
+    select_paths,
     inspect_attachment_paths,
     browser_back, browser_forward, close_browser, close_session_terminals, close_terminal,
     get_passthrough, get_server_port, get_server_secret, hide_main_window, list_system_fonts,
@@ -36,9 +37,11 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(processes)
+        .manage(desktop::file_dialog::FileDialogState::default())
         .manage(TerminalSessions::new())
         .manage(PetPointerTracking::default())
         .invoke_handler(tauri::generate_handler![
+            select_paths,
             inspect_attachment_paths,
             get_server_secret,
             get_server_port,

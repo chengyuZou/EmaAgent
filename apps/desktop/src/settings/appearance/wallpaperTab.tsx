@@ -1,5 +1,8 @@
 import { wallpaperSetting } from '@ema-agent/server/settings';
-import { useEffect, useLayoutEffect, useRef, useState, type JSX, type KeyboardEvent, type PointerEvent } from 'react';
+import {
+  useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore,
+  type JSX, type KeyboardEvent, type PointerEvent,
+} from 'react';
 import {
   Tooltip,
   Badge,
@@ -7,6 +10,7 @@ import {
   Callout,
   ConfirmDialog,
   FilePicker,
+  IconButton,
   PromptDialog,
   Switch,
   Tabs,
@@ -25,6 +29,31 @@ import { useFileDrop } from '../../lib/fileDrop.js';
 import { tauriBridge } from '../../lib/tauri/tauriBridge.js';
 
 const FILE_TYPES = WALLPAPER_IMAGE_EXTENSIONS.join(',');
+
+// 选择框返回后可能已是另一次页面挂载. 图库修改共用队列, 当前页面在操作结束后重新读取.
+let wallpaperOperations: Promise<void> = Promise.resolve();
+let pendingWallpaperOperations = 0;
+const wallpaperOperationListeners = new Set<() => void>();
+
+function subscribeWallpaperOperations(listener: () => void): () => void {
+  wallpaperOperationListeners.add(listener);
+  return () => { wallpaperOperationListeners.delete(listener); };
+}
+
+function wallpaperBusy(): boolean {
+  return pendingWallpaperOperations > 0;
+}
+
+function queueWallpaperOperation(action: () => Promise<void>): Promise<void> {
+  pendingWallpaperOperations += 1;
+  for (const listener of wallpaperOperationListeners) listener();
+  const operation = wallpaperOperations.then(action);
+  wallpaperOperations = operation.catch(() => undefined);
+  return operation.finally(() => {
+    pendingWallpaperOperations -= 1;
+    for (const listener of wallpaperOperationListeners) listener();
+  });
+}
 
 const MATERIAL_TABS = [
   { value: 'translucent', label: '通透', content: null },
@@ -47,15 +76,16 @@ export function WallpaperTab(): JSX.Element {
   const [opacity, setOpacity] = useState(35);
   const [blur, setBlur] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
+  const busy = useSyncExternalStore(subscribeWallpaperOperations, wallpaperBusy);
+  const [selecting, setSelecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [renameOpen, setRenameOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
   useEffect(() => {
+    if (busy) return;
     let mounted = true;
     setLoading(true);
-    setError(null);
     void Promise.all([
       wallpaperApi.listImages(),
       settingsApi.getValue(wallpaperSetting),
@@ -65,14 +95,17 @@ export function WallpaperTab(): JSX.Element {
       setItems(catalog.items);
       setSettings(value);
       const active = catalog.items.find(item => item.name === value.activeImage);
-      setSelectedName(active?.name ?? catalog.items[0]?.name ?? '');
+      setSelectedName(current => {
+        if (catalog.items.some(item => item.name === current)) return current;
+        return active?.name ?? catalog.items[0]?.name ?? '';
+      });
     }).catch(cause => {
       if (mounted) setError(errorText(cause, '壁纸图库读取失败'));
     }).finally(() => {
       if (mounted) setLoading(false);
     });
     return () => { mounted = false; };
-  }, []);
+  }, [busy]);
 
   useEffect(() => {
     const params = settings.images[selectedName] ?? DEFAULT_WALLPAPER_IMAGE_PARAMS;
@@ -95,17 +128,34 @@ export function WallpaperTab(): JSX.Element {
   }
 
   async function withBusy(action: () => Promise<void>, message: string): Promise<void> {
-    setBusy(true);
-    setError(null);
+    await queueWallpaperOperation(async () => {
+      setError(null);
+      try {
+        await action();
+        showToast(message, { variant: 'success' });
+      } catch (cause) {
+        const detail = errorText(cause, '壁纸操作失败');
+        setError(detail);
+        showToast(detail, { variant: 'danger' });
+      }
+    });
+  }
+
+  async function selectImages(): Promise<void> {
+    setSelecting(true);
     try {
-      await action();
-      showToast(message, { variant: 'success' });
+      const paths = await tauriBridge.selectPaths({
+        title: '导入壁纸',
+        multiple: true,
+        filters: [{ name: '壁纸图片', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
+      });
+      if (paths.length > 0) await importPaths(paths);
     } catch (cause) {
-      const detail = errorText(cause, '壁纸操作失败');
+      const detail = errorText(cause, '选择壁纸失败');
       setError(detail);
       showToast(detail, { variant: 'danger' });
     } finally {
-      setBusy(false);
+      setSelecting(false);
     }
   }
 
@@ -152,16 +202,17 @@ export function WallpaperTab(): JSX.Element {
     if (imported.length === 0) {
       throw new Error(`图片导入失败: ${failed.join(', ')}`);
     }
-    const images = { ...settings.images };
+    const { value: latest } = await settingsApi.getValue(wallpaperSetting);
+    const images = { ...latest.images };
     for (const image of imported) {
       images[image.name] = DEFAULT_WALLPAPER_IMAGE_PARAMS;
     }
-    const firstImport = settings.activeImage === '';
+    const firstImport = latest.activeImage === '';
     await saveSettings({
-      ...settings,
+      ...latest,
       images,
-      activeImage: firstImport ? imported[0]!.name : settings.activeImage,
-      enabled: firstImport ? true : settings.enabled,
+      activeImage: firstImport ? imported[0]!.name : latest.activeImage,
+      enabled: firstImport ? true : latest.enabled,
     });
     setSelectedName(imported[0]!.name);
     if (failed.length > 0) {
@@ -289,13 +340,19 @@ export function WallpaperTab(): JSX.Element {
         <FilePicker
           accept={FILE_TYPES}
           multiple
-          disabled={controlsDisabled}
+          disabled={controlsDisabled || selecting}
           onSelect={importFiles}
         >
           <Button
             icon="i-lucide:images"
             size="sm"
-            disabled={controlsDisabled}
+            disabled={controlsDisabled || selecting}
+            onClick={event => {
+              if (tauriBridge.isTauri()) {
+                event.preventDefault();
+                void selectImages();
+              }
+            }}
           >
             批量导入
           </Button>
@@ -335,7 +392,19 @@ export function WallpaperTab(): JSX.Element {
         </div>
       </div>
 
-      {error && <Callout variant="danger">{error}</Callout>}
+      {error && (
+        <Callout variant="danger">
+          <div className="flex items-center justify-between gap-3">
+            <span>{error}</span>
+            <IconButton
+              icon="i-lucide:x"
+              label="关闭壁纸错误提示"
+              size="sm"
+              onClick={() => setError(null)}
+            />
+          </div>
+        </Callout>
+      )}
       {loading && items.length === 0 && (
         <div className="flex h-48 items-center justify-center text-sm text-[var(--ema-text-tertiary)]">读取图库中...</div>
       )}

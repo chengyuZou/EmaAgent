@@ -2,6 +2,7 @@
 import { act, type JSX } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { TooltipProvider } from '@ema-agent/ui';
 import { useAttachmentDrop } from '../src/chat/input/attachmentDrop.js';
 import { MainView, useMainNavigationStore } from '../src/layout/navigation.js';
 import { WallpaperTab } from '../src/settings/appearance/wallpaperTab.js';
@@ -18,6 +19,9 @@ const boundary = vi.hoisted(() => ({
   upload: vi.fn(),
   listImages: vi.fn(),
   saveSettings: vi.fn(),
+  getSettings: vi.fn(),
+  isTauri: vi.fn(),
+  selectPaths: vi.fn(),
 }));
 
 vi.mock('../src/lib/tauri/tauriBridge.js', () => {
@@ -30,6 +34,8 @@ vi.mock('../src/lib/tauri/tauriBridge.js', () => {
       listenFileDrag: listen,
       inspectAttachmentPaths: boundary.inspect,
       readLocalImage: boundary.readImage,
+      isTauri: boundary.isTauri,
+      selectPaths: boundary.selectPaths,
     },
   };
 });
@@ -48,7 +54,7 @@ vi.mock('../src/api/wallpaper.js', () => ({
 }));
 vi.mock('../src/api/settings.js', () => ({
   settingsApi: {
-    getValue: async () => ({ value: DEFAULT_WALLPAPER_SETTINGS }),
+    getValue: boundary.getSettings,
     putValue: boundary.saveSettings,
   },
 }));
@@ -56,6 +62,7 @@ vi.mock('../src/lib/images/serverImage.js', () => ({ ServerImage: () => null }))
 
 let root: Root;
 let host: HTMLDivElement;
+let savedSettings = DEFAULT_WALLPAPER_SETTINGS;
 
 function ChatDrop({ sessionId = null }: { sessionId?: string | null }): JSX.Element {
   const { dropAreaRef, overlayWidth } = useAttachmentDrop(sessionId);
@@ -80,8 +87,15 @@ beforeEach(() => {
   boundary.inspect.mockResolvedValue({ files: ['C:/wallpaper.png'], rejected: [] });
   boundary.listImages.mockResolvedValue({ items: [] });
   boundary.readImage.mockResolvedValue([137, 80, 78, 71]);
+  boundary.isTauri.mockReturnValue(false);
+  boundary.selectPaths.mockResolvedValue([]);
   boundary.upload.mockResolvedValue({ name: 'wallpaper.png', size: 4, modifiedAt: 1 });
-  boundary.saveSettings.mockImplementation(async (_key, value) => ({ value }));
+  savedSettings = { ...DEFAULT_WALLPAPER_SETTINGS, images: {} };
+  boundary.getSettings.mockImplementation(async () => ({ value: savedSettings }));
+  boundary.saveSettings.mockImplementation(async (_key, value) => {
+    savedSettings = value;
+    return { value };
+  });
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
     return {
       left: 200, top: 50, right: this.hasAttribute('data-ema-chat-column') ? 900 : 1400,
@@ -166,5 +180,192 @@ describe('native chat file drops', () => {
     await drop();
     expect(boundary.readImage).not.toHaveBeenCalled();
     expect(boundary.edit).not.toHaveBeenCalled();
+  });
+});
+
+describe('wallpaper drops after file selection', () => {
+  async function renderWallpaper(): Promise<void> {
+    useMainNavigationStore.getState().setSettingsTab('appearance-wallpapers');
+    await act(async () => root.render(
+      <TooltipProvider>
+        <WallpaperTab />
+      </TooltipProvider>,
+    ));
+  }
+
+  function importButton(): HTMLButtonElement {
+    return Array.from(host.querySelectorAll('button'))
+      .find(button => button.textContent === '批量导入')!;
+  }
+
+  async function selectFiles(files: File[]): Promise<void> {
+    const input = host.querySelector<HTMLInputElement>('input[type="file"]')!;
+    Object.defineProperty(input, 'files', { configurable: true, value: files });
+    await act(async () => {
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+  }
+
+  async function enterDropArea(): Promise<void> {
+    await act(async () => {
+      for (const listener of boundary.listeners) {
+        listener({ type: 'enter', x: 500, y: 300 });
+      }
+    });
+    expect(host.querySelector('[data-file-drop-target]')?.getAttribute('data-drag-active'))
+      .toBe('true');
+  }
+
+  it('keeps highlighting and accepting drops after opening and cancelling the file picker', async () => {
+    const openPicker = vi.spyOn(HTMLInputElement.prototype, 'click')
+      .mockImplementation(() => undefined);
+    await renderWallpaper();
+
+    await act(async () => importButton().click());
+    expect(openPicker).toHaveBeenCalledOnce();
+    const input = host.querySelector<HTMLInputElement>('input[type="file"]')!;
+    await act(async () => {
+      input.dispatchEvent(new Event('cancel', { bubbles: true }));
+    });
+
+    expect(importButton().disabled).toBe(false);
+    await enterDropArea();
+    await drop();
+    expect(boundary.readImage).toHaveBeenCalledWith('C:/wallpaper.png');
+    expect(boundary.upload).toHaveBeenCalledOnce();
+  });
+
+  it('accepts another drop after importing a selected file and displaying its preview', async () => {
+    await renderWallpaper();
+    const image = { name: 'selected.png', size: 4, modifiedAt: 1 };
+    boundary.upload.mockResolvedValueOnce(image);
+    boundary.listImages.mockResolvedValue({ items: [image] });
+
+    await selectFiles([new File(['image'], 'selected.png', { type: 'image/png' })]);
+
+    expect(host.textContent).toContain('图库 · 1 张');
+    expect(importButton().disabled).toBe(false);
+    await enterDropArea();
+    await drop();
+    expect(boundary.readImage).toHaveBeenCalledWith('C:/wallpaper.png');
+    expect(boundary.upload).toHaveBeenCalledTimes(2);
+  });
+
+  it('highlights and imports when the gallery already contains an image on entry', async () => {
+    boundary.listImages.mockResolvedValue({
+      items: [{ name: 'existing.png', size: 4, modifiedAt: 1 }],
+    });
+    await renderWallpaper();
+
+    expect(host.textContent).toContain('图库 · 1 张');
+    await enterDropArea();
+    await drop();
+    expect(boundary.readImage).toHaveBeenCalledWith('C:/wallpaper.png');
+    expect(boundary.upload).toHaveBeenCalledOnce();
+  });
+
+  it('resumes drops after a selected file fails to upload', async () => {
+    await renderWallpaper();
+    boundary.upload.mockRejectedValueOnce(new Error('Upload failed'));
+
+    await selectFiles([new File(['image'], 'failed.png', { type: 'image/png' })]);
+
+    expect(host.textContent).toContain('图片导入失败: failed.png');
+    expect(importButton().disabled).toBe(false);
+    await enterDropArea();
+    await drop();
+    expect(boundary.readImage).toHaveBeenCalledWith('C:/wallpaper.png');
+    expect(boundary.upload).toHaveBeenCalledTimes(2);
+  });
+
+  it('pauses drops only while the selected file import is still pending', async () => {
+    await renderWallpaper();
+    let finishUpload!: (image: { name: string; size: number; modifiedAt: number }) => void;
+    boundary.upload.mockReturnValueOnce(new Promise(resolve => { finishUpload = resolve; }));
+
+    await selectFiles([new File(['image'], 'pending.png', { type: 'image/png' })]);
+
+    expect(importButton().disabled).toBe(true);
+    expect(boundary.listeners.size).toBe(0);
+    await drop();
+    expect(boundary.readImage).not.toHaveBeenCalled();
+
+    await act(async () => finishUpload({ name: 'pending.png', size: 4, modifiedAt: 1 }));
+
+    expect(importButton().disabled).toBe(false);
+    await enterDropArea();
+    await drop();
+    expect(boundary.readImage).toHaveBeenCalledWith('C:/wallpaper.png');
+    expect(boundary.upload).toHaveBeenCalledTimes(2);
+  });
+
+  it('accepts drops while the native picker waits and serializes the later selection', async () => {
+    boundary.isTauri.mockReturnValue(true);
+    let select!: (paths: string[]) => void;
+    let finishUpload!: (image: { name: string; size: number; modifiedAt: number }) => void;
+    boundary.selectPaths.mockReturnValueOnce(new Promise(resolve => { select = resolve; }));
+    boundary.upload.mockReturnValueOnce(new Promise(resolve => { finishUpload = resolve; }));
+    boundary.upload.mockResolvedValueOnce({ name: 'selected.png', size: 4, modifiedAt: 2 });
+    await renderWallpaper();
+
+    await act(async () => importButton().click());
+    expect(boundary.selectPaths).toHaveBeenCalledOnce();
+    await enterDropArea();
+    await drop(['C:/dropped.png']);
+    await act(async () => select(['C:/selected.png']));
+    expect(boundary.upload).toHaveBeenCalledOnce();
+    expect(boundary.readImage).toHaveBeenCalledTimes(1);
+
+    await act(async () => finishUpload({ name: 'dropped.png', size: 4, modifiedAt: 1 }));
+    expect(boundary.upload).toHaveBeenCalledTimes(2);
+    expect(Object.keys(savedSettings.images)).toEqual(['dropped.png', 'selected.png']);
+    expect(savedSettings.activeImage).toBe('dropped.png');
+  });
+
+  it('reads current configuration when an old picker returns after the page remounts', async () => {
+    boundary.isTauri.mockReturnValue(true);
+    let select!: (paths: string[]) => void;
+    boundary.selectPaths.mockReturnValueOnce(new Promise(resolve => { select = resolve; }));
+    await renderWallpaper();
+    await act(async () => importButton().click());
+    await act(async () => root.render(null));
+    savedSettings = {
+      ...savedSettings,
+      enabled: false,
+      activeImage: 'existing.png',
+      materialMode: 'frosted',
+      images: { 'existing.png': { opacity: 0.61, blur: 9 } },
+    };
+    await renderWallpaper();
+    boundary.listImages.mockResolvedValue({ items: [
+      { name: 'existing.png', size: 4, modifiedAt: 1 },
+      { name: 'wallpaper.png', size: 4, modifiedAt: 2 },
+    ] });
+
+    await act(async () => select(['C:/wallpaper.png']));
+
+    expect(savedSettings).toMatchObject({
+      enabled: false,
+      activeImage: 'existing.png',
+      materialMode: 'frosted',
+      images: { 'existing.png': { opacity: 0.61, blur: 9 } },
+    });
+    expect(savedSettings.images['wallpaper.png']).toBeDefined();
+    expect(host.textContent).toContain('图库 · 2 张');
+  });
+
+  it('keeps drops available after native selection cancellation or failure and dismisses errors', async () => {
+    boundary.isTauri.mockReturnValue(true);
+    await renderWallpaper();
+    await act(async () => importButton().click());
+    expect(boundary.upload).not.toHaveBeenCalled();
+    boundary.selectPaths.mockRejectedValueOnce(new Error('Selection failed'));
+    await act(async () => importButton().click());
+    expect(host.textContent).toContain('Selection failed');
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="关闭壁纸错误提示"]')!.click());
+    expect(host.textContent).not.toContain('Selection failed');
+    await enterDropArea();
+    await drop();
+    expect(boundary.upload).toHaveBeenCalledOnce();
   });
 });

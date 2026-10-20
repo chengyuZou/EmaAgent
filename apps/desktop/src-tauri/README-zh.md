@@ -53,6 +53,7 @@ Server 自行选择本机端口. 宿主最多等待 120 秒收到就绪通知, �
 | 读取 Server 连接信息 | `get_server_port`, `get_server_secret` |
 | 显隐聊天, 退出, 舞台置顶和点击穿透 | `open_main_window`, `hide_main_window`, `quit_app`, `set_always_on_top`, 鼠标与穿透命令 |
 | 读取本地图片字节用于草稿预览或壁纸上传; 检查附件路径 | `read_local_image`, `inspect_attachment_paths` |
+| 选择聊天附件, 壁纸或角色资源路径 | `select_paths` |
 | 打开本机路径和枚举字体 | `open_path`, `list_system_fonts` |
 | 创建和控制浏览器面板 | `commands/browser.rs` 中的命令 |
 | 打开, 写入, 调整和关闭 PTY 终端 | `commands/terminal.rs` 中的命令 |
@@ -60,6 +61,10 @@ Server 自行选择本机端口. 宿主最多等待 120 秒收到就绪通知, �
 终端的 Shell 候选由 Server 的 System API 探测, 不是 Tauri 命令. `open_terminal` 接收选中的 `shell: { kind, path }`, 终端尺寸, 工作目录和输出用的 IPC Channel. Rust 根据 `kind` 决定启动参数. 归档或删除会话会请求关闭它的 PTY, 普通切换会话则保留运行. 退出应用会关闭全部 PTY.
 
 文件拖入使用 Tauri 的 WebView 拖放事件. 前端先把物理坐标换成页面坐标, 再检查当前页面和目标区域. 可见 Chat 的中间聊天区走草稿附件流程, 壁纸设置卡片走图片上传接口并由 Server 检查图片内容. 隐藏的 Chat 和其他设置页面不接收这些拖放. 侧栏 Session 排序是另一套页面交互.
+
+`select_paths` 返回选中的路径, 取消时返回空数组. Windows 上不为选择框设置 owner, 让主窗口保持可交互; macOS 和 Linux 保留父窗口. 此入口同时只允许一个选择框等待结果, 即使等待结果的一方已释放, 也要等原生回调结束才能再次打开. 工作目录, 项目和 Data 备份选择框保持原入口.
+
+调用方保留打开选择框时的目标. 聊天附件追加到原 Session 的最新草稿, 但原草稿进入提交后返回的选择结果会被丢弃. 参考音频表单关闭, 更换角色或提交后, 忽略之前尚未返回的选择. 壁纸只对实际操作排队, 不把等待选择框的时间算入队列; 导入时读取当前已保存的配置再合并图片.
 
 ## 退出与日志
 
@@ -78,4 +83,4 @@ cargo check --locked --manifest-path apps/desktop/src-tauri/Cargo.toml
 cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --lib
 ```
 
-现有内联测试覆盖资源准备, 启动日志内容和过期日志清理. 它们不能代替真实 WebView 输入, 文件拖入, 浏览器显隐和 PTY 交互验收. 这些操作用 `pnpm --filter @ema-agent/desktop tauri:dev` 检查. 发布准备和安装包命令见 [Desktop README](../README.md).
+Rust 测试覆盖资源准备, 启动日志内容和过期日志清理, 以及路径选择状态. 它们不能代替真实 WebView 输入, 原生选择框交互, 文件拖入, 浏览器显隐和 PTY 交互验收. 这些操作用 `pnpm --filter @ema-agent/desktop tauri:dev` 检查. 原生窗口行为改动需要重启宿主, 只靠前端 HMR 不会生效. 发布准备和安装包命令见 [Desktop README](../README.md).

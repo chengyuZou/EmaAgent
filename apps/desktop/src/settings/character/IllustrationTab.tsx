@@ -26,12 +26,14 @@ export function IllustrationTab({ character }: { character: Character }): JSX.El
   const store = useCharacterStore();
 
   async function handleImport(): Promise<void> {
-    const sources = await tauriBridge.openFileDialogMultiple({
-      filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
-    });
-    if (sources.length === 0) return;
-    setImporting(true);
     try {
+      const sources = await tauriBridge.selectPaths({
+        title: `导入 ${character.name} 的插图`,
+        multiple: true,
+        filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
+      });
+      if (sources.length === 0) return;
+      setImporting(true);
       for (const sourceFile of sources) {
         await store.importIllustration(character.name, { sourceFile });
       }
@@ -123,9 +125,9 @@ function IllustrationCard({
       icon: 'i-solar:download-minimalistic-bold-duotone',
       onSelect: () => {
         void (async () => {
-          const destination = await tauriBridge.openFileDialog({ directory: true });
-          if (!destination) return;
           try {
+            const [destination] = await tauriBridge.selectPaths({ directory: true });
+            if (!destination) return;
             await charactersApi.exportIllustration(character.name, item.name, destination);
             showToast('已导出', { variant: 'success' });
           } catch (error) {

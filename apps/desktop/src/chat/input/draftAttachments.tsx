@@ -5,6 +5,21 @@ import { tauriBridge } from '../../lib/tauri/tauriBridge.js';
 import { ImagePreview } from '../../lib/images/imagePreview.js';
 import { AttachmentImagePreview } from '../../lib/images/attachmentImagePreview.js';
 import { Tooltip } from '@ema-agent/ui';
+import { showToast } from '../../lib/notifications/toast.js';
+
+interface AttachmentSelection {
+  readonly sessionId: string | null;
+  valid: boolean;
+}
+
+// 选择框可以跨页面存活. 提交原草稿时使其失效, 切换页面本身不取消选择.
+const attachmentSelections = new Set<AttachmentSelection>();
+
+export function invalidateAttachmentSelections(sessionId: string | null): void {
+  for (const selection of attachmentSelections) {
+    if (selection.sessionId === sessionId) selection.valid = false;
+  }
+}
 
 interface DraftReferenceListProps {
   readonly sessionId: string | null;
@@ -145,7 +160,10 @@ export function appendAttachmentPaths(
   };
 }
 
-export function useDraftAttachments(editCurrentDraft: (edit: (current: ChatDraft) => ChatDraft) => void) {
+export function useDraftAttachments(
+  sessionId: string | null,
+  editCurrentDraft: (edit: (current: ChatDraft) => ChatDraft) => void,
+) {
   function appendReferences(items: readonly ChatDraftReference[]): void {
     editCurrentDraft(current => ({
       ...current,
@@ -161,8 +179,18 @@ export function useDraftAttachments(editCurrentDraft: (edit: (current: ChatDraft
   }, [editCurrentDraft]);
 
   async function pickAttachments(): Promise<void> {
-    const paths = await tauriBridge.openFileDialogMultiple();
-    editCurrentDraft(current => appendAttachmentPaths(current, paths));
+    const selection: AttachmentSelection = { sessionId, valid: true };
+    attachmentSelections.add(selection);
+    try {
+      const paths = await tauriBridge.selectPaths({ multiple: true, title: '添加附件' });
+      if (selection.valid && paths.length > 0) {
+        editCurrentDraft(current => appendAttachmentPaths(current, paths));
+      }
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : String(error), { variant: 'danger' });
+    } finally {
+      attachmentSelections.delete(selection);
+    }
   }
 
   function handlePaste(event: ReactClipboardEvent<HTMLTextAreaElement>): void {

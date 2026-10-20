@@ -2,6 +2,16 @@ import type { PermissionRequiredEvent } from '@ema-agent/permission';
 import type { AskUserRequiredEvent } from '@ema-agent/tools';
 import type { EventDisplayTable } from '../../api/settings.js';
 
+export interface SelectPathsOptions {
+  readonly title?: string;
+  readonly directory?: boolean;
+  readonly multiple?: boolean;
+  readonly filters?: readonly {
+    readonly name: string;
+    readonly extensions: readonly string[];
+  }[];
+}
+
 export type PetPointerEvent =
   | { readonly type: 'position'; readonly clientX: number; readonly clientY: number; readonly inside: boolean }
   | { readonly type: 'error'; readonly message: string };

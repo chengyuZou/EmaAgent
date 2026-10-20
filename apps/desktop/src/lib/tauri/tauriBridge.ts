@@ -10,6 +10,7 @@ import type {
   Live2dPreviewCommand,
   OpenTerminalInput,
   PetPointerEvent,
+  SelectPathsOptions,
   TerminalEvent,
 } from './types.js';
 
@@ -408,6 +409,17 @@ export const tauriBridge = {
   /** 本机字体每次运行只枚举一次; 取不到时返回空数组, 页面仍可显示内置推荐项. */
   async listSystemFonts(): Promise<string[]> {
     return (await invokeTauri<string[]>('list_system_fonts')) ?? [];
+  },
+
+  // 此入口在 Windows 上不禁用主窗口. 返回结果的业务归属由发起方保留.
+  async selectPaths(options: SelectPathsOptions = {}): Promise<string[]> {
+    const core = await getCore();
+    if (!core) throw new Error('请在桌面窗口中选择本机文件');
+    try {
+      return await core.invoke<string[]>('select_paths', { options });
+    } catch (cause) {
+      throw cause instanceof Error ? cause : new Error(String(cause));
+    }
   },
 
   async saveFileDialog(opts = {}): Promise<string | null> {

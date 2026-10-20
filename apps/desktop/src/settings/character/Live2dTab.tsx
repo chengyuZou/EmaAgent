@@ -242,9 +242,9 @@ function ModelCard({
 }
 
 async function exportLive2d(characterName: string, live2dName: string): Promise<void> {
-  const destination = await tauriBridge.openFileDialog({ directory: true });
-  if (!destination) return;
   try {
+    const [destination] = await tauriBridge.selectPaths({ directory: true });
+    if (!destination) return;
     await charactersApi.exportLive2d(characterName, live2dName, destination);
     showToast('已导出', { variant: 'success' });
   } catch (error) {
@@ -329,15 +329,23 @@ function ImportMenu({ character }: { character: Character }): JSX.Element {
 }
 
 async function selectLive2dArchive(importModel: (source: string) => Promise<void>): Promise<void> {
-  const source = await tauriBridge.openFileDialog({
-    filters: [{ name: 'Live2D ZIP', extensions: ['zip'] }],
-  });
-  if (source) await importModel(source);
+  try {
+    const [source] = await tauriBridge.selectPaths({
+      filters: [{ name: 'Live2D ZIP', extensions: ['zip'] }],
+    });
+    if (source) await importModel(source);
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : String(error), { variant: 'danger' });
+  }
 }
 
 async function selectLive2dDirectory(importModel: (source: string) => Promise<void>): Promise<void> {
-  const source = await tauriBridge.openFileDialog({ directory: true });
-  if (source) await importModel(source);
+  try {
+    const [source] = await tauriBridge.selectPaths({ directory: true });
+    if (source) await importModel(source);
+  } catch (error) {
+    showToast(error instanceof Error ? error.message : String(error), { variant: 'danger' });
+  }
 }
 
 function formatBytes(bytes: number | null): string {

@@ -9,6 +9,7 @@ pub use browser::{
     set_browser_bounds, set_browser_visible,
 };
 pub use desktop::{
+    select_paths,
     inspect_attachment_paths,
     get_passthrough, hide_main_window, open_main_window, open_path, quit_app, read_local_image,
     set_always_on_top, set_passthrough, set_passthrough_controls_hovered,
