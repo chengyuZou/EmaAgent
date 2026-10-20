@@ -79,7 +79,11 @@ for await (const event of callLLM(request)) {
 
 切换模型后, 助手正文和工具调用仍会保留. 只有 `generatedBy.providerId`, `modelId` 和 `protocol` 与当前目标一致时, 才回传原生思考状态, 包括 Anthropic 签名, Responses reasoning item 和 Gemini thought signature. `cacheBreakpoint` 转换成 Anthropic 缓存标记, 其他协议忽略它.
 
-`thinking.enabled: 'auto'` 保留供应商默认行为. OpenAI 直接接收思考强度名称. Anthropic 和 Gemini 在各自协议文件中将强度换算为 Token 预算, 不代表不同供应商的思考能力等效. 开启 Anthropic 思考时, 输出预算还必须容纳其最低思考预算.
+`thinking.enabled: 'auto'` 保留供应商默认的思考开关. Anthropic 和 Gemini 在各自协议文件中将强度换算为 Token 预算, 不代表不同供应商的思考能力等效. 开启 Anthropic 思考时, 输出预算还必须容纳其最低思考预算.
+
+公共请求只保留 `thinking.enabled` 和 `thinking.effort`. Chat Completions 先生成原有的 `thinking` / `reasoning_effort`, 再由 `protocols/openAiChat.ts` 内部私有函数转换已经确认的供应商差异. 官方 `api.siliconflow.cn` 和 `api.siliconflow.com` 地址接收从 `thinking.type` 拆出的 `enable_thinking`, 不同时发送 `thinking`. 这个 HTTP 字段不是公共请求或配置选项. SiliconFlow 只对该函数列出的模型 ID 发送 `high` 或 `max` 强度, 不为其他模型猜测 Token 预算. 其他地址保留原有 Chat 映射. 自定义 Provider ID 使用 SiliconFlow 官方地址时同样生效, 任意网关不按显示名猜测供应商. 依据见 [SiliconFlow 请求字段](https://docs.siliconflow.cn/docs/api/chat-completions-post)和 [DeepSeek 思考字段](https://api-docs.deepseek.com/guides/thinking_mode/).
+
+`maxOutputTokens` 是调用方指定的本次请求预算, 不是直接使用模型完整输出容量. 非流式 Anthropic 请求的预算过大时, SDK 可能在 HTTP 发送前拒绝请求. Narrative 宿主固定传入 8192, 继续使用原生非流式完成接口.
 
 ## 事件, 用量和失败
 

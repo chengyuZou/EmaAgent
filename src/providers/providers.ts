@@ -58,7 +58,8 @@ export interface ProviderCapabilityInput {
   baseUrl?: string;
   /** true 激活传入的协议, false 停用能力. 省略时仅在能力未启用的情况下激活传入协议. */
   active?: boolean;
-  modelsDevId?: string;
+  /** null 清除目录关联, undefined 保留现值. 不改变已导入的模型和绑定. */
+  modelsDevId?: string | null;
   /** 删除当前协议后切换到剩余第一项, 删除全部协议会报错. */
   removedProtocols?: readonly Protocol[];
 }
@@ -136,6 +137,7 @@ export class Providers {
       capabilities: [{
         capability: input.capability.capability,
         activeProtocol: protocol.protocol,
+        modelsDevId: normalizeModelsDevId(input.capability.modelsDevId),
         protocols: [protocol],
       }],
     });
@@ -185,7 +187,9 @@ export class Providers {
         {
           capability: requested.capability,
           ...(activeProtocol !== undefined ? { activeProtocol } : {}),
-          modelsDevId: requested.modelsDevId ?? current?.modelsDevId,
+          modelsDevId: requested.modelsDevId === undefined
+            ? current?.modelsDevId
+            : normalizeModelsDevId(requested.modelsDevId),
           protocols,
         },
       ];
@@ -386,6 +390,13 @@ function normalizeKeyValue(value: string): string {
   if (normalized.length > PROVIDER_LIMITS.apiKeyChars) {
     throw invalid('Provider API Key 过长');
   }
+  return normalized;
+}
+
+function normalizeModelsDevId(value: string | null | undefined): string | undefined {
+  const normalized = value?.trim();
+  if (!normalized) return undefined;
+  assertValidId(normalized);
   return normalized;
 }
 

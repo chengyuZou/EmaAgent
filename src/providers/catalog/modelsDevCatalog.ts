@@ -83,6 +83,10 @@ export class ModelsDevCatalog {
     return this.index.get(modelsDevId)?.get(modelId);
   }
 
+  hasProvider(modelsDevId: string): boolean {
+    return this.index.has(modelsDevId);
+  }
+
   /** 输出包含 text 或目录未声明输出类型的模型. */
   listLLMModelIds(modelsDevId: string): string[] {
     const map = this.index.get(modelsDevId);

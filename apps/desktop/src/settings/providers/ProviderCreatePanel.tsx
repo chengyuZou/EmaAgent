@@ -34,10 +34,12 @@ export function ProviderCreatePanel({ capability, label, onCancel, onCreated }: 
   const [authType, setAuthType] = useState<'bearer' | 'none'>('bearer');
   const [protocol, setProtocol] = useState<Protocol>(() => protocolsOf(capability)[0]!);
   const [baseUrl, setBaseUrl] = useState('');
+  const [modelsDevId, setModelsDevId] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   const requiresKey = authType === 'bearer';
+  const usesCatalog = capability === 'llm' || capability === 'vision';
   const idValid = /^[a-z0-9][a-z0-9-_]{0,63}$/i.test(id.trim());
   const iconIdTrimmed = iconId.trim();
   const iconIdValid = iconIdTrimmed === '' || PROVIDER_ICON_ID_PATTERN.test(iconIdTrimmed);
@@ -63,6 +65,7 @@ export function ProviderCreatePanel({ capability, label, onCancel, onCreated }: 
           capability,
           protocol: protocol as Protocol,
           baseUrl: baseUrl.trim(),
+          ...(usesCatalog && modelsDevId.trim() ? { modelsDevId: modelsDevId.trim() } : {}),
         },
       });
       showToast('已创建', { variant: 'success' });
@@ -91,8 +94,8 @@ export function ProviderCreatePanel({ capability, label, onCancel, onCreated }: 
         <Field
           label="Provider ID"
           required
-          description="语义 ID(如 company-gateway),创建后不可改. 绑定, 模型与选择器都以它显示。"
-          error={id.trim() && !idValid ? '只能包含字母、数字、中划线、下划线，且不超过 64 字符' : undefined}
+          description="语义 ID(如 company-gateway),创建后不可改. 绑定, 模型与选择器都以它显示."
+          error={id.trim() && !idValid ? '只能包含字母, 数字, 中划线, 下划线, 且不超过 64 字符' : undefined}
         >
           <Input
             placeholder="company-gateway"
@@ -113,7 +116,7 @@ export function ProviderCreatePanel({ capability, label, onCancel, onCreated }: 
 
         <Field
           label="图标(可空)"
-          description="lobe-icons 类名，如 i-lobe-icons:qwen; 留空用默认图标。不支持 emoji"
+          description="lobe-icons 类名, 如 i-lobe-icons:qwen; 留空用默认图标. 不支持 emoji"
           error={iconIdTrimmed && !iconIdValid ? '仅支持 uno 图标类名(i-xxx:yyy 形态)' : undefined}
         >
           <Input
@@ -130,7 +133,7 @@ export function ProviderCreatePanel({ capability, label, onCancel, onCreated }: 
             onChange={(value) => setAuthType(value as 'bearer' | 'none')}
             options={[
               { value: 'bearer', label: '需要 API Key(Bearer)' },
-              { value: 'none', label: '无需密钥（本地服务）' },
+              { value: 'none', label: '无需密钥(本地服务)' },
             ]}
           />
         </Field>
@@ -162,6 +165,20 @@ export function ProviderCreatePanel({ capability, label, onCancel, onCreated }: 
             onChange={(e) => setBaseUrl(e.target.value)}
           />
         </Field>
+
+        {usesCatalog && (
+          <Field
+            label="models.dev ID (可空)"
+            description="用于同步模型目录, 独立于 Provider ID 和 API 地址. 国内站例如 siliconflow-cn 或 moonshotai-cn. 留空时手动添加模型."
+          >
+            <Input
+              placeholder="siliconflow-cn"
+              value={modelsDevId}
+              maxLength={PROVIDER_LIMITS.idChars}
+              onChange={(e) => setModelsDevId(e.target.value)}
+            />
+          </Field>
+        )}
 
         {requiresKey && (
           <Field label="API 密钥" required>

@@ -261,10 +261,11 @@ interface STTReference {
   promptText: string;
 }
 
-export function ProviderModelManager({ providerId, capability, iconKey }: {
+export function ProviderModelManager({ providerId, capability, iconKey, modelsDevId }: {
   providerId: string;
   capability: ModelCapability;
   iconKey?: string;
+  modelsDevId?: string;
 }): JSX.Element {
   const meta = CAPABILITY_META[capability];
   const [models, setModels]   = useState<ProviderModelRecord[]>([]);
@@ -331,7 +332,6 @@ export function ProviderModelManager({ providerId, capability, iconKey }: {
 
   const load = useCallback(async (): Promise<boolean> => {
     const request = ++loadRequest.current;
-    setLoading(true);
     setError(null);
     try {
       const rows = await providersApi.listModels(providerId);
@@ -347,6 +347,9 @@ export function ProviderModelManager({ providerId, capability, iconKey }: {
   }, [providerId, capability]);
 
   useEffect(() => {
+    // 切换供应商时清空旧列表. 同一列表的后台重读保留卡片和阅读位置.
+    setLoading(true);
+    setModels([]);
     void load();
     return () => {
       loadRequest.current += 1;
@@ -573,10 +576,23 @@ export function ProviderModelManager({ providerId, capability, iconKey }: {
             <p className="text-xs text-[var(--ema-text-tertiary)] mt-0.5">{meta.hint}</p>
           )}
         </div>
-        <Button variant="ghost" size="sm" aria-label="刷新模型列表" onClick={() => void refresh()} disabled={refreshing || loading} loading={refreshing}>
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label="刷新模型列表"
+          onClick={() => void refresh()}
+          disabled={refreshing || loading || (canRefresh && !modelsDevId)}
+          loading={refreshing}
+        >
           <span className="i-mdi:refresh text-base" aria-hidden />
         </Button>
       </div>
+
+      {canRefresh && !modelsDevId && (
+        <p className="text-xs text-[var(--ema-text-tertiary)]">
+          未关联 models.dev 目录. 可以手动添加模型, 或在高级配置中填写 models.dev ID 后刷新.
+        </p>
+      )}
 
       {capability === 'llm' && (
         <div className="relative">

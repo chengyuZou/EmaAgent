@@ -91,7 +91,8 @@ function probeErrorMessage(error: unknown): string {
   return raw;
 }
 
-/** Ping 主体:池内第一行;llm/vision 池空时用目录第一个模型 id(不落行,纯连通性验证).
+/** Ping 优先使用池内第一个启用模型, 全部禁用时使用第一行.
+ * llm/vision 池空时用目录第一个模型 id(不落行, 纯连通性验证).
  * embed/rerank 无目录覆盖:池空必须手填,如实 no_model.
  */
 function firstPingSubject(
@@ -99,8 +100,9 @@ function firstPingSubject(
   providerId: string,
   capability: ProbeCapability,
 ): string | undefined {
-  const row = deps.providerModels.listByProvider(providerId, capability)[0]?.modelId;
-  if (row) return row;
+  const rows = deps.providerModels.listByProvider(providerId, capability);
+  const row = rows.find(model => model.enabled) ?? rows[0];
+  if (row) return row.modelId;
   if (capability !== 'llm' && capability !== 'vision') return undefined;
   const modelsDevId = deps.providers.get(providerId).capabilities
     .find(c => c.capability === capability)?.modelsDevId;

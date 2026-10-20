@@ -66,7 +66,11 @@ fork 前缀消息的 `run_id` 为 null, 保留原始生成来源. 子 Agent 自�
 
 ## 数据迁移
 
-Profile 与 Data 分别用自己的 `001_initial.sql` 初始化, 数据库初始版本均为 1. 应用的 `0.1.0` 等版本号不决定数据库版本. 已发布的迁移文件不再修改; 后续变化依次追加 `002_<change>.sql`, `003_<change>.sql`. 两种数据库从 `migrations/profile` 与 `migrations/data` 读取连续编号的 SQL. 每次迁移和 `user_version` 更新处于同一事务. 已执行的版本会跳过, 只执行后面的文件. 失败只回滚本文件的 SQL 和版本更新, 不撤销此前已提交的迁移或其他数据库文件的变化. 编号缺失或数据库版本比当前文件更新时直接报错. 不执行自动降级; 撤回发布时需要匹配的应用及升级前的完整备份. 标有 `-- ema:migration foreign_keys=off` 的迁移在事务外临时关闭外键, 提交前检查关联关系.
+Profile 与 Data 分别通过各自唯一的 `001_initial.sql` 独立初始化, 数据库版本为 1. Profile 直接预置国内站 `siliconflow-cn` 和 `moonshotai-cn` 及同名目录 ID, 同时预置 DeepSeek 的 LLM 和 Vision 能力. 凭据, 模型和绑定在初始化后配置. Data 初始化不读取 Profile.
+
+应用的 `0.1.0` 等版本号不决定数据库版本. 每份编号 SQL 与其 `user_version` 更新处于同一事务. 已执行的版本会跳过, 失败只回滚本文件的 SQL 和版本更新. 编号缺失或数据库版本比当前 SQL 更新时直接报错. 标有 `-- ema:migration foreign_keys=off` 的迁移在事务外临时关闭外键, 提交前检查关联关系.
+
+当前 Alpha 基线要求使用全新数据库, 不自动转换或降级此前的开发数据库, 也不把旧凭据或会话复制进新基线. 重置前应备份现有应用数据. 正式发布后的数据库升级应追加连续编号文件, 不再修改已经应用的基线.
 
 Narrative 初始化在事务内安装表结构和三份剧情数据. 读取器分批执行种子 SQL, 不把所有种子文件读进一个字符串. Narrative Repository 按固定周目 ID 返回向量 Buffer 或原文, 检索流程见 [Narrative](../narrative/README-zh.md).
 

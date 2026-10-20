@@ -37,7 +37,7 @@ export function createOpenAiChatProtocol(
   modelId: string,
 ): (request: LLMRequest) => AsyncIterable<LLMStreamEvent> {
   const client = createOpenAiChatClient(connection);
-  return (request) => streamOpenAiChat(client, modelId, request);
+  return (request) => streamOpenAiChat(client, connection, modelId, request);
 }
 
 export function createOpenAiChatCompletion(
@@ -48,7 +48,7 @@ export function createOpenAiChatCompletion(
   return async (request) => {
     try {
       const response = await client.chat.completions.create(
-        buildOpenAiChatParams(modelId, request) as OpenAI.ChatCompletionCreateParamsNonStreaming,
+        buildOpenAiChatParams(connection, modelId, request) as OpenAI.ChatCompletionCreateParamsNonStreaming,
         { signal: request.signal },
       );
       throwIfAborted(request.signal);
@@ -105,6 +105,7 @@ function createOpenAiChatClient(connection: LLMConnection): OpenAI {
 }
 
 function buildOpenAiChatParams(
+  connection: LLMConnection,
   modelId: string,
   request: LLMRequest,
 ): OpenAiChatParams {
@@ -119,16 +120,17 @@ function buildOpenAiChatParams(
     stream: false,
   };
   applyThinking(params, request.thinking);
-  return params;
+  return mapProviderParams(connection, params);
 }
 
 async function* streamOpenAiChat(
   client: OpenAI,
+  connection: LLMConnection,
   modelId: string,
   request: LLMRequest,
 ): AsyncIterable<LLMStreamEvent> {
   const params = {
-    ...buildOpenAiChatParams(modelId, request),
+    ...buildOpenAiChatParams(connection, modelId, request),
     stream: true,
     stream_options: { include_usage: true },
   };
@@ -390,6 +392,25 @@ function applyThinking(params: OpenAiChatParams, thinking: LLMRequest['thinking'
   if (thinking.enabled !== false && thinking.effort) {
     params.reasoning_effort = thinking.effort;
   }
+}
+
+function mapProviderParams(connection: LLMConnection, params: OpenAiChatParams) {
+  // 自定义 Provider ID 也可使用官方地址; 不凭显示名向未知网关发送私有字段.
+  const hostname = connection.baseUrl ? new URL(connection.baseUrl).hostname : undefined;
+  if (hostname === 'api.siliconflow.cn' || hostname === 'api.siliconflow.com') {
+    const { thinking, reasoning_effort: effort, ...body } = params;
+    // SiliconFlow 只为以下模型声明 reasoning_effort, 不猜测 effort 到 Token 预算的换算.
+    const supportsEffort = params.model === 'Pro/deepseek-ai/DeepSeek-V4'
+      || params.model === 'deepseek-ai/DeepSeek-V4-Flash'
+      || params.model === 'Pro/zai-org/GLM-5.2';
+    const reasoningEffort = effort === 'max' ? 'max' as const : 'high' as const;
+    return {
+      ...body,
+      ...(thinking ? { enable_thinking: thinking.type === 'enabled' } : {}),
+      ...(supportsEffort && effort ? { reasoning_effort: reasoningEffort } : {}),
+    };
+  }
+  return params;
 }
 
 function mapStopReason(reason: string): LLMStopReason {

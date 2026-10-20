@@ -61,4 +61,4 @@ The root [package.json](../package.json) sets the application release version. U
 
 Use prerelease versions such as `0.1.0-alpha.1` for Alpha builds. Give each new public release a new version. A Git tag uses the same version with a `v` prefix, such as `v0.1.0-alpha.1`. Changing a Release title does not change the version embedded in an installer.
 
-Internal workspace packages do not all need a version bump for a desktop release. Database versions change only when their SQL structure changes; see [Storage](../src/storage/README.md). Build and installed-app checks are described in [Desktop](../apps/desktop/README.md#build-an-installer).
+Internal workspace packages do not all need a version bump for a desktop release. Database versions track SQL schema changes and required stored-data migrations; see [Storage](../src/storage/README.md). Build and installed-app checks are described in [Desktop](../apps/desktop/README.md#build-an-installer).

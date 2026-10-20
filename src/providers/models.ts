@@ -150,7 +150,10 @@ export class ProviderModels {
     const provider = this.requireProvider(providerId);
     const modelsDevId = provider.capabilities.find(entry => entry.capability === capability)?.modelsDevId;
     if (!modelsDevId) {
-      throw new ProviderError('model_not_found', '该 Provider 未收录 models.dev 目录，模型只能手写');
+      throw new ProviderError('invalid_configuration', '未配置 models.dev ID. 请在高级配置中填写目录 ID, 或手动添加模型');
+    }
+    if (!this.catalog.hasProvider(modelsDevId)) {
+      throw new ProviderError('invalid_configuration', `models.dev 目录中找不到供应商 ${modelsDevId}. 请检查目录 ID`);
     }
     return this.db.sqlite.transaction(() => {
       this.syncProviderModels(providerId, capability, modelsDevId);

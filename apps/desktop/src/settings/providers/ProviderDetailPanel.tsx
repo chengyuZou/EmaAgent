@@ -1,9 +1,10 @@
-import { useState, type JSX, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type JSX, type KeyboardEvent } from 'react';
 import {
   Button,
   Callout,
   ConfirmDialog,
   Dialog,
+  Field,
   IconButton,
   Input,
   Select,
@@ -53,13 +54,52 @@ export function ProviderDetailPanel({
   const activeProtocol = capabilityRow?.activeProtocol ?? '';
   const activeBaseUrl = capabilityRow?.protocols.find((p) => p.protocol === activeProtocol)?.baseUrl ?? '';
   const [baseUrl, setBaseUrl] = useState(activeBaseUrl);
+  const [modelsDevId, setModelsDevId] = useState(capabilityRow?.modelsDevId ?? '');
+  const usesCatalog = capability === 'llm' || capability === 'vision';
+  const probeRequest = useRef(0);
 
   const health = provider.health.find((h) => h.capability === capability);
   const [probeOk,    setProbeOk]    = useState<boolean | null>(
-    health?.status === 'ok' ? true : null,
+    health && health.status !== 'unknown' ? health.status === 'ok' : null,
   );
   const [probeMsg, setProbeMsg] = useState<string | null>(health?.lastError ?? null);
 
+  useEffect(() => {
+    setBaseUrl(activeBaseUrl);
+    setApiKey(null);
+    setProbing(false);
+    probeRequest.current += 1;
+    return () => {
+      probeRequest.current += 1;
+    };
+  }, [provider.id, provider.keyValue, capability, activeProtocol, activeBaseUrl]);
+
+  useEffect(() => {
+    setModelsDevId(capabilityRow?.modelsDevId ?? '');
+  }, [provider.id, capability, capabilityRow?.modelsDevId]);
+
+  useEffect(() => {
+    setProbeOk(health && health.status !== 'unknown' ? health.status === 'ok' : null);
+    setProbeMsg(health?.lastError ?? null);
+  }, [provider.id, capability, health?.status, health?.lastError, health?.lastProbedAt]);
+
+  async function commitModelsDevId(): Promise<void> {
+    const value = modelsDevId.trim();
+    if (fieldBusy || value === (capabilityRow?.modelsDevId ?? '')) return;
+    setFieldBusy(true);
+    try {
+      await providersApi.patch(provider.id, {
+        capability: { capability, modelsDevId: value || null },
+      });
+      await useProviderStore.getState().refreshProviders();
+      showToast('目录关联已更新, 已有模型和绑定保持不变', { variant: 'success' });
+    } catch (error) {
+      showToast(`保存失败: ${error instanceof Error ? error.message : String(error)}`, { variant: 'danger' });
+      setModelsDevId(capabilityRow?.modelsDevId ?? '');
+    } finally {
+      setFieldBusy(false);
+    }
+  }
 
   /** API Key 三态提交: 删光 = 删除 key(key: null); 新值 = 替换; 同值/未触碰 = 不写. */
   async function commitApiKey(): Promise<void> {
@@ -127,28 +167,31 @@ export function ProviderDetailPanel({
 
   /** LLM/Vision 连接验证成功后刷新当前模型范围, 目录失败不改变连接验证结果. */
   async function handleProbe(): Promise<void> {
-    if (!PROBEABLE.has(capability)) return;
+    if (!PROBEABLE.has(capability) || probing) return;
+    const request = ++probeRequest.current;
     setProbing(true);
     try {
       const result = await providersApi.probe(
         provider.id,
         capability as 'llm' | 'embed' | 'rerank' | 'vision',
       );
+      if (request !== probeRequest.current) return;
       setProbeOk(result.ok);
       setProbeMsg(result.ok ? null : result.error);
-      if (result.ok && (capability === 'llm' || capability === 'vision')) {
+      if (result.ok && usesCatalog && capabilityRow?.modelsDevId) {
         try {
-          await providersApi.refreshModels(provider.id, capability);
+          await providersApi.refreshModels(provider.id, capability as 'llm' | 'vision');
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          showToast(`连接验证成功，但模型目录刷新失败：${message}`, { variant: 'warning' });
+          showToast(`连接验证成功, 但模型目录刷新失败: ${message}`, { variant: 'warning' });
         }
       }
     } catch (err) {
+      if (request !== probeRequest.current) return;
       setProbeOk(false);
       setProbeMsg('探测失败' + (err instanceof Error ? `: ${err.message}` : ''));
     } finally {
-      setProbing(false);
+      if (request === probeRequest.current) setProbing(false);
     }
   }
 
@@ -324,7 +367,7 @@ export function ProviderDetailPanel({
             <div className="flex flex-col gap-2">
               <div>
                 <div className="text-sm font-medium text-[var(--ema-text-secondary)]">Base URL</div>
-                <div className="text-xs text-[var(--ema-text-tertiary)] mt-0.5">API 根地址（如 https://api.deepseek.com，不带 /embeddings 等路径；失焦即生效）</div>
+                <div className="text-xs text-[var(--ema-text-tertiary)] mt-0.5">API 根地址(如 https://api.deepseek.com, 不带 /embeddings 等路径；失焦即生效)</div>
               </div>
               <Input
                 placeholder={activeBaseUrl || 'https://...'}
@@ -335,6 +378,21 @@ export function ProviderDetailPanel({
                 onKeyDown={handleFieldKeyDown}
               />
             </div>
+            {usesCatalog && (
+              <Field
+                label="models.dev ID (可空)"
+                description="目录关联独立于 API 地址. 清空后仅手动添加模型, 已有模型和绑定不会删除."
+              >
+                <Input
+                  placeholder="siliconflow-cn"
+                  value={modelsDevId}
+                  maxLength={PROVIDER_LIMITS.idChars}
+                  onChange={(e) => setModelsDevId(e.target.value)}
+                  onBlur={() => void commitModelsDevId()}
+                  onKeyDown={handleFieldKeyDown}
+                />
+              </Field>
+            )}
           </div>
         </div>
       </section>
@@ -365,7 +423,7 @@ export function ProviderDetailPanel({
       {probeOk !== false && (
         <Callout variant="info" className="max-w-lg">
           <div className="flex items-center justify-between">
-            <span>{probeOk === true ? '配置验证通过' : '配置部分验证'}</span>
+            <span>{probeOk === true ? '连接探活通过' : '尚未验证当前连接'}</span>
             {PROBEABLE.has(capability) && (
               <Button
                 variant="ghost"
@@ -382,17 +440,24 @@ export function ProviderDetailPanel({
         </Callout>
       )}
 
+      {capability === 'vision' && (
+        <p className="text-xs text-[var(--ema-text-tertiary)] max-w-lg">
+          Ping 只检查文本请求连通性. 图片识别还需要启用支持图片输入的模型, 并在模型绑定中绑定 Vision.
+        </p>
+      )}
+
       <div className="border-t border-[var(--ema-border)]" />
       <ProviderModelManager
         providerId={provider.id}
         capability={capability}
         iconKey={resolveProviderIconClass(provider.iconId)}
+        modelsDevId={capabilityRow?.modelsDevId}
       />
 
       <ConfirmDialog
         open={removingProtocol !== null}
         message={removingProtocol
-          ? `确定删除 "${PROTOCOL_LABELS[removingProtocol] ?? removingProtocol}" 协议档吗？`
+          ? `确定删除 "${PROTOCOL_LABELS[removingProtocol] ?? removingProtocol}" 协议档吗?`
           : ''}
         confirmText="删除"
         onConfirm={() => { if (removingProtocol) void removeProtocol(removingProtocol); }}
@@ -419,7 +484,7 @@ export function ProviderDetailPanel({
             />
           </div>
           <div className="flex flex-col gap-2">
-            <div className="text-sm font-medium text-[var(--ema-text-secondary)]">Base URL（必填）</div>
+            <div className="text-sm font-medium text-[var(--ema-text-secondary)]">Base URL(必填)</div>
             <Input
               placeholder="https://..."
               value={newBaseUrl}

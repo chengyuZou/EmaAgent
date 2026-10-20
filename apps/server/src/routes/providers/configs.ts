@@ -14,7 +14,7 @@ const capabilityInputSchema = z.object({
   baseUrl: z.string().min(1).max(PROVIDER_LIMITS.baseUrlChars).optional(),
   /** true = 设为当前协议;false = 停用该能力(已配协议保留). */
   active: z.boolean().optional(),
-  modelsDevId: z.string().optional(),
+  modelsDevId: z.string().max(PROVIDER_LIMITS.idChars).nullable().optional(),
   /** 本次要从该能力移除的协议档;删到最后一档会报错. */
   removedProtocols: z.array(z.enum(PROTOCOLS)).optional(),
 });
@@ -89,7 +89,7 @@ export function providerError(context: Context, error: unknown) {
   switch (error.code) {
     case 'not_found':
     case 'model_not_found':
-      return context.json({ error: error.code }, 404);
+      return context.json({ error: error.code, message: error.message }, 404);
     case 'already_exists':
     case 'provider_in_use':
     case 'provider_capability_in_use':

@@ -50,6 +50,12 @@ Storage Repo 读写 `profile.db`. 内置供应商由 Storage 迁移插入, 后�
 
 `resolveConnection()` 要求有选中的协议及地址, `bearer` 认证还要求凭据. 返回的是配置, 不表示网络测试已经成功.
 
+Provider 的 `id`, 显示名称 `name`, 能力的 `modelsDevId` 含义不同. ID 用于保存引用, 名称用于界面显示, `modelsDevId` 用于选择外部目录. 内置国内站使用 `siliconflow-cn` / `SiliconFlow-CN` 和 `moonshotai-cn` / `Moonshot Kimi-CN`, 目录 ID 与 Provider ID 一致. 图标键仍为 `siliconflow` 和 `moonshot`. 这些预置由 Storage 初始化直接写入.
+
+DeepSeek 同时提供 LLM 和 Vision 能力, 目录关联为 `deepseek`. 两者默认使用 Chat Completions, 同时配置 Anthropic 兼容地址. Vision 从目录中只导入支持图片输入的模型, 初始化不选择, 启用或绑定具体模型.
+
+LLM 和 Vision 创建时接受可选的 `modelsDevId`. 更新时省略表示保留, 传 `null` 表示清空. 清空或更换关联不删除已有模型和绑定, 也不更换 API 地址. 没有关联时手动添加模型.
+
 ## 模型与绑定
 
 手填模型的 `source` 为 `'user'`, 首次保存时启用. 再次保存会更新参数, 保留启用状态. 目录模型的 `source` 为 `'dev'`, 参数通过目录同步更新. 两种模型都可启停和删除.
@@ -59,6 +65,10 @@ Storage Repo 读写 `profile.db`. 内置供应商由 Storage 迁移插入, 后�
 删除供应商, 停用能力, 停用或删除模型前, 会检查已保存的业务模块绑定. 存在冲突时抛出带 `conflicts` 的 `ProviderError`, 设置页据此提示先换绑或解绑. 这里检查的是业务模块绑定, 不是 Session 的模型选择.
 
 探活结果按 `(providerId, capability)` 分别保存. Server 执行网络测试, 再把结果交给 `recordHealth()`.
+
+修改共享凭据, 认证方式, 当前协议或当前地址时, 在保存配置的同一事务中清除受影响的旧探活结果. 修改显示名称或目录关联不会使连接结果失效.
+
+未显式指定模型时, Server Ping 按列表顺序取第一个启用模型; 全部禁用时取第一行. LLM/Vision 模型池为空时可回退到目录第一项, 其他能力需要手动添加模型. Vision Ping 只发文本请求, 成功不代表图片能力或 Vision 绑定已验证.
 
 ## 目录刷新与窗口更新
 
@@ -78,6 +88,8 @@ Server 按以下顺序处理刷新:
 ```
 
 同步时新目录模型默认停用, 已有启用状态保留, 手填模型不改, 缺少有效上下文窗口的条目跳过, 新目录里消失的模型不自动删除. Embedding, Rerank, TTS 和 STT 的模型由用户手填.
+
+未关联目录或目录供应商不存在时, 返回带可读说明的配置错误. 已存在的目录供应商没有符合条件的 Vision 模型时返回空列表, 不报模型不存在. 刷新使用 models.dev, 不调用供应商混合多种能力的 `/models` 接口. Desktop 后台重读时保留已有卡片, 只有首次加载用 loading 替换列表.
 
 SQL 同步失败时撤回该范围的数据库修改. 已保存的目录文件保留, 可供重试使用. 刷新目录不会自动更换已绑定的模型.
 

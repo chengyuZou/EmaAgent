@@ -61,4 +61,4 @@ GitHub Release 使用同一份说明. 需要解释修复原因时链接到对应
 
 Alpha 使用 `0.1.0-alpha.1` 这样的预发布版本. 每次新的公开发布使用新版本. Git Tag 使用同一版本并加 `v` 前缀, 例如 `v0.1.0-alpha.1`. 只改 Release 标题不会改变安装包中的版本.
 
-桌面发版不要求所有内部工作区包一起升版本. 数据库版本只在 SQL 结构变化时调整, 见 [Storage](../src/storage/README-zh.md). 构建和安装版检查见 [Desktop](../apps/desktop/README-zh.md#生成安装包).
+桌面发版不要求所有内部工作区包一起升版本. 数据库版本用于记录 SQL 结构变化及必要的已存数据迁移, 见 [Storage](../src/storage/README-zh.md). 构建和安装版检查见 [Desktop](../apps/desktop/README-zh.md#生成安装包).

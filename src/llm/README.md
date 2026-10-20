@@ -79,7 +79,11 @@ These conversions produce SDK input without changing stored messages. Chat does 
 
 Assistant text and tool calls remain usable when the model changes. Native thinking state is replayed only when `generatedBy.providerId`, `modelId`, and `protocol` match the current target. This includes Anthropic signatures, Responses reasoning items, and Gemini thought signatures. `cacheBreakpoint` becomes an Anthropic cache marker; other protocols ignore it.
 
-`thinking.enabled: 'auto'` leaves the provider default unchanged. OpenAI receives the effort name. Anthropic and Gemini convert effort to Token budgets in their protocol files. These project mappings do not imply equivalent reasoning across providers. Anthropic's enabled thinking also needs an output budget large enough for its minimum thinking budget.
+`thinking.enabled: 'auto'` leaves the thinking toggle at the provider default. Anthropic and Gemini convert effort to Token budgets in their protocol files. These project mappings do not imply equivalent reasoning across providers. Anthropic's enabled thinking also needs an output budget large enough for its minimum thinking budget.
+
+The public request keeps only `thinking.enabled` and `thinking.effort`. Chat Completions first builds its usual `thinking` / `reasoning_effort` fields, then privately maps verified supplier differences inside `protocols/openAiChat.ts`. The official `api.siliconflow.cn` and `api.siliconflow.com` hosts receive `enable_thinking` derived from `thinking.type`, without also receiving `thinking`. That wire field is not a public request or configuration option. SiliconFlow effort is sent only for the model IDs listed in that function, using `high` or `max`; no Token budget is invented for other models. Other hosts keep the existing Chat mapping. A custom Provider ID at an official SiliconFlow address receives the same conversion; an arbitrary gateway is not classified by its display name. See the [SiliconFlow request fields](https://docs.siliconflow.cn/docs/api/chat-completions-post) and [DeepSeek thinking fields](https://api-docs.deepseek.com/guides/thinking_mode/).
+
+`maxOutputTokens` is the caller's request budget, not a command to use the model's full output capacity. Non-streaming Anthropic requests can be rejected by the SDK before HTTP when their requested output implies too long a response. Narrative's host wiring supplies a fixed 8192 budget and keeps native non-streaming completion.
 
 ## Events, usage, and failures
 

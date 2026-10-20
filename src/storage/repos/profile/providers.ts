@@ -67,6 +67,9 @@ export class ProvidersRepo {
     const now = Date.now();
     const { provider } = input;
     this.db.transaction(() => {
+      const previous = this.get(provider.id);
+      const previousCapabilities = this.listCapabilities(provider.id);
+      const previousProtocols = this.listProtocols(provider.id);
       this.db.prepare(
         `INSERT INTO providers
            (id, name, icon_id, auth_type, key_value, created_at, updated_at)
@@ -103,6 +106,26 @@ export class ProvidersRepo {
          VALUES (?, ?, ?, ?, ?, ?)`,
       );
       for (const capability of input.capabilities) {
+        const oldCapability = previousCapabilities.find(
+          entry => entry.capability === capability.capability,
+        );
+        const oldUrl = previousProtocols.find(entry =>
+          entry.capability === capability.capability
+          && entry.protocol === oldCapability?.active_protocol,
+        )?.base_url;
+        const newUrl = input.protocols.find(entry =>
+          entry.capability === capability.capability
+          && entry.protocol === capability.active_protocol,
+        )?.base_url;
+        // 旧凭据或连接的探活结果不能作为新配置的验证结果, 与配置修改一起提交.
+        if (previous?.key_value !== provider.key_value
+          || previous?.auth_type !== provider.auth_type
+          || oldCapability?.active_protocol !== capability.active_protocol
+          || oldUrl !== newUrl) {
+          this.db.prepare(
+            'DELETE FROM provider_health WHERE provider_id = ? AND capability = ?',
+          ).run(provider.id, capability.capability);
+        }
         upsertCapability.run(
           capability.provider_id,
           capability.capability,

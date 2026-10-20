@@ -26,6 +26,7 @@ This Alpha brings character conversation and local Agent work together in one de
 - Windows process cleanup now suppresses the cleanup command's console window. The user confirmed full exit without the reported flash in the tested Windows installer. [Bug record](./logs/en/windowsExitConsole.md).
 - Skills installations and MCP market additions keep their in-progress state when switching settings pages, including concurrent operations. Source checks and Dev acceptance passed; installed-build acceptance remains pending. [Bug record](./logs/en/marketOperationNavigation.md).
 - Switching Sessions stops the old STT recording and releases the microphone while transcription continues into the original draft. Recording and transcription feedback is separate for each Session. Automated checks passed; real-microphone Dev and installed-build acceptance remain pending. [Bug record](./logs/en/sttSessionNavigation.md).
+- Domestic Provider IDs and catalog associations are aligned, LLM/Vision settings expose the catalog ID, and model updates preserve the visible card list. Ping prefers enabled models; Narrative keeps non-streaming requests with an 8192-Token output budget. Provider workflows passed user testing. Profile/Data now each use one initialization SQL, and DeepSeek is also available in Vision; fresh-start and consolidated installed acceptance remain pending. [Bug record](./logs/en/providerCatalogAndRequests.md).
 
 Screen capture settings have a dedicated sidebar page with the existing automatic-capture switch, interval and privacy notice.
 
@@ -42,6 +43,7 @@ These records keep the evidence and remaining checks separate from the release s
 
 - [Market operation state across settings navigation](./logs/en/marketOperationNavigation.md)
 - [STT voice input across Session navigation](./logs/en/sttSessionNavigation.md)
+- [Provider catalogs, settings feedback and request budgets](./logs/en/providerCatalogAndRequests.md)
 - [AskUser approval before questions](./logs/en/askUserApproval.md)
 - [Live2D rendering in release builds](./logs/en/live2dReleaseRendering.md)
 - [Release UI styles and Markdown media](./logs/en/releaseUiStyles.md)

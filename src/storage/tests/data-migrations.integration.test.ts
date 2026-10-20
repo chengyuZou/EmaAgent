@@ -101,6 +101,47 @@ describe('database initialization', () => {
     expect(database.sqlite.prepare('SELECT feedback FROM goals').pluck().get()).toBe('First part done');
   });
 
+  it.each([
+    ['siliconflow-cn', 'SiliconFlow-CN', 'siliconflow', 'https://api.siliconflow.cn/v1'],
+    ['moonshotai-cn', 'Moonshot Kimi-CN', 'moonshot', 'https://api.moonshot.cn/v1'],
+  ])('initializes %s with its domestic catalog and endpoints', (id, name, iconId, baseUrl) => {
+    database = new Database({ memory: true, kind: 'profile' });
+    database.migrate();
+
+    expect(database.sqlite.prepare('SELECT name, icon_id FROM providers WHERE id = ?').get(id))
+      .toEqual({ name, icon_id: iconId });
+    expect(database.sqlite.prepare('SELECT id FROM providers WHERE id = ?').get(iconId)).toBeUndefined();
+    expect(database.sqlite.prepare(`
+      SELECT capability, models_dev_id FROM provider_capabilities
+      WHERE provider_id = ? AND capability IN ('llm', 'vision') ORDER BY capability
+    `).all(id)).toEqual([
+      { capability: 'llm', models_dev_id: id },
+      { capability: 'vision', models_dev_id: id },
+    ]);
+    expect(database.sqlite.prepare(
+      'SELECT DISTINCT base_url FROM provider_protocols WHERE provider_id = ?',
+    ).all(id)).toEqual([{ base_url: baseUrl }]);
+  });
+
+  it('initializes DeepSeek Vision without selecting or enabling a model', () => {
+    database = new Database({ memory: true, kind: 'profile' });
+    database.migrate();
+
+    expect(database.sqlite.prepare(`
+      SELECT active_protocol, models_dev_id FROM provider_capabilities
+      WHERE provider_id = 'deepseek' AND capability = 'vision'
+    `).get()).toEqual({ active_protocol: 'openai-llm', models_dev_id: 'deepseek' });
+    expect(database.sqlite.prepare(`
+      SELECT protocol, base_url FROM provider_protocols
+      WHERE provider_id = 'deepseek' AND capability = 'vision' ORDER BY protocol
+    `).all()).toEqual([
+      { protocol: 'anthropic-llm', base_url: 'https://api.deepseek.com/anthropic' },
+      { protocol: 'openai-llm', base_url: 'https://api.deepseek.com' },
+    ]);
+    expect(database.sqlite.prepare('SELECT * FROM provider_models').all()).toEqual([]);
+    expect(database.sqlite.prepare('SELECT * FROM model_bindings').all()).toEqual([]);
+  });
+
   it.each(['profile', 'data'] as const)('%s refuses a database newer than its SQL files', kind => {
     database = new Database({ memory: true, kind });
     database.sqlite.pragma('user_version = 2');

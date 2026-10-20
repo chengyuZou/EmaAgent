@@ -15,8 +15,8 @@ import type { ToolUseContext } from '@ema-agent/tools';
 import type { UsageRecorder, UsageRecordStatus } from '@ema-agent/usage';
 import { narrativeQueryModeSetting } from '../settings/narrativeSetting.js';
 
-// 未配置输出上限时, 仍为 Anthropic 等协议提供必填值.
-const DEFAULT_NARRATIVE_MAX_OUTPUT_TOKENS = 4_096;
+// 路由和关键词提取共用固定请求预算, 不把模型的最大输出容量当作本次预算.
+const NARRATIVE_MAX_OUTPUT_TOKENS = 8_192;
 
 export interface NarrativeComposition {
   /** 模型和算法在 Turn 准备时冻结; 用量归属该 Session 和 Turn. */
@@ -53,7 +53,6 @@ export function openNarrative(
         const completeLLM = createLLMCompletion(providers.resolveConnection(llm.providerId, 'llm'), llm.modelId);
         const callEmbed = createEmbedCall(providers.resolveConnection(embed.providerId, 'embed'), embed.modelId);
         const callRerank = createRerankCall(providers.resolveConnection(rerank.providerId, 'rerank'), rerank.modelId);
-        const maxOutputTokens = model.maxOutput ?? DEFAULT_NARRATIVE_MAX_OUTPUT_TOKENS;
         const queryMode = settings.get(narrativeQueryModeSetting);
 
         const complete: CompleteLLM = async (request) => {
@@ -66,7 +65,7 @@ export function openNarrative(
           try {
             completion = await completeLLM({
               ...request,
-              maxOutputTokens,
+              maxOutputTokens: NARRATIVE_MAX_OUTPUT_TOKENS,
             });
             if (completion.stopReason === 'max_tokens') {
               throw new Error('Narrative 路由输出达到上限, 结果未完整返回');

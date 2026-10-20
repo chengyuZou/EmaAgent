@@ -88,6 +88,8 @@ The same signal reaches all model calls. Cancellation is thrown to the caller ra
 
 Server composition in `apps/server/src/composition/narrative.ts` resolves narrative-llm, narrative-embed, and narrative-rerank bindings at Turn preparation. It records each model call's final usage with the initiating Session and Turn. Configuration changes affect the next Turn. An auto query-mode setting uses the tool's mode or hybrid; a fixed setting overrides the tool's choice.
 
+The routing/keyword LLM request uses native non-streaming completion with `maxOutputTokens: 8192`, independently of the model catalog's maximum output capacity. This is a request budget, not the evidence-text budget above. Reaching the output limit fails the routing request rather than parsing a truncated result. Anthropic's SDK can reject excessively large non-streaming output budgets before sending HTTP; raising its timeout or switching this search to streaming is not required by this wiring.
+
 Turn preparation supplies the search function only when the current character's name matches `isWitchTrialCharacter` and model configuration is available. The name check uses a fixed list of complete Chinese, Japanese, and English names, trims whitespace, and ignores English case. It does not change the user's tool toggles. Browser code imports the separate `@ema-agent/narrative/isWitchTrialCharacter` entry to avoid loading Node retrieval code.
 
 That entry also exports `witchTrialCharacterNames`, the same grouped names used by the predicate. Each group starts with the Chinese full name, followed by accepted alternate full names. The character settings table renders these groups directly instead of maintaining a second list.
