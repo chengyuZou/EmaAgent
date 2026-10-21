@@ -56,6 +56,14 @@ export function toolFailure(call: ToolDisplayCall): { code: string; message: str
   };
 }
 
+export function shouldDisplayToolOutput(
+  output: unknown,
+  failure: { readonly code: string; readonly message: string } | null,
+): boolean {
+  return output !== undefined
+    && !(failure !== null && typeof output === 'string' && output === failure.message);
+}
+
 export function toolDurationMs(call: ToolDisplayCall): number | undefined {
   if (call.source === 'streaming') return call.item.durationMs;
   if (call.result?.durationMs !== undefined) return call.result.durationMs;

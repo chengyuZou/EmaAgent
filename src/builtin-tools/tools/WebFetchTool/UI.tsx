@@ -44,7 +44,7 @@ export function WebFetchArgsView({ args }: { args: unknown }): JSX.Element | nul
           {args['url']}
         </a>
       </Tooltip>
-      {args['raw'] === true && <Badge variant="warn">raw</Badge>}
+      {args['raw'] === true && <Badge variant="warn" className="shrink-0">raw</Badge>}
     </div>
   );
 }

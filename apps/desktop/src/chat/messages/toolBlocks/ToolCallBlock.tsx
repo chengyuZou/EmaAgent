@@ -23,6 +23,7 @@ import {
   toolPermissionPending,
   toolCallId,
   toolRunning,
+  shouldDisplayToolOutput,
   type ToolDisplayCall,
 } from './toolGroups.js';
 
@@ -75,7 +76,7 @@ export function ToolCallBlock({
   const executionFailed = call.source === 'execution'
     && (call.record.status === 'failed' || call.record.status === 'cancelled' || call.record.status === 'outcome_unknown');
   const hasError = failure !== null || historyInterrupted || executionFailed;
-  const showResult = hasResult && !(failure !== null && output === undefined);
+  const showResult = shouldDisplayToolOutput(renderedOutput, failure);
 
   let status: ToolDisplayStatus;
   if (failure?.code === 'permission/denied') {

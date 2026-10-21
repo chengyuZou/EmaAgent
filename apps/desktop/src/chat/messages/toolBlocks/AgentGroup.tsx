@@ -19,6 +19,7 @@ import {
   toolName,
   toolOutput,
   toolRunning,
+  shouldDisplayToolOutput,
   type ToolDisplayCall,
 } from './toolGroups.js';
 
@@ -168,21 +169,24 @@ function AgentRow({
   const args = toolArgs(call);
   const output = toolOutput(call);
   const renderedOutput = output ?? toolFallbackContent(call);
+  const failure = toolFailure(call);
+  const showOutput = shouldDisplayToolOutput(renderedOutput, failure);
   const toolUI = lookupToolUI(toolName(call));
-  const customResult = mounted && output != null ? toolUI?.ResultView?.({ data: output, args }) : null;
-  const needsGenericResult = mounted && renderedOutput != null && customResult == null;
+  const customResult = mounted && showOutput && output != null
+    ? toolUI?.ResultView?.({ data: output, args })
+    : null;
+  const needsGenericResult = mounted && showOutput && customResult == null;
   const genericResult = useMemo(() => (
     needsGenericResult ? renderToolResult(renderedOutput) : null
   ), [needsGenericResult, renderedOutput]);
   const inputCopyText = useMemo(() => (
     mounted && args !== undefined ? formatJson(args) : ''
   ), [mounted, args]);
-  const resultCopyText = mounted && renderedOutput != null
+  const resultCopyText = mounted && showOutput
     ? toolUI?.resultCopyText?.(output, args) ?? formatJson(renderedOutput)
     : '';
   const toolStillRunning = toolRunning(call, streaming);
   const cancelTarget = agentCancelTarget(call, streaming, state.running);
-  const failure = toolFailure(call);
   let status = '读取中';
   if (toolStillRunning || state.running) {
     status = '运行中';
@@ -267,7 +271,7 @@ function AgentRow({
                     label="复制输出"
                     tone="output"
                     copyText={[resultCopyText, failureText].filter(Boolean).join('\n\n')}
-                    errorOnly={failure !== null && renderedOutput === undefined}
+                    errorOnly={failure !== null && !showOutput}
                   >
                     {customResult ?? (genericResult !== null && <ToolResultViewBlock view={genericResult} />)}
                     {failure && <ToolFailure code={failure.code} message={failure.message} />}
