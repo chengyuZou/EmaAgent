@@ -4,7 +4,7 @@
 
 ## Status and scope
 
-Investigation started on 2026-10-19, updated on 2026-10-20. The user reports recovery after restarting Ema only, with no other changes. The cause remains unconfirmed, no fix was applied, and active investigation has stopped. Keep the issue open for a future recurrence report, without scheduled monitoring. The local source was exercised independently; this does not establish which exact source revision or provider the installed application used.
+Investigation started on 2026-10-19, updated on 2026-10-21. The user reported recovery after restarting Ema only, with no other changes, but later comparison tests again showed poor result relevance. On 2026-10-21, the Bing search entry point was fixed to `cn.bing.com` and `setmkt=en-US` was removed. This improved some queries but did not resolve relevance for every query. The cause remains unconfirmed. The local source was exercised independently; this does not establish which exact source revision or provider the installed application used.
 
 The user reported a successful WebSearch call whose game-related query returned Outlook tutorials. This investigation made public search requests, but did not start Ema, invoke a paid model, read user databases, or change saved provider credentials. A later temporary test file and source probes were removed after use; the three instrumented business files matched their pre-probe SHA-256 hashes exactly. Restarting the installed application and providing its screenshots were user actions.
 
@@ -77,6 +77,23 @@ The temporary harness command for the 10-call repeat was `node --experimental-tr
 
 The unchanged request still followed `www.bing.com -> 302 -> cn.bing.com -> 200`. Its query was preserved at both hops. Body result titles agreed between the normal buffer parser and an explicit UTF-8 decoding check, and the parsed results remained consistent through filtering and model output. This later run did not reproduce the earlier unrelated-result failure, so automatic redirection is not established as its cause.
 
+## Final test with the fixed cn search entry point
+
+The earlier comparison used the query `"chocolate wafers" trans fatty acid Turkey 2007 study`. Expected results were studies about trans fatty acids in Turkish chocolate or wafers, especially the paper `Trans fatty acid contents in chocolates and chocolate wafers in Turkey`. The proxied request to `www.bing.com` instead returned Canon paper-craft toy and scene pages, unrelated to the query. The same query sent directly to `cn.bing.com` returned Turkish fatty-acid studies and the target paper. The adapter now starts at `https://cn.bing.com/search?q=...`, avoiding the `www` entry-point redirect and omitting `setmkt=en-US`. Request headers, redirect handling, and page parsing were not changed.
+
+On 2026-10-21, the production Bing adapter made one request for each of four queries through the explicitly configured local Clash HTTP proxy at `127.0.0.1:7890`. There were no retries or browser cookies. Every response was HTTP 200 and parsed successfully:
+
+| Query | Observation |
+| --- | --- |
+| Full paper title | Results were relevant to the target paper |
+| `"chocolate wafers" trans fatty acid Turkey 2007 study` | Expected Turkish fatty-acid studies; the leading results were Turkish studies and the target paper, rather than the unrelated Canon paper-craft toy/scene pages returned by the earlier proxied `www` request |
+| `"Studies of Flavonoids and Cardiovascular Outcomes" table` | Still returned dictionary and generic `studies` pages unrelated to the topic |
+| `Python official tutorial lists` | Returned relevant Python.org documentation and related pages |
+
+Earlier tests included `setmkt=en-US`. Removing it did not change the relevance pattern for these four queries. This only shows that removing the parameter did not change these observations; it does not establish that Bing market parameters never affect other queries or regions. Full HTTP responses and per-query results are stored in the local ignored directory `docs/testing/handoffs/webSearchProxyComparison20261021/results/final-cn-endpoint/2026-10-21T06-12-05-508Z-53236/`.
+
+The supported conclusion is that, for this specific query, fixing the CN entry point changed the results from unrelated Canon paper-craft toy/scene pages to relevant Turkish fatty-acid studies. The Flavonoids query remained irrelevant. HTTP and parsing success do not establish result relevance. The evidence does not identify whether the earlier mismatch was caused solely by proxy routing, Bing's upstream ranking, region selection, or another request condition. A TODO remains beside the endpoint to revisit Bing region selection.
+
 ## Installed-app recovery report
 
 On 2026-10-20 the user confirmed that they restarted Ema and made no other changes before the same query returned related game and character results. They did not report changing the proxy or environment variables. The supplied screenshots show an earlier Outlook result in history and relevant entries in a newer search.
@@ -91,4 +108,4 @@ The earlier independent tests returned irrelevant results without Tool schedulin
 
 This evidence does not identify whether the unexpected HTML originates from the upstream search service, an intervening network component, or other request conditions. It also does not prove that the installed application's original Outlook result had exactly the same cause, or that scheduling is correct in every other scenario. The initial market/query changes did not resolve the failure at that time, while the later unchanged source requests succeeded. Neither phase establishes a confirmed corrective change.
 
-Removing Brave and leaving Bing alone is not a demonstrated fix. No provider was removed or disabled, and no network permissions were relaxed. Current status: recovered, cause unconfirmed, awaiting a future user report rather than active investigation. No database inspection, further network testing, or implementation changes are planned in this task. No package test suite or installer rebuild was run; the user's recovery report is not a verified fix regression test.
+Removing Brave and leaving Bing alone is not a demonstrated fix. No provider was removed or disabled, and no network permissions were relaxed. Current status: partially mitigated, cause unconfirmed. The direct adapter test ran after compiling with the workspace TypeScript compiler; the `pnpm` wrapper returned `EPERM` while starting Node, so that wrapper was not used. No package test suite or installer rebuild was run, and the installed application has not been checked against this source change. The user still needs to verify behavior in the release build.

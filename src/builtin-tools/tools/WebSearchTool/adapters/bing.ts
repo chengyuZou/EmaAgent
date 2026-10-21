@@ -27,7 +27,8 @@ export const bingSearch: WebSearchAdapter = async (
   query: string,
   options: SearchOptions,
 ): Promise<SearchResult[]> => {
-  const url = `https://www.bing.com/search?q=${encodeURIComponent(query)}&setmkt=en-US`;
+  // TODO: Make Bing's region selection configurable; cn fixed one observed proxy mismatch, but relevance is not reliable for every query.
+  const url = `https://cn.bing.com/search?q=${encodeURIComponent(query)}`;
   const signal = AbortSignal.any([options.signal, AbortSignal.timeout(SEARCH_TIMEOUT_MS)]);
   const res = await options.request(url, {
     signal,
