@@ -1,41 +1,24 @@
 interface ScheduledStart {
   readonly id: string;
   readonly start: () => void;
-  readonly cancel: (reason: Error) => void;
 }
 
 export class BackgroundProcessScheduler {
-  private readonly queues = new Map<string, ScheduledStart[]>();
-  private readonly sessionOrder: string[] = [];
+  private readonly queue: ScheduledStart[] = [];
   private activeCount = 0;
-  private cursor = 0;
 
   constructor(private readonly maxConcurrent: () => number) {}
 
-  enqueue(sessionId: string, item: ScheduledStart): void {
-    const queue = this.queues.get(sessionId);
-    if (queue) queue.push(item);
-    else {
-      this.queues.set(sessionId, [item]);
-      this.sessionOrder.push(sessionId);
-    }
+  enqueue(item: ScheduledStart): void {
+    this.queue.push(item);
     this.pump();
   }
 
-  /**
-   * cancel 取消的是排队(还没启动)的进程
-   * 它们从未占用 activeCount 槽位 所以 cancel 不需要碰 activeCount
-   */
-  cancel(id: string, reason: Error): boolean {
-    for (const [sessionId, queue] of this.queues) {
-      const index = queue.findIndex(item => item.id === id);
-      if (index < 0) continue;
-      const [item] = queue.splice(index, 1);
-      item?.cancel(reason);
-      this.removeEmptySession(sessionId);
-      return true;
-    }
-    return false;
+  /** 排队项尚未占用运行名额, 取消不释放名额; 日志和状态由调用方清理. */
+  cancel(id: string): void {
+    const index = this.queue.findIndex(item => item.id === id);
+    if (index < 0) return;
+    this.queue.splice(index, 1);
   }
 
   release(): void {
@@ -44,39 +27,18 @@ export class BackgroundProcessScheduler {
   }
 
   private pump(): void {
-    while (this.activeCount < this.maxConcurrent() && this.sessionOrder.length > 0) {
-      if (this.cursor >= this.sessionOrder.length) this.cursor = 0;
-      const sessionId = this.sessionOrder[this.cursor];
-      const queue = sessionId ? this.queues.get(sessionId) : undefined;
-      const item = queue?.shift();
-      if (!sessionId || !queue || !item) {
-        if (sessionId) this.removeEmptySession(sessionId);
-        else this.sessionOrder.splice(this.cursor, 1);
-        continue;
-      }
+    while (this.activeCount < this.maxConcurrent()) {
+      const item = this.queue.shift();
+      if (!item) return;
 
       this.activeCount += 1;
       try {
-        if (queue.length === 0) this.removeEmptySession(sessionId);
-        else this.cursor = (this.cursor + 1) % this.sessionOrder.length;
         item.start();
       } catch (error) {
-        // start() 的契约是自吞业务错误;异常逃逸属于调度器级缺陷.
-        // 先占位后回调的场景,回调抛错不能带走计数——坑位必须先归还.
+        // start() 负责记录业务失败并释放名额; 意外抛错时也不能遗留占用计数.
         this.activeCount = Math.max(0, this.activeCount - 1);
         throw error;
       }
     }
-  }
-
-  private removeEmptySession(sessionId: string): void {
-    const queue = this.queues.get(sessionId);
-    if (queue && queue.length > 0) return; 
-    this.queues.delete(sessionId);
-    const index = this.sessionOrder.indexOf(sessionId);
-    if (index < 0) return;
-    this.sessionOrder.splice(index, 1);
-    if (index < this.cursor) this.cursor -= 1;
-    if (this.cursor >= this.sessionOrder.length) this.cursor = 0;
   }
 }

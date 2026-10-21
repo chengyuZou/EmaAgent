@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 /** 后台 Shell 后续新进程采用的并发数与最长运行时间. */
 export interface BackgroundProcessSettings {
+  /** 仅限制显式后台命令, 不包含普通命令转后台后的进程. */
   maxConcurrent: number;
   maxRuntimeHours: number;
 }
@@ -11,8 +12,8 @@ export interface BackgroundProcessSettings {
 export const maxConcurrentBackgroundSetting = defineSetting({
   key: 'tools.backgroundProcess.maxConcurrent',
   apply: 'nextOperation',
-  defaultValue: 2,
-  schema: z.number().int().min(1).max(8),
+  defaultValue: 32,
+  schema: z.number().int().min(1).max(128),
 });
 
 export const maxRuntimeHoursBackgroundSetting = defineSetting({

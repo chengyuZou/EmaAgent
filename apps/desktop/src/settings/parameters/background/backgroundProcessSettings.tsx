@@ -27,8 +27,8 @@ export function BackgroundProcessSettings(): JSX.Element {
       <PageHeader title="后台进程" description="Shell 后台任务采用的进程约束." />
       <SettingsCard>
         <NumberSetting
-          title="最大并发数"
-          hint="同一时间最多保留多少个后台进程."
+          title="显式后台命令并发数"
+          hint={`所有 Session 共用, 默认 ${maxConcurrentBackgroundSetting.defaultValue}. 满额后按提交顺序等待, 不包含普通命令转后台后的进程.`}
           apply={settings.apply(maxConcurrentBackgroundSetting)}
           value={settings.get(maxConcurrentBackgroundSetting)}
           unit="个"

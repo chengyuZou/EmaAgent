@@ -17,8 +17,8 @@ export const maxIterationsSetting = defineSetting({
 export const maxConcurrentSubagentsSetting = defineSetting({
   key: 'agent.limits.maxConcurrentSubagents',
   apply: 'nextTurn',
-  defaultValue: 4,
-  schema: z.number().int().min(1).max(8),
+  defaultValue: 32,
+  schema: z.number().int().min(1).max(128),
 });
 
 export const DEFAULT_AGENT_SETTINGS: AgentSettings = {

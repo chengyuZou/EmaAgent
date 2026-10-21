@@ -24,7 +24,7 @@ export function AgentParameters(): JSX.Element {
         />
         <NumberSetting
           title="子代理并发数"
-          hint="同一时间最多运行多少个子代理."
+          hint={`所有 Session 共用, 默认 ${maxConcurrentSubagentsSetting.defaultValue}. 达到上限时拒绝新执行, 不自动排队.`}
           apply={settings.apply(maxConcurrentSubagentsSetting)}
           value={settings.get(maxConcurrentSubagentsSetting)}
           unit="个"

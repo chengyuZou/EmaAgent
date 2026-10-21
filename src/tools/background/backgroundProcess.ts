@@ -31,8 +31,6 @@ import type {
 import type { BackgroundProcessSettings } from './settings.js';
 
 export const FOREGROUND_COMMAND_WAIT_MS = 3 * 60 * 1_000;
-/** 交互命令转交后台后仍占原坑位, 直到真实进程终态才释放. */
-const INTERACTIVE_MAX_CONCURRENT = 4;
 
 interface ActiveProcess {
   request: BackgroundCommandRequest;
@@ -44,8 +42,6 @@ interface ActiveProcess {
   startedAt: number;
   detachWaitAbort?: () => void;
   terminalIntent?: 'stopped' | 'interrupted';
-  /** 归还本进程占用的调度坑位. 自动转后台不会提前释放. */
-  releaseSlot: () => void;
 }
 
 interface QueuedProcess {
@@ -76,9 +72,7 @@ export interface BackgroundProcessDeps {
 
 export class BackgroundProcess {
   private readonly output: BackgroundProcessOutputStore;
-  /** 前台启动命令的独立坑位池, 转后台后仍占用直到进程退出. */
-  private readonly interactiveScheduler: BackgroundProcessScheduler;
-  /** 持久后台任务的坑位池,上限来自用户设置. */
+  /** 仅显式后台命令按提交顺序等待运行名额, 上限来自用户设置. */
   private readonly backgroundScheduler: BackgroundProcessScheduler;
   private readonly active = new Map<string, ActiveProcess>();
   private readonly queued = new Map<string, QueuedProcess>();
@@ -87,9 +81,6 @@ export class BackgroundProcess {
 
   constructor(private readonly deps: BackgroundProcessDeps) {
     this.output = new BackgroundProcessOutputStore(deps.outputPath);
-    this.interactiveScheduler = new BackgroundProcessScheduler(
-      () => INTERACTIVE_MAX_CONCURRENT,
-    );
     this.backgroundScheduler = new BackgroundProcessScheduler(
       () => deps.settings().maxConcurrent,
     );
@@ -104,9 +95,9 @@ export class BackgroundProcess {
 
   /**
    * 执行一条命令.两条路径:
-   * runInBackground=true → 直接落库排队,立即返回 processReference;
-   * 否则先占交互坑位 spawn, 3 分钟内完成则返回普通结果, 等待结束则把结果所有权
-   * 转交后台并解除原调用的取消绑定. 进程仍占原坑位, 后续终态由完成通知链接管.
+   * runInBackground=true: 直接落库排队, 立即返回 processReference.
+   * 普通命令直接启动, 3 分钟内完成则返回普通结果. 超过等待时间则转交后台,
+   * 解除原调用的取消绑定, 后续终态由完成通知接管, 不占显式后台队列名额.
    */
   async runCommand(request: BackgroundCommandRequest): Promise<BackgroundCommandResult> {
     this.deps.assertSessionWorkAllowed(request.sessionId);
@@ -175,28 +166,18 @@ export class BackgroundProcess {
       };
     }
 
-    try {
-      await this.acquireInteractiveSlot(id, request.sessionId, request.waitSignal);
-    } catch (error) {
-      writer.close();
-      this.output.remove(writer.location);
-      throw error;
-    }
     if (request.waitSignal.aborted) {
       writer.close();
       this.output.remove(writer.location);
-      this.interactiveScheduler.release();
       throw createBackgroundProcessAbortError();
     }
 
     let active: ActiveProcess;
     try {
       active = this.startProcess(id, frozenRequest, writer, false, true);
-      active.releaseSlot = () => this.interactiveScheduler.release();
     } catch (error) {
       writer.close();
       this.output.remove(writer.location);
-      this.interactiveScheduler.release();
       throw error;
     }
 
@@ -212,7 +193,6 @@ export class BackgroundProcess {
       this.active.delete(id);
       writer.close();
       this.output.remove(writer.location);
-      this.interactiveScheduler.release();
       this.notifyChanged(id);
       throw error;
     }
@@ -222,7 +202,6 @@ export class BackgroundProcess {
       this.active.delete(id);
       writer.close();
       this.output.remove(writer.location);
-      this.interactiveScheduler.release();
       this.notifyChanged(id);
       return {
         kind: 'commandResult',
@@ -240,14 +219,11 @@ export class BackgroundProcess {
       await active.handle.completion.catch(() => undefined);
       writer.close();
       this.output.remove(writer.location);
-      this.interactiveScheduler.release();
       this.notifyChanged(id);
       throw createBackgroundProcessAbortError();
     }
 
     // 结果所有权已转交后台:从此不再响应原 Turn 的取消信号.
-    // 这里只解除父 Turn 的等待和取消绑定. 真实进程仍占原 interactive 坑位,
-    // 否则每次转交都会让一批长进程逃离全部并发统计.
     active.detachWaitAbort?.();
     active.detachWaitAbort = undefined;
     const record = this.deps.store.insert({
@@ -327,7 +303,7 @@ export class BackgroundProcess {
 
     const queued = this.queued.get(id);
     if (queued) {
-      this.backgroundScheduler.cancel(id, new BackgroundProcessError('stopped_before_start', 'Background process stopped before start'));
+      this.backgroundScheduler.cancel(id);
       this.queued.delete(id);
       queued.writer.close();
       const terminal = this.deps.store.finish(id, record.version, {
@@ -364,7 +340,7 @@ export class BackgroundProcess {
   async discardSession(sessionId: string): Promise<void> {
     for (const [id, queued] of this.queued) {
       if (queued.request.sessionId !== sessionId) continue;
-      this.backgroundScheduler.cancel(id, new BackgroundProcessError('session_deleted', 'Session deleted'));
+      this.backgroundScheduler.cancel(id);
       this.queued.delete(id);
       queued.writer.close();
       this.notifyChanged(id);
@@ -413,7 +389,7 @@ export class BackgroundProcess {
     this.shuttingDown = true;
     for (const [id, queued] of this.queued) {
       const record = this.deps.store.findById(id);
-      this.backgroundScheduler.cancel(id, new BackgroundProcessError('app_shutting_down', 'Application is shutting down'));
+      this.backgroundScheduler.cancel(id);
       queued.writer.close();
       if (record) {
         const terminal = this.deps.store.finish(id, record.version, {
@@ -440,7 +416,7 @@ export class BackgroundProcess {
   private enqueuePersistent(id: string): void {
     const queued = this.queued.get(id);
     if (!queued) return;
-    this.backgroundScheduler.enqueue(queued.request.sessionId, {
+    this.backgroundScheduler.enqueue({
       id,
       start: () => {
         const current = this.queued.get(id);
@@ -458,7 +434,6 @@ export class BackgroundProcess {
         }
         try {
           const active = this.startProcess(id, current.request, current.writer, true, false);
-          active.releaseSlot = () => this.backgroundScheduler.release();
           active.version = record.version;
           this.emitRow(record);
           void this.finishActive(id, active);
@@ -480,34 +455,6 @@ export class BackgroundProcess {
           this.notifyChanged(id);
         }
       },
-      // 持久队列项的取消清理由调用方(stop/discardSession/shutdown)各自完成,此处无需动作.
-      cancel: () => undefined,
-    });
-  }
-
-  private acquireInteractiveSlot(
-    id: string,
-    sessionId: string,
-    signal: AbortSignal,
-  ): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const onAbort = (): void => {
-        if (this.interactiveScheduler.cancel(id, createBackgroundProcessAbortError())) {
-          reject(createBackgroundProcessAbortError());
-        }
-      };
-      signal.addEventListener('abort', onAbort, { once: true });
-      this.interactiveScheduler.enqueue(sessionId, {
-        id,
-        start: () => {
-          signal.removeEventListener('abort', onAbort);
-          resolve();
-        },
-        cancel: error => {
-          signal.removeEventListener('abort', onAbort);
-          reject(error);
-        },
-      });
     });
   }
 
@@ -542,8 +489,6 @@ export class BackgroundProcess {
       handle,
       persisted,
       startedAt,
-      // 占位空操作;调用方按坑位来源(交互池/后台池)覆盖为真正的归还函数.
-      releaseSlot: () => undefined,
       ...(detachWaitAbort ? { detachWaitAbort } : {}),
     };
     this.active.set(id, active);
@@ -569,7 +514,10 @@ export class BackgroundProcess {
     active.detachWaitAbort?.();
     active.writer.close();
     this.active.delete(id);
-    active.releaseSlot();
+    // 普通命令转后台也由这里收尾, 但只有显式后台命令占用了队列名额.
+    if (active.request.runInBackground) {
+      this.backgroundScheduler.release();
+    }
 
     if (!active.persisted || active.version === undefined) {
       this.notifyChanged(id);

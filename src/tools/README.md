@@ -60,9 +60,9 @@ Text defaults to a 50 KiB per-tool budget. `ToolResultStore` saves oversized tex
 
 `BackgroundProcess.runCommand()` accepts a `CommandStarter` and uses its `start`, `completion`, and `stop` handle. Bash and PowerShell supply their own command preparation.
 
-- Normal calls use a separate four-slot interactive queue. A command completing within 180 seconds returns a normal result and removes its temporary logs without keeping a process row.
-- After 180 seconds, the same process is recorded as running in the background. It keeps its original slot and logs; the original Turn's cancellation signal and progress callback are detached.
-- Explicit background calls are stored and queued immediately. Their concurrency setting defaults to two, with a range of one to eight.
+- Normal calls start without a separate process-slot queue. A command completing within 180 seconds returns a normal result and removes its temporary logs without keeping a process row. Tool-level permission and concurrency checks still apply.
+- After 180 seconds, the same process is recorded as running in the background. It keeps its logs; the original Turn's cancellation signal and progress callback are detached. It does not consume an explicit-background queue slot.
+- Explicit background calls are stored immediately and start in FIFO submission order across Sessions as slots become available. Their concurrency setting defaults to 32, with a range of 1-128. It limits explicitly backgrounded commands, not all running Shell processes. Cancelling a queued call removes it without starting a process or releasing a running slot.
 - Maximum runtime defaults to 24 hours, configurable from one to 168. A command can request a shorter timeout. The timeout is fixed when submitted, starts when execution starts, and excludes queue time.
 - Session work permission is checked both at submission and before starting a queued command.
 - Log writing failure stops the command and reports failure. UI progress callback failure only disables that callback.

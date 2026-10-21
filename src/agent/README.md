@@ -41,7 +41,7 @@ After complete assistant/tool history, `takeNextIterationMessages` can supply ad
 
 Every physical model call has a new `llmCallId`. Per-call usage events are cumulative for that call; Agent usage sums their changes. A context retry is a new physical call, not a new iteration. Other model errors propagate to the host.
 
-Settings default to 50 iterations per loop and four concurrent subagents per process, with allowed ranges 30-100 and 1-8. The host reads and applies these settings.
+Settings default to 50 iterations per loop and 32 concurrent subagents per process, with allowed ranges 30-100 and 1-128. All Sessions share the subagent limit. Reaching it rejects a new Run rather than queueing it. The host reads and applies these settings.
 
 ## Subagents
 

@@ -169,7 +169,7 @@ function processesRootEmpty(fixture: Fixture): boolean {
   return !fs.existsSync(root) || fs.readdirSync(root).length === 0;
 }
 
-/** 交互路径的坑位放行是微任务;等一个宏任务确保已 spawn 再操作假进程. */
+/** 等待完成回调保存终态和启动下一条排队命令. */
 function tick(): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, 0));
 }
@@ -298,20 +298,31 @@ describe('BackgroundProcess', () => {
     expect(fs.existsSync(logDirFor(fixture, background.backgroundProcessId))).toBe(true);
   });
 
-  it('等待前台坑位时会话开始停止, 放行后仍不能启动新命令', async () => {
+  it('会话开始停止后拒绝新普通命令, 已启动命令仍能正常停止', async () => {
     let closed = false;
     const fixture = tracked({ assertSessionWorkAllowed: () => {
       if (closed) throw new Error('session_stopping');
     } });
-    const foregrounds = Array.from({ length: 4 }, () => fixture.runtime.runCommand(makeRequest(fixture)));
-    await tick();
-    const waiting = fixture.runtime.runCommand(makeRequest(fixture));
-    const rejected = expect(waiting).rejects.toThrow('session_stopping');
+    const foreground = fixture.runtime.runCommand(makeRequest(fixture));
     closed = true;
+    await expect(fixture.runtime.runCommand(makeRequest(fixture))).rejects.toThrow('session_stopping');
     await fixture.runtime.stopForSession(SESSION_ID);
-    await Promise.all(foregrounds);
-    await rejected;
-    expect(fixture.runner.processes).toHaveLength(4);
+    await foreground;
+    expect(fixture.runner.processes).toHaveLength(1);
+    expect(processesRootEmpty(fixture)).toBe(true);
+  });
+
+  it('已取消的普通命令不启动进程并清理临时日志', async () => {
+    const fixture = tracked();
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(fixture.runtime.runCommand(makeRequest(fixture, {
+      waitSignal: controller.signal,
+    }))).rejects.toThrow();
+
+    expect(fixture.runner.processes).toHaveLength(0);
+    expect(fixture.runtime.hasLiveProcesses()).toBe(false);
     expect(processesRootEmpty(fixture)).toBe(true);
   });
 
@@ -458,17 +469,126 @@ describe('BackgroundProcess', () => {
     expect(fixture.runner.processes).toHaveLength(1);
   });
 
-  it('后台池被长任务占满时,交互命令仍能从独立小池立即执行', async () => {
+  it('显式后台队列满额时, 超过四条普通命令也直接启动', async () => {
     const fixture = tracked({ maxConcurrent: 1 });
     await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true }));
-    // 长任务永不完成,后台池已满.
+    const queued = await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true }));
+    if (queued.kind !== 'processReference') throw new Error('missing process reference');
 
-    const pending = fixture.runtime.runCommand(makeRequest(fixture));
+    const pending = Array.from({ length: 6 }, () => fixture.runtime.runCommand(makeRequest(fixture)));
+    expect(fixture.runner.processes).toHaveLength(7);
+    for (const process of fixture.runner.processes.slice(1)) {
+      process.finishWith(okResult('quick'));
+    }
+    const results = await Promise.all(pending);
+
+    expect(results.every(result => result.kind === 'commandResult')).toBe(true);
+    expect(fixture.repo.findById(queued.backgroundProcessId)?.status).toBe('queued');
+    expect(fixture.runner.processes).toHaveLength(7);
+    await fixture.runtime.shutdown();
+  });
+
+  it('跨 Session 的显式后台命令按提交顺序启动', async () => {
+    const fixture = tracked({ maxConcurrent: 1 });
+    const otherSessionId = 'session-b';
+    const otherTurnId = 'turn-b';
+    const otherToolCallId = 'call-b';
+    fixture.db.sqlite.prepare(
+      "INSERT INTO sessions (id, title, cwd, created_at, updated_at) VALUES (?, '', 'D:/work', 1, 1)",
+    ).run(otherSessionId);
+    fixture.db.sqlite.prepare(
+      "INSERT INTO turns (id, session_id, status, created_at) VALUES (?, ?, 'running', 1)",
+    ).run(otherTurnId, otherSessionId);
+    fixture.db.sqlite.prepare(
+      `INSERT INTO tool_executions (call_id, session_id, turn_id, tool_name, status, created_at, updated_at)
+       VALUES (?, ?, ?, 'bash', 'running', 1, 1)`,
+    ).run(otherToolCallId, otherSessionId, otherTurnId);
+    const start = vi.spyOn(fixture.runner, 'start');
+
+    await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true, command: 'running' }));
+    for (const command of ['a1', 'a2', 'a3']) {
+      await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true, command }));
+    }
+    await fixture.runtime.runCommand(makeRequest(fixture, {
+      runInBackground: true,
+      command: 'b1',
+      sessionId: otherSessionId,
+      turnId: otherTurnId,
+      toolCallId: otherToolCallId,
+    }));
+
+    for (const command of ['a1', 'a2', 'a3', 'b1']) {
+      fixture.runner.processes.at(-1)!.finishWith(okResult());
+      await tick();
+      expect(start.mock.lastCall?.[0]).toBe(command);
+    }
+    expect(start.mock.calls.map(([command]) => command)).toEqual(['running', 'a1', 'a2', 'a3', 'b1']);
+    await fixture.runtime.shutdown();
+  });
+
+  it('普通命令转后台及结束不占用或释放显式后台名额', async () => {
+    const fixture = tracked({ maxConcurrent: 1, immediateResultWaitMs: 10 });
+    const foreground = fixture.runtime.runCommand(makeRequest(fixture));
+    const process = fixture.runner.processes[0]!;
+    const transferred = await foreground;
+    expect(transferred.kind).toBe('processReference');
+
+    const background = await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true }));
+    const queued = await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true }));
+    if (background.kind !== 'processReference' || queued.kind !== 'processReference') {
+      throw new Error('missing process reference');
+    }
+    expect(background.status).toBe('running');
+    expect(queued.status).toBe('queued');
+    expect(fixture.runner.processes).toHaveLength(2);
+
+    process.finishWith(okResult());
     await tick();
-    fixture.runner.processes[1]!.finishAfter(20, okResult('quick'));
-    const result = await pending;
+    expect(fixture.runner.processes).toHaveLength(2);
+    expect(fixture.repo.findById(queued.backgroundProcessId)?.status).toBe('queued');
 
-    expect(result.kind).toBe('commandResult');
+    fixture.runner.processes[1]!.finishWith(okResult());
+    await tick();
+    expect(fixture.runner.processes).toHaveLength(3);
+    expect(fixture.repo.findById(queued.backgroundProcessId)?.status).toBe('running');
+    await fixture.runtime.shutdown();
+  });
+
+  it('取消排队项不释放运行名额, 后续项保持提交顺序', async () => {
+    const fixture = tracked({ maxConcurrent: 1 });
+    const start = vi.spyOn(fixture.runner, 'start');
+    await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true, command: 'running' }));
+    const cancelled = await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true, command: 'cancelled' }));
+    if (cancelled.kind !== 'processReference') throw new Error('missing process reference');
+    await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true, command: 'next' }));
+
+    await fixture.runtime.stop(SESSION_ID, cancelled.backgroundProcessId);
+    expect(start).toHaveBeenCalledTimes(1);
+    fixture.runner.processes[0]!.finishWith(okResult());
+    await tick();
+
+    expect(start.mock.calls.map(([command]) => command)).toEqual(['running', 'next']);
+    expect(fixture.repo.findById(cancelled.backgroundProcessId)?.status).toBe('stopped');
+    await fixture.runtime.shutdown();
+  });
+
+  it('排队命令启动失败后释放名额并继续启动下一项', async () => {
+    const fixture = tracked({ maxConcurrent: 1 });
+    await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true, command: 'running' }));
+    const failed = await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true, command: 'failed' }));
+    await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true, command: 'next' }));
+    if (failed.kind !== 'processReference') throw new Error('missing process reference');
+    const start = vi.spyOn(fixture.runner, 'start').mockImplementationOnce(() => {
+      throw new Error('spawn failed');
+    });
+
+    fixture.runner.processes[0]!.finishWith(okResult());
+    await tick();
+
+    expect(start.mock.calls.map(([command]) => command)).toEqual(['failed', 'next']);
+    expect(fixture.repo.findById(failed.backgroundProcessId)?.status).toBe('failed');
+    expect(fixture.repo.findById(failed.backgroundProcessId)?.terminationReason).toBe('spawn failed');
+    await fixture.runtime.shutdown();
   });
 
   it('discardSession 停止进程树并等待退出后才返回', async () => {
