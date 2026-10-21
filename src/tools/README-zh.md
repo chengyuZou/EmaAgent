@@ -41,9 +41,9 @@ Pool 保留同一批 Tool 对象, 不回读 Registry. MCP 更新影响后续准�
 
 `ToolResult.content` 是已经生成并保存的模型内容. `data` 保存供 UI 和历史读取的业务结果. 多模态内容原样交付, 体积由工具自身限制.
 
-文本默认每项预算为 50 KiB. 超限时, `ToolResultStore` 把全文写到 Session 的 `tool-results` 目录, 返回路径和最多 2,000 字节的 UTF-8 安全预览. 当前实现在落盘失败时返回原文, 因此磁盘故障下这个预算并非绝对上限.
+文本默认每项预算为 50 KiB. 超限时, `ToolResultStore` 把全文写到 `data/tool-results/<sessionId>/`, 返回路径和最多 2,000 字节的 UTF-8 安全预览. 当前实现在落盘失败时返回原文, 因此磁盘故障下这个预算并非绝对上限.
 
-`ToolResultCleaner.sweep()` 先清理七天前的文件, 再按从旧到新的顺序限制单 Session 50 MiB 和全局 500 MiB. 文件操作最多八路并行, 调用时机由宿主安排.
+`ToolResultCleaner` 接收 `data/tool-results/` 根目录. `ToolResultCleaner.sweep()` 先清理七天前的文件, 再按从旧到新的顺序限制单 Session 50 MiB 和全局 500 MiB. 文件操作最多八路并行, 调用时机由宿主安排.
 
 `FileStateCache` 在同一 Session 的 Turn 与子代理间共享. LRU 最多保存 100 项和 25 MiB 正文. 范围读取保留范围信息; 文件修改时间变新时, 只有缓存了完整原文才能通过换行归一化后的全文相等判断接受写入. Session 删除和 Server 关闭时释放, 不从历史消息恢复.
 

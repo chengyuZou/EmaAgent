@@ -50,9 +50,9 @@ Shutdown cancels calls and waits up to five seconds by default. Calls still runn
 
 `ToolResult.content` is model-visible and saved once. `data` keeps the business result for UI and history consumers. Multimodal content passes through; the tool must keep it within its own limits.
 
-Text defaults to a 50 KiB per-tool budget. `ToolResultStore` saves oversized text under the Session's `tool-results` directory and returns its path plus a UTF-8-safe preview of at most 2,000 bytes. If saving fails, the current implementation returns the original text. The budget is therefore not a guaranteed upper bound during disk failure.
+Text defaults to a 50 KiB per-tool budget. `ToolResultStore` saves oversized text under `data/tool-results/<sessionId>/` and returns its path plus a UTF-8-safe preview of at most 2,000 bytes. If saving fails, the current implementation returns the original text. The budget is therefore not a guaranteed upper bound during disk failure.
 
-`ToolResultCleaner.sweep()` removes expired files after seven days, then enforces 50 MiB per Session and 500 MiB overall, oldest first. It uses up to eight file operations at a time. The host decides when to call it.
+`ToolResultCleaner` receives the `data/tool-results/` root. `ToolResultCleaner.sweep()` removes expired files after seven days, then enforces 50 MiB per Session and 500 MiB overall, oldest first. It uses up to eight file operations at a time. The host decides when to call it.
 
 `FileStateCache` is shared within a Session across Turns and subagents. Its LRU holds at most 100 entries and 25 MiB of text. Range reads retain their range; a newer modification time can only be accepted using normalized full-text equality when the cached read was complete. Session deletion and Server shutdown release the cache. It is not rebuilt from messages.
 

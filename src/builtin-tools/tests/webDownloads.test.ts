@@ -19,7 +19,7 @@ const invocation = {
 
 beforeEach(async () => {
   directory = await fs.mkdtemp(path.join(os.tmpdir(), 'ema-web-download-'));
-  downloadsDir = path.join(directory, 'data', 'web-fetch');
+  downloadsDir = path.join(directory, 'data', 'web-fetch', invocation.sessionId);
   configureWebDownloads(path.join(directory, 'data'));
   for (const name of ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY', 'EMA_WEB_SYSTEM_PROXY']) {
     vi.stubEnv(name, '');
@@ -142,7 +142,7 @@ describe('WebFetch downloads', () => {
     const first = await fetchFile();
     configureWebDownloads(path.join(directory, 'other-data'));
     const other = await fetchFile();
-    expect(path.dirname(other.download!.filePath)).toBe(path.join(directory, 'other-data', 'web-fetch'));
+    expect(path.dirname(other.download!.filePath)).toBe(path.join(directory, 'other-data', 'web-fetch', invocation.sessionId));
     expect(other.download!.filePath).not.toBe(first.download!.filePath);
     configureWebDownloads(path.join(directory, 'data'));
     await fs.unlink(first.download!.filePath);
@@ -159,6 +159,21 @@ describe('WebFetch downloads', () => {
     mockResponse(new Uint8Array(10 * 1024 * 1024 + 1), 'application/pdf');
     await expect(fetchFile('https://example.test/large')).rejects.toThrow('上限');
     expect(await fs.readdir(downloadsDir)).toEqual(before);
+  });
+
+  it('isolates concurrent Session downloads and reuses only the owning Session cache', async () => {
+    const mock = mockResponse(textPdf(), 'application/pdf');
+    const input = WebFetchTool.inputSchema.parse({ url: 'https://example.test/shared' });
+    const [first, second] = await Promise.all([
+      WebFetchTool.execute(input, undefined, { ...invocation, sessionId: 'first' }),
+      WebFetchTool.execute(input, undefined, { ...invocation, sessionId: 'second' }),
+    ]);
+    expect(path.dirname(first.download!.filePath)).toBe(path.join(directory, 'data', 'web-fetch', 'first'));
+    expect(path.dirname(second.download!.filePath)).toBe(path.join(directory, 'data', 'web-fetch', 'second'));
+    expect(first.download!.filePath).not.toBe(second.download!.filePath);
+    const cached = await WebFetchTool.execute(input, undefined, { ...invocation, sessionId: 'first' });
+    expect(cached.download!.filePath).toBe(first.download!.filePath);
+    expect(mock).toHaveBeenCalledTimes(2);
   });
 
   it('does not save an interrupted response', async () => {

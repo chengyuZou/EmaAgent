@@ -18,7 +18,7 @@ interface FileEntry {
 }
 
 export class ToolResultCleaner {
-  constructor(private readonly sessionsDir: string) {}
+  constructor(private readonly toolResultsRoot: string) {}
 
   /**
    * 先按结果文件自己的修改时间清 TTL, 再依次约束单 Session 与全局体积.
@@ -100,10 +100,10 @@ export class ToolResultCleaner {
 
   private async listSessionToolResultDirs(): Promise<string[]> {
     try {
-      const entries = await readdir(this.sessionsDir, { withFileTypes: true });
+      const entries = await readdir(this.toolResultsRoot, { withFileTypes: true });
       return entries
         .filter(entry => entry.isDirectory())
-        .map(entry => path.join(this.sessionsDir, entry.name, 'tool-results'));
+        .map(entry => path.join(this.toolResultsRoot, entry.name));
     } catch {
       return [];
     }

@@ -40,6 +40,7 @@
     "@ema-agent/sandbox": "workspace:*",
     "@ema-agent/session": "workspace:*",
     "@ema-agent/skills": "workspace:*",
+    "@ema-agent/storage": "workspace:*",
     "@ema-agent/tasks": "workspace:*",
     "@ema-agent/token": "workspace:*",
     "@ema-agent/tools": "workspace:*",
@@ -65,7 +66,6 @@
     "react": "^18.3.0"
   },
   "devDependencies": {
-    "@ema-agent/storage": "workspace:*",
     "@types/diff": "^8.0.0",
     "@types/jsdom": "^21.1.7",
     "@types/node": "^20.0.0",

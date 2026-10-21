@@ -118,7 +118,8 @@ Alpha 使用预发布后缀, 例如 `0.1.0-alpha.1`. 根目录 `package.json` �
 | --- | --- |
 | `profile.db` | Provider, 凭据, 模型绑定, 角色, 设置, MCP 配置和技能索引 |
 | `data/data.db` | 会话, Turn, 消息, Task, Goal, 子 Agent, 工具执行, 用量和 Memory 任务 |
-| `data/sessions/` | 受管图片, 粘贴文本, 音频和命令输出 |
+| `data/attachments/`, `data/audio/`, `data/web-fetch/` | 按 Session ID 分组的受管图片和粘贴文本, 生成音频和下载文件 |
+| `data/tool-results/`, `data/background-processes/`, `data/scratchpad/` | 按 Session ID 分组的工具大文本, 命令输出和临时便签 |
 | `memories/` | Work 和 Relationship Markdown 文件 |
 | `narrative/narrative.db` | 固定剧情原文, 图数据和向量 |
 | `characters/`, `skills/`, `resources/skills/` | 角色资源, 用户 Skills 和内置 Skill 副本 |

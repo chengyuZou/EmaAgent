@@ -24,6 +24,8 @@ const fileRoots: ReadonlySet<string> = new Set([
   'attachments',
   'speechOutputs',
   'backgroundProcesses',
+  'web-fetch',
+  'tool-results',
 ]);
 
 export function isSessionArchivePath(entryPath: string): boolean {

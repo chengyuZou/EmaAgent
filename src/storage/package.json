@@ -7,6 +7,10 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./dataPaths": {
+      "types": "./dist/dataPaths.d.ts",
+      "import": "./dist/dataPaths.js"
     }
   },
   "main": "./dist/index.js",

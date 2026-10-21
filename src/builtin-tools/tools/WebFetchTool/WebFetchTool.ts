@@ -144,7 +144,7 @@ export const WebFetchTool = buildTool<WebFetchInput, WebFetchResult, void>({
     const { url, max_length, start_index, raw } = input;
     let page;
     try {
-      page = await fetchPublicPage(url, invocation.signal, { raw });
+      page = await fetchPublicPage(url, invocation.signal, { raw, sessionId: invocation.sessionId });
     } catch (error) {
       throw webRequestFailure(error, invocation.signal);
     }

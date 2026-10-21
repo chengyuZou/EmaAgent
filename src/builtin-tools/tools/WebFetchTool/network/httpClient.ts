@@ -2,7 +2,7 @@ import { stat } from 'node:fs/promises';
 import { requestWeb } from './webRequests.js';
 import { WebPageCache } from '../storage/cache.js';
 import { readWebResponse } from './readWebResponse.js';
-import { getWebDownloadsDir, saveWebDownload, webDownloadNotice, type WebDownload } from '../storage/webDownloads.js';
+import { getSessionWebDownloadsDir, saveWebDownload, webDownloadNotice, type WebDownload } from '../storage/webDownloads.js';
 
 const MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
 const FETCH_TIMEOUT_MS = 30_000;
@@ -19,6 +19,8 @@ export interface FetchedPage {
 }
 
 export interface FetchPageOptions {
+  /** Download files and their cache entries belong to the calling Session. */
+  sessionId: string;
   /** true 时返回解码后的原始文本, 不提取主体或转换 Markdown. */
   raw: boolean;
 }
@@ -29,7 +31,7 @@ export async function fetchPublicPage(
   options: FetchPageOptions,
 ): Promise<FetchedPage> {
   signal.throwIfAborted();
-  const downloadsDir = getWebDownloadsDir();
+  const downloadsDir = getSessionWebDownloadsDir(options.sessionId);
   // 文本缓存区分 raw/markdown; 下载缓存与数据目录绑定, 不受文本分页方式影响.
   const cacheKey = `${options.raw ? 'raw:' : 'md:'}${rawUrl}`;
   const downloadKey = downloadsDir ? `file:${JSON.stringify([downloadsDir, rawUrl])}` : undefined;

@@ -2,6 +2,7 @@ import fs   from 'node:fs';
 import os   from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { SESSION_RESOURCE_KINDS, dataResourceDir, sessionResourceDir, turnResourceDir } from '@ema-agent/storage/dataPaths';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..', '..', '..', '..');
@@ -79,37 +80,45 @@ export function ensureDataDirLayout(dataDir: string): void {
   fs.mkdirSync(trashDirFor(dataDir), { recursive: true });
 }
 
-// 一个 Session 的全部文件收在 sessions/<sessionId>/ 下,删除 Session 即整目录移除:
-//   {dataDir}/sessions/{sessionId}/
-//     audio/{turnId}/{turnId}-{characterName}.wav
-//     audio/{turnId}/{turnId}-{characterName}.wav.pending
-//     scratchpad/{turnId}/{key}
-//     background-processes/{processId}/
-
-export function sessionDirFor(dataDir: string, sessionId: string): string {
-  return path.join(dataDir, 'sessions', sessionId);
+/** 后台进程日志属于 Session, 不随某个 Turn 结束而删除. */
+export function backgroundProcessOutputDirFor(
+  dataDir: string,
+  sessionId: string,
+  backgroundProcessId: string,
+): { absoluteDirectory: string; relativeDirectory: string } {
+  const absoluteDirectory = path.join(
+    sessionResourceDir(dataDir, 'background-processes', sessionId),
+    backgroundProcessId,
+  );
+  return { absoluteDirectory, relativeDirectory: path.relative(dataDir, absoluteDirectory) };
 }
 
-/**
- * 启动自检:删除数据库中已不存在的整棵 Session 目录.
- * 数据库是事实源;逐目录隔离删除失败,避免一个被占用的 Windows 文件阻断其余恢复.
- */
+/** 不跟随资源根目录或 Session 目录的符号链接, 避免清理越出数据目录. */
+function* sessionResourceDirectories(dataDir: string): Generator<{
+  sessionId: string;
+  directory: string;
+}> {
+  for (const kind of SESSION_RESOURCE_KINDS) {
+    const root = dataResourceDir(dataDir, kind);
+    if (!fs.existsSync(root) || fs.lstatSync(root).isSymbolicLink()) continue;
+    for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+      if (!entry.isDirectory() || entry.isSymbolicLink() || entry.name.startsWith('.')) continue;
+      yield { sessionId: entry.name, directory: path.join(root, entry.name) };
+    }
+  }
+}
+
+/** ready 后逐目录容错清理; 一个文件被占用不阻断其他 Session 的回收. */
 export function sweepOrphanSessionDirectories(
   dataDir: string,
   sessionExists: (sessionId: string) => boolean,
 ): { removed: number; failed: number } {
-  const sessionsRoot = path.join(dataDir, 'sessions');
-  if (!fs.existsSync(sessionsRoot)) return { removed: 0, failed: 0 };
-
   let removed = 0;
   let failed = 0;
-  for (const entry of fs.readdirSync(sessionsRoot, { withFileTypes: true })) {
-    // 不跟随符号链接或 Junction,避免清理越出 active dataDir.
-    if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
-    if (sessionExists(entry.name)) continue;
-
+  for (const { sessionId, directory } of sessionResourceDirectories(dataDir)) {
+    if (sessionExists(sessionId)) continue;
     try {
-      fs.rmSync(path.join(sessionsRoot, entry.name), { recursive: true, force: true });
+      fs.rmSync(directory, { recursive: true, force: true });
       removed += 1;
     } catch {
       failed += 1;
@@ -118,63 +127,22 @@ export function sweepOrphanSessionDirectories(
   return { removed, failed };
 }
 
-/** 后台进程日志跟随 Session 生命周期,但不属于某个短命 Turn. */
-export function backgroundProcessOutputDirFor(
-  dataDir: string,
-  sessionId: string,
-  backgroundProcessId: string,
-): { absoluteDirectory: string; relativeDirectory: string } {
-  const relativeDirectory = path.join(
-    'sessions',
-    sessionId,
-    'background-processes',
-    backgroundProcessId,
-  );
-  return { absoluteDirectory: path.join(dataDir, relativeDirectory), relativeDirectory };
-}
-
-/**
- * 只删除 Session 下的 artifacts 子目录, 保留 audio, scratchpad 等仍在使用的文件.
- */
-export function removeLegacyArtifactDirectories(dataDir: string): number {
-  const sessionsRoot = path.join(dataDir, 'sessions');
-  if (!fs.existsSync(sessionsRoot)) return 0;
-
-  let removed = 0;
-  for (const entry of fs.readdirSync(sessionsRoot, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
-    const artifactDir = path.join(sessionsRoot, entry.name, 'artifacts');
-    if (!fs.existsSync(artifactDir)) continue;
-    fs.rmSync(artifactDir, { recursive: true, force: true });
-    removed += 1;
-  }
-  return removed;
-}
-
-/**
- * 删除没有对应 Session 数据行的目录, 包括导入在文件落位后, SQL 提交前中断的残留.
- * 点开头的暂存目录保留. 删除失败会向上传播, 与 ready 后逐项容错的清理不同.
- */
+/** 接收请求前清理导入在文件发布后, SQL 提交前退出的残留; 失败阻止启动. */
 export function removeOrphanSessionDirectories(
   dataDir: string,
   hasSession: (sessionId: string) => boolean,
 ): number {
-  const sessionsRoot = path.join(dataDir, 'sessions');
-  if (!fs.existsSync(sessionsRoot)) return 0;
-
   let removed = 0;
-  for (const entry of fs.readdirSync(sessionsRoot, { withFileTypes: true })) {
-    if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
-    if (hasSession(entry.name)) continue;
-    fs.rmSync(path.join(sessionsRoot, entry.name), { recursive: true, force: true });
+  for (const { sessionId, directory } of sessionResourceDirectories(dataDir)) {
+    if (hasSession(sessionId)) continue;
+    fs.rmSync(directory, { recursive: true, force: true });
     removed += 1;
   }
   return removed;
 }
 
-
 export function scratchpadTurnDir(dataDir: string, sessionId: string, turnId: string): string {
-  return path.join(sessionDirFor(dataDir, sessionId), 'scratchpad', turnId);
+  return turnResourceDir(dataDir, 'scratchpad', sessionId, turnId);
 }
 
 export function ensureScratchpadDir(dataDir: string, sessionId: string, turnId: string): string {
@@ -184,72 +152,42 @@ export function ensureScratchpadDir(dataDir: string, sessionId: string, turnId: 
 }
 
 export function removeScratchpadDir(dataDir: string, sessionId: string, turnId: string): void {
-  const dir = scratchpadTurnDir(dataDir, sessionId, turnId);
-  if (fs.existsSync(dir)) {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
+  fs.rmSync(scratchpadTurnDir(dataDir, sessionId, turnId), { recursive: true, force: true });
 }
 
-/**
- * Turn 数据行删除后清理该轮所有角色音频, 未完成写入的文件和 scratchpad.
- */
+/** Turn 数据行删除后清理该轮所有角色音频和临时便签. */
 export function removeTurnFiles(dataDir: string, sessionId: string, turnId: string): void {
-  const audioDir = path.join(sessionDirFor(dataDir, sessionId), 'audio', turnId);
-  fs.rmSync(audioDir, { recursive: true, force: true });
-
+  fs.rmSync(turnResourceDir(dataDir, 'audio', sessionId, turnId), { recursive: true, force: true });
   removeScratchpadDir(dataDir, sessionId, turnId);
 }
 
-/**
- * 启动自检:清理"DB 已删 Turn, 磁盘仍残留"的孤儿文件.
- * 删除数据行后进程可能在文件清理途中退出. 本函数只删除数据库中已不存在
- * 的 Turn 对应音频目录和 scratchpad; 仍存在的 Turn 文件保留.
- * liveTurnIdsForSession 由调用方从 DB 提供, 本函数不猜 Session 是否存在.
- */
+/** 只清理数据库中已不存在的 Turn; Session 级下载和工具大文本不按 Turn 回收. */
 export function sweepOrphanTurnFiles(
   dataDir: string,
   liveTurnIdsForSession: (sessionId: string) => Set<string>,
 ): { removed: number } {
-  const sessionsRoot = path.join(dataDir, 'sessions');
-  if (!fs.existsSync(sessionsRoot)) return { removed: 0 };
-
   let removed = 0;
-  for (const entry of fs.readdirSync(sessionsRoot, { withFileTypes: true })) {
-    if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
-    const sessionId = entry.name;
-    const audioDir = path.join(sessionsRoot, sessionId, 'audio');
-    const scratchDir = path.join(sessionsRoot, sessionId, 'scratchpad');
-    if (!fs.existsSync(audioDir) && !fs.existsSync(scratchDir)) continue;
-    const live = liveTurnIdsForSession(sessionId);
-
-    if (fs.existsSync(audioDir)) {
-      for (const folder of fs.readdirSync(audioDir, { withFileTypes: true })) {
-        if (!folder.isDirectory() || folder.isSymbolicLink()) continue;
-        // 这里只清理 Turn 目录; merged / segments 的旧资源清理需单独处理.
-        if (folder.name === 'merged' || folder.name === 'segments') continue;
-        if (!live.has(folder.name)) {
-          fs.rmSync(path.join(audioDir, folder.name), { recursive: true, force: true });
-          removed++;
-        }
-      }
-    }
-
-    if (fs.existsSync(scratchDir)) {
-      for (const turnId of fs.readdirSync(scratchDir)) {
-        if (!live.has(turnId)) {
-          fs.rmSync(path.join(scratchDir, turnId), { recursive: true, force: true });
-          removed++;
-        }
+  for (const kind of ['audio', 'scratchpad'] as const) {
+    const root = dataResourceDir(dataDir, kind);
+    if (!fs.existsSync(root) || fs.lstatSync(root).isSymbolicLink()) continue;
+    for (const session of fs.readdirSync(root, { withFileTypes: true })) {
+      if (!session.isDirectory() || session.isSymbolicLink() || session.name.startsWith('.')) continue;
+      const directory = path.join(root, session.name);
+      const live = liveTurnIdsForSession(session.name);
+      for (const turn of fs.readdirSync(directory, { withFileTypes: true })) {
+        if (!turn.isDirectory() || turn.isSymbolicLink()) continue;
+        if (live.has(turn.name)) continue;
+        fs.rmSync(path.join(directory, turn.name), { recursive: true, force: true });
+        removed += 1;
       }
     }
   }
   return { removed };
 }
 
-/** 永久删除 Session 时移除整棵目录树. */
-export function removeSessionDir(dataDir: string, sessionId: string): void {
-  const dir = sessionDirFor(dataDir, sessionId);
-  if (fs.existsSync(dir)) {
-    fs.rmSync(dir, { recursive: true, force: true });
+/** Session 数据行删除后清理每类受管资源, 不触碰 Profile 和备份暂存目录. */
+export function removeSessionFiles(dataDir: string, sessionId: string): void {
+  for (const kind of SESSION_RESOURCE_KINDS) {
+    fs.rmSync(sessionResourceDir(dataDir, kind, sessionId), { recursive: true, force: true });
   }
 }

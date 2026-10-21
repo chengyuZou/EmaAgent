@@ -1,4 +1,6 @@
 import fs from 'node:fs';
+import path from 'node:path';
+import { sessionResourceDir } from '@ema-agent/storage/dataPaths';
 import type { ZodType } from 'zod';
 import type { SessionBackupReader, SessionBackupRestorer } from '@ema-agent/storage';
 import { SessionImportError } from '../errors.js';
@@ -50,23 +52,29 @@ import type {
 } from '../records/sessionRecords.js';
 import type { SessionImportResult } from '../types.js';
 import { extractSessionArchive, type ExtractedSessionArchive } from './archive.js';
-import { publishSessionFiles } from './sessionFiles.js';
+import { publishSessionFiles, removePublishedSessionFiles } from './sessionFiles.js';
+import { rewriteFileReferences } from './fileReferences.js';
 
 export async function importSessionArchive(
   filePath: string,
   activeDataDir: string,
-  temporaryRoot: string,
   reader: SessionBackupReader,
   restorer: SessionBackupRestorer,
   modelSelectionExists: (providerId: string, modelId: string) => boolean,
   signal?: AbortSignal,
 ): Promise<SessionImportResult> {
+  const temporaryRoot = path.join(activeDataDir, '.backup-temp', 'imports');
   const archive = await extractSessionArchive(filePath, temporaryRoot, signal);
   try {
     const manifest = readJsonRecord(archive, SESSION_MANIFEST_PATH, sessionBackupManifestSchema);
+    const resourcePaths = new Set(manifest.resourceFiles.map(file => file.filePath));
     for (const entryPath of archive.paths()) {
       if (!isSessionArchivePath(entryPath)) {
         throw new SessionImportError('invalid_format', `ZIP 包含未知条目: ${entryPath}`);
+      }
+      if ((entryPath.startsWith('files/web-fetch/') || entryPath.startsWith('files/tool-results/'))
+        && !resourcePaths.has(entryPath)) {
+        throw new SessionImportError('invalid_format', `ZIP 资源没有对应记录: ${entryPath}`);
       }
     }
     if (reader.hasSession(manifest.sessionId)) {
@@ -139,6 +147,7 @@ export async function importSessionArchive(
       attachmentPastedTexts,
       speechOutputs,
       backgroundProcesses,
+      manifest.resourceFiles,
       signal,
     );
     try {
@@ -148,7 +157,7 @@ export async function importSessionArchive(
         turns: turns.map(row => restoreTurnRecord(row, importedAt)),
         messages: messages.map(record => restoreMessageRecord({
           ...record,
-          blocksJson: rewriteAttachmentPaths(record.blocksJson, files.attachments),
+          blocksJson: rewriteFileReferences(record.blocksJson, files.attachments, files.resources),
         })),
         tasks: tasks.map(restoreTaskRecord),
         goals: goals.map(goal => restoreGoalRecord(goal, importedAt)),
@@ -156,12 +165,15 @@ export async function importSessionArchive(
         subagentRuns: subagentRuns.map(row => restoreSubagentRunRecord(row, importedAt)),
         subagentMessages: subagentMessages.map(record => restoreSubagentMessageRecord({
           ...record,
-          blocksJson: rewriteAttachmentPaths(record.blocksJson, files.attachments),
+          blocksJson: rewriteFileReferences(record.blocksJson, files.attachments, files.resources),
         })),
         toolExecutions: toolExecutions.map(row => restoreToolExecutionRecord(row, importedAt)),
         backgroundProcesses: backgroundProcesses.map(row => restoreBackgroundProcessRecord(
           row,
-          files.backgroundDirectories.get(row.id) ?? `sessions/${manifest.sessionId}/background-processes/${row.id}`,
+          files.backgroundDirectories.get(row.id) ?? path.relative(
+            activeDataDir,
+            path.join(sessionResourceDir(activeDataDir, 'background-processes', manifest.sessionId), row.id),
+          ),
           archiveOutputBytes(archive, row.outputDirectoryPath, 'stdout.log'),
           archiveOutputBytes(archive, row.outputDirectoryPath, 'stderr.log'),
           importedAt,
@@ -185,8 +197,7 @@ export async function importSessionArchive(
         usageRecords: usageRecords.map(restoreUsageRecord),
       });
     } catch (error) {
-      // publishSessionFiles 只返回本次新建的目录, 不会返回已有 Session 目录.
-      fs.rmSync(files.directory, { recursive: true, force: true });
+      removePublishedSessionFiles(files.directories);
       throw new SessionImportError(
         'restore_failed',
         error instanceof Error ? error.message : 'Session 数据库恢复失败',
@@ -197,23 +208,6 @@ export async function importSessionArchive(
   } finally {
     archive.dispose();
   }
-}
-
-function rewriteAttachmentPaths(
-  blocksJson: string,
-  pathMap: ReadonlyMap<string, string>,
-): string {
-  let rewritten = blocksJson;
-  for (const [oldPath, newPath] of pathMap) {
-    if (oldPath === newPath) {
-      continue;
-    }
-    // blocks_json 中的 Windows 路径已经过 JSON 转义, 原始反斜杠不能直接匹配.
-    const escapedOld = JSON.stringify(oldPath).slice(1, -1);
-    const escapedNew = JSON.stringify(newPath).slice(1, -1);
-    rewritten = rewritten.split(escapedOld).join(escapedNew);
-  }
-  return rewritten;
 }
 
 function readJsonRecord<T>(

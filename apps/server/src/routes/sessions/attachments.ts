@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { Readable } from 'node:stream';
+import { sessionResourceDir } from '@ema-agent/storage/dataPaths';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import type { ImageStore, PastedTextStore } from '@ema-agent/attachments';
@@ -140,7 +141,7 @@ function sessionMissing(deps: SessionAttachmentsRouteDeps, sessionId: string): b
 }
 
 function isInsideManagedDir(activeDataDir: string, sessionId: string, target: string): boolean {
-  const dir = path.join(activeDataDir, 'sessions', sessionId, 'attachments');
+  const dir = sessionResourceDir(activeDataDir, 'attachments', sessionId);
   const relative = path.relative(dir, path.resolve(target));
   return !relative.startsWith('..') && !path.isAbsolute(relative);
 }

@@ -143,7 +143,7 @@ describe('prepareTurnTools', () => {
 
   it('main Agent and subagents download without web fields in Turn dependencies', async () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ema-turn-web-'));
-    const downloadsDir = path.join(directory, 'data', 'web-fetch');
+    const downloadsDir = path.join(directory, 'data', 'web-fetch', SESSION_ID);
     configureWebDownloads(path.join(directory, 'data'));
     for (const name of ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY', 'EMA_WEB_SYSTEM_PROXY']) {
       vi.stubEnv(name, '');

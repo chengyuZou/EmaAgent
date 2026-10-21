@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { AttachmentImagesRepo } from '@ema-agent/storage';
+import { sessionResourceDir } from '@ema-agent/storage/dataPaths';
 import { AttachmentPreparationError } from './errors.js';
 import {
   IMAGE_NORMALIZE_MAX_BYTES,
@@ -32,7 +33,7 @@ export class ImageStore {
   ): Promise<SavedImage> {
     const normalized = await this.normalize(bytes, originalName);
     const id = randomUUID();
-    const dir = path.join(this.dataDir, 'sessions', sessionId, 'attachments', 'images');
+    const dir = path.join(sessionResourceDir(this.dataDir, 'attachments', sessionId), 'images');
     const target = path.join(dir, `${id}.${normalized.extension}`);
     try {
       await mkdir(dir, { recursive: true });
@@ -86,7 +87,7 @@ export class ImageStore {
       this.emit?.({ type: 'attachments_changed', sessionId });
     }
 
-    const dir = path.join(this.dataDir, 'sessions', sessionId, 'attachments', 'images');
+    const dir = path.join(sessionResourceDir(this.dataDir, 'attachments', sessionId), 'images');
     let entries;
     try {
       entries = await readdir(dir, { withFileTypes: true });

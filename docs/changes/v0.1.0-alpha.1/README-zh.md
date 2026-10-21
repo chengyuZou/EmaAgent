@@ -52,3 +52,4 @@
 - [原生主题权限与 Server 环境](./logs/zh/releasePermissionsAndEnvironment.md)
 - [Windows 退出时控制台闪现](./logs/zh/windowsExitConsole.md)
 - [WebSearch 返回无关结果](./logs/zh/webSearchResults.md)
+- [Session 资源路径与备份](./logs/zh/sessionResourcePaths.md)

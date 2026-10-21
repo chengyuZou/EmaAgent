@@ -52,3 +52,4 @@ These records keep the evidence and remaining checks separate from the release s
 - [Native theme permissions and Server environment](./logs/en/releasePermissionsAndEnvironment.md)
 - [Console flash when exiting on Windows](./logs/en/windowsExitConsole.md)
 - [Unrelated WebSearch results](./logs/en/webSearchResults.md)
+- [Session resource paths and backup](./logs/en/sessionResourcePaths.md)

@@ -10,8 +10,8 @@ Server 将 Storage Repo, 当前数据目录和可选事件函数传给 `ImageSto
 
 | 输入 | 保存方式 | 发送时 |
 | --- | --- | --- |
-| PNG, JPEG, GIF, WebP | `sessions/<sessionId>/attachments/images/<uuid>.<ext>` 和图片记录. | 将路径绑定到当前 Turn. |
-| 长度 >=1000 的粘贴文本 | `attachments/pasted/` 下的 UTF-8 文件和文本记录. | 绑定路径, 保留保存时的预览. |
+| PNG, JPEG, GIF, WebP | 当前数据目录下的 `attachments/<sessionId>/images/<uuid>.<ext>` 和图片记录. | 将路径绑定到当前 Turn. |
+| 长度 >=1000 的粘贴文本 | `attachments/<sessionId>/pasted/` 下的 UTF-8 文件和文本记录. | 绑定路径, 保留保存时的预览. |
 | 普通文件 | 原本的本地路径. | 解析实际路径, 检查是普通文件. |
 
 ```ts

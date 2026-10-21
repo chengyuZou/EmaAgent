@@ -1,6 +1,6 @@
 import { clearSessionRules } from '@ema-agent/permission';
 import type { Composition } from '../composition/index.js';
-import { removeSessionDir } from '../platform/paths.js';
+import { removeSessionFiles } from '../platform/paths.js';
 
 export interface ArchivedSessionsDeletionResult {
   readonly deletedSessionIds: readonly string[];
@@ -61,7 +61,7 @@ export async function deleteArchivedSessions(
     database.turns.discardSession(sessionId);
     characters.stage.evictSession(sessionId);
     try {
-      removeSessionDir(database.activeDataDir, sessionId);
+      removeSessionFiles(database.activeDataDir, sessionId);
     } catch (error) {
       cleanupFailures.push({
         sessionId,

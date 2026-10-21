@@ -68,7 +68,7 @@ async function fixture() {
     iterations: 3, toolCallCount: 2, inputTokens: 200, outputTokens: 40, finalText: '第二轮完成',
   }, 40);
 
-  const imagePath = path.join(sourceDir, 'sessions', 'session', 'attachments', 'images', 'fork.png');
+  const imagePath = path.join(sourceDir, 'attachments', 'session', 'images', 'fork.png');
   fs.mkdirSync(path.dirname(imagePath), { recursive: true });
   fs.writeFileSync(imagePath, Buffer.from([1, 2, 3]));
   new AttachmentImagesRepo(db.sqlite).insertMany([{
@@ -102,12 +102,12 @@ async function fixture() {
   ]);
   fs.mkdirSync(workDir, { recursive: true });
   const zipPath = path.join(workDir, 'session.zip');
-  await exportSessionArchive('session', zipPath, sourceDir, workDir, new SessionBackupReader(db.sqlite));
+  await exportSessionArchive('session', zipPath, sourceDir, new SessionBackupReader(db.sqlite));
   const entries = await readZip(zipPath);
   const target = database();
   const restore = (filePath = zipPath) => importSessionArchive(
     filePath,
-    targetDir, workDir, new SessionBackupReader(target.sqlite), new SessionBackupRestorer(target.sqlite), () => true,
+    targetDir, new SessionBackupReader(target.sqlite), new SessionBackupRestorer(target.sqlite), () => true,
   );
   return { db, target, targetDir, zipPath, entries, restore };
 }
@@ -115,7 +115,9 @@ async function fixture() {
 describe('子代理身份、Run 和消息备份', () => {
   it('保留各 Run 的配置、原生消息、fork 来源与摘要关系, 未完成 Run 不恢复执行', async () => {
     const { db, target, targetDir, entries, restore } = await fixture();
-    expect(JSON.parse(entries.get('manifest.json')!.toString('utf8'))).toEqual({ sessionId: 'session', omittedFiles: [] });
+    expect(JSON.parse(entries.get('manifest.json')!.toString('utf8'))).toEqual({
+      sessionId: 'session', omittedFiles: [], resourceFiles: [],
+    });
     const identityRecords = entries.get('records/subagents.jsonl')!.toString('utf8').trim().split('\n')
       .map(line => subagentRecordSchema.parse(JSON.parse(line)));
     expect(identityRecords.find(record => record.id === 'fork')).toMatchObject({
@@ -158,7 +160,7 @@ describe('子代理身份、Run 和消息备份', () => {
     expect(messages.listForSubagentFromSummary('fork').map(message => message.id)).toEqual([
       'fork-next-summary', 'fork-next-task', 'fork-next-output', 'fork-reminder', 'fork-continuation',
     ]);
-    const newPath = path.join(targetDir, 'sessions', 'session', 'attachments', 'images', 'fork.png');
+    const newPath = path.join(targetDir, 'attachments', 'session', 'images', 'fork.png');
     expect(JSON.parse(all.find(message => message.id === 'fork-user')!.blocks_json)).toEqual([
       { type: 'image_reference', path: newPath }, { type: 'file_reference', path: 'D:/user/original.txt' },
     ]);
@@ -206,7 +208,7 @@ describe('子代理身份、Run 和消息备份', () => {
       await writeZip(invalidPath, entries);
       await expect(restore(invalidPath)).rejects.toMatchObject({ code: 'invalid_format' });
       expect(target.sqlite.prepare('SELECT id FROM sessions').all()).toEqual([]);
-      expect(fs.existsSync(path.join(targetDir, 'sessions', 'session'))).toBe(false);
+      expect(fs.existsSync(path.join(targetDir, 'attachments', 'session'))).toBe(false);
     },
   );
 });

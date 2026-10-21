@@ -53,10 +53,15 @@ pnpm --filter @ema-agent/server dev
 | `characters/`, `wallpapers/` | 角色资源和受管壁纸. |
 | `resources/skills/`, `skills/` | 内置技能和用户技能. |
 | `memories/` | 正式 Work 与 Relationship 记忆文件. |
-| `data/sessions/<sessionId>/` | 受管附件, Turn 音频, scratchpad, 后台命令日志和外置工具结果. |
-| `data/web-fetch/` | 主 Agent 和子代理共用的 WebFetch 二进制下载. 独立于 Session 和网页缓存保留, 直到手动清理. |
+| `data/attachments/<sessionId>/` | 受管图片和粘贴文本. |
+| `data/audio/<sessionId>/<turnId>/` | 各朗读角色生成的音频. |
+| `data/web-fetch/<sessionId>/` | Session 内主 Agent 和子代理共用的 WebFetch 下载. 随 Session 删除, 纳入会话备份. |
+| `data/tool-results/<sessionId>/` | 按年龄和容量回收的工具大文本. |
+| `data/background-processes/<sessionId>/<processId>/` | 命令输出日志. |
+| `data/scratchpad/<sessionId>/<turnId>/` | Turn 内共享的临时便签. |
+| `data/.backup-temp/` | 导入与导出暂存, 独立于 Session 资源清理. |
 
-[paths.ts](./src/platform/paths.ts) 定义 Server 管理的路径, 具体业务按需创建自己的子目录. 内置技能种子优先使用 `EMA_BUNDLED_SKILLS_DIR`, 否则使用源码目录中的资源路径; 目标目录存在时不覆盖.
+[paths.ts](./src/platform/paths.ts) 确定 Profile 位置并执行文件清理. 共享资源路径由 [Storage dataPaths](../../src/storage/dataPaths.ts) 计算, 具体业务按需创建目录. 内置技能种子优先使用 `EMA_BUNDLED_SKILLS_DIR`, 否则使用源码目录中的资源路径; 目标目录存在时不覆盖.
 
 删除 Session 时先等工作停止, 再删除数据行和文件. 归档则先保存归档状态, 再停止工作并保留历史. 批量删除提交后的清理失败单独返回, 不表示 SQL 删除已经回滚.
 

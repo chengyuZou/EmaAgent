@@ -6,14 +6,25 @@ const integer = z.number().int();
 const nonNegativeInteger = integer.nonnegative();
 
 const omittedSessionFileSchema = z.object({
-  kind: z.enum(['attachment', 'speechOutput', 'backgroundProcessOutput']),
+  kind: z.enum(['attachment', 'speechOutput', 'backgroundProcessOutput', 'web-fetch', 'tool-results']),
   id,
   reason: z.enum(['missing', 'unreadable']),
+}).strict();
+
+const sessionResourceFileSchema = z.object({
+  kind: z.enum(['web-fetch', 'tool-results']),
+  sourcePath: z.string().min(1),
+  filePath: z.string().min(1),
+  byteSize: nonNegativeInteger,
+  // Preserve tool-result age so import does not restart its expiry period.
+  modifiedAt: z.number().finite(),
 }).strict();
 
 export const sessionBackupManifestSchema = z.object({
   sessionId: id,
   omittedFiles: z.array(omittedSessionFileSchema),
+  // Existing Session archives contain no downloaded files or persisted tool text.
+  resourceFiles: z.array(sessionResourceFileSchema).default([]),
 }).strict();
 
 export const sessionRecordSchema = z.object({
@@ -291,6 +302,7 @@ export const usageRecordSchema = z.object({
 }).strict();
 
 export type OmittedSessionFile = z.infer<typeof omittedSessionFileSchema>;
+export type SessionResourceFile = z.infer<typeof sessionResourceFileSchema>;
 export type SessionBackupManifest = z.infer<typeof sessionBackupManifestSchema>;
 export type SessionRecord = z.infer<typeof sessionRecordSchema>;
 export type TurnRecord = z.infer<typeof turnRecordSchema>;

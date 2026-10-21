@@ -1,23 +1,24 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { SESSION_RESOURCE_KINDS, dataResourceDir, sessionResourceDir, type SessionResourceKind } from '@ema-agent/storage/dataPaths';
 import { SessionImportError } from '../errors.js';
 import type {
   AttachmentImageRecord,
   AttachmentPastedTextRecord,
   BackgroundProcessRecord,
+  SessionResourceFile,
   SpeechOutputRecord,
 } from '../records/sessionRecords.js';
 import type { ExtractedSessionArchive } from './archive.js';
 import { normalizeArchivePath, resolveInside } from './pathPolicy.js';
 
 export interface PublishedSessionFiles {
-  /** 本次新建的正式目录, 数据库写入失败时由调用方删除. */
-  readonly directory: string;
-  /** 来源附件路径 -> 恢复后的路径, 用于重写消息中的受管附件引用. */
+  /** Only directories created by this import. SQL failure must not remove any existing files. */
+  readonly directories: readonly string[];
   readonly attachments: ReadonlyMap<string, string>;
-  /** 归档文件路径 -> 恢复后的正式路径, 同轮不同角色不能共用 Turn ID 作为键. */
   readonly speechOutputs: ReadonlyMap<string, string>;
   readonly backgroundDirectories: ReadonlyMap<string, string>;
+  readonly resources: ReadonlyMap<string, string>;
 }
 
 export function publishSessionFiles(
@@ -28,32 +29,46 @@ export function publishSessionFiles(
   attachmentPastedTexts: readonly AttachmentPastedTextRecord[],
   speechOutputs: readonly SpeechOutputRecord[],
   backgroundProcesses: readonly BackgroundProcessRecord[],
+  resourceFiles: readonly SessionResourceFile[],
   signal?: AbortSignal,
 ): PublishedSessionFiles {
-  const sessionsRoot = path.join(activeDataDir, 'sessions');
-  const finalRoot = resolveInside(sessionsRoot, normalizeArchivePath(sessionId));
-  if (fs.existsSync(finalRoot)) {
-    throw new SessionImportError('destination_conflict', '目标 Session 文件夹已存在', 409);
+  const normalizedId = normalizeArchivePath(sessionId);
+  if (normalizedId.includes('/')) {
+    throw new SessionImportError('unsafe_archive_path', 'Session id must be a single path component');
   }
-  fs.mkdirSync(sessionsRoot, { recursive: true });
-  const temporaryRoot = fs.mkdtempSync(path.join(sessionsRoot, '.session-import-'));
+  for (const kind of SESSION_RESOURCE_KINDS) {
+    const root = dataResourceDir(activeDataDir, kind);
+    const finalRoot = sessionResourceDir(activeDataDir, kind, normalizedId);
+    if ((fs.existsSync(root) && fs.lstatSync(root).isSymbolicLink()) || fs.existsSync(finalRoot)) {
+      throw new SessionImportError('destination_conflict', '目标 Session 资源目录已存在或资源根目录是符号链接', 409);
+    }
+  }
+  // Staging stays under .backup-temp. Startup can remove it even before files are published.
+  const temporaryRoot = fs.mkdtempSync(path.join(archive.directory, '.publish-'));
+  const directories: string[] = [];
   const attachmentPaths = new Map<string, string>();
+  const speechOutputPaths = new Map<string, string>();
+  const backgroundDirectories = new Map<string, string>();
+  const resources = new Map<string, string>();
+  const kinds = new Set<SessionResourceKind>();
+  const stagePath = (kind: SessionResourceKind, relativePath: string): string => {
+    kinds.add(kind);
+    return resolveInside(path.join(temporaryRoot, kind), normalizeArchivePath(relativePath));
+  };
+  const finalPath = (kind: SessionResourceKind, relativePath: string): string =>
+    resolveInside(sessionResourceDir(activeDataDir, kind, normalizedId), normalizeArchivePath(relativePath));
   const publishAttachment = (
     record: AttachmentImageRecord | AttachmentPastedTextRecord,
     subdir: 'images' | 'pasted',
   ): void => {
     const source = archive.get(record.filePath);
-    if (!source) {
-      return;
-    }
-    // 来源可能使用另一操作系统的路径分隔符, 只取已有 UUID 文件名.
+    if (!source) return;
     const filename = path.posix.basename(record.path.replaceAll('\\', '/'));
-    const destination = path.join(temporaryRoot, 'attachments', subdir, filename);
-    copy(source.filePath, destination, record.byteSize);
-    attachmentPaths.set(record.path, toFinal(finalRoot, temporaryRoot, destination));
+    const relativePath = `${subdir}/${filename}`;
+    copy(source.filePath, stagePath('attachments', relativePath), record.byteSize);
+    attachmentPaths.set(record.path, finalPath('attachments', relativePath));
   };
-  const speechOutputPaths = new Map<string, string>();
-  const backgroundDirectories = new Map<string, string>();
+
   try {
     for (const record of attachmentImages) {
       signal?.throwIfAborted();
@@ -74,56 +89,83 @@ export function publishSessionFiles(
         throw new SessionImportError('invalid_format', `语音文件名与 Turn 不一致: ${record.filePath}`);
       }
       const source = archive.get(record.filePath);
-      if (!source) {
-        continue;
-      }
-      const destination = path.join(temporaryRoot, 'audio', record.turnId, fileName);
-      copy(source.filePath, destination, record.byteSize);
-      speechOutputPaths.set(record.filePath, toFinal(finalRoot, temporaryRoot, destination));
+      if (!source) continue;
+      const relativePath = `${record.turnId}/${fileName}`;
+      copy(source.filePath, stagePath('audio', relativePath), record.byteSize);
+      speechOutputPaths.set(record.filePath, finalPath('audio', relativePath));
     }
     for (const record of backgroundProcesses) {
       signal?.throwIfAborted();
-      const destinationRoot = resolveInside(
-        temporaryRoot,
-        normalizeArchivePath(`background-processes/${record.id}`),
-      );
+      const destinationRoot = stagePath('background-processes', record.id);
+      fs.mkdirSync(destinationRoot, { recursive: true });
       for (const entryPath of archive.paths()) {
         const prefix = `${record.outputDirectoryPath}/`;
-        if (!entryPath.startsWith(prefix)) {
-          continue;
-        }
+        if (!entryPath.startsWith(prefix)) continue;
         const source = archive.require(entryPath);
-        copy(source.filePath, path.join(destinationRoot, ...entryPath.slice(prefix.length).split('/')));
+        copy(source.filePath, resolveInside(destinationRoot, normalizeArchivePath(entryPath.slice(prefix.length))));
       }
-      fs.mkdirSync(destinationRoot, { recursive: true });
       backgroundDirectories.set(
         record.id,
-        path.relative(activeDataDir, toFinal(finalRoot, temporaryRoot, destinationRoot)),
+        path.relative(activeDataDir, finalPath('background-processes', record.id)),
       );
     }
-    // 文件全部复制并检查完后再发布, 避免正式目录留下半份导入内容.
-    fs.renameSync(temporaryRoot, finalRoot);
+    for (const record of resourceFiles) {
+      signal?.throwIfAborted();
+      const parts = normalizeArchivePath(record.filePath).split('/');
+      const filename = parts[2];
+      if (parts.length !== 3 || parts[0] !== 'files' || parts[1] !== record.kind
+        || !filename || filename.endsWith('.pending') || resources.has(record.sourcePath)) {
+        throw new SessionImportError('invalid_format', `资源路径无效或重复: ${record.filePath}`);
+      }
+      const source = archive.get(record.filePath);
+      if (!source) continue;
+      const destination = stagePath(record.kind, filename);
+      copy(source.filePath, destination, record.byteSize);
+      const modifiedAt = new Date(record.modifiedAt);
+      fs.utimesSync(destination, modifiedAt, modifiedAt);
+      resources.set(record.sourcePath, finalPath(record.kind, filename));
+    }
+    // All files are prepared first. Each successful publish is tracked for partial rollback.
+    for (const kind of kinds) {
+      signal?.throwIfAborted();
+      const root = dataResourceDir(activeDataDir, kind);
+      const finalRoot = sessionResourceDir(activeDataDir, kind, normalizedId);
+      fs.mkdirSync(root, { recursive: true });
+      if (fs.existsSync(finalRoot)) {
+        throw new SessionImportError('destination_conflict', '目标 Session 资源目录已存在', 409);
+      }
+      fs.renameSync(path.join(temporaryRoot, kind), finalRoot);
+      directories.push(finalRoot);
+    }
+    signal?.throwIfAborted();
   } catch (error) {
-    fs.rmSync(temporaryRoot, { recursive: true, force: true });
+    removePublishedSessionFiles(directories);
     if (signal?.aborted) {
       throw new SessionImportError('import_cancelled', 'Session 导入已取消', 499);
     }
-    if (error instanceof SessionImportError) {
-      throw error;
-    }
+    if (error instanceof SessionImportError) throw error;
     throw new SessionImportError(
       'restore_failed',
       error instanceof Error ? error.message : 'Session 文件恢复失败',
       500,
     );
+  } finally {
+    fs.rmSync(temporaryRoot, { recursive: true, force: true });
   }
 
   return {
-    directory: finalRoot,
+    directories,
     attachments: attachmentPaths,
     speechOutputs: speechOutputPaths,
     backgroundDirectories,
+    resources,
   };
+}
+
+export function removePublishedSessionFiles(directories: readonly string[]): void {
+  for (const directory of [...directories].reverse()) {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
 }
 
 function copy(source: string, destination: string, expectedBytes?: number): void {
@@ -132,9 +174,5 @@ function copy(source: string, destination: string, expectedBytes?: number): void
   if (expectedBytes !== undefined && fs.statSync(destination).size !== expectedBytes) {
     throw new SessionImportError('invalid_format', `资源字节数与记录不一致: ${path.basename(destination)}`);
   }
-}
-
-function toFinal(finalRoot: string, temporaryRoot: string, temporaryPath: string): string {
-  return path.join(finalRoot, path.relative(temporaryRoot, temporaryPath));
 }
 

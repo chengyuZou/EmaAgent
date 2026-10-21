@@ -31,6 +31,14 @@ These are host conventions, not paths chosen by `Database`. Attachment bodies, a
 
 File connections use WAL, foreign keys, a 5-second busy timeout and `synchronous = NORMAL`. NORMAL can lose recently committed transactions after a power failure. Data connections require FTS5 and register the text extraction and segmentation functions used by search triggers.
 
+## File locations
+
+`@ema-agent/storage/dataPaths` is a separate Node-only entry point for pure path calculation. Importing it does not open SQLite or create files. Server supplies the active data directory; `dataResourceDir`, `sessionResourceDir`, and `turnResourceDir` derive locations shared by writers, readers, backup, and cleanup.
+
+Session-owned resources use `attachments/<sessionId>/{images,pasted}/`, `audio/<sessionId>/<turnId>/`, `web-fetch/<sessionId>/`, `tool-results/<sessionId>/`, `background-processes/<sessionId>/<processId>/`, and `scratchpad/<sessionId>/<turnId>/` under that directory. Subagents use their owning Session's resource directories; their identities and history remain database records. Backup staging uses `.backup-temp/` and is not a Session resource.
+
+Business operations create directories when writing files. Server removes a deleted Session's directories across all resource types and recovers orphan directories after interrupted imports. It does not migrate the old Session-first layout in place. Preserve existing data outside the active directory before resetting it; use Session archives to restore supported records and files into the current layout.
+
 ## Reads, writes and ownership
 
 Repositories use bound SQL parameters and explicit row types. Many rows keep SQL names such as `session_id` and nullable columns; domain stores convert them to their public types. Import repositories and shared row types from the package root.

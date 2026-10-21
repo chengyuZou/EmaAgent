@@ -1,16 +1,21 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, open, rename, unlink } from 'node:fs/promises';
 import path from 'node:path';
+import { dataResourceDir, sessionResourceDir } from '@ema-agent/storage/dataPaths';
 
-let downloadsDir: string | undefined;
+let activeDataDir: string | undefined;
 
 /** Set once at Server startup. Both WebFetch and Read use the active data directory. */
 export function configureWebDownloads(dataDir: string): void {
-  downloadsDir = path.join(dataDir, 'web-fetch');
+  activeDataDir = dataDir;
 }
 
 export function getWebDownloadsDir(): string | undefined {
-  return downloadsDir;
+  return activeDataDir ? dataResourceDir(activeDataDir, 'web-fetch') : undefined;
+}
+
+export function getSessionWebDownloadsDir(sessionId: string): string | undefined {
+  return activeDataDir ? sessionResourceDir(activeDataDir, 'web-fetch', sessionId) : undefined;
 }
 
 export interface WebDownload {

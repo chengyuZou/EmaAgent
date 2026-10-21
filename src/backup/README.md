@@ -2,7 +2,7 @@
 
 [中文](./README-zh.md)
 
-Backup exports and imports one Session as a `.ema-session.zip`. It combines database records with managed files: a Session folder alone does not contain its messages.
+Backup exports and imports one Session as a `.ema-session.zip`. It combines database records with the Session's files from each resource directory. Copying resource files alone does not preserve messages.
 
 ## Use
 
@@ -22,9 +22,11 @@ Create one instance per active data directory. Construction clears that director
 
 The archive contains:
 
-- `manifest.json`: Session ID and resources omitted during export.
+- `manifest.json`: Session ID, resources omitted during export, and downloaded-file/tool-text entries with their source paths, archive paths, sizes, and modification times.
 - `records/session.json` and JSONL files: Session, Turns, messages, Tasks, Goals, subagent identities/Runs/messages, tool executions, background processes, attachments, speech outputs and usage.
-- `files/`: managed attachments, recorded WAV files and background-process output. External file references remain paths.
+- `files/`: managed attachments, recorded WAV files, background-process output, WebFetch downloads, and persisted tool text still present at export. External file references remain paths. Scratchpads and incomplete downloads are excluded.
+
+Resources come from `<activeDataDir>/<resourceKind>/<sessionId>/`; audio is further grouped by Turn and process output by process ID. Tool text may already have expired, so its absence does not prevent exporting the Session. Import preserves its modification time rather than restarting the expiry period. Existing archives without `resourceFiles` restore their recorded resources without inventing missing downloads.
 
 Records must match the current schemas in [sessionRecords.ts](./records/sessionRecords.ts). The archive does not carry a SQLite database version and does not migrate a database. Imports insert validated records into the target database after Storage has initialized or migrated it. Task, Goal, tool, and process `version` fields are update counters, not database or application versions. There is no archive-version conversion. Older exports may stop being importable when required fields change.
 
@@ -45,8 +47,11 @@ sequenceDiagram
   Caller->>Backup: importSession
   Backup->>Disk: Extract into temporary directory
   Backup->>Backup: Validate records and references
-  Backup->>Disk: Publish complete Session files
+  Backup->>Disk: Publish each prepared resource directory
   Backup->>Storage: Restore records in one transaction
+  opt File publication or database restoration fails
+    Backup->>Disk: Remove only directories published by this import
+  end
   Backup-->>Caller: sessionId and warnings
 ```
 
@@ -54,7 +59,9 @@ Export copies files after the database read transaction ends. Missing or unreada
 
 Import reads ZIP entries from disk and streams them into temporary files, checking path traversal, duplicate names and an 8 GiB total expanded limit. JSONL parsing is incremental, with a 16 MiB line limit, but validated records are collected in arrays before restoration. A final newline is required.
 
-Existing Session IDs or target folders cause a conflict; imports are not merged. Managed attachment paths in messages are rewritten to the new data directory, including inherited fork messages. External references stay unchanged. Files are published before the database transaction; a database failure removes only the directory created by this import. Missing model selection is cleared with a warning, while historical model sources remain.
+Existing Session IDs or target resource folders cause a conflict; imports are not merged. All files are prepared in `.backup-temp` before their resource directories are published. File publication and the database transaction are separate operations. A failure removes only directories published by this import; Server startup cleans directories without a corresponding Session after a forced exit. Missing model selection is cleared with a warning, while historical model sources remain.
+
+Import rewrites managed image/pasted-text blocks, including inherited fork messages, and exact Read paths for restored files. It also rewrites WebFetch download data/notices and ToolResultStore's persisted-output headers. Ordinary prose, external file references, and arbitrary tool output are not globally substituted.
 
 Speech files retain the `<turnId>-<characterName>.wav` name under the Turn audio directory. Subagent identities, Runs, original generation sources and summary cursors remain distinct. Import does not restart work: running Turns become aborted, running subagents/Runs become cancelled, active Goals become paused, in-progress Tasks become pending, and unfinished tools/processes receive terminal states.
 

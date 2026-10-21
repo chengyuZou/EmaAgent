@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Database, SessionBackupReader, SessionBackupRestorer, SpeechOutputsRepo } from '@ema-agent/storage';
+import { BackgroundProcessesRepo, Database, SessionBackupReader, SessionBackupRestorer, SpeechOutputsRepo } from '@ema-agent/storage';
+import { SESSION_RESOURCE_KINDS, sessionResourceDir } from '@ema-agent/storage/dataPaths';
 import { SessionBackup } from '../sessionBackup.js';
 import { readZip, writeZip } from './zipFixtures.js';
 
@@ -45,7 +46,7 @@ function fixture() {
 }
 
 function addSpeech(data: ReturnType<typeof fixture>, characterName: string): string {
-  const storagePath = path.join(data.sourceDir, 'sessions', 'session', 'audio', 'turn', `turn-${characterName}.wav`);
+  const storagePath = path.join(data.sourceDir, 'audio', 'session', 'turn', `turn-${characterName}.wav`);
   fs.mkdirSync(path.dirname(storagePath), { recursive: true });
   fs.writeFileSync(storagePath, Buffer.from([1, 2, 3, 4]));
   new SpeechOutputsRepo(data.sourceDb.sqlite).record({
@@ -55,7 +56,171 @@ function addSpeech(data: ReturnType<typeof fixture>, characterName: string): str
   return storagePath;
 }
 
+function addResource(data: ReturnType<typeof fixture>, kind: 'web-fetch' | 'tool-results', name: string): string {
+  const file = path.join(sessionResourceDir(data.sourceDir, kind, 'session'), name);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, `content of ${name}`);
+  return file;
+}
+
 describe('SessionBackup', () => {
+  it('restores downloaded files, persisted tool text and their exact references, but not scratchpad or user prose', async () => {
+    const data = fixture();
+    const download = addResource(data, 'web-fetch', 'paper.pdf');
+    const result = addResource(data, 'tool-results', 'large.txt');
+    const modifiedAt = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    fs.utimesSync(result, modifiedAt, modifiedAt);
+    const scratchpad = path.join(data.sourceDir, 'scratchpad', 'session', 'turn', 'note');
+    fs.mkdirSync(path.dirname(scratchpad), { recursive: true });
+    fs.writeFileSync(scratchpad, 'temporary');
+    addResource(data, 'web-fetch', 'unfinished.pdf.pending');
+    const notice = `Downloaded 12 bytes (application/pdf) to ${download}.\nUse Read with file_path=${JSON.stringify(download)} to inspect this file.`;
+    const insert = data.sourceDb.sqlite.prepare(`
+      INSERT INTO messages (id, session_id, turn_id, role, kind, blocks_json, created_at)
+      VALUES (?, 'session', 'turn', ?, ?, ?, 2)
+    `);
+    insert.run('tools', 'user', 'tool_results', JSON.stringify([
+      { type: 'tool_result', toolCallId: 'fetch', content: notice,
+        data: { download: { filePath: download, contentType: 'application/pdf' }, content: notice, totalLength: notice.length } },
+      { type: 'tool_result', toolCallId: 'large',
+        content: `<persisted-output>\nOutput too large (10 KB). Full output saved to: ${result}\n\nPreview\n</persisted-output>` },
+    ]));
+    insert.run('read', 'assistant', 'normal', JSON.stringify([
+      { type: 'tool_use', id: 'read', name: 'Read', args: { file_path: download } },
+    ]));
+    insert.run('user', 'user', 'normal', JSON.stringify([
+      { type: 'text', text: download }, { type: 'file_reference', path: download },
+    ]));
+
+    await data.source.exportSession('session', data.zipPath);
+    const entries = await readZip(data.zipPath);
+    expect([...entries.keys()].some(name => name.includes('scratchpad') || name.endsWith('.pending'))).toBe(false);
+    await expect(data.target.importSession(data.zipPath)).resolves.toEqual({ sessionId: 'session', warnings: [] });
+    const newDownload = path.join(data.targetDir, 'web-fetch', 'session', 'paper.pdf');
+    const newResult = path.join(data.targetDir, 'tool-results', 'session', 'large.txt');
+    expect(fs.readFileSync(newDownload, 'utf8')).toBe('content of paper.pdf');
+    expect(fs.readFileSync(newResult, 'utf8')).toBe('content of large.txt');
+    expect(Math.abs(fs.statSync(newResult).mtimeMs - modifiedAt.getTime())).toBeLessThan(2);
+    const message = (id: string) => {
+      const row = data.targetDb.sqlite.prepare('SELECT blocks_json FROM messages WHERE id = ?').get(id) as { blocks_json: string };
+      return JSON.parse(row.blocks_json);
+    };
+    expect(message('tools')[0].data.download.filePath).toBe(newDownload);
+    expect(message('tools')[0].content).toContain(JSON.stringify(newDownload));
+    expect(message('tools')[0].data.totalLength).toBe(message('tools')[0].data.content.length);
+    expect(message('tools')[1].content).toContain(newResult);
+    expect(message('read')[0].args.file_path).toBe(newDownload);
+    expect(message('user')).toEqual([
+      { type: 'text', text: download }, { type: 'file_reference', path: download },
+    ]);
+    expect(fs.existsSync(path.join(data.targetDir, 'scratchpad'))).toBe(false);
+  });
+
+  it.each(['files', 'database'])('rolls back every published resource directory after %s failure', async failure => {
+    const data = fixture();
+    addSpeech(data, 'Ema');
+    addResource(data, 'web-fetch', 'paper.pdf');
+    addResource(data, 'tool-results', 'large.txt');
+    await data.source.exportSession('session', data.zipPath);
+    const unrelated = path.join(data.targetDir, 'web-fetch', 'other-session', 'keep.pdf');
+    fs.mkdirSync(path.dirname(unrelated), { recursive: true });
+    fs.writeFileSync(unrelated, 'keep');
+    if (failure === 'database') {
+      vi.spyOn(data.restorer, 'restoreSession').mockImplementationOnce(() => { throw new Error('SQL failed'); });
+    } else {
+      const rename = fs.renameSync;
+      vi.spyOn(fs, 'renameSync').mockImplementation((source, destination) => {
+        if (String(destination) === path.join(data.targetDir, 'web-fetch', 'session')) throw new Error('Publish failed');
+        rename(source, destination);
+      });
+    }
+    await expect(data.target.importSession(data.zipPath)).rejects.toMatchObject({ code: 'restore_failed' });
+    for (const kind of SESSION_RESOURCE_KINDS) {
+      expect(fs.existsSync(sessionResourceDir(data.targetDir, kind, 'session'))).toBe(false);
+    }
+    expect(fs.readFileSync(unrelated, 'utf8')).toBe('keep');
+    expect(data.targetDb.sqlite.prepare('SELECT id FROM sessions').all()).toEqual([]);
+  });
+
+  it('preserves background logs and rewrites their relative directory without restarting the process', async () => {
+    const data = fixture();
+    const relative = path.join('background-processes', 'session', 'process');
+    const directory = path.join(data.sourceDir, relative);
+    fs.mkdirSync(directory, { recursive: true });
+    fs.writeFileSync(path.join(directory, 'stdout.log'), 'output');
+    data.sourceDb.sqlite.prepare(`
+      INSERT INTO tool_executions (call_id, session_id, turn_id, tool_name, status, created_at, updated_at)
+      VALUES ('call', 'session', 'turn', 'PowerShell', 'succeeded', 1, 1)
+    `).run();
+    new BackgroundProcessesRepo(data.sourceDb.sqlite).insert({
+      id: 'process', sessionId: 'session', originTurnId: 'turn', toolCallId: 'call',
+      command: 'example', cwd: 'D:/work', status: 'running', timeoutMs: 1000,
+      outputRelativePath: relative, createdAt: 1,
+    });
+    await data.source.exportSession('session', data.zipPath);
+    await data.target.importSession(data.zipPath);
+    expect(data.targetDb.sqlite.prepare('SELECT status, output_relative_path FROM background_processes').get()).toEqual({
+      status: 'interrupted', output_relative_path: relative,
+    });
+    expect(fs.readFileSync(path.join(data.targetDir, relative, 'stdout.log'), 'utf8')).toBe('output');
+  });
+
+  it('accepts an already exported archive without resourceFiles and does not require expired tool text', async () => {
+    const data = fixture();
+    const expired = addResource(data, 'tool-results', 'expired.txt');
+    fs.unlinkSync(expired);
+    addSpeech(data, 'Ema');
+    await data.source.exportSession('session', data.zipPath);
+    const entries = await readZip(data.zipPath);
+    const manifest = JSON.parse(entries.get('manifest.json')!.toString('utf8'));
+    expect(manifest.resourceFiles).toEqual([]);
+    delete manifest.resourceFiles;
+    entries.set('manifest.json', Buffer.from(JSON.stringify(manifest)));
+    await writeZip(data.zipPath, entries);
+    await expect(data.target.importSession(data.zipPath)).resolves.toEqual({ sessionId: 'session', warnings: [] });
+    expect(fs.existsSync(path.join(data.targetDir, 'audio', 'session', 'turn', 'turn-Ema.wav'))).toBe(true);
+  });
+
+  it('rejects resource-directory conflicts without removing existing files', async () => {
+    const data = fixture();
+    addResource(data, 'web-fetch', 'paper.pdf');
+    await data.source.exportSession('session', data.zipPath);
+    const existing = path.join(data.targetDir, 'tool-results', 'session', 'existing.txt');
+    fs.mkdirSync(path.dirname(existing), { recursive: true });
+    fs.writeFileSync(existing, 'keep');
+    await expect(data.target.importSession(data.zipPath)).rejects.toMatchObject({ code: 'destination_conflict' });
+    expect(fs.readFileSync(existing, 'utf8')).toBe('keep');
+    expect(fs.existsSync(path.join(data.targetDir, 'web-fetch', 'session'))).toBe(false);
+  });
+
+  it('rejects an unlisted download entry before publishing resources', async () => {
+    const data = fixture();
+    addResource(data, 'web-fetch', 'paper.pdf');
+    await data.source.exportSession('session', data.zipPath);
+    const entries = await readZip(data.zipPath);
+    entries.set('files/web-fetch/unlisted.pdf', Buffer.from('unexpected'));
+    await writeZip(data.zipPath, entries);
+    await expect(data.target.importSession(data.zipPath)).rejects.toMatchObject({ code: 'invalid_format' });
+    expect(fs.existsSync(path.join(data.targetDir, 'web-fetch'))).toBe(false);
+  });
+
+  it('cancellation during resource publication removes every directory already published', async () => {
+    const data = fixture();
+    addSpeech(data, 'Ema');
+    addResource(data, 'web-fetch', 'paper.pdf');
+    await data.source.exportSession('session', data.zipPath);
+    const controller = new AbortController();
+    const rename = fs.renameSync;
+    vi.spyOn(fs, 'renameSync').mockImplementation((source, destination) => {
+      rename(source, destination);
+      if (String(destination) === path.join(data.targetDir, 'audio', 'session')) controller.abort();
+    });
+    await expect(data.target.importSession(data.zipPath, controller.signal)).rejects.toMatchObject({ code: 'import_cancelled' });
+    for (const kind of SESSION_RESOURCE_KINDS) {
+      expect(fs.existsSync(sessionResourceDir(data.targetDir, kind, 'session'))).toBe(false);
+    }
+    expect(data.targetDb.sqlite.prepare('SELECT id FROM sessions').all()).toEqual([]);
+  });
   it('启动时清理临时目录, 不存在的会话返回明确错误而不生成 ZIP', async () => {
     const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ema-session-backup-'));
     roots.push(dataDir);
@@ -179,7 +344,7 @@ describe('SessionBackup', () => {
     await expect(data.target.importSession(data.zipPath))
       .rejects.toMatchObject({ code: 'restore_failed', message: '模拟数据库失败' });
     expect(data.targetDb.sqlite.prepare('SELECT id FROM sessions').all()).toEqual([]);
-    expect(fs.readdirSync(path.join(data.targetDir, 'sessions'))).toEqual([]);
+    expect(fs.readdirSync(path.join(data.targetDir, 'audio'))).toEqual([]);
     expect(fs.readdirSync(path.join(data.targetDir, '.backup-temp', 'imports'))).toEqual([]);
   });
 

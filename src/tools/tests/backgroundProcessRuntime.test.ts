@@ -120,7 +120,7 @@ function createFixture(options?: {
     assertSessionWorkAllowed: options?.assertSessionWorkAllowed ?? vi.fn(),
     store: repo,
     outputPath: (sessionId, processId) => {
-      const relativeDirectory = path.join('sessions', sessionId, 'background-processes', processId);
+      const relativeDirectory = path.join('background-processes', sessionId, processId);
       return {
         absoluteDirectory: path.join(dataDir, relativeDirectory),
         relativeDirectory,
@@ -160,12 +160,12 @@ function makeRequest(fixture: Fixture, overrides: Partial<BackgroundCommandReque
 }
 
 function logDirFor(fixture: Fixture, processId: string): string {
-  return path.join(fixture.dataDir, 'sessions', SESSION_ID, 'background-processes', processId);
+  return path.join(fixture.dataDir, 'background-processes', SESSION_ID, processId);
 }
 
 /** 交互快速路径清理后,进程根目录要么不存在要么为空. */
 function processesRootEmpty(fixture: Fixture): boolean {
-  const root = path.join(fixture.dataDir, 'sessions', SESSION_ID, 'background-processes');
+  const root = path.join(fixture.dataDir, 'background-processes', SESSION_ID);
   return !fs.existsSync(root) || fs.readdirSync(root).length === 0;
 }
 

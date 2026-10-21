@@ -38,8 +38,8 @@ function seedSource(dataDir: string): Database {
     VALUES ('t1', ?, 'userMessage', 1, 'ema', 'completed', 1)
   `).run(SESSION_ID);
 
-  const imagePath = path.join(dataDir, 'sessions', SESSION_ID, 'attachments', 'images', 'u1.png');
-  const pastedPath = path.join(dataDir, 'sessions', SESSION_ID, 'attachments', 'pasted', 'u2.txt');
+  const imagePath = path.join(dataDir, 'attachments', SESSION_ID, 'images', 'u1.png');
+  const pastedPath = path.join(dataDir, 'attachments', SESSION_ID, 'pasted', 'u2.txt');
   fs.mkdirSync(path.dirname(imagePath), { recursive: true });
   fs.mkdirSync(path.dirname(pastedPath), { recursive: true });
   fs.writeFileSync(imagePath, Buffer.from([1, 2, 3, 4]));
@@ -107,15 +107,17 @@ describe('Session 备份往返', () => {
 
     const zipPath = path.join(workDir, '会话备份.zip');
     const exported = await exportSessionArchive(
-      SESSION_ID, zipPath, sourceDir, workDir, new SessionBackupReader(sourceDb.sqlite),
+      SESSION_ID, zipPath, sourceDir, new SessionBackupReader(sourceDb.sqlite),
     );
     sourceDb.close();
     expect(exported).toEqual({ filePath: zipPath, warnings: [] });
+    expect(fs.readdirSync(path.join(sourceDir, '.backup-temp', 'exports'))).toEqual([]);
     expect(fs.statSync(zipPath).size).toBeGreaterThan(100);
     const entries = await readZip(zipPath);
     expect(JSON.parse(entries.get('manifest.json')!.toString('utf8'))).toEqual({
       sessionId: SESSION_ID,
       omittedFiles: [],
+      resourceFiles: [],
     });
 
     // 导入到另一个数据目录
@@ -124,12 +126,12 @@ describe('Session 备份往返', () => {
     const result = await importSessionArchive(
       zipPath,
       targetDir,
-      workDir,
       new SessionBackupReader(targetDb.sqlite),
       new SessionBackupRestorer(targetDb.sqlite),
       () => true,
     );
     expect(result.sessionId).toBe(SESSION_ID);
+    expect(fs.readdirSync(path.join(targetDir, '.backup-temp', 'imports'))).toEqual([]);
     expect(targetDb.sqlite.prepare('SELECT permission_mode FROM sessions WHERE id = ?').get(SESSION_ID))
       .toEqual({ permission_mode: 'plan' });
     expect(targetDb.sqlite.prepare('SELECT summary_saved_tokens FROM messages WHERE id = ?')
@@ -150,8 +152,8 @@ describe('Session 备份往返', () => {
       });
 
     // 新路径:uuid 文件名不变,数据根前缀换成目标目录
-    const newImagePath = path.join(targetDir, 'sessions', SESSION_ID, 'attachments', 'images', 'u1.png');
-    const newPastedPath = path.join(targetDir, 'sessions', SESSION_ID, 'attachments', 'pasted', 'u2.txt');
+    const newImagePath = path.join(targetDir, 'attachments', SESSION_ID, 'images', 'u1.png');
+    const newPastedPath = path.join(targetDir, 'attachments', SESSION_ID, 'pasted', 'u2.txt');
     expect(fs.readFileSync(newImagePath)).toEqual(Buffer.from([1, 2, 3, 4]));
     expect(fs.readFileSync(newPastedPath, 'utf8')).toBe('粘贴全文');
 
@@ -203,7 +205,7 @@ describe('Session 备份往返', () => {
 
     const zipPath = path.join(workDir, 'goal.zip');
     await exportSessionArchive(
-      SESSION_ID, zipPath, sourceDir, workDir, new SessionBackupReader(sourceDb.sqlite),
+      SESSION_ID, zipPath, sourceDir, new SessionBackupReader(sourceDb.sqlite),
     );
     sourceDb.close();
 
@@ -212,7 +214,6 @@ describe('Session 备份往返', () => {
     await importSessionArchive(
       zipPath,
       targetDir,
-      workDir,
       new SessionBackupReader(targetDb.sqlite),
       new SessionBackupRestorer(targetDb.sqlite),
       () => true,
@@ -238,7 +239,7 @@ describe('Session 备份往返', () => {
     const sourceDb = seedSource(sourceDir);
     const zipPath = path.join(workDir, 'valid.zip');
     await exportSessionArchive(
-      SESSION_ID, zipPath, sourceDir, workDir, new SessionBackupReader(sourceDb.sqlite),
+      SESSION_ID, zipPath, sourceDir, new SessionBackupReader(sourceDb.sqlite),
     );
     sourceDb.close();
 
@@ -252,14 +253,13 @@ describe('Session 备份往返', () => {
     await expect(importSessionArchive(
       invalidPath,
       targetDir,
-      workDir,
       new SessionBackupReader(targetDb.sqlite),
       new SessionBackupRestorer(targetDb.sqlite),
       () => true,
     )).rejects.toMatchObject({ code: 'invalid_format' });
     expect(targetDb.sqlite.prepare('SELECT id FROM sessions').all())
       .toEqual([]);
-    expect(fs.existsSync(path.join(targetDir, 'sessions', SESSION_ID))).toBe(false);
+    expect(fs.existsSync(path.join(targetDir, 'attachments', SESSION_ID))).toBe(false);
     targetDb.close();
   });
 });

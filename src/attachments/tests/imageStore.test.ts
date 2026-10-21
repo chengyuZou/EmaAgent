@@ -50,7 +50,7 @@ describe('ImageStore.saveImage', () => {
     const bytes = await pngBytes(64, 64);
     const saved = await store.saveImage(sessionId, bytes, 'photo.png');
 
-    expect(saved.path).toContain(path.join('attachments', 'images'));
+    expect(path.dirname(saved.path)).toBe(path.join(dataDir, 'attachments', sessionId, 'images'));
     expect(await readFile(saved.path)).toEqual(bytes);
 
     const row = repo.listBySession(sessionId)[0];
@@ -95,7 +95,7 @@ describe('ImageStore.sweep', () => {
   const OLD = Date.now() - 60 * 24 * 60 * 60 * 1_000;
 
   async function putFile(name: string): Promise<string> {
-    const filePath = path.join(dataDir, 'sessions', sessionId, 'attachments', 'images', name);
+    const filePath = path.join(dataDir, 'attachments', sessionId, 'images', name);
     await mkdir(path.dirname(filePath), { recursive: true });
     await writeFile(filePath, 'x');
     return filePath;

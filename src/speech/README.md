@@ -18,12 +18,12 @@ Sentences run sequentially, each with a 120-second timeout and 16 MiB PCM limit.
 
 ## Files, records and readers
 
-`FsAudioArchive` is created with the sessions directory. The caller must serialize writers for each Session/Turn/character.
+`FsAudioArchive` is created with the active data directory's `audio/` root. The caller must serialize writers for each Session/Turn/character.
 
 ```text
 CallTTS PCM
   -> await AudioWriter.write
-  -> <sessionId>/audio/<turnId>/<turnId>-<characterName>.wav.pending
+  -> audio/<sessionId>/<turnId>/<turnId>-<characterName>.wav.pending
   -> finish WAV header and publish file
   -> synchronous saveRecord
   -> Server emits session_audio_changed, then generation terminal event

@@ -39,7 +39,7 @@ describe('PastedTextStore.savePastedText', () => {
     const content = '长文本'.repeat(PASTE_TEXT_MIN_CHARS);
     const saved = await store.savePastedText(sessionId, content);
 
-    expect(saved.path).toContain(path.join('attachments', 'pasted'));
+    expect(path.dirname(saved.path)).toBe(path.join(dataDir, 'attachments', sessionId, 'pasted'));
     expect(await readFile(saved.path, 'utf8')).toBe(content);
     expect(saved.byteSize).toBe(Buffer.byteLength(content, 'utf8'));
     expect(saved.preview).toBe(content.slice(0, PASTE_TEXT_PREVIEW_CHARS));

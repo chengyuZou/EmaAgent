@@ -24,7 +24,7 @@ import {
   profileDbPath,
   narrativeDbPath,
   removeOrphanSessionDirectories,
-  removeSessionDir,
+  removeSessionFiles,
   removeTurnFiles,
 } from '../platform/paths.js';
 
@@ -112,7 +112,7 @@ export function openDatabases(
   const session = new SessionStore({
     db: dataDb,
     // Session 删除提交后清理库外文件(音频, 附件, 工具结果, scratchpad).
-    onSessionRemoved: sessionId => removeSessionDir(activeDataDir, sessionId),
+    onSessionRemoved: sessionId => removeSessionFiles(activeDataDir, sessionId),
     onChanged: emitChanged,
     isWorkClosed: sessionId => sessionRunning.isClosed(sessionId),
   });

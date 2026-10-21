@@ -74,7 +74,7 @@ describe('FsAudioArchive', () => {
     await replacement.finish(() => {});
     expect(fs.readFileSync(original.storagePath).subarray(HEADER_BYTES)).toEqual(Buffer.from([5, 6]));
     expect(fs.readFileSync(otherAudio.storagePath).subarray(HEADER_BYTES)).toEqual(Buffer.from([3, 4]));
-    expect(fs.readdirSync(path.join(root, 's', 'audio', 't')).sort()).toEqual([
+    expect(fs.readdirSync(path.join(root, 's', 't')).sort()).toEqual([
       't-希罗-测试.wav', 't-艾玛.wav',
     ].sort());
   });
@@ -99,7 +99,7 @@ describe('FsAudioArchive', () => {
     const bytes = fs.readFileSync(audio!.storagePath);
     expect(bytes.subarray(0, HEADER_BYTES)).toEqual(Buffer.from(createPcmWavHeader(FORMAT, 12000)));
     expect(bytes.subarray(HEADER_BYTES)).toEqual(Buffer.concat([first, second]));
-    expect(fs.readdirSync(path.join(root, 's', 'audio', 't'))).toEqual(['t-艾玛.wav']);
+    expect(fs.readdirSync(path.join(root, 's', 't'))).toEqual(['t-艾玛.wav']);
     expect(archive.findFinalized('s', 't', '艾玛')?.storagePath).toBe(audio!.storagePath);
   });
 
@@ -165,7 +165,7 @@ describe('FsAudioArchive', () => {
     const writer = await archive.openTurn('s', 't', '艾玛', FORMAT);
     expect(await writer.finish(() => {})).toBeNull();
     expect(archive.findFinalized('s', 't', '艾玛')).toBeNull();
-    expect(fs.readdirSync(path.join(root, 's', 'audio', 't'))).toEqual([]);
+    expect(fs.readdirSync(path.join(root, 's', 't'))).toEqual([]);
     expect(await archive.openRead('s', 'missing', '艾玛', new AbortController().signal)).toBeNull();
   });
 
@@ -182,7 +182,7 @@ describe('FsAudioArchive', () => {
     expect(Buffer.concat(chunks).subarray(HEADER_BYTES)).toEqual(Buffer.from([1, 2]));
     await second.discard();
     expect(fs.readFileSync(original.storagePath).subarray(HEADER_BYTES)).toEqual(Buffer.from([1, 2]));
-    expect(fs.readdirSync(path.join(root, 's', 'audio', 't'))).toEqual(['t-艾玛.wav']);
+    expect(fs.readdirSync(path.join(root, 's', 't'))).toEqual(['t-艾玛.wav']);
   });
 
   it('记录保存失败则恢复旧 WAV, 不保留新文件或 pending', async () => {
@@ -195,7 +195,7 @@ describe('FsAudioArchive', () => {
     await replacement.write(Buffer.from([3, 4, 5, 6]));
     await expect(replacement.finish(() => { throw new Error('SQL rejected'); })).rejects.toThrow('SQL rejected');
     expect(fs.readFileSync(saved.storagePath)).toEqual(bytes);
-    expect(fs.readdirSync(path.join(root, 's', 'audio', 't'))).toEqual(['t-艾玛.wav']);
+    expect(fs.readdirSync(path.join(root, 's', 't'))).toEqual(['t-艾玛.wav']);
   });
 
   it('首次生成的记录保存失败时也撤回正式文件', async () => {
@@ -204,7 +204,7 @@ describe('FsAudioArchive', () => {
     await writer.write(Buffer.from([1, 2]));
     await expect(writer.finish(() => { throw new Error('SQL rejected'); })).rejects.toThrow('SQL rejected');
     expect(archive.findFinalized('s', 't', '艾玛')).toBeNull();
-    expect(fs.readdirSync(path.join(root, 's', 'audio', 't'))).toEqual([]);
+    expect(fs.readdirSync(path.join(root, 's', 't'))).toEqual([]);
   });
 });
 
@@ -286,7 +286,7 @@ describe('SpeechCoordinator', () => {
       throw new Error('should not synthesize');
     });
     expect(await coordinator.finish()).toEqual({ status: 'completed', audio: null });
-    expect(fs.existsSync(path.join(root, 's', 'audio'))).toBe(false);
+    expect(fs.existsSync(path.join(root, 's'))).toBe(false);
   });
 
   it('同一 Turn 重复生成时, 每次真实 TTS 请求均有独立用量 ID', async () => {

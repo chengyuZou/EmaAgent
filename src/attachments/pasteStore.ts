@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { AttachmentPastedTextsRepo } from '@ema-agent/storage';
+import { sessionResourceDir } from '@ema-agent/storage/dataPaths';
 import { AttachmentPreparationError } from './errors.js';
 import { PASTE_TEXT_MIN_CHARS, PASTE_TEXT_PREVIEW_CHARS } from './limits.js';
 import type { StoreSweepReport } from './types.js';
@@ -28,7 +29,7 @@ export class PastedTextStore {
       );
     }
     const id = randomUUID();
-    const dir = path.join(this.dataDir, 'sessions', sessionId, 'attachments', 'pasted');
+    const dir = path.join(sessionResourceDir(this.dataDir, 'attachments', sessionId), 'pasted');
     const target = path.join(dir, `${id}.txt`);
     const bytes = Buffer.byteLength(content, 'utf8');
     try {
@@ -75,7 +76,7 @@ export class PastedTextStore {
     this.repo.deleteByPaths(stale.map((row) => row.path));
     if (stale.length > 0) this.emit?.({ type: 'attachments_changed', sessionId });
 
-    const dir = path.join(this.dataDir, 'sessions', sessionId, 'attachments', 'pasted');
+    const dir = path.join(sessionResourceDir(this.dataDir, 'attachments', sessionId), 'pasted');
     let entries;
     try {
       entries = await readdir(dir, { withFileTypes: true });

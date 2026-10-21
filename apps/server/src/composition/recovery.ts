@@ -14,7 +14,6 @@ import type {
 } from '@ema-agent/tools';
 import type { TurnStore } from '@ema-agent/turn';
 import {
-  removeLegacyArtifactDirectories,
   sweepOrphanSessionDirectories,
   sweepOrphanTurnFiles,
 } from '../platform/paths.js';
@@ -158,9 +157,4 @@ export function runFileMaintenance(deps: StartupRecoveryDeps): void {
     console.warn('[recovery] 孤儿 Turn 文件清理跳过:', error);
   }
 
-  try {
-    removeLegacyArtifactDirectories(deps.activeDataDir);
-  } catch (error) {
-    console.warn('[recovery] 旧 Artifact 目录清理跳过:', error);
-  }
 }

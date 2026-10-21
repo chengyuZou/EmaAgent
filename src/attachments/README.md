@@ -10,8 +10,8 @@ Server constructs `ImageStore` and `PastedTextStore` with their Storage reposito
 
 | Input | Saved form | On send |
 | --- | --- | --- |
-| PNG, JPEG, GIF, WebP | `sessions/<sessionId>/attachments/images/<uuid>.<ext>` and an image row. | Bind the path to the current Turn. |
-| Pasted text with length >=1000 | UTF-8 file under `attachments/pasted/` and a text row. | Bind the path and keep its saved preview. |
+| PNG, JPEG, GIF, WebP | `attachments/<sessionId>/images/<uuid>.<ext>` under the active data directory and an image row. | Bind the path to the current Turn. |
+| Pasted text with length >=1000 | UTF-8 file under `attachments/<sessionId>/pasted/` and a text row. | Bind the path and keep its saved preview. |
 | Ordinary file | Original local path. | Resolve its real path and verify it is a regular file. |
 
 ```ts

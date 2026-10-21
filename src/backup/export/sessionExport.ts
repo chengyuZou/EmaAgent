@@ -3,6 +3,7 @@ import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { ZipArchive } from 'archiver';
 import type { SessionBackupReader, SessionBackupRows } from '@ema-agent/storage';
+import { sessionResourceDir } from '@ema-agent/storage/dataPaths';
 import type { SessionExportResult } from '../types.js';
 import { SessionExportError } from '../errors.js';
 import {
@@ -10,7 +11,7 @@ import {
   SESSION_RECORD_PATHS,
   type SessionRecordName,
 } from '../records/sessionFormat.js';
-import type { OmittedSessionFile, SessionBackupManifest } from '../records/sessionRecords.js';
+import type { OmittedSessionFile, SessionBackupManifest, SessionResourceFile } from '../records/sessionRecords.js';
 import {
   toSubagentMessageRecord,
   toSubagentRecord,
@@ -38,9 +39,10 @@ interface PendingFile {
 
 export async function exportSessionArchive(
   sessionId: string,
+  // ZIP 文件的完整保存路径.
   destinationPath: string,
-  activeDataDir: string,
-  temporaryRoot: string,
+  // 收集 Session 资源文件的数据目录.
+  sourcePath: string,
   reader: SessionBackupReader,
   signal?: AbortSignal,
 ): Promise<SessionExportResult> {
@@ -48,6 +50,7 @@ export async function exportSessionArchive(
   let outputDirectory: string | null = null;
   try {
     signal?.throwIfAborted();
+    const temporaryRoot = path.join(sourcePath, '.backup-temp', 'exports');
     fs.mkdirSync(temporaryRoot, { recursive: true });
     const directory = fs.mkdtempSync(path.join(temporaryRoot, 'session-'));
     recordDirectory = directory;
@@ -55,14 +58,16 @@ export async function exportSessionArchive(
 
     // 同一次读取事务中的记录先写到目录里, 事务结束后再复制附件和音频.
     const found = reader.readSession(sessionId, rows => {
-      writeRecords(directory, activeDataDir, rows, pending, signal);
+      writeRecords(directory, sourcePath, rows, pending, signal);
       return true;
     });
     if (!found) {
       throw new SessionExportError('session_not_found', 'Session 不存在', 404);
     }
-    const omittedFiles = copySessionFiles(directory, pending, signal);
-    const manifest: SessionBackupManifest = { sessionId, omittedFiles };
+    const omittedFiles: OmittedSessionFile[] = [];
+    const resourceFiles = collectResourceFiles(sourcePath, sessionId, pending, omittedFiles);
+    omittedFiles.push(...copySessionFiles(directory, pending, signal));
+    const manifest: SessionBackupManifest = { sessionId, omittedFiles, resourceFiles };
     fs.writeFileSync(
       path.join(directory, SESSION_MANIFEST_PATH),
       `${JSON.stringify(manifest, null, 2)}\n`,
@@ -141,9 +146,36 @@ function copySessionFiles(
   return omittedFiles;
 }
 
+function collectResourceFiles(
+  dataDir: string,
+  sessionId: string,
+  pending: PendingFile[],
+  omitted: OmittedSessionFile[],
+): SessionResourceFile[] {
+  const records: SessionResourceFile[] = [];
+  for (const kind of ['web-fetch', 'tool-results'] as const) {
+    const root = sessionResourceDir(dataDir, kind, sessionId);
+    if (!fs.existsSync(root) || fs.lstatSync(root).isSymbolicLink()) continue;
+    for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+      // Interrupted downloads are not usable resources and must not be restored.
+      if (!entry.isFile() || entry.name.endsWith('.pending')) continue;
+      const sourcePath = path.join(root, entry.name);
+      const filePath = `files/${kind}/${entry.name}`;
+      try {
+        const stat = fs.statSync(sourcePath);
+        records.push({ kind, sourcePath, filePath, byteSize: stat.size, modifiedAt: stat.mtimeMs });
+        pending.push({ kind, id: sourcePath, sourcePath, archivePath: filePath });
+      } catch {
+        omitted.push({ kind, id: sourcePath, reason: fs.existsSync(sourcePath) ? 'unreadable' : 'missing' });
+      }
+    }
+  }
+  return records;
+}
+
 function writeRecords(
   directory: string,
-  activeDataDir: string,
+  sourcePath: string,
   rows: SessionBackupRows,
   pending: PendingFile[],
   signal?: AbortSignal,
@@ -162,7 +194,7 @@ function writeRecords(
 
   writeJsonl(directory, 'backgroundProcesses', rows.backgroundProcesses, row => {
     const archiveRoot = `files/backgroundProcesses/${safeName(row.id)}`;
-    const sourceDirectory = path.resolve(activeDataDir, row.output_relative_path);
+    const sourceDirectory = path.resolve(sourcePath, row.output_relative_path);
     for (const file of listFiles(sourceDirectory)) {
       pending.push({
         kind: 'backgroundProcessOutput',

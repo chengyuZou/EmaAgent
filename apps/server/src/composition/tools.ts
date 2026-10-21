@@ -1,6 +1,7 @@
 import os from 'node:os';
 import fs from 'node:fs';
 import path from 'node:path';
+import { dataResourceDir, sessionResourceDir } from '@ema-agent/storage/dataPaths';
 import { configureWebDownloads, registerBuiltinTools } from '@ema-agent/builtin-tools';
 import {
   McpMarketService,
@@ -211,7 +212,7 @@ export function openTools(deps: ToolsDeps): ToolsComposition {
   });
   const toolExecutionState = new ToolExecutionState(new ToolExecutionsRepo(dataDb.sqlite));
 
-  const sessionsDir = path.join(activeDataDir, 'sessions');
+  const toolResultsRoot = dataResourceDir(activeDataDir, 'tool-results');
   const resultStores = new Map<string, ToolResultStore>();
   const fileStateCaches = new Map<string, FileStateCache>();
   const getSessionFileStateCache = (sessionId: string): FileStateCache => {
@@ -224,7 +225,7 @@ export function openTools(deps: ToolsDeps): ToolsComposition {
   const getSessionToolResultStore = (sessionId: string): ToolResultStore => {
     const cached = resultStores.get(sessionId);
     if (cached) return cached;
-    const store = new ToolResultStore(path.join(sessionsDir, sessionId, 'tool-results'));
+    const store = new ToolResultStore(sessionResourceDir(activeDataDir, 'tool-results', sessionId));
     resultStores.set(sessionId, store);
     return store;
   };
@@ -273,7 +274,7 @@ export function openTools(deps: ToolsDeps): ToolsComposition {
     registry,
     backgroundProcesses,
     toolExecutionState,
-    toolResultCleaner: new ToolResultCleaner(sessionsDir),
+    toolResultCleaner: new ToolResultCleaner(toolResultsRoot),
     mcp,
     mcpMarket,
     mcpEnvironment,

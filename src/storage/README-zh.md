@@ -31,6 +31,14 @@ try {
 
 文件连接启用 WAL, 外键, 5 秒 busy timeout 和 `synchronous = NORMAL`. NORMAL 模式下, 断电可能丢失最近尚未同步的已提交事务. data 连接要求 FTS5, 并注册检索触发器使用的正文提取和分词函数.
 
+## 文件位置
+
+`@ema-agent/storage/dataPaths` 是独立的 Node 路径计算入口. 导入它不会打开 SQLite 或创建文件. Server 提供当前数据目录, `dataResourceDir`, `sessionResourceDir` 和 `turnResourceDir` 供写入, 读取, 备份与清理使用同一套位置规则.
+
+会话资源位于该目录下的 `attachments/<sessionId>/{images,pasted}/`, `audio/<sessionId>/<turnId>/`, `web-fetch/<sessionId>/`, `tool-results/<sessionId>/`, `background-processes/<sessionId>/<processId>/` 和 `scratchpad/<sessionId>/<turnId>/`. 子代理使用所属 Session 的资源目录, 身份与历史仍保存在数据库. 备份暂存使用 `.backup-temp/`, 不属于 Session 资源.
+
+业务写入时按需创建目录. Server 删除 Session 时清理各类资源, 启动时回收导入中断留下的孤儿目录. 不在原地迁移旧的 Session 优先布局. 重置前应把现有数据完整保存在当前数据目录之外; 通过 Session 归档将支持的记录和文件恢复到当前布局.
+
 ## 读写及所属关系
 
 Repository 使用 SQL 参数绑定和明确的行类型. 许多行保留 `session_id` 这样的 SQL 字段名及 null, 业务 Store 再转换成对外类型. 从包根入口导入 Repository 和共享行类型.

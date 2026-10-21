@@ -34,7 +34,7 @@ export interface AudioRead {
 export class FsAudioArchive {
   private readonly writing = new Map<string, AudioFile>();
 
-  constructor(private readonly sessionsRoot: string) {}
+  constructor(private readonly audioRoot: string) {}
 
   async openTurn(
     sessionId: string,
@@ -107,7 +107,7 @@ export class FsAudioArchive {
   }
 
   private audioPath(sessionId: string, turnId: string, characterName: string): string {
-    return path.join(this.sessionsRoot, sessionId, 'audio', turnId, `${turnId}-${characterName}.wav`);
+    return path.join(this.audioRoot, sessionId, turnId, `${turnId}-${characterName}.wav`);
   }
 }
 

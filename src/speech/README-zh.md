@@ -18,12 +18,12 @@ Server 创建 `SpeechCoordinator` 时提供固定 Session/Turn, Provider/模型,
 
 ## 文件, 记录与读取
 
-`FsAudioArchive` 接收 sessions 目录. 调用方必须保证同一 Session/Turn/角色的写入串行.
+`FsAudioArchive` 接收当前数据目录下的 `audio/` 根目录. 调用方必须保证同一 Session/Turn/角色的写入串行.
 
 ```text
 CallTTS PCM
   -> await AudioWriter.write
-  -> <sessionId>/audio/<turnId>/<turnId>-<characterName>.wav.pending
+  -> audio/<sessionId>/<turnId>/<turnId>-<characterName>.wav.pending
   -> 补齐 WAV 头并发布文件
   -> 同步 saveRecord
   -> Server 发送 session_audio_changed, 再发送生成终态

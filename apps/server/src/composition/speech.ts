@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import path from 'node:path';
+import { dataResourceDir } from '@ema-agent/storage/dataPaths';
 import { statSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import type { Character, CharacterStore } from '@ema-agent/characters';
@@ -113,7 +113,7 @@ export function openSpeech(
   characters: CharacterStore,
   emitArchiveChanged: (event: SpeechArchiveEvent) => void,
 ): SpeechComposition {
-  const audioArchive = new FsAudioArchive(path.join(activeDataDir, 'sessions'));
+  const audioArchive = new FsAudioArchive(dataResourceDir(activeDataDir, 'audio'));
   const voiceCache = new SpeechVoiceCache();
   const speechOutputs = new SpeechOutputsRepo(dataDb.sqlite);
   const jobs = new Map<string, SpeechJob>();

@@ -483,6 +483,9 @@ importers:
 
   src/builtin-tools:
     dependencies:
+      '@ema-agent/storage':
+        specifier: workspace:*
+        version: link:../storage
       '@ema-agent/goal':
         specifier: workspace:*
         version: link:../goal
@@ -563,9 +566,6 @@ importers:
         specifier: ^2.11.2
         version: 2.11.2
     devDependencies:
-      '@ema-agent/storage':
-        specifier: workspace:*
-        version: link:../storage
       '@types/diff':
         specifier: ^8.0.0
         version: 8.0.0

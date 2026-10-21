@@ -53,10 +53,15 @@ SIGINT and SIGTERM close WebSocket and HTTP connections, stop automatic continua
 | `characters/`, `wallpapers/` | Character resources and managed wallpaper images. |
 | `resources/skills/`, `skills/` | Built-in and user Skills. |
 | `memories/` | Formal Work and Relationship Memory files. |
-| `data/sessions/<sessionId>/` | Managed attachments, Turn audio, scratchpads, background-command logs and external tool results. |
-| `data/web-fetch/` | WebFetch binary downloads shared by main Agents and subagents. Retained until manually removed, independently of Sessions and the page cache. |
+| `data/attachments/<sessionId>/` | Managed image and pasted-text files. |
+| `data/audio/<sessionId>/<turnId>/` | Generated audio for each speaking character. |
+| `data/web-fetch/<sessionId>/` | WebFetch downloads shared by the Session's main Agent and subagents. Removed with that Session and included in its backup. |
+| `data/tool-results/<sessionId>/` | Large tool text subject to age and size cleanup. |
+| `data/background-processes/<sessionId>/<processId>/` | Command output logs. |
+| `data/scratchpad/<sessionId>/<turnId>/` | Temporary notes shared within a Turn. |
+| `data/.backup-temp/` | Import/export staging, cleared separately from Session resources. |
 
-[paths.ts](./src/platform/paths.ts) defines Server-managed locations. Each business package creates its own subdirectories when needed. Built-in Skill seeds use `EMA_BUNDLED_SKILLS_DIR` when supplied, otherwise a source-tree resource path; an existing destination is not overwritten.
+[paths.ts](./src/platform/paths.ts) determines Profile locations and performs file cleanup. Shared resource paths come from [Storage dataPaths](../../src/storage/dataPaths.ts). Each business package creates its directories when needed. Built-in Skill seeds use `EMA_BUNDLED_SKILLS_DIR` when supplied, otherwise a source-tree resource path; an existing destination is not overwritten.
 
 Session deletion waits for its work to stop before deleting database rows and files. Archiving saves the archived state first, then stops work while keeping history. Cleanup failures after committed bulk deletion are returned separately; they do not mean the SQL deletion was rolled back.
 

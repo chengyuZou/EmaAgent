@@ -8,7 +8,7 @@ const PERSISTED_OPEN = '<persisted-output>';
 const PERSISTED_CLOSE = '</persisted-output>';
 
 export class ToolResultStore {
-  /** @param toolResultsDir 绝对路径: {sessionsDir}/{sessionId}/tool-results. */
+  /** toolResultsDir is the absolute data/tool-results/<sessionId> directory. */
   constructor(private readonly toolResultsDir: string) {}
 
   /**
