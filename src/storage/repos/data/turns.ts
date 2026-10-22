@@ -141,6 +141,15 @@ export class TurnsRepo {
     return this.db.prepare('SELECT * FROM turns WHERE id = ?').get(id) as TurnRow | undefined;
   }
 
+  findPreviousCharacterName(sessionId: string, excludingTurnId: string): string | null {
+    const row = this.db.prepare(`
+      SELECT character_name FROM turns
+      WHERE session_id = ? AND id <> ?
+      ORDER BY created_at DESC, id DESC LIMIT 1
+    `).get(sessionId, excludingTurnId) as Pick<TurnRow, 'character_name'> | undefined;
+    return row?.character_name ?? null;
+  }
+
   delete(id: string): void {
     this.db.prepare('DELETE FROM turns WHERE id = ?').run(id);
   }

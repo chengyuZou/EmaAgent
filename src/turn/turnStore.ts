@@ -101,6 +101,10 @@ export class TurnStore {
     this.turnsRepo.setCharacterName(turnId, characterName);
   }
 
+  getPreviousCharacterName(sessionId: string, excludingTurnId: string): string | null {
+    return this.turnsRepo.findPreviousCharacterName(sessionId, excludingTurnId);
+  }
+
   completeTurn(
     turnId: string,
     withinTransaction?: () => void,

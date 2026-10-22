@@ -282,7 +282,6 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
   const estimateContext: TurnComposition['estimateContext'] = async (sessionId, signal) => {
     const prepared = await prepareContextInput(contextInputDeps, sessionId, signal);
     const historyResolver = createTurnHistoryResolver(database.turns);
-    const characterName = characters.current().name;
     let pendingImageCount = 0;
     const history = await projectMessages(
       database.session.loadHistory(sessionId),
@@ -295,11 +294,6 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
           onMissing: () => { pendingImageCount += 1; },
         },
         signal,
-      },
-      message => {
-        if (!message.turnId) return undefined;
-        const historicalCharacter = historyResolver.resolveCharacter(message.turnId);
-        return historicalCharacter !== characterName ? historicalCharacter : undefined;
       },
     );
     signal.throwIfAborted();

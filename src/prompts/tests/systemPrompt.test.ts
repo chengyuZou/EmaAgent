@@ -105,12 +105,16 @@ describe('system prompt assembly', () => {
     expect(second.at(-1)?.content).toContain('other / another-model');
   });
 
-  it('keeps character paragraphs together with historical-speaker guidance', () => {
+  it('keeps a short explanation of persisted character-switch reminders with the persona', () => {
     const character = contentStartingWith(assemble(), CHARACTER[0]!);
     expect(character.startsWith(CHARACTER.join('\n\n'))).toBe(true);
     expect(character).toContain('## 历史发言角色');
-    expect(character).toContain('不为身份未知的历史发言者猜测姓名');
-    expect(character).toContain('不是要求你切换角色');
+    expect(character).toContain('本 Turn 按当前角色的姓名和人设回复');
+    expect(character).toContain('TurnReminder 中的角色切换记录');
+    expect(character).toContain('其他角色的姓名, 身份和经历不属于你');
+    expect(character).toContain('工具已确认的事实继续保留');
+    expect(character).not.toContain('historical-speaker');
+    expect(character).not.toContain('historical-reply');
     const childText = assemble({ characterPrompt: undefined }).map(block => block.content).join('\n');
     expect(childText).not.toContain('## 历史发言角色');
     expect(childText).not.toContain('测试娘');
@@ -228,7 +232,8 @@ describe('system prompt assembly', () => {
     expect(text).toContain('EmaAgent 是产品与运行环境的名称');
     expect(text).not.toContain('你是 Ema');
     expect(text).toContain('角色指令与产品规则同为需要遵守的指令');
-    expect(text).toContain('你从一开始就是该角色');
+    expect(text).toContain('本 Turn 直接以当前角色身份');
+    expect(text).not.toContain('你从一开始就是该角色');
     expect(contentStartingWith(assemble(), CHARACTER[0]!)).toContain('测试娘');
   });
 

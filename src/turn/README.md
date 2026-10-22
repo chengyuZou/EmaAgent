@@ -66,7 +66,7 @@ Archive and delete coordination close new Session work before clearing its pendi
 
 `TurnMessageWriter` creates an Assistant row on its first nonempty content and updates it by block index. A completed tool-use block is saved before AgentLoop starts the call. Each tool result is saved in a separate user Message before execution acknowledgement. On interruption, incomplete Assistant content is marked interrupted and missing tool results receive cancellation placeholders.
 
-Stage control tags are removed before saving and publishing text. The character's stable name is saved on the Turn. During projection, ordinary Assistant text from another historical character receives a name prefix; stored text, tool blocks, reasoning blocks, and summaries are unchanged.
+Stage control tags are removed before saving and publishing text. The character's stable name is saved on the Turn for Memory and historical facts. At Turn start, the previous character is read once for this Session, excluding the new Turn. When it differs from the frozen current name, a switch section is added inside the existing reminder before user input is saved. That section identifies the previous segment and the speaker until the next switch reminder. Same-character Turns do not repeat it. Projection replays saved messages without adding character labels or rewriting earlier reminders. Model-source resolution remains necessary for native reasoning replay.
 
 Per-call usage is recorded separately from Context occupancy. Main calls update the Session context meter; subagent calls contribute usage records without replacing that meter. Provider input counts can correct an estimate, and appended messages return it to an estimate.
 

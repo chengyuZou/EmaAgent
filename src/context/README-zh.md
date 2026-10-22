@@ -6,7 +6,7 @@ Context 把 Session 存储消息转成模型历史, 再用 Prompt 块, 工作消
 
 ## 主要入口
 
-`projectMessages(history, resolveGenerationSource, attachmentOptions, resolveCharacter?)` 返回模型消息和存储 Message ID. 空内容, 中断回复, 缺失, 重复或顺序错误的工具配对不会进入模型历史. 推理块保留签名和生成来源, 供 LLM adapter 判断目标模型是否可以重放. 可选角色解析函数给普通历史回复加上发言者名字, 不修改数据库正文.
+`projectMessages(history, resolveGenerationSource, attachmentOptions)` 返回模型消息和存储 Message ID. 空内容, 中断回复, 缺失, 重复或顺序错误的工具配对不会进入模型历史. 推理块保留签名和生成来源, 供 LLM adapter 判断目标模型是否可以重放. 已保存的正文, reminder 和协议角色原样重放, 不添加姓名前缀或历史引用标签. 角色切换由 Turn 写入其持久化 reminder, 不在投影期间重新计算.
 
 `assembleContext({ systemPrompt, toolPool, messages, contextWindow })` 返回 `messages`, `tools` 和 `usage`:
 

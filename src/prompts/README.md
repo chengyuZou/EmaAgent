@@ -50,14 +50,14 @@ The resulting sequence is:
 2. Workspace instructions, when supplied.
 3. Memory usage guidance, when supplied.
 4. Skill catalog, when supplied.
-5. Character paragraphs and historical-speaker guidance, when a character is supplied.
+5. Character paragraphs and a short explanation of character-switch reminders, when a character is supplied.
 6. Permission-mode guidance.
 7. Guidance for the actual tool pool.
 8. Platform, working directory, project folders and current model.
 
 Blank optional blocks are omitted. An empty tool pool still produces a short generic capability block.
 
-The character's paragraphs and historical-speaker guidance stay in one block. Historical name prefixes identify earlier speakers; they do not instruct the model to change character. Omitting the character also omits this guidance.
+The character's paragraphs and a short explanation of TurnReminder character-switch records stay in one block. Identity applies to the current Turn. Switch records identify historical speaker segments without transferring another character's name or experiences to the current speaker. User needs and verified task facts remain available. Omitting the character also omits this guidance.
 
 Only the shared static block has a cache marker here. Context preserves that marker and separately marks the final non-empty request message. The Anthropic protocol converts these hints into provider cache markers; other current protocols ignore them. Stable text is placed first to keep an identical prefix where possible, but cache reuse is determined by the provider.
 

@@ -6,6 +6,11 @@ export interface RenderTurnReminderInput {
   readonly currentDate: string;
   /** 当前未关闭目标的 SQL 事实, 没有目标时也明确撤销历史 Goal 要求. */
   readonly goal: Goal | null;
+  /** 仅本 Turn 相比该 Session 上一 Turn 换角时提供; 旧 reminder 不随之后的角色变化重写. */
+  readonly characterSwitch?: {
+    readonly previousCharacterName: string;
+    readonly currentCharacterName: string;
+  };
   /** Work memory_summary.md 的本轮摘要 */
   readonly memoryWork?: string;
   /** 共享用户记忆, 当前角色记忆与相关角色关系的本轮正式文本 */
@@ -20,6 +25,17 @@ export interface RenderTurnReminderInput {
 
 export function renderTurnReminder(input: RenderTurnReminderInput): string {
   const sections: string[] = [`## 当前日期\n${input.currentDate}`];
+
+  if (input.characterSwitch) {
+    const { previousCharacterName, currentCharacterName } = input.characterSwitch;
+    sections.push([
+      '## 角色切换',
+      `本 Turn 从角色 ${previousCharacterName} 切换到角色 ${currentCharacterName}.`,
+      `紧邻本提醒之前的一个角色对话区段属于 ${previousCharacterName}; 更早的区段按各自的角色切换提醒判断, 不把全部历史归给同一个角色.`,
+      `从本提醒开始, 到下一条角色切换提醒之前, 助手发言属于 ${currentCharacterName}. 当前姓名是 ${currentCharacterName}, 请按该角色的人设继续对话.`,
+      '其他角色说过的姓名, 第一人称, 职业, 经历和私人承诺属于当时的角色, 不认领为自己. 用户的需求, 偏好, 决定和工具已确认的事实继续保留. 不向用户复述本提醒.',
+    ].join('\n'));
+  }
 
   if (input.memoryWork?.trim()) {
     sections.push(`## Work 记忆摘要\n${input.memoryWork.trim()}`);

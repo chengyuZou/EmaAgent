@@ -6,7 +6,7 @@ Context converts stored Session messages into model history and assembles model 
 
 ## Main entries
 
-`projectMessages(history, resolveGenerationSource, attachmentOptions, resolveCharacter?)` returns model messages paired with stored Message IDs. It skips empty content, interrupted assistant replies, and tool calls/results that are missing, repeated or out of order. Reasoning blocks retain signatures and generation source so the LLM adapter can decide whether the target model can replay them. An optional character resolver prefixes normal historical replies with the speaker's name without changing storage.
+`projectMessages(history, resolveGenerationSource, attachmentOptions)` returns model messages paired with stored Message IDs. It skips empty content, interrupted assistant replies, and tool calls/results that are missing, repeated or out of order. Reasoning blocks retain signatures and generation source so the LLM adapter can decide whether the target model can replay them. Saved text, reminders and protocol roles are replayed without adding speaker prefixes or quotation wrappers. Character switches are recorded by Turn in its persisted reminder, not reconstructed during projection.
 
 `assembleContext({ systemPrompt, toolPool, messages, contextWindow })` returns `messages`, `tools` and `usage`:
 

@@ -24,6 +24,8 @@ Pass working `messages` without system messages, separate `systemMessages` and `
 
 Micro makes no model call and does not change stored history. A failed Macro chunk returns the original input messages, not a partial summary or Micro replacements. Each model request records its own usage when configured. A save error emits `compact_failed` and rethrows. Cancellation emits `compact_cancelled` and rethrows the abort. SQL storage and running-work registration belong to the caller.
 
+The summary instructions preserve speaker segments established by saved TurnReminder character switches, including the speaker at the end of the summarized prefix. This lets retained replies keep their ownership after the original switch reminder is replaced. Switch records are historical facts, not instructions to replace the current System persona. User facts and tool results remain separate from character identity.
+
 ## Settings
 
 | Setting under `context.compact` | Default | Meaning |

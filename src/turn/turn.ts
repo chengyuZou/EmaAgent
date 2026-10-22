@@ -285,6 +285,7 @@ export class TurnExecutor {
       }
 
       const userText = explicitUserText(prepared.userMessageBlocks);
+      const previousCharacterName = this.deps.turns.getPreviousCharacterName(sessionId, turnId);
 
       // Reminder 先于用户消息落库:同一 Turn 的历史重放顺序即模型看到的顺序.
       // reminder 表示"本 Turn 开始时的事实",整 Turn 只有这一条,不随 LLM Call 重建.
@@ -304,7 +305,12 @@ export class TurnExecutor {
         sessionId,
         role: 'user',
         kind: 'reminder',
-        blocks: renderTurnReminder(reminderInput),
+        blocks: renderTurnReminder({
+          ...reminderInput,
+          characterSwitch: previousCharacterName && previousCharacterName !== characterName
+            ? { previousCharacterName, currentCharacterName: characterName }
+            : undefined,
+        }),
       });
       // reminder 已持久化成功:宿主在此提交"已提醒"(Task reminder 两阶段提交点).
       // 放在 appendMessage 之后,保证 Turn 准备失败不会吞掉低频提醒周期.
@@ -413,13 +419,6 @@ export class TurnExecutor {
       // 后续 Macro 可以覆盖完整有效前缀, 不再被 Turn 边界截断.
       const persisted = this.deps.sessions.loadHistory(sessionId);
       const historyResolver = createTurnHistoryResolver(this.deps.turns);
-      const resolveCharacter = (message: SessionMessage): string | undefined => {
-        if (!message.turnId) {
-          return undefined;
-        }
-        const historicalCharacter = historyResolver.resolveCharacter(message.turnId);
-        return historicalCharacter !== characterName ? historicalCharacter : undefined;
-      };
       // 附件投影:图片字节在入库时已规范化,这里只按能力分流(直发/描述/标记).
       const attachmentOptions = {
         supportsImageInput: prepared.supportsImageInput,
@@ -431,7 +430,6 @@ export class TurnExecutor {
         persisted,
         message => message.turnId ? historyResolver.resolveGenerationSource(message.turnId) : undefined,
         attachmentOptions,
-        resolveCharacter,
       );
       const initialMessages: Message[] = projected.map(entry => entry.message);
       // 未落库的模型专用引导也占消息位置, 但没有 SQL ID.
@@ -478,7 +476,6 @@ export class TurnExecutor {
             appended,
             message => message.turnId ? historyResolver.resolveGenerationSource(message.turnId) : undefined,
             attachmentOptions,
-            resolveCharacter,
           );
           pendingMessageIds.push(...projected.map(entry => entry.messageId));
           return projected.map(entry => entry.message);
@@ -814,9 +811,8 @@ function createSessionTitle(blocks: MessageBlocks): string {
 }
 
 /**
- * 一次 Turn 或手动压缩共用一个 Map, 按需读取历史 Turn 的模型来源和对话角色.
+ * 一次 Turn 或手动压缩共用一个 Map, 按需读取历史 Turn 的模型来源.
  * 只读 loadHistory 实际交付的 Turn, 后续追加消息复用这份查询结果.
- * 角色使用当时保存的名字, 不查当前角色目录或参考音频; 缺失身份不猜测.
  */
 export function createTurnHistoryResolver(
   turns: Pick<TurnStore, 'getTurn'>,
@@ -841,9 +837,6 @@ export function createTurnHistoryResolver(
         modelId: turn.modelId,
         protocol: turn.protocol,
       };
-    },
-    resolveCharacter(turnId: string): string | undefined {
-      return readTurn(turnId)?.characterName ?? undefined;
     },
   };
 }

@@ -9,7 +9,7 @@
 Server 提供 Session 存储, 运行登记, 模型设置, 当前角色与 Skill 来源, 图片处理入口和 `CompleteLLM` 工厂. 实际组装见 [Server composition](../../apps/server/src/composition/commands.ts).
 
 1. 确认 Session 可以接受工作且已选择模型, 再用生成的 `compactId` 登记可取消的压缩.
-2. 读取有效历史, 通过 [Context](../context/README-zh.md) 转成模型消息. 历史回复保留当时的角色名和模型来源.
+2. 读取有效历史, 通过 [Context](../context/README-zh.md) 转成模型消息. 正文和已保存的角色切换 reminder 原样重放; 历史模型来源用于判断推理能否回传.
 3. 只估算历史, 检查 `context.compact.manualMinRatio` 手动下限. 历史太短时, 在读取 Skill 目录和 Memory 指引前拒绝. 全部历史都在近期原文保留预算内时也拒绝.
 4. 装配当前静态和动态 System Prompt. 调用 [Compact](../compact/README-zh.md), 传入 `force: true`, `micro: false`, 不提供工具.
 5. 把被摘要覆盖的消息数量映射到最后一条 SQL Message ID. 以 `turnId: null` 追加摘要, 原始消息仍保存在数据库. Compact 等保存成功后才发送完成事件.

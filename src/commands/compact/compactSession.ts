@@ -51,7 +51,7 @@ export type ManualCompactResult =
 export interface ManualCompactDeps {
   readonly sessions: Pick<SessionStore,
     'getSessionForWork' | 'listProjectFolders' | 'loadHistory' | 'appendHistorySummary'>;
-  /** Assistant 历史使用所属 Turn 保存的模型来源和对话角色. */
+  /** Assistant 推理块使用所属 Turn 保存的模型来源判断是否可以重放. */
   readonly turns: Pick<TurnStore, 'getTurn'>;
   readonly sessionRunning: SessionRunningRegistry;
   readonly providers: Providers;
@@ -131,8 +131,6 @@ export async function compactSession(
         ...(deps.describeImage ? { describeImage: deps.describeImage } : {}),
         signal,
       },
-      // 摘要需要保留当时的角色, 包括与当前角色同名的历史回复.
-      message => message.turnId ? historyResolver.resolveCharacter(message.turnId) : undefined,
     );
     if (historyWithIds.length === 0) {
       throw new CommandsError('nothing_to_compact', '当前会话还没有可压缩的历史');

@@ -9,7 +9,7 @@ This package provides the chat command catalog and manual Session compaction. Th
 The Server supplies Session storage, the running-work registry, model settings, current character and Skill sources, image handling, and a `CompleteLLM` factory. See [Server composition](../../apps/server/src/composition/commands.ts) for the wiring.
 
 1. Check that the Session accepts work and has a selected model, then register cancellable compaction under a generated `compactId`.
-2. Load effective history and use [Context](../context/README.md) to convert it into model messages. Historical replies retain their speaker and model source.
+2. Load effective history and use [Context](../context/README.md) to convert it into model messages. Text and saved character-switch reminders are replayed unchanged; historical model source controls reasoning replay.
 3. Check history alone against `context.compact.manualMinRatio`. Reject short history before loading Skills and Memory guidance. Also reject history entirely within the recent-text retention budget.
 4. Assemble the current static and dynamic System Prompt. Call [Compact](../compact/README.md) with `force: true`, `micro: false`, and no tools.
 5. Map the summarized message count to the last covered SQL Message ID. Append the summary with `turnId: null`; original messages stay in storage. Compact emits completion after saving.

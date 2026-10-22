@@ -25,8 +25,6 @@ export async function projectMessages<T extends Message>(
   sessionMessages: readonly T[],
   resolveGenerationSource: (message: T) => LLMGenerationSource | undefined,
   attachmentOptions: BuildAttachmentMessagesOptions,
-  // 仅对有正文的普通 Assistant 调用. 返回名字时标明发言角色, 不改变保存的正文.
-  resolveCharacter?: (message: T) => string | undefined,
 ): Promise<ProjectedMessage[]> {
   const projectedMessages: ProjectedMessage[] = [];
   const pairedToolIds = collectPairedToolIds(sessionMessages);
@@ -35,10 +33,7 @@ export async function projectMessages<T extends Message>(
     if (message.role === 'user') {
       if (typeof message.blocks === 'string') {
         if (message.blocks.trim()) {
-          projectedMessages.push({
-            messageId: message.id,
-            message: { role: 'user', content: message.blocks },
-          });
+          projectedMessages.push({ messageId: message.id, message: { role: 'user', content: message.blocks } });
         }
         continue;
       }
@@ -49,10 +44,7 @@ export async function projectMessages<T extends Message>(
           if (projected) content.push(...projected);
         }
         if (content.length > 0) {
-          projectedMessages.push({
-            messageId: message.id,
-            message: { role: 'user', content },
-          });
+          projectedMessages.push({ messageId: message.id, message: { role: 'user', content } });
         }
       }
       continue;
@@ -64,19 +56,6 @@ export async function projectMessages<T extends Message>(
         .map((block) => buildAssistantBlock(block, pairedToolIds))
         .filter((block): block is AssistantBlock => block !== undefined);
       if (content.length > 0) {
-        if (message.kind === 'normal' && resolveCharacter) {
-          const textIndex = content.findIndex(block => block.type === 'text');
-          const firstText = content[textIndex];
-          if (firstText?.type === 'text') {
-            const characterName = resolveCharacter(message);
-            if (characterName) {
-              content[textIndex] = {
-                ...firstText,
-                text: `${characterName}:\n${firstText.text}`,
-              };
-            }
-          }
-        }
         const generatedBy = resolveGenerationSource(message);
         projectedMessages.push({
           messageId: message.id,
