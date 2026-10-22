@@ -31,6 +31,8 @@ export interface CharacterVoiceSampleInsert {
 
 export interface CharacterVoiceSampleUpdate {
   displayName?: string;
+  promptText?: string;
+  promptLang?: string;
 }
 
 export class CharacterVoiceSampleRepo {
@@ -98,10 +100,26 @@ export class CharacterVoiceSampleRepo {
     })();
   }
   update(characterName: string, name: string, patch: CharacterVoiceSampleUpdate, updatedAt: number): CharacterVoiceSampleRow | undefined {
-    if (patch.displayName !== undefined) {
+    if (
+      patch.displayName !== undefined
+      || patch.promptText !== undefined
+      || patch.promptLang !== undefined
+    ) {
       this.db.prepare(
-        'UPDATE character_voice_samples SET display_name = ?, updated_at = ? WHERE character_name = ? AND name = ?',
-      ).run(patch.displayName, updatedAt, characterName, name);
+        `UPDATE character_voice_samples
+         SET display_name = COALESCE(?, display_name),
+             prompt_text = COALESCE(?, prompt_text),
+             prompt_lang = COALESCE(?, prompt_lang),
+             updated_at = ?
+         WHERE character_name = ? AND name = ?`,
+      ).run(
+        patch.displayName ?? null,
+        patch.promptText ?? null,
+        patch.promptLang ?? null,
+        updatedAt,
+        characterName,
+        name,
+      );
     }
     return this.find(characterName, name);
   }

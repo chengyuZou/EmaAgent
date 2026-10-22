@@ -574,8 +574,19 @@ export class CharacterStore {
   updateVoiceSample(characterName: string, voiceName: string, patch: CharacterVoiceSamplePatch): Promise<CharacterVoiceSample | undefined> {
     return this.mutate(characterName, () => {
       this.getRequiredCharacterOnly(characterName);
-      normalizeResourcePatch(patch);
-      const resource = this.voiceSamples.update(characterName, voiceName, patch);
+      const normalized: CharacterVoiceSamplePatch = {
+        ...(patch.displayName !== undefined ? { displayName: patch.displayName.trim() } : {}),
+        ...(patch.promptText !== undefined ? { promptText: patch.promptText.trim() } : {}),
+        ...(patch.promptLang !== undefined ? { promptLang: patch.promptLang.trim() } : {}),
+      };
+      normalizeResourcePatch(normalized);
+      if (
+        normalized.promptText === ''
+        || normalized.promptLang === ''
+      ) {
+        throw new CharacterInputInvalidError('voice_prompt_required', characterName);
+      }
+      const resource = this.voiceSamples.update(characterName, voiceName, normalized);
       if (resource) this.resourcesChanged(characterName);
       return resource;
     });

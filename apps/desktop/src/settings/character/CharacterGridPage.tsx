@@ -70,8 +70,8 @@ export function CharacterGridPage({ onOpen }: { onOpen(name: string): void }): J
   }
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="px-1 shrink-0">
+    <div className="-mr-5 flex h-full min-h-0 flex-col md:-mr-8">
+      <div className="shrink-0 pl-1 pr-5 md:pr-8">
         <PageHeader
           title="角色卡"
           description="管理角色身份及其舞台资源"
@@ -100,7 +100,10 @@ export function CharacterGridPage({ onOpen }: { onOpen(name: string): void }): J
         </p>
       </div>
 
-      <ScrollArea className="flex-1" viewportClassName="pb-2">
+      <ScrollArea
+        className="min-h-0 flex-1"
+        viewportClassName="pb-2 pr-5 md:pr-8"
+      >
         {loading && characters.length === 0 && (
           <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4 pr-1">
             {[0, 1, 2].map(i => <Skeleton key={i} className="h-64 rounded-xl" />)}
@@ -323,25 +326,40 @@ function CreateCharacterDialog({
       onOpenChange={onOpenChange}
       title="新建角色卡"
       description="name 是创建后不可修改的永久身份,也是角色目录名。"
-      widthClass="max-w-md"
+      widthClass="max-w-4xl"
     >
-      <div className="flex flex-col gap-3 pt-1">
+      <div className="grid grid-cols-1 gap-4 pt-1 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-xs text-[var(--ema-text-secondary)]">
           name(永久身份)
-          <Input mono={false} value={name} onChange={e => setName(e.target.value)} placeholder="角色全名" />
+          <Input
+            mono={false}
+            value={name}
+            onChange={e => setName(e.target.value)}
+            placeholder="角色全名"
+          />
         </label>
         <label className="flex flex-col gap-1 text-xs text-[var(--ema-text-secondary)]">
           展示名(可空)
-          <Input mono={false} value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="角色展示名" />
+          <Input
+            mono={false}
+            value={displayName}
+            onChange={e => setDisplayName(e.target.value)}
+            placeholder="角色展示名"
+          />
         </label>
-        <label className="flex flex-col gap-1 text-xs text-[var(--ema-text-secondary)]">
+        <label className="flex flex-col gap-1 text-xs text-[var(--ema-text-secondary)] sm:col-span-2">
           描述(可空)
-          <Input mono={false} value={description} onChange={e => setDescription(e.target.value)} placeholder="一句话人设" />
+          <Input
+            mono={false}
+            value={description}
+            onChange={e => setDescription(e.target.value)}
+            placeholder="一句话人设"
+          />
         </label>
-        <label className="flex flex-col gap-1 text-xs text-[var(--ema-text-secondary)]">
+        <label className="flex flex-col gap-1 text-xs text-[var(--ema-text-secondary)] sm:col-span-2">
           Persona Prompt
           <textarea
-            className="min-h-28 w-full resize-y rounded-lg border border-[var(--ema-border)]
+            className="min-h-72 w-full resize-y rounded-lg border border-[var(--ema-border)]
               bg-[var(--ema-surface-1)] px-3 py-2 text-sm text-[var(--ema-text-primary)]
               focus:outline-none focus:border-[var(--ema-primary)]"
             value={personaPrompt}
@@ -349,8 +367,13 @@ function CreateCharacterDialog({
             placeholder="角色人设提示词 提示词的质量直接影响角色的行为和表现"
           />
         </label>
-        <div className="flex justify-end gap-2">
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>取消</Button>
+        <div className="flex justify-end gap-2 sm:col-span-2">
+          <Button
+            variant="ghost"
+            onClick={() => onOpenChange(false)}
+          >
+            取消
+          </Button>
           <Button
             variant="primary"
             loading={saving}

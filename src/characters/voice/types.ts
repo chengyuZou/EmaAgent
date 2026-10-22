@@ -27,6 +27,8 @@ export interface CharacterVoiceSampleInput {
 
 export interface CharacterVoiceSamplePatch {
   displayName?: string;
+  promptText?: string;
+  promptLang?: string;
 }
 
 export interface ImportCharacterVoiceSampleInput {

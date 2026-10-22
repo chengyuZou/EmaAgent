@@ -104,7 +104,7 @@ export function VoiceTab({ character }: { character: Character }): JSX.Element {
             <VoiceRow key={sample.name} character={character} sample={sample} index={index} />
           ))}
           <p className="mt-2 text-[11px] text-[var(--ema-text-tertiary)]">
-            导入后只允许修改展示名;promptText/promptLang/时长都是导入事实。不提供重新上传替代。
+            展示名可点击修改, 朗读文本和语言可在更多操作中编辑. 朗读文本应与音频内容一致.
           </p>
         </div>
       </ScrollArea>
@@ -125,6 +125,7 @@ function VoiceRow({ character, sample, index }: {
   const store = useCharacterStore();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(sample.displayName);
+  const [promptEditorOpen, setPromptEditorOpen] = useState(false);
   const playingKey = usePlayingKey();
   const isThisPlaying = playingKey === sample.name;
 
@@ -176,6 +177,12 @@ function VoiceRow({ character, sample, index }: {
       },
     },
     { kind: 'separator' },
+    {
+      kind: 'item',
+      label: '编辑参考音频',
+      icon: 'i-lucide:pencil',
+      onSelect: () => setPromptEditorOpen(true),
+    },
     {
       kind: 'item',
       label: '打开文件夹',
@@ -298,6 +305,13 @@ function VoiceRow({ character, sample, index }: {
           <IconButton icon="i-lucide:more-horizontal" label="更多操作" size="sm" />
         )}
       />
+      {promptEditorOpen && (
+        <EditVoiceDialog
+          characterName={character.name}
+          sample={sample}
+          onClose={() => setPromptEditorOpen(false)}
+        />
+      )}
       <Dialog
         open={confirmDelete}
         onOpenChange={setConfirmDelete}
@@ -313,6 +327,133 @@ function VoiceRow({ character, sample, index }: {
         </div>
       </Dialog>
     </div>
+  );
+}
+
+function VoicePromptFields({
+  promptText,
+  promptLang,
+  disabled,
+  onPromptTextChange,
+  onPromptLangChange,
+}: {
+  promptText: string;
+  promptLang: string;
+  disabled: boolean;
+  onPromptTextChange(value: string): void;
+  onPromptLangChange(value: string): void;
+}): JSX.Element {
+  const languages = [
+    { value: 'zh', label: '中文(zh)' },
+    { value: 'en', label: 'English(en)' },
+    { value: 'ja', label: '日本語(ja)' },
+  ];
+  if (promptLang && !languages.some(language => language.value === promptLang)) {
+    languages.push({ value: promptLang, label: promptLang });
+  }
+
+  return (
+    <>
+      <label className="flex flex-col gap-2 text-xs text-[var(--ema-text-secondary)]">
+        promptText(音频的朗读文本)
+        <Textarea
+          value={promptText}
+          onChange={event => onPromptTextChange(event.target.value)}
+          placeholder="填写这段音频中实际说出的原文, 用于语音生成时匹配参考音色"
+          minRows={6}
+          maxRows={14}
+          maxLength={4_000}
+          disabled={disabled}
+        />
+      </label>
+      <label className="flex flex-col gap-2 text-xs text-[var(--ema-text-secondary)]">
+        promptLang(语言)
+        <Select
+          value={promptLang}
+          options={languages}
+          onChange={onPromptLangChange}
+          aria-label="promptLang(语言)"
+          disabled={disabled}
+        />
+      </label>
+    </>
+  );
+}
+
+function EditVoiceDialog({
+  characterName,
+  sample,
+  onClose,
+}: {
+  characterName: string;
+  sample: VoiceSample;
+  onClose(): void;
+}): JSX.Element {
+  const [promptText, setPromptText] = useState(sample.promptText);
+  const [promptLang, setPromptLang] = useState(sample.promptLang);
+  const [saving, setSaving] = useState(false);
+  const dirty = promptText.trim() !== sample.promptText
+    || promptLang.trim() !== sample.promptLang;
+  const canSave = dirty && promptText.trim().length > 0 && promptLang.trim().length > 0;
+
+  async function handleSave(): Promise<void> {
+    if (saving || !canSave) return;
+    setSaving(true);
+    try {
+      await useCharacterStore.getState().patchVoice(characterName, sample.name, {
+        promptText: promptText.trim(),
+        promptLang: promptLang.trim(),
+      });
+      showToast('已保存参考音频', { variant: 'success' });
+      onClose();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '保存失败', { variant: 'danger' });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog
+      open
+      onOpenChange={open => {
+        if (!open && !saving) onClose();
+      }}
+      title="编辑参考音频"
+      description="修改朗读文本和语言, 用于之后的语音生成."
+      widthClass="max-w-3xl"
+    >
+      <div className="flex flex-col gap-5 pt-1">
+        <label className="flex flex-col gap-2 text-xs text-[var(--ema-text-secondary)]">
+          音频文件
+          <Input value={sample.name} readOnly />
+        </label>
+        <VoicePromptFields
+          promptText={promptText}
+          promptLang={promptLang}
+          disabled={saving}
+          onPromptTextChange={setPromptText}
+          onPromptLangChange={setPromptLang}
+        />
+        <div className="flex justify-end gap-2 pt-2">
+          <Button
+            variant="ghost"
+            disabled={saving}
+            onClick={onClose}
+          >
+            取消
+          </Button>
+          <Button
+            variant="primary"
+            loading={saving}
+            disabled={!canSave}
+            onClick={() => void handleSave()}
+          >
+            保存修改
+          </Button>
+        </div>
+      </div>
+    </Dialog>
   );
 }
 
@@ -334,6 +475,7 @@ function ImportVoiceDialog({ character, open, onOpenChange }: {
   }, [open, character.name]);
 
   function changeOpen(next: boolean): void {
+    if (saving) return;
     if (!next) pendingSelection.current = null;
     onOpenChange(next);
   }
@@ -358,18 +500,19 @@ function ImportVoiceDialog({ character, open, onOpenChange }: {
   }
 
   async function handleImport(): Promise<void> {
-    if (!sourceFile || !promptText.trim()) return;
+    if (saving || !sourceFile || !promptText.trim() || !promptLang.trim()) return;
     pendingSelection.current = null;
     setSaving(true);
     try {
       await store.importVoice(character.name, {
         sourceFile,
         promptText: promptText.trim(),
-        promptLang: promptLang.trim() || 'zh',
+        promptLang: promptLang.trim(),
       });
       showToast('已导入参考音频', { variant: 'success' });
-      setSourceFile(''); setPromptText('');
-      changeOpen(false);
+      setSourceFile('');
+      setPromptText('');
+      onOpenChange(false);
     } catch (error) {
       if (error instanceof ServerApiError && error.code === 'character_work_running') {
         showToast('当前角色有正在执行的任务,请先停止或等其结束后再导入', { variant: 'warning' });
@@ -386,51 +529,48 @@ function ImportVoiceDialog({ character, open, onOpenChange }: {
       open={open}
       onOpenChange={changeOpen}
       title="导入参考音频"
-      description="从本机选择音频文件;promptText/promptLang 是音色注册与克隆的事实输入,导入后不可改。"
-      widthClass="max-w-md"
+      description="从本机选择音频文件, 并填写与音频内容一致的朗读文本和语言. 导入后可继续编辑."
+      widthClass="max-w-3xl"
     >
-      <div className="flex flex-col gap-3 pt-1">
-        <label className="flex flex-col gap-1 text-xs text-[var(--ema-text-secondary)]">
+      <div className="flex flex-col gap-5 pt-1">
+        <label className="flex flex-col gap-2 text-xs text-[var(--ema-text-secondary)]">
           音频文件
           <div className="flex gap-2">
-            <Input value={sourceFile} readOnly placeholder="选择 .wav/.mp3 文件" className="flex-1" />
+            <Input
+              value={sourceFile}
+              readOnly
+              placeholder="选择 .wav/.mp3 文件"
+              className="min-w-0 flex-1"
+            />
             <Button
               variant="secondary"
               size="sm"
+              disabled={saving}
               onClick={() => void selectAudio()}
             >
               浏览
             </Button>
           </div>
         </label>
-        <label className="flex flex-col gap-1 text-xs text-[var(--ema-text-secondary)]">
-          promptText(音频的朗读文本)
-          <Textarea
-            value={promptText}
-            onChange={e => setPromptText(e.target.value)}
-            placeholder="请一定要填写这段音频里说的话的原文 否则语音生成的结果极差"
-            minRows={3}
-            maxRows={10}
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-xs text-[var(--ema-text-secondary)]">
-          promptLang(语言)
-          <Select
-            value={promptLang}
-            options={[
-              { value: 'zh', label: '中文(zh)' },
-              { value: 'en', label: 'English(en)' },
-              { value: 'ja', label: '日本語(ja)' },
-            ]}
-            onChange={setPromptLang}
-          />
-        </label>
-        <div className="flex justify-end gap-2">
-          <Button variant="ghost" onClick={() => changeOpen(false)}>取消</Button>
+        <VoicePromptFields
+          promptText={promptText}
+          promptLang={promptLang}
+          disabled={saving}
+          onPromptTextChange={setPromptText}
+          onPromptLangChange={setPromptLang}
+        />
+        <div className="flex justify-end gap-2 pt-2">
+          <Button
+            variant="ghost"
+            disabled={saving}
+            onClick={() => changeOpen(false)}
+          >
+            取消
+          </Button>
           <Button
             variant="primary"
             loading={saving}
-            disabled={!sourceFile || !promptText.trim()}
+            disabled={!sourceFile || !promptText.trim() || !promptLang.trim()}
             onClick={() => void handleImport()}
           >
             导入

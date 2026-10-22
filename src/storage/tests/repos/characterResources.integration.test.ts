@@ -8,6 +8,54 @@ import {
 } from '../../index.js';
 
 describe('Character resource persistence', () => {
+  it('修改参考音频文本和语言时保留文件事实, 展示名修改不覆盖文本和语言', () => {
+    const database = new Database({ memory: true, kind: 'profile' });
+    database.migrate();
+    try {
+      new CharacterRepo(database.sqlite).insert({
+        name: '角色',
+        personaPrompt: '人设',
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      const voices = new CharacterVoiceSampleRepo(database.sqlite);
+      voices.insert({
+        name: 'sample.wav',
+        characterName: '角色',
+        displayName: '参考音频',
+        promptText: '旧文本',
+        promptLang: 'zh',
+        isPrimary: true,
+        mimeType: 'audio/wav',
+        byteSize: 256,
+        durationMs: 1_000,
+        createdAt: 2,
+        updatedAt: 2,
+      });
+
+      voices.update('角色', 'sample.wav', {
+        promptText: 'Corrected transcript.',
+        promptLang: 'en',
+      }, 3);
+      voices.update('角色', 'sample.wav', { displayName: '新展示名' }, 4);
+
+      expect(voices.find('角色', 'sample.wav')).toMatchObject({
+        name: 'sample.wav',
+        display_name: '新展示名',
+        prompt_text: 'Corrected transcript.',
+        prompt_lang: 'en',
+        is_primary: 1,
+        mime_type: 'audio/wav',
+        byte_size: 256,
+        duration_ms: 1_000,
+        created_at: 2,
+        updated_at: 4,
+      });
+    } finally {
+      database.close();
+    }
+  });
+
   it('只保存资源事实,并在更换主要资源时更新旧主要资源时间', () => {
     const database = new Database({ memory: true, kind: 'profile' });
     database.migrate();

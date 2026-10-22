@@ -53,7 +53,11 @@ const illustrationPatch = resourcePatch.extend({
   expression: z.string().regex(/^[a-z][a-z0-9_]*$/u).nullable().optional(),
 });
 
-const voicePatch = z.object({ displayName: z.string().trim().min(1).max(200) });
+const voicePatch = z.object({
+  displayName: z.string().trim().min(1).max(200).optional(),
+  promptText: z.string().trim().min(1).max(4_000).optional(),
+  promptLang: z.string().trim().min(1).max(32).optional(),
+});
 
 const prepareLive2dImportBody = z.object({
   source: z.string().min(1),

@@ -41,7 +41,7 @@ Names are normalized to NFC and checked against Windows filename restrictions, i
 | --- | --- |
 | Live2D | ZIP or directory. Prepare in staging, validate model references, let Desktop render a PNG preview, then commit. Imports do not become primary automatically. |
 | Illustration | Copy the original PNG, JPEG, GIF, or WebP after checking its header. An optional expression name groups up to 10 images. |
-| Reference audio | Validate a local regular file, copy it, and store its transcript and language. Limit: 512 MiB and a detected duration of at most 60 seconds. The transcript and language are fixed after import. |
+| Reference audio | Validate a local regular file, copy it, and store its transcript and language. Limit: 512 MiB and a detected duration of at most 60 seconds. The display name, transcript, and language can be edited after import; the audio file and detected duration stay unchanged. |
 
 Audio validation inspects container headers and selected file ranges, rather than decoding the whole recording. In particular, MP3 duration is an estimate based on the first detected frame's bitrate.
 

@@ -10,6 +10,7 @@ function fixture() {
     setPrimaryLive2dModel: vi.fn(async () => true),
     setPrimaryIllustration: vi.fn(async () => true),
     setPrimaryVoiceSample: vi.fn(async () => true),
+    updateVoiceSample: vi.fn(async () => ({ name: 'sample.wav' })),
     prepareLive2dImport: vi.fn(async () => ({
       importId: 'prepared-1',
       name: 'Hiyori',
@@ -28,6 +29,38 @@ function fixture() {
 }
 
 describe('characterResourcesRoute', () => {
+  it('参考音频允许只更新朗读文本和语言, 并规范化首尾空白', async () => {
+    const deps = fixture();
+    const response = await characterResourcesRoute(deps).request('/艾玛/voice/sample.wav', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ promptText: '  Corrected transcript.  ', promptLang: ' en ' }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(deps.characters.updateVoiceSample).toHaveBeenCalledWith('艾玛', 'sample.wav', {
+      promptText: 'Corrected transcript.',
+      promptLang: 'en',
+    });
+  });
+
+  it.each([
+    ['空白文本', { promptText: '   ' }],
+    ['空白语言', { promptLang: '   ' }],
+    ['文本过长', { promptText: 'a'.repeat(4_001) }],
+    ['语言过长', { promptLang: 'a'.repeat(33) }],
+  ] as const)('拒绝无效的参考音频文本或语言: %s', async (_label, patch) => {
+    const deps = fixture();
+    const response = await characterResourcesRoute(deps).request('/艾玛/voice/sample.wav', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(patch),
+    });
+
+    expect(response.status).toBe(400);
+    expect(deps.characters.updateVoiceSample).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['Live2D', '/艾玛/live2d/ema/primary', 'setPrimaryLive2dModel', true],
     ['插图', '/艾玛/illustrations/happy.png/primary', 'setPrimaryIllustration', false],
