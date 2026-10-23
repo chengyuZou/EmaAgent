@@ -23,6 +23,11 @@ export function parseQueryJson(text: string): unknown {
   return JSON.parse(jsonrepair(withoutThinking)) as unknown;
 }
 
+// TODO: 当前路由将周目选择, 问题改写和关键词提取合并, 提词还会读取剧情摘要.
+// 生成的子问题用于来源选块, 原 Tool query 用于重排, 可能导致两阶段关注不同内容.
+// 尚未验证拆分周目选择并按 LightRAG 原文独立提词的效果.
+// 具体差异和已有验证见 docs/testing/lightragExtractionAudit.md.
+
 /** 一次调用确定周目, 子问题和关键词. 摘要只用于定位, 不替代原文证据. */
 export async function routeTimelines(
   query: string,
