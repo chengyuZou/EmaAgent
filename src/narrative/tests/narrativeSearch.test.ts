@@ -4,7 +4,12 @@ import type { CallEmbed } from '@ema-agent/embed';
 import type { CompleteLLM, LLMCompletion } from '@ema-agent/llm';
 import type { CallRerank } from '@ema-agent/rerank';
 import { buildContext } from '../pipeline/context.js';
-import { MAX_CONTEXT_CHARACTERS } from '../pipeline/constants.js';
+import {
+  MAX_CONTEXT_CHARACTERS,
+  RERANK_CANDIDATE_LIMIT,
+  RERANK_TOP_K,
+  VECTOR_CHUNK_TOP_K,
+} from '../pipeline/constants.js';
 import { buildKeywordExtractionPrompt, ROUTER_PROMPT } from '../pipeline/prompts.js';
 import {
   NarrativeChunksRepo,
@@ -210,6 +215,109 @@ it('重排使用完整原问题和未截断原文, 返回结果按重排顺序�
     .toEqual(['3rd_Loop:relation', '3rd_Loop:entity']);
 });
 
+it('直接原文粗筛取 100 块, 重排最多返回 30 块', async () => {
+  routerResponse = routesFor(['1st_Loop']);
+  const insert = db.prepare('INSERT INTO chunks VALUES (?, ?, ?, ?)');
+  for (let index = 0; index < 110; index++) {
+    insert.run('1st_Loop', `candidate-${index}`, `原文候选 ${index}`, blob(vector(1)));
+  }
+  const result = await run('剧情问题', 'naive');
+  const request = callRerank.mock.calls[0]![0];
+  expect(VECTOR_CHUNK_TOP_K).toBe(100);
+  expect(request.documents).toHaveLength(100);
+  expect(request.topK).toBe(30);
+  expect(contextRows(textOf(result, '1st_Loop'))).toHaveLength(30);
+});
+
+it('mix 合并图来源后可以送入超过 100 块, 返回数仍限制为 30', async () => {
+  routerResponse = routesFor(['1st_Loop']);
+  const insert = db.prepare('INSERT INTO chunks VALUES (?, ?, ?, ?)');
+  for (let index = 0; index < 110; index++) {
+    insert.run('1st_Loop', `candidate-${index}`, `原文候选 ${index}`, blob(vector(1)));
+  }
+  const result = await run('剧情问题', 'mix');
+  const request = callRerank.mock.calls[0]![0];
+  expect(request.documents).toHaveLength(102);
+  expect(request.documents).toContain('1st_Loop:entity');
+  expect(request.documents).toContain('1st_Loop:relation');
+  expect(request.topK).toBe(30);
+  expect(contextRows(textOf(result, '1st_Loop'))).toHaveLength(30);
+});
+
+it('各周目分别取合并候选前 125 块, 返回前 30 并按实际输入下标读取正文', async () => {
+  const selectedTimelines = ['1st_Loop', '2nd_Loop'] as const;
+  routerResponse = routesFor([...selectedTimelines]);
+  const insertChunk = db.prepare('INSERT INTO chunks VALUES (?, ?, ?, ?)');
+  const insertEntity = db.prepare('INSERT INTO entities VALUES (?, ?, ?, ?, ?)');
+  const insertSource = db.prepare('INSERT INTO entity_chunks VALUES (?, ?, ?)');
+  for (const timeline of selectedTimelines) {
+    for (let index = 0; index < 130; index++) {
+      insertChunk.run(timeline, `direct-${index}`, `${timeline}:direct-${index}`, blob(vector(1)));
+    }
+    for (let index = 0; index < 45; index++) {
+      const name = `人物-${index}`;
+      insertEntity.run(timeline, name, 'person', name, blob(vector(0, 1)));
+      for (let source = 0; source < 3; source++) {
+        const id = `graph-${index}-${source}`;
+        insertChunk.run(timeline, id, `${timeline}:${id}`, blob(vector(0, 1)));
+        insertSource.run(timeline, name, id);
+      }
+    }
+    callRerank.mockImplementationOnce(async () => ({
+      results: [124, ...Array.from({ length: 29 }, (_, index) => index)]
+        .map((index, rank) => ({ index, score: 1 - rank / 100 })),
+    }));
+  }
+  const read = vi.spyOn(chunks, 'findChunksByIds');
+  const result = await run('剧情问题', 'mix');
+  expect(RERANK_CANDIDATE_LIMIT).toBe(125);
+  expect(RERANK_TOP_K).toBe(30);
+  expect(callRerank).toHaveBeenCalledTimes(2);
+  for (const [position, timeline] of selectedTimelines.entries()) {
+    const candidates = read.mock.results[position]!.value;
+    const request = callRerank.mock.calls[position]![0];
+    expect(candidates.length).toBeGreaterThan(125);
+    expect(request.documents).toEqual(candidates.slice(0, 125).map(chunk => chunk.content));
+    expect(request.topK).toBe(30);
+    const rows = contextRows(textOf(result, timeline));
+    expect(rows).toHaveLength(30);
+    expect(rows.map(row => row.content)).toEqual([
+      request.documents[124],
+      ...request.documents.slice(0, 29),
+    ]);
+  }
+});
+
+it.each(['local', 'global', 'hybrid', 'mix'] as const)('%s 不按图描述长度排除关联来源块', async mode => {
+  routerResponse = routesFor(['1st_Loop']);
+  const description = '图描述'.repeat(20_000);
+  db.prepare('UPDATE entities SET description = ?').run(description);
+  db.prepare('UPDATE relations SET description = ?').run(description);
+  const result = await run('剧情问题', mode);
+  const request = callRerank.mock.calls[0]![0];
+  expect(request.documents).toContain('1st_Loop:entity');
+  expect(request.documents).toContain('1st_Loop:relation');
+  expect(textOf(result, '1st_Loop')).not.toContain(description);
+});
+
+it('不足 30 个候选时请求全部结果, 仍按 32000 字符预算保留完整前缀块', async () => {
+  routerResponse = routesFor(['1st_Loop']);
+  const insert = db.prepare('INSERT INTO chunks VALUES (?, ?, ?, ?)');
+  for (let index = 0; index < 25; index++) {
+    insert.run('1st_Loop', `large-${index}`, `原文 ${index}:` + '字'.repeat(2_000), blob(vector(1)));
+  }
+  const result = await run('剧情问题', 'naive');
+  const request = callRerank.mock.calls[0]![0];
+  expect(request.documents).toHaveLength(26);
+  expect(request.topK).toBe(26);
+  const text = textOf(result, '1st_Loop');
+  const rows = contextRows(text);
+  expect(rows.length).toBeGreaterThan(8);
+  expect(rows.length).toBeLessThan(request.documents.length);
+  expect(text.length).toBeLessThanOrEqual(MAX_CONTEXT_CHARACTERS);
+  expect(rows.map(row => row.content)).toEqual(request.documents.slice(0, rows.length));
+});
+
 it('一个周目重排失败不丢掉其他周目, 保留路由顺序', async () => {
   routerResponse = routesFor(['2nd_Loop', '1st_Loop']);
   callRerank.mockRejectedValueOnce(new Error('重排请求失败'));
@@ -237,6 +345,25 @@ it('超过预算时保留完整前缀块, 不截断正文', () => {
   const rows = [{ chunk_id: 'a', content: '短文' }, { chunk_id: 'b', content: '字'.repeat(500) }];
   const result = buildContext(rows, 100);
   expect(JSON.parse(result)).toEqual(rows[0]);
+});
+
+it('正文预算按 UTF-16 计入 JSON 转义和块间换行', () => {
+  const rows = [
+    { chunk_id: 'a', content: '中文😀\n\"\\' },
+    { chunk_id: 'b', content: '第二块' },
+  ];
+  const rendered = rows.map(row => JSON.stringify(row));
+  const joined = rendered.join('\n');
+  expect(buildContext(rows, joined.length)).toBe(joined);
+  expect(buildContext(rows, joined.length - 1)).toBe(rendered[0]);
+});
+
+it('第一块超过正文预算时返回空正文, 不跳过它另选后面的短块', () => {
+  const rows = [
+    { chunk_id: 'a', content: '字'.repeat(200) },
+    { chunk_id: 'b', content: '短块' },
+  ];
+  expect(buildContext(rows, 100)).toBe('');
 });
 
 it.each([

@@ -90,7 +90,7 @@ function selectGroups(
   for (const group of groups) {
     group.sort((left, right) => frequency.get(right)! - frequency.get(left)!);
   }
-  // 来源候选数随组数增加, 最终交给重排的正文另受 CHUNK_TOP_K 限制.
+  // 此处只按来源组数分配候选; 合并后的重排输入上限由 search 统一执行.
   const count = Math.floor(RELATED_CHUNK_NUMBER * groups.length / 2);
   const ids: string[] = [];
   const vectors: Buffer[] = [];

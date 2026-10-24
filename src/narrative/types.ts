@@ -21,7 +21,7 @@ export type NarrativeTimelineResult = { readonly text: string } | NarrativeTimel
 export type NarrativeRecallResult = Map<NarrativeTimelineId, NarrativeTimelineResult>;
 
 export interface NarrativeGraphResult {
-  // 数组先后就是召回优先级, 长度裁剪及来源块分组沿用此顺序.
+  // 数组先后就是召回优先级, 来源块分组沿用此顺序.
   readonly entities: NarrativeEntityRow[];
   readonly relations: NarrativeRelationRow[];
 }

@@ -11,6 +11,9 @@ docs/
   README.md
   README-zh.md
   changes/
+    v0.1.0-beta.1/
+      README.md
+      README-zh.md
     v0.1.0-alpha.1/
       README.md
       README-zh.md
@@ -25,10 +28,11 @@ docs/
           ...
 ```
 
-[changes/](./changes/) 的第一层只放版本目录. 每个版本目录保存中英文版本说明和该版本的排查记录. 说明实际检查的行为, 已知时记录准确测试构建, 区分通过, 失败, 未测和不适用. 相关检查通过不代表尚未解决的例外也已关闭.
+[changes/](./changes/) 的第一层只放版本目录. 每个版本目录保存中英文版本说明, 按需附上排查记录. 说明实际检查的行为, 已知时记录准确测试构建, 区分通过, 失败, 未测和不适用. 相关检查通过不代表尚未解决的例外也已关闭.
 
 ## 版本
 
+- [0.1.0-beta.1](./changes/v0.1.0-beta.1/README-zh.md): Beta 版本草稿, 简述实验后调整的 Narrative 处理方式和参数.
 - [0.1.0-alpha.1](./changes/v0.1.0-alpha.1/README-zh.md): 版本说明草稿和排查记录索引.
 
 各问题的证据, 当前状态和剩余检查写在对应日志中, 不在这里维护第二份状态表. 源码检查, Dev 验收和安装版验收是不同结果.
@@ -59,6 +63,6 @@ GitHub Release 使用同一份说明. 需要解释修复原因时链接到对应
 
 根目录 [package.json](../package.json) 确定应用发布版本. Desktop package, Tauri 配置和 Cargo package 同步为相同值. `pnpm release` 在检查构建工具, 复制资源和构建之前核对这四处. 不一致时列出各自的版本, 不自动修改文件.
 
-Alpha 使用 `0.1.0-alpha.1` 这样的预发布版本. 每次新的公开发布使用新版本. Git Tag 使用同一版本并加 `v` 前缀, 例如 `v0.1.0-alpha.1`. 只改 Release 标题不会改变安装包中的版本.
+Alpha 使用 `0.1.0-alpha.1`, Beta 使用 `0.1.0-beta.1` 这样的预发布版本. 每次新的公开发布使用新版本. Git Tag 使用同一版本并加 `v` 前缀, 例如 `v0.1.0-beta.1`. 只改 Release 标题不会改变安装包中的版本.
 
 桌面发版不要求所有内部工作区包一起升版本. 数据库版本用于记录 SQL 结构变化及必要的已存数据迁移, 见 [Storage](../src/storage/README-zh.md). 构建和安装版检查见 [Desktop](../apps/desktop/README-zh.md#生成安装包).

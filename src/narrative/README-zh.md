@@ -46,11 +46,13 @@ Tool 调用方可以先按已明确的前文补全指代, 但须保留疑问, �
 
 local 或 global 缺少本侧关键词时可以使用另一侧. 两类都为空时, local, global, hybrid 和 mix 返回空背景, naive 仍查询原文.
 
-实体和关系各从最多 40 个向量候选开始. 它们与直接原文搜索都使用余弦相似度, 门槛为 0.2. 图已经限定来源范围的原文块只排名, 不再使用该门槛. 先限制实体和关系描述的长度, 再读取来源块; 图描述本身不随原文返回.
+实体和关系各从最多 40 个向量候选开始. naive 和 mix 的直接原文向量搜索最多保留 100 个候选. 这些搜索使用余弦相似度, 门槛为 0.2. 图已经限定来源范围的原文块只排名, 不再使用该门槛. 不再因描述较长而排除命中的实体或关系, 图描述本身也不随原文返回.
 
 来源块按实体或关系分组, 去掉重复引用后用原 query 向量排名. 先选实体来源块, 关系侧排除这些已选块. 没有可用来源向量时按组顺序分配份额, 靠前的组较多. 分配数量使用 Python 的舍入规则, 保持 LightRAG 的算法行为.
 
-每周目最多把 20 块完整原文交给 Rerank, query 是原始 search 问题, 不是关键词. 每周目最多保留 8 块, 不比较不同周目请求的分数.
+每周目把合并后的前 125 个候选原文交给 Rerank, query 是原始 search 问题, 不是关键词. 输入上限沿用当前合并顺序, 不是全局相关性排序, 可能排除有效段落. Narrative 明确要求最多返回 30 条, 候选不足时按实际数量请求. 省略 topK 会让共用 Rerank 包默认只取五条. 最终证据还会按正文预算缩短排序前缀, 不比较不同周目请求的分数. 125/30 分别作用于每个选中周目, 不是整次查询共用的数量.
+
+输入上限只限制文档数, 不限制请求字符或 Token 数, 长段落仍可能增加处理时间和服务限流的可能性. 服务拒绝请求时, 包内不会缩减文档重试, 也不把未重排结果当作成功返回.
 
 ## 预算, 失败和取消
 
@@ -80,6 +82,6 @@ Turn 准备先用 `isWitchTrialCharacter` 检查当前角色完整姓名, 名单
 
 完整流程看 `pipeline/recall.ts`, 两条独立的周目和提词请求看 `router.ts` 和 `prompts.ts`, 模式选择看 `query.ts`, 来源选块看 `retrieval/sourceChunks.ts`. 向量排名在 `vectors.ts`, 完整块预算在 `context.ts`.
 
-运行 `pnpm --filter @ema-agent/narrative test` 和 `pnpm --filter @ema-agent/narrative typecheck`. 测试使用真实内存 SQLite 表和 Repo, 模拟模型响应, 覆盖准备请求并发, 请求内容隔离, 提词模板逐字渲染, 响应字段, 编码去重, 五种模式, 重排输入和顺序, 预算, 部分失败与取消. 工具转换测试在 `src/builtin-tools/tests/NarrativeSearchTool.test.ts`, 宿主请求预算与两次用量记录测试在 `apps/server/tests/narrativeOutputBudget.test.ts`. 这些测试不验证真实模型的路由效果或固定摘要的剧情准确性.
+运行 `pnpm --filter @ema-agent/narrative test` 和 `pnpm --filter @ema-agent/narrative typecheck`. 测试使用真实内存 SQLite 表和 Repo, 模拟模型响应, 覆盖准备请求并发, 请求内容隔离, 使用包内上游夹具逐字验证提词模板, 响应字段, 编码去重, 五种模式, 每周目 125 输入与 30 返回限制, 直接向量候选限制, 长图描述, 正文预算, 部分失败与取消. 工具转换测试在 `src/builtin-tools/tests/NarrativeSearchTool.test.ts`, 宿主请求预算与两次用量记录测试在 `apps/server/tests/narrativeOutputBudget.test.ts`. 这些测试不验证真实模型的路由效果或固定摘要的剧情准确性.
 
 查询算法参考 LightRAG 1.4.16, 提词 Prompt 和输出模板来自 LightRAG v1.5.7. MIT 许可证保存在 [LICENSE.lightrag](./LICENSE.lightrag).

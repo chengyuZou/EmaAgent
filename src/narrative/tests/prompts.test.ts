@@ -3,12 +3,9 @@ import { expect, it } from 'vitest';
 import { buildKeywordExtractionPrompt, ROUTER_PROMPT } from '../pipeline/prompts.js';
 
 it('提词正文与保存的 LightRAG v1.5.7 模板逐字一致, 只填入语言, 格式和 Query', () => {
-  const assets = new URL(
-    '../../../scripts/diagnostics/results/lightragPromptInventory/20261023/v1.5.7/',
-    import.meta.url,
-  );
-  const template = readFileSync(new URL('keywords_extraction.txt', assets), 'utf8');
-  const examples = readFileSync(new URL('keywords_extraction_examples.txt', assets), 'utf8');
+  const { template, examples } = JSON.parse(readFileSync(
+    new URL('./fixtures/lightragKeywords.json', import.meta.url), 'utf8',
+  )) as { template: string; examples: string };
   const query = '第二周目安安落地后被谁杀死?';
   const expected = template
     .replaceAll('{{', '{')

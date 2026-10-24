@@ -5,7 +5,6 @@ import type {
   NarrativeTimelineId,
 } from '@ema-agent/storage';
 import type { NarrativeGraphResult, NarrativeKeywords, NarrativeQueryMode } from '../types.js';
-import { truncateGraph } from './context.js';
 import { retrieveGlobal } from './retrieval/global.js';
 import { retrieveHybrid } from './retrieval/hybrid.js';
 import { retrieveLocal } from './retrieval/local.js';
@@ -79,12 +78,11 @@ export function queryTimeline(
   } else {
     found = retrieveHybrid(timeline, low, high, graph, signal);
   }
-  // 先限制实体/关系背景长度, 再查来源块, 不为已被长度限制排除的图结果读取正文.
-  const filtered = truncateGraph(found);
+  // 图描述不随原文返回, 不因描述长度丢弃命中实体或关系关联的来源块.
   const source = retrieveSourceChunks(
     timeline,
-    filtered.entities.map(entity => entity.entity_name),
-    filtered.relations.map(relation => relation.relation_id),
+    found.entities.map(entity => entity.entity_name),
+    found.relations.map(relation => relation.relation_id),
     graph, chunks, queryEmbedding, signal, chunkVectors,
   );
   const ids = mergeAlternating([

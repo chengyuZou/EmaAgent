@@ -53,8 +53,8 @@ sequenceDiagram
     Embed-->>Search: Query and keyword vectors
     loop Each selected timeline
         Search->>DB: Find graph candidates and source passages
-        Search->>Rank: Original query and at most 20 complete passages
-        Rank-->>Search: Passage indexes in ranked order
+        Search->>Rank: Original query and first 125 merged candidate passages
+        Rank-->>Search: Up to 30 passage indexes in ranked order
     end
     Search-->>Host: Map of evidence or per-timeline errors
 ```
@@ -75,11 +75,13 @@ The Tool caller may resolve established conversational references before calling
 
 Local or global can use the other side when its own keywords are absent. With both groups empty, local, global, hybrid, and mix return empty evidence; naive still searches passages.
 
-Entity and relation searches each start with up to 40 vector candidates. These searches and direct passage search use cosine similarity with a 0.2 threshold. Graph source passages are ranked within the already selected source groups without that threshold. Entity and relation descriptions are limited before loading source passages; the descriptions themselves are not returned as evidence.
+Entity and relation searches each start with up to 40 vector candidates. Direct passage search in naive and mix keeps up to 100 vector candidates. These searches use cosine similarity with a 0.2 threshold. Graph source passages are ranked within the already selected source groups without that threshold. Matched entities and relations are not excluded because their descriptions are long; the descriptions themselves are not returned as evidence.
 
 Source selection groups passages by entity or relation, deduplicates references, and uses the original query vector to select candidates. Entity-source passages are selected first; relation-source selection excludes them. Where no usable source vectors exist, earlier groups receive larger allocations. Python-style rounding preserves LightRAG's allocation behavior.
 
-Each timeline sends at most 20 complete passages to Rerank with the original search question, not the extracted keywords. Up to 8 ranked passages are returned per timeline. Scores from separate timeline requests are not compared.
+Each timeline sends the first 125 merged candidate passages to Rerank with the original search question, not the extracted keywords. The input cap preserves the current merge order; it is not a global relevance ranking and can exclude useful passages. Narrative explicitly requests up to 30 results, or the candidate count when fewer are available. Omitting topK would make the shared Rerank package default to five results. The final evidence budget can shorten that ranked prefix further. Scores from separate timeline requests are not compared. These limits apply separately to each selected timeline, not to the whole search.
+
+The input cap bounds the document count, not the character or Token count of the request. Longer passages can still increase processing time and provider rate-limit exposure. If the provider rejects a request, the package does not retry it with fewer documents or return unranked passages as a success.
 
 ## Evidence budget, failures, and cancellation
 
@@ -109,6 +111,6 @@ Storage owns the fixed chunks, entities, relations, their source links, and vect
 
 Read `pipeline/recall.ts` for the full flow, `router.ts` and `prompts.ts` for the independent routing and keyword requests, `query.ts` for mode selection, and `retrieval/sourceChunks.ts` for source selection. `vectors.ts` ranks vectors; `context.ts` enforces whole-passage budgets.
 
-Run `pnpm --filter @ema-agent/narrative test` and `pnpm --filter @ema-agent/narrative typecheck`. Tests use real in-memory SQLite tables and repositories with simulated model responses. They cover concurrent preparation, isolated request content, exact keyword-template rendering, response schemas, embedding deduplication, five modes, ranking inputs and order, budgets, partial failures, and cancellation. Tool conversion is tested in `src/builtin-tools/tests/NarrativeSearchTool.test.ts`. Host request budgets and per-call usage are tested in `apps/server/tests/narrativeOutputBudget.test.ts`. These tests do not validate live model routing or the factual accuracy of the fixed summary.
+Run `pnpm --filter @ema-agent/narrative test` and `pnpm --filter @ema-agent/narrative typecheck`. Tests use real in-memory SQLite tables and repositories with simulated model responses. They cover concurrent preparation, isolated request content, exact keyword-template rendering with a module-owned upstream fixture, response schemas, embedding deduplication, five modes, per-timeline 125-input/30-result limits, the direct-vector candidate limit, long graph descriptions, evidence budgets, partial failures, and cancellation. Tool conversion is tested in `src/builtin-tools/tests/NarrativeSearchTool.test.ts`. Host request budgets and per-call usage are tested in `apps/server/tests/narrativeOutputBudget.test.ts`. These tests do not validate live model routing or the factual accuracy of the fixed summary.
 
 Retrieval follows LightRAG 1.4.16; the keyword prompt and output template are from LightRAG v1.5.7. Its MIT license is preserved in [LICENSE.lightrag](./LICENSE.lightrag).

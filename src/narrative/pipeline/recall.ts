@@ -10,7 +10,7 @@ import type {
   NarrativeTimelineFailure,
   NarrativeTimelineResult,
 } from '../types.js';
-import { CHUNK_TOP_K, EMBEDDING_DIM, MAX_CONTEXT_CHARACTERS, RERANK_TOP_K } from './constants.js';
+import { EMBEDDING_DIM, MAX_CONTEXT_CHARACTERS, RERANK_CANDIDATE_LIMIT, RERANK_TOP_K } from './constants.js';
 import { buildContext } from './context.js';
 import { embeddingTexts, queryTimeline } from './query.js';
 import { extractKeywords, routeTimelines } from './router.js';
@@ -84,7 +84,7 @@ export class NarrativeSearch {
         await setImmediate(undefined, { signal });
         const candidates = queryTimeline(
           timeline, normalizedQuery, mode, keywords, embeddings, this.chunks, this.graph, signal,
-        ).slice(0, CHUNK_TOP_K);
+        ).slice(0, RERANK_CANDIDATE_LIMIT);
         if (candidates.length === 0) {
           return [timeline, { text: '' }] as const;
         }

@@ -1,5 +1,5 @@
 import type { NarrativeChunkVectorRow } from '@ema-agent/storage';
-import { CHUNK_TOP_K, COSINE_THRESHOLD } from '../constants.js';
+import { COSINE_THRESHOLD, VECTOR_CHUNK_TOP_K } from '../constants.js';
 import { rankVectors } from '../vectors.js';
 
 /** embedding 来自传入的 query, rows 是本周目的全部块向量. 只返回 ID, 正文由查询流程统一批量读取. */
@@ -10,6 +10,6 @@ export function retrieveNaive(
 ): string[] {
   return rankVectors(
     rows.map(row => row.chunk_id), rows.map(row => row.vector),
-    embedding, CHUNK_TOP_K, COSINE_THRESHOLD, signal,
+    embedding, VECTOR_CHUNK_TOP_K, COSINE_THRESHOLD, signal,
   );
 }
