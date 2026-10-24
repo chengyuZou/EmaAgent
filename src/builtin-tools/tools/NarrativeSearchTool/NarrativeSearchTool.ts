@@ -12,7 +12,7 @@ const inputSchema = z.object({
     .trim()
     .min(1)
     .max(MAX_QUERY_CHARS)
-    .describe('A focused natural-language question about the story, characters, timeline, or world state.'),
+    .describe('The user\'s story question, with known conversational references resolved when needed. Preserve its scope, uncertainty, and exclusions; do not add an answer or an extra question.'),
   mode: z
     .enum(['local', 'global', 'hybrid', 'naive', 'mix'])
     .optional()

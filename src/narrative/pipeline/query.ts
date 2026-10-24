@@ -26,7 +26,7 @@ export function embeddingTexts(
   const low = keywords.lowLevelKeywords.join(', ');
   const high = keywords.highLevelKeywords.join(', ');
   if (!low && !high) {
-    // TODO: 确认 mix 在两组关键词都为空时是否仍编码子问题并执行直接块搜索; 当前与图模式一样返回空背景.
+    // TODO: 确认 mix 在两组关键词都为空时是否仍编码 query 并执行直接块搜索; 当前与图模式一样返回空背景.
     return [];
   }
   if (mode === 'local' && low) {
@@ -56,7 +56,7 @@ export function queryTimeline(
   signal.throwIfAborted();
   const queryEmbedding = embeddings.get(query);
   if (!queryEmbedding) {
-    // 图模式没有可用关键词时不会编码子问题, 因此不读剧情资产; 不是一次检索失败.
+    // 图模式没有可用关键词时不会编码 query, 因此不读剧情资产; 不是一次检索失败.
     return [];
   }
   const chunkVectors = mode === 'naive' || mode === 'mix' ? chunks.listVectors(timeline) : undefined;

@@ -15,7 +15,7 @@ import type { ToolUseContext } from '@ema-agent/tools';
 import type { UsageRecorder, UsageRecordStatus } from '@ema-agent/usage';
 import { narrativeQueryModeSetting } from '../settings/narrativeSetting.js';
 
-// 路由和关键词提取共用固定请求预算, 不把模型的最大输出容量当作本次预算.
+// 周目判断和提词各自使用此请求预算, 不把模型的最大输出容量当作本次预算.
 const NARRATIVE_MAX_OUTPUT_TOKENS = 8_192;
 
 export interface NarrativeComposition {
@@ -68,7 +68,7 @@ export function openNarrative(
               maxOutputTokens: NARRATIVE_MAX_OUTPUT_TOKENS,
             });
             if (completion.stopReason === 'max_tokens') {
-              throw new Error('Narrative 路由输出达到上限, 结果未完整返回');
+              throw new Error('Narrative 周目判断或提词输出达到上限, 结果未完整返回');
             }
           } catch (error) {
             const cancelled = request.signal?.aborted === true

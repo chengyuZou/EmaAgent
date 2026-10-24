@@ -50,10 +50,10 @@ function pickByWeight(groups: readonly (readonly string[])[]): string[] {
 
 /**
  * sources 的一组对应一个实体或关系, 组的先后来自图召回排名.
- * 先统计每个块被引用的次数, 再将重复块归到首次引用它的组, 最后用子问题向量在候选内选块.
+ * 先统计每个块被引用的次数, 再将重复块归到首次引用它的组, 最后用传入的 query 向量在候选内选块.
  * excluded 排除实体侧已经选出的块, 让关系侧不重复占用名额.
  * removeEmptyAfterDedup 只在关系侧为 true. 实体侧保留去重后变空的组, 因为组数参与选块数量计算.
- * vectorsById 只引用本次查询已读取的候选向量; embedding 是子问题向量, 不是提取的关键词向量.
+ * vectorsById 只引用本次查询已读取的候选向量; embedding 是 query 向量, 不是提取的关键词向量.
  */
 function selectGroups(
   sources: Iterable<readonly string[]>,

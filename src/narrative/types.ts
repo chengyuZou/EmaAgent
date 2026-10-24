@@ -9,10 +9,6 @@ export interface NarrativeKeywords {
   readonly lowLevelKeywords: string[];
 }
 
-export interface NarrativeRoute extends NarrativeKeywords {
-  readonly query: string;
-}
-
 export type NarrativeQueryMode = 'local' | 'global' | 'hybrid' | 'naive' | 'mix';
 
 export interface NarrativeTimelineFailure {

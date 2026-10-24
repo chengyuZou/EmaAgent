@@ -14,7 +14,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-it('uses an 8192 non-streaming Anthropic budget even when the catalog allows 128000', async () => {
+it('records both isolated non-streaming requests with an 8192 budget when the catalog allows 128000', async () => {
   const profile = new Database({ memory: true, kind: 'profile' });
   const data = new Database({ memory: true, kind: 'data' });
   const narrative = new Database({ memory: true, kind: 'narrative' });
@@ -63,9 +63,9 @@ it('uses an 8192 non-streaming Anthropic budget even when the catalog allows 128
     if (request.url.endsWith('/v1/messages')) {
       return Response.json({
         id: 'fixture-message', type: 'message', role: 'assistant', model: 'large-output-model',
-        content: [{ type: 'text', text: JSON.stringify({
-          '3rd_Loop': { query: 'Fixture story', high_level_keywords: ['story'], low_level_keywords: ['character'] },
-        }) }],
+        content: [{ type: 'text', text: JSON.stringify(body.system
+          ? { timelines: ['3rd_Loop'] }
+          : { high_level_keywords: ['story'], low_level_keywords: ['character'] }) }],
         stop_reason: 'end_turn', stop_sequence: null,
         usage: { input_tokens: 10, output_tokens: 20 },
       });
@@ -88,8 +88,19 @@ it('uses an 8192 non-streaming Anthropic budget even when the catalog allows 128
   await search!('Fixture story', 'hybrid', new AbortController().signal);
 
   const llmRequests = requests.filter(request => request.url.endsWith('/v1/messages'));
-  expect(llmRequests).toHaveLength(1);
-  expect(llmRequests[0]?.body).toMatchObject({ max_tokens: 8192, stream: false });
-  expect(data.sqlite.prepare("SELECT status, output_tokens FROM usage_records WHERE capability = 'llm'").get())
-    .toEqual({ status: 'completed', output_tokens: 20 });
+  expect(llmRequests).toHaveLength(2);
+  for (const request of llmRequests) {
+    expect(request.body).toMatchObject({ max_tokens: 8192, stream: false });
+  }
+  const route = llmRequests.find(request => request.body.system);
+  const extraction = llmRequests.find(request => !request.body.system);
+  expect(route?.body.messages).toEqual([{ role: 'user', content: 'Fixture story' }]);
+  expect(JSON.stringify(route?.body.system)).toContain('剧情摘要');
+  expect(JSON.stringify(extraction?.body.messages)).toContain('User Query: Fixture story');
+  expect(JSON.stringify(extraction?.body.messages)).not.toContain('剧情摘要');
+  expect(data.sqlite.prepare("SELECT status, output_tokens FROM usage_records WHERE capability = 'llm'").all())
+    .toEqual([
+      { status: 'completed', output_tokens: 20 },
+      { status: 'completed', output_tokens: 20 },
+    ]);
 });

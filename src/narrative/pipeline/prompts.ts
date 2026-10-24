@@ -1,4 +1,3 @@
-// 提词分类参考 LightRAG 1.4.16, MIT License 见 LICENSE.lightrag.
 export const ROUTER_PROMPT = `
 你是剧情检索路由器, 负责把用户问题路由到正确周目.
 
@@ -114,37 +113,73 @@ Timeline_3rd_Loop:
 
 
 ## 路由规则
-按以下顺序确定范围, 再生成子问题. 剧情摘要只用于定位, 不代替检索原文.
+按以下顺序确定范围. 剧情摘要只用于定位, 不代替检索原文.
 1. 用户明确指定的周目, 章节或事件范围优先. 只选择覆盖该范围的周目; 例如"第二周目最后怎么样"仍只查 2nd_Loop, 不能因为出现"最后"就改查真结局.
 2. 未限定较早周目或事件, 且只问故事结束时人物"最后怎么样""最终结果""真结局"时, 查询摘要中承载最终结局的 3rd_Loop. 其他周目也有阶段结局, 不构成扩大范围的理由.
 3. 问题要求跨周目的过程, 对比或分别汇总时, 选择覆盖这些要求的必要周目, 可以是 1, 2 或 3 个. 明确问两周目时不要加入第三个; 明确问三个周目时不能只返回真结局. 只问最终结果不等于要求完整发展过程.
 4. 其余问题根据摘要中的人物, 事件和时间线索采用最小必要覆盖: 能定位到一个周目就查一个, 确有需要再选两个或三个. 不能仅因为多个周目出现同一人物, 就把它们全选上.
 5. 摘要未写到某个细节, 不代表该细节在所有周目都需要检索. 已有明确范围时保持范围; 没有明确范围时选择最可能的一个周目, 仍有两个合理候选时可选两个, 不因缺少细节默认全查三个.
 
-## 子问题要求
-1. 保留原问题要问的结果, 过程, 比较对象及时间限制. 跨周目时分别写出该周目要回答的部分, 不增加原问题没有要求的话题. 
-2. 使用简洁的自然语言问题, 可以按摘要补全已明确的人名与周目. 不要把"最终关系如何"扩成全部关系发展史, 也不要把地点词扩成对整个世界观或监狱真相的追问. 
-3. 子问题仍然是待检索的问, 不要把摘要中的答案或猜测写成问题的前提. 例如问"最终关系如何", 不要预设为"如何重归于好", 具体结果由召回的原文确认. 
-
-
-## 子问题提词
-先按路由规则确定范围及子问题, 再为每个子问题提取两类关键词:
-1. high_level_keywords 是用户询问的主题, 关系, 事件或结果, 用于检索关系. low_level_keywords 是具体人物, 物品或其他明确对象, 用于检索实体.
-2. 关键词必须围绕该周目的子问题. 剧情摘要仅用于消除人名和范围歧义, 不是需要全部提取的材料. 不把摘要中的答案写进关键词或子问题.
-3. 使用少量有意义的完整短语, 不堆叠同义词, 不因某词相关就扩展出背景设定, 其他人物或其他事件. 不要求两类都非空; 没有对应内容时返回空数组, 不为填满字段编造词.
-4. 主题短语使用 English. 人物, 地点, 物品等专名保留问题中的原语言; 可以根据摘要将人物简称补全成确定的中文全名, 不自行翻译姓名, 不额外列举中英文别名.
-5. 不把结局问题扩写成关系发展史. 子问题是待查的问题, 不能把"关系如何"预设成"如何和好".
-
-## 提词示例
-下列示例说明范围和提词方法, 不构成当前问题的答案:
-- 问"诺亚在真结局最后去了哪里": 仅查3rd_Loop, 子问题询问城崎诺亚在故事结尾的去向; high_level_keywords可用["final whereabouts"], low_level_keywords可用["城崎诺亚"]. 不预填"留在监牢".
-- 问"第二周目最后蕾雅怎么样了": 仅查2nd_Loop, 查询莲见蕾雅在该周目最后的遭遇; 不因"最后"改查第三周目, 不提前填凶手或死因.
-- 问"梅露露在第一, 第三周目的结局有什么区别": 分别为1st_Loop和3rd_Loop生成该周目结局问题; 两边都可用["character outcome"]和["冰上梅露露"], 不加入第二周目.
-- 问"第二周目可可拿到的药瓶是什么颜色": 保留2nd_Loop和原问题中的颜色细节, 不因摘要没写颜色就全查三周目, 也不猜颜色; 可用["medicine bottle color"]和["泽渡可可", "药瓶"].
-
 ## 输出要求
-只返回 JSON 对象, 不要额外说明. 键只允许 1st_Loop / 2nd_Loop / 3rd_Loop, 只输出需要检索的周目.
-每个值必须包含 query, high_level_keywords, low_level_keywords. query 是非空子问题, 两类关键词是字符串数组, 可为空.
-示例仅展示字段形状, 不指定当前查询的周目:
-{"3rd_Loop":{"query":"该周目需要检索的子问题","high_level_keywords":["主题短语"],"low_level_keywords":["具体对象"]}}
+只返回 JSON 对象, 仅包含 timelines 字段, 不要额外说明.
+timelines 是 1st_Loop, 2nd_Loop, 3rd_Loop 的非空多选数组, 不得重复.
+只选择需要检索的周目, 不生成 query, 子问题, 关键词, 答案或解释.
+示例仅展示字段形状, 不指定当前查询的周目: {"timelines":["3rd_Loop"]}
 `;
+
+// LightRAG v1.5.7 keyword extraction template and output template, MIT License in LICENSE.lightrag.
+const KEYWORDS_EXTRACTION_PROMPT = `---Role---
+You are an expert keyword extractor, specializing in analyzing user queries for a Retrieval-Augmented Generation (RAG) system. Your purpose is to identify both high-level and low-level keywords in the user's query that will be used for effective document retrieval.
+
+---Goal---
+Given a user query, your task is to extract two distinct types of keywords:
+1. **high_level_keywords**: for overarching concepts or themes, capturing user's core intent, the subject area, or the type of question being asked.
+2. **low_level_keywords**: for specific entities or details, identifying the specific entities, proper nouns, technical jargon, product names, or concrete items.
+
+---Instructions & Constraints---
+1. **Output Format**: Your output MUST be a valid JSON object and nothing else. Do not include any explanatory text, markdown code fences (like \`\`\`json), comments, or any other text before or after the JSON.
+2. **Exact JSON Shape**: The JSON object must contain exactly these two keys:
+   - \`"high_level_keywords"\`: an array of strings
+   - \`"low_level_keywords"\`: an array of strings
+3. **JSON Boundary**: The first character of your response must be \`{{\` and the last character must be \`}}\`.
+4. **Source of Truth**: All keywords must be explicitly derived only from the \`User Query\` in the \`---Real Data---\` section. Do not infer unsupported facts. Do not invent entities, products, organizations, dates, or technical terms that are not grounded in the query.
+5. **Concise & Meaningful**: Keywords should be concise words or meaningful phrases. Prioritize multi-word phrases when they represent a single concept instead of splitting meaningful phrases into isolated words.
+6. **Handle Edge Cases**: For queries that are too simple, vague, or nonsensical (e.g., "hello", "ok", "asdfghjkl"), return:
+   \`{{"high_level_keywords": [], "low_level_keywords": []}}\`
+7. **No Duplicates**: Do not repeat the same keyword within a list. Keep the lists short and high-signal.
+8. **Language**: All extracted keywords MUST be in {language}. Proper nouns (e.g., personal names, place names, organization names) should be kept in their original language.
+9. **Output Format Template Safety**: The \`---Output Format Template---\` section contains an output JSON template only. It is never source text. Do not extract, infer, or copy keywords from the template. Angle-bracket tokens such as \`<high_level_keyword>\` are placeholders; replace them only with keywords derived from the current \`User Query\` and never output the placeholders literally.
+
+---Output Format Template---
+The following content is an output JSON format template only. It is not source text and must never be used as keyword extraction content.
+
+{examples}
+
+---Real Data---
+User Query: {query}
+
+---Output---
+Output:`;
+
+const KEYWORDS_EXTRACTION_EXAMPLES = `{
+  "high_level_keywords": ["<high_level_keyword>"],
+  "low_level_keywords": ["<low_level_keyword>"]
+}
+`;
+
+export function buildKeywordExtractionPrompt(query: string): string {
+  const variables = { language: 'English', examples: KEYWORDS_EXTRACTION_EXAMPLES, query };
+  // 单次替换 Python 模板, 不再次解释用户 query 内的花括号或占位符.
+  return KEYWORDS_EXTRACTION_PROMPT.replace(
+    /\{\{|\}\}|\{(language|examples|query)\}/g,
+    (token, key: keyof typeof variables | undefined) => {
+      if (token === '{{') {
+        return '{';
+      }
+      if (token === '}}') {
+        return '}';
+      }
+      return variables[key!];
+    },
+  );
+}

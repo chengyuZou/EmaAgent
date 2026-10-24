@@ -13,7 +13,7 @@ import type {
 import { CHUNK_TOP_K, EMBEDDING_DIM, MAX_CONTEXT_CHARACTERS, RERANK_TOP_K } from './constants.js';
 import { buildContext } from './context.js';
 import { embeddingTexts, queryTimeline } from './query.js';
-import { routeTimelines } from './router.js';
+import { extractKeywords, routeTimelines } from './router.js';
 
 function timelineFailure(error: unknown): NarrativeTimelineFailure {
   return {
@@ -29,7 +29,7 @@ export class NarrativeSearch {
   ) {}
 
   /**
-   * completeLLM 一次完成路由和提词. callEmbed 必须使用资产原有的 Pro/bge-m3 向量空间.
+   * completeLLM 并发执行独立的周目判断和提词请求. callEmbed 必须使用资产原有的 Pro/bge-m3 向量空间.
    * 重排比较传入的完整 query 和原文块, 不使用关键词替代 query, 不比较不同周目的分数.
    * 返回各周目的证据, 不生成最终回答. 宿主负责调用配置及用量记录.
    */
@@ -41,13 +41,17 @@ export class NarrativeSearch {
     callRerank: CallRerank,
     signal: AbortSignal,
   ): Promise<NarrativeRecallResult> {
-    const routes = await routeTimelines(query, completeLLM, signal);
-    const texts = new Set<string>();
-    for (const route of routes.values()) {
-      for (const text of embeddingTexts(route.query, mode, route)) {
-        texts.add(text);
-      }
+    const normalizedQuery = query.trim();
+    if (!normalizedQuery) {
+      throw new TypeError('Narrative query must not be empty');
     }
+    // 两条请求不交换内容. 任一失败则停止本次检索, 不使用旧路由或猜测的关键词补位.
+    const [timelines, keywords] = await Promise.all([
+      routeTimelines(normalizedQuery, completeLLM, signal),
+      extractKeywords(normalizedQuery, completeLLM, signal),
+    ]);
+    signal.throwIfAborted();
+    const texts = new Set(embeddingTexts(normalizedQuery, mode, keywords));
     const embeddings = new Map<string, Float32Array>();
     let embeddingFailure: NarrativeTimelineFailure | undefined;
     if (texts.size > 0) {
@@ -69,23 +73,23 @@ export class NarrativeSearch {
     }
 
     // 各周目各有返回预算, 不让某一周目的高分文档挤掉其他周目.
-    const characterLimit = Math.floor(MAX_CONTEXT_CHARACTERS / routes.size);
-    const entries = await Promise.all([...routes].map(async ([timeline, route]) => {
+    const characterLimit = Math.floor(MAX_CONTEXT_CHARACTERS / timelines.length);
+    const entries = await Promise.all(timelines.map(async timeline => {
       signal.throwIfAborted();
-      if (embeddingFailure && embeddingTexts(route.query, mode, route).length > 0) {
+      if (embeddingFailure && texts.size > 0) {
         return [timeline, embeddingFailure] as const;
       }
       try {
         // SQL 和向量计算仍在同一线程轮流执行; 等待调度时可以响应取消.
         await setImmediate(undefined, { signal });
         const candidates = queryTimeline(
-          timeline, route.query, mode, route, embeddings, this.chunks, this.graph, signal,
+          timeline, normalizedQuery, mode, keywords, embeddings, this.chunks, this.graph, signal,
         ).slice(0, CHUNK_TOP_K);
         if (candidates.length === 0) {
           return [timeline, { text: '' }] as const;
         }
         const ranked = await callRerank({
-          query,
+          query: normalizedQuery,
           documents: candidates.map(chunk => chunk.content),
           topK: Math.min(RERANK_TOP_K, candidates.length),
           signal,

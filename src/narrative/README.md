@@ -2,7 +2,7 @@
 
 [中文](./README-zh.md)
 
-This package retrieves original story passages from the three fixed timelines of Magical Girl Witch Trials. One LLM call identifies the timelines that may be relevant to the user's question, generates subquestions for those timelines, and extracts keywords. Retrieval finds source passages, then Rerank orders them against the original question. The result is evidence for the main Agent, not a generated answer.
+This package retrieves original story passages from the three fixed timelines of Magical Girl Witch Trials. Two independent LLM requests run concurrently: one selects timelines using a fixed story summary, while the other extracts keywords from the query without that summary. Neither request rewrites the query. Retrieval and Rerank use the same incoming question. The result is evidence for the main Agent, not a generated answer.
 
 ## Use
 
@@ -42,8 +42,13 @@ sequenceDiagram
     participant DB as Narrative Storage repositories
     participant Rank as CallRerank
     Host->>Search: Query, mode, calls, signal
-    Search->>LLM: Route timelines and extract keywords
-    LLM-->>Search: Per-timeline subquestions and keywords
+    par Select timelines
+        Search->>LLM: Routing rules, story summary, query
+        LLM-->>Search: Nonempty timelines array
+    and Extract keywords
+        Search->>LLM: Keyword prompt and query only
+        LLM-->>Search: High-level and low-level keyword arrays
+    end
     Search->>Embed: One batch of distinct required texts
     Embed-->>Search: Query and keyword vectors
     loop Each selected timeline
@@ -54,23 +59,25 @@ sequenceDiagram
     Search-->>Host: Map of evidence or per-timeline errors
 ```
 
-Routing follows the user's explicit timeline first. A final-outcome question with no earlier scope targets the third loop; comparisons select the needed loops. The fixed summary helps locate events and resolve names. It is not returned as evidence and must not prefill an answer into the subquestion.
+Routing follows the user's explicit timeline first. A final-outcome question with no earlier scope targets the third loop; comparisons select the needed loops. Only the timeline-selection request receives the fixed summary. Its response contains a nonempty, duplicate-free timelines array, not subquestions, keywords, or answers. The summary is not returned as evidence.
 
-High-level keywords search relationships and themes; low-level keywords search named entities and objects. Theme phrases use English; proper names retain the question's language. Each keyword group may be empty. Required embedding texts are deduplicated across routes and encoded in one batch.
+Keyword extraction uses the LightRAG v1.5.7 template with only its language, output-template, and query placeholders filled. Its request does not include the story summary, timeline response, or chat history. The prompt asks for English keywords while preserving proper names in their original language, deriving terms only from the query. High-level keywords search relationships and themes; low-level keywords search named entities and objects. Each group may be empty. All selected timelines share these keywords and the original query, after outer whitespace is trimmed. Required embedding texts are deduplicated and encoded in one batch.
+
+The Tool caller may resolve established conversational references before calling Narrative, but must preserve uncertainty, exclusions, and the user's requested scope rather than add presumed answers or extra questions. Keeping the summary out of extraction removes that supplied source of answers; it does not guarantee that the model respects negation or never invents a term.
 
 | Mode | Retrieval |
 | --- | --- |
 | local | Match low-level keywords to entities, then read their incident relations |
 | global | Match high-level keywords to relations, then read their endpoint entities |
 | hybrid | Alternate and deduplicate local and global results |
-| naive | Search passage vectors with the routed subquestion |
+| naive | Search passage vectors with the original query |
 | mix | Combine hybrid results and direct passage search |
 
 Local or global can use the other side when its own keywords are absent. With both groups empty, local, global, hybrid, and mix return empty evidence; naive still searches passages.
 
 Entity and relation searches each start with up to 40 vector candidates. These searches and direct passage search use cosine similarity with a 0.2 threshold. Graph source passages are ranked within the already selected source groups without that threshold. Entity and relation descriptions are limited before loading source passages; the descriptions themselves are not returned as evidence.
 
-Source selection groups passages by entity or relation, deduplicates references, and uses the subquestion vector to select candidates. Entity-source passages are selected first; relation-source selection excludes them. Where no usable source vectors exist, earlier groups receive larger allocations. Python-style rounding preserves LightRAG's allocation behavior.
+Source selection groups passages by entity or relation, deduplicates references, and uses the original query vector to select candidates. Entity-source passages are selected first; relation-source selection excludes them. Where no usable source vectors exist, earlier groups receive larger allocations. Python-style rounding preserves LightRAG's allocation behavior.
 
 Each timeline sends at most 20 complete passages to Rerank with the original search question, not the extracted keywords. Up to 8 ranked passages are returned per timeline. Scores from separate timeline requests are not compared.
 
@@ -78,7 +85,7 @@ Each timeline sends at most 20 complete passages to Rerank with the original sea
 
 The whole search has a 32,000 UTF-16-code-unit budget, divided equally among selected timelines. JSON escaping and newlines count. Output keeps a prefix of complete passages in ranked order and stops at the first passage that does not fit. Each line is a JSON object with chunk_id and content; its timeline is the Map key.
 
-An empty question, routing request failure, invalid routing JSON, or unknown timeline fails the whole search. Routing text may have thinking tags removed and JSON repaired, but its fields still pass the schema. No substitute keywords are invented after a routing failure.
+An empty question, either preparation-request failure, invalid response fields, or unknown or repeated timelines fails the whole search before Embedding or Rerank. Both responses may have thinking tags removed and JSON repaired, but their fields must pass their separate schemas. There is no fallback to the old combined response or invented keywords. If one request fails, an already sent sibling request may still finish and record usage; Promise.all does not cancel it.
 
 A batch Embedding failure becomes an error for each timeline that needed embeddings. A local retrieval or Rerank failure affects its own timeline, leaving other timelines' results available. A failure does not return unranked results as if ranking had succeeded. No candidates means no Rerank call.
 
@@ -88,7 +95,7 @@ The same signal reaches all model calls. Cancellation is thrown to the caller ra
 
 Server composition in `apps/server/src/composition/narrative.ts` resolves narrative-llm, narrative-embed, and narrative-rerank bindings at Turn preparation. It records each model call's final usage with the initiating Session and Turn. Configuration changes affect the next Turn. An auto query-mode setting uses the tool's mode or hybrid; a fixed setting overrides the tool's choice.
 
-The routing/keyword LLM request uses native non-streaming completion with `maxOutputTokens: 8192`, independently of the model catalog's maximum output capacity. This is a request budget, not the evidence-text budget above. Reaching the output limit fails the routing request rather than parsing a truncated result. Anthropic's SDK can reject excessively large non-streaming output budgets before sending HTTP; raising its timeout or switching this search to streaming is not required by this wiring.
+Each of the two preparation requests uses native non-streaming completion with `maxOutputTokens: 8192`, independently of the model catalog's maximum output capacity. Each call records its own usage. This is a per-request budget, not the evidence-text budget above. Reaching the output limit fails that request rather than parsing a truncated result. Anthropic's SDK can reject excessively large non-streaming output budgets before sending HTTP; raising its timeout or switching this search to streaming is not required by this wiring.
 
 Turn preparation supplies the search function only when the current character's name matches `isWitchTrialCharacter` and model configuration is available. The name check uses a fixed list of complete Chinese, Japanese, and English names, trims whitespace, and ignores English case. It does not change the user's tool toggles. Browser code imports the separate `@ema-agent/narrative/isWitchTrialCharacter` entry to avoid loading Node retrieval code.
 
@@ -100,8 +107,8 @@ Storage owns the fixed chunks, entities, relations, their source links, and vect
 
 ## Reading and verification
 
-Read `pipeline/recall.ts` for the full flow, `router.ts` and `prompts.ts` for routing, `query.ts` for mode selection, and `retrieval/sourceChunks.ts` for source selection. `vectors.ts` ranks vectors; `context.ts` enforces whole-passage budgets.
+Read `pipeline/recall.ts` for the full flow, `router.ts` and `prompts.ts` for the independent routing and keyword requests, `query.ts` for mode selection, and `retrieval/sourceChunks.ts` for source selection. `vectors.ts` ranks vectors; `context.ts` enforces whole-passage budgets.
 
-Run `pnpm --filter @ema-agent/narrative test` and `pnpm --filter @ema-agent/narrative typecheck`. Tests use real in-memory SQLite tables and repositories with simulated model responses. They cover routing-call count, embedding deduplication, five modes, ranking inputs and order, budgets, partial failures, and cancellation. Tool conversion is tested in `src/builtin-tools/tests/NarrativeSearchTool.test.ts`. These tests do not validate live model routing or the factual accuracy of the fixed summary.
+Run `pnpm --filter @ema-agent/narrative test` and `pnpm --filter @ema-agent/narrative typecheck`. Tests use real in-memory SQLite tables and repositories with simulated model responses. They cover concurrent preparation, isolated request content, exact keyword-template rendering, response schemas, embedding deduplication, five modes, ranking inputs and order, budgets, partial failures, and cancellation. Tool conversion is tested in `src/builtin-tools/tests/NarrativeSearchTool.test.ts`. Host request budgets and per-call usage are tested in `apps/server/tests/narrativeOutputBudget.test.ts`. These tests do not validate live model routing or the factual accuracy of the fixed summary.
 
-Retrieval and keyword classification follow LightRAG 1.4.16. Its MIT license is preserved in [LICENSE.lightrag](./LICENSE.lightrag).
+Retrieval follows LightRAG 1.4.16; the keyword prompt and output template are from LightRAG v1.5.7. Its MIT license is preserved in [LICENSE.lightrag](./LICENSE.lightrag).

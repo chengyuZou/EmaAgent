@@ -1,10 +1,11 @@
 import { readFileSync } from 'node:fs';
 import BetterSqlite3 from 'better-sqlite3';
 import type { CallEmbed } from '@ema-agent/embed';
-import type { CompleteLLM } from '@ema-agent/llm';
+import type { CompleteLLM, LLMCompletion } from '@ema-agent/llm';
 import type { CallRerank } from '@ema-agent/rerank';
 import { buildContext } from '../pipeline/context.js';
 import { MAX_CONTEXT_CHARACTERS } from '../pipeline/constants.js';
+import { buildKeywordExtractionPrompt, ROUTER_PROMPT } from '../pipeline/prompts.js';
 import {
   NarrativeChunksRepo,
   NarrativeGraphRepo,
@@ -14,10 +15,11 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { NarrativeSearch, type NarrativeRecallResult } from '../index.js';
 
 const timelines: NarrativeTimelineId[] = ['1st_Loop', '2nd_Loop', '3rd_Loop'];
-function routesFor(ids = timelines, keywords = { high_level_keywords: ['关系'], low_level_keywords: ['人物'] }): string {
-  return JSON.stringify(Object.fromEntries(ids.map(id => [id, { query: '剧情问题', ...keywords }])));
+function routesFor(ids = timelines): string {
+  return JSON.stringify({ timelines: ids });
 }
 let routerResponse: string;
+let keywordResponse: string;
 let db: BetterSqlite3.Database;
 let chunks: NarrativeChunksRepo;
 let search: NarrativeSearch;
@@ -32,14 +34,21 @@ function vector(first: number, second = 0, third = 0): number[] {
 function blob(values: number[]): Buffer {
   return Buffer.from(Float32Array.from(values).buffer);
 }
-const completeLLM = vi.fn<CompleteLLM>(async () => ({
-  blocks: [
-    { type: 'thinking', thinking: '这不是 JSON 结果' },
-    { type: 'text', text: routerResponse },
-  ],
-  stopReason: 'end_turn',
-  usage: { inputTokens: 0, outputTokens: 0 },
-}));
+function reply(text: string): LLMCompletion {
+  const middle = Math.floor(text.length / 2);
+  return {
+    blocks: [
+      { type: 'thinking', thinking: '这不是 JSON 结果' },
+      { type: 'text', text: text.slice(0, middle) },
+      { type: 'text', text: text.slice(middle) },
+    ],
+    stopReason: 'end_turn',
+    usage: { inputTokens: 0, outputTokens: 0 },
+  };
+}
+const completeLLM = vi.fn<CompleteLLM>(async request => reply(
+  request.messages[0]?.content === ROUTER_PROMPT ? routerResponse : keywordResponse,
+));
 const callRerank = vi.fn<CallRerank>(async request => ({
   results: request.documents.slice(0, request.topK).map((_, index) => ({ index, score: 1 - index / 100 })),
 }));
@@ -70,6 +79,7 @@ function contextRows(text: string): Array<{ entity?: string; entity1?: string; c
 beforeEach(() => {
   vi.clearAllMocks();
   routerResponse = routesFor();
+  keywordResponse = JSON.stringify({ high_level_keywords: ['关系'], low_level_keywords: ['人物'] });
   db = new BetterSqlite3(':memory:');
   db.pragma('foreign_keys = ON');
   for (const name of ['narrative.sql']) {
@@ -104,15 +114,68 @@ function run(query = '剧情问题', mode: Parameters<NarrativeSearch['search']>
   return search.search(query, mode, completeLLM, callEmbed, callRerank, signal);
 }
 
-it('路由和三个周目的提词只调用一次 LLM, 重复文本只编码一次', async () => {
+it('周目和提词各调用一次 LLM, 所有周目共用原 Query 与关键词且只编码一次', async () => {
   await run();
-  expect(completeLLM).toHaveBeenCalledTimes(1);
+  expect(completeLLM).toHaveBeenCalledTimes(2);
   expect(callEmbed).toHaveBeenCalledTimes(1);
   expect(callEmbed.mock.calls[0]![0].texts).toEqual(['剧情问题', '人物', '关系']);
   expect(callRerank).toHaveBeenCalledTimes(3);
   await run();
-  expect(completeLLM).toHaveBeenCalledTimes(2);
+  expect(completeLLM).toHaveBeenCalledTimes(4);
   expect(callEmbed).toHaveBeenCalledTimes(2);
+});
+
+it('两条准备请求同时启动, 等两边完成后才编码', async () => {
+  let finishRoute!: (value: LLMCompletion) => void;
+  let finishKeywords!: (value: LLMCompletion) => void;
+  completeLLM.mockImplementationOnce(() => new Promise(resolve => { finishRoute = resolve; }));
+  completeLLM.mockImplementationOnce(() => new Promise(resolve => { finishKeywords = resolve; }));
+  const result = run();
+  expect(completeLLM).toHaveBeenCalledTimes(2);
+  expect(callEmbed).not.toHaveBeenCalled();
+  finishKeywords(reply(keywordResponse));
+  await Promise.resolve();
+  expect(callEmbed).not.toHaveBeenCalled();
+  finishRoute(reply(routerResponse));
+  await result;
+  expect(callEmbed).toHaveBeenCalledTimes(1);
+});
+
+it('周目请求读摘要, 提词请求仅发送原版提词 Prompt 与相同 Query', async () => {
+  const query = '第二周目安安案, 她落地后最终被谁杀死? 不要展开处刑.';
+  const signal = new AbortController().signal;
+  await run(query, 'mix', signal);
+  expect(completeLLM.mock.calls[0]![0]).toEqual({
+    messages: [
+      { role: 'system', content: ROUTER_PROMPT },
+      { role: 'user', content: query },
+    ],
+    temperature: 0.2,
+    signal,
+  });
+  const extraction = completeLLM.mock.calls[1]![0];
+  expect(extraction).toEqual({
+    messages: [{ role: 'user', content: buildKeywordExtractionPrompt(query) }],
+    temperature: 0.2,
+    signal,
+  });
+  expect(String(extraction.messages[0]!.content)).not.toContain('城崎诺亚');
+  expect(String(extraction.messages[0]!.content)).not.toContain('剧情摘要');
+  expect(callEmbed.mock.calls[0]![0].texts).toEqual([query, '人物', '关系']);
+  for (const [request] of callRerank.mock.calls) {
+    expect(request.query).toBe(query);
+  }
+});
+
+it('只清理 Query 首尾空白, 编码和重排保留问法与排除条件', async () => {
+  const query = '第三周目真结局里, 城崎诺亚最后去了哪里? 不用展开之前的案件.';
+  await run(`  ${query}\n`, 'naive');
+  expect(completeLLM.mock.calls[0]![0].messages[1]?.content).toBe(query);
+  expect(completeLLM.mock.calls[1]![0].messages[0]?.content).toBe(buildKeywordExtractionPrompt(query));
+  expect(callEmbed.mock.calls[0]![0].texts).toEqual([query]);
+  for (const [request] of callRerank.mock.calls) {
+    expect(request.query).toBe(query);
+  }
 });
 
 it.each([
@@ -180,12 +243,14 @@ it.each([
   ['local', { high_level_keywords: ['关系'], low_level_keywords: [] }],
   ['global', { high_level_keywords: [], low_level_keywords: ['人物'] }],
 ] as const)('%s 缺少本侧关键词仍可使用另一侧召回', async (mode, keywords) => {
-  routerResponse = JSON.stringify({ '1st_Loop': { query: '剧情问题', ...keywords } });
+  routerResponse = routesFor(['1st_Loop']);
+  keywordResponse = JSON.stringify(keywords);
   expect(textOf(await run('剧情问题', mode), '1st_Loop')).toContain('1st_Loop:');
 });
 
-it('图模式两类关键词都为空时不调用编码或重排, naive 仍按子问题查原文', async () => {
-  routerResponse = routesFor(['1st_Loop'], { high_level_keywords: [], low_level_keywords: [] });
+it('图模式两类关键词都为空时不调用编码或重排, naive 仍按原 Query 查原文', async () => {
+  routerResponse = routesFor(['1st_Loop']);
+  keywordResponse = JSON.stringify({ high_level_keywords: [], low_level_keywords: [] });
   expect((await run()).get('1st_Loop')).toEqual({ text: '' });
   expect(callEmbed).not.toHaveBeenCalled();
   expect(callRerank).not.toHaveBeenCalled();
@@ -202,11 +267,63 @@ it('编码返回错误维度时各周目失败且不重排', async () => {
 });
 
 it.each([
-  '{}', '{"4th_Loop":{"query":"问题","high_level_keywords":[],"low_level_keywords":[]}}',
-  '{"3rd_Loop":"旧的字符串格式"}', 'not-json',
-])('无效规划结果整次失败, 不编码或重排: %s', async response => {
+  '{}', '{"timelines":[]}', '{"timelines":["4th_Loop"]}',
+  '{"timelines":["2nd_Loop","2nd_Loop"]}',
+  '{"timelines":["3rd_Loop"],"query":"改写的问题"}',
+  '{"3rd_Loop":{"query":"旧的子问题","high_level_keywords":[],"low_level_keywords":[]}}',
+  'not-json',
+])('无效周目结果整次失败, 不接受子 Query 或旧格式: %s', async response => {
   routerResponse = response;
   await expect(run()).rejects.toThrow();
+  expect(callEmbed).not.toHaveBeenCalled();
+  expect(callRerank).not.toHaveBeenCalled();
+});
+
+it.each([
+  '{}', '{"high_level_keywords":[],"low_level_keywords":"人物"}',
+  '{"high_level_keywords":[],"low_level_keywords":[""]}',
+  '{"high_level_keywords":[],"low_level_keywords":[],"query":"改写"}',
+  'not-json',
+])('无效提词结果整次失败, 不编码或重排: %s', async response => {
+  keywordResponse = response;
+  await expect(run()).rejects.toThrow();
+  expect(callEmbed).not.toHaveBeenCalled();
+  expect(callRerank).not.toHaveBeenCalled();
+});
+
+it.each(['route', 'keywords'])('%s 请求失败不重试或退回混合路由', async failed => {
+  const error = new Error('准备请求失败');
+  if (failed === 'route') {
+    completeLLM.mockRejectedValueOnce(error);
+  } else {
+    completeLLM.mockResolvedValueOnce(reply(routerResponse)).mockRejectedValueOnce(error);
+  }
+  await expect(run()).rejects.toBe(error);
+  expect(completeLLM).toHaveBeenCalledTimes(2);
+  expect(callEmbed).not.toHaveBeenCalled();
+  expect(callRerank).not.toHaveBeenCalled();
+});
+
+it('空 Query 或已取消时不发出任何准备请求', async () => {
+  await expect(run(' \n ')).rejects.toThrow('Narrative query must not be empty');
+  const controller = new AbortController();
+  const reason = new Error('用户停止');
+  controller.abort(reason);
+  await expect(run('剧情问题', 'hybrid', controller.signal)).rejects.toBe(reason);
+  expect(completeLLM).not.toHaveBeenCalled();
+});
+
+it('准备阶段的两条请求都接收取消, 不继续编码', async () => {
+  const controller = new AbortController();
+  const reason = new Error('用户停止');
+  const waitForAbort: CompleteLLM = request => new Promise((_resolve, reject) => {
+    request.signal!.addEventListener('abort', () => reject(request.signal!.reason), { once: true });
+  });
+  completeLLM.mockImplementationOnce(waitForAbort).mockImplementationOnce(waitForAbort);
+  const result = run('剧情问题', 'hybrid', controller.signal);
+  expect(completeLLM).toHaveBeenCalledTimes(2);
+  controller.abort(reason);
+  await expect(result).rejects.toBe(reason);
   expect(callEmbed).not.toHaveBeenCalled();
   expect(callRerank).not.toHaveBeenCalled();
 });

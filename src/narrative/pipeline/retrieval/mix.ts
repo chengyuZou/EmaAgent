@@ -7,7 +7,7 @@ import type { NarrativeGraphResult } from '../../types.js';
 import { retrieveHybrid } from './hybrid.js';
 import { retrieveNaive } from './naive.js';
 
-/** 图搜索使用关键词向量, 直接块搜索使用路由后的子问题向量; chunkVectors 仅在本次查询内复用. */
+/** 图搜索使用关键词向量, 直接块搜索使用传入的 query 向量; chunkVectors 仅在本次查询内复用. */
 export function retrieveMix(
   timeline: NarrativeTimelineId,
   queryEmbedding: Float32Array,

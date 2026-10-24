@@ -56,6 +56,18 @@ describe('NarrativeSearchTool', () => {
     expect(narrativeSearch).toHaveBeenLastCalledWith('角色关系', 'global', current.signal);
   });
 
+  it('只转交补齐语境后的完整问题, 不接收周目或关键词参数', async () => {
+    const narrativeSearch = vi.fn(async (): Promise<NarrativeRecallResult> => new Map());
+    const query = '第三周目真结局里, 城崎诺亚最后去了哪里? 不用展开之前的案件.';
+    const input = NarrativeSearchTool.inputSchema.parse({ query });
+    const current = invocation();
+    await NarrativeSearchTool.execute(input, { narrativeSearch }, current);
+    expect(narrativeSearch).toHaveBeenCalledWith(query, undefined, current.signal);
+    expect(NarrativeSearchTool.inputSchema.safeParse({
+      query, timelines: ['3rd_Loop'], high_level_keywords: [], low_level_keywords: [],
+    }).success).toBe(false);
+  });
+
   it('无正文为 empty, 全部失败为 unavailable, 有正文且无失败为 found', async () => {
     const narrativeSearch = vi.fn<NonNullable<ToolUseContext['narrativeSearch']>>()
       .mockResolvedValueOnce(new Map([['2nd_Loop', { text: '' }]]))
