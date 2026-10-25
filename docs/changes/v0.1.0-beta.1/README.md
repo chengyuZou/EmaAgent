@@ -22,6 +22,7 @@ The limits are defined in Narrative. The shared Rerank interface and its topK pa
 
 - Upgraded Cubism Core to `06.00.0001` and adapted the renderer to Pixi 8 and WebGL2. Fixed model import/preview failures and resource cleanup. Ema, Hiyori, Haru, Wanko and Ren passed browser regression under the release CSP; installed-build acceptance remains pending.
 - Expressions now apply after automatic blinking, and model covers render at 3072x4096. These follow-up changes await manual application checks.
+- Live2D emotion and motion mappings are stored per model in the Profile database. Model imports and exports transfer resource files, with mappings configured in Settings.
 
 ## Upload limits
 

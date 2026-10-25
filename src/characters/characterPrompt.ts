@@ -81,8 +81,8 @@ export function characterStageVocabulary(
 ): { readonly emotions: readonly string[]; readonly motions: readonly string[] } {
   if (presentation.status === 'live2d') {
     return {
-      emotions: Object.keys(presentation.resource.runtimeConfig?.emotionMap ?? {}),
-      motions: Object.keys(presentation.resource.runtimeConfig?.motionMap ?? {}),
+      emotions: Object.keys(presentation.resource.emotionMap),
+      motions: Object.keys(presentation.resource.motionMap),
     };
   }
   if (presentation.status === 'illustration') {

@@ -228,7 +228,7 @@ export const characterResourcesRoute = (deps: CharacterResourcesRouteDeps) => {
         );
         return deleted ? { ok: true as const } : undefined;
       }))
-    // 用户手改 runtime-config.json 后显式校验并广播演出变化.
+    // 用户手改 model3 或原生表情/动作文件后重新读取能力, 数据库映射保持不变.
     .post('/:characterName/live2d/:live2dName/reload-config', context =>
       run(context, () => deps.characters.reloadLive2dConfiguration(
         context.req.param('characterName'),

@@ -56,7 +56,7 @@ describe('Character resource persistence', () => {
     }
   });
 
-  it('只保存资源事实,并在更换主要资源时更新旧主要资源时间', () => {
+  it('保存模型映射, 并在更换主要资源时更新旧主要资源时间', () => {
     const database = new Database({ memory: true, kind: 'profile' });
     database.migrate();
     try {
@@ -71,6 +71,15 @@ describe('Character resource persistence', () => {
       live2d.insert({ name: 'a', characterName: '角色', displayName: 'A', isPrimary: true, createdAt: 1, updatedAt: 1 });
       live2d.insert({ name: 'b', characterName: '角色', displayName: 'B', isPrimary: true, createdAt: 5, updatedAt: 5 });
       expect(live2d.find('角色', 'a')).toMatchObject({ is_primary: 0, updated_at: 5 });
+      live2d.updateMappings('角色', 'a', '{"happy":{"expression":"smile"}}', '{"wave":{"group":"TapBody","index":0}}', 8);
+      expect(live2d.find('角色', 'a')).toMatchObject({
+        emotion_map_json: '{"happy":{"expression":"smile"}}',
+        motion_map_json: '{"wave":{"group":"TapBody","index":0}}',
+        stage_scale: 1,
+        is_primary: 0,
+        updated_at: 8,
+      });
+      expect(live2d.find('角色', 'b')).toMatchObject({ emotion_map_json: '{}', motion_map_json: '{}' });
 
       const illustrations = new CharacterIllustrationRepo(database.sqlite);
       illustrations.insert({ name: 'a.png', characterName: '角色', displayName: 'A', isPrimary: true, byteSize: 1, createdAt: 2, updatedAt: 2 });
@@ -87,6 +96,7 @@ describe('Character resource persistence', () => {
       const live2dColumns = database.sqlite.prepare('PRAGMA table_info(character_live2d_models)').all() as { name: string }[];
       expect(live2dColumns.map(column => column.name)).not.toContain('emotion_vocab_json');
       expect(live2dColumns.map(column => column.name)).not.toContain('motion_vocab_json');
+      expect(live2dColumns.map(column => column.name)).toEqual(expect.arrayContaining(['emotion_map_json', 'motion_map_json']));
     } finally {
       database.close();
     }

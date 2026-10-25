@@ -177,14 +177,6 @@ describe('CharacterStore', () => {
     fs.writeFileSync(path.join(source, 'orphan.exp3.json'), '{}');
     fs.writeFileSync(path.join(source, 'wave.motion3.json'), '{}');
     fs.writeFileSync(path.join(source, 'orphan.motion3.json'), '{}');
-    const runtimeConfig = {
-      emotionMap: {
-        neutral: {},
-        determined: { expression: 'Smile' },
-      },
-      motionMap: { disabled: {} },
-    };
-    fs.writeFileSync(path.join(source, 'runtime-config.json'), JSON.stringify(runtimeConfig));
 
     const resourceChanges: string[] = [];
     const presentationChanges: string[] = [];
@@ -249,15 +241,7 @@ describe('CharacterStore', () => {
       unregisteredExpressionFiles: ['orphan.exp3.json'],
       unregisteredMotionFiles: ['orphan.motion3.json'],
     });
-    const runtimeConfigPath = path.join(
-      root,
-      'characters',
-      '模型角色',
-      'live2d',
-      'alice-model',
-      'runtime-config.json',
-    );
-    expect(JSON.parse(fs.readFileSync(runtimeConfigPath, 'utf8'))).toEqual(runtimeConfig);
+    expect(imported).toMatchObject({ emotionMap: {}, motionMap: {} });
 
     const saved = await store.saveLive2dMappings('模型角色', 'alice-model', {
       emotionMap: {
@@ -266,25 +250,31 @@ describe('CharacterStore', () => {
       },
       motionMap: { happy: { group: 'Wave', index: 0 }, wave: { group: 'Wave', index: 0 } },
     });
-    expect(saved.runtimeConfig).toMatchObject({
+    expect(saved.mappings).toEqual({
       emotionMap: {
         determined: { expression: 'Smile' },
         happy: { expression: 'Smile' },
       },
       motionMap: { happy: { group: 'Wave', index: 0 }, wave: { group: 'Wave', index: 0 } },
     });
-    expect(JSON.parse(fs.readFileSync(runtimeConfigPath, 'utf8'))).toEqual({
-      emotionMap: {
-        neutral: {},
-        determined: { expression: 'Smile' },
-        happy: { expression: 'Smile' },
-      },
-      motionMap: {
-        disabled: {},
-        happy: { group: 'Wave', index: 0 },
-        wave: { group: 'Wave', index: 0 },
-      },
+    const row = database.sqlite.prepare(
+      'SELECT emotion_map_json, motion_map_json FROM character_live2d_models WHERE character_name = ? AND name = ?',
+    ).get('模型角色', 'alice-model') as { emotion_map_json: string; motion_map_json: string };
+    expect(JSON.parse(row.emotion_map_json)).toEqual(saved.mappings.emotionMap);
+    expect(JSON.parse(row.motion_map_json)).toEqual(saved.mappings.motionMap);
+    await expect(store.reloadLive2dConfiguration('模型角色', 'alice-model')).resolves.toMatchObject({
+      mappings: saved.mappings,
     });
+    const exported = await store.exportLive2dModel('模型角色', 'alice-model', root);
+    expect(Object.keys(unzipSync(fs.readFileSync(exported))).sort()).toEqual([
+      'alice.moc3',
+      'alice.model3.json',
+      'orphan.exp3.json',
+      'orphan.motion3.json',
+      'smile.exp3.json',
+      'textures/texture.png',
+      'wave.motion3.json',
+    ]);
     expect(characterStageVocabulary(store.inspectStagePresentation('模型角色'))).toEqual({
       emotions: ['determined', 'happy'],
       motions: ['happy', 'wave'],

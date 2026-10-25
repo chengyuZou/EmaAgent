@@ -5,6 +5,8 @@ export interface CharacterLive2dModelRow {
   name: string;
   character_name: string;
   display_name: string;
+  emotion_map_json: string;
+  motion_map_json: string;
   stage_scale: number;
   stage_offset_x: number;
   stage_offset_y: number;
@@ -18,6 +20,8 @@ export interface CharacterLive2dModelInsert {
   name: string;
   characterName: string;
   displayName: string;
+  emotionMapJson?: string;
+  motionMapJson?: string;
   stageScale?: number;
   stageOffsetX?: number;
   stageOffsetY?: number;
@@ -42,13 +46,15 @@ export class CharacterLive2dModelRepo {
       if (input.isPrimary) this.clearPrimary(input.characterName, input.updatedAt);
       this.db.prepare(
         `INSERT INTO character_live2d_models (
-           name, character_name, display_name,
+           name, character_name, display_name, emotion_map_json, motion_map_json,
            stage_scale, stage_offset_x, stage_offset_y, is_primary, byte_size, created_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(
         input.name,
         input.characterName,
         input.displayName,
+        input.emotionMapJson ?? '{}',
+        input.motionMapJson ?? '{}',
         input.stageScale ?? 1,
         input.stageOffsetX ?? 0,
         input.stageOffsetY ?? 0,
@@ -126,6 +132,21 @@ export class CharacterLive2dModelRepo {
     fields.push('updated_at = ?');
     values.push(updatedAt, characterName, name);
     this.db.prepare(`UPDATE character_live2d_models SET ${fields.join(', ')} WHERE character_name = ? AND name = ?`).run(...values);
+    return this.find(characterName, name);
+  }
+
+  updateMappings(
+    characterName: string,
+    name: string,
+    emotionMapJson: string,
+    motionMapJson: string,
+    updatedAt: number,
+  ): CharacterLive2dModelRow | undefined {
+    this.db.prepare(
+      `UPDATE character_live2d_models
+       SET emotion_map_json = ?, motion_map_json = ?, updated_at = ?
+       WHERE character_name = ? AND name = ?`,
+    ).run(emotionMapJson, motionMapJson, updatedAt, characterName, name);
     return this.find(characterName, name);
   }
 

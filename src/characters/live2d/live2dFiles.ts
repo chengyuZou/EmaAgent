@@ -16,7 +16,6 @@ export interface ImportedLive2dFiles {
 
 export interface Live2dFiles {
   readonly modelPath: string;
-  readonly runtimeConfigPath: string | null;
 }
 
 /**
@@ -28,11 +27,10 @@ export interface Live2dFiles {
  * ema.8192/texture_00.png      贴图可以位于子目录
  * expressions/happy.exp3.json 表情也可以位于子目录
  * motions/idle.motion3.json    动作也可以位于子目录
- * runtime-config.json          Ema 语义映射, 可选
  * ```
  *
- * 所以这里递归查找整个资源目录, 但最终只允许一个 `.model3.json` 入口和至多一个
- * `runtime-config.json`. 其他文件的准确位置由 model3.json 自己的相对引用决定.
+ * 所以这里递归查找整个资源目录, 但最终只允许一个 `.model3.json` 入口.
+ * 其他文件的准确位置由 model3.json 自己的相对引用决定.
  */
 export async function findLive2dFiles(directory: string): Promise<Live2dFiles> {
   const stat = await fs.promises.stat(directory).catch(() => null);
@@ -53,18 +51,11 @@ export function findLive2dFilesSync(directory: string): Live2dFiles {
 
 function selectLive2dFiles(files: readonly string[]): Live2dFiles {
   const modelPaths = files.filter(file => file.toLowerCase().endsWith('.model3.json'));
-  const runtimeConfigPaths = files.filter(
-    file => path.basename(file).toLowerCase() === 'runtime-config.json',
-  );
   if (modelPaths.length !== 1) {
     throw new CharacterResourceValidationError('live2d_entry_invalid');
   }
-  if (runtimeConfigPaths.length > 1) {
-    throw new CharacterResourceValidationError('live2d_runtime_config_invalid');
-  }
   return {
     modelPath: modelPaths[0]!,
-    runtimeConfigPath: runtimeConfigPaths[0] ?? null,
   };
 }
 
@@ -95,7 +86,11 @@ export async function importLive2dFiles(
 }
 
 async function copyDirectory(source: string, destination: string): Promise<number> {
-  await fs.promises.cp(source, destination, { recursive: true, errorOnExist: true, force: false });
+  await fs.promises.cp(source, destination, {
+    recursive: true,
+    errorOnExist: true,
+    force: false,
+  });
   const files = await listLive2dFiles(destination);
   let byteSize = 0;
   for (const file of files) byteSize += (await fs.promises.stat(file)).size;

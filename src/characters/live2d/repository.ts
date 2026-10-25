@@ -1,11 +1,13 @@
 import { CharacterLive2dModelRepo, type CharacterLive2dModelRow } from '@ema-agent/storage';
-import type { CharacterLive2dModel, CharacterLive2dModelInput, CharacterLive2dModelPatch } from './types.js';
+import type { CharacterLive2dModel, CharacterLive2dModelInput, CharacterLive2dModelPatch, Live2dMappings } from './types.js';
 
 function fromRow(row: CharacterLive2dModelRow): CharacterLive2dModel {
   return {
     name: row.name,
     characterName: row.character_name,
     displayName: row.display_name,
+    emotionMap: JSON.parse(row.emotion_map_json) as Live2dMappings['emotionMap'],
+    motionMap: JSON.parse(row.motion_map_json) as Live2dMappings['motionMap'],
     stageScale: row.stage_scale,
     stageOffsetX: row.stage_offset_x,
     stageOffsetY: row.stage_offset_y,
@@ -45,7 +47,14 @@ export class CharacterLive2dModelRepository {
 
   insert(characterName: string, input: CharacterLive2dModelInput): CharacterLive2dModel {
     const now = Date.now();
-    this.repo.insert({ ...input, characterName, createdAt: now, updatedAt: now });
+    this.repo.insert({
+      ...input,
+      characterName,
+      emotionMapJson: JSON.stringify(input.emotionMap ?? {}),
+      motionMapJson: JSON.stringify(input.motionMap ?? {}),
+      createdAt: now,
+      updatedAt: now,
+    });
     return fromRow(this.repo.find(characterName, input.name)!);
   }
 
@@ -55,6 +64,17 @@ export class CharacterLive2dModelRepository {
 
   update(characterName: string, name: string, patch: CharacterLive2dModelPatch): CharacterLive2dModel | undefined {
     const row = this.repo.update(characterName, name, patch, Date.now());
+    return row ? fromRow(row) : undefined;
+  }
+
+  updateMappings(characterName: string, name: string, mappings: Live2dMappings): CharacterLive2dModel | undefined {
+    const row = this.repo.updateMappings(
+      characterName,
+      name,
+      JSON.stringify(mappings.emotionMap),
+      JSON.stringify(mappings.motionMap),
+      Date.now(),
+    );
     return row ? fromRow(row) : undefined;
   }
 

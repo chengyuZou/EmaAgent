@@ -1,5 +1,5 @@
 
-export interface CharacterLive2dModel {
+export interface CharacterLive2dModel extends Live2dMappings {
   name: string;
   characterName: string;
   displayName: string;
@@ -19,6 +19,8 @@ export interface CharacterLive2dModel {
 export interface CharacterLive2dModelInput {
   name: string;
   displayName: string;
+  emotionMap?: Live2dMappings['emotionMap'];
+  motionMap?: Live2dMappings['motionMap'];
   stageScale?: number;
   stageOffsetX?: number;
   stageOffsetY?: number;
@@ -55,12 +57,6 @@ export interface Live2dMotion {
   index: number;
 }
 
-/** 把 LLM 标签中的情绪和动作名称映射到 .model3.json 登记的 Expression 和 Motion. */
-export interface Live2dRuntimeConfig {
-  emotionMap?: Record<string, Live2dExpression>;
-  motionMap?: Record<string, Live2dMotion>;
-}
-
 export interface Live2dNativeMotion {
   readonly group: string;
   readonly index: number;
@@ -73,7 +69,7 @@ export interface Live2dNativeExpression {
 }
 
 export interface Live2dConfiguration {
-  readonly runtimeConfig: Live2dRuntimeConfig;
+  readonly mappings: Live2dMappings;
   readonly expressions: readonly Live2dNativeExpression[];
   readonly motions: readonly Live2dNativeMotion[];
   readonly unregisteredExpressionFiles: readonly string[];
@@ -81,6 +77,6 @@ export interface Live2dConfiguration {
 }
 
 export interface Live2dMappings {
-  readonly emotionMap: Readonly<Record<string, { readonly expression: string }>>;
+  readonly emotionMap: Readonly<Record<string, Live2dExpression>>;
   readonly motionMap: Readonly<Record<string, Live2dMotion>>;
 }

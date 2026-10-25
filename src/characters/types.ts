@@ -1,4 +1,4 @@
-import type { CharacterLive2dModel, Live2dRuntimeConfig } from './live2d/types.js';
+import type { CharacterLive2dModel, Live2dMappings } from './live2d/types.js';
 import type { CharacterIllustration } from './illustration/types.js';
 import type { CharacterVoiceSample } from './voice/types.js';
 
@@ -58,9 +58,8 @@ interface CharacterStageEntryBase {
   readonly stageOffsetY: number;
 }
 
-export interface CharacterLive2dStageEntry extends CharacterStageEntryBase {
+export interface CharacterLive2dStageEntry extends CharacterStageEntryBase, Live2dMappings {
   readonly kind: 'live2d';
-  readonly runtimeConfig: Live2dRuntimeConfig | null;
 }
 
 export interface CharacterIllustrationStageEntry extends CharacterStageEntryBase {

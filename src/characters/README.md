@@ -55,12 +55,14 @@ Only one resource of each kind can be primary. Deleting primary reference audio 
 
 Presentation contains resource names and configuration, not host absolute paths. Server serves authenticated illustration files and Live2D ZIP streams. ZIP generation reads files incrementally.
 
-Live2D semantic names come from `runtime-config.json`:
+Live2D semantic mappings are stored per model in the Profile columns `character_live2d_models.emotion_map_json` and `motion_map_json`:
 
 - `emotionMap` maps an emotion to an Expression name registered in `.model3.json`.
 - `motionMap` maps a motion to its registered group and array index.
-- Empty mapping entries disable that semantic name. Saving mappings preserves disabled entries.
+- Only configured semantic names are advertised in the Prompt; absent names are unavailable.
 - Native file references, motions, expressions, and parameter groups remain defined by the model files.
+
+Model directory and ZIP imports copy model resources, and exports package those files without attaching database mappings. Configure mappings in Settings after importing a model. The bundled Ema seed writes its initial mappings into the database. Reloading model resources rereads native files without overwriting database mappings.
 
 Illustration emotion names come from its expression groups. `buildCharacterPrompt()` uses this same Presentation to advertise available control tags. Persona text cannot contain stage control tags.
 

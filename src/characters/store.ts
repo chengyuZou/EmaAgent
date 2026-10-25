@@ -30,7 +30,7 @@ import type {
 } from './live2d/types.js';
 import { CharacterLive2dModelRepository } from './live2d/repository.js';
 import { readLive2dModelResources } from './live2d/live2dModelResources.js';
-import { readLive2dRuntimeConfig, writeLive2dMappings } from './live2d/live2dRuntimeConfig.js';
+import { assertLive2dMappings } from './live2d/live2dMappings.js';
 import {
   deleteLive2dDirectory,
   createLive2dArchiveStream,
@@ -344,7 +344,6 @@ export class CharacterStore {
         }
         const live2dFiles = await findLive2dFiles(stagedDirectory);
         await readLive2dModelResources(live2dFiles.modelPath);
-        readLive2dRuntimeConfig(live2dFiles.runtimeConfigPath);
         this.preparedLive2dImports.set(importId, {
           characterName,
           operationDirectory,
@@ -416,6 +415,7 @@ export class CharacterStore {
       this.preparedLive2dImports.delete(importId);
     });
   }
+  
   async exportLive2dModel(characterName: string, live2dName: string, destination: string): Promise<string> {
     this.getRequiredCharacterOnly(characterName);
     const resource = this.live2dModels.find(characterName, live2dName);
@@ -426,6 +426,7 @@ export class CharacterStore {
       resource.displayName,
     );
   }
+
   async deleteLive2dModel(characterName: string, live2dName: string): Promise<CharacterLive2dModel | undefined> {
     return this.mutate(characterName, async () => {
       this.getRequiredCharacterOnly(characterName);
@@ -488,6 +489,7 @@ export class CharacterStore {
       return resource;
     });
   }
+
   async importIllustration(characterName: string, input: ImportCharacterIllustrationInput): Promise<CharacterIllustration> {
     return this.mutate(characterName, async () => {
       const character = this.getRequiredCharacterOnly(characterName);
@@ -524,6 +526,7 @@ export class CharacterStore {
       }
     });
   }
+
   async exportIllustration(characterName: string, illustrationName: string, destination: string): Promise<string> {
     this.getRequiredCharacterOnly(characterName);
     const resource = this.illustrations.find(characterName, illustrationName);
@@ -534,6 +537,7 @@ export class CharacterStore {
       resource.displayName,
     );
   }
+
   async deleteIllustration(characterName: string, illustrationName: string): Promise<CharacterIllustration | undefined> {
     return this.mutate(characterName, async () => {
       const character = this.getRequiredCharacterOnly(characterName);
@@ -591,6 +595,7 @@ export class CharacterStore {
       return resource;
     });
   }
+  
   async importVoiceSample(characterName: string, input: ImportCharacterVoiceSampleInput): Promise<CharacterVoiceSample> {
     return this.mutate(characterName, async () => {
       this.getRequiredCharacterOnly(characterName);
@@ -633,6 +638,7 @@ export class CharacterStore {
       }
     });
   }
+
   async exportVoiceSample(characterName: string, voiceName: string, destination: string): Promise<string> {
     this.getRequiredCharacterOnly(characterName);
     const resource = this.voiceSamples.find(characterName, voiceName);
@@ -643,6 +649,7 @@ export class CharacterStore {
       resource.displayName,
     );
   }
+
   async deleteVoiceSample(characterName: string, voiceName: string): Promise<CharacterVoiceSample | undefined> {
     return this.mutate(characterName, async () => {
       this.getRequiredCharacterOnly(characterName);
@@ -685,7 +692,7 @@ export class CharacterStore {
       }
       try {
         const directory = this.paths.live2dModelDirectory(characterName, resource.name);
-        const files = findLive2dFilesSync(directory);
+        findLive2dFilesSync(directory);
         return {
           status: 'live2d',
           characterName,
@@ -696,7 +703,8 @@ export class CharacterStore {
             stageScale: resource.stageScale,
             stageOffsetX: resource.stageOffsetX,
             stageOffsetY: resource.stageOffsetY,
-            runtimeConfig: files.runtimeConfigPath ? readLive2dRuntimeConfig(files.runtimeConfigPath) : null,
+            emotionMap: resource.emotionMap,
+            motionMap: resource.motionMap,
           },
         };
       } catch {
@@ -792,16 +800,18 @@ export class CharacterStore {
       return configuration;
     });
   }
+
   async readLive2dConfiguration(characterName: string, live2dName: string): Promise<Live2dConfiguration> {
     this.getRequiredCharacterOnly(characterName);
-    if (!this.live2dModels.find(characterName, live2dName)) {
+    const model = this.live2dModels.find(characterName, live2dName);
+    if (!model) {
       throw new CharacterResourceNotFoundError('live2d_model', live2dName);
     }
     const directory = this.paths.live2dModelDirectory(characterName, live2dName);
     const files = await findLive2dFiles(directory);
     const resources = await readLive2dModelResources(files.modelPath);
     return {
-      runtimeConfig: readLive2dRuntimeConfig(files.runtimeConfigPath),
+      mappings: { emotionMap: model.emotionMap, motionMap: model.motionMap },
       expressions: resources.expressions.map(expression => ({
         expression: expression.name,
         file: expression.file,
@@ -811,6 +821,7 @@ export class CharacterStore {
       unregisteredMotionFiles: resources.unregisteredMotionFiles,
     };
   }
+
   async saveLive2dMappings(characterName: string, live2dName: string, mappings: Live2dMappings): Promise<Live2dConfiguration> {
     return this.mutate(characterName, async () => {
       const character = this.getRequiredCharacterOnly(characterName);
@@ -821,19 +832,18 @@ export class CharacterStore {
       const directory = this.paths.live2dModelDirectory(characterName, live2dName);
       const files = await findLive2dFiles(directory);
       const resources = await readLive2dModelResources(files.modelPath);
-      const written = await writeLive2dMappings(
-        files.modelPath,
-        files.runtimeConfigPath,
+      assertLive2dMappings(
         mappings,
         resources.expressions.map(expression => expression.name),
         resources.motions,
       );
+      this.live2dModels.updateMappings(characterName, live2dName, mappings);
       this.resourcesChanged(characterName);
       if (character.stageKind === 'live2d' && model.isPrimary) {
         this.emitPresentationChanged(characterName);
       }
       return {
-        runtimeConfig: written.config,
+        mappings,
         expressions: resources.expressions.map(expression => ({
           expression: expression.name,
           file: expression.file,

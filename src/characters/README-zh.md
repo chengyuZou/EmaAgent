@@ -55,12 +55,14 @@ Live2D 准备阶段返回 `importId`, 暂存模型不会出现在正式资源列
 
 Presentation 包含资源名与配置, 不包含宿主绝对路径. Server 通过需要认证的接口提供立绘文件与 Live2D ZIP 流, ZIP 生成过程逐段读取模型文件.
 
-Live2D 语义名称来自 `runtime-config.json`:
+Live2D 语义映射保存在 Profile 的 `character_live2d_models.emotion_map_json` 和 `motion_map_json`, 每个模型独立配置:
 
 - `emotionMap` 把情绪映射到 `.model3.json` 登记的 Expression 名称.
 - `motionMap` 把动作映射到已登记的动作组与数组下标.
-- 空映射项表示禁用该语义名称, 保存映射时保留这些项.
+- 只有已配置的语义词会进入 Prompt, 未配置的词不可用.
 - 模型原生文件引用, 动作, 表情和参数组仍由模型文件定义.
+
+模型目录和 ZIP 导入复制模型资源, 导出打包这些文件, 不附加数据库中的映射. 导入后在设置中配置映射. 内置艾玛的初始映射随角色种子写入数据库. 重新加载模型资源只重读原生文件, 不覆盖数据库映射.
 
 立绘情绪名称来自 expression 分组. `buildCharacterPrompt()` 使用同一份 Presentation 生成可用标签说明. 人设正文不能包含舞台控制标签.
 

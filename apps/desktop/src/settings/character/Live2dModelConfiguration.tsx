@@ -44,9 +44,9 @@ export function Live2dModelConfiguration({
     try {
       const next = await charactersApi.live2dConfiguration(character.name, model.name);
       setConfiguration(next);
-      setEmotionMap({ ...(next.runtimeConfig.emotionMap ?? {}) });
+      setEmotionMap({ ...next.mappings.emotionMap });
       setMotionMap(Object.fromEntries(
-        Object.entries(next.runtimeConfig.motionMap ?? {}).map(([word, target]) => [
+        Object.entries(next.mappings.motionMap).map(([word, target]) => [
           word,
           { group: target.group, index: target.index },
         ]),
@@ -145,7 +145,7 @@ export function Live2dModelConfiguration({
     try {
       await charactersApi.reloadLive2dConfig(character.name, model.name);
       await loadConfiguration();
-      showToast('已重新加载配置', { variant: 'success' });
+      showToast('已重新加载模型资源', { variant: 'success' });
     } catch (error) {
       showToast(error instanceof Error ? error.message : '重新加载失败', { variant: 'danger' });
     } finally {
@@ -252,7 +252,7 @@ export function Live2dModelConfiguration({
               loading={reloading}
               onClick={() => void reloadConfiguration()}
             >
-              重新加载配置
+              重新加载模型资源
             </Button>
             <Button
               variant="primary"

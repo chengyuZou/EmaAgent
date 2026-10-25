@@ -254,7 +254,7 @@ function Live2dResource({
   onError(error: Error): void;
 }): JSX.Element {
   const handleRef = useRef<Live2DStageHandle | null>(null);
-  const runtimeConfig = resource.runtimeConfig;
+  const { emotionMap, motionMap } = resource;
 
   useEffect(() => {
     if (!tauriBridge.isTauri()) return;
@@ -270,13 +270,13 @@ function Live2dResource({
 
   useEffect(() => {
     const unlistenEmotion = tauriBridge.listenStageEmotion((emotion) => {
-      const target = runtimeConfig?.emotionMap?.[emotion];
+      const target = emotionMap[emotion];
       const expression = target?.expression ?? null;
       handleRef.current?.setExpression(expression);
       onExpressionChanged?.(expression);
     });
     const unlistenMotion = tauriBridge.listenStageMotion((motion) => {
-      const target = runtimeConfig?.motionMap?.[motion];
+      const target = motionMap[motion];
       if (target) handleRef.current?.playMotion(target.group, target.index);
     });
     const unlistenLipSync = tauriBridge.listenStageLipSync((speaking, mouthOpen) => {
@@ -288,7 +288,7 @@ function Live2dResource({
       void unlistenMotion.then(stop => stop());
       void unlistenLipSync.then(stop => stop());
     };
-  }, [onExpressionChanged, runtimeConfig]);
+  }, [onExpressionChanged, emotionMap, motionMap]);
 
   return (
     <div className="ema-character-stage-resource" data-state={ready ? 'active' : 'loading'}>

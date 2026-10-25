@@ -47,6 +47,7 @@ Repository 使用 SQL 参数绑定和明确的行类型. 许多行保留 `sessio
 
 - `ProvidersRepo.save()` 在事务内替换 Provider 的能力和协议配置. 删除能力会级联删除对应模型. `ProviderModelsRepo.save()` 更新模型信息时保留已有启用选择, 启停由 `setEnabled()` 修改.
 - `SettingsRepo.read()` 区分缺失, 有效值和损坏的 JSON. `setMany()` 在开始事务前先序列化全部值.
+- `CharacterLive2dModelRepo` 为每个模型保存独立的情绪和动作映射 JSON, 两列在同一条 UPDATE 中保存. 原生模型文件仍保存在角色目录.
 - Task, 工具执行和后台进程按保存的版本或当前状态更新. 迟到的旧结果不能覆盖较新的执行.
 - `createSqliteIdBatches()` 去重 ID, 再结合连接的参数限制, 预留参数和包内批次上限拆分查询.
 

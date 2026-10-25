@@ -1,6 +1,19 @@
 # Dependency patches
 
-These patches change two installed dependencies used by the desktop interface. The root [package.json](../package.json) registers their exact versions under `pnpm.patchedDependencies`, and [pnpm-lock.yaml](../pnpm-lock.yaml) records the patch paths and hashes. pnpm applies them during dependency installation.
+These patches change three installed dependencies used by the desktop interface. The root [package.json](../package.json) registers their exact versions under `pnpm.patchedDependencies`, and [pnpm-lock.yaml](../pnpm-lock.yaml) records the patch paths and hashes. pnpm applies them during dependency installation.
+
+## Live2D loading, cleanup and expressions
+
+[@laplace.live/pixijs-live2d 0.6.1](./@laplace.live__pixijs-live2d@0.6.1.patch) fixes model loading and teardown with Pixi 8, and preserves expression eye poses during automatic blinking.
+
+The patch changes the dependency's `dist/index.js`:
+
+- FileLoader registers cleanup before validating and uploading model files. Destroying a model whose setup failed releases its settings URL and any resource URLs already created; successful models release them when their internal model is destroyed.
+- Texture loading explicitly selects Pixi's `loadTextures` parser. Archive resources use blob URLs without image extensions, so parser selection cannot rely on a filename extension.
+- Texture release and model destruction allow an internal model that has not been created yet. Cleanup can then finish without replacing the original loading error with an undefined-property error.
+- Expressions apply after automatic blinking in each frame. Explicit eye values in an expression therefore take effect after the blink update. Motions that control blinking retain the dependency's existing blink check.
+
+[Live2DStage](../src/live2d-react/Live2DStage.tsx) loads the model archive, reports loading failures and destroys partial models. See the [Live2D module](../src/live2d-react/README.md) for application initialization, resource ownership and the release CSP.
 
 ## File tree scrolling
 
@@ -43,6 +56,14 @@ The patch adds two options to the layout configuration in the dependency's bundl
 Check whether the new upstream version fixes the same behavior before carrying a patch forward. Remove a patch that is no longer needed. Otherwise, regenerate it against the new version using pnpm's patch workflow; the bundled filenames and surrounding code may have changed.
 
 Keep the patch file, root `pnpm.patchedDependencies` entry, and lockfile in sync through pnpm. Editing an installed `node_modules` file alone does not preserve the change for another installation or a release build.
+
+For Live2D, run:
+
+```sh
+pnpm --filter @ema-agent/desktop test:live2d-release
+```
+
+The browser regression uses the bundled Ema model under the configured release CSP. Setting `EMA_LIVE2D_SAMPLES_PATH` to the Cubism samples resource directory also includes Hiyori, Haru, Wanko and Ren. It checks rendering, expressions, motions, model switching and cleanup after failed or cancelled loading. Check the installed application separately for native-window behavior.
 
 For Mermaid, run:
 

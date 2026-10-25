@@ -7,14 +7,24 @@ import { CharacterStage } from '../src/stage/CharacterStage.js';
 
 const mocks = vi.hoisted(() => ({
   archive: vi.fn(),
+  setExpression: vi.fn(),
+  playMotion: vi.fn(),
+  emotionListener: undefined as ((emotion: string) => void) | undefined,
+  motionListener: undefined as ((motion: string) => void) | undefined,
   modelError: undefined as ((error: Error) => void) | undefined,
   modelReady: undefined as (() => void) | undefined,
 }));
 vi.mock('../src/api/characters.js', () => ({ charactersApi: { live2dArchive: mocks.archive } }));
 vi.mock('../src/lib/tauri/tauriBridge.js', () => ({ tauriBridge: {
   isTauri: () => false,
-  listenStageEmotion: async () => () => {},
-  listenStageMotion: async () => () => {},
+  listenStageEmotion: async (handler: (emotion: string) => void) => {
+    mocks.emotionListener = handler;
+    return () => { mocks.emotionListener = undefined; };
+  },
+  listenStageMotion: async (handler: (motion: string) => void) => {
+    mocks.motionListener = handler;
+    return () => { mocks.motionListener = undefined; };
+  },
   listenStageLipSync: async () => () => {},
 } }));
 vi.mock('@ema-agent/live2d-react', async () => {
@@ -23,7 +33,7 @@ vi.mock('@ema-agent/live2d-react', async () => {
     onError(error: Error): void;
     onReady(info: { hasExpressions: boolean; expressions: string[] }): void;
   }, ref) {
-    useImperativeHandle(ref, () => ({}));
+    useImperativeHandle(ref, () => ({ setExpression: mocks.setExpression, playMotion: mocks.playMotion }));
     mocks.modelError = props.onError;
     mocks.modelReady = () => props.onReady({ hasExpressions: false, expressions: [] });
     return <canvas />;
@@ -35,7 +45,7 @@ function presentation(name = 'ema'): CharacterStagePresentation {
     status: 'live2d', characterName: name,
     resource: {
       kind: 'live2d', name: 'model', displayName: 'Model',
-      stageScale: 1, stageOffsetX: 0, stageOffsetY: 0, runtimeConfig: null,
+      stageScale: 1, stageOffsetX: 0, stageOffsetY: 0, emotionMap: {}, motionMap: {},
     },
   };
 }
@@ -65,6 +75,8 @@ afterEach(async () => {
   await act(async () => root.unmount());
   host.remove();
   mocks.archive.mockReset();
+  mocks.setExpression.mockClear();
+  mocks.playMotion.mockClear();
   mocks.modelError = undefined;
   mocks.modelReady = undefined;
   stageChanged.mockClear();
@@ -72,6 +84,30 @@ afterEach(async () => {
 });
 
 describe('stage failure feedback', () => {
+  it('uses the model mappings supplied by Presentation for stage events', async () => {
+    const current = presentation();
+    if (current.status !== 'live2d') throw new Error('Expected Live2D presentation');
+    await act(async () => root.render(<CharacterStage
+      targetCharacterName="ema"
+      presentation={{
+        ...current,
+        resource: {
+          ...current.resource,
+          emotionMap: { happy: { expression: 'Smile' } },
+          motionMap: { wave: { group: 'TapBody', index: 2 } },
+        },
+      }}
+    />));
+    await act(async () => {
+      mocks.emotionListener!('happy');
+      mocks.motionListener!('wave');
+    });
+    expect(mocks.setExpression).toHaveBeenLastCalledWith('Smile');
+    expect(mocks.playMotion).toHaveBeenLastCalledWith('TapBody', 2);
+    await act(async () => mocks.emotionListener!('unconfigured'));
+    expect(mocks.setExpression).toHaveBeenLastCalledWith(null);
+  });
+
   it('keeps loading feedback after the archive arrives until the renderer is ready', async () => {
     await render();
     expect(host.querySelector('canvas')).not.toBeNull();

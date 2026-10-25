@@ -15,6 +15,8 @@ CREATE TABLE character_live2d_models (
   name                TEXT NOT NULL,
   character_name      TEXT NOT NULL REFERENCES characters(name) ON DELETE CASCADE,
   display_name        TEXT NOT NULL,
+  emotion_map_json    TEXT NOT NULL DEFAULT '{}',
+  motion_map_json     TEXT NOT NULL DEFAULT '{}',
   stage_scale         REAL NOT NULL DEFAULT 1 CHECK(stage_scale BETWEEN 0.1 AND 5),
   stage_offset_x      REAL NOT NULL DEFAULT 0 CHECK(stage_offset_x BETWEEN -1 AND 1),
   stage_offset_y      REAL NOT NULL DEFAULT 0 CHECK(stage_offset_y BETWEEN -1 AND 1),

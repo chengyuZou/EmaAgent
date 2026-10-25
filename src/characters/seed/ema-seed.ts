@@ -93,6 +93,18 @@ export const EMA_LIVE2D_MODELS: readonly CharacterLive2dModelInput[] = [{
   name: 'ema',
   displayName: '默认',
   isPrimary: true,
+  emotionMap: {
+    sad: { expression: 'liulei' },
+    scared: { expression: 'liulei' },
+    determined: { expression: 'taishou' },
+    focused: { expression: 'taishou' },
+    surprised: { expression: 'taishou' },
+    angry: { expression: 'monvhua' },
+  },
+  motionMap: {
+    idle: { group: 'Idle', index: 0 },
+    think: { group: 'Idle', index: 0 },
+  },
 }];
 
 export const EMA_VOICE_SAMPLES: readonly CharacterVoiceSampleInput[] = [{

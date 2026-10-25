@@ -33,7 +33,6 @@ export type {
   PreparedLive2dImport,
   Live2dExpression,
   Live2dMotion,
-  Live2dRuntimeConfig,
   Live2dConfiguration,
   Live2dMappings,
   Live2dNativeExpression,

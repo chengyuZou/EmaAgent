@@ -47,6 +47,7 @@ Foreign keys, unique indexes and ownership triggers reject invalid associations.
 
 - `ProvidersRepo.save()` replaces a provider's capability and protocol configuration in a transaction. Removing a capability also removes its dependent model rows. `ProviderModelsRepo.save()` refreshes model facts without changing an existing enabled selection; `setEnabled()` changes that selection.
 - `SettingsRepo.read()` distinguishes missing, valid and corrupt JSON. `setMany()` serializes every value before starting its write transaction.
+- `CharacterLive2dModelRepo` stores emotion and motion mapping JSON per model and saves both columns in one UPDATE. Native model files remain in the character directory.
 - Task, tool execution and background process mutations use their stored versions or current states to reject outdated updates. A late result must not overwrite a newer execution.
 - `createSqliteIdBatches()` deduplicates IDs and divides queries according to the connection's parameter limit, reserved parameters and the package's batch cap.
 
