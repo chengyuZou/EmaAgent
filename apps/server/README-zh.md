@@ -104,7 +104,7 @@ CORS 在认证前处理, 让 WebView 的预检请求通过. 除 `/health` 外, �
 
 这是具备本机文件访问能力的本地应用, 不是远程多用户文件服务.
 
-[requestBudget.ts](./src/platform/requestBudget.ts) 在解析 JSON 或 multipart 前检查 HTTP 请求体大小. 普通 JSON 的传输上限为 20 MiB, 音频上传 26 MiB, 壁纸上传 51 MiB. 业务包仍检查解码后的字节与实际文件格式. Session WebSocket 另外使用消息 Schema 和字段数量, 长度限制.
+[requestBudget.ts](./src/platform/requestBudget.ts) 在解析 JSON 或 multipart 前检查 HTTP 请求体大小. 普通 JSON 和 Turn 请求的传输上限各为 128 MiB, 音频和壁纸上传各为 256 MiB. 额度计算整个请求体, 包括编码后的数据和 multipart 字段. Live2D 导入提交和重新生成封面允许 base64 编码前最大 100 MiB 的 PNG 数据, 对应传输额度还包括 base64 增量和 JSON 字段. 业务包仍检查解码后的字节与实际文件格式, 外部模型服务也保留自己的限制. Session WebSocket 另外使用消息 Schema 和字段数量, 长度限制.
 
 输入校验失败返回 `400`, 形状为 `error: "invalid_request"` 和展开后的错误详情. 已知业务错误由各路由映射 HTTP 状态, 未处理错误交给末尾的错误处理器, 返回 `internal_error`.
 

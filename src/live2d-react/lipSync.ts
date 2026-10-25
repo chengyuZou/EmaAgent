@@ -1,4 +1,4 @@
-import type { Cubism4InternalModel } from 'pixi-live2d-display/cubism4';
+import type { CubismInternalModel } from '@laplace.live/pixijs-live2d';
 import type { ResolvedLive2DLipSyncParameter } from './modelBindings.js';
 
 const BASE_FRAME_MS = 1_000 / 60;
@@ -15,14 +15,9 @@ export interface Live2DLipSync {
 }
 
 export function attachLive2DLipSync(
-  internalModel: Cubism4InternalModel,
+  internalModel: CubismInternalModel,
   parameters: readonly ResolvedLive2DLipSyncParameter[],
 ): Live2DLipSync {
-  // 当前依赖的运行时提供 on/off, 但发布的声明未包含这两个成员.
-  const frameEvents = internalModel as Cubism4InternalModel & {
-    on(event: 'beforeModelUpdate', listener: () => void): void;
-    off(event: 'beforeModelUpdate', listener: () => void): void;
-  };
   let phase: LipSyncPhase = 'handoff';
   let mouthOpen = 0;
   let current = 0;
@@ -63,7 +58,7 @@ export function attachLive2DLipSync(
     }
   };
 
-  frameEvents.on('beforeModelUpdate', update);
+  internalModel.on('beforeModelUpdate', update);
 
   return {
     set(nextSpeaking, nextMouthOpen) {
@@ -78,7 +73,7 @@ export function attachLive2DLipSync(
       }
     },
     dispose() {
-      frameEvents.off('beforeModelUpdate', update);
+      internalModel.off('beforeModelUpdate', update);
     },
   };
 }

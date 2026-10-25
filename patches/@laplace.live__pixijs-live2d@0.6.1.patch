@@ -1,0 +1,74 @@
+diff --git a/dist/index.js b/dist/index.js
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -4476,20 +4476,24 @@
+ 			let settings = files.settings;
+ 			if (!settings) settings = await FileLoader.createSettings(files);
+ 			else if (!settings._objectURL) throw new Error("\"_objectURL\" must be specified in ModelSettings");
++			const releaseFiles = () => {
++				const objectURL = settings._objectURL;
++				URL.revokeObjectURL(objectURL);
++				if (FileLoader.filesMap[objectURL]) for (const resourceObjectURL of Object.values(FileLoader.filesMap[objectURL])) URL.revokeObjectURL(resourceObjectURL);
++				delete FileLoader.filesMap[objectURL];
++			};
++			context.live2dModel.once("destroy", () => {
++				if (!context.live2dModel.internalModel) releaseFiles();
++			});
++			context.live2dModel.once("modelLoaded", (internalModel) => {
++				internalModel.once("destroy", releaseFiles);
++			});
+ 			settings.validateFiles(files.map((file) => encodeURI(file.webkitRelativePath)));
+ 			FileLoader.upload(files, settings);
+ 			settings.resolveURL = function(url) {
+ 				return FileLoader.resolveURL(this._objectURL, url);
+ 			};
+ 			context.source = settings;
+-			context.live2dModel.once("modelLoaded", (internalModel) => {
+-				internalModel.once("destroy", function() {
+-					const objectURL = this.settings._objectURL;
+-					URL.revokeObjectURL(objectURL);
+-					if (FileLoader.filesMap[objectURL]) for (const resourceObjectURL of Object.values(FileLoader.filesMap[objectURL])) URL.revokeObjectURL(resourceObjectURL);
+-					delete FileLoader.filesMap[objectURL];
+-				});
+-			});
+ 		}
+ 		return next();
+ 	};
+@@ -4753,6 +4757,7 @@
+ 	}
+ 	return Assets.load({
+ 		src: url,
++		parser: "loadTextures",
+ 		data: { autoGenerateMipmaps: getTextureLODMode(options.lod) === "full" }
+ 	}).catch((error) => {
+ 		if (error instanceof Error) throw error;
+@@ -5932,7 +5937,7 @@
+ 	* destroying or unloading it would break URL-sharing models and poison re-loads.
+ 	*/
+ 	releaseTextures(options) {
+-		if (!options?.texture) return;
++		if (!options?.texture || !this.internalModel) return;
+ 		const settings = this.internalModel.settings;
+ 		this.textures.forEach((texture, index) => {
+ 			const path = settings.textures[index];
+@@ -5963,7 +5968,7 @@
+ 		this.destroyTextureLODStates();
+ 		this.releaseTextures(options);
+ 		this.automator.destroy();
+-		this.internalModel.destroy();
++		this.internalModel?.destroy();
+ 		super.destroy(options);
+ 	}
+ };
+@@ -15574,9 +15579,10 @@
+ 		const model = this.coreModel;
+ 		this.updateMotions(model, now);
+ 		model.saveParameters();
+-		this.motionManager.expressionManager?.update(model, now);
+ 		if (!this.motionManager.currentMotionBlinks()) this.eyeBlink?.updateParameters?.(model, dt);
++		// Apply expressions after automatic blinking so explicit eye poses keep their requested value.
++		this.motionManager.expressionManager?.update(model, now);
+ 		this.updateFocus();
+ 		this.updateNaturalMovements(dt * 1e3, now * 1e3);
+ 		if (this.lipSync && this.motionManager.currentAudio) {
+ 			let value = this.motionManager.mouthSync() * this.options.lipSyncGain;

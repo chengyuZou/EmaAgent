@@ -3,17 +3,18 @@ import {
   useEffect,
   useImperativeHandle,
   useRef,
+  useState,
   type JSX,
   type MutableRefObject,
 } from 'react';
 import * as PIXI from 'pixi.js';
 // 发布版禁止 JavaScript eval. 此模块让 Pixi 同步 Shader uniform 时不再生成函数.
-import '@pixi/unsafe-eval';
+import 'pixi.js/unsafe-eval';
 import {
-  Cubism4InternalModel,
+  CubismInternalModel,
   Live2DModel,
   MotionPriority,
-} from 'pixi-live2d-display/cubism4';
+} from '@laplace.live/pixijs-live2d';
 import {
   calculateLive2DPlacement,
   type Live2DModelBounds,
@@ -27,7 +28,7 @@ import type {
   Live2DStageReadyInfo,
 } from './types.js';
 
-type Cubism4Model = Live2DModel<Cubism4InternalModel>;
+type CubismModel = Live2DModel<CubismInternalModel>;
 
 /** 鼠标静止超过该时长后允许待机视线移动. */
 const POINTER_IDLE_GAZE_MS = 1_000;
@@ -70,8 +71,9 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
   }, ref): JSX.Element {
     const hostRef = useRef<HTMLDivElement | null>(null);
     const appRef = useRef<PIXI.Application | null>(null);
+    const [application, setApplication] = useState<PIXI.Application | null>(null);
     const renderRef = useRef<() => boolean>(() => false);
-    const modelRef = useRef<Cubism4Model | null>(null);
+    const modelRef = useRef<CubismModel | null>(null);
     const modelCleanupRef = useRef<(() => void) | null>(null);
     const loadGenerationRef = useRef(0);
     const lipSyncRef = useRef<Live2DLipSync | null>(null);
@@ -95,7 +97,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
         const model = modelRef.current;
         if (!model) return;
         if (name === null) {
-          model.internalModel.motionManager.expressionManager?.resetExpression();
+          model.internalModel.motionManager.expressionManager?.clearExpressions();
           return;
         }
 
@@ -104,6 +106,8 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
           console.warn('[live2d] 未知表情名,已忽略', name);
           return;
         }
+        // 表情按钮只保留本次选择, 不使用动作结束后会恢复旧表情的临时 reset.
+        model.internalModel.motionManager.expressionManager?.clearExpressions();
         void model.expression(name).catch((error: unknown) => {
           console.warn('[live2d] 表情执行失败', name, error);
         });
@@ -140,52 +144,67 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
         return;
       }
 
-      let app: PIXI.Application;
-      try {
-        app = new PIXI.Application({
+      const app = new PIXI.Application();
+      let cancelled = false;
+      let initialized = false;
+      const initialize = async (): Promise<void> => {
+        await app.init({
           resizeTo: host,
           backgroundAlpha: 0,
           antialias: true,
           // 固定 2x 超采样 + autoDensity 把 CSS 尺寸压回宿主: 低分屏不糊, 高分屏不放大.
           resolution: 2,
           autoDensity: true,
+          autoStart: false,
+          preference: 'webgl',
+          preferWebGLVersion: 2,
         });
-      } catch (cause) {
-        callbacksRef.current.onError?.(asError(cause));
-        return;
-      }
-
-      // 渲染失败后停止, 并让宿主展示错误. 恢复窗口不能重新启动已失败的舞台.
-      let renderFailed = false;
-      const guardedRender = (): boolean => {
-        if (renderFailed) return false;
-        try {
-          app.render();
-          return true;
-        } catch (error) {
-          renderFailed = true;
-          app.ticker.stop();
-          callbacksRef.current.onDiagnostic?.('ticker_stopped', null);
-          callbacksRef.current.onError?.(asError(error));
-          return false;
+        initialized = true;
+        if (cancelled) {
+          app.destroy(true, { children: true, texture: true, textureSource: true });
+          return;
         }
-      };
-      renderRef.current = guardedRender;
-      app.ticker.remove(app.render, app);
-      app.ticker.add(guardedRender);
 
-      appRef.current = app;
-      host.appendChild(app.view as HTMLCanvasElement);
-      callbacksRef.current.onDiagnostic?.('canvas_created', null);
-      callbacksRef.current.onDiagnostic?.('ticker_started', null);
+        // 渲染失败后停止, 并让宿主展示错误. 恢复窗口不能重新启动已失败的舞台.
+        let renderFailed = false;
+        const guardedRender = (): boolean => {
+          if (renderFailed) return false;
+          try {
+            app.render();
+            return true;
+          } catch (error) {
+            renderFailed = true;
+            app.ticker.stop();
+            callbacksRef.current.onDiagnostic?.('ticker_stopped', null);
+            callbacksRef.current.onError?.(asError(error));
+            return false;
+          }
+        };
+        renderRef.current = guardedRender;
+        app.ticker.remove(app.render, app);
+        app.ticker.add(guardedRender, undefined, PIXI.UPDATE_PRIORITY.LOW);
+
+        appRef.current = app;
+        host.appendChild(app.canvas);
+        setApplication(app);
+        app.start();
+        callbacksRef.current.onDiagnostic?.('canvas_created', null);
+        callbacksRef.current.onDiagnostic?.('ticker_started', null);
+      };
+      void initialize().catch((cause: unknown) => {
+        if (!cancelled) callbacksRef.current.onError?.(asError(cause));
+      });
 
       return () => {
+        cancelled = true;
         loadGenerationRef.current += 1;
         modelCleanupRef.current?.();
         modelCleanupRef.current = null;
         appRef.current = null;
         renderRef.current = () => false;
-        app.destroy(true, { children: true, texture: true, baseTexture: true });
+        if (initialized) {
+          app.destroy(true, { children: true, texture: true, textureSource: true });
+        }
       };
     }, []);
 
@@ -197,7 +216,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
     }, [stageOffsetX, stageOffsetY, stageScale]);
 
     useEffect(() => {
-      const app = appRef.current;
+      const app = application;
       if (!app) return;
       const generation = ++loadGenerationRef.current;
       const loadStartedAt = performance.now();
@@ -210,7 +229,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
         autoUpdate: true,
       }).then((model) => {
         if (generation !== loadGenerationRef.current || appRef.current !== app) {
-          model.destroy({ children: true });
+          model.destroy({ children: true, texture: true, baseTexture: true });
           return;
         }
 
@@ -261,7 +280,7 @@ export const Live2DStage = forwardRef<Live2DStageHandle, Live2DStageProps>(
           loadGenerationRef.current += 1;
         }
       };
-    }, [modelArchive]);
+    }, [application, modelArchive]);
 
     return (
       <div
@@ -278,7 +297,7 @@ interface MountedModelRefs {
   readonly pointerSourceRef: MutableRefObject<'window' | 'host'>;
   readonly focusPointerRef: MutableRefObject<(clientX: number, clientY: number) => void>;
   readonly lastPointerActivityAtRef: MutableRefObject<number>;
-  readonly modelRef: MutableRefObject<Cubism4Model | null>;
+  readonly modelRef: MutableRefObject<CubismModel | null>;
   readonly lipSyncRef: MutableRefObject<Live2DLipSync | null>;
   readonly expressionsRef: MutableRefObject<readonly string[]>;
   readonly stageScaleRef: MutableRefObject<number>;
@@ -289,7 +308,7 @@ interface MountedModelRefs {
 
 function mountModel(
   app: PIXI.Application,
-  model: Cubism4Model,
+  model: CubismModel,
   refs: MountedModelRefs,
 ): () => void {
   const cleanups: Array<() => void> = [];
@@ -336,7 +355,7 @@ function mountModel(
     if (!refs.interactiveRef.current) return;
     // 系统每帧采样, 静止坐标不算新活动, 保留原有待机视线.
     if (clientX === previousPointerX && clientY === previousPointerY) return;
-    const rect = (app.view as HTMLCanvasElement).getBoundingClientRect();
+    const rect = app.canvas.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return;
     previousPointerX = clientX;
     previousPointerY = clientY;
@@ -363,11 +382,11 @@ function mountModel(
     refs.expressionsRef.current = [];
     refs.modelRef.current = null;
     app.stage.removeChild(model);
-    model.destroy({ children: true });
+    model.destroy({ children: true, texture: true, baseTexture: true });
   };
 }
 
-function extractExpressionNames(internalModel: Cubism4InternalModel): string[] {
+function extractExpressionNames(internalModel: CubismInternalModel): string[] {
   return (internalModel.settings.expressions ?? [])
     .map(expression => expression.Name.trim())
     .filter(Boolean);
@@ -375,7 +394,7 @@ function extractExpressionNames(internalModel: Cubism4InternalModel): string[] {
 
 function applyFraming(
   app: PIXI.Application,
-  model: Cubism4Model,
+  model: CubismModel,
   bounds: Live2DModelBounds,
   stageScale: number,
   stageOffsetX: number,

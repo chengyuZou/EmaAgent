@@ -112,7 +112,7 @@ The default bundle is Windows NSIS, macOS DMG, or Linux DEB. Windows installers 
 
 The repository root `package.json` defines the release version. Before checking build tools or preparing files, `release.mjs` requires the Desktop `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml` package version to match it. A mismatch stops the command and lists all four values without rewriting files. Release notes and bug records follow the [docs conventions](../../docs/README.md).
 
-`--cubism-core` or `EMA_CUBISM_CORE_PATH` supplies a Cubism Core file that you have permission to distribute. Without either, the script uses `public/cubism/`. Its SHA-256 must match the approved value in `release-config.json`; the script does not download this licensed file.
+`--cubism-core` or `EMA_CUBISM_CORE_PATH` supplies a Cubism Core `06.00.0001` file that you have permission to distribute. Without either, the script uses `public/cubism/`. Its SHA-256 must match the approved value in `release-config.json`; the script does not download this licensed file.
 
 `--target` must match the current Rust host because Node, SQLite, Sharp, and FFmpeg contain platform-specific files. An explicit target places bundles under `src-tauri/target/<target>/release/bundle/`. This is not a cross-compilation workflow.
 
@@ -142,6 +142,8 @@ pnpm --filter @ema-agent/desktop build
 cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --lib
 ```
 
-`test:live2d-release` builds the actual stage, loads the bundled model and local Cubism Core under `tauri.conf.json`'s CSP, and checks the first tick and visible pixels. It uses headless Edge on Windows. On other platforms, install Playwright's Chromium first with `pnpm --filter @ema-agent/desktop exec playwright install chromium`. The test uses a temporary directory and a local HTTP server, not a user profile.
+`test:live2d-release` builds the actual stage and preview with local Cubism Core under `tauri.conf.json`'s CSP. It checks visible pixels, motion playback, expression replacement, mouth opening/closing, model switching and resource cleanup, including a failed import. Set `EMA_LIVE2D_SAMPLES_PATH` to a CubismWebSamples `Samples/Resources` directory to add Hiyori, Haru, Wanko and Ren to the bundled Ema check. Samples are read from that directory without importing them into a user profile.
+
+The test uses a temporary directory, a local HTTP server and headless Edge on Windows. On other platforms, install Playwright's Chromium first with `pnpm --filter @ema-agent/desktop exec playwright install chromium`. It does not check native window controls or audible playback.
 
 Other frontend tests use mocks for native IPC. Default Rust tests cover resource preparation, launch logs, Windows process termination, and notification payloads with a Windows COM callback round trip. They do not display or click actual notification banners. An opt-in Windows delivery check is described in the [host documentation](./src-tauri/README.md#read-and-verify). These checks do not replace installed-app testing. Restart the Tauri host after Rust changes; frontend HMR does not reload native code.

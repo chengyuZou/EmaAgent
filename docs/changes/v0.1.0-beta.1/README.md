@@ -18,4 +18,13 @@ The limits are defined in Narrative. The shared Rerank interface and its topK pa
 
 - History compensates measured row heights while scrolling upward and preserves the reading anchor when loading older messages. Returning to the actual end resumes following appended messages. Source and isolated browser checks passed; installed-build acceptance remains pending. [Bug record](./logs/en/historyScrolling.md).
 
+## Live2D compatibility
+
+- Upgraded Cubism Core to `06.00.0001` and adapted the renderer to Pixi 8 and WebGL2. Fixed model import/preview failures and resource cleanup. Ema, Hiyori, Haru, Wanko and Ren passed browser regression under the release CSP; installed-build acceptance remains pending.
+- Expressions now apply after automatic blinking, and model covers render at 3072x4096. These follow-up changes await manual application checks.
+
+## Upload limits
+
+- Increased ordinary JSON and Turn request-body limits to 128 MiB, and audio and wallpaper uploads to 256 MiB. Live2D covers accept PNG data up to 100 MiB with a separate allowance for base64 transport.
+
 Module details: [Narrative](../../../src/narrative/README.md). Earlier records: [Alpha](../v0.1.0-alpha.1/README.md).

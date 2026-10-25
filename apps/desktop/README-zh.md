@@ -112,7 +112,7 @@ pnpm release --server-only
 
 根目录 `package.json` 确定发布版本. `release.mjs` 在检查构建工具和准备文件之前, 要求 Desktop `package.json`, `src-tauri/tauri.conf.json` 和 `src-tauri/Cargo.toml` 中的 package 版本与它一致. 不一致时停止并列出四处的值, 不自动改写文件. 版本变化和 Bug 记录的写法见 [docs](../../docs/README-zh.md).
 
-通过 `--cubism-core` 或 `EMA_CUBISM_CORE_PATH` 指定有权分发的 Cubism Core. 未指定时使用 `public/cubism/` 中的文件. SHA-256 必须符合 `release-config.json` 的批准值, 脚本不会自动下载这个许可文件.
+通过 `--cubism-core` 或 `EMA_CUBISM_CORE_PATH` 指定有权分发的 Cubism Core `06.00.0001`. 未指定时使用 `public/cubism/` 中的文件. SHA-256 必须符合 `release-config.json` 的批准值, 脚本不会自动下载这个许可文件.
 
 `--target` 必须与当前 Rust host 相同, 因为 Node, SQLite, Sharp 和 FFmpeg 包含平台相关文件. 显式指定 target 后, 安装包输出在 `src-tauri/target/<target>/release/bundle/`. 这不是跨平台交叉构建流程.
 
@@ -142,6 +142,8 @@ pnpm --filter @ema-agent/desktop build
 cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --lib
 ```
 
-`test:live2d-release` 构建实际舞台, 按 `tauri.conf.json` 的 CSP 加载随包模型和本地 Cubism Core, 检查首帧更新及实际像素. Windows 使用无界面的 Edge. 其他平台先运行 `pnpm --filter @ema-agent/desktop exec playwright install chromium` 安装测试浏览器. 测试使用临时目录和本地 HTTP 服务, 不读取用户目录.
+`test:live2d-release` 构建实际舞台和预览, 按 `tauri.conf.json` 的 CSP 加载本地 Cubism Core. 检查实际像素, 动作播放, 表情替换, 嘴部开合, 模型切换和资源释放, 包括失败导入的清理. 将 `EMA_LIVE2D_SAMPLES_PATH` 设为 CubismWebSamples 的 `Samples/Resources` 目录, 可以在随包 Ema 之外加入 Hiyori, Haru, Wanko 和 Ren. 测试只读取该目录, 不把示例导入用户资料.
+
+测试使用临时目录, 本地 HTTP 服务和无界面的 Windows Edge. 其他平台先运行 `pnpm --filter @ema-agent/desktop exec playwright install chromium` 安装测试浏览器. 不检查原生窗口控件或实际听感.
 
 其他前端测试会模拟原生 IPC. 默认 Rust 测试覆盖资源准备, 启动日志, Windows 进程退出, 通知载荷和 Windows COM 点击回调往返, 不展示或点击真实通知横幅. 显式开启的 Windows 投递检查见[宿主文档](./src-tauri/README-zh.md#从哪里看与如何验证). 这些检查不能替代安装版验收. 修改 Rust 后需要重启 Tauri 宿主, 前端 HMR 不会更新原生代码.

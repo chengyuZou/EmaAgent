@@ -24,10 +24,10 @@
     "react-dom": "^18.3.0"
   },
   "dependencies": {
-    "@pixi/unsafe-eval":    "7.4.3",
+    "@laplace.live/pixijs-live2d": "0.6.1",
+    "@pixi/sound":          "6.0.1",
     "jszip":                "^3.10.1",
-    "pixi-live2d-display": "0.5.0-beta",
-    "pixi.js":             "^7.4.3"
+    "pixi.js":             "8.21.0"
   },
   "devDependencies": {
     "@types/react":     "^18.3.12",

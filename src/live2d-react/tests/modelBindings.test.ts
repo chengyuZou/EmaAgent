@@ -1,22 +1,21 @@
-import type { Cubism4InternalModel } from 'pixi-live2d-display/cubism4';
+import type { CubismInternalModel } from '@laplace.live/pixijs-live2d';
 import { describe, expect, it } from 'vitest';
 import { resolveLive2DLipSyncParameters } from '../modelBindings.js';
 
 function internalModel(
   ids: readonly string[],
   lipSyncIds: readonly string[],
-): Cubism4InternalModel {
+): CubismInternalModel {
   return {
     coreModel: {
       getModel: () => ({ parameters: { ids } }),
-      getParameterIndex: (id: string) => ids.indexOf(id),
       getParameterMinimumValue: () => 0,
       getParameterMaximumValue: () => 2,
     },
     settings: {
       getLipSyncParameters: () => [...lipSyncIds],
     },
-  } as unknown as Cubism4InternalModel;
+  } as unknown as CubismInternalModel;
 }
 
 describe('resolveLive2DLipSyncParameters', () => {

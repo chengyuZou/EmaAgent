@@ -4,6 +4,7 @@ import { Readable } from 'node:stream';
 import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import type { CharacterStore } from '@ema-agent/characters';
+import { REQUEST_VALUE_LIMITS } from '../../platform/requestBudget.js';
 import { characterError } from './errors.js';
 import { jsonBody } from '../validate.js';
 
@@ -63,13 +64,19 @@ const prepareLive2dImportBody = z.object({
   source: z.string().min(1),
 }).strict();
 
+// 编码长度的上限不能区分同一组 base64 内多出的 1-2 字节, 同时检查解码大小.
+const previewPngBase64 = z.string().min(1)
+  .max(Math.ceil(REQUEST_VALUE_LIMITS.maxLive2dPreviewBytes / 3) * 4)
+  .refine(value => Buffer.byteLength(value, 'base64') <= REQUEST_VALUE_LIMITS.maxLive2dPreviewBytes, {
+    message: 'Live2D preview PNG exceeds 100 MiB',
+  });
+
 const commitLive2dImportBody = z.object({
-  previewPngBase64: z.string().min(1).max(4_000_000),
+  previewPngBase64,
 }).strict();
 
 const previewBody = z.object({
-  // 离屏渲出的封面 PNG(base64);预览图很小,4M 字符上限只是基础边界.
-  dataBase64: z.string().min(1).max(4_000_000),
+  dataBase64: previewPngBase64,
 });
 
 const importFileBody = z.object({

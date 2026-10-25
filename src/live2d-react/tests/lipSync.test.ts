@@ -1,4 +1,4 @@
-import type { Cubism4InternalModel } from 'pixi-live2d-display/cubism4';
+import type { CubismInternalModel } from '@laplace.live/pixijs-live2d';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { attachLive2DLipSync } from '../lipSync.js';
 
@@ -15,7 +15,7 @@ function setup() {
       if (event === 'beforeModelUpdate') listeners.add(listener);
     },
     off: (_event: string, listener: () => void) => listeners.delete(listener),
-  } as unknown as Cubism4InternalModel;
+  } as unknown as CubismInternalModel;
 
   let nowMs = 0;
   vi.spyOn(performance, 'now').mockImplementation(() => nowMs);

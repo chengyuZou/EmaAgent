@@ -1,4 +1,4 @@
-import type { Cubism4InternalModel } from 'pixi-live2d-display/cubism4';
+import type { CubismInternalModel } from '@laplace.live/pixijs-live2d';
 
 export interface ResolvedLive2DLipSyncParameter {
   index: number;
@@ -10,7 +10,7 @@ export interface ResolvedLive2DLipSyncParameter {
  * Cubism getParameterIndex() 会为未知 ID 创建虚拟参数, 因此先按模型真实 ID 过滤.
  */
 export function resolveLive2DLipSyncParameters(
-  internalModel: Cubism4InternalModel,
+  internalModel: CubismInternalModel,
 ): ResolvedLive2DLipSyncParameter[] {
   const coreModel = internalModel.coreModel;
   const parameters = coreModel.getModel().parameters;
@@ -19,7 +19,7 @@ export function resolveLive2DLipSyncParameters(
 
   return uniqueNonEmpty(requestedLipSyncIds).flatMap((id) => {
     if (!parameterIds.has(id)) return [];
-    const index = coreModel.getParameterIndex(id);
+    const index = parameters.ids.indexOf(id);
     const minimum = coreModel.getParameterMinimumValue(index);
     const maximum = coreModel.getParameterMaximumValue(index);
     return [{

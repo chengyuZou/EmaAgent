@@ -104,7 +104,7 @@ CORS runs before authentication so WebView preflight requests can succeed. Real 
 
 This is a local application with authenticated local-file access, not a remote multi-user file service.
 
-[requestBudget.ts](./src/platform/requestBudget.ts) checks HTTP body size before JSON or multipart parsing. Ordinary JSON uses a 20 MiB transport limit, audio uploads 26 MiB and wallpaper uploads 51 MiB. Business packages still validate decoded bytes and actual file formats. Session WebSocket messages have their own schemas and value limits.
+[requestBudget.ts](./src/platform/requestBudget.ts) checks HTTP body size before JSON or multipart parsing. Ordinary JSON and Turn requests each use a 128 MiB transport limit; audio and wallpaper uploads each use 256 MiB. These limits cover the complete request body, including encoded data and multipart fields. Live2D import commits and regenerated covers accept PNG data up to 100 MiB before base64 encoding; their transport budget also includes base64 expansion and JSON fields. Business packages still validate decoded bytes and actual file formats, and external model services retain their own limits. Session WebSocket messages have their own schemas and value limits.
 
 Validation failures return `400` with `error: "invalid_request"` and flattened details. Individual routes map known business errors to HTTP statuses; unexpected errors reach the final handler and return `internal_error`.
 
