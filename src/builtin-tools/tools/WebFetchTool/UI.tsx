@@ -64,7 +64,7 @@ function WebFetchResultCard({ result, toolbarContainer }: {
 }): JSX.Element {
   const isHtml = /^\s*(<!doctype\s+html|<html[\s>])/i.test(result.content);
   return (
-    <div className="ema-tool-result-layout flex min-w-0 flex-col text-[11px] leading-relaxed">
+    <div className="flex min-w-0 flex-col text-[11px] leading-relaxed">
       <div className="ema-tool-result-details flex min-w-0 flex-col gap-1">
         <Tooltip content={result.url} variant="card">
           <a

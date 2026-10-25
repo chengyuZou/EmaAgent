@@ -21,10 +21,10 @@ export function AskUserResultView({ data }: { data: unknown }): JSX.Element | nu
   if (!result) return null;
   const entries = Object.entries(result.answers);
   if (entries.length === 0) {
-    return <span className="text-[11px] text-[var(--ema-text-tertiary)]">用户未作答</span>;
+    return <div className="ema-tool-result-details text-[11px] text-[var(--ema-text-tertiary)]">用户未作答</div>;
   }
   return (
-    <div className="flex flex-col gap-1">
+    <div className="ema-tool-text-scroll ema-tool-result-details flex flex-col gap-1">
       {entries.map(([question, answer]) => (
         <div key={question} className="text-[11px] leading-relaxed">
           <div className="text-[var(--ema-text-tertiary)]">{question}</div>

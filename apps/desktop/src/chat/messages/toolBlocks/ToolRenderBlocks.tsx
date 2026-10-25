@@ -17,7 +17,7 @@ export function ToolRows({ rows }: { rows: readonly ToolArgRow[] }): JSX.Element
 
 export function ToolArgsView({ source }: { source: string }): JSX.Element {
   if (!source || source === '{}' || source === 'null') {
-    return <span className="text-[11px] text-[var(--ema-text-tertiary)]">无参数</span>;
+    return <div className="ema-tool-result-details text-[11px] text-[var(--ema-text-tertiary)]">无参数</div>;
   }
   return <CodeViewer source={source} language="json" embedded />;
 }

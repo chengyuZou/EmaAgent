@@ -30,7 +30,7 @@ export function SkillResultView({ data }: { data: unknown }): JSX.Element | null
   if (!result) return null;
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="ema-tool-text-scroll ema-tool-result-details flex flex-col gap-1">
       <span className="text-[11px] text-[var(--ema-text-tertiary)]">
         已加载技能 {result.name}{result.version ? ` · v${result.version}` : ''}
       </span>

@@ -29,7 +29,7 @@ export function SubagentResultView({ data }: { data: unknown }): JSX.Element | n
 
   if (result.kind === 'background') {
     return (
-      <div className="flex items-center gap-2 text-[11px] leading-relaxed">
+      <div className="ema-tool-text-scroll ema-tool-result-details flex items-center gap-2 text-[11px] leading-relaxed">
         <span className="text-[var(--ema-text-secondary)]">子 Agent 后台运行中</span>
         <Badge variant={result.via === 'auto' ? 'warn' : 'primary'}>
           {result.via === 'auto' ? '超时自动转后台' : '后台'}
@@ -40,7 +40,7 @@ export function SubagentResultView({ data }: { data: unknown }): JSX.Element | n
   }
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="ema-tool-text-scroll ema-tool-result-details flex flex-col gap-1">
       <span className="text-[11px] text-[var(--ema-text-tertiary)]">
         子 Agent 完成 · 输出 {result.output.length.toLocaleString()} 字符
         {` · tokens ${result.usage.inputTokens.toLocaleString()}/${result.usage.outputTokens.toLocaleString()}`}

@@ -1,10 +1,8 @@
-import type { JSX } from 'react';
+import { useMemo, type JSX } from 'react';
 import type { FileWriteResult } from './FileWriteTool.js';
 import { patchToUnifiedText } from '../FileEditTool/patch.js';
 import { FilePatchView } from '../shared/filePatchView.js';
-import { Tooltip } from '@ema-agent/ui';
-
-const CREATED_PREVIEW_LINES = 10;
+import { Tooltip, CodeViewer, languageForPath } from '@ema-agent/ui';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -15,7 +13,7 @@ export function FileWriteResultView({ data }: { data: unknown }): JSX.Element | 
   if (!result) return null;
   if (result.type === 'updated') {
     return (
-      <div className="ema-tool-result-layout ema-file-change-content flex min-w-0 flex-col">
+      <div className="ema-file-change-content flex min-w-0 flex-col">
         <div className="ema-tool-result-details ema-file-change-summary flex items-center gap-2 text-[11px] leading-relaxed">
           <span className="text-[var(--ema-text-secondary)]">已覆盖写入</span>
           <span className="text-[var(--ema-success-text)]">+{result.additions}</span>
@@ -26,30 +24,26 @@ export function FileWriteResultView({ data }: { data: unknown }): JSX.Element | 
     );
   }
 
-  const lines = result.content.length === 0 ? [] : result.content.split('\n');
-  if (lines.at(-1) === '') lines.pop();
-  const preview = lines.slice(0, CREATED_PREVIEW_LINES);
-  const omitted = lines.length - preview.length;
+  return <CreatedFileContent content={result.content} filePath={result.filePath} />;
+}
+
+function CreatedFileContent({ content, filePath }: {
+  readonly content: string;
+  readonly filePath: string;
+}): JSX.Element {
+  const lineNumbers = useMemo(() => (
+    content ? content.split('\n').map((_line, index) => String(index + 1)) : []
+  ), [content]);
+
   return (
-    <div className="ema-tool-result-layout ema-file-change-content flex min-w-0 flex-col">
-      <span className="ema-tool-result-details ema-file-change-summary text-[11px] text-[var(--ema-text-secondary)]">
-        新建文件 · {result.additions.toLocaleString()} 行 · {(result.bytesWritten / 1024).toFixed(1)} KB
-      </span>
-      <div className="ema-tool-result-details w-max min-w-full font-mono text-[11px] leading-relaxed">
-        {preview.map((line, index) => (
-          <div key={index} className="flex text-[var(--ema-text-tertiary)]">
-            <span className="w-9 shrink-0 select-none text-right opacity-60">{index + 1}</span>
-            <span className="min-w-0 flex-1 pl-2 whitespace-pre text-[var(--ema-text-secondary)]">
-              {line}
-            </span>
-          </div>
-        ))}
-        {omitted > 0 && (
-          <div className="px-2 py-0.5 text-center text-[10px] text-[var(--ema-text-tertiary)]">
-            ··· 其余 {omitted} 行 ···
-          </div>
-        )}
-      </div>
+    <div className="ema-file-change-content ema-file-code ema-material-code">
+      <CodeViewer
+        source={content}
+        language={languageForPath(filePath) ?? 'text'}
+        lineNumbers={lineNumbers}
+        embedded
+        wrapLines={false}
+      />
     </div>
   );
 }
@@ -57,6 +51,12 @@ export function FileWriteResultView({ data }: { data: unknown }): JSX.Element | 
 /** 行头摘要:写入路径. */
 export function fileWriteTitle(args: unknown): string | null {
   return isRecord(args) && typeof args['file_path'] === 'string' ? args['file_path'] : null;
+}
+
+export function fileWriteResultSummary(data: unknown): string | null {
+  const result = asFileWriteResult(data);
+  if (result?.type !== 'created') return null;
+  return `新建文件 · ${result.additions.toLocaleString()} 行 · ${(result.bytesWritten / 1024).toFixed(1)} KB`;
 }
 
 /** 类型守卫: 失败结果与旧消息不满足形状时返回 null, 前端回落通用渲染. */

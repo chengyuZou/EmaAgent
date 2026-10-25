@@ -1,24 +1,33 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { elementScroll, useVirtualizer } from '@tanstack/react-virtual';
 
-type ReadingAnchor = { readonly messageId: string; readonly offsetPx: number };
+type ReadingAnchor = {
+  readonly messageId: string;
+  /** scrollTop - row.start; the top inset can leave the anchor below the edge, making this negative. */
+  readonly offsetPx: number;
+};
 type NavigationTarget =
   | { readonly kind: 'message'; readonly messageId: string }
+  // started prevents restarting a native animation on every measurement commit.
   | { readonly kind: 'latest'; readonly smooth: boolean; started: boolean };
 
 interface MessageViewportInput {
   readonly messages: readonly { readonly id: string }[];
   readonly scroller: HTMLDivElement | null;
-  /** 整个历史窗口的身份, 分页和实时更新不改变它. */
+  /** Changes when replacing the history window, but stays stable during pagination and live updates. */
   readonly windowKey: string;
+  /** Initial/window replacement loading is not ready; pagination keeps the current window ready. */
   readonly ready: boolean;
+  /** False when a newer page still separates this window from the latest messages. */
   readonly reachesLatest: boolean;
+  /** Applied once per windowKey, rather than restarting navigation on ordinary renders. */
   readonly initialMessageId?: string;
   readonly estimateSize: (index: number) => number;
   readonly paddingStart: number;
   readonly paddingEnd: number;
 }
 
+// The button may treat 24px as near the end; following resumes only at the actual end.
 const END_THRESHOLD = 24;
 const END_POSITION_TOLERANCE = 1;
 
@@ -27,26 +36,31 @@ export function useMessageViewport({
   estimateSize, paddingStart, paddingEnd,
 }: MessageViewportInput) {
   const [atBottom, setAtBottom] = useState(true);
+  // Navigation lives in refs, so an explicit request still needs a React commit.
   const [, requestPositionCommit] = useState(0);
   const anchor = useRef<ReadingAnchor | null>(null);
-  // 这是用户意图, 不能被程序定位产生的 scroll 事件改写.
+  // Following expresses user intent; a scroll caused by measurement must not turn it on or off.
   const following = useRef(!initialMessageId);
   const navigation = useRef<NavigationTarget | null>(null);
-  const initialized = useRef(false);
   const currentWindow = useRef<string | null>(null);
   const previousFirstMessageId = useRef<string | undefined>(undefined);
-  const restoringPrepend = useRef(false);
   const userScrolling = useRef(false);
   const scrollIdleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const programmaticOffset = useRef<number | null>(null);
-  const lastScrollTop = useRef(0);
+  // The next scroll event subtracts this baseline. Program writes shift it by their
+  // actual displacement, preserving user movement that happened before its event arrived.
+  const scrollBaseline = useRef(0);
 
   const getItemKey = useCallback((index: number) => messages[index]!.id, [messages]);
-  const scrollToFn = useCallback<typeof elementScroll>((offset, options, instance) => {
+  const scrollToFn = useCallback<typeof elementScroll<HTMLDivElement>>((offset, options, instance) => {
     const element = instance.scrollElement;
-    const maximum = element ? Math.max(0, element.scrollHeight - element.clientHeight) : 0;
-    programmaticOffset.current = Math.max(0, Math.min(offset + (options.adjustments ?? 0), maximum));
-    elementScroll(offset, options, instance);
+    const beforeWrite = element?.scrollTop ?? 0;
+    // Native scrolling can advance between TanStack's offset callback and a resize.
+    // Apply size deltas to the live position; absolute navigation keeps its requested offset.
+    const baseOffset = options.adjustments !== undefined && element ? beforeWrite : offset;
+    elementScroll(baseOffset, options, instance);
+    if (element && options.behavior !== 'smooth') {
+      scrollBaseline.current += element.scrollTop - beforeWrite;
+    }
   }, []);
   const virtualizer = useVirtualizer<HTMLDivElement, HTMLDivElement>({
     count: messages.length,
@@ -55,7 +69,7 @@ export function useMessageViewport({
     estimateSize,
     scrollToFn,
     overscan: 5,
-    // 不让内核的尺寸补偿, 前插锚定和回底与下面的定位再执行一遍.
+    // TanStack compensates row measurements. This hook owns prepends, navigation and follow intent.
     anchorTo: 'start',
     followOnAppend: false,
     paddingStart,
@@ -63,7 +77,6 @@ export function useMessageViewport({
     scrollPaddingStart: paddingStart,
     scrollPaddingEnd: paddingEnd,
   });
-  virtualizer.shouldAdjustScrollPositionOnItemSizeChange = () => false;
 
   function nearEnd(): boolean {
     if (!scroller) return true;
@@ -76,9 +89,25 @@ export function useMessageViewport({
     if (row) anchor.current = { messageId: String(row.key), offsetPx: scroller.scrollTop - row.start };
   }
 
+  function positionAt(offset: number): void {
+    if (!scroller) return;
+    const maximum = Math.max(0, virtualizer.getTotalSize() - scroller.clientHeight);
+    const destination = Math.max(0, Math.min(offset, maximum));
+    const applied = Math.abs(scroller.scrollTop - destination) > END_POSITION_TOLERANCE;
+    if (applied) virtualizer.scrollToOffset(destination);
+  }
+
+  function updateFollowing(direction: number): void {
+    if (direction < 0) {
+      following.current = false;
+    } else if (direction > 0 && scroller) {
+      const remaining = scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop;
+      following.current = reachesLatest && remaining <= END_POSITION_TOLERANCE;
+    }
+  }
+
   function stopUserScroll(): void {
     userScrolling.current = false;
-    restoringPrepend.current = false;
     if (scrollIdleTimer.current !== null) clearTimeout(scrollIdleTimer.current);
     scrollIdleTimer.current = null;
   }
@@ -87,7 +116,8 @@ export function useMessageViewport({
     stopUserScroll();
     const target = navigation.current;
     if (target?.kind !== 'latest' || !target.smooth || !target.started) return;
-    // 平滑途中新测量会改变末项位置. 一段原生动画结束后, 继续去当前末项, 不回到旧目标.
+    // scrollToEnd targets the last item at the time of the call. If messages arrive during
+    // that animation, finish at the new last item after the old animation settles.
     if (!nearEnd()) {
       target.started = false;
       requestPositionCommit(value => value + 1);
@@ -97,25 +127,15 @@ export function useMessageViewport({
   function onScroll(event: Event): void {
     if (!scroller || event.target !== scroller) return;
     const scrollTop = scroller.scrollTop;
-    const scrollDelta = scrollTop - lastScrollTop.current;
-    lastScrollTop.current = scrollTop;
+    const scrollDelta = scrollTop - scrollBaseline.current;
+    scrollBaseline.current = scrollTop;
     const bottom = nearEnd();
     setAtBottom(bottom);
-    const commanded = programmaticOffset.current !== null
-      && Math.abs(scroller.scrollTop - programmaticOffset.current) <= 1;
-    if (commanded) programmaticOffset.current = null;
-    // 原生滚动条不保证派发 DOM pointerdown. 非导航, 非程序定位的 scroll 本身就是阅读输入.
-    if (!commanded && navigation.current === null) {
+    // Native scrollbar gestures may omit DOM pointerdown. Movement after our synchronous
+    // write is itself reading input, even without a wheel, touch or pointer event.
+    if (scrollDelta !== 0 && navigation.current === null) {
       userScrolling.current = true;
-      restoringPrepend.current = false;
-      // 靠近底部不等于用户想继续跟随. 上滚后保持阅读位置, 只有向下滚到底才恢复;
-      // 1px 容差只处理滚动位置的取整误差, 没有位移的事件不改变跟随意图.
-      if (scrollDelta < 0) {
-        following.current = false;
-      } else if (scrollDelta > 0) {
-        const reachedEnd = scroller.scrollHeight - scroller.clientHeight - scrollTop <= END_POSITION_TOLERANCE;
-        following.current = reachedEnd && reachesLatest;
-      }
+      updateFollowing(scrollDelta);
       rememberReadingPosition();
     }
     if (userScrolling.current || navigation.current?.kind === 'latest') {
@@ -124,18 +144,16 @@ export function useMessageViewport({
     }
     if (navigation.current?.kind === 'latest' && navigation.current.started && bottom) {
       navigation.current = null;
-      initialized.current = true;
     }
   }
 
   useLayoutEffect(() => {
     if (currentWindow.current !== windowKey) {
+      stopUserScroll();
       currentWindow.current = windowKey;
-      initialized.current = false;
       following.current = !initialMessageId;
       anchor.current = null;
       previousFirstMessageId.current = messages[0]?.id;
-      restoringPrepend.current = false;
       navigation.current = initialMessageId
         ? { kind: 'message', messageId: initialMessageId }
         : { kind: 'latest', smooth: false, started: false };
@@ -146,19 +164,15 @@ export function useMessageViewport({
       && messages[0]?.id !== previousFirst
       && messages.some(message => message.id === previousFirst);
     previousFirstMessageId.current = messages[0]?.id;
-    // 新行挂载与测量可能分几次提交. 在用户再次滚动或结束滚动前继续恢复同一锚点,
-    // 不能只补偿新增 ID 的第一次提交, 否则预估行高变成真实行高时仍会跳动.
-    if (prependedOlderMessages) restoringPrepend.current = true;
     if (messages.length === 0) {
-      initialized.current = true;
       navigation.current = null;
       return;
     }
 
     const target = navigation.current;
-    if (!target && userScrolling.current && !following.current && !restoringPrepend.current) {
-      // 仅已有内容高度变化时保留拖动位置. 补旧页必须先恢复原消息的位置,
-      // 不能在尚未调整 scrollTop 时记录新顶部, 否则会丢失补页前的阅读锚点.
+    if (!target && userScrolling.current && !following.current && !prependedOlderMessages) {
+      // First measurements already preserve reading. Refresh the anchor for real scrolling,
+      // but do not replace the pre-insertion anchor before restoring a newly prepended page.
       rememberReadingPosition();
       setAtBottom(nearEnd());
       return;
@@ -167,14 +181,12 @@ export function useMessageViewport({
       const index = Math.max(0, messages.findIndex(message => message.id === target.messageId));
       const row = virtualizer.measurementsCache[index];
       if (!row) return;
-      const offset = row.start - paddingStart;
-      if (Math.abs(scroller.scrollTop - offset) > 1) virtualizer.scrollToOffset(offset);
-      // 目标进入真实挂载范围后才结束导航, 后续测量继续围绕同一个 ID 补偿.
+      positionAt(row.start - paddingStart);
+      // Keep the target until it mounts, so estimate changes cannot finish navigation early.
       const messageId = String(row.key);
       anchor.current = { messageId, offsetPx: -paddingStart };
       if (virtualizer.elementsCache.has(messageId)) {
         navigation.current = null;
-        initialized.current = true;
       }
     } else if (target?.kind === 'latest' && target.smooth) {
       if (!target.started) {
@@ -183,32 +195,28 @@ export function useMessageViewport({
       }
       if (nearEnd()) {
         navigation.current = null;
-        initialized.current = true;
       }
     } else {
       let offset: number | undefined;
       if (target?.kind === 'latest' || (following.current && (reachesLatest || !anchor.current))) {
-        offset = Math.max(0, virtualizer.getTotalSize() - scroller.clientHeight);
+        offset = virtualizer.getTotalSize() - scroller.clientHeight;
       } else if (anchor.current) {
         const index = messages.findIndex(message => message.id === anchor.current!.messageId);
         const row = virtualizer.measurementsCache[index];
         if (row) {
-          // 收起正文可能使锚点所在行变短, 偏移不能落到这条消息之外.
+          // Collapsing the anchor row can make it shorter than the saved reading offset.
           const withinRow = Math.min(anchor.current.offsetPx, Math.max(0, row.size - paddingStart));
           offset = row.start + withinRow;
         }
       }
       if (offset !== undefined) {
-        const maximum = Math.max(0, virtualizer.getTotalSize() - scroller.clientHeight);
-        const destination = Math.max(0, Math.min(offset, maximum));
-        if (Math.abs(scroller.scrollTop - destination) > 1) virtualizer.scrollToOffset(destination);
+        positionAt(offset);
         if (!reachesLatest && following.current) {
-          // 窗口末尾不是会话最新. 初始显示窗口末尾后改为阅读, 后续补页不自动跟随.
+          // An older window opens at its own end once; later pages must preserve reading.
           following.current = false;
           rememberReadingPosition();
         }
         navigation.current = null;
-        initialized.current = true;
       }
     }
     setAtBottom(nearEnd());
@@ -221,15 +229,17 @@ export function useMessageViewport({
         navigation.current = null;
         virtualizer.scrollToOffset(scroller.scrollTop);
       }
-      programmaticOffset.current = null;
-      lastScrollTop.current = scroller.scrollTop;
+      updateFollowing(scroller.scrollTop - scrollBaseline.current);
+      scrollBaseline.current = scroller.scrollTop;
       userScrolling.current = true;
       rememberReadingPosition();
     };
     const wheel = (event: WheelEvent): void => {
       if (event.deltaY === 0) return;
       takeControl();
-      if (event.deltaY < 0) following.current = false;
+      // The compositor may already have moved before wheel arrives. Its direction still
+      // expresses intent when the later scroll event has no unaccounted displacement.
+      updateFollowing(event.deltaY);
     };
     const pointer = (event: PointerEvent): void => {
       const scrollbarWidth = Math.max(16, scroller.offsetWidth - scroller.clientWidth);
@@ -246,7 +256,7 @@ export function useMessageViewport({
     scroller.addEventListener('touchmove', takeControl, { passive: true });
     scroller.addEventListener('pointerdown', pointer);
     scroller.addEventListener('keydown', keyboard);
-    // 必须先于 virtualizer 的冒泡监听: 它会 flushSync, layout effect 要读到新锚点而不是旧位置.
+    // TanStack's bubbling listener can flushSync. Capture must update the reading anchor first.
     scroller.addEventListener('scroll', onScroll, { capture: true, passive: true });
     scroller.addEventListener('scrollend', settleScroll);
     return () => {
@@ -275,7 +285,7 @@ export function useMessageViewport({
   }
 
   function isPositioning(): boolean {
-    return !initialized.current || navigation.current !== null;
+    return currentWindow.current !== windowKey || navigation.current !== null;
   }
 
   return { virtualizer, atBottom, scrollToMessage, scrollToLatest, isPositioning };

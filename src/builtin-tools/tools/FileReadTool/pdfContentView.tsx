@@ -8,7 +8,7 @@ export function PdfContentView({ result }: { result: PdfReadResult }): JSX.Eleme
   const preview = result.content.slice(0, PREVIEW_CHARS);
   const omitted = result.content.length - preview.length;
   return (
-    <div className="flex flex-col gap-1 text-[11px] leading-relaxed">
+    <div className="ema-tool-text-scroll ema-tool-result-details flex flex-col gap-1 text-[11px] leading-relaxed">
       <div className="flex items-center gap-2">
         <span className="text-[var(--ema-text-secondary)]">
           第 {result.startPage}-{result.endPage} 页 · 共 {result.totalPages} 页

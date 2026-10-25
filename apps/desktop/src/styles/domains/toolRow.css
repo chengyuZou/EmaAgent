@@ -85,12 +85,32 @@
 
 .ema-tool-pane-toolbar {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--ema-space-2);
   padding: var(--ema-space-2) var(--ema-space-3) 0;
   color: var(--ema-text-tertiary);
   font-size: 10px;
+}
+
+.ema-tool-pane-heading {
+  display: flex;
+  flex: 1;
+  align-items: baseline;
+  gap: var(--ema-space-2);
+  min-width: 0;
+}
+
+.ema-tool-pane-label {
+  flex: none;
+  white-space: nowrap;
+}
+
+.ema-tool-pane-summary {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  color: var(--ema-text-secondary);
 }
 
 .ema-tool-pane-actions {
@@ -118,19 +138,10 @@
 
 .ema-tool-pane-content {
   min-width: 0;
-  padding: var(--ema-space-2) var(--ema-space-3);
-}
-
-/* 滚动区域与外框对齐. 含代码或差异视图的结果由各段正文自行留白. */
-.ema-tool-pane-content:has(> .ema-tool-result-layout) {
-  padding: 0;
+  white-space: normal;
 }
 
 .ema-tool-result-details {
-  padding: var(--ema-space-2) var(--ema-space-3);
-}
-
-.ema-tool-pane-content:has(> .ema-tool-result-layout, .ema-code-viewer) > .ema-tool-error {
   padding: var(--ema-space-2) var(--ema-space-3);
 }
 
@@ -138,24 +149,23 @@
   --ema-code-max-height: 8rem;
 }
 
-.ema-tool-pane--input .ema-tool-pane-content {
-  max-height: 8rem;
+/* 每段文字单独限制高度. Markdown 内的代码块不能改变整篇文档或相邻错误的滚动职责. */
+.ema-tool-text-scroll {
+  min-width: 0;
+  max-height: var(--ema-code-max-height, var(--ema-tool-body-max-height));
   overflow: auto;
+}
+
+.ema-tool-pane--input .ema-tool-text-scroll {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   word-break: break-word;
 }
 
-.ema-tool-pane--output .ema-tool-pane-content {
-  max-height: var(--ema-tool-body-max-height);
-  overflow: auto;
+.ema-tool-pane--output .ema-tool-text-scroll {
   white-space: pre;
   overflow-wrap: normal;
   word-break: normal;
-}
-
-.ema-tool-generic-result {
-  min-width: 0;
 }
 
 .ema-tool-pane pre.hljs {
@@ -308,8 +318,8 @@
   color: var(--ema-text-secondary);
 }
 
-/* Read 的行号和源码共用 CodeViewer 的可视区, 不再给行号单独叠加滚动. */
-.ema-file-read-code {
+/* Read 与新建 Write 共用源码字号, 行高和 CodeViewer 的行号栏. */
+.ema-file-code {
   min-width: 0;
   --ema-code-font-size: 12px;
   --ema-code-line-height: 1.7;
@@ -332,27 +342,6 @@
 
 .ema-tool-pane--output .markdown-content pre {
   overflow: visible;
-}
-
-/* 差异组件在 shadow root 内同时处理横纵滚动, 外层不再裁剪它的底部滚动条. */
-.ema-tool-pane--output .ema-tool-pane-content:has(.ema-tool-diff) {
-  max-height: none;
-  overflow: visible;
-}
-
-/* 源码与 HTML 预览各自限制高度并滚动, 外层不再叠加纵向滚动条. */
-.ema-tool-pane .ema-tool-pane-content:has(.ema-code-viewer, .ema-html-block) {
-  max-height: none;
-  overflow: visible;
-  padding: 0;
-  white-space: normal;
-}
-
-/* 多个周目的总高度由聊天列表承载, 每个展开的周目单独限制文本高度. */
-.ema-tool-pane--output .ema-tool-pane-content:has(> .ema-narrative-results) {
-  max-height: none;
-  overflow: visible;
-  white-space: normal;
 }
 
 .ema-tool-pane .ema-code-viewer--embedded .cm-content {

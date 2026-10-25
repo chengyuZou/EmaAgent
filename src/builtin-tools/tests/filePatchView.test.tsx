@@ -8,17 +8,21 @@ import { parsePatch } from 'diff';
 import { parsePatchFiles } from '@pierre/diffs';
 import { preloadPatchDiff } from '@pierre/diffs/ssr';
 import type { PatchDiffProps } from '@pierre/diffs/react';
+import type { CodeViewerProps } from '@ema-agent/ui';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FileEditResult } from '../tools/FileEditTool/FileEditTool.js';
 import type { FileWriteResult } from '../tools/FileWriteTool/FileWriteTool.js';
 import { FileEditResultView } from '../tools/FileEditTool/UI.js';
-import { FileWriteResultView } from '../tools/FileWriteTool/UI.js';
+import { FileWriteResultView, fileWriteResultCopyText, fileWriteResultSummary } from '../tools/FileWriteTool/UI.js';
 import { buildStructuredPatch, patchToUnifiedText } from '../tools/FileEditTool/patch.js';
 
 const diffView = vi.hoisted(() => vi.fn());
+const codeView = vi.hoisted(() => vi.fn());
 vi.mock('@pierre/diffs/react', () => ({ PatchDiff: diffView }));
 vi.mock('@ema-agent/ui', () => ({
   Badge: ({ children }: { children: ReactNode }) => createElement('span', {}, children),
+  CodeViewer: codeView,
+  languageForPath: () => 'typescript',
 }));
 
 let host: HTMLDivElement;
@@ -43,6 +47,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   document.documentElement.dataset.theme = 'light';
   diffView.mockImplementation(() => createElement('div', { 'data-test-diff': true }));
+  codeView.mockImplementation(({ source }: CodeViewerProps) => createElement('pre', { 'data-test-code': true }, source));
   host = document.createElement('div');
   document.body.append(host);
   root = createRoot(host);
@@ -72,7 +77,7 @@ describe('内置 Tool 的官方补丁视图', () => {
     expect(/--diffs-bg-deletion-override:\s*var\(--ema-danger-muted\)/.test(css)).toBe(true);
   });
 
-  it.each(['edit', 'updated', 'created'] as const)('%s 正文和摘要都不预留复制按钮的右侧空栏', async (kind) => {
+  it.each(['edit', 'updated', 'created'] as const)('%s 正文不预留复制按钮的右侧空栏', async (kind) => {
     const style = document.createElement('style');
     style.textContent = readFileSync(resolve('../../apps/desktop/src/styles/domains/toolRow.css'), 'utf8');
     document.head.append(style);
@@ -93,8 +98,12 @@ describe('内置 Tool 的官方补丁视图', () => {
       await act(async () => root.render(view));
       expect(parseFloat(getComputedStyle(host).paddingRight) || 0).toBe(0);
       const summary = host.querySelector('.ema-file-change-summary')!;
-      expect(summary).not.toBeNull();
-      expect(parseFloat(getComputedStyle(summary).paddingRight) || 0).toBe(0);
+      if (kind === 'created') {
+        expect(summary).toBeNull();
+      } else {
+        expect(summary).not.toBeNull();
+        expect(parseFloat(getComputedStyle(summary).paddingRight) || 0).toBe(0);
+      }
       await act(async () => root.render(createElement('div', {}, '普通输出')));
       expect(parseFloat(getComputedStyle(host).paddingRight) || 0).toBe(0);
     } finally {
@@ -127,7 +136,7 @@ describe('内置 Tool 的官方补丁视图', () => {
     expect(container.querySelector('[data-line] span')).not.toBeNull();
   });
 
-  it('覆盖 Write 使用同一补丁组件, 新建文件仍然显示内容预览', async () => {
+  it('覆盖 Write 使用补丁组件, 新建文件的摘要交给输出工具栏', async () => {
     const write: FileWriteResult = {
       type: 'updated', filePath, content: after, originalFile: before,
       bytesWritten: after.length, structuredPatch: edit.structuredPatch,
@@ -136,13 +145,33 @@ describe('内置 Tool 的官方补丁视图', () => {
     await act(async () => root.render(createElement(FileWriteResultView, { data: write })));
     expect(host.textContent).toContain('已覆盖写入');
     expect(parsePatchFiles(currentDiff().patch)[0]!.files).toHaveLength(1);
+    expect(fileWriteResultSummary(write)).toBeNull();
     diffView.mockClear();
+    const created: FileWriteResult = { ...write, type: 'created', originalFile: null, structuredPatch: [], deletions: 0 };
     await act(async () => root.render(createElement(FileWriteResultView, {
-      data: { ...write, type: 'created', originalFile: null, structuredPatch: [], deletions: 0 },
+      data: created,
     })));
     expect(diffView).not.toHaveBeenCalled();
-    expect(host.textContent).toContain('新建文件');
+    expect(fileWriteResultSummary(created)).toBe('新建文件 · 1 行 · 0.0 KB');
+    expect(host.textContent).not.toContain('新建文件');
     expect(host.textContent).toContain(after);
+  });
+
+  it.each(['', '\n'])('新建 Write 全文交给查看器并保留末尾换行 %j', async ending => {
+    const content = Array.from({ length: 80 }, (_, index) => `line ${index + 1}`).join('\n') + ending;
+    const created: FileWriteResult = {
+      type: 'created', filePath, content, originalFile: null,
+      bytesWritten: content.length, structuredPatch: [], additions: 80, deletions: 0,
+    };
+    await act(async () => root.render(createElement(FileWriteResultView, { data: created })));
+    const viewer: CodeViewerProps = codeView.mock.calls.at(-1)![0];
+    expect(viewer.source).toBe(content);
+    expect(viewer.source).toContain('line 80');
+    expect(viewer.lineNumbers?.[0]).toBe('1');
+    expect(viewer.embedded).toBe(true);
+    expect(viewer.wrapLines).toBe(false);
+    expect(fileWriteResultCopyText(created)).toBe(content);
+    expect(host.textContent).not.toContain('其余');
   });
 
   it('跟随现有页面主题标记, 不依赖 desktop Store', async () => {

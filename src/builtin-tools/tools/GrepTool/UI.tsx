@@ -74,10 +74,10 @@ export function GrepResultView({ data, args }: { data: unknown; args?: unknown }
   switch (result.type) {
     case 'files_with_matches': {
       if (result.files.length === 0) {
-        return <span className="text-[11px] text-[var(--ema-text-tertiary)]">未找到匹配文件</span>;
+        return <div className="ema-tool-result-details text-[11px] text-[var(--ema-text-tertiary)]">未找到匹配文件</div>;
       }
       return (
-        <div className="flex flex-col gap-1">
+        <div className="ema-tool-text-scroll ema-tool-result-details flex flex-col gap-1">
           <div className="flex items-center gap-2 text-[11px] leading-relaxed">
             <span className="text-[var(--ema-text-secondary)]">
               找到 <span className="font-medium">{result.files.length.toLocaleString()}</span> 个文件
@@ -100,7 +100,7 @@ export function GrepResultView({ data, args }: { data: unknown; args?: unknown }
 
     case 'count':
       return (
-        <div className="flex flex-col gap-1">
+        <div className="ema-tool-text-scroll ema-tool-result-details flex flex-col gap-1">
           <div className="flex items-center gap-2 text-[11px] leading-relaxed">
             <span className="text-[var(--ema-text-secondary)]">
               <span className="font-medium">{result.totalMatches.toLocaleString()}</span> 处匹配
@@ -125,11 +125,11 @@ export function GrepResultView({ data, args }: { data: unknown; args?: unknown }
 
     case 'content': {
       if (result.output === '') {
-        return <span className="text-[11px] text-[var(--ema-text-tertiary)]">未找到匹配</span>;
+        return <div className="ema-tool-result-details text-[11px] text-[var(--ema-text-tertiary)]">未找到匹配</div>;
       }
       const regex = matchRegexFromArgs(args);
       return (
-        <div className="flex flex-col gap-1">
+        <div className="ema-tool-text-scroll ema-tool-result-details flex flex-col gap-1">
           <div className="flex items-center gap-2 text-[11px] leading-relaxed">
             <span className="text-[var(--ema-text-secondary)]">
               <span className="font-medium">{result.numLines.toLocaleString()}</span> 行

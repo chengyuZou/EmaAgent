@@ -30,6 +30,7 @@ export {
   FileWriteResultView,
   fileWriteTitle,
   fileWriteResultCopyText,
+  fileWriteResultSummary,
 } from './tools/FileWriteTool/UI.js';
 export { GlobArgsView, GlobResultView, globTitle, globResultCopyText } from './tools/GlobTool/UI.js';
 export { GrepArgsView, GrepResultView, grepTitle, grepResultCopyText } from './tools/GrepTool/UI.js';

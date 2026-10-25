@@ -13,6 +13,7 @@ import {
   FileWriteArgsView,
   FileWriteResultView,
   fileWriteResultCopyText,
+  fileWriteResultSummary,
   GlobArgsView,
   GlobResultView,
   globResultCopyText,
@@ -68,6 +69,10 @@ export interface ToolCallViewProps {
   openBackgroundProcesses?(): void;
 }
 
+/**
+ * ArgsView, ResultView and ProgressView are conditional render callbacks.
+ * Hooks belong in components returned as JSX, or opening a tool changes its parent's Hook order.
+ */
 export interface ToolUI {
   /** 需要直接呈现给用户的历史卡默认展开, 例如当前 Turn 的 TODO 清单. */
   readonly defaultExpanded?: boolean;
@@ -135,6 +140,7 @@ const TOOL_UI_REGISTRY: Readonly<Record<string, ToolUI>> = {
   [BuiltinTools.FileWrite.name]: {
     title: fileWriteTitle,
     resultCopyText: fileWriteResultCopyText,
+    resultSummary: fileWriteResultSummary,
     ArgsView: FileWriteArgsView,
     ResultView: FileWriteResultView,
   },

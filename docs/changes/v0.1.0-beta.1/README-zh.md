@@ -14,4 +14,8 @@
 
 数量限制统一放在 Narrative 中, 共用 Rerank 接口及其 topK 参数保持不变. 这些调整不保证剧情证据完整.
 
+## History 滚动
+
+- 向上滚动时补偿实测行高变化, 补入更早消息时保留阅读锚点. 真正滚回底部后恢复跟随追加消息. 源码和隔离浏览器检查通过, 安装版验收仍待完成. [问题记录](./logs/zh/historyScrolling.md).
+
 模块说明见 [Narrative](../../../src/narrative/README-zh.md), 先前记录见 [Alpha](../v0.1.0-alpha.1/README-zh.md).

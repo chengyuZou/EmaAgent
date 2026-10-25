@@ -260,9 +260,11 @@ export function ToolCallBlock({
                 <div className="ema-tool-frame">
                   {(argsReady || partialArgs) && (
                     <ToolPane label="复制输入" tone="input" copyText={inputCopyText}>
-                      {argsReady
-                        ? customArgs ?? <ToolArgsView source={inputCopyText} />
-                        : <CodeViewer source={partialArgs ?? ''} embedded />}
+                      {argsReady && customArgs !== null && (
+                        <div className="ema-tool-text-scroll ema-tool-result-details">{customArgs}</div>
+                      )}
+                      {argsReady && customArgs === null && <ToolArgsView source={inputCopyText} />}
+                      {!argsReady && <CodeViewer source={partialArgs ?? ''} embedded />}
                     </ToolPane>
                   )}
                   {(progressView || customResult !== null || resultView !== null || hasError) && (
@@ -272,9 +274,11 @@ export function ToolCallBlock({
                       errorOnly={hasError && !showResult}
                       actionsRef={setOutputToolbarContainer}
                     >
-                      {progressView}
+                      {progressView && (
+                        <div className="ema-tool-text-scroll ema-tool-result-details">{progressView}</div>
+                      )}
                       {customResult ?? (resultView !== null && (
-                        <div className="ema-tool-generic-result"><ToolResultViewBlock view={resultView} /></div>
+                        <ToolResultViewBlock view={resultView} />
                       ))}
                       {failure !== null && <ToolFailure code={failure.code} message={failure.message} />}
                       {historyInterrupted && <ToolFailure code="tool/interrupted" message="未收到工具结果" />}
@@ -291,6 +295,7 @@ export function ToolCallBlock({
   );
 }
 
+/** 正文各自管理滚动, 避免嵌套代码块改变整个结果或相邻错误的布局. */
 export function ToolPane({ label, tone, copyText, summary, errorOnly = false, actionsRef, children }: {
   label: string;
   tone: 'input' | 'output';
@@ -303,10 +308,10 @@ export function ToolPane({ label, tone, copyText, summary, errorOnly = false, ac
   return (
     <section className={`ema-tool-pane ema-tool-pane--${tone} ${errorOnly ? 'ema-tool-pane--error' : ''}`} aria-label={tone === 'input' ? '输入参数' : '执行结果'}>
       <div className="ema-tool-pane-toolbar">
-        <span className="min-w-0">
-          {tone === 'input' ? '输入' : '输出'}
-          {summary && <span className="ml-2 text-[var(--ema-text-secondary)]">{summary}</span>}
-        </span>
+        <div className="ema-tool-pane-heading">
+          <span className="ema-tool-pane-label">{tone === 'input' ? '输入' : '输出'}</span>
+          {summary && <span className="ema-tool-pane-summary">{summary}</span>}
+        </div>
         <div className="ema-tool-pane-actions">
           {actionsRef && <div ref={actionsRef} className="ema-tool-pane-actions" />}
           <ToolCopyButton label={label} text={copyText} />
@@ -356,7 +361,7 @@ function ToolCopyButton({ label, text }: { label: string; text: string }): JSX.E
 export function ToolFailure({ code, message }: { code: string; message: string }): JSX.Element {
   const rows = renderToolError(message);
   return (
-    <div className="ema-tool-error" role="alert">
+    <div className="ema-tool-error ema-tool-text-scroll ema-tool-result-details" role="alert">
       <div className="ema-tool-error-code">{code}</div>
       {rows ? <ToolRows rows={rows} /> : <pre className="ema-tool-error-message">{message}</pre>}
     </div>

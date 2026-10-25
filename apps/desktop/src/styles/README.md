@@ -41,9 +41,13 @@ The session sidebar disables its width transition during pointer resizing. Works
 
 Chat Markdown wraps long lines within the content column. Tool input also wraps and is limited to 8rem in height.
 
-Tool output preserves its line structure unless its chosen viewer provides wrapping. Terminal output and file code can scroll horizontally. `CodeViewer` and diff viewers own their scroll areas; their outer tool pane must not add a second vertical scrollbar. Tool output height normally uses `--ema-tool-body-max-height`.
+Tool output preserves its line structure unless its chosen viewer provides wrapping. Each text result, Markdown document, progress message, and error uses an explicit `.ema-tool-text-scroll` region. The region scrolls on both axes as needed and uses `--ema-tool-body-max-height`, normally `min(60vh, 24rem)`. Input regions use 8rem and wrap long lines. `.ema-tool-result-details` supplies padding independently of scrolling.
+
+Standalone `CodeViewer`, HTML, diff, and terminal viewers own their scroll areas. `ToolPane` only arranges content and its toolbar; it never selects a scroll policy by looking for descendants. A code fence inside Markdown therefore leaves the document's scroll bounds intact. A result followed by an error has two independent regions, so their combined height may exceed one region's limit. Narrative timelines also keep separate viewers. Adding a plain-text result branch requires an explicit text scroll region, including when another branch returns a viewer.
 
 `ToolCallBlock` owns the title, status, duration, and expansion. `ToolPane` owns the input/output toolbar and copy control. Tool-specific `UI.tsx` supplies content. Embedded code viewers do not add another title and copy toolbar.
+
+Read source views and new-file Write results share code typography and line-number gutters. Write passes the full created content to `CodeViewer`; its summary stays in the output toolbar. Toolbar labels stay on one line, summaries wrap within the remaining width, and actions keep their width. The toolbar does not scroll with the document.
 
 Collapsible long bodies stay mounted for the closing animation, then release the loaded content. Review diff heights follow the viewer's virtual layout rather than an additional height animation.
 
@@ -66,3 +70,5 @@ Code colors follow `--ema-syntax-*`. The highlight adapter keeps its background 
 ## Check a style change
 
 Run the Desktop build to catch CSS and import errors. Then inspect the real page in light and dark themes, narrow and wide windows, keyboard focus, and reduced-motion mode. For resize or native browser changes, test the Tauri window itself. A successful build does not prove that scrolling, transitions, or native visibility feel correct.
+
+Run `pnpm --filter @ema-agent/desktop test:tool-scroll` for the opt-in browser regression. It renders real tool cards and Desktop styles with static results, checks horizontal and vertical scrolling at two widths, and blocks application-backend and external requests. It uses installed Edge on Windows and Playwright Chromium on other platforms. It does not start the native application or require model credentials.

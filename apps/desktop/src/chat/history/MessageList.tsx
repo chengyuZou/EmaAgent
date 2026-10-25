@@ -266,8 +266,11 @@ function HistoryViewport({
     const needsNewer = Boolean(state.newerCursor && !state.newerError
       && (empty || virtualizer.getDistanceFromEnd() <= threshold));
     const store = useSessionHistoryStore.getState();
-    if (needsNewer && (!needsOlder || scrollDirection.current === 'newer')) void store.loadNewer(sessionId);
-    else if (needsOlder) void store.loadOlder(sessionId);
+    if (needsNewer && (!needsOlder || scrollDirection.current === 'newer')) {
+      void store.loadNewer(sessionId);
+    } else if (needsOlder) {
+      void store.loadOlder(sessionId);
+    }
   }
 
   useEffect(() => { checkPagination(); });

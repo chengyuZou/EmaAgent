@@ -46,11 +46,11 @@ export function GlobResultView({ data }: { data: unknown }): JSX.Element | null 
   if (!result) return null;
 
   if (result.files.length === 0) {
-    return <span className="text-[11px] text-[var(--ema-text-tertiary)]">未找到匹配文件</span>;
+    return <div className="ema-tool-result-details text-[11px] text-[var(--ema-text-tertiary)]">未找到匹配文件</div>;
   }
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="ema-tool-text-scroll ema-tool-result-details flex flex-col gap-1">
       <div className="flex items-center gap-2 text-[11px] leading-relaxed">
         <span className="text-[var(--ema-text-secondary)]">
           找到 <span className="font-medium">{result.files.length.toLocaleString()}</span> 个文件

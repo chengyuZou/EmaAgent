@@ -115,7 +115,7 @@ export function FileReadResultView({ data, renderImage, renderMarkdown, toolbarC
         <Tooltip
           content={`${result.mediaType} · ${(result.originalBytes / 1024).toFixed(1)} KB`}
         >
-          <span className="inline-flex w-fit max-w-full">
+          <span className="ema-tool-result-details inline-flex w-fit max-w-full">
             {renderImage({
               src: `data:${result.mediaType};base64,${result.base64}`,
               alt: result.filePath,
@@ -127,10 +127,10 @@ export function FileReadResultView({ data, renderImage, renderMarkdown, toolbarC
     case 'notebook_content': {
       // 摘要 + 每 cell 一行轻量 chrome(类型/语言/字符数/输出数), 不渲染 source 内容.
       if (result.totalCells < 1) {
-        return <Badge variant="danger">Notebook 没有 cell</Badge>;
+        return <div className="ema-tool-result-details"><Badge variant="danger">Notebook 没有 cell</Badge></div>;
       }
       return (
-        <div className="flex flex-col gap-1">
+        <div className="ema-tool-text-scroll ema-tool-result-details flex flex-col gap-1">
           <span className="text-[11px] text-[var(--ema-text-secondary)]">
             读取 <span className="font-medium">{result.totalCells.toLocaleString()}</span> 个 cell
           </span>
@@ -195,7 +195,7 @@ function FileReadContentCard({ result, renderMarkdown, toolbarContainer }: {
   let content: JSX.Element;
   if (isHtml) {
     content = (
-      <div className="ema-file-read-code">
+      <div className="ema-file-code">
         <HtmlBlock
           source={source}
           lineNumbers={lineNumbers}
@@ -206,13 +206,13 @@ function FileReadContentCard({ result, renderMarkdown, toolbarContainer }: {
     );
   } else if (isMarkdown) {
     content = (
-      <div className="ema-tool-result-details min-w-0 text-[12px]">
+      <div className="ema-tool-text-scroll ema-tool-result-details text-[12px]">
         {renderMarkdown(source, result.filePath)}
       </div>
     );
   } else {
     content = (
-      <div className="ema-file-read-code ema-material-code">
+      <div className="ema-file-code ema-material-code">
         <CodeViewer
           source={source}
           language={languageForPath(result.filePath) ?? 'text'}
@@ -225,7 +225,7 @@ function FileReadContentCard({ result, renderMarkdown, toolbarContainer }: {
   }
 
   return (
-    <div className="ema-tool-result-layout ema-file-read-content flex min-w-0 flex-col">
+    <div className="ema-file-read-content flex min-w-0 flex-col">
       {result.truncated && (
         <div className="ema-tool-result-details ema-file-read-summary flex flex-wrap items-center gap-2 text-[11px] leading-relaxed">
           <Badge variant="warn">

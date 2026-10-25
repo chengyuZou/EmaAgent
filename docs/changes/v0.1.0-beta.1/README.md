@@ -14,4 +14,8 @@ Experiments informed changes to Narrative query preparation and retrieval parame
 
 The limits are defined in Narrative. The shared Rerank interface and its topK parameter remain unchanged. These adjustments do not guarantee complete story evidence.
 
+## History scrolling
+
+- History compensates measured row heights while scrolling upward and preserves the reading anchor when loading older messages. Returning to the actual end resumes following appended messages. Source and isolated browser checks passed; installed-build acceptance remains pending. [Bug record](./logs/en/historyScrolling.md).
+
 Module details: [Narrative](../../../src/narrative/README.md). Earlier records: [Alpha](../v0.1.0-alpha.1/README.md).
