@@ -88,44 +88,46 @@ export function WebSearchResultView({ data }: { data: unknown }): JSX.Element | 
   if (!result) return null;
   if (result.results.length === 0) {
     return (
-      <span className="text-[11px] text-[var(--ema-text-tertiary)]">
+      <div className="ema-tool-result-details text-[11px] text-[var(--ema-text-tertiary)]">
         未找到搜索结果
-      </span>
+      </div>
     );
   }
   return (
-    <div className="flex w-max min-w-full flex-col gap-1.5 text-[11px] leading-relaxed">
-      <div className="flex items-center gap-2">
-        <span className="text-[var(--ema-text-secondary)]">
-          找到 <span className="font-medium text-[var(--ema-text-primary)]">
-            {result.results.length.toLocaleString()}
-          </span> 条结果
-        </span>
-        <span className="text-[var(--ema-text-tertiary)]">
-          "{result.query}"
-        </span>
+    <div className="ema-tool-text-scroll">
+      <div className="ema-tool-result-details flex w-max min-w-full flex-col gap-1.5 text-[11px] leading-relaxed">
+        <div className="flex items-center gap-2">
+          <span className="text-[var(--ema-text-secondary)]">
+            找到 <span className="font-medium text-[var(--ema-text-primary)]">
+              {result.results.length.toLocaleString()}
+            </span> 条结果
+          </span>
+          <span className="text-[var(--ema-text-tertiary)]">
+            "{result.query}"
+          </span>
+        </div>
+        <ul className="m-0 flex list-none flex-col gap-1 p-0">
+          {result.results.map((entry) => (
+            <li key={entry.url} className="flex min-w-0 items-baseline gap-2">
+              <Tooltip content={entry.url} variant="card">
+                <a
+                  href={entry.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="shrink-0 text-[var(--ema-primary)] transition-colors hover:text-[var(--ema-primary-hover)] hover:underline"
+                >
+                  {entry.title || entry.url}
+                </a>
+              </Tooltip>
+              {entry.snippet && (
+                <span className="text-[var(--ema-text-tertiary)]">
+                  {entry.snippet}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
       </div>
-      <ul className="m-0 flex list-none flex-col gap-1 p-0">
-        {result.results.map((entry) => (
-          <li key={entry.url} className="flex min-w-0 items-baseline gap-2">
-            <Tooltip content={entry.url} variant="card">
-              <a
-                href={entry.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="shrink-0 text-[var(--ema-primary)] transition-colors hover:text-[var(--ema-primary-hover)] hover:underline"
-              >
-                {entry.title || entry.url}
-              </a>
-            </Tooltip>
-            {entry.snippet && (
-              <span className="text-[var(--ema-text-tertiary)]">
-                {entry.snippet}
-              </span>
-            )}
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }
