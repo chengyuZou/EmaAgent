@@ -19,8 +19,8 @@ it('records both isolated non-streaming requests with an 8192 budget when the ca
   const data = new Database({ memory: true, kind: 'data' });
   const narrative = new Database({ memory: true, kind: 'narrative' });
   databases.push(profile, data, narrative);
-  profile.migrate();
-  data.migrate();
+  await profile.migrate();
+  await data.migrate();
   narrative.sqlite.exec(readFileSync(
     new URL('../../../src/storage/migrations/narrative/narrative.sql', import.meta.url),
     'utf8',

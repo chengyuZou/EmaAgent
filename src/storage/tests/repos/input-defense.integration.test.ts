@@ -8,9 +8,9 @@ import {
 
 type TestDatabaseKind = 'profile' | 'data';
 
-function withDatabase<T>(kind: TestDatabaseKind, run: (database: Database) => T): T {
+async function withDatabase<T>(kind: TestDatabaseKind, run: (database: Database) => T): Promise<T> {
   const database = new Database({ memory: true, kind });
-  database.migrate();
+  await database.migrate();
   try {
     return run(database);
   } finally {
@@ -19,8 +19,8 @@ function withDatabase<T>(kind: TestDatabaseKind, run: (database: Database) => T)
 }
 
 describe('N-003 Settings JSON 防御', () => {
-  it('区分有效,缺失和损坏设置,get 对损坏值安全回退', () => {
-    withDatabase('profile', (database) => {
+  it('区分有效,缺失和损坏设置,get 对损坏值安全回退', async () => {
+    await withDatabase('profile', (database) => {
       const repo = new SettingsRepo(database.sqlite);
       repo.set('valid', { enabled: true }, 1);
       database.sqlite
@@ -42,8 +42,8 @@ describe('N-003 Settings JSON 防御', () => {
     });
   });
 
-  it('拒绝 undefined 和循环引用且不写入数据库', () => {
-    withDatabase('profile', (database) => {
+  it('拒绝 undefined 和循环引用且不写入数据库', async () => {
+    await withDatabase('profile', (database) => {
       const repo = new SettingsRepo(database.sqlite);
       const circular: Record<string, unknown> = {};
       circular['self'] = circular;
@@ -58,8 +58,8 @@ describe('N-003 Settings JSON 防御', () => {
 });
 
 describe('N-004 Character 更新契约', () => {
-  it('name 是主键且 update 只能修改角色业务字段', () => {
-    withDatabase('profile', (database) => {
+  it('name 是主键且 update 只能修改角色业务字段', async () => {
+    await withDatabase('profile', (database) => {
       const repo = new CharacterRepo(database.sqlite);
       repo.insert({
         name: 'character-a',
@@ -82,8 +82,8 @@ describe('N-004 Character 更新契约', () => {
     });
   });
 
-  it('name 主键拒绝重复角色身份', () => {
-    withDatabase('profile', (database) => {
+  it('name 主键拒绝重复角色身份', async () => {
+    await withDatabase('profile', (database) => {
       const repo = new CharacterRepo(database.sqlite);
       repo.insert({
         name: 'same',

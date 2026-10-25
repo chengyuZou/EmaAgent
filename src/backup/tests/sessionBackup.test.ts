@@ -19,7 +19,7 @@ afterEach(() => {
   }
 });
 
-function fixture() {
+async function fixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ema-backup-files-'));
   roots.push(root);
   const sourceDir = path.join(root, 'source');
@@ -27,8 +27,8 @@ function fixture() {
   const sourceDb = new Database({ memory: true, kind: 'data' });
   const targetDb = new Database({ memory: true, kind: 'data' });
   databases.push(sourceDb, targetDb);
-  sourceDb.migrate();
-  targetDb.migrate();
+  await sourceDb.migrate();
+  await targetDb.migrate();
   sourceDb.sqlite.prepare(`
     INSERT INTO sessions (id, title, cwd, last_activity_at, created_at, updated_at)
     VALUES ('session', '会话', 'D:/work', 1, 1, 1)
@@ -45,7 +45,7 @@ function fixture() {
   return { root, sourceDir, targetDir, sourceDb, targetDb, restorer, source, target, zipPath: path.join(root, '会话.zip') };
 }
 
-function addSpeech(data: ReturnType<typeof fixture>, characterName: string): string {
+function addSpeech(data: Awaited<ReturnType<typeof fixture>>, characterName: string): string {
   const storagePath = path.join(data.sourceDir, 'audio', 'session', 'turn', `turn-${characterName}.wav`);
   fs.mkdirSync(path.dirname(storagePath), { recursive: true });
   fs.writeFileSync(storagePath, Buffer.from([1, 2, 3, 4]));
@@ -56,7 +56,7 @@ function addSpeech(data: ReturnType<typeof fixture>, characterName: string): str
   return storagePath;
 }
 
-function addResource(data: ReturnType<typeof fixture>, kind: 'web-fetch' | 'tool-results', name: string): string {
+function addResource(data: Awaited<ReturnType<typeof fixture>>, kind: 'web-fetch' | 'tool-results', name: string): string {
   const file = path.join(sessionResourceDir(data.sourceDir, kind, 'session'), name);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, `content of ${name}`);
@@ -65,7 +65,7 @@ function addResource(data: ReturnType<typeof fixture>, kind: 'web-fetch' | 'tool
 
 describe('SessionBackup', () => {
   it('restores downloaded files, persisted tool text and their exact references, but not scratchpad or user prose', async () => {
-    const data = fixture();
+    const data = await fixture();
     const download = addResource(data, 'web-fetch', 'paper.pdf');
     const result = addResource(data, 'tool-results', 'large.txt');
     const modifiedAt = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
@@ -117,7 +117,7 @@ describe('SessionBackup', () => {
   });
 
   it.each(['files', 'database'])('rolls back every published resource directory after %s failure', async failure => {
-    const data = fixture();
+    const data = await fixture();
     addSpeech(data, 'Ema');
     addResource(data, 'web-fetch', 'paper.pdf');
     addResource(data, 'tool-results', 'large.txt');
@@ -143,7 +143,7 @@ describe('SessionBackup', () => {
   });
 
   it('preserves background logs and rewrites their relative directory without restarting the process', async () => {
-    const data = fixture();
+    const data = await fixture();
     const relative = path.join('background-processes', 'session', 'process');
     const directory = path.join(data.sourceDir, relative);
     fs.mkdirSync(directory, { recursive: true });
@@ -166,7 +166,7 @@ describe('SessionBackup', () => {
   });
 
   it('accepts an already exported archive without resourceFiles and does not require expired tool text', async () => {
-    const data = fixture();
+    const data = await fixture();
     const expired = addResource(data, 'tool-results', 'expired.txt');
     fs.unlinkSync(expired);
     addSpeech(data, 'Ema');
@@ -182,7 +182,7 @@ describe('SessionBackup', () => {
   });
 
   it('rejects resource-directory conflicts without removing existing files', async () => {
-    const data = fixture();
+    const data = await fixture();
     addResource(data, 'web-fetch', 'paper.pdf');
     await data.source.exportSession('session', data.zipPath);
     const existing = path.join(data.targetDir, 'tool-results', 'session', 'existing.txt');
@@ -194,7 +194,7 @@ describe('SessionBackup', () => {
   });
 
   it('rejects an unlisted download entry before publishing resources', async () => {
-    const data = fixture();
+    const data = await fixture();
     addResource(data, 'web-fetch', 'paper.pdf');
     await data.source.exportSession('session', data.zipPath);
     const entries = await readZip(data.zipPath);
@@ -205,7 +205,7 @@ describe('SessionBackup', () => {
   });
 
   it('cancellation during resource publication removes every directory already published', async () => {
-    const data = fixture();
+    const data = await fixture();
     addSpeech(data, 'Ema');
     addResource(data, 'web-fetch', 'paper.pdf');
     await data.source.exportSession('session', data.zipPath);
@@ -240,7 +240,7 @@ describe('SessionBackup', () => {
   });
 
   it('按路径导出和导入同轮不同角色的正式音频, 时长和原文件内容保留', async () => {
-    const data = fixture();
+    const data = await fixture();
     addSpeech(data, '艾玛');
     addSpeech(data, '另一角色');
     const exported = await data.source.exportSession('session', data.zipPath);
@@ -260,7 +260,7 @@ describe('SessionBackup', () => {
   });
 
   it('记录存在但文件缺失时仍导出, 导出和导入都带警告', async () => {
-    const data = fixture();
+    const data = await fixture();
     const speechPath = addSpeech(data, '艾玛');
     fs.unlinkSync(speechPath);
     const exported = await data.source.exportSession('session', data.zipPath);
@@ -271,7 +271,7 @@ describe('SessionBackup', () => {
   });
 
   it('同 ID 会话导入冲突时不覆盖原数据', async () => {
-    const data = fixture();
+    const data = await fixture();
     await data.source.exportSession('session', data.zipPath);
     await expect(data.source.importSession(data.zipPath))
       .rejects.toMatchObject({ code: 'destination_conflict', status: 409 });
@@ -279,7 +279,7 @@ describe('SessionBackup', () => {
   });
 
   it('复制资源中途失败时不把部分文件放进 ZIP, 并返回缺失警告', async () => {
-    const data = fixture();
+    const data = await fixture();
     addSpeech(data, '艾玛');
     const copied = vi.spyOn(fs, 'copyFileSync').mockImplementationOnce((_source, destination) => {
       fs.writeFileSync(destination, Buffer.from([1, 2]));
@@ -296,7 +296,7 @@ describe('SessionBackup', () => {
   });
 
   it('写入失败不破坏所选位置的已有备份, 也不留下半个 ZIP', async () => {
-    const data = fixture();
+    const data = await fixture();
     fs.writeFileSync(data.zipPath, 'previous backup');
     const open = fs.createWriteStream;
     vi.spyOn(fs, 'createWriteStream').mockImplementationOnce((...args) => {
@@ -312,7 +312,7 @@ describe('SessionBackup', () => {
   });
 
   it('取消写入时关闭文件并保留已有备份', async () => {
-    const data = fixture();
+    const data = await fixture();
     fs.writeFileSync(data.zipPath, 'previous backup');
     const controller = new AbortController();
     const open = fs.createWriteStream;
@@ -328,14 +328,14 @@ describe('SessionBackup', () => {
   });
 
   it('用户选中的已有备份只在新 ZIP 完成后替换', async () => {
-    const data = fixture();
+    const data = await fixture();
     fs.writeFileSync(data.zipPath, 'previous backup');
     await data.source.exportSession('session', data.zipPath);
     await expect(data.target.importSession(data.zipPath)).resolves.toMatchObject({ sessionId: 'session' });
   });
 
   it('数据库恢复失败时删除已经发布的会话文件, 不留下正式行', async () => {
-    const data = fixture();
+    const data = await fixture();
     addSpeech(data, '艾玛');
     await data.source.exportSession('session', data.zipPath);
     vi.spyOn(data.restorer, 'restoreSession').mockImplementationOnce(() => {
@@ -349,7 +349,7 @@ describe('SessionBackup', () => {
   });
 
   it('归档中的会话 ID 不得让恢复目录越界', async () => {
-    const data = fixture();
+    const data = await fixture();
     await data.source.exportSession('session', data.zipPath);
     const entries = await readZip(data.zipPath);
     entries.set('manifest.json', Buffer.from(JSON.stringify({ sessionId: '../outside', omittedFiles: [] })));

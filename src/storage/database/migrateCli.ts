@@ -19,18 +19,26 @@ fs.mkdirSync(path.dirname(profilePath), { recursive: true });
 fs.mkdirSync(path.dirname(dataPath),    { recursive: true });
 
 const profile = new Database({ path: profilePath, kind: 'profile' });
-const data    = new Database({ path: dataPath,    kind: 'data' });
-
-const status = process.argv.includes('--status');
-if (status) {
-  console.log(`profile.db @ ${profilePath}  ->  v${profile.currentVersion()}`);
-  console.log(`data.db    @ ${dataPath}     ->  v${data.currentVersion()}`);
-} else {
-  profile.migrate();
-  data.migrate();
-  console.log(`profile.db migrated to v${profile.currentVersion()}`);
-  console.log(`data.db    migrated to v${data.currentVersion()}`);
+let data: Database | undefined;
+try {
+  data = new Database({ path: dataPath, kind: 'data' });
+  const status = process.argv.includes('--status');
+  if (status) {
+    console.log(`profile.db @ ${profilePath}  ->  v${profile.currentVersion()}`);
+    console.log(`data.db    @ ${dataPath}     ->  v${data.currentVersion()}`);
+  } else {
+    const profileBackupDir = path.join(profileRoot, 'pre-migration');
+    let dataBackupDir = profileBackupDir;
+    // CLI 可指定独立 Data 库. 副本随该目录保存, 避免与 Profile 默认 Data 的副本混在一起清理.
+    if (path.resolve(dataDir) !== path.join(profileRoot, 'data')) {
+      dataBackupDir = path.join(path.resolve(dataDir), 'pre-migration');
+    }
+    await profile.migrate(profileBackupDir);
+    await data.migrate(dataBackupDir);
+    console.log(`profile.db migrated to v${profile.currentVersion()}`);
+    console.log(`data.db    migrated to v${data.currentVersion()}`);
+  }
+} finally {
+  data?.close();
+  profile.close();
 }
-
-profile.close();
-data.close();

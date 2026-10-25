@@ -4,9 +4,9 @@ import { Database, McpMarketEntriesRepo, McpServersRepo } from '../../index.js';
 describe('MCP 持久化', () => {
   let database: Database;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     database = new Database({ memory: true, kind: 'profile' });
-    database.migrate();
+    await database.migrate();
   });
 
   afterEach(() => database.close());

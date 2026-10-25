@@ -25,7 +25,7 @@ pnpm --filter @ema-agent/server dev
 [main.ts](./src/main.ts) checks the secret before starting [lifecycle.ts](./src/platform/lifecycle.ts). Startup then:
 
 1. Creates the data directory and checks the Profile lockfile.
-2. Opens and migrates the Profile, conversation and Narrative databases in that order. Conversation migration receives the migrated Profile to update Provider references. See [Storage migrations](../../src/storage/README.md#migrations).
+2. Opens and migrates the Profile, conversation and Narrative databases in that order. Existing Profile and conversation databases are copied before an upgrade; startup waits for each copy and migration to finish. A copy failure stops startup. See [Storage migrations](../../src/storage/README.md#migrations).
 3. Constructs the business objects and connects their callbacks.
 4. Pauses active Goals and records interrupted tools, background processes, Turns and subagent runs as ended. It does not resume their commands.
 5. Builds the routes, listens, and writes one newline-terminated JSON message to stdout:
@@ -48,6 +48,7 @@ SIGINT and SIGTERM close WebSocket and HTTP connections, stop automatic continua
 | --- | --- |
 | `profile.db` | Providers, model bindings, characters, settings, MCP and Skill records. |
 | `data/data.db` | Sessions, Turns, messages, tasks, Goals, tool executions, usage and Memory jobs. |
+| `pre-migration/` | Database copies before Profile or Data upgrades, with three kept per database after successful migration. |
 | `narrative/narrative.db` | The packaged story data and its retrieval tables. |
 | `profile/models-dev.json` | The local models.dev catalog. Refresh is explicit, not triggered by opening a provider page. |
 | `characters/`, `wallpapers/` | Character resources and managed wallpaper images. |

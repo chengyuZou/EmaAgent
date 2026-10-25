@@ -32,9 +32,9 @@ function idleExecutor(): StreamingToolExecutor {
   } as unknown as StreamingToolExecutor;
 }
 
-function makeStore(initial?: { id: string; finalText: string; inputTokens: number; outputTokens: number }): SubagentStore {
+async function makeStore(initial?: { id: string; finalText: string; inputTokens: number; outputTokens: number }): Promise<SubagentStore> {
   const db = new Database({ memory: true, kind: 'data' });
-  db.migrate();
+  await db.migrate();
   db.sqlite.prepare("INSERT INTO sessions (id,title,cwd,created_at,updated_at) VALUES ('session-1','会话','',1,1)").run();
   databases.add(db);
   const store = new Store(db.sqlite, new SubagentsRepo(db.sqlite), new SubagentRunsRepo(db.sqlite));
@@ -105,8 +105,8 @@ function createExecutor(store: SubagentStore, assertSessionWorkAllowed = vi.fn()
 }
 
 describe('SubagentExecutor', () => {
-  it('会话停止期间拒绝新子代理, 不创建子代理或 Run', () => {
-    const store = makeStore();
+  it('会话停止期间拒绝新子代理, 不创建子代理或 Run', async () => {
+    const store = await makeStore();
     const check = vi.fn(() => { throw new Error('session_stopping'); });
     const fixture = createExecutor(store, check);
     expect(() => fixture.executor.start(makeInput('blocked', Promise.resolve(), new AbortController().signal)))
@@ -116,7 +116,7 @@ describe('SubagentExecutor', () => {
   });
 
   it('会话停止同时取消前台和后台子代理, 等每条 Run 保存取消结果', async () => {
-    const store = makeStore();
+    const store = await makeStore();
     const fixture = createExecutor(store);
     const gate = deferred();
     const foreground = fixture.executor.start(makeInput('front', gate.promise, new AbortController().signal));
@@ -130,7 +130,7 @@ describe('SubagentExecutor', () => {
   });
 
   it('流式与闭合事件沿用真实 SQL ID, 终态携带具体 Run 的持久结果', async () => {
-    const store = makeStore();
+    const store = await makeStore();
     const fixture = createExecutor(store);
     const reference = fixture.executor.start(makeInput('stable-message', Promise.resolve(), new AbortController().signal));
     const result = await fixture.executor.waitForInitialResult(reference.subagentId, 'session-1', new AbortController().signal);
@@ -144,7 +144,7 @@ describe('SubagentExecutor', () => {
     expect(events.find(event => event.type === 'subagent_completed')).toMatchObject({ ...reference, run: store.getRun(reference.runId) });
   });
   it.each(['completed', 'failed', 'cancelled'] as const)('Run %s 后只通知一次实际 runId', async status => {
-    const store = makeStore();
+    const store = await makeStore();
     const fixture = createExecutor(store);
     const gate = deferred();
     const parent = new AbortController();
@@ -170,7 +170,7 @@ describe('SubagentExecutor', () => {
   });
 
   it.each([false, true])('工具结果带原始工具名, 成功与失败都不需要消费者扫描消息(isError=%s)', async isError => {
-    const fixture = createExecutor(makeStore());
+    const fixture = createExecutor(await makeStore());
     const input = makeInput('parent-call', Promise.resolve(), new AbortController().signal);
     const prepare = input.prepareSubagent;
     const toolResult: ToolResult = {
@@ -218,7 +218,7 @@ describe('SubagentExecutor', () => {
 
   it('完成落库失败不会发布完成事件, 也不会改写为执行失败', async () => {
     const gate = deferred();
-    const store = makeStore();
+    const store = await makeStore();
     vi.spyOn(store, 'complete').mockImplementation(() => {
       throw new Error('完成落库失败');
     });
@@ -243,7 +243,7 @@ describe('SubagentExecutor', () => {
 
   it('前台等待方取得结果后不再向 Session 重复通知', async () => {
     const gate = deferred();
-    const fixture = createExecutor(makeStore());
+    const fixture = createExecutor(await makeStore());
     const { subagentId: subagentId } = fixture.executor.start(makeInput('call-1', gate.promise, new AbortController().signal));
     const result = fixture.executor.waitForInitialResult(
       subagentId,
@@ -261,7 +261,7 @@ describe('SubagentExecutor', () => {
   it('转后台解除父 Turn 取消关系, 终态只发送轻量通知', async () => {
     const gate = deferred();
     const parent = new AbortController();
-    const fixture = createExecutor(makeStore());
+    const fixture = createExecutor(await makeStore());
     const { subagentId: subagentId } = fixture.executor.start(makeInput('call-2', gate.promise, parent.signal));
 
     fixture.executor.moveToBackground(subagentId, 'session-1');
@@ -275,7 +275,7 @@ describe('SubagentExecutor', () => {
 
   it('停止 SubagentAwait 只结束等待, 后台 Subagent 继续完成', async () => {
     const gate = deferred();
-    const fixture = createExecutor(makeStore());
+    const fixture = createExecutor(await makeStore());
     const { subagentId: subagentId } = fixture.executor.start(makeInput('call-await', gate.promise, new AbortController().signal));
     fixture.executor.moveToBackground(subagentId, 'session-1');
 
@@ -304,7 +304,7 @@ describe('SubagentExecutor', () => {
       updatedAt: 2,
       completedAt: 2,
     };
-    const fixture = createExecutor(makeStore(stored));
+    const fixture = createExecutor(await makeStore(stored));
 
     const first = await fixture.executor.awaitResult('subagent-3', 'session-1', new AbortController().signal);
     const second = await fixture.executor.awaitResult('subagent-3', 'session-1', new AbortController().signal);
@@ -317,7 +317,7 @@ describe('SubagentExecutor', () => {
 
 describe('持久子代理继续', () => {
   it('同 ID 多 Run, 未提供模型时沿用最近实际模型, Permission 和强度用父本次值', async () => {
-    const store = makeStore();
+    const store = await makeStore();
     const fixture = createExecutor(store);
     const firstInput = makeInput('first', Promise.resolve(), new AbortController().signal);
     const { subagentId: id } = fixture.executor.start({
@@ -344,7 +344,7 @@ describe('持久子代理继续', () => {
 
   it('运行中不能复用, 不创建第二条 Run', async () => {
     const gate = deferred();
-    const store = makeStore();
+    const store = await makeStore();
     const fixture = createExecutor(store);
     const input = makeInput('first', gate.promise, new AbortController().signal);
     const { subagentId: id } = fixture.executor.start(input);
@@ -355,7 +355,7 @@ describe('持久子代理继续', () => {
   });
 
   it('显式模型配置准备失败就报错, 不悄悄回退; 错误保存到本次 Run', async () => {
-    const store = makeStore();
+    const store = await makeStore();
     const fixture = createExecutor(store);
     const input = makeInput('invalid', Promise.resolve(), new AbortController().signal);
     const { subagentId: id } = fixture.executor.start({

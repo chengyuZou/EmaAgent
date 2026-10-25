@@ -23,6 +23,7 @@ import {
   dataDbPathFor,
   profileDbPath,
   narrativeDbPath,
+  preMigrationDir,
   removeOrphanSessionDirectories,
   removeSessionFiles,
   removeTurnFiles,
@@ -72,15 +73,15 @@ export interface DatabaseComposition {
  * 打开并迁移三个数据库,构造全部存储层 Store.
  * activeDataDir 由 lifecycle 按当前 Profile 路径传入.
  */
-export function openDatabases(
+export async function openDatabases(
   activeDataDir: string,
   emitChanged: (
     event: SessionEvent | AttachmentEvent | TaskEvent | GoalEvent,
   ) => void,
-): DatabaseComposition {
+): Promise<DatabaseComposition> {
   const profileDb = new Database({ path: profileDbPath(), kind: 'profile' });
   try {
-    profileDb.migrate();
+    await profileDb.migrate(preMigrationDir());
   } catch (err) {
     profileDb.close();
     throw err;
@@ -88,7 +89,7 @@ export function openDatabases(
 
   const dataDb = new Database({ path: dataDbPathFor(activeDataDir), kind: 'data' });
   try {
-    dataDb.migrate();
+    await dataDb.migrate(preMigrationDir());
   } catch (err) {
     dataDb.close();
     profileDb.close();
@@ -97,7 +98,7 @@ export function openDatabases(
 
   const narrativeDb = new Database({ path: narrativeDbPath(), kind: 'narrative' });
   try {
-    narrativeDb.migrate();
+    await narrativeDb.migrate();
   } catch (error) {
     narrativeDb.close();
     dataDb.close();

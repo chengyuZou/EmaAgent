@@ -46,7 +46,7 @@ export async function startServer(secret: string): Promise<ServerLifecycle> {
   try {
     phaseStartedAt = performance.now();
     console.info('[server:startup] composition started');
-    const running = buildComposition({
+    const running = await buildComposition({
       activeDataDir,
       initializeBuiltinCharacters: process.env['EMA_INITIALIZE_BUILTIN_CHARACTERS'] === '1',
     });

@@ -8,8 +8,8 @@ describe('MessagesRepo 历史加载集成测试', () => {
   let repo: MessagesRepo;
   const sessionId = 'history-session';
 
-  beforeEach(() => {
-    database = createTestDatabase();
+  beforeEach(async () => {
+    database = await createTestDatabase();
     database.db.prepare(`
       INSERT INTO sessions (id, title, cwd, created_at, updated_at)
       VALUES (?, '历史测试', 'D:/work', 1, 1)

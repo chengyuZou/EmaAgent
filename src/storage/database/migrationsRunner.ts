@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { StringDecoder } from 'node:string_decoder';
+import { createPreMigrationBackup, prunePreMigrationBackups } from './preMigrationBackup.js';
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.join(dirname, '..', 'migrations');
@@ -14,6 +15,12 @@ const NARRATIVE_SEED_FILES = [
   'narrative-seeds-2nd.sql',
   'narrative-seeds-3rd.sql',
 ] as const;
+
+interface NumberedMigrations {
+  readonly fromVersion: number;
+  readonly toVersion: number;
+  readonly files: ReadonlyArray<{ version: number; filename: string }>;
+}
 
 /**
  * 各个数据库使用独立的 `user_version`:
@@ -35,12 +42,26 @@ export class MigrationsRunner {
    * 已提交的版本跳过. 每份 SQL 与其 user_version 更新处于同一事务,
    * 失败只回滚当前文件, 下次启动从未提交的版本继续.
    */
-  run(): void {
-    const folder = path.join(MIGRATIONS_DIR, this.kind);
+  async run(directory?: string): Promise<void> {
     if (this.kind === 'narrative') {
-      this.initializeNarrative(folder);
+      this.initializeNarrative(path.join(MIGRATIONS_DIR, this.kind));
       return;
     }
+    const migrations = this.readNumberedMigrations();
+    if (this.db.memory || migrations.fromVersion === 0 || migrations.files.length === 0) {
+      this.applyNumberedMigrations(migrations.files);
+      return;
+    }
+    const backupDirectory = directory ?? path.join(path.dirname(this.db.name), 'pre-migration');
+    await createPreMigrationBackup(
+      this.db, this.kind, backupDirectory, migrations.fromVersion, migrations.toVersion,
+    );
+    this.applyNumberedMigrations(migrations.files);
+    await prunePreMigrationBackups(backupDirectory, this.kind);
+  }
+
+  private readNumberedMigrations(): NumberedMigrations {
+    const folder = path.join(MIGRATIONS_DIR, this.kind);
     let entries: string[];
     try {
       entries = fs.readdirSync(folder).filter(f => f.endsWith('.sql'));
@@ -65,6 +86,7 @@ export class MigrationsRunner {
       );
     }
 
+    const files: Array<{ version: number; filename: string }> = [];
     for (let v = current + 1; v <= latest; v++) {
       if (!Number.isInteger(v) || v <= 0) {
         throw new Error(`[${this.kind}] 非法迁移版本号: ${v}`);
@@ -77,7 +99,14 @@ export class MigrationsRunner {
           `[${this.kind}] 迁移 ${v} 缺失(目录 ${folder} 有跳号),expected file ${prefix}*.sql`,
         );
       }
-      const sql = fs.readFileSync(path.join(folder, filename), 'utf8');
+      files.push({ version: v, filename: path.join(folder, filename) });
+    }
+    return { fromVersion: current, toVersion: latest, files };
+  }
+
+  private applyNumberedMigrations(files: NumberedMigrations['files']): void {
+    for (const { version, filename } of files) {
+      const sql = fs.readFileSync(filename, 'utf8');
       const rebuildsReferencedTable = sql.includes(
         '-- ema:migration foreign_keys=off',
       );
@@ -93,11 +122,11 @@ export class MigrationsRunner {
             const violations = this.db.pragma('foreign_key_check') as unknown[];
             if (violations.length > 0) {
               throw new Error(
-                `[${this.kind}] 迁移 ${v} 重建表后留下 ${violations.length} 个外键错误`,
+                `[${this.kind}] 迁移 ${version} 重建表后留下 ${violations.length} 个外键错误`,
               );
             }
           }
-          this.db.pragma(`user_version = ${v}`);
+          this.db.pragma(`user_version = ${version}`);
         })();
       } finally {
         if (rebuildsReferencedTable) {

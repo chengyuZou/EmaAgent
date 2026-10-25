@@ -6,9 +6,9 @@ describe('ModelBindingsRepo', () => {
   let bindings: ModelBindingsRepo;
   let models: ProviderModelsRepo;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     database = new Database({ memory: true, kind: 'profile' });
-    database.migrate();
+    await database.migrate();
     new ProvidersRepo(database.sqlite).save({
       provider: {
         id: 'siliconflow',

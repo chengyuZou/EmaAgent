@@ -4,9 +4,9 @@ import { MessagesRepo } from '../../repos/data/messages.js';
 import { SessionsRepo } from '../../repos/data/sessions.js';
 import { TurnsRepo } from '../../repos/data/turns.js';
 
-function createFixture() {
+async function createFixture() {
   const database = new Database({ memory: true, kind: 'data' });
-  database.migrate();
+  await database.migrate();
   const sessions = new SessionsRepo(database.sqlite);
   const turns = new TurnsRepo(database.sqlite);
   const messages = new MessagesRepo(database.sqlite);
@@ -23,8 +23,8 @@ function createFixture() {
 }
 
 describe('Turn 历史读取', () => {
-  it('同时间戳分页依靠 id 稳定覆盖全部 Turn', () => {
-    const { turns, messages, sessionId } = createFixture();
+  it('同时间戳分页依靠 id 稳定覆盖全部 Turn', async () => {
+    const { turns, messages, sessionId } = await createFixture();
     for (const id of ['turn-a', 'turn-b', 'turn-c']) {
       turns.insert({
         id,
@@ -50,8 +50,8 @@ describe('Turn 历史读取', () => {
     expect(second.rows.map((row) => row.id)).toEqual(['turn-a']);
   });
 
-  it('Message 同时间戳分页依靠 id 稳定覆盖全部正文', () => {
-    const { messages, sessionId } = createFixture();
+  it('Message 同时间戳分页依靠 id 稳定覆盖全部正文', async () => {
+    const { messages, sessionId } = await createFixture();
     for (const id of ['message-a', 'message-b', 'message-c']) {
       messages.insert({
         id,
@@ -69,8 +69,8 @@ describe('Turn 历史读取', () => {
     expect(second.rows.map((row) => row.id)).toEqual(['message-a']);
   });
 
-  it('Message 正序分页从最旧一条起按同方向游标续翻', () => {
-    const { messages, sessionId } = createFixture();
+  it('Message 正序分页从最旧一条起按同方向游标续翻', async () => {
+    const { messages, sessionId } = await createFixture();
     for (const id of ['message-a', 'message-b', 'message-c']) {
       messages.insert({
         id,
@@ -88,8 +88,8 @@ describe('Turn 历史读取', () => {
     expect(second.rows.map((row) => row.id)).toEqual(['message-c']);
   });
 
-  it('Message 目录分页不读取正文,仍按正序游标完整续翻', () => {
-    const { messages, sessionId } = createFixture();
+  it('Message 目录分页不读取正文,仍按正序游标完整续翻', async () => {
+    const { messages, sessionId } = await createFixture();
     for (const id of ['message-a', 'message-b', 'message-c']) {
       messages.insert({
         id,
@@ -118,8 +118,8 @@ describe('Turn 历史读取', () => {
     expect('blocks_json' in first.rows[0]!).toBe(false);
   });
 
-  it('Message 锚点窗口按旧到新返回并报告两侧缺口', () => {
-    const { messages, sessionId } = createFixture();
+  it('Message 锚点窗口按旧到新返回并报告两侧缺口', async () => {
+    const { messages, sessionId } = await createFixture();
     for (let index = 0; index < 5; index++) {
       messages.insert({
         id: `message-${index}`,
@@ -135,8 +135,8 @@ describe('Turn 历史读取', () => {
     expect(window).toMatchObject({ hasOlder: true, hasNewer: true });
   });
 
-  it('Turn 索引带首条 Message 锚点,并排除没有 Message 的 Turn', () => {
-    const { turns, messages, sessionId } = createFixture();
+  it('Turn 索引带首条 Message 锚点,并排除没有 Message 的 Turn', async () => {
+    const { turns, messages, sessionId } = await createFixture();
     turns.insert({
       id: 'turn-a',
       sessionId,
@@ -184,8 +184,8 @@ describe('Turn 历史读取', () => {
     ]);
   });
 
-  it('模型冻结成对写入(含调用协议),残缺写入被数据库拒绝', () => {
-    const { database, turns, sessionId } = createFixture();
+  it('模型冻结成对写入(含调用协议),残缺写入被数据库拒绝', async () => {
+    const { database, turns, sessionId } = await createFixture();
     turns.insert({
       id: 'turn-a',
       sessionId,
@@ -205,8 +205,8 @@ describe('Turn 历史读取', () => {
     `).run()).toThrow(/both provider and model/);
   });
 
-  it('Turn 冻结 Character.name, 不把展示名当作角色身份', () => {
-    const { turns, sessionId } = createFixture();
+  it('Turn 冻结 Character.name, 不把展示名当作角色身份', async () => {
+    const { turns, sessionId } = await createFixture();
     turns.insert({
       id: 'turn-character',
       sessionId,
@@ -220,8 +220,8 @@ describe('Turn 历史读取', () => {
     expect(turns.findById('turn-character')?.character_name).toBe('ema');
   });
 
-  it('Turn 索引分页使用 Session 最新 Turn 索引', () => {
-    const { database } = createFixture();
+  it('Turn 索引分页使用 Session 最新 Turn 索引', async () => {
+    const { database } = await createFixture();
     const plan = database.sqlite.prepare(`
       EXPLAIN QUERY PLAN
       SELECT * FROM turns

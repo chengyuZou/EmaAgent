@@ -4,9 +4,9 @@ import { DataDirStatsRepo, SessionStatsRepo } from '../../repos/data/storage-sta
 
 let database: Database;
 
-beforeEach(() => {
+beforeEach(async () => {
   database = new Database({ memory: true, kind: 'data' });
-  database.migrate();
+  await database.migrate();
   database.sqlite.prepare(`
     INSERT INTO sessions (id, title, cwd, pinned, last_activity_at, created_at, updated_at)
     VALUES ('s1', 'a', 'D:/work', 0, 1, 1, 1), ('s2', 'b', 'D:/work', 0, 1, 1, 1)

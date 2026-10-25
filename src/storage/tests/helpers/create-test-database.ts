@@ -13,7 +13,7 @@ export interface TestDatabase {
  * migrations. File-backed SQLite keeps WAL, pragma and temporary-table
  * behaviour aligned with the desktop sidecar.
  */
-export function createTestDatabase(): TestDatabase {
+export async function createTestDatabase(): Promise<TestDatabase> {
   const directory = mkdtempSync(join(tmpdir(), 'ema-storage-test-'));
   const database = new Database({
     path: join(directory, 'data.db'),
@@ -21,7 +21,7 @@ export function createTestDatabase(): TestDatabase {
   });
 
   try {
-    database.migrate();
+    await database.migrate();
   } catch (error) {
     database.close();
     rmSync(directory, { recursive: true, force: true });

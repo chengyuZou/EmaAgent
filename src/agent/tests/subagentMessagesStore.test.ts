@@ -7,9 +7,9 @@ describe('SubagentMessagesStore', () => {
   let database: Database;
   let repo: SubagentMessagesRepo;
   let store: SubagentMessagesStore;
-  beforeEach(() => {
+  beforeEach(async () => {
     database = new Database({ memory: true, kind: 'data' });
-    database.migrate();
+    await database.migrate();
     database.sqlite.prepare("INSERT INTO sessions (id,title,cwd,created_at,updated_at) VALUES ('s','会话','',1,1)").run();
     new SubagentsRepo(database.sqlite).insert({ id: 'child', sessionId: 's', title: '标题', description: '描述', createdAt: 1 });
     const runs = new SubagentRunsRepo(database.sqlite);

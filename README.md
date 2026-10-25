@@ -306,6 +306,7 @@ The default application directory is `~/.ema-agent`, or `%USERPROFILE%\.ema-agen
 | Location inside the application directory | Contents |
 | --- | --- |
 | `profile.db` | Providers, credentials, model bindings, characters, settings, MCP configuration, and skill indexes |
+| `pre-migration/` | Database copies created before Profile or Data upgrades |
 | `data/data.db` | Conversations, Turns, messages, Tasks, Goals, subagents, tool execution, usage, and Memory jobs |
 | `data/attachments/`, `data/audio/`, `data/web-fetch/` | Managed images and pasted text, generated audio, and downloaded files, grouped by Session ID |
 | `data/tool-results/`, `data/background-processes/`, `data/scratchpad/` | Large tool text, command output, and temporary notes, grouped by Session ID |

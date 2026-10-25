@@ -16,11 +16,11 @@ let dataDir: string;
 let repo: AttachmentPastedTextsRepo;
 let store: PastedTextStore;
 
-beforeEach(() => {
+beforeEach(async () => {
   dataDir = mkdtempSync(path.join(tmpdir(), 'ema-att-paste-'));
   temporary.push(dataDir);
   database = new Database({ memory: true, kind: 'data' });
-  database.migrate();
+  await database.migrate();
   database.sqlite.prepare(`
     INSERT INTO sessions (id, title, cwd, pinned, last_activity_at, created_at, updated_at)
     VALUES (?, 's', 'D:/work', 0, 1, 1, 1)

@@ -11,7 +11,7 @@ import { Database, SessionsRepo } from '@ema-agent/storage';
 
 const database = new Database({ path: dataDatabasePath, kind: 'data' });
 try {
-  database.migrate();
+  await database.migrate(preMigrationDirectory);
   const sessions = new SessionsRepo(database.sqlite);
   const session = sessions.findById(sessionId);
 } finally {
@@ -19,7 +19,7 @@ try {
 }
 ```
 
-Create the parent directory before opening a file. Tests can use `{ memory: true, kind: 'data' }`. `migrate()` runs once per instance after a successful migration; `close()` can be called more than once.
+Create the parent directory before opening a file, then await `migrate()` before using its repositories. Profile, Data, Narrative and memory databases use this same asynchronous method. Existing Profile and Data files are backed up automatically before an upgrade; new databases, current versions and memory databases create no copies. The optional directory argument selects where copies go; when omitted, they go under `pre-migration/` beside the database. Each call checks the stored version and skips SQL already applied. `close()` can be called more than once.
 
 | Kind | Usual location | Stored data |
 | --- | --- | --- |
@@ -79,13 +79,17 @@ Profile and Data each initialize independently from a single `001_initial.sql`, 
 
 Application versions such as `0.1.0` do not determine database versions. Each numbered SQL file and its `user_version` update run in one transaction. The runner skips applied versions; a failure rolls back that file's SQL and version update. Missing numbers and databases newer than the available SQL cause an error. A migration marked `-- ema:migration foreign_keys=off` temporarily disables foreign keys outside the transaction and checks them before committing.
 
-This Alpha baseline requires fresh databases. Earlier development databases are not converted or downgraded automatically, and old credentials or conversations are not copied into the new baseline. Back up existing application data before resetting it. Future migrations for released databases must use new consecutive files rather than modify an already applied baseline.
+Before upgrading an existing Profile or Data file, `migrate(directory?)` uses SQLite's backup API to copy committed contents, including WAL data and the original rowids. It waits for the copy before running the first pending SQL. A backup failure stops the upgrade; a SQL failure retains the copy and skips pruning. New databases, current versions, memory databases and rejected downgrades create no copies. SQL migrations for released databases must use new consecutive files rather than modify an applied baseline.
+
+Server stores copies under `<profile>/pre-migration/`. Names include the database kind, source/target versions, UTC time and a unique suffix, such as `profile.v1-to-v2.<time>.<id>.db`. A copy is written as `.db.tmp`, closed in DELETE journal mode and renamed only after completion, so the published copy is a standalone SQLite file. After all pending SQL for that database succeeds, cleanup keeps its three newest copies and removes its matching incomplete temporary files. Other database kinds and unrelated files are left alone. Cleanup errors are reported without failing an already committed upgrade.
+
+Recovery is manual. Close the application and migration CLI, and preserve the current complete application data directory before restoring. Move the current database and its WAL/SHM files together to another directory, then copy the selected backup to its matching database path. Do not mix the displaced WAL/SHM files with the restored file. Use an application version that handles the problematic migration correctly before reopening. Restoring discards database writes made after the copy and does not restore attachments, audio, character resources or Memory files. There is no automatic restore, cross-database recovery or merging of newer records.
 
 Narrative initialization installs the schema and three seed datasets in a transaction. The seed reader executes SQL incrementally instead of loading every seed file into one string. Narrative repositories read the fixed timeline IDs and return vector buffers or source text as requested. See [Narrative](../narrative/README.md) for retrieval.
 
 `build` copies SQL resources into `dist/migrations`. Shipping only compiled JavaScript is insufficient for a fresh installation.
 
-The optional migration CLI uses `EMA_PROFILE_DIR`, or `~/.ema-agent` when unset, just like the host. It opens `<profile>/profile.db` and `<profile>/data/data.db`. `--data-dir <directory>` changes only the latter. Even `--status` creates directories and opens the databases. Confirm the target and back up real data before running it.
+The optional migration CLI uses `EMA_PROFILE_DIR`, or `~/.ema-agent` when unset, just like the host. It opens `<profile>/profile.db` and `<profile>/data/data.db` and uses the same pre-migration copies. `--data-dir <directory>` changes the latter; when it selects a different directory, Data copies go under that directory's `pre-migration/` rather than mixing with the Profile's default Data copies. Even `--status` creates directories and opens databases, but it does not migrate or create copies. Close the application and confirm the target before using the CLI.
 
 ## Read and verify
 

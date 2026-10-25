@@ -4,8 +4,8 @@ import { createTestDatabase, type TestDatabase } from '../helpers/create-test-da
 describe('Session ownership 数据库约束', () => {
   let database: TestDatabase;
 
-  beforeEach(() => {
-    database = createTestDatabase();
+  beforeEach(async () => {
+    database = await createTestDatabase();
     database.db.prepare(`
       INSERT INTO sessions (id, title, cwd, last_activity_at, created_at, updated_at)
       VALUES ('session-a', 'A', 'D:/work', 1, 1, 1), ('session-b', 'B', 'D:/work', 1, 1, 1)

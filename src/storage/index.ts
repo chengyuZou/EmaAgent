@@ -1,5 +1,4 @@
 export { Database, DatabaseCapabilityError } from './database/database.js';
-export { MigrationsRunner } from './database/migrationsRunner.js';
 export { NarrativeChunksRepo } from './repos/narrative/chunks.js';
 export type {
   NarrativeTimelineId,

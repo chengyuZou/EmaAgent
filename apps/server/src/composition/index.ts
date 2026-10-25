@@ -36,9 +36,9 @@ export interface Composition {
   close(): Promise<void>;
 }
 
-export function buildComposition(input: { activeDataDir: string; initializeBuiltinCharacters: boolean }): Composition {
+export async function buildComposition(input: { activeDataDir: string; initializeBuiltinCharacters: boolean }): Promise<Composition> {
   const appEvents = new AppEvents();
-  const database = openDatabases(input.activeDataDir, event => appEvents.emit(event));
+  const database = await openDatabases(input.activeDataDir, event => appEvents.emit(event));
   const settings = openSettings(database.profileDb);
   const providers = openProviders(database.profileDb, providerId => {
     appEvents.emit({ type: 'provider_models_changed', providerId });

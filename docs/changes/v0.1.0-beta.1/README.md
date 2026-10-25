@@ -28,4 +28,8 @@ The limits are defined in Narrative. The shared Rerank interface and its topK pa
 
 - Increased ordinary JSON and Turn request-body limits to 128 MiB, and audio and wallpaper uploads to 256 MiB. Live2D covers accept PNG data up to 100 MiB with a separate allowance for base64 transport.
 
+## Database upgrades
+
+- Profile and Data upgrades wait for a standalone SQLite copy before running migration SQL. A copy failure stops the upgrade; successful migrations keep the three latest copies per database. Recovery remains manual. See [Storage](../../../src/storage/README.md#migrations).
+
 Module details: [Narrative](../../../src/narrative/README.md). Earlier records: [Alpha](../v0.1.0-alpha.1/README.md).

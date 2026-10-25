@@ -30,14 +30,14 @@ describe('完整模型目录刷新', () => {
   let composition: ProvidersComposition;
   let notify: ReturnType<typeof vi.fn>;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ema-catalog-'));
     vi.stubEnv('EMA_PROFILE_DIR', directory);
     filePath = path.join(directory, 'profile', 'models-dev.json');
     fs.mkdirSync(path.dirname(filePath));
     fs.writeFileSync(filePath, payload(8000, 'retained-model'));
     db = new Database({ memory: true, kind: 'profile' });
-    db.migrate();
+    await db.migrate();
     notify = vi.fn();
     composition = openProviders(db, notify);
     composition.providers.create({

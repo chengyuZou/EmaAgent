@@ -146,7 +146,7 @@ describe('prepareTurn', () => {
 
   it.each(['completed', 'failed', 'aborted'] as const)('整批保存与长工具期间引导, %s 只处理仍未保存的排队输入', async ending => {
     const db = new Database({ memory: true, kind: 'data' });
-    db.migrate();
+    await db.migrate();
     const running = new SessionRunningRegistry();
     const sessions = new SessionStore({ db });
     const session = sessions.createSession({ cwd: os.tmpdir(), providerId: 'sess-p', modelId: 'sess-m' });
@@ -266,7 +266,7 @@ describe('prepareTurn', () => {
 
   it.each(['attachment', 'reminder'] as const)('等待 %s 时归档, 返回后不保存未交付输入或调用模型', async waitingFor => {
     const db = new Database({ memory: true, kind: 'data' });
-    db.migrate();
+    await db.migrate();
     const running = new SessionRunningRegistry();
     const sessions = new SessionStore({ db, isWorkClosed: id => running.isClosed(id) });
     const session = sessions.createSession({ cwd: os.tmpdir(), providerId: 'sess-p', modelId: 'sess-m' });

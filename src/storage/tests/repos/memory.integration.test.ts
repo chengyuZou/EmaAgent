@@ -6,8 +6,8 @@ describe('MemoryRepo', () => {
   let database: TestDatabase;
   let repo: MemoryRepo;
 
-  beforeEach(() => {
-    database = createTestDatabase();
+  beforeEach(async () => {
+    database = await createTestDatabase();
     repo = new MemoryRepo(database.db);
     database.db.prepare(`
       INSERT INTO sessions(id, title, cwd, created_at, updated_at)

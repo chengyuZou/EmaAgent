@@ -5,9 +5,9 @@ import { Database, TurnsRepo } from '@ema-agent/storage';
 import { DEFAULT_SESSION_TITLE, SessionStore } from '../store.js';
 import type { SessionEvent } from '../events.js';
 
-function makeStore(onChanged?: (event: SessionEvent) => void) {
+async function makeStore(onChanged?: (event: SessionEvent) => void) {
   const db = new Database({ memory: true, kind: 'data' });
-  db.migrate();
+  await db.migrate();
   return { store: new SessionStore({ db, onChanged }), db };
 }
 
@@ -26,9 +26,9 @@ function insertTurnFixture(db: Database, sessionId: string): string {
 }
 
 describe('SessionStore 变更事件的会话身份', () => {
-  it('会话的写入与删除携带对应 ID, Fork 携带新会话 ID', () => {
+  it('会话的写入与删除携带对应 ID, Fork 携带新会话 ID', async () => {
     const events: SessionEvent[] = [];
-    const { store, db } = makeStore(event => events.push(event));
+    const { store, db } = await makeStore(event => events.push(event));
     const session = store.createSession({ cwd: os.tmpdir() });
     const operations = [
       () => store.setViewedAt(session.id),
@@ -64,9 +64,9 @@ describe('SessionStore 变更事件的会话身份', () => {
     db.close();
   });
 
-  it('项目变化不冒充单个会话, 自动改名条件不成立时不发事件', () => {
+  it('项目变化不冒充单个会话, 自动改名条件不成立时不发事件', async () => {
     const events: SessionEvent[] = [];
-    const { store, db } = makeStore(event => events.push(event));
+    const { store, db } = await makeStore(event => events.push(event));
     const session = store.createSession({ title: '已有标题', cwd: os.tmpdir() });
     events.length = 0;
     expect(store.updateTitleIfDefault(session.id, '新标题')).toBe(false);
@@ -90,8 +90,8 @@ describe('SessionStore 变更事件的会话身份', () => {
 });
 
 describe('SessionStore — session', () => {
-  it('搜索预览只使用索引正文,不回读工具结果或完整消息块', () => {
-    const { store, db } = makeStore();
+  it('搜索预览只使用索引正文,不回读工具结果或完整消息块', async () => {
+    const { store, db } = await makeStore();
     const session = store.createSession();
     const text = `搜索正文${'甲'.repeat(240)}`;
     db.sqlite.prepare(`
@@ -115,8 +115,8 @@ describe('SessionStore — session', () => {
     });
   });
 
-  it('creates a session with defaults', () => {
-    const { store } = makeStore();
+  it('creates a session with defaults', async () => {
+    const { store } = await makeStore();
     const s = store.createSession();
 
     expect(s.id).toBeTypeOf('string');
@@ -127,16 +127,16 @@ describe('SessionStore — session', () => {
     expect(s.cwd).toBe(path.join(os.homedir(), '.ema-agent', 'workspace'));
   });
 
-  it('creates a session with custom input', () => {
-    const { store } = makeStore();
+  it('creates a session with custom input', async () => {
+    const { store } = await makeStore();
     const s = store.createSession({ title: 'My Chat', cwd: os.tmpdir() });
 
     expect(s.title).toBe('My Chat');
     expect(s.cwd).toBe(os.tmpdir());
   });
 
-  it('Session 权限模式创建后可修改,Fork 继承当前选择', () => {
-    const { store } = makeStore();
+  it('Session 权限模式创建后可修改,Fork 继承当前选择', async () => {
+    const { store } = await makeStore();
     const session = store.createSession({ permissionMode: 'acceptEdits' });
     expect(session.permissionMode).toBe('acceptEdits');
 
@@ -147,8 +147,8 @@ describe('SessionStore — session', () => {
     expect(store.getSession(fork.sessionId).permissionMode).toBe('bypassPermissions');
   });
 
-  it('TTS 选择属于 Session, 修改后 Fork 继承', () => {
-    const { store } = makeStore();
+  it('TTS 选择属于 Session, 修改后 Fork 继承', async () => {
+    const { store } = await makeStore();
     const session = store.createSession({ ttsEnabled: true });
     expect(session.ttsEnabled).toBe(true);
 
@@ -159,8 +159,8 @@ describe('SessionStore — session', () => {
     expect(store.getSession(fork.sessionId).ttsEnabled).toBe(false);
   });
 
-  it('创建 Project Session 时在同一次操作中写入项目与主工作区', () => {
-    const { store } = makeStore();
+  it('创建 Project Session 时在同一次操作中写入项目与主工作区', async () => {
+    const { store } = await makeStore();
     const project = store.createProject('Demo', ['D:/main'], 'D:/main');
 
     const session = store.createSession({
@@ -176,13 +176,13 @@ describe('SessionStore — session', () => {
     expect(chosen.cwd).toBe(os.tmpdir());
   });
 
-  it('getSession throws for unknown id', () => {
-    const { store } = makeStore();
+  it('getSession throws for unknown id', async () => {
+    const { store } = await makeStore();
     expect(() => store.getSession('bad-id')).toThrow('session_not_found');
   });
 
-  it('归档会话不进入正常侧栏, 取消归档保留项目,置顶和历史', () => {
-    const { store } = makeStore();
+  it('归档会话不进入正常侧栏, 取消归档保留项目,置顶和历史', async () => {
+    const { store } = await makeStore();
     const project = store.createProject('项目', [os.tmpdir()], os.tmpdir());
     const s = store.createSession({ title: '归档标题', projectId: project.id });
     store.pinSession(s.id);
@@ -207,8 +207,8 @@ describe('SessionStore — session', () => {
     expect(store.getSessionForWork(s.id).id).toBe(s.id);
   });
 
-  it('同时属于项目和置顶的 Session 进置顶桶,项目桶不再列出它', () => {
-    const { store } = makeStore();
+  it('同时属于项目和置顶的 Session 进置顶桶,项目桶不再列出它', async () => {
+    const { store } = await makeStore();
     const project = store.createProject('Demo', ['D:/main'], 'D:/main');
     const s = store.createSession();
     store.assignSessionToProject(s.id, project.id);
@@ -220,16 +220,16 @@ describe('SessionStore — session', () => {
     expect(projectInSidebar.sessions).toHaveLength(0);
   });
 
-  it('updateTitle changes title', () => {
-    const { store } = makeStore();
+  it('updateTitle changes title', async () => {
+    const { store } = await makeStore();
     const s = store.createSession();
     store.updateTitle(s.id, 'Updated');
 
     expect(store.getSession(s.id).title).toBe('Updated');
   });
 
-  it('创建时保存模型与推理强度, PATCH 模型身份必须成对且可单独调整强度', () => {
-    const { store } = makeStore();
+  it('创建时保存模型与推理强度, PATCH 模型身份必须成对且可单独调整强度', async () => {
+    const { store } = await makeStore();
     const session = store.createSession({
       providerId: 'provider-config-1',
       modelId: 'model-1',
@@ -261,8 +261,8 @@ describe('SessionStore — session', () => {
     expect(() => store.patchSession(session.id, { providerId: 'broken' })).toThrow('session_model_pair_required');
   });
 
-  it('Session fork 继承当前模型和推理强度', () => {
-    const { store } = makeStore();
+  it('Session fork 继承当前模型和推理强度', async () => {
+    const { store } = await makeStore();
     const session = store.createSession();
     store.patchSession(session.id, {
       providerId: 'provider-config-1',
@@ -280,8 +280,8 @@ describe('SessionStore — session', () => {
 });
 
 describe('SessionStore — 项目', () => {
-  it('创建项目时保存多个源文件夹和指定主文件夹', () => {
-    const { store } = makeStore();
+  it('创建项目时保存多个源文件夹和指定主文件夹', async () => {
+    const { store } = await makeStore();
     expect(() => store.createProject('Demo', [' '], ' ')).toThrow('project_folder_path_empty');
 
     const project = store.createProject(
@@ -305,8 +305,8 @@ describe('SessionStore — 项目', () => {
     expect(store.createSession({ projectId: project.id }).cwd).toBe('D:/main');
   });
 
-  it('拖入项目保留原 cwd,并允许成员显式修改 cwd', () => {
-    const { store } = makeStore();
+  it('拖入项目保留原 cwd,并允许成员显式修改 cwd', async () => {
+    const { store } = await makeStore();
     const session = store.createSession();
     const project = store.createProject('Demo', ['D:/main'], 'D:/main');
 
@@ -323,8 +323,8 @@ describe('SessionStore — 项目', () => {
     expect(store.getSession(session.id).cwd).toBe('D:/other');
   });
 
-  it('拖入项目不会把原 cwd 悄悄加入文件夹清单', () => {
-    const { store } = makeStore();
+  it('拖入项目不会把原 cwd 悄悄加入文件夹清单', async () => {
+    const { store } = await makeStore();
     const session = store.createSession({ cwd: 'D:/loose' });
     const project = store.createProject('Demo', ['D:/main'], 'D:/main');
 
@@ -335,8 +335,8 @@ describe('SessionStore — 项目', () => {
     expect(store.getSession(session.id).cwd).toBe('D:/loose');
   });
 
-  it('更换或移除主文件夹不改旧 Session cwd,只改变后续新 Session 的起点', () => {
-    const { store } = makeStore();
+  it('更换或移除主文件夹不改旧 Session cwd,只改变后续新 Session 的起点', async () => {
+    const { store } = await makeStore();
     const project = store.createProject('Demo', ['D:/main'], 'D:/main');
     const session = store.createSession({ projectId: project.id });
     store.addProjectFolder(project.id, 'D:/second');
@@ -351,8 +351,8 @@ describe('SessionStore — 项目', () => {
     expect(projectInSidebar.folders[0]!.path).toBe('D:/second');
   });
 
-  it('零文件夹项目可建 Session,之后添加或移除最后一个文件夹也不改旧 cwd', () => {
-    const { store } = makeStore();
+  it('零文件夹项目可建 Session,之后添加或移除最后一个文件夹也不改旧 cwd', async () => {
+    const { store } = await makeStore();
     const project = store.createProject('Empty', []);
     const session = store.createSession({ projectId: project.id });
     const defaultCwd = path.join(os.homedir(), '.ema-agent', 'workspace');
@@ -367,8 +367,8 @@ describe('SessionStore — 项目', () => {
 });
 
 describe('SessionStore — message', () => {
-  it('appendMessage stores and returns a message', () => {
-    const { store, db } = makeStore();
+  it('appendMessage stores and returns a message', async () => {
+    const { store, db } = await makeStore();
     const s = store.createSession();
     const turnId = insertTurnFixture(db, s.id);
 
@@ -384,8 +384,8 @@ describe('SessionStore — message', () => {
     expect(msg.interrupted).toBe(false);
   });
 
-  it('Assistant 首次落库沿用 iteration 已公布的 Message ID', () => {
-    const { store, db } = makeStore();
+  it('Assistant 首次落库沿用 iteration 已公布的 Message ID', async () => {
+    const { store, db } = await makeStore();
     const session = store.createSession();
     const turnId = insertTurnFixture(db, session.id);
     const id = crypto.randomUUID();
@@ -402,8 +402,8 @@ describe('SessionStore — message', () => {
     expect(store.loadMessagesForTurn(turnId).map(item => item.id)).toContain(id);
   });
 
-  it('appendMessage serialises tool_use blocks correctly', () => {
-    const { store, db } = makeStore();
+  it('appendMessage serialises tool_use blocks correctly', async () => {
+    const { store, db } = await makeStore();
     const s = store.createSession();
     const turnId = insertTurnFixture(db, s.id);
 
@@ -421,8 +421,8 @@ describe('SessionStore — message', () => {
     expect(msg.blocks).toEqual(blocks);
   });
 
-  it('updateMessageBlocks 整体替换消息的 blocks(流式续写/追加 tool_use)', () => {
-    const { store, db } = makeStore();
+  it('updateMessageBlocks 整体替换消息的 blocks(流式续写/追加 tool_use)', async () => {
+    const { store, db } = await makeStore();
     const s = store.createSession();
     const turnId = insertTurnFixture(db, s.id);
 
@@ -443,15 +443,15 @@ describe('SessionStore — message', () => {
     expect(JSON.parse(row.blocks_json)).toEqual(next);
   });
 
-  it('updateMessageBlocks 对不存在的消息抛错', () => {
-    const { store } = makeStore();
+  it('updateMessageBlocks 对不存在的消息抛错', async () => {
+    const { store } = await makeStore();
     expect(() =>
       store.updateMessageBlocks('no-such-id', [{ type: 'text', text: 'x' }]),
     ).toThrow('message_not_found');
   });
 
-  it('loadHistory returns messages in chronological order', () => {
-    const { store, db } = makeStore();
+  it('loadHistory returns messages in chronological order', async () => {
+    const { store, db } = await makeStore();
     const s = store.createSession();
     const turnId = insertTurnFixture(db, s.id);
 
@@ -465,8 +465,8 @@ describe('SessionStore — message', () => {
     expect(history[2]!.blocks).toBe('third');
   });
 
-  it('loadHistory limit 返回最新消息而不是最早消息', () => {
-    const { store, db } = makeStore();
+  it('loadHistory limit 返回最新消息而不是最早消息', async () => {
+    const { store, db } = await makeStore();
     const s = store.createSession();
     const turnId = insertTurnFixture(db, s.id);
 
@@ -478,8 +478,8 @@ describe('SessionStore — message', () => {
       .toEqual(['third', 'fourth']);
   });
 
-  it('loadHistory 保留 summary,并从其后选择最新消息', () => {
-    const { store, db } = makeStore();
+  it('loadHistory 保留 summary,并从其后选择最新消息', async () => {
+    const { store, db } = await makeStore();
     const s = store.createSession();
     const turnId = insertTurnFixture(db, s.id);
 
@@ -493,8 +493,8 @@ describe('SessionStore — message', () => {
       .toEqual(['summary', 'post-new-a', 'post-new-b']);
   });
 
-  it('appendHistorySummary 按覆盖游标切边界:先于摘要落库但未覆盖的消息不被吞掉', () => {
-    const { store, db } = makeStore();
+  it('appendHistorySummary 按覆盖游标切边界:先于摘要落库但未覆盖的消息不被吞掉', async () => {
+    const { store, db } = await makeStore();
     const s = store.createSession();
     const turnId = insertTurnFixture(db, s.id);
 
@@ -520,8 +520,8 @@ describe('SessionStore — message', () => {
       .get('summary')).toEqual({ summary_saved_tokens: 12_345 });
   });
 
-  it('appendHistorySummary 拒绝其他 Session 的游标消息', () => {
-    const { store, db } = makeStore();
+  it('appendHistorySummary 拒绝其他 Session 的游标消息', async () => {
+    const { store, db } = await makeStore();
     const a = store.createSession();
     const b = store.createSession();
     const turnId = insertTurnFixture(db, a.id);
@@ -536,8 +536,8 @@ describe('SessionStore — message', () => {
     })).toThrow(/summary_through_message_not_in_session/);
   });
 
-  it('自动压缩摘要带当前 turnId, 终态按轮读取时与剩余消息一起返回', () => {
-    const { store, db } = makeStore();
+  it('自动压缩摘要带当前 turnId, 终态按轮读取时与剩余消息一起返回', async () => {
+    const { store, db } = await makeStore();
     const session = store.createSession();
     const previousTurnId = insertTurnFixture(db, session.id);
     const turnId = insertTurnFixture(db, session.id);
@@ -569,8 +569,8 @@ describe('SessionStore — message', () => {
     expect(store.loadMessagesForTurn(turnId)[0]?.savedTokens).toBe(80);
   });
 
-  it('listMessages 返回旧到新的 Message 页', () => {
-    const { store, db } = makeStore();
+  it('listMessages 返回旧到新的 Message 页', async () => {
+    const { store, db } = await makeStore();
     const s = store.createSession();
     const turnId = insertTurnFixture(db, s.id);
 
@@ -585,8 +585,8 @@ describe('SessionStore — message', () => {
     expect(page.olderCursor).toBeUndefined();
   });
 
-  it('listMessages 使用不透明复合游标覆盖同毫秒消息', () => {
-    const { store, db } = makeStore();
+  it('listMessages 使用不透明复合游标覆盖同毫秒消息', async () => {
+    const { store, db } = await makeStore();
     const s = store.createSession();
     const turnId = insertTurnFixture(db, s.id);
 
@@ -602,8 +602,8 @@ describe('SessionStore — message', () => {
     expect(older.olderCursor).toBeUndefined();
   });
 
-  it('listMessagesAround 围绕 Message 返回旧到新的窗口', () => {
-    const { store, db } = makeStore();
+  it('listMessagesAround 围绕 Message 返回旧到新的窗口', async () => {
+    const { store, db } = await makeStore();
     const s = store.createSession();
     const turnId = insertTurnFixture(db, s.id);
     const ids = ['one', 'two', 'three', 'four', 'five'].map(blocks => (
@@ -625,8 +625,8 @@ describe('SessionStore — message', () => {
     expect(newer.messages.map(message => message.blocks)).toEqual(['five']);
   });
 
-  it('listMessages 拒绝同时向两个方向读取', () => {
-    const { store } = makeStore();
+  it('listMessages 拒绝同时向两个方向读取', async () => {
+    const { store } = await makeStore();
     const session = store.createSession();
 
     expect(() => store.listMessages(session.id, {
@@ -635,8 +635,8 @@ describe('SessionStore — message', () => {
     })).toThrow('message_cursor_direction_conflict');
   });
 
-  it('markMessageInterrupted sets interrupted flag', () => {
-    const { store, db } = makeStore();
+  it('markMessageInterrupted sets interrupted flag', async () => {
+    const { store, db } = await makeStore();
     const s = store.createSession();
     const turnId = insertTurnFixture(db, s.id);
 
@@ -647,8 +647,8 @@ describe('SessionStore — message', () => {
     expect(history[0]!.interrupted).toBe(true);
   });
 
-  it('rejects appending a message with a turn from another session', () => {
-    const { store, db } = makeStore();
+  it('rejects appending a message with a turn from another session', async () => {
+    const { store, db } = await makeStore();
     const owner = store.createSession({ title: 'owner' });
     const foreign = store.createSession({ title: 'foreign' });
     const turnId = insertTurnFixture(db, owner.id);

@@ -5,9 +5,9 @@ import { TurnStore } from '../turnStore.js';
 
 let seq = 100;
 
-function makeStore() {
+async function makeStore() {
   const db = new Database({ memory: true, kind: 'data' });
-  db.migrate();
+  await db.migrate();
   const registry = new SessionRunningRegistry();
   return { store: new TurnStore({ db, sessionRunning: registry }), db, registry };
 }
@@ -47,7 +47,7 @@ function insertMessage(
 
 describe('TurnStore — 生命周期与运行锁', () => {
   it('删除或归档期间拒绝新 Turn, 停止流程结束后只恢复未归档会话', async () => {
-    const { store, db, registry } = makeStore();
+    const { store, db, registry } = await makeStore();
     const sessionId = insertSession(db, 's1');
 
     await registry.runWithSessionClosed(sessionId, async () => {
@@ -60,8 +60,8 @@ describe('TurnStore — 生命周期与运行锁', () => {
     expect(() => startTurn(store, sessionId)).not.toThrow();
   });
 
-  it('startTurn 创建 running Turn 并返回可触发的 AbortSignal', () => {
-    const { store, db } = makeStore();
+  it('startTurn 创建 running Turn 并返回可触发的 AbortSignal', async () => {
+    const { store, db } = await makeStore();
     const sessionId = insertSession(db, 's1');
 
     const { turn, signal } = startTurn(store, sessionId);
@@ -71,8 +71,8 @@ describe('TurnStore — 生命周期与运行锁', () => {
     expect(signal.aborted).toBe(false);
   });
 
-  it('Turn 冻结启动时的 TTS 选择, Session 偏好后续变化不改写旧 Turn', () => {
-    const { store, db } = makeStore();
+  it('Turn 冻结启动时的 TTS 选择, Session 偏好后续变化不改写旧 Turn', async () => {
+    const { store, db } = await makeStore();
     const sessionId = insertSession(db, 's1');
     const sessions = new SessionsRepo(db.sqlite);
     sessions.patch(sessionId, { ttsEnabled: true }, 2);
@@ -90,16 +90,16 @@ describe('TurnStore — 生命周期与运行锁', () => {
       .toMatchObject({ tts_enabled: 1 });
   });
 
-  it('同一 Session 已有运行中 Turn 时拒绝第二个(session_busy)', () => {
-    const { store, db } = makeStore();
+  it('同一 Session 已有运行中 Turn 时拒绝第二个(session_busy)', async () => {
+    const { store, db } = await makeStore();
     const sessionId = insertSession(db, 's1');
     startTurn(store, sessionId);
 
     expect(() => startTurn(store, sessionId)).toThrow('session_busy');
   });
 
-  it('不同 Session 可以同时运行 Turn', () => {
-    const { store, db } = makeStore();
+  it('不同 Session 可以同时运行 Turn', async () => {
+    const { store, db } = await makeStore();
     const s1 = insertSession(db, 's1');
     const s2 = insertSession(db, 's2');
 
@@ -109,8 +109,8 @@ describe('TurnStore — 生命周期与运行锁', () => {
     }).not.toThrow();
   });
 
-  it('终态行提交后仍占用 Session, 执行器收尾清理后才允许新 Turn', () => {
-    const { store, db } = makeStore();
+  it('终态行提交后仍占用 Session, 执行器收尾清理后才允许新 Turn', async () => {
+    const { store, db } = await makeStore();
     const sessionId = insertSession(db, 's1');
 
     const { turn } = startTurn(store, sessionId);
@@ -125,8 +125,8 @@ describe('TurnStore — 生命周期与运行锁', () => {
     expect(() => startTurn(store, sessionId)).not.toThrow();
   });
 
-  it('abortTurn 触发信号并提交 aborted 终态', () => {
-    const { store, db } = makeStore();
+  it('abortTurn 触发信号并提交 aborted 终态', async () => {
+    const { store, db } = await makeStore();
     const sessionId = insertSession(db, 's1');
 
     const { turn, signal } = startTurn(store, sessionId);
@@ -139,8 +139,8 @@ describe('TurnStore — 生命周期与运行锁', () => {
     expect(() => startTurn(store, sessionId)).not.toThrow();
   });
 
-  it('requestAbort 只触发信号,不提前写 Turn 终态', () => {
-    const { store, db } = makeStore();
+  it('requestAbort 只触发信号,不提前写 Turn 终态', async () => {
+    const { store, db } = await makeStore();
     const sessionId = insertSession(db, 's1');
 
     const { turn, signal } = startTurn(store, sessionId);
@@ -150,8 +150,8 @@ describe('TurnStore — 生命周期与运行锁', () => {
     expect(store.getTurn(turn.id)!.status).toBe('running');
   });
 
-  it('failTurn 提交 failed 终态与错误码', () => {
-    const { store, db } = makeStore();
+  it('failTurn 提交 failed 终态与错误码', async () => {
+    const { store, db } = await makeStore();
     const sessionId = insertSession(db, 's1');
 
     const { turn } = startTurn(store, sessionId);
@@ -166,8 +166,8 @@ describe('TurnStore — 生命周期与运行锁', () => {
     expect(() => startTurn(store, sessionId)).not.toThrow();
   });
 
-  it('旧 Turn 的迟到 clearRunning 不会清掉后继 Turn', () => {
-    const { store, db } = makeStore();
+  it('旧 Turn 的迟到 clearRunning 不会清掉后继 Turn', async () => {
+    const { store, db } = await makeStore();
     const sessionId = insertSession(db, 's1');
 
     const { turn: first } = startTurn(store, sessionId);
@@ -181,14 +181,14 @@ describe('TurnStore — 生命周期与运行锁', () => {
     expect(() => startTurn(store, sessionId)).toThrow('session_busy');
   });
 
-  it('getRunningTurn 在无运行 Turn 时返回 undefined', () => {
-    const { store, db } = makeStore();
+  it('getRunningTurn 在无运行 Turn 时返回 undefined', async () => {
+    const { store, db } = await makeStore();
     const sessionId = insertSession(db, 's1');
     expect(store.getRunningTurn(sessionId)).toBeUndefined();
   });
 
-  it('recoverStuckTurns 把遗留 running Turn 收口为 aborted', () => {
-    const { store, db } = makeStore();
+  it('recoverStuckTurns 把遗留 running Turn 收口为 aborted', async () => {
+    const { store, db } = await makeStore();
     const sessionId = insertSession(db, 's1');
     const { turn } = startTurn(store, sessionId);
 
@@ -200,8 +200,8 @@ describe('TurnStore — 生命周期与运行锁', () => {
 });
 
 describe('TurnStore — 导航查询', () => {
-  it('复合游标覆盖同一 Session 的全部 Turn 且不重复', () => {
-    const { store, db } = makeStore();
+  it('复合游标覆盖同一 Session 的全部 Turn 且不重复', async () => {
+    const { store, db } = await makeStore();
     const sessionId = insertSession(db, 's1');
     const expected = new Set<string>();
     for (let index = 0; index < 5; index++) {
@@ -223,8 +223,8 @@ describe('TurnStore — 导航查询', () => {
     expect(actual).toHaveLength(expected.size);
   });
 
-  it('Turn 索引使用不透明游标分页,预览取自首条 User Message', () => {
-    const { store, db } = makeStore();
+  it('Turn 索引使用不透明游标分页,预览取自首条 User Message', async () => {
+    const { store, db } = await makeStore();
     const sessionId = insertSession(db, 's1');
     for (let index = 0; index < 3; index++) {
       const { turn } = startTurn(store, sessionId);
@@ -255,8 +255,8 @@ describe('TurnStore — 导航查询', () => {
 });
 
 describe('TurnStore — 回滚', () => {
-  it('只允许回滚最后一轮,并同步删除该轮消息', () => {
-    const { store, db } = makeStore();
+  it('只允许回滚最后一轮,并同步删除该轮消息', async () => {
+    const { store, db } = await makeStore();
     const sessionId = insertSession(db, 's1');
     const { turn: t1 } = startTurn(store, sessionId);
     insertMessage(db, { sessionId, turnId: t1.id, text: 'T1-user' });
@@ -275,8 +275,8 @@ describe('TurnStore — 回滚', () => {
     expect(new MessagesRepo(db.sqlite).listForTurn(t2.id)).toHaveLength(0);
   });
 
-  it('回滚运行中,跨 Session 和不存在的 Turn 会被拒绝', () => {
-    const { store, db } = makeStore();
+  it('回滚运行中,跨 Session 和不存在的 Turn 会被拒绝', async () => {
+    const { store, db } = await makeStore();
     const s1 = insertSession(db, 's1');
     const s2 = insertSession(db, 's2');
     const { turn } = startTurn(store, s1);

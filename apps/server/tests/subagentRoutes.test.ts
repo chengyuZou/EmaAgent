@@ -22,13 +22,13 @@ afterEach(() => {
     db.close();
   }
 });
-function fixture() {
+async function fixture() {
   const db = new Database({
     memory: true,
     kind: 'data'
   });
   databases.push(db);
-  db.migrate();
+  await db.migrate();
   db.sqlite.prepare("INSERT INTO sessions(id,title,cwd,created_at,updated_at) VALUES('session','测试','',1,1)").run();
   const subagents = new SubagentStore(
     db.sqlite,
@@ -126,7 +126,7 @@ describe(
     it(
       'Session 查询参数只筛身份列表, 不被当成子代理 ID; 两层 Cursor 独立分页',
       async () => {
-        const { app } = fixture();
+        const { app } = await fixture();
         const first = await (await app.request('/api/subagents?sessionId=session&limit=1')).json();
         expect(first.items).toHaveLength(1);
         expect(first.nextCursor).toBeTruthy();
@@ -147,7 +147,7 @@ describe(
     it(
       '不同子代理不能读取对方 Run',
       async () => {
-        const { app } = fixture();
+        const { app } = await fixture();
         expect((await app.request('/api/subagents/child/runs/other-run')).status).toBe(404);
         expect((await app.request('/api/subagents/child/runs/run-1')).status).toBe(200);
       }
@@ -155,7 +155,7 @@ describe(
     it(
       '连续 Message 历史双向补页, 包含 fork 与多个 Run, 不依赖起始任务',
       async () => {
-        const { app } = fixture();
+        const { app } = await fixture();
         const page = await (await app.request('/api/subagents/child/messages?beforeCreatedAt=5&beforeId=m-05&limit=5')).json();
         expect(page.items.map(message => message.id)).toEqual(['m-00', 'm-01', 'm-02', 'm-03', 'm-04']);
         expect(page.items[0].runId).toBeNull();
@@ -177,7 +177,7 @@ describe(
         const {
           app,
           repo
-        } = fixture();
+        } = await fixture();
         const empty = await app.request('/api/subagents/other/messages');
         expect(empty.status).toBe(200);
         expect(await empty.json()).toEqual({
@@ -219,7 +219,7 @@ describe(
         const {
           app,
           repo
-        } = fixture();
+        } = await fixture();
         for (const id of ['same-a', 'same-b', 'same-c']) {
           repo.insert({
             id,

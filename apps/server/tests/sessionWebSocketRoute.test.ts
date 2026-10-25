@@ -59,9 +59,9 @@ async function connect(deps: SessionWebSocketRouteDeps, sessionId: string) {
   return { socket, waitForMessage };
 }
 
-function goalFixture() {
+async function goalFixture() {
   const db = new Database({ memory: true, kind: 'data' });
-  db.migrate();
+  await db.migrate();
   databases.push(db);
   const running = new SessionRunningRegistry();
   const sessions = new SessionStore({ db, isWorkClosed: id => running.isClosed(id) });
@@ -94,8 +94,8 @@ function goalFixture() {
   return { db, sessions, session, running, goals, queue, starts, deps };
 }
 
-function actionFixture() {
-  const fixture = goalFixture();
+async function actionFixture() {
+  const fixture = await goalFixture();
   const turns = new TurnStore({ db: fixture.db, sessionRunning: fixture.running });
   const interactions = new SessionInteractionQueue(null);
   const subagents = {
@@ -137,7 +137,7 @@ function actionFixture() {
 
 describe('会话归档和删除', () => {
   it.each(['archive', 'delete'] as const)('%s 无需确认字段, 收到一次请求就停止并执行, 返回 204', async action => {
-    const fixture = actionFixture();
+    const fixture = await actionFixture();
     const root = fixture.turns.startTurn({ sessionId: fixture.session.id, triggerType: 'userMessage', ttsEnabled: false });
     const goal = fixture.goals.create(fixture.session.id, '正在进行的目标');
     fixture.queue.enqueue({ sessionId: fixture.session.id, input: [{ type: 'text', text: '排队消息' }] });
@@ -163,7 +163,7 @@ describe('会话归档和删除', () => {
   });
 
   it('确认归档同时停止各项工作, 保留最后保存的消息, 未完成 Goal 标记取消', async () => {
-    const fixture = actionFixture();
+    const fixture = await actionFixture();
     const id = fixture.session.id;
     const root = fixture.turns.startTurn({ sessionId: id, triggerType: 'userMessage', ttsEnabled: false });
     const other = fixture.sessions.createSession({ cwd: os.tmpdir() });
@@ -213,7 +213,7 @@ describe('会话归档和删除', () => {
   });
 
   it('没有主任务时也停止后台子代理, 进程和语音', async () => {
-    const fixture = actionFixture();
+    const fixture = await actionFixture();
     await archiveSession(fixture.composition, fixture.session.id);
     expect(fixture.running.isClosed(fixture.session.id)).toBe(false);
     expect(fixture.subagents.abortForSession).toHaveBeenCalledWith(fixture.session.id, 'Session archived');
@@ -223,7 +223,7 @@ describe('会话归档和删除', () => {
   });
 
   it('确认删除后先等进程退出, 才删除历史及工具状态', async () => {
-    const fixture = actionFixture();
+    const fixture = await actionFixture();
     const id = fixture.session.id;
     fixture.sessions.appendMessage({ sessionId: id, turnId: null, role: 'user', blocks: '待删除历史' });
     let finishProcess!: () => void;
@@ -243,7 +243,7 @@ describe('会话归档和删除', () => {
   });
 
   it('归档取消暂停的 Goal, 不改写已经完成的 Goal', async () => {
-    const fixture = actionFixture();
+    const fixture = await actionFixture();
     const id = fixture.session.id;
     const succeeded = fixture.goals.create(id, '完成的目标');
     fixture.goals.complete({ sessionId: id, goalId: succeeded.id, expectedVersion: succeeded.version }, '完成');
@@ -256,7 +256,7 @@ describe('会话归档和删除', () => {
   });
 
   it.each(['archive', 'delete'] as const)('%s 不存在的会话返回 404, 不启动停止流程', async action => {
-    const fixture = actionFixture();
+    const fixture = await actionFixture();
     const response = await fixture.app.request(`/api/sessions/missing${action === 'archive' ? '/archive' : ''}`, {
       method: action === 'archive' ? 'POST' : 'DELETE',
     });
@@ -270,7 +270,7 @@ describe('会话归档和删除', () => {
 
 describe('Session WebSocket Route', () => {
   it('手动压缩时仍接受普通输入, 正常完成后整批启动一轮', async () => {
-    const fixture = goalFixture();
+    const fixture = await goalFixture();
     const { socket, waitForMessage } = await connect(fixture.deps, fixture.session.id);
     fixture.running.register(fixture.session.id, { kind: 'compact', compactId: 'compact' });
     for (const text of ['A', 'B']) {
@@ -292,7 +292,7 @@ describe('Session WebSocket Route', () => {
 
   it.each(['send_user_message'] as const)(
     '归档拒绝 %s, 不创建 Goal、排队输入或 Turn', async type => {
-      const fixture = goalFixture();
+      const fixture = await goalFixture();
       fixture.sessions.archiveSession(fixture.session.id);
       const { socket, waitForMessage } = await connect(fixture.deps, fixture.session.id);
       for (const objective of [undefined, '新目标']) {
@@ -310,7 +310,7 @@ describe('Session WebSocket Route', () => {
   );
 
   it('正在删除或归档时拒绝直接发送和建 Goal', async () => {
-    const fixture = goalFixture();
+    const fixture = await goalFixture();
     const { socket, waitForMessage } = await connect(fixture.deps, fixture.session.id);
     await fixture.running.runWithSessionClosed(fixture.session.id, async () => {
       const response = waitForMessage();
@@ -326,7 +326,7 @@ describe('Session WebSocket Route', () => {
   });
 
   it('没有运行中的父 Turn 时仍能回答子代理批准, 不需要提交 Turn 或 Run ID', async () => {
-    const fixture = goalFixture();
+    const fixture = await goalFixture();
     const queue = new SessionInteractionQueue(null);
     const deps = { ...fixture.deps, interactions: queue };
     const pending = queue.enqueuePermission({
@@ -349,7 +349,7 @@ describe('Session WebSocket Route', () => {
   });
 
   it('拒绝回答其它 Session 的批准, 也拒绝已经取消的 Run 请求', async () => {
-    const fixture = goalFixture();
+    const fixture = await goalFixture();
     const queue = new SessionInteractionQueue(null);
     const deps = { ...fixture.deps, interactions: queue };
     const foreign = queue.enqueuePermission({
@@ -378,7 +378,7 @@ describe('Session WebSocket Route', () => {
   });
 
   it('正常发送携带原始 objective 时先建 Goal 再入队, 创建事件不会提前开始第二个 Turn', async () => {
-    const fixture = goalFixture();
+    const fixture = await goalFixture();
     const { socket, waitForMessage } = await connect(fixture.deps, fixture.session.id);
     const objective = ' \r\n任务正文\n  ';
     const response = waitForMessage();
@@ -395,7 +395,7 @@ describe('Session WebSocket Route', () => {
   });
 
   it('活动 Turn 下带目标的排队发送保留用户任务, 收尾后与短提示同轮交付', async () => {
-    const fixture = goalFixture();
+    const fixture = await goalFixture();
     const { socket, waitForMessage } = await connect(fixture.deps, fixture.session.id);
     fixture.running.register(fixture.session.id, { kind: 'turn', turnId: 'existing-turn' });
     const objective = '  下一轮的任务  ';
@@ -416,7 +416,7 @@ describe('Session WebSocket Route', () => {
   });
 
   it.each(['plan', 'existing', 'compact'] as const)('%s 冲突拒绝初始 Goal 请求, 不把未创建的任务入队', async conflict => {
-    const fixture = goalFixture();
+    const fixture = await goalFixture();
     const { socket, waitForMessage } = await connect(fixture.deps, fixture.session.id);
     if (conflict === 'plan') fixture.sessions.patchSession(fixture.session.id, { permissionMode: 'plan' });
     else if (conflict === 'existing') {

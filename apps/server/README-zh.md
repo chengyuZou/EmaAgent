@@ -25,7 +25,7 @@ pnpm --filter @ema-agent/server dev
 [main.ts](./src/main.ts) 先检查密钥, 再进入 [lifecycle.ts](./src/platform/lifecycle.ts). 启动顺序是:
 
 1. 创建数据目录, 检查 Profile 锁文件.
-2. 依次打开并迁移配置库, 会话库和 Narrative 剧情库. 会话库迁移接收已迁移的 Profile, 用于更新 Provider 引用. 见 [Storage 数据迁移](../../src/storage/README-zh.md#数据迁移).
+2. 依次打开并迁移配置库, 会话库和 Narrative 剧情库. 已有配置库和会话库升级前生成副本, 启动等待各自的副本和迁移完成. 副本失败就停止启动. 见 [Storage 数据迁移](../../src/storage/README-zh.md#数据迁移).
 3. 创建各业务对象并连接回调.
 4. 暂停活动 Goal, 将中断的工具, 后台进程, Turn 和子 Agent 执行记录标记为结束. 不续跑其中的命令.
 5. 挂载路由, 开始监听, 向 stdout 写入一行 JSON:
@@ -48,6 +48,7 @@ pnpm --filter @ema-agent/server dev
 | --- | --- |
 | `profile.db` | Provider, 模型绑定, 角色, 设置, MCP 和 Skill 记录. |
 | `data/data.db` | Session, Turn, 消息, Task, Goal, 工具执行, 用量和 Memory 任务. |
+| `pre-migration/` | Profile 或 Data 升级前的数据库副本, 本库迁移成功后保留最近 3 份. |
 | `narrative/narrative.db` | 随应用提供的剧情及检索数据. |
 | `profile/models-dev.json` | 本地 models.dev 目录. 只有显式刷新才下载, 打开供应商页面不会下载. |
 | `characters/`, `wallpapers/` | 角色资源和受管壁纸. |

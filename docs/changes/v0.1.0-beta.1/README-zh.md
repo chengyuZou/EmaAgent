@@ -28,4 +28,8 @@
 
 - 普通 JSON 和 Turn 请求体上限提高到 128 MiB, 音频和壁纸上传提高到 256 MiB. Live2D 封面允许最大 100 MiB 的 PNG 数据, 另计 base64 传输增量.
 
+## 数据库升级
+
+- Profile 和 Data 升级前等待独立 SQLite 副本完成, 副本失败则停止升级. 迁移成功后每个库保留最近 3 份, 恢复暂由人工处理. 见 [Storage](../../../src/storage/README-zh.md#数据迁移).
+
 模块说明见 [Narrative](../../../src/narrative/README-zh.md), 先前记录见 [Alpha](../v0.1.0-alpha.1/README-zh.md).

@@ -16,10 +16,10 @@ afterEach(() => {
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true });
 });
 
-function makeStore() {
+async function makeStore() {
   const db = new Database({ memory: true, kind: 'data' });
   databases.push(db);
-  db.migrate();
+  await db.migrate();
   const sessions = new SessionsRepo(db.sqlite);
   const events: GoalEvent[] = [];
   const store = new GoalStore(db, event => {
@@ -38,8 +38,8 @@ function identity(goal: Goal): GoalIdentity {
 }
 
 describe('GoalStore', () => {
-  it('归档会话不能新建或激活 Goal, 未完成目标仍能取消', () => {
-    const { store, sessions } = makeStore();
+  it('归档会话不能新建或激活 Goal, 未完成目标仍能取消', async () => {
+    const { store, sessions } = await makeStore();
     const goal = store.create('session', '归档前的目标');
     const paused = store.pause(identity(goal));
     sessions.archive('session', 10);
@@ -48,8 +48,8 @@ describe('GoalStore', () => {
     expect(() => store.create('session', '归档后新目标')).toThrow('session_archived');
   });
 
-  it('完成时一次写入终态和新的累计反馈, 不留下上一轮进度', () => {
-    const { db, store, events } = makeStore();
+  it('完成时一次写入终态和新的累计反馈, 不留下上一轮进度', async () => {
+    const { db, store, events } = await makeStore();
     const earlier = store.reportFeedback(identity(store.create('session', '整理 8 个 README')), '累计已整理 6/8');
     const completed = store.complete(identity(earlier), '8/8 已整理并汇总, 完整结果见最终回复');
     expect(completed).toMatchObject({
@@ -60,8 +60,8 @@ describe('GoalStore', () => {
     expect(events.at(-1)).toEqual({ type: 'goal_completed', goal: completed });
   });
 
-  it('历史列表只映射 Summary 字段, 详情仍保留反馈和失败说明', () => {
-    const { db, sessions, store } = makeStore();
+  it('历史列表只映射 Summary 字段, 详情仍保留反馈和失败说明', async () => {
+    const { db, sessions, store } = await makeStore();
     const reported = store.reportFeedback(identity(store.create('session', '目标一')), '前半部分已完成');
     const failed = store.fail(identity(reported), '前半部分完成, 剩余部分无法继续', '缺少必要输入');
     const active = store.create('session', '目标二');
@@ -86,8 +86,8 @@ describe('GoalStore', () => {
       .toEqual(['id', 'session_id', 'objective', 'status', 'reason', 'created_at', 'updated_at', 'completed_at']);
   });
 
-  it('反馈只保留最新进度, 同内容不重复写入, 用户修改目标后清空旧反馈', () => {
-    const { db, store, events } = makeStore();
+  it('反馈只保留最新进度, 同内容不重复写入, 用户修改目标后清空旧反馈', async () => {
+    const { db, store, events } = await makeStore();
     const created = store.create('session', '整理 8 个 README');
     expect(created.feedback).toBeNull();
     const first = store.reportFeedback(identity(created), ' 已整理 2/8 ');
@@ -105,8 +105,8 @@ describe('GoalStore', () => {
     ]);
   });
 
-  it('旧版本, paused, completed 和已删除目标不能报告进度或被反馈重新激活', () => {
-    const { store } = makeStore();
+  it('旧版本, paused, completed 和已删除目标不能报告进度或被反馈重新激活', async () => {
+    const { store } = await makeStore();
     const created = store.create('session', '目标');
     expect(() => store.reportFeedback(identity(created), ' ')).toThrow('goal_feedback_empty');
     const reported = store.reportFeedback(identity(created), '完成前半部分');
@@ -122,8 +122,8 @@ describe('GoalStore', () => {
     expect(store.getCurrent('session')).toBeNull();
   });
 
-  it('新建立即 active, SQL 只允许一条 active/paused, 取消保留历史后才允许新建', () => {
-    const { db, store, events } = makeStore();
+  it('新建立即 active, SQL 只允许一条 active/paused, 取消保留历史后才允许新建', async () => {
+    const { db, store, events } = await makeStore();
     const a = store.create('session', '  原始目标  ');
     expect(a).toMatchObject({ objective: '  原始目标  ', status: 'active', version: 1, reason: null });
     expect(store.getCurrent('session')).toEqual(a);
@@ -146,8 +146,8 @@ describe('GoalStore', () => {
     ]);
   });
 
-  it('修改、暂停、激活各递增版本, 无实际修改不递增版本或发重复事件', () => {
-    const { store, events } = makeStore();
+  it('修改、暂停、激活各递增版本, 无实际修改不递增版本或发重复事件', async () => {
+    const { store, events } = await makeStore();
     const a = store.create('session', '目标');
     expect(store.edit(identity(a), '目标')).toEqual(a);
     expect(store.activate(identity(a))).toEqual(a);
@@ -163,8 +163,8 @@ describe('GoalStore', () => {
     ]);
   });
 
-  it.each(['succeeded', 'failed', 'cancelled'] as const)('终态 %s 都是 completed, 只有失败保存 error', reason => {
-    const { store, events } = makeStore();
+  it.each(['succeeded', 'failed', 'cancelled'] as const)('终态 %s 都是 completed, 只有失败保存 error', async reason => {
+    const { store, events } = await makeStore();
     const a = store.create('session', '目标');
     let completed: Goal;
     let eventType: GoalEvent['type'];
@@ -190,8 +190,8 @@ describe('GoalStore', () => {
     expect(store.get('session', a.id)).toEqual(completed);
   });
 
-  it('旧版本完成和删除都报冲突, 返回最新事实且不发成功事件', () => {
-    const { store, events } = makeStore();
+  it('旧版本完成和删除都报冲突, 返回最新事实且不发成功事件', async () => {
+    const { store, events } = await makeStore();
     const a = store.create('session', '目标 v1');
     const latest = store.edit(identity(a), '目标 v2');
     for (const attempt of [() => store.complete(identity(a), '完成概况'), () => store.delete(identity(a))]) {
@@ -207,8 +207,8 @@ describe('GoalStore', () => {
     expect(store.getCurrent('session')).toEqual(latest);
   });
 
-  it('A 取消后新建 B, 旧 A 不能修改 B; 删除 A 后迟到写入也不能新建或恢复', () => {
-    const { store, events } = makeStore();
+  it('A 取消后新建 B, 旧 A 不能修改 B; 删除 A 后迟到写入也不能新建或恢复', async () => {
+    const { store, events } = await makeStore();
     const a = store.create('session', 'A');
     const closed = store.cancel(identity(a));
     const b = store.create('session', 'B');
@@ -222,8 +222,8 @@ describe('GoalStore', () => {
     expect(events).toHaveLength(4);
   });
 
-  it('跨 Session 的身份不能修改或删除其它 Session 目标', () => {
-    const { sessions, store, events } = makeStore();
+  it('跨 Session 的身份不能修改或删除其它 Session 目标', async () => {
+    const { sessions, store, events } = await makeStore();
     sessions.insert({ id: 'other', title: 'Other', cwd: '/workspace', createdAt: 1, updatedAt: 1 });
     const a = store.create('session', 'A');
     const wrong = { ...identity(a), sessionId: 'other' };
@@ -233,8 +233,8 @@ describe('GoalStore', () => {
     expect(events).toHaveLength(1);
   });
 
-  it('Plan 下拒绝创建, 空正文与空失败原因不落库, 未知 Session 不创建孤儿目标', () => {
-    const { sessions, store, events } = makeStore();
+  it('Plan 下拒绝创建, 空正文与空失败原因不落库, 未知 Session 不创建孤儿目标', async () => {
+    const { sessions, store, events } = await makeStore();
     sessions.patch('session', { permissionMode: 'plan' }, Date.now());
     expect(() => store.create('session', '目标')).toThrow('goal_plan_conflict');
     expect(() => store.create('missing', '目标')).toThrow('session_not_found');
@@ -247,13 +247,13 @@ describe('GoalStore', () => {
     expect(events).toHaveLength(1);
   });
 
-  it('真实文件数据库重开后 active 转 paused, 保留 ID 并递增版本, 不变更其它状态', () => {
+  it('真实文件数据库重开后 active 转 paused, 保留 ID 并递增版本, 不变更其它状态', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'ema-goal-test-'));
     directories.push(directory);
     const path = join(directory, 'data.db');
     const before = new Database({ path, kind: 'data' });
     databases.push(before);
-    before.migrate();
+    await before.migrate();
     const sessions = new SessionsRepo(before.sqlite);
     for (const id of ['active', 'paused', 'completed']) {
       sessions.insert({ id, title: id, cwd: '/workspace', createdAt: 1, updatedAt: 1 });
@@ -266,7 +266,7 @@ describe('GoalStore', () => {
 
     const after = new Database({ path, kind: 'data' });
     databases.push(after);
-    after.migrate();
+    await after.migrate();
     const events: GoalEvent[] = [];
     const recoveredStore = new GoalStore(after, event => {
       expect(after.sqlite.inTransaction).toBe(false);
@@ -282,8 +282,8 @@ describe('GoalStore', () => {
     expect(events).toEqual([{ type: 'goal_paused', goal: recovered }]);
   });
 
-  it('Session 永久删除级联清理 Goal, 迟到写入不能再恢复记录', () => {
-    const { db, store } = makeStore();
+  it('Session 永久删除级联清理 Goal, 迟到写入不能再恢复记录', async () => {
+    const { db, store } = await makeStore();
     const a = store.create('session', '目标');
     db.sqlite.prepare('DELETE FROM sessions WHERE id = ?').run('session');
     expect(store.listSummaries('session')).toEqual([]);
@@ -291,8 +291,8 @@ describe('GoalStore', () => {
     expect(db.sqlite.pragma('foreign_key_check')).toEqual([]);
   });
 
-  it('SQL 拒绝不存在的 Session 和互相矛盾的终态字段', () => {
-    const { db, store } = makeStore();
+  it('SQL 拒绝不存在的 Session 和互相矛盾的终态字段', async () => {
+    const { db, store } = await makeStore();
     const a = store.create('session', '目标');
     const repo = new GoalsRepo(db.sqlite);
     const row = repo.findById('session', a.id)!;

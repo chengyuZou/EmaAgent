@@ -21,11 +21,11 @@ let dataDir: string;
 let repo: AttachmentImagesRepo;
 let store: ImageStore;
 
-beforeEach(() => {
+beforeEach(async () => {
   dataDir = mkdtempSync(path.join(tmpdir(), 'ema-att-image-'));
   temporary.push(dataDir);
   database = new Database({ memory: true, kind: 'data' });
-  database.migrate();
+  await database.migrate();
   database.sqlite.prepare(`
     INSERT INTO sessions (id, title, cwd, pinned, last_activity_at, created_at, updated_at)
     VALUES (?, 's', 'D:/work', 0, 1, 1, 1)

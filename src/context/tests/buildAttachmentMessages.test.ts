@@ -148,7 +148,7 @@ describe('buildAttachmentMessages', () => {
 
   it('附件描述按真实路径保存, 重建缓存后命中时不再读取图片文件', async () => {
     const db = new Database({ memory: true, kind: 'data' });
-    db.migrate();
+    await db.migrate();
     try {
       const imagePath = path.join(dir, 'cached.png');
       writeFileSync(imagePath, Buffer.from('abc'));

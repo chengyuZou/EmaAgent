@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { SESSION_RESOURCE_KINDS, sessionResourceDir, turnResourceDir } from '@ema-agent/storage/dataPaths';
 import {
   sqliteFileSet,
+  preMigrationDir,
   sweepOrphanSessionDirectories,
   removeOrphanSessionDirectories,
   removeSessionFiles,
@@ -23,6 +24,20 @@ function withDirectory(run: (root: string) => void): void {
 }
 
 describe('data resource paths', () => {
+  it('places migration copies under the selected Profile without creating the copy directory', () => {
+    withDirectory(root => {
+      const previous = process.env['EMA_PROFILE_DIR'];
+      process.env['EMA_PROFILE_DIR'] = root;
+      try {
+        expect(preMigrationDir()).toBe(join(root, 'pre-migration'));
+        expect(existsSync(preMigrationDir())).toBe(false);
+      } finally {
+        if (previous === undefined) delete process.env['EMA_PROFILE_DIR'];
+        else process.env['EMA_PROFILE_DIR'] = previous;
+      }
+    });
+  });
+
   it('keeps SQLite companions beside their database', () => {
     expect(sqliteFileSet('D:/Ema Data/profile.db')).toEqual([
       'D:/Ema Data/profile.db',
@@ -42,6 +57,9 @@ describe('data resource paths', () => {
       }
       const staging = join(root, '.backup-temp', 'imports', 'pending');
       mkdirSync(staging, { recursive: true });
+      const migrationCopies = join(root, 'pre-migration');
+      mkdirSync(migrationCopies);
+      writeFileSync(join(migrationCopies, 'data.before.db'), 'copy');
       const result = sweepOrphanSessionDirectories(root, id => id === 'live');
       expect(result).toEqual({ removed: SESSION_RESOURCE_KINDS.length, failed: 0 });
       for (const kind of SESSION_RESOURCE_KINDS) {
@@ -49,6 +67,7 @@ describe('data resource paths', () => {
         expect(existsSync(sessionResourceDir(root, kind, 'orphan'))).toBe(false);
       }
       expect(existsSync(staging)).toBe(true);
+      expect(existsSync(join(migrationCopies, 'data.before.db'))).toBe(true);
     });
   });
 

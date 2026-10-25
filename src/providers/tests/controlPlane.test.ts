@@ -9,19 +9,18 @@ import {
 
 const databases: Database[] = [];
 
-class TestProfileDatabase extends Database {
-  constructor() {
-    super({ memory: true, kind: 'profile' });
-    this.migrate();
-    databases.push(this);
-  }
+async function createProfileDatabase(): Promise<Database> {
+  const database = new Database({ memory: true, kind: 'profile' });
+  databases.push(database);
+  await database.migrate();
+  return database;
 }
 
 afterEach(() => {
   for (const database of databases.splice(0)) database.close();
 });
 
-function createProviders(database: TestProfileDatabase) {
+function createProviders(database: Database) {
   return new Providers(database);
 }
 
@@ -43,7 +42,7 @@ function createTestCatalog(): ModelsDevCatalog {
   return catalog;
 }
 
-function createModelStack(database: TestProfileDatabase) {
+function createModelStack(database: Database) {
   const providers = new Providers(database);
   const models = new ProviderModels(database, providers, createTestCatalog());
   return {
@@ -53,8 +52,8 @@ function createModelStack(database: TestProfileDatabase) {
 }
 
 describe('Provider 控制面', () => {
-  it('自建 Provider 创建后按能力解析连接，key 来自 Provider 的一把 key', () => {
-    const store = new TestProfileDatabase();
+  it('自建 Provider 创建后按能力解析连接，key 来自 Provider 的一把 key', async () => {
+    const store = await createProfileDatabase();
     const providers = createProviders(store);
 
     providers.create({
@@ -77,8 +76,8 @@ describe('Provider 控制面', () => {
     });
   });
 
-  it('重复 id 判定按 (id, capability)：同能力拒绝，无此能力则追加能力档', () => {
-    const store = new TestProfileDatabase();
+  it('重复 id 判定按 (id, capability)：同能力拒绝，无此能力则追加能力档', async () => {
+    const store = await createProfileDatabase();
     const providers = createProviders(store);
     providers.create({
       id: 'my-gateway',
@@ -118,8 +117,8 @@ describe('Provider 控制面', () => {
     expect(providers.resolveConnection('my-gateway', 'vision').apiKey).toBe('sk-gateway');
   });
 
-  it('id 是语义 slug：用户显式给定；非法/空值创建被拒', () => {
-    const store = new TestProfileDatabase();
+  it('id 是语义 slug：用户显式给定；非法/空值创建被拒', async () => {
+    const store = await createProfileDatabase();
     const providers = createProviders(store);
 
     const created = providers.create({
@@ -144,8 +143,8 @@ describe('Provider 控制面', () => {
     })).toThrow(/id/);
   });
 
-  it('一个 Provider 一把 key：全能力共享；update 未提供 key 不动，null 清空', () => {
-    const store = new TestProfileDatabase();
+  it('一个 Provider 一把 key：全能力共享；update 未提供 key 不动，null 清空', async () => {
+    const store = await createProfileDatabase();
     const providers = createProviders(store);
     providers.create({
       id: 'siliconflow-copy',
@@ -177,8 +176,8 @@ describe('Provider 控制面', () => {
     expect(() => providers.resolveConnection('siliconflow-copy', 'llm')).toThrow(/API Key/);
   });
 
-  it('空白创建必须显式填写协议与 baseUrl，不允许任何默认猜测', () => {
-    const store = new TestProfileDatabase();
+  it('空白创建必须显式填写协议与 baseUrl，不允许任何默认猜测', async () => {
+    const store = await createProfileDatabase();
     const providers = createProviders(store);
 
     expect(() => providers.create({
@@ -195,8 +194,8 @@ describe('Provider 控制面', () => {
     })).toThrow(/协议/);
   });
 
-  it('模型绑定只接受已启用模型', () => {
-    const store = new TestProfileDatabase();
+  it('模型绑定只接受已启用模型', async () => {
+    const store = await createProfileDatabase();
     const providers = createProviders(store);
     providers.create({
       id: 'custom-main',
@@ -224,8 +223,8 @@ describe('Provider 控制面', () => {
       .toThrow(/已启用/);
   });
 
-  it('手填：新增 user 行默认启用；dev 行禁修改', () => {
-    const store = new TestProfileDatabase();
+  it('手填：新增 user 行默认启用；dev 行禁修改', async () => {
+    const store = await createProfileDatabase();
     const providers = createProviders(store);
     providers.create({
       id: 'custom-main',
@@ -251,8 +250,8 @@ describe('Provider 控制面', () => {
     })).toThrow(/目录/);
   });
 
-  it('目录同步：新 spec 默认禁用；已有 dev 行参数对齐（enabled 不动）；手写行不动', () => {
-    const store = new TestProfileDatabase();
+  it('目录同步：新 spec 默认禁用；已有 dev 行参数对齐（enabled 不动）；手写行不动', async () => {
+    const store = await createProfileDatabase();
     const providers = createProviders(store);
     providers.create({
       id: 'custom-main',
@@ -292,8 +291,8 @@ describe('Provider 控制面', () => {
     expect(models.get('custom-main', 'llm', 'acme-pro')).toMatchObject({ enabled: true, contextWindow: 128_000 });
   });
 
-  it('删除协议档：删激活档自动切剩余第一档；删到最后一档被拒', () => {
-    const store = new TestProfileDatabase();
+  it('删除协议档：删激活档自动切剩余第一档；删到最后一档被拒', async () => {
+    const store = await createProfileDatabase();
     const providers = createProviders(store);
     providers.create({
       id: 'deepseek-copy',
@@ -323,8 +322,8 @@ describe('Provider 控制面', () => {
     })).toThrow(/至少/);
   });
 
-  it('守卫：停用/删除被绑定模型都抛 model_in_use 并带 conflicts', () => {
-    const store = new TestProfileDatabase();
+  it('守卫：停用/删除被绑定模型都抛 model_in_use 并带 conflicts', async () => {
+    const store = await createProfileDatabase();
     const providers = createProviders(store);
     providers.create({
       id: 'custom-main',

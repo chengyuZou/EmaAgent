@@ -6,8 +6,8 @@ describe('UsageRecordsRepo', () => {
   let database: TestDatabase;
   let repo: UsageRecordsRepo;
 
-  beforeEach(() => {
-    database = createTestDatabase();
+  beforeEach(async () => {
+    database = await createTestDatabase();
     database.db.prepare(`
       INSERT INTO sessions (id, title, cwd, created_at, updated_at)
       VALUES ('session-a', 'Session A', 'D:/work', 1, 1),

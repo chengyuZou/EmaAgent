@@ -26,10 +26,10 @@ function temporaryRoot(): string {
   return root;
 }
 
-function database(): Database {
+async function database(): Promise<Database> {
   const db = new Database({ memory: true, kind: 'data' });
   databases.push(db);
-  db.migrate();
+  await db.migrate();
   return db;
 }
 
@@ -38,7 +38,7 @@ async function fixture() {
   const sourceDir = path.join(root, 'source');
   const targetDir = path.join(root, 'target');
   const workDir = path.join(root, 'work');
-  const db = database();
+  const db = await database();
   db.sqlite.prepare(`INSERT INTO sessions (id, title, cwd, last_activity_at, created_at, updated_at)
     VALUES ('session', '子代理备份', 'D:/work', 1, 1, 1)`).run();
   const identities = new SubagentsRepo(db.sqlite);
@@ -104,7 +104,7 @@ async function fixture() {
   const zipPath = path.join(workDir, 'session.zip');
   await exportSessionArchive('session', zipPath, sourceDir, new SessionBackupReader(db.sqlite));
   const entries = await readZip(zipPath);
-  const target = database();
+  const target = await database();
   const restore = (filePath = zipPath) => importSessionArchive(
     filePath,
     targetDir, new SessionBackupReader(target.sqlite), new SessionBackupRestorer(target.sqlite), () => true,

@@ -91,14 +91,14 @@ interface Fixture {
   db: Database;
 }
 
-function createFixture(options?: {
+async function createFixture(options?: {
   maxConcurrent?: number;
   immediateResultWaitMs?: number;
   assertSessionWorkAllowed?: (sessionId: string) => void;
-}): Fixture {
+}): Promise<Fixture> {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ema-bg-runtime-'));
   const db = new Database({ memory: true, kind: 'data' });
-  db.migrate();
+  await db.migrate();
   db.sqlite.prepare(
     `INSERT INTO sessions (id, title, cwd, created_at, updated_at) VALUES (?, '', 'D:/work', 1, 1)`,
   ).run(SESSION_ID);
@@ -183,8 +183,8 @@ afterEach(() => {
   }
 });
 
-function tracked(options?: Parameters<typeof createFixture>[0]): Fixture {
-  const fixture = createFixture(options);
+async function tracked(options?: Parameters<typeof createFixture>[0]): Promise<Fixture> {
+  const fixture = await createFixture(options);
   fixtures.push(fixture);
   return fixture;
 }
@@ -192,7 +192,7 @@ function tracked(options?: Parameters<typeof createFixture>[0]): Fixture {
 
 describe('BackgroundProcess', () => {
   it('界面进度通知失败不影响日志写入和命令完成', async () => {
-    const fixture = tracked({ immediateResultWaitMs: 40 });
+    const fixture = await tracked({ immediateResultWaitMs: 40 });
     const onOutput = vi.fn(() => { throw new Error('progress unavailable'); });
     const pending = fixture.runtime.runCommand(makeRequest(fixture, { onOutput }));
     await tick();
@@ -212,7 +212,7 @@ describe('BackgroundProcess', () => {
   });
 
   it.each([false, true])('日志写入失败会停止真实进程并报告失败, background=%s', async runInBackground => {
-    const fixture = tracked();
+    const fixture = await tracked();
     let completion: Promise<CommandRunResult> | undefined;
     const runner: CommandStarter = {
       start: (_command, options) => {
@@ -250,7 +250,7 @@ describe('BackgroundProcess', () => {
   });
 
   it('一条命令停止报错时仍等其他命令退出, 再返回失败', async () => {
-    const fixture = tracked();
+    const fixture = await tracked();
     const first = await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true }));
     await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true }));
     if (first.kind !== 'processReference') throw new Error('missing process reference');
@@ -279,7 +279,7 @@ describe('BackgroundProcess', () => {
   });
 
   it('会话停止同时停止前台,后台和队列, 保留持久命令日志, 不启动排队项', async () => {
-    const fixture = tracked({ maxConcurrent: 1 });
+    const fixture = await tracked({ maxConcurrent: 1 });
     const background = await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true }));
     const queued = await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true }));
     const foreground = fixture.runtime.runCommand(makeRequest(fixture));
@@ -300,7 +300,7 @@ describe('BackgroundProcess', () => {
 
   it('会话开始停止后拒绝新普通命令, 已启动命令仍能正常停止', async () => {
     let closed = false;
-    const fixture = tracked({ assertSessionWorkAllowed: () => {
+    const fixture = await tracked({ assertSessionWorkAllowed: () => {
       if (closed) throw new Error('session_stopping');
     } });
     const foreground = fixture.runtime.runCommand(makeRequest(fixture));
@@ -313,7 +313,7 @@ describe('BackgroundProcess', () => {
   });
 
   it('已取消的普通命令不启动进程并清理临时日志', async () => {
-    const fixture = tracked();
+    const fixture = await tracked();
     const controller = new AbortController();
     controller.abort();
 
@@ -327,7 +327,7 @@ describe('BackgroundProcess', () => {
   });
 
   it('前台等待内完成:返回普通结果,不留 DB 行,日志目录已清理', async () => {
-    const fixture = tracked();
+    const fixture = await tracked();
     const pending = fixture.runtime.runCommand(makeRequest(fixture));
     await tick();
     fixture.runner.processes[0]!.finishAfter(20, okResult('hello'));
@@ -344,7 +344,7 @@ describe('BackgroundProcess', () => {
   it('默认等待 180 秒才转后台, 转交后原调用取消不停止进程也不再发送进度', async () => {
     vi.useFakeTimers();
     try {
-      const fixture = tracked();
+      const fixture = await tracked();
       const controller = new AbortController();
       const onOutput = vi.fn();
       const settled = vi.fn();
@@ -380,7 +380,7 @@ describe('BackgroundProcess', () => {
   });
 
   it('总超时默认读取设置, 显式更短值有效而更长值不能超过设置', async () => {
-    const fixture = tracked();
+    const fixture = await tracked();
     const start = vi.spyOn(fixture.runner, 'start');
     for (const timeoutMs of [undefined, 240_000, 7 * 24 * 60 * 60 * 1_000]) {
       await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true, timeoutMs }));
@@ -394,7 +394,7 @@ describe('BackgroundProcess', () => {
   });
 
   it('超过交互等待转交后台:落 running,自然完成后转 completed 并通知,日志保留', async () => {
-    const fixture = tracked({ immediateResultWaitMs: 40 });
+    const fixture = await tracked({ immediateResultWaitMs: 40 });
     const pending = fixture.runtime.runCommand(makeRequest(fixture));
     await tick();
     const process = fixture.runner.processes[0]!;
@@ -423,7 +423,7 @@ describe('BackgroundProcess', () => {
   });
 
   it('计时器胜出但用户已取消:不登记为后台进程,抛取消错误并清理日志', async () => {
-    const fixture = tracked({ immediateResultWaitMs: 80 });
+    const fixture = await tracked({ immediateResultWaitMs: 80 });
     const controller = new AbortController();
     const pending = fixture.runtime.runCommand(makeRequest(fixture, {
       waitSignal: controller.signal,
@@ -439,7 +439,7 @@ describe('BackgroundProcess', () => {
   });
 
   it('停止运行中的进程:等待退出后返回真实 stopped 终态', async () => {
-    const fixture = tracked();
+    const fixture = await tracked();
     const started = await fixture.runtime.runCommand(makeRequest(fixture, {
       runInBackground: true,
     }));
@@ -453,7 +453,7 @@ describe('BackgroundProcess', () => {
   });
 
   it('停止排队中的进程:从未 spawn,直接落 stopped', async () => {
-    const fixture = tracked({ maxConcurrent: 1 });
+    const fixture = await tracked({ maxConcurrent: 1 });
     await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true }));
     const second = await fixture.runtime.runCommand(makeRequest(fixture, {
       runInBackground: true,
@@ -470,7 +470,7 @@ describe('BackgroundProcess', () => {
   });
 
   it('显式后台队列满额时, 超过四条普通命令也直接启动', async () => {
-    const fixture = tracked({ maxConcurrent: 1 });
+    const fixture = await tracked({ maxConcurrent: 1 });
     await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true }));
     const queued = await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true }));
     if (queued.kind !== 'processReference') throw new Error('missing process reference');
@@ -489,7 +489,7 @@ describe('BackgroundProcess', () => {
   });
 
   it('跨 Session 的显式后台命令按提交顺序启动', async () => {
-    const fixture = tracked({ maxConcurrent: 1 });
+    const fixture = await tracked({ maxConcurrent: 1 });
     const otherSessionId = 'session-b';
     const otherTurnId = 'turn-b';
     const otherToolCallId = 'call-b';
@@ -527,7 +527,7 @@ describe('BackgroundProcess', () => {
   });
 
   it('普通命令转后台及结束不占用或释放显式后台名额', async () => {
-    const fixture = tracked({ maxConcurrent: 1, immediateResultWaitMs: 10 });
+    const fixture = await tracked({ maxConcurrent: 1, immediateResultWaitMs: 10 });
     const foreground = fixture.runtime.runCommand(makeRequest(fixture));
     const process = fixture.runner.processes[0]!;
     const transferred = await foreground;
@@ -555,7 +555,7 @@ describe('BackgroundProcess', () => {
   });
 
   it('取消排队项不释放运行名额, 后续项保持提交顺序', async () => {
-    const fixture = tracked({ maxConcurrent: 1 });
+    const fixture = await tracked({ maxConcurrent: 1 });
     const start = vi.spyOn(fixture.runner, 'start');
     await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true, command: 'running' }));
     const cancelled = await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true, command: 'cancelled' }));
@@ -573,7 +573,7 @@ describe('BackgroundProcess', () => {
   });
 
   it('排队命令启动失败后释放名额并继续启动下一项', async () => {
-    const fixture = tracked({ maxConcurrent: 1 });
+    const fixture = await tracked({ maxConcurrent: 1 });
     await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true, command: 'running' }));
     const failed = await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true, command: 'failed' }));
     await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true, command: 'next' }));
@@ -592,7 +592,7 @@ describe('BackgroundProcess', () => {
   });
 
   it('discardSession 停止进程树并等待退出后才返回', async () => {
-    const fixture = tracked({ maxConcurrent: 2 });
+    const fixture = await tracked({ maxConcurrent: 2 });
     await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true }));
     await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true, command: 'b' }));
 
@@ -602,7 +602,7 @@ describe('BackgroundProcess', () => {
   });
 
   it('recoverInterrupted 把 queued 与 running 全部收为 interrupted 并发事件', async () => {
-    const fixture = tracked({ maxConcurrent: 1 });
+    const fixture = await tracked({ maxConcurrent: 1 });
     await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true }));
     await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true, command: 'b' }));
 

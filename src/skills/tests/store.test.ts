@@ -25,9 +25,9 @@ function makeDatabase(): Database {
   return db;
 }
 
-function makeStore(userRoot = makeRoot(), builtinRoot = makeRoot()) {
+async function makeStore(userRoot = makeRoot(), builtinRoot = makeRoot()) {
   const db = makeDatabase();
-  db.migrate();
+  await db.migrate();
   return { store: new SkillStore(db, userRoot, builtinRoot), repo: new SkillsRepo(db.sqlite) };
 }
 
@@ -49,7 +49,7 @@ describe('SkillStore 目录对账', () => {
     const dir = join(root, 'unversioned');
     mkdirSync(dir);
     writeFileSync(join(dir, 'SKILL.md'), '---\nname: unversioned\ndescription: 无版本技能\n---\n# 用法\n');
-    const { store, repo } = makeStore(root);
+    const { store, repo } = await makeStore(root);
 
     const result = await store.reconcileUserRoot();
 
@@ -63,7 +63,7 @@ describe('SkillStore 目录对账', () => {
     writeSkill(root, 'alpha', 'alpha');
     writeSkill(root, 'beta', 'beta');
     mkdirSync(join(root, 'broken'));
-    const { store, repo } = makeStore(root);
+    const { store, repo } = await makeStore(root);
 
     const first = await store.reconcileUserRoot();
     expect(first.map(e => e.name).sort()).toEqual(['alpha', 'beta']);
@@ -81,7 +81,7 @@ describe('SkillStore 目录对账', () => {
   it('手放目录改名更换路径身份, 旧索引被清理', async () => {
     const root = makeRoot();
     const dir = writeSkill(root, 'gamma', 'gamma');
-    const { store, repo } = makeStore(root);
+    const { store, repo } = await makeStore(root);
     await store.reconcileUserRoot();
 
     renameSync(dir, join(root, 'gamma-renamed'));
@@ -95,7 +95,7 @@ describe('SkillStore 目录对账', () => {
     const root = makeRoot();
     const dir = writeSkill(root, 'alpha', 'alpha');
     const skillPath = join(dir, 'SKILL.md');
-    const { store, repo } = makeStore(root);
+    const { store, repo } = await makeStore(root);
     await store.reconcileUserRoot();
     const firstAt = repo.findByPath(skillPath)!.installed_at;
     store.setEnabled(skillPath, false);
@@ -116,7 +116,7 @@ describe('SkillStore 目录对账', () => {
     const root = makeRoot();
     const dir = writeSkill(root, 'alpha', 'alpha');
     const skillPath = join(dir, 'SKILL.md');
-    const { store, repo } = makeStore(root);
+    const { store, repo } = await makeStore(root);
     await store.reconcileUserRoot();
     store.setEnabled(skillPath, false);
     writeFileSync(skillPath, 'broken');
@@ -133,7 +133,7 @@ describe('SkillStore 目录对账', () => {
     const builtinRoot = makeRoot();
     const userPath = join(writeSkill(userRoot, 'user', 'user'), 'SKILL.md');
     const builtinPath = join(writeSkill(builtinRoot, 'builtin', 'builtin'), 'SKILL.md');
-    const { store, repo } = makeStore(userRoot, builtinRoot);
+    const { store, repo } = await makeStore(userRoot, builtinRoot);
     await store.reconcileUserRoot();
     await store.reconcileBuiltinRoot();
     store.setEnabled(builtinPath, false);
@@ -151,7 +151,7 @@ describe('SkillStore 目录对账', () => {
 describe('SkillStore 安装与删除', () => {
   it('staging 落位写入 user 索引, 删除后不留目录和开关', async () => {
     const root = makeRoot();
-    const { store, repo } = makeStore(root);
+    const { store, repo } = await makeStore(root);
     const staging = writeSkill(root, `${STAGING_PREFIX}test-1`, 'PDFQA', '1.2.0');
 
     const descriptor = await store.finalizeInstall(staging, 'pdf-qa');
@@ -169,7 +169,7 @@ describe('SkillStore 安装与删除', () => {
 
   it('替换安装保留原开关与安装时间', async () => {
     const root = makeRoot();
-    const { store, repo } = makeStore(root);
+    const { store, repo } = await makeStore(root);
     const first = await store.finalizeInstall(writeSkill(root, `${STAGING_PREFIX}one`, 'PDFQA'), 'pdf-qa');
     const firstAt = repo.findByPath(first.path)!.installed_at;
     store.setEnabled(first.path, false);
@@ -184,7 +184,7 @@ describe('SkillStore 安装与删除', () => {
     const builtinRoot = makeRoot();
     const builtinPath = join(writeSkill(builtinRoot, 'review', 'review'), 'SKILL.md');
     const userPath = join(writeSkill(userRoot, 'custom', 'custom'), 'SKILL.md');
-    const { store, repo } = makeStore(userRoot, builtinRoot);
+    const { store, repo } = await makeStore(userRoot, builtinRoot);
     await store.reconcileBuiltinRoot();
     await store.reconcileUserRoot();
     store.setEnabled(builtinPath, false);
@@ -206,7 +206,7 @@ describe('SkillStore 安装与删除', () => {
     const builtinPath = join(writeSkill(builtinRoot, 'review', 'review'), 'SKILL.md');
     const userPath = join(writeSkill(userRoot, 'custom', 'custom'), 'SKILL.md');
     const outsidePath = join(writeSkill(makeRoot(), 'outside', 'outside'), 'SKILL.md');
-    const { store, repo } = makeStore(userRoot, builtinRoot);
+    const { store, repo } = await makeStore(userRoot, builtinRoot);
     await store.reconcileBuiltinRoot();
     await store.reconcileUserRoot();
 
@@ -217,8 +217,8 @@ describe('SkillStore 安装与删除', () => {
     expect(existsSync(outsidePath)).toBe(true);
   });
 
-  it('未知路径不能产生脱离技能索引的启停记录', () => {
-    const { store } = makeStore();
+  it('未知路径不能产生脱离技能索引的启停记录', async () => {
+    const { store } = await makeStore();
     expect(() => store.setEnabled('missing', false)).toThrow('Skill "missing" not found');
     expect(store.listDisabledPaths()).toEqual([]);
   });
@@ -227,7 +227,7 @@ describe('SkillStore 安装与删除', () => {
     const root = makeRoot();
     writeSkill(root, 'alpha', 'alpha');
     mkdirSync(join(root, `${STAGING_PREFIX}orphan`));
-    const { store } = makeStore(root);
+    const { store } = await makeStore(root);
 
     await store.sweepOrphanStaging();
 

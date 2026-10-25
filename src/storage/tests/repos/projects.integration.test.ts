@@ -8,8 +8,8 @@ describe('ProjectsRepo', () => {
   let projects: ProjectsRepo;
   let sessions: SessionsRepo;
 
-  beforeEach(() => {
-    database = createTestDatabase();
+  beforeEach(async () => {
+    database = await createTestDatabase();
     projects = new ProjectsRepo(database.db);
     sessions = new SessionsRepo(database.db);
   });

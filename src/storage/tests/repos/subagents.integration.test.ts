@@ -18,8 +18,8 @@ describe('Subagent 身份与 Run', () => {
     permissionMode: 'default' as const, reasoningEffort: 'high' as const,
   };
 
-  beforeEach(() => {
-    database = createTestDatabase();
+  beforeEach(async () => {
+    database = await createTestDatabase();
     database.db.exec(`
       INSERT INTO sessions (id, title, cwd, created_at, updated_at)
       VALUES ('session-a', 'Session A', 'D:/work', 1, 1);

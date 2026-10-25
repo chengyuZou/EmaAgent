@@ -8,9 +8,9 @@ import {
 } from '../../index.js';
 
 describe('Character resource persistence', () => {
-  it('修改参考音频文本和语言时保留文件事实, 展示名修改不覆盖文本和语言', () => {
+  it('修改参考音频文本和语言时保留文件事实, 展示名修改不覆盖文本和语言', async () => {
     const database = new Database({ memory: true, kind: 'profile' });
-    database.migrate();
+    await database.migrate();
     try {
       new CharacterRepo(database.sqlite).insert({
         name: '角色',
@@ -56,9 +56,9 @@ describe('Character resource persistence', () => {
     }
   });
 
-  it('保存模型映射, 并在更换主要资源时更新旧主要资源时间', () => {
+  it('保存模型映射, 并在更换主要资源时更新旧主要资源时间', async () => {
     const database = new Database({ memory: true, kind: 'profile' });
-    database.migrate();
+    await database.migrate();
     try {
       new CharacterRepo(database.sqlite).insert({
         name: '角色',

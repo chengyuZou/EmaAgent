@@ -6,9 +6,9 @@ import type { UsageRecord } from '../types.js';
 let database: Database;
 let recorder: UsageRecorder;
 
-beforeEach(() => {
+beforeEach(async () => {
   database = new Database({ memory: true, kind: 'data' });
-  database.migrate();
+  await database.migrate();
   new SessionsRepo(database.sqlite).insert({
     id: 'session-1', title: 'Session', cwd: '', createdAt: 1, updatedAt: 1,
   });

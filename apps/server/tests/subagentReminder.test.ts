@@ -41,7 +41,7 @@ describe('Server 子代理 reminder 目录', () => {
   it('超过分页上限仍全部交付, 最近身份在前, 下一次读取反映身份修改', async () => {
     const db = new Database({ memory: true, kind: 'data' });
     databases.push(db);
-    db.migrate();
+    await db.migrate();
     db.sqlite.prepare(`INSERT INTO sessions (id, title, cwd, created_at, updated_at, last_activity_at)
       VALUES (?, '目录测试', '', 1, 1, 1)`).run('session');
     db.sqlite.prepare(`INSERT INTO sessions (id, title, cwd, created_at, updated_at, last_activity_at)

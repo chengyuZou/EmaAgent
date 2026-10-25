@@ -17,12 +17,10 @@ export class DatabaseCapabilityError extends Error {
   }
 }
 
-/** 打开后先 migrate 再使用 Repository, 完成后 close. 数据库路径由宿主提供. */
+/** 打开后先等待 migrate 完成, 文件库升级时自动备份, 最后 close. 路径由宿主提供. */
 export class Database {
   readonly sqlite: SqliteDb;
-  readonly kind:   DatabaseKind;
   private readonly migrations: MigrationsRunner;
-  private migrated = false;
   private closed   = false;
 
   constructor(opts: DatabaseOptions) {
@@ -63,15 +61,13 @@ export class Database {
     }
 
     this.sqlite     = sqlite;
-    this.kind       = opts.kind;
-    this.migrations = new MigrationsRunner(this.sqlite, this.kind);
+    this.migrations = new MigrationsRunner(this.sqlite, opts.kind);
   }
 
-  migrate(): void {
-    if (this.closed)   throw new Error('Database already closed');
-    if (this.migrated) return;
-    this.migrations.run();
-    this.migrated = true;
+  /** 已有 Profile/Data 文件升级先等待副本完成. 未指定目录时, 副本保存在数据库旁的 pre-migration/. */
+  async migrate(directory?: string): Promise<void> {
+    if (this.closed) throw new Error('Database already closed');
+    await this.migrations.run(directory);
   }
 
   currentVersion(): number {

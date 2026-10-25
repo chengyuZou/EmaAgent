@@ -12,10 +12,10 @@ afterEach(() => {
   for (const database of databases.splice(0)) database.close();
 });
 
-function fixture() {
+async function fixture() {
   const db = new Database({ memory: true, kind: 'data' });
   databases.push(db);
-  db.migrate();
+  await db.migrate();
   new SessionsRepo(db.sqlite).insert({
     id: 'session', title: 'Session', cwd: '/workspace', createdAt: 1, updatedAt: 1,
   });
@@ -30,7 +30,7 @@ function fixture() {
 
 describe('Goal tools', () => {
   it('进度写入由 GoalGet 回读, 后续完成使用更新后的版本', async () => {
-    const { goalStore, goal, invocation } = fixture();
+    const { goalStore, goal, invocation } = await fixture();
     const reported = await GoalUpdateTool.execute(GoalUpdateTool.inputSchema.parse({
       goalId: goal.id, expectedVersion: goal.version, status: 'active', feedback: ' 已整理 2/8 ',
     }), { goalStore }, invocation);
@@ -45,7 +45,7 @@ describe('Goal tools', () => {
   });
 
   it('完成输入必须提供新的反馈, 不沿用旧进度', async () => {
-    const { goalStore, goal, invocation } = fixture();
+    const { goalStore, goal, invocation } = await fixture();
     expect(GoalUpdateTool.inputSchema.safeParse({
       goalId: goal.id, expectedVersion: goal.version, status: 'completed', reason: 'succeeded',
     }).success).toBe(false);
@@ -57,7 +57,7 @@ describe('Goal tools', () => {
   });
 
   it('最终失败保存 error, 临时进度不伪装成失败', async () => {
-    const { goalStore, goal, invocation } = fixture();
+    const { goalStore, goal, invocation } = await fixture();
     const failed = await GoalUpdateTool.execute(GoalUpdateTool.inputSchema.parse({
       goalId: goal.id, expectedVersion: goal.version, status: 'completed', reason: 'failed',
       feedback: '已检查输入, 无法继续',
@@ -67,7 +67,7 @@ describe('Goal tools', () => {
   });
 
   it('取消或删除后返回关闭指令, 旧工具不能重建 Goal', async () => {
-    const { goalStore, goal, invocation } = fixture();
+    const { goalStore, goal, invocation } = await fixture();
     const cancelled = goalStore.cancel({ sessionId: 'session', goalId: goal.id, expectedVersion: goal.version });
     const input = GoalUpdateTool.inputSchema.parse({
       goalId: goal.id, expectedVersion: goal.version, status: 'active', feedback: '继续执行旧目标',
@@ -81,7 +81,7 @@ describe('Goal tools', () => {
   });
 
   it('paused 拒绝 active 反馈, 新版目标拒绝旧完成判断', async () => {
-    const { goalStore, goal, invocation } = fixture();
+    const { goalStore, goal, invocation } = await fixture();
     const edited = goalStore.edit({ sessionId: 'session', goalId: goal.id, expectedVersion: goal.version }, '只整理两个文件');
     await expect(GoalUpdateTool.execute(GoalUpdateTool.inputSchema.parse({
       goalId: goal.id, expectedVersion: goal.version, status: 'completed', reason: 'succeeded',
@@ -94,8 +94,8 @@ describe('Goal tools', () => {
     expect(goalStore.getCurrent('session')).toEqual(paused);
   });
 
-  it('输入拒绝取消, 删除, 暂停, 空反馈和修改正文, 无 Store 时不暴露工具', () => {
-    const { goal } = fixture();
+  it('输入拒绝取消, 删除, 暂停, 空反馈和修改正文, 无 Store 时不暴露工具', async () => {
+    const { goal } = await fixture();
     const identity = { goalId: goal.id, expectedVersion: goal.version };
     for (const invalid of [
       { ...identity, status: 'completed', reason: 'cancelled' },

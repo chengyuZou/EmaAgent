@@ -76,7 +76,7 @@ function parentMessages(): ForkParentMessages {
   };
 }
 
-function fixture(
+async function fixture(
   readParentMessages: (signal: AbortSignal) => Promise<ForkParentMessages>,
   prepared: PreparedTurn = preparedTurn(),
   media: {
@@ -100,7 +100,7 @@ function fixture(
     readParentMessages,
   });
   const db = new Database({ memory: true, kind: 'data' });
-  db.migrate();
+  await db.migrate();
   db.sqlite.prepare("INSERT INTO sessions (id, title, cwd, created_at, updated_at) VALUES ('s1', '会话', '', 1, 1)").run();
   databases.push(db);
   const identities = new SubagentsRepo(db.sqlite);
@@ -123,7 +123,7 @@ describe('createPrepareSubagent fork', () => {
       DynamicSystemPromptInput: { ...base.DynamicSystemPromptInput, memorySection: MEMORY_GUIDANCE },
       tools: { ...base.tools, toolPool: new ToolPool([MemorySearchTool, MemoryReadTool, MemoryListTool]) },
     };
-    const { prepare } = fixture(async () => parentMessages(), root);
+    const { prepare } = await fixture(async () => parentMessages(), root);
     const child = await prepare({
       subagentId: 'memory-child', prompt: '只处理委派工作', options: { contextMode },
       signal: new AbortController().signal,
@@ -141,7 +141,7 @@ describe('createPrepareSubagent fork', () => {
     const vision = vi.fn(async () => ({ text: '描述', blocks: [] }));
     const toolPool = assembleToolPool(registry);
     const root = preparedTurn();
-    const { prepare } = fixture(async () => parentMessages(), {
+    const { prepare } = await fixture(async () => parentMessages(), {
       ...root,
       tools: { ...root.tools, toolPool },
     });
@@ -169,7 +169,7 @@ describe('createPrepareSubagent fork', () => {
       },
     ] };
     const describeImage = vi.fn(async () => '子模型需要的图片描述');
-    const { prepare } = fixture(async () => parent, {
+    const { prepare } = await fixture(async () => parent, {
       ...preparedTurn(),
       protocol: 'openai-responses-llm',
       supportsImageInput: true,
@@ -197,7 +197,7 @@ describe('createPrepareSubagent fork', () => {
   });
 
   it('子循环 Macro 将摘要和覆盖 ID 写入本次 Run, 同步更新模型历史的 ID 前缀', async () => {
-    const { prepare, createCompact, messages } = fixture(async () => parentMessages());
+    const { prepare, createCompact, messages } = await fixture(async () => parentMessages());
     createCompact.mockReturnValue(async request => {
       request.saveMacroSummary?.('子任务阶段摘要', request.messages.length, 50);
       return { kind: 'macro', messages: [{ role: 'user', content: '子任务阶段摘要' }],
@@ -219,7 +219,7 @@ describe('createPrepareSubagent fork', () => {
       id: 'summary', role: 'user', kind: 'summary', blocks: '已完成事项摘要',
       interrupted: false, createdAt: 0, summarizedThroughMessageId: 'not-copied', savedTokens: 80,
     };
-    const { prepare, messages } = fixture(async () => ({ messages: [summary, ...parent.messages] }));
+    const { prepare, messages } = await fixture(async () => ({ messages: [summary, ...parent.messages] }));
     const child = await prepare({
       subagentId: 'child', prompt: '继续调查', options: { contextMode: 'fork' },
       signal: new AbortController().signal,
@@ -234,7 +234,7 @@ describe('createPrepareSubagent fork', () => {
 
   it('继续旧 ID 重放自身完整历史, 只追加本次任务, 不再次读取父 fork', async () => {
     const readParentMessages = vi.fn(async () => parentMessages());
-    const { prepare, prepareChild, messages, runs } = fixture(readParentMessages);
+    const { prepare, prepareChild, messages, runs } = await fixture(readParentMessages);
     await prepare({ subagentId: 'child', prompt: '第一次调查', options: { contextMode: 'fork' },
       signal: new AbortController().signal });
     runs.setRunConfiguration('child-run', {
@@ -268,7 +268,7 @@ describe('createPrepareSubagent fork', () => {
       ...base,
       tools: { ...base.tools, toolPool: new ToolPool([GoalGetTool, GoalUpdateTool]) },
     };
-    const { prepare } = fixture(async () => parentMessages(), root);
+    const { prepare } = await fixture(async () => parentMessages(), root);
     const child = await prepare({
       subagentId: 'child', prompt: '只处理子任务', options: { contextMode },
       signal: new AbortController().signal,
@@ -281,7 +281,7 @@ describe('createPrepareSubagent fork', () => {
   it('兄弟 fork 保留完整父 Assistant, 统一占位配对, 只在最后指令分歧', async () => {
     const parent = parentMessages();
     const before = JSON.stringify(parent);
-    const { prepare, createCompact } = fixture(async () => parent);
+    const { prepare, createCompact } = await fixture(async () => parent);
     const signal = new AbortController().signal;
     const first = await prepare({
       subagentId: 'a1',
@@ -324,7 +324,7 @@ describe('createPrepareSubagent fork', () => {
   it('父 Assistant 完整前不交付子循环输入, 后续父历史变化不进入已分叉消息', async () => {
     let resolve!: (value: ForkParentMessages) => void;
     const ready = new Promise<ForkParentMessages>(done => { resolve = done; });
-    const { prepare } = fixture(() => ready);
+    const { prepare } = await fixture(() => ready);
     let completed = false;
     const pending = prepare({
       subagentId: 'a1', prompt: '查接口', options: { contextMode: 'fork' },
@@ -347,7 +347,7 @@ describe('createPrepareSubagent fork', () => {
 
   it('父输入准备失败时不交付 fork 循环', async () => {
     const error = new Error('父模型断流');
-    const { prepare } = fixture(async () => { throw error; });
+    const { prepare } = await fixture(async () => { throw error; });
     await expect(prepare({
       subagentId: 'a1', prompt: '查接口', options: { contextMode: 'fork' },
       signal: new AbortController().signal,
@@ -356,7 +356,7 @@ describe('createPrepareSubagent fork', () => {
 
   it('普通子代理不读取父消息, 使用工作提示词和后台任务交接说明', async () => {
     const readParentMessages = vi.fn(async () => parentMessages());
-    const { prepare } = fixture(readParentMessages);
+    const { prepare } = await fixture(readParentMessages);
     const child = await prepare({
       subagentId: 'a1', prompt: '独立调查',
       options: { contextMode: 'subagent' },

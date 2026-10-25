@@ -19,6 +19,10 @@ export function profileDbPath(): string {
   return path.join(profileDir(), 'profile.db');
 }
 
+export function preMigrationDir(): string {
+  return path.join(profileDir(), 'pre-migration');
+}
+
 export function modelsDevCatalogPath(): string {
   return path.join(profileDir(), 'profile', 'models-dev.json');
 }

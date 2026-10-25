@@ -11,7 +11,7 @@ import { Database, SessionsRepo } from '@ema-agent/storage';
 
 const database = new Database({ path: dataDatabasePath, kind: 'data' });
 try {
-  database.migrate();
+  await database.migrate(preMigrationDirectory);
   const sessions = new SessionsRepo(database.sqlite);
   const session = sessions.findById(sessionId);
 } finally {
@@ -19,7 +19,7 @@ try {
 }
 ```
 
-打开文件前先创建父目录. 测试可以传 `{ memory: true, kind: 'data' }`. `migrate()` 成功后同一实例不会重复迁移, `close()` 可以重复调用.
+打开文件前先创建父目录, 使用仓储前等待 `migrate()` 完成. Profile, Data, Narrative 和内存库统一使用这个异步入口. 已有 Profile 或 Data 文件升级时自动先备份, 新安装, 已是最新和内存库不生成副本. 可选目录参数只指定副本保存位置; 未指定时放在数据库旁的 `pre-migration/` 中. 每次调用都检查数据库保存的版本, 跳过已经应用的 SQL. `close()` 可以重复调用.
 
 | Kind | 常用位置 | 保存内容 |
 | --- | --- | --- |
@@ -79,13 +79,17 @@ Profile 与 Data 分别通过各自唯一的 `001_initial.sql` 独立初始化, 
 
 应用的 `0.1.0` 等版本号不决定数据库版本. 每份编号 SQL 与其 `user_version` 更新处于同一事务. 已执行的版本会跳过, 失败只回滚本文件的 SQL 和版本更新. 编号缺失或数据库版本比当前 SQL 更新时直接报错. 标有 `-- ema:migration foreign_keys=off` 的迁移在事务外临时关闭外键, 提交前检查关联关系.
 
-当前 Alpha 基线要求使用全新数据库, 不自动转换或降级此前的开发数据库, 也不把旧凭据或会话复制进新基线. 重置前应备份现有应用数据. 正式发布后的数据库升级应追加连续编号文件, 不再修改已经应用的基线.
+已有 Profile 或 Data 文件需要升级时, `migrate(directory?)` 先通过 SQLite 备份接口复制已提交内容, 包括 WAL 数据和原 rowid, 等副本完成后才执行第一份待迁移 SQL. 备份失败就停止升级; SQL 失败保留副本并跳过旧副本清理. 新安装, 已是最新, 内存库和被拒绝的降级不生成副本. 正式发布后的数据库升级应追加连续编号文件, 不再修改已经应用的基线.
+
+Server 把副本放在 `<profile>/pre-migration/`. 文件名包含数据库种类, 起止版本, UTC 时间及唯一后缀, 如 `profile.v1-to-v2.<time>.<id>.db`. 先写入 `.db.tmp`, 完成后将副本设为 DELETE 日志模式并关闭, 再改为正式文件名, 正式副本可作为单个 SQLite 文件打开. 本库全部待迁移 SQL 成功后, 保留最新 3 份副本并清理属于本库的未完成临时文件, 不删除其他种类数据库或无关文件. 清理失败会报告原因, 不把已经提交的升级判为失败.
+
+恢复暂由人工完成. 先关闭应用和迁移 CLI, 另存当前完整应用数据目录. 将当前数据库及其 WAL/SHM 文件一起移到别处, 再把选中的副本复制到对应数据库位置, 不把原 WAL/SHM 文件混入恢复后的目录. 再用已正确处理问题迁移的应用版本启动. 恢复会丢弃副本生成后的数据库写入, 不恢复附件, 音频, 角色资源或 Memory 文件. 当前没有自动恢复, 跨库协调恢复或新增记录合并.
 
 Narrative 初始化在事务内安装表结构和三份剧情数据. 读取器分批执行种子 SQL, 不把所有种子文件读进一个字符串. Narrative Repository 按固定周目 ID 返回向量 Buffer 或原文, 检索流程见 [Narrative](../narrative/README-zh.md).
 
 `build` 会把 SQL 复制到 `dist/migrations`, 正式发布不能只带编译后的 JavaScript.
 
-可选迁移 CLI 与宿主一样读取 `EMA_PROFILE_DIR`, 未设置时使用 `~/.ema-agent`. 它打开 `<profile>/profile.db` 和 `<profile>/data/data.db`. `--data-dir <directory>` 只改变后者. 即使 `--status` 也会创建目录和打开数据库. 对真实数据运行前先确认目标并备份.
+可选迁移 CLI 与宿主一样读取 `EMA_PROFILE_DIR`, 未设置时使用 `~/.ema-agent`, 打开 `<profile>/profile.db` 和 `<profile>/data/data.db`, 使用同样的迁移前副本流程. `--data-dir <directory>` 改变后者; 选择其他目录时, Data 副本放到该目录的 `pre-migration/`, 避免与 Profile 默认 Data 的副本混在一起. 即使 `--status` 也会创建目录和打开数据库, 但不迁移或生成副本. 使用 CLI 前应关闭应用并确认目标.
 
 ## 阅读和验证
 

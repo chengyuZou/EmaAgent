@@ -26,14 +26,14 @@ function createArchive(): { archive: FsAudioArchive; root: string } {
   return { archive: new FsAudioArchive(root), root };
 }
 
-function createCoordinator(callTTS: CallTTS, onAudioReady = () => {}, onSentenceError = (_error: {
+async function createCoordinator(callTTS: CallTTS, onAudioReady = () => {}, onSentenceError = (_error: {
   readonly code: string;
   readonly message: string;
 }) => {}, overrides: Partial<SpeechCoordinatorArgs> = {}) {
   const { archive, root } = createArchive();
   const db = new Database({ memory: true, kind: 'data' });
   databases.push(db);
-  db.migrate();
+  await db.migrate();
   db.sqlite.prepare(`INSERT INTO sessions (id, title, cwd, last_activity_at, created_at, updated_at)
     VALUES ('s', '语音测试', 'D:/work', 1, 1, 1)`).run();
   db.sqlite.prepare(`INSERT INTO turns (id, session_id, status, created_at)
@@ -212,7 +212,7 @@ describe('SpeechCoordinator', () => {
   it('没有播放器也能生成四句并写入一个 WAV, 只通知一次可读状态', async () => {
     const sentences: string[] = [];
     let readyCount = 0;
-    const { coordinator, usageRecorder } = createCoordinator(async function* (request) {
+    const { coordinator, usageRecorder } = await createCoordinator(async function* (request) {
       sentences.push(request.text);
       yield { type: 'audio_started', ...FORMAT };
       yield { type: 'audio_chunk', bytes: Buffer.from([1, 2]) };
@@ -231,7 +231,7 @@ describe('SpeechCoordinator', () => {
     let ready!: () => void;
     const readable = new Promise<void>(resolve => { ready = resolve; });
     const sentences: string[] = [];
-    const { coordinator, usageRecorder } = createCoordinator(async function* (request) {
+    const { coordinator, usageRecorder } = await createCoordinator(async function* (request) {
       sentences.push(request.text);
       yield { type: 'audio_started', ...FORMAT };
       yield { type: 'audio_chunk', bytes: Buffer.from([1, 2, 3, 4]) };
@@ -254,7 +254,7 @@ describe('SpeechCoordinator', () => {
   it('单句供应商失败发出提示, 仍可生成后面的句子', async () => {
     let calls = 0;
     const warnings: string[] = [];
-    const { coordinator } = createCoordinator(async function* () {
+    const { coordinator } = await createCoordinator(async function* () {
       calls += 1;
       if (calls === 1) throw new Error('provider failed');
       yield { type: 'audio_started', ...FORMAT };
@@ -269,7 +269,7 @@ describe('SpeechCoordinator', () => {
 
   it('后续句子的 PCM 格式不同则停止追加, 保留前面的音频', async () => {
     let calls = 0;
-    const { coordinator } = createCoordinator(async function* () {
+    const { coordinator } = await createCoordinator(async function* () {
       calls += 1;
       yield { type: 'audio_started', sampleRate: calls === 1 ? 8000 : 16000, channelCount: 1 };
       yield { type: 'audio_chunk', bytes: Buffer.from([1, 2]) };
@@ -282,7 +282,7 @@ describe('SpeechCoordinator', () => {
   });
 
   it('无可朗读文字时不创建音频文件', async () => {
-    const { coordinator, root } = createCoordinator(async function* () {
+    const { coordinator, root } = await createCoordinator(async function* () {
       throw new Error('should not synthesize');
     });
     expect(await coordinator.finish()).toEqual({ status: 'completed', audio: null });
@@ -294,7 +294,7 @@ describe('SpeechCoordinator', () => {
       yield { type: 'audio_started', ...FORMAT };
       yield { type: 'audio_chunk', bytes: Buffer.from([1, 2]) };
     };
-    const { coordinator, archive, usageRecorder } = createCoordinator(callTTS);
+    const { coordinator, archive, usageRecorder } = await createCoordinator(callTTS);
     coordinator.acceptTextDelta('第一句。第二句。');
     await coordinator.finish();
     const second = new SpeechCoordinator({
@@ -320,7 +320,7 @@ describe('SpeechCoordinator', () => {
   it('手动整轮生成有一句失败就丢弃本次音频, 不保存半轮文件', async () => {
     let calls = 0;
     const save = vi.fn();
-    const { coordinator, archive } = createCoordinator(async function* () {
+    const { coordinator, archive } = await createCoordinator(async function* () {
       calls += 1;
       if (calls === 2) throw new Error('second sentence failed');
       yield { type: 'audio_started', ...FORMAT };
@@ -336,7 +336,7 @@ describe('SpeechCoordinator', () => {
   it('手动生成取消后删除已经写入的部分', async () => {
     let ready!: () => void;
     const readable = new Promise<void>(resolve => { ready = resolve; });
-    const { coordinator, archive } = createCoordinator(async function* (request) {
+    const { coordinator, archive } = await createCoordinator(async function* (request) {
       yield { type: 'audio_started', ...FORMAT };
       yield { type: 'audio_chunk', bytes: Buffer.from([1, 2]) };
       request.signal!.throwIfAborted();

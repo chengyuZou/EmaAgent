@@ -31,12 +31,12 @@ function createApp(dataDir: string, database: Database) {
     .route('/api/sessions', sessionBackupRoute({ backup, onImported }));
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), 'ema-backup-route-'));
   sourceDb = new Database({ memory: true, kind: 'data' });
   targetDb = new Database({ memory: true, kind: 'data' });
-  sourceDb.migrate();
-  targetDb.migrate();
+  await sourceDb.migrate();
+  await targetDb.migrate();
   sourceDb.sqlite.prepare(`
     INSERT INTO sessions (id, title, cwd, last_activity_at, created_at, updated_at)
     VALUES ('session', '会话备份', 'D:/work', 1, 1, 1)

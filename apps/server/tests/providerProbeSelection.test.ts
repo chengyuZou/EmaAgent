@@ -12,9 +12,9 @@ describe('provider probe model selection', () => {
   let modelCatalog: ModelsDevCatalog;
   let fetchedModels: string[];
 
-  beforeEach(() => {
+  beforeEach(async () => {
     database = new Database({ memory: true, kind: 'profile' });
-    database.migrate();
+    await database.migrate();
     providers = new Providers(database);
     modelCatalog = new ModelsDevCatalog();
     providerModels = new ProviderModels(database, providers, modelCatalog);

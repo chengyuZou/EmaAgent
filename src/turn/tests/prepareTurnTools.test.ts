@@ -488,7 +488,7 @@ describe('prepareTurnTools', () => {
   it.each(['foreground', 'background', 'shutdown', 'session_deleted'] as const)(
     '真实子代理批准等待的生命周期(%s)', async mode => {
     const db = new Database({ memory: true, kind: 'data' });
-    db.migrate();
+    await db.migrate();
     db.sqlite.prepare("INSERT INTO sessions (id,title,cwd,created_at,updated_at) VALUES ('s1','测试','',1,1)").run();
     const store = new SubagentStore(db.sqlite, new SubagentsRepo(db.sqlite), new SubagentRunsRepo(db.sqlite));
     const queue = new SessionInteractionQueue(null);

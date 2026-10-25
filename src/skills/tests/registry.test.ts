@@ -21,10 +21,10 @@ afterEach(() => {
   while (dirs.length > 0) rmSync(dirs.pop()!, { recursive: true, force: true });
 });
 
-function makeStore(userRoot: string, builtinRoot = makeDir()): SkillStore {
+async function makeStore(userRoot: string, builtinRoot = makeDir()): Promise<SkillStore> {
   const db = new Database({ memory: true, kind: 'profile' });
   databases.push(db);
-  db.migrate();
+  await db.migrate();
   return new SkillStore(db, userRoot, builtinRoot);
 }
 
@@ -45,7 +45,7 @@ describe('SkillRegistry', () => {
     writeFileSync(join(userRoot, 'my-skill', 'SKILL.md'), SKILL_MD('my-skill'));
     const workspace = makeWorkspace('proj-skill');
 
-    const store = makeStore(userRoot, builtinRoot);
+    const store = await makeStore(userRoot, builtinRoot);
     const registry = createSkillRegistry({ store });
 
     await registry.refreshCore();
@@ -62,7 +62,7 @@ describe('SkillRegistry', () => {
   it('不同工作区的 project 技能互不覆盖', async () => {
     const userRoot = makeDir();
     const registry = createSkillRegistry({
-      store: makeStore(userRoot),
+      store: await makeStore(userRoot),
     });
     await registry.refreshCore();
     const wsA = makeWorkspace('skill-a');
@@ -81,7 +81,7 @@ describe('SkillRegistry', () => {
     const first = makeWorkspace('alpha');
     const second = makeWorkspace('beta');
     const registry = createSkillRegistry({
-      store: makeStore(userRoot),
+      store: await makeStore(userRoot),
     });
     await registry.refreshCore();
 
@@ -96,7 +96,7 @@ describe('SkillRegistry', () => {
     const userRoot = makeDir();
     const workspace = makeWorkspace('before');
     const registry = createSkillRegistry({
-      store: makeStore(userRoot),
+      store: await makeStore(userRoot),
     });
     await registry.refreshCore();
     expect((await registry.list([workspace])).map(entry => entry.name)).toContain('before');
@@ -120,7 +120,7 @@ describe('SkillRegistry', () => {
     writeFileSync(join(userRoot, 'only', 'SKILL.md'), SKILL_MD('only'));
 
     const registry = createSkillRegistry({
-      store: makeStore(userRoot),
+      store: await makeStore(userRoot),
     });
 
     await Promise.all([registry.refreshCore(), registry.refreshCore(), registry.refreshCore()]);
@@ -133,7 +133,7 @@ describe('SkillRegistry', () => {
     writeFileSync(join(userRoot, 'late', 'SKILL.md'), SKILL_MD('late'));
 
     const registry = createSkillRegistry({
-      store: makeStore(userRoot),
+      store: await makeStore(userRoot),
     });
 
     // 不 await refreshCore, 直接 list: 必须等到首装完成.

@@ -11,8 +11,8 @@ describe('Task 持久化边界', () => {
   const taskA = 'task-a';
   const taskB = 'task-b';
 
-  beforeEach(() => {
-    database = createTestDatabase();
+  beforeEach(async () => {
+    database = await createTestDatabase();
     database.db.prepare(`
       INSERT INTO sessions (id, title, cwd, created_at, updated_at)
       VALUES (?, 'Task session', 'D:/work', 1, 1)

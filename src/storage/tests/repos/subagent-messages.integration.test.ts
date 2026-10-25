@@ -8,8 +8,8 @@ describe('SubagentMessagesRepo', () => {
   let database: TestDatabase;
   let repo: SubagentMessagesRepo;
 
-  beforeEach(() => {
-    database = createTestDatabase();
+  beforeEach(async () => {
+    database = await createTestDatabase();
     database.db.prepare(`
       INSERT INTO sessions (id, title, cwd, created_at, updated_at)
       VALUES ('session-a', 'Session A', 'D:/work', 1, 1)

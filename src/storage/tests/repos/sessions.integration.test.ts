@@ -6,8 +6,8 @@ describe('SessionsRepo integration', () => {
   let database: TestDatabase;
   let repo: SessionsRepo;
 
-  beforeEach(() => {
-    database = createTestDatabase();
+  beforeEach(async () => {
+    database = await createTestDatabase();
     repo = new SessionsRepo(database.db);
   });
 

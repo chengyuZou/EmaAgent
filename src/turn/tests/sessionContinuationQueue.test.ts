@@ -55,9 +55,9 @@ afterEach(() => {
   for (const db of goalDatabases.splice(0)) db.close();
 });
 
-function createGoalFixture() {
+async function createGoalFixture() {
   const db = new Database({ memory: true, kind: 'data' });
-  db.migrate();
+  await db.migrate();
   goalDatabases.push(db);
   const sessionRunning = new SessionRunningRegistry();
   const sessions = new SessionStore({ db, isWorkClosed: id => sessionRunning.isClosed(id) });
@@ -101,7 +101,7 @@ describe('SessionContinuationQueue', () => {
   });
 
   it.each(['turn', 'compact', 'input', 'notice', 'goal', 'drain', 'closed'] as const)('%s 不允许自动截图插队', async reason => {
-    const f = createGoalFixture();
+    const f = await createGoalFixture();
     const id = f.session.id;
     if (reason === 'turn') f.sessionRunning.register(id, { kind: 'turn', turnId: 'busy' });
     if (reason === 'compact') f.sessionRunning.register(id, { kind: 'compact', compactId: 'busy' });
@@ -116,7 +116,7 @@ describe('SessionContinuationQueue', () => {
   });
 
   it('归档取消输入与续接, 忽略迟到的完成通知, 取消归档不重放队列', async () => {
-    const fixture = createGoalFixture();
+    const fixture = await createGoalFixture();
     fixture.queue.enqueue({ sessionId: fixture.session.id, input: [{ type: 'text', text: '未执行' }] });
     fixture.queue.subagentCompleted(fixture.session.id, 'child', 'completed');
     await fixture.sessionRunning.runWithSessionClosed(fixture.session.id, async () => {
@@ -140,7 +140,7 @@ describe('SessionContinuationQueue', () => {
   });
 
   it.each(['idle', 'compact'] as const)('%s 时编辑 active Goal 只保存, 不领取隐藏消息或启动 Turn', async mode => {
-    const fixture = createGoalFixture();
+    const fixture = await createGoalFixture();
     const created = fixture.goals.create(fixture.session.id, '原目标');
     if (mode === 'compact') fixture.sessionRunning.register(fixture.session.id, { kind: 'compact', compactId: 'compact' });
     const edited = fixture.goals.edit({ sessionId: created.sessionId, goalId: created.id, expectedVersion: created.version }, '新目标');
@@ -153,8 +153,8 @@ describe('SessionContinuationQueue', () => {
     fixture.queue.shutdown();
   });
 
-  it('Goal 编辑领取可重试, 后到编辑不被旧确认删除, 只绑定原Turn', () => {
-    const fixture = createGoalFixture();
+  it('Goal 编辑领取可重试, 后到编辑不被旧确认删除, 只绑定原Turn', async () => {
+    const fixture = await createGoalFixture();
     fixture.sessionRunning.register(fixture.session.id, { kind: 'turn', turnId: 'root' });
     const original = fixture.goals.create(fixture.session.id, '原目标');
     const edited = fixture.goals.edit({ sessionId: original.sessionId, goalId: original.id, expectedVersion: original.version }, '第一版');
@@ -174,8 +174,8 @@ describe('SessionContinuationQueue', () => {
     fixture.queue.shutdown();
   });
 
-  it.each(['pause', 'cancel', 'delete'] as const)('编辑后 %s Goal 不再注入旧目标正文', action => {
-    const fixture = createGoalFixture();
+  it.each(['pause', 'cancel', 'delete'] as const)('编辑后 %s Goal 不再注入旧目标正文', async action => {
+    const fixture = await createGoalFixture();
     fixture.sessionRunning.register(fixture.session.id, { kind: 'turn', turnId: 'root' });
     const original = fixture.goals.create(fixture.session.id, '原目标');
     const edited = fixture.goals.edit({ sessionId: original.sessionId, goalId: original.id, expectedVersion: original.version }, '新目标');
@@ -361,7 +361,7 @@ describe('SessionContinuationQueue', () => {
   });
 
   it('Goal 只在 after-turn 领取, 不在每个迭代生成消息或前端队列卡片', async () => {
-    const fixture = createGoalFixture();
+    const fixture = await createGoalFixture();
     fixture.goals.create(fixture.session.id, '整理 8 个 README');
     expect(fixture.queue.claimNextIteration(fixture.session.id, 'active-turn')).toBeUndefined();
     fixture.queue.requestDrain(fixture.session.id);
@@ -381,7 +381,7 @@ describe('SessionContinuationQueue', () => {
   });
 
   it('用户输入与 Goal 短提示同轮交付, 后台通知仍保持原来的领取顺序', async () => {
-    const fixture = createGoalFixture();
+    const fixture = await createGoalFixture();
     fixture.goals.create(fixture.session.id, '整理 README');
     fixture.sessionRunning.register(fixture.session.id, { kind: 'compact', compactId: 'compact-a' });
     fixture.queue.enqueue({ sessionId: fixture.session.id,
@@ -403,7 +403,7 @@ describe('SessionContinuationQueue', () => {
   });
 
   it.each(['pause', 'cancel', 'delete'] as const)('排水微任务前 %s Goal, 用户输入仍交付但不附带 Goal 提示', async action => {
-    const fixture = createGoalFixture();
+    const fixture = await createGoalFixture();
     const goal = fixture.goals.create(fixture.session.id, '已撤销的要求');
     fixture.queue.enqueue({ sessionId: fixture.session.id,
       input: [{ type: 'text', text: '用户消息仍然有效' }] });
@@ -414,8 +414,8 @@ describe('SessionContinuationQueue', () => {
     expect(fixture.starts[0]!.continuationText).toBeUndefined();
   });
 
-  it('active Goal 不给立即引导额外附带续接提示', () => {
-    const fixture = createGoalFixture();
+  it('active Goal 不给立即引导额外附带续接提示', async () => {
+    const fixture = await createGoalFixture();
     fixture.sessionRunning.register(fixture.session.id, { kind: 'turn', turnId: 'running-turn' });
     fixture.goals.create(fixture.session.id, '持续目标');
     const item = fixture.queue.enqueue({ sessionId: fixture.session.id,
@@ -427,7 +427,7 @@ describe('SessionContinuationQueue', () => {
   });
 
   it.each(['pause', 'cancel', 'delete'] as const)('排水微任务执行前 %s Goal, 不使用唤醒时的旧目标', async action => {
-    const fixture = createGoalFixture();
+    const fixture = await createGoalFixture();
     const goal = fixture.goals.create(fixture.session.id, '旧目标');
     fixture.queue.requestDrain(fixture.session.id);
     fixture.goals[action]({ sessionId: fixture.session.id, goalId: goal.id, expectedVersion: goal.version });
@@ -436,7 +436,7 @@ describe('SessionContinuationQueue', () => {
   });
 
   it('Compact 占用时不启动, 解锁后同一入口交付 Goal, 完成后不再续接', async () => {
-    const fixture = createGoalFixture();
+    const fixture = await createGoalFixture();
     fixture.sessionRunning.register(fixture.session.id, { kind: 'compact', compactId: 'compact-a' });
     const goal = fixture.goals.create(fixture.session.id, '正在压缩时创建');
     fixture.queue.requestDrain(fixture.session.id);
@@ -453,7 +453,7 @@ describe('SessionContinuationQueue', () => {
   });
 
   it('关闭 Goal 不吞后台通知, 重复通知只交付一次, release 后仍可重新领取', async () => {
-    const fixture = createGoalFixture();
+    const fixture = await createGoalFixture();
     const goal = fixture.goals.create(fixture.session.id, '旧目标');
     fixture.sessionRunning.register(fixture.session.id, { kind: 'turn', turnId: 'active-turn' });
     fixture.queue.backgroundProcessCompleted(fixture.session.id, 'process-a', 'completed');
@@ -489,7 +489,7 @@ describe('SessionContinuationQueue', () => {
   });
 
   it.each(['shutdown', 'deleteSession'] as const)('已有唤醒时 %s, 不再启动 Goal Turn', async action => {
-    const fixture = createGoalFixture();
+    const fixture = await createGoalFixture();
     fixture.goals.create(fixture.session.id, '不可复活');
     fixture.queue.requestDrain(fixture.session.id);
     if (action === 'shutdown') fixture.queue.shutdown();

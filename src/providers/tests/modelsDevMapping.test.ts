@@ -20,9 +20,9 @@ describe('models.dev provider mapping', () => {
   let catalog: ModelsDevCatalog;
   let models: ProviderModels;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     database = new Database({ memory: true, kind: 'profile' });
-    database.migrate();
+    await database.migrate();
     providers = new Providers(database);
     catalog = new ModelsDevCatalog();
     catalog.loadFromJson({

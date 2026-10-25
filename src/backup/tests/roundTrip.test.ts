@@ -25,9 +25,9 @@ function tempDir(prefix: string): string {
 
 const SESSION_ID = 's-roundtrip';
 
-function seedSource(dataDir: string): Database {
+async function seedSource(dataDir: string): Promise<Database> {
   const db = new Database({ memory: true, kind: 'data' });
-  db.migrate();
+  await db.migrate();
   db.sqlite.prepare(`
     INSERT INTO sessions (id, title, cwd, pinned, last_activity_at, created_at, updated_at, permission_mode)
     VALUES (?, '往返', 'D:/work', 0, 1, 1, 1, 'plan')
@@ -103,7 +103,7 @@ describe('Session 备份往返', () => {
     const sourceDir = tempDir('ema-backup-src-');
     const targetDir = tempDir('ema-backup-dst-');
     const workDir = tempDir('ema-backup-work-');
-    const sourceDb = seedSource(sourceDir);
+    const sourceDb = await seedSource(sourceDir);
 
     const zipPath = path.join(workDir, '会话备份.zip');
     const exported = await exportSessionArchive(
@@ -122,7 +122,7 @@ describe('Session 备份往返', () => {
 
     // 导入到另一个数据目录
     const targetDb = new Database({ memory: true, kind: 'data' });
-    targetDb.migrate();
+    await targetDb.migrate();
     const result = await importSessionArchive(
       zipPath,
       targetDir,
@@ -192,7 +192,7 @@ describe('Session 备份往返', () => {
     const sourceDir = tempDir('ema-backup-goal-src-');
     const targetDir = tempDir('ema-backup-goal-dst-');
     const workDir = tempDir('ema-backup-goal-work-');
-    const sourceDb = seedSource(sourceDir);
+    const sourceDb = await seedSource(sourceDir);
     sourceDb.sqlite.prepare("UPDATE sessions SET permission_mode = 'default' WHERE id = ?")
       .run(SESSION_ID);
     sourceDb.sqlite.prepare(`
@@ -210,7 +210,7 @@ describe('Session 备份往返', () => {
     sourceDb.close();
 
     const targetDb = new Database({ memory: true, kind: 'data' });
-    targetDb.migrate();
+    await targetDb.migrate();
     await importSessionArchive(
       zipPath,
       targetDir,
@@ -236,7 +236,7 @@ describe('Session 备份往返', () => {
     const sourceDir = tempDir('ema-backup-invalid-src-');
     const targetDir = tempDir('ema-backup-invalid-dst-');
     const workDir = tempDir('ema-backup-invalid-work-');
-    const sourceDb = seedSource(sourceDir);
+    const sourceDb = await seedSource(sourceDir);
     const zipPath = path.join(workDir, 'valid.zip');
     await exportSessionArchive(
       SESSION_ID, zipPath, sourceDir, new SessionBackupReader(sourceDb.sqlite),
@@ -249,7 +249,7 @@ describe('Session 备份往返', () => {
     await writeZip(invalidPath, entries);
 
     const targetDb = new Database({ memory: true, kind: 'data' });
-    targetDb.migrate();
+    await targetDb.migrate();
     await expect(importSessionArchive(
       invalidPath,
       targetDir,

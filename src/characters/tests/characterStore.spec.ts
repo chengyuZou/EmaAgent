@@ -13,9 +13,9 @@ describe('CharacterStore', () => {
   let root: string;
   let store: CharacterStore;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     database = new Database({ memory: true, kind: 'profile' });
-    database.migrate();
+    await database.migrate();
     root = fs.mkdtempSync(path.join(os.tmpdir(), 'ema-character-'));
     store = new CharacterStore(database, path.join(root, 'characters'));
     store.initializeBuiltinCharacters();

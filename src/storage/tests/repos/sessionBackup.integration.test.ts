@@ -19,8 +19,8 @@ describe('SessionBackupReader', () => {
     database = undefined;
   });
 
-  it('按稳定顺序消费完整记录且不施加旧列表上限', () => {
-    database = createTestDatabase();
+  it('按稳定顺序消费完整记录且不施加旧列表上限', async () => {
+    database = await createTestDatabase();
     const sessions = new SessionsRepo(database.db);
     const turns = new TurnsRepo(database.db);
     sessions.insert({
@@ -55,15 +55,15 @@ describe('SessionBackupReader', () => {
     expect(result?.emptyMessages).toEqual([]);
   });
 
-  it('不存在的 Session 不构造空备份', () => {
-    database = createTestDatabase();
+  it('不存在的 Session 不构造空备份', async () => {
+    database = await createTestDatabase();
     expect(
       new SessionBackupReader(database.db).readSession('missing', () => true),
     ).toBeNull();
   });
 
-  it('导出→恢复保留 summary 覆盖游标,按游标切边界得到 [Summary, B]', () => {
-    database = createTestDatabase();
+  it('导出→恢复保留 summary 覆盖游标,按游标切边界得到 [Summary, B]', async () => {
+    database = await createTestDatabase();
     const sessions = new SessionsRepo(database.db);
     sessions.insert({
       id: 'session-cursor',

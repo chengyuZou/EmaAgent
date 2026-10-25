@@ -5,9 +5,9 @@ import { SpeechOutputsRepo } from '../../repos/data/speechOutputs.js';
 let database: Database;
 let outputs: SpeechOutputsRepo;
 
-beforeEach(() => {
+beforeEach(async () => {
   database = new Database({ memory: true, kind: 'data' });
-  database.migrate();
+  await database.migrate();
   outputs = new SpeechOutputsRepo(database.sqlite);
   database.sqlite.prepare(`
     INSERT INTO sessions (id, title, cwd, last_activity_at, created_at, updated_at)
