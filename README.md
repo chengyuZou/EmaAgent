@@ -1,12 +1,32 @@
-# EmaAgent
+<p align="center">
+  <img src="apps/desktop/src-tauri/icons/icon.png" width="112" height="112" alt="EmaAgent logo">
+</p>
 
-[中文](README-zh.md)
+<h1 align="center">EmaAgent</h1>
 
-**A desktop character you can talk to, and an Agent that can get work done.**
+<p align="center">
+  <strong>A desktop character you can talk to, and an Agent that can get work done.</strong>
+</p>
+
+<p align="center">
+  <a href="docs/changes/v0.1.0-beta.1/README.md"><img src="https://img.shields.io/badge/version-0.1.0--beta.1-00ADB5?style=flat-square" alt="Version 0.1.0-beta.1"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-4C9A2A?style=flat-square" alt="MIT License"></a>
+  <a href="apps/desktop/README.md"><img src="https://img.shields.io/badge/Tauri-24C8D8?style=flat-square&amp;logo=tauri&amp;logoColor=000000" alt="Tauri"></a>
+  <a href="apps/desktop/README.md"><img src="https://img.shields.io/badge/React-20232A?style=flat-square&amp;logo=react&amp;logoColor=61DAFB" alt="React"></a>
+  <a href="tsconfig.base.json"><img src="https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&amp;logo=typescript&amp;logoColor=FFFFFF" alt="TypeScript"></a>
+  <a href="apps/server/README.md"><img src="https://img.shields.io/badge/Node.js-5FA04E?style=flat-square&amp;logo=nodedotjs&amp;logoColor=FFFFFF" alt="Node.js"></a>
+  <a href="src/live2d-react/README.md"><img src="https://img.shields.io/badge/Live2D-EA7299?style=flat-square" alt="Live2D"></a>
+</p>
+
+<p align="center">
+  <strong>English</strong> | <a href="README-zh.md">简体中文</a>
+</p>
 
 EmaAgent combines general-purpose roleplay with file editing, command execution, web search, and longer tasks. Give a character a persona, an illustration or Live2D model, and a voice, then use the same application for conversation, research, and work in your local projects.
 
 It is a local-first application for one user, built with Tauri, React, and a local Node.js Server. Conversations, settings, character resources, and memories are stored on your machine. You choose which model providers to connect.
+
+[![Conversation, wallpaper and a Live2D character on the desktop](assets/screenshots/characters/mainWindow.png)](assets/screenshots/characters/mainWindow.png)
 
 ## Features
 
@@ -24,6 +44,7 @@ Roleplay is not limited to the bundled character or one fictional setting. A sep
 - Read, search, write, and edit files, run commands, and inspect their output.
 - Search the web and fetch pages through enabled tools.
 - Use Tasks, Goals, and subagents for work that takes several steps.
+- Queue follow-up messages while a Turn is running, or choose to guide the current Turn between iterations.
 - Choose tool permission modes, compact long conversation context, and inspect recorded model usage.
 - Open files, Git changes, browser tabs, and manual terminals beside the conversation.
 
@@ -38,6 +59,163 @@ Commands and files affect your machine. Review tool requests and use a working d
 
 Features depend on the models, tools, and local resources you enable. Local-first does not mean offline: prompts, images, tool results, or retrieved text may be sent to configured services, and requests may incur charges.
 
+## In the application
+
+Click a screenshot to view its full size. Expand the sections below for additional views. Screenshots show actual application states; individual task examples are not a full benchmark evaluation.
+
+### Custom characters
+
+Pair a character persona with an illustration or Live2D model. This conversation uses the [Hiyori Momose sample model from Live2D](https://www.live2d.com/en/learn/sample/momose-hiyori/) and a custom chat persona, with the character visible on the stage beside the conversation.
+
+[![Hiyori Momose on the stage during a conversation about her interests](assets/screenshots/characters/hiyoriCharacter.png)](assets/screenshots/characters/hiyoriCharacter.png)
+
+<details>
+<summary>More of Hiyori's conversation</summary>
+
+[![Hiyori's first reply with the character visible on the stage](assets/screenshots/characters/hiyoriOverview.png)](assets/screenshots/characters/hiyoriOverview.png)
+
+[![Hiyori continuing the conversation about spending a free afternoon](assets/screenshots/characters/hiyoriConversation.png)](assets/screenshots/characters/hiyoriConversation.png)
+
+</details>
+
+### Longer tasks and subagents
+
+This research example examines historical Wikipedia revisions and their cited posts. The conversation keeps the task, tool calls and subagent records together, with subagent details available beside it.
+
+[![Research conversation with completed subagent tasks](assets/screenshots/tasks/task2Process.png)](assets/screenshots/tasks/task2Process.png)
+
+<details>
+<summary>Task overview, subagent input and research results</summary>
+
+[![The research request and its initial tool calls](assets/screenshots/tasks/task2Overview.png)](assets/screenshots/tasks/task2Overview.png)
+
+[![The instructions sent to a subagent beside the main conversation](assets/screenshots/tasks/task2SubagentInput.png)](assets/screenshots/tasks/task2SubagentInput.png)
+
+[![Research result with revision IDs and citation counts](assets/screenshots/tasks/task2Result.png)](assets/screenshots/tasks/task2Result.png)
+
+[![A subagent's returned evidence beside the main conversation](assets/screenshots/tasks/task2SubagentResult.png)](assets/screenshots/tasks/task2SubagentResult.png)
+
+</details>
+
+### A workspace beside the conversation
+
+Browse files and read their contents without leaving the conversation. Review, manual terminal and browser tabs are also available in the side panel.
+
+[![Project files and a Markdown preview beside the conversation](assets/screenshots/workspace/workspaceFiles.png)](assets/screenshots/workspace/workspaceFiles.png)
+
+<details>
+<summary>Workspace review, tools, terminal and browser</summary>
+
+[![Side-panel entry points for files, review, subagents, attachments, terminal and browser](assets/screenshots/workspace/workspaceTools.png)](assets/screenshots/workspace/workspaceTools.png)
+
+[![Reviewing file changes in the side panel](assets/screenshots/workspace/workspaceReview.png)](assets/screenshots/workspace/workspaceReview.png)
+
+The terminal and browser captures show their available interfaces before a command or page is opened.
+
+[![A manual terminal beside the conversation](assets/screenshots/workspace/workspaceTerminal.png)](assets/screenshots/workspace/workspaceTerminal.png)
+
+[![A browser tab with its address input beside the conversation](assets/screenshots/workspace/workspaceBrowser.png)](assets/screenshots/workspace/workspaceBrowser.png)
+
+</details>
+
+### Images and attachments
+
+A message can keep multiple images together with file, pasted-text and Skill references. Larger image groups initially show two rows of thumbnails and can be expanded in the conversation history.
+
+[![A message with 23 images folded to two rows and other attachment references beneath it](assets/screenshots/conversation/messageImagesCollapsed.png)](assets/screenshots/conversation/messageImagesCollapsed.png)
+
+<details>
+<summary>Expanded images, composer attachments and the attachment panel</summary>
+
+[![All 23 image thumbnails expanded in the message](assets/screenshots/conversation/messageImagesExpanded.png)](assets/screenshots/conversation/messageImagesExpanded.png)
+
+[![A composer containing 25 pending attachments and a selected Skill](assets/screenshots/conversation/attachmentDraft.png)](assets/screenshots/conversation/attachmentDraft.png)
+
+[![The attachment panel listing an image from the conversation](assets/screenshots/conversation/attachmentPanel.png)](assets/screenshots/conversation/attachmentPanel.png)
+
+</details>
+
+### Follow-up inputs and permissions
+
+Continue submitting input while a Turn is running. Queued inputs can wait for a later Turn, be removed, or be marked for delivery between iterations without interrupting an active tool.
+
+[![Two follow-up messages queued while a tool is running](assets/screenshots/conversation/inputQueue.png)](assets/screenshots/conversation/inputQueue.png)
+
+<details>
+<summary>Pending inputs, subsequent replies and a desktop approval notification</summary>
+
+[![One submitted input waiting for processing while another remains queued](assets/screenshots/conversation/inputQueuePending.png)](assets/screenshots/conversation/inputQueuePending.png)
+
+[![Replies after the queued demonstration inputs were delivered](assets/screenshots/conversation/inputQueueDelivered.png)](assets/screenshots/conversation/inputQueueDelivered.png)
+
+[![Desktop notification requesting approval for a PowerShell tool call](assets/screenshots/conversation/permissionNotification.png)](assets/screenshots/conversation/permissionNotification.png)
+
+</details>
+
+### Skills and MCP tools
+
+Browse Skills from SkillHub and ClawHub, select them in a conversation, and connect MCP tools. The MCP example below shows a real call to an external server's help tool, not an email-sending operation.
+
+[![Skills marketplace with SkillHub and ClawHub entries](assets/screenshots/extensions/skillsMarket.png)](assets/screenshots/extensions/skillsMarket.png)
+
+[![An external MCP help call with its returned content and reply](assets/screenshots/extensions/mcpCall.png)](assets/screenshots/extensions/mcpCall.png)
+
+<details>
+<summary>Skill selection and connected MCP tools</summary>
+
+[![Selecting a skill from the conversation menu](assets/screenshots/extensions/skillsMenu.png)](assets/screenshots/extensions/skillsMenu.png)
+
+[![A connected MCP server and its discovered tools](assets/screenshots/extensions/mcpServers.png)](assets/screenshots/extensions/mcpServers.png)
+
+</details>
+
+### Per-call usage
+
+Inspect model input/output Tokens and call duration. When the provider reports cache usage, the same record shows cache reads, writes and the read-cache rate. These are provider-reported values for individual calls, not a fixed cache-rate or cost guarantee.
+
+[![Model usage records with Tokens, cache reads and call duration](assets/screenshots/usage/usageCache.png)](assets/screenshots/usage/usageCache.png)
+
+<details>
+<summary>Earlier calls in the same usage view</summary>
+
+[![Earlier model calls with their Token counts, cache usage and duration](assets/screenshots/usage/usageCacheEarlier.png)](assets/screenshots/usage/usageCacheEarlier.png)
+
+</details>
+
+<details>
+<summary>Provider dashboard usage and billing references</summary>
+
+These DeepSeek dashboard captures aggregate usage by the selected date, API Key and hour. They can be read alongside the application's per-call records above, but do not separate usage by Session or individual task.
+
+[![DeepSeek provider dashboard showing the morning usage period](assets/screenshots/usage/providerUsageMorning.png)](assets/screenshots/usage/providerUsageMorning.png)
+
+[![DeepSeek provider dashboard showing the afternoon usage period](assets/screenshots/usage/providerUsageAfternoon.png)](assets/screenshots/usage/providerUsageAfternoon.png)
+
+[![DeepSeek provider dashboard showing the later afternoon usage period](assets/screenshots/usage/providerUsageLateAfternoon.png)](assets/screenshots/usage/providerUsageLateAfternoon.png)
+
+[![DeepSeek provider dashboard showing the evening usage period](assets/screenshots/usage/providerUsageEvening.png)](assets/screenshots/usage/providerUsageEvening.png)
+
+</details>
+
+### Appearance
+
+Choose a theme hue and color presets, or configure wallpaper, fonts, corner radius and code colors.
+
+[![Theme hue, generated shades and color presets](assets/screenshots/settings/appearancePalette.png)](assets/screenshots/settings/appearancePalette.png)
+
+<details>
+<summary>Fonts, code colors and wallpaper</summary>
+
+[![Separate Markdown body and monospace font settings](assets/screenshots/settings/appearanceFonts.png)](assets/screenshots/settings/appearanceFonts.png)
+
+[![Corner-radius settings and code color themes](assets/screenshots/settings/appearanceCodeStyle.png)](assets/screenshots/settings/appearanceCodeStyle.png)
+
+[![Wallpaper preview with opacity and blur settings](assets/screenshots/settings/wallpaperOptions.png)](assets/screenshots/settings/wallpaperOptions.png)
+
+[![The wallpaper visible behind the settings interface with adjusted opacity](assets/screenshots/settings/wallpaperOverlay.png)](assets/screenshots/settings/wallpaperOverlay.png)
+
+</details>
+
 ## Get started
 
 ### Use an installer
@@ -48,6 +226,17 @@ Install a package built for your operating system and launch Ema. The installed 
 2. Add or enable an LLM model, then select it in a conversation.
 3. Choose a character and configure its presentation.
 4. Configure the additional model bindings you need for images, speech, Memory, or Narrative.
+
+<details>
+<summary>Model provider settings</summary>
+
+Choose a provider preset or add your own address. The settings list LLM providers, including local service presets such as Ollama and LM Studio. Embedding, Rerank and TTS have separate provider settings; the TTS section includes a local GPT-SoVITS entry.
+
+[![LLM provider settings with hosted and local service entries](assets/screenshots/settings/providerLLM.png)](assets/screenshots/settings/providerLLM.png)
+
+[![Separate Embedding, Rerank and TTS provider settings](assets/screenshots/settings/providerRetrievalSpeech.png)](assets/screenshots/settings/providerRetrievalSpeech.png)
+
+</details>
 
 Narrative needs LLM, Embedding, and Rerank bindings. Its Embedding model must match the fixed story asset's vector space. See [Narrative](src/narrative/README.md) before changing that binding.
 
@@ -60,7 +249,7 @@ Requirements:
 - Node.js >=22. Release builds require the exact version in [release-config.json](apps/desktop/release-config.json), currently 24.13.0.
 - pnpm 9.0.0, declared in [package.json](package.json).
 - Rust and the Tauri build prerequisites for your operating system, described in [Desktop](apps/desktop/README.md).
-- For Live2D, a properly licensed Cubism Core file at `apps/desktop/public/cubism/live2dcubismcore.min.js`.
+- For Live2D, a properly licensed Cubism Core `06.00.0001` file at `apps/desktop/public/cubism/live2dcubismcore.min.js`.
 
 From the repository root:
 

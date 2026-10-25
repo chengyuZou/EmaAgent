@@ -1,12 +1,32 @@
-# EmaAgent
+<p align="center">
+  <img src="apps/desktop/src-tauri/icons/icon.png" width="112" height="112" alt="EmaAgent 图标">
+</p>
 
-[English](README.md)
+<h1 align="center">EmaAgent</h1>
 
-**可以陪你聊天的桌面角色, 也是能够实际干活的 Agent.**
+<p align="center">
+  <strong>可以陪你聊天的桌面角色, 也是能够实际干活的 Agent.</strong>
+</p>
+
+<p align="center">
+  <a href="docs/changes/v0.1.0-beta.1/README-zh.md"><img src="https://img.shields.io/badge/version-0.1.0--beta.1-00ADB5?style=flat-square" alt="版本 0.1.0-beta.1"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-4C9A2A?style=flat-square" alt="MIT License"></a>
+  <a href="apps/desktop/README-zh.md"><img src="https://img.shields.io/badge/Tauri-24C8D8?style=flat-square&amp;logo=tauri&amp;logoColor=000000" alt="Tauri"></a>
+  <a href="apps/desktop/README-zh.md"><img src="https://img.shields.io/badge/React-20232A?style=flat-square&amp;logo=react&amp;logoColor=61DAFB" alt="React"></a>
+  <a href="tsconfig.base.json"><img src="https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&amp;logo=typescript&amp;logoColor=FFFFFF" alt="TypeScript"></a>
+  <a href="apps/server/README-zh.md"><img src="https://img.shields.io/badge/Node.js-5FA04E?style=flat-square&amp;logo=nodedotjs&amp;logoColor=FFFFFF" alt="Node.js"></a>
+  <a href="src/live2d-react/README-zh.md"><img src="https://img.shields.io/badge/Live2D-EA7299?style=flat-square" alt="Live2D"></a>
+</p>
+
+<p align="center">
+  <a href="README.md">English</a> | <strong>简体中文</strong>
+</p>
 
 EmaAgent 把通用角色扮演与文件编辑, 命令执行, 网页搜索和多步骤任务放在同一个桌面应用里. 为角色配置人设, 立绘或 Live2D 模型及声音, 然后用它聊天, 查资料, 处理本机项目里的工作.
 
 这是面向单人使用的本地优先应用, 使用 Tauri, React 和本地 Node.js Server. 对话, 设置, 角色资源和记忆保存在自己的机器上, 模型服务由你选择和配置.
+
+[![主对话, 壁纸与桌面 Live2D 角色](assets/screenshots/characters/mainWindow.png)](assets/screenshots/characters/mainWindow.png)
 
 ## 当前能力
 
@@ -24,6 +44,7 @@ EmaAgent 把通用角色扮演与文件编辑, 命令执行, 网页搜索和多�
 - 读取, 搜索, 创建和编辑文件, 执行命令并查看输出.
 - 通过启用的工具搜索网页和读取页面.
 - 使用 Task, Goal 和子 Agent 处理需要多个步骤的工作.
+- Turn 运行时继续提交消息, 排队等待或选择在迭代之间引导当前 Turn.
 - 选择工具权限模式, 压缩较长的对话上下文, 查看模型用量记录.
 - 在对话旁打开文件, Git 变更, 浏览器标签和手动终端.
 
@@ -38,6 +59,163 @@ EmaAgent 把通用角色扮演与文件编辑, 命令执行, 网页搜索和多�
 
 功能取决于启用的模型, 工具和本地资源. 本地优先不等于离线: Prompt, 图片, 工具结果或检索文字可能发送给配置的外部服务, 请求也可能产生费用.
 
+## 界面与工作流
+
+点击截图可查看原尺寸, 展开各功能下的折叠区域可查看更多画面. 图片展示软件的实际状态, 单个任务案例不代表完整 benchmark 评测结果.
+
+### 自定义角色
+
+为角色配置人设和立绘或 Live2D 模型. 下图使用 [Live2D 的桃濑日和示例模型](https://www.live2d.com/en/learn/sample/momose-hiyori/)和自定义聊天人设, 在对话旁的 Stage 展示角色.
+
+[![桃濑日和在 Stage 中与用户聊自己的兴趣](assets/screenshots/characters/hiyoriCharacter.png)](assets/screenshots/characters/hiyoriCharacter.png)
+
+<details>
+<summary>查看更多日和对话</summary>
+
+[![日和首轮回复及 Stage 中的角色](assets/screenshots/characters/hiyoriOverview.png)](assets/screenshots/characters/hiyoriOverview.png)
+
+[![日和继续聊空闲下午的安排](assets/screenshots/characters/hiyoriConversation.png)](assets/screenshots/characters/hiyoriConversation.png)
+
+</details>
+
+### 长任务与子代理
+
+这个研究案例检查维基百科历史版本及其中引用的帖子. 对话保留任务, 工具调用和子代理记录, 右侧可以继续查看子代理详情.
+
+[![研究对话与已完成的子代理任务](assets/screenshots/tasks/task2Process.png)](assets/screenshots/tasks/task2Process.png)
+
+<details>
+<summary>查看任务概览, 子代理输入与研究结果</summary>
+
+[![研究任务的原始请求及初始工具调用](assets/screenshots/tasks/task2Overview.png)](assets/screenshots/tasks/task2Overview.png)
+
+[![主对话旁展示发送给子代理的指令](assets/screenshots/tasks/task2SubagentInput.png)](assets/screenshots/tasks/task2SubagentInput.png)
+
+[![带修订版本和引用计数的研究结果](assets/screenshots/tasks/task2Result.png)](assets/screenshots/tasks/task2Result.png)
+
+[![主对话旁展示子代理返回的依据](assets/screenshots/tasks/task2SubagentResult.png)](assets/screenshots/tasks/task2SubagentResult.png)
+
+</details>
+
+### 对话旁的工作区
+
+不离开会话即可浏览文件并阅读内容, 也能在右侧打开审阅, 手动终端和浏览器标签.
+
+[![对话旁的项目文件树与 Markdown 预览](assets/screenshots/workspace/workspaceFiles.png)](assets/screenshots/workspace/workspaceFiles.png)
+
+<details>
+<summary>查看工作区审阅, 工具入口, 终端与浏览器</summary>
+
+[![侧栏中的文件, 审阅, 子代理, 附件, 终端与浏览器入口](assets/screenshots/workspace/workspaceTools.png)](assets/screenshots/workspace/workspaceTools.png)
+
+[![右侧面板展示文件变更](assets/screenshots/workspace/workspaceReview.png)](assets/screenshots/workspace/workspaceReview.png)
+
+终端和浏览器截图展示尚未执行命令或打开页面时的界面.
+
+[![对话旁的手动终端](assets/screenshots/workspace/workspaceTerminal.png)](assets/screenshots/workspace/workspaceTerminal.png)
+
+[![对话旁的浏览器标签及地址输入框](assets/screenshots/workspace/workspaceBrowser.png)](assets/screenshots/workspace/workspaceBrowser.png)
+
+</details>
+
+### 图片与附件
+
+一条消息可以同时包含多张图片及文件, 粘贴文本和 Skill 引用. 图片较多时, 历史消息默认保留两行缩略图, 可以展开查看完整图片组.
+
+[![一条消息中的 23 张图片收起为两行, 下方保留其他附件引用](assets/screenshots/conversation/messageImagesCollapsed.png)](assets/screenshots/conversation/messageImagesCollapsed.png)
+
+<details>
+<summary>查看图片展开, 输入框附件与附件侧栏</summary>
+
+[![同一条消息中展开全部 23 张图片缩略图](assets/screenshots/conversation/messageImagesExpanded.png)](assets/screenshots/conversation/messageImagesExpanded.png)
+
+[![输入框中的 25 个待发送附件及选中的 Skill](assets/screenshots/conversation/attachmentDraft.png)](assets/screenshots/conversation/attachmentDraft.png)
+
+[![附件侧栏列出会话中的图片](assets/screenshots/conversation/attachmentPanel.png)](assets/screenshots/conversation/attachmentPanel.png)
+
+</details>
+
+### 补充输入与权限
+
+Turn 运行时可以继续提交需求. 排队输入可以留待后续 Turn, 删除或标记为迭代之间交付的引导, 不强行打断正在执行的工具.
+
+[![工具运行时排队的两条补充消息](assets/screenshots/conversation/inputQueue.png)](assets/screenshots/conversation/inputQueue.png)
+
+<details>
+<summary>查看等待处理, 后续回复与桌面审批提醒</summary>
+
+[![一条输入等待处理, 另一条仍在队列中](assets/screenshots/conversation/inputQueuePending.png)](assets/screenshots/conversation/inputQueuePending.png)
+
+[![演示排队输入交付后的实际回复](assets/screenshots/conversation/inputQueueDelivered.png)](assets/screenshots/conversation/inputQueueDelivered.png)
+
+[![PowerShell 工具请求批准时的桌面通知](assets/screenshots/conversation/permissionNotification.png)](assets/screenshots/conversation/permissionNotification.png)
+
+</details>
+
+### Skills 与 MCP 工具
+
+从 SkillHub 和 ClawHub 浏览技能, 在会话中选择技能, 或连接 MCP 工具. 下图 MCP 案例实际调用的是外部服务器的 help 工具, 不代表已经执行邮件发送.
+
+[![包含 SkillHub 和 ClawHub 条目的技能市场](assets/screenshots/extensions/skillsMarket.png)](assets/screenshots/extensions/skillsMarket.png)
+
+[![外部 MCP help 调用, 返回内容与最终回复](assets/screenshots/extensions/mcpCall.png)](assets/screenshots/extensions/mcpCall.png)
+
+<details>
+<summary>查看技能选择入口与已连接的 MCP 工具</summary>
+
+[![从会话菜单选择技能](assets/screenshots/extensions/skillsMenu.png)](assets/screenshots/extensions/skillsMenu.png)
+
+[![已连接的 MCP 服务器与发现的工具](assets/screenshots/extensions/mcpServers.png)](assets/screenshots/extensions/mcpServers.png)
+
+</details>
+
+### 单次调用用量
+
+查看模型输入/输出 Token 与调用耗时. 服务返回缓存用量时, 同一条记录还会显示缓存读取, 写入和读取命中率. 这些是各次调用由服务报告的数据, 不是固定缓存率或费用保证.
+
+[![包含 Token, KV 读缓存及耗时的模型调用记录](assets/screenshots/usage/usageCache.png)](assets/screenshots/usage/usageCache.png)
+
+<details>
+<summary>查看同一用量页面中的较早调用</summary>
+
+[![较早的模型调用及对应 Token, 缓存用量和耗时](assets/screenshots/usage/usageCacheEarlier.png)](assets/screenshots/usage/usageCacheEarlier.png)
+
+</details>
+
+<details>
+<summary>查看服务后台用量与账单参考</summary>
+
+以下为 DeepSeek 服务后台按所选日期, API Key 和小时汇总的用量画面, 可结合上方的应用内调用记录查看. 这些汇总没有按 Session 或单道任务拆分.
+
+[![DeepSeek 服务后台的上午时段用量](assets/screenshots/usage/providerUsageMorning.png)](assets/screenshots/usage/providerUsageMorning.png)
+
+[![DeepSeek 服务后台的下午时段用量](assets/screenshots/usage/providerUsageAfternoon.png)](assets/screenshots/usage/providerUsageAfternoon.png)
+
+[![DeepSeek 服务后台较晚的下午时段用量](assets/screenshots/usage/providerUsageLateAfternoon.png)](assets/screenshots/usage/providerUsageLateAfternoon.png)
+
+[![DeepSeek 服务后台的傍晚时段用量](assets/screenshots/usage/providerUsageEvening.png)](assets/screenshots/usage/providerUsageEvening.png)
+
+</details>
+
+### 外观定制
+
+选择主题色相和调色预设, 也可以设置壁纸, 字体, 圆角及代码配色.
+
+[![主题色相, 色阶和调色预设](assets/screenshots/settings/appearancePalette.png)](assets/screenshots/settings/appearancePalette.png)
+
+<details>
+<summary>查看字体, 代码配色与壁纸设置</summary>
+
+[![分别配置 Markdown 正文字体和等宽字体](assets/screenshots/settings/appearanceFonts.png)](assets/screenshots/settings/appearanceFonts.png)
+
+[![圆角设置与代码配色主题](assets/screenshots/settings/appearanceCodeStyle.png)](assets/screenshots/settings/appearanceCodeStyle.png)
+
+[![壁纸预览及不透明度, 模糊设置](assets/screenshots/settings/wallpaperOptions.png)](assets/screenshots/settings/wallpaperOptions.png)
+
+[![调整透明度后壁纸显示在设置界面背景中](assets/screenshots/settings/wallpaperOverlay.png)](assets/screenshots/settings/wallpaperOverlay.png)
+
+</details>
+
 ## 开始使用
 
 ### 使用安装包
@@ -48,6 +226,17 @@ EmaAgent 把通用角色扮演与文件编辑, 命令执行, 网页搜索和多�
 2. 添加或启用一个 LLM 模型, 在会话中选择它.
 3. 选择角色并配置显示方式.
 4. 按需为图片, 语音, Memory 或 Narrative 设置模型绑定.
+
+<details>
+<summary>查看模型服务配置界面</summary>
+
+选择服务预设或添加自己的地址. LLM 服务来源列表包含 Ollama 和 LM Studio 等本地服务预设. Embedding, Rerank 和 TTS 分别配置服务来源, TTS 列表也提供本地 GPT-SoVITS 入口.
+
+[![LLM 服务来源中的在线与本地服务入口](assets/screenshots/settings/providerLLM.png)](assets/screenshots/settings/providerLLM.png)
+
+[![分别配置 Embedding, Rerank 和 TTS 服务来源](assets/screenshots/settings/providerRetrievalSpeech.png)](assets/screenshots/settings/providerRetrievalSpeech.png)
+
+</details>
 
 Narrative 需要 LLM, Embedding 和 Rerank 绑定. Embedding 模型必须与固定剧情数据的向量空间一致, 修改前请看 [Narrative](src/narrative/README-zh.md).
 
@@ -60,7 +249,7 @@ Narrative 需要 LLM, Embedding 和 Rerank 绑定. Embedding 模型必须与固�
 - Node.js >=22. 发布构建要求 [release-config.json](apps/desktop/release-config.json) 中的精确版本, 当前为 24.13.0.
 - [package.json](package.json) 声明的 pnpm 9.0.0.
 - Rust 及当前操作系统所需的 Tauri 构建环境, 见 [Desktop](apps/desktop/README-zh.md).
-- 使用 Live2D 时, 将有合法使用授权的 Cubism Core 放在 `apps/desktop/public/cubism/live2dcubismcore.min.js`.
+- 使用 Live2D 时, 将有合法使用授权的 Cubism Core `06.00.0001` 放在 `apps/desktop/public/cubism/live2dcubismcore.min.js`.
 
 在仓库根目录运行:
 
