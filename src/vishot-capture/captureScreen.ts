@@ -23,7 +23,7 @@ export async function captureScreen(signal: AbortSignal): Promise<Buffer> {
 async function screenInput(signal: AbortSignal): Promise<string[]> {
   switch (process.platform) {
     case 'win32':
-      return ['-f', 'gdigrab', '-framerate', '30', '-draw_mouse', '0', '-i', 'desktop'];
+      throw new Error('Windows 截图需要宿主提供随包的电脑操控程序.');
     case 'darwin': {
       // AVFoundation 把摄像头和屏幕放在同一目录, 不能把设备 0 当作显示器.
       const devices = await runFfmpeg([

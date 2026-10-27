@@ -36,14 +36,10 @@ afterEach(() => {
 });
 
 describe('captureScreen', () => {
-  it('Windows 隐藏进程窗口并只输出一帧 PNG', async () => {
+  it('Windows 缺少宿主原生截图时不启动 FFmpeg 回退', async () => {
     platform('win32');
-    processResult(Buffer.from('PNG'));
-    await expect(captureScreen(new AbortController().signal)).resolves.toEqual(Buffer.from('PNG'));
-    expect(mocks.spawn.mock.calls[0]![1]).toEqual(expect.arrayContaining([
-      'gdigrab', 'desktop', '-frames:v', '1', '-an', 'png', 'pipe:1',
-    ]));
-    expect(mocks.spawn.mock.calls[0]![2]).toMatchObject({ windowsHide: true });
+    await expect(captureScreen(new AbortController().signal)).rejects.toThrow('Windows 截图需要宿主');
+    expect(mocks.spawn).not.toHaveBeenCalled();
   });
 
   it('macOS 从设备列表中选择屏幕, 不使用摄像头 0 或麦克风', async () => {
@@ -75,13 +71,19 @@ describe('captureScreen', () => {
   });
 
   it('FFmpeg 报错不交付残缺图片', async () => {
-    platform('win32');
+    platform('linux');
+    vi.stubEnv('WAYLAND_DISPLAY', '');
+    vi.stubEnv('XDG_SESSION_TYPE', 'x11');
+    vi.stubEnv('DISPLAY', ':1');
     processResult(Buffer.from('partial'), 'Permission denied', 1);
     await expect(captureScreen(new AbortController().signal)).rejects.toThrow('Permission denied');
   });
 
   it('取消后等 close 才返回, 不提前允许调用方启动下一进程', async () => {
-    platform('win32');
+    platform('linux');
+    vi.stubEnv('WAYLAND_DISPLAY', '');
+    vi.stubEnv('XDG_SESSION_TYPE', 'x11');
+    vi.stubEnv('DISPLAY', ':1');
     const child = Object.assign(new EventEmitter(), {
       stdout: new PassThrough(), stderr: new PassThrough(), kill: vi.fn(),
     });
