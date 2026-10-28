@@ -14,7 +14,6 @@ export const ObserveWindowTool = buildTool<z.infer<typeof inputSchema>, Computer
   name: BuiltinTools.ObserveWindow.name,
   description: OBSERVE_WINDOW_DESCRIPTION,
   inputSchema,
-  isReadOnly: () => true,
   isConcurrencySafe: () => false,
   getToolUseSummary: input => `观察窗口 ${input.windowId}`,
   validateContext: computerContext,

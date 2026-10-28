@@ -121,7 +121,6 @@ export const GrepTool = buildTool<GrepInput, GrepResult, GrepToolContext>({
   description: GREP_DESCRIPTION,
 
   inputSchema,
-  isReadOnly: () => true,
   isConcurrencySafe: () => true,
 
   validateContext(ctx) {

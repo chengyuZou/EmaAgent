@@ -58,12 +58,6 @@ export const BashTool = buildTool<BashInput, ShellResult, BashToolContext, Shell
   getToolUseSummary: (input) => input.description,
 
   inputSchema,
-  isReadOnly: (input) => {
-    // 结构化只读证明: 无重定向写入且每段都在只读白名单内.
-    // 供并发安全判定说真话; 权限放行仍由 Permission 决定.
-    const verdict = analyzeBashCommand(input.command);
-    return verdict.kind === 'ok' && verdict.readOnly;
-  },
   isConcurrencySafe: () => false,
 
   validateContext(ctx) {
@@ -87,7 +81,6 @@ export const BashTool = buildTool<BashInput, ShellResult, BashToolContext, Shell
           valid: false,
           code: 'bash/unsafe_command',
           message: `Command blocked by safety policy: ${verdict.reason ?? input.command}`,
-          retryable: false,
         }
       : { valid: true };
   },

@@ -33,7 +33,6 @@ Terminal results remain readable by id, including after an application restart.
 Returns output:null only when the subagentId is unknown or the run is still active elsewhere.`,
 
   inputSchema,
-  isReadOnly: () => false,
   isConcurrencySafe: () => true,
 
   // 等待本会话子 Agent 结果, 内置信任放行.

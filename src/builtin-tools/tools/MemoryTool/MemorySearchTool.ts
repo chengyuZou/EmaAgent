@@ -79,7 +79,6 @@ export const MemorySearchTool = buildTool<
   description: MEMORY_SEARCH_DESCRIPTION,
 
   inputSchema,
-  isReadOnly: () => true,
   isConcurrencySafe: () => true,
   getToolUseSummary: (input) => `搜索记忆: ${input.queries.join(' ')}`,
   // 只读检索已固化的正式记忆,内置信任放行.

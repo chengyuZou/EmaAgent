@@ -76,7 +76,6 @@ export const AskUserTool = buildTool<AskUserInput, AskUserResult, AskUserToolCon
   description: ASK_USER_DESCRIPTION,
 
   inputSchema,
-  isReadOnly: () => false,
   isConcurrencySafe: () => false,
   requiresUserInteraction: () => true,
 

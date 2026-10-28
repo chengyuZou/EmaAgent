@@ -63,7 +63,6 @@ describe('TodoWriteTool', () => {
       { todos },
       undefined,
     )).resolves.toMatchObject({ kind: 'tool', defaultDecision: 'allow' });
-    expect(TodoWriteTool.isReadOnly({ todos })).toBe(false);
     expect(TodoWriteTool.isConcurrencySafe({ todos })).toBe(false);
   });
 });

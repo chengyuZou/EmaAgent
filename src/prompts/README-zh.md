@@ -22,6 +22,8 @@ const systemPrompt = [
 
 Context 按原顺序把这些块转成 system 消息, LLM 包再转换为当前 Provider 的请求格式.
 
+`subagentPrompt` 从 [subagentPrompt.ts](subagentPrompt.ts) 提供委派工作的约束, 由 Turn 在准备子代理时追加. 静态规则说明如何续写截断的回答和避免无效重试; 实际发生输出截断时, 续写通知由当前 Agent 的消息消费方保存.
+
 ## 输入从哪里来
 
 | 输入 | 当前来源与含义 |
@@ -40,7 +42,7 @@ Context 按原顺序把这些块转成 system 消息, LLM 包再转换为当前 
 
 - [Turn 准备](../turn/prepare/prepareContextInput.ts) 使用同一份输入生成实际对话 Prompt 和空闲上下文估算.
 - [手动压缩](../commands/compact/compactSession.ts) 读取当前角色和 Session 输入, 用空工具列表生成 system 消息.
-- [子 Agent 准备](../turn/prepare/prepareSubagent.ts) 复用父 Turn 已读取的工作区, Memory 和 Skill 文本, 替换为子 Agent 的实际模型与工具名, 省略角色, 最后追加委派任务规则.
+- [子 Agent 准备](../turn/subagent/prepareSubagent.ts) 复用父 Turn 已读取的工作区, Memory 和 Skill 文本, 替换为子 Agent 的实际模型与工具名, 省略角色, 最后追加委派任务规则.
 
 ## 顺序与缓存
 

@@ -78,7 +78,6 @@ export const TaskUpdateTool = buildTool<TaskUpdateInput, TaskUpdateResult, TaskU
   description: TASK_UPDATE_DESCRIPTION,
 
   inputSchema,
-  isReadOnly: () => false,
   isConcurrencySafe: () => true,
   getToolUseSummary: (input) => {
     const operation = input.action ?? input.status ?? '更新字段';

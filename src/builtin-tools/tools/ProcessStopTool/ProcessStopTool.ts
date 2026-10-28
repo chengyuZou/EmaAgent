@@ -31,7 +31,6 @@ export const ProcessStopTool = buildTool<
   getToolUseSummary: (input) => `Stop background process ${input.backgroundProcessId}`,
   inputSchema,
   maxResultBytes: 50_000,
-  isReadOnly: () => false,
   isConcurrencySafe: () => false,
   // 终止后台进程有副作用, 交给工具权限规则和模式决定是否询问.
   checkPermissions: async () => ({

@@ -15,7 +15,6 @@ export const ComputerActionTool = buildTool<z.infer<typeof inputSchema>, Compute
   name: BuiltinTools.ComputerAction.name,
   description: COMPUTER_ACTION_DESCRIPTION,
   inputSchema,
-  isReadOnly: () => false,
   isConcurrencySafe: () => false,
   getToolUseSummary: input => `电脑操作: ${input.action.type}`,
   validateContext: computerContext,

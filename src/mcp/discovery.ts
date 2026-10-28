@@ -61,7 +61,6 @@ export function buildMcpBuiltTool(
     inputSchema:       z.record(z.string(), z.unknown()),
     inputJsonSchemaOverride: info.inputSchema,
     // 远端的 readOnlyHint 不能证明调用没有副作用, 因此不据此放行权限或并发执行.
-    isReadOnly:        () => false,
     isConcurrencySafe: () => false,
     getToolUseSummary: () => `${serverName} / ${info.serverToolName}`,
     // 只传递 MCP 声明, 确认要求和可复用范围由 Permission 决定.

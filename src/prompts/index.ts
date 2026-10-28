@@ -4,3 +4,5 @@ export type {
   PromptBlock,
   PromptEnvironment,
 } from './systemPrompt.js';
+
+export { subagentPrompt } from './subagentPrompt.js';

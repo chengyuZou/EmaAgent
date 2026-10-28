@@ -43,7 +43,6 @@ export const TodoWriteTool = buildTool<TodoWriteInput, TodoWriteResult, undefine
   maxResultBytes: 1_024,
 
   // 清单更新必须按模型输出顺序执行,不能与同批业务工具并发穿插.
-  isReadOnly: () => false,
   isConcurrencySafe: () => false,
   checkPermissions: async () => ({
     kind: 'tool',

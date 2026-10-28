@@ -45,7 +45,6 @@ export const ProcessListTool = buildTool<
   description: 'List background shell processes belonging to the current Session.',
   inputSchema,
   maxResultBytes: 100_000,
-  isReadOnly: () => true,
   isConcurrencySafe: () => true,
   // Session 身份由调用方提供, 查询不能指定其他 Session.
   checkPermissions: async () => ({

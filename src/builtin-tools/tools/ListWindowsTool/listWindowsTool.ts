@@ -12,7 +12,6 @@ export const ListWindowsTool = buildTool<z.infer<typeof inputSchema>, ComputerWi
   name: BuiltinTools.ListWindows.name,
   description: LIST_WINDOWS_DESCRIPTION,
   inputSchema,
-  isReadOnly: () => true,
   isConcurrencySafe: () => false,
   validateContext: computerContext,
   checkPermissions: async (_input, context) => {

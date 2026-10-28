@@ -68,7 +68,6 @@ export const ScratchpadWriteTool = buildTool<
   description: SCRATCHPAD_WRITE_DESCRIPTION,
 
   inputSchema: writeSchema,
-  isReadOnly:        () => false,
   isConcurrencySafe: () => false,
 
   checkPermissions: scratchpadAllow,
@@ -103,7 +102,6 @@ export const ScratchpadReadTool = buildTool<
   description: SCRATCHPAD_READ_DESCRIPTION,
 
   inputSchema: readSchema,
-  isReadOnly:        () => true,
   isConcurrencySafe: () => true,
 
   checkPermissions: scratchpadAllow,
@@ -131,7 +129,6 @@ export const ScratchpadListTool = buildTool<
   description: SCRATCHPAD_LIST_DESCRIPTION,
 
   inputSchema: z.object({}),
-  isReadOnly:        () => true,
   isConcurrencySafe: () => true,
 
   checkPermissions: scratchpadAllow,
@@ -167,7 +164,6 @@ export const ScratchpadDeleteTool = buildTool<
   description: SCRATCHPAD_DELETE_DESCRIPTION,
 
   inputSchema: deleteSchema,
-  isReadOnly:        () => false,
   isConcurrencySafe: () => false,
 
   checkPermissions: scratchpadAllow,
@@ -189,7 +185,6 @@ export const ScratchpadClearTool = buildTool<
   description: SCRATCHPAD_CLEAR_DESCRIPTION,
 
   inputSchema: z.object({}),
-  isReadOnly:        () => false,
   isConcurrencySafe: () => false,
 
   checkPermissions: scratchpadAllow,

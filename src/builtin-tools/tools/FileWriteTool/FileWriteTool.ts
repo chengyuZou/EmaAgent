@@ -54,7 +54,6 @@ export const FileWriteTool = buildTool<FileWriteInput, FileWriteResult, FileWrit
   description: FILE_WRITE_DESCRIPTION,
 
   inputSchema,
-  isReadOnly: () => false,
   isConcurrencySafe: () => false,
 
   validateContext(ctx) {

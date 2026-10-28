@@ -52,7 +52,6 @@ export const GlobTool = buildTool<GlobInput, GlobResult, GlobToolContext>({
   description: GLOB_DESCRIPTION,
 
   inputSchema,
-  isReadOnly: () => true,
   isConcurrencySafe: () => true,
 
   validateContext(ctx) {

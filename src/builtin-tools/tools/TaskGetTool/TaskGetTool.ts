@@ -32,7 +32,6 @@ export const TaskGetTool = buildTool<TaskGetInput, TaskGetResult, TaskGetToolCon
   description: TASK_GET_DESCRIPTION,
 
   inputSchema,
-  isReadOnly: () => true,
   isConcurrencySafe: () => true,
   getToolUseSummary: (input) => `读取任务:${input.taskId.slice(0, 8)}`,
   // 只读任务查询, 内置信任放行.

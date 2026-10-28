@@ -49,7 +49,6 @@ export const TaskCreateTool = buildTool<TaskCreateInput, TaskCreateResult, TaskC
   description: TASK_CREATE_DESCRIPTION,
 
   inputSchema,
-  isReadOnly: () => false,
   isConcurrencySafe: () => true,
   getToolUseSummary: (input) => `创建任务:${input.subject}`,
   // 创建任务有副作用, 交给工具权限规则和模式决定是否询问.

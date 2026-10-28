@@ -52,7 +52,6 @@ export const MemoryReadTool = buildTool<
   description: MEMORY_READ_DESCRIPTION,
 
   inputSchema,
-  isReadOnly: () => true,
   isConcurrencySafe: () => true,
   getToolUseSummary: (input) => `读取记忆文件: ${input.path}`,
   // 只读已固化的正式记忆,内置信任放行.

@@ -178,7 +178,6 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, FileReadToo
   description: FILE_READ_DESCRIPTION,
 
   inputSchema,
-  isReadOnly: () => true,
   isConcurrencySafe: () => true,
   maxResultBytes: Math.max(MAX_RESULT_BYTES, PDF_RESULT_BYTES_LIMIT),
 

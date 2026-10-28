@@ -22,6 +22,8 @@ const systemPrompt = [
 
 Context converts these blocks to system messages in the same order. The LLM package then converts those messages to the selected provider's request format.
 
+`subagentPrompt` supplies the delegated-work instruction block from [subagentPrompt.ts](subagentPrompt.ts). Turn appends it when preparing a subagent. Static rules describe how to continue truncated output and avoid unproductive retries; the actual output-length recovery notice is saved by the running Agent's message consumer.
+
 ## Where the input comes from
 
 | Input | Current producer and meaning |
@@ -40,7 +42,7 @@ The production paths are:
 
 - [Turn preparation](../turn/prepare/prepareContextInput.ts) builds the conversation prompt and the idle context estimate from the same inputs.
 - [Manual compaction](../commands/compact/compactSession.ts) reads the current character and Session inputs, then builds system messages with no tools.
-- [Child Agent preparation](../turn/prepare/prepareSubagent.ts) reuses the parent Turn's already-read workspace, Memory and Skill text, substitutes the child's actual model and tool names, omits the character and appends its delegation rules.
+- [Child Agent preparation](../turn/subagent/prepareSubagent.ts) reuses the parent Turn's already-read workspace, Memory and Skill text, substitutes the child's actual model and tool names, omits the character and appends its delegation rules.
 
 ## Order and caching
 

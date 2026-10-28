@@ -26,7 +26,6 @@ export const DescribeImageTool = buildTool<
   name: BuiltinTools.DescribeImage.name,
   description: DESCRIBE_IMAGE_DESCRIPTION,
   inputSchema,
-  isReadOnly: () => true,
   isConcurrencySafe: () => true,
   getToolUseSummary: input => `描述图片: ${path.basename(input.image_path)}`,
 

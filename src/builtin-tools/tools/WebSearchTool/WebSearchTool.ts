@@ -40,7 +40,6 @@ export const WebSearchTool = buildTool<WebSearchInput, WebSearchResult, void, Se
   maxResultBytes: 100_000,
 
   inputSchema,
-  isReadOnly: () => true,
   isConcurrencySafe: () => true,
 
   getToolUseSummary: (input) => input.query,

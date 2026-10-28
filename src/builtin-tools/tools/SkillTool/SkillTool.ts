@@ -45,7 +45,6 @@ export const SkillTool = buildTool<SkillInput, SkillToolResult, SkillToolContext
   description: SKILL_DESCRIPTION,
 
   inputSchema,
-  isReadOnly: () => true,
   isConcurrencySafe: () => true,
 
   checkPermissions: async () => ({

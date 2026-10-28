@@ -51,7 +51,6 @@ export const MemoryListTool = buildTool<
   description: MEMORY_LIST_DESCRIPTION,
 
   inputSchema,
-  isReadOnly: () => true,
   isConcurrencySafe: () => true,
   getToolUseSummary: (input) => `列出记忆目录: ${input.path ?? '.'}`,
   // 只读列举已固化的正式记忆,内置信任放行.

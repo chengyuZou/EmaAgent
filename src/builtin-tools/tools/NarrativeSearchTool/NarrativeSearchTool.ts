@@ -47,7 +47,6 @@ export const NarrativeSearchTool = buildTool<
 
   getToolUseSummary: (input) => `检索剧情资料:${input.query}`,
   inputSchema,
-  isReadOnly: () => true,
   isConcurrencySafe: () => true,
 
   // 只读剧情检索(按需启用), 内置信任放行.

@@ -50,7 +50,7 @@ function fixture() {
       rules: ['ObserveWindow', 'ComputerAction', 'ComputerEnd'].map(toolName => ({ key: { toolName }, decision: 'ask' as const, from: 'userSettings' as const })),
     },
     askPermission,
-    onToolRegistered: (call, reject) => {
+    registerToolCall: (call, reject) => {
       const kinds: Record<string, ComputerCallKind> = {
         ObserveWindow: 'observe', ComputerAction: 'action', ComputerEnd: 'end',
       };
@@ -61,7 +61,7 @@ function fixture() {
     toolContext: {
       cwd: '', platform: 'win32', computerUse: computer,
     },
-    pushEv: () => {},
+    publishEvent: () => {},
     wake: () => {},
   });
   const run = async (id: string, name: string, input: unknown) => {

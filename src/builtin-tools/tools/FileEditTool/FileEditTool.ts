@@ -67,7 +67,6 @@ export const FileEditTool = buildTool<FileEditInput, FileEditResult, FileEditToo
   description: FILE_EDIT_DESCRIPTION,
 
   inputSchema,
-  isReadOnly: () => false,
   isConcurrencySafe: () => false,
 
   validateContext(ctx) {
@@ -90,7 +89,6 @@ export const FileEditTool = buildTool<FileEditInput, FileEditResult, FileEditToo
         valid: false,
         message: 'old_string 与 new_string 相同;空编辑不允许.若要查看文件用 Read,若要改请给出不同的 new_string.',
         code: 'edit/empty',
-        retryable: true,
       };
     }
     return { valid: true };

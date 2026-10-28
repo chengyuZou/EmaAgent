@@ -11,7 +11,6 @@ export const ComputerEndTool = buildTool<z.infer<typeof inputSchema>, { ended: b
   name: BuiltinTools.ComputerEnd.name,
   description: COMPUTER_END_DESCRIPTION,
   inputSchema,
-  isReadOnly: () => false,
   isConcurrencySafe: () => false,
   validateContext: computerContext,
   checkPermissions: async () => computerPermission,

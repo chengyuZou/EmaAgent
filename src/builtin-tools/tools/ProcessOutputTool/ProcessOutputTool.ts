@@ -35,7 +35,6 @@ Use nextCursor for continuation. waitMs may wait up to 30 seconds for new output
 After the process finishes, prefer reading the complete log file with the Read tool instead of paginating every line.`,
   inputSchema,
   maxResultBytes: 160_000,
-  isReadOnly: () => true,
   isConcurrencySafe: () => true,
   checkPermissions: async () => ({
     kind: 'tool',

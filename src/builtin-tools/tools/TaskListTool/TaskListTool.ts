@@ -36,7 +36,6 @@ export const TaskListTool = buildTool<TaskListInput, TaskListResult, TaskListToo
   description: TASK_LIST_DESCRIPTION,
 
   inputSchema,
-  isReadOnly: () => true,
   isConcurrencySafe: () => true,
   // 只读任务查询, 内置信任放行.
   checkPermissions: async () => ({

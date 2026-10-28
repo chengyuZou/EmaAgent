@@ -30,6 +30,6 @@ const tail = stage.flush(sessionId);
 
 ## 代码与验证
 
-[engine.ts](engine.ts) 管理 Session 扫描器并检查名称, [parser.ts](parser.ts) 识别跨文本片段的标签. [Turn](../turn/turn.ts) 转发正文和事件, [Desktop 订阅](../../apps/desktop/src/chat/session/sessionSubscriptions.ts) 将角色变化交给当前表现逻辑.
+[engine.ts](engine.ts) 管理 Session 扫描器并检查名称, [parser.ts](parser.ts) 识别跨文本片段的标签. [Turn](../turn/core/turnExecutor.ts) 转发正文和事件, [Desktop 订阅](../../apps/desktop/src/chat/session/sessionSubscriptions.ts) 将角色变化交给当前表现逻辑.
 
 运行 `pnpm --filter @ema-agent/stage test`. 测试覆盖已知及未知名称, 重复标签, 词汇切换, 拆开的标签和无关模型标记.

@@ -289,11 +289,6 @@ function AskUserView({ sessionId, request }: { sessionId: string; request: AskUs
       headerRight={marks}
     >
       <>
-        {request.humanDescription && (
-          <p className="mb-3 text-sm text-[var(--ema-text-secondary)]">
-            {request.humanDescription}
-          </p>
-        )}
         <p className="text-xs text-[var(--ema-text-tertiary)]">{question.header}</p>
         <p className="mb-3 mt-1 text-sm font-medium text-[var(--ema-text-primary)]">{question.question}</p>
         <div className="flex flex-col gap-1.5">

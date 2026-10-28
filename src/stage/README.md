@@ -30,6 +30,6 @@ When the shared character changes, Server calls `reset` and `updateVocabulary` t
 
 ## Code and checks
 
-[engine.ts](engine.ts) manages Session scanners and checks character names. [parser.ts](parser.ts) recognizes tags split across chunks. [Turn](../turn/turn.ts) forwards cleaned text and events, while [Desktop subscriptions](../../apps/desktop/src/chat/session/sessionSubscriptions.ts) send presentation changes to the active character.
+[engine.ts](engine.ts) manages Session scanners and checks character names. [parser.ts](parser.ts) recognizes tags split across chunks. [Turn](../turn/core/turnExecutor.ts) forwards cleaned text and events, while [Desktop subscriptions](../../apps/desktop/src/chat/session/sessionSubscriptions.ts) send presentation changes to the active character.
 
 Run `pnpm --filter @ema-agent/stage test`. Tests cover known and unknown names, repeated tags, vocabulary changes, split tags and unrelated model markers.

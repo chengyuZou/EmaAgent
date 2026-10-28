@@ -17,7 +17,6 @@ export const CaptureTool = buildTool<
   name: BuiltinTools.Capture.name,
   description: CAPTURE_DESCRIPTION,
   inputSchema,
-  isReadOnly: () => true,
   isConcurrencySafe: () => false,
   getToolUseSummary: () => '截取当前屏幕',
   validateContext(context) {

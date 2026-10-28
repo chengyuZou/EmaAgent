@@ -163,14 +163,6 @@ describe('interpretExitCode — 退出码语义', () => {
 });
 
 describe('BashTool 集成', () => {
-  it('isReadOnly 说出真实只读性', () => {
-    expect(BashTool.isReadOnly({ command: 'ls -la' })).toBe(true);
-    expect(BashTool.isReadOnly({ command: 'git status' })).toBe(true);
-    expect(BashTool.isReadOnly({ command: 'git push' })).toBe(false);
-    expect(BashTool.isReadOnly({ command: 'echo x > out.txt' })).toBe(false);
-    expect(BashTool.isReadOnly({ command: 'echo $(date)' })).toBe(false);
-    expect(BashTool.isReadOnly({ command: 'git branch feature/new' })).toBe(false);
-  });
 
   it('validateInput 只硬拦 deny 档，其余命令交给统一权限裁决', () => {
     expect(BashTool.validateInput?.(

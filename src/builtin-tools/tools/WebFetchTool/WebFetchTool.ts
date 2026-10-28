@@ -55,7 +55,6 @@ export const WebFetchTool = buildTool<WebFetchInput, WebFetchResult, void>({
   maxResultBytes: 300_000,
 
   inputSchema,
-  isReadOnly: () => true,
   isConcurrencySafe: () => true,
 
   getToolUseSummary: (input) => input.url,
@@ -73,7 +72,6 @@ export const WebFetchTool = buildTool<WebFetchInput, WebFetchResult, void>({
         valid: false,
         code: 'web_fetch/invalid_url',
         message: 'URL 必须是合法的 http/https 地址.',
-        retryable: false,
       };
     }
   },

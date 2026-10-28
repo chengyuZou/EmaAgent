@@ -46,7 +46,6 @@ export const GoalUpdateTool = buildTool<z.infer<typeof inputSchema>, Goal, { goa
     + 'blindly retry an old completion judgment with a new version. This tool cannot create, edit the objective, cancel, delete, '
     + 'pause or reactivate Goals. Completing a Goal does not abort the current Turn. Main Agent only.',
   inputSchema,
-  isReadOnly: () => false,
   isConcurrencySafe: () => false,
   getToolUseSummary: input => {
     if (input.status === 'active') return '报告目标进度';

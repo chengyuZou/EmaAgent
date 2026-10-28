@@ -12,7 +12,6 @@ export const GoalGetTool = buildTool<Record<string, never>, Goal | null, { goalS
     + 'reactivating a Goal. Only the user can create or activate Goals. Available only to the main Agent.',
     
   inputSchema: z.object({}).strict(),
-  isReadOnly: () => true,
   isConcurrencySafe: () => true,
   getToolUseSummary: () => '读取当前目标',
   checkPermissions: async () => ({

@@ -131,7 +131,6 @@ export const SubagentTool = buildTool<SubagentInput, SubagentResult, SubagentToo
   description: SUBAGENT_DESCRIPTION,
 
   inputSchema,
-  isReadOnly: () => false,
   isConcurrencySafe: () => true,
 
   // 启动子 Agent 有副作用与成本, 交给工具权限规则和模式决定是否询问.

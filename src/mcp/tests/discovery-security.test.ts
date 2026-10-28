@@ -97,7 +97,6 @@ describe('MCP 工具发现安全边界', () => {
 
     await expect(checkToolPermission(tool, {}, {}, PERMISSION_CONTEXT, { interactive: true }))
       .resolves.toMatchObject({ decision: 'ask' });
-    expect(tool.isReadOnly({})).toBe(false);
     expect(tool.isConcurrencySafe({})).toBe(false);
   });
 
@@ -136,7 +135,6 @@ describe('MCP 工具发现安全边界', () => {
     await expect(checkToolPermission(destructive, {}, {}, {
       ...PERMISSION_CONTEXT, mode: 'bypassPermissions',
     }, { interactive: true })).resolves.toMatchObject({ decision: 'ask' });
-    expect(destructive.isReadOnly({})).toBe(false);
     expect(destructive.isConcurrencySafe({})).toBe(false);
   });
 

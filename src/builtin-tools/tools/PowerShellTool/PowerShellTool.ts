@@ -54,8 +54,6 @@ export const PowerShellTool = buildTool<PowerShellInput, ShellResult, PowerShell
 
   inputSchema,
   getToolUseSummary: input => input.description,
-  // 静态只读证明需要 AST,而 isReadOnly 是同步钩子;保守报 false.
-  isReadOnly: () => false,
   isConcurrencySafe: () => false,
 
   // 解析函数已有命令级缓存, 与 validateInput 共用结果; 权限规则逐段检查.
@@ -101,7 +99,6 @@ export const PowerShellTool = buildTool<PowerShellInput, ShellResult, PowerShell
         valid: false,
         code: 'powershell/command_too_long',
         message: `Command is ${commandBytes} bytes, exceeding the ${MAX_COMMAND_LENGTH}-byte analysis budget. Split it into smaller commands.`,
-        retryable: false,
       };
     }
     const parsed = await parsePowerShellCommand(input.command);
@@ -112,7 +109,6 @@ export const PowerShellTool = buildTool<PowerShellInput, ShellResult, PowerShell
         valid: false,
         code: 'powershell/unsafe_command',
         message: `Command blocked by safety policy: ${verdict.message ?? input.command}`,
-        retryable: false,
       };
     }
     return { valid: true };
