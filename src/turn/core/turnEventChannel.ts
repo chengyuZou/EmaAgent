@@ -1,4 +1,4 @@
-import { TurnEventChannelClosedError } from './errors.js';
+import { TurnEventChannelClosedError } from '../errors.js';
 
 interface PendingRead<T> {
   resolve: (result: IteratorResult<T>) => void;

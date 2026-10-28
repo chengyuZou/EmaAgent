@@ -1,33 +1,11 @@
-import { assembleToolPool, BuiltinTools, readToolSettings } from '@ema-agent/tools';
+import { restrictPlanTools } from '../policy/planToolPolicy.js';
+import { assembleToolPool, readToolSettings } from '@ema-agent/tools';
 import { staticSystemPrompt, getDynamicSystemPrompt, type DynamicSystemPromptInput } from '@ema-agent/prompts';
 import { renderSkillListing } from '@ema-agent/skills';
 import type { PermissionMode } from '@ema-agent/permission';
 import { TurnPreparationError } from '../errors.js';
 import type { PrepareTurnDeps } from './prepareTurn.js';
 import { resolveSkillPool } from './skillPool.js';
-
-// Plan 只暴露整项能力均只读的工具. isReadOnly(input) 依赖尚未生成的参数,
-// 不能用于装配筛选; Shell, 子代理和用户交互不作为只读例外放行.
-const PLAN_TOOL_IDS: ReadonlySet<string> = new Set([
-  BuiltinTools.FileRead.id,
-  BuiltinTools.DescribeImage.id,
-  BuiltinTools.Capture.id,
-  BuiltinTools.Glob.id,
-  BuiltinTools.Grep.id,
-  BuiltinTools.WebFetch.id,
-  BuiltinTools.WebSearch.id,
-  BuiltinTools.ProcessList.id,
-  BuiltinTools.ProcessOutput.id,
-  BuiltinTools.TaskGet.id,
-  BuiltinTools.TaskList.id,
-  BuiltinTools.NarrativeSearch.id,
-  BuiltinTools.MemorySearch.id,
-  BuiltinTools.MemoryRead.id,
-  BuiltinTools.MemoryList.id,
-  BuiltinTools.Skill.id,
-  BuiltinTools.ScratchpadRead.id,
-  BuiltinTools.ScratchpadList.id,
-]);
 
 export type ContextInputDeps = Pick<PrepareTurnDeps,
   | 'sessions' | 'providerModels' | 'settings' | 'registry'
@@ -110,6 +88,6 @@ export function selectTurnToolPool(
   const enabledPool = assembleToolPool(deps.registry)
     .filter(tool => !disabledToolIds.has(tool.id));
   return permissionMode === 'plan'
-    ? enabledPool.filter(tool => PLAN_TOOL_IDS.has(tool.id))
+    ? restrictPlanTools(enabledPool)
     : enabledPool;
 }

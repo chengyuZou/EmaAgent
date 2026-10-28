@@ -1,7 +1,6 @@
 import { ZodError } from 'zod';
-import type { ToolOrigin } from './Tool/tool.js';
+import type { ToolOrigin } from './definition/tool.js';
 import type { ToolExecutionStatus } from './execution/toolExecutionState.js';
-
 
 export class ToolRegistryError extends Error {
   constructor(message: string) {
@@ -43,7 +42,6 @@ export class ToolInputError extends Error {
   }
 }
 
-
 /** 执行失败时仍有业务结果, 如已建立的子代理 Run 引用. 执行器分别保存 output 与错误. */
 export class ToolExecutionError extends Error {
   constructor(
@@ -73,7 +71,6 @@ export class ToolExecutionStateConflictError extends Error {
   }
 }
 
-
 /** buildTool() 收到的 Tool 声明不满足运行时不变量. */
 export class ToolDefinitionError extends RangeError {
   constructor(message: string) {
@@ -81,7 +78,6 @@ export class ToolDefinitionError extends RangeError {
     this.name = 'ToolDefinitionError';
   }
 }
-
 
 /** ToolResultStore 收到非法参数. */
 export class ToolResultStoreError extends RangeError {
@@ -91,30 +87,3 @@ export class ToolResultStoreError extends RangeError {
   }
 }
 
-
-export type BackgroundProcessErrorCode =
-  | 'shutting_down'
-  | 'stopped_before_start'
-  | 'state_changed_before_stop'
-  | 'not_attached'
-  | 'session_deleted'
-  | 'app_shutting_down'
-  | 'not_found'
-  | 'invalid_cursor'
-  | 'cancelled_before_start';
-
-/** 后台进程的状态与归属错误; message 用于保存终止原因和返回路由错误. */
-export class BackgroundProcessError extends Error {
-  constructor(
-    readonly code: BackgroundProcessErrorCode,
-    message: string,
-  ) {
-    super(message);
-    this.name = 'BackgroundProcessError';
-  }
-}
-
-/** 命令在真正启动前被取消; 保持 name=AbortError 供统一取消判断识别. */
-export function createBackgroundProcessAbortError(): Error {
-  return Object.assign(new Error('Command cancelled before start'), { name: 'AbortError' });
-}
