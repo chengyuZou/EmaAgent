@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/desktop-release.yml'
       - 'apps/server/**'
+      - 'apps/computer-use/**'
       - 'apps/desktop/**'
       - 'src/**'
       - 'package.json'
