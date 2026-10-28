@@ -381,8 +381,11 @@ describe('ToolCallExecution', () => {
   it('执行中被用户取消:终态是 cancelled 而不是 succeeded(回归)', async () => {
     let release!: () => void;
     const gate = new Promise<void>(resolve => { release = resolve; });
+    let markStarted!: () => void;
+    const started = new Promise<void>(resolve => { markStarted = resolve; });
     const tool = echoTool({
       execute: async () => {
+        markStarted();
         await gate;
         throw new DOMException('The operation was aborted', 'AbortError');
       },
@@ -395,6 +398,7 @@ describe('ToolCallExecution', () => {
     );
 
     const pending = execution.run();
+    await started;
     execution.abort();
     release();
     const { result, terminalEvent } = await pending;

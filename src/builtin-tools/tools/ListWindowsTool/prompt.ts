@@ -1,0 +1,1 @@
+export const LIST_WINDOWS_DESCRIPTION = `List currently open Windows application windows. Use the returned id with ObserveWindow; do not invent window ids. This read-only list does not start computer control. Only the main Agent may use these computer tools.`;

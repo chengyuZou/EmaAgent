@@ -4,6 +4,7 @@ import {
   askUserResultCopyText,
   BashCallView,
   CaptureResultView,
+  ObserveWindowResultView,
   captureTitle,
   captureResultCopyText,
   FileEditArgsView,
@@ -100,6 +101,12 @@ export interface ToolUI {
 }
 
 const TOOL_UI_REGISTRY: Readonly<Record<string, ToolUI>> = {
+  [BuiltinTools.ObserveWindow.name]: {
+    ResultView: ({ data }) => createElement(ObserveWindowResultView, {
+      data,
+      renderImage: image => createElement(ImagePreview, image),
+    }),
+  },
   [BuiltinTools.Capture.name]: {
     title: captureTitle,
     resultCopyText: captureResultCopyText,

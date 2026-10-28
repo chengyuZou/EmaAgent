@@ -32,4 +32,8 @@ The limits are defined in Narrative. The shared Rerank interface and its topK pa
 
 - Profile and Data upgrades wait for a standalone SQLite copy before running migration SQL. A copy failure stops the upgrade; successful migrations keep the three latest copies per database. Recovery remains manual. See [Storage](../../../src/storage/README.md#migrations).
 
+## Computer use
+
+- Keyboard and mouse takeover detection runs on its own thread instead of sharing the overlay's message loop. Within one control, the overlay reuses images it has already drawn. The real desktop test passed; physical input, mixed DPI and installed-build acceptance remain pending. [Bug record](./logs/en/computerUseInputHooks.md).
+
 Module details: [Narrative](../../../src/narrative/README.md). Earlier records: [Alpha](../v0.1.0-alpha.1/README.md).

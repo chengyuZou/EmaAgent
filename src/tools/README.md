@@ -40,6 +40,8 @@ sequenceDiagram
 
 Schema parsing happens once. Invalid input and missing context fail before permission checks. With no approval channel, a decision requiring approval is denied. Session approval rules are saved by the host; see [Permission](../permission/README.md).
 
+The host can register queue-time ownership through the execution environment's `onToolRegistered` callback, returning a cleanup function. Its reject callback is only for calls known not to have submitted their business operation; active operations return their actual outcome. A queued cancellation settles without waiting for an earlier long-running tool, while result delivery preserves model block order. `beforeToolExecution` lets the host pause new work before permission checks and again before execution. The executor does not interpret the host's business states or replace the tool's context projection.
+
 Concurrency-safe calls can run together, but must wait for an earlier exclusive call. An exclusive call waits for all earlier calls and blocks later ones. Results and terminal events are delivered by model block order even if execution finishes out of order. Progress events are forwarded as they occur.
 
 Call `acknowledgeResult()` only after saving the result Message. `running` is saved before invoking the tool. Cancellation after that point may leave side effects, so execution state becomes `outcome_unknown` even when the model-facing result says cancelled. State writes use version checks to prevent late completions from overwriting newer decisions.

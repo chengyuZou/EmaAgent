@@ -32,4 +32,8 @@
 
 - Profile 和 Data 升级前等待独立 SQLite 副本完成, 副本失败则停止升级. 迁移成功后每个库保留最近 3 份, 恢复暂由人工处理. 见 [Storage](../../../src/storage/README-zh.md#数据迁移).
 
+## 电脑操控
+
+- 判断用户接管的键鼠监听改为在独立线程上运行, 不再与提示条共用消息循环. 同一操控中提示条复用已绘制的图像. 真实桌面测试通过, 物理键鼠, 混合 DPI 和安装版验收仍待完成. [问题记录](./logs/zh/computerUseInputHooks.md).
+
 模块说明见 [Narrative](../../../src/narrative/README-zh.md), 先前记录见 [Alpha](../v0.1.0-alpha.1/README-zh.md).

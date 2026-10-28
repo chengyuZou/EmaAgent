@@ -32,6 +32,7 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
+    "@ema-agent/computer-use": "workspace:*",
     "@ema-agent/goal": "workspace:*",
     "@ema-agent/llm": "workspace:*",
     "@ema-agent/memory": "workspace:*",

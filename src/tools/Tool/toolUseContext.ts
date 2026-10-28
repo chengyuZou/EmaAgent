@@ -1,4 +1,5 @@
 import type { CommandRunner } from '@ema-agent/sandbox';
+import type { ComputerUse } from '@ema-agent/computer-use';
 import type { TaskStore } from '@ema-agent/tasks';
 import type { GoalStore } from '@ema-agent/goal';
 import type { ListMemory, ReadMemory, SearchMemory } from '@ema-agent/memory';
@@ -88,6 +89,8 @@ export interface Scratchpad {
  * 信号属于 ToolInvocation;任何具体 Tool 只能取得 validateContext 返回的窄投影.
  */
 export interface ToolUseContext {
+  /** 主 Agent 共用的桌面操控入口, 控制归属由包内保存, 不随 Loop 或 Turn 重建. */
+  readonly computerUse?: ComputerUse;
   /** 空串表示本次执行没有工作区, 需要工作区的工具在 validateContext 中拒绝调用. */
   readonly cwd: string;
   /**

@@ -13,6 +13,10 @@ import { createPrepareAgentIteration } from './prepareAgentIteration.js';
 
 /** 子代理不直接检索长期记忆, 管理根任务或递归派发; 工具只从父 Pool 继续收窄. */
 const SUBAGENT_DENIED_TOOL_NAMES: ReadonlySet<string> = new Set([
+  BuiltinTools.ListWindows.name,
+  BuiltinTools.ObserveWindow.name,
+  BuiltinTools.ComputerAction.name,
+  BuiltinTools.ComputerEnd.name,
   BuiltinTools.Subagent.name,
   BuiltinTools.SubagentAwait.name,
   BuiltinTools.TaskCreate.name,

@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { SubagentExecutor, SubagentStore, SubagentMessagesStore } from '@ema-agent/agent';
+import { ComputerUse, type NativeControlState, type NativeRequest } from '@ema-agent/computer-use';
 import { Database, SubagentsRepo, SubagentRunsRepo, SubagentMessagesRepo } from '@ema-agent/storage';
 import {
   clearSessionRules, findMatchingContentRule, getSessionAllowRules, loadPermissionRuleBuckets,
@@ -35,6 +36,7 @@ import { MemorySearchTool } from '../../builtin-tools/tools/MemoryTool/MemorySea
 import { MemoryReadTool } from '../../builtin-tools/tools/MemoryTool/MemoryReadTool.js';
 import { MemoryListTool } from '../../builtin-tools/tools/MemoryTool/MemoryListTool.js';
 import { WebFetchTool } from '../../builtin-tools/tools/WebFetchTool/WebFetchTool.js';
+import { ComputerActionTool } from '../../builtin-tools/tools/ComputerActionTool/computerActionTool.js';
 import { clearWebFetchCache } from '../../builtin-tools/tools/WebFetchTool/storage/cache.js';
 import { closeWebRequests } from '../../builtin-tools/tools/WebFetchTool/network/webRequests.js';
 import { configureWebDownloads } from '../../builtin-tools/tools/WebFetchTool/storage/webDownloads.js';
@@ -139,6 +141,58 @@ describe('prepareTurnTools', () => {
     await closeWebRequests();
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
+  });
+
+  it.each(['continued', 'user_end'] as const)('电脑工具立即结束, 普通主 Agent 工具等 %s, 子代理不受影响', async reason => {
+    let notify!: (state: NativeControlState) => void;
+    const computer = new ComputerUse({
+      subscribe(listener) { notify = listener; return () => {}; },
+      close: async () => {},
+      request: async (request: NativeRequest) => {
+        if (request.method === 'computer.begin') {
+          notify({ controlId: 'start', phase: 'running', reason: 'started' });
+          return { started: true };
+        }
+        if (request.method === 'computer.observe') {
+          return {
+            controlId: 'start', observationId: 'obs',
+            window: { id: '42', title: '', app: '', x: 0, y: 0, width: 1, height: 1 },
+            width: 1, height: 1, image: '', mimeType: 'image/png', elements: [], truncated: false,
+          };
+        }
+        if (request.method === 'computer.end') return { ended: true };
+        throw new Error('旧电脑动作不得进入原生程序.');
+      },
+    });
+    const releaseStart = computer.registerCall(SESSION_ID, 'start', 'observe', () => {});
+    computer.reserve('start');
+    await computer.observe('start', '42', new AbortController().signal);
+    releaseStart();
+    notify({ controlId: 'start', phase: 'paused', reason: 'user_input' });
+
+    const deps = makeDeps({
+      tools: [fakeTool('OrdinaryRead')], queue: new SessionInteractionQueue(null), settings: fakeSettings(),
+    });
+    deps.registry.register(ComputerActionTool);
+    const assembly = await prepareTurnTools({ ...deps, computerUse: computer }, makeInput({ events: [] }));
+    const main = assembly.createExecutor(() => {});
+    main.addTool(0, 'old-action', 'ComputerAction', { observationId: 'obs', action: { type: 'type', text: 'old' } });
+    main.addTool(1, 'ordinary', 'OrdinaryRead', {});
+    const child = assembly.createSubagentExecutor({
+      subagentId: 'child', runId: 'run', toolPool: assembly.toolPool,
+      signal: new AbortController().signal, wake: () => {},
+    });
+    child.addTool(0, 'child-read', 'OrdinaryRead', {});
+    await child.join();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(child.takeCompletedResults()[0]?.isError).toBe(false);
+    expect(main.takeCompletedResults()).toMatchObject([{ toolCallId: 'old-action', errorCode: 'computer/paused' }]);
+    expect(main.allDone()).toBe(false);
+
+    notify({ controlId: 'start', phase: reason === 'continued' ? 'running' : 'ended', reason });
+    await main.join();
+    expect(main.takeCompletedResults()).toMatchObject([{ toolCallId: 'ordinary', isError: false }]);
+    await computer.close();
   });
 
   it('main Agent and subagents download without web fields in Turn dependencies', async () => {

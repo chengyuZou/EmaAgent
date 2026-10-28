@@ -38,6 +38,8 @@ Completed Turn writes and the host's Memory extraction registration share one SQ
 
 `TurnHandle.events` allows one consumer. Calling its iterator's `return()` requests cancellation. A paused consumer does not automatically cancel the Turn, and the current event buffer has no size limit. Persistence failures during final cleanup reject completion rather than broadcasting a successful finish.
 
+Computer-use pause belongs to the Session. The main Agent waits at Turn preparation, before a model request and before starting ordinary tools. Old computer calls immediately return non-execution or actual partial-operation results; they are not kept waiting for replay. Resume and control termination release the wait without adding a queued message or cancelling the Turn. Subagents do not receive these callbacks. See [Computer use](../computer-use/README.md).
+
 ## Queued input and continuation
 
 All ordinary sends use `enqueue()`, whether idle, running, or manually compacting. The queue is in memory and does not survive a restart.

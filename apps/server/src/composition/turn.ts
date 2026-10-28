@@ -73,6 +73,7 @@ export interface TurnComposition {
 
 export interface TurnCompositionDeps {
   readonly captureScreen: NonNullable<ToolUseContext['captureScreen']>;
+  readonly computerUse?: ToolUseContext['computerUse'];
   readonly database: DatabaseComposition;
   readonly settings: SettingsStore;
   readonly providers: ProvidersComposition;
@@ -338,6 +339,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     backgroundProcesses: tools.backgroundProcesses,
     resolveVision: resolveCallVision,
     captureScreen: deps.captureScreen,
+    computerUse: deps.computerUse,
     commandRunner: tools.getCommandRunner,
     toolResultStore: tools.getSessionToolResultStore,
     toolExecutionState: tools.toolExecutionState,

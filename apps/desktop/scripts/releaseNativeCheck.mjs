@@ -22,15 +22,27 @@ try {
   db.close();
 }
 await sharp({ create: { width: 1, height: 1, channels: 4, background: '#000000' } }).png().toBuffer();
+if (process.platform === 'win32') {
+  const executable = path.join(appRoot, 'node_modules/@ema-agent/computer-use/bin/ema-computer-use.exe');
+  assert.ok(existsSync(executable), '缺少随包电脑操控程序');
+  // 只测试真实进程通信和退出, 不在发布检查中启动控制或采集用户屏幕.
+  const reply = execFileSync(executable, [], {
+    input: `${JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'computer.ping', params: {} })}\n`,
+    encoding: 'utf8', windowsHide: true, timeout: 15_000,
+  });
+  assert.equal(JSON.parse(reply.trim()).result.ok, true, '电脑操控程序未正确响应');
+}
 const ffmpeg = realpathSync(captureRequire('ffmpeg-static'));
 const relative = path.relative(appRoot, ffmpeg);
 assert.ok(relative && !relative.startsWith('..') && !path.isAbsolute(relative), 'FFmpeg 不在发布目录内');
 assert.ok(existsSync(`${ffmpeg}.LICENSE`), '缺少 FFmpeg 许可证');
 assert.ok(existsSync(`${ffmpeg}.README`), '缺少 FFmpeg 构建说明');
-const devices = execFileSync(ffmpeg, ['-hide_banner', '-devices'], {
-  encoding: 'utf8', windowsHide: true, timeout: 10_000,
-});
-const device = { win32: 'gdigrab', darwin: 'avfoundation', linux: 'x11grab' }[process.platform];
-assert.ok(device && devices.split(/\r?\n/u).some(line => new RegExp(`^\\s*D\\s+${device}\\s`).test(line)),
-  `FFmpeg 缺少 ${device} 截图能力`);
+if (process.platform !== 'win32') {
+  const devices = execFileSync(ffmpeg, ['-hide_banner', '-devices'], {
+    encoding: 'utf8', windowsHide: true, timeout: 10_000,
+  });
+  const device = { darwin: 'avfoundation', linux: 'x11grab' }[process.platform];
+  assert.ok(device && devices.split(/\r?\n/u).some(line => new RegExp(`^\\s*D\\s+${device}\\s`).test(line)),
+    `FFmpeg 缺少 ${device} 截图能力`);
+}
 console.log('随包 Node、SQLite、Sharp、FFmpeg 和三周目剧情检查通过');

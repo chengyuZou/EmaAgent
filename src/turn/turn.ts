@@ -379,6 +379,10 @@ export class TurnExecutor {
         );
         signal.throwIfAborted();
 
+        if (claim.input.some(part => part.type === 'text' && part.text.trim().length > 0)) {
+          this.deps.computerUse?.noteUserInput(sessionId);
+        }
+
         const shouldRename = this.deps.sessions.getSession(sessionId).title === DEFAULT_SESSION_TITLE
           && !this.deps.hasNormalUserMessage(sessionId);
         const userMessage = this.deps.sessions.appendMessage({
@@ -454,6 +458,8 @@ export class TurnExecutor {
         onContextPrepared: loopEvents.onContextPrepared,
       });
       const prepareIteration: PrepareAgentIteration = async input => {
+        // 工具结果已保存后再等继续. 不把旧电脑工具的 Promise 留在执行队列里.
+        await this.deps.computerUse?.waitWhilePaused(sessionId, signal);
         const iteration = await prepareAgentIteration(input);
         // 每次物理父请求独立交接, 包含 Compact 改写后的历史, 不订阅后续迭代.
         forkParentMessages.beginRequest(iteration.messages, messageIds);
@@ -461,6 +467,14 @@ export class TurnExecutor {
       };
 
       let stopped: Extract<AgentLoopEvent, { type: 'loop_stopped' }> | undefined;
+      // 只包装当前主 Agent, 不改写子代理可能复用的 prepared.callLLM.
+      const computerUse = this.deps.computerUse;
+      const providerCall = prepared.callLLM;
+      const callLLM: typeof prepared.callLLM = async function* (request) {
+        // 准备上下文可能包含 Compact 请求, 完成后发主模型请求前仍需检查暂停.
+        await computerUse?.waitWhilePaused(sessionId, signal);
+        yield* providerCall(request);
+      };
       const stage = this.deps.stage;
       // 新 Turn 重置舞台扫描器;情绪状态跨 Turn 保留.
       stage?.beginTurn(sessionId);
@@ -468,7 +482,7 @@ export class TurnExecutor {
       for await (const event of runAgentLoop({
         messages: initialMessages,
         prepareIteration,
-        callLLM: prepared.callLLM,
+        callLLM,
         createToolExecutor: tools.createExecutor,
         takeNextIterationMessages: async () => {
           const appended = await persistNextIterationMessages();

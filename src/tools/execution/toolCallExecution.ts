@@ -45,6 +45,13 @@ export type ToolExecutionEnvironment = {
   readonly toolContext: ToolUseContext;
   readonly toolResultStore?: ToolResultStore;
   readonly toolExecutionState?: ToolExecutionState;
+  /** 入队时由宿主登记业务归属, 返回完成时的清理函数. reject 仅用于确定未执行的调用. */
+  readonly onToolRegistered?: (
+    call: ToolExecutionCall,
+    reject: (error: ToolExecutionError) => void,
+  ) => (() => void) | undefined;
+  /** 开始检查权限及执行工具前等待宿主放行. 等待可被本次调用或 Turn 的取消打断. */
+  readonly beforeToolExecution?: (call: ToolExecutionCall, signal: AbortSignal) => Promise<void>;
 } & (
     | { readonly subagentId?: never; readonly runId?: never }
     | {
@@ -95,10 +102,11 @@ export class ToolCallExecution {
   private terminalEvent?: ToolExecutionEvent;
   private resultDisposition?: ResultDisposition;
   private runPromise?: Promise<ToolExecutionCompletion>;
+  private releaseCall?: () => void;
 
   constructor(
     private readonly environment: ToolExecutionEnvironment,
-    call: ToolExecutionCall,
+    private readonly call: ToolExecutionCall,
     private readonly emit: (event: ToolExecutionEvent) => void,
   ) {
     this.id = call.callId;
@@ -118,6 +126,7 @@ export class ToolCallExecution {
       this.input = input;
       this.isConcurrencySafe = tool.isConcurrencySafe(input);
       this.requiresUserInteraction = tool.requiresUserInteraction(input);
+      this.releaseCall = environment.onToolRegistered?.(call, error => this.abort(error));
     } catch (error) {
       this.preflightFailure = classifyInputFailure(call.name, error);
       this.isConcurrencySafe = true;
@@ -126,8 +135,12 @@ export class ToolCallExecution {
   }
 
   /** 取消当前调用,不影响同 Turn 的其他工具. */
-  abort(reason = 'user_abort'): void {
+  abort(reason: string | ToolExecutionError = 'user_abort'): void {
     this.abortController.abort(reason);
+  }
+
+  get cancellationSignal(): AbortSignal {
+    return this.abortController.signal;
   }
 
   /**
@@ -176,7 +189,8 @@ export class ToolCallExecution {
     // 越过副作用边界(running)后的取消无法证明干净,只能按 outcome_unknown 记录终态.
     if (
       this.resultDisposition === 'outcome_unknown'
-      || (this.executionStatus === 'running' && this.resultDisposition === 'cancelled')
+      || (this.executionStatus === 'running' && this.resultDisposition === 'cancelled'
+        && !(this.abortController.signal.reason instanceof ToolExecutionError))
     ) {
       this.environment.toolExecutionState?.outcomeUnknown(this.id);
       if (this.environment.toolExecutionState) {
@@ -215,6 +229,7 @@ export class ToolCallExecution {
       }
     } finally {
       parentSignal.removeEventListener('abort', onParentAbort);
+      this.releaseCall?.();
     }
 
     if (!this.result || !this.terminalEvent) {
@@ -240,6 +255,8 @@ export class ToolCallExecution {
     // 构造器只有在 Tool 存在且 Schema 解析成功时才不会设置 preflightFailure.
     const tool = this.tool!;
     const invocation = this.invocation(signal);
+    await this.environment.beforeToolExecution?.(this.call, signal);
+    signal.throwIfAborted();
     const contextProjection = tool.validateContext(this.environment.toolContext);
     if (!contextProjection.valid) {
       await this.completeFailure({ code: 'tool/context_unavailable', message: contextProjection.reason });
@@ -389,6 +406,9 @@ export class ToolCallExecution {
     let output: unknown;
 
     try {
+      // 权限等待期间也可能发生暂停. 越过副作用边界前再次等待, 不回放已取消的调用.
+      await this.environment.beforeToolExecution?.(this.call, signal);
+      signal.throwIfAborted();
       // running 是副作用边界;该状态持久化成功后才能调用具体工具.
       this.environment.toolExecutionState?.start(this.id);
       if (this.environment.toolExecutionState) {
@@ -460,6 +480,15 @@ export class ToolCallExecution {
   }
 
   private completeCancellation(data?: unknown): void {
+    const reason = this.abortController.signal.reason;
+    if (reason instanceof ToolExecutionError && !this.environment.abortSignal.aborted) {
+      const failure = reason;
+      this.result = this.errorResult(failure.code, failure.message);
+      this.result.data = data ?? failure.output;
+      this.resultDisposition = failure.code === 'tool/outcome_unknown' ? 'outcome_unknown' : 'cancelled';
+      this.terminalEvent = this.errorEvent(failure.code, failure.message);
+      return;
+    }
     const output = '[用户中途终止]';
     this.result = {
       type: 'tool_result',
@@ -554,6 +583,9 @@ function toolUnavailable(name: string): ToolFailure {
 }
 
 function classifyInputFailure(toolName: string, error: unknown): ToolFailure {
+  if (error instanceof ToolExecutionError) {
+    return { code: error.code, message: error.message };
+  }
   const inputError = error instanceof ZodError
     ? new ToolInputError(toolName, error)
     : error;

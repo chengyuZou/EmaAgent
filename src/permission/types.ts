@@ -50,6 +50,8 @@ export type PermissionUpdate =
   };
 
 export type PermissionDecisionReason =
+  /** 本机电脑控制已经在启动入口获准, 操作仍检查归属和状态, 不再逐项弹确认. */
+  | { readonly type: 'computerControl'; readonly reason: string }
   | { readonly type: 'rule'; readonly rule: PermissionRule }
   | { readonly type: 'mode'; readonly mode: PermissionMode }
   | { readonly type: 'workingDir'; readonly reason: string }

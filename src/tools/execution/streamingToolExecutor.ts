@@ -143,26 +143,43 @@ export class StreamingToolExecutor {
     }
 
     let promise: Promise<void>;
+    let started = false;
+    const execute = (): Promise<void> => {
+      if (started) return Promise.resolve();
+      started = true;
+      track.execution.cancellationSignal.removeEventListener('abort', cancelQueued);
+      return this.execute(track);
+    };
+    // 取消排队调用时直接生成终态, 不再等待前面的长工具完成后才处理取消.
+    let releaseCancelled!: () => void;
+    const cancelled = new Promise<void>(resolve => { releaseCancelled = resolve; });
+    const cancelQueued = (): void => {
+      if (started) return;
+      void execute().finally(releaseCancelled);
+    };
+    track.execution.cancellationSignal.addEventListener('abort', cancelQueued, { once: true });
 
     if (track.execution.isConcurrencySafe) {
       // 并发安全调用只需等待前一个独占调用 然后可以和其他 safe tool 并行
-      promise = this.exclusiveBarrier.then(() => this.execute(track));
+      promise = this.exclusiveBarrier.then(execute);
     } else {
       // 独占调用必须等待此前所有已调度调用完成
       const fence = Promise.allSettled(this.pendingTools);
 
-      promise = fence.then(() => this.execute(track));
+      promise = fence.then(execute);
 
       // 后续调用不能越过本次独占调用 从现在开始后面的 safe tool 都必须等它
       this.exclusiveBarrier = promise;
     }
 
+    promise = Promise.race([promise, cancelled]);
     track.promise = promise;
     this.pendingTools.add(promise);
 
     void promise.then(
       () => this.pendingTools.delete(promise),
     );
+    if (track.execution.cancellationSignal.aborted) cancelQueued();
   }
 
   allDone(): boolean {

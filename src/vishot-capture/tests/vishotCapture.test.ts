@@ -20,7 +20,9 @@ function fixture() {
   const onError = vi.fn();
   const capture = new VishotCapture({
     readSettings: () => settings,
-    saveImage, isIdle, canReadImages,
+    saveImage,
+    canStartCapture: () => isIdle() && canReadImages(),
+    shouldSubmitCapture: () => isIdle() && canReadImages(),
     enqueueIfIdleForVishotCapture: enqueue,
     onError,
   });
@@ -31,6 +33,53 @@ beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
 describe('VishotCapture', () => {
+  it('PNG 编码不同但像素相同仍跳过, 像素真的变化才再次保存', async () => {
+    vi.useRealTimers();
+    const { default: sharp } = await import('sharp');
+    const source = sharp({ create: { width: 12, height: 12, channels: 3, background: '#ff0000' } });
+    const first = await source.clone().png({ compressionLevel: 0 }).toBuffer();
+    const samePixels = await source.clone().png({ compressionLevel: 9 }).toBuffer();
+    const changed = await sharp({ create: { width: 12, height: 12, channels: 3, background: '#00ff00' } }).png().toBuffer();
+    expect(first.equals(samePixels)).toBe(false);
+    const f = fixture();
+    // 原生图片解码异步完成, 用短计时器等第三帧, 不读取模块的私有等待状态.
+    f.settings.intervalSeconds = 0.01;
+    f.captureScreen.mockResolvedValue(changed).mockResolvedValueOnce(first).mockResolvedValueOnce(samePixels);
+    f.capture.setSessionId('a');
+    try {
+      await vi.waitFor(() => {
+        expect(f.captureScreen.mock.calls.length).toBeGreaterThanOrEqual(3);
+        expect(f.saveImage).toHaveBeenCalledTimes(2);
+      });
+      expect(f.onError).not.toHaveBeenCalled();
+    } finally {
+      await f.capture.close();
+    }
+  });
+  it('相同画面只提交一次, 切换 Session 后重新提交, 工具截图始终执行', async () => {
+    const f = fixture();
+    f.capture.setSessionId('a');
+    await vi.advanceTimersByTimeAsync(90_000);
+    expect(f.captureScreen).toHaveBeenCalledTimes(3);
+    expect(f.saveImage).toHaveBeenCalledOnce();
+    expect(f.enqueue).toHaveBeenCalledOnce();
+    await f.capture.capture(new AbortController().signal);
+    expect(f.captureScreen).toHaveBeenCalledTimes(4);
+    f.capture.setSessionId('b');
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(f.enqueue).toHaveBeenCalledTimes(2);
+    await f.capture.close();
+  });
+
+  it('入队拒绝不更新比较基准, 下次相同画面仍可提交', async () => {
+    const f = fixture();
+    f.enqueue.mockReturnValueOnce(false);
+    f.capture.setSessionId('a');
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(f.enqueue).toHaveBeenCalledTimes(2);
+    expect(f.saveImage).toHaveBeenCalledTimes(2);
+    await f.capture.close();
+  });
   it('没有 Session 不捕获, 设置目标后等一个完整间隔, 重复设置不重置计时', async () => {
     const f = fixture();
     f.capture.configure();

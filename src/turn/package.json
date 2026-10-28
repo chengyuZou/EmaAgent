@@ -28,6 +28,7 @@
     "@ema-agent/attachments": "workspace:*",
     "@ema-agent/characters": "workspace:*",
     "@ema-agent/compact": "workspace:*",
+    "@ema-agent/computer-use": "workspace:*",
     "@ema-agent/context": "workspace:*",
     "@ema-agent/goal": "workspace:*",
     "@ema-agent/llm": "workspace:*",

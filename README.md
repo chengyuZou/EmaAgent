@@ -43,6 +43,7 @@ Roleplay is not limited to the bundled character or one fictional setting. A sep
 
 - Read, search, write, and edit files, run commands, and inspect their output.
 - Search the web and fetch pages through enabled tools.
+- On Windows, observe application windows and operate available controls, mouse and keyboard through the computer-use tools. A desktop overlay supports pause, continue and end; automatic screen capture skips identical frames.
 - Use Tasks, Goals, and subagents for work that takes several steps.
 - Queue follow-up messages while a Turn is running, or choose to guide the current Turn between iterations.
 - Choose tool permission modes, compact long conversation context, and inspect recorded model usage.

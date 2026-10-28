@@ -16,6 +16,7 @@ import { openSpeech, type SpeechComposition } from './speech.js';
 import { openTools, type ToolsComposition } from './tools.js';
 import { openTurns, type TurnComposition } from './turn.js';
 import { openVishotCapture } from './vishotCapture.js';
+import { openComputerUse } from './computerUse.js';
 
 export interface Composition {
   readonly database: DatabaseComposition;
@@ -27,6 +28,7 @@ export interface Composition {
   readonly speech: SpeechComposition;
   readonly turn: TurnComposition;
   readonly vishotCapture: ReturnType<typeof openVishotCapture>;
+  readonly computerUse: ReturnType<typeof openComputerUse>;
   readonly commands: CommandsComposition;
   readonly memory: MemoryComposition;
   readonly backup: BackupComposition;
@@ -123,11 +125,13 @@ export async function buildComposition(input: { activeDataDir: string; initializ
   });
   // 截图对象创建时没有目标 Session, 不会执行这些队列回调.
   let turn: TurnComposition;
+  const computerUse = openComputerUse();
   const vishotCapture = openVishotCapture(
     database, settings.settings, providers,
     sessionId => turn.continuations.isIdleForVishotCapture(sessionId),
     input => turn.continuations.enqueueIfIdleForVishotCapture(input),
     appEvents,
+    computerUse,
   );
   turn = openTurns({
     database,
@@ -145,6 +149,7 @@ export async function buildComposition(input: { activeDataDir: string; initializ
     publishQueuedInput: (sessionId, event) => sessionConnections.publish(sessionId, event),
     publishInteraction: event => sessionConnections.publish(event.sessionId, event),
     fanout: turnFanout,
+    computerUse,
     captureScreen: async (sessionId, turnId, signal) => {
       const bytes = await vishotCapture.capture.capture(signal);
       signal.throwIfAborted();
@@ -186,12 +191,14 @@ export async function buildComposition(input: { activeDataDir: string; initializ
     turn,
     commands,
     vishotCapture,
+    computerUse,
     memory,
     backup,
     sessionConnections,
     appEvents,
     async close() {
       await vishotCapture.close();
+      await computerUse?.close();
       // 先停止自动续接, 再中止并等待 Turn 和手动 Compact 清除运行记录.
       // 否则数据库关闭后, Turn 的 finally 仍可能保存结果或启动下一次执行.
       turn.continuations.shutdown();

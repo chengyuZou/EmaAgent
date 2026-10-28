@@ -1,4 +1,5 @@
 import type { SubagentExecutor, AgentLoopEvent, PrepareSubagent } from '@ema-agent/agent';
+import { ComputerUseError, type ComputerCallKind } from '@ema-agent/computer-use';
 import type { CallVision } from '@ema-agent/vision';
 import {
   applyPermissionUpdate,
@@ -22,6 +23,7 @@ import {
   type BackgroundProcess,
   type FileStateCache,
   StreamingToolExecutor,
+  ToolExecutionError,
   type ToolExecutionState,
   type ToolExecutionEvent,
   type ToolRegistry,
@@ -51,6 +53,7 @@ export interface TurnToolsDeps {
   /** 每 Turn 解析一次 vision 调用闭包: 无绑定时返回 undefined */
   readonly resolveVision?: () => CallVision | undefined;
   readonly captureScreen?: ToolUseContext['captureScreen'];
+  readonly computerUse?: ToolUseContext['computerUse'];
   readonly commandRunner?: (
     cwd: string,
     workspaceRoots: readonly string[],
@@ -180,6 +183,7 @@ export async function prepareTurnTools(deps: TurnToolsDeps, input: PrepareTurnTo
       answers: outcome.status === 'answered' ? { ...outcome.answers } : {},
     });
     if (outcome.status === 'answered') {
+      deps.computerUse?.noteUserInput(sessionId);
       return { answers: { ...outcome.answers } };
     }
     throw new Error(`AskUser ${outcome.status}: ${outcome.reason}`);
@@ -198,6 +202,7 @@ export async function prepareTurnTools(deps: TurnToolsDeps, input: PrepareTurnTo
     ...(commandRunner ? { commandRunner } : {}),
     ...(vision ? { vision } : {}),
     ...(deps.captureScreen ? { captureScreen: deps.captureScreen } : {}),
+    ...(deps.computerUse ? { computerUse: deps.computerUse } : {}),
     ...(deps.backgroundProcesses ? { backgroundProcesses: deps.backgroundProcesses } : {}),
     ...(narrativeSearch ? { narrativeSearch } : {}),
     ...(deps.memorySearch ? { memorySearch: deps.memorySearch } : {}),
@@ -247,10 +252,12 @@ export async function prepareTurnTools(deps: TurnToolsDeps, input: PrepareTurnTo
     memorySearch: _memorySearch,
     memoryRead: _memoryRead,
     memoryList: _memoryList,
+    computerUse: _computerUse,
     ...subagentToolContext
   } = toolContext;
   let currentExecutor: StreamingToolExecutor | undefined;
   const createExecutor = (wake: () => void): StreamingToolExecutor => {
+    const computer = deps.computerUse;
     const executor = new StreamingToolExecutor({
       sessionId,
       turnId,
@@ -260,6 +267,24 @@ export async function prepareTurnTools(deps: TurnToolsDeps, input: PrepareTurnTo
       askPermission,
       toolContext,
       toolResultStore,
+      onToolRegistered: (call, reject) => {
+        const kind = computerToolKinds.get(call.name);
+        if (!computer || !kind) return undefined;
+        try {
+          return computer.registerCall(sessionId, call.callId, kind, error => {
+            reject(new ToolExecutionError({ effect: error.effect }, error.message, error.code));
+          });
+        } catch (error) {
+          if (error instanceof ComputerUseError) {
+            throw new ToolExecutionError(undefined, error.message, error.code);
+          }
+          throw error;
+        }
+      },
+      beforeToolExecution: async (call, signal) => {
+        // 旧电脑调用由 registerCall 直接结清. 其他工具在启动前共用主 Agent 的暂停等待.
+        if (!computerToolKinds.has(call.name)) await computer?.waitWhilePaused(sessionId, signal);
+      },
       ...(deps.toolExecutionState ? { toolExecutionState: deps.toolExecutionState } : {}),
       // 工具结果要等 Message 保存后再发布. 此处只转发进度,
       // tool_result 由 turnLoopEvents 读取已保存的 AgentLoop 事件生成.
@@ -314,9 +339,17 @@ export async function prepareTurnTools(deps: TurnToolsDeps, input: PrepareTurnTo
       stopped = true;
       await currentExecutor?.shutdown(reason);
       await deps.subagents.abortForegroundForTurn(turnId);
+      if (input.signal.aborted) await deps.computerUse?.endSession(sessionId);
     },
   };
 }
+
+const computerToolKinds = new Map<string, ComputerCallKind>([
+  [BuiltinTools.ListWindows.name, 'list'],
+  [BuiltinTools.ObserveWindow.name, 'observe'],
+  [BuiltinTools.ComputerAction.name, 'action'],
+  [BuiltinTools.ComputerEnd.name, 'end'],
+]);
 
 /**
  * 队列条目在 cancel 时会以其默认终态 resolve(permission→deny,askUser→cancelled),

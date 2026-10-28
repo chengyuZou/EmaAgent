@@ -7,20 +7,31 @@ import { SwitchSetting } from '../shared/controls/SwitchSetting.js';
 import { useSettingValues } from '../shared/useSettingValues.js';
 import { PageHeader } from '../shared/PageHeader.js';
 
-export function ScreenCaptureSettings(): JSX.Element {
+export function ComputerUseSettings(): JSX.Element {
   const settings = useSettingValues();
   if (settings.loading) return <div className="flex h-48 items-center justify-center"><Spinner size="md" /></div>;
-  if (settings.error) return <Callout variant="danger">屏幕捕获设置读取失败: {settings.error}</Callout>;
+  if (settings.error) return <Callout variant="danger">电脑操控设置读取失败: {settings.error}</Callout>;
   const enabled = settings.get(vishotCaptureEnabledSetting);
   const interval = settings.get(vishotCaptureIntervalSecondsSetting);
 
   return (
     <div className="mx-auto flex w-full flex-col gap-8 pb-10">
-      <PageHeader title="屏幕捕获" description="设置自动截图及其提交间隔" />
+      <PageHeader title="电脑操控" description="窗口观察, 键鼠操作与自动屏幕捕获" />
+      <SettingsSection icon="i-lucide:mouse-pointer-2" title="电脑操控" description="Windows 主 Agent 可观察窗口, 使用键鼠和可用控件完成操作.">
+        <SettingsCard>
+          <div className="space-y-3 text-sm leading-relaxed text-[var(--ema-text-secondary)]">
+            <p>由 Agent 调用 ObserveWindow 启动, 启动时确认一次权限. 同一 Session 的控制可以跨 Turn 使用, 电脑操作完成后由 ComputerEnd 或用户结束.</p>
+            <p>电脑操控期间, 桌面上的真实鼠标左/右/中键按下和键盘输入会暂停执行. 鼠标移动和转动滚轮不暂停. 暂停后点击提示条的继续按钮, 或按 Ctrl+Alt+C 继续.</p>
+            <p>按 Esc 或点击结束只结束电脑控制, 不停止整轮对话. 已排队的旧操作不会在重新开启后执行. 聊天里的停止生成仍会取消当前 Turn.</p>
+            <p>提示条使用固定蓝色底, 白字和光晕. 当前只开放 Windows 电脑操控, 子代理不使用这组工具.</p>
+          </div>
+        </SettingsCard>
+      </SettingsSection>
       <SettingsSection icon="i-lucide:scan" title="自动屏幕捕获" description="跟随当前打开的聊天, 只在会话和消息队列都空闲时提交截图.">
         <Callout variant="info">
           开启后, 截图会保存为聊天附件, 并交给该会话的模型读取. 请留意屏幕上的私人信息.
           macOS 和 Linux/X11 为测试版, Wayland 暂不支持. 手动调用 Capture 工具不受此开关控制.
+          自动捕获会跳过与上次成功提交完全相同的画面. 电脑操控期间及暂停等待时, 自动捕获暂时停止, 控制结束后恢复.
         </Callout>
         <SettingsCard>
           <SwitchSetting

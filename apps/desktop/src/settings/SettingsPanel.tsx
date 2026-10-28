@@ -18,7 +18,7 @@ import { MemoryOverviewTab } from './memory/MemoryOverviewTab.js';
 import { ParameterSettings } from './parameters/ParameterSettings.js';
 import { PermissionSettings } from './permission/permissionSettings.js';
 import { EventSettings } from './events/eventSettings.js';
-import { ScreenCaptureSettings } from './capture/ScreenCaptureSettings.js';
+import { ComputerUseSettings } from './computerUse/ComputerUseSettings.js';
 import { BindingsTab } from './providers/BindingsTab.js';
 import { ProvidersTab } from './providers/ProvidersTab.js';
 import { SkillInstalledPage } from './skills/SkillInstalledPage.js';
@@ -104,7 +104,7 @@ const SETTINGS_PAGES: readonly SettingsPage[] = [
   { id: 'archive', label: '归档聊天', icon: 'i-lucide:archive' },
   { id: 'security', label: '安全', icon: 'i-lucide:shield-check' },
   { id: 'permission', label: '权限', icon: 'i-lucide:folder-key' },
-  { id: 'capture', label: '屏幕捕获', icon: 'i-lucide:scan' },
+  { id: 'capture', label: '电脑操控', icon: 'i-lucide:mouse-pointer-2' },
   { id: 'events', label: '事件', icon: 'i-lucide:bell' },
   { id: 'parameters', label: '参数设置', icon: 'i-lucide:sliders-horizontal' },
   { id: 'appearance', label: '外观', icon: 'i-lucide:palette', subPages: APPEARANCE_SUB_PAGES },
@@ -312,7 +312,7 @@ function SettingsContent({ id }: { id: SettingsTabId }): JSX.Element {
     case 'parameters':
       return <ParameterSettings />;
     case 'capture':
-      return <ScreenCaptureSettings />;
+      return <ComputerUseSettings />;
     case 'appearance':
     case 'appearance-theme':
       return <ThemeTab />;

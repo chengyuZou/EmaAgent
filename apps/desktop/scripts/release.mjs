@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { copyReleaseWorkspace, assembleReleaseApp } from './releaseWorkspace.mjs';
 import { checkReleaseFiles, checkReleaseServer, checkReleaseVersions } from './releaseCheck.mjs';
+import { buildComputerUse } from './buildComputerUse.mjs';
 
 const desktop = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const repository = path.resolve(desktop, '../..');
@@ -48,6 +49,7 @@ const app = path.join(portable, 'app');
 const suffix = process.platform === 'win32' ? '.exe' : '';
 const node = path.join(portable, `ema-server${suffix}`);
 try {
+  stage('构建 Windows 电脑操控程序', () => buildComputerUse({ release: true }));
   stage('构建当前 Server 及其工作区依赖', () => runPnpm(['--filter', '@ema-agent/server...', 'build'], repository));
   stage('在独立目录安装锁定的生产依赖', () => {
     copyReleaseWorkspace(repository, workspace);

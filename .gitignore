@@ -25,6 +25,9 @@ Thumbs.db
 # Tauri
 **/src-tauri/target/
 **/src-tauri/gen/
+/apps/computer-use/target/
+/src/computer-use/bin/*
+!/src/computer-use/bin/.gitkeep
 
 # 忽略 TypeScript 编译产物
 *.js

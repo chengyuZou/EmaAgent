@@ -5,12 +5,14 @@ import {
   buildTool,
   contextOk,
   ToolPool,
+  ToolExecutionError,
   type Tool,
   type ToolExecutionEvent,
 } from '../index.js';
 import {
   StreamingToolExecutor,
   type StreamingToolExecutorEvent,
+  type StreamingToolExecutorOptions,
 } from '../execution/streamingToolExecutor.js';
 
 const SESSION_ID = '00000000-0000-4000-8000-0000000000a1';
@@ -54,7 +56,7 @@ function gatedTool(name: string, concurrencySafe: boolean): {
   return { tool, release, started };
 }
 
-function makeExecutor(tools: AnyTestTool[]): {
+function makeExecutor(tools: AnyTestTool[], hooks: Pick<StreamingToolExecutorOptions, 'onToolRegistered' | 'beforeToolExecution'> = {}): {
   executor: StreamingToolExecutor;
   events: ToolExecutionEvent[];
 } {
@@ -68,6 +70,7 @@ function makeExecutor(tools: AnyTestTool[]): {
     toolContext: { cwd: '', platform: process.platform },
     pushEv: event => events.push(event),
     wake: () => undefined,
+    ...hooks,
   });
   return { executor, events };
 }
@@ -84,6 +87,38 @@ function terminalNames(events: StreamingToolExecutorEvent[]): string[] {
 }
 
 describe('StreamingToolExecutor', () => {
+  it('业务归属结束时撤销排队调用, 不执行也不等待前面的工具释放', async () => {
+    const first = gatedTool('First', false);
+    let rejectQueued!: (error: ToolExecutionError) => void;
+    const executed: string[] = [];
+    const dispose = () => { executed.push('disposed'); };
+    const queued = buildTool({
+      name: 'QueuedComputer',
+      description: 'queued',
+      inputSchema: z.object({ value: z.number() }),
+      validateContext: () => contextOk({}),
+      checkPermissions: async () => ({ behavior: 'allow' as const }),
+      execute: async () => { executed.push('executed'); return {}; },
+    });
+    const { executor } = makeExecutor([first.tool, queued as AnyTestTool], {
+      onToolRegistered: (call, reject) => {
+        if (call.name !== 'QueuedComputer') return undefined;
+        rejectQueued = reject;
+        return dispose;
+      },
+    });
+    executor.addTool(0, 'first', 'First', { value: 1 });
+    await first.started;
+    executor.addTool(1, 'queued', 'QueuedComputer', { value: 2 });
+    rejectQueued(new ToolExecutionError({ effect: 'none' }, 'Control ended.', 'computer/control_ended'));
+    await tick();
+    expect(executed).toEqual(['disposed']);
+    first.release();
+    await executor.join();
+    const results = executor.takeCompletedResults();
+    expect(results[1]).toMatchObject({ errorCode: 'computer/control_ended', isError: true });
+    expect(executed).not.toContain('executed');
+  });
   it('每个工具在登记时就开始调度, 后到的独占工具仍等待前一个完成', async () => {
     const first = gatedTool('Read', true);
     const second = gatedTool('Write', false);

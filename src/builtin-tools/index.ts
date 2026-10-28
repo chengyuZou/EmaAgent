@@ -1,6 +1,10 @@
 import { FileReadTool } from './tools/FileReadTool/FileReadTool.js';
 import { DescribeImageTool } from './tools/DescribeImageTool/describeImageTool.js';
 import { CaptureTool } from './tools/CaptureTool/captureTool.js';
+import { ListWindowsTool } from './tools/ListWindowsTool/listWindowsTool.js';
+import { ObserveWindowTool } from './tools/ObserveWindowTool/observeWindowTool.js';
+import { ComputerActionTool } from './tools/ComputerActionTool/computerActionTool.js';
+import { ComputerEndTool } from './tools/ComputerEndTool/computerEndTool.js';
 import { FileWriteTool } from './tools/FileWriteTool/FileWriteTool.js';
 import { cleanupInterruptedFileWriteTemps } from './tools/FileWriteTool/recovery.js';
 import { FileEditTool } from './tools/FileEditTool/FileEditTool.js';
@@ -57,6 +61,10 @@ export {
   FileReadTool,
   DescribeImageTool,
   CaptureTool,
+  ListWindowsTool,
+  ObserveWindowTool,
+  ComputerActionTool,
+  ComputerEndTool,
   FileWriteTool,
   cleanupInterruptedFileWriteTemps,
   FileEditTool,
@@ -128,6 +136,10 @@ const ALL_BUILTIN_TOOLS: Tool<any, any, any, any>[] = [
   FileReadTool,
   DescribeImageTool,
   CaptureTool,
+  ListWindowsTool,
+  ObserveWindowTool,
+  ComputerActionTool,
+  ComputerEndTool,
   FileWriteTool,
   FileEditTool,
   GlobTool,

@@ -64,6 +64,10 @@ async function hasPermissionsToUseToolInner(
   if (toolResult.behavior === 'deny') {
     return toolResult;
   }
+  // 已授权的电脑操作与结束操作不重复弹 Permission, 整个工具的 deny 仍在前面生效.
+  if (toolResult.behavior === 'allow' && toolResult.decisionReason?.type === 'computerControl') {
+    return toolResult;
+  }
   const sessionAllowRule = toolResult.sessionAllowRule ?? {
     toolName: tool.name,
     ruleContent: exactInputRuleContent(input),

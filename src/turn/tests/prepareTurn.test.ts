@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import os from 'node:os';
 import { maxIterationsSetting } from '@ema-agent/agent';
 import type { SubagentExecutor } from '@ema-agent/agent';
+import type { ComputerUse } from '@ema-agent/computer-use';
 import type { AttachmentStore } from '@ema-agent/attachments';
 import type { ProviderModels, Providers } from '@ema-agent/providers';
 import { SessionRunningRegistry, SessionStore } from '@ema-agent/session';
@@ -123,6 +124,22 @@ function makeRuntime(start: StartTurn) {
 }
 
 describe('prepareTurn', () => {
+  it('消息队列接续的新 Turn 在电脑暂停时先等待, 不提前创建模型调用', async () => {
+    let resume!: () => void;
+    const paused = new Promise<void>(resolve => { resume = resolve; });
+    const waitWhilePaused = vi.fn(() => paused);
+    const createLLMCall = vi.fn(() => vi.fn() as unknown as CallLLM);
+    const computerUse = { waitWhilePaused } as unknown as ComputerUse;
+    const pending = prepareTurn(makeDeps({ computerUse, createLLMCall }), makeRuntime(makeStart({
+      triggerType: 'sessionContinuation', input: [], continuationText: '继续已有工作',
+    })));
+    expect(waitWhilePaused).toHaveBeenCalledWith('s1', expect.any(AbortSignal));
+    expect(createLLMCall).not.toHaveBeenCalled();
+    resume();
+    await pending;
+    expect(createLLMCall).toHaveBeenCalledOnce();
+  });
+
   it('空闲估算与实际 Turn 共用 Prompt 和工具列表, 但不创建执行资源', async () => {
     const deps = makeDeps();
     const validateContext = vi.fn(() => contextOk({}));

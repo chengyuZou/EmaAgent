@@ -125,6 +125,13 @@ export async function prepareTurn(
   input: PrepareTurnInput,
 ): Promise<PreparedTurn> {
   const { request, turnId, signal } = input;
+  if (request.triggerType === 'userMessage'
+    && request.input.some(part => part.type === 'text' && part.text.trim().length > 0)) {
+    deps.computerUse?.noteUserInput(request.sessionId);
+  }
+
+  // 控制的暂停属于 Session. 队列接续的新 Turn 也先等待, 不提前准备模型或执行新工作.
+  await deps.computerUse?.waitWhilePaused(request.sessionId, signal);
 
   // 设置在任何附件写入或媒体降级前读取一次, 确保同一 Turn 不混用新旧上限.
   const agentSettings = readAgentSettings(deps.settings);

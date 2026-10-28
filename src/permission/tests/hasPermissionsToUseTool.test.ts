@@ -27,6 +27,16 @@ const ALLOW: PermissionResult = { behavior: 'allow' };
 const PASS: PermissionResult = { behavior: 'passthrough', message: 'needs review' };
 
 describe('hasPermissionsToUseTool', () => {
+  it('有效电脑控制不重复弹确认, 但仍保留整个工具的 deny', async () => {
+    const tool = makeTool({
+      behavior: 'allow',
+      decisionReason: { type: 'computerControl', reason: '已有本次控制许可.' },
+    }, 'ComputerAction');
+    const context = makeContext({ alwaysAskRules: { userSettings: ['ComputerAction'] } });
+    expect((await hasPermissionsToUseTool(tool, {}, {}, context, { interactive: true })).behavior).toBe('allow');
+    context.alwaysDenyRules.userSettings = ['ComputerAction'];
+    expect((await hasPermissionsToUseTool(tool, {}, {}, context, { interactive: true })).behavior).toBe('deny');
+  });
   it('整体 deny 规则最先命中', async () => {
     const context = makeContext({ alwaysDenyRules: { userSettings: ['Bash'] } });
     const decision = await hasPermissionsToUseTool(makeTool(ALLOW), {}, {}, context, { interactive: true });
