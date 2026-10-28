@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module';
 import type { Ignore } from 'ignore';
-import { normalizeCaseForComparison } from '../paths/pathSafety.js';
+import { normalizeCaseForComparison } from './pathSafety.js';
 
 // ignore 是 CJS 包; NodeNext ESM 下经 createRequire 取工厂函数.
 const require = createRequire(import.meta.url);

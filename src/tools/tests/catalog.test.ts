@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { buildTool } from '../Tool/buildTool.js';
-import type { PermissionResult } from '@ema-agent/permission';
+import type { ToolPermissionCheck } from '@ema-agent/permission';
 import { describeToolForCatalog } from '../catalog.js';
 
-const passthrough = async (): Promise<PermissionResult> => ({
-  behavior: 'passthrough',
+const passthrough = async (): Promise<ToolPermissionCheck> => ({
+  kind: 'tool' as const, defaultDecision: 'ask' as const, sessionApproval: 'input' as const,
   message: 'test',
 });
 

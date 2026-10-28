@@ -114,7 +114,7 @@ function RuleListEditor(props: { behavior: RuleBehavior; apply: SettingApply; va
     setDraft(props.value.join('\n'))
   }, [props.value]);
 
-  const label = { allow: '允许', deny: '拒绝', ask: '每次询问' }[props.behavior];
+  const label = { allow: '允许', deny: '拒绝', ask: '需要确认' }[props.behavior];
   return (
     <SettingItem title={`${label}规则`} hint="例如 Bash(pnpm test:*), Read(./src/**)." apply={props.apply}>
       <Textarea

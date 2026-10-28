@@ -17,7 +17,7 @@ export const ListWindowsTool = buildTool<z.infer<typeof inputSchema>, ComputerWi
   validateContext: computerContext,
   checkPermissions: async (_input, context) => {
     if (context.computer.state) return computerPermission;
-    return { behavior: 'allow' };
+    return { kind: 'tool', defaultDecision: 'allow', sessionApproval: 'tool' };
   },
   async execute(_input, context, invocation) {
     try {

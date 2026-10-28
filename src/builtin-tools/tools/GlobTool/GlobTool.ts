@@ -1,21 +1,16 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { directoryPathToRuleContent } from '@ema-agent/permission';
 import { globIterate } from 'glob';
 import { buildTool, contextFail, contextOk, type ToolInvocation } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
-import { checkReadPathPermission } from '../shared/pathPermission.js';
 import { runBoundedProcess } from '../shared/BoundedProcess.js';
 import { sortPathsByMtimeDesc } from '../shared/fileMtimeSort.js';
 import { GLOB_DESCRIPTION } from './prompt.js';
 
-
 interface GlobToolContext {
   cwd: string;
 }
-
-
 
 const inputSchema = z.object({
   pattern: z.string().min(1).describe(
@@ -33,8 +28,6 @@ const inputSchema = z.object({
 
 type GlobInput = z.infer<typeof inputSchema>;
 
-
-
 export interface GlobResult {
   /** 匹配的文件路径(相对工作区, '/' 分隔),按 mtime 降序(最近修改的在前). */
   files: string[];
@@ -44,8 +37,6 @@ export interface GlobResult {
   notice?: string;
 }
 
-
-
 /** 模型可见条数上限: "最近修改的前 N 个". */
 const MAX_RESULTS = 100;
 /** 枚举上限: 先枚举再按 mtime 排序, 不能只取遍历序前 100(大目录下会漏掉真正的新文件). */
@@ -54,8 +45,6 @@ const MAX_ENUMERATION = 20_000;
 const SEARCH_TIMEOUT_MS = 10_000;
 /** rg 输出解析字节预算: 有界读取, 超限即截断. */
 const MAX_OUTPUT_BYTES = 2 * 1024 * 1024;
-
-
 
 export const GlobTool = buildTool<GlobInput, GlobResult, GlobToolContext>({
   id: BuiltinTools.Glob.id,
@@ -93,23 +82,13 @@ export const GlobTool = buildTool<GlobInput, GlobResult, GlobToolContext>({
     return { valid: true };
   },
 
-  async checkPermissions(input, context, permissionContext) {
-    const directory = path.resolve(context.cwd, input.path ?? '.');
-    const result = checkReadPathPermission({
-      toolName: BuiltinTools.Glob.name,
-      path: directory,
-      cwd: context.cwd,
-      permissionContext,
-    });
-    if (result.behavior === 'deny') {
-      return result;
-    }
+  async checkPermissions(input, context) {
     return {
-      ...result,
-      sessionAllowRule: {
-        toolName: BuiltinTools.Glob.name,
-        ruleContent: directoryPathToRuleContent(directory),
-      },
+      kind: 'file',
+      operation: 'read',
+      path: path.resolve(context.cwd, input.path ?? '.'),
+      cwd: context.cwd,
+      target: 'directory',
     };
   },
 

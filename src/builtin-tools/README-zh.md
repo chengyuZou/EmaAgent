@@ -71,7 +71,7 @@ Subagent 前台等待超过 120 秒转到后台. 取消前台等待会取消该�
 
 ## 阅读和验证
 
-从 `index.ts` 看注册及导出, 再看具体工具的实现, `prompt.ts`, 可选的 `UI.tsx` 和测试. 网页请求, 正文提取和缓存/下载保存分别位于 `tools/WebFetchTool/network`, `content`, `storage`, WebSearch 复用请求实现. `tools/shared` 保存共用路径及 Shell 权限检查, AST 和命令模式检查位于对应 Shell 工具旁.
+从 `index.ts` 看注册及导出, 再看具体工具的实现, `prompt.ts`, 可选的 `UI.tsx` 和测试. 网页请求, 正文提取和缓存/下载保存分别位于 `tools/WebFetchTool/network`, `content`, `storage`, WebSearch 复用请求实现. Tool 的 `checkPermissions` 只提供检查信息, 文件、Shell、网页和电脑权限判断位于 [Permission](../permission/README-zh.md). AST 和命令语法检查仍位于对应 Shell 工具旁.
 
 ```bash
 pnpm --filter @ema-agent/builtin-tools typecheck

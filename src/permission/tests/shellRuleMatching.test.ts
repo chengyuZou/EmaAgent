@@ -5,7 +5,7 @@ import {
   matchWildcardPattern,
   parsePermissionRule,
   shellCommandToRuleContent,
-} from '../rules/shellRuleMatching.js';
+} from '../checks/shell/shellRuleMatching.js';
 
 describe('shellRuleMatching', () => {
   it.each(['echo *', 'echo value:*', String.raw`echo C:\\tmp\\*.ts`, 'echo "a(b)"'])('完整命令批准保留字面字符: %s', command => {

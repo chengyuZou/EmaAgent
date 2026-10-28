@@ -13,12 +13,9 @@ import type {
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { MEMORY_SEARCH_DESCRIPTION } from './prompt.js';
 
-
 interface MemorySearchToolContext {
   readonly memorySearch: SearchMemory;
 }
-
-
 
 const inputSchema = z.object({
   queries: z
@@ -70,11 +67,7 @@ const inputSchema = z.object({
 
 type MemorySearchInput = z.infer<typeof inputSchema>;
 
-
-
 export type { MemorySearchResponse };
-
-
 
 export const MemorySearchTool = buildTool<
   MemorySearchInput,
@@ -90,7 +83,11 @@ export const MemorySearchTool = buildTool<
   isConcurrencySafe: () => true,
   getToolUseSummary: (input) => `搜索记忆: ${input.queries.join(' ')}`,
   // 只读检索已固化的正式记忆,内置信任放行.
-  checkPermissions: async () => ({ behavior: 'allow' }),
+  checkPermissions: async () => ({
+    kind: 'tool',
+    defaultDecision: 'allow',
+    sessionApproval: 'tool',
+  }),
 
   validateContext(ctx) {
     if (!ctx.memorySearch) {

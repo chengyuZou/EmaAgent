@@ -1,5 +1,6 @@
 import type { SettingsStore } from '@ema-agent/settings';
-import type { ToolPermissionRulesBySource } from '../types.js';
+import type { PermissionRule } from '../types.js';
+import { parsePermissionRuleKey } from './permissionRuleParser.js';
 import {
   permissionRulesProjectAllowSetting,
   permissionRulesProjectAskSetting,
@@ -8,68 +9,38 @@ import {
   permissionRulesUserAskSetting,
   permissionRulesUserDenySetting,
 } from '../settings.js';
-import { getSessionAllowRules } from './update.js';
 
-/** hasPermissionsToUseTool 的三桶规则(原始字符串, 解析推迟到 Tool match 时). */
-export interface PermissionRuleBuckets {
-  readonly alwaysAllowRules: ToolPermissionRulesBySource;
-  readonly alwaysDenyRules: ToolPermissionRulesBySource;
-  readonly alwaysAskRules: ToolPermissionRulesBySource;
+// 用户和项目设置只读取一次, 供本次 Turn 使用. Session 批准不混进这个固定数组.
+export function loadPermissionRules(store: SettingsStore, projectId?: string): PermissionRule[] {
+  const rules: PermissionRule[] = [];
+  const groups = [
+    ['deny', permissionRulesUserDenySetting, permissionRulesProjectDenySetting],
+    ['ask', permissionRulesUserAskSetting, permissionRulesProjectAskSetting],
+    ['allow', permissionRulesUserAllowSetting, permissionRulesProjectAllowSetting],
+  ] as const;
+  for (const [decision, userSetting, projectSetting] of groups) {
+    if (projectId) {
+      for (const text of store.get(projectSetting)[projectId] ?? []) {
+        rules.push({ key: parsePermissionRuleKey(text), decision, from: 'projectSettings' });
+      }
+    }
+    for (const text of store.get(userSetting)) {
+      rules.push({ key: parsePermissionRuleKey(text), decision, from: 'userSettings' });
+    }
+  }
+  return rules;
 }
 
-/**
- * Turn 准备时调用: settings 源规则冻结装配(user + 当前项目);
- * session 源(本 Turn 即效)并入 allow 桶.
- */
-export function loadPermissionRuleBuckets(
-  store: SettingsStore,
-  sessionId: string,
-  projectId?: string,
-): PermissionRuleBuckets {
-  const project = <T extends Record<string, string[]>>(record: T, projectId?: string) =>
-    projectId && (record[projectId]?.length ?? 0) > 0 ? record[projectId] : undefined;
-
-  const projectAllow = project(store.get(permissionRulesProjectAllowSetting), projectId);
-  const projectDeny = project(store.get(permissionRulesProjectDenySetting), projectId);
-  const projectAsk = project(store.get(permissionRulesProjectAskSetting), projectId);
-
-  return {
-    alwaysAllowRules: {
-      userSettings: store.get(permissionRulesUserAllowSetting),
-      ...(projectAllow ? { projectSettings: projectAllow } : {}),
-      // Map 更新会替换数组. 捕获 Session 身份而不是数组, 使已有 Turn 和子代理立即读取新规则.
-      get session() {
-        const rules = getSessionAllowRules(sessionId);
-        return rules.length > 0 ? rules : undefined;
-      },
-    },
-    alwaysDenyRules: {
-      userSettings: store.get(permissionRulesUserDenySetting),
-      ...(projectDeny ? { projectSettings: projectDeny } : {}),
-    },
-    alwaysAskRules: {
-      userSettings: store.get(permissionRulesUserAskSetting),
-      ...(projectAsk ? { projectSettings: projectAsk } : {}),
-    },
-  };
-}
-
-/**
- * 启动时移除已不存在项目的 allow/deny/ask 配置, 只在发现多余项目 ID 时写回.
- * 调用方传入当前项目列表, 避免删除项目中途退出后遗留规则.
- */
-export function reconcileProjectRules(
-  store: SettingsStore,
-  existingProjectIds: readonly string[],
-): void {
+// 项目删除中途退出后, 启动时清理已不存在项目的规则.
+export function reconcileProjectRules(store: SettingsStore, existingProjectIds: readonly string[]): void {
   const existing = new Set(existingProjectIds);
   for (const setting of [
     permissionRulesProjectAllowSetting,
-    permissionRulesProjectDenySetting,
     permissionRulesProjectAskSetting,
+    permissionRulesProjectDenySetting,
   ]) {
     const record = store.get(setting);
-    const orphans = Object.keys(record).filter((id) => !existing.has(id));
+    const orphans = Object.keys(record).filter(id => !existing.has(id));
     if (orphans.length === 0) continue;
     const next = { ...record };
     for (const id of orphans) delete next[id];

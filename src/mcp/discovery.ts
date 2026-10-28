@@ -64,17 +64,11 @@ export function buildMcpBuiltTool(
     isReadOnly:        () => false,
     isConcurrencySafe: () => false,
     getToolUseSummary: () => `${serverName} / ${info.serverToolName}`,
-    // 自报破坏性时要求批准, 其余调用交给 Permission 按用户规则和模式判定.
-    checkPermissions: async () => info.reportedDestructive
-      ? {
-          behavior: 'ask' as const,
-          message: `MCP Server "${serverName}" 自报 "${info.serverToolName}" 具有破坏性(destructiveHint)`,
-          decisionReason: { type: 'safetyCheck' as const, reason: 'destructiveHint' },
-        }
-      : {
-          behavior: 'passthrough' as const,
-          message: `调用 MCP Server "${serverName}" 的 "${info.serverToolName}"`,
-        },
+    // 只传递 MCP 声明, 确认要求和可复用范围由 Permission 决定.
+    checkPermissions: async () => ({
+      kind: 'mcp',
+      reportedDestructive: info.reportedDestructive,
+    }),
     validateContext: () => contextOk({}),
     execute: (input, _context, invocation) => registry.callTool(
       serverName,

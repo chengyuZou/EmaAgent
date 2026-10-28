@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SettingsStore, type SettingsRepository } from '@ema-agent/settings';
-import {
-  loadPermissionRuleBuckets,
-  reconcileProjectRules,
-} from '../rules/loader.js';
-import { applyPermissionUpdate, clearSessionRules } from '../rules/update.js';
+import { loadPermissionRules, reconcileProjectRules } from '../rules/loader.js';
 import {
   permissionRulesProjectAllowSetting,
   permissionRulesProjectAskSetting,
@@ -26,135 +22,31 @@ function makeStore(): { store: SettingsStore; data: Map<string, unknown> } {
   return { store: new SettingsStore(repository), data };
 }
 
-describe('loadPermissionRuleBuckets', () => {
-  it('已有规则桶立即读取新增及清空的 Session 规则, 其他 Session 隔离, SQL 来源仍冻结', () => {
+
+describe('权限规则读取', () => {
+  it('读取用户和当前项目设置, 新增设置在下一次读取生效', () => {
     const { store } = makeStore();
-    const sessionId = 'live-session';
-    clearSessionRules(sessionId);
-    const buckets = loadPermissionRuleBuckets(store, sessionId, 'project-live');
-    const other = loadPermissionRuleBuckets(store, 'other-live-session', 'project-live');
-
-    try {
-      applyPermissionUpdate(store, {
-        type: 'addRules', destination: 'session', behavior: 'allow',
-        rules: [{ toolName: 'Bash', ruleContent: 'pnpm test' }],
-      }, { sessionId });
-      expect(buckets.alwaysAllowRules.session).toEqual(['Bash(pnpm test)']);
-      expect(other.alwaysAllowRules.session ?? []).toEqual([]);
-
-      applyPermissionUpdate(store, {
-        type: 'addRules', destination: 'userSettings', behavior: 'allow',
-        rules: [{ toolName: 'Read' }],
-      }, { sessionId });
-      applyPermissionUpdate(store, {
-        type: 'addRules', destination: 'projectSettings', behavior: 'allow',
-        rules: [{ toolName: 'Write' }],
-      }, { sessionId, projectId: 'project-live' });
-      expect(buckets.alwaysAllowRules.userSettings).toEqual([]);
-      expect(buckets.alwaysAllowRules.projectSettings).toBeUndefined();
-      const nextTurn = loadPermissionRuleBuckets(store, sessionId, 'project-live');
-      expect(nextTurn.alwaysAllowRules.userSettings).toEqual(['Read']);
-      expect(nextTurn.alwaysAllowRules.projectSettings).toEqual(['Write']);
-
-      clearSessionRules(sessionId);
-      expect(buckets.alwaysAllowRules.session ?? []).toEqual([]);
-      expect(nextTurn.alwaysAllowRules.session ?? []).toEqual([]);
-    } finally {
-      clearSessionRules(sessionId);
-    }
+    store.set(permissionRulesUserAllowSetting, ['Read']);
+    store.set(permissionRulesProjectAllowSetting, { a: ['Bash(pnpm test)'], b: ['Other'] });
+    const rules = loadPermissionRules(store, 'a');
+    expect(rules).toEqual([
+      { key: { toolName: 'Bash', condition: 'pnpm test' }, decision: 'allow', from: 'projectSettings' },
+      { key: { toolName: 'Read' }, decision: 'allow', from: 'userSettings' },
+    ]);
+    store.set(permissionRulesUserAllowSetting, ['Write']);
+    expect(rules[1]!.key.toolName).toBe('Read');
+    expect(loadPermissionRules(store)[0]!.key.toolName).toBe('Write');
   });
 
-  it('user/project/session 三源分别入桶；无项目时无 projectSettings 键', () => {
+  it('只清理已删除项目的设置, 重复清理不改变保留的配置', () => {
     const { store } = makeStore();
-    applyPermissionUpdate(store, {
-      type: 'addRules', destination: 'userSettings', behavior: 'allow',
-      rules: [{ toolName: 'Bash', ruleContent: 'npm test' }],
-    }, { sessionId: 's1' });
-    applyPermissionUpdate(store, {
-      type: 'addRules', destination: 'projectSettings', behavior: 'allow',
-      rules: [{ toolName: 'Bash', ruleContent: 'pnpm test' }],
-    }, { sessionId: 's1', projectId: 'proj-a' });
-    applyPermissionUpdate(store, {
-      type: 'addRules', destination: 'session', behavior: 'allow',
-      rules: [{ toolName: 'Bash', ruleContent: 'git status' }],
-    }, { sessionId: 's1' });
-
-    const buckets = loadPermissionRuleBuckets(store, 's1', 'proj-a');
-    expect(buckets.alwaysAllowRules.userSettings).toEqual(['Bash(npm test)']);
-    expect(buckets.alwaysAllowRules.projectSettings).toEqual(['Bash(pnpm test)']);
-    expect(buckets.alwaysAllowRules.session).toEqual(['Bash(git status)']);
-
-    const noProject = loadPermissionRuleBuckets(store, 's2');
-    expect(noProject.alwaysAllowRules.projectSettings).toBeUndefined();
-    expect(noProject.alwaysAllowRules.session).toBeUndefined();
-  });
-
-  it('deny/ask 桶按 user/project 装配；session 只进 allow 桶', () => {
-    const { store } = makeStore();
-    applyPermissionUpdate(store, {
-      type: 'addRules', destination: 'userSettings', behavior: 'deny',
-      rules: [{ toolName: 'Bash', ruleContent: 'rm -rf' }],
-    }, { sessionId: 's1' });
-    applyPermissionUpdate(store, {
-      type: 'addRules', destination: 'projectSettings', behavior: 'ask',
-      rules: [{ toolName: 'Read', ruleContent: './.env' }],
-    }, { sessionId: 's1', projectId: 'proj-a' });
-    applyPermissionUpdate(store, {
-      type: 'addRules', destination: 'session', behavior: 'allow',
-      rules: [{ toolName: 'Bash', ruleContent: 'git status' }],
-    }, { sessionId: 's1' });
-
-    const buckets = loadPermissionRuleBuckets(store, 's1', 'proj-a');
-    expect(buckets.alwaysDenyRules.userSettings).toEqual(['Bash(rm -rf)']);
-    expect(buckets.alwaysDenyRules.projectSettings).toBeUndefined();
-    expect(buckets.alwaysAskRules.projectSettings).toEqual(['Read(./.env)']);
-    // session 只进 allow 桶, deny/ask 桶没有 session 键.
-    expect(buckets.alwaysAllowRules.session).toEqual(['Bash(git status)']);
-    expect(buckets.alwaysDenyRules.session).toBeUndefined();
-    expect(buckets.alwaysAskRules.session).toBeUndefined();
-  });
-
-  it('reconcileProjectRules 清理三张 record 的孤儿项目', () => {
-    const { store } = makeStore();
-    const context = { sessionId: 's1', projectId: 'proj-dead' };
-    applyPermissionUpdate(store, {
-      type: 'addRules', destination: 'projectSettings', behavior: 'allow',
-      rules: [{ toolName: 'Bash', ruleContent: 'a' }],
-    }, context);
-    applyPermissionUpdate(store, {
-      type: 'addRules', destination: 'projectSettings', behavior: 'deny',
-      rules: [{ toolName: 'Bash', ruleContent: 'b' }],
-    }, context);
-    applyPermissionUpdate(store, {
-      type: 'addRules', destination: 'projectSettings', behavior: 'ask',
-      rules: [{ toolName: 'Read', ruleContent: 'c' }],
-    }, context);
-
-    reconcileProjectRules(store, []);
-    expect(store.get(permissionRulesProjectAllowSetting)).toEqual({});
-    expect(store.get(permissionRulesProjectDenySetting)).toEqual({});
+    store.set(permissionRulesProjectAllowSetting, { alive: ['Read'], dead: ['Write'] });
+    store.set(permissionRulesProjectAskSetting, { dead: ['Bash'] });
+    store.set(permissionRulesProjectDenySetting, { dead: ['WebFetch'] });
+    reconcileProjectRules(store, ['alive']);
+    reconcileProjectRules(store, ['alive']);
+    expect(store.get(permissionRulesProjectAllowSetting)).toEqual({ alive: ['Read'] });
     expect(store.get(permissionRulesProjectAskSetting)).toEqual({});
-  });
-
-  it('reconcileProjectRules 只清理不存在项目的条目，幂等', () => {
-    const { store } = makeStore();
-    applyPermissionUpdate(store, {
-      type: 'addRules', destination: 'projectSettings', behavior: 'allow',
-      rules: [{ toolName: 'Bash', ruleContent: 'a' }],
-    }, { sessionId: 's1', projectId: 'proj-alive' });
-    applyPermissionUpdate(store, {
-      type: 'addRules', destination: 'projectSettings', behavior: 'allow',
-      rules: [{ toolName: 'Bash', ruleContent: 'b' }],
-    }, { sessionId: 's1', projectId: 'proj-dead' });
-
-    reconcileProjectRules(store, ['proj-alive']);
-    expect(store.get(permissionRulesProjectAllowSetting)).toEqual({
-      'proj-alive': ['Bash(a)'],
-    });
-    // 幂等: 再跑零变化
-    reconcileProjectRules(store, ['proj-alive']);
-    expect(store.get(permissionRulesProjectAllowSetting)).toEqual({
-      'proj-alive': ['Bash(a)'],
-    });
+    expect(store.get(permissionRulesProjectDenySetting)).toEqual({});
   });
 });

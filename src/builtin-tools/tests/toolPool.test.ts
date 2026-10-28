@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ToolPermissionContext } from '@ema-agent/permission';
+import { checkToolPermission, type PermissionContext } from '@ema-agent/permission';
 import {
   assembleToolPool,
   ToolRegistry,
@@ -25,20 +25,18 @@ describe('Builtin ToolPool', () => {
     expect(pool.get(BuiltinTools.WebSearch.name)).toBeDefined();
   });
 
-  it('问询工具固定走 ask(它自己就是询问通道, 不由规则绕过)', async () => {
+  it('AskUser 默认允许执行, 实际问题由工具展示, 不多问一次权限', async () => {
     const registry = new ToolRegistry();
     registerBuiltinTools(registry);
 
     const registered = registry.get(BuiltinTools.AskUser.name);
     expect(registered).toBeDefined();
-    const permissionContext: ToolPermissionContext = {
+    const permissionContext: PermissionContext = {
       mode: 'default',
-      alwaysAllowRules: {},
-      alwaysDenyRules: {},
-      alwaysAskRules: {},
+      sessionId: 'permission-test', rules: [], workspaceRoots: [],
     };
     await expect(
-      registered!.checkPermissions({}, {} as never, permissionContext),
-    ).resolves.toMatchObject({ behavior: 'ask' });
+      checkToolPermission(registered!, {}, {} as never, permissionContext, { interactive: true }),
+    ).resolves.toMatchObject({ decision: 'allow' });
   });
 });

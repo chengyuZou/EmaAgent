@@ -15,7 +15,11 @@ export const GoalGetTool = buildTool<Record<string, never>, Goal | null, { goalS
   isReadOnly: () => true,
   isConcurrencySafe: () => true,
   getToolUseSummary: () => '读取当前目标',
-  checkPermissions: async () => ({ behavior: 'allow' }),
+  checkPermissions: async () => ({
+    kind: 'tool',
+    defaultDecision: 'allow',
+    sessionApproval: 'tool',
+  }),
   validateContext(context) {
     if (!context.goalStore) return contextFail('Goal tools are available only to the main Agent.');
     return contextOk({ goalStore: context.goalStore });

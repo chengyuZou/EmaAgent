@@ -13,12 +13,9 @@ import type {
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { MEMORY_LIST_DESCRIPTION } from './prompt.js';
 
-
 interface MemoryListToolContext {
   readonly memoryList: ListMemory;
 }
-
-
 
 const inputSchema = z.object({
   path: z
@@ -42,11 +39,7 @@ const inputSchema = z.object({
 
 type MemoryListInput = z.infer<typeof inputSchema>;
 
-
-
 export type { MemoryListResponse };
-
-
 
 export const MemoryListTool = buildTool<
   MemoryListInput,
@@ -62,7 +55,11 @@ export const MemoryListTool = buildTool<
   isConcurrencySafe: () => true,
   getToolUseSummary: (input) => `列出记忆目录: ${input.path ?? '.'}`,
   // 只读列举已固化的正式记忆,内置信任放行.
-  checkPermissions: async () => ({ behavior: 'allow' }),
+  checkPermissions: async () => ({
+    kind: 'tool',
+    defaultDecision: 'allow',
+    sessionApproval: 'tool',
+  }),
 
   validateContext(ctx) {
     if (!ctx.memoryList) {

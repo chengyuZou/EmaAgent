@@ -10,12 +10,9 @@ import type { AskUserQuestionSpec } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { ASK_USER_DESCRIPTION } from './prompt.js';
 
-
 interface AskUserToolContext {
   askUser: AskUser;
 }
-
-
 
 const inputSchema = z.object({
   questions: z
@@ -68,14 +65,10 @@ const inputSchema = z.object({
 
 type AskUserInput = z.infer<typeof inputSchema>;
 
-
-
 /** 答案以问题文本为键(模型可读);前端卡片按 spec id 回答, Tool 负责映射. */
 export interface AskUserResult {
   answers: Record<string, string>;
 }
-
-
 
 export const AskUserTool = buildTool<AskUserInput, AskUserResult, AskUserToolContext>({
   id: BuiltinTools.AskUser.id,
@@ -96,7 +89,11 @@ export const AskUserTool = buildTool<AskUserInput, AskUserResult, AskUserToolCon
   },
 
   // 问题由 askUser 通道等待回答, 默认不额外要求权限审批.
-  checkPermissions: async () => ({ behavior: 'allow', message: 'AskUser 需要用户交互' }),
+  checkPermissions: async () => ({
+    kind: 'tool',
+    defaultDecision: 'allow',
+    sessionApproval: 'tool',
+  }),
 
   async execute(
     input: AskUserInput,

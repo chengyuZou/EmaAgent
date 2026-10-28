@@ -1,7 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { filePathToRuleContent } from '@ema-agent/permission';
 import type { StructuredPatchHunk } from 'diff';
 import {
   buildTool,
@@ -12,7 +11,6 @@ import {
   type ToolInvocation,
 } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
-import { checkWritePathPermission } from '../shared/pathPermission.js';
 import { atomicTransformUtf8 } from '../FileWriteTool/atomicWrite.js';
 import { buildStructuredPatch, countPatchLines } from './patch.js';
 import { FILE_EDIT_DESCRIPTION } from './prompt.js';
@@ -30,8 +28,6 @@ interface FileEditToolContext {
 
 /** 整份文件会参与匹配和 Diff, 先限制读取体积; 这不保证编辑时的内存上限. */
 const MAX_EDIT_FILE_SIZE = 1024 * 1024 * 1024; // 1 GiB
-
-
 
 const inputSchema = z.object({
   file_path: z
@@ -64,8 +60,6 @@ export interface FileEditResult {
   replaceAll: boolean;
   replacements: number;
 }
-
-
 
 export const FileEditTool = buildTool<FileEditInput, FileEditResult, FileEditToolContext>({
   id: BuiltinTools.FileEdit.id,
@@ -102,23 +96,13 @@ export const FileEditTool = buildTool<FileEditInput, FileEditResult, FileEditToo
     return { valid: true };
   },
 
-  async checkPermissions(input, context, permissionContext) {
-    const filePath = path.resolve(context.cwd, input.file_path);
-    const result = checkWritePathPermission({
-      toolName: BuiltinTools.FileEdit.name,
-      path: filePath,
-      cwd: context.cwd,
-      permissionContext,
-    });
-    if (result.behavior === 'deny') {
-      return result;
-    }
+  async checkPermissions(input, context) {
     return {
-      ...result,
-      sessionAllowRule: {
-        toolName: BuiltinTools.FileEdit.name,
-        ruleContent: filePathToRuleContent(filePath),
-      },
+      kind: 'file',
+      operation: 'write',
+      path: path.resolve(context.cwd, input.file_path),
+      cwd: context.cwd,
+      target: 'file',
     };
   },
 

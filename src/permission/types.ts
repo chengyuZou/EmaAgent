@@ -1,158 +1,121 @@
 export type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
 
-export type PermissionBehavior = 'allow' | 'deny' | 'ask';
+export type PermissionDecision = 'allow' | 'deny' | 'ask';
 
-/**
- * 用户规则跨项目保存, 项目规则按 projectId 保存.
- * Session 规则只保存在内存, 新增后当前 Turn 的后续调用也能读到.
- */
-export type PermissionRuleSource = 'userSettings' | 'projectSettings' | 'session';
+export type PermissionUserAction = 'allow' | 'allowSession' | 'deny';
 
-/** 规则值:作用于哪个 Tool,可选内容(语义由 Tool 家族 matcher 解释,中央不解释). */
-export interface PermissionRuleValue {
+export type PermissionRuleFrom = 'userSettings' | 'projectSettings' | 'session';
+
+export interface PermissionRuleKey {
   readonly toolName: string;
-  readonly ruleContent?: string;
+  // 未填写时匹配整个工具. 填写时由文件, 命令或网页检查解释条件.
+  readonly condition?: string;
 }
-
-export type SessionAllowRule = PermissionRuleValue
-  & Required<Pick<PermissionRuleValue, 'ruleContent'>>;
 
 export interface PermissionRule {
-  readonly source: PermissionRuleSource;
-  readonly ruleBehavior: PermissionBehavior;
-  readonly ruleValue: PermissionRuleValue;
+  readonly key: PermissionRuleKey;
+  readonly decision: PermissionDecision;
+  readonly from: PermissionRuleFrom;
 }
 
-export type PermissionUpdateDestination = PermissionRuleSource;
+export interface SessionPermissionApproval {
+  readonly key: PermissionRuleKey;
+  // 确认界面向用户说明这次批准以后覆盖哪些操作.
+  readonly description: string;
+}
 
-/**
- * Session 只新增带内容的 allow 规则. 用户及项目配置允许整个工具或带内容的规则.
- * 模式单独保存在 Session, 此更新只处理工具规则.
- */
-export type PermissionUpdate =
+export type PermissionCheckResult =
+  | { readonly decision: 'allow' }
+  | { readonly decision: 'deny'; readonly message: string }
   | {
-    readonly type: 'addRules';
-    readonly destination: 'session';
-    readonly rules: readonly SessionAllowRule[];
-    readonly behavior: 'allow';
-  }
-  | {
-    readonly type: 'addRules';
-    readonly destination: Exclude<PermissionUpdateDestination, 'session'>;
-    readonly rules: readonly PermissionRuleValue[];
-    readonly behavior: PermissionBehavior;
-  }
-  | {
-    readonly type: 'removeRules';
-    readonly destination: PermissionUpdateDestination;
-    readonly rules: readonly PermissionRuleValue[];
-    readonly behavior: PermissionBehavior;
-  };
-
-export type PermissionDecisionReason =
-  /** 本机电脑控制已经在启动入口获准, 操作仍检查归属和状态, 不再逐项弹确认. */
-  | { readonly type: 'computerControl'; readonly reason: string }
-  | { readonly type: 'rule'; readonly rule: PermissionRule }
-  | { readonly type: 'mode'; readonly mode: PermissionMode }
-  | { readonly type: 'workingDir'; readonly reason: string }
-  /** Tool 因敏感路径或输入给出的确认或拒绝原因, 先于 bypass 判断. */
-  | { readonly type: 'safetyCheck'; readonly reason: string }
-  | { readonly type: 'user'; readonly action: PermissionResponse['action'] }
-  /** 没有宿主交互通道, 无法询问用户时转为拒绝. */
-  | { readonly type: 'headless' }
-  | { readonly type: 'other'; readonly reason: string };
-
-export interface PermissionAllowDecision {
-  readonly behavior: 'allow';
-  readonly decisionReason?: PermissionDecisionReason;
-}
-
-export interface PermissionAskDecision {
-  readonly behavior: 'ask';
-  readonly message: string;
-  readonly decisionReason?: PermissionDecisionReason;
-  /** 后端等待回答时持有, 不进入前端批准协议. */
-  readonly sessionAllowRule: SessionAllowRule;
-}
-
-export interface PermissionDenyDecision {
-  readonly behavior: 'deny';
-  readonly message: string;
-  readonly decisionReason?: PermissionDecisionReason;
-}
-
-export type PermissionDecision =
-  | PermissionAllowDecision
-  | PermissionAskDecision
-  | PermissionDenyDecision;
-
-/**
- * Tool 可以用 passthrough 交给配置与模式继续判断, 中央最终返回 allow/ask/deny.
- */
-export type PermissionResult =
-  | PermissionDenyDecision
-  | ((
-    | PermissionAllowDecision
-    | Omit<PermissionAskDecision, 'sessionAllowRule'>
-    | {
-      readonly behavior: 'passthrough';
+      readonly decision: 'ask';
       readonly message: string;
-      readonly decisionReason?: PermissionDecisionReason;
-    }
-  ) & {
-    /** 缺省时中央按本次已校验输入生成精确规则. */
-    readonly sessionAllowRule?: SessionAllowRule;
-  });
+      // 未提供时只能允许或拒绝本次请求, 不生成默认批准范围.
+      readonly sessionApproval?: SessionPermissionApproval;
+    };
 
-/**
- * 按来源保存 Tool 或 Tool(content) 字符串.
- * 中央解析工具名和内容边界, 内容的匹配含义由对应工具判断.
- */
-export type ToolPermissionRulesBySource = Partial<
-  Record<PermissionRuleSource, readonly string[]>
->;
-
-/**
- * 模式, 用户/项目规则和工作区根在 Turn 准备时确定.
- * Session allow 通过 getter 读取当前规则, 使本轮及子代理能复用新批准.
- */
-export interface ToolPermissionContext {
+export interface PermissionContext {
+  readonly sessionId: string;
   readonly mode: PermissionMode;
-  readonly alwaysAllowRules: ToolPermissionRulesBySource;
-  readonly alwaysDenyRules: ToolPermissionRulesBySource;
-  readonly alwaysAskRules: ToolPermissionRulesBySource;
   readonly workspaceRoots: readonly string[];
+  // 用户和项目规则在 Turn 准备时读取. Session 批准由 Permission 每次检查时读取.
+  readonly rules: readonly PermissionRule[];
 }
 
+export interface FilePermissionCheck {
+  readonly kind: 'file';
+  readonly operation: 'read' | 'write';
+  readonly path: string;
+  // path 表示需检查实际目标是文件还是目录. 网络路径不会为此访问文件系统.
+  readonly target: 'file' | 'directory' | 'path';
+  // 相对路径规则的基准目录. 未提供时不匹配相对规则.
+  readonly cwd?: string;
+  // 由宿主提供的内部读取目录, 如 WebFetch 的下载目录. 仍检查真实路径和用户规则.
+  readonly internalReadDirectories?: readonly string[];
+}
 
-/** 批准请求: Session 负责排队, toolCallId 定位调用, Turn 或子代理 Run 负责收尾. */
+export interface ShellPermissionCheck {
+  readonly kind: 'shell';
+  readonly command: string;
+  readonly subcommands: readonly string[];
+  // 解析不完整或含动态语法时为 false, 不能靠部分子命令放行完整命令.
+  readonly canMatchSubcommands: boolean;
+}
+
+// Tool 只提供操作信息, 不读取规则或决定优先顺序. 工具名由调用入口统一传入.
+export type ToolPermissionCheck =
+  | {
+      readonly kind: 'tool';
+      // 仅在规则和模式都没有决定时使用, 不是直接批准本次调用.
+      readonly defaultDecision: 'allow' | 'ask';
+      readonly message?: string;
+      // 只有工具明确选择时才提供会话批准, 不默认记住所有输入.
+      readonly sessionApproval?: 'tool' | 'input';
+    }
+  | FilePermissionCheck
+  | ShellPermissionCheck
+  | { readonly kind: 'webFetch'; readonly url: string }
+  | {
+      readonly kind: 'webSearch';
+      readonly query: string;
+      readonly allowedDomains?: readonly string[];
+      readonly blockedDomains?: readonly string[];
+    }
+  | { readonly kind: 'mcp'; readonly reportedDestructive: boolean }
+  | {
+      readonly kind: 'computerUse';
+      // 首次启动为 true. 后续操作由 ComputerUse 检查实际归属和状态, 不重复询问.
+      readonly needsStartupApproval: boolean;
+    };
+
+export interface PermissionCheckableTool<TInput, TContext> {
+  readonly name: string;
+  checkPermissions(input: TInput, context: TContext): Promise<ToolPermissionCheck>;
+}
+
+// 身份用于找到唯一的等待调用. 子代理的两个身份必须一起出现.
 export type PermissionRequest = {
-  readonly toolName: string;
-  readonly toolDescription?: string;
-  readonly input: unknown;
-  readonly decisionReason?: PermissionDecisionReason;
   readonly sessionId: string;
-  /** 根请求是当前 Turn; 子代理请求是发起本次 Run 的父 Turn, 不代表清理归属. */
   readonly turnId: string;
   readonly toolCallId: string;
+  readonly toolName: string;
+  readonly summary?: string;
+  readonly input: unknown;
+  readonly message: string;
+  // 只把范围说明交给前端. 保存用的 key 留在后端等待函数中.
+  readonly sessionApprovalDescription?: string;
 } & (
-    | { readonly subagentId?: never; readonly runId?: never }
-    | {
-      /** 稳定的子代理身份, 用于批准卡标明来源. */
-      readonly subagentId: string;
-      /** 发起工具调用的本次执行, 用于 Run 收尾清理. 与 subagentId 一起提供. */
-      readonly runId: string;
-    }
-  );
+  | { readonly subagentId?: never; readonly runId?: never }
+  | { readonly subagentId: string; readonly runId: string }
+);
 
-/** 待批准列表只携带请求及创建时间, 不包含等待 Promise 或计时器. */
 export interface PendingPermissionRequest {
   readonly toolCallId: string;
   readonly createdAt: number;
   readonly request: PermissionRequest;
 }
 
-export type PermissionResponse =
+export type PermissionUserResponse =
   | { readonly action: 'allow' }
   | { readonly action: 'allowSession' }
   | { readonly action: 'deny'; readonly reason?: string };

@@ -16,6 +16,8 @@ function makeQueue(timeoutMs: number | null = 60_000): SessionInteractionQueue {
 function makePermissionRequest(toolCallId: string, sessionId = 's1', turnId = 't1'): PermissionRequest {
   return {
     toolName: 'Bash',
+    message: '允许执行命令吗?',
+    sessionApprovalDescription: '本会话允许同一条命令.',
     input:   { command: 'ls' },
     sessionId,
     turnId,
@@ -368,4 +370,15 @@ describe('SessionInteractionQueue Permission 与 AskUser 混合 FIFO', () => {
     expect(q.cancelPermission('a1', 'wrong kind', 't1')).toBe(false);
     expect(q.cancelAskUser('a1', 'cancelled', 't1')).toBe(true);
   });
+});
+
+it('一次性确认拒绝 allowSession, 请求继续等待允许或拒绝', async () => {
+  const queue = makeQueue(null);
+  const request = makePermissionRequest('startup');
+  const { sessionApprovalDescription: _description, ...oneTime } = request;
+  const pending = queue.enqueuePermission(oneTime);
+  expect(queue.respondPermission('s1', 'startup', { action: 'allowSession' })).toBe(false);
+  expect(queue.size()).toBe(1);
+  expect(queue.respondPermission('s1', 'startup', { action: 'allow' })).toBe(true);
+  expect(await pending.promise).toEqual({ action: 'allow' });
 });

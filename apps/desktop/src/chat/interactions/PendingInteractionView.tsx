@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type JSX } from 'react';
 import { Tooltip, Button, Card, CardButton, IconButton, Textarea } from '@ema-agent/ui';
-import type { PermissionRequest, PermissionResponse } from '@ema-agent/permission';
+import type { PermissionRequest, PermissionUserResponse } from '@ema-agent/permission';
 import type { AskUserQuestionSpec, AskUserRequiredEvent } from '@ema-agent/tools';
 import type { PendingInteraction } from '@ema-agent/turn';
 import { SessionRequestError, sessionWebSocket } from '../../api/sessionWebSocket.js';
@@ -106,7 +106,7 @@ function PermissionView({ sessionId, request }: { sessionId: string; request: Pe
   const [collapsed, setCollapsed] = useState(false);
   const [copied, setCopied] = useState(false);
   const submission = useSubmission();
-  const respond = (response: PermissionResponse): void => {
+  const respond = (response: PermissionUserResponse): void => {
     void submission.run(() => (
       sessionWebSocket.respondPermission(sessionId, request.toolCallId, response)
     ));
@@ -116,11 +116,17 @@ function PermissionView({ sessionId, request }: { sessionId: string; request: Pe
     : JSON.stringify(request.input, null, 2);
   return (
     <CollapsibleCard
-      title={request.toolDescription ?? `即将运行 ${request.toolName}`}
+      title={request.summary ?? `即将运行 ${request.toolName}`}
       collapsed={collapsed}
       onToggle={() => setCollapsed((value) => !value)}
     >
       <>
+        <p className="mb-2 text-sm text-[var(--ema-text-primary)]">{request.message}</p>
+        {request.sessionApprovalDescription !== undefined && (
+          <p className="mb-2 text-xs text-[var(--ema-text-secondary)]">
+            {request.sessionApprovalDescription}
+          </p>
+        )}
         {/* 工具说明使用正文字体, 原始 JSON 使用等宽字体. */}
         <div className="overflow-hidden rounded-md border border-[var(--ema-border)]">
           <div className="flex items-center gap-2 bg-[color-mix(in_srgb,var(--ema-primary)_7%,var(--ema-surface-1))] px-2 py-1">
@@ -157,14 +163,16 @@ function PermissionView({ sessionId, request }: { sessionId: string; request: Pe
             拒绝
           </Button>
           <div className="flex gap-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              disabled={submission.submitting}
-              onClick={() => respond({ action: 'allowSession' })}
-            >
-              本会话允许
-            </Button>
+            {request.sessionApprovalDescription !== undefined && (
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={submission.submitting}
+                onClick={() => respond({ action: 'allowSession' })}
+              >
+                本会话允许
+              </Button>
+            )}
             <Button
               variant="primary"
               size="sm"

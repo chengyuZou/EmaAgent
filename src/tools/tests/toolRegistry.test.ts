@@ -12,7 +12,7 @@ function makeBuiltin(name: string, id = name) {
     inputSchema: z.object({}),
     isReadOnly: () => true,
     isConcurrencySafe: () => true,
-    checkPermissions: async () => ({ behavior: 'allow' as const }),
+    checkPermissions: async () => ({ kind: 'tool' as const, defaultDecision: 'allow' as const }),
     validateContext: () => ({ valid: true, context: {} }),
     execute: async () => 'ok',
   });
@@ -32,7 +32,7 @@ function makeMcp(
     inputSchema: z.object({}),
     isReadOnly: () => true,
     isConcurrencySafe: () => true,
-    checkPermissions: async () => ({ behavior: 'passthrough' as const, message: 'MCP 一律收口中央' }),
+    checkPermissions: async () => ({ kind: 'tool' as const, defaultDecision: 'ask' as const, sessionApproval: 'input' as const, message: 'MCP 一律收口中央' }),
     validateContext: () => ({ valid: true, context: {} }),
     execute: async () => 'ok',
   });

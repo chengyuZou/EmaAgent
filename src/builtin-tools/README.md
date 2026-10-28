@@ -37,7 +37,7 @@ Import execution code from the package root. Desktop renderers use `@ema-agent/b
 
 ## Files and commands
 
-File paths resolve against the supplied workspace, not the Server process directory. Read and write permission checks consider explicit rules, Session approval, workspace boundaries and sensitive paths. Read, Write and Edit refuse UNC paths even after approval. Destructive command warnings are explanatory text, not permission decisions.
+File paths resolve against the supplied workspace, not the Server process directory. Read and write permission checks consider explicit rules, Session approval, workspace boundaries and sensitive paths. Read, Write and Edit refuse UNC paths even after approval. Destructive command warnings are explanatory text, not permission decisions. A default permission declaration is only a fallback; user rules and the selected mode are evaluated centrally.
 
 Read saves text state in the Session's FileStateCache. Edit accepts a prior range read; Write requires a full read before overwriting an existing file. Both check whether the file changed since that read. They serialize writes to the resolved target path within this process, write a same-directory temporary file, sync it, then rename it over the target. This does not coordinate with editors or other application processes. Edit/Write return the actual structured Diff and line counts for desktop display. Read text selections keep up to 50 KiB of complete lines; files above 10 MiB require range parameters. Large-file reads still scan to the end to count lines. Images are limited to 5 MiB, Notebook and PDF files to 50 MiB. PDF reads default to 10 pages and accept up to 20 pages per call. OCR and figure descriptions require Vision and optional canvas rasterization; missing capabilities produce page warnings. Pure vector figures do not currently trigger descriptions.
 
@@ -71,7 +71,7 @@ Subagent foreground waiting transfers to background after 120 seconds. Cancellin
 
 ## Read and verify
 
-Start at `index.ts` for registration and exports, then open a tool's implementation, `prompt.ts`, optional `UI.tsx` and matching tests. Web networking, content extraction, and cache/download storage live under `tools/WebFetchTool/network`, `content`, and `storage`; WebSearch reuses the networking code. Shared path and shell permission behavior lives under `tools/shared`. Shell AST and pattern checks live beside each shell tool.
+Start at `index.ts` for registration and exports, then open a tool's implementation, `prompt.ts`, optional `UI.tsx` and matching tests. Web networking, content extraction, and cache/download storage live under `tools/WebFetchTool/network`, `content`, and `storage`; WebSearch reuses the networking code. Tools supply permission input through `checkPermissions`. Shared path, shell, web and computer-use decisions live in the [Permission package](../permission/README.md); tools do not read rule lists. Shell AST and pattern checks live beside each shell tool.
 
 ```bash
 pnpm --filter @ema-agent/builtin-tools typecheck

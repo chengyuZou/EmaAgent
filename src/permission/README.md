@@ -2,99 +2,61 @@
 
 [中文](README-zh.md)
 
-Permission decides whether a validated tool call is allowed, denied or needs the user's approval. It loads user and project rules, keeps Session approvals in memory, and provides the path and command matchers used by tools.
+Permission decides whether a tool call can proceed, must be refused, or needs the user's confirmation. It owns rule matching and decision order. Tools describe the operation through `checkPermissions(input, context)`; they do not read permission settings or save approvals.
 
-## Checking a call
+## Entry and ownership
 
-```ts
-const buckets = loadPermissionRuleBuckets(settings, sessionId, projectId);
-const decision = await hasPermissionsToUseTool(
-  tool,
-  validatedInput,
-  toolContext,
-  { mode, workspaceRoots, ...buckets },
-  { interactive: true },
-);
-```
+`checkToolPermission(tool, input, toolContext, permissionContext, { interactive })` is the execution layer's only checking entry. It calls the tool's `checkPermissions` inside this package, selects a check implementation, and returns `PermissionCheckResult`.
 
-The real caller is [ToolCallExecution](../tools/execution/toolCallExecution.ts). It parses input, checks the tool's execution context and validates input before asking Permission. A tool's `checkPermissions` interprets its own file, command or network operation. The central function applies this order:
+`PermissionDecision` is allow, deny or ask. `PermissionUserResponse` is the later answer to an ask: allow, allowSession or deny. A direct allow or deny does not create a user interaction.
 
-1. Deny if user or project configuration denies the whole tool.
-2. Run the tool's check; an explicit deny ends the decision.
-3. Reuse a matching Session content approval. Tools match their dedicated scopes; the central function matches its complete-input fallback.
-4. Apply whole-tool ask rules, then the tool's ask result.
-5. Allow remaining calls in bypassPermissions mode.
-6. Apply whole-tool allow rules, then the tool's allow result.
-7. Convert an unresolved passthrough to ask. Without an interaction channel, convert a final ask to deny with a headless reason.
+`PermissionRuleKey` contains a tool name and an optional condition. No condition means the whole tool. `PermissionRule` adds its decision and origin. User and project rules are read when preparing a Turn. Session approvals are read after the tool's asynchronous check, so an existing executor sees newly approved scopes without rebuilding its context.
 
-User and project allow rules do not skip an ask. Session approval can skip a repeated ask for the approved scope, but cannot override an explicit deny. Within the same behavior, content-rule lookup checks Session, project and user sources in that order. Whole-tool configuration checks project before user.
+## Decision order
 
-The central function handles default and bypassPermissions. Path tools implement acceptEdits for ordinary workspace writes after their earlier checks. Plan mode is enforced by a read-only ToolPool prepared by Turn; the same pool supplies model definitions and execution lookup. Permission approval does not add excluded tools to that pool.
+1. A whole-tool deny ends the check before calling the tool.
+2. The tool supplies operation details. File, shell, web, MCP and computer-use checks prepare matching and confirmation requirements.
+3. A matching deny refuses the call.
+4. A required confirmation with no reusable scope, such as starting computer use, always asks. An already approved computer-use operation does not ask again.
+5. A matching Session approval allows its scope.
+6. Explicit ask rules and required confirmations ask, including in bypassPermissions mode.
+7. BypassPermissions allows ordinary operations that reached this point.
+8. Matching allow rules or an operation's default allow permit execution. Other operations ask.
 
-## Answering an approval
+File reads in the workspace default to allow. AcceptEdits also allows ordinary workspace writes. Ordinary writes and reads outside the workspace can be allowed by bypassPermissions; sensitive paths and MCP-reported destructive operations still require confirmation unless their scope already has Session approval. Plan mode keeps its existing restricted ToolPool in Turn preparation.
 
-Every final ask carries a backend-only `sessionAllowRule`. Tools may supply a dedicated scope even when their own result is allow, because a whole-tool ask rule can still require approval. If no scope is supplied, the central function creates `input:` followed by deterministic JSON of the validated input.
+Checks share this order. File checks interpret paths and workspace membership. Shell checks allow a compound command only when an exact full-command rule matches, or reliable parsed subcommands are all covered. A deny or ask may match any subcommand.
 
-```mermaid
-sequenceDiagram
-    participant Execution as ToolCallExecution
-    participant Permission
-    participant Turn as prepareTurnTools
-    participant Queue as SessionInteractionQueue
-    participant UI
-    Execution->>Permission: Check validated tool call
-    Permission-->>Execution: ask + sessionAllowRule
-    Execution->>Turn: Request, signal, backend rule
-    Turn->>Queue: Enqueue PermissionRequest
-    Turn->>UI: permission_required, without backend rule
-    UI->>Queue: allowSession response through Session route
-    Queue-->>Turn: PermissionResponse
-    Turn->>Permission: applyPermissionUpdate, Session allow
-    Turn->>UI: permission_resolved
-    Turn-->>Execution: Response
-    Execution->>Execution: Check cancellation, then execute
-```
+## User confirmation
 
-The UI sends allow, allowSession or deny; it does not invent or receive rule content. Allow runs once without saving a rule. AllowSession saves the backend rule before publishing resolved and returning the response. Denial, unanswered cancellation and timeout do not save an approval. A saved approval does not restart a cancelled call.
+An ask result contains a message and, only when reusable approval is supported, `sessionApproval: { key, description }`. The message and description reach both the chat card and native notification. The backend keeps the key; clients submit only their choice. Without a description, the UI offers only allow and deny, and the interaction queue rejects allowSession.
 
-Permission and AskUser share a FIFO per Session in [Turn's interaction queue](../turn/interactionQueue.ts). Root and child runs use the same Session channel; different Sessions can wait independently. Requests use toolCallId, sessionId and turnId. Child requests additionally carry subagentId and runId together, so cleanup can cancel one run's waiting calls without clearing another's approvals.
+Permission does not create a fallback approval for every input. Ordinary tools explicitly select whole-tool or exact-input reuse. File, shell and web checks provide their operation-specific scopes. MCP explicitly uses the tool's complete input because its argument meanings are not standardized.
 
-## Saved scopes
-
-| Tool | Session approval scope |
+| Operation | Remembered scope |
 | --- | --- |
-| Read, Edit, Write, DescribeImage | file: plus a literal absolute path, for that tool only. |
-| Glob | directory: plus a literal directory and its descendants. |
-| Grep | A file or directory scope based on the actual local target; UNC uses the complete-input fallback. |
-| Bash, PowerShell | Escaped complete command, not an automatically widened prefix. |
-| WebFetch | domain: plus the exact hostname. |
-| WebSearch | search: plus query and normalized allowed/blocked domain lists. |
-| Other tools, including MCP | input: plus the complete validated input as deterministic JSON. |
+| Read, Write, Edit, DescribeImage | This tool and the exact file |
+| Glob and directory Grep | This tool and the directory with descendants |
+| Grep of an unknown network target | This tool and the complete input, without probing the network |
+| Bash, PowerShell | The complete literal command, without widening it into a prefix |
+| WebFetch | Exact hostname, including its paths and ports but not subdomains |
+| WebSearch | Query and normalized allowed/blocked domain lists |
+| Computer-use startup | No Session rule; ComputerUse owns approval until that use ends |
 
-File approval does not include parent directories or other tools. Read offsets and Edit replacement text do not change the file scope. Shell timeout/background fields do not change the command scope. WebFetch hostname approval can cover different schemes, ports and paths on that host, not subdomains. WebSearch trims the query and normalizes domain-list casing, duplicates and order; it does not grant WebFetch access.
+`ToolCallExecution` asks through the host's existing interaction callback. Turn queues the request before publishing it. For allowSession, Turn calls `rememberSessionApproval` before publishing resolution and returning the answer. Execution then checks cancellation and the host's pause condition before entering the tool. The streaming scheduler continues to own scheduling and ordered result delivery.
 
-The fallback ignores object-key order recursively but preserves values and array order. It does not infer the meaning of path, URL or command fields.
+## Files and storage
 
-## Rules and paths
+User/project rules stay in the existing Settings entries `permission.rules.user.*` and `permission.rules.project.*`. Their text format is `Tool` or `Tool(condition)`; the parser handles escaped parentheses and backslashes. This package does not require a dedicated SQL table.
 
-Configuration strings use Tool or Tool(content). The parser escapes backslashes and parentheses. Empty content and a single wildcard, such as Bash() and Bash(*), mean the whole tool. Malformed wrappers are treated as literal tool names.
+`rememberSessionApproval`, `getSessionApprovals` and `clearSessionApprovals` operate on an in-memory Map. Keys may contain only a tool name. Approvals survive normal Turns and are cleared when the Session is removed or the process exits. Computer control state is not duplicated here.
 
-Path rules support literal file:/directory: scopes, cwd-relative gitignore patterns such as ./src/**, and absolute patterns with a // prefix. Literal scopes do not expand wildcard characters in filenames. Shell configuration supports exact commands, prefix rules such as npm:*, and wildcard patterns. A stored one-command approval escapes wildcard characters before serialization.
+File checks resolve symbolic links and the nearest existing ancestor of new paths. They avoid filesystem queries for network paths before approval. Internal download access requires both the original and resolved paths to remain inside a host-provided read directory. Path matching supports literal file/directory scopes and the existing relative or absolute patterns.
 
-`getPathsForPermissionCheck` returns the absolute path and resolved targets. For new files it resolves the nearest existing ancestor before restoring missing segments. Workspace membership requires all returned forms to fall within supplied roots. If resolution fails, only the original absolute path remains; resolution failure itself is not a deny decision. Comparison ignores case on Windows/macOS by platform choice, not by querying each filesystem.
+The approval timeout setting remains `permission.askTimeoutMs`. Null means wait without a time limit; cancellation still ends the wait. Only the active Session interaction starts its timeout.
 
-File tools identify UNC paths before filesystem queries, so approval checks do not themselves contact a network share. They separately check explicit denies, Session approvals and sensitive-path confirmation. `hasSuspiciousWindowsPath` identifies unusual names; the tool decides whether to ask. Host-granted internal roots use text containment through `checkInternalPath`; that helper does not resolve symlinks.
+## Layout and verification
 
-## Lifetime and settings
+`checks/file` and `checks/shell` contain the larger operation families. Web, MCP and computer-use checks each have a file under `checks`. `rules` loads configuration, parses keys and remembers Session approvals. `types.ts` defines public data; the prepared check contract is internal to `checks`.
 
-`applyPermissionUpdate` writes Session approvals to an in-process Map, deduplicated by serialized rule text. `loadPermissionRuleBuckets` captures user/project settings for a Turn but reads Session allow rules through a getter. Existing root and child executors therefore see new Session approvals immediately.
-
-Session approvals survive Turn completion, stopping, Goal continuation and compaction. Session deletion calls `clearSessionRules`; process exit loses them. User/project rules persist through Settings under permission.rules.user.* and permission.rules.project.*. Project records are keyed by project ID, and startup removes entries for projects that no longer exist.
-
-The approval timeout setting is permission.askTimeoutMs. Its default null means no timeout; numeric values range from 200,000 to 600,000 milliseconds. Changes affect new queue entries, and only the FIFO head's timer runs. Cancellation can still end an indefinite wait.
-
-## Code and checks
-
-Read [hasPermissionsToUseTool.ts](hasPermissionsToUseTool.ts) for decision order, [rules/update.ts](rules/update.ts) and [rules/loader.ts](rules/loader.ts) for storage/lifetime, and [types.ts](types.ts) for backend and event shapes. [prepareTurnTools](../turn/prepare/prepareTurnTools.ts) owns approval waiting and response ordering. Concrete file and command checks live in [pathPermission](../builtin-tools/tools/shared/pathPermission.ts) and [shellPermission](../builtin-tools/tools/shared/shellPermission.ts).
-
-Run `pnpm --filter @ema-agent/permission test` and `pnpm --filter @ema-agent/permission typecheck`. Related tool tests check dedicated scopes and the execution pipeline; Turn tests check the shared approval queue and saving before continuation.
+Run `pnpm --filter @ema-agent/permission test` and `pnpm --filter @ema-agent/permission build`. Builtin-tool, execution, Turn, MCP and Desktop tests cover the real callers, confirmation messages, cancellation and button availability. Rebuild dependent packages before running their tests because workspace imports resolve compiled files.

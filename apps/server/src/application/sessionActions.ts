@@ -1,4 +1,4 @@
-import { clearSessionRules } from '@ema-agent/permission';
+import { clearSessionApprovals } from '@ema-agent/permission';
 import type { Composition } from '../composition/index.js';
 import { removeSessionFiles } from '../platform/paths.js';
 
@@ -31,7 +31,7 @@ export async function deleteSession(
   database.session.getSession(sessionId);
   await database.sessionRunning.runWithSessionClosed(sessionId, async () => {
     await stopSessionWork(composition, sessionId, 'Session deleted');
-    clearSessionRules(sessionId);
+    clearSessionApprovals(sessionId);
     await tools.discardSessionToolState(sessionId);
     // 所有执行完成最后的保存后才删数据和附件, 避免写入已删除的行或目录.
     database.session.deleteSession(sessionId);
@@ -49,7 +49,7 @@ export async function deleteArchivedSessions(
 
   // 这些会话已经完成归档, 不重复停止工作. 磁盘和异步操作不能放进 SQLite 事务.
   for (const sessionId of deletedSessionIds) {
-    clearSessionRules(sessionId);
+    clearSessionApprovals(sessionId);
     try {
       await tools.discardSessionToolState(sessionId);
     } catch (error) {

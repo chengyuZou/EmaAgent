@@ -48,7 +48,11 @@ export const ProcessListTool = buildTool<
   isReadOnly: () => true,
   isConcurrencySafe: () => true,
   // Session 身份由调用方提供, 查询不能指定其他 Session.
-  checkPermissions: async () => ({ behavior: 'allow' }),
+  checkPermissions: async () => ({
+    kind: 'tool',
+    defaultDecision: 'allow',
+    sessionApproval: 'tool',
+  }),
   getToolUseSummary: (input) => input.status
     ? `列出 ${input.status} 后台进程`
     : '列出后台进程',

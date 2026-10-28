@@ -1,10 +1,10 @@
 import type { ToolResultContentPart } from '@ema-agent/llm';
 import {
-  hasPermissionsToUseTool,
+  checkToolPermission,
   type PermissionRequest,
-  type PermissionResponse,
-  type SessionAllowRule,
-  type ToolPermissionContext,
+  type PermissionUserResponse,
+  type SessionPermissionApproval,
+  type PermissionContext,
 } from '@ema-agent/permission';
 import { ZodError } from 'zod';
 import type { ToolPool } from '../assembly/toolPool.js';
@@ -29,19 +29,19 @@ export type ToolExecutionEnvironment = {
   readonly abortSignal: AbortSignal;
   /** 本次执行已经筛选并冻结的工具池. */
   readonly toolPool: ToolPool;
-  /** Turn 准备期冻结的权限判定上下文(模式 + 三桶规则 + 工作区). */
-  readonly permissionContext: ToolPermissionContext;
+  /** Turn 准备期冻结的权限判定上下文(模式 + 配置规则 + 工作区). */
+  readonly permissionContext: PermissionContext;
   /**
    * 权限交互通道:存在即 interactive,ask 决策经它等用户回答;
    * 缺失时中央把 ask 处理为 deny(headless); 前后台子代理可共用 Session 通道.
    * 由宿主实现(交互队列 + permission_required/resolved 事件 +
-   * allowSession 的规则沉淀),执行链只消费最终回答.
+   * allowSession 的批准保存),执行链只消费最终回答.
    */
   readonly askPermission?: (
     request: PermissionRequest,
     signal: AbortSignal,
-    sessionAllowRule: SessionAllowRule,
-  ) => Promise<PermissionResponse>;
+    sessionApproval: SessionPermissionApproval | undefined,
+  ) => Promise<PermissionUserResponse>;
   readonly toolContext: ToolUseContext;
   readonly toolResultStore?: ToolResultStore;
   readonly toolExecutionState?: ToolExecutionState;
@@ -332,7 +332,7 @@ export class ToolCallExecution {
 
   /**
    * 中央固定优先级判定 → allow 放行 / deny 失败 / ask 走交互通道.
-   * 规则沉淀(allowSession → PermissionUpdate)由 askPermission 的实现方
+   * 会话批准保存(allowSession)由 askPermission 的实现方
    * 在等回答时完成,执行链不接触 settings.
    */
   private async requestPermission(tool: AnyTool, input: unknown, narrowedContext: unknown): Promise<boolean> {
@@ -345,18 +345,18 @@ export class ToolCallExecution {
     const signal = this.abortController.signal;
 
     try {
-      const decision = await hasPermissionsToUseTool(
+      const permissionCheckResult = await checkToolPermission(
         tool,
         input,
         narrowedContext,
         permissionContext,
         { interactive: askPermission !== undefined },
       );
-      if (decision.behavior === 'allow') {
+      if (permissionCheckResult.decision === 'allow') {
         return true;
       }
-      if (decision.behavior === 'deny') {
-        await this.completeFailure({ code: 'permission/denied', message: decision.message });
+      if (permissionCheckResult.decision === 'deny') {
+        await this.completeFailure({ code: 'permission/denied', message: permissionCheckResult.message });
         return false;
       }
 
@@ -364,9 +364,12 @@ export class ToolCallExecution {
       const summary = tool.getToolUseSummary?.(input);
       const requestFields = {
         toolName: tool.name,
-        ...(summary ? { toolDescription: summary } : {}),
+        ...(summary ? { summary } : {}),
+        message: permissionCheckResult.message,
         input,
-        ...(decision.decisionReason ? { decisionReason: decision.decisionReason } : {}),
+        ...(permissionCheckResult.sessionApproval
+          ? { sessionApprovalDescription: permissionCheckResult.sessionApproval.description }
+          : {}),
         sessionId,
         turnId,
         toolCallId: this.id,
@@ -374,16 +377,16 @@ export class ToolCallExecution {
       const request: PermissionRequest = this.environment.subagentId !== undefined
         ? { ...requestFields, subagentId: this.environment.subagentId, runId: this.environment.runId }
         : requestFields;
-      const response = await askPermission!(request, signal, decision.sessionAllowRule);
+      const permissionUserResponse = await askPermission!(request, signal, permissionCheckResult.sessionApproval);
 
       if (isCancelled(signal, this.environment.abortSignal)) {
         this.completeCancellation();
         return false;
       }
-      if (response.action === 'allow' || response.action === 'allowSession') {
+      if (permissionUserResponse.action === 'allow' || permissionUserResponse.action === 'allowSession') {
         return true;
       }
-      await this.completeFailure({ code: 'permission/denied', message: response.reason ?? '用户拒绝了本次调用' });
+      await this.completeFailure({ code: 'permission/denied', message: permissionUserResponse.reason ?? '用户拒绝了本次调用' });
       return false;
     } catch (error) {
       if (isCancelled(signal, this.environment.abortSignal)) {

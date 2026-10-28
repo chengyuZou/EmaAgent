@@ -24,7 +24,7 @@ const PERMISSION_MODE_ICONS: Record<PermissionMode, string> = {
 const PERMISSION_MODE_DESCRIPTIONS: Record<PermissionMode, string> = {
   default: '编辑文件和使用互联网时始终询问',
   acceptEdits: '仅对检测到的风险操作请求批准',
-  bypassPermissions: '可不受限制地访问互联网和电脑上的任何文件',
+  bypassPermissions: '普通操作免确认, 仍遵守明确的拒绝、询问规则和必要确认',
   plan: '仅使用只读工具调查和规划, 不实施修改; 切换在下一轮生效',
 };
 

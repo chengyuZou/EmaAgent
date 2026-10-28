@@ -1,7 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { filePathToRuleContent } from '@ema-agent/permission';
 import type { StructuredPatchHunk } from 'diff';
 import {
   buildTool,
@@ -12,7 +11,6 @@ import {
   type ToolInvocation,
 } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
-import { checkWritePathPermission } from '../shared/pathPermission.js';
 import { atomicTransformUtf8 } from './atomicWrite.js';
 import { isBlockedDevice } from '../FileReadTool/FileReadTool.js';
 import {
@@ -26,8 +24,6 @@ interface FileWriteToolContext {
   fileStateCache: FileStateCache;
   cwd: string;
 }
-
-
 
 const inputSchema = z.object({
   file_path: z.string().min(1).describe('Absolute path to write. Created if it does not exist.'),
@@ -52,8 +48,6 @@ export interface FileWriteResult {
   deletions: number;
 }
 
-
-
 export const FileWriteTool = buildTool<FileWriteInput, FileWriteResult, FileWriteToolContext>({
   id: BuiltinTools.FileWrite.id,
   name: BuiltinTools.FileWrite.name,
@@ -76,23 +70,13 @@ export const FileWriteTool = buildTool<FileWriteInput, FileWriteResult, FileWrit
     });
   },
 
-  async checkPermissions(input, context, permissionContext) {
-    const filePath = path.resolve(context.cwd, input.file_path);
-    const result = checkWritePathPermission({
-      toolName: BuiltinTools.FileWrite.name,
-      path: filePath,
-      cwd: context.cwd,
-      permissionContext,
-    });
-    if (result.behavior === 'deny') {
-      return result;
-    }
+  async checkPermissions(input, context) {
     return {
-      ...result,
-      sessionAllowRule: {
-        toolName: BuiltinTools.FileWrite.name,
-        ruleContent: filePathToRuleContent(filePath),
-      },
+      kind: 'file',
+      operation: 'write',
+      path: path.resolve(context.cwd, input.file_path),
+      cwd: context.cwd,
+      target: 'file',
     };
   },
 

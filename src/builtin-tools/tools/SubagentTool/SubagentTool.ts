@@ -11,7 +11,6 @@ import {
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { SUBAGENT_DESCRIPTION } from './prompt.js';
 
-
 interface SubagentToolContext {
   subagents: SubagentControl;
 }
@@ -21,8 +20,6 @@ interface SubagentToolContext {
  * 子 Agent 按独立的等待阈值转交, 不使用 Shell 命令的前台等待时间.
  */
 const AUTO_BACKGROUND_WAIT_MS = 120_000;
-
-
 
 const inputSchema = z.object({
   subagentId: z.string().min(1).optional()
@@ -71,8 +68,6 @@ const inputSchema = z.object({
 });
 
 type SubagentInput = z.infer<typeof inputSchema>;
-
-
 
 export interface SubagentCompletedResult {
   kind: 'completed';
@@ -130,8 +125,6 @@ function raceWithAbort<T>(promise: Promise<T>, timeoutMs: number, signal: AbortS
   });
 }
 
-
-
 export const SubagentTool = buildTool<SubagentInput, SubagentResult, SubagentToolContext>({
   id: BuiltinTools.Subagent.id,
   name: BuiltinTools.Subagent.name,
@@ -142,7 +135,12 @@ export const SubagentTool = buildTool<SubagentInput, SubagentResult, SubagentToo
   isConcurrencySafe: () => true,
 
   // 启动子 Agent 有副作用与成本, 交给工具权限规则和模式决定是否询问.
-  checkPermissions: async () => ({ behavior: 'passthrough', message: '启动子 Agent 需要用户确认' }),
+  checkPermissions: async () => ({
+    kind: 'tool',
+    defaultDecision: 'ask',
+    message: '启动子 Agent 需要用户确认',
+    sessionApproval: 'input',
+  }),
 
   validateContext(ctx) {
     if (!ctx.subagents) {

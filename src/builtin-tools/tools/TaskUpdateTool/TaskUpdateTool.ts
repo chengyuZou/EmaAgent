@@ -10,7 +10,6 @@ import type { Task, TaskStore, TaskMutationFailure } from '@ema-agent/tasks';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { TASK_UPDATE_DESCRIPTION } from './prompt.js';
 
-
 interface TaskUpdateToolContext {
   taskStore: TaskStore;
 }
@@ -86,7 +85,12 @@ export const TaskUpdateTool = buildTool<TaskUpdateInput, TaskUpdateResult, TaskU
     return `更新任务:${input.taskId.slice(0, 8)} → ${operation}`;
   },
   // 更新任务有副作用, 交给工具权限规则和模式决定是否询问.
-  checkPermissions: async () => ({ behavior: 'passthrough', message: '更新任务需要用户确认' }),
+  checkPermissions: async () => ({
+    kind: 'tool',
+    defaultDecision: 'ask',
+    message: '更新任务需要用户确认',
+    sessionApproval: 'input',
+  }),
 
   validateContext(ctx: ToolUseContext) {
     if (!ctx.taskStore) {

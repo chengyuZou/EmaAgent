@@ -1,8 +1,5 @@
 import type { ToolResultContentPart } from '@ema-agent/llm';
-import type {
-  PermissionResult,
-  ToolPermissionContext,
-} from '@ema-agent/permission';
+import type { ToolPermissionCheck } from '@ema-agent/permission';
 import type { z } from 'zod';
 import type { ToolInvocation } from './toolInvocation.js';
 import type { ToolUseContext } from './toolUseContext.js';
@@ -78,16 +75,13 @@ export interface Tool<TInput, TOutput, TContext, TProgress = never> {
   readonly requiresUserInteraction: (input: TInput) => boolean;
 
   /**
-   * Tool 对自己输入的权限自我解释:读规则桶,解路径/命令/域名,
-   * 返回 allow / deny / ask / passthrough.中央 hasPermissionsToUseTool
-   * 按固定优先级在它前后套整体规则与模式;ask 先于 bypass 生效.
-   * 判定上下文只含模式与冻结规则桶,调用身份由执行链装配进批准卡.
+   * 提供本次调用的路径、命令或操控状态等信息.
+   * Permission 在包内调用此入口并统一判断规则; 工具不读取规则或保存批准.
    */
   readonly checkPermissions: (
     input: TInput,
     context: TContext,
-    permissionContext: ToolPermissionContext,
-  ) => Promise<PermissionResult>;
+  ) => Promise<ToolPermissionCheck>;
 
   /** 工具只取得窄业务 Context,调用身份和自己的进度出口. */
   readonly execute: (

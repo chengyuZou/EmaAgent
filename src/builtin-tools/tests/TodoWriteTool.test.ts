@@ -62,8 +62,7 @@ describe('TodoWriteTool', () => {
     await expect(TodoWriteTool.checkPermissions(
       { todos },
       undefined,
-      {} as never,
-    )).resolves.toEqual({ behavior: 'allow' });
+    )).resolves.toMatchObject({ kind: 'tool', defaultDecision: 'allow' });
     expect(TodoWriteTool.isReadOnly({ todos })).toBe(false);
     expect(TodoWriteTool.isConcurrencySafe({ todos })).toBe(false);
   });

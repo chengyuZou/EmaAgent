@@ -25,14 +25,11 @@ import {
   SCRATCHPAD_WRITE_DESCRIPTION,
 } from './prompt.js';
 
-
-
 /** key 必须在所有平台(Windows + POSIX)作文件名安全. */
 const KEY_SCHEMA = z.string().regex(
   SCRATCHPAD_KEY_RE,
   'Key must be 1-64 characters: letters, digits, _ or -',
 );
-
 
 interface ScratchpadToolContext {
   scratchpad: Scratchpad;
@@ -47,9 +44,7 @@ function validateScratchpad(ctx: ToolUseContext) {
 }
 
 // Turn 内部目录, 无用户授权对象: key 受 KEY_SCHEMA 约束, 落在 scratchpad.dir 内, 直接放行.
-const scratchpadAllow: () => Promise<{ behavior: 'allow' }> = async () => ({ behavior: 'allow' });
-
-
+const scratchpadAllow = async () => ({ kind: 'tool' as const, defaultDecision: 'allow' as const });
 
 const writeSchema = z.object({
   key: KEY_SCHEMA.describe(
@@ -94,8 +89,6 @@ export const ScratchpadWriteTool = buildTool<
   },
 });
 
-
-
 const readSchema = z.object({
   key: KEY_SCHEMA.describe('Identifier of the entry to read.'),
 });
@@ -127,8 +120,6 @@ export const ScratchpadReadTool = buildTool<
     };
   },
 });
-
-
 
 export const ScratchpadListTool = buildTool<
   Record<never, never>,
@@ -162,8 +153,6 @@ export const ScratchpadListTool = buildTool<
   },
 });
 
-
-
 const deleteSchema = z.object({
   key: KEY_SCHEMA.describe('Key to delete. No-op if the key does not exist.'),
 });
@@ -189,8 +178,6 @@ export const ScratchpadDeleteTool = buildTool<
     return { deleted: await deleteScratchpadEntry(context.scratchpad.dir, input.key) };
   },
 });
-
-
 
 export const ScratchpadClearTool = buildTool<
   Record<never, never>,

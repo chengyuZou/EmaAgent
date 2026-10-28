@@ -51,7 +51,11 @@ export const NarrativeSearchTool = buildTool<
   isConcurrencySafe: () => true,
 
   // 只读剧情检索(按需启用), 内置信任放行.
-  checkPermissions: async () => ({ behavior: 'allow' }),
+  checkPermissions: async () => ({
+    kind: 'tool',
+    defaultDecision: 'allow',
+    sessionApproval: 'tool',
+  }),
 
   validateContext(ctx) {
     if (!ctx.narrativeSearch) {

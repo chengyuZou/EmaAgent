@@ -1,7 +1,7 @@
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { pathInAnyWorkingDir } from '../paths/workspaceBoundary.js';
+import { pathInAnyWorkingDir } from '../checks/file/workspaceBoundary.js';
 
 describe('pathInAnyWorkingDir', () => {
   it('只认当前 Project folders，不因 Session cwd 曾位于旧文件夹而放行', () => {

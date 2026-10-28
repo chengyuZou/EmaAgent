@@ -36,7 +36,11 @@ export const TaskGetTool = buildTool<TaskGetInput, TaskGetResult, TaskGetToolCon
   isConcurrencySafe: () => true,
   getToolUseSummary: (input) => `读取任务:${input.taskId.slice(0, 8)}`,
   // 只读任务查询, 内置信任放行.
-  checkPermissions: async () => ({ behavior: 'allow' }),
+  checkPermissions: async () => ({
+    kind: 'tool',
+    defaultDecision: 'allow',
+    sessionApproval: 'tool',
+  }),
 
   validateContext(ctx: ToolUseContext) {
     if (!ctx.taskStore) {

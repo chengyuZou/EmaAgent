@@ -20,7 +20,6 @@ import {
   getAllCommands,
   deriveSecurityFlags,
 } from './psParser.js';
-import { checkShellContentPermission } from '../shared/shellPermission.js';
 import { powershellCommandIsSafe } from './security/powershellSecurity.js';
 import { interpretCommandResult } from './security/commandSemantics.js';
 import { startPowerShellCommand } from './powershellRunner.js';
@@ -33,8 +32,6 @@ import {
   type ShellProgress,
   type ShellResult,
 } from '../shared/shellExecution.js';
-
-
 
 const inputSchema = z.object({
   command: z.string().min(1).describe('The PowerShell command to execute.'),
@@ -50,8 +47,6 @@ interface PowerShellToolContext {
   backgroundProcesses: BackgroundProcess;
 }
 
-
-
 export const PowerShellTool = buildTool<PowerShellInput, ShellResult, PowerShellToolContext, ShellProgress>({
   id: BuiltinTools.PowerShell.id,
   name: BuiltinTools.PowerShell.name,
@@ -64,7 +59,7 @@ export const PowerShellTool = buildTool<PowerShellInput, ShellResult, PowerShell
   isConcurrencySafe: () => false,
 
   // 解析函数已有命令级缓存, 与 validateInput 共用结果; 权限规则逐段检查.
-  async checkPermissions(input, _context, permissionContext) {
+  async checkPermissions(input) {
     const parsed = await parsePowerShellCommand(input.command);
     const commands = getAllCommands(parsed);
     const flags = deriveSecurityFlags(parsed);
@@ -75,10 +70,12 @@ export const PowerShellTool = buildTool<PowerShellInput, ShellResult, PowerShell
         (statement.statementType === 'PipelineAst' || statement.statementType === 'PipelineChainAst')
         && (statement.commands.length > 0 || (statement.nestedCommands?.length ?? 0) > 0))
       && commands.every(command => command.elementType === 'CommandAst');
-    return checkShellContentPermission(
-      BuiltinTools.PowerShell.name, input.command, commands.map(command => command.text),
-      allowByCommands, permissionContext,
-    );
+    return {
+      kind: 'shell',
+      command: input.command,
+      subcommands: commands.map(command => command.text),
+      canMatchSubcommands: allowByCommands,
+    };
   },
 
   validateContext(ctx: ToolUseContext) {

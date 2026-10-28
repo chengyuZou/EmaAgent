@@ -1,12 +1,10 @@
 import { stat } from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
-import { filePathToRuleContent } from '@ema-agent/permission';
 import { buildTool, contextFail, contextOk } from '@ema-agent/tools';
 import type { CallVision } from '@ema-agent/vision';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { imageMediaTypeFor, readImageFile } from '../FileReadTool/imageReader.js';
-import { checkReadPathPermission } from '../shared/pathPermission.js';
 import { DESCRIBE_IMAGE_DESCRIPTION } from './prompt.js';
 
 const inputSchema = z.object({
@@ -37,20 +35,8 @@ export const DescribeImageTool = buildTool<
     return contextOk({ vision: context.vision });
   },
 
-  async checkPermissions(input, _context, permissionContext) {
-    const result = checkReadPathPermission({
-      toolName: BuiltinTools.DescribeImage.name,
-      path: input.image_path,
-      permissionContext,
-    });
-    if (result.behavior === 'deny') return result;
-    return {
-      ...result,
-      sessionAllowRule: {
-        toolName: BuiltinTools.DescribeImage.name,
-        ruleContent: filePathToRuleContent(input.image_path),
-      },
-    };
+  async checkPermissions(input) {
+    return { kind: 'file', operation: 'read', path: input.image_path, target: 'file' };
   },
 
   async execute(input, context, invocation) {

@@ -2,7 +2,6 @@ import { z } from 'zod';
 import { buildTool, contextFail, contextOk, type SubagentControl } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 
-
 interface SubagentAwaitContext {
   subagents: SubagentControl;
 }
@@ -38,7 +37,11 @@ Returns output:null only when the subagentId is unknown or the run is still acti
   isConcurrencySafe: () => true,
 
   // 等待本会话子 Agent 结果, 内置信任放行.
-  checkPermissions: async () => ({ behavior: 'allow' }),
+  checkPermissions: async () => ({
+    kind: 'tool',
+    defaultDecision: 'allow',
+    sessionApproval: 'tool',
+  }),
 
   validateContext(ctx) {
     if (!ctx.subagents) {

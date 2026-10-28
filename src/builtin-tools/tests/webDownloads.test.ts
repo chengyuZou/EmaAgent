@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FileStateCache } from '@ema-agent/tools';
-import type { ToolPermissionContext } from '@ema-agent/permission';
+import { checkToolPermission, type PermissionContext } from '@ema-agent/permission';
 import { WebFetchTool } from '../tools/WebFetchTool/WebFetchTool.js';
 import { FileReadTool } from '../tools/FileReadTool/FileReadTool.js';
 import { clearWebFetchCache } from '../tools/WebFetchTool/storage/cache.js';
@@ -85,6 +85,9 @@ function textPdf(): Buffer {
   return Buffer.from(pdf);
 }
 
+const checkReadPermission = (input: unknown, toolContext: Parameters<typeof FileReadTool.checkPermissions>[1], context: PermissionContext) =>
+  checkToolPermission(FileReadTool, FileReadTool.inputSchema.parse(input), toolContext, context, { interactive: true });
+
 describe('WebFetch downloads', () => {
   it.each(['application/pdf', 'application/octet-stream'])('saves %s unchanged and Read parses the PDF', async contentType => {
     const pdf = textPdf();
@@ -105,23 +108,23 @@ describe('WebFetch downloads', () => {
       cwd: directory, platform: process.platform, fileStateCache: new FileStateCache(),
     });
     if (!readContext.valid) throw new Error('Expected the Read context');
-    const permissions: ToolPermissionContext = {
-      mode: 'default', workspaceRoots: [], alwaysAllowRules: {}, alwaysDenyRules: {}, alwaysAskRules: {},
+    let permissions: PermissionContext = {
+      mode: 'default', workspaceRoots: [], sessionId: 'permission-test', rules: [],
     };
-    expect((await FileReadTool.checkPermissions({ file_path: filePath }, readContext.context, permissions)).behavior).toBe('allow');
+    expect((await checkReadPermission({ file_path: filePath }, readContext.context, permissions)).decision).toBe('allow');
     const read = await FileReadTool.execute({ file_path: filePath }, readContext.context, invocation);
     expect(read.type).toBe('pdf_content');
     expect(read.content).toContain('Downloaded PDF text');
 
     expect((await fetchFile(undefined, true)).download?.filePath).toBe(filePath);
     expect(mock).toHaveBeenCalledTimes(1);
-    permissions.alwaysDenyRules.userSettings = ['Read(**)'];
-    expect((await FileReadTool.checkPermissions({ file_path: filePath }, readContext.context, permissions)).behavior).toBe('deny');
-    permissions.alwaysDenyRules = {};
-    permissions.alwaysAskRules.userSettings = ['Read(**)'];
-    expect((await FileReadTool.checkPermissions({ file_path: filePath }, readContext.context, permissions)).behavior).toBe('ask');
-    permissions.alwaysAskRules = {};
-    expect((await FileReadTool.checkPermissions({ file_path: path.join(directory, 'data', 'private.txt') }, readContext.context, permissions)).behavior).toBe('ask');
+    permissions = { ...permissions, rules: [{ key: { toolName: 'Read', condition: '**' }, decision: 'deny', from: 'userSettings' }] };
+    expect((await checkReadPermission({ file_path: filePath }, readContext.context, permissions)).decision).toBe('deny');
+    permissions = { ...permissions, rules: [] };
+    permissions = { ...permissions, rules: [{ key: { toolName: 'Read', condition: '**' }, decision: 'ask', from: 'userSettings' }] };
+    expect((await checkReadPermission({ file_path: filePath }, readContext.context, permissions)).decision).toBe('ask');
+    permissions = { ...permissions, rules: [] };
+    expect((await checkReadPermission({ file_path: path.join(directory, 'data', 'private.txt') }, readContext.context, permissions)).decision).toBe('ask');
   });
 
   it.each([
@@ -211,13 +214,13 @@ describe('WebFetch downloads', () => {
       fileStateCache: new FileStateCache(),
     });
     if (!context.valid) throw new Error('Expected the Read context');
-    const permissions: ToolPermissionContext = {
-      mode: 'default', workspaceRoots: [], alwaysAllowRules: {}, alwaysDenyRules: {}, alwaysAskRules: {},
+    let permissions: PermissionContext = {
+      mode: 'default', workspaceRoots: [], sessionId: 'permission-test', rules: [],
     };
-    const decision = await FileReadTool.checkPermissions(
+    const decision = await checkReadPermission(
       { file_path: path.join(link, 'notes.txt') }, context.context, permissions,
     );
-    expect(decision.behavior).toBe('ask');
+    expect(decision.decision).toBe('ask');
     await fs.unlink(link);
   });
 });

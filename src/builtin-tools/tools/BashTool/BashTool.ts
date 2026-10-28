@@ -10,7 +10,6 @@ import type { CommandRunner } from '@ema-agent/sandbox';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { analyzeBashCommand, splitCommandSegments } from './security/bashSecurity.js';
 import { parsePermissionCommands } from './ast/ast.js';
-import { checkShellContentPermission } from '../shared/shellPermission.js';
 import { interpretExitCode } from './commandSemantics.js';
 import { BASH_DESCRIPTION } from './prompt.js';
 import {
@@ -22,14 +21,11 @@ import {
   type ShellResult,
 } from '../shared/shellExecution.js';
 
-
 interface BashToolContext {
   runner: CommandRunner;
   backgroundProcesses: BackgroundProcess;
   cwd: string;
 }
-
-
 
 /**
  * 命令字符串上限: 压 Windows CreateProcess 的 32,767 字符硬上限以下
@@ -37,8 +33,6 @@ interface BashToolContext {
  * 与防卡死无关 - 字符串不存在卡死路径,超限 spawn 本就诚实失败.
  */
 const MAX_COMMAND_CHARS = 30_000;
-
-
 
 const inputSchema = z.object({
   command: z
@@ -55,8 +49,6 @@ const inputSchema = z.object({
 });
 
 type BashInput = z.infer<typeof inputSchema>;
-
-
 
 export const BashTool = buildTool<BashInput, ShellResult, BashToolContext, ShellProgress>({
   id: BuiltinTools.Bash.id,
@@ -101,11 +93,14 @@ export const BashTool = buildTool<BashInput, ShellResult, BashToolContext, Shell
   },
 
   // 复合命令逐段匹配. 完整命令批准不扩大到其他参数或后续子命令.
-  async checkPermissions(input, _context, permissionContext) {
+  async checkPermissions(input) {
     const { commands, allowByCommands } = await parsePermissionCommands(input.command);
-    return checkShellContentPermission(
-      BuiltinTools.Bash.name, input.command, commands, allowByCommands, permissionContext,
-    );
+    return {
+      kind: 'shell',
+      command: input.command,
+      subcommands: commands,
+      canMatchSubcommands: allowByCommands,
+    };
   },
 
   async execute(

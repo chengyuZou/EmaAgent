@@ -53,7 +53,11 @@ export const GoalUpdateTool = buildTool<z.infer<typeof inputSchema>, Goal, { goa
     return input.reason === 'succeeded' ? '目标已完成' : '报告目标最终失败';
   },
   // 只报告用户已建立目标的进度或终态, 不扩大权限或重新开启持续工作.
-  checkPermissions: async () => ({ behavior: 'allow' }),
+  checkPermissions: async () => ({
+    kind: 'tool',
+    defaultDecision: 'allow',
+    sessionApproval: 'tool',
+  }),
   validateContext(context) {
     if (!context.goalStore) return contextFail('Goal tools are available only to the main Agent.');
     return contextOk({ goalStore: context.goalStore });

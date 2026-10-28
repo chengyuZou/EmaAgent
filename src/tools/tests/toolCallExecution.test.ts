@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import type {
   PermissionRequest,
-  SessionAllowRule,
-  ToolPermissionContext,
+  SessionPermissionApproval,
+  PermissionContext,
 } from '@ema-agent/permission';
 import {
   buildTool,
@@ -25,11 +25,9 @@ import {
 const SESSION_ID = '00000000-0000-4000-8000-0000000000a1';
 const TURN_ID = '00000000-0000-4000-8000-0000000000b1';
 
-const PERMISSION_CONTEXT: ToolPermissionContext = {
+const PERMISSION_CONTEXT: PermissionContext = {
   mode: 'default',
-  alwaysAllowRules: {},
-  alwaysDenyRules: {},
-  alwaysAskRules: {},
+  sessionId: 'permission-test', rules: [],
   workspaceRoots: [],
 };
 
@@ -105,7 +103,7 @@ function echoTool(overrides: Partial<Parameters<
     validateContext: () => contextOk({}),
     isReadOnly: () => true,
     isConcurrencySafe: () => true,
-    checkPermissions: async () => ({ behavior: 'allow' as const }),
+    checkPermissions: async () => ({ kind: 'tool' as const, defaultDecision: 'allow' as const }),
     execute: async (input: EchoInput) => ({ echoed: input.value }),
     ...overrides,
   }) as AnyTestTool;
@@ -211,14 +209,17 @@ describe('ToolCallExecution', () => {
   });
 
   it('validateInput 失败 → 业务错误码,不进入权限阶段', async () => {
-    const checkPermissions = vi.fn(async () => ({ behavior: 'allow' as const }));
+    const checkPermissions = vi.fn(async () => ({ kind: 'tool' as const, defaultDecision: 'allow' as const }));
     const tool = echoTool({
       validateInput: () => ({ valid: false as const, message: '已存在', code: 'file/exists' }),
       checkPermissions,
     });
     const { state, store } = makeState();
     const { execution } = makeCall(
-      makeEnv({ tools: [tool], state }),
+      {
+        ...makeEnv({ tools: [tool], state }),
+        permissionContext: { ...PERMISSION_CONTEXT, rules: [{ key: { toolName: 'Echo' }, decision: 'deny', from: 'userSettings' }] },
+      },
       'Echo',
       { value: 1 },
     );
@@ -230,13 +231,17 @@ describe('ToolCallExecution', () => {
     expect(store.listForTurn(TURN_ID)).toHaveLength(0);
   });
 
-  it('Tool 自检拒绝 → permission/denied,不越过 running 边界', async () => {
-    const tool = echoTool({
-      checkPermissions: async () => ({ behavior: 'deny' as const, message: '危险输入' }),
-    });
+  it('用户规则拒绝 → permission/denied,不越过 running 边界', async () => {
+    const tool = echoTool();
     const { state, store } = makeState();
     const { execution } = makeCall(
-      makeEnv({ tools: [tool], state }),
+      {
+        ...makeEnv({ tools: [tool], state }),
+        permissionContext: {
+          ...PERMISSION_CONTEXT,
+          rules: [{ key: { toolName: 'Echo' }, decision: 'deny', from: 'userSettings' }],
+        },
+      },
       'Echo',
       { value: 1 },
     );
@@ -249,11 +254,11 @@ describe('ToolCallExecution', () => {
 
   it('ask 决策走交互通道:请求携带身份和摘要,allowSession 后放行', async () => {
     const seen: PermissionRequest[] = [];
-    const rules: SessionAllowRule[] = [];
+    const rules: SessionPermissionApproval[] = [];
     const tool = echoTool({
       getToolUseSummary: () => '回显一个数字',
       checkPermissions: async () => ({
-        behavior: 'ask' as const,
+        kind: 'tool' as const, defaultDecision: 'ask' as const, sessionApproval: 'input' as const,
         message: '需要确认',
       }),
     });
@@ -262,7 +267,7 @@ describe('ToolCallExecution', () => {
         tools: [tool],
         askPermission: async (request, _signal, rule) => {
           seen.push(request);
-          rules.push(rule);
+          if (rule) rules.push(rule);
           return { action: 'allowSession' };
         },
       }),
@@ -274,11 +279,13 @@ describe('ToolCallExecution', () => {
 
     expect(result.isError).toBe(false);
     expect(seen).toHaveLength(1);
-    expect(rules).toEqual([{ toolName: 'Echo', ruleContent: 'input:{"value":1}' }]);
-    expect(seen[0]).not.toHaveProperty('sessionAllowRule');
+    expect(rules).toEqual([{ key: { toolName: 'Echo', condition: 'input:{"value":1}' }, description: expect.any(String) }]);
+    expect(seen[0]).not.toHaveProperty('sessionApproval');
     expect(seen[0]).toMatchObject({
       toolName: 'Echo',
-      toolDescription: '回显一个数字',
+      summary: '回显一个数字',
+      message: '需要确认',
+      sessionApprovalDescription: expect.any(String),
       toolCallId: 'call-1',
       sessionId: SESSION_ID,
       turnId: TURN_ID,
@@ -287,7 +294,7 @@ describe('ToolCallExecution', () => {
 
   it('ask 决策被用户拒绝 → permission/denied 并带用户理由', async () => {
     const tool = echoTool({
-      checkPermissions: async () => ({ behavior: 'ask' as const, message: '需要确认' }),
+      checkPermissions: async () => ({ kind: 'tool' as const, defaultDecision: 'ask' as const, sessionApproval: 'input' as const, message: '需要确认' }),
     });
     const { execution } = makeCall(
       makeEnv({
@@ -306,7 +313,7 @@ describe('ToolCallExecution', () => {
 
   it('ask 决策无交互通道 → deny(headless),不调用任何通道', async () => {
     const tool = echoTool({
-      checkPermissions: async () => ({ behavior: 'ask' as const, message: '需要确认' }),
+      checkPermissions: async () => ({ kind: 'tool' as const, defaultDecision: 'ask' as const, sessionApproval: 'input' as const, message: '需要确认' }),
     });
     const { execution } = makeCall(makeEnv({ tools: [tool] }), 'Echo', { value: 1 });
 

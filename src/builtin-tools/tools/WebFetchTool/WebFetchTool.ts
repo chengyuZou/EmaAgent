@@ -1,9 +1,7 @@
 import { z } from 'zod';
-import { findContentRule, findMatchingContentRule } from '@ema-agent/permission';
 import { buildTool, contextOk, type ToolInvocation } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { fetchPublicPage } from './network/httpClient.js';
-import { isPreapprovedHost } from './preapproved.js';
 import { WEB_FETCH_DESCRIPTION } from './prompt.js';
 import { webRequestFailure } from './network/webRequests.js';
 import type { WebDownload } from './storage/webDownloads.js';
@@ -81,55 +79,8 @@ export const WebFetchTool = buildTool<WebFetchInput, WebFetchResult, void>({
   },
 
   // 用户权限规则优先于预批准域名, 其余请求交给通用工具权限流程.
-  async checkPermissions(input, _context, permissionContext) {
-    const ruleContent = webFetchInputToPermissionRuleContent(input.url);
-    const sessionAllowRule = { toolName: BuiltinTools.WebFetch.name, ruleContent };
-    const denyRule = findContentRule(
-      permissionContext, BuiltinTools.WebFetch.name, 'deny', ruleContent,
-    );
-    if (denyRule) {
-      return {
-        behavior: 'deny',
-        message: `${BuiltinTools.WebFetch.name} 已禁止访问 ${ruleContent}`,
-        decisionReason: { type: 'rule', rule: denyRule },
-      };
-    }
-    const sessionRule = findMatchingContentRule(
-      permissionContext, BuiltinTools.WebFetch.name, 'allow', content => content === ruleContent, 'session',
-    );
-    if (sessionRule) {
-      return { behavior: 'allow', decisionReason: { type: 'rule', rule: sessionRule }, sessionAllowRule };
-    }
-    const askRule = findContentRule(
-      permissionContext, BuiltinTools.WebFetch.name, 'ask', ruleContent,
-    );
-    if (askRule) {
-      return {
-        behavior: 'ask',
-        message: `访问 ${ruleContent} 需要用户确认`,
-        decisionReason: { type: 'rule', rule: askRule },
-        sessionAllowRule,
-      };
-    }
-    const allowRule = findContentRule(
-      permissionContext, BuiltinTools.WebFetch.name, 'allow', ruleContent,
-    );
-    if (allowRule) {
-      return {
-        behavior: 'allow',
-        decisionReason: { type: 'rule', rule: allowRule },
-        sessionAllowRule,
-      };
-    }
-    // 预批准域名只对 WebFetch 的 GET 放行, 不继承到其他工具或沙箱网络规则.
-    if (isPreapprovedUrl(input.url)) {
-      return {
-        behavior: 'allow',
-        decisionReason: { type: 'other', reason: 'Preapproved host' },
-        sessionAllowRule,
-      };
-    }
-    return { behavior: 'passthrough', message: '获取网页需要用户确认', sessionAllowRule };
+  async checkPermissions(input) {
+    return { kind: 'webFetch', url: input.url };
   },
 
   validateContext() {
@@ -177,15 +128,3 @@ export const WebFetchTool = buildTool<WebFetchInput, WebFetchResult, void>({
   },
 });
 
-function isPreapprovedUrl(rawUrl: string): boolean {
-  try {
-    const url = new URL(rawUrl);
-    return isPreapprovedHost(url.hostname, url.pathname);
-  } catch {
-    return false;
-  }
-}
-
-function webFetchInputToPermissionRuleContent(url: string): string {
-  return `domain:${new URL(url).hostname}`;
-}

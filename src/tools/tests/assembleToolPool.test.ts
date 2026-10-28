@@ -34,7 +34,7 @@ function makeTool(
     },
     isReadOnly: () => true,
     isConcurrencySafe: () => true,
-    checkPermissions: async () => ({ behavior: 'allow' as const }),
+    checkPermissions: async () => ({ kind: 'tool' as const, defaultDecision: 'allow' as const }),
     execute: async () => 'ok',
   });
 }

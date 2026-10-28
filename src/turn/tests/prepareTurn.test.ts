@@ -146,7 +146,7 @@ describe('prepareTurn', () => {
     deps.registry.register(buildTool({
       name: 'Probe', description: '探针工具', inputSchema: z.object({}), validateContext,
       isReadOnly: () => true, isConcurrencySafe: () => true,
-      checkPermissions: async () => ({ behavior: 'allow' as const }), execute: async () => 'ok',
+      checkPermissions: async () => ({ kind: 'tool' as const, defaultDecision: 'allow' as const }), execute: async () => 'ok',
     }));
     const createLLMCall = vi.fn(() => vi.fn() as unknown as CallLLM);
     const scratchpadDirForTurn = vi.fn(() => '/scratchpad');
@@ -184,7 +184,7 @@ describe('prepareTurn', () => {
       validateContext: () => contextOk({}),
       isReadOnly: () => true,
       isConcurrencySafe: () => true,
-      checkPermissions: async () => ({ behavior: 'allow' }),
+      checkPermissions: async () => ({ kind: 'tool' as const, defaultDecision: 'allow' as const }),
       execute: async () => {
         toolStarted = true;
         await toolWaiting;
@@ -389,7 +389,7 @@ describe('prepareTurn', () => {
       validateContext: () => contextOk({}),
       isReadOnly: () => false,
       isConcurrencySafe: () => false,
-      checkPermissions: async () => ({ behavior: 'allow' }),
+      checkPermissions: async () => ({ kind: 'tool' as const, defaultDecision: 'allow' as const }),
       execute: async () => 'ok',
     }));
     await prepareTurn(

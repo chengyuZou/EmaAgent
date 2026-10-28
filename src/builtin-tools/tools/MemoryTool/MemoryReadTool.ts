@@ -13,12 +13,9 @@ import type {
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { MEMORY_READ_DESCRIPTION } from './prompt.js';
 
-
 interface MemoryReadToolContext {
   readonly memoryRead: ReadMemory;
 }
-
-
 
 const inputSchema = z.object({
   path: z
@@ -41,13 +38,9 @@ const inputSchema = z.object({
 
 type MemoryReadInput = z.infer<typeof inputSchema>;
 
-
-
 export type MemoryReadToolResult =
   | MemoryReadResponse
   | { readonly path: string; readonly notFound: true };
-
-
 
 export const MemoryReadTool = buildTool<
   MemoryReadInput,
@@ -63,7 +56,11 @@ export const MemoryReadTool = buildTool<
   isConcurrencySafe: () => true,
   getToolUseSummary: (input) => `读取记忆文件: ${input.path}`,
   // 只读已固化的正式记忆,内置信任放行.
-  checkPermissions: async () => ({ behavior: 'allow' }),
+  checkPermissions: async () => ({
+    kind: 'tool',
+    defaultDecision: 'allow',
+    sessionApproval: 'tool',
+  }),
 
   validateContext(ctx) {
     if (!ctx.memoryRead) {

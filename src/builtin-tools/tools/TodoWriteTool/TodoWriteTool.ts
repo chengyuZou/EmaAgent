@@ -45,7 +45,11 @@ export const TodoWriteTool = buildTool<TodoWriteInput, TodoWriteResult, undefine
   // 清单更新必须按模型输出顺序执行,不能与同批业务工具并发穿插.
   isReadOnly: () => false,
   isConcurrencySafe: () => false,
-  checkPermissions: async () => ({ behavior: 'allow' }),
+  checkPermissions: async () => ({
+    kind: 'tool',
+    defaultDecision: 'allow',
+    sessionApproval: 'tool',
+  }),
   getToolUseSummary: (input) => `更新当前执行清单,共 ${input.todos.length} 项`,
 
   // 清单只写入 Tool 消息; 子 Agent 的工具池由装配方排除此工具.

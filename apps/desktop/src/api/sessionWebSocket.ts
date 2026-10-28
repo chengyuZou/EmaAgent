@@ -1,4 +1,4 @@
-import type { PermissionResponse } from '@ema-agent/permission';
+import type { PermissionUserResponse } from '@ema-agent/permission';
 import type {
   ClientRequestId,
   SessionBusinessMessage,
@@ -104,7 +104,7 @@ class SessionWebSocket {
     );
   }
 
-  respondPermission(sessionId: string, toolCallId: string, response: PermissionResponse): Promise<void> {
+  respondPermission(sessionId: string, toolCallId: string, response: PermissionUserResponse): Promise<void> {
     return this.request<void>(sessionId, requestId => ({
       type: 'respond_permission',
       requestId,

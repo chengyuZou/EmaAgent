@@ -34,7 +34,12 @@ export const ProcessStopTool = buildTool<
   isReadOnly: () => false,
   isConcurrencySafe: () => false,
   // 终止后台进程有副作用, 交给工具权限规则和模式决定是否询问.
-  checkPermissions: async () => ({ behavior: 'passthrough', message: '停止后台进程需要用户确认' }),
+  checkPermissions: async () => ({
+    kind: 'tool',
+    defaultDecision: 'ask',
+    message: '停止后台进程需要用户确认',
+    sessionApproval: 'input',
+  }),
 
   validateContext(ctx) {
     if (!ctx.backgroundProcesses) {

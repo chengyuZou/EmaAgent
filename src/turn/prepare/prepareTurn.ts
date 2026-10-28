@@ -22,7 +22,7 @@ import {
   type LLMThinking,
 } from '@ema-agent/llm';
 import {
-  loadPermissionRuleBuckets,
+  loadPermissionRules,
 } from '@ema-agent/permission';
 import {
   type DynamicSystemPromptInput,
@@ -170,9 +170,8 @@ export async function prepareTurn(
 
   const scratchpadDir = deps.scratchpadDirForTurn?.(request.sessionId, turnId);
 
-  const permissionBuckets = loadPermissionRuleBuckets(
+  const permissionRules = loadPermissionRules(
     deps.settings,
-    request.sessionId,
     projectId ?? undefined,
   );
 
@@ -194,7 +193,7 @@ export async function prepareTurn(
       : {}),
     permission: {
       mode: permissionMode,
-      buckets: permissionBuckets,
+      rules: permissionRules,
     },
     signal,
   });

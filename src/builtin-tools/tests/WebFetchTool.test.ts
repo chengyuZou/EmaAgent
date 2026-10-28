@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ToolPermissionContext } from '@ema-agent/permission';
+import { checkToolPermission, rememberSessionApproval, clearSessionApprovals, type PermissionContext } from '@ema-agent/permission';
 import {
   WebFetchTool,
   type WebFetchResult,
 } from '../tools/WebFetchTool/WebFetchTool.js';
 import { WebPageCache, clearWebFetchCache } from '../tools/WebFetchTool/storage/cache.js';
 import { htmlToMarkdown } from '../tools/WebFetchTool/content/htmlToMarkdown.js';
-import { isPreapprovedHost } from '../tools/WebFetchTool/preapproved.js';
+import { isPreapprovedHost } from '../../permission/checks/webPreapprovedHosts.js';
 import { closeWebRequests } from '../tools/WebFetchTool/network/webRequests.js';
 
 beforeEach(() => {
@@ -17,6 +17,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+  clearSessionApprovals('permission-test');
   await closeWebRequests();
   vi.unstubAllEnvs();
 });
@@ -55,55 +56,56 @@ describe('WebFetchTool validateInput', () => {
   });
 });
 
-function makePermissionContext(): ToolPermissionContext {
+function makePermissionContext(): PermissionContext {
   return {
     mode: 'default',
-    alwaysAllowRules: {},
-    alwaysDenyRules: {},
-    alwaysAskRules: {},
+    sessionId: 'permission-test', rules: [],
     workspaceRoots: [],
   };
 }
 
+const checkFetchPermission = (input: unknown, toolContext: undefined, context: PermissionContext) =>
+  checkToolPermission(WebFetchTool, WebFetchTool.inputSchema.parse(input), toolContext, context, { interactive: true });
+
 describe('WebFetchTool 权限判定', () => {
   it('预批准域名放行', async () => {
-    const decision = await WebFetchTool.checkPermissions(
+    const decision = await checkFetchPermission(
       { url: 'https://docs.python.org/3/reference/' },
       undefined,
       makePermissionContext(),
     );
-    expect(decision.behavior).toBe('allow');
+    expect(decision.decision).toBe('allow');
   });
 
   it('其他域名交给中央(默认询问)', async () => {
-    const decision = await WebFetchTool.checkPermissions(
+    const decision = await checkFetchPermission(
       { url: 'https://example.com/page' },
       undefined,
       makePermissionContext(),
     );
-    expect(decision.behavior).toBe('passthrough');
+    expect(decision.decision).toBe('ask');
   });
 
   it('会话域名批准覆盖路径、协议和端口变化, 不覆盖其他域或子域', async () => {
-    const context = makePermissionContext();
-    context.alwaysAllowRules.session = ['WebFetch(domain:example.test)'];
-    context.alwaysAskRules.userSettings = ['WebFetch(domain:example.test)'];
+    let context = makePermissionContext();
+    rememberSessionApproval(context.sessionId, { toolName: 'WebFetch', condition: 'domain:example.test' });
+    context = { ...context, rules: [{ key: { toolName: 'WebFetch', condition: 'domain:example.test' }, decision: 'ask', from: 'userSettings' }] };
     for (const url of ['https://example.test/a', 'http://example.test:8443/b?q=1']) {
-      const result = await WebFetchTool.checkPermissions(
+      const result = await checkFetchPermission(
         WebFetchTool.inputSchema.parse({ url }), undefined, context,
       );
-      expect(result.behavior).toBe('allow');
+      expect(result.decision).toBe('allow');
     }
     for (const url of ['https://other.test/a', 'https://sub.example.test/a']) {
-      const result = await WebFetchTool.checkPermissions(
+      const result = await checkFetchPermission(
         WebFetchTool.inputSchema.parse({ url }), undefined, context,
       );
-      expect(result.behavior).toBe('passthrough');
+      expect(result.decision).toBe('ask');
     }
-    context.alwaysDenyRules.userSettings = ['WebFetch(domain:example.test)'];
-    expect((await WebFetchTool.checkPermissions(
+    context = { ...context, rules: [{ key: { toolName: 'WebFetch', condition: 'domain:example.test' }, decision: 'deny', from: 'userSettings' }] };
+    expect((await checkFetchPermission(
       WebFetchTool.inputSchema.parse({ url: 'https://example.test/a' }), undefined, context,
-    )).behavior).toBe('deny');
+    )).decision).toBe('deny');
   });
 });
 

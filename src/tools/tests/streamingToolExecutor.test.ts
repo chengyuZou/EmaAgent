@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import type { ToolPermissionContext } from '@ema-agent/permission';
+import type { PermissionContext } from '@ema-agent/permission';
 import {
   buildTool,
   contextOk,
@@ -18,11 +18,9 @@ import {
 const SESSION_ID = '00000000-0000-4000-8000-0000000000a1';
 const TURN_ID = '00000000-0000-4000-8000-0000000000b1';
 
-const PERMISSION_CONTEXT: ToolPermissionContext = {
+const PERMISSION_CONTEXT: PermissionContext = {
   mode: 'default',
-  alwaysAllowRules: {},
-  alwaysDenyRules: {},
-  alwaysAskRules: {},
+  sessionId: 'permission-test', rules: [],
 };
 
 type AnyTestTool = Tool<{ value: number }, unknown, Record<string, never>, never>;
@@ -44,7 +42,7 @@ function gatedTool(name: string, concurrencySafe: boolean): {
     validateContext: () => contextOk({}),
     isReadOnly: () => concurrencySafe,
     isConcurrencySafe: () => concurrencySafe,
-    checkPermissions: async () => ({ behavior: 'allow' as const }),
+    checkPermissions: async () => ({ kind: 'tool' as const, defaultDecision: 'allow' as const }),
     execute: async (_input, _context, invocation) => {
       markStarted();
       await gate;
@@ -97,7 +95,7 @@ describe('StreamingToolExecutor', () => {
       description: 'queued',
       inputSchema: z.object({ value: z.number() }),
       validateContext: () => contextOk({}),
-      checkPermissions: async () => ({ behavior: 'allow' as const }),
+      checkPermissions: async () => ({ kind: 'tool' as const, defaultDecision: 'allow' as const }),
       execute: async () => { executed.push('executed'); return {}; },
     });
     const { executor } = makeExecutor([first.tool, queued as AnyTestTool], {

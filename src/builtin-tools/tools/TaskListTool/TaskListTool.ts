@@ -10,7 +10,6 @@ import type { TaskStatus, TaskStore } from '@ema-agent/tasks';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { TASK_LIST_DESCRIPTION } from './prompt.js';
 
-
 interface TaskListToolContext {
   taskStore: TaskStore;
 }
@@ -40,7 +39,11 @@ export const TaskListTool = buildTool<TaskListInput, TaskListResult, TaskListToo
   isReadOnly: () => true,
   isConcurrencySafe: () => true,
   // 只读任务查询, 内置信任放行.
-  checkPermissions: async () => ({ behavior: 'allow' }),
+  checkPermissions: async () => ({
+    kind: 'tool',
+    defaultDecision: 'allow',
+    sessionApproval: 'tool',
+  }),
 
   validateContext(ctx: ToolUseContext) {
     if (!ctx.taskStore) {

@@ -3,7 +3,7 @@ import { CommandsError, type ManualCompactResult } from '@ema-agent/commands';
 import type { CompactEvent } from '@ema-agent/compact';
 import type { SubagentEvent, SubagentExecutor } from '@ema-agent/agent';
 import { GoalError, type GoalStore } from '@ema-agent/goal';
-import type { PermissionResponse, PermissionStreamEvent } from '@ema-agent/permission';
+import type { PermissionUserResponse, PermissionStreamEvent } from '@ema-agent/permission';
 import type { ToolExecutionEvent } from '@ema-agent/tools';
 import {
   SessionBusyError,
@@ -329,7 +329,7 @@ async function handleClientMessage(
         return;
       }
       case 'respond_permission': {
-        let response: PermissionResponse;
+        let response: PermissionUserResponse;
         if (message.action === 'deny') {
           response = message.reason ? { action: 'deny', reason: message.reason } : { action: 'deny' };
         } else {

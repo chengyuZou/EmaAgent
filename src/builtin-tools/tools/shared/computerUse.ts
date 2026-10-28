@@ -24,6 +24,6 @@ export function computerToolError(error: unknown): ToolExecutionError {
 }
 
 export const computerPermission = {
-  behavior: 'allow' as const,
-  decisionReason: { type: 'computerControl' as const, reason: '使用本次已授权的电脑控制.' },
+  kind: 'computerUse' as const,
+  needsStartupApproval: false,
 };

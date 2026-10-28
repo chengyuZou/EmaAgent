@@ -37,7 +37,11 @@ After the process finishes, prefer reading the complete log file with the Read t
   maxResultBytes: 160_000,
   isReadOnly: () => true,
   isConcurrencySafe: () => true,
-  checkPermissions: async () => ({ behavior: 'allow' }),
+  checkPermissions: async () => ({
+    kind: 'tool',
+    defaultDecision: 'allow',
+    sessionApproval: 'tool',
+  }),
   getToolUseSummary: (input) => `读取后台进程输出 ${input.backgroundProcessId}`,
 
   validateContext(ctx) {

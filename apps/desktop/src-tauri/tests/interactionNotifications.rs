@@ -6,6 +6,7 @@ fn request(kind: InteractionKind) -> InteractionNotification {
         turn_id: "turn-a".into(),
         tool_call_id: "call-a".into(),
         kind,
+        session_approval_description: Some("Allow this command in this Session.".into()),
         title: "A & <B>".into(),
         body: "A \"quoted\" tool\u{0}".into(),
     }
@@ -210,4 +211,13 @@ fn windows_accepts_a_real_notification() {
     let _ = std::fs::remove_dir(cache_dir.join("notifications"));
     let _ = std::fs::remove_dir(cache_dir);
     assert!(result.is_ok(), "{result:?}");
+}
+
+#[test]
+fn one_time_permission_has_no_session_button() {
+    let mut notice = request(InteractionKind::Permission);
+    notice.session_approval_description = None;
+    let xml = notification_xml(&notice, "0123456789abcdef");
+    assert_eq!(xml.matches("<action ").count(), 2);
+    assert!(!xml.contains("allowSession:"));
 }

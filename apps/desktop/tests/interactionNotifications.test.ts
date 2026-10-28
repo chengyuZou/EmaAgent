@@ -1,8 +1,11 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, createElement } from 'react';
+import { createRoot } from 'react-dom/client';
+import { PendingInteractionView } from '../src/chat/interactions/PendingInteractionView.js';
 import type { SessionListItem } from '../src/api/sessions.js';
-import type { PermissionResponse } from '@ema-agent/permission';
+import type { PermissionUserResponse } from '@ema-agent/permission';
 import type { InteractionNotificationAction, InteractionNotificationUpdate } from '../src/lib/tauri/types.js';
 import { mountInteractionNotifications } from '../src/lib/notifications/interactionNotifications.js';
 import { MainView, useMainNavigationStore } from '../src/layout/navigation.js';
@@ -13,7 +16,7 @@ const mocks = vi.hoisted(() => ({
   connect: vi.fn(),
   sync: vi.fn(async (_update: InteractionNotificationUpdate) => {}),
   open: vi.fn(async () => {}),
-  respond: vi.fn(async (_sessionId: string, _toolCallId: string, _response: PermissionResponse) => {}),
+  respond: vi.fn(async (_sessionId: string, _toolCallId: string, _response: PermissionUserResponse) => {}),
   toast: vi.fn(),
 }));
 
@@ -39,7 +42,7 @@ vi.mock('../src/api/workspaces.js', () => ({ sidebarApi: {} }));
 let action: (event: InteractionNotificationAction) => void;
 let stop: (() => void) | undefined;
 
-function permission(sessionId: string, toolCallId: string): void {
+function permission(sessionId: string, toolCallId: string, reusable = true): void {
   const store = useSessionActivityStore.getState();
   store.setConnection(sessionId, 'connected');
   store.applyInteractionEvent(sessionId, {
@@ -48,7 +51,9 @@ function permission(sessionId: string, toolCallId: string): void {
     turnId: `turn-${sessionId}`,
     toolCallId,
     toolName: 'Read',
-    toolDescription: 'Read a file',
+    summary: 'Read a file',
+    message: 'Read a file',
+    ...(reusable ? { sessionApprovalDescription: 'Allow this file in this Session.' } : {}),
     input: { secret: 'not part of a desktop notification' },
   });
 }
@@ -127,7 +132,8 @@ describe('native interaction notifications', () => {
           toolCallId: 'first',
           kind: 'permission',
           title: 'Session A',
-          body: '工具 Read 正在等待你的授权\nRead a file',
+          body: '工具 Read 正在等待你的授权\nRead a file\nAllow this file in this Session.',
+          sessionApprovalDescription: 'Allow this file in this Session.',
         },
         {
           sessionId: 'b',
@@ -269,4 +275,31 @@ describe('native interaction notifications', () => {
     permission('a', 'first');
     expect(mocks.sync).not.toHaveBeenCalled();
   });
+});
+
+it.each([false, true])('权限卡根据实际范围显示按钮, 可复用=%s', async reusable => {
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  permission('a', 'review', reusable);
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => root.render(createElement(PendingInteractionView)));
+    expect(container.textContent).toContain('Read a file');
+    const buttons = [...container.querySelectorAll('button')];
+    expect(buttons.some(button => button.textContent?.trim() === '本会话允许')).toBe(reusable);
+    const allow = buttons.find(button => button.textContent?.trim() === '允许');
+    await act(async () => allow!.click());
+    expect(mocks.respond).toHaveBeenCalledWith('a', 'review', { action: 'allow' });
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+    globalThis.IS_REACT_ACT_ENVIRONMENT = false;
+  }
+});
+
+it('一次性确认的原生通知不携带会话批准范围', async () => {
+  permission('b', 'startup', false);
+  await mount();
+  expect(mocks.sync.mock.calls.at(-1)![0].notifications[0]).not.toHaveProperty('sessionApprovalDescription');
 });

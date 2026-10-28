@@ -1,5 +1,5 @@
 // 规则解析实现来源: Claude utils/permissions/permissionRuleParser.ts.
-import type { PermissionRuleValue } from '../types.js';
+import type { PermissionRuleKey } from '../types.js';
 
 /**
  * 转义规则内容以便保存. 顺序敏感: 先转义反斜杠, 再转义括号.
@@ -24,7 +24,7 @@ export function unescapeRuleContent(content: string): string {
  * 解析 ToolName 或 ToolName(content). 空内容和单独的星号视为整个工具的规则.
  * 括号不完整或闭括号后仍有文本时, 整个字符串作为工具名, 不猜测批准范围.
  */
-export function permissionRuleValueFromString(ruleString: string): PermissionRuleValue {
+export function parsePermissionRuleKey(ruleString: string): PermissionRuleKey {
   const openParenIndex = findFirstUnescapedChar(ruleString, '(');
   if (openParenIndex === -1) {
     return { toolName: ruleString };
@@ -47,18 +47,18 @@ export function permissionRuleValueFromString(ruleString: string): PermissionRul
     return { toolName };
   }
 
-  return { toolName, ruleContent: unescapeRuleContent(rawContent) };
+  return { toolName, condition: unescapeRuleContent(rawContent) };
 }
 
-export function permissionRuleValueToString(ruleValue: PermissionRuleValue): string {
-  if (!ruleValue.ruleContent) {
-    return ruleValue.toolName;
+export function formatPermissionRuleKey(key: PermissionRuleKey): string {
+  if (!key.condition) {
+    return key.toolName;
   }
-  return `${ruleValue.toolName}(${escapeRuleContent(ruleValue.ruleContent)})`;
+  return `${key.toolName}(${escapeRuleContent(key.condition)})`;
 }
 
-export function matchesWholeTool(ruleValue: PermissionRuleValue, toolName: string): boolean {
-  return ruleValue.ruleContent === undefined && ruleValue.toolName === toolName;
+export function matchesWholeTool(key: PermissionRuleKey, toolName: string): boolean {
+  return key.condition === undefined && key.toolName === toolName;
 }
 
 /** 前面有奇数个反斜杠时, 当前括号属于内容, 不是规则分隔符. */

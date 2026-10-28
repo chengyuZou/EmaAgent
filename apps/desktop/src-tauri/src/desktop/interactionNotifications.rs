@@ -15,6 +15,7 @@ pub struct InteractionNotification {
     pub turn_id: String,
     pub tool_call_id: String,
     pub kind: InteractionKind,
+    pub session_approval_description: Option<String>,
     pub title: String,
     pub body: String,
 }
@@ -677,11 +678,17 @@ mod platform {
 
     fn notification_xml(request: &InteractionNotification, tag: &str) -> String {
         let actions = match request.kind {
-            InteractionKind::Permission => format!(
-                "<action content=\"允许\" arguments=\"allow:{tag}\" activationType=\"background\"/>\
-                 <action content=\"本会话允许\" arguments=\"allowSession:{tag}\" activationType=\"background\"/>\
-                 <action content=\"拒绝\" arguments=\"deny:{tag}\" activationType=\"background\"/>"
-            ),
+            InteractionKind::Permission => {
+                let session_button = if request.session_approval_description.is_some() {
+                    format!("<action content=\"本会话允许\" arguments=\"allowSession:{tag}\" activationType=\"background\"/>")
+                } else {
+                    String::new()
+                };
+                format!(
+                    "<action content=\"允许\" arguments=\"allow:{tag}\" activationType=\"background\"/>{session_button}\
+                     <action content=\"拒绝\" arguments=\"deny:{tag}\" activationType=\"background\"/>"
+                )
+            }
             InteractionKind::AskUser =>
                 "<action content=\"关闭\" arguments=\"dismiss\" activationType=\"system\"/>".into(),
         };

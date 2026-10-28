@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { directoryPathToRuleContent, filePathToRuleContent, matchPathRule } from '../rules/pathRuleMatching.js';
+import { directoryPathToRuleContent, filePathToRuleContent, matchPathRule } from '../checks/file/pathRuleMatching.js';
 
 describe('pathRuleMatching', () => {
   const root = 'D:/work/project';

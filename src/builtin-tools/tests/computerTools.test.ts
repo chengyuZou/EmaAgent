@@ -46,8 +46,8 @@ function fixture() {
     toolPool: new ToolPool([ObserveWindowTool, ComputerActionTool, ComputerEndTool]),
     permissionContext: {
       mode: 'default', workspaceRoots: [],
-      alwaysAllowRules: {}, alwaysDenyRules: {},
-      alwaysAskRules: { userSettings: ['ObserveWindow', 'ComputerAction', 'ComputerEnd'] },
+      sessionId: 'session-a',
+      rules: ['ObserveWindow', 'ComputerAction', 'ComputerEnd'].map(toolName => ({ key: { toolName }, decision: 'ask' as const, from: 'userSettings' as const })),
     },
     askPermission,
     onToolRegistered: (call, reject) => {

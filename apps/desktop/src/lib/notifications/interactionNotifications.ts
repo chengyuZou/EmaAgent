@@ -21,14 +21,17 @@ function readNotifications(): InteractionNotificationUpdate {
     if (pending.kind === 'permission') {
       const request = pending.request;
       body = `工具 ${request.toolName} 正在等待你的授权`;
-      const reason = request.decisionReason || request.toolDescription;
-      if (reason) body += `\n${reason}`;
+      body += `\n${request.message}`;
+      if (request.sessionApprovalDescription) body += `\n${request.sessionApprovalDescription}`;
     }
     notifications.push({
       sessionId,
       turnId: pending.request.turnId,
       toolCallId: pending.request.toolCallId,
       kind: pending.kind,
+      ...(pending.kind === 'permission' && pending.request.sessionApprovalDescription !== undefined
+        ? { sessionApprovalDescription: pending.request.sessionApprovalDescription }
+        : {}),
       title,
       body,
     });

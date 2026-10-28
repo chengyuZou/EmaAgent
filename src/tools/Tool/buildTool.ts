@@ -9,7 +9,8 @@ type DefaultedToolFields =
   | 'maxResultBytes'
   | 'isReadOnly'
   | 'isConcurrencySafe'
-  | 'requiresUserInteraction';
+  | 'requiresUserInteraction'
+  | 'checkPermissions';
 
 type ToolDefinition<TInput, TOutput, TContext, TProgress> =
   Omit<Tool<TInput, TOutput, TContext, TProgress>, DefaultedToolFields>
@@ -17,7 +18,7 @@ type ToolDefinition<TInput, TOutput, TContext, TProgress> =
 
 /**
  * 未声明并发安全的工具默认独占执行, 避免同时修改共享状态.
- * MCP 的风险提示由其 checkPermissions 解释, 此处不根据来源降低权限要求.
+ * 未提供权限检查信息时默认需要确认, 由 Permission 再按规则和模式判断.
  */
 export function buildTool<TInput, TOutput, TContext, TProgress = never>(
   definition: ToolDefinition<TInput, TOutput, TContext, TProgress>,
@@ -42,6 +43,7 @@ export function buildTool<TInput, TOutput, TContext, TProgress = never>(
 
   return Object.freeze({
     ...definition,
+    checkPermissions: definition.checkPermissions ?? (async () => ({ kind: 'tool', defaultDecision: 'ask' })),
     id: definition.id ?? definition.name,
     origin,
     maxResultBytes,

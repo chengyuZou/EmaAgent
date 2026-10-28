@@ -10,7 +10,6 @@ import type { Task, TaskStore } from '@ema-agent/tasks';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { TASK_CREATE_DESCRIPTION } from './prompt.js';
 
-
 interface TaskCreateToolContext {
   taskStore: TaskStore;
 }
@@ -54,7 +53,12 @@ export const TaskCreateTool = buildTool<TaskCreateInput, TaskCreateResult, TaskC
   isConcurrencySafe: () => true,
   getToolUseSummary: (input) => `创建任务:${input.subject}`,
   // 创建任务有副作用, 交给工具权限规则和模式决定是否询问.
-  checkPermissions: async () => ({ behavior: 'passthrough', message: '创建任务需要用户确认' }),
+  checkPermissions: async () => ({
+    kind: 'tool',
+    defaultDecision: 'ask',
+    message: '创建任务需要用户确认',
+    sessionApproval: 'input',
+  }),
 
   validateContext(ctx: ToolUseContext) {
     if (!ctx.taskStore) {

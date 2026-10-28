@@ -48,7 +48,11 @@ export const SkillTool = buildTool<SkillInput, SkillToolResult, SkillToolContext
   isReadOnly: () => true,
   isConcurrencySafe: () => true,
 
-  checkPermissions: async () => ({ behavior: 'allow' }),
+  checkPermissions: async () => ({
+    kind: 'tool',
+    defaultDecision: 'allow',
+    sessionApproval: 'tool',
+  }),
 
   validateContext(ctx: ToolUseContext) {
     if (!ctx.skillPool) {

@@ -2,13 +2,13 @@ import type { SubagentExecutor, AgentLoopEvent, PrepareSubagent } from '@ema-age
 import { ComputerUseError, type ComputerCallKind } from '@ema-agent/computer-use';
 import type { CallVision } from '@ema-agent/vision';
 import {
-  applyPermissionUpdate,
+  rememberSessionApproval,
   type PermissionMode,
   type PermissionRequest,
-  type PermissionResponse,
-  type SessionAllowRule,
+  type PermissionUserResponse,
+  type SessionPermissionApproval,
   type PermissionStreamEvent,
-  type ToolPermissionContext,
+  type PermissionContext,
 } from '@ema-agent/permission';
 import type { CommandRunner } from '@ema-agent/sandbox';
 import type { SettingsStore } from '@ema-agent/settings';
@@ -81,11 +81,7 @@ export interface PrepareTurnToolsInput {
   ) => void;
   readonly permission: {
     readonly mode: PermissionMode;
-    readonly buckets: {
-      readonly alwaysAllowRules: ToolPermissionContext['alwaysAllowRules'];
-      readonly alwaysDenyRules: ToolPermissionContext['alwaysDenyRules'];
-      readonly alwaysAskRules: ToolPermissionContext['alwaysAskRules'];
-    };
+    readonly rules: PermissionContext['rules'];
   };
   readonly signal: AbortSignal;
 }
@@ -115,11 +111,10 @@ export async function prepareTurnTools(deps: TurnToolsDeps, input: PrepareTurnTo
   } = input;
   const fileStateCache = deps.fileStateCache(sessionId);
 
-  const permissionContext: ToolPermissionContext = {
+  const permissionContext: PermissionContext = {
     mode: input.permission.mode,
-    alwaysAllowRules: input.permission.buckets.alwaysAllowRules,
-    alwaysDenyRules: input.permission.buckets.alwaysDenyRules,
-    alwaysAskRules: input.permission.buckets.alwaysAskRules,
+    sessionId,
+    rules: input.permission.rules,
     workspaceRoots: input.workspaceRoots,
   };
 
@@ -127,25 +122,16 @@ export async function prepareTurnTools(deps: TurnToolsDeps, input: PrepareTurnTo
   const askPermission = async (
     request: PermissionRequest,
     signal: AbortSignal,
-    sessionAllowRule: SessionAllowRule,
-  ): Promise<PermissionResponse> => {
+    sessionApproval: SessionPermissionApproval | undefined,
+  ): Promise<PermissionUserResponse> => {
     const { promise } = deps.interactionQueue.enqueuePermission(request);
     // 先建立可回答的队列条目, 再发布事件. 子代理不借父 Turn 通道.
     deps.publishInteraction({ type: 'permission_required', ...request });
     const response = await awaitInteraction(promise, signal, () => {
       deps.interactionQueue.cancel(request.toolCallId, 'tool aborted');
     });
-    if (response.action === 'allowSession') {
-      applyPermissionUpdate(
-        deps.settings,
-        {
-          type: 'addRules',
-          destination: 'session',
-          rules: [sessionAllowRule],
-          behavior: 'allow',
-        },
-        { sessionId }
-      );
+    if (response.action === 'allowSession' && sessionApproval) {
+      rememberSessionApproval(sessionId, sessionApproval.key);
     }
     const resolved = {
       type: 'permission_resolved' as const,

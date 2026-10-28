@@ -7,8 +7,7 @@ import { SubagentExecutor, SubagentStore, SubagentMessagesStore } from '@ema-age
 import { ComputerUse, type NativeControlState, type NativeRequest } from '@ema-agent/computer-use';
 import { Database, SubagentsRepo, SubagentRunsRepo, SubagentMessagesRepo } from '@ema-agent/storage';
 import {
-  clearSessionRules, findMatchingContentRule, getSessionAllowRules, loadPermissionRuleBuckets,
-  matchShellRule, shellCommandToRuleContent,
+  clearSessionApprovals, getSessionApprovals, loadPermissionRules, rememberSessionApproval,
 } from '@ema-agent/permission';
 import type { SettingsStore } from '@ema-agent/settings';
 import {
@@ -78,10 +77,10 @@ function fakeTool(name: string, options: {
     isConcurrencySafe: () => true,
     checkPermissions: async () => options.ask
       ? {
-          behavior: 'ask' as const,
+          kind: 'tool' as const, defaultDecision: 'ask' as const, sessionApproval: 'input' as const,
           message: '需要确认',
         }
-      : { behavior: 'allow' as const },
+      : { kind: 'tool' as const, defaultDecision: 'allow' as const },
     execute: async () => 'ok',
   });
 }
@@ -127,7 +126,7 @@ function makeInput(options: {
     emit: (event: TurnStreamEvent) => { options.events.push(event); },
     permission: {
       mode: 'default' as const,
-      buckets: { alwaysAllowRules: {}, alwaysDenyRules: {}, alwaysAskRules: {} },
+      rules: [],
     },
     signal: new AbortController().signal,
     ...(options.overrides ?? {}),
@@ -135,7 +134,7 @@ function makeInput(options: {
 }
 
 describe('prepareTurnTools', () => {
-  beforeEach(() => clearSessionRules(SESSION_ID));
+  beforeEach(() => clearSessionApprovals(SESSION_ID));
 
   afterEach(async () => {
     await closeWebRequests();
@@ -222,7 +221,7 @@ describe('prepareTurnTools', () => {
         overrides: {
           permission: {
             mode: 'bypassPermissions',
-            buckets: { alwaysAllowRules: {}, alwaysDenyRules: {}, alwaysAskRules: {} },
+            rules: [],
           },
         },
       }));
@@ -268,7 +267,7 @@ describe('prepareTurnTools', () => {
       overrides: {
         permission: {
           mode: 'bypassPermissions',
-          buckets: { alwaysAllowRules: {}, alwaysDenyRules: {}, alwaysAskRules: {} },
+          rules: [],
         },
       },
     }));
@@ -301,7 +300,7 @@ describe('prepareTurnTools', () => {
     deps.registry.register(MemoryReadTool);
     deps.registry.register(MemoryListTool);
     const input = makeInput({ events: [], overrides: {
-      permission: { mode, buckets: { alwaysAllowRules: {}, alwaysDenyRules: {}, alwaysAskRules: {} } },
+      permission: { mode, rules: [] },
     } });
     try {
       const unavailable = (await prepareTurnTools(deps, input)).createExecutor(() => undefined);
@@ -354,7 +353,7 @@ describe('prepareTurnTools', () => {
         overrides: {
           cwd: directory,
           workspaceRoots: [directory],
-          permission: { mode: 'plan', buckets: { alwaysAllowRules: {}, alwaysDenyRules: {}, alwaysAskRules: {} } },
+          permission: { mode: 'plan', rules: [] },
         },
       }));
       expect(assembly.toolPool.tools.some(tool => tool.name === 'DescribeImage')).toBe(true);
@@ -403,7 +402,7 @@ describe('prepareTurnTools', () => {
         turnId, sessionId, cwd: directory, workspaceRoots: [directory],
         permission: {
           mode: 'acceptEdits',
-          buckets: { alwaysAllowRules: {}, alwaysDenyRules: {}, alwaysAskRules: {} },
+          rules: [],
         },
       },
     });
@@ -461,26 +460,21 @@ describe('prepareTurnTools', () => {
       validateContext: () => contextOk({}),
       isReadOnly: () => true,
       isConcurrencySafe: () => true,
-      checkPermissions: async (input, _context, permissionContext) => {
+      checkPermissions: async input => {
         if (!specialized) {
-          return { behavior: 'passthrough', message: '需要确认' };
+          return { kind: 'tool', defaultDecision: 'ask', sessionApproval: 'input' };
         }
-        const sessionAllowRule = {
-          toolName: 'PermissionProbe', ruleContent: shellCommandToRuleContent(input.command),
+        return {
+          kind: 'shell', command: input.command,
+          subcommands: [input.command], canMatchSubcommands: true,
         };
-        const rule = findMatchingContentRule(permissionContext, 'PermissionProbe', 'allow',
-          content => matchShellRule(content, input.command));
-        if (rule) {
-          return { behavior: 'allow', decisionReason: { type: 'rule', rule }, sessionAllowRule };
-        }
-        return { behavior: 'passthrough', message: '需要确认', sessionAllowRule };
       },
       execute: async () => 'ok',
     });
     const deps = makeDeps({ tools: [], queue, settings });
     deps.registry.register(tool);
     const assembly = await prepareTurnTools(deps, makeInput({ events: [], overrides: {
-      permission: { mode: 'default', buckets: loadPermissionRuleBuckets(settings, SESSION_ID) },
+      permission: { mode: 'default', rules: loadPermissionRules(settings) },
     } }));
     const child = assembly.createSubagentExecutor({
       subagentId: 'child', runId: 'run', toolPool: assembly.toolPool,
@@ -511,7 +505,7 @@ describe('prepareTurnTools', () => {
 
     const later = await prepareTurnTools(deps, makeInput({ events: [], overrides: {
       turnId: 'later-turn',
-      permission: { mode: 'default', buckets: loadPermissionRuleBuckets(settings, SESSION_ID) },
+      permission: { mode: 'default', rules: loadPermissionRules(settings) },
     } }));
     const laterExecutor = later.createExecutor(() => undefined);
     laterExecutor.addTool(0, 'later', 'PermissionProbe', { command: 'echo *' });
@@ -521,7 +515,7 @@ describe('prepareTurnTools', () => {
 
     const other = await prepareTurnTools(deps, makeInput({ events: [], overrides: {
       sessionId: 'other-session', turnId: 'other-turn',
-      permission: { mode: 'default', buckets: loadPermissionRuleBuckets(settings, 'other-session') },
+      permission: { mode: 'default', rules: loadPermissionRules(settings) },
     } }));
     const otherExecutor = other.createExecutor(() => undefined);
     otherExecutor.addTool(0, 'other', 'PermissionProbe', { command: 'echo *' });
@@ -530,7 +524,7 @@ describe('prepareTurnTools', () => {
     await otherExecutor.join();
     expect(otherExecutor.takeCompletedResults()[0]?.isError).toBe(true);
 
-    clearSessionRules(SESSION_ID);
+    clearSessionApprovals(SESSION_ID);
     const cleared = assembly.createExecutor(() => undefined);
     cleared.addTool(0, 'cleared', 'PermissionProbe', { command: 'echo *' });
     await vi.waitFor(() => expect(queue.size()).toBe(1));
@@ -720,7 +714,7 @@ describe('prepareTurnTools', () => {
     await prepareTurnTools(deps, makeInput({ events: [] }));
     deps.registry.register(fakeTool('Bash', { id: BuiltinTools.Bash.id }));
     await prepareTurnTools(deps, makeInput({ events: [], overrides: {
-      permission: { mode: 'plan', buckets: { alwaysAllowRules: {}, alwaysDenyRules: {}, alwaysAskRules: {} } },
+      permission: { mode: 'plan', rules: [] },
     } }));
     expect(commandRunner).not.toHaveBeenCalled();
   });
@@ -786,6 +780,8 @@ describe('prepareTurnTools', () => {
   });
 
   it('Plan 只保留指定只读工具, 执行器无法重新找到写工具', async () => {
+    rememberSessionApproval(SESSION_ID, { toolName: 'Write' });
+    rememberSessionApproval(SESSION_ID, { toolName: 'Bash' });
     const tools = Object.values(BuiltinTools).map(identity =>
       fakeTool(identity.name, { id: identity.id }));
     // 即使工具自称只读, 也不能用任意名字或 MCP 声明扩入 Plan 池.
@@ -796,7 +792,7 @@ describe('prepareTurnTools', () => {
       overrides: {
         permission: {
           mode: 'plan',
-          buckets: { alwaysAllowRules: { session: ['Write(input:{})', 'Bash(input:{})'] }, alwaysDenyRules: {}, alwaysAskRules: {} },
+          rules: [],
         },
       },
     }));
@@ -832,7 +828,7 @@ describe('prepareTurnTools', () => {
       publishInteraction: event => {
         expect(queue.listPending(SESSION_ID)).toHaveLength(event.type === 'permission_required' ? 1 : 0);
         if (event.type === 'permission_resolved') {
-          expect(getSessionAllowRules(SESSION_ID)).toContain('Echo(input:{})');
+          expect(getSessionApprovals(SESSION_ID)).toContainEqual({ toolName: 'Echo', condition: 'input:{}' });
         }
         events.push(event);
       },
@@ -849,7 +845,7 @@ describe('prepareTurnTools', () => {
 
     const results = executor.takeCompletedResults();
     expect(results[0]).toMatchObject({ toolCallId: 'call-1', isError: false });
-    expect(getSessionAllowRules(SESSION_ID)).toContain('Echo(input:{})');
+    expect(getSessionApprovals(SESSION_ID)).toContainEqual({ toolName: 'Echo', condition: 'input:{}' });
     expect(events.some(e => e.type === 'permission_resolved'
       && (e as { decision?: string }).decision === 'allow')).toBe(true);
   });
@@ -891,7 +887,7 @@ describe('prepareTurnTools', () => {
     queue.respondPermission(SESSION_ID, 'once', { action });
     await executor.join();
     expect(executor.takeCompletedResults()[0]?.isError).toBe(action === 'deny');
-    expect(getSessionAllowRules(SESSION_ID)).toEqual([]);
+    expect(getSessionApprovals(SESSION_ID)).toEqual([]);
     expect(set).not.toHaveBeenCalled();
   });
 
@@ -918,7 +914,7 @@ describe('prepareTurnTools', () => {
 
     const results = executor.takeCompletedResults();
     expect(results[0]).toMatchObject({ isError: true, errorCode: 'tool/cancelled' });
-    expect(getSessionAllowRules(SESSION_ID)).toEqual([]);
+    expect(getSessionApprovals(SESSION_ID)).toEqual([]);
   });
 
 });

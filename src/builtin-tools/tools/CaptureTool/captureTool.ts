@@ -24,9 +24,11 @@ export const CaptureTool = buildTool<
     if (!context.captureScreen) return contextFail('当前宿主未提供屏幕捕获.');
     return contextOk({ captureScreen: context.captureScreen });
   },
+  
   async checkPermissions() {
-    return { behavior: 'passthrough', message: '允许截取当前屏幕并交给模型读取吗?' };
+    return { kind: 'tool', defaultDecision: 'ask', message: '允许截取当前屏幕并交给模型读取吗?', sessionApproval: 'tool' };
   },
+
   async execute(_input, context, invocation) {
     const filePath = await context.captureScreen(invocation.sessionId, invocation.turnId, invocation.signal);
     const mediaType = imageMediaTypeFor(filePath)!;
@@ -39,6 +41,7 @@ export const CaptureTool = buildTool<
       signal: invocation.signal,
     });
   },
+
   mapResultToModelContent(output) {
     return [
       { type: 'text', text: imageResultNotice(output.filePath, output.mediaType, output.originalBytes) },

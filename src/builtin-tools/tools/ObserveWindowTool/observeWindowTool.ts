@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { buildTool } from '@ema-agent/tools';
 import type { ComputerObservation } from '@ema-agent/computer-use';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
-import { computerContext, computerPermission, computerToolError, type ComputerToolContext } from '../shared/computerUse.js';
+import { computerContext, computerToolError, type ComputerToolContext } from '../shared/computerUse.js';
 import { OBSERVE_WINDOW_DESCRIPTION } from './prompt.js';
 
 const inputSchema = z.object({
@@ -28,12 +28,9 @@ export const ObserveWindowTool = buildTool<z.infer<typeof inputSchema>, Computer
     }
   },
   async checkPermissions(_input, context) {
-    if (!context.computer.needsStartupPermission) return computerPermission;
     return {
-      behavior: 'ask',
-      message: '允许 Ema 启动电脑控制吗? 控制期间可观察窗口并执行键鼠操作. 用户输入会暂停, Ctrl+Alt+C 继续, Esc 结束控制.',
-      // 启动许可只属于这次启动调用, 结束后不能用旧批准放行另一段控制.
-      sessionAllowRule: { toolName: BuiltinTools.ObserveWindow.name, ruleContent: `control:${context.computer.state!.controlId}` },
+      kind: 'computerUse',
+      needsStartupApproval: context.computer.needsStartupPermission,
     };
   },
   async execute(input, context, invocation) {

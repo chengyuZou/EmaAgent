@@ -5,5 +5,5 @@
     "outDir": "dist",
     "types": ["node"]
   },
-  "include": ["*.ts", "rules/**/*.ts", "paths/**/*.ts"]
+  "include": ["*.ts", "rules/**/*.ts", "checks/**/*.ts"]
 }

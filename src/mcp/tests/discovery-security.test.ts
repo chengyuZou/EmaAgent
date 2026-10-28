@@ -1,6 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { hasPermissionsToUseTool, permissionRuleValueToString, type ToolPermissionContext } from '@ema-agent/permission';
+import { checkToolPermission, rememberSessionApproval, clearSessionApprovals, type PermissionContext } from '@ema-agent/permission';
 import { DEFAULT_MAX_RESULT_BYTES } from '@ema-agent/tools';
 import type { McpToolInfo } from '../types.js';
 import { buildMcpBuiltTool, discoverServerTools } from '../discovery.js';
@@ -9,13 +9,13 @@ import {
   MAX_MCP_TOOL_SCHEMA_BYTES,
 } from '../toolSchemaLimits.js';
 
-const PERMISSION_CONTEXT: ToolPermissionContext = {
+const PERMISSION_CONTEXT: PermissionContext = {
   mode: 'default',
-  alwaysAllowRules: {},
-  alwaysDenyRules: {},
-  alwaysAskRules: {},
+  sessionId: 'permission-test', rules: [],
   workspaceRoots: [],
 };
+
+afterEach(() => clearSessionApprovals(PERMISSION_CONTEXT.sessionId));
 
 describe('MCP 工具发现安全边界', () => {
   it('把取消信号交给 SDK listTools', async () => {
@@ -95,8 +95,8 @@ describe('MCP 工具发现安全边界', () => {
     const [info] = await discoverServerTools('test', client);
     const tool = buildMcpBuiltTool(info!, registryStub());
 
-    await expect(tool.checkPermissions({}, {}, PERMISSION_CONTEXT))
-      .resolves.toMatchObject({ behavior: 'passthrough' });
+    await expect(checkToolPermission(tool, {}, {}, PERMISSION_CONTEXT, { interactive: true }))
+      .resolves.toMatchObject({ decision: 'ask' });
     expect(tool.isReadOnly({})).toBe(false);
     expect(tool.isConcurrencySafe({})).toBe(false);
   });
@@ -133,11 +133,9 @@ describe('MCP 工具发现安全边界', () => {
     const destructive = buildMcpBuiltTool(info!, registryStub());
 
     // Permission 先处理 ask, 所以 bypassPermissions 也不能跳过这一提示.
-    await expect(destructive.checkPermissions({}, {}, PERMISSION_CONTEXT))
-      .resolves.toMatchObject({
-        behavior: 'ask',
-        decisionReason: { type: 'safetyCheck', reason: 'destructiveHint' },
-      });
+    await expect(checkToolPermission(destructive, {}, {}, {
+      ...PERMISSION_CONTEXT, mode: 'bypassPermissions',
+    }, { interactive: true })).resolves.toMatchObject({ decision: 'ask' });
     expect(destructive.isReadOnly({})).toBe(false);
     expect(destructive.isConcurrencySafe({})).toBe(false);
   });
@@ -146,26 +144,26 @@ describe('MCP 工具发现安全边界', () => {
     const registry = registryStub();
     const tool = buildMcpBuiltTool(toolInfo({ reportedDestructive: true }), registry);
     const firstInput = tool.inputSchema.parse({ query: 'one', options: { b: 2, a: 1 } });
-    const first = await hasPermissionsToUseTool(tool as never, firstInput, {}, PERMISSION_CONTEXT, { interactive: true });
-    expect(first.behavior).toBe('ask');
-    if (first.behavior !== 'ask') throw new Error('expected ask');
-    const permissions: ToolPermissionContext = {
+    const first = await checkToolPermission(tool as never, firstInput, {}, PERMISSION_CONTEXT, { interactive: true });
+    expect(first.decision).toBe('ask');
+    if (first.decision !== 'ask' || !first.sessionApproval) throw new Error('expected ask');
+    rememberSessionApproval(PERMISSION_CONTEXT.sessionId, first.sessionApproval.key);
+    const permissions: PermissionContext = {
       ...PERMISSION_CONTEXT,
-      alwaysAllowRules: { session: [permissionRuleValueToString(first.sessionAllowRule)] },
-      alwaysAskRules: { userSettings: [tool.name] },
+      rules: [{ key: { toolName: tool.name }, decision: 'ask', from: 'userSettings' }],
     };
-    expect((await hasPermissionsToUseTool(tool as never,
-      { options: { a: 1, b: 2 }, query: 'one' }, {}, permissions, { interactive: true })).behavior).toBe('allow');
-    expect((await hasPermissionsToUseTool(tool as never,
-      { query: 'two', options: { a: 1, b: 2 } }, {}, permissions, { interactive: true })).behavior).toBe('ask');
+    expect((await checkToolPermission(tool as never,
+      { options: { a: 1, b: 2 }, query: 'one' }, {}, permissions, { interactive: true })).decision).toBe('allow');
+    expect((await checkToolPermission(tool as never,
+      { query: 'two', options: { a: 1, b: 2 } }, {}, permissions, { interactive: true })).decision).toBe('ask');
     const other = buildMcpBuiltTool(toolInfo({
       qualifiedName: 'mcp__test__other', serverToolName: 'other',
     }), registry);
-    expect((await hasPermissionsToUseTool(other as never, firstInput, {}, permissions,
-      { interactive: true })).behavior).toBe('ask');
-    expect((await hasPermissionsToUseTool(tool as never, firstInput, {}, {
-      ...permissions, alwaysDenyRules: { userSettings: [tool.name] },
-    }, { interactive: true })).behavior).toBe('deny');
+    expect((await checkToolPermission(other as never, firstInput, {}, permissions,
+      { interactive: true })).decision).toBe('ask');
+    expect((await checkToolPermission(tool as never, firstInput, {}, {
+      ...permissions, rules: [{ key: { toolName: tool.name }, decision: 'deny', from: 'userSettings' }],
+    }, { interactive: true })).decision).toBe('deny');
   });
 });
 

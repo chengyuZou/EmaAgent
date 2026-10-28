@@ -3,7 +3,6 @@ import path from 'node:path';
 import { z } from 'zod';
 import type { CallVision } from '@ema-agent/vision';
 import { readPdfFile, renderPdfContent, type PdfReadResult } from './pdfReader.js';
-import { checkInternalPath, filePathToRuleContent, getPathsForPermissionCheck } from '@ema-agent/permission';
 import {
   buildTool,
   contextFail,
@@ -12,7 +11,6 @@ import {
   type ToolInvocation,
 } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
-import { checkReadPathPermission } from '../shared/pathPermission.js';
 import { imageMediaTypeFor, readImageFile, type FileReadImageResult } from './imageReader.js';
 import {
   isNotebookPath,
@@ -57,8 +55,6 @@ const BLOCKED_DEVICE_PATHS = new Set([
   '/proc/kcore',
 ]);
 
-
-
 const inputSchema = z.object({
   file_path: z.string().min(1).describe('Absolute path to the file to read.'),
   offset: z
@@ -81,8 +77,6 @@ const inputSchema = z.object({
 
 type FileReadInput = z.infer<typeof inputSchema>;
 
-
-
 /** 文本正文(cat -n); 截断事实模型可见. */
 export interface FileReadTextResult {
   type: 'file_content';
@@ -104,8 +98,6 @@ export type FileReadResult =
   | FileReadImageResult
   | FileReadNotebookResult
   | PdfReadResult;
-
-
 
 function isBlockedDevice(p: string): boolean {
   // 统一分隔符再比较: Windows 的 path.normalize 会把 / 转成 \, 字符串判据不能跟着歪.
@@ -180,8 +172,6 @@ function textReadResult(
   };
 }
 
-
-
 export const FileReadTool = buildTool<FileReadInput, FileReadResult, FileReadToolContext>({
   id: BuiltinTools.FileRead.id,
   name: BuiltinTools.FileRead.name,
@@ -206,44 +196,15 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, FileReadToo
     });
   },
 
-  async checkPermissions(input, context, permissionContext) {
-    const filePath = path.resolve(context.cwd, input.file_path);
-    const downloadsDir = getWebDownloadsDir();
-    let internalRoots;
-    if (downloadsDir && !isUncPath(filePath) && !filePath.startsWith('//')) {
-      let resolvedDownloadsDir = downloadsDir;
-      try {
-        resolvedDownloadsDir = fs.realpathSync(downloadsDir);
-      } catch {
-        // A not-yet-created downloads directory grants no additional real path.
-      }
-      const roots = {
-        internalPaths: {
-          webDownloads: downloadsDir,
-          resolvedDownloads: resolvedDownloadsDir,
-        },
-      };
-      // A symlink inside downloads must not grant access to another directory.
-      if (getPathsForPermissionCheck(filePath).every(candidate => checkInternalPath(candidate, roots) === 'allow')) {
-        internalRoots = roots;
-      }
-    }
-    const result = checkReadPathPermission({
-      toolName: BuiltinTools.FileRead.name,
-      path: filePath,
-      cwd: context.cwd,
-      permissionContext,
-      internalRoots,
-    });
-    if (result.behavior === 'deny') {
-      return result;
-    }
+  async checkPermissions(input, context) {
+    const downloadsDirectory = getWebDownloadsDir();
     return {
-      ...result,
-      sessionAllowRule: {
-        toolName: BuiltinTools.FileRead.name,
-        ruleContent: filePathToRuleContent(filePath),
-      },
+      kind: 'file',
+      operation: 'read',
+      path: path.resolve(context.cwd, input.file_path),
+      cwd: context.cwd,
+      target: 'file',
+      ...(downloadsDirectory ? { internalReadDirectories: [downloadsDirectory] } : {}),
     };
   },
 
@@ -419,8 +380,6 @@ export const FileReadTool = buildTool<FileReadInput, FileReadResult, FileReadToo
     }
   },
 });
-
-
 
 function findSimilarFile(filePath: string): string | undefined {
   const dir = path.dirname(filePath);

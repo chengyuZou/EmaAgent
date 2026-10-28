@@ -1,4 +1,4 @@
-import type { PendingPermissionRequest, PermissionRequest, PermissionResponse } from '@ema-agent/permission';
+import type { PendingPermissionRequest, PermissionRequest, PermissionUserResponse } from '@ema-agent/permission';
 import type { AskUserRequiredEvent, PendingAskUserPrompt } from '@ema-agent/tools';
 
 
@@ -8,7 +8,7 @@ export interface PermissionInteraction {
   readonly createdAt: number;
   readonly timeoutMs: number | null;
   readonly request: PermissionRequest;
-  readonly resolve: (response: PermissionResponse) => void;
+  readonly resolve: (response: PermissionUserResponse) => void;
 }
 
 /** AskUser 交互条目;三身份含于 AskUserRequiredEvent 内. */
@@ -79,10 +79,10 @@ export class SessionInteractionQueue {
    * 身份含于其中,由 Tool 执行链装配);返回在用户响应或超时后 resolve 的 Promise.
    * 若该 Session 队列为空,新条目立即成为队首并开始超时;否则排队,等升为队首才计时.
    */
-  enqueuePermission(request: PermissionRequest, timeoutMs?: number | null): { createdAt: number; promise: Promise<PermissionResponse> } {
+  enqueuePermission(request: PermissionRequest, timeoutMs?: number | null): { createdAt: number; promise: Promise<PermissionUserResponse> } {
     const createdAt = Date.now();
-    let resolve!: (response: PermissionResponse) => void;
-    const promise = new Promise<PermissionResponse>(r => { resolve = r; });
+    let resolve!: (response: PermissionUserResponse) => void;
+    const promise = new Promise<PermissionUserResponse>(r => { resolve = r; });
 
     this.pushEntry({ kind: 'permission', createdAt, timeoutMs: timeoutMs ?? this.defaultTimeoutMs, request, resolve });
     return { createdAt, promise };
@@ -104,7 +104,7 @@ export class SessionInteractionQueue {
   }
 
   /** 回答当前 Session 的 Permission 队首; Turn/Run 归属直接读取原请求. */
-  respondPermission(sessionId: string, toolCallId: string, response: PermissionResponse): boolean {
+  respondPermission(sessionId: string, toolCallId: string, response: PermissionUserResponse): boolean {
     const record = this.index.get(toolCallId);
     if (!record || record.entry.kind !== 'permission') {
       return false;
@@ -113,6 +113,10 @@ export class SessionInteractionQueue {
       return false;
     }
     if (record.entry.request.sessionId !== sessionId) {
+      return false;
+    }
+    // 前端只能选择请求实际提供的批准范围, 一次性启动确认不接受本会话允许.
+    if (response.action === 'allowSession' && record.entry.request.sessionApprovalDescription === undefined) {
       return false;
     }
     return this.evict(toolCallId, response);
@@ -305,7 +309,7 @@ export class SessionInteractionQueue {
    * 把 id 对应条目移出 fifo 并 resolve.
    * 若移除的是队首,清理 timer 并让下一个升为队首开始计时;若队列空,移除 SessionFifo.
    */
-  private evict(id: string, payload: PermissionResponse | AskUserInteractionOutcome): boolean {
+  private evict(id: string, payload: PermissionUserResponse | AskUserInteractionOutcome): boolean {
     const record = this.index.get(id);
     if (!record) {
       return false;
@@ -320,7 +324,7 @@ export class SessionInteractionQueue {
     fifo.entries = fifo.entries.filter(e => e !== entry);
     this.index.delete(id);
     if (entry.kind === 'permission') {
-      entry.resolve(payload as PermissionResponse);
+      entry.resolve(payload as PermissionUserResponse);
     } else {
       entry.resolve(payload as AskUserInteractionOutcome);
     }

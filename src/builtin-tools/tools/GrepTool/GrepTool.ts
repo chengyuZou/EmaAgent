@@ -1,14 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { directoryPathToRuleContent, filePathToRuleContent } from '@ema-agent/permission';
 import { buildTool, contextFail, contextOk, type ToolInvocation } from '@ema-agent/tools';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
-import { checkReadPathPermission } from '../shared/pathPermission.js';
 import { runBoundedProcess } from '../shared/BoundedProcess.js';
 import { sortPathsByMtimeDesc } from '../shared/fileMtimeSort.js';
 import { GREP_DESCRIPTION } from './prompt.js';
-
 
 interface GrepToolContext {
   cwd: string;
@@ -20,8 +17,6 @@ const MAX_OUTPUT_BYTES = 2 * 1024 * 1024;
 const SEARCH_TIMEOUT_MS = 15_000;
 /** 版本控制元数据目录自动排除, 避免搜索结果噪声. */
 const VCS_DIRECTORIES_TO_EXCLUDE = ['.git', '.svn', '.hg', '.bzr', '.jj', '.sl'];
-
-
 
 const inputSchema = z.object({
   pattern: z.string().min(1).describe(
@@ -153,30 +148,13 @@ export const GrepTool = buildTool<GrepInput, GrepResult, GrepToolContext>({
     return { valid: true };
   },
 
-  async checkPermissions(input, context, permissionContext) {
-    const rawPath = input.path ?? context.cwd;
-    const isNetworkPath = rawPath.startsWith('\\\\') || rawPath.startsWith('//');
-    const target = isNetworkPath ? rawPath : path.resolve(context.cwd, rawPath);
-    const result = checkReadPathPermission({
-      toolName: BuiltinTools.Grep.name,
-      path: target,
-      cwd: context.cwd,
-      permissionContext,
-    });
-    if (result.behavior === 'deny' || isNetworkPath) {
-      // 网络目标类型未知, 由中央按完整输入精确批准, 不猜目录范围.
-      return result;
-    }
-    const targetStat = fs.statSync(target);
-    let ruleContent: string;
-    if (targetStat.isFile()) {
-      ruleContent = filePathToRuleContent(target);
-    } else {
-      ruleContent = directoryPathToRuleContent(target);
-    }
+  async checkPermissions(input, context) {
     return {
-      ...result,
-      sessionAllowRule: { toolName: BuiltinTools.Grep.name, ruleContent },
+      kind: 'file',
+      operation: 'read',
+      path: path.resolve(context.cwd, input.path ?? context.cwd),
+      cwd: context.cwd,
+      target: 'path',
     };
   },
 

@@ -1,59 +1,32 @@
 export * from './types.js';
 export * from './events.js';
-export {
-  findContentRule,
-  findMatchingContentRule,
-  hasPermissionsToUseTool,
-  listContentRules,
-  type HasPermissionsOptions,
-  type PermissionCheckableTool,
-} from './hasPermissionsToUseTool.js';
+export { checkToolPermission } from './checkToolPermission.js';
 export {
   escapeRuleContent,
-  matchesWholeTool,
-  permissionRuleValueFromString,
-  permissionRuleValueToString,
   unescapeRuleContent,
+  parsePermissionRuleKey,
+  formatPermissionRuleKey,
+  matchesWholeTool,
 } from './rules/permissionRuleParser.js';
+export { loadPermissionRules, reconcileProjectRules } from './rules/loader.js';
+export { rememberSessionApproval, getSessionApprovals, clearSessionApprovals } from './rules/sessionApprovals.js';
 export {
   matchShellRule,
   matchWildcardPattern,
   parsePermissionRule,
   shellCommandToRuleContent,
   type ShellPermissionRule,
-} from './rules/shellRuleMatching.js';
-export { directoryPathToRuleContent, filePathToRuleContent, matchPathRule } from './rules/pathRuleMatching.js';
-export {
-  loadPermissionRuleBuckets,
-  reconcileProjectRules,
-  type PermissionRuleBuckets,
-} from './rules/loader.js';
+} from './checks/shell/shellRuleMatching.js';
+export { directoryPathToRuleContent, filePathToRuleContent, matchPathRule } from './checks/file/pathRuleMatching.js';
 export {
   DANGEROUS_FILES,
   getPathsForPermissionCheck,
   hasSuspiciousWindowsPath,
   normalizeCaseForComparison,
   normalizeMacOsSymlinks,
-} from './paths/pathSafety.js';
-export {
-  pathInAnyWorkingDir,
-  pathInWorkingDir,
-} from './paths/workspaceBoundary.js';
-export {
-  checkInternalPath,
-  type InternalPathRoots,
-} from './paths/internalPaths.js';
-export {
-  getPlatform,
-  resetPlatformCache,
-  toPortablePath,
-  type Platform,
-} from './paths/platformPaths.js';
-export {
-  applyPermissionUpdate,
-  clearSessionRules,
-  getSessionAllowRules,
-} from './rules/update.js';
+} from './checks/file/pathSafety.js';
+export { pathInAnyWorkingDir, pathInWorkingDir } from './checks/file/workspaceBoundary.js';
+export { getPlatform, resetPlatformCache, toPortablePath, type Platform } from './checks/file/platformPaths.js';
 export {
   DEFAULT_PERMISSION_ASK_TIMEOUT_MS,
   MAX_PERMISSION_ASK_TIMEOUT_MS,

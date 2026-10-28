@@ -1,4 +1,4 @@
-import type { PermissionResponse } from '@ema-agent/permission';
+import type { PermissionUserAction } from '@ema-agent/permission';
 import type { PendingInteraction } from '@ema-agent/turn';
 import type { EventDisplayTable } from '../../api/settings.js';
 
@@ -26,6 +26,7 @@ export interface InteractionNotification {
   readonly turnId: string;
   readonly toolCallId: string;
   readonly kind: PendingInteraction['kind'];
+  readonly sessionApprovalDescription?: string;
   readonly title: string;
   readonly body: string;
 }
@@ -40,7 +41,7 @@ export interface InteractionNotificationAction {
   readonly sessionId: string;
   readonly turnId: string;
   readonly toolCallId: string;
-  readonly action: 'openSession' | PermissionResponse['action'];
+  readonly action: 'openSession' | PermissionUserAction;
 }
 
 export type TerminalEvent =

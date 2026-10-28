@@ -1,10 +1,9 @@
 import { domainToASCII } from 'node:url';
 import { z } from 'zod';
-import { findContentRule, findMatchingContentRule } from '@ema-agent/permission';
 import { buildTool, contextOk, type ToolInvocation } from '@ema-agent/tools';
 import { requestWeb } from '../WebFetchTool/network/webRequests.js';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
-import { normalizeDomains, searchWeb, type SearchProgress, type SearchResult } from './adapters/index.js';
+import { searchWeb, type SearchProgress, type SearchResult } from './adapters/index.js';
 import { WEB_SEARCH_DESCRIPTION } from './prompt.js';
 
 const inputSchema = z.object({
@@ -46,38 +45,13 @@ export const WebSearchTool = buildTool<WebSearchInput, WebSearchResult, void, Se
 
   getToolUseSummary: (input) => input.query,
 
-  async checkPermissions(input, _context, permissionContext) {
-    const ruleContent = webSearchRuleContent(input);
-    const sessionAllowRule = { toolName: BuiltinTools.WebSearch.name, ruleContent };
-    const denied = findContentRule(permissionContext, BuiltinTools.WebSearch.name, 'deny', ruleContent);
-    if (denied) {
-      return {
-        behavior: 'deny',
-        message: '已禁止本次 Web 搜索',
-        decisionReason: { type: 'rule', rule: denied },
-      };
-    }
-    const sessionRule = findMatchingContentRule(
-      permissionContext, BuiltinTools.WebSearch.name, 'allow',
-      content => content === ruleContent, 'session',
-    );
-    if (sessionRule) {
-      return { behavior: 'allow', decisionReason: { type: 'rule', rule: sessionRule }, sessionAllowRule };
-    }
-    const asked = findContentRule(permissionContext, BuiltinTools.WebSearch.name, 'ask', ruleContent);
-    if (asked) {
-      return {
-        behavior: 'ask',
-        message: 'Web 搜索需要用户确认',
-        decisionReason: { type: 'rule', rule: asked },
-        sessionAllowRule,
-      };
-    }
-    const allowed = findContentRule(permissionContext, BuiltinTools.WebSearch.name, 'allow', ruleContent);
-    if (allowed) {
-      return { behavior: 'allow', decisionReason: { type: 'rule', rule: allowed }, sessionAllowRule };
-    }
-    return { behavior: 'passthrough', message: 'Web 搜索需要用户确认', sessionAllowRule };
+  async checkPermissions(input) {
+    return {
+      kind: 'webSearch',
+      query: input.query,
+      allowedDomains: input.allowed_domains,
+      blockedDomains: input.blocked_domains,
+    };
   },
 
   validateContext() {
@@ -139,13 +113,6 @@ export const WebSearchTool = buildTool<WebSearchInput, WebSearchResult, void, Se
   },
 });
 
-function webSearchRuleContent(input: WebSearchInput): string {
-  return `search:${JSON.stringify({
-    query: input.query.trim(),
-    allowed_domains: normalizeDomains(input.allowed_domains).sort(),
-    blocked_domains: normalizeDomains(input.blocked_domains).sort(),
-  })}`;
-}
 
 function validateDomainEntry(domain: string): string | null {
   const value = domain.trim().toLowerCase();

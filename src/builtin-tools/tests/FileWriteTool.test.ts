@@ -9,7 +9,7 @@ import { BuiltinTools } from '../BuiltinToolIdentity.js';
 import { FileWriteTool } from '../tools/FileWriteTool/FileWriteTool.js';
 import { FileReadTool } from '../tools/FileReadTool/FileReadTool.js';
 import { atomicTempPrefix, atomicWriteUtf8 } from '../tools/FileWriteTool/atomicWrite.js';
-import { checkWritePathPermission } from '../tools/shared/pathPermission.js';
+import { checkToolPermission } from '@ema-agent/permission';
 import {
   cleanupInterruptedFileWriteTemps,
   type InterruptedFileWriteCall,
@@ -63,33 +63,23 @@ describe('FileWriteTool — 新建与覆盖', () => {
     const result = await FileReadTool.execute({ file_path: target }, ctx, makeInvocation());
     expect(result).toMatchObject({ type: 'file_content', content: '     1\treplacement' });
   });
-  it('默认工作目录可写，但同级 data 仍受保护', () => {
+  it('默认工作目录可写, 但同级 data 仍受保护', async () => {
     const workspace = path.join(os.homedir(), '.ema-agent', 'workspace');
     const permissionContext = {
       mode: 'acceptEdits' as const,
-      alwaysAllowRules: {},
-      alwaysDenyRules: {},
-      alwaysAskRules: {},
+      sessionId: 'permission-test', rules: [],
       workspaceRoots: [workspace],
     };
-    const base = {
-      toolName: 'FileWrite',
-      cwd: workspace,
+    const checkPath = (filePath: string) => checkToolPermission(
+      FileWriteTool,
+      { file_path: filePath, content: 'fixture' },
+      makeContext(),
       permissionContext,
-    };
-
-    expect(checkWritePathPermission({
-      ...base,
-      path: path.join(workspace, 'notes.txt'),
-    }).behavior).toBe('allow');
-    expect(checkWritePathPermission({
-      ...base,
-      path: path.join(os.homedir(), '.ema-agent', 'data', 'notes.txt'),
-    }).behavior).toBe('ask');
-    expect(checkWritePathPermission({
-      ...base,
-      path: path.join(workspace, '.ema-agent', 'notes.txt'),
-    }).behavior).toBe('ask');
+      { interactive: true },
+    );
+    expect((await checkPath(path.join(workspace, 'notes.txt'))).decision).toBe('allow');
+    expect((await checkPath(path.join(os.homedir(), '.ema-agent', 'data', 'notes.txt'))).decision).toBe('ask');
+    expect((await checkPath(path.join(workspace, '.ema-agent', 'notes.txt'))).decision).toBe('ask');
   });
 
   it('新建文件并返回完整事实(created: originalFile=null, patch 为空)', async () => {
