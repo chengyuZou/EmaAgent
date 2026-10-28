@@ -8,7 +8,7 @@
 
 工具通过 `buildTool()` 提供输入 Schema, `validateContext`, 权限检查和 `execute`. 工具返回业务结果, `mapResultToModelContent` 选择模型可见内容. 未提供映射时, 字符串原样返回, 其他结果转为 JSON.
 
-`ToolUseContext` 保存宿主能力. 每次调用通过 `validateContext` 检查并取出需要的能力. `ToolInvocation` 单独提供 Session, Turn, ToolCall 身份与取消信号.
+`ToolExecutionContext` 由 Turn 装配给执行器, 包含执行身份, 取消信号, 工具池, Permission, 结果保存和电脑操控回调. `interface/` 中的 `ToolUseContext` 则供具体工具通过 `validateContext` 检查并取出需要的能力. 子代理控制和用户问询契约放在相邻文件中. `ToolInvocation` 单独提供 Session, Turn, ToolCall 身份与取消信号.
 
 `ToolRegistry` 保存实现. 内置工具单独注册, MCP 批次先完成名称, ID 和来源冲突检查, 再替换实现. `assembleToolPool()` 把内置工具排在前面, MCP 按原始 Server 与工具身份排序. 调用方再按设置, 权限模式和主/子代理范围筛选.
 
@@ -20,9 +20,12 @@ Pool 保留同一批 Tool 对象, 不回读 Registry. MCP 更新影响后续准�
 
 ```text
 保存 tool_use
-  -> 解析一次 Schema, 检查 Context 和业务输入
+  -> 解析一次 Schema, 登记电脑调用
+  -> 按并发或独占规则等待更早工具结束
+  -> 检查电脑操控暂停, 检查 Context 和业务输入
   -> 保存 prepared, 检查权限并按需等待批准
-  -> 保存 authorized, 再保存 running
+  -> 保存 authorized, 再次检查电脑操控暂停
+  -> 保存 running
   -> 调用 execute, 生成模型可见结果
   -> 按模型 block 顺序交付 ToolResult
   -> Agent 保存 tool_result Message
@@ -31,13 +34,17 @@ Pool 保留同一批 Tool 对象, 不回读 Registry. MCP 更新影响后续准�
 
 输入无效或缺少能力时不会进入权限检查. 没有批准通道时, 需要批准的调用会被拒绝. 会话批准规则由宿主保存, 详见 [Permission](../permission/README-zh.md).
 
-宿主通过执行环境的 `onToolRegistered` 登记排队调用的业务归属, 返回完成时的清理函数. 其 reject 回调只用于确定尚未提交业务操作的调用, 已开始的操作返回实际结果. 排队调用取消后可以直接完成, 不等待前面的长工具, 结果交付仍保持模型 block 顺序. `beforeToolExecution` 在检查权限前和真正执行前等待宿主放行. 执行器不解释宿主业务状态, 不替换工具自身的 Context 投影.
+Turn 通过 `registerComputerToolCall` 把四种电脑工具按 ToolCallId 登记到 ComputerUse, 普通工具不登记. 暂停或结束操控时, ComputerUse 用 `cancelPendingComputerCall` 取消可直接作废的旧调用; 已提交给 Rust 的键鼠动作返回实际结果, 保留可能部分完成的说明. 调用处理结束后, 执行器调用返回的清理函数删除登记, 启动未获批准时也释放操控预约.
+
+Turn 提供的 `waitIfComputerUsePaused` 让普通工具在本 Session 操控暂停时等用户继续或结束, 正在结束时等操控收尾. 执行器在排队结束后和 Permission 完成且真正执行前分别检查. Tool 或 Turn 的取消信号会中断等待. 电脑调用不在这里等待重放, 子代理也不接入这两个回调.
+
+调用按 ToolCall ID 建立索引, 模型 block 顺序列表引用同一批记录, 只在新增调用时排序. 排队取消和正常执行共用一条调用流程. 被取消的调用可立即生成结果, 不等待前面的长工具. 调度仍保留它原本需要等待的更早调用, 后续工具不能因中间调用取消而提前越过这些工作.
 
 并发安全调用可以同时执行, 但要等待前一个独占调用. 独占调用等待此前全部调用完成, 并阻止后续调用越过自己. 即使后面的调用先完成, 结果和终态事件仍按模型 block 顺序交付. 进度事件实时转发.
 
-必须保存结果 Message 后再调用 `acknowledgeResult()`. `running` 在执行工具前保存; 越过这个位置后取消不能证明没有副作用, 因此执行状态记为 `outcome_unknown`, 模型可见结果仍可以是取消. 写状态时检查 version, 避免迟到结果覆盖新状态.
+必须保存结果 Message 后再调用 `acknowledgeResult()`. `running` 在执行工具前保存; 越过这个位置后取消不能证明没有副作用, 因此执行状态记为 `outcome_unknown`, 模型可见结果仍可以是取消. ComputerUse 明确确认电脑动作尚未提交并通过取消回调返回时, 可以保存为取消. 写状态时检查 version, 避免迟到结果覆盖新状态.
 
-关闭时取消调用, 默认最多等待五秒. 仍未结束的调用停止对外发事件, 并根据是否开始执行记录状态. `reset()` 用于已完成的 LLM 迭代之间, 不能用来丢弃活跃调用.
+关闭时取消调用, 默认最多等待五秒. 仍未结束的调用停止对外发事件, 并根据是否开始执行记录状态. 每次模型迭代创建自己的执行器.
 
 ## 结果与文件状态
 
@@ -55,6 +62,7 @@ Pool 保留同一批 Tool 对象, 不回读 Registry. MCP 更新影响后续准�
 
 - 普通调用不再等待独立的进程名额, 工具层的权限与并发检查仍然生效. 180 秒内完成则返回普通结果, 删除临时日志, 不保留进程行.
 - 超过 180 秒后, 同一进程登记为后台运行, 保留日志并解除原 Turn 的取消信号和进度回调. 它不占显式后台队列的名额.
+- Scheduler 统一取得和释放运行名额, 进程任务完成收尾后只释放一次. queued 先保存并发布, 然后才允许 Scheduler 启动进程.
 - 显式后台调用立即保存, 所有 Session 按提交顺序 FIFO 等待空闲名额. 并发数默认 32, 可设置为 1-128. 该设置只限制显式后台命令, 不是所有 Shell 进程的总上限. 取消排队项不会启动进程, 也不会释放运行名额.
 - 最长运行时间默认 24 小时, 可设为一到 168 小时. 单条命令可请求更短时间. 提交时固定上限, 实际启动后计时, 排队不计入.
 - 提交命令与实际启动排队命令前都检查 Session 是否仍允许工作.
@@ -65,6 +73,6 @@ Pool 保留同一批 Tool 对象, 不回读 Registry. MCP 更新影响后续准�
 
 ## 阅读与验证
 
-先看 [Tool](./Tool/tool.ts), [组装入口](./assembly/assembleToolPool.ts) 和 [StreamingToolExecutor](./execution/streamingToolExecutor.ts). 单次调用的顺序在 [toolCallExecution.ts](./execution/toolCallExecution.ts), 后台转交和停止在 [backgroundProcess.ts](./background/backgroundProcess.ts).
+先看 [Tool](./definition/tool.ts), [组装入口](./assembly/assembleToolPool.ts) 和 [StreamingToolExecutor](./execution/streamingToolExecutor.ts). 单次调用的顺序在 [toolCallExecution.ts](./execution/toolCallExecution.ts), 后台转交和停止在 [backgroundProcess.ts](./background/backgroundProcess.ts).
 
 运行 `pnpm --filter @ema-agent/tools test` 和 `pnpm --filter @ema-agent/tools typecheck`. 测试覆盖注册冲突, 调度, 结果保存确认, 取消, 结果文件与后台执行, 使用临时 SQL 和日志目录. 后台测试也会启动真实 Node 子进程验证日志写入失败.

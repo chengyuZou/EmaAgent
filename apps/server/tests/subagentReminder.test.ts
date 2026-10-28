@@ -4,8 +4,8 @@ import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Database, SubagentsRepo, SubagentRunsRepo } from '@ema-agent/storage';
 import { SubagentStore } from '@ema-agent/agent';
-import type { TurnExecutorDeps, TurnReminderScope } from '../../../src/turn/turn.js';
-import { renderTurnReminder } from '../../../src/turn/prepare/turnReminder.js';
+import type { TurnExecutorDeps, TurnReminderScope } from '../../../src/turn/core/turnExecutor.js';
+import { renderTurnReminder } from '../../../src/turn/reminder/turnReminder.js';
 import { openTurns, type TurnCompositionDeps } from '../src/composition/turn.js';
 
 const captured = vi.hoisted(() => ({

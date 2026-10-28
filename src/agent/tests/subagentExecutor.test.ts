@@ -63,7 +63,7 @@ function makeInput(toolCallId: string, gate: Promise<void>, parentSignal: AbortS
     runInBackground: false,
     prepareSubagent: async ({ signal, subagentId, runId, messageStore, prompt, messageIds, options }) => {
       messageStore.initialize(subagentId, runId, prompt);
-      messageIds.push(...messageStore.loadHistory(subagentId).map(message => message.id));
+      messageIds.setInitialHistory(messageStore.loadHistory(subagentId).map(message => message.id));
       return ({
       messages: [{ role: 'user', content: '检查实现' }],
       prepareIteration: async ({ messages }) => ({ request: { messages }, messages }),

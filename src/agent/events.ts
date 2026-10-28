@@ -69,6 +69,12 @@ export type AgentLoopEvent =
     readonly content: readonly AssistantBlock[];
   }
   | {
+    /** 输出长度限制后的续写通知. 消费方保存成功后再恢复循环, 不作为用户手写输入. */
+    readonly type: 'output_continuation';
+    readonly llmCallId: string;
+    readonly content: string;
+  }
+  | {
     /** AgentLoop 已把这些消息追加进下一次调用会读取的工作历史. */
     readonly type: 'model_history_appended';
     readonly llmCallId: string;

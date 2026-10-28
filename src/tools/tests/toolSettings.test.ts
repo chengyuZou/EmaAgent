@@ -3,11 +3,10 @@ import { SettingsStore, InvalidSettingValueError } from '@ema-agent/settings';
 import type { SettingsRepository } from '@ema-agent/settings';
 import {
   ASK_USER_TOOL_ID,
-  DEFAULT_TOOL_SETTINGS,
   disabledToolsSetting,
   readToolSettings,
 } from '../settings.js';
-import { BuiltinTools } from '../Tool/BuiltinToolIdentity.js';
+import { BuiltinTools } from '../identity/builtinTools.js';
 
 function makeRepo(values: Record<string, unknown> = {}): SettingsRepository {
   return {
@@ -32,7 +31,6 @@ describe('disabledToolsSetting', () => {
   it('默认全开: 无存值回落空数组', () => {
     const store = new SettingsStore(makeRepo());
     expect(store.get(disabledToolsSetting)).toEqual([]);
-    expect(DEFAULT_TOOL_SETTINGS).toEqual({ disabledToolIds: [] });
   });
 
   it('写入选中的内置工具 id 可读回', () => {

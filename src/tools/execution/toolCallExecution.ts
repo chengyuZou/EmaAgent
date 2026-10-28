@@ -1,90 +1,23 @@
 import type { ToolResultContentPart } from '@ema-agent/llm';
-import {
-  checkToolPermission,
-  type PermissionRequest,
-  type PermissionUserResponse,
-  type SessionPermissionApproval,
-  type PermissionContext,
-} from '@ema-agent/permission';
-import { ZodError } from 'zod';
-import type { ToolPool } from '../assembly/toolPool.js';
-import { ToolExecutionError, ToolInputError } from '../errors.js';
-import type { ToolExecutionEvent } from '../events.js';
-import type { Tool } from '../Tool/tool.js';
-import type { ToolInvocation } from '../Tool/toolInvocation.js';
-import type { ToolUseContext } from '../Tool/toolUseContext.js';
-import type { ToolExecutionState, ToolExecutionStatus } from './toolExecutionState.js';
-import type { ToolResultStore } from '../results/toolResultStore.js';
+import { checkToolPermission, type PermissionRequest } from '@ema-agent/permission';
+import { ToolExecutionError } from '../errors.js';
+import type { AnyTool } from '../definition/tool.js';
+import type { ToolInvocation } from '../definition/toolInvocation.js';
 import type { ToolResult } from '../results/toolResult.js';
-
-// ToolPool 是 Tool 泛型的唯一擦除边界;单调用内的同一对象负责全程.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyTool = Tool<any, any, any, any>;
-
-/** 一次Turn 或子代理 Run 内的工具调用共用执行环境. */
-export type ToolExecutionEnvironment = {
-  readonly sessionId: string;
-  readonly turnId: string;
-  /** 所属 Turn/Run 的取消信号, 每个工具调用再派生自己的 signal. */
-  readonly abortSignal: AbortSignal;
-  /** 本次执行已经筛选并冻结的工具池. */
-  readonly toolPool: ToolPool;
-  /** Turn 准备期冻结的权限判定上下文(模式 + 配置规则 + 工作区). */
-  readonly permissionContext: PermissionContext;
-  /**
-   * 权限交互通道:存在即 interactive,ask 决策经它等用户回答;
-   * 缺失时中央把 ask 处理为 deny(headless); 前后台子代理可共用 Session 通道.
-   * 由宿主实现(交互队列 + permission_required/resolved 事件 +
-   * allowSession 的批准保存),执行链只消费最终回答.
-   */
-  readonly askPermission?: (
-    request: PermissionRequest,
-    signal: AbortSignal,
-    sessionApproval: SessionPermissionApproval | undefined,
-  ) => Promise<PermissionUserResponse>;
-  readonly toolContext: ToolUseContext;
-  readonly toolResultStore?: ToolResultStore;
-  readonly toolExecutionState?: ToolExecutionState;
-  /** 入队时由宿主登记业务归属, 返回完成时的清理函数. reject 仅用于确定未执行的调用. */
-  readonly onToolRegistered?: (
-    call: ToolExecutionCall,
-    reject: (error: ToolExecutionError) => void,
-  ) => (() => void) | undefined;
-  /** 开始检查权限及执行工具前等待宿主放行. 等待可被本次调用或 Turn 的取消打断. */
-  readonly beforeToolExecution?: (call: ToolExecutionCall, signal: AbortSignal) => Promise<void>;
-} & (
-    | { readonly subagentId?: never; readonly runId?: never }
-    | {
-      readonly subagentId: string;
-      /** 子工具属于本次 Run, turnId 仅保留父调用来源. */
-      readonly runId: string;
-    }
-  );
-
-export interface ToolExecutionCall {
-  readonly callId: string;
-  readonly name: string;
-  readonly args: unknown;
-}
-
-export interface ToolExecutionCompletion {
-  readonly result: ToolResult;
-  /** StreamingToolExecutor 按模型输出顺序发射终态;进度和审批事件不经过该缓冲. */
-  readonly terminalEvent: ToolExecutionEvent;
-}
-
-interface ToolFailure {
-  readonly code: string;
-  readonly message: string;
-}
-
-type ResultDisposition = 'succeeded' | 'failed' | 'cancelled' | 'outcome_unknown';
+import type { ToolError, ToolExecutionEvent } from './toolEvents.js';
+import type { ToolExecutionStatus } from './toolExecutionState.js';
+import type { ToolExecutionCall, ToolExecutionContext } from './toolExecutionContext.js';
+import {
+  classifyExecutionFailure, classifyCallPreparationError, errorMessage, executionStatusForOutcome,
+  isCancelled, isExecutionNonTerminal, outcomeStatusForFailure, serializeToolOutput, toolUnavailable,
+  type ToolCallOutcome,
+} from './toolCallOutcome.js';
 
 /**
  * 单次工具调用的执行状态机.
  *
- * StreamingToolExecutor 只决定何时 run();本对象从当前 ToolPool 取得唯一 Tool,
- * 对模型参数只 parse 一次,然后让校验,Permission 和 execute 共用该局部输入.
+ * StreamingToolExecutor 在登记时调用 run(), 并传入本调用需要等待的更早工具.
+ * 构造时从 ToolPool 找到工具并只解析一次 Schema, 后续校验, Permission 和 execute 共用解析结果.
  */
 export class ToolCallExecution {
   readonly id: string;
@@ -92,29 +25,29 @@ export class ToolCallExecution {
   readonly isConcurrencySafe: boolean;
   readonly requiresUserInteraction: boolean;
 
-  private readonly startedAt = Date.now();
+  private readonly registeredAt = Date.now();
   private readonly abortController = new AbortController();
   private readonly tool?: AnyTool;
   private readonly input?: unknown;
-  private readonly preflightFailure?: ToolFailure;
+  // 查找工具, 解析参数, 读取调度声明或登记电脑调用时发现的错误.
+  // 构造阶段先记录, 后面的统一执行流程再生成失败 ToolResult.
+  private readonly callPreparationError?: ToolError;
   private executionStatus?: ToolExecutionStatus;
-  private result?: ToolResult;
-  private terminalEvent?: ToolExecutionEvent;
-  private resultDisposition?: ResultDisposition;
-  private runPromise?: Promise<ToolExecutionCompletion>;
-  private releaseCall?: () => void;
+  private outcome?: ToolCallOutcome;
+  private executionPromise?: Promise<ToolCallOutcome>;
+  private unregisterComputerToolCall?: () => void;
 
   constructor(
-    private readonly environment: ToolExecutionEnvironment,
+    private readonly executionContext: ToolExecutionContext,
     private readonly call: ToolExecutionCall,
     private readonly emit: (event: ToolExecutionEvent) => void,
   ) {
     this.id = call.callId;
     this.name = call.name;
 
-    const tool = environment.toolPool.get(call.name);
+    const tool = executionContext.toolPool.get(call.name);
     if (!tool) {
-      this.preflightFailure = toolUnavailable(call.name);
+      this.callPreparationError = toolUnavailable(call.name);
       this.isConcurrencySafe = true;
       this.requiresUserInteraction = false;
       return;
@@ -126,9 +59,13 @@ export class ToolCallExecution {
       this.input = input;
       this.isConcurrencySafe = tool.isConcurrencySafe(input);
       this.requiresUserInteraction = tool.requiresUserInteraction(input);
-      this.releaseCall = environment.onToolRegistered?.(call, error => this.abort(error));
+      // 排队前就登记, ComputerUse 才能在暂停时取消尚未轮到执行的电脑调用.
+      this.unregisterComputerToolCall = executionContext.registerComputerToolCall?.(
+        call,
+        error => this.abort(error),
+      );
     } catch (error) {
-      this.preflightFailure = classifyInputFailure(call.name, error);
+      this.callPreparationError = classifyCallPreparationError(call.name, error);
       this.isConcurrencySafe = true;
       this.requiresUserInteraction = false;
     }
@@ -154,10 +91,7 @@ export class ToolCallExecution {
     }
     if (this.executionStatus === 'prepared' || this.executionStatus === 'authorized') {
       try {
-        this.environment.toolExecutionState?.cancel(this.id);
-        if (this.environment.toolExecutionState) {
-          this.executionStatus = 'cancelled';
-        }
+        this.advanceExecutionState('cancel');
       } catch {
         // 启动恢复会清理尚未越过副作用边界的记录.
       }
@@ -165,54 +99,38 @@ export class ToolCallExecution {
   }
 
   /** 同一个调用对象无论被等待几次,都只会越过一次副作用边界. */
-  run(): Promise<ToolExecutionCompletion> {
-    this.runPromise ??= this.runOnce();
-    return this.runPromise;
+  run(earlierToolsFinished: Promise<void> = Promise.resolve()): Promise<ToolCallOutcome> {
+    this.executionPromise ??= this.runOnce(earlierToolsFinished);
+    return this.executionPromise;
   }
 
   /** Tool Result 已写入 Message 后,才把薄执行状态推进到终态. */
   commitResult(): void {
-    if (!this.result || !this.resultDisposition) {
-      throw new Error(`tool_result_not_ready: ${this.id}`);
-    }
-    if (!isExecutionNonTerminal(this.executionStatus)) {
-      return;
-    }
+    const outcome = this.outcome;
+    if (!outcome) throw new Error(`tool_result_not_ready: ${this.id}`);
+    if (!isExecutionNonTerminal(this.executionStatus)) return;
 
-    if (this.resultDisposition === 'succeeded') {
-      this.environment.toolExecutionState?.succeed(this.id);
-      if (this.environment.toolExecutionState) {
-        this.executionStatus = 'succeeded';
-      }
-      return;
-    }
-    // 越过副作用边界(running)后的取消无法证明干净,只能按 outcome_unknown 记录终态.
-    if (
-      this.resultDisposition === 'outcome_unknown'
-      || (this.executionStatus === 'running' && this.resultDisposition === 'cancelled'
-        && !(this.abortController.signal.reason instanceof ToolExecutionError))
-    ) {
-      this.environment.toolExecutionState?.outcomeUnknown(this.id);
-      if (this.environment.toolExecutionState) {
-        this.executionStatus = 'outcome_unknown';
-      }
-      return;
-    }
-    if (this.resultDisposition === 'cancelled') {
-      this.environment.toolExecutionState?.cancel(this.id);
-      if (this.environment.toolExecutionState) {
-        this.executionStatus = 'cancelled';
-      }
-      return;
-    }
-    this.environment.toolExecutionState?.fail(this.id);
-    if (this.environment.toolExecutionState) {
-      this.executionStatus = 'failed';
+    const status = executionStatusForOutcome(
+      outcome.status, this.executionStatus, this.abortController.signal.reason,
+    );
+    const state = this.executionContext.toolExecutionState;
+    if (status === 'cancelled' && this.executionStatus === 'running') {
+      // ComputerUse 已通过取消回调确认旧调用未提交动作, 即使已进入 execute 也按取消结果结束.
+      const record = state?.completeFromMessage(this.id, { isError: true, errorCode: 'tool/cancelled' });
+      if (record) this.executionStatus = record.status;
+    } else {
+      const transition = {
+        succeeded: 'succeed',
+        failed: 'fail',
+        cancelled: 'cancel',
+        outcome_unknown: 'outcomeUnknown',
+      } as const;
+      this.advanceExecutionState(transition[status]);
     }
   }
 
-  private async runOnce(): Promise<ToolExecutionCompletion> {
-    const parentSignal = this.environment.abortSignal;
+  private async runOnce(earlierToolsFinished: Promise<void>): Promise<ToolCallOutcome> {
+    const parentSignal = this.executionContext.abortSignal;
     const onParentAbort = (): void => this.abort('turn_abort');
     parentSignal.addEventListener('abort', onParentAbort, { once: true });
     if (parentSignal.aborted) {
@@ -220,46 +138,61 @@ export class ToolCallExecution {
     }
 
     try {
+      await this.waitForEarlierToolsOrCancellation(earlierToolsFinished);
       await this.executePipeline();
     } catch (error) {
       if (isCancelled(this.abortController.signal, parentSignal)) {
         this.completeCancellation();
-      } else if (!this.result) {
-        await this.completeFailure({ code: 'tool/internal_error', message: errorMessage(error) });
+      } else if (!this.outcome) {
+        this.completeFailure({ code: 'tool/internal_error', message: errorMessage(error) });
       }
     } finally {
       parentSignal.removeEventListener('abort', onParentAbort);
-      this.releaseCall?.();
+      this.unregisterComputerToolCall?.();
     }
 
-    if (!this.result || !this.terminalEvent) {
-      const message = 'Tool execution failed unexpectedly';
-      this.result = this.errorResult('tool/internal_error', message);
-      this.terminalEvent = this.errorEvent('tool/internal_error', message);
-      this.resultDisposition = 'failed';
-    }
-    return { result: this.result, terminalEvent: this.terminalEvent };
+    return this.outcome!;
+  }
+
+  /**
+   * 校验和 Permission 前, 等待 StreamingToolExecutor 按本批并发规则选出的更早工具.
+   * 并发安全工具等最近一个独占工具及其更早调用; 独占工具等全部更早登记的工具.
+   * 更早工具成功, 失败或取消都算结束, 不要求它们成功.
+   * 当前调用取消时提前返回, executePipeline 随即生成取消结果, 不执行具体工具.
+   */
+  private async waitForEarlierToolsOrCancellation(earlierToolsFinished: Promise<void>): Promise<void> {
+    const signal = this.abortController.signal;
+    if (signal.aborted) return;
+    await new Promise<void>(resolve => {
+      const finish = (): void => {
+        signal.removeEventListener('abort', finish);
+        resolve();
+      };
+      signal.addEventListener('abort', finish, { once: true });
+      void earlierToolsFinished.then(finish, finish);
+    });
   }
 
   private async executePipeline(): Promise<void> {
     const signal = this.abortController.signal;
-    if (signal.aborted || this.environment.abortSignal.aborted) {
+    if (signal.aborted || this.executionContext.abortSignal.aborted) {
       this.completeCancellation();
       return;
     }
-    if (this.preflightFailure) {
-      await this.completeFailure(this.preflightFailure);
+    if (this.callPreparationError) {
+      this.completeFailure(this.callPreparationError);
       return;
     }
 
-    // 构造器只有在 Tool 存在且 Schema 解析成功时才不会设置 preflightFailure.
+    // 构造阶段已完成工具查找, Schema 解析, 调度声明读取和电脑调用登记.
     const tool = this.tool!;
     const invocation = this.invocation(signal);
-    await this.environment.beforeToolExecution?.(this.call, signal);
+    // 调度等待结束后, 再检查所属 Session 是否暂停操控, 避免普通工具在用户接管时开始工作.
+    await this.executionContext.waitIfComputerUsePaused?.(this.call, signal);
     signal.throwIfAborted();
-    const contextProjection = tool.validateContext(this.environment.toolContext);
+    const contextProjection = tool.validateContext(this.executionContext.toolContext);
     if (!contextProjection.valid) {
-      await this.completeFailure({ code: 'tool/context_unavailable', message: contextProjection.reason });
+      this.completeFailure({ code: 'tool/context_unavailable', message: contextProjection.reason });
       return;
     }
 
@@ -271,7 +204,7 @@ export class ToolCallExecution {
     )) {
       return;
     }
-    if (!await this.prepareExecutionState(tool)) {
+    if (!this.prepareExecutionState(tool)) {
       return;
     }
 
@@ -279,10 +212,7 @@ export class ToolCallExecution {
       return;
     }
 
-    this.environment.toolExecutionState?.authorize(this.id);
-    if (this.environment.toolExecutionState) {
-      this.executionStatus = 'authorized';
-    }
+    this.advanceExecutionState('authorize');
     await this.executeTool(
       tool,
       this.input,
@@ -298,26 +228,28 @@ export class ToolCallExecution {
     invocation: ToolInvocation,
   ): Promise<boolean> {
     try {
+      // 文件检查或命令解析可能异步完成. ObserveWindow 也在这里预约操控, 随后才请求批准.
+      // 校验未结束前不能进入 Permission; 校验失败则不调用 execute.
       const validation = await tool.validateInput?.(input, narrowedContext, invocation)
         ?? { valid: true as const };
       if (validation.valid) {
         return true;
       }
-      await this.completeFailure({ code: validation.code ?? 'tool/invalid_input', message: validation.message });
+      this.completeFailure({ code: validation.code ?? 'tool/invalid_input', message: validation.message });
       return false;
     } catch (error) {
-      await this.completeFailure({ code: 'tool/validation_error', message: errorMessage(error) });
+      this.completeFailure({ code: 'tool/validation_error', message: errorMessage(error) });
       return false;
     }
   }
 
-  private async prepareExecutionState(tool: AnyTool): Promise<boolean> {
+  private prepareExecutionState(tool: AnyTool): boolean {
     try {
-      const record = this.environment.toolExecutionState?.prepare({
+      const record = this.executionContext.toolExecutionState?.prepare({
         callId: this.id,
-        sessionId: this.environment.sessionId,
-        turnId: this.environment.turnId,
-        subagentId: this.environment.subagentId,
+        sessionId: this.executionContext.sessionId,
+        turnId: this.executionContext.turnId,
+        subagentId: this.executionContext.subagentId,
         toolName: tool.name,
       });
       if (record) {
@@ -325,15 +257,15 @@ export class ToolCallExecution {
       }
       return true;
     } catch (error) {
-      await this.completeFailure({ code: 'tool/journal_prepare_failed', message: errorMessage(error) });
+      this.completeFailure({ code: 'tool/journal_prepare_failed', message: errorMessage(error) });
       return false;
     }
   }
 
   /**
-   * 中央固定优先级判定 → allow 放行 / deny 失败 / ask 走交互通道.
-   * 会话批准保存(allowSession)由 askPermission 的实现方
-   * 在等回答时完成,执行链不接触 settings.
+   * Permission 返回 allow 时继续, deny 时生成失败结果, ask 时等用户回答.
+   * Turn 提供的 askPermission 先保存 allowSession 对应的会话批准, 再返回回答.
+   * 执行器不自行保存或推导批准范围.
    */
   private async requestPermission(tool: AnyTool, input: unknown, narrowedContext: unknown): Promise<boolean> {
     const {
@@ -341,10 +273,11 @@ export class ToolCallExecution {
       turnId,
       permissionContext,
       askPermission
-    } = this.environment;
+    } = this.executionContext;
     const signal = this.abortController.signal;
 
     try {
+      // Permission 会调用工具的 checkPermissions 收集操作信息, 其中可能包含异步路径检查.
       const permissionCheckResult = await checkToolPermission(
         tool,
         input,
@@ -356,7 +289,7 @@ export class ToolCallExecution {
         return true;
       }
       if (permissionCheckResult.decision === 'deny') {
-        await this.completeFailure({ code: 'permission/denied', message: permissionCheckResult.message });
+        this.completeFailure({ code: 'permission/denied', message: permissionCheckResult.message });
         return false;
       }
 
@@ -374,25 +307,26 @@ export class ToolCallExecution {
         turnId,
         toolCallId: this.id,
       };
-      const request: PermissionRequest = this.environment.subagentId !== undefined
-        ? { ...requestFields, subagentId: this.environment.subagentId, runId: this.environment.runId }
+      const request: PermissionRequest = this.executionContext.subagentId !== undefined
+        ? { ...requestFields, subagentId: this.executionContext.subagentId, runId: this.executionContext.runId }
         : requestFields;
+      // 等交互队列中的真实回答. 用户尚未决定时不能执行; signal 取消会撤销这条批准请求.
       const permissionUserResponse = await askPermission!(request, signal, permissionCheckResult.sessionApproval);
 
-      if (isCancelled(signal, this.environment.abortSignal)) {
+      if (isCancelled(signal, this.executionContext.abortSignal)) {
         this.completeCancellation();
         return false;
       }
       if (permissionUserResponse.action === 'allow' || permissionUserResponse.action === 'allowSession') {
         return true;
       }
-      await this.completeFailure({ code: 'permission/denied', message: permissionUserResponse.reason ?? '用户拒绝了本次调用' });
+      this.completeFailure({ code: 'permission/denied', message: permissionUserResponse.reason ?? '用户拒绝了本次调用' });
       return false;
     } catch (error) {
-      if (isCancelled(signal, this.environment.abortSignal)) {
+      if (isCancelled(signal, this.executionContext.abortSignal)) {
         this.completeCancellation();
       } else {
-        await this.completeFailure({ code: 'permission/error', message: errorMessage(error) });
+        this.completeFailure({ code: 'permission/error', message: errorMessage(error) });
       }
       return false;
     }
@@ -404,49 +338,43 @@ export class ToolCallExecution {
     narrowedContext: unknown,
     invocation: ToolInvocation,
   ): Promise<void> {
-    const { sessionId, turnId } = this.environment;
+    const { sessionId, turnId } = this.executionContext;
     const signal = this.abortController.signal;
     let output: unknown;
 
     try {
-      // 权限等待期间也可能发生暂停. 越过副作用边界前再次等待, 不回放已取消的调用.
-      await this.environment.beforeToolExecution?.(this.call, signal);
+      // 用户回答 Permission 期间可能接管电脑. 真正执行前再等继续或结束, 已取消调用不重放.
+      await this.executionContext.waitIfComputerUsePaused?.(this.call, signal);
       signal.throwIfAborted();
-      // running 是副作用边界;该状态持久化成功后才能调用具体工具.
-      this.environment.toolExecutionState?.start(this.id);
-      if (this.environment.toolExecutionState) {
-        this.executionStatus = 'running';
-      }
+      // 先保存 running 再开始实际操作. 此后若中断且没有实际结果, 不能假定操作完全没发生.
+      this.advanceExecutionState('start');
+      // 等具体工具交回业务结果. 电脑动作若被中断, 由 Rust 的返回值说明是否可能部分完成.
       output = await tool.execute(
         input,
         narrowedContext,
         invocation,
-        (progress: unknown) => this.emit({ type: 'tool_progress', sessionId, turnId, callId: this.id, name: this.name, progress }),
+        (progress: unknown) => this.emit({
+          type: 'tool_progress',
+          sessionId,
+          turnId,
+          callId: this.id,
+          name: this.name,
+          progress,
+        }),
       );
 
-      if (signal.aborted && !this.environment.abortSignal.aborted) {
+      if (signal.aborted && !this.executionContext.abortSignal.aborted) {
         // 工具已经产出的结构化结果仍可展示和导航, 取消状态单独保存.
         this.completeCancellation(output);
         return;
       }
 
-      this.terminalEvent = {
-        type: 'tool_result',
-        sessionId,
-        callId: this.id,
-        name: this.name,
-        output,
-        durationMs: this.durationMs(),
-      };
     } catch (error) {
-      if (signal.aborted && !this.environment.abortSignal.aborted) {
-        this.completeCancellation(error instanceof ToolExecutionError ? error.output : undefined);
-        return;
-      } else if (this.environment.abortSignal.aborted) {
+      if (isCancelled(signal, this.executionContext.abortSignal)) {
         this.completeCancellation(error instanceof ToolExecutionError ? error.output : undefined);
         return;
       } else {
-        await this.completeFailure(
+        this.completeFailure(
           classifyExecutionFailure(error),
           error instanceof ToolExecutionError ? error.output : undefined
         );
@@ -454,64 +382,50 @@ export class ToolCallExecution {
       }
     }
 
-    this.result = {
-      type: 'tool_result',
-      toolCallId: this.id,
-      content: await this.normalizeResult(tool, output),
-      data: output,
-      isError: false,
-      durationMs: this.durationMs(),
+    const durationMs = this.durationMs();
+    // 大文本可能要保存到结果文件. 完成后才把包含文件路径的 ToolResult 交给模型.
+    const content = await this.normalizeResult(tool, output);
+    this.outcome = {
+      status: 'succeeded',
+      result: {
+        type: 'tool_result',
+        toolCallId: this.id,
+        content,
+        data: output,
+        isError: false,
+        durationMs,
+      },
+      terminalEvent: {
+        type: 'tool_result', sessionId, callId: this.id, name: this.name, output, durationMs,
+      },
     };
-    this.resultDisposition = 'succeeded';
   }
 
-  private async completeFailure(failure: ToolFailure, output?: unknown): Promise<void> {
-    this.result = this.errorResult(failure.code, failure.message);
-    this.terminalEvent = this.errorEvent(failure.code, failure.message);
-    if (output !== undefined) {
-      this.result.data = output;
-      if (this.terminalEvent.type === 'tool_result') {
-        this.terminalEvent.output = output;
-      }
-    }
-    this.resultDisposition = failure.code === 'tool/outcome_unknown'
-      ? 'outcome_unknown'
-      : 'failed';
-    if (failure.code === 'tool/cancelled') {
-      this.resultDisposition = 'cancelled';
-    }
+  private completeFailure(failure: ToolError, output?: unknown): void {
+    this.outcome = {
+      status: outcomeStatusForFailure(failure.code),
+      result: {
+        ...this.errorResult(failure.code, failure.message),
+        ...(output !== undefined ? { data: output } : {}),
+      },
+      terminalEvent: {
+        ...this.errorEvent(failure.code, failure.message),
+        ...(output !== undefined ? { output } : {}),
+      },
+    };
   }
 
   private completeCancellation(data?: unknown): void {
     const reason = this.abortController.signal.reason;
-    if (reason instanceof ToolExecutionError && !this.environment.abortSignal.aborted) {
-      const failure = reason;
-      this.result = this.errorResult(failure.code, failure.message);
-      this.result.data = data ?? failure.output;
-      this.resultDisposition = failure.code === 'tool/outcome_unknown' ? 'outcome_unknown' : 'cancelled';
-      this.terminalEvent = this.errorEvent(failure.code, failure.message);
+    if (reason instanceof ToolExecutionError && !this.executionContext.abortSignal.aborted) {
+      this.completeFailure(reason, data ?? reason.output);
+      this.outcome = {
+        ...this.outcome!,
+        status: reason.code === 'tool/outcome_unknown' ? 'outcome_unknown' : 'cancelled',
+      };
       return;
     }
-    const output = '[用户中途终止]';
-    this.result = {
-      type: 'tool_result',
-      toolCallId: this.id,
-      content: output,
-      isError: true,
-      durationMs: this.durationMs(),
-      errorCode: 'tool/cancelled',
-      ...(data !== undefined ? { data } : {}),
-    };
-    this.resultDisposition = 'cancelled';
-    this.terminalEvent = {
-      type: 'tool_result',
-      sessionId: this.environment.sessionId,
-      callId: this.id,
-      name: this.name,
-      output: data ?? output,
-      error: { code: 'tool/cancelled', message: output },
-      durationMs: this.durationMs(),
-    };
+    this.completeFailure({ code: 'tool/cancelled', message: '[用户中途终止]' }, data);
   }
 
   /**
@@ -524,7 +438,7 @@ export class ToolCallExecution {
     if (typeof modelContent !== 'string') {
       return modelContent;
     }
-    return this.environment.toolResultStore?.normalize(this.name, modelContent, tool.maxResultBytes) ?? modelContent;
+    return this.executionContext.toolResultStore?.normalize(this.name, modelContent, tool.maxResultBytes) ?? modelContent;
   }
 
   private errorResult(code: string, message: string): ToolResult {
@@ -538,10 +452,10 @@ export class ToolCallExecution {
     };
   }
 
-  private errorEvent(code: string, message: string): ToolExecutionEvent {
+  private errorEvent(code: string, message: string): Extract<ToolExecutionEvent, { type: 'tool_result' }> {
     return {
       type: 'tool_result',
-      sessionId: this.environment.sessionId,
+      sessionId: this.executionContext.sessionId,
       callId: this.id,
       name: this.name,
       error: { code, message },
@@ -554,72 +468,30 @@ export class ToolCallExecution {
       return;
     }
     try {
-      this.environment.toolExecutionState?.outcomeUnknown(this.id);
-      if (this.environment.toolExecutionState) {
-        this.executionStatus = 'outcome_unknown';
-      }
+      this.advanceExecutionState('outcomeUnknown');
     } catch {
       // 数据库不可用时保留 running,下一次启动恢复会转换为 outcome_unknown.
     }
   }
 
+  private advanceExecutionState(
+    transition: 'authorize' | 'start' | 'succeed' | 'fail' | 'cancel' | 'outcomeUnknown',
+  ): void {
+    const record = this.executionContext.toolExecutionState?.[transition](this.id);
+    if (record) this.executionStatus = record.status;
+  }
+
   private durationMs(): number {
-    return Date.now() - this.startedAt;
+    return Date.now() - this.registeredAt;
   }
 
   private invocation(signal: AbortSignal): ToolInvocation {
     return Object.freeze({
-      sessionId: this.environment.sessionId,
-      turnId: this.environment.turnId,
+      sessionId: this.executionContext.sessionId,
+      turnId: this.executionContext.turnId,
       toolCallId: this.id,
       signal,
     });
   }
 }
 
-/** 模型幻觉或收窄后不在 Pool 中的工具名;这是查找失败,不是权限拒绝. */
-function toolUnavailable(name: string): ToolFailure {
-  return {
-    code: 'tool/unavailable',
-    message: `Tool "${name}" is not available in the current ToolPool`,
-  };
-}
-
-function classifyInputFailure(toolName: string, error: unknown): ToolFailure {
-  if (error instanceof ToolExecutionError) {
-    return { code: error.code, message: error.message };
-  }
-  const inputError = error instanceof ZodError
-    ? new ToolInputError(toolName, error)
-    : error;
-  return {
-    code: inputError instanceof ToolInputError
-      ? 'tool/validation_failed'
-      : 'tool/input_preparation_failed',
-    message: errorMessage(inputError),
-  };
-}
-
-function serializeToolOutput(output: unknown): string {
-  if (typeof output === 'string') {
-    return output;
-  }
-  const serialized = JSON.stringify(output, null, 2);
-  return serialized ?? String(output);
-}
-
-function classifyExecutionFailure(error: unknown): ToolFailure {
-  return { code: error instanceof ToolExecutionError ? error.code : 'tool/error', message: errorMessage(error) };
-}
-
-function isCancelled(toolSignal: AbortSignal, turnSignal: AbortSignal): boolean {
-  return toolSignal.aborted || turnSignal.aborted;
-}
-
-function isExecutionNonTerminal(status: ToolExecutionStatus | undefined): boolean {
-  return status === 'prepared' || status === 'authorized' || status === 'running';
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}

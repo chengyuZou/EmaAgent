@@ -1,4 +1,4 @@
-import type { PrepareAgentIteration } from '@ema-agent/agent';
+import type { ModelMessageIds, PrepareAgentIteration } from '@ema-agent/agent';
 import type { CompactRequest, CompactResult } from '@ema-agent/compact';
 import {
   assembleContext,
@@ -18,14 +18,14 @@ export interface PrepareAgentIterationDeps {
   readonly usageRecorder?: UsageRecorder;
   readonly emit: (event: TurnStreamEvent) => void;
   /**
-   * 调用方保存各自的摘要. messageIds 与 AgentLoop 消息一一对应;
-   * 未落库的引导消息占一个 undefined 位置. 子代理保存到自己的消息表.
+   * 主 Agent 和子代理分别保存自己的摘要. messageIds 与 AgentLoop 的消息位置一一对应.
+   * 摘要覆盖边界取被覆盖前缀的最后一个已保存 ID, 不能用模型数组下标推算 SQL 范围.
    */
   readonly macroPersistence?: {
     readonly appendSummary: (
       summary: string, summarizedThroughMessageId: string, savedTokens: number,
     ) => { readonly id: string };
-    readonly messageIds: (string | undefined)[];
+    readonly messageIds: ModelMessageIds;
   };
   readonly signal: AbortSignal;
   /** 主 Agent 的最终请求装配完成后发布; 子 Agent 省略, 因此不会更新 Session Context. */
@@ -37,7 +37,7 @@ export interface PrepareAgentIterationDeps {
 
 /**
  * 历史, reminder 与本 Turn 消息是同一个可压缩数组. Macro 用被覆盖前缀的
- * 最后一条已落库消息作为 SQL 游标; 模型专用引导没有 SQL 行, 不能当游标.
+ * 最后一条已落库消息作为 SQL 游标. 输出截断后的续写通知也先保存, 再加入可压缩历史.
  */
 export function createPrepareAgentIteration(deps: PrepareAgentIterationDeps): PrepareAgentIteration {
   const { prepared, macroPersistence } = deps;
@@ -82,22 +82,16 @@ export function createPrepareAgentIteration(deps: PrepareAgentIterationDeps): Pr
       },
       settings: prepared.compactSettings,
       // Compact 在保存成功后才发 completed. 游标取被摘要前缀中最后一条
-      // 已落库消息, 跳过没有 SQL 身份的续写和 stuck 引导.
+      // 已落库消息, 不把没有对应存储记录的位置作为覆盖边界.
       ...(macroPersistence
         ? {
             saveMacroSummary: (summary: string, summarizedMessageCount: number, savedTokens: number) => {
-              let throughMessageId: string | undefined;
-              for (let index = summarizedMessageCount - 1; index >= 0; index -= 1) {
-                const id = macroPersistence.messageIds[index];
-                if (id === undefined) continue;
-                throughMessageId = id;
-                break;
-              }
+              const throughMessageId = macroPersistence.messageIds.lastSavedIdInPrefix(summarizedMessageCount);
               if (!throughMessageId) {
                 throw new Error('Macro 摘要覆盖范围内没有已落库的 Message');
               }
               const summaryMessage = macroPersistence.appendSummary(summary, throughMessageId, savedTokens);
-              macroPersistence.messageIds.splice(0, summarizedMessageCount, summaryMessage.id);
+              macroPersistence.messageIds.replacePrefixWithSummary(summarizedMessageCount, summaryMessage.id);
             },
           }
         : {}),

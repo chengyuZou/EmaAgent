@@ -4,7 +4,7 @@ import type { CompactEvent } from '@ema-agent/compact';
 import type { SubagentEvent, SubagentExecutor } from '@ema-agent/agent';
 import { GoalError, type GoalStore } from '@ema-agent/goal';
 import type { PermissionUserResponse, PermissionStreamEvent } from '@ema-agent/permission';
-import type { ToolExecutionEvent } from '@ema-agent/tools';
+import type { AskUserEvent } from '@ema-agent/tools';
 import {
   SessionBusyError,
   SessionWorkBlockedError,
@@ -124,7 +124,7 @@ type SessionTurnMessage = {
  */
 export type SessionBusinessMessage =
   | PermissionStreamEvent
-  | Extract<ToolExecutionEvent, { type: 'ask_user_required' | 'ask_user_resolved' }>
+  | AskUserEvent
   | {
     /** 每次 Socket 打开只发送一次, Desktop 用它替换该 Session 的连接当前值. */
     readonly type: 'session_state';

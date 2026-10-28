@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { assembleToolPool } from '../assembly/assembleToolPool.js';
 import { ToolRegistry } from '../assembly/toolRegistry.js';
-import { buildTool } from '../Tool/buildTool.js';
-import { contextFail, contextOk } from '../Tool/tool.js';
-import type { ToolUseContext } from '../Tool/toolUseContext.js';
+import { buildTool } from '../definition/buildTool.js';
+import { contextFail, contextOk } from '../definition/tool.js';
+import type { ToolUseContext } from '../interface/toolUseContext.js';
 
 
 function makeTool(
@@ -32,7 +32,7 @@ function makeTool(
       }
       return contextOk({});
     },
-    isReadOnly: () => true,
+
     isConcurrencySafe: () => true,
     checkPermissions: async () => ({ kind: 'tool' as const, defaultDecision: 'allow' as const }),
     execute: async () => 'ok',

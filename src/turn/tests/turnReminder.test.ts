@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Goal } from '@ema-agent/goal';
-import { renderTurnReminder } from '../prepare/turnReminder.js';
+import { renderTurnReminder } from '../reminder/turnReminder.js';
 
 describe('renderTurnReminder', () => {
   it('空输入也有日期与"本 Turn 开始"声明', () => {

@@ -6,41 +6,29 @@ export type {
   ToolInputValidationResult,
   ToolContextValidation,
   ToolProgressCallback,
-} from './Tool/tool.js';
-export { contextFail, contextOk } from './Tool/tool.js';
-export type { ToolInvocation } from './Tool/toolInvocation.js';
+} from './definition/tool.js';
+export { contextFail, contextOk } from './definition/tool.js';
+export type { ToolInvocation } from './definition/toolInvocation.js';
 export type {
-  AskUser,
   Scratchpad,
-  SubagentContextMode,
-  SubagentResult,
-  SubagentSpawnOptions,
-  SubagentControl,
   ToolUseContext,
-} from './Tool/toolUseContext.js';
+} from './interface/toolUseContext.js';
 export type {
-  AskUserQuestionSpec,
-  AskUserRequiredEvent,
-  PendingAskUserPrompt,
   ToolError,
-  ToolStreamEvent,
   ToolExecutionEvent,
-} from './events.js';
+} from './execution/toolEvents.js';
 export type { ToolResult } from './results/toolResult.js';
 export {
   StreamingToolExecutor,
 } from './execution/streamingToolExecutor.js';
 export type {
-  StreamingToolExecutorEvent,
   StreamingToolExecutorOptions,
 } from './execution/streamingToolExecutor.js';
-export { buildTool, DEFAULT_MAX_RESULT_BYTES } from './Tool/buildTool.js';
+export { buildTool, DEFAULT_MAX_RESULT_BYTES } from './definition/buildTool.js';
 export { assembleToolPool } from './assembly/assembleToolPool.js';
 export { ToolPool } from './assembly/toolPool.js';
 export { ToolRegistry } from './assembly/toolRegistry.js';
 export {
-  BackgroundProcessError,
-  createBackgroundProcessAbortError,
   ToolDefinitionError,
   ToolExecutionError,
   ToolExecutionStateConflictError,
@@ -49,7 +37,8 @@ export {
   ToolRegistryError,
   ToolResultStoreError,
 } from './errors.js';
-export type { BackgroundProcessErrorCode } from './errors.js';
+export { BackgroundProcessError, createBackgroundProcessAbortError } from './background/errors.js';
+export type { BackgroundProcessErrorCode } from './background/errors.js';
 export {
   ToolResultStore,
   ToolResultCleaner,
@@ -66,13 +55,25 @@ export {
   BuiltinTools,
   type BuiltinToolIdentity,
   type BuiltinToolVariant,
-} from './Tool/BuiltinToolIdentity.js';
+} from './identity/builtinTools.js';
 export {
   ASK_USER_TOOL_ID,
-  DEFAULT_TOOL_SETTINGS,
   disabledToolsSetting,
   readToolSettings,
 } from './settings.js';
 export type { ToolSettings } from './settings.js';
-export { describeToolForCatalog } from './catalog.js';
-export type { ToolCatalogItem } from './catalog.js';
+
+
+export type {
+  AskUser,
+  AskUserEvent,
+  AskUserQuestionSpec,
+  AskUserRequiredEvent,
+  PendingAskUserRequest,
+} from './interface/askUser.js';
+export type {
+  SubagentContextMode,
+  SubagentResult,
+  SubagentSpawnOptions,
+  SubagentControl,
+} from './interface/subagentControl.js';

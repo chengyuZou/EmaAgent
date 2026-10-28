@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { ToolRegistry } from '../assembly/toolRegistry.js';
-import { buildTool } from '../Tool/buildTool.js';
+import { buildTool } from '../definition/buildTool.js';
 import { ToolRegistrationConflictError } from '../errors.js';
 
 function makeBuiltin(name: string, id = name) {
@@ -10,7 +10,7 @@ function makeBuiltin(name: string, id = name) {
     name,
     description: 'Registry 测试用内置工具',
     inputSchema: z.object({}),
-    isReadOnly: () => true,
+
     isConcurrencySafe: () => true,
     checkPermissions: async () => ({ kind: 'tool' as const, defaultDecision: 'allow' as const }),
     validateContext: () => ({ valid: true, context: {} }),
@@ -30,7 +30,7 @@ function makeMcp(
     origin: { kind: 'mcp', serverName, serverToolName },
     description: 'Registry 测试用 MCP 工具',
     inputSchema: z.object({}),
-    isReadOnly: () => true,
+
     isConcurrencySafe: () => true,
     checkPermissions: async () => ({ kind: 'tool' as const, defaultDecision: 'ask' as const, sessionApproval: 'input' as const, message: 'MCP 一律收口中央' }),
     validateContext: () => ({ valid: true, context: {} }),

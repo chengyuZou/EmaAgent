@@ -7,7 +7,6 @@ type DefaultedToolFields =
   | 'id'
   | 'origin'
   | 'maxResultBytes'
-  | 'isReadOnly'
   | 'isConcurrencySafe'
   | 'requiresUserInteraction'
   | 'checkPermissions';
@@ -48,7 +47,6 @@ export function buildTool<TInput, TOutput, TContext, TProgress = never>(
     origin,
     maxResultBytes,
     // 工具必须主动声明并发安全;忘记声明只会更保守,不会并发写坏共享状态.
-    isReadOnly: definition.isReadOnly ?? (() => false),
     isConcurrencySafe: definition.isConcurrencySafe ?? (() => false),
     requiresUserInteraction: definition.requiresUserInteraction ?? (() => false),
     inputJsonSchemaOverride: definition.inputJsonSchemaOverride

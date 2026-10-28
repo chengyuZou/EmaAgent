@@ -1,7 +1,7 @@
 import type { SettingsStore } from '@ema-agent/settings';
 import { defineSetting } from '@ema-agent/settings/definition';
 import { z } from 'zod';
-import { BuiltinTools } from './Tool/BuiltinToolIdentity.js';
+import { BuiltinTools } from './identity/builtinTools.js';
 
 /** 提问通道的稳定 id: 永远不可禁用(禁用会切断人与模型的确认通道).
  *  身份来自框架层单一事实源 BuiltinToolIdentity, 不与工具实现包重复. */
@@ -24,11 +24,6 @@ export interface ToolSettings {
   /** 被禁用的内置工具稳定 id; 空数组 = 全部启用. */
   readonly disabledToolIds: readonly string[];
 }
-
-/** 整组默认快照(供装配方默认参数与测试), 单一事实源是各 setting 的 defaultValue. */
-export const DEFAULT_TOOL_SETTINGS: ToolSettings = {
-  disabledToolIds: disabledToolsSetting.defaultValue,
-};
 
 /** 聚合读取整块快照: 坏值/缺失自动回落默认. */
 export function readToolSettings(store: SettingsStore): ToolSettings {

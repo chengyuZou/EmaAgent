@@ -15,7 +15,7 @@ export function openVishotCapture(
   settings: SettingsStore,
   providers: ProvidersComposition,
   isIdle: (sessionId: string) => boolean,
-  enqueue: SessionContinuationQueue['enqueueIfIdleForVishotCapture'],
+  enqueue: SessionContinuationQueue['enqueueIfIdle'],
   appEvents: AppEvents,
   computerUse?: ComputerUse,
 ): { readonly capture: VishotCapture; close(): Promise<void> } {
@@ -45,7 +45,7 @@ export function openVishotCapture(
     shouldSubmitCapture: canSubmit,
     captureImage: computerUse ? signal => computerUse.capture(signal) : undefined,
     saveImage: (sessionId, bytes) => database.imageStore.saveImage(sessionId, bytes, '屏幕截图'),
-    enqueueIfIdleForVishotCapture: (sessionId, imagePath) => enqueue({
+    enqueueIfIdle: (sessionId, imagePath) => enqueue({
       sessionId,
       input: [{ type: 'attachment', block: { type: 'image_reference', path: imagePath, name: '屏幕截图' } }],
     }),

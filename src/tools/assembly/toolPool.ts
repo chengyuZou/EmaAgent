@@ -1,8 +1,5 @@
-import type { Tool } from '../Tool/tool.js';
+import type { AnyTool } from '../definition/tool.js';
 
-// ToolPool 是 Tool 泛型的统一擦除边界,具体类型在单次 ToolExecution 中恢复.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyTool = Tool<any, any, any, any>;
 
 /**
  * Turn 的唯一工具事实源.

@@ -4,7 +4,7 @@ import type { AskUserRequiredEvent } from '@ema-agent/tools';
 import {
   SessionInteractionQueue,
   type PendingInteraction,
-} from '../interactionQueue.js';
+} from '../interaction/sessionInteractionQueue.js';
 
 /** 快照定位锚:两种交互都锚定触发它的 toolCallId(含于请求本体内). */
 const idOf = (p: PendingInteraction): string => p.request.toolCallId;

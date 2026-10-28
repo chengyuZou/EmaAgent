@@ -1,3 +1,4 @@
+import { ModelMessageIds } from '@ema-agent/agent';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CallLLM, CompleteLLM } from '@ema-agent/llm';
 import type { CompactRequest, CompactResult } from '@ema-agent/compact';
@@ -5,7 +6,7 @@ import type { ProviderModels, Providers } from '@ema-agent/providers';
 import type { DescribeImage } from '@ema-agent/context';
 import { staticSystemPrompt, getDynamicSystemPrompt, type DynamicSystemPromptInput } from '@ema-agent/prompts';
 import { assembleToolPool, ToolPool, ToolRegistry } from '@ema-agent/tools';
-import { createPrepareSubagent } from '../prepare/prepareSubagent.js';
+import { createPrepareSubagent } from '../subagent/prepareSubagent.js';
 import type { PreparedTurn } from '../prepare/prepareTurn.js';
 import { GoalGetTool } from '../../builtin-tools/tools/GoalGetTool/GoalGetTool.js';
 import { GoalUpdateTool } from '../../builtin-tools/tools/GoalUpdateTool/GoalUpdateTool.js';
@@ -47,7 +48,7 @@ function preparedTurn(): PreparedTurn {
     }),
     contextWindow: 100_000,
     maxOutput: 8_000,
-    DynamicSystemPromptInput: dynamicInput,
+    dynamicSystemPromptInput: dynamicInput,
     systemPrompt: [...staticSystemPrompt, ...getDynamicSystemPrompt(dynamicInput)],
     tools: {
       toolPool: new ToolPool([]),
@@ -110,7 +111,7 @@ async function fixture(
     const runId = input.subagentId + '-run';
     identities.insert({ id: input.subagentId, sessionId: 's1', title: '调查', description: '调查', createdAt: 1 });
     runs.insert({ id: runId, subagentId: input.subagentId, contextMode: input.options.contextMode ?? 'subagent', createdAt: 1 });
-    return prepareChild({ ...input, runId, isNew: true, messageStore: messages, messageIds: [] });
+    return prepareChild({ ...input, runId, isNew: true, messageStore: messages, messageIds: new ModelMessageIds([]) });
   };
   return { prepare, createCompact, messages, runs, prepareChild };
 }
@@ -120,7 +121,7 @@ describe('createPrepareSubagent fork', () => {
     const base = preparedTurn();
     const root = {
       ...base,
-      DynamicSystemPromptInput: { ...base.DynamicSystemPromptInput, memorySection: MEMORY_GUIDANCE },
+      dynamicSystemPromptInput: { ...base.dynamicSystemPromptInput, memorySection: MEMORY_GUIDANCE },
       tools: { ...base.tools, toolPool: new ToolPool([MemorySearchTool, MemoryReadTool, MemoryListTool]) },
     };
     const { prepare } = await fixture(async () => parentMessages(), root);
@@ -249,7 +250,7 @@ describe('createPrepareSubagent fork', () => {
     });
     runs.completeRun('child-run', { finalText: '第一次结论', iterations: 1, toolCallCount: 0, inputTokens: 1, outputTokens: 1 }, 3);
     runs.startRun({ id: 'second-run', subagentId: 'child', contextMode: 'fork', createdAt: 4 });
-    const messageIds: (string | undefined)[] = [];
+    const messageIds = new ModelMessageIds([]);
     const second = await prepareChild({
       subagentId: 'child', runId: 'second-run', isNew: false, prompt: '纠正第一次结论',
       options: { contextMode: 'fork' }, messageStore: messages, messageIds, signal: new AbortController().signal,
@@ -258,7 +259,7 @@ describe('createPrepareSubagent fork', () => {
     expect(JSON.stringify(second.messages)).toContain('第一次结论');
     expect(second.messages.at(-1)).toEqual({ role: 'user', content: '纠正第一次结论' });
     expect(second.messages.filter(message => message.role === 'user' && message.content === '父工作历史')).toHaveLength(1);
-    expect(messageIds).toHaveLength(second.messages.length);
+    expect(messageIds.values).toHaveLength(second.messages.length);
     expect(messages.loadHistory('child').at(-1)).toMatchObject({ runId: 'second-run', blocks: '纠正第一次结论' });
   });
 

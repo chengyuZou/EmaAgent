@@ -11,7 +11,6 @@ import {
 } from '../index.js';
 import {
   StreamingToolExecutor,
-  type StreamingToolExecutorEvent,
   type StreamingToolExecutorOptions,
 } from '../execution/streamingToolExecutor.js';
 
@@ -40,7 +39,7 @@ function gatedTool(name: string, concurrencySafe: boolean): {
     description: name,
     inputSchema: z.object({ value: z.number() }),
     validateContext: () => contextOk({}),
-    isReadOnly: () => concurrencySafe,
+
     isConcurrencySafe: () => concurrencySafe,
     checkPermissions: async () => ({ kind: 'tool' as const, defaultDecision: 'allow' as const }),
     execute: async (_input, _context, invocation) => {
@@ -54,7 +53,7 @@ function gatedTool(name: string, concurrencySafe: boolean): {
   return { tool, release, started };
 }
 
-function makeExecutor(tools: AnyTestTool[], hooks: Pick<StreamingToolExecutorOptions, 'onToolRegistered' | 'beforeToolExecution'> = {}): {
+function makeExecutor(tools: AnyTestTool[], hooks: Pick<StreamingToolExecutorOptions, 'registerComputerToolCall' | 'waitIfComputerUsePaused'> = {}): {
   executor: StreamingToolExecutor;
   events: ToolExecutionEvent[];
 } {
@@ -66,7 +65,7 @@ function makeExecutor(tools: AnyTestTool[], hooks: Pick<StreamingToolExecutorOpt
     toolPool: new ToolPool(tools as never),
     permissionContext: PERMISSION_CONTEXT,
     toolContext: { cwd: '', platform: process.platform },
-    pushEv: event => events.push(event),
+    publishEvent: event => events.push(event),
     wake: () => undefined,
     ...hooks,
   });
@@ -77,9 +76,9 @@ function tick(): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, 0));
 }
 
-function terminalNames(events: StreamingToolExecutorEvent[]): string[] {
+function terminalNames(events: ToolExecutionEvent[]): string[] {
   return events
-    .filter((event): event is Extract<StreamingToolExecutorEvent, { type: 'tool_result' }> =>
+    .filter((event): event is Extract<ToolExecutionEvent, { type: 'tool_result' }> =>
       event.type === 'tool_result')
     .map(event => event.name);
 }
@@ -99,7 +98,7 @@ describe('StreamingToolExecutor', () => {
       execute: async () => { executed.push('executed'); return {}; },
     });
     const { executor } = makeExecutor([first.tool, queued as AnyTestTool], {
-      onToolRegistered: (call, reject) => {
+      registerComputerToolCall: (call, reject) => {
         if (call.name !== 'QueuedComputer') return undefined;
         rejectQueued = reject;
         return dispose;
@@ -252,5 +251,43 @@ describe('StreamingToolExecutor', () => {
     expect(executor.allDone()).toBe(true);
     // shutdown 后登记的调用被拒绝,终态只有 c1 一个.
     expect(executor.takeCompletedResults().map(r => r.toolCallId)).toEqual(['c1']);
+  });
+
+  it('取消中间的独占调用后, 后续工具仍等待前面的运行结束', async () => {
+    const first = gatedTool('First', false);
+    const cancelled = gatedTool('Cancelled', false);
+    const last = gatedTool('Last', true);
+    const { executor } = makeExecutor([first.tool, cancelled.tool, last.tool]);
+    executor.addTool(0, 'first', 'First', { value: 1 });
+    await first.started;
+    executor.addTool(1, 'cancelled', 'Cancelled', { value: 2 });
+    executor.addTool(2, 'last', 'Last', { value: 3 });
+
+    executor.abortTool('cancelled');
+    expect(await Promise.race([last.started.then(() => true), tick().then(() => false)])).toBe(false);
+    first.release();
+    await last.started;
+    last.release();
+    await executor.join();
+    expect(executor.takeCompletedResults().map(result => [result.toolCallId, result.errorCode])).toEqual([
+      ['first', undefined],
+      ['cancelled', 'tool/cancelled'],
+      ['last', undefined],
+    ]);
+  });
+
+  it('同批工具登记次序不同, 仍按 blockIndex 交付', async () => {
+    const first = gatedTool('First', true);
+    const second = gatedTool('Second', true);
+    const { executor } = makeExecutor([first.tool, second.tool]);
+    executor.addTool(1, 'second', 'Second', { value: 2 });
+    executor.addTool(0, 'first', 'First', { value: 1 });
+    await Promise.all([first.started, second.started]);
+    second.release();
+    await tick();
+    expect(executor.takeCompletedResults()).toEqual([]);
+    first.release();
+    await executor.join();
+    expect(executor.takeCompletedResults().map(result => result.toolCallId)).toEqual(['first', 'second']);
   });
 });

@@ -3,7 +3,7 @@ import type {
   CommandProcessHandle,
   CommandRunResult,
 } from '@ema-agent/sandbox';
-import { BackgroundProcessError, createBackgroundProcessAbortError } from '../errors.js';
+import { BackgroundProcessError, createBackgroundProcessAbortError } from './errors.js';
 import type {
   BackgroundProcessRecord,
   BackgroundProcessStore,
@@ -155,8 +155,8 @@ export class BackgroundProcess {
         createdAt: Date.now(),
       });
       this.queued.set(id, { request: frozenRequest, writer, version: record.version });
-      this.enqueuePersistent(id);
       this.emitRow(record);
+      this.enqueuePersistent(id);
       return {
         kind: 'processReference',
         backgroundProcessId: id,
@@ -416,12 +416,11 @@ export class BackgroundProcess {
   private enqueuePersistent(id: string): void {
     const queued = this.queued.get(id);
     if (!queued) return;
-    this.backgroundScheduler.enqueue({
+    const completion = this.backgroundScheduler.enqueue({
       id,
-      start: () => {
+      run: async () => {
         const current = this.queued.get(id);
         if (!current) {
-          this.backgroundScheduler.release();
           return;
         }
         this.queued.delete(id);
@@ -429,17 +428,15 @@ export class BackgroundProcess {
         const record = this.deps.store.transitionToRunning(id, current.version, startedAt);
         if (!record) {
           current.writer.close();
-          this.backgroundScheduler.release();
           return;
         }
         try {
           const active = this.startProcess(id, current.request, current.writer, true, false);
           active.version = record.version;
           this.emitRow(record);
-          void this.finishActive(id, active);
+          await this.finishActive(id, active);
         } catch (error) {
           current.writer.close();
-          this.backgroundScheduler.release();
           const failed = this.deps.store.finish(id, record.version, {
             status: 'failed',
             completedAt: Date.now(),
@@ -456,6 +453,8 @@ export class BackgroundProcess {
         }
       },
     });
+    // 启动失败由上面的 run 保存为 failed. 持久化本身出错时保留错误供 Server 日志排查.
+    void completion.catch(error => console.error('[tools] 后台进程保存失败:', error));
   }
 
   private startProcess(
@@ -514,10 +513,6 @@ export class BackgroundProcess {
     active.detachWaitAbort?.();
     active.writer.close();
     this.active.delete(id);
-    // 普通命令转后台也由这里收尾, 但只有显式后台命令占用了队列名额.
-    if (active.request.runInBackground) {
-      this.backgroundScheduler.release();
-    }
 
     if (!active.persisted || active.version === undefined) {
       this.notifyChanged(id);

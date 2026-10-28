@@ -35,8 +35,8 @@ sequenceDiagram
 ## 恢复与限制
 
 - 尚未收到任何响应事件就发生窗口超限时, 同一迭代内允许重试一次. 宿主收到 `recoveryReason: 'context_window_exceeded'`, 决定是否压缩.
-- 无工具的 `max_tokens` 回复会保留文本并追加续写提示. 再次截断时以 `output_recovery_failed` 停止.
-- 连续三次完全相同的工具批次会注入一次换方法提醒. 比较按排序后的工具名和序列化参数进行.
+- 无工具的 `max_tokens` 回复保留已有文本, 发出 `output_continuation`. 消费方先将通知保存为 `continuation`, 再恢复循环并请求续写. 再次截断时以 `output_recovery_failed` 停止.
+- 重复调用是否有必要由静态 Prompt 引导模型判断; 循环不以参数相同推断没有新信息.
 - 达到 `maxIterations` 时返回 `max_iterations`, Turn 如何结束由宿主决定.
 
 每次真实模型请求使用新的 `llmCallId`. 单次调用用量事件表示该调用累计值, Agent 用量累加它们的增量. 窗口重试是新请求, 不是新迭代. 其他模型错误向宿主抛出.
@@ -59,10 +59,10 @@ sequenceDiagram
 
 取消 await 只停止等待, 不停止后台执行. Session/Turn 删除和应用关闭有独立取消入口. 先保存终态, 再发送终态事件或后台完成通知. `onRunFinished(runId)` 通知宿主清理该 Run 的批准请求. 启动恢复把遗留 running Run 标成失败, 不重新执行.
 
-`SubagentMessagesStore` 用同一个 Message ID 保存流式与闭合内容. 历史 ID 数组跟随 `model_history_appended`, 让压缩能将覆盖前缀映射到 SQL 游标. 消息更新携带已保存内容, 终态事件携带具体 Run, 不把身份当前状态猜成本次执行状态.
+`SubagentMessagesStore` 用同一个 Message ID 保存流式与闭合内容. 主 Agent 和子代理共用 `ModelMessageIds`, 跟随 `model_history_appended` 对齐消息 ID, 让压缩能将覆盖前缀映射到 SQL 游标. 消息更新携带已保存内容, 终态事件携带具体 Run, 不把身份当前状态猜成本次执行状态.
 
 ## 阅读与检查
 
-先看 [agentLoop.ts](./agentLoop.ts) 的生成器契约, 再看 [subagentExecutor.ts](./subagentExecutor.ts) 的结果接收方. `subagents/` 保存基于 SQL 的身份/Run 和消息. 实际消费方包括 [Turn](../turn/turn.ts), [子代理准备](../turn/prepare/prepareSubagent.ts) 和 [Server composition](../../apps/server/src/composition/turn.ts).
+先看 [agentLoop.ts](./agentLoop.ts) 的生成器契约, 再看 [subagentExecutor.ts](./subagentExecutor.ts) 的结果接收方. `subagents/` 保存基于 SQL 的身份/Run 和消息. 实际消费方包括 [Turn](../turn/core/turnExecutor.ts), [子代理准备](../turn/subagent/prepareSubagent.ts) 和 [Server composition](../../apps/server/src/composition/turn.ts).
 
 `pnpm --filter @ema-agent/agent test` 检查事件顺序, 重试, 原生推理, 取消, fork 历史, 多次 Run 和 SQLite 保存. 测试使用受控模型与执行器替身, 不调用付费 API.

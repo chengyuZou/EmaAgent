@@ -9,8 +9,8 @@
       "types": "./dist/index.d.ts"
     },
     "./identity": {
-      "import": "./dist/Tool/BuiltinToolIdentity.js",
-      "types": "./dist/Tool/BuiltinToolIdentity.d.ts"
+      "import": "./dist/identity/builtinTools.js",
+      "types": "./dist/identity/builtinTools.d.ts"
     },
     "./settings": {
       "types": "./dist/settings.d.ts",
@@ -27,7 +27,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "rimraf dist && tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --passWithNoTests",

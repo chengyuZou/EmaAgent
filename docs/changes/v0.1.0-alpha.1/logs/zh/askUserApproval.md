@@ -45,7 +45,7 @@ exit code: 1
 
 [hasPermissionsToUseTool](../../../../../src/permission/hasPermissionsToUseTool.ts) 在 bypass 模式和普通用户/项目 allow 规则之前处理工具的显式 ask. 因此 [ToolCallExecution](../../../../../src/tools/execution/toolCallExecution.ts) 会先调用 `askPermission`, 再进入 `execute`, 由 AskUser 调用独立的 `askUser` 通道. 精确输入的 Session 授权属于更早的另一条规则路径, 所以工具返回 ask 并不等于绝对禁止所有基于规则的放行.
 
-[prepareTurnTools](../../../../../src/turn/prepare/prepareTurnTools.ts) 为前一个通道发布 `permission_required`, 为后一个通道发布 `ask_user_required`. 前端 [session activity Store](../../../../../apps/desktop/src/stores/sessionActivity.ts) 将两者保留为不同交互类型, [PendingInteractionView](../../../../../apps/desktop/src/chat/interactions/PendingInteractionView.tsx) 选择对应视图. 用户报告的默认顺序在渲染前就已产生, 不是前端把问题卡片换了权限标签.
+[prepareTurnTools](../../../../../src/turn/tools/turnTools.ts) 为前一个通道发布 `permission_required`, 为后一个通道发布 `ask_user_required`. 前端 [session activity Store](../../../../../apps/desktop/src/stores/sessionActivity.ts) 将两者保留为不同交互类型, [PendingInteractionView](../../../../../apps/desktop/src/chat/interactions/PendingInteractionView.tsx) 选择对应视图. 用户报告的默认顺序在渲染前就已产生, 不是前端把问题卡片换了权限标签.
 
 `requiresUserInteraction` 由流式执行器的等待用户检查读取. 它不是请求权限的开关, 不应为解决此现象而删除.
 

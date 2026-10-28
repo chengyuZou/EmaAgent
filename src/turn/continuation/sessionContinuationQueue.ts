@@ -1,105 +1,24 @@
-import { randomUUID } from 'node:crypto';
 import type { SubagentStatus } from '@ema-agent/agent';
+import type {
+  ClaimedSessionContinuation,
+  CompletionNotice,
+  ContinuationClaim,
+  EnqueueSessionInput,
+  PendingInput,
+  QueuedSessionInput,
+  SessionContinuationEvent,
+} from './continuationTypes.js';
+import { formatCompletionNoticeText, mergeQueuedInput, GOAL_CONTINUATION_TEXT } from './continuationText.js';
+import { randomUUID } from 'node:crypto';
 import type { Goal, GoalStore } from '@ema-agent/goal';
 import type { SessionRunningRegistry, SessionStore } from '@ema-agent/session';
 import type { BackgroundProcessNotifiableStatus } from '@ema-agent/tools';
 import type {
   StartTurn,
   TurnHandle,
-  TurnInputPart,
   TurnOutcome,
-} from './types.js';
-import { renderGoalEditReminder } from './prepare/turnReminder.js';
-
-/** 已提交但尚未写入 Message 的用户输入, 只保存在当前进程内存中. */
-export interface EnqueueSessionInput {
-  readonly sessionId: string;
-  readonly input: readonly TurnInputPart[];
-}
-
-/**
- * 前端队列卡片和 WebSocket 事件共用的公开投影.
- * after_turn 等 Session 空闲后启动 Turn, 包括等待手动压缩完成.
- * next_iteration 在 AgentLoop 的安全迭代边界注入; 本轮已结束则随下一 Turn 交付.
- */
-export interface QueuedSessionInput {
-  readonly id: string;
-  readonly sessionId: string;
-  readonly input: readonly TurnInputPart[];
-  readonly createdAt: number;
-  readonly delivery: 'after_turn' | 'next_iteration';
-}
-
-/**
- * Session WebSocket 的队列增量协议. 连接时的当前列表随 session_state 发送,
- * 正式保存时由 user_message_stored 通知消费的输入 ID, 返回草稿则携带原输入.
- */
-export type SessionContinuationEvent =
-  | { readonly type: 'queued_input_added'; readonly item: QueuedSessionInput }
-  | { readonly type: 'queued_input_removed'; readonly id: string }
-  | { readonly type: 'queued_input_guided'; readonly item: QueuedSessionInput }
-  | { readonly type: 'queued_inputs_returned'; readonly items: readonly QueuedSessionInput[] };
-
-/**
- * Turn 从队列临时领取的内容. 领取不等于消费: 调用方写完 Message 后必须 acknowledge,
- * 准备或写库失败则必须 release, 这样输入和后台通知才不会静默丢失.
- */
-export type ClaimedSessionContinuation =
-  | {
-      readonly type: 'user_input';
-      readonly input: readonly TurnInputPart[];
-      readonly continuationText?: string;
-    }
-  | {
-      readonly type: 'continuation';
-      readonly continuationText: string;
-    };
-
-/** 已领取的输入不能再删除, 改为引导或被其它 Turn 领取. */
-interface PendingInput extends Omit<QueuedSessionInput, 'delivery'> {
-  delivery: QueuedSessionInput['delivery'];
-  claimedByTurnId?: string;
-}
-
-/**
- * 后台完成通知只携带执行身份和终态, 不复制完整输出.
- * 分为子代理和后台Process两类, 但都只在当前进程内投递一次.
- * key 统一两类执行的去重身份; 完整结果分别留在 Subagent SQL 和后台进程日志中.
- */
-type CompletionNotice =
-  | {
-      readonly key: string;
-      readonly kind: 'subagent';
-      readonly id: string;
-      readonly status: Exclude<SubagentStatus, 'running'>;
-      claimedByTurnId?: string;
-    }
-  | {
-      readonly key: string;
-      readonly kind: 'background_process';
-      readonly id: string;
-      readonly status: BackgroundProcessNotifiableStatus;
-      claimedByTurnId?: string;
-    };
-
-/** 一次领取的反向索引. 一次性输入, 通知和目标编辑需要确认; after-turn Goal 提示不消耗队列项. */
-type ContinuationClaim =
-  | {
-      readonly type: 'user_input';
-      readonly sessionId: string;
-      readonly userInputIds: readonly string[];
-    }
-  | {
-      readonly type: 'completion_notices';
-      readonly sessionId: string;
-      readonly completionNoticeKeys: readonly string[];
-    }
-  | {
-      readonly type: 'goal_edit';
-      readonly sessionId: string;
-      readonly goalId: string;
-      readonly version: number;
-    };
+} from '../types.js';
+import { renderGoalEditReminder } from '../reminder/turnReminder.js';
 
 /**
  * SessionStore 提供会话事实, SessionRunningRegistry 提供 Turn 或手动压缩的运行身份.
@@ -113,9 +32,6 @@ export interface SessionContinuationQueueDeps {
   readonly attachTurn: (handle: TurnHandle) => void;
   readonly publish: (sessionId: string, event: SessionContinuationEvent) => void;
 }
-
-const GOAL_CONTINUATION_TEXT = '根据本轮 reminder 和 GoalGet 继续推进当前目标. '
-  + '目标已暂停或关闭时不要继续历史目标, 不自行创建或激活目标.';
 
 /**
  * 队列只保存当前进程还没交付的输入和轻量完成通知. Subagent 与后台命令的完整结果
@@ -173,7 +89,7 @@ export class SessionContinuationQueue {
     return publicItem(item);
   }
 
-  isIdleForVishotCapture(sessionId: string): boolean {
+  canStartIdleTurn(sessionId: string): boolean {
     return this.acceptsWork(sessionId)
       && !this.deps.sessionRunning.isRunning(sessionId)
       && !this.draining.has(sessionId)
@@ -182,8 +98,8 @@ export class SessionContinuationQueue {
       && this.deps.goals.getCurrent(sessionId)?.status !== 'active';
   }
 
-  enqueueIfIdleForVishotCapture(input: EnqueueSessionInput): boolean {
-    if (!this.isIdleForVishotCapture(input.sessionId)) return false;
+  enqueueIfIdle(input: EnqueueSessionInput): boolean {
+    if (!this.canStartIdleTurn(input.sessionId)) return false;
     // 检查与入队之间不能 await, 否则可能出现 检查截屏-用户消息先入队-截屏入队.
     this.enqueue(input);
     return true;
@@ -406,9 +322,9 @@ export class SessionContinuationQueue {
       const handle = this.deps.startTurn({
         turnId,
         sessionId,
-        triggerType: claim.type === 'user_input' ? 'userMessage' : 'sessionContinuation',
+        triggerType: claim.inputKind === 'messageInput' ? 'userMessage' : 'sessionContinuation',
         ttsEnabled: session.ttsEnabled,
-        input: claim.type === 'user_input' ? claim.input : [],
+        input: claim.inputKind === 'messageInput' ? claim.input : [],
         ...(claim.continuationText
           ? { continuationText: claim.continuationText }
           : {}),
@@ -445,7 +361,7 @@ export class SessionContinuationQueue {
           goalId: edit.goalId,
           version: edit.version,
         });
-        return { type: 'continuation', continuationText: renderGoalEditReminder(goal) };
+        return { inputKind: 'continuationText', continuationText: renderGoalEditReminder(goal) };
       }
       this.goalEdits.delete(sessionId);
     }
@@ -467,7 +383,7 @@ export class SessionContinuationQueue {
         completionNoticeKeys: notices.map(notice => notice.key),
       });
       return {
-        type: 'continuation',
+        inputKind: 'continuationText',
         continuationText: formatCompletionNoticeText(notices),
       };
     }
@@ -479,7 +395,7 @@ export class SessionContinuationQueue {
       // 不重置总预算, 耗尽不代表成功; 所有实际模型调用还需要同一预算准入检查.
       // Goal 是持续消息来源, 不复制正文或永久入队; 下一次领取重新读取 SQL.
       return {
-        type: 'continuation',
+        inputKind: 'continuationText',
         continuationText: GOAL_CONTINUATION_TEXT,
       };
     }
@@ -492,7 +408,7 @@ export class SessionContinuationQueue {
     });
     const goal = nextIterationOnly ? null : this.deps.goals.getCurrent(sessionId);
     return {
-      type: 'user_input',
+      inputKind: 'messageInput',
       input: mergeQueuedInput(userInputs),
       ...(goal?.status === 'active' ? { continuationText: GOAL_CONTINUATION_TEXT } : {}),
     };
@@ -511,34 +427,3 @@ function publicItem(item: PendingInput): QueuedSessionInput {
   return visible;
 }
 
-function mergeQueuedInput(items: readonly QueuedSessionInput[]): TurnInputPart[] {
-  const input: TurnInputPart[] = [];
-  for (const item of items) {
-    if (input.length > 0) {
-      const last = input.at(-1)!;
-      if (last.type === 'text') {
-        input[input.length - 1] = { type: 'text', text: `${last.text}\n\n` };
-      } else {
-        input.push({ type: 'text', text: '\n\n' });
-      }
-    }
-    for (const part of item.input) {
-      const last = input.at(-1);
-      if (last?.type === 'text' && part.type === 'text') {
-        input[input.length - 1] = { type: 'text', text: last.text + part.text };
-      } else {
-        input.push(part);
-      }
-    }
-  }
-  return input;
-}
-
-/** 把多条后台终态整理成一条内部 continuation Message, 模型再按 ID 主动读取完整结果. */
-function formatCompletionNoticeText(notices: readonly CompletionNotice[]): string {
-  if (notices.length === 0) return '';
-  const lines = notices.map(notice => notice.kind === 'subagent'
-    ? `Subagent ${notice.id} 已结束, status=${notice.status}. 如需完整结果, 调用 SubagentAwait.`
-    : `BackgroundProcess ${notice.id} 已结束, status=${notice.status}. 如需完整输出, 调用 ProcessOutput.`);
-  return `以下后台工作已结束. 这里只通知身份与终态, 不代表结果已读:\n${lines.join('\n')}`;
-}

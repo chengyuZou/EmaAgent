@@ -2,11 +2,8 @@ import {
   ToolRegistrationConflictError,
   ToolRegistryError,
 } from '../errors.js';
-import type { Tool, ToolOrigin } from '../Tool/tool.js';
+import type { AnyTool, ToolOrigin } from '../definition/tool.js';
 
-// Registry 需要容纳输入,输出,窄 Context 和进度类型各不相同的 Tool.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyTool = Tool<any, any, any, any>;
 type McpToolOrigin = Extract<ToolOrigin, { readonly kind: 'mcp' }>;
 
 /**

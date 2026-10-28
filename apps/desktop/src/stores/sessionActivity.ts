@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { SessionRunning } from '@ema-agent/session';
 import type { PermissionStreamEvent } from '@ema-agent/permission';
-import type { AskUserRequiredEvent, ToolExecutionEvent } from '@ema-agent/tools';
+import type { AskUserEvent } from '@ema-agent/tools';
 import type { PendingInteraction, QueuedSessionInput } from '@ema-agent/turn';
 import type { SessionConnectionState } from '../api/sessionWebSocket.js';
 
@@ -49,7 +49,7 @@ interface SessionActivityStore {
   /** Session required/resolved 按 toolCallId 增删, 保持 Server 交付的 FIFO 顺序. */
   applyInteractionEvent(
     sessionId: string,
-    event: PermissionStreamEvent | AskUserRequiredEvent | Extract<ToolExecutionEvent, { type: 'ask_user_resolved' }>
+    event: PermissionStreamEvent | AskUserEvent
   ): void;
   /** 入队或引导后按 ID 更新, 保留提交顺序. */
   addQueuedInput(sessionId: string, item: QueuedSessionInput): void;

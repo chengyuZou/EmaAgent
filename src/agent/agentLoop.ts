@@ -24,11 +24,7 @@ import type { AgentLoopEvent } from './events.js';
 import type { AgentLoopInput } from './types.js';
 
 
-const CONTINUE_OUTPUT_MESSAGE =
-  '[系统] 你的输出被截断, 请从中断处继续输出剩余内容, 不要重复已输出的部分.';
-const STUCK_GUIDE_MESSAGE =
-  '[系统] 你已连续多轮以完全相同的参数调用相同的工具, 没有获得新的信息. 请换一个方法, 缩小范围, 或直接向用户说明当前阻碍.';
-const STUCK_BATCH_STREAK = 3;
+const OUTPUT_CONTINUATION_NOTICE = '上一次回答因输出长度限制中断, 本次继续该回答.';
 
 interface IterationResponse {
   readonly textByIndex: ReadonlyMap<number, string>;
@@ -50,12 +46,7 @@ export async function* runAgentLoop(
   // 最近一次工具批之后累计的输出文本; max_tokens 续写时靠它把几段拼回完整答案
   const continuedOutput: string[] = [];
   // max_tokens 截断后注入续写提示接着写; 只允许续一次, 再撞判 output_recovery_failed
-  let injectedContinuation = false;
-  // 同一批工具(工具名+参数完全相同)连续调用记轮数; 连续多轮视为空转
-  // 注入一次提醒让模型换方法, 单次循环仍由 maxIterations 限制; 跨 Turn 续接归调用方.
-  let lastBatchSignature: string | undefined;
-  let sameBatchStreak = 0;
-  let stuckGuideInjected = false;
+  let retriedTruncatedOutput = false;
 
   // AgentLoop 同一时刻最多等待一个工具批次 ToolExecutor 状态变化时调用
   // signalWake 唤醒这个 waiter; 唤醒后立即清空,避免旧回调误唤醒下一次等待.
@@ -84,7 +75,7 @@ export async function* runAgentLoop(
         return;
       }
 
-      const continuesOutput = injectedContinuation;
+      const continuesOutput = retriedTruncatedOutput;
       state = updateAgentLoopState(state, {
         phase: 'thinking',
         iterations: iteration,
@@ -300,20 +291,22 @@ export async function* runAgentLoop(
       if (stopReason === 'max_tokens' && toolUseByIndex.size === 0) {
         // 输出被模型上限截断:注入续写提示接着写;只允许续一次,再撞判恢复失败.
         continuedOutput.push(callText);
-        if (!injectedContinuation) {
+        if (!retriedTruncatedOutput) {
           const appended: Message[] = [];
           if (assistantMessage.content.length > 0) {
             messages.push(assistantMessage);
             appended.push(assistantMessage);
           }
+          // 消费方先保存 continuation 并记录 ID, 恢复 generator 后才开始下一次请求.
+          yield { type: 'output_continuation', llmCallId, content: OUTPUT_CONTINUATION_NOTICE };
           const continuationMessage: Message = {
             role: 'user',
-            content: CONTINUE_OUTPUT_MESSAGE,
+            content: OUTPUT_CONTINUATION_NOTICE,
           };
           messages.push(continuationMessage);
           appended.push(continuationMessage);
           yield { type: 'model_history_appended', llmCallId, messages: appended };
-          injectedContinuation = true;
+          retriedTruncatedOutput = true;
           continue;
         }
 
@@ -350,7 +343,7 @@ export async function* runAgentLoop(
         return;
       }
 
-      injectedContinuation = false;
+      retriedTruncatedOutput = false;
       continuedOutput.length = 0;
       state = updateAgentLoopState(state, { phase: 'acting' });
       yield { type: 'phase_changed', state };
@@ -386,21 +379,6 @@ export async function* runAgentLoop(
         executor.acknowledgeResult(result.toolCallId);
       }
 
-      // 连续多轮完全相同的工具批次视为原地空转:注入一次软引导让模型换方法,
-      // 不立即硬停(轮询类合法重复不能误杀), 单次循环由 maxIterations 限制.
-      const batchSignature = [...toolUseByIndex.values()]
-        .map((use) => `${use.name}:${JSON.stringify(use.args)}`)
-        .sort()
-        .join('|');
-      if (batchSignature === lastBatchSignature) {
-        sameBatchStreak += 1;
-      } else {
-        lastBatchSignature = batchSignature;
-        sameBatchStreak = 1;
-      }
-      const injectStuckGuide = sameBatchStreak >= STUCK_BATCH_STREAK && !stuckGuideInjected;
-      if (injectStuckGuide) stuckGuideInjected = true;
-
       // 完整 assistant 块(含原生推理状态)随 generatedBy 进入下一次迭代:
       // Tool Loop 不剥除 thinking,由目标协议 Adapter 按生成来源裁决重放/删除.
       // 每个结果保留独立 Message, 与 Session/子代理逐条落库的顺序一致;
@@ -415,11 +393,6 @@ export async function* runAgentLoop(
         llmCallId,
         messages: [assistantMessage, ...toolResultMessages],
       };
-      if (injectStuckGuide) {
-        const stuckGuide: Message = { role: 'user', content: STUCK_GUIDE_MESSAGE };
-        messages.push(stuckGuide);
-        yield { type: 'model_history_appended', llmCallId, messages: [stuckGuide] };
-      }
 
       // 外部输入只能在 Assistant 和整批 ToolResult 已经成为完整历史后插入.
       // 这样用户立即引导或后台完成不会切开 tool_use/tool_result 配对.

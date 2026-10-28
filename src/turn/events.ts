@@ -126,6 +126,6 @@ export type TurnCompactEvent = CompactEvent & { readonly turnId: string };
  */
 export type TurnStreamEvent =
   | TurnEvent
-  | Exclude<ToolExecutionEvent, { type: 'ask_user_required' | 'ask_user_resolved' }>
+  | ToolExecutionEvent
   | TurnCompactEvent
   | StageStreamEvent;

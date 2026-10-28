@@ -2,7 +2,7 @@ import type { ToolResultContentPart } from '@ema-agent/llm';
 import type { ToolPermissionCheck } from '@ema-agent/permission';
 import type { z } from 'zod';
 import type { ToolInvocation } from './toolInvocation.js';
-import type { ToolUseContext } from './toolUseContext.js';
+import type { ToolUseContext } from '../interface/toolUseContext.js';
 
 /** 工具实现的可信来源;MCP 身份始终使用 Server 返回的原始名称. */
 export type ToolOrigin =
@@ -25,7 +25,6 @@ export type ToolInputValidationResult =
       readonly valid: false;
       readonly message: string;
       readonly code?: string;
-      readonly retryable?: boolean;
     };
 
 /** 工具执行期间产生的增量进度;完成结果仍由 execute 的 Promise 唯一返回. */
@@ -67,15 +66,13 @@ export interface Tool<TInput, TOutput, TContext, TProgress = never> {
     invocation: ToolInvocation,
   ) => ToolInputValidationResult | Promise<ToolInputValidationResult>;
 
-  /** 只描述副作用,供静态调度选择只读并行或有副作用串行. */
-  readonly isReadOnly: (input: TInput) => boolean;
-  /** 是否支持并发安全 */
+  /** true 表示可与其他并发安全工具同时执行; false 表示必须独占执行. */
   readonly isConcurrencySafe: (input: TInput) => boolean;
   /** AskUser 等工具会暂停当前 Turn;普通权限审批不属于工具交互. */
   readonly requiresUserInteraction: (input: TInput) => boolean;
 
   /**
-   * 提供本次调用的路径、命令或操控状态等信息.
+   * 提供本次调用的路径, 命令或操控状态等信息.
    * Permission 在包内调用此入口并统一判断规则; 工具不读取规则或保存批准.
    */
   readonly checkPermissions: (
@@ -107,3 +104,7 @@ export const contextOk = <T>(context: T): ToolContextValidation<T> =>
 /** 投影失败意味着宿主没有提供该 Tool 必需的业务能力. */
 export const contextFail = <T = never>(reason: string): ToolContextValidation<T> =>
   ({ valid: false, reason });
+
+// 注册和调度需要容纳不同参数类型的工具. 每次调用仍由自己的 Schema 校验输入.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type AnyTool = Tool<any, any, any, any>;

@@ -1,5 +1,5 @@
 import type { PendingPermissionRequest, PermissionRequest, PermissionUserResponse } from '@ema-agent/permission';
-import type { AskUserRequiredEvent, PendingAskUserPrompt } from '@ema-agent/tools';
+import type { AskUserRequiredEvent, PendingAskUserRequest } from '@ema-agent/tools';
 
 
 /** Permission 交互条目;三身份含于 PermissionRequest 内,条目不再重复携带. */
@@ -35,7 +35,7 @@ export type AskUserInteractionOutcome =
  */
 export type PendingInteraction =
   | ({ readonly kind: 'permission' } & PendingPermissionRequest)
-  | ({ readonly kind: 'askUser' } & PendingAskUserPrompt);
+  | ({ readonly kind: 'askUser' } & PendingAskUserRequest);
 
 
 /** 单个 Session 的 FIFO;entries[0] 是队首,只有队首持有活动 timer. */

@@ -1,3 +1,5 @@
+import type { SettingsStore } from '@ema-agent/settings';
+import type { ToolRegistry } from '@ema-agent/tools';
 import {
   readAgentSettings,
   type AgentLoopEvent,
@@ -30,25 +32,23 @@ import {
 } from '@ema-agent/prompts';
 import type { ProviderModels, Providers } from '@ema-agent/providers';
 import type {
-  AttachmentBlock,
   MessageBlocks,
   ReasoningEffort,
   SessionStore,
-  SessionUserBlock,
 } from '@ema-agent/session';
 import {
   type SkillDescriptor,
   type SkillPool,
 } from '@ema-agent/skills';
 import type { RequestDegradationNotice } from '../types.js';
-import { TurnPreparationError } from '../errors.js';
 import type { TurnStreamEvent } from '../events.js';
 import type { StartTurn, TurnInputPart } from '../types.js';
+import { prepareTurnInputParts } from './turnInputParts.js';
 import {
   prepareTurnTools,
   type TurnToolsAssembly,
   type TurnToolsDeps,
-} from './prepareTurnTools.js';
+} from '../tools/turnTools.js';
 import {
   prepareContextInput,
 } from './prepareContextInput.js';
@@ -70,7 +70,7 @@ export interface PreparedTurn {
   /** 开启 thinking 时冻结的中立推理配置(enabled + effort),协议 Adapter 各自映射. */
   readonly thinking?: LLMThinking;
   /** 本轮已读取的动态输入; 子代理复用数据段, 换成自己的模型和工具, 不传根角色人设. */
-  readonly DynamicSystemPromptInput: DynamicSystemPromptInput;
+  readonly dynamicSystemPromptInput: DynamicSystemPromptInput;
   readonly systemPrompt: readonly PromptBlock[];
   /** 按输入顺序持久化的消息块, 附件保存 image/file/pasted_text_reference. */
   readonly userMessageBlocks: MessageBlocks;
@@ -82,6 +82,8 @@ export interface PreparedTurn {
 }
 
 export interface PrepareTurnDeps extends TurnToolsDeps {
+  readonly registry: ToolRegistry;
+  readonly settings: SettingsStore;
   readonly sessions: Pick<SessionStore, 'getSession' | 'listProjectFolders'>;
   readonly providers: Providers;
   readonly providerModels: ProviderModels;
@@ -184,8 +186,6 @@ export async function prepareTurn(
     ...(scratchpadDir ? { scratchpadDir } : {}),
     ...(skillPool ? { skillPool } : {}),
     prepareSubagent: input.prepareSubagent,
-    providerId,
-    modelId,
     reasoningEffort: session.reasoningEffort,
     emit: input.emit,
     ...(input.onSubagentLLMCallFinished
@@ -198,6 +198,13 @@ export async function prepareTurn(
     signal,
   });
 
+  let thinking: LLMThinking | undefined;
+  if (modelFacts.reasoning === true) {
+    thinking = session.reasoningEffort === 'off'
+      ? { enabled: false }
+      : { enabled: true, effort: session.reasoningEffort };
+  }
+
   return Object.freeze({
     reasoningEffort: session.reasoningEffort,
     ...(scratchpadDir ? { scratchpadDir } : {}),
@@ -209,12 +216,8 @@ export async function prepareTurn(
     contextWindow: modelFacts.contextWindow,
     maxOutput: modelFacts.maxOutput,
     supportsImageInput,
-    ...(modelFacts.reasoning === true
-      ? { thinking: session.reasoningEffort === 'off'
-          ? { enabled: false as const }
-          : { enabled: true as const, effort: session.reasoningEffort } }
-      : {}),
-    DynamicSystemPromptInput: dynamicInput,
+    ...(thinking ? { thinking } : {}),
+    dynamicSystemPromptInput: dynamicInput,
     systemPrompt,
     userMessageBlocks,
     ...(skillPool ? { skillPool } : {}),
@@ -225,89 +228,3 @@ export async function prepareTurn(
   });
 }
 
-/**
- * 初始输入和运行中立即引导共用这一条解析链. Skill 必须先确认存在,
- * 然后附件才登记到 Turn, 避免无效 Skill 留下孤立附件记录.
- */
-export async function prepareTurnInputParts(
-  attachments: AttachmentStore,
-  sessionId: string,
-  turnId: string,
-  input: readonly TurnInputPart[],
-  skillPool: SkillPool | undefined,
-): Promise<MessageBlocks> {
-  const selectedSkills = resolveSelectedSkills(input, skillPool);
-  const attachmentBlocks = input
-    .filter((part): part is Extract<TurnInputPart, { type: 'attachment' }> => part.type === 'attachment')
-    .map(part => part.block);
-  let attachedBlocks: readonly AttachmentBlock[] = [];
-  try {
-    attachedBlocks = attachmentBlocks.length > 0
-      ? await attachments.attach(sessionId, turnId, attachmentBlocks)
-      : [];
-  } catch (error) {
-    throw new TurnPreparationError(
-      'turn/attachment_failed',
-      error instanceof Error ? error.message : String(error),
-      { cause: error },
-    );
-  }
-  return prepareOrderedInput(input, attachedBlocks, selectedSkills);
-}
-
-function prepareOrderedInput(
-  input: readonly TurnInputPart[],
-  attachedBlocks: readonly AttachmentBlock[],
-  selectedSkills: ReadonlyMap<string, SkillDescriptor>,
-): MessageBlocks {
-  const sessionBlocks: SessionUserBlock[] = [];
-  let attachmentIndex = 0;
-
-  for (const part of input) {
-    if (part.type === 'text') {
-      if (part.text.length === 0) continue;
-      sessionBlocks.push({ type: 'text', text: part.text });
-      continue;
-    }
-    if (part.type === 'attachment') {
-      const block = attachedBlocks[attachmentIndex++];
-      if (!block) {
-        throw new TurnPreparationError('turn/attachment_failed', '附件校验结果缺少对应块');
-      }
-      sessionBlocks.push(block);
-      continue;
-    }
-
-    const descriptor = selectedSkills.get(part.path)!;
-    sessionBlocks.push({
-      type: 'skill_reference',
-      name: descriptor.name,
-      path: descriptor.path,
-    });
-  }
-
-  return sessionBlocks.length === 1
-    && sessionBlocks[0]?.type === 'text'
-    ? sessionBlocks[0].text
-    : sessionBlocks;
-}
-
-/** Skill Chip 提交绝对 SKILL.md path;准备期解析成当前 Pool 中已经冻结的描述符. */
-function resolveSelectedSkills(
-  input: readonly TurnInputPart[],
-  skillPool: SkillPool | undefined,
-): ReadonlyMap<string, SkillDescriptor> {
-  const selected = new Map<string, SkillDescriptor>();
-  for (const part of input) {
-    if (part.type !== 'skill_reference' || selected.has(part.path)) continue;
-    const descriptor = skillPool?.getByPath(part.path);
-    if (!descriptor) {
-      throw new TurnPreparationError(
-        'turn/setup_failed',
-        `选择的 Skill 不存在或已被禁用: ${part.path}`,
-      );
-    }
-    selected.set(part.path, descriptor);
-  }
-  return selected;
-}

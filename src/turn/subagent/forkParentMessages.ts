@@ -94,10 +94,10 @@ export function createForkParentMessages(sessions: Pick<SessionStore, 'getMessag
       } else if (message.role === 'assistant') {
         blocks = [...message.content];
       } else {
-        // 未入库的 User 消息只来自循环的纯文本引导, 附件和工具结果已有 SQL 行.
+        // 没有对应存储记录时, 此分支按文本保留 User 内容; 附件和工具结果从上面的 SQL blocks 读取.
         blocks = message.content as string;
       }
-      // 模型专用引导没有 SQL 行, 但仍属于此次 fork 的固定前缀.
+      // 有存储记录时保留原消息身份; 没有记录时为子代理副本分配 ID, 不回写父 Session.
       return [{
         id: persisted?.id ?? crypto.randomUUID(), role: message.role,
         kind: persisted?.kind ?? 'continuation',

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   TurnEventChannel,
   TurnEventChannelClosedError,
-} from '../eventChannel.js';
+} from '../core/turnEventChannel.js';
 
 function makeChannel() {
   const onConsumerClosed = vi.fn();

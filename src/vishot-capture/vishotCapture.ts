@@ -9,7 +9,7 @@ export interface VishotCaptureDeps {
   readonly captureImage?: (signal: AbortSignal) => Promise<Buffer>;
   readonly saveImage: (sessionId: string, bytes: Buffer) => Promise<{ readonly path: string }>;
   /** 检查空闲和入队必须同步完成, false 表示图片未采用, 本次不重试. */
-  readonly enqueueIfIdleForVishotCapture: (sessionId: string, imagePath: string) => boolean;
+  readonly enqueueIfIdle: (sessionId: string, imagePath: string) => boolean;
   readonly onError: (error: unknown) => void;
 }
 
@@ -107,7 +107,7 @@ export class VishotCapture {
     signal.throwIfAborted();
     if (!this.deps.shouldSubmitCapture(sessionId)) return;
     // 保存期间可能收到用户输入. 队列内部同步检查空闲并入队, 这里不先查再异步提交.
-    if (this.deps.enqueueIfIdleForVishotCapture(sessionId, image.path)) {
+    if (this.deps.enqueueIfIdle(sessionId, image.path)) {
       this.lastSubmittedImage = bytes;
     }
   }

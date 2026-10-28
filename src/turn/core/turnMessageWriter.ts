@@ -87,15 +87,26 @@ export class TurnMessageWriter {
         await this.persistAssistant();
         return this.assistantStored ? this.assistantMessageId : undefined;
 
-      case 'tool_result':
-        this.pendingToolUses.delete(event.result.toolCallId);
+      case 'output_continuation':
         return (await this.append({
+          turnId: this.turnId,
+          sessionId: this.sessionId,
+          role: 'user',
+          kind: 'continuation',
+          blocks: event.content,
+        })).id;
+
+      case 'tool_result': {
+        const message = await this.append({
           turnId: this.turnId,
           sessionId: this.sessionId,
           role: 'user',
           kind: 'tool_results',
           blocks: [toToolResultBlock(event.result)],
-        })).id;
+        });
+        this.pendingToolUses.delete(event.result.toolCallId);
+        return message.id;
+      }
 
       default:
         return;
@@ -138,6 +149,8 @@ export class TurnMessageWriter {
     this.toolUseByIndex = new Map();
   }
 
+  // TODO: 每个正文或思考增量都会重建并保存完整 blocks. 后续评估减少重复构造和序列化的办法,
+  // 保留逐次保存, 不通过定时合并写入延后持久化.
   private async persistAssistant(): Promise<void> {
     const blocks = this.currentBlocks();
     if (blocks.length === 0) return;

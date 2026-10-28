@@ -2,7 +2,7 @@ import type { AppEvent } from '@ema-agent/server/application/appEvents.js';
 import type { SessionBusinessMessage } from '@ema-agent/server/routes/ws/session.js';
 import type { TurnStreamEvent } from '@ema-agent/turn';
 import type { PermissionStreamEvent } from '@ema-agent/permission';
-import type { ToolExecutionEvent } from '@ema-agent/tools';
+import type { AskUserEvent } from '@ema-agent/tools';
 import type { EventDisplayTable } from '../../api/settings.js';
 import type { ToastOptions } from './toast.js';
 
@@ -17,7 +17,7 @@ export type SessionCompactEvent = Extract<SessionBusinessMessage, {
 
 /** 通知层使用的线上事件: Turn 流, Session 手动压缩与应用级广播. */
 export type NotifiableEvent = TurnStreamEvent | SessionCompactEvent | AppEvent | PermissionStreamEvent
-  | Extract<ToolExecutionEvent, { type: 'ask_user_required' | 'ask_user_resolved' }>;
+  | AskUserEvent;
 
 export interface EventNotification {
   message: string;

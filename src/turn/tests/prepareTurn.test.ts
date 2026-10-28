@@ -13,7 +13,7 @@ import { buildTool, BuiltinTools, contextOk, FileStateCache, ToolRegistry } from
 import type { CallLLM, Message } from '@ema-agent/llm';
 import { z } from 'zod';
 import type { Turn } from '@ema-agent/turn';
-import { SessionInteractionQueue } from '../interactionQueue.js';
+import { SessionInteractionQueue } from '../interaction/sessionInteractionQueue.js';
 import { TurnPreparationError } from '../errors.js';
 import {
   prepareTurn,
@@ -21,9 +21,10 @@ import {
 } from '../prepare/prepareTurn.js';
 import type { StartTurn, TurnHandle } from '../types.js';
 import type { TurnStreamEvent } from '../events.js';
-import { TurnExecutor } from '../turn.js';
-import { TurnStore } from '../turnStore.js';
-import { SessionContinuationQueue, type SessionContinuationEvent } from '../sessionContinuationQueue.js';
+import { TurnExecutor } from '../core/turnExecutor.js';
+import { TurnStore } from '../store/turnStore.js';
+import { SessionContinuationQueue } from '../continuation/sessionContinuationQueue.js';
+import type { SessionContinuationEvent } from '../continuation/continuationTypes.js';
 import { prepareContextInput } from '../prepare/prepareContextInput.js';
 
 const TURN: Turn = {
@@ -145,7 +146,7 @@ describe('prepareTurn', () => {
     const validateContext = vi.fn(() => contextOk({}));
     deps.registry.register(buildTool({
       name: 'Probe', description: '探针工具', inputSchema: z.object({}), validateContext,
-      isReadOnly: () => true, isConcurrencySafe: () => true,
+      isConcurrencySafe: () => true,
       checkPermissions: async () => ({ kind: 'tool' as const, defaultDecision: 'allow' as const }), execute: async () => 'ok',
     }));
     const createLLMCall = vi.fn(() => vi.fn() as unknown as CallLLM);
@@ -182,7 +183,7 @@ describe('prepareTurn', () => {
       name: 'WaitingTool', description: '受控的未完成工具',
       inputSchema: z.object({}),
       validateContext: () => contextOk({}),
-      isReadOnly: () => true,
+
       isConcurrencySafe: () => true,
       checkPermissions: async () => ({ kind: 'tool' as const, defaultDecision: 'allow' as const }),
       execute: async () => {
@@ -387,7 +388,7 @@ describe('prepareTurn', () => {
       description: 'Bash',
       inputSchema: z.object({}),
       validateContext: () => contextOk({}),
-      isReadOnly: () => false,
+
       isConcurrencySafe: () => false,
       checkPermissions: async () => ({ kind: 'tool' as const, defaultDecision: 'allow' as const }),
       execute: async () => 'ok',
@@ -617,5 +618,97 @@ describe('prepareTurn', () => {
     expect(prepared.degradations).toHaveLength(1);
     expect(prepared.degradations[0]).toMatchObject({ removed: ['image'] });
     expect(prepared.userMessageBlocks).toEqual([imageBlock]);
+  });
+
+  it('电脑暂停期间在准备阶段停止 Turn, 即使没有创建工具也结束操控', async () => {
+    const db = new Database({ memory: true, kind: 'data' });
+    await db.migrate();
+    const running = new SessionRunningRegistry();
+    const sessions = new SessionStore({ db });
+    const session = sessions.createSession({ cwd: os.tmpdir(), providerId: 'sess-p', modelId: 'sess-m' });
+    const turns = new TurnStore({ db, sessionRunning: running });
+    const queue = new SessionContinuationQueue({
+      sessions, sessionRunning: running, goals: { getCurrent: () => null },
+      startTurn: () => { throw new Error('不应继续排队'); }, attachTurn: vi.fn(), publish: vi.fn(),
+    });
+    const endSession = vi.fn(async () => undefined);
+    const createLLMCall = vi.fn();
+    const waitWhilePaused = vi.fn((_sessionId: string, signal: AbortSignal) => new Promise<void>((_resolve, reject) => {
+      signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+    }));
+    const executor = new TurnExecutor({
+      ...makeDeps({
+        sessions, createLLMCall,
+        computerUse: { waitWhilePaused, endSession, noteUserInput: vi.fn() } as unknown as ComputerUse,
+      }),
+      sessions, turns, continuations: queue,
+      readTurnReminder: () => ({ currentDate: '2026-10-28', goal: null }),
+      characterName: () => 'test',
+      hasNormalUserMessage: () => false,
+      createCompact: () => async request => ({ kind: 'unchanged', messages: request.messages }),
+    });
+    const handle = executor.start(makeStart({ sessionId: session.id }));
+    try {
+      expect(waitWhilePaused).toHaveBeenCalledOnce();
+      handle.abort();
+      expect(await handle.completion).toMatchObject({ status: 'aborted' });
+      expect(endSession).toHaveBeenCalledOnce();
+      expect(endSession).toHaveBeenCalledWith(session.id);
+      expect(createLLMCall).not.toHaveBeenCalled();
+      expect(running.isRunning(session.id)).toBe(false);
+      expect(sessions.loadHistory(session.id)).toEqual([]);
+    } finally {
+      queue.shutdown();
+      db.close();
+    }
+  });
+
+  it('续写通知先保存再请求模型, 正常完成 Turn 保留电脑操控', async () => {
+    const db = new Database({ memory: true, kind: 'data' });
+    await db.migrate();
+    const running = new SessionRunningRegistry();
+    const sessions = new SessionStore({ db });
+    const session = sessions.createSession({ cwd: os.tmpdir(), providerId: 'sess-p', modelId: 'sess-m' });
+    const turns = new TurnStore({ db, sessionRunning: running });
+    const queue = new SessionContinuationQueue({
+      sessions, sessionRunning: running, goals: { getCurrent: () => null },
+      startTurn: () => { throw new Error('不应创建后继 Turn'); }, attachTurn: vi.fn(), publish: vi.fn(),
+    });
+    let requests = 0;
+    const callLLM: CallLLM = async function* (request) {
+      requests += 1;
+      if (requests === 2) {
+        const notices = sessions.loadHistory(session.id).filter(message => message.kind === 'continuation');
+        expect(notices).toHaveLength(1);
+        expect(request.messages.some(message => message.role === 'user' && message.content === notices[0]!.blocks)).toBe(true);
+      }
+      yield { type: 'text_delta', blockIndex: 0, delta: requests === 1 ? '前半段' : '后半段' };
+      yield { type: 'done', stopReason: requests === 1 ? 'max_tokens' : 'end_turn' };
+    };
+    const endSession = vi.fn(async () => undefined);
+    const onTurnCompletedInTransaction = vi.fn(() => {
+      const messages = sessions.loadHistory(session.id);
+      expect(messages.filter(message => message.role === 'assistant')).toHaveLength(2);
+    });
+    const executor = new TurnExecutor({
+      ...makeDeps({
+        sessions, createLLMCall: () => callLLM,
+        computerUse: { waitWhilePaused: async () => undefined, noteUserInput: vi.fn(), endSession } as unknown as ComputerUse,
+      }),
+      sessions, turns, continuations: queue, onTurnCompletedInTransaction,
+      readTurnReminder: () => ({ currentDate: '2026-10-28', goal: null }),
+      characterName: () => 'test', hasNormalUserMessage: () => false,
+      createCompact: () => async request => ({ kind: 'unchanged', messages: request.messages }),
+    });
+    const handle = executor.start(makeStart({ sessionId: session.id }));
+    try {
+      expect(await handle.completion).toMatchObject({ status: 'completed' });
+      expect(requests).toBe(2);
+      expect(onTurnCompletedInTransaction).toHaveBeenCalledOnce();
+      expect(endSession).not.toHaveBeenCalled();
+    } finally {
+      queue.shutdown();
+      db.close();
+    }
   });
 });

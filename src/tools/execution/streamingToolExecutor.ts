@@ -1,274 +1,177 @@
-import type { ToolExecutionEvent } from '../events.js';
-import type { ToolResultStore } from '../results/toolResultStore.js';
-import { ToolCallExecution, type ToolExecutionEnvironment } from './toolCallExecution.js';
+import type { ToolExecutionEvent } from './toolEvents.js';
+import type { ToolExecutionContext } from './toolExecutionContext.js';
+import { ToolCallExecution } from './toolCallExecution.js';
+import type { ToolCallOutcome } from './toolCallOutcome.js';
 import type { ToolResult } from '../results/toolResult.js';
 
-interface TrackedTool {
+interface ScheduledToolCall {
   readonly blockIndex: number;
   readonly execution: ToolCallExecution;
-  done: boolean;
-  terminalEmitted: boolean;
+  // 等本调用完成排队, 暂停等待, 权限检查和实际执行, 或生成取消结果.
+  // 完成后不代表结果 Message 已经保存, 也不代表被取消调用之前的工具都已结束.
+  completionPromise?: Promise<void>;
+  completion?: ToolCallOutcome;
+  terminalEventPublished: boolean;
   resultDelivered: boolean;
+  // 关闭等待超时后, 不再让迟到的进度或终态进入已经结束的 Turn.
   suppressEvents: boolean;
-  result?: ToolResult;
-  terminalEvent?: ToolExecutionEvent;
-  promise?: Promise<void>;
 }
 
-export type StreamingToolExecutorEvent = ToolExecutionEvent;
-
-export type StreamingToolExecutorOptions = ToolExecutionEnvironment & {
-  /** 写入 Agent 待发送事件队列;实现方同时负责唤醒流式排空循环. */
-  readonly pushEv: (event: StreamingToolExecutorEvent) => void;
-  /** 工具完成但没有新增进度事件时,唤醒 Agent 重新检查 allDone(). */
+export type StreamingToolExecutorOptions = ToolExecutionContext & {
+  readonly publishEvent: (event: ToolExecutionEvent) => void;
+  // 没有进度事件的工具也会完成, 因此完成时必须唤醒 AgentLoop 检查结果.
   readonly wake: () => void;
 };
 
-/**
- * 流式工具调度器.
- *
- * 单次调用的准备,权限,校验,审计和执行全部委托给 ToolCallExecution;本类只处理
- * 流式入队,并发安全工具与独占工具的屏障,取消,等待状态和模型顺序终态.
- */
 export class StreamingToolExecutor {
-  private tracked: TrackedTool[] = [];
-  private readonly pendingTools = new Set<Promise<void>>();
-  private exclusiveBarrier: Promise<void> = Promise.resolve();
+  private readonly callsById = new Map<string, ScheduledToolCall>();
+  // 与 Map 引用相同的记录, 只在登记新调用时按模型 blockIndex 排序.
+  private readonly orderedCalls: ScheduledToolCall[] = [];
+  // 每个 Promise 同时等两件事: 该工具原本要等的更早工具结束, 以及该工具自己处理结束.
+  // 例如 A 运行中, B 排在 A 后面却被取消: B 可先返回取消结果, 此处仍要等 A.
+  // 后面的工具因此不会利用 B 的取消越过仍在执行的 A. 这里只保存尚未满足这两个条件的调用.
+  private readonly scheduledCallCompletionPromises = new Set<Promise<void>>();
+  // 最近一个独占调用连同它等待的更早调用何时结束. 尚无独占调用时已完成, 不阻挡并发工具.
+  private lastExclusiveCallFinished: Promise<void> = Promise.resolve();
   private stoppingReason?: string;
 
-  constructor(private readonly options: StreamingToolExecutorOptions) { }
+  constructor(private readonly options: StreamingToolExecutorOptions) {}
 
-  abortTool(callId: string): boolean {
-    const track = this.tracked.find(candidate => candidate.execution.id === callId && !candidate.done);
-    if (!track) {
-      return false;
-    }
-    track.execution.abort('user_abort');
+  abortTool(toolCallId: string): boolean {
+    const call = this.callsById.get(toolCallId);
+    if (!call || call.completion) return false;
+    call.execution.abort('user_abort');
     return true;
   }
 
   abortAll(reason: string): void {
     this.stoppingReason = reason;
-    for (const track of this.tracked) {
-      if (!track.done) {
-        track.execution.abort(reason);
-      }
+    for (const call of this.orderedCalls) {
+      if (!call.completion) call.execution.abort(reason);
     }
   }
 
-  /** 等待当前已登记的工具全部退出. */
+  /** 等当前已登记的工具处理完, 包括等待用户批准或继续操控; 不等待结果 Message 落库确认. */
   async join(): Promise<void> {
-    await Promise.allSettled(
-      this.tracked
-        .map(track => track.promise)
-        .filter((promise): promise is Promise<void> => promise !== undefined),
-    );
+    await Promise.allSettled(this.orderedCalls.map(call => call.completionPromise));
   }
 
-  /** 取消并等待已登记调用; 超时后禁止迟到事件, 并记录尚未结束的执行状态. */
   async shutdown(reason: string, timeoutMs = 5_000): Promise<void> {
     this.abortAll(reason);
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const joined = this.join().then(() => true);
-    const timedOut = new Promise<false>((resolve) => {
+    const timedOut = new Promise<false>(resolve => {
       timer = setTimeout(() => resolve(false), timeoutMs);
       timer.unref?.();
     });
-    const completed = await Promise.race([joined, timedOut]);
-    if (timer) {
-      clearTimeout(timer);
-    }
-    if (completed) {
-      return;
-    }
+    // 先发取消, 再等调用退出. 超时只结束本执行器的等待和事件发布, 不宣称底层操作已经撤销.
+    const completed = await Promise.race([this.join().then(() => true), timedOut]);
+    if (timer) clearTimeout(timer);
+    if (completed) return;
 
-    for (const track of this.tracked) {
-      if (track.done) {
-        continue;
-      }
-      track.suppressEvents = true;
-      track.execution.closeAfterShutdown();
+    for (const call of this.orderedCalls) {
+      if (call.completion) continue;
+      call.suppressEvents = true;
+      call.execution.closeAfterShutdown();
     }
   }
 
-  /** 在两次 LLM 迭代之间清空已经结束的调度状态 */
-  reset(): void {
-    this.tracked = [];
-    this.pendingTools.clear();
-    this.exclusiveBarrier = Promise.resolve();
-    this.stoppingReason = undefined;
-  }
-
-  /** 调用方已保存 tool_use 后登记; 立即进入并发/独占调度. */
-  addTool(
-    blockIndex: number,
-    id: string,
-    name: string,
-    args: unknown
-  ): void {
-    if (this.stoppingReason) {
-      return;
-    }
-
-    let track!: TrackedTool;
-    const execution = new ToolCallExecution(
-      this.options,
-      { callId: id, name, args },
-      (event: ToolExecutionEvent) => {
-        if (!track.suppressEvents) {
-          this.options.pushEv(event);
-        }
-      },
-    );
-    track = {
+  /** Agent 保存 tool_use 后调用. 构造时解析参数并登记电脑调用, 然后按并发规则开始排队. */
+  addTool(blockIndex: number, id: string, name: string, args: unknown): void {
+    if (this.stoppingReason) return;
+    let call!: ScheduledToolCall;
+    const execution = new ToolCallExecution(this.options, { callId: id, name, args }, event => {
+      if (!call.suppressEvents) this.options.publishEvent(event);
+    });
+    call = {
       blockIndex,
       execution,
-      done: false,
-      terminalEmitted: false,
+      terminalEventPublished: false,
       resultDelivered: false,
       suppressEvents: false,
     };
-    this.tracked.push(track);
-    this.schedule(track);
+    this.callsById.set(id, call);
+    this.orderedCalls.push(call);
+    this.orderedCalls.sort((left, right) => left.blockIndex - right.blockIndex);
+    this.schedule(call);
   }
 
-  /**
-   * Tool分为并发安全和独占两类:
-   * - 并发安全工具可以和其他并发安全工具同时执行,但必须等待前一个独占工具完成.
-   * - 独占工具必须等待此前所有已调度工具完成,且后续工具不能越过它.
-   */
-  private schedule(track: TrackedTool): void {
-    if (track.promise) {
-      throw new Error(`tool_already_scheduled: ${track.execution.id}`);
+  private schedule(call: ScheduledToolCall): void {
+    const earlierToolsFinished = call.execution.isConcurrencySafe
+      ? this.lastExclusiveCallFinished
+      : Promise.allSettled(this.scheduledCallCompletionPromises).then(() => undefined);
+
+    // run 同时等执行顺序和本调用取消. 被取消的调用可先生成结果, 无需等更早的长工具结束.
+    call.completionPromise = this.completeCall(call, earlierToolsFinished);
+    const callAndEarlierToolsFinished = Promise.allSettled([
+      earlierToolsFinished,
+      call.completionPromise,
+    ]).then(() => undefined);
+    if (!call.execution.isConcurrencySafe) {
+      this.lastExclusiveCallFinished = callAndEarlierToolsFinished;
     }
-
-    let promise: Promise<void>;
-    let started = false;
-    const execute = (): Promise<void> => {
-      if (started) return Promise.resolve();
-      started = true;
-      track.execution.cancellationSignal.removeEventListener('abort', cancelQueued);
-      return this.execute(track);
-    };
-    // 取消排队调用时直接生成终态, 不再等待前面的长工具完成后才处理取消.
-    let releaseCancelled!: () => void;
-    const cancelled = new Promise<void>(resolve => { releaseCancelled = resolve; });
-    const cancelQueued = (): void => {
-      if (started) return;
-      void execute().finally(releaseCancelled);
-    };
-    track.execution.cancellationSignal.addEventListener('abort', cancelQueued, { once: true });
-
-    if (track.execution.isConcurrencySafe) {
-      // 并发安全调用只需等待前一个独占调用 然后可以和其他 safe tool 并行
-      promise = this.exclusiveBarrier.then(execute);
-    } else {
-      // 独占调用必须等待此前所有已调度调用完成
-      const fence = Promise.allSettled(this.pendingTools);
-
-      promise = fence.then(execute);
-
-      // 后续调用不能越过本次独占调用 从现在开始后面的 safe tool 都必须等它
-      this.exclusiveBarrier = promise;
-    }
-
-    promise = Promise.race([promise, cancelled]);
-    track.promise = promise;
-    this.pendingTools.add(promise);
-
-    void promise.then(
-      () => this.pendingTools.delete(promise),
-    );
-    if (track.execution.cancellationSignal.aborted) cancelQueued();
+    this.scheduledCallCompletionPromises.add(callAndEarlierToolsFinished);
+    void callAndEarlierToolsFinished.then(() => {
+      this.scheduledCallCompletionPromises.delete(callAndEarlierToolsFinished);
+    });
   }
 
   allDone(): boolean {
-    return this.tracked.every(track => track.done);
+    return this.orderedCalls.every(call => call.completion !== undefined);
   }
 
   hasWaitingUserTool(): boolean {
-    return this.tracked.some(track => (
-      track.execution.requiresUserInteraction && !track.done
-    ));
+    return this.orderedCalls.some(call => call.execution.requiresUserInteraction && !call.completion);
   }
 
-  /** 只交付从队首开始连续完成的结果;调用方持久化后必须 acknowledgeResult. */
+  /** 结果可以先生成, 但只按模型顺序交付连续完成的前缀. */
   takeCompletedResults(): ToolResult[] {
-    const delivered: ToolResult[] = [];
-    const ordered = [...this.tracked].sort((left, right) => left.blockIndex - right.blockIndex);
-    for (const track of ordered) {
-      if (track.resultDelivered) {
-        continue;
-      }
-      if (!track.done || !track.result) {
-        break;
-      }
-      track.resultDelivered = true;
-      delivered.push(track.result);
+    const results: ToolResult[] = [];
+    for (const call of this.orderedCalls) {
+      if (call.resultDelivered) continue;
+      if (!call.completion) break;
+      call.resultDelivered = true;
+      results.push(call.completion.result);
     }
-    return delivered;
+    return results;
   }
 
-  /** Message 已持久化后再关执行状态,崩溃时才能保守恢复. */
-  acknowledgeResult(callId: string): void {
-    const track = this.tracked.find(candidate => candidate.execution.id === callId);
-    if (!track?.resultDelivered) {
-      throw new Error(`tool_result_not_delivered: ${callId}`);
-    }
-    track.execution.commitResult();
+  /** 调用方保存 tool_result Message 后确认, 此时才将执行记录写成终态. */
+  acknowledgeResult(toolCallId: string): void {
+    const call = this.callsById.get(toolCallId);
+    if (!call?.resultDelivered) throw new Error(`tool_result_not_delivered: ${toolCallId}`);
+    call.execution.commitResult();
   }
 
-  private async execute(track: TrackedTool): Promise<void> {
+  private async completeCall(call: ScheduledToolCall, earlierToolsFinished: Promise<void>): Promise<void> {
     try {
-      if (this.stoppingReason) {
-        track.execution.abort(this.stoppingReason);
-      }
-      const completion = await track.execution.run();
-      track.result = completion.result;
-      track.terminalEvent = completion.terminalEvent;
+      call.completion = await call.execution.run(earlierToolsFinished);
     } catch (error) {
-      // 单次执行会把业务错误转为结果. 此处处理执行器本身的异常,
-      // 仍生成失败结果, 让后续独占调用能够继续.
+      // 业务失败在单次调用内转换. 此处接住登记清理或执行器异常, 让工具配对和后续调度仍能结束.
       const message = error instanceof Error ? error.message : String(error);
-      track.result = {
-        type: 'tool_result',
-        toolCallId: track.execution.id,
-        content: message,
-        isError: true,
-        errorCode: 'tool/runtime_error',
-      };
-      track.terminalEvent = {
-        type: 'tool_result',
-        sessionId: this.options.sessionId,
-        callId: track.execution.id,
-        name: track.execution.name,
-        error: { code: 'tool/runtime_error', message },
-        durationMs: 0,
+      call.completion = {
+        status: 'failed',
+        result: {
+          type: 'tool_result', toolCallId: call.execution.id, content: message,
+          isError: true, errorCode: 'tool/runtime_error',
+        },
+        terminalEvent: {
+          type: 'tool_result', sessionId: this.options.sessionId,
+          callId: call.execution.id, name: call.execution.name,
+          error: { code: 'tool/runtime_error', message }, durationMs: 0,
+        },
       };
     } finally {
-      track.done = true;
-      this.flushTerminalEvents();
+      this.publishCompletedEvents();
       this.options.wake();
     }
   }
 
-  /**
-   * 后完成的调用不能越过前面的模型 block 发射终态.
-   * 审批和工具进度仍实时发送,只有 tool_result 在此保持 FIFO.
-   */
-  private flushTerminalEvents(): void {
-    const ordered = [...this.tracked].sort((left, right) => left.blockIndex - right.blockIndex);
-    for (const track of ordered) {
-      if (track.terminalEmitted) {
-        continue;
-      }
-      if (!track.done) {
-        break;
-      }
-      track.terminalEmitted = true;
-      if (!track.suppressEvents && track.terminalEvent) {
-        this.options.pushEv(track.terminalEvent);
-      }
+  private publishCompletedEvents(): void {
+    for (const call of this.orderedCalls) {
+      if (call.terminalEventPublished) continue;
+      if (!call.completion) break;
+      call.terminalEventPublished = true;
+      if (!call.suppressEvents) this.options.publishEvent(call.completion.terminalEvent);
     }
   }
 }

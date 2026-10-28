@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { LLMGenerationSource } from '@ema-agent/llm';
 import type { SessionMessage } from '@ema-agent/session';
-import { createForkParentMessages } from '../forkParentMessages.js';
+import { createForkParentMessages } from '../subagent/forkParentMessages.js';
 
 const source: LLMGenerationSource = { providerId: 'p', modelId: 'm', protocol: 'openai-llm' };
 

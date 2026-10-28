@@ -22,6 +22,17 @@ describe('SubagentMessagesStore', () => {
   });
   afterEach(() => database.close());
 
+  it('续写通知独立保存到当前 Run, 不伪装成普通用户输入', () => {
+    store.initialize('child', 'r1', '任务');
+    const id = store.record('child', 'r1', {
+      type: 'output_continuation', llmCallId: 'request-1', content: '上一次回答因输出长度限制中断, 本次继续该回答.',
+    });
+    const stored = store.get(id!);
+    expect(stored).toMatchObject({ runId: 'r1', role: 'user', kind: 'continuation' });
+    expect(stored?.blocks).toContain('输出长度限制中断');
+    expect(store.loadHistory('child').filter(message => message.kind === 'continuation')).toHaveLength(1);
+  });
+
   function parent(): ForkParentMessages {
     return { messages: [
       { id: 'summary', role: 'user', kind: 'summary', blocks: '摘要 S', interrupted: false, createdAt: 2,

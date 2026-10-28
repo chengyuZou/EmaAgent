@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { CommandOutputChunk } from '@ema-agent/sandbox';
-import { BackgroundProcessError } from '../errors.js';
+import { BackgroundProcessError } from './errors.js';
 import type {
   BackgroundProcessOutputLocation,
   BackgroundProcessOutputPathFactory,

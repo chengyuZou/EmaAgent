@@ -50,7 +50,7 @@ function fixture() {
       rules: ['ObserveWindow', 'ComputerAction', 'ComputerEnd'].map(toolName => ({ key: { toolName }, decision: 'ask' as const, from: 'userSettings' as const })),
     },
     askPermission,
-    registerToolCall: (call, reject) => {
+    registerComputerToolCall: (call, reject) => {
       const kinds: Record<string, ComputerCallKind> = {
         ObserveWindow: 'observe', ComputerAction: 'action', ComputerEnd: 'end',
       };

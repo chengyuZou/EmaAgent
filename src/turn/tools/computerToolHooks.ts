@@ -12,14 +12,16 @@ const computerToolKinds = new Map<string, ComputerCallKind>([
 export function createComputerToolHooks(
   computer: ComputerUse | undefined,
   sessionId: string,
-): Pick<StreamingToolExecutorOptions, 'registerToolCall' | 'waitBeforeToolExecution'> {
+): Pick<StreamingToolExecutorOptions, 'registerComputerToolCall' | 'waitIfComputerUsePaused'> {
   return {
-    registerToolCall: (call, cancelUnsubmittedCall) => {
+    registerComputerToolCall: (call, cancelPendingComputerCall) => {
       const kind = computerToolKinds.get(call.name);
       if (!computer || !kind) return undefined;
       try {
+        // 暂停或结束时, ComputerUse 取消仍可作废的旧调用. 执行器把原因转成该 Tool 的结果.
+        // 返回的函数交回执行器, 调用结束后删除登记, 并释放未启动的操控预约.
         return computer.registerCall(sessionId, call.callId, kind, error => {
-          cancelUnsubmittedCall(new ToolExecutionError({ effect: error.effect }, error.message, error.code));
+          cancelPendingComputerCall(new ToolExecutionError({ effect: error.effect }, error.message, error.code));
         });
       } catch (error) {
         if (error instanceof ComputerUseError) {
@@ -28,9 +30,12 @@ export function createComputerToolHooks(
         throw error;
       }
     },
-    waitBeforeToolExecution: async (call, signal) => {
-      // 旧电脑调用由 registerCall 直接结清. 其他工具在启动前共用主 Agent 的暂停等待.
-      if (!computerToolKinds.has(call.name)) await computer?.waitWhilePaused(sessionId, signal);
+    waitIfComputerUsePaused: async (call, signal) => {
+      // 电脑调用由 ComputerUse 作废或交给 Rust 返回实际结果, 不在这里等待重放.
+      if (computerToolKinds.has(call.name)) return;
+
+      // 普通工具等本 Session 的操控恢复或结束. 当前调用取消时由 signal 中断等待.
+      await computer?.waitWhilePaused(sessionId, signal);
     },
   };
 }

@@ -1,3 +1,4 @@
+import { ModelMessageIds } from './modelMessageIds.js';
 import { randomUUID } from 'node:crypto';
 import type { ReasoningEffort } from '@ema-agent/session';
 import type { PermissionModeRow } from '@ema-agent/storage';
@@ -13,8 +14,8 @@ export interface PrepareSubagentInput {
   readonly runId: string;
   readonly isNew: boolean;
   readonly messageStore: SubagentMessagesStore;
-  /** 与工作历史同序, 摘要保存和循环追加共用这一数组. */
-  readonly messageIds: (string | undefined)[];
+  /** 主动追加消息和 Macro 压缩共用同一份消息 ID 对应关系. */
+  readonly messageIds: ModelMessageIds;
   readonly prompt: string;
   readonly options: SubagentSpawnOptions;
   readonly signal: AbortSignal;
@@ -344,12 +345,9 @@ export class SubagentExecutor {
 
     let terminal: Extract<AgentLoopEvent, { type: 'loop_stopped' }> | undefined;
     try {
-      // 与模型工作历史逐条对齐, 保存每条消息的 SQL ID. 纯文本循环引导未入库, 对应 undefined.
-      // Macro 摘要靠它找到覆盖截止 ID; 初始历史由 prepareSubagent 填入, 之后随循环追加或压缩改写.
-      const messageIds: (string | undefined)[] = [];
-      // Assistant/ToolResult 先落库, 后追加到模型历史. 暂存已写好的 ID,
-      // 等 model_history_appended 时按追加顺序移入 messageIds, 不参与任务或通知调度.
-      const pendingMessageIds: (string | undefined)[] = [];
+      // 与模型工作历史逐条对齐, Macro 据此找到摘要覆盖的最后一个已保存 ID.
+      // 初始历史由 prepareSubagent 填入; 后续正文, 工具结果和续写通知保存后再记录 ID.
+      const messageIds = new ModelMessageIds([]);
       const loopInput = await input.prepareSubagent({
         subagentId,
         runId,
@@ -387,14 +385,7 @@ export class SubagentExecutor {
         // 持久 transcript 必须先越过对应语义边界, 然后才能恢复 generator
         // 触发下一步工具副作用. 实时发布独立于 SQL, 不借父 Turn 通道.
         const messageId = this.deps.messageStore.record(subagentId, runId, event);
-        if (event.type === 'assistant_message_completed' || event.type === 'tool_result') {
-          pendingMessageIds.push(messageId);
-        }
-        if (event.type === 'model_history_appended') {
-          for (const _message of event.messages) {
-            messageIds.push(pendingMessageIds.shift());
-          }
-        }
+        messageIds.record(event, messageId);
         if (messageId) {
           this.publishMessage(
             input.sessionId,

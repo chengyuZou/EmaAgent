@@ -4,7 +4,7 @@ import { GoalStore } from '@ema-agent/goal';
 import { SessionRunningRegistry, SessionStore } from '@ema-agent/session';
 import { Database } from '@ema-agent/storage';
 import type { StartTurn, TurnHandle } from '../types.js';
-import { SessionContinuationQueue } from '../sessionContinuationQueue.js';
+import { SessionContinuationQueue } from '../continuation/sessionContinuationQueue.js';
 
 function makeHandle(input: StartTurn): TurnHandle {
   return {
@@ -92,9 +92,9 @@ describe('SessionContinuationQueue', () => {
       sessionId: 'session-a',
       input: [{ type: 'attachment' as const, block: { type: 'image_reference' as const, path: '/screen.png', name: '屏幕截图' } }],
     };
-    expect(queue.isIdleForVishotCapture('session-a')).toBe(true);
-    expect(queue.enqueueIfIdleForVishotCapture(input)).toBe(true);
-    expect(queue.enqueueIfIdleForVishotCapture(input)).toBe(false);
+    expect(queue.canStartIdleTurn('session-a')).toBe(true);
+    expect(queue.enqueueIfIdle(input)).toBe(true);
+    expect(queue.enqueueIfIdle(input)).toBe(false);
     await Promise.resolve();
     expect(starts).toHaveLength(1);
     expect(starts[0]!.input).toEqual(input.input);
@@ -110,8 +110,8 @@ describe('SessionContinuationQueue', () => {
     if (reason === 'goal') f.goals.create(id, '未完成目标');
     if (reason === 'drain') f.queue.requestDrain(id);
     if (reason === 'closed') f.queue.shutdown();
-    expect(f.queue.isIdleForVishotCapture(id)).toBe(false);
-    expect(f.queue.enqueueIfIdleForVishotCapture({ sessionId: id, input: [] })).toBe(false);
+    expect(f.queue.canStartIdleTurn(id)).toBe(false);
+    expect(f.queue.enqueueIfIdle({ sessionId: id, input: [] })).toBe(false);
     f.queue.shutdown();
   });
 
@@ -167,7 +167,7 @@ describe('SessionContinuationQueue', () => {
     fixture.queue.goalEdited(latest);
     fixture.queue.acknowledge('root');
     expect(fixture.queue.claimNextIteration(fixture.session.id, 'root')).toMatchObject({
-      type: 'continuation', continuationText: expect.stringContaining('第二版'),
+      inputKind: 'continuationText', continuationText: expect.stringContaining('第二版'),
     });
     fixture.queue.acknowledge('root');
     expect(fixture.queue.claimNextIteration(fixture.session.id, 'root')).toBeUndefined();
@@ -230,7 +230,7 @@ describe('SessionContinuationQueue', () => {
     fixture.queue.guide('session-a', guided.id);
 
     const claim = fixture.queue.claimNextIteration('session-a', 'active-turn');
-    expect(claim).toMatchObject({ type: 'user_input', input: guided.input });
+    expect(claim).toMatchObject({ inputKind: 'messageInput', input: guided.input });
     expect(fixture.queue.acknowledge('active-turn')).toEqual([guided.id]);
     expect(fixture.queue.list('session-a').map(item => item.id)).toEqual([normal.id]);
 
@@ -256,7 +256,7 @@ describe('SessionContinuationQueue', () => {
     expect(fixture.queue.guide('session-a', second.id)).toBe(true);
     expect(fixture.queue.guide('session-a', first.id)).toBe(true);
     expect(fixture.queue.claimNextIteration('session-a', 'active-turn'))
-      .toMatchObject({ type: 'user_input', input: [{ type: 'text', text: '第一条\n\n第二条' }] });
+      .toMatchObject({ inputKind: 'messageInput', input: [{ type: 'text', text: '第一条\n\n第二条' }] });
     fixture.queue.release('active-turn');
     expect(fixture.queue.list('session-a').map(item => item.id)).toEqual([first.id, second.id, third.id]);
     expect(fixture.queue.list('session-a').find(item => item.id === third.id)?.delivery).toBe('after_turn');
@@ -321,8 +321,8 @@ describe('SessionContinuationQueue', () => {
 
     const claim = fixture.queue.claimNextIteration('session-a', 'active-turn');
 
-    expect(claim).toMatchObject({ type: 'continuation' });
-    if (claim?.type !== 'continuation') throw new Error('应领取后台完成通知');
+    expect(claim).toMatchObject({ inputKind: 'continuationText' });
+    if (claim?.inputKind !== 'continuationText') throw new Error('应领取后台完成通知');
     expect(claim.continuationText).toContain('Subagent agent-1 已结束, status=completed');
     expect(claim.continuationText).toContain('BackgroundProcess process-1 已结束, status=failed');
     expect(claim.continuationText).toContain('SubagentAwait');
@@ -338,12 +338,12 @@ describe('SessionContinuationQueue', () => {
     fixture.queue.backgroundProcessCompleted('session-a', 'process-1', 'completed');
 
     const noticeClaim = fixture.queue.claimNextIteration('session-a', 'active-turn');
-    expect(noticeClaim).toMatchObject({ type: 'continuation' });
+    expect(noticeClaim).toMatchObject({ inputKind: 'continuationText' });
     fixture.queue.acknowledge('active-turn');
 
     const inputClaim = fixture.queue.claimNextIteration('session-a', 'active-turn');
     expect(inputClaim).toMatchObject({
-      type: 'user_input',
+      inputKind: 'messageInput',
       input: guided.input,
     });
     fixture.queue.acknowledge('active-turn');
@@ -422,7 +422,7 @@ describe('SessionContinuationQueue', () => {
       input: [{ type: 'text', text: '立即引导' }] });
     fixture.queue.guide(fixture.session.id, item.id);
     const claim = fixture.queue.claimNextIteration(fixture.session.id, 'running-turn');
-    expect(claim).toMatchObject({ type: 'user_input', input: item.input });
+    expect(claim).toMatchObject({ inputKind: 'messageInput', input: item.input });
     expect(claim?.continuationText).toBeUndefined();
   });
 
@@ -460,7 +460,7 @@ describe('SessionContinuationQueue', () => {
     fixture.queue.backgroundProcessCompleted(fixture.session.id, 'process-a', 'completed');
     fixture.goals.cancel({ sessionId: fixture.session.id, goalId: goal.id, expectedVersion: goal.version });
     const claim = fixture.queue.claimNextIteration(fixture.session.id, 'active-turn');
-    expect(claim).toMatchObject({ type: 'continuation', continuationText: expect.stringContaining('process-a') });
+    expect(claim).toMatchObject({ inputKind: 'continuationText', continuationText: expect.stringContaining('process-a') });
     fixture.queue.release('active-turn');
     expect(fixture.queue.claimNextIteration(fixture.session.id, 'active-turn')).toEqual(claim);
     fixture.queue.acknowledge('active-turn');

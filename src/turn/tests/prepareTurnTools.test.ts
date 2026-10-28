@@ -1,3 +1,5 @@
+import { ScratchpadWriteTool } from '../../builtin-tools/tools/ScratchpadTool/ScratchpadTools.js';
+import { listScratchpadEntries } from '../../builtin-tools/tools/ScratchpadTool/ScratchpadStore.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import fs from 'node:fs';
@@ -20,13 +22,16 @@ import {
   ToolExecutionError,
   type ToolUseContext,
 } from '@ema-agent/tools';
-import { SessionInteractionQueue } from '../interactionQueue.js';
+import { SessionInteractionQueue } from '../interaction/sessionInteractionQueue.js';
 import type { TurnStreamEvent } from '../events.js';
 import {
   prepareTurnTools as bindTurnTools,
   type TurnToolsDeps,
-} from '../prepare/prepareTurnTools.js';
+} from '../tools/turnTools.js';
 import { selectTurnToolPool } from '../prepare/prepareContextInput.js';
+import type { PrepareTurnDeps } from '../prepare/prepareTurn.js';
+
+type TurnToolsFixtureDeps = TurnToolsDeps & Pick<PrepareTurnDeps, 'registry' | 'settings'>;
 
 import { FileReadTool } from '../../builtin-tools/tools/FileReadTool/FileReadTool.js';
 import { FileEditTool } from '../../builtin-tools/tools/FileEditTool/FileEditTool.js';
@@ -42,7 +47,7 @@ import { configureWebDownloads } from '../../builtin-tools/tools/WebFetchTool/st
 import { listMemoryFiles, readMemoryFile, searchMemoryFiles } from '../../memory/common/memoryFiles.js';
 
 function prepareTurnTools(
-  deps: TurnToolsDeps,
+  deps: TurnToolsFixtureDeps,
   input: Omit<Parameters<typeof bindTurnTools>[1], 'toolPool'>,
 ) {
   return bindTurnTools(deps, {
@@ -73,7 +78,7 @@ function fakeTool(name: string, options: {
     description: name,
     inputSchema: z.object({}),
     validateContext: () => contextOk({}),
-    isReadOnly: () => true,
+
     isConcurrencySafe: () => true,
     checkPermissions: async () => options.ask
       ? {
@@ -86,10 +91,10 @@ function fakeTool(name: string, options: {
 }
 
 function makeDeps(options: {
-  tools: ReturnType<typeof fakeTool>[];
+  tools: readonly Parameters<ToolRegistry['register']>[0][];
   queue: SessionInteractionQueue;
   settings: SettingsStore;
-}): TurnToolsDeps {
+}): TurnToolsFixtureDeps {
   const registry = new ToolRegistry();
   const caches = new Map<string, FileStateCache>();
   for (const tool of options.tools) registry.register(tool);
@@ -121,8 +126,6 @@ function makeInput(options: {
     workspaceRoots: ['/w'],
     prepareSubagent: async () => { throw new Error('不应派生子 Agent'); },
     reasoningEffort: 'high' as const,
-    providerId: 'p',
-    modelId: 'm',
     emit: (event: TurnStreamEvent) => { options.events.push(event); },
     permission: {
       mode: 'default' as const,
@@ -458,7 +461,7 @@ describe('prepareTurnTools', () => {
       name: 'PermissionProbe', description: '验证批准范围',
       inputSchema: z.object({ command: z.string() }),
       validateContext: () => contextOk({}),
-      isReadOnly: () => true,
+
       isConcurrencySafe: () => true,
       checkPermissions: async input => {
         if (!specialized) {
@@ -917,4 +920,33 @@ describe('prepareTurnTools', () => {
     expect(getSessionApprovals(SESSION_ID)).toEqual([]);
   });
 
+
+  it('主 Agent 和子代理共用 Scratchpad, 但各自保存实际写入者', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ema-scratch-author-'));
+    const deps = makeDeps({
+      tools: [ScratchpadWriteTool], queue: new SessionInteractionQueue(null), settings: fakeSettings(),
+    });
+    const assembly = await prepareTurnTools(deps, makeInput({ events: [], overrides: { scratchpadDir: dir } }));
+    const main = assembly.createExecutor(() => {});
+    const child = assembly.createSubagentExecutor({
+      subagentId: 'child-1', runId: 'run-1', toolPool: assembly.toolPool,
+      signal: new AbortController().signal, wake: () => {},
+    });
+    try {
+      child.addTool(0, 'child-write', BuiltinTools.ScratchpadWrite.name, { key: 'child-note', value: '子代理内容' });
+      await child.join();
+      expect(child.takeCompletedResults()[0]?.isError).toBe(false);
+      main.addTool(0, 'main-write', BuiltinTools.ScratchpadWrite.name, { key: 'main-note', value: '主 Agent 内容' });
+      await main.join();
+      expect(main.takeCompletedResults()[0]?.isError).toBe(false);
+      const entries = await listScratchpadEntries(dir);
+      expect(entries.map(entry => [entry.key, entry.author]).sort()).toEqual([
+        ['child-note', 'subagent:child-1'],
+        ['main-note', 'main'],
+      ]);
+    } finally {
+      await Promise.all([main.shutdown('test_finished'), child.shutdown('test_finished')]);
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });

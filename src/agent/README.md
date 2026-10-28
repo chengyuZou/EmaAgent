@@ -36,12 +36,13 @@ After complete assistant/tool history, `takeNextIterationMessages` can supply ad
 
 - A context-window error before any response event permits one retry within the same iteration. The host receives `recoveryReason: 'context_window_exceeded'` and decides whether to compact.
 - A tool-free `max_tokens` response keeps its text and adds a continuation message. If the continuation also truncates, the loop stops with `output_recovery_failed`.
-- Three consecutive identical tool batches add one reminder to change approach. Equality uses sorted tool names plus serialized arguments.
 - At `maxIterations`, the loop stops with `max_iterations`; the host decides the Turn outcome.
 
 Every physical model call has a new `llmCallId`. Per-call usage events are cumulative for that call; Agent usage sums their changes. A context retry is a new physical call, not a new iteration. Other model errors propagate to the host.
 
 Settings default to 50 iterations per loop and 32 concurrent subagents per process, with allowed ranges 30-100 and 1-128. All Sessions share the subagent limit. Reaching it rejects a new Run rather than queueing it. The host reads and applies these settings.
+
+`output_continuation` carries an output-length recovery notice. The consumer saves it as a `continuation` message before resuming the loop. Main and subagent runs share `ModelMessageIds` for saved-ID alignment across appended history and Macro replacement. Repeated-call guidance belongs to the static Prompt; the loop does not infer lack of progress from identical arguments.
 
 ## Subagents
 
@@ -63,6 +64,6 @@ Cancelling an await ends that wait, not the background execution. Explicit Sessi
 
 ## Reading and checking
 
-Start with [agentLoop.ts](./agentLoop.ts) for the generator contract, then [subagentExecutor.ts](./subagentExecutor.ts) for result ownership. `subagents/` contains SQL-backed identity/Run and message stores. Real consumers include [Turn](../turn/turn.ts), [Turn subagent preparation](../turn/prepare/prepareSubagent.ts) and [Server composition](../../apps/server/src/composition/turn.ts).
+Start with [agentLoop.ts](./agentLoop.ts) for the generator contract, then [subagentExecutor.ts](./subagentExecutor.ts) for result ownership. `subagents/` contains SQL-backed identity/Run and message stores. Real consumers include [Turn](../turn/core/turnExecutor.ts), [Turn subagent preparation](../turn/subagent/prepareSubagent.ts) and [Server composition](../../apps/server/src/composition/turn.ts).
 
 `pnpm --filter @ema-agent/agent test` checks event ordering, retries, native reasoning, cancellation, fork histories, multiple Runs and SQLite persistence. Tests use controlled model/executor replacements rather than paid API calls.

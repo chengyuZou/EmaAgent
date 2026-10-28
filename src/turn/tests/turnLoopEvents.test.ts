@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { AgentLoopEvent } from '@ema-agent/agent';
 import type { UsageRecord } from '@ema-agent/usage';
 import type { TurnStreamEvent } from '../events.js';
-import { createTurnLoopEvents } from '../turnLoopEvents.js';
+import { createTurnLoopEvents } from '../core/turnLoopEvents.js';
 
 function fixture() {
   const events: TurnStreamEvent[] = [];

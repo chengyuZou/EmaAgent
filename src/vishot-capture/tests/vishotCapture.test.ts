@@ -23,7 +23,7 @@ function fixture() {
     saveImage,
     canStartCapture: () => isIdle() && canReadImages(),
     shouldSubmitCapture: () => isIdle() && canReadImages(),
-    enqueueIfIdleForVishotCapture: enqueue,
+    enqueueIfIdle: enqueue,
     onError,
   });
   return { settings, captureScreen, saveImage, isIdle, canReadImages, enqueue, onError, capture };

@@ -21,7 +21,7 @@ import {
   workMemoryDir,
 } from '@ema-agent/memory';
 import { permissionAskTimeoutSetting, type PermissionStreamEvent } from '@ema-agent/permission';
-import type { ToolExecutionEvent, ToolUseContext } from '@ema-agent/tools';
+import type { AskUserEvent, ToolUseContext } from '@ema-agent/tools';
 import type { SettingsStore } from '@ema-agent/settings';
 import { workspaceInstructionFilesSetting } from '@ema-agent/skills';
 import type { StageEngine } from '@ema-agent/stage';
@@ -88,7 +88,7 @@ export interface TurnCompositionDeps {
   readonly onTurnCompletedInTransaction: (turnId: string) => void;
   readonly publishSubagent: (sessionId: string, event: SubagentEvent) => void;
   readonly publishQueuedInput: (sessionId: string, event: SessionContinuationEvent) => void;
-  readonly publishInteraction: (event: PermissionStreamEvent | Extract<ToolExecutionEvent, { type: 'ask_user_required' | 'ask_user_resolved' }>) => void;
+  readonly publishInteraction: (event: PermissionStreamEvent | AskUserEvent) => void;
   readonly fanout: TurnFanout;
 }
 

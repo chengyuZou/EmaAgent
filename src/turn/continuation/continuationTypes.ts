@@ -2,7 +2,7 @@ import type { SubagentStatus } from '@ema-agent/agent';
 import type { BackgroundProcessNotifiableStatus } from '@ema-agent/tools';
 import type { TurnInputPart } from '../types.js';
 
-/** 已提交但尚未写入 Message 的用户输入, 只保存在当前进程内存中. */
+/** 已提交但尚未写入 Message 的正文或附件, 包括自动截图. 只保存在当前进程内存中. */
 export interface EnqueueSessionInput {
   readonly sessionId: string;
   readonly input: readonly TurnInputPart[];
@@ -37,12 +37,15 @@ export type SessionContinuationEvent =
  */
 export type ClaimedSessionContinuation =
   | {
-      readonly type: 'user_input';
+      // 正文和附件输入. 自动截图也从这里交付.
+      readonly inputKind: 'messageInput';
       readonly input: readonly TurnInputPart[];
+      // 新 Turn 同时需要继续当前 Goal 时, 附带这段内部提醒.
       readonly continuationText?: string;
     }
   | {
-      readonly type: 'continuation';
+      // 子代理或后台命令完成通知, Goal 修改提醒或继续目标的指令. Turn 保存后再交给模型.
+      readonly inputKind: 'continuationText';
       readonly continuationText: string;
     };
 
@@ -73,7 +76,11 @@ export type CompletionNotice =
       claimedByTurnId?: string;
     };
 
-/** 一次领取的反向索引. 一次性输入, 通知和目标编辑需要确认; after-turn Goal 提示不消耗队列项. */
+/**
+ * 队列记录一次领取占用了哪些输入或通知, 供 acknowledge 删除或 release 归还.
+ * 这是消费记录, 与交给 Turn 的 ClaimedSessionContinuation 内容不同.
+ * 新 Turn 的 Goal 续接每次读取当前目标后生成, 不占用一次性队列项.
+ */
 export type ContinuationClaim =
   | {
       readonly type: 'user_input';

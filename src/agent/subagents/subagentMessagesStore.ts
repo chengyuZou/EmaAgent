@@ -144,6 +144,9 @@ export class SubagentMessagesStore {
         [...event.content]
       ).id;
     }
+    if (event.type === 'output_continuation') {
+      return this.append(subagentId, runId, 'user', 'continuation', event.content).id;
+    }
     if (event.type === 'tool_result') {
       return this.appendToolResult(subagentId, runId, event.result);
     }

@@ -128,8 +128,8 @@ export async function buildComposition(input: { activeDataDir: string; initializ
   const computerUse = openComputerUse();
   const vishotCapture = openVishotCapture(
     database, settings.settings, providers,
-    sessionId => turn.continuations.isIdleForVishotCapture(sessionId),
-    input => turn.continuations.enqueueIfIdleForVishotCapture(input),
+    sessionId => turn.continuations.canStartIdleTurn(sessionId),
+    input => turn.continuations.enqueueIfIdle(input),
     appEvents,
     computerUse,
   );
@@ -197,13 +197,16 @@ export async function buildComposition(input: { activeDataDir: string; initializ
     sessionConnections,
     appEvents,
     async close() {
-      await vishotCapture.close();
-      await computerUse?.close();
-      // 先停止自动续接, 再中止并等待 Turn 和手动 Compact 清除运行记录.
-      // 否则数据库关闭后, Turn 的 finally 仍可能保存结果或启动下一次执行.
+      // 先停止队列和 Goal 自动续接, 防止正在收尾的 Turn 再启动下一 Turn.
       turn.continuations.shutdown();
       stopGoalContinuation();
-      await database.sessionRunning.abortAll();
+      // abortAll 同步发出取消信号, 返回的 Promise 等 Turn 和手动 Compact 收尾.
+      // 必须在结束电脑操控前取消 Turn, 否则解除暂停会让旧工具或模型请求继续开始.
+      const turnsStopped = database.sessionRunning.abortAll();
+      await vishotCapture.close();
+      // 等消息保存和运行记录清理完成, 再关闭原生操控进程; 数据库留到最后关闭.
+      await turnsStopped;
+      await computerUse?.close();
       await speech.close();
       stopPublishingSessionRunning();
       await turn.subagents.shutdown('Application is shutting down');

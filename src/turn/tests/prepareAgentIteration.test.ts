@@ -1,3 +1,4 @@
+import { ModelMessageIds } from '@ema-agent/agent';
 import { describe, expect, it, vi } from 'vitest';
 import type { CompactRequest, CompactResult } from '@ema-agent/compact';
 import type { LLMRequest, Message as ModelMessage } from '@ema-agent/llm';
@@ -58,7 +59,7 @@ function makeDeps(overrides: {
   messageIds?: (string | undefined)[];
   persist?: boolean;
 } = {}) {
-  const messageIds = overrides.messageIds ?? ['old-1', 'old-2', 'reminder-1', 'input-1'];
+  const messageIds = new ModelMessageIds(overrides.messageIds ?? ['old-1', 'old-2', 'reminder-1', 'input-1']);
   let summaryNumber = 0;
   const appendHistorySummary = vi.fn((_input: {
     sessionId: string; turnId: string; summary: string; savedTokens: number; summarizedThroughMessageId: string;
@@ -211,7 +212,7 @@ describe('prepareAgentIteration', () => {
       savedTokens: 80,
       summarizedThroughMessageId: 'input-1',
     });
-    expect(messageIds).toEqual(['summary-1']);
+    expect(messageIds.values).toEqual(['summary-1']);
     expect(result.messages).toEqual([summary]);
     expect(result.request.messages[1]).toEqual({ ...summary, cacheBreakpoint: true });
   });
@@ -242,7 +243,7 @@ describe('prepareAgentIteration', () => {
       savedTokens: 80,
       summarizedThroughMessageId: 'summary-1',
     });
-    expect(messageIds).toEqual(['summary-2', 'reminder-1', 'input-1']);
+    expect(messageIds.values).toEqual(['summary-2', 'reminder-1', 'input-1']);
   });
 
   it('模型专用引导没有 SQL 行, 游标回退到覆盖前缀的最后一条已落库消息', async () => {
@@ -260,7 +261,7 @@ describe('prepareAgentIteration', () => {
     expect(appendHistorySummary).toHaveBeenCalledWith(expect.objectContaining({
       summarizedThroughMessageId: 'input-1',
     }));
-    expect(messageIds).toEqual(['summary-1']);
+    expect(messageIds.values).toEqual(['summary-1']);
   });
 
   it('Micro 原位改写消息, 不写 SQL 摘要', async () => {

@@ -370,7 +370,7 @@ describe('runAgentLoop', () => {
 
     const secondIteration = seenMessages[1]!;
     expect(secondIteration.some((message) => (
-      typeof message.content === 'string' && message.content.includes('继续输出剩余内容')
+      typeof message.content === 'string' && message.content.includes('上一次回答因输出长度限制中断')
     ))).toBe(true);
     expect(terminalEvent(events)?.finalText).toBe('前半尾');
   });
@@ -507,7 +507,7 @@ describe('runAgentLoop', () => {
     });
   });
 
-  it('连续三轮完全相同的工具批次注入一次空转软引导', async () => {
+  it('相同工具调用不额外插入猜测无进展的提示, 仍遵守迭代上限', async () => {
     const seenMessages: Message[][] = [];
     const prepareIteration = vi.fn(async ({ messages }: PrepareAgentIterationInput) => {
       seenMessages.push([...messages]);
@@ -536,17 +536,9 @@ describe('runAgentLoop', () => {
       maxIterations: 6,
     }));
 
-    const fourthIteration = seenMessages[3]!;
-    expect(fourthIteration.some((message) => (
-      message.role === 'user'
-      && typeof message.content === 'string'
-      && message.content.includes('已连续多轮以完全相同的参数')
-    ))).toBe(true);
-    // 软引导只注入一次:最终工作历史里恰好一条.
     const finalHistory = seenMessages.at(-1)!;
-    expect(finalHistory.filter((message) => (
-      typeof message.content === 'string' && message.content.includes('已连续多轮以完全相同的参数')
-    ))).toHaveLength(1);
+    expect(finalHistory.filter(message => message.role === 'user' && typeof message.content === 'string'))
+      .toEqual(seenMessages[0]!.filter(message => message.role === 'user' && typeof message.content === 'string'));
     expect(terminalEvent(events)?.state.stopReason).toBe('max_iterations');
   });
 });

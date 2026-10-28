@@ -1,44 +1,54 @@
-interface ScheduledStart {
+interface ScheduledProcess {
   readonly id: string;
-  readonly start: () => void;
+  // Promise 覆盖进程运行和收尾. 它结束后, Scheduler 才把名额交给下一条命令.
+  readonly run: () => Promise<void>;
+}
+
+interface QueuedProcess {
+  readonly process: ScheduledProcess;
+  readonly resolve: () => void;
+  readonly reject: (error: unknown) => void;
 }
 
 export class BackgroundProcessScheduler {
-  private readonly queue: ScheduledStart[] = [];
-  private activeCount = 0;
+  private readonly queue: QueuedProcess[] = [];
+  private runningCount = 0;
 
   constructor(private readonly maxConcurrent: () => number) {}
 
-  enqueue(item: ScheduledStart): void {
-    this.queue.push(item);
-    this.pump();
+  enqueue(process: ScheduledProcess): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this.queue.push({ process, resolve, reject });
+      this.startQueuedProcesses();
+    });
   }
 
-  /** 排队项尚未占用运行名额, 取消不释放名额; 日志和状态由调用方清理. */
+  /** 排队项尚未占用名额, 取消只移出队列; 日志和业务状态由 BackgroundProcess 清理. */
   cancel(id: string): void {
-    const index = this.queue.findIndex(item => item.id === id);
+    const index = this.queue.findIndex(item => item.process.id === id);
     if (index < 0) return;
-    this.queue.splice(index, 1);
+    const [item] = this.queue.splice(index, 1);
+    item!.resolve();
   }
 
-  release(): void {
-    this.activeCount = Math.max(0, this.activeCount - 1);
-    this.pump();
-  }
-
-  private pump(): void {
-    while (this.activeCount < this.maxConcurrent()) {
+  private startQueuedProcesses(): void {
+    while (this.runningCount < this.maxConcurrent()) {
       const item = this.queue.shift();
       if (!item) return;
+      this.runningCount += 1;
+      void this.runProcess(item);
+    }
+  }
 
-      this.activeCount += 1;
-      try {
-        item.start();
-      } catch (error) {
-        // start() 负责记录业务失败并释放名额; 意外抛错时也不能遗留占用计数.
-        this.activeCount = Math.max(0, this.activeCount - 1);
-        throw error;
-      }
+  private async runProcess(item: QueuedProcess): Promise<void> {
+    try {
+      await item.process.run();
+      item.resolve();
+    } catch (error) {
+      item.reject(error);
+    } finally {
+      this.runningCount -= 1;
+      this.startQueuedProcesses();
     }
   }
 }

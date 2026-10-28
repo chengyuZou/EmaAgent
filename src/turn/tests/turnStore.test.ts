@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Database, MessagesRepo, SessionsRepo } from '@ema-agent/storage';
 import { SessionRunningRegistry } from '@ema-agent/session';
-import { TurnStore } from '../turnStore.js';
+import { TurnStore } from '../store/turnStore.js';
 
 let seq = 100;
 

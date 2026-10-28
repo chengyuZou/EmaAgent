@@ -42,3 +42,5 @@ export {
   maxIterationsSetting,
 } from './settings.js';
 export type { AgentSettings } from './settings.js';
+
+export { ModelMessageIds } from './modelMessageIds.js';

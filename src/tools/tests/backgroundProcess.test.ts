@@ -191,6 +191,16 @@ async function tracked(options?: Parameters<typeof createFixture>[0]): Promise<F
 
 
 describe('BackgroundProcess', () => {
+  it('立即启动的后台命令先通知 queued, 再通知 running', async () => {
+    const fixture = await tracked();
+    const result = await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true }));
+    expect(result.kind).toBe('processReference');
+    expect(fixture.events.map(event => event.status)).toEqual(['queued', 'running']);
+    fixture.runner.processes[0]!.finishWith(okResult());
+    await tick();
+    expect(fixture.events.map(event => event.status)).toEqual(['queued', 'running', 'completed']);
+  });
+
   it('界面进度通知失败不影响日志写入和命令完成', async () => {
     const fixture = await tracked({ immediateResultWaitMs: 40 });
     const onOutput = vi.fn(() => { throw new Error('progress unavailable'); });

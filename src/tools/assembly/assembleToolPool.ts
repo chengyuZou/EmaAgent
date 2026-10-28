@@ -1,10 +1,7 @@
-import type { Tool } from '../Tool/tool.js';
+import type { AnyTool } from '../definition/tool.js';
 import { ToolPool } from './toolPool.js';
 import type { ToolRegistry } from './toolRegistry.js';
 
-// 根 Pool 同时容纳不同泛型实参的 Tool.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AnyTool = Tool<any, any, any, any>;
 
 /**
  * Builtin 在前, MCP 按原始 Server/Tool 身份排序.

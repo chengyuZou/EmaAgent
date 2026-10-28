@@ -14,8 +14,8 @@ import type {
   StartTurnInput,
   Turn,
   TurnIndexPage,
-} from './types.js';
-import { TurnOwnershipError } from './errors.js';
+} from '../types.js';
+import { TurnOwnershipError } from '../errors.js';
 
 export interface TurnStoreDeps {
   db: Database;
@@ -331,10 +331,9 @@ function normaliseIntegerLimit(
   fallback: number,
   maximum: number,
   errorCode: string,
-  allowZero = false,
 ): number {
   const resolved = value ?? fallback;
-  const minimum = allowZero ? 0 : 1;
+  const minimum = 1;
   if (!Number.isSafeInteger(resolved) || resolved < minimum || resolved > maximum) {
     throw new Error(errorCode);
   }

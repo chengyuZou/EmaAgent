@@ -23,8 +23,9 @@ sequenceDiagram
   Turn->>Agent: Run with projected history
   Agent-->>Turn: Text and tool events
   Turn->>SQL: Save messages before resuming Agent
+  Turn->>Turn: Finish tools, interactions and messages
+  Turn->>Turn: Pause the handled Goal when required
   Turn->>SQL: Commit completed / failed / aborted
-  Turn->>Turn: Finish messages, tools, interactions, Goal handling
   Turn->>SQL: Release running registration
   Turn->>Queue: workFinished
   Turn-->>Queue: Terminal event and completion
@@ -36,13 +37,13 @@ The reminder is saved before user input and reused in subsequent iterations. Tas
 
 Completed Turn writes and the host's Memory extraction registration share one SQL transaction. Final messages, tool shutdown, interaction cleanup, and any required Goal pause happen before releasing the Session. Deletion coordination uses `abortAndAwait()`, not just an abort signal. Scratchpad cleanup waits for derived background subagents without keeping the finished Turn registered.
 
-`TurnHandle.events` allows one consumer. Calling its iterator's `return()` requests cancellation. A paused consumer does not automatically cancel the Turn, and the current event buffer has no size limit. Persistence failures during final cleanup reject completion rather than broadcasting a successful finish.
+`TurnHandle.events` allows one consumer. Calling its iterator's `return()` requests cancellation. A paused consumer does not automatically cancel the Turn, and the current event buffer has no size limit. Cleanup failures produce a failed outcome when its terminal record can be saved. Failure to save that terminal record rejects completion; a successful finish is not broadcast.
 
-Computer-use pause belongs to the Session. The main Agent waits at Turn preparation, before a model request and before starting ordinary tools. Old computer calls immediately return non-execution or actual partial-operation results; they are not kept waiting for replay. Resume and control termination release the wait without adding a queued message or cancelling the Turn. Subagents do not receive these callbacks. See [Computer use](../computer-use/README.md).
+Computer-use pause belongs to the Session. The main Agent waits at Turn preparation, before a model request and before starting ordinary tools. Old computer calls immediately return non-execution or actual partial-operation results; they are not kept waiting for replay. Resume and control termination release the wait without adding a queued message or cancelling the Turn. Stopping generation also ends the Session's computer use when cancellation occurs before tool preparation completes. Subagents do not receive these callbacks. See [Computer use](../computer-use/README.md).
 
 ## Queued input and continuation
 
-All ordinary sends use `enqueue()`, whether idle, running, or manually compacting. The queue is in memory and does not survive a restart.
+All ordinary sends use `enqueue()`, whether idle, running, or manually compacting. The queue is in memory and does not survive a restart. `canStartIdleTurn()` checks whether idle-only input is currently acceptable; `enqueueIfIdle()` repeats that check and enqueues without an intervening await. Screen capture checks before capture and again after saving the image.
 
 | Delivery point | Priority |
 | --- | --- |
@@ -53,6 +54,8 @@ All ordinary sends use `enqueue()`, whether idle, running, or manually compactin
 Guidance does not interrupt an active tool. AgentLoop checks it after the Assistant and its tool results form a complete batch, including after a text-only reply. Text inputs merge with blank lines; attachments and Skill references keep their order.
 
 Claims are temporary. Save their Message, then call `acknowledge()`; release them if preparation or saving fails. `user_message_stored` includes the consumed queue IDs so the UI can replace waiting bubbles with persisted messages. Those IDs are not SQL fields.
+
+`ClaimedSessionContinuation.inputKind` identifies the claimed content. `messageInput` carries text and attachments, including automatic screen captures, and can include `continuationText` when a new Turn has an active Goal. The `continuationText` branch carries only an internal notice or Goal instruction, which Turn saves as a hidden `continuation` Message. The queue separately uses `ContinuationClaim` to track which inputs or notices must be acknowledged; that consumption record is not sent to the model.
 
 Background notices contain execution IDs and status, not full output. Models use `SubagentAwait` or `ProcessOutput` for details. Notices are deduplicated while pending. Reading a subagent's full terminal result removes an unclaimed notice.
 
@@ -78,7 +81,7 @@ Automatic titles use only the first normal user Message while the title remains 
 
 Before each model request, `createPrepareAgentIteration()` assembles the complete effective message array and lets Compact modify it. System Prompt and tools contribute to the request budget but are not stored as ordinary history messages.
 
-Turn keeps a position-aligned SQL ID array. Model-only continuation guides have `undefined` IDs. Macro saves the last persisted ID in the summarized prefix and replaces the same prefix of IDs with the new summary ID. It must not infer SQL coverage from an array index alone.
+Turn and subagents share `ModelMessageIds` from Agent to align model positions with saved messages. Output-length continuation notices are saved before the next request. Entries without a stored message use `undefined`. Macro locates the last saved ID in its covered prefix and replaces that prefix with the new summary ID; array positions alone cannot identify SQL coverage.
 
 A new fork binds to one parent request's fixed prefix and waits for its complete Assistant to be saved. Sibling forks share one deferred prefix build. Cancelling one child only cancels that child's wait. Parent failure releases waiters. Continued subagent identities reuse their own history instead of importing the parent again.
 
@@ -92,8 +95,10 @@ Approval events use the host's Session publication channel rather than the paren
 
 Plan mode filters tools at preparation using explicit built-in IDs. It keeps investigation and reading, including Capture, Memory, Narrative, and selected Task/Scratchpad reads. Shell, write, Subagent, AskUser, and MCP tools are excluded. An allow rule cannot restore an excluded tool.
 
+`core/turnInputWriter.ts` handles initial and queued inputs through the same saving and title logic. `core/turnTermination.ts` owns cleanup and terminal persistence. `tools/` binds capabilities and interactions; `policy/` applies Plan and subagent restrictions by stable IDs.
+
 ## Reading and tests
 
-Start with [sessionContinuationQueue.ts](./sessionContinuationQueue.ts) and [turn.ts](./turn.ts). Then follow [prepareTurn.ts](./prepare/prepareTurn.ts), [prepareAgentIteration.ts](./prepare/prepareAgentIteration.ts), [turnMessageWriter.ts](./turnMessageWriter.ts), and [turnLoopEvents.ts](./turnLoopEvents.ts).
+Start with [sessionContinuationQueue.ts](./continuation/sessionContinuationQueue.ts) and [turnExecutor.ts](./core/turnExecutor.ts). Then follow [prepareTurn.ts](./prepare/prepareTurn.ts), [prepareAgentIteration.ts](./prepare/prepareAgentIteration.ts), [turnMessageWriter.ts](./core/turnMessageWriter.ts), and [turnLoopEvents.ts](./core/turnLoopEvents.ts).
 
 Run `pnpm --filter @ema-agent/turn test` and `pnpm --filter @ema-agent/turn typecheck`. Tests use prepared model events and temporary/in-memory storage to verify queue delivery, SQL messages, permission lifetimes, Compact IDs, fork timing, context usage, and final cleanup. No paid model call is required.

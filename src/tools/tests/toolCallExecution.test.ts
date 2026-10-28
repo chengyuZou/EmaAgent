@@ -17,10 +17,8 @@ import {
   type ToolExecutionStateStore,
   type ToolExecutionStatus,
 } from '../index.js';
-import {
-  ToolCallExecution,
-  type ToolExecutionEnvironment,
-} from '../execution/toolCallExecution.js';
+import { ToolCallExecution } from '../execution/toolCallExecution.js';
+import type { ToolExecutionContext } from '../execution/toolExecutionContext.js';
 
 const SESSION_ID = '00000000-0000-4000-8000-0000000000a1';
 const TURN_ID = '00000000-0000-4000-8000-0000000000b1';
@@ -101,7 +99,7 @@ function echoTool(overrides: Partial<Parameters<
     description: 'echo',
     inputSchema: z.object({ value: z.number() }),
     validateContext: () => contextOk({}),
-    isReadOnly: () => true,
+
     isConcurrencySafe: () => true,
     checkPermissions: async () => ({ kind: 'tool' as const, defaultDecision: 'allow' as const }),
     execute: async (input: EchoInput) => ({ echoed: input.value }),
@@ -111,10 +109,10 @@ function echoTool(overrides: Partial<Parameters<
 
 function makeEnv(options: {
   tools: AnyTestTool[];
-  askPermission?: ToolExecutionEnvironment['askPermission'];
+  askPermission?: ToolExecutionContext['askPermission'];
   state?: ToolExecutionState;
   subagentId?: string;
-}): ToolExecutionEnvironment {
+}): ToolExecutionContext {
   const environment = {
     sessionId: SESSION_ID,
     turnId: TURN_ID,
@@ -130,7 +128,7 @@ function makeEnv(options: {
     : environment;
 }
 
-function makeCall(env: ToolExecutionEnvironment, name: string, args: unknown): {
+function makeCall(env: ToolExecutionContext, name: string, args: unknown): {
   execution: ToolCallExecution;
   events: ToolExecutionEvent[];
 } {
