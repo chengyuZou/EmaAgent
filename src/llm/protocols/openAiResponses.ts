@@ -10,7 +10,6 @@ import {
 import type { ContentPart, ToolResultBlock } from '../message.js';
 import type {
   AssistantBlock,
-  CompleteLLM,
   LLMConnection,
   LLMGenerationSource,
   LLMRequest,
@@ -45,77 +44,6 @@ export function createOpenAiResponsesProtocol(
   return (request) => streamOpenAiResponses(client, connection.providerId, modelId, request);
 }
 
-export function createOpenAiResponsesCompletion(
-  connection: LLMConnection,
-  modelId: string,
-): CompleteLLM {
-  const client = createOpenAiResponsesClient(connection);
-  return async (request) => {
-    try {
-      const response = await client.responses.create(
-        buildOpenAiResponsesParams(connection.providerId, modelId, request),
-        { signal: request.signal },
-      );
-      throwIfAborted(request.signal);
-      if (response.status !== 'completed' && response.status !== 'incomplete') {
-        throw createLLMProviderResponseError({
-          protocol: 'openai-responses-llm',
-          providerCode: response.error?.code,
-          message: response.error?.message ?? `Responses returned status ${response.status}`,
-          cause: response,
-        });
-      }
-      const blocks: AssistantBlock[] = [];
-      let stopReason: LLMStopReason = 'end_turn';
-      // output 可以交错出现思考, 正文和函数调用, 不能只读取 output_text.
-      for (const item of response.output) {
-        if (item.type === 'reasoning') {
-          const summaryText = item.summary.map(part => part.text).join('');
-          blocks.push({
-            type: 'reasoning',
-            id: item.id,
-            ...(summaryText ? { summaryText } : {}),
-            ...(item.encrypted_content ? { encryptedContent: item.encrypted_content } : {}),
-          });
-        } else if (item.type === 'message') {
-          for (const part of item.content) {
-            if (part.type === 'output_text') blocks.push({ type: 'text', text: part.text });
-            if (part.type === 'refusal') blocks.push({ type: 'text', text: part.refusal });
-          }
-        } else if (item.type === 'function_call') {
-          let args: unknown;
-          try {
-            args = JSON.parse(item.arguments);
-          } catch (error) {
-            throw new LLMToolArgumentsParseError(
-              'openai-responses-llm', item.call_id, item.name, error,
-            );
-          }
-          blocks.push({ type: 'tool_use', id: item.call_id, name: item.name, args });
-          stopReason = 'tool_use';
-        }
-      }
-      if (response.status === 'incomplete' && stopReason === 'end_turn') {
-        stopReason = response.incomplete_details?.reason === 'max_output_tokens'
-          ? 'max_tokens'
-          : 'stop_sequence';
-      }
-      return {
-        blocks,
-        stopReason,
-        usage: createLLMTokenUsage({
-          inputTokens: response.usage?.input_tokens ?? 0,
-          outputTokens: response.usage?.output_tokens ?? 0,
-          cacheReadInputTokens: response.usage?.input_tokens_details.cached_tokens,
-        }),
-      };
-    } catch (error) {
-      throwIfAbortError(error, request.signal);
-      throw normalizeLLMProviderError(error);
-    }
-  };
-}
-
 function createOpenAiResponsesClient(connection: LLMConnection): OpenAI {
   return new OpenAI({
     apiKey: connection.apiKey ?? '',
@@ -128,12 +56,12 @@ function buildOpenAiResponsesParams(
   providerId: string,
   modelId: string,
   request: LLMRequest,
-): OpenAI.Responses.ResponseCreateParamsNonStreaming {
+): OpenAI.Responses.ResponseCreateParamsStreaming {
   const { instructions, input } = toResponsesInput(request.messages, providerId, modelId);
-  const params: OpenAI.Responses.ResponseCreateParamsNonStreaming = {
+  const params: OpenAI.Responses.ResponseCreateParamsStreaming = {
     model: modelId,
     input,
-    stream: false,
+    stream: true,
     max_output_tokens: request.maxOutputTokens,
     temperature: request.temperature,
   };
@@ -141,7 +69,7 @@ function buildOpenAiResponsesParams(
   if (request.tools?.length && request.toolChoice !== 'none') {
     params.tools = request.tools.map(toResponsesTool);
     params.tool_choice = toResponsesToolChoice(request.toolChoice) as
-      OpenAI.Responses.ResponseCreateParamsNonStreaming['tool_choice'];
+      OpenAI.Responses.ResponseCreateParamsStreaming['tool_choice'];
   }
   if (request.thinking?.enabled === false) {
     params.reasoning = { effort: 'none' };
@@ -151,7 +79,7 @@ function buildOpenAiResponsesParams(
     if (request.thinking?.effort) {
       params.reasoning = {
         effort: request.thinking.effort,
-      } as OpenAI.Responses.ResponseCreateParamsNonStreaming['reasoning'];
+      } as OpenAI.Responses.ResponseCreateParamsStreaming['reasoning'];
     }
   }
 
@@ -164,10 +92,7 @@ async function* streamOpenAiResponses(
   modelId: string,
   request: LLMRequest,
 ): AsyncIterable<LLMStreamEvent> {
-  const params = {
-    ...buildOpenAiResponsesParams(providerId, modelId, request),
-    stream: true as const,
-  };
+  const params = buildOpenAiResponsesParams(providerId, modelId, request);
   let stream: AsyncIterable<ResponseStreamEvent>;
   try {
     stream = await client.responses.create(params, { signal: request.signal });
@@ -209,11 +134,14 @@ async function* streamOpenAiResponses(
           }
           break;
         }
+        case 'response.refusal.delta':
         case 'response.output_text.delta':
           textBlockIndex ??= nextBlockIndex++;
           yield { type: 'text_delta', blockIndex: textBlockIndex, delta: event.delta };
           break;
         case 'response.output_item.added':
+          // 每个新 output item 独占内容位置, 不把工具前后的正文合并.
+          textBlockIndex = undefined;
           if (event.item.type === 'function_call') {
             toolCalls.set(event.output_index, {
               name: event.item.name,

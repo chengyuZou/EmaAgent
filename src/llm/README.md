@@ -45,7 +45,7 @@ for await (const event of callLLM(request)) {
 
 Both factories take a connection and model ID, then return a function that accepts `LLMRequest`. `CallLLM` returns events; `CompleteLLM` returns a Promise of `LLMCompletion`. Each invocation executes one model request. Running both executes two requests.
 
-The completion function sends a native non-streaming SDK request. Chat, Responses, and Anthropic use `create` with `stream: false`; Gemini uses `generateContent`. Request conversion is shared with the streaming implementation, but final results are read directly from the SDK response, not collected from events.
+The completion function creates and consumes a streaming request internally. Callers supply connection, model and request only, not a CallLLM. Each request owns its stream and collected blocks; the factory reuses the SDK client. Success returns LLMCompletion, while cancellation or failure closes the stream and rejects the request.
 
 Both factories copy the connection at creation. Changing the original object later does not change that function. Protocol and SDK initialization happen on the first request, or the first consumed stream for `CallLLM`. Concurrent and later requests through the same function share its initialization and client. Independently created functions have separate clients.
 
@@ -59,7 +59,7 @@ Resolved connection + modelId
         -> one streaming SDK request -> events consumed by Agent
     OR
     -> createLLMCompletion -> completeLLM(request)
-        -> one non-streaming SDK request -> LLMCompletion
+        -> one streaming SDK request -> collect ordered blocks -> LLMCompletion
 ```
 
 [types.ts](types.ts) defines connection, request, result, and event types. [message.ts](message.ts) defines messages: system text, user text/media/tool results, and assistant content blocks. Tool definitions use `LLMTool.inputSchema`. Tool replies are user `tool_result` blocks paired through `toolCallId`.
@@ -83,7 +83,7 @@ Assistant text and tool calls remain usable when the model changes. Native think
 
 The public request keeps only `thinking.enabled` and `thinking.effort`. Chat Completions first builds its usual `thinking` / `reasoning_effort` fields, then privately maps verified supplier differences inside `protocols/openAiChat.ts`. The official `api.siliconflow.cn` and `api.siliconflow.com` hosts receive `enable_thinking` derived from `thinking.type`, without also receiving `thinking`. That wire field is not a public request or configuration option. SiliconFlow effort is sent only for the model IDs listed in that function, using `high` or `max`; no Token budget is invented for other models. Other hosts keep the existing Chat mapping. A custom Provider ID at an official SiliconFlow address receives the same conversion; an arbitrary gateway is not classified by its display name. See the [SiliconFlow request fields](https://docs.siliconflow.cn/docs/api/chat-completions-post) and [DeepSeek thinking fields](https://api-docs.deepseek.com/guides/thinking_mode/).
 
-`maxOutputTokens` is the caller's request budget, not a command to use the model's full output capacity. Non-streaming Anthropic requests can be rejected by the SDK before HTTP when their requested output implies too long a response. Narrative's host wiring supplies a fixed 8192 budget and keeps native non-streaming completion.
+`maxOutputTokens` is the caller's request budget, not a command to use the model's full output capacity. Completion uses streaming transport, including for large output budgets. Narrative still supplies its own fixed 8192 output budget.
 
 ## Events, usage, and failures
 
@@ -95,15 +95,17 @@ Usage events report cumulative counts for one request. `updateLLMCallUsage` retu
 
 An empty model ID fails at factory creation. Unsupported message content fails synchronously in `callLLM(request)` and rejects the Promise in `completeLLM(request)`. SDK initialization and network failures propagate through the selected return type. Invalid tool-argument JSON throws `LLMToolArgumentsParseError`. Context-length errors become `ContextWindowExceededError`, allowing the caller to decide whether to compact and retry.
 
-Non-streaming Responses accepts `completed` and `incomplete` results. Output limits map to `max_tokens`; content-filter stops map to `stop_sequence`. Failed or non-final responses throw `LLMProviderResponseError`, without polling or falling back to streaming. Chat and Gemini require a choice/candidate with a finish reason; Anthropic requires a stop reason.
+Both entry points require a terminal stream event. Output limits map to max_tokens; content-filter stops map to stop_sequence. Provider failures and incomplete streams reject the request without polling or replay.
 
 Pass `request.signal` to cancel. A request already cancelled when it starts does not initialize the SDK. Cancellation during shared initialization stops that request after initialization finishes, without cancelling other requests. Cancellation and failures do not produce a successful `done` or a completion result.
 
 OpenAI and Anthropic clients disable built-in retries. Gemini is called without retry options. This package does not automatically repeat failed requests. Streaming Chat waits up to 60 seconds for the next chunk and up to 2 seconds for trailing usage after a finish reason, so a gateway that never closes its stream does not keep the caller waiting indefinitely.
 
+HTTP 413 without a specific context-length error is reported as `provider/request_too_large` through `LLMRequestTooLargeError`. It is not a generic server failure or an automatic request to retry compaction.
+
 ## Read and verify
 
-Start with [languageModel.ts](languageModel.ts) for both factories and their lazy initialization. Follow [protocols/](protocols/) for shared request conversion, streaming events, and non-streaming result conversion. [usage.ts](usage.ts) and [errors.ts](errors.ts) contain shared counting and failure rules.
+Start with [languageModel.ts](languageModel.ts) for both factories and their lazy initialization. Follow [protocols/](protocols/) for shared request conversion, streaming events, and completion collection. [usage.ts](usage.ts) and [errors.ts](errors.ts) contain shared counting and failure rules.
 
 Consumers include [Agent](../agent/agentLoop.ts), [Compact](../compact/macroCompact.ts), [Vision](../vision/visionModel.ts), and the server's [Memory](../../apps/server/src/composition/memory.ts) and [Narrative](../../apps/server/src/composition/narrative.ts) wiring.
 
@@ -112,4 +114,4 @@ pnpm --filter @ema-agent/llm test
 pnpm --filter @ema-agent/llm typecheck
 ```
 
-[tests/languageModel.test.ts](tests/languageModel.test.ts) covers initialization, client reuse, request parameters, failures, and cancellation. Protocol tests check message conversion, stream events, and [non-streaming results](tests/completionProtocols.test.ts). [tests/sdkRequests.test.ts](tests/sdkRequests.test.ts) runs the installed SDKs against a local HTTP/SSE server to check streaming and non-streaming endpoints, single-request execution, rate-limit failures without retry, and cancellation. These tests do not call paid model services.
+[tests/languageModel.test.ts](tests/languageModel.test.ts) covers initialization, client reuse, request parameters, failures, and cancellation. Protocol tests check message conversion, stream events, and [collected results](tests/completionProtocols.test.ts). [tests/sdkRequests.test.ts](tests/sdkRequests.test.ts) runs the installed SDKs against a local HTTP/SSE server to check streaming endpoints for both entry points, single-request execution, rate-limit failures without retry, and cancellation. These tests do not call paid model services.

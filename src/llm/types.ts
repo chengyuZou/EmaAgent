@@ -75,7 +75,7 @@ export interface LLMRequest {
 /** 每次调用产生一条请求流. 连接和模型由 createLLMCall 固定, 消费流时才开始执行. */
 export type CallLLM = (request: LLMRequest) => AsyncIterable<LLMStreamEvent>;
 
-/** 连接和模型由 createLLMCompletion 固定, 每次调用直接返回 SDK 的完整响应结果. */
+/** 连接和模型由 createLLMCompletion 固定, 每次调用内部收集流式响应, 返回完整结果. 调用方不管理流. */
 export type CompleteLLM = (request: LLMRequest) => Promise<LLMCompletion>;
 
 export type LLMStopReason =

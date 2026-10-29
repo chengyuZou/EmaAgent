@@ -14,19 +14,12 @@ interface ProtocolCase {
   readonly protocol: LLMProtocol;
   readonly endpoint: string;
   readonly events: readonly { readonly event?: string; readonly data: unknown }[];
-  readonly completionEndpoint: string;
-  readonly completion: unknown;
 }
 
 const cases: readonly ProtocolCase[] = [
   {
     protocol: 'openai-llm',
     endpoint: '/v1/chat/completions',
-    completionEndpoint: '/v1/chat/completions',
-    completion: {
-      choices: [{ message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }],
-      usage: { prompt_tokens: 3, completion_tokens: 1 },
-    },
     events: [
       { data: { choices: [{ delta: { content: 'ok' }, finish_reason: null }] } },
       { data: { choices: [{ delta: {}, finish_reason: 'stop' }] } },
@@ -36,12 +29,6 @@ const cases: readonly ProtocolCase[] = [
   {
     protocol: 'openai-responses-llm',
     endpoint: '/v1/responses',
-    completionEndpoint: '/v1/responses',
-    completion: {
-      status: 'completed',
-      output: [{ type: 'message', content: [{ type: 'output_text', text: 'ok', annotations: [] }] }],
-      usage: { input_tokens: 3, output_tokens: 1, input_tokens_details: { cached_tokens: 0 } },
-    },
     events: [
       {
         data: {
@@ -68,17 +55,6 @@ const cases: readonly ProtocolCase[] = [
   {
     protocol: 'anthropic-llm',
     endpoint: '/v1/messages',
-    completionEndpoint: '/v1/messages',
-    completion: {
-      id: 'message-1',
-      type: 'message',
-      role: 'assistant',
-      model: 'model',
-      content: [{ type: 'text', text: 'ok' }],
-      stop_reason: 'end_turn',
-      stop_sequence: null,
-      usage: { input_tokens: 3, output_tokens: 1 },
-    },
     events: [
       {
         event: 'message_start',
@@ -127,11 +103,6 @@ const cases: readonly ProtocolCase[] = [
   {
     protocol: 'gemini-llm',
     endpoint: '/v1beta/models/model:streamGenerateContent?alt=sse',
-    completionEndpoint: '/v1beta/models/model:generateContent',
-    completion: {
-      candidates: [{ content: { role: 'model', parts: [{ text: 'ok' }] }, finishReason: 'STOP' }],
-      usageMetadata: { promptTokenCount: 3, candidatesTokenCount: 1 },
-    },
     events: [{
       data: {
         candidates: [{
@@ -244,23 +215,28 @@ describe('真实 SDK 的本地 HTTP 请求', () => {
     });
   });
 
-  it.each(cases)('$protocol 最终结果入口只发一次非流式请求', async testCase => {
+  it.each(cases)('$protocol 最终结果入口只发一次流式请求并收集结果', async testCase => {
     await withServer(response => {
-      response.writeHead(200, { 'Content-Type': 'application/json' });
-      response.end(JSON.stringify(testCase.completion));
+      response.writeHead(200, { 'Content-Type': 'text/event-stream' });
+      for (const event of testCase.events) {
+        if (event.event) response.write(`event: ${event.event}\n`);
+        response.write(`data: ${JSON.stringify(event.data)}\n\n`);
+      }
+      response.end();
     }, async (baseUrl, requests) => {
       const result = await completeFor(testCase.protocol, baseUrl)({
         ...request,
+        maxOutputTokens: 64_000,
         signal: AbortSignal.timeout(4_000),
       });
       expect(result.blocks).toEqual([{ type: 'text', text: 'ok' }]);
       expect(result.stopReason).toBe('end_turn');
       expect(result.usage).toMatchObject({ inputTokens: 3, outputTokens: 1 });
       expect(requests).toHaveLength(1);
-      expect(requests[0]?.url).toBe(testCase.completionEndpoint);
+      expect(requests[0]?.url).toBe(testCase.endpoint);
       const body = JSON.parse(requests[0]!.body) as { stream?: boolean; stream_options?: unknown };
-      if (testCase.protocol !== 'gemini-llm') expect(body.stream).toBe(false);
-      expect(body.stream_options).toBeUndefined();
+      if (testCase.protocol !== 'gemini-llm') expect(body.stream).toBe(true);
+
     });
   });
 
@@ -296,7 +272,7 @@ describe('真实 SDK 的本地 HTTP 请求', () => {
     });
   });
 
-  it.each(cases)('$protocol 非流式请求等待响应时取消, 原样拒绝且不补发请求', async testCase => {
+  it.each(cases)('$protocol 完整结果请求等待响应时取消, 原样拒绝且不补发请求', async testCase => {
     const controller = new AbortController();
     const reason = new Error('cancel local completion request');
     await withServer(() => {

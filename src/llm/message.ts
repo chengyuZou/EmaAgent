@@ -1,4 +1,4 @@
-import type { LLMGenerationSource } from './types.js';
+import type { LLMGenerationSource, LLMThinkingState } from './types.js';
 
 /** 用户输入的文本和媒体. 具体协议能否表达这些内容由 protocolInput 检查. */
 export type ContentPart =
@@ -52,3 +52,37 @@ export type Message =
        */
       generatedBy?: LLMGenerationSource;
     };
+
+/**
+ * 将思考文本和原生状态合成历史消息中的内容块.
+ * OpenAI 可以只返回 reasoning ID 而没有摘要文本, 此时仍保留原生状态.
+ * Anthropic 和 Gemini 没有思考文本时不创建空内容块.
+ */
+export function createAssistantThinkingBlock(
+  thinking: string | undefined,
+  state: LLMThinkingState | undefined,
+): AssistantBlock | undefined {
+  if (state?.kind === 'openai') {
+    return {
+      type: 'reasoning',
+      id: state.id,
+      ...(thinking ? { summaryText: thinking } : {}),
+      ...(state.encryptedContent ? { encryptedContent: state.encryptedContent } : {}),
+    };
+  }
+  if (thinking === undefined) return undefined;
+  if (state?.kind === 'gemini') {
+    return {
+      type: 'gemini_thought',
+      text: thinking,
+      ...(state.thoughtSignature ? { thoughtSignature: state.thoughtSignature } : {}),
+    };
+  }
+  return {
+    type: 'thinking',
+    thinking,
+    ...(state?.kind === 'anthropic' && state.signature
+      ? { signature: state.signature }
+      : {}),
+  };
+}

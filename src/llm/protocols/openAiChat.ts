@@ -1,6 +1,5 @@
 import OpenAI from 'openai';
 import {
-  createLLMProviderResponseError,
   LLMStreamProtocolError,
   LLMToolArgumentsParseError,
   normalizeLLMProviderError,
@@ -10,7 +9,6 @@ import {
 import type { ToolResultBlock } from '../message.js';
 import type {
   AssistantBlock,
-  CompleteLLM,
   LLMConnection,
   ContentPart,
   LLMRequest,
@@ -24,7 +22,7 @@ import { createLLMTokenUsage } from '../usage.js';
 
 type CompatThinkingParam = { type: 'enabled' | 'disabled' };
 type OpenAiChatParams =
-  Omit<OpenAI.ChatCompletionCreateParamsNonStreaming, 'reasoning_effort'> & {
+  Omit<OpenAI.ChatCompletionCreateParamsStreaming, 'reasoning_effort'> & {
     thinking?: CompatThinkingParam;
     reasoning_effort?: 'low' | 'medium' | 'high' | 'max';
   };
@@ -38,61 +36,6 @@ export function createOpenAiChatProtocol(
 ): (request: LLMRequest) => AsyncIterable<LLMStreamEvent> {
   const client = createOpenAiChatClient(connection);
   return (request) => streamOpenAiChat(client, connection, modelId, request);
-}
-
-export function createOpenAiChatCompletion(
-  connection: LLMConnection,
-  modelId: string,
-): CompleteLLM {
-  const client = createOpenAiChatClient(connection);
-  return async (request) => {
-    try {
-      const response = await client.chat.completions.create(
-        buildOpenAiChatParams(connection, modelId, request) as OpenAI.ChatCompletionCreateParamsNonStreaming,
-        { signal: request.signal },
-      );
-      throwIfAborted(request.signal);
-      const choice = response.choices[0];
-      if (!choice?.finish_reason) {
-        throw createLLMProviderResponseError({
-          protocol: 'openai-llm',
-          message: 'Chat Completions returned no choice with a finish reason',
-          cause: response,
-        });
-      }
-      const blocks: AssistantBlock[] = [];
-      const message = choice.message as OpenAI.ChatCompletionMessage & {
-        reasoning_content?: string;
-      };
-      if (message.reasoning_content) {
-        blocks.push({ type: 'thinking', thinking: message.reasoning_content });
-      }
-      if (message.content) blocks.push({ type: 'text', text: message.content });
-      if (message.refusal) blocks.push({ type: 'text', text: message.refusal });
-      for (const tool of message.tool_calls ?? []) {
-        if (tool.type !== 'function') continue;
-        let args: unknown;
-        try {
-          args = JSON.parse(tool.function.arguments);
-        } catch (error) {
-          throw new LLMToolArgumentsParseError('openai-llm', tool.id, tool.function.name, error);
-        }
-        blocks.push({ type: 'tool_use', id: tool.id, name: tool.function.name, args });
-      }
-      return {
-        blocks,
-        stopReason: mapStopReason(choice.finish_reason),
-        usage: createLLMTokenUsage({
-          inputTokens: response.usage?.prompt_tokens ?? 0,
-          outputTokens: response.usage?.completion_tokens ?? 0,
-          cacheReadInputTokens: response.usage?.prompt_tokens_details?.cached_tokens,
-        }),
-      };
-    } catch (error) {
-      throwIfAbortError(error, request.signal);
-      throw normalizeLLMProviderError(error);
-    }
-  };
 }
 
 function createOpenAiChatClient(connection: LLMConnection): OpenAI {
@@ -117,7 +60,8 @@ function buildOpenAiChatParams(
     tool_choice: tools?.length ? toOpenAiToolChoice(request.toolChoice) : undefined,
     max_tokens: request.maxOutputTokens,
     temperature: request.temperature,
-    stream: false,
+    stream: true,
+    stream_options: { include_usage: true },
   };
   applyThinking(params, request.thinking);
   return mapProviderParams(connection, params);
@@ -129,11 +73,7 @@ async function* streamOpenAiChat(
   modelId: string,
   request: LLMRequest,
 ): AsyncIterable<LLMStreamEvent> {
-  const params = {
-    ...buildOpenAiChatParams(connection, modelId, request),
-    stream: true,
-    stream_options: { include_usage: true },
-  };
+  const params = buildOpenAiChatParams(connection, modelId, request);
 
   const streamAbort = new AbortController();
   const streamSignal = request.signal

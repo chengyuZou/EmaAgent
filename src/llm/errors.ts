@@ -3,6 +3,7 @@ import type { LLMProtocol } from '@ema-agent/providers';
 export type LLMErrorCode =
   | 'provider/context_too_long'
   | 'provider/input_unsupported'
+  | 'provider/request_too_large'
   | 'provider/server_error'
   | 'provider/tool_arguments_invalid_json';
 
@@ -30,6 +31,16 @@ export class LLMProtocolInputError extends Error {
       + `[${blockIndex}]: ${detail}`,
     );
     this.name = 'LLMProtocolInputError';
+  }
+}
+
+/** 请求体过大与 Token 上下文超限分开报告, 不让 Agent 误用上下文重试处理 HTTP 413. */
+export class LLMRequestTooLargeError extends Error {
+  readonly code = 'provider/request_too_large' as const;
+
+  constructor(message = '模型接口拒绝了本次请求: 请求体过大, HTTP 413. 请减少携带的媒体数量或体积.', cause?: unknown) {
+    super(message, { cause });
+    this.name = 'LLMRequestTooLargeError';
   }
 }
 
@@ -90,6 +101,9 @@ export function normalizeLLMProviderError(error: unknown): Error {
   if (isContextWindowExceeded(error)) {
     return new ContextWindowExceededError(errorMessage(error), error);
   }
+  if (error instanceof LLMRequestTooLargeError) return error;
+  const shape = error as ProviderErrorShape | null;
+  if (shape?.status === 413 || shape?.statusCode === 413) return new LLMRequestTooLargeError(undefined, error);
   if (
     error instanceof LLMProtocolInputError
     || error instanceof LLMProviderResponseError
@@ -120,6 +134,7 @@ export function createLLMProviderResponseError(input: {
 /** Turn 和用量记录通过此处取得业务错误码, 不各自解析 SDK 错误. */
 export function llmProviderErrorCode(error: unknown): LLMErrorCode {
   if (error instanceof ContextWindowExceededError) return 'provider/context_too_long';
+  if (error instanceof LLMRequestTooLargeError) return error.code;
   if (error instanceof LLMProtocolInputError) return error.code;
   if (error instanceof LLMToolArgumentsParseError) return error.code;
   return 'provider/server_error';

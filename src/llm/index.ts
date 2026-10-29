@@ -1,10 +1,11 @@
 export {
-  createAssistantThinkingBlock,
   createLLMCall,
   createLLMCompletion,
 } from './languageModel.js';
+export { createAssistantThinkingBlock } from './message.js';
 export {
   ContextWindowExceededError,
+  LLMRequestTooLargeError,
   llmProviderErrorCode,
   LLMProtocolInputError,
   LLMProviderResponseError,

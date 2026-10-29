@@ -1,6 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
 import {
-  createLLMProviderResponseError,
   LLMStreamProtocolError,
   LLMToolArgumentsParseError,
   normalizeLLMProviderError,
@@ -15,7 +14,6 @@ import type {
 } from '../message.js';
 import type {
   AssistantBlock,
-  CompleteLLM,
   LLMConnection,
   LLMGenerationSource,
   LLMRequest,
@@ -82,61 +80,6 @@ export function createAnthropicProtocol(
 ): (request: LLMRequest) => AsyncIterable<LLMStreamEvent> {
   const client = createAnthropicClient(connection);
   return (request) => streamAnthropic(client, connection.providerId, modelId, request);
-}
-
-export function createAnthropicCompletion(
-  connection: LLMConnection,
-  modelId: string,
-): CompleteLLM {
-  const client = createAnthropicClient(connection);
-  return async (request) => {
-    try {
-      const response = await client.messages.create({
-        ...buildAnthropicBody(connection.providerId, modelId, request),
-        stream: false,
-      }, {
-        signal: request.signal,
-        headers: request.thinking?.enabled === true
-          ? { 'anthropic-beta': 'interleaved-thinking-2025-05-14' }
-          : undefined,
-      });
-      throwIfAborted(request.signal);
-      if (!response.stop_reason) {
-        throw createLLMProviderResponseError({
-          protocol: 'anthropic-llm',
-          message: 'Anthropic returned no stop reason',
-          cause: response,
-        });
-      }
-      const blocks: AssistantBlock[] = [];
-      for (const block of response.content) {
-        if (block.type === 'text') {
-          blocks.push({ type: 'text', text: block.text });
-        } else if (block.type === 'thinking') {
-          blocks.push({
-            type: 'thinking',
-            thinking: block.thinking,
-            ...(block.signature ? { signature: block.signature } : {}),
-          });
-        } else if (block.type === 'tool_use') {
-          blocks.push({ type: 'tool_use', id: block.id, name: block.name, args: block.input });
-        }
-      }
-      return {
-        blocks,
-        stopReason: mapStopReason(response.stop_reason),
-        usage: createAnthropicUsage(
-          response.usage.input_tokens,
-          response.usage.output_tokens,
-          response.usage.cache_read_input_tokens,
-          response.usage.cache_creation_input_tokens,
-        ),
-      };
-    } catch (error) {
-      throwIfAbortError(error, request.signal);
-      throw normalizeLLMProviderError(error);
-    }
-  };
 }
 
 function createAnthropicClient(connection: LLMConnection): Anthropic {

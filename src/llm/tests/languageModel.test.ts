@@ -74,14 +74,14 @@ describe('createLLMCall', () => {
 });
 
 describe('createLLMCompletion', () => {
-  it('创建时固定连接, 首次请求才初始化, 并发和后续请求复用非流式客户端', async () => {
+  it('创建时固定连接, 首次请求才初始化, 并发和后续请求复用流式客户端', async () => {
     const mutableConnection = { ...connection };
     const complete = createLLMCompletion(mutableConnection, 'test-model');
     expect(openAiMock.constructor).not.toHaveBeenCalled();
     Object.assign(mutableConnection, { apiKey: 'changed', protocol: 'openai-responses-llm' });
-    openAiMock.create.mockResolvedValue({
-      choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }],
-    });
+    openAiMock.create.mockImplementation(() => Promise.resolve(streamOf([
+      { choices: [{ delta: { content: 'ok' }, finish_reason: 'stop' }] },
+    ])));
 
     const results = await Promise.all([complete(request), complete(request)]);
     await complete(request);
@@ -95,18 +95,18 @@ describe('createLLMCompletion', () => {
       apiKey: 'key', baseURL: 'https://example.test/v1', maxRetries: 0,
     });
     expect(openAiMock.create).toHaveBeenCalledTimes(3);
-    expect(openAiMock.create.mock.calls.every(([params]) => params.model === 'test-model' && params.stream === false))
+    expect(openAiMock.create.mock.calls.every(([params]) => params.model === 'test-model' && params.stream === true))
       .toBe(true);
   });
 
-  it('只发一次非流式请求, 保留思考, 正文, 工具参数和缓存用量', async () => {
-    openAiMock.create.mockResolvedValueOnce({
+  it('只发一次流式请求, 保留思考, 正文, 工具参数和缓存用量', async () => {
+    openAiMock.create.mockResolvedValueOnce(streamOf([{
       choices: [{
-        message: {
+        delta: {
           reasoning_content: 'reason',
           content: 'answer',
           tool_calls: [{
-            id: 'call-1',
+            index: 0, id: 'call-1',
             type: 'function',
             function: { name: 'Read', arguments: '{"path":"a.txt"}' },
           }],
@@ -118,7 +118,7 @@ describe('createLLMCompletion', () => {
         completion_tokens: 4,
         prompt_tokens_details: { cached_tokens: 3 },
       },
-    });
+    }]));
     const signal = new AbortController().signal;
     const tools = [{ name: 'Read', description: 'Read a file', inputSchema: { type: 'object' } }];
     await expect(createLLMCompletion(connection, 'model')({
@@ -137,15 +137,15 @@ describe('createLLMCompletion', () => {
     const [params, options] = openAiMock.create.mock.calls[0]!;
     expect(params).toMatchObject({
       messages: request.messages,
-      stream: false,
+      stream: true,
       max_tokens: 200,
       temperature: 0.2,
       thinking: { type: 'enabled' },
       reasoning_effort: 'high',
       tools: [{ type: 'function', function: { name: 'Read', parameters: { type: 'object' } } }],
     });
-    expect(params.stream_options).toBeUndefined();
-    expect(options.signal).toBe(signal);
+    expect(params.stream_options).toEqual({ include_usage: true });
+    expect(options.signal.aborted).toBe(false);
   });
 
   it('SDK 错误原样拒绝, 不补发请求', async () => {
@@ -156,20 +156,20 @@ describe('createLLMCompletion', () => {
   });
 
   it('非法工具参数拒绝整个结果', async () => {
-    openAiMock.create.mockResolvedValueOnce({
+    openAiMock.create.mockResolvedValueOnce(streamOf([{
       choices: [{
-        message: { tool_calls: [{ id: 'call-1', type: 'function', function: { name: 'Read', arguments: '{' } }] },
+        delta: { tool_calls: [{ index: 0, id: 'call-1', type: 'function', function: { name: 'Read', arguments: '{' } }] },
         finish_reason: 'tool_calls',
       }],
-    });
+    }]));
     await expect(createLLMCompletion(connection, 'model')(request))
       .rejects.toMatchObject({ name: 'LLMToolArgumentsParseError', callId: 'call-1', toolName: 'Read' });
   });
 
   it('没有 choice 或结束原因时不假装请求成功', async () => {
-    openAiMock.create.mockResolvedValueOnce({ choices: [] });
+    openAiMock.create.mockResolvedValueOnce(streamOf([{ choices: [] }]));
     await expect(createLLMCompletion(connection, 'model')(request))
-      .rejects.toMatchObject({ name: 'LLMProviderResponseError', protocol: 'openai-llm' });
+      .rejects.toMatchObject({ name: 'LLMStreamProtocolError', protocol: 'openai-llm' });
   });
 
   it('不支持的输入在 SDK 初始化前拒绝', async () => {
@@ -195,7 +195,7 @@ describe('createLLMCompletion', () => {
     const reason = new Error('cancel during initialization');
     const complete = createLLMCompletion(connection, 'model');
     openAiMock.constructor.mockImplementationOnce(() => controller.abort(reason));
-    openAiMock.create.mockResolvedValueOnce({ choices: [{ message: { content: 'ok' }, finish_reason: 'stop' }] });
+    openAiMock.create.mockResolvedValueOnce(streamOf([{ choices: [{ delta: { content: 'ok' }, finish_reason: 'stop' }] }]));
     await expect(complete({ ...request, signal: controller.signal })).rejects.toBe(reason);
     expect(openAiMock.create).not.toHaveBeenCalled();
     await expect(complete(request)).resolves.toMatchObject({ blocks: [{ type: 'text', text: 'ok' }] });

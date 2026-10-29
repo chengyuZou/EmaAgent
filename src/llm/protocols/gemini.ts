@@ -14,7 +14,6 @@ import type {
 } from '@google/genai';
 import { randomUUID } from 'node:crypto';
 import {
-  createLLMProviderResponseError,
   LLMStreamProtocolError,
   normalizeLLMProviderError,
   throwIfAborted,
@@ -23,7 +22,6 @@ import {
 import type { ContentPart, ToolResultBlock } from '../message.js';
 import type {
   AssistantBlock,
-  CompleteLLM,
   LLMConnection,
   LLMGenerationSource,
   LLMRequest,
@@ -83,63 +81,6 @@ export function createGeminiProtocol(
 ): (request: LLMRequest) => AsyncIterable<LLMStreamEvent> {
   const client = createGeminiClient(connection);
   return (request) => streamGemini(client, connection.providerId, modelId, request);
-}
-
-export function createGeminiCompletion(
-  connection: LLMConnection,
-  modelId: string,
-): CompleteLLM {
-  const client = createGeminiClient(connection);
-  return async (request) => {
-    try {
-      const response = await client.models.generateContent(
-        buildGeminiRequest(connection.providerId, modelId, request),
-      );
-      throwIfAborted(request.signal);
-      const candidate = response.candidates?.[0];
-      const finishReason = candidate?.finishReason;
-      if (!finishReason || String(finishReason) === 'FINISH_REASON_UNSPECIFIED') {
-        throw createLLMProviderResponseError({
-          protocol: 'gemini-llm',
-          message: 'Gemini returned no candidate with a finish reason',
-          cause: response,
-        });
-      }
-      const blocks: AssistantBlock[] = [];
-      let stopReason = mapStopReason(String(finishReason));
-      for (const part of candidate.content?.parts ?? []) {
-        if (part.thought && part.text) {
-          blocks.push({
-            type: 'gemini_thought',
-            text: part.text,
-            ...(part.thoughtSignature ? { thoughtSignature: part.thoughtSignature } : {}),
-          });
-          continue;
-        }
-        if (part.text) blocks.push({ type: 'text', text: part.text });
-        if (part.functionCall) {
-          if (!part.functionCall.name) {
-            throw new Error('gemini-llm returned a functionCall without name');
-          }
-          blocks.push({
-            type: 'tool_use',
-            id: part.functionCall.id ?? `gemini-${randomUUID()}`,
-            name: part.functionCall.name,
-            args: part.functionCall.args ?? {},
-          });
-          stopReason = 'tool_use';
-        }
-      }
-      return {
-        blocks,
-        stopReason,
-        usage: createGeminiUsage(response.usageMetadata),
-      };
-    } catch (error) {
-      throwIfAbortError(error, request.signal);
-      throw normalizeLLMProviderError(error);
-    }
-  };
 }
 
 function createGeminiClient(connection: LLMConnection): GoogleGenAI {
@@ -225,10 +166,12 @@ async function* streamGemini(
           yield {
             type: 'tool_use_complete',
             blockIndex: nextBlockIndex++,
-            callId: `gemini-${randomUUID()}`,
+            callId: part.functionCall.id ?? `gemini-${randomUUID()}`,
             name: part.functionCall.name,
             args: part.functionCall.args ?? {},
           };
+          // 工具后的正文是新内容块, 不与工具前的正文拼到一起.
+          textBlockIndex = undefined;
           stopReason = 'tool_use';
         }
       }
