@@ -1,6 +1,7 @@
 import type { JSX } from 'react';
 import { Button, IconButton, Tooltip } from '@ema-agent/ui';
 import type { TurnInputPart } from '@ema-agent/turn';
+import { runWithToast } from '../../lib/notifications/toast.js';
 import { sessionWebSocket } from '../../api/sessionWebSocket.js';
 import { useSessionActivityStore } from '../../stores/sessionActivity.js';
 import { AttachmentImagePreview } from '../../lib/images/attachmentImagePreview.js';
@@ -86,7 +87,7 @@ export function QueuedInputs({ sessionId }: { readonly sessionId: string | null 
                   size="sm"
                   variant="ghost"
                   className="shrink-0 text-[var(--ema-primary)]"
-                  onClick={() => void sessionWebSocket.guideQueuedInput(sessionId!, item.id)}
+                  onClick={() => void runWithToast(sessionWebSocket.guideQueuedInput(sessionId!, item.id), '立即引导失败')}
                 >
                   立即引导
                 </Button>
@@ -96,7 +97,7 @@ export function QueuedInputs({ sessionId }: { readonly sessionId: string | null 
                 variant="ghost"
                 icon="i-lucide:x"
                 label="删除排队输入"
-                onClick={() => void sessionWebSocket.removeQueuedInput(sessionId!, item.id)}
+                onClick={() => void runWithToast(sessionWebSocket.removeQueuedInput(sessionId!, item.id), '删除排队消息失败')}
               />
             </div>
           ))}
