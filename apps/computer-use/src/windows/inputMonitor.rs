@@ -92,7 +92,7 @@ impl Drop for InputMonitor {
 unsafe extern "system" fn keyboard_hook(code: i32, message: WPARAM, data: LPARAM) -> LRESULT {
     if code >= 0 && (message.0 as u32 == WM_KEYDOWN || message.0 as u32 == WM_SYSKEYDOWN) {
         let event = &*(data.0 as *const KBDLLHOOKSTRUCT);
-        // 本程序或其他程序注入的按键不算用户亲自操作, 否则 Agent 会被自己的输入暂停.
+        // 本程序或其他程序注入的按键不算用户亲自操作, 否则 自己的动作会使观察失效.
         if event.dwExtraInfo != INPUT_MARKER && event.flags.0 & LLKHF_INJECTED.0 == 0 {
             if let Some(shared_state) = INPUT_MONITOR_STATE.get().and_then(Weak::upgrade) {
                 if shared_state.phase().is_some() {
@@ -100,7 +100,7 @@ unsafe extern "system" fn keyboard_hook(code: i32, message: WPARAM, data: LPARAM
                         shared_state.end("user_end", None, None);
                         return LRESULT(1);
                     }
-                    shared_state.pause();
+                    shared_state.user_input(GetAncestor(GetForegroundWindow(), GA_ROOT));
                 }
             }
         }
@@ -113,16 +113,13 @@ unsafe extern "system" fn mouse_hook(code: i32, message: WPARAM, data: LPARAM) -
         let event = &*(data.0 as *const MSLLHOOKSTRUCT);
         if event.dwExtraInfo != INPUT_MARKER && event.flags & LLMHF_INJECTED == 0 {
             if let Some(shared_state) = INPUT_MONITOR_STATE.get().and_then(Weak::upgrade) {
-                // 提示条上的点击交给继续/结束按钮处理, 不再当成一次外部鼠标操作.
+                // 提示条上的点击交给结束按钮处理, 不再当成一次外部鼠标操作.
                 if !overlay::contains_point(&shared_state, event.pt) {
                     match message.0 as u32 {
-                        // 按下滚轮是中键点击, 与只转动滚轮不同, 也要暂停电脑操控.
-                        WM_LBUTTONDOWN | WM_RBUTTONDOWN | WM_MBUTTONDOWN => shared_state.pause(),
-                        // 滚轮不暂停, 但旧画面的坐标已经不能再作为输入依据.
-                        WM_MOUSEWHEEL | WM_MOUSEHWHEEL => {
-                            shared_state
-                                .observation_revision
-                                .fetch_add(1, Ordering::SeqCst);
+                        WM_LBUTTONDOWN | WM_RBUTTONDOWN | WM_MBUTTONDOWN | WM_MOUSEWHEEL
+                        | WM_MOUSEHWHEEL => {
+                            let window = GetAncestor(WindowFromPoint(event.pt), GA_ROOT);
+                            shared_state.user_input(window);
                         }
                         _ => {}
                     }

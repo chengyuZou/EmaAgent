@@ -9,7 +9,7 @@ use super::{observation::Observation, windows as target_windows, SharedComputerU
 use crate::types::Action;
 
 // 所有本程序注入的输入都携带该标记, 监听器不能将自己的动作误认为用户接管.
-// 0x45 0x4D 0x41 正好是 ASCII 的 E M A 
+// 0x45 0x4D 0x41 正好是 ASCII 的 E M A
 // 0x01 不是可打印字符，而是控制字符 SOH
 pub const INPUT_MARKER: usize = 0x454D_4101;
 
@@ -29,12 +29,31 @@ pub fn perform(
     };
     check()?;
     let hwnd = target_windows::same_window(&observed.window)?;
-    target_windows::activate(hwnd)?;
+    target_windows::activate(hwnd, || check().is_err())?;
     target_windows::same_window(&observed.window)?;
     check()?;
 
     match action {
-        Action::SetValue { .. } | Action::Invoke { .. } | Action::Focus { .. } => {
+        Action::SetValue { element_id, .. }
+        | Action::Invoke { element_id }
+        | Action::Focus { element_id } => {
+            let element = observed
+                .controls
+                .elements
+                .get(*element_id)
+                .ok_or("The element id is not in this observation.")?;
+            if element.width <= 0 || element.height <= 0 {
+                return Err("The target control has no visible bounds.".to_owned());
+            }
+            // 控件接口也不在遮挡窗口后偷偷操作. 先检查目标控件中心仍属于这个窗口.
+            ensure_point(
+                hwnd,
+                (
+                    observed.window.x + element.x + element.width / 2,
+                    observed.window.y + element.y + element.height / 2,
+                ),
+            )?;
+            check()?;
             // COM 调用一旦开始, 无法保证目标应用没有产生效果, 失败也不能自动重试.
             *input_may_have_effect = true;
             observed.controls.perform(action)?;
@@ -71,7 +90,7 @@ pub fn perform(
                 }
                 Ok(())
             })();
-            // 释放属于本次动作的键, 即使用户已经暂停或结束控制也必须清理.
+            // 释放属于本次动作的键, 即使观察已经失效或操控已结束也必须清理.
             let mut release_error = None;
             for key in held.into_iter().rev() {
                 if let Err(error) = send(&[key_input(key, 0, KEYEVENTF_KEYUP)]) {
@@ -176,6 +195,9 @@ pub fn perform(
 
 fn ensure_focus(hwnd: HWND) -> Result<(), String> {
     unsafe {
+        if GetAncestor(GetForegroundWindow(), GA_ROOT) != hwnd {
+            return Err("The target window is no longer in the foreground.".to_owned());
+        }
         let mut info = GUITHREADINFO {
             cbSize: size_of::<GUITHREADINFO>() as u32,
             ..Default::default()

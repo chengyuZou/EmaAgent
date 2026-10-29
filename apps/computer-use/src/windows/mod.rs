@@ -28,7 +28,6 @@ use observation::Observation;
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ComputerUsePhase {
     Running,
-    Paused,
     // 已停止接受新输入, 正在等当前请求结束并松开本程序按住的键鼠.
     Ending,
 }
@@ -41,7 +40,7 @@ struct ActiveComputerUse {
 }
 
 struct ComputerUseState {
-    // 收到并处理 computer.begin 后才写入. 暂停时保留, 整段操控结束后变为 None.
+    // 收到并处理 computer.begin 后才写入. 整段操控结束后变为 None.
     current_active_computer_use: Option<ActiveComputerUse>,
     // 执行线程正在处理的请求编号. None 表示它现在没有执行请求.
     executing_request_id: Option<u64>,
@@ -54,10 +53,12 @@ struct ComputerUseState {
 pub struct SharedComputerUseState {
     // 请求执行线程和键鼠监听线程都会修改这份状态, 一次只能由一个线程修改.
     state: Mutex<ComputerUseState>,
-    // 暂停, 用户滚轮或 Agent 动作会改变这个数字. 观察保存的数字不同, 就不能再按旧图操作.
+    // 目标窗口中的用户输入或 Agent 动作会改变这个数字. 观察保存的数字不同, 就不能再按旧图操作.
     pub observation_revision: AtomicU64,
     // 提示条的 Windows 窗口句柄. 0 表示窗口尚未创建或已经关闭.
     pub overlay_window_handle: AtomicIsize,
+    // 当前正在观察或操作的目标窗口. 0 表示尚未选择目标.
+    pub target_window_handle: AtomicIsize,
     // 键鼠监听线程的 Windows 线程号. 0 表示线程尚未启动或已经退出.
     pub input_monitor_thread_id: AtomicU32,
     // Node 关闭请求管道后设为 true, 执行线程据此停止当前操作.
@@ -84,32 +85,12 @@ impl SharedComputerUseState {
         });
     }
 
-    pub fn pause(&self) {
-        let mut state = self.state.lock().unwrap();
-        if let Some(computer_use) = state.current_active_computer_use.as_mut() {
-            if computer_use.phase == ComputerUsePhase::Running {
-                computer_use.phase = ComputerUsePhase::Paused;
-                self.observation_revision.fetch_add(1, Ordering::SeqCst);
-                self.event(&computer_use.control_id, "paused", "user_input");
-                overlay::refresh(self);
-            }
+    // 输入钩子只使目标窗口的旧观察失效, 不改变操控的运行状态.
+    pub fn user_input(&self, window: ::windows::Win32::Foundation::HWND) {
+        let target = self.target_window_handle.load(Ordering::SeqCst);
+        if target != 0 && window.0 as isize == target {
+            self.observation_revision.fetch_add(1, Ordering::SeqCst);
         }
-    }
-
-    pub fn resume(&self) -> bool {
-        let mut state = self.state.lock().unwrap();
-        // 前一个请求可能还在松开按键. 返回 false 让提示条稍后再试, 避免新输入抢先开始.
-        if state.executing_request_id.is_some() {
-            return false;
-        }
-        if let Some(computer_use) = state.current_active_computer_use.as_mut() {
-            if computer_use.phase == ComputerUsePhase::Paused {
-                computer_use.phase = ComputerUsePhase::Running;
-                self.event(&computer_use.control_id, "running", "continued");
-                overlay::refresh(self);
-            }
-        }
-        true
     }
 
     // Node 发来的结束请求带请求编号和 controlId. Esc, 提示条按钮或断线直接结束当前操控,
@@ -147,6 +128,7 @@ impl SharedComputerUseState {
     }
 
     fn finish_end(&self, state: &mut ComputerUseState) {
+        self.target_window_handle.store(0, Ordering::SeqCst);
         if let Some(computer_use) = state.current_active_computer_use.take() {
             self.event(&computer_use.control_id, "ended", computer_use.end_reason);
         }
@@ -207,6 +189,7 @@ impl ComputerUse {
             }),
             observation_revision: AtomicU64::new(0),
             overlay_window_handle: AtomicIsize::new(0),
+            target_window_handle: AtomicIsize::new(0),
             input_monitor_thread_id: AtomicU32::new(0),
             node_disconnected: AtomicBool::new(false),
             message_sender,
@@ -363,9 +346,20 @@ impl ComputerUse {
                     .shared_state
                     .interrupted(&params.control_id, observation_revision)
                 {
-                    return Err("Computer control is paused or ended.".to_owned());
+                    return Err(
+                        "Computer control ended or the observation was invalidated.".to_owned()
+                    );
                 }
                 let hwnd = windows::handle(&params.window_id)?;
+                self.shared_state
+                    .target_window_handle
+                    .store(hwnd.0 as isize, Ordering::SeqCst);
+                // 前置失败仍尝试读取指定窗口. 结果明确告知模型, 动作执行前会再次检查焦点.
+                let activation_error = windows::activate(hwnd, || {
+                    self.shared_state
+                        .interrupted(&params.control_id, observation_revision)
+                })
+                .err();
                 let window = windows::describe(hwnd)?;
                 let image = capture::capture(Some(hwnd), || {
                     self.shared_state
@@ -383,6 +377,7 @@ impl ComputerUse {
                 let id = format!("{}:{}", params.control_id, number);
                 let result = json!({
                     "observationId": id,
+                    "activationError": activation_error,
                     "controlId": params.control_id,
                     "window": window,
                     "width": image.width,
@@ -422,13 +417,6 @@ impl ComputerUse {
                             "control_ended",
                             false,
                             "Computer control has ended. The action was not executed.",
-                        ));
-                    }
-                    if computer_use.phase == ComputerUsePhase::Paused {
-                        return Ok(action_result(
-                            "paused_before_start",
-                            false,
-                            "Computer control is paused. The action was not executed.",
                         ));
                     }
                 }

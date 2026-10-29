@@ -6,7 +6,7 @@ pub struct Observation {
     pub id: String,
     pub control_id: String,
     // 截图时记下的数字. 与当前 observation_revision 不同就说明旧图不能再用于操作.
-    // 用户点击继续不会把这个数字改回去.
+    // 重新观察不会把旧观察的数字改回去.
     pub observation_revision: u64,
     pub window: ComputerWindow,
     // 截图图片的像素尺寸, 换算桌面输入位置时使用.

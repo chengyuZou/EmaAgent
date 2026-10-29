@@ -2,7 +2,8 @@ use windows::core::{BOOL, PWSTR};
 use windows::Win32::Foundation::{CloseHandle, HWND, LPARAM, RECT};
 use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS};
 use windows::Win32::System::Threading::{
-    OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
+    AttachThreadInput, GetCurrentThreadId, OpenProcess, QueryFullProcessImageNameW,
+    PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
 };
 use windows::Win32::UI::WindowsAndMessaging::*;
 
@@ -88,14 +89,42 @@ pub fn list() -> Result<Vec<ComputerWindow>, String> {
     Ok(result)
 }
 
-pub fn activate(hwnd: HWND) -> Result<(), String> {
+pub fn activate(hwnd: HWND, cancelled: impl Fn() -> bool) -> Result<(), String> {
+    if cancelled() {
+        return Err("Window activation was interrupted.".to_owned());
+    }
     unsafe {
         if IsIconic(hwnd).as_bool() {
             let _ = ShowWindow(hwnd, SW_RESTORE);
         }
-        if GetForegroundWindow() == hwnd || SetForegroundWindow(hwnd).as_bool() {
+        if GetForegroundWindow() == hwnd {
             return Ok(());
         }
+        let _ = SetForegroundWindow(hwnd);
+        if GetForegroundWindow() != hwnd {
+            // 后台执行线程可能不能直接取得前台焦点. 临时连接当前前台线程的输入队列,
+            // 仅在激活目标窗口期间使用, 无论成功与否都立即断开, 不向用户窗口伪造快捷键.
+            let current_thread = GetCurrentThreadId();
+            let foreground_thread = GetWindowThreadProcessId(GetForegroundWindow(), None);
+            if foreground_thread != 0
+                && foreground_thread != current_thread
+                && AttachThreadInput(current_thread, foreground_thread, true).as_bool()
+            {
+                let _ = BringWindowToTop(hwnd);
+                let _ = SetForegroundWindow(hwnd);
+                let _ = AttachThreadInput(current_thread, foreground_thread, false);
+            }
+        }
+    }
+    // Windows 切换焦点和恢复最小化窗口可能稍后才完成. 短暂等待实际焦点, 不把 API 返回值当结果.
+    for _ in 0..30 {
+        if cancelled() {
+            return Err("Window activation was interrupted.".to_owned());
+        }
+        if unsafe { GetForegroundWindow() } == hwnd {
+            return Ok(());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
     }
     Err(
         "Windows refused to activate the target window. Bring it forward and observe again."

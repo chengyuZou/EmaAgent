@@ -114,7 +114,7 @@ pub fn capture(hwnd: Option<HWND>, cancelled: impl Fn() -> bool) -> Result<Captu
                             );
                             for x in 0..width as usize {
                                 let target = (y * width as usize + x) * 3;
-                                rgb[target] = row[x * 4 + 2];  // R
+                                rgb[target] = row[x * 4 + 2]; // R
                                 rgb[target + 1] = row[x * 4 + 1]; // G
                                 rgb[target + 2] = row[x * 4]; // B
                             }

@@ -219,17 +219,17 @@ fn native_desktop_round_trip() {
     assert_eq!(window.text(), "Ema 中文输入");
 
     let observation = native.observe(window.hwnd);
-    native.computer.shared_state.pause();
+    native.computer.shared_state.user_input(HWND(window.hwnd as *mut _));
     let stale_action = json!({
         "controlId": "native-test", "observationId": observation["observationId"],
         "action": { "type": "type", "text": "不得执行" },
     });
     assert_eq!(
         native.call("computer.act", stale_action.clone())["status"],
-        "paused_before_start"
+        "observation_expired"
     );
     std::thread::sleep(Duration::from_millis(100));
-    assert!(native.computer.shared_state.resume());
+    native.observe(window.hwnd);
     assert_eq!(
         native.call("computer.act", stale_action.clone())["status"],
         "observation_expired"
