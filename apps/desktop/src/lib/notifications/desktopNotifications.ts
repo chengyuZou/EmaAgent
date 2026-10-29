@@ -4,9 +4,11 @@ import { useSessionActivityStore } from '../../stores/sessionActivity.js';
 import { useSessionStore } from '../../stores/session.js';
 import { tauriBridge } from '../tauri/tauriBridge.js';
 import type {
-  InteractionNotificationAction,
+  DesktopNotificationAction,
   InteractionNotificationUpdate,
 } from '../tauri/types.js';
+import { subscribeSystemEvent } from '../events/systemEventDispatcher.js';
+import { notifySessionCompletion } from './sessionCompletionNotifications.js';
 import { showToast } from './toast.js';
 
 function readNotifications(): InteractionNotificationUpdate {
@@ -54,7 +56,7 @@ async function openSession(sessionId: string): Promise<void> {
 }
 
 /** Mounted once by main, not by a Session view or the character stage. */
-export function mountInteractionNotifications(): () => void {
+export function mountDesktopNotifications(): () => void {
   let disposed = false;
   let syncing = false;
   let syncRequested = false;
@@ -96,7 +98,7 @@ export function mountInteractionNotifications(): () => void {
     void flush();
   }
 
-  async function respond(action: InteractionNotificationAction): Promise<void> {
+  async function respond(action: DesktopNotificationAction): Promise<void> {
     if (disposed) return;
     if (action.action === 'openSession') {
       await openSession(action.sessionId);
@@ -140,13 +142,21 @@ export function mountInteractionNotifications(): () => void {
 
   // Install the action channel before publishing any notification. Hidden main
   // keeps this listener and the Session sockets alive.
-  void tauriBridge.connectInteractionNotifications(action => {
+  void tauriBridge.connectDesktopNotifications(action => {
     void respond(action).catch(error => {
       if (!disposed) reportFailure(error);
     });
   }).then(supported => {
     if (disposed || !supported) return;
     stops.push(
+      subscribeSystemEvent(event => {
+        if (event.type === 'turn_completed' || event.type === 'turn_failed') {
+          void notifySessionCompletion(
+            event.sessionId, event.turnId,
+            event.type === 'turn_completed' ? 'turnCompleted' : 'turnFailed',
+          );
+        }
+      }),
       useSessionActivityStore.subscribe(sync),
       useSessionStore.subscribe(sync),
       useMainNavigationStore.subscribe(sync),

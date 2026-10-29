@@ -30,7 +30,7 @@ Development launches `pnpm --filter @ema-agent/server dev` from the repository. 
 
 The host sets `NODE_ENV=development` for debug builds and `NODE_ENV=production` for release builds. Release children do not inherit `NODE_OPTIONS` or `NODE_PATH`. This matches the release preparation check and prevents shell-level Node settings from changing the installed Server.
 
-On Windows, `processes/webProxy.rs` reads the current user's WinHTTP/Internet Options proxy configuration before starting Server. It sends fixed proxy addresses, bypass rules, and automatic-configuration/read-failure indicators through `EMA_WEB_SYSTEM_PROXY`. This value is consumed only by web tools; the host does not set `HTTP_PROXY` or change system settings. Proxy selection and supported configurations are described in [Builtin Tools](../../../src/builtin-tools/README.md#web-stored-references-and-delegation). Native host changes require a rebuild and restart.
+On Windows, `server/webProxy.rs` reads the current user's WinHTTP/Internet Options proxy configuration before starting Server. It sends fixed proxy addresses, bypass rules, and automatic-configuration/read-failure indicators through `EMA_WEB_SYSTEM_PROXY`. This value is consumed only by web tools; the host does not set `HTTP_PROXY` or change system settings. Proxy selection and supported configurations are described in [Builtin Tools](../../../src/builtin-tools/README.md#web-stored-references-and-delegation). Native host changes require a rebuild and restart.
 
 ## Page content policy
 
@@ -44,11 +44,11 @@ Tauri's automatic CSP modification is disabled only for `style-src`. File trees,
 - The stage can track the system pointer while clicks pass through it. The tray menu can restore normal interaction.
 - System events and stage controls pass through named Tauri events. Their frontend entry is [tauriBridge.ts](../src/lib/tauri/tauriBridge.ts), with payload types in [types.ts](../src/lib/tauri/types.ts).
 - External browser panels are separate child WebViews. The frontend controls their bounds and visibility. New-window requests open through the system browser.
-- Own application WebViews receive the Windows WebView2 media settings configured in `desktop/windows.rs`. External browser panels do not receive those application permissions.
+- Own application WebViews receive the Windows WebView2 media settings configured in `windows/mod.rs`. External browser panels do not receive those application permissions.
 
 ## Windows interaction notifications
 
-The main WebView observes the existing Session interaction queues and sends only each queue's head through `sync_interaction_notifications`. `connect_interaction_notifications` establishes an IPC Channel for native clicks. Both commands accept calls only from `main`. The native implementation is in `desktop/interactionNotifications.rs`; it uses Windows toast APIs and COM activation, not a separate WebView or CSS.
+The main WebView observes the existing Session interaction queues and sends only each queue's head through `sync_interaction_notifications`. `connect_desktop_notifications` establishes an IPC Channel for native clicks. Both commands accept calls only from `main`. The native implementation is in `notifications/`; it uses Windows toast APIs and COM activation, not a separate WebView or CSS.
 
 Rust compares the main window's handle with the Windows foreground window. It suppresses a notification only when main is foreground and Chat displays that request's Session. Another Session, Settings, a hidden main window, or another foreground application can receive notifications. A notification already presented is not posted again on ordinary Store refreshes or after dismissal.
 
@@ -58,9 +58,11 @@ Resolved, cancelled, and timed-out requests leave the frontend queue and are the
 
 A dedicated MTA thread owns native registration, presentation, and removal. It receives the main window handle when the channel connects and does not call Tauri window getters while the UI thread waits for shutdown. Debug and release builds have separate notification identities. Registration uses application-specific, volatile keys under the current user's `Software\Classes`, plus an icon in the application cache. Normal exit removes the notifications and those keys; startup clears stale notifications because backend interaction waits do not survive process restart. It does not change system notification preferences or require administrator registration. macOS and Linux keep the in-app interaction UI without this Windows notification channel.
 
+`show_session_completion` reuses the same native worker for main-Turn completion/failure and manual-compaction completion/failure. It shows a short notification with the Session title and opens that chat on click. It has no reply or approval controls, does not join the permission queue, and is suppressed while main is in front showing that Session. Automatic compaction and user cancellation do not produce completion notifications. Shared source icons live in `assets/icons/` and are embedded at build time.
+
 ## Native commands
 
-Command handlers live in `src/commands`. Their implementations use the corresponding modules in `src/desktop` and `src/processes`.
+Command handlers live beside their implementations in server, windows, notifications, browser, terminal and files. lib.rs registers them; appLifecycle.rs coordinates startup and exit. Permission/AskUser presentation is in permissionNotification.rs, completion presentation in sessionNotification.rs, with shared Windows registration and delivery.
 
 | Frontend operation | Native entry |
 | --- | --- |
@@ -68,10 +70,10 @@ Command handlers live in `src/commands`. Their implementations use the correspon
 | Show or hide chat, exit, pin stage, control click-through | `open_main_window`, `hide_main_window`, `quit_app`, `set_always_on_top`, pointer and passthrough commands |
 | Read local image bytes for a draft preview or wallpaper upload; inspect attachment paths | `read_local_image`, `inspect_attachment_paths` |
 | Select paths for chat attachments, wallpapers, or character resources | `select_paths` |
-| Connect native interaction clicks and reconcile pending notifications | `connect_interaction_notifications`, `sync_interaction_notifications` |
+| Connect native interaction clicks and reconcile pending notifications | `connect_desktop_notifications`, `sync_interaction_notifications` |
 | Open a local path or enumerate fonts | `open_path`, `list_system_fonts` |
-| Create and control browser panels | Commands in `commands/browser.rs` |
-| Open, write, resize, and close PTY terminals | Commands in `commands/terminal.rs` |
+| Create and control browser panels | Commands in `browser/commands.rs` |
+| Open, write, resize, and close PTY terminals | Commands in `terminal/commands.rs` |
 
 Terminal shell candidates come from the Server's system API, not a Tauri command. `open_terminal` accepts a selected `shell: { kind, path }`, dimensions, a working directory, and an IPC Channel for output. Rust chooses launch arguments from `kind`. Archiving or deleting a session requests closure of its PTYs; ordinary session switching keeps them running. Application exit closes all PTYs.
 
@@ -85,11 +87,11 @@ Callers retain the destination chosen when opening the picker. Chat appends to t
 
 Normal application exit removes interaction notifications and their native registration before destroying windows, then closes all PTYs and stops Server and its child processes. Windows uses a Job Object and process-tree termination. macOS and Linux use a process group, try TERM, and use KILL if the group does not exit in time.
 
-Launch logs are written below the profile's `logs` directory. `logging.rs` also writes to the terminal and removes expired launch logs. Server stdout carries both startup messages and ready notifications; `processes/child.rs` separates the ready protocol from ordinary log output.
+Launch logs are written below the profile's `logs` directory. `logging.rs` also writes to the terminal and removes expired launch logs. Server stdout carries both startup messages and ready notifications; `server/childProcess.rs` separates the ready protocol from ordinary log output.
 
 ## Read and verify
 
-Start with `lib.rs`, then follow `processes/desktop_processes.rs` for Server startup and `desktop/windows.rs` for window behavior. A frontend IPC change needs matching command registration, Rust arguments, and TypeScript payloads.
+Start with `lib.rs`, then follow `server/mod.rs` for Server startup and `windows/mod.rs` for window behavior. A frontend IPC change needs matching command registration, Rust arguments, and TypeScript payloads.
 
 From the repository root:
 
@@ -98,7 +100,7 @@ cargo check --locked --manifest-path apps/desktop/src-tauri/Cargo.toml
 cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --lib
 ```
 
-Proxy tests live in `tests/processes/webProxy.rs`. The default test checks the JSON contract. The ignored `windows_proxy_is_passed_only_to_web_tools` test reads current-user settings without changing them. After building Builtin Tools, the ignored `windows_web_fetch_reaches_public_site` test passes those settings to Node and requests the public Brave homepage. It reports only HTTP status, not page contents or proxy credentials, and considers an HTTP error distinct from a connection failure. Neither test starts Server or opens a user database.
+Proxy tests live in `tests/server/webProxy.rs`. The default test checks the JSON contract. The ignored `windows_proxy_is_passed_only_to_web_tools` test reads current-user settings without changing them. After building Builtin Tools, the ignored `windows_web_fetch_reaches_public_site` test passes those settings to Node and requests the public Brave homepage. It reports only HTTP status, not page contents or proxy credentials, and considers an HTTP error distinct from a connection failure. Neither test starts Server or opens a user database.
 
 The default Rust tests cover resource preparation, launch-log output and retention, path-picker state, notification XML and action validation, and a Windows COM callback round trip without showing a toast. Windows also has an opt-in delivery check:
 

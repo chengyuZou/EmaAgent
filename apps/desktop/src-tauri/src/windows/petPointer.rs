@@ -4,7 +4,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 use tauri::{Emitter, EventTarget, WebviewWindow};
 
-use super::windows::set_stage_passthrough;
+use super::stage_interaction::set_stage_passthrough;
 
 const PET_POINTER_EVENT: &str = "ema://pet-pointer";
 const POINTER_INTERVAL: Duration = Duration::from_nanos(1_000_000_000 / 60);

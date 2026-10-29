@@ -30,7 +30,7 @@ Server 自行选择本机端口. 宿主最多等待 120 秒收到就绪通知, �
 
 宿主为 debug 构建设置 `NODE_ENV=development`, 为 release 构建设置 `NODE_ENV=production`. Release 子进程不继承 `NODE_OPTIONS` 和 `NODE_PATH`. 这与发布准备检查一致, 避免终端中的 Node 设置改变安装版 Server 的启动方式.
 
-Windows 上, `processes/webProxy.rs` 在启动 Server 前读取当前用户的 WinHTTP/Internet Options 代理配置. 固定代理地址, 例外规则及自动配置/读取失败标记通过 `EMA_WEB_SYSTEM_PROXY` 交给 Server, 只有网页工具消费. 宿主不设置 `HTTP_PROXY`, 也不修改系统设置. 代理选择和支持范围见 [Builtin Tools](../../../src/builtin-tools/README-zh.md#网页-已有资料与子-agent). 原生宿主修改需要重新构建并重启.
+Windows 上, `server/webProxy.rs` 在启动 Server 前读取当前用户的 WinHTTP/Internet Options 代理配置. 固定代理地址, 例外规则及自动配置/读取失败标记通过 `EMA_WEB_SYSTEM_PROXY` 交给 Server, 只有网页工具消费. 宿主不设置 `HTTP_PROXY`, 也不修改系统设置. 代理选择和支持范围见 [Builtin Tools](../../../src/builtin-tools/README-zh.md#网页-已有资料与子-agent). 原生宿主修改需要重新构建并重启.
 
 ## 页面内容策略
 
@@ -44,11 +44,11 @@ Windows 上, `processes/webProxy.rs` 在启动 Server 前读取当前用户的 W
 - 舞台在点击穿透时仍可跟踪系统鼠标, 托盘菜单可以恢复普通交互.
 - 系统事件和舞台控制通过具名 Tauri 事件传递. 前端入口是 [tauriBridge.ts](../src/lib/tauri/tauriBridge.ts), 载荷类型在 [types.ts](../src/lib/tauri/types.ts).
 - 外部浏览器面板是独立的子 WebView, 由前端控制位置和显隐. 网页请求新窗口时交给系统浏览器.
-- 自有应用窗口使用 `desktop/windows.rs` 配置的 Windows WebView2 媒体设置. 不为外部浏览器面板授予这些应用权限.
+- 自有应用窗口使用 `windows/mod.rs` 配置的 Windows WebView2 媒体设置. 不为外部浏览器面板授予这些应用权限.
 
 ## Windows 交互通知
 
-主 WebView 观察现有 Session 交互队列, 只把各队列的队首通过 `sync_interaction_notifications` 交给宿主. `connect_interaction_notifications` 建立原生点击回传的 IPC Channel. 两个命令只接受 `main` 调用. 原生实现在 `desktop/interactionNotifications.rs`, 使用 Windows Toast API 和 COM 激活回调, 不创建另一套 WebView 或 CSS 页面.
+主 WebView 观察现有 Session 交互队列, 只把各队列的队首通过 `sync_interaction_notifications` 交给宿主. `connect_desktop_notifications` 建立原生点击回传的 IPC Channel. 两个命令只接受 `main` 调用. 原生实现在 `notifications/`, 使用 Windows Toast API 和 COM 激活回调, 不创建另一套 WebView 或 CSS 页面.
 
 Rust 将 main 的句柄与 Windows 前台窗口比较. 只有 main 在前台, 且 Chat 正显示请求所属 Session 时, 才不弹通知. 查看其他 Session, Settings, 隐藏 main 或前台是其他应用时都可以收到通知. 已经展示过的通知不会因为普通 Store 刷新或被关闭而重复弹出.
 
@@ -58,9 +58,11 @@ Permission 提供允许, 本会话允许和拒绝. main 再次检查交互队首
 
 独立 MTA 线程负责原生注册, 展示与移除. 建立通道时传入 main 窗口句柄, UI 线程等待退出时, 通知线程不会再调用 Tauri 窗口 getter. Debug 与 release 使用不同通知身份. 注册只使用当前用户 `Software\Classes` 下本应用专用的易失注册表键, 图标放在应用缓存中. 正常退出移除通知与注册键; 启动时清理遗留通知, 因为后端交互等待不能跨进程重启恢复. 不修改系统通知偏好, 也不需要管理员注册. macOS 和 Linux 保留应用内交互 UI, 不启用这条 Windows 通知通道.
 
+`show_session_completion` 复用同一原生线程, 提示主 Turn 完成或失败, 以及手动压缩完成或失败. 短通知显示聊天标题, 点击正文打开对应聊天, 不带回复或批准按钮, 不进入权限队列. main 正在前台查看对应聊天时不弹出. 自动压缩和用户主动取消不发完成通知. 图标源文件统一放在 `assets/icons/`, 构建时嵌入程序.
+
 ## 原生命令
 
-命令入口放在 `src/commands`, 具体实现使用 `src/desktop` 和 `src/processes` 中的模块.
+命令入口与实现按 server, windows, notifications, browser, terminal 和 files 分组. lib.rs 集中注册, appLifecycle.rs 组织启动和退出. permissionNotification.rs 处理 Permission/AskUser 提醒, sessionNotification.rs 处理完成通知, 共用 Windows 注册和发送线程.
 
 | 前端操作 | 原生入口 |
 | --- | --- |
@@ -68,10 +70,10 @@ Permission 提供允许, 本会话允许和拒绝. main 再次检查交互队首
 | 显隐聊天, 退出, 舞台置顶和点击穿透 | `open_main_window`, `hide_main_window`, `quit_app`, `set_always_on_top`, 鼠标与穿透命令 |
 | 读取本地图片字节用于草稿预览或壁纸上传; 检查附件路径 | `read_local_image`, `inspect_attachment_paths` |
 | 选择聊天附件, 壁纸或角色资源路径 | `select_paths` |
-| 连接原生交互点击回调, 同步待处理通知 | `connect_interaction_notifications`, `sync_interaction_notifications` |
+| 连接原生交互点击回调, 同步待处理通知 | `connect_desktop_notifications`, `sync_interaction_notifications` |
 | 打开本机路径和枚举字体 | `open_path`, `list_system_fonts` |
-| 创建和控制浏览器面板 | `commands/browser.rs` 中的命令 |
-| 打开, 写入, 调整和关闭 PTY 终端 | `commands/terminal.rs` 中的命令 |
+| 创建和控制浏览器面板 | `browser/commands.rs` 中的命令 |
+| 打开, 写入, 调整和关闭 PTY 终端 | `terminal/commands.rs` 中的命令 |
 
 终端的 Shell 候选由 Server 的 System API 探测, 不是 Tauri 命令. `open_terminal` 接收选中的 `shell: { kind, path }`, 终端尺寸, 工作目录和输出用的 IPC Channel. Rust 根据 `kind` 决定启动参数. 归档或删除会话会请求关闭它的 PTY, 普通切换会话则保留运行. 退出应用会关闭全部 PTY.
 
@@ -85,11 +87,11 @@ Permission 提供允许, 本会话允许和拒绝. main 再次检查交互队首
 
 正常退出时先移除交互通知及原生注册, 再销毁窗口, 关闭全部 PTY 并停止 Server 及其子进程. Windows 使用 Job Object 和进程树终止. macOS 与 Linux 使用独立进程组, 先发 TERM, 超时后再发 KILL.
 
-启动日志写入用户目录的 `logs` 下. `logging.rs` 同时输出到终端, 并清理过期启动日志. Server stdout 同时包含启动消息和就绪通知, 由 `processes/child.rs` 区分协议消息与普通日志.
+启动日志写入用户目录的 `logs` 下. `logging.rs` 同时输出到终端, 并清理过期启动日志. Server stdout 同时包含启动消息和就绪通知, 由 `server/childProcess.rs` 区分协议消息与普通日志.
 
 ## 从哪里看与如何验证
 
-先看 `lib.rs`, Server 启动看 `processes/desktop_processes.rs`, 窗口行为看 `desktop/windows.rs`. 修改 IPC 时需要一起核对前端具名方法, Rust 命令参数和命令注册.
+先看 `lib.rs`, Server 启动看 `server/mod.rs`, 窗口行为看 `windows/mod.rs`. 修改 IPC 时需要一起核对前端具名方法, Rust 命令参数和命令注册.
 
 在仓库根目录运行:
 
@@ -98,7 +100,7 @@ cargo check --locked --manifest-path apps/desktop/src-tauri/Cargo.toml
 cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --lib
 ```
 
-代理测试在 `tests/processes/webProxy.rs`. 默认测试检查 JSON 契约. 被忽略的 `windows_proxy_is_passed_only_to_web_tools` 只读取当前用户设置, 不修改配置. 构建 Builtin Tools 后, 被忽略的 `windows_web_fetch_reaches_public_site` 把这些设置传给 Node 并请求公开的 Brave 首页. 它只报告 HTTP 状态, 不输出页面正文或代理凭据, 区分 HTTP 错误和连接失败. 两个测试都不启动 Server 或打开用户数据库.
+代理测试在 `tests/server/webProxy.rs`. 默认测试检查 JSON 契约. 被忽略的 `windows_proxy_is_passed_only_to_web_tools` 只读取当前用户设置, 不修改配置. 构建 Builtin Tools 后, 被忽略的 `windows_web_fetch_reaches_public_site` 把这些设置传给 Node 并请求公开的 Brave 首页. 它只报告 HTTP 状态, 不输出页面正文或代理凭据, 区分 HTTP 错误和连接失败. 两个测试都不启动 Server 或打开用户数据库.
 
 默认 Rust 测试覆盖资源准备, 启动日志内容和过期清理, 路径选择状态, 通知 XML 和动作校验, 以及不展示通知的 Windows COM 点击回调往返. Windows 另有需要显式开启的投递检查:
 

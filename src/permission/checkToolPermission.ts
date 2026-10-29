@@ -56,7 +56,7 @@ export async function checkToolPermission<TInput, TContext>(
 
   if (matches('deny')) return { decision: 'deny', message: `已禁止本次 ${tool.name} 操作` };
 
-  // 无可记住范围的必要确认不能被旧 Session 批准覆盖, 如重新启动电脑操控.
+  // 无可记住范围的必要确认不能被旧 Session 批准覆盖, 不能凭空生成批准范围.
   if (preparedPermissionCheck.confirmation === 'required' && !preparedPermissionCheck.sessionApproval) return ask();
   if (preparedPermissionCheck.confirmation === 'alreadyApproved') return { decision: 'allow' };
 
@@ -89,7 +89,7 @@ function prepareCheck(
     case 'mcp':
       return prepareMcpPermission(toolName, input, toolPermissionCheck.reportedDestructive);
     case 'computerUse':
-      return prepareComputerUsePermission(toolPermissionCheck.needsStartupApproval);
+      return prepareComputerUsePermission(toolName, toolPermissionCheck.needsStartupApproval);
     case 'tool': {
       const condition = toolPermissionCheck.sessionApproval === 'input' ? exactInputCondition(input) : undefined;
       return {

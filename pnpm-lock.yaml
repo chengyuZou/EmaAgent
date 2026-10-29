@@ -750,12 +750,18 @@ importers:
       '@ema-agent/session':
         specifier: workspace:*
         version: link:../session
+      '@ema-agent/settings':
+        specifier: workspace:*
+        version: link:../settings
       '@ema-agent/token':
         specifier: workspace:*
         version: link:../token
       '@ema-agent/tools':
         specifier: workspace:*
         version: link:../tools
+      sharp:
+        specifier: ^0.33.5
+        version: 0.33.5
       zod:
         specifier: ^4.4.3
         version: 4.4.3

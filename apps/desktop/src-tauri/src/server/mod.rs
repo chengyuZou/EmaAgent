@@ -1,3 +1,14 @@
+#[path = "bundledData.rs"]
+mod bundled_data;
+#[path = "childProcess.rs"]
+mod child_process;
+pub mod commands;
+mod launch;
+#[path = "processTree/mod.rs"]
+mod process_tree;
+#[path = "webProxy.rs"]
+mod web_proxy;
+
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -7,11 +18,10 @@ use tauri::AppHandle;
 use tokio::process::Child;
 use tokio::sync::{mpsc, Mutex, RwLock};
 
-use super::child::spawn_server;
-use super::launch::resolve_server_launch;
-use super::platform::NativeProcessTree;
-use super::ready::wait_for_ready;
-use crate::bundled_data::{prepare_builtin_characters, prepare_models_catalog};
+use self::bundled_data::{prepare_builtin_characters, prepare_models_catalog};
+use self::child_process::spawn_server;
+use self::launch::resolve_server_launch;
+use self::process_tree::NativeProcessTree;
 
 pub(crate) const SERVER_READY_TIMEOUT: Duration = Duration::from_secs(120);
 
@@ -22,7 +32,7 @@ pub(crate) struct ServerConnection {
 }
 
 #[derive(Clone)]
-pub struct DesktopProcesses(Arc<Inner>);
+pub struct ServerProcess(Arc<Inner>);
 
 #[derive(Clone)]
 enum State {
@@ -40,7 +50,7 @@ struct Inner {
     process_tree: NativeProcessTree,
 }
 
-impl DesktopProcesses {
+impl ServerProcess {
     pub fn new() -> Result<Self, String> {
         Ok(Self(Arc::new(Inner {
             stopping: AtomicBool::new(false),
@@ -176,7 +186,6 @@ impl DesktopProcesses {
             self.0.process_tree.terminate(&mut child, "server").await;
         }
     }
-
 }
 
 async fn poll_exit(slot: &Mutex<Option<Child>>) -> Option<std::process::ExitStatus> {
@@ -199,4 +208,44 @@ fn generate_shared_secret() -> String {
     let mut bytes = [0_u8; 32];
     OsRng.fill_bytes(&mut bytes);
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+async fn wait_for_ready(
+    label: &str,
+    max_wait: Duration,
+    shutdown_requested: &AtomicBool,
+    child: &Mutex<Option<Child>>,
+    ready: &mut mpsc::UnboundedReceiver<u16>,
+) -> Result<u16, String> {
+    let started = tokio::time::Instant::now();
+    let deadline = started + max_wait;
+    loop {
+        if shutdown_requested.load(Ordering::Acquire) {
+            return Err(format!("{label} startup cancelled"));
+        }
+
+        if let Some(process) = child.lock().await.as_mut() {
+            match process.try_wait() {
+                Ok(Some(status)) => {
+                    return Err(format!(
+                        "{label} exited before readiness ({status}) after {:.3} s",
+                        started.elapsed().as_secs_f64(),
+                    ));
+                }
+                Ok(None) => {}
+                Err(error) => return Err(format!("poll {label} before readiness: {error}")),
+            }
+        }
+
+        if tokio::time::Instant::now() >= deadline {
+            return Err(format!(
+                "{label} readiness timed out after {:.3} s",
+                started.elapsed().as_secs_f64(),
+            ));
+        }
+        tokio::select! {
+            Some(port) = ready.recv() => return Ok(port),
+            _ = tokio::time::sleep(Duration::from_millis(50)) => {}
+        }
+    }
 }

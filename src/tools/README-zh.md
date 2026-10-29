@@ -22,9 +22,9 @@ Pool 保留同一批 Tool 对象, 不回读 Registry. MCP 更新影响后续准�
 保存 tool_use
   -> 解析一次 Schema, 登记电脑调用
   -> 按并发或独占规则等待更早工具结束
-  -> 检查电脑操控暂停, 检查 Context 和业务输入
+  -> 检查 Context 和业务输入
   -> 保存 prepared, 检查权限并按需等待批准
-  -> 保存 authorized, 再次检查电脑操控暂停
+  -> 保存 authorized, 检查调用是否取消
   -> 保存 running
   -> 调用 execute, 生成模型可见结果
   -> 按模型 block 顺序交付 ToolResult
@@ -34,9 +34,8 @@ Pool 保留同一批 Tool 对象, 不回读 Registry. MCP 更新影响后续准�
 
 输入无效或缺少能力时不会进入权限检查. 没有批准通道时, 需要批准的调用会被拒绝. 会话批准规则由宿主保存, 详见 [Permission](../permission/README-zh.md).
 
-Turn 通过 `registerComputerToolCall` 把四种电脑工具按 ToolCallId 登记到 ComputerUse, 普通工具不登记. 暂停或结束操控时, ComputerUse 用 `cancelPendingComputerCall` 取消可直接作废的旧调用; 已提交给 Rust 的键鼠动作返回实际结果, 保留可能部分完成的说明. 调用处理结束后, 执行器调用返回的清理函数删除登记, 启动未获批准时也释放操控预约.
+Turn 通过 `registerComputerToolCall` 把四种电脑工具按 ToolCallId 登记到 ComputerUse, 普通工具不登记. 结束操控时, ComputerUse 用 `cancelPendingComputerCall` 取消可直接作废的旧调用; 已提交给 Rust 的键鼠动作返回实际结果, 保留可能部分完成的说明. 调用处理结束后, 执行器调用返回的清理函数删除登记, 启动未获批准时也释放操控预约.
 
-Turn 提供的 `waitIfComputerUsePaused` 让普通工具在本 Session 操控暂停时等用户继续或结束, 正在结束时等操控收尾. 执行器在排队结束后和 Permission 完成且真正执行前分别检查. Tool 或 Turn 的取消信号会中断等待. 电脑调用不在这里等待重放, 子代理也不接入这两个回调.
 
 调用按 ToolCall ID 建立索引, 模型 block 顺序列表引用同一批记录, 只在新增调用时排序. 排队取消和正常执行共用一条调用流程. 被取消的调用可立即生成结果, 不等待前面的长工具. 调度仍保留它原本需要等待的更早调用, 后续工具不能因中间调用取消而提前越过这些工作.
 

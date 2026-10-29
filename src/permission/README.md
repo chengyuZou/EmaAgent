@@ -17,7 +17,7 @@ Permission decides whether a tool call can proceed, must be refused, or needs th
 1. A whole-tool deny ends the check before calling the tool.
 2. The tool supplies operation details. File, shell, web, MCP and computer-use checks prepare matching and confirmation requirements.
 3. A matching deny refuses the call.
-4. A required confirmation with no reusable scope, such as starting computer use, always asks. An already approved computer-use operation does not ask again.
+4. A required confirmation with no reusable scope always asks. Computer-use startup can match a Session approval. An already approved computer-use operation does not ask again.
 5. A matching Session approval allows its scope.
 6. Explicit ask rules and required confirmations ask, including in bypassPermissions mode.
 7. BypassPermissions allows ordinary operations that reached this point.
@@ -41,9 +41,9 @@ Permission does not create a fallback approval for every input. Ordinary tools e
 | Bash, PowerShell | The complete literal command, without widening it into a prefix |
 | WebFetch | Exact hostname, including its paths and ports but not subdomains |
 | WebSearch | Query and normalized allowed/blocked domain lists |
-| Computer-use startup | No Session rule; ComputerUse owns approval until that use ends |
+| Computer-use startup | Whole startup tool; allows later starts in this Session, while each use ends with its Turn |
 
-`ToolCallExecution` asks through the host's existing interaction callback. Turn queues the request before publishing it. For allowSession, Turn calls `rememberSessionApproval` before publishing resolution and returning the answer. Execution then checks cancellation and the host's pause condition before entering the tool. The streaming scheduler continues to own scheduling and ordered result delivery.
+`ToolCallExecution` asks through the host's existing interaction callback. Turn queues the request before publishing it. For allowSession, Turn calls `rememberSessionApproval` before publishing resolution and returning the answer. Execution then checks cancellation before entering the tool. The streaming scheduler continues to own scheduling and ordered result delivery.
 
 ## Files and storage
 

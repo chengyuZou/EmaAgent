@@ -5,7 +5,7 @@ import { subscribeSystemEvent } from '../lib/events/systemEventDispatcher.js';
 import { mountSystemEvents } from '../lib/events/systemSse.js';
 import { tauriBridge } from '../lib/tauri/tauriBridge.js';
 import { showToast } from '../lib/notifications/toast.js';
-import { mountInteractionNotifications } from '../lib/notifications/interactionNotifications.js';
+import { mountDesktopNotifications } from '../lib/notifications/desktopNotifications.js';
 import { ImageViewerProvider } from '../lib/images/imageViewer.js';
 import { MarkdownMedia } from '../lib/markdownMedia.js';
 import { handleBackgroundProcessSystemEvent } from '../stores/backgroundProcess.js';
@@ -54,7 +54,7 @@ export function MainWindow(): JSX.Element {
   const imageViewerRoot = useRef<HTMLDivElement>(null);
 
   useThemeSync();
-  useEffect(() => mountInteractionNotifications(), []);
+  useEffect(() => mountDesktopNotifications(), []);
   useSettingsSync(serverReady);
   useEffect(() => {
     if (!serverReady) return;

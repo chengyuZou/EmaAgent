@@ -37,11 +37,21 @@ export interface InteractionNotificationUpdate {
   readonly notifications: readonly InteractionNotification[];
 }
 
-export interface InteractionNotificationAction {
+export type DesktopNotificationAction =
+  | { readonly action: 'openSession'; readonly sessionId: string }
+  | {
+      readonly action: PermissionUserAction;
+      readonly sessionId: string;
+      readonly turnId: string;
+      readonly toolCallId: string;
+    };
+
+export interface SessionCompletionNotification {
+  readonly id: string;
   readonly sessionId: string;
-  readonly turnId: string;
-  readonly toolCallId: string;
-  readonly action: 'openSession' | PermissionUserAction;
+  readonly title: string;
+  readonly kind: 'turnCompleted' | 'turnFailed' | 'compactCompleted' | 'compactFailed';
+  readonly viewedSessionId: string | null;
 }
 
 export type TerminalEvent =

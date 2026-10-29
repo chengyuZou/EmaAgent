@@ -39,7 +39,7 @@ export type ToolExecutionContext = {
   /**
    * Turn 为主 Agent 提供的电脑工具登记入口.
    * 执行器在 Schema 解析成功后, 排队等待前调用. 普通工具返回 undefined.
-   * 电脑工具按 ToolCallId 记入 ComputerUse, 暂停或结束操控时据此取消旧调用.
+   * 电脑工具按 ToolCallId 记入 ComputerUse, 结束操控时据此取消旧调用.
    * 返回的函数在本次 Tool 处理结束时删除登记; 启动调用未获批准时也释放操控预约.
    */
   readonly registerComputerToolCall?: (
@@ -48,17 +48,6 @@ export type ToolExecutionContext = {
     // 已提交的键鼠动作由 Rust 返回实际结果, 不走这个取消回调.
     cancelPendingComputerCall: (error: ToolExecutionError) => void,
   ) => (() => void) | undefined;
-  /**
-   * Turn 为主 Agent 提供的暂停等待入口, 子代理不接入.
-   * 所属 Session 的电脑操控暂停时, 普通工具等用户继续或结束; 正在结束时等操控收尾.
-   * 电脑工具不在这里等重放, 已作废调用直接返回结果.
-   * 排队结束后检查一次, Permission 完成且真正执行前再检查一次.
-   * 当前 Tool 或 Turn 被取消时, signal 中断等待.
-   */
-  readonly waitIfComputerUsePaused?: (
-    call: ToolExecutionCall,
-    signal: AbortSignal,
-  ) => Promise<void>;
 } & (
     | { readonly subagentId?: never; readonly runId?: never }
     | {

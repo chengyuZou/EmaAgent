@@ -53,7 +53,7 @@ function gatedTool(name: string, concurrencySafe: boolean): {
   return { tool, release, started };
 }
 
-function makeExecutor(tools: AnyTestTool[], hooks: Pick<StreamingToolExecutorOptions, 'registerComputerToolCall' | 'waitIfComputerUsePaused'> = {}): {
+function makeExecutor(tools: AnyTestTool[], hooks: Pick<StreamingToolExecutorOptions, 'registerComputerToolCall'> = {}): {
   executor: StreamingToolExecutor;
   events: ToolExecutionEvent[];
 } {

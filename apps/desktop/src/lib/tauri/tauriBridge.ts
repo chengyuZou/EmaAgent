@@ -5,8 +5,9 @@ import type {
   FileDragEvent,
   BrowserBounds,
   BrowserEvent,
-  InteractionNotificationAction,
+  DesktopNotificationAction,
   InteractionNotificationUpdate,
+  SessionCompletionNotification,
   DesktopSettingsPayload,
   Live2dPreviewCommand,
   OpenTerminalInput,
@@ -42,8 +43,8 @@ let _window: TauriWindow | null = null;
 const terminalChannels = new Map<string, object>();
 const pendingBrowserOpens = new Map<string, Promise<void>>();
 const pendingBrowserVisibility = new Map<string, Promise<void>>();
-let interactionNotificationConnection: Promise<boolean> | null = null;
-let interactionNotificationHandler: ((action: InteractionNotificationAction) => void) | null = null;
+let desktopNotificationConnection: Promise<boolean> | null = null;
+let desktopNotificationHandler: ((action: DesktopNotificationAction) => void) | null = null;
 
 const WINDOW_VISIBILITY_EVENT = 'ema://window-visibility';
 const PET_PASSTHROUGH_EVENT = 'ema://pet-passthrough';
@@ -237,26 +238,30 @@ export const tauriBridge = {
     );
   },
 
-  async connectInteractionNotifications(
-    handler: (action: InteractionNotificationAction) => void,
+  async connectDesktopNotifications(
+    handler: (action: DesktopNotificationAction) => void,
   ): Promise<boolean> {
     // React can remount main's effects. Keep one native channel and replace its
     // current consumer rather than letting an older IPC replace the new listener.
-    interactionNotificationHandler = handler;
-    if (!interactionNotificationConnection) {
-      interactionNotificationConnection = (async () => {
+    desktopNotificationHandler = handler;
+    if (!desktopNotificationConnection) {
+      desktopNotificationConnection = (async () => {
         const core = await getCore();
         if (!core) return false;
-        const onAction = new core.Channel<InteractionNotificationAction>(action => {
-          interactionNotificationHandler?.(action);
+        const onAction = new core.Channel<DesktopNotificationAction>(action => {
+          desktopNotificationHandler?.(action);
         });
-        return core.invoke<boolean>('connect_interaction_notifications', { onAction });
+        return core.invoke<boolean>('connect_desktop_notifications', { onAction });
       })().catch(error => {
-        interactionNotificationConnection = null;
+        desktopNotificationConnection = null;
         throw error;
       });
     }
-    return interactionNotificationConnection;
+    return desktopNotificationConnection;
+  },
+
+  async showSessionCompletion(notice: SessionCompletionNotification): Promise<void> {
+    await invokeTauri('show_session_completion', { notice });
   },
 
   async syncInteractionNotifications(update: InteractionNotificationUpdate): Promise<void> {

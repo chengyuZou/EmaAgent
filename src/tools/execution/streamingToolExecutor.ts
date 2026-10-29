@@ -7,7 +7,7 @@ import type { ToolResult } from '../results/toolResult.js';
 interface ScheduledToolCall {
   readonly blockIndex: number;
   readonly execution: ToolCallExecution;
-  // 等本调用完成排队, 暂停等待, 权限检查和实际执行, 或生成取消结果.
+  // 等本调用完成排队, 权限检查和实际执行, 或生成取消结果.
   // 完成后不代表结果 Message 已经保存, 也不代表被取消调用之前的工具都已结束.
   completionPromise?: Promise<void>;
   completion?: ToolCallOutcome;

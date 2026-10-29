@@ -1,4 +1,6 @@
 use super::*;
+use crate::notifications::InteractionNotification;
+use windows::{Data::Xml::Dom::XmlDocument, UI::Notifications::ToastNotification};
 
 fn request(kind: InteractionKind) -> InteractionNotification {
     InteractionNotification {
@@ -151,6 +153,7 @@ fn windows_accepts_a_real_notification() {
                 undelivered: Vec::new(),
                 viewed_session_id: None,
                 notices: HashMap::new(),
+                completions: HashMap::new(),
             };
             eprintln!("probe identity: {}", notifications.registration.app_id);
             let request = InteractionNotification {

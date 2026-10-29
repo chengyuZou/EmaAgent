@@ -1,3 +1,4 @@
+pub mod commands;
 use serde::{Deserialize, Serialize};
 use tauri::{
     webview::{NewWindowResponse, PageLoadEvent, WebviewBuilder},
@@ -5,7 +6,7 @@ use tauri::{
 };
 use tauri_plugin_opener::OpenerExt;
 
-use super::windows::SHARED_BROWSER_ARGS;
+use crate::windows::webview_media::SHARED_BROWSER_ARGS;
 
 const BROWSER_EVENT: &str = "browser:event";
 

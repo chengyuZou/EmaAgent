@@ -44,7 +44,7 @@
   "bundle": {
     "active":     false,
     "targets":    "all",
-    "icon":       ["icons/icon.png", "icons/icon.ico", "icons/icon.icns"],
+    "icon":       ["../../../assets/icons/icon.png", "../../../assets/icons/icon.ico", "../../../assets/icons/icon.icns"],
     "category":   "Utility",
     "shortDescription": "Ema desktop pet + agent",
     "longDescription":  "Local-first desktop pet + agent — chat/work modes, character-driven."

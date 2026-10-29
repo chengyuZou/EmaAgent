@@ -1,31 +1,32 @@
-mod bundled_data;
-mod commands;
-mod desktop;
+#[path = "appLifecycle.rs"]
+mod app_lifecycle;
+mod browser;
+mod files;
+mod fonts;
 mod logging;
-mod processes;
+mod notifications;
+#[path = "profilePath.rs"]
+mod profile_path;
+mod server;
+mod terminal;
+mod tray;
+mod windows;
 
-use tauri::{Manager, RunEvent};
-
-use commands::{
-    browser_back, browser_forward, close_browser, close_session_terminals, close_terminal,
-    connect_interaction_notifications, get_passthrough, get_server_port, get_server_secret,
-    hide_main_window, inspect_attachment_paths, list_system_fonts, navigate_browser, open_browser,
-    open_main_window, open_path, open_terminal, quit_app, read_local_image, reload_browser,
-    resize_terminal, select_paths, set_always_on_top, set_browser_bounds, set_browser_visible,
-    set_passthrough, set_passthrough_controls_hovered, start_pet_pointer,
-    sync_interaction_notifications, write_terminal,
-};
-use desktop::interaction_notifications::InteractionNotifications;
-use desktop::pet_pointer::PetPointerTracking;
-use desktop::terminal::TerminalSessions;
-use desktop::windows::{destroy_windows_before_exit, handle_window_event, show_stage_window};
-use processes::DesktopProcesses;
+use app_lifecycle::quit_app;
+use browser::commands::*;
+use files::{inspect_attachment_paths, open_path, read_local_image, select_paths};
+use fonts::list_system_fonts;
+use notifications::commands::*;
+use server::commands::*;
+use server::ServerProcess;
+use terminal::{commands::*, TerminalSessions};
+use windows::pet_pointer::PetPointerTracking;
+use windows::{commands::*, handle_window_event, show_stage_window};
 
 pub fn run() {
     logging::init_logging();
 
-    let processes = DesktopProcesses::new().expect("failed to initialize desktop child processes");
-    let processes_for_setup = processes.clone();
+    let server = ServerProcess::new().expect("failed to initialize Server process");
 
     tauri::Builder::default()
         // 第二实例只显示已有角色舞台, 不重复启动后端进程.
@@ -34,13 +35,14 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .manage(processes)
-        .manage(desktop::file_dialog::FileDialogState::default())
+        .manage(server)
+        .manage(files::file_dialog::FileDialogState::default())
         .manage(TerminalSessions::new())
         .manage(PetPointerTracking::default())
         .invoke_handler(tauri::generate_handler![
-            connect_interaction_notifications,
+            connect_desktop_notifications,
             sync_interaction_notifications,
+            show_session_completion,
             select_paths,
             inspect_attachment_paths,
             get_server_secret,
@@ -70,45 +72,9 @@ pub fn run() {
             set_browser_visible,
             close_browser,
         ])
-        .setup(move |app| {
-            app.manage(InteractionNotifications::start(app.handle().clone()));
-            #[cfg(windows)]
-            if let Some(stage) = app.get_webview_window("stage") {
-                desktop::windows::allow_app_media(&stage)?;
-            }
-
-            let app_handle = app.handle().clone();
-            let processes = processes_for_setup.clone();
-            tauri::async_runtime::spawn(async move {
-                if let Err(error) = processes.start(app_handle).await {
-                    tracing::error!(%error, "desktop child process startup failed");
-                }
-            });
-
-            desktop::tray::install(app)?;
-
-            // 首次启动显示角色舞台, 用户点击舞台按钮后才创建 main.
-            show_stage_window(app.handle());
-            Ok(())
-        })
+        .setup(app_lifecycle::setup)
         .on_window_event(handle_window_event)
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|app_handle, event| {
-            if let RunEvent::ExitRequested { api, .. } = &event {
-                app_handle.state::<InteractionNotifications>().shutdown();
-                app_handle.state::<PetPointerTracking>().stop();
-                destroy_windows_before_exit(app_handle, api);
-            }
-            if let RunEvent::Exit = event {
-                app_handle.state::<PetPointerTracking>().stop();
-                // 退出时回收子进程树与全部 PTY 终端.
-                let state = app_handle.state::<DesktopProcesses>();
-                app_handle.state::<TerminalSessions>().close_all();
-                tauri::async_runtime::block_on(async {
-                    state.shutdown().await;
-                });
-                tracing::info!("tauri exit event — child processes stopped");
-            }
-        });
+        .run(app_lifecycle::handle_run_event);
 }

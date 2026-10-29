@@ -59,7 +59,7 @@ export class ToolCallExecution {
       this.input = input;
       this.isConcurrencySafe = tool.isConcurrencySafe(input);
       this.requiresUserInteraction = tool.requiresUserInteraction(input);
-      // 排队前就登记, ComputerUse 才能在暂停时取消尚未轮到执行的电脑调用.
+      // 排队前就登记, ComputerUse 才能在操控结束时取消尚未轮到执行的电脑调用.
       this.unregisterComputerToolCall = executionContext.registerComputerToolCall?.(
         call,
         error => this.abort(error),
@@ -187,8 +187,6 @@ export class ToolCallExecution {
     // 构造阶段已完成工具查找, Schema 解析, 调度声明读取和电脑调用登记.
     const tool = this.tool!;
     const invocation = this.invocation(signal);
-    // 调度等待结束后, 再检查所属 Session 是否暂停操控, 避免普通工具在用户接管时开始工作.
-    await this.executionContext.waitIfComputerUsePaused?.(this.call, signal);
     signal.throwIfAborted();
     const contextProjection = tool.validateContext(this.executionContext.toolContext);
     if (!contextProjection.valid) {
@@ -344,7 +342,6 @@ export class ToolCallExecution {
 
     try {
       // 用户回答 Permission 期间可能接管电脑. 真正执行前再等继续或结束, 已取消调用不重放.
-      await this.executionContext.waitIfComputerUsePaused?.(this.call, signal);
       signal.throwIfAborted();
       // 先保存 running 再开始实际操作. 此后若中断且没有实际结果, 不能假定操作完全没发生.
       this.advanceExecutionState('start');

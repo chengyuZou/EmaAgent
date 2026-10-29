@@ -6,7 +6,7 @@ use tokio::process::{Child, Command};
 use tokio::sync::mpsc;
 
 use super::launch::ChildLaunch;
-use super::platform::NativeProcessTree;
+use super::process_tree::NativeProcessTree;
 
 pub async fn spawn_server(
     launch: ChildLaunch,
@@ -121,4 +121,3 @@ fn pipe_stderr(stderr: Option<tokio::process::ChildStderr>, label: &'static str)
         }
     });
 }
-

@@ -7,7 +7,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
 
-use crate::desktop::profile::profile_root;
+use crate::profile_path::profile_root;
 
 const LOG_RETENTION: Duration = Duration::from_secs(14 * 24 * 60 * 60);
 

@@ -1,8 +1,8 @@
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::Manager;
 
-use crate::desktop::windows::{set_stage_passthrough, show_stage_window, toggle_stage_window};
-use crate::processes::DesktopProcesses;
+use crate::windows::stage_interaction::set_stage_passthrough;
+use crate::windows::{show_stage_window, toggle_stage_window};
 
 pub fn install(app: &mut tauri::App) -> tauri::Result<()> {
     let tray_menu = tauri::menu::MenuBuilder::new(app)
@@ -61,9 +61,7 @@ pub fn install(app: &mut tauri::App) -> tauri::Result<()> {
             "quit" => {
                 let app = app.clone();
                 tauri::async_runtime::spawn(async move {
-                    let state = app.state::<DesktopProcesses>();
-                    state.shutdown().await;
-                    app.exit(0);
+                    crate::app_lifecycle::quit_app(app).await;
                 });
             }
             _ => {}

@@ -8,6 +8,7 @@ import { useSessionStore } from '../../../stores/session.js';
 import { useSessionActivityStore } from '../../../stores/sessionActivity.js';
 import { ensureSessionSubscription } from '../../session/sessionSubscriptions.js';
 import { removeSessionFromChat } from '../../session/removeSessionFromChat.js';
+import { notifySessionCompletion } from '../../../lib/notifications/sessionCompletionNotifications.js';
 import { showToast } from '../../../lib/notifications/toast.js';
 
 const COMPACT_ERRORS: Record<string, string> = {
@@ -48,18 +49,22 @@ export function useInputCommands(
       || useSessionActivityStore.getState().bySession.get(viewedId)?.running != null
     ) return;
     setCompacting(true);
+    // 本次手动请求的通知身份, 自动压缩不走此入口. 切换聊天后仍通知最初发起的 Session.
+    const notificationId = crypto.randomUUID();
     try {
       ensureSessionSubscription(viewedId);
       const result = await sessionWebSocket.startCompaction(viewedId);
       if (result.status === 'cancelled') {
         showToast('压缩已取消', { variant: 'info' });
       } else {
+        void notifySessionCompletion(viewedId, notificationId, 'compactCompleted');
         showToast(`已压缩 ${result.beforeTokens} → ${result.afterTokens} tokens`, { variant: 'success' });
       }
     } catch (error) {
       const code = error instanceof ServerApiError || error instanceof SessionRequestError
         ? error.code
         : undefined;
+      void notifySessionCompletion(viewedId, notificationId, 'compactFailed');
       let message = '压缩失败';
       if (code && COMPACT_ERRORS[code]) message = COMPACT_ERRORS[code];
       else if (error instanceof Error) message = error.message;

@@ -1,6 +1,6 @@
 use tauri::{ipc::Channel, State};
 
-use crate::desktop::terminal::{TerminalEvent, TerminalSessions, TerminalShellSpec};
+use crate::terminal::{TerminalEvent, TerminalSessions, TerminalShellSpec};
 
 #[tauri::command]
 pub fn open_terminal(

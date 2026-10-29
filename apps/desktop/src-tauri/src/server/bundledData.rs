@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use tauri::{AppHandle, Manager};
 
-use crate::desktop::profile::profile_root;
+use crate::profile_path::profile_root;
 
 pub async fn prepare_models_catalog(app: &AppHandle) -> Result<(), String> {
     let destination = profile_root()?.join("profile").join("models-dev.json");
@@ -21,7 +21,9 @@ fn install_models_catalog(source: &Path, destination: &Path) -> Result<(), Strin
     if destination.exists() {
         return Ok(());
     }
-    let parent = destination.parent().expect("model catalog has a parent directory");
+    let parent = destination
+        .parent()
+        .expect("model catalog has a parent directory");
     fs::create_dir_all(parent)
         .map_err(|error| format!("create model catalog directory: {error}"))?;
     fs::copy(source, destination)
@@ -122,7 +124,9 @@ mod tests {
     #[test]
     fn model_catalog_is_installed_once_independently_of_profile_database() {
         let root = std::env::temp_dir().join(format!(
-            "ema-catalog-{}-{}", std::process::id(), rand::random::<u64>()
+            "ema-catalog-{}-{}",
+            std::process::id(),
+            rand::random::<u64>()
         ));
         fs::create_dir_all(&root).unwrap();
         fs::write(root.join("profile.db"), b"existing database").unwrap();
@@ -164,5 +168,4 @@ mod tests {
         );
         fs::remove_dir_all(root).unwrap();
     }
-
 }

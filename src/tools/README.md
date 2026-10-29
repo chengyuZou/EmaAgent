@@ -29,14 +29,12 @@ sequenceDiagram
   Agent->>Executor: addTool
   Executor->>Tool: Parse input Schema once
   Executor->>Executor: Register computer call, wait for earlier tools
-  Executor->>Executor: Wait if computer use is paused
   Executor->>Tool: Check context and business input
   Executor->>State: Prepare execution
   Executor->>Permission: checkToolPermission
   Permission->>Tool: checkPermissions returns operation facts
   Permission-->>Executor: allow / deny / ask
   Executor->>State: Authorize
-  Executor->>Executor: Recheck computer-use pause
   Executor->>State: Save running
   Executor->>Tool: execute
   Tool-->>Executor: Business result
@@ -48,9 +46,8 @@ sequenceDiagram
 
 Schema parsing happens once. Invalid input and missing context fail before permission checks. With no approval channel, a decision requiring approval is denied. Session approval rules are saved by the host; see [Permission](../permission/README.md).
 
-Turn supplies `registerComputerToolCall` to register the four computer tools in ComputerUse by tool-call ID. Ordinary tools are not registered. On pause or termination, ComputerUse invokes `cancelPendingComputerCall` for old calls that can be invalidated immediately. Keyboard and mouse actions already sent to Rust return their actual result, including possible partial completion. The executor calls the returned cleanup function when processing finishes; it removes the registration and releases an unapproved startup reservation.
+Turn supplies `registerComputerToolCall` to register the four computer tools in ComputerUse by tool-call ID. Ordinary tools are not registered. On termination, ComputerUse invokes `cancelPendingComputerCall` for old calls that can be invalidated immediately. Keyboard and mouse actions already sent to Rust return their actual result, including possible partial completion. The executor calls the returned cleanup function when processing finishes; it removes the registration and releases an unapproved startup reservation.
 
-Turn's `waitIfComputerUsePaused` makes ordinary tools wait for this Session's computer use to resume or end. While termination is in progress, they wait for it to finish. The executor checks after scheduling and again after Permission, before execution. Cancelling the Tool or Turn interrupts this wait. Computer calls do not wait here for replay, and subagents receive neither callback.
 
 Calls are indexed by tool-call ID. The block-order list refers to those same records and is sorted when new calls arrive. Queued cancellation and ordinary execution use one call pipeline. A cancelled call can produce its result without waiting for an earlier long-running tool. Scheduling still waits for that earlier work, so later tools cannot use the cancellation to start out of order.
 

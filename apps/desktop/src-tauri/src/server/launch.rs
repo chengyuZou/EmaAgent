@@ -83,4 +83,3 @@ fn locate_workspace_root() -> Result<PathBuf, String> {
         .map(Path::to_path_buf)
         .ok_or_else(|| "workspace root not found".to_string())
 }
-

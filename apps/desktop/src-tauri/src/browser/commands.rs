@@ -1,6 +1,6 @@
 use tauri::Window;
 
-use crate::desktop::browser::{self, BrowserBounds};
+use crate::browser::{self, BrowserBounds};
 
 #[tauri::command]
 pub async fn open_browser(

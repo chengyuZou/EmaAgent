@@ -177,11 +177,12 @@ describe('网页, MCP 和电脑操控', () => {
     expect((await check('MCP', { kind: 'mcp', reportedDestructive: false }, context('bypassPermissions'))).decision).toBe('allow');
   });
 
-  it('电脑启动只批准当前操控, 即使有整工具 Session 批准也重新确认', async () => {
-    rememberSessionApproval(sessionId, { toolName: 'ObserveWindow' });
+  it('电脑启动提供会话批准, 后续启动匹配规则, 明确禁止仍优先', async () => {
     const first = await check('ObserveWindow', { kind: 'computerUse', needsStartupApproval: true }, context('bypassPermissions'));
     expect(first.decision).toBe('ask');
-    expect(first).not.toHaveProperty('sessionApproval');
+    expect(first).toMatchObject({ sessionApproval: { key: { toolName: 'ObserveWindow' } } });
+    rememberSessionApproval(sessionId, { toolName: 'ObserveWindow' });
+    expect((await check('ObserveWindow', { kind: 'computerUse', needsStartupApproval: true })).decision).toBe('allow');
     const active = { kind: 'computerUse', needsStartupApproval: false } as const;
     expect((await check('ObserveWindow', active, {
       ...context(), rules: [rule('ObserveWindow', 'ask')],

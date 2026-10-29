@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="apps/desktop/src-tauri/icons/icon.png" width="112" height="112" alt="EmaAgent 图标">
+  <img src="assets/icons/icon.png" width="112" height="112" alt="EmaAgent 图标">
 </p>
 
 <h1 align="center">EmaAgent</h1>

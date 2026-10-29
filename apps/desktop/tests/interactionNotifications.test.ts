@@ -6,8 +6,8 @@ import { createRoot } from 'react-dom/client';
 import { PendingInteractionView } from '../src/chat/interactions/PendingInteractionView.js';
 import type { SessionListItem } from '../src/api/sessions.js';
 import type { PermissionUserResponse } from '@ema-agent/permission';
-import type { InteractionNotificationAction, InteractionNotificationUpdate } from '../src/lib/tauri/types.js';
-import { mountInteractionNotifications } from '../src/lib/notifications/interactionNotifications.js';
+import type { DesktopNotificationAction, InteractionNotificationUpdate } from '../src/lib/tauri/types.js';
+import { mountDesktopNotifications } from '../src/lib/notifications/desktopNotifications.js';
 import { MainView, useMainNavigationStore } from '../src/layout/navigation.js';
 import { useSessionActivityStore } from '../src/stores/sessionActivity.js';
 import { useSessionStore } from '../src/stores/session.js';
@@ -22,7 +22,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../src/lib/tauri/tauriBridge.js', () => ({
   tauriBridge: {
-    connectInteractionNotifications: mocks.connect,
+    connectDesktopNotifications: mocks.connect,
     syncInteractionNotifications: mocks.sync,
     openMainWindow: mocks.open,
   },
@@ -39,7 +39,7 @@ vi.mock('../src/lib/notifications/toast.js', () => ({ showToast: mocks.toast }))
 vi.mock('../src/api/sessions.js', () => ({ sessionsApi: {} }));
 vi.mock('../src/api/workspaces.js', () => ({ sidebarApi: {} }));
 
-let action: (event: InteractionNotificationAction) => void;
+let action: (event: DesktopNotificationAction) => void;
 let stop: (() => void) | undefined;
 
 function permission(sessionId: string, toolCallId: string, reusable = true): void {
@@ -79,7 +79,7 @@ function resolved(sessionId: string, toolCallId: string): void {
 }
 
 async function mount(): Promise<void> {
-  stop = mountInteractionNotifications();
+  stop = mountDesktopNotifications();
   await vi.waitFor(() => expect(mocks.sync).toHaveBeenCalled());
 }
 
@@ -268,7 +268,7 @@ describe('native interaction notifications', () => {
   it('does not subscribe or publish after unmount while native setup is still pending', async () => {
     let ready!: (supported: boolean) => void;
     mocks.connect.mockImplementationOnce(() => new Promise<boolean>(resolve => { ready = resolve; }));
-    const dispose = mountInteractionNotifications();
+    const dispose = mountDesktopNotifications();
     dispose();
     ready(true);
     await Promise.resolve();

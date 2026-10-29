@@ -1,9 +1,7 @@
-use crate::processes::{DesktopProcesses, SERVER_READY_TIMEOUT};
+use crate::server::{ServerProcess, SERVER_READY_TIMEOUT};
 
 #[tauri::command]
-pub async fn get_server_secret(
-    state: tauri::State<'_, DesktopProcesses>,
-) -> Result<String, String> {
+pub async fn get_server_secret(state: tauri::State<'_, ServerProcess>) -> Result<String, String> {
     state
         .wait_for_server(SERVER_READY_TIMEOUT)
         .await
@@ -12,7 +10,7 @@ pub async fn get_server_secret(
 }
 
 #[tauri::command]
-pub async fn get_server_port(state: tauri::State<'_, DesktopProcesses>) -> Result<u16, String> {
+pub async fn get_server_port(state: tauri::State<'_, ServerProcess>) -> Result<u16, String> {
     state
         .wait_for_server(SERVER_READY_TIMEOUT)
         .await
