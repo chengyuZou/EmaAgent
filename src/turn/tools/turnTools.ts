@@ -89,7 +89,7 @@ export interface TurnToolsAssembly {
   readonly abortTool: (toolCallId: string) => boolean;
   /**
    * Turn 收尾时调用, 等当前工具执行器停止, 再取消并等待本 Turn 的前台子代理.
-   * 电脑操控由 finishTurn 按 Turn 的取消状态结束, 不依赖本装配是否已经创建.
+   * 电脑操控由 finishTurn 在每种 Turn 结束路径中关闭, 不依赖本装配是否已经创建.
    * 重复调用不再次发起关闭.
    */
   readonly shutdown: (reason: string) => Promise<void>;
@@ -124,8 +124,8 @@ export async function prepareTurnTools(deps: TurnToolsDeps, input: PrepareTurnTo
       askPermission,
       toolContext,
       toolResultStore,
-      // 只有主 Agent 登记电脑调用并等待操控恢复. 子代理使用下方不带这些回调的执行器.
-      ...createComputerToolHooks(deps.computerUse, sessionId),
+      // 只有主 Agent 登记电脑调用. 子代理使用下方不带这些回调的执行器.
+      ...createComputerToolHooks(deps.computerUse, sessionId, turnId),
       ...(deps.toolExecutionState ? { toolExecutionState: deps.toolExecutionState } : {}),
       // 工具结果要等 Message 保存后再发布. 此处只转发进度,
       // tool_result 由 turnLoopEvents 读取已保存的 AgentLoop 事件生成.

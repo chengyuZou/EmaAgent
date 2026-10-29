@@ -39,7 +39,7 @@ Completed Turn writes and the host's Memory extraction registration share one SQ
 
 `TurnHandle.events` allows one consumer. Calling its iterator's `return()` requests cancellation. A paused consumer does not automatically cancel the Turn, and the current event buffer has no size limit. Cleanup failures produce a failed outcome when its terminal record can be saved. Failure to save that terminal record rejects completion; a successful finish is not broadcast.
 
-Computer-use pause belongs to the Session. The main Agent waits at Turn preparation, before a model request and before starting ordinary tools. Old computer calls immediately return non-execution or actual partial-operation results; they are not kept waiting for replay. Resume and control termination release the wait without adding a queued message or cancelling the Turn. Stopping generation also ends the Session's computer use when cancellation occurs before tool preparation completes. Subagents do not receive these callbacks. See [Computer use](../computer-use/README.md).
+Computer use belongs to one Turn. Every terminal path closes its tools and computer control before saving the terminal result and releasing the Session. User input invalidates old observations in Rust without pausing model calls or ordinary tools. Esc ends computer use without cancelling the Turn. See [Computer use](../computer-use/README.md).
 
 ## Queued input and continuation
 

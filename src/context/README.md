@@ -17,6 +17,14 @@ Context converts stored Session messages into model history and assembles model 
 
 The executor uses the same ToolPool. [Turn preparation](../turn/prepare/prepareAgentIteration.ts) assembles input before and after compaction. [Commands](../commands/README.md) uses `buildPromptMessages` for manual summary requests.
 
+## Media sent to the model
+
+`prepareMediaMessages(messages, settings, signal)` applies the same rules to attachments and nested tool media before each main/subagent request, manual compaction and idle estimation. It preserves message positions and tool-call pairs. Originals remain in SQL and local files.
+
+The parameters default to 100 media items and 20 MiB of encoded media per request. Images, audio and files share both budgets; URLs count as one item and only their transmitted URL bytes are measurable locally. Over budget, older media items become explicit text placeholders. If the newest item alone exceeds the byte budget, the request fails clearly instead of silently losing its only media.
+
+PNG sending copies use JPEG quality 80 without resizing; transparent PNGs keep transparency with lossless encoding. The smaller encoding is retained. JPEG and other formats keep their existing attachment preparation. Repeated requests reuse encoded image blocks while they remain in memory. There is no screenshot-specific retention count. The budget excludes ordinary text and is not a promise about a provider's complete HTTP request limit.
+
 ## Attachments
 
 `buildAttachmentMessages` handles persisted references:

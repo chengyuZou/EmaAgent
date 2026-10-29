@@ -2,6 +2,7 @@ import type { ModelMessageIds, PrepareAgentIteration } from '@ema-agent/agent';
 import type { CompactRequest, CompactResult } from '@ema-agent/compact';
 import {
   assembleContext,
+  prepareMediaMessages,
   type ContextUsageEstimate,
   type PreparedContext,
 } from '@ema-agent/context';
@@ -52,7 +53,9 @@ export function createPrepareAgentIteration(deps: PrepareAgentIterationDeps): Pr
         contextWindow: prepared.contextWindow,
       });
 
-    let assembled = assemble(messages);
+    // 每次请求都处理新增的观察图. 只改本轮模型历史副本, 消息数量和存储 ID 对应关系不变.
+    const mediaMessages = await prepareMediaMessages(messages, prepared.mediaSettings, deps.signal);
+    let assembled = assemble(mediaMessages);
     // 摘要请求复用本轮系统消息和缓存断点. 是否命中 Provider 缓存由实际协议和服务决定.
     const systemEnd = assembled.messages.findIndex(message => message.role !== 'system');
     const systemMessages = assembled.messages.slice(
@@ -66,7 +69,7 @@ export function createPrepareAgentIteration(deps: PrepareAgentIterationDeps): Pr
       providerId: prepared.providerId,
       modelId: prepared.modelId,
       usageRecorder: deps.usageRecorder,
-      messages,
+      messages: mediaMessages,
       systemMessages,
       // 复用 Turn 已确定的 Tool 定义和 thinking, 不为摘要重新选择执行环境.
       tools: assembled.tools,
@@ -97,7 +100,7 @@ export function createPrepareAgentIteration(deps: PrepareAgentIterationDeps): Pr
         : {}),
     });
 
-    let nextMessages = messages;
+    let nextMessages: readonly Message[] = mediaMessages;
     if (result.kind !== 'unchanged') {
       nextMessages = result.messages;
       assembled = assemble(nextMessages);

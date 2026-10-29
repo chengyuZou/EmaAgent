@@ -145,7 +145,7 @@ describe('prepareTurnTools', () => {
     vi.unstubAllEnvs();
   });
 
-  it.each(['continued', 'user_end'] as const)('电脑工具立即结束, 普通主 Agent 工具等 %s, 子代理不受影响', async reason => {
+  it('电脑操控结束只取消电脑工具, 普通工具和子代理仍可执行', async () => {
     let notify!: (state: NativeControlState) => void;
     const computer = new ComputerUse({
       subscribe(listener) { notify = listener; return () => {}; },
@@ -157,7 +157,7 @@ describe('prepareTurnTools', () => {
         }
         if (request.method === 'computer.observe') {
           return {
-            controlId: 'start', observationId: 'obs',
+            controlId: 'start', observationId: 'obs', activationError: null,
             window: { id: '42', title: '', app: '', x: 0, y: 0, width: 1, height: 1 },
             width: 1, height: 1, image: '', mimeType: 'image/png', elements: [], truncated: false,
           };
@@ -166,11 +166,11 @@ describe('prepareTurnTools', () => {
         throw new Error('旧电脑动作不得进入原生程序.');
       },
     });
-    const releaseStart = computer.registerCall(SESSION_ID, 'start', 'observe', () => {});
+    const releaseStart = computer.registerCall(SESSION_ID, makeInput({ events: [] }).turnId, 'start', 'observe', () => {});
     computer.reserve('start');
     await computer.observe('start', '42', new AbortController().signal);
     releaseStart();
-    notify({ controlId: 'start', phase: 'paused', reason: 'user_input' });
+    notify({ controlId: 'start', phase: 'ended', reason: 'user_end' });
 
     const deps = makeDeps({
       tools: [fakeTool('OrdinaryRead')], queue: new SessionInteractionQueue(null), settings: fakeSettings(),
@@ -188,12 +188,12 @@ describe('prepareTurnTools', () => {
     await child.join();
     await new Promise(resolve => setTimeout(resolve, 0));
     expect(child.takeCompletedResults()[0]?.isError).toBe(false);
-    expect(main.takeCompletedResults()).toMatchObject([{ toolCallId: 'old-action', errorCode: 'computer/paused' }]);
-    expect(main.allDone()).toBe(false);
 
-    notify({ controlId: 'start', phase: reason === 'continued' ? 'running' : 'ended', reason });
     await main.join();
-    expect(main.takeCompletedResults()).toMatchObject([{ toolCallId: 'ordinary', isError: false }]);
+    expect(main.takeCompletedResults()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ toolCallId: 'old-action', errorCode: 'computer/control_ended' }),
+      expect.objectContaining({ toolCallId: 'ordinary', isError: false }),
+    ]));
     await computer.close();
   });
 

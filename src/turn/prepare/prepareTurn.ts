@@ -9,7 +9,7 @@ import {
   AttachmentStore,
   type VisionDescriptionCache,
 } from '@ema-agent/attachments';
-import type { DescribeImage } from '@ema-agent/context';
+import { readMediaSettings, type DescribeImage, type MediaSettings } from '@ema-agent/context';
 import {
   readCompactSettings,
   type CompactSettings,
@@ -76,6 +76,7 @@ export interface PreparedTurn {
   readonly userMessageBlocks: MessageBlocks;
   readonly skillPool?: SkillPool;
   readonly compactSettings: CompactSettings;
+  readonly mediaSettings: MediaSettings;
   readonly tools: TurnToolsAssembly;
   readonly degradations: readonly RequestDegradationNotice[];
   readonly maxIterations: number;
@@ -131,9 +132,6 @@ export async function prepareTurn(
     && request.input.some(part => part.type === 'text' && part.text.trim().length > 0)) {
     deps.computerUse?.noteUserInput(request.sessionId);
   }
-
-  // 控制的暂停属于 Session. 队列接续的新 Turn 也先等待, 不提前准备模型或执行新工作.
-  await deps.computerUse?.waitWhilePaused(request.sessionId, signal);
 
   // 设置在任何附件写入或媒体降级前读取一次, 确保同一 Turn 不混用新旧上限.
   const agentSettings = readAgentSettings(deps.settings);
@@ -222,6 +220,7 @@ export async function prepareTurn(
     userMessageBlocks,
     ...(skillPool ? { skillPool } : {}),
     compactSettings,
+    mediaSettings: readMediaSettings(deps.settings),
     tools,
     degradations: Object.freeze(degradations),
     maxIterations: agentSettings.maxIterations,

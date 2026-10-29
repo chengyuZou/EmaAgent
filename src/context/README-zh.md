@@ -17,6 +17,14 @@ Context 把 Session 存储消息转成模型历史, 再用 Prompt 块, 工作消
 
 执行器使用同一个 ToolPool. [Turn 准备过程](../turn/prepare/prepareAgentIteration.ts) 在压缩前后装配输入. [Commands](../commands/README-zh.md) 使用 `buildPromptMessages` 构造手动摘要请求.
 
+## 发给模型的媒体
+
+`prepareMediaMessages(messages, settings, signal)` 在每次主/子代理请求, 手动压缩和空闲估算前执行. 附件与工具结果中的媒体使用同一规则, 保持消息位置和工具调用配对, 不改 SQL 或本地原图.
+
+参数默认最多 100 项媒体, 合计 20 MiB 编码体积. 图片, 音频和文件共同计数, 包括 base64 膨胀. URL 计一项, 体积只计算发送的地址字节, 不额外下载远端内容. 超限时从较早媒体开始替换为说明文字; 最新一项本身超过体积预算时明确报错.
+
+PNG 发送副本保持宽高, 不透明图片尝试 JPEG 质量 80, 透明图片保留 PNG 并无损编码, 只采用体积更小的结果. JPEG 等其他格式沿用既有附件处理. 同一个图片块的编码结果在被使用期间复用. 不区分电脑截图和普通附件的保留数量. 体积预算不包含普通文本, 也不代表供应商的完整 HTTP 请求上限.
+
 ## 附件
 
 `buildAttachmentMessages` 处理已保存引用:

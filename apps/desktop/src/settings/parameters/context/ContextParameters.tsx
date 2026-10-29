@@ -1,4 +1,6 @@
 import {
+  maxMediaItemsSetting,
+  maxMediaMiBSetting,
   compactBufferRatioSetting,
   compactKeepRecentToolResultsSetting,
   compactMaximumConsecutiveFailuresSetting,
@@ -18,7 +20,27 @@ export function ContextParameters(): JSX.Element {
   if (settings.error) return <Callout variant="danger">上下文参数读取失败: {settings.error}</Callout>;
 
   return (
-    <SettingsSection icon="i-lucide:gauge" title="上下文" description="自动压缩与手动压缩">
+    <SettingsSection icon="i-lucide:gauge" title="上下文" description="媒体发送预算, 自动压缩与手动压缩">
+      <SettingsCard>
+        <NumberSetting
+          title="总媒体数量"
+          hint="附件与工具结果中的图片, 音频和文件共同计数. 超出时省略较早媒体, 保留文字说明."
+          unit="项"
+          apply={settings.apply(maxMediaItemsSetting)}
+          value={settings.get(maxMediaItemsSetting)}
+          onSave={value => settings.save(maxMediaItemsSetting, value)}
+          onReset={() => settings.reset(maxMediaItemsSetting)}
+        />
+        <NumberSetting
+          title="总媒体发送体积"
+          hint="按编码后的体积计算, 包括 base64. 不包含普通文字, 也不代表供应商的请求上限."
+          unit="MiB"
+          apply={settings.apply(maxMediaMiBSetting)}
+          value={settings.get(maxMediaMiBSetting)}
+          onSave={value => settings.save(maxMediaMiBSetting, value)}
+          onReset={() => settings.reset(maxMediaMiBSetting)}
+        />
+      </SettingsCard>
       <SettingsCard>
         <PercentSetting
           title="自动压缩缓冲"

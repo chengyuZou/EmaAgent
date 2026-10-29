@@ -1,6 +1,8 @@
 // This entry is also loaded by Desktop. Import definitions, never server startup or file access.
 import { AGENT_LIMITS_SETTINGS } from '@ema-agent/agent/settings';
 import { attachmentCacheMaxBytesSetting } from '@ema-agent/attachments/settings';
+import { MEDIA_SETTINGS } from '@ema-agent/context/settings';
+export { maxMediaItemsSetting, maxMediaMiBSetting } from '@ema-agent/context/settings';
 import { COMPACT_SETTINGS, compactGroup } from '@ema-agent/compact/settings';
 import { PERMISSION_SETTINGS } from '@ema-agent/permission/settings';
 import { disabledProjectSourcesSetting, workspaceInstructionFilesSetting } from '@ema-agent/skills/settings';
@@ -53,6 +55,7 @@ export {
 export const SETTINGS_DEFINITIONS = [
   ...AGENT_LIMITS_SETTINGS,
   ...COMPACT_SETTINGS,
+  ...MEDIA_SETTINGS,
   ...PERMISSION_SETTINGS,
   attachmentCacheMaxBytesSetting,
   narrativeQueryModeSetting,

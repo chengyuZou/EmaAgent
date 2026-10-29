@@ -55,6 +55,7 @@ function preparedTurn(): PreparedTurn {
       createSubagentExecutor: () => undefined,
     },
     maxIterations: 10,
+    mediaSettings: { maxItems: 100, maxBytes: 20 * 1024 * 1024 },
   } as unknown as PreparedTurn;
 }
 

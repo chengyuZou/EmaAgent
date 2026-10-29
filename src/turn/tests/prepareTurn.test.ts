@@ -125,22 +125,6 @@ function makeRuntime(start: StartTurn) {
 }
 
 describe('prepareTurn', () => {
-  it('消息队列接续的新 Turn 在电脑暂停时先等待, 不提前创建模型调用', async () => {
-    let resume!: () => void;
-    const paused = new Promise<void>(resolve => { resume = resolve; });
-    const waitWhilePaused = vi.fn(() => paused);
-    const createLLMCall = vi.fn(() => vi.fn() as unknown as CallLLM);
-    const computerUse = { waitWhilePaused } as unknown as ComputerUse;
-    const pending = prepareTurn(makeDeps({ computerUse, createLLMCall }), makeRuntime(makeStart({
-      triggerType: 'sessionContinuation', input: [], continuationText: '继续已有工作',
-    })));
-    expect(waitWhilePaused).toHaveBeenCalledWith('s1', expect.any(AbortSignal));
-    expect(createLLMCall).not.toHaveBeenCalled();
-    resume();
-    await pending;
-    expect(createLLMCall).toHaveBeenCalledOnce();
-  });
-
   it('空闲估算与实际 Turn 共用 Prompt 和工具列表, 但不创建执行资源', async () => {
     const deps = makeDeps();
     const validateContext = vi.fn(() => contextOk({}));
@@ -349,7 +333,6 @@ describe('prepareTurn', () => {
       release();
       await stopping;
       expect(await handle.completion).toMatchObject({ status: 'aborted' });
-      expect(sessions.loadHistory(session.id)).toEqual([]);
       expect(queue.list(session.id)).toEqual([]);
       expect(callLLM).not.toHaveBeenCalled();
       expect(turns.getTurn(handle.turnId)?.status).toBe('aborted');
@@ -620,7 +603,7 @@ describe('prepareTurn', () => {
     expect(prepared.userMessageBlocks).toEqual([imageBlock]);
   });
 
-  it('电脑暂停期间在准备阶段停止 Turn, 即使没有创建工具也结束操控', async () => {
+  it('准备阶段停止 Turn, 即使没有创建工具也完成电脑操控清理', async () => {
     const db = new Database({ memory: true, kind: 'data' });
     await db.migrate();
     const running = new SessionRunningRegistry();
@@ -631,15 +614,12 @@ describe('prepareTurn', () => {
       sessions, sessionRunning: running, goals: { getCurrent: () => null },
       startTurn: () => { throw new Error('不应继续排队'); }, attachTurn: vi.fn(), publish: vi.fn(),
     });
-    const endSession = vi.fn(async () => undefined);
+    const endTurn = vi.fn(async () => undefined);
     const createLLMCall = vi.fn();
-    const waitWhilePaused = vi.fn((_sessionId: string, signal: AbortSignal) => new Promise<void>((_resolve, reject) => {
-      signal.addEventListener('abort', () => reject(signal.reason), { once: true });
-    }));
     const executor = new TurnExecutor({
       ...makeDeps({
         sessions, createLLMCall,
-        computerUse: { waitWhilePaused, endSession, noteUserInput: vi.fn() } as unknown as ComputerUse,
+        computerUse: { endTurn, noteUserInput: vi.fn() } as unknown as ComputerUse,
       }),
       sessions, turns, continuations: queue,
       readTurnReminder: () => ({ currentDate: '2026-10-28', goal: null }),
@@ -649,12 +629,10 @@ describe('prepareTurn', () => {
     });
     const handle = executor.start(makeStart({ sessionId: session.id }));
     try {
-      expect(waitWhilePaused).toHaveBeenCalledOnce();
       handle.abort();
       expect(await handle.completion).toMatchObject({ status: 'aborted' });
-      expect(endSession).toHaveBeenCalledOnce();
-      expect(endSession).toHaveBeenCalledWith(session.id);
-      expect(createLLMCall).not.toHaveBeenCalled();
+      expect(endTurn).toHaveBeenCalledOnce();
+      expect(endTurn).toHaveBeenCalledWith(expect.any(String));
       expect(running.isRunning(session.id)).toBe(false);
       expect(sessions.loadHistory(session.id)).toEqual([]);
     } finally {
@@ -663,7 +641,7 @@ describe('prepareTurn', () => {
     }
   });
 
-  it('续写通知先保存再请求模型, 正常完成 Turn 保留电脑操控', async () => {
+  it('续写通知先保存再请求模型, 正常完成 Turn 先结束电脑操控', async () => {
     const db = new Database({ memory: true, kind: 'data' });
     await db.migrate();
     const running = new SessionRunningRegistry();
@@ -685,7 +663,7 @@ describe('prepareTurn', () => {
       yield { type: 'text_delta', blockIndex: 0, delta: requests === 1 ? '前半段' : '后半段' };
       yield { type: 'done', stopReason: requests === 1 ? 'max_tokens' : 'end_turn' };
     };
-    const endSession = vi.fn(async () => undefined);
+    const endTurn = vi.fn(async () => undefined);
     const onTurnCompletedInTransaction = vi.fn(() => {
       const messages = sessions.loadHistory(session.id);
       expect(messages.filter(message => message.role === 'assistant')).toHaveLength(2);
@@ -693,7 +671,7 @@ describe('prepareTurn', () => {
     const executor = new TurnExecutor({
       ...makeDeps({
         sessions, createLLMCall: () => callLLM,
-        computerUse: { waitWhilePaused: async () => undefined, noteUserInput: vi.fn(), endSession } as unknown as ComputerUse,
+        computerUse: { noteUserInput: vi.fn(), endTurn } as unknown as ComputerUse,
       }),
       sessions, turns, continuations: queue, onTurnCompletedInTransaction,
       readTurnReminder: () => ({ currentDate: '2026-10-28', goal: null }),
@@ -705,7 +683,7 @@ describe('prepareTurn', () => {
       expect(await handle.completion).toMatchObject({ status: 'completed' });
       expect(requests).toBe(2);
       expect(onTurnCompletedInTransaction).toHaveBeenCalledOnce();
-      expect(endSession).not.toHaveBeenCalled();
+      expect(endTurn).toHaveBeenCalledOnce();
     } finally {
       queue.shutdown();
       db.close();

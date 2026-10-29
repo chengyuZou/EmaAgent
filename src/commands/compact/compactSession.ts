@@ -9,6 +9,8 @@ import {
 } from '@ema-agent/compact';
 import {
   projectMessages,
+  prepareMediaMessages,
+  readMediaSettings,
   buildPromptMessages,
   type DescribeImage,
 } from '@ema-agent/context';
@@ -137,7 +139,9 @@ export async function compactSession(
     }
 
     const compactSettings = readCompactSettings(deps.settings);
-    const history = historyWithIds.map(entry => entry.message);
+    const history = await prepareMediaMessages(
+      historyWithIds.map(entry => entry.message), readMediaSettings(deps.settings), signal,
+    );
     // 手动下限只量可压缩的历史本身(System Prompt 是每次请求的固定开销),且先于
     // Prompt 装配判定--会被直接拒绝的命令不该支付 Skill/Memory 的读取.
     const historyTokens = estimateMessagesTokens([...history]);

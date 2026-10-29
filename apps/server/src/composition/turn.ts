@@ -303,7 +303,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     const context = assembleContext({
       systemPrompt: prepared.systemPrompt,
       toolPool: prepared.toolPool,
-      messages: history.map(entry => entry.message),
+      messages: await prepareMediaMessages(history.map(entry => entry.message), readMediaSettings(settings), signal),
       contextWindow: prepared.modelFacts.contextWindow,
     });
     return {
@@ -414,3 +414,4 @@ function recordVisionUsage(
     createdAt: startedAt,
   });
 }
+import { prepareMediaMessages, readMediaSettings } from '@ema-agent/context';

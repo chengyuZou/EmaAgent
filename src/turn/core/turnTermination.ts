@@ -60,9 +60,9 @@ export async function finishTurn(
     // 即使工具收尾失败, 也继续尝试结束所属电脑操控, 再统一记录清理失败.
     const toolCleanup = await Promise.allSettled([tools?.shutdown(outcome.status)]);
     // 停止准备中的 Turn 时 tools 可能尚未创建, 所以结束操控不能放进 tools.shutdown.
-    // 用户也可能在等待工具退出时按停止, 因此此时再读 signal. 正常完成 Turn 则保留操控.
+    // 每种结束结果都关闭本 Turn 的操控, 完成后才能发布 Turn 终态.
     const computerCleanup = await Promise.allSettled([
-      signal.aborted ? deps.computerUse?.endSession(sessionId) : undefined,
+      deps.computerUse?.endTurn(turnId),
     ]);
     const failure = [...toolCleanup, ...computerCleanup].find(result => result.status === 'rejected');
     if (failure?.status === 'rejected') {

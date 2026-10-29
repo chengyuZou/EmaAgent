@@ -1,3 +1,6 @@
+export { prepareMediaMessages } from './prepareMediaMessages.js';
+export { readMediaSettings } from './mediaSettings.js';
+export type { MediaSettings } from './mediaSettings.js';
 export { assembleContext, buildPromptMessages } from './assembleContext.js';
 export type { PromptMessages } from './assembleContext.js';
 export {

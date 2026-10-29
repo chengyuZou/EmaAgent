@@ -28,6 +28,7 @@ function makePrepared(overrides: Partial<PreparedTurn> = {}): PreparedTurn {
     systemPrompt: [{ content: '系统提示词', cacheBreakpoint: true }],
     tools: { toolPool: new ToolPool([]) },
     compactSettings: {},
+    mediaSettings: { maxItems: 100, maxBytes: 20 * 1024 * 1024 },
     providerId: 'p',
     modelId: 'm',
     protocol: 'openai-llm',
@@ -87,14 +88,14 @@ function makeDeps(overrides: {
 }
 
 describe('prepareAgentIteration', () => {
-  it('Macro 编排保留工具原图, 交给当前 LLM 协议转换', async () => {
+  it('Macro 编排保留预算内的工具图片, 交给当前 LLM 协议转换', async () => {
     const requests: LLMRequest[] = [];
     const messages: readonly ModelMessage[] = [
       { role: 'assistant', content: [{ type: 'tool_use', id: 'read-1', name: 'Read', args: {} }] },
       { role: 'user', content: [{
         type: 'tool_result',
         toolCallId: 'read-1',
-        content: [{ type: 'image_data', data: 'YWJj', mimeType: 'image/png' }],
+        content: [{ type: 'image_data', data: 'YWJj', mimeType: 'image/jpeg' }],
       }] },
       { role: 'user', content: '历史说明 '.repeat(800) },
       { role: 'user', content: '最新问题' },
@@ -128,13 +129,13 @@ describe('prepareAgentIteration', () => {
     expect(messages[1]).toMatchObject({ content: [{ content: [{ type: 'image_data' }] }] });
   });
 
-  it('新工具图片和后续请求保留原图, 不改 AgentLoop 原始历史', async () => {
+  it('新工具图片和后续请求保留预算内的图片, 不改 AgentLoop 原始历史', async () => {
     const messages: readonly ModelMessage[] = [
       { role: 'assistant', content: [{ type: 'tool_use', id: 'read-1', name: 'Read', args: {} }] },
       { role: 'user', content: [{
         type: 'tool_result',
         toolCallId: 'read-1',
-        content: [{ type: 'image_data', data: 'YWJj', mimeType: 'image/png' }],
+        content: [{ type: 'image_data', data: 'YWJj', mimeType: 'image/jpeg' }],
       }] },
     ];
     const { deps } = makeDeps({ persist: false });
@@ -151,7 +152,7 @@ describe('prepareAgentIteration', () => {
     expect(first.request.messages.at(-1)).toMatchObject({ content: [{
       type: 'tool_result',
       toolCallId: 'read-1',
-      content: [{ type: 'image_data', data: 'YWJj', mimeType: 'image/png' }],
+      content: [{ type: 'image_data', data: 'YWJj', mimeType: 'image/jpeg' }],
     }] });
     expect(second.request.messages.at(-1)).toEqual(first.request.messages.at(-1));
   });

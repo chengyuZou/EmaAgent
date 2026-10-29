@@ -316,13 +316,26 @@ async function handleClientMessage(
         socket.send({ type: 'request_succeeded', requestId: message.requestId });
         return;
       }
-      case 'remove_queued_input':
-        sendRequestResult(socket, message.requestId, deps.continuations.remove(sessionId, message.id));
+      case 'remove_queued_input': {
+        const accepted = deps.continuations.remove(sessionId, message.id);
+        const item = deps.continuations.list(sessionId).find(item => item.id === message.id);
+        let reason = '这条消息已处理或已移出队列.';
+        if (item?.delivery === 'next_iteration') reason = '这条消息已提交为立即引导, 不能再删除.';
+        else if (item) reason = '这条消息已经被 Turn 领取, 无法删除. 请等待当前处理完成, 或停止生成.';
+        sendRequestResult(socket, message.requestId, accepted, reason);
         return;
-      case 'guide_queued_input':
+      }
+      case 'guide_queued_input': {
         deps.sessions.getSessionForWork(sessionId);
-        sendRequestResult(socket, message.requestId, deps.continuations.guide(sessionId, message.id));
+        const accepted = deps.continuations.guide(sessionId, message.id);
+        const item = deps.continuations.list(sessionId).find(item => item.id === message.id);
+        let reason = '这条消息已处理或已移出队列.';
+        if (deps.sessionRunning.getRunning(sessionId)?.kind !== 'turn') reason = '当前没有运行中的 Turn, 无法立即引导.';
+        else if (item?.delivery === 'next_iteration') reason = '这条消息已经提交为立即引导, 正在等待处理.';
+        else if (item) reason = '这条消息已经被 Turn 领取, 无法再次引导. 请等待当前处理完成, 或停止生成.';
+        sendRequestResult(socket, message.requestId, accepted, reason);
         return;
+      }
       case 'start_compaction': {
         const result = await deps.compactSession(sessionId);
         socket.send({ type: 'manual_compact_result', requestId: message.requestId, result });
@@ -389,8 +402,8 @@ function readSessionRunningState(deps: SessionWebSocketRouteDeps, sessionId: str
   };
 }
 
-function sendRequestResult(socket: SessionSocket, requestId: ClientRequestId, accepted: boolean): void {
-  socket.send(accepted ? { type: 'request_succeeded', requestId } : { type: 'request_rejected', requestId, code: 'not_found_or_expired', message: '目标已经结束或不属于当前工作' });
+function sendRequestResult(socket: SessionSocket, requestId: ClientRequestId, accepted: boolean, message = '目标已经结束或不属于当前工作'): void {
+  socket.send(accepted ? { type: 'request_succeeded', requestId } : { type: 'request_rejected', requestId, code: 'not_found_or_expired', message });
 }
 
 function commandFailure(error: unknown): { code: string; message: string } {

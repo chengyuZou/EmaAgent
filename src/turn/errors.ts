@@ -5,6 +5,7 @@ export type TurnFailureCode =
   | 'auth/api_key_invalid'
   | 'provider/context_too_long'
   | 'provider/model_capability_unsupported'
+  | 'provider/request_too_large'
   | 'provider/server_error'
   | 'provider/tool_arguments_invalid_json'
   | 'provider/not_configured'
@@ -47,6 +48,7 @@ const PROVIDER_FAILURE_CODES: ReadonlySet<string> = new Set([
   'auth/api_key_invalid',
   'provider/context_too_long',
   'provider/model_capability_unsupported',
+  'provider/request_too_large',
   'provider/server_error',
   'provider/tool_arguments_invalid_json',
   'provider/not_configured',

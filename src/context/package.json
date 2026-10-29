@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./settings": { "types": "./dist/mediaSettings.d.ts", "import": "./dist/mediaSettings.js" },
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
@@ -19,6 +20,8 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
+    "@ema-agent/settings": "workspace:*",
+    "sharp": "^0.33.5",
     "@ema-agent/attachments": "workspace:*",
     "@ema-agent/llm": "workspace:*",
     "@ema-agent/prompts": "workspace:*",
