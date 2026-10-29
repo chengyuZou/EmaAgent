@@ -25,6 +25,7 @@
 @import './domains/chatEmptyState.css';
 @import './domains/stage.css';
 @import './domains/characterStage.css';
+@import './domains/characterResources.css';
 
 @import './vendors/hljs-theme.css';
 @import 'yet-another-react-lightbox/styles.css';

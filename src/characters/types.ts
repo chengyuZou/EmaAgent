@@ -1,3 +1,4 @@
+import type { CharacterSticker } from './stickers/types.js';
 import type { CharacterLive2dModel, Live2dMappings } from './live2d/types.js';
 import type { CharacterIllustration } from './illustration/types.js';
 import type { CharacterVoiceSample } from './voice/types.js';
@@ -6,7 +7,7 @@ import type { CharacterVoiceSample } from './voice/types.js';
 export type CharacterStageKind = 'live2d' | 'illustration' | 'blank';
 
 
-export interface Character {
+export interface CharacterCard {
   /** 创建后不变, 同时用于 SQL 身份, 资源目录和 Relationship Memory 目录. */
   name: string;
   /** null 时显示 name, 修改显示名不移动资源. */
@@ -14,13 +15,19 @@ export interface Character {
   description: string | null;
   personaPrompt: string;
   stageKind: CharacterStageKind;
-  live2dModels: readonly CharacterLive2dModel[];
-  illustrations: readonly CharacterIllustration[];
-  voiceSamples: readonly CharacterVoiceSample[];
   isActive: boolean;
   lastActivatedAt: number | null;
   createdAt: number;
   updatedAt: number;
+}
+
+export interface Character extends CharacterCard {
+  stickers: readonly CharacterSticker[];
+  // 使用实际资源地址生成后的长度, 前端据此显示已保存用量.
+  stickerPromptLength: number;
+  live2dModels: readonly CharacterLive2dModel[];
+  illustrations: readonly CharacterIllustration[];
+  voiceSamples: readonly CharacterVoiceSample[];
 }
 
 export interface CharacterSummary {

@@ -40,7 +40,11 @@ export function openCommands(deps: {
     settings: settings.settings,
     characterPrompt: () => {
       const character = characters.store.current();
-      return buildCharacterPrompt(character, characters.store.inspectStagePresentation(character.name));
+      return buildCharacterPrompt(
+        character,
+        characters.store.inspectStagePresentation(character.name),
+        characters.store.stickers.prompt(character.name),
+      );
     },
     skillEntries: (cwd: string, projectId: string | null) => {
       let folderPaths: string[] = [];

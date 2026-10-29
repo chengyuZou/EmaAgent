@@ -84,7 +84,7 @@ export function CharacterInfoTab({ character }: { character: Character }): JSX.E
   }
 
   return (
-    <div className="h-full overflow-y-auto p-5 ema-stagger-in">
+    <div className="ema-edge-scroll h-full overflow-y-auto p-5 ema-stagger-in">
       <div className="mx-auto flex max-w-5xl flex-col gap-5">
         <div className="flex items-center gap-3">
           <span className="text-base font-semibold text-[var(--ema-text-primary)]">

@@ -263,7 +263,11 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     settings,
     characterPrompt: () => {
       const character = characters.current();
-      return buildCharacterPrompt(character, characters.inspectStagePresentation(character.name));
+      return buildCharacterPrompt(
+        character,
+        characters.inspectStagePresentation(character.name),
+        characters.stickers.prompt(character.name),
+      );
     },
     skillEntries: (cwd: string, projectId: string | null) => {
       let folderPaths: string[] = [];

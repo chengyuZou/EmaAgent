@@ -198,3 +198,6 @@ export type {
   BackgroundProcessStatus,
   BackgroundProcessTerminal,
 } from './repos/data/backgroundProcesses.js';
+
+export { CharacterStickerRepo } from './repos/profile/characterSticker.js';
+export type { CharacterStickerRow } from './repos/profile/characterSticker.js';

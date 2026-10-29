@@ -1,0 +1,122 @@
+
+.ema-resource-header {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: 12px;
+  padding: 16px 20px;
+}
+
+.ema-resource-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ema-resource-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(180px, 100%), 1fr));
+  gap: 14px;
+}
+
+.ema-resource-card {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--ema-border);
+  border-radius: var(--ema-radius-xl, 16px);
+  background: var(--ema-surface-2);
+  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+.ema-resource-card:hover,
+.ema-resource-card:focus-within {
+  border-color: var(--ema-primary);
+  box-shadow: var(--ema-shadow-soft);
+  transform: translateY(-2px);
+}
+
+.ema-resource-card .ema-resource-more {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+}
+
+.ema-resource-more {
+  background: var(--ema-surface-3);
+  color: var(--ema-text-primary);
+  box-shadow: var(--ema-shadow-1);
+}
+
+.ema-resource-image-button {
+  display: block;
+  height: auto;
+  width: 100%;
+  padding: 16px;
+}
+
+.ema-resource-views {
+  display: grid;
+}
+
+.ema-resource-view {
+  grid-area: 1 / 1;
+  min-width: 0;
+  display: grid;
+  grid-template-rows: 0fr;
+  overflow: hidden;
+  visibility: hidden;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: grid-template-rows 180ms ease, opacity 180ms ease, transform 180ms ease, visibility 180ms;
+}
+
+.ema-resource-view[data-active='true'] {
+  grid-template-rows: 1fr;
+  overflow: visible;
+  animation: ema-fade-in 180ms ease;
+  visibility: visible;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.ema-resource-table {
+  overflow-x: auto;
+}
+
+.ema-resource-table table {
+  min-width: 560px;
+  width: 100%;
+}
+
+.ema-resource-table td {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.ema-resource-table .ema-resource-table-image {
+  display: inline-flex;
+  height: 88px;
+  width: 88px;
+  padding: 4px;
+}
+
+
+@media (prefers-reduced-motion: reduce) {
+  .ema-resource-card,
+  .ema-resource-view {
+    transition: none;
+  }
+}
+
+.ema-character-tabs {
+  width: 440px;
+}
+
+.ema-character-tabs [role='tab'],
+.ema-resource-toolbar [role='tab'] {
+  min-width: 88px;
+  white-space: nowrap;
+}

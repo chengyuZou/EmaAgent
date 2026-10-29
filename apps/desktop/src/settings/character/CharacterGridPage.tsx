@@ -70,8 +70,8 @@ export function CharacterGridPage({ onOpen }: { onOpen(name: string): void }): J
   }
 
   return (
-    <div className="-mr-5 flex h-full min-h-0 flex-col md:-mr-8">
-      <div className="shrink-0 pl-1 pr-5 md:pr-8">
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="shrink-0 px-5 pt-5 md:px-8 md:pt-6">
         <PageHeader
           title="角色卡"
           description="管理角色身份及其舞台资源"
@@ -101,8 +101,9 @@ export function CharacterGridPage({ onOpen }: { onOpen(name: string): void }): J
       </div>
 
       <ScrollArea
+        scrollbar="always"
         className="min-h-0 flex-1"
-        viewportClassName="pb-2 pr-5 md:pr-8"
+        viewportClassName="px-5 pb-5 md:px-8"
       >
         {loading && characters.length === 0 && (
           <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4 pr-1">

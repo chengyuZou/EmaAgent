@@ -1,33 +1,31 @@
 
 import fs from 'node:fs';
 import { CharacterResourceValidationError } from '../errors.js';
-import { sourceBaseName, sourceFileName } from '../resources/resourcePaths.js';
+import { sourceBaseName, sourceFileName } from './resourcePaths.js';
 import {
   copyResourceFile,
   exportResourceFile,
-  removeFileIfPresent,
-} from '../resources/resourceFiles.js';
+} from './resourceFiles.js';
 
-export interface ImportedIllustrationFile {
+export interface ImportedImageFile {
   readonly name: string;
   readonly displayName: string;
   readonly byteSize: number;
 }
 
-export async function importIllustrationFile(
+export async function importImageFile(
   sourceFile: string,
   destination: string,
-): Promise<ImportedIllustrationFile> {
+): Promise<ImportedImageFile> {
   const fileName = sourceFileName(sourceFile);
   await assertImageFile(sourceFile);
   const byteSize = await copyResourceFile(sourceFile, destination);
   return { name: fileName, displayName: sourceBaseName(sourceFile), byteSize };
 }
 
-export { exportResourceFile as exportIllustrationFile };
-export { removeFileIfPresent as deleteIllustrationFile };
+export { exportResourceFile as exportImageFile };
 
-export function inspectIllustrationFileSync(filePath: string): 'valid' | 'missing' | 'invalid' {
+export function inspectImageFileSync(filePath: string): 'valid' | 'missing' | 'invalid' {
   let descriptor: number;
   try {
     descriptor = fs.openSync(filePath, 'r');
@@ -52,7 +50,7 @@ async function assertImageFile(filePath: string): Promise<void> {
     const { bytesRead } = await handle.read(head, 0, head.length, 0);
     const value = head.subarray(0, bytesRead);
     if (!isPng(value) && !isJpeg(value) && !isGif(value) && !isWebp(value)) {
-      throw new CharacterResourceValidationError('illustration_format_unsupported');
+      throw new CharacterResourceValidationError('image_format_unsupported');
     }
   } finally {
     await handle.close();

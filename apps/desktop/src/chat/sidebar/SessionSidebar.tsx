@@ -65,10 +65,11 @@ export function SessionSidebar(): JSX.Element {
         '--ema-sidebar-expanded-width': `${sidebarWidth}px`,
       } as CSSProperties}
     >
+      {/* 只在顶部操作区拖动宽度, 不遮住下方贴右边的滚动条. */}
       {!collapsed && (
         <div
           className="ema-resize-handle"
-          style={{ left: 'auto', right: 0 }}
+          style={{ left: 'auto', right: 0, bottom: 'auto', height: 88 }}
           {...handleProps}
           aria-hidden
         />
@@ -93,7 +94,7 @@ export function SessionSidebar(): JSX.Element {
               <span>搜索</span>
             </Button>
           </div>
-          <div className="flex-1 overflow-y-auto py-1.5" data-sidebar-scroll>
+          <div className="ema-edge-scroll min-h-0 flex-1 overflow-y-auto py-1.5" data-sidebar-scroll>
             <PinnedSection
               projects={sessions.pinnedProjects}
               sessions={sessions.pinned}

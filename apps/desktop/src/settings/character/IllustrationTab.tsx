@@ -1,7 +1,7 @@
 import { useMemo, useState, type JSX } from 'react';
 import {
   Tooltip,
-  Button, CursorFloating, DropdownMenu, Input, ScrollArea, Slider,
+  Button, CursorFloating, Dialog, DropdownMenu, EmptyState, IconButton, Input, ScrollArea, Slider, Tabs,
   type MenuItem,
 } from '@ema-agent/ui';
 import {
@@ -14,77 +14,170 @@ import { tauriBridge } from '../../lib/tauri/tauriBridge.js';
 import { ServerImage } from '../../lib/images/serverImage.js';
 import { showToast } from '../../lib/notifications/toast.js';
 
+import { ResourceOverview, ResourcePreview, ResourceView, resourceTableText } from './ResourceViews.js';
+
 type Illustration = Character['illustrations'][number];
 
 export function IllustrationTab({ character }: { character: Character }): JSX.Element {
-  const illustrations = character.illustrations;
-  const [selectedName, setSelectedName] = useState<string | null>(null);
-  const selected = illustrations.find(item => item.name === selectedName)
-    ?? illustrations.find(item => item.isPrimary)
-    ?? illustrations[0];
+  const [view, setView] = useState('grid');
+  const [filter, setFilter] = useState('all');
+  const [editing, setEditing] = useState<Illustration | null>(null);
+  const [preview, setPreview] = useState<{ src: string; name: string } | null>(null);
   const [importing, setImporting] = useState(false);
+  const [selecting, setSelecting] = useState(false);
   const store = useCharacterStore();
+  const illustrations = character.illustrations;
+  const mapped = illustrations.filter(item => item.expression).length;
+  const visible = illustrations.filter(item =>
+    filter === 'all' || (filter === 'mapped' ? !!item.expression : !item.expression));
+  const groups = new Map<string, Illustration[]>();
+  for (const item of visible) {
+    const tag = item.expression ?? '未映射';
+    const group = groups.get(tag) ?? [];
+    group.push(item);
+    groups.set(tag, group);
+  }
+  const overview = [
+    '| 表情标签 | 图片预览 | 图片与配置 |',
+    '| --- | --- | --- |',
+    ...Array.from(groups, ([tag, items]) => {
+      const images = items.map(item =>
+        `![预览](${charactersApi.illustrationFileUrl(character.name, item.name)})`).join(' ');
+      const names = items.map(item =>
+        `[编辑](#edit-${encodeURIComponent(item.name)}) ${resourceTableText(item.displayName)}${item.isPrimary ? ' (主要插图)' : ''}`).join(' / ');
+      return `| ${resourceTableText(tag)} | ${images} | ${names} |`;
+    }),
+  ].join('\n');
 
   async function handleImport(): Promise<void> {
+    // 捕获当前角色; 文件选择期间用户可以切换页面, 导入目标仍保持不变.
+    const characterName = character.name;
+    setSelecting(true);
     try {
       const sources = await tauriBridge.selectPaths({
-        title: `导入 ${character.name} 的插图`,
+        title: `导入 ${characterName} 的插图`,
         multiple: true,
-        filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
+        filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif'] }],
       });
-      if (sources.length === 0) return;
+      setSelecting(false);
+      if (!sources.length) return;
       setImporting(true);
+      let succeeded = 0;
+      const failures: string[] = [];
       for (const sourceFile of sources) {
-        await store.importIllustration(character.name, { sourceFile });
+        try {
+          await store.importIllustration(characterName, { sourceFile });
+          succeeded += 1;
+        } catch (error) {
+          failures.push(error instanceof Error ? error.message : '导入失败');
+        }
       }
-      showToast(`已导入 ${sources.length} 张插图`, { variant: 'success' });
+      showToast(
+        `已导入 ${succeeded} 张插图.${failures.length ? ` ${failures.length} 张失败: ${failures[0]}` : ''}`,
+        { variant: failures.length ? 'warning' : 'success' },
+      );
     } catch (error) {
-      showToast(error instanceof Error ? error.message : '导入失败', { variant: 'danger' });
+      showToast(error instanceof Error ? error.message : '选择图片失败', { variant: 'danger' });
     } finally {
+      setSelecting(false);
       setImporting(false);
     }
   }
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
-      <div className="flex items-center justify-between px-5 pt-4 pb-3 shrink-0">
-        <h3 className="text-sm font-semibold text-[var(--ema-text-primary)]">插图</h3>
-        <Button variant="primary" size="sm" icon="i-mdi:plus" loading={importing} onClick={() => void handleImport()}>
-          导入图片
-        </Button>
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="ema-resource-header">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-sm font-semibold">插图</h3>
+          <Button
+            variant="primary"
+            size="sm"
+            loading={importing}
+            disabled={selecting || importing}
+            onClick={() => void handleImport()}
+          >
+            批量导入
+          </Button>
+        </div>
+        <span className="text-xs text-[var(--ema-text-tertiary)]">
+          已映射 {mapped} 张, 未映射 {illustrations.length - mapped} 张
+        </span>
+        <div className="ema-resource-toolbar">
+          <Tabs
+            value={view}
+            onChange={setView}
+            variant="pill"
+            triggersOnly
+            items={[
+              { value: 'grid', label: '图片网格', content: null },
+              { value: 'overview', label: '配置总览', content: null },
+            ]}
+          />
+          <Tabs
+            className="ml-auto"
+            value={filter}
+            onChange={setFilter}
+            variant="pill"
+            triggersOnly
+            items={[
+              { value: 'all', label: '全部', content: null },
+              { value: 'mapped', label: '已映射', content: null },
+              { value: 'unmapped', label: '未映射', content: null },
+            ]}
+          />
+        </div>
       </div>
-      <ScrollArea className="min-h-0 flex-1">
-        <div className="flex flex-col gap-5 px-5 pb-5">
-          {illustrations.length === 0 && (
-            <p className="py-10 text-center text-xs text-[var(--ema-text-tertiary)]">
-              还没有插图,点右上角导入
-            </p>
-          )}
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-3">
-            {illustrations.map((item, index) => (
-              <IllustrationCard
-                key={item.name}
-                character={character}
-                item={item}
-                index={index}
-                selected={selected?.name === item.name}
-                onSelect={() => setSelectedName(item.name)}
+      <ScrollArea className="min-h-0 flex-1" scrollbar="always">
+        <div className="px-5 pb-5">
+          {visible.length === 0 && <EmptyState title="没有符合条件的插图" hint="使用右上角批量导入图片." />}
+          <div className="ema-resource-views">
+            <ResourceView active={view === 'grid'}>
+              <div className="ema-resource-grid">
+                {visible.map((item, index) => (
+                  <IllustrationCard
+                    key={item.name}
+                    character={character}
+                    item={item}
+                    index={index}
+                    selected={false}
+                    onSelect={() => setEditing(item)}
+                  />
+                ))}
+              </div>
+            </ResourceView>
+            <ResourceView active={view === 'overview'}>
+              <ResourceOverview
+                source={overview}
+                onEdit={name => setEditing(illustrations.find(item => item.name === name) ?? null)}
+                onPreview={(src, name) => setPreview({ src, name })}
               />
-            ))}
+            </ResourceView>
           </div>
-          {selected && (
-            <IllustrationConfig
-              key={selected.name}
-              character={character}
-              item={selected}
-            />
-          )}
         </div>
       </ScrollArea>
+      <Dialog
+        open={editing !== null}
+        onOpenChange={open => { if (!open) setEditing(null); }}
+        title="编辑插图"
+        description="留空表情标签时, 图片仍可作为主要插图使用."
+        widthClass="max-w-4xl"
+      >
+        {editing && (
+          <IllustrationConfig
+            key={editing.name}
+            character={character}
+            item={editing}
+            onPreview={() => setPreview({
+              src: charactersApi.illustrationFileUrl(character.name, editing.name),
+              name: editing.displayName,
+            })}
+          />
+        )}
+      </Dialog>
+      <ResourcePreview image={preview} onClose={() => setPreview(null)} />
     </div>
   );
 }
-
 
 function IllustrationCard({
   character, item, index, selected, onSelect,
@@ -161,7 +254,6 @@ function IllustrationCard({
         className={`ema-material-card group relative cursor-pointer overflow-hidden rounded-xl border
           hover:border-[var(--ema-primary)]/30 hover:shadow-[var(--ema-shadow-soft)]
           ${selected ? 'border-[var(--ema-primary)]' : 'border-[var(--ema-border)] bg-[var(--ema-surface-2)]'}`}
-        onClick={onSelect}
       >
       <div className="absolute left-2 top-2 z-10">
         <Tooltip content={item.isPrimary ? '主要插图' : '非主要插图'}>
@@ -179,34 +271,38 @@ function IllustrationCard({
           align="end"
           items={menuItems}
           trigger={(
-            <span className="inline-flex h-6 w-6 items-center justify-center rounded-md text-sm
-              text-[var(--ema-text-tertiary)] opacity-0 transition-opacity group-hover:opacity-100">
-              ⋯
-            </span>
+            <IconButton
+              icon="i-lucide:more-horizontal"
+              label={`${item.displayName} 更多操作`}
+              className="ema-resource-more"
+            />
           )}
         />
       </div>
+      <Button variant="ghost" className="block h-auto w-full p-0" onClick={onSelect} aria-label={`编辑 ${item.displayName}`}>
       <ServerImage
         path={charactersApi.illustrationFileUrl(character.name, item.name)}
         alt={item.name}
-        className="aspect-[3/4] w-full object-cover"
+        className="aspect-[3/4] w-full object-contain p-3"
       />
       <div className="px-3 py-2">
-        <p className="truncate text-xs font-semibold text-[var(--ema-text-primary)]">{item.name}</p>
+        <p className="truncate text-xs font-semibold text-[var(--ema-text-primary)]">{item.displayName}</p>
         <p className="truncate text-[11px] text-[var(--ema-text-tertiary)]">
-          {item.displayName}{item.expression ? ` · ${item.expression}` : ''}
+          {item.expression ? `表情: ${item.expression}` : '未映射'}
         </p>
         <p className="mt-1 text-[10px] text-[var(--ema-text-tertiary)]">{formatBytes(item.byteSize)}</p>
       </div>
+      </Button>
       </CursorFloating>
     </div>
   );
 }
 
 
-function IllustrationConfig({ character, item }: {
+function IllustrationConfig({ character, item, onPreview }: {
   character: Character;
   item: Illustration;
+  onPreview(): void;
 }): JSX.Element {
   const store = useCharacterStore();
   const [displayName, setDisplayName] = useState(item.displayName);
@@ -248,11 +344,13 @@ function IllustrationConfig({ character, item }: {
   return (
     <div className="rounded-xl border border-[var(--ema-border)] bg-[var(--ema-surface-2)] p-4">
       <div className="flex flex-col gap-4 md:flex-row">
-        <ServerImage
+        <Button variant="ghost" className="h-auto p-0 self-start" onClick={onPreview}>
+          <ServerImage
           path={charactersApi.illustrationFileUrl(character.name, item.name)}
           alt={item.name}
-          className="w-40 shrink-0 self-start rounded-lg border border-[var(--ema-border)] object-cover"
+          className="w-40 shrink-0 self-start rounded-lg border border-[var(--ema-border)] object-contain"
         />
+        </Button>
         <div className="flex flex-1 flex-col gap-3">
           <div className="flex items-center gap-3">
             <span className="w-24 shrink-0 text-xs text-[var(--ema-text-tertiary)]">展示名</span>

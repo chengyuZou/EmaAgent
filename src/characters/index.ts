@@ -79,3 +79,6 @@ export type {
   CharacterResourceValidationCode,
   CharacterStateInvalidReason,
 } from './errors.js';
+
+export type { CharacterCard } from './types.js';
+export type { CharacterSticker, CharacterStickerPatch } from './stickers/types.js';

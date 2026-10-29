@@ -96,7 +96,7 @@ const APPEARANCE_SUB_PAGES: readonly SettingsSubPage[] = [
 const SETTINGS_PAGES: readonly SettingsPage[] = [
   { id: 'providers', label: '服务来源', icon: 'i-lucide:server' },
   { id: 'bindings', label: '模型绑定', icon: 'i-lucide:link-2' },
-  { id: 'characters', label: '角色卡', icon: 'i-lucide:user-round' },
+  { id: 'characters', label: '角色卡', icon: 'i-lucide:user-round', fullHeight: true },
   { id: 'skills', label: '技能库', icon: 'i-lucide:blocks', subPages: SKILLS_SUB_PAGES },
   { id: 'mcp', label: 'MCP 服务器', icon: 'i-lucide:plug', subPages: MCP_SUB_PAGES },
   { id: 'memory', label: 'Memory', icon: 'i-lucide:library', subPages: MEMORY_SUB_PAGES },
@@ -144,7 +144,7 @@ export function SettingsPanel(): JSX.Element {
     <ErrorBoundary>
       <div className="relative flex h-full text-[var(--ema-text-primary)]">
         <nav
-          className="ema-settings-sidebar relative z-10 flex w-56 flex-none flex-col overflow-y-auto border-r border-[var(--ema-border)] px-2 py-4"
+          className="ema-settings-sidebar ema-edge-scroll relative z-10 flex w-56 flex-none flex-col overflow-y-auto border-r border-[var(--ema-border)] px-2 py-4"
           aria-label="设置导航"
         >
           <p className="px-3 pb-4 text-base font-semibold">设置</p>

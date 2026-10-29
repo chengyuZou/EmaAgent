@@ -25,7 +25,44 @@ export type IllustrationPatchInput = InferRequestType<RpcClient['api']['characte
 export type VoicePatchInput = InferRequestType<RpcClient['api']['characters'][':characterName']['voice'][':voiceName']['$patch']>['json'];
 
 
+export type StickerImportInput = InferRequestType<RpcClient['api']['characters'][':characterName']['stickers']['import']['$post']>['json'];
+export type StickerPatchInput = InferRequestType<RpcClient['api']['characters'][':characterName']['stickers'][':stickerName']['$patch']>['json'];
+
 export const charactersApi = {
+  importSticker(characterName: string, input: StickerImportInput) {
+    return readRpcJson(rpcClient.api.characters[':characterName'].stickers.import.$post({
+      param: { characterName }, json: input,
+    }));
+  },
+
+  patchSticker(characterName: string, stickerName: string, input: StickerPatchInput) {
+    return readRpcJson(rpcClient.api.characters[':characterName'].stickers[':stickerName'].$patch({
+      param: { characterName, stickerName }, json: input,
+    }));
+  },
+
+  deleteSticker(characterName: string, stickerName: string) {
+    return readRpcJson(rpcClient.api.characters[':characterName'].stickers[':stickerName'].$delete({
+      param: { characterName, stickerName },
+    }));
+  },
+
+  stickerFileUrl(characterName: string, stickerName: string): string {
+    return `/api/characters/${encodeURIComponent(characterName)}/stickers/${encodeURIComponent(stickerName)}/file`;
+  },
+
+  stickerLocation(characterName: string, stickerName: string) {
+    return readRpcJson(rpcClient.api.characters[':characterName'].stickers[':stickerName'].location.$get({
+      param: { characterName, stickerName },
+    }));
+  },
+
+  exportSticker(characterName: string, stickerName: string, destinationDirectory: string) {
+    return readRpcJson(rpcClient.api.characters[':characterName'].stickers[':stickerName'].export.$post({
+      param: { characterName, stickerName }, json: { destinationDirectory },
+    }));
+  },
+
   list(): Promise<CharacterList> {
     return readRpcJson(rpcClient.api.characters.$get());
   },

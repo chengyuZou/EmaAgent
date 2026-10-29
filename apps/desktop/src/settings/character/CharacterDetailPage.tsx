@@ -1,5 +1,5 @@
 import { useEffect, useState, type JSX } from 'react';
-import { Callout, Spinner } from '@ema-agent/ui';
+import { Button, Callout, ScrollArea, Spinner, Tabs } from '@ema-agent/ui';
 import { charactersApi, type Character } from '../../api/characters.js';
 import { ServerApiError } from '../../api/client.js';
 import { useCharacterStore } from '../../stores/character.js';
@@ -8,7 +8,9 @@ import { Live2dTab } from './Live2dTab.js';
 import { IllustrationTab } from './IllustrationTab.js';
 import { VoiceTab } from './VoiceTab.js';
 
-type DetailTab = 'info' | 'live2d' | 'illustration' | 'voice';
+import { StickersTab } from './StickersTab.js';
+
+type DetailTab = 'info' | 'live2d' | 'illustration' | 'voice' | 'stickers';
 
 export function CharacterDetailPage({
   name, onBack,
@@ -62,44 +64,35 @@ export function CharacterDetailPage({
 
   const tabs: Array<{ id: DetailTab; label: string }> = [
     { id: 'info', label: '角色信息' },
-    { id: 'live2d', label: `Live2D · ${character.live2dModels.length}` },
-    { id: 'illustration', label: `插图 · ${character.illustrations.length}` },
-    { id: 'voice', label: `参考音频 · ${character.voiceSamples.length}` },
+    { id: 'live2d', label: 'Live2D' },
+    { id: 'illustration', label: '插图' },
+    { id: 'voice', label: '参考音频' },
+    { id: 'stickers', label: '表情包' },
   ];
 
   return (
     <div className="flex h-full flex-col">
       <div className="flex h-[58px] shrink-0 items-center gap-4 border-b border-[var(--ema-border)] px-4">
-        <button
-          type="button"
-          className="flex items-center gap-1 text-sm text-[var(--ema-text-secondary)]
-            transition-colors hover:text-[var(--ema-text-primary)]"
-          onClick={onBack}
-        >
-          <span className="i-mdi:arrow-left" aria-hidden />角色卡
-        </button>
-        <div className="flex gap-1">
-          {tabs.map(item => (
-            <button
-              key={item.id}
-              type="button"
-              className={`rounded-lg px-3 py-1.5 text-xs transition-colors ${
-                tab === item.id
-                  ? 'bg-[var(--ema-primary-muted)] text-[var(--ema-primary)]'
-                  : 'text-[var(--ema-text-tertiary)] hover:text-[var(--ema-text-secondary)]'
-              }`}
-              onClick={() => setTab(item.id)}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
+        <Button variant="ghost" className="shrink-0" icon="i-mdi:arrow-left" onClick={onBack}>
+          角色卡
+        </Button>
+        <ScrollArea orientation="horizontal" scrollbar="always" className="min-w-0 flex-1">
+          <Tabs
+            className="ema-character-tabs py-2"
+            value={tab}
+            onChange={value => setTab(value as DetailTab)}
+            variant="pill"
+            triggersOnly
+            items={tabs.map(item => ({ value: item.id, label: item.label, content: null }))}
+          />
+        </ScrollArea>
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">
         {tab === 'info' && <CharacterInfoTab character={character} />}
         {tab === 'live2d' && <Live2dTab character={character} />}
         {tab === 'illustration' && <IllustrationTab character={character} />}
         {tab === 'voice' && <VoiceTab character={character} />}
+        {tab === 'stickers' && <StickersTab character={character} />}
       </div>
     </div>
   );

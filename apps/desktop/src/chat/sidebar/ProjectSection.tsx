@@ -418,9 +418,9 @@ function ProjectRow({
         onPointerDown={event => drag.startProject(event, project.id, project.name)}
         {...rowDropProps}
       >
-        <button
-          type="button"
-          className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-md px-1 text-left text-[var(--ema-text-primary)]"
+        <Button
+          variant="ghost"
+          className="ema-project-name flex h-full min-w-0 flex-1 items-center gap-2 rounded-md px-1 text-left text-[var(--ema-text-primary)]"
           onClick={() => setCollapsed((value) => !value)}
           aria-expanded={!collapsed}
           data-sidebar-drag-handle
@@ -434,14 +434,7 @@ function ProjectRow({
           <span className="min-w-0 flex-1 truncate text-left">
             {project.name}
           </span>
-        </button>
-        <IconButton
-          size="sm"
-          className="ema-chat-row-action"
-          icon="i-lucide:square-pen"
-          label={`在 ${project.name} 中新建对话`}
-          onClick={() => useMainNavigationStore.getState().openNewSession(project.id)}
-        />
+        </Button>
         <DropdownMenu
           trigger={
             <IconButton
@@ -455,6 +448,13 @@ function ProjectRow({
           side="right"
           align="start"
           widthClass="min-w-56"
+        />
+        <IconButton
+          size="sm"
+          className="ema-chat-row-action"
+          icon="i-lucide:square-pen"
+          label={`在 ${project.name} 中新建对话`}
+          onClick={() => useMainNavigationStore.getState().openNewSession(project.id)}
         />
       </div>
 
@@ -651,7 +651,7 @@ export function SectionButton({
     <div className="group mx-1.5 mb-0.5 flex h-7 items-center text-[var(--ema-text-tertiary)]">
       <button
         type="button"
-        className="flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-md px-2 text-left text-xs text-[var(--ema-text-secondary)] hover:text-[var(--ema-text-primary)] focus-ring"
+        className="ema-sidebar-section-toggle flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-md px-2 text-left text-xs text-[var(--ema-text-secondary)] hover:text-[var(--ema-text-primary)] focus-ring"
         onClick={onClick}
         aria-expanded={!collapsed}
       >

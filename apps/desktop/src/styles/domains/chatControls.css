@@ -161,3 +161,35 @@
   background: var(--ema-surface-3);
   box-shadow: none;
 }
+
+/* 项目名称和两个动作共享整行底色, 不把新建聊天画成独立卡片. */
+.ema-project-row > button {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.ema-project-row:hover,
+.ema-project-row:focus-within {
+  background: var(--ema-surface-2);
+}
+
+/* 名称按钮只使用项目整行的底色, 不再形成第二块悬停背景. */
+.ema-project-row > button.ema-project-name:is(:hover, :active, :focus-visible) {
+  background: transparent;
+  background-image: none;
+  box-shadow: none;
+}
+
+/* 这两个按钮用整行底色或文字强调标记键盘焦点, 不单独画蓝色外圈. */
+.ema-project-row > button.ema-project-name:focus,
+.ema-session-sidebar button.ema-sidebar-section-toggle:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+.ema-session-sidebar button.ema-sidebar-section-toggle:focus-visible {
+  color: var(--ema-text-primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}

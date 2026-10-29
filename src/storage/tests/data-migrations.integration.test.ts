@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import BetterSqlite3 from 'better-sqlite3';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Database } from '../database/database.js';
 
 let database: Database | undefined;
@@ -37,6 +37,7 @@ function withNextMigrations(sql: readonly string[], kind: 'profile' | 'data' = '
 }
 
 async function fileDatabase(kind: 'profile' | 'data'): Promise<{ filename: string; copies: string }> {
+  withNextMigrations([], kind);
   const root = fs.mkdtempSync(path.join(path.resolve(os.tmpdir()), 'ema-pre-migration-'));
   temporaryDirectories.push(root);
   const filename = path.join(root, `${kind}.db`);
@@ -48,23 +49,34 @@ async function fileDatabase(kind: 'profile' | 'data'): Promise<{ filename: strin
 }
 
 describe('database initialization', () => {
-  it.each(['profile', 'data'] as const)('%s initializes at version 1 and rerunning migrations keeps the schema unchanged', async kind => {
+  it.each(['profile', 'data'] as const)('%s initializes at its current version and rerunning migrations keeps the schema unchanged', async kind => {
     database = new Database({ memory: true, kind });
     expect(database.currentVersion()).toBe(0);
     await database.migrate();
-    expect(database.currentVersion()).toBe(1);
+    expect(database.currentVersion()).toBe(kind === 'profile' ? 2 : 1);
     const before = database.sqlite.prepare(
       "SELECT type, name, sql FROM sqlite_schema ORDER BY type, name",
     ).all();
 
     await database.migrate();
 
-    expect(database.currentVersion()).toBe(1);
+    expect(database.currentVersion()).toBe(kind === 'profile' ? 2 : 1);
     expect(database.sqlite.prepare(
       "SELECT type, name, sql FROM sqlite_schema ORDER BY type, name",
     ).all()).toEqual(before);
     expect(database.sqlite.pragma('foreign_key_check')).toEqual([]);
     expect(database.sqlite.pragma('integrity_check', { simple: true })).toBe('ok');
+  });
+
+  it('upgrades a version 1 Profile without removing saved rows', async () => {
+    database = new Database({ memory: true, kind: 'profile' });
+    database.sqlite.exec(fs.readFileSync(new URL('../migrations/profile/001_initial.sql', import.meta.url), 'utf8'));
+    database.sqlite.pragma('user_version = 1');
+    database.sqlite.exec("INSERT INTO settings VALUES ('keep', '42', 1)");
+    await database.migrate();
+    expect(database.currentVersion()).toBe(2);
+    expect(database.sqlite.prepare('SELECT * FROM character_stickers').all()).toEqual([]);
+    expect(database.sqlite.prepare('SELECT value_json FROM settings WHERE key = ?').pluck().get('keep')).toBe('42');
   });
 
   it('profile contains provider seeds and stores skill choices without a separate migration table', async () => {
@@ -162,14 +174,16 @@ describe('database initialization', () => {
 
   it.each(['profile', 'data'] as const)('%s refuses a database newer than its SQL files', async kind => {
     database = new Database({ memory: true, kind });
-    database.sqlite.pragma('user_version = 2');
-    await expect(database!.migrate()).rejects.toThrow(/v2.*v1/);
-    expect(database.currentVersion()).toBe(2);
+    const newest = kind === 'profile' ? 2 : 1;
+    database.sqlite.pragma(`user_version = ${newest + 1}`);
+    await expect(database!.migrate()).rejects.toThrow(new RegExp(`v${newest + 1}.*v${newest}`));
+    expect(database.currentVersion()).toBe(newest + 1);
     expect(database.sqlite.prepare("SELECT name FROM sqlite_schema WHERE type = 'table'").all()).toEqual([]);
   });
 });
 
 describe('numbered migrations', () => {
+  beforeEach(() => withNextMigrations([]));
   it('applies the next SQL once and keeps existing rows', async () => {
     database = new Database({ memory: true, kind: 'profile' });
     await database.migrate();

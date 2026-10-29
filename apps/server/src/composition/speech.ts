@@ -130,7 +130,7 @@ export function openSpeech(
         // SiliconFlow customName 只允许短 ASCII 名称, 不能直接使用中文角色名或资源名.
         // 注册名不参与本地音色缓存身份; UUID 避免不同参考音频的远端名称冲突.
         registrationName: `ema-${randomUUID()}`,
-        audioPath: characters.resolveVoiceSampleFile(character.name, reference.name),
+        audioPath: characters.voiceSamples.resolveFile(character.name, reference.name),
         promptText: reference.promptText,
         promptLanguage: reference.promptLang,
       };
@@ -438,7 +438,7 @@ export function openSpeech(
     if (!sample) {
       throw new ProviderError('invalid_configuration', '当前角色未配置参考音频,请先在角色卡添加');
     }
-    const audioPath = characters.resolveVoiceSampleFile(character.name, sample.name);
+    const audioPath = characters.voiceSamples.resolveFile(character.name, sample.name);
     const audio = await readFile(audioPath);
     const callSTT = createSTTCall(connection, modelId);
     const startedAt = Date.now();

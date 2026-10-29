@@ -2,7 +2,7 @@
 
 [中文](./README-zh.md)
 
-This package stores character identities, persona text, stage choices, Live2D models, illustrations, and reference audio. `CharacterStore` combines the SQL repositories with files under the character resource directory.
+This package stores character identities, persona text, stage choices, and character resources. `CharacterStore` owns cards, activation, deletion, and notifications. The `store.ts` files in `live2d`, `illustration`, `voice`, and `stickers` own each resource type. They use the Storage repositories directly.
 
 ## Use
 
@@ -14,7 +14,11 @@ import { CharacterStore, buildCharacterPrompt } from '@ema-agent/characters';
 const characters = new CharacterStore(db, charactersRoot);
 const character = characters.current();
 const presentation = characters.inspectStagePresentation(character.name);
-const sections = buildCharacterPrompt(character, presentation);
+const sections = buildCharacterPrompt(
+  character,
+  presentation,
+  characters.stickers.prompt(character.name),
+);
 ```
 
 The constructor clears uncommitted `.staging` files and fills missing Live2D byte counts. Do not construct another Store against the same directory while imports are running.
@@ -32,6 +36,7 @@ characters/
     live2d/<modelName>/
     illustration/<fileName>
     voice/<fileName>
+    stickers/<fileName>
     .previews/<modelName>.png
 ```
 
@@ -47,7 +52,7 @@ Audio validation inspects container headers and selected file ranges, rather tha
 
 Live2D preparation returns an `importId`; prepared resources are not visible in the resource list. Commit moves the model and preview into place before inserting its SQL row. SQL insertion failure moves them back. Cancel removes the prepared files. These are coordinated file and SQL operations, not a filesystem transaction.
 
-Only one resource of each kind can be primary. Deleting primary reference audio selects the next sample through the Storage transaction. Deleting a primary Live2D model or illustration leaves that selection empty. Model previews stay outside the exported model ZIP.
+Live2D, illustrations, and reference audio each allow one primary resource. Deleting primary reference audio selects the next sample through the Storage transaction. Deleting a primary Live2D model or illustration leaves that selection empty. Model previews stay outside the exported model ZIP.
 
 ## Stage and notifications
 
@@ -70,8 +75,16 @@ After resource writes, `onResourcesChanged()` tells resource consumers to reload
 
 Server coordinates activation, deletion, and selected resource changes with `SessionRunningRegistry.runWithRegistrationsClosed()`. It checks for active Turn or manual Compact work while new registrations are blocked. When deleting the current character, Server chooses a replacement and passes it to the Store. The SQL transaction rejects deletion of the final character and performs replacement activation with deletion.
 
+## Stickers
+
+Profile migration `002_characterStickers.sql` creates the sticker table. Each image has a physical `name` including its extension, an editable display name, and a description. Imports start with an empty description and are omitted from the Prompt. Described images contribute their name, description, and a generated Markdown image reference alongside the persona and stage instructions.
+
+The browser-safe `@ema-agent/characters/stickers` entry exports `CHARACTER_STICKER_PROMPT_MAX_CHARS`, set to 80,000. This limits the JavaScript string length of the complete sticker section, including instructions and image addresses, rather than a Token count. An oversized edit is rejected without truncating existing entries. `Character.stickerPromptLength` is derived when reading and is not stored separately.
+
+Stickers and illustrations share image validation and retain the original files. Stickers have no primary selection or stage mapping. Deleting one may leave older replies with an unavailable image. All resource stores share the per-character `CharacterMutations` queue with character deletion. Frontend notifications follow successful file and SQL writes.
+
 ## Reading and tests
 
-Start with [store.ts](./store.ts) for import, selection, file rollback, and notifications. Resource parsing lives in [live2d](./live2d/live2dModelResources.ts), [illustration](./illustration/illustrationFiles.ts), and [voice](./voice/voiceSampleValidator.ts). [characterPrompt.ts](./characterPrompt.ts) converts Presentation into prompt sections.
+[store.ts](./store.ts) is the character-card entry point; each resource directory owns its `store.ts`. Shared image validation lives in [imageFiles.ts](./resources/imageFiles.ts). Live2D and audio retain their own parsers. [characterPrompt.ts](./characterPrompt.ts) converts Presentation into prompt sections.
 
 Run `pnpm --filter @ema-agent/characters test` and `pnpm --filter @ema-agent/characters typecheck`. Store tests use temporary directories and a temporary database; they cover identity, deletion, staged imports, mapping validation, previews, competing imports, and startup cleanup. They do not render WebGL or verify every audio container.

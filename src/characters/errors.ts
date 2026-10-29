@@ -55,7 +55,8 @@ export type CharacterResourceKind =
   | 'live2d_model'
   | 'live2d_import'
   | 'illustration'
-  | 'voice_sample';
+  | 'voice_sample'
+  | 'sticker';
 
 export class CharacterResourceNotFoundError extends Error {
   readonly code = 'character_resource_not_found';
@@ -112,7 +113,7 @@ export type CharacterResourceValidationCode =
   | 'live2d_entry_invalid'
   | 'live2d_reference_invalid'
   | 'live2d_mapping_target_invalid'
-  | 'illustration_format_unsupported';
+  | 'image_format_unsupported';
 
 export class CharacterResourceValidationError extends Error {
   readonly code = 'character_resource_validation_failed';

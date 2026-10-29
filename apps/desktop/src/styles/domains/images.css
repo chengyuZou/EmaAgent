@@ -7,9 +7,6 @@
   outline-offset: 2px;
 }
 
-.ema-markdown-image-status {
-  color: var(--ema-text-tertiary);
-}
 
 button.ema-image-preview {
   position: relative;
@@ -186,4 +183,45 @@ button.ema-image-preview--attachment {
   .ema-image-viewer-title {
     display: none;
   }
+}
+
+.ema-image-placeholder {
+  display: inline-flex;
+  min-height: 96px;
+  min-width: 96px;
+  border: 1px solid var(--ema-border);
+  border-radius: var(--ema-radius-md);
+  vertical-align: middle;
+}
+
+.ema-image-placeholder-failed {
+  display: inline-block;
+  background: var(--ema-surface-2);
+  color: var(--ema-text-tertiary);
+}
+
+.ema-markdown-image-placeholder {
+  width: 160px;
+  height: 120px;
+}
+
+.markdown-content img.ema-markdown-sticker {
+  width: auto;
+  height: auto;
+  max-width: min(100%, 220px);
+  max-height: 220px;
+  object-fit: contain;
+}
+
+.ema-image-placeholder.ema-skeleton-wave::after {
+  animation-duration: 1.5s;
+}
+
+.ema-image-reveal {
+  animation: ema-fade-in 160ms ease both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ema-image-reveal,
+  .ema-image-placeholder.ema-skeleton-wave::after { animation: none; }
 }

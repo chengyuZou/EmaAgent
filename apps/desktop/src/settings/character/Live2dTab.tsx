@@ -34,7 +34,7 @@ export function Live2dTab({ character }: { character: Character }): JSX.Element 
         <h3 className="text-sm font-semibold text-[var(--ema-text-primary)]">Live2D</h3>
         <ImportMenu character={character} />
       </div>
-      <ScrollArea className="min-h-0 flex-1">
+      <ScrollArea className="min-h-0 flex-1" scrollbar="always">
         <div className="flex flex-col gap-5 px-5 pb-5">
           {models.length === 0 && (
             <p className="py-10 text-center text-xs text-[var(--ema-text-tertiary)]">

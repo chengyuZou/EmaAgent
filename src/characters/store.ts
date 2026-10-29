@@ -1,78 +1,36 @@
+import { CharacterStickerRepo } from '@ema-agent/storage';
+import { CharacterStickerStore } from './stickers/store.js';
 import fs from 'node:fs';
-import crypto from 'node:crypto';
-import path from 'node:path';
-import type { Readable } from 'node:stream';
-import type { CharacterDeleteResult, Database } from '@ema-agent/storage';
 import {
   CharacterRepo,
   CharacterLive2dModelRepo,
   CharacterIllustrationRepo,
   CharacterVoiceSampleRepo,
+  type CharacterRow,
+  type CharacterDeleteResult,
+  type Database,
 } from '@ema-agent/storage';
 import type {
   Character,
-  CharacterSummary,
+  CharacterCard,
   CharacterInput,
   CharacterPatch,
+  CharacterSummary,
   CharacterStagePresentation,
-  CharacterIllustrationStageEntry,
 } from './types.js';
-import { CharacterRepository } from './repository.js';
-import { EMA_CHARACTER_NAME, BUILTIN_CHARACTERS } from './seed/index.js';
-import type {
-  CharacterLive2dModel,
-  CharacterLive2dModelInput,
-  CharacterLive2dModelPatch,
-  PrepareCharacterLive2dImportInput,
-  PreparedLive2dImport,
-  Live2dConfiguration,
-  Live2dMappings,
-} from './live2d/types.js';
-import { CharacterLive2dModelRepository } from './live2d/repository.js';
-import { readLive2dModelResources } from './live2d/live2dModelResources.js';
-import { assertLive2dMappings } from './live2d/live2dMappings.js';
-import {
-  deleteLive2dDirectory,
-  createLive2dArchiveStream,
-  exportLive2dZip,
-  findLive2dFiles,
-  findLive2dFilesSync,
-  importLive2dFiles,
-  live2dDirectoryByteSizeSync,
-  type ImportedLive2dFiles,
-} from './live2d/live2dFiles.js';
-import type {
-  CharacterIllustration,
-  CharacterIllustrationPatch,
-  ImportCharacterIllustrationInput,
-} from './illustration/types.js';
-import { CharacterIllustrationRepository } from './illustration/repository.js';
-import { ILLUSTRATION_EXPRESSION_POOL_MAX } from './illustration/limits.js';
-import {
-  exportIllustrationFile,
-  importIllustrationFile,
-  inspectIllustrationFileSync,
-} from './illustration/illustrationFiles.js';
-import type {
-  CharacterVoiceSample,
-  CharacterVoiceSamplePatch,
-  ImportCharacterVoiceSampleInput,
-} from './voice/types.js';
-import { CharacterVoiceSampleRepository } from './voice/repository.js';
-import { validateVoiceSampleFile } from './voice/voiceSampleValidator.js';
-import {
-  exportVoiceFile,
-  importVoiceFile,
-} from './voice/voiceFiles.js';
+import { CharacterLive2dStore } from './live2d/store.js';
+import { CharacterIllustrationStore } from './illustration/store.js';
+import { CharacterVoiceSampleStore } from './voice/store.js';
+import { CharacterMutations } from './resources/characterMutations.js';
 import { CharacterResourcePaths, physicalName } from './resources/resourcePaths.js';
-import { removeDirectoryIfPresent, removeFileIfPresent } from './resources/resourceFiles.js';
+import { removeDirectoryIfPresent } from './resources/resourceFiles.js';
 import { assertPersonaPrompt } from './characterPrompt.js';
+import { BUILTIN_CHARACTERS, EMA_CHARACTER_NAME } from './seed/index.js';
+import { live2dDirectoryByteSizeSync } from './live2d/live2dFiles.js';
 import {
   CharacterDirectoryConflictError,
   CharacterInputInvalidError,
   CharacterNotFoundError,
-  CharacterResourceNotFoundError,
-  CharacterResourceValidationError,
   CharacterStateInvalidError,
 } from './errors.js';
 
@@ -80,42 +38,60 @@ export type CharacterSwitchedListener = (
   next: Character,
   presentation: CharacterStagePresentation,
 ) => void;
+
 export type CharacterPresentationChangedListener = (
   character: Character,
   presentation: CharacterStagePresentation,
 ) => void;
+
 export type CharacterResourcesChangedListener = (character: Character) => void;
 
-interface PreparedLive2dImportEntry {
-  readonly characterName: string;
-  readonly operationDirectory: string;
-  readonly resourceDirectory: string;
-  readonly files: ImportedLive2dFiles;
-}
-
 export class CharacterStore {
-  private readonly repository: CharacterRepository;
-  private readonly live2dModels: CharacterLive2dModelRepository;
-  private readonly illustrations: CharacterIllustrationRepository;
-  private readonly voiceSamples: CharacterVoiceSampleRepository;
+  private readonly repository: CharacterRepo;
+  readonly stickers: CharacterStickerStore;
+  readonly live2dModels: CharacterLive2dStore;
+  readonly illustrations: CharacterIllustrationStore;
+  readonly voiceSamples: CharacterVoiceSampleStore;
   private readonly paths: CharacterResourcePaths;
+  private readonly mutations: CharacterMutations;
   private readonly switchedListeners = new Set<CharacterSwitchedListener>();
   private readonly presentationChangedListeners = new Set<CharacterPresentationChangedListener>();
   private readonly resourcesChangedListeners = new Set<CharacterResourcesChangedListener>();
-  private readonly preparedLive2dImports = new Map<string, PreparedLive2dImportEntry>();
-  // Promise 尾链只按稳定角色名分组,避免同一角色的文件操作与 SQL 提交互相覆盖.
-  private readonly mutationTails = new Map<string, Promise<void>>();
 
   constructor(db: Database, charactersRoot: string) {
     fs.mkdirSync(charactersRoot, { recursive: true });
-    this.repository = new CharacterRepository(new CharacterRepo(db.sqlite));
-    this.live2dModels = new CharacterLive2dModelRepository(new CharacterLive2dModelRepo(db.sqlite));
-    this.illustrations = new CharacterIllustrationRepository(new CharacterIllustrationRepo(db.sqlite));
-    this.voiceSamples = new CharacterVoiceSampleRepository(new CharacterVoiceSampleRepo(db.sqlite));
     this.paths = new CharacterResourcePaths(charactersRoot);
-    // 每个资源根目录只能有一个 Store. 重启后暂存操作无法继续, 构造时清除未提交的文件.
+    this.repository = new CharacterRepo(db.sqlite);
+    this.mutations = new CharacterMutations(
+      this.paths,
+      name => this.getRequiredCharacterOnly(name),
+      name => this.resourcesChanged(name),
+      name => this.emitPresentationChanged(name),
+    );
+    this.stickers = new CharacterStickerStore(new CharacterStickerRepo(db.sqlite), this.mutations);
+    this.live2dModels = new CharacterLive2dStore(new CharacterLive2dModelRepo(db.sqlite), this.mutations);
+    this.illustrations = new CharacterIllustrationStore(new CharacterIllustrationRepo(db.sqlite), this.mutations);
+    this.voiceSamples = new CharacterVoiceSampleStore(new CharacterVoiceSampleRepo(db.sqlite), this.mutations);
+    // 每个资源根目录只创建一个 Store. 重启后清理无法继续提交的暂存导入.
     fs.rmSync(this.paths.stagingRoot(), { recursive: true, force: true });
-    this.backfillLive2dByteSizes();
+    this.live2dModels.backfillByteSizes(this.repository.list().map(card => card.name));
+  }
+
+  private findCard(name: string): CharacterCard | undefined {
+    const row = this.repository.findByName(name);
+    return row ? fromRow(row) : undefined;
+  }
+
+  private findActiveCard(): CharacterCard | undefined {
+    const row = this.repository.findActive();
+    return row ? fromRow(row) : undefined;
+  }
+
+  inspectStagePresentation(characterName: string): CharacterStagePresentation {
+    const card = this.getRequiredCharacterOnly(characterName);
+    if (card.stageKind === 'live2d') return this.live2dModels.presentation(characterName);
+    if (card.stageKind === 'illustration') return this.illustrations.presentation(characterName);
+    return { status: 'blank', characterName };
   }
 
   onSwitched(handler: CharacterSwitchedListener): () => void {
@@ -133,13 +109,12 @@ export class CharacterStore {
     return () => this.resourcesChangedListeners.delete(handler);
   }
 
-  /** 只在 Desktop Host 判定 `profile.db` 尚未创建时调用. */
   initializeBuiltinCharacters(): void {
     for (const seed of BUILTIN_CHARACTERS) {
       const input = normalizeCharacterInput(seed.card);
       assertPersonaPrompt(input.personaPrompt, input.name);
-      if (!this.repository.findByName(input.name)) {
-        this.repository.insert(input, seed.stageKind);
+      if (!this.findCard(input.name)) {
+        this.repository.insert({ ...input, stageKind: seed.stageKind, createdAt: Date.now(), updatedAt: Date.now() });
       }
       for (const model of seed.live2dModels) {
         if (!this.live2dModels.list(input.name).some(item => item.name === model.name)) {
@@ -162,49 +137,53 @@ export class CharacterStore {
         }
       }
     }
-    if (!this.repository.findActive()) {
-      this.repository.activate(EMA_CHARACTER_NAME);
+    if (!this.findActiveCard()) {
+      this.repository.activate(EMA_CHARACTER_NAME, Date.now());
       const active = this.get(EMA_CHARACTER_NAME);
       if (active) this.emitSwitched(active);
     }
   }
 
-  private backfillLive2dByteSizes(): void {
-    for (const character of this.repository.list()) {
-      for (const model of this.live2dModels.list(character.name)) {
-        if (model.byteSize !== null) continue;
-        const directory = this.paths.live2dModelDirectory(character.name, model.name);
-        const stat = fs.statSync(directory, { throwIfNoEntry: false });
-        if (stat?.isDirectory()) {
-          this.live2dModels.updateByteSize(character.name, model.name, live2dDirectoryByteSizeSync(directory));
-        }
-      }
-    }
-  }
-
   current(): Character {
-    const character = this.repository.findActive();
+    const character = this.findActiveCard();
     if (!character) throw new CharacterStateInvalidError('active_character_missing');
     return this.withResources(character);
   }
+
   list(): Character[] {
-    const characters = this.repository.list();
+    const characters = this.repository.list().map(fromRow);
     const names = characters.map(character => character.name);
     const live2d = this.live2dModels.listForCharacters(names);
     const illustrations = this.illustrations.listForCharacters(names);
     const voices = this.voiceSamples.listForCharacters(names);
-    return characters.map(character => withResources(
-      character,
-      live2d.get(character.name) ?? [],
-      illustrations.get(character.name) ?? [],
-      voices.get(character.name) ?? [],
-    ));
+    const stickers = this.stickers.listForCharacters(names);
+    return characters.map(character => ({
+      ...character,
+      stickers: stickers.get(character.name) ?? [],
+      stickerPromptLength: this.stickers.prompt(character.name, stickers.get(character.name) ?? []).length,
+      live2dModels: live2d.get(character.name) ?? [],
+      illustrations: illustrations.get(character.name) ?? [],
+      voiceSamples: voices.get(character.name) ?? [],
+    }));
   }
+
   listSummaries(): CharacterSummary[] {
-    return this.repository.listSummaries();
+    return this.repository.listSummaries().map(row => ({
+      name: row.name,
+      displayName: row.display_name,
+      description: row.description,
+      stageKind: row.stage_kind,
+      isActive: row.is_active === 1,
+      updatedAt: row.updated_at,
+      live2dCount: row.live2d_count,
+      illustrationCount: row.illustration_count,
+      voiceSampleCount: row.voice_sample_count,
+      coverResourceName: row.cover_resource_name,
+    }));
   }
+
   get(name: string): Character | undefined {
-    const character = this.repository.findByName(name);
+    const character = this.findCard(name);
     return character ? this.withResources(character) : undefined;
   }
 
@@ -215,13 +194,15 @@ export class CharacterStore {
       throw new CharacterDirectoryConflictError(normalized.name);
     }
     const directory = this.paths.characterDirectory(normalized.name);
-    if (fs.existsSync(directory) || this.repository.findByName(normalized.name)) {
+    if (fs.existsSync(directory) || this.findCard(normalized.name)) {
       throw new CharacterDirectoryConflictError(normalized.name);
     }
     // 先占用稳定目录名, SQL 创建失败时撤销目录, 避免残留目录阻止再次创建同名角色.
     fs.mkdirSync(directory, { recursive: false });
     try {
-      return this.withResources(this.repository.insert(normalized));
+      const now = Date.now();
+      this.repository.insert({ ...normalized, createdAt: now, updatedAt: now });
+      return this.getRequired(normalized.name);
     } catch (error) {
       fs.rmSync(directory, { recursive: true, force: true });
       throw error;
@@ -229,7 +210,7 @@ export class CharacterStore {
   }
 
   update(name: string, patch: CharacterPatch): Promise<Character> {
-    return this.mutate(name, () => {
+    return this.mutations.run(name, () => {
       const current = this.getRequired(name);
       if (Object.values(patch).every(value => value === undefined)) {
         throw new CharacterInputInvalidError('character_patch_empty', name);
@@ -243,7 +224,7 @@ export class CharacterStore {
       if (normalized.personaPrompt !== undefined) {
         assertPersonaPrompt(normalized.personaPrompt, name);
       }
-      this.repository.update(name, normalized);
+      this.repository.update(name, { ...normalized, updatedAt: Date.now() });
       const updated = this.get(name) ?? current;
       if (patch.stageKind !== undefined) this.emitPresentationChanged(name);
       return updated;
@@ -253,8 +234,8 @@ export class CharacterStore {
   activate(name: string): string {
     const target = this.getRequired(name);
     assertPersonaPrompt(target.personaPrompt, name);
-    const previous = this.repository.findActive();
-    if (!this.repository.activate(name)) {
+    const previous = this.findActiveCard();
+    if (!this.repository.activate(name, Date.now())) {
       throw new CharacterNotFoundError(name);
     }
     const next = this.getRequired(name);
@@ -265,13 +246,13 @@ export class CharacterStore {
   }
 
   deleteCharacter(name: string, replacementName?: string): Promise<CharacterDeleteResult> {
-    return this.mutate(name, async () => {
+    return this.mutations.run(name, async () => {
       this.getRequiredCharacterOnly(name);
-      const operationDirectory = this.createStagingOperation();
+      const operationDirectory = this.mutations.createStagingOperation();
       const characterDirectory = this.paths.characterDirectory(name);
       // 目录先移入本次操作的暂存区,SQL 拒绝删除或抛错时再原位恢复.
       // 当前角色的替代激活与角色删除由 Repository 在同一事务中完成.
-      const staged = await this.stageExistingPath(characterDirectory, operationDirectory);
+      const staged = await this.mutations.stageExistingPath(characterDirectory, operationDirectory);
       try {
         const result = this.repository.delete(name, replacementName);
         if (result !== 'deleted') {
@@ -293,566 +274,9 @@ export class CharacterStore {
     });
   }
 
-  setPrimaryLive2dModel(characterName: string, live2dName: string): Promise<boolean> {
-    return this.mutate(characterName, () => {
-      const character = this.getRequiredCharacterOnly(characterName);
-      if (!this.live2dModels.find(characterName, live2dName)) {
-        throw new CharacterResourceNotFoundError('live2d_model', live2dName);
-      }
-      const changed = this.live2dModels.setPrimary(characterName, live2dName);
-      if (changed) {
-        this.resourcesChanged(characterName);
-        if (character.stageKind === 'live2d') this.emitPresentationChanged(characterName);
-      }
-      return changed;
-    });
-  }
-
-  updateLive2dModel(characterName: string, live2dName: string, patch: CharacterLive2dModelPatch): Promise<CharacterLive2dModel | undefined> {
-    return this.mutate(characterName, () => {
-      const character = this.getRequiredCharacterOnly(characterName);
-      const current = this.live2dModels.find(characterName, live2dName);
-      normalizeResourcePatch(patch);
-      const resource = this.live2dModels.update(characterName, live2dName, patch);
-      if (resource) {
-        this.resourcesChanged(characterName);
-        if (character.stageKind === 'live2d' && current?.isPrimary) {
-          this.emitPresentationChanged(characterName);
-        }
-      }
-      return resource;
-    });
-  }
-  
-  async prepareLive2dImport(
-    characterName: string,
-    input: PrepareCharacterLive2dImportInput,
-  ): Promise<PreparedLive2dImport> {
-    return this.mutate(characterName, async () => {
-      this.getRequiredCharacterOnly(characterName);
-      // Server 能校验本地模型,但封面必须由 Desktop 的 WebGL 生成.这里先只写暂存区,
-      // 避免 Desktop 生成 PNG 期间其他窗口看到一个尚未完成的模型.
-      const importId = crypto.randomUUID();
-      const operationDirectory = this.paths.stagingOperationDirectory(importId);
-      fs.mkdirSync(operationDirectory, { recursive: true });
-      const stagedDirectory = path.join(operationDirectory, 'resource');
-      try {
-        const files = await importLive2dFiles(input.source, stagedDirectory);
-        const destination = this.paths.live2dModelDirectory(characterName, files.name);
-        if (fs.existsSync(destination) || this.live2dModels.find(characterName, files.name)) {
-          throw new CharacterResourceValidationError('resource_name_conflict');
-        }
-        const live2dFiles = await findLive2dFiles(stagedDirectory);
-        await readLive2dModelResources(live2dFiles.modelPath);
-        this.preparedLive2dImports.set(importId, {
-          characterName,
-          operationDirectory,
-          resourceDirectory: stagedDirectory,
-          files,
-        });
-        return { importId, ...files };
-      } catch (error) {
-        await removeDirectoryIfPresent(operationDirectory);
-        throw error;
-      }
-    });
-  }
-
-  streamPreparedLive2dArchive(characterName: string, importId: string): Readable {
-    const prepared = this.getPreparedLive2dImport(characterName, importId);
-    return createLive2dArchiveStream(prepared.resourceDirectory);
-  }
-
-  async commitLive2dImport(
-    characterName: string,
-    importId: string,
-    previewPng: Buffer,
-  ): Promise<CharacterLive2dModel> {
-    return this.mutate(characterName, async () => {
-      this.getRequiredCharacterOnly(characterName);
-      const prepared = this.getPreparedLive2dImport(characterName, importId);
-      const destination = this.paths.live2dModelDirectory(characterName, prepared.files.name);
-      if (fs.existsSync(destination) || this.live2dModels.find(characterName, prepared.files.name)) {
-        throw new CharacterResourceValidationError('resource_name_conflict');
-      }
-
-      const stagedPreview = path.join(prepared.operationDirectory, 'preview.png');
-      const previewTarget = this.paths.live2dPreviewFile(characterName, prepared.files.name);
-      await fs.promises.writeFile(stagedPreview, previewPng);
-      await fs.promises.mkdir(this.paths.live2dRoot(characterName), { recursive: true });
-      await fs.promises.mkdir(this.paths.previewRoot(characterName), { recursive: true });
-
-      // 模型目录和封面都准备好后才写数据库.角色列表以数据库为准,因此其他窗口
-      // 不会在封面仍不存在时提前看到这张模型卡片.
-      await fs.promises.rename(prepared.resourceDirectory, destination);
-      await fs.promises.rename(stagedPreview, previewTarget);
-      let resource: CharacterLive2dModel;
-      try {
-        resource = this.live2dModels.insert(characterName, {
-          name: prepared.files.name,
-          displayName: prepared.files.displayName,
-          isPrimary: false,
-          byteSize: prepared.files.byteSize,
-        });
-      } catch (error) {
-        await fs.promises.mkdir(prepared.operationDirectory, { recursive: true });
-        await fs.promises.rename(destination, prepared.resourceDirectory);
-        await fs.promises.rename(previewTarget, stagedPreview);
-        throw error;
-      }
-
-      this.preparedLive2dImports.delete(importId);
-      await removeDirectoryIfPresent(prepared.operationDirectory);
-      this.resourcesChanged(characterName);
-      return resource;
-    });
-  }
-
-  async cancelLive2dImport(characterName: string, importId: string): Promise<void> {
-    return this.mutate(characterName, async () => {
-      const prepared = this.getPreparedLive2dImport(characterName, importId);
-      await removeDirectoryIfPresent(prepared.operationDirectory);
-      this.preparedLive2dImports.delete(importId);
-    });
-  }
-  
-  async exportLive2dModel(characterName: string, live2dName: string, destination: string): Promise<string> {
-    this.getRequiredCharacterOnly(characterName);
-    const resource = this.live2dModels.find(characterName, live2dName);
-    if (!resource) throw new CharacterResourceNotFoundError('live2d_model', live2dName);
-    return exportLive2dZip(
-      this.paths.live2dModelDirectory(characterName, live2dName),
-      destination,
-      resource.displayName,
-    );
-  }
-
-  async deleteLive2dModel(characterName: string, live2dName: string): Promise<CharacterLive2dModel | undefined> {
-    return this.mutate(characterName, async () => {
-      this.getRequiredCharacterOnly(characterName);
-      const current = this.live2dModels.find(characterName, live2dName);
-      if (!current) return undefined;
-      const operationDirectory = this.createStagingOperation();
-      const source = this.paths.live2dModelDirectory(characterName, live2dName);
-      const staged = await this.stageExistingPath(source, operationDirectory);
-      const previewSource = this.paths.live2dPreviewFile(characterName, live2dName);
-      const previewExists = await fs.promises.stat(previewSource).catch(() => null);
-      const stagedPreview = previewExists ? path.join(operationDirectory, 'preview.png') : null;
-      if (stagedPreview) await fs.promises.rename(previewSource, stagedPreview);
-      try {
-        const deleted = this.live2dModels.delete(characterName, live2dName);
-        if (!deleted) {
-          if (staged) await fs.promises.rename(staged, source);
-          if (stagedPreview) await fs.promises.rename(stagedPreview, previewSource);
-        }
-        if (deleted) {
-          this.resourcesChanged(characterName);
-          if (current.isPrimary) this.emitPresentationChanged(characterName);
-        }
-        return deleted;
-      } catch (error) {
-        if (staged && !fs.existsSync(source)) await fs.promises.rename(staged, source);
-        if (stagedPreview && !fs.existsSync(previewSource)) await fs.promises.rename(stagedPreview, previewSource);
-        throw error;
-      } finally {
-        await removeDirectoryIfPresent(operationDirectory);
-      }
-    });
-  }
-
-  setPrimaryIllustration(characterName: string, illustrationName: string): Promise<boolean> {
-    return this.mutate(characterName, () => {
-      const character = this.getRequiredCharacterOnly(characterName);
-      if (!this.illustrations.find(characterName, illustrationName)) {
-        throw new CharacterResourceNotFoundError('illustration', illustrationName);
-      }
-      const changed = this.illustrations.setPrimary(characterName, illustrationName);
-      if (changed) {
-        this.resourcesChanged(characterName);
-        if (character.stageKind === 'illustration') this.emitPresentationChanged(characterName);
-      }
-      return changed;
-    });
-  }
-
-  updateIllustration(characterName: string, illustrationName: string, patch: CharacterIllustrationPatch): Promise<CharacterIllustration | undefined> {
-    return this.mutate(characterName, () => {
-      const character = this.getRequiredCharacterOnly(characterName);
-      normalizeResourcePatch(patch);
-      normalizeExpression(patch.expression);
-      this.assertExpressionCapacity(characterName, patch.expression, illustrationName);
-      const resource = this.illustrations.update(characterName, illustrationName, patch);
-      if (resource) {
-        this.resourcesChanged(characterName);
-        if (character.stageKind === 'illustration') this.emitPresentationChanged(characterName);
-      }
-      return resource;
-    });
-  }
-
-  async importIllustration(characterName: string, input: ImportCharacterIllustrationInput): Promise<CharacterIllustration> {
-    return this.mutate(characterName, async () => {
-      const character = this.getRequiredCharacterOnly(characterName);
-      normalizeExpression(input.expression);
-      this.assertExpressionCapacity(characterName, input.expression);
-      const operationDirectory = this.createStagingOperation();
-      const stagedFile = path.join(operationDirectory, 'resource');
-      let destination: string | undefined;
-      try {
-        const files = await importIllustrationFile(input.sourceFile, stagedFile);
-        destination = this.paths.illustrationFile(characterName, files.name);
-        if (fs.existsSync(destination) || this.illustrations.find(characterName, files.name)) {
-          throw new CharacterResourceValidationError('resource_name_conflict');
-        }
-        await fs.promises.mkdir(this.paths.illustrationRoot(characterName), { recursive: true });
-        await fs.promises.rename(stagedFile, destination);
-        try {
-          const resource = this.illustrations.insert(characterName, {
-            name: files.name,
-            displayName: files.displayName,
-            expression: input.expression ?? null,
-            isPrimary: false,
-            byteSize: files.byteSize,
-          });
-          this.resourcesChanged(characterName);
-          if (character.stageKind === 'illustration') this.emitPresentationChanged(characterName);
-          return resource;
-        } catch (error) {
-          await removeFileIfPresent(destination);
-          throw error;
-        }
-      } finally {
-        await removeDirectoryIfPresent(operationDirectory);
-      }
-    });
-  }
-
-  async exportIllustration(characterName: string, illustrationName: string, destination: string): Promise<string> {
-    this.getRequiredCharacterOnly(characterName);
-    const resource = this.illustrations.find(characterName, illustrationName);
-    if (!resource) throw new CharacterResourceNotFoundError('illustration', illustrationName);
-    return exportIllustrationFile(
-      this.paths.illustrationFile(characterName, illustrationName),
-      destination,
-      resource.displayName,
-    );
-  }
-
-  async deleteIllustration(characterName: string, illustrationName: string): Promise<CharacterIllustration | undefined> {
-    return this.mutate(characterName, async () => {
-      const character = this.getRequiredCharacterOnly(characterName);
-      const current = this.illustrations.find(characterName, illustrationName);
-      if (!current) return undefined;
-      const operationDirectory = this.createStagingOperation();
-      const source = this.paths.illustrationFile(characterName, illustrationName);
-      const staged = await this.stageExistingPath(source, operationDirectory);
-      try {
-        const deleted = this.illustrations.delete(characterName, illustrationName);
-        if (!deleted && staged) await fs.promises.rename(staged, source);
-        if (deleted) {
-          this.resourcesChanged(characterName);
-          if (character.stageKind === 'illustration') this.emitPresentationChanged(characterName);
-        }
-        return deleted;
-      } catch (error) {
-        if (staged && !fs.existsSync(source)) await fs.promises.rename(staged, source);
-        throw error;
-      } finally {
-        await removeDirectoryIfPresent(operationDirectory);
-      }
-    });
-  }
-
-  setPrimaryVoiceSample(characterName: string, voiceName: string): Promise<boolean> {
-    return this.mutate(characterName, () => {
-      this.getRequiredCharacterOnly(characterName);
-      if (!this.voiceSamples.find(characterName, voiceName)) {
-        throw new CharacterResourceNotFoundError('voice_sample', voiceName);
-      }
-      const changed = this.voiceSamples.setPrimary(characterName, voiceName);
-      if (changed) this.resourcesChanged(characterName);
-      return changed;
-    });
-  }
-
-  updateVoiceSample(characterName: string, voiceName: string, patch: CharacterVoiceSamplePatch): Promise<CharacterVoiceSample | undefined> {
-    return this.mutate(characterName, () => {
-      this.getRequiredCharacterOnly(characterName);
-      const normalized: CharacterVoiceSamplePatch = {
-        ...(patch.displayName !== undefined ? { displayName: patch.displayName.trim() } : {}),
-        ...(patch.promptText !== undefined ? { promptText: patch.promptText.trim() } : {}),
-        ...(patch.promptLang !== undefined ? { promptLang: patch.promptLang.trim() } : {}),
-      };
-      normalizeResourcePatch(normalized);
-      if (
-        normalized.promptText === ''
-        || normalized.promptLang === ''
-      ) {
-        throw new CharacterInputInvalidError('voice_prompt_required', characterName);
-      }
-      const resource = this.voiceSamples.update(characterName, voiceName, normalized);
-      if (resource) this.resourcesChanged(characterName);
-      return resource;
-    });
-  }
-  
-  async importVoiceSample(characterName: string, input: ImportCharacterVoiceSampleInput): Promise<CharacterVoiceSample> {
-    return this.mutate(characterName, async () => {
-      this.getRequiredCharacterOnly(characterName);
-      const promptText = input.promptText.trim();
-      const promptLang = input.promptLang.trim();
-      if (!promptText || !promptLang) {
-        throw new CharacterInputInvalidError('voice_prompt_required', characterName);
-      }
-      const validated = await validateVoiceSampleFile(input.sourceFile);
-      const operationDirectory = this.createStagingOperation();
-      const stagedFile = path.join(operationDirectory, 'resource');
-      let destination: string | undefined;
-      try {
-        const files = await importVoiceFile(input.sourceFile, stagedFile);
-        destination = this.paths.voiceFile(characterName, files.name);
-        if (fs.existsSync(destination) || this.voiceSamples.find(characterName, files.name)) {
-          throw new CharacterResourceValidationError('resource_name_conflict');
-        }
-        await fs.promises.mkdir(this.paths.voiceRoot(characterName), { recursive: true });
-        await fs.promises.rename(stagedFile, destination);
-        try {
-          const resource = this.voiceSamples.insert(characterName, {
-            name: files.name,
-            displayName: files.displayName,
-            promptText,
-            promptLang,
-            isPrimary: false,
-            mimeType: validated.mimeType,
-            byteSize: validated.byteSize,
-            durationMs: validated.durationMs,
-          });
-          this.resourcesChanged(characterName);
-          return resource;
-        } catch (error) {
-          await removeFileIfPresent(destination);
-          throw error;
-        }
-      } finally {
-        await removeDirectoryIfPresent(operationDirectory);
-      }
-    });
-  }
-
-  async exportVoiceSample(characterName: string, voiceName: string, destination: string): Promise<string> {
-    this.getRequiredCharacterOnly(characterName);
-    const resource = this.voiceSamples.find(characterName, voiceName);
-    if (!resource) throw new CharacterResourceNotFoundError('voice_sample', voiceName);
-    return exportVoiceFile(
-      this.paths.voiceFile(characterName, voiceName),
-      destination,
-      resource.displayName,
-    );
-  }
-
-  async deleteVoiceSample(characterName: string, voiceName: string): Promise<CharacterVoiceSample | undefined> {
-    return this.mutate(characterName, async () => {
-      this.getRequiredCharacterOnly(characterName);
-      const current = this.voiceSamples.find(characterName, voiceName);
-      if (!current) return undefined;
-      const operationDirectory = this.createStagingOperation();
-      const source = this.paths.voiceFile(characterName, voiceName);
-      const staged = await this.stageExistingPath(source, operationDirectory);
-      try {
-        const deleted = this.voiceSamples.delete(characterName, voiceName);
-        if (!deleted && staged) await fs.promises.rename(staged, source);
-        if (deleted) this.resourcesChanged(characterName);
-        return deleted;
-      } catch (error) {
-        if (staged && !fs.existsSync(source)) await fs.promises.rename(staged, source);
-        throw error;
-      } finally {
-        await removeDirectoryIfPresent(operationDirectory);
-      }
-    });
-  }
-
   resolveCharacterDirectory(characterName: string): string {
     this.getRequiredCharacterOnly(characterName);
     return this.paths.characterDirectory(characterName);
-  }
-
-  inspectStagePresentation(characterName: string): CharacterStagePresentation {
-    // Prompt,StageEngine 初始化和角色事件仍是同步消费方,因此这里只读取已提交资源,
-    // 不触发导入,修复或异步补全,也不缓存另一份可能过期的舞台事实.
-    const character = this.repository.findByName(characterName);
-    if (!character) throw new CharacterNotFoundError(characterName);
-    if (character.stageKind === 'blank') {
-      return { status: 'blank', characterName };
-    }
-    if (character.stageKind === 'live2d') {
-      const resource = this.live2dModels.findPrimary(characterName);
-      if (!resource) {
-        return { status: 'unavailable', characterName, stageKind: 'live2d', reason: 'primary_resource_missing' };
-      }
-      try {
-        const directory = this.paths.live2dModelDirectory(characterName, resource.name);
-        findLive2dFilesSync(directory);
-        return {
-          status: 'live2d',
-          characterName,
-          resource: {
-            kind: 'live2d',
-            name: resource.name,
-            displayName: resource.displayName,
-            stageScale: resource.stageScale,
-            stageOffsetX: resource.stageOffsetX,
-            stageOffsetY: resource.stageOffsetY,
-            emotionMap: resource.emotionMap,
-            motionMap: resource.motionMap,
-          },
-        };
-      } catch {
-        return {
-          status: 'unavailable',
-          characterName,
-          stageKind: 'live2d',
-          reason: fs.existsSync(this.paths.live2dModelDirectory(characterName, resource.name)) ? 'resource_invalid' : 'resource_file_missing',
-        };
-      }
-    }
-    const resource = this.illustrations.findPrimary(characterName);
-    if (!resource) {
-      return { status: 'unavailable', characterName, stageKind: 'illustration', reason: 'primary_resource_missing' };
-    }
-    const file = this.paths.illustrationFile(characterName, resource.name);
-    const primaryFileState = inspectIllustrationFileSync(file);
-    if (primaryFileState !== 'valid') {
-      return {
-        status: 'unavailable',
-        characterName,
-        stageKind: 'illustration',
-        reason: primaryFileState === 'missing' ? 'resource_file_missing' : 'resource_invalid',
-      };
-    }
-    const expressions: Record<string, CharacterIllustrationStageEntry[]> = {};
-    for (const item of this.illustrations.list(characterName)) {
-      if (!item.expression) continue;
-      const itemFile = this.paths.illustrationFile(characterName, item.name);
-      if (inspectIllustrationFileSync(itemFile) !== 'valid') continue;
-      (expressions[item.expression] ??= []).push(illustrationStageEntry(item));
-    }
-    return { status: 'illustration', characterName, resource: illustrationStageEntry(resource), expressions };
-  }
-
-  resolveLive2dModelDirectory(characterName: string, live2dName: string): string {
-    this.getRequiredCharacterOnly(characterName);
-    if (!this.live2dModels.find(characterName, live2dName)) {
-      throw new CharacterResourceNotFoundError('live2d_model', live2dName);
-    }
-    return this.paths.live2dModelDirectory(characterName, live2dName);
-  }
-
-  streamLive2dArchive(characterName: string, live2dName: string): Readable {
-    const directory = this.resolveLive2dModelDirectory(characterName, live2dName);
-    return createLive2dArchiveStream(directory);
-  }
-
-  /** 返回 .previews 中已存在的封面文件, 缺失时不自动渲染. */
-  resolveLive2dPreviewFile(characterName: string, live2dName: string): string {
-    this.getRequiredCharacterOnly(characterName);
-    if (!this.live2dModels.find(characterName, live2dName)) {
-      throw new CharacterResourceNotFoundError('live2d_model', live2dName);
-    }
-    return this.paths.live2dPreviewFile(characterName, live2dName);
-  }
-
-  /** 保存前端离屏渲染的 PNG, 不修改模型目录和舞台配置. */
-  async saveLive2dPreview(characterName: string, live2dName: string, png: Buffer): Promise<void> {
-    return this.mutate(characterName, async () => {
-      const target = this.resolveLive2dPreviewFile(characterName, live2dName);
-      await fs.promises.mkdir(path.dirname(target), { recursive: true });
-      await fs.promises.writeFile(target, png);
-      // 手动重做封面不会改变主舞台,只通知角色资源页面重新读取这张图片.
-      this.resourcesChanged(characterName);
-    });
-  }
-
-  resolveIllustrationFile(characterName: string, illustrationName: string): string {
-    this.getRequiredCharacterOnly(characterName);
-    if (!this.illustrations.find(characterName, illustrationName)) {
-      throw new CharacterResourceNotFoundError('illustration', illustrationName);
-    }
-    return this.paths.illustrationFile(characterName, illustrationName);
-  }
-
-  resolveVoiceSampleFile(characterName: string, voiceName: string): string {
-    this.getRequiredCharacterOnly(characterName);
-    if (!this.voiceSamples.find(characterName, voiceName)) {
-      throw new CharacterResourceNotFoundError('voice_sample', voiceName);
-    }
-    return this.paths.voiceFile(characterName, voiceName);
-  }
-
-  async reloadLive2dConfiguration(characterName: string, live2dName: string): Promise<Live2dConfiguration> {
-    return this.mutate(characterName, async () => {
-      const character = this.getRequiredCharacterOnly(characterName);
-      const configuration = await this.readLive2dConfiguration(characterName, live2dName);
-      const model = this.live2dModels.find(characterName, live2dName);
-      if (character.stageKind === 'live2d' && model?.isPrimary) {
-        this.emitPresentationChanged(characterName);
-      }
-      return configuration;
-    });
-  }
-
-  async readLive2dConfiguration(characterName: string, live2dName: string): Promise<Live2dConfiguration> {
-    this.getRequiredCharacterOnly(characterName);
-    const model = this.live2dModels.find(characterName, live2dName);
-    if (!model) {
-      throw new CharacterResourceNotFoundError('live2d_model', live2dName);
-    }
-    const directory = this.paths.live2dModelDirectory(characterName, live2dName);
-    const files = await findLive2dFiles(directory);
-    const resources = await readLive2dModelResources(files.modelPath);
-    return {
-      mappings: { emotionMap: model.emotionMap, motionMap: model.motionMap },
-      expressions: resources.expressions.map(expression => ({
-        expression: expression.name,
-        file: expression.file,
-      })),
-      motions: resources.motions,
-      unregisteredExpressionFiles: resources.unregisteredExpressionFiles,
-      unregisteredMotionFiles: resources.unregisteredMotionFiles,
-    };
-  }
-
-  async saveLive2dMappings(characterName: string, live2dName: string, mappings: Live2dMappings): Promise<Live2dConfiguration> {
-    return this.mutate(characterName, async () => {
-      const character = this.getRequiredCharacterOnly(characterName);
-      const model = this.live2dModels.find(characterName, live2dName);
-      if (!model) {
-        throw new CharacterResourceNotFoundError('live2d_model', live2dName);
-      }
-      const directory = this.paths.live2dModelDirectory(characterName, live2dName);
-      const files = await findLive2dFiles(directory);
-      const resources = await readLive2dModelResources(files.modelPath);
-      assertLive2dMappings(
-        mappings,
-        resources.expressions.map(expression => expression.name),
-        resources.motions,
-      );
-      this.live2dModels.updateMappings(characterName, live2dName, mappings);
-      this.resourcesChanged(characterName);
-      if (character.stageKind === 'live2d' && model.isPrimary) {
-        this.emitPresentationChanged(characterName);
-      }
-      return {
-        mappings,
-        expressions: resources.expressions.map(expression => ({
-          expression: expression.name,
-          file: expression.file,
-        })),
-        motions: resources.motions,
-        unregisteredExpressionFiles: resources.unregisteredExpressionFiles,
-        unregisteredMotionFiles: resources.unregisteredMotionFiles,
-      };
-    });
   }
 
   private getRequired(name: string): Character {
@@ -861,88 +285,59 @@ export class CharacterStore {
     return character;
   }
 
-  private getRequiredCharacterOnly(name: string): Character {
+  private getRequiredCharacterOnly(name: string): CharacterCard {
     // 只需确认身份时不加载三类资源,避免一次资源操作先额外查询完整角色聚合.
-    const character = this.repository.findByName(name);
+    const character = this.findCard(name);
     if (!character) throw new CharacterNotFoundError(name);
     return character;
   }
 
-  private withResources(character: Character): Character {
-    return withResources(
-      character,
-      this.live2dModels.list(character.name),
-      this.illustrations.list(character.name),
-      this.voiceSamples.list(character.name),
-    );
-  }
-  private assertExpressionCapacity(characterName: string, expression: string | null | undefined, excludingName?: string): void {
-    if (!expression) return;
-    // 编辑已有立绘时排除自身,否则把不改变 expression 的保存误判为超额.
-    const count = this.illustrations.list(characterName)
-      .filter(resource => resource.name !== excludingName && resource.expression === expression).length;
-    if (count >= ILLUSTRATION_EXPRESSION_POOL_MAX) {
-      throw new CharacterInputInvalidError('illustration_expression_pool_full', characterName);
-    }
-  }
-
-  /** 同一角色的文件与 SQL 修改串行;不同角色仍可并发导入和编辑. */
-  private mutate<T>(characterName: string, action: () => T | Promise<T>): Promise<T> {
-    const previous = this.mutationTails.get(characterName) ?? Promise.resolve();
-    const result = previous.then(action);
-    const tail = result.then(() => undefined, () => undefined);
-    this.mutationTails.set(characterName, tail);
-    void tail.then(() => {
-      if (this.mutationTails.get(characterName) === tail) {
-        this.mutationTails.delete(characterName);
-      }
-    });
-    return result;
-  }
-
-  private createStagingOperation(): string {
-    const directory = this.paths.stagingOperationDirectory(crypto.randomUUID());
-    fs.mkdirSync(directory, { recursive: true });
-    return directory;
-  }
-
-  private async stageExistingPath(source: string, operationDirectory: string): Promise<string | null> {
-    if (!await fs.promises.stat(source).catch(() => null)) return null;
-    // 每次操作拥有独立 UUID 目录,因此固定使用 `deleted` 不会与其他角色操作冲突.
-    const staged = path.join(operationDirectory, 'deleted');
-    await fs.promises.rename(source, staged);
-    return staged;
+  private withResources(character: CharacterCard): Character {
+    const stickers = this.stickers.list(character.name);
+    return {
+      ...character,
+      stickers,
+      stickerPromptLength: this.stickers.prompt(character.name, stickers).length,
+      live2dModels: this.live2dModels.list(character.name),
+      illustrations: this.illustrations.list(character.name),
+      voiceSamples: this.voiceSamples.list(character.name),
+    };
   }
 
   private resourcesChanged(characterName: string): void {
     // 角色卡用 Character.updatedAt 判断服务端图片是否已经换代,所以资源文件完成后
     // 必须与资源列表通知一起推进这个时间.
-    this.repository.touch(characterName);
+    this.repository.touch(characterName, Date.now());
     const character = this.get(characterName);
     if (!character) return;
     for (const listener of this.resourcesChangedListeners) listener(character);
   }
+
   private emitSwitched(next: Character): void {
     const presentation = this.inspectStagePresentation(next.name);
     for (const listener of this.switchedListeners) listener(next, presentation);
   }
+
   private emitPresentationChanged(characterName: string): void {
     const character = this.get(characterName);
     if (!character) return;
     const presentation = this.inspectStagePresentation(characterName);
     for (const listener of this.presentationChangedListeners) listener(character, presentation);
   }
+}
 
-  private getPreparedLive2dImport(
-    characterName: string,
-    importId: string,
-  ): PreparedLive2dImportEntry {
-    const prepared = this.preparedLive2dImports.get(importId);
-    if (!prepared || prepared.characterName !== characterName) {
-      throw new CharacterResourceNotFoundError('live2d_import', importId);
-    }
-    return prepared;
-  }
+function fromRow(row: CharacterRow): CharacterCard {
+  return {
+    name: row.name,
+    displayName: row.display_name,
+    description: row.description,
+    personaPrompt: row.persona_prompt,
+    stageKind: row.stage_kind,
+    isActive: row.is_active === 1,
+    lastActivatedAt: row.last_activated_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
 }
 
 function normalizeCharacterInput(input: CharacterInput): CharacterInput {
@@ -953,53 +348,5 @@ function normalizeCharacterInput(input: CharacterInput): CharacterInput {
     displayName: input.displayName?.trim() || null,
     description: input.description?.trim() || null,
     personaPrompt: input.personaPrompt.trim(),
-  };
-}
-
-function withResources(
-  character: Character,
-  live2dModels: readonly CharacterLive2dModel[],
-  illustrations: readonly CharacterIllustration[],
-  voiceSamples: readonly CharacterVoiceSample[],
-): Character {
-  return { ...character, live2dModels, illustrations, voiceSamples };
-}
-
-function normalizeResourcePatch(patch: {
-  displayName?: string;
-  stageScale?: number;
-  stageOffsetX?: number;
-  stageOffsetY?: number;
-}): void {
-  if (Object.values(patch).every(value => value === undefined)) {
-    throw new CharacterInputInvalidError('resource_patch_empty');
-  }
-  if (patch.displayName !== undefined && !patch.displayName.trim()) {
-    throw new CharacterInputInvalidError('resource_name_empty');
-  }
-  if (patch.stageScale !== undefined && (!Number.isFinite(patch.stageScale) || patch.stageScale < 0.1 || patch.stageScale > 5)) {
-    throw new CharacterInputInvalidError('resource_stage_scale_invalid');
-  }
-  for (const value of [patch.stageOffsetX, patch.stageOffsetY]) {
-    if (value !== undefined && (!Number.isFinite(value) || value < -1 || value > 1)) {
-      throw new CharacterInputInvalidError('resource_stage_offset_invalid');
-    }
-  }
-}
-
-function normalizeExpression(expression: string | null | undefined): void {
-  if (expression !== undefined && expression !== null && !/^[a-z][a-z0-9_]*$/u.test(expression)) {
-    throw new CharacterInputInvalidError('illustration_expression_invalid');
-  }
-}
-
-function illustrationStageEntry(resource: CharacterIllustration): CharacterIllustrationStageEntry {
-  return {
-    kind: 'illustration',
-    name: resource.name,
-    displayName: resource.displayName,
-    stageScale: resource.stageScale,
-    stageOffsetX: resource.stageOffsetX,
-    stageOffsetY: resource.stageOffsetY,
   };
 }

@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Database } from '@ema-agent/storage';
 import { buildCharacterPrompt, characterStageVocabulary } from '../characterPrompt.js';
 import { EMA_CHARACTER_INPUT, EMA_CHARACTER_NAME } from '../seed/index.js';
+import { CHARACTER_STICKER_PROMPT_MAX_CHARS } from '../stickers/limits.js';
 import { CharacterStore } from '../store.js';
 
 describe('CharacterStore', () => {
@@ -24,6 +25,49 @@ describe('CharacterStore', () => {
   afterEach(() => {
     database.close();
     fs.rmSync(root, { recursive: true, force: true });
+  });
+
+
+  it('表情包描述为空时不进入 Prompt, 保存后使用实际地址, 超限不修改已有数据', async () => {
+    const source = path.join(root, '开心 (1).png');
+    fs.writeFileSync(source, pngBytes());
+    const item = await store.stickers.import(EMA_CHARACTER_NAME, source);
+    expect(store.stickers.prompt(EMA_CHARACTER_NAME)).toBe('');
+    expect(item.description).toBe('');
+
+    await store.stickers.update(EMA_CHARACTER_NAME, item.name, {
+      displayName: '开心',
+      description: '挥手打招呼.',
+    });
+    const prompt = store.stickers.prompt(EMA_CHARACTER_NAME);
+    expect(prompt).toContain('名称: 开心');
+    expect(prompt).toContain('%281%29.png');
+    expect(store.current().stickerPromptLength).toBe(prompt.length);
+    expect(buildCharacterPrompt(store.current(), {
+      status: 'blank', characterName: EMA_CHARACTER_NAME,
+    }, prompt).at(-1)).toBe(prompt);
+
+    await expect(store.stickers.update(EMA_CHARACTER_NAME, item.name, {
+      displayName: '开心',
+      description: 'a'.repeat(CHARACTER_STICKER_PROMPT_MAX_CHARS),
+    })).rejects.toThrow('超过上限');
+    expect(store.stickers.prompt(EMA_CHARACTER_NAME)).toBe(prompt);
+
+    const exactDescription = 'a'.repeat(CHARACTER_STICKER_PROMPT_MAX_CHARS - prompt.length + '挥手打招呼.'.length);
+    await store.stickers.update(EMA_CHARACTER_NAME, item.name, {
+      displayName: '开心', description: exactDescription,
+    });
+    expect(store.stickers.prompt(EMA_CHARACTER_NAME).length).toBe(CHARACTER_STICKER_PROMPT_MAX_CHARS);
+    await expect(store.stickers.update(EMA_CHARACTER_NAME, item.name, {
+      displayName: '开心', description: exactDescription + 'a',
+    })).rejects.toThrow('超过上限');
+
+    const file = store.stickers.resolveFile(EMA_CHARACTER_NAME, item.name);
+    await expect(store.stickers.import(EMA_CHARACTER_NAME, source)).rejects.toThrow();
+    expect(fs.existsSync(file)).toBe(true);
+    await store.stickers.delete(EMA_CHARACTER_NAME, item.name);
+    expect(fs.existsSync(file)).toBe(false);
+    expect(store.current().stickers).toEqual([]);
   });
 
   it('首次初始化保存完整的艾玛人设, 并将原文传入角色 Prompt', () => {
@@ -130,9 +174,9 @@ describe('CharacterStore', () => {
     const secondSource = path.join(root, 'happy-b.png');
     fs.writeFileSync(firstSource, pngBytes());
     fs.writeFileSync(secondSource, pngBytes());
-    const first = await store.importIllustration('插图角色', { sourceFile: firstSource, expression: 'happy' });
-    const second = await store.importIllustration('插图角色', { sourceFile: secondSource, expression: 'happy' });
-    await store.setPrimaryIllustration('插图角色', first.name);
+    const first = await store.illustrations.import('插图角色', { sourceFile: firstSource, expression: 'happy' });
+    const second = await store.illustrations.import('插图角色', { sourceFile: secondSource, expression: 'happy' });
+    await store.illustrations.setPrimary('插图角色', first.name);
 
     expect(store.listSummaries().find(item => item.name === '插图角色')).toMatchObject({
       illustrationCount: 2,
@@ -149,7 +193,7 @@ describe('CharacterStore', () => {
       resource: { name: 'happy-a.png' },
     });
 
-    await store.deleteIllustration('插图角色', 'happy-a.png');
+    await store.illustrations.delete('插图角色', 'happy-a.png');
     expect(store.get('插图角色')?.illustrations.find(resource => resource.isPrimary)).toBeUndefined();
     expect(store.listSummaries().find(item => item.name === '插图角色')?.coverResourceName).toBe(second.name);
     expect(await store.inspectStagePresentation('插图角色')).toMatchObject({
@@ -186,7 +230,7 @@ describe('CharacterStore', () => {
     const stopPresentationChanges = store.onPresentationChanged(character => {
       presentationChanges.push(character.name);
     });
-    const prepared = await store.prepareLive2dImport('模型角色', { source });
+    const prepared = await store.live2dModels.prepareImport('模型角色', { source });
 
     expect(prepared).toMatchObject({
       name: 'alice-model',
@@ -196,7 +240,7 @@ describe('CharacterStore', () => {
     expect(fs.existsSync(path.join(root, 'characters', '模型角色', 'live2d', 'alice-model'))).toBe(false);
 
     const preparedArchiveChunks: Buffer[] = [];
-    for await (const chunk of store.streamPreparedLive2dArchive('模型角色', prepared.importId)) {
+    for await (const chunk of store.live2dModels.streamPreparedArchive('模型角色', prepared.importId)) {
       preparedArchiveChunks.push(Buffer.from(chunk));
     }
     expect(Object.keys(unzipSync(Buffer.concat(preparedArchiveChunks)))).toEqual(expect.arrayContaining([
@@ -205,7 +249,7 @@ describe('CharacterStore', () => {
       'textures/texture.png',
     ]));
 
-    const imported = await store.commitLive2dImport(
+    const imported = await store.live2dModels.commitImport(
       '模型角色',
       prepared.importId,
       pngBytes(),
@@ -216,7 +260,7 @@ describe('CharacterStore', () => {
     await store.update('模型角色', { stageKind: 'live2d' });
     resourceChanges.length = 0;
     presentationChanges.length = 0;
-    await store.setPrimaryLive2dModel('模型角色', imported.name);
+    await store.live2dModels.setPrimary('模型角色', imported.name);
     stopResourceChanges();
     stopPresentationChanges();
 
@@ -224,7 +268,7 @@ describe('CharacterStore', () => {
     expect(resourceChanges).toEqual(['模型角色']);
     expect(presentationChanges).toEqual(['模型角色']);
     const archiveChunks: Buffer[] = [];
-    for await (const chunk of store.streamLive2dArchive('模型角色', 'alice-model')) {
+    for await (const chunk of store.live2dModels.streamArchive('模型角色', 'alice-model')) {
       archiveChunks.push(Buffer.from(chunk));
     }
     expect(Object.keys(unzipSync(Buffer.concat(archiveChunks)))).toEqual(expect.arrayContaining([
@@ -232,10 +276,10 @@ describe('CharacterStore', () => {
       'alice.moc3',
       'textures/texture.png',
     ]));
-    expect(store.resolveLive2dModelDirectory('模型角色', 'alice-model')).toBe(
+    expect(store.live2dModels.resolveDirectory('模型角色', 'alice-model')).toBe(
       path.join(root, 'characters', '模型角色', 'live2d', 'alice-model'),
     );
-    await expect(store.readLive2dConfiguration('模型角色', 'alice-model')).resolves.toMatchObject({
+    await expect(store.live2dModels.readConfiguration('模型角色', 'alice-model')).resolves.toMatchObject({
       expressions: [{ expression: 'Smile', file: 'smile.exp3.json' }],
       motions: [{ group: 'Wave', index: 0, file: 'wave.motion3.json' }],
       unregisteredExpressionFiles: ['orphan.exp3.json'],
@@ -243,7 +287,7 @@ describe('CharacterStore', () => {
     });
     expect(imported).toMatchObject({ emotionMap: {}, motionMap: {} });
 
-    const saved = await store.saveLive2dMappings('模型角色', 'alice-model', {
+    const saved = await store.live2dModels.saveMappings('模型角色', 'alice-model', {
       emotionMap: {
         determined: { expression: 'Smile' },
         happy: { expression: 'Smile' },
@@ -262,10 +306,10 @@ describe('CharacterStore', () => {
     ).get('模型角色', 'alice-model') as { emotion_map_json: string; motion_map_json: string };
     expect(JSON.parse(row.emotion_map_json)).toEqual(saved.mappings.emotionMap);
     expect(JSON.parse(row.motion_map_json)).toEqual(saved.mappings.motionMap);
-    await expect(store.reloadLive2dConfiguration('模型角色', 'alice-model')).resolves.toMatchObject({
+    await expect(store.live2dModels.reloadConfiguration('模型角色', 'alice-model')).resolves.toMatchObject({
       mappings: saved.mappings,
     });
-    const exported = await store.exportLive2dModel('模型角色', 'alice-model', root);
+    const exported = await store.live2dModels.export('模型角色', 'alice-model', root);
     expect(Object.keys(unzipSync(fs.readFileSync(exported))).sort()).toEqual([
       'alice.moc3',
       'alice.model3.json',
@@ -288,14 +332,14 @@ describe('CharacterStore', () => {
     const stopPreviewPresentationChanges = store.onPresentationChanged(character => {
       previewPresentationChanges.push(character.name);
     });
-    await store.saveLive2dPreview('模型角色', 'alice-model', pngBytes());
+    await store.live2dModels.savePreview('模型角色', 'alice-model', pngBytes());
     stopPreviewChanges();
     stopPreviewPresentationChanges();
     const preview = path.join(root, 'characters', '模型角色', '.previews', 'alice-model.png');
     expect(fs.existsSync(preview)).toBe(true);
     expect(previewChanges).toEqual(['模型角色']);
     expect(previewPresentationChanges).toEqual([]);
-    await store.deleteLive2dModel('模型角色', 'alice-model');
+    await store.live2dModels.delete('模型角色', 'alice-model');
     expect(fs.existsSync(preview)).toBe(false);
   });
 
@@ -313,8 +357,8 @@ describe('CharacterStore', () => {
     fs.writeFileSync(path.join(source, 'cancel.moc3'), Buffer.from([1]));
     fs.writeFileSync(path.join(source, 'cancel.png'), pngBytes());
 
-    const prepared = await store.prepareLive2dImport('取消角色', { source });
-    await store.cancelLive2dImport('取消角色', prepared.importId);
+    const prepared = await store.live2dModels.prepareImport('取消角色', { source });
+    await store.live2dModels.cancelImport('取消角色', prepared.importId);
 
     expect(store.get('取消角色')?.live2dModels).toEqual([]);
     expect(fs.existsSync(path.join(root, 'characters', '.staging', prepared.importId))).toBe(false);
@@ -326,8 +370,8 @@ describe('CharacterStore', () => {
     fs.writeFileSync(source, pngBytes());
 
     const results = await Promise.allSettled([
-      store.importIllustration('并发角色', { sourceFile: source }),
-      store.importIllustration('并发角色', { sourceFile: source }),
+      store.illustrations.import('并发角色', { sourceFile: source }),
+      store.illustrations.import('并发角色', { sourceFile: source }),
     ]);
 
     expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1);

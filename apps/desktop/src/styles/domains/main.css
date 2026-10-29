@@ -149,3 +149,9 @@ button.ema-main-menu-trigger[data-state='open'] {
     transition: none;
   }
 }
+
+.ema-edge-scroll {
+  scrollbar-width: thin;
+  scrollbar-gutter: stable;
+  scrollbar-color: var(--ema-border-strong) transparent;
+}

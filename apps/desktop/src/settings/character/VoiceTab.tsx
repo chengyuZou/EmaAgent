@@ -93,7 +93,7 @@ export function VoiceTab({ character }: { character: Character }): JSX.Element {
           导入音频
         </Button>
       </div>
-      <ScrollArea className="min-h-0 flex-1">
+      <ScrollArea className="min-h-0 flex-1" scrollbar="always">
         <div className="flex flex-col gap-2 px-5 pb-5">
           {samples.length === 0 && (
             <p className="py-10 text-center text-xs text-[var(--ema-text-tertiary)]">

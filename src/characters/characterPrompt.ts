@@ -6,10 +6,12 @@ import { CharacterPromptInvalidError } from './errors.js';
 export function buildCharacterPrompt(
   character: Character,
   presentation: CharacterStagePresentation,
+  stickerPrompt = '',
 ): readonly string[] {
   const sections = [
     character.personaPrompt,
     buildStageControlPrompt(presentation),
+    stickerPrompt,
   ].filter(hasContent);
   if (sections.length === 0) {
     throw new CharacterPromptInvalidError('角色人设提示词不能为空', character.name);

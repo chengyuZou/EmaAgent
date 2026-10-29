@@ -1,3 +1,4 @@
+import { CHARACTER_STICKER_PROMPT_MAX_CHARS } from '@ema-agent/characters/stickers';
 import fs from 'node:fs';
 import path from 'node:path';
 import { Readable } from 'node:stream';
@@ -9,37 +10,7 @@ import { characterError } from './errors.js';
 import { jsonBody } from '../validate.js';
 
 export interface CharacterResourcesRouteDeps {
-  readonly characters: Pick<
-    CharacterStore,
-    | 'setPrimaryLive2dModel'
-    | 'updateLive2dModel'
-    | 'prepareLive2dImport'
-    | 'streamPreparedLive2dArchive'
-    | 'commitLive2dImport'
-    | 'cancelLive2dImport'
-    | 'exportLive2dModel'
-    | 'deleteLive2dModel'
-    | 'resolveLive2dModelDirectory'
-    | 'streamLive2dArchive'
-    | 'reloadLive2dConfiguration'
-    | 'readLive2dConfiguration'
-    | 'saveLive2dMappings'
-    | 'setPrimaryIllustration'
-    | 'updateIllustration'
-    | 'importIllustration'
-    | 'exportIllustration'
-    | 'deleteIllustration'
-    | 'resolveIllustrationFile'
-    | 'setPrimaryVoiceSample'
-    | 'updateVoiceSample'
-    | 'importVoiceSample'
-    | 'exportVoiceSample'
-    | 'deleteVoiceSample'
-    | 'resolveVoiceSampleFile'
-    | 'resolveCharacterDirectory'
-    | 'resolveLive2dPreviewFile'
-    | 'saveLive2dPreview'
-  >;
+  readonly characters: Pick<CharacterStore, 'live2dModels' | 'illustrations' | 'voiceSamples' | 'stickers' | 'resolveCharacterDirectory'>;
   readonly runWhenSessionsIdle: <T>(action: () => T | Promise<T>) => Promise<T>;
 }
 
@@ -154,7 +125,39 @@ export const characterResourcesRoute = (deps: CharacterResourcesRouteDeps) => {
     return run(context, () => deps.runWhenSessionsIdle(action));
   };
 
+  const runFile = async (context: Context, resolve: () => string): Promise<Response> => {
+    try {
+      return await serveFile(context, resolve());
+    } catch (error) {
+      return characterError(context, error);
+    }
+  };
+
   return new Hono()
+    .post('/:characterName/stickers/import', jsonBody(importFileBody), context =>
+      whenSessionsIdle(context, () => deps.characters.stickers.import(
+        context.req.param('characterName'), context.req.valid('json').sourceFile,
+      )))
+    .patch('/:characterName/stickers/:stickerName', jsonBody(z.object({
+      displayName: z.string().trim().min(1).max(200),
+      description: z.string().max(CHARACTER_STICKER_PROMPT_MAX_CHARS),
+    }).strict()), context =>
+      whenSessionsIdle(context, () => deps.characters.stickers.update(
+        context.req.param('characterName'), context.req.param('stickerName'), context.req.valid('json'),
+      )))
+    .delete('/:characterName/stickers/:stickerName', context =>
+      whenSessionsIdle(context, async () => {
+        await deps.characters.stickers.delete(context.req.param('characterName'), context.req.param('stickerName'));
+        return { ok: true };
+      }))
+    .get('/:characterName/stickers/:stickerName/file', context =>
+      runFile(context, () => deps.characters.stickers.resolveFile(context.req.param('characterName'), context.req.param('stickerName'))))
+    .get('/:characterName/stickers/:stickerName/location', context =>
+      run(context, () => ({ path: deps.characters.stickers.resolveFile(context.req.param('characterName'), context.req.param('stickerName')) })))
+    .post('/:characterName/stickers/:stickerName/export', jsonBody(exportBody), context =>
+      run(context, async () => ({ exported: await deps.characters.stickers.export(
+        context.req.param('characterName'), context.req.param('stickerName'), context.req.valid('json').destinationDirectory,
+      ) })))
     .get('/:characterName/location', context =>
       run(context, () => ({
         path: deps.characters.resolveCharacterDirectory(context.req.param('characterName')),
@@ -162,13 +165,13 @@ export const characterResourcesRoute = (deps: CharacterResourcesRouteDeps) => {
     // 暂存导入必须写在 `:live2dName` 路由之前,否则 imports 会被当成已安装模型名.
     // prepare 只校验和暂存,commit 才让数据库, 模型目录与封面同时对其他窗口可见.
     .post('/:characterName/live2d/imports', jsonBody(prepareLive2dImportBody), context =>
-      run(context, () => deps.characters.prepareLive2dImport(
+      run(context, () => deps.characters.live2dModels.prepareImport(
         context.req.param('characterName'),
         context.req.valid('json'),
       )))
     .get('/:characterName/live2d/imports/:importId/archive', context => {
       try {
-        const archive = deps.characters.streamPreparedLive2dArchive(
+        const archive = deps.characters.live2dModels.streamPreparedArchive(
           context.req.param('characterName'),
           context.req.param('importId'),
         );
@@ -185,7 +188,7 @@ export const characterResourcesRoute = (deps: CharacterResourcesRouteDeps) => {
     .post(
       '/:characterName/live2d/imports/:importId/commit',
       jsonBody(commitLive2dImportBody),
-      context => run(context, () => deps.characters.commitLive2dImport(
+      context => run(context, () => deps.characters.live2dModels.commitImport(
         context.req.param('characterName'),
         context.req.param('importId'),
         Buffer.from(context.req.valid('json').previewPngBase64, 'base64'),
@@ -193,7 +196,7 @@ export const characterResourcesRoute = (deps: CharacterResourcesRouteDeps) => {
     )
     .delete('/:characterName/live2d/imports/:importId', context =>
       run(context, async () => {
-        await deps.characters.cancelLive2dImport(
+        await deps.characters.live2dModels.cancelImport(
           context.req.param('characterName'),
           context.req.param('importId'),
         );
@@ -201,20 +204,20 @@ export const characterResourcesRoute = (deps: CharacterResourcesRouteDeps) => {
       }))
     .post('/:characterName/live2d/:live2dName/primary', context =>
       whenSessionsIdle(context, async () => ({
-        ok: await deps.characters.setPrimaryLive2dModel(
+        ok: await deps.characters.live2dModels.setPrimary(
           context.req.param('characterName'),
           context.req.param('live2dName'),
         ),
       })))
     .patch('/:characterName/live2d/:live2dName', jsonBody(resourcePatch), context =>
-      run(context, () => deps.characters.updateLive2dModel(
+      run(context, () => deps.characters.live2dModels.update(
         context.req.param('characterName'),
         context.req.param('live2dName'),
         context.req.valid('json'),
       )))
     .post('/:characterName/live2d/:live2dName/export', jsonBody(exportBody), context =>
       run(context, async () => ({
-        exported: await deps.characters.exportLive2dModel(
+        exported: await deps.characters.live2dModels.export(
           context.req.param('characterName'),
           context.req.param('live2dName'),
           context.req.valid('json').destinationDirectory,
@@ -222,7 +225,7 @@ export const characterResourcesRoute = (deps: CharacterResourcesRouteDeps) => {
       })))
     .delete('/:characterName/live2d/:live2dName', context =>
       whenSessionsIdle(context, async () => {
-        const deleted = await deps.characters.deleteLive2dModel(
+        const deleted = await deps.characters.live2dModels.delete(
           context.req.param('characterName'),
           context.req.param('live2dName'),
         );
@@ -230,23 +233,23 @@ export const characterResourcesRoute = (deps: CharacterResourcesRouteDeps) => {
       }))
     // 用户手改 model3 或原生表情/动作文件后重新读取能力, 数据库映射保持不变.
     .post('/:characterName/live2d/:live2dName/reload-config', context =>
-      run(context, () => deps.characters.reloadLive2dConfiguration(
+      run(context, () => deps.characters.live2dModels.reloadConfiguration(
         context.req.param('characterName'),
         context.req.param('live2dName'),
       )))
     .get('/:characterName/live2d/:live2dName/configuration', context =>
-      run(context, () => deps.characters.readLive2dConfiguration(
+      run(context, () => deps.characters.live2dModels.readConfiguration(
         context.req.param('characterName'),
         context.req.param('live2dName'),
       )))
     .get('/:characterName/live2d/:live2dName/location', context =>
-      run(context, () => ({ path: deps.characters.resolveLive2dModelDirectory(
+      run(context, () => ({ path: deps.characters.live2dModels.resolveDirectory(
         context.req.param('characterName'),
         context.req.param('live2dName'),
       ) })))
     .get('/:characterName/live2d/:live2dName/archive', context => {
       try {
-        const archive = deps.characters.streamLive2dArchive(
+        const archive = deps.characters.live2dModels.streamArchive(
           context.req.param('characterName'),
           context.req.param('live2dName'),
         );
@@ -261,7 +264,7 @@ export const characterResourcesRoute = (deps: CharacterResourcesRouteDeps) => {
       }
     })
     .put('/:characterName/live2d/:live2dName/configuration', jsonBody(live2dMappingsBody), context =>
-      run(context, () => deps.characters.saveLive2dMappings(
+      run(context, () => deps.characters.live2dModels.saveMappings(
         context.req.param('characterName'),
         context.req.param('live2dName'),
         context.req.valid('json'),
@@ -270,7 +273,7 @@ export const characterResourcesRoute = (deps: CharacterResourcesRouteDeps) => {
     .put('/:characterName/live2d/:live2dName/preview', jsonBody(previewBody), context => {
       const png = Buffer.from(context.req.valid('json').dataBase64, 'base64');
       return run(context, async () => {
-        await deps.characters.saveLive2dPreview(
+        await deps.characters.live2dModels.savePreview(
           context.req.param('characterName'),
           context.req.param('live2dName'),
           png,
@@ -281,7 +284,7 @@ export const characterResourcesRoute = (deps: CharacterResourcesRouteDeps) => {
     .get('/:characterName/live2d/:live2dName/preview', context => {
       let filePath: string;
       try {
-        filePath = deps.characters.resolveLive2dPreviewFile(
+        filePath = deps.characters.live2dModels.resolvePreviewFile(
           context.req.param('characterName'),
           context.req.param('live2dName'),
         );
@@ -292,25 +295,25 @@ export const characterResourcesRoute = (deps: CharacterResourcesRouteDeps) => {
     })
     .post('/:characterName/illustrations/:illustrationName/primary', context =>
       run(context, async () => ({
-        ok: await deps.characters.setPrimaryIllustration(
+        ok: await deps.characters.illustrations.setPrimary(
           context.req.param('characterName'),
           context.req.param('illustrationName'),
         ),
       })))
     .patch('/:characterName/illustrations/:illustrationName', jsonBody(illustrationPatch), context =>
-      run(context, () => deps.characters.updateIllustration(
+      run(context, () => deps.characters.illustrations.update(
         context.req.param('characterName'),
         context.req.param('illustrationName'),
         context.req.valid('json'),
       )))
     .post('/:characterName/illustrations/import', jsonBody(importIllustrationBody), context =>
-      run(context, () => deps.characters.importIllustration(
+      run(context, () => deps.characters.illustrations.import(
         context.req.param('characterName'),
         context.req.valid('json'),
       )))
     .post('/:characterName/illustrations/:illustrationName/export', jsonBody(exportBody), context =>
       run(context, async () => ({
-        exported: await deps.characters.exportIllustration(
+        exported: await deps.characters.illustrations.export(
           context.req.param('characterName'),
           context.req.param('illustrationName'),
           context.req.valid('json').destinationDirectory,
@@ -318,7 +321,7 @@ export const characterResourcesRoute = (deps: CharacterResourcesRouteDeps) => {
       })))
     .delete('/:characterName/illustrations/:illustrationName', context =>
       whenSessionsIdle(context, async () => {
-        const deleted = await deps.characters.deleteIllustration(
+        const deleted = await deps.characters.illustrations.delete(
           context.req.param('characterName'),
           context.req.param('illustrationName'),
         );
@@ -326,7 +329,7 @@ export const characterResourcesRoute = (deps: CharacterResourcesRouteDeps) => {
       }))
     .get('/:characterName/illustrations/:illustrationName/file', context => {
       try {
-        return serveFile(context, deps.characters.resolveIllustrationFile(
+        return serveFile(context, deps.characters.illustrations.resolveFile(
           context.req.param('characterName'),
           context.req.param('illustrationName'),
         ));
@@ -336,32 +339,32 @@ export const characterResourcesRoute = (deps: CharacterResourcesRouteDeps) => {
     })
     .get('/:characterName/illustrations/:illustrationName/location', context =>
       run(context, () => ({
-        path: deps.characters.resolveIllustrationFile(
+        path: deps.characters.illustrations.resolveFile(
           context.req.param('characterName'),
           context.req.param('illustrationName'),
         ),
       })))
     .post('/:characterName/voice/:voiceName/primary', context =>
       whenSessionsIdle(context, async () => ({
-        ok: await deps.characters.setPrimaryVoiceSample(
+        ok: await deps.characters.voiceSamples.setPrimary(
           context.req.param('characterName'),
           context.req.param('voiceName'),
         ),
       })))
     .patch('/:characterName/voice/:voiceName', jsonBody(voicePatch), context =>
-      run(context, () => deps.characters.updateVoiceSample(
+      run(context, () => deps.characters.voiceSamples.update(
         context.req.param('characterName'),
         context.req.param('voiceName'),
         context.req.valid('json'),
       )))
     .post('/:characterName/voice/import', jsonBody(importVoiceBody), context =>
-      run(context, () => deps.characters.importVoiceSample(
+      run(context, () => deps.characters.voiceSamples.import(
         context.req.param('characterName'),
         context.req.valid('json'),
       )))
     .post('/:characterName/voice/:voiceName/export', jsonBody(exportBody), context =>
       run(context, async () => ({
-        exported: await deps.characters.exportVoiceSample(
+        exported: await deps.characters.voiceSamples.export(
           context.req.param('characterName'),
           context.req.param('voiceName'),
           context.req.valid('json').destinationDirectory,
@@ -369,7 +372,7 @@ export const characterResourcesRoute = (deps: CharacterResourcesRouteDeps) => {
       })))
     .delete('/:characterName/voice/:voiceName', context =>
       whenSessionsIdle(context, async () => {
-        const deleted = await deps.characters.deleteVoiceSample(
+        const deleted = await deps.characters.voiceSamples.delete(
           context.req.param('characterName'),
           context.req.param('voiceName'),
         );
@@ -377,7 +380,7 @@ export const characterResourcesRoute = (deps: CharacterResourcesRouteDeps) => {
       }))
     .get('/:characterName/voice/:voiceName/file', context => {
       try {
-        return serveFile(context, deps.characters.resolveVoiceSampleFile(
+        return serveFile(context, deps.characters.voiceSamples.resolveFile(
           context.req.param('characterName'),
           context.req.param('voiceName'),
         ));
@@ -387,7 +390,7 @@ export const characterResourcesRoute = (deps: CharacterResourcesRouteDeps) => {
     })
     .get('/:characterName/voice/:voiceName/location', context =>
       run(context, () => ({
-        path: deps.characters.resolveVoiceSampleFile(
+        path: deps.characters.voiceSamples.resolveFile(
           context.req.param('characterName'),
           context.req.param('voiceName'),
         ),

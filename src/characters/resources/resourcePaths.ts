@@ -52,6 +52,10 @@ export class CharacterResourcePaths {
     );
   }
 
+  stickerFile(characterName: string, name: string): string {
+    return path.join(this.characterDirectory(characterName), 'stickers', physicalName(name));
+  }
+
   voiceRoot(characterName: string): string {
     return path.join(this.characterDirectory(characterName), 'voice');
   }

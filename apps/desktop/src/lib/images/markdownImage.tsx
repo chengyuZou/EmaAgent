@@ -1,5 +1,6 @@
 import { useEffect, useState, type ComponentPropsWithoutRef, type JSX } from 'react';
 import { filesApi } from '../../api/workspaces.js';
+import { ImagePlaceholder } from './imagePlaceholder.js';
 import { useImageViewer } from './imageViewer.js';
 
 type InlineImageProps = Omit<ComponentPropsWithoutRef<'img'>, 'src' | 'alt'> & {
@@ -25,6 +26,7 @@ export function MarkdownImage(props: MarkdownImageProps): JSX.Element {
 
 function InlineImage({ src, alt, className, ...props }: InlineImageProps): JSX.Element {
   const { openImage, closeImage } = useImageViewer();
+  const [failed, setFailed] = useState(false);
   useEffect(() => () => closeImage(src), [closeImage, src]);
 
   function openViewer(image: HTMLImageElement): void {
@@ -36,12 +38,17 @@ function InlineImage({ src, alt, className, ...props }: InlineImageProps): JSX.E
     });
   }
 
+  if (failed) {
+    return <ImagePlaceholder failed className="ema-markdown-image-placeholder" />;
+  }
+
   return (
     <img
       {...props}
       src={src}
       alt={alt}
       className={`ema-markdown-image${className ? ` ${className}` : ''}`}
+      onError={() => setFailed(true)}
       loading="lazy"
       decoding="async"
       draggable={false}
@@ -94,7 +101,14 @@ function FileImage({ path, filePath: _filePath, ...props }: Omit<MarkdownImagePr
     };
   }, [path]);
   if (src) {
-    return <InlineImage {...props} src={src} />;
+    const sticker = path.replaceAll('\\', '/').includes('/stickers/');
+    return (
+      <InlineImage
+        {...props}
+        src={src}
+        className={(props.className ?? '') + (sticker ? ' ema-markdown-sticker' : '')}
+      />
+    );
   }
-  return <span className="ema-markdown-image-status" role="status">{error ?? '加载图片中…'}</span>;
+  return <ImagePlaceholder failed={!!error} className="ema-markdown-image-placeholder" />;
 }
