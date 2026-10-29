@@ -29,7 +29,7 @@ export class NativeComputerProcess implements ComputerTransport {
   private childProcess: ChildProcessWithoutNullStreams | null = null;
   // 已发给 Rust 但还没收到回应的请求. key 是通信请求编号, 不是 ToolCallId 或 controlId.
   private readonly pendingRequests = new Map<number, PendingNativeRequest>();
-  // Rust 主动通知暂停/继续/结束时调用. 普通请求的回应走 pendingRequests.
+  // Rust 主动通知启动/结束时调用. 普通请求的回应走 pendingRequests.
   private readonly computerUseStateListeners = new Set<(state: NativeControlState) => void>();
   // 给下一条发往 Rust 的请求编号. Rust 回同一个编号, Node 才知道该完成哪个 Promise.
   private nextRequestId = 1;

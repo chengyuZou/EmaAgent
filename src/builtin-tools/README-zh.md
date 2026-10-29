@@ -33,7 +33,7 @@ Server 启动时注册工具, Turn 准备时选择允许使用的子集并提供
 | 已有资料 | Memory 工具查询正式记忆文件, NarrativeSearch 查询固定剧情, Skill 从本次 SkillPool 加载 SKILL.md. |
 | 子 Agent | Subagent 启动或继续一个身份, SubagentAwait 等待结果. Scratchpad 工具在 Turn 内共享有限额的临时文件. |
 | 图片 | Capture 使用宿主截图. 主模型无法查看任务所需图片时, DescribeImage 显式调用已配置的 Vision 模型. |
-| 电脑操控 | Windows 下的 ListWindows, ObserveWindow, ComputerAction 和 ComputerEnd 观察并操作桌面. 启动确认一次, 已授权控制中的操作不重复询问, 仍保留校验和 deny 规则. 用户输入暂停, Ctrl+Alt+C 继续, Esc 只结束控制而不取消 Turn. |
+| 电脑操控 | Windows 下的 ListWindows, ObserveWindow, ComputerAction 和 ComputerEnd 观察并操作桌面. 启动确认一次, 已授权控制中的操作不重复询问, 仍保留校验和 deny 规则. 用户输入使旧观察失效, 不暂停操控. Esc 只结束操控而不取消 Turn; 每种 Turn 结束路径均关闭操控. 本会话允许可覆盖后续启动. |
 
 ## 文件与命令
 

@@ -33,7 +33,7 @@ Import execution code from the package root. Desktop renderers use `@ema-agent/b
 | Stored references | Memory tools query formal local Memory files. NarrativeSearch queries the curated story timelines. Skill loads a SKILL.md from the prepared SkillPool. |
 | Delegation | Subagent starts or continues an identity; SubagentAwait waits for its result. Scratchpad tools share bounded temporary files within the Turn. |
 | Images | Capture uses host-provided screen capture. DescribeImage explicitly calls the configured Vision model when the main model cannot inspect the required image. |
-| Computer use | Windows-only ListWindows, ObserveWindow, ComputerAction and ComputerEnd observe and operate the desktop. Startup asks once; an active control avoids repeated operation approvals while retaining validation and deny rules. User input pauses, Ctrl+Alt+C continues, and Esc ends control without cancelling the Turn. |
+| Computer use | Windows-only ListWindows, ObserveWindow, ComputerAction and ComputerEnd observe and operate the desktop. Startup asks once; an active control avoids repeated operation approvals while retaining validation and deny rules. User input invalidates old observations without pausing. Esc ends control without cancelling the Turn; every Turn outcome closes its control. Session approval can cover later starts. |
 
 ## Files and commands
 

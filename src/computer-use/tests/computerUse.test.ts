@@ -4,7 +4,7 @@ import type { ComputerTransport, NativeControlState, NativeRequest } from '../ty
 
 function fixture() {
   const listeners = new Set<(state: NativeControlState) => void>();
-  const emit = (phase: NativeControlState['phase'], controlId = 'start', reason: NativeControlState['reason'] = 'user_input') => {
+  const emit = (phase: NativeControlState['phase'], controlId = 'start', reason: NativeControlState['reason'] = 'agent_end') => {
     for (const listener of listeners) listener({ controlId, phase, reason });
   };
   const request = vi.fn(async (request: NativeRequest): Promise<unknown> => {
@@ -15,7 +15,7 @@ function fixture() {
       case 'computer.observe':
         return {
           controlId: request.params.controlId,
-          observationId: 'obs',
+          observationId: 'obs', activationError: null,
           window: { id: '42', title: 'Fixture', app: 'fixture', x: 0, y: 0, width: 10, height: 10 },
           width: 10, height: 10, image: '', mimeType: 'image/png', elements: [], truncated: false,
         };
@@ -41,7 +41,7 @@ function fixture() {
   const signal = new AbortController().signal;
   const register = (id: string, kind: ComputerCallKind = 'observe') => {
     const reject = vi.fn();
-    const dispose = computer.registerCall('session', id, kind, reject);
+    const dispose = computer.registerCall('session', 'turn', id, kind, reject);
     return { reject, dispose };
   };
   const start = async (id = 'start') => {
@@ -68,53 +68,14 @@ describe('ComputerUse', () => {
     await f.computer.close();
   });
 
-  it('暂停立即作废旧调用和暂停期间新来的调用, 继续后也不重放', async () => {
-    const f = fixture();
-    await f.start();
-    const old = f.register('old', 'action');
-    f.emit('paused');
-    expect(old.reject).toHaveBeenCalledWith(expect.objectContaining({ code: 'computer/paused' }));
-    const late = f.register('late');
-    expect(late.reject).toHaveBeenCalledOnce();
-    f.emit('running', 'start', 'continued');
-    await expect(f.computer.act('old', 'obs', { type: 'type', text: 'old' }, f.signal))
-      .rejects.toMatchObject({ code: 'computer/paused' });
-    expect(() => f.computer.reserve('late')).toThrow('已暂停');
-    expect(f.request.mock.calls.some(([request]) => request.method === 'computer.act')).toBe(false);
-    old.dispose();
-    late.dispose();
-    const fresh = f.register('fresh');
-    f.computer.reserve('fresh');
-    expect(f.computer.needsStartupPermission).toBe(false);
-    await f.computer.observe('fresh', '42', f.signal);
-    expect(f.computer.state?.controlId).toBe('start');
-    fresh.dispose();
-    await f.computer.close();
-  });
-
-  it.each(['continued', 'user_end'] as const)('最后一个工具已清理后, 新 Turn 的等待由 %s 解除', async reason => {
-    const f = fixture();
-    await f.start();
-    f.emit('paused');
-    const finished = vi.fn();
-    const pending = f.computer.waitWhilePaused('session', f.signal).then(finished);
-    await Promise.resolve();
-    expect(finished).not.toHaveBeenCalled();
-    f.emit(reason === 'continued' ? 'running' : 'ended', 'start', reason);
-    await pending;
-    expect(finished).toHaveBeenCalledOnce();
-    expect(f.signal.aborted).toBe(false);
-    await f.computer.close();
-  });
-
-  it('正在输入的调用暂停后保留 Rust 的部分完成结果, 不伪造未执行', async () => {
+  it('正在输入的调用结束后保留 Rust 的部分完成结果, 不伪造未执行', async () => {
     const f = fixture();
     await f.start();
     let finish!: (result: unknown) => void;
     f.request.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
     const call = f.register('action', 'action');
     const pending = f.computer.act('action', 'obs', { type: 'type', text: 'partial' }, f.signal);
-    f.emit('paused');
+    f.emit('ending', 'start', 'user_end');
     expect(call.reject).not.toHaveBeenCalled();
     finish({ status: 'interrupted', effect: 'possible', message: 'Partial input.' });
     await expect(pending).resolves.toMatchObject({ status: 'interrupted', effect: 'possible' });
@@ -122,16 +83,15 @@ describe('ComputerUse', () => {
     await f.computer.close();
   });
 
-  it('Rust 在动作开始前报告暂停时直接返回, 不重复提交或等待', async () => {
+  it('Rust 在动作开始前报告观察过期时直接返回, 不重复提交或等待', async () => {
     const f = fixture();
     await f.start();
     f.request.mockImplementationOnce(async () => {
-      f.emit('paused');
-      return { status: 'paused_before_start', effect: 'none', message: 'Paused.' };
+      return { status: 'observation_expired', effect: 'none', message: 'Observe again.' };
     });
     const call = f.register('action', 'action');
     await expect(f.computer.act('action', 'obs', { type: 'type', text: 'old' }, f.signal))
-      .resolves.toMatchObject({ status: 'paused_before_start', effect: 'none' });
+      .resolves.toMatchObject({ status: 'observation_expired', effect: 'none' });
     expect(f.request.mock.calls.filter(([request]) => request.method === 'computer.act')).toHaveLength(1);
     call.dispose();
     await f.computer.close();
@@ -188,16 +148,16 @@ describe('ComputerUse', () => {
     await f.computer.close();
   });
 
-  it('另一 Session 不抢占也不等待, 停止当前 Turn 可以取消暂停等待', async () => {
+
+  it('另一 Turn 不能接管操控, Turn 收尾只结束自己的操控', async () => {
     const f = fixture();
     await f.start();
-    f.emit('paused');
-    expect(() => f.computer.registerCall('other', 'other-call', 'observe', vi.fn())).toThrow('另一个 Session');
-    await expect(f.computer.waitWhilePaused('other', f.signal)).resolves.toBeUndefined();
-    const controller = new AbortController();
-    const pending = f.computer.waitWhilePaused('session', controller.signal);
-    controller.abort(new Error('Turn cancelled'));
-    await expect(pending).rejects.toThrow('Turn cancelled');
+    expect(() => f.computer.registerCall('other', 'other-turn', 'call', 'observe', vi.fn())).toThrow('另一个 Turn');
+    await f.computer.endTurn('other-turn');
+    expect(f.computer.state?.controlId).toBe('start');
+    await f.computer.endTurn('turn');
+    expect(f.computer.state).toBeNull();
     await f.computer.close();
   });
+
 });

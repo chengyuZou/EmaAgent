@@ -2,35 +2,22 @@
 
 [中文](README-zh.md)
 
-This package connects the Node Server to the bundled Windows computer-use executable. One shared `ComputerUse` owns the active desktop control. It belongs to a Session and uses the first observation call's ToolCallId as `controlId`. Normal Turn completion does not release it.
+This package connects Node Server to the bundled Windows helper. One shared ComputerUse owns desktop control for one Session and one Turn. The first observation's ToolCallId becomes controlId. It stays stable across Loops, but every Turn outcome closes its control before publishing the terminal result.
 
-## Calls and pause
+## Calls and approval
 
-The main Turn registers computer calls with `registerCall` when they enter the tool queue. The returned function removes the record after completion. Each record holds its control reference and any invalidation reason; it does not implement or forward tool operations.
+Turn registers the four computer tools with registerCall before scheduling. The returned cleanup removes the call and releases an unapproved startup reservation. ObserveWindow reserves desktop ownership before Permission. Approval starts the helper's control; later actions reuse it. Permission can remember approval for subsequent starts in the same Session. It does not extend control beyond a Turn or approve Shell/MCP tools.
 
-The first `ObserveWindow` reserves control before Permission. Reservation also binds calls already queued by the same Session, including `ComputerEnd`. Approval starts the native control. Later calls reuse it without repeating Permission; whole-tool deny rules still apply. A refused startup releases the reservation and invalidates the remaining calls from it.
+Rust detects physical input in the observed target and invalidates its old observationId. There is no paused state or resume wait. Old actions return without executing, or report possible partial completion if input had already started. The Agent observes again before continuing.
 
-When the user pauses:
-
-- Computer calls that have not submitted a native request immediately return a non-execution result.
-- A native action already submitted returns its actual outcome, including possible partial input.
-- The main Agent waits before starting other tools or another model request. Existing non-computer operations may finish.
-- Resume permits fresh observations and actions. Invalidated calls never become executable again.
-
-The same wait applies when the Session queue starts another Turn. The pause state is independent of whether an old tool or Turn is still running. Subagents do not receive computer tools or the main Agent's pause callbacks.
-
-Esc, the overlay end button and `ComputerEnd` end computer control, not the Turn. Ending invalidates outstanding computer calls, waits for native cleanup and releases main-Agent waiters. Chat stop, Session deletion and application shutdown also clean up control. After user termination, new user text or an AskUser answer allows another startup request; it does not grant Permission or revive old calls.
+Esc, the overlay end button, and ComputerEnd end computer use without cancelling the Turn. Node cancels queued computer calls; submitted requests return their native outcome. Ordinary tools are unaffected. After user termination, new user text or an AskUser answer permits another startup request; old calls never become valid again. endTurn uses the exact Turn identity so late cleanup cannot close another Turn's control.
 
 ## Native connection and capture
 
-`NativeComputerProcess` exchanges newline-delimited JSON-RPC through inherited stdin/stdout pipes. Request IDs match replies; `computer.stateChanged` independently reports running, paused, ending and ended states. Cancellation waits for the native reply so partial effects remain visible. A timeout ends the helper without replaying input.
+NativeComputerProcess uses newline-delimited JSON-RPC over inherited stdin/stdout. Request IDs match replies; computer.stateChanged reports running, ending and ended. The ending state rejects new input while native cleanup releases held keys/buttons. Transport cancellation waits for the native reply, and timeouts do not replay input.
 
-Development and release builds copy the executable into this package's `bin/`. That is the single runtime location. Missing build output produces a startup error. The installed application requires no separate Rust, Python or Node installation.
+The build copies the executable to bin/. Installed users do not need Rust, Python or a separately installed Node runtime.
 
-`capture(signal)` requests PNG bytes without starting computer control. The Server supplies it to [automatic capture](../vishot-capture/README.md) and CaptureTool, which use the existing attachment storage. ObserveWindow returns the window image and controls directly in its tool result without creating a separate attachment file. The [native executable](../../apps/computer-use/README.md) owns Windows capture, input, accessibility and the overlay.
+capture(signal) returns PNG bytes without starting control. Server supplies it to automatic capture and CaptureTool, which retain their own scheduling and attachment storage. ObserveWindow returns a target image and controls directly. It attempts activation, but a failed activation can still return an image with activationError. ComputerAction checks the target again before input.
 
-## Integration and checks
-
-[Turn](../turn/README.md) registers computer calls through the execution environment's `onToolRegistered` callback and connects the shared wait through `beforeToolExecution`. The [tools executor](../tools/README.md) only cancels individual queued calls, waits before execution and disposes registrations. It does not interpret computer states. [Builtin tools](../builtin-tools/README.md) call `ComputerUse` directly using ToolCallId.
-
-Run `pnpm --filter @ema-agent/computer-use test`. Tests use a simulated native connection. Tool and Turn integration tests cover startup/end in one batch, immediate pause results, ordinary-tool waits and Session reuse. Desktop interaction still requires native testing.
+See [native implementation](../../apps/computer-use/README.md), [Turn](../turn/README.md) and [tool execution](../tools/README.md). Existing tests use simulated transport; native desktop checks require an interactive Windows desktop.

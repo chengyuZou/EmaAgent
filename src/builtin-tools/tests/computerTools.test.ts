@@ -8,7 +8,7 @@ import { ComputerEndTool } from '../tools/ComputerEndTool/computerEndTool.js';
 function fixture() {
   const listeners = new Set<(state: NativeControlState) => void>();
   const emit = (phase: NativeControlState['phase']) => {
-    for (const listener of listeners) listener({ controlId: 'startup', phase, reason: 'user_input' });
+    for (const listener of listeners) listener({ controlId: 'startup', phase, reason: phase === 'running' ? 'started' : 'user_end' });
   };
   const request = vi.fn(async (request: NativeRequest): Promise<unknown> => {
     if (request.method === 'computer.begin') {
@@ -17,7 +17,7 @@ function fixture() {
     }
     if (request.method === 'computer.observe') {
       return {
-        controlId: 'startup', observationId: 'obs',
+        controlId: 'startup', observationId: 'obs', activationError: null,
         window: { id: '42', title: 'Fixture', app: 'fixture', x: 0, y: 0, width: 10, height: 10 },
         width: 10, height: 10, image: '', mimeType: 'image/png', elements: [], truncated: false,
       };
@@ -54,7 +54,7 @@ function fixture() {
       const kinds: Record<string, ComputerCallKind> = {
         ObserveWindow: 'observe', ComputerAction: 'action', ComputerEnd: 'end',
       };
-      return computer.registerCall('session-a', call.callId, kinds[call.name]!, error => {
+      return computer.registerCall('session-a', 'turn-a', call.callId, kinds[call.name]!, error => {
         reject(new ToolExecutionError({ effect: error.effect }, error.message, error.code));
       });
     },
@@ -85,17 +85,17 @@ describe('电脑工具执行链', () => {
     await f.computer.close();
   });
 
-  it('暂停时新来的电脑 Tool 立即返回结果, 不等继续或结束, 不重开控制', async () => {
+  it('用户结束后新来的电脑 Tool 返回未执行, 不重开控制', async () => {
     const f = fixture();
     await f.run('startup', 'ObserveWindow', { windowId: '42' });
-    f.emit('paused');
+    f.emit('ended');
     const executor = f.executor();
     executor.addTool(0, 'waiting-action', 'ComputerAction', { observationId: 'obs', action: { type: 'type', text: 'old' } });
     executor.addTool(1, 'queued-observe', 'ObserveWindow', { windowId: '42' });
     await executor.join();
     const results = executor.takeCompletedResults();
     expect(results).toHaveLength(2);
-    expect(results.every(result => result.errorCode === 'computer/paused')).toBe(true);
+    expect(results.every(result => result.errorCode === 'computer/control_ended')).toBe(true);
     expect(f.askPermission).toHaveBeenCalledOnce();
     expect(f.request.mock.calls.filter(([request]) => request.method === 'computer.begin')).toHaveLength(1);
     expect(f.request.mock.calls.filter(([request]) => request.method === 'computer.observe')).toHaveLength(1);

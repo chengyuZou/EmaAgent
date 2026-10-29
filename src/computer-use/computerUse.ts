@@ -15,8 +15,9 @@ import {
 export type ComputerCallKind = 'list' | 'observe' | 'action' | 'end';
 
 interface ActiveComputerUse {
-  // 哪个聊天申请了这次电脑操控. 正常完成一个 Turn 后, 这次操控仍然属于它.
+  // 哪个聊天的哪个 Turn 申请了这次操控. Turn 收尾时必须结束它.
   readonly sessionId: string;
+  readonly turnId: string;
   readonly controlId: string;
   // starting 包括等用户批准和等 Rust 启动回应. 后续状态由 Rust 通知更新.
   phase: 'starting' | NativeControlState['phase'];
@@ -28,12 +29,13 @@ interface ActiveComputerUse {
 
 interface PendingComputerCall {
   readonly sessionId: string;
+  readonly turnId: string;
   // 这次 Tool 属于哪段电脑操控. 入队时尚未申请操控则为 null.
-  // 首次申请时, 同 Session 已排队的电脑 Tool 会一起指向这段操控.
+  // 首次申请时, 同 Turn 已排队的电脑 Tool 会一起指向这段操控.
   activeComputerUse: ActiveComputerUse | null;
   // 只表示正在等 Rust 回应, 不表示已经产生输入. 是否部分完成由 Rust 报告.
   awaitingNativeResponse: boolean;
-  // 暂停或结束时记下这个旧调用不能再执行的原因. 继续后也不清除.
+  // 结束时记下这个旧调用不能再执行的原因. 后续启动也不清除.
   // undefined 表示这个调用尚未被作废.
   invalidationError?: ComputerUseError;
   // 通知工具执行器将这个 Tool 作为未执行结束. 已提交给 Rust 的请求不调用它.
@@ -42,17 +44,16 @@ interface PendingComputerCall {
 
 export interface ComputerUseState {
   readonly sessionId: string;
+  readonly turnId: string;
   readonly controlId: string;
   readonly phase: ActiveComputerUse['phase'];
 }
 
 export class ComputerUse {
-  // 当前这一次电脑操控. 等批准和暂停时也保留, 整段操控结束后清为 null.
+  // 当前这一次电脑操控. 等批准时也保留, 整段操控结束后清为 null.
   private currentActiveComputerUse: ActiveComputerUse | null = null;
-  // 尚未处理完的电脑 Tool, key 是 ToolCallId. 暂停/结束时从这里找旧调用, 处理完后删除.
+  // 尚未处理完的电脑 Tool, key 是 ToolCallId. 结束时从这里找旧调用, 处理完后删除.
   private readonly pendingComputerCalls = new Map<string, PendingComputerCall>();
-  // 主 Agent 停在 await 时, 把解除等待的函数放在这里. 状态变化后通知它重新检查.
-  private readonly stateChangeWaiters = new Set<() => void>();
   // 通知其他业务电脑状态变了. 目前 vishot 用它取消旧截图流程并重新计时.
   private readonly stateChangeListeners = new Set<() => void>();
   // 用户结束操控的 Session 先记在这里. 收到新用户文本或 Ask 回答后才允许再次申请启动.
@@ -70,6 +71,7 @@ export class ComputerUse {
     if (!activeComputerUse) return null;
     return {
       sessionId: activeComputerUse.sessionId,
+      turnId: activeComputerUse.turnId,
       controlId: activeComputerUse.controlId,
       phase: activeComputerUse.phase,
     };
@@ -83,24 +85,24 @@ export class ComputerUse {
   /** 工具入队时记下它属于哪次电脑操控. 返回的函数在工具处理完后删除这条记录. */
   registerCall(
     sessionId: string,
+    turnId: string,
     toolCallId: string,
     kind: ComputerCallKind,
     rejectQueuedCall: (error: ComputerUseError) => void,
   ): () => void {
     if (this.isClosing) throw new ComputerUseError('computer/closed', '电脑操控已关闭.');
-    if (this.currentActiveComputerUse && this.currentActiveComputerUse.sessionId !== sessionId) {
-      throw new ComputerUseError('computer/busy', '电脑正在被另一个 Session 使用.');
+    if (this.currentActiveComputerUse && this.currentActiveComputerUse.turnId !== turnId) {
+      throw new ComputerUseError('computer/busy', '电脑正在被另一个 Turn 使用.');
     }
     const call: PendingComputerCall = {
       sessionId,
+      turnId,
       activeComputerUse: this.currentActiveComputerUse,
       awaitingNativeResponse: false,
       rejectQueuedCall,
     };
     this.pendingComputerCalls.set(toolCallId, call);
-    if (this.currentActiveComputerUse?.phase === 'paused') {
-      this.invalidateCall(call, pausedError());
-    } else if (this.currentActiveComputerUse?.phase === 'ending'
+    if (this.currentActiveComputerUse?.phase === 'ending'
       || (!this.currentActiveComputerUse && this.sessionsAwaitingUserInput.has(sessionId) && kind !== 'end')) {
       this.invalidateCall(call, endedError());
     }
@@ -118,15 +120,16 @@ export class ComputerUse {
     this.sessionsAwaitingUserInput.delete(sessionId);
   }
 
-  /** 弹 Permission 前先为这个 Session 留下电脑操控位置, 其他 Session 此时不能同时申请. */
+  /** 弹 Permission 前先为这个 Turn 留下电脑操控位置, 其他 Turn 此时不能同时申请. */
   reserve(toolCallId: string): void {
     const call = this.getExecutableCall(toolCallId);
     if (call.activeComputerUse) return;
-    if (this.currentActiveComputerUse && this.currentActiveComputerUse.sessionId !== call.sessionId) {
-      throw new ComputerUseError('computer/busy', '电脑正在被另一个 Session 使用.');
+    if (this.currentActiveComputerUse && this.currentActiveComputerUse.turnId !== call.turnId) {
+      throw new ComputerUseError('computer/busy', '电脑正在被另一个 Turn 使用.');
     }
     const activeComputerUse: ActiveComputerUse = this.currentActiveComputerUse ?? {
       sessionId: call.sessionId,
+      turnId: call.turnId,
       controlId: toolCallId,
       phase: 'starting',
       computerUseStartPromise: null,
@@ -134,7 +137,7 @@ export class ComputerUse {
     // 在弹出批准框前填好已排队调用的记录, 包括后面可能紧跟着的 ComputerEnd.
     this.currentActiveComputerUse = activeComputerUse;
     for (const pending of this.pendingComputerCalls.values()) {
-      if (pending.sessionId === call.sessionId && !pending.activeComputerUse && !pending.invalidationError) {
+      if (pending.turnId === call.turnId && !pending.activeComputerUse && !pending.invalidationError) {
         pending.activeComputerUse = activeComputerUse;
       }
     }
@@ -158,16 +161,6 @@ export class ComputerUse {
       params: {},
     }, signal));
     return Buffer.from(result.image, 'base64');
-  }
-
-  /** 暂停时让所属 Session 的主 Agent 等继续或结束. 正常完成一个 Turn 不会清掉暂停状态. */
-  async waitWhilePaused(sessionId: string, signal: AbortSignal): Promise<void> {
-    signal.throwIfAborted();
-    while (this.currentActiveComputerUse?.sessionId === sessionId
-      && (this.currentActiveComputerUse.phase === 'paused' || this.currentActiveComputerUse.phase === 'ending')) {
-      await this.waitForChange(signal);
-    }
-    signal.throwIfAborted();
   }
 
   async observe(toolCallId: string, windowId: string, signal: AbortSignal): Promise<ComputerObservation> {
@@ -206,7 +199,7 @@ export class ComputerUse {
     if (!activeComputerUse) throw new ComputerUseError('computer/not_started', '先调用 ObserveWindow 取得窗口和观察编号.');
     call.awaitingNativeResponse = true;
     try {
-      // 暂停前已提交的动作由 Rust 返回实际效果, 不用 Node 的作废结果覆盖部分输入.
+      // 已提交的动作由 Rust 返回实际效果, 不用 Node 的作废结果覆盖部分输入.
       return actionResultSchema.parse(await this.nativeProcess.request({
         method: 'computer.act',
         params: { controlId: activeComputerUse.controlId, observationId, action },
@@ -225,6 +218,14 @@ export class ComputerUse {
       return { ended: true };
     } finally {
       call.awaitingNativeResponse = false;
+    }
+  }
+
+  /** Turn 收尾使用精确身份, 不能结束同 Session 后来启动的另一轮操控. */
+  async endTurn(turnId: string): Promise<void> {
+    const active = this.currentActiveComputerUse;
+    if (active?.turnId === turnId) {
+      await this.endComputerUse(active, 'cancelled', new AbortController().signal);
     }
   }
 
@@ -273,7 +274,6 @@ export class ComputerUse {
     }
     if (activeComputerUse.phase === 'ending' && state.phase !== 'ending') return;
     activeComputerUse.phase = state.phase;
-    if (state.phase === 'paused') this.invalidateCalls(activeComputerUse, pausedError());
     if (state.phase === 'ending') this.invalidateCalls(activeComputerUse, endedError());
     this.publish();
   }
@@ -305,34 +305,9 @@ export class ComputerUse {
     return call;
   }
 
-  private waitForChange(signal: AbortSignal): Promise<void> {
-    signal.throwIfAborted();
-    return new Promise((resolve, reject) => {
-      const cleanup = () => {
-        this.stateChangeWaiters.delete(wake);
-        signal.removeEventListener('abort', abort);
-      };
-      const wake = () => {
-        cleanup();
-        resolve();
-      };
-      const abort = () => {
-        cleanup();
-        reject(signal.reason);
-      };
-      this.stateChangeWaiters.add(wake);
-      signal.addEventListener('abort', abort, { once: true });
-    });
-  }
-
   private publish(): void {
-    for (const wake of [...this.stateChangeWaiters]) wake();
     for (const listener of this.stateChangeListeners) listener();
   }
-}
-
-function pausedError(): ComputerUseError {
-  return new ComputerUseError('computer/paused', '用户已暂停电脑操控, 此调用未执行, 原观察已失效. 继续后请重新观察.');
 }
 
 function endedError(): ComputerUseError {

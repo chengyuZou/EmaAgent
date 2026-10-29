@@ -32,10 +32,12 @@ export const computerElementSchema = z.object({
 });
 
 export const computerObservationSchema = z.object({
-  // 用户介入或窗口状态变化后作废, 恢复控制不会让旧观察重新有效.
+  // 用户介入或窗口状态变化后作废, 新观察不会让旧编号重新有效.
   observationId: z.string(),
-  // 使用启动这段控制的 ToolCallId, 跨 Loop 和 Turn 保持不变.
+  // 使用启动这段控制的 ToolCallId, 同一 Turn 内跨 Loop 保持不变.
   controlId: z.string(),
+  // null 表示前置成功. 失败时仍可能取得窗口图像, 不能据此认为目标已在前台.
+  activationError: z.string().nullable(),
   window: computerWindowSchema,
   width: z.number().int().positive(),
   height: z.number().int().positive(),
@@ -112,7 +114,6 @@ export type ComputerAction = z.infer<typeof computerActionSchema>;
 export const actionResultSchema = z.object({
   status: z.enum([
     'completed',
-    'paused_before_start',
     'observation_expired',
     'control_ended',
     'interrupted',
@@ -131,11 +132,9 @@ export const controlEventSchema = z.object({
     controlId: z.string(),
     // ending 表示不再接受新输入, 但可能还在松开按键或等 Windows 调用结束.
     // 收到 ended 才表示这次电脑操控已经结束.
-    phase: z.enum(['running', 'paused', 'ending', 'ended']),
+    phase: z.enum(['running', 'ending', 'ended']),
     reason: z.enum([
       'started',
-      'user_input',
-      'continued',
       'user_end',
       'agent_end',
       'cancelled',
@@ -177,9 +176,9 @@ export type NativeRequest =
   };
 
 export interface ComputerTransport {
-  // 发出一条请求, 等 Rust 返回这条请求的结果. 不在这里等用户点击继续.
+  // 发出一条请求, 等 Rust 返回这条请求的结果. 取消时通知 Rust 停止该请求.
   request(request: NativeRequest, signal: AbortSignal): Promise<unknown>;
-  // Rust 会主动通知暂停/继续/结束, 不必等某个请求完成. 返回的函数用来取消监听.
+  // Rust 会主动通知启动和结束, 不必等某个请求完成. 返回的函数用来取消监听.
   subscribe(listener: (state: NativeControlState) => void): () => void;
   close(): Promise<void>;
 }

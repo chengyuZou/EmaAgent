@@ -2,35 +2,22 @@
 
 [English](README.md)
 
-本包连接 Node Server 和随包的 Windows 电脑操控程序. Server 共用一个 `ComputerUse`, 控制属于 Session, 使用首次观察调用的 ToolCallId 作为 `controlId`. 正常 Turn 完成不释放控制.
+本包连接 Node Server 与随包提供的 Windows 原生程序. 共享的 ComputerUse 同时只允许一个 Session 的一个 Turn 操控电脑. 首次观察的 ToolCallId 成为 controlId, 同一 Turn 内跨 Loop 保持不变. 每种 Turn 结束路径都先关闭操控, 再发布终态.
 
-## 调用与暂停
+## 调用和批准
 
-主 Turn 在电脑工具入队时调用 `registerCall`, 返回的函数在调用完成后清理记录. 记录只保存控制归属和作废原因, 不转发工具操作.
+Turn 在电脑工具排队前调用 registerCall. 返回的清理函数删除调用记录, 启动未获批准时也释放预约. ObserveWindow 在 Permission 前预约电脑, 批准后启动操控. 后续动作复用本次操控. 用户可选择本会话允许, 后续启动匹配 Permission 的会话规则; 这不让操控跨 Turn 存活, 也不批准 Shell 或 MCP.
 
-首次 ObserveWindow 在 Permission 之前预约控制, 同时绑定该 Session 已入队的调用, 包括 ComputerEnd. 批准后才启动原生控制. 后续调用复用控制, 不重复弹 Permission; 整个工具的 deny 仍有效. 启动被拒绝时释放预约, 同批其余调用一起作废.
+Rust 检测用户在目标窗口的实际输入, 使旧 observationId 失效. 没有暂停状态或继续等待. 旧动作尚未开始时返回未执行, 已开始时返回可能部分完成, Agent 重新观察再决定下一步.
 
-用户暂停时:
+Esc, 提示条结束按钮和 ComputerEnd 只结束操控, Turn 仍可继续汇报. Node 取消尚未提交的电脑调用, 已提交的请求返回 Rust 的实际结果. 普通工具不受影响. 用户明确结束后, 新用户文本或 AskUser 回答才允许再次申请启动, 旧调用不会复活. endTurn 按精确 Turn 身份清理, 避免迟到的收尾关闭另一 Turn 的操控.
 
-- 尚未提交原生请求的电脑调用立即返回未执行结果.
-- 已提交的原生动作停止剩余步骤, 返回真实结果, 包括可能部分完成的输入.
-- 主 Agent 在开始其他工具或下一次模型请求前等待. 已开始的非电脑操作可以收尾.
-- 继续只允许新的观察和动作, 不恢复任何作废调用.
+## 通信和截图
 
-消息队列启动同 Session 的新 Turn 时也检查这个暂停状态. 等待不依赖旧工具或旧 Turn 是否仍在运行. 子代理不提供电脑工具, 也不接入主 Agent 的暂停等待.
+NativeComputerProcess 通过 stdin/stdout 交换逐行 JSON-RPC. requestId 匹配回应, computer.stateChanged 通知 running, ending 和 ended. ending 表示拒绝新输入, 正在松开键鼠并等待原生操作收尾. 请求取消等待原生结果, 超时不重放输入.
 
-Esc, 提示条结束按钮和 ComputerEnd 只结束电脑控制, 不取消 Turn. 结束时作废未完成的电脑调用, 等原生收尾后解除主 Agent 的等待. 聊天停止, Session 删除和应用关闭也会清理控制. 用户结束后, 新用户文本或 AskUser 回答只允许再次提出启动申请, 不授予 Permission 或恢复旧调用.
+构建程序复制到 bin/. 安装用户无需单独安装 Rust, Python 或 Node.
 
-## 原生通信与截图
+capture(signal) 返回 PNG 字节, 不启动操控. Server 将它交给自动截图和 CaptureTool, 定时与附件保存仍由原业务负责. ObserveWindow 直接返回窗口图像和控件, 尝试前置失败时可携带 activationError 返回图像. ComputerAction 在输入前再次检查目标.
 
-`NativeComputerProcess` 通过继承的 stdin/stdout 管道收发逐行 JSON-RPC. 请求编号匹配回应, `computer.stateChanged` 独立通知 running, paused, ending 和 ended 状态. 取消已发出的请求仍等待原生回应, 保留部分执行情况. 超时结束原生进程, 不回放输入.
-
-开发和发布构建均将程序复制到本包的 `bin/`, 运行时只从这里加载. 缺少构建产物时明确报告启动错误. 安装后无需另装 Rust, Python 或 Node.
-
-`capture(signal)` 直接请求 PNG 字节, 不启动电脑控制. Server 将它提供给[自动截图](../vishot-capture/README-zh.md)和 CaptureTool, 两者继续使用现有附件保存流程. ObserveWindow 直接在工具结果里返回窗口图片和控件, 不另外创建附件文件. [原生程序](../../apps/computer-use/README-zh.md) 负责 Windows 捕获, 输入, 控件和提示条.
-
-## 接入与验证
-
-[Turn](../turn/README-zh.md) 通过执行环境的 `onToolRegistered` 登记电脑调用, 通过 `beforeToolExecution` 接入共享等待. [工具执行器](../tools/README-zh.md) 只处理单调用取消, 执行前等待和登记清理, 不解释电脑状态. [内置工具](../builtin-tools/README-zh.md) 直接按 ToolCallId 调用 ComputerUse.
-
-运行 `pnpm --filter @ema-agent/computer-use test`. 测试使用模拟原生连接. Tool 和 Turn 集成测试覆盖同批启动结束, 暂停立即返回, 普通工具等待和 Session 复用. 真实桌面交互仍需原生测试.
+相关说明见[原生程序](../../apps/computer-use/README-zh.md), [Turn](../turn/README-zh.md)和[工具执行](../tools/README-zh.md). 现有测试使用模拟连接, 真实桌面验证需要可交互的 Windows 环境.
