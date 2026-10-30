@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="docs/changes/v0.1.0-beta.1/README.md"><img src="https://img.shields.io/badge/version-0.1.0--beta.1-00ADB5?style=flat-square" alt="Version 0.1.0-beta.1"></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-v0.1.0--beta.2-00ADB5?style=flat-square" alt="Version v0.1.0-beta.2"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-4C9A2A?style=flat-square" alt="MIT License"></a>
   <a href="apps/desktop/README.md"><img src="https://img.shields.io/badge/Tauri-24C8D8?style=flat-square&amp;logo=tauri&amp;logoColor=000000" alt="Tauri"></a>
   <a href="apps/desktop/README.md"><img src="https://img.shields.io/badge/React-20232A?style=flat-square&amp;logo=react&amp;logoColor=61DAFB" alt="React"></a>
@@ -253,10 +253,14 @@ Choose a theme hue and color presets, or configure wallpaper, fonts, corner radi
 
 Install a package built for your operating system and launch Ema. The installed `server/` directory is the application's backend, not a second application. Keep it with the installed program. Packaged builds include Node and their production dependencies; users do not need the source repository or a separate Node installation.
 
-1. Open Settings and configure a provider's address, protocol, and credentials.
-2. Add or enable an LLM model, then select it in a conversation.
-3. Choose a character and configure its presentation.
-4. Configure the additional model bindings you need for images, speech, Memory, or Narrative.
+1. Launch Ema and open model provider settings. Select or add an LLM provider.
+2. Enter the supported protocol, endpoint, and required credentials. A custom gateway's API determines its protocol, not the model name alone.
+3. Add or enable the LLM model, then select the provider and model in chat.
+4. Choose a character, create a conversation, and send a simple message to check that a reply completes.
+
+Ordinary text chat does not require Embedding, Rerank, TTS, or STT setup. Verify this first, then enable capabilities individually to identify which configuration needs attention. Real requests may incur charges from the selected service.
+
+If no model can be selected, check that the provider and model were saved and enabled. For authentication or protocol errors, check that provider's endpoint, credentials, and protocol before deleting chats or resetting data.
 
 <details>
 <summary>Model provider settings</summary>
@@ -269,9 +273,49 @@ Choose a provider preset or add your own address. The settings list LLM provider
 
 </details>
 
-Narrative needs LLM, Embedding, and Rerank bindings. Its Embedding model must match the fixed story asset's vector space. See [Narrative](src/narrative/README.md) before changing that binding.
+### Configure character visuals and stickers
 
-Development and installed builds use the same default data directory. Close one before opening the other, or set a separate `EMA_PROFILE_DIR` for testing.
+Edit the persona in the character card, then choose a presentation:
+
+- Illustrations: import images, select the primary resource, and assign expression emotion groups as needed.
+- Live2D: import a model ZIP or directory, select the primary model, and map its existing expressions and motions.
+- Blank stage: text conversations can work without a visible character.
+
+Only configured presentation names are available. Importing an image does not assign its emotion group, and importing a model does not select it as primary. Expression changes help create a scene but do not replace the persona.
+
+Stickers are managed separately from stage illustrations. Batch import is available; add descriptions afterward. Entries without descriptions do not enter the character Prompt. The configuration overview shows which images are ready.
+
+Deleting a sticker can make its address in old replies unavailable. A missing-image placeholder does not mean the original is still readable. See [Characters](src/characters/README.md).
+
+### Add capability bindings as needed
+
+| Capability | Configuration |
+| --- | --- |
+| Image understanding | Use an image-capable chat model; a usable Vision binding supplies descriptions when direct image input is unavailable |
+| Speech input | Configure an STT service and binding |
+| Speech output | Configure a TTS service and binding, and select the character's primary reference audio |
+| Long-term Memory extraction and consolidation | Configure the required Memory LLM binding |
+| Narrative story retrieval | Configure its LLM, Embedding, and Rerank bindings; Embedding must match the fixed asset's vector space |
+
+Unused capabilities can remain unconfigured. Do not replace Narrative's fixed-asset Embedding merely because another model has the same dimensions. See [Narrative](src/narrative/README.md).
+
+### Start using speech
+
+Reference audio needs its actual transcript and language. The recording's language and the generated reply are separate inputs. Supported combinations depend on the TTS service; do not label the recording with the desired output language.
+
+After configuring TTS and selecting primary reference audio, enable TTS in chat and check a new Turn. Text may finish while audio continues generating and playing. The Turn does not remain running until playback ends.
+
+Replaying an old Turn uses saved audio. Generating or regenerating makes new TTS requests. Stopping playback does not cancel generation by default. The data page's audio records let you select a usable character to generate that character's voice version from existing text, without automatically playing it.
+
+Pacing and ownership are explained in [speech design](docs/design/speech/README.md); service parameters are in [TTS](src/tts/README.md).
+
+### Use tools and computer control
+
+For file work, select a clear working directory and describe the task. Availability depends on tool settings, permission mode, and the execution relationship. Permission cards explain the operation and approval scope; session allowance does not grant the same authorization to every tool.
+
+On Windows, the Agent requests permission to start computer use. Esc or the overlay End button ends control alone, leaving the conversation able to report progress. Chat's Stop action cancels the Turn and cleans up its computer use.
+
+Automatic screen capture has its own switch on the computer-use settings page. Ordinary text chat does not need it. When enabled, it submits frames under idle conditions and stops automatic submission during computer use. See [computer-use design](docs/design/computerUse/README.md).
 
 ### Run from source
 
@@ -322,17 +366,19 @@ See [Desktop build and release](apps/desktop/README.md) for prerequisites, resou
 
 Release versions use three numbers: `MAJOR.MINOR.PATCH`, for example `0.1.0`, `0.1.1`, and `0.2.0`. Patch releases fix problems within a release line. Minor releases add capabilities and, while the project is below 1.0, may also change existing behavior. `0.1.11` is a valid patch number; `0.1.1.1` is not the release format used here.
 
-Alpha builds use a prerelease suffix, such as `0.1.0-alpha.1`. The root `package.json` sets the application release version. The Desktop package, Tauri configuration, and Cargo package must match it exactly. The release script checks all four before building and reports their values on a mismatch; it does not update versions automatically.
+Prereleases use an alpha or beta suffix, such as `0.1.0-beta.2`. Git tags and CHANGELOG version headings use a `v` prefix, such as `v0.1.0-beta.2`; version fields in package.json, Tauri, and Cargo remain unprefixed, such as `0.1.0-beta.2`. The root `package.json` sets the application release version. The Desktop package, Tauri configuration, Cargo package, and both root version fields in `package-lock.json` must match it exactly. The release script checks these fields before building and reports their values on a mismatch; it does not update versions automatically.
 
-Release notes and bug-fix records are kept in [docs](docs/README.md), with one [directory per version](docs/changes/) containing bilingual notes and investigation records.
+Recent changes are in the [changelog](CHANGELOG.md); older release notes and installation artifacts are in [GitHub Releases](https://github.com/chengyuZou/EmaAgent/releases). Usage and design decisions are in [Documentation](docs/README.md).
 
 Database versions are separate integers, not application release numbers. Profile and Data each start from their own `001_initial.sql` at database version 1. Future changes add the next SQL file instead of editing a released migration. Startup applies pending migrations before serving requests. A failed migration rolls back that migration, and an older application refuses a database newer than it supports. There is no automatic database downgrade.
 
-Back up the complete application data directory while the app is closed before an upgrade. Installing an older application is not a way to undo a database migration. Details are in [Storage](src/storage/README.md).
+See [Backup and upgrades](#backup-and-upgrades) for the difference between pre-migration copies and a complete data backup.
 
 ## Your data
 
 The default application directory is `~/.ema-agent`, or `%USERPROFILE%\.ema-agent` on Windows. Set an absolute `EMA_PROFILE_DIR` to use another directory for Desktop and Server.
+
+Development and installed builds use the same default data directory. Close one before opening the other, or set a separate `EMA_PROFILE_DIR` for testing.
 
 | Location inside the application directory | Contents |
 | --- | --- |
@@ -347,9 +393,17 @@ The default application directory is `~/.ema-agent`, or `%USERPROFILE%\.ema-agen
 | `profile/models-dev.json` | Local model catalog |
 | `wallpapers/`, `logs/`, and `workspace/` | Wallpapers, logs, and local working files |
 
-Provider and MCP credentials are stored as plaintext in `profile.db`. Protect this directory and check what you share. A conversation export is not a backup of all settings, credentials, characters, or memories.
+Provider and MCP credentials are stored as plaintext in `profile.db`. Protect this directory and check what you share.
 
 Ordinary file attachments refer to their original paths. Images and long pasted text are saved as managed copies. Moving an original file can break its reference.
+
+### Backup and upgrades
+
+For a complete backup, exit the app and copy the entire profile outside its original directory. A single-session `.ema-session.zip` export covers that Session's records and readable managed files, not all settings, credentials, characters, or Memory.
+
+When existing databases need migration, the app first creates a pre-migration copy of the affected Profile or Data database. Server uses `<profile>/pre-migration/` by default. These database copies do not include attachments, audio, or character files, and do not automatically restore the whole application.
+
+Installing an older app does not undo migration. Preserve current data before a manual restore and follow [Storage's recovery instructions](src/storage/README.md#migrations), including WAL/SHM handling. Session import/export is in [Backup](src/backup/README.md).
 
 ### Reset development data
 
@@ -377,13 +431,12 @@ The [Desktop](apps/desktop/README.md) contains the React interface and Tauri hos
 
 ```sh
 pnpm typecheck
-pnpm test:scripts
-pnpm test:first-start
+pnpm --filter @ema-agent/desktop test:scripts
 pnpm --filter @ema-agent/storage test
 pnpm --filter @ema-agent/desktop test
 ```
 
-Use the affected package's tests as well. `pnpm test:first-start` builds Server and its dependencies, starts it with temporary data, and checks initialization and HTTP responses. It does not make model requests. `pnpm test` runs workspace test tasks through Turbo. Type checking and simulated tests do not replace testing installation, native file drops, terminals, character presentation, and sound in the actual application.
+Use the affected package's tests as well. Desktop's `test:scripts` checks release-version consistency; `pnpm test` runs workspace test tasks through Turbo. Type checking and simulated tests do not replace testing installation, native file drops, terminals, character presentation, and sound in the actual application.
 
 ## License
 

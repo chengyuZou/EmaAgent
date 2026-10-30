@@ -16,6 +16,11 @@ export function checkReleaseVersions(repository) {
     file,
     version: JSON.parse(readFileSync(path.join(repository, file), 'utf8')).version,
   }));
+  const packageLock = JSON.parse(readFileSync(path.join(repository, 'package-lock.json'), 'utf8'));
+  versions.push(
+    { file: 'package-lock.json', version: packageLock.version },
+    { file: 'package-lock.json packages[""].version', version: packageLock.packages?.['']?.version },
+  );
   const cargoFile = 'apps/desktop/src-tauri/Cargo.toml';
   const cargo = readFileSync(path.join(repository, cargoFile), 'utf8');
   const section = cargo.split(/^\[/mu).find(value => value.startsWith('package]'));

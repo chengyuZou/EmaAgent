@@ -10,6 +10,7 @@ on:
       - 'apps/desktop/**'
       - 'src/**'
       - 'package.json'
+      - 'package-lock.json'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
   workflow_dispatch:

@@ -10,6 +10,7 @@ import { checkReleaseVersions } from '../scripts/releaseCheck.mjs';
 const version = '0.1.0-alpha.1';
 const files = [
   'package.json',
+  'package-lock.json',
   'apps/desktop/package.json',
   'apps/desktop/src-tauri/tauri.conf.json',
   'apps/desktop/src-tauri/Cargo.toml',
@@ -23,6 +24,8 @@ function fixture(context) {
     mkdirSync(path.dirname(filename), { recursive: true });
     if (file.endsWith('.toml')) {
       writeFileSync(filename, `[package]\nname = "ema-desktop"\nversion = "${version}"\n\n[dependencies]\nversion = "9.9.9"\n`);
+    } else if (file === 'package-lock.json') {
+      writeFileSync(filename, JSON.stringify({ version, packages: { '': { version } } }));
     } else {
       writeFileSync(filename, JSON.stringify({ version }));
     }
@@ -38,7 +41,7 @@ test('accepts matching prerelease versions without changing files', context => {
 });
 
 for (const file of files) {
-  test(`rejects a different version in ${file} and reports all four values`, context => {
+  test(`rejects a different version in ${file} and reports all version locations`, context => {
     const directory = fixture(context);
     const filename = path.join(directory, file);
     writeFileSync(filename, readFileSync(filename, 'utf8').replace(version, '0.1.0-alpha.2'));
@@ -51,6 +54,18 @@ for (const file of files) {
   });
 }
 
+test('rejects a different root package version inside package-lock.json', context => {
+  const directory = fixture(context);
+  const filename = path.join(directory, 'package-lock.json');
+  const packageLock = JSON.parse(readFileSync(filename, 'utf8'));
+  packageLock.packages[''].version = '0.1.0-alpha.2';
+  writeFileSync(filename, JSON.stringify(packageLock));
+  assert.throws(() => checkReleaseVersions(directory), error => {
+    assert.ok(error.message.includes('package-lock.json packages[""].version: "0.1.0-alpha.2"'));
+    return true;
+  });
+});
+
 test('rejects a missing root version', context => {
   const directory = fixture(context);
   writeFileSync(path.join(directory, 'package.json'), '{}');
@@ -59,7 +74,7 @@ test('rejects a missing root version', context => {
 
 test('does not take a dependency version as the Cargo package version', context => {
   const directory = fixture(context);
-  writeFileSync(path.join(directory, files[3]), `[package]\nname = "ema-desktop"\n[dependencies]\nversion = "${version}"\n`);
+  writeFileSync(path.join(directory, 'apps/desktop/src-tauri/Cargo.toml'), `[package]\nname = "ema-desktop"\n[dependencies]\nversion = "${version}"\n`);
   assert.throws(() => checkReleaseVersions(directory), /Cargo.toml: \(missing\)/u);
 });
 
@@ -68,7 +83,12 @@ test('release entry rejects a root mismatch before tool checks or builds', conte
   const desktop = path.join(directory, 'apps/desktop');
   const scripts = path.join(desktop, 'scripts');
   mkdirSync(scripts);
-  for (const file of ['release.mjs', 'releaseCheck.mjs', 'releaseWorkspace.mjs']) {
+  for (const file of [
+    'release.mjs',
+    'releaseCheck.mjs',
+    'releaseWorkspace.mjs',
+    'buildComputerUse.mjs',
+  ]) {
     copyFileSync(fileURLToPath(new URL(`../scripts/${file}`, import.meta.url)), path.join(scripts, file));
   }
   writeFileSync(path.join(desktop, 'release-config.json'), JSON.stringify({ nodeVersion: 'not-installed' }));

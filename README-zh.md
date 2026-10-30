@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="docs/changes/v0.1.0-beta.1/README-zh.md"><img src="https://img.shields.io/badge/version-0.1.0--beta.1-00ADB5?style=flat-square" alt="版本 0.1.0-beta.1"></a>
+  <a href="CHANGELOG-zh.md"><img src="https://img.shields.io/badge/version-v0.1.0--beta.2-00ADB5?style=flat-square" alt="版本 v0.1.0-beta.2"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-4C9A2A?style=flat-square" alt="MIT License"></a>
   <a href="apps/desktop/README-zh.md"><img src="https://img.shields.io/badge/Tauri-24C8D8?style=flat-square&amp;logo=tauri&amp;logoColor=000000" alt="Tauri"></a>
   <a href="apps/desktop/README-zh.md"><img src="https://img.shields.io/badge/React-20232A?style=flat-square&amp;logo=react&amp;logoColor=61DAFB" alt="React"></a>
@@ -253,10 +253,14 @@ Turn 运行时可以继续提交需求. 排队输入可以留待后续 Turn, 删
 
 安装为当前操作系统构建的安装包, 然后启动 Ema. 安装目录中的 `server/` 是应用后端, 不是第二个应用, 需要与程序保存在一起. 安装包包含 Node 和正式依赖, 使用者不需要源码仓库或另装 Node.
 
-1. 打开设置, 配置 Provider 的地址, 协议和凭据.
-2. 添加或启用一个 LLM 模型, 在会话中选择它.
-3. 选择角色并配置显示方式.
-4. 按需为图片, 语音, Memory 或 Narrative 设置模型绑定.
+1. 启动 Ema, 打开设置中的服务来源, 选择或添加 LLM 服务.
+2. 填写该服务实际支持的协议, 地址及所需凭据. 自定义网关的协议由它提供的 API 决定, 不只看模型名称.
+3. 添加或启用要使用的 LLM 模型, 在聊天中选择该服务与模型.
+4. 选择角色, 新建聊天, 发送一句普通消息, 确认能够完成回复.
+
+普通文字对话不要求先配置 Embedding, Rerank, TTS 或 STT. 先验证这一步, 再逐项启用需要的能力, 便于判断哪一项配置没有生效. 真实请求可能产生所选服务的费用.
+
+如果没有可选模型, 先检查服务和模型是否已经保存并启用. 出现鉴权或协议错误时, 检查对应服务的地址, 凭据和协议, 不需要先删除聊天或重置数据.
 
 <details>
 <summary>查看模型服务配置界面</summary>
@@ -269,9 +273,49 @@ Turn 运行时可以继续提交需求. 排队输入可以留待后续 Turn, 删
 
 </details>
 
-Narrative 需要 LLM, Embedding 和 Rerank 绑定. Embedding 模型必须与固定剧情数据的向量空间一致, 修改前请看 [Narrative](src/narrative/README-zh.md).
+### 配置角色画面和表情包
 
-开发版与安装版默认共用数据目录. 启动另一个版本前先关闭当前版本, 或为测试设置单独的 `EMA_PROFILE_DIR`.
+在角色卡中编辑人设, 再选择需要的舞台方式:
+
+- 立绘: 导入图片并选择主要资源, 按需要填写 expression 情绪分组, 让对应情绪使用这些图片.
+- Live2D: 导入模型 ZIP 或目录, 选择主要模型, 再配置模型已有的表情和动作映射.
+- 空白舞台: 可以只使用文字对话.
+
+角色只能使用资源里已经配置的表现名称. 有图片不代表已经完成情绪分组, 导入模型也不代表已选择为主要模型. 表情切换用于营造场景, 不替代人设正文.
+
+表情包与舞台立绘分别管理. 可以批量导入表情包, 导入后补充描述; 没有描述的条目不会进入角色 Prompt. 配置总览可以检查哪些图片已经就绪.
+
+旧回复的表情包图片被删除后, 对应历史地址可能无法加载. 缺图占位不表示那张原图仍可读取. 资源用法见[角色模块](src/characters/README-zh.md).
+
+### 按需要增加模型绑定
+
+| 需要的能力 | 配置重点 |
+| --- | --- |
+| 图片理解 | 使用支持图片输入的聊天模型; 不支持直接图片时, 需要可用的 Vision 绑定提供描述 |
+| 语音输入 | 配置 STT 服务及绑定 |
+| 语音输出 | 配置 TTS 服务及绑定, 并为角色选用主参考音频 |
+| 长期 Memory 提取与整理 | 配置 Memory 所需的 LLM 绑定 |
+| Narrative 剧情检索 | 配置 Narrative 的 LLM, Embedding 和 Rerank 绑定; Embedding 必须匹配固定资产的向量空间 |
+
+不需要的能力可以先不配. Narrative 的固定剧情 Embedding 不能只按维度相同就随意替换, 具体要求见 [Narrative](src/narrative/README-zh.md).
+
+### 开始使用语音
+
+参考音频需要对应的真实朗读文本和语言. 参考录音的语言与要生成的正文是不同输入, 是否支持某种组合由 TTS 服务决定, 不要把期望输出的语言填成参考录音语言.
+
+配置 TTS 并为角色选用主参考音频后, 在聊天输入处开启 TTS, 对新的 Turn 验证语音输出. 文本回复可能先完成, 音频仍继续生成和播放, Turn 不会为等播放完成而保持运行.
+
+历史 Turn 的播放复用已保存音频; 生成或重新生成会再次调用 TTS. 停止播放不会默认取消后台生成. data 页的音频记录可以选择可用角色, 为已有正文生成该角色的声音版本, 生成后不自动播放.
+
+节奏和播放归属见[语音设计](docs/design/speech/README-zh.md), 服务参数见 [TTS](src/tts/README-zh.md).
+
+### 使用工具与电脑操控
+
+需要处理文件时, 为聊天选择明确的工作目录, 再告诉 Agent 要处理什么. 工具是否可用与启用状态, 权限模式及当前执行关系有关. 权限卡会显示本次操作和可批准范围, 本会话允许不等于给所有工具同样的授权.
+
+Windows 电脑操控由 Agent 申请启动, 用户可以批准或拒绝. 按 Esc 或提示条结束按钮只结束操控, 对话仍可继续汇报. 聊天的停止生成则取消当前 Turn, 同时收尾所属电脑操控.
+
+自动屏幕捕获在电脑操控设置页单独开启, 不需要为了普通文字对话打开. 开启后会在满足空闲条件时提交画面, 电脑操控期间停止自动提交. 相关行为见[电脑操控设计](docs/design/computerUse/README-zh.md).
 
 ### 从源码运行
 
@@ -322,17 +366,19 @@ pnpm release --server-only
 
 发布版本使用三段数字 `MAJOR.MINOR.PATCH`, 例如 `0.1.0`, `0.1.1` 和 `0.2.0`. Patch 用于同一版本线的问题修复. Minor 用于功能增加, 项目在 1.0 之前也可能在 Minor 中调整已有行为. `0.1.11` 是有效的补丁版本, `0.1.1.1` 不是本项目的发布格式.
 
-Alpha 使用预发布后缀, 例如 `0.1.0-alpha.1`. 根目录 `package.json` 确定应用发布版本, Desktop package, Tauri 配置和 Cargo package 必须与它完全一致. 发布脚本在构建之前检查这四处, 不一致时列出各自的值, 不自动修改版本.
+预发布使用 alpha 或 beta 后缀, 例如 `0.1.0-beta.2`. Git tag 和 CHANGELOG 的版本标题使用 `v` 前缀, 例如 `v0.1.0-beta.2`; package.json, Tauri 和 Cargo 中的版本字段保留不带前缀的 `0.1.0-beta.2`. 根目录 `package.json` 确定应用发布版本, Desktop package, Tauri 配置, Cargo package 和 `package-lock.json` 的两处根包版本必须与它完全一致. 发布脚本在构建之前检查这些字段, 不一致时列出各自的值, 不自动修改版本.
 
-版本变化和 Bug 修复记录放在 [docs](docs/README-zh.md), [每个版本一个目录](docs/changes/), 保存双语版本说明和排查记录.
+近期版本变化见 [CHANGELOG](CHANGELOG-zh.md), 更早的发布说明和安装产物见 [GitHub Releases](https://github.com/chengyuZou/EmaAgent/releases). 设计取舍和使用说明见[文档入口](docs/README-zh.md).
 
 数据库版本是独立整数, 不是应用版本号. Profile 和 Data 分别从自己的 `001_initial.sql` 开始, 初始数据库版本均为 1. 以后修改表结构时追加下一份 SQL, 不改已经发布的迁移文件. 启动时先执行待迁移 SQL, 成功后才接受业务请求. 某一步失败会回滚这一步, 旧应用也会拒绝打开超出自己支持版本的数据库. 没有自动降级迁移.
 
-升级前先退出应用, 备份完整的数据目录. 重新安装旧应用不能撤销数据库迁移, 细节见 [Storage](src/storage/README-zh.md).
+迁移前副本与完整数据备份的区别见[备份与升级](#备份与升级).
 
 ## 本地数据
 
 默认目录是 `~/.ema-agent`, Windows 下是 `%USERPROFILE%\.ema-agent`. 可以通过绝对路径的 `EMA_PROFILE_DIR` 为 Desktop 和 Server 选择另一个目录.
+
+开发版与安装版默认共用数据目录. 启动另一个版本前先关闭当前版本, 或为测试设置单独的 `EMA_PROFILE_DIR`.
 
 | 数据目录中的位置 | 内容 |
 | --- | --- |
@@ -347,9 +393,17 @@ Alpha 使用预发布后缀, 例如 `0.1.0-alpha.1`. 根目录 `package.json` �
 | `profile/models-dev.json` | 本地模型目录 |
 | `wallpapers/`, `logs/`, `workspace/` | 壁纸, 日志和本地工作文件 |
 
-Provider 与 MCP 凭据明文保存在 `profile.db`. 请保护好这个目录, 分享前检查内容. 导出单个会话并不等于备份全部设置, 凭据, 角色和记忆.
+Provider 与 MCP 凭据明文保存在 `profile.db`. 请保护好这个目录, 分享前检查内容.
 
 普通文件附件记录原始路径. 图片和较长的粘贴文本保存为受管副本. 移动原文件后, 对应引用可能失效.
+
+### 备份与升级
+
+要完整备份, 先退出应用, 再把整个数据目录复制到目录之外的备份位置. 单会话的 `.ema-session.zip` 导出用于该会话的记录和可读取的受管文件, 不包含全部设置, 凭据, 角色和 Memory.
+
+已有数据库需要迁移时, 应用先为待升级的 Profile 或 Data 数据库创建迁移前副本. 默认 Server 使用 `<profile>/pre-migration/`. 这是数据库副本, 不包含附件, 音频或角色文件, 也没有自动恢复整个应用的功能.
+
+不要通过安装旧应用来尝试撤销迁移. 手动恢复前保留当前数据, 并按 [Storage 的恢复说明](src/storage/README-zh.md#数据迁移)处理数据库及 WAL/SHM 文件. 会话导入导出见 [Backup](src/backup/README-zh.md).
 
 ### 重置开发数据
 
@@ -377,13 +431,12 @@ pnpm dev:reset
 
 ```sh
 pnpm typecheck
-pnpm test:scripts
-pnpm test:first-start
+pnpm --filter @ema-agent/desktop test:scripts
 pnpm --filter @ema-agent/storage test
 pnpm --filter @ema-agent/desktop test
 ```
 
-也要运行本次修改所涉及包的测试. `pnpm test:first-start` 构建 Server 及依赖, 使用临时数据启动进程并检查初始化和 HTTP 响应, 不请求模型. `pnpm test` 通过 Turbo 运行工作区测试. Typecheck 和模拟测试不能替代实际应用中的安装, 原生文件拖放, 终端, 角色显示和声音检查.
+也要运行本次修改所涉及包的测试. Desktop 的 `test:scripts` 检查发布版本的一致性, `pnpm test` 通过 Turbo 运行工作区测试. Typecheck 和模拟测试不能替代实际应用中的安装, 原生文件拖放, 终端, 角色显示和声音检查.
 
 ## 许可
 
