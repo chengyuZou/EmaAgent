@@ -3,7 +3,7 @@ name        = "ema-desktop"
 version     = "0.1.0-beta.1"
 description = "EmaAgent desktop shell"
 edition     = "2021"
-rust-version = "1.77.2"
+rust-version = "1.90"
 
 [lib]
 name       = "ema_desktop_lib"
@@ -14,7 +14,7 @@ tauri-build = { version = "2.0", features = [] }
 
 [dependencies]
 # with_webview 使用本版本的原生接口, 升级 Tauri 时需要一起核对 WebView2 类型.
-tauri               = { version = "~2.11.2", features = ["tray-icon", "unstable"] }
+tauri               = { version = "~2.12.5", features = ["tray-icon", "unstable"] }
 portable-pty         = "0.9"
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
@@ -33,9 +33,9 @@ fontdb = "0.24.0"
 # 整个 Job 内 Server 及其派生进程, 不依赖 taskkill /T 进程树完整性.
 [target.'cfg(windows)'.dependencies]
 win32job = "2"
-webview2-com = "0.38.2"
-windows-core = "0.61.2"
-windows = { version = "0.61.3", features = [
+webview2-com = "0.39"
+windows-core = "0.62"
+windows = { version = "0.62", features = [
     "Data_Xml_Dom",
     "UI_Notifications",
     "Win32_Foundation",

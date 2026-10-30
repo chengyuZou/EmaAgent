@@ -1,30 +1,30 @@
-name: Feature request
-description: Suggest an improvement to Ema.
+name: Feature request / 功能建议
+description: Suggest an improvement to Ema. / 提出 Ema 的改进建议.
 body:
   - type: markdown
     attributes:
-      value: You can write in English or Chinese.
+      value: You can write in English or Chinese. / 可以使用英文或中文填写.
 
   - type: textarea
     id: problem
     attributes:
-      label: What is inconvenient or missing today?
-      description: Describe the problem you want to solve.
+      label: What is inconvenient or missing today? / 当前有什么不便或缺失?
+      description: Describe the problem you want to solve. / 描述你想解决的问题.
     validations:
       required: true
 
   - type: textarea
     id: usage
     attributes:
-      label: How would you like to use it?
-      description: Describe how you would like Ema to work in this situation.
+      label: How would you like to use it? / 你希望如何使用?
+      description: Describe the expected behavior in this situation. / 描述你希望在该场景下实现的行为.
     validations:
       required: true
 
   - type: textarea
     id: examples
     attributes:
-      label: Examples or reference images
-      description: If available, share a concrete example or attach reference images.
+      label: Examples or reference images / 示例或参考图片
+      description: If available, share an example or reference images. / 如有, 请提供具体示例或参考图片.
     validations:
       required: false
