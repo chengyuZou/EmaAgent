@@ -50,7 +50,10 @@ describe('Goal HTTP 编辑交付', () => {
       } });
       const claim = queue.claimNextIteration(session.id, 'root');
       if (mode === 'turn') {
-        expect(claim).toMatchObject({ type: 'continuation', continuationText: expect.stringContaining('HTTP 更新后的目标') });
+        expect(claim).toMatchObject({
+          inputKind: 'continuationText',
+          continuationText: expect.stringContaining('HTTP 更新后的目标'),
+        });
         queue.acknowledge('root');
       } else {
         expect(claim).toBeUndefined();

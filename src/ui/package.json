@@ -33,7 +33,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "ladle": "ladle serve",
     "ladle:build": "ladle build",
-    "test": "vitest run --environment jsdom --passWithNoTests",
+    "test": "vitest run --environment jsdom --passWithNoTests --maxWorkers=1 --minWorkers=1",
     "clean": "rimraf dist"
   },
   "peerDependencies": {

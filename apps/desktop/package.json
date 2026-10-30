@@ -8,7 +8,7 @@
     "build": "rimraf dist && tsc -p tsconfig.json && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run",
+    "test": "vitest run --maxWorkers=1 --minWorkers=1",
     "test:scripts": "node --test tests/releaseVersions.test.mjs",
     "test:live2d-release": "node --test tests/live2dRelease.test.mjs",
     "release": "node scripts/release.mjs",

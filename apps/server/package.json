@@ -23,7 +23,7 @@
     "build": "rimraf dist && tsc -p tsconfig.json",
     "start": "node dist/main.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run --passWithNoTests --maxWorkers=1 --minWorkers=1",
     "clean": "rimraf dist"
   },
   "dependencies": {

@@ -6,7 +6,7 @@ import { SettingsStore } from '@ema-agent/settings';
 import { UsageRecorder } from '@ema-agent/usage';
 import { openNarrative } from '../src/composition/narrative.js';
 
-vi.mock('@ema-agent/llm', async () => import('../../../src/llm/languageModel.js'));
+vi.mock('@ema-agent/llm', async () => import('../../../src/llm/index.js'));
 
 const databases: Database[] = [];
 afterEach(() => {
@@ -14,7 +14,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-it('records both isolated non-streaming requests with an 8192 budget when the catalog allows 128000', async () => {
+it('records both isolated streaming requests with an 8192 budget when the catalog allows 128000', async () => {
   const profile = new Database({ memory: true, kind: 'profile' });
   const data = new Database({ memory: true, kind: 'data' });
   const narrative = new Database({ memory: true, kind: 'narrative' });
@@ -61,13 +61,32 @@ it('records both isolated non-streaming requests with an 8192 budget when the ca
     const body = await request.json() as Record<string, unknown>;
     requests.push({ url: request.url, body });
     if (request.url.endsWith('/v1/messages')) {
-      return Response.json({
-        id: 'fixture-message', type: 'message', role: 'assistant', model: 'large-output-model',
-        content: [{ type: 'text', text: JSON.stringify(body.system
-          ? { timelines: ['3rd_Loop'] }
-          : { high_level_keywords: ['story'], low_level_keywords: ['character'] }) }],
-        stop_reason: 'end_turn', stop_sequence: null,
-        usage: { input_tokens: 10, output_tokens: 20 },
+      const text = JSON.stringify(body.system
+        ? { timelines: ['3rd_Loop'] }
+        : { high_level_keywords: ['story'], low_level_keywords: ['character'] });
+      const events = [
+        {
+          type: 'message_start',
+          message: {
+            id: 'fixture-message', type: 'message', role: 'assistant', model: 'large-output-model',
+            content: [], stop_reason: null, stop_sequence: null,
+            usage: { input_tokens: 10, output_tokens: 0 },
+          },
+        },
+        { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+        { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text } },
+        { type: 'content_block_stop', index: 0 },
+        {
+          type: 'message_delta',
+          delta: { stop_reason: 'end_turn', stop_sequence: null },
+          usage: { output_tokens: 20 },
+        },
+        { type: 'message_stop' },
+      ];
+      return new Response(events.map(event => (
+        `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`
+      )).join(''), {
+        headers: { 'Content-Type': 'text/event-stream' },
       });
     }
     if (request.url.endsWith('/embeddings')) {
@@ -90,7 +109,7 @@ it('records both isolated non-streaming requests with an 8192 budget when the ca
   const llmRequests = requests.filter(request => request.url.endsWith('/v1/messages'));
   expect(llmRequests).toHaveLength(2);
   for (const request of llmRequests) {
-    expect(request.body).toMatchObject({ max_tokens: 8192, stream: false });
+    expect(request.body).toMatchObject({ max_tokens: 8192, stream: true });
   }
   const route = llmRequests.find(request => request.body.system);
   const extraction = llmRequests.find(request => !request.body.system);

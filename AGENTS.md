@@ -79,6 +79,8 @@ Each package build clears its own `dist` before compiling. The storage build the
 
 The root `test:scripts` command runs Desktop's release-script tests. `pnpm test:watch` uses Turbo to rerun affected build and test tasks when files change. `pnpm clean` clears package output directories without deleting Rust targets or user profiles. Verify that a script and its referenced files exist before presenting it as an available check.
 
+Turbo defaults to four concurrent package tasks for builds and type checks. The root test and test-watch commands reduce this to two package tasks. Each package's Vitest scripts specify one worker, including Storage's focused watch command. Keep both levels bounded; limiting package tasks alone does not limit each test runner's worker pool. Release's pnpm workspace build also uses four concurrent package tasks.
+
 ## Documentation, comments, and prompts
 
 ### Language and punctuation

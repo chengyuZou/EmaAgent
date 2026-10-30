@@ -3,6 +3,8 @@ import { expect, it } from 'vitest';
 import { buildKeywordExtractionPrompt, ROUTER_PROMPT } from '../pipeline/prompts.js';
 
 it('提词正文与保存的 LightRAG v1.5.7 模板逐字一致, 只填入语言, 格式和 Query', () => {
+  // 对照文件取自 LightRAG v1.5.7 的 prompt.py, 不从本包提词生成.
+  // 固定提交: 28ff1b05f2ac3f3e6fa14dd2cd33656579bd0c9c.
   const { template, examples } = JSON.parse(readFileSync(
     new URL('./fixtures/lightragKeywords.json', import.meta.url), 'utf8',
   )) as { template: string; examples: string };

@@ -20,6 +20,8 @@ vi.mock('../components/mermaidRender.js', () => ({
 
 let container: HTMLDivElement;
 let root: Root;
+const originalRects = Range.prototype.getClientRects;
+const originalBounds = Range.prototype.getBoundingClientRect;
 const graph = 'flowchart TD\n  A[开始] --> B[结束]';
 const closed = `\`\`\`mermaid\n${graph}\n\`\`\``;
 
@@ -31,6 +33,9 @@ beforeEach(() => {
     unobserve() {}
     disconnect() {}
   });
+  // JSDOM 不计算文本尺寸, CodeMirror 的内容检查不依赖真实布局.
+  Range.prototype.getClientRects = () => [] as unknown as DOMRectList;
+  Range.prototype.getBoundingClientRect = () => new DOMRect();
   container = document.createElement('div');
   document.body.append(container);
   root = createRoot(container);
@@ -39,6 +44,8 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root.unmount());
   container.remove();
+  Range.prototype.getClientRects = originalRects;
+  Range.prototype.getBoundingClientRect = originalBounds;
   vi.unstubAllGlobals();
 });
 
@@ -169,7 +176,12 @@ describe('Markdown Mermaid', () => {
     expect(container.querySelector('.hljs-keyword')).not.toBeNull();
     expect(container.querySelector('.katex')).not.toBeNull();
     expect(container.querySelector('a')?.getAttribute('rel')).toBe('noopener noreferrer');
-    expect(container.querySelector('script, div[style], [onclick]')).toBeNull();
+    const rawHtmlBlock = Array.from(container.querySelectorAll('div'))
+      .find(element => element.textContent === '正文');
+    expect(rawHtmlBlock).toBeDefined();
+    expect(rawHtmlBlock?.hasAttribute('style')).toBe(false);
+    expect(rawHtmlBlock?.hasAttribute('onclick')).toBe(false);
+    expect(container.querySelector('script, [onclick]')).toBeNull();
     expect(drawing.render).not.toHaveBeenCalled();
   });
 

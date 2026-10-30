@@ -31,15 +31,15 @@ if (args.help) {
 checkReleaseVersions(repository);
 const pnpm = process.env.npm_execpath;
 if (!pnpm) {
-  throw new Error('请从仓库根目录运行 pnpm release');
+  throw new Error('Run pnpm release from the repository root.');
 }
 if (process.versions.node !== config.nodeVersion) {
-  throw new Error(`发布需要 Node ${config.nodeVersion}, 当前为 ${process.versions.node}`);
+  throw new Error(`Release builds require Node ${config.nodeVersion}; current version: ${process.versions.node}.`);
 }
 const host = execFileSync('rustc', ['-Vv'], { encoding: 'utf8' }).match(/^host: (.+)$/mu)?.[1].trim();
 const target = args.target ?? process.env.TAURI_ENV_TARGET_TRIPLE ?? host;
 if (!host || target !== host) {
-  throw new Error(`原生依赖必须在目标平台构建: target=${target}, host=${host}`);
+  throw new Error(`Native dependencies must be built on the target platform: target=${target}, host=${host}`);
 }
 verifyAssets(!args['server-only']);
 const temporary = mkdtempSync(path.join(os.tmpdir(), 'ema-release-'));
@@ -49,36 +49,38 @@ const app = path.join(portable, 'app');
 const suffix = process.platform === 'win32' ? '.exe' : '';
 const node = path.join(portable, `ema-server${suffix}`);
 try {
-  stage('构建 Windows 电脑操控程序', () => buildComputerUse({ release: true }));
-  stage('构建当前 Server 及其工作区依赖', () => runPnpm(['--filter', '@ema-agent/server...', 'build'], repository));
-  stage('在独立目录安装锁定的生产依赖', () => {
+  stage('Build the Windows computer-use helper', () => buildComputerUse({ release: true }));
+  stage('Build Server and its workspace dependencies', () => runPnpm([
+    '--workspace-concurrency=4', '--filter', '@ema-agent/server...', 'build',
+  ], repository));
+  stage('Install locked production dependencies in an isolated workspace', () => {
     copyReleaseWorkspace(repository, workspace);
     const store = runPnpm(['store', 'path', '--silent'], repository, true).trim();
     runPnpm(['install', '--prod', '--frozen-lockfile', '--config.node-linker=hoisted', '--store-dir', store], workspace);
   });
-  stage('生成不含符号链接的发布目录', () => {
+  stage('Assemble the release directory without symbolic links', () => {
     assembleReleaseApp(workspace, app);
     copyFileSync(process.execPath, node);
     chmodSync(node, 0o755);
     const result = checkReleaseFiles(app);
-    console.log(`发布文件 ${result.files} 个, 最长源路径 ${result.longest.length} 字符`);
+    console.log(`Release files: ${result.files}; longest source path: ${result.longest.length} characters`);
   });
   // 删除安装工作区后再启动, 防止检查时误用工作区中的链接或依赖.
   rmSync(workspace, { recursive: true, force: true });
-  console.log('\n[发布] 验证独立运行和原生依赖');
+  console.log('\n[Release] Verify standalone startup and native dependencies');
   await checkReleaseServer(app, node, resources, temporary, config.nodeVersion);
-  stage('交付已验证的 Server 资源', () => writeServerResources(app, node, target));
+  stage('Copy verified Server resources', () => writeServerResources(app, node, target));
   if (args['server-only']) {
-    console.log('Server 发布资源检查通过; 尚未生成或验收桌面安装包');
+    console.log('Server release resources passed validation; the desktop installer has not been built or tested.');
   } else {
     const bundles = args.bundles ?? ({ win32: 'nsis', darwin: 'dmg', linux: 'deb' }[process.platform]);
-    stage('构建桌面和安装包', () => runPnpm([
+    stage('Build the desktop application and installer', () => runPnpm([
       'exec', 'tauri', 'build', '--config', 'src-tauri/tauri.release.conf.json',
       ...(args.target ? ['--target', target] : []), '--bundles', bundles,
     ], desktop));
     const buildTarget = args.target ? path.join(tauri, 'target', target) : path.join(tauri, 'target');
-    console.log(`\n安装包输出: ${path.join(buildTarget, 'release', 'bundle')}`);
-    console.log('安装包已生成; 尚未在真实用户目录安装和验收桌面交互');
+    console.log(`\nInstaller output: ${path.join(buildTarget, 'release', 'bundle')}`);
+    console.log('Installer generated; installation in a real user directory and desktop interaction checks are still required.');
   }
 } finally {
   // temporary 由本次 mkdtemp 创建, 不接受命令行提供的删除目录.
@@ -99,9 +101,9 @@ function runPnpm(arguments_, cwd, capture = false) {
 
 function stage(label, action) {
   const start = performance.now();
-  console.log(`\n[发布] ${label}`);
+  console.log(`\n[Release] ${label}`);
   action();
-  console.log(`[发布] ${label}完成 (${((performance.now() - start) / 1000).toFixed(1)} 秒)`);
+  console.log(`[Release] Completed: ${label} (${((performance.now() - start) / 1000).toFixed(1)} s)`);
 }
 
 function verifyAssets(includeDesktop) {
@@ -123,7 +125,7 @@ function verifyAssets(includeDesktop) {
   }
   for (const file of files) {
     if (!statSync(path.resolve(path.dirname(model), file)).isFile()) {
-      throw new Error(`Live2D 资源不是文件: ${file}`);
+      throw new Error(`Live2D resource is not a file: ${file}`);
     }
   }
   statSync(path.join(resources, 'characters', '樱羽艾玛', 'voice', 'ra_ema001.mp3'));
@@ -135,7 +137,7 @@ function verifyAssets(includeDesktop) {
   const source = path.resolve(args['cubism-core'] ?? process.env.EMA_CUBISM_CORE_PATH ?? destination);
   const hash = createHash('sha256').update(readFileSync(source)).digest('hex');
   if (!config.cubismCore.allowedSha256.includes(hash)) {
-    throw new Error(`Cubism Core SHA-256 未被批准: ${hash}`);
+    throw new Error(`Cubism Core SHA-256 is not approved: ${hash}`);
   }
   if (source !== destination) {
     mkdirSync(path.dirname(destination), { recursive: true });
@@ -146,7 +148,7 @@ function verifyAssets(includeDesktop) {
     statSync(path.join(tauri, icon));
   }
   if (process.platform === 'win32' && !icons.some(icon => icon.endsWith('.ico'))) {
-    throw new Error('Windows 安装包需要 .ico 图标');
+    throw new Error('Windows installers require an .ico icon.');
   }
 }
 

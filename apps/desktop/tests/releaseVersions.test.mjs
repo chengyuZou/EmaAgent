@@ -83,6 +83,6 @@ test('release entry rejects a root mismatch before tool checks or builds', conte
   });
   assert.equal(result.error, undefined);
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /发布版本必须与根目录 package.json 一致/u);
-  assert.doesNotMatch(result.stdout, /\[发布\]/u);
+  assert.match(result.stderr, /Release versions must be nonempty and match the root package\.json\./u);
+  assert.doesNotMatch(result.stdout, /\[Release\]/u);
 });

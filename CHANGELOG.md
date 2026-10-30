@@ -8,6 +8,7 @@
 
 - Updated the application icon with transparent artwork shared by the desktop app, computer-use executable, notifications, and README.
 - Standardized clean builds and pnpm-only dependency locking, removed obsolete commands and configuration, and expanded CI coverage for build inputs.
+- Limited build and typecheck concurrency to four package tasks, and test concurrency to two package tasks with one Vitest worker each.
 - Added character stickers with batch import, description editing, and a configuration overview. Described images enter the character Prompt, with an 80,000-character limit for the complete section.
 - Split character resource Stores by Live2D, illustrations, reference audio, and stickers. Illustrations support a grid and an overview grouped by expression.
 - Updated character/sidebar scrolling, image loading placeholders, sticker display size in chat, and Project-row focus styles.

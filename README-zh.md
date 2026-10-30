@@ -440,6 +440,8 @@ pnpm --filter @ema-agent/desktop test
 
 本地迭代可运行 `pnpm test:watch`, 监听工作区变化并重跑受影响的构建和测试. 各包构建前会清空自己的 `dist` 目录. `pnpm clean` 清理这些 `dist` 目录, 保留 Rust 构建缓存和应用数据.
 
+构建和类型检查最多同时运行 4 个包级任务. 根测试和测试监听命令最多同时运行 2 个包级任务, 每个包的 Vitest 使用 1 个 worker.
+
 ## 许可
 
 代码使用 [MIT License](LICENSE). 依赖和随附资源遵守各自的许可. 分发前需要确认 Cubism Core, 立绘, 模型和声音的使用权.

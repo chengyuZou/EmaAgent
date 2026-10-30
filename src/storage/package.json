@@ -21,8 +21,8 @@
   "scripts": {
     "build": "rimraf dist && tsc -p tsconfig.json && node --input-type=module -e \"import{cpSync}from'fs';cpSync('migrations','dist/migrations',{recursive:true})\"",
     "dev": "tsc -p tsconfig.json --watch",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "test": "vitest run --maxWorkers=1 --minWorkers=1",
+    "test:watch": "vitest --maxWorkers=1 --minWorkers=1",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "migrate": "tsx database/migrateCli.ts",
     "migrate:status": "tsx database/migrateCli.ts --status",

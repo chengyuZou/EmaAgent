@@ -156,6 +156,8 @@ describe('createPrepareSubagent fork', () => {
   });
 
   it.each([true, false])('子代理 inputImage=%s 时仍保留 fork 工具原图, 不自动调用 Vision', async inputImage => {
+    // 单像素透明 PNG. 请求准备会实际解码图片, 不能用普通文本冒充 PNG.
+    const imageData = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=';
     const parent: ForkParentMessages = { messages: [
       {
         id: 'parent-call', role: 'assistant', kind: 'normal', interrupted: false, createdAt: 1,
@@ -166,7 +168,7 @@ describe('createPrepareSubagent fork', () => {
         id: 'parent-image', role: 'user', kind: 'tool_results', interrupted: false, createdAt: 2,
         summarizedThroughMessageId: null,
         blocks: [{ type: 'tool_result', toolCallId: 'read-image', content: [
-          { type: 'image_data', data: 'YWJj', mimeType: 'image/png' },
+          { type: 'image_data', data: imageData, mimeType: 'image/png' },
         ] }],
       },
     ] };
@@ -195,6 +197,7 @@ describe('createPrepareSubagent fork', () => {
     expect(JSON.stringify(result.request.messages)).toContain('"type":"image_data"');
     expect(JSON.stringify(result.request.messages)).not.toContain('工具图片未提供:');
     expect(JSON.stringify(child.messages)).toContain('"type":"image_data"');
+    expect(JSON.stringify(child.messages)).toContain(imageData);
     expect(describeImage).not.toHaveBeenCalled();
   });
 

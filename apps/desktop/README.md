@@ -117,6 +117,8 @@ The repository root `package.json` defines the release version. Before checking 
 
 `--target` must match the current Rust host because Node, SQLite, Sharp, and FFmpeg contain platform-specific files. An explicit target places bundles under `src-tauri/target/<target>/release/bundle/`. This is not a cross-compilation workflow.
 
+The Server workspace build uses at most four concurrent pnpm package tasks. This setting limits package builds; Cargo controls native Rust compilation separately.
+
 The four release scripts have these roles:
 
 1. `release.mjs` checks versions and assets, builds the current Server and its workspace dependencies, and runs the remaining steps.

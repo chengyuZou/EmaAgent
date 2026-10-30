@@ -23,7 +23,7 @@ export function copyReleaseWorkspace(source, destination) {
       if (version.startsWith('workspace:')) {
         const dependency = packageDirectories.get(name);
         if (!dependency) {
-          throw new Error(`发布依赖缺少工作区包: ${name}`);
+          throw new Error(`Release dependencies are missing a workspace package: ${name}`);
         }
         packages.add(dependency);
       }
@@ -58,7 +58,7 @@ export function assembleReleaseApp(workspace, destination) {
         if (workspacePackages.has(realpathSync(file))) {
           return false;
         }
-        throw new Error(`发布依赖包含未处理的链接: ${file}`);
+        throw new Error(`Release dependencies contain an unhandled symbolic link: ${file}`);
       },
     });
   };
@@ -69,7 +69,7 @@ export function assembleReleaseApp(workspace, destination) {
     const manifest = JSON.parse(readFileSync(path.join(packageRoot, 'package.json'), 'utf8'));
     const target = path.join(destination, 'node_modules', manifest.name);
     if (existsSync(path.join(target, 'package.json'))) {
-      throw new Error(`发布依赖重复定义工作区包: ${manifest.name}`);
+      throw new Error(`Release dependencies contain a duplicate workspace package: ${manifest.name}`);
     }
     copy(packageRoot, target);
   }

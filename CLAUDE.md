@@ -44,6 +44,8 @@ Desktop extras: `pnpm --filter @ema-agent/desktop test:scripts` (release version
 
 The root `pnpm test:scripts` forwards to Desktop's release-script tests. `pnpm test:watch` uses Turbo to rerun affected build and test tasks after changes, while Storage retains its own focused Vitest watch command. `pnpm typecheck` is the static check.
 
+Build and typecheck scheduling defaults to four concurrent package tasks. Root test and test-watch scheduling uses two package tasks, and each package's Vitest scripts use one worker. Release's pnpm workspace build also uses four concurrent package tasks. Keep the outer task limit and inner worker limit explicit; a small task limit alone does not bound all test workers.
+
 ## Build model - the main gotcha
 
 Every `src/*` package exports compiled `./dist/index.js`, and dependents (Server, Desktop, other packages) resolve the `dist` output, not source. After editing a package, rebuild it (and anything between it and the consumer) before testing or running a dependent - otherwise you are exercising stale code. `pnpm --filter <pkg> test` runs vitest directly and does not rebuild dependencies; `pnpm test` via Turbo does.

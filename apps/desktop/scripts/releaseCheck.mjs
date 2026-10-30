@@ -29,7 +29,7 @@ export function checkReleaseVersions(repository) {
     const details = versions
       .map(entry => `${entry.file}: ${JSON.stringify(entry.version) ?? '(missing)'}`)
       .join('\n');
-    throw new Error(`发布版本必须与根目录 package.json 一致, 且不能为空. 请手动同步:\n${details}`);
+    throw new Error(`Release versions must be nonempty and match the root package.json. Update these files manually:\n${details}`);
   }
 }
 
@@ -40,13 +40,13 @@ export function checkReleaseFiles(directory, windowsPaths = process.platform ===
     for (const entry of readdirSync(current, { withFileTypes: true })) {
       const absolute = path.join(current, entry.name);
       if (entry.isSymbolicLink()) {
-        throw new Error(`发布资源不能依赖符号链接: ${absolute}`);
+        throw new Error(`Release resources must not depend on symbolic links: ${absolute}`);
       }
       if (entry.isDirectory()) {
         visit(absolute);
       } else {
         if (windowsPaths && absolute.length >= 260) {
-          throw new Error(`安装包工具不能读取超过 259 字符的路径 (${absolute.length}): ${absolute}`);
+          throw new Error(`Installer tools cannot read paths longer than 259 characters (${absolute.length}): ${absolute}`);
         }
         files++;
         if (absolute.length > longest.length) {
@@ -97,7 +97,7 @@ export async function checkReleaseServer(appRoot, nodeBinary, resources, tempora
       const response = await fetch(`${origin}${route}`, {
         headers: { 'X-Ema-Secret': secret }, signal: AbortSignal.timeout(10_000),
       });
-      assert.equal(response.status, 200, `${route} 请求失败`);
+      assert.equal(response.status, 200, `HTTP request failed: ${route}`);
       return response.json();
     }
     const [health, character, sessions, memory] = await Promise.all([
@@ -111,9 +111,9 @@ export async function checkReleaseServer(appRoot, nodeBinary, resources, tempora
     const unauthorized = await fetch(`${origin}/api/characters/current`, { signal: AbortSignal.timeout(10_000) });
     await unauthorized.arrayBuffer();
     assert.equal(unauthorized.status, 401);
-    console.log('搬离构建目录后: Server、角色、空会话、Memory 目录和 HTTP 认证检查通过');
+    console.log('Standalone checks passed outside the build workspace: Server, characters, empty sessions, Memory paths, and HTTP authentication.');
   } catch (error) {
-    throw new Error(`发布 Server 检查失败: ${error.message}\n${output}`, { cause: error });
+    throw new Error(`Release Server check failed: ${error.message}\n${output}`, { cause: error });
   } finally {
     const timer = setTimeout(() => server.kill('SIGKILL'), 5_000);
     if (server.exitCode === null && server.signalCode === null) {
@@ -133,7 +133,7 @@ export async function checkReleaseServer(appRoot, nodeBinary, resources, tempora
 export function waitForServerReady(server, timeoutMs = 120_000) {
   return new Promise((resolve, reject) => {
     const lines = createInterface({ input: server.stdout });
-    const timer = setTimeout(() => fail(new Error(`Server 在 ${timeoutMs / 1000} 秒内没有报告就绪端口`)), timeoutMs);
+    const timer = setTimeout(() => fail(new Error(`Server did not report a ready port within ${timeoutMs / 1000} seconds.`)), timeoutMs);
     function cleanup() {
       clearTimeout(timer);
       lines.close();
@@ -145,7 +145,7 @@ export function waitForServerReady(server, timeoutMs = 120_000) {
       reject(error);
     }
     function onExit(code, signal) {
-      fail(new Error(`Server 在就绪前退出: code=${code}, signal=${signal}`));
+      fail(new Error(`Server exited before reporting readiness: code=${code}, signal=${signal}`));
     }
     server.once('error', fail);
     server.once('exit', onExit);
@@ -161,7 +161,7 @@ export function waitForServerReady(server, timeoutMs = 120_000) {
       }
       const port = message.params?.port;
       if (!Number.isInteger(port) || port < 1 || port > 65_535) {
-        fail(new Error('server.ready 没有有效端口'));
+        fail(new Error('Invalid port in server.ready.'));
         return;
       }
       cleanup();

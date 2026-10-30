@@ -10,8 +10,8 @@
     "release": "pnpm --filter @ema-agent/desktop release",
     "dev:reset": "node scripts/dev-reset.mjs",
     "test:scripts": "pnpm --filter @ema-agent/desktop test:scripts",
-    "test": "turbo run test",
-    "test:watch": "turbo watch test",
+    "test": "turbo run test --concurrency=2",
+    "test:watch": "turbo watch test --concurrency=2",
     "typecheck": "turbo run typecheck",
     "clean": "turbo run clean"
   },

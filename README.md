@@ -440,6 +440,8 @@ Use the affected package's tests as well. Desktop's `test:scripts` checks releas
 
 For local iteration, `pnpm test:watch` watches the workspace and reruns affected build and test tasks. Package builds clear their own `dist` directories before compiling. `pnpm clean` clears these `dist` directories while preserving Rust build caches and application data.
 
+Build and typecheck commands run at most four package tasks at once. The root test and test-watch commands run at most two package tasks, with one Vitest worker per package.
+
 ## License
 
 The code is available under the [MIT License](LICENSE). Dependencies and bundled resources retain their own terms. Obtain the necessary rights for Cubism Core, artwork, models, and voices before redistributing them.

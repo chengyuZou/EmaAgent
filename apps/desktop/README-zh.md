@@ -117,6 +117,8 @@ pnpm release --server-only
 
 `--target` 必须与当前 Rust host 相同, 因为 Node, SQLite, Sharp 和 FFmpeg 包含平台相关文件. 显式指定 target 后, 安装包输出在 `src-tauri/target/<target>/release/bundle/`. 这不是跨平台交叉构建流程.
 
+Server 工作区构建最多同时运行 4 个 pnpm 包级任务. 此设置限制包级构建, Rust 原生编译由 Cargo 单独调度.
+
 四个发布脚本分别处理:
 
 1. `release.mjs` 检查版本和资源, 构建当前 Server 及工作区依赖, 执行后续发布步骤.
