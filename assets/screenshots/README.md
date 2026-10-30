@@ -4,14 +4,14 @@
 
 Unedited application screenshots used by the root README. Click images there to inspect their full resolution. The custom-character example uses Hiyori Momose with a custom chat persona. The current set also includes a 23-image message before and after expansion.
 
-All 39 images appear in the root README. Additional interface views and the four provider billing captures are inside collapsible sections. This index links every image by its purpose.
+All 43 images appear in the root README. Additional interface views and the four provider billing captures are inside collapsible sections. This index links every image by its purpose.
 
 | Directory | Contents | Images |
 | --- | --- | --- |
 | `characters/` | Main interface and Hiyori conversations | 4 |
 | `conversation/` | Attachments, image groups, queued inputs and approval notification | 8 |
 | `tasks/` | T2 research and subagent records | 5 |
-| `workspace/` | Files, review, terminal, browser and tool entry points | 5 |
+| `workspace/` | Files, review, terminal, browser, computer-use example and tool entry points | 9 |
 | `extensions/` | Skills and MCP | 4 |
 | `settings/` | Appearance and model providers | 7 |
 | `usage/` | Application usage records and provider billing references | 6 |
@@ -29,6 +29,7 @@ All 39 images appear in the root README. Additional interface views and the four
 | [task2SubagentResult.png](./tasks/task2SubagentResult.png) | A subagent's returned evidence |
 | [workspaceFiles.png](./workspace/workspaceFiles.png) | File navigation and a Markdown preview |
 | [workspaceReview.png](./workspace/workspaceReview.png) | A file-change review beside the conversation |
+| [computerUseVideoSummary.png](./workspace/computerUseVideoSummary.png) | ComputerEnd followed by a summary based on frames and visible subtitles observed at several timestamps |
 | [inputQueue.png](./conversation/inputQueue.png) | Two pending follow-up inputs during tool execution |
 | [mcpCall.png](./extensions/mcpCall.png) | An actual external MCP help call and reply |
 | [skillsMarket.png](./extensions/skillsMarket.png) | Skills marketplace browsing |
@@ -45,6 +46,7 @@ All 39 images appear in the root README. Additional interface views and the four
 - Attachments: [25 pending attachments and a selected Skill in the composer](./conversation/attachmentDraft.png).
 - Research: [overview](./tasks/task2Overview.png), [subagent input](./tasks/task2SubagentInput.png).
 - Workspace: [tool entry points](./workspace/workspaceTools.png), [manual terminal](./workspace/workspaceTerminal.png), [empty browser tab](./workspace/workspaceBrowser.png), [attachment list](./conversation/attachmentPanel.png).
+- Computer use: [request and initial operations](./workspace/computerUseVideoStart.png), [seeking and fullscreen](./workspace/computerUseVideoNavigation.png), [timestamp-by-timestamp observations](./workspace/computerUseVideoFrames.png).
 - Interaction: [pending input](./conversation/inputQueuePending.png), [subsequent replies](./conversation/inputQueueDelivered.png), [PowerShell approval notification](./conversation/permissionNotification.png).
 - Usage: [earlier records](./usage/usageCacheEarlier.png).
 - Appearance: [fonts](./settings/appearanceFonts.png), [corner radius and code colors](./settings/appearanceCodeStyle.png), [wallpaper settings](./settings/wallpaperOptions.png), [wallpaper opacity preview](./settings/wallpaperOverlay.png).

@@ -15,7 +15,7 @@ pnpm install --frozen-lockfile
 pnpm dev:start
 ```
 
-Node 和 pnpm 要求见[根 README](../../README-zh.md), 还需要当前平台的 Rust 和 Tauri 构建环境. Live2D 所需的 Cubism Core 见下方发布说明.
+Node 和 pnpm 要求见[根 README](../../README-zh.md), 还需要 Rust 1.90 或更新版本及当前平台的 Tauri 构建环境. Live2D 所需的 Cubism Core 见下方发布说明.
 
 Tauri 会启动 Server 开发进程和 Vite. Vite 使用 1420 端口, 分别以 `index.html` 和 `main.html` 提供舞台和主窗口页面. Server 另选本地端口, 由宿主把端口和认证密钥交给 WebView. 不需要把密钥写进前端配置文件.
 

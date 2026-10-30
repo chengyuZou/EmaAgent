@@ -4,14 +4,14 @@
 
 这里保存根 README 使用的未修改实机原图. README 中点击图片可以查看原尺寸. 自定义角色采用桃濑日和模型和自定义聊天人设. 现有素材也包含一条 23 图消息收起和展开的画面.
 
-39 张图片均已放入根 README. 补充界面画面和 4 张服务账单参考放在折叠区域, 本索引按用途列出全部图片.
+43 张图片均已放入根 README. 补充界面画面和 4 张服务账单参考放在折叠区域, 本索引按用途列出全部图片.
 
 | 目录 | 内容 | 图片数 |
 | --- | --- | --- |
 | `characters/` | 主界面与日和对话 | 4 |
 | `conversation/` | 附件, 多图, 消息排队与审批通知 | 8 |
 | `tasks/` | T2 研究与子代理记录 | 5 |
-| `workspace/` | 文件, 审阅, 终端, 浏览器及工具入口 | 5 |
+| `workspace/` | 文件, 审阅, 终端, 浏览器, 电脑操控示例及工具入口 | 9 |
 | `extensions/` | Skills 与 MCP | 4 |
 | `settings/` | 外观与模型服务 | 7 |
 | `usage/` | 应用用量及服务账单参考 | 6 |
@@ -29,6 +29,7 @@
 | [task2SubagentResult.png](./tasks/task2SubagentResult.png) | 子代理返回的依据 |
 | [workspaceFiles.png](./workspace/workspaceFiles.png) | 文件导航与 Markdown 预览 |
 | [workspaceReview.png](./workspace/workspaceReview.png) | 对话旁的文件变更审阅 |
+| [computerUseVideoSummary.png](./workspace/computerUseVideoSummary.png) | ComputerEnd 结束操控后, 汇总多个时间点的画面和可见字幕 |
 | [inputQueue.png](./conversation/inputQueue.png) | 工具执行时排队的两条补充输入 |
 | [mcpCall.png](./extensions/mcpCall.png) | 实际外部 MCP help 调用及回复 |
 | [skillsMarket.png](./extensions/skillsMarket.png) | 技能市场浏览 |
@@ -45,6 +46,7 @@
 - 附件: [输入框中的 25 个待发送附件及选中的 Skill](./conversation/attachmentDraft.png).
 - 研究过程: [概览](./tasks/task2Overview.png), [子代理输入](./tasks/task2SubagentInput.png).
 - 工作区: [工具入口](./workspace/workspaceTools.png), [手动终端](./workspace/workspaceTerminal.png), [空白浏览器标签](./workspace/workspaceBrowser.png), [附件列表](./conversation/attachmentPanel.png).
+- 电脑操控: [请求及初始操作](./workspace/computerUseVideoStart.png), [进度跳转与全屏](./workspace/computerUseVideoNavigation.png), [分时点观察记录](./workspace/computerUseVideoFrames.png).
 - 交互: [等待处理](./conversation/inputQueuePending.png), [后续回复](./conversation/inputQueueDelivered.png), [PowerShell 审批通知](./conversation/permissionNotification.png).
 - 用量: [较早的调用记录](./usage/usageCacheEarlier.png).
 - 外观: [字体](./settings/appearanceFonts.png), [圆角与代码配色](./settings/appearanceCodeStyle.png), [壁纸设置](./settings/wallpaperOptions.png), [壁纸透明度预览](./settings/wallpaperOverlay.png).

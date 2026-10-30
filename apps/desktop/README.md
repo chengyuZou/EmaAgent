@@ -15,7 +15,7 @@ pnpm install --frozen-lockfile
 pnpm dev:start
 ```
 
-Use the Node and pnpm requirements in the [root README](../../README.md), plus the Rust and Tauri build prerequisites for the current platform. Live2D also needs the licensed Cubism Core file described below.
+Use the Node and pnpm requirements in the [root README](../../README.md), plus Rust 1.90 or newer and the Tauri build prerequisites for the current platform. Live2D also needs the licensed Cubism Core file described below.
 
 Tauri starts the Server development process and Vite. Vite serves the stage at `index.html` and the main window at `main.html`, on port 1420. The Server chooses a separate local port; the host supplies that port and an authentication secret to the WebViews. Do not put the secret in a frontend configuration file.
 
