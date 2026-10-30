@@ -4,6 +4,8 @@
 
 Speech turns visible assistant text into ordered TTS requests and one WAV per Turn and speaking character. Automatic generation accepts text deltas; manual generation feeds the completed reply. Audio generation and desktop playback have separate lifetimes.
 
+Turn completion does not wait for synthesis or playback. See [speech design](../../docs/design/speech/README.md) for ownership and character voice-version choices.
+
 ## Generation
 
 The Server creates `SpeechCoordinator` with fixed Session/Turn IDs, Provider/model, prepared voice, `CallTTS`, `openAudio(format)`, cancellation and synchronous persistence callbacks. Feed text with `acceptTextDelta`, then await `finish`; `cancel` aborts generation and shares the same completion Promise.

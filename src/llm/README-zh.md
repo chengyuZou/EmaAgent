@@ -4,6 +4,8 @@
 
 `@ema-agent/llm` 通过 OpenAI, Anthropic 或 Gemini SDK 发送模型请求. 输入是共用的消息和工具定义, 输出可以是流事件, 也可以是包含内容块, 结束原因和 Token 用量的完整结果.
 
+完整结果接口选择流式传输的原因见 [Complete 设计](../../docs/design/llmCompletion/README-zh.md).
+
 ## 使用
 
 先为选定的连接和模型创建调用函数, 再决定每次请求如何接收结果.
@@ -105,7 +107,7 @@ HTTP 413 若未明确表示 Token 上下文超限, 则通过 `LLMRequestTooLarge
 
 ## 阅读和验证
 
-先看 [languageModel.ts](languageModel.ts) 的两个工厂和延迟初始化, 再按协议进入 [protocols/](protocols/) 查看共用的请求转换, 流事件和完整结果收集. [usage.ts](usage.ts) 与 [errors.ts](errors.ts) 保存共用的计数和错误处理规则.
+两个工厂和延迟初始化在 [languageModel.ts](languageModel.ts), [protocols/](protocols/) 负责请求转换和流事件, [collectLLMCompletion.ts](collectLLMCompletion.ts) 收集完整结果. [usage.ts](usage.ts) 与 [errors.ts](errors.ts) 保存共用的计数和错误处理规则.
 
 真实调用方包括 [Agent](../agent/agentLoop.ts), [Compact](../compact/macroCompact.ts), [Vision](../vision/visionModel.ts), 以及 Server 的 [Memory](../../apps/server/src/composition/memory.ts) 和 [Narrative](../../apps/server/src/composition/narrative.ts) 接线.
 

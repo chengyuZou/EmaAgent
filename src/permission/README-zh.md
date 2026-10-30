@@ -4,6 +4,8 @@
 
 Permission 决定工具调用可以执行, 必须拒绝还是需要用户确认. 规则匹配和判断顺序由本包负责. Tool 通过 `checkPermissions(input, context)` 提供操作信息, 不读取权限设置或保存批准.
 
+集中判断和批准范围的理由见[权限设计](../../docs/design/permissions/README-zh.md).
+
 ## 入口与职责
 
 执行器只调用 `checkToolPermission(tool, input, toolContext, permissionContext, { interactive })`. 该入口在 Permission 内调用 Tool 的 `checkPermissions`, 选择对应的分类检查, 最后返回 `PermissionCheckResult`.

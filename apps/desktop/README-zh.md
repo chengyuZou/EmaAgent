@@ -12,6 +12,7 @@ Ema 桌面应用包含角色舞台, 以及聊天和设置窗口. React 渲染两
 
 ```sh
 pnpm install --frozen-lockfile
+pnpm build
 pnpm dev:start
 ```
 
@@ -47,7 +48,7 @@ sequenceDiagram
 
 Server 保存消息, 设置和资源. 前端 Store 保存当前导航, 草稿, 已加载历史, 运行中的任务等共享页面状态. 历史消息按窗口加载; 实时 Turn 要等对应的持久化历史读取成功后才从实时状态中移除.
 
-设置页面从 `@ema-agent/server/settings` 导入定义, 对应 [definitions.ts](../server/src/settings/definitions.ts). Server 注册同一批对象. `settingsApi.getValue(definition)` 和 `putValue(definition, value)` 从定义取得 key 和值类型, 并按同一 Schema 检查响应. 标题和控件留在 Desktop. 共享控件与 `useSettingValues` 放在 `src/settings/shared`. 权限, 事件和屏幕捕获各有独立侧栏页面, 不放在参数设置中. 权限页包含确认超时和全局/项目规则, 事件页包含通知展示控制. 安全页保留沙箱和终端设置.
+设置页面从 `@ema-agent/server/settings` 导入定义, 对应 [definitions.ts](../server/src/settings/definitions.ts). Server 注册同一批对象. `settingsApi.getValue(definition)` 和 `putValue(definition, value)` 从定义取得 key 和值类型, 并按同一 Schema 检查响应. 标题和控件留在 Desktop. 共享控件与 `useSettingValues` 放在 `src/settings/shared`. 权限, 事件和电脑操控各有独立侧栏页面, 不放在参数设置中. 自动屏幕捕获在电脑操控页配置. 权限页包含确认超时和全局/项目规则, 事件页包含通知展示控制. 安全页保留沙箱和终端设置.
 
 参数设置中的 Tools 管理内置工具启用状态. 后台进程是独立页面, 管理 Shell 并发数和运行时间限制, 沿用同一批配置定义与保存接口.
 
@@ -57,7 +58,7 @@ Server 保存消息, 设置和资源. 前端 Store 保存当前导航, 草稿, �
 
 普通切换会话会保留各会话的草稿, 工作区布局和手动终端. 归档或删除会话后, 清除它的聊天状态, 释放终端视图, 请求关闭宿主 PTY, 并清掉附件列表缓存. 不影响其他会话.
 
-Permission 和 AskUser 共用各 Session 已有的交互队列. Windows 上, main 将各队首同步给原生宿主, 再由宿主判断前台 Chat 是否正在显示请求所属 Session, 是则不弹通知. Permission 按钮复用聊天的答复 API, AskUser 通知只负责打开 Chat 或关闭提示. 关闭通知不结束请求. `src/lib/notifications/interactionNotifications.ts` 中的主窗口订阅在 main 隐藏时仍保留. 原生注册, 前台判断与平台限制见[宿主文档](./src-tauri/README-zh.md#windows-交互通知).
+Permission 和 AskUser 共用各 Session 已有的交互队列. Windows 上, main 将各队首同步给原生宿主, 再由宿主判断前台 Chat 是否正在显示请求所属 Session, 是则不弹通知. Permission 按钮复用聊天的答复 API, AskUser 通知只负责打开 Chat 或关闭提示. 关闭通知不结束请求. `src/lib/notifications/desktopNotifications.ts` 中的主窗口订阅在 main 隐藏时仍保留. 原生注册, 前台判断与平台限制见[宿主文档](./src-tauri/README-zh.md#windows-交互通知).
 
 原生文件拖放同时检查当前页面和指针位置. Chat 只接收中间聊天区的路径, 包括新对话页面, 不包含会话侧栏和右侧工作区. 已挂载但隐藏的 Chat 不接收设置页的拖放. 手动选择文件和 Chat 拖入共用草稿附件流程: 图片显示本地预览, 图片和粘贴文本在发送时保存到会话, 普通文件保留本地路径引用. 拖入文件不会自动发送消息.
 
@@ -71,7 +72,7 @@ LLM 和 Vision 的创建页及高级配置提供可选 models.dev ID. 清空后�
 
 语音生成与播放分开处理. 停止播放不等于取消生成. 存储详情中的已保存音频可以独立试听, 不驱动角色口型.
 
-STT 语音输入属于开始录音时的草稿, 不属于当前显示的输入框组件. 切换 Session 会立即停止原录音并释放麦克风, 已录音频继续转写并追加到原 Session 的最新草稿. 新 Session 可以独立录音, 不必等待之前的转写结束. 返回原 Session 时显示它的转写状态和取消入口. 如果切换时还在等待麦克风授权, 则丢弃这次操作, 迟到的音频流会直接关闭, 不开始录音. 主动取消, 归档或删除会话会丢弃对应的语音操作. 新对话首发创建 Session 时, 尚未完成的语音输入随草稿一起迁移. 这些操作保存在主窗口内存中, 不提供重启恢复. 实现见 [voiceInput.ts](./src/chat/input/voiceInput.ts).
+STT 语音输入属于开始录音时的草稿, 不属于当前显示的输入框组件. 切换 Session 会立即停止原录音并释放麦克风, 已录音频继续转写并追加到原 Session 的最新草稿. 新 Session 可以独立录音, 不必等待之前的转写结束. 返回原 Session 时显示它的转写状态和取消入口. 如果切换时还在等待麦克风授权, 则丢弃这次操作, 迟到的音频流会直接关闭, 不开始录音. 主动取消, 归档或删除会话会丢弃对应的语音操作. 新对话首发创建 Session 时, 尚未完成的语音输入随草稿一起迁移. 这些操作保存在主窗口内存中, 不提供重启恢复. 实现见 [voiceInput.ts](./src/chat/input/voice/voiceInput.ts).
 
 Live2D 模型包读取, 初始化和渲染失败会在舞台上显示原因及重新加载按钮. 重新加载会再次获取当前模型并创建新的渲染器. 旧模型请求的失败不会覆盖当前角色的舞台.
 
@@ -110,7 +111,7 @@ pnpm release --server-only
 
 默认生成 Windows NSIS, macOS DMG 或 Linux DEB. Windows 安装包输出在 `apps/desktop/src-tauri/target/release/bundle/nsis/`.
 
-根目录 `package.json` 确定发布版本. `release.mjs` 在检查构建工具和准备文件之前, 要求 Desktop `package.json`, `src-tauri/tauri.conf.json` 和 `src-tauri/Cargo.toml` 中的 package 版本与它一致. 不一致时停止并列出四处的值, 不自动改写文件. 版本变化和 Bug 记录的写法见 [docs](../../docs/README-zh.md).
+根目录 `package.json` 确定发布版本. `release.mjs` 在检查构建工具和准备文件之前, 要求 Desktop `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` 中的 package 版本, 以及根目录 `package-lock.json` 的 `version` 和 `packages[""].version` 与它一致. 不一致时停止并列出版本字段的值, 不自动改写文件. 版本变化和 Bug 记录的写法见 [docs](../../docs/README-zh.md).
 
 通过 `--cubism-core` 或 `EMA_CUBISM_CORE_PATH` 指定有权分发的 Cubism Core `06.00.0001`. 未指定时使用 `public/cubism/` 中的文件. SHA-256 必须符合 `release-config.json` 的批准值, 脚本不会自动下载这个许可文件.
 

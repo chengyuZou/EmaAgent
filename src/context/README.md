@@ -4,6 +4,8 @@
 
 Context converts stored Session messages into model history and assembles model input from Prompt blocks, working messages and a ToolPool. It also produces the input estimate used for compaction and the context meter.
 
+The reasons for shared media handling are in [media-budget design](../../docs/design/mediaBudget/README.md).
+
 ## Main entries
 
 `projectMessages(history, resolveGenerationSource, attachmentOptions)` returns model messages paired with stored Message IDs. It skips empty content, interrupted assistant replies, and tool calls/results that are missing, repeated or out of order. Reasoning blocks retain signatures and generation source so the LLM adapter can decide whether the target model can replay them. Saved text, reminders and protocol roles are replayed without adding speaker prefixes or quotation wrappers. Character switches are recorded by Turn in its persisted reminder, not reconstructed during projection.

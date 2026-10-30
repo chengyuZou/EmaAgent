@@ -12,6 +12,7 @@ From the repository root:
 
 ```sh
 pnpm install --frozen-lockfile
+pnpm build
 pnpm dev:start
 ```
 
@@ -47,7 +48,7 @@ sequenceDiagram
 
 The Server saves messages, settings, and resources. Frontend stores hold current navigation, drafts, loaded history, active work, and other shared page state. History is loaded in windows; live Turn data is removed only after the corresponding saved history has been loaded.
 
-Settings pages import definitions from `@ema-agent/server/settings`, backed by [definitions.ts](../server/src/settings/definitions.ts). Server registers those same objects. `settingsApi.getValue(definition)` and `putValue(definition, value)` use the definition's key and value type, and check responses with its schema. Labels and controls stay in Desktop. Shared controls and `useSettingValues` live in `src/settings/shared`. Permissions, Events, and Screen Capture have separate sidebar pages, outside Parameter Settings. Permissions contains confirmation timeout and global/project rules; Events contains notification display controls. Security retains sandbox and terminal settings.
+Settings pages import definitions from `@ema-agent/server/settings`, backed by [definitions.ts](../server/src/settings/definitions.ts). Server registers those same objects. `settingsApi.getValue(definition)` and `putValue(definition, value)` use the definition's key and value type, and check responses with its schema. Labels and controls stay in Desktop. Shared controls and `useSettingValues` live in `src/settings/shared`. Permissions, Events, and Computer Use have separate sidebar pages, outside Parameter Settings. Automatic screen capture is configured within Computer Use. Permissions contains confirmation timeout and global/project rules; Events contains notification display controls. Security retains sandbox and terminal settings.
 
 Within Parameter Settings, Tools controls built-in tool availability. Background Processes is a separate page for Shell concurrency and runtime limits, using the same settings definitions and save APIs.
 
@@ -57,7 +58,7 @@ The main window keeps Chat and Settings mounted when switching views. Hidden vie
 
 Switching sessions keeps each session's draft, workspace layout, and manual terminals. Archiving or deleting a session removes its chat state, releases its terminal views, requests PTY closure, and evicts its attachment list. Deleting one session does not clear another session's state.
 
-Permission and AskUser share each Session's existing interaction queue. On Windows, main synchronizes each queue head with the native host, which suppresses its notification when the foreground Chat already displays that Session. Permission buttons reuse the chat response API; AskUser notifications only open Chat or dismiss. Dismissal never resolves a request. The main-window subscription in `src/lib/notifications/interactionNotifications.ts` stays active while main is hidden. Native registration, foreground rules, and platform limits are described in the [host documentation](./src-tauri/README.md#windows-interaction-notifications).
+Permission and AskUser share each Session's existing interaction queue. On Windows, main synchronizes each queue head with the native host, which suppresses its notification when the foreground Chat already displays that Session. Permission buttons reuse the chat response API; AskUser notifications only open Chat or dismiss. Dismissal never resolves a request. The main-window subscription in `src/lib/notifications/desktopNotifications.ts` stays active while main is hidden. Native registration, foreground rules, and platform limits are described in the [host documentation](./src-tauri/README.md#windows-interaction-notifications).
 
 Native file drops check the active page as well as pointer coordinates. Chat accepts paths only in its middle area, including a new conversation page, not the session sidebar or right workspace. A mounted but hidden Chat cannot accept a Settings drop. File selection and Chat drops share the draft attachment flow: images get a local preview, images and pasted text are saved when submitted, and ordinary files remain local path references. Dropping a file does not send the message.
 
@@ -71,7 +72,7 @@ LLM and Vision providers expose an optional models.dev ID during creation and in
 
 Speech generation and playback are separate. Stopping playback does not cancel generation. Saved audio can be played from storage details without driving the character's mouth.
 
-STT voice input belongs to its draft, not the currently displayed input component. Switching Sessions stops the old recording and releases its microphone immediately; the recorded audio still goes through STT and appends to that Session's latest draft. The new Session can record independently while earlier transcriptions finish. Returning to a Session shows its pending transcription and cancel action. A pending microphone permission request is discarded on switching; a late stream is closed without recording. Explicit cancellation, archiving or deletion discards that Session's voice operation. New-conversation dictation moves with its draft when the first submission creates a Session. These operations live in main-window memory, not restart-persistent storage. See [voiceInput.ts](./src/chat/input/voiceInput.ts).
+STT voice input belongs to its draft, not the currently displayed input component. Switching Sessions stops the old recording and releases its microphone immediately; the recorded audio still goes through STT and appends to that Session's latest draft. The new Session can record independently while earlier transcriptions finish. Returning to a Session shows its pending transcription and cancel action. A pending microphone permission request is discarded on switching; a late stream is closed without recording. Explicit cancellation, archiving or deletion discards that Session's voice operation. New-conversation dictation moves with its draft when the first submission creates a Session. These operations live in main-window memory, not restart-persistent storage. See [voiceInput.ts](./src/chat/input/voice/voiceInput.ts).
 
 Live2D archive, initialization, and render failures appear on the stage with a reload button. Reloading fetches the current model again and creates a new renderer. Failures from an old archive request do not replace the current character's stage.
 
@@ -110,7 +111,7 @@ pnpm release --server-only
 
 The default bundle is Windows NSIS, macOS DMG, or Linux DEB. Windows installers are written to `apps/desktop/src-tauri/target/release/bundle/nsis/`.
 
-The repository root `package.json` defines the release version. Before checking build tools or preparing files, `release.mjs` requires the Desktop `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml` package version to match it. A mismatch stops the command and lists all four values without rewriting files. Release notes and bug records follow the [docs conventions](../../docs/README.md).
+The repository root `package.json` defines the release version. Before checking build tools or preparing files, `release.mjs` requires the Desktop `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` package version, and both the top-level `version` and `packages[""].version` in the root `package-lock.json` to match it. A mismatch stops the command and lists the version fields without rewriting files. Release notes and bug records follow the [docs conventions](../../docs/README.md).
 
 `--cubism-core` or `EMA_CUBISM_CORE_PATH` supplies a Cubism Core `06.00.0001` file that you have permission to distribute. Without either, the script uses `public/cubism/`. Its SHA-256 must match the approved value in `release-config.json`; the script does not download this licensed file.
 

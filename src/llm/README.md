@@ -4,6 +4,8 @@
 
 `@ema-agent/llm` sends model requests through OpenAI, Anthropic, or Gemini SDKs. It accepts shared messages and tool definitions, then returns stream events or a complete result with content blocks, stop reason, and Token usage.
 
+See [Complete design](../../docs/design/llmCompletion/README.md) for why the complete-result interface uses streaming transport.
+
 ## Use
 
 Create a call function for a resolved connection and model. Choose how to receive each request's result.
@@ -105,7 +107,7 @@ HTTP 413 without a specific context-length error is reported as `provider/reques
 
 ## Read and verify
 
-Start with [languageModel.ts](languageModel.ts) for both factories and their lazy initialization. Follow [protocols/](protocols/) for shared request conversion, streaming events, and completion collection. [usage.ts](usage.ts) and [errors.ts](errors.ts) contain shared counting and failure rules.
+[languageModel.ts](languageModel.ts) owns both factories and lazy initialization. [protocols/](protocols/) converts requests and stream events; [collectLLMCompletion.ts](collectLLMCompletion.ts) collects complete results. [usage.ts](usage.ts) and [errors.ts](errors.ts) contain shared counting and failure rules.
 
 Consumers include [Agent](../agent/agentLoop.ts), [Compact](../compact/macroCompact.ts), [Vision](../vision/visionModel.ts), and the server's [Memory](../../apps/server/src/composition/memory.ts) and [Narrative](../../apps/server/src/composition/narrative.ts) wiring.
 

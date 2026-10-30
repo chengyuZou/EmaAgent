@@ -4,6 +4,8 @@
 
 Speech 把助手可见正文变成按顺序执行的 TTS 请求, 为每个 Turn 和朗读角色写一份 WAV. 自动生成接收增量, 手动生成输入已完成正文. 后台生成与桌面播放各自运行.
 
+Turn 不等待语音合成或播放完成才结束. 播放归属和多角色音频的取舍见[语音设计](../../docs/design/speech/README-zh.md).
+
 ## 生成
 
 Server 创建 `SpeechCoordinator` 时提供固定 Session/Turn, Provider/模型, 已准备声音, `CallTTS`, `openAudio(format)`, 取消信号和同步保存回调. 用 `acceptTextDelta` 输入文字, 最后等待 `finish`. `cancel` 中止生成并共用同一次完成 Promise.

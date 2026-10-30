@@ -4,6 +4,8 @@
 
 Context 把 Session 存储消息转成模型历史, 再用 Prompt 块, 工作消息和 ToolPool 装配模型输入. 它也生成压缩判断和上下文球使用的输入估算.
 
+统一媒体处理的取舍见[媒体预算设计](../../docs/design/mediaBudget/README-zh.md).
+
 ## 主要入口
 
 `projectMessages(history, resolveGenerationSource, attachmentOptions)` 返回模型消息和存储 Message ID. 空内容, 中断回复, 缺失, 重复或顺序错误的工具配对不会进入模型历史. 推理块保留签名和生成来源, 供 LLM adapter 判断目标模型是否可以重放. 已保存的正文, reminder 和协议角色原样重放, 不添加姓名前缀或历史引用标签. 角色切换由 Turn 写入其持久化 reminder, 不在投影期间重新计算.

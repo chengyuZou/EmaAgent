@@ -68,7 +68,7 @@ local 或 global 缺少本侧关键词时可以使用另一侧. 两类都为空�
 
 `apps/server/src/composition/narrative.ts` 在 Turn 准备时解析 narrative-llm, narrative-embed, narrative-rerank 绑定. 每次模型调用记录最终用量, 归属发起查询的 Session 和 Turn. 配置变化影响下一 Turn. 查询模式设置为 auto 时使用工具传入模式或 hybrid, 固定设置则覆盖工具选择.
 
-两条准备请求各自使用原生非流式 LLM 完成接口, 固定传入 `maxOutputTokens: 8192`, 不直接采用目录中的模型最大输出容量, 分别记录用量. 这是每条请求的预算, 与上面的证据文本预算不同. 输出达到上限时让该请求失败, 不继续解析截断结果. Anthropic SDK 可能在发送 HTTP 前拒绝过大的非流式输出预算; 当前接线不需要因此增大超时或改成流式.
+两条准备请求各自调用 CompleteLLM, 内部收集流式响应后返回完整结果, 固定传入 `maxOutputTokens: 8192`, 不直接采用目录中的模型最大输出容量, 分别记录用量. 这是每条请求的预算, 与上面的证据文本预算不同. 输出达到上限时让该请求失败, 不继续解析截断结果. 完整结果与底层传输方式的取舍见 [Complete 设计](../../docs/design/llmCompletion/README-zh.md).
 
 Turn 准备先用 `isWitchTrialCharacter` 检查当前角色完整姓名, 名单命中且模型配置可用时才提供查询函数. 名字匹配支持固定的中日英完整姓名, 去掉首尾空白并忽略英文大小写, 不改用户工具开关. 浏览器使用单独的 `@ema-agent/narrative/isWitchTrialCharacter` 入口, 避免加载 Node 检索代码.
 

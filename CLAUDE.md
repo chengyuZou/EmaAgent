@@ -88,11 +88,10 @@ Read the relevant package README before changing a domain. Module READMEs explai
 - Root `README.md` and `README-zh.md` explain the product, installation, operation, and demonstrations to users.
 - Module READMEs explain how the current implementation is used and how its parts cooperate.
 - `docs/design/` records why a design was chosen: the problem, considered alternatives, the selected approach, accepted costs and limitations, and reasons to reconsider it.
-- Root `CONTRIBUTING.md` and `CONTRIBUTING-zh.md` explain contribution and verification expectations.
 - Root `CHANGELOG.md` and `CHANGELOG-zh.md` contain Unreleased changes and concise entries for at most 30 released versions. Older release notes belong in GitHub Releases.
 - GitHub Issues hold reproduction details and investigation progress. Historical local investigations are kept outside the application repository; do not recreate `docs/changes/` or use `docs/design/` as a diagnostic log.
 
-Write English in `README.md` and Chinese in a sibling `README-zh.md`, keeping the meaning aligned. Keep `CLAUDE.md` and `AGENTS.md` entirely in English. Use ASCII punctuation in repository-authored prose, comments, prompts, and error messages. Preserve user input, third-party content, and literal protocol or test data.
+Write English in `README.md` and Chinese in a sibling `README-zh.md`, keeping the meaning aligned. Keep `CLAUDE.md` and `AGENTS.md` entirely in English. Code comments may be written in Chinese or English. Use ASCII (English half-width) punctuation in repository-authored prose, comments, prompts, and error messages, including Chinese prose. Preserve user input, user-supplied character or Skill text, third-party content, literal test fixtures, regex characters, and external protocol data.
 
 ### Writing design decisions
 
@@ -108,4 +107,6 @@ Use Mermaid only when a comparison or consequence is easier to understand visual
 
 ## Releases and versions
 
-The root `package.json` version is the app version; `apps/desktop/package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml` must match exactly - `pnpm release` checks and refuses on mismatch, never rewrites them. Database versions are separate integers (`user_version`), independent of app versions. `--target` must match the current host (native SQLite/Sharp/FFmpeg); no cross-compilation. Cubism Core is a licensed file the release script verifies by hash but never downloads.
+The workspace and CI use `pnpm-lock.yaml` for dependencies. The retained `package-lock.json` must have its top-level `version` and `packages[""].version` synchronized with the root package version. The release check validates both fields. Do not regenerate npm dependencies as part of a version-only update.
+
+The root `package.json` version is the app version; `apps/desktop/package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml` must match exactly - `pnpm release` checks and refuses on mismatch, never rewrites them. Git release tags and CHANGELOG version headings use a v prefix, such as `v0.1.0-beta.2`; manifest version fields remain unprefixed, such as `0.1.0-beta.2`. Keep the desktop package version in Cargo.lock synchronized. Database versions are separate integers (`user_version`), independent of app versions. `--target` must match the current host (native SQLite/Sharp/FFmpeg); no cross-compilation. Cubism Core is a licensed file the release script verifies by hash but never downloads.

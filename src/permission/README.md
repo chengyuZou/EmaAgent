@@ -4,6 +4,8 @@
 
 Permission decides whether a tool call can proceed, must be refused, or needs the user's confirmation. It owns rule matching and decision order. Tools describe the operation through `checkPermissions(input, context)`; they do not read permission settings or save approvals.
 
+See [permission design](../../docs/design/permissions/README.md) for the centralized decision and approval-scope rationale.
+
 ## Entry and ownership
 
 `checkToolPermission(tool, input, toolContext, permissionContext, { interactive })` is the execution layer's only checking entry. It calls the tool's `checkPermissions` inside this package, selects a check implementation, and returns `PermissionCheckResult`.
