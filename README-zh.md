@@ -28,11 +28,16 @@ EmaAgent 把通用角色扮演与文件编辑, 命令执行, 网页搜索和多�
 
 [![主对话, 壁纸与桌面 Live2D 角色](assets/screenshots/characters/mainWindow.png)](assets/screenshots/characters/mainWindow.png)
 
+<p align="center">
+  <a href="CHANGELOG-zh.md">更新记录</a>
+  <a href="docs/README-zh.md">文档入口</a>
+</p>
+
 ## 当前能力
 
 ### 角色与对话
 
-- 配置角色人设, 立绘, Live2D 模型和参考音频.
+- 配置角色人设, 立绘, Live2D 模型, 参考音频和表情包. 填写表情包描述后, 角色可在回复中选择图片.
 - 配合对应模型使用文字聊天, 图片理解, 语音输入和语音输出.
 - 管理不同的会话与项目, 查看流式回复和工具结果.
 - 通过文件式 Work 和 Relationship Memory 跨会话保留工作记录及关系记忆.
@@ -43,7 +48,7 @@ EmaAgent 把通用角色扮演与文件编辑, 命令执行, 网页搜索和多�
 
 - 读取, 搜索, 创建和编辑文件, 执行命令并查看输出.
 - 通过启用的工具搜索网页和读取页面.
-- Windows 下通过电脑操控工具观察窗口, 操作可用控件和键鼠. 桌面提示条支持暂停, 继续与结束; 自动屏幕捕获跳过相同画面.
+- Windows 下通过电脑操控工具观察窗口, 操作可用控件和键鼠. 按 Esc 或点击桌面提示条结束操控; 每轮对话结束也会关闭操控. 用户修改目标窗口后, 旧观察失效, 后续操作需要重新观察. 自动屏幕捕获跳过相同画面.
 - 使用 Task, Goal 和子 Agent 处理需要多个步骤的工作.
 - Turn 运行时继续提交消息, 排队等待或选择在迭代之间引导当前 Turn.
 - 选择工具权限模式, 压缩较长的对话上下文, 查看模型用量记录.
@@ -79,6 +84,12 @@ EmaAgent 把通用角色扮演与文件编辑, 命令执行, 网页搜索和多�
 
 </details>
 
+### 角色表情包
+
+在角色详情中批量导入图片, 填写名称与描述, 角色即可根据对话选择表情包. 描述为空的图片保留在资源库中, 不提供给模型. 图片网格便于浏览, 配置总览便于检查全部描述; 整段表情包说明上限为 80,000 字符.
+
+聊天中以紧凑尺寸显示表情包, 点击查看原图. 删除资源后, 旧回复可能显示图片无法加载的占位图. 详情见[角色资源](src/characters/README-zh.md#表情包).
+
 ### 长任务与子代理
 
 这个研究案例检查维基百科历史版本及其中引用的帖子. 对话保留任务, 工具调用和子代理记录, 右侧可以继续查看子代理详情.
@@ -95,6 +106,25 @@ EmaAgent 把通用角色扮演与文件编辑, 命令执行, 网页搜索和多�
 [![带修订版本和引用计数的研究结果](assets/screenshots/tasks/task2Result.png)](assets/screenshots/tasks/task2Result.png)
 
 [![主对话旁展示子代理返回的依据](assets/screenshots/tasks/task2SubagentResult.png)](assets/screenshots/tasks/task2SubagentResult.png)
+
+</details>
+
+### Windows 电脑操控
+
+Agent 可以列出并观察窗口, 使用可用控件或键鼠操作桌面应用. 操控期间显示结束入口, 按 Esc 或点击结束可归还控制. 工具调用和结果保留在对话中.
+
+这个示例中, Agent 操作浏览器中的视频播放器, 跳转多个时间点观察画面和可见字幕, 最后整理摘要.
+
+[![结束电脑操控并汇总已观察的画面和字幕](assets/screenshots/workspace/computerUseVideoSummary.png)](assets/screenshots/workspace/computerUseVideoSummary.png)
+
+<details>
+<summary>查看窗口观察, 播放器操作与分时点记录</summary>
+
+[![用户请求, 初次窗口观察和播放器操作](assets/screenshots/workspace/computerUseVideoStart.png)](assets/screenshots/workspace/computerUseVideoStart.png)
+
+[![跳转视频进度并切换全屏](assets/screenshots/workspace/computerUseVideoNavigation.png)](assets/screenshots/workspace/computerUseVideoNavigation.png)
+
+[![多个时间点的画面和可见字幕观察记录](assets/screenshots/workspace/computerUseVideoFrames.png)](assets/screenshots/workspace/computerUseVideoFrames.png)
 
 </details>
 

@@ -28,11 +28,16 @@ It is a local-first application for one user, built with Tauri, React, and a loc
 
 [![Conversation, wallpaper and a Live2D character on the desktop](assets/screenshots/characters/mainWindow.png)](assets/screenshots/characters/mainWindow.png)
 
+<p align="center">
+  <a href="CHANGELOG.md">Changelog</a>
+  <a href="docs/README.md">Documentation</a>
+</p>
+
 ## Features
 
 ### Characters and conversation
 
-- Configure character personas, illustrations, Live2D models, and voice samples.
+- Configure character personas, illustrations, Live2D models, voice samples, and stickers. Described stickers are available for characters to include in replies.
 - Use text, image understanding, speech input, and speech output with the corresponding model setup.
 - Keep separate conversations and project workspaces, with streaming replies and visible tool results.
 - Maintain file-based Work and Relationship memories across conversations.
@@ -43,7 +48,7 @@ Roleplay is not limited to the bundled character or one fictional setting. A sep
 
 - Read, search, write, and edit files, run commands, and inspect their output.
 - Search the web and fetch pages through enabled tools.
-- On Windows, observe application windows and operate available controls, mouse and keyboard through the computer-use tools. A desktop overlay supports pause, continue and end; automatic screen capture skips identical frames.
+- On Windows, observe application windows and operate available controls, mouse and keyboard. Press Esc or use the desktop overlay to end control; control also ends with its Turn. User input affecting the target invalidates old observations. Automatic screen capture skips identical frames.
 - Use Tasks, Goals, and subagents for work that takes several steps.
 - Queue follow-up messages while a Turn is running, or choose to guide the current Turn between iterations.
 - Choose tool permission modes, compact long conversation context, and inspect recorded model usage.
@@ -79,6 +84,12 @@ Pair a character persona with an illustration or Live2D model. This conversation
 
 </details>
 
+### Character stickers
+
+Batch-import images in character settings and describe their content and intended use. The character can select them during conversation. Images without descriptions remain in the library but are omitted from the model Prompt. Browse the grid or review descriptions in the configuration overview; the complete sticker section is limited to 80,000 characters.
+
+Stickers appear at a compact size in chat and open at full size on click. Deleted resources may leave unavailable-image placeholders in older replies. See [Characters](src/characters/README.md#stickers).
+
 ### Longer tasks and subagents
 
 This research example examines historical Wikipedia revisions and their cited posts. The conversation keeps the task, tool calls and subagent records together, with subagent details available beside it.
@@ -95,6 +106,25 @@ This research example examines historical Wikipedia revisions and their cited po
 [![Research result with revision IDs and citation counts](assets/screenshots/tasks/task2Result.png)](assets/screenshots/tasks/task2Result.png)
 
 [![A subagent's returned evidence beside the main conversation](assets/screenshots/tasks/task2SubagentResult.png)](assets/screenshots/tasks/task2SubagentResult.png)
+
+</details>
+
+### Windows computer use
+
+The Agent can list and observe windows, then use available controls or mouse and keyboard input to operate desktop applications. The overlay provides an end control; Esc also returns control to the user. Tool calls and results remain in the conversation.
+
+In this example, the Agent seeks through a browser video player, observes frames and visible subtitles at several timestamps, then produces a summary.
+
+[![Finishing computer use and summarizing the observed frames and subtitles](assets/screenshots/workspace/computerUseVideoSummary.png)](assets/screenshots/workspace/computerUseVideoSummary.png)
+
+<details>
+<summary>Window observation, player controls and timestamp-by-timestamp notes</summary>
+
+[![The request, initial window observation and player operations](assets/screenshots/workspace/computerUseVideoStart.png)](assets/screenshots/workspace/computerUseVideoStart.png)
+
+[![Seeking through the video player and entering fullscreen](assets/screenshots/workspace/computerUseVideoNavigation.png)](assets/screenshots/workspace/computerUseVideoNavigation.png)
+
+[![Observations of frames and visible subtitles at several timestamps](assets/screenshots/workspace/computerUseVideoFrames.png)](assets/screenshots/workspace/computerUseVideoFrames.png)
 
 </details>
 
