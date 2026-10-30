@@ -42,13 +42,13 @@ pnpm --filter "@ema-agent/turn..." build    # the package and everything it depe
 
 Desktop extras: `pnpm --filter @ema-agent/desktop test:scripts` (release version checks), `pnpm --filter @ema-agent/desktop test:live2d-release` (headless browser render of the real stage; needs Cubism Core), and `cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --lib` for the Rust host.
 
-The root `test:first-start` and `test:scripts` entries currently point to missing files under `scripts/tests/`. Do not report them as available verification until their referenced files exist.
-
-`pnpm lint` exists but no package defines a lint script; `typecheck` is the static check.
+The root `pnpm test:scripts` forwards to Desktop's release-script tests. `pnpm test:watch` uses Turbo to rerun affected build and test tasks after changes, while Storage retains its own focused Vitest watch command. `pnpm typecheck` is the static check.
 
 ## Build model - the main gotcha
 
 Every `src/*` package exports compiled `./dist/index.js`, and dependents (Server, Desktop, other packages) resolve the `dist` output, not source. After editing a package, rebuild it (and anything between it and the consumer) before testing or running a dependent - otherwise you are exercising stale code. `pnpm --filter <pkg> test` runs vitest directly and does not rebuild dependencies; `pnpm test` via Turbo does.
+
+Each package build clears its own `dist` before compiling, and every package has a `clean` command. `pnpm clean` removes these outputs but preserves native Rust targets and user profiles. Shared TypeScript options live in `tsconfig.base.json`; Turbo tracks that file as a global cache input. Keep `rootDir`, `outDir`, and browser/Node module differences in the package configurations.
 
 Package source sits directly in `src/<pkg>/` (no inner `src/`); tests live in `src/<pkg>/tests/*.test.ts`. Desktop tests live in `apps/desktop/tests/` and `apps/desktop/src/**/tests/`; DOM tests opt into jsdom themselves. `.gitignore` ignores all `*.js` / `*.d.ts`, so hand-written JS must be `.mjs` (or added as an explicit exception).
 
@@ -107,6 +107,6 @@ Use Mermaid only when a comparison or consequence is easier to understand visual
 
 ## Releases and versions
 
-The workspace and CI use `pnpm-lock.yaml` for dependencies. The retained `package-lock.json` must have its top-level `version` and `packages[""].version` synchronized with the root package version. The release check validates both fields. Do not regenerate npm dependencies as part of a version-only update.
+The workspace and CI use pnpm with `pnpm-lock.yaml`. Do not introduce another package manager's lockfile. Version-only updates do not require regenerating the dependency graph.
 
 The root `package.json` version is the app version; `apps/desktop/package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml` must match exactly - `pnpm release` checks and refuses on mismatch, never rewrites them. Git release tags and CHANGELOG version headings use a v prefix, such as `v0.1.0-beta.2`; manifest version fields remain unprefixed, such as `0.1.0-beta.2`. Keep the desktop package version in Cargo.lock synchronized. Database versions are separate integers (`user_version`), independent of app versions. `--target` must match the current host (native SQLite/Sharp/FFmpeg); no cross-compilation. Cubism Core is a licensed file the release script verifies by hash but never downloads.

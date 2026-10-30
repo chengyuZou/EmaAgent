@@ -233,6 +233,9 @@ importers:
       playwright:
         specifier: 1.62.1
         version: 1.62.1
+      rimraf:
+        specifier: ^5.0.0
+        version: 5.0.10
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
@@ -729,6 +732,9 @@ importers:
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.39
+      rimraf:
+        specifier: ^5.0.0
+        version: 5.0.10
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
@@ -1665,6 +1671,9 @@ importers:
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.39
+      rimraf:
+        specifier: ^5.0.0
+        version: 5.0.10
       typescript:
         specifier: ^5.9.3
         version: 5.9.3

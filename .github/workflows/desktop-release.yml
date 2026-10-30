@@ -10,13 +10,15 @@ on:
       - 'apps/desktop/**'
       - 'src/**'
       - 'package.json'
-      - 'package-lock.json'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
+      - 'tsconfig.base.json'
+      - 'turbo.json'
+      - 'patches/**'
   workflow_dispatch:
     inputs:
       cubism_core_url:
-        description: '许可制 Cubism Core 下载地址；填写后才构建安装包'
+        description: '许可制 Cubism Core 下载地址, 填写后才构建安装包'
         required: false
         type: string
 

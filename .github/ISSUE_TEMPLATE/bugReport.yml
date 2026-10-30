@@ -12,7 +12,7 @@ body:
     attributes:
       label: Exact Ema version / Ema 完整版本号
       description: Include the full version, including any alpha or beta suffix. / 请包含 alpha 或 beta 后缀.
-      placeholder: 0.1.0-beta.1
+      placeholder: v0.1.0-beta.2
     validations:
       required: true
 

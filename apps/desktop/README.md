@@ -111,7 +111,7 @@ pnpm release --server-only
 
 The default bundle is Windows NSIS, macOS DMG, or Linux DEB. Windows installers are written to `apps/desktop/src-tauri/target/release/bundle/nsis/`.
 
-The repository root `package.json` defines the release version. Before checking build tools or preparing files, `release.mjs` requires the Desktop `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` package version, and both the top-level `version` and `packages[""].version` in the root `package-lock.json` to match it. A mismatch stops the command and lists the version fields without rewriting files. Release notes and bug records follow the [docs conventions](../../docs/README.md).
+The repository root `package.json` defines the release version. Before checking build tools or preparing files, `release.mjs` requires the Desktop `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml` package version to match it. A mismatch stops the command and lists all four values without rewriting files. Dependencies are installed with pnpm and `pnpm-lock.yaml`. Release notes and bug records follow the [docs conventions](../../docs/README.md).
 
 `--cubism-core` or `EMA_CUBISM_CORE_PATH` supplies a Cubism Core `06.00.0001` file that you have permission to distribute. Without either, the script uses `public/cubism/`. Its SHA-256 must match the approved value in `release-config.json`; the script does not download this licensed file.
 

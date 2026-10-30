@@ -366,7 +366,7 @@ pnpm release --server-only
 
 发布版本使用三段数字 `MAJOR.MINOR.PATCH`, 例如 `0.1.0`, `0.1.1` 和 `0.2.0`. Patch 用于同一版本线的问题修复. Minor 用于功能增加, 项目在 1.0 之前也可能在 Minor 中调整已有行为. `0.1.11` 是有效的补丁版本, `0.1.1.1` 不是本项目的发布格式.
 
-预发布使用 alpha 或 beta 后缀, 例如 `0.1.0-beta.2`. Git tag 和 CHANGELOG 的版本标题使用 `v` 前缀, 例如 `v0.1.0-beta.2`; package.json, Tauri 和 Cargo 中的版本字段保留不带前缀的 `0.1.0-beta.2`. 根目录 `package.json` 确定应用发布版本, Desktop package, Tauri 配置, Cargo package 和 `package-lock.json` 的两处根包版本必须与它完全一致. 发布脚本在构建之前检查这些字段, 不一致时列出各自的值, 不自动修改版本.
+预发布使用 alpha 或 beta 后缀, 例如 `0.1.0-beta.2`. Git tag 和 CHANGELOG 的版本标题使用 `v` 前缀, 例如 `v0.1.0-beta.2`; package.json, Tauri 和 Cargo 中的版本字段保留不带前缀的 `0.1.0-beta.2`. 根目录 `package.json` 确定应用发布版本, Desktop package, Tauri 配置和 Cargo package 必须与它完全一致. 发布脚本在构建之前检查这四处, 不一致时列出各自的值, 不自动修改版本. 依赖使用 pnpm 和 `pnpm-lock.yaml`.
 
 近期版本变化见 [CHANGELOG](CHANGELOG-zh.md), 更早的发布说明和安装产物见 [GitHub Releases](https://github.com/chengyuZou/EmaAgent/releases). 设计取舍和使用说明见[文档入口](docs/README-zh.md).
 
@@ -431,12 +431,14 @@ pnpm dev:reset
 
 ```sh
 pnpm typecheck
-pnpm --filter @ema-agent/desktop test:scripts
+pnpm test:scripts
 pnpm --filter @ema-agent/storage test
 pnpm --filter @ema-agent/desktop test
 ```
 
 也要运行本次修改所涉及包的测试. Desktop 的 `test:scripts` 检查发布版本的一致性, `pnpm test` 通过 Turbo 运行工作区测试. Typecheck 和模拟测试不能替代实际应用中的安装, 原生文件拖放, 终端, 角色显示和声音检查.
+
+本地迭代可运行 `pnpm test:watch`, 监听工作区变化并重跑受影响的构建和测试. 各包构建前会清空自己的 `dist` 目录. `pnpm clean` 清理这些 `dist` 目录, 保留 Rust 构建缓存和应用数据.
 
 ## 许可
 

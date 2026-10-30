@@ -10,7 +10,6 @@ import { checkReleaseVersions } from '../scripts/releaseCheck.mjs';
 const version = '0.1.0-alpha.1';
 const files = [
   'package.json',
-  'package-lock.json',
   'apps/desktop/package.json',
   'apps/desktop/src-tauri/tauri.conf.json',
   'apps/desktop/src-tauri/Cargo.toml',
@@ -24,8 +23,6 @@ function fixture(context) {
     mkdirSync(path.dirname(filename), { recursive: true });
     if (file.endsWith('.toml')) {
       writeFileSync(filename, `[package]\nname = "ema-desktop"\nversion = "${version}"\n\n[dependencies]\nversion = "9.9.9"\n`);
-    } else if (file === 'package-lock.json') {
-      writeFileSync(filename, JSON.stringify({ version, packages: { '': { version } } }));
     } else {
       writeFileSync(filename, JSON.stringify({ version }));
     }
@@ -53,18 +50,6 @@ for (const file of files) {
     });
   });
 }
-
-test('rejects a different root package version inside package-lock.json', context => {
-  const directory = fixture(context);
-  const filename = path.join(directory, 'package-lock.json');
-  const packageLock = JSON.parse(readFileSync(filename, 'utf8'));
-  packageLock.packages[''].version = '0.1.0-alpha.2';
-  writeFileSync(filename, JSON.stringify(packageLock));
-  assert.throws(() => checkReleaseVersions(directory), error => {
-    assert.ok(error.message.includes('package-lock.json packages[""].version: "0.1.0-alpha.2"'));
-    return true;
-  });
-});
 
 test('rejects a missing root version', context => {
   const directory = fixture(context);

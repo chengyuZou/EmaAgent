@@ -111,7 +111,7 @@ pnpm release --server-only
 
 默认生成 Windows NSIS, macOS DMG 或 Linux DEB. Windows 安装包输出在 `apps/desktop/src-tauri/target/release/bundle/nsis/`.
 
-根目录 `package.json` 确定发布版本. `release.mjs` 在检查构建工具和准备文件之前, 要求 Desktop `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` 中的 package 版本, 以及根目录 `package-lock.json` 的 `version` 和 `packages[""].version` 与它一致. 不一致时停止并列出版本字段的值, 不自动改写文件. 版本变化和 Bug 记录的写法见 [docs](../../docs/README-zh.md).
+根目录 `package.json` 确定发布版本. `release.mjs` 在检查构建工具和准备文件之前, 要求 Desktop `package.json`, `src-tauri/tauri.conf.json` 和 `src-tauri/Cargo.toml` 中的 package 版本与它一致. 不一致时停止并列出四处的值, 不自动改写文件. 依赖使用 pnpm 和 `pnpm-lock.yaml` 安装. 版本变化和 Bug 记录的写法见 [docs](../../docs/README-zh.md).
 
 通过 `--cubism-core` 或 `EMA_CUBISM_CORE_PATH` 指定有权分发的 Cubism Core `06.00.0001`. 未指定时使用 `public/cubism/` 中的文件. SHA-256 必须符合 `release-config.json` 的批准值, 脚本不会自动下载这个许可文件.
 

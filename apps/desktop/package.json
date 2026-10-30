@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -p tsconfig.json && vite build",
+    "build": "rimraf dist && tsc -p tsconfig.json && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
@@ -13,7 +13,8 @@
     "test:live2d-release": "node --test tests/live2dRelease.test.mjs",
     "release": "node scripts/release.mjs",
     "tauri:dev": "node scripts/buildComputerUse.mjs && tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "clean": "rimraf dist"
   },
   "dependencies": {
     "@ema-agent/agent": "workspace:*",
@@ -81,6 +82,7 @@
     "@vitejs/plugin-react": "^4.3.3",
     "jszip": "^3.10.1",
     "playwright": "1.62.1",
+    "rimraf": "^5.0.0",
     "typescript": "^5.9.3",
     "vite": "^5.4.10",
     "vitest": "^2.0.0"

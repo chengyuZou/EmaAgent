@@ -75,7 +75,9 @@ pnpm --filter @ema-agent/turn typecheck
 pnpm --filter @ema-agent/turn test
 ```
 
-The storage build copies SQL migrations into `dist/migrations`; keep this step in release assembly. Verify that a script and its referenced files exist before presenting it as an available check. The root `test:first-start` and `test:scripts` commands currently reference missing files under `scripts/tests/`; Desktop's release-script tests are available through `pnpm --filter @ema-agent/desktop test:scripts`.
+Each package build clears its own `dist` before compiling. The storage build then copies SQL migrations into `dist/migrations`; keep this step in release assembly. Shared compiler options live in `tsconfig.base.json`, with package-specific paths and module settings in each package's tsconfig. Turbo includes the base configuration in its global cache inputs.
+
+The root `test:scripts` command runs Desktop's release-script tests. `pnpm test:watch` uses Turbo to rerun affected build and test tasks when files change. `pnpm clean` clears package output directories without deleting Rust targets or user profiles. Verify that a script and its referenced files exist before presenting it as an available check.
 
 ## Documentation, comments, and prompts
 
@@ -131,8 +133,8 @@ The storage build copies SQL migrations into `dist/migrations`; keep this step i
 ## Releases, versions, and shared icons
 
 - Git release tags and CHANGELOG version headings use the `v` prefix, such as `v0.1.0-beta.2`. Manifest version fields use bare SemVer, such as `0.1.0-beta.2`.
-- Keep the root `package.json`, `apps/desktop/package.json`, `apps/desktop/src-tauri/tauri.conf.json`, and the desktop package in `apps/desktop/src-tauri/Cargo.toml` consistent. Synchronize the desktop package entry in Cargo.lock. The release script checks the application manifests and both root version fields in `package-lock.json` without rewriting them.
-- The workspace and CI use `pnpm-lock.yaml` for dependencies. The retained `package-lock.json` must have its top-level `version` and `packages[""].version` synchronized with the root package version. Do not regenerate npm dependencies as part of a version-only update.
+- Keep the root `package.json`, `apps/desktop/package.json`, `apps/desktop/src-tauri/tauri.conf.json`, and the desktop package in `apps/desktop/src-tauri/Cargo.toml` consistent. Synchronize the desktop package entry in Cargo.lock. The release script checks the four application manifests without rewriting them.
+- The workspace and CI use pnpm with `pnpm-lock.yaml`. Do not introduce another package manager's lockfile. Version-only updates do not require regenerating the dependency graph.
 - Database migration versions are separate integers. Do not rewrite already-applied migrations as a routine app-version update; follow the supported upgrade path and the user's confirmed scope.
 - Build native release dependencies on the target platform. Read `apps/desktop/README.md` and the release configuration before assembling a release. Keep the licensed Cubism Core requirement intact.
 - Shared application icons live in `assets/icons/`. `iconSource.png` is the selected artwork; `icon.png`, `icon.ico`, and `icon.icns` are generated for their consumers. Preserve transparency and regenerate formats from the selected source when changing the icon. Native executables need rebuilding to embed the change.

@@ -1,6 +1,7 @@
 # Dependencies
 node_modules/
 .pnpm-store/
+/package-lock.json
 
 .agents/**
 
@@ -35,8 +36,6 @@ Thumbs.db
 *.d.ts
 !/src/builtin-tools/styleImports.d.ts
 *.d.ts.map
-
-/docs/testing/**
 
 # Misc
 *.local

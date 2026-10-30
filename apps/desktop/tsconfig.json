@@ -1,14 +1,11 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "target": "ES2022",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "noEmit": true,
     "allowImportingTsExtensions": false,
-    "resolveJsonModule": true,
     "paths": {
       "@ema-agent/server": ["../server/src"],
       "@ema-agent/server/settings": ["../server/src/settings/definitions.ts"],

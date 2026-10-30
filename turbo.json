@@ -1,6 +1,7 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "concurrency": "40",
+  "globalDependencies": ["tsconfig.base.json"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
@@ -13,11 +14,6 @@
     "test": {
       "dependsOn": ["build"]
     },
-    "test:watch": {
-      "cache": false,
-      "persistent": true
-    },
-    "lint": {},
     "typecheck": {
       "dependsOn": ["^build"]
     },
