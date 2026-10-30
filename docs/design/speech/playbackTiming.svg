@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1360" height="750" viewBox="0 0 1360 750" role="img" aria-labelledby="title desc">
+<title id="title">A Turn can end while speech continues</title><desc id="desc">The Turn finishes model and tool execution, saving, and cleanup before later synthesis and playback completion. Normal playback owner handover waits for actual playback.</desc>
+<style>
+text{font-family:"Segoe UI","Microsoft YaHei",sans-serif;font-size:18px;fill:#243248}
+.title{font-size:28px;font-weight:700}.sub{font-size:16px;fill:#58677b}.label{font-weight:600}
+.panelTitle{font-size:21px;font-weight:700}.small{font-size:15px;fill:#58677b}
+.inside{font-size:17px;fill:#234c82}.greenText{font-size:17px;fill:#24604d}.grayText{font-size:16px;fill:#59667a}
+.guide{stroke:#b7c2d1;stroke-width:1.3;stroke-dasharray:5 6}.blue{fill:#eaf2ff;stroke:#6192cf;stroke-width:1.5}
+.orange{fill:#fff3da;stroke:#bd9140;stroke-width:1.5}.green{fill:#e9f6ef;stroke:#5c9c81;stroke-width:1.5}
+.gray{fill:#f2f4f7;stroke:#9faabd;stroke-width:1.3;stroke-dasharray:5 4}
+.manual{stroke:#c18323;stroke-width:1.6;stroke-dasharray:5 4}
+</style>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L7 4 L0 8 Z" fill="#3b8067"/></marker></defs>
+<rect width="1360" height="750" rx="18" fill="#fff"/>
+<text x="28" y="45" text-anchor="start" class="title">A Turn can end while speech continues</text>
+<text x="28" y="78" text-anchor="start" class="sub">Illustration only. Playback ownership is separate from the Session's running-Turn registration.</text>
+<text x="28" y="133" text-anchor="start" class="label">Time</text>
+<path d="M260 130 H1285" stroke="#7c899b" stroke-width="1.6" fill="none"/>
+<text x="260" y="119" text-anchor="middle" class="small">T0</text>
+<line x1="260" y1="130" x2="260" y2="645" class="guide"/>
+<text x="520" y="119" text-anchor="middle" class="small">T1</text>
+<line x1="520" y1="130" x2="520" y2="645" class="guide"/>
+<text x="520" y="160" text-anchor="middle" class="small">Text done</text>
+<text x="650" y="119" text-anchor="middle" class="small">T2</text>
+<line x1="650" y1="130" x2="650" y2="645" class="guide"/>
+<text x="650" y="160" text-anchor="middle" class="small">Turn cleanup done</text>
+<text x="920" y="119" text-anchor="middle" class="small">T3</text>
+<line x1="920" y1="130" x2="920" y2="645" class="guide"/>
+<text x="920" y="160" text-anchor="middle" class="small">Synthesis done</text>
+<text x="1180" y="119" text-anchor="middle" class="small">T4</text>
+<line x1="1180" y1="130" x2="1180" y2="645" class="guide"/>
+<text x="1180" y="160" text-anchor="middle" class="small">Playback done</text>
+<text x="28" y="218" text-anchor="start" class="label">Turn execution</text>
+<rect x="260" y="190" width="390" height="46" rx="8" class="blue"/>
+<text x="455" y="217" text-anchor="middle" class="inside">Execute, save, clean up</text>
+<text x="28" y="314" text-anchor="start" class="label">Text generation</text>
+<rect x="260" y="286" width="260" height="46" rx="8" class="blue"/>
+<text x="390" y="313" text-anchor="middle" class="inside">Text streams</text>
+<text x="28" y="410" text-anchor="start" class="label">Speech synthesis</text>
+<rect x="345" y="382" width="575" height="46" rx="8" class="orange"/>
+<text x="632.5" y="409" text-anchor="middle" class="inside">Generate later audio segments</text>
+<text x="28" y="506" text-anchor="start" class="label">Actual playback</text>
+<rect x="430" y="478" width="750" height="46" rx="8" class="blue"/>
+<text x="805" y="505" text-anchor="middle" class="inside">Read and play available audio</text>
+<text x="28" y="602" text-anchor="start" class="label">Presentation owner</text>
+<rect x="260" y="574" width="920" height="46" rx="8" class="green"/>
+<text x="720" y="601" text-anchor="middle" class="greenText">Playback keeps the owner until here</text>
+<text x="660" y="252" text-anchor="start" class="greenText">Turn ended; Session execution is released</text>
+<line x1="1181" y1="597" x2="1230" y2="597" stroke="#3b8067" stroke-width="1.8" marker-end="url(#arrow)"/>
+<text x="1242" y="603" text-anchor="start" class="greenText">Handover</text>
+<rect x="28" y="674" width="1304" height="38" rx="8" fill="#f1f5fa"/>
+<text x="44" y="699" text-anchor="start" class="sub">Normal owner handover waits for playback. Turn completion does not.</text>
+</svg>

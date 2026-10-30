@@ -1,0 +1,136 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="790" viewBox="0 0 1440 790" role="img" aria-labelledby="title desc">
+<title id="title">Calendar-day and active-date retention</title><desc id="desc">History on days1,2,10,11 raises the active-date count to4, where it stays. The calendar count keeps advancing. Day181 expires day1; day182 expires day2. Active dates never reach180, so no cleanup occurs.</desc>
+<style>
+ text{font-family:"Segoe UI","Microsoft YaHei",sans-serif;font-size:18px;fill:#243248}
+ .title{font-size:28px;font-weight:700}.muted{font-size:16px;fill:#58677b}.label{font-weight:600}
+ .grid{stroke:#dce3ec;stroke-dasharray:3 5;stroke-width:1}
+ .axis{stroke:#7c899b;stroke-width:1.5}.pulse{fill:none;stroke:#50647d;stroke-width:2.5;stroke-linejoin:round}
+ .calendarBus{fill:#fff5df;stroke:#ac7112;stroke-width:1.7}
+ .activeBus{fill:#eaf2ff;stroke:#3269bd;stroke-width:1.7}
+ .calendar{fill:#8f5b07;font-weight:600}.active{fill:#235aa8;font-weight:600}
+ .red{fill:#b62534;font-size:17px;font-weight:600}.redArrow{stroke:#c63442;stroke-width:1.8;fill:none;marker-end:url(#arrow)}
+ .limitLine{stroke:#d18a20;stroke-width:1.7;stroke-dasharray:6 5}
+ .limit{fill:#8f5b07;font-size:16px;font-weight:700}.small{font-size:15px}
+</style>
+<defs><marker id="arrow" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0 0 L6 3 L0 6 Z" fill="#c63442"/></marker></defs>
+<rect width="1440" height="790" rx="18" fill="#fff"/>
+<rect x="193" y="284" width="1217" height="92" rx="9" fill="#fffbf1"/>
+<rect x="193" y="495" width="1217" height="92" rx="9" fill="#f4f8ff"/>
+<text x="28" y="45" text-anchor="start" class="title">Calendar-day and active-date retention</text>
+<text x="28" y="78" text-anchor="start" class="muted">Example limit: 180. No more logins after day 11; observe through day 182.</text>
+<text x="28" y="140" text-anchor="start" class="label">Calendar day</text>
+<line x1="194" y1="160" x2="1410" y2="160" class="axis"/>
+<text x="240" y="140" text-anchor="middle" class="muted">Day 1</text>
+<line x1="240" y1="161" x2="240" y2="603" class="grid"/>
+<text x="340" y="140" text-anchor="middle" class="muted">Day 2</text>
+<line x1="340" y1="161" x2="340" y2="603" class="grid"/>
+<text x="420" y="140" text-anchor="middle" class="muted">...</text>
+<text x="500" y="140" text-anchor="middle" class="muted">Day 10</text>
+<line x1="500" y1="161" x2="500" y2="603" class="grid"/>
+<text x="600" y="140" text-anchor="middle" class="muted">Day 11</text>
+<line x1="600" y1="161" x2="600" y2="603" class="grid"/>
+<text x="700" y="140" text-anchor="middle" class="muted">...</text>
+<text x="810" y="140" text-anchor="middle" class="muted">Day 177</text>
+<line x1="810" y1="161" x2="810" y2="603" class="grid"/>
+<text x="920" y="140" text-anchor="middle" class="muted">Day 178</text>
+<line x1="920" y1="161" x2="920" y2="603" class="grid"/>
+<text x="1030" y="140" text-anchor="middle" class="muted">Day 179</text>
+<line x1="1030" y1="161" x2="1030" y2="603" class="grid"/>
+<text x="1140" y="140" text-anchor="middle" class="muted">Day 180</text>
+<line x1="1140" y1="161" x2="1140" y2="603" class="grid"/>
+<text x="1250" y="140" text-anchor="middle" class="muted">Day 181</text>
+<line x1="1250" y1="161" x2="1250" y2="603" class="grid"/>
+<text x="1360" y="140" text-anchor="middle" class="muted">Day 182</text>
+<line x1="1360" y1="161" x2="1360" y2="603" class="grid"/>
+<rect x="1092" y="96" width="96" height="25" rx="12" fill="#fff0cc"/>
+<text x="1140" y="114" text-anchor="middle" class="limit">Limit 180</text>
+<line x1="1140" y1="161" x2="1140" y2="606" class="limitLine"/>
+<text x="28" y="231" text-anchor="start" class="label">New daily history</text>
+<path d="M 194 242 H 227 V 207 H 253 V 242 H 327 V 207 H 353 V 242 H 487 V 207 H 513 V 242 H 587 V 207 H 613 V 242 H 1410" class="pulse"/>
+<rect x="399" y="191" width="42" height="64" fill="#fff"/>
+<text x="420" y="232" text-anchor="middle" class="muted">...</text>
+<rect x="679" y="191" width="42" height="64" fill="#fff"/>
+<text x="700" y="232" text-anchor="middle" class="muted">...</text>
+<text x="28" y="325" text-anchor="start" class="label">Calendar count</text>
+<path d="M 201 300 H 283 L 290 322.5 L 283 345 H 201 L 194 322.5 Z" class="calendarBus"/>
+<text x="240" y="329" text-anchor="middle" class="calendar">1</text>
+<path d="M 297 300 H 443 L 450 322.5 L 443 345 H 297 L 290 322.5 Z" class="calendarBus"/>
+<text x="340" y="329" text-anchor="middle" class="calendar">2</text>
+<path d="M 457 300 H 543 L 550 322.5 L 543 345 H 457 L 450 322.5 Z" class="calendarBus"/>
+<text x="500" y="329" text-anchor="middle" class="calendar">10</text>
+<path d="M 557 300 H 748 L 755 322.5 L 748 345 H 557 L 550 322.5 Z" class="calendarBus"/>
+<text x="600" y="329" text-anchor="middle" class="calendar">11</text>
+<path d="M 762 300 H 858 L 865 322.5 L 858 345 H 762 L 755 322.5 Z" class="calendarBus"/>
+<text x="810" y="329" text-anchor="middle" class="calendar">177</text>
+<path d="M 872 300 H 968 L 975 322.5 L 968 345 H 872 L 865 322.5 Z" class="calendarBus"/>
+<text x="920" y="329" text-anchor="middle" class="calendar">178</text>
+<path d="M 982 300 H 1078 L 1085 322.5 L 1078 345 H 982 L 975 322.5 Z" class="calendarBus"/>
+<text x="1030" y="329" text-anchor="middle" class="calendar">179</text>
+<path d="M 1092 300 H 1188 L 1195 322.5 L 1188 345 H 1092 L 1085 322.5 Z" class="calendarBus"/>
+<text x="1140" y="329" text-anchor="middle" class="calendar">180</text>
+<path d="M 1202 300 H 1298 L 1305 322.5 L 1298 345 H 1202 L 1195 322.5 Z" class="calendarBus"/>
+<text x="1250" y="329" text-anchor="middle" class="calendar">181</text>
+<path d="M 1312 300 H 1403 L 1410 322.5 L 1403 345 H 1312 L 1305 322.5 Z" class="calendarBus"/>
+<text x="1360" y="329" text-anchor="middle" class="calendar">182</text>
+<rect x="399" y="291" width="42" height="62" fill="#fffbf1"/>
+<text x="420" y="329" text-anchor="middle" class="muted">...</text>
+<rect x="679" y="291" width="42" height="62" fill="#fffbf1"/>
+<text x="700" y="329" text-anchor="middle" class="muted">...</text>
+<text x="28" y="372" text-anchor="start" class="muted">Change</text>
+<text x="240" y="372" text-anchor="middle" class="calendar">+1</text>
+<text x="340" y="372" text-anchor="middle" class="calendar">+1</text>
+<text x="500" y="372" text-anchor="middle" class="calendar">+1</text>
+<text x="600" y="372" text-anchor="middle" class="calendar">+1</text>
+<text x="810" y="372" text-anchor="middle" class="calendar">+1</text>
+<text x="920" y="372" text-anchor="middle" class="calendar">+1</text>
+<text x="1030" y="372" text-anchor="middle" class="calendar">+1</text>
+<text x="1140" y="372" text-anchor="middle" class="calendar">+1</text>
+<text x="1250" y="372" text-anchor="middle" class="calendar">+1</text>
+<text x="1360" y="372" text-anchor="middle" class="calendar">+1</text>
+<text x="1140" y="412" text-anchor="middle" class="limit">Limit reached</text>
+<text x="1140" y="436" text-anchor="middle" class="muted small">Day 1 retained</text>
+<line x1="1250" y1="381" x2="1250" y2="399" class="redArrow"/>
+<rect x="1198" y="402" width="104" height="58" rx="7" fill="#fff0f1" stroke="#e9aab0"/>
+<text x="1250" y="425" text-anchor="middle" class="red small">Expiry cleanup</text>
+<text x="1250" y="448" text-anchor="middle" class="red">day 1</text>
+<line x1="1360" y1="381" x2="1360" y2="399" class="redArrow"/>
+<rect x="1308" y="402" width="104" height="58" rx="7" fill="#fff0f1" stroke="#e9aab0"/>
+<text x="1360" y="425" text-anchor="middle" class="red small">Expiry cleanup</text>
+<text x="1360" y="448" text-anchor="middle" class="red">day 2</text>
+<text x="28" y="536" text-anchor="start" class="label">Active-date count</text>
+<path d="M 201 511 H 283 L 290 533.5 L 283 556 H 201 L 194 533.5 Z" class="activeBus"/>
+<path d="M 297 511 H 443 L 450 533.5 L 443 556 H 297 L 290 533.5 Z" class="activeBus"/>
+<path d="M 457 511 H 543 L 550 533.5 L 543 556 H 457 L 450 533.5 Z" class="activeBus"/>
+<path d="M 557 511 H 1403 L 1410 533.5 L 1403 556 H 557 L 550 533.5 Z" class="activeBus"/>
+<text x="240" y="541" text-anchor="middle" class="active">1</text>
+<text x="340" y="541" text-anchor="middle" class="active">2</text>
+<text x="500" y="541" text-anchor="middle" class="active">3</text>
+<text x="600" y="541" text-anchor="middle" class="active">4</text>
+<text x="810" y="541" text-anchor="middle" class="active">4</text>
+<text x="920" y="541" text-anchor="middle" class="active">4</text>
+<text x="1030" y="541" text-anchor="middle" class="active">4</text>
+<text x="1140" y="541" text-anchor="middle" class="active">4</text>
+<text x="1250" y="541" text-anchor="middle" class="active">4</text>
+<text x="1360" y="541" text-anchor="middle" class="active">4</text>
+<rect x="399" y="503" width="42" height="62" fill="#f4f8ff"/>
+<text x="420" y="541" text-anchor="middle" class="muted">...</text>
+<rect x="679" y="503" width="42" height="62" fill="#f4f8ff"/>
+<text x="700" y="541" text-anchor="middle" class="muted">...</text>
+<text x="28" y="584" text-anchor="start" class="muted">Change</text>
+<text x="240" y="584" text-anchor="middle" class="active">+1</text>
+<text x="340" y="584" text-anchor="middle" class="active">+1</text>
+<text x="500" y="584" text-anchor="middle" class="active">+1</text>
+<text x="600" y="584" text-anchor="middle" class="active">+1</text>
+<text x="810" y="584" text-anchor="middle" class="muted">0</text>
+<text x="920" y="584" text-anchor="middle" class="muted">0</text>
+<text x="1030" y="584" text-anchor="middle" class="muted">0</text>
+<text x="1140" y="584" text-anchor="middle" class="muted">0</text>
+<text x="1250" y="584" text-anchor="middle" class="muted">0</text>
+<text x="1360" y="584" text-anchor="middle" class="muted">0</text>
+<rect x="1042" y="613" width="368" height="38" rx="8" fill="#eaf2ff"/>
+<text x="1226" y="638" text-anchor="middle" class="active">No cleanup / Count stays at 4</text>
+<text x="28" y="674" text-anchor="start" class="label">Idle time advances the calendar window without adding active dates.</text>
+<text x="28" y="718" text-anchor="start" class="muted small">A pulse marks the first relationship history for that date. The same date counts once. ... omits intervals; spacing is not to scale.</text>
+<text x="28" y="747" text-anchor="start" class="muted small">Red marks dates outside the retention window. Actual files are removed during maintenance.</text>
+</svg>
+

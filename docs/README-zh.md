@@ -1,68 +1,54 @@
-# 发布文档
+# 文档入口
 
 [English](./README.md)
 
-这里保存给用户看的版本变化和给维护者看的 Bug 修复记录. 各个包的使用方式和实现说明仍放在对应包的 README 中.
+安装和功能演示见[项目 README](../README-zh.md), 近期变化见[CHANGELOG](../CHANGELOG-zh.md).
 
-## 目录结构
+## 使用说明
 
-```text
-docs/
-  README.md
-  README-zh.md
-  changes/
-    v0.1.0-beta.1/
-      README.md
-      README-zh.md
-    v0.1.0-alpha.1/
-      README.md
-      README-zh.md
-      logs/
-        en/
-          askUserApproval.md
-          marketOperationNavigation.md
-          ...
-        zh/
-          askUserApproval.md
-          marketOperationNavigation.md
-          ...
-```
+- [根 README 的开始使用](../README-zh.md#开始使用): 文字模型配置, 角色资源, 可选能力和语音; 数据章节说明备份与升级.
 
-[changes/](./changes/) 的第一层只放版本目录. 每个版本目录保存中英文版本说明, 按需附上排查记录. 说明实际检查的行为, 已知时记录准确测试构建, 区分通过, 失败, 未测和不适用. 相关检查通过不代表尚未解决的例外也已关闭.
+## 按需要阅读
 
-## 版本
+- [桌面应用](../apps/desktop/README-zh.md): 开发运行, 构建, 发布和前端职责.
+- [原生桌面程序](../apps/desktop/src-tauri/README-zh.md): 窗口, 通知, 本地命令及进程生命周期.
+- [角色资源](../src/characters/README-zh.md): 人设, Live2D, 插图, 参考音频和表情包.
+- [电脑操控](../src/computer-use/README-zh.md): Node 与原生程序通信, 操控归属与结束.
+- [Turn](../src/turn/README-zh.md)和[工具](../src/tools/README-zh.md): 对话执行与工具调度.
+- [Memory](../src/memory/README-zh.md)和[Narrative](../src/narrative/README-zh.md): 长期记忆与剧情检索.
+- [Storage](../src/storage/README-zh.md): 数据库, 迁移与升级前备份.
 
-- [0.1.0-beta.1](./changes/v0.1.0-beta.1/README-zh.md): Beta 版本草稿, 简述实验后调整的 Narrative 处理方式和参数.
-- [0.1.0-alpha.1](./changes/v0.1.0-alpha.1/README-zh.md): 版本说明草稿和排查记录索引.
+## 设计取舍
 
-各问题的证据, 当前状态和剩余检查写在对应日志中, 不在这里维护第二份状态表. 源码检查, Dev 验收和安装版验收是不同结果.
+这些文档解释为什么作出选择, 考虑过什么办法, 接受什么成本和限制. 用法与实现约定由各模块 README 说明.
 
-## 如何写版本变化
+- [电脑操控](design/computerUse/README-zh.md): 为什么取消自动暂停, 并让操控随 Turn 结束.
+- [Memory](design/memory/README-zh.md): 为什么采用可编辑文本, 以及活跃日期保留的取舍.
+- [剧情检索](design/narrative/README-zh.md): 为什么采用 LightRAG, 保留提问意图并控制检索成本.
+- [输入队列](design/inputQueue/README-zh.md): 为什么统一交付输入, 区分引导并在保存后确认消费.
+- [语音](design/speech/README-zh.md): 为什么区分生成, 播放归属和声音版本, 以及当前 B 测的节奏选择.
+- [Stage](design/stage/README-zh.md): 为什么为静态立绘配置情绪, 营造类似 Galgame 的场景感.
+- [通用知识库](design/knowledgeBase/README-zh.md): 为什么先用已有文件工具, 删除 KB 并等待明确需求.
+- [历史分支](design/sessionBranches/README-zh.md): 为什么因派生工作归属复杂而暂缓 Session 内分支.
+- [角色切换](design/characterSwitch/README-zh.md): 为什么在 TurnReminder 标明边界, 不逐条重写旧助手消息.
+- [媒体预算](design/mediaBudget/README-zh.md): 为什么所有媒体来源共用预算, 并优先省略较早内容.
+- [权限判断](design/permissions/README-zh.md): 为什么集中作决定, 并明确用户批准的范围.
+- [完整 LLM 结果](design/llmCompletion/README-zh.md): 为什么由内部 CallLLM 收集流, 避免原生非流式请求的实际限制.
 
-目录名使用准确的应用版本并加 `v` 前缀, 例如 `v0.1.0-alpha.1`. 英文版本说明放在 `README.md`, 中文放在 `README-zh.md`, 开头写 `# 0.1.0-alpha.1`, 两份文件互相链接. 正式发布前都标明草稿, 发布后再填写发布日期.
+## 文档分工
 
-写用户实际能感受到的变化, 有必要时说明升级要求和已知问题. 内部重构如果不影响使用, 不需要逐项罗列. 首次发布可以介绍已有能力, 不虚构一个之前的版本进行比较.
+| 位置 | 内容 |
+| --- | --- |
+| 根 README | 用户能做什么, 如何安装运行, 实际截图 |
+| 根 CHANGELOG | 未发布变化及最近最多 30 个已发布版本的简短变化 |
+| 各模块 README | 当前职责, 入口, 正常流程, 重要约束 |
+| docs | 使用说明, 设计理由, 接受的取舍与当前限制 |
+| GitHub Issue | 可复现的问题, 环境, 日志和处理进度 |
+| GitHub Release | 对应版本的发布说明及安装产物 |
+| assets/screenshots | 产品演示原图及用途索引 |
 
-GitHub Release 使用同一份说明. 需要解释修复原因时链接到对应 Bug 记录, 不把完整排查过程塞进版本变化. 英文 README 链接 `logs/en/`, 中文 README 链接 `logs/zh/`.
+设计说明可以解释为什么采用某种方案, 哪些需求没有覆盖, 以及什么证据会促使我们重新评估. 已放弃的方案只在解释当前取舍有帮助时保留, 不写成仍可用的功能. 单次排查的完整转储和实验产物不放进用户文档.
 
-## 如何写 Bug 修复记录
+文档按现有实现编写, 验证记录区分自动检查, Dev 实机验证和安装版验证. 英文入口使用 README.md, 中文放同目录 README-zh.md. Issue 表单使用英文 / 中文字段, 不要求普通用户提供整个数据库.
 
-记录放在对应版本的 `logs/en/` 和 `logs/zh/` 下, 两种语言使用相同的 camelCase 文件名, 例如 `live2dReleaseRendering.md`. 语言通过目录区分, 不加文件名后缀. 一级标题写问题名称, 不再重复版本号; 版本由目录确定. 添加指向 `../zh/` 或 `../en/` 中同名文件的语言切换链接.
-
-两种语言的现象, 结论, 验证和剩余工作保持一致. 同一问题在后续版本再次出现时, 在新版本下建立记录并链接到之前的证据, 不覆盖旧版本的记录.
-
-对外文档必须能独立阅读. 用具体行为说明验证结果, 不使用内部清单编号, 也不链接读者无法访问的已忽略本地测试记录或截图.
-
-说明问题表现, 复现方式, 确认的原因, 修改方式和验证结果. 简单问题用几段话写清楚即可. 区分推测和已确认原因, 也区分自动检查和安装版实机检查. 代码改了不等于原问题已经消失.
-
-只保留有用的报错片段. 不提交 API Key, 访问密钥, 用户对话, 整份运行日志或用户数据库. 各版本的 `logs/` 保存整理后的 Bug 记录; 程序运行日志仍写入所选用户数据目录.
-
-文字说人话, 中英文都使用英文标点. `README.md` 使用英文, 中文对应文件为 `README-zh.md`.
-
-## 准备一个版本
-
-根目录 [package.json](../package.json) 确定应用发布版本. Desktop package, Tauri 配置和 Cargo package 同步为相同值. `pnpm release` 在检查构建工具, 复制资源和构建之前核对这四处. 不一致时列出各自的版本, 不自动修改文件.
-
-Alpha 使用 `0.1.0-alpha.1`, Beta 使用 `0.1.0-beta.1` 这样的预发布版本. 每次新的公开发布使用新版本. Git Tag 使用同一版本并加 `v` 前缀, 例如 `v0.1.0-beta.1`. 只改 Release 标题不会改变安装包中的版本.
-
-桌面发版不要求所有内部工作区包一起升版本. 数据库版本用于记录 SQL 结构变化及必要的已存数据迁移, 见 [Storage](../src/storage/README-zh.md). 构建和安装版检查见 [Desktop](../apps/desktop/README-zh.md#生成安装包).
+历史排查和实验产物保存在仓库之外, 不作为构建或运行应用的前提. 新的问题进度放 GitHub Issue, 设计说明只保留与选择有关的理由和证据.

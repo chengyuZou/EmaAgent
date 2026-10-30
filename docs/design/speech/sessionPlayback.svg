@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1090" viewBox="0 0 1440 1090" role="img" aria-labelledby="title desc">
+<title id="title">Turn execution and playback have separate timing</title><desc id="desc">Within oneSession a secondTurn executes and finishes while the firstTurn's audio is playing. CrossSession automatic playback does not preempt or queue behind the oldowner; explicit replay of saved audio switches playback.</desc>
+<style>
+text{font-family:"Segoe UI","Microsoft YaHei",sans-serif;font-size:18px;fill:#243248}
+.title{font-size:28px;font-weight:700}.sub{font-size:16px;fill:#58677b}.label{font-weight:600}
+.panelTitle{font-size:21px;font-weight:700}.small{font-size:15px;fill:#58677b}
+.inside{font-size:17px;fill:#234c82}.greenText{font-size:17px;fill:#24604d}.grayText{font-size:16px;fill:#59667a}
+.guide{stroke:#b7c2d1;stroke-width:1.3;stroke-dasharray:5 6}.blue{fill:#eaf2ff;stroke:#6192cf;stroke-width:1.5}
+.orange{fill:#fff3da;stroke:#bd9140;stroke-width:1.5}.green{fill:#e9f6ef;stroke:#5c9c81;stroke-width:1.5}
+.gray{fill:#f2f4f7;stroke:#9faabd;stroke-width:1.3;stroke-dasharray:5 4}
+.manual{stroke:#c18323;stroke-width:1.6;stroke-dasharray:5 4}
+</style>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L7 4 L0 8 Z" fill="#3b8067"/></marker></defs>
+<rect width="1440" height="1090" rx="18" fill="#fff"/>
+<text x="28" y="45" text-anchor="start" class="title">Turn execution and playback have separate timing</text>
+<text x="28" y="78" text-anchor="start" class="sub">Execution and playback share a timeline; all intervals are illustrative.</text>
+<rect x="20" y="104" width="1400" height="410" rx="8" fill="#f8fafc"/>
+<text x="36" y="140" text-anchor="start" class="panelTitle">Same Session: Turn 2 can finish before Turn 1 finishes playing</text>
+<text x="530" y="163" text-anchor="middle" class="small">Turn 1 ends</text>
+<line x1="530" y1="170" x2="530" y2="463" class="guide"/>
+<text x="820" y="163" text-anchor="middle" class="small">Turn 2 ends</text>
+<line x1="820" y1="170" x2="820" y2="463" class="guide"/>
+<text x="980" y="163" text-anchor="middle" class="small">Playback 1 ends</text>
+<line x1="980" y1="170" x2="980" y2="463" class="guide"/>
+<text x="36" y="202" text-anchor="start" class="label">Turn execution</text>
+<rect x="260" y="174" width="270" height="42" rx="8" class="blue"/>
+<text x="395" y="201" text-anchor="middle" class="inside">Execute Turn 1</text>
+<rect x="550" y="174" width="270" height="42" rx="8" class="blue"/>
+<text x="685" y="201" text-anchor="middle" class="inside">Execute Turn 2</text>
+<text x="36" y="283" text-anchor="start" class="label">Turn 1 audio</text>
+<rect x="320" y="255" width="660" height="42" rx="8" class="blue"/>
+<text x="650" y="282" text-anchor="middle" class="inside">Play Turn 1</text>
+<text x="36" y="353" text-anchor="start" class="label">Turn 2 audio</text>
+<rect x="550" y="325" width="430" height="42" rx="8" class="gray"/>
+<text x="765" y="352" text-anchor="middle" class="grayText">Playback waits; synthesis can proceed</text>
+<rect x="980" y="325" width="360" height="42" rx="8" class="blue"/>
+<text x="1160" y="352" text-anchor="middle" class="inside">Play Turn 2</text>
+<text x="36" y="440" text-anchor="start" class="label">Presentation owner</text>
+<rect x="260" y="412" width="720" height="42" rx="8" class="green"/>
+<text x="620" y="439" text-anchor="middle" class="greenText">Turn 1</text>
+<rect x="980" y="412" width="360" height="42" rx="8" class="green"/>
+<text x="1160" y="439" text-anchor="middle" class="greenText">Turn 2</text>
+<text x="36" y="491" text-anchor="start" class="sub">Turn 2 can execute before Turn 1 finishes playing. Only subsequent automatic playback queues.</text>
+<rect x="20" y="545" width="1400" height="470" rx="8" fill="#f8fafc"/>
+<text x="36" y="584" text-anchor="start" class="panelTitle">Different Sessions: automatic playback does not preempt; explicit playback can switch</text>
+<text x="650" y="615" text-anchor="middle" class="small">B starts while A owns playback</text>
+<line x1="650" y1="623" x2="650" y2="924" class="guide"/>
+<text x="1110" y="615" text-anchor="middle" class="small">User explicitly plays B</text>
+<line x1="1110" y1="623" x2="1110" y2="924" class="manual"/>
+<text x="36" y="660" text-anchor="start" class="label">Session execution</text>
+<rect x="260" y="632" width="270" height="42" rx="8" class="blue"/>
+<text x="395" y="659" text-anchor="middle" class="inside">Execute A's Turn</text>
+<rect x="650" y="632" width="290" height="42" rx="8" class="blue"/>
+<text x="795" y="659" text-anchor="middle" class="inside">Execute B's Turn</text>
+<text x="36" y="743" text-anchor="start" class="label">Session A audio</text>
+<rect x="320" y="715" width="790" height="42" rx="8" class="blue"/>
+<text x="715" y="742" text-anchor="middle" class="inside">A keeps playing</text>
+<text x="1225" y="743" text-anchor="middle" class="small">A playback stopped</text>
+<text x="36" y="818" text-anchor="start" class="label">Session B audio</text>
+<rect x="650" y="790" width="460" height="42" rx="8" class="gray"/>
+<text x="880" y="817" text-anchor="middle" class="grayText">B is not auto-queued; synthesis can continue</text>
+<rect x="1110" y="790" width="230" height="42" rx="8" class="blue"/>
+<text x="1225" y="817" text-anchor="middle" class="inside">Play B</text>
+<text x="36" y="900" text-anchor="start" class="label">Presentation owner</text>
+<rect x="260" y="872" width="850" height="42" rx="8" class="green"/>
+<text x="685" y="899" text-anchor="middle" class="greenText">A</text>
+<rect x="1110" y="872" width="230" height="42" rx="8" class="green"/>
+<text x="1225" y="899" text-anchor="middle" class="greenText">B</text>
+<text x="36" y="956" text-anchor="start" class="sub">Viewing B does not transfer ownership. Starting B during A's ownership does not queue a later replay.</text>
+<text x="36" y="983" text-anchor="start" class="sub">Explicitly playing B's saved audio replaces playback and the pending list, not background generation.</text>
+<rect x="28" y="1034" width="1384" height="36" rx="8" fill="#e9f6ef"/>
+<text x="44" y="1059" text-anchor="start" class="sub">If A has already released ownership, a later B start can claim it directly.</text>
+</svg>
