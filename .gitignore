@@ -1,8 +1,6 @@
 # Dependencies
 node_modules/
 .pnpm-store/
-/package-lock.json
-
 .agents/**
 
 # Build outputs
@@ -47,5 +45,4 @@ Thumbs.db
 /apps/desktop/public/cubism/*
 !/apps/desktop/public/cubism/.gitkeep
 
-install.cmd
 .claude
