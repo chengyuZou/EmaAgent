@@ -442,6 +442,19 @@ pnpm --filter @ema-agent/desktop test
 
 构建和类型检查最多同时运行 4 个包级任务. 根测试和测试监听命令最多同时运行 2 个包级任务, 每个包的 Vitest 使用 1 个 worker.
 
+## 参考与致谢
+
+以下项目为 EmaAgent 的开发提供了重要参考:
+
+- [Codex](https://github.com/openai/codex): Agent 执行, 工具交互和会话界面的参考.
+- [Project AIRI](https://github.com/moeru-ai/airi): 虚拟角色交互, Live2D 展示和语音交互的参考.
+- [Claude Code Best](https://github.com/claude-code-best/claude-code): 用于学习 Claude Code 执行流程, 工具系统与上下文管理的社区研究项目.
+- [LightRAG](https://github.com/HKUDS/LightRAG): Narrative 模块所参考和改写的检索算法与关键词提取 Prompt. 具体来源见 [Narrative 文档](src/narrative/README-zh.md), 原许可证保留在 [LICENSE.lightrag](src/narrative/LICENSE.lightrag).
+- [艾玛Live2D](https://www.bilibili.com/video/BV1rF6QB1EqW/?spm_id_from=333.337.search-card.all.click)
+- [魔法少女的魔女审判 CG/PV/美术/音声资源提取解包](https://www.bilibili.com/video/BV1Zu4czJENM/?spm_id_from=333.1007.top_right_bar_window_history.content.click&vd_source=3151b98d67ade6395736508def783435)
+
+感谢这些项目的作者与贡献者.
+
 ## 许可
 
 代码使用 [MIT License](LICENSE). 依赖和随附资源遵守各自的许可. 分发前需要确认 Cubism Core, 立绘, 模型和声音的使用权.

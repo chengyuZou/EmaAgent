@@ -442,6 +442,19 @@ For local iteration, `pnpm test:watch` watches the workspace and reruns affected
 
 Build and typecheck commands run at most four package tasks at once. The root test and test-watch commands run at most two package tasks, with one Vitest worker per package.
 
+## References and Acknowledgements
+
+The following projects have provided valuable references during EmaAgent's development:
+
+- [Codex](https://github.com/openai/codex): Agent execution, tool interactions, and conversation interfaces.
+- [Project AIRI](https://github.com/moeru-ai/airi): Virtual-character interaction, Live2D presentation, and voice interaction.
+- [Claude Code Best](https://github.com/claude-code-best/claude-code): Community research into Claude Code's execution flow, tool system, and context management.
+- [LightRAG](https://github.com/HKUDS/LightRAG): Retrieval algorithms and keyword-extraction prompts used in EmaAgent's Narrative module. See the [Narrative documentation](src/narrative/README.md) and the preserved [LightRAG license](src/narrative/LICENSE.lightrag).
+- [Ema Live2D](https://www.bilibili.com/video/BV1rF6QB1EqW/?spm_id_from=333.337.search-card.all.click)
+- [Magical Girl's Witch Trial CG/PV/Art/Voice Resource Extraction and Unpacking](https://www.bilibili.com/video/BV1Zu4czJENM/?spm_id_from=333.1007.top_right_bar_window_history.content.click&vd_source=3151b98d67ade6395736508def783435)
+
+Thank you to the authors and contributors of these projects.
+
 ## License
 
 The code is available under the [MIT License](LICENSE). Dependencies and bundled resources retain their own terms. Obtain the necessary rights for Cubism Core, artwork, models, and voices before redistributing them.
