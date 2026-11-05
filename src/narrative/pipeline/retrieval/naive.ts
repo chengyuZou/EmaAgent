@@ -9,7 +9,11 @@ export function retrieveNaive(
   signal: AbortSignal,
 ): string[] {
   return rankVectors(
-    rows.map(row => row.chunk_id), rows.map(row => row.vector),
-    embedding, VECTOR_CHUNK_TOP_K, COSINE_THRESHOLD, signal,
+    rows.map(row => row.chunk_id),
+    rows.map(row => row.vector),
+    embedding,
+    VECTOR_CHUNK_TOP_K,
+    COSINE_THRESHOLD,
+    signal,
   );
 }

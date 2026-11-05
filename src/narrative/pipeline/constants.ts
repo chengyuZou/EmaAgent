@@ -10,7 +10,7 @@ export const RERANK_CANDIDATE_LIMIT = 125;
 /** 每周目请求的重排结果上限, 最终正文还受字符预算限制. */
 export const RERANK_TOP_K = 30;
 // 整次查询原文的 UTF-16 码元预算, 各周目均分, 不是 token 或重排输入限制.
-export const MAX_CONTEXT_CHARACTERS = 32_000;
+export const MAX_CHUNK_CHARACTERS = 32_000;
 
 /** 原始余弦分数, 不是答案正确率; 图已找到的来源块只排名, 不使用此门槛. */
 export const COSINE_THRESHOLD = 0.2;

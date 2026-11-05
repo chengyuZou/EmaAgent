@@ -4,7 +4,7 @@ import { COSINE_THRESHOLD, TOP_K } from '../constants.js';
 import { rankVectors } from '../vectors.js';
 import { mergeAlternating } from './merge.js';
 
-/** local 是具体人物等低层关键词的检索, 用来找实体; 相邻关系从图中读取, 不再做关系向量搜索. */
+// local 先用低层关键词寻找实体, 再读取这些实体连接的关系.
 export function retrieveLocal(
   timeline: NarrativeTimelineId,
   embedding: Float32Array,
@@ -12,21 +12,47 @@ export function retrieveLocal(
   signal: AbortSignal,
 ): NarrativeGraphResult {
   signal.throwIfAborted();
-  const rows = graph.listEntityVectors(timeline);
-  const names = rankVectors(
-    rows.map(row => row.entity_name), rows.map(row => row.vector),
-    embedding, TOP_K, COSINE_THRESHOLD, signal,
+
+  // 用关键词向量选出实体名, 再批量读取命中实体的描述.
+  const entityVectorRows = graph.listEntityVectors(timeline);
+  const entityNames = rankVectors(
+    entityVectorRows.map(row => row.entity_name),
+    entityVectorRows.map(row => row.vector),
+    embedding,
+    TOP_K,
+    COSINE_THRESHOLD,
+    signal,
   );
-  const entities = graph.findEntities(timeline, names);
-  const incident = graph.findIncidentRelations(timeline, entities.map(entity => entity.entity_name));
-  // 同一关系可能被多个命中实体引用, 先去重. 两端连接数之和优先, 同分再按资产 weight 排序.
-  const relations = mergeAlternating([[...incident.values()].flat()], relation => relation.relation_id);
-  const endpoints = [...new Set(relations.flatMap(relation => [relation.source_entity, relation.target_entity]))];
-  const degrees = graph.getEntityDegrees(timeline, endpoints);
+  const entities = graph.findEntities(timeline, entityNames);
+
+  // 同一关系可能被多个实体带出. 按 relation_id 去重, 保留首次出现的位置.
+  const relationsByEntity = graph.findIncidentRelations(
+    timeline,
+    entities.map(entity => entity.entity_name),
+  );
+  const relations = mergeAlternating(
+    [[...relationsByEntity.values()].flat()],
+    relation => relation.relation_id,
+  );
+
+  // 收集关系两端的实体名并去重, 然后一次查询它们各自的连接数.
+  const endpointNames = relations.flatMap(relation => [
+    relation.source_entity,
+    relation.target_entity,
+  ]);
+  const uniqueEndpointNames = [...new Set(endpointNames)];
+  const degrees = graph.getEntityDegrees(timeline, uniqueEndpointNames);
+
+  // 两端实体的连接总数越多, 关系越靠前. 总数相同时再比较资产中的 weight.
   relations.sort((left, right) => {
-    const leftRank = degrees.get(left.source_entity)! + degrees.get(left.target_entity)!;
-    const rightRank = degrees.get(right.source_entity)! + degrees.get(right.target_entity)!;
+    const leftRank =
+      degrees.get(left.source_entity)! +
+      degrees.get(left.target_entity)!;
+    const rightRank =
+      degrees.get(right.source_entity)! +
+      degrees.get(right.target_entity)!;
     return rightRank - leftRank || right.weight - left.weight;
   });
+
   return { entities, relations };
 }

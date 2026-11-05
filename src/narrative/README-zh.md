@@ -2,37 +2,44 @@
 
 [English](./README.md)
 
-本包检索魔法少女的魔女审判固定三周目的原文. 两条独立 LLM 请求并发执行: 一条读取固定剧情摘要来选择周目, 另一条只根据 query 提取关键词, 不读取该摘要. 两条都不改写 query. 检索与 Rerank 使用同一个传入问题. 返回的是主 Agent 使用的证据, 不是生成好的回答.
+本包检索魔法少女的魔女审判固定三周目的原文, 以及匹配的实体和关系描述. 两条独立 LLM 请求并发执行: 一条读取固定剧情摘要来选择周目, 另一条只根据 query 提取关键词, 不读取该摘要. 两条都不改写 query. 检索与 Rerank 使用同一个传入问题. 返回的是主 Agent 使用的证据, 不是生成好的回答.
 
 ## 使用
 
-宿主打开剧情数据库并创建 Storage Repo, 然后传入三个模型调用函数:
+Server 打开剧情数据库并创建 Storage Repo, 然后传入三个模型调用函数:
 
 ```ts
 const search = new NarrativeSearch(chunksRepo, graphRepo);
 const result = await search.search(
-  query, 'hybrid', completeLLM, callEmbed, callRerank, signal,
+  query,
+  'hybrid',
+  completeLLM,
+  callEmbed,
+  callRerank,
+  signal,
 );
 for (const [timeline, value] of result) {
-  if ('text' in value) {
-    useEvidence(timeline, value.text);
+  if ('entities' in value) {
+    useEvidence(timeline, value.entities, value.relations, value.chunks);
   } else {
     showFailure(timeline, value.message);
   }
 }
 ```
 
-三个调用函数都必传. 结果按路由顺序放在 Map 中, 只包含选中的 1st_Loop, 2nd_Loop, 3rd_Loop. 成功值包含 text, 空字符串表示没有可用证据; 单周目失败值包含 message.
+三个调用函数都必传. 结果按路由顺序放在 Map 中, 只包含选中的 1st_Loop, 2nd_Loop, 3rd_Loop. 成功的 `NarrativeTimelineResult` 包含 `entities`, `relations`, `chunks` 三个数组. 全部为空表示没有查到材料; `naive` 的图数组为空. 单周目失败值则包含 `message`.
 
-Embedding 必须使用资产原有的 Pro/BAAI/bge-m3 向量空间. 包内检查 1024 维, 但其他 1024 维模型不能直接替换. 存储向量为小端 Float32. 模型配置和用量记录由宿主处理.
+Embedding 必须使用资产原有的 Pro/BAAI/bge-m3 向量空间. 包内检查 1024 维, 但其他 1024 维模型不能直接替换. 存储向量为小端 Float32. 模型配置和用量记录由 Server 处理.
 
 ## 查询流程
 
-英文 README 的时序图对应以下顺序: 并发执行独立的周目判断和提词, 等两边完成后去重并批量编码, 按周目读取图与来源原文, 分别重排, 按路由顺序返回证据或单周目错误.
+英文 README 的时序图对应以下顺序: 并发执行独立的周目判断和提词, 等两边完成后去重并批量编码, 按周目读取图与来源原文. 有候选原文时分别重排并应用原文预算, 最后按路由顺序返回实体, 关系和原文块, 或单周目错误.
 
 路由优先遵守用户明确指定的周目. 没有限定较早阶段而只问最终结果时查第三周目, 要求跨周目比较时才扩大范围. 只有周目判断请求读取固定摘要. 响应只包含非空且不重复的 timelines 数组, 不包含子问题, 关键词或答案. 摘要不作为证据返回.
 
 提词使用 LightRAG v1.5.7 模板, 只填入语言, 输出格式模板和 query. 请求不包含剧情摘要, 周目判断结果或聊天历史. Prompt 要求仅从 query 提词, 使用英文且保留专名的原语言. 高层关键词用于主题和关系, 低层关键词用于具体人物和对象, 两组都允许为空. 所有选中周目共用这组关键词和只清理首尾空白的原 query. 需要编码的文本先去重, 再合成一次 Embedding 请求.
+
+`collectEmbeddingTexts` 的 mode 只决定需要编码哪些文本, 不会加入编码字符串. 原 query 与需要的关键词字符串分别取得自己的向量.
 
 Tool 调用方可以先按已明确的前文补全指代, 但须保留疑问, 排除条件和范围, 不添加猜测的答案或额外问题. 不把摘要发给提词请求, 可以去掉这个人为提供的答案来源, 不保证模型一定正确理解否定或不编造词.
 
@@ -46,7 +53,7 @@ Tool 调用方可以先按已明确的前文补全指代, 但须保留疑问, �
 
 local 或 global 缺少本侧关键词时可以使用另一侧. 两类都为空时, local, global, hybrid 和 mix 返回空背景, naive 仍查询原文.
 
-实体和关系各从最多 40 个向量候选开始. naive 和 mix 的直接原文向量搜索最多保留 100 个候选. 这些搜索使用余弦相似度, 门槛为 0.2. 图已经限定来源范围的原文块只排名, 不再使用该门槛. 不再因描述较长而排除命中的实体或关系, 图描述本身也不随原文返回.
+实体和关系各从最多 40 个向量候选开始. naive 和 mix 的直接原文向量搜索最多保留 100 个候选. 这些搜索使用余弦相似度, 门槛为 0.2. 图已经限定来源范围的原文块只排名, 不再使用该门槛. 命中的实体和关系连同描述一起返回, 不占用原文块预算.
 
 来源块按实体或关系分组, 去掉重复引用后用原 query 向量排名. 先选实体来源块, 关系侧排除这些已选块. 没有可用来源向量时按组顺序分配份额, 靠前的组较多. 分配数量使用 Python 的舍入规则, 保持 LightRAG 的算法行为.
 
@@ -56,7 +63,7 @@ local 或 global 缺少本侧关键词时可以使用另一侧. 两类都为空�
 
 ## 预算, 失败和取消
 
-整次查询预算为 32,000 个 UTF-16 码元, 按选中周目数均分, JSON 转义与换行也计入. 按重排顺序保留完整前缀块, 遇到放不下的块就停止, 不截断正文. 每行是带 chunk_id 和 content 的 JSON 对象, 周目由 Map 键确定.
+整次查询的原文块预算为 32,000 个 UTF-16 码元, 按选中周目数均分. 计算带 `chunk_id` 和 `content` 的紧凑 JSON 数组长度, 包括转义, 数组括号和逗号. 按重排顺序保留完整前缀块, 遇到放不下的块就停止, 不截断正文. 图描述不使用这份预算, 因此没有来源块或原文块放不下时, 仍可返回已找到的图材料.
 
 空问题, 任一准备请求失败, 响应字段无效, 未知或重复周目导致整次查询抛错, 不进入 Embedding 或 Rerank. 两条响应都会去掉思考标签并尝试修复 JSON 格式, 但字段仍须分别通过 Schema 校验. 不退回旧的混合响应, 不临时编造关键词. 一条请求失败时, 已发出的另一条可能仍会完成并记录用量, Promise.all 不会自动取消它.
 
@@ -64,7 +71,7 @@ local 或 global 缺少本侧关键词时可以使用另一侧. 两类都为空�
 
 同一个 signal 传入全部模型调用. 取消直接抛给调用方, 不记录成周目错误. 每个周目开始本地检索前让出一次事件循环, 重排请求可以同时等待. SQLite 和向量计算仍在同一线程, 没有 Worker, 同步计算期间不能处理新到达的取消事件.
 
-## 宿主接入与数据
+## Server 接入与数据
 
 `apps/server/src/composition/narrative.ts` 在 Turn 准备时解析 narrative-llm, narrative-embed, narrative-rerank 绑定. 每次模型调用记录最终用量, 归属发起查询的 Session 和 Turn. 配置变化影响下一 Turn. 查询模式设置为 auto 时使用工具传入模式或 hybrid, 固定设置则覆盖工具选择.
 
@@ -74,13 +81,13 @@ Turn 准备先用 `isWitchTrialCharacter` 检查当前角色完整姓名, 名单
 
 该入口还导出 `witchTrialCharacterNames`, 与判定函数共用同一份分组姓名. 每组第一项是中文全名, 后面是其他可识别的完整姓名. 角色设置表格直接渲染这些分组, 不另外维护一份名单.
 
-`NarrativeSearchTool` 把 Map 转为可持久化和传输的数组, 根据正文和失败情况计算 found/partial/empty/unavailable, 再把证据及失败文字交给模型和 UI.
+`NarrativeSearchTool` 把 Map 转为 `timelines` 和 `failures` 数组, 根据三类材料及失败情况计算 found/partial/empty/unavailable. 每个成功条目带 `timelineId`, 模型读取紧凑 JSON, 聊天界面通过共用 `CodeViewer` 展示完整 JSON. 该工具的结果上限为 512 KiB, 超出后沿用工具结果层的外置文件流程. 这与原文块的字符预算分别计算.
 
 固定正文, 实体, 关系, 来源映射和向量由 Storage 读取. 图模式只读候选来源向量, naive 和 mix 读取本周目的全部正文向量. mix 的来源选块复用该次读取. 合并候选 ID 后再读正文, 查询结束后不保留向量或中间结果.
 
 ## 阅读与验证
 
-完整流程看 `pipeline/recall.ts`, 两条独立的周目和提词请求看 `router.ts` 和 `prompts.ts`, 模式选择看 `query.ts`, 来源选块看 `retrieval/sourceChunks.ts`. 向量排名在 `vectors.ts`, 完整块预算在 `context.ts`.
+完整流程看 `pipeline/recall.ts`, 两条独立的周目和提词请求看 `router.ts` 和 `prompts.ts`, 模式选择看 `query.ts`, 来源选块看 `retrieval/sourceChunks.ts`. 向量排名在 `vectors.ts`, 按预算选择完整块在 `chunkBudget.ts`.
 
 运行 `pnpm --filter @ema-agent/narrative test` 和 `pnpm --filter @ema-agent/narrative typecheck`. 测试使用真实内存 SQLite 表和 Repo, 模拟模型响应, 覆盖准备请求并发, 请求内容隔离, 使用包内上游夹具逐字验证提词模板, 响应字段, 编码去重, 五种模式, 每周目 125 输入与 30 返回限制, 直接向量候选限制, 长图描述, 正文预算, 部分失败与取消. 工具转换测试在 `src/builtin-tools/tests/NarrativeSearchTool.test.ts`, 宿主请求预算与两次用量记录测试在 `apps/server/tests/narrativeOutputBudget.test.ts`. 这些测试不验证真实模型的路由效果或固定摘要的剧情准确性.
 

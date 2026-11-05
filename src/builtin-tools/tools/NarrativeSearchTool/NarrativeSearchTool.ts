@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { buildTool, contextFail, contextOk, type ToolInvocation, type ToolUseContext } from '@ema-agent/tools';
 import type { NarrativeTimelineId } from '@ema-agent/storage';
+import type { NarrativeTimelineResult } from '@ema-agent/narrative';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { NARRATIVE_SEARCH_DESCRIPTION } from './prompt.js';
 
@@ -25,11 +26,11 @@ type NarrativeSearchStatus = 'found' | 'partial' | 'empty' | 'unavailable';
 
 export interface NarrativeSearchResult {
   readonly status: NarrativeSearchStatus;
-  readonly timelines: readonly { readonly name: NarrativeTimelineId; readonly text: string }[];
-  readonly failures: readonly { readonly timeline: NarrativeTimelineId; readonly message: string }[];
+  readonly timelines: readonly (NarrativeTimelineResult & { readonly timelineId: NarrativeTimelineId })[];
+  readonly failures: readonly { readonly timelineId: NarrativeTimelineId; readonly message: string }[];
 }
 
-/** 只取得宿主提供的查询函数, 身份与取消走 ToolInvocation. */
+/** 只取得 Turn 提供的查询函数, 身份与取消走 ToolInvocation. */
 interface NarrativeSearchToolContext {
   readonly narrativeSearch: NonNullable<ToolUseContext['narrativeSearch']>;
 }
@@ -42,8 +43,8 @@ export const NarrativeSearchTool = buildTool<
   id: BuiltinTools.NarrativeSearch.id,
   name: BuiltinTools.NarrativeSearch.name,
   description: NARRATIVE_SEARCH_DESCRIPTION,
-  // 多周目原文及失败说明需要较大的结果预算, 超限时由工具结果层外置保存.
-  maxResultBytes: 300_000,
+  // 固定资产的图描述与原文一起交给模型. 超出本工具预算时仍由工具结果层外置保存.
+  maxResultBytes: 512 * 1024,
 
   getToolUseSummary: (input) => `检索剧情资料:${input.query}`,
   inputSchema,
@@ -73,14 +74,16 @@ export const NarrativeSearchTool = buildTool<
     const timelines: NarrativeSearchResult['timelines'][number][] = [];
     const failures: NarrativeSearchResult['failures'][number][] = [];
     for (const [timeline, result] of recalled) {
-      if ('text' in result) {
-        timelines.push({ name: timeline, text: result.text });
+      if ('entities' in result) {
+        timelines.push({ timelineId: timeline, ...result });
       } else {
-        failures.push({ timeline, message: result.message });
+        failures.push({ timelineId: timeline, message: result.message });
       }
     }
     const hasContent = timelines.some(
-      (timeline) => timeline.text.trim().length > 0,
+      timeline => timeline.entities.length > 0
+        || timeline.relations.length > 0
+        || timeline.chunks.length > 0,
     );
     let status: NarrativeSearchStatus;
     if (hasContent) {
@@ -96,21 +99,9 @@ export const NarrativeSearchTool = buildTool<
     };
   },
 
-  // 模型需要正文本身; 状态/失败等事实留在 TOutput 给 UI 与审计.
+  // 保存的结构化结果和模型读取的材料来自同一个对象, 不另维护一份正文字符串.
+  // 紧凑 JSON 用于模型请求; 前端 CodeViewer 自行格式化显示.
   mapResultToModelContent(output) {
-    const sections = output.timelines
-      .filter((timeline) => timeline.text.trim().length > 0)
-      .map((timeline) => `## ${timeline.name}\n${timeline.text.trim()}`);
-
-    if (output.failures.length > 0) {
-      sections.push(
-        `检索失败的剧情线:${output.failures
-          .map((failure) => `${failure.timeline} (${failure.message})`)
-          .join(' ')}`,
-      );
-    }
-    return sections.length > 0
-      ? sections.join('\n\n')
-      : 'Narrative 检索未返回可用剧情资料.';
+    return JSON.stringify(output);
   },
 });

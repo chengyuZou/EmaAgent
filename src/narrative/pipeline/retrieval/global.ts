@@ -11,13 +11,25 @@ export function retrieveGlobal(
   signal: AbortSignal,
 ): NarrativeGraphResult {
   signal.throwIfAborted();
+
+  // 高层关键词先匹配关系, 返回值是按相似度排列的关系 ID.
   const rows = graph.listRelationVectors(timeline);
   const ids = rankVectors(
-    rows.map(row => row.relation_id), rows.map(row => row.vector),
-    embedding, TOP_K, COSINE_THRESHOLD, signal,
+    rows.map(row => row.relation_id),
+    rows.map(row => row.vector),
+    embedding,
+    TOP_K,
+    COSINE_THRESHOLD,
+    signal,
   );
   const relations = graph.findRelations(timeline, ids);
-  const names = [...new Set(relations.flatMap(relation => [relation.source_entity, relation.target_entity]))];
+
+  // 多条关系可能指向同一个实体. 两端名称去重后再读取实体描述.
+  const endpointNames = relations.flatMap(relation => [
+    relation.source_entity,
+    relation.target_entity,
+  ]);
+  const names = [...new Set(endpointNames)];
   const entities = graph.findEntities(timeline, names);
   return { entities, relations };
 }

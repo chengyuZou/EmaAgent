@@ -1,4 +1,5 @@
 import type {
+  NarrativeChunkRow,
   NarrativeEntityRow,
   NarrativeRelationRow,
   NarrativeTimelineId,
@@ -15,10 +16,17 @@ export interface NarrativeTimelineFailure {
   readonly message: string;
 }
 
-export type NarrativeTimelineResult = { readonly text: string } | NarrativeTimelineFailure;
+export interface NarrativeTimelineResult {
+  readonly entities: readonly NarrativeEntityRow[];
+  readonly relations: readonly NarrativeRelationRow[];
+  readonly chunks: readonly NarrativeChunkRow[];
+}
 
-/** 只包含路由选中的周目. 空 text 表示查询完成但没有背景; 取消和路由失败向调用方抛出. */
-export type NarrativeRecallResult = Map<NarrativeTimelineId, NarrativeTimelineResult>;
+// 只包含路由选中的周目. 三个数组都为空表示没有查到材料, 与查询失败分开.
+export type NarrativeRecallResult = Map<
+  NarrativeTimelineId,
+  NarrativeTimelineResult | NarrativeTimelineFailure
+>;
 
 export interface NarrativeGraphResult {
   // 数组先后就是召回优先级, 来源块分组沿用此顺序.

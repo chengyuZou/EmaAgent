@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- Narrative search now returns matched entities, relations, and original chunks for each timeline. Graph descriptions accompany ranked passages, and the Tool result is displayed as JSON.
+
 ## v0.1.0-beta.2
 
 - Updated the application icon with transparent artwork shared by the desktop app, computer-use executable, notifications, and README.

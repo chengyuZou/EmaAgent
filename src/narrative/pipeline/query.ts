@@ -1,10 +1,14 @@
 import type {
-  NarrativeChunkRow,
   NarrativeChunksRepo,
   NarrativeGraphRepo,
   NarrativeTimelineId,
 } from '@ema-agent/storage';
-import type { NarrativeGraphResult, NarrativeKeywords, NarrativeQueryMode } from '../types.js';
+import type {
+  NarrativeGraphResult,
+  NarrativeKeywords,
+  NarrativeQueryMode,
+  NarrativeTimelineResult,
+} from '../types.js';
 import { retrieveGlobal } from './retrieval/global.js';
 import { retrieveHybrid } from './retrieval/hybrid.js';
 import { retrieveLocal } from './retrieval/local.js';
@@ -14,7 +18,7 @@ import { retrieveNaive } from './retrieval/naive.js';
 import { retrieveSourceChunks } from './retrieval/sourceChunks.js';
 
 /** 返回当前模式实际消费的编码文本. query 用于直接块搜索和图来源选块, 关键词用于实体/关系搜索. */
-export function embeddingTexts(
+export function collectEmbeddingTexts(
   query: string,
   mode: NarrativeQueryMode,
   keywords: NarrativeKeywords,
@@ -51,17 +55,17 @@ export function queryTimeline(
   chunks: NarrativeChunksRepo,
   graph: NarrativeGraphRepo,
   signal: AbortSignal,
-): NarrativeChunkRow[] {
+): NarrativeTimelineResult {
   signal.throwIfAborted();
   const queryEmbedding = embeddings.get(query);
   if (!queryEmbedding) {
     // 图模式没有可用关键词时不会编码 query, 因此不读剧情资产; 不是一次检索失败.
-    return [];
+    return { entities: [], relations: [], chunks: [] };
   }
   const chunkVectors = mode === 'naive' || mode === 'mix' ? chunks.listVectors(timeline) : undefined;
   if (mode === 'naive') {
     const ids = retrieveNaive(queryEmbedding, chunkVectors!, signal);
-    return chunks.findChunksByIds(timeline, ids);
+    return { entities: [], relations: [], chunks: chunks.findChunksByIds(timeline, ids) };
   }
   const low = embeddings.get(keywords.lowLevelKeywords.join(', '));
   const high = embeddings.get(keywords.highLevelKeywords.join(', '));
@@ -78,19 +82,26 @@ export function queryTimeline(
   } else {
     found = retrieveHybrid(timeline, low, high, graph, signal);
   }
-  // 图描述不随原文返回, 不因描述长度丢弃命中实体或关系关联的来源块.
+  // 用命中的实体和关系找来源块. 图描述长度不影响来源块是否进入候选.
   const source = retrieveSourceChunks(
     timeline,
     found.entities.map(entity => entity.entity_name),
     found.relations.map(relation => relation.relation_id),
-    graph, chunks, queryEmbedding, signal, chunkVectors,
+    graph,
+    chunks,
+    queryEmbedding,
+    signal,
+    chunkVectors,
   );
+
+  // 从直接搜索、实体来源和关系来源中轮流取块.
+  // 相同 chunk_id 只保留首次出现的位置, 避免某一路重复占用候选名额.
   const ids = mergeAlternating([
     vectorChunkIds,
     source.entityChunks,
     source.relationChunks,
   ], id => id);
-  const selected = chunks.findChunksByIds(timeline, ids);
+  const candidateChunks = chunks.findChunksByIds(timeline, ids);
   signal.throwIfAborted();
-  return selected;
+  return { entities: found.entities, relations: found.relations, chunks: candidateChunks };
 }

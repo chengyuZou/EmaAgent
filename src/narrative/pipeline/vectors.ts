@@ -18,11 +18,13 @@ export function rankVectors<K extends string | number>(
   if (topK <= 0) {
     return [];
   }
+  // 原问题的向量长度只算一次, 后面与每条候选比较时重复使用.
   let querySquaredNorm = 0;
   for (const value of query) {
     querySquaredNorm += value * value;
   }
   const queryNorm = Math.sqrt(querySquaredNorm);
+  // 只保存当前排名最靠前的 ID 和对应分数. 两个数组的下标始终一一对应.
   const selected: K[] = [];
   const scores: number[] = [];
   for (let row = 0; row < ids.length; row++) {

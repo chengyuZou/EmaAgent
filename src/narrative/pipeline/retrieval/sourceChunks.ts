@@ -106,6 +106,8 @@ function selectGroups(
   if (selected.length > 0) {
     return selected;
   }
+  // 向量排名没有选出原文块时, 按候选组的先后分配名额.
+  // 靠前的组多取一些, 某组取不满时把空余名额交给其他组.
   return pickByWeight(groups);
 }
 
@@ -127,6 +129,8 @@ export function retrieveSourceChunks(
   signal.throwIfAborted();
   const entities = graph.getEntityChunkIds(timeline, entityNames);
   const relations = graph.getRelationChunkIds(timeline, relationIds);
+
+  // 同一 Chunk 可能同时被节点和关系引用. 合并并去重 ID 后, 只读取一次对应向量.
   const candidateIds = new Set([...entities.values(), ...relations.values()].flat());
   const rows = loadedChunkVectors === undefined
     ? chunks.findVectorsByIds(timeline, [...candidateIds])
@@ -134,11 +138,21 @@ export function retrieveSourceChunks(
   // Map 只存候选 Buffer 的引用, 不复制正文或向量, 也不在查询结束后保存.
   const vectorsById = new Map(rows.map(row => [row.chunk_id, row.vector]));
   const entityChunks = selectGroups(
-    entities.values(), new Set(), false, embedding, vectorsById, signal,
+    entities.values(),
+    new Set(),
+    false,
+    embedding,
+    vectorsById,
+    signal,
   );
   // 关系侧排除实体侧已选块后移除空组; 实体侧保留空组, 组数会影响候选数量.
   const relationChunks = selectGroups(
-    relations.values(), new Set(entityChunks), true, embedding, vectorsById, signal,
+    relations.values(),
+    new Set(entityChunks),
+    true,
+    embedding,
+    vectorsById,
+    signal,
   );
   return { entityChunks, relationChunks };
 }

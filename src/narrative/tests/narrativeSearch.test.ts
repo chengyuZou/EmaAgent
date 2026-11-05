@@ -3,9 +3,9 @@ import BetterSqlite3 from 'better-sqlite3';
 import type { CallEmbed } from '@ema-agent/embed';
 import type { CompleteLLM, LLMCompletion } from '@ema-agent/llm';
 import type { CallRerank } from '@ema-agent/rerank';
-import { buildContext } from '../pipeline/context.js';
+import { selectChunksWithinBudget } from '../pipeline/chunkBudget.js';
 import {
-  MAX_CONTEXT_CHARACTERS,
+  MAX_CHUNK_CHARACTERS,
   RERANK_CANDIDATE_LIMIT,
   RERANK_TOP_K,
   VECTOR_CHUNK_TOP_K,
@@ -71,14 +71,14 @@ const callEmbed = vi.fn<CallEmbed>(async request => ({
 }));
 function textOf(result: NarrativeRecallResult, timeline: NarrativeTimelineId): string {
   const value = result.get(timeline);
-  if (!value || !('text' in value)) {
+  if (!value || !('chunks' in value)) {
     throw new Error(`没有成功检索 ${timeline}`);
   }
-  return value.text;
+  return JSON.stringify(value.chunks);
 }
 
 function contextRows(text: string): Array<{ entity?: string; entity1?: string; content?: string }> {
-  return text.split('\n').filter(line => line.startsWith('{')).map(line => JSON.parse(line));
+  return JSON.parse(text);
 }
 
 beforeEach(() => {
@@ -189,7 +189,7 @@ it.each([
   ['hybrid', ['entity', 'relation']],
   ['naive', ['direct 原文\n结束']],
   ['mix', ['direct 原文\n结束', 'entity', 'relation']],
-] as const)('%s 召回来源原文, 返回正文而非图描述', async (mode, contents) => {
+] as const)('%s 返回来源原文, 图模式同时保留命中的实体和关系', async (mode, contents) => {
   const list = vi.spyOn(chunks, 'listVectors');
   const candidates = vi.spyOn(chunks, 'findVectorsByIds');
   const result = await run('剧情问题', mode);
@@ -197,6 +197,15 @@ it.each([
     const rows = contextRows(textOf(result, timeline));
     expect(rows.map(row => row.content)).toEqual(contents.map(text => `${timeline}:${text}`));
     expect(textOf(result, timeline)).not.toContain('A 的背景');
+    const value = result.get(timeline)!;
+    if ('message' in value) throw new Error(value.message);
+    if (mode === 'naive') {
+      expect(value.entities).toEqual([]);
+      expect(value.relations).toEqual([]);
+    } else {
+      expect(value.entities.length).toBeGreaterThan(0);
+      expect(value.relations.length).toBeGreaterThan(0);
+    }
   }
   expect(list).toHaveBeenCalledTimes(mode === 'naive' || mode === 'mix' ? 3 : 0);
   expect(candidates).toHaveBeenCalledTimes(mode === 'naive' || mode === 'mix' ? 0 : 3);
@@ -298,6 +307,10 @@ it.each(['local', 'global', 'hybrid', 'mix'] as const)('%s 不按图描述长度
   expect(request.documents).toContain('1st_Loop:entity');
   expect(request.documents).toContain('1st_Loop:relation');
   expect(textOf(result, '1st_Loop')).not.toContain(description);
+  const value = result.get('1st_Loop')!;
+  if ('message' in value) throw new Error(value.message);
+  expect(value.entities[0]?.description).toBe(description);
+  expect(value.relations[0]?.description).toBe(description);
 });
 
 it('不足 30 个候选时请求全部结果, 仍按 32000 字符预算保留完整前缀块', async () => {
@@ -314,7 +327,7 @@ it('不足 30 个候选时请求全部结果, 仍按 32000 字符预算保留完
   const rows = contextRows(text);
   expect(rows.length).toBeGreaterThan(8);
   expect(rows.length).toBeLessThan(request.documents.length);
-  expect(text.length).toBeLessThanOrEqual(MAX_CONTEXT_CHARACTERS);
+  expect(text.length).toBeLessThanOrEqual(MAX_CHUNK_CHARACTERS);
   expect(rows.map(row => row.content)).toEqual(request.documents.slice(0, rows.length));
 });
 
@@ -330,8 +343,8 @@ it('一个周目重排失败不丢掉其他周目, 保留路由顺序', async ()
 it('各周目独立重排并均分总预算, 不比较跨周目分数', async () => {
   db.prepare('UPDATE chunks SET content = content || ?').run('字'.repeat(5000));
   const result = await run();
-  expect([...result.values()].reduce((sum, value) => sum + ('text' in value ? value.text.length : 0), 0))
-    .toBeLessThanOrEqual(MAX_CONTEXT_CHARACTERS);
+  expect([...result.values()].reduce((sum, value) => sum + ('chunks' in value ? JSON.stringify(value.chunks).length : 0), 0))
+    .toBeLessThanOrEqual(MAX_CHUNK_CHARACTERS);
   for (const timeline of timelines) {
     expect(textOf(result, timeline)).toContain(timeline);
   }
@@ -343,19 +356,18 @@ it('各周目独立重排并均分总预算, 不比较跨周目分数', async ()
 
 it('超过预算时保留完整前缀块, 不截断正文', () => {
   const rows = [{ chunk_id: 'a', content: '短文' }, { chunk_id: 'b', content: '字'.repeat(500) }];
-  const result = buildContext(rows, 100);
-  expect(JSON.parse(result)).toEqual(rows[0]);
+  const result = selectChunksWithinBudget(rows, 100);
+  expect(result).toEqual([rows[0]]);
 });
 
-it('正文预算按 UTF-16 计入 JSON 转义和块间换行', () => {
+it('正文预算按 UTF-16 计入 JSON 转义和数组分隔符', () => {
   const rows = [
     { chunk_id: 'a', content: '中文😀\n\"\\' },
     { chunk_id: 'b', content: '第二块' },
   ];
-  const rendered = rows.map(row => JSON.stringify(row));
-  const joined = rendered.join('\n');
-  expect(buildContext(rows, joined.length)).toBe(joined);
-  expect(buildContext(rows, joined.length - 1)).toBe(rendered[0]);
+  const joined = JSON.stringify(rows);
+  expect(selectChunksWithinBudget(rows, joined.length)).toEqual(rows);
+  expect(selectChunksWithinBudget(rows, joined.length - 1)).toEqual([rows[0]]);
 });
 
 it('第一块超过正文预算时返回空正文, 不跳过它另选后面的短块', () => {
@@ -363,7 +375,7 @@ it('第一块超过正文预算时返回空正文, 不跳过它另选后面的�
     { chunk_id: 'a', content: '字'.repeat(200) },
     { chunk_id: 'b', content: '短块' },
   ];
-  expect(buildContext(rows, 100)).toBe('');
+  expect(selectChunksWithinBudget(rows, 100)).toEqual([]);
 });
 
 it.each([
@@ -378,7 +390,7 @@ it.each([
 it('图模式两类关键词都为空时不调用编码或重排, naive 仍按原 Query 查原文', async () => {
   routerResponse = routesFor(['1st_Loop']);
   keywordResponse = JSON.stringify({ high_level_keywords: [], low_level_keywords: [] });
-  expect((await run()).get('1st_Loop')).toEqual({ text: '' });
+  expect((await run()).get('1st_Loop')).toEqual({ entities: [], relations: [], chunks: [] });
   expect(callEmbed).not.toHaveBeenCalled();
   expect(callRerank).not.toHaveBeenCalled();
   expect(textOf(await run('剧情问题', 'naive'), '1st_Loop')).toContain('direct');
