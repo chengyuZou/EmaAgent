@@ -8,9 +8,13 @@ export async function createTurnToolContext(
 ): Promise<ToolUseContext> {
   const { sessionId, turnId, cwd, scratchpadDir } = input;
   const fileStateCache = deps.fileStateCache(sessionId);
+  const hasShell = input.toolPool.get(BuiltinTools.Bash.name)
+    || input.toolPool.get(BuiltinTools.PowerShell.name);
+  // 同一 Turn 的 Bash 和 PowerShell 使用同一份环境, 排队期间修改设置不会改变已提交的命令.
+  const commandEnvironment = hasShell ? deps.commandEnvironment?.() : undefined;
   // Plan 或未启用 Bash 时不等待 Shell 探测. start 只负责启动已经准备好的命令.
   const commandRunner = input.toolPool.get(BuiltinTools.Bash.name)
-    ? await deps.commandRunner?.(cwd, input.workspaceRoots)
+    ? await deps.commandRunner?.(cwd, input.workspaceRoots, commandEnvironment)
     : undefined;
   input.signal.throwIfAborted();
   const vision = deps.resolveVision?.();
@@ -19,6 +23,7 @@ export async function createTurnToolContext(
     cwd,
     platform: process.platform,
     ...(commandRunner ? { commandRunner } : {}),
+    ...(commandEnvironment ? { commandEnvironment } : {}),
     ...(vision ? { vision } : {}),
     ...(deps.captureScreen ? { captureScreen: deps.captureScreen } : {}),
     ...(deps.computerUse ? { computerUse: deps.computerUse } : {}),

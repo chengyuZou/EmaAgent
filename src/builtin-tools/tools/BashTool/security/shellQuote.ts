@@ -19,9 +19,6 @@ export function tryParseShellCommand(
         : shellQuoteParse(cmd, env)
     return { success: true, tokens }
   } catch (error) {
-    if (error instanceof Error) {
-      console.error(error)
-    }
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown parse error',

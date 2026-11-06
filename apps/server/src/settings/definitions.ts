@@ -7,8 +7,8 @@ import { COMPACT_SETTINGS, compactGroup } from '@ema-agent/compact/settings';
 import { PERMISSION_SETTINGS } from '@ema-agent/permission/settings';
 import { disabledProjectSourcesSetting, workspaceInstructionFilesSetting } from '@ema-agent/skills/settings';
 import { disabledToolsSetting } from '@ema-agent/tools/settings';
-import { maxConcurrentBackgroundSetting, maxRuntimeHoursBackgroundSetting } from '@ema-agent/tools/background/settings';
-import { sandboxNetworkSetting } from '@ema-agent/sandbox/settings';
+import { maxConcurrentBackgroundSetting, maxRuntimeHoursBackgroundSetting, minAvailableMemorySetting } from '@ema-agent/tools/background/settings';
+import { commandEnvironmentSetting, sandboxNetworkSetting } from '@ema-agent/sandbox/settings';
 import { vishotCaptureEnabledSetting, vishotCaptureIntervalSecondsSetting } from '@ema-agent/vishot-capture/settings';
 import { eventDisplaySetting } from './eventDisplaySetting.js';
 import { narrativeQueryModeSetting } from './narrativeSetting.js';
@@ -42,7 +42,9 @@ export {
   disabledToolsSetting,
   maxConcurrentBackgroundSetting,
   maxRuntimeHoursBackgroundSetting,
+  minAvailableMemorySetting,
   sandboxNetworkSetting,
+  commandEnvironmentSetting,
   vishotCaptureEnabledSetting,
   vishotCaptureIntervalSecondsSetting,
   eventDisplaySetting,
@@ -63,12 +65,14 @@ export const SETTINGS_DEFINITIONS = [
   disabledToolsSetting,
   maxConcurrentBackgroundSetting,
   maxRuntimeHoursBackgroundSetting,
+  minAvailableMemorySetting,
   workspaceInstructionFilesSetting,
   themeSetting,
   eventDisplaySetting,
   terminalShellExecutableSetting,
   wallpaperSetting,
   sandboxNetworkSetting,
+  commandEnvironmentSetting,
   vishotCaptureEnabledSetting,
   vishotCaptureIntervalSecondsSetting,
 ] as const;

@@ -45,9 +45,11 @@ export interface TurnToolsDeps {
   readonly resolveVision?: () => CallVision | undefined;
   readonly captureScreen?: ToolUseContext['captureScreen'];
   readonly computerUse?: ToolUseContext['computerUse'];
+  readonly commandEnvironment?: () => Readonly<Record<string, string>>;
   readonly commandRunner?: (
     cwd: string,
     workspaceRoots: readonly string[],
+    environment: Readonly<Record<string, string>> | undefined,
   ) => Promise<CommandRunner | undefined>;
   readonly toolResultStore?: (sessionId: string) => ToolResultStore;
   readonly toolExecutionState?: ToolExecutionState;

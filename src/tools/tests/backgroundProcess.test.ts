@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import process from 'node:process';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   CommandOutputChunk,
@@ -95,6 +96,7 @@ async function createFixture(options?: {
   maxConcurrent?: number;
   immediateResultWaitMs?: number;
   assertSessionWorkAllowed?: (sessionId: string) => void;
+  minAvailableMemoryBytes?: number;
 }): Promise<Fixture> {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ema-bg-runtime-'));
   const db = new Database({ memory: true, kind: 'data' });
@@ -133,6 +135,7 @@ async function createFixture(options?: {
     settings: () => ({
       maxConcurrent: options?.maxConcurrent ?? 2,
       maxRuntimeHours: 24,
+      minAvailableMemoryBytes: options?.minAvailableMemoryBytes ?? 0,
     }),
     emit: event => events.push(event),
     onCompletion: (sessionId, processId, status) => {
@@ -177,6 +180,7 @@ function tick(): Promise<void> {
 const fixtures: Array<{ db: Database; dataDir: string }> = [];
 beforeEach(() => undefined);
 afterEach(() => {
+  vi.restoreAllMocks();
   for (const fixture of fixtures.splice(0)) {
     fixture.db.close();
     fs.rmSync(fixture.dataDir, { recursive: true, force: true });
@@ -191,6 +195,45 @@ async function tracked(options?: Parameters<typeof createFixture>[0]): Promise<F
 
 
 describe('BackgroundProcess', () => {
+  it.each([false, true])('低内存时拒绝启动或入队, background=%s', async runInBackground => {
+    vi.spyOn(process, 'availableMemory').mockReturnValue(100);
+    const fixture = await tracked({ minAvailableMemoryBytes: 200 });
+    await expect(fixture.runtime.runCommand(makeRequest(fixture, { runInBackground })))
+      .rejects.toMatchObject({ code: 'tools/low_memory', message: expect.stringContaining('not started') });
+    expect(fixture.runner.processes).toHaveLength(0);
+    expect(fixture.runtime.list(SESSION_ID)).toEqual([]);
+    expect(processesRootEmpty(fixture)).toBe(true);
+  });
+
+  it('排队后内存下降, 轮到该命令时记录失败, 已运行进程仍可读取和停止', async () => {
+    const available = vi.spyOn(process, 'availableMemory').mockReturnValue(300);
+    const fixture = await tracked({ minAvailableMemoryBytes: 200, maxConcurrent: 1 });
+    const first = await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true }));
+    const second = await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true }));
+    if (first.kind !== 'processReference' || second.kind !== 'processReference') throw new Error('expected references');
+    available.mockReturnValue(100);
+    expect(fixture.runtime.list(SESSION_ID)).toHaveLength(2);
+    expect((await fixture.runtime.readOutput(SESSION_ID, first.backgroundProcessId)).process.status).toBe('running');
+    await fixture.runtime.stop(SESSION_ID, first.backgroundProcessId);
+    await tick();
+    expect(fixture.runner.processes).toHaveLength(1);
+    const failed = fixture.repo.findById(second.backgroundProcessId);
+    expect(failed).toMatchObject({ status: 'failed', terminationReason: expect.stringContaining('not started') });
+    expect(fixture.notified).toContain(`${SESSION_ID}:${second.backgroundProcessId}:failed`);
+  });
+
+  it('无法读取内存时不伪装成正常读数, 关闭检查后可运行', async () => {
+    const available = vi.spyOn(process, 'availableMemory').mockImplementation(() => { throw new Error('unavailable'); });
+    const fixture = await tracked({ minAvailableMemoryBytes: 200 });
+    await expect(fixture.runtime.runCommand(makeRequest(fixture)))
+      .rejects.toMatchObject({ code: 'tools/memory_check_unavailable' });
+    const disabled = await tracked({ minAvailableMemoryBytes: 0 });
+    available.mockClear();
+    const pending = disabled.runtime.runCommand(makeRequest(disabled));
+    disabled.runner.processes[0]!.finishWith(okResult());
+    expect((await pending).kind).toBe('commandResult');
+    expect(available).not.toHaveBeenCalled();
+  });
   it('立即启动的后台命令先通知 queued, 再通知 running', async () => {
     const fixture = await tracked();
     const result = await fixture.runtime.runCommand(makeRequest(fixture, { runInBackground: true }));

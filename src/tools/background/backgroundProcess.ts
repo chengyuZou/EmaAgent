@@ -1,4 +1,6 @@
 import crypto from 'node:crypto';
+import { checkAvailableMemory } from '@ema-agent/system';
+import { ToolExecutionError } from '../errors.js';
 import type {
   CommandProcessHandle,
   CommandRunResult,
@@ -104,6 +106,7 @@ export class BackgroundProcess {
     if (this.shuttingDown) {
       throw new BackgroundProcessError('shutting_down', 'Background process runtime is shutting down');
     }
+    this.ensureCommandMemory();
     const id = crypto.randomUUID();
     const writer = this.output.create(request.sessionId, id);
     const timeoutMs = this.resolveTimeout(request.timeoutMs);
@@ -465,6 +468,8 @@ export class BackgroundProcess {
     bindWaitSignal: boolean,
   ): ActiveProcess {
     this.deps.assertSessionWorkAllowed(request.sessionId);
+    // 排队时可用内存会变化, 获取运行名额后再检查, 不能只依赖提交时的读数.
+    this.ensureCommandMemory();
     const startedAt = Date.now();
     const handle = request.runner.start(request.command, {
       cwd: request.cwd,
@@ -535,6 +540,25 @@ export class BackgroundProcess {
       }
     }
     this.notifyChanged(id);
+  }
+
+  private ensureCommandMemory(): void {
+    const minimum = this.deps.settings().minAvailableMemoryBytes;
+    if (minimum === 0) return;
+    let availableBytes: number;
+    try {
+      availableBytes = checkAvailableMemory();
+    } catch {
+      throw new ToolExecutionError(undefined,
+        'Command was not started: available memory could not be read. Check the host or disable the memory precheck in settings.',
+        'tools/memory_check_unavailable');
+    }
+    if (availableBytes < minimum) {
+      const mib = 1024 * 1024;
+      throw new ToolExecutionError(undefined,
+        `Command was not started: ${Math.floor(availableBytes / mib)} MiB available, below the ${Math.ceil(minimum / mib)} MiB threshold. Free memory or reduce concurrent work before trying again.`,
+        'tools/low_memory');
+    }
   }
 
   private resolveTimeout(requested?: number): number {

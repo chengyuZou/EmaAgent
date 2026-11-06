@@ -1,5 +1,6 @@
 // 默认跳过; EMA_LIVE_PWSH=1 时使用本机 PowerShell 验证解析, 编码与超时终止.
 import { describe, expect, it } from 'vitest';
+import { buildProcessEnvironment } from '@ema-agent/sandbox';
 import {
   detectPowerShell,
   peekPowerShellDetection,
@@ -55,6 +56,7 @@ describe.skipIf(!LIVE)('PowerShell 真机冒烟(EMA_LIVE_PWSH=1)', () => {
       detection.path!,
       `Write-Output '你好Ema'`,
       { cwd: process.cwd(), timeoutMs: 30_000 },
+      buildProcessEnvironment(),
     ).completion;
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('你好Ema');
@@ -66,7 +68,25 @@ describe.skipIf(!LIVE)('PowerShell 真机冒烟(EMA_LIVE_PWSH=1)', () => {
       detection.path!,
       `Start-Sleep -Seconds 30`,
       { cwd: process.cwd(), timeoutMs: 3_000 },
+      buildProcessEnvironment(),
     ).completion;
     expect(result.timedOut).toBe(true);
+  }, 60_000);
+
+  it('子进程只收到显式配置的凭据, 不收到控制口令', async () => {
+    const detection = await detectPowerShell();
+    const environment = buildProcessEnvironment({
+      ...process.env,
+      EMA_SHARED_SECRET: 'fake-control-secret',
+      EXAMPLE_API_TOKEN: 'fake-user-token',
+    }, { values: {}, passthrough: ['EXAMPLE_API_TOKEN'] });
+    const result = await startPowerShellCommand(
+      detection.path!,
+      `Write-Output ([bool]$env:EMA_SHARED_SECRET); Write-Output $env:EXAMPLE_API_TOKEN`,
+      { cwd: process.cwd(), timeoutMs: 30_000 },
+      environment,
+    ).completion;
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.trim().split(/\r?\n/)).toEqual(['False', 'fake-user-token']);
   }, 60_000);
 });

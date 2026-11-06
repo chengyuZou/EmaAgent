@@ -10,6 +10,7 @@ export {
   DEFAULT_BACKGROUND_PROCESS_SETTINGS,
   maxConcurrentBackgroundSetting,
   maxRuntimeHoursBackgroundSetting,
+  minAvailableMemorySetting,
   readBackgroundProcessSettings,
 } from './settings.js';
 export type { BackgroundProcessSettings } from './settings.js';

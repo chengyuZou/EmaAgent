@@ -42,6 +42,7 @@
     "@ema-agent/narrative": "workspace:*",
     "@ema-agent/permission": "workspace:*",
     "@ema-agent/sandbox": "workspace:*",
+    "@ema-agent/system": "workspace:*",
     "@ema-agent/settings": "workspace:*",
     "@ema-agent/skills": "workspace:*",
     "@ema-agent/tasks": "workspace:*",

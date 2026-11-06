@@ -7,6 +7,8 @@ export interface BackgroundProcessSettings {
   /** 仅限制显式后台命令, 不包含普通命令转后台后的进程. */
   maxConcurrent: number;
   maxRuntimeHours: number;
+  /** 所有 Shell 命令启动前至少需要的可用内存字节数. 0 关闭检查. */
+  minAvailableMemoryBytes: number;
 }
 
 export const maxConcurrentBackgroundSetting = defineSetting({
@@ -23,10 +25,18 @@ export const maxRuntimeHoursBackgroundSetting = defineSetting({
   schema: z.number().int().min(1).max(168),
 });
 
+export const minAvailableMemorySetting = defineSetting({
+  key: 'tools.shell.minAvailableMemoryBytes',
+  apply: 'nextOperation',
+  defaultValue: 512 * 1024 * 1024,
+  schema: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+});
+
 /** 整组默认快照(供装配方默认参数与测试),单一事实源是各 setting 的 defaultValue. */
 export const DEFAULT_BACKGROUND_PROCESS_SETTINGS: BackgroundProcessSettings = {
   maxConcurrent: maxConcurrentBackgroundSetting.defaultValue,
   maxRuntimeHours: maxRuntimeHoursBackgroundSetting.defaultValue,
+  minAvailableMemoryBytes: minAvailableMemorySetting.defaultValue,
 };
 
 /** 聚合读取整块快照:坏值/缺失自动回落默认. */
@@ -36,5 +46,6 @@ export function readBackgroundProcessSettings(
   return {
     maxConcurrent: store.get(maxConcurrentBackgroundSetting),
     maxRuntimeHours: store.get(maxRuntimeHoursBackgroundSetting),
+    minAvailableMemoryBytes: store.get(minAvailableMemorySetting),
   };
 }
