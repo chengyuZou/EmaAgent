@@ -86,10 +86,11 @@ export const BashTool = buildTool<BashInput, ShellResult, BashToolContext, Shell
   },
 
   // 复合命令逐段匹配. 完整命令批准不扩大到其他参数或后续子命令.
-  async checkPermissions(input) {
+  async checkPermissions(input, context) {
     const { commands, allowByCommands } = await parsePermissionCommands(input.command);
     return {
       kind: 'shell',
+      cwd: context.cwd,
       command: input.command,
       subcommands: commands,
       canMatchSubcommands: allowByCommands,

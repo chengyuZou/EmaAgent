@@ -9,7 +9,8 @@ export function getSessionApprovals(sessionId: string): readonly PermissionRuleK
 
 export function rememberSessionApproval(sessionId: string, key: PermissionRuleKey): void {
   const approvals = sessionApprovals.get(sessionId) ?? [];
-  if (approvals.some(saved => saved.toolName === key.toolName && saved.condition === key.condition)) return;
+  if (approvals.some(saved => saved.toolName === key.toolName
+    && saved.condition === key.condition && saved.cwd === key.cwd)) return;
   sessionApprovals.set(sessionId, [...approvals, { ...key }]);
 }
 

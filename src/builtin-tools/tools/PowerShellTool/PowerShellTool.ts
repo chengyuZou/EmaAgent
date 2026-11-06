@@ -45,6 +45,7 @@ type PowerShellInput = z.infer<typeof inputSchema>;
 interface PowerShellToolContext {
   cwd: string;
   backgroundProcesses: BackgroundProcess;
+  commandEnvironment: Readonly<Record<string, string>>;
 }
 
 export const PowerShellTool = buildTool<PowerShellInput, ShellResult, PowerShellToolContext, ShellProgress>({
@@ -57,7 +58,7 @@ export const PowerShellTool = buildTool<PowerShellInput, ShellResult, PowerShell
   isConcurrencySafe: () => false,
 
   // 解析函数已有命令级缓存, 与 validateInput 共用结果; 权限规则逐段检查.
-  async checkPermissions(input) {
+  async checkPermissions(input, context) {
     const parsed = await parsePowerShellCommand(input.command);
     const commands = getAllCommands(parsed);
     const flags = deriveSecurityFlags(parsed);
@@ -70,6 +71,7 @@ export const PowerShellTool = buildTool<PowerShellInput, ShellResult, PowerShell
       && commands.every(command => command.elementType === 'CommandAst');
     return {
       kind: 'shell',
+      cwd: context.cwd,
       command: input.command,
       subcommands: commands.map(command => command.text),
       canMatchSubcommands: allowByCommands,
@@ -88,7 +90,14 @@ export const PowerShellTool = buildTool<PowerShellInput, ShellResult, PowerShell
     if (!ctx.backgroundProcesses) {
       return contextFail('当前执行环境没有后台进程能力.');
     }
-    return contextOk({ cwd: ctx.cwd, backgroundProcesses: ctx.backgroundProcesses });
+    if (!ctx.commandEnvironment) {
+      return contextFail('当前执行环境没有准备 Shell 环境变量.');
+    }
+    return contextOk({
+      cwd: ctx.cwd,
+      backgroundProcesses: ctx.backgroundProcesses,
+      commandEnvironment: ctx.commandEnvironment,
+    });
   },
 
   async validateInput(input) {
@@ -128,7 +137,7 @@ export const PowerShellTool = buildTool<PowerShellInput, ShellResult, PowerShell
         start: (command, options) => startPowerShellCommand(shellPath, command, {
           ...options,
           cwd: context.cwd,
-        }),
+        }, context.commandEnvironment),
       },
       command: input.command,
       description: input.description,

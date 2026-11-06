@@ -12,6 +12,7 @@ export function startPowerShellCommand(
   shellPath: string,
   command: string,
   options: CommandRunOptions & { cwd: string; timeoutMs: number },
+  environment: Readonly<Record<string, string>>,
 ): CommandProcessHandle {
   return startProcess(
     {
@@ -24,7 +25,7 @@ export function startPowerShellCommand(
         `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; ${command}`,
       ],
       cwd: options.cwd,
-      environment: process.env,
+      environment,
     },
     options.timeoutMs,
     options.signal,

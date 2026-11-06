@@ -142,7 +142,7 @@ describe('文件和命令检查', () => {
   });
 
   it('命令允许规则须覆盖全部子命令, 拒绝只需命中其中一条', async () => {
-    const command = { kind: 'shell', command: 'git status && pnpm test', subcommands: ['git status', 'pnpm test'], canMatchSubcommands: true } as const;
+    const command = { kind: 'shell', cwd: directory(), command: 'git status && pnpm test', subcommands: ['git status', 'pnpm test'], canMatchSubcommands: true } as const;
     const ctx = { ...context(), rules: [rule('Bash', 'allow', 'git:*')] };
     expect((await check('Bash', command, ctx)).decision).toBe('ask');
     ctx.rules.push(rule('Bash', 'allow', 'pnpm:*'));
@@ -152,7 +152,7 @@ describe('文件和命令检查', () => {
   });
 
   it('不可靠解析不能借子命令放行, 完整命令批准仍可复用', async () => {
-    const command = { kind: 'shell', command: 'echo *', subcommands: ['echo'], canMatchSubcommands: false } as const;
+    const command = { kind: 'shell', cwd: directory(), command: 'echo *', subcommands: ['echo'], canMatchSubcommands: false } as const;
     expect((await check('Bash', command, {
       ...context(), rules: [rule('Bash', 'allow', 'echo:*')],
     })).decision).toBe('ask');
@@ -161,6 +161,38 @@ describe('文件和命令检查', () => {
     rememberSessionApproval(sessionId, first.sessionApproval.key);
     expect((await check('Bash', command)).decision).toBe('allow');
     expect((await check('Bash', { ...command, command: 'echo other' })).decision).toBe('ask');
+    const elsewhere = { ...command, cwd: directory() };
+    expect((await check('Bash', elsewhere)).decision).toBe('ask');
+    const second = await check('Bash', elsewhere);
+    if (second.decision !== 'ask' || !second.sessionApproval) throw new Error('expected approval');
+    rememberSessionApproval(sessionId, second.sessionApproval.key);
+    expect((await check('Bash', command)).decision).toBe('allow');
+    expect((await check('Bash', elsewhere)).decision).toBe('allow');
+  });
+
+  it('通过普通名称的目录链接写入受保护目录仍需批准', async () => {
+    const root = directory();
+    fs.mkdirSync(path.join(root, '.git'));
+    fs.symlinkSync(path.join(root, '.git'), path.join(root, 'ordinary'), process.platform === 'win32' ? 'junction' : 'dir');
+    const result = await check('Write', {
+      kind: 'file', operation: 'write', target: 'file', path: path.join(root, 'ordinary', 'config'),
+    }, { ...context('acceptEdits'), workspaceRoots: [root] });
+    expect(result).toMatchObject({ decision: 'ask', message: expect.stringContaining('.git') });
+  });
+
+  it('工作目录链接改指向其他目录后不能沿用命令批准', async () => {
+    const root = directory();
+    const firstDirectory = directory();
+    const secondDirectory = directory();
+    const link = path.join(root, 'current');
+    fs.symlinkSync(firstDirectory, link, process.platform === 'win32' ? 'junction' : 'dir');
+    const command = { kind: 'shell', cwd: link, command: 'npm test', subcommands: ['npm test'], canMatchSubcommands: true } as const;
+    const first = await check('Bash', command);
+    if (first.decision !== 'ask' || !first.sessionApproval) throw new Error('expected approval');
+    rememberSessionApproval(sessionId, first.sessionApproval.key);
+    fs.unlinkSync(link);
+    fs.symlinkSync(secondDirectory, link, process.platform === 'win32' ? 'junction' : 'dir');
+    expect((await check('Bash', command)).decision).toBe('ask');
   });
 });
 

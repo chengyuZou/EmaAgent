@@ -10,6 +10,8 @@ export interface PermissionRuleKey {
   readonly toolName: string;
   // 未填写时匹配整个工具. 填写时由文件, 命令或网页检查解释条件.
   readonly condition?: string;
+  // 仅 Session 的 Shell 批准携带规范化工作目录. 用户配置的命令规则仍可跨目录使用.
+  readonly cwd?: string;
 }
 
 export interface PermissionRule {
@@ -57,6 +59,7 @@ export interface FilePermissionCheck {
 export interface ShellPermissionCheck {
   readonly kind: 'shell';
   readonly command: string;
+  readonly cwd: string;
   readonly subcommands: readonly string[];
   // 解析不完整或含动态语法时为 false, 不能靠部分子命令放行完整命令.
   readonly canMatchSubcommands: boolean;

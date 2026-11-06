@@ -7,6 +7,7 @@ export interface PreparedPermissionCheck {
   // required 是必须确认的操作; alreadyApproved 表示本次电脑操控已在启动入口获准.
   readonly confirmation: 'byRules' | 'required' | 'alreadyApproved';
   readonly sessionApproval?: SessionPermissionApproval;
+  readonly cwd?: string;
   // 命令的允许规则可能需要共同覆盖多条子命令, 所以一次传入同一决定下的全部条件.
   readonly matchesConditions: (conditions: readonly string[], decision: PermissionDecision) => boolean;
 }
@@ -20,6 +21,7 @@ export function matchesRules(
   const conditions: string[] = [];
   for (const key of keys) {
     if (key.toolName !== toolName) continue;
+    if (key.cwd !== undefined && key.cwd !== check.cwd) continue;
     if (key.condition === undefined) return true;
     conditions.push(key.condition);
   }

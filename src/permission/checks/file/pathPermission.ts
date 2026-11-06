@@ -50,7 +50,8 @@ export function prepareFilePermission(
   } else if (paths.some(hasSuspiciousWindowsPath)) {
     confirmationReason = '目标包含特殊 Windows 路径写法';
   } else if (check.operation === 'write') {
-    confirmationReason = dangerousPathReason(check.path);
+    // 普通名称的链接可能指向 .git 或凭据目录, 原路径和实际目标都要检查.
+    confirmationReason = paths.map(dangerousPathReason).find(reason => reason !== undefined);
   }
 
   let defaultDecision: 'allow' | 'ask' = 'ask';
