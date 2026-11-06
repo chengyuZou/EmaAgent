@@ -27,6 +27,7 @@ export function webFetchResultCopyText(data: unknown): string | null {
 
 function formatBytes(bytes: number): string {
   if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes === 0) return '0 B';
   return `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
 
@@ -87,6 +88,7 @@ function WebFetchResultCard({ result, toolbarContainer }: {
           </span>
           {result.truncated && <Badge variant="warn">已截断</Badge>}
           {result.download && <Badge variant="success">已下载文件</Badge>}
+          {result.redirectTo && <Badge variant="warn">跨来源跳转, 目标尚未读取</Badge>}
         </div>
       </div>
       {isHtml ? (

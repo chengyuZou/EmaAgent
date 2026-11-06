@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
-import { emaAuth, localWebviewCors } from '../src/platform/auth.js';
+import { emaAuth, localWebviewCors, takeSharedSecret } from '../src/platform/auth.js';
 
 const SECRET = 's'.repeat(32);
 
@@ -12,6 +12,13 @@ function createApp(): Hono {
 }
 
 describe('Desktop WebView access', () => {
+  it('启动后从环境移除口令, 已取得的口令仍可用于认证', async () => {
+    const environment = { EMA_SHARED_SECRET: SECRET, ema_shared_secret: SECRET, OTHER: 'keep' };
+    const secret = takeSharedSecret(environment);
+    expect(environment).toEqual({ OTHER: 'keep' });
+    const app = new Hono().use('*', emaAuth(secret)).get('/', context => context.text('ok'));
+    expect((await app.request('/', { headers: { 'X-Ema-Secret': SECRET } })).status).toBe(200);
+  });
   it('allows the authenticated header through CORS preflight before auth runs', async () => {
     const response = await createApp().request('/api/system/events', {
       method: 'OPTIONS',

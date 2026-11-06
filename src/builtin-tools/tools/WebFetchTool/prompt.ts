@@ -6,7 +6,7 @@ IMPORTANT: WebFetch does not use browser login sessions or execute JavaScript. A
 
 Usage notes:
 - HTTP URLs are automatically upgraded to HTTPS.
-- HTTP redirects are followed automatically. The result URL is the final destination.
+- Same-origin HTTP redirects are followed automatically, up to 10 redirects. A change of scheme, host, or port returns a redirect notice without fetching the destination. Make a new WebFetch call with the provided URL so normal permission checks apply. Redirect notices are never cached or truncated by pagination.
 - Unsuccessful HTTP responses are reported as errors, not returned as page content.
 - Article extraction removes navigation and other surrounding content. Documentation retains code blocks and tables; tables may remain as HTML. Extraction is not a question-answering step: read the returned content and check whether it supports the claim.
 - Relative links and image URLs in extracted HTML are resolved using the final destination and the document's base URL. Use raw: true only for troubleshooting; source text is not rewritten.

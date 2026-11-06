@@ -56,7 +56,9 @@ function createWebRequests(env: NodeJS.ProcessEnv): WebRequests {
       try {
         const requestInit = { ...init, dispatcher };
         const response = await fetch(url, requestInit);
-        if (!response.ok) {
+        const manualRedirect = init.redirect === 'manual'
+          && [301, 302, 303, 307, 308].includes(response.status);
+        if (!response.ok && !manualRedirect) {
           const secrets = [...proxy!.secrets, ...requestSecrets(url, init.headers)];
           throw await httpFailure(response, init.signal, secrets);
         }

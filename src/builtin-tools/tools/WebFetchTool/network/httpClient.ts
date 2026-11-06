@@ -6,6 +6,7 @@ import { getSessionWebDownloadsDir, saveWebDownload, webDownloadNotice, type Web
 
 const MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
 const FETCH_TIMEOUT_MS = 30_000;
+const MAX_REDIRECTS = 5;
 
 export interface FetchedPage {
   finalUrl: string;
@@ -16,6 +17,8 @@ export interface FetchedPage {
   status: number;
   statusText: string;
   download?: WebDownload;
+  /** 跨来源跳转尚未请求. 下一次 WebFetch 必须按此地址重新检查权限. */
+  redirectTo?: string;
 }
 
 export interface FetchPageOptions {
@@ -60,13 +63,44 @@ export async function fetchPublicPage(
   }
 
   const requestSignal = AbortSignal.any([signal, AbortSignal.timeout(FETCH_TIMEOUT_MS)]);
-  const response = await requestWeb(upgradeToHttps(rawUrl), {
-    signal: requestSignal,
-    headers: {
-      Accept: 'text/markdown, text/html, text/plain, application/json, application/xml, */*;q=0.5',
-    },
-    redirect: 'follow',
-  });
+  let currentUrl = new URL(upgradeToHttps(rawUrl));
+  let response: Response;
+  for (let redirects = 0; ; redirects += 1) {
+    response = await requestWeb(currentUrl.href, {
+      signal: requestSignal,
+      headers: {
+        Accept: 'text/markdown, text/html, text/plain, application/json, application/xml, */*;q=0.5',
+      },
+      redirect: 'manual',
+    });
+    // 拿到 2xx/4xx/5xx 等, 说明是最终响应, 跳出循环
+    // 后续处理 body 只有 5 种 3xx 会进入重定向处理
+    if (![301, 302, 303, 307, 308].includes(response.status)) break;
+
+    // 不读取跳转响应体. 释放连接后才继续, 全部跳转共用同一个超时与取消信号.
+    await response.body?.cancel();
+    requestSignal.throwIfAborted();
+    const location = response.headers.get('location');
+    if (!location) throw new Error('Web redirect has no Location header.');
+    const destination = new URL(location, currentUrl);
+    if (!['http:', 'https:'].includes(destination.protocol) || destination.username || destination.password) {
+      throw new Error('Web redirect must use HTTP or HTTPS without URL credentials.');
+    }
+    if (destination.origin !== currentUrl.origin) {
+      return {
+        finalUrl: currentUrl.href,
+        redirectTo: destination.href,
+        content: `This page redirects to a different origin. The destination has not been fetched. Call WebFetch with this URL so its permissions are checked: ${destination.href}`,
+        contentType: 'text/plain',
+        bytes: 0,
+        status: response.status,
+        statusText: response.statusText,
+      };
+    }
+    if (redirects >= MAX_REDIRECTS) throw new Error('Web redirect limit exceeded.');
+    currentUrl = destination;
+  }
+
   const contentType = (response.headers.get('content-type') ?? 'application/octet-stream').toLowerCase();
   const binary = !isTextContent(contentType);
   if (binary && !downloadsDir) {

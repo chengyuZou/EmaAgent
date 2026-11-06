@@ -45,6 +45,8 @@ export interface WebFetchResult {
   truncated: boolean;
   totalLength: number;
   download?: WebDownload;
+  /** 该跨来源目标未被请求, 需要另一次 WebFetch 权限检查. */
+  redirectTo?: string;
 }
 
 export const WebFetchTool = buildTool<WebFetchInput, WebFetchResult, void>({
@@ -99,9 +101,10 @@ export const WebFetchTool = buildTool<WebFetchInput, WebFetchResult, void>({
     }
 
     const totalLength = page.content.length;
-    const truncated = !page.download && start_index + max_length < totalLength;
+    const notice = Boolean(page.download || page.redirectTo);
+    const truncated = !notice && start_index + max_length < totalLength;
     let content = page.content;
-    if (!page.download) {
+    if (!notice) {
       content = page.content.slice(start_index, start_index + max_length);
       if (truncated) {
         content += `\n[Output truncated: ${totalLength.toLocaleString()} chars -> ${max_length.toLocaleString()} chars shown. Use start_index to paginate.]`;
@@ -117,6 +120,7 @@ export const WebFetchTool = buildTool<WebFetchInput, WebFetchResult, void>({
       truncated,
       totalLength,
       ...(page.download ? { download: page.download } : {}),
+      ...(page.redirectTo ? { redirectTo: page.redirectTo } : {}),
     };
   },
 

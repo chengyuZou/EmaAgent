@@ -183,8 +183,10 @@ describe('WebFetchTool 读取网页', () => {
       statusText: 'OK',
       headers: { 'content-type': 'text/html' },
     });
-    Object.defineProperty(response, 'url', { value: 'https://docs.example.com/final' });
-    const fetchMock = vi.fn().mockResolvedValue(response);
+    Object.defineProperty(response, 'url', { value: 'https://example.com/final' });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(null, { status: 302, headers: { location: '/final' } }))
+      .mockResolvedValueOnce(response);
     vi.stubGlobal('fetch', fetchMock);
     const url = 'http://example.com/start';
 
@@ -194,7 +196,7 @@ describe('WebFetchTool 读取网页', () => {
       invocation,
     );
     expect(first).toMatchObject({
-      url: 'https://docs.example.com/final',
+      url: 'https://example.com/final',
       code: 200,
       codeText: 'OK',
       totalLength: 8,
@@ -213,10 +215,68 @@ describe('WebFetchTool 读取网页', () => {
     expect(second.truncated).toBe(false);
     expect(second.url).toBe(first.url);
     expect(WebPageCache.get(`md:${url}`)?.content).toBe('abcdefgh');
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock).toHaveBeenCalledWith('https://example.com/start', expect.objectContaining({
-      redirect: 'follow',
+      redirect: 'manual',
     }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, 'https://example.com/final', expect.objectContaining({ redirect: 'manual' }));
+  });
+
+  it.each(['https://other.test/file', 'https://example.com:8443/file', 'http://example.com/file'])(
+    '跨来源跳转 %s 不访问目标, 提示完整且不缓存', async destination => {
+      const cancel = vi.fn();
+      const fetchMock = vi.fn(async () => new Response(new ReadableStream({ cancel }), {
+        status: 302, headers: { location: destination },
+      }));
+      vi.stubGlobal('fetch', fetchMock);
+      const input = WebFetchTool.inputSchema.parse({
+        url: 'https://example.com/start', max_length: 1, start_index: 999,
+      });
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const result = await WebFetchTool.execute(input, undefined, invocation);
+        expect(result).toMatchObject({ code: 302, redirectTo: destination, bytes: 0, truncated: false });
+        expect(WebFetchTool.mapResultToModelContent!(result)).toContain(destination);
+      }
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock.mock.calls.every(call => call[0] === input.url)).toBe(true);
+      expect(cancel).toHaveBeenCalledTimes(2);
+      expect(WebPageCache.size).toBe(0);
+    },
+  );
+
+  it.each(['file:///private/key', 'https://user:password@example.com/a'])(
+    '拒绝跳转到不支持的目标 %s', async location => {
+      const fetchMock = vi.fn(async () => new Response(null, { status: 307, headers: { location } }));
+      vi.stubGlobal('fetch', fetchMock);
+      await expect(WebFetchTool.execute(
+        WebFetchTool.inputSchema.parse({ url: 'https://example.com/start' }), undefined, invocation,
+      )).rejects.toThrow('Web redirect must use HTTP or HTTPS without URL credentials');
+      expect(fetchMock).toHaveBeenCalledOnce();
+    },
+  );
+
+  it('同来源跳转循环有上限且不缓存', async () => {
+    const fetchMock = vi.fn(async () => new Response(null, { status: 308, headers: { location: '/loop' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(WebFetchTool.execute(
+      WebFetchTool.inputSchema.parse({ url: 'https://example.com/loop' }), undefined, invocation,
+    )).rejects.toThrow('Web redirect limit exceeded');
+    expect(fetchMock).toHaveBeenCalledTimes(11);
+    expect(WebPageCache.size).toBe(0);
+  });
+
+  it('同来源跳转途中取消不再发下一次请求', async () => {
+    const controller = new AbortController();
+    const fetchMock = vi.fn(async () => {
+      controller.abort(new Error('cancel redirect'));
+      return new Response(null, { status: 302, headers: { location: '/next' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(WebFetchTool.execute(
+      WebFetchTool.inputSchema.parse({ url: 'https://example.com/start' }), undefined,
+      { ...invocation, signal: controller.signal },
+    )).rejects.toThrow('cancel redirect');
+    expect(fetchMock).toHaveBeenCalledOnce();
   });
 
   it('同一网址的原始 HTML 与 Markdown 分别缓存', async () => {
