@@ -39,6 +39,8 @@ export interface ToolUseContext {
 
   /** Bash 工具的受控命令执行器(per-session 缓存). */
   readonly commandRunner?: CommandRunner;
+  /** Server prepares the selected shell environment once for this Turn and its subagents. */
+  readonly commandEnvironment?: Readonly<Record<string, string>>;
   /** Bash 与 Process 工具族共享的持久后台进程入口. */
   readonly backgroundProcesses?: BackgroundProcess;
   /** 当前模型绑定可用时提供的剧情查询. 身份由 ToolInvocation 管理, 结果在 Tool 中转为可保存数据. */

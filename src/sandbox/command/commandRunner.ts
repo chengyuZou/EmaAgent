@@ -22,8 +22,13 @@ export class CommandRunner {
   private readonly capability: SandboxCapability;
   private readonly backend: SandboxBackend;
   private readonly config: SandboxConfig;
+  private readonly environment: Readonly<Record<string, string>>;
 
-  constructor(capability: SandboxCapability, private readonly shell: ShellSpec) {
+  constructor(
+    capability: SandboxCapability,
+    private readonly shell: ShellSpec,
+    environment: Readonly<Record<string, string>> = buildProcessEnvironment(),
+  ) {
     if (capability.cwd.trim() === '') {
       throw new Error('CommandRunner 需要明确的 cwd, 禁止回退到进程工作目录.');
     }
@@ -35,6 +40,7 @@ export class CommandRunner {
     });
     this.backend = selectBackend(detectBackend().backend);
     this.config = buildSandboxConfig(this.capability);
+    this.environment = Object.freeze({ ...environment });
   }
 
   start(command: string, options: CommandRunOptions = {}): CommandProcessHandle {
@@ -46,7 +52,7 @@ export class CommandRunner {
         executable: wrapped.executable,
         args: wrapped.args,
         cwd,
-        environment: buildProcessEnvironment(),
+        environment: this.environment,
       },
       timeoutMs,
       options.signal,

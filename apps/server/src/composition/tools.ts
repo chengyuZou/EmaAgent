@@ -14,6 +14,8 @@ import {
 } from '@ema-agent/mcp';
 import {
   CommandRunner,
+  buildProcessEnvironment,
+  commandEnvironmentSetting,
   detectBackend,
   probeBash,
   sandboxNetworkSetting,
@@ -99,7 +101,9 @@ export interface ToolsComposition {
   getCommandRunner(
     cwd: string,
     workspaceRoots: readonly string[],
+    environment: Readonly<Record<string, string>> | undefined,
   ): Promise<CommandRunner | undefined>;
+  getCommandEnvironment(): Readonly<Record<string, string>>;
   /** Session 级外置工具结果存储(按 Session 缓存目录句柄). */
   getSessionToolResultStore(sessionId: string): ToolResultStore;
   getSessionFileStateCache(sessionId: string): FileStateCache;
@@ -174,6 +178,7 @@ export function openTools(deps: ToolsDeps): ToolsComposition {
   const getCommandRunner = async (
     cwd: string,
     workspaceRoots: readonly string[],
+    environment: Readonly<Record<string, string>> | undefined,
   ): Promise<CommandRunner | undefined> => {
     if (disableExecuteTools) return undefined;
     const bash = await probeBash();
@@ -189,7 +194,7 @@ export function openTools(deps: ToolsDeps): ToolsComposition {
       writablePaths: [...workspaceRoots, ...temporaryWritePaths],
       forbiddenPaths,
       networkAccess: settings.get(sandboxNetworkSetting),
-    }, shell);
+    }, shell, environment);
   };
 
   const registry = new ToolRegistry();
@@ -284,6 +289,9 @@ export function openTools(deps: ToolsDeps): ToolsComposition {
     skillMarketInstaller,
     getSandboxStatus,
     getCommandRunner,
+    getCommandEnvironment: () => Object.freeze(
+      buildProcessEnvironment(process.env, settings.get(commandEnvironmentSetting)),
+    ),
     getSessionToolResultStore,
     getSessionFileStateCache,
     clearFileStateCaches() {

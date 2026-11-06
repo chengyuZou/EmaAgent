@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Button, IconButton, Input } from '@ema-agent/ui';
 
 /** 表单里的一条键值对; 提交时由对话框转换为 Record. */
-export interface McpKeyValuePair {
+export interface KeyValuePair {
   key: string;
   value: string;
 }
@@ -10,14 +10,14 @@ export interface McpKeyValuePair {
 export function KeyValueEditor({
   pairs, onChange, keyPlaceholder, valuePlaceholder, secret,
 }: {
-  pairs:             McpKeyValuePair[];
-  onChange:          (pairs: McpKeyValuePair[]) => void;
+  pairs:             KeyValuePair[];
+  onChange:          (pairs: KeyValuePair[]) => void;
   keyPlaceholder?:   string;
   valuePlaceholder?: string;
   secret?:           boolean;
 }): JSX.Element {
   const [reveal, setReveal] = useState(false);
-  const update = (i: number, patch: Partial<McpKeyValuePair>): void =>
+  const update = (i: number, patch: Partial<KeyValuePair>): void =>
     onChange(pairs.map((p, idx) => (idx === i ? { ...p, ...patch } : p)));
 
   return (

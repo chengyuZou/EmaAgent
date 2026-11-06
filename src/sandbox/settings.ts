@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { defineSetting } from '@ema-agent/settings/definition';
 import type { SandboxNetwork } from './types.js';
+import { commandEnvironmentSchema } from './commandEnvironment.js';
 
 // 状态查询立即读取新值. 已创建的 CommandRunner 保留构造时的网络档位.
 export const sandboxNetworkSetting = defineSetting<SandboxNetwork>({
@@ -8,4 +9,11 @@ export const sandboxNetworkSetting = defineSetting<SandboxNetwork>({
   apply: 'immediate',
   defaultValue: 'none',
   schema: z.enum(['none', 'full']),
+});
+
+export const commandEnvironmentSetting = defineSetting({
+  key: 'sandbox.commandEnvironment',
+  apply: 'nextTurn',
+  defaultValue: { values: {}, passthrough: [] },
+  schema: commandEnvironmentSchema,
 });

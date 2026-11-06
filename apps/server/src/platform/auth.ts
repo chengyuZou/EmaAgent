@@ -34,13 +34,16 @@ export class MissingSharedSecretError extends Error {
   }
 }
 
-/** 在打开数据库和监听端口前读取共享密钥;任何环境都不允许静默退化为无认证服务. */
-export function requireSharedSecret(
-  env: Readonly<Record<string, string | undefined>> = process.env,
+/** 在打开数据库前取出认证口令, 并移除可继承副本. 认证闭包仍持有返回值. */
+export function takeSharedSecret(
+  env: Record<string, string | undefined> = process.env,
 ): string {
   const secret = env['EMA_SHARED_SECRET'];
   if (!secret || secret.length < MIN_SECRET_LENGTH) {
     throw new MissingSharedSecretError();
+  }
+  for (const name of Object.keys(env)) {
+    if (name.toUpperCase() === 'EMA_SHARED_SECRET') delete env[name];
   }
   return secret;
 }

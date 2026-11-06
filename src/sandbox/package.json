@@ -11,6 +11,10 @@
     "./settings": {
       "types": "./dist/settings.d.ts",
       "import": "./dist/settings.js"
+    },
+    "./commandEnvironment": {
+      "types": "./dist/commandEnvironment.d.ts",
+      "import": "./dist/commandEnvironment.js"
     }
   },
   "main": "./dist/index.js",

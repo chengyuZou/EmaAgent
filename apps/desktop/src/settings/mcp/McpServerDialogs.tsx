@@ -6,7 +6,7 @@ import { useMcpStore } from '../../stores/mcp.js';
 import type { McpServerSummary, McpProbeResult, McpImportResult } from '../../api/mcp.js';
 import { showToast } from '../../lib/notifications/toast.js';
 import { McpArgumentEditor } from './McpArgumentEditor.js';
-import { KeyValueEditor, type McpKeyValuePair } from './KeyValueEditor.js';
+import { KeyValueEditor, type KeyValuePair } from '../shared/KeyValueEditor.js';
 import { toolParamNames } from './McpServerRow.js';
 import type { McpServerConfig } from '../../api/mcp.js';
 
@@ -24,8 +24,8 @@ interface McpServerFormState {
   command: string;
   args: string[];
   url: string;
-  env: McpKeyValuePair[];
-  headers: McpKeyValuePair[];
+  env: KeyValuePair[];
+  headers: KeyValuePair[];
   envPassthrough: string;
   cwd: string;
   toolTimeoutSec: string;
@@ -47,7 +47,7 @@ function createEmptyMcpFormState(): McpServerFormState {
 }
 
 function mcpPairsToRecord(
-  pairs: McpKeyValuePair[],
+  pairs: KeyValuePair[],
 ): Record<string, string> | undefined {
   const result: Record<string, string> = {};
   for (const { key, value } of pairs) {
@@ -58,7 +58,7 @@ function mcpPairsToRecord(
 
 function mcpRecordToPairs(
   record: Record<string, string> | undefined,
-): McpKeyValuePair[] {
+): KeyValuePair[] {
   return record
     ? Object.entries(record).map(([key, value]) => ({ key, value }))
     : [];

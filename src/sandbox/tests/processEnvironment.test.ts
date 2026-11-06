@@ -22,9 +22,11 @@ describe('buildProcessEnvironment', () => {
     expect(env.MSYSTEM).toBe('MINGW64');
   });
 
-  it('凭据与注入变量一律丢弃', () => {
+  it('未选择的凭据与注入变量丢弃', () => {
     const env = buildProcessEnvironment({
       OPENAI_API_KEY: 'sk-leak',
+      EMA_SHARED_SECRET: 'fake-control-secret',
+      ema_shared_secret: 'fake-control-secret',
       GITHUB_TOKEN: 'ghp_leak',
       DB_PASSWORD: 'pw',
       SSH_AUTH_SOCK: '/run/ssh-agent',
@@ -37,6 +39,30 @@ describe('buildProcessEnvironment', () => {
     });
 
     expect(Object.keys(env)).toEqual(['TERM', 'PAGER', 'GIT_PAGER']);
+  });
+
+  it('用户选择的变量会传递, 显式值覆盖继承值', () => {
+    const env = buildProcessEnvironment({
+      EXAMPLE_TOKEN: 'from-parent',
+      HTTPS_PROXY: 'http://localhost:7890',
+      OTHER_TOKEN: 'not-selected',
+      APPDATA: 'C:/Users/example/AppData/Roaming',
+    }, {
+      passthrough: ['EXAMPLE_TOKEN', 'HTTPS_PROXY', 'UNSET_VARIABLE'],
+      values: { EXAMPLE_TOKEN: 'from-settings' },
+    });
+    expect(env.EXAMPLE_TOKEN).toBe('from-settings');
+    expect(env.HTTPS_PROXY).toBe('http://localhost:7890');
+    expect(env.APPDATA).toBe('C:/Users/example/AppData/Roaming');
+    expect(env.OTHER_TOKEN).toBeUndefined();
+    expect(env.UNSET_VARIABLE).toBeUndefined();
+  });
+
+  it.each(['EMA_SHARED_SECRET', 'ema_shared_secret'])('不能显式放行控制口令 %s', name => {
+    expect(() => buildProcessEnvironment({}, { values: { [name]: 'fake-secret' }, passthrough: [] }))
+      .toThrow('Ema control credentials cannot be forwarded');
+    expect(() => buildProcessEnvironment({}, { values: {}, passthrough: [name] }))
+      .toThrow('Ema control credentials cannot be forwarded');
   });
 
   it('强制非交互终端行为', () => {

@@ -2,6 +2,7 @@ import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import type { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import type { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { McpServerConfig } from './types.js';
+import { isInternalEnvironmentVariable } from '@ema-agent/sandbox/commandEnvironment';
 import { McpConnectionError, McpTimeoutError } from './errors.js';
 import { linkedAbortController, waitForPromise, withTimeout } from './utils.js';
 
@@ -29,6 +30,10 @@ async function buildTransport(
   // 只加载实际使用的传输, 避免启动时加载未配置的传输及其依赖.
   if (config.type === 'stdio') {
     assertSafeStdioConfig(config.command, config.args);
+    const names = [...Object.keys(config.env ?? {}), ...(config.envPassthrough ?? [])];
+    if (names.some(isInternalEnvironmentVariable)) {
+      throw new Error('Ema control credentials cannot be forwarded to MCP servers.');
+    }
     const { StdioClientTransport, getDefaultEnvironment } = await import('@modelcontextprotocol/sdk/client/stdio.js');
     signal?.throwIfAborted();
     return new StdioClientTransport({
