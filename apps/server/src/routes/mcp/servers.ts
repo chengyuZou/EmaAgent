@@ -66,8 +66,8 @@ export const mcpServersRoute = (deps: McpServersRouteDeps) => new Hono()
       ? context.json(server)
       : context.json({ error: 'server_not_found' }, 404);
   })
-  .put('/servers/:name/enable', context => {
-    deps.mcp.setEnabled(context.req.param('name'), true);
+  .put('/servers/:name/enable', async context => {
+    await deps.mcp.setEnabled(context.req.param('name'), true);
     return context.json({ ok: true });
   })
   .put('/servers/:name/disable', async context => {

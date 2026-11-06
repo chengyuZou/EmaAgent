@@ -1,32 +1,3 @@
-import type { OpenedConnection } from './connection.js';
-import type { McpConnection, McpToolInfo } from './types.js';
-
-export async function cleanupQuietly(connection: OpenedConnection): Promise<void> {
-  try {
-    await connection.cleanup();
-  } catch {
-    // 清理失败不能盖过调用方正在处理的连接错误或取消原因.
-  }
-}
-
-export function connectionInfo(
-  serverName: string,
-  status: McpConnection['status'],
-  tools: readonly McpToolInfo[],
-  error?: string,
-): McpConnection {
-  return {
-    serverName,
-    status,
-    tools: [...tools],
-    ...(error ? { error } : {}),
-  };
-}
-
-export function copyConnection(info: McpConnection): McpConnection {
-  return { ...info, tools: [...info.tools] };
-}
-
 export async function withTimeout<T>(
   operation: Promise<T>,
   timeoutMs: number,

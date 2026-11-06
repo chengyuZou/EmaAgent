@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- MCP environment inspection checks each Python candidate once. Enabling an MCP server now waits for the settings operation and reports failures through the HTTP error handler.
 - Narrative search now returns matched entities, relations, and original chunks for each timeline. Graph descriptions accompany ranked passages, and the Tool result is displayed as JSON.
 
 ## v0.1.0-beta.2

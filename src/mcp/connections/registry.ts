@@ -1,7 +1,8 @@
+import { logging } from '@ema-agent/logging';
 import { randomUUID }       from 'node:crypto';
 import { ToolListChangedNotificationSchema } from '@modelcontextprotocol/sdk/types.js';
 import type { Tool, ToolRegistry } from '@ema-agent/tools';
-import type { McpServerStore }                            from './store.js';
+import type { McpServerStore }                            from '../store.js';
 import type {
   McpServerConfig,
   McpServerRecord,
@@ -11,26 +12,23 @@ import type {
   McpServerSummary,
   McpToolInfo,
   McpInstallProvenance,
-} from './types.js';
+} from '../types.js';
 import { openConnection }                                from './connection.js';
 import type { OpenedConnection }                         from './connection.js';
-import { discoverServerTools, buildMcpBuiltTool }       from './discovery.js';
-import { callMcpTool }                                   from './execution.js';
-import type { McpToolOutput }                            from './execution.js';
+import { discoverServerTools, buildMcpBuiltTool }       from '../tools/discovery.js';
+import { callMcpTool }                                   from '../tools/execution.js';
+import type { McpToolOutput }                            from '../tools/execution.js';
 import {
-  cleanupQuietly,
-  connectionInfo,
-  copyConnection,
   linkedAbortController,
   waitForPromise,
   withTimeout,
-} from './utils.js';
+} from './requestControl.js';
 import {
   McpServerNotFoundError,
   McpConnectionError,
   McpConnectionSupersededError,
   McpTimeoutError,
-} from './errors.js';
+} from '../errors.js';
 
 const TOOL_DISCOVERY_TIMEOUT_MS = 15_000;
 
@@ -155,7 +153,7 @@ export class McpRegistry {
     }
 
     unregisterTools(this.toolRegistry, liveTools);
-    if (opened) await cleanupQuietly(opened);
+    if (opened) await opened.cleanup();
   }
 
   async disconnectAll(): Promise<void> {
@@ -280,7 +278,7 @@ export class McpRegistry {
     } finally {
       linked.dispose();
       if (connection) {
-        await cleanupQuietly(connection);
+        await connection.cleanup();
       }
     }
   }
@@ -344,12 +342,11 @@ export class McpRegistry {
     previous?: OpenedConnection,
   ): Promise<McpConnection> {
     let opened: OpenedConnection | undefined;
-    let retained = false;
-    let connectionCommitted = false;
+    let committed = false;
     let lastTransportError: Error | undefined;
     let closedError: Error | undefined;
     try {
-      if (previous) await cleanupQuietly(previous);
+      if (previous) await previous.cleanup();
       this.assertCurrent(serverName, server, generation);
 
       opened = await openConnection(serverName, config, lifecycleAbort.signal);
@@ -368,7 +365,7 @@ export class McpRegistry {
           `[MCP:${serverName}] transport closed unexpectedly`,
         );
         closedError = error;
-        if (connectionCommitted && opened) {
+        if (committed && opened) {
           this.handleUnexpectedClose(serverName, server, generation, opened, error);
         }
         previousOnClose?.();
@@ -388,14 +385,7 @@ export class McpRegistry {
       this.assertCurrent(serverName, server, generation);
       if (closedError) throw closedError;
 
-      // 批量注册先校验整批工具, 成功后再移除缓存里已经消失的工具.
-      this.toolRegistry.registerMcpBatch(toTools(tools, this));
-      const primedTools = this.primed.get(serverName) ?? [];
-      const liveNames = new Set(tools.map((tool) => tool.qualifiedName));
-      unregisterTools(
-        this.toolRegistry,
-        primedTools.filter((tool) => !liveNames.has(tool.qualifiedName)),
-      );
+      this.replaceRegisteredTools(this.primed.get(serverName) ?? [], tools);
       this.primed.delete(serverName);
 
       const info = connectionInfo(serverName, 'connected', tools);
@@ -403,8 +393,7 @@ export class McpRegistry {
       server.retryAttempt = 0;
       this.publish(info);
       server.opened = opened;
-      retained = true;
-      connectionCommitted = true;
+      committed = true;
 
       try {
         this.store.cacheTools(serverName, tools);
@@ -434,10 +423,10 @@ export class McpRegistry {
       this.publish(server.info);
       throw err;
     } finally {
-      if (!retained && opened) await cleanupQuietly(opened);
+      if (!committed && opened) await opened.cleanup();
       if (server.generation === generation) {
         server.connectTask = undefined;
-        if (!retained) server.lifecycleAbort = undefined;
+        if (!committed) server.lifecycleAbort = undefined;
       }
     }
   }
@@ -514,7 +503,7 @@ export class McpRegistry {
     const task = this.runToolRefreshLoop(serverName, server, generation, client);
     server.refreshTask = task;
     void task.catch((err) => {
-      console.warn(`[mcp] Failed to refresh tools for "${serverName}": ${(err as Error).message}`);
+      logging('warn', 'mcp.tools_refresh_failed', { serverName, error: err });
     });
   }
 
@@ -620,4 +609,22 @@ function unregisterTools(toolRegistry: ToolRegistry, tools: readonly McpToolInfo
   for (const tool of tools) {
     toolRegistry.unregisterMcp(tool.originalServerName, tool.serverToolName);
   }
+}
+
+function connectionInfo(
+  serverName: string,
+  status: McpConnection['status'],
+  tools: readonly McpToolInfo[],
+  error?: string,
+): McpConnection {
+  return {
+    serverName,
+    status,
+    tools: [...tools],
+    ...(error ? { error } : {}),
+  };
+}
+
+function copyConnection(info: McpConnection): McpConnection {
+  return { ...info, tools: [...info.tools] };
 }

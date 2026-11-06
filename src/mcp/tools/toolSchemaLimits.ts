@@ -1,5 +1,5 @@
 import { Buffer } from 'node:buffer';
-import { McpToolSchemaLimitError } from './errors.js';
+import { McpToolSchemaLimitError } from '../errors.js';
 
 /** 工具发现和缓存写入使用同一数量限制, 超限时整批拒绝. */
 export const MAX_MCP_TOOLS_PER_SERVER = 256;

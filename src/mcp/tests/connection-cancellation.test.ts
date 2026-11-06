@@ -41,7 +41,8 @@ vi.mock('@modelcontextprotocol/sdk/client/streamableHttp.js', () => ({
   StreamableHTTPClientTransport: sdk.FakeHttpTransport,
 }));
 
-import { openConnection } from '../connection.js';
+import { openConnection } from '../connections/connection.js';
+import { McpStdioConfigSchema } from '../types.js';
 
 beforeEach(() => {
   vi.useRealTimers();
@@ -53,6 +54,32 @@ afterEach(() => {
 });
 
 describe('MCP 底层连接取消', () => {
+  it('已建立连接的关闭失败不向调用方抛出', async () => {
+    sdk.connect.mockResolvedValueOnce(undefined);
+    sdk.clientClose.mockRejectedValueOnce(new Error('transport already closed'));
+    const connection = await openConnection('remote', { type: 'http', url: 'https://example.com/mcp' });
+    await expect(connection.cleanup()).resolves.toBeUndefined();
+    expect(sdk.clientClose).toHaveBeenCalledOnce();
+  });
+
+  it.each(['EMA_SHARED_SECRET', 'ema_shared_secret'])('配置和实际启动都拒绝控制口令 %s', async name => {
+    for (const config of [
+      { type: 'stdio' as const, command: 'node', args: [], env: { [name]: 'fake-secret' } },
+      { type: 'stdio' as const, command: 'node', args: [], envPassthrough: [name] },
+    ]) {
+      expect(McpStdioConfigSchema.safeParse(config).success).toBe(false);
+      await expect(openConnection('test', config)).rejects.toThrow('Ema control credentials');
+    }
+    expect(sdk.connect).not.toHaveBeenCalled();
+  });
+
+  it('用户自己的凭据仍可通过配置传递', () => {
+    expect(McpStdioConfigSchema.safeParse({
+      command: 'node',
+      env: { EXAMPLE_TOKEN: 'fake-user-token' },
+      envPassthrough: ['HTTPS_PROXY'],
+    }).success).toBe(true);
+  });
   it('外部取消会传入 SDK connect 并关闭 transport', async () => {
     sdk.connect.mockImplementation((_transport: unknown, options: { signal: AbortSignal }) => (
       new Promise<never>((_, reject) => {

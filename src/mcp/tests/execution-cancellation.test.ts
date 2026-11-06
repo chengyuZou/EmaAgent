@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Buffer } from 'node:buffer';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { callMcpTool } from '../execution.js';
+import { callMcpTool } from '../tools/execution.js';
 
 function cancellingClient() {
   const callTool = vi.fn((

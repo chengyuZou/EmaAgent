@@ -57,6 +57,8 @@ Official Registry Adapter 读取 `v0.1` 服务器接口. `mcp_market_entries` �
 
 ## 阅读与验证
 
-连接流程看 `registry.ts`, Ema 工具约定看 `discovery.ts`, 取消和结果转换看 `execution.ts`. 配置保存看 `store.ts`, 市场缓存读写看 `market/marketService.ts`.
+`connections/` 负责连接生命周期和请求取消, `tools/` 负责工具发现, 执行和定义限制, `market/` 负责市场读取和安装. 对外继续通过 `@ema-agent/mcp` 导入.
 
-运行 `pnpm --filter @ema-agent/mcp test`. 测试覆盖配置导入, 明文凭据, 连接取消与关闭, 工具定义限制与权限, 结果转换与大小限制, 市场分页与安装. `src/storage/tests/repos/mcp-market.integration.test.ts` 验证市场 SQL 操作. 本包网络测试使用模拟 SDK Client 和 HTTP 响应, 不连接真实市场.
+连接流程看 `connections/registry.ts`, Ema 工具约定看 `tools/discovery.ts`, 取消和结果转换看 `tools/execution.ts`. 配置保存看 `store.ts`, 导入解析看 `configImport.ts`. 启用路由等待设置操作完成后才返回成功, 实时连接仍在后台建立.
+
+运行 `pnpm --filter @ema-agent/mcp test`. 测试覆盖配置导入, 明文凭据, 连接取消与关闭, 工具定义限制与权限, 结果转换与大小限制, 市场分页与安装. 本地环境测试启动临时命令脚本验证版本选择, 不依赖已安装的 Python. `src/storage/tests/repos/mcp-market.integration.test.ts` 验证市场 SQL 操作. 本包网络测试使用模拟 SDK Client 和 HTTP 响应, 不连接真实市场.

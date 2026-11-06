@@ -8,7 +8,7 @@ import { McpServerNotFoundError, McpUnsupportedTransportError } from './errors.j
 import {
   MAX_MCP_TOOL_SCHEMA_BYTES,
   assertMcpToolSchemaLimits,
-} from './toolSchemaLimits.js';
+} from './tools/toolSchemaLimits.js';
 
 interface McpServerSettings {
   name: string;

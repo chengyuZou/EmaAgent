@@ -1,10 +1,10 @@
-export { McpRegistry }               from './registry.js';
+export { McpRegistry }               from './connections/registry.js';
 export type { McpEvent } from './events.js';
 export { McpServerStore }            from './store.js';
-export { parseImportedMcpServers }   from './config-import.js';
-export type { ImportedServer }       from './config-import.js';
-export { projectMcpToolOutput }      from './execution.js';
-export type { McpToolOutput }        from './execution.js';
+export { parseImportedMcpServers }   from './configImport.js';
+export type { ImportedServer }       from './configImport.js';
+export { projectMcpToolOutput }      from './tools/execution.js';
+export type { McpToolOutput }        from './tools/execution.js';
 export { McpMarketService } from './market/marketService.js';
 export { McpMarketStore } from './market/marketStore.js';
 export { OfficialRegistryAdapter } from './market/officialRegistryAdapter.js';

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { McpMarketService } from '../market/marketService.js';
 import type { McpMarketCatalog, McpMarketEntry } from '../market/types.js';
 import type { McpMarketStore } from '../market/marketStore.js';
-import type { McpRegistry } from '../registry.js';
+import type { McpRegistry } from '../connections/registry.js';
 
 const cached: McpMarketEntry = {
   source: 'official',

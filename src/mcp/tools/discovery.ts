@@ -2,9 +2,9 @@ import type { Client }           from '@modelcontextprotocol/sdk/client/index.js
 import { z }                     from 'zod';
 import { buildTool, contextOk }  from '@ema-agent/tools';
 import type { Tool }             from '@ema-agent/tools';
-import type { McpToolInfo }      from './types.js';
-import { buildMcpToolName }      from './types.js';
-import type { McpRegistry }      from './registry.js';
+import type { McpToolInfo }      from '../types.js';
+import { buildMcpToolName }      from '../types.js';
+import type { McpRegistry }      from '../connections/registry.js';
 import type { McpToolOutput }    from './execution.js';
 import { projectMcpToolOutput }  from './execution.js';
 import { assertMcpToolSchemaLimits } from './toolSchemaLimits.js';

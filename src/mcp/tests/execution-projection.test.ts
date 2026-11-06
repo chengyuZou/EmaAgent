@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { callMcpTool, projectMcpToolOutput } from '../execution.js';
+import { callMcpTool, projectMcpToolOutput } from '../tools/execution.js';
 
 describe('MCP 结果模型投影', () => {
   it('text 块原样通过', () => {

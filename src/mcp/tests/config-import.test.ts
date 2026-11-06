@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { McpUnsupportedTransportError } from '../errors.js';
-import { parseImportedMcpServers } from '../config-import.js';
+import { parseImportedMcpServers } from '../configImport.js';
 
 describe('MCP 配置导入', () => {
   it('吃 mcpServers 包装(Claude Desktop / mcp.so / ModelScope stdio 片段)', () => {

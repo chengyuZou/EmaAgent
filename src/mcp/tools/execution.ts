@@ -2,8 +2,8 @@ import { CallToolResultSchema } from '@modelcontextprotocol/sdk/types.js';
 import type { Client }          from '@modelcontextprotocol/sdk/client/index.js';
 import type { ToolResultContentPart } from '@ema-agent/llm';
 import { Buffer }               from 'node:buffer';
-import { McpToolCallError }     from './errors.js';
-import { linkedAbortController, waitForPromise, withTimeout } from './utils.js';
+import { McpToolCallError }     from '../errors.js';
+import { linkedAbortController, waitForPromise, withTimeout } from '../connections/requestControl.js';
 
 const DEFAULT_TOOL_TIMEOUT_MS = 120_000;
 const MAX_RESULT_BYTES = 1024 * 1024;

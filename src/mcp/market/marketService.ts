@@ -1,4 +1,4 @@
-import type { McpRegistry } from '../registry.js';
+import type { McpRegistry } from '../connections/registry.js';
 import type { McpServerConfig } from '../types.js';
 import type { McpMarketCatalog, McpMarketEntry, McpMarketEntryDetail, McpMarketPage, McpMarketSource } from './types.js';
 import type { McpMarketStore } from './marketStore.js';
@@ -90,7 +90,10 @@ export class McpMarketService {
     if (missing.length) throw new Error(`缺少安装参数: ${missing.join(', ')}`);
     const config = applyInputs(detail.config, detail.requiredInputs, values);
     const name = input.name?.trim() || detail.name;
-    const id = await this.mcp.save(name, config, provenance(input.source, input.externalId));
+    const id = await this.mcp.save(name, config, {
+      sourceKind: input.source,
+      marketEntryId: input.externalId,
+    });
     return { id, name };
   }
 
@@ -169,12 +172,6 @@ export class McpMarketService {
     this.refreshErrors.delete(source);
     this.refreshedThisProcess.add(source);
     this.changed(source);
-  }
-}
-
-function provenance(source: McpMarketSource, marketEntryId: string) {
-  switch (source) {
-    case 'official': return { sourceKind: 'official' as const, marketEntryId };
   }
 }
 

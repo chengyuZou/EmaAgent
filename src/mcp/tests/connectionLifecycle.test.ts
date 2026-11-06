@@ -8,11 +8,11 @@ const connection = vi.hoisted(() => ({
   openConnection: vi.fn(),
 }));
 
-vi.mock('../connection.js', () => ({
+vi.mock('../connections/connection.js', () => ({
   openConnection: connection.openConnection,
 }));
 
-import { McpRegistry } from '../registry.js';
+import { McpRegistry } from '../connections/registry.js';
 
 interface FakeClient extends Client {
   onclose?: () => void;
@@ -71,6 +71,7 @@ describe('McpRegistry 连接生命周期', () => {
     const record = { ...server(), cachedTools: [cachedTool] };
     const store = {
       findByName: vi.fn(() => record),
+      listEnabled: vi.fn(() => [record]),
       listSettings: vi.fn(() => [{
         name: record.name,
         provenance: record.provenance,
@@ -80,7 +81,10 @@ describe('McpRegistry 连接生命周期', () => {
       }]),
       cacheTools: vi.fn(),
     } as unknown as McpServerStore;
-    const registry = new McpRegistry(store, new ToolRegistry());
+    const toolRegistry = new ToolRegistry();
+    const registry = new McpRegistry(store, toolRegistry);
+    registry.primeFromCache();
+    expect(toolRegistry.has(cachedTool.qualifiedName)).toBe(true);
 
     expect(registry.listServers()).toEqual([{
       name: 'local',
@@ -100,6 +104,9 @@ describe('McpRegistry 连接生命周期', () => {
     const opened = openedConnection();
     connection.openConnection.mockResolvedValueOnce(opened);
     await registry.connect('local');
+
+    expect(toolRegistry.has(cachedTool.qualifiedName)).toBe(false);
+    expect(toolRegistry.has('mcp__local__search')).toBe(true);
 
     expect(registry.listServers()[0]).toMatchObject({
       connectionStatus: 'connected',

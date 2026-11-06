@@ -8,10 +8,6 @@ export interface ImportedServer {
 }
 
 export function parseImportedMcpServers(input: unknown, fallbackName = 'mcp-server'): ImportedServer[] {
-  if (typeof input === 'string') {
-    throw new Error('Invalid MCP config: expected a JSON object.');
-  }
-
   const root = coerceObject(input);
   if (!root) throw new Error('Invalid MCP config: expected a JSON object.');
 

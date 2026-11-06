@@ -85,6 +85,8 @@ Config and tool-cache writes emit `mcp_servers_changed`. Connection changes emit
 
 ## Reading and verification
 
-Start with `registry.ts` for connections, `discovery.ts` for the Ema tool contract, and `execution.ts` for cancellation and output conversion. `store.ts` handles stored configs; `market/marketService.ts` coordinates cache reads and writes.
+`connections/` owns connection lifetimes and request cancellation. `tools/` owns discovery, execution, and tool schema limits. `market/` owns catalog browsing and installation. Public imports continue to use `@ema-agent/mcp`.
 
-Run `pnpm --filter @ema-agent/mcp test`. Tests cover config import, credentials, connection cancellation and closure, discovery limits and permissions, output conversion and limits, and market paging and installation. Storage tests in `src/storage/tests/repos/mcp-market.integration.test.ts` cover market SQL operations. Network tests here use simulated SDK clients and HTTP responses, not a live remote registry.
+Start with `connections/registry.ts` for connections, `tools/discovery.ts` for the Ema tool contract, and `tools/execution.ts` for cancellation and output conversion. `store.ts` handles stored configs; `configImport.ts` parses imported configs. The enable route waits for the settings operation before returning success; the live connection still starts in the background.
+
+Run `pnpm --filter @ema-agent/mcp test`. Tests cover config import, credentials, connection cancellation and closure, discovery limits and permissions, output conversion and limits, and market paging and installation. The local environment test starts temporary command scripts to verify version selection without relying on an installed Python. Storage tests in `src/storage/tests/repos/mcp-market.integration.test.ts` cover market SQL operations. Network tests here use simulated SDK clients and HTTP responses, not a live remote registry.

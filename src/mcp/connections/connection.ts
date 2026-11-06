@@ -1,10 +1,10 @@
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import type { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import type { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import type { McpServerConfig } from './types.js';
+import type { McpServerConfig } from '../types.js';
 import { isInternalEnvironmentVariable } from '@ema-agent/sandbox/commandEnvironment';
-import { McpConnectionError, McpTimeoutError } from './errors.js';
-import { linkedAbortController, waitForPromise, withTimeout } from './utils.js';
+import { McpConnectionError, McpTimeoutError } from '../errors.js';
+import { linkedAbortController, waitForPromise, withTimeout } from './requestControl.js';
 
 const CLIENT_NAME    = 'ema-agent';
 const CLIENT_VERSION = '1.0.0';
@@ -69,6 +69,7 @@ function pickPassthroughEnv(names: readonly string[] | undefined): Record<string
 
 export interface OpenedConnection {
   client:  Client;
+  /** 关闭失败在连接内部处理, 不覆盖调用方的错误或取消原因. */
   cleanup: () => Promise<void>;
 }
 

@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { MAX_MCP_TOOLS_PER_SERVER } from './toolSchemaLimits.js';
+import { isInternalEnvironmentVariable } from '@ema-agent/sandbox/commandEnvironment';
+import { MAX_MCP_TOOLS_PER_SERVER } from './tools/toolSchemaLimits.js';
 
 /** 单次工具调用超时, 单位为秒. 未配置时使用 120 秒. */
 const TOOL_TIMEOUT_SCHEMA = z.number().int().min(5).max(600).optional();
@@ -8,12 +9,18 @@ export const McpStdioConfigSchema = z.object({
   type:    z.literal('stdio').default('stdio'),
   command: z.string().min(1),
   args:    z.array(z.string()).default([]),
-  env:     z.record(z.string(), z.string()).optional(),
+  env: z.record(z.string().refine(name => !isInternalEnvironmentVariable(name), {
+    message: 'Ema control credentials cannot be forwarded to MCP servers.',
+  }), z.string()).optional(),
   /**
    * 按名字读取宿主进程的环境变量, 避免把密钥值写入配置.
    * 合并顺序: SDK 默认 < envPassthrough < env.
    */
-  envPassthrough: z.array(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/)).max(32).optional(),
+  envPassthrough: z.array(z.string()
+    .regex(/^[A-Za-z_][A-Za-z0-9_]*$/)
+    .refine(name => !isInternalEnvironmentVariable(name), {
+      message: 'Ema control credentials cannot be forwarded to MCP servers.',
+    })).max(32).optional(),
   /** 未配置时由子进程继承宿主的工作目录. */
   cwd:     z.string().optional(),
   toolTimeoutSec: TOOL_TIMEOUT_SCHEMA,

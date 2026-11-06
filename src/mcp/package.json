@@ -22,6 +22,8 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
+    "@ema-agent/logging": "workspace:*",
+    "@ema-agent/sandbox": "workspace:*",
     "@ema-agent/llm": "workspace:*",
     "@ema-agent/storage": "workspace:*",
     "@ema-agent/tools": "workspace:*",

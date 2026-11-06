@@ -3,11 +3,11 @@ import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { checkToolPermission, rememberSessionApproval, clearSessionApprovals, type PermissionContext } from '@ema-agent/permission';
 import { DEFAULT_MAX_RESULT_BYTES } from '@ema-agent/tools';
 import type { McpToolInfo } from '../types.js';
-import { buildMcpBuiltTool, discoverServerTools } from '../discovery.js';
+import { buildMcpBuiltTool, discoverServerTools } from '../tools/discovery.js';
 import {
   MAX_MCP_TOOLS_PER_SERVER,
   MAX_MCP_TOOL_SCHEMA_BYTES,
-} from '../toolSchemaLimits.js';
+} from '../tools/toolSchemaLimits.js';
 
 const PERMISSION_CONTEXT: PermissionContext = {
   mode: 'default',

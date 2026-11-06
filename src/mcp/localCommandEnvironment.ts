@@ -22,20 +22,12 @@ async function inspectCommand(command: McpLocalCommand): Promise<McpLocalCommand
   const candidatePaths = command === 'python3'
     ? uniquePaths([...findCommandCandidates('python3'), ...findCommandCandidates('python')])
     : findCommandCandidates(command);
-  let selectedPath = candidatePaths[0] ?? null;
-  let version = selectedPath ? await readVersion(selectedPath) : null;
-  if (command === 'python3') {
-    selectedPath = null;
-    version = null;
-    for (const candidate of candidatePaths) {
-      const candidateVersion = await readVersion(candidate);
-      if (!candidateVersion || !/^Python 3(?:\.|\b)/i.test(candidateVersion)) continue;
-      selectedPath = candidate;
-      version = candidateVersion;
-      break;
-    }
+  for (const candidate of candidatePaths) {
+    const version = await readVersion(candidate);
+    if (command === 'python3' && (!version || !/^Python 3(?:\.|\b)/i.test(version))) continue;
+    return { command, selectedPath: candidate, candidatePaths, version };
   }
-  return { command, selectedPath, candidatePaths, version };
+  return { command, selectedPath: null, candidatePaths, version: null };
 }
 
 function findCommandCandidates(command: string): string[] {
