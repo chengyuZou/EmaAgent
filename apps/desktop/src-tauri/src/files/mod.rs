@@ -19,10 +19,7 @@ pub fn open_path(app: tauri::AppHandle, path: String) -> Result<(), String> {
     use tauri_plugin_opener::OpenerExt;
     app.opener()
         .open_path(&path, None::<&str>)
-        .map_err(|error| {
-            tracing::warn!(%path, %error, "open_path failed");
-            error.to_string()
-        })
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]

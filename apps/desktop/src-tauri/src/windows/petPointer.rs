@@ -51,26 +51,27 @@ impl PetPointerTracking {
                 interval.tick().await;
                 let (completed, completion) = tokio::sync::oneshot::channel();
                 let sampled_window = window.clone();
-                if let Err(error) = window.run_on_main_thread(move || {
-                    // HMR 重新订阅会取消旧任务, 不让已排队的旧采样再影响新订阅.
-                    if completed.is_closed() {
-                        return;
-                    }
-                    let result = sample_and_emit(&sampled_window);
-                    if let Err(error) = &result {
-                        tracing::error!(%error, "pet system pointer tracking failed");
-                        if let Err(restore_error) = set_stage_passthrough(&sampled_window, false) {
-                            tracing::error!(%restore_error, "failed to restore pet pointer interaction");
+                if window
+                    .run_on_main_thread(move || {
+                        // HMR 重新订阅会取消旧任务, 不让已排队的旧采样再影响新订阅.
+                        if completed.is_closed() {
+                            return;
                         }
-                        let _ = sampled_window.emit_to(
-                            EventTarget::window("stage"),
-                            PET_POINTER_EVENT,
-                            PetPointerEvent::Error { message: error.clone() },
-                        );
-                    }
-                    let _ = completed.send(result);
-                }) {
-                    tracing::error!(%error, "failed to schedule pet pointer sample");
+                        let result = sample_and_emit(&sampled_window);
+                        if let Err(error) = &result {
+                            let _ = set_stage_passthrough(&sampled_window, false);
+                            let _ = sampled_window.emit_to(
+                                EventTarget::window("stage"),
+                                PET_POINTER_EVENT,
+                                PetPointerEvent::Error {
+                                    message: error.clone(),
+                                },
+                            );
+                        }
+                        let _ = completed.send(result);
+                    })
+                    .is_err()
+                {
                     break;
                 }
                 // 每次采样结束后才允许下一次, 主线程忙时不会堆积采样任务.

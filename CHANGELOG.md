@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- Node writes bounded UTF-8 JSONL diagnostic files directly, with business-module targets, structured errors, credential redaction, rotation, retention cleanup, and bounded file closure. Congested records are counted and dropped; forced termination can lose pending writes. Native logging and the process-shutdown API are removed.
+- Log cleanup tolerates old files removed by another process without permanently stopping writes or reporting a false capacity shortage.
 - MCP environment inspection checks each Python candidate once. Enabling an MCP server now waits for the settings operation and reports failures through the HTTP error handler.
 - Narrative search now returns matched entities, relations, and original chunks for each timeline. Graph descriptions accompany ranked passages, and the Tool result is displayed as JSON.
 

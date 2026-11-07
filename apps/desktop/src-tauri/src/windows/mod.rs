@@ -31,10 +31,8 @@ pub fn destroy_windows_before_exit(app: &tauri::AppHandle, api: &tauri::ExitRequ
     // 让事件循环继续处理窗口销毁和 WebView 释放, 最后一个窗口销毁后 Tauri 会再次请求退出.
     // destroy 不触发 CloseRequested, 不会被日常关闭按钮的隐藏逻辑拦截.
     api.prevent_exit();
-    for (label, window) in windows {
-        if let Err(error) = window.destroy() {
-            tracing::error!(%label, %error, "failed to destroy window before exit");
-        }
+    for (_, window) in windows {
+        let _ = window.destroy();
     }
 }
 
@@ -94,9 +92,7 @@ fn create_window(app: &tauri::AppHandle, label: &str) -> Result<WebviewWindow, S
 }
 
 pub fn show_stage_window(app: &tauri::AppHandle) {
-    if let Err(error) = show_window(app, "stage") {
-        tracing::error!(%error, "failed to show stage window");
-    }
+    let _ = show_window(app, "stage");
 }
 
 pub fn toggle_stage_window(app: &tauri::AppHandle) {

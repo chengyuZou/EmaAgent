@@ -118,18 +118,14 @@ impl WindowsNotifications {
 
     pub(super) fn hide(&self, notice: &mut PresentedNotification) {
         if let Some(toast) = notice.toast.take() {
-            if let Err(error) = self.notifier.Hide(&toast) {
-                tracing::warn!(%error, "failed to hide interaction notification");
-            }
-            if let Err(error) = ToastNotificationManager::History().and_then(|history| {
+            let _ = self.notifier.Hide(&toast);
+            let _ = ToastNotificationManager::History().and_then(|history| {
                 history.RemoveGroupedTagWithId(
                     &HSTRING::from(&notice.tag),
                     &HSTRING::from(NOTIFICATION_GROUP),
                     &self.registration.app_id,
                 )
-            }) {
-                tracing::warn!(%error, "failed to remove interaction notification history");
-            }
+            });
         }
     }
 }

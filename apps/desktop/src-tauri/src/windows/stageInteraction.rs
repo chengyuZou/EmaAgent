@@ -67,9 +67,7 @@ pub fn minimize_unpinned_stage(window: &tauri::Window) -> bool {
         && !stage_passthrough_enabled()
         && matches!(window.is_always_on_top(), Ok(false))
     {
-        if let Err(error) = window.minimize() {
-            tracing::warn!(%error, "failed to minimize unpinned stage window");
-        } else {
+        if window.minimize().is_ok() {
             return true;
         }
     }

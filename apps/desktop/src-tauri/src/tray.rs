@@ -48,13 +48,10 @@ pub fn install(app: &mut tauri::App) -> tauri::Result<()> {
             "show" => show_stage_window(app),
             "disable_passthrough" => {
                 if let Some(window) = app.get_webview_window("stage") {
-                    if let Err(error) = set_stage_passthrough(&window, false) {
-                        tracing::error!(%error, "failed to disable stage window click passthrough");
+                    if set_stage_passthrough(&window, false).is_err() {
                         return;
                     }
-                    if let Err(error) = window.unminimize() {
-                        tracing::warn!(%error, "failed to restore stage window from minimized state");
-                    }
+                    let _ = window.unminimize();
                     show_stage_window(app);
                 }
             }

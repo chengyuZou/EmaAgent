@@ -45,10 +45,7 @@ pub fn set_passthrough_controls_hovered(
 #[tauri::command]
 pub async fn open_main_window(app: tauri::AppHandle) -> Result<(), String> {
     // Windows 同步 command 创建 WebView2 会与 UI 线程互等, 必须由异步线程请求创建.
-    show_window(&app, "main").map_err(|error| {
-        tracing::error!(%error, "open_main_window failed");
-        error
-    })
+    show_window(&app, "main")
 }
 
 #[tauri::command]

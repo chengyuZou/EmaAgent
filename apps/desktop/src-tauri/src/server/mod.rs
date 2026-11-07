@@ -11,7 +11,7 @@ mod web_proxy;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use rand::{rngs::OsRng, RngCore};
 use tauri::AppHandle;
@@ -19,7 +19,7 @@ use tokio::process::Child;
 use tokio::sync::{mpsc, Mutex, RwLock};
 
 use self::bundled_data::{prepare_builtin_characters, prepare_models_catalog};
-use self::child_process::spawn_server;
+use self::child_process::{spawn_server, OutputReader, SpawnedServer};
 use self::launch::resolve_server_launch;
 use self::process_tree::NativeProcessTree;
 
@@ -47,6 +47,7 @@ struct Inner {
     operation: Mutex<()>,
     state: RwLock<State>,
     server: Mutex<Option<Child>>,
+    output: Mutex<Option<OutputReader>>,
     process_tree: NativeProcessTree,
 }
 
@@ -57,6 +58,7 @@ impl ServerProcess {
             operation: Mutex::new(()),
             state: RwLock::new(State::Stopped),
             server: Mutex::new(None),
+            output: Mutex::new(None),
             process_tree: NativeProcessTree::new()?,
         })))
     }
@@ -69,7 +71,6 @@ impl ServerProcess {
         }
         self.0.stopping.store(false, Ordering::Release);
         *self.0.state.write().await = State::Starting;
-        let startup_started = Instant::now();
 
         if let Err(error) = prepare_models_catalog(&app).await {
             return self.fail_server_start(error).await;
@@ -83,7 +84,11 @@ impl ServerProcess {
             Ok(launch) => launch,
             Err(error) => return self.fail_server_start(error).await,
         };
-        let (server, mut ready) = match spawn_server(
+        let SpawnedServer {
+            child: server,
+            mut ready,
+            output,
+        } = match spawn_server(
             server_launch,
             &secret,
             initialize_builtin_characters,
@@ -95,6 +100,7 @@ impl ServerProcess {
             Err(error) => return self.fail_server_start(error).await,
         };
         *self.0.server.lock().await = Some(server);
+        *self.0.output.lock().await = Some(output);
         let port = match wait_for_ready(
             "server",
             SERVER_READY_TIMEOUT,
@@ -104,20 +110,20 @@ impl ServerProcess {
         )
         .await
         {
-            Ok(port) => port,
+            Ok(connection) => connection,
             Err(error) => return self.fail_server_start(error).await,
         };
         let connection = ServerConnection { port, secret };
         *self.0.state.write().await = State::Ready(connection.clone());
         self.watch_server_ready(ready);
         self.watch_children();
-        tracing::info!(port, duration_s = %format!("{:.3}", startup_started.elapsed().as_secs_f64()), "Server ready");
         Ok(())
     }
 
     pub async fn shutdown(&self) {
         self.0.stopping.store(true, Ordering::Release);
         let _operation = self.0.operation.lock().await;
+        // 一并清理 Server, 开发期 watcher 和它们派生的后台进程.
         self.terminate_server().await;
         *self.0.state.write().await = State::Stopped;
     }
@@ -164,9 +170,8 @@ impl ServerProcess {
                 if processes.0.stopping.load(Ordering::Acquire) {
                     return;
                 }
-                if let Some(status) = poll_exit(&processes.0.server).await {
+                if poll_exit(&processes.0.server).await.is_some() {
                     *processes.0.state.write().await = State::Failed;
-                    tracing::error!(%status, "Server exited unexpectedly");
                     return;
                 }
             }
@@ -174,7 +179,6 @@ impl ServerProcess {
     }
 
     async fn fail_server_start(&self, error: String) -> Result<(), String> {
-        tracing::error!(%error, "Server startup failed");
         self.0.stopping.store(true, Ordering::Release);
         *self.0.state.write().await = State::Failed;
         self.terminate_server().await;
@@ -183,7 +187,10 @@ impl ServerProcess {
 
     async fn terminate_server(&self) {
         if let Some(mut child) = self.0.server.lock().await.take() {
-            self.0.process_tree.terminate(&mut child, "server").await;
+            self.0.process_tree.terminate(&mut child).await;
+        }
+        if let Some(output) = self.0.output.lock().await.take() {
+            output.finish(Duration::from_secs(2)).await;
         }
     }
 }
@@ -197,10 +204,7 @@ async fn poll_exit(slot: &Mutex<Option<Child>>) -> Option<std::process::ExitStat
             Some(status)
         }
         Ok(None) => None,
-        Err(error) => {
-            tracing::warn!(%error, "poll child process failed");
-            None
-        }
+        Err(_) => None,
     }
 }
 
@@ -244,7 +248,7 @@ async fn wait_for_ready(
             ));
         }
         tokio::select! {
-            Some(port) = ready.recv() => return Ok(port),
+            port = ready.recv() => return port.ok_or_else(|| format!("{label} stdout closed before readiness")),
             _ = tokio::time::sleep(Duration::from_millis(50)) => {}
         }
     }

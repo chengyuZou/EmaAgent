@@ -83,11 +83,11 @@ File drops use Tauri's WebView drag events. The frontend converts physical coord
 
 Callers retain the destination chosen when opening the picker. Chat appends to the originating Session's latest draft, but discards a late result after that draft enters submission. Reference-audio selection is ignored after its form closes, changes character, or submits. Wallpaper changes are queued only after an operation is requested, not while a picker waits; imports read current saved settings before merging new images.
 
-## Exit and logs
+## Exit and Server output
 
-Normal application exit removes interaction notifications and their native registration before destroying windows, then closes all PTYs and stops Server and its child processes. Windows uses a Job Object and process-tree termination. macOS and Linux use a process group, try TERM, and use KILL if the group does not exit in time.
+Application exit removes interaction notifications and native registration, destroys windows, closes PTYs, and terminates Server plus any development watcher and remaining descendants. Windows uses a Job Object and bounded process-tree termination; macOS and Linux use TERM followed by KILL when necessary. The stdout reader gets up to two seconds to finish. Forced termination does not guarantee that Node cleanup handlers run.
 
-Launch logs are written below the profile's `logs` directory. `logging.rs` also writes to the terminal and removes expired launch logs. Server stdout carries both startup messages and ready notifications; `server/childProcess.rs` separates the ready protocol from ordinary log output.
+The native host reads only `server.ready` notifications from stdout. Oversized or unrelated output is skipped without being saved. Development inherits stderr from the launching environment; release uses a null handle because the GUI app may have no console. Node owns diagnostic files through [Logging](../../../src/logging/README.md); Rust does not initialize a logger, format business log records, or manage log files.
 
 ## Read and verify
 
@@ -100,9 +100,9 @@ cargo check --locked --manifest-path apps/desktop/src-tauri/Cargo.toml
 cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --lib
 ```
 
-Proxy tests live in `tests/server/webProxy.rs`. The default test checks the JSON contract. The ignored `windows_proxy_is_passed_only_to_web_tools` test reads current-user settings without changing them. After building Builtin Tools, the ignored `windows_web_fetch_reaches_public_site` test passes those settings to Node and requests the public Brave homepage. It reports only HTTP status, not page contents or proxy credentials, and considers an HTTP error distinct from a connection failure. Neither test starts Server or opens a user database.
+Proxy tests live in `tests/processes/webProxy.rs`. The default test checks the JSON contract. The ignored `windows_proxy_is_passed_only_to_web_tools` test reads current-user settings without changing them. After building Builtin Tools, the ignored `windows_web_fetch_reaches_public_site` test passes those settings to Node and requests the public Brave homepage. It reports only HTTP status, not page contents or proxy credentials, and considers an HTTP error distinct from a connection failure. Neither test starts Server or opens a user database.
 
-The default Rust tests cover resource preparation, launch-log output and retention, path-picker state, notification XML and action validation, and a Windows COM callback round trip without showing a toast. Windows also has an opt-in delivery check:
+Rust test files live under `tests/` and are included from their owning modules with `#[path]`, retaining access to internal code. The default Rust tests cover resource preparation, bounded startup-notification parsing, a real Node child process and its termination, path-picker state, notification XML and action validation, and a Windows COM callback round trip without showing a toast. They do not open a user profile. Log-file tests belong to the Node Logging package. Windows also has an opt-in delivery check:
 
 ```sh
 cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --lib windows_accepts_a_real_notification -- --ignored --nocapture

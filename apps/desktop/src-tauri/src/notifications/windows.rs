@@ -71,13 +71,7 @@ impl DesktopNotifications {
         let worker = thread::Builder::new()
             .name("interaction-notifications".into())
             .spawn(move || run(app, callback_sender, receiver));
-        let worker = match worker {
-            Ok(worker) => Some(worker),
-            Err(error) => {
-                tracing::warn!(%error, "failed to start Windows notification thread");
-                None
-            }
-        };
+        let worker = worker.ok();
         Self {
             sender,
             worker: Mutex::new(worker),
@@ -144,9 +138,6 @@ fn run(app: tauri::AppHandle, sender: mpsc::Sender<Command>, receiver: mpsc::Rec
         .as_ref()
         .map_err(|error| error.to_string())
         .and_then(|_| WindowsNotifications::new(app, sender));
-    if let Err(error) = &notifications {
-        tracing::warn!(%error, "Windows interaction notifications unavailable");
-    }
     while let Ok(command) = receiver.recv() {
         if matches!(command, Command::Shutdown) {
             break;
@@ -293,9 +284,7 @@ impl WindowsNotifications {
                 let _ = reply.send(self.show_completion(notice));
             }
             Command::Refresh => {
-                if let Err(error) = self.refresh() {
-                    tracing::warn!(%error, "failed to refresh Windows interaction notifications");
-                }
+                let _ = self.refresh();
             }
             Command::Activated { app_id, arguments } => {
                 if app_id != self.registration.app_id.to_string() {
@@ -435,10 +424,7 @@ impl Drop for Registration {
         // 两个注册键只属于本进程的通知通道, 不改安装器创建的应用身份.
         // 键是易失的, 异常退出后也会随 Windows 用户会话结束清除.
         for key in [&self.app_key, &self.class_key] {
-            let result = unsafe { RegDeleteTreeW(HKEY_CURRENT_USER, &HSTRING::from(key)) };
-            if let Err(error) = result.ok() {
-                tracing::debug!(%error, "notification registration already removed");
-            }
+            let _ = unsafe { RegDeleteTreeW(HKEY_CURRENT_USER, &HSTRING::from(key)) };
         }
     }
 }

@@ -46,41 +46,25 @@ pub fn allow_app_media(window: &WebviewWindow) -> tauri::Result<()> {
         };
         let profile = match profile {
             Ok(profile) => profile,
-            Err(error) => {
-                tracing::error!(%error, %origin, "failed to access WebView2 media permissions");
-                return;
-            }
+            Err(_) => return,
         };
         let origin_utf16: Vec<u16> = origin.encode_utf16().chain(std::iter::once(0)).collect();
 
         // 直接把本应用在 profile 中已保存的拒绝状态改为允许.
-        for (kind, permission) in [
-            (COREWEBVIEW2_PERMISSION_KIND_MICROPHONE, "microphone"),
-            (COREWEBVIEW2_PERMISSION_KIND_CAMERA, "camera"),
-            (COREWEBVIEW2_PERMISSION_KIND_AUTOPLAY, "autoplay"),
+        for kind in [
+            COREWEBVIEW2_PERMISSION_KIND_MICROPHONE,
+            COREWEBVIEW2_PERMISSION_KIND_CAMERA,
+            COREWEBVIEW2_PERMISSION_KIND_AUTOPLAY,
         ] {
-            let permission_origin = origin.clone();
-            let completed = SetPermissionStateCompletedHandler::create(Box::new(move |result| {
-                if let Err(error) = result {
-                    tracing::error!(
-                        %error,
-                        origin = %permission_origin,
-                        permission,
-                        "failed to allow app media permission"
-                    );
-                }
-                Ok(())
-            }));
-            if let Err(error) = unsafe {
+            let completed = SetPermissionStateCompletedHandler::create(Box::new(|_| Ok(())));
+            let _ = unsafe {
                 profile.SetPermissionState(
                     kind,
                     PCWSTR(origin_utf16.as_ptr()),
                     COREWEBVIEW2_PERMISSION_STATE_ALLOW,
                     &completed,
                 )
-            } {
-                tracing::error!(%error, %origin, permission, "failed to set app media permission");
-            }
+            };
         }
     })
 }

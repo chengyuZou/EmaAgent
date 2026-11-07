@@ -3,7 +3,6 @@ mod app_lifecycle;
 mod browser;
 mod files;
 mod fonts;
-mod logging;
 mod notifications;
 #[path = "profilePath.rs"]
 mod profile_path;
@@ -23,12 +22,15 @@ use terminal::{commands::*, TerminalSessions};
 use windows::pet_pointer::PetPointerTracking;
 use windows::{commands::*, handle_window_event, show_stage_window};
 
-pub fn run() {
-    logging::init_logging();
+pub fn run() -> std::process::ExitCode {
+    let server = match ServerProcess::new() {
+        Ok(server) => server,
+        Err(_) => {
+            return std::process::ExitCode::FAILURE;
+        }
+    };
 
-    let server = ServerProcess::new().expect("failed to initialize Server process");
-
-    tauri::Builder::default()
+    let application = tauri::Builder::default()
         // 第二实例只显示已有角色舞台, 不重复启动后端进程.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             show_stage_window(app);
@@ -74,7 +76,12 @@ pub fn run() {
         ])
         .setup(app_lifecycle::setup)
         .on_window_event(handle_window_event)
-        .build(tauri::generate_context!())
-        .expect("error while building tauri application")
-        .run(app_lifecycle::handle_run_event);
+        .build(tauri::generate_context!());
+    match application {
+        Ok(application) => {
+            application.run(app_lifecycle::handle_run_event);
+            std::process::ExitCode::SUCCESS
+        }
+        Err(_) => std::process::ExitCode::FAILURE,
+    }
 }

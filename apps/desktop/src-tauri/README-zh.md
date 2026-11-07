@@ -83,11 +83,11 @@ Permission 提供允许, 本会话允许和拒绝. main 再次检查交互队首
 
 调用方保留打开选择框时的目标. 聊天附件追加到原 Session 的最新草稿, 但原草稿进入提交后返回的选择结果会被丢弃. 参考音频表单关闭, 更换角色或提交后, 忽略之前尚未返回的选择. 壁纸只对实际操作排队, 不把等待选择框的时间算入队列; 导入时读取当前已保存的配置再合并图片.
 
-## 退出与日志
+## 退出与 Server 输出
 
-正常退出时先移除交互通知及原生注册, 再销毁窗口, 关闭全部 PTY 并停止 Server 及其子进程. Windows 使用 Job Object 和进程树终止. macOS 与 Linux 使用独立进程组, 先发 TERM, 超时后再发 KILL.
+应用退出时移除交互通知和原生注册, 销毁窗口, 关闭 PTY, 再终止 Server, 开发期 watcher 和剩余子进程. Windows 使用 Job Object 和限时进程树终止, macOS 和 Linux 先发送 TERM, 必要时发送 KILL. stdout 读取任务最多再等两秒结束. 强制终止不保证 Node 的收尾函数能执行.
 
-启动日志写入用户目录的 `logs` 下. `logging.rs` 同时输出到终端, 并清理过期启动日志. Server stdout 同时包含启动消息和就绪通知, 由 `server/childProcess.rs` 区分协议消息与普通日志.
+原生宿主只从 stdout 读取 `server.ready` 通知. 超长或无关输出直接跳过, 不保存成日志. 开发版 stderr 继承启动环境; 发布版使用空句柄, 避免依赖 GUI 程序不存在的控制台. Node 通过 [Logging](../../../src/logging/README-zh.md) 自己管理诊断文件. Rust 不初始化日志器, 不构造业务日志记录, 不管理日志文件.
 
 ## 从哪里看与如何验证
 
@@ -100,9 +100,9 @@ cargo check --locked --manifest-path apps/desktop/src-tauri/Cargo.toml
 cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --lib
 ```
 
-代理测试在 `tests/server/webProxy.rs`. 默认测试检查 JSON 契约. 被忽略的 `windows_proxy_is_passed_only_to_web_tools` 只读取当前用户设置, 不修改配置. 构建 Builtin Tools 后, 被忽略的 `windows_web_fetch_reaches_public_site` 把这些设置传给 Node 并请求公开的 Brave 首页. 它只报告 HTTP 状态, 不输出页面正文或代理凭据, 区分 HTTP 错误和连接失败. 两个测试都不启动 Server 或打开用户数据库.
+代理测试在 `tests/processes/webProxy.rs`. 默认测试检查 JSON 契约. 被忽略的 `windows_proxy_is_passed_only_to_web_tools` 只读取当前用户设置, 不修改配置. 构建 Builtin Tools 后, 被忽略的 `windows_web_fetch_reaches_public_site` 把这些设置传给 Node 并请求公开的 Brave 首页. 它只报告 HTTP 状态, 不输出页面正文或代理凭据, 区分 HTTP 错误和连接失败. 两个测试都不启动 Server 或打开用户数据库.
 
-默认 Rust 测试覆盖资源准备, 启动日志内容和过期清理, 路径选择状态, 通知 XML 和动作校验, 以及不展示通知的 Windows COM 点击回调往返. Windows 另有需要显式开启的投递检查:
+Rust 测试文件统一放在 `tests/`, 所属模块用 `#[path]` 引入, 保留对内部代码的测试能力. 默认 Rust 测试覆盖资源准备, 有长度限制的启动通知解析, 真实 Node 子进程启动和回收, 路径选择状态, 通知 XML 和动作校验, 以及不展示通知的 Windows COM 点击回调往返. 测试不打开用户 Profile. 日志文件测试归 Node Logging 包负责. Windows 另有需要显式开启的投递检查:
 
 ```sh
 cargo test --locked --manifest-path apps/desktop/src-tauri/Cargo.toml --lib windows_accepts_a_real_notification -- --ignored --nocapture

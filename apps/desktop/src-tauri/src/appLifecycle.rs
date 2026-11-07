@@ -14,9 +14,7 @@ pub fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let handle = app.handle().clone();
     let server = app.state::<ServerProcess>().inner().clone();
     tauri::async_runtime::spawn(async move {
-        if let Err(error) = server.start(handle).await {
-            tracing::error!(%error, "Server startup failed");
-        }
+        let _ = server.start(handle).await;
     });
     crate::tray::install(app)?;
     show_stage_window(app.handle());

@@ -21,7 +21,7 @@ impl NativeProcessTree {
         Ok(())
     }
 
-    pub async fn terminate(&self, child: &mut Child, label: &str) {
+    pub async fn terminate(&self, child: &mut Child) {
         let Some(pid) = child.id() else { return };
         let group = -(pid as i32);
         unsafe {
@@ -30,15 +30,10 @@ impl NativeProcessTree {
         if timeout(Duration::from_secs(3), child.wait()).await.is_ok() {
             return;
         }
-        tracing::warn!(
-            label,
-            pid,
-            "process group ignored SIGTERM; escalating to SIGKILL"
-        );
         unsafe {
             libc::kill(group, libc::SIGKILL);
         }
-        let _ = child.kill().await;
+        let _ = child.start_kill();
         let _ = timeout(Duration::from_secs(3), child.wait()).await;
     }
 }
