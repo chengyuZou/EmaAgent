@@ -345,6 +345,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     captureScreen: deps.captureScreen,
     computerUse: deps.computerUse,
     commandRunner: tools.getCommandRunner,
+    commandEnvironment: tools.getCommandEnvironment,
     toolResultStore: tools.getSessionToolResultStore,
     toolExecutionState: tools.toolExecutionState,
     createCompact,

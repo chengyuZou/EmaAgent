@@ -1,5 +1,32 @@
 # CLAUDE.md
 
+## Highest priority: naming and comments
+
+Within the authorized task, the following are mandatory acceptance criteria for code changes. They take priority over brevity and personal style preferences in this repository. Passing builds or tests does not replace this review, and an explanation in chat does not replace comments beside the code.
+
+### Names must explain the business purpose
+
+- Name files, functions, types, fields, and parameters after the concrete object, operation, or state they represent. A reader should understand the purpose without tracing the whole call chain.
+- Replace ambiguous shorthand when the surrounding declaration does not explain it. For example, `cleanupOldLogs(bytesToReserve)`, `currentLogFile`, and `closeCompletionChecks` communicate more than `prune(incoming)`, `stream`, and `waiters`.
+- Distinguish values with different meanings: current versus all open files, accepted versus written bytes, cached versus freshly read totals, and requested versus completed shutdown. Include units such as `Bytes` or `Ms` where they clarify a numeric value.
+- Keep established domain terms and third-party API names when accurate. Explain their relevant contract at the use site; do not invent replacement terminology or mechanically rename unrelated code to match examples.
+- Write related operations in readable steps. Do not compress state changes, conditionals, or cleanup into dense expressions. Simplify duplicated state instead of using comments to justify keeping the same fact in multiple places.
+
+### Important contracts must be documented in the code
+
+- Comment important state fields and collections beside their declarations. Explain what they represent, who updates or consumes them, what collection membership means, and when they are cleared or completed.
+- Explain non-obvious parameter and return meanings, including units, reserved versus used capacity, thresholds versus hard limits, and the meaning of zero, null, undefined, true, or false.
+- Document asynchronous completion boundaries. Distinguish accepted, queued, written, synchronized, and closed. For relevant third-party events or flags, state what they indicate and what they do not guarantee.
+- Comment ordering constraints, paired resource operations, cancellation, cleanup, and concurrency-sensitive failure handling. Explain why an error is ignored, retried, or fatal; do not leave the reader to infer this from a catch block.
+- Put each explanation beside the declaration or branch it governs. Use plain language and concrete objects. Required explanations are not optional just because a later guideline discourages redundant comments.
+- Do not add filler comments that restate syntax or obvious names. Both clear naming and necessary semantic comments are required.
+
+### Review clarity before delivery
+
+Read the changed declarations and normal, failure, and cleanup paths before reporting completion. Check that the purpose, ownership, units, state transitions, event semantics, and completion conditions are understandable from the code itself. Resolve missing explanations and ambiguous names before handing the work back.
+
+## Project context
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 EmaAgent is a local-first, single-user desktop app: an anime character companion (persona, Live2D, voice) plus a coding/work Agent (files, shell, web, Tasks, Goals, subagents). Tauri + React frontend, local Node.js Server, SQLite storage under `~/.ema-agent` (override with `EMA_PROFILE_DIR`).
@@ -8,7 +35,7 @@ EmaAgent is a local-first, single-user desktop app: an anime character companion
 
 The current user request and confirmed decisions define the work. Answer discussion and review requests before editing. Old TODOs and investigation notes do not authorize changes. If a design reason is unknown or a name changes the business meaning, explain the uncertainty and ask before deciding.
 
-Read the implementation, producers, boundaries, consumers, and relevant existing tests before changing behavior. Use concrete names and explanations: who creates or reads a value, what is being awaited, what ends the wait, and what happens on cancellation. Do not replace these explanations with vague terms such as host, runtime, or preflight.
+Read the implementation, producers, boundaries, consumers, and relevant existing tests before changing behavior. Apply the [priority naming and comment requirements](#highest-priority-naming-and-comments) to each changed declaration and call boundary. See [AGENTS.md](AGENTS.md#comments) for comment presentation rules.
 
 Prefer the simplest implementation that meets the supported behavior. Every field, interface, and check needs a real producer and consumer. Do not add wrappers, compatibility paths, or hypothetical extension points without a current use. Reuse the project's UI components and shared business types.
 

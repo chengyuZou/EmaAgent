@@ -1,5 +1,32 @@
 # EmaAgent Working Agreements
 
+## Highest priority: naming and comments
+
+Within the authorized task, the following are mandatory acceptance criteria for code changes. They take priority over brevity and personal style preferences in this repository. Passing builds or tests does not replace this review, and an explanation in chat does not replace comments beside the code.
+
+### Names must explain the business purpose
+
+- Name files, functions, types, fields, and parameters after the concrete object, operation, or state they represent. A reader should understand the purpose without tracing the whole call chain.
+- Replace ambiguous shorthand when the surrounding declaration does not explain it. For example, `cleanupOldLogs(bytesToReserve)`, `currentLogFile`, and `closeCompletionChecks` communicate more than `prune(incoming)`, `stream`, and `waiters`.
+- Distinguish values with different meanings: current versus all open files, accepted versus written bytes, cached versus freshly read totals, and requested versus completed shutdown. Include units such as `Bytes` or `Ms` where they clarify a numeric value.
+- Keep established domain terms and third-party API names when accurate. Explain their relevant contract at the use site; do not invent replacement terminology or mechanically rename unrelated code to match examples.
+- Write related operations in readable steps. Do not compress state changes, conditionals, or cleanup into dense expressions. Simplify duplicated state instead of using comments to justify keeping the same fact in multiple places.
+
+### Important contracts must be documented in the code
+
+- Comment important state fields and collections beside their declarations. Explain what they represent, who updates or consumes them, what collection membership means, and when they are cleared or completed.
+- Explain non-obvious parameter and return meanings, including units, reserved versus used capacity, thresholds versus hard limits, and the meaning of zero, null, undefined, true, or false.
+- Document asynchronous completion boundaries. Distinguish accepted, queued, written, synchronized, and closed. For relevant third-party events or flags, state what they indicate and what they do not guarantee.
+- Comment ordering constraints, paired resource operations, cancellation, cleanup, and concurrency-sensitive failure handling. Explain why an error is ignored, retried, or fatal; do not leave the reader to infer this from a catch block.
+- Put each explanation beside the declaration or branch it governs. Use plain language and concrete objects. Required explanations are not optional just because a later guideline discourages redundant comments.
+- Do not add filler comments that restate syntax or obvious names. Both clear naming and necessary semantic comments are required.
+
+### Review clarity before delivery
+
+Read the changed declarations and normal, failure, and cleanup paths before reporting completion. Check that the purpose, ownership, units, state transitions, event semantics, and completion conditions are understandable from the code itself. Resolve missing explanations and ambiguous names before handing the work back.
+
+## Project context
+
 EmaAgent is a local-first desktop Agent for one user. It includes characters and a Live2D stage, conversations and tool execution, file-based long-term Memory, separate Narrative story retrieval, Skills, and MCP. See [README.md](README.md) and [README-zh.md](README-zh.md) for its purpose and setup. [CLAUDE.md](CLAUDE.md) contains additional repository commands and code navigation notes.
 
 ## Communication and scope
@@ -28,7 +55,6 @@ Use plain language. State who reads or saves what, when an operation stops, and 
 - Express known fields with explicit types, interfaces, or SQL columns. Do not hide fixed business fields in generic JSON, `opts`, `this.opts`, `meta`, `metaJson`, or `Record<string, unknown>`. Represent genuinely open external protocols according to their actual shape.
 - Group files by related responsibilities, not line counts or a uniform template. A complete business implementation may be long. Do not scatter small files that have no independent purpose.
 - Do not add a Facade, Manager, Service, Port, registry, `common`, or `utils` for an imagined second implementation. Judge existing names by their actual use rather than renaming them mechanically.
-- Name interfaces and fields after the business they represent. `Runtime`, `snapshot`, and `facade` must not replace a specific responsibility. Use established third-party or domain terms when they accurately describe the code.
 - Frontend code reading backend facts should use shared business types or inferred route types. Do not duplicate equivalent fields, state machines, settings, or shared limits. Network requests go through `api/**`; Tauri IPC goes through named entry points.
 - Check the actual shape of JSON, SSE, WebSocket, IPC, and SQL boundaries, including names, units, nullable values, and the order of saving and notifying.
 - Stores hold genuinely shared or changing state and have explicit refresh triggers. Do not create a Store just to forward an API call or cache an ordinary query.
@@ -92,15 +118,15 @@ Turbo defaults to four concurrent package tasks for builds and type checks. The 
 
 ### Comments
 
-- Explain reasons, contracts, and constraints that are not obvious from code: ordering, paired operations, cancellation, failure, concurrency, units, and the business meaning of null or undefined.
-- Put a comment beside the relevant declaration or logic. Name the concrete object and the consequence of violating a constraint rather than just saying "be careful" or "do not change".
-- Do not translate code line by line or repeat function names, parameter types, or obvious operations. Prefer clear names and structure when they can express the meaning.
+Apply the [priority requirements](#highest-priority-naming-and-comments) above. The following rules govern comment presentation; they do not waive explanations of non-obvious behavior.
+
+- Explain the concrete constraint and the consequence of violating it, rather than only saying "be careful" or "do not change".
+- Omit line-by-line translations, parameter-type restatements, and comments that repeat obvious operations. Keep the semantic explanation when a clear name alone does not establish the contract.
 - Remove decorative file headers, dividers, and numbered headings. Keep a short header only for important ordering, platform restrictions, or special responsibilities that the file and its name do not explain.
 - Preserve licenses, necessary attribution, generated markers, and lint/typecheck directives. Necessary declaration JSDoc is not a decorative header just because it appears first.
-- Public declarations do not each need JSDoc. Explain field semantics beside the field. Do not use `@param` for interface fields or maintain a second field inventory.
+- Use declaration JSDoc for important contracts and place field-specific explanations beside the field. Trivial declarations do not need filler comments. Do not use `@param` for interface fields or maintain a second field inventory.
 - Tests normally explain behavior through describe and it. Add comments only for non-obvious environment needs, reproduction conditions, or ordering.
 - Do not record conversation history, work assignments, completion reports, or comparisons claiming to copy another product's behavior. Preserve necessary external product names, integration paths, protocols, and attribution.
-- Describe concrete operations instead of vague metaphors. Established terms such as transaction, projection, cursor, and snapshot are fine when used in their actual technical meaning.
 - Do not promise unverified accuracy or make unsupported absolute claims. TODOs describe specific unresolved problems and affected behavior, not completed work or assignments.
 
 ### Where documentation belongs
