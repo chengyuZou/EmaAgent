@@ -203,6 +203,7 @@ export async function buildComposition(input: { activeDataDir: string; initializ
       // abortAll 同步发出取消信号, 返回的 Promise 等 Turn 和手动 Compact 收尾.
       // 先让 Turn 停止接受新工作, 再等工具和电脑操控清理完毕.
       const turnsStopped = database.sessionRunning.abortAll();
+      const memoryStopped = memory.shutdown();
       await vishotCapture.close();
       // 等消息保存和运行记录清理完成, 再关闭原生操控进程; 数据库留到最后关闭.
       await turnsStopped;
@@ -211,9 +212,10 @@ export async function buildComposition(input: { activeDataDir: string; initializ
       stopPublishingSessionRunning();
       await turn.subagents.shutdown('Application is shutting down');
       await tools.backgroundProcesses.shutdown();
+      await tools.mcp.disconnectAll();
       await closeWebRequests();
       tools.clearFileStateCaches();
-      memory.shutdown();
+      await memoryStopped;
       database.close();
     },
   };

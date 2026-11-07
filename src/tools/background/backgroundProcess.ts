@@ -1,3 +1,4 @@
+import { logging } from '@ema-agent/logging';
 import crypto from 'node:crypto';
 import { checkAvailableMemory } from '@ema-agent/system';
 import { ToolExecutionError } from '../errors.js';
@@ -457,7 +458,12 @@ export class BackgroundProcess {
       },
     });
     // 启动失败由上面的 run 保存为 failed. 持久化本身出错时保留错误供 Server 日志排查.
-    void completion.catch(error => console.error('[tools] 后台进程保存失败:', error));
+    void completion.catch(error => logging({
+      level: 'error',
+      target: 'tools',
+      event: 'tools.background_save_failed',
+      error,
+    }));
   }
 
   private startProcess(

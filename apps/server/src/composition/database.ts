@@ -1,3 +1,4 @@
+import { logging } from '@ema-agent/logging';
 import {
   SubagentMessagesRepo,
   SubagentsRepo,
@@ -120,7 +121,12 @@ export async function openDatabases(
   // 导入可能在文件已落位, SQL 尚未提交时退出; 开始接收请求前清理这些残留.
   const orphanDirs = removeOrphanSessionDirectories(activeDataDir, id => session.sessionExists(id));
   if (orphanDirs > 0) {
-    console.warn(`[attachments] 清理 ${orphanDirs} 个无 Session 行的残留目录`);
+    logging({
+      level: 'info',
+      target: 'attachments',
+      event: 'attachments.orphans_cleaned',
+      body: { count: orphanDirs },
+    });
   }
   const turns = new TurnStore({
     db: dataDb,

@@ -1,3 +1,4 @@
+import { logging } from '@ema-agent/logging';
 import Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
@@ -65,7 +66,13 @@ export async function createPreMigrationBackup(
     if (ownsTemporary) {
       for (const file of [temporary, `${temporary}-wal`, `${temporary}-shm`]) {
         await fs.rm(file, { force: true }).catch((cleanupError: unknown) => {
-          console.warn(`[${kind}] 无法清理未完成的迁移前副本 ${file}`, cleanupError);
+          logging({
+            level: 'warn',
+            target: 'storage',
+            event: 'storage.backup_temp_cleanup_failed',
+            error: cleanupError,
+            body: { kind, path: file },
+          });
         });
       }
     }
@@ -97,6 +104,12 @@ export async function prunePreMigrationBackups(directory: string, kind: 'profile
     }
   } catch (error) {
     // SQL 已经提交, 清理旧副本失败不能使已完成的升级再次被报告成迁移失败.
-    console.warn(`[${kind}] 迁移已完成, 但无法清理过期副本 ${directory}`, error);
+    logging({
+      level: 'warn',
+      target: 'storage',
+      event: 'storage.backup_prune_failed',
+      error,
+      body: { kind, path: directory },
+    });
   }
 }

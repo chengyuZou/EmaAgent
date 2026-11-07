@@ -287,6 +287,9 @@ importers:
       '@ema-agent/llm':
         specifier: workspace:*
         version: link:../../src/llm
+      '@ema-agent/logging':
+        specifier: workspace:*
+        version: link:../../src/logging
       '@ema-agent/mcp':
         specifier: workspace:*
         version: link:../../src/mcp
@@ -903,11 +906,32 @@ importers:
         specifier: ^2.0.0
         version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
+  src/logging:
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.39
+      rimraf:
+        specifier: ^5.0.0
+        version: 5.0.10
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
+
   src/mcp:
     dependencies:
       '@ema-agent/llm':
         specifier: workspace:*
         version: link:../llm
+      '@ema-agent/logging':
+        specifier: workspace:*
+        version: link:../logging
+      '@ema-agent/sandbox':
+        specifier: workspace:*
+        version: link:../sandbox
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../storage
@@ -1139,6 +1163,9 @@ importers:
 
   src/settings:
     dependencies:
+      '@ema-agent/logging':
+        specifier: workspace:*
+        version: link:../logging
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../storage
@@ -1161,6 +1188,9 @@ importers:
 
   src/skills:
     dependencies:
+      '@ema-agent/logging':
+        specifier: workspace:*
+        version: link:../logging
       '@ema-agent/settings':
         specifier: workspace:*
         version: link:../settings
@@ -1189,6 +1219,9 @@ importers:
 
   src/speech:
     dependencies:
+      '@ema-agent/logging':
+        specifier: workspace:*
+        version: link:../logging
       '@ema-agent/tts':
         specifier: workspace:*
         version: link:../tts
@@ -1226,6 +1259,9 @@ importers:
 
   src/storage:
     dependencies:
+      '@ema-agent/logging':
+        specifier: workspace:*
+        version: link:../logging
       '@node-rs/jieba':
         specifier: ^2.0.1
         version: 2.0.1
@@ -1282,6 +1318,9 @@ importers:
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
+      vitest:
+        specifier: ^2.0.0
+        version: 2.1.9(@types/node@20.19.39)(jsdom@26.1.0(canvas@2.11.2))(msw@2.14.6(@types/node@20.19.39)(typescript@5.9.3))
 
   src/tasks:
     dependencies:
@@ -1332,6 +1371,9 @@ importers:
       '@ema-agent/llm':
         specifier: workspace:*
         version: link:../llm
+      '@ema-agent/logging':
+        specifier: workspace:*
+        version: link:../logging
       '@ema-agent/memory':
         specifier: workspace:*
         version: link:../memory
@@ -1350,6 +1392,9 @@ importers:
       '@ema-agent/skills':
         specifier: workspace:*
         version: link:../skills
+      '@ema-agent/system':
+        specifier: workspace:*
+        version: link:../system
       '@ema-agent/tasks':
         specifier: workspace:*
         version: link:../tasks
@@ -1433,6 +1478,9 @@ importers:
       '@ema-agent/llm':
         specifier: workspace:*
         version: link:../llm
+      '@ema-agent/logging':
+        specifier: workspace:*
+        version: link:../logging
       '@ema-agent/permission':
         specifier: workspace:*
         version: link:../permission
@@ -1639,6 +1687,9 @@ importers:
 
   src/usage:
     dependencies:
+      '@ema-agent/logging':
+        specifier: workspace:*
+        version: link:../logging
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../storage

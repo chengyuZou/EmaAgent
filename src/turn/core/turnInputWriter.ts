@@ -1,3 +1,4 @@
+import { logging } from '@ema-agent/logging';
 import { DEFAULT_SESSION_TITLE, type MessageBlocks, type SessionMessage } from '@ema-agent/session';
 import type { SkillPool } from '@ema-agent/skills';
 import type { TurnStreamEvent } from '../events.js';
@@ -28,7 +29,13 @@ export function createTurnInputWriter(
         deps.sessions.updateTitleIfDefault(sessionId, createSessionTitle(blocks));
       } catch (error) {
         // 正文已经保存. 自动标题失败不能丢弃这条输入.
-        console.warn('[turn] 自动命名会话失败:', error);
+        logging({
+          level: 'warn',
+          target: 'turn',
+          event: 'turn.session_title_failed',
+          error,
+          body: { sessionId, turnId },
+        });
       }
     }
     return message;

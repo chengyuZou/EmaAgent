@@ -1,3 +1,4 @@
+import { logging } from '@ema-agent/logging';
 import type { SettingsRepo } from '@ema-agent/storage';
 import {
   InvalidSettingGroupValueError,
@@ -68,7 +69,12 @@ export class SettingsStore {
     }
     if (stored.status !== 'missing' && !this.warnedKeys.has(definition.key)) {
       this.warnedKeys.add(definition.key);
-      console.warn(`[settings] invalid persisted value, using default: ${definition.key}`);
+      logging({
+        level: 'warn',
+        target: 'settings',
+        event: 'settings.invalid_value_defaulted',
+        body: { settingKey: definition.key },
+      });
     }
     // 默认值由定义对象共享. 返回副本, 避免调用方修改后影响后续读取.
     return structuredClone(definition.defaultValue);

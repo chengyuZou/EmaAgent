@@ -1,35 +1,54 @@
+import { closeLogging, initializeLogging, logging, setDiagnosticSecrets } from '@ema-agent/logging';
 import { performance } from 'node:perf_hooks';
-import { MissingSharedSecretError, requireSharedSecret } from './platform/auth.js';
-import { startServer } from './platform/lifecycle.js';
+import path from 'node:path';
+import { MissingSharedSecretError, takeSharedSecret } from './platform/auth.js';
+import { stopServer } from './platform/shutdown.js';
+import { profileDir } from './platform/paths.js';
 
 async function main(): Promise<void> {
   const startedAt = performance.now();
-  console.info(`[server:startup] process entered pid=${process.pid}`);
-  const secret = requireSharedSecret();
+  initializeLogging(path.join(profileDir(), 'logs'));
+  logging({
+    level: 'info',
+    target: 'server',
+    event: 'server.starting',
+  });
+  const secret = takeSharedSecret();
+  setDiagnosticSecrets([secret]);
+  // 部分工具在导入时探测系统命令. 先移除环境里的控制口令, 再加载会创建子进程的业务模块.
+  const { startServer } = await import('./platform/lifecycle.js');
   const lifecycle = await startServer(secret);
-  console.info(
-    `[server:startup] ready duration_s=${((performance.now() - startedAt) / 1000).toFixed(3)}`,
-  );
-  console.log(`[server] 已监听 127.0.0.1:${lifecycle.port}`);
-
   let closing = false;
   const shutdown = (signal: string): void => {
     if (closing) return;
     closing = true;
-    console.log(`[server] 收到 ${signal},即将关闭`);
-    void lifecycle.shutdown()
-      .catch(error => console.warn('[server] 关闭异常:', error))
-      .finally(() => process.exit(0));
+    void stopServer(lifecycle, signal).then(code => process.exit(code));
   };
+  logging({
+    level: 'info',
+    target: 'server',
+    event: 'server.ready',
+    body: { port: lifecycle.port, durationMs: performance.now() - startedAt },
+  });
   process.on('SIGINT', () => shutdown('SIGINT'));
   process.on('SIGTERM', () => shutdown('SIGTERM'));
 }
 
-main().catch(error => {
+main().catch(async error => {
   if (error instanceof MissingSharedSecretError) {
-    console.error('[server] 拒绝启动: EMA_SHARED_SECRET 未配置或长度不足(≥32)');
+    logging({
+      level: 'error',
+      target: 'server',
+      event: 'server.auth.missing_secret',
+    });
   } else {
-    console.error('[server] 启动失败:', error);
+    logging({
+      level: 'error',
+      target: 'server',
+      event: 'server.startup.failed',
+      error,
+    });
   }
+  await closeLogging();
   process.exit(1);
 });

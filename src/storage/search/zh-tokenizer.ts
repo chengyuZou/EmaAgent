@@ -1,3 +1,4 @@
+import { logging } from '@ema-agent/logging';
 import { createRequire } from 'node:module';
 
 interface JiebaLike {
@@ -17,8 +18,12 @@ function getJieba(): JiebaLike | null {
     const { dict } = require('@node-rs/jieba/dict.js') as { dict: Uint8Array };
     _jieba = Jieba.withDict(dict);
   } catch (err) {
-    console.warn('[storage] @node-rs/jieba unavailable, FTS falls back to raw text:',
-      err instanceof Error ? err.message : err);
+    logging({
+      level: 'warn',
+      target: 'storage',
+      event: 'storage.jieba_unavailable',
+      error: err,
+    });
     _jieba = null;
   }
   return _jieba;

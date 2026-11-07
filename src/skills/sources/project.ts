@@ -1,3 +1,4 @@
+import { logging } from '@ema-agent/logging';
 import { readFile, readdir, realpath } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseSkillMd } from '../parser.js';
@@ -31,7 +32,13 @@ export async function scanProjectSkills(
       try {
         await realpath(folderPath);
       } catch (error) {
-        console.warn(`[skills] 项目文件夹不可读取: ${folderPath}`, error);
+        logging({
+          level: 'warn',
+          target: 'skills',
+          event: 'skills.project_unreadable',
+          error,
+          body: { path: folderPath },
+        });
         return [];
       }
       const ecosystems = await Promise.all(PROJECT_ECOSYSTEMS.map(async (ecosystem) => {
@@ -66,7 +73,13 @@ export async function scanProjectSkills(
         sourceFolderPath: folderPath,
       };
     } catch (error) {
-      console.warn(`[skills] 项目技能损坏跳过: ${path}`, error);
+      logging({
+        level: 'warn',
+        target: 'skills',
+        event: 'skills.project_skill_skipped',
+        error,
+        body: { path },
+      });
       return null;
     }
   });
@@ -107,7 +120,12 @@ async function collectSkillFiles(
     }
   }
   if (truncated) {
-    console.warn(`[skills] 目录扫描达到 ${MAX_SKILL_DIRS_PER_ROOT} 个上限: ${ecoRoot}`);
+    logging({
+      level: 'warn',
+      target: 'skills',
+      event: 'skills.scan_limit',
+      body: { path: ecoRoot, count: MAX_SKILL_DIRS_PER_ROOT },
+    });
   }
   return found;
 }

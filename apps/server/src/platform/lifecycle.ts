@@ -1,3 +1,4 @@
+import { logging } from '@ema-agent/logging';
 import type { Server } from 'node:http';
 import { performance } from 'node:perf_hooks';
 import { serve } from '@hono/node-server';
@@ -25,13 +26,23 @@ export interface ServerLifecycle {
  */
 export async function startServer(secret: string): Promise<ServerLifecycle> {
   let phaseStartedAt = performance.now();
-  console.info('[server:startup] data directory preparation started');
+  logging({
+    level: 'info',
+    target: 'server',
+    event: 'server.startup.phase',
+    body: { phase: 'data directory preparation' },
+  });
   const activeDataDir = dataDirPath();
   ensureDataDirLayout(activeDataDir);
   logStartupDuration('data directory preparation', phaseStartedAt);
 
   phaseStartedAt = performance.now();
-  console.info('[server:startup] data directory lock started');
+  logging({
+    level: 'info',
+    target: 'server',
+    event: 'server.startup.phase',
+    body: { phase: 'data directory lock' },
+  });
   const lock = acquireLock(activeDataDir);
   if (!lock.acquired) {
     throw new Error(
@@ -45,7 +56,12 @@ export async function startServer(secret: string): Promise<ServerLifecycle> {
   let webSocketServer: WebSocketServer | undefined;
   try {
     phaseStartedAt = performance.now();
-    console.info('[server:startup] composition started');
+    logging({
+      level: 'info',
+      target: 'server',
+      event: 'server.startup.phase',
+      body: { phase: 'composition' },
+    });
     const running = await buildComposition({
       activeDataDir,
       initializeBuiltinCharacters: process.env['EMA_INITIALIZE_BUILTIN_CHARACTERS'] === '1',
@@ -65,12 +81,22 @@ export async function startServer(secret: string): Promise<ServerLifecycle> {
       goals: running.database.goals,
     };
     phaseStartedAt = performance.now();
-    console.info('[server:startup] required recovery started');
+    logging({
+      level: 'info',
+      target: 'server',
+      event: 'server.startup.phase',
+      body: { phase: 'required recovery' },
+    });
     runRequiredRecovery(recoveryDeps);
     logStartupDuration('required recovery', phaseStartedAt);
 
     phaseStartedAt = performance.now();
-    console.info('[server:startup] route assembly and listening started');
+    logging({
+      level: 'info',
+      target: 'server',
+      event: 'server.startup.phase',
+      body: { phase: 'route assembly and listening' },
+    });
     const app = createRoutes(running, secret);
     const channelWebSocketServer = new WebSocketServer({ noServer: true });
     webSocketServer = channelWebSocketServer;
@@ -91,20 +117,28 @@ export async function startServer(secret: string): Promise<ServerLifecycle> {
     logStartupDuration('route assembly and listening', phaseStartedAt);
     const address = httpServer.address();
     const port = typeof address === 'object' && address !== null ? address.port : 0;
-    phaseStartedAt = performance.now();
-    process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'server.ready', params: { port } })}\n`);
-    logStartupDuration('ready publication', phaseStartedAt);
+    // stdout 只公布 HTTP 端口, 业务日志由 Node 自己保存到文件.
+    const readyNotification = { jsonrpc: '2.0', method: 'server.ready', params: { port } };
+    process.stdout.write(`${JSON.stringify(readyNotification)}\n`, 'utf8');
 
     runFileMaintenance(recoveryDeps);
-    void running.tools.toolResultCleaner.sweep()
+    const resultCleanup = running.tools.toolResultCleaner.sweep()
       .then(({ deleted, freedBytes }) => {
         if (deleted > 0) {
-          console.warn(
-            `[tools] 清理 ${deleted} 个外置 Tool Result, 释放 ${(freedBytes / 1024 / 1024).toFixed(1)} MiB`,
-          );
+          logging({
+            level: 'info',
+            target: 'tools',
+            event: 'tools.results.cleaned',
+            body: { count: deleted, bytes: freedBytes },
+          });
         }
       })
-      .catch(error => console.warn('[tools] 外置 Tool Result 清理跳过:', error));
+      .catch(error => logging({
+        level: 'warn',
+        target: 'tools',
+        event: 'tools.results.cleanup_failed',
+        error,
+      }));
     running.memory.start();
     return {
       port,
@@ -117,6 +151,7 @@ export async function startServer(secret: string): Promise<ServerLifecycle> {
           httpServer.closeAllConnections();
         });
         await running.close();
+        await resultCleanup;
         lock.release();
       },
     };
@@ -131,7 +166,10 @@ export async function startServer(secret: string): Promise<ServerLifecycle> {
 }
 
 function logStartupDuration(phase: string, startedAt: number): void {
-  console.info(
-    `[server:startup] ${phase} completed duration_s=${((performance.now() - startedAt) / 1000).toFixed(3)}`,
-  );
+  logging({
+    level: 'info',
+    target: 'server',
+    event: 'server.startup.phase_completed',
+    body: { phase, durationMs: performance.now() - startedAt },
+  });
 }

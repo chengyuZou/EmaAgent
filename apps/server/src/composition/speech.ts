@@ -1,3 +1,4 @@
+import { logging } from '@ema-agent/logging';
 import { randomUUID } from 'node:crypto';
 import { dataResourceDir } from '@ema-agent/storage/dataPaths';
 import { statSync } from 'node:fs';
@@ -286,7 +287,13 @@ export function openSpeech(
           job.client?.sendControl({ type, sessionId: job.sessionId, turnId: job.turnId, audioAvailable });
         }
       } catch (error) {
-        console.warn(`[speech] Turn ${job.turnId} 语音通知失败:`, error);
+        logging({
+          level: 'warn',
+          target: 'speech',
+          event: 'speech.notification_failed',
+          error,
+          body: { turnId: job.turnId },
+        });
       } finally {
         job.signal.removeEventListener('abort', job.onAbort);
         jobs.delete(job.turnId);

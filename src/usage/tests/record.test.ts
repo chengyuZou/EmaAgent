@@ -102,7 +102,7 @@ describe('UsageRecorder', () => {
   });
 
   it('重复 ID 写入只告警, 不覆盖原记录或向模型调用方抛错', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warn = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
     const input = record();
     recorder.record(input);
     expect(() => recorder.record({ ...input, outputTokens: 999 })).not.toThrow();
@@ -111,7 +111,7 @@ describe('UsageRecorder', () => {
   });
 
   it('SQL 拒绝的记录只告警, 不写入也不影响调用结果', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warn = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
     expect(() => recorder.record(record({ outputTokens: -1 }))).not.toThrow();
     expect(warn).toHaveBeenCalledOnce();
     expect(recorder.list({}).items).toEqual([]);

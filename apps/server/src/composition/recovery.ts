@@ -1,3 +1,4 @@
+import { logging } from '@ema-agent/logging';
 import type { SubagentMessagesStore, SubagentStore } from '@ema-agent/agent';
 import { cleanupInterruptedFileWriteTemps } from '@ema-agent/builtin-tools';
 import { reconcileProjectRules } from '@ema-agent/permission';
@@ -41,15 +42,30 @@ export function runRequiredRecovery(deps: StartupRecoveryDeps): void {
   recoverToolExecutions(deps);
   const interruptedProcesses = deps.backgroundProcesses.recoverInterrupted();
   if (interruptedProcesses.length > 0) {
-    console.warn(`[recovery] 标记 ${interruptedProcesses.length} 个中断后台进程`);
+    logging({
+      level: 'warn',
+      target: 'recovery',
+      event: 'recovery.processes_interrupted',
+      body: { count: interruptedProcesses.length },
+    });
   }
   const { healed } = deps.turns.recoverStuckTurns();
   if (healed > 0) {
-    console.warn(`[recovery] 将 ${healed} 个异常退出时仍在运行的 Turn 标记为结束`);
+    logging({
+      level: 'warn',
+      target: 'recovery',
+      event: 'recovery.turns_closed',
+      body: { count: healed },
+    });
   }
   const interruptedRuns = deps.subagents.recoverInterrupted();
   if (interruptedRuns.length > 0) {
-    console.warn(`[recovery] 标记 ${interruptedRuns.length} 个中断 Subagent`);
+    logging({
+      level: 'warn',
+      target: 'recovery',
+      event: 'recovery.subagents_interrupted',
+      body: { count: interruptedRuns.length },
+    });
   }
 
   // 项目规则对账:剔除已删除项目的规则键,防止 settings 里长孤儿.
@@ -115,16 +131,29 @@ function recoverToolExecutions(deps: StartupRecoveryDeps): void {
     const fileWriteRecovery = cleanupInterruptedFileWriteTemps(fileWriteCalls);
     if (interrupted.length > 0) {
       const unknownCount = fileWriteCalls.filter(call => call.outcomeUnknown).length;
-      console.warn(
-        `[recovery] 恢复 ${interrupted.length} 个中断工具调用;${unknownCount} 个副作用未知`,
-      );
+      logging({
+        level: 'warn',
+        target: 'recovery',
+        event: 'recovery.tools_closed',
+        body: { count: interrupted.length, unknownCount },
+      });
     }
     if (fileWriteRecovery.failed.length > 0) {
-      console.warn(`[recovery] ${fileWriteRecovery.failed.length} 个 FileWrite 临时文件清理失败`);
+      logging({
+        level: 'warn',
+        target: 'recovery',
+        event: 'recovery.write_temps_failed',
+        body: { count: fileWriteRecovery.failed.length },
+      });
     }
   } catch (error) {
     // 终态已经恢复;临时文件清理属于可重试维护,不阻止启动.
-    console.warn('[recovery] FileWrite 临时文件清理跳过:', error);
+    logging({
+      level: 'warn',
+      target: 'recovery',
+      event: 'recovery.write_temps_skipped',
+      error,
+    });
   }
 }
 
@@ -135,10 +164,29 @@ export function runFileMaintenance(deps: StartupRecoveryDeps): void {
       deps.activeDataDir,
       sessionId => deps.session.sessionExists(sessionId),
     );
-    if (removed > 0) console.warn(`[recovery] 清理 ${removed} 个孤儿 Session 目录`);
-    if (failed > 0) console.warn(`[recovery] ${failed} 个孤儿 Session 目录删除失败`);
+    if (removed > 0) {
+      logging({
+        level: 'info',
+        target: 'recovery',
+        event: 'recovery.session_dirs_cleaned',
+        body: { count: removed },
+      });
+    }
+    if (failed > 0) {
+      logging({
+        level: 'warn',
+        target: 'recovery',
+        event: 'recovery.session_dirs_failed',
+        body: { count: failed },
+      });
+    }
   } catch (error) {
-    console.warn('[recovery] 孤儿 Session 目录清理跳过:', error);
+    logging({
+      level: 'warn',
+      target: 'recovery',
+      event: 'recovery.session_dirs_skipped',
+      error,
+    });
   }
 
   try {
@@ -152,9 +200,21 @@ export function runFileMaintenance(deps: StartupRecoveryDeps): void {
       } while (cursor);
       return ids;
     });
-    if (removed > 0) console.warn(`[recovery] 清理 ${removed} 个孤儿 Turn 文件`);
+    if (removed > 0) {
+      logging({
+        level: 'info',
+        target: 'recovery',
+        event: 'recovery.turn_files_cleaned',
+        body: { count: removed },
+      });
+    }
   } catch (error) {
-    console.warn('[recovery] 孤儿 Turn 文件清理跳过:', error);
+    logging({
+      level: 'warn',
+      target: 'recovery',
+      event: 'recovery.turn_files_skipped',
+      error,
+    });
   }
 
 }

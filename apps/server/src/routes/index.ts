@@ -1,3 +1,4 @@
+import { logging } from '@ema-agent/logging';
 // 路由链的返回类型由 Desktop 的 hc<AppType> 读取. 拆成不返回结果的 app.route() 调用会丢失新增路径的类型.
 import { ATTACHMENT_RESIDUE_MAX_AGE_MS, readAttachmentCacheSettings } from '@ema-agent/attachments';
 import { Hono } from 'hono';
@@ -127,11 +128,23 @@ export const createRoutes = (composition: Composition, secret: string) => {
         // 附件残留清扫(贴了没发/无行残渣)与 vision 描述缓存驱逐,fire-and-forget.
         void database.attachments
           .sweep(sessionId, ATTACHMENT_RESIDUE_MAX_AGE_MS)
-          .catch(error => console.warn('[attachments] 残留清扫失败:', error));
+          .catch(error => logging({
+            level: 'warn',
+            target: 'attachments',
+            event: 'attachments.cleanup_failed',
+            error,
+            body: { sessionId },
+          }));
         void turn.visionCache.sweepIfIdle({
           isIdle: () => database.sessionRunning.runningSessionCount() === 0,
           maxBytesForSweep: () => readAttachmentCacheSettings(settings.settings).maxBytes,
-        }).catch(error => console.warn('[attachments] vision 缓存清扫失败:', error));
+        }).catch(error => logging({
+          level: 'warn',
+          target: 'attachments',
+          event: 'attachments.vision_cleanup_failed',
+          error,
+          body: { sessionId },
+        }));
       },
     }))
     .route('/api/sessions', sessionGitRoute(database.session))
@@ -223,7 +236,12 @@ export const createRoutes = (composition: Composition, secret: string) => {
 
     .notFound(context => context.json({ error: 'not_found' }, 404))
     .onError((error, context) => {
-      console.warn('[http] 未捕获错误:', error);
+      logging({
+        level: 'warn',
+        target: 'http',
+        event: 'http.request_failed',
+        error,
+      });
       return context.json({ error: 'internal_error' }, 500);
     });
 };

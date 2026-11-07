@@ -1,3 +1,4 @@
+import { logging } from '@ema-agent/logging';
 import type { TurnHandle, TurnStreamEvent } from '@ema-agent/turn';
 import type { TurnSpeechHandle } from '../composition/speech.js';
 
@@ -40,7 +41,13 @@ export class TurnFanout {
             turnId,
             signal: speechAbort.signal,
           }).catch(error => {
-            console.warn('[speech] 启动失败,本 Turn 无语音输出:', error);
+            logging({
+              level: 'warn',
+              target: 'speech',
+              event: 'speech.start_failed',
+              error,
+              body: { sessionId, turnId },
+            });
             return null;
           });
         }
@@ -51,21 +58,39 @@ export class TurnFanout {
           completed = true;
           void speechPromise
             .then(speech => speech?.finish())
-            .catch(error => console.warn(`[speech] Turn ${turnId} 音频保存失败:`, error));
+            .catch(error => logging({
+              level: 'warn',
+              target: 'speech',
+              event: 'speech.save_failed',
+              error,
+              body: { turnId },
+            }));
         }
         this.deps.publishTurnEvent(sessionId, turnId, event);
         if (event.type === 'turn_failed' || event.type === 'turn_aborted') {
           speechAbort.abort('turn ended without completion');
           void speechPromise
             .then(speech => speech?.cancel())
-            .catch(error => console.warn(`[speech] Turn ${turnId} 取消失败:`, error));
+            .catch(error => logging({
+              level: 'warn',
+              target: 'speech',
+              event: 'speech.cancel_failed',
+              error,
+              body: { turnId },
+            }));
         }
         if (isTurnActivity(event)) {
           this.deps.emitAppEvent(event);
         }
       }
     } catch (error) {
-      console.warn(`[fanout] Turn ${turnId} 事件泵异常:`, error);
+      logging({
+        level: 'warn',
+        target: 'turn',
+        event: 'turn.fanout_failed',
+        error,
+        body: { turnId },
+      });
     } finally {
       if (!completed) {
         speechAbort.abort('turn event stream ended');

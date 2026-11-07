@@ -1,3 +1,4 @@
+import { logging } from '@ema-agent/logging';
 // Session WebSocket 接收 Chat 请求, 并把该 Session 的运行状态和业务事件发给已打开的窗口.
 import { CommandsError, type ManualCompactResult } from '@ema-agent/commands';
 import type { CompactEvent } from '@ema-agent/compact';
@@ -424,7 +425,12 @@ function commandFailure(error: unknown): { code: string; message: string } {
   if (error instanceof Error && error.message.startsWith('session_not_found')) {
     return { code: 'session_not_found', message: error.message };
   }
-  console.warn('[session-ws] 请求执行失败:', error);
+  logging({
+    level: 'warn',
+    target: 'session',
+    event: 'session.websocket_request_failed',
+    error,
+  });
   return { code: 'internal_error', message: 'Session 请求执行失败' };
 }
 

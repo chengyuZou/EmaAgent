@@ -468,7 +468,7 @@ describe('prepareTurnTools', () => {
           return { kind: 'tool', defaultDecision: 'ask', sessionApproval: 'input' };
         }
         return {
-          kind: 'shell', command: input.command,
+          kind: 'shell', cwd: process.cwd(), command: input.command,
           subcommands: [input.command], canMatchSubcommands: true,
         };
       },
@@ -746,13 +746,16 @@ describe('prepareTurnTools', () => {
 
   it('Bash 工厂使用本 Turn 的工作目录与授权目录', async () => {
     const received: Array<{ cwd: string; roots: readonly string[] }> = [];
+    const environment = Object.freeze({ EXAMPLE_TOKEN: 'fake-token' });
     const deps: TurnToolsDeps = {
       ...makeDeps({
         tools: [fakeTool('Bash', { id: BuiltinTools.Bash.id })],
         queue: new SessionInteractionQueue(null),
         settings: fakeSettings(),
       }),
-      commandRunner: async (cwd, roots) => {
+      commandEnvironment: () => environment,
+      commandRunner: async (cwd, roots, preparedEnvironment) => {
+        expect(preparedEnvironment).toBe(environment);
         received.push({ cwd, roots });
         return undefined;
       },

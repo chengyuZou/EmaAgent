@@ -503,7 +503,13 @@ export class McpRegistry {
     const task = this.runToolRefreshLoop(serverName, server, generation, client);
     server.refreshTask = task;
     void task.catch((err) => {
-      logging('warn', 'mcp.tools_refresh_failed', { serverName, error: err });
+      logging({
+        level: 'warn',
+        target: 'mcp',
+        event: 'mcp.tools_refresh_failed',
+        error: err,
+        body: { serverName },
+      });
     });
   }
 

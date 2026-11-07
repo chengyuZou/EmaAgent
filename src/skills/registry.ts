@@ -1,3 +1,4 @@
+import { logging } from '@ema-agent/logging';
 import type { SkillStore } from './store.js';
 import { scanProjectSkills } from './sources/project.js';
 import type { SkillDescriptor } from './types.js';
@@ -30,12 +31,22 @@ export function createSkillRegistry(deps: SkillRegistryDeps): SkillRegistry {
     const [builtin, user] = await Promise.all([
       deps.store.reconcileBuiltinRoot()
         .catch(error => {
-          console.warn('[skills] builtin 对账失败:', error);
+          logging({
+            level: 'warn',
+            target: 'skills',
+            event: 'skills.builtin_scan_failed',
+            error,
+          });
           return [] as SkillDescriptor[];
         }),
       deps.store.reconcileUserRoot()
         .catch(error => {
-          console.warn('[skills] user 对账失败:', error);
+          logging({
+            level: 'warn',
+            target: 'skills',
+            event: 'skills.user_scan_failed',
+            error,
+          });
           return [] as SkillDescriptor[];
         }),
     ]);

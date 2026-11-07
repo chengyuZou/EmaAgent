@@ -34,11 +34,13 @@ pnpm --filter @ema-agent/server dev
 {"jsonrpc":"2.0","method":"server.ready","params":{"port":12345}}
 ```
 
-The port above is an example. [The desktop child-process reader](../desktop/src-tauri/src/processes/child.rs) reads this message; ordinary startup logs can appear on the same stream.
+The port above is an example. [The desktop child-process reader](../desktop/src-tauri/src/server/childProcess.rs) reads this control message. Node saves diagnostic records directly under `<Profile>/logs` through [Logging](../../src/logging/README.md). stdout carries the ready notification, not the business log stream.
 
 After publication, file maintenance, external tool-result cleanup and Memory job recovery start. MCP connects in the background after registering cached tool definitions. Core Skill loading also runs asynchronously; its first consumer waits for loading.
 
-SIGINT and SIGTERM close WebSocket and HTTP connections, stop automatic continuation, cancel running work and speech, stop background commands, signal Memory shutdown, close databases and release the lock. The important cancellation order is in [composition/index.ts](./src/composition/index.ts).
+SIGINT and SIGTERM enter the same idempotent shutdown path. Process cleanup belongs to the entry point and platform code; frontend routes do not expose a process-shutdown endpoint. Shutdown closes WebSocket and HTTP connections, stops automatic continuation, cancels work and speech, stops background commands and MCP connections, waits for Memory work, then closes databases and releases the lock. The order is in [composition/index.ts](./src/composition/index.ts).
+
+Business cleanup has an eight-second deadline. The entry then calls `closeLogging()` and waits up to two seconds for writes, file synchronization, and closure before exiting. A cleanup error or deadline produces a nonzero exit code. Rust owns no logger or log-flush handshake. Forced termination, including Windows process-tree termination, can bypass Node cleanup and lose pending records.
 
 ## Files and databases
 

@@ -1,3 +1,4 @@
+import { logging } from '@ema-agent/logging';
 import os from 'node:os';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -266,7 +267,12 @@ export function openTools(deps: ToolsDeps): ToolsComposition {
   void skillStore.sweepOrphanStaging()
     .then(() => skills.refreshCore())
     .catch(error => {
-      console.warn('[skills] 启动装载失败:', error);
+      logging({
+        level: 'warn',
+        target: 'skills',
+        event: 'skills.startup_failed',
+        error,
+      });
     });
   const skillMarket = createMarketService({ userRoot: skillUserRoot });
   const skillMarketInstaller = createMarketInstaller({

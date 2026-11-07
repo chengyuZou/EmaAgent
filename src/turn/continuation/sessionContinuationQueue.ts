@@ -1,3 +1,4 @@
+import { logging } from '@ema-agent/logging';
 import type { SubagentStatus } from '@ema-agent/agent';
 import type {
   ClaimedSessionContinuation,
@@ -333,7 +334,13 @@ export class SessionContinuationQueue {
     } catch (error) {
       this.release(turnId);
       this.workFinished(sessionId, 'failed');
-      console.warn('[continuation] Session 续接启动失败:', error);
+      logging({
+        level: 'warn',
+        target: 'turn',
+        event: 'turn.continuation_failed',
+        error,
+        body: { sessionId, turnId },
+      });
     } finally {
       this.draining.delete(sessionId);
     }

@@ -1,3 +1,4 @@
+import { logging } from '@ema-agent/logging';
 import type { CharacterEvent } from '@ema-agent/characters';
 import type { McpEvent } from '@ema-agent/mcp';
 import type { SystemWarningEvent } from '@ema-agent/system';
@@ -45,7 +46,13 @@ export class AppEvents {
       try {
         listener(event);
       } catch (error) {
-        console.warn('[app-events] 订阅者异常:', error);
+        logging({
+          level: 'warn',
+          target: 'app_events',
+          event: 'app_events.listener_failed',
+          error,
+          body: { kind: event.type },
+        });
       }
     }
   }

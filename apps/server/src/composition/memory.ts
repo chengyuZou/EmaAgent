@@ -1,3 +1,4 @@
+import { logging } from '@ema-agent/logging';
 import { randomUUID } from 'node:crypto';
 import {
   createLLMCompletion,
@@ -43,7 +44,7 @@ export interface MemoryComposition {
   readonly enqueueTurnExtraction: (turnId: string) => void;
   /** HTTP ready 后启动恢复和定时器, 避免 Memory IO 延长应用启动. */
   readonly start: () => void;
-  readonly shutdown: () => void;
+  readonly shutdown: () => Promise<void>;
 }
 
 export function openMemory(deps: {
@@ -184,7 +185,13 @@ export function openMemory(deps: {
       consolidate,
       shutdownController.signal,
     ).then(value => { claimed = value; })
-      .catch(error => console.warn(`[memory] 整合执行失败(${kind}):`, error))
+      .catch(error => logging({
+        level: 'warn',
+        target: 'memory',
+        event: 'memory.consolidation_failed',
+        error,
+        body: { kind },
+      }))
       .finally(() => {
         consolidationDrains.delete(kind);
         if (claimed && consolidationReady(kind)) {
@@ -213,7 +220,13 @@ export function openMemory(deps: {
           );
         }
       })
-      .catch(error => console.warn(`[memory] 提取队列执行失败(${kind}):`, error))
+      .catch(error => logging({
+        level: 'warn',
+        target: 'memory',
+        event: 'memory.extraction_failed',
+        error,
+        body: { kind },
+      }))
       .finally(() => extractionDrains.delete(kind));
     extractionDrains.set(kind, drain);
   };
@@ -227,7 +240,13 @@ export function openMemory(deps: {
       ? () => maintainWorkMemory(workMemoryDir())
       : () => maintainRelationshipMemory(memoryRoot, relationshipMemoryDir());
     const drain = runMaintenanceJob(jobs, job, maintain, shutdownController.signal)
-      .catch(error => console.warn(`[memory] 维护执行失败(${kind}):`, error))
+      .catch(error => logging({
+        level: 'warn',
+        target: 'memory',
+        event: 'memory.maintenance_failed',
+        error,
+        body: { kind },
+      }))
       .finally(() => {
         maintenanceDrains.delete(kind);
         kickConsolidation(
@@ -260,14 +279,26 @@ export function openMemory(deps: {
         jobs.enqueueExtraction(randomUUID(), 'work_extraction', turnId, Date.now());
         queueMicrotask(() => kickExtraction('work_extraction'));
       } catch (error) {
-        console.warn(`[memory] Work 提取入队失败(${turnId}):`, error);
+        logging({
+          level: 'warn',
+          target: 'memory',
+          event: 'memory.enqueue_failed',
+          error,
+          body: { kind: 'work', turnId },
+        });
       }
       if (!turn?.characterName) return;
       try {
         jobs.enqueueExtraction(randomUUID(), 'relationship_extraction', turnId, Date.now());
         queueMicrotask(() => kickExtraction('relationship_extraction'));
       } catch (error) {
-        console.warn(`[memory] Relationship 提取入队失败(${turnId}):`, error);
+        logging({
+          level: 'warn',
+          target: 'memory',
+          event: 'memory.enqueue_failed',
+          error,
+          body: { kind: 'relationship', turnId },
+        });
       }
     },
     start: () => {
@@ -291,10 +322,13 @@ export function openMemory(deps: {
       consolidationTimer.unref();
       maintenanceTimer.unref();
     },
-    shutdown: () => {
+    shutdown: async () => {
       shutdownController.abort();
       if (consolidationTimer) clearInterval(consolidationTimer);
       if (maintenanceTimer) clearInterval(maintenanceTimer);
+      await Promise.allSettled([
+        ...consolidationDrains.values(), ...extractionDrains.values(), ...maintenanceDrains.values(),
+      ]);
     },
   };
   return composition;

@@ -1,3 +1,4 @@
+import { logging } from '@ema-agent/logging';
 import {
   UsageRecordsRepo,
   type Database,
@@ -37,7 +38,12 @@ export class UsageRecorder {
       this.repo.record(row);
     } catch (error) {
       // 用量保存失败不能将已经完成的模型请求改成失败. 查询错误则交给调用方处理.
-      console.warn('[usage] Record write failed:', error);
+      logging({
+        level: 'warn',
+        target: 'usage',
+        event: 'usage.write_failed',
+        error,
+      });
       return;
     }
   }

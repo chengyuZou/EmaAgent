@@ -34,11 +34,13 @@ pnpm --filter @ema-agent/server dev
 {"jsonrpc":"2.0","method":"server.ready","params":{"port":12345}}
 ```
 
-这里的端口只是示例. [桌面子进程读取代码](../desktop/src-tauri/src/processes/child.rs) 识别这条消息, 同一输出流里也可以有普通启动日志.
+这里的端口只是示例. [桌面子进程读取代码](../desktop/src-tauri/src/server/childProcess.rs) 识别这条控制消息. Node 通过 [Logging](../../src/logging/README-zh.md) 直接把诊断记录保存到 `<Profile>/logs`. stdout 传递端口通知, 不承载业务日志流.
 
 公布端口后启动文件维护, 外置工具结果清理和 Memory 任务恢复. MCP 先注册已缓存的工具定义, 再后台连接. 核心 Skill 目录也异步加载, 第一次使用时等待加载完成.
 
-收到 SIGINT 或 SIGTERM 后, Server 关闭 WebSocket 和 HTTP 连接, 停止自动续接, 取消运行中的工作与语音, 停止后台命令, 通知 Memory 关闭, 最后关闭数据库并释放锁. 具体取消顺序见 [composition/index.ts](./src/composition/index.ts).
+SIGINT 和 SIGTERM 进入同一个幂等关闭流程. 进程收尾由入口和平台代码负责, 前端路由不提供进程关闭接口. Server 关闭 WebSocket 和 HTTP 连接, 停止自动续接, 取消工作与语音, 停止后台命令和 MCP 连接, 等待 Memory 工作结束, 再关闭数据库并释放锁. 顺序见 [composition/index.ts](./src/composition/index.ts).
+
+业务收尾期限为八秒. 随后调用 `closeLogging()`, 最多等两秒完成文件写入, 同步和关闭, 再退出进程. 收尾错误或超时返回非零退出码. Rust 不再持有日志写入者或日志刷新握手. 强制终止, 包括 Windows 的进程树终止, 可能跳过 Node 收尾并丢失待写记录.
 
 ## 文件与数据库
 

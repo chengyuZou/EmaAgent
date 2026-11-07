@@ -1,3 +1,4 @@
+import { logging } from '@ema-agent/logging';
 import fs from 'node:fs';
 import path from 'node:path';
 import { PassThrough, Readable } from 'node:stream';
@@ -250,7 +251,12 @@ class AudioFile implements AudioWriter {
       } finally {
         if (replacing && (committed || !published)) {
           await fs.promises.rm(previousPath, { force: true }).catch(error => {
-            console.warn('[speech] 无法清除音频替换备份:', error);
+            logging({
+              level: 'warn',
+              target: 'speech',
+              event: 'speech.backup_cleanup_failed',
+              error,
+            });
           });
         }
       }
