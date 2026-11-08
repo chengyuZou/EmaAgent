@@ -10,7 +10,7 @@ import type {
   SessionBackupTaskRow,
   SessionBackupToolExecutionRow,
   SessionRow,
-  SpeechOutputRow,
+  SessionBackupSpeechOutputRow,
   TurnRow,
   UsageRecordRow,
 } from '@ema-agent/storage';
@@ -275,7 +275,11 @@ export const restoreAttachmentPastedTextRecord = (
 export const restoreSpeechOutputRecord = (
   record: SpeechOutputRecord,
   filePath: string,
-): SpeechOutputRow => ({
+): SessionBackupSpeechOutputRow => ({
+  audio_id: record.audioId,
+  audio_status: 'ready',
+  failure_message: null,
+  character_name: record.characterName,
   turn_id: record.turnId,
   session_id: record.sessionId,
   storage_path: filePath,
@@ -283,6 +287,13 @@ export const restoreSpeechOutputRecord = (
   byte_size: record.byteSize,
   duration_ms: record.durationMs,
   created_at: record.createdAt,
+  segments: record.segments.map(segment => ({
+    audio_id: record.audioId,
+    segment_index: segment.segmentIndex,
+    text_for_tts: segment.textForTTS,
+    start_ms: segment.startMs,
+    end_ms: segment.endMs,
+  })),
 });
 
 export const restoreUsageRecord = (record: UsageRecord): UsageRecordRow => ({

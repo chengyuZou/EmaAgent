@@ -113,7 +113,7 @@ export class SentenceSplitter {
     }
 
     // 中文句号, 叹号和问号不要求后接空白.
-    if (next && !/[\s"')\]}」』]/.test(next) && next !== undefined) {
+    if (next && !/[\s"')\]}」』]/.test(next)) {
       if (ch === '。' || ch === '！' || ch === '？') return true;
       return false;
     }

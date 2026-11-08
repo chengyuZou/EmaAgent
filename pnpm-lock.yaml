@@ -91,6 +91,9 @@ importers:
       '@ema-agent/skills':
         specifier: workspace:*
         version: link:../../src/skills
+      '@ema-agent/speech':
+        specifier: workspace:*
+        version: link:../../src/speech
       '@ema-agent/stage':
         specifier: workspace:*
         version: link:../../src/stage
@@ -1222,6 +1225,9 @@ importers:
       '@ema-agent/logging':
         specifier: workspace:*
         version: link:../logging
+      '@ema-agent/storage':
+        specifier: workspace:*
+        version: link:../storage
       '@ema-agent/tts':
         specifier: workspace:*
         version: link:../tts

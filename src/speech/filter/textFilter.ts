@@ -13,33 +13,33 @@ export class TextFilterStream {
   private atLineStart = true;
   // fence 开头/关闭符的 lookahead 缓冲:代码块需 3 个同类字符才确认开,
   // 数学块需 2 个.所以最多缓存 2 个,第 3 个到达时就能判定了.跨 chunk 保留.
-  private lineStartBuf = '';
-  private langTag = ''; // 语言标识可能跨分块到达, 例如 python.
+  private lineStartBuffer = '';
+  private codeLanguage = ''; // 语言标识可能跨分块到达, 例如 python.
 
   /** 保留跨分块围栏状态, 在块结束时输出短替换词, 而不是朗读代码正文. */
   feed(chunk: string): string {
-    let out = '';
-    let pos = 0;
-    const len = chunk.length;
+    let filteredText = '';
+    let position = 0;
+    const textLength = chunk.length;
 
-    while (pos < len) {
+    while (position < textLength) {
       switch (this.state) {
 
         // fence 只能在行首开,所以行内(非行首)这一段绝不可能开 fence,
         // 可以直接复制到下一个换行, 不必逐字符检查.
         case 'normal': {
           if (!this.atLineStart) {
-            const nl = chunk.indexOf('\n', pos);
-            if (nl === -1) {
+            const newlineIndex = chunk.indexOf('\n', position);
+            if (newlineIndex === -1) {
               // 整个 chunk 剩余都是行内普通文本,直接拼接
-              out += chunk.slice(pos);
-              return out;
+              filteredText += chunk.slice(position);
+              return filteredText;
             }
             // 批量复制到换行符之前,然后逐字符处理 \n(\n 会把 atLineStart 置回 true)
-            out += chunk.slice(pos, nl);
-            pos = nl;
-            out += this.step(chunk[pos]!);
-            pos++;
+            filteredText += chunk.slice(position, newlineIndex);
+            position = newlineIndex;
+            filteredText += this.step(chunk[position]!);
+            position++;
             continue;
           }
           break;
@@ -47,24 +47,24 @@ export class TextFilterStream {
 
         // 语言标识可能跨分块, 收到换行后才进入块内状态.
         case 'in_opener': {
-          const nl = chunk.indexOf('\n', pos);
-          if (nl === -1) {
-            this.langTag += chunk.slice(pos);
-            return out;
+          const newlineIndex = chunk.indexOf('\n', position);
+          if (newlineIndex === -1) {
+            this.codeLanguage += chunk.slice(position);
+            return filteredText;
           }
-          this.langTag += chunk.slice(pos, nl);
-          pos = nl;
-          out += this.step(chunk[pos]!);
-          pos++;
+          this.codeLanguage += chunk.slice(position, newlineIndex);
+          position = newlineIndex;
+          filteredText += this.step(chunk[position]!);
+          position++;
           continue;
         }
 
         case 'in_closer': {
-          const nl = chunk.indexOf('\n', pos);
-          if (nl === -1) return out;
-          pos = nl;
-          out += this.step(chunk[pos]!);
-          pos++;
+          const newlineIndex = chunk.indexOf('\n', position);
+          if (newlineIndex === -1) return filteredText;
+          position = newlineIndex;
+          filteredText += this.step(chunk[position]!);
+          position++;
           continue;
         }
 
@@ -72,11 +72,11 @@ export class TextFilterStream {
         case 'fenced_code':
         case 'math_block': {
           if (!this.atLineStart) {
-            const nl = chunk.indexOf('\n', pos);
-            if (nl === -1) return out;
-            pos = nl;
-            out += this.step(chunk[pos]!);
-            pos++;
+            const newlineIndex = chunk.indexOf('\n', position);
+            if (newlineIndex === -1) return filteredText;
+            position = newlineIndex;
+            filteredText += this.step(chunk[position]!);
+            position++;
             continue;
           }
           break;
@@ -86,11 +86,11 @@ export class TextFilterStream {
           break;
       }
 
-      out += this.step(chunk[pos]!);
-      pos++;
+      filteredText += this.step(chunk[position]!);
+      position++;
     }
 
-    return out;
+    return filteredText;
   }
 
   /**
@@ -99,8 +99,8 @@ export class TextFilterStream {
    * - 残留的行首 lookahead 字符 -> 作为普通文本 emit
    */
   flush(): string {
-    const remnant = this.lineStartBuf;
-    this.lineStartBuf = '';
+    const remnant = this.lineStartBuffer;
+    this.lineStartBuffer = '';
     this.atLineStart  = true;
 
     if (
@@ -113,7 +113,7 @@ export class TextFilterStream {
     }
 
     this.state   = 'normal';
-    this.langTag = '';
+    this.codeLanguage = '';
     return remnant;
   }
 
@@ -121,8 +121,8 @@ export class TextFilterStream {
     switch (this.state) {
       case 'normal':      return this.onNormal(ch);
       case 'in_opener':   return this.onInOpener(ch);
-      case 'fenced_code': return this.onFenced(ch);
-      case 'math_block':  return this.onMath(ch);
+      case 'fenced_code':
+      case 'math_block': return this.onBlockContent(ch);
       case 'in_closer':   return this.onInCloser(ch);
     }
   }
@@ -131,16 +131,16 @@ export class TextFilterStream {
     if (this.atLineStart) {
       // extending=true 表示当前字符和已缓存的行首字符同类(连续 `` ` 或 ~ 或 $),
       // 只有连续同类字符才算 fence 开头.比如 "``a" 第三字符是 a,不算 fence 开头.
-      const extending = this.lineStartBuf === '' || this.lineStartBuf[0] === ch;
+      const extending = this.lineStartBuffer === '' || this.lineStartBuffer[0] === ch;
 
       // 代码块 fence:行首 3+ 个连续 ` 或 ~
       if ((ch === '\`' || ch === '~') && extending) {
-        this.lineStartBuf += ch;
-        if (this.lineStartBuf.length >= 3) {
+        this.lineStartBuffer += ch;
+        if (this.lineStartBuffer.length >= 3) {
           // 凑够 3 个,确认是代码块 opener,进入 in_opener 等语言标识行
           this.fenceChar    = ch;
-          this.lineStartBuf = '';
-          this.langTag      = '';
+          this.lineStartBuffer = '';
+          this.codeLanguage      = '';
           this.atLineStart  = false;
           this.state        = 'in_opener';
         }
@@ -149,11 +149,11 @@ export class TextFilterStream {
 
       // 数学块 fence:行首 2+ 个连续 $
       if (ch === '$' && extending) {
-        this.lineStartBuf += ch;
-        if (this.lineStartBuf.length >= 2) {
+        this.lineStartBuffer += ch;
+        if (this.lineStartBuffer.length >= 2) {
           this.fenceChar    = '$';
-          this.lineStartBuf = '';
-          this.langTag      = '';
+          this.lineStartBuffer = '';
+          this.codeLanguage      = '';
           this.atLineStart  = false;
           this.state        = 'in_opener';
         }
@@ -161,8 +161,8 @@ export class TextFilterStream {
       }
 
       // 不是 fence 开头:把缓存的行首字符连同当前字符当普通文本吐出
-      const pending     = this.lineStartBuf;
-      this.lineStartBuf = '';
+      const pending     = this.lineStartBuffer;
+      this.lineStartBuffer = '';
       this.atLineStart  = ch === '\n';
       return pending + ch;
     }
@@ -174,9 +174,9 @@ export class TextFilterStream {
     return ch;
   }
 
-  // in_opener 状态:opener 行(如 ```python)的语言标识已在 feed 快速路径收集进 langTag,
+  // in_opener 状态:opener 行(如 ```python)的语言标识已在 feed 快速路径收集进 codeLanguage,
   // 这里只等 \n,遇到 \n 就按 fenceChar 转入块内状态(math_block 或 fenced_code).
-  // feed() 快速路径已把语言标识字符追加到 langTag;这里只处理 \n.
+  // feed() 快速路径已把语言标识字符追加到 codeLanguage;这里只处理 \n.
   private onInOpener(ch: string): string {
     if (ch === '\n') {
       this.atLineStart = true;
@@ -185,44 +185,24 @@ export class TextFilterStream {
     return '';
   }
 
-  // fenced_code 状态:代码块内容丢弃,只在行首监控关闭符(3+ 个同类 fenceChar).
-  private onFenced(ch: string): string {
+  /** 代码块与数学块共用逐行关闭符处理, 差别只有符号长度和朗读占位文字. */
+  private onBlockContent(ch: string): string {
+    const mathBlock = this.state === 'math_block';
+    const closingLength = mathBlock ? 2 : 3;
     if (this.atLineStart) {
       if (ch === this.fenceChar) {
-        this.lineStartBuf += ch;
-        if (this.lineStartBuf.length >= 3) {
-          // 凑够 3 个同类字符,确认是 closer -> emit 替换词,进入 in_closer 吃完该行
-          this.lineStartBuf = '';
-          this.atLineStart  = false;
-          this.state        = 'in_closer';
-          return this.codeReplacement();
+        this.lineStartBuffer += ch;
+        if (this.lineStartBuffer.length >= closingLength) {
+          const replacement = mathBlock ? ' (数学公式) ' : this.codeReplacement();
+          this.lineStartBuffer = '';
+          this.atLineStart = false;
+          this.state = 'in_closer';
+          return replacement;
         }
         return '';
       }
-      // 行首非同类字符:重置缓冲,继续在块内等关闭符
-      this.lineStartBuf = '';
-      this.atLineStart  = ch === '\n';
-      return '';
-    }
-    if (ch === '\n') this.atLineStart = true;
-    return '';
-  }
-
-  // math_block 状态:数学块内容丢弃,closer 是行首 2 个 $(不是 3+ 个,和代码块不同).
-  private onMath(ch: string): string {
-    if (this.atLineStart) {
-      if (ch === '$') {
-        this.lineStartBuf += ch;
-        if (this.lineStartBuf.length >= 2) {
-          this.lineStartBuf = '';
-          this.atLineStart  = false;
-          this.state        = 'in_closer';
-          return ' (数学公式) ';
-        }
-        return '';
-      }
-      this.lineStartBuf = '';
-      this.atLineStart  = ch === '\n';
+      this.lineStartBuffer = '';
+      this.atLineStart = ch === '\n';
       return '';
     }
     if (ch === '\n') this.atLineStart = true;
@@ -239,8 +219,8 @@ export class TextFilterStream {
   }
 
   private codeReplacement(): string {
-    const lang = this.langTag.trim();
-    this.langTag = '';
+    const lang = this.codeLanguage.trim();
+    this.codeLanguage = '';
     return lang ? ` (${lang}代码) ` : ' (代码) ';
   }
 }
@@ -273,28 +253,28 @@ export function filterSentenceForTTS(text: string): string {
   // 覆盖大部分正常对话句子(中文全角标点不触发此检查)
   if (!/[<![\]*_`$#>\-~|:\\/]/.test(text)) return text.trim();
 
-  let out = text;
+  let filteredText = text;
 
-  out = out.replace(RE_MD_IMAGE,      '(图片)');
-  out = out.replace(RE_MD_LINK,       '$1');
-  out = out.replace(RE_HTML_TAG,      '');
-  out = out.replace(RE_LINE_PREFIX,   '');
-  out = out.replace(RE_HR,            '');
-  out = out.replace(RE_TABLE_SEP,     '');
-  out = out.replace(RE_TABLE_PIPE,    ' ');
-  out = out.replace(RE_BOLD,          (_m, s1, s2) => s1 || s2);
-  out = out.replace(RE_ITALIC_STAR,   '$1');
-  out = out.replace(RE_ITALIC_UNDER,  '$1');
-  out = out.replace(RE_STRIKETHROUGH, '$1');
+  filteredText = filteredText.replace(RE_MD_IMAGE,      '(图片)');
+  filteredText = filteredText.replace(RE_MD_LINK,       '$1');
+  filteredText = filteredText.replace(RE_HTML_TAG,      '');
+  filteredText = filteredText.replace(RE_LINE_PREFIX,   '');
+  filteredText = filteredText.replace(RE_HR,            '');
+  filteredText = filteredText.replace(RE_TABLE_SEP,     '');
+  filteredText = filteredText.replace(RE_TABLE_PIPE,    ' ');
+  filteredText = filteredText.replace(RE_BOLD,          (_m, s1, s2) => s1 || s2);
+  filteredText = filteredText.replace(RE_ITALIC_STAR,   '$1');
+  filteredText = filteredText.replace(RE_ITALIC_UNDER,  '$1');
+  filteredText = filteredText.replace(RE_STRIKETHROUGH, '$1');
 
-  out = out.replace(RE_INLINE_CODE, '$2');
+  filteredText = filteredText.replace(RE_INLINE_CODE, '$2');
 
-  out = out.replace(RE_MATH_INLINE,   '(公式)');
-  out = out.replace(RE_MATH_LATEX_I,  '(公式)');
-  out = out.replace(RE_URL,           '链接');
-  out = out.replace(RE_WIN_PATH,      '路径');
-  out = out.replace(RE_NIX_PATH,      '路径');
-  out = out.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+  filteredText = filteredText.replace(RE_MATH_INLINE,   '(公式)');
+  filteredText = filteredText.replace(RE_MATH_LATEX_I,  '(公式)');
+  filteredText = filteredText.replace(RE_URL,           '链接');
+  filteredText = filteredText.replace(RE_WIN_PATH,      '路径');
+  filteredText = filteredText.replace(RE_NIX_PATH,      '路径');
+  filteredText = filteredText.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
 
-  return out;
+  return filteredText;
 }

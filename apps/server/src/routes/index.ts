@@ -2,6 +2,7 @@ import { logging } from '@ema-agent/logging';
 // 路由链的返回类型由 Desktop 的 hc<AppType> 读取. 拆成不返回结果的 app.route() 调用会丢失新增路径的类型.
 import { ATTACHMENT_RESIDUE_MAX_AGE_MS, readAttachmentCacheSettings } from '@ema-agent/attachments';
 import { Hono } from 'hono';
+import { audioRoute } from './audio.js';
 import { archiveSession, deleteArchivedSessions, deleteSession } from '../application/sessionActions.js';
 import { activateCharacter, deleteCharacter, runWhenSessionsIdle } from '../application/changeCharacter.js';
 import type { Composition } from '../composition/index.js';
@@ -47,7 +48,6 @@ import { systemStatusRoute } from './system/status.js';
 import { systemEventsRoute } from './system/events.js';
 import { tasksRoute } from './tasks.js';
 import { goalsRoute } from './goals.js';
-import { turnAudioRoute } from './turns/audio.js';
 import { turnRecordsRoute } from './turns/records.js';
 import { turnSpeechRoute } from './turns/speech.js';
 import { filesRoute } from './workspaces/files.js';
@@ -96,11 +96,7 @@ export const createRoutes = (composition: Composition, secret: string) => {
       messages: database.messages,
       subagentMessages: database.subagentMessageRecords,
     }))
-    .route('/api/turns', turnAudioRoute({
-      audioArchive: speech.audioArchive,
-      turns: database.turns,
-      currentCharacterName: () => characters.store.current().name,
-    }))
+    .route('/api/audio', audioRoute(speech.audioStore))
     .route('/api/turns', turnSpeechRoute({ speech, turns: database.turns, session: database.session }))
 
     // /summaries 在集合的 /:sessionId 前挂载, 避免被解释成一个 Session ID.
@@ -196,7 +192,7 @@ export const createRoutes = (composition: Composition, secret: string) => {
       modelCatalog: providers.modelCatalog,
       notifyProviderHealthChanged: providerId => appEvents.emit({ type: 'provider_health_changed', providerId }),
     }))
-    .route('/api/providers', providerCapabilitiesRoute({ voicePreview: speech.voicePreview, transcribe: speech.transcribe, sttPreview: speech.sttPreview }))
+    .route('/api/providers', providerCapabilitiesRoute({ previewVoice: speech.previewVoice, transcribe: speech.transcribe, sttPreview: speech.sttPreview }))
 
     .route('/api/settings', settingsEventDisplayRoute({ settings: settings.settings }))
     .route('/api/settings', settingsValuesRoute({ settings: settings.settings }))

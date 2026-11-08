@@ -118,7 +118,7 @@ async function actionFixture() {
     database: { session: fixture.sessions, sessionRunning: fixture.running, goals: fixture.goals, turns },
     turn: { subagents, turnExecutor: executor, interactionQueue: interactions, continuations: fixture.queue },
     tools: { backgroundProcesses: processes, discardSessionToolState: vi.fn(async () => undefined) },
-    speech,
+    speech: { speechGenerator: speech },
     vishotCapture: { capture: { cancelSession: vi.fn(async () => undefined) } },
     characters: { stage: { evictSession: vi.fn() } },
   } as unknown as Composition;

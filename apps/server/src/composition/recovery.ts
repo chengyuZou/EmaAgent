@@ -14,6 +14,7 @@ import type {
   ToolExecutionState,
 } from '@ema-agent/tools';
 import type { TurnStore } from '@ema-agent/turn';
+import type { AudioStore } from '@ema-agent/speech';
 import {
   sweepOrphanSessionDirectories,
   sweepOrphanTurnFiles,
@@ -30,6 +31,7 @@ export interface StartupRecoveryDeps {
   readonly backgroundProcesses: BackgroundProcess;
   readonly settings: SettingsStore;
   readonly goals: GoalStore;
+  readonly audioStore: Pick<AudioStore, 'markInterruptedAudioRecordsFailed'>;
 }
 
 /**
@@ -38,6 +40,7 @@ export interface StartupRecoveryDeps {
  * Memory 的任务恢复由 openMemory 返回的 start() 在 ready 后执行.
  */
 export function runRequiredRecovery(deps: StartupRecoveryDeps): void {
+  deps.audioStore.markInterruptedAudioRecordsFailed();
   deps.goals.pauseActiveOnStartup();
   recoverToolExecutions(deps);
   const interruptedProcesses = deps.backgroundProcesses.recoverInterrupted();

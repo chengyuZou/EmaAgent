@@ -79,12 +79,16 @@ export type {
   SessionBackupRestoreRows,
   SessionBackupRows,
   SessionBackupTaskRow,
+  SessionBackupSpeechOutputRow,
   SessionBackupToolExecutionRow,
 } from './repos/data/sessionBackup.js';
 export type {
   SpeechOutputInsert,
   SpeechOutputRow,
+  AudioStatus,
 } from './repos/data/speechOutputs.js';
+export { SpeechSegmentsRepo } from './repos/data/speechSegments.js';
+export type { SpeechSegmentInsert, SpeechSegmentRow } from './repos/data/speechSegments.js';
 export { McpServersRepo }  from './repos/profile/mcp-servers.js';
 export type { McpServerRow, McpServerSettingsRow } from './repos/profile/mcp-servers.js';
 export { McpMarketEntriesRepo } from './repos/profile/mcp-market.js';

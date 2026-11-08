@@ -1,8 +1,8 @@
-export type SpeechGenerateEvent = {
-  readonly sessionId: string;
-  readonly turnId: string;
-} & (
-  | { readonly type: 'speech_generate_started' }
+import type { AudioSegment, AudioStatus, SpeechAudioIdentity } from './types.js';
+
+/** 终态的 audioAvailable 只表示同一 audioId 是否已 ready, 不表示前端已经播完. */
+export type SpeechGenerationEvent = SpeechAudioIdentity & (
+  | { readonly type: 'speech_segments'; readonly segments: readonly AudioSegment[] }
   | {
       readonly type: 'speech_generate_warning';
       readonly code: string;
@@ -18,27 +18,23 @@ export type SpeechGenerateEvent = {
       readonly code: string;
       readonly message: string;
     }
-  | { readonly type: 'speech_generate_unavailable' }
 );
 
-/** 连接地址已经绑定 turnId; 命令只明确取消生成, 不报告播放进度. */
-export interface SpeechClientCommand {
-  readonly type: 'speech_generate_cancel';
-}
+export type SpeechGenerateEvent = SpeechGenerationEvent | {
+  readonly type: 'speech_generate_unavailable';
+  readonly sessionId: string;
+  readonly turnId: string;
+};
 
-/** 正式文件与 speech_outputs 记录均已保存, Chat 和 Storage 据此刷新音频状态. */
-export interface SpeechArchiveEvent {
+/** SQL 变更成功后发送. deleted 表示记录已删除, 不作为 SQL 中的状态保存. */
+export interface AudioRecordEvent extends SpeechAudioIdentity {
   readonly type: 'session_audio_changed';
-  readonly sessionId: string;
-  readonly turnId: string;
+  readonly audioStatus: AudioStatus | 'deleted';
 }
 
-/** 手动整轮生成的结果; audioAvailable 也可能指失败后仍保留的旧文件. */
-export type TurnSpeechGenerateResult = {
-  readonly sessionId: string;
-  readonly turnId: string;
-} & (
-  | { readonly status: 'completed'; readonly audioAvailable: true }
+/** 一次生成的结果; audioAvailable 只对应本次 audioId, 其他已保存音频另从目录选择. */
+export type SpeechGenerationResult = SpeechAudioIdentity & (
+  | { readonly status: 'completed'; readonly audioAvailable: boolean }
   | { readonly status: 'cancelled'; readonly audioAvailable: boolean }
   | {
       readonly status: 'failed';
@@ -47,3 +43,5 @@ export type TurnSpeechGenerateResult = {
       readonly message: string;
     }
 );
+
+export type SpeechEvent = SpeechGenerationEvent | AudioRecordEvent;

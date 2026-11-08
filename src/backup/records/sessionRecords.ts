@@ -273,6 +273,8 @@ export const attachmentPastedTextRecordSchema = z.object({
 }).strict();
 
 export const speechOutputRecordSchema = z.object({
+  audioId: id,
+  characterName: z.string(),
   turnId: id,
   sessionId: id,
   mimeType: z.literal('audio/wav'),
@@ -280,6 +282,12 @@ export const speechOutputRecordSchema = z.object({
   durationMs: nonNegativeInteger,
   createdAt: integer,
   filePath: z.string(),
+  segments: z.array(z.object({
+    segmentIndex: nonNegativeInteger,
+    textForTTS: z.string(),
+    startMs: z.number().finite().nonnegative(),
+    endMs: z.number().finite().positive(),
+  }).strict().refine(segment => segment.endMs > segment.startMs, 'Invalid audio segment range')),
 }).strict();
 
 export const usageRecordSchema = z.object({

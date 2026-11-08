@@ -95,7 +95,7 @@ async function stopSessionWork(
     composition.vishotCapture.capture.cancelSession(sessionId),
     turn.subagents.abortForSession(sessionId, reason),
     tools.backgroundProcesses.stopForSession(sessionId),
-    speech.cancelSessionSpeech(sessionId),
+    speech.speechGenerator.cancelSessionSpeech(sessionId),
     database.sessionRunning.waitUntilIdle(sessionId),
   ];
   if (running?.kind === 'turn') {
@@ -103,7 +103,7 @@ async function stopSessionWork(
   }
   const results = await Promise.allSettled(completions);
   // 主任务准备过程中可能刚登记语音任务, 此时主任务已停止, 再等它保存取消结果.
-  await speech.cancelSessionSpeech(sessionId);
+  await speech.speechGenerator.cancelSessionSpeech(sessionId);
   const failed = results.find(result => result.status === 'rejected');
   if (failed?.status === 'rejected') throw failed.reason;
 }

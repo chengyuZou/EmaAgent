@@ -3,8 +3,8 @@ import { z } from 'zod';
 import { ProviderError } from '@ema-agent/providers';
 import {
   SpeechVoicePreviewError,
-  type SpeechVoicePreview,
 } from '@ema-agent/speech';
+import type { SpeechComposition } from '../../composition/speech.js';
 import type { TranscriptionRequest, TranscriptionResult } from '@ema-agent/stt';
 import { REQUEST_VALUE_LIMITS } from '../../platform/requestBudget.js';
 import { providerError } from './configs.js';
@@ -22,7 +22,7 @@ const sttPreviewBody = z.object({
 });
 
 export interface ProviderCapabilitiesRouteDeps {
-  readonly voicePreview: SpeechVoicePreview;
+  readonly previewVoice: SpeechComposition['previewVoice'];
   /** STT 转写(装配层解析绑定并记账);未绑定返回 undefined. */
   readonly transcribe: (
     request: Omit<TranscriptionRequest, 'model'>,
@@ -66,7 +66,7 @@ export const providerCapabilitiesRoute = (deps: ProviderCapabilitiesRouteDeps) =
     .post('/:providerId/tts-preview', jsonBody(ttsPreviewBody), async context => {
       const { modelId, text } = context.req.valid('json');
       try {
-        const result = await deps.voicePreview.synthesize(
+        const result = await deps.previewVoice(
           context.req.param('providerId'),
           modelId,
           text?.trim() || DEFAULT_PREVIEW_TEXT,

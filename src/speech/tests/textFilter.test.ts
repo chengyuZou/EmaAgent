@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { TextFilterStream, filterSentenceForTTS } from '../textFilter.js';
+import { TextFilterStream, filterSentenceForTTS } from '../filter/textFilter.js';
 
 // 辅助:把一段文本按 chunk 列表喂进去,返回拼接结果 + flush 尾部.
 function runChunks(chunks: string[]): { streamed: string; flushed: string } {

@@ -2,7 +2,8 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import type { SessionStore } from '@ema-agent/session';
 import type { TurnStore } from '@ema-agent/turn';
-import { TurnSpeechRequestError, type SpeechComposition } from '../../composition/speech.js';
+import { SpeechRequestError } from '@ema-agent/speech';
+import type { SpeechComposition } from '../../composition/speech.js';
 import { jsonBody } from '../validate.js';
 
 const generateBody = z.object({
@@ -12,7 +13,7 @@ const generateBody = z.object({
 export interface TurnSpeechRouteDeps {
   readonly turns: Pick<TurnStore, 'getTurn'>;
   readonly session: Pick<SessionStore, 'loadMessagesForTurn'>;
-  readonly speech: Pick<SpeechComposition, 'generateTurnSpeech' | 'cancelTurnSpeech' | 'turnAudioRecords'>;
+  readonly speech: Pick<SpeechComposition, 'speechGenerator' | 'createTurnSpeechInput' | 'turnAudioRecords'>;
 }
 
 export const turnSpeechRoute = (deps: TurnSpeechRouteDeps) => new Hono()
@@ -32,13 +33,10 @@ export const turnSpeechRoute = (deps: TurnSpeechRouteDeps) => new Hono()
       return context.json({ error: 'speech/no_text', message: '该轮没有可朗读的回复正文' }, 422);
     }
     try {
-      return context.json(await deps.speech.generateTurnSpeech(
-        turn,
-        text,
-        context.req.valid('json').characterName,
-      ));
+      const input = deps.speech.createTurnSpeechInput(turn.sessionId, turn.id, context.req.valid('json').characterName);
+      return context.json(await deps.speech.speechGenerator.generateTurnAudio(input, text));
     } catch (error) {
-      if (!(error instanceof TurnSpeechRequestError)) throw error;
+      if (!(error instanceof SpeechRequestError)) throw error;
       const status = error.code === 'speech/already_generating' ? 409 : 422;
       return context.json({ error: error.code, message: error.message }, status);
     }
@@ -47,7 +45,7 @@ export const turnSpeechRoute = (deps: TurnSpeechRouteDeps) => new Hono()
     if (!deps.turns.getTurn(context.req.param('turnId'))) {
       return context.json({ error: 'turn_not_found', message: '该轮对话不存在' }, 404);
     }
-    await deps.speech.cancelTurnSpeech(context.req.param('turnId'));
+    await deps.speech.speechGenerator.cancelTurnSpeech(context.req.param('turnId'));
     return context.body(null, 204);
   });
 

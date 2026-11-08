@@ -82,10 +82,8 @@ export function publishSessionFiles(
       signal?.throwIfAborted();
       const parts = record.filePath.split('/');
       const fileName = parts[3];
-      const prefix = `${record.turnId}-`;
       if (parts.length !== 4 || parts[0] !== 'files' || parts[1] !== 'speechOutputs'
-        || parts[2] !== record.turnId || !fileName?.startsWith(prefix)
-        || !fileName.endsWith('.wav') || fileName.length <= prefix.length + '.wav'.length) {
+        || parts[2] !== record.turnId || !fileName?.endsWith('.wav') || fileName === '.wav') {
         throw new SessionImportError('invalid_format', `语音文件名与 Turn 不一致: ${record.filePath}`);
       }
       const source = archive.get(record.filePath);

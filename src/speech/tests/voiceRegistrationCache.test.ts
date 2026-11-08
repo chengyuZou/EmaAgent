@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { TTSProviderVoice, TTSVoiceReference } from '@ema-agent/tts';
-import { SpeechVoiceCache } from '../voiceHandleCache.js';
+import { VoiceRegistrationCache } from '../voiceRegistrationCache.js';
 
 const REFERENCE: TTSVoiceReference = {
   kind: 'reference',
@@ -30,9 +30,9 @@ function registrarReturning(voice: TTSProviderVoice) {
   };
 }
 
-describe('SpeechVoiceCache.prepare', () => {
+describe('VoiceRegistrationCache.prepare', () => {
   it('本地参考声音原样直通, 不进入缓存', async () => {
-    const cache = new SpeechVoiceCache();
+    const cache = new VoiceRegistrationCache();
     let calls = 0;
     const voice = await cache.prepare({
       ...REQUEST,
@@ -55,7 +55,7 @@ describe('SpeechVoiceCache.prepare', () => {
   });
 
   it('云端声音命中缓存后不再重复注册', async () => {
-    const cache = new SpeechVoiceCache();
+    const cache = new VoiceRegistrationCache();
     const source = registrarReturning({ kind: 'provider', id: 'voice-1' });
     const registrar = source.registrar;
 
@@ -68,7 +68,7 @@ describe('SpeechVoiceCache.prepare', () => {
   });
 
   it('参考资源版本变化后重新注册', async () => {
-    const cache = new SpeechVoiceCache();
+    const cache = new VoiceRegistrationCache();
     const source = registrarReturning({ kind: 'provider', id: 'voice-1' });
 
     await cache.prepare({ ...REQUEST, ttsVoiceRegistrar: source.registrar });
@@ -82,7 +82,7 @@ describe('SpeechVoiceCache.prepare', () => {
   });
 
   it('换模型使用独立缓存键, 必须重新注册', async () => {
-    const cache = new SpeechVoiceCache();
+    const cache = new VoiceRegistrationCache();
     const source = registrarReturning({ kind: 'provider', id: 'voice-1' });
 
     await cache.prepare({ ...REQUEST, ttsVoiceRegistrar: source.registrar });

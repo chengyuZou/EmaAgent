@@ -63,7 +63,7 @@ export function emaAuth(secret: string) {
 
     // 原生 audio 不能设置自定义请求头, 仅这些音频 GET 接受 URL 中的口令; 普通文件接口仍要求请求头.
     const isAudioGet = c.req.method === 'GET' && (
-      /^\/api\/turns\/[^/]+\/audio$/.test(c.req.path)
+      /^\/api\/audio\/[^/]+\/file$/.test(c.req.path)
       || /^\/api\/characters\/[^/]+\/voice\/[^/]+\/file$/.test(c.req.path)
       || c.req.path === '/api/workspaces/files/audio'
     );

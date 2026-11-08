@@ -8,7 +8,8 @@ import type { BackgroundProcessRow } from './backgroundProcesses.js';
 import type { GoalRow } from './goals.js';
 import type { MessageRow } from './messages.js';
 import type { SessionRow } from './sessions.js';
-import type { SpeechOutputRow } from './speechOutputs.js';
+import { SpeechOutputsRepo, type SpeechOutputRow } from './speechOutputs.js';
+import { SpeechSegmentsRepo, type SpeechSegmentRow } from './speechSegments.js';
 import type { TaskRow } from './tasks.js';
 import type { TurnRow } from './turns.js';
 import type { UsageRecordRow } from './usage-records.js';
@@ -36,6 +37,13 @@ export interface SessionBackupToolExecutionRow {
 
 export type SessionBackupTaskRow = TaskRow;
 
+export interface SessionBackupSpeechOutputRow extends SpeechOutputRow {
+  readonly audio_status: 'ready';
+  readonly byte_size: number;
+  readonly duration_ms: number;
+  readonly segments: readonly SpeechSegmentRow[];
+}
+
 /** Iterable 只允许在 readSession 回调期间消费,不能把 SQLite 游标带出事务. */
 export interface SessionBackupRows {
   readonly session: SessionRow;
@@ -50,7 +58,7 @@ export interface SessionBackupRows {
   readonly backgroundProcesses: Iterable<BackgroundProcessRow>;
   readonly attachmentImages: Iterable<AttachmentImageRow>;
   readonly attachmentPastedTexts: Iterable<AttachmentPastedTextRow>;
-  readonly speechOutputs: Iterable<SpeechOutputRow>;
+  readonly speechOutputs: Iterable<SessionBackupSpeechOutputRow>;
   readonly usageRecords: Iterable<UsageRecordRow>;
 }
 
@@ -136,11 +144,7 @@ export class SessionBackupReader {
           'SELECT * FROM attachment_pasted_texts WHERE session_id = ? ORDER BY created_at ASC, path ASC',
           sessionId,
         ),
-        speechOutputs: this.iterate<SpeechOutputRow>(`
-          SELECT * FROM speech_outputs
-          WHERE session_id = ?
-          ORDER BY created_at ASC, turn_id ASC
-        `, sessionId),
+        speechOutputs: this.readSpeechOutputs(sessionId),
         usageRecords: this.iterate<UsageRecordRow>(`
           SELECT * FROM usage_records
           WHERE session_id = ?
@@ -154,6 +158,22 @@ export class SessionBackupReader {
     return {
       [Symbol.iterator]: () => this.db.prepare(sql).iterate(sessionId) as IterableIterator<T>,
     };
+  }
+
+  private *readSpeechOutputs(sessionId: string): Iterable<SessionBackupSpeechOutputRow> {
+    const segmentStorage = new SpeechSegmentsRepo(this.db);
+    const speechStorage = new SpeechOutputsRepo(this.db);
+    for (const output of speechStorage.listForSession(sessionId)) {
+      // 备份只收集已完成的音频, 不把正在写入或待清理的文件当作可播放资源.
+      if (output.audio_status !== 'ready') continue;
+      yield {
+        ...output,
+        audio_status: 'ready',
+        byte_size: output.byte_size!,
+        duration_ms: output.duration_ms!,
+        segments: segmentStorage.listForAudio(output.audio_id),
+      };
+    }
   }
 }
 
@@ -360,17 +380,28 @@ export class SessionBackupRestorer {
       );
     }
 
-    const insertSpeechOutput = this.db.prepare(`
-      INSERT INTO speech_outputs (
-        turn_id, session_id, storage_path, mime_type,
-        byte_size, duration_ms, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
+    const speechStorage = new SpeechOutputsRepo(this.db);
+    const segmentStorage = new SpeechSegmentsRepo(this.db);
     for (const row of rows.speechOutputs) {
-      insertSpeechOutput.run(
-        row.turn_id, session.id, row.storage_path, row.mime_type,
-        row.byte_size, row.duration_ms, row.created_at,
-      );
+      speechStorage.insertAudio({
+        audioId: row.audio_id,
+        characterName: row.character_name,
+        turnId: row.turn_id,
+        sessionId: session.id,
+        storagePath: row.storage_path,
+        mimeType: row.mime_type,
+        audioStatus: 'ready',
+        failureMessage: null,
+        byteSize: row.byte_size,
+        durationMs: row.duration_ms,
+        createdAt: row.created_at,
+      });
+      segmentStorage.insertForAudio(row.audio_id, row.segments.map(segment => ({
+        segmentIndex: segment.segment_index,
+        textForTTS: segment.text_for_tts,
+        startMs: segment.start_ms,
+        endMs: segment.end_ms,
+      })));
     }
 
     const insertUsage = this.db.prepare(`

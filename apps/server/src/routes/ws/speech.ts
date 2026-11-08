@@ -1,13 +1,12 @@
 import { upgradeWebSocket } from '@hono/node-server';
 import { Hono } from 'hono';
 import type { WSContext } from 'hono/ws';
-import type { SpeechClientCommand } from '@ema-agent/speech';
 import type { TurnStore } from '@ema-agent/turn';
 import type { SpeechComposition, SpeechSocketClient } from '../../composition/speech.js';
-export type { SpeechClientCommand, SpeechGenerateEvent } from '@ema-agent/speech';
+export type { SpeechGenerateEvent } from '@ema-agent/speech';
 
 export const speechWebSocketRoute = (
-  speech: Pick<SpeechComposition, 'attachSpeechSocket' | 'detachSpeechSocket' | 'cancelTurnSpeech'>,
+  speech: Pick<SpeechComposition, 'attachSpeechSocket' | 'detachSpeechSocket'>,
   turns: Pick<TurnStore, 'getTurn'>,
 ) => new Hono().get('/:turnId', upgradeWebSocket(context => {
   const turnId = context.req.param('turnId')!;
@@ -20,17 +19,10 @@ export const speechWebSocketRoute = (
         return;
       }
       client = socketClient(socket);
-      void speech.attachSpeechSocket(sessionId, turnId, client).catch(() => {
+      try {
+        speech.attachSpeechSocket(sessionId, turnId, client);
+      } catch {
         socket.close(1011, 'speech_attach_failed');
-      });
-    },
-    onMessage(event, socket) {
-      if (!client || !sessionId || typeof event.data !== 'string') return;
-      const command = parseClientCommand(event.data);
-      if (command) {
-        void speech.cancelTurnSpeech(turnId).catch(() => {
-          socket.close(1011, 'speech_cancel_failed');
-        });
       }
     },
     onClose() {
@@ -53,11 +45,3 @@ function socketClient(socket: WSContext): SpeechSocketClient {
   };
 }
 
-function parseClientCommand(source: string): SpeechClientCommand | null {
-  try {
-    const value = JSON.parse(source) as { type?: unknown } | null;
-    return value?.type === 'speech_generate_cancel' ? { type: value.type } : null;
-  } catch {
-    return null;
-  }
-}

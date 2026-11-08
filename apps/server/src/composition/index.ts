@@ -121,7 +121,7 @@ export async function buildComposition(input: { activeDataDir: string; initializ
       }
     },
     emitAppEvent: event => appEvents.emit(event),
-    startTurnSpeech: speech.startTurnSpeech,
+    speech,
   });
   // 截图对象创建时没有目标 Session, 不会执行这些队列回调.
   let turn: TurnComposition;
@@ -208,7 +208,7 @@ export async function buildComposition(input: { activeDataDir: string; initializ
       // 等消息保存和运行记录清理完成, 再关闭原生操控进程; 数据库留到最后关闭.
       await turnsStopped;
       await computerUse?.close();
-      await speech.close();
+      await speech.speechGenerator.close();
       stopPublishingSessionRunning();
       await turn.subagents.shutdown('Application is shutting down');
       await tools.backgroundProcesses.shutdown();

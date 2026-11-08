@@ -1,6 +1,7 @@
 import { logging } from '@ema-agent/logging';
 import type { TurnHandle, TurnStreamEvent } from '@ema-agent/turn';
-import type { TurnSpeechHandle } from '../composition/speech.js';
+import type { SpeechGeneration } from '@ema-agent/speech';
+import type { SpeechComposition } from '../composition/speech.js';
 
 export interface TurnFanoutDeps {
   readonly publishTurnEvent: (
@@ -14,11 +15,7 @@ export interface TurnFanoutDeps {
       { type: 'turn_started' | 'turn_completed' | 'turn_failed' | 'turn_aborted' }
     >,
   ) => void;
-  readonly startTurnSpeech: (setup: {
-    sessionId: string;
-    turnId: string;
-    signal: AbortSignal;
-  }) => Promise<TurnSpeechHandle | null>;
+  readonly speech: Pick<SpeechComposition, 'speechGenerator' | 'createTurnSpeechInput'>;
 }
 
 export class TurnFanout {
@@ -31,16 +28,15 @@ export class TurnFanout {
   private async pump(handle: TurnHandle): Promise<void> {
     const { sessionId, turnId } = handle;
     const speechAbort = new AbortController();
-    let speechPromise: Promise<TurnSpeechHandle | null> = Promise.resolve(null);
+    let speechGeneration: SpeechGeneration | null = null;
     let completed = false;
     try {
       for await (const event of handle.events) {
         if (event.type === 'turn_started' && event.ttsEnabled) {
-          speechPromise = this.deps.startTurnSpeech({
-            sessionId,
-            turnId,
-            signal: speechAbort.signal,
-          }).catch(error => {
+          try {
+            const input = this.deps.speech.createTurnSpeechInput(sessionId, turnId, undefined, speechAbort.signal);
+            speechGeneration = this.deps.speech.speechGenerator.startTurnSpeech(input);
+          } catch (error) {
             logging({
               level: 'warn',
               target: 'speech',
@@ -48,36 +44,21 @@ export class TurnFanout {
               error,
               body: { sessionId, turnId },
             });
-            return null;
-          });
+          }
         }
         if (event.type === 'output_text_delta') {
-          void speechPromise.then(speech => speech?.acceptTextDelta(event.delta));
+          if (speechGeneration) {
+            this.deps.speech.speechGenerator.appendTextDelta(speechGeneration.audioId, event.delta);
+          }
         }
         if (event.type === 'turn_completed') {
           completed = true;
-          void speechPromise
-            .then(speech => speech?.finish())
-            .catch(error => logging({
-              level: 'warn',
-              target: 'speech',
-              event: 'speech.save_failed',
-              error,
-              body: { turnId },
-            }));
+          // 正常结束只封口, 不阻塞 Turn 事件和下一轮输入.
+          if (speechGeneration) this.deps.speech.speechGenerator.endTextInput(speechGeneration.audioId);
         }
         this.deps.publishTurnEvent(sessionId, turnId, event);
         if (event.type === 'turn_failed' || event.type === 'turn_aborted') {
           speechAbort.abort('turn ended without completion');
-          void speechPromise
-            .then(speech => speech?.cancel())
-            .catch(error => logging({
-              level: 'warn',
-              target: 'speech',
-              event: 'speech.cancel_failed',
-              error,
-              body: { turnId },
-            }));
         }
         if (isTurnActivity(event)) {
           this.deps.emitAppEvent(event);

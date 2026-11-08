@@ -53,14 +53,14 @@ describe('database initialization', () => {
     database = new Database({ memory: true, kind });
     expect(database.currentVersion()).toBe(0);
     await database.migrate();
-    expect(database.currentVersion()).toBe(kind === 'profile' ? 2 : 1);
+    expect(database.currentVersion()).toBe(2);
     const before = database.sqlite.prepare(
       "SELECT type, name, sql FROM sqlite_schema ORDER BY type, name",
     ).all();
 
     await database.migrate();
 
-    expect(database.currentVersion()).toBe(kind === 'profile' ? 2 : 1);
+    expect(database.currentVersion()).toBe(2);
     expect(database.sqlite.prepare(
       "SELECT type, name, sql FROM sqlite_schema ORDER BY type, name",
     ).all()).toEqual(before);
@@ -77,6 +77,24 @@ describe('database initialization', () => {
     expect(database.currentVersion()).toBe(2);
     expect(database.sqlite.prepare('SELECT * FROM character_stickers').all()).toEqual([]);
     expect(database.sqlite.prepare('SELECT value_json FROM settings WHERE key = ?').pluck().get('keep')).toBe('42');
+  });
+
+  it('assigns audio identities to existing WAV records without inventing segment timings', async () => {
+    database = new Database({ memory: true, kind: 'data' });
+    database.sqlite.exec(fs.readFileSync(new URL('../migrations/data/001_initial.sql', import.meta.url), 'utf8'));
+    database.sqlite.pragma('user_version = 1');
+    database.sqlite.exec(`
+      INSERT INTO sessions (id, title, cwd, created_at, updated_at) VALUES ('s', 'S', '.', 1, 1);
+      INSERT INTO turns (id, session_id, status, created_at) VALUES ('turn-a', 's', 'completed', 1);
+      INSERT INTO speech_outputs VALUES ('turn-a', 's', 'D:\\audio\\turn-a\\turn-a-希罗-test.wav', 'audio/wav', 100, 10, 1);
+    `);
+    await database.migrate();
+    const audio = database.sqlite.prepare('SELECT audio_id, character_name FROM speech_outputs').get() as {
+      audio_id: string; character_name: string;
+    };
+    expect(audio.audio_id).toHaveLength(32);
+    expect(audio.character_name).toBe('希罗-test');
+    expect(database.sqlite.prepare('SELECT * FROM speech_output_segments').all()).toEqual([]);
   });
 
   it('profile contains provider seeds and stores skill choices without a separate migration table', async () => {
@@ -174,7 +192,7 @@ describe('database initialization', () => {
 
   it.each(['profile', 'data'] as const)('%s refuses a database newer than its SQL files', async kind => {
     database = new Database({ memory: true, kind });
-    const newest = kind === 'profile' ? 2 : 1;
+    const newest = 2;
     database.sqlite.pragma(`user_version = ${newest + 1}`);
     await expect(database!.migrate()).rejects.toThrow(new RegExp(`v${newest + 1}.*v${newest}`));
     expect(database.currentVersion()).toBe(newest + 1);

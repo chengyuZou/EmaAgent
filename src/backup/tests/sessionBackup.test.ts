@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { BackgroundProcessesRepo, Database, SessionBackupReader, SessionBackupRestorer, SpeechOutputsRepo } from '@ema-agent/storage';
+import { BackgroundProcessesRepo, Database, SessionBackupReader, SessionBackupRestorer, SpeechOutputsRepo, SpeechSegmentsRepo } from '@ema-agent/storage';
 import { SESSION_RESOURCE_KINDS, sessionResourceDir } from '@ema-agent/storage/dataPaths';
 import { SessionBackup } from '../sessionBackup.js';
 import { readZip, writeZip } from './zipFixtures.js';
@@ -45,14 +45,22 @@ async function fixture() {
   return { root, sourceDir, targetDir, sourceDb, targetDb, restorer, source, target, zipPath: path.join(root, '会话.zip') };
 }
 
-function addSpeech(data: Awaited<ReturnType<typeof fixture>>, characterName: string): string {
-  const storagePath = path.join(data.sourceDir, 'audio', 'session', 'turn', `turn-${characterName}.wav`);
+function addSpeech(data: Awaited<ReturnType<typeof fixture>>, characterName: string, audioId?: string): string {
+  const fileName = audioId ? `${characterName}-${audioId}.wav` : `turn-${characterName}.wav`;
+  const storagePath = path.join(data.sourceDir, 'audio', 'session', 'turn', fileName);
   fs.mkdirSync(path.dirname(storagePath), { recursive: true });
   fs.writeFileSync(storagePath, Buffer.from([1, 2, 3, 4]));
-  new SpeechOutputsRepo(data.sourceDb.sqlite).record({
+  new SpeechOutputsRepo(data.sourceDb.sqlite).insertAudio({
+    audioId: audioId ?? characterName,
+    characterName,
+    audioStatus: 'ready',
+    failureMessage: null,
     turnId: 'turn', sessionId: 'session', storagePath, mimeType: 'audio/wav',
     byteSize: 4, durationMs: 1500, createdAt: 1,
   });
+  new SpeechSegmentsRepo(data.sourceDb.sqlite).insertForAudio(audioId ?? characterName, [
+    { segmentIndex: 0, textForTTS: '保存的字幕', startMs: 0, endMs: 1500 },
+  ]);
   return storagePath;
 }
 
@@ -239,22 +247,25 @@ describe('SessionBackup', () => {
     expect(fs.readdirSync(path.join(dataDir, '.backup-temp', 'exports'))).toEqual([]);
   });
 
-  it('按路径导出和导入同轮不同角色的正式音频, 时长和原文件内容保留', async () => {
+  it('新旧文件名的角色音频均保留身份, 字幕段和文件内容', async () => {
     const data = await fixture();
-    addSpeech(data, '艾玛');
+    addSpeech(data, '艾玛', 'generated-audio');
     addSpeech(data, '另一角色');
     const exported = await data.source.exportSession('session', data.zipPath);
     expect(exported).toEqual({ filePath: data.zipPath, warnings: [] });
     expect(fs.existsSync(exported.filePath)).toBe(true);
     await expect(data.target.importSession(data.zipPath)).resolves.toEqual({ sessionId: 'session', warnings: [] });
-    const outputs = new SpeechOutputsRepo(data.targetDb.sqlite).listForTurn('turn');
+    const outputs = new SpeechOutputsRepo(data.targetDb.sqlite).listForSession('session');
     expect(outputs).toHaveLength(2);
     for (const output of outputs) {
       expect(output.duration_ms).toBe(1500);
       expect(output.mime_type).toBe('audio/wav');
       expect(output.storage_path.startsWith(data.targetDir)).toBe(true);
       expect(fs.readFileSync(output.storage_path)).toEqual(Buffer.from([1, 2, 3, 4]));
+      expect(new SpeechSegmentsRepo(data.targetDb.sqlite).listForAudio(output.audio_id)[0]?.text_for_tts).toBe('保存的字幕');
     }
+    expect(outputs.find(output => output.character_name === '艾玛')?.audio_id).toBe('generated-audio');
+    expect(fs.existsSync(path.join(data.targetDir, 'audio', 'session', 'turn', '艾玛-generated-audio.wav'))).toBe(true);
     expect(fs.readdirSync(path.join(data.sourceDir, '.backup-temp', 'exports'))).toEqual([]);
     expect(fs.readdirSync(path.join(data.targetDir, '.backup-temp', 'imports'))).toEqual([]);
   });
@@ -267,7 +278,7 @@ describe('SessionBackup', () => {
     expect(exported.warnings).toEqual(['speechOutput:turn 未包含文件内容']);
     const imported = await data.target.importSession(data.zipPath);
     expect(imported.warnings).toEqual(exported.warnings);
-    expect(new SpeechOutputsRepo(data.targetDb.sqlite).listForTurn('turn')).toEqual([]);
+    expect(new SpeechOutputsRepo(data.targetDb.sqlite).listForSession('session')).toEqual([]);
   });
 
   it('同 ID 会话导入冲突时不覆盖原数据', async () => {
@@ -292,7 +303,7 @@ describe('SessionBackup', () => {
     expect(entries.get('files/speechOutputs/turn/turn-艾玛.wav')).toBeUndefined();
     await expect(data.target.importSession(data.zipPath))
       .resolves.toEqual({ sessionId: 'session', warnings: exported.warnings });
-    expect(new SpeechOutputsRepo(data.targetDb.sqlite).listForTurn('turn')).toEqual([]);
+    expect(new SpeechOutputsRepo(data.targetDb.sqlite).listForSession('session')).toEqual([]);
   });
 
   it('写入失败不破坏所选位置的已有备份, 也不留下半个 ZIP', async () => {

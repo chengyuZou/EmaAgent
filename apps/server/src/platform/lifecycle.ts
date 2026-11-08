@@ -79,6 +79,7 @@ export async function startServer(secret: string): Promise<ServerLifecycle> {
       backgroundProcesses: running.tools.backgroundProcesses,
       settings: running.settings.settings,
       goals: running.database.goals,
+      audioStore: running.speech.audioStore,
     };
     phaseStartedAt = performance.now();
     logging({
