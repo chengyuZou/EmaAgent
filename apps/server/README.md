@@ -77,8 +77,12 @@ Session deletion waits for its work to stop before deleting database rows and fi
 | HTTP | Lists, history, settings, resources, model configuration, context estimates and explicit operations such as backup. |
 | `/api/ws/session/:sessionId` | User input, queued-input control, permission answers, cancellation, manual compaction and Session events. |
 | `/api/system/events` | SSE notifications that tell open windows to refresh shared application state. |
-| `/api/ws/speech/:turnId` | Speech-generation state and cancellation. |
-| `/api/turns/:turnId/audio` | Audio bytes, including an in-progress response. |
+| `/api/ws/speech/:turnId` | Audio identity, segment updates, and generation state. Closing it does not cancel generation. |
+| `/api/audio/:audioId/playback` | The selected identity and its live or saved caption segments. |
+| `/api/audio/:audioId/file` | Audio bytes, including in-progress reads from the temporary WAV. |
+| `/api/audio/:audioId` | Record details through GET, or deletion through DELETE. |
+
+Speech cancellation uses the Turn speech HTTP route. AudioStore emits `session_audio_changed` after each successful SQL creation, status update, or deletion, including audioId and the resulting status. Deleting blocks new reads and closes existing readers before removing files and SQL. Startup marks interrupted audio records failed before accepting requests. Neither a ready notice nor a generation terminal event means the desktop has finished playing. See [Speech](../../src/speech/README.md) for recording and segment timing.
 
 A Session request's acknowledgement means that request was accepted, not that the Turn finished:
 

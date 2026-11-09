@@ -77,8 +77,12 @@ SIGINT 和 SIGTERM 进入同一个幂等关闭流程. 进程收尾由入口和�
 | HTTP | 列表, 历史, 设置, 资源, 模型配置, 上下文估算和备份等显式操作. |
 | `/api/ws/session/:sessionId` | 用户输入, 排队控制, 权限回答, 取消, 手动压缩和 Session 事件. |
 | `/api/system/events` | SSE 提示, 通知已打开窗口刷新应用级状态. |
-| `/api/ws/speech/:turnId` | 语音生成状态和取消. |
-| `/api/turns/:turnId/audio` | 音频字节, 包括仍在生成的响应. |
+| `/api/ws/speech/:turnId` | 音频身份, 段更新和生成状态, 关闭连接不取消生成. |
+| `/api/audio/:audioId/playback` | 选定音频的身份及实时或已保存的字幕段. |
+| `/api/audio/:audioId/file` | 音频字节, 支持从临时 WAV 实时读取. |
+| `/api/audio/:audioId` | GET 查询完整记录, DELETE 按 ID 删除. |
+
+语音取消通过 Turn 的 speech HTTP 路由执行. AudioStore 在 SQL 创建, 状态更新或删除成功后发送 `session_audio_changed`, 包含 audioId 和结果状态. 删除先拒绝新读取并关闭已有读者, 再清理文件和 SQL. 启动时先将中断的音频记录改为 failed, 再接受请求. ready 通知和生成终态都不表示前端已经播完. 录音与段时间规则见 [Speech](../../src/speech/README-zh.md).
 
 Session 请求的确认只表示请求被接受, 不表示 Turn 已完成:
 

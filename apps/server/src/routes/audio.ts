@@ -1,8 +1,11 @@
 import { Hono } from 'hono';
 import { Readable } from 'node:stream';
-import { SpeechRequestError, type AudioStore } from '@ema-agent/speech';
+import { SpeechRequestError, type AudioStore, type SpeechGenerator } from '@ema-agent/speech';
 
-export const audioRoute = (audioStore: Pick<AudioStore, 'deleteAudio' | 'getAudioPlayback' | 'openRead' | 'outputs'>) => new Hono()
+export const audioRoute = (
+  audioStore: Pick<AudioStore, 'deleteAudio' | 'getAudioPlayback' | 'openRead' | 'outputs'>, 
+  speechGenerator: Pick<SpeechGenerator, 'cancelGeneration'>
+) => new Hono()
   .get('/:audioId', context => {
     const audioRecord = audioStore.outputs.findByAudioId(context.req.param('audioId'));
     if (!audioRecord) return context.json({ error: 'audio_not_found' }, 404);
@@ -19,6 +22,10 @@ export const audioRoute = (audioStore: Pick<AudioStore, 'deleteAudio' | 'getAudi
     const headers = new Headers({ 'Content-Type': audioRead.mimeType, 'Cache-Control': 'no-store' });
     if (audioRead.byteSize !== null) headers.set('Content-Length', String(audioRead.byteSize));
     return new Response(Readable.toWeb(audioRead.stream) as ReadableStream<Uint8Array>, { headers });
+  })
+  .post('/:audioId/cancel', async context => {
+    await speechGenerator.cancelGeneration(context.req.param('audioId'));
+    return context.body(null, 204);
   })
   .delete('/:audioId', async context => {
     try {

@@ -89,14 +89,14 @@ export const createRoutes = (composition: Composition, secret: string) => {
       interactions: turn.interactionQueue,
       compactSession: commands.compactSession,
     }))
-    .route('/api/ws/speech', speechWebSocketRoute(speech, database.turns))
+    .route('/api/ws/speech', speechWebSocketRoute(speech))
     .route('/api/turns', turnRecordsRoute({
       turns: database.turns,
       toolExecutions: database.toolExecutions,
       messages: database.messages,
       subagentMessages: database.subagentMessageRecords,
     }))
-    .route('/api/audio', audioRoute(speech.audioStore))
+    .route('/api/audio', audioRoute(speech.audioStore, speech.speechGenerator))
     .route('/api/turns', turnSpeechRoute({ speech, turns: database.turns, session: database.session }))
 
     // /summaries 在集合的 /:sessionId 前挂载, 避免被解释成一个 Session ID.

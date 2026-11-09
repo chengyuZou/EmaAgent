@@ -1,35 +1,27 @@
 import { upgradeWebSocket } from '@hono/node-server';
 import { Hono } from 'hono';
 import type { WSContext } from 'hono/ws';
-import type { TurnStore } from '@ema-agent/turn';
 import type { SpeechComposition, SpeechSocketClient } from '../../composition/speech.js';
-export type { SpeechGenerateEvent } from '@ema-agent/speech';
 
 export const speechWebSocketRoute = (
   speech: Pick<SpeechComposition, 'attachSpeechSocket' | 'detachSpeechSocket'>,
-  turns: Pick<TurnStore, 'getTurn'>,
-) => new Hono().get('/:turnId', upgradeWebSocket(context => {
-  const turnId = context.req.param('turnId')!;
-  const sessionId = turns.getTurn(turnId)?.sessionId;
+) => new Hono().get('/:audioId', upgradeWebSocket(context => {
+  const audioId = context.req.param('audioId')!;
   let client: SpeechSocketClient | null = null;
   return {
     onOpen(_event, socket) {
-      if (!sessionId) {
-        socket.close(1008, 'turn_not_found');
-        return;
-      }
       client = socketClient(socket);
       try {
-        speech.attachSpeechSocket(sessionId, turnId, client);
+        speech.attachSpeechSocket(audioId, client);
       } catch {
         socket.close(1011, 'speech_attach_failed');
       }
     },
     onClose() {
-      if (client && sessionId) speech.detachSpeechSocket(sessionId, turnId, client);
+      if (client) speech.detachSpeechSocket(audioId, client);
     },
     onError() {
-      if (client && sessionId) speech.detachSpeechSocket(sessionId, turnId, client);
+      if (client) speech.detachSpeechSocket(audioId, client);
     },
   };
 }));

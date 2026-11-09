@@ -1,6 +1,6 @@
 import { logging } from '@ema-agent/logging';
 import type { TurnHandle, TurnStreamEvent } from '@ema-agent/turn';
-import type { SpeechGeneration } from '@ema-agent/speech';
+import type { SpeechGeneration, SpeechGenerator } from '@ema-agent/speech';
 import type { SpeechComposition } from '../composition/speech.js';
 
 export interface TurnFanoutDeps {
@@ -15,7 +15,10 @@ export interface TurnFanoutDeps {
       { type: 'turn_started' | 'turn_completed' | 'turn_failed' | 'turn_aborted' }
     >,
   ) => void;
-  readonly speech: Pick<SpeechComposition, 'speechGenerator' | 'createTurnSpeechInput'>;
+  readonly speech: {
+    readonly speechGenerator: Pick<SpeechGenerator, 'startTurnSpeech' | 'appendTextDelta' | 'endTextInput'>;
+    readonly createTurnSpeechInput: SpeechComposition['createTurnSpeechInput'];
+  };
 }
 
 export class TurnFanout {
@@ -48,7 +51,7 @@ export class TurnFanout {
         }
         if (event.type === 'output_text_delta') {
           if (speechGeneration) {
-            this.deps.speech.speechGenerator.appendTextDelta(speechGeneration.audioId, event.delta);
+            this.deps.speech.speechGenerator.appendTextDelta(speechGeneration.audioId, event.delta, event.tags ?? null);
           }
         }
         if (event.type === 'turn_completed') {
@@ -56,7 +59,9 @@ export class TurnFanout {
           // 正常结束只封口, 不阻塞 Turn 事件和下一轮输入.
           if (speechGeneration) this.deps.speech.speechGenerator.endTextInput(speechGeneration.audioId);
         }
-        this.deps.publishTurnEvent(sessionId, turnId, event);
+        this.deps.publishTurnEvent(sessionId, turnId, event.type === 'turn_started'
+          ? { ...event, audioId: speechGeneration?.audioId ?? null, characterName: speechGeneration?.characterName }
+          : event);
         if (event.type === 'turn_failed' || event.type === 'turn_aborted') {
           speechAbort.abort('turn ended without completion');
         }

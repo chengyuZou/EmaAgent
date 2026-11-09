@@ -33,6 +33,7 @@
     "@ema-agent/server": "workspace:*",
     "@ema-agent/session": "workspace:*",
     "@ema-agent/skills": "workspace:*",
+    "@ema-agent/speech": "workspace:*",
     "@ema-agent/stage": "workspace:*",
     "@ema-agent/storage": "workspace:*",
     "@ema-agent/stt": "workspace:*",

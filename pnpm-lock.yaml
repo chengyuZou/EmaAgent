@@ -1225,6 +1225,9 @@ importers:
       '@ema-agent/logging':
         specifier: workspace:*
         version: link:../logging
+      '@ema-agent/stage':
+        specifier: workspace:*
+        version: link:../stage
       '@ema-agent/storage':
         specifier: workspace:*
         version: link:../storage

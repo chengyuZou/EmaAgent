@@ -10,7 +10,7 @@ import {
   SpeechGenerator,
   SpeechRequestError,
   SpeechVoicePreviewError,
-  type SpeechGenerateEvent,
+  type SpeechGenerationEvent,
   type AudioRecordEvent,
   type StartTurnSpeechInput,
   type SpeechVoicePreviewResult,
@@ -21,7 +21,7 @@ import type { UsageRecorder } from '@ema-agent/usage';
 import type { Turn } from '@ema-agent/turn';
 
 export interface SpeechSocketClient {
-  sendControl(event: SpeechGenerateEvent): void;
+  sendControl(event: SpeechGenerationEvent): void;
   close(): void;
 }
 
@@ -53,8 +53,8 @@ export interface SpeechComposition {
   ): Promise<SpeechVoicePreviewResult>;
   transcribe(request: TranscriptionRequest): Promise<TranscriptionResult | undefined>;
   sttPreview(providerId: string, modelId: string, signal?: AbortSignal): Promise<{ text: string; referenceText: string }>;
-  attachSpeechSocket(sessionId: string, turnId: string, client: SpeechSocketClient): void;
-  detachSpeechSocket(sessionId: string, turnId: string, client: SpeechSocketClient): void;
+  attachSpeechSocket(audioId: string, client: SpeechSocketClient): void;
+  detachSpeechSocket(audioId: string, client: SpeechSocketClient): void;
 }
 
 export function openSpeech(
@@ -67,10 +67,10 @@ export function openSpeech(
   emitArchiveChanged: (event: AudioRecordEvent) => void,
 ): SpeechComposition {
   const audioStore = new AudioStore(dataDb, dataResourceDir(activeDataDir, 'audio'), emitArchiveChanged);
-  // 每个 Turn 保留当前状态订阅, 断开或发送结束事件后移除. 生成本身由 SpeechGenerator 登记.
-  const speechClientsByTurnId = new Map<string, SpeechSocketClient>();
+  // 同一 AudioID 只保留一个语音订阅, 其他角色生成结束不会关闭这条连接.
+  const speechClientsByAudioId = new Map<string, SpeechSocketClient>();
   const speechGenerator = new SpeechGenerator(audioStore, usageRecorder, event => {
-    const client = speechClientsByTurnId.get(event.turnId);
+    const client = speechClientsByAudioId.get(event.audioId);
     if (!client) return;
     const terminal = event.type === 'speech_generate_completed'
       || event.type === 'speech_generate_cancelled' || event.type === 'speech_generate_failed';
@@ -78,7 +78,7 @@ export function openSpeech(
       client.sendControl(event);
     } finally {
       if (terminal) {
-        speechClientsByTurnId.delete(event.turnId);
+        speechClientsByAudioId.delete(event.audioId);
         client.close();
       }
     }
@@ -253,34 +253,22 @@ export function openSpeech(
         ...(signal ? { signal } : {}),
       });
     },
-    attachSpeechSocket(sessionId, turnId, client) {
-      speechClientsByTurnId.get(turnId)?.close();
-      speechClientsByTurnId.set(turnId, client);
-      const speechGeneration = speechGenerator.findTurnGeneration(turnId);
-      if (speechGeneration) {
-        const info = speechGenerator.getAudioPlayback(speechGeneration.audioId)!;
-        client.sendControl({ type: 'speech_segments', ...info });
-        return;
-      }
-      const saved = audioStore.outputs.findLatestReadyAudio(turnId, characters.current().name);
-      if (saved) {
-        client.sendControl({ type: 'speech_segments', ...speechGenerator.getAudioPlayback(saved.audioId)! });
-        client.sendControl({
-          type: 'speech_generate_completed',
-          audioId: saved.audioId,
-          characterName: saved.characterName,
-          sessionId,
-          turnId,
-          audioAvailable: true,
-        });
+    attachSpeechSocket(audioId, client) {
+      speechClientsByAudioId.get(audioId)?.close();
+      speechClientsByAudioId.set(audioId, client);
+      const audioPlayback = speechGenerator.getAudioPlayback(audioId);
+      if (audioPlayback) {
+        client.sendControl({ type: 'speech_segments', ...audioPlayback });
+        if (speechGenerator.findGeneration(audioId)) return;
+        client.sendControl({ type: 'speech_generate_completed', ...audioPlayback, audioAvailable: true });
       } else {
-        client.sendControl({ type: 'speech_generate_unavailable', sessionId, turnId });
+        client.sendControl({ type: 'speech_generate_unavailable', audioId });
       }
-      speechClientsByTurnId.delete(turnId);
+      speechClientsByAudioId.delete(audioId);
       client.close();
     },
-    detachSpeechSocket(_sessionId, turnId, client) {
-      if (speechClientsByTurnId.get(turnId) === client) speechClientsByTurnId.delete(turnId);
+    detachSpeechSocket(audioId, client) {
+      if (speechClientsByAudioId.get(audioId) === client) speechClientsByAudioId.delete(audioId);
     },
   };
 }

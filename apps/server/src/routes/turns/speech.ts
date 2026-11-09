@@ -40,13 +40,6 @@ export const turnSpeechRoute = (deps: TurnSpeechRouteDeps) => new Hono()
       const status = error.code === 'speech/already_generating' ? 409 : 422;
       return context.json({ error: error.code, message: error.message }, status);
     }
-  })
-  .post('/:turnId/speech/cancel', async context => {
-    if (!deps.turns.getTurn(context.req.param('turnId'))) {
-      return context.json({ error: 'turn_not_found', message: '该轮对话不存在' }, 404);
-    }
-    await deps.speech.speechGenerator.cancelTurnSpeech(context.req.param('turnId'));
-    return context.body(null, 204);
   });
 
 function readableText(session: TurnSpeechRouteDeps['session'], turnId: string): string {

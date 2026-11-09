@@ -31,11 +31,12 @@ async function fixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ema-speech-http-'));
   resources.push({ database, root });
   const audioStore = new AudioStore(database, root, () => {});
-  const app = new Hono().use('*', emaAuth(secret)).route('/api/audio', audioRoute(audioStore));
+  const cancelGeneration = vi.fn(async (_audioId: string) => {});
+  const app = new Hono().use('*', emaAuth(secret)).route('/api/audio', audioRoute(audioStore, { cancelGeneration }));
   const identity = { audioId: 'first', sessionId: 'session', turnId: 'turn', characterName: '艾玛' };
   audioStore.createAudioRecord(identity);
   const format = { sampleRate: 8000, channelCount: 1 };
-  return { app, audioStore, identity, format };
+  return { app, audioStore, identity, format, cancelGeneration };
 }
 
 it('实时读取临时 WAV, 写完后以同一 ID 重播和读取段表', async () => {
@@ -98,4 +99,11 @@ it('文件写完但尚未标记 ready 时, 已启动的实时读取仍可结束'
   await audioStore.files.finishWrite(identity.audioId);
   expect((await endOfStream).done).toBe(true);
   expect(audioStore.outputs.findByAudioId(identity.audioId)?.audioStatus).toBe('generating');
+});
+
+it('取消请求只传入指定 AudioID', async () => {
+  const { app, cancelGeneration } = await fixture();
+  const response = await app.request('/api/audio/first/cancel', { method: 'POST', headers });
+  expect(response.status).toBe(204);
+  expect(cancelGeneration).toHaveBeenCalledWith('first');
 });
