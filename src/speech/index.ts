@@ -7,9 +7,11 @@ export { AudioStore } from './store/audioStore.js';
 export { AudioSegmentStore } from './store/audioSegmentStore.js';
 export type { AudioRead } from './store/audioFileStore.js';
 export type { AudioSegment, SavedAudioSegment, CompletedAudioFile, SpeechAudioIdentity, AudioPlayback, AudioStatus, AudioSummary, AudioRecord } from './types.js';
-export type { SpeechEvent, SpeechGenerateEvent, SpeechGenerationEvent, SpeechGenerationResult, AudioRecordEvent } from './events.js';
+export type { SpeechEvent, SpeechGenerationEvent, SpeechGenerationResult, AudioRecordEvent } from './events.js';
 export { VoiceRegistrationCache } from './voiceRegistrationCache.js';
 export type {
   SpeechVoicePreviewResult,
   VoicePreviewInput,
 } from './voicePreview.js';
+
+export type { CharacterTag, StageTextPart } from './types.js';

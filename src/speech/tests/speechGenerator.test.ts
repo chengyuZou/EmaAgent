@@ -81,24 +81,24 @@ describe('SpeechGenerator', () => {
   it('先登记再准备声音, 返回同一个对象, 完成时保存段表后通知 ready', async () => {
     const { generator, audioStore, events, usage, savedStatusesAtNotification } = await createFixture();
     const speechGeneration = generator.startTurnSpeech(input);
-    expect(generator.findTurnGeneration(input.turnId)).toBe(speechGeneration);
+    expect(generator.findGeneration(speechGeneration.audioId)).toBe(speechGeneration);
     expect(audioStore.outputs.findByAudioId(speechGeneration.audioId)?.audioStatus).toBe('generating');
     generator.appendTextDelta(speechGeneration.audioId, '第一句话。第二句话。');
     generator.endTextInput(speechGeneration.audioId);
     const result = await speechGeneration.generationCompletion;
-    expect(result).toMatchObject({ status: 'completed', audioAvailable: true });
+    expect(result).toMatchObject({ type: 'speech_generate_completed', audioAvailable: true });
     const savedAudio = audioStore.outputs.findByAudioId(result.audioId)!;
     expect(savedAudio.durationMs).toBe(1000);
     expect(path.basename(savedAudio.storagePath)).toBe(input.characterName + '-' + result.audioId + '.wav');
     expect(fs.existsSync(savedAudio.storagePath + '.tmp')).toBe(false);
     expect(audioStore.segments.getSegments(result.audioId)).toEqual([
-      { segmentIndex: 0, textForTTS: '第一句话。', startMs: 0, endMs: 500 },
-      { segmentIndex: 1, textForTTS: '第二句话。', startMs: 500, endMs: 1000 },
+      { segmentIndex: 0, textForTTS: '第一句话。', startMs: 0, endMs: 500, tags: null },
+      { segmentIndex: 1, textForTTS: '第二句话。', startMs: 500, endMs: 1000, tags: null },
     ]);
     expect(savedStatusesAtNotification).toEqual(['generating', 'ready']);
     expect(events.slice(-2).map(event => event.type)).toEqual(['session_audio_changed', 'speech_generate_completed']);
     expect(usage.forTurn(input.turnId)).toHaveLength(2);
-    expect(generator.findTurnGeneration(input.turnId)).toBeNull();
+    expect(generator.findGeneration(result.audioId)).toBeNull();
   });
 
   it('登记 SQL 失败时不请求声音或创建文件', async () => {
@@ -141,7 +141,7 @@ describe('SpeechGenerator', () => {
     const original = await generator.generateTurnAudio(input, '旧音频。');
     provider.synthesize.mockImplementationOnce(async function* () { throw new Error('provider failed'); });
     const failed = await generator.generateTurnAudio(input, '新的内容。');
-    expect(failed).toMatchObject({ status: 'failed', audioAvailable: false });
+    expect(failed).toMatchObject({ type: 'speech_generate_failed', audioAvailable: false });
     expect(audioStore.outputs.findByAudioId(failed.audioId)).toBeNull();
     expect(audioStore.outputs.findByAudioId(original.audioId)?.audioStatus).toBe('ready');
     expect(savedStatusesAtNotification.at(-1)).toBeUndefined();
@@ -159,7 +159,7 @@ describe('SpeechGenerator', () => {
     const failedAudio = audioStore.outputs.findByAudioId(result.audioId)!;
     expect(failedAudio.audioStatus).toBe('failed');
     expect(failedAudio.failureMessage).toContain('清理未完成');
-    expect(generator.findTurnGeneration(input.turnId)).toBeNull();
+    expect(generator.findGeneration(result.audioId)).toBeNull();
     expect(events.at(-1)?.type).toBe('speech_generate_failed');
     expect(generator.getAudioPlayback(result.audioId)).toBeNull();
     await audioStore.deleteAudio(result.audioId);
@@ -172,9 +172,9 @@ describe('SpeechGenerator', () => {
     vi.spyOn(audioStore.files, 'deleteFile').mockRejectedValueOnce(new Error('file is busy'));
     vi.spyOn(audioStore.outputs, 'updateAudioStatus').mockImplementationOnce(() => { throw new Error('SQL failed'); });
     const result = await generator.generateTurnAudio(input, '内容。');
-    expect(result.status).toBe('failed');
+    expect(result.type).toBe('speech_generate_failed');
     expect(result).toMatchObject({ code: 'speech/audio_status_save_failed', message: expect.stringContaining('未能保存') });
-    expect(generator.findTurnGeneration(input.turnId)).toBeNull();
+    expect(generator.findGeneration(result.audioId)).toBeNull();
     expect(audioStore.outputs.findByAudioId(result.audioId)?.audioStatus).toBe('generating');
     audioStore.markInterruptedAudioRecordsFailed();
     expect(audioStore.outputs.findByAudioId(result.audioId)?.audioStatus).toBe('failed');
@@ -195,14 +195,14 @@ describe('SpeechGenerator', () => {
     generator.appendTextDelta(automatic.audioId, '自动生成的内容。');
     await chunkWritten;
     await generator.cancelGeneration(automatic.audioId);
-    expect(await automatic.generationCompletion).toMatchObject({ status: 'cancelled', audioAvailable: true });
+    expect(await automatic.generationCompletion).toMatchObject({ type: 'speech_generate_cancelled', audioAvailable: true });
     expect(audioStore.outputs.findByAudioId(automatic.audioId)?.durationMs).toBe(250);
     chunkWritten = new Promise<void>(resolve => { acknowledgeChunk = resolve; });
     const manualCompletion = generator.generateTurnAudio(input, '手动生成的内容。');
     await chunkWritten;
-    const manual = generator.findTurnGeneration(input.turnId)!;
+    const manual = audioStore.listAudioSummaries(input.turnId).find(audio => audio.audioStatus === 'generating')!;
     await generator.cancelGeneration(manual.audioId);
-    expect(await manualCompletion).toMatchObject({ status: 'cancelled', audioAvailable: false });
+    expect(await manualCompletion).toMatchObject({ type: 'speech_generate_cancelled', audioAvailable: false });
     expect(audioStore.outputs.findByAudioId(manual.audioId)).toBeNull();
   });
 
@@ -213,12 +213,12 @@ describe('SpeechGenerator', () => {
       else signal.addEventListener('abort', () => reject(signal.reason), { once: true });
     }));
     const preparing = generator.startTurnSpeech(input);
-    expect(() => generator.startTurnSpeech(input)).toThrow('该轮正在生成');
+    expect(() => generator.startTurnSpeech(input)).toThrow('这个角色正在生成');
     await generator.cancelSessionSpeech(input.sessionId);
-    expect((await preparing.generationCompletion).status).toBe('cancelled');
+    expect((await preparing.generationCompletion).type).toBe('speech_generate_cancelled');
     const empty = generator.startTurnSpeech(input);
     generator.endTextInput(empty.audioId);
-    expect(await empty.generationCompletion).toMatchObject({ status: 'completed', audioAvailable: false });
+    expect(await empty.generationCompletion).toMatchObject({ type: 'speech_generate_completed', audioAvailable: false });
     expect(audioStore.listAudioSummaries(input.turnId)).toEqual([]);
   });
 });
@@ -256,7 +256,7 @@ describe('AudioStore', () => {
       vi.spyOn(SpeechSegmentsRepo.prototype, 'insertForAudio').mockImplementationOnce(() => { throw new Error('SQL failed'); });
     }
     const result = await generator.generateTurnAudio(input, '内容。');
-    expect(result.status).toBe('failed');
+    expect(result.type).toBe('speech_generate_failed');
     expect(audioStore.outputs.findByAudioId(result.audioId)).toBeNull();
     expect(audioStore.segments.getSegments(result.audioId)).toEqual([]);
   });
@@ -340,5 +340,53 @@ describe('AudioStore', () => {
     expect(events.filter(event => event.type === 'session_audio_changed').at(-1))
       .toMatchObject({ audioStatus: 'deleting' });
   });
+});
+
+
+it('同一轮不同角色并行生成, 取消只影响指定 AudioID', async () => {
+  const { generator, audioStore } = await createFixture();
+  const first = generator.startTurnSpeech(input);
+  const second = generator.startTurnSpeech({ ...input, characterName: '艾玛' });
+  expect(() => generator.startTurnSpeech(input)).toThrow('这个角色正在生成');
+  generator.appendTextDelta(first.audioId, '第一段.');
+  generator.appendTextDelta(second.audioId, '第二段.');
+  await generator.cancelGeneration(first.audioId);
+  generator.endTextInput(second.audioId);
+  expect((await first.generationCompletion).type).toBe('speech_generate_cancelled');
+  expect((await second.generationCompletion).type).toBe('speech_generate_completed');
+  expect(audioStore.outputs.findByAudioId(second.audioId)?.audioStatus).toBe('ready');
+});
+
+it('标签处分段, 时间跟随已写入音频, 保存的字幕不包含标签项', async () => {
+  const { generator, events, audioStore } = await createFixture();
+  const speechGeneration = generator.startTurnSpeech(input);
+  generator.appendTextDelta(speechGeneration.audioId, '我觉得', [{ type: 'emotion', emotion: 'happy' }]);
+  generator.appendTextDelta(speechGeneration.audioId, '', [{ type: 'motion', motion: 'wave' }]);
+  generator.appendTextDelta(speechGeneration.audioId, '能解决.');
+  generator.endTextInput(speechGeneration.audioId);
+  await speechGeneration.generationCompletion;
+  const liveSegments = events.filter(event => event.type === 'speech_segments').flatMap(event => event.segments);
+  expect(liveSegments).toContainEqual(expect.objectContaining({
+    textForTTS: '我觉得', startMs: 0, endMs: 500, tags: [{ type: 'emotion', emotion: 'happy' }],
+  }));
+  expect(provider.synthesize.mock.calls.map(([request]) => request.text)).toEqual(['我觉得', '能解决.']);
+  expect(audioStore.segments.getSegments(speechGeneration.audioId)).toEqual([
+    { segmentIndex: 0, textForTTS: '我觉得', startMs: 0, endMs: 500, tags: null },
+    { segmentIndex: 1, textForTTS: '能解决.', startMs: 500, endMs: 1000, tags: null },
+  ]);
+});
+
+
+it('同一角色在不同 Turn 可以同时生成', async () => {
+  const { generator } = await createFixture();
+  const first = generator.startTurnSpeech(input);
+  const second = generator.startTurnSpeech({ ...input, turnId: 'another' });
+  generator.appendTextDelta(first.audioId, '第一轮.');
+  generator.appendTextDelta(second.audioId, '第二轮.');
+  generator.endTextInput(first.audioId);
+  generator.endTextInput(second.audioId);
+  const results = await Promise.all([first.generationCompletion, second.generationCompletion]);
+  expect(results.map(result => result.type)).toEqual(['speech_generate_completed', 'speech_generate_completed']);
+  expect(results[0]?.audioId).not.toBe(results[1]?.audioId);
 });
 

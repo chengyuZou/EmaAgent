@@ -1,7 +1,7 @@
 import type { CompactEvent } from '@ema-agent/compact';
 import type { ContextUsage } from '@ema-agent/context';
 import type { LLMTokenUsage } from '@ema-agent/llm';
-import type { StageStreamEvent } from '@ema-agent/stage';
+import type { StageTextPart } from '@ema-agent/stage';
 import type { ToolExecutionEvent } from '@ema-agent/tools';
 import type { SessionMessage } from '@ema-agent/session';
 import type { TurnFailureCode } from './errors.js';
@@ -25,6 +25,9 @@ export type TurnEvent =
     triggerType: TurnTriggerType;
     /** 与 Turn 行同源的本轮语音选择, 不代表语音管线已经成功启动. */
     ttsEnabled: boolean;
+    /** Server 启动自动语音后补入, 启动失败或未启用时为 null. */
+    audioId?: string | null;
+    characterName?: string;
   }
   | {
     readonly type: 'context_usage_updated';
@@ -72,6 +75,8 @@ export type TurnEvent =
   | ({ type: 'request_degraded'; sessionId: string; turnId: string } & RequestDegradationNotice)
   | {
     type: 'output_text_delta';
+    /** 标签位于本次 delta 之后, 空正文也可以只交付标签. */
+    tags?: StageTextPart['tags'];
     sessionId: string;
     turnId: string;
     blockIndex: number;
@@ -127,5 +132,4 @@ export type TurnCompactEvent = CompactEvent & { readonly turnId: string };
 export type TurnStreamEvent =
   | TurnEvent
   | ToolExecutionEvent
-  | TurnCompactEvent
-  | StageStreamEvent;
+  | TurnCompactEvent;

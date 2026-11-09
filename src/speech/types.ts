@@ -1,3 +1,5 @@
+import type { CharacterTag, StageTextPart } from '@ema-agent/stage';
+export type { CharacterTag, StageTextPart } from '@ema-agent/stage';
 import type { SpeechSegmentInsert, AudioStatus } from '@ema-agent/storage';
 export type { AudioStatus } from '@ema-agent/storage';
 
@@ -8,9 +10,13 @@ export interface SpeechAudioIdentity {
   readonly characterName: string;
 }
 
-export interface AudioSegment extends Omit<SpeechSegmentInsert, 'endMs'> {
+export interface AudioSegment extends Omit<SpeechSegmentInsert, 'endMs' | 'textForTTS'> {
+  /** null 表示流里的纯标签项, 没有音频样本, 不保存为字幕. */
+  readonly textForTTS: string | null;
   /** 当前句尚未结束时为 null, 保存段表前必须确定 PCM 结束位置. */
   readonly endMs: number | null;
+  /** 只用于首次实时播放, null 表示没有标签, 不保存到 SQL. */
+  readonly tags: readonly CharacterTag[] | null;
 }
 
 export type SavedAudioSegment = SpeechSegmentInsert;

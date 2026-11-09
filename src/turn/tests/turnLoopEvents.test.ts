@@ -46,7 +46,7 @@ describe('Turn 循环事件', () => {
       { type: 'tool_call_complete', sessionId: 'session', turnId: 'turn', blockIndex: 1,
         callId: 'call', name: 'Read', args: { path: 'README.md' }, assistantMessageId: 'stored-assistant' },
       { type: 'output_text_delta', sessionId: 'session', turnId: 'turn', blockIndex: 0,
-        delta: '结果', assistantMessageId: 'next-assistant' },
+        delta: '结果', tags: null, assistantMessageId: 'next-assistant' },
       { type: 'tool_result', sessionId: 'session', callId: 'call', name: 'Read',
         output: { text: '结构化正文' }, durationMs: 7 },
       { type: 'tool_result', sessionId: 'session', callId: 'call', name: 'Read',

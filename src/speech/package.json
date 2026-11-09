@@ -22,6 +22,7 @@
   "dependencies": {
     "@ema-agent/logging": "workspace:*",
     "@ema-agent/storage": "workspace:*",
+    "@ema-agent/stage": "workspace:*",
     "@ema-agent/tts": "workspace:*",
     "@ema-agent/usage": "workspace:*"
   },

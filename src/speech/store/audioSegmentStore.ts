@@ -1,5 +1,5 @@
 import { SpeechSegmentsRepo, type Database } from '@ema-agent/storage';
-import type { AudioSegment, SavedAudioSegment } from '../types.js';
+import type { AudioSegment, SavedAudioSegment, CharacterTag } from '../types.js';
 
 export class AudioSegmentStore {
   /** 生成中的段按 audioId 分开保存. 音频保存或丢弃后移除, 历史读取改查数据库. */
@@ -20,10 +20,21 @@ export class AudioSegmentStore {
     this.generatingSegmentsByAudioId.set(audioId, []);
   }
 
-  /** 第一块 PCM 写入成功后才建段, startMs 使用这一块写入前的音频位置. */
-  beginSegment(audioId: string, textForTTS: string, startMs: number): AudioSegment {
+  /**
+   * 有正文时在第一块 PCM 写入后登记, startMs 是这块写入前的位置.
+   * textForTTS 为 null 时仅交付流中的标签, 不创建音频样本, 结束位置等于开始位置.
+   */
+  beginSegment(
+    audioId: string,
+    textForTTS: string | null,
+    startMs: number,
+    tags: readonly CharacterTag[] | null = null,
+  ): AudioSegment {
     const segments = this.generatingSegmentsByAudioId.get(audioId)!;
-    const segment: AudioSegment = { segmentIndex: segments.length, textForTTS, startMs, endMs: null };
+    const segment: AudioSegment = {
+      segmentIndex: segments.length, textForTTS, startMs,
+      endMs: textForTTS === null ? startMs : null, tags,
+    };
     segments.push(segment);
     return segment;
   }
@@ -43,15 +54,23 @@ export class AudioSegmentStore {
       textForTTS: segment.text_for_tts,
       startMs: segment.start_ms,
       endMs: segment.end_ms,
+      tags: null,
     }));
   }
 
   /** 生成器先结束当前段, 再取得同一事务要保存的所有段. */
   getCompletedSegments(audioId: string): readonly SavedAudioSegment[] {
-    return this.getSegments(audioId).map(segment => {
+    // 标签项没有 PCM, 不保存为字幕. 保存时重新连续编号, 重播只读取声音和字幕.
+    const completedSegments: SavedAudioSegment[] = [];
+    for (const segment of this.getSegments(audioId)) {
+      if (segment.textForTTS === null) continue;
       if (segment.endMs === null) throw new Error('Cannot save an unfinished audio segment');
-      return { ...segment, endMs: segment.endMs };
-    });
+      completedSegments.push({
+        segmentIndex: completedSegments.length, textForTTS: segment.textForTTS,
+        startMs: segment.startMs, endMs: segment.endMs,
+      });
+    }
+    return completedSegments;
   }
 
   releaseGeneration(audioId: string): void {

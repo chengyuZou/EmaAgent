@@ -76,7 +76,7 @@ WebSocket 队列没有单独的容量限制. Qwen 对单次接收的 PCM 设置 
 
 ## 应用调用与代码入口
 
-Server 的 [composition/speech.ts](../../apps/server/src/composition/speech.ts) 解析 TTS 连接和角色参考音频. [SpeechVoiceCache](../speech/voiceHandleCache.ts) 在进程内复用已注册的云端声音 ID. [SpeechCoordinator](../speech/speechCoordinator.ts) 把清理后的文本逐句提交, 消费 PCM 并写音频归档. [SpeechVoicePreview](../speech/voicePreview.ts) 用相同入口生成有大小限制的试听 WAV.
+Server 的 [composition/speech.ts](../../apps/server/src/composition/speech.ts) 解析 TTS 连接和角色参考音频. [VoiceRegistrationCache](../speech/voiceRegistrationCache.ts) 在进程内复用已注册的云端声音 ID. [SpeechGenerator](../speech/speechGenerator.ts) 把清理后的文本逐句提交, 将 PCM 交给 AudioStore 保存 WAV 和段记录. [generateVoicePreview](../speech/voicePreview.ts) 用相同入口生成有大小限制的试听 WAV.
 
 先看 [textToSpeech.ts](textToSpeech.ts) 中的创建入口和流校验. [protocols](protocols) 处理各供应商请求, [audio/pcm.ts](audio/pcm.ts) 拼接和拆分完整帧, [audio/wav.ts](audio/wav.ts) 读取与写入 WAV 文件头.
 

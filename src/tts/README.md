@@ -76,7 +76,7 @@ The WebSocket queue has no separate capacity limit. Qwen limits received PCM to 
 
 ## Application calls and code entry points
 
-Server [composition/speech.ts](../../apps/server/src/composition/speech.ts) resolves the TTS connection and character reference. [SpeechVoiceCache](../speech/voiceHandleCache.ts) reuses registered cloud voice IDs in the process. [SpeechCoordinator](../speech/speechCoordinator.ts) submits cleaned text sentence by sentence, consumes PCM, and writes the audio archive. [SpeechVoicePreview](../speech/voicePreview.ts) uses the same calls to produce a bounded preview WAV.
+Server [composition/speech.ts](../../apps/server/src/composition/speech.ts) resolves the TTS connection and character reference. [VoiceRegistrationCache](../speech/voiceRegistrationCache.ts) reuses registered cloud voice IDs in the process. [SpeechGenerator](../speech/speechGenerator.ts) submits cleaned text sentence by sentence and passes PCM to AudioStore for WAV and segment storage. [generateVoicePreview](../speech/voicePreview.ts) uses the same calls to produce a bounded preview WAV.
 
 Start at [textToSpeech.ts](textToSpeech.ts) for factories and stream validation. [protocols](protocols) contains each supplier's requests, [audio/pcm.ts](audio/pcm.ts) aligns and splits frames, and [audio/wav.ts](audio/wav.ts) reads and writes WAV headers.
 

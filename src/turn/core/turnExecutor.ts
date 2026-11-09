@@ -340,15 +340,20 @@ export class TurnExecutor {
           protocol: prepared.protocol,
         },
       })) {
-        let downstream = event;
         if (stage && event.type === 'text_delta') {
           lastTextBlockIndex = event.blockIndex;
-          const { cleaned, events: stageEvents } = stage.processChunk(event.delta, turnId, sessionId);
-          for (const stageEvent of stageEvents) emit(stageEvent);
-          // 整段都是表现标签:不落库不发 delta(用户可见正文没有这一段).
-          if (cleaned.length === 0) continue;
-          downstream = { ...event, delta: cleaned };
+          // 保持文字和标签的位置. 先保存可见文字, 再让 Speech 按标签分段.
+          for (const part of stage.processChunk(event.delta, sessionId)) {
+            const textEvent = { ...event, delta: part.text ?? '' };
+            if (part.text) {
+              const storedMessageId = await writer.apply(textEvent);
+              messageIds.record(textEvent, storedMessageId);
+            }
+            loopEvents.acceptText(textEvent, part.tags);
+          }
+          continue;
         }
+        const downstream = event;
         const storedMessageId = await writer.apply(downstream);
         if (downstream.type === 'assistant_message_completed') {
           // 父消息先落库, 再让 fork 发出第一条模型请求. 副本中的占位不进入 writer.
@@ -373,7 +378,7 @@ export class TurnExecutor {
 
       // 扫描器未闭合尾部按正文释放
       if (stage) {
-        const { cleaned } = stage.flush(sessionId);
+        const cleaned = stage.flush(sessionId);
         if (cleaned.length > 0) {
           const flushed: AgentLoopEvent = {
             type: 'text_delta',

@@ -14,7 +14,7 @@ import { SentenceSplitter } from './filter/sentenceSplitter.js';
 import { TextFilterStream, filterSentenceForTTS } from './filter/textFilter.js';
 import { VoiceRegistrationCache } from './voiceRegistrationCache.js';
 import { AudioStore } from './store/audioStore.js';
-import type { AudioSegment, SpeechAudioIdentity, AudioPlayback } from './types.js';
+import type { AudioSegment, SpeechAudioIdentity, AudioPlayback, CharacterTag } from './types.js';
 import type { SpeechGenerationEvent, SpeechGenerationResult } from './events.js';
 import { SpeechRequestError, type SpeechGenerationFailure } from './errors.js';
 import { generateVoicePreview, type VoicePreviewInput, type SpeechVoicePreviewResult } from './voicePreview.js';
@@ -56,7 +56,7 @@ interface ActiveSpeechGeneration extends SpeechGeneration {
   readonly onExternalAbort: () => void;
   readonly onGenerationAbort: () => void;
   readonly resolveGeneration: (result: SpeechGenerationResult) => void;
-  /** 自动生成保存已写入部分; 手动替换必须全部成功, 否则保留旧文件. */
+  /** 自动生成保存已写入部分; 手动生成失败只清理本次 AudioID, 不影响之前的录音. */
   readonly keepPartialAudio: boolean;
   /** 正文封口后不再接受增量, 已排队的句子仍需完成或取消. */
   textInputEnded: boolean;
@@ -94,13 +94,25 @@ export class SpeechGenerator {
   }
 
   /** 返回只表示正文已接收, 不表示音色已准备好或这一段已合成. */
-  appendTextDelta(audioId: string, textDelta: string): void {
+  appendTextDelta(
+    audioId: string,
+    textDelta: string,
+    tags: readonly CharacterTag[] | null = null,
+  ): void {
     const speechGeneration = this.activeGenerationsByAudioId.get(audioId);
     if (!speechGeneration || speechGeneration.textInputEnded) return;
     const filteredText = speechGeneration.textFilter.feed(textDelta);
-    for (const sentence of speechGeneration.sentenceSplitter.feed(filteredText)) {
-      this.enqueueSentence(speechGeneration, sentence);
+    const sentences = speechGeneration.sentenceSplitter.feed(filteredText);
+    if (tags?.length) {
+      // 标签是强制分段点, 只交出分句器的文字, 不重置代码和数学块过滤状态.
+      sentences.push(...speechGeneration.sentenceSplitter.flush());
     }
+    for (const [sentenceIndex, sentence] of sentences.entries()) {
+      const sentenceTags = sentenceIndex === sentences.length - 1 ? tags : null;
+      this.enqueueSentence(speechGeneration, sentence, sentenceTags);
+    }
+    // 没有前文时保留纯标签输入. 不合成空声音, 也不制造带空字符串的 TTS 请求.
+    if (sentences.length === 0 && tags?.length) this.enqueueSentence(speechGeneration, null, tags);
   }
 
   /** 正常 Turn 结束只封口. 调用者观察 generationCompletion, 不在事件分发中等待它. */
@@ -119,11 +131,8 @@ export class SpeechGenerator {
     void this.finishGeneration(speechGeneration);
   }
 
-  findTurnGeneration(turnId: string): SpeechGeneration | null {
-    for (const speechGeneration of this.activeGenerationsByAudioId.values()) {
-      if (speechGeneration.turnId === turnId) return speechGeneration;
-    }
-    return null;
+  findGeneration(audioId: string): SpeechGeneration | null {
+    return this.activeGenerationsByAudioId.get(audioId) ?? null;
   }
 
   getAudioPlayback(audioId: string): AudioPlayback | null {
@@ -137,10 +146,6 @@ export class SpeechGenerator {
     await speechGeneration.generationCompletion;
   }
 
-  async cancelTurnSpeech(turnId: string): Promise<void> {
-    const speechGeneration = this.findTurnGeneration(turnId);
-    if (speechGeneration) await this.cancelGeneration(speechGeneration.audioId);
-  }
 
   async cancelSessionSpeech(sessionId: string): Promise<void> {
     const matching = [...this.activeGenerationsByAudioId.values()]
@@ -158,8 +163,10 @@ export class SpeechGenerator {
 
   private beginGeneration(input: StartTurnSpeechInput, keepPartialAudio: boolean): ActiveSpeechGeneration {
     if (this.shutdownCompletion) throw new SpeechRequestError('speech/closed', '语音生成器已关闭');
-    if (this.findTurnGeneration(input.turnId)) {
-      throw new SpeechRequestError('speech/already_generating', '该轮正在生成语音, 请等待完成或先取消');
+    if ([...this.activeGenerationsByAudioId.values()].some(generation =>
+      generation.turnId === input.turnId && generation.characterName === input.characterName
+    )) {
+      throw new SpeechRequestError('speech/already_generating', '该轮的这个角色正在生成语音, 请等待完成或先取消');
     }
     const fixedInput = {
       ...input,
@@ -215,9 +222,13 @@ export class SpeechGenerator {
     return speechGeneration;
   }
 
-  private enqueueSentence(speechGeneration: ActiveSpeechGeneration, text: string): void {
+  private enqueueSentence(
+    speechGeneration: ActiveSpeechGeneration,
+    text: string | null,
+    tags: readonly CharacterTag[] | null = null,
+  ): void {
     speechGeneration.queuedSynthesisCompletion = speechGeneration.queuedSynthesisCompletion
-      .then(() => this.synthesizeSentence(speechGeneration, text))
+      .then(() => this.synthesizeSentence(speechGeneration, text, tags))
       .catch(error => this.failGeneration(speechGeneration, 'speech/generate_failed', error));
   }
 
@@ -229,9 +240,23 @@ export class SpeechGenerator {
     this.endTextInput(speechGeneration.audioId);
   }
 
-  private async synthesizeSentence(speechGeneration: ActiveSpeechGeneration, sourceText: string): Promise<void> {
-    const textForTTS = filterSentenceForTTS(sourceText);
-    if (!textForTTS || speechGeneration.abortController.signal.aborted) return;
+  private async synthesizeSentence(
+    speechGeneration: ActiveSpeechGeneration,
+    sourceText: string | null,
+    tags: readonly CharacterTag[] | null,
+  ): Promise<void> {
+    if (speechGeneration.abortController.signal.aborted) return;
+    const textForTTS = sourceText === null ? null : filterSentenceForTTS(sourceText);
+    if (!textForTTS) {
+      if (tags) {
+        const part = this.audioStore.segments.beginSegment(
+          speechGeneration.audioId, null,
+          this.audioStore.files.getWrittenDurationMs(speechGeneration.audioId), tags,
+        );
+        this.emitSegments(speechGeneration, [part]);
+      }
+      return;
+    }
     const voice = await speechGeneration.preparedVoice;
     const startedAt = Date.now();
     const timeoutSignal = AbortSignal.timeout(SENTENCE_TIMEOUT_MS);
@@ -258,7 +283,7 @@ export class SpeechGenerator {
             throw error;
           }
           if (!audioSegment) {
-            audioSegment = this.audioStore.segments.beginSegment(speechGeneration.audioId, textForTTS, startMs);
+            audioSegment = this.audioStore.segments.beginSegment(speechGeneration.audioId, textForTTS, startMs, tags);
             this.emitSegments(speechGeneration, [audioSegment]);
           }
         }
@@ -357,26 +382,18 @@ export class SpeechGenerator {
     }
     let result: SpeechGenerationResult;
     if (speechGeneration.generationFailure) {
-      result = { ...identity, status: 'failed', audioAvailable, ...speechGeneration.generationFailure };
+      result = { ...identity, type: 'speech_generate_failed', audioAvailable, ...speechGeneration.generationFailure };
     } else {
       // 自动取消仍可能保存部分文件; 手动生成在 SQL 提交后才收到取消, 则保留已完成结果.
       const isCancelled = speechGeneration.abortController.signal.aborted
         && (speechGeneration.keepPartialAudio || !hasSavedAudio);
-      result = { ...identity, status: isCancelled ? 'cancelled' : 'completed', audioAvailable };
+      result = { ...identity, type: isCancelled ? 'speech_generate_cancelled' : 'speech_generate_completed', audioAvailable };
     }
     speechGeneration.input.signal?.removeEventListener('abort', speechGeneration.onExternalAbort);
     speechGeneration.abortController.signal.removeEventListener('abort', speechGeneration.onGenerationAbort);
     this.activeGenerationsByAudioId.delete(identity.audioId);
     this.audioStore.segments.releaseGeneration(identity.audioId);
-    if (result.status === 'failed') {
-      this.emit({ ...identity, type: 'speech_generate_failed', audioAvailable, code: result.code, message: result.message });
-    } else {
-      this.emit({
-        ...identity,
-        type: result.status === 'completed' ? 'speech_generate_completed' : 'speech_generate_cancelled',
-        audioAvailable,
-      });
-    }
+    this.emit(result);
     speechGeneration.resolveGeneration(result);
   }
 
@@ -403,7 +420,7 @@ export class SpeechGenerator {
         target: 'speech',
         event: 'speech.notification_failed',
         error,
-        body: { turnId: event.turnId },
+        body: { audioId: event.audioId },
       });
     }
   }

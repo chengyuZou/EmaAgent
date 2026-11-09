@@ -51,7 +51,7 @@ flowchart TD
 
 导入重写受管图片和粘贴文本引用, 包括 fork 继承消息, 以及 Read 对已恢复文件的精确路径. WebFetch 的下载数据和说明, ToolResultStore 的大文本落盘说明头也同步更新. 不对普通正文, 外部文件引用或任意工具输出进行全局替换.
 
-语音保留 Turn 音频目录下的 `<turnId>-<characterName>.wav` 文件名. 子代理身份, Run, 原始模型来源和摘要游标分别保存. 导入不会重新启动工作: running Turn 变为 aborted, running 子代理身份和 Run 变为 cancelled, active Goal 变为 paused, in_progress Task 变为 pending, 未结束的工具和后台进程改为终态.
+只导出 ready 语音记录, 在 Turn 音频目录保留原文件名, 支持 `<characterName>-<audioId>.wav` 和已有文件名. 正在生成或尚未清理完的录音不作为可播放音频归档. 每条导出的语音记录包含身份, 角色名以及段文本和时间; 导入时一起恢复 ready Output 与 Segment. 子代理身份, Run, 原始模型来源和摘要游标分别保存. 导入不会重新启动工作: running Turn 变为 aborted, running 子代理身份和 Run 变为 cancelled, active Goal 变为 paused, in_progress Task 变为 pending, 未结束的工具和后台进程改为终态.
 
 ## 完成与清理
 

@@ -63,7 +63,7 @@ Existing Session IDs or target resource folders cause a conflict; imports are no
 
 Import rewrites managed image/pasted-text blocks, including inherited fork messages, and exact Read paths for restored files. It also rewrites WebFetch download data/notices and ToolResultStore's persisted-output headers. Ordinary prose, external file references, and arbitrary tool output are not globally substituted.
 
-Speech files retain the `<turnId>-<characterName>.wav` name under the Turn audio directory. Subagent identities, Runs, original generation sources and summary cursors remain distinct. Import does not restart work: running Turns become aborted, running subagents/Runs become cancelled, active Goals become paused, in-progress Tasks become pending, and unfinished tools/processes receive terminal states.
+Only ready speech records are exported, keeping their filenames under the Turn audio directory, including `<characterName>-<audioId>.wav` and existing names. Generating or unfinished-cleanup recordings are not archived as playable audio. Each exported record includes its identity, character name, and segment text/timings; import restores the ready output and segments together. Subagent identities, Runs, original generation sources and summary cursors remain distinct. Import does not restart work: running Turns become aborted, running subagents/Runs become cancelled, active Goals become paused, in-progress Tasks become pending, and unfinished tools/processes receive terminal states.
 
 ## Completion and cleanup
 

@@ -69,13 +69,13 @@ fork 前缀消息的 `run_id` 为 null, 保留原始生成来源. 子 Agent 自�
 
 `MemoryRepo` 在 data 数据库保存提取和整理任务. 领取任务, 完成任务以及标记明确消费的提取结果使用 SQL 事务. 正式文件由 [Memory](../memory/README-zh.md) 更新.
 
-`speech_outputs` 以正式 WAV 文件路径为主键, 要求保存字节数和毫秒时长. 一个 Turn 可以有多个角色版本, 同路径重新生成只替换对应记录. `listPage()` 返回 Turn 级汇总, 包括没有音频的 Turn; `listForTurn()` 加载具体文件. 附件记录同样指向单独管理的文件.
+`speech_outputs` 以 `audio_id` 为主键, 同一个 Turn 和角色允许多条录音. 每条记录保存路径和 `audio_status`: `generating`, `ready`, `deleting` 或 `failed`. 大小和时长未知时为 null, 表约束要求 `ready` 时两者都已确定. Speech 在创建文件前插入记录, `AudioStore.saveCompletedAudio()` 在一个事务内保存段表和 `ready`. `SpeechSegmentsRepo` 在 `speech_output_segments` 保存提交给 TTS 的文本和 PCM 时间; 删除音频记录会级联删除段表. Repo 只接收连接. Summary 查询只返回标量元数据, 不加载音频字节和段正文. 附件记录同样指向单独管理的文件.
 
 `SessionBackupReader` 在一个同步事务的回调中提供可迭代记录, 必须在回调内消费. `SessionBackupRestorer` 按依赖顺序插入, 检查外键, 清除不可用的项目及源 Session 引用. 归档校验, ID 替换和文件放置见 [Backup](../backup/README-zh.md).
 
 ## 数据迁移
 
-Profile 与 Data 分别通过各自唯一的 `001_initial.sql` 独立初始化, 数据库版本为 1. Profile 直接预置国内站 `siliconflow-cn` 和 `moonshotai-cn` 及同名目录 ID, 同时预置 DeepSeek 的 LLM 和 Vision 能力. 凭据, 模型和绑定在初始化后配置. Data 初始化不读取 Profile.
+Profile 与 Data 分别通过各自的 `001_initial.sql` 独立初始化. Data 的 `002_speechSegments.sql` 以 AudioID 主键重建音频记录, 增加生命周期状态和段表, 将已有 WAV 原路径保留为 ready 记录, 不凭空补出分段时间. Profile 直接预置国内站 `siliconflow-cn` 和 `moonshotai-cn` 及同名目录 ID, 同时预置 DeepSeek 的 LLM 和 Vision 能力. 凭据, 模型和绑定在初始化后配置. Data 初始化不读取 Profile.
 
 应用的 `0.1.0` 等版本号不决定数据库版本. 每份编号 SQL 与其 `user_version` 更新处于同一事务. 已执行的版本会跳过, 失败只回滚本文件的 SQL 和版本更新. 编号缺失或数据库版本比当前 SQL 更新时直接报错. 标有 `-- ema:migration foreign_keys=off` 的迁移在事务外临时关闭外键, 提交前检查关联关系.
 
