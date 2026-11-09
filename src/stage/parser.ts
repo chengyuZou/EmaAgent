@@ -1,8 +1,4 @@
-import type {
-  CharacterTagKind,
-  ParsedCharacterTag,
-  ScanResult,
-} from './types.js';
+import type { StageTextPart, CharacterTag } from './types.js';
 
 const COMPLETE_TAG_RE = /<(emotion|motion)>\s*([a-z][a-z0-9_]*)\s*<\/\1>/gu;
 const TAG_OPENINGS = ['<emotion>', '<motion>'] as const;
@@ -13,41 +9,41 @@ const MAX_BUFFERED_TAG_LENGTH = 128;
 export class StreamingCharacterTagScanner {
   private tail = '';
 
-  scan(delta: string): ScanResult {
+  scan(delta: string): StageTextPart[] {
     const input = this.tail + delta;
-    const tags: ParsedCharacterTag[] = [];
-    const cleanedParts: string[] = [];
+    const parts: StageTextPart[] = [];
     let lastEnd = 0;
 
     COMPLETE_TAG_RE.lastIndex = 0;
     let match: RegExpExecArray | null;
     while ((match = COMPLETE_TAG_RE.exec(input)) !== null) {
-      cleanedParts.push(input.slice(lastEnd, match.index));
-      tags.push({
-        kind: match[1] as CharacterTagKind,
-        value: match[2]!,
-      });
+      const text = input.slice(lastEnd, match.index);
+      const tag: CharacterTag = match[1] === 'emotion'
+        ? { type: 'emotion', emotion: match[2]! }
+        : { type: 'motion', motion: match[2]! };
+      parts.push({ text: text || null, tags: [tag] });
       lastEnd = match.index + match[0].length;
     }
 
     const remainder = input.slice(lastEnd);
     const partialStart = findPartialTagStart(remainder);
     if (partialStart === -1) {
-      cleanedParts.push(remainder);
+      if (remainder) parts.push({ text: remainder, tags: null });
       this.tail = '';
     } else {
-      cleanedParts.push(remainder.slice(0, partialStart));
+      const text = remainder.slice(0, partialStart);
+      if (text) parts.push({ text, tags: null });
       this.tail = remainder.slice(partialStart);
     }
 
-    return { cleaned: cleanedParts.join(''), tags };
+    return parts;
   }
 
   /** 流结束时将未闭合标签按普通正文返回, 避免丢掉模型输出. */
-  flush(): ScanResult {
+  flush(): string {
     const cleaned = this.tail;
     this.tail = '';
-    return { cleaned, tags: [] };
+    return cleaned;
   }
 }
 

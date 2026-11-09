@@ -2,92 +2,52 @@ import { describe, expect, it } from 'vitest';
 import { StageEngine } from '../engine.js';
 
 function makeEngine() {
-  return new StageEngine({ emotions: ['happy', 'sad'], motions: ['wave'] });
+  const engine = new StageEngine({ emotions: ['happy', 'sad'], motions: ['wave'] });
+  engine.beginTurn('session');
+  return engine;
 }
 
-describe('StageEngine', () => {
-  it('每个已知情绪标签都发事件，未知情绪只清洗正文', () => {
+describe('StageEngine ordered text', () => {
+  it('保留文字和标签顺序, 没有标签的正文使用 null', () => {
     const engine = makeEngine();
-    engine.beginTurn('s1');
-    const first = engine.processChunk('我<emotion>happy</emotion>开心', 't1', 's1');
-    expect(first.cleaned).toBe('我开心');
-    expect(first.events).toEqual([
-      { type: 'emotion_changed', sessionId: 's1', turnId: 't1', emotion: 'happy' },
-    ]);
-
-    const unknown = engine.processChunk('<emotion>jealous</emotion>', 't1', 's1');
-    expect(unknown.cleaned).toBe('');
-    expect(unknown.events).toEqual([]);
-
-    const repeated = engine.processChunk('<emotion>happy</emotion>', 't1', 's1');
-    expect(repeated.events).toEqual([
-      { type: 'emotion_changed', sessionId: 's1', turnId: 't1', emotion: 'happy' },
+    expect(engine.processChunk('我觉得<emotion>happy</emotion><motion>wave</motion>能解决.', 'session')).toEqual([
+      { text: '我觉得', tags: [{ type: 'emotion', emotion: 'happy' }] },
+      { text: null, tags: [{ type: 'motion', motion: 'wave' }] },
+      { text: '能解决.', tags: null },
     ]);
   });
 
-  it('已知动作发 motion_changed；模型编造的动作名不发事件只清洗', () => {
+  it('标签跨分片暂存, 不给前文补标点', () => {
     const engine = makeEngine();
-    engine.beginTurn('s1');
-    const known = engine.processChunk('<motion>wave</motion>你好', 't1', 's1');
-    expect(known.events).toEqual([
-      { type: 'motion_changed', sessionId: 's1', turnId: 't1', motion: 'wave' },
+    expect(engine.processChunk('我觉得<emotion>h', 'session')).toEqual([{ text: '我觉得', tags: null }]);
+    expect(engine.processChunk('appy</emotion>后面.', 'session')).toEqual([
+      { text: null, tags: [{ type: 'emotion', emotion: 'happy' }] },
+      { text: '后面.', tags: null },
     ]);
-    expect(known.cleaned).toBe('你好');
-
-    const unknown = engine.processChunk('<motion>fly_away</motion>文本', 't1', 's1');
-    expect(unknown.events).toEqual([]);
-    expect(unknown.cleaned).toBe('文本');
   });
 
-  it('切换角色后词汇整体替换', () => {
+  it('未知标签移除, 重复已知标签保持原顺序', () => {
     const engine = makeEngine();
-    engine.beginTurn('s1');
+    expect(engine.processChunk('<emotion>unknown</emotion><motion>wave</motion><motion>wave</motion>', 'session')).toEqual([
+      { text: null, tags: [{ type: 'motion', motion: 'wave' }] },
+      { text: null, tags: [{ type: 'motion', motion: 'wave' }] },
+    ]);
+  });
+
+  it('角色词汇替换后不接受旧标签', () => {
+    const engine = makeEngine();
     engine.updateVocabulary(['calm'], ['nod']);
-    const result = engine.processChunk('<emotion>happy</emotion><motion>nod</motion>', 't1', 's1');
-    expect(result.events.map(e => e.type)).toEqual(['motion_changed']);
+    expect(engine.processChunk('<emotion>happy</emotion><motion>nod</motion>', 'session')).toEqual([
+      { text: null, tags: [{ type: 'motion', motion: 'nod' }] },
+    ]);
   });
 
-  it('跨 delta 拆开的标签也能识别', () => {
+  it('普通尖括号通过, 新 Turn 丢弃未闭合标签', () => {
     const engine = makeEngine();
-    engine.beginTurn('s1');
-    const a = engine.processChunk('文本<emot', 't1', 's1');
-    expect(a.cleaned).toBe('文本');
-    const b = engine.processChunk('ion>sad</emotion>后续', 't1', 's1');
-    expect(b.events.map(e => e.type)).toEqual(['emotion_changed']);
-    expect(b.cleaned).toBe('后续');
-  });
-
-  it('非角色标签从索引 0 开始时按正文通过且扫描会终止', () => {
-    const engine = makeEngine();
-    engine.beginTurn('s1');
-
-    const specialTokenPrefix = engine.processChunk('<|', 't1', 's1');
-    expect(specialTokenPrefix).toEqual({ cleaned: '<|', events: [] });
-
-    const obsoleteMarkers = engine.processChunk(
-      '<|emotion|>happy<|/emotion|>《emotion》',
-      't1',
-      's1',
-    );
-    expect(obsoleteMarkers).toEqual({
-      cleaned: '<|emotion|>happy<|/emotion|>《emotion》',
-      events: [],
-    });
-  });
-
-  it('无关尖括号不会妨碍后面的合法 motion 标签跨 delta 识别', () => {
-    const engine = makeEngine();
-    engine.beginTurn('s1');
-
-    const first = engine.processChunk('<分析>正文<mot', 't1', 's1');
-    expect(first).toEqual({ cleaned: '<分析>正文', events: [] });
-
-    const second = engine.processChunk('ion>wave</motion>完成', 't1', 's1');
-    expect(second).toEqual({
-      cleaned: '完成',
-      events: [
-        { type: 'motion_changed', sessionId: 's1', turnId: 't1', motion: 'wave' },
-      ],
-    });
+    expect(engine.processChunk('<|analysis|>正文<emot', 'session')).toEqual([{ text: '<|analysis|>正文', tags: null }]);
+    engine.beginTurn('session');
+    expect(engine.processChunk('ion>后文', 'session')).toEqual([{ text: 'ion>后文', tags: null }]);
+    engine.processChunk('<emotion>sad', 'session');
+    expect(engine.flush('session')).toBe('<emotion>sad');
   });
 });
