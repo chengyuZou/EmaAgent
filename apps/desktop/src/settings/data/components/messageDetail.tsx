@@ -3,7 +3,7 @@ import { Button, CodeViewer, Skeleton } from '@ema-agent/ui';
 import { sessionsApi, type RawMessageHeader, type RawMessagesPage } from '../../../api/sessions.js';
 import { subscribeSystemEvent } from '../../../lib/events/systemEventDispatcher.js';
 import { useCollapsibleBody } from '../../../chat/messages/messageExpansion.js';
-import { fmtDateFull } from '../storageFormat.js';
+import { fmtDateFull } from '../../../lib/resourceFormat.js';
 import { useDetailPages } from '../useDetailPages.js';
 
 const messageId = (message: RawMessageHeader): string => message.id;

@@ -1,12 +1,12 @@
 import { memo, type JSX } from 'react';
 import { IconButton, Tooltip } from '@ema-agent/ui';
-import { usePlaybackStore } from '../speech/turnSpeechPlayback.js';
+import { useAudioPlaybackStore } from '../../stores/audioPlayback.js';
 
 export const SessionAudioButton = memo(function SessionAudioButton({ sessionId, onStopPlayback }: {
   readonly sessionId: string;
   readonly onStopPlayback: () => void;
 }): JSX.Element | null {
-  const status = usePlaybackStore(state => state.queue[0]?.sessionId === sessionId ? state.playbackStatus : null);
+  const status = useAudioPlaybackStore(state => state.owner?.sessionId === sessionId ? state.playbackStatus : null);
   if (!status) return null;
   return (
     <Tooltip content={status === 'loading' ? '正在准备播放, 点击停止; 后台生成继续' : '正在播放, 点击停止; 后台生成继续'}>

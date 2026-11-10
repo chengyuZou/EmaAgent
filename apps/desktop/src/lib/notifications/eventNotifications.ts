@@ -15,9 +15,12 @@ export type SessionCompactEvent = Extract<SessionBusinessMessage, {
   | 'compact_failed';
 }>;
 
-/** 通知层使用的线上事件: Turn 流, Session 手动压缩与应用级广播. */
+/** 通知层接收 Turn, Session 和应用通知, 也接收从正文标签生成的本地提示. */
 export type NotifiableEvent = TurnStreamEvent | SessionCompactEvent | AppEvent | PermissionStreamEvent
-  | AskUserEvent;
+  | AskUserEvent
+  // 仅用于事件显示设置, 不作为后端控制消息发送.
+  | { type: 'emotion_changed'; emotion: string }
+  | { type: 'motion_changed'; motion: string };
 
 export interface EventNotification {
   message: string;

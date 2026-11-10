@@ -13,14 +13,32 @@ const generateBody = z.object({
 export interface TurnSpeechRouteDeps {
   readonly turns: Pick<TurnStore, 'getTurn'>;
   readonly session: Pick<SessionStore, 'loadMessagesForTurn'>;
-  readonly speech: Pick<SpeechComposition, 'speechGenerator' | 'createTurnSpeechInput' | 'turnAudioRecords'>;
+  readonly speech: Pick<SpeechComposition,
+    'audioStore' | 'speechGenerator' | 'createTurnSpeechInput' | 'listSpeechAvailability' | 'getCharacterSpeechAvailability'>;
 }
 
 export const turnSpeechRoute = (deps: TurnSpeechRouteDeps) => new Hono()
   .get('/:turnId/audio-records', context => {
     const turn = deps.turns.getTurn(context.req.param('turnId'));
     if (!turn) return context.json({ error: 'turn_not_found', message: '该轮对话不存在' }, 404);
-    return context.json(deps.speech.turnAudioRecords(turn, readableText(deps.session, turn.id)));
+    return context.json(deps.speech.audioStore.listAudioSummaries(turn.id));
+  })
+  .get('/:turnId/speech-availability', context => {
+    const turn = deps.turns.getTurn(context.req.param('turnId'));
+    if (!turn) return context.json({ error: 'turn_not_found', message: '该轮对话不存在' }, 404);
+    return context.json(deps.speech.listSpeechAvailability(turn, readableText(deps.session, turn.id)));
+  })
+  .get('/:turnId/speech-availability/:characterName', context => {
+    const turn = deps.turns.getTurn(context.req.param('turnId'));
+    if (!turn) return context.json({ error: 'turn_not_found', message: '该轮对话不存在' }, 404);
+    try {
+      return context.json(deps.speech.getCharacterSpeechAvailability(
+        turn, readableText(deps.session, turn.id), context.req.param('characterName'),
+      ));
+    } catch (error) {
+      if (!(error instanceof SpeechRequestError) || error.code !== 'speech/character_not_found') throw error;
+      return context.json({ error: error.code, message: error.message }, 404);
+    }
   })
   .post('/:turnId/speech', jsonBody(generateBody), async context => {
     const turn = deps.turns.getTurn(context.req.param('turnId'));

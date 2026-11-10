@@ -10,7 +10,7 @@ import { removeSessionFromChat } from '../session/removeSessionFromChat.js';
 import type { SessionSidebarMoveInput } from '../../api/workspaces.js';
 import { useSidebarDrag } from './SidebarDragContext.js';
 import { SessionAudioButton } from './sessionAudioButton.js';
-import { stopSessionPlayback } from '../speech/turnSpeechPlayback.js';
+import { useAudioPlaybackStore } from '../../stores/audioPlayback.js';
 
 type StatusDot = { cls: string } | null;
 
@@ -68,7 +68,7 @@ export function SessionRow({
     return project?.name ?? null;
   });
   const drag = useSidebarDrag();
-  const stopPlayback = useCallback(() => stopSessionPlayback(session.id), [session.id]);
+  const stopPlayback = useCallback(() => useAudioPlaybackStore.getState().clearSessionPlayback(session.id), [session.id]);
   const dropProps = dropDestination
     ? drag.sessionTargetProps(`session-before:${session.id}`, dropDestination, session.id)
     : {};

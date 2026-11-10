@@ -3,7 +3,7 @@ import { Button, Skeleton, Tooltip } from '@ema-agent/ui';
 import { turnsApi, type TurnDetailResult, type TurnSummary, type TurnSummaryPage } from '../../../api/turns.js';
 import { useCollapsibleBody } from '../../../chat/messages/messageExpansion.js';
 import { subscribeSystemEvent } from '../../../lib/events/systemEventDispatcher.js';
-import { fmtDateFull, fmtTokens } from '../storageFormat.js';
+import { fmtDateFull, fmtTokens } from '../../../lib/resourceFormat.js';
 import { MessageDetail } from './messageDetail.js';
 import { ToolDetail } from './toolDetail.js';
 import { useDetailPages } from '../useDetailPages.js';

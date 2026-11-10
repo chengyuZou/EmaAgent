@@ -10,7 +10,7 @@ import { Tooltip, TooltipProvider } from '@ema-agent/ui';
 
 import type { TurnIndexPage } from '../../api/sessions.js';
 import { EMPTY_SESSION_HISTORY, useSessionHistoryStore } from '../../stores/sessionHistory.js';
-import { usePlaybackStore } from '../speech/turnSpeechPlayback.js';
+import { useAudioPlaybackStore } from '../../stores/audioPlayback.js';
 
 type TurnIndexItem = TurnIndexPage['items'][number];
 
@@ -55,8 +55,8 @@ function turnRailMarkVisual(index: number, hoveredIndex: number | null, isCurren
 }
 
 export function TurnNavigationRail({ sessionId, visibleTurnIds, onSelectTurn }: TurnRailProps): JSX.Element | null {
-  const audioTurnId = usePlaybackStore(state => state.playbackStatus && state.queue[0]?.sessionId === sessionId
-    ? state.queue[0].turnId : null);
+  const audioTurnId = useAudioPlaybackStore(state => state.playbackStatus && state.owner?.sessionId === sessionId
+    ? state.owner.turnId : null);
   const [railElement, setRailElement] = useState<HTMLDivElement | null>(null);
   const wheelDeltaRef = useRef(0);
   const centeredViewRef = useRef<{ turnId: string; capacity: number } | null>(null);

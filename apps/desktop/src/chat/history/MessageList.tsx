@@ -18,7 +18,7 @@ import { useMessageViewport } from './useMessageViewport.js';
 import { sessionsApi } from '../../api/sessions.js';
 import { MainView, useMainNavigationStore, type TurnNavigationRequest } from '../../layout/navigation.js';
 import { showToast } from '../../lib/notifications/toast.js';
-import { usePlaybackStore } from '../speech/turnSpeechPlayback.js';
+import { useAudioPlaybackStore } from '../../stores/audioPlayback.js';
 
 const MESSAGE_TOP_INSET = 40;
 const PLAYBACK_TARGET_HIGHLIGHT_MS = 1_800;
@@ -175,7 +175,7 @@ function HistoryViewport({
   readonly onPlaybackTurnLocated: (turnId: string) => void;
 }): JSX.Element {
   const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
-  const playbackKey = usePlaybackStore(state => state.playbackStatus ? state.queue[0] : undefined);
+  const playbackKey = useAudioPlaybackStore(state => state.playbackStatus ? state.owner : undefined);
   const navigationRequest = useMainNavigationStore(state => state.turnNavigationRequest);
   const statusRef = useRef<HTMLDivElement | null>(null);
   const [statusHeight, setStatusHeight] = useState(32);
@@ -461,8 +461,8 @@ function HistoryViewport({
           disabled={!showLocatePlayback}
           style={{ bottom: latestButtonBottom ?? 0 }}
           onClick={() => {
-            const playback = usePlaybackStore.getState();
-            const key = playback.queue[0];
+            const playback = useAudioPlaybackStore.getState();
+            const key = playback.owner;
             if (playback.playbackStatus && key) {
               useMainNavigationStore.getState().viewTurn(key.sessionId, key.turnId);
             }

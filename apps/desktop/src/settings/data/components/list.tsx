@@ -5,7 +5,7 @@ import { storageStatsApi, type DataDirStats, type SessionStats } from '../../../
 import { useCollapsibleBody } from '../../../chat/messages/messageExpansion.js';
 import { formatSessionTitle } from '../../../stores/session.js';
 import { subscribeStorageChanges } from '../storageEvents.js';
-import { fmtBytes, fmtDateShort, fmtDuration, fmtTokens } from '../storageFormat.js';
+import { fmtBytes, fmtDateShort, fmtDuration, fmtTokens } from '../../../lib/resourceFormat.js';
 import type { StorageDetailTarget } from './detail.js';
 
 interface StorageListProps {

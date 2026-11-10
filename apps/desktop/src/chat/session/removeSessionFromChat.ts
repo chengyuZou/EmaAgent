@@ -9,8 +9,8 @@ import { useSessionPanelStore } from '../../stores/sessionPanel.js';
 import { useTaskStore } from '../../stores/task.js';
 import { useSessionAttachmentStore } from '../../stores/sessionAttachment.js';
 import { runWithToast } from '../../lib/notifications/toast.js';
-import { removeSessionPlayback } from '../speech/turnSpeechPlayback.js';
-import { removeSessionSpeechGeneration } from '../speech/turnSpeechGeneration.js';
+import { useAudioPlaybackStore } from '../../stores/audioPlayback.js';
+import { useAudioStore } from '../../stores/audio.js';
 import { removeSessionSubscription } from './sessionSubscriptions.js';
 import { closeSessionTerminals } from '../sidePanel/tabs/terminal/terminalSessions.js';
 import { cancelVoiceInput } from '../input/voice/voiceInput.js';
@@ -25,8 +25,8 @@ export function removeSessionFromChat(sessionId: string): void {
   // 先离开已删除的会话, 避免清空估算状态时又为它发起请求.
   useMainNavigationStore.getState().evictSession(sessionId);
   removeSessionSubscription(sessionId);
-  removeSessionPlayback(sessionId);
-  removeSessionSpeechGeneration(sessionId);
+  useAudioPlaybackStore.getState().clearSessionPlayback(sessionId);
+  useAudioStore.getState().clearSessionAudio(sessionId);
   useSessionActivityStore.getState().evictSession(sessionId);
   useTurnStore.getState().evictSession(sessionId);
   useSessionHistoryStore.getState().evictSession(sessionId);

@@ -14,6 +14,7 @@ export const sessionGitApi = {
   summary(sessionId: string): Promise<SessionGitSummary> {
     return readRpcJson(rpcClient.api.sessions[':sessionId'].git.summary.$get({ param: { sessionId } }));
   },
+
   workspaceDiff(
     sessionId: string,
     scope: GitDiffScope,
@@ -27,9 +28,11 @@ export const sessionGitApi = {
       { init: { signal } },
     ));
   },
+
   refs(sessionId: string): Promise<SessionGitRefs> {
     return readRpcJson(rpcClient.api.sessions[':sessionId'].git.refs.$get({ param: { sessionId } }));
   },
+  
   compare(
     sessionId: string,
     target: CompareInput,

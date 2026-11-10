@@ -42,7 +42,9 @@ The data page groups saved voices for the same Turn. The user can choose a chara
 
 Generation on the data page does not automatically play the result, and ordinary preview does not drive Stage mouth movement. Managing and comparing voices need not take over the chat presentation. Failed or cancelled manual regeneration preserves existing audio so an incomplete attempt does not destroy a usable result.
 
-The cost is managing several character audio versions of the same text. Each regeneration also makes real TTS requests and can incur charges. We let the user decide separately whether to replay or regenerate.
+Each attempt has its own AudioID, including repeated synthesis for the same character. Keeping previous results lets the user choose an earlier recording instead of losing it when trying another voice configuration. Chat lists the active character's recordings; the data page groups and deletes them. The cost is more disk space and explicit cleanup. Each regeneration also makes real TTS requests and can incur charges. We let the user decide separately whether to replay or regenerate.
+
+The database determines which recordings are usable. An attempt is registered before its file is created, then becomes ready only after its WAV and caption segments are complete. This keeps interrupted files associated with a known attempt and lets the UI show failed cleanup instead of claiming synthesis is still running. Each AudioID owns its file, so retaining or deleting one result does not require backing up and restoring another recording.
 
 ## Why the beta does not add a model wait for speech
 

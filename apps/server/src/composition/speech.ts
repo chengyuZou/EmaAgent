@@ -25,7 +25,7 @@ export interface SpeechSocketClient {
   close(): void;
 }
 
-export interface SpeechGenerationChoice {
+export interface CharacterSpeechAvailability {
   readonly characterName: string;
   /** null 表示可以生成; 非空时由 UI 显示具体不可用原因. */
   readonly unavailableReason: string | null;
@@ -40,11 +40,8 @@ export interface SpeechComposition {
     characterName?: string,
     signal?: AbortSignal,
   ): StartTurnSpeechInput;
-  turnAudioRecords(turn: Turn, text: string): {
-    records: ReturnType<AudioStore['listAudioSummaries']>;
-    currentCharacter: SpeechGenerationChoice;
-    generationChoices: SpeechGenerationChoice[];
-  };
+  listSpeechAvailability(turn: Turn, text: string): CharacterSpeechAvailability[];
+  getCharacterSpeechAvailability(turn: Turn, text: string, characterName: string): CharacterSpeechAvailability;
   previewVoice(
     providerId: string,
     modelId: string,
@@ -136,6 +133,36 @@ export function openSpeech(
     };
   };
 
+  // 这里只检查本地配置和状态, 不合成声音或注册云端音色.
+  const createCharacterSpeechAvailabilityCheck = (turn: Turn, text: string) => {
+    let commonReason: string | null = null;
+    if (turn.status !== 'completed') commonReason = '只能为已完成的回复生成完整语音';
+    else if (!text.trim()) commonReason = '该轮没有可朗读的正文';
+    else {
+      try {
+        requireTTS();
+      } catch (error) {
+        commonReason = error instanceof Error ? error.message : String(error);
+      }
+    }
+    const generatingCharacters = new Set(audioStore.listAudioSummaries(turn.id)
+      .filter(audio => audio.audioStatus === 'generating')
+      .map(audio => audio.characterName));
+    return (character: Character): CharacterSpeechAvailability => {
+      let unavailableReason = generatingCharacters.has(character.name)
+        ? '该轮的这个角色正在生成语音, 请等待完成或先取消'
+        : commonReason;
+      if (!unavailableReason) {
+        try {
+          requireCharacterVoice(character);
+        } catch (error) {
+          unavailableReason = error instanceof Error ? error.message : String(error);
+        }
+      }
+      return { characterName: character.name, unavailableReason };
+    };
+  };
+
   const transcribe: SpeechComposition['transcribe'] = async request => {
     const binding = modelBindings.get('stt');
     if (!binding) return undefined;
@@ -197,35 +224,17 @@ export function openSpeech(
     createTurnSpeechInput,
     transcribe,
     sttPreview,
-    turnAudioRecords(turn, text) {
-      let commonReason: string | null = null;
-      if (turn.status !== 'completed') commonReason = '只能为已完成的回复生成完整语音';
-      else if (!text.trim()) commonReason = '该轮没有可朗读的正文';
-      else {
-        try {
-          requireTTS();
-        } catch (error) {
-          commonReason = error instanceof Error ? error.message : String(error);
-        }
-      }
-      const choice = (character: Character): SpeechGenerationChoice => {
-        let unavailableReason = commonReason;
-        if (!unavailableReason) {
-          try {
-            requireCharacterVoice(character);
-          } catch (error) {
-            unavailableReason = error instanceof Error ? error.message : String(error);
-          }
-        }
-        return { characterName: character.name, unavailableReason };
-      };
-      return {
-        records: audioStore.listAudioSummaries(turn.id),
-        currentCharacter: choice(characters.current()),
-        generationChoices: characters.list()
-          .filter(character => character.voiceSamples.some(sample => sample.isPrimary))
-          .map(choice),
-      };
+    listSpeechAvailability(turn, text) {
+      const checkAvailability = createCharacterSpeechAvailabilityCheck(turn, text);
+      return characters.list()
+        .filter(character => character.voiceSamples.some(sample => sample.isPrimary))
+        .map(checkAvailability);
+    },
+    getCharacterSpeechAvailability(turn, text, characterName) {
+      const character = characters.get(characterName);
+      if (!character) throw new SpeechRequestError('speech/character_not_found', '角色已不存在');
+      // 指定角色即使没有主参考音频也要返回原因, 不能只从 Data 的角色列表里查找.
+      return createCharacterSpeechAvailabilityCheck(turn, text)(character);
     },
     async previewVoice(providerId, modelId, text, signal) {
       const character = characters.current();

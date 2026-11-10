@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useState, type JSX } from 'react';
 import { Button, Skeleton } from '@ema-agent/ui';
 import { turnsApi, type ToolExecutionDetail, type ToolExecutionLog } from '../../../api/turns.js';
 import { ToolCallBlock } from '../../../chat/messages/toolBlocks/ToolCallBlock.js';
-import { fmtDateFull } from '../storageFormat.js';
+import { fmtDateFull } from '../../../lib/resourceFormat.js';
 import { useDetailPages } from '../useDetailPages.js';
 import { subscribeSystemEvent } from '../../../lib/events/systemEventDispatcher.js';
 

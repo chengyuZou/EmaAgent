@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProper
 import { Badge, Button, Skeleton } from '@ema-agent/ui';
 import { usageApi, type UsageRecordsPage } from '../../../api/usage.js';
 import { subscribeSystemEvent } from '../../../lib/events/systemEventDispatcher.js';
-import { fmtDateFull } from '../storageFormat.js';
+import { fmtDateFull } from '../../../lib/resourceFormat.js';
 import { useDetailPages } from '../useDetailPages.js';
 
 type UsageRecord = UsageRecordsPage['items'][number];

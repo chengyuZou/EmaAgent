@@ -1,32 +1,28 @@
 import type {
-  SpeechClientCommand,
-  SpeechGenerateEvent,
-} from '@ema-agent/server/routes/ws/speech.js';
+  SpeechGenerationEvent, CharacterTag,
+} from '@ema-agent/speech';
 import { serverClient } from './client.js';
 
 export interface SpeechSocketHandlers {
-  readonly onControl: (event: SpeechGenerateEvent) => void;
+  readonly onControl: (event: SpeechGenerationEvent) => void;
   readonly onClosed: () => void;
 }
 
 export interface SpeechSocketHandle {
-  /** 明确停止生成, 已写入的音频仍由 Server 保存. */
-  cancel(): void;
   /** 只离开状态通知连接, 不停止生成. */
   close(): void;
 }
 
 export async function openSpeechSocket(
-  sessionId: string,
-  turnId: string,
+  audioId: string,
   handlers: SpeechSocketHandlers,
 ): Promise<SpeechSocketHandle> {
-  const url = await serverClient.webSocketUrl(`/api/ws/speech/${encodeURIComponent(turnId)}`);
+  const url = await serverClient.webSocketUrl(`/api/ws/speech/${encodeURIComponent(audioId)}`);
   const socket = new WebSocket(url);
   socket.addEventListener('message', event => {
     if (typeof event.data !== 'string') return;
     const control = parseSpeechControl(event.data);
-    if (control?.sessionId === sessionId && control.turnId === turnId) {
+    if (control?.audioId === audioId) {
       handlers.onControl(control);
     }
   });
@@ -42,19 +38,13 @@ export async function openSpeechSocket(
     }, { once: true });
   });
   return {
-    cancel() {
-      if (socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({ type: 'speech_generate_cancel' } satisfies SpeechClientCommand));
-      }
-      socket.close(1000, 'speech_generate_cancelled');
-    },
     close() {
       socket.close(1000, 'speech_subscription_closed');
     },
   };
 }
 
-function parseSpeechControl(source: string): SpeechGenerateEvent | null {
+function parseSpeechControl(source: string): SpeechGenerationEvent | null {
   let value: unknown;
   try {
     value = JSON.parse(source);
@@ -62,12 +52,22 @@ function parseSpeechControl(source: string): SpeechGenerateEvent | null {
     return null;
   }
   if (!value || typeof value !== 'object') return null;
-  const event = value as SpeechGenerateEvent;
-  if (typeof event.sessionId !== 'string' || typeof event.turnId !== 'string') return null;
+  const event = value as SpeechGenerationEvent;
+  if (typeof event.audioId !== 'string') return null;
+  if (event.type === 'speech_generate_unavailable') return event;
+  if (typeof event.sessionId !== 'string' || typeof event.turnId !== 'string' || typeof event.characterName !== 'string') return null;
   switch (event.type) {
-    case 'speech_generate_started':
-    case 'speech_generate_unavailable':
-      return event;
+    case 'speech_segments':
+      return Array.isArray(event.segments) && event.segments.every(segment => (
+        segment && Number.isInteger(segment.segmentIndex) && segment.segmentIndex >= 0
+        && (segment.textForTTS === null || typeof segment.textForTTS === 'string')
+        && Number.isFinite(segment.startMs) && segment.startMs >= 0
+        && (segment.endMs === null || (Number.isFinite(segment.endMs) && segment.endMs >= segment.startMs))
+        && (segment.tags === null || (Array.isArray(segment.tags) && segment.tags.every((tag: CharacterTag) => (
+          tag && ((tag.type === 'emotion' && typeof tag.emotion === 'string')
+            || (tag.type === 'motion' && typeof tag.motion === 'string'))
+        ))))
+      )) ? event : null;
     case 'speech_generate_warning':
       return typeof event.code === 'string' && typeof event.message === 'string' ? event : null;
     case 'speech_generate_completed':

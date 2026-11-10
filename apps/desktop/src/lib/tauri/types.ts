@@ -95,3 +95,26 @@ export type FileDragEvent =
   | { readonly type: 'leave' }
   | { readonly type: 'enter' | 'over'; readonly x: number; readonly y: number }
   | { readonly type: 'drop'; readonly x: number; readonly y: number; readonly paths: readonly string[] };
+
+/** revision 由 main 递增, 字幕视图用它忽略晚到的旧消息. */
+export type CaptionState =
+  | { readonly kind: 'hidden'; readonly revision: number }
+  | {
+      readonly kind: 'text';
+      readonly revision: number;
+      readonly sessionId: string;
+      readonly turnId: string;
+      readonly text: string;
+    }
+  | {
+      readonly kind: 'speech';
+      readonly revision: number;
+      readonly sessionId: string;
+      readonly turnId: string;
+      readonly audioId: string;
+      readonly segmentIndex: number;
+      readonly text: string;
+      /** false 表示播放器暂时缓冲, 保留当前段并暂停显字动画. */
+      readonly playing: boolean;
+    };
+

@@ -146,6 +146,15 @@ body[data-pet-pointer-inside='true'] .ema-server-status {
   display: none;
 }
 
+.ema-caption-character {
+  animation: ema-caption-character-enter 180ms ease-out both;
+}
+
+@keyframes ema-caption-character-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 .ema-stage-speech-tail {
   position: relative;
   left: 72%;
@@ -157,6 +166,9 @@ body[data-pet-pointer-inside='true'] .ema-server-status {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .ema-caption-character {
+    animation: none;
+  }
   .ema-stage-speech-bubble {
     transition: none;
     animation: none;

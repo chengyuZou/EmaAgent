@@ -2,6 +2,7 @@ import type { AppEvent } from '@ema-agent/server/application/appEvents.js';
 import type { ThemeSettings } from '@ema-agent/server/settings/themeSetting.js';
 
 import type {
+  CaptionState,
   FileDragEvent,
   BrowserBounds,
   BrowserEvent,
@@ -52,8 +53,8 @@ const PET_POINTER_EVENT = 'ema://pet-pointer';
 const SYSTEM_EVENT = 'ema://system-event';
 const THEME_CHANGED_EVENT = 'theme:changed';
 const DESKTOP_SETTINGS_CHANGED_EVENT = 'settings:desktop-changed';
-const DIALOGUE_DELTA_EVENT = 'dialogue:delta';
-const DIALOGUE_ENDED_EVENT = 'dialogue:end';
+const CAPTION_STATE_EVENT = 'caption:state';
+const CAPTION_STATE_REQUEST = 'caption:request';
 const STAGE_EMOTION_EVENT = 'stage:emotion-changed';
 const STAGE_MOTION_EVENT = 'stage:motion-changed';
 const STAGE_LIP_SYNC_EVENT = 'stage:lip-sync';
@@ -212,30 +213,20 @@ export const tauriBridge = {
     return listenTauri(DESKTOP_SETTINGS_CHANGED_EVENT, handler);
   },
 
-  async publishDialogueDelta(sessionId: string, turnId: string, text: string): Promise<void> {
-    await emitTauri(DIALOGUE_DELTA_EVENT, { sessionId, turnId, text });
+  async publishCaptionState(state: CaptionState): Promise<void> {
+    await emitTauri(CAPTION_STATE_EVENT, state);
   },
 
-  async publishDialogueEnded(sessionId: string, turnId: string): Promise<void> {
-    await emitTauri(DIALOGUE_ENDED_EVENT, { sessionId, turnId });
+  async requestCaptionState(): Promise<void> {
+    await emitTauri(CAPTION_STATE_REQUEST);
   },
 
-  async listenDialogueDelta(
-    handler: (sessionId: string, turnId: string, text: string) => void,
-  ): Promise<() => void> {
-    return listenTauri<{ sessionId: string; turnId: string; text: string }>(
-      DIALOGUE_DELTA_EVENT,
-      ({ sessionId, turnId, text }) => handler(sessionId, turnId, text),
-    );
+  async listenCaptionState(handler: (state: CaptionState) => void): Promise<() => void> {
+    return listenTauri<CaptionState>(CAPTION_STATE_EVENT, handler);
   },
 
-  async listenDialogueEnded(
-    handler: (sessionId: string, turnId: string) => void,
-  ): Promise<() => void> {
-    return listenTauri<{ sessionId: string; turnId: string }>(
-      DIALOGUE_ENDED_EVENT,
-      ({ sessionId, turnId }) => handler(sessionId, turnId),
-    );
+  async listenCaptionStateRequest(handler: () => void): Promise<() => void> {
+    return listenTauri(CAPTION_STATE_REQUEST, handler);
   },
 
   async connectDesktopNotifications(

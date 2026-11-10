@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useState, type CSSProperties, type JSX } 
 import { Button, Skeleton } from '@ema-agent/ui';
 import { goalsApi, type Goal, type GoalSummary } from '../../../api/goals.js';
 import { subscribeSystemEvent } from '../../../lib/events/systemEventDispatcher.js';
-import { fmtDateFull } from '../storageFormat.js';
+import { fmtDateFull } from '../../../lib/resourceFormat.js';
 import { useCollapsibleBody } from '../../../chat/messages/messageExpansion.js';
 
 function statusLabel(goal: GoalSummary): string {

@@ -12,9 +12,8 @@ import { useSessionHistoryStore } from '../../stores/sessionHistory.js';
 import { useSettingsStore } from '../../stores/settings.js';
 import { emptyChatDraft, restoreQueuedDraft, useChatDraftStore } from '../../stores/chatDraft.js';
 import { useSessionStore } from '../../stores/session.js';
-import { sessionPresentation } from '../presentation/sessionPresentation.js';
-import { startPendingSpeechPlayback, startTurnSpeechPlayback, removeTurnPlayback } from '../speech/turnSpeechPlayback.js';
-import { observeTurnSpeechGeneration } from '../speech/turnSpeechGeneration.js';
+import { useAudioPlaybackStore } from '../../stores/audioPlayback.js';
+import { useAudioStore } from '../../stores/audio.js';
 import { scheduleTurnHistoryClosure } from './turnHistoryClosure.js';
 
 const subscriptions = new Map<string, () => void>();
@@ -214,29 +213,23 @@ function receiveTurnEvent(sessionId: string, turnId: string, event: TurnStoreEve
 
   switch (event.type) {
     case 'turn_started':
-      if (event.ttsEnabled) {
-        observeTurnSpeechGeneration(sessionId, turnId);
-        startTurnSpeechPlayback(sessionId, turnId);
-      } else {
-        sessionPresentation.claim(sessionId, turnId);
+      useAudioPlaybackStore.getState().beginTurnPresentation(event);
+      if (event.ttsEnabled && event.audioId && event.characterName) {
+        useAudioStore.getState().observeSpeechGeneration({
+          sessionId, turnId, audioId: event.audioId, characterName: event.characterName,
+        });
       }
       return;
     case 'output_text_delta':
-      sessionPresentation.text(sessionId, turnId, event.delta);
-      return;
-    case 'emotion_changed':
-      sessionPresentation.emotion(sessionId, turnId, event.emotion);
-      return;
-    case 'motion_changed':
-      sessionPresentation.motion(sessionId, turnId, event.motion);
+      useAudioPlaybackStore.getState().appendText(sessionId, turnId, event.delta, event.tags ?? null);
       return;
     case 'turn_completed':
-      if (sessionPresentation.finishTurn(sessionId, turnId)) startPendingSpeechPlayback();
+      useAudioPlaybackStore.getState().finishTurn(sessionId, turnId);
       scheduleTurnHistoryClosure(sessionId);
       return;
     case 'turn_failed':
     case 'turn_aborted':
-      removeTurnPlayback(sessionId, turnId);
+      useAudioPlaybackStore.getState().removeTurn(sessionId, turnId);
       scheduleTurnHistoryClosure(sessionId);
       return;
     case 'compact_completed':
@@ -298,6 +291,13 @@ function syncPermissionToasts(sessionId: string, pendingInteractions: readonly P
 }
 
 function presentSessionEvent(event: NotifiableEvent): void {
+  if (event.type === 'output_text_delta' && event.tags) {
+    for (const tag of event.tags) {
+      presentSessionEvent(tag.type === 'emotion'
+        ? { type: 'emotion_changed', emotion: tag.emotion }
+        : { type: 'motion_changed', motion: tag.motion });
+    }
+  }
   // 关闭等待提示不受结果通知开关影响. 取消或超时也会收到 permission_resolved.
   if (event.type === 'permission_resolved') {
     dismissPermissionToast(event.toolCallId);

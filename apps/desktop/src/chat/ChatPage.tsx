@@ -92,9 +92,6 @@ export function ChatPage(): JSX.Element {
         }
         return;
       }
-      if (event.type === 'session_audio_changed') {
-        void useSessionHistoryStore.getState().mergeTurnMessages(event.sessionId, event.turnId);
-      }
       if (event.type !== 'session_list_changed' && event.type !== 'session_messages_changed') return;
       clearTimeout(refreshTimer);
       refreshTimer = setTimeout(() => {

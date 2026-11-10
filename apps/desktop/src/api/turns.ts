@@ -3,7 +3,6 @@ import {
   rpcClient,
   readRpcJson,
   readRpcVoid,
-  serverClient,
   type RpcClient,
   type RpcJson,
 } from './client.js';
@@ -17,6 +16,8 @@ export type TurnCreateInput = UserMessagePayload & {
 export type ToolExecutionLog = RpcJson<RpcClient['api']['turns'][':turnId']['tool-executions']['$get']>;
 export type TurnSpeechGenerateResult = RpcJson<RpcClient['api']['turns'][':turnId']['speech']['$post']>;
 export type TurnAudioRecords = RpcJson<RpcClient['api']['turns'][':turnId']['audio-records']['$get']>;
+export type CharacterSpeechAvailability = RpcJson<RpcClient['api']['turns'][':turnId']['speech-availability'][':characterName']['$get']>;
+export type SpeechAvailabilityList = RpcJson<RpcClient['api']['turns'][':turnId']['speech-availability']['$get']>;
 export type ToolExecutionDetail = RpcJson<RpcClient['api']['turns'][':turnId']['tool-executions'][':callId']['$get']>;
 export type TurnSummaryPage = RpcJson<RpcClient['api']['turns']['$get']>;
 export type TurnSummary = TurnSummaryPage['items'][number];
@@ -39,8 +40,17 @@ export const turnsApi = {
     ));
   },
 
-  cancelSpeech(turnId: string): Promise<void> {
-    return readRpcVoid(rpcClient.api.turns[':turnId'].speech.cancel.$post({ param: { turnId } }));
+
+  listSpeechAvailability(turnId: string, signal?: AbortSignal): Promise<SpeechAvailabilityList> {
+    return readRpcJson(rpcClient.api.turns[':turnId']['speech-availability'].$get(
+      { param: { turnId } }, { init: { signal } },
+    ));
+  },
+
+  getCharacterSpeechAvailability(turnId: string, characterName: string, signal?: AbortSignal): Promise<CharacterSpeechAvailability> {
+    return readRpcJson(rpcClient.api.turns[':turnId']['speech-availability'][':characterName'].$get(
+      { param: { turnId, characterName } }, { init: { signal } },
+    ));
   },
 
   listSummaries(sessionId: string, before?: NonNullable<TurnSummaryPage['nextCursor']>, signal?: AbortSignal) {
@@ -80,8 +90,4 @@ export const turnsApi = {
     ));
   },
 
-  /** 实时与历史共用同一路由, 由浏览器读取音频, 不先下载整轮文件. */
-  audioUrl(turnId: string): Promise<string> {
-    return serverClient.audioUrl(`/api/turns/${encodeURIComponent(turnId)}/audio`);
-  },
 };

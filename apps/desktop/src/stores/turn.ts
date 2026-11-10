@@ -502,8 +502,6 @@ export const useTurnStore = create<TurnStore>((set, get) => ({
       case 'turn_aborted':
         turnStore.markTerminal(sessionId, turnId, event);
         return;
-      case 'motion_changed':
-      case 'emotion_changed':
       case 'compact_started':
       case 'compact_completed':
       case 'compact_cancelled':

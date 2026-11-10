@@ -16,6 +16,7 @@ export type AudioPlayerProps = AudioSource & {
   readonly className?: string;
   /** 页面或文件标签隐藏时暂停, 再次显示时不自动播放. */
   readonly active?: boolean;
+  readonly shouldAutoPlay?: boolean;
 };
 
 /** 只判断地址中的文件后缀, 不根据说明文字猜测资源类型. */
@@ -82,11 +83,12 @@ function FileAudio({ filePath, ...props }: Omit<AudioPlayerProps, 'src' | 'fileP
   );
 }
 
-function PlayableAudio({ src, title, className, active = true }: {
+function PlayableAudio({ src, title, className, active = true, shouldAutoPlay = false }: {
   readonly src: string;
   readonly title: string;
   readonly className?: string;
   readonly active?: boolean;
+  readonly shouldAutoPlay?: boolean;
 }): JSX.Element {
   const player = useRef<H5AudioPlayer>(null);
   const enabled = useRef(active);
@@ -167,7 +169,7 @@ function PlayableAudio({ src, title, className, active = true }: {
         ref={player}
         src={src}
         preload="none"
-        autoPlay={false}
+        autoPlay={shouldAutoPlay}
         autoPlayAfterSrcChange={false}
         layout="stacked-reverse"
         showJumpControls={false}

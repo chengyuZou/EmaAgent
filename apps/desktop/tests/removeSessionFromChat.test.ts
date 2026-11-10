@@ -36,11 +36,11 @@ vi.mock('@xterm/addon-web-links', () => ({ WebLinksAddon: class {} }));
 vi.mock('../src/chat/session/sessionSubscriptions.js', () => ({
   removeSessionSubscription: vi.fn(),
 }));
-vi.mock('../src/chat/speech/turnSpeechPlayback.js', () => ({
-  removeSessionPlayback: vi.fn(),
+vi.mock('../src/stores/audioPlayback.js', () => ({
+  useAudioPlaybackStore: { getState: () => ({ clearSessionPlayback: vi.fn() }) },
 }));
-vi.mock('../src/chat/speech/turnSpeechGeneration.js', () => ({
-  removeSessionSpeechGeneration: vi.fn(),
+vi.mock('../src/stores/audio.js', () => ({
+  useAudioStore: { getState: () => ({ clearSessionAudio: vi.fn() }) },
 }));
 
 afterEach(async () => {

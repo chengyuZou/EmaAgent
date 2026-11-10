@@ -23,6 +23,8 @@ import { useThemeSync } from '../stores/theme.js';
 import { WallpaperLayer } from '../wallpaper/WallpaperLayer.js';
 import { MainView, useMainNavigationStore } from './navigation.js';
 import { setVishotCaptureSession } from '../api/vishotCapture.js';
+import { mountAudioPlayback, receiveAudioPlaybackSystemEvent } from '../stores/audioPlayback.js';
+import { receiveAudioSystemEvent } from '../stores/audio.js';
 
 const SettingsPanel = lazy(async () => {
   const module = await import('../settings/SettingsPanel.js');
@@ -55,6 +57,7 @@ export function MainWindow(): JSX.Element {
 
   useThemeSync();
   useEffect(() => mountDesktopNotifications(), []);
+  useEffect(() => mountAudioPlayback(), []);
   useSettingsSync(serverReady);
   useEffect(() => {
     if (!serverReady) return;
@@ -75,6 +78,8 @@ export function MainWindow(): JSX.Element {
     handleSettingsSystemEvent(event);
     handleSkillSystemEvent(event);
     handleTaskSystemEvent(event);
+    receiveAudioSystemEvent(event);
+    receiveAudioPlaybackSystemEvent(event);
   }), []);
   useEffect(() => {
     if (!serverReady) {
