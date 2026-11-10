@@ -1,3 +1,4 @@
+import type { StageTextPart } from '@ema-agent/stage';
 import type { AgentLoopEvent } from '@ema-agent/agent';
 import {
   appendEstimatedContextMessages,
@@ -82,6 +83,14 @@ export function createTurnLoopEvents(deps: TurnLoopEventsDeps) {
     }
   }
 
+  function acceptText(event: Extract<AgentLoopEvent, { type: 'text_delta' }>, tags: StageTextPart['tags'] = null): void {
+    emit({
+      type: 'output_text_delta', sessionId, turnId,
+      blockIndex: event.blockIndex, delta: event.delta, tags,
+      assistantMessageId: writer.currentAssistantMessageId,
+    });
+  }
+
   function translate(event: AgentLoopEvent): void {
     switch (event.type) {
       case 'iteration_started':
@@ -95,14 +104,7 @@ export function createTurnLoopEvents(deps: TurnLoopEventsDeps) {
         });
         return;
       case 'text_delta':
-        emit({
-          type: 'output_text_delta',
-          sessionId,
-          turnId,
-          blockIndex: event.blockIndex,
-          delta: event.delta,
-          assistantMessageId: writer.currentAssistantMessageId,
-        });
+        acceptText(event);
         return;
       case 'thinking_delta':
         emit({
@@ -176,5 +178,5 @@ export function createTurnLoopEvents(deps: TurnLoopEventsDeps) {
     }
   }
 
-  return { onContextPrepared, accept, recordLLMCall };
+  return { onContextPrepared, accept, acceptText, recordLLMCall };
 }

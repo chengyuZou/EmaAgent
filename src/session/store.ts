@@ -462,6 +462,8 @@ export class SessionStore {
     try {
       this.onSessionRemoved?.(id);
     } finally {
+      // SQL 删除已经提交, 文件清理失败也要通知前端移除对应会话状态.
+      this.onChanged?.({ type: 'sessions_deleted', sessionIds: [id] });
       this.onChanged?.({ type: 'session_list_changed', sessionId: id });
     }
   }

@@ -61,6 +61,27 @@ describe('SessionStore 变更事件的会话身份', () => {
     expect(events.pop()).toEqual({ type: 'session_list_changed', sessionId: fork.sessionId });
     store.deleteSession(session.id);
     expect(events.pop()).toEqual({ type: 'session_list_changed', sessionId: session.id });
+    expect(events.pop()).toEqual({ type: 'sessions_deleted', sessionIds: [session.id] });
+    db.close();
+  });
+
+  it('单个 Session 的 SQL 删除提交后, 文件清理失败也通知前端清理', async () => {
+    const { db } = await makeStore();
+    const events: SessionEvent[] = [];
+    const store = new SessionStore({
+      db,
+      onSessionRemoved: () => { throw new Error('fixture cleanup failed'); },
+      onChanged: event => events.push(event),
+    });
+    const session = store.createSession({ cwd: os.tmpdir() });
+    events.length = 0;
+
+    expect(() => store.deleteSession(session.id)).toThrow('fixture cleanup failed');
+    expect(store.sessionExists(session.id)).toBe(false);
+    expect(events).toEqual([
+      { type: 'sessions_deleted', sessionIds: [session.id] },
+      { type: 'session_list_changed', sessionId: session.id },
+    ]);
     db.close();
   });
 

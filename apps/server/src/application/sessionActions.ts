@@ -30,6 +30,8 @@ export async function deleteSession(
   const { database, tools, characters } = composition;
   database.session.getSession(sessionId);
   await database.sessionRunning.runWithSessionClosed(sessionId, async () => {
+    // TODO: runWithSessionClosed 尚不阻止单条录音删除. 整体删除前还需阻止新的录音删除,
+    // 并等待这个 Session 已开始的录音删除收尾, 避免它与下面的文件目录清理同时执行.
     await stopSessionWork(composition, sessionId, 'Session deleted');
     clearSessionApprovals(sessionId);
     await tools.discardSessionToolState(sessionId);

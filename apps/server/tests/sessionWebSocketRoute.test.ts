@@ -6,7 +6,7 @@ import { WebSocketServer } from 'ws';
 import os from 'node:os';
 import { GoalStore } from '@ema-agent/goal';
 import { Database, GoalsRepo } from '@ema-agent/storage';
-import { SessionRunningRegistry, SessionStore, type SessionMessage } from '@ema-agent/session';
+import { SessionRunningRegistry, SessionStore, type SessionEvent, type SessionMessage } from '@ema-agent/session';
 import {
   SessionContinuationQueue,
   SessionInteractionQueue,
@@ -64,7 +64,12 @@ async function goalFixture() {
   await db.migrate();
   databases.push(db);
   const running = new SessionRunningRegistry();
-  const sessions = new SessionStore({ db, isWorkClosed: id => running.isClosed(id) });
+  const sessionEvents: SessionEvent[] = [];
+  const sessions = new SessionStore({
+    db,
+    isWorkClosed: id => running.isClosed(id),
+    onChanged: event => sessionEvents.push(event),
+  });
   const session = sessions.createSession({ cwd: os.tmpdir(), providerId: 'p', modelId: 'm' });
   const starts: StartTurn[] = [];
   let queue: SessionContinuationQueue;
@@ -91,7 +96,7 @@ async function goalFixture() {
     interactions: { listPending: () => [] } as unknown as SessionInteractionQueue,
     compactSession: vi.fn(),
   };
-  return { db, sessions, session, running, goals, queue, starts, deps };
+  return { db, sessions, session, sessionEvents, running, goals, queue, starts, deps };
 }
 
 async function actionFixture() {
@@ -233,12 +238,16 @@ describe('会话归档和删除', () => {
     expect(fixture.sessions.loadHistory(id)).toHaveLength(1);
     expect(fixture.running.isClosed(id)).toBe(true);
     expect(fixture.composition.tools.discardSessionToolState).not.toHaveBeenCalled();
+    expect(fixture.sessionEvents.some(event => event.type === 'sessions_deleted')).toBe(false);
     finishProcess();
     await expect(deleted).resolves.toBeUndefined();
     expect(fixture.sessions.sessionExists(id)).toBe(false);
     expect(fixture.db.sqlite.prepare('SELECT COUNT(*) AS count FROM messages WHERE session_id = ?').get(id)).toEqual({ count: 0 });
     expect(fixture.composition.tools.discardSessionToolState).toHaveBeenCalledWith(id);
     expect(fixture.composition.characters.stage.evictSession).toHaveBeenCalledWith(id);
+    expect(fixture.sessionEvents.filter(event => event.type === 'sessions_deleted')).toEqual([
+      { type: 'sessions_deleted', sessionIds: [id] },
+    ]);
     fixture.queue.shutdown();
   });
 

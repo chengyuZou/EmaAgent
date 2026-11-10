@@ -6,7 +6,7 @@ export type SessionEvent =
     }
   | {
       readonly type: 'sessions_deleted';
-      /** 一批已提交的删除只通知一次, 消费方按这些 ID 移除缓存或更新列表. */
+      /** SQL 已提交删除的 ID. 删除全部归档可能包含多个 Session, 因此使用数组; 单个删除只有一个 ID. */
       readonly sessionIds: readonly string[];
     }
   | { readonly type: 'session_messages_changed'; readonly sessionId: string };
