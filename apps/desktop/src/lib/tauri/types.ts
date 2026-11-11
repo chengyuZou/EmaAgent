@@ -118,3 +118,25 @@ export type CaptionState =
       readonly playing: boolean;
     };
 
+export interface StageVoiceSession {
+  readonly sessionId: string;
+  readonly title: string;
+}
+
+export type StageVoiceContextChange =
+  | { readonly type: 'sessions'; readonly sessions: readonly StageVoiceSession[] }
+  | { readonly type: 'viewed-session'; readonly sessionId: string | null }
+  | { readonly type: 'playback'; readonly isPlaying: boolean };
+
+export interface StageVoiceSendRequest {
+  readonly requestId: string;
+  readonly sessionId: string;
+  readonly text: string;
+}
+
+export type StageVoiceSendResult = { readonly requestId: string } & (
+  | { readonly status: 'accepted' }
+  // 仅明确未接收时还原草稿; 断线后 Server 可能已接收, 不能引导重复发送.
+  | { readonly status: 'rejected' | 'unknown'; readonly message: string }
+);
+

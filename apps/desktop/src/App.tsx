@@ -8,6 +8,7 @@ import {
   type ActiveLive2DStage,
 } from './stage/CharacterStage.js';
 import { FloatingDock } from './stage/FloatingDock.js';
+import { StageVoiceInput } from './stage/voiceInput/StageVoiceInput.js';
 import { mountSystemEvents } from './lib/events/systemSse.js';
 import { useCharacterStore } from './stores/character.js';
 import { useServerStore } from './stores/server.js';
@@ -201,6 +202,7 @@ export function App(): React.JSX.Element {
       )}
       {setupFeedback && <div className="ema-character-stage">{setupFeedback}</div>}
 
+      <StageVoiceInput suspended={stageControlsHidden} />
       <FloatingDock
         suspended={stageControlsHidden}
         expressionAvailable={expressionAvailable}

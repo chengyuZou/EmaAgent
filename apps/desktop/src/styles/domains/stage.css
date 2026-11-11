@@ -90,3 +90,37 @@ body[data-pet-pointer-inside='true'] .ema-server-status {
   border-color: var(--ema-border);
 }
 
+.ema-stage-voice-input {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  z-index: 11;
+}
+
+.ema-stage-voice-panel {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  display: flex;
+  width: min(336px, calc(100vw - 24px));
+  flex-direction: column;
+  gap: var(--ema-space-2);
+  padding: var(--ema-space-3);
+  border: 1px solid var(--ema-border);
+  border-radius: var(--ema-radius-lg);
+  box-shadow: var(--ema-shadow-3);
+}
+
+.ema-stage-voice-icon {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  background-color: currentColor;
+  mask: var(--ema-stage-voice-icon) center / contain no-repeat;
+}
+
+.ema-stage-voice-session-menu .ema-select-viewport {
+  max-height: min(18rem, max(0px, calc(var(--radix-select-content-available-height, 100vh) - 8px)));
+  overscroll-behavior: contain;
+}
+

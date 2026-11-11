@@ -23,13 +23,97 @@ import { useThemeSync } from '../stores/theme.js';
 import { WallpaperLayer } from '../wallpaper/WallpaperLayer.js';
 import { MainView, useMainNavigationStore } from './navigation.js';
 import { setVishotCaptureSession } from '../api/vishotCapture.js';
-import { mountAudioPlayback, receiveAudioPlaybackSystemEvent } from '../stores/audioPlayback.js';
+import { mountAudioPlayback, receiveAudioPlaybackSystemEvent, useAudioPlaybackStore } from '../stores/audioPlayback.js';
 import { receiveAudioSystemEvent } from '../stores/audio.js';
+import { SessionRequestError, sessionWebSocket } from '../api/sessionWebSocket.js';
+import { ensureSessionSubscription } from '../chat/session/sessionSubscriptions.js';
+import type { StageVoiceContextChange, StageVoiceSendRequest, StageVoiceSendResult } from '../lib/tauri/types.js';
 
 const SettingsPanel = lazy(async () => {
   const module = await import('../settings/SettingsPanel.js');
   return { default: module.SettingsPanel };
 });
+
+async function sendStageVoiceText(request: StageVoiceSendRequest): Promise<StageVoiceSendResult> {
+  const { requestId, sessionId, text } = request;
+  let submitted = false;
+  try {
+    await useSessionStore.getState().waitForModelSettings(sessionId);
+    const session = useSessionStore.getState().sessions.byId.get(sessionId);
+    if (!session) throw new Error('会话已不可用');
+    if (!session.providerId || !session.modelId) throw new Error('请先为该会话选择模型');
+    ensureSessionSubscription(sessionId);
+    submitted = true;
+    await sessionWebSocket.sendUserMessage(sessionId, { input: [{ type: 'text', text }] });
+    return { requestId, status: 'accepted' };
+  } catch (error) {
+    const rejected = !submitted || (error instanceof SessionRequestError && [
+      'empty_input', 'session_busy', 'session_not_found', 'session_archived', 'session_stopping',
+    ].includes(error.code));
+    const message = error instanceof Error ? error.message : '语音草稿发送失败';
+    return { requestId, status: rejected ? 'rejected' : 'unknown', message };
+  }
+}
+
+function mountStageVoiceInput(): () => void {
+  if (!tauriBridge.isTauri()) return () => {};
+  let disposed = false;
+  let hasSessionList = useSessionStore.getState().sessions.byId.size > 0;
+  let contextPublication = Promise.resolve();
+  const publish = (change: StageVoiceContextChange): void => {
+    // 归档后马上恢复时, Stage 必须先收到移除, 才能取消旧录音和转写.
+    contextPublication = contextPublication.then(async () => {
+      if (!disposed) await tauriBridge.publishStageVoiceContext(change);
+    }).catch(error => console.warn('[stage-voice]', error));
+  };
+  const publishSessions = (): void => {
+    // 初始化时的空列表不能用来删除 Stage 已有的草稿. 等到 Store 交付实际列表再发.
+    if (!hasSessionList) return;
+    const { sessions } = useSessionStore.getState();
+    publish({
+      type: 'sessions',
+      sessions: Array.from(sessions.byId.values(), session => ({ sessionId: session.id, title: session.title })),
+    });
+  };
+  const publishCurrentContext = (): void => {
+    publishSessions();
+    publish({ type: 'viewed-session', sessionId: useMainNavigationStore.getState().viewedSessionId });
+    publish({ type: 'playback', isPlaying: useAudioPlaybackStore.getState().playbackStatus === 'playing' });
+  };
+  const subscriptions = [
+    useSessionStore.subscribe((state, previous) => {
+      if (state.sessions.byId === previous.sessions.byId) return;
+      hasSessionList = true;
+      publishSessions();
+    }),
+    useMainNavigationStore.subscribe((state, previous) => {
+      if (state.viewedSessionId !== previous.viewedSessionId) {
+        publish({ type: 'viewed-session', sessionId: state.viewedSessionId });
+      }
+    }),
+    useAudioPlaybackStore.subscribe((state, previous) => {
+      const isPlaying = state.playbackStatus === 'playing';
+      if (isPlaying !== (previous.playbackStatus === 'playing')) publish({ type: 'playback', isPlaying });
+    }),
+  ];
+  const listening = [
+    tauriBridge.listenStageVoiceContextRequest(() => { if (!disposed) publishCurrentContext(); }),
+    tauriBridge.listenStageVoiceSend(request => {
+      if (disposed || typeof request?.requestId !== 'string' || typeof request.sessionId !== 'string'
+        || typeof request.text !== 'string' || !request.text.trim()) return;
+      void sendStageVoiceText(request).then(result => tauriBridge.publishStageVoiceSendResult(result))
+        .catch(error => console.warn('[stage-voice]', error));
+    }),
+  ];
+  // Stage 可能比 main 先打开. main 注册接收入口后也主动发送一次当前状态.
+  void Promise.all(listening).then(() => { if (!disposed) publishCurrentContext(); })
+    .catch(error => console.warn('[stage-voice]', error));
+  return () => {
+    disposed = true;
+    subscriptions.forEach(unsubscribe => unsubscribe());
+    listening.forEach(subscription => { void subscription.then(unlisten => unlisten()).catch(() => {}); });
+  };
+}
 
 export function MainWindow(): JSX.Element {
   const activeView = useMainNavigationStore(state => state.activeView);
@@ -58,6 +142,7 @@ export function MainWindow(): JSX.Element {
   useThemeSync();
   useEffect(() => mountDesktopNotifications(), []);
   useEffect(() => mountAudioPlayback(), []);
+  useEffect(() => mountStageVoiceInput(), []);
   useSettingsSync(serverReady);
   useEffect(() => {
     if (!serverReady) return;

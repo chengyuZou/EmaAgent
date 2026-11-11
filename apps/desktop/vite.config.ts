@@ -1,14 +1,52 @@
-import { defineConfig }               from 'vite';
+import { defineConfig, type Plugin }  from 'vite';
 import react                           from '@vitejs/plugin-react';
 import UnoCSS                          from 'unocss/vite';
 import presetUno                       from '@unocss/preset-uno';
 import presetAttributify               from '@unocss/preset-attributify';
-import { resolve }                     from 'node:path';
+import { dirname, resolve }            from 'node:path';
+import { readFileSync }                 from 'node:fs';
+import { createRequire }                from 'node:module';
 
 // Tauri 开发页面使用 1420, HMR 使用 1421, public/ 资源从网站根路径读取.
 
+function stageVoiceAssets(): Plugin {
+  const require = createRequire(import.meta.url);
+  const vadEntry = require.resolve('@ricky0123/vad-web');
+  // 从 MicVAD 自己的依赖解析运行库, 避免 JS 和 WASM 来自不同版本.
+  const runtimeEntry = createRequire(vadEntry).resolve('onnxruntime-web');
+  const assets = [
+    ['silero_vad_v5.onnx', dirname(vadEntry), 'application/octet-stream'],
+    ['vad.worklet.bundle.min.js', dirname(vadEntry), 'text/javascript'],
+    ['ort-wasm-simd-threaded.mjs', dirname(runtimeEntry), 'text/javascript'],
+    ['ort-wasm-simd-threaded.wasm', dirname(runtimeEntry), 'application/wasm'],
+  ] as const;
+  const directory = 'voice-input-assets/';
+
+  return {
+    name: 'ema-stage-voice-assets',
+    configureServer(server) {
+      server.middlewares.use(`/${directory}`, (request, response, next) => {
+        const filename = request.url?.split('?')[0]?.replace(/^\//, '');
+        const asset = assets.find(([name]) => name === filename);
+        if (!asset) return next();
+        const [name, sourceDirectory, mimeType] = asset;
+        response.setHeader('Content-Type', mimeType);
+        response.end(readFileSync(resolve(sourceDirectory, name)));
+      });
+    },
+    generateBundle() {
+      for (const [name, sourceDirectory] of assets) {
+        this.emitFile({
+          type: 'asset', fileName: directory + name, source: readFileSync(resolve(sourceDirectory, name)),
+        });
+      }
+    },
+  };
+}
+
 export default defineConfig({
   plugins: [
+    stageVoiceAssets(),
     UnoCSS({
       presets: [presetUno(), presetAttributify()],
       // WebView2 的 button/pre 默认背景会盖住透明材质, 在业务样式加载前清除.

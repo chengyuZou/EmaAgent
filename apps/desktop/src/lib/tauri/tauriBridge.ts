@@ -14,6 +14,9 @@ import type {
   OpenTerminalInput,
   PetPointerEvent,
   SelectPathsOptions,
+  StageVoiceContextChange,
+  StageVoiceSendRequest,
+  StageVoiceSendResult,
   TerminalEvent,
 } from './types.js';
 
@@ -55,6 +58,10 @@ const THEME_CHANGED_EVENT = 'theme:changed';
 const DESKTOP_SETTINGS_CHANGED_EVENT = 'settings:desktop-changed';
 const CAPTION_STATE_EVENT = 'caption:state';
 const CAPTION_STATE_REQUEST = 'caption:request';
+const STAGE_VOICE_CONTEXT = 'stage-voice:context';
+const STAGE_VOICE_CONTEXT_REQUEST = 'stage-voice:request-context';
+const STAGE_VOICE_SEND = 'stage-voice:send';
+const STAGE_VOICE_SEND_RESULT = 'stage-voice:send-result';
 const STAGE_EMOTION_EVENT = 'stage:emotion-changed';
 const STAGE_MOTION_EVENT = 'stage:motion-changed';
 const STAGE_LIP_SYNC_EVENT = 'stage:lip-sync';
@@ -227,6 +234,38 @@ export const tauriBridge = {
 
   async listenCaptionStateRequest(handler: () => void): Promise<() => void> {
     return listenTauri(CAPTION_STATE_REQUEST, handler);
+  },
+
+  publishStageVoiceContext(change: StageVoiceContextChange): Promise<void> {
+    return emitTauri(STAGE_VOICE_CONTEXT, change);
+  },
+
+  requestStageVoiceContext(): Promise<void> {
+    return emitTauri(STAGE_VOICE_CONTEXT_REQUEST);
+  },
+
+  listenStageVoiceContext(handler: (change: StageVoiceContextChange) => void): Promise<() => void> {
+    return listenTauri(STAGE_VOICE_CONTEXT, handler);
+  },
+
+  listenStageVoiceContextRequest(handler: () => void): Promise<() => void> {
+    return listenTauri(STAGE_VOICE_CONTEXT_REQUEST, handler);
+  },
+
+  sendStageVoiceDraft(request: StageVoiceSendRequest): Promise<void> {
+    return emitTauri(STAGE_VOICE_SEND, request);
+  },
+
+  listenStageVoiceSend(handler: (request: StageVoiceSendRequest) => void): Promise<() => void> {
+    return listenTauri(STAGE_VOICE_SEND, handler);
+  },
+
+  publishStageVoiceSendResult(result: StageVoiceSendResult): Promise<void> {
+    return emitTauri(STAGE_VOICE_SEND_RESULT, result);
+  },
+
+  listenStageVoiceSendResult(handler: (result: StageVoiceSendResult) => void): Promise<() => void> {
+    return listenTauri(STAGE_VOICE_SEND_RESULT, handler);
   },
 
   async connectDesktopNotifications(
