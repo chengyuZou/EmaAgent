@@ -197,6 +197,12 @@ export function FloatingDock({
       onClick: () => runDockAction('打开主窗口', () => tauriBridge.openMainWindow()),
     },
     {
+      id: 'caption',
+      icon: 'i-lucide:captions',
+      label: '打开字幕窗口',
+      onClick: () => runDockAction('打开字幕窗口', () => tauriBridge.openCaptionWindow()),
+    },
+    {
       id: 'pin',
       icon: pinned ? 'i-mdi:pin' : 'i-mdi:pin-off-outline',
       label: pinned ? '取消置顶' : '置顶',

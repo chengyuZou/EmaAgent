@@ -104,14 +104,14 @@ export function SpeechCaption(): React.JSX.Element | null {
 
   return (
     <div
-      className={`ema-stage-speech-bubble ${materialClass} ${fading ? '' : 'ema-speech-in'}`}
+      className={`ema-caption-content ${materialClass}`}
       data-fading={fading}
       style={{ transitionDuration: `${FADE_OUT_MS}ms` }}
     >
-      <div className="ema-stage-surface ema-stage-speech-body">
+      <div className="ema-stage-surface ema-caption-body">
         <p
           ref={textRef}
-          className="ema-speech-bubble-text"
+          className="ema-caption-text"
         >
           {caption?.kind === 'speech' ? (
             <span key={caption.audioId + ':' + caption.segmentIndex} aria-label={text}>
@@ -135,8 +135,6 @@ export function SpeechCaption(): React.JSX.Element | null {
           ) : text}
         </p>
       </div>
-
-      <div className="ema-stage-surface ema-stage-speech-tail" aria-hidden />
     </div>
   );
 }

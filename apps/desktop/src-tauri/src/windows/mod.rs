@@ -1,3 +1,5 @@
+#[path = "captionWindow.rs"]
+pub mod caption_window;
 pub mod commands;
 #[path = "petPointer.rs"]
 pub mod pet_pointer;
@@ -128,8 +130,8 @@ pub fn handle_window_event(window: &tauri::Window, event: &WindowEvent) {
     }
     // 可见性通知只发给所属窗口, main 的隐藏不能暂停 stage 动画.
     match event {
-        // 保留两个 WebView, 已提交操作和会话订阅不随窗口隐藏停止.
-        WindowEvent::CloseRequested { api, .. } => {
+        // 只保留 main/stage. 字幕的原生关闭请求正常销毁窗口, 不留下隐藏的字幕 WebView.
+        WindowEvent::CloseRequested { api, .. } if matches!(window.label(), "main" | "stage") => {
             api.prevent_close();
             let _ = window.hide();
             let _ = window.emit_to(

@@ -38,7 +38,7 @@
         "script-src": "'self' 'wasm-unsafe-eval'",
         "style-src": "'self' 'unsafe-inline'"
       },
-      "capabilities": ["main-window", "stage-window"]
+      "capabilities": ["main-window", "stage-window", "caption-window"]
     }
   },
   "bundle": {

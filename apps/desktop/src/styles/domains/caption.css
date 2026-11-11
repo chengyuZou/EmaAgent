@@ -1,0 +1,100 @@
+.ema-caption-window {
+  box-sizing: border-box;
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  gap: var(--ema-space-2);
+  padding: var(--ema-space-2);
+  color: var(--ema-text-primary);
+  font-family: var(--ema-font-ui);
+}
+
+.ema-caption-toolbar {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  border: 1px solid var(--ema-border);
+  border-radius: var(--ema-radius-lg);
+  background: var(--ema-surface-0);
+  padding: 2px var(--ema-space-2);
+  box-shadow: var(--ema-shadow-1);
+}
+
+.ema-caption-drag-region {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  align-self: stretch;
+  gap: var(--ema-space-2);
+  font-size: 12px;
+  cursor: grab;
+  user-select: none;
+}
+
+.ema-caption-drag-region:active {
+  cursor: grabbing;
+}
+
+.ema-caption-content {
+  min-height: 0;
+  opacity: 1;
+  transition-property: opacity;
+  transition-timing-function: var(--ema-ease);
+  animation: ema-caption-enter var(--ema-duration-base) var(--ema-ease) both;
+}
+
+.ema-caption-content[data-fading='true'] {
+  opacity: 0;
+}
+
+.ema-caption-body {
+  padding: var(--ema-space-3) var(--ema-space-4);
+  border: 1px solid var(--ema-glow);
+  border-radius: var(--ema-radius-lg);
+  box-shadow: var(--ema-shadow-1);
+}
+
+.ema-caption-text {
+  max-height: 88px;
+  margin: 0;
+  overflow-y: auto;
+  color: var(--ema-text-primary);
+  font-family: var(--ema-font-content);
+  font-size: 15px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.ema-caption-character {
+  animation: ema-caption-character-enter 180ms ease-out both;
+}
+
+.ema-caption-window-error {
+  margin: 0;
+  color: var(--ema-danger);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+@keyframes ema-caption-enter {
+  from { transform: translateY(-4px); }
+  to { transform: translateY(0); }
+}
+
+@keyframes ema-caption-character-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ema-caption-character,
+  .ema-caption-content {
+    animation: none;
+  }
+
+  .ema-caption-content {
+    transition: none;
+  }
+}

@@ -24,6 +24,7 @@
 @import './domains/terminalCard.css';
 @import './domains/chatEmptyState.css';
 @import './domains/stage.css';
+@import './domains/caption.css';
 @import './domains/characterStage.css';
 @import './domains/characterResources.css';
 

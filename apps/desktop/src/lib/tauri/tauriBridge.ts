@@ -314,6 +314,14 @@ export const tauriBridge = {
     await invokeTauri('hide_main_window');
   },
 
+  async openCaptionWindow(): Promise<void> {
+    await invokeTauri('open_caption_window');
+  },
+
+  async closeCaptionWindow(): Promise<void> {
+    await invokeTauri('close_caption_window');
+  },
+
   async minimizeWindow(): Promise<void> {
     const module = await getWindow();
     if (!module) {

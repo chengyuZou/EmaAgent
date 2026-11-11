@@ -91,6 +91,7 @@ export default defineConfig({
       input: {
         stage: resolve(__dirname, 'index.html'),
         main: resolve(__dirname, 'main.html'),
+        caption: resolve(__dirname, 'caption.html'),
       },
       // 该 WASM 仅服务构建工具, 不打进 WebView.
       external: ['@oxc-parser/binding-wasm32-wasi'],

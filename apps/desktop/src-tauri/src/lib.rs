@@ -19,6 +19,7 @@ use notifications::commands::*;
 use server::commands::*;
 use server::ServerProcess;
 use terminal::{commands::*, TerminalSessions};
+use windows::caption_window::{close_caption_window, open_caption_window};
 use windows::pet_pointer::PetPointerTracking;
 use windows::{commands::*, handle_window_event, show_stage_window};
 
@@ -58,6 +59,8 @@ pub fn run() -> std::process::ExitCode {
             quit_app,
             open_main_window,
             hide_main_window,
+            open_caption_window,
+            close_caption_window,
             open_path,
             read_local_image,
             open_terminal,

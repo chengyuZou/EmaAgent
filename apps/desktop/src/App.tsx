@@ -7,7 +7,6 @@ import {
   StageLoading,
   type ActiveLive2DStage,
 } from './stage/CharacterStage.js';
-import { SpeechCaption } from './caption/SpeechCaption.js';
 import { FloatingDock } from './stage/FloatingDock.js';
 import { mountSystemEvents } from './lib/events/systemSse.js';
 import { useCharacterStore } from './stores/character.js';
@@ -201,8 +200,6 @@ export function App(): React.JSX.Element {
         />
       )}
       {setupFeedback && <div className="ema-character-stage">{setupFeedback}</div>}
-
-      <SpeechCaption />
 
       <FloatingDock
         suspended={stageControlsHidden}
