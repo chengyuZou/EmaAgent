@@ -85,7 +85,7 @@ Server 把副本放在 `<profile>/pre-migration/`. 文件名包含数据库种�
 
 恢复暂由人工完成. 先关闭应用和迁移 CLI, 另存当前完整应用数据目录. 将当前数据库及其 WAL/SHM 文件一起移到别处, 再把选中的副本复制到对应数据库位置, 不把原 WAL/SHM 文件混入恢复后的目录. 再用已正确处理问题迁移的应用版本启动. 恢复会丢弃副本生成后的数据库写入, 不恢复附件, 音频, 角色资源或 Memory 文件. 当前没有自动恢复, 跨库协调恢复或新增记录合并.
 
-Narrative 初始化在事务内安装表结构和三份剧情数据. 读取器分批执行种子 SQL, 不把所有种子文件读进一个字符串. Narrative Repository 按固定周目 ID 返回向量 Buffer 或原文, 检索流程见 [Narrative](../narrative/README-zh.md).
+空库和旧版 Narrative 库从 `003_narrativeSchema.sql` 开始, 由这份 SQL 重建剧情表. `004_narrativeData.sql` 在一个事务里分批导入随应用发放的剧情数据. 导入失败时数据库停在版本 3, 下次启动重试导入. 检索流程见 [Narrative](../narrative/README-zh.md).
 
 `build` 会把 SQL 复制到 `dist/migrations`, 正式发布不能只带编译后的 JavaScript.
 

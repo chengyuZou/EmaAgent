@@ -1,4 +1,4 @@
-import type { NarrativeGraphRepo, NarrativeTimelineId } from '@ema-agent/storage';
+import type { NarrativeGraphRepo } from '@ema-agent/storage';
 import type { NarrativeGraphResult } from '../../types.js';
 import { COSINE_THRESHOLD, TOP_K } from '../constants.js';
 import { rankVectors } from '../vectors.js';
@@ -6,7 +6,6 @@ import { mergeAlternating } from './merge.js';
 
 // local 先用低层关键词寻找实体, 再读取这些实体连接的关系.
 export function retrieveLocal(
-  timeline: NarrativeTimelineId,
   embedding: Float32Array,
   graph: NarrativeGraphRepo,
   signal: AbortSignal,
@@ -14,7 +13,7 @@ export function retrieveLocal(
   signal.throwIfAborted();
 
   // 用关键词向量选出实体名, 再批量读取命中实体的描述.
-  const entityVectorRows = graph.listEntityVectors(timeline);
+  const entityVectorRows = graph.listEntityVectors();
   const entityNames = rankVectors(
     entityVectorRows.map(row => row.entity_name),
     entityVectorRows.map(row => row.vector),
@@ -23,11 +22,10 @@ export function retrieveLocal(
     COSINE_THRESHOLD,
     signal,
   );
-  const entities = graph.findEntities(timeline, entityNames);
+  const entities = graph.findEntities(entityNames);
 
   // 同一关系可能被多个实体带出. 按 relation_id 去重, 保留首次出现的位置.
   const relationsByEntity = graph.findIncidentRelations(
-    timeline,
     entities.map(entity => entity.entity_name),
   );
   const relations = mergeAlternating(
@@ -41,7 +39,7 @@ export function retrieveLocal(
     relation.target_entity,
   ]);
   const uniqueEndpointNames = [...new Set(endpointNames)];
-  const degrees = graph.getEntityDegrees(timeline, uniqueEndpointNames);
+  const degrees = graph.getEntityDegrees(uniqueEndpointNames);
 
   // 两端实体的连接总数越多, 关系越靠前. 总数相同时再比较资产中的 weight.
   relations.sort((left, right) => {

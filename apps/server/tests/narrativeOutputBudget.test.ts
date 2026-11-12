@@ -14,7 +14,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-it('records both isolated streaming requests with an 8192 budget when the catalog allows 128000', async () => {
+it('records the Router and keyword requests from their respective modes with an 8192 budget', async () => {
   const profile = new Database({ memory: true, kind: 'profile' });
   const data = new Database({ memory: true, kind: 'data' });
   const narrative = new Database({ memory: true, kind: 'narrative' });
@@ -22,7 +22,7 @@ it('records both isolated streaming requests with an 8192 budget when the catalo
   await profile.migrate();
   await data.migrate();
   narrative.sqlite.exec(readFileSync(
-    new URL('../../../src/storage/migrations/narrative/narrative.sql', import.meta.url),
+    new URL('../../../src/storage/migrations/narrative/003_narrativeSchema.sql', import.meta.url),
     'utf8',
   ));
   data.sqlite.exec(`
@@ -104,6 +104,7 @@ it('records both isolated streaming requests with an 8192 budget when the catalo
     new SettingsStore(new SettingsRepo(profile.sqlite)), new UsageRecorder(data),
   ).resolveSearch('session', 'turn');
   expect(search).toBeDefined();
+  await search!('Fixture story', 'naive', new AbortController().signal);
   await search!('Fixture story', 'hybrid', new AbortController().signal);
 
   const llmRequests = requests.filter(request => request.url.endsWith('/v1/messages'));

@@ -5,33 +5,42 @@ export type NarrativeTimelineId = '1st_Loop' | '2nd_Loop' | '3rd_Loop';
 
 export interface NarrativeChunkVectorRow {
   chunk_id: string;
+  timeline_id: NarrativeTimelineId;
   vector: Buffer;
 }
 
 export interface NarrativeChunkRow {
   chunk_id: string;
+  timeline_id: NarrativeTimelineId;
   content: string;
 }
 
 export class NarrativeChunksRepo {
   constructor(private readonly db: SqliteDb) {}
 
-  listVectors(timelineId: NarrativeTimelineId): NarrativeChunkVectorRow[] {
+  /** 未传周目时读取全库向量, 用于 mix. naive 传入 Router 返回的所有周目. */
+  listVectors(timelineIds?: readonly NarrativeTimelineId[]): NarrativeChunkVectorRow[] {
+    if (timelineIds?.length === 0) {
+      return [];
+    }
+    const where = timelineIds === undefined
+      ? ''
+      : `WHERE timeline_id IN (${timelineIds.map(() => '?').join(', ')})`;
     return this.db.prepare(`
-      SELECT chunk_id, vector FROM chunks
-      WHERE timeline_id = ? ORDER BY rowid
-    `).all(timelineId) as NarrativeChunkVectorRow[];
+      SELECT chunk_id, timeline_id, vector FROM chunks
+      ${where} ORDER BY rowid
+    `).all(...(timelineIds ?? [])) as NarrativeChunkVectorRow[];
   }
 
   /** 图召回已确定候选时只读这些块的向量, 不读正文. 去重后保留输入顺序, 忽略不存在的 ID. */
-  findVectorsByIds(timelineId: NarrativeTimelineId, chunkIds: readonly string[]): NarrativeChunkVectorRow[] {
+  findVectorsByIds(chunkIds: readonly string[]): NarrativeChunkVectorRow[] {
     const found = new Map<string, NarrativeChunkVectorRow>();
-    for (const batch of createSqliteIdBatches(this.db, chunkIds, { fixedParameterCount: 1 })) {
+    for (const batch of createSqliteIdBatches(this.db, chunkIds)) {
       const placeholders = batch.map(() => '?').join(', ');
       const rows = this.db.prepare(`
-        SELECT chunk_id, vector FROM chunks
-        WHERE timeline_id = ? AND chunk_id IN (${placeholders})
-      `).all(timelineId, ...batch) as NarrativeChunkVectorRow[];
+        SELECT chunk_id, timeline_id, vector FROM chunks
+        WHERE chunk_id IN (${placeholders})
+      `).all(...batch) as NarrativeChunkVectorRow[];
       for (const row of rows) {
         found.set(row.chunk_id, row);
       }
@@ -46,26 +55,22 @@ export class NarrativeChunksRepo {
     return result;
   }
 
-  /** 按传入 ID 的首次出现顺序返回, 忽略不存在的块; 不读取向量. */
-  findChunksByIds(timelineId: NarrativeTimelineId, chunkIds: readonly string[]): NarrativeChunkRow[] {
+  /** 只读候选正文. 调用方用本次返回的 Map 按候选 ID 顺序取行. */
+  findChunksByIds(chunkIds: readonly string[]): Map<string, NarrativeChunkRow> {
     const found = new Map<string, NarrativeChunkRow>();
-    for (const batch of createSqliteIdBatches(this.db, chunkIds, { fixedParameterCount: 1 })) {
+    if (chunkIds.length === 0) {
+      return found;
+    }
+    for (const batch of createSqliteIdBatches(this.db, chunkIds)) {
       const placeholders = batch.map(() => '?').join(', ');
       const rows = this.db.prepare(`
-        SELECT chunk_id, content FROM chunks
-        WHERE timeline_id = ? AND chunk_id IN (${placeholders})
-      `).all(timelineId, ...batch) as NarrativeChunkRow[];
+        SELECT chunk_id, timeline_id, content FROM chunks
+        WHERE chunk_id IN (${placeholders})
+      `).all(...batch) as NarrativeChunkRow[];
       for (const row of rows) {
         found.set(row.chunk_id, row);
       }
     }
-    const result: NarrativeChunkRow[] = [];
-    for (const id of new Set(chunkIds)) {
-      const row = found.get(id);
-      if (row !== undefined) {
-        result.push(row);
-      }
-    }
-    return result;
+    return found;
   }
 }

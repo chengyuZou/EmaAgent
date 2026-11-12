@@ -85,7 +85,7 @@ Server stores copies under `<profile>/pre-migration/`. Names include the databas
 
 Recovery is manual. Close the application and migration CLI, and preserve the current complete application data directory before restoring. Move the current database and its WAL/SHM files together to another directory, then copy the selected backup to its matching database path. Do not mix the displaced WAL/SHM files with the restored file. Use an application version that handles the problematic migration correctly before reopening. Restoring discards database writes made after the copy and does not restore attachments, audio, character resources or Memory files. There is no automatic restore, cross-database recovery or merging of newer records.
 
-Narrative initialization installs the schema and three seed datasets in a transaction. The seed reader executes SQL incrementally instead of loading every seed file into one string. Narrative repositories read the fixed timeline IDs and return vector buffers or source text as requested. See [Narrative](../narrative/README.md) for retrieval.
+New and older Narrative databases start at `003_narrativeSchema.sql`, which recreates the story tables. `004_narrativeData.sql` then imports the bundled story in batches within one transaction. If the import fails, the database stays at version 3 and the next startup retries the import. See [Narrative](../narrative/README.md) for retrieval.
 
 `build` copies SQL resources into `dist/migrations`. Shipping only compiled JavaScript is insufficient for a fresh installation.
 

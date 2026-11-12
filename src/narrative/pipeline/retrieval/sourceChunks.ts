@@ -2,7 +2,6 @@ import type {
   NarrativeChunksRepo,
   NarrativeChunkVectorRow,
   NarrativeGraphRepo,
-  NarrativeTimelineId,
 } from '@ema-agent/storage';
 import { RELATED_CHUNK_NUMBER } from '../constants.js';
 import { rankVectors } from '../vectors.js';
@@ -53,14 +52,14 @@ function pickByWeight(groups: readonly (readonly string[])[]): string[] {
  * 先统计每个块被引用的次数, 再将重复块归到首次引用它的组, 最后用传入的 query 向量在候选内选块.
  * excluded 排除实体侧已经选出的块, 让关系侧不重复占用名额.
  * removeEmptyAfterDedup 只在关系侧为 true. 实体侧保留去重后变空的组, 因为组数参与选块数量计算.
- * vectorsById 只引用本次查询已读取的候选向量; embedding 是 query 向量, 不是提取的关键词向量.
+ * chunkVectorsById 引用本次查询已读取的向量行. embedding 来自完整 query.
  */
 function selectGroups(
   sources: Iterable<readonly string[]>,
   excluded: ReadonlySet<string>,
   removeEmptyAfterDedup: boolean,
   embedding: Float32Array,
-  vectorsById: ReadonlyMap<string, Buffer>,
+  chunkVectorsById: ReadonlyMap<string, NarrativeChunkVectorRow>,
   signal: AbortSignal,
 ): string[] {
   const original = [...sources].filter(group => group.length > 0);
@@ -95,10 +94,10 @@ function selectGroups(
   const ids: string[] = [];
   const vectors: Buffer[] = [];
   for (const id of groups.flat()) {
-    const vector = vectorsById.get(id);
-    if (vector !== undefined) {
+    const row = chunkVectorsById.get(id);
+    if (row !== undefined) {
       ids.push(id);
-      vectors.push(vector);
+      vectors.push(row.vector);
     }
   }
   // 图已经限定了来源范围, 这里只排名, 不再应用直接向量搜索的相似度门槛.
@@ -112,12 +111,11 @@ function selectGroups(
 }
 
 /**
- * 从保留下来的实体/关系找到来源块. 两侧候选的向量一次读取, 正文留给 queryTimeline 批量读取.
+ * 为命中的实体和关系选来源块. search 批量读取正文前, 调用方从向量行读取周目.
  * loadedChunkVectors 只由 mix 传入, 复用本次直接块搜索读到的向量; 未传入时只查候选 ID.
  * 两侧仍分别排名: 先选实体来源块, 关系侧再排除已经选出的块.
  */
 export function retrieveSourceChunks(
-  timeline: NarrativeTimelineId,
   entityNames: readonly string[],
   relationIds: readonly number[],
   graph: NarrativeGraphRepo,
@@ -125,24 +123,26 @@ export function retrieveSourceChunks(
   embedding: Float32Array,
   signal: AbortSignal,
   loadedChunkVectors?: readonly NarrativeChunkVectorRow[],
-): { entityChunks: string[]; relationChunks: string[] } {
+): {
+  entityChunks: string[];
+  relationChunks: string[];
+  chunkVectorsById: ReadonlyMap<string, NarrativeChunkVectorRow>;
+} {
   signal.throwIfAborted();
-  const entities = graph.getEntityChunkIds(timeline, entityNames);
-  const relations = graph.getRelationChunkIds(timeline, relationIds);
+  const entities = graph.getEntityChunkIds(entityNames);
+  const relations = graph.getRelationChunkIds(relationIds);
 
-  // 同一 Chunk 可能同时被节点和关系引用. 合并并去重 ID 后, 只读取一次对应向量.
-  const candidateIds = new Set([...entities.values(), ...relations.values()].flat());
-  const rows = loadedChunkVectors === undefined
-    ? chunks.findVectorsByIds(timeline, [...candidateIds])
-    : loadedChunkVectors.filter(row => candidateIds.has(row.chunk_id));
-  // Map 只存候选 Buffer 的引用, 不复制正文或向量, 也不在查询结束后保存.
-  const vectorsById = new Map(rows.map(row => [row.chunk_id, row.vector]));
+  // mix 复用全库向量. 其他模式只读来源 ID 对应的向量, Repo 在绑定参数前去重.
+  const rows = loadedChunkVectors ?? chunks.findVectorsByIds(
+    [...entities.values(), ...relations.values()].flat(),
+  );
+  const chunkVectorsById = new Map(rows.map(row => [row.chunk_id, row]));
   const entityChunks = selectGroups(
     entities.values(),
     new Set(),
     false,
     embedding,
-    vectorsById,
+    chunkVectorsById,
     signal,
   );
   // 关系侧排除实体侧已选块后移除空组; 实体侧保留空组, 组数会影响候选数量.
@@ -151,8 +151,8 @@ export function retrieveSourceChunks(
     new Set(entityChunks),
     true,
     embedding,
-    vectorsById,
+    chunkVectorsById,
     signal,
   );
-  return { entityChunks, relationChunks };
+  return { entityChunks, relationChunks, chunkVectorsById };
 }

@@ -7,14 +7,8 @@ import { createPreMigrationBackup, prunePreMigrationBackups } from './preMigrati
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.join(dirname, '..', 'migrations');
-const NARRATIVE_VERSION = 2;
 const SEED_READ_BYTES = 64 * 1024;
 const SEED_EXEC_CHARS = 512 * 1024;
-const NARRATIVE_SEED_FILES = [
-  'narrative-seeds-1st.sql',
-  'narrative-seeds-2nd.sql',
-  'narrative-seeds-3rd.sql',
-] as const;
 
 interface NumberedMigrations {
   readonly fromVersion: number;
@@ -26,9 +20,8 @@ interface NumberedMigrations {
  * 各个数据库使用独立的 `user_version`:
  *   profile.db -> migrations/profile/  Provider 配置, 模型绑定, 角色和设置
  *   data.db    -> migrations/data/     sessions/turns/messages/音频/agent tasks
- *   narrative.db -> migrations/narrative/ 表定义与固定剧情种子, 版本由 NARRATIVE_VERSION 控制.
- *
- * profile/data 按数字编号逐个迁移, narrative 首次执行表定义和三份种子 SQL.
+ *   narrative.db -> migrations/narrative/ 表定义和应用自带的剧情数据
+ * 三个库都按各自目录的 SQL 文件编号升级.
  */
 export type DatabaseKind = 'profile' | 'data' | 'narrative';
 
@@ -43,12 +36,9 @@ export class MigrationsRunner {
    * 失败只回滚当前文件, 下次启动从未提交的版本继续.
    */
   async run(directory?: string): Promise<void> {
-    if (this.kind === 'narrative') {
-      this.initializeNarrative(path.join(MIGRATIONS_DIR, this.kind));
-      return;
-    }
     const migrations = this.readNumberedMigrations();
-    if (this.db.memory || migrations.fromVersion === 0 || migrations.files.length === 0) {
+    // Narrative 由随应用发放的 SQL 重建. 迁移前副本只用于保存用户写入的 Profile 和 Data.
+    if (this.kind === 'narrative' || this.db.memory || migrations.fromVersion === 0 || migrations.files.length === 0) {
       this.applyNumberedMigrations(migrations.files);
       return;
     }
@@ -77,7 +67,7 @@ export class MigrationsRunner {
       .filter(n => Number.isInteger(n) && n > 0);
     const latest = versions.length ? Math.max(...versions) : 0;
 
-    const current = this.db.pragma('user_version', { simple: true }) as number;
+    const current = this.currentVersion();
 
     // 旧应用不能把较新结构当作自己的表使用, 也不能靠改版本号撤销迁移.
     if (current > latest) {
@@ -86,8 +76,24 @@ export class MigrationsRunner {
       );
     }
 
+    let firstPendingVersion = current + 1;
+    if (this.kind === 'narrative') {
+      const schemaFilename = entries.find(filename => /^\d{3}_narrativeSchema\.sql$/u.test(filename));
+      if (!schemaFilename) {
+        throw new Error(`[narrative] 缺少重建剧情表的 SQL: ${folder}`);
+      }
+      const schemaVersion = Number(schemaFilename.slice(0, 3));
+      const initialDataFilename = `${String(schemaVersion + 1).padStart(3, '0')}_narrativeData.sql`;
+      if (!entries.includes(initialDataFilename)) {
+        throw new Error(`[narrative] 缺少初始化剧情数据的 SQL: ${initialDataFilename}`);
+      }
+
+      // 首份表迁移可直接重建旧剧情库, 空库也从这份 SQL 开始. 之后的文件仍须逐号执行.
+      firstPendingVersion = Math.max(firstPendingVersion, schemaVersion);
+    }
+
     const files: Array<{ version: number; filename: string }> = [];
-    for (let v = current + 1; v <= latest; v++) {
+    for (let v = firstPendingVersion; v <= latest; v++) {
       if (!Number.isInteger(v) || v <= 0) {
         throw new Error(`[${this.kind}] 非法迁移版本号: ${v}`);
       }
@@ -106,10 +112,9 @@ export class MigrationsRunner {
 
   private applyNumberedMigrations(files: NumberedMigrations['files']): void {
     for (const { version, filename } of files) {
-      const sql = fs.readFileSync(filename, 'utf8');
-      const rebuildsReferencedTable = sql.includes(
-        '-- ema:migration foreign_keys=off',
-      );
+      const isNarrativeData = this.kind === 'narrative' && filename.endsWith('_narrativeData.sql');
+      const sql = isNarrativeData ? undefined : fs.readFileSync(filename, 'utf8');
+      const rebuildsReferencedTable = sql?.includes('-- ema:migration foreign_keys=off') === true;
       if (rebuildsReferencedTable) {
         // SQLite 在外键开启时会把子表引用同步改名到临时表.重建被引用表必须在
         // 事务外临时关闭外键,再在提交前用 foreign_key_check 验证最终关系.
@@ -117,7 +122,11 @@ export class MigrationsRunner {
       }
       try {
         this.db.transaction(() => {
-          this.db.exec(sql);
+          if (sql === undefined) {
+            this.executeNarrativeInserts(filename);
+          } else {
+            this.db.exec(sql);
+          }
           if (rebuildsReferencedTable) {
             const violations = this.db.pragma('foreign_key_check') as unknown[];
             if (violations.length > 0) {
@@ -140,31 +149,7 @@ export class MigrationsRunner {
     return this.db.pragma('user_version', { simple: true }) as number;
   }
 
-  private initializeNarrative(folder: string): void {
-    const current = this.currentVersion();
-    if (current === NARRATIVE_VERSION) {
-      return;
-    }
-    if (current > NARRATIVE_VERSION) {
-      throw new Error(`[narrative] 数据库版本 v${current} 高于支持的 v${NARRATIVE_VERSION}`);
-    }
-
-    this.db.transaction(() => {
-      if (current === 0) {
-        // 首次安装才导入固定剧情. 已有库升级不重新写入正文,图或向量.
-        this.db.exec(fs.readFileSync(path.join(folder, 'narrative.sql'), 'utf8'));
-        for (const filename of NARRATIVE_SEED_FILES) {
-          this.executeNarrativeSeeds(path.join(folder, filename));
-        }
-      }
-      if (current === 1) {
-        this.db.exec('DROP TABLE IF EXISTS keyword_cache');
-      }
-      this.db.pragma(`user_version = ${NARRATIVE_VERSION}`);
-    })();
-  }
-
-  private executeNarrativeSeeds(filename: string): void {
+  private executeNarrativeInserts(filename: string): void {
     const fd = fs.openSync(filename, 'r');
     const buffer = Buffer.allocUnsafe(SEED_READ_BYTES);
     const decoder = new StringDecoder('utf8');
@@ -172,7 +157,7 @@ export class MigrationsRunner {
     let scanOffset = 0;
     let inString = false;
 
-    // 生成器输出 INSERT 和固定文件头. 原文可以含换行和分号, 只能在字符串外的分号后分批.
+    // 剧情导出只包含 INSERT. 原文可以含换行和分号, 只能在字符串外的分号后分批.
     // 字符串里的两个连续单引号表示一个原文单引号, 两次切换后仍处于字符串内.
     const executeStatements = (text: string): void => {
       pending += text;

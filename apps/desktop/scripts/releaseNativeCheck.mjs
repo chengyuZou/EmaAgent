@@ -13,10 +13,11 @@ const Database = storageRequire('better-sqlite3');
 const sharp = require('sharp');
 const db = new Database(path.join(profileRoot, 'narrative', 'narrative.db'), { readonly: true });
 try {
-  for (const table of ['chunks', 'entities', 'relations']) {
-    const rows = db.prepare(`SELECT timeline_id, COUNT(*) AS count FROM ${table} GROUP BY timeline_id`).all();
-    assert.deepEqual(rows.map(row => row.timeline_id).sort(), ['1st_Loop', '2nd_Loop', '3rd_Loop']);
-    assert.ok(rows.every(row => row.count > 0), `${table} is missing story data.`);
+  const rows = db.prepare('SELECT DISTINCT timeline_id FROM chunks ORDER BY timeline_id').all();
+  assert.deepEqual(rows.map(row => row.timeline_id), ['1st_Loop', '2nd_Loop', '3rd_Loop']);
+  for (const table of ['entities', 'relations']) {
+    const { count } = db.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get();
+    assert.ok(count > 0, `${table} is missing story data.`);
   }
 } finally {
   db.close();

@@ -16,17 +16,15 @@ export interface NarrativeTimelineFailure {
   readonly message: string;
 }
 
-export interface NarrativeTimelineResult {
+export interface NarrativeRecallResult {
   readonly entities: readonly NarrativeEntityRow[];
   readonly relations: readonly NarrativeRelationRow[];
-  readonly chunks: readonly NarrativeChunkRow[];
+  // 只记录有正文或发生独立失败的周目. 共用步骤失败时 search 抛错.
+  readonly chunksByTimeline: ReadonlyMap<
+    NarrativeTimelineId,
+    readonly NarrativeChunkRow[] | NarrativeTimelineFailure
+  >;
 }
-
-// 只包含路由选中的周目. 三个数组都为空表示没有查到材料, 与查询失败分开.
-export type NarrativeRecallResult = Map<
-  NarrativeTimelineId,
-  NarrativeTimelineResult | NarrativeTimelineFailure
->;
 
 export interface NarrativeGraphResult {
   // 数组先后就是召回优先级, 来源块分组沿用此顺序.

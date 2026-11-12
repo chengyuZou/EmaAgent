@@ -3,7 +3,7 @@ export const TIMELINES = ['1st_Loop', '2nd_Loop', '3rd_Loop'] as const;
 export const EMBEDDING_DIM = 1024;
 /** 实体/关系各自的初始向量候选数, 图扩展之后可能得到更多节点或边. */
 export const TOP_K = 40;
-/** naive/mix 直接原文向量搜索的候选数, 不限制合并后的图来源候选或重排返回数量. */
+/** naive 每个路由周目和 mix 全库搜索各自使用的直接原文候选上限. */
 export const VECTOR_CHUNK_TOP_K = 100;
 /** 每周目合并候选按现有顺序保留的重排输入上限, 不是全局相关性排名. */
 export const RERANK_CANDIDATE_LIMIT = 125;

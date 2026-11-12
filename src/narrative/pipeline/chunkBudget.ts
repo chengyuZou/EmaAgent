@@ -8,7 +8,7 @@ export function selectChunksWithinBudget(
   let usedCharacters = 2;
   const selectedChunks: NarrativeChunkRow[] = [];
   for (const chunk of chunks) {
-    const line = JSON.stringify({ chunk_id: chunk.chunk_id, content: chunk.content });
+    const line = JSON.stringify(chunk);
     const length = line.length + (selectedChunks.length > 0 ? 1 : 0);
     if (usedCharacters + length > characterLimit) {
       break;

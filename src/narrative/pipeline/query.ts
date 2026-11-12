@@ -7,25 +7,21 @@ import type {
   NarrativeGraphResult,
   NarrativeKeywords,
   NarrativeQueryMode,
-  NarrativeTimelineResult,
 } from '../types.js';
+import { RERANK_CANDIDATE_LIMIT } from './constants.js';
 import { retrieveGlobal } from './retrieval/global.js';
 import { retrieveHybrid } from './retrieval/hybrid.js';
 import { retrieveLocal } from './retrieval/local.js';
 import { mergeAlternating } from './retrieval/merge.js';
 import { retrieveMix } from './retrieval/mix.js';
-import { retrieveNaive } from './retrieval/naive.js';
 import { retrieveSourceChunks } from './retrieval/sourceChunks.js';
 
 /** 返回当前模式实际消费的编码文本. query 用于直接块搜索和图来源选块, 关键词用于实体/关系搜索. */
 export function collectEmbeddingTexts(
   query: string,
-  mode: NarrativeQueryMode,
+  mode: Exclude<NarrativeQueryMode, 'naive'>,
   keywords: NarrativeKeywords,
 ): string[] {
-  if (mode === 'naive') {
-    return [query];
-  }
   const low = keywords.lowLevelKeywords.join(', ');
   const high = keywords.highLevelKeywords.join(', ');
   if (!low && !high) {
@@ -42,49 +38,36 @@ export function collectEmbeddingTexts(
   return [query, low, high].filter(text => text.length > 0);
 }
 
-/**
- * 查询单个周目. embeddings 是本次批量编码的文本到向量映射, 不在此处调用模型.
- * 全量块向量只在 naive/mix 中读取; mix 的直接块搜索和来源选块共用本次读取的数据.
- */
-export function queryTimeline(
-  timeline: NarrativeTimelineId,
+/** 同步查询全局图. 来源块向量行带有周目, 可以在读正文前限制每组候选数. */
+export function queryGraphCandidates(
   query: string,
-  mode: NarrativeQueryMode,
+  mode: Exclude<NarrativeQueryMode, 'naive'>,
   keywords: NarrativeKeywords,
   embeddings: ReadonlyMap<string, Float32Array>,
   chunks: NarrativeChunksRepo,
   graph: NarrativeGraphRepo,
   signal: AbortSignal,
-): NarrativeTimelineResult {
+): NarrativeGraphResult & { chunkIdsByTimeline: ReadonlyMap<NarrativeTimelineId, string[]> } {
   signal.throwIfAborted();
-  const queryEmbedding = embeddings.get(query);
-  if (!queryEmbedding) {
-    // 图模式没有可用关键词时不会编码 query, 因此不读剧情资产; 不是一次检索失败.
-    return { entities: [], relations: [], chunks: [] };
-  }
-  const chunkVectors = mode === 'naive' || mode === 'mix' ? chunks.listVectors(timeline) : undefined;
-  if (mode === 'naive') {
-    const ids = retrieveNaive(queryEmbedding, chunkVectors!, signal);
-    return { entities: [], relations: [], chunks: chunks.findChunksByIds(timeline, ids) };
-  }
+  const queryEmbedding = embeddings.get(query)!;
+  const chunkVectors = mode === 'mix' ? chunks.listVectors() : undefined;
   const low = embeddings.get(keywords.lowLevelKeywords.join(', '));
   const high = embeddings.get(keywords.highLevelKeywords.join(', '));
   let found: NarrativeGraphResult;
   let vectorChunkIds: string[] = [];
   if (mode === 'local' && low) {
-    found = retrieveLocal(timeline, low, graph, signal);
+    found = retrieveLocal(low, graph, signal);
   } else if (mode === 'global' && high) {
-    found = retrieveGlobal(timeline, high, graph, signal);
+    found = retrieveGlobal(high, graph, signal);
   } else if (mode === 'mix') {
-    const mixed = retrieveMix(timeline, queryEmbedding, low, high, chunkVectors!, graph, signal);
+    const mixed = retrieveMix(queryEmbedding, low, high, chunkVectors!, graph, signal);
     found = mixed;
     vectorChunkIds = mixed.vectorChunkIds;
   } else {
-    found = retrieveHybrid(timeline, low, high, graph, signal);
+    found = retrieveHybrid(low, high, graph, signal);
   }
   // 用命中的实体和关系找来源块. 图描述长度不影响来源块是否进入候选.
   const source = retrieveSourceChunks(
-    timeline,
     found.entities.map(entity => entity.entity_name),
     found.relations.map(relation => relation.relation_id),
     graph,
@@ -101,7 +84,19 @@ export function queryTimeline(
     source.entityChunks,
     source.relationChunks,
   ], id => id);
-  const candidateChunks = chunks.findChunksByIds(timeline, ids);
+  const chunkIdsByTimeline = new Map<NarrativeTimelineId, string[]>();
+  for (const chunkId of ids) {
+    const timelineId = source.chunkVectorsById.get(chunkId)?.timeline_id;
+    if (timelineId === undefined) {
+      continue;
+    }
+    const timelineChunkIds = chunkIdsByTimeline.get(timelineId);
+    if (timelineChunkIds === undefined) {
+      chunkIdsByTimeline.set(timelineId, [chunkId]);
+    } else if (timelineChunkIds.length < RERANK_CANDIDATE_LIMIT) {
+      timelineChunkIds.push(chunkId);
+    }
+  }
   signal.throwIfAborted();
-  return { entities: found.entities, relations: found.relations, chunks: candidateChunks };
+  return { ...found, chunkIdsByTimeline };
 }

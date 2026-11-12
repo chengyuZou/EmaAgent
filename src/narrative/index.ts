@@ -4,5 +4,4 @@ export type {
   NarrativeQueryMode,
   NarrativeRecallResult,
   NarrativeTimelineFailure,
-  NarrativeTimelineResult,
 } from './types.js';

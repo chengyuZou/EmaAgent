@@ -48,7 +48,7 @@ export async function routeTimelines(
 }
 
 // TODO: 原版提词仍会把 query 中明确排除的处刑或真结局提成正向关键词, 需要单独验证否定处理.
-/** query 与周目请求共用调用方已清理的值, 但不发送剧情摘要或另一条请求的结果. */
+/** 提词请求使用调用方已清理的 query. */
 export async function extractKeywords(
   query: string,
   completeLLM: CompleteLLM,

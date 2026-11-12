@@ -42,29 +42,35 @@ sequenceDiagram
     participant DB as Narrative Storage repositories
     participant Rank as CallRerank
     Host->>Search: Query, mode, calls, signal
-    par Select timelines
-        Search->>LLM: Routing rules, story summary, query
-        LLM-->>Search: Nonempty timelines array
-    and Extract keywords
+    alt naive
+        par Select timelines
+            Search->>LLM: Routing rules, story summary, query
+            LLM-->>Search: Nonempty timelines array
+        and Encode the original query
+            Search->>Embed: Original query
+            Embed-->>Search: Query vector
+        end
+        Search->>DB: Search passage vectors in the selected timelines
+    else Graph modes
         Search->>LLM: Keyword prompt and query only
         LLM-->>Search: High-level and low-level keyword arrays
+        Search->>Embed: One batch of distinct required texts
+        Embed-->>Search: Query and keyword vectors
+        Search->>DB: Find graph candidates and source passages across the database
     end
-    Search->>Embed: One batch of distinct required texts
-    Embed-->>Search: Query and keyword vectors
-    loop Each selected timeline
-        Search->>DB: Find graph candidates and source passages
+    loop Each timeline with candidates
         opt Candidate passages found
             Search->>Rank: Original query and first 125 merged candidate passages
             Rank-->>Search: Up to 30 passage indexes in ranked order
             Search->>Search: Select complete chunks within the character budget
         end
     end
-    Search-->>Host: Per-timeline entities, relations, chunks, or failure
+    Search-->>Host: Global entities and relations, with chunks or failures by timeline
 ```
 
 Routing follows the user's explicit timeline first. A final-outcome question with no earlier scope targets the third loop; comparisons select the needed loops. Only the timeline-selection request receives the fixed summary. Its response contains a nonempty, duplicate-free timelines array, not subquestions, keywords, or answers. The summary is not returned as evidence.
 
-Keyword extraction uses the LightRAG v1.5.7 template with only its language, output-template, and query placeholders filled. Its request does not include the story summary, timeline response, or chat history. The prompt asks for English keywords while preserving proper names in their original language, deriving terms only from the query. High-level keywords search relationships and themes; low-level keywords search named entities and objects. Each group may be empty. All selected timelines share these keywords and the original query, after outer whitespace is trimmed. Required embedding texts are deduplicated and encoded in one batch.
+Keyword extraction uses the LightRAG v1.5.7 template with only its language, output-template, and query placeholders filled. Its request does not include the story summary, timeline response, or chat history. The prompt asks for English keywords while preserving proper names in their original language, deriving terms only from the query. High-level keywords search relationships and themes; low-level keywords search named entities and objects. Each group may be empty. Graph modes use these keywords and the trimmed query across the database. Required embedding texts are deduplicated and encoded in one batch.
 
 `collectEmbeddingTexts` uses mode only to choose which texts to encode; the mode name is never added to an embedding string. The original query and required keyword strings get separate vectors.
 

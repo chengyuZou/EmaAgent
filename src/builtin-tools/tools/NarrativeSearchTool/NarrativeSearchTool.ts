@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { buildTool, contextFail, contextOk, type ToolInvocation, type ToolUseContext } from '@ema-agent/tools';
-import type { NarrativeTimelineId } from '@ema-agent/storage';
-import type { NarrativeTimelineResult } from '@ema-agent/narrative';
+import type { NarrativeRecallResult } from '@ema-agent/narrative';
+import type { NarrativeChunkRow, NarrativeTimelineId } from '@ema-agent/storage';
 import { BuiltinTools } from '../../BuiltinToolIdentity.js';
 import { NARRATIVE_SEARCH_DESCRIPTION } from './prompt.js';
 
@@ -26,7 +26,12 @@ type NarrativeSearchStatus = 'found' | 'partial' | 'empty' | 'unavailable';
 
 export interface NarrativeSearchResult {
   readonly status: NarrativeSearchStatus;
-  readonly timelines: readonly (NarrativeTimelineResult & { readonly timelineId: NarrativeTimelineId })[];
+  readonly entities: NarrativeRecallResult['entities'];
+  readonly relations: NarrativeRecallResult['relations'];
+  readonly timelines: readonly {
+    readonly timelineId: NarrativeTimelineId;
+    readonly chunks: readonly NarrativeChunkRow[];
+  }[];
   readonly failures: readonly { readonly timelineId: NarrativeTimelineId; readonly message: string }[];
 }
 
@@ -73,18 +78,17 @@ export const NarrativeSearchTool = buildTool<
     // Map 仅用于查询包内部. Tool 输出需经过消息保存和 WebSocket, 在此转换成 JSON 可表达的结果.
     const timelines: NarrativeSearchResult['timelines'][number][] = [];
     const failures: NarrativeSearchResult['failures'][number][] = [];
-    for (const [timeline, result] of recalled) {
-      if ('entities' in result) {
-        timelines.push({ timelineId: timeline, ...result });
+    const { entities, relations, chunksByTimeline } = recalled;
+    for (const [timelineId, result] of chunksByTimeline) {
+      if ('message' in result) {
+        failures.push({ timelineId, message: result.message });
       } else {
-        failures.push({ timelineId: timeline, message: result.message });
+        timelines.push({ timelineId, chunks: result });
       }
     }
-    const hasContent = timelines.some(
-      timeline => timeline.entities.length > 0
-        || timeline.relations.length > 0
-        || timeline.chunks.length > 0,
-    );
+    const hasContent = entities.length > 0
+      || relations.length > 0
+      || timelines.some(timeline => timeline.chunks.length > 0);
     let status: NarrativeSearchStatus;
     if (hasContent) {
       status = failures.length > 0 ? 'partial' : 'found';
@@ -94,6 +98,8 @@ export const NarrativeSearchTool = buildTool<
 
     return {
       status,
+      entities,
+      relations,
       timelines,
       failures,
     };
