@@ -2,6 +2,7 @@ import { logging } from '@ema-agent/logging';
 import { randomUUID }       from 'node:crypto';
 import { ToolListChangedNotificationSchema } from '@modelcontextprotocol/sdk/types.js';
 import type { Tool, ToolRegistry } from '@ema-agent/tools';
+import type { McpOAuthCredentialsRepo } from '@ema-agent/storage';
 import type { McpServerStore }                            from '../store.js';
 import type {
   McpServerConfig,
@@ -18,6 +19,11 @@ import type { OpenedConnection }                         from './connection.js';
 import { discoverServerTools, buildMcpBuiltTool }       from '../tools/discovery.js';
 import { callMcpTool }                                   from '../tools/execution.js';
 import type { McpToolOutput }                            from '../tools/execution.js';
+import { McpOAuthService }                               from '../auth/oauthService.js';
+import type {
+  McpOAuthLoginResult,
+  McpOAuthStatus,
+} from '../auth/types.js';
 import {
   linkedAbortController,
   waitForPromise,
@@ -55,12 +61,22 @@ export class McpRegistry {
   private servers = new Map<string, McpServer>();
   /** 尚未被在线工具替换的启动缓存, 用于失败或断开时注销工具. */
   private primed = new Map<string, McpToolInfo[]>();
+  readonly oauthService?: McpOAuthService;
 
   constructor(
     private readonly store:        McpServerStore,
     private readonly toolRegistry: ToolRegistry,
     private readonly connectionChanged: (connection: McpConnection) => void = () => {},
-  ) {}
+    oauth?: McpOAuthService | McpOAuthCredentialsRepo,
+  ) {
+    if (oauth) {
+      if ('getClient' in oauth && typeof oauth.getClient === 'function') {
+        this.oauthService = oauth as McpOAuthService;
+      } else {
+        this.oauthService = new McpOAuthService(oauth as McpOAuthCredentialsRepo);
+      }
+    }
+  }
 
   async connect(serverName: string): Promise<McpConnection> {
     const record = this.store.findByName(serverName);
@@ -131,6 +147,10 @@ export class McpRegistry {
     const server = this.serverFor(serverName);
     server.generation += 1;
     if (server.retryTimer) clearTimeout(server.retryTimer);
+    const record = this.store.findByName(serverName);
+    if (record) {
+      void this.oauthService?.cancelLogin(record.id);
+    }
     const superseded = new McpConnectionSupersededError(serverName);
     server.lifecycleAbort?.abort(superseded);
     const opened = server.opened;
@@ -180,6 +200,13 @@ export class McpRegistry {
     const timeoutMs = record.config.toolTimeoutSec !== undefined
       ? record.config.toolTimeoutSec * 1000
       : undefined;
+
+    // 若为 HTTP 服务且启用了 OAuth, 并在调用工具前发现 Token 已过期或临近过期,
+    // 提前触发并排队等待续期, 消除并发调用时的 401 往返与并发刷新竞争.
+    if (record.config.type === 'http' && this.oauthService && record.authType === 'oauth') {
+      await this.oauthService.ensureFreshToken(record.id, record.config.url, signal);
+    }
+
     // 单次调用取消只结束自身等待, 不取消其他调用共享的连接任务.
     await waitForPromise(this.connectConfig(serverName, record.config), signal);
     const conn = this.servers.get(serverName)?.opened;
@@ -192,16 +219,20 @@ export class McpRegistry {
   listServers(): McpServerSummary[] {
     return this.store.listSettings().map((settings) => {
       const connection = this.servers.get(settings.name)?.info;
+      const oauth = this.oauthService?.getStatus(settings.id, settings.authType) ?? null;
       return {
+        id: settings.id,
         name: settings.name,
         provenance: settings.provenance,
         config: settings.config,
         enabled: settings.enabled,
+        authType: settings.authType,
         connectionStatus: connection?.status ?? 'disconnected',
         ...(connection?.error ? { connectionError: connection.error } : {}),
         toolCount: connection?.status === 'connected'
           ? connection.tools.length
           : settings.cachedToolCount,
+        ...(oauth ? { oauth } : {}),
       };
     });
   }
@@ -213,16 +244,109 @@ export class McpRegistry {
     const tools = connection?.status === 'connected'
       ? connection.tools
       : (record.cachedTools ?? []);
+    const oauth = this.oauthService?.getStatus(record.id, record.authType) ?? null;
     return {
+      id: record.id,
       name: record.name,
       provenance: record.provenance,
       config: record.config,
       enabled: record.enabled,
+      authType: record.authType,
       connectionStatus: connection?.status ?? 'disconnected',
       ...(connection?.error ? { connectionError: connection.error } : {}),
       toolCount: tools.length,
       tools: [...tools],
+      ...(oauth ? { oauth } : {}),
     };
+  }
+
+  /**
+   * 为指定的 HTTP MCP 服务发起一次 OAuth 授权流程.
+   * 启动本地临时回环端口并生成授权 URL 供浏览器打开.
+   */
+  async startOAuth(serverName: string): Promise<McpOAuthLoginResult> {
+    const record = this.store.findByName(serverName);
+    if (!record) throw new McpServerNotFoundError(serverName);
+    if (record.config.type !== 'http') {
+      throw new Error(`MCP 服务 "${serverName}" 并非 HTTP 传输, 不支持 OAuth.`);
+    }
+    if (!this.oauthService) {
+      throw new Error('未配置 McpOAuthService / McpOAuthCredentialsRepo, 无法发起 OAuth 授权.');
+    }
+
+    const loginResult = await this.oauthService.startLogin({
+      id: record.id,
+      name: record.name,
+      url: record.config.url,
+    });
+
+    const client = this.oauthService.getClient(record.id, record.config.url);
+    const pendingLogin = client.getPendingLogin();
+    if (pendingLogin) {
+      void pendingLogin.promise
+        .then(async () => {
+          // 授权成功后若服务处于启用状态, 触发后台自动连接并刷新工具
+          if (record.enabled) {
+            await this.connect(serverName).catch(() => undefined);
+          }
+        })
+        .catch((err) => {
+          logging({
+            level: 'warn',
+            target: 'mcp',
+            event: 'mcp.oauth.session_ended_with_error',
+            message: `OAuth login for "${serverName}" ended: ${(err as Error).message}`,
+            error: err,
+          });
+        });
+    }
+
+    return loginResult;
+  }
+
+  /**
+   * 取消进行中的 OAuth 浏览器登录, 关闭临时回环端口.
+   */
+  async cancelOAuth(serverName: string): Promise<void> {
+    const record = this.store.findByName(serverName);
+    if (!record) return;
+    await this.oauthService?.cancelLogin(record.id);
+  }
+
+  /**
+   * 清除本机已保存的 OAuth Token.
+   * 断开当前连接, 清空 access_token, refresh_token 与过期时间, 保留客户端注册信息.
+   */
+  async clearOAuthTokens(serverName: string): Promise<void> {
+    const record = this.store.findByName(serverName);
+    if (!record) throw new McpServerNotFoundError(serverName);
+
+    // 先断开 MCP 实时连接并注销工具
+    await this.disconnect(serverName);
+
+    // 清空 Token 并取消进行中的授权
+    if (this.oauthService) {
+      await this.oauthService.clearTokens(record.id);
+    }
+
+    const server = this.serverFor(serverName);
+    server.info = connectionInfo(
+      serverName,
+      'failed',
+      [],
+      'OAuth authorization required',
+    );
+    this.publish(server.info);
+  }
+
+  /**
+   * 查询指定 MCP 服务的 OAuth 状态.
+   */
+  getOAuthStatus(serverName: string): McpOAuthStatus | null {
+    if (!this.oauthService) return null;
+    const record = this.store.findByName(serverName);
+    if (!record || record.config.type !== 'http') return null;
+    return this.oauthService.getStatus(record.id, record.authType);
   }
 
   async save(
@@ -349,7 +473,11 @@ export class McpRegistry {
       if (previous) await previous.cleanup();
       this.assertCurrent(serverName, server, generation);
 
-      opened = await openConnection(serverName, config, lifecycleAbort.signal);
+      const record = this.store.findByName(serverName);
+      const authProvider = (record && record.config.type === 'http' && this.oauthService && record.authType === 'oauth')
+        ? this.oauthService.getClient(record.id, record.config.url)
+        : undefined;
+      opened = await openConnection(serverName, config, lifecycleAbort.signal, authProvider);
       this.assertCurrent(serverName, server, generation);
 
       // onerror 不一定导致连接关闭, 此时先保存错误供 onclose 使用.
@@ -408,7 +536,16 @@ export class McpRegistry {
           ? err
           : new McpConnectionSupersededError(serverName);
       }
-      const error = err instanceof Error ? err.message : String(err);
+      const isUnauthorized =
+        (err as Error).name === 'UnauthorizedError' ||
+        /unauthorized|401/i.test((err as Error).message);
+      if (isUnauthorized && server.retryTimer) {
+        clearTimeout(server.retryTimer);
+        server.retryTimer = undefined;
+      }
+      const error = isUnauthorized
+        ? 'OAuth authorization required'
+        : err instanceof Error ? err.message : String(err);
       server.info = connectionInfo(
         serverName,
         'failed',
@@ -459,7 +596,12 @@ export class McpRegistry {
     this.publish(server.info);
     const record = this.store.findByName(serverName);
     if (record?.enabled && record.config.type === 'http') {
-      this.scheduleHttpRetry(serverName, server, server.retryAttempt ?? 0);
+      const isUnauthorized =
+        error.name === 'UnauthorizedError' ||
+        /unauthorized|401/i.test(error.message);
+      if (!isUnauthorized) {
+        this.scheduleHttpRetry(serverName, server, server.retryAttempt ?? 0);
+      }
     }
   }
 

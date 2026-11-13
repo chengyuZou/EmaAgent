@@ -11,10 +11,12 @@ import {
 } from './tools/toolSchemaLimits.js';
 
 interface McpServerSettings {
+  id: string;
   name: string;
   provenance: McpInstallProvenance;
   config: McpServerConfig;
   enabled: boolean;
+  authType: 'none' | 'oauth';
   cachedToolCount: number;
 }
 
@@ -28,6 +30,7 @@ export class McpServerStore {
     name: string,
     config: McpServerConfig,
     provenance: McpInstallProvenance = { sourceKind: 'manual' },
+    authType: 'none' | 'oauth' = 'none',
   ): string {
     const trustedProvenance = McpInstallProvenanceSchema.parse(provenance);
     const existing = this.repo.findByName(name);
@@ -38,6 +41,7 @@ export class McpServerStore {
     if (existing) {
       this.repo.update(existing.id, {
         configJson,
+        authType,
         ...provenancePatch(trustedProvenance),
       });
       this.onChanged?.({ type: 'mcp_servers_changed' });
@@ -53,6 +57,7 @@ export class McpServerStore {
       config_json:  configJson,
       tools_cache:  null,
       enabled:      1,
+      auth_type:    authType,
       installed_at: Date.now(),
     });
     this.onChanged?.({ type: 'mcp_servers_changed' });
@@ -125,15 +130,18 @@ export class McpServerStore {
       config:      McpServerConfigSchema.parse(rawConfig),
       cachedTools,
       enabled:     row.enabled === 1,
+      authType:    row.auth_type ?? 'none',
     };
   }
 
   private rowToSettings(row: McpServerSettingsRow): McpServerSettings {
     return {
+      id: row.id,
       name: row.name,
       provenance: parseProvenance(row.install_source, row.market_entry_id),
       config: McpServerConfigSchema.parse(JSON.parse(row.config_json) as unknown),
       enabled: row.enabled === 1,
+      authType: row.auth_type ?? 'none',
       cachedToolCount: row.cached_tool_count,
     };
   }

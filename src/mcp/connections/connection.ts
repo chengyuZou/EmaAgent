@@ -1,4 +1,5 @@
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import type { OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js';
 import type { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import type { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { McpServerConfig } from '../types.js';
@@ -26,6 +27,7 @@ function assertSafeStdioConfig(command: string, args: readonly string[]): void {
 async function buildTransport(
   config: McpServerConfig,
   signal?: AbortSignal,
+  authProvider?: OAuthClientProvider,
 ): Promise<StdioClientTransport | StreamableHTTPClientTransport> {
   // 只加载实际使用的传输, 避免启动时加载未配置的传输及其依赖.
   if (config.type === 'stdio') {
@@ -53,7 +55,10 @@ async function buildTransport(
   signal?.throwIfAborted();
   return new StreamableHTTPClientTransport(
     new URL(config.url),
-    config.headers ? { requestInit: { headers: config.headers } } : undefined,
+    {
+      requestInit: config.headers ? { headers: config.headers } : undefined,
+      authProvider,
+    },
   );
 }
 
@@ -81,12 +86,13 @@ export async function openConnection(
   serverName: string,
   config:     McpServerConfig,
   signal?:    AbortSignal,
+  authProvider?: OAuthClientProvider,
 ): Promise<OpenedConnection> {
   signal?.throwIfAborted();
   // 无连接需求时不加载 Client; 模块由 import 缓存, 每次连接仍创建独立实例.
   const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
   signal?.throwIfAborted();
-  const transport = await buildTransport(config, signal);
+  const transport = await buildTransport(config, signal, authProvider);
 
   // 外部取消或本地超时都要中止 SDK 握手, 不能只返回错误却留下子进程或 HTTP 请求.
   const linked = linkedAbortController(signal);

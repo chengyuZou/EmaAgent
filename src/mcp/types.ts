@@ -62,6 +62,7 @@ export interface McpServerRecord {
   /** 最近一次成功发现的工具, 用于启动时注册工具和离线时展示详情. */
   cachedTools?: McpToolInfo[];
   enabled:     boolean;
+  authType:    'none' | 'oauth';
 }
 
 /** connected 表示握手和初次工具发现都已成功; disconnected 表示尚未连接或显式断开. */
@@ -90,15 +91,27 @@ export interface McpConnection {
   error?:     string;
 }
 
+export type {
+  McpOAuthState,
+  McpOAuthStatus,
+  McpOAuthLoginResult,
+  McpOAuthPendingLogin,
+} from './auth/types.js';
+import type { McpOAuthStatus } from './auth/types.js';
+
 /** 设置列表返回工具数量, 展开详情时再读取工具定义. */
 export interface McpServerSummary {
+  id:                string;
   name:              string;
   provenance:        McpInstallProvenance;
   config:            McpServerConfig;
   enabled:           boolean;
+  authType:          'none' | 'oauth';
   connectionStatus:  McpConnectionStatus;
   connectionError?:  string;
   toolCount:          number;
+  /** HTTP MCP 服务的 OAuth 鉴权状态. stdio 服务或未配置 OAuth 时为 null. */
+  oauth?:            McpOAuthStatus | null;
 }
 
 /** tools 使用在线连接的工具列表, 离线时使用持久化缓存. */

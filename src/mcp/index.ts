@@ -1,6 +1,17 @@
 export { McpRegistry }               from './connections/registry.js';
 export type { McpEvent } from './events.js';
 export { McpServerStore }            from './store.js';
+export { McpOAuthClient }            from './auth/oauthClient.js';
+export { McpOAuthService }           from './auth/oauthService.js';
+export type { StartOAuthOptions }    from './auth/oauthService.js';
+export { startOAuthLogin }           from './auth/oauthLogin.js';
+export type { StartOAuthLoginOptions } from './auth/oauthLogin.js';
+export type {
+  McpOAuthLoginResult,
+  McpOAuthPendingLogin,
+  McpOAuthState,
+  McpOAuthStatus,
+} from './auth/types.js';
 export { parseImportedMcpServers }   from './configImport.js';
 export type { ImportedServer }       from './configImport.js';
 export { projectMcpToolOutput }      from './tools/execution.js';
