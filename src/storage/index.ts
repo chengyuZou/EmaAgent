@@ -91,6 +91,12 @@ export { SpeechSegmentsRepo } from './repos/data/speechSegments.js';
 export type { SpeechSegmentInsert, SpeechSegmentRow } from './repos/data/speechSegments.js';
 export { McpServersRepo }  from './repos/profile/mcp-servers.js';
 export type { McpServerRow, McpServerSettingsRow } from './repos/profile/mcp-servers.js';
+export { McpOAuthCredentialsRepo } from './repos/profile/mcpOAuthCredentials.js';
+export type {
+  McpOAuthCredentialsRow,
+  McpOAuthCredentialsUpsert,
+  McpOAuthTokenUpdate,
+} from './repos/profile/mcpOAuthCredentials.js';
 export { McpMarketEntriesRepo } from './repos/profile/mcp-market.js';
 export type { McpMarketEntryRow, McpMarketFetchStateRow } from './repos/profile/mcp-market.js';
 export { SkillsRepo }      from './repos/profile/skills.js';

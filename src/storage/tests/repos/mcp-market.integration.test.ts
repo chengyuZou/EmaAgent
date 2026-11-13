@@ -47,11 +47,13 @@ describe('MCP 持久化', () => {
 
     const settings = repo.listSettings();
     expect(settings).toEqual([{
+      id: 'mcp-summary',
       name: 'summary-only',
       install_source: 'manual',
       market_entry_id: null,
       config_json: JSON.stringify({ type: 'http', url: 'https://example.com/mcp' }),
       enabled: 1,
+      auth_type: 'none',
       cached_tool_count: 2,
     }]);
     expect(settings[0]).not.toHaveProperty('tools_cache');

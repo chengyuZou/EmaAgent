@@ -53,14 +53,15 @@ describe('database initialization', () => {
     database = new Database({ memory: true, kind });
     expect(database.currentVersion()).toBe(0);
     await database.migrate();
-    expect(database.currentVersion()).toBe(2);
+    const expectedVersion = kind === 'profile' ? 3 : 2;
+    expect(database.currentVersion()).toBe(expectedVersion);
     const before = database.sqlite.prepare(
       "SELECT type, name, sql FROM sqlite_schema ORDER BY type, name",
     ).all();
 
     await database.migrate();
 
-    expect(database.currentVersion()).toBe(2);
+    expect(database.currentVersion()).toBe(expectedVersion);
     expect(database.sqlite.prepare(
       "SELECT type, name, sql FROM sqlite_schema ORDER BY type, name",
     ).all()).toEqual(before);
@@ -74,9 +75,25 @@ describe('database initialization', () => {
     database.sqlite.pragma('user_version = 1');
     database.sqlite.exec("INSERT INTO settings VALUES ('keep', '42', 1)");
     await database.migrate();
-    expect(database.currentVersion()).toBe(2);
+    expect(database.currentVersion()).toBe(3);
     expect(database.sqlite.prepare('SELECT * FROM character_stickers').all()).toEqual([]);
+    expect(database.sqlite.prepare('SELECT * FROM mcp_oauth_credentials').all()).toEqual([]);
     expect(database.sqlite.prepare('SELECT value_json FROM settings WHERE key = ?').pluck().get('keep')).toBe('42');
+  });
+
+  it('upgrades a version 2 Profile and creates mcp_oauth_credentials without removing saved rows', async () => {
+    database = new Database({ memory: true, kind: 'profile' });
+    database.sqlite.exec(fs.readFileSync(new URL('../migrations/profile/001_initial.sql', import.meta.url), 'utf8'));
+    database.sqlite.exec(fs.readFileSync(new URL('../migrations/profile/002_characterStickers.sql', import.meta.url), 'utf8'));
+    database.sqlite.pragma('user_version = 2');
+    database.sqlite.exec(`
+      INSERT INTO mcp_servers (id, name, config_json, enabled, installed_at)
+        VALUES ('srv-1', 'notion', '{"type":"http","url":"https://mcp.notion.com"}', 1, 100);
+    `);
+    await database.migrate();
+    expect(database.currentVersion()).toBe(3);
+    expect(database.sqlite.prepare('SELECT * FROM mcp_oauth_credentials').all()).toEqual([]);
+    expect(database.sqlite.prepare('SELECT name FROM mcp_servers WHERE id = ?').pluck().get('srv-1')).toBe('notion');
   });
 
   it('assigns audio identities to existing WAV records without inventing segment timings', async () => {
@@ -192,7 +209,7 @@ describe('database initialization', () => {
 
   it.each(['profile', 'data'] as const)('%s refuses a database newer than its SQL files', async kind => {
     database = new Database({ memory: true, kind });
-    const newest = 2;
+    const newest = kind === 'profile' ? 3 : 2;
     database.sqlite.pragma(`user_version = ${newest + 1}`);
     await expect(database!.migrate()).rejects.toThrow(new RegExp(`v${newest + 1}.*v${newest}`));
     expect(database.currentVersion()).toBe(newest + 1);

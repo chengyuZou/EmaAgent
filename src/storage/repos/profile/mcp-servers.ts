@@ -9,16 +9,19 @@ export interface McpServerRow {
   config_json:  string;        // 原始 McpServerConfig JSON,由 mcp 包解析;
   tools_cache:  string | null; // 上次成功 listTools 返回的 JSON McpToolInfo[]
   enabled:      number;        // 0 | 1
+  auth_type:    'none' | 'oauth';
   installed_at: number;
 }
 
 /** 已安装 Server 列表投影;Tool 缓存只在 SQLite 内计数,不把 Schema 文本带入 Node. */
 export interface McpServerSettingsRow {
+  id:                string;
   name:              string;
   install_source:    'manual' | 'import' | 'official';
   market_entry_id:   string | null;
   config_json:       string;
   enabled:           number;
+  auth_type:         'none' | 'oauth';
   cached_tool_count: number;
 }
 
@@ -33,12 +36,12 @@ export class McpServersRepo {
     this.db.prepare(`
       INSERT INTO mcp_servers (
         id, name, install_source, market_entry_id,
-        config_json, tools_cache, enabled, installed_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        config_json, tools_cache, enabled, auth_type, installed_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       row.id, row.name, row.install_source, row.market_entry_id,
       row.config_json,
-      row.tools_cache, row.enabled, row.installed_at,
+      row.tools_cache, row.enabled, row.auth_type ?? 'none', row.installed_at,
     );
   }
 
@@ -49,6 +52,7 @@ export class McpServersRepo {
     configJson?:  string;
     toolsCache?:  string | null;
     enabled?:     number;
+    authType?:    'none' | 'oauth';
   }): void {
     const cols:   string[] = [];
     const values: unknown[] = [];
@@ -59,6 +63,7 @@ export class McpServersRepo {
     if (patch.configJson !== undefined) { cols.push('config_json = ?'); values.push(patch.configJson); }
     if (patch.toolsCache !== undefined) { cols.push('tools_cache = ?'); values.push(patch.toolsCache); }
     if (patch.enabled    !== undefined) { cols.push('enabled = ?');     values.push(patch.enabled); }
+    if (patch.authType   !== undefined) { cols.push('auth_type = ?');   values.push(patch.authType); }
 
     if (cols.length === 0) return;
     values.push(id);
@@ -76,11 +81,13 @@ export class McpServersRepo {
   listSettings(): McpServerSettingsRow[] {
     return this.db.prepare(`
       SELECT
+        id,
         name,
         install_source,
         market_entry_id,
         config_json,
         enabled,
+        auth_type,
         CASE
           WHEN tools_cache IS NULL THEN 0
           ELSE json_array_length(tools_cache)
