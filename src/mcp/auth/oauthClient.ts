@@ -1,12 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { logging } from '@ema-agent/logging';
+import { waitForPromise } from '../connections/requestControl.js';
 import type { OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js';
+import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js';
 import type {
   OAuthClientInformationMixed,
   OAuthClientMetadata,
   OAuthTokens,
 } from '@modelcontextprotocol/sdk/shared/auth.js';
-import type { McpOAuthCredentialsRepo } from '@ema-agent/storage';
+import type { McpOAuthCredentialsRepo, McpOAuthCredentialsRow } from '@ema-agent/storage';
 import type { McpOAuthPendingLogin, McpOAuthStatus } from './types.js';
 
 /**
@@ -26,6 +28,27 @@ export class McpOAuthClient implements OAuthClientProvider {
     readonly serverUrl: string,
     private readonly credentialsRepo: McpOAuthCredentialsRepo,
   ) {}
+
+  /**
+   * 为传输层 HTTP 请求动态注入当前有效的 Bearer Token.
+   * 若服务地址与库内凭据记录不一致则不注入 Authorization 请求头.
+   */
+  readonly fetchWithOAuth: FetchLike = (url, init) => {
+    const headers = new Headers(init?.headers);
+    const accessToken = this.readCredentials()?.access_token;
+    if (accessToken && !headers.has('Authorization')) {
+      headers.set('Authorization', `Bearer ${accessToken}`);
+    }
+    return fetch(url, { ...init, headers });
+  };
+
+  /**
+   * 按 serverId 读取并核对服务端 URL 一致的 OAuth 凭据行.
+   */
+  private readCredentials(): McpOAuthCredentialsRow | null {
+    const row = this.credentialsRepo.findByServerId(this.serverId);
+    return row?.server_url === this.serverUrl ? row : null;
+  }
 
   /**
    * 返回当前交互式授权回调 URL.
@@ -61,10 +84,10 @@ export class McpOAuthClient implements OAuthClientProvider {
 
   /**
    * 读取已在服务端登记的客户端信息.
-   * 若本地数据库未曾保存过 client_id 则返回 undefined, SDK 会尝试动态注册.
+   * 若本地数据库未曾保存过 client_id 或地址不匹配则返回 undefined, SDK 会尝试动态注册.
    */
   async clientInformation(): Promise<OAuthClientInformationMixed | undefined> {
-    const row = this.credentialsRepo.findByServerId(this.serverId);
+    const row = this.readCredentials();
     if (!row || !row.client_id) {
       return undefined;
     }
@@ -89,10 +112,10 @@ export class McpOAuthClient implements OAuthClientProvider {
 
   /**
    * 读取本地保存的 OAuth Tokens.
-   * 若当前没有 Token 则返回 undefined.
+   * 若当前没有 Token 或服务端地址不匹配则返回 undefined.
    */
   async tokens(): Promise<OAuthTokens | undefined> {
-    const row = this.credentialsRepo.findByServerId(this.serverId);
+    const row = this.readCredentials();
     if (!row || (!row.access_token && !row.refresh_token)) {
       return undefined;
     }
@@ -111,14 +134,15 @@ export class McpOAuthClient implements OAuthClientProvider {
 
   /**
    * 保存授权或续期成功获得的新 Token.
-   * 采用版本号条件更新. 若因用户清除授权或重新登录导致版本号不一致,
-   * 则安全丢弃迟到的更新结果.
+   * 采用版本号条件更新. 若因用户取消, 清除授权或重新登录导致版本号不一致,
+   * 则记录告警并拒绝覆盖当前凭据.
    */
-  async saveTokens(tokens: OAuthTokens): Promise<void> {
-    const current = this.credentialsRepo.findByServerId(this.serverId);
+  async saveTokens(tokens: OAuthTokens, expectedVersion?: number): Promise<void> {
+    const current = this.readCredentials();
     if (!current) {
       throw new Error(`Cannot save OAuth tokens: client registration record not found for server ID "${this.serverId}".`);
     }
+    const targetVersion = expectedVersion ?? current.version;
 
     const expiresAtMs =
       tokens.expires_in !== undefined && tokens.expires_in !== null
@@ -127,7 +151,7 @@ export class McpOAuthClient implements OAuthClientProvider {
 
     const updated = this.credentialsRepo.updateTokensIfVersionMatches({
       mcpServerId: this.serverId,
-      version: current.version,
+      version: targetVersion,
       accessToken: tokens.access_token,
       refreshToken: tokens.refresh_token ?? null,
       expiresAtMs,
@@ -138,9 +162,85 @@ export class McpOAuthClient implements OAuthClientProvider {
         level: 'warn',
         target: 'mcp',
         event: 'mcp.oauth.stale_tokens_rejected',
-        message: `Stale OAuth token update rejected by optimistic lock. Server ID: ${this.serverId}, version was ${current.version}.`,
+        message: `Stale OAuth token update rejected by optimistic lock. Server ID: ${this.serverId}, expected version ${targetVersion}, current version ${current.version}.`,
       });
+      throw new Error('Stale OAuth token update rejected because credentials were changed.');
     }
+  }
+
+  /**
+   * 在单次浏览器授权登录上下文中调用 SDK auth().
+   * 通过闭包将本次 pendingLogin 对象引用, AbortSignal 与发请求前读到的版本号锁在一起,
+   * 阻止取消或清除授权后迟到的网络回包改写新凭据.
+   */
+  async authorizeLogin(login: McpOAuthPendingLogin, authorizationCode?: string): Promise<'REDIRECT' | 'AUTHORIZED'> {
+    const signal = login.abortController.signal;
+    const readVersion = () => this.readCredentials()?.version;
+    let expectedVersion = readVersion();
+    const assertCurrent = () => {
+      signal.throwIfAborted();
+      if (this.pendingLogin !== login || readVersion() !== expectedVersion) {
+        throw new Error('Current OAuth login session is no longer active.');
+      }
+    };
+
+    const { auth } = await import('@modelcontextprotocol/sdk/client/auth.js');
+    assertCurrent();
+
+    const provider: OAuthClientProvider = {
+      redirectUrl: login.redirectUri,
+      clientMetadata: this.clientMetadata,
+      state: () => login.state,
+      clientInformation: () => this.clientInformation(),
+      tokens: () => this.tokens(),
+      codeVerifier: () => {
+        assertCurrent();
+        if (!login.codeVerifier) {
+          throw new Error('No active OAuth login task or missing PKCE code verifier.');
+        }
+        return login.codeVerifier;
+      },
+      saveCodeVerifier: (verifier) => {
+        login.codeVerifier = verifier;
+      },
+      redirectToAuthorization: (url) => {
+        assertCurrent();
+        login.authorizationUrl = url;
+      },
+      saveClientInformation: async (info) => {
+        assertCurrent();
+        await this.saveClientInformation(info);
+        expectedVersion = readVersion();
+      },
+      saveTokens: async (tokens) => {
+        assertCurrent();
+        await this.saveTokens(tokens, expectedVersion);
+        expectedVersion = readVersion();
+      },
+      invalidateCredentials: async (scope) => {
+        assertCurrent();
+        // 换取 Token 失败(如 invalid_grant)时不再让 SDK 清除本地旧 Token 并重复提交失效授权码.
+        if (authorizationCode && scope === 'tokens') {
+          throw new Error('OAuth authorization code rejected by server.');
+        }
+        await this.invalidateCredentials(scope);
+        expectedVersion = readVersion();
+      },
+    };
+
+    const result = await auth(provider, {
+      serverUrl: this.serverUrl,
+      authorizationCode,
+      fetchFn: (url, init) => {
+        assertCurrent();
+        const combinedSignal = init?.signal
+          ? AbortSignal.any([init.signal, signal])
+          : signal;
+        return fetch(url, { ...init, signal: combinedSignal });
+      },
+    });
+    assertCurrent();
+    return result;
   }
 
   /**
@@ -185,16 +285,15 @@ export class McpOAuthClient implements OAuthClientProvider {
 
   /**
    * 挂载活跃的浏览器授权任务.
-   * 若之前已有未完成的登录任务, 先执行中止并等待旧端口物理清理完毕, 保证端口与状态串行确定.
+   * 先同步登记新任务引用再中止并等待旧端口清理完毕, 避免清理等待期间新任务被旧任务覆盖.
    */
   async attachPendingLogin(pending: McpOAuthPendingLogin): Promise<void> {
-    if (this.pendingLogin && this.pendingLogin !== pending) {
-      const oldTask = this.pendingLogin;
-      this.pendingLogin = undefined;
+    const oldTask = this.pendingLogin;
+    this.pendingLogin = pending;
+    if (oldTask && oldTask !== pending) {
       oldTask.abortController.abort();
       await oldTask.cleanup();
     }
-    this.pendingLogin = pending;
   }
 
   /**
@@ -226,7 +325,7 @@ export class McpOAuthClient implements OAuthClientProvider {
    * 检查当前 Token 是否已过期或即将在给定的安全时间(默认 30 秒)内过期.
    */
   isTokenExpiredOrNearExpiry(safetySkewMs = 30_000): boolean {
-    const row = this.credentialsRepo.findByServerId(this.serverId);
+    const row = this.readCredentials();
     if (!row || !row.access_token) return true;
     if (row.expires_at_ms === null) return false;
     return row.expires_at_ms <= Date.now() + safetySkewMs;
@@ -236,14 +335,14 @@ export class McpOAuthClient implements OAuthClientProvider {
    * 检查当前是否有可用于续期的 Refresh Token.
    */
   hasRefreshToken(): boolean {
-    const row = this.credentialsRepo.findByServerId(this.serverId);
+    const row = this.readCredentials();
     return Boolean(row?.refresh_token);
   }
 
   /**
    * 获取当前服务的 OAuth 状态机视图:
    * 1. 若回环端口正在监听等待授权回调, 状态为 'authorizing'.
-   * 2. 若拥有有效 access_token, 状态为 'authorized'.
+   * 2. 若拥有与当前服务地址匹配的 access_token, 状态为 'authorized'.
    * 3. 否则为 'required'.
    */
   getStatus(): McpOAuthStatus {
@@ -255,7 +354,7 @@ export class McpOAuthClient implements OAuthClientProvider {
       };
     }
 
-    const row = this.credentialsRepo.findByServerId(this.serverId);
+    const row = this.readCredentials();
     if (row && row.access_token) {
       return {
         status: 'authorized',
@@ -272,24 +371,58 @@ export class McpOAuthClient implements OAuthClientProvider {
   }
 
   /**
-   * 单飞续期锁: 若当前 Token 即将失效且存在 Refresh Token, 触发主动续期.
-   * 并发调用时共用同一个 Promise, 消除重复网络请求与并发竞争.
+   * 单飞续期锁: 若当前 Token 即将失效且存在 Refresh Token, 直接通过 SDK refreshAuthorization 续期.
+   * 并发调用时共用同一个 Promise; 单个调用方取消只退出自身等待, 不打断其他调用方共用的刷新请求.
    */
   async ensureFreshToken(signal?: AbortSignal): Promise<void> {
-    if (!this.isTokenExpiredOrNearExpiry() || !this.hasRefreshToken()) {
+    signal?.throwIfAborted();
+    const credentials = this.readCredentials();
+    const refreshToken = credentials?.refresh_token;
+    if (!credentials || !refreshToken || !this.isTokenExpiredOrNearExpiry()) {
       return;
     }
 
     if (this.pendingTokenRefresh) {
-      await this.pendingTokenRefresh;
+      await waitForPromise(this.pendingTokenRefresh, signal);
       return;
     }
 
+    const isCurrentRefresh = () => {
+      const current = this.readCredentials();
+      return current?.version === credentials.version && current.refresh_token === refreshToken;
+    };
+
     const refreshPromise = (async () => {
       try {
-        if (signal?.aborted) return;
-        const { auth } = await import('@modelcontextprotocol/sdk/client/auth.js');
-        await auth(this, { serverUrl: this.serverUrl });
+        const { discoverOAuthServerInfo, refreshAuthorization, selectResourceURL } =
+          await import('@modelcontextprotocol/sdk/client/auth.js');
+        const { InvalidGrantError } = await import('@modelcontextprotocol/sdk/server/auth/errors.js');
+
+        const discovery = await discoverOAuthServerInfo(this.serverUrl);
+        const resource = await selectResourceURL(this.serverUrl, this, discovery.resourceMetadata);
+        if (!isCurrentRefresh()) return;
+
+        try {
+          const tokens = await refreshAuthorization(discovery.authorizationServerUrl, {
+            metadata: discovery.authorizationServerMetadata,
+            clientInformation: {
+              client_id: credentials.client_id,
+              client_secret: credentials.client_secret ?? undefined,
+            },
+            refreshToken,
+            resource,
+          });
+          if (isCurrentRefresh()) {
+            await this.saveTokens(tokens, credentials.version);
+          }
+        } catch (error) {
+          // 仅当本次使用的 refresh_token 与版本号仍未失效时才清除本机 Token, 防止迟到报错误删新登录凭据.
+          if (error instanceof InvalidGrantError && isCurrentRefresh()) {
+            this.credentialsRepo.clearTokens(this.serverId, Date.now());
+            return;
+          }
+          throw error;
+        }
       } catch (error) {
         logging({
           level: 'warn',
@@ -303,7 +436,7 @@ export class McpOAuthClient implements OAuthClientProvider {
 
     this.pendingTokenRefresh = refreshPromise;
     try {
-      await refreshPromise;
+      await waitForPromise(refreshPromise, signal);
     } finally {
       if (this.pendingTokenRefresh === refreshPromise) {
         this.pendingTokenRefresh = undefined;

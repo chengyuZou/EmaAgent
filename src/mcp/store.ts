@@ -30,18 +30,22 @@ export class McpServerStore {
     name: string,
     config: McpServerConfig,
     provenance: McpInstallProvenance = { sourceKind: 'manual' },
-    authType: 'none' | 'oauth' = 'none',
+    authType?: 'none' | 'oauth',
   ): string {
     const trustedProvenance = McpInstallProvenanceSchema.parse(provenance);
     const existing = this.repo.findByName(name);
     // 同名更新沿用记录 id, 市场来源随本次保存一起更新.
     const id = existing?.id ?? randomUUID();
+    // 未显式指定 authType 时, HTTP 服务保留原有模式, stdio 始终强制为 'none'.
+    const resolvedAuthType: 'none' | 'oauth' = config.type === 'http'
+      ? (authType ?? existing?.auth_type ?? 'none')
+      : 'none';
     // env 和 headers 的值会以明文保存在配置 JSON 中.
     const configJson = JSON.stringify(config);
     if (existing) {
       this.repo.update(existing.id, {
         configJson,
-        authType,
+        authType: resolvedAuthType,
         ...provenancePatch(trustedProvenance),
       });
       this.onChanged?.({ type: 'mcp_servers_changed' });
@@ -57,7 +61,7 @@ export class McpServerStore {
       config_json:  configJson,
       tools_cache:  null,
       enabled:      1,
-      auth_type:    authType,
+      auth_type:    resolvedAuthType,
       installed_at: Date.now(),
     });
     this.onChanged?.({ type: 'mcp_servers_changed' });
@@ -77,6 +81,13 @@ export class McpServerStore {
     const row = this.repo.findByName(name);
     if (!row) throw new McpServerNotFoundError(name);
     this.repo.update(row.id, { enabled: enabled ? 1 : 0 });
+    this.onChanged?.({ type: 'mcp_servers_changed' });
+  }
+
+  setAuthType(name: string, authType: 'none' | 'oauth'): void {
+    const row = this.repo.findByName(name);
+    if (!row) throw new McpServerNotFoundError(name);
+    this.repo.update(row.id, { authType });
     this.onChanged?.({ type: 'mcp_servers_changed' });
   }
 

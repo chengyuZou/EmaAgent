@@ -85,15 +85,20 @@ export class McpOAuthCredentialsRepo {
       return this.findByServerId(upsert.mcpServerId)!;
     }
 
+    // 仅在同一服务端地址与同一 client_id 下保留原有 Token/Secret,
+    // 换新地址或重新动态注册时清空旧 Token, 避免旧地址凭据串库留存.
+    const sameClient =
+      existing.server_url === upsert.serverUrl && existing.client_id === upsert.clientId;
+
     this.db
       .prepare(`
         UPDATE mcp_oauth_credentials
         SET server_url = ?,
             client_id = ?,
-            client_secret = COALESCE(?, client_secret),
-            access_token = COALESCE(?, access_token),
-            refresh_token = COALESCE(?, refresh_token),
-            expires_at_ms = COALESCE(?, expires_at_ms),
+            client_secret = ?,
+            access_token = ?,
+            refresh_token = ?,
+            expires_at_ms = ?,
             version = version + 1,
             updated_at = ?
         WHERE mcp_server_id = ?
@@ -101,10 +106,10 @@ export class McpOAuthCredentialsRepo {
       .run(
         upsert.serverUrl,
         upsert.clientId,
-        upsert.clientSecret ?? null,
-        upsert.accessToken ?? null,
-        upsert.refreshToken ?? null,
-        upsert.expiresAtMs ?? null,
+        upsert.clientSecret ?? (sameClient ? existing.client_secret : null),
+        upsert.accessToken ?? (sameClient ? existing.access_token : null),
+        upsert.refreshToken ?? (sameClient ? existing.refresh_token : null),
+        upsert.expiresAtMs ?? (sameClient ? existing.expires_at_ms : null),
         upsert.updatedAt,
         upsert.mcpServerId,
       );

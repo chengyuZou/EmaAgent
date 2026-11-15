@@ -3,15 +3,63 @@ import { ToolRegistry } from '@ema-agent/tools';
 import { Database, McpOAuthCredentialsRepo, McpServersRepo } from '@ema-agent/storage';
 import { McpServerStore } from '../store.js';
 import { McpRegistry } from '../connections/registry.js';
-import type { OpenedConnection } from '../connections/connection.js';
+import type { openConnection, OpenedConnection } from '../connections/connection.js';
+
+interface MockAuthProviderLike {
+  redirectUrl: string | URL | undefined;
+  state?: () => string | Promise<string>;
+  saveTokens: (tokens: {
+    access_token: string;
+    token_type: string;
+    refresh_token?: string;
+    expires_in?: number;
+  }) => Promise<void>;
+  saveClientInformation: (info: { client_id: string; client_secret?: string }) => Promise<void>;
+  redirectToAuthorization: (authorizationUrl: URL) => void;
+}
 
 let refreshCallCount = 0;
-let mockAuthImplementation: () => Promise<'AUTHORIZED'>;
+let observedRefreshTokens: string[] = [];
+let mockAuthImplementation: (
+  provider: MockAuthProviderLike,
+  opts: { serverUrl: string | URL; authorizationCode?: string },
+) => Promise<'REDIRECT' | 'AUTHORIZED'>;
+let mockRefreshAuthorizationImplementation: (
+  authorizationServerUrl: string | URL,
+  options: { refreshToken: string },
+) => Promise<{
+  access_token: string;
+  token_type: string;
+  refresh_token?: string;
+  expires_in?: number;
+}>;
 
 vi.mock('@modelcontextprotocol/sdk/client/auth.js', () => ({
-  auth: () => {
+  auth: (
+    provider: MockAuthProviderLike,
+    opts: { serverUrl: string | URL; authorizationCode?: string },
+  ) => mockAuthImplementation(provider, opts),
+  discoverOAuthServerInfo: async (serverUrl: string | URL) => {
+    const origin = new URL(serverUrl.toString()).origin;
+    return {
+      authorizationServerUrl: origin,
+      resourceMetadata: undefined,
+      authorizationServerMetadata: {
+        issuer: origin,
+        authorization_endpoint: `${origin}/authorize`,
+        token_endpoint: `${origin}/token`,
+        response_types_supported: ['code'],
+      },
+    };
+  },
+  selectResourceURL: async (serverUrl: string | URL) => new URL(serverUrl.toString()),
+  refreshAuthorization: (
+    authorizationServerUrl: string | URL,
+    options: { refreshToken: string },
+  ) => {
     refreshCallCount++;
-    return mockAuthImplementation();
+    observedRefreshTokens.push(options.refreshToken);
+    return mockRefreshAuthorizationImplementation(authorizationServerUrl, options);
   },
   UnauthorizedError: class UnauthorizedError extends Error {
     constructor(msg?: string) {
@@ -49,9 +97,14 @@ vi.mock('../tools/discovery.js', async (importOriginal) => {
   };
 });
 
-let mockOpenConnectionImpl: () => Promise<OpenedConnection>;
+type OpenConnectionArgs = Parameters<typeof openConnection>;
+let observedOpenCalls: OpenConnectionArgs[] = [];
+let mockOpenConnectionImpl: (...args: OpenConnectionArgs) => Promise<OpenedConnection>;
 vi.mock('../connections/connection.js', () => ({
-  openConnection: () => mockOpenConnectionImpl(),
+  openConnection: (...args: OpenConnectionArgs) => {
+    observedOpenCalls.push(args);
+    return mockOpenConnectionImpl(...args);
+  },
 }));
 
 describe('McpRegistry OAuth 鉴权与单飞续期集成测试', () => {
@@ -64,6 +117,8 @@ describe('McpRegistry OAuth 鉴权与单飞续期集成测试', () => {
 
   beforeEach(async () => {
     refreshCallCount = 0;
+    observedRefreshTokens = [];
+    observedOpenCalls = [];
     database = new Database({ memory: true, kind: 'profile' });
     await database.migrate();
     serversRepo = new McpServersRepo(database.sqlite);
@@ -80,23 +135,30 @@ describe('McpRegistry OAuth 鉴权与单飞续期集成测试', () => {
       cleanup: vi.fn().mockResolvedValue(undefined),
     });
 
-    mockAuthImplementation = async () => {
+    mockAuthImplementation = async (provider, opts) => {
+      if (opts.authorizationCode) {
+        await provider.saveTokens({
+          access_token: 'login-token',
+          refresh_token: 'login-refresh',
+          token_type: 'Bearer',
+          expires_in: 3600,
+        });
+        return 'AUTHORIZED';
+      }
+      await provider.saveClientInformation({ client_id: 'client-login-1' });
+      provider.redirectToAuthorization(new URL('https://mcp.notion.com/authorize?client_id=ema'));
+      return 'REDIRECT';
+    };
+
+    mockRefreshAuthorizationImplementation = async () => {
       // 模拟续期延迟 50ms, 确保并发调用能够命中单飞排队锁
       await new Promise((r) => setTimeout(r, 50));
-      const server = store.findByName('notion');
-      if (server) {
-        // 续期成功保存新 Token
-        credentialsRepo.saveInitialOrClient({
-          mcpServerId: server.id,
-          serverUrl: 'https://mcp.notion.com/mcp',
-          clientId: 'client-1',
-          accessToken: 'fresh-token',
-          refreshToken: 'fresh-refresh',
-          expiresAtMs: Date.now() + 3600_000,
-          updatedAt: Date.now(),
-        });
-      }
-      return 'AUTHORIZED';
+      return {
+        access_token: 'fresh-token',
+        refresh_token: 'fresh-refresh',
+        token_type: 'Bearer',
+        expires_in: 3600,
+      };
     };
   });
 
@@ -135,12 +197,14 @@ describe('McpRegistry OAuth 鉴权与单飞续期集成测试', () => {
     expect(res2.content[0]).toEqual({ type: 'text', text: 'tool-executed-ok' });
     expect(res3.content[0]).toEqual({ type: 'text', text: 'tool-executed-ok' });
 
-    // 关键断言: 3 个并发调用只触发了 1 次 SDK auth() 续期!
+    // 关键断言: 3 个并发调用只触发了 1 次 SDK refreshAuthorization() 续期, 并传出旧 refresh token
     expect(refreshCallCount).toBe(1);
+    expect(observedRefreshTokens).toEqual(['old-refresh']);
 
-    // 数据库已保存新 Token
+    // 数据库已保存新 Token 与新 Refresh Token
     const current = credentialsRepo.findByServerId(store.findByName('notion')!.id);
     expect(current?.access_token).toBe('fresh-token');
+    expect(current?.refresh_token).toBe('fresh-refresh');
   });
 
   it('遇到 401 鉴权失败时刹车, 立即停止指数退避重试', async () => {
@@ -261,5 +325,150 @@ describe('McpRegistry OAuth 鉴权与单飞续期集成测试', () => {
 
     // 取消尚未开始的流程不会抛出异常
     await expect(registry.cancelOAuth('notion')).resolves.toBeUndefined();
+  });
+
+  it('Bug 3: startOAuth 将 authType 设为 oauth 并在重连时附带 oauthFetch, save 编辑配置时保留 authType', async () => {
+    await registry.save(
+      'notion',
+      { type: 'http', url: 'https://mcp.notion.com/mcp' },
+      { sourceKind: 'manual' },
+    );
+    expect(store.findByName('notion')?.authType).toBe('none');
+
+    let capturedRedirectUrl = '';
+    let capturedState = '';
+    mockAuthImplementation = async (provider, opts) => {
+      if (opts.authorizationCode) {
+        await provider.saveTokens({
+          access_token: 'login-token',
+          refresh_token: 'login-refresh',
+          token_type: 'Bearer',
+          expires_in: 3600,
+        });
+        return 'AUTHORIZED';
+      }
+      capturedRedirectUrl = String(provider.redirectUrl);
+      capturedState = await Promise.resolve(provider.state?.() ?? '');
+      await provider.saveClientInformation({ client_id: 'client-login-1' });
+      provider.redirectToAuthorization(new URL('https://mcp.notion.com/authorize?client_id=ema'));
+      return 'REDIRECT';
+    };
+
+    await registry.startOAuth('notion');
+    expect(store.findByName('notion')?.authType).toBe('oauth');
+
+    const callbackRes = await fetch(`${capturedRedirectUrl}?code=code-1&state=${capturedState}`);
+    expect(callbackRes.status).toBe(200);
+
+    // startOAuth 成功回调后会触发自动连接, 新连接必须收到 oauthFetch
+    await vi.waitFor(() => {
+      expect(registry.getServer('notion')?.connectionStatus).toBe('connected');
+    });
+    const lastOpenCall = observedOpenCalls.at(-1);
+    expect(lastOpenCall).toBeDefined();
+    expect(typeof lastOpenCall?.at(-1)).toBe('function');
+
+    // 未显式传 authType 的编辑保存不能将已授权的 oauth 重置回 none
+    await registry.save(
+      'notion',
+      { type: 'http', url: 'https://mcp.notion.com/mcp', headers: { 'X-Custom': '1' } },
+      { sourceKind: 'manual' },
+    );
+    expect(store.findByName('notion')?.authType).toBe('oauth');
+  });
+
+  it('Bug 4: 更改服务 URL 后清除缓存 Client 且隔离旧 URL Token 与状态', async () => {
+    store.register(
+      'notion',
+      { type: 'http', url: 'https://mcp.notion.com/mcp' },
+      { sourceKind: 'manual' },
+      'oauth',
+    );
+    const serverId = store.findByName('notion')!.id;
+    credentialsRepo.saveInitialOrClient({
+      mcpServerId: serverId,
+      serverUrl: 'https://mcp.notion.com/mcp',
+      clientId: 'client-old',
+      accessToken: 'old-site-token',
+      expiresAtMs: Date.now() + 3600_000,
+      updatedAt: 1000,
+    });
+    expect(registry.getOAuthStatus('notion')?.status).toBe('authorized');
+
+    // 通过 save() 变更服务 URL
+    await registry.save(
+      'notion',
+      { type: 'http', url: 'https://mcp.other.example/mcp' },
+      { sourceKind: 'manual' },
+      'oauth',
+    );
+
+    expect(registry.getOAuthStatus('notion')?.status).toBe('required');
+    expect(registry.listServers()[0]?.oauth?.status).toBe('required');
+
+    // 连接新 URL 时, 传入 openConnection 的 oauthFetch 不能携带旧站点的 Bearer Token
+    await registry.connect('notion');
+    const oauthFetch = observedOpenCalls.at(-1)?.at(-1) as typeof fetch | undefined;
+    expect(typeof oauthFetch).toBe('function');
+
+    let forwardedAuthHeader: string | null = null;
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementationOnce(async (_input, init) => {
+      forwardedAuthHeader = new Headers(init?.headers).get('Authorization');
+      return new Response('{}', { status: 200 });
+    });
+    try {
+      await oauthFetch!('https://mcp.other.example/mcp', { method: 'POST' });
+    } finally {
+      fetchSpy.mockRestore();
+    }
+    expect(forwardedAuthHeader).toBeNull();
+  });
+
+  it('Bug 7: callTool 等待 Token 续期期间服务被禁用时立即中止并不建立连接', async () => {
+    store.register(
+      'notion',
+      { type: 'http', url: 'https://mcp.notion.com/mcp' },
+      { sourceKind: 'manual' },
+      'oauth',
+    );
+    credentialsRepo.saveInitialOrClient({
+      mcpServerId: store.findByName('notion')!.id,
+      serverUrl: 'https://mcp.notion.com/mcp',
+      clientId: 'client-1',
+      accessToken: 'old-token',
+      refreshToken: 'old-refresh',
+      expiresAtMs: Date.now() + 5_000,
+      updatedAt: 1000,
+    });
+
+    let markRefreshStarted!: () => void;
+    const refreshStarted = new Promise<void>((resolve) => {
+      markRefreshStarted = resolve;
+    });
+    let releaseRefresh!: () => void;
+    const refreshGate = new Promise<void>((resolve) => {
+      releaseRefresh = resolve;
+    });
+
+    mockRefreshAuthorizationImplementation = async () => {
+      markRefreshStarted();
+      await refreshGate;
+      return {
+        access_token: 'fresh-token',
+        refresh_token: 'fresh-refresh',
+        token_type: 'Bearer',
+        expires_in: 3600,
+      };
+    };
+
+    const callPromise = registry.callTool('notion', 'search', { query: 'test' });
+    const callRejection = expect(callPromise).rejects.toThrow(/disabled/i);
+
+    await refreshStarted;
+    await registry.setEnabled('notion', false);
+    releaseRefresh();
+
+    await callRejection;
+    expect(observedOpenCalls).toHaveLength(0);
   });
 });

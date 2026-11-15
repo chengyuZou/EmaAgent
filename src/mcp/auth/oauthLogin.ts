@@ -35,6 +35,7 @@ export async function startOAuthLogin(options: StartOAuthLoginOptions): Promise<
   let server: Server | undefined;
   let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
   let cleanupPromise: Promise<void> | undefined;
+  let hasAcceptedCallback = false;
 
   let resolveSession!: () => void;
   let rejectSession!: (err: Error) => void;
@@ -42,6 +43,8 @@ export async function startOAuthLogin(options: StartOAuthLoginOptions): Promise<
     resolveSession = resolve;
     rejectSession = reject;
   });
+  // 调用方需等 startOAuthLogin 返回后才订阅 promise, 提前挂兜底避免提前取消时触发 Node 未处理拒绝.
+  void sessionPromise.catch(() => undefined);
 
   const cleanup = async (): Promise<void> => {
     if (cleanupPromise) return cleanupPromise;
@@ -54,10 +57,17 @@ export async function startOAuthLogin(options: StartOAuthLoginOptions): Promise<
       client.detachPendingLogin(state);
 
       if (server) {
-        await new Promise<void>((resolve) => {
-          server?.close(() => resolve());
-        });
+        const closingServer = server;
         server = undefined;
+        await new Promise<void>((resolve) => {
+          closingServer.close(() => resolve());
+          // 取消或超时需要立刻切断仍挂起的回环请求连接, 防止 cancelPendingLogin 死锁等待远端换码.
+          if (abortController.signal.aborted) {
+            closingServer.closeAllConnections?.();
+          } else {
+            closingServer.closeIdleConnections?.();
+          }
+        });
       }
     })();
     return cleanupPromise;
@@ -88,24 +98,27 @@ export async function startOAuthLogin(options: StartOAuthLoginOptions): Promise<
       abortController,
     };
 
-    await client.attachPendingLogin(pendingLogin);
-
-    // 超时与主动取消处理
+    // 在挂载前注册超时与取消监听, 保证清理旧任务期间也能正确响应中止.
     timeoutTimer = setTimeout(() => {
-      const timeoutError = new McpTimeoutError(serverName, 'oauth_login', timeoutMs);
-      rejectSession(timeoutError);
-      void cleanup();
+      abortController.abort(new McpTimeoutError(serverName, 'oauth_login', timeoutMs));
     }, timeoutMs);
 
     abortController.signal.addEventListener(
       'abort',
       () => {
-        const cancelError = new Error('OAuth login cancelled by user.');
-        rejectSession(cancelError);
+        const reason = abortController.signal.reason;
+        client.detachPendingLogin(state);
+        rejectSession(
+          reason instanceof McpTimeoutError
+            ? reason
+            : new Error('OAuth login cancelled by user.'),
+        );
         void cleanup();
       },
       { once: true },
     );
+
+    await client.attachPendingLogin(pendingLogin);
 
     // 处理浏览器回调
     server.on('request', async (req, res) => {
@@ -123,40 +136,58 @@ export async function startOAuthLogin(options: StartOAuthLoginOptions): Promise<
           return;
         }
 
-        const callbackError = parsedUrl.searchParams.get('error');
-        const errorDesc = parsedUrl.searchParams.get('error_description');
-        if (callbackError) {
-          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-          res.end(renderResultHtml(false, `授权被拒绝: ${errorDesc ?? callbackError}`));
-          rejectSession(new Error(`OAuth authorization error: ${errorDesc ?? callbackError}`));
-          res.on('finish', () => void cleanup());
-          return;
-        }
-
+        // 先核对 state; 陌生/伪造请求的 state 不匹配仅返回 400, 不能中止当前正常登录会话.
         const receivedState = parsedUrl.searchParams.get('state');
         if (receivedState !== pendingLogin.state) {
           res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
           res.end(renderResultHtml(false, 'OAuth state 参数校验失败.'));
-          rejectSession(new Error('OAuth state parameter mismatch.'));
+          return;
+        }
+
+        // 在任何 await 之前同步拦截刷新带来的重复回调或已失效登录会话.
+        if (hasAcceptedCallback || abortController.signal.aborted || client.getPendingLogin() !== pendingLogin) {
+          res.writeHead(409, { 'Content-Type': 'text/html; charset=utf-8' });
+          res.end(renderResultHtml(false, '本次授权回调已处理或已取消, 请返回 EmaAgent.'));
+          return;
+        }
+
+        const callbackError = parsedUrl.searchParams.get('error');
+        const errorDesc = parsedUrl.searchParams.get('error_description');
+        if (callbackError) {
+          hasAcceptedCallback = true;
+          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+          res.end(renderResultHtml(false, `授权被拒绝: ${errorDesc ?? callbackError}`));
+          client.detachPendingLogin(state);
+          rejectSession(new Error(`OAuth authorization error: ${errorDesc ?? callbackError}`));
           res.on('finish', () => void cleanup());
           return;
         }
 
         const code = parsedUrl.searchParams.get('code');
         if (!code) {
+          hasAcceptedCallback = true;
           res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
           res.end(renderResultHtml(false, '缺少授权码 (authorization code).'));
+          client.detachPendingLogin(state);
           rejectSession(new Error('Missing OAuth authorization code in callback.'));
           res.on('finish', () => void cleanup());
           return;
         }
 
-        // 收到有效授权码, 调用 SDK 兑换 Token 并持久化
-        const { auth } = await import('@modelcontextprotocol/sdk/client/auth.js');
-        const authResult = await auth(client, {
-          serverUrl,
-          authorizationCode: code,
-        });
+        hasAcceptedCallback = true;
+
+        // 收到有效授权码, 在绑定本次登录会话与版本号的上下文中兑换 Token 并持久化.
+        const authResult = await client.authorizeLogin(pendingLogin, code);
+        if (abortController.signal.aborted || client.getPendingLogin() !== pendingLogin) {
+          if (!res.headersSent && !res.destroyed && !res.writableEnded) {
+            res.writeHead(409, { 'Content-Type': 'text/html; charset=utf-8' });
+            res.end(renderResultHtml(false, '本次授权已取消或被新登录替换, 请返回 EmaAgent.'));
+            res.on('finish', () => void cleanup());
+          } else {
+            void cleanup();
+          }
+          return;
+        }
 
         if (authResult !== 'AUTHORIZED') {
           throw new Error(`Unexpected auth result from SDK: ${authResult}`);
@@ -164,6 +195,7 @@ export async function startOAuthLogin(options: StartOAuthLoginOptions): Promise<
 
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(renderResultHtml(true, '授权成功! 您现在可以关闭此页面返回 EmaAgent.'));
+        client.detachPendingLogin(state);
         resolveSession();
         res.on('finish', () => void cleanup());
       } catch (err) {
@@ -174,21 +206,26 @@ export async function startOAuthLogin(options: StartOAuthLoginOptions): Promise<
           message: `OAuth callback handling failed: ${(err as Error).message}`,
           error: err,
         });
-        if (!res.headersSent) {
+        if (!res.headersSent && !res.destroyed && !res.writableEnded) {
           res.writeHead(500, { 'Content-Type': 'text/html; charset=utf-8' });
           res.end(renderResultHtml(false, `授权处理发生异常: ${(err as Error).message}`));
         }
+        client.detachPendingLogin(state);
         rejectSession(err as Error);
-        res.on('finish', () => void cleanup());
+        if (res.destroyed || res.writableEnded) {
+          void cleanup();
+        } else {
+          res.on('finish', () => void cleanup());
+        }
       }
     });
 
     // 触发初次 SDK auth() 流程以启动发现和跳转
-    const { auth } = await import('@modelcontextprotocol/sdk/client/auth.js');
-    const initialResult = await auth(client, { serverUrl });
+    const initialResult = await client.authorizeLogin(pendingLogin);
 
     if (initialResult === 'AUTHORIZED') {
       // 若已有有效 Token 且无需重定向, 直接标记完成
+      client.detachPendingLogin(state);
       resolveSession();
       void cleanup();
       return {
@@ -204,7 +241,10 @@ export async function startOAuthLogin(options: StartOAuthLoginOptions): Promise<
       authorizationUrl: pendingLogin.authorizationUrl.toString(),
     };
   } catch (err) {
-    void cleanup();
+    const error = err instanceof Error ? err : new Error(String(err));
+    client.detachPendingLogin(state);
+    rejectSession(error);
+    await cleanup();
     throw err;
   }
 }

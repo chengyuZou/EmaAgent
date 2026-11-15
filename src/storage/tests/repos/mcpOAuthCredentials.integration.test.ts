@@ -140,6 +140,76 @@ describe('MCP OAuth 凭据持久化与乐观锁', () => {
     expect(row?.client_secret).toBe('secret-permanent');
   });
 
+  it('saveInitialOrClient 在 serverUrl 或 clientId 变更时清空旧 Token 与密钥, 未变更时保留', () => {
+    credentialsRepo.saveInitialOrClient({
+      mcpServerId: 'srv-notion',
+      serverUrl: 'https://mcp.notion.com/mcp',
+      clientId: 'client-1',
+      clientSecret: 'secret-1',
+      accessToken: 'token-1',
+      refreshToken: 'refresh-1',
+      expiresAtMs: 3000,
+      updatedAt: 1000,
+    });
+
+    // 同 serverUrl 与 clientId 下仅更新基本信息时, 保留已存 secret 与 Token
+    credentialsRepo.saveInitialOrClient({
+      mcpServerId: 'srv-notion',
+      serverUrl: 'https://mcp.notion.com/mcp',
+      clientId: 'client-1',
+      updatedAt: 1500,
+    });
+
+    const unchanged = credentialsRepo.findByServerId('srv-notion');
+    expect(unchanged?.client_secret).toBe('secret-1');
+    expect(unchanged?.access_token).toBe('token-1');
+    expect(unchanged?.refresh_token).toBe('refresh-1');
+    expect(unchanged?.expires_at_ms).toBe(3000);
+
+    // 变更 serverUrl 时清空旧 secret 与 Token, 且版本号自增
+    credentialsRepo.saveInitialOrClient({
+      mcpServerId: 'srv-notion',
+      serverUrl: 'https://mcp.example.com/mcp',
+      clientId: 'client-1',
+      updatedAt: 2000,
+    });
+
+    const urlChanged = credentialsRepo.findByServerId('srv-notion');
+    expect(urlChanged?.server_url).toBe('https://mcp.example.com/mcp');
+    expect(urlChanged?.client_id).toBe('client-1');
+    expect(urlChanged?.client_secret).toBeNull();
+    expect(urlChanged?.access_token).toBeNull();
+    expect(urlChanged?.refresh_token).toBeNull();
+    expect(urlChanged?.expires_at_ms).toBeNull();
+    expect(urlChanged?.version).toBeGreaterThan(unchanged!.version);
+
+    // 重新写入新客户端的密钥和 Token, 再变更 clientId 时同样清空
+    credentialsRepo.saveInitialOrClient({
+      mcpServerId: 'srv-notion',
+      serverUrl: 'https://mcp.example.com/mcp',
+      clientId: 'client-1',
+      clientSecret: 'secret-new',
+      accessToken: 'token-new',
+      refreshToken: 'refresh-new',
+      expiresAtMs: 5000,
+      updatedAt: 2500,
+    });
+
+    credentialsRepo.saveInitialOrClient({
+      mcpServerId: 'srv-notion',
+      serverUrl: 'https://mcp.example.com/mcp',
+      clientId: 'client-2',
+      updatedAt: 3000,
+    });
+
+    const clientChanged = credentialsRepo.findByServerId('srv-notion');
+    expect(clientChanged?.client_id).toBe('client-2');
+    expect(clientChanged?.client_secret).toBeNull();
+    expect(clientChanged?.access_token).toBeNull();
+    expect(clientChanged?.refresh_token).toBeNull();
+    expect(clientChanged?.expires_at_ms).toBeNull();
+  });
+
   it('父级 mcp_servers 记录删除时级联删除对应的 OAuth 凭据', () => {
     credentialsRepo.saveInitialOrClient({
       mcpServerId: 'srv-notion',

@@ -24,10 +24,12 @@ export class McpOAuthService {
 
   /**
    * 获取或懒加载指定服务的 McpOAuthClient 单例.
+   * 若服务 URL 已变更, 中止旧客户端上的待完成登录并按新地址重建.
    */
   getClient(serverId: string, serverUrl: string): McpOAuthClient {
     let client = this.oauthClientsByServerId.get(serverId);
-    if (!client) {
+    if (!client || client.serverUrl !== serverUrl) {
+      void client?.cancelPendingLogin();
       client = new McpOAuthClient(serverId, serverUrl, this.credentialsRepo);
       this.oauthClientsByServerId.set(serverId, client);
     }
@@ -69,20 +71,21 @@ export class McpOAuthService {
 
   /**
    * 查询指定服务的当前 OAuth 状态.
-   * 若 authType 为 'none' 则返回 null.
+   * 若 authType 为 'none' 则返回 null; 若传入 serverUrl 则核对是否与已存储凭据地址一致.
    */
-  getStatus(serverId: string, authType: 'none' | 'oauth'): McpOAuthStatus | null {
+  getStatus(serverId: string, authType: 'none' | 'oauth', serverUrl?: string): McpOAuthStatus | null {
     if (authType === 'none') {
       return null;
     }
 
     const client = this.oauthClientsByServerId.get(serverId);
-    if (client) {
+    if (client && (!serverUrl || client.serverUrl === serverUrl)) {
       return client.getStatus();
     }
 
     const row = this.credentialsRepo.findByServerId(serverId);
-    if (row && row.access_token) {
+    const matchesUrl = !serverUrl || (row !== null && row.server_url === serverUrl);
+    if (row && matchesUrl && row.access_token) {
       return {
         status: 'authorized',
         expiresAtMs: row.expires_at_ms,
@@ -93,7 +96,7 @@ export class McpOAuthService {
     return {
       status: 'required',
       expiresAtMs: null,
-      updatedAt: row?.updated_at ?? 0,
+      updatedAt: matchesUrl ? (row?.updated_at ?? 0) : 0,
     };
   }
 

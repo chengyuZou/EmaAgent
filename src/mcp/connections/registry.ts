@@ -197,9 +197,6 @@ export class McpRegistry {
     if (!record.enabled) {
       throw new McpConnectionError(serverName, 'server is disabled');
     }
-    const timeoutMs = record.config.toolTimeoutSec !== undefined
-      ? record.config.toolTimeoutSec * 1000
-      : undefined;
 
     // 若为 HTTP 服务且启用了 OAuth, 并在调用工具前发现 Token 已过期或临近过期,
     // 提前触发并排队等待续期, 消除并发调用时的 401 往返与并发刷新竞争.
@@ -207,8 +204,26 @@ export class McpRegistry {
       await this.oauthService.ensureFreshToken(record.id, record.config.url, signal);
     }
 
+    // 等待续期期间服务可能被禁用, 删除或变更配置, 醒来后重查最新状态.
+    signal?.throwIfAborted();
+    const latestRecord = this.store.findByName(serverName);
+    if (!latestRecord) throw new McpServerNotFoundError(serverName);
+    if (!latestRecord.enabled) {
+      throw new McpConnectionError(serverName, 'server is disabled');
+    }
+    if (
+      latestRecord.id !== record.id ||
+      latestRecord.authType !== record.authType ||
+      JSON.stringify(latestRecord.config) !== JSON.stringify(record.config)
+    ) {
+      throw new McpConnectionSupersededError(serverName);
+    }
+    const timeoutMs = latestRecord.config.toolTimeoutSec !== undefined
+      ? latestRecord.config.toolTimeoutSec * 1000
+      : undefined;
+
     // 单次调用取消只结束自身等待, 不取消其他调用共享的连接任务.
-    await waitForPromise(this.connectConfig(serverName, record.config), signal);
+    await waitForPromise(this.connectConfig(serverName, latestRecord.config), signal);
     const conn = this.servers.get(serverName)?.opened;
     if (!conn) {
       throw new McpServerNotFoundError(`${serverName} (not connected)`);
@@ -219,7 +234,9 @@ export class McpRegistry {
   listServers(): McpServerSummary[] {
     return this.store.listSettings().map((settings) => {
       const connection = this.servers.get(settings.name)?.info;
-      const oauth = this.oauthService?.getStatus(settings.id, settings.authType) ?? null;
+      const oauth = settings.config.type === 'http'
+        ? (this.oauthService?.getStatus(settings.id, settings.authType, settings.config.url) ?? null)
+        : null;
       return {
         id: settings.id,
         name: settings.name,
@@ -244,7 +261,9 @@ export class McpRegistry {
     const tools = connection?.status === 'connected'
       ? connection.tools
       : (record.cachedTools ?? []);
-    const oauth = this.oauthService?.getStatus(record.id, record.authType) ?? null;
+    const oauth = record.config.type === 'http'
+      ? (this.oauthService?.getStatus(record.id, record.authType, record.config.url) ?? null)
+      : null;
     return {
       id: record.id,
       name: record.name,
@@ -280,13 +299,23 @@ export class McpRegistry {
       url: record.config.url,
     });
 
+    // OAuth 登录流程成功发起后将服务认证模式切换为 'oauth', 保证后续连接和状态查询带入凭据.
+    if (record.authType !== 'oauth') {
+      this.store.setAuthType(serverName, 'oauth');
+    }
+
     const client = this.oauthService.getClient(record.id, record.config.url);
     const pendingLogin = client.getPendingLogin();
     if (pendingLogin) {
       void pendingLogin.promise
         .then(async () => {
-          // 授权成功后若服务处于启用状态, 触发后台自动连接并刷新工具
-          if (record.enabled) {
+          // 授权成功后重查最新配置, 若仍处于启用状态则自动建立带 OAuth 的连接
+          const latest = this.store.findByName(serverName);
+          if (latest?.enabled) {
+            // 若此前以无鉴权状态意外保持 connected, 需先断开再以 oauthFetch 重新握手
+            if (this.servers.get(serverName)?.opened) {
+              await this.disconnect(serverName);
+            }
             await this.connect(serverName).catch(() => undefined);
           }
         })
@@ -346,16 +375,25 @@ export class McpRegistry {
     if (!this.oauthService) return null;
     const record = this.store.findByName(serverName);
     if (!record || record.config.type !== 'http') return null;
-    return this.oauthService.getStatus(record.id, record.authType);
+    return this.oauthService.getStatus(record.id, record.authType, record.config.url);
   }
 
   async save(
     name: string,
     config: McpServerConfig,
     provenance?: McpInstallProvenance,
+    authType?: 'none' | 'oauth',
   ): Promise<string> {
-    if (this.store.findByName(name)) await this.disconnect(name);
-    const id = this.store.register(name, config, provenance);
+    const existing = this.store.findByName(name);
+    if (existing) {
+      await this.disconnect(name);
+      const urlChanged = existing.config.type === 'http'
+        && (config.type !== 'http' || existing.config.url !== config.url);
+      if (urlChanged) {
+        await this.oauthService?.removeClient(existing.id);
+      }
+    }
+    const id = this.store.register(name, config, provenance, authType);
     this.connectInBackground(name);
     return id;
   }
@@ -374,7 +412,11 @@ export class McpRegistry {
 
   /** 先断开并注销工具, 再删除配置, 避免留下仍在运行的子进程. */
   async remove(name: string): Promise<void> {
+    const existing = this.store.findByName(name);
     await this.disconnect(name);
+    if (existing) {
+      await this.oauthService?.removeClient(existing.id);
+    }
     this.store.remove(name);
   }
 
@@ -474,10 +516,19 @@ export class McpRegistry {
       this.assertCurrent(serverName, server, generation);
 
       const record = this.store.findByName(serverName);
-      const authProvider = (record && record.config.type === 'http' && this.oauthService && record.authType === 'oauth')
-        ? this.oauthService.getClient(record.id, record.config.url)
+      const oauthClient = (
+        config.type === 'http'
+        && record?.config.type === 'http'
+        && record.config.url === config.url
+        && record.authType === 'oauth'
+      )
+        ? this.oauthService?.getClient(record.id, record.config.url)
         : undefined;
-      opened = await openConnection(serverName, config, lifecycleAbort.signal, authProvider);
+      if (oauthClient) {
+        await oauthClient.ensureFreshToken(lifecycleAbort.signal);
+        this.assertCurrent(serverName, server, generation);
+      }
+      opened = await openConnection(serverName, config, lifecycleAbort.signal, oauthClient?.fetchWithOAuth);
       this.assertCurrent(serverName, server, generation);
 
       // onerror 不一定导致连接关闭, 此时先保存错误供 onclose 使用.

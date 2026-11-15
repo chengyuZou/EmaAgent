@@ -1,5 +1,5 @@
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import type { OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js';
+import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js';
 import type { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import type { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { McpServerConfig } from '../types.js';
@@ -27,7 +27,7 @@ function assertSafeStdioConfig(command: string, args: readonly string[]): void {
 async function buildTransport(
   config: McpServerConfig,
   signal?: AbortSignal,
-  authProvider?: OAuthClientProvider,
+  oauthFetch?: FetchLike,
 ): Promise<StdioClientTransport | StreamableHTTPClientTransport> {
   // 只加载实际使用的传输, 避免启动时加载未配置的传输及其依赖.
   if (config.type === 'stdio') {
@@ -57,7 +57,7 @@ async function buildTransport(
     new URL(config.url),
     {
       requestInit: config.headers ? { headers: config.headers } : undefined,
-      authProvider,
+      fetch: oauthFetch,
     },
   );
 }
@@ -86,13 +86,13 @@ export async function openConnection(
   serverName: string,
   config:     McpServerConfig,
   signal?:    AbortSignal,
-  authProvider?: OAuthClientProvider,
+  oauthFetch?: FetchLike,
 ): Promise<OpenedConnection> {
   signal?.throwIfAborted();
   // 无连接需求时不加载 Client; 模块由 import 缓存, 每次连接仍创建独立实例.
   const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
   signal?.throwIfAborted();
-  const transport = await buildTransport(config, signal, authProvider);
+  const transport = await buildTransport(config, signal, oauthFetch);
 
   // 外部取消或本地超时都要中止 SDK 握手, 不能只返回错误却留下子进程或 HTTP 请求.
   const linked = linkedAbortController(signal);
@@ -133,6 +133,11 @@ export async function openConnection(
       // 保留连接失败或取消的原始原因.
     }
     if (err instanceof McpTimeoutError || linked.controller.signal.aborted) throw err;
+    // 传输层使用 oauthFetch 且未传入 authProvider 时, HTTP 401 不会转为 UnauthorizedError,
+    // 需保留 401 语义让上层识别鉴权失效并立即停止指数退避重试.
+    if ((err as { code?: unknown }).code === 401) {
+      throw new McpConnectionError(serverName, `HTTP 401 Unauthorized: ${(err as Error).message}`);
+    }
     throw new McpConnectionError(serverName, (err as Error).message ?? String(err));
   } finally {
     linked.dispose();

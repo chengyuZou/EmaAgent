@@ -1,7 +1,50 @@
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Database, McpOAuthCredentialsRepo, McpServersRepo } from '@ema-agent/storage';
 import { McpOAuthClient } from '../auth/oauthClient.js';
 import type { McpOAuthPendingLogin } from '../auth/types.js';
+import { openConnection } from '../connections/connection.js';
+
+function readRequestBody(req: IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    req.on('data', (chunk: Buffer) => chunks.push(chunk));
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    req.on('error', reject);
+  });
+}
+
+async function startLocalTestServer(
+  handler: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>,
+): Promise<{ baseUrl: string; close: () => Promise<void> }> {
+  const server: Server = createServer((req, res) => {
+    Promise.resolve(handler(req, res)).catch((err) => {
+      if (!res.headersSent) {
+        res.statusCode = 500;
+        res.end(String(err));
+      }
+    });
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => resolve());
+  });
+
+  const addr = server.address();
+  if (!addr || typeof addr === 'string') {
+    throw new Error('Failed to bind local test HTTP server');
+  }
+
+  return {
+    baseUrl: `http://127.0.0.1:${addr.port}`,
+    close: () =>
+      new Promise<void>((resolve) => {
+        server.closeAllConnections?.();
+        server.close(() => resolve());
+      }),
+  };
+}
 
 describe('McpOAuthClient 单元测试', () => {
   let database: Database;
@@ -227,5 +270,251 @@ describe('McpOAuthClient 单元测试', () => {
       expires_in: 10,
     });
     expect(client.isTokenExpiredOrNearExpiry(30_000)).toBe(true);
+  });
+
+  it('Bug 1 真实 SDK 续期: 无 pendingLogin 时 ensureFreshToken 直接用 refresh_token 换取新 Token', async () => {
+    let tokenRequestBody = '';
+    const oauthServer = await startLocalTestServer(async (req, res) => {
+      if (req.url === '/.well-known/oauth-authorization-server') {
+        res.setHeader('Content-Type', 'application/json');
+        res.end(
+          JSON.stringify({
+            issuer: oauthServer.baseUrl,
+            authorization_endpoint: `${oauthServer.baseUrl}/authorize`,
+            token_endpoint: `${oauthServer.baseUrl}/token`,
+            response_types_supported: ['code'],
+            grant_types_supported: ['authorization_code', 'refresh_token'],
+            token_endpoint_auth_method: 'none',
+          }),
+        );
+        return;
+      }
+
+      if (req.url === '/token' && req.method === 'POST') {
+        tokenRequestBody = await readRequestBody(req);
+        res.setHeader('Content-Type', 'application/json');
+        res.end(
+          JSON.stringify({
+            access_token: 'sdk-fresh-access',
+            refresh_token: 'sdk-fresh-refresh',
+            token_type: 'Bearer',
+            expires_in: 3600,
+          }),
+        );
+        return;
+      }
+
+      res.statusCode = 404;
+      res.end();
+    });
+
+    try {
+      const serverUrl = `${oauthServer.baseUrl}/mcp`;
+      const liveClient = new McpOAuthClient('srv-1', serverUrl, credentialsRepo);
+      expect(liveClient.redirectUrl).toBeUndefined();
+
+      await liveClient.saveClientInformation({ client_id: 'client-live-1' });
+      credentialsRepo.saveInitialOrClient({
+        mcpServerId: 'srv-1',
+        serverUrl,
+        clientId: 'client-live-1',
+        accessToken: 'expired-access',
+        refreshToken: 'old-refresh-token',
+        expiresAtMs: Date.now() - 1000,
+        updatedAt: 1000,
+      });
+
+      await liveClient.ensureFreshToken();
+
+      const params = new URLSearchParams(tokenRequestBody);
+      expect(params.get('grant_type')).toBe('refresh_token');
+      expect(params.get('refresh_token')).toBe('old-refresh-token');
+
+      const updated = credentialsRepo.findByServerId('srv-1');
+      expect(updated?.access_token).toBe('sdk-fresh-access');
+      expect(updated?.refresh_token).toBe('sdk-fresh-refresh');
+    } finally {
+      await oauthServer.close();
+    }
+  });
+
+  it('Bug 1/2 真实 SDK InvalidGrant 与乐观锁保护: 仅在版本与 refresh_token 一致时清空或写回', async () => {
+    let tokenStatusCode = 400;
+    let tokenResponseBody: Record<string, unknown> = {
+      error: 'invalid_grant',
+      error_description: 'refresh token revoked',
+    };
+    let onTokenRequest: (() => Promise<void> | void) | undefined;
+
+    const oauthServer = await startLocalTestServer(async (req, res) => {
+      if (req.url === '/.well-known/oauth-authorization-server') {
+        res.setHeader('Content-Type', 'application/json');
+        res.end(
+          JSON.stringify({
+            issuer: oauthServer.baseUrl,
+            authorization_endpoint: `${oauthServer.baseUrl}/authorize`,
+            token_endpoint: `${oauthServer.baseUrl}/token`,
+            response_types_supported: ['code'],
+            grant_types_supported: ['authorization_code', 'refresh_token'],
+            token_endpoint_auth_method: 'none',
+          }),
+        );
+        return;
+      }
+
+      if (req.url === '/token' && req.method === 'POST') {
+        await readRequestBody(req);
+        if (onTokenRequest) {
+          await onTokenRequest();
+        }
+        res.statusCode = tokenStatusCode;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify(tokenResponseBody));
+        return;
+      }
+
+      res.statusCode = 404;
+      res.end();
+    });
+
+    try {
+      const serverUrl = `${oauthServer.baseUrl}/mcp`;
+      const liveClient = new McpOAuthClient('srv-1', serverUrl, credentialsRepo);
+
+      // Case A: 当前 refresh 收到 invalid_grant 时清空本机 Token 并保留 client_id
+      credentialsRepo.saveInitialOrClient({
+        mcpServerId: 'srv-1',
+        serverUrl,
+        clientId: 'client-permanent',
+        accessToken: 'expired-access',
+        refreshToken: 'revoked-refresh',
+        expiresAtMs: Date.now() - 1000,
+        updatedAt: 1000,
+      });
+      await liveClient.ensureFreshToken();
+
+      const afterRevoke = credentialsRepo.findByServerId('srv-1');
+      expect(afterRevoke?.access_token).toBeNull();
+      expect(afterRevoke?.refresh_token).toBeNull();
+      expect(afterRevoke?.client_id).toBe('client-permanent');
+
+      // Case B: 续期成功回包前若已被清除授权, 迟到的成功结果不得写回
+      credentialsRepo.saveInitialOrClient({
+        mcpServerId: 'srv-1',
+        serverUrl,
+        clientId: 'client-permanent',
+        accessToken: 'expired-access-2',
+        refreshToken: 'refresh-2',
+        expiresAtMs: Date.now() - 1000,
+        updatedAt: 2000,
+      });
+      tokenStatusCode = 200;
+      tokenResponseBody = {
+        access_token: 'late-fresh-access',
+        refresh_token: 'late-fresh-refresh',
+        token_type: 'Bearer',
+        expires_in: 3600,
+      };
+      onTokenRequest = () => {
+        credentialsRepo.clearTokens('srv-1', Date.now());
+      };
+
+      await liveClient.ensureFreshToken();
+      const afterClearedDuringRefresh = credentialsRepo.findByServerId('srv-1');
+      expect(afterClearedDuringRefresh?.access_token).toBeNull();
+      expect(afterClearedDuringRefresh?.refresh_token).toBeNull();
+
+      // Case C: 续期途中已被写入新一轮有效 Token 后, 旧请求收到 invalid_grant 不得误删新 Token
+      credentialsRepo.saveInitialOrClient({
+        mcpServerId: 'srv-1',
+        serverUrl,
+        clientId: 'client-permanent',
+        accessToken: 'expired-access-3',
+        refreshToken: 'old-refresh-3',
+        expiresAtMs: Date.now() - 1000,
+        updatedAt: 3000,
+      });
+      tokenStatusCode = 400;
+      tokenResponseBody = {
+        error: 'invalid_grant',
+        error_description: 'old refresh expired',
+      };
+      onTokenRequest = () => {
+        credentialsRepo.saveInitialOrClient({
+          mcpServerId: 'srv-1',
+          serverUrl,
+          clientId: 'client-permanent',
+          accessToken: 'newer-login-access',
+          refreshToken: 'newer-login-refresh',
+          expiresAtMs: Date.now() + 3600_000,
+          updatedAt: Date.now(),
+        });
+      };
+
+      await liveClient.ensureFreshToken();
+      const afterNewerLogin = credentialsRepo.findByServerId('srv-1');
+      expect(afterNewerLogin?.access_token).toBe('newer-login-access');
+      expect(afterNewerLogin?.refresh_token).toBe('newer-login-refresh');
+    } finally {
+      await oauthServer.close();
+    }
+  });
+
+  it('Bug 4 与 401 识别: serverUrl 不匹配时不读取凭据也不附带 Bearer, openConnection 401 转明确消息', async () => {
+    const observedHeaders: Array<string | undefined> = [];
+    let responseStatus = 200;
+
+    const mcpServer = await startLocalTestServer(async (req, res) => {
+      observedHeaders.push(req.headers.authorization);
+      if (responseStatus === 401) {
+        res.statusCode = 401;
+        // 故意返回空 body, 验证 connection.ts 不依赖响应文本即可识别 code=401
+        res.end();
+        return;
+      }
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/json');
+      res.end('{}');
+    });
+
+    try {
+      const urlA = `${mcpServer.baseUrl}/mcp`;
+      const urlB = `${mcpServer.baseUrl}/other-mcp`;
+      credentialsRepo.saveInitialOrClient({
+        mcpServerId: 'srv-1',
+        serverUrl: urlA,
+        clientId: 'client-a',
+        accessToken: 'secret-token-a',
+        expiresAtMs: Date.now() + 3600_000,
+        updatedAt: 1000,
+      });
+
+      const clientA = new McpOAuthClient('srv-1', urlA, credentialsRepo);
+      const clientB = new McpOAuthClient('srv-1', urlB, credentialsRepo);
+
+      // URL 不匹配的 clientB 读不到客户端信息与 Token, 状态必须为 required
+      expect(await clientB.clientInformation()).toBeUndefined();
+      expect(await clientB.tokens()).toBeUndefined();
+      expect(clientB.getStatus().status).toBe('required');
+
+      // fetchWithOAuth 只为匹配 URL 附带 Authorization 头
+      await clientA.fetchWithOAuth(urlA, { method: 'POST' });
+      await clientB.fetchWithOAuth(urlB, { method: 'POST' });
+      expect(observedHeaders).toEqual(['Bearer secret-token-a', undefined]);
+
+      // 验证 openConnection 在遇到 HTTP 401 时附带了 oauthFetch 且抛出含 HTTP 401 Unauthorized 的错误
+      responseStatus = 401;
+      await expect(
+        openConnection(
+          'notion',
+          { type: 'http', url: urlA },
+          undefined,
+          clientA.fetchWithOAuth,
+        ),
+      ).rejects.toThrow(/HTTP 401 Unauthorized/);
+      expect(observedHeaders.at(-1)).toBe('Bearer secret-token-a');
+    } finally {
+      await mcpServer.close();
+    }
   });
 });
