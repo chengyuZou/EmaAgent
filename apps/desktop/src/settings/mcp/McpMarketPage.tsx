@@ -4,6 +4,7 @@ import { mcpApi, type McpMarketDetail, type McpMarketEntry } from '../../api/mcp
 import { showToast } from '../../lib/notifications/toast.js';
 import { tauriBridge } from '../../lib/tauri/tauriBridge.js';
 import { useMcpStore } from '../../stores/mcp.js';
+import { sanitizeMcpServerName } from '@ema-agent/mcp/serverName';
 import { PageHeader } from '../shared/PageHeader.js';
 
 const SOURCE = 'official' as const;
@@ -117,7 +118,7 @@ export function McpMarketPage(): JSX.Element {
     if ('error' in entry) return;
     void useMcpStore.getState().addFromMarket(entry.source, {
       externalId: entry.externalId,
-      name: serverName(entry.name),
+      name: sanitizeMcpServerName(entry.name),
       ...(inputs ? { inputs } : {}),
     });
   }
@@ -227,6 +228,7 @@ export function McpMarketPage(): JSX.Element {
         </div>
       )}
       <InstallDialog
+        key={pending && !('error' in pending) ? pending.externalId : 'closed'}
         detail={pending}
         busy={pending && !('error' in pending) ? addingMarketEntryIds.has(pending.externalId) : false}
         onCancel={() => setPending(null)}
@@ -277,10 +279,6 @@ function InstallDialog({ detail, busy, onCancel, onInstall }: {
       </div>
     </Dialog>
   );
-}
-
-function serverName(value: string): string {
-  return value.replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 100) || 'mcp-server';
 }
 
 function messageOf(error: unknown): string {

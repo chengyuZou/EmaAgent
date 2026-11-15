@@ -2,6 +2,8 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { StageVoiceInput } from '../src/stage/voiceInput/StageVoiceInput.js';
 import type { StageVoiceContextChange, StageVoiceSendResult } from '../src/lib/tauri/types.js';
 
@@ -174,4 +176,38 @@ it('提交回执保留发送后新到的文字, 隐藏 Stage 释放麦克风', a
   await act(async () => root.render(<StageVoiceInput suspended />));
   expect(mock.stopTrack).toHaveBeenCalledOnce();
   expect(mock.destroyDetector).toHaveBeenCalledOnce();
+});
+
+it('麦克风浮层与展开面板随 data-pet-pointer-inside 同步显隐和禁用穿透命中', async () => {
+  await act(async () => root.render(<StageVoiceInput suspended={false} />));
+  const style = document.createElement('style');
+  style.textContent = readFileSync(resolve(process.cwd(), 'src/styles/domains/stage.css'), 'utf8');
+  document.head.append(style);
+  try {
+    const wrapper = host.querySelector<HTMLElement>('.ema-stage-voice-input')!;
+    const triggerBox = wrapper.querySelector<HTMLElement>('[data-pet-interactive]')!;
+    expect(wrapper).toBeTruthy();
+
+    expect(getComputedStyle(wrapper).opacity).toBe('0');
+    expect(getComputedStyle(wrapper).pointerEvents).toBe('none');
+    expect(getComputedStyle(triggerBox).pointerEvents).toBe('none');
+
+    document.body.dataset.petPointerInside = 'true';
+    expect(getComputedStyle(wrapper).opacity).toBe('1');
+    expect(getComputedStyle(triggerBox).pointerEvents).toBe('auto');
+
+    // 即使麦克风面板已展开, 指针离开桌宠区域后也必须整体隐藏且不再命中交互层.
+    await click('展开麦克风面板');
+    const panel = wrapper.querySelector<HTMLElement>('.ema-stage-voice-panel[data-pet-interactive]')!;
+    expect(panel).toBeTruthy();
+    expect(getComputedStyle(panel).pointerEvents).toBe('auto');
+
+    document.body.dataset.petPointerInside = 'false';
+    expect(getComputedStyle(wrapper).opacity).toBe('0');
+    expect(getComputedStyle(panel).pointerEvents).toBe('none');
+    expect(getComputedStyle(triggerBox).pointerEvents).toBe('none');
+  } finally {
+    delete document.body.dataset.petPointerInside;
+    style.remove();
+  }
 });

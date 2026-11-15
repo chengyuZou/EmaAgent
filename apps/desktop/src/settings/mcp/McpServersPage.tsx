@@ -1,6 +1,6 @@
 import { useState, type CSSProperties, type JSX } from 'react';
 import {
-  Button, Callout, ConfirmDialog, EmptyState, ScrollArea, Spinner,
+  Button, Callout, ConfirmDialog, EmptyState, Spinner,
 } from '@ema-agent/ui';
 import { useMcpStore } from '../../stores/mcp.js';
 import type { McpServerSummary } from '../../api/mcp.js';
@@ -81,24 +81,22 @@ export function McpServersPage(): JSX.Element {
         />
       )}
       {servers.length > 0 && (
-        <ScrollArea className="flex-1" viewportClassName="pb-2">
-          <div className="flex flex-col gap-2 pr-2">
-            {servers.map((server, index) => (
-              <div
-                key={server.name}
-                className="ema-stagger-in"
-                style={{ '--stagger-i': index } as CSSProperties}
-              >
-                <ServerRow
-                  server={server}
-                  onToggleEnabled={() => void handleToggleEnabled(server)}
-                  onRemove={() => setPendingRemove(server.name)}
-                  onEdit={() => handleEdit(server)}
-                />
-              </div>
-            ))}
-          </div>
-        </ScrollArea>
+        <div className="flex flex-col gap-2 pb-2">
+          {servers.map((server, index) => (
+            <div
+              key={server.name}
+              className="ema-stagger-in"
+              style={{ '--stagger-i': index } as CSSProperties}
+            >
+              <ServerRow
+                server={server}
+                onToggleEnabled={() => void handleToggleEnabled(server)}
+                onRemove={() => setPendingRemove(server.name)}
+                onEdit={() => handleEdit(server)}
+              />
+            </div>
+          ))}
+        </div>
       )}
 
       <McpImportDialog open={importOpen} onOpenChange={setImportOpen} />

@@ -4,9 +4,12 @@ import { rpcClient, readRpcJson, type RpcClient, type RpcJson } from './client.j
 export type McpServerListResult = RpcJson<RpcClient['api']['mcp']['servers']['$get']>;
 export type McpServerSummary = McpServerListResult['items'][number];
 export type McpServerDetail = RpcJson<RpcClient['api']['mcp']['servers'][':name']['$get']>;
-export type McpRegisterInput = InferRequestType<RpcClient['api']['mcp']['servers']['$post']>['json'];
-export type McpServerConfig = McpRegisterInput['config'];
-export type McpInstallProvenance = NonNullable<McpRegisterInput['provenance']>;
+export type McpCreateServerInput = InferRequestType<RpcClient['api']['mcp']['servers']['$post']>['json'];
+export type McpUpdateServerInput = InferRequestType<RpcClient['api']['mcp']['servers'][':name']['$put']>['json'];
+export type McpServerConfig = McpCreateServerInput['config'];
+export type McpInstallProvenance = NonNullable<McpCreateServerInput['provenance']>;
+export type McpAuthType = NonNullable<McpCreateServerInput['authType']>;
+export type McpOAuthStartResult = RpcJson<RpcClient['api']['mcp']['servers'][':name']['oauth']['start']['$post']>;
 export type McpImportResult = RpcJson<RpcClient['api']['mcp']['import']['$post']>;
 export type McpProbeInput = InferRequestType<RpcClient['api']['mcp']['probe']['$post']>['json'];
 export type McpProbeResult = RpcJson<RpcClient['api']['mcp']['probe']['$post']>;
@@ -24,8 +27,11 @@ export const mcpApi = {
   get(name: string): Promise<McpServerDetail> {
     return readRpcJson(rpcClient.api.mcp.servers[':name'].$get({ param: { name } }));
   },
-  save(body: McpRegisterInput) {
+  create(body: McpCreateServerInput) {
     return readRpcJson(rpcClient.api.mcp.servers.$post({ json: body }));
+  },
+  update(name: string, body: McpUpdateServerInput) {
+    return readRpcJson(rpcClient.api.mcp.servers[':name'].$put({ param: { name }, json: body }));
   },
   import(json: unknown): Promise<McpImportResult> {
     return readRpcJson(rpcClient.api.mcp.import.$post({ json: { json } }));
@@ -44,6 +50,15 @@ export const mcpApi = {
   },
   remove(name: string) {
     return readRpcJson(rpcClient.api.mcp.servers[':name'].$delete({ param: { name } }));
+  },
+  startOAuth(name: string): Promise<McpOAuthStartResult> {
+    return readRpcJson(rpcClient.api.mcp.servers[':name'].oauth.start.$post({ param: { name } }));
+  },
+  cancelOAuth(name: string) {
+    return readRpcJson(rpcClient.api.mcp.servers[':name'].oauth.cancel.$post({ param: { name } }));
+  },
+  clearOAuthTokens(name: string) {
+    return readRpcJson(rpcClient.api.mcp.servers[':name'].oauth.tokens.$delete({ param: { name } }));
   },
   probe(body: McpProbeInput): Promise<McpProbeResult> {
     return readRpcJson(rpcClient.api.mcp.probe.$post({ json: body }));

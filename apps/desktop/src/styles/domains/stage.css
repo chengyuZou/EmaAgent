@@ -90,11 +90,20 @@ body[data-pet-pointer-inside='true'] .ema-server-status {
   border-color: var(--ema-border);
 }
 
+/* 默认随桌宠悬停浮层一起隐藏, 仅在指针进入桌宠区域时显现并可点击. */
 .ema-stage-voice-input {
   position: absolute;
   bottom: 12px;
   left: 12px;
   z-index: 11;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--ema-duration-base) var(--ema-ease);
+}
+
+body[data-pet-pointer-inside='true'] .ema-stage-voice-input {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .ema-stage-voice-panel {

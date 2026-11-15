@@ -16,6 +16,7 @@ export default defineConfig({
       '@ema-agent/sandbox/settings': resolve(__dirname, '../../src/sandbox/settings.ts'),
       '@ema-agent/vishot-capture/settings': resolve(__dirname, '../../src/vishot-capture/settings.ts'),
       '@ema-agent/tools/background/settings': resolve(__dirname, '../../src/tools/background/settings.ts'),
+      '@ema-agent/mcp/serverName': resolve(__dirname, '../../src/mcp/serverName.ts'),
       '@lemonneko/crop-empty-pixels': resolve(
         __dirname,
         'node_modules/@lemonneko/crop-empty-pixels/dist/index.js',

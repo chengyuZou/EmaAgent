@@ -83,9 +83,11 @@ beforeEach(() => {
       pending.set(body.externalId, {
         finish() {
           servers.push({
+            id: `srv-${body.name}`,
             name: body.name,
             enabled: true,
-            connectionStatus: 'connecting',
+            authType: 'none',
+            connectionStatus: 'disconnected',
             toolCount: 0,
             provenance: { sourceKind: 'official', marketEntryId: body.externalId },
             config: { type: 'http', url: 'https://example.invalid/mcp' },
@@ -158,7 +160,7 @@ it('keeps pending feedback during a market query and reloads completion after re
   expect(card().textContent).toContain('已添加');
 });
 
-it('deduplicates the same entry after navigation and leaves connection status to the server', async () => {
+it('deduplicates the same entry after navigation and saves without auto-connecting', async () => {
   await render(true);
   await act(async () => addButton().click());
   await render(false);
@@ -170,9 +172,9 @@ it('deduplicates the same entry after navigation and leaves connection status to
   expect(api.install).toHaveBeenCalledOnce();
   await act(async () => pending.get(entries[0]!.externalId)!.finish());
   expect(card().textContent).toContain('已添加');
-  expect(useMcpStore.getState().servers[0]?.connectionStatus).toBe('connecting');
+  expect(useMcpStore.getState().servers[0]?.connectionStatus).toBe('disconnected');
   expect(useMcpStore.getState().addingMarketEntryIds.size).toBe(0);
-  expect(api.toast).toHaveBeenCalledOnce();
+  expect(api.toast).toHaveBeenCalledWith('已添加 Fixture-a.', { variant: 'success' });
 });
 
 it('reports a server list failure separately from successful addition', async () => {

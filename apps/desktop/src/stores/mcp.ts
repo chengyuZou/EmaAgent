@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { AppEvent } from '@ema-agent/server/application/appEvents.js';
 import {
   mcpApi,
+  type McpAuthType,
   type McpImportResult,
   type McpInstallProvenance,
   type McpMarketEntry,
@@ -24,12 +25,16 @@ interface McpStoreState {
   load(): Promise<void>;
   /** 返回本次读取的错误或 null, 不从可能被其他刷新改写的 error 判断本次结果. */
   refresh(): Promise<string | null>;
-  save(name: string, config: McpServerConfig, provenance?: McpInstallProvenance): Promise<void>;
+  create(name: string, config: McpServerConfig, provenance?: McpInstallProvenance, authType?: McpAuthType): Promise<void>;
+  update(name: string, config: McpServerConfig, provenance?: McpInstallProvenance, authType?: McpAuthType): Promise<void>;
   enable(name: string): Promise<void>;
   disable(name: string): Promise<void>;
   connect(name: string): Promise<void>;
   disconnect(name: string): Promise<void>;
   remove(name: string): Promise<void>;
+  startOAuth(name: string): Promise<string | null>;
+  cancelOAuth(name: string): Promise<void>;
+  clearOAuthTokens(name: string): Promise<void>;
   probe(serverName: string, config: McpServerConfig): Promise<McpProbeResult>;
   importFromJson(payload: object | string): Promise<McpImportResult['items']>;
   addFromMarket(source: McpMarketSource, input: McpMarketInstallInput): Promise<void>;
@@ -64,8 +69,21 @@ export const useMcpStore = create<McpStoreState>((set, get) => ({
       return message;
     }
   },
-  async save(name, config, provenance) {
-    await mcpApi.save({ name, config, ...(provenance ? { provenance } : {}) });
+  async create(name, config, provenance, authType) {
+    await mcpApi.create({
+      name,
+      config,
+      ...(provenance ? { provenance } : {}),
+      ...(authType ? { authType } : {}),
+    });
+    await get().refresh();
+  },
+  async update(name, config, provenance, authType) {
+    await mcpApi.update(name, {
+      config,
+      ...(provenance ? { provenance } : {}),
+      ...(authType ? { authType } : {}),
+    });
     await get().refresh();
   },
   async enable(name) {
@@ -87,6 +105,19 @@ export const useMcpStore = create<McpStoreState>((set, get) => ({
   async remove(name) {
     await mcpApi.remove(name);
     set(state => ({ servers: state.servers.filter(server => server.name !== name) }));
+  },
+  async startOAuth(name) {
+    const result = await mcpApi.startOAuth(name);
+    await get().refresh();
+    return result.authorizationUrl;
+  },
+  async cancelOAuth(name) {
+    await mcpApi.cancelOAuth(name);
+    await get().refresh();
+  },
+  async clearOAuthTokens(name) {
+    await mcpApi.clearOAuthTokens(name);
+    await get().refresh();
   },
   probe(serverName, config) {
     return mcpApi.probe({ serverName, config });
@@ -110,7 +141,7 @@ export const useMcpStore = create<McpStoreState>((set, get) => ({
       if (refreshError) {
         showToast(`已添加 ${result.name}, 但服务器列表刷新失败: ${refreshError}`, { variant: 'warning' });
       } else {
-        showToast(`已添加 ${result.name}, 正在后台连接.`, { variant: 'success' });
+        showToast(`已添加 ${result.name}.`, { variant: 'success' });
       }
     } catch (error) {
       showToast(`添加失败: ${messageOf(error)}`, { variant: 'danger' });
@@ -130,7 +161,11 @@ function messageOf(error: unknown): string {
 
 export function handleMcpSystemEvent(event: AppEvent): void {
   if (
-    (event.type === 'mcp_connection_changed' || event.type === 'mcp_servers_changed')
+    (
+      event.type === 'mcp_connection_changed'
+      || event.type === 'mcp_servers_changed'
+      || event.type === 'mcp_oauth_changed'
+    )
     && useMcpStore.getState().servers.length > 0
   ) {
     void useMcpStore.getState().refresh().catch(() => {});

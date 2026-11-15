@@ -1,4 +1,6 @@
 import { useState, type CSSProperties, type JSX } from 'react';
+import { MCP_SERVER_NAME_RE } from '@ema-agent/mcp/serverName';
+import type { McpAuthType } from '@ema-agent/mcp';
 import {
   Badge, Button, Callout, Dialog, Divider, Field, Input, Select, Textarea, ToolSpecItem,
 } from '@ema-agent/ui';
@@ -15,12 +17,18 @@ const TRANSPORT_OPTIONS = [
   { value: 'http',  label: 'Streamable HTTP'  },
 ];
 
+const AUTH_TYPE_OPTIONS: { value: McpAuthType; label: string }[] = [
+  { value: 'none',  label: '无 / 静态 Headers' },
+  { value: 'oauth', label: 'OAuth 2.0 (浏览器授权)' },
+];
+
 
 type McpTransportType = NonNullable<McpServerConfig['type']>;
 
 interface McpServerFormState {
   name: string;
   transport: McpTransportType;
+  authType: McpAuthType;
   command: string;
   args: string[];
   url: string;
@@ -35,6 +43,7 @@ function createEmptyMcpFormState(): McpServerFormState {
   return {
     name: '',
     transport: 'stdio',
+    authType: 'none',
     command: '',
     args: [],
     url: '',
@@ -89,12 +98,14 @@ function buildMcpServerConfig(form: McpServerFormState): McpServerConfig {
 function mcpServerConfigToForm(
   name: string,
   config: McpServerConfig,
+  authType: McpAuthType,
 ): McpServerFormState {
   // http 变体的 type 是必填字面量,用它做判别;stdio 的 type 在输入侧可缺省.
   if (config.type === 'http') {
     return {
       name,
       transport: 'http',
+      authType,
       command: '',
       args: [],
       url: config.url,
@@ -109,6 +120,7 @@ function mcpServerConfigToForm(
   return {
     name,
     transport: 'stdio',
+    authType: 'none',
     command: config.command,
     args: [...(config.args ?? [])],
     url: '',
@@ -243,19 +255,27 @@ export function McpServerFormDialog({
   onOpenChange(open: boolean): void;
 }): JSX.Element {
   const [form, setForm] = useState(() =>
-    editing ? mcpServerConfigToForm(editing.name, editing.config) : createEmptyMcpFormState());
+    editing
+      ? mcpServerConfigToForm(editing.name, editing.config, editing.authType)
+      : createEmptyMcpFormState());
   const [probeResult, setProbeResult] = useState<McpProbeResult | null>(null);
   const [probing,   setProbing]   = useState(false);
-  const [adding,    setAdding]    = useState(false);
-  const [addError,  setAddError]  = useState<string | null>(null);
+  const [saving,    setSaving]    = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
+  const trimmedName = form.name.trim();
+  const nameInvalid = !editing && trimmedName.length > 0 && !MCP_SERVER_NAME_RE.test(trimmedName);
+  const nameValid = editing ? trimmedName.length > 0 : MCP_SERVER_NAME_RE.test(trimmedName);
   const timeout = Number(form.toolTimeoutSec);
   const timeoutValid = !form.toolTimeoutSec || (Number.isInteger(timeout) && timeout >= 5 && timeout <= 600);
-  const formValid = Boolean(form.name.trim()
+  const formValid = Boolean(nameValid
     && (form.transport === 'stdio' ? form.command.trim() : form.url.trim())
     && timeoutValid);
+  const hasExplicitAuthHeader = form.transport === 'http'
+    && form.authType === 'oauth'
+    && form.headers.some((pair) => pair.key.trim().toLowerCase() === 'authorization');
 
-  function closeAdd(): void {
+  function closeForm(): void {
     onOpenChange(false);
   }
 
@@ -263,7 +283,7 @@ export function McpServerFormDialog({
     setProbing(true);
     setProbeResult(null);
     try {
-      const serverName = form.name.trim() || '未命名 MCP';
+      const serverName = MCP_SERVER_NAME_RE.test(trimmedName) ? trimmedName : 'probe';
       const result = await useMcpStore.getState().probe(serverName, buildMcpServerConfig(form));
       setProbeResult(result);
     } catch (err) {
@@ -277,34 +297,48 @@ export function McpServerFormDialog({
     }
   }
 
-  async function handleAdd(): Promise<void> {
-    if (!form.name.trim()) { setAddError('名称不能为空'); return; }
-    setAdding(true);
-    setAddError(null);
+  async function handleSave(): Promise<void> {
+    if (!nameValid) {
+      setSaveError(editing ? '名称不能为空' : '名称只能包含字母, 数字, 连字符 (-) 和下划线 (_)');
+      return;
+    }
+    setSaving(true);
+    setSaveError(null);
     try {
-      // 保存后 Server 重新连接, 新的环境变量和请求头随这次连接生效.
-      await useMcpStore.getState().save(form.name.trim(), buildMcpServerConfig(form), editing?.provenance);
-      showToast(editing ? `已更新 ${form.name}` : `已注册 ${form.name}`, { variant: 'success' });
-      closeAdd();
+      const config = buildMcpServerConfig(form);
+      const authType: McpAuthType = form.transport === 'http' ? form.authType : 'none';
+      if (editing) {
+        await useMcpStore.getState().update(editing.name, config, editing.provenance, authType);
+        showToast(`已更新 ${editing.name}`, { variant: 'success' });
+      } else {
+        await useMcpStore.getState().create(trimmedName, config, undefined, authType);
+        showToast(`已保存 ${trimmedName}`, { variant: 'success' });
+      }
+      closeForm();
     } catch (err) {
-      setAddError(err instanceof Error ? err.message : String(err));
+      setSaveError(err instanceof Error ? err.message : String(err));
     } finally {
-      setAdding(false);
+      setSaving(false);
     }
   }
 
   return (
     <Dialog
       open={open}
-      onOpenChange={(next) => { if (!next) closeAdd(); }}
+      onOpenChange={(next) => { if (!next) closeForm(); }}
       title={editing ? '编辑 MCP 服务器' : '添加 MCP 服务器'}
-      description="注册后自动尝试连接。远程服务器在 Headers 填鉴权，本地进程在环境变量填 API Key。"
+      description="保存配置后不会自动连接或发起鉴权, 可在列表中手动连接, 或点击进行授权"
       widthClass="max-w-lg"
     >
-      {addError && <Callout variant="danger" className="mb-3">{addError}</Callout>}
+      {saveError && <Callout variant="danger" className="mb-3">{saveError}</Callout>}
 
       <div className="flex flex-col gap-3">
-        <Field label="服务器名称" required>
+        <Field
+          label="服务器名称"
+          required
+          description={editing ? '编辑模式下服务器名称不可修改' : '仅支持字母, 数字, 连字符 (-) 和下划线 (_)'}
+          error={nameInvalid ? '只能包含字母, 数字, 连字符 (-) 和下划线 (_), 长度 1-100' : undefined}
+        >
           <Input
             placeholder="my-server"
             value={form.name}
@@ -317,7 +351,14 @@ export function McpServerFormDialog({
         <Field label="传输类型" required>
           <Select
             value={form.transport}
-            onChange={(v) => setForm({ ...form, transport: v as McpTransportType })}
+            onChange={(v) => {
+              const next = v as McpTransportType;
+              setForm({
+                ...form,
+                transport: next,
+                authType: next === 'stdio' ? 'none' : form.authType,
+              });
+            }}
             options={TRANSPORT_OPTIONS}
           />
         </Field>
@@ -331,13 +372,13 @@ export function McpServerFormDialog({
                 onChange={(e) => setForm({ ...form, command: e.target.value })}
               />
             </Field>
-            <Field label="参数" description="每一项都会作为独立 argv 参数传给进程，不进行 Shell 解析">
+            <Field label="参数" description="每一项都会作为独立 argv 参数传给进程, 不进行 Shell 解析">
               <McpArgumentEditor
                 value={form.args}
                 onChange={(args) => setForm({ ...form, args })}
               />
             </Field>
-            <Field label="环境变量" description="API Key 等，如 AMAP_MAPS_API_KEY">
+            <Field label="环境变量" description="API Key 等, 如 AMAP_MAPS_API_KEY">
               <KeyValueEditor
                 pairs={form.env}
                 onChange={(env) => setForm({ ...form, env })}
@@ -350,7 +391,7 @@ export function McpServerFormDialog({
               <Input value={form.envPassthrough} onChange={(e) => setForm({ ...form, envPassthrough: e.target.value })} placeholder="GITHUB_TOKEN, PATH" />
             </Field>
             <Field label="工作目录">
-              <Input value={form.cwd} onChange={(e) => setForm({ ...form, cwd: e.target.value })} placeholder="D:\\workspace" />
+              <Input value={form.cwd} onChange={(e) => setForm({ ...form, cwd: e.target.value })} placeholder="your workspace" />
             </Field>
           </>
         ) : (
@@ -362,7 +403,14 @@ export function McpServerFormDialog({
                 onChange={(e) => setForm({ ...form, url: e.target.value })}
               />
             </Field>
-            <Field label="请求头 Headers" description="鉴权等，如 Authorization: Bearer …">
+            <Field label="鉴权方式" description="选择 OAuth 时, 请在保存后点击服务器卡片上的「进行授权」完成登录">
+              <Select
+                value={form.authType}
+                onChange={(v) => setForm({ ...form, authType: v as McpAuthType })}
+                options={AUTH_TYPE_OPTIONS}
+              />
+            </Field>
+            <Field label="请求头 Headers" description="鉴权等, 如 Authorization: Bearer ">
               <KeyValueEditor
                 pairs={form.headers}
                 onChange={(headers) => setForm({ ...form, headers })}
@@ -371,6 +419,11 @@ export function McpServerFormDialog({
                 secret
               />
             </Field>
+            {hasExplicitAuthHeader && (
+              <Callout variant="warn">
+                OAuth 模式下如同时保留静态 Authorization 请求头, 连接时静态请求头会优先生效并覆盖 OAuth Bearer Token
+              </Callout>
+            )}
           </>
         )}
 
@@ -411,14 +464,14 @@ export function McpServerFormDialog({
         >测试连接</Button>
 
         <div className="flex gap-2">
-          <Button variant="ghost" size="sm" onClick={closeAdd}>取消</Button>
+          <Button variant="ghost" size="sm" onClick={closeForm}>取消</Button>
           <Button
             variant="primary"
             size="sm"
-            loading={adding}
-            disabled={!formValid || adding}
-            onClick={() => void handleAdd()}
-          >添加</Button>
+            loading={saving}
+            disabled={!formValid || saving}
+            onClick={() => void handleSave()}
+          >保存</Button>
         </div>
       </div>
     </Dialog>

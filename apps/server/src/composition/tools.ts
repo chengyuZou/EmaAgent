@@ -9,7 +9,7 @@ import {
   McpMarketStore,
   McpLocalCommandEnvironment,
   OfficialRegistryAdapter,
-  McpRegistry,
+  McpServerManager,
   McpServerStore,
   type McpEvent,
 } from '@ema-agent/mcp';
@@ -35,6 +35,7 @@ import {
 } from '@ema-agent/skills';
 import {
   McpMarketEntriesRepo,
+  McpOAuthCredentialsRepo,
   McpServersRepo,
   ToolExecutionsRepo,
   BackgroundProcessesRepo,
@@ -88,7 +89,7 @@ export interface ToolsComposition {
   readonly backgroundProcesses: BackgroundProcess;
   readonly toolExecutionState: ToolExecutionState;
   readonly toolResultCleaner: ToolResultCleaner;
-  readonly mcp: McpRegistry;
+  readonly mcp: McpServerManager;
   readonly mcpMarket: McpMarketService;
   readonly mcpEnvironment: McpLocalCommandEnvironment;
   readonly skills: SkillRegistry;
@@ -236,18 +237,19 @@ export function openTools(deps: ToolsDeps): ToolsComposition {
     return store;
   };
 
-  // 先用已保存的工具目录注册入口, 再后台连接启用的 MCP Server.
+  // 先用已保存的工具目录注册入口, 再连接启用的 MCP Server.
   const mcpServers = new McpServerStore(
     new McpServersRepo(profileDb.sqlite),
     event => deps.emitMcpEvent(event),
   );
-  const mcp = new McpRegistry(
+  const mcp = new McpServerManager(
     mcpServers,
     registry,
-    () => deps.emitMcpEvent({ type: 'mcp_connection_changed' }),
+    event => deps.emitMcpEvent(event),
+    new McpOAuthCredentialsRepo(profileDb.sqlite),
   );
-  mcp.primeFromCache();
-  mcp.connectEnabledInBackground();
+  mcp.registerCachedToolsOnStartup();
+  mcp.connectEnabled();
   const mcpMarket = new McpMarketService(
     new McpMarketStore(new McpMarketEntriesRepo(profileDb.sqlite)),
     [new OfficialRegistryAdapter()],

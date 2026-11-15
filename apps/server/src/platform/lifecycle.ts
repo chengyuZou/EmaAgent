@@ -109,6 +109,8 @@ export async function startServer(secret: string): Promise<ServerLifecycle> {
       port: 0,
       // 只监听本机; 业务请求仍需要共享密钥.
       hostname: '127.0.0.1',
+      // 保留 Node 原生 global.Response/Request, 否则第三方库 (如 MCP SDK OAuth 错误解析) 的 instanceof Response 会误判并打印 [object Response].
+      overrideGlobalObjects: false,
       websocket: { server: channelWebSocketServer },
     }) as Server;
     server = httpServer;
