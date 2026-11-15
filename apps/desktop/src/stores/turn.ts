@@ -5,7 +5,7 @@ import type { Message, SessionMessage } from '@ema-agent/session';
 import type { Turn, TurnStreamEvent } from '@ema-agent/turn';
 import type { ToolError } from '@ema-agent/tools';
 
-export type TurnStoreEvent = Exclude<TurnStreamEvent, { readonly type: 'user_message_stored' }>;
+export type TurnStoreEvent = Exclude<TurnStreamEvent, { readonly type: 'user_messages_stored' }>;
 
 export type AssistantOutputBlock =
   | { readonly type: 'text'; readonly blockIndex: number; readonly text: string }

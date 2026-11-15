@@ -37,15 +37,15 @@ Turn 完成与宿主的 Memory 提取登记在同一 SQL 事务中提交. 消息
 
 | 交付位置 | 优先顺序 |
 | --- | --- |
-| 新 Turn | 先合并当前用户输入, 没有输入则交付后台通知, 再没有才生成 active Goal 续接. 用户消息已包含本轮 reminder 中的活跃 Goal 信息, 不再额外附带续接提示. |
+| 新 Turn | 先按提交顺序交付全部当前用户输入 (各自存为独立 Message), 没有输入则交付后台通知, 再没有才生成 active Goal 续接. 用户消息已包含本轮 reminder 中的活跃 Goal 信息, 不再额外附带续接提示. |
 | 完整迭代之间 | 当前 active Goal 最新编辑, 后台通知, 已通过 `markInputForNextIteration()` 标记为 `next_iteration` 的用户输入. |
 | 执行失败或中止 | 按提交顺序把全部未保存用户输入退回草稿, 已保存消息不退回. |
 
-`next_iteration` 不打断活跃工具. AgentLoop 在 Assistant 和本批 ToolResult 全部完成后检查, 无工具的正文回复后也检查. 多条文本用空行合并, 附件与 Skill 引用保持顺序.
+`next_iteration` 不打断活跃工具. AgentLoop 在 Assistant 和本批 ToolResult 全部完成后检查, 无工具的正文回复后也检查. 每条排队用户输入按原始提交顺序和内部片段顺序各自保存为一条独立 Message, 不再合并正文.
 
-预留是临时操作. 保存 Message 后再调用 `confirmMessageSaved()`, 准备或写入失败则调用 `releaseReservedMessage()`. `user_message_stored` 携带消费的队列 ID, 前端据此把等待气泡替换成正式消息. 这些 ID 不写 SQL.
+预留是临时操作. 在同一事务内保存整批 Message 后再调用 `confirmMessageSaved()`, 准备或写入失败则调用 `releaseReservedMessage()`. `user_messages_stored` 携带落库后的消息列表和消费的队列 ID, 前端据此把等待气泡一对一替换成正式消息. 这些 ID 不写 SQL.
 
-`QueueMessage` (`{ messageKind, input }`) 统一队列交付给 Turn 的载荷. 普通用户输入生成 `messageKind: 'normal'`; 后台完成通知, Goal 编辑提醒与 Goal 续接生成 `messageKind: 'continuation'`, 由 Turn 保存为隐藏的 `continuation` Message. `SessionMessageQueue` 按 `sessionId` 集中维护唯一未确认预留 `MessageReservation`, 不将消费记录交给模型.
+`QueueMessage` (`{ messageKind, input }`) 表示队列交付给 Turn 的单条待存消息, 一次预留可交付多条 (`readonly QueueMessage[]`). 普通用户输入生成 `messageKind: 'normal'` 列表; 后台完成通知, Goal 编辑提醒与 Goal 续接生成单条 `messageKind: 'continuation'`, 由 Turn 保存为隐藏的 `continuation` Message. `SessionMessageQueue` 按 `sessionId` 集中维护唯一未确认预留 `MessageReservation`, 不将消费记录交给模型.
 
 后台通知只通过 `notifyBackgroundCompleted()` 传递执行 ID 和终态. 模型通过 `SubagentAwait` 或 `ProcessOutput` 读取详情. 尚未交付的通知按执行身份去重; 已通过 `SubagentAwait` 读到完整终态时, `removeSubagentCompletionNotice()` 会撤掉未预留的同一通知.
 

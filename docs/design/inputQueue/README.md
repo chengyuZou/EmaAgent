@@ -10,7 +10,7 @@ For a single user message, starting a Turn immediately is straightforward. With 
 
 We chose one delivery arrangement, including ordinary sends to an idle Session. The queue decides when to deliver content; the Turn executes the work for that run. Each producer does not have to repeat the same startup decisions.
 
-The cost is queued state and the UI feedback it needs. A successful send does not establish that the model has read the input or that the message has been formally saved. Nor does each queued item necessarily start its own Turn: several waiting user inputs can be delivered together.
+The cost is queued state and the UI feedback it needs. A successful send does not establish that the model has read the input or that the message has been formally saved. Nor does each queued item necessarily start its own Turn: several waiting user inputs can be delivered together into the same Turn as separate Messages.
 
 ## Why queued input and immediate guidance are different
 

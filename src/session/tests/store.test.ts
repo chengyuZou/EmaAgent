@@ -486,6 +486,37 @@ describe('SessionStore — message', () => {
     expect(history[2]!.blocks).toBe('third');
   });
 
+  it('appendTurnMessages 在同一事务内按序写入并在失败时整体回滚, 提交后只通知一次', async () => {
+    const { db } = await makeStore();
+    const events: string[] = [];
+    const store = new SessionStore({
+      db,
+      onChanged: event => {
+        if (event.type === 'session_messages_changed') events.push(event.sessionId);
+      },
+    });
+    const s = store.createSession();
+    const other = store.createSession();
+    const turnId = insertTurnFixture(db, s.id);
+
+    const saved = store.appendTurnMessages(s.id, [
+      { sessionId: s.id, turnId, role: 'user', kind: 'reminder', blocks: 'R' },
+      { sessionId: s.id, turnId, role: 'user', blocks: 'M1' },
+      { sessionId: s.id, turnId, role: 'user', blocks: 'M2' },
+    ]);
+    expect(saved.map(item => item.blocks)).toEqual(['R', 'M1', 'M2']);
+    expect(saved[0]!.createdAt).toBeLessThan(saved[1]!.createdAt);
+    expect(saved[1]!.createdAt).toBeLessThan(saved[2]!.createdAt);
+    expect(events).toEqual([s.id]);
+
+    expect(() => store.appendTurnMessages(s.id, [
+      { sessionId: s.id, turnId, role: 'user', blocks: 'M3' },
+      { sessionId: other.id, turnId, role: 'user', blocks: 'bad' },
+    ])).toThrow(/does not match/);
+    expect(store.loadHistory(s.id).map(item => item.blocks)).toEqual(['R', 'M1', 'M2']);
+    expect(events).toEqual([s.id]);
+  });
+
   it('loadHistory limit 返回最新消息而不是最早消息', async () => {
     const { store, db } = await makeStore();
     const s = store.createSession();

@@ -67,7 +67,7 @@ export interface SessionHistoryState {
 interface HistoryStore {
   /** 每个打开或最近访问的 Session 各自保存一段 History 窗口和一份 Turn 索引. */
   readonly bySession: ReadonlyMap<string, SessionHistoryState>;
-  /** user_message_stored 到达时按 Message ID 合入, 不等待 Turn 结束后整页重载. */
+  /** user_messages_stored 到达时按 Message ID 合入, 不等待 Turn 结束后整页重载. */
   appendMessage(sessionId: string, message: SessionMessage): void;
   /** 打开 Session 时读取最新一页; force 用于终态或失效通知后替换已经加载的最新窗口. */
   loadLatest(sessionId: string, force?: boolean): Promise<void>;
@@ -122,7 +122,7 @@ function replace(
 }
 
 function mergeMessages(current: readonly SessionMessage[], incoming: readonly SessionMessage[]): SessionMessage[] {
-  // 同一条消息可能先由 user_message_stored 到达, 随后又出现在 History 页里.
+  // 同一条消息可能先由 user_messages_stored 到达, 随后又出现在 History 页里.
   // 按真实 Message ID 合并可以保留一次显示, createdAt + id 只负责稳定排序.
   const byId = new Map(current.map(message => [message.id, message]));
   for (const message of incoming) byId.set(message.id, message);

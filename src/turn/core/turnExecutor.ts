@@ -70,6 +70,7 @@ export interface TurnExecutorDeps extends PrepareTurnDeps {
     | 'getSession'
     | 'listProjectFolders'
     | 'appendMessage'
+    | 'appendTurnMessages'
     | 'appendHistorySummary'
     | 'loadHistory'
     | 'getMessage'
@@ -131,7 +132,9 @@ export class TurnExecutor {
     const { turn, signal } = this.deps.turns.startTurn({
       turnId: input.turnId,
       sessionId: input.sessionId,
-      triggerType: input.messageKind === 'normal' ? 'userMessage' : 'sessionContinuation',
+      triggerType: input.messages.some(message => message.messageKind === 'normal')
+        ? 'userMessage'
+        : 'sessionContinuation',
       ttsEnabled: input.ttsEnabled,
     });
     const channel = new TurnEventChannel<TurnStreamEvent>(() => {
@@ -265,7 +268,7 @@ export class TurnExecutor {
       const inputWriter = createTurnInputWriter(this.deps, {
         sessionId, turnId, signal, skillPool: prepared.skillPool, emit,
       });
-      handledGoalId = await inputWriter.writeInitialInput(input, prepared.inputBlocks, characterName);
+      handledGoalId = await inputWriter.writeInitialMessages(prepared.preparedMessages, characterName);
 
       // 历史, reminder 与本 Turn 用户输入按 SQL 顺序投影为同一条模型消息链.
       // 后续 Macro 可以覆盖完整有效前缀, 不再被 Turn 边界截断.

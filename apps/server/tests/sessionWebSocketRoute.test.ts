@@ -292,7 +292,10 @@ describe('Session WebSocket Route', () => {
     fixture.queue.onSessionWorkFinished(fixture.session.id, 'completed');
     await Promise.resolve();
     expect(fixture.starts).toHaveLength(1);
-    expect(fixture.starts[0]?.input).toEqual([{ type: 'text', text: 'A\n\nB' }]);
+    expect(fixture.starts[0]?.messages).toEqual([
+      { messageKind: 'normal', input: [{ type: 'text', text: 'A' }] },
+      { messageKind: 'normal', input: [{ type: 'text', text: 'B' }] },
+    ]);
     fixture.queue.shutdown();
   });
 
@@ -393,7 +396,9 @@ describe('Session WebSocket Route', () => {
     } }));
     expect(await response).toEqual({ type: 'request_succeeded', requestId: 'initial-goal' });
     expect(fixture.starts).toHaveLength(1);
-    expect(fixture.starts[0]).toMatchObject({ messageKind: 'normal', input: [{ type: 'text', text: objective }] });
+    expect(fixture.starts[0]).toMatchObject({
+      messages: [{ messageKind: 'normal', input: [{ type: 'text', text: objective }] }],
+    });
     const goal = fixture.goals.getCurrent(fixture.session.id)!;
     expect(new GoalsRepo(fixture.db.sqlite).findById(fixture.session.id, goal.id)?.objective).toBe(objective);
     fixture.queue.shutdown();
@@ -415,7 +420,9 @@ describe('Session WebSocket Route', () => {
     fixture.queue.onSessionWorkFinished(fixture.session.id, 'completed');
     await Promise.resolve();
     expect(fixture.starts).toHaveLength(1);
-    expect(fixture.starts[0]).toMatchObject({ messageKind: 'normal', input: [{ type: 'text', text: objective }] });
+    expect(fixture.starts[0]).toMatchObject({
+      messages: [{ messageKind: 'normal', input: [{ type: 'text', text: objective }] }],
+    });
     fixture.queue.shutdown();
   });
 

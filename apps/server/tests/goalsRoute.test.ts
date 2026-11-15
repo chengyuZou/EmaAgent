@@ -47,15 +47,15 @@ describe('Goal HTTP 编辑交付', () => {
       expect(await response.json()).toMatchObject({ goal: {
         id: original.id, objective: 'HTTP 更新后的目标', version: 2, status: 'active',
       } });
-      const reserved = queue.reserveNextIterationMessage(session.id, 'root');
+      const reserved = queue.reserveNextIterationMessages(session.id, 'root');
       if (mode === 'turn') {
-        expect(reserved).toMatchObject({
+        expect(reserved).toMatchObject([{
           messageKind: 'continuation',
           input: [{ type: 'text', text: expect.stringContaining('HTTP 更新后的目标') }],
-        });
+        }]);
         queue.confirmMessageSaved(session.id, 'root');
       } else {
-        expect(reserved).toBeUndefined();
+        expect(reserved).toEqual([]);
       }
       await Promise.resolve();
       expect(startTurn).not.toHaveBeenCalled();
@@ -67,7 +67,7 @@ describe('Goal HTTP 编辑交付', () => {
       });
       expect(conflict.status).toBe(409);
       expect(goals.getCurrent(session.id)?.objective).toBe('HTTP 更新后的目标');
-      expect(queue.reserveNextIterationMessage(session.id, 'root')).toBeUndefined();
+      expect(queue.reserveNextIterationMessages(session.id, 'root')).toEqual([]);
     } finally {
       queue.shutdown();
     }

@@ -14,7 +14,7 @@
 - Isolated child-process environments so `EMA_SHARED_SECRET` is never forwarded, added configurable command-environment passthrough/values, scoped session shell approvals to working directories, added a configurable available-memory check (`512 MiB` default) before starting shell commands, and required permission checks for `WebFetch` cross-origin redirects.
 - Node writes bounded UTF-8 JSONL diagnostic files directly, with business-module targets, structured errors, credential redaction, rotation, retention cleanup, and bounded file closure. Congested records are counted and dropped; forced termination can lose pending writes. Native logging and the process-shutdown API are removed.
 - Log cleanup tolerates old files removed by another process without permanently stopping writes or reporting a false capacity shortage.
-- Fixed session deletion cleanup and event notifications, renamed the internal session input queue and Turn event fanout to `SessionMessageQueue` and `dispatchTurnEvents`, added `CONTRIBUTING.md`, and updated documentation and design records.
+- Fixed session deletion cleanup and event notifications, renamed the internal session input queue and Turn event fanout to `SessionMessageQueue` and `dispatchTurnEvents`, preserved queued user inputs as separate persisted Messages (`user_messages_stored`), added `CONTRIBUTING.md`, and updated documentation and design records.
 
 ## v0.1.0-beta.2
 

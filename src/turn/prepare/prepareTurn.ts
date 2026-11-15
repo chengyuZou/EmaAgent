@@ -42,6 +42,7 @@ import {
 } from '@ema-agent/skills';
 import type { RequestDegradationNotice } from '../types.js';
 import type { TurnStreamEvent } from '../events.js';
+import type { QueueMessageKind } from '../messageQueue/queueTypes.js';
 import type { StartTurn, TurnInputPart } from '../types.js';
 import { prepareTurnInputParts } from './turnInputParts.js';
 import {
@@ -52,6 +53,13 @@ import {
 import {
   prepareContextInput,
 } from './prepareContextInput.js';
+
+/** Turn 启动阶段已完成附件与 Skill 规范化的单条待写库消息. */
+export interface PreparedQueueMessage {
+  readonly messageKind: QueueMessageKind;
+  readonly input: readonly TurnInputPart[];
+  readonly blocks: MessageBlocks;
+}
 
 /** 一个 Turn 的冻结事实; 运行期只读取这一份, 不再回读 Settings/Registry/Session. */
 export interface PreparedTurn {
@@ -72,8 +80,8 @@ export interface PreparedTurn {
   /** 本轮已读取的动态输入; 子代理复用数据段, 换成自己的模型和工具, 不传根角色人设. */
   readonly dynamicSystemPromptInput: DynamicSystemPromptInput;
   readonly systemPrompt: readonly PromptBlock[];
-  /** 按输入顺序持久化的初始消息块(用户消息或 continuation 消息), 附件保存引用块. */
-  readonly inputBlocks: MessageBlocks;
+  /** 按队列提交顺序保留的独立初始消息列表(普通用户消息或 continuation), 附件保存引用块. */
+  readonly preparedMessages: readonly PreparedQueueMessage[];
   readonly skillPool?: SkillPool;
   readonly compactSettings: CompactSettings;
   readonly mediaSettings: MediaSettings;
@@ -128,8 +136,10 @@ export async function prepareTurn(
   input: PrepareTurnInput,
 ): Promise<PreparedTurn> {
   const { request, turnId, signal } = input;
-  if (request.messageKind === 'normal'
-    && request.input.some(part => part.type === 'text' && part.text.trim().length > 0)) {
+  if (request.messages.some(message => (
+    message.messageKind === 'normal'
+    && message.input.some(part => part.type === 'text' && part.text.trim().length > 0)
+  ))) {
     deps.computerUse?.noteUserInput(request.sessionId);
   }
 
@@ -148,7 +158,8 @@ export async function prepareTurn(
   const supportsImageInput = modelFacts.inputImage === true;
   const degradations: RequestDegradationNotice[] = [];
 
-  const attachmentBlocks = request.input
+  const attachmentBlocks = request.messages
+    .flatMap(message => message.input)
     .filter((part): part is Extract<TurnInputPart, { type: 'attachment' }> => part.type === 'attachment')
     .map(part => part.block);
   if (!supportsImageInput && attachmentBlocks.some(b => b.type === 'image_reference')) {
@@ -160,13 +171,21 @@ export async function prepareTurn(
     });
   }
 
-  const inputBlocks = await prepareTurnInputParts(
-    deps.attachments,
-    request.sessionId,
-    turnId,
-    request.input,
-    skillPool,
-  );
+  const preparedMessages: PreparedQueueMessage[] = [];
+  for (const message of request.messages) {
+    const blocks = await prepareTurnInputParts(
+      deps.attachments,
+      request.sessionId,
+      turnId,
+      message.input,
+      skillPool,
+    );
+    preparedMessages.push({
+      messageKind: message.messageKind,
+      input: message.input,
+      blocks,
+    });
+  }
 
   const scratchpadDir = deps.scratchpadDirForTurn?.(request.sessionId, turnId);
 
@@ -217,7 +236,7 @@ export async function prepareTurn(
     ...(thinking ? { thinking } : {}),
     dynamicSystemPromptInput: dynamicInput,
     systemPrompt,
-    inputBlocks,
+    preparedMessages,
     ...(skillPool ? { skillPool } : {}),
     compactSettings,
     mediaSettings: readMediaSettings(deps.settings),

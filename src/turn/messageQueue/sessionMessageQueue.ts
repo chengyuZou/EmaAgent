@@ -3,7 +3,7 @@ import type { Goal, GoalStore } from '@ema-agent/goal';
 import { logging } from '@ema-agent/logging';
 import type { ImageReferenceBlock, SessionRunningRegistry, SessionStore } from '@ema-agent/session';
 import type { StartTurn, TurnInputPart, TurnOutcome } from '../types.js';
-import { buildQueueMessage } from './queueMessageContent.js';
+import { buildQueueMessages } from './queueMessageContent.js';
 import type {
   BackgroundCompletionInput,
   MessageReservation,
@@ -152,13 +152,13 @@ export class SessionMessageQueue {
   }
 
   /** 为运行中的 Turn 在安全迭代边界预留下一批可注入消息(Goal 编辑, 后台完成通知, 或已标记插队的用户输入). */
-  reserveNextIterationMessage(sessionId: string, turnId: string): QueueMessage | undefined {
-    return this.reserveNextMessageForTurn(sessionId, turnId, { onlyNextIterationEligible: true });
+  reserveNextIterationMessages(sessionId: string, turnId: string): readonly QueueMessage[] {
+    return this.reserveNextMessagesForTurn(sessionId, turnId, { onlyNextIterationEligible: true });
   }
 
   /**
    * Turn 把预留消息成功写入 Messages 表后调用, 从内存队列删除已消费条目.
-   * 若本次确认的是用户输入预留, 返回对应的 `queuedInputId` 列表随 `user_message_stored` 广播给前端; 其他来源返回空数组.
+   * 若本次确认的是用户输入预留, 返回对应的 `queuedInputId` 列表随 `user_messages_stored` 广播给前端; 其他来源返回空数组.
    */
   confirmMessageSaved(sessionId: string, turnId: string): readonly string[] {
     const reservation = this.unconfirmedReservationsBySession.get(sessionId);
@@ -311,17 +311,16 @@ export class SessionMessageQueue {
     const turnId = randomUUID();
     try {
       // 先登记预留再调用 `startTurn`, 确保同步异常也能经由 `releaseReservedMessage` 退回草稿.
-      const queueMessage = this.reserveNextMessageForTurn(sessionId, turnId, {
+      const queueMessages = this.reserveNextMessagesForTurn(sessionId, turnId, {
         onlyNextIterationEligible: false,
       });
-      if (!queueMessage) return;
+      if (queueMessages.length === 0) return;
       const session = this.deps.sessions.getSessionForWork(sessionId);
       this.deps.startTurn({
         turnId,
         sessionId,
         ttsEnabled: session.ttsEnabled,
-        messageKind: queueMessage.messageKind,
-        input: queueMessage.input,
+        messages: queueMessages,
       });
     } catch (error) {
       this.releaseReservedMessage(sessionId, turnId);
@@ -349,17 +348,17 @@ export class SessionMessageQueue {
   }
 
   /**
-   * 按优先级为 `turnId` 预留下一份待消费消息.
+   * 按优先级为 `turnId` 预留下一批待消费消息列表; 无可交付内容时返回空数组.
    * `onlyNextIterationEligible` 为 true(运行中轮次安全边界)时, 仅收取 `'next_iteration'` 用户输入, 且后台完成通知优先于用户输入.
-   * 为 false(启动新 Turn)时, 优先合并全部排队用户输入发起正常对话, 无用户输入时再发后台通知或续接活跃 Goal.
+   * 为 false(启动新 Turn)时, 优先按提交顺序取全部排队用户输入发起正常对话, 无用户输入时再发后台通知或续接活跃 Goal.
    */
-  private reserveNextMessageForTurn(
+  private reserveNextMessagesForTurn(
     sessionId: string,
     turnId: string,
     options: { readonly onlyNextIterationEligible: boolean },
-  ): QueueMessage | undefined {
-    if (!this.acceptsWork(sessionId)) return undefined;
-    if (this.unconfirmedReservationsBySession.has(sessionId)) return undefined;
+  ): readonly QueueMessage[] {
+    if (!this.acceptsWork(sessionId)) return [];
+    if (this.unconfirmedReservationsBySession.has(sessionId)) return [];
 
     const { onlyNextIterationEligible } = options;
     const pendingGoalEdit = this.pendingGoalEditsBySession.get(sessionId);
@@ -372,7 +371,7 @@ export class SessionMessageQueue {
           goalId: pendingGoalEdit.goalId,
           version: pendingGoalEdit.version,
         });
-        return buildQueueMessage({ kind: 'goal_edit', goal });
+        return buildQueueMessages({ kind: 'goal_edit', goal });
       }
       this.pendingGoalEditsBySession.delete(sessionId);
     }
@@ -390,15 +389,15 @@ export class SessionMessageQueue {
         sourceType: 'completion_notices',
         completionNoticeKeys: new Set(pendingNotices.map(notice => notice.key)),
       });
-      return buildQueueMessage({ kind: 'completion_notices', notices: pendingNotices });
+      return buildQueueMessages({ kind: 'completion_notices', notices: pendingNotices });
     }
 
     if (eligibleUserInputs.length === 0) {
-      if (onlyNextIterationEligible) return undefined;
+      if (onlyNextIterationEligible) return [];
       const goal = this.deps.goals.getCurrent(sessionId);
-      if (goal?.status !== 'active') return undefined;
+      if (goal?.status !== 'active') return [];
       // TODO: 自动续接前检查持久化的 Goal 总预算, 避免跨 Turn 无限自动续跑.
-      return buildQueueMessage({ kind: 'goal_continue' });
+      return buildQueueMessages({ kind: 'goal_continue' });
     }
 
     this.unconfirmedReservationsBySession.set(sessionId, {
@@ -406,7 +405,7 @@ export class SessionMessageQueue {
       sourceType: 'user_inputs',
       queuedInputIds: new Set(eligibleUserInputs.map(item => item.id)),
     });
-    return buildQueueMessage({ kind: 'user_inputs', queuedInputs: eligibleUserInputs });
+    return buildQueueMessages({ kind: 'user_inputs', queuedInputs: eligibleUserInputs });
   }
 
   private isQueuedInputReserved(sessionId: string, queuedInputId: string): boolean {

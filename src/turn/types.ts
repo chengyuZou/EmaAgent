@@ -2,7 +2,7 @@ import type { TurnStatus } from '@ema-agent/session';
 import type { AttachmentBlock } from '@ema-agent/session';
 import type { TurnFailureCode } from './errors.js';
 import type { TurnStreamEvent } from './events.js';
-import type { QueueMessageKind } from './messageQueue/queueTypes.js';
+import type { QueueMessage } from './messageQueue/queueTypes.js';
 
 /**
  * userMessage 来自用户主动输入, sessionContinuation 承载内部完成通知或 Goal 续接.
@@ -103,8 +103,8 @@ export interface StartTurn {
   /** 队列预分配的 Turn ID, 用于两阶段确认哪些排队输入或通知已完成落库. */
   readonly turnId?: string;
   readonly sessionId: string;
-  readonly messageKind: QueueMessageKind;
-  readonly input: readonly TurnInputPart[];
+  /** 本轮启动时交付的待保存消息列表; 普通用户输入可含多条, 内部续接通常为一条. */
+  readonly messages: readonly QueueMessage[];
   readonly ttsEnabled: boolean;
 }
 

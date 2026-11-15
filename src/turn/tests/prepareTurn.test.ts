@@ -107,9 +107,8 @@ function makeDeps(overrides: Partial<PrepareTurnDeps> = {}): PrepareTurnDeps {
 function makeStart(overrides: Partial<StartTurn> = {}): StartTurn {
   return {
     sessionId: 's1',
-    messageKind: 'normal',
     ttsEnabled: false,
-    input: [{ type: 'text', text: '你好' }],
+    messages: [{ messageKind: 'normal', input: [{ type: 'text', text: '你好' }] }],
     ...overrides,
   };
 }
@@ -216,9 +215,12 @@ describe('prepareTurn', () => {
       const a2 = queue.enqueueUserMessage(session.id, [{ type: 'text', text: '补充 A' }]);
       await vi.waitFor(() => expect(toolStarted).toBe(true));
       expect(sessions.loadMessagesForTurn(handles[0]!.turnId).filter(message => message.kind === 'normal' && message.role === 'user'))
-        .toMatchObject([{ blocks: 'A\n\n补充 A' }]);
-      expect(events.find(event => event.type === 'user_message_stored'))
-        .toMatchObject({ queuedInputIds: [a.id, a2.id] });
+        .toMatchObject([{ blocks: 'A' }, { blocks: '补充 A' }]);
+      expect(events.find(event => event.type === 'user_messages_stored'))
+        .toMatchObject({
+          messages: [{ blocks: 'A' }, { blocks: '补充 A' }],
+          queuedInputIds: [a.id, a2.id],
+        });
 
       const b = queue.enqueueUserMessage(session.id, [{ type: 'text', text: 'B' }]);
       const c = queue.enqueueUserMessage(session.id, [{ type: 'text', text: 'C' }]);
@@ -226,16 +228,22 @@ describe('prepareTurn', () => {
       queue.markInputForNextIteration(session.id, d.id);
       queue.markInputForNextIteration(session.id, c.id);
       expect(queueEvents.filter(event => event.type === 'queued_input_delivery_changed')).toHaveLength(2);
-      expect(events.filter(event => event.type === 'user_message_stored')).toHaveLength(1);
+      expect(events.filter(event => event.type === 'user_messages_stored')).toHaveLength(1);
       expect(requests).toHaveLength(1);
 
       releaseTool();
       await vi.waitFor(() => expect(requests).toHaveLength(2));
       const messages = sessions.loadMessagesForTurn(handles[0]!.turnId);
-      const guidedIndex = messages.findIndex(message => message.blocks === 'C\n\nD');
-      expect(guidedIndex).toBeGreaterThan(messages.findIndex(message => message.kind === 'tool_results'));
-      expect(events.filter(event => event.type === 'user_message_stored'))
-        .toMatchObject([{ queuedInputIds: [a.id, a2.id] }, { queuedInputIds: [c.id, d.id] }]);
+      const toolResultsIndex = messages.findIndex(message => message.kind === 'tool_results');
+      const guidedCIndex = messages.findIndex(message => message.blocks === 'C');
+      const guidedDIndex = messages.findIndex(message => message.blocks === 'D');
+      expect(guidedCIndex).toBeGreaterThan(toolResultsIndex);
+      expect(guidedDIndex).toBeGreaterThan(guidedCIndex);
+      expect(events.filter(event => event.type === 'user_messages_stored'))
+        .toMatchObject([
+          { messages: [{ blocks: 'A' }, { blocks: '补充 A' }], queuedInputIds: [a.id, a2.id] },
+          { messages: [{ blocks: 'C' }, { blocks: 'D' }], queuedInputIds: [c.id, d.id] },
+        ]);
 
       const e = queue.enqueueUserMessage(session.id, [{ type: 'text', text: 'E' }]);
       if (ending === 'aborted') handles[0]!.abort();
@@ -245,14 +253,15 @@ describe('prepareTurn', () => {
         await vi.waitFor(() => expect(handles).toHaveLength(2));
         await handles[1]!.completion;
         expect(sessions.loadMessagesForTurn(handles[1]!.turnId).filter(message => message.kind === 'normal' && message.role === 'user'))
-          .toMatchObject([{ blocks: 'B\n\nE' }]);
+          .toMatchObject([{ blocks: 'B' }, { blocks: 'E' }]);
         expect(queueEvents.some(event => event.type === 'queued_inputs_returned')).toBe(false);
       } else {
         expect(handles).toHaveLength(1);
         expect(queueEvents.at(-1)).toEqual({ type: 'queued_inputs_returned', queuedInputs: [b, e] });
       }
       expect(queue.listQueuedInputs(session.id)).toEqual([]);
-      expect(sessions.loadMessagesForTurn(handles[0]!.turnId).some(message => message.blocks === 'C\n\nD')).toBe(true);
+      expect(sessions.loadMessagesForTurn(handles[0]!.turnId).some(message => message.blocks === 'C')).toBe(true);
+      expect(sessions.loadMessagesForTurn(handles[0]!.turnId).some(message => message.blocks === 'D')).toBe(true);
     } finally {
       queue.shutdown();
       releaseTool();
@@ -316,7 +325,7 @@ describe('prepareTurn', () => {
     });
     const handle = executor.start(makeStart({
       sessionId: session.id,
-      input: [{ type: 'attachment', block: { type: 'file_reference', path: '/pending.txt' } }],
+      messages: [{ messageKind: 'normal', input: [{ type: 'attachment', block: { type: 'file_reference', path: '/pending.txt' } }] }],
     }));
     try {
       await ready;
@@ -476,10 +485,10 @@ describe('prepareTurn', () => {
     const deps = makeDeps({ skillEntries: async () => [descriptor] });
 
     const selected = await prepareTurn(deps, makeRuntime(makeStart({
-      input: [{ type: 'skill_reference', name: 'demo', path: descriptor.path }],
+      messages: [{ messageKind: 'normal', input: [{ type: 'skill_reference', name: 'demo', path: descriptor.path }] }],
     })));
     expect(selected.skillPool?.getByPath(descriptor.path)).toBeDefined();
-    expect(selected.inputBlocks).toEqual([{
+    expect(selected.preparedMessages[0]?.blocks).toEqual([{
       type: 'skill_reference',
       name: 'demo',
       path: descriptor.path,
@@ -539,22 +548,28 @@ describe('prepareTurn', () => {
     });
 
     await expect(prepareTurn(deps, makeRuntime(makeStart({
-      input: [
-        { type: 'attachment', block: { type: 'file_reference', path: '/x.txt' } },
-        { type: 'skill_reference', name: 'ghost', path: '/skills/ghost/SKILL.md' },
-      ],
+      messages: [{
+        messageKind: 'normal',
+        input: [
+          { type: 'attachment', block: { type: 'file_reference', path: '/x.txt' } },
+          { type: 'skill_reference', name: 'ghost', path: '/skills/ghost/SKILL.md' },
+        ],
+      }],
     }))))
       .rejects.toThrow(/不存在或已被禁用/);
     expect(attachmentWrites).toBe(0);
 
     const prepared = await prepareTurn(deps, makeRuntime(makeStart({
-      input: [
-        { type: 'text', text: '请使用 ' },
-        { type: 'skill_reference', name: 'demo', path: '/skills/demo/SKILL.md' },
-        { type: 'text', text: ' 处理它' },
-      ],
+      messages: [{
+        messageKind: 'normal',
+        input: [
+          { type: 'text', text: '请使用 ' },
+          { type: 'skill_reference', name: 'demo', path: '/skills/demo/SKILL.md' },
+          { type: 'text', text: ' 处理它' },
+        ],
+      }],
     })));
-    expect(prepared.inputBlocks).toEqual([
+    expect(prepared.preparedMessages[0]?.blocks).toEqual([
       { type: 'text', text: '请使用 ' },
       {
         type: 'skill_reference',
@@ -572,7 +587,7 @@ describe('prepareTurn', () => {
       } as unknown as AttachmentStore,
     });
     await expect(prepareTurn(deps, makeRuntime(makeStart({
-      input: [{ type: 'attachment', block: { type: 'image_reference', path: '/x.png' } }],
+      messages: [{ messageKind: 'normal', input: [{ type: 'attachment', block: { type: 'image_reference', path: '/x.png' } }] }],
     })))).rejects.toThrow(TurnPreparationError);
   });
 
@@ -592,11 +607,11 @@ describe('prepareTurn', () => {
       describeImage: async () => '一只猫',
     });
     const prepared = await prepareTurn(deps, makeRuntime(makeStart({
-      input: [{ type: 'attachment', block: imageBlock }],
+      messages: [{ messageKind: 'normal', input: [{ type: 'attachment', block: imageBlock }] }],
     })));
     expect(prepared.degradations).toHaveLength(1);
     expect(prepared.degradations[0]).toMatchObject({ removed: ['image'] });
-    expect(prepared.inputBlocks).toEqual([imageBlock]);
+    expect(prepared.preparedMessages[0]?.blocks).toEqual([imageBlock]);
   });
 
   it('准备阶段停止 Turn, 即使没有创建工具也完成电脑操控清理', async () => {

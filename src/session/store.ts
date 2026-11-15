@@ -487,6 +487,32 @@ export class SessionStore {
   }
 
   appendMessage(input: AppendMessageInput): SessionMessage {
+    return this.appendTurnMessages(input.sessionId, [input])[0]!;
+  }
+
+  /**
+   * 在同一事务内按顺序写入一轮或多条关联消息(例如 reminder 与各自独立的用户消息).
+   * 仅在事务提交后触发一次 `session_messages_changed`; 任一校验或写入失败时整体回滚.
+   */
+  appendTurnMessages(sessionId: string, inputs: readonly AppendMessageInput[]): SessionMessage[] {
+    if (inputs.length === 0) return [];
+    const stored = this.db.sqlite.transaction(() => {
+      const results: SessionMessage[] = [];
+      for (const input of inputs) {
+        if (input.sessionId !== sessionId) {
+          throw new SessionOwnershipError(
+            `message session ${input.sessionId} does not match ${sessionId}`,
+          );
+        }
+        results.push(this.insertMessageRow(input));
+      }
+      return results;
+    })();
+    this.onChanged?.({ type: 'session_messages_changed', sessionId });
+    return stored;
+  }
+
+  private insertMessageRow(input: AppendMessageInput): SessionMessage {
     if (input.turnId) {
       const turn = this.turnsRepo.findById(input.turnId);
       if (!turn) throw new Error(`turn_not_found: ${input.turnId}`);
@@ -509,9 +535,7 @@ export class SessionStore {
       interrupted: input.interrupted ?? false,
       createdAt:   now,
     });
-    const message = this.getMessage(id);
-    this.onChanged?.({ type: 'session_messages_changed', sessionId: input.sessionId });
-    return message;
+    return this.getMessage(id);
   }
 
   /**

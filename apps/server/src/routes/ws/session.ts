@@ -112,11 +112,11 @@ export type SessionClientMessage = z.infer<typeof sessionClientMessageSchema>;
 /** 用户提交的有序输入, 由队列决定立即执行还是等待当前工作结束. */
 export type UserMessagePayload = z.infer<typeof userMessagePayloadSchema>;
 
-/** TurnStreamEvent 原样传输. 已落库的 user_message_stored 走 Session 消息分支. */
+/** TurnStreamEvent 原样传输. 已落库的 user_messages_stored 走 Session 消息分支. */
 type SessionTurnMessage = {
   readonly type: 'turn_event';
   readonly turnId: string;
-  readonly event: Exclude<TurnStreamEvent, { readonly type: 'user_message_stored' }>;
+  readonly event: Exclude<TurnStreamEvent, { readonly type: 'user_messages_stored' }>;
 };
 
 /**
@@ -146,7 +146,7 @@ export type SessionBusinessMessage =
     readonly type: 'session_running_changed';
     readonly running: SessionRunning | null;
   }
-  | Extract<TurnStreamEvent, { readonly type: 'user_message_stored' }>
+  | Extract<TurnStreamEvent, { readonly type: 'user_messages_stored' }>
   | CompactEvent
   | SessionMessageQueueEvent
   | SessionTurnMessage

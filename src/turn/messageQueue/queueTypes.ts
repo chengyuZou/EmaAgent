@@ -23,7 +23,7 @@ export interface QueuedSessionInput {
 
 /**
  * Session WebSocket 推送的队列增量事件.
- * 连接初始化的当前列表随 `session_state` 下发; 消息正式保存由 `user_message_stored` 通知已消费的 `queuedInputIds`.
+ * 连接初始化的当前列表随 `session_state` 下发; 消息正式保存由 `user_messages_stored` 通知已消费的 `queuedInputIds`.
  */
 export type SessionMessageQueueEvent =
   | { readonly type: 'queued_input_added'; readonly queuedInput: QueuedSessionInput }
@@ -32,9 +32,9 @@ export type SessionMessageQueueEvent =
   | { readonly type: 'queued_inputs_returned'; readonly queuedInputs: readonly QueuedSessionInput[] };
 
 /**
- * SessionMessageQueue 为启动 Turn 或轮中安全边界注入预留的统一消息载荷.
- * 预留本身不会删除队列条目: 调用方在写库成功后必须调用 `confirmMessageSaved` 提交消费,
- * 准备或写库失败则调用 `releaseReservedMessage` 退回预留, 保证输入和通知不丢失.
+ * SessionMessageQueue 为 Turn 交付的单条待落库消息载荷(对应未来 Messages 表的一行).
+ * 一批预留可包含多条 `QueueMessage`; 预留本身不会删除队列条目:
+ * 调用方在写库成功后必须调用 `confirmMessageSaved` 提交消费, 准备或写库失败则调用 `releaseReservedMessage` 退回预留.
  */
 export interface QueueMessage {
   readonly messageKind: QueueMessageKind;

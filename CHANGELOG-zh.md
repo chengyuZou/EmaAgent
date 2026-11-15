@@ -14,7 +14,7 @@
 - 隔离命令子进程环境变量, 默认最小化透传并禁止转发 `EMA_SHARED_SECRET`, 新增命令行环境变量设置; 将会话内 Shell 审批限定到工作目录; 执行 Shell 命令前检查可用内存 (默认阈值 `512 MiB`); 在 `WebFetch` 发生跨域重定向前先走权限检查.
 - Node 直接保存限长的 UTF-8 JSONL 诊断文件, 包含业务模块 target, 结构化错误, 凭据脱敏, 文件轮换, 保留清理和限时关闭. 拥堵记录计数并丢弃, 强制终止可能丢失待写内容. 移除原生日志和进程关闭 API.
 - 日志清理容忍旧文件被其他进程同时删除, 不再因此永久停写或误报容量不足.
-- 完善会话删除清理与实时事件通知, 将内部会话排队与 Turn 事件分发重构为 `SessionMessageQueue` 与 `dispatchTurnEvents`, 新增 `CONTRIBUTING.md` 并更新模块与设计文档.
+- 完善会话删除清理与实时事件通知, 将内部会话排队与 Turn 事件分发重构为 `SessionMessageQueue` 与 `dispatchTurnEvents`, 排队用户输入改按独立 Message 事务保存 (`user_messages_stored`), 新增 `CONTRIBUTING.md` 并更新模块与设计文档.
 
 ## v0.1.0-beta.2
 

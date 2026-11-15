@@ -114,7 +114,7 @@ export async function buildComposition(input: { activeDataDir: string; initializ
   });
   const turnEventDispatch: TurnEventDispatchDeps = {
     publishTurnEvent: (sessionId, turnId, event) => {
-      if (event.type === 'user_message_stored') {
+      if (event.type === 'user_messages_stored') {
         sessionConnections.publish(sessionId, event);
       } else {
         sessionConnections.publish(sessionId, { type: 'turn_event', turnId, event });

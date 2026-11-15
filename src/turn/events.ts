@@ -10,12 +10,12 @@ import type { RequestDegradationNotice, TurnTriggerType } from './types.js';
 export type TurnEvent =
   | {
     /**
-     * UserMessage 已经成功写入 Session History. message 是持久化后的真实记录,
-     * 其中已包含 Message ID, Session ID, Turn ID 和写入时间, 事件外层不重复这些字段.
+     * 本批 UserMessage 已经成功写入 Session History. `messages` 是按原顺序持久化后的真实记录,
+     * 各自包含 Message ID, Session ID, Turn ID 和写入时间.
      */
-    readonly type: 'user_message_stored';
-    readonly message: SessionMessage;
-    /** 这些排队输入已合入 message, 前端用它移除等待显示. 不写入 SQL. */
+    readonly type: 'user_messages_stored';
+    readonly messages: readonly SessionMessage[];
+    /** 这批排队输入已分别落库, 前端用它移除等待气泡. 不写入 SQL. */
     readonly queuedInputIds: readonly string[];
   }
   | {

@@ -47,15 +47,15 @@ All ordinary sends go through `enqueueUserMessage()`, whether idle, running, or 
 
 | Delivery point | Priority |
 | --- | --- |
-| New Turn | Merge queued user inputs first, otherwise background notices, otherwise an active Goal continuation. |
+| New Turn | Deliver pending user inputs as separate messages in submission order, otherwise background notices, otherwise an active Goal continuation. |
 | Between completed Agent iterations | Latest active Goal edit, then background notices, then inputs marked `next_iteration`. |
 | Failed or aborted work | Return all unsaved user inputs to the draft in submission order. Already saved messages remain saved. |
 
-Promoting an input via `markInputForNextIteration()` does not interrupt an active tool. AgentLoop checks for `next_iteration` messages after the Assistant and its tool results form a complete batch, including after a text-only reply. Text inputs merge with blank lines; attachments and Skill references keep their order.
+Promoting an input via `markInputForNextIteration()` does not interrupt an active tool. AgentLoop checks for `next_iteration` messages after the Assistant and its tool results form a complete batch, including after a text-only reply. Each queued user input keeps its own order and is saved as an individual user Message in a single transaction, rather than merging texts together.
 
-Reservations are temporary. Save the Message, then call `confirmMessageSaved()`; call `releaseReservedMessage()` if preparation or saving fails. `user_message_stored` includes the consumed queue IDs so the UI can replace waiting bubbles with persisted messages. Those IDs are not SQL fields.
+Reservations are temporary. Save the whole batch in one transaction, then call `confirmMessageSaved()`; call `releaseReservedMessage()` if preparation or saving fails. `user_messages_stored` carries the stored Messages and consumed queue IDs so the UI can replace waiting bubbles 1:1 after persistence. Those IDs are not SQL fields.
 
-`QueueMessage` (`{ messageKind, input }`) unifies every payload handed to a Turn. User inputs produce `messageKind: 'normal'`, while background completion notices, active Goal edits, and Goal continuations produce `messageKind: 'continuation'`, which Turn saves as a hidden `continuation` Message. `SessionMessageQueue` stores at most one active `MessageReservation` per Session in memory to track which inputs, notices, or Goal edit version must be confirmed; that consumption record is not sent to the model.
+`QueueMessage` (`{ messageKind, input }`) represents one message handed to a Turn, and a Turn or iteration receives a `readonly QueueMessage[]` batch. User inputs produce `messageKind: 'normal'` entries, while background completion notices, active Goal edits, and Goal continuations produce a single `messageKind: 'continuation'` entry saved as a hidden `continuation` Message. `SessionMessageQueue` stores at most one active `MessageReservation` per Session in memory to track which inputs, notices, or Goal edit version must be confirmed; that consumption record is not sent to the model.
 
 Background notices carry execution IDs and status via `notifyBackgroundCompleted()`, not full output. Models use `SubagentAwait` or `ProcessOutput` for details. Notices are deduplicated while pending. `removeSubagentCompletionNotice()` removes an unreserved notice once `SubagentAwait` reads the subagent's full terminal result.
 

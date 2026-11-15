@@ -153,8 +153,10 @@ function receiveSessionMessage(sessionId: string, message: SessionBusinessMessag
     activity.removeQueuedInputs(sessionId, message.queuedInputs.map(item => item.id));
     return;
   }
-  if (message.type === 'user_message_stored') {
-    receiveStoredUserMessage(sessionId, message.message);
+  if (message.type === 'user_messages_stored') {
+    for (const storedMessage of message.messages) {
+      receiveStoredUserMessage(sessionId, storedMessage);
+    }
     activity.removeQueuedInputs(sessionId, message.queuedInputIds);
     return;
   }
