@@ -4,9 +4,8 @@ import { startOAuthLogin } from './oauthLogin.js';
 import type { McpOAuthLoginResult, McpOAuthStatus } from './types.js';
 
 export interface StartOAuthOptions {
-  readonly id: string;
-  readonly name: string;
-  readonly url: string;
+  readonly serverName: string;
+  readonly serverUrl: string;
   readonly timeoutMs?: number;
 }
 
@@ -16,9 +15,9 @@ export interface StartOAuthOptions {
  */
 export class McpOAuthService {
   /**
-   * 服务级 OAuth 客户端单例缓存, 键为 MCP 服务的持久化唯一 ID (serverId).
+   * 服务级 OAuth 客户端单例缓存, 键为唯一的 MCP 服务名 (serverName).
    */
-  private readonly oauthClientsByServerId = new Map<string, McpOAuthClient>();
+  private readonly oauthClientsByServerName = new Map<string, McpOAuthClient>();
 
   constructor(private readonly credentialsRepo: McpOAuthCredentialsRepo) {}
 
@@ -26,12 +25,12 @@ export class McpOAuthService {
    * 获取或懒加载指定服务的 McpOAuthClient 单例.
    * 若服务 URL 已变更, 中止旧客户端上的待完成登录并按新地址重建.
    */
-  getClient(serverId: string, serverUrl: string): McpOAuthClient {
-    let client = this.oauthClientsByServerId.get(serverId);
+  getClient(serverName: string, serverUrl: string): McpOAuthClient {
+    let client = this.oauthClientsByServerName.get(serverName);
     if (!client || client.serverUrl !== serverUrl) {
       void client?.cancelPendingLogin();
-      client = new McpOAuthClient(serverId, serverUrl, this.credentialsRepo);
-      this.oauthClientsByServerId.set(serverId, client);
+      client = new McpOAuthClient(serverName, serverUrl, this.credentialsRepo);
+      this.oauthClientsByServerName.set(serverName, client);
     }
     return client;
   }
@@ -41,11 +40,9 @@ export class McpOAuthService {
    * 若之前已有未完成的授权任务, 底层会自动关闭旧端口并中止旧任务.
    */
   async startLogin(options: StartOAuthOptions): Promise<McpOAuthLoginResult> {
-    const client = this.getClient(options.id, options.url);
+    const client = this.getClient(options.serverName, options.serverUrl);
     return startOAuthLogin({
-      serverId: options.id,
-      serverName: options.name,
-      serverUrl: options.url,
+      serverName: options.serverName,
       client,
       timeoutMs: options.timeoutMs,
     });
@@ -54,8 +51,8 @@ export class McpOAuthService {
   /**
    * 取消指定服务正在进行中的 OAuth 授权任务, 并关闭回环监听端口.
    */
-  async cancelLogin(serverId: string): Promise<void> {
-    const client = this.oauthClientsByServerId.get(serverId);
+  async cancelLogin(serverName: string): Promise<void> {
+    const client = this.oauthClientsByServerName.get(serverName);
     if (client) {
       await client.cancelPendingLogin();
     }
@@ -64,26 +61,26 @@ export class McpOAuthService {
   /**
    * 清除指定服务的 OAuth Token (保留 client_id 注册信息), 并取消进行中的授权.
    */
-  async clearTokens(serverId: string): Promise<void> {
-    await this.cancelLogin(serverId);
-    this.credentialsRepo.clearTokens(serverId, Date.now());
+  async clearTokens(serverName: string): Promise<void> {
+    await this.cancelLogin(serverName);
+    this.credentialsRepo.clearTokens(serverName, Date.now());
   }
 
   /**
    * 查询指定服务的当前 OAuth 状态.
    * 若 authType 为 'none' 则返回 null; 若传入 serverUrl 则核对是否与已存储凭据地址一致.
    */
-  getStatus(serverId: string, authType: 'none' | 'oauth', serverUrl?: string): McpOAuthStatus | null {
+  getStatus(serverName: string, authType: 'none' | 'oauth', serverUrl?: string): McpOAuthStatus | null {
     if (authType === 'none') {
       return null;
     }
 
-    const client = this.oauthClientsByServerId.get(serverId);
+    const client = this.oauthClientsByServerName.get(serverName);
     if (client && (!serverUrl || client.serverUrl === serverUrl)) {
       return client.getStatus();
     }
 
-    const row = this.credentialsRepo.findByServerId(serverId);
+    const row = this.credentialsRepo.findByServerName(serverName);
     const matchesUrl = !serverUrl || (row !== null && row.server_url === serverUrl);
     if (row && matchesUrl && row.access_token) {
       return {
@@ -103,19 +100,19 @@ export class McpOAuthService {
   /**
    * 在调用工具前单飞续期 Token.
    */
-  async ensureFreshToken(serverId: string, serverUrl: string, signal?: AbortSignal): Promise<void> {
-    const client = this.getClient(serverId, serverUrl);
+  async ensureFreshToken(serverName: string, serverUrl: string, signal?: AbortSignal): Promise<void> {
+    const client = this.getClient(serverName, serverUrl);
     await client.ensureFreshToken(signal);
   }
 
   /**
    * 移除并清理指定服务的客户端缓存.
    */
-  async removeClient(serverId: string): Promise<void> {
-    const client = this.oauthClientsByServerId.get(serverId);
+  async removeClient(serverName: string): Promise<void> {
+    const client = this.oauthClientsByServerName.get(serverName);
     if (client) {
       await client.cancelPendingLogin();
-      this.oauthClientsByServerId.delete(serverId);
+      this.oauthClientsByServerName.delete(serverName);
     }
   }
 }

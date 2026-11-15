@@ -1,14 +1,11 @@
-export { McpRegistry }               from './connections/registry.js';
+export { McpServerManager }          from './serverManager.js';
 export type { McpEvent } from './events.js';
 export { McpServerStore }            from './store.js';
-export { McpOAuthClient }            from './auth/oauthClient.js';
+export type { McpServerSummaryRecord } from './store.js';
 export { McpOAuthService }           from './auth/oauthService.js';
 export type { StartOAuthOptions }    from './auth/oauthService.js';
-export { startOAuthLogin }           from './auth/oauthLogin.js';
-export type { StartOAuthLoginOptions } from './auth/oauthLogin.js';
 export type {
   McpOAuthLoginResult,
-  McpOAuthPendingLogin,
   McpOAuthState,
   McpOAuthStatus,
 } from './auth/types.js';
@@ -34,13 +31,18 @@ export type {
   McpMarketSource,
 } from './market/types.js';
 export {
+  MCP_SERVER_NAME_RE,
+  McpAuthTypeSchema,
+  McpServerNameSchema,
   McpServerConfigSchema,
   McpStdioConfigSchema,
   McpHttpConfigSchema,
   McpInstallProvenanceSchema,
   buildMcpToolName,
+  sanitizeMcpServerName,
 }                                    from './types.js';
 export type {
+  McpAuthType,
   McpServerConfig,
   McpStdioConfig,
   McpHttpConfig,
@@ -59,6 +61,7 @@ export {
   McpToolSchemaLimitError,
   McpTimeoutError,
   McpServerNotFoundError,
+  McpServerConflictError,
   McpConnectionSupersededError,
   McpUnsupportedTransportError,
 }                                    from './errors.js';

@@ -12,7 +12,7 @@ vi.mock('../connections/connection.js', () => ({
   openConnection: connection.openConnection,
 }));
 
-import { McpRegistry } from '../connections/registry.js';
+import { McpServerManager } from '../serverManager.js';
 
 interface FakeClient extends Client {
   onclose?: () => void;
@@ -26,6 +26,7 @@ function server(config: McpServerRecord['config'] = { type: 'stdio', command: 'm
     provenance: { sourceKind: 'manual' },
     config,
     enabled: true,
+    authType: 'none',
   };
 }
 
@@ -58,7 +59,7 @@ beforeEach(() => {
 
 afterEach(() => vi.useRealTimers());
 
-describe('McpRegistry 连接生命周期', () => {
+describe('McpServerManager 连接生命周期', () => {
   it('列表只返回工具数量, 单项详情才返回工具 schema', async () => {
     const cachedTool = {
       serverToolName: 'cached-search',
@@ -72,25 +73,29 @@ describe('McpRegistry 连接生命周期', () => {
     const store = {
       findByName: vi.fn(() => record),
       listEnabled: vi.fn(() => [record]),
-      listSettings: vi.fn(() => [{
+      listSummaries: vi.fn(() => [{
+        id: record.id,
         name: record.name,
         provenance: record.provenance,
         config: record.config,
         enabled: record.enabled,
+        authType: record.authType,
         cachedToolCount: 1,
       }]),
       cacheTools: vi.fn(),
     } as unknown as McpServerStore;
     const toolRegistry = new ToolRegistry();
-    const registry = new McpRegistry(store, toolRegistry);
-    registry.primeFromCache();
+    const registry = new McpServerManager(store, toolRegistry);
+    registry.registerCachedToolsOnStartup();
     expect(toolRegistry.has(cachedTool.qualifiedName)).toBe(true);
 
     expect(registry.listServers()).toEqual([{
+      id: 'server-local',
       name: 'local',
       provenance: { sourceKind: 'manual' },
       config: record.config,
       enabled: true,
+      authType: 'none',
       connectionStatus: 'disconnected',
       toolCount: 1,
     }]);
@@ -129,7 +134,7 @@ describe('McpRegistry 连接生命周期', () => {
       cacheTools: vi.fn(),
     } as unknown as McpServerStore;
     const toolRegistry = new ToolRegistry();
-    const registry = new McpRegistry(store, toolRegistry);
+    const registry = new McpServerManager(store, toolRegistry);
 
     await expect(registry.connect('local')).resolves.toMatchObject({
       status: 'connected',
@@ -160,7 +165,7 @@ describe('McpRegistry 连接生命周期', () => {
       findByName: vi.fn(() => server()),
       cacheTools: vi.fn(),
     } as unknown as McpServerStore;
-    const registry = new McpRegistry(store, new ToolRegistry());
+    const registry = new McpServerManager(store, new ToolRegistry());
 
     await registry.connect('local');
     await registry.disconnect('local');
@@ -181,7 +186,7 @@ describe('McpRegistry 连接生命周期', () => {
       findByName: vi.fn(() => record),
       cacheTools: vi.fn(),
     } as unknown as McpServerStore;
-    const registry = new McpRegistry(store, new ToolRegistry());
+    const registry = new McpServerManager(store, new ToolRegistry());
 
     await registry.connect('local');
     first.client.onclose?.();

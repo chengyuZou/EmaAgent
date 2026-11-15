@@ -6,9 +6,9 @@ This package connects Ema to MCP servers, turns their tools into Ema tools, save
 
 ## Entry points
 
-- `McpServerStore` reads and writes installed configs and the last successful tool list through `McpServersRepo`.
-- `McpRegistry` manages connections and registered tools. Settings routes use `listServers`, `getServer`, `save`, `setEnabled`, `disconnect`, `remove`, and `probe`. Tool execution uses `callTool`.
-- `parseImportedMcpServers` accepts a parsed JSON object: an `mcpServers` or `servers` wrapper, a name-to-config map, or a single config. It returns validated stdio or Streamable HTTP configs. SSE configs are rejected rather than guessed into HTTP configs.
+- `McpServerStore` reads and writes installed configs and the last successful tool list through `McpServersRepo`. Server names use `[a-zA-Z0-9_-]` (1-100 chars).
+- `McpServerManager` manages connections, OAuth flows, and registered tools. Settings routes use `listServers`, `getServer`, `create`, `update`, `setEnabled`, `connect`, `disconnect`, `remove`, `probe`, `startOAuth`, `cancelOAuth`, and `clearOAuthTokens`. Tool execution uses `callTool`.
+- `parseImportedMcpServers` accepts a parsed JSON object: an `mcpServers` or `servers` wrapper, a name-to-config map, or a single config. It sanitizes names to `[a-zA-Z0-9_-]` and returns validated stdio or Streamable HTTP configs. SSE configs are rejected rather than guessed into HTTP configs.
 - `McpMarketService`, `McpMarketStore`, and `OfficialRegistryAdapter` handle market browsing, refresh, details, and installation.
 - `McpLocalCommandEnvironment.inspect` finds `npx`, `uvx`, `bunx`, and Python 3 on the host PATH and reads their versions for settings.
 
@@ -21,36 +21,36 @@ const servers = parseImportedMcpServers({
   },
 });
 for (const server of servers) {
-  await registry.save(server.name, server.config, { sourceKind: 'import' });
+  await serverManager.create(server.name, server.config, { sourceKind: 'import' });
 }
 ```
 
-Saving returns after writing the config and starting a background connection, without waiting for it to become usable.
+Creating, updating, or enabling a server only persists settings without opening a connection or starting OAuth automatically; connections start on explicit `connect`, app startup (`connectEnabled`), or an agent tool call (`callTool`).
 
 ## Connections and tools
 
-Server composition creates the store and registry, calls `primeFromCache`, then `connectEnabledInBackground`. Cached tools make their descriptions available during startup. Calling one still waits for a live connection and tool discovery.
+Server composition creates the store and manager, calls `registerCachedToolsOnStartup`, then `connectEnabled`. Cached tools make their descriptions available during startup. Calling one still waits for a live connection and tool discovery.
 
 ```mermaid
 sequenceDiagram
     participant Host as Server composition
-    participant Registry as McpRegistry
+    participant Manager as McpServerManager
     participant Remote as MCP server
     participant Tools as ToolRegistry
     participant Store as McpServerStore
-    Host->>Registry: primeFromCache
-    Registry->>Tools: Register enabled servers' cached tools
-    Host->>Registry: connectEnabledInBackground
-    Registry->>Remote: Initialize, then listTools
-    Remote-->>Registry: Tool definitions
-    Registry->>Tools: Register live batch and remove absent cached tools
-    Registry-->>Host: Publish connected state
-    Registry->>Store: Save tool cache
+    Host->>Manager: registerCachedToolsOnStartup
+    Manager->>Tools: Register enabled servers' cached tools
+    Host->>Manager: connectEnabled
+    Manager->>Remote: Initialize, then listTools
+    Remote-->>Manager: Tool definitions
+    Manager->>Tools: Register live batch and remove absent cached tools
+    Manager-->>Host: Emit mcp_connection_changed
+    Manager->>Store: Save tool cache
 ```
 
 Client and transport modules load when a connection is needed. Each connection has its own Client. The handshake timeout is 30 seconds, starting after module loading; tool discovery has a separate 15-second timeout. An empty remote tool list is valid, but discovery failure makes the connection fail.
 
-Concurrent requests for the same config share the connection task. Cancelling a tool call ends its wait without cancelling a shared connection task. Disconnecting or replacing a server cancels its connection and refresh tasks. A generation counter prevents late tasks and close callbacks from overwriting newer state.
+Concurrent requests for the same config share the connection task. Cancelling a tool call ends its wait without cancelling a shared connection task. Disconnecting or replacing a server cancels its connection and refresh tasks. A connection version counter prevents late tasks and close callbacks from overwriting newer state.
 
 Tool-list notifications are subscribed before initial discovery and share one refresh loop. A new batch is validated before replacing registered tools. A failed refresh keeps the previous list; a failed cache write keeps the live connection.
 
@@ -81,12 +81,12 @@ The Official Registry adapter reads the `v0.1` servers endpoint. `mcp_market_ent
 
 Installation reads current remote details, builds an explicit config, collects required headers or environment values, then saves the server with its Official Registry entry ID.
 
-Config and tool-cache writes emit `mcp_servers_changed`. Connection changes emit `mcp_connection_changed`. Market writes emit `mcp_market_changed` with the source. Server forwards these events so Desktop can read current data again. HTTP shapes come from `apps/server/src/routes/mcp`; Desktop API types are inferred from those routes.
+Config and tool-cache writes emit `mcp_servers_changed`. Connection changes emit `mcp_connection_changed`. OAuth state changes emit `mcp_oauth_changed`. Market writes emit `mcp_market_changed` with the source. Server forwards these events so Desktop can read current data again. HTTP shapes come from `apps/server/src/routes/mcp`; Desktop API types are inferred from those routes.
 
 ## Reading and verification
 
-`connections/` owns connection lifetimes and request cancellation. `tools/` owns discovery, execution, and tool schema limits. `market/` owns catalog browsing and installation. Public imports continue to use `@ema-agent/mcp`.
+`serverManager.ts` coordinates server configuration, connections, OAuth flows, and tools. `connections/` owns transport setup and request cancellation. `tools/` owns discovery, execution, and tool schema limits. `market/` owns catalog browsing and installation. Public imports continue to use `@ema-agent/mcp`.
 
-Start with `connections/registry.ts` for connections, `tools/discovery.ts` for the Ema tool contract, and `tools/execution.ts` for cancellation and output conversion. `store.ts` handles stored configs; `configImport.ts` parses imported configs. The enable route waits for the settings operation before returning success; the live connection still starts in the background.
+Start with `serverManager.ts` for coordination and `connections/connection.ts` for transport opening, `tools/discovery.ts` for the Ema tool contract, and `tools/execution.ts` for cancellation and output conversion. `store.ts` handles stored configs; `configImport.ts` parses imported configs. The enable route waits for the settings operation without starting a live connection automatically.
 
 Run `pnpm --filter @ema-agent/mcp test`. Tests cover config import, credentials, connection cancellation and closure, discovery limits and permissions, output conversion and limits, and market paging and installation. The local environment test starts temporary command scripts to verify version selection without relying on an installed Python. Storage tests in `src/storage/tests/repos/mcp-market.integration.test.ts` cover market SQL operations. Network tests here use simulated SDK clients and HTTP responses, not a live remote registry.

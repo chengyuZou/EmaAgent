@@ -11,9 +11,11 @@ export type McpOAuthState = 'required' | 'authorizing' | 'authorized';
  */
 export interface McpOAuthStatus {
   readonly status: McpOAuthState;
+  /** 仅在 status === 'authorizing' 且授权跳转链接已就绪时提供, 用于重新打开或复制. */
+  readonly authorizationUrl?: string;
   /** Access Token 过期毫秒时间戳, 未知或无过期时为 null. */
   readonly expiresAtMs: number | null;
-  /** 上次凭据更新毫秒时间戳. */
+  /** 上次凭据或当前授权流程更新的毫秒时间戳. */
   readonly updatedAt: number;
 }
 
@@ -22,13 +24,12 @@ export interface McpOAuthStatus {
  * 包含临时回调端口信息, PKCE Code Verifier, 以及用于用户取消与超时的控制通道.
  */
 export interface McpOAuthPendingLogin {
-  readonly serverId: string;
-  readonly serverName: string;
-  readonly serverUrl: string;
   /** OAuth 2.0 state 防跨站伪造随机字符串. */
   readonly state: string;
   /** 本次临时 HTTP 回调地址, 如 http://127.0.0.1:54321/oauth/callback. */
   readonly redirectUri: string;
+  /** 当前授权任务创建时的毫秒时间戳. */
+  readonly startedAt: number;
   /** PKCE 验证码, 由 SDK startAuthorization 生成并暂存. */
   codeVerifier?: string;
   /** 服务端返回的授权重定向目标 URL. */
@@ -42,8 +43,9 @@ export interface McpOAuthPendingLogin {
 }
 
 /**
- * 启动 OAuth 登录返回给前端的结果.
+ * 启动 OAuth 登录返回的结果.
  */
 export interface McpOAuthLoginResult {
-  readonly authorizationUrl: string;
+  /** 需要用户在浏览器打开的授权地址; 若本地已有有效 Token 无需跳转则为 null. */
+  readonly authorizationUrl: string | null;
 }

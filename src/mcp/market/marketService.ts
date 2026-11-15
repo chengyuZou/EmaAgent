@@ -1,4 +1,5 @@
-import type { McpRegistry } from '../connections/registry.js';
+import type { McpServerManager } from '../serverManager.js';
+import { sanitizeMcpServerName } from '../types.js';
 import type { McpServerConfig } from '../types.js';
 import type { McpMarketCatalog, McpMarketEntry, McpMarketEntryDetail, McpMarketPage, McpMarketSource } from './types.js';
 import type { McpMarketStore } from './marketStore.js';
@@ -15,7 +16,7 @@ export class McpMarketService {
   constructor(
     private readonly store: McpMarketStore,
     catalogs: readonly McpMarketCatalog[],
-    private readonly mcp: Pick<McpRegistry, 'save'>,
+    private readonly mcp: Pick<McpServerManager, 'create'>,
     private readonly changed: (source: McpMarketSource) => void,
   ) {
     this.catalogs = new Map(catalogs.map(catalog => [catalog.source, catalog]));
@@ -89,8 +90,8 @@ export class McpMarketService {
     const missing = detail.requiredInputs.filter(item => !values[item.key]?.trim()).map(item => item.key);
     if (missing.length) throw new Error(`缺少安装参数: ${missing.join(', ')}`);
     const config = applyInputs(detail.config, detail.requiredInputs, values);
-    const name = input.name?.trim() || detail.name;
-    const id = await this.mcp.save(name, config, {
+    const name = sanitizeMcpServerName(input.name?.trim() || detail.name);
+    const id = await this.mcp.create(name, config, {
       sourceKind: input.source,
       marketEntryId: input.externalId,
     });

@@ -7,6 +7,10 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./serverName": {
+      "import": "./dist/serverName.js",
+      "types": "./dist/serverName.d.ts"
     }
   },
   "main": "./dist/index.js",

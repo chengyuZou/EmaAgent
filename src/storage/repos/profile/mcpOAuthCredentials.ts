@@ -1,7 +1,7 @@
 import type { SqliteDb } from '../../database/database.js';
 
 export interface McpOAuthCredentialsRow {
-  mcp_server_id: string;
+  mcp_server_name: string;
   server_url: string;
   client_id: string;
   client_secret: string | null;
@@ -13,7 +13,7 @@ export interface McpOAuthCredentialsRow {
 }
 
 export interface McpOAuthCredentialsUpsert {
-  mcpServerId: string;
+  mcpServerName: string;
   serverUrl: string;
   clientId: string;
   clientSecret?: string | null;
@@ -24,7 +24,7 @@ export interface McpOAuthCredentialsUpsert {
 }
 
 export interface McpOAuthTokenUpdate {
-  mcpServerId: string;
+  mcpServerName: string;
   version: number;
   accessToken: string | null;
   refreshToken?: string | null;
@@ -36,16 +36,16 @@ export interface McpOAuthTokenUpdate {
  * MCP OAuth 凭据仓库.
  *
  * 在 profile.db 中持久化 OAuth 客户端注册信息与访问/刷新 Token.
- * 采用基于 version 字段的乐观并发控制, 避免迟到的异步 Token 续期覆盖较新的用户登录或清空操作.
+ * 按唯一的 mcp_server_name 关联对应 MCP 服务, 采用 version 乐观并发控制防止迟到的旧续期覆盖新凭据.
  */
 export class McpOAuthCredentialsRepo {
   constructor(private readonly db: SqliteDb) {}
 
-  findByServerId(mcpServerId: string): McpOAuthCredentialsRow | null {
+  findByServerName(mcpServerName: string): McpOAuthCredentialsRow | null {
     return (
       (this.db
-        .prepare('SELECT * FROM mcp_oauth_credentials WHERE mcp_server_id = ?')
-        .get(mcpServerId) as McpOAuthCredentialsRow | undefined) ?? null
+        .prepare('SELECT * FROM mcp_oauth_credentials WHERE mcp_server_name = ?')
+        .get(mcpServerName) as McpOAuthCredentialsRow | undefined) ?? null
     );
   }
 
@@ -63,17 +63,17 @@ export class McpOAuthCredentialsRepo {
    * 若记录已存在, 更新客户端信息并自增版本号.
    */
   saveInitialOrClient(upsert: McpOAuthCredentialsUpsert): McpOAuthCredentialsRow {
-    const existing = this.findByServerId(upsert.mcpServerId);
+    const existing = this.findByServerName(upsert.mcpServerName);
     if (!existing) {
       this.db
         .prepare(`
           INSERT INTO mcp_oauth_credentials (
-            mcp_server_id, server_url, client_id, client_secret,
+            mcp_server_name, server_url, client_id, client_secret,
             access_token, refresh_token, expires_at_ms, version, updated_at
           ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
         `)
         .run(
-          upsert.mcpServerId,
+          upsert.mcpServerName,
           upsert.serverUrl,
           upsert.clientId,
           upsert.clientSecret ?? null,
@@ -82,7 +82,7 @@ export class McpOAuthCredentialsRepo {
           upsert.expiresAtMs ?? null,
           upsert.updatedAt,
         );
-      return this.findByServerId(upsert.mcpServerId)!;
+      return this.findByServerName(upsert.mcpServerName)!;
     }
 
     // 仅在同一服务端地址与同一 client_id 下保留原有 Token/Secret,
@@ -101,7 +101,7 @@ export class McpOAuthCredentialsRepo {
             expires_at_ms = ?,
             version = version + 1,
             updated_at = ?
-        WHERE mcp_server_id = ?
+        WHERE mcp_server_name = ?
       `)
       .run(
         upsert.serverUrl,
@@ -111,9 +111,9 @@ export class McpOAuthCredentialsRepo {
         upsert.refreshToken ?? (sameClient ? existing.refresh_token : null),
         upsert.expiresAtMs ?? (sameClient ? existing.expires_at_ms : null),
         upsert.updatedAt,
-        upsert.mcpServerId,
+        upsert.mcpServerName,
       );
-    return this.findByServerId(upsert.mcpServerId)!;
+    return this.findByServerName(upsert.mcpServerName)!;
   }
 
   /**
@@ -129,14 +129,14 @@ export class McpOAuthCredentialsRepo {
             expires_at_ms = ?,
             version = version + 1,
             updated_at = ?
-        WHERE mcp_server_id = ? AND version = ?
+        WHERE mcp_server_name = ? AND version = ?
       `)
       .run(
         params.accessToken,
         params.refreshToken ?? null,
         params.expiresAtMs ?? null,
         params.updatedAt,
-        params.mcpServerId,
+        params.mcpServerName,
         params.version,
       );
     return result.changes > 0;
@@ -147,7 +147,7 @@ export class McpOAuthCredentialsRepo {
    * 保留 client_id 与 client_secret, 使后续再次登录无需重复向服务端进行动态客户端注册.
    * 自增 version 使尚未完成的异步旧续期失效.
    */
-  clearTokens(mcpServerId: string, updatedAt: number): boolean {
+  clearTokens(mcpServerName: string, updatedAt: number): boolean {
     const result = this.db
       .prepare(`
         UPDATE mcp_oauth_credentials
@@ -156,13 +156,13 @@ export class McpOAuthCredentialsRepo {
             expires_at_ms = NULL,
             version = version + 1,
             updated_at = ?
-        WHERE mcp_server_id = ?
+        WHERE mcp_server_name = ?
       `)
-      .run(updatedAt, mcpServerId);
+      .run(updatedAt, mcpServerName);
     return result.changes > 0;
   }
 
-  deleteByServerId(mcpServerId: string): void {
-    this.db.prepare('DELETE FROM mcp_oauth_credentials WHERE mcp_server_id = ?').run(mcpServerId);
+  deleteByServerName(mcpServerName: string): void {
+    this.db.prepare('DELETE FROM mcp_oauth_credentials WHERE mcp_server_name = ?').run(mcpServerName);
   }
 }

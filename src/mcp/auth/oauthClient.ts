@@ -1,30 +1,31 @@
-import { randomUUID } from 'node:crypto';
 import { logging } from '@ema-agent/logging';
 import { waitForPromise } from '../connections/requestControl.js';
 import type { OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js';
 import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js';
 import type {
   OAuthClientInformationMixed,
-  OAuthClientMetadata,
   OAuthTokens,
 } from '@modelcontextprotocol/sdk/shared/auth.js';
 import type { McpOAuthCredentialsRepo, McpOAuthCredentialsRow } from '@ema-agent/storage';
 import type { McpOAuthPendingLogin, McpOAuthStatus } from './types.js';
 
+// SDK 的 selectResourceURL 接口声明需要 OAuthClientProvider, 实际只检查可选的 validateResourceURL 钩子.
+const DEFAULT_RESOURCE_PROVIDER = {} as unknown as OAuthClientProvider;
+
 /**
- * 针对单个 MCP HTTP 服务的 OAuthClientProvider 实现.
+ * 针对单个 MCP HTTP 服务的 OAuth 凭据与登录会话状态管理.
  *
  * 桥接 @modelcontextprotocol/sdk 的 OAuth 授权层与 Ema 的 SQLite profile.db 存储.
  * 负责客户端注册信息读取, Token 存取(带乐观并发控制), 回环授权流程状态以及并发刷新排队锁.
  */
-export class McpOAuthClient implements OAuthClientProvider {
+export class McpOAuthClient {
   /** 当前正在进行中的回环端口登录任务. */
   private pendingLogin?: McpOAuthPendingLogin;
   /** 当前正在排队或执行中的 Token 续期 Promise, 避免高并发调用工具时向鉴权服务器重复请求. */
   private pendingTokenRefresh?: Promise<void>;
 
   constructor(
-    readonly serverId: string,
+    readonly serverName: string,
     readonly serverUrl: string,
     private readonly credentialsRepo: McpOAuthCredentialsRepo,
   ) {}
@@ -43,43 +44,11 @@ export class McpOAuthClient implements OAuthClientProvider {
   };
 
   /**
-   * 按 serverId 读取并核对服务端 URL 一致的 OAuth 凭据行.
+   * 按 serverName 读取并核对服务端 URL 一致的 OAuth 凭据行.
    */
   private readCredentials(): McpOAuthCredentialsRow | null {
-    const row = this.credentialsRepo.findByServerId(this.serverId);
+    const row = this.credentialsRepo.findByServerName(this.serverName);
     return row?.server_url === this.serverUrl ? row : null;
-  }
-
-  /**
-   * 返回当前交互式授权回调 URL.
-   * 当没有处于进行中的浏览器登录任务时返回 undefined.
-   */
-  get redirectUrl(): string | undefined {
-    return this.pendingLogin?.redirectUri;
-  }
-
-  /**
-   * OAuth 客户端元数据, 提供给动态客户端注册与鉴权流程.
-   */
-  get clientMetadata(): OAuthClientMetadata {
-    const redirectUris = this.pendingLogin?.redirectUri
-      ? [this.pendingLogin.redirectUri]
-      : ['http://127.0.0.1/oauth/callback'];
-
-    return {
-      client_name: 'EmaAgent',
-      redirect_uris: redirectUris,
-      grant_types: ['authorization_code', 'refresh_token'],
-      response_types: ['code'],
-    };
-  }
-
-  /**
-   * 返回本次授权请求的 state 参数.
-   * 优先使用活跃登录任务中的 state, 无任务时返回生成的随机 UUID.
-   */
-  state(): string {
-    return this.pendingLogin?.state ?? randomUUID();
   }
 
   /**
@@ -102,7 +71,7 @@ export class McpOAuthClient implements OAuthClientProvider {
    */
   async saveClientInformation(info: OAuthClientInformationMixed): Promise<void> {
     this.credentialsRepo.saveInitialOrClient({
-      mcpServerId: this.serverId,
+      mcpServerName: this.serverName,
       serverUrl: this.serverUrl,
       clientId: info.client_id,
       clientSecret: info.client_secret ?? null,
@@ -140,7 +109,7 @@ export class McpOAuthClient implements OAuthClientProvider {
   async saveTokens(tokens: OAuthTokens, expectedVersion?: number): Promise<void> {
     const current = this.readCredentials();
     if (!current) {
-      throw new Error(`Cannot save OAuth tokens: client registration record not found for server ID "${this.serverId}".`);
+      throw new Error(`Cannot save OAuth tokens: client registration record not found for server "${this.serverName}".`);
     }
     const targetVersion = expectedVersion ?? current.version;
 
@@ -150,7 +119,7 @@ export class McpOAuthClient implements OAuthClientProvider {
         : null;
 
     const updated = this.credentialsRepo.updateTokensIfVersionMatches({
-      mcpServerId: this.serverId,
+      mcpServerName: this.serverName,
       version: targetVersion,
       accessToken: tokens.access_token,
       refreshToken: tokens.refresh_token ?? null,
@@ -162,7 +131,7 @@ export class McpOAuthClient implements OAuthClientProvider {
         level: 'warn',
         target: 'mcp',
         event: 'mcp.oauth.stale_tokens_rejected',
-        message: `Stale OAuth token update rejected by optimistic lock. Server ID: ${this.serverId}, expected version ${targetVersion}, current version ${current.version}.`,
+        message: `Stale OAuth token update rejected by optimistic lock. Server: ${this.serverName}, expected version ${targetVersion}, current version ${current.version}.`,
       });
       throw new Error('Stale OAuth token update rejected because credentials were changed.');
     }
@@ -189,7 +158,12 @@ export class McpOAuthClient implements OAuthClientProvider {
 
     const provider: OAuthClientProvider = {
       redirectUrl: login.redirectUri,
-      clientMetadata: this.clientMetadata,
+      clientMetadata: {
+        client_name: 'EmaAgent',
+        redirect_uris: [login.redirectUri],
+        grant_types: ['authorization_code', 'refresh_token'],
+        response_types: ['code'],
+      },
       state: () => login.state,
       clientInformation: () => this.clientInformation(),
       tokens: () => this.tokens(),
@@ -243,43 +217,12 @@ export class McpOAuthClient implements OAuthClientProvider {
     return result;
   }
 
-  /**
-   * 保存 PKCE Code Verifier 到内存任务中.
-   */
-  saveCodeVerifier(codeVerifier: string): void {
-    if (this.pendingLogin) {
-      this.pendingLogin.codeVerifier = codeVerifier;
-    }
-  }
-
-  /**
-   * 从内存任务中读取 PKCE Code Verifier 用于 Token 兑换.
-   */
-  codeVerifier(): string {
-    if (!this.pendingLogin?.codeVerifier) {
-      throw new Error('No active OAuth login task or missing PKCE code verifier.');
-    }
-    return this.pendingLogin.codeVerifier;
-  }
-
-  /**
-   * 暂存服务端生成的授权跳转 URL, 供桌面端通过默认浏览器打开.
-   */
-  redirectToAuthorization(authorizationUrl: URL): void {
-    if (this.pendingLogin) {
-      this.pendingLogin.authorizationUrl = authorizationUrl;
-    }
-  }
-
-  /**
-   * 服务端指示凭据失效时的主动清理回调.
-   */
-  async invalidateCredentials(scope: 'all' | 'client' | 'tokens' | 'verifier' | 'discovery'): Promise<void> {
+  private async invalidateCredentials(scope: 'all' | 'client' | 'tokens' | 'verifier' | 'discovery'): Promise<void> {
     if (scope === 'tokens' || scope === 'all') {
-      this.credentialsRepo.clearTokens(this.serverId, Date.now());
+      this.credentialsRepo.clearTokens(this.serverName, Date.now());
     }
     if (scope === 'client' || scope === 'all') {
-      this.credentialsRepo.deleteByServerId(this.serverId);
+      this.credentialsRepo.deleteByServerName(this.serverName);
     }
   }
 
@@ -332,14 +275,6 @@ export class McpOAuthClient implements OAuthClientProvider {
   }
 
   /**
-   * 检查当前是否有可用于续期的 Refresh Token.
-   */
-  hasRefreshToken(): boolean {
-    const row = this.readCredentials();
-    return Boolean(row?.refresh_token);
-  }
-
-  /**
    * 获取当前服务的 OAuth 状态机视图:
    * 1. 若回环端口正在监听等待授权回调, 状态为 'authorizing'.
    * 2. 若拥有与当前服务地址匹配的 access_token, 状态为 'authorized'.
@@ -349,8 +284,11 @@ export class McpOAuthClient implements OAuthClientProvider {
     if (this.pendingLogin) {
       return {
         status: 'authorizing',
+        ...(this.pendingLogin.authorizationUrl
+          ? { authorizationUrl: this.pendingLogin.authorizationUrl.toString() }
+          : {}),
         expiresAtMs: null,
-        updatedAt: Date.now(),
+        updatedAt: this.pendingLogin.startedAt,
       };
     }
 
@@ -399,7 +337,7 @@ export class McpOAuthClient implements OAuthClientProvider {
         const { InvalidGrantError } = await import('@modelcontextprotocol/sdk/server/auth/errors.js');
 
         const discovery = await discoverOAuthServerInfo(this.serverUrl);
-        const resource = await selectResourceURL(this.serverUrl, this, discovery.resourceMetadata);
+        const resource = await selectResourceURL(this.serverUrl, DEFAULT_RESOURCE_PROVIDER, discovery.resourceMetadata);
         if (!isCurrentRefresh()) return;
 
         try {
@@ -418,7 +356,7 @@ export class McpOAuthClient implements OAuthClientProvider {
         } catch (error) {
           // 仅当本次使用的 refresh_token 与版本号仍未失效时才清除本机 Token, 防止迟到报错误删新登录凭据.
           if (error instanceof InvalidGrantError && isCurrentRefresh()) {
-            this.credentialsRepo.clearTokens(this.serverId, Date.now());
+            this.credentialsRepo.clearTokens(this.serverName, Date.now());
             return;
           }
           throw error;
@@ -428,7 +366,7 @@ export class McpOAuthClient implements OAuthClientProvider {
           level: 'warn',
           target: 'mcp',
           event: 'mcp.oauth.proactive_refresh_failed',
-          message: `Proactive OAuth refresh failed for server ID "${this.serverId}": ${(error as Error).message}`,
+          message: `Proactive OAuth refresh failed for server "${this.serverName}": ${(error as Error).message}`,
           error,
         });
       }

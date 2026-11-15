@@ -10,9 +10,7 @@ import type { McpOAuthLoginResult, McpOAuthPendingLogin } from './types.js';
 const DEFAULT_LOGIN_TIMEOUT_MS = 300_000; // 5 分钟超时
 
 export interface StartOAuthLoginOptions {
-  serverId: string;
   serverName: string;
-  serverUrl: string;
   client: McpOAuthClient;
   timeoutMs?: number;
 }
@@ -27,7 +25,7 @@ export interface StartOAuthLoginOptions {
  * 5. 浏览器回调到达后校验 state, 调用 SDK 兑换并保存 Token, 回复浏览器友好提示页面后关闭临时端口.
  */
 export async function startOAuthLogin(options: StartOAuthLoginOptions): Promise<McpOAuthLoginResult> {
-  const { serverId, serverName, serverUrl, client, timeoutMs = DEFAULT_LOGIN_TIMEOUT_MS } = options;
+  const { serverName, client, timeoutMs = DEFAULT_LOGIN_TIMEOUT_MS } = options;
 
   const state = randomUUID();
   const abortController = new AbortController();
@@ -88,11 +86,9 @@ export async function startOAuthLogin(options: StartOAuthLoginOptions): Promise<
     const redirectUri = `http://127.0.0.1:${address.port}/oauth/callback`;
 
     const pendingLogin: McpOAuthPendingLogin = {
-      serverId,
-      serverName,
-      serverUrl,
       state,
       redirectUri,
+      startedAt: Date.now(),
       cleanup,
       promise: sessionPromise,
       abortController,
@@ -229,7 +225,7 @@ export async function startOAuthLogin(options: StartOAuthLoginOptions): Promise<
       resolveSession();
       void cleanup();
       return {
-        authorizationUrl: '',
+        authorizationUrl: null,
       };
     }
 

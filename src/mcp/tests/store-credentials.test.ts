@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { McpServerConflictError } from '../errors.js';
 import { McpServerStore } from '../store.js';
 
 function memoryRepo() {
@@ -18,11 +19,13 @@ function memoryRepo() {
     },
     deleteById: (id: string) => { rows.delete(id); },
     listSettings: () => [...rows.values()].map((row) => ({
+      id: row.id,
       name: row.name,
       install_source: row.install_source,
       market_entry_id: row.market_entry_id,
       config_json: row.config_json,
       enabled: row.enabled,
+      auth_type: row.auth_type ?? 'none',
       cached_tool_count: typeof row.tools_cache === 'string'
         ? (JSON.parse(row.tools_cache) as unknown[]).length
         : 0,
@@ -36,7 +39,7 @@ describe('McpServerStore 凭据边界', () => {
     const repo = memoryRepo();
     const store = new McpServerStore(repo as never);
 
-    store.register('github', {
+    store.create('github', {
       type: 'stdio',
       command: 'npx',
       args: ['-y', '@modelcontextprotocol/server-github'],
@@ -58,7 +61,7 @@ describe('McpServerStore 凭据边界', () => {
     const repo = memoryRepo();
     const store = new McpServerStore(repo as never);
 
-    store.register('remote', {
+    store.create('remote', {
       type: 'http',
       url: 'https://mcp.example.com/x/mcp',
       headers: { Authorization: 'Bearer tok_123' },
@@ -73,15 +76,20 @@ describe('McpServerStore 凭据边界', () => {
     });
   });
 
-  it('更新同名 server 沿用既有 id,配置覆盖', () => {
+  it('create 拒绝同名重复, update 沿用既有 id 并覆盖配置', () => {
     const repo = memoryRepo();
     const store = new McpServerStore(repo as never);
 
-    store.register('s', { type: 'http', url: 'https://a.example/mcp', headers: { 'X-Key': 'one' } });
-    store.register('s', { type: 'http', url: 'https://b.example/mcp', headers: { 'X-Key': 'two' } });
+    const createdId = store.create('s', { type: 'http', url: 'https://a.example/mcp', headers: { 'X-Key': 'one' } });
+    expect(() => store.create('s', { type: 'http', url: 'https://b.example/mcp' }))
+      .toThrow(McpServerConflictError);
 
-    expect(store.listSettings()).toHaveLength(1);
-    expect(store.findByName('s')!.config).toMatchObject({
+    store.update('s', { type: 'http', url: 'https://b.example/mcp', headers: { 'X-Key': 'two' } });
+
+    expect(store.listSummaries()).toHaveLength(1);
+    const updated = store.findByName('s')!;
+    expect(updated.id).toBe(createdId);
+    expect(updated.config).toMatchObject({
       url: 'https://b.example/mcp',
       headers: { 'X-Key': 'two' },
     });
@@ -91,7 +99,7 @@ describe('McpServerStore 凭据边界', () => {
     const repo = memoryRepo();
     const store = new McpServerStore(repo as never);
 
-    store.register('marked', { type: 'http', url: 'https://a.example/mcp' }, {
+    store.create('marked', { type: 'http', url: 'https://a.example/mcp' }, {
       sourceKind: 'official',
       marketEntryId: 'io.example/x',
     });

@@ -3,79 +3,78 @@ import { randomUUID }       from 'node:crypto';
 import { ToolListChangedNotificationSchema } from '@modelcontextprotocol/sdk/types.js';
 import type { Tool, ToolRegistry } from '@ema-agent/tools';
 import type { McpOAuthCredentialsRepo } from '@ema-agent/storage';
-import type { McpServerStore }                            from '../store.js';
+import type { McpServerStore }                            from './store.js';
+import type { McpEvent }                                  from './events.js';
 import type {
+  McpAuthType,
   McpServerConfig,
   McpServerRecord,
   McpConnection,
+  McpConnectionStatus,
   McpProbeResult,
   McpServerDetail,
   McpServerSummary,
   McpToolInfo,
   McpInstallProvenance,
-} from '../types.js';
-import { openConnection }                                from './connection.js';
-import type { OpenedConnection }                         from './connection.js';
-import { discoverServerTools, buildMcpBuiltTool }       from '../tools/discovery.js';
-import { callMcpTool }                                   from '../tools/execution.js';
-import type { McpToolOutput }                            from '../tools/execution.js';
-import { McpOAuthService }                               from '../auth/oauthService.js';
-import type {
-  McpOAuthLoginResult,
-  McpOAuthStatus,
-} from '../auth/types.js';
+} from './types.js';
+import { openConnection }                                from './connections/connection.js';
+import type { OpenedConnection }                         from './connections/connection.js';
+import { discoverServerTools, buildMcpBuiltTool }       from './tools/discovery.js';
+import { callMcpTool }                                   from './tools/execution.js';
+import type { McpToolOutput }                            from './tools/execution.js';
+import { McpOAuthService }                               from './auth/oauthService.js';
+import type { McpOAuthLoginResult }                      from './auth/types.js';
 import {
   linkedAbortController,
   waitForPromise,
   withTimeout,
-} from './requestControl.js';
+} from './connections/requestControl.js';
 import {
   McpServerNotFoundError,
   McpConnectionError,
   McpConnectionSupersededError,
   McpTimeoutError,
-} from '../errors.js';
+  McpUnsupportedTransportError,
+} from './errors.js';
 
 const TOOL_DISCOVERY_TIMEOUT_MS = 15_000;
 
+/** 单台 MCP 服务器在当前进程内的连接状态与活动任务. */
 interface McpServer {
-  /** 断开或替换连接时递增. 旧异步任务只能清理自身, 不能再改写连接和工具. */
-  generation: number;
-  /** 相同配置的并发请求共用 connectTask, 配置改变时重新连接. */
-  configJson?: string;
-  info: McpConnection;
-  /** 只有握手和初次工具发现都完成后才保存连接. */
-  opened?: OpenedConnection;
-  connectTask?: Promise<McpConnection>;
-  /** 断开或替换连接时取消握手和工具刷新. */
+  /** 断开, 替换连接或意外断线时递增; 异步任务跨 await 后发现版本不一致即放弃写入. */
+  connectionVersion: number;
+  /** 当前已连或建连中的配置 JSON 快照, 供相同配置请求复用 pendingConnectTask 或已建连接. */
+  activeConfigJson?: string;
+  status: McpConnectionStatus;
+  /** 当前已登记到全局 ToolRegistry 的工具列表 (含启动时预登记缓存; 断开或失败时注销并清空). */
+  registeredTools: McpToolInfo[];
+  error?: string;
+  /** 仅握手与初次工具发现都完成后保存底层连接句柄. */
+  connection?: OpenedConnection;
+  /** 进行中的建连任务, 供并发连接或工具调用复用等待. */
+  pendingConnectTask?: Promise<McpConnection>;
+  /** 断开或替换连接时取消握手, 初次工具发现与后台工具刷新循环. */
   lifecycleAbort?: AbortController;
-  /** 同一连接最多运行一个工具刷新循环. */
-  refreshTask?: Promise<void>;
-  /** 连接或刷新期间收到的 list_changed 合并到下一次刷新. */
-  refreshRequested?: boolean;
+  /** 同一在线连接最多运行一个工具列表刷新循环, 响应 notifications/tools/list_changed. */
+  pendingToolRefreshTask?: Promise<void>;
+  /** 建连或工具刷新期间收到 list_changed 时置位, 待本轮结束后补刷一次. */
+  needsToolRefresh?: boolean;
   retryTimer?: ReturnType<typeof setTimeout>;
-  retryAttempt?: number;
 }
 
-export class McpRegistry {
+export class McpServerManager {
   private servers = new Map<string, McpServer>();
-  /** 尚未被在线工具替换的启动缓存, 用于失败或断开时注销工具. */
-  private primed = new Map<string, McpToolInfo[]>();
-  readonly oauthService?: McpOAuthService;
+  private readonly oauthService?: McpOAuthService;
 
   constructor(
     private readonly store:        McpServerStore,
     private readonly toolRegistry: ToolRegistry,
-    private readonly connectionChanged: (connection: McpConnection) => void = () => {},
-    oauth?: McpOAuthService | McpOAuthCredentialsRepo,
+    private readonly onEvent:      (event: McpEvent) => void = () => {},
+    oauthCredentialsRepo?:         McpOAuthCredentialsRepo,
   ) {
-    if (oauth) {
-      if ('getClient' in oauth && typeof oauth.getClient === 'function') {
-        this.oauthService = oauth as McpOAuthService;
-      } else {
-        this.oauthService = new McpOAuthService(oauth as McpOAuthCredentialsRepo);
-      }
-    }
+    this.oauthService = oauthCredentialsRepo
+      ? new McpOAuthService(oauthCredentialsRepo)
+      : undefined;
   }
 
   async connect(serverName: string): Promise<McpConnection> {
@@ -87,101 +86,107 @@ export class McpRegistry {
     return this.connectConfig(serverName, record.config);
   }
 
-  connectConfig(serverName: string, config: McpServerConfig): Promise<McpConnection> {
-    const server = this.serverFor(serverName);
+  private connectConfig(serverName: string, config: McpServerConfig): Promise<McpConnection> {
+    const server = this.getOrCreateServer(serverName);
     const configJson = JSON.stringify(config);
 
     // 后台连接尚未完成时, 首次工具调用等待同一任务, 避免重复启动子进程.
-    if (server.configJson === configJson) {
-      if (server.connectTask) return server.connectTask;
-      if (server.opened && server.info.status === 'connected') {
-        return Promise.resolve(copyConnection(server.info));
+    if (server.activeConfigJson === configJson) {
+      if (server.pendingConnectTask) return server.pendingConnectTask;
+      if (server.connection && server.status === 'connected') {
+        return Promise.resolve(connectionSnapshot(serverName, server));
       }
     }
 
     return this.startConnection(serverName, config, configJson, server);
   }
 
-  connectInBackground(serverName: string): void {
-    void this.connect(serverName).catch(() => undefined);
-  }
-
-  connectEnabledInBackground(): void {
-    for (const record of this.store.listEnabled()) this.connectInBackground(record.name);
+  connectEnabled(): void {
+    for (const record of this.store.listEnabled()) {
+      void this.connect(record.name).catch(() => undefined);
+    }
   }
 
   /**
    * 启动时先注册已启用服务器的缓存工具, 随后由宿主启动后台连接.
    * 缓存工具被调用时仍需等待实时连接和工具发现完成.
    */
-  primeFromCache(): number {
+  registerCachedToolsOnStartup(): number {
     const tools: AnyMcpTool[] = [];
-    const pending = new Map<string, McpToolInfo[]>();
+    const pending: Array<[string, McpToolInfo[]]> = [];
     for (const record of this.store.listEnabled()) {
-      const cached = this.primableTools(record);
+      const cached = this.startupCachedToolsFor(record);
       if (!cached) continue;
       tools.push(...toTools(cached, this));
-      pending.set(record.name, cached);
+      pending.push([record.name, cached]);
     }
 
     this.toolRegistry.registerMcpBatch(tools);
     for (const [serverName, cached] of pending) {
-      this.primed.set(serverName, cached);
-      const server = this.serverFor(serverName);
-      if (server.info.status === 'disconnected') {
-        server.info = connectionInfo(serverName, 'disconnected', cached);
-        this.publish(server.info);
+      const server = this.getOrCreateServer(serverName);
+      if (server.status === 'disconnected') {
+        server.registeredTools = [...cached];
+        this.emitConnectionChanged();
       }
     }
     return tools.length;
   }
 
-  private primableTools(record: McpServerRecord): McpToolInfo[] | null {
+  private startupCachedToolsFor(record: McpServerRecord): McpToolInfo[] | null {
     const server = this.servers.get(record.name);
-    if (server?.opened || server?.connectTask) return null;
+    if (server?.connection || server?.pendingConnectTask) return null;
     const cached = record.cachedTools;
     return cached && cached.length > 0 ? cached : null;
   }
 
   async disconnect(serverName: string): Promise<void> {
-    const server = this.serverFor(serverName);
-    server.generation += 1;
-    if (server.retryTimer) clearTimeout(server.retryTimer);
     const record = this.store.findByName(serverName);
-    if (record) {
-      void this.oauthService?.cancelLogin(record.id);
+    const hadPendingOAuth = Boolean(
+      record?.config.type === 'http'
+      && this.oauthService?.getStatus(serverName, record.authType, record.config.url)?.status === 'authorizing',
+    );
+    await this.teardownConnection(serverName, 'disconnected', undefined, true);
+    this.emitConnectionChanged();
+    if (hadPendingOAuth) {
+      this.emitOAuthChanged();
+    }
+  }
+
+  private async teardownConnection(
+    serverName: string,
+    nextStatus: McpConnectionStatus,
+    nextError: string | undefined,
+    cancelPendingOAuth: boolean,
+  ): Promise<void> {
+    const server = this.getOrCreateServer(serverName);
+    server.connectionVersion += 1;
+    if (server.retryTimer) clearTimeout(server.retryTimer);
+    if (cancelPendingOAuth) {
+      await this.oauthService?.cancelLogin(serverName);
     }
     const superseded = new McpConnectionSupersededError(serverName);
     server.lifecycleAbort?.abort(superseded);
-    const opened = server.opened;
-    const liveTools = server.info.status === 'connected' ? server.info.tools : [];
-    server.opened = undefined;
-    server.connectTask = undefined;
+    const previousConnection = server.connection;
+    server.connection = undefined;
+    server.pendingConnectTask = undefined;
     server.lifecycleAbort = undefined;
-    server.refreshTask = undefined;
-    server.refreshRequested = false;
+    server.pendingToolRefreshTask = undefined;
+    server.needsToolRefresh = false;
     server.retryTimer = undefined;
-    server.retryAttempt = undefined;
-    server.configJson = undefined;
-    server.info = connectionInfo(serverName, 'disconnected', []);
-    this.publish(server.info);
+    server.activeConfigJson = undefined;
+    server.status = nextStatus;
+    server.error = nextError;
 
-    const primedTools = this.primed.get(serverName);
-    if (primedTools) {
-      unregisterTools(this.toolRegistry, primedTools);
-      this.primed.delete(serverName);
-    }
-
-    unregisterTools(this.toolRegistry, liveTools);
-    if (opened) await opened.cleanup();
+    unregisterTools(this.toolRegistry, server.registeredTools);
+    server.registeredTools = [];
+    if (previousConnection) await previousConnection.cleanup();
   }
 
   async disconnectAll(): Promise<void> {
     const pendingTasks = [...this.servers.values()]
-      .flatMap((server) => [server.connectTask, server.refreshTask])
+      .flatMap((server) => [server.pendingConnectTask, server.pendingToolRefreshTask])
       .filter((task) => task !== undefined);
-    const names = new Set([...this.servers.keys(), ...this.primed.keys()]);
-    await Promise.all([...names].map((name) => this.disconnect(name)));
+    await Promise.all([...this.servers.keys()].map((name) => this.disconnect(name)));
     await Promise.allSettled(pendingTasks);
   }
 
@@ -201,7 +206,7 @@ export class McpRegistry {
     // 若为 HTTP 服务且启用了 OAuth, 并在调用工具前发现 Token 已过期或临近过期,
     // 提前触发并排队等待续期, 消除并发调用时的 401 往返与并发刷新竞争.
     if (record.config.type === 'http' && this.oauthService && record.authType === 'oauth') {
-      await this.oauthService.ensureFreshToken(record.id, record.config.url, signal);
+      await this.oauthService.ensureFreshToken(record.name, record.config.url, signal);
     }
 
     // 等待续期期间服务可能被禁用, 删除或变更配置, 醒来后重查最新状态.
@@ -224,7 +229,7 @@ export class McpRegistry {
 
     // 单次调用取消只结束自身等待, 不取消其他调用共享的连接任务.
     await waitForPromise(this.connectConfig(serverName, latestRecord.config), signal);
-    const conn = this.servers.get(serverName)?.opened;
+    const conn = this.servers.get(serverName)?.connection;
     if (!conn) {
       throw new McpServerNotFoundError(`${serverName} (not connected)`);
     }
@@ -232,23 +237,23 @@ export class McpRegistry {
   }
 
   listServers(): McpServerSummary[] {
-    return this.store.listSettings().map((settings) => {
-      const connection = this.servers.get(settings.name)?.info;
-      const oauth = settings.config.type === 'http'
-        ? (this.oauthService?.getStatus(settings.id, settings.authType, settings.config.url) ?? null)
+    return this.store.listSummaries().map((summary) => {
+      const server = this.servers.get(summary.name);
+      const oauth = summary.config.type === 'http'
+        ? (this.oauthService?.getStatus(summary.name, summary.authType, summary.config.url) ?? null)
         : null;
       return {
-        id: settings.id,
-        name: settings.name,
-        provenance: settings.provenance,
-        config: settings.config,
-        enabled: settings.enabled,
-        authType: settings.authType,
-        connectionStatus: connection?.status ?? 'disconnected',
-        ...(connection?.error ? { connectionError: connection.error } : {}),
-        toolCount: connection?.status === 'connected'
-          ? connection.tools.length
-          : settings.cachedToolCount,
+        id: summary.id,
+        name: summary.name,
+        provenance: summary.provenance,
+        config: summary.config,
+        enabled: summary.enabled,
+        authType: summary.authType,
+        connectionStatus: server?.status ?? 'disconnected',
+        ...(server?.error ? { connectionError: server.error } : {}),
+        toolCount: server?.status === 'connected'
+          ? server.registeredTools.length
+          : summary.cachedToolCount,
         ...(oauth ? { oauth } : {}),
       };
     });
@@ -257,12 +262,12 @@ export class McpRegistry {
   getServer(serverName: string): McpServerDetail | null {
     const record = this.store.findByName(serverName);
     if (!record) return null;
-    const connection = this.servers.get(serverName)?.info;
-    const tools = connection?.status === 'connected'
-      ? connection.tools
+    const server = this.servers.get(serverName);
+    const tools = server?.status === 'connected'
+      ? server.registeredTools
       : (record.cachedTools ?? []);
     const oauth = record.config.type === 'http'
-      ? (this.oauthService?.getStatus(record.id, record.authType, record.config.url) ?? null)
+      ? (this.oauthService?.getStatus(record.name, record.authType, record.config.url) ?? null)
       : null;
     return {
       id: record.id,
@@ -271,8 +276,8 @@ export class McpRegistry {
       config: record.config,
       enabled: record.enabled,
       authType: record.authType,
-      connectionStatus: connection?.status ?? 'disconnected',
-      ...(connection?.error ? { connectionError: connection.error } : {}),
+      connectionStatus: server?.status ?? 'disconnected',
+      ...(server?.error ? { connectionError: server.error } : {}),
       toolCount: tools.length,
       tools: [...tools],
       ...(oauth ? { oauth } : {}),
@@ -287,16 +292,15 @@ export class McpRegistry {
     const record = this.store.findByName(serverName);
     if (!record) throw new McpServerNotFoundError(serverName);
     if (record.config.type !== 'http') {
-      throw new Error(`MCP 服务 "${serverName}" 并非 HTTP 传输, 不支持 OAuth.`);
+      throw new McpUnsupportedTransportError(record.name, record.config.type);
     }
     if (!this.oauthService) {
-      throw new Error('未配置 McpOAuthService / McpOAuthCredentialsRepo, 无法发起 OAuth 授权.');
+      throw new Error('未配置 McpOAuthCredentialsRepo, 无法发起 OAuth 授权.');
     }
 
     const loginResult = await this.oauthService.startLogin({
-      id: record.id,
-      name: record.name,
-      url: record.config.url,
+      serverName: record.name,
+      serverUrl: record.config.url,
     });
 
     // OAuth 登录流程成功发起后将服务认证模式切换为 'oauth', 保证后续连接和状态查询带入凭据.
@@ -304,22 +308,26 @@ export class McpRegistry {
       this.store.setAuthType(serverName, 'oauth');
     }
 
-    const client = this.oauthService.getClient(record.id, record.config.url);
+    const client = this.oauthService.getClient(record.name, record.config.url);
     const pendingLogin = client.getPendingLogin();
+    this.emitOAuthChanged();
+
     if (pendingLogin) {
       void pendingLogin.promise
         .then(async () => {
-          // 授权成功后重查最新配置, 若仍处于启用状态则自动建立带 OAuth 的连接
+          this.emitOAuthChanged();
+          // 授权成功后重查最新配置, 若仍处于启用状态则自动建立带 OAuth 的连接.
           const latest = this.store.findByName(serverName);
           if (latest?.enabled) {
-            // 若此前以无鉴权状态意外保持 connected, 需先断开再以 oauthFetch 重新握手
-            if (this.servers.get(serverName)?.opened) {
+            // 若此前以无鉴权状态意外保持 connected, 需先断开再以 oauthFetch 重新握手.
+            if (this.servers.get(serverName)?.connection) {
               await this.disconnect(serverName);
             }
             await this.connect(serverName).catch(() => undefined);
           }
         })
         .catch((err) => {
+          this.emitOAuthChanged();
           logging({
             level: 'warn',
             target: 'mcp',
@@ -338,8 +346,9 @@ export class McpRegistry {
    */
   async cancelOAuth(serverName: string): Promise<void> {
     const record = this.store.findByName(serverName);
-    if (!record) return;
-    await this.oauthService?.cancelLogin(record.id);
+    if (!record) throw new McpServerNotFoundError(serverName);
+    await this.oauthService?.cancelLogin(record.name);
+    this.emitOAuthChanged();
   }
 
   /**
@@ -350,73 +359,66 @@ export class McpRegistry {
     const record = this.store.findByName(serverName);
     if (!record) throw new McpServerNotFoundError(serverName);
 
-    // 先断开 MCP 实时连接并注销工具
-    await this.disconnect(serverName);
-
-    // 清空 Token 并取消进行中的授权
-    if (this.oauthService) {
-      await this.oauthService.clearTokens(record.id);
-    }
-
-    const server = this.serverFor(serverName);
-    server.info = connectionInfo(
+    await this.teardownConnection(
       serverName,
       'failed',
-      [],
       'OAuth authorization required',
+      false,
     );
-    this.publish(server.info);
+    if (this.oauthService) {
+      await this.oauthService.clearTokens(record.name);
+    }
+    this.emitConnectionChanged();
+    this.emitOAuthChanged();
   }
 
-  /**
-   * 查询指定 MCP 服务的 OAuth 状态.
-   */
-  getOAuthStatus(serverName: string): McpOAuthStatus | null {
-    if (!this.oauthService) return null;
-    const record = this.store.findByName(serverName);
-    if (!record || record.config.type !== 'http') return null;
-    return this.oauthService.getStatus(record.id, record.authType, record.config.url);
-  }
-
-  async save(
+  /** 新建服务器配置; 仅保存配置, 不自动连接. */
+  async create(
     name: string,
     config: McpServerConfig,
     provenance?: McpInstallProvenance,
-    authType?: 'none' | 'oauth',
+    authType?: McpAuthType,
   ): Promise<string> {
+    return this.store.create(name, config, provenance, authType);
+  }
+
+  /** 更新已有服务器配置; 断开旧连接且变更服务地址时清理旧 OAuth 客户端, 不自动重连. */
+  async update(
+    name: string,
+    config: McpServerConfig,
+    provenance?: McpInstallProvenance,
+    authType?: McpAuthType,
+  ): Promise<void> {
     const existing = this.store.findByName(name);
-    if (existing) {
-      await this.disconnect(name);
-      const urlChanged = existing.config.type === 'http'
-        && (config.type !== 'http' || existing.config.url !== config.url);
-      if (urlChanged) {
-        await this.oauthService?.removeClient(existing.id);
-      }
+    if (!existing) throw new McpServerNotFoundError(name);
+
+    await this.disconnect(name);
+    const urlChanged = existing.config.type === 'http'
+      && (config.type !== 'http' || existing.config.url !== config.url);
+    if (urlChanged) {
+      await this.oauthService?.removeClient(existing.name);
+      this.emitOAuthChanged();
     }
-    const id = this.store.register(name, config, provenance, authType);
-    this.connectInBackground(name);
-    return id;
+    this.store.update(name, config, provenance, authType);
   }
 
   /**
-   * 禁用后断开连接并注销工具; 启用后开始后台连接.
+   * 禁用后断开连接并注销工具; 启用只修改配置标记, 等待用户手动点击连接或下次启动.
    */
   async setEnabled(name: string, enabled: boolean): Promise<void> {
     this.store.setEnabled(name, enabled);
     if (!enabled) {
       await this.disconnect(name);
-      return;
     }
-    this.connectInBackground(name);
   }
 
   /** 先断开并注销工具, 再删除配置, 避免留下仍在运行的子进程. */
   async remove(name: string): Promise<void> {
     const existing = this.store.findByName(name);
+    if (!existing) throw new McpServerNotFoundError(name);
     await this.disconnect(name);
-    if (existing) {
-      await this.oauthService?.removeClient(existing.id);
-    }
+    await this.oauthService?.removeClient(existing.name);
+    this.servers.delete(name);
     this.store.remove(name);
   }
 
@@ -449,12 +451,13 @@ export class McpRegistry {
     }
   }
 
-  private serverFor(serverName: string): McpServer {
+  private getOrCreateServer(serverName: string): McpServer {
     let server = this.servers.get(serverName);
     if (!server) {
       server = {
-        generation: 0,
-        info: connectionInfo(serverName, 'disconnected', this.primed.get(serverName) ?? []),
+        connectionVersion: 0,
+        status: 'disconnected',
+        registeredTools: [],
       };
       this.servers.set(serverName, server);
     }
@@ -469,33 +472,36 @@ export class McpRegistry {
   ): Promise<McpConnection> {
     if (server.retryTimer) clearTimeout(server.retryTimer);
     server.retryTimer = undefined;
-    server.retryAttempt = undefined;
-    server.generation += 1;
-    const generation = server.generation;
+    server.connectionVersion += 1;
+    const version = server.connectionVersion;
     const superseded = new McpConnectionSupersededError(serverName);
     server.lifecycleAbort?.abort(superseded);
     const lifecycleAbort = new AbortController();
-    const previous = server.opened;
-    const previousTools = server.info.status === 'connected' ? server.info.tools : [];
+    const previousConnection = server.connection;
+    // 已有在线连接被替换时先注销旧在线工具; 启动从 disconnected 建连则保留缓存工具直到完成或失败.
+    if (server.status === 'connected') {
+      unregisterTools(this.toolRegistry, server.registeredTools);
+      server.registeredTools = [];
+    }
 
-    server.opened = undefined;
-    server.configJson = configJson;
+    server.connection = undefined;
+    server.activeConfigJson = configJson;
     server.lifecycleAbort = lifecycleAbort;
-    server.refreshTask = undefined;
-    server.refreshRequested = false;
-    server.info = connectionInfo(serverName, 'connecting', this.primed.get(serverName) ?? []);
-    this.publish(server.info);
-    unregisterTools(this.toolRegistry, previousTools);
+    server.pendingToolRefreshTask = undefined;
+    server.needsToolRefresh = false;
+    server.status = 'connecting';
+    server.error = undefined;
+    this.emitConnectionChanged();
 
     const task = this.runConnection(
       serverName,
       config,
       server,
-      generation,
+      version,
       lifecycleAbort,
-      previous,
+      previousConnection,
     );
-    server.connectTask = task;
+    server.pendingConnectTask = task;
     return task;
   }
 
@@ -503,17 +509,17 @@ export class McpRegistry {
     serverName: string,
     config: McpServerConfig,
     server: McpServer,
-    generation: number,
+    version: number,
     lifecycleAbort: AbortController,
-    previous?: OpenedConnection,
+    previousConnection?: OpenedConnection,
   ): Promise<McpConnection> {
     let opened: OpenedConnection | undefined;
     let committed = false;
     let lastTransportError: Error | undefined;
     let closedError: Error | undefined;
     try {
-      if (previous) await previous.cleanup();
-      this.assertCurrent(serverName, server, generation);
+      if (previousConnection) await previousConnection.cleanup();
+      this.assertCurrent(serverName, server, version);
 
       const record = this.store.findByName(serverName);
       const oauthClient = (
@@ -522,17 +528,17 @@ export class McpRegistry {
         && record.config.url === config.url
         && record.authType === 'oauth'
       )
-        ? this.oauthService?.getClient(record.id, record.config.url)
+        ? this.oauthService?.getClient(record.name, record.config.url)
         : undefined;
       if (oauthClient) {
         await oauthClient.ensureFreshToken(lifecycleAbort.signal);
-        this.assertCurrent(serverName, server, generation);
+        this.assertCurrent(serverName, server, version);
       }
       opened = await openConnection(serverName, config, lifecycleAbort.signal, oauthClient?.fetchWithOAuth);
-      this.assertCurrent(serverName, server, generation);
+      this.assertCurrent(serverName, server, version);
 
       // onerror 不一定导致连接关闭, 此时先保存错误供 onclose 使用.
-      // 显式断开先增加 generation, 避免关闭回调把新状态改为 failed.
+      // 显式断开先递增 connectionVersion, 避免关闭回调把新状态改为 failed.
       const previousOnError = opened.client.onerror;
       const previousOnClose = opened.client.onclose;
       opened.client.onerror = (error) => {
@@ -545,14 +551,14 @@ export class McpRegistry {
         );
         closedError = error;
         if (committed && opened) {
-          this.handleUnexpectedClose(serverName, server, generation, opened, error);
+          this.handleUnexpectedClose(serverName, server, version, opened, error);
         }
         previousOnClose?.();
       };
 
       // 先监听再读取工具, 连接期间收到的变化在初次注册完成后刷新, 避免漏掉通知.
       opened.client.setNotificationHandler(ToolListChangedNotificationSchema, () => {
-        this.requestToolRefresh(serverName, server, generation, opened?.client);
+        this.requestToolRefresh(serverName, server, version, opened?.client);
       });
 
       const tools = await withTimeout(
@@ -561,17 +567,15 @@ export class McpRegistry {
         () => new McpTimeoutError(serverName, 'tool discovery', TOOL_DISCOVERY_TIMEOUT_MS),
         (error) => lifecycleAbort.abort(error),
       );
-      this.assertCurrent(serverName, server, generation);
+      this.assertCurrent(serverName, server, version);
       if (closedError) throw closedError;
 
-      this.replaceRegisteredTools(this.primed.get(serverName) ?? [], tools);
-      this.primed.delete(serverName);
-
-      const info = connectionInfo(serverName, 'connected', tools);
-      server.info = info;
-      server.retryAttempt = 0;
-      this.publish(info);
-      server.opened = opened;
+      this.replaceRegisteredTools(server.registeredTools, tools);
+      server.registeredTools = [...tools];
+      server.status = 'connected';
+      server.error = undefined;
+      this.emitConnectionChanged();
+      server.connection = opened;
       committed = true;
 
       try {
@@ -579,17 +583,15 @@ export class McpRegistry {
       } catch {
         // 缓存写入失败时保留已经建立的实时连接.
       }
-      this.startRequestedToolRefresh(serverName, server, generation, opened.client);
-      return copyConnection(info);
+      this.startRequestedToolRefresh(serverName, server, version, opened.client);
+      return connectionSnapshot(serverName, server);
     } catch (err) {
-      if (server.generation !== generation) {
+      if (server.connectionVersion !== version) {
         throw err instanceof McpConnectionSupersededError
           ? err
           : new McpConnectionSupersededError(serverName);
       }
-      const isUnauthorized =
-        (err as Error).name === 'UnauthorizedError' ||
-        /unauthorized|401/i.test((err as Error).message);
+      const isUnauthorized = isUnauthorizedError(err);
       if (isUnauthorized && server.retryTimer) {
         clearTimeout(server.retryTimer);
         server.retryTimer = undefined;
@@ -597,23 +599,16 @@ export class McpRegistry {
       const error = isUnauthorized
         ? 'OAuth authorization required'
         : err instanceof Error ? err.message : String(err);
-      server.info = connectionInfo(
-        serverName,
-        'failed',
-        this.primed.get(serverName) ?? [],
-        error,
-      );
-      const primedTools = this.primed.get(serverName);
-      if (primedTools) {
-        unregisterTools(this.toolRegistry, primedTools);
-        this.primed.delete(serverName);
-      }
-      this.publish(server.info);
+      unregisterTools(this.toolRegistry, server.registeredTools);
+      server.registeredTools = [];
+      server.status = 'failed';
+      server.error = error;
+      this.emitConnectionChanged();
       throw err;
     } finally {
       if (!committed && opened) await opened.cleanup();
-      if (server.generation === generation) {
-        server.connectTask = undefined;
+      if (server.connectionVersion === version) {
+        server.pendingConnectTask = undefined;
         if (!committed) server.lifecycleAbort = undefined;
       }
     }
@@ -622,46 +617,42 @@ export class McpRegistry {
   private handleUnexpectedClose(
     serverName: string,
     server: McpServer,
-    generation: number,
+    version: number,
     opened: OpenedConnection,
     error: Error,
   ): void {
     if (
-      server.generation !== generation
-      || server.opened !== opened
-      || server.info.status !== 'connected'
+      server.connectionVersion !== version
+      || server.connection !== opened
+      || server.status !== 'connected'
     ) {
       return;
     }
 
-    const tools = server.info.tools;
-    server.generation += 1;
+    server.connectionVersion += 1;
     server.lifecycleAbort?.abort(error);
-    server.opened = undefined;
-    server.connectTask = undefined;
+    server.connection = undefined;
+    server.pendingConnectTask = undefined;
     server.lifecycleAbort = undefined;
-    server.refreshTask = undefined;
-    server.refreshRequested = false;
-    server.info = connectionInfo(serverName, 'failed', tools, error.message);
-    unregisterTools(this.toolRegistry, tools);
-    this.publish(server.info);
+    server.pendingToolRefreshTask = undefined;
+    server.needsToolRefresh = false;
+    server.status = 'failed';
+    server.error = error.message;
+    unregisterTools(this.toolRegistry, server.registeredTools);
+    server.registeredTools = [];
+    this.emitConnectionChanged();
     const record = this.store.findByName(serverName);
-    if (record?.enabled && record.config.type === 'http') {
-      const isUnauthorized =
-        error.name === 'UnauthorizedError' ||
-        /unauthorized|401/i.test(error.message);
-      if (!isUnauthorized) {
-        this.scheduleHttpRetry(serverName, server, server.retryAttempt ?? 0);
-      }
+    if (record?.enabled && record.config.type === 'http' && !isUnauthorizedError(error)) {
+      this.scheduleHttpRetry(serverName, server, 0);
     }
   }
 
   private assertCurrent(
     serverName: string,
     server: McpServer,
-    generation: number,
+    version: number,
   ): void {
-    if (server.generation !== generation) {
+    if (server.connectionVersion !== version) {
       throw new McpConnectionSupersededError(serverName);
     }
   }
@@ -669,32 +660,32 @@ export class McpRegistry {
   private requestToolRefresh(
     serverName: string,
     server: McpServer,
-    generation: number,
+    version: number,
     client: OpenedConnection['client'] | undefined,
   ): void {
-    if (server.generation !== generation || !client) return;
-    server.refreshRequested = true;
-    this.startRequestedToolRefresh(serverName, server, generation, client);
+    if (server.connectionVersion !== version || !client) return;
+    server.needsToolRefresh = true;
+    this.startRequestedToolRefresh(serverName, server, version, client);
   }
 
   private startRequestedToolRefresh(
     serverName: string,
     server: McpServer,
-    generation: number,
+    version: number,
     client: OpenedConnection['client'],
   ): void {
     if (
-      !server.refreshRequested ||
-      server.refreshTask ||
-      server.generation !== generation ||
-      server.info.status !== 'connected' ||
-      server.opened?.client !== client
+      !server.needsToolRefresh ||
+      server.pendingToolRefreshTask ||
+      server.connectionVersion !== version ||
+      server.status !== 'connected' ||
+      server.connection?.client !== client
     ) {
       return;
     }
 
-    const task = this.runToolRefreshLoop(serverName, server, generation, client);
-    server.refreshTask = task;
+    const task = this.runToolRefreshLoop(serverName, server, version, client);
+    server.pendingToolRefreshTask = task;
     void task.catch((err) => {
       logging({
         level: 'warn',
@@ -709,12 +700,12 @@ export class McpRegistry {
   private async runToolRefreshLoop(
     serverName: string,
     server: McpServer,
-    generation: number,
+    version: number,
     client: OpenedConnection['client'],
   ): Promise<void> {
     try {
-      while (server.refreshRequested && server.generation === generation) {
-        server.refreshRequested = false;
+      while (server.needsToolRefresh && server.connectionVersion === version) {
+        server.needsToolRefresh = false;
         const linked = linkedAbortController(server.lifecycleAbort?.signal);
         try {
           const tools = await withTimeout(
@@ -723,16 +714,14 @@ export class McpRegistry {
             () => new McpTimeoutError(serverName, 'tool refresh', TOOL_DISCOVERY_TIMEOUT_MS),
             (error) => linked.controller.abort(error),
           );
-          this.assertCurrent(serverName, server, generation);
-          if (server.opened?.client !== client || server.info.status !== 'connected') return;
+          this.assertCurrent(serverName, server, version);
+          if (server.connection?.client !== client || server.status !== 'connected') return;
 
-          this.replaceRegisteredTools(server.info.tools, tools);
-          server.info = connectionInfo(
-            serverName,
-            'connected',
-            tools,
-          );
-          this.publish(server.info);
+          this.replaceRegisteredTools(server.registeredTools, tools);
+          server.registeredTools = [...tools];
+          server.status = 'connected';
+          server.error = undefined;
+          this.emitConnectionChanged();
           try {
             this.store.cacheTools(serverName, tools);
           } catch {
@@ -743,11 +732,11 @@ export class McpRegistry {
         }
       }
     } finally {
-      if (server.generation === generation) {
-        server.refreshTask = undefined;
-        if (server.refreshRequested) {
+      if (server.connectionVersion === version) {
+        server.pendingToolRefreshTask = undefined;
+        if (server.needsToolRefresh) {
           queueMicrotask(() => {
-            this.startRequestedToolRefresh(serverName, server, generation, client);
+            this.startRequestedToolRefresh(serverName, server, version, client);
           });
         }
       }
@@ -770,27 +759,36 @@ export class McpRegistry {
   private scheduleHttpRetry(
     serverName: string,
     server: McpServer,
-    attempt: number,
+    retryIndex: number,
   ): void {
     const delays = [1_000, 2_000, 4_000, 8_000, 16_000];
-    if (attempt >= delays.length || server.retryTimer) return;
-    server.retryAttempt = attempt + 1;
-    server.info = connectionInfo(serverName, 'connecting', this.store.findByName(serverName)?.cachedTools ?? []);
-    this.publish(server.info);
+    if (retryIndex >= delays.length || server.retryTimer) return;
+    server.status = 'connecting';
+    server.error = undefined;
+    this.emitConnectionChanged();
     server.retryTimer = setTimeout(() => {
       server.retryTimer = undefined;
       const current = this.store.findByName(serverName);
       if (!current?.enabled || current.config.type !== 'http') return;
       void this.connectConfig(serverName, current.config).catch(() => {
         const slot = this.servers.get(serverName);
-        if (slot) this.scheduleHttpRetry(serverName, slot, attempt + 1);
+        if (slot) this.scheduleHttpRetry(serverName, slot, retryIndex + 1);
       });
-    }, delays[attempt]);
+    }, delays[retryIndex]);
   }
 
-  private publish(connection: McpConnection): void {
-    this.connectionChanged(copyConnection(connection));
+  private emitConnectionChanged(): void {
+    this.onEvent({ type: 'mcp_connection_changed' });
   }
+
+  private emitOAuthChanged(): void {
+    this.onEvent({ type: 'mcp_oauth_changed' });
+  }
+}
+
+function isUnauthorizedError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return error.name === 'UnauthorizedError' || /unauthorized|401/i.test(error.message);
 }
 
 // ToolRegistry 保存不同输入和结果类型的工具, MCP 工具由 buildMcpBuiltTool 创建.
@@ -799,9 +797,9 @@ type AnyMcpTool = Tool<any, any, any, any>;
 
 function toTools(
   tools: readonly McpToolInfo[],
-  registry: McpRegistry,
+  serverManager: McpServerManager,
 ): AnyMcpTool[] {
-  return tools.map((tool) => buildMcpBuiltTool(tool, registry));
+  return tools.map((tool) => buildMcpBuiltTool(tool, serverManager));
 }
 
 function unregisterTools(toolRegistry: ToolRegistry, tools: readonly McpToolInfo[]): void {
@@ -810,20 +808,11 @@ function unregisterTools(toolRegistry: ToolRegistry, tools: readonly McpToolInfo
   }
 }
 
-function connectionInfo(
-  serverName: string,
-  status: McpConnection['status'],
-  tools: readonly McpToolInfo[],
-  error?: string,
-): McpConnection {
+function connectionSnapshot(serverName: string, server: McpServer): McpConnection {
   return {
     serverName,
-    status,
-    tools: [...tools],
-    ...(error ? { error } : {}),
+    status: server.status,
+    tools: [...server.registeredTools],
+    ...(server.error ? { error: server.error } : {}),
   };
-}
-
-function copyConnection(info: McpConnection): McpConnection {
-  return { ...info, tools: [...info.tools] };
 }

@@ -70,7 +70,7 @@ describe('McpOAuthClient 单元测试', () => {
       installed_at: 1000,
     });
 
-    client = new McpOAuthClient('srv-1', 'https://mcp.notion.com/mcp', credentialsRepo);
+    client = new McpOAuthClient('notion', 'https://mcp.notion.com/mcp', credentialsRepo);
   });
 
   afterEach(() => database.close());
@@ -130,11 +130,11 @@ describe('McpOAuthClient 单元测试', () => {
     });
 
     // 模拟另一操作清除了 Token 使版本号增加
-    credentialsRepo.clearTokens('srv-1', Date.now());
+    credentialsRepo.clearTokens('notion', Date.now());
 
     // 迟到的异步续期尝试写库, 应被乐观锁拦截
     const staleUpdateSuccess = credentialsRepo.updateTokensIfVersionMatches({
-      mcpServerId: 'srv-1',
+      mcpServerName: 'notion',
       version: 1, // 旧版本号
       accessToken: 'stale-token',
       updatedAt: Date.now(),
@@ -145,17 +145,16 @@ describe('McpOAuthClient 单元测试', () => {
     expect(currentTokens).toBeUndefined();
   });
 
-  it('挂载授权任务, 读取 state 与 PKCE Verifier, 取消时清理', async () => {
-    expect(client.redirectUrl).toBeUndefined();
+  it('挂载授权任务并记录 authorizing 状态与 authorizationUrl, 取消时清理', async () => {
+    expect(client.getPendingLogin()).toBeUndefined();
 
     let cleanedUp = false;
     const mockPending: McpOAuthPendingLogin = {
-      serverId: 'srv-1',
-      serverName: 'notion',
-      serverUrl: 'https://mcp.notion.com/mcp',
       state: 'state-random-xyz',
       redirectUri: 'http://127.0.0.1:54321/oauth/callback',
       codeVerifier: 'verifier-abc',
+      authorizationUrl: new URL('https://mcp.notion.com/authorize?state=state-random-xyz'),
+      startedAt: 12345,
       cleanup: async () => {
         cleanedUp = true;
       },
@@ -164,15 +163,17 @@ describe('McpOAuthClient 单元测试', () => {
     };
 
     await client.attachPendingLogin(mockPending);
-    expect(client.redirectUrl).toBe('http://127.0.0.1:54321/oauth/callback');
-    expect(client.state()).toBe('state-random-xyz');
-    expect(client.codeVerifier()).toBe('verifier-abc');
-
-    client.saveCodeVerifier('verifier-new');
-    expect(client.codeVerifier()).toBe('verifier-new');
+    expect(client.getPendingLogin()).toBe(mockPending);
+    expect(client.getStatus()).toEqual({
+      status: 'authorizing',
+      authorizationUrl: 'https://mcp.notion.com/authorize?state=state-random-xyz',
+      expiresAtMs: null,
+      updatedAt: 12345,
+    });
 
     await client.cancelPendingLogin();
-    expect(client.redirectUrl).toBeUndefined();
+    expect(client.getPendingLogin()).toBeUndefined();
+    expect(client.getStatus().status).toBe('required');
     expect(cleanedUp).toBe(true);
   });
 
@@ -181,11 +182,9 @@ describe('McpOAuthClient 单元测试', () => {
     let oldAborted = false;
 
     const oldPending: McpOAuthPendingLogin = {
-      serverId: 'srv-1',
-      serverName: 'notion',
-      serverUrl: 'https://mcp.notion.com/mcp',
       state: 'state-old',
       redirectUri: 'http://127.0.0.1:54321/oauth/callback',
+      startedAt: 1000,
       cleanup: async () => {
         await new Promise((r) => setTimeout(r, 10));
         oldCleanedUp = true;
@@ -201,11 +200,9 @@ describe('McpOAuthClient 单元测试', () => {
     expect(client.getPendingLogin()?.state).toBe('state-old');
 
     const newPending: McpOAuthPendingLogin = {
-      serverId: 'srv-1',
-      serverName: 'notion',
-      serverUrl: 'https://mcp.notion.com/mcp',
       state: 'state-new',
       redirectUri: 'http://127.0.0.1:54322/oauth/callback',
+      startedAt: 2000,
       cleanup: async () => {},
       promise: Promise.resolve(),
       abortController: new AbortController(),
@@ -226,11 +223,9 @@ describe('McpOAuthClient 单元测试', () => {
 
     // 挂载授权任务后: authorizing
     const mockPending: McpOAuthPendingLogin = {
-      serverId: 'srv-1',
-      serverName: 'notion',
-      serverUrl: 'https://mcp.notion.com/mcp',
       state: 'state-123',
       redirectUri: 'http://127.0.0.1:54321/oauth/callback',
+      startedAt: 1000,
       cleanup: async () => {},
       promise: Promise.resolve(),
       abortController: new AbortController(),
@@ -310,12 +305,11 @@ describe('McpOAuthClient 单元测试', () => {
 
     try {
       const serverUrl = `${oauthServer.baseUrl}/mcp`;
-      const liveClient = new McpOAuthClient('srv-1', serverUrl, credentialsRepo);
-      expect(liveClient.redirectUrl).toBeUndefined();
+      const liveClient = new McpOAuthClient('notion', serverUrl, credentialsRepo);
 
       await liveClient.saveClientInformation({ client_id: 'client-live-1' });
       credentialsRepo.saveInitialOrClient({
-        mcpServerId: 'srv-1',
+        mcpServerName: 'notion',
         serverUrl,
         clientId: 'client-live-1',
         accessToken: 'expired-access',
@@ -330,7 +324,7 @@ describe('McpOAuthClient 单元测试', () => {
       expect(params.get('grant_type')).toBe('refresh_token');
       expect(params.get('refresh_token')).toBe('old-refresh-token');
 
-      const updated = credentialsRepo.findByServerId('srv-1');
+      const updated = credentialsRepo.findByServerName('notion');
       expect(updated?.access_token).toBe('sdk-fresh-access');
       expect(updated?.refresh_token).toBe('sdk-fresh-refresh');
     } finally {
@@ -379,11 +373,11 @@ describe('McpOAuthClient 单元测试', () => {
 
     try {
       const serverUrl = `${oauthServer.baseUrl}/mcp`;
-      const liveClient = new McpOAuthClient('srv-1', serverUrl, credentialsRepo);
+      const liveClient = new McpOAuthClient('notion', serverUrl, credentialsRepo);
 
       // Case A: 当前 refresh 收到 invalid_grant 时清空本机 Token 并保留 client_id
       credentialsRepo.saveInitialOrClient({
-        mcpServerId: 'srv-1',
+        mcpServerName: 'notion',
         serverUrl,
         clientId: 'client-permanent',
         accessToken: 'expired-access',
@@ -393,14 +387,14 @@ describe('McpOAuthClient 单元测试', () => {
       });
       await liveClient.ensureFreshToken();
 
-      const afterRevoke = credentialsRepo.findByServerId('srv-1');
+      const afterRevoke = credentialsRepo.findByServerName('notion');
       expect(afterRevoke?.access_token).toBeNull();
       expect(afterRevoke?.refresh_token).toBeNull();
       expect(afterRevoke?.client_id).toBe('client-permanent');
 
       // Case B: 续期成功回包前若已被清除授权, 迟到的成功结果不得写回
       credentialsRepo.saveInitialOrClient({
-        mcpServerId: 'srv-1',
+        mcpServerName: 'notion',
         serverUrl,
         clientId: 'client-permanent',
         accessToken: 'expired-access-2',
@@ -416,17 +410,17 @@ describe('McpOAuthClient 单元测试', () => {
         expires_in: 3600,
       };
       onTokenRequest = () => {
-        credentialsRepo.clearTokens('srv-1', Date.now());
+        credentialsRepo.clearTokens('notion', Date.now());
       };
 
       await liveClient.ensureFreshToken();
-      const afterClearedDuringRefresh = credentialsRepo.findByServerId('srv-1');
+      const afterClearedDuringRefresh = credentialsRepo.findByServerName('notion');
       expect(afterClearedDuringRefresh?.access_token).toBeNull();
       expect(afterClearedDuringRefresh?.refresh_token).toBeNull();
 
       // Case C: 续期途中已被写入新一轮有效 Token 后, 旧请求收到 invalid_grant 不得误删新 Token
       credentialsRepo.saveInitialOrClient({
-        mcpServerId: 'srv-1',
+        mcpServerName: 'notion',
         serverUrl,
         clientId: 'client-permanent',
         accessToken: 'expired-access-3',
@@ -441,7 +435,7 @@ describe('McpOAuthClient 单元测试', () => {
       };
       onTokenRequest = () => {
         credentialsRepo.saveInitialOrClient({
-          mcpServerId: 'srv-1',
+          mcpServerName: 'notion',
           serverUrl,
           clientId: 'client-permanent',
           accessToken: 'newer-login-access',
@@ -452,7 +446,7 @@ describe('McpOAuthClient 单元测试', () => {
       };
 
       await liveClient.ensureFreshToken();
-      const afterNewerLogin = credentialsRepo.findByServerId('srv-1');
+      const afterNewerLogin = credentialsRepo.findByServerName('notion');
       expect(afterNewerLogin?.access_token).toBe('newer-login-access');
       expect(afterNewerLogin?.refresh_token).toBe('newer-login-refresh');
     } finally {
@@ -481,7 +475,7 @@ describe('McpOAuthClient 单元测试', () => {
       const urlA = `${mcpServer.baseUrl}/mcp`;
       const urlB = `${mcpServer.baseUrl}/other-mcp`;
       credentialsRepo.saveInitialOrClient({
-        mcpServerId: 'srv-1',
+        mcpServerName: 'notion',
         serverUrl: urlA,
         clientId: 'client-a',
         accessToken: 'secret-token-a',
@@ -489,8 +483,8 @@ describe('McpOAuthClient 单元测试', () => {
         updatedAt: 1000,
       });
 
-      const clientA = new McpOAuthClient('srv-1', urlA, credentialsRepo);
-      const clientB = new McpOAuthClient('srv-1', urlB, credentialsRepo);
+      const clientA = new McpOAuthClient('notion', urlA, credentialsRepo);
+      const clientB = new McpOAuthClient('notion', urlB, credentialsRepo);
 
       // URL 不匹配的 clientB 读不到客户端信息与 Token, 状态必须为 required
       expect(await clientB.clientInformation()).toBeUndefined();

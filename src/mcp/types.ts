@@ -1,9 +1,23 @@
 import { z } from 'zod';
 import { isInternalEnvironmentVariable } from '@ema-agent/sandbox/commandEnvironment';
+import { MCP_SERVER_NAME_RE, sanitizeMcpServerName } from './serverName.js';
 import { MAX_MCP_TOOLS_PER_SERVER } from './tools/toolSchemaLimits.js';
+
+export { MCP_SERVER_NAME_RE, sanitizeMcpServerName };
 
 /** 单次工具调用超时, 单位为秒. 未配置时使用 120 秒. */
 const TOOL_TIMEOUT_SCHEMA = z.number().int().min(5).max(600).optional();
+
+export const McpServerNameSchema = z
+  .string()
+  .trim()
+  .regex(
+    MCP_SERVER_NAME_RE,
+    'MCP server name may only contain letters, digits, hyphens, and underscores (1-100 chars).',
+  );
+
+export const McpAuthTypeSchema = z.enum(['none', 'oauth']);
+export type McpAuthType = z.infer<typeof McpAuthTypeSchema>;
 
 export const McpStdioConfigSchema = z.object({
   type:    z.literal('stdio').default('stdio'),
@@ -62,7 +76,7 @@ export interface McpServerRecord {
   /** 最近一次成功发现的工具, 用于启动时注册工具和离线时展示详情. */
   cachedTools?: McpToolInfo[];
   enabled:     boolean;
-  authType:    'none' | 'oauth';
+  authType:    McpAuthType;
 }
 
 /** connected 表示握手和初次工具发现都已成功; disconnected 表示尚未连接或显式断开. */
@@ -106,11 +120,11 @@ export interface McpServerSummary {
   provenance:        McpInstallProvenance;
   config:            McpServerConfig;
   enabled:           boolean;
-  authType:          'none' | 'oauth';
+  authType:          McpAuthType;
   connectionStatus:  McpConnectionStatus;
   connectionError?:  string;
   toolCount:          number;
-  /** HTTP MCP 服务的 OAuth 鉴权状态. stdio 服务或未配置 OAuth 时为 null. */
+  /** HTTP MCP 服务的 OAuth 鉴权状态. stdio 服务或未开启 OAuth 时省略或为 null. */
   oauth?:            McpOAuthStatus | null;
 }
 

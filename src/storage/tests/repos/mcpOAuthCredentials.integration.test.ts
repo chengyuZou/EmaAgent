@@ -27,9 +27,9 @@ describe('MCP OAuth 凭据持久化与乐观锁', () => {
 
   afterEach(() => database.close());
 
-  it('保存客户端信息与初始 Token, 按 Server ID 和 URL 查询', () => {
+  it('保存客户端信息与初始 Token, 按 Server 名称和 URL 查询', () => {
     const saved = credentialsRepo.saveInitialOrClient({
-      mcpServerId: 'srv-notion',
+      mcpServerName: 'notion',
       serverUrl: 'https://mcp.notion.com/mcp',
       clientId: 'client-123',
       clientSecret: 'secret-456',
@@ -44,8 +44,8 @@ describe('MCP OAuth 凭据持久化与乐观锁', () => {
     expect(saved.client_secret).toBe('secret-456');
     expect(saved.access_token).toBe('token-initial');
 
-    const byId = credentialsRepo.findByServerId('srv-notion');
-    expect(byId).toEqual(saved);
+    const byName = credentialsRepo.findByServerName('notion');
+    expect(byName).toEqual(saved);
 
     const byUrl = credentialsRepo.findByServerUrl('https://mcp.notion.com/mcp');
     expect(byUrl).toEqual(saved);
@@ -53,7 +53,7 @@ describe('MCP OAuth 凭据持久化与乐观锁', () => {
 
   it('版本匹配时成功更新 Token 并自增版本号', () => {
     credentialsRepo.saveInitialOrClient({
-      mcpServerId: 'srv-notion',
+      mcpServerName: 'notion',
       serverUrl: 'https://mcp.notion.com/mcp',
       clientId: 'client-123',
       accessToken: 'token-1',
@@ -63,7 +63,7 @@ describe('MCP OAuth 凭据持久化与乐观锁', () => {
     });
 
     const updated = credentialsRepo.updateTokensIfVersionMatches({
-      mcpServerId: 'srv-notion',
+      mcpServerName: 'notion',
       version: 1,
       accessToken: 'token-2',
       refreshToken: 'refresh-2',
@@ -73,7 +73,7 @@ describe('MCP OAuth 凭据持久化与乐观锁', () => {
 
     expect(updated).toBe(true);
 
-    const row = credentialsRepo.findByServerId('srv-notion');
+    const row = credentialsRepo.findByServerName('notion');
     expect(row?.version).toBe(2);
     expect(row?.access_token).toBe('token-2');
     expect(row?.refresh_token).toBe('refresh-2');
@@ -82,7 +82,7 @@ describe('MCP OAuth 凭据持久化与乐观锁', () => {
 
   it('版本过旧时拒绝更新 Token, 防止迟到的异步续期覆盖新登录', () => {
     credentialsRepo.saveInitialOrClient({
-      mcpServerId: 'srv-notion',
+      mcpServerName: 'notion',
       serverUrl: 'https://mcp.notion.com/mcp',
       clientId: 'client-123',
       accessToken: 'token-1',
@@ -92,13 +92,13 @@ describe('MCP OAuth 凭据持久化与乐观锁', () => {
     });
 
     // 模拟另一操作(如用户清除授权或重新授权)使版本升到了 2
-    credentialsRepo.clearTokens('srv-notion', 1500);
-    const rowAfterClear = credentialsRepo.findByServerId('srv-notion');
+    credentialsRepo.clearTokens('notion', 1500);
+    const rowAfterClear = credentialsRepo.findByServerName('notion');
     expect(rowAfterClear?.version).toBe(2);
 
     // 迟到的旧续期请求仍按 version = 1 尝试写库, 应被拦截
     const staleUpdated = credentialsRepo.updateTokensIfVersionMatches({
-      mcpServerId: 'srv-notion',
+      mcpServerName: 'notion',
       version: 1,
       accessToken: 'stale-token',
       refreshToken: 'stale-refresh',
@@ -109,7 +109,7 @@ describe('MCP OAuth 凭据持久化与乐观锁', () => {
     expect(staleUpdated).toBe(false);
 
     // 数据库保持清除后的状态, Token 不被污染
-    const current = credentialsRepo.findByServerId('srv-notion');
+    const current = credentialsRepo.findByServerName('notion');
     expect(current?.version).toBe(2);
     expect(current?.access_token).toBeNull();
     expect(current?.refresh_token).toBeNull();
@@ -117,7 +117,7 @@ describe('MCP OAuth 凭据持久化与乐观锁', () => {
 
   it('清除授权时清空 Token 并自增版本号, 保留客户端注册信息', () => {
     credentialsRepo.saveInitialOrClient({
-      mcpServerId: 'srv-notion',
+      mcpServerName: 'notion',
       serverUrl: 'https://mcp.notion.com/mcp',
       clientId: 'client-permanent',
       clientSecret: 'secret-permanent',
@@ -127,10 +127,10 @@ describe('MCP OAuth 凭据持久化与乐观锁', () => {
       updatedAt: 1000,
     });
 
-    const cleared = credentialsRepo.clearTokens('srv-notion', 2000);
+    const cleared = credentialsRepo.clearTokens('notion', 2000);
     expect(cleared).toBe(true);
 
-    const row = credentialsRepo.findByServerId('srv-notion');
+    const row = credentialsRepo.findByServerName('notion');
     expect(row?.version).toBe(2);
     expect(row?.access_token).toBeNull();
     expect(row?.refresh_token).toBeNull();
@@ -142,7 +142,7 @@ describe('MCP OAuth 凭据持久化与乐观锁', () => {
 
   it('saveInitialOrClient 在 serverUrl 或 clientId 变更时清空旧 Token 与密钥, 未变更时保留', () => {
     credentialsRepo.saveInitialOrClient({
-      mcpServerId: 'srv-notion',
+      mcpServerName: 'notion',
       serverUrl: 'https://mcp.notion.com/mcp',
       clientId: 'client-1',
       clientSecret: 'secret-1',
@@ -154,13 +154,13 @@ describe('MCP OAuth 凭据持久化与乐观锁', () => {
 
     // 同 serverUrl 与 clientId 下仅更新基本信息时, 保留已存 secret 与 Token
     credentialsRepo.saveInitialOrClient({
-      mcpServerId: 'srv-notion',
+      mcpServerName: 'notion',
       serverUrl: 'https://mcp.notion.com/mcp',
       clientId: 'client-1',
       updatedAt: 1500,
     });
 
-    const unchanged = credentialsRepo.findByServerId('srv-notion');
+    const unchanged = credentialsRepo.findByServerName('notion');
     expect(unchanged?.client_secret).toBe('secret-1');
     expect(unchanged?.access_token).toBe('token-1');
     expect(unchanged?.refresh_token).toBe('refresh-1');
@@ -168,13 +168,13 @@ describe('MCP OAuth 凭据持久化与乐观锁', () => {
 
     // 变更 serverUrl 时清空旧 secret 与 Token, 且版本号自增
     credentialsRepo.saveInitialOrClient({
-      mcpServerId: 'srv-notion',
+      mcpServerName: 'notion',
       serverUrl: 'https://mcp.example.com/mcp',
       clientId: 'client-1',
       updatedAt: 2000,
     });
 
-    const urlChanged = credentialsRepo.findByServerId('srv-notion');
+    const urlChanged = credentialsRepo.findByServerName('notion');
     expect(urlChanged?.server_url).toBe('https://mcp.example.com/mcp');
     expect(urlChanged?.client_id).toBe('client-1');
     expect(urlChanged?.client_secret).toBeNull();
@@ -185,7 +185,7 @@ describe('MCP OAuth 凭据持久化与乐观锁', () => {
 
     // 重新写入新客户端的密钥和 Token, 再变更 clientId 时同样清空
     credentialsRepo.saveInitialOrClient({
-      mcpServerId: 'srv-notion',
+      mcpServerName: 'notion',
       serverUrl: 'https://mcp.example.com/mcp',
       clientId: 'client-1',
       clientSecret: 'secret-new',
@@ -196,13 +196,13 @@ describe('MCP OAuth 凭据持久化与乐观锁', () => {
     });
 
     credentialsRepo.saveInitialOrClient({
-      mcpServerId: 'srv-notion',
+      mcpServerName: 'notion',
       serverUrl: 'https://mcp.example.com/mcp',
       clientId: 'client-2',
       updatedAt: 3000,
     });
 
-    const clientChanged = credentialsRepo.findByServerId('srv-notion');
+    const clientChanged = credentialsRepo.findByServerName('notion');
     expect(clientChanged?.client_id).toBe('client-2');
     expect(clientChanged?.client_secret).toBeNull();
     expect(clientChanged?.access_token).toBeNull();
@@ -212,15 +212,15 @@ describe('MCP OAuth 凭据持久化与乐观锁', () => {
 
   it('父级 mcp_servers 记录删除时级联删除对应的 OAuth 凭据', () => {
     credentialsRepo.saveInitialOrClient({
-      mcpServerId: 'srv-notion',
+      mcpServerName: 'notion',
       serverUrl: 'https://mcp.notion.com/mcp',
       clientId: 'client-123',
       updatedAt: 1000,
     });
 
-    expect(credentialsRepo.findByServerId('srv-notion')).not.toBeNull();
+    expect(credentialsRepo.findByServerName('notion')).not.toBeNull();
 
     serversRepo.deleteById('srv-notion');
-    expect(credentialsRepo.findByServerId('srv-notion')).toBeNull();
+    expect(credentialsRepo.findByServerName('notion')).toBeNull();
   });
 });

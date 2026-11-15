@@ -4,7 +4,7 @@ import { buildTool, contextOk }  from '@ema-agent/tools';
 import type { Tool }             from '@ema-agent/tools';
 import type { McpToolInfo }      from '../types.js';
 import { buildMcpToolName }      from '../types.js';
-import type { McpRegistry }      from '../connections/registry.js';
+import type { McpServerManager } from '../serverManager.js';
 import type { McpToolOutput }    from './execution.js';
 import { projectMcpToolOutput }  from './execution.js';
 import { assertMcpToolSchemaLimits } from './toolSchemaLimits.js';
@@ -15,7 +15,7 @@ const MAX_DESCRIPTION_LEN = 4096;
 type McpToolContext = Record<string, never>;
 
 /**
- * 拉取失败或工具定义超限时抛错, 由 Registry 更新连接状态.
+ * 拉取失败或工具定义超限时抛错, 由 McpServerManager 更新连接状态.
  * 只有服务器成功返回空列表时才返回 [].
  */
 export async function discoverServerTools(
@@ -42,8 +42,8 @@ export async function discoverServerTools(
 }
 
 export function buildMcpBuiltTool(
-  info:     McpToolInfo,
-  registry: McpRegistry,
+  info:          McpToolInfo,
+  serverManager: McpServerManager,
 ): Tool<Record<string, unknown>, McpToolOutput, McpToolContext> {
   // qualifiedName 替换了连字符和点等字符, 拆分后无法还原连接 Map 使用的原始名字.
   const serverName = info.originalServerName;
@@ -69,7 +69,7 @@ export function buildMcpBuiltTool(
       reportedDestructive: info.reportedDestructive,
     }),
     validateContext: () => contextOk({}),
-    execute: (input, _context, invocation) => registry.callTool(
+    execute: (input, _context, invocation) => serverManager.callTool(
       serverName,
       info.serverToolName,
       input,

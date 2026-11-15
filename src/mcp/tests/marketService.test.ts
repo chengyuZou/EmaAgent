@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { McpMarketService } from '../market/marketService.js';
 import type { McpMarketCatalog, McpMarketEntry } from '../market/types.js';
 import type { McpMarketStore } from '../market/marketStore.js';
-import type { McpRegistry } from '../connections/registry.js';
+import type { McpServerManager } from '../serverManager.js';
 
 const cached: McpMarketEntry = {
   source: 'official',
@@ -39,15 +39,15 @@ function setup(entries: McpMarketEntry[] = [cached], nextCursor: string | null =
     page: vi.fn(),
     detail: vi.fn(),
   } satisfies McpMarketCatalog;
-  const save = vi.fn(async () => 'mcp-installed');
+  const create = vi.fn(async () => 'mcp-installed');
   const changed = vi.fn();
   const service = new McpMarketService(
     store,
     [catalog],
-    { save } as unknown as Pick<McpRegistry, 'save'>,
+    { create } as unknown as Pick<McpServerManager, 'create'>,
     changed,
   );
-  return { service, catalog, store, save, changed };
+  return { service, catalog, store, create, changed };
 }
 
 describe('McpMarketService', () => {
@@ -99,7 +99,7 @@ describe('McpMarketService', () => {
   });
 
   it('安装时把必填 Header 写入配置并保存 Official 来源', async () => {
-    const { service, catalog, save } = setup([]);
+    const { service, catalog, create } = setup([]);
     catalog.detail.mockResolvedValue({
       ...cached,
       config: { type: 'http', url: 'https://example.com/mcp' },
@@ -113,13 +113,34 @@ describe('McpMarketService', () => {
       inputs: { Authorization: 'Bearer token' },
     })).resolves.toEqual({ id: 'mcp-installed', name: 'example' });
 
-    expect(save).toHaveBeenCalledWith(
+    expect(create).toHaveBeenCalledWith(
       'example',
       {
         type: 'http',
         url: 'https://example.com/mcp',
         headers: { Authorization: 'Bearer token' },
       },
+      { sourceKind: 'official', marketEntryId: cached.externalId },
+    );
+  });
+
+  it('安装时清理包含斜杠和空格的市场名称为合法服务名', async () => {
+    const { service, catalog, create } = setup([]);
+    catalog.detail.mockResolvedValue({
+      ...cached,
+      name: 'io.example/My Server!',
+      config: { type: 'http', url: 'https://example.com/mcp' },
+      requiredInputs: [],
+    });
+
+    await expect(service.install({
+      source: 'official',
+      externalId: cached.externalId,
+    })).resolves.toEqual({ id: 'mcp-installed', name: 'io-example-My-Server' });
+
+    expect(create).toHaveBeenCalledWith(
+      'io-example-My-Server',
+      { type: 'http', url: 'https://example.com/mcp' },
       { sourceKind: 'official', marketEntryId: cached.externalId },
     );
   });

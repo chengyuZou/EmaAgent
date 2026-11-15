@@ -1,7 +1,7 @@
 ALTER TABLE mcp_servers ADD COLUMN auth_type TEXT NOT NULL DEFAULT 'none' CHECK (auth_type IN ('none', 'oauth'));
 
 CREATE TABLE mcp_oauth_credentials (
-  mcp_server_id TEXT PRIMARY KEY REFERENCES mcp_servers(id) ON DELETE CASCADE,
+  mcp_server_name TEXT PRIMARY KEY REFERENCES mcp_servers(name) ON DELETE CASCADE,
   server_url TEXT NOT NULL,
   client_id TEXT NOT NULL,
   client_secret TEXT,

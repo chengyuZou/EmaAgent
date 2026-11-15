@@ -65,4 +65,21 @@ describe('MCP 配置导入', () => {
       config: { type: 'http', url: 'https://example.com/custom/sse' },
     }]);
   });
+
+  it('导入时清洗含特殊字符的服务器名并拒绝空白名', () => {
+    expect(parseImportedMcpServers({
+      mcpServers: {
+        'My Notion/Server!': { url: 'https://example.com/mcp' },
+      },
+    })).toEqual([{
+      name: 'My-Notion-Server',
+      config: { type: 'http', url: 'https://example.com/mcp' },
+    }]);
+
+    expect(() => parseImportedMcpServers({
+      mcpServers: {
+        '   ': { url: 'https://example.com/mcp' },
+      },
+    })).toThrow(/must not be empty/i);
+  });
 });

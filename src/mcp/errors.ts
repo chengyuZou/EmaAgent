@@ -29,8 +29,16 @@ export class McpTimeoutError extends Error {
 
 export class McpServerNotFoundError extends Error {
   constructor(serverName: string) {
-    super(`MCP server "${serverName}" is not registered`);
+    super(`MCP server "${serverName}" was not found`);
     this.name = 'McpServerNotFoundError';
+  }
+}
+
+/** 新建, 导入或从市场安装服务器时遇到同名配置, 拒绝静默覆盖已有记录. */
+export class McpServerConflictError extends Error {
+  constructor(serverName: string) {
+    super(`MCP server "${serverName}" already exists`);
+    this.name = 'McpServerConflictError';
   }
 }
 

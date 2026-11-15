@@ -1,4 +1,4 @@
-import { McpServerConfigSchema } from './types.js';
+import { McpServerConfigSchema, sanitizeMcpServerName } from './types.js';
 import type { McpServerConfig } from './types.js';
 import { McpUnsupportedTransportError } from './errors.js';
 
@@ -18,7 +18,8 @@ export function parseImportedMcpServers(input: unknown, fallbackName = 'mcp-serv
 
   if (map) {
     const out: ImportedServer[] = [];
-    for (const [name, raw] of Object.entries(map)) {
+    for (const [rawName, raw] of Object.entries(map)) {
+      const name = sanitizeImportedName(rawName);
       out.push({ name, config: normalizeOne(raw, name) });
     }
     if (out.length === 0) throw new Error('Invalid MCP config: no servers found.');
@@ -32,11 +33,23 @@ export function parseImportedMcpServers(input: unknown, fallbackName = 'mcp-serv
     return o !== null && ('command' in o || 'url' in o);
   });
   if (looksLikeMap) {
-    return entries.map(([name, raw]) => ({ name, config: normalizeOne(raw, name) }));
+    return entries.map(([rawName, raw]) => {
+      const name = sanitizeImportedName(rawName);
+      return { name, config: normalizeOne(raw, name) };
+    });
   }
 
-  const name = typeof root['name'] === 'string' ? root['name'] : fallbackName;
+  const rawName = typeof root['name'] === 'string' ? root['name'] : fallbackName;
+  const name = sanitizeImportedName(rawName);
   return [{ name, config: normalizeOne(root, name) }];
+}
+
+function sanitizeImportedName(rawName: string): string {
+  const trimmed = rawName.trim();
+  if (!trimmed) {
+    throw new Error('Invalid MCP server name: must not be empty.');
+  }
+  return sanitizeMcpServerName(trimmed);
 }
 
 function normalizeOne(raw: unknown, name: string): McpServerConfig {

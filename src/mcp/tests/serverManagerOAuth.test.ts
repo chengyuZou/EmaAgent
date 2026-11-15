@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ToolRegistry } from '@ema-agent/tools';
 import { Database, McpOAuthCredentialsRepo, McpServersRepo } from '@ema-agent/storage';
+import { McpServerNotFoundError, McpUnsupportedTransportError } from '../errors.js';
+import type { McpEvent } from '../events.js';
 import { McpServerStore } from '../store.js';
-import { McpRegistry } from '../connections/registry.js';
+import { McpServerManager } from '../serverManager.js';
 import type { openConnection, OpenedConnection } from '../connections/connection.js';
 
 interface MockAuthProviderLike {
@@ -107,25 +109,27 @@ vi.mock('../connections/connection.js', () => ({
   },
 }));
 
-describe('McpRegistry OAuth 鉴权与单飞续期集成测试', () => {
+describe('McpServerManager OAuth 鉴权与单飞续期集成测试', () => {
   let database: Database;
   let serversRepo: McpServersRepo;
   let credentialsRepo: McpOAuthCredentialsRepo;
   let store: McpServerStore;
   let toolRegistry: ToolRegistry;
-  let registry: McpRegistry;
+  let observedEvents: McpEvent[];
+  let serverManager: McpServerManager;
 
   beforeEach(async () => {
     refreshCallCount = 0;
     observedRefreshTokens = [];
     observedOpenCalls = [];
+    observedEvents = [];
     database = new Database({ memory: true, kind: 'profile' });
     await database.migrate();
     serversRepo = new McpServersRepo(database.sqlite);
     credentialsRepo = new McpOAuthCredentialsRepo(database.sqlite);
     store = new McpServerStore(serversRepo);
     toolRegistry = new ToolRegistry();
-    registry = new McpRegistry(store, toolRegistry, () => {}, credentialsRepo);
+    serverManager = new McpServerManager(store, toolRegistry, (event) => observedEvents.push(event), credentialsRepo);
 
     mockOpenConnectionImpl = async () => ({
       client: {
@@ -163,12 +167,12 @@ describe('McpRegistry OAuth 鉴权与单飞续期集成测试', () => {
   });
 
   afterEach(async () => {
-    await registry.disconnectAll();
+    await serverManager.disconnectAll();
     database.close();
   });
 
   it('3 个并发 callTool 遇到 Token 即将过期时, 触发排队锁只续期 1 次', async () => {
-    store.register(
+    store.create(
       'notion',
       { type: 'http', url: 'https://mcp.notion.com/mcp' },
       { sourceKind: 'manual' },
@@ -177,7 +181,7 @@ describe('McpRegistry OAuth 鉴权与单飞续期集成测试', () => {
 
     // 初始 Token 只剩 5 秒过期, 处于 30 秒安全阈值内
     credentialsRepo.saveInitialOrClient({
-      mcpServerId: store.findByName('notion')!.id,
+      mcpServerName: 'notion',
       serverUrl: 'https://mcp.notion.com/mcp',
       clientId: 'client-1',
       accessToken: 'old-token',
@@ -188,9 +192,9 @@ describe('McpRegistry OAuth 鉴权与单飞续期集成测试', () => {
 
     // 同时发起 3 个工具调用
     const [res1, res2, res3] = await Promise.all([
-      registry.callTool('notion', 'search', { query: 'test1' }),
-      registry.callTool('notion', 'search', { query: 'test2' }),
-      registry.callTool('notion', 'search', { query: 'test3' }),
+      serverManager.callTool('notion', 'search', { query: 'test1' }),
+      serverManager.callTool('notion', 'search', { query: 'test2' }),
+      serverManager.callTool('notion', 'search', { query: 'test3' }),
     ]);
 
     expect(res1.content[0]).toEqual({ type: 'text', text: 'tool-executed-ok' });
@@ -202,13 +206,13 @@ describe('McpRegistry OAuth 鉴权与单飞续期集成测试', () => {
     expect(observedRefreshTokens).toEqual(['old-refresh']);
 
     // 数据库已保存新 Token 与新 Refresh Token
-    const current = credentialsRepo.findByServerId(store.findByName('notion')!.id);
+    const current = credentialsRepo.findByServerName('notion');
     expect(current?.access_token).toBe('fresh-token');
     expect(current?.refresh_token).toBe('fresh-refresh');
   });
 
   it('遇到 401 鉴权失败时刹车, 立即停止指数退避重试', async () => {
-    store.register(
+    store.create(
       'notion',
       { type: 'http', url: 'https://mcp.notion.com/mcp' },
       { sourceKind: 'manual' },
@@ -221,29 +225,28 @@ describe('McpRegistry OAuth 鉴权与单飞续期集成测试', () => {
       throw err;
     };
 
-    await expect(registry.connect('notion')).rejects.toThrow();
+    await expect(serverManager.connect('notion')).rejects.toThrow();
 
-    const serverInfo = registry.getServer('notion');
+    const serverInfo = serverManager.getServer('notion');
     expect(serverInfo?.connectionStatus).toBe('failed');
     expect(serverInfo?.connectionError).toBe('OAuth authorization required');
 
     // 确认没有挂起后台重试定时器
-    const list = registry.listServers();
+    const list = serverManager.listServers();
     expect(list[0]?.connectionStatus).toBe('failed');
     expect(list[0]?.connectionError).toBe('OAuth authorization required');
   });
 
   it('clearOAuthTokens 断开连接, 清空本机 Token, 保留 client_id 并标记为需要授权', async () => {
-    store.register(
+    store.create(
       'notion',
       { type: 'http', url: 'https://mcp.notion.com/mcp' },
       { sourceKind: 'manual' },
       'oauth',
     );
 
-    const serverId = store.findByName('notion')!.id;
     credentialsRepo.saveInitialOrClient({
-      mcpServerId: serverId,
+      mcpServerName: 'notion',
       serverUrl: 'https://mcp.notion.com/mcp',
       clientId: 'permanent-client-id',
       accessToken: 'token-to-clear',
@@ -252,55 +255,56 @@ describe('McpRegistry OAuth 鉴权与单飞续期集成测试', () => {
       updatedAt: 1000,
     });
 
-    await registry.connect('notion');
-    expect(registry.getServer('notion')?.connectionStatus).toBe('connected');
+    await serverManager.connect('notion');
+    expect(serverManager.getServer('notion')?.connectionStatus).toBe('connected');
 
     // 执行清除授权
-    await registry.clearOAuthTokens('notion');
+    await serverManager.clearOAuthTokens('notion');
 
     // 连接已断开
-    expect(registry.getServer('notion')?.connectionStatus).toBe('failed');
+    expect(serverManager.getServer('notion')?.connectionStatus).toBe('failed');
 
     // 数据库中 Token 已置空, 但 client_id 完好保留
-    const dbRow = credentialsRepo.findByServerId(serverId);
+    const dbRow = credentialsRepo.findByServerName('notion');
     expect(dbRow?.access_token).toBeNull();
     expect(dbRow?.refresh_token).toBeNull();
     expect(dbRow?.client_id).toBe('permanent-client-id');
 
-    // OAuth 状态报告为 required
-    const status = registry.getOAuthStatus('notion');
+    // OAuth 状态报告为 required, 并发出连接与 OAuth 变更事件
+    const status = serverManager.getServer('notion')?.oauth;
     expect(status?.status).toBe('required');
+    expect(observedEvents).toContainEqual({ type: 'mcp_connection_changed' });
+    expect(observedEvents).toContainEqual({ type: 'mcp_oauth_changed' });
   });
 
-  it('getOAuthStatus 状态报告', () => {
-    store.register(
+  it('summary 与 detail 中的 oauth 状态报告', () => {
+    store.create(
       'notion-http',
       { type: 'http', url: 'https://mcp.notion.com/mcp' },
       { sourceKind: 'manual' },
       'oauth',
     );
-    store.register(
+    store.create(
       'local-stdio',
       { type: 'stdio', command: 'node', args: ['server.js'] },
       { sourceKind: 'manual' },
       'none',
     );
 
-    // stdio 服务或 authType 为 none 时始终返回 null
-    expect(registry.getOAuthStatus('local-stdio')).toBeNull();
+    // stdio 服务或 authType 为 none 时不附带 oauth 字段
+    expect(serverManager.getServer('local-stdio')?.oauth).toBeUndefined();
 
     // 尚未授权的 HTTP 服务返回 required
-    expect(registry.getOAuthStatus('notion-http')).toEqual({
+    expect(serverManager.getServer('notion-http')?.oauth).toEqual({
       status: 'required',
       expiresAtMs: null,
       updatedAt: 0,
     });
 
     // 授权后的 HTTP 服务返回 authorized
-    const httpId = store.findByName('notion-http')!.id;
     const futureExpiresAtMs = Date.now() + 3600_000;
     credentialsRepo.saveInitialOrClient({
-      mcpServerId: httpId,
+      mcpServerName: 'notion-http',
       serverUrl: 'https://mcp.notion.com/mcp',
       clientId: 'c1',
       accessToken: 'tok-valid',
@@ -308,32 +312,49 @@ describe('McpRegistry OAuth 鉴权与单飞续期集成测试', () => {
       updatedAt: 1234,
     });
 
-    expect(registry.getOAuthStatus('notion-http')).toEqual({
+    expect(serverManager.getServer('notion-http')?.oauth).toEqual({
       status: 'authorized',
       expiresAtMs: futureExpiresAtMs,
       updatedAt: 1234,
     });
   });
 
-  it('cancelOAuth 通过 serverName 直接取消授权流程并关闭端口', async () => {
-    store.register(
+  it('cancelOAuth 校验服务器存在性, startOAuth 拒绝非 HTTP 服务', async () => {
+    await expect(serverManager.cancelOAuth('missing')).rejects.toThrow(McpServerNotFoundError);
+
+    store.create(
       'notion',
       { type: 'http', url: 'https://mcp.notion.com/mcp' },
       { sourceKind: 'manual' },
       'oauth',
     );
+    store.create(
+      'local-stdio',
+      { type: 'stdio', command: 'node', args: ['server.js'] },
+      { sourceKind: 'manual' },
+      'none',
+    );
 
-    // 取消尚未开始的流程不会抛出异常
-    await expect(registry.cancelOAuth('notion')).resolves.toBeUndefined();
+    await expect(serverManager.startOAuth('local-stdio')).rejects.toThrow(McpUnsupportedTransportError);
+
+    // 取消尚未开始的流程不会抛出异常且发送 mcp_oauth_changed 事件
+    observedEvents = [];
+    await expect(serverManager.cancelOAuth('notion')).resolves.toBeUndefined();
+    expect(observedEvents).toContainEqual({ type: 'mcp_oauth_changed' });
   });
 
-  it('Bug 3: startOAuth 将 authType 设为 oauth 并在重连时附带 oauthFetch, save 编辑配置时保留 authType', async () => {
-    await registry.save(
+  it('create/update/setEnabled(true) 不自动连接, startOAuth 成功后自动连接, update 编辑保留 authType', async () => {
+    await serverManager.create(
       'notion',
       { type: 'http', url: 'https://mcp.notion.com/mcp' },
       { sourceKind: 'manual' },
     );
     expect(store.findByName('notion')?.authType).toBe('none');
+    expect(observedOpenCalls).toHaveLength(0);
+
+    await serverManager.setEnabled('notion', false);
+    await serverManager.setEnabled('notion', true);
+    expect(observedOpenCalls).toHaveLength(0);
 
     let capturedRedirectUrl = '';
     let capturedState = '';
@@ -354,60 +375,68 @@ describe('McpRegistry OAuth 鉴权与单飞续期集成测试', () => {
       return 'REDIRECT';
     };
 
-    await registry.startOAuth('notion');
+    observedEvents = [];
+    await serverManager.startOAuth('notion');
     expect(store.findByName('notion')?.authType).toBe('oauth');
+    expect(serverManager.getServer('notion')?.oauth).toMatchObject({
+      status: 'authorizing',
+      authorizationUrl: 'https://mcp.notion.com/authorize?client_id=ema',
+    });
+    expect(observedEvents).toContainEqual({ type: 'mcp_oauth_changed' });
 
     const callbackRes = await fetch(`${capturedRedirectUrl}?code=code-1&state=${capturedState}`);
     expect(callbackRes.status).toBe(200);
 
     // startOAuth 成功回调后会触发自动连接, 新连接必须收到 oauthFetch
     await vi.waitFor(() => {
-      expect(registry.getServer('notion')?.connectionStatus).toBe('connected');
+      expect(serverManager.getServer('notion')?.connectionStatus).toBe('connected');
     });
     const lastOpenCall = observedOpenCalls.at(-1);
     expect(lastOpenCall).toBeDefined();
     expect(typeof lastOpenCall?.at(-1)).toBe('function');
 
-    // 未显式传 authType 的编辑保存不能将已授权的 oauth 重置回 none
-    await registry.save(
+    // 未显式传 authType 的编辑保存不能将已授权的 oauth 重置回 none, 且更新配置不自动重连
+    const openCountBeforeUpdate = observedOpenCalls.length;
+    await serverManager.update(
       'notion',
       { type: 'http', url: 'https://mcp.notion.com/mcp', headers: { 'X-Custom': '1' } },
       { sourceKind: 'manual' },
     );
     expect(store.findByName('notion')?.authType).toBe('oauth');
+    expect(serverManager.getServer('notion')?.connectionStatus).toBe('disconnected');
+    expect(observedOpenCalls).toHaveLength(openCountBeforeUpdate);
   });
 
   it('Bug 4: 更改服务 URL 后清除缓存 Client 且隔离旧 URL Token 与状态', async () => {
-    store.register(
+    store.create(
       'notion',
       { type: 'http', url: 'https://mcp.notion.com/mcp' },
       { sourceKind: 'manual' },
       'oauth',
     );
-    const serverId = store.findByName('notion')!.id;
     credentialsRepo.saveInitialOrClient({
-      mcpServerId: serverId,
+      mcpServerName: 'notion',
       serverUrl: 'https://mcp.notion.com/mcp',
       clientId: 'client-old',
       accessToken: 'old-site-token',
       expiresAtMs: Date.now() + 3600_000,
       updatedAt: 1000,
     });
-    expect(registry.getOAuthStatus('notion')?.status).toBe('authorized');
+    expect(serverManager.getServer('notion')?.oauth?.status).toBe('authorized');
 
-    // 通过 save() 变更服务 URL
-    await registry.save(
+    // 通过 update() 变更服务 URL
+    await serverManager.update(
       'notion',
       { type: 'http', url: 'https://mcp.other.example/mcp' },
       { sourceKind: 'manual' },
       'oauth',
     );
 
-    expect(registry.getOAuthStatus('notion')?.status).toBe('required');
-    expect(registry.listServers()[0]?.oauth?.status).toBe('required');
+    expect(serverManager.getServer('notion')?.oauth?.status).toBe('required');
+    expect(serverManager.listServers()[0]?.oauth?.status).toBe('required');
 
     // 连接新 URL 时, 传入 openConnection 的 oauthFetch 不能携带旧站点的 Bearer Token
-    await registry.connect('notion');
+    await serverManager.connect('notion');
     const oauthFetch = observedOpenCalls.at(-1)?.at(-1) as typeof fetch | undefined;
     expect(typeof oauthFetch).toBe('function');
 
@@ -425,14 +454,14 @@ describe('McpRegistry OAuth 鉴权与单飞续期集成测试', () => {
   });
 
   it('Bug 7: callTool 等待 Token 续期期间服务被禁用时立即中止并不建立连接', async () => {
-    store.register(
+    store.create(
       'notion',
       { type: 'http', url: 'https://mcp.notion.com/mcp' },
       { sourceKind: 'manual' },
       'oauth',
     );
     credentialsRepo.saveInitialOrClient({
-      mcpServerId: store.findByName('notion')!.id,
+      mcpServerName: 'notion',
       serverUrl: 'https://mcp.notion.com/mcp',
       clientId: 'client-1',
       accessToken: 'old-token',
@@ -461,11 +490,11 @@ describe('McpRegistry OAuth 鉴权与单飞续期集成测试', () => {
       };
     };
 
-    const callPromise = registry.callTool('notion', 'search', { query: 'test' });
+    const callPromise = serverManager.callTool('notion', 'search', { query: 'test' });
     const callRejection = expect(callPromise).rejects.toThrow(/disabled/i);
 
     await refreshStarted;
-    await registry.setEnabled('notion', false);
+    await serverManager.setEnabled('notion', false);
     releaseRefresh();
 
     await callRejection;

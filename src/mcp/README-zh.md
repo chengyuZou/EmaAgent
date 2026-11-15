@@ -6,23 +6,23 @@
 
 ## 入口
 
-- `McpServerStore` 通过 `McpServersRepo` 读写安装配置和上次成功发现的工具列表.
-- `McpRegistry` 管理连接和工具注册. 设置路由使用 `listServers`, `getServer`, `save`, `setEnabled`, `disconnect`, `remove`, `probe`; 工具执行使用 `callTool`.
-- `parseImportedMcpServers` 接收已解析的 JSON 对象, 支持 `mcpServers` 或 `servers` 包装, 名字到配置的映射, 以及单服务器配置. 返回经过校验的 stdio 或 Streamable HTTP 配置, 遇到 SSE 配置直接报错.
+- `McpServerStore` 通过 `McpServersRepo` 读写安装配置和上次成功发现的工具列表. 服务器名称限制为 `[a-zA-Z0-9_-]` (1-100 字符).
+- `McpServerManager` 管理连接, OAuth 授权流程和工具注册. 设置路由使用 `listServers`, `getServer`, `create`, `update`, `setEnabled`, `connect`, `disconnect`, `remove`, `probe`, `startOAuth`, `cancelOAuth`, `clearOAuthTokens`; 工具执行使用 `callTool`.
+- `parseImportedMcpServers` 接收已解析的 JSON 对象, 支持 `mcpServers` 或 `servers` 包装, 名字到配置的映射, 以及单服务器配置. 会把名称清洗为 `[a-zA-Z0-9_-]` 并返回经过校验的 stdio 或 Streamable HTTP 配置, 遇到 SSE 配置直接报错.
 - `McpMarketService`, `McpMarketStore`, `OfficialRegistryAdapter` 处理市场列表, 刷新, 详情和安装.
 - `McpLocalCommandEnvironment.inspect` 查找宿主 PATH 中的 `npx`, `uvx`, `bunx`, Python 3, 读取版本供设置页展示.
 
-导入示例见英文 README. 导入路由先解析用户 JSON, 再保存配置. 保存并开始后台连接后即可返回, 不等待连接成功.
+导入示例见英文 README. 导入路由先解析用户 JSON, 再保存配置. 新建, 编辑保存与启用操作只持久化配置, 不会自动发起连接或 OAuth 授权; 连接在显式调用 `connect`, 应用启动 (`connectEnabled`) 或工具调用 (`callTool`) 时建立.
 
 ## 连接和工具
 
-Server 装配时创建 Store 和 Registry, 先用 `primeFromCache` 注册已启用服务器的缓存工具, 再用 `connectEnabledInBackground` 开始后台连接. 缓存让模型在启动阶段就能看到工具说明, 但调用仍需等待实时连接和工具发现完成.
+Server 装配时创建 Store 和 McpServerManager, 先用 `registerCachedToolsOnStartup` 注册已启用服务器的缓存工具, 再用 `connectEnabled` 开始后台连接. 缓存让模型在启动阶段就能看到工具说明, 但调用仍需等待实时连接和工具发现完成.
 
 正常顺序是: 注册缓存工具, 后台握手, 读取工具列表, 批量注册实时工具并移除已消失的缓存工具, 通知连接成功, 写入工具缓存. 英文 README 的时序图展示了这些调用.
 
 需要连接时才加载 SDK Client 和对应传输, 每条连接拥有独立 Client. 握手超时为 30 秒, 从模块加载完成后开始计算; 工具发现另有 15 秒超时. 服务器成功返回空列表是有效结果, 发现失败则连接失败.
 
-相同配置的并发请求共用连接任务. 单次调用取消只结束自身等待, 不取消共享连接. 断开或替换会取消连接和刷新任务; generation 计数阻止旧任务和迟到的关闭回调改写新状态.
+相同配置的并发请求共用连接任务. 单次调用取消只结束自身等待, 不取消共享连接. 断开或替换会取消连接和刷新任务; connectionVersion 计数阻止旧任务和迟到的关闭回调改写新状态.
 
 初次发现前先订阅工具变化通知, 多次通知共用一个刷新循环. 新工具整批校验成功后才替换注册内容. 刷新失败保留原列表, 缓存写入失败保留实时连接.
 
@@ -53,12 +53,12 @@ Official Registry Adapter 读取 `v0.1` 服务器接口. `mcp_market_entries` �
 
 安装时重新读取详情, 生成明确配置, 要求用户填齐必需 Header 或环境变量, 再保存服务器及其 Official Registry 条目 ID.
 
-配置和工具缓存写入后发出 `mcp_servers_changed`, 连接状态改变时发出 `mcp_connection_changed`, 市场写入后发出带来源的 `mcp_market_changed`. Server 转发事件, Desktop 对应视图重新读取当前数据. HTTP 形状由 `apps/server/src/routes/mcp` 定义, Desktop API 类型从路由推导.
+配置和工具缓存写入后发出 `mcp_servers_changed`, 连接状态改变时发出 `mcp_connection_changed`, OAuth 授权状态变化时发出 `mcp_oauth_changed`, 市场写入后发出带来源的 `mcp_market_changed`. Server 转发事件, Desktop 对应视图重新读取当前数据. HTTP 形状由 `apps/server/src/routes/mcp` 定义, Desktop API 类型从路由推导.
 
 ## 阅读与验证
 
-`connections/` 负责连接生命周期和请求取消, `tools/` 负责工具发现, 执行和定义限制, `market/` 负责市场读取和安装. 对外继续通过 `@ema-agent/mcp` 导入.
+`serverManager.ts` 统筹服务器配置, 连接, OAuth 流程和工具管理, `connections/` 负责底层建连和请求取消, `tools/` 负责工具发现, 执行和定义限制, `market/` 负责市场读取和安装. 对外继续通过 `@ema-agent/mcp` 导入.
 
-连接流程看 `connections/registry.ts`, Ema 工具约定看 `tools/discovery.ts`, 取消和结果转换看 `tools/execution.ts`. 配置保存看 `store.ts`, 导入解析看 `configImport.ts`. 启用路由等待设置操作完成后才返回成功, 实时连接仍在后台建立.
+总控流程看 `serverManager.ts`, 底层传输看 `connections/connection.ts`, Ema 工具约定看 `tools/discovery.ts`, 取消和结果转换看 `tools/execution.ts`. 配置保存看 `store.ts`, 导入解析看 `configImport.ts`. 启用路由只更新启用标记, 不自动建立后台连接.
 
 运行 `pnpm --filter @ema-agent/mcp test`. 测试覆盖配置导入, 明文凭据, 连接取消与关闭, 工具定义限制与权限, 结果转换与大小限制, 市场分页与安装. 本地环境测试启动临时命令脚本验证版本选择, 不依赖已安装的 Python. `src/storage/tests/repos/mcp-market.integration.test.ts` 验证市场 SQL 操作. 本包网络测试使用模拟 SDK Client 和 HTTP 响应, 不连接真实市场.

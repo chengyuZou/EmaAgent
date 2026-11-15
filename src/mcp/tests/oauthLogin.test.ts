@@ -3,12 +3,19 @@ import { Database, McpOAuthCredentialsRepo, McpServersRepo } from '@ema-agent/st
 import { McpOAuthClient } from '../auth/oauthClient.js';
 import { startOAuthLogin } from '../auth/oauthLogin.js';
 
+interface MockProviderLike {
+  saveTokens: (tokens: {
+    access_token: string;
+    token_type: string;
+    refresh_token?: string;
+    expires_in?: number;
+  }) => Promise<void>;
+  saveClientInformation: (info: { client_id: string; client_secret?: string }) => Promise<void>;
+  redirectToAuthorization: (authorizationUrl: URL) => void;
+}
+
 let mockAuthImplementation: (
-  client: {
-    saveTokens: McpOAuthClient['saveTokens'];
-    saveClientInformation: McpOAuthClient['saveClientInformation'];
-    redirectToAuthorization: McpOAuthClient['redirectToAuthorization'];
-  },
+  client: MockProviderLike,
   opts: {
     serverUrl: string | URL;
     authorizationCode?: string;
@@ -18,11 +25,7 @@ let mockAuthImplementation: (
 
 vi.mock('@modelcontextprotocol/sdk/client/auth.js', () => ({
   auth: (
-    client: {
-      saveTokens: McpOAuthClient['saveTokens'];
-      saveClientInformation: McpOAuthClient['saveClientInformation'];
-      redirectToAuthorization: McpOAuthClient['redirectToAuthorization'];
-    },
+    client: MockProviderLike,
     opts: {
       serverUrl: string | URL;
       authorizationCode?: string;
@@ -61,7 +64,7 @@ describe('startOAuthLogin 本地回环登录测试', () => {
       installed_at: 1000,
     });
 
-    client = new McpOAuthClient('srv-login-test', 'https://mcp.notion.com/mcp', credentialsRepo);
+    client = new McpOAuthClient('notion', 'https://mcp.notion.com/mcp', credentialsRepo);
 
     mockAuthImplementation = async (c, opts) => {
       if (opts.authorizationCode) {
@@ -85,9 +88,7 @@ describe('startOAuthLogin 本地回环登录测试', () => {
 
   it('正常流程: 申请临时端口, 接收浏览器有效回调后成功保存 Token 并关闭端口', async () => {
     const result = await startOAuthLogin({
-      serverId: 'srv-login-test',
       serverName: 'notion',
-      serverUrl: 'https://mcp.notion.com/mcp',
       client,
     });
 
@@ -96,6 +97,10 @@ describe('startOAuthLogin 本地回环登录测试', () => {
     const pending = client.getPendingLogin();
     expect(pending).toBeDefined();
     expect(pending?.redirectUri).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/oauth\/callback$/);
+    expect(client.getStatus()).toMatchObject({
+      status: 'authorizing',
+      authorizationUrl: 'https://mcp.notion.com/authorize?client_id=ema',
+    });
 
     // 模拟浏览器收到重定向并回调本地回环地址
     const callbackUrl = `${pending!.redirectUri}?code=auth_code_xyz&state=${pending!.state}`;
@@ -108,7 +113,7 @@ describe('startOAuthLogin 本地回环登录测试', () => {
     await pending!.promise;
 
     // 凭据应已存入数据库
-    const saved = credentialsRepo.findByServerId('srv-login-test');
+    const saved = credentialsRepo.findByServerName('notion');
     expect(saved?.access_token).toBe('new-token-123');
     expect(saved?.refresh_token).toBe('new-refresh-456');
 
@@ -118,9 +123,7 @@ describe('startOAuthLogin 本地回环登录测试', () => {
 
   it('被用户拒绝: 浏览器返回 error 参数时展示错误页面并拒绝流程', async () => {
     await startOAuthLogin({
-      serverId: 'srv-login-test',
       serverName: 'notion',
-      serverUrl: 'https://mcp.notion.com/mcp',
       client,
     });
 
@@ -138,9 +141,7 @@ describe('startOAuthLogin 本地回环登录测试', () => {
 
   it('防跨站伪造: state 不匹配时仅返回 400 且不终止当前登录会话', async () => {
     await startOAuthLogin({
-      serverId: 'srv-login-test',
       serverName: 'notion',
-      serverUrl: 'https://mcp.notion.com/mcp',
       client,
     });
 
@@ -160,7 +161,7 @@ describe('startOAuthLogin 本地回环登录测试', () => {
     );
     expect(validResponse.status).toBe(200);
     await expect(pending!.promise).resolves.toBeUndefined();
-    expect(credentialsRepo.findByServerId('srv-login-test')?.access_token).toBe('new-token-123');
+    expect(credentialsRepo.findByServerName('notion')?.access_token).toBe('new-token-123');
   });
 
   it('重复回调防护: 授权码兑换期间再次请求返回 409 且只兑换 1 次', async () => {
@@ -192,9 +193,7 @@ describe('startOAuthLogin 本地回环登录测试', () => {
     };
 
     await startOAuthLogin({
-      serverId: 'srv-login-test',
       serverName: 'notion',
-      serverUrl: 'https://mcp.notion.com/mcp',
       client,
     });
 
@@ -212,7 +211,7 @@ describe('startOAuthLogin 本地回环登录测试', () => {
     const firstResponse = await firstFetch;
     expect(firstResponse.status).toBe(200);
     await expect(pending.promise).resolves.toBeUndefined();
-    expect(credentialsRepo.findByServerId('srv-login-test')?.access_token).toBe('token-once');
+    expect(credentialsRepo.findByServerName('notion')?.access_token).toBe('token-once');
   });
 
   it('取消登录或清除凭据发生在授权码兑换途中时, 中止请求且迟到的 saveTokens 不回写', async () => {
@@ -268,9 +267,7 @@ describe('startOAuthLogin 本地回环登录测试', () => {
     };
 
     await startOAuthLogin({
-      serverId: 'srv-login-test',
       serverName: 'notion',
-      serverUrl: 'https://mcp.notion.com/mcp',
       client,
     });
 
@@ -282,7 +279,7 @@ describe('startOAuthLogin 本地回环登录测试', () => {
 
     // 取消登录并清空本机凭据
     await client.cancelPendingLogin();
-    credentialsRepo.clearTokens('srv-login-test', Date.now());
+    credentialsRepo.clearTokens('notion', Date.now());
     expect(observedFetchSignal?.aborted).toBe(true);
 
     releaseExchange();
@@ -292,7 +289,7 @@ describe('startOAuthLogin 本地回环登录测试', () => {
 
     // 确认旧兑换触发 saveTokens 被拒绝且数据库 Token 保持为空
     expect(saveAttemptError).toBeDefined();
-    expect(credentialsRepo.findByServerId('srv-login-test')?.access_token).toBeNull();
+    expect(credentialsRepo.findByServerName('notion')?.access_token).toBeNull();
   });
 
   it('初始阶段在等待授权 URL 时被取消, cleanly reject 且无悬挂服务器或未处理拒绝', async () => {
@@ -317,9 +314,7 @@ describe('startOAuthLogin 本地回环登录测试', () => {
     };
 
     const loginPromise = startOAuthLogin({
-      serverId: 'srv-login-test',
       serverName: 'notion',
-      serverUrl: 'https://mcp.notion.com/mcp',
       client,
     });
     const loginRejection = expect(loginPromise).rejects.toThrow();
@@ -339,9 +334,7 @@ describe('startOAuthLogin 本地回环登录测试', () => {
 
   it('用户主动取消: 取消任务即刻释放端口资源', async () => {
     await startOAuthLogin({
-      serverId: 'srv-login-test',
       serverName: 'notion',
-      serverUrl: 'https://mcp.notion.com/mcp',
       client,
     });
 
@@ -354,5 +347,17 @@ describe('startOAuthLogin 本地回环登录测试', () => {
 
     // 端口应已关闭
     await expect(fetch(redirectUri)).rejects.toThrow();
+  });
+
+  it('初次 auth 直接返回 AUTHORIZED 时返回 null authorizationUrl 并立即释放端口', async () => {
+    mockAuthImplementation = async () => 'AUTHORIZED';
+
+    const result = await startOAuthLogin({
+      serverName: 'notion',
+      client,
+    });
+
+    expect(result).toEqual({ authorizationUrl: null });
+    expect(client.getPendingLogin()).toBeUndefined();
   });
 });
