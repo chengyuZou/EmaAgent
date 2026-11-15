@@ -1,64 +1,67 @@
 # Why story retrieval works this way
 
-[中文](README-zh.md) | [Documentation](../../README.md)
+[中文](README-zh.md) | [Documentation](../../README.md) | [Module Reference](../../../src/narrative/README.md)
 
-Narrative gives conversations about the original story supporting passages while preserving the timelines and events the user asked about. We want to reduce invented recollections while controlling retrieval cost and how much material the main Agent must read.
+Narrative retrieves canon plot from *Magical Girl Witch Trial* across three playthroughs (`1st_Loop`, `2nd_Loop`, `3rd_Loop`) without confusing events from different timelines or mixing canon game story into personal conversation memory. Its current design is the result of roughly a year of retrieval experiments, sidecar refactors, failure-trace diagnostics, and manual corpus rebuilds.
 
-## Why we adopted LightRAG
+## Evolution from raw RAG to SQLite + global graph
 
-In December 2025, EmaAgent was an early Python prototype. The hand-written RAG approach was not working well, and development experience was limited. After encountering LightRAG, a small trial produced acceptable results, so we adopted it.
+| Stage | Architecture | Problem uncovered | Resulting change |
+| --- | --- | --- | --- |
+| Late 2025 - early 2026 | Plain chunk splitting + vector retrieval, then early/mid/late chapter `progress` score mapping (such as early `0-0.4`, late `>0.7`) | Recurring events across loops collided; earlier LightRAG token-window chunking split multi-byte UTF-8 Chinese characters and produced `U+FFFD` garbling (exact early tuning formulas are no longer preserved) | Evaluated LightRAG in Dec 2025 across whole-story, per-playthrough, and per-chapter splits, then kept per-playthrough LightRAG indexing |
+| Mar - Apr 2026 (`EmaAgent-Python-Prototype` v0.4 - v0.4.1) | Separate `narrative` mode (`NarrativeMemory`), 1-shot `Router` over `STORY_SUMMARY_PROMPT`, 3 LightRAG directories queried via `batch_query(hybrid, top_k=40, only_need_context=True)` | Unrelated attachment `ChunkRAG` interfered with story mode; `STORY_SUMMARY_PROMPT` had minimal timeline coverage | Skipped attachment `ChunkRAG` in `narrative` mode (`v0.4.1`) |
+| May - Sep 2026 (`EmaAgent` TS + Python bridge) | TS server calling Python `narrative-bridge` subprocess with Git LFS data and `bridges/narrative` sidecar lifecycle | Story overlapped with personal `Memory`, passive mode injection wasted context, and shipping Python + LightRAG in a desktop app added process/deployment burden | Split Narrative out of `Memory` (Jun 2026), moved to agentic `NarrativeSearchTool` (Jul-Aug 2026), then removed the Python bridge (Oct 2026) |
+| Oct 2026 (Pure TS + SQLite) | Local SQLite DB (`narrative.db`), `1024`-dim `bge-m3` Float32 BLOBs (`4096` bytes), TS cosine matching (`0.2`, `top_k=40`), `narrative-rerank`, `isWitchTrialCharacter` gate | Combined routing+rewriting altered time scopes (`坠落后` -> `坠落前`) and leaked unasked culprit names; capping 20 chunks per loop dropped confessions (`loop1-027` #23, `loop2-024` #31/#46) even though full candidate pools hit `95/100` | Split timeline routing and LightRAG keyword extraction into 2 concurrent LLM calls, pass the original query to Rerank, and raise limits to `125` / `30` / `32,000` chars |
+| Nov 2026 (Corpus rebuild + unified global graph) | Manual Output rebuilds + trace diagnostics (`2026-11-03` - `11-07`) shipped in [003_narrativeSchema.sql](../../../src/storage/migrations/narrative/003_narrativeSchema.sql) and `004_narrativeData.sql` | Automated extraction split pronouns/nicknames (`小蕾`, `大叔`, `吾辈`) and flagged early lies as contradictions; automated LLM rewrites added misattributions; `RELATED_CHUNK_NUMBER=5` pruned block 133 upstream before Rerank; flattened chunk text hid curated graph structure | Rebuilt `785` clean high-density chunks with `timeline_id` + `1` shared global graph (`386` entities, `879` relations), and returned top-level `entities` and `relations` alongside `timeline_id`-grouped `chunks` as JSON |
 
-This was not the conclusion of an exhaustive comparison of retrieval methods. An existing solution helped move the prototype forward, with an incomplete understanding of its algorithm and data limitations. Later experiments re-examine those choices; they do not retroactively turn the initial trial into a thoroughly validated selection.
+### Why early token chunking produced garbled text
 
-## Why we separate timelines
+In LightRAG's `chunking_by_token_size` (`lightrag/chunker/token_size.py`), text is encoded with a tokenizer, sliced into fixed `[start:end]` token windows, and reconstructed by calling `tokenizer.decode(...)` on each window independently. Because byte-level BPE encoders can split a multi-byte UTF-8 Chinese character across adjacent tokens, decoding a sliced token window whose boundary falls inside a multi-byte sequence produces Unicode replacement characters (`U+FFFD`) at chunk edges. Rebuilding chunks cleanly in characters/records eliminated that corruption.
 
-The early trial compared putting the whole story together, separating it by playthrough, and splitting it further by chapter. Playthrough separation worked best in that small trial and became the retained organization.
+## Why we moved to pure TypeScript, SQLite, and a character gate
 
-Events and character outcomes can differ across playthroughs. Keeping that scope helps avoid combining different versions of a character's experience into a single event. Cross-playthrough comparisons require evidence from each relevant timeline, with the additional retrieval cost that entails.
+Bundling a Python `narrative-bridge` sidecar with Git LFS assets, port probing, and JSON-RPC lifecycle management created installation and startup fragility on end-user desktops. Moving all storage (`chunks`, `entities`, `relations`, link tables, and `bge-m3` Float32 embeddings) into SQLite and running cosine selection + Rerank in TypeScript removed the Python runtime dependency completely.
 
-The trial had few questions and imperfect data, however. The old parser mapped 泽渡可可 to the incorrect 泽度可可, and some old data was garbled. Those conditions do not establish playthrough separation as an optimal organization or make every retrieval gap an algorithm problem.
+We kept the `isWitchTrialCharacter` gate so non-canon roles and general assistant sessions do not load story-search prompts or carry story-retrieval overhead.
 
-Story order also needs to be distinguished from derived speaker and choice labels. Correct ordering in the original assembled material does not establish that every derived label is correct; the storage order of underlying localization files is not suitable as story order either. We accept that parts of the material still need organization and preserve the need to check the original text.
+## Why we preserve intent and split routing from keyword extraction
 
-## Why we preserve intent and separate routing from extraction
+Diagnostics on `2026-10-24` (`collection-20261024-01` and `query-preparation-20261024-01`, documented `2026-10-30`) uncovered two separate failures in single-call query preparation:
 
-The question can drift in two places: when the main Agent writes a tool query, and when Narrative rewrites it internally. If each step adds its own interpretation, retrieval can end up searching for support for a guess.
+- **Summary-driven semantic drift**: Asking one LLM call to use a global story summary while also rewriting the sub-query altered user conditions (such as turning "after falling" into "before falling") or injected unasked culprit names into search queries.
+- **Pre-rerank loop truncation**: Cutting each loop to its top 20 chunks before reranking dropped crucial passages such as confessions (`loop1-027` #23, `loop2-024` #31/#46), even though un-truncated candidate pools reached `95/100`.
 
-The query-preparation comparison showed added assumptions and lost scope. A question about whether someone died immediately after falling produced an extra query about death before the fall. The old router also inserted a culprit's name from its story summary even though the question did not mention that person. A correct presumed answer still should not become a fact supplied by the user.
+To fix both without giving up loop classification:
 
-We therefore preserve the question's meaning rather than require a verbatim copy. Known conversation context may resolve a person, pronoun, or timeline, but must not supply a guessed answer. If the conversation explicitly concerns 城崎诺亚 in the third playthrough, her final whereabouts can be queried with that name and scope. It must not be changed into a question about why she stayed in prison.
+1. **Two concurrent query-preparation calls**: Timeline routing sees the story summary so it can pick relevant `timeline_id`s, while LightRAG-style keyword extraction (`top_level` / `low_level` keywords) receives only the user's question and history without the summary.
+2. **Original query for Rerank + wider limits**: Rerank scores passages against the user's original question rather than extracted keywords. Pre-rerank candidates increased to `RERANK_CANDIDATE_LIMIT = 125`, final kept chunks to `RERANK_TOP_K = 30`, vector-only candidates to `VECTOR_CHUNK_TOP_K = 100`, and returned chunk budget to `MAX_CHUNK_CHARACTERS = 32,000` (defined in [constants.ts](../../../src/narrative/pipeline/constants.ts)).
 
-Narrative no longer creates replacement queries for each timeline. Timeline selection and keyword extraction use two independent calls. Selection may read the story summary to establish scope; extraction reads the query without that summary or the selection result. We do not want textual instructions inside a combined request to be the only separation between reading answer-bearing background and extracting terms solely from the question.
+## Why we rebuilt the corpus and chose a global graph + timeline chunks
 
-The cost is two model requests and their charges. They can run concurrently, but concurrency does not remove request cost or ensure correct interpretation. Independent extraction still turned an instruction not to discuss an execution into a positive execution keyword in the comparison. Separating inputs reduces opportunities to mix information without solving all negation and ambiguity.
+Between `2026-11-03` and `2026-11-07`, controlled chapter and full-corpus experiments showed that neither automated LLM graph extraction nor automated LLM corpus rewriting solved precision problems on multi-loop mystery dialogue:
 
-## Why we limit rerank input and returned evidence
+- **Automated graph extraction vs. manual curation**: LightRAG's automated extractor split nicknames and first-person pronouns into separate entities (`小蕾`, `大叔`, `吾辈`) and merged characters' early lies or metaphors as factual contradictions. Running a whole-chapter automated LLM graph rewrite (`graphReview-20261104-01`) resolved some contradictions, but introduced new misattributions (including attributing "诺亚并不弱小" to 安安 in 3 places).
+- **Upstream quota vs. Rerank reachability**: Retrieval trace analysis (`retrievalTrace-20261104-01`, `chapterRerank-20261104-01`) confirmed two distinct bottlenecks. When block 137 landed at candidate rank #20 and got dropped by token truncation, enabling `Qwen3-Reranker-0.6B` pushed it to #1. Conversely, block 133 was eliminated upstream at #53 of 139 by `RELATED_CHUNK_NUMBER = 5` (7 candidate slots) and relation token truncation before Rerank ran at all, proving Rerank cannot rescue evidence that upstream quotas never collect.
+- **Post-attributed dialogue sensitivity**: In a controlled diagnostic (`chapterPilot-20261104-01`), novel-style post-attributed lines (`"..." 玛格轻声的自言自语`) led to two speaker misattributions even when chunk 135 was returned verbatim; prepending `玛格: ` fixed that diagnostic case, though wholesale synthetic speaker prefixes were avoided in final cleanup.
+- **Manual rebuild and `v4/unified` cleanup**: Rebuilding 31,405 raw Output records first into 1,107 chunks (with 449 per-loop entities and 879 relations, manually curating 110 entities and 46 relations while keeping lies and inner monologue intact in source chunks) raised marked-quote hits on a 100-question saved-keyword `mix` run (top-20 rerank, 30k-token cap) from `87/100` to `90/100` (97 source-sufficient, 1 graph-supplemented, 2 insufficient: `cross-002`, `cross-008`). Auditing that 11-04 build caught unauthorized frame/thought prefixes (such as `艾玛心想:`), extra quotes, and intro summaries. Cleaning those artifacts and packing contiguous text near ~1,200 characters yielded **785 chunks** (average `1,184.9` characters, including 3 cross-loop chunks) with `timeline_id` preserved per chunk, paired with **one unified global graph of 386 unique entities and 879 relations**.
+- **Output format & budget split**: In `2026-11-05` and `2026-11-12` (`003_narrativeSchema.sql` / `004_narrativeData.sql`), `NarrativeSearch` changed to return top-level curated `entities` and `relations` alongside `timeline_id`-grouped `chunks` as JSON. The `MAX_CHUNK_CHARACTERS = 32,000` budget truncates `chunks` across the selected timelines so graph descriptions are not silently dropped.
 
-The separate Ema-Narrative experiments collected evidence comparisons on 2026-10-24. One manual review of the old approach used complete questions, all retrieved candidates as rerank input, and at most 8 returned chunks per timeline. Core information was covered for 95 of 100 questions; 5 still lacked required evidence.
-
-These observations changed how we understood the gaps:
-
-| Observation | Consequence for the choice |
-| --- | --- |
-| In 2 of the 5 gaps, required evidence reached rerank but missed the first 8 results; in 3, the required scene never entered the candidates | Increasing the returned count can help one kind of gap, but cannot recover a candidate that was never found |
-| Full-candidate hybrid, naive, and mix comparisons did not automatically resolve those 5 gaps | Changing mode is not a general remedy; that comparison focused its re-review on the known gaps rather than reporting a new overall coverage rate for all three modes |
-| In a separate five-question full-ranking comparison, the note and book passages ranked first once included, while other required disclosures ranked 14th, 17th, or 92nd | Removing upstream restrictions can help some questions, while a larger return range or imperfect ranking can remain relevant |
-
-The 95 questions measure core evidence coverage under those old conditions, not the main Agent's final-answer accuracy. The five-question comparison bypassed several restrictions together, so it also cannot identify one parameter as the sole cause.
-
-Sending every retrieved candidate to rerank reduces evidence lost before ranking, but increases input volume and cost. Returning more original text increases the main Agent's context and reading burden. Even returning every chunk still requires interpreting the competing accounts in the story correctly.
-
-We chose bounded candidate and return ranges. Current limits send at most 125 candidates per timeline and request at most 30 ranked chunks, with an additional text budget across the whole query. The candidate limit takes the existing merge order rather than a previously established global relevance ranking. We accept the possibility of cutting useful evidence to keep individual input costs bounded.
-
-These values express the project's current cost/coverage tradeoff. The old comparisons are not complete answer-generation verification of the current 125/30 approach, nor do they establish universal values. Parameters can change without recording every tuning step in the design document.
+```mermaid
+flowchart LR
+  Query["User query + history"] --> Prep["Concurrent LLM prep: Router (with summary) + Keywords (no summary)"]
+  Prep -->|"naive mode"| Vec["Cosine search in routed timeline chunks (top 100)"]
+  Prep -->|"local / global / hybrid / mix"| Graph["Global graph search (386 entities, 879 relations, threshold 0.2, top 40)"]
+  Graph --> Group["Collect source chunks grouped by routed timeline_id"]
+  Vec --> Rerank["Rerank with original query (up to 125 candidates -> top 30)"]
+  Group --> Rerank
+  Rerank --> Budget["Trim chunks to 32,000-char shared budget"]
+  Graph --> Out["Return JSON: top-level entities + relations + timeline chunks"]
+  Budget --> Out
+```
 
 ## Limitations we currently accept
 
-An original passage can still lead to a wrong answer. Trials contain guesses, lies, inner monologues, player choices, and overturned reasoning. Highly relevant dialogue may be an early accusation. We do not want to remove genuine story content simply to make search results look definitive, or treat all of it as the final verdict.
-
-When a retrieved chunk labels its `speaker` as narration (旁白), the response may repeat "the narrator says" instead of conveying the character's own feelings from their perspective. Relevant evidence alone therefore does not ensure natural character expression; speaker labels and narrative perspective also influence the reply.
-
-The current choice preserves original passages, reduces question rewriting, separates routing from extraction, and limits input/output cost. It can still miss evidence, choose the wrong timeline or keywords, or combine accounts from different stages. Data organization, retrieval omissions, and downstream interpretation need separate checks. One successful answer or parameter choice does not establish that the whole problem is solved.
-
-If real questions repeatedly expose the same omission, or the current organization cannot preserve necessary context, compare data organization, retrieval, or ranking approaches for that failure class. See the [Narrative module](../../../src/narrative/README.md) and [parameter definitions](../../../src/narrative/pipeline/constants.ts) for interfaces and current values.
-
+- **Cross-loop descriptions in the global graph**: Because `entities` and `relations` live in a single story-wide graph rather than three separate per-loop graphs, graph queries on single-loop questions can still return entity or relation summaries that mention outcomes from other loops. Tool prompts and instructions tell the Agent to check each chunk's `timeline_id` and separate character claims from final plot outcomes.
+- **Partial 100-question coverage on `v4/unified`**: In the `v4/unified/questionReview100.json` evaluation (chunk-only cosine top-100 + `Qwen/Qwen3-Reranker-8B` top-30 with known timelines), `96/100` questions returned all expected source ranges (`163/169`) and `97/100` matched all marked quotes (`164/169`), with `0` unresolved ranges. That run did not test live LLM timeline routing or graph-vector retrieval over the merged 386-entity graph.
+- **Single-call timeline budget & router dependency**: Timeline selection still depends on LLM classification against the story summary, and the `32,000`-character chunk budget is shared across all loops returned in a single tool call.
+- **Faithful in-character perspective**: Source chunks retain character lies, inner thoughts, and original literary attribution rather than inserting omniscient summaries or synthetic narrator prefixes, so callers must still interpret speaker perspective from passage context.

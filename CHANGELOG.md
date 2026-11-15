@@ -4,10 +4,17 @@
 
 ## Unreleased
 
+## v0.1.0-beta.3
+
+- Added MCP OAuth 2.0 browser PKCE login and credential storage, along with MCP server management UI updates.
+- MCP environment inspection checks each Python candidate once. Enabling an MCP server now waits for the settings operation and reports failures through the HTTP error handler.
+- Added persistent TTS speech audio lifecycle and recording selection across turns, updated `StageEngine` tag processing, and added a unified audio playback store.
+- Added a dedicated desktop caption window and stage voice input panel (`StageVoiceInput`).
+- Upgraded the Narrative SQLite corpus and schema to a shared global graph (`386` entities, `879` relations) paired with `timeline_id`-scoped chunks (`785` chunks). Narrative search now returns matched entities, relations, and original chunks per timeline in JSON format, keeping graph descriptions outside the chunk budget.
+- Isolated child-process environments so `EMA_SHARED_SECRET` is never forwarded, added configurable command-environment passthrough/values, scoped session shell approvals to working directories, added a configurable available-memory check (`512 MiB` default) before starting shell commands, and required permission checks for `WebFetch` cross-origin redirects.
 - Node writes bounded UTF-8 JSONL diagnostic files directly, with business-module targets, structured errors, credential redaction, rotation, retention cleanup, and bounded file closure. Congested records are counted and dropped; forced termination can lose pending writes. Native logging and the process-shutdown API are removed.
 - Log cleanup tolerates old files removed by another process without permanently stopping writes or reporting a false capacity shortage.
-- MCP environment inspection checks each Python candidate once. Enabling an MCP server now waits for the settings operation and reports failures through the HTTP error handler.
-- Narrative search now returns matched entities, relations, and original chunks for each timeline. Graph descriptions accompany ranked passages, and the Tool result is displayed as JSON.
+- Fixed session deletion cleanup and event notifications, renamed the internal session input queue and Turn event fanout to `SessionMessageQueue` and `dispatchTurnEvents`, added `CONTRIBUTING.md`, and updated documentation and design records.
 
 ## v0.1.0-beta.2
 

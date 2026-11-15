@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="CHANGELOG-zh.md"><img src="https://img.shields.io/badge/version-v0.1.0--beta.2-00ADB5?style=flat-square" alt="版本 v0.1.0-beta.2"></a>
+  <a href="CHANGELOG-zh.md"><img src="https://img.shields.io/badge/version-v0.1.0--beta.3-00ADB5?style=flat-square" alt="版本 v0.1.0-beta.3"></a>
   <a href="apps/desktop/README-zh.md"><img src="https://img.shields.io/badge/Tauri-24C8D8?style=flat-square&amp;logo=tauri&amp;logoColor=000000" alt="Tauri"></a>
   <a href="apps/desktop/README-zh.md"><img src="https://img.shields.io/badge/React-20232A?style=flat-square&amp;logo=react&amp;logoColor=61DAFB" alt="React"></a>
   <a href="tsconfig.base.json"><img src="https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&amp;logo=typescript&amp;logoColor=FFFFFF" alt="TypeScript"></a>
