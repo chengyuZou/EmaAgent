@@ -1,6 +1,6 @@
 import { logging } from '@ema-agent/logging';
 import { waitForPromise } from '../connections/requestControl.js';
-import type { OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js';
+import type { OAuthClientProvider, OAuthDiscoveryState } from '@modelcontextprotocol/sdk/client/auth.js';
 import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js';
 import type {
   OAuthClientInformationMixed,
@@ -11,6 +11,51 @@ import type { McpOAuthPendingLogin, McpOAuthStatus } from './types.js';
 
 // SDK 的 selectResourceURL 接口声明需要 OAuthClientProvider, 实际只检查可选的 validateResourceURL 钩子.
 const DEFAULT_RESOURCE_PROVIDER = {} as unknown as OAuthClientProvider;
+
+/** 解析已持久化在数据库中的 DCR 回跳地址白名单 JSON 数组; 缺失或格式非法时返回空数组. */
+function parseRegisteredRedirectUris(redirectUrisJson: string | null): string[] {
+  if (!redirectUrisJson) return [];
+  try {
+    const parsed: unknown = JSON.parse(redirectUrisJson);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+/** 判断持久化记录里的 client_secret 是否已到达过期时间; null 表示无过期限制或长期有效. */
+function isStoredClientSecretExpired(row: McpOAuthCredentialsRow, nowMs = Date.now()): boolean {
+  return row.client_secret_expires_at_ms !== null && row.client_secret_expires_at_ms <= nowMs;
+}
+
+/** 将数据库凭据行还原为 SDK 可识别的客户端登记对象, 保留认证方式与回跳地址等元数据. */
+function buildClientInformationFromRow(row: McpOAuthCredentialsRow): OAuthClientInformationMixed {
+  const registeredUris = parseRegisteredRedirectUris(row.redirect_uris_json);
+  const clientSecretExpiresAt =
+    row.client_secret_expires_at_ms !== null
+      ? Math.floor(row.client_secret_expires_at_ms / 1000)
+      : undefined;
+
+  if (registeredUris.length > 0) {
+    return {
+      client_id: row.client_id,
+      ...(row.client_secret !== null ? { client_secret: row.client_secret } : {}),
+      ...(clientSecretExpiresAt !== undefined ? { client_secret_expires_at: clientSecretExpiresAt } : {}),
+      ...(row.token_endpoint_auth_method ? { token_endpoint_auth_method: row.token_endpoint_auth_method } : {}),
+      redirect_uris: registeredUris,
+    };
+  }
+
+  return {
+    client_id: row.client_id,
+    ...(row.client_secret !== null ? { client_secret: row.client_secret } : {}),
+    ...(clientSecretExpiresAt !== undefined ? { client_secret_expires_at: clientSecretExpiresAt } : {}),
+    ...(row.token_endpoint_auth_method
+      ? ({ token_endpoint_auth_method: row.token_endpoint_auth_method } as Partial<OAuthClientInformationMixed>)
+      : {}),
+  } as OAuthClientInformationMixed;
+}
 
 /**
  * 针对单个 MCP HTTP 服务的 OAuth 凭据与登录会话状态管理.
@@ -53,28 +98,61 @@ export class McpOAuthClient {
 
   /**
    * 读取已在服务端登记的客户端信息.
-   * 若本地数据库未曾保存过 client_id 或地址不匹配则返回 undefined, SDK 会尝试动态注册.
+   * 若本地数据库未曾保存过 client_id, 地址不匹配或密钥已过期则返回 undefined.
    */
   async clientInformation(): Promise<OAuthClientInformationMixed | undefined> {
     const row = this.readCredentials();
-    if (!row || !row.client_id) {
+    if (!row || !row.client_id || isStoredClientSecretExpired(row)) {
       return undefined;
     }
-    return {
-      client_id: row.client_id,
-      client_secret: row.client_secret ?? undefined,
-    };
+    return buildClientInformationFromRow(row);
+  }
+
+  /**
+   * 为本次回环登录读取客户端信息.
+   * 仅当已登记的 redirect_uris 包含本次监听端口对应的 redirectUri 且密钥未过期时才复用;
+   * 若随机端口已变化或历史记录尚未保存 redirect_uris, 返回 undefined 以触发 SDK 对新端口重新执行 DCR.
+   */
+  private clientInformationForLogin(redirectUri: string): OAuthClientInformationMixed | undefined {
+    const row = this.readCredentials();
+    if (!row || !row.client_id || isStoredClientSecretExpired(row)) {
+      return undefined;
+    }
+    const registeredUris = parseRegisteredRedirectUris(row.redirect_uris_json);
+    if (!registeredUris.includes(redirectUri)) {
+      return undefined;
+    }
+    return buildClientInformationFromRow(row);
   }
 
   /**
    * 保存动态注册成功后服务端返回的客户端登记信息.
+   * fallbackRedirectUris 仅在部分服务端 /register 响应省略 redirect_uris 时兜底记录本次实际回调地址.
    */
-  async saveClientInformation(info: OAuthClientInformationMixed): Promise<void> {
+  async saveClientInformation(
+    info: OAuthClientInformationMixed,
+    fallbackRedirectUris?: string[],
+  ): Promise<void> {
+    const redirectUris =
+      'redirect_uris' in info && Array.isArray(info.redirect_uris) && info.redirect_uris.length > 0
+        ? info.redirect_uris
+        : fallbackRedirectUris;
+    const tokenEndpointAuthMethod =
+      'token_endpoint_auth_method' in info ? (info.token_endpoint_auth_method ?? null) : null;
+    // RFC 7591 规定 client_secret_expires_at 为 Unix 秒级时间戳, 0 表示永久有效.
+    const clientSecretExpiresAtMs =
+      typeof info.client_secret_expires_at === 'number' && info.client_secret_expires_at > 0
+        ? info.client_secret_expires_at * 1000
+        : null;
+
     this.credentialsRepo.saveInitialOrClient({
       mcpServerName: this.serverName,
       serverUrl: this.serverUrl,
       clientId: info.client_id,
       clientSecret: info.client_secret ?? null,
+      tokenEndpointAuthMethod,
+      redirectUrisJson: redirectUris ? JSON.stringify(redirectUris) : null,
+      clientSecretExpiresAtMs,
       updatedAt: Date.now(),
     });
   }
@@ -165,8 +243,13 @@ export class McpOAuthClient {
         response_types: ['code'],
       },
       state: () => login.state,
-      clientInformation: () => this.clientInformation(),
+      clientInformation: () => this.clientInformationForLogin(login.redirectUri),
       tokens: () => this.tokens(),
+      discoveryState: () => login.discoveryState,
+      saveDiscoveryState: (state: OAuthDiscoveryState) => {
+        assertCurrent();
+        login.discoveryState = state;
+      },
       codeVerifier: () => {
         assertCurrent();
         if (!login.codeVerifier) {
@@ -183,7 +266,7 @@ export class McpOAuthClient {
       },
       saveClientInformation: async (info) => {
         assertCurrent();
-        await this.saveClientInformation(info);
+        await this.saveClientInformation(info, [login.redirectUri]);
         expectedVersion = readVersion();
       },
       saveTokens: async (tokens) => {
@@ -196,6 +279,9 @@ export class McpOAuthClient {
         // 换取 Token 失败(如 invalid_grant)时不再让 SDK 清除本地旧 Token 并重复提交失效授权码.
         if (authorizationCode && scope === 'tokens') {
           throw new Error('OAuth authorization code rejected by server.');
+        }
+        if (scope === 'discovery' || scope === 'all') {
+          login.discoveryState = undefined;
         }
         await this.invalidateCredentials(scope);
         expectedVersion = readVersion();
@@ -319,6 +405,15 @@ export class McpOAuthClient {
     if (!credentials || !refreshToken || !this.isTokenExpiredOrNearExpiry()) {
       return;
     }
+    if (isStoredClientSecretExpired(credentials)) {
+      logging({
+        level: 'warn',
+        target: 'mcp',
+        event: 'mcp.oauth.client_secret_expired',
+        message: `Skipping OAuth refresh for server "${this.serverName}" because stored client_secret has expired.`,
+      });
+      return;
+    }
 
     if (this.pendingTokenRefresh) {
       await waitForPromise(this.pendingTokenRefresh, signal);
@@ -343,10 +438,7 @@ export class McpOAuthClient {
         try {
           const tokens = await refreshAuthorization(discovery.authorizationServerUrl, {
             metadata: discovery.authorizationServerMetadata,
-            clientInformation: {
-              client_id: credentials.client_id,
-              client_secret: credentials.client_secret ?? undefined,
-            },
+            clientInformation: buildClientInformationFromRow(credentials),
             refreshToken,
             resource,
           });

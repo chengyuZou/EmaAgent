@@ -205,9 +205,52 @@ describe('MCP OAuth 凭据持久化与乐观锁', () => {
     const clientChanged = credentialsRepo.findByServerName('notion');
     expect(clientChanged?.client_id).toBe('client-2');
     expect(clientChanged?.client_secret).toBeNull();
+    expect(clientChanged?.token_endpoint_auth_method).toBeNull();
+    expect(clientChanged?.redirect_uris_json).toBeNull();
+    expect(clientChanged?.client_secret_expires_at_ms).toBeNull();
     expect(clientChanged?.access_token).toBeNull();
     expect(clientChanged?.refresh_token).toBeNull();
     expect(clientChanged?.expires_at_ms).toBeNull();
+  });
+
+  it('保存并保留客户端认证方式, 回跳地址列表与密钥过期时间, clearTokens 后不丢失', () => {
+    const saved = credentialsRepo.saveInitialOrClient({
+      mcpServerName: 'notion',
+      serverUrl: 'https://mcp.notion.com/mcp',
+      clientId: 'client-meta-1',
+      clientSecret: 'secret-meta-1',
+      tokenEndpointAuthMethod: 'client_secret_post',
+      redirectUrisJson: JSON.stringify(['http://127.0.0.1:50483/oauth/callback']),
+      clientSecretExpiresAtMs: 1_900_000_000_000,
+      accessToken: 'token-1',
+      refreshToken: 'refresh-1',
+      expiresAtMs: 3000,
+      updatedAt: 1000,
+    });
+
+    expect(saved.token_endpoint_auth_method).toBe('client_secret_post');
+    expect(saved.redirect_uris_json).toBe('["http://127.0.0.1:50483/oauth/callback"]');
+    expect(saved.client_secret_expires_at_ms).toBe(1_900_000_000_000);
+
+    credentialsRepo.clearTokens('notion', 2000);
+    const afterClear = credentialsRepo.findByServerName('notion');
+    expect(afterClear?.access_token).toBeNull();
+    expect(afterClear?.token_endpoint_auth_method).toBe('client_secret_post');
+    expect(afterClear?.redirect_uris_json).toBe('["http://127.0.0.1:50483/oauth/callback"]');
+    expect(afterClear?.client_secret_expires_at_ms).toBe(1_900_000_000_000);
+
+    // 更换新 client_id 重新注册时, 必须覆盖/清空旧客户端注册元数据
+    credentialsRepo.saveInitialOrClient({
+      mcpServerName: 'notion',
+      serverUrl: 'https://mcp.notion.com/mcp',
+      clientId: 'client-meta-2',
+      updatedAt: 3000,
+    });
+    const replaced = credentialsRepo.findByServerName('notion');
+    expect(replaced?.client_id).toBe('client-meta-2');
+    expect(replaced?.token_endpoint_auth_method).toBeNull();
+    expect(replaced?.redirect_uris_json).toBeNull();
+    expect(replaced?.client_secret_expires_at_ms).toBeNull();
   });
 
   it('父级 mcp_servers 记录删除时级联删除对应的 OAuth 凭据', () => {

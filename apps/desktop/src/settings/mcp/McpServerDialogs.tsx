@@ -271,8 +271,8 @@ export function McpServerFormDialog({
   const formValid = Boolean(nameValid
     && (form.transport === 'stdio' ? form.command.trim() : form.url.trim())
     && timeoutValid);
-  const hasExplicitAuthHeader = form.transport === 'http'
-    && form.authType === 'oauth'
+  const isOAuthMode = form.transport === 'http' && form.authType === 'oauth';
+  const hasExplicitAuthHeader = isOAuthMode
     && form.headers.some((pair) => pair.key.trim().toLowerCase() === 'authorization');
 
   function closeForm(): void {
@@ -406,7 +406,14 @@ export function McpServerFormDialog({
             <Field label="鉴权方式" description="选择 OAuth 时, 请在保存后点击服务器卡片上的「进行授权」完成登录">
               <Select
                 value={form.authType}
-                onChange={(v) => setForm({ ...form, authType: v as McpAuthType })}
+                onChange={(v) => {
+                  const nextAuth = v as McpAuthType;
+                  if (nextAuth === 'oauth') {
+                    // OAuth 模式需要保存后经浏览器授权, 切入时清空之前静态连接留下的探测结果.
+                    setProbeResult(null);
+                  }
+                  setForm({ ...form, authType: nextAuth });
+                }}
                 options={AUTH_TYPE_OPTIONS}
               />
             </Field>
@@ -431,13 +438,13 @@ export function McpServerFormDialog({
           <Input type="number" value={form.toolTimeoutSec} onChange={(e) => setForm({ ...form, toolTimeoutSec: e.target.value })} placeholder="120" />
         </Field>
 
-        {probeResult && (
+        {!isOAuthMode && probeResult && (
           <Callout variant={probeResult.ok ? 'success' : 'danger'}>
             {probeResult.ok ? '连接测试成功' : `连接失败：${probeResult.error}`}
           </Callout>
         )}
 
-        {probeResult?.ok && probeResult.tools && probeResult.tools.length > 0 && (
+        {!isOAuthMode && probeResult?.ok && probeResult.tools && probeResult.tools.length > 0 && (
           <div className="flex flex-col gap-1.5 mt-2 ema-fade-in">
             <span className="text-xs text-[var(--ema-text-tertiary)]">
               发现 {probeResult.tools.length} 个工具：
@@ -454,16 +461,18 @@ export function McpServerFormDialog({
 
       <Divider className="my-4" />
 
-      <div className="flex items-center justify-between">
-        <Button
-          variant="secondary"
-          size="sm"
-          loading={probing}
-          disabled={!formValid || probing}
-          onClick={() => void handleProbe()}
-        >测试连接</Button>
+      <div className="flex items-center gap-2">
+        {!isOAuthMode && (
+          <Button
+            variant="secondary"
+            size="sm"
+            loading={probing}
+            disabled={!formValid || probing}
+            onClick={() => void handleProbe()}
+          >测试连接</Button>
+        )}
 
-        <div className="flex gap-2">
+        <div className="ml-auto flex gap-2">
           <Button variant="ghost" size="sm" onClick={closeForm}>取消</Button>
           <Button
             variant="primary"

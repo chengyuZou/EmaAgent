@@ -186,9 +186,12 @@ describe('MCP OAuth store events & desktop UI', () => {
     const expandBtn = [...host.querySelectorAll<HTMLButtonElement>('button')]
       .find((b) => b.textContent?.trim() === '1')!;
     expect(expandBtn.type).toBe('button');
+    expect(expandBtn.className).toContain('rounded-pill');
+    expect(expandBtn.getAttribute('aria-expanded')).toBe('false');
     await act(async () => {
       expandBtn.click();
     });
+    expect(expandBtn.getAttribute('aria-expanded')).toBe('true');
     await vi.waitFor(() => {
       expect(host.textContent).toContain('search');
     });
@@ -240,6 +243,7 @@ describe('MCP OAuth store events & desktop UI', () => {
     });
 
     expect(buttonByText(document.body, '保存')).toBeDefined();
+    expect(buttonByText(document.body, '测试连接')).toBeDefined();
     expect(buttonByText(document.body, '保存并去授权')).toBeUndefined();
     expect(buttonByText(document.body, '添加')).toBeUndefined();
 
@@ -287,6 +291,7 @@ describe('MCP OAuth store events & desktop UI', () => {
     });
 
     expect(document.body.textContent).toContain('OAuth 模式下如同时保留静态 Authorization 请求头');
+    expect(buttonByText(document.body, '测试连接')).toBeUndefined();
     const saveBtn = buttonByText(document.body, '保存')!;
     expect(saveBtn.disabled).toBe(false);
     await act(async () => {

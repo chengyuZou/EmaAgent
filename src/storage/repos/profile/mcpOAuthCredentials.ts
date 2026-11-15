@@ -5,6 +5,12 @@ export interface McpOAuthCredentialsRow {
   server_url: string;
   client_id: string;
   client_secret: string | null;
+  /** 动态注册协商的 Token 端点客户端认证方式, 如 client_secret_basic / client_secret_post / none; null 表示未指定. */
+  token_endpoint_auth_method: string | null;
+  /** 动态注册时登记在服务端的回跳 URI 列表 JSON 字符串; null 表示尚未记录登记过的回跳地址. */
+  redirect_uris_json: string | null;
+  /** client_secret 过期毫秒时间戳; null 表示未过期限制或未知. */
+  client_secret_expires_at_ms: number | null;
   access_token: string | null;
   refresh_token: string | null;
   expires_at_ms: number | null;
@@ -17,6 +23,9 @@ export interface McpOAuthCredentialsUpsert {
   serverUrl: string;
   clientId: string;
   clientSecret?: string | null;
+  tokenEndpointAuthMethod?: string | null;
+  redirectUrisJson?: string | null;
+  clientSecretExpiresAtMs?: number | null;
   accessToken?: string | null;
   refreshToken?: string | null;
   expiresAtMs?: number | null;
@@ -69,14 +78,18 @@ export class McpOAuthCredentialsRepo {
         .prepare(`
           INSERT INTO mcp_oauth_credentials (
             mcp_server_name, server_url, client_id, client_secret,
+            token_endpoint_auth_method, redirect_uris_json, client_secret_expires_at_ms,
             access_token, refresh_token, expires_at_ms, version, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
         `)
         .run(
           upsert.mcpServerName,
           upsert.serverUrl,
           upsert.clientId,
           upsert.clientSecret ?? null,
+          upsert.tokenEndpointAuthMethod ?? null,
+          upsert.redirectUrisJson ?? null,
+          upsert.clientSecretExpiresAtMs ?? null,
           upsert.accessToken ?? null,
           upsert.refreshToken ?? null,
           upsert.expiresAtMs ?? null,
@@ -85,10 +98,31 @@ export class McpOAuthCredentialsRepo {
       return this.findByServerName(upsert.mcpServerName)!;
     }
 
-    // 仅在同一服务端地址与同一 client_id 下保留原有 Token/Secret,
-    // 换新地址或重新动态注册时清空旧 Token, 避免旧地址凭据串库留存.
+    // 仅在同一服务端地址与同一 client_id 下保留未显式覆盖的凭据与注册元数据,
+    // 换新地址或重新动态注册时清空旧 Token/认证元数据, 避免旧注册串库留存.
     const sameClient =
       existing.server_url === upsert.serverUrl && existing.client_id === upsert.clientId;
+    const nextClientSecret = upsert.clientSecret !== undefined
+      ? upsert.clientSecret
+      : (sameClient ? existing.client_secret : null);
+    const nextTokenEndpointAuthMethod = upsert.tokenEndpointAuthMethod !== undefined
+      ? upsert.tokenEndpointAuthMethod
+      : (sameClient ? existing.token_endpoint_auth_method : null);
+    const nextRedirectUrisJson = upsert.redirectUrisJson !== undefined
+      ? upsert.redirectUrisJson
+      : (sameClient ? existing.redirect_uris_json : null);
+    const nextClientSecretExpiresAtMs = upsert.clientSecretExpiresAtMs !== undefined
+      ? upsert.clientSecretExpiresAtMs
+      : (sameClient ? existing.client_secret_expires_at_ms : null);
+    const nextAccessToken = upsert.accessToken !== undefined
+      ? upsert.accessToken
+      : (sameClient ? existing.access_token : null);
+    const nextRefreshToken = upsert.refreshToken !== undefined
+      ? upsert.refreshToken
+      : (sameClient ? existing.refresh_token : null);
+    const nextExpiresAtMs = upsert.expiresAtMs !== undefined
+      ? upsert.expiresAtMs
+      : (sameClient ? existing.expires_at_ms : null);
 
     this.db
       .prepare(`
@@ -96,6 +130,9 @@ export class McpOAuthCredentialsRepo {
         SET server_url = ?,
             client_id = ?,
             client_secret = ?,
+            token_endpoint_auth_method = ?,
+            redirect_uris_json = ?,
+            client_secret_expires_at_ms = ?,
             access_token = ?,
             refresh_token = ?,
             expires_at_ms = ?,
@@ -106,10 +143,13 @@ export class McpOAuthCredentialsRepo {
       .run(
         upsert.serverUrl,
         upsert.clientId,
-        upsert.clientSecret ?? (sameClient ? existing.client_secret : null),
-        upsert.accessToken ?? (sameClient ? existing.access_token : null),
-        upsert.refreshToken ?? (sameClient ? existing.refresh_token : null),
-        upsert.expiresAtMs ?? (sameClient ? existing.expires_at_ms : null),
+        nextClientSecret,
+        nextTokenEndpointAuthMethod,
+        nextRedirectUrisJson,
+        nextClientSecretExpiresAtMs,
+        nextAccessToken,
+        nextRefreshToken,
+        nextExpiresAtMs,
         upsert.updatedAt,
         upsert.mcpServerName,
       );
@@ -144,7 +184,7 @@ export class McpOAuthCredentialsRepo {
 
   /**
    * 清除本机 OAuth Token(access_token, refresh_token, expires_at_ms).
-   * 保留 client_id 与 client_secret, 使后续再次登录无需重复向服务端进行动态客户端注册.
+   * 保留客户端注册元数据(client_id, client_secret, 认证方式, 回跳地址与密钥过期时间).
    * 自增 version 使尚未完成的异步旧续期失效.
    */
   clearTokens(mcpServerName: string, updatedAt: number): boolean {

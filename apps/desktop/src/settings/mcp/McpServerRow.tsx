@@ -215,17 +215,18 @@ export function ServerRow({
                 )}
                 {server.toolCount > 0 && (
                   <Tooltip content={expanded ? '收起工具' : '展开查看工具'}>
-                    <button
-                      type="button"
-                      className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-xs
-                                 bg-[var(--ema-surface-2)] text-[var(--ema-text-secondary)]
-                                 hover:bg-[var(--ema-surface-3)] transition-colors"
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      shape="pill"
+                      className="h-6 px-2 bg-[var(--ema-surface-2)] hover:bg-[var(--ema-surface-3)]"
+                      aria-expanded={expanded}
                       onClick={() => setExpanded((v) => !v)}
                     >
                       <span className="i-mdi:tools text-xs" aria-hidden />
                       {server.toolCount}
                       <span className={`i-mdi:chevron-down text-xs transition-transform ${expanded ? 'rotate-180' : ''}`} aria-hidden />
-                    </button>
+                    </Button>
                   </Tooltip>
                 )}
               </div>

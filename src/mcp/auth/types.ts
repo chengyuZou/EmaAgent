@@ -1,3 +1,5 @@
+import type { OAuthDiscoveryState } from '@modelcontextprotocol/sdk/client/auth.js';
+
 /**
  * MCP OAuth 授权状态.
  * - 'required': 尚未授权, 凭据已清除, 或服务返回 401 需重新授权.
@@ -34,6 +36,8 @@ export interface McpOAuthPendingLogin {
   codeVerifier?: string;
   /** 服务端返回的授权重定向目标 URL. */
   authorizationUrl?: URL;
+  /** 单次浏览器登录会话期间缓存的服务端发现元数据, 避免授权回调换取 Token 时重复请求 well-known. */
+  discoveryState?: OAuthDiscoveryState;
   /** 释放临时 HTTP 回调端口与清理定时器. */
   readonly cleanup: () => Promise<void>;
   /** 任务完成或失败的异步 Promise. */
