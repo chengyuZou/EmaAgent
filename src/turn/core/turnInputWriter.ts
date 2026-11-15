@@ -4,7 +4,7 @@ import type { SkillPool } from '@ema-agent/skills';
 import type { TurnStreamEvent } from '../events.js';
 import type { StartTurn } from '../types.js';
 import type { TurnExecutorDeps } from './turnExecutor.js';
-import type { ClaimedSessionContinuation } from '../continuation/continuationTypes.js';
+import type { QueueMessage } from '../messageQueue/queueTypes.js';
 import { prepareTurnInputParts } from '../prepare/turnInputParts.js';
 import { renderTurnReminder } from '../reminder/turnReminder.js';
 
@@ -46,7 +46,7 @@ export function createTurnInputWriter(
     blocks: MessageBlocks,
     characterName: string,
   ): Promise<string | undefined> {
-    const userText = explicitUserText(blocks);
+    const userText = input.messageKind === 'normal' ? explicitUserText(blocks) : '';
     const previousCharacterName = deps.turns.getPreviousCharacterName(sessionId, turnId);
     // Reminder 先于用户消息落库:同一 Turn 的历史重放顺序即模型看到的顺序.
     // reminder 表示"本 Turn 开始时的事实",整 Turn 只有这一条,不随 LLM Call 重建.
@@ -79,51 +79,53 @@ export function createTurnInputWriter(
       deps.onTaskReminderPersisted?.(sessionId);
     }
 
-    // 内部完成通知与 Goal 续接共用 Message kind, 不伪装成用户手写内容.
-    if (input.continuationText) {
-      deps.sessions.appendMessage({
-        turnId,
-        sessionId,
-        role: 'user',
-        kind: 'continuation',
-        blocks: input.continuationText,
-      });
-    }
-    if (blocks.length > 0) {
+    if (input.messageKind === 'continuation') {
+      // 内部完成通知与 Goal 续接持久化为隐藏 continuation 消息, 不触发自动标题或前端气泡事件.
+      if (blocks.length > 0) {
+        deps.sessions.appendMessage({
+          turnId,
+          sessionId,
+          role: 'user',
+          kind: 'continuation',
+          blocks,
+        });
+      }
+      deps.messageQueue.confirmMessageSaved(sessionId, turnId);
+    } else if (blocks.length > 0) {
       const userMessage = appendUserMessage(blocks);
-      const queuedInputIds = deps.continuations.acknowledge(turnId);
+      const queuedInputIds = deps.messageQueue.confirmMessageSaved(sessionId, turnId);
       emit({ type: 'user_message_stored', message: userMessage, queuedInputIds });
     } else {
-      deps.continuations.acknowledge(turnId);
+      deps.messageQueue.confirmMessageSaved(sessionId, turnId);
     }
 
     return handledGoalId;
   }
 
-  const persistClaim = async (
-    claim: ClaimedSessionContinuation,
+  const persistQueueMessage = async (
+    queueMessage: QueueMessage,
   ): Promise<SessionMessage> => {
-    if (claim.inputKind === 'continuationText') {
-      // 内部续接文本不在聊天显示, 只持久化并交给模型.
+    const blocks = await prepareTurnInputParts(
+      deps.attachments,
+      sessionId,
+      turnId,
+      queueMessage.input,
+      skillPool,
+    );
+    signal.throwIfAborted();
+
+    if (queueMessage.messageKind === 'continuation') {
+      // 内部完成通知与 Goal 编辑只在历史中供模型读取, 不作为用户聊天气泡展示.
       return deps.sessions.appendMessage({
         turnId,
         sessionId,
         role: 'user',
         kind: 'continuation',
-        blocks: claim.continuationText,
+        blocks,
       });
     }
 
-    const blocks = await prepareTurnInputParts(
-      deps.attachments,
-      sessionId,
-      turnId,
-      claim.input,
-      skillPool,
-    );
-    signal.throwIfAborted();
-
-    if (claim.input.some(part => part.type === 'text' && part.text.trim().length > 0)) {
+    if (queueMessage.input.some(part => part.type === 'text' && part.text.trim().length > 0)) {
       deps.computerUse?.noteUserInput(sessionId);
     }
 
@@ -133,17 +135,17 @@ export function createTurnInputWriter(
   const takeNextIterationMessages = async (): Promise<SessionMessage[]> => {
     const appended: SessionMessage[] = [];
     while (true) {
-      const claim = deps.continuations.claimNextIteration(sessionId, turnId);
-      if (!claim) return appended;
+      const queueMessage = deps.messageQueue.reserveNextIterationMessage(sessionId, turnId);
+      if (!queueMessage) return appended;
       try {
-        const message = await persistClaim(claim);
+        const message = await persistQueueMessage(queueMessage);
         appended.push(message);
-        const queuedInputIds = deps.continuations.acknowledge(turnId);
-        if (claim.inputKind === 'messageInput') {
+        const queuedInputIds = deps.messageQueue.confirmMessageSaved(sessionId, turnId);
+        if (queueMessage.messageKind === 'normal') {
           emit({ type: 'user_message_stored', message, queuedInputIds });
         }
       } catch (error) {
-        deps.continuations.release(turnId);
+        deps.messageQueue.releaseReservedMessage(sessionId, turnId);
         throw error;
       }
     }

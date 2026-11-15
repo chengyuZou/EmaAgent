@@ -18,9 +18,9 @@ import {
   hasTurnInput,
   type PendingInteraction,
   type QueuedSessionInput,
-  type SessionContinuationEvent,
-  type SessionContinuationQueue,
   type SessionInteractionQueue,
+  type SessionMessageQueue,
+  type SessionMessageQueueEvent,
   type TurnExecutor,
   type TurnStore,
   type TurnStreamEvent,
@@ -66,8 +66,8 @@ export const sessionClientMessageSchema = z.discriminatedUnion(
   'type',
   [
     z.object({ type: z.literal('send_user_message'), requestId: requestIdSchema, payload: userMessagePayloadSchema }),
-    z.object({ type: z.literal('remove_queued_input'), requestId: requestIdSchema, id: z.string().uuid() }),
-    z.object({ type: z.literal('guide_queued_input'), requestId: requestIdSchema, id: z.string().uuid() }),
+    z.object({ type: z.literal('remove_queued_input'), requestId: requestIdSchema, queuedInputId: z.string().uuid() }),
+    z.object({ type: z.literal('mark_input_for_next_iteration'), requestId: requestIdSchema, queuedInputId: z.string().uuid() }),
     z.object({ type: z.literal('start_compaction'), requestId: requestIdSchema }),
     z.object({
       type: z.literal('respond_permission'),
@@ -148,7 +148,7 @@ export type SessionBusinessMessage =
   }
   | Extract<TurnStreamEvent, { readonly type: 'user_message_stored' }>
   | CompactEvent
-  | SessionContinuationEvent
+  | SessionMessageQueueEvent
   | SessionTurnMessage
   | {
     /** Subagent 的增量和终态, Desktop 只更新子代理 Store, 不混入 Session 的聊天消息. */
@@ -189,7 +189,7 @@ interface SessionSocket {
   send(message: SessionServerMessage): void;
 }
 
-/** Session Route 与 TurnFanout 共用此连接表, 同一 Session 可以被多个窗口同时观察. */
+/** Session Route 与 Turn 事件分发共用此连接表, 同一 Session 可以被多个窗口同时观察. */
 export class SessionSocketConnections {
   private readonly bySession = new Map<string, Set<SessionSocket>>();
 
@@ -233,7 +233,7 @@ export interface SessionWebSocketRouteDeps {
   readonly connections: SessionSocketConnections;
   readonly executor: TurnExecutor;
   readonly subagents: SubagentExecutor;
-  readonly continuations: SessionContinuationQueue;
+  readonly messageQueue: SessionMessageQueue;
   readonly goals: Pick<GoalStore, 'create'>;
   readonly sessions: Pick<SessionStore, 'sessionExists' | 'getSessionForWork' | 'loadMessagesForTurn'>;
   readonly turns: Pick<TurnStore, 'getTurn'>;
@@ -260,7 +260,7 @@ export const sessionWebSocketRoute = (deps: SessionWebSocketRouteDeps) =>
             type: 'session_state',
             running: readSessionRunningState(deps, sessionId),
             pendingInteractions: deps.interactions.listPending(sessionId),
-            queuedInputs: deps.continuations.list(sessionId),
+            queuedInputs: deps.messageQueue.listQueuedInputs(sessionId),
           });
           // 重连只发送当前状态, 不重放断线期间的增量; 历史正文通过 HTTP 重新读取.
         },
@@ -307,33 +307,41 @@ async function handleClientMessage(
           if (deps.sessionRunning.getRunning(sessionId)?.kind === 'compact') {
             throw new SessionBusyError(sessionId);
           }
-          // 创建事件只请求微任务. 同步入队后, 初始用户任务与 Goal 提示才一起领取.
+          // 创建事件只请求微任务. 同步入队后, 启动 Turn 时读取统一队列.
           deps.goals.create(sessionId, message.payload.objective);
         }
-        deps.continuations.enqueue({
-          sessionId,
-          input: message.payload.input,
-        });
+        deps.messageQueue.enqueueUserMessage(sessionId, message.payload.input);
         socket.send({ type: 'request_succeeded', requestId: message.requestId });
         return;
       }
       case 'remove_queued_input': {
-        const accepted = deps.continuations.remove(sessionId, message.id);
-        const item = deps.continuations.list(sessionId).find(item => item.id === message.id);
+        const accepted = deps.messageQueue.removeQueuedInput(sessionId, message.queuedInputId);
+        const queuedInput = deps.messageQueue
+          .listQueuedInputs(sessionId)
+          .find(candidate => candidate.id === message.queuedInputId);
         let reason = '这条消息已处理或已移出队列.';
-        if (item?.delivery === 'next_iteration') reason = '这条消息已提交为立即引导, 不能再删除.';
-        else if (item) reason = '这条消息已经被 Turn 领取, 无法删除. 请等待当前处理完成, 或停止生成.';
+        if (queuedInput?.delivery === 'next_iteration') {
+          reason = '这条消息已设置为下一迭代交付, 不能再删除.';
+        } else if (queuedInput) {
+          reason = '这条消息正在保存准备执行, 无法删除. 请等待当前处理完成, 或停止生成.';
+        }
         sendRequestResult(socket, message.requestId, accepted, reason);
         return;
       }
-      case 'guide_queued_input': {
+      case 'mark_input_for_next_iteration': {
         deps.sessions.getSessionForWork(sessionId);
-        const accepted = deps.continuations.guide(sessionId, message.id);
-        const item = deps.continuations.list(sessionId).find(item => item.id === message.id);
+        const accepted = deps.messageQueue.markInputForNextIteration(sessionId, message.queuedInputId);
+        const queuedInput = deps.messageQueue
+          .listQueuedInputs(sessionId)
+          .find(candidate => candidate.id === message.queuedInputId);
         let reason = '这条消息已处理或已移出队列.';
-        if (deps.sessionRunning.getRunning(sessionId)?.kind !== 'turn') reason = '当前没有运行中的 Turn, 无法立即引导.';
-        else if (item?.delivery === 'next_iteration') reason = '这条消息已经提交为立即引导, 正在等待处理.';
-        else if (item) reason = '这条消息已经被 Turn 领取, 无法再次引导. 请等待当前处理完成, 或停止生成.';
+        if (deps.sessionRunning.getRunning(sessionId)?.kind !== 'turn') {
+          reason = '当前没有运行中的 Turn, 无法调整到下一迭代交付.';
+        } else if (queuedInput?.delivery === 'next_iteration') {
+          reason = '这条消息已经标记为下一迭代交付, 正在等待处理.';
+        } else if (queuedInput) {
+          reason = '这条消息正在保存准备执行, 无法再次调整交付时机. 请等待当前处理完成, 或停止生成.';
+        }
         sendRequestResult(socket, message.requestId, accepted, reason);
         return;
       }

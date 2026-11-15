@@ -2,17 +2,17 @@
 
 [English](./README.md)
 
-本包负责 Session 输入排队与单次 Turn 执行. `SessionContinuationQueue` 决定何时交付输入, `TurnExecutor` 准备模型和工具, 保存消息, 驱动 AgentLoop, 最后清理执行并释放 Session.
+本包负责 Session 输入排队与单次 Turn 执行. `SessionMessageQueue` 决定何时交付输入, `TurnExecutor` 准备模型和工具, 保存消息, 驱动 AgentLoop, 最后清理执行并释放 Session.
 
 ## 启动与结束
 
-Server 创建队列, 执行器和共享的 `SessionRunningRegistry`. 同一 Session 同时只能运行一个 Turn 或手动 Compact. 队列通过 `startTurn` 调用 `TurnExecutor.start()`, 再由 `attachTurn` 消费返回句柄的事件流. `completion` 返回最终结果.
+Server 创建队列, 执行器和共享的 `SessionRunningRegistry`. 同一 Session 同时只能运行一个 Turn 或手动 Compact. 队列通过 `startTurn` 触发启动 `TurnExecutor.start()` 并接入服务端事件分发, `completion` 返回最终结果.
 
 ```text
-队列同步领取输入 -> 创建 running Turn
+队列同步预留输入 -> 创建 running Turn
   -> 准备模型, Prompt, 工具和附件
-  -> 保存 reminder, 内部续接与用户输入
-  -> 确认队列输入已经保存
+  -> 保存 reminder 与初始输入消息(用户或 continuation)
+  -> confirmMessageSaved 确认队列输入已落库
   -> 投影有效历史, 运行 AgentLoop
   -> 每次先保存消息, 再让 AgentLoop 继续
   -> 清理工具和交互, 完成消息保存及必要的 Goal 暂停
@@ -33,21 +33,21 @@ Turn 完成与宿主的 Memory 提取登记在同一 SQL 事务中提交. 消息
 
 ## 排队输入与续接
 
-普通发送统一经过 `enqueue()`, 不论当前空闲, 正在运行还是手动压缩中. 队列只存在于进程内存, 重启不恢复.
+普通发送统一经过 `enqueueUserMessage()`, 不论当前空闲, 正在运行还是手动压缩中. 队列只存在于进程内存, 重启不恢复.
 
 | 交付位置 | 优先顺序 |
 | --- | --- |
-| 新 Turn | 先合并当前用户输入, 没有输入则交付后台通知, 再没有才生成 active Goal 续接. 用户输入也可附带 Goal 短提示. |
-| 完整迭代之间 | 当前 active Goal 最新编辑, 后台通知, 已标记立即引导的用户输入. |
+| 新 Turn | 先合并当前用户输入, 没有输入则交付后台通知, 再没有才生成 active Goal 续接. 用户消息已包含本轮 reminder 中的活跃 Goal 信息, 不再额外附带续接提示. |
+| 完整迭代之间 | 当前 active Goal 最新编辑, 后台通知, 已通过 `markInputForNextIteration()` 标记为 `next_iteration` 的用户输入. |
 | 执行失败或中止 | 按提交顺序把全部未保存用户输入退回草稿, 已保存消息不退回. |
 
-立即引导不打断活跃工具. AgentLoop 在 Assistant 和本批 ToolResult 全部完成后检查, 无工具的正文回复后也检查. 多条文本用空行合并, 附件与 Skill 引用保持顺序.
+`next_iteration` 不打断活跃工具. AgentLoop 在 Assistant 和本批 ToolResult 全部完成后检查, 无工具的正文回复后也检查. 多条文本用空行合并, 附件与 Skill 引用保持顺序.
 
-领取是临时操作. 保存 Message 后再 `acknowledge()`, 准备或写入失败则 `release()`. `user_message_stored` 携带消费的队列 ID, 前端据此把等待气泡替换成正式消息. 这些 ID 不写 SQL.
+预留是临时操作. 保存 Message 后再调用 `confirmMessageSaved()`, 准备或写入失败则调用 `releaseReservedMessage()`. `user_message_stored` 携带消费的队列 ID, 前端据此把等待气泡替换成正式消息. 这些 ID 不写 SQL.
 
-`ClaimedSessionContinuation.inputKind` 表示这次领取的内容. `messageInput` 携带正文和附件, 也包括自动截图; 新 Turn 有 active Goal 时可附带 `continuationText`. `continuationText` 分支只携带内部通知或 Goal 指令, 由 Turn 保存为隐藏的 `continuation` Message. 队列另用 `ContinuationClaim` 记录哪些输入或通知需要确认消费, 不将这份消费记录交给模型.
+`QueueMessage` (`{ messageKind, input }`) 统一队列交付给 Turn 的载荷. 普通用户输入生成 `messageKind: 'normal'`; 后台完成通知, Goal 编辑提醒与 Goal 续接生成 `messageKind: 'continuation'`, 由 Turn 保存为隐藏的 `continuation` Message. `SessionMessageQueue` 按 `sessionId` 集中维护唯一未确认预留 `MessageReservation`, 不将消费记录交给模型.
 
-后台通知只包含执行 ID 和状态. 模型通过 `SubagentAwait` 或 `ProcessOutput` 读取详情. 尚未交付的通知按执行身份去重; 已通过 SubagentAwait 读到完整终态时, 撤掉未领取的同一通知.
+后台通知只通过 `notifyBackgroundCompleted()` 传递执行 ID 和终态. 模型通过 `SubagentAwait` 或 `ProcessOutput` 读取详情. 尚未交付的通知按执行身份去重; 已通过 `SubagentAwait` 读到完整终态时, `removeSubagentCompletionNotice()` 会撤掉未预留的同一通知.
 
 Goal 编辑绑定编辑发生时正在运行的 Turn, 交付时读取最新 SQL 正文. 同一交付点前的多次编辑只保留最新正文. 当前 Turn 达到迭代上限时, 仍 active 的同一 Goal 可以由下一 Turn 继续; Turn completed 不代表 Goal 成功. 停止或失败会暂停仍 active 的同一 Goal, 包括其更新后的版本, 不影响后来创建的另一目标. 关闭 Goal 不会直接中止当前 Turn.
 
@@ -85,12 +85,12 @@ Goal 编辑绑定编辑发生时正在运行的 Turn, 交付时读取最新 SQL 
 
 Plan 在准备时按明确的内置工具 ID 筛选. 保留调查与读取, 包括 Capture, Memory, Narrative 和部分 Task/Scratchpad 读取; 排除 Shell, 写入, Subagent, AskUser 和 MCP. allow 规则不能把已排除工具加回来.
 
-`canStartIdleTurn()` 检查是否能接收仅空闲时交付的输入. `enqueueIfIdle()` 再检查并立即入队, 中间没有 await. 自动截图在截图前和保存图片后分别使用这两个入口.
+`canAcceptIdleInput()` 检查是否能接收仅空闲时交付的输入. `enqueueScreenCaptureIfIdle()` 再检查并立即入队, 中间没有 await. 自动截图在截图前和保存图片后分别使用这两个入口.
 
 `core/turnInputWriter.ts` 共用初始输入和排队输入的保存与自动标题逻辑. `core/turnTermination.ts` 先清理工具和保存消息, 再提交终态并释放 Session. 停止生成发生在准备阶段时, 即使工具尚未创建也会结束所属电脑操控. `tools/` 绑定宿主能力和交互, `policy/` 按稳定 ID 筛选 Plan 和子代理工具.
 
 ## 阅读与测试
 
-从 [sessionContinuationQueue.ts](./continuation/sessionContinuationQueue.ts) 和 [turnExecutor.ts](./core/turnExecutor.ts) 开始, 再看 [prepareTurn.ts](./prepare/prepareTurn.ts), [prepareAgentIteration.ts](./prepare/prepareAgentIteration.ts), [turnMessageWriter.ts](./core/turnMessageWriter.ts) 和 [turnLoopEvents.ts](./core/turnLoopEvents.ts).
+从 [sessionMessageQueue.ts](./messageQueue/sessionMessageQueue.ts) 和 [turnExecutor.ts](./core/turnExecutor.ts) 开始, 再看 [prepareTurn.ts](./prepare/prepareTurn.ts), [prepareAgentIteration.ts](./prepare/prepareAgentIteration.ts), [turnMessageWriter.ts](./core/turnMessageWriter.ts) 和 [turnLoopEvents.ts](./core/turnLoopEvents.ts).
 
 运行 `pnpm --filter @ema-agent/turn test` 和 `pnpm --filter @ema-agent/turn typecheck`. 测试使用安排好的模型事件和临时或内存数据库, 验证队列交付, SQL 消息, 权限等待, Compact ID, fork 时机, Context 用量与最后清理, 不需要付费模型请求.

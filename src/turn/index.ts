@@ -14,13 +14,16 @@ export {
 export type { TurnFailureCode } from './errors.js';
 export { SessionInteractionQueue } from './interaction/sessionInteractionQueue.js';
 export type { PendingInteraction } from './interaction/sessionInteractionQueue.js';
-export { SessionContinuationQueue } from './continuation/sessionContinuationQueue.js';
+export { SessionMessageQueue } from './messageQueue/sessionMessageQueue.js';
+export type { SessionMessageQueueDeps } from './messageQueue/sessionMessageQueue.js';
 export type {
-  ClaimedSessionContinuation,
-  EnqueueSessionInput,
+  BackgroundCompletionInput,
+  QueueMessage,
+  QueueMessageDelivery,
+  QueueMessageKind,
   QueuedSessionInput,
-  SessionContinuationEvent,
-} from './continuation/continuationTypes.js';
+  SessionMessageQueueEvent,
+} from './messageQueue/queueTypes.js';
 export { TurnExecutor, TurnReminderScope } from './core/turnExecutor.js';
 export { createTurnHistoryResolver } from './core/turnHistoryResolver.js';
 export {

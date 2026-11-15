@@ -2,24 +2,24 @@
 
 [中文](./README-zh.md)
 
-This package queues Session input and executes one Turn. `SessionContinuationQueue` decides when to deliver input. `TurnExecutor` prepares the model and tools, saves messages, runs AgentLoop, and finishes the execution before releasing the Session.
+This package queues Session input and executes one Turn. `SessionMessageQueue` decides when to deliver input. `TurnExecutor` prepares the model and tools, saves messages, runs AgentLoop, and finishes the execution before releasing the Session.
 
 ## Start and finish
 
-Server creates the queue, executor, and a shared `SessionRunningRegistry`. The Registry allows one Turn or manual Compact per Session. Queue `startTurn` calls `TurnExecutor.start()`; `attachTurn` must consume the returned handle's event stream. `completion` provides the final outcome.
+Server creates the queue, executor, and a shared `SessionRunningRegistry`. The Registry allows one Turn or manual Compact per Session. Queue `startTurn` initiates `TurnExecutor.start()` and connects Turn event dispatch in Server; `completion` provides the final outcome.
 
 ```mermaid
 sequenceDiagram
-  participant Queue as SessionContinuationQueue
+  participant Queue as SessionMessageQueue
   participant Turn as TurnExecutor
   participant SQL as Session and Turn stores
   participant Agent as AgentLoop
-  Queue->>Queue: Claim input without awaiting
+  Queue->>Queue: Reserve input without awaiting
   Queue->>Turn: start
   Turn->>SQL: Create running Turn
   Turn->>Turn: Prepare model, Prompt, tools, attachments
-  Turn->>SQL: Save reminder, continuation, user input
-  Turn->>Queue: acknowledge saved input
+  Turn->>SQL: Save reminder and input message
+  Turn->>Queue: confirmMessageSaved
   Turn->>Agent: Run with projected history
   Agent-->>Turn: Text and tool events
   Turn->>SQL: Save messages before resuming Agent
@@ -27,7 +27,7 @@ sequenceDiagram
   Turn->>Turn: Pause the handled Goal when required
   Turn->>SQL: Commit completed / failed / aborted
   Turn->>SQL: Release running registration
-  Turn->>Queue: workFinished
+  Turn->>Queue: onSessionWorkFinished
   Turn-->>Queue: Terminal event and completion
 ```
 
@@ -43,21 +43,21 @@ Computer use belongs to one Turn. Every terminal path closes its tools and compu
 
 ## Queued input and continuation
 
-All ordinary sends use `enqueue()`, whether idle, running, or manually compacting. The queue is in memory and does not survive a restart. `canStartIdleTurn()` checks whether idle-only input is currently acceptable; `enqueueIfIdle()` repeats that check and enqueues without an intervening await. Screen capture checks before capture and again after saving the image.
+All ordinary sends go through `enqueueUserMessage()`, whether idle, running, or manually compacting. The queue is in memory and does not survive a restart. `canAcceptIdleInput()` checks whether idle-only input is currently acceptable; `enqueueScreenCaptureIfIdle()` repeats that check and enqueues without an intervening await. Screen capture checks before capture and again after saving the image.
 
 | Delivery point | Priority |
 | --- | --- |
-| New Turn | Merge queued user inputs first, otherwise background notices, otherwise an active Goal continuation. User input can also carry a short Goal continuation. |
-| Between completed Agent iterations | Latest active Goal edit, then background notices, then inputs marked for immediate guidance. |
+| New Turn | Merge queued user inputs first, otherwise background notices, otherwise an active Goal continuation. |
+| Between completed Agent iterations | Latest active Goal edit, then background notices, then inputs marked `next_iteration`. |
 | Failed or aborted work | Return all unsaved user inputs to the draft in submission order. Already saved messages remain saved. |
 
-Guidance does not interrupt an active tool. AgentLoop checks it after the Assistant and its tool results form a complete batch, including after a text-only reply. Text inputs merge with blank lines; attachments and Skill references keep their order.
+Promoting an input via `markInputForNextIteration()` does not interrupt an active tool. AgentLoop checks for `next_iteration` messages after the Assistant and its tool results form a complete batch, including after a text-only reply. Text inputs merge with blank lines; attachments and Skill references keep their order.
 
-Claims are temporary. Save their Message, then call `acknowledge()`; release them if preparation or saving fails. `user_message_stored` includes the consumed queue IDs so the UI can replace waiting bubbles with persisted messages. Those IDs are not SQL fields.
+Reservations are temporary. Save the Message, then call `confirmMessageSaved()`; call `releaseReservedMessage()` if preparation or saving fails. `user_message_stored` includes the consumed queue IDs so the UI can replace waiting bubbles with persisted messages. Those IDs are not SQL fields.
 
-`ClaimedSessionContinuation.inputKind` identifies the claimed content. `messageInput` carries text and attachments, including automatic screen captures, and can include `continuationText` when a new Turn has an active Goal. The `continuationText` branch carries only an internal notice or Goal instruction, which Turn saves as a hidden `continuation` Message. The queue separately uses `ContinuationClaim` to track which inputs or notices must be acknowledged; that consumption record is not sent to the model.
+`QueueMessage` (`{ messageKind, input }`) unifies every payload handed to a Turn. User inputs produce `messageKind: 'normal'`, while background completion notices, active Goal edits, and Goal continuations produce `messageKind: 'continuation'`, which Turn saves as a hidden `continuation` Message. `SessionMessageQueue` stores at most one active `MessageReservation` per Session in memory to track which inputs, notices, or Goal edit version must be confirmed; that consumption record is not sent to the model.
 
-Background notices contain execution IDs and status, not full output. Models use `SubagentAwait` or `ProcessOutput` for details. Notices are deduplicated while pending. Reading a subagent's full terminal result removes an unclaimed notice.
+Background notices carry execution IDs and status via `notifyBackgroundCompleted()`, not full output. Models use `SubagentAwait` or `ProcessOutput` for details. Notices are deduplicated while pending. `removeSubagentCompletionNotice()` removes an unreserved notice once `SubagentAwait` reads the subagent's full terminal result.
 
 Goal edits are bound to the Turn running when the edit occurred and read the latest SQL objective at delivery. Multiple edits before delivery collapse to the latest text. An active Goal can continue in another Turn when the current iteration limit is reached; a completed Turn does not itself mean the Goal succeeded. Stop or failure pauses the same handled Goal if it is still active, including a newer version of that identity. Closing a Goal does not directly abort the current Turn.
 
@@ -99,6 +99,6 @@ Plan mode filters tools at preparation using explicit built-in IDs. It keeps inv
 
 ## Reading and tests
 
-Start with [sessionContinuationQueue.ts](./continuation/sessionContinuationQueue.ts) and [turnExecutor.ts](./core/turnExecutor.ts). Then follow [prepareTurn.ts](./prepare/prepareTurn.ts), [prepareAgentIteration.ts](./prepare/prepareAgentIteration.ts), [turnMessageWriter.ts](./core/turnMessageWriter.ts), and [turnLoopEvents.ts](./core/turnLoopEvents.ts).
+Start with [sessionMessageQueue.ts](./messageQueue/sessionMessageQueue.ts) and [turnExecutor.ts](./core/turnExecutor.ts). Then follow [prepareTurn.ts](./prepare/prepareTurn.ts), [prepareAgentIteration.ts](./prepare/prepareAgentIteration.ts), [turnMessageWriter.ts](./core/turnMessageWriter.ts), and [turnLoopEvents.ts](./core/turnLoopEvents.ts).
 
 Run `pnpm --filter @ema-agent/turn test` and `pnpm --filter @ema-agent/turn typecheck`. Tests use prepared model events and temporary/in-memory storage to verify queue delivery, SQL messages, permission lifetimes, Compact IDs, fork timing, context usage, and final cleanup. No paid model call is required.

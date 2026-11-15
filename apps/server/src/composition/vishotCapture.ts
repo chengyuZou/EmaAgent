@@ -4,7 +4,7 @@ import {
   vishotCaptureIntervalSecondsSetting,
 } from '@ema-agent/vishot-capture';
 import type { SettingsStore } from '@ema-agent/settings';
-import type { SessionContinuationQueue } from '@ema-agent/turn';
+import type { SessionMessageQueue } from '@ema-agent/turn';
 import type { DatabaseComposition } from './database.js';
 import type { ProvidersComposition } from './providers.js';
 import type { AppEvents } from '../application/appEvents.js';
@@ -15,7 +15,7 @@ export function openVishotCapture(
   settings: SettingsStore,
   providers: ProvidersComposition,
   isIdle: (sessionId: string) => boolean,
-  enqueue: SessionContinuationQueue['enqueueIfIdle'],
+  enqueueScreenCaptureIfIdle: SessionMessageQueue['enqueueScreenCaptureIfIdle'],
   appEvents: AppEvents,
   computerUse?: ComputerUse,
 ): { readonly capture: VishotCapture; close(): Promise<void> } {
@@ -45,10 +45,10 @@ export function openVishotCapture(
     shouldSubmitCapture: canSubmit,
     captureImage: computerUse ? signal => computerUse.capture(signal) : undefined,
     saveImage: (sessionId, bytes) => database.imageStore.saveImage(sessionId, bytes, '屏幕截图'),
-    enqueueIfIdle: (sessionId, imagePath) => enqueue({
+    enqueueIfIdle: (sessionId, imagePath) => enqueueScreenCaptureIfIdle(
       sessionId,
-      input: [{ type: 'attachment', block: { type: 'image_reference', path: imagePath, name: '屏幕截图' } }],
-    }),
+      { type: 'image_reference', path: imagePath, name: '屏幕截图' },
+    ),
     onError: error => appEvents.emit({
       type: 'system_warning',
       level: 'warn',

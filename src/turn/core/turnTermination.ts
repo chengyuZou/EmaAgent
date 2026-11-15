@@ -43,7 +43,7 @@ export async function finishTurn(
   const { turn, signal, writer, tools, handledGoalId } = input;
   const { sessionId, id: turnId } = turn;
   let outcome = input.outcome;
-  let continuationStatus: 'completed' | 'failed' | 'aborted' = 'failed';
+  let queueOutcomeStatus: 'completed' | 'failed' | 'aborted' = 'failed';
 
   const pauseHandledGoal = (): void => {
     if (!handledGoalId || !deps.goalStore) return;
@@ -87,7 +87,7 @@ export async function finishTurn(
     } else {
       deps.turns.failTurn(turnId, { errorCode: outcome.code, errorMessage: outcome.message });
     }
-    continuationStatus = outcome.status;
+    queueOutcomeStatus = outcome.status;
     return outcome;
   } catch (error) {
     pauseHandledGoal();
@@ -102,6 +102,6 @@ export async function finishTurn(
     return failed;
   } finally {
     deps.turns.clearRunning(sessionId, turnId);
-    deps.continuations.workFinished(sessionId, continuationStatus);
+    deps.messageQueue.onSessionWorkFinished(sessionId, queueOutcomeStatus);
   }
 }

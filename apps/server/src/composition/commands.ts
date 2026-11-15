@@ -65,7 +65,7 @@ export function openCommands(deps: {
     usageRecorder: database.usageRecorder,
     emit: deps.publishCompactEvent,
     onFinished: (sessionId, status) => {
-      turn.continuations.workFinished(sessionId, status === 'cancelled' ? 'aborted' : status);
+      turn.messageQueue.onSessionWorkFinished(sessionId, status === 'cancelled' ? 'aborted' : status);
     },
   };
   return {

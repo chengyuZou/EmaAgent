@@ -41,7 +41,7 @@ import {
 import type { RenderTurnReminderInput } from '../reminder/turnReminder.js';
 import type { TurnToolsAssembly } from '../tools/turnTools.js';
 import type { TurnStore } from '../store/turnStore.js';
-import type { SessionContinuationQueue } from '../continuation/sessionContinuationQueue.js';
+import type { SessionMessageQueue } from '../messageQueue/sessionMessageQueue.js';
 import type {
   StartTurn,
   TurnHandle,
@@ -111,13 +111,13 @@ export interface TurnExecutorDeps extends PrepareTurnDeps {
    * 同步调用:只许入队类写入,禁止在此启动异步工作.Memory 零 import--由装配层注入.
    */
   readonly onTurnCompletedInTransaction?: (turnId: string) => void;
-  /** 用户排队输入, 后台终态和 Goal 的唯一 Session 级续接所有者. */
-  readonly continuations: SessionContinuationQueue;
+  /** 按 Session 统一管理排队用户输入, 后台终态通知与活跃 Goal 续接的队列实例. */
+  readonly messageQueue: SessionMessageQueue;
 }
 
 /**
- * TurnExecutor 持有跨 Turn 共享的协作者;每个 Turn 的通道,预算,工具层与
- * 事件翻译都在 start() 内按 Turn 创建. SessionContinuationQueue 调用 start 启动执行.
+ * TurnExecutor 持有跨 Turn 共享的协作者; 每个 Turn 的事件通道, 预算, 工具层与
+ * 事件翻译都在 `start()` 内按 Turn 创建. SessionMessageQueue 调用 `start()` 启动执行.
  */
 export class TurnExecutor {
   /** 活动 Turn 的工具执行入口, 供 abortTool 按 turnId 定位. */
@@ -131,7 +131,7 @@ export class TurnExecutor {
     const { turn, signal } = this.deps.turns.startTurn({
       turnId: input.turnId,
       sessionId: input.sessionId,
-      triggerType: input.triggerType,
+      triggerType: input.messageKind === 'normal' ? 'userMessage' : 'sessionContinuation',
       ttsEnabled: input.ttsEnabled,
     });
     const channel = new TurnEventChannel<TurnStreamEvent>(() => {
@@ -265,7 +265,7 @@ export class TurnExecutor {
       const inputWriter = createTurnInputWriter(this.deps, {
         sessionId, turnId, signal, skillPool: prepared.skillPool, emit,
       });
-      handledGoalId = await inputWriter.writeInitialInput(input, prepared.userMessageBlocks, characterName);
+      handledGoalId = await inputWriter.writeInitialInput(input, prepared.inputBlocks, characterName);
 
       // 历史, reminder 与本 Turn 用户输入按 SQL 顺序投影为同一条模型消息链.
       // 后续 Macro 可以覆盖完整有效前缀, 不再被 Turn 边界截断.
@@ -394,7 +394,7 @@ export class TurnExecutor {
       outcome = determineTurnOutcome(turn, stopped, this.deps.goalStore?.getCurrent(sessionId), handledGoalId);
     } catch (error) {
       forkParentMessages.fail(error);
-      this.deps.continuations.release(turnId);
+      this.deps.messageQueue.releaseReservedMessage(sessionId, turnId);
       outcome = signal.aborted || error instanceof TurnEventChannelClosedError
         ? { status: 'aborted', sessionId, turnId, reason: 'user_stop' }
         : { status: 'failed', sessionId, turnId, code: failureCodeOf(error), message: failureMessageOf(error) };

@@ -2,6 +2,7 @@ import type { TurnStatus } from '@ema-agent/session';
 import type { AttachmentBlock } from '@ema-agent/session';
 import type { TurnFailureCode } from './errors.js';
 import type { TurnStreamEvent } from './events.js';
+import type { QueueMessageKind } from './messageQueue/queueTypes.js';
 
 /**
  * userMessage 来自用户主动输入, sessionContinuation 承载内部完成通知或 Goal 续接.
@@ -95,17 +96,15 @@ export function hasTurnInput(input: readonly TurnInputPart[]): boolean {
 }
 
 /**
- * 队列启动一次 Turn 时交付的输入. Command/Skill 解析由调用方完成,
- * Turn 不解析 '/' 语法, 负责准备模型和工具并执行本轮.
+ * SessionMessageQueue 启动一次 Turn 时交付的输入. Command/Skill 解析在入队前完成,
+ * Turn 不解析 '/' 语法, 负责准备模型和工具并按 `messageKind` 持久化消息.
  */
 export interface StartTurn {
-  /** 队列在领取输入时分配, 用于确认哪些输入已经保存. */
+  /** 队列预分配的 Turn ID, 用于两阶段确认哪些排队输入或通知已完成落库. */
   readonly turnId?: string;
   readonly sessionId: string;
-  readonly triggerType: TurnTriggerType;
+  readonly messageKind: QueueMessageKind;
   readonly input: readonly TurnInputPart[];
-  /** 队列交付的内部通知或继续指令, 持久化为 kind='continuation' 的 Message. */
-  readonly continuationText?: string;
   readonly ttsEnabled: boolean;
 }
 

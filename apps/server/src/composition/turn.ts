@@ -30,13 +30,13 @@ import { formatTaskContextReminder } from '@ema-agent/tasks';
 import { SubagentExecutor, maxConcurrentSubagentsSetting, type SubagentEvent } from '@ema-agent/agent';
 import {
   SessionInteractionQueue,
-  SessionContinuationQueue,
+  SessionMessageQueue,
   TurnExecutor,
   prepareContextInput,
   createTurnHistoryResolver,
   type ContextInputDeps,
   type RenderTurnReminderInput,
-  type SessionContinuationEvent,
+  type SessionMessageQueueEvent,
   type TurnReminderScope,
 } from '@ema-agent/turn';
 import type { UsageRecorder } from '@ema-agent/usage';
@@ -47,7 +47,7 @@ import type { DatabaseComposition } from './database.js';
 import type { NarrativeComposition } from './narrative.js';
 import type { ProvidersComposition } from './providers.js';
 import type { ToolsComposition } from './tools.js';
-import type { TurnFanout } from '../application/turnFanout.js';
+import { dispatchTurnEvents, type TurnEventDispatchDeps } from '../application/turnEventDispatch.js';
 
 /** 单个文件只取前 32768 个 UTF-16 码元, 不是按字节截断. 工作区指令不改变工具权限. */
 const WORKSPACE_INSTRUCTION_MAX_CHARS = 32 * 1024;
@@ -60,7 +60,7 @@ export interface TurnComposition {
   }>;
   readonly turnExecutor: TurnExecutor;
   readonly subagents: SubagentExecutor;
-  readonly continuations: SessionContinuationQueue;
+  readonly messageQueue: SessionMessageQueue;
   /** Permission/AskUser 回答路由与 Session 首条状态读取的入口. */
   readonly interactionQueue: SessionInteractionQueue;
   /** 模型不支持图片输入时的 Vision 描述链(commands 的手动压缩历史投影同源复用). */
@@ -87,9 +87,9 @@ export interface TurnCompositionDeps {
   /** 在 completed 事务内写入 Memory 提取任务, 由 Memory 调度后续执行. */
   readonly onTurnCompletedInTransaction: (turnId: string) => void;
   readonly publishSubagent: (sessionId: string, event: SubagentEvent) => void;
-  readonly publishQueuedInput: (sessionId: string, event: SessionContinuationEvent) => void;
+  readonly publishQueuedInput: (sessionId: string, event: SessionMessageQueueEvent) => void;
   readonly publishInteraction: (event: PermissionStreamEvent | AskUserEvent) => void;
-  readonly fanout: TurnFanout;
+  readonly turnEventDispatch: TurnEventDispatchDeps;
 }
 
 export function openTurns(deps: TurnCompositionDeps): TurnComposition {
@@ -109,7 +109,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     settings.get(permissionAskTimeoutSetting),
   );
   let turnExecutor!: TurnExecutor;
-  let continuations!: SessionContinuationQueue;
+  let messageQueue!: SessionMessageQueue;
   const subagents = new SubagentExecutor({
     assertSessionWorkAllowed: sessionId => database.session.getSessionForWork(sessionId),
     store: database.subagents,
@@ -117,21 +117,28 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     maxConcurrent: () => settings.get(maxConcurrentSubagentsSetting),
     publish: deps.publishSubagent,
     onBackgroundCompleted: (sessionId, subagentId, status) => {
-      continuations.subagentCompleted(sessionId, subagentId, status);
+      messageQueue.notifyBackgroundCompleted({
+        sessionId,
+        source: 'subagent_completed',
+        subagentId,
+        status,
+      });
     },
     onTerminalResultRead: (sessionId, subagentId) => {
-      continuations.subagentResultRead(sessionId, subagentId);
+      messageQueue.removeSubagentCompletionNotice(sessionId, subagentId);
     },
     onRunFinished: runId => {
       interactionQueue.cancelForRun(runId);
     },
   });
-  continuations = new SessionContinuationQueue({
+  messageQueue = new SessionMessageQueue({
     sessions: database.session,
     sessionRunning: database.sessionRunning,
     goals: database.goals,
-    startTurn: input => turnExecutor.start(input),
-    attachTurn: handle => deps.fanout.attach(handle),
+    startTurn: input => {
+      // `dispatchTurnEvents` 在后台持续消费事件流并转发给前端, 应用事件与 TTS, 不阻塞队列返回值.
+      void dispatchTurnEvents(turnExecutor.start(input), deps.turnEventDispatch);
+    },
     publish: (sessionId, event) => deps.publishQueuedInput(sessionId, event),
   });
   // 超时设置即改即生效(只影响此后新建的条目,已启动条目保留原超时).
@@ -327,7 +334,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     interactionQueue,
     publishInteraction: deps.publishInteraction,
     subagents,
-    continuations,
+    messageQueue,
     taskStore: database.tasks,
     goalStore: database.goals,
     memorySearch: request => searchMemoryFiles(memoryRoot, request),
@@ -368,7 +375,7 @@ export function openTurns(deps: TurnCompositionDeps): TurnComposition {
     estimateContext,
     turnExecutor,
     subagents,
-    continuations,
+    messageQueue,
     interactionQueue,
     describeImage,
     visionCache: visionDescriptions,

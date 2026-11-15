@@ -129,15 +129,15 @@ function receiveSessionMessage(sessionId: string, message: SessionBusinessMessag
     return;
   }
   if (message.type === 'queued_input_added') {
-    activity.addQueuedInput(sessionId, message.item);
+    activity.addQueuedInput(sessionId, message.queuedInput);
     return;
   }
   if (message.type === 'queued_input_removed') {
-    activity.removeQueuedInputs(sessionId, [message.id]);
+    activity.removeQueuedInputs(sessionId, [message.queuedInputId]);
     return;
   }
-  if (message.type === 'queued_input_guided') {
-    activity.addQueuedInput(sessionId, message.item);
+  if (message.type === 'queued_input_delivery_changed') {
+    activity.addQueuedInput(sessionId, message.queuedInput);
     return;
   }
   if (message.type === 'queued_inputs_returned') {
@@ -149,8 +149,8 @@ function receiveSessionMessage(sessionId: string, message: SessionBusinessMessag
       ttsEnabled: session?.ttsEnabled ?? false,
       reasoningEffort: session?.reasoningEffort ?? 'off',
     };
-    drafts.setForSession(sessionId, restoreQueuedDraft(message.items, current));
-    activity.removeQueuedInputs(sessionId, message.items.map(item => item.id));
+    drafts.setForSession(sessionId, restoreQueuedDraft(message.queuedInputs, current));
+    activity.removeQueuedInputs(sessionId, message.queuedInputs.map(item => item.id));
     return;
   }
   if (message.type === 'user_message_stored') {

@@ -62,7 +62,7 @@ function QueuedInputContent({ sessionId, input }: {
 export function QueuedInputs({ sessionId }: { readonly sessionId: string | null }): JSX.Element {
   const activity = useSessionActivityStore(state => sessionId ? state.bySession.get(sessionId) : undefined);
   const turnRunning = activity?.running?.kind === 'turn';
-  const queuedInputs = activity?.queuedInputs.filter(item => item.delivery === 'after_turn') ?? [];
+  const queuedInputs = activity?.queuedInputs.filter(item => item.delivery === 'next_turn') ?? [];
 
   // 容器常驻挂载, 移除排队项后仍可播放收拢动画.
   return (
@@ -87,7 +87,7 @@ export function QueuedInputs({ sessionId }: { readonly sessionId: string | null 
                   size="sm"
                   variant="ghost"
                   className="shrink-0 text-[var(--ema-primary)]"
-                  onClick={() => void runWithToast(sessionWebSocket.guideQueuedInput(sessionId!, item.id), '立即引导失败')}
+                  onClick={() => void runWithToast(sessionWebSocket.markInputForNextIteration(sessionId!, item.id), '立即引导失败')}
                 >
                   立即引导
                 </Button>

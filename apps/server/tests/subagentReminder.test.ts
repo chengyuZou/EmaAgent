@@ -13,7 +13,7 @@ const captured = vi.hoisted(() => ({
 }));
 vi.mock('@ema-agent/turn', () => ({
   SessionInteractionQueue: class {},
-  SessionContinuationQueue: class {},
+  SessionMessageQueue: class {},
   TurnExecutor: class {
     constructor(deps: TurnExecutorDeps) { captured.readTurnReminder = deps.readTurnReminder; }
   },
@@ -70,7 +70,7 @@ describe('Server 子代理 reminder 目录', () => {
       providers: {}, tools: {}, narrative: {}, characters: {}, stage: {},
       publishSubagent: vi.fn(), publishQueuedInput: vi.fn(), emitAppEvent: vi.fn(),
       publishInteraction: vi.fn(),
-      onTurnCompletedInTransaction: vi.fn(), fanout: {},
+      onTurnCompletedInTransaction: vi.fn(), turnEventDispatch: {},
     } as unknown as TurnCompositionDeps);
     const scope: TurnReminderScope = {
       sessionId: 'session', turnId: 'turn-1', characterName: 'test', 

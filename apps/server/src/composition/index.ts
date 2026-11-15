@@ -3,7 +3,7 @@ import { closeWebRequests } from '@ema-agent/builtin-tools';
 import type { BackgroundProcessNotifiableStatus } from '@ema-agent/tools';
 import { AppEvents } from '../application/appEvents.js';
 import { SessionSocketConnections } from '../routes/ws/session.js';
-import { TurnFanout } from '../application/turnFanout.js';
+import type { TurnEventDispatchDeps } from '../application/turnEventDispatch.js';
 import { openBackup, type BackupComposition } from './backup.js';
 import { openCharacters, type CharactersComposition } from './characters.js';
 import { openCommands, type CommandsComposition } from './commands.js';
@@ -112,7 +112,7 @@ export async function buildComposition(input: { activeDataDir: string; initializ
     turns: database.turns,
     usageRecorder: database.usageRecorder,
   });
-  const turnFanout = new TurnFanout({
+  const turnEventDispatch: TurnEventDispatchDeps = {
     publishTurnEvent: (sessionId, turnId, event) => {
       if (event.type === 'user_message_stored') {
         sessionConnections.publish(sessionId, event);
@@ -122,14 +122,14 @@ export async function buildComposition(input: { activeDataDir: string; initializ
     },
     emitAppEvent: event => appEvents.emit(event),
     speech,
-  });
+  };
   // 截图对象创建时没有目标 Session, 不会执行这些队列回调.
   let turn: TurnComposition;
   const computerUse = openComputerUse();
   const vishotCapture = openVishotCapture(
     database, settings.settings, providers,
-    sessionId => turn.continuations.canStartIdleTurn(sessionId),
-    input => turn.continuations.enqueueIfIdle(input),
+    sessionId => turn.messageQueue.canAcceptIdleInput(sessionId),
+    (sessionId, image) => turn.messageQueue.enqueueScreenCaptureIfIdle(sessionId, image),
     appEvents,
     computerUse,
   );
@@ -148,7 +148,7 @@ export async function buildComposition(input: { activeDataDir: string; initializ
     },
     publishQueuedInput: (sessionId, event) => sessionConnections.publish(sessionId, event),
     publishInteraction: event => sessionConnections.publish(event.sessionId, event),
-    fanout: turnFanout,
+    turnEventDispatch,
     computerUse,
     captureScreen: async (sessionId, turnId, signal) => {
       const bytes = await vishotCapture.capture.capture(signal);
@@ -161,13 +161,18 @@ export async function buildComposition(input: { activeDataDir: string; initializ
     },
   });
   notifyBackgroundCompletion = (sessionId, backgroundProcessId, status) => {
-    turn.continuations.backgroundProcessCompleted(sessionId, backgroundProcessId, status);
+    turn.messageQueue.notifyBackgroundCompleted({
+      sessionId,
+      source: 'background_process_completed',
+      backgroundProcessId,
+      status,
+    });
   };
   const stopGoalContinuation = appEvents.subscribe(event => {
     if (event.type === 'goal_created' || event.type === 'goal_activated') {
-      turn.continuations.requestDrain(event.goal.sessionId);
+      turn.messageQueue.requestStartNextTurn(event.goal.sessionId);
     } else if (event.type === 'goal_edited') {
-      turn.continuations.goalEdited(event.goal);
+      turn.messageQueue.notifyGoalEdited(event.goal);
     }
   });
   const commands = openCommands({
@@ -198,7 +203,7 @@ export async function buildComposition(input: { activeDataDir: string; initializ
     appEvents,
     async close() {
       // 先停止队列和 Goal 自动续接, 防止正在收尾的 Turn 再启动下一 Turn.
-      turn.continuations.shutdown();
+      turn.messageQueue.shutdown();
       stopGoalContinuation();
       // abortAll 同步发出取消信号, 返回的 Promise 等 Turn 和手动 Compact 收尾.
       // 先让 Turn 停止接受新工作, 再等工具和电脑操控清理完毕.

@@ -90,20 +90,20 @@ A Session request's acknowledgement means that request was accepted, not that th
 sequenceDiagram
     participant Desktop
     participant Socket as Session WebSocket
-    participant Queue as SessionContinuationQueue
+    participant Queue as SessionMessageQueue
     participant Turn as TurnExecutor
-    participant Fanout as TurnFanout
+    participant Dispatch as dispatchTurnEvents
     Desktop->>Socket: send_user_message(requestId, payload)
-    Socket->>Queue: enqueue(input)
+    Socket->>Queue: enqueueUserMessage(sessionId, input)
     Socket-->>Desktop: request_succeeded(requestId)
     Queue->>Turn: start when work can run
-    Turn->>Fanout: saved-message and execution events
-    Fanout-->>Desktop: Session business events
+    Turn->>Dispatch: saved-message and execution events
+    Dispatch-->>Desktop: Session business events
 ```
 
 `request_succeeded`, `request_rejected` and manual-compaction responses carry the original `requestId`. Shared business events do not. Each connection first receives `session_state`, including running work, pending interactions and queued input. Reconnection sends current state, not a replay of missed deltas; saved history is read through HTTP.
 
-TurnFanout consumes the Turn event stream once. It forwards Session events, sends selected activity notifications to AppEvents, and passes text deltas to optional speech generation. Changing the viewing window does not by itself cancel a Turn.
+`dispatchTurnEvents()` consumes the Turn event stream once. It forwards Session events, sends selected activity notifications to AppEvents, and passes text deltas to optional speech generation. Changing the viewing window does not by itself cancel a Turn.
 
 ## Authentication and input limits
 

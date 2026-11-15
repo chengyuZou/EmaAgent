@@ -8,11 +8,10 @@ import { GoalStore } from '@ema-agent/goal';
 import { Database, GoalsRepo } from '@ema-agent/storage';
 import { SessionRunningRegistry, SessionStore, type SessionEvent, type SessionMessage } from '@ema-agent/session';
 import {
-  SessionContinuationQueue,
   SessionInteractionQueue,
+  SessionMessageQueue,
   TurnStore,
   type StartTurn,
-  type TurnHandle,
   type Turn,
   type TurnExecutor,
 } from '@ema-agent/turn';
@@ -72,25 +71,23 @@ async function goalFixture() {
   });
   const session = sessions.createSession({ cwd: os.tmpdir(), providerId: 'p', modelId: 'm' });
   const starts: StartTurn[] = [];
-  let queue: SessionContinuationQueue;
+  let queue: SessionMessageQueue;
   const goals = new GoalStore(db, event => {
-    if (event.type === 'goal_created') queue.requestDrain(event.goal.sessionId);
+    if (event.type === 'goal_created') queue.requestStartNextTurn(event.goal.sessionId);
   }, id => running.isClosed(id));
-  queue = new SessionContinuationQueue({
+  queue = new SessionMessageQueue({
     sessions, goals, sessionRunning: running,
     startTurn: input => {
       starts.push(input);
       running.register(session.id, { kind: 'turn', turnId: input.turnId! });
-      return { sessionId: session.id, turnId: input.turnId!, events: (async function* () {})(),
-        completion: new Promise(() => {}), abort: () => undefined } satisfies TurnHandle;
     },
-    attachTurn: vi.fn(), publish: vi.fn(),
+    publish: vi.fn(),
   });
   const deps: SessionWebSocketRouteDeps = {
     connections: new SessionSocketConnections(),
     executor: {} as TurnExecutor,
     subagents: {} as SubagentExecutor,
-    continuations: queue, goals, sessions,
+    messageQueue: queue, goals, sessions,
     turns: { getTurn: () => undefined },
     sessionRunning: running,
     interactions: { listPending: () => [] } as unknown as SessionInteractionQueue,
@@ -121,7 +118,7 @@ async function actionFixture() {
   };
   const composition = {
     database: { session: fixture.sessions, sessionRunning: fixture.running, goals: fixture.goals, turns },
-    turn: { subagents, turnExecutor: executor, interactionQueue: interactions, continuations: fixture.queue },
+    turn: { subagents, turnExecutor: executor, interactionQueue: interactions, messageQueue: fixture.queue },
     tools: { backgroundProcesses: processes, discardSessionToolState: vi.fn(async () => undefined) },
     speech: { speechGenerator: speech },
     vishotCapture: { capture: { cancelSession: vi.fn(async () => undefined) } },
@@ -145,7 +142,7 @@ describe('会话归档和删除', () => {
     const fixture = await actionFixture();
     const root = fixture.turns.startTurn({ sessionId: fixture.session.id, triggerType: 'userMessage', ttsEnabled: false });
     const goal = fixture.goals.create(fixture.session.id, '正在进行的目标');
-    fixture.queue.enqueue({ sessionId: fixture.session.id, input: [{ type: 'text', text: '排队消息' }] });
+    fixture.queue.enqueueUserMessage(fixture.session.id, [{ type: 'text', text: '排队消息' }]);
     const response = await fixture.app.request(`/api/sessions/${fixture.session.id}${action === 'archive' ? '/archive' : ''}`, {
       method: action === 'archive' ? 'POST' : 'DELETE',
     });
@@ -159,7 +156,7 @@ describe('会话归档和删除', () => {
     } else {
       expect(fixture.sessions.sessionExists(fixture.session.id)).toBe(false);
     }
-    expect(fixture.queue.list(fixture.session.id)).toEqual([]);
+    expect(fixture.queue.listQueuedInputs(fixture.session.id)).toEqual([]);
     expect(fixture.subagents.abortForSession).toHaveBeenCalledTimes(1);
     expect(fixture.processes.stopForSession).toHaveBeenCalledTimes(1);
     expect(fixture.speech.cancelSessionSpeech).toHaveBeenCalled();
@@ -175,7 +172,7 @@ describe('会话归档和删除', () => {
     const otherRoot = fixture.turns.startTurn({ sessionId: other.id, triggerType: 'userMessage', ttsEnabled: false });
     const goal = fixture.goals.create(id, '需要结束的目标');
     fixture.sessions.appendMessage({ sessionId: id, turnId: root.turn.id, role: 'user', blocks: '已保存消息' });
-    fixture.queue.enqueue({ sessionId: id, input: [{ type: 'text', text: '未执行消息' }] });
+    fixture.queue.enqueueUserMessage(id, [{ type: 'text', text: '未执行消息' }]);
     const permission = fixture.interactions.enqueuePermission({
       sessionId: id, turnId: root.turn.id, toolCallId: 'waiting-approval', toolName: 'PowerShell', input: {},
     });
@@ -192,7 +189,7 @@ describe('会话归档和删除', () => {
     expect(fixture.subagents.abortForSession).toHaveBeenCalledWith(id, 'Session archived');
     expect(fixture.processes.stopForSession).toHaveBeenCalledWith(id);
     expect(fixture.speech.cancelSessionSpeech).toHaveBeenCalledWith(id);
-    expect(fixture.queue.list(id)).toEqual([]);
+    expect(fixture.queue.listQueuedInputs(id)).toEqual([]);
     await expect(permission.promise).resolves.toMatchObject({ action: 'deny' });
     expect(fixture.goals.get(id, goal.id)).toMatchObject({ status: 'completed', reason: 'cancelled' });
     expect(() => fixture.sessions.getSessionForWork(id)).toThrow('session_stopping');
@@ -210,7 +207,7 @@ describe('会话归档和删除', () => {
     ]);
     expect(fixture.composition.tools.discardSessionToolState).not.toHaveBeenCalled();
     fixture.sessions.unarchiveSession(id);
-    fixture.queue.requestDrain(id);
+    fixture.queue.requestStartNextTurn(id);
     await Promise.resolve();
     expect(fixture.starts).toEqual([]);
     expect(() => fixture.sessions.getSessionForWork(id)).not.toThrow();
@@ -289,10 +286,10 @@ describe('Session WebSocket Route', () => {
       } }));
       expect(await response).toEqual({ type: 'request_succeeded', requestId: text });
     }
-    expect(fixture.queue.list(fixture.session.id)).toHaveLength(2);
+    expect(fixture.queue.listQueuedInputs(fixture.session.id)).toHaveLength(2);
     expect(fixture.starts).toHaveLength(0);
     fixture.running.clear(fixture.session.id, { kind: 'compact', compactId: 'compact' });
-    fixture.queue.workFinished(fixture.session.id, 'completed');
+    fixture.queue.onSessionWorkFinished(fixture.session.id, 'completed');
     await Promise.resolve();
     expect(fixture.starts).toHaveLength(1);
     expect(fixture.starts[0]?.input).toEqual([{ type: 'text', text: 'A\n\nB' }]);
@@ -312,7 +309,7 @@ describe('Session WebSocket Route', () => {
         expect(await response).toMatchObject({ type: 'request_rejected', code: 'session_archived' });
       }
       expect(fixture.goals.getCurrent(fixture.session.id)).toBeNull();
-      expect(fixture.queue.list(fixture.session.id)).toEqual([]);
+      expect(fixture.queue.listQueuedInputs(fixture.session.id)).toEqual([]);
       expect(fixture.starts).toEqual([]);
       fixture.queue.shutdown();
     },
@@ -396,14 +393,13 @@ describe('Session WebSocket Route', () => {
     } }));
     expect(await response).toEqual({ type: 'request_succeeded', requestId: 'initial-goal' });
     expect(fixture.starts).toHaveLength(1);
-    expect(fixture.starts[0]).toMatchObject({ triggerType: 'userMessage', input: [{ type: 'text', text: objective }],
-      continuationText: expect.stringContaining('根据本轮 reminder 和 GoalGet') });
+    expect(fixture.starts[0]).toMatchObject({ messageKind: 'normal', input: [{ type: 'text', text: objective }] });
     const goal = fixture.goals.getCurrent(fixture.session.id)!;
     expect(new GoalsRepo(fixture.db.sqlite).findById(fixture.session.id, goal.id)?.objective).toBe(objective);
     fixture.queue.shutdown();
   });
 
-  it('活动 Turn 下带目标的排队发送保留用户任务, 收尾后与短提示同轮交付', async () => {
+  it('活动 Turn 下带目标的排队发送保留用户任务, 收尾后直接交付用户任务', async () => {
     const fixture = await goalFixture();
     const { socket, waitForMessage } = await connect(fixture.deps, fixture.session.id);
     fixture.running.register(fixture.session.id, { kind: 'turn', turnId: 'existing-turn' });
@@ -416,11 +412,10 @@ describe('Session WebSocket Route', () => {
     expect(fixture.starts).toHaveLength(0);
     expect(fixture.goals.getCurrent(fixture.session.id)?.objective).toBe(objective);
     fixture.running.clear(fixture.session.id, { kind: 'turn', turnId: 'existing-turn' });
-    fixture.queue.workFinished(fixture.session.id, 'completed');
+    fixture.queue.onSessionWorkFinished(fixture.session.id, 'completed');
     await Promise.resolve();
     expect(fixture.starts).toHaveLength(1);
-    expect(fixture.starts[0]!.input).toEqual([{ type: 'text', text: objective }]);
-    expect(fixture.starts[0]!.continuationText).toContain('根据本轮 reminder 和 GoalGet');
+    expect(fixture.starts[0]).toMatchObject({ messageKind: 'normal', input: [{ type: 'text', text: objective }] });
     fixture.queue.shutdown();
   });
 
@@ -438,8 +433,35 @@ describe('Session WebSocket Route', () => {
     } }));
     const codes = { plan: 'goal_plan_conflict', existing: 'goal_already_exists', compact: 'session_busy' };
     expect(await response).toMatchObject({ type: 'request_rejected', code: codes[conflict] });
-    expect(fixture.queue.list(fixture.session.id)).toEqual([]);
+    expect(fixture.queue.listQueuedInputs(fixture.session.id)).toEqual([]);
     expect(fixture.starts).toHaveLength(0);
+    fixture.queue.shutdown();
+  });
+
+  it('queuedInputId 支持删除排队输入和调整为下一迭代交付', async () => {
+    const fixture = await goalFixture();
+    const { socket, waitForMessage } = await connect(fixture.deps, fixture.session.id);
+    fixture.running.register(fixture.session.id, { kind: 'turn', turnId: 'active-turn' });
+    const first = fixture.queue.enqueueUserMessage(fixture.session.id, [{ type: 'text', text: '待删除' }]);
+    const second = fixture.queue.enqueueUserMessage(fixture.session.id, [{ type: 'text', text: '插队消息' }]);
+
+    const removeResponse = waitForMessage();
+    socket.send(JSON.stringify({
+      type: 'remove_queued_input',
+      requestId: 'remove-queued',
+      queuedInputId: first.id,
+    }));
+    expect(await removeResponse).toEqual({ type: 'request_succeeded', requestId: 'remove-queued' });
+    expect(fixture.queue.listQueuedInputs(fixture.session.id).map(item => item.id)).toEqual([second.id]);
+
+    const promoteResponse = waitForMessage();
+    socket.send(JSON.stringify({
+      type: 'mark_input_for_next_iteration',
+      requestId: 'promote-queued',
+      queuedInputId: second.id,
+    }));
+    expect(await promoteResponse).toEqual({ type: 'request_succeeded', requestId: 'promote-queued' });
+    expect(fixture.queue.listQueuedInputs(fixture.session.id)[0]?.delivery).toBe('next_iteration');
     fixture.queue.shutdown();
   });
 
@@ -481,7 +503,7 @@ describe('Session WebSocket Route', () => {
       connections: new SessionSocketConnections(),
       executor: {} as TurnExecutor,
       subagents: {} as SubagentExecutor,
-      continuations: { list: () => [guided] } as unknown as SessionContinuationQueue,
+      messageQueue: { listQueuedInputs: () => [guided] } as unknown as SessionMessageQueue,
       goals: { create: vi.fn() },
       sessions: {
         sessionExists: id => id === sessionId,

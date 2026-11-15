@@ -14,7 +14,7 @@ export interface SessionActivity {
   readonly activeCompact: ActiveCompact | null;
   /** 仍等待用户处理的 Permission 和 AskUser, resolved 事件到达后按 toolCallId 删除. */
   readonly pendingInteractions: readonly PendingInteraction[];
-  /** 尚未保存的用户输入. after_turn 在输入框上方显示, next_iteration 在聊天中等待处理. */
+  /** 尚未保存的用户输入. next_turn 在输入框上方显示, next_iteration 在聊天中等待处理. */
   readonly queuedInputs: readonly QueuedSessionInput[];
 }
 

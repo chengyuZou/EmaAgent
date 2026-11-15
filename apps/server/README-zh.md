@@ -90,20 +90,20 @@ Session 请求的确认只表示请求被接受, 不表示 Turn 已完成:
 sequenceDiagram
     participant Desktop
     participant Socket as Session WebSocket
-    participant Queue as SessionContinuationQueue
+    participant Queue as SessionMessageQueue
     participant Turn as TurnExecutor
-    participant Fanout as TurnFanout
+    participant Dispatch as dispatchTurnEvents
     Desktop->>Socket: send_user_message(requestId, payload)
-    Socket->>Queue: enqueue(input)
+    Socket->>Queue: enqueueUserMessage(sessionId, input)
     Socket-->>Desktop: request_succeeded(requestId)
     Queue->>Turn: 可执行时调用 start
-    Turn->>Fanout: 消息保存与执行事件
-    Fanout-->>Desktop: Session 业务事件
+    Turn->>Dispatch: 消息保存与执行事件
+    Dispatch-->>Desktop: Session 业务事件
 ```
 
 `request_succeeded`, `request_rejected` 和手动压缩结果携带原来的 `requestId`, 公共业务事件不带. 每次连接先收到 `session_state`, 包含运行中的工作, 待回答交互和排队输入. 重连返回当前状态, 不重放断线期间的增量; 已保存正文通过 HTTP 读取.
 
-TurnFanout 只消费一次 Turn 事件流, 把 Session 事件发给观察窗口, 把指定的活动提示发给 AppEvents, 并将文本增量交给可选的语音生成. 切换查看窗口本身不取消 Turn.
+`dispatchTurnEvents()` 只消费一次 Turn 事件流, 把 Session 事件发给观察窗口, 把指定的活动提示发给 AppEvents, 并将文本增量交给可选的语音生成. 切换查看窗口本身不取消 Turn.
 
 ## 认证和输入限制
 

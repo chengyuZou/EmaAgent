@@ -87,7 +87,7 @@ async function stopSessionWork(
   if (goal) {
     database.goals.cancel({ sessionId, goalId: goal.id, expectedVersion: goal.version });
   }
-  turn.continuations.clearSession(sessionId);
+  turn.messageQueue.clearSession(sessionId);
   turn.interactionQueue.cancelForSession(sessionId, reason);
 
   // 先向所有执行发出停止请求, 不能等主任务结束后才停子代理或命令.

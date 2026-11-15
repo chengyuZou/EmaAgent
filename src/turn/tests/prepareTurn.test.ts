@@ -23,8 +23,8 @@ import type { StartTurn, TurnHandle } from '../types.js';
 import type { TurnStreamEvent } from '../events.js';
 import { TurnExecutor } from '../core/turnExecutor.js';
 import { TurnStore } from '../store/turnStore.js';
-import { SessionContinuationQueue } from '../continuation/sessionContinuationQueue.js';
-import type { SessionContinuationEvent } from '../continuation/continuationTypes.js';
+import { SessionMessageQueue } from '../messageQueue/sessionMessageQueue.js';
+import type { SessionMessageQueueEvent } from '../messageQueue/queueTypes.js';
 import { prepareContextInput } from '../prepare/prepareContextInput.js';
 
 const TURN: Turn = {
@@ -107,7 +107,7 @@ function makeDeps(overrides: Partial<PrepareTurnDeps> = {}): PrepareTurnDeps {
 function makeStart(overrides: Partial<StartTurn> = {}): StartTurn {
   return {
     sessionId: 's1',
-    triggerType: 'userMessage',
+    messageKind: 'normal',
     ttsEnabled: false,
     input: [{ type: 'text', text: '你好' }],
     ...overrides,
@@ -155,7 +155,7 @@ describe('prepareTurn', () => {
     const turns = new TurnStore({ db, sessionRunning: running });
     const handles: TurnHandle[] = [];
     const events: TurnStreamEvent[] = [];
-    const queueEvents: SessionContinuationEvent[] = [];
+    const queueEvents: SessionMessageQueueEvent[] = [];
     const requests: Array<readonly Message[]> = [];
     let releaseTool!: () => void;
     const toolWaiting = new Promise<void>(resolve => { releaseTool = resolve; });
@@ -192,14 +192,11 @@ describe('prepareTurn', () => {
       yield { type: 'done', stopReason: 'end_turn' };
     };
     let executor: TurnExecutor;
-    const queue = new SessionContinuationQueue({
+    const queue = new SessionMessageQueue({
       sessions, sessionRunning: running, goals: { getCurrent: () => null },
       startTurn: input => {
         const handle = executor.start(input);
         handles.push(handle);
-        return handle;
-      },
-      attachTurn: handle => {
         void (async () => {
           for await (const event of handle.events) events.push(event);
         })();
@@ -208,27 +205,27 @@ describe('prepareTurn', () => {
     });
     executor = new TurnExecutor({
       ...makeDeps({ sessions, registry, createLLMCall: () => callLLM }),
-      sessions, turns, continuations: queue,
+      sessions, turns, messageQueue: queue,
       readTurnReminder: () => ({ currentDate: '2026-10-15', goal: null }),
       characterName: () => 'test',
       hasNormalUserMessage: () => false,
       createCompact: () => async request => ({ kind: 'unchanged', messages: request.messages }),
     });
     try {
-      const a = queue.enqueue({ sessionId: session.id, input: [{ type: 'text', text: 'A' }] });
-      const a2 = queue.enqueue({ sessionId: session.id, input: [{ type: 'text', text: '补充 A' }] });
+      const a = queue.enqueueUserMessage(session.id, [{ type: 'text', text: 'A' }]);
+      const a2 = queue.enqueueUserMessage(session.id, [{ type: 'text', text: '补充 A' }]);
       await vi.waitFor(() => expect(toolStarted).toBe(true));
       expect(sessions.loadMessagesForTurn(handles[0]!.turnId).filter(message => message.kind === 'normal' && message.role === 'user'))
         .toMatchObject([{ blocks: 'A\n\n补充 A' }]);
       expect(events.find(event => event.type === 'user_message_stored'))
         .toMatchObject({ queuedInputIds: [a.id, a2.id] });
 
-      const b = queue.enqueue({ sessionId: session.id, input: [{ type: 'text', text: 'B' }] });
-      const c = queue.enqueue({ sessionId: session.id, input: [{ type: 'text', text: 'C' }] });
-      const d = queue.enqueue({ sessionId: session.id, input: [{ type: 'text', text: 'D' }] });
-      queue.guide(session.id, d.id);
-      queue.guide(session.id, c.id);
-      expect(queueEvents.filter(event => event.type === 'queued_input_guided')).toHaveLength(2);
+      const b = queue.enqueueUserMessage(session.id, [{ type: 'text', text: 'B' }]);
+      const c = queue.enqueueUserMessage(session.id, [{ type: 'text', text: 'C' }]);
+      const d = queue.enqueueUserMessage(session.id, [{ type: 'text', text: 'D' }]);
+      queue.markInputForNextIteration(session.id, d.id);
+      queue.markInputForNextIteration(session.id, c.id);
+      expect(queueEvents.filter(event => event.type === 'queued_input_delivery_changed')).toHaveLength(2);
       expect(events.filter(event => event.type === 'user_message_stored')).toHaveLength(1);
       expect(requests).toHaveLength(1);
 
@@ -240,7 +237,7 @@ describe('prepareTurn', () => {
       expect(events.filter(event => event.type === 'user_message_stored'))
         .toMatchObject([{ queuedInputIds: [a.id, a2.id] }, { queuedInputIds: [c.id, d.id] }]);
 
-      const e = queue.enqueue({ sessionId: session.id, input: [{ type: 'text', text: 'E' }] });
+      const e = queue.enqueueUserMessage(session.id, [{ type: 'text', text: 'E' }]);
       if (ending === 'aborted') handles[0]!.abort();
       releaseReply();
       expect(await handles[0]!.completion).toMatchObject({ status: ending });
@@ -252,9 +249,9 @@ describe('prepareTurn', () => {
         expect(queueEvents.some(event => event.type === 'queued_inputs_returned')).toBe(false);
       } else {
         expect(handles).toHaveLength(1);
-        expect(queueEvents.at(-1)).toEqual({ type: 'queued_inputs_returned', items: [b, e] });
+        expect(queueEvents.at(-1)).toEqual({ type: 'queued_inputs_returned', queuedInputs: [b, e] });
       }
-      expect(queue.list(session.id)).toEqual([]);
+      expect(queue.listQueuedInputs(session.id)).toEqual([]);
       expect(sessions.loadMessagesForTurn(handles[0]!.turnId).some(message => message.blocks === 'C\n\nD')).toBe(true);
     } finally {
       queue.shutdown();
@@ -273,12 +270,11 @@ describe('prepareTurn', () => {
     const sessions = new SessionStore({ db, isWorkClosed: id => running.isClosed(id) });
     const session = sessions.createSession({ cwd: os.tmpdir(), providerId: 'sess-p', modelId: 'sess-m' });
     const turns = new TurnStore({ db, sessionRunning: running });
-    const queue = new SessionContinuationQueue({
+    const queue = new SessionMessageQueue({
       sessions,
       sessionRunning: running,
       goals: { getCurrent: () => null },
       startTurn: () => { throw new Error('停止后不应启动后继 Turn'); },
-      attachTurn: vi.fn(),
       publish: vi.fn(),
     });
     let entered!: () => void;
@@ -312,7 +308,7 @@ describe('prepareTurn', () => {
       ...deps,
       sessions,
       turns,
-      continuations: queue,
+      messageQueue: queue,
       readTurnReminder,
       characterName: () => 'test',
       hasNormalUserMessage: () => false,
@@ -324,7 +320,7 @@ describe('prepareTurn', () => {
     }));
     try {
       await ready;
-      queue.enqueue({ sessionId: session.id, input: [{ type: 'text', text: '未保存排队输入' }] });
+      queue.enqueueUserMessage(session.id, [{ type: 'text', text: '未保存排队输入' }]);
       const stopping = running.runWithSessionClosed(session.id, async () => {
         sessions.archiveSession(session.id);
         queue.clearSession(session.id);
@@ -333,7 +329,7 @@ describe('prepareTurn', () => {
       release();
       await stopping;
       expect(await handle.completion).toMatchObject({ status: 'aborted' });
-      expect(queue.list(session.id)).toEqual([]);
+      expect(queue.listQueuedInputs(session.id)).toEqual([]);
       expect(callLLM).not.toHaveBeenCalled();
       expect(turns.getTurn(handle.turnId)?.status).toBe('aborted');
       expect(running.isRunning(session.id)).toBe(false);
@@ -483,7 +479,7 @@ describe('prepareTurn', () => {
       input: [{ type: 'skill_reference', name: 'demo', path: descriptor.path }],
     })));
     expect(selected.skillPool?.getByPath(descriptor.path)).toBeDefined();
-    expect(selected.userMessageBlocks).toEqual([{
+    expect(selected.inputBlocks).toEqual([{
       type: 'skill_reference',
       name: 'demo',
       path: descriptor.path,
@@ -558,7 +554,7 @@ describe('prepareTurn', () => {
         { type: 'text', text: ' 处理它' },
       ],
     })));
-    expect(prepared.userMessageBlocks).toEqual([
+    expect(prepared.inputBlocks).toEqual([
       { type: 'text', text: '请使用 ' },
       {
         type: 'skill_reference',
@@ -600,7 +596,7 @@ describe('prepareTurn', () => {
     })));
     expect(prepared.degradations).toHaveLength(1);
     expect(prepared.degradations[0]).toMatchObject({ removed: ['image'] });
-    expect(prepared.userMessageBlocks).toEqual([imageBlock]);
+    expect(prepared.inputBlocks).toEqual([imageBlock]);
   });
 
   it('准备阶段停止 Turn, 即使没有创建工具也完成电脑操控清理', async () => {
@@ -610,9 +606,9 @@ describe('prepareTurn', () => {
     const sessions = new SessionStore({ db });
     const session = sessions.createSession({ cwd: os.tmpdir(), providerId: 'sess-p', modelId: 'sess-m' });
     const turns = new TurnStore({ db, sessionRunning: running });
-    const queue = new SessionContinuationQueue({
+    const queue = new SessionMessageQueue({
       sessions, sessionRunning: running, goals: { getCurrent: () => null },
-      startTurn: () => { throw new Error('不应继续排队'); }, attachTurn: vi.fn(), publish: vi.fn(),
+      startTurn: () => { throw new Error('不应继续排队'); }, publish: vi.fn(),
     });
     const endTurn = vi.fn(async () => undefined);
     const createLLMCall = vi.fn();
@@ -621,7 +617,7 @@ describe('prepareTurn', () => {
         sessions, createLLMCall,
         computerUse: { endTurn, noteUserInput: vi.fn() } as unknown as ComputerUse,
       }),
-      sessions, turns, continuations: queue,
+      sessions, turns, messageQueue: queue,
       readTurnReminder: () => ({ currentDate: '2026-10-28', goal: null }),
       characterName: () => 'test',
       hasNormalUserMessage: () => false,
@@ -648,9 +644,9 @@ describe('prepareTurn', () => {
     const sessions = new SessionStore({ db });
     const session = sessions.createSession({ cwd: os.tmpdir(), providerId: 'sess-p', modelId: 'sess-m' });
     const turns = new TurnStore({ db, sessionRunning: running });
-    const queue = new SessionContinuationQueue({
+    const queue = new SessionMessageQueue({
       sessions, sessionRunning: running, goals: { getCurrent: () => null },
-      startTurn: () => { throw new Error('不应创建后继 Turn'); }, attachTurn: vi.fn(), publish: vi.fn(),
+      startTurn: () => { throw new Error('不应创建后继 Turn'); }, publish: vi.fn(),
     });
     let requests = 0;
     const callLLM: CallLLM = async function* (request) {
@@ -673,7 +669,7 @@ describe('prepareTurn', () => {
         sessions, createLLMCall: () => callLLM,
         computerUse: { noteUserInput: vi.fn(), endTurn } as unknown as ComputerUse,
       }),
-      sessions, turns, continuations: queue, onTurnCompletedInTransaction,
+      sessions, turns, messageQueue: queue, onTurnCompletedInTransaction,
       readTurnReminder: () => ({ currentDate: '2026-10-28', goal: null }),
       characterName: () => 'test', hasNormalUserMessage: () => false,
       createCompact: () => async request => ({ kind: 'unchanged', messages: request.messages }),

@@ -72,8 +72,8 @@ export interface PreparedTurn {
   /** 本轮已读取的动态输入; 子代理复用数据段, 换成自己的模型和工具, 不传根角色人设. */
   readonly dynamicSystemPromptInput: DynamicSystemPromptInput;
   readonly systemPrompt: readonly PromptBlock[];
-  /** 按输入顺序持久化的消息块, 附件保存 image/file/pasted_text_reference. */
-  readonly userMessageBlocks: MessageBlocks;
+  /** 按输入顺序持久化的初始消息块(用户消息或 continuation 消息), 附件保存引用块. */
+  readonly inputBlocks: MessageBlocks;
   readonly skillPool?: SkillPool;
   readonly compactSettings: CompactSettings;
   readonly mediaSettings: MediaSettings;
@@ -128,7 +128,7 @@ export async function prepareTurn(
   input: PrepareTurnInput,
 ): Promise<PreparedTurn> {
   const { request, turnId, signal } = input;
-  if (request.triggerType === 'userMessage'
+  if (request.messageKind === 'normal'
     && request.input.some(part => part.type === 'text' && part.text.trim().length > 0)) {
     deps.computerUse?.noteUserInput(request.sessionId);
   }
@@ -160,7 +160,7 @@ export async function prepareTurn(
     });
   }
 
-  const userMessageBlocks = await prepareTurnInputParts(
+  const inputBlocks = await prepareTurnInputParts(
     deps.attachments,
     request.sessionId,
     turnId,
@@ -217,7 +217,7 @@ export async function prepareTurn(
     ...(thinking ? { thinking } : {}),
     dynamicSystemPromptInput: dynamicInput,
     systemPrompt,
-    userMessageBlocks,
+    inputBlocks,
     ...(skillPool ? { skillPool } : {}),
     compactSettings,
     mediaSettings: readMediaSettings(deps.settings),

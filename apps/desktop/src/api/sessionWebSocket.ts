@@ -89,12 +89,20 @@ class SessionWebSocket {
     return this.request<void>(sessionId, requestId => ({ type: 'send_user_message', requestId, payload }));
   }
 
-  removeQueuedInput(sessionId: string, id: string): Promise<void> {
-    return this.request<void>(sessionId, requestId => ({ type: 'remove_queued_input', requestId, id }));
+  removeQueuedInput(sessionId: string, queuedInputId: string): Promise<void> {
+    return this.request<void>(sessionId, requestId => ({
+      type: 'remove_queued_input',
+      requestId,
+      queuedInputId,
+    }));
   }
 
-  guideQueuedInput(sessionId: string, id: string): Promise<void> {
-    return this.request<void>(sessionId, requestId => ({ type: 'guide_queued_input', requestId, id }));
+  markInputForNextIteration(sessionId: string, queuedInputId: string): Promise<void> {
+    return this.request<void>(sessionId, requestId => ({
+      type: 'mark_input_for_next_iteration',
+      requestId,
+      queuedInputId,
+    }));
   }
 
   startCompaction(sessionId: string) {

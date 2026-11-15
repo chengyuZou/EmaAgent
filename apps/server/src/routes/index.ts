@@ -81,7 +81,7 @@ export const createRoutes = (composition: Composition, secret: string) => {
       connections: sessionConnections,
       executor: turn.turnExecutor,
       subagents: turn.subagents,
-      continuations: turn.continuations,
+      messageQueue: turn.messageQueue,
       goals: database.goals,
       sessions: database.session,
       turns: database.turns,
