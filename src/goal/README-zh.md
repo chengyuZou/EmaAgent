@@ -44,14 +44,14 @@ const current = goals.getCurrent(sessionId);
 HTTP / Goal 工具 / 启动恢复
     -> GoalStore -> SQLite 事务提交
         -> GoalEvent -> Server 应用事件
-            -> UI 更新和续接队列
+            -> UI 更新和消息队列
 ```
 
-修改事件携带完整 Goal, `goal_deleted` 只携带 sessionId 和 goalId. `goal_edited` 表示正文改变, `goal_updated` 表示反馈改变, 执行队列据此区分后续处理.
+修改事件携带完整 Goal, `goal_deleted` 只携带 sessionId 和 goalId. `goal_edited` 表示正文改变, `goal_updated` 表示反馈改变, 消息队列据此区分后续处理.
 
 Server 就绪前调用 `pauseActiveOnStartup()`, 将持久化的 active 改为 paused, 递增版本并在事务提交后发事件. 保留目标 ID 和进度, 不在重启后自动继续工作.
 
-用户操作经 [Goal 路由](../../apps/server/src/routes/goals.ts) 和 [聊天发送路由](../../apps/server/src/routes/ws/session.ts) 进入. 模型进度和终态通过 [GoalUpdate](../builtin-tools/tools/GoalUpdateTool/GoalUpdateTool.ts) 提交. [续接队列](../turn/sessionContinuationQueue.ts) 决定 active 目标何时产生下一 Turn. 暂停目标停止后续续接, 本身不取消当前 Turn.
+用户操作经 [Goal 路由](../../apps/server/src/routes/goals.ts) 和 [聊天发送路由](../../apps/server/src/routes/ws/session.ts) 进入. 模型进度和终态通过 [GoalUpdate](../builtin-tools/tools/GoalUpdateTool/GoalUpdateTool.ts) 提交. [消息队列](../turn/messageQueue/sessionMessageQueue.ts) 决定 active 目标何时产生下一 Turn. 暂停目标停止后续续接, 本身不取消当前 Turn.
 
 当前尚无整个 Goal 的 Token 总预算或跨 Turn 空转停止规则. 对应未完成事项保留在受影响实现旁.
 

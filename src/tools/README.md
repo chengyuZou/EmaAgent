@@ -77,6 +77,7 @@ Text defaults to a 50 KiB per-tool budget. `ToolResultStore` saves oversized tex
 - Explicit background calls are stored immediately and start in FIFO submission order across Sessions as slots become available. Their concurrency setting defaults to 32, with a range of 1-128. It limits explicitly backgrounded commands, not all running Shell processes. Cancelling a queued call removes it without starting a process or releasing a running slot.
 - Maximum runtime defaults to 24 hours, configurable from one to 168. A command can request a shorter timeout. The timeout is fixed when submitted, starts when execution starts, and excludes queue time.
 - Session work permission is checked both at submission and before starting a queued command.
+- Before starting any Shell command, `BackgroundProcess` checks `checkAvailableMemory()` against `tools.shell.minAvailableMemoryBytes` (default `512 MiB`; `0` disables the check) and refuses execution if available memory is below the threshold or cannot be read.
 - Log writing failure stops the command and reports failure. UI progress callback failure only disables that callback.
 - stdout and stderr each retain up to 16 MiB including a truncation notice. Output reads use separate byte offsets and return at most 64 KiB per stream; optional waiting is capped at 30 seconds.
 - Normal completion, failure, and timeout save logs and terminal state before notifying the host with an execution reference. Full output is read separately.

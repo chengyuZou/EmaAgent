@@ -69,7 +69,7 @@ Windows 盘符路径按 WSL 默认 `/mnt/<drive>/...` 布局转换. 不查找自
 
 ## 输出, 取消与失败
 
-`startProcess()` 接收明确的可执行文件, argv, cwd 和环境变量. Bash 只复制允许的路径, 主目录, 临时目录和区域设置变量, 并设置 TERM=dumb, PAGER/GIT_PAGER=cat. API 密钥和进程注入变量不会复制进去. 原生 PowerShell 提供自己的环境变量.
+`startProcess()` 接收明确的可执行文件, argv, cwd 和环境变量. `buildProcessEnvironment()` 为 Bash 和 PowerShell 统一从允许的路径, 主目录, 临时目录和区域设置变量重建子进程环境, 并设置 `TERM=dumb`, `PAGER/GIT_PAGER=cat`, 再叠加显式配置的 `commandEnvironment` (`passthrough` 与 `values`). `EMA_SHARED_SECRET` 等控制凭据和未配置的注入变量不会复制进去.
 
 stdout 和 stderr 各自最多保留 100,000 个 UTF-16 码元, 包括截断提示. 保留开头和结尾, 避免劈开代理对, 返回前移除末尾空白. UTF-8 解码会跨输出块继续, 不按每块单独转换.
 

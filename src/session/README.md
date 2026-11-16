@@ -16,7 +16,7 @@ Sidebar queries return unarchived conversations in pinned Sessions, pinned proje
 
 ## Messages and summaries
 
-`appendMessage` checks Turn ownership, serializes blocks and emits a message-change event after insertion. It does not generate titles. `updateMessageBlocks` replaces the stored blocks under the same Message ID without sending an event for every delta.
+`appendMessage` and `appendTurnMessages` check Session and Turn ownership, serialize blocks, and emit a single `session_messages_changed` event after the SQLite transaction commits. `appendTurnMessages` writes a batch of related messages (such as a Turn reminder alongside separate queued user messages) atomically and rolls back the whole batch if any row fails. Neither generates titles. `updateMessageBlocks` replaces the stored blocks under the same Message ID without sending an event for every delta.
 
 Stored user messages can contain text/media, tool results, `image_reference`, `pasted_text_reference`, `file_reference` and `skill_reference`. Assistant messages preserve native block order. `parseMessageBlocksJson` checks database JSON by role and returns a readable placeholder for invalid content. [Context](../context/README.md) converts stored references into model input.
 

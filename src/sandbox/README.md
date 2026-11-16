@@ -69,7 +69,7 @@ Server owns the settings-page response type `SandboxStatus`: `backend`, `bashMod
 
 ## Output, cancellation and failure
 
-`startProcess()` receives an executable, argv, cwd and environment. Bash rebuilds its environment from allowed path, home, temporary-directory and locale variables, with TERM=dumb and PAGER/GIT_PAGER=cat. API credentials and injection variables are not copied. Native PowerShell supplies its own environment.
+`startProcess()` receives an executable, argv, cwd and environment. `buildProcessEnvironment()` rebuilds child environments for both Bash and PowerShell from allowed path, home, temporary-directory and locale variables, with `TERM=dumb` and `PAGER/GIT_PAGER=cat`, plus explicitly configured `commandEnvironment` (`passthrough` and `values`). Ema control credentials (`EMA_SHARED_SECRET`) and unconfigured injection variables are never forwarded.
 
 Each stdout/stderr result retains at most 100,000 UTF-16 code units, including its truncation notice. It keeps the beginning and end without splitting surrogate pairs and removes trailing whitespace. UTF-8 decoding continues across chunks.
 

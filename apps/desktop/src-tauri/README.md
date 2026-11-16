@@ -6,7 +6,7 @@ This Rust crate runs the native part of Ema. It creates the character stage and 
 
 ## Startup and data
 
-`lib.rs` installs the Tauri plugins and command handlers. The stage window opens first. The chat window, labeled `main`, is created when the user opens it.
+`lib.rs` installs the Tauri plugins and command handlers. The stage window opens first. The chat window, labeled `main`, is created when the user opens it; the transparent always-on-top `caption` window (`caption.html`) is created and destroyed on demand.
 
 Before starting Server, the host prepares the bundled model catalog and character resources in the profile directory. The default profile is `~/.ema-agent`; `EMA_PROFILE_DIR` overrides it. An existing `profile.db` prevents reseeding built-in characters. The model catalog is copied only when missing. Installing a release does not create a separate user profile.
 
@@ -36,7 +36,7 @@ On Windows, `server/webProxy.rs` reads the current user's WinHTTP/Internet Optio
 
 `tauri.conf.json` permits HTTP and HTTPS images and audio for Markdown, plus local and Blob media used by the application. JavaScript `unsafe-eval` stays disabled; Cubism's WebAssembly permission is separate.
 
-Tauri's automatic CSP modification is disabled only for `style-src`. File trees, Diff views and xterm create style elements at runtime. Adding a nonce to that directive would make the browser ignore its `unsafe-inline` permission and reject those elements. Other directives retain normal Tauri processing. Both application window capabilities separately grant `core:window:allow-set-theme` for native theme changes.
+Tauri's automatic CSP modification is disabled only for `style-src`. File trees, Diff views and xterm create style elements at runtime. Adding a nonce to that directive would make the browser ignore its `unsafe-inline` permission and reject those elements. Other directives retain normal Tauri processing. All three application window capabilities (`stage`, `main`, and `caption`) grant `core:window:allow-set-theme` for native theme changes, and `caption` also grants `core:window:allow-start-dragging`.
 
 ## Windows and events
 
@@ -68,6 +68,7 @@ Command handlers live beside their implementations in server, windows, notificat
 | --- | --- |
 | Read Server connection information | `get_server_port`, `get_server_secret` |
 | Show or hide chat, exit, pin stage, control click-through | `open_main_window`, `hide_main_window`, `quit_app`, `set_always_on_top`, pointer and passthrough commands |
+| Open or close the dedicated caption window | `open_caption_window`, `close_caption_window` |
 | Read local image bytes for a draft preview or wallpaper upload; inspect attachment paths | `read_local_image`, `inspect_attachment_paths` |
 | Select paths for chat attachments, wallpapers, or character resources | `select_paths` |
 | Connect native interaction clicks and reconcile pending notifications | `connect_desktop_notifications`, `sync_interaction_notifications` |

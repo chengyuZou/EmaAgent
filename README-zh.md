@@ -59,7 +59,7 @@ EmaAgent 把通用角色扮演与文件编辑, 命令执行, 网页搜索和多�
 
 - 分别配置 LLM, Vision, Embedding, Rerank, TTS 和 STT 的 Provider 与模型.
 - 加载本地或项目 Skills, 也可以从 SkillHub 和 ClawHub 安装.
-- 连接 MCP Server 来增加工具.
+- 连接 MCP Server 来增加工具 (支持 OAuth 2.0 浏览器授权登录).
 - 以 `.ema-session.zip` 导出和导入单个会话, 包括可读取的受管文件.
 
 功能取决于启用的模型, 工具和本地资源. 本地优先不等于离线: Prompt, 图片, 工具结果或检索文字可能发送给配置的外部服务, 请求也可能产生费用.
@@ -365,7 +365,7 @@ pnpm release --server-only
 
 发布版本使用三段数字 `MAJOR.MINOR.PATCH`, 例如 `0.1.0`, `0.1.1` 和 `0.2.0`. Patch 用于同一版本线的问题修复. Minor 用于功能增加, 项目在 1.0 之前也可能在 Minor 中调整已有行为. `0.1.11` 是有效的补丁版本, `0.1.1.1` 不是本项目的发布格式.
 
-预发布使用 alpha 或 beta 后缀, 例如 `0.1.0-beta.2`. Git tag 和 CHANGELOG 的版本标题使用 `v` 前缀, 例如 `v0.1.0-beta.2`; package.json, Tauri 和 Cargo 中的版本字段保留不带前缀的 `0.1.0-beta.2`. 根目录 `package.json` 确定应用发布版本, Desktop package, Tauri 配置和 Cargo package 必须与它完全一致. 发布脚本在构建之前检查这四处, 不一致时列出各自的值, 不自动修改版本. 依赖使用 pnpm 和 `pnpm-lock.yaml`.
+预发布使用 alpha 或 beta 后缀, 例如 `0.1.0-beta.3`. Git tag 和 CHANGELOG 的版本标题使用 `v` 前缀, 例如 `v0.1.0-beta.3`; package.json, Tauri 和 Cargo 中的版本字段保留不带前缀的 `0.1.0-beta.3`. 根目录 `package.json` 确定应用发布版本, Desktop package, Tauri 配置和 Cargo package 必须与它完全一致. 发布脚本在构建之前检查这四处, 不一致时列出各自的值, 不自动修改版本. 依赖使用 pnpm 和 `pnpm-lock.yaml`.
 
 近期版本变化见 [CHANGELOG](CHANGELOG-zh.md), 更早的发布说明和安装产物见 [GitHub Releases](https://github.com/chengyuZou/EmaAgent/releases). 设计取舍和使用说明见[文档入口](docs/README-zh.md).
 
@@ -424,7 +424,7 @@ pnpm dev:reset
 - 模型: [Providers](src/providers/README-zh.md), [LLM](src/llm/README-zh.md), [Vision](src/vision/README-zh.md), [Embedding](src/embed/README-zh.md), [Rerank](src/rerank/README-zh.md), [TTS](src/tts/README-zh.md), [STT](src/stt/README-zh.md).
 - 角色与记忆: [Characters](src/characters/README-zh.md), [Stage](src/stage/README-zh.md), [Live2D](src/live2d-react/README-zh.md), [Memory](src/memory/README-zh.md), [Narrative](src/narrative/README-zh.md).
 - 会话与工作: [Session](src/session/README-zh.md), [Attachments](src/attachments/README-zh.md), [Tasks](src/tasks/README-zh.md), [Goals](src/goal/README-zh.md), [Usage](src/usage/README-zh.md), [Backup](src/backup/README-zh.md).
-- 扩展与保存: [Skills](src/skills/README-zh.md), [MCP](src/mcp/README-zh.md), [Storage](src/storage/README-zh.md), [Settings](src/settings/README-zh.md), [Prompts](src/prompts/README-zh.md), [Token 估算](src/token/README-zh.md).
+- 扩展与保存: [Skills](src/skills/README-zh.md), [MCP](src/mcp/README-zh.md), [Commands](src/commands/README-zh.md), [Storage](src/storage/README-zh.md), [Settings](src/settings/README-zh.md), [Prompts](src/prompts/README-zh.md), [Token 估算](src/token/README-zh.md), [Logging](src/logging/README-zh.md), [System](src/system/README-zh.md).
 
 ## 开发检查
 

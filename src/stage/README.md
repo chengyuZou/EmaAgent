@@ -11,12 +11,12 @@ import { StageEngine } from '@ema-agent/stage';
 
 const stage = new StageEngine({ emotions: ['happy'], motions: ['wave'] });
 stage.beginTurn(sessionId);
-const first = stage.processChunk('Hello <emot', turnId, sessionId);
-const second = stage.processChunk('ion>happy</emotion>there', turnId, sessionId);
+const first = stage.processChunk('Hello <emot', sessionId);
+const second = stage.processChunk('ion>happy</emotion>there', sessionId);
 const tail = stage.flush(sessionId);
 ```
 
-The first result contains `Hello `. The second contains `there` and an `emotion_changed` event carrying Session ID, Turn ID and `happy`. The caller publishes returned events and forwards cleaned text. Desktop uses those identities when deciding whether to apply an event to the visible character.
+The first result returns `[{ text: 'Hello ', tags: null }]`. The second returns `[{ text: 'there', tags: [{ type: 'emotion', emotion: 'happy' }] }]` (`tags` may also be paired with `text: null` when a chunk contains only tags). The caller attaches Session ID and Turn ID when publishing `emotion_changed` / `motion_changed` events and forwards cleaned text segments. Desktop uses those identities when deciding whether to apply an event to the visible character.
 
 Recognized tags are lowercase `<emotion>name</emotion>` and `<motion>name</motion>`. Names start with an ASCII lowercase letter and continue with lowercase letters, digits or underscores. Whitespace around the name is allowed. A complete tag with an unknown name is removed but emits no event. Repeated known tags each emit an event. Other text and unrelated tags pass through.
 

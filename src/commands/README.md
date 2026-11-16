@@ -17,7 +17,7 @@ The Server supplies Session storage, the running-work registry, model settings, 
 
 The result is `completed`, with context window, before/after estimates, saved tokens and duration, or `cancelled`. Other failures throw `CommandsError` or dependency errors. Cancellation uses the registered `compactId`; manual compaction does not create a Turn.
 
-`GET /api/commands` returns the catalog. The desktop sends `start_compaction` over the Session WebSocket and receives `manual_compact_result`. See the [WebSocket route](../../apps/server/src/routes/ws/session.ts) and [input menu](../../apps/desktop/src/chat/input/AddInputMenu.tsx).
+`GET /api/commands` returns the catalog. The desktop sends `start_compaction` over the Session WebSocket and receives `manual_compact_result`. See the [WebSocket route](../../apps/server/src/routes/ws/session.ts) and [input commands](../../apps/desktop/src/chat/input/commands/inputCommands.tsx).
 
 ## Reading and checking
 

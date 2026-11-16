@@ -40,7 +40,7 @@ Permission 不为任意输入自动生成批准规则. 普通工具明确选择�
 | Read, Write, Edit, DescribeImage | 当前工具和当前文件 |
 | Glob, 目录 Grep | 当前工具和当前目录及其子目录 |
 | 网络目标类型未知的 Grep | 当前工具和完整输入, 批准前不探测远端 |
-| Bash, PowerShell | 完整字面命令, 不自动扩大成前缀 |
+| Bash, PowerShell | 当前规范化工作目录 (`cwd`) 下的完整字面命令, 不扩大成前缀或其他目录 |
 | WebFetch | 精确 hostname, 包含不同路径和端口, 不包含子域名 |
 | WebSearch | 搜索词和规范化的允许, 排除域名列表 |
 | 电脑操控启动 | 整个启动工具, 允许本会话后续启动, 每次操控仍随 Turn 结束 |

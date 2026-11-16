@@ -2,13 +2,16 @@
 
 [English](README.md)
 
-System 为存储设置页查询本机磁盘信息, 并提供应用警告共用的 `SystemWarningEvent` 类型.
+System 提供本机磁盘信息, 可用内存查询以及应用警告共用的 `SystemWarningEvent` 类型.
 
 ```ts
-import { getDisksInfo } from '@ema-agent/system';
+import { checkAvailableMemory, getDisksInfo } from '@ema-agent/system';
 
 const disks = getDisksInfo();
+const availableBytes = checkAvailableMemory();
 ```
+
+`checkAvailableMemory()` 在 Windows, macOS 和 Linux 上统一封装 `process.availableMemory()`, 校验结果为有限非负字节数并在读取失败时直接抛错. Tools 在启动 Shell 命令前调用它检查可用内存.
 
 `getDisksInfo()` 同步返回每个磁盘的挂载位置, 卷标, 总字节数和未用字节数. Windows 通过 PowerShell 查询 `Win32_LogicalDisk`, 明确输出 UTF-8 JSON, 避免卷标解码错误. macOS 和 Linux 执行 `df -Pk`, 将 1024 字节块换算为字节.
 
@@ -18,4 +21,4 @@ POSIX 的 `free` 使用总量减已用量, 不是命令中普通用户可用空�
 
 `SystemWarningEvent` 包含 `type: 'system_warning'`, 级别和展示给用户的消息. 自动截图等生产方通过 Server 应用事件发布, Desktop 的通知处理代码负责显示.
 
-实现位于 [disk.ts](disk.ts), 警告类型位于 [events.ts](events.ts). 运行 `pnpm --filter @ema-agent/system typecheck` 检查包类型. 平台磁盘命令目前没有自动化测试.
+磁盘查询位于 [disk.ts](disk.ts), 内存检查位于 [checkAvailableMemory.ts](checkAvailableMemory.ts), 警告类型位于 [events.ts](events.ts). 运行 `pnpm --filter @ema-agent/system typecheck` 和 `pnpm --filter @ema-agent/system test`. 单元测试 `tests/checkAvailableMemory.test.ts` 覆盖内存检查; 平台磁盘命令目前没有自动化测试.

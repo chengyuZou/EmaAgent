@@ -16,7 +16,7 @@ Provider/模型成对保存, 推理 `off` 明确关闭推理. 权限和 TTS 选�
 
 ## 消息与摘要
 
-`appendMessage` 检查 Turn 归属, 序列化块并在插入成功后发送消息变更. 它不生成标题. `updateMessageBlocks` 在原 Message ID 上整体替换内容, 不逐增量发送事件.
+`appendMessage` 和 `appendTurnMessages` 检查 Session 与 Turn 归属, 序列化块并在 SQLite 事务提交后发送一次 `session_messages_changed` 变更事件. `appendTurnMessages` 在同一事务中原子写入一组关联消息 (例如 Turn reminder 与各自独立的用户消息), 任一行失败则整体回滚. 两者都不生成标题. `updateMessageBlocks` 在原 Message ID 上整体替换内容, 不逐增量发送事件.
 
 用户消息可包含文本/媒体, 工具结果, `image_reference`, `pasted_text_reference`, `file_reference` 和 `skill_reference`. 助手消息保留原生块顺序. `parseMessageBlocksJson` 按角色检查数据库 JSON, 无效内容返回可读占位文本. [Context](../context/README-zh.md) 再把存储引用转成模型输入.
 

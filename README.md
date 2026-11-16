@@ -59,7 +59,7 @@ Commands and files affect your machine. Review tool requests and use a working d
 
 - Configure providers and models separately for LLM, Vision, Embedding, Rerank, TTS, and STT.
 - Load local and project Skills, or install Skills from SkillHub and ClawHub.
-- Connect MCP servers to add tools.
+- Connect MCP servers (including OAuth 2.0 browser login) to add tools.
 - Export and import individual conversations as `.ema-session.zip` archives, including their available managed files.
 
 Features depend on the models, tools, and local resources you enable. Local-first does not mean offline: prompts, images, tool results, or retrieved text may be sent to configured services, and requests may incur charges.
@@ -365,7 +365,7 @@ See [Desktop build and release](apps/desktop/README.md) for prerequisites, resou
 
 Release versions use three numbers: `MAJOR.MINOR.PATCH`, for example `0.1.0`, `0.1.1`, and `0.2.0`. Patch releases fix problems within a release line. Minor releases add capabilities and, while the project is below 1.0, may also change existing behavior. `0.1.11` is a valid patch number; `0.1.1.1` is not the release format used here.
 
-Prereleases use an alpha or beta suffix, such as `0.1.0-beta.2`. Git tags and CHANGELOG version headings use a `v` prefix, such as `v0.1.0-beta.2`; version fields in package.json, Tauri, and Cargo remain unprefixed, such as `0.1.0-beta.2`. The root `package.json` sets the application release version. The Desktop package, Tauri configuration, and Cargo package must match it exactly. The release script checks all four before building and reports their values on a mismatch; it does not update versions automatically. Dependencies use pnpm and `pnpm-lock.yaml`.
+Prereleases use an alpha or beta suffix, such as `0.1.0-beta.3`. Git tags and CHANGELOG version headings use a `v` prefix, such as `v0.1.0-beta.3`; version fields in package.json, Tauri, and Cargo remain unprefixed, such as `0.1.0-beta.3`. The root `package.json` sets the application release version. The Desktop package, Tauri configuration, and Cargo package must match it exactly. The release script checks all four before building and reports their values on a mismatch; it does not update versions automatically. Dependencies use pnpm and `pnpm-lock.yaml`.
 
 Recent changes are in the [changelog](CHANGELOG.md); older release notes and installation artifacts are in [GitHub Releases](https://github.com/chengyuZou/EmaAgent/releases). Usage and design decisions are in [Documentation](docs/README.md).
 
@@ -424,7 +424,7 @@ The [Desktop](apps/desktop/README.md) contains the React interface and Tauri hos
 - Models: [Providers](src/providers/README.md), [LLM](src/llm/README.md), [Vision](src/vision/README.md), [Embedding](src/embed/README.md), [Rerank](src/rerank/README.md), [TTS](src/tts/README.md), [STT](src/stt/README.md).
 - Characters and memory: [Characters](src/characters/README.md), [Stage](src/stage/README.md), [Live2D](src/live2d-react/README.md), [Memory](src/memory/README.md), [Narrative](src/narrative/README.md).
 - Conversations and work: [Session](src/session/README.md), [Attachments](src/attachments/README.md), [Tasks](src/tasks/README.md), [Goals](src/goal/README.md), [Usage](src/usage/README.md), [Backup](src/backup/README.md).
-- Extensions and persistence: [Skills](src/skills/README.md), [MCP](src/mcp/README.md), [Storage](src/storage/README.md), [Settings](src/settings/README.md), [Prompts](src/prompts/README.md), [Token estimates](src/token/README.md).
+- Extensions and persistence: [Skills](src/skills/README.md), [MCP](src/mcp/README.md), [Commands](src/commands/README.md), [Storage](src/storage/README.md), [Settings](src/settings/README.md), [Prompts](src/prompts/README.md), [Token estimates](src/token/README.md), [Logging](src/logging/README.md), [System](src/system/README.md).
 
 ## Development checks
 

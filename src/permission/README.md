@@ -40,7 +40,7 @@ Permission does not create a fallback approval for every input. Ordinary tools e
 | Read, Write, Edit, DescribeImage | This tool and the exact file |
 | Glob and directory Grep | This tool and the directory with descendants |
 | Grep of an unknown network target | This tool and the complete input, without probing the network |
-| Bash, PowerShell | The complete literal command, without widening it into a prefix |
+| Bash, PowerShell | The complete literal command within the normalized working directory (`cwd`), without widening to prefixes or other directories |
 | WebFetch | Exact hostname, including its paths and ports but not subdomains |
 | WebSearch | Query and normalized allowed/blocked domain lists |
 | Computer-use startup | Whole startup tool; allows later starts in this Session, while each use ends with its Turn |

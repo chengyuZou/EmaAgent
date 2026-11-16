@@ -17,7 +17,7 @@ Server 提供 Session 存储, 运行登记, 模型设置, 当前角色与 Skill 
 
 结果为 `completed` 或 `cancelled`. 完成结果包含模型窗口, 压缩前后估算, 减少量和耗时. 其他失败抛出 `CommandsError` 或依赖错误. 取消使用登记时的 `compactId`, 手动压缩不会创建 Turn.
 
-`GET /api/commands` 返回目录. 桌面端经 Session WebSocket 发送 `start_compaction`, 接收 `manual_compact_result`. 见 [WebSocket 路由](../../apps/server/src/routes/ws/session.ts) 和 [输入菜单](../../apps/desktop/src/chat/input/AddInputMenu.tsx).
+`GET /api/commands` 返回目录. 桌面端经 Session WebSocket 发送 `start_compaction`, 接收 `manual_compact_result`. 见 [WebSocket 路由](../../apps/server/src/routes/ws/session.ts) 和 [输入命令](../../apps/desktop/src/chat/input/commands/inputCommands.tsx).
 
 ## 阅读与检查
 

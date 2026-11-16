@@ -6,7 +6,7 @@
 
 ## 启动与用户数据
 
-`lib.rs` 注册 Tauri 插件和命令. 应用先显示 `stage` 角色舞台, 用户打开聊天时才创建 `main` 窗口.
+`lib.rs` 注册 Tauri 插件和命令. 应用先显示 `stage` 角色舞台, 用户打开聊天时才创建 `main` 窗口, 透明置顶的 `caption` 字幕窗口 (`caption.html`) 按需创建与销毁.
 
 启动 Server 前, 宿主先准备随包模型目录和角色资源. 默认用户目录是 `~/.ema-agent`, 可用 `EMA_PROFILE_DIR` 覆盖. 已有 `profile.db` 时不再补种内置角色; 模型目录只在文件缺失时复制. 正式版安装位置不会另建一份用户数据.
 
@@ -36,7 +36,7 @@ Windows 上, `server/webProxy.rs` 在启动 Server 前读取当前用户的 WinH
 
 `tauri.conf.json` 允许 Markdown 的 HTTP 和 HTTPS 图片与音频, 以及应用需要的本地和 Blob 媒体. JavaScript 的 `unsafe-eval` 仍然关闭; Cubism 使用的 WebAssembly 权限单独保留.
 
-只有 `style-src` 关闭 Tauri 的自动 CSP 加工. 文件树, Diff 和 xterm 会在运行时创建 style 元素. 向该指令加入 nonce 后, 浏览器会忽略其中的 `unsafe-inline`, 导致这些元素被拒绝. 其他指令仍由 Tauri 正常加工. 两个应用窗口的 capability 另外授予 `core:window:allow-set-theme`, 用于修改原生窗口主题.
+只有 `style-src` 关闭 Tauri 的自动 CSP 加工. 文件树, Diff 和 xterm 会在运行时创建 style 元素. 向该指令加入 nonce 后, 浏览器会忽略其中的 `unsafe-inline`, 导致这些元素被拒绝. 其他指令仍由 Tauri 正常加工. 三个应用窗口 (`stage`, `main`, `caption`) 的 capability 都授予 `core:window:allow-set-theme` 以修改原生窗口主题, `caption` 另外授予 `core:window:allow-start-dragging`.
 
 ## 窗口与事件
 
@@ -68,6 +68,7 @@ Permission 提供允许, 本会话允许和拒绝. main 再次检查交互队首
 | --- | --- |
 | 读取 Server 连接信息 | `get_server_port`, `get_server_secret` |
 | 显隐聊天, 退出, 舞台置顶和点击穿透 | `open_main_window`, `hide_main_window`, `quit_app`, `set_always_on_top`, 鼠标与穿透命令 |
+| 打开或关闭独立字幕窗口 | `open_caption_window`, `close_caption_window` |
 | 读取本地图片字节用于草稿预览或壁纸上传; 检查附件路径 | `read_local_image`, `inspect_attachment_paths` |
 | 选择聊天附件, 壁纸或角色资源路径 | `select_paths` |
 | 连接原生交互点击回调, 同步待处理通知 | `connect_desktop_notifications`, `sync_interaction_notifications` |

@@ -53,13 +53,13 @@ Bash 使用同步语法及模式检查, 另外通过 AST 提取子命令匹配�
 
 WebSearch 有支持的 Brave API-key 环境变量时使用 Brave, 否则读取 Bing HTML. 按返回 URL 过滤域名并去重, 保留服务端顺序, 最多返回 10 项. 不筛域名时只去掉查询首尾空白; 筛域名时追加搜索操作符, 返回后仍检查 URL. 搜索摘要不是网页正文.
 
-WebFetch 把 HTTP 改为 HTTPS 并跟随重定向, 响应最多 10 MiB, 网络部分超时为 30 秒. 静态 HTML 提取后转为 Markdown, 不执行页面脚本或复用浏览器登录. 原始文本和转换结果分别缓存, TTL 为 15 分钟, 内容总额为 50 MiB. 预批准 GET 域名仍服从用户的权限规则. HTML 预览 iframe 使用空 sandbox 属性.
+WebFetch 把 HTTP 改为 HTTPS 并跟随同源重定向 (最多 5 跳), 响应最多 10 MiB, 网络部分超时为 30 秒. 遇到跨域重定向时会在请求目标前停下并返回 `redirectTo`, 让后续独立的 WebFetch 调用先经过权限检查. 静态 HTML 提取后转为 Markdown, 不执行页面脚本或复用浏览器登录. 原始文本和转换结果分别缓存, TTL 为 15 分钟, 内容总额为 50 MiB. 预批准 GET 域名仍服从用户的权限规则. HTML 预览 iframe 使用空 sandbox 属性.
 
 Server 启动时调用一次 `configureWebDownloads(activeDataDir)`. WebFetch 从 `ToolInvocation.sessionId` 取得归属, 保存到 `<activeDataDir>/web-fetch/<sessionId>/`; Read 识别受管下载根目录, 不经 Turn 上下文传递 Web 专用目录. WebFetch 用生成的文件名保存原始字节, 写完后才发布文件, 在 `download` 中返回绝对路径和 MIME 类型, 同时给模型返回下载说明. 不使用远端文件名, 不覆盖用户文件, 不对下载应用文本分页. Read 负责读取保存的 PDF 和支持的图片; 保存成功不代表其他格式也能读取. 只有 Read 获得这个受管目录的默认读取权限, 仍服从显式 deny/ask 规则并检查符号链接逃逸, 不放开其他数据目录.
 
 下载缓存按 Session 的目标目录隔离, raw 与普通调用共用, 只有文件仍存在且体积相符才复用. 同一 Session 的主 Agent 和子代理共享文件, 其他 Session 不复用它的缓存下载路径. 内存缓存只保存说明, 不保存文件字节. 文件跨 Turn, 重启和缓存过期保留, 随所属 Session 删除并纳入会话备份. 当前没有下载文件的自动磁盘配额或过期删除. 下载仍与用户附件分开保存. 取消或写入错误会移除当前未完成文件; 进程异常退出可能留下 `.pending` 文件.
 
-两个网页工具直接调用共用的 Web 请求实现. 连接在首次使用时创建, Server 进程中的主 Agent 和子代理共用. Server 退出时先取消运行中的工作, 再调用 `closeWebRequests()` 关闭连接. 请求使用独立 dispatcher, 不修改模型, MCP 或其他全局 `fetch` 请求. Bing 和 WebFetch 跟随重定向, 每个目标重新检查代理例外规则. Brave API 保持手动重定向, 不把 API 凭据转发到另一个 URL.
+两个网页工具直接调用共用的 Web 请求实现. 连接在首次使用时创建, Server 进程中的主 Agent 和子代理共用. Server 退出时先取消运行中的工作, 再调用 `closeWebRequests()` 关闭连接. 请求使用独立 dispatcher, 不修改模型, MCP 或其他全局 `fetch` 请求. Bing 的重定向与 WebFetch 的同源重定向都会对每个目标重新检查代理例外规则. Brave API 保持手动重定向, 不把 API 凭据转发到另一个 URL.
 
 代理配置在首次创建 Web 连接时读取, 保持到连接关闭为止. 小写环境变量优先于同名大写变量. HTTP 依次选择 `HTTP_PROXY`, `ALL_PROXY`; HTTPS 依次选择 `HTTPS_PROXY`, `HTTP_PROXY`, `ALL_PROXY`. `NO_PROXY` 支持精确主机, 以 `.` 或 `*` 开头的后缀, 可选端口, 以及表示全部绕过的 `*`. 没有显式代理地址时, Windows 桌面宿主提供当前用户的固定系统代理与例外列表, 包括 `<local>` 和主机名通配符. PAC/WPAD, SOCKS, 无效配置或读取系统设置失败会明确报配置错误, 不悄悄直连. macOS, Linux 及单独启动的 Server 当前只读取环境变量配置. 修改代理后需要重启 Ema.
 

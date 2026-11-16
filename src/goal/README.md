@@ -44,14 +44,14 @@ Every mutation and deletion supplies `GoalIdentity`: `sessionId`, `goalId`, and 
 HTTP / Goal tool / startup recovery
     -> GoalStore -> SQLite transaction commits
         -> GoalEvent -> Server application events
-            -> UI refresh and continuation queue
+            -> UI refresh and message queue
 ```
 
-Changes emit the corresponding event with the full Goal. `goal_deleted` carries only `sessionId` and `goalId`. `goal_edited` means the objective changed; `goal_updated` means feedback changed. These are distinct inputs for the continuation queue.
+Changes emit the corresponding event with the full Goal. `goal_deleted` carries only `sessionId` and `goalId`. `goal_edited` means the objective changed; `goal_updated` means feedback changed. These are distinct inputs for the message queue.
 
 Before Server reports ready, `pauseActiveOnStartup()` changes persisted active Goals to paused, increments their versions, and emits events after the transaction commits. It preserves IDs and progress instead of automatically resuming work after a restart.
 
-User actions enter through the [Goal route](../../apps/server/src/routes/goals.ts) and the [chat send route](../../apps/server/src/routes/ws/session.ts). Model progress and final outcomes enter through [GoalUpdate](../builtin-tools/tools/GoalUpdateTool/GoalUpdateTool.ts). The [continuation queue](../turn/sessionContinuationQueue.ts) decides when an active Goal should produce another Turn. Pausing a Goal stops future continuation; it does not itself abort the current Turn.
+User actions enter through the [Goal route](../../apps/server/src/routes/goals.ts) and the [chat send route](../../apps/server/src/routes/ws/session.ts). Model progress and final outcomes enter through [GoalUpdate](../builtin-tools/tools/GoalUpdateTool/GoalUpdateTool.ts). The [message queue](../turn/messageQueue/sessionMessageQueue.ts) decides when an active Goal should produce another Turn. Pausing a Goal stops future continuation; it does not itself abort the current Turn.
 
 There is currently no overall Goal Token budget or cross-Turn idle-stop rule. The remaining work is recorded beside the affected implementations.
 
