@@ -15,6 +15,7 @@
 - [角色资源](../src/characters/README-zh.md): 人设, Live2D, 插图, 参考音频和表情包.
 - [电脑操控](../src/computer-use/README-zh.md): Node 与原生程序通信, 操控归属与结束.
 - [Turn](../src/turn/README-zh.md)和[工具](../src/tools/README-zh.md): 对话执行与工具调度.
+- [Speech](../src/speech/README-zh.md)和[Logging](../src/logging/README-zh.md): TTS 语音生命周期与诊断 JSONL 文件.
 - [Memory](../src/memory/README-zh.md)和[Narrative](../src/narrative/README-zh.md): 长期记忆与剧情检索.
 - [Storage](../src/storage/README-zh.md): 数据库, 迁移与升级前备份.
 
@@ -24,7 +25,7 @@
 
 - [电脑操控](design/computerUse/README-zh.md): 为什么取消自动暂停, 并让操控随 Turn 结束.
 - [Memory](design/memory/README-zh.md): 为什么采用可编辑文本, 以及活跃日期保留的取舍.
-- [剧情检索](design/narrative/README-zh.md): 为什么采用 LightRAG, 保留提问意图并控制检索成本.
+- [剧情检索](design/narrative/README-zh.md): 为什么采用 LightRAG, 周目隔离, 共用图谱与控制检索成本.
 - [输入队列](design/inputQueue/README-zh.md): 为什么统一交付输入, 区分引导并在保存后确认消费.
 - [语音](design/speech/README-zh.md): 为什么区分生成, 播放归属和声音版本, 以及当前 B 测的节奏选择.
 - [Stage](design/stage/README-zh.md): 为什么为静态立绘配置情绪, 营造类似 Galgame 的场景感.

@@ -90,7 +90,7 @@ Follow the feature you are changing rather than reading every store first.
 
 | Question | Start here |
 | --- | --- |
-| How do the two windows start? | `src/main.tsx`, `src/windows/main.tsx`, `src/App.tsx`, then `src-tauri/src/lib.rs` |
+| How do the application windows start? | `src/main.tsx`, `src/windows/main.tsx`, `src/windows/caption.tsx`, `src/App.tsx`, then `src-tauri/src/lib.rs` |
 | How do input and attachments become a request? | `src/chat/input`, especially `submitChatDraft.ts`, then `src/api/sessionWebSocket.ts` |
 | How do saved history and live replies appear together? | `src/chat/session`, `src/chat/history`, `src/stores/turn.ts`, and `src/chat/messages` |
 | How do files, reviews, browser tabs, and terminals work? | `src/chat/sidePanel`, then the corresponding API or Tauri entry |

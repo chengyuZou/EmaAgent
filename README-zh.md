@@ -420,10 +420,10 @@ pnpm dev:reset
 
 [Desktop](apps/desktop/README-zh.md) 包含 React 界面与 Tauri 宿主, [Server](apps/server/README-zh.md) 装配 `src/` 中的业务包. 可以按想了解的功能进入:
 
-- Agent 执行: [Turn](src/turn/README-zh.md), [Context](src/context/README-zh.md), [Tools](src/tools/README-zh.md), [Builtin Tools](src/builtin-tools/README-zh.md), [Permission](src/permission/README-zh.md), [Sandbox](src/sandbox/README-zh.md).
+- Agent 执行: [Turn](src/turn/README-zh.md), [Agent](src/agent/README-zh.md), [Context](src/context/README-zh.md), [Compact](src/compact/README-zh.md), [Tools](src/tools/README-zh.md), [Builtin Tools](src/builtin-tools/README-zh.md), [Permission](src/permission/README-zh.md), [Sandbox](src/sandbox/README-zh.md), [Computer use](src/computer-use/README-zh.md), [截图捕获](src/vishot-capture/README-zh.md).
 - 模型: [Providers](src/providers/README-zh.md), [LLM](src/llm/README-zh.md), [Vision](src/vision/README-zh.md), [Embedding](src/embed/README-zh.md), [Rerank](src/rerank/README-zh.md), [TTS](src/tts/README-zh.md), [STT](src/stt/README-zh.md).
-- 角色与记忆: [Characters](src/characters/README-zh.md), [Stage](src/stage/README-zh.md), [Live2D](src/live2d-react/README-zh.md), [Memory](src/memory/README-zh.md), [Narrative](src/narrative/README-zh.md).
-- 会话与工作: [Session](src/session/README-zh.md), [Attachments](src/attachments/README-zh.md), [Tasks](src/tasks/README-zh.md), [Goals](src/goal/README-zh.md), [Usage](src/usage/README-zh.md), [Backup](src/backup/README-zh.md).
+- 角色与记忆: [Characters](src/characters/README-zh.md), [Stage](src/stage/README-zh.md), [Speech](src/speech/README-zh.md), [Live2D](src/live2d-react/README-zh.md), [UI](src/ui/README-zh.md), [Memory](src/memory/README-zh.md), [Narrative](src/narrative/README-zh.md).
+- 会话与工作: [Session](src/session/README-zh.md), [Attachments](src/attachments/README-zh.md), [Tasks](src/tasks/README-zh.md), [Goals](src/goal/README-zh.md), [Git](src/git/README-zh.md), [Usage](src/usage/README-zh.md), [Backup](src/backup/README-zh.md).
 - 扩展与保存: [Skills](src/skills/README-zh.md), [MCP](src/mcp/README-zh.md), [Commands](src/commands/README-zh.md), [Storage](src/storage/README-zh.md), [Settings](src/settings/README-zh.md), [Prompts](src/prompts/README-zh.md), [Token 估算](src/token/README-zh.md), [Logging](src/logging/README-zh.md), [System](src/system/README-zh.md).
 
 ## 开发检查

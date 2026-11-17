@@ -90,7 +90,7 @@ Memory 存储展示独立于预览和最近处理记录加载, 只显示包含�
 
 | 问题 | 入口 |
 | --- | --- |
-| 两个窗口如何启动? | `src/main.tsx`, `src/windows/main.tsx`, `src/App.tsx`, 然后看 `src-tauri/src/lib.rs` |
+| 各窗口如何启动? | `src/main.tsx`, `src/windows/main.tsx`, `src/windows/caption.tsx`, `src/App.tsx`, 然后看 `src-tauri/src/lib.rs` |
 | 输入和附件如何变成请求? | `src/chat/input` 中的 `submitChatDraft.ts`, 然后看 `src/api/sessionWebSocket.ts` |
 | 历史消息和实时回复如何合并显示? | `src/chat/session`, `src/chat/history`, `src/stores/turn.ts` 和 `src/chat/messages` |
 | 文件, 变更, 浏览器和终端如何工作? | `src/chat/sidePanel`, 然后追到对应 API 或 Tauri 入口 |

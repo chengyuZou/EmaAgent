@@ -420,10 +420,10 @@ The next desktop launch initializes new databases and bundled resources. Deleted
 
 The [Desktop](apps/desktop/README.md) contains the React interface and Tauri host. The [Server](apps/server/README.md) connects the business packages in `src/`. Choose a module by the feature you want to understand:
 
-- Agent execution: [Turn](src/turn/README.md), [Context](src/context/README.md), [Tools](src/tools/README.md), [Builtin Tools](src/builtin-tools/README.md), [Permission](src/permission/README.md), [Sandbox](src/sandbox/README.md).
+- Agent execution: [Turn](src/turn/README.md), [Agent](src/agent/README.md), [Context](src/context/README.md), [Compact](src/compact/README.md), [Tools](src/tools/README.md), [Builtin Tools](src/builtin-tools/README.md), [Permission](src/permission/README.md), [Sandbox](src/sandbox/README.md), [Computer use](src/computer-use/README.md), [Visual capture](src/vishot-capture/README.md).
 - Models: [Providers](src/providers/README.md), [LLM](src/llm/README.md), [Vision](src/vision/README.md), [Embedding](src/embed/README.md), [Rerank](src/rerank/README.md), [TTS](src/tts/README.md), [STT](src/stt/README.md).
-- Characters and memory: [Characters](src/characters/README.md), [Stage](src/stage/README.md), [Live2D](src/live2d-react/README.md), [Memory](src/memory/README.md), [Narrative](src/narrative/README.md).
-- Conversations and work: [Session](src/session/README.md), [Attachments](src/attachments/README.md), [Tasks](src/tasks/README.md), [Goals](src/goal/README.md), [Usage](src/usage/README.md), [Backup](src/backup/README.md).
+- Characters and memory: [Characters](src/characters/README.md), [Stage](src/stage/README.md), [Speech](src/speech/README.md), [Live2D](src/live2d-react/README.md), [UI](src/ui/README.md), [Memory](src/memory/README.md), [Narrative](src/narrative/README.md).
+- Conversations and work: [Session](src/session/README.md), [Attachments](src/attachments/README.md), [Tasks](src/tasks/README.md), [Goals](src/goal/README.md), [Git](src/git/README.md), [Usage](src/usage/README.md), [Backup](src/backup/README.md).
 - Extensions and persistence: [Skills](src/skills/README.md), [MCP](src/mcp/README.md), [Commands](src/commands/README.md), [Storage](src/storage/README.md), [Settings](src/settings/README.md), [Prompts](src/prompts/README.md), [Token estimates](src/token/README.md), [Logging](src/logging/README.md), [System](src/system/README.md).
 
 ## Development checks

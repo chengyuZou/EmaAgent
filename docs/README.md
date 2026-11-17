@@ -15,6 +15,7 @@ See the [project README](../README.md) for installation and demonstrations, and 
 - [Characters](../src/characters/README.md): personas, Live2D, illustrations, reference audio, and stickers.
 - [Computer use](../src/computer-use/README.md): Node/native communication, ownership, and ending control.
 - [Turn](../src/turn/README.md) and [Tools](../src/tools/README.md): conversation execution and tool scheduling.
+- [Speech](../src/speech/README.md) and [Logging](../src/logging/README.md): TTS speech lifecycle and diagnostic JSONL files.
 - [Memory](../src/memory/README.md) and [Narrative](../src/narrative/README.md): long-term memory and story retrieval.
 - [Storage](../src/storage/README.md): databases, migrations, and pre-upgrade copies.
 
@@ -24,7 +25,7 @@ These documents explain why choices were made, what alternatives were considered
 
 - [Computer use](design/computerUse/README.md): dropping automatic pause and ending control with its Turn.
 - [Memory](design/memory/README.md): editable text instead of a graph, and active-date retention.
-- [Story retrieval](design/narrative/README.md): LightRAG selection, preserving query intent, and retrieval cost.
+- [Story retrieval](design/narrative/README.md): LightRAG selection, timeline isolation, shared graph retrieval, and retrieval cost.
 - [Input queue](design/inputQueue/README.md): unified delivery, guidance, and confirming saved input.
 - [Speech](design/speech/README.md): generation, playback ownership, voice versions, and the beta's pacing choice.
 - [Stage](design/stage/README.md): giving static illustrations emotion mappings for a Galgame-like scene.
