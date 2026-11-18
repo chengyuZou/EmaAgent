@@ -86,9 +86,9 @@ Package source sits directly in `src/<pkg>/` (no inner `src/`); tests live in `s
 ## Architecture
 
 ```
-apps/desktop  (React: stage window index.html + main window main.html; Tauri host in src-tauri/)
+apps/desktop  (React: stage index.html + main main.html + caption caption.html; Tauri host in src-tauri/)
      |  spawns Server child process, reads one JSON line {"method":"server.ready","params":{"port"}} from stdout,
-     |  hands port + shared secret to both WebViews
+     |  hands port + shared secret to application WebViews
 apps/server   (Hono on 127.0.0.1, random port, X-Ema-Secret auth)
      |  composes the business packages
 src/*         (business packages, one domain each)
@@ -103,7 +103,7 @@ src/*         (business packages, one domain each)
 **Shared settings**: business packages own their setting keys/schemas/defaults in `settings.ts` subpath entries (e.g. `@ema-agent/tools/settings`); `apps/server/src/settings/definitions.ts` collects them and is exported as `@ema-agent/server/settings`. Both Server and Desktop import these same definition objects - never repeat key strings in Desktop. These entries must stay browser-safe (no Node, SQL, or fs imports).
 
 **Turn execution chain** (the core Agent path):
-Session WebSocket -> `SessionMessageQueue` (`turn`, in-memory input queue; merges queued input, background notices, Goal continuations) -> `TurnExecutor` (`turn`, prepares model/prompt/tools, saves messages, one Turn per Session via `SessionRunningRegistry` from `session`) -> `AgentLoop` (`agent`, model/tool loop, also runs subagents) -> `dispatchTurnEvents` (`server`) -> Session events + optional speech.
+Session WebSocket -> `SessionMessageQueue` (`turn`, in-memory input queue; delivers queued user inputs as separate messages alongside background notices and Goal continuations) -> `TurnExecutor` (`turn`, prepares model/prompt/tools, saves messages, one Turn per Session via `SessionRunningRegistry` from `session`) -> `AgentLoop` (`agent`, model/tool loop, also runs subagents) -> `dispatchTurnEvents` (`server`) -> Session events + optional speech.
 Supporting packages: `context` (projects stored messages into model history, builds input + token estimates), `compact` (modifies the message array before each model request), `prompts` (System Prompt), `tools` (ToolPool, permission-checked execution, background Shell), `builtin-tools` (the actual tool implementations and their desktop result views), `permission`, `sandbox`, `providers` (resolves a configured capability into a connection) feeding the model API packages `llm`, `vision`, `embed`, `rerank`, `tts`, `stt`.
 
 **Storage** (`src/storage`): three SQLite databases - `profile.db` (providers, credentials, bindings, characters, settings, MCP, Skills), `data/data.db` (sessions, turns, messages, tasks, goals, subagents, tool executions, usage, Memory jobs), `narrative/narrative.db` (fixed story data + vectors). Repositories take a connection; domain stores in other packages convert rows to public types. Session-owned files live under `data/<kind>/<sessionId>/...`, with paths from `@ema-agent/storage/dataPaths`. Profile and Data migrations are numbered SQL files in `src/storage/migrations/{profile,data}/`, each applied in one transaction; never edit an already-applied migration, add the next numbered file. Narrative installs a fixed schema + seed SQL instead.
