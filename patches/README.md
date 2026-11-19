@@ -1,5 +1,7 @@
 # Dependency patches
 
+[中文](./README-zh.md)
+
 These patches change three installed dependencies used by the desktop interface. The root [package.json](../package.json) registers their exact versions under `pnpm.patchedDependencies`, and [pnpm-lock.yaml](../pnpm-lock.yaml) records the patch paths and hashes. pnpm applies them during dependency installation.
 
 ## Live2D loading, cleanup and expressions
