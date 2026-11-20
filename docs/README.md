@@ -35,6 +35,7 @@ These documents explain why choices were made, what alternatives were considered
 - [Media budget](design/mediaBudget/README.md): sharing a budget across sources and omitting older content first.
 - [Permission decisions](design/permissions/README.md): centralizing decisions and making user approval scopes explicit.
 - [Complete LLM results](design/llmCompletion/README.md): collecting a CallLLM stream internally to address native non-streaming restrictions.
+- [Diagnostic logging](design/logging/README.md): writing bounded UTF-8 JSONL files directly from Node instead of forwarding through Rust.
 
 ## Where content belongs
 

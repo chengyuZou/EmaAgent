@@ -35,6 +35,7 @@
 - [媒体预算](design/mediaBudget/README-zh.md): 为什么所有媒体来源共用预算, 并优先省略较早内容.
 - [权限判断](design/permissions/README-zh.md): 为什么集中作决定, 并明确用户批准的范围.
 - [完整 LLM 结果](design/llmCompletion/README-zh.md): 为什么由内部 CallLLM 收集流, 避免原生非流式请求的实际限制.
+- [诊断日志](design/logging/README-zh.md): 为什么由 Node 直接写限长的 JSONL 文件, 不再经过 Rust 转发.
 
 ## 文档分工
 
